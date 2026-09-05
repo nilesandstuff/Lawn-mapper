@@ -1,0 +1,31 @@
+name: 3. Find county servers
+
+# Diagnostic, run when parcel lookups stop working. Walks each county's ArcGIS
+# services directory looking for a parcel layer that actually answers, and
+# prints a config block for whatever it finds.
+#
+# Read-only: it issues GETs against public county services and changes nothing.
+on:
+  workflow_dispatch:
+    inputs:
+      county:
+        description: 'One county (kent, ottawa, allegan, muskegon, newaygo), or blank for all'
+        required: false
+        default: ''
+
+jobs:
+  discover:
+    name: Search for working parcel layers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Search
+        run: node tools/discover-counties.js ${{ inputs.county }}
