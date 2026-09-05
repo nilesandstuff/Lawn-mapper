@@ -55,7 +55,13 @@ console.log(`version: ${version.slice(0, 16)}…`);
 console.log(`image:   ${frame.size * 2}px of ${frame.lng},${frame.lat} @ z${frame.zoom}`);
 console.log(`prompts: ${PROMPTS.length}\n`);
 
+// Replicate throttles hard on low-credit accounts: 6 predictions a minute
+// with a burst of one. Without this pause every prompt after the first came
+// back 429 and the comparison was meaningless.
+let first = true;
 for (const prompt of PROMPTS) {
+  if (!first) await new Promise((r) => setTimeout(r, 12000));
+  first = false;
   const started = Date.now();
   process.stdout.write(`--- "${prompt}"\n`);
 
@@ -71,6 +77,9 @@ for (const prompt of PROMPTS) {
         // separated from the photograph again.
         mask_only: true,
         save_overlay: false,
+        // A zip would have to be unpacked in the browser before the tracer
+        // could touch it. Ask for the bare image instead.
+        return_zip: false,
       },
     }),
   });
@@ -100,6 +109,10 @@ for (const prompt of PROMPTS) {
   if (final.detail) console.log(`    detail: ${String(final.detail).slice(0, 300)}`);
 
   const out = final.output;
+  if (res.status === 429) {
+    console.log('    RATE LIMITED — add credit at https://replicate.com/account/billing\n');
+    continue;
+  }
   console.log(`    output: ${Array.isArray(out) ? `array(${out.length})` : typeof out}`);
   console.log(`    ${JSON.stringify(out)?.slice(0, 400)}`);
 

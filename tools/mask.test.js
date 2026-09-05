@@ -12,6 +12,7 @@
  */
 
 import {
+  rasterizePolygon,
   binarize,
   labelComponents,
   traceRegion,
@@ -214,6 +215,61 @@ console.log(`\nframe: zoom ${FRAME.zoom} @ ${IMG}px  ->  ${MPP.toFixed(4)} m/px\
 
   const { sizes } = labelComponents(new Uint8Array([1, 0, 1, 0]), 4, 1);
   check('labelling separates disconnected pixels', sizes.length === 3);
+}
+
+
+/* ------------------------------------- 10. clipping to the property line */
+{
+  // A lawn strip that runs well past the parcel on both sides -- the
+  // neighbours' grass, which a text prompt will happily return too.
+  const img = blankMask(IMG, IMG);
+  paintRect(img, 0, 400, IMG, 300);
+
+  // The parcel: a box covering only the middle of the frame.
+  const parcelRing = [
+    unproject(400, 300), unproject(880, 300),
+    unproject(880, 980), unproject(400, 980), unproject(400, 300),
+  ];
+  const project = (lngLat) => lngLatToFramePx(FRAME, lngLat, IMG, IMG);
+  const clip = rasterizePolygon([parcelRing], IMG, IMG, project);
+
+  const painted = clip.reduce((n, v) => n + v, 0);
+  closeTo(painted, 480 * 680, 3000, 'the parcel rasterises to its own pixel area');
+
+  const unclipped = maskToPolygons(img, unproject, { tolerance: 0.5 });
+  const clipped = maskToPolygons(img, unproject, { tolerance: 0.5, clipMask: clip });
+
+  const before = geometryAreaSqM(unclipped[0]);
+  const after = geometryAreaSqM(clipped[0]);
+  check('clipping shrinks the lawn to the parcel', after < before * 0.45,
+    `${before.toFixed(0)} -> ${after.toFixed(0)} m^2`);
+
+  // 480 px wide by 300 px of lawn: only the part inside the parcel survives.
+  closeTo(after, (479 * MPP) * (299 * MPP), 25, 'what survives is the overlap exactly');
+}
+
+/* ---------------------------------------- 11. gaps under a tree canopy */
+{
+  const img = blankMask(IMG, IMG);
+  paintRect(img, 300, 300, 600, 600);      // lawn
+  paintRect(img, 420, 420, 90, 90, 0);     // a tree: small gap
+  paintRect(img, 650, 650, 200, 200, 0);   // a pool: large gap
+
+  const subtracted = maskToPolygons(img, unproject, { tolerance: 0.5 });
+  check('with no fill, both gaps are subtracted',
+    subtracted[0].coordinates.length === 3, `${subtracted[0].coordinates.length} rings`);
+
+  // Fill anything under ~120x120 px: the tree goes, the pool stays.
+  const filled = maskToPolygons(img, unproject, { tolerance: 0.5, fillGapsUnderPx: 120 * 120 });
+  check('the tree-sized gap is counted as lawn',
+    filled[0].coordinates.length === 2, `${filled[0].coordinates.length} rings`);
+  check('the pool-sized gap is still subtracted',
+    geometryAreaSqM(filled[0]) < (599 * MPP) ** 2 - (150 * MPP) ** 2);
+  check('it reports how many gaps it filled', filled.filledGaps === 1,
+    `filledGaps=${filled.filledGaps}`);
+
+  const gained = geometryAreaSqM(filled[0]) - geometryAreaSqM(subtracted[0]);
+  closeTo(gained, (89 * MPP) ** 2, 2, 'the recovered area is the canopy exactly');
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);

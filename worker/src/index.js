@@ -364,6 +364,22 @@ async function handleSegment(request, env, origin) {
   if (!res.ok) {
     const detail = await res.text();
     await refundQuota(request, env, clientId);
+
+    // Replicate throttles low-credit accounts to a handful of predictions a
+    // minute. That is an account problem, not a bug, and saying so beats a
+    // generic failure that sends the owner hunting through code.
+    if (res.status === 429) {
+      return json(
+        {
+          error: 'The detector is rate limited right now. Try again in a minute.',
+          detail,
+          rateLimited: true,
+        },
+        429,
+        origin
+      );
+    }
+
     return json({ error: 'Segmentation failed', detail }, 502, origin);
   }
 

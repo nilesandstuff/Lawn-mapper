@@ -24,6 +24,64 @@
  * any object shaped like one) so it runs unchanged under Node for tests.
  */
 
+/**
+ * Paint a polygon into a pixel mask, so it can be intersected with another.
+ *
+ * This is how the lawn gets clipped to the property line. The obvious approach
+ * -- polygon boolean geometry -- is a genuinely hard problem to get right on
+ * real parcel outlines, and a wrong answer there is a wrong square footage.
+ * Intersecting two bitmaps is exact for any shape, holes included, needs no
+ * library, and lands in the same pixel grid the mask already lives in.
+ *
+ * `rings` is a GeoJSON-style ring list (outer first, then holes) and `project`
+ * turns [lng, lat] into image pixels. Even-odd filling means holes come out
+ * right without being special-cased.
+ */
+export function rasterizePolygon(rings, width, height, project) {
+  const mask = new Uint8Array(width * height);
+
+  // Every edge, in pixel space, ignoring horizontal ones (they contribute no
+  // crossings and would divide by zero below).
+  const edges = [];
+  for (const ring of rings) {
+    const pts = ring.map(project);
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [x1, y1] = pts[i];
+      const [x2, y2] = pts[i + 1];
+      if (y1 !== y2) edges.push([x1, y1, x2, y2]);
+    }
+    // Close the ring if the caller did not.
+    const [fx, fy] = pts[0];
+    const [lx, ly] = pts[pts.length - 1];
+    if ((fx !== lx || fy !== ly) && fy !== ly) edges.push([lx, ly, fx, fy]);
+  }
+  if (!edges.length) return mask;
+
+  const xs = [];
+  for (let y = 0; y < height; y++) {
+    // Sample through the middle of the row: a scanline exactly on a vertex
+    // otherwise counts that crossing twice.
+    const sy = y + 0.5;
+    xs.length = 0;
+
+    for (const [x1, y1, x2, y2] of edges) {
+      if ((sy >= y1 && sy < y2) || (sy >= y2 && sy < y1)) {
+        xs.push(x1 + ((sy - y1) / (y2 - y1)) * (x2 - x1));
+      }
+    }
+    if (xs.length < 2) continue;
+
+    xs.sort((a, b) => a - b);
+    for (let i = 0; i + 1 < xs.length; i += 2) {
+      const from = Math.max(0, Math.ceil(xs[i] - 0.5));
+      const to = Math.min(width - 1, Math.floor(xs[i + 1] - 0.5));
+      for (let x = from; x <= to; x++) mask[y * width + x] = 1;
+    }
+  }
+
+  return mask;
+}
+
 /** Clockwise Moore neighbourhood, starting due east. */
 const MOORE = [
   [1, 0], [1, 1], [0, 1], [-1, 1],
@@ -286,11 +344,22 @@ export function maskToPolygons(image, unproject, options = {}) {
     tolerance = 1.5,
     maxVertices = 240,
     maxPolygons = 6,
+    // Pixels outside the property line, zeroed before anything else runs.
+    clipMask = null,
+    // Gaps smaller than this are kept as lawn rather than subtracted. A tree
+    // canopy hides grass that is really there; a pool or a shed does not. Size
+    // is the only signal available from overhead, so the caller sets the line
+    // and the UI reports what was filled.
+    fillGapsUnderPx = 0,
   } = options;
 
   const { width, height } = image;
   const total = width * height;
   const bin = binarize(image, threshold);
+
+  if (clipMask) {
+    for (let p = 0; p < bin.length; p++) bin[p] &= clipMask[p];
+  }
   const { labels, sizes } = labelComponents(bin, width, height);
 
   const ranked = sizes
@@ -301,6 +370,8 @@ export function maskToPolygons(image, unproject, options = {}) {
     .slice(0, maxPolygons);
 
   const polygons = [];
+  let filledGaps = 0;
+  let filledGapPx = 0;
 
   for (const { id } of ranked) {
     const region = new Uint8Array(total);
@@ -315,6 +386,15 @@ export function maskToPolygons(image, unproject, options = {}) {
     const rings = [outerRing];
 
     for (const hole of findHoles(labels, width, height, id, minHoleFraction * total)) {
+      // A gap small enough to be a tree is counted as lawn: not tracing it
+      // leaves it filled.
+      const size = hole.reduce((n, v) => n + v, 0);
+      if (size < fillGapsUnderPx) {
+        filledGaps++;
+        filledGapPx += size;
+        continue;
+      }
+
       const traced = traceRegion(hole, width, height);
       if (!traced || traced.length < 4) continue;
       const ring = simplifyRing(traced, { tolerance, maxVertices: Math.round(maxVertices / 2) });
@@ -327,5 +407,9 @@ export function maskToPolygons(image, unproject, options = {}) {
     });
   }
 
+  // The count travels with the result so the UI can say what it did rather
+  // than quietly inflating the number.
+  polygons.filledGaps = filledGaps;
+  polygons.filledGapPx = filledGapPx;
   return polygons;
 }
