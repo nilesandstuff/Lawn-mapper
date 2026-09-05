@@ -108,6 +108,19 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .row { display: flex; gap: 8px; align-items: center; }
 .row .primary { margin-top: 0; }
 
+/* --------------------------------------------------------- edge editing */
+.edgepanel {
+  margin-top: 12px; padding: 12px 13px;
+  border: 1px solid var(--line); border-radius: 11px; background: #fbfcfb;
+}
+.edge-info { margin: 0 0 10px; font-size: 13.5px; color: var(--muted); }
+.edge-info.active { color: var(--ink); font-weight: 550; }
+.edge-readout { display: flex; align-items: baseline; gap: 9px; margin-bottom: 4px; }
+.edge-readout span { font-size: 22px; font-weight: 650; letter-spacing: -0.02em; }
+.edge-readout small { color: var(--muted); font-size: 12px; }
+.edgepanel input[type=range] { width: 100%; margin: 4px 0 2px; accent-color: var(--green); }
+.edgepanel .sub { font-size: 12.5px; margin: 6px 0 12px; }
+
 /* ---------------------------------------------------------- candidates */
 .candidates { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 7px; }
 .candidates button {

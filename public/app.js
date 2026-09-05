@@ -15,6 +15,10 @@
 import { measure } from './lib/area.js';
 import { maskToPolygons } from './lib/mask.js';
 import {
+  offsetEdge, nearestEdge, edgeLength, edgeBearing, edgeMidpoint,
+  feetToMetres, metresToFeet,
+} from './lib/edges.js';
+import {
   framePxToLngLat,
   lngLatToFramePx,
   frameCorners,
@@ -31,12 +35,15 @@ const IMAGERY_ZOOM_FALLBACK = 19; // used when we have no parcel to fit
 
 const state = {
   clientId: clientId(),
-  chosen: null,     // { label, lng, lat }
-  parcel: null,     // GeoJSON Feature or null
-  frame: null,      // { lng, lat, zoom, size } used for the last/next SAM call
-  promptLngLat: null,
+  chosen: null,       // { label, lng, lat }
+  parcel: null,       // GeoJSON Feature or null
+  frame: null,        // { lng, lat, zoom, size } used for the last/next SAM call
+  promptPoints: [],   // one [lng, lat] per separate lawn area the user marked
+  promptMarkers: [],
   quota: null,
 };
+
+const MAX_PROMPT_POINTS = 8;
 
 let map;
 let draw;
@@ -50,7 +57,7 @@ let draw;
  * browser test -- or anyone with a console open -- tell them apart in one go.
  * Read-only counters; no tokens or personal data.
  */
-const diag = { clicks: 0, rejected: 0, lastMode: null, armed: false };
+const diag = { clicks: 0, rejected: 0, lastMode: null, armed: false, viaTouch: 0, viaClick: 0 };
 if (typeof window !== 'undefined') {
   window.__lm = diag;
   Object.defineProperty(diag, 'drawMode', {
@@ -197,6 +204,30 @@ async function initMap() {
     paint: { 'line-color': '#ffd54f', 'line-width': 2, 'line-dasharray': [2, 1.5] },
   });
 
+  map.addSource('edge-highlight', { type: 'geojson', data: empty() });
+  map.addLayer({
+    id: 'edge-highlight', type: 'line', source: 'edge-highlight',
+    paint: { 'line-color': '#ff6f00', 'line-width': 5, 'line-opacity': 0.9 },
+  });
+
+  // Corners still backed by the county record. Drawn above everything so the
+  // user can see at a glance which parts of the outline are authoritative.
+  map.addSource('surveyed', { type: 'geojson', data: empty() });
+  map.addLayer({
+    id: 'surveyed', type: 'circle', source: 'surveyed',
+    paint: {
+      'circle-radius': 5,
+      'circle-color': '#ffd54f',
+      'circle-stroke-width': 2,
+      'circle-stroke-color': '#5d4600',
+    },
+  });
+
+  map.on('draw.selectionchange', updateSelectionButtons);
+  for (const evt of ['draw.create', 'draw.update', 'draw.delete']) {
+    map.on(evt, refreshSurveyed);
+  }
+
   verifyProjection();
 }
 
@@ -317,6 +348,15 @@ async function confirmLocation() {
         zoom: zoomToFit(bbox, FRAME_SIZE),
         size: FRAME_SIZE,
       };
+      // Remember the county's own corners so the map can show which parts of
+      // the final outline are still survey-accurate.
+      const ring = outerRing(state.parcel) ||
+        (state.parcel.geometry.type === 'MultiPolygon'
+          ? state.parcel.geometry.coordinates[0][0]
+          : []);
+      state.surveyed = ring.map((p) => [...p]);
+      $('#btn-parcel-shape').hidden = false;
+
       const a = measure(state.parcel.geometry);
       setStatus(
         `Found your property line — ${a.acres} acres total ` +
@@ -324,6 +364,8 @@ async function confirmLocation() {
       );
     } else {
       map.getSource('parcel').setData(empty());
+      state.surveyed = [];
+      $('#btn-parcel-shape').hidden = true;
       map.flyTo({ center: [lng, lat], zoom: IMAGERY_ZOOM_FALLBACK, duration: 600 });
       state.frame = { lng, lat, zoom: IMAGERY_ZOOM_FALLBACK, size: FRAME_SIZE };
       setStatus(
@@ -345,29 +387,102 @@ async function confirmLocation() {
 /* ------------------------------------------------------- lawn prompt point */
 
 /**
- * SAM segments whatever is under the prompt point, and the geocoded pin sits
- * on the house. Asking for one tap on the grass is both more reliable than
- * any centroid heuristic and easier to explain than why the tool outlined a
- * roof.
+ * SAM segments whatever its prompt points touch, and the geocoded pin sits on
+ * the house. Asking the user to tap the grass is more reliable than any
+ * centroid heuristic and easier to explain than why the tool outlined a roof.
+ *
+ * One tap per separate area: a lawn cut in two by a driveway is two shapes,
+ * and a single prompt point finds one of them and silently misses the other.
  */
 function armLawnPicker() {
   state.detected = false;
   diag.armed = true;
-  setHint('Tap the middle of your lawn');
+  updatePromptHint();
   map.getCanvas().style.cursor = 'crosshair';
-  map.on('click', onLawnClick);
+  map.on('click', onMapClick);
+  const el = map.getCanvasContainer();
+  el.addEventListener('touchstart', onTouchStart, { passive: true });
+  el.addEventListener('touchend', onTouchEnd, { passive: true });
 }
 
 function disarmLawnPicker() {
   diag.armed = false;
   map.getCanvas().style.cursor = '';
-  map.off('click', onLawnClick);
+  map.off('click', onMapClick);
+  const el = map.getCanvasContainer();
+  el.removeEventListener('touchstart', onTouchStart);
+  el.removeEventListener('touchend', onTouchEnd);
 }
 
-function onLawnClick(e) {
-  diag.clicks++;
+/*
+ * Why there are two paths into the same handler.
+ *
+ * Mapbox GL Draw calls preventDefault on touchend. That stops the browser
+ * synthesising the click event that map.on('click') is built on, so on a
+ * phone -- and only on a phone -- tapping the map did nothing at all, with no
+ * error to show for it. A mouse click still worked, which is why it survived
+ * every test until someone used it on an actual phone.
+ *
+ * So touches are read natively from the canvas container, and the click path
+ * is kept for mice. A device that delivers both would otherwise register one
+ * interaction twice, so a click is ignored when it lands in the same place as
+ * a touch we just handled -- position as well as time, because two genuine
+ * taps on two different lawn areas can easily fall inside any sane time
+ * window, and dropping the second is exactly the bug this feature is for.
+ */
+let touchStart = null;
+let handled = { at: 0, x: null, y: null };
 
-  // Ignore clicks that land on a shape the user is editing.
+const TAP_SLOP_PX = 14;    // a finger never lands perfectly still
+const TAP_MAX_MS = 700;    // longer than this is a press, or a slow pan
+const ECHO_MS = 700;       // a synthetic click follows its touch closely
+const ECHO_SLOP_PX = 30;   // ...and lands on the same spot
+
+function onTouchStart(e) {
+  touchStart = e.touches.length === 1
+    ? { x: e.touches[0].clientX, y: e.touches[0].clientY, at: Date.now() }
+    : null; // two fingers is a zoom, never a tap
+}
+
+function onTouchEnd(e) {
+  const start = touchStart;
+  touchStart = null;
+  if (!start) return;
+
+  const t = e.changedTouches && e.changedTouches[0];
+  if (!t) return;
+  if (Math.hypot(t.clientX - start.x, t.clientY - start.y) > TAP_SLOP_PX) return;
+  if (Date.now() - start.at > TAP_MAX_MS) return;
+
+  const rect = map.getCanvasContainer().getBoundingClientRect();
+  const lngLat = map.unproject([t.clientX - rect.left, t.clientY - rect.top]);
+  diag.viaTouch++;
+  handleMapPoint(lngLat, t.clientX, t.clientY);
+}
+
+function onMapClick(e) {
+  const src = e.originalEvent || {};
+  const x = Number.isFinite(src.clientX) ? src.clientX : null;
+  const y = Number.isFinite(src.clientY) ? src.clientY : null;
+
+  // The echo of a touch we already handled: same place, moments later. Only
+  // suppress when both positions are actually known -- treating "position
+  // unknown" as "same position" would swallow legitimate second taps.
+  const known = x !== null && handled.x !== null;
+  if (known &&
+      Date.now() - handled.at < ECHO_MS &&
+      Math.hypot(x - handled.x, y - handled.y) < ECHO_SLOP_PX) {
+    return;
+  }
+
+  diag.viaClick++;
+  handleMapPoint(e.lngLat, x, y);
+}
+
+function handleMapPoint(lngLat, x = null, y = null) {
+  diag.clicks++;
+  handled = { at: Date.now(), x, y };
+
   let mode;
   try {
     mode = draw.getMode();
@@ -375,40 +490,96 @@ function onLawnClick(e) {
     mode = `ERROR: ${err.message}`;
   }
   diag.lastMode = mode;
+
+  // Ignore taps meant for a shape the user is drawing or editing.
   if (mode !== 'simple_select') {
     diag.rejected++;
     return;
   }
 
-  state.promptLngLat = [e.lngLat.lng, e.lngLat.lat];
+  if (state.edgeEdit) return selectEdgeNear([lngLat.lng, lngLat.lat]);
 
-  if (state.promptMarker) state.promptMarker.remove();
-  state.promptMarker = new mapboxgl.Marker({ color: '#ffd54f', scale: 0.75 })
-    .setLngLat(state.promptLngLat)
-    .addTo(map);
+  addPromptPoint([lngLat.lng, lngLat.lat]);
+}
 
-  const left = state.quota ? state.quota.limit - state.quota.used : null;
-  $('#btn-detect').disabled = false;
-  setStatus(
-    left === null
-      ? 'Ready. Press "Detect my lawn".'
-      : `Ready. "Detect my lawn" uses 1 of your ${left} remaining detections today.`
+function addPromptPoint(lngLat) {
+  if (state.promptPoints.length >= MAX_PROMPT_POINTS) {
+    setStatus(`That is the most areas we can detect at once (${MAX_PROMPT_POINTS}). Remove one first.`, 'warn');
+    return;
+  }
+
+  state.promptPoints.push(lngLat);
+  state.promptMarkers.push(
+    new mapboxgl.Marker({ color: '#ffd54f', scale: 0.7 }).setLngLat(lngLat).addTo(map)
   );
-  setHint('Tap again to move the spot, or press "Detect my lawn"');
+  state.detected = false;
+  updatePromptHint();
+}
+
+function removeLastPromptPoint() {
+  state.promptPoints.pop();
+  state.promptMarkers.pop()?.remove();
+  updatePromptHint();
+}
+
+function clearPromptPoints() {
+  for (const m of state.promptMarkers) m.remove();
+  state.promptMarkers = [];
+  state.promptPoints = [];
+  updatePromptHint();
+}
+
+/** Keep the buttons and the wording in step with how many areas are marked. */
+function updatePromptHint() {
+  const n = state.promptPoints.length;
+  const left = state.quota ? Math.max(0, state.quota.limit - state.quota.used) : null;
+
+  $('#btn-detect').disabled = n === 0 || state.detected;
+  $('#btn-detect').textContent =
+    n <= 1 ? 'Detect my lawn' : `Detect my lawn (${n} areas)`;
+  $('#btn-undo-pin').hidden = n === 0;
+
+  if (n === 0) {
+    setHint('Tap the middle of your lawn');
+    setStatus(state.parcel
+      ? 'Tap each separate part of your lawn — front, back, side strips.'
+      : 'Tap each separate part of your lawn, or draw it by hand.');
+    return;
+  }
+
+  setHint(n === 1
+    ? 'Tap any other separate patch of lawn, or press Detect'
+    : `${n} areas marked — tap more, or press Detect`);
+  setStatus(
+    `${n} area${n > 1 ? 's' : ''} marked.` +
+    (left === null ? '' : ` Detecting uses 1 of your ${left} remaining today, however many areas you mark.`)
+  );
 }
 
 /* ------------------------------------------------------------- detection */
 
 async function detect() {
-  if (!state.promptLngLat || !state.frame) return;
+  if (!state.promptPoints.length || !state.frame) return;
 
   const frame = state.frame;
   const img = frame.size * 2; // the static image is requested @2x
-  const [px, py] = lngLatToFramePx(frame, state.promptLngLat, img, img);
 
-  if (px < 0 || py < 0 || px > img || py > img) {
-    setStatus('That spot is outside the area we photographed. Tap closer to the house.', 'warn');
+  // Points outside the photographed frame cannot be segmented; drop them
+  // rather than sending coordinates SAM will read as the nearest corner.
+  const inside = [];
+  let dropped = 0;
+  for (const p of state.promptPoints) {
+    const [px, py] = lngLatToFramePx(frame, p, img, img);
+    if (px < 0 || py < 0 || px > img || py > img) { dropped++; continue; }
+    inside.push([Math.round(px), Math.round(py)]);
+  }
+
+  if (!inside.length) {
+    setStatus('Those spots are outside the area we photographed. Tap closer to the house.', 'warn');
     return;
+  }
+  if (dropped) {
+    setStatus(`${dropped} marked area${dropped > 1 ? 's are' : ' is'} outside the photo and will be skipped.`, 'warn');
   }
 
   busy('Detecting your lawn…');
@@ -421,7 +592,7 @@ async function detect() {
       body: JSON.stringify({
         ...frame,
         clientId: state.clientId,
-        promptPoint: [[Math.round(px), Math.round(py)]],
+        promptPoint: inside,
       }),
     });
 
@@ -456,6 +627,8 @@ async function detect() {
     if ($('#toggle-overlay').checked) showOverlay();
 
     refreshMeasurement();
+    refreshSurveyed();
+    updateSelectionButtons();
     disarmLawnPicker();
     setHint('Drag the white dots to correct the shape');
 
@@ -479,7 +652,7 @@ async function detect() {
     }
   } finally {
     idle();
-    $('#btn-detect').disabled = !state.promptLngLat || state.detected;
+    updatePromptHint();
     refreshQuota();
   }
 }
@@ -556,6 +729,180 @@ function hideOverlay() {
   if (map.getSource('mask-overlay')) map.removeSource('mask-overlay');
 }
 
+/* ------------------------------------------------------------ edge tools */
+
+/**
+ * Extending a boundary out to the road.
+ *
+ * A recorded parcel often stops at the right-of-way easement, several feet
+ * short of the kerb, while the homeowner mows the whole way. Dragging the two
+ * corners by hand fixes the size and ruins the shape: the frontage ends up
+ * slightly skewed off the surveyed bearing, and every later measurement
+ * inherits that error.
+ *
+ * So the user picks an edge and slides it outward instead. edges.js keeps it
+ * exactly parallel and slides the neighbouring corners along their own lines,
+ * so every bearing the county recorded survives untouched.
+ */
+
+function outerRing(feature) {
+  return feature?.geometry?.type === 'Polygon' ? feature.geometry.coordinates[0] : null;
+}
+
+function enterEdgeMode() {
+  const features = draw.getAll().features.filter((f) => outerRing(f));
+  if (!features.length) {
+    setStatus('Draw or detect a lawn first, then you can extend an edge to the road.', 'warn');
+    return;
+  }
+
+  state.edgeEdit = { featureId: null, edgeIndex: null, baseRing: null };
+  $('#edge-panel').hidden = false;
+  $('#edge-controls').hidden = true;
+  $('#edge-info').textContent = 'Tap the edge of your lawn nearest the road.';
+  $('#edge-info').className = 'edge-info';
+  setHint('Tap an edge to select it');
+  armLawnPicker(); // same tap plumbing; handleMapPoint routes to edge select
+}
+
+function exitEdgeMode() {
+  state.edgeEdit = null;
+  $('#edge-panel').hidden = true;
+  clearEdgeHighlight();
+  updatePromptHint();
+}
+
+/** Find the edge nearest a tap, across every shape, and select it. */
+function selectEdgeNear(lngLat) {
+  let best = null;
+  for (const f of draw.getAll().features) {
+    const ring = outerRing(f);
+    if (!ring) continue;
+    const hit = nearestEdge(ring, lngLat);
+    if (hit && (!best || hit.distanceM < best.distanceM)) {
+      best = { ...hit, featureId: f.id, ring };
+    }
+  }
+
+  if (!best || best.distanceM > 40) {
+    $('#edge-info').textContent = 'No edge near there — tap closer to a boundary line.';
+    return;
+  }
+
+  state.edgeEdit = {
+    featureId: best.featureId,
+    edgeIndex: best.index,
+    // The slider is absolute, so every offset is measured from the shape as
+    // it was when the edge was picked rather than compounding.
+    baseRing: best.ring.map((p) => [...p]),
+  };
+
+  const slider = $('#edge-slider');
+  slider.value = '0';
+  $('#edge-controls').hidden = false;
+  $('#edge-info').textContent = `Edge selected — ${Math.round(metresToFeet(edgeLength(best.ring, best.index)))} ft long.`;
+  $('#edge-info').className = 'edge-info active';
+  $('#edge-bearing').textContent = `bearing ${Math.round(edgeBearing(best.ring, best.index))}\u00b0 — kept exactly`;
+  $('#edge-value').textContent = '0 ft';
+  setHint('Slide to extend, or tap a different edge');
+  drawEdgeHighlight();
+}
+
+function applyEdgeOffset(feet) {
+  const edit = state.edgeEdit;
+  if (!edit?.baseRing) return;
+
+  const feature = draw.get(edit.featureId);
+  if (!feature) return;
+
+  const ring = offsetEdge(edit.baseRing, edit.edgeIndex, feetToMetres(feet));
+  feature.geometry.coordinates = [ring, ...feature.geometry.coordinates.slice(1)];
+  draw.add(feature); // same id: this updates in place
+
+  $('#edge-value').textContent = `${feet > 0 ? '+' : ''}${feet} ft`;
+  drawEdgeHighlight();
+  refreshMeasurement();
+  refreshSurveyed();
+}
+
+function currentEdgeRing() {
+  const edit = state.edgeEdit;
+  if (!edit?.featureId) return null;
+  return outerRing(draw.get(edit.featureId));
+}
+
+function drawEdgeHighlight() {
+  const ring = currentEdgeRing();
+  const edit = state.edgeEdit;
+  if (!ring || edit.edgeIndex == null) return clearEdgeHighlight();
+
+  const n = ring.length - 1;
+  const a = ring[edit.edgeIndex % n];
+  const b = ring[(edit.edgeIndex + 1) % n];
+  map.getSource('edge-highlight').setData({
+    type: 'Feature',
+    geometry: { type: 'LineString', coordinates: [a, b] },
+  });
+}
+
+function clearEdgeHighlight() {
+  map.getSource('edge-highlight')?.setData({ type: 'FeatureCollection', features: [] });
+}
+
+/**
+ * Mark the corners that still come straight from the county record.
+ *
+ * Once an edge is pushed out, its two corners are the app's estimate rather
+ * than the survey's, and the dots disappear from them. That keeps the map
+ * honest about which parts of the outline are authoritative -- and it is
+ * recomputed by comparing against the original parcel vertices, so no
+ * bookkeeping can drift out of step with the actual shape.
+ */
+function refreshSurveyed() {
+  if (!map.getSource('surveyed')) return;
+  if (!state.surveyed?.length) {
+    map.getSource('surveyed').setData(empty());
+    return;
+  }
+
+  const live = [];
+  for (const f of draw.getAll().features) {
+    const ring = outerRing(f);
+    if (ring) live.push(...ring);
+  }
+
+  // ~0.3 m: tighter than any real edit, looser than floating-point noise.
+  const TOL = 3e-6;
+  const stillSurveyed = state.surveyed.filter((s) =>
+    live.some((p) => Math.abs(p[0] - s[0]) < TOL && Math.abs(p[1] - s[1]) < TOL)
+  );
+
+  map.getSource('surveyed').setData({
+    type: 'FeatureCollection',
+    features: stillSurveyed.map((p) => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: p },
+      properties: {},
+    })),
+  });
+}
+
+/** Seed an editable shape from the parcel boundary. */
+function useParcelShape() {
+  const ring = outerRing(state.parcel) ||
+    (state.parcel?.geometry?.type === 'MultiPolygon' ? state.parcel.geometry.coordinates[0][0] : null);
+  if (!ring) return;
+
+  draw.add({
+    type: 'Feature',
+    properties: {},
+    geometry: { type: 'Polygon', coordinates: [ring.map((p) => [...p])] },
+  });
+  refreshMeasurement();
+  refreshSurveyed();
+  setStatus('Started from your property line. Trim the house and driveway out, or extend an edge to the road.');
+}
+
 /* ----------------------------------------------------------- measurement */
 
 function refreshMeasurement() {
@@ -577,6 +924,18 @@ function refreshMeasurement() {
   $('#print-detail').textContent =
     `${m.acres} acres · ${m.thousandSqFt.toFixed(2)} thousand sq ft` +
     (state.parcel ? ` · parcel from ${state.parcel.properties.county}` : '');
+}
+
+function updateSelectionButtons() {
+  let selected = 0;
+  try {
+    selected = draw.getSelected().features.length;
+  } catch {
+    selected = 0;
+  }
+  // Phones have no Delete key, so removing a patch you do not mow needs a
+  // button; without one, a wrongly detected shape could not be removed at all.
+  $('#btn-delete').disabled = selected === 0;
 }
 
 /* ---------------------------------------------------------------- quota */
@@ -636,10 +995,12 @@ function reset() {
   disarmLawnPicker();
   map.getSource('parcel').setData(empty());
   state.marker?.remove();
-  state.promptMarker?.remove();
-  state.chosen = state.parcel = state.frame = state.promptLngLat = null;
+  clearPromptPoints();
+  state.chosen = state.parcel = state.frame = null;
   state.lastMask = null;
   state.detected = false;
+  state.edgeEdit = null;
+  state.surveyed = [];
   $('#result').hidden = true;
   $('#toggle-overlay').checked = false;
   setStatus('');
@@ -661,6 +1022,7 @@ document.addEventListener('click', (e) => {
 $('#btn-detect').addEventListener('click', detect);
 
 $('#btn-draw').addEventListener('click', () => {
+  if (state.edgeEdit) exitEdgeMode();
   disarmLawnPicker();
   draw.changeMode('draw_polygon');
   setHint('Click around the edge of your lawn. Click the first point again to finish.');
@@ -669,9 +1031,33 @@ $('#btn-draw').addEventListener('click', () => {
 
 $('#btn-clear').addEventListener('click', () => {
   draw.deleteAll();
+  clearPromptPoints();
+  if (state.edgeEdit) exitEdgeMode();
   refreshMeasurement();
+  refreshSurveyed();
+  updateSelectionButtons();
   armLawnPicker();
   setStatus('Cleared. Tap your lawn to detect it again, or draw it by hand.');
+});
+
+$('#btn-undo-pin').addEventListener('click', removeLastPromptPoint);
+
+$('#btn-parcel-shape').addEventListener('click', useParcelShape);
+
+$('#btn-edges').addEventListener('click', () => {
+  state.edgeEdit ? exitEdgeMode() : enterEdgeMode();
+});
+$('#btn-edge-done').addEventListener('click', exitEdgeMode);
+$('#edge-slider').addEventListener('input', (e) => applyEdgeOffset(Number(e.target.value)));
+
+$('#btn-delete').addEventListener('click', () => {
+  const ids = draw.getSelected().features.map((f) => f.id);
+  if (!ids.length) return;
+  draw.delete(ids);
+  refreshMeasurement();
+  refreshSurveyed();
+  updateSelectionButtons();
+  setStatus('Removed. The total now covers only the shapes still on the map.');
 });
 
 $('#btn-png').addEventListener('click', exportPng);

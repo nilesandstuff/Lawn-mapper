@@ -86,43 +86,98 @@ const busyVisible = await page.locator('#busy').isVisible();
 check('loading overlay is gone', busyVisible === false, `busy visible=${busyVisible}`);
 
 /* ------------------------------------------------------- THE TAP ITSELF */
-console.log('\n--- tapping the map ---');
+/*
+ * Touch first, and on its own terms.
+ *
+ * The previous version of this test called page.click(), which dispatches a
+ * real mouse click even under mobile emulation -- so it passed while the app
+ * was completely unusable on a phone. Mapbox GL Draw calls preventDefault on
+ * touchend, which stops the browser synthesising the click event that
+ * map.on('click') is built on. Only a genuine touch sequence exercises that.
+ */
+console.log('\n--- tapping the map (real touch events) ---');
 
 const box = await page.locator('#map').boundingBox();
-console.log(`      map box: ${JSON.stringify(box)}`);
+const cx = box.x + box.width / 2;
+const cy = box.y + box.height / 2;
 
-// Tap the middle of the map, the way a person would.
-await page.locator('#map').click({ position: { x: Math.round(box.width / 2), y: Math.round(box.height / 2) } });
-await page.waitForTimeout(1500);
+await page.touchscreen.tap(cx, cy);
+await page.waitForTimeout(1200);
 
-const after = await page.evaluate(() => ({
+const afterTouch = await page.evaluate(() => ({
   clicks: window.__lm.clicks,
   rejected: window.__lm.rejected,
+  viaTouch: window.__lm.viaTouch,
+  viaClick: window.__lm.viaClick,
   lastMode: window.__lm.lastMode,
-  drawMode: window.__lm.drawMode,
 }));
-console.log(`      __lm after tap: ${JSON.stringify(after)}`);
+console.log(`      __lm after touch tap: ${JSON.stringify(afterTouch)}`);
 
-check('the click handler fired at all', after.clicks > 0,
-  after.clicks === 0
-    ? 'the map click event never reached onLawnClick'
-    : `${after.clicks} click(s) seen`);
-check('the click was not rejected by the mode guard', after.rejected === 0,
-  `rejected=${after.rejected}, mode seen = ${after.lastMode}`);
+check('a real touch tap registers', afterTouch.clicks > 0,
+  afterTouch.clicks === 0
+    ? 'THE BUG: touchend never reached the handler, so the map is dead to fingers'
+    : `handled via ${afterTouch.viaTouch ? 'the touch path' : 'the click path'}`);
+check('the tap was not rejected by the mode guard', afterTouch.rejected === 0,
+  `rejected=${afterTouch.rejected}, mode = ${afterTouch.lastMode}`);
+check('one tap is counted once, not twice', afterTouch.clicks === 1,
+  `${afterTouch.clicks} registrations for a single tap`);
+check('Detect my lawn became enabled', await page.locator('#btn-detect').isEnabled());
 
-const detectEnabled = await page.locator('#btn-detect').isEnabled();
-check('Detect my lawn became enabled', detectEnabled);
-console.log(`      status now: "${await page.locator('#status').textContent()}"`);
+/* --------------------------------- several areas, as a split lawn needs */
+console.log('\n--- marking a second and third area ---');
+await page.touchscreen.tap(cx - 70, cy - 60);
+await page.waitForTimeout(500);
+await page.touchscreen.tap(cx + 70, cy + 60);
+await page.waitForTimeout(800);
 
-// Also try a raw touch tap, which is what a phone actually sends.
-if (!detectEnabled) {
-  console.log('\n--- retrying as a touch tap ---');
-  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
-  await page.waitForTimeout(1500);
-  const t = await page.evaluate(() => ({ clicks: window.__lm.clicks, rejected: window.__lm.rejected }));
-  console.log(`      __lm after touch tap: ${JSON.stringify(t)}`);
-  console.log(`      detect enabled now: ${await page.locator('#btn-detect').isEnabled()}`);
+const pins = await page.evaluate(() => window.__lm.clicks);
+const label = await page.locator('#btn-detect').textContent();
+console.log(`      taps handled: ${pins}   button now: "${label}"`);
+check('each extra area is marked', pins === 3, `${pins} taps handled`);
+check('the button says how many areas will be sent', /3 areas/.test(label), label);
+
+await page.click('#btn-undo-pin');
+await page.waitForTimeout(400);
+check('undo removes the last pin', /2 areas/.test(await page.locator('#btn-detect').textContent()));
+
+/* --------------------------------------------- the edge extension tool */
+console.log('\n--- edge extension ---');
+await page.click('#btn-parcel-shape');
+await page.waitForTimeout(800);
+
+const seeded = await page.evaluate(() => window.__lmDraw ? null : document.querySelector('#result').hidden);
+check('using the property line produces a measurable shape', seeded === false,
+  `result panel hidden = ${seeded}`);
+console.log(`      area from parcel: ${await page.locator('#result-sqft').textContent()} sq ft`);
+
+await page.click('#btn-edges');
+await page.waitForTimeout(400);
+check('edge panel opens', await page.locator('#edge-panel').isVisible());
+
+// Tap near the parcel outline to select an edge. The parcel fills much of the
+// map, so a tap near its left portion should land close to a boundary.
+await page.touchscreen.tap(box.x + 12, cy);
+await page.waitForTimeout(700);
+const edgeInfo = await page.locator('#edge-info').textContent();
+console.log(`      ${edgeInfo}`);
+
+if (await page.locator('#edge-controls').isVisible()) {
+  const before = await page.locator('#result-sqft').textContent();
+  await page.locator('#edge-slider').fill('25');
+  await page.waitForTimeout(600);
+  const after = await page.locator('#result-sqft').textContent();
+  const bearing = await page.locator('#edge-bearing').textContent();
+  console.log(`      ${before} sq ft -> ${after} sq ft after +25 ft   (${bearing})`);
+  check('extending an edge increases the area',
+    Number(after.replace(/,/g, '')) > Number(before.replace(/,/g, '')),
+    `${before} -> ${after}`);
+} else {
+  console.log('      (no edge selected by that tap — not a failure, geometry dependent)');
 }
+
+await page.click('#btn-edge-done');
+await page.waitForTimeout(300);
+check('edge panel closes', !(await page.locator('#edge-panel').isVisible()));
 
 await page.screenshot({ path: 'browser-test.png', fullPage: false });
 

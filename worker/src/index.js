@@ -258,6 +258,14 @@ async function handleSegment(request, env, origin) {
   const imageUrl = buildImageryUrl(lng, lat, zoom, size, env.MAPBOX_TOKEN);
   const px = Math.round((size * 2) / 2); // centre of the @2x image
 
+  // One point per lawn area the user tapped. A lawn split by a driveway, a
+  // pool or a garage is several disconnected shapes, and SAM only segments
+  // what its prompt points touch -- one point finds one patch and silently
+  // misses the rest. Labels must match the points one-for-one; sending a
+  // single label with several points is rejected outright.
+  const points = Array.isArray(promptPoint) && promptPoint.length ? promptPoint : [[px, px]];
+  const labels = points.map(() => 1);
+
   const res = await fetch('https://api.replicate.com/v1/models/meta/sam-2/predictions', {
     method: 'POST',
     headers: {
@@ -268,12 +276,10 @@ async function handleSegment(request, env, origin) {
     body: JSON.stringify({
       input: {
         image: imageUrl,
-        // Default prompt is the image centre -- the geocoded address, which
-        // for a residential parcel is the house. The frontend should instead
-        // send the parcel polygon's centroid nudged off the roof, or let the
-        // user tap their lawn. SAM segments whatever is under this point.
-        point_coords: promptPoint || [[px, px]],
-        point_labels: [1],
+        // Falls back to the image centre only if the frontend sent nothing --
+        // which for a residential parcel is the house, not the lawn.
+        point_coords: points,
+        point_labels: labels,
       },
     }),
   });
