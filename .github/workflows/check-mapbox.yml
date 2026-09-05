@@ -1,0 +1,36 @@
+name: 7. Check the Mapbox token restriction
+
+# Run after restricting the Mapbox token to a domain, and any time address
+# search or detection starts failing while the map still draws -- that exact
+# combination is what a restriction blocking the Worker looks like.
+#
+# Read-only and free: one geocode and one style read.
+on:
+  workflow_dispatch:
+    inputs:
+      domain:
+        description: 'The domain you allowed in Mapbox (e.g. lawnanswers.online)'
+        required: false
+        default: 'lawnanswers.online'
+        type: string
+      site:
+        description: 'Where the site actually runs (e.g. lawnmap.lawnanswers.online)'
+        required: false
+        default: 'lawnmap.lawnanswers.online'
+        type: string
+
+jobs:
+  check:
+    name: Ask Mapbox what the token allows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Check
+        env:
+          MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
+        run: node tools/check-mapbox-restrictions.js "${{ inputs.domain }}" "${{ inputs.site }}"
