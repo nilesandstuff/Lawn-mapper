@@ -19,7 +19,7 @@ if (!mapbox || !replicate) {
 }
 
 // The same model the Worker calls, imported so the two cannot drift.
-const { SAM_MODEL: slug } = await import('../worker/src/index.js');
+const { SAM_MODEL: slug } = await import('../worker/src/sam.js');
 
 // The Hudsonville parcel the county probe returns, framed the way the app does.
 const frame = { lng: -85.8637, lat: 42.8703, zoom: 18, size: 640 };

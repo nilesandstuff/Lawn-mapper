@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "test": "node tools/area.test.js && node tools/mask.test.js && node tools/edges.test.js && node tools/ci-prepare.test.js",
+    "test": "node tools/area.test.js && node tools/mask.test.js && node tools/edges.test.js && node tools/worker.test.js && node tools/ci-prepare.test.js",
     "test:area": "node tools/area.test.js",
     "test:mask": "node tools/mask.test.js",
     "test:edges": "node tools/edges.test.js",

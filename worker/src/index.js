@@ -27,6 +27,10 @@
 import { lookupParcel } from './parcel.js';
 import { isCovered } from './counties.js';
 import { checkQuota, consumeQuota, refundQuota } from './quota.js';
+// Constants and the version lookup live in their own module: a Workers
+// entrypoint may only export handlers, and exporting a plain constant from
+// here kills the isolate on startup.
+import { DEFAULT_PROMPT, samVersion, samInput } from './sam.js';
 // Shared with the browser, which loads the same file over HTTP. See the note
 // at the top of that file for why it lives outside worker/.
 import { measure } from '../../public/lib/area.js';
@@ -253,54 +257,6 @@ async function handlePrediction(url, env, origin) {
  * file uses against the model's published schema, rather than a copy that can
  * drift.
  */
-export const SAM_MODEL = 'mattsays/sam3-image';
-export const SAM_INPUT_FIELDS = ['image', 'prompt', 'mask_only', 'save_overlay', 'return_zip'];
-
-/**
- * What we ask the model to find.
- *
- * Measured against a real 21,740 sq ft lot, "grass", "lawn" and "grass lawn"
- * agreed to within 0.6% -- the model resolves them to the same concept, so
- * elaborate wording buys nothing and the shortest one wins. Overridable via a
- * SAM_PROMPT variable so it can be retuned without a code change.
- */
-const DEFAULT_PROMPT = 'grass';
-
-/**
- * Replicate's per-model endpoint, /v1/models/{owner}/{name}/predictions, only
- * exists for *official* models. For everything else it answers 404 -- which is
- * what it did here, in 0.4 s, with a message about the resource not being
- * found rather than anything to do with segmentation.
- *
- * The general endpoint works for any model but needs a version id, so look it
- * up. Cached per isolate: the id changes only when the model is republished,
- * and paying an extra round trip on every detection to re-learn it is waste.
- */
-let cachedVersion = null;
-
-async function samVersion(env) {
-  if (cachedVersion) return cachedVersion;
-
-  const res = await fetch(`https://api.replicate.com/v1/models/${SAM_MODEL}`, {
-    headers: { Authorization: `Bearer ${env.REPLICATE_TOKEN}` },
-  });
-  if (!res.ok) throw new Error(`Could not look up ${SAM_MODEL} (HTTP ${res.status})`);
-
-  const model = await res.json();
-  const id = model.latest_version?.id;
-  if (!id) throw new Error(`${SAM_MODEL} has no published version to run`);
-
-  cachedVersion = id;
-  return id;
-}
-/**
- * Runs SAM 2 against the parcel imagery to propose a lawn boundary.
- *
- * This is the only endpoint that costs money (~$0.02/run), so it is the only
- * one that consumes quota. `Prefer: wait` holds the connection open until the
- * prediction finishes rather than making the client poll -- simpler, and
- * Workers bill CPU time, not time spent waiting on a subrequest.
- */
 async function handleSegment(request, env, origin) {
   let body;
   try {
@@ -358,15 +314,7 @@ async function handleSegment(request, env, origin) {
     },
     body: JSON.stringify({
       version,
-      input: {
-        image: imageUrl,
-        prompt,
-        // The bare mask, not an overlay on the photograph, and not zipped:
-        // the browser traces these pixels directly.
-        mask_only: true,
-        save_overlay: false,
-        return_zip: false,
-      },
+      input: samInput(imageUrl, prompt),
     }),
   });
 

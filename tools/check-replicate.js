@@ -16,7 +16,7 @@
  *   REPLICATE_TOKEN=r8_... node tools/check-replicate.js
  */
 
-import { SAM_MODEL, SAM_INPUT_FIELDS } from '../worker/src/index.js';
+import { SAM_MODEL, SAM_INPUT_FIELDS } from '../worker/src/sam.js';
 
 const token = process.env.REPLICATE_TOKEN;
 if (!token) {
@@ -39,7 +39,7 @@ if (res.status === 404) {
     '      It has most likely been renamed. To fix it:\n' +
     '        1. Search for "SAM 2" at https://replicate.com/explore\n' +
     '        2. Note the owner/name from the model page URL\n' +
-    '        3. Edit worker/src/index.js on GitHub and change SAM_MODEL\n' +
+    '        3. Edit worker/src/sam.js on GitHub and change SAM_MODEL\n' +
     '        4. Re-run this check\n\n' +
     '      Until this is fixed, "Detect my lawn" fails for every visitor.\n' +
     '      Drawing a lawn by hand still works.'
@@ -72,7 +72,7 @@ if (!version) {
   console.error(
     `\nFAIL  "${SAM_MODEL}" has no published version, so there is nothing to run.\n` +
     '      Pick a different SAM 2 model at https://replicate.com/explore and\n' +
-    '      change SAM_MODEL in worker/src/index.js.'
+    '      change SAM_MODEL in worker/src/sam.js.'
   );
   process.exit(1);
 }
@@ -97,7 +97,7 @@ if (missing.length) {
   console.error(
     `\nFAIL  The Worker sends ${missing.length} field(s) this model does not accept: ` +
     `${missing.join(', ')}\n` +
-    '      Edit the input object in worker/src/index.js to use the names listed\n' +
+    '      Edit samInput() in worker/src/sam.js to use the names listed\n' +
     '      above, and update SAM_INPUT_FIELDS to match.'
   );
   process.exit(1);
