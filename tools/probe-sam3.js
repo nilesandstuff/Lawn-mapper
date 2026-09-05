@@ -58,10 +58,10 @@ console.log(`prompts: ${PROMPTS.length}\n`);
 // Replicate throttles hard on low-credit accounts: 6 predictions a minute
 // with a burst of one. Without this pause every prompt after the first came
 // back 429 and the comparison was meaningless.
-let first = true;
+let firstPrompt = true;
 for (const prompt of PROMPTS) {
-  if (!first) await new Promise((r) => setTimeout(r, 12000));
-  first = false;
+  if (!firstPrompt) await new Promise((r) => setTimeout(r, 12000));
+  firstPrompt = false;
   const started = Date.now();
   process.stdout.write(`--- "${prompt}"\n`);
 
@@ -118,10 +118,10 @@ for (const prompt of PROMPTS) {
 
   // Fetch the mask itself: size and type tell us whether it is a usable
   // single-channel mask or an overlay we would have to unpick.
-  const first = Array.isArray(out) ? out[0] : typeof out === 'string' ? out : out?.mask || out?.image;
-  if (typeof first === 'string' && first.startsWith('http')) {
+  const maskUrl = Array.isArray(out) ? out[0] : typeof out === 'string' ? out : out?.mask || out?.image;
+  if (typeof maskUrl === 'string' && maskUrl.startsWith('http')) {
     try {
-      const m = await fetch(first);
+      const m = await fetch(maskUrl);
       const buf = await m.arrayBuffer();
       console.log(`    mask: HTTP ${m.status} ${m.headers.get('content-type')} ${buf.byteLength.toLocaleString()} bytes`);
     } catch (e) {
