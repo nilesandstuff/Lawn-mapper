@@ -76,11 +76,11 @@ It costs nothing and deploys nothing — it only reads.
 - **Does the AI model still exist?** — must be a green tick. If it's red, open
   it: the log tells you exactly which model name to look up and which file to
   change. This is the single most likely thing to be wrong.
-- **County property-line servers** — open this one and read it. Each of kent,
-  ottawa, allegan, muskegon should print an acreage. Any that say
-  `NO PARCEL RETURNED` just means those addresses fall back to "draw it
-  yourself" — annoying, not broken. **This step is allowed to fail; it won't
-  block you.**
+- **County property-line servers** — open this one and read it. Ottawa,
+  Allegan and Muskegon should each print an acreage. Kent and Newaygo have no
+  public parcel server and are *expected* to be missing; addresses there fall
+  back to "draw it yourself", which measures just as accurately. **This step is
+  allowed to fail; it won't block you.**
 
 ---
 
@@ -107,7 +107,8 @@ Open that workers.dev address and measure your own house.
 
 - [ ] The address box finds your house
 - [ ] The confirm step shows *your* roof
-- [ ] A dashed yellow property line appears (if you're in a covered county)
+- [ ] A dashed yellow property line appears (Ottawa, Allegan or Muskegon only —
+      in Kent you'll be asked to draw it, which is expected)
 - [ ] Tapping your lawn, then **Detect my lawn**, outlines actual grass
 - [ ] The square footage is believable for your lot
 - [ ] Dragging a white dot changes the number
@@ -215,9 +216,10 @@ Cloudflare dashboard → **Logs** → **Begin log stream**, then try again on th
 site.
 
 **No property line appears**
-Either that address is outside the four covered counties, or that county's
-server moved. Run **1. Preflight checks** and read the county step. The site
-still works — you draw the lawn by hand.
+Expected in Kent and Newaygo, which have no public parcel server. Elsewhere it
+means that county republished its service. Run **3. Find county servers** — it
+searches for the new endpoint and prints a config block to paste into
+`worker/src/counties.js`. The site keeps working either way; you draw by hand.
 
 **The lawn is in the wrong place, or the number looks ~4x off**
 Open `public/lib/mercator.js` on GitHub, change `TILE_SIZE` from `512` to `256`

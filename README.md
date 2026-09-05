@@ -17,7 +17,7 @@ worker/src/   Cloudflare Worker -- the API
 public/       The website, served by that same Worker as static assets
 public/lib/   Maths shared by both sides (area, projection, mask tracing)
 tools/        Tests, the county-server probe, and the CI helpers
-.github/      The two workflows that check and deploy the project
+.github/      The three workflows: check, deploy, and find county servers
 wrangler.toml One config; one deploy ships the API and the site together
 ```
 
@@ -25,18 +25,22 @@ The site and the API are one Worker on one origin. That means no CORS to
 configure, no second deploy target that can drift out of sync, and the browser
 can read the AI mask off a `<canvas>` without it being tainted cross-origin.
 
-## Status: complete and deployable, pending live checks
+## Status: complete, and verified against the live services
 
 The whole path works — address in, corrected lawn polygon and square footage
-out, exportable as PNG or PDF. What has *not* been verified is anything
-requiring a network call, because neither environment that wrote this code had
-outbound access.
+out, exportable as PNG or PDF.
 
-Those checks live in **`.github/workflows/preflight.yml`**, which runs on a
-GitHub runner that does have access: it re-runs the offline tests, confirms the
-Replicate model still exists (reading the slug out of `worker/src/index.js`, so
-it checks what the code actually calls), and probes the four county GIS
-servers. Run it before the first deploy and whenever lookups start failing.
+Neither environment that wrote this code had outbound network access, so
+everything touching a third party was originally unverified. That gap is now
+closed by running the checks on a GitHub Actions runner, which does have
+access. Confirmed live: the Replicate model `meta/sam-2` exists, and parcel
+lookups return real polygons for Ottawa, Allegan and Muskegon. See *County
+coverage* below for what that turned up — every endpoint the project shipped
+with had already gone stale.
+
+Still unverifiable without a browser on real imagery: whether the traced lawn
+lands exactly on the grass. The app checks its own projection at runtime and
+the "Show the raw AI mask" toggle makes any error visible.
 
 ## Deploying
 
@@ -46,6 +50,7 @@ Two manual workflows, both triggered from the Actions tab:
 |---|---|
 | **1. Preflight checks** | Tests, Replicate model check, county GIS probe. Read-only. |
 | **2. Deploy** | Tests, resolves the KV namespace, deploys, applies the API keys. |
+| **3. Find county servers** | Searches for a working parcel layer when one goes stale, and prints a config block. Read-only. |
 
 `tools/ci-prepare.js` fills in the two values that would otherwise need a
 terminal — the KV namespace id (found or created via the deploy token) and the
@@ -86,17 +91,36 @@ roof as turf, and keeping detached patches (front yard, back yard) as separate
 shapes the user can delete independently. `tools/mask.test.js` measures every
 synthetic case against the frame's known ground resolution.
 
+## County coverage
+
+Verified live, each confirmed by a point query returning a real parcel:
+
+| County | Status |
+|---|---|
+| Ottawa | working — `gis.miottawa.org`, `AR_ParcelSearch_gdb` layer 6 |
+| Allegan | working — `gis.allegancounty.org`, `Parcel_Drafter_MIL1` layer 0 |
+| Muskegon | working — `maps.muskegoncountygis.com`, `PropertyViewer` layer 23 |
+| **Kent** | **no public endpoint found** |
+| Newaygo | no public endpoint found |
+
+Every endpoint in this project's first version had already gone stale, so
+treat the table as perishable and re-run the discovery workflow when lookups
+start failing.
+
+**Kent is the notable gap** — it covers Grand Rapids. Its old host 404s at
+every known path and it publishes no parcel layer to the public ArcGIS Online
+catalogue, so finding the current one probably means asking Kent County GIS
+directly. Until then those addresses go to manual drawing, which measures just
+as accurately; only the convenience of a pre-drawn property line is lost.
+
 ## Known gaps (documented limitations, not bugs)
 
-- **Newaygo County**: no confirmed public ArcGIS REST endpoint. Addresses there
-  fall through to manual drawing — same path as anywhere outside the footprint,
-  so nothing breaks. Closing it means calling their GIS office.
-- **Layer indexes and field names for Kent, Allegan and Muskegon** are educated
-  values from published service metadata, not live-verified. Run
-  `npm run probe:counties` before trusting them.
-- **The Replicate model slug** (`meta/sam-2`) needs a live check against
-  Replicate's catalogue — model identifiers do get renamed. The preflight
-  workflow checks this; it is the single most likely thing to be stale.
+- **The Replicate model slug** (`meta/sam-2`) is confirmed live, but model
+  identifiers do get renamed. The preflight workflow re-checks it, reading the
+  slug straight out of `worker/src/index.js`.
+- **Allegan addresses** may render as a house number without a street name.
+  That layer has no single address column and the parts are ambiguously named;
+  it is cosmetic, and the geometry the measurement depends on is unaffected.
 - **`TILE_SIZE` in `public/lib/mercator.js`** encodes how wide Mapbox considers
   the world at a given zoom. Getting it wrong scales every AI-detected area by
   4x. The app cross-checks it against Mapbox GL's own projection at runtime and

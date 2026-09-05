@@ -48,7 +48,10 @@ const COUNTIES = {
     fields: {
       pin: 'MAPPING_ID',
       streetNum: 'propaddrnu',
-      streetName: 'propStreet',
+      // propStreet came back blank on every parcel sampled; propstre_1 is the
+      // street name in this BS&A-style export. Worst case the address renders
+      // as the house number alone, which is what it already did.
+      streetName: 'propstre_1',
     },
     verified: 'live',
   },

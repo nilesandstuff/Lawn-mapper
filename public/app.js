@@ -306,7 +306,7 @@ async function confirmLocation() {
       setStatus(
         data.covered
           ? "Your county has records, but not for this parcel. You can still measure it."
-          : "No property line on file for this area — that's normal outside West Michigan."
+          : 'No property line available for this address. Trace your lawn instead — the measurement is just as accurate.'
       );
     }
 
