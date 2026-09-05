@@ -3,8 +3,8 @@
  *
  * The flow, and why it is ordered this way:
  *
- *   address -> pick candidate -> CONFIRM ON MAP -> parcel -> tap lawn
- *           -> SAM -> edit polygon -> export
+ *   address -> pick candidate -> CONFIRM ON MAP -> parcel
+ *           -> detect grass -> clip to the property line -> edit -> export
  *
  * The confirm step is not decoration. Every step after it is either slow or
  * costs money, and a geocode that lands one street over produces a number
@@ -13,7 +13,7 @@
  */
 
 import { measure } from './lib/area.js';
-import { maskToPolygons } from './lib/mask.js';
+import { maskToPolygons, rasterizePolygon } from './lib/mask.js';
 import {
   offsetEdge, nearestEdge, edgeRun, edgeLength, edgeBearing, openRing,
   feetToMetres, metresToFeet,
@@ -38,12 +38,17 @@ const state = {
   chosen: null,       // { label, lng, lat }
   parcel: null,       // GeoJSON Feature or null
   frame: null,        // { lng, lat, zoom, size } used for the last/next SAM call
-  promptPoints: [],   // one [lng, lat] per separate lawn area the user marked
-  promptMarkers: [],
   quota: null,
 };
 
-const MAX_PROMPT_POINTS = 8;
+/**
+ * Gaps smaller than this are counted as lawn rather than subtracted.
+ *
+ * A tree canopy hides grass that is really there; a pool or a shed does not.
+ * Size is the only signal an overhead photograph offers, so the line is drawn
+ * at roughly a large tree's footprint and what it did is always reported.
+ */
+const TREE_GAP_SQFT = 900;
 
 let map;
 let draw;
@@ -373,7 +378,7 @@ async function confirmLocation() {
       const a = measure(state.parcel.geometry);
       setStatus(
         `Found your property line — ${a.acres} acres total ` +
-        `(${state.parcel.properties.county}). Now show us the grass.`
+        `(${state.parcel.properties.county}). Press "Detect my lawn".`
       );
     } else {
       map.getSource('parcel').setData(empty());
@@ -388,7 +393,10 @@ async function confirmLocation() {
       );
     }
 
-    armLawnPicker();
+    updatePromptHint();
+    setHint(state.parcel
+      ? 'Press "Detect my lawn" — or extend the boundary first if your lawn runs to the road'
+      : 'Press "Detect my lawn", or draw it by hand');
   } catch (err) {
     setStatus(err.message, 'error');
   } finally {
@@ -397,20 +405,18 @@ async function confirmLocation() {
   }
 }
 
-/* ------------------------------------------------------- lawn prompt point */
+/* --------------------------------------------------------- map interaction */
 
 /**
- * SAM segments whatever its prompt points touch, and the geocoded pin sits on
- * the house. Asking the user to tap the grass is more reliable than any
- * centroid heuristic and easier to explain than why the tool outlined a roof.
+ * The map is tapped for one thing now: choosing a boundary to extend.
  *
- * One tap per separate area: a lawn cut in two by a driveway is two shapes,
- * and a single prompt point finds one of them and silently misses the other.
+ * Detection used to need a pin in every separate patch of lawn, because the
+ * model could only segment what it was pointed at. Asking for "grass" finds
+ * all of them at once, including the ones a person would forget, so the taps
+ * went away and the plumbing stayed.
  */
 function armLawnPicker() {
-  state.detected = false;
   diag.armed = true;
-  if (!state.edgeEdit) updatePromptHint();
   map.getCanvas().style.cursor = 'crosshair';
   map.on('click', onMapClick);
   const el = map.getCanvasContainer();
@@ -439,9 +445,7 @@ function disarmLawnPicker() {
  * So touches are read natively from the canvas container, and the click path
  * is kept for mice. A device that delivers both would otherwise register one
  * interaction twice, so a click is ignored when it lands in the same place as
- * a touch we just handled -- position as well as time, because two genuine
- * taps on two different lawn areas can easily fall inside any sane time
- * window, and dropping the second is exactly the bug this feature is for.
+ * a touch we just handled -- position as well as time.
  */
 let touchStart = null;
 let handled = { at: 0, x: null, y: null };
@@ -479,8 +483,8 @@ function onMapClick(e) {
   const y = Number.isFinite(src.clientY) ? src.clientY : null;
 
   // The echo of a touch we already handled: same place, moments later. Only
-  // suppress when both positions are actually known -- treating "position
-  // unknown" as "same position" would swallow legitimate second taps.
+  // suppress when both positions are known -- treating "position unknown" as
+  // "same position" would swallow legitimate taps.
   const known = x !== null && handled.x !== null;
   if (known &&
       Date.now() - handled.at < ECHO_MS &&
@@ -510,91 +514,22 @@ function handleMapPoint(lngLat, x = null, y = null) {
     return;
   }
 
-  if (state.edgeEdit) return selectEdgeNear([lngLat.lng, lngLat.lat]);
-
-  addPromptPoint([lngLat.lng, lngLat.lat]);
+  if (state.edgeEdit) selectEdgeNear([lngLat.lng, lngLat.lat]);
 }
 
-function addPromptPoint(lngLat) {
-  if (state.promptPoints.length >= MAX_PROMPT_POINTS) {
-    setStatus(`That is the most areas we can detect at once (${MAX_PROMPT_POINTS}). Remove one first.`, 'warn');
-    return;
-  }
-
-  state.promptPoints.push(lngLat);
-  state.promptMarkers.push(
-    new mapboxgl.Marker({ color: '#ffd54f', scale: 0.7 }).setLngLat(lngLat).addTo(map)
-  );
-  state.detected = false;
-  updatePromptHint();
-}
-
-function removeLastPromptPoint() {
-  state.promptPoints.pop();
-  state.promptMarkers.pop()?.remove();
-  updatePromptHint();
-}
-
-function clearPromptPoints() {
-  for (const m of state.promptMarkers) m.remove();
-  state.promptMarkers = [];
-  state.promptPoints = [];
-  updatePromptHint();
-}
-
-/** Keep the buttons and the wording in step with how many areas are marked. */
+/** Detection needs only a frame; there is nothing for the user to place. */
 function updatePromptHint() {
-  const n = state.promptPoints.length;
-  const left = state.quota ? Math.max(0, state.quota.limit - state.quota.used) : null;
-
-  $('#btn-detect').disabled = n === 0 || state.detected;
-  $('#btn-detect').textContent =
-    n <= 1 ? 'Detect my lawn' : `Detect my lawn (${n} sections)`;
-  $('#btn-undo-pin').hidden = n === 0;
-
-  if (n === 0) {
-    setHint('Place a pin in every separate section of lawn');
-    setStatus(
-      'Front, back, and any strip cut off by a driveway, path or garage — each ' +
-      'needs its own pin. They all go in one detection.'
-    );
-    return;
-  }
-
-  setHint(n === 1
-    ? 'Any lawn not joined to that one? Give it a pin too'
-    : `${n} sections pinned — add more, or press Detect`);
-  setStatus(
-    `${n} section${n > 1 ? 's' : ''} pinned.` +
-    (left === null ? '' : ` Detecting uses 1 of your ${left} remaining today, however many sections you pin.`)
-  );
+  const ready = !!state.frame && !state.detected;
+  $('#btn-detect').disabled = !ready;
+  $('#btn-detect').textContent = state.detected ? 'Lawn detected' : 'Detect my lawn';
 }
 
 /* ------------------------------------------------------------- detection */
 
 async function detect() {
-  if (!state.promptPoints.length || !state.frame) return;
+  if (!state.frame) return;
 
   const frame = state.frame;
-  const img = frame.size * 2; // the static image is requested @2x
-
-  // Points outside the photographed frame cannot be segmented; drop them
-  // rather than sending coordinates SAM will read as the nearest corner.
-  const inside = [];
-  let dropped = 0;
-  for (const p of state.promptPoints) {
-    const [px, py] = lngLatToFramePx(frame, p, img, img);
-    if (px < 0 || py < 0 || px > img || py > img) { dropped++; continue; }
-    inside.push([Math.round(px), Math.round(py)]);
-  }
-
-  if (!inside.length) {
-    setStatus('Those spots are outside the area we photographed. Tap closer to the house.', 'warn');
-    return;
-  }
-  if (dropped) {
-    setStatus(`${dropped} marked area${dropped > 1 ? 's are' : ' is'} outside the photo and will be skipped.`, 'warn');
-  }
 
   busy('Detecting your lawn…');
   $('#btn-detect').disabled = true;
@@ -603,11 +538,7 @@ async function detect() {
     let data = await api('/api/segment', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...frame,
-        clientId: state.clientId,
-        promptPoint: inside,
-      }),
+      body: JSON.stringify({ ...frame, clientId: state.clientId }),
       // Replicate holds the connection for about a minute before answering.
       timeoutMs: 90000,
     });
@@ -623,14 +554,48 @@ async function detect() {
     // frame we sent is not necessarily the frame that was rendered.
     const rendered = data.frame || frame;
     const image = await loadMask(url);
-    const scale = { w: image.width, h: image.height };
+    const w = image.width;
+    const h = image.height;
 
-    const polygons = maskToPolygons(image, (x, y) =>
-      framePxToLngLat(rendered, [x, y], scale.w, scale.h)
+    /*
+     * Clip to the property line before measuring anything.
+     *
+     * Asking for "grass" finds every lawn in the photograph, the neighbours'
+     * included -- on a real lot that was 3,700 sq ft of someone else's grass,
+     * a third of everything detected. Painting the parcel into the same pixel
+     * grid and intersecting is exact for any parcel shape and needs no
+     * polygon-boolean library.
+     */
+    const ring = parcelRing();
+    const clipMask = ring
+      ? rasterizePolygon(
+          state.parcel.geometry.type === 'Polygon'
+            ? state.parcel.geometry.coordinates
+            : state.parcel.geometry.coordinates[0],
+          w, h,
+          (ll) => lngLatToFramePx(rendered, ll, w, h)
+        )
+      : null;
+
+    // Canopy gaps, in pixels, from the frame's own ground resolution.
+    const sqFtPerPx = (metresPerPixel(rendered, w) ** 2) / 0.09290304;
+    const fillGapsUnderPx = $('#toggle-trees').checked
+      ? Math.round(TREE_GAP_SQFT / sqFtPerPx)
+      : 0;
+
+    const polygons = maskToPolygons(
+      image,
+      (x, y) => framePxToLngLat(rendered, [x, y], w, h),
+      { clipMask, fillGapsUnderPx }
     );
 
     if (!polygons.length) {
-      setStatus('Nothing recognisable there. Try tapping a clearer patch of grass, or draw it by hand.', 'warn');
+      setStatus(
+        ring
+          ? 'No grass found inside your property line. Draw the lawn by hand, or extend the boundary if it stops short of the road.'
+          : 'No grass found in that view. Draw the lawn by hand.',
+        'warn'
+      );
       return;
     }
 
@@ -649,14 +614,18 @@ async function detect() {
     refreshMeasurement();
     refreshSurveyed();
     updateSelectionButtons();
-    disarmLawnPicker();
     setHint('Drag the white dots to correct the shape');
 
-    const mpp = metresPerPixel(rendered, scale.w);
+    const gaps = polygons.filledGaps
+      ? ` ${polygons.filledGaps} gap${polygons.filledGaps > 1 ? 's' : ''} counted as grass under trees` +
+        ` (about ${Math.round(polygons.filledGapPx * sqFtPerPx).toLocaleString()} sq ft) —` +
+        ' untick the box below if any of those is a pool or a shed.'
+      : '';
+
     setStatus(
-      `Detected ${polygons.length} area${polygons.length > 1 ? 's' : ''} at ` +
-      `${(mpp * 100).toFixed(0)}cm per pixel. Correct anything it got wrong.` +
-      (typeof data.remaining === 'number' ? ` ${data.remaining} detections left today.` : '')
+      `Found ${polygons.length} section${polygons.length > 1 ? 's' : ''} of lawn` +
+      (ring ? ', trimmed to your property line' : '') + '.' + gaps +
+      ' Correct anything it got wrong.'
     );
   } catch (err) {
     if (err.status === 429) {
@@ -1119,7 +1088,6 @@ function reset() {
   disarmLawnPicker();
   map.getSource('parcel').setData(empty());
   state.marker?.remove();
-  clearPromptPoints();
   state.chosen = state.parcel = state.frame = null;
   state.lastMask = null;
   state.detected = false;
@@ -1155,16 +1123,14 @@ $('#btn-draw').addEventListener('click', () => {
 
 $('#btn-clear').addEventListener('click', () => {
   draw.deleteAll();
-  clearPromptPoints();
   if (state.edgeEdit) exitEdgeMode();
   refreshMeasurement();
   refreshSurveyed();
   updateSelectionButtons();
-  armLawnPicker();
-  setStatus('Cleared. Tap your lawn to detect it again, or draw it by hand.');
+  state.detected = false;
+  updatePromptHint();
+  setStatus('Cleared. Detect again, or draw the lawn by hand.');
 });
-
-$('#btn-undo-pin').addEventListener('click', removeLastPromptPoint);
 
 $('#btn-parcel-shape').addEventListener('click', useParcelShape);
 

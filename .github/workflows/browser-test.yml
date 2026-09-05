@@ -7,6 +7,13 @@ name: 4. Browser test
 # geocode and a few map tiles from your Mapbox allowance.
 on:
   workflow_dispatch:
+    inputs:
+      detect:
+        description: 'Also run a REAL detection (costs a few cents)'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
 
 jobs:
   browser:
@@ -45,6 +52,8 @@ jobs:
           echo "::error::the app never came up"; cat wrangler.log; exit 1
 
       - name: Drive it
+        env:
+          RUN_DETECT: ${{ inputs.detect }}
         run: node tools/browser-test.mjs http://127.0.0.1:8787
 
       - name: Screenshot

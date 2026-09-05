@@ -253,8 +253,18 @@ async function handlePrediction(url, env, origin) {
  * file uses against the model's published schema, rather than a copy that can
  * drift.
  */
-export const SAM_MODEL = 'meta/sam-2';
-export const SAM_INPUT_FIELDS = ['image', 'point_coords', 'point_labels'];
+export const SAM_MODEL = 'mattsays/sam3-image';
+export const SAM_INPUT_FIELDS = ['image', 'prompt', 'mask_only', 'save_overlay', 'return_zip'];
+
+/**
+ * What we ask the model to find.
+ *
+ * Measured against a real 21,740 sq ft lot, "grass", "lawn" and "grass lawn"
+ * agreed to within 0.6% -- the model resolves them to the same concept, so
+ * elaborate wording buys nothing and the shortest one wins. Overridable via a
+ * SAM_PROMPT variable so it can be retuned without a code change.
+ */
+const DEFAULT_PROMPT = 'grass';
 
 /**
  * Replicate's per-model endpoint, /v1/models/{owner}/{name}/predictions, only
@@ -299,7 +309,7 @@ async function handleSegment(request, env, origin) {
     return json({ error: 'Invalid JSON' }, 400, origin);
   }
 
-  const { lng, lat, clientId, promptPoint } = body;
+  const { lng, lat, clientId } = body;
   if (!Number.isFinite(lng) || !Number.isFinite(lat) || !clientId) {
     return json({ error: 'lng, lat, and clientId required' }, 400, origin);
   }
@@ -324,15 +334,12 @@ async function handleSegment(request, env, origin) {
   }
 
   const imageUrl = buildImageryUrl(lng, lat, zoom, size, env.MAPBOX_TOKEN);
-  const px = Math.round((size * 2) / 2); // centre of the @2x image
 
-  // One point per lawn area the user tapped. A lawn split by a driveway, a
-  // pool or a garage is several disconnected shapes, and SAM only segments
-  // what its prompt points touch -- one point finds one patch and silently
-  // misses the rest. Labels must match the points one-for-one; sending a
-  // single label with several points is rejected outright.
-  const points = Array.isArray(promptPoint) && promptPoint.length ? promptPoint : [[px, px]];
-  const labels = points.map(() => 1);
+  // A text prompt finds every patch of grass in the frame at once, including
+  // the disconnected ones a person would have to remember to point at. What
+  // it also finds is the neighbours' grass, so the browser clips the result
+  // to the property line before measuring anything.
+  const prompt = (env.SAM_PROMPT || DEFAULT_PROMPT).trim();
 
   let version;
   try {
@@ -353,10 +360,12 @@ async function handleSegment(request, env, origin) {
       version,
       input: {
         image: imageUrl,
-        // Falls back to the image centre only if the frontend sent nothing --
-        // which for a residential parcel is the house, not the lawn.
-        point_coords: points,
-        point_labels: labels,
+        prompt,
+        // The bare mask, not an overlay on the photograph, and not zipped:
+        // the browser traces these pixels directly.
+        mask_only: true,
+        save_overlay: false,
+        return_zip: false,
       },
     }),
   });

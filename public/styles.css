@@ -108,6 +108,13 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .row { display: flex; gap: 8px; align-items: center; }
 .row .primary { margin-top: 0; }
 
+.opt {
+  display: flex; gap: 9px; align-items: flex-start;
+  margin-top: 14px; font-size: 13.5px; cursor: pointer;
+}
+.opt input { margin-top: 3px; flex: none; }
+.opt small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+
 /* --------------------------------------------------------- edge editing */
 .edgepanel {
   margin-top: 12px; padding: 12px 13px;

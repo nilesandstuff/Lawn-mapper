@@ -85,60 +85,55 @@ check('lawn picker is armed', armed === true, `armed=${armed}`);
 const busyVisible = await page.locator('#busy').isVisible();
 check('loading overlay is gone', busyVisible === false, `busy visible=${busyVisible}`);
 
-/* ------------------------------------------------------- THE TAP ITSELF */
+/* ---------------------------------------------- detection is one press now */
 /*
- * Touch first, and on its own terms.
- *
- * The previous version of this test called page.click(), which dispatches a
- * real mouse click even under mobile emulation -- so it passed while the app
- * was completely unusable on a phone. Mapbox GL Draw calls preventDefault on
- * touchend, which stops the browser synthesising the click event that
- * map.on('click') is built on. Only a genuine touch sequence exercises that.
+ * There are no pins any more. Asking the model for "grass" finds every patch
+ * in the frame at once -- including the ones a person would forget -- and the
+ * result is clipped to the property line. So the only thing to check here is
+ * that the button is live as soon as we have a frame.
  */
-console.log('\n--- tapping the map (real touch events) ---');
+console.log('\n--- detection readiness ---');
+check('Detect my lawn is enabled without any tapping',
+  await page.locator('#btn-detect').isEnabled());
+console.log(`      button: "${await page.locator('#btn-detect').textContent()}"`);
+console.log(`      hint:   "${await page.locator('#map-hint').textContent()}"`);
+check('the grass-under-trees option is offered and on by default',
+  await page.locator('#toggle-trees').isChecked());
 
+/*
+ * The map still has to accept a touch, because the edge tool uses it. This is
+ * the regression guard for the bug that made the whole app dead on a phone:
+ * Mapbox GL Draw calls preventDefault on touchend, which suppresses the click
+ * event map.on('click') is built on.
+ */
 const box = await page.locator('#map').boundingBox();
 const cx = box.x + box.width / 2;
 const cy = box.y + box.height / 2;
 
-await page.touchscreen.tap(cx, cy);
-await page.waitForTimeout(1200);
+/* -------------------------------- optionally, a real end-to-end detection */
+if (process.env.RUN_DETECT === 'true') {
+  console.log('\n--- running a REAL detection (this costs money) ---');
+  await page.click('#btn-detect');
 
-const afterTouch = await page.evaluate(() => ({
-  clicks: window.__lm.clicks,
-  rejected: window.__lm.rejected,
-  viaTouch: window.__lm.viaTouch,
-  viaClick: window.__lm.viaClick,
-  lastMode: window.__lm.lastMode,
-}));
-console.log(`      __lm after touch tap: ${JSON.stringify(afterTouch)}`);
+  // A cold model can take minutes; the app polls and says so.
+  await page.waitForFunction(
+    () => document.querySelector('#busy').hidden,
+    { timeout: 240000 }
+  ).catch(() => {});
 
-check('a real touch tap registers', afterTouch.clicks > 0,
-  afterTouch.clicks === 0
-    ? 'THE BUG: touchend never reached the handler, so the map is dead to fingers'
-    : `handled via ${afterTouch.viaTouch ? 'the touch path' : 'the click path'}`);
-check('the tap was not rejected by the mode guard', afterTouch.rejected === 0,
-  `rejected=${afterTouch.rejected}, mode = ${afterTouch.lastMode}`);
-check('one tap is counted once, not twice', afterTouch.clicks === 1,
-  `${afterTouch.clicks} registrations for a single tap`);
-check('Detect my lawn became enabled', await page.locator('#btn-detect').isEnabled());
+  const status = await page.locator('#status').textContent();
+  const sqft = await page.locator('#result-sqft').textContent();
+  const detail = await page.locator('#result-sub').textContent();
+  console.log(`      status: "${status}"`);
+  console.log(`      RESULT: ${sqft} sq ft   (${detail})`);
 
-/* --------------------------------- several areas, as a split lawn needs */
-console.log('\n--- marking a second and third area ---');
-await page.touchscreen.tap(cx - 70, cy - 60);
-await page.waitForTimeout(500);
-await page.touchscreen.tap(cx + 70, cy + 60);
-await page.waitForTimeout(800);
+  const n = Number(String(sqft).replace(/[^0-9]/g, ''));
+  check('a real detection produced a lawn', n > 0, `${sqft} sq ft`);
+  check('and it is a plausible size, not the whole frame', n > 200 && n < 200000, `${sqft} sq ft`);
 
-const pins = await page.evaluate(() => window.__lm.clicks);
-const label = await page.locator('#btn-detect').textContent();
-console.log(`      taps handled: ${pins}   button now: "${label}"`);
-check('each extra area is marked', pins === 3, `${pins} taps handled`);
-check('the button says how many areas will be sent', /3 areas/.test(label), label);
-
-await page.click('#btn-undo-pin');
-await page.waitForTimeout(400);
-check('undo removes the last pin', /2 areas/.test(await page.locator('#btn-detect').textContent()));
+  const shapes = await page.evaluate(() => window.__lmShapes ?? null);
+  if (shapes !== null) console.log(`      shapes: ${shapes}`);
+}
 
 /* --------------------------------------------- the edge extension tool */
 console.log('\n--- edge extension ---');

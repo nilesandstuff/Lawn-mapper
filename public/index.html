@@ -76,7 +76,6 @@
 
       <div class="tools">
         <button class="primary" id="btn-detect" disabled>Detect my lawn</button>
-        <button class="ghost" id="btn-undo-pin" hidden>Undo last pin</button>
         <button class="ghost" id="btn-draw">Draw it myself</button>
         <button class="ghost" id="btn-parcel-shape" hidden>Use property line</button>
         <button class="ghost" id="btn-edges">Extend to road</button>
@@ -110,6 +109,8 @@
           <li><b>Extend to road</b> pushes an edge out past the property line
             without twisting it, for the strip between your line and the kerb.</li>
           <li>Yellow dots are corners taken straight from the county map.</li>
+          <li>The AI finds grass inside your property line only — the
+            neighbours' lawn is trimmed off automatically.</li>
         </ul>
       </details>
 
@@ -117,6 +118,14 @@
         <button class="ghost" id="btn-png">Save image</button>
         <button class="ghost" id="btn-print">Save as PDF</button>
       </div>
+
+      <label class="opt">
+        <input type="checkbox" id="toggle-trees" checked>
+        <span>Count grass under trees
+          <small>Canopy hides lawn that is really there. Small gaps inside your
+            lawn are counted as grass; big ones (a pool, a shed) are not.</small>
+        </span>
+      </label>
 
       <label class="debug">
         <input type="checkbox" id="toggle-overlay">
