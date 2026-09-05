@@ -43,6 +43,11 @@ jobs:
           cache: npm
       - run: npm ci
 
+      # Only this probe needs it, so it is not a project dependency.
+      - name: Install a PNG decoder
+        if: inputs.probe == 'sam3-prompts'
+        run: npm install pngjs --no-save
+
       - name: Compare prompt wordings
         if: inputs.probe == 'sam3-prompts'
         env:

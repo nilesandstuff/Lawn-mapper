@@ -1,16 +1,27 @@
 /**
- * Tries several prompt wordings against the text-promptable segmenter.
+ * A full dress rehearsal of the detection pipeline, once per prompt wording.
  *
- * The wording is the whole interface now, and it has to survive things we
- * cannot control: grass that is dormant and brown when the imagery was
- * captured, tree canopy hiding the lawn underneath, and woodland at the back
- * of a lot that is emphatically not mowed. Guessing at that from a schema is
- * pointless -- run the real prompts and look.
+ * The prompt is the entire interface now, so choosing it by guesswork -- or by
+ * comparing mask file sizes -- is not good enough. This runs what the app runs:
+ * fetch the real parcel from the county, frame it the way the app frames it,
+ * segment, clip to the property line, trace, and report the square footage.
  *
- * THIS COSTS MONEY: one prediction per prompt, a few cents in total.
+ * That makes the comparison judgeable. A prompt that grabs the neighbours'
+ * grass shows up as a large drop when clipping is applied; one that misses
+ * dormant turf shows up as an implausibly small lawn.
+ *
+ * THIS COSTS MONEY: one prediction per prompt.
  *
  *   MAPBOX_TOKEN=pk... REPLICATE_TOKEN=r8_... node tools/probe-sam3.js
  */
+
+import { PNG } from 'pngjs';
+import { lookupParcel } from '../worker/src/parcel.js';
+import { measure, geometryAreaSqM } from '../public/lib/area.js';
+import { rasterizePolygon, maskToPolygons } from '../public/lib/mask.js';
+import {
+  zoomToFit, geometryBounds, lngLatToFramePx, framePxToLngLat, metresPerPixel,
+} from '../public/lib/mercator.js';
 
 const mapbox = process.env.MAPBOX_TOKEN;
 const replicate = process.env.REPLICATE_TOKEN;
@@ -20,81 +31,103 @@ if (!mapbox || !replicate) {
 }
 
 const MODEL = process.env.SAM3_MODEL || 'mattsays/sam3-image';
+const auth = { Authorization: `Bearer ${replicate}` };
 
-/**
- * Prompt candidates, simplest first.
- *
- * SAM 3 takes a concept, not an instruction, so the long descriptive ones may
- * do worse than the short ones -- which is exactly what this is measuring.
- */
 const PROMPTS = (process.env.PROMPTS || [
   'grass',
   'lawn',
-  'grass lawn including dry brown dormant grass',
-  'mowed lawn grass, not trees or woods',
-].join('|')).split('|');
+  'grass lawn',
+  'mowed grass',
+].join('|')).split('|').map((p) => p.trim()).filter(Boolean);
 
-// A real residential parcel in Hudsonville, framed the way the app frames one.
-const frame = { lng: -85.8637, lat: 42.8703, zoom: 18, size: 640 };
+/* ------------------------------------------- the real parcel, really fetched */
+const TEST = { lng: -85.8637, lat: 42.8703, label: 'Hudsonville' };
+
+console.log(`Looking up the parcel at ${TEST.label}…`);
+const parcel = await lookupParcel(TEST.lng, TEST.lat);
+if (!parcel) {
+  console.error('FAIL  No parcel returned; cannot rehearse the real pipeline.');
+  process.exit(1);
+}
+
+const parcelArea = measure(parcel.geometry);
+const bbox = geometryBounds(parcel);
+const SIZE = 640;
+const frame = {
+  lng: (bbox[0] + bbox[2]) / 2,
+  lat: (bbox[1] + bbox[3]) / 2,
+  zoom: zoomToFit(bbox, SIZE),
+  size: SIZE,
+};
+const IMG = SIZE * 2;
+
+console.log(`parcel:  ${parcelArea.squareFeet.toLocaleString()} sq ft (${parcelArea.acres} ac)`);
+console.log(`frame:   z${frame.zoom} @ ${IMG}px -> ${(metresPerPixel(frame, IMG) * 100).toFixed(1)} cm/px`);
+
 const imageUrl =
   `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/` +
-  `${frame.lng},${frame.lat},${frame.zoom},0/${frame.size}x${frame.size}@2x` +
+  `${frame.lng},${frame.lat},${frame.zoom},0/${SIZE}x${SIZE}@2x` +
   `?access_token=${mapbox}&attribution=false&logo=false`;
 
-const auth = { Authorization: `Bearer ${replicate}` };
+/*
+ * Rasterise the property line into the same pixel grid the app will use, so
+ * "clipped" here means exactly what it will mean in production.
+ */
+const rings = parcel.geometry.type === 'Polygon'
+  ? parcel.geometry.coordinates
+  : parcel.geometry.coordinates[0];
 
-const meta = await (await fetch(`https://api.replicate.com/v1/models/${MODEL}`, { headers: auth })).json();
-const version = meta.latest_version?.id;
+const clipAt = (w, h) =>
+  rasterizePolygon(rings, w, h, (ll) => lngLatToFramePx(frame, ll, w, h));
+
+const parcelPx = clipAt(IMG, IMG).reduce((n, v) => n + v, 0);
+console.log(`clip:    ${parcelPx.toLocaleString()} px inside the property line ` +
+  `(${((parcelPx / (IMG * IMG)) * 100).toFixed(1)}% of frame)\n`);
+
+const version = (await (await fetch(`https://api.replicate.com/v1/models/${MODEL}`, { headers: auth })).json())
+  .latest_version?.id;
 if (!version) {
   console.error(`FAIL  ${MODEL} has no runnable version.`);
   process.exit(1);
 }
+console.log(`model:   ${MODEL} @ ${version.slice(0, 12)}…\n`);
 
-console.log(`model:   ${MODEL}`);
-console.log(`version: ${version.slice(0, 16)}…`);
-console.log(`image:   ${frame.size * 2}px of ${frame.lng},${frame.lat} @ z${frame.zoom}`);
-console.log(`prompts: ${PROMPTS.length}\n`);
-
-// Replicate throttles hard on low-credit accounts: 6 predictions a minute
-// with a burst of one. Without this pause every prompt after the first came
-// back 429 and the comparison was meaningless.
+/* ----------------------------------------------------------------- the runs */
+const results = [];
 let firstPrompt = true;
+
 for (const prompt of PROMPTS) {
-  if (!firstPrompt) await new Promise((r) => setTimeout(r, 12000));
+  // Replicate throttles low-credit accounts hard; a short gap costs nothing
+  // and keeps the comparison from collapsing into a row of 429s.
+  if (!firstPrompt) await new Promise((r) => setTimeout(r, 8000));
   firstPrompt = false;
+
+  console.log(`--- "${prompt}"`);
   const started = Date.now();
-  process.stdout.write(`--- "${prompt}"\n`);
 
   const res = await fetch('https://api.replicate.com/v1/predictions', {
     method: 'POST',
     headers: { ...auth, 'Content-Type': 'application/json', Prefer: 'wait' },
     body: JSON.stringify({
       version,
-      input: {
-        image: imageUrl,
-        prompt,
-        // The bare mask is what the tracer wants; an overlay would have to be
-        // separated from the photograph again.
-        mask_only: true,
-        save_overlay: false,
-        // A zip would have to be unpacked in the browser before the tracer
-        // could touch it. Ask for the bare image instead.
-        return_zip: false,
-      },
+      input: { image: imageUrl, prompt, mask_only: true, save_overlay: false, return_zip: false },
     }),
   });
 
-  const text = await res.text();
   let body;
   try {
-    body = JSON.parse(text);
+    body = JSON.parse(await res.text());
   } catch {
-    console.log(`    HTTP ${res.status}, non-JSON: ${text.slice(0, 300)}\n`);
+    console.log(`    HTTP ${res.status} (non-JSON)\n`);
+    continue;
+  }
+
+  if (res.status === 429) {
+    console.log(`    RATE LIMITED: ${body.detail}\n`);
     continue;
   }
 
   let final = body;
-  // Poll if it outlived the wait window; a cold start can take minutes.
   if (final.status && !['succeeded', 'failed', 'canceled'].includes(final.status) && final.urls?.get) {
     for (let i = 0; i < 60; i++) {
       await new Promise((r) => setTimeout(r, 3000));
@@ -104,31 +137,64 @@ for (const prompt of PROMPTS) {
   }
 
   const secs = ((Date.now() - started) / 1000).toFixed(1);
-  console.log(`    HTTP ${res.status}  status=${final.status}  ${secs}s`);
-  if (final.error) console.log(`    error: ${JSON.stringify(final.error).slice(0, 300)}`);
-  if (final.detail) console.log(`    detail: ${String(final.detail).slice(0, 300)}`);
-
-  const out = final.output;
-  if (res.status === 429) {
-    console.log('    RATE LIMITED — add credit at https://replicate.com/account/billing\n');
+  if (final.status !== 'succeeded') {
+    console.log(`    ${final.status}: ${JSON.stringify(final.error || final.detail).slice(0, 200)}\n`);
     continue;
   }
-  console.log(`    output: ${Array.isArray(out) ? `array(${out.length})` : typeof out}`);
-  console.log(`    ${JSON.stringify(out)?.slice(0, 400)}`);
 
-  // Fetch the mask itself: size and type tell us whether it is a usable
-  // single-channel mask or an overlay we would have to unpick.
-  const maskUrl = Array.isArray(out) ? out[0] : typeof out === 'string' ? out : out?.mask || out?.image;
-  if (typeof maskUrl === 'string' && maskUrl.startsWith('http')) {
-    try {
-      const m = await fetch(maskUrl);
-      const buf = await m.arrayBuffer();
-      console.log(`    mask: HTTP ${m.status} ${m.headers.get('content-type')} ${buf.byteLength.toLocaleString()} bytes`);
-    } catch (e) {
-      console.log(`    mask fetch failed: ${e.message}`);
-    }
+  const out = final.output;
+  const url = Array.isArray(out) ? out[0] : typeof out === 'string' ? out : out?.mask || out?.image;
+  if (typeof url !== 'string') {
+    console.log(`    unexpected output shape: ${JSON.stringify(out).slice(0, 200)}\n`);
+    continue;
   }
-  console.log('');
+
+  const bytes = Buffer.from(await (await fetch(url)).arrayBuffer());
+  let png;
+  try {
+    png = PNG.sync.read(bytes);
+  } catch (e) {
+    console.log(`    mask is not a readable PNG (${bytes.length} bytes): ${e.message}\n`);
+    continue;
+  }
+
+  const image = { width: png.width, height: png.height, data: png.data };
+
+  // The mask may come back at a different resolution than we asked for, so
+  // everything is expressed in its own pixel grid rather than assumed.
+  const project = (x, y) => framePxToLngLat(frame, [x, y], png.width, png.height);
+  const clipMask = clipAt(png.width, png.height);
+
+  const loose = maskToPolygons(image, project, {});
+  const clipped = maskToPolygons(image, project, { clipMask });
+
+  const sqftOf = (ps) => Math.round(ps.reduce((s, p) => s + geometryAreaSqM(p), 0) / 0.09290304);
+  const looseSqft = sqftOf(loose);
+  const clipSqft = sqftOf(clipped);
+  const pctOfParcel = Math.round((clipSqft / parcelArea.squareFeet) * 100);
+
+  console.log(`    ${secs}s   mask ${png.width}x${png.height}`);
+  console.log(`    unclipped: ${looseSqft.toLocaleString()} sq ft in ${loose.length} piece(s)`);
+  console.log(`    clipped:   ${clipSqft.toLocaleString()} sq ft in ${clipped.length} piece(s)` +
+    `  = ${pctOfParcel}% of the parcel`);
+  console.log(`    outside the property line: ${(looseSqft - clipSqft).toLocaleString()} sq ft\n`);
+
+  results.push({ prompt, looseSqft, clipSqft, pctOfParcel, pieces: clipped.length, secs });
 }
 
-console.log('Done. Compare the mask sizes: a near-empty mask means the prompt found nothing.');
+/* -------------------------------------------------------------- the verdict */
+console.log('='.repeat(72));
+console.log('prompt'.padEnd(34) + 'clipped sq ft'.padStart(14) + '% parcel'.padStart(10) + 'pieces'.padStart(8));
+for (const r of results) {
+  console.log(
+    `"${r.prompt}"`.padEnd(34) +
+    r.clipSqft.toLocaleString().padStart(14) +
+    `${r.pctOfParcel}%`.padStart(10) +
+    String(r.pieces).padStart(8)
+  );
+}
+console.log('='.repeat(72));
+console.log(`\nparcel is ${parcelArea.squareFeet.toLocaleString()} sq ft.`);
+console.log('A believable residential lawn is roughly 30-70% of the lot: the rest is');
+console.log('house, drive and beds. Near 0% means the prompt found nothing; near 100%');
+console.log('means it is calling the roof and the driveway grass.');
