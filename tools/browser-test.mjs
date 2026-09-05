@@ -234,7 +234,7 @@ if (corner) {
     await page.locator('#point-controls').isVisible(),
     await page.locator('#edge-info').textContent());
 
-  const dragged = await page.evaluate(async ([x, y]) => {
+  const dragged = await page.evaluate(async ([x, y, idx]) => {
     // The handlers live on Mapbox's canvas container, and a synthetic event
     // dispatched on #map would bubble upward, away from it.
     const el = document.querySelector('.mapboxgl-canvas-container');
@@ -248,12 +248,13 @@ if (corner) {
     touch('touchend', x + 36, y + 24);
     await new Promise((r) => setTimeout(r, 300));
     return {
-      point: window.__lmPoints()[0],
+      // The same corner by index, not "the widest" again.
+      point: window.__lmPoints(idx)[0],
       sqft: document.querySelector('#result-sqft').textContent,
       grabbed: window.__lm.dragGrabbed,
       moved: window.__lm.dragMoved,
     };
-  }, [corner.x, corner.y]);
+  }, [corner.x, corner.y, corner.index]);
 
   /*
    * Assert on the corner, not on the area. A 61-vertex parcel puts each
@@ -268,10 +269,10 @@ if (corner) {
     `${corner.at.map((n) => n.toFixed(6))} -> ${dragged.point.at.map((n) => n.toFixed(6))}`);
 
   /*
-   * How far apart that corner's neighbours are decides whether moving it can
-   * change the area at all. Reported rather than asserted: a dense boundary
-   * legitimately barely moves, and the distinction only matters when the
-   * number on screen looks stuck.
+   * The app hands back the corner whose neighbours are furthest apart, so this
+   * assertion is not vacuous. Aimed at vertex 0 of a real Ottawa parcel it
+   * would be: those neighbours are 10 cm apart, so the corner can travel 25 m
+   * and legitimately change the area by nothing at all.
    */
   const span = Math.hypot(
     (dragged.point.next[0] - dragged.point.prev[0]) * 81000,
@@ -279,9 +280,9 @@ if (corner) {
   );
   console.log(`      area ${before} -> ${dragged.sqft} sq ft on screen`);
   console.log(`      exact ${corner.sqft.toFixed(1)} -> ${dragged.point.sqft.toFixed(1)} sq ft`);
-  console.log(`      that corner's neighbours are ${span.toFixed(1)} m apart`);
+  console.log(`      corner ${corner.index}, whose neighbours are ${span.toFixed(1)} m apart`);
   check('the measured area tracks the corner',
-    Math.abs(dragged.point.sqft - corner.sqft) > 0.5 || span < 0.5,
+    Math.abs(dragged.point.sqft - corner.sqft) > 1,
     `moved ${Math.abs(dragged.point.sqft - corner.sqft).toFixed(1)} sq ft`);
 
   const counts = await page.evaluate(() => window.__lmPoints?.()[0]?.count ?? null);

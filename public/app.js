@@ -81,30 +81,50 @@ if (typeof window !== 'undefined') {
    * off a screenshot would be guesswork. One entry per editable outline, in
    * the order a tap considers them.
    */
-  window.__lmPoints = () => {
+  window.__lmPoints = (want = null) => {
     if (!map || !state.edgeEdit) return [];
     const rect = map.getCanvasContainer().getBoundingClientRect();
     return editableRings().map(({ featureId, ring }) => {
       const verts = openRing(ring);
-      const at = map.project(verts[0]);
+
+      /*
+       * Report the corner whose neighbours are furthest apart, not the first
+       * one.
+       *
+       * Moving a vertex changes the area by half the cross product of
+       * (next - prev) with the movement, so a corner whose neighbours sit on
+       * top of each other can travel twenty-five metres and change nothing --
+       * which is exactly what vertex 0 of a real Ottawa parcel does, its
+       * neighbours being 10 cm apart. A test aimed there passes whether the
+       * measurement tracks the edit or not.
+       */
+      let index = 0;
+      if (want === null) {
+        let widest = -1;
+        for (let i = 0; i < verts.length; i++) {
+          const prev = verts[(i - 1 + verts.length) % verts.length];
+          const next = verts[(i + 1) % verts.length];
+          const span = Math.hypot(next[0] - prev[0], next[1] - prev[1]);
+          if (span > widest) { widest = span; index = i; }
+        }
+      } else {
+        // Moving a vertex changes its *neighbours'* spans, so "the widest" can
+        // name a different corner afterwards. A caller comparing before with
+        // after has to be able to ask for the same one twice.
+        index = ((want % verts.length) + verts.length) % verts.length;
+      }
+
+      const at = map.project(verts[index]);
       return {
         featureId,
         count: verts.length,
+        index,
         x: at.x + rect.left,
         y: at.y + rect.top,
-        // The corner's actual position. Asserting on the area instead makes a
-        // weak test: on a 61-vertex parcel the neighbours are a few pixels
-        // away, so sliding one corner sweeps almost nothing and a drag that
-        // worked perfectly looks like a drag that never happened.
-        at: verts[0],
-        // Unrounded, and the two neighbours of that corner: moving a vertex
-        // changes the area by half the cross product of (next - prev) with the
-        // movement, so a corner whose neighbours sit on top of each other can
-        // travel a long way and change nothing. Without these a real bug and a
-        // degenerate ring look the same.
+        at: verts[index],
         sqft: measure({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring] } }).squareFeet,
-        prev: verts[verts.length - 1],
-        next: verts[1],
+        prev: verts[(index - 1 + verts.length) % verts.length],
+        next: verts[(index + 1) % verts.length],
       };
     });
   };
