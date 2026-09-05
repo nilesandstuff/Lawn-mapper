@@ -12,6 +12,18 @@ on:
         description: 'Type "spend" to confirm this costs a few cents'
         required: true
         default: ''
+      probe:
+        description: 'Which probe to run'
+        required: true
+        default: 'sam3-prompts'
+        type: choice
+        options:
+          - sam3-prompts
+          - sam2-points
+      prompts:
+        description: 'Prompts to compare, separated by | (sam3-prompts only)'
+        required: false
+        default: ''
 
 jobs:
   probe:
@@ -31,7 +43,16 @@ jobs:
           cache: npm
       - run: npm ci
 
-      - name: Run one prediction
+      - name: Compare prompt wordings
+        if: inputs.probe == 'sam3-prompts'
+        env:
+          MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
+          REPLICATE_TOKEN: ${{ secrets.REPLICATE_TOKEN }}
+          PROMPTS: ${{ inputs.prompts }}
+        run: node tools/probe-sam3.js
+
+      - name: Run one point-prompted prediction
+        if: inputs.probe == 'sam2-points'
         env:
           MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
           REPLICATE_TOKEN: ${{ secrets.REPLICATE_TOKEN }}
