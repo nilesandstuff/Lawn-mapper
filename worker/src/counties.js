@@ -19,14 +19,15 @@ const COUNTIES = {
   kent: {
     name: 'Kent County',
     fips: '26081',
-    // The old gis.kentcountymi.gov service is gone (404 at every known path),
-    // and Kent publishes no parcel layer to the public ArcGIS Online
-    // catalogue. Addresses here fall through to manual drawing until someone
-    // finds the current endpoint -- worth chasing, since this is Grand Rapids.
-    service: null,
-    layer: null,
-    fields: {},
-    verified: 'none',
+    // Kent was written off as having no public endpoint. It has one -- the
+    // server just runs under the instance name "agisprod" rather than the
+    // conventional "arcgis" or "server", so every path the discovery tool
+    // could invent 404'd. This is Grand Rapids, the largest population in the
+    // coverage area, and it was never actually missing.
+    service: 'https://gis.kentcountymi.gov/agisprod/rest/services/FGDBParcels/MapServer',
+    layer: 0, // FGDBParcels
+    fields: { pin: 'PNUM', address: 'PROPERTYADDRESS' },
+    verified: 'live',
   },
   ottawa: {
     name: 'Ottawa County',
