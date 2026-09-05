@@ -109,9 +109,13 @@ Open that workers.dev address and measure your own house.
 - [ ] The confirm step shows *your* roof
 - [ ] A dashed yellow property line appears (Ottawa, Allegan or Muskegon only —
       in Kent you'll be asked to draw it, which is expected)
-- [ ] Tapping your lawn, then **Detect my lawn**, outlines actual grass
+- [ ] Tapping your lawn drops a yellow pin (tap each separate patch — front,
+      back, side strips — they all go in one detection)
+- [ ] **Detect my lawn** outlines actual grass
 - [ ] The square footage is believable for your lot
 - [ ] Dragging a white dot changes the number
+- [ ] **Extend to road** → tap the boundary by the street → the slider adds the
+      easement strip without twisting the line
 
 **Then tick "Show the raw AI mask".** A translucent shape appears over the map.
 It should sit *exactly* on the grass it traced. If it's visibly shifted or

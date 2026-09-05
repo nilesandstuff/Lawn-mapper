@@ -15,9 +15,9 @@ trigger from the repo's Actions tab.
 ```
 worker/src/   Cloudflare Worker -- the API
 public/       The website, served by that same Worker as static assets
-public/lib/   Maths shared by both sides (area, projection, mask tracing)
+public/lib/   Maths shared by both sides (area, projection, mask tracing, edges)
 tools/        Tests, the county-server probe, and the CI helpers
-.github/      The three workflows: check, deploy, and find county servers
+.github/      Four workflows: check, deploy, find county servers, browser test
 wrangler.toml One config; one deploy ships the API and the site together
 ```
 
@@ -44,13 +44,22 @@ the "Show the raw AI mask" toggle makes any error visible.
 
 ## Deploying
 
-Two manual workflows, both triggered from the Actions tab:
+Manual workflows, all triggered from the Actions tab:
 
 | Workflow | Does |
 |---|---|
 | **1. Preflight checks** | Tests, Replicate model check, county GIS probe. Read-only. |
 | **2. Deploy** | Tests, resolves the KV namespace, deploys, applies the API keys. |
 | **3. Find county servers** | Searches for a working parcel layer when one goes stale, and prints a config block. Read-only. |
+| **4. Browser test** | Drives the real app in a real browser at phone size, with real touch events. Stops before any paid call. |
+
+Workflow 4 exists because two bugs got all the way to the deployed site
+without any test noticing. Tapping the map was dead on a phone -- Mapbox GL
+Draw calls preventDefault on touchend, which suppresses the click event
+`map.on('click')` needs -- and the earlier test used `page.click()`, which
+sends a mouse click even under mobile emulation. It now sends genuine touch
+events, and it caught the edge tool inflating a real parcel threefold on the
+very next run.
 
 `tools/ci-prepare.js` fills in the two values that would otherwise need a
 terminal — the KV namespace id (found or created via the deploy token) and the
@@ -84,12 +93,24 @@ billable**. A geocode that lands one street over yields a number that looks
 entirely credible and is wrong, and no amount of downstream care recovers from
 it.
 
-`public/lib/mask.js` is the part the earlier revision of this README listed as
-unbuilt: it turns SAM's raster mask into editable polygons, tracing enclosed
-holes as interior rings so a lawn that wraps around a house doesn't bill the
-roof as turf, and keeping detached patches (front yard, back yard) as separate
-shapes the user can delete independently. `tools/mask.test.js` measures every
-synthetic case against the frame's known ground resolution.
+`public/lib/mask.js` turns SAM's raster mask into editable polygons, tracing
+enclosed holes as interior rings so a lawn that wraps around a house doesn't
+bill the roof as turf, and keeping detached patches as separate shapes the user
+can delete independently. `tools/mask.test.js` measures every synthetic case
+against the frame's known ground resolution.
+
+A lawn is usually several disconnected pieces -- split by a driveway, a pool, a
+garage. SAM only segments what its prompt points touch, so the user marks each
+piece and all the points go into one prediction, for one charge.
+
+`public/lib/edges.js` handles the other half of a real measurement: parcels
+that stop at the right-of-way easement while the owner mows to the kerb. The
+user picks a boundary and slides it outward in feet; it stays exactly parallel
+to the surveyed line, and the corners slide along their neighbours rather than
+being dragged. Real boundaries arrive as a run of nearly-collinear digitised
+segments -- eight of them on the parcel this was tested against -- so the whole
+run moves as one. Corners still backed by the county record are drawn as yellow
+dots and stop being marked once an edge moves them.
 
 ## County coverage
 
