@@ -214,7 +214,75 @@ async function handleMask(url, origin) {
   });
 }
 
+/* ------------------------------------------------------------ prediction */
+/**
+ * Poll a segmentation that outlived `Prefer: wait`.
+ *
+ * Replicate holds the connection for about a minute; a cold model can take
+ * several. Without this the browser had nothing to wait on and the "Detecting
+ * your lawn..." overlay simply stayed up forever.
+ */
+async function handlePrediction(url, env, origin) {
+  const id = url.searchParams.get('id') || '';
+  // Replicate ids are opaque alphanumeric strings; anything else is not ours.
+  if (!/^[a-z0-9]{6,64}$/i.test(id)) {
+    return json({ error: 'Invalid prediction id' }, 400, origin);
+  }
+
+  const res = await fetch(`https://api.replicate.com/v1/predictions/${id}`, {
+    headers: { Authorization: `Bearer ${env.REPLICATE_TOKEN}` },
+  });
+  if (!res.ok) {
+    return json({ error: 'Could not read the prediction', status: res.status }, 502, origin);
+  }
+
+  const p = await res.json();
+  return json(
+    { status: p.status, mask: p.output ?? null, detail: p.error || null },
+    200,
+    origin
+  );
+}
+
 /* --------------------------------------------------------------- segment */
+
+/**
+ * The model, and the input fields we send it.
+ *
+ * Exported so tools/check-replicate.js validates the exact field names this
+ * file uses against the model's published schema, rather than a copy that can
+ * drift.
+ */
+export const SAM_MODEL = 'meta/sam-2';
+export const SAM_INPUT_FIELDS = ['image', 'point_coords', 'point_labels'];
+
+/**
+ * Replicate's per-model endpoint, /v1/models/{owner}/{name}/predictions, only
+ * exists for *official* models. For everything else it answers 404 -- which is
+ * what it did here, in 0.4 s, with a message about the resource not being
+ * found rather than anything to do with segmentation.
+ *
+ * The general endpoint works for any model but needs a version id, so look it
+ * up. Cached per isolate: the id changes only when the model is republished,
+ * and paying an extra round trip on every detection to re-learn it is waste.
+ */
+let cachedVersion = null;
+
+async function samVersion(env) {
+  if (cachedVersion) return cachedVersion;
+
+  const res = await fetch(`https://api.replicate.com/v1/models/${SAM_MODEL}`, {
+    headers: { Authorization: `Bearer ${env.REPLICATE_TOKEN}` },
+  });
+  if (!res.ok) throw new Error(`Could not look up ${SAM_MODEL} (HTTP ${res.status})`);
+
+  const model = await res.json();
+  const id = model.latest_version?.id;
+  if (!id) throw new Error(`${SAM_MODEL} has no published version to run`);
+
+  cachedVersion = id;
+  return id;
+}
 /**
  * Runs SAM 2 against the parcel imagery to propose a lawn boundary.
  *
@@ -266,7 +334,15 @@ async function handleSegment(request, env, origin) {
   const points = Array.isArray(promptPoint) && promptPoint.length ? promptPoint : [[px, px]];
   const labels = points.map(() => 1);
 
-  const res = await fetch('https://api.replicate.com/v1/models/meta/sam-2/predictions', {
+  let version;
+  try {
+    version = await samVersion(env);
+  } catch (err) {
+    await refundQuota(request, env, clientId);
+    return json({ error: 'Segmentation unavailable', detail: err.message }, 502, origin);
+  }
+
+  const res = await fetch('https://api.replicate.com/v1/predictions', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${env.REPLICATE_TOKEN}`,
@@ -274,6 +350,7 @@ async function handleSegment(request, env, origin) {
       Prefer: 'wait',
     },
     body: JSON.stringify({
+      version,
       input: {
         image: imageUrl,
         // Falls back to the image centre only if the frontend sent nothing --
@@ -292,9 +369,17 @@ async function handleSegment(request, env, origin) {
 
   const prediction = await res.json();
   if (prediction.status !== 'succeeded') {
-    await refundQuota(request, env, clientId);
+    // Not a failure: `Prefer: wait` gives up after about a minute, and a cold
+    // model can take several. The quota stays spent because the prediction is
+    // running and will be billed; the client polls /api/prediction for it.
     return json(
-      { error: 'Segmentation incomplete', status: prediction.status, id: prediction.id },
+      {
+        pending: true,
+        status: prediction.status,
+        id: prediction.id,
+        frame: { lng, lat, zoom, size },
+        remaining: quota.limit - quota.used,
+      },
       202,
       origin
     );
@@ -335,6 +420,8 @@ export default {
           return await handleGeocode(url, env, origin);
         case '/api/mask':
           return await handleMask(url, origin);
+        case '/api/prediction':
+          return await handlePrediction(url, env, origin);
         case '/api/parcel':
           return await handleParcel(url, origin);
         case '/api/imagery':

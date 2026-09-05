@@ -1,25 +1,22 @@
 /**
- * Confirms the Replicate model the Worker calls actually exists.
+ * Confirms the Worker can actually run the segmentation model.
  *
- * The slug is read out of worker/src/index.js rather than hardcoded here, so
- * this checks the model the code really calls -- if someone edits the Worker,
- * this check follows them instead of quietly passing against a stale name.
+ * The previous version only checked the model *existed*, and passed happily
+ * while every real detection failed: Replicate's per-model endpoint,
+ * /v1/models/{owner}/{name}/predictions, exists only for official models and
+ * 404s for everything else. A green tick that does not mean the thing works is
+ * worse than no check, so this now verifies what the Worker depends on:
  *
- * Needs network and a Replicate token, so it runs in CI, not on the machine
- * that wrote the code:
+ *   1. the model exists and this token can see it
+ *   2. it has a published version id -- what /v1/predictions needs
+ *   3. the input fields the Worker sends all appear in that version's schema
+ *
+ * Free: it reads metadata and never starts a prediction.
+ *
  *   REPLICATE_TOKEN=r8_... node tools/check-replicate.js
  */
 
-import { readFile } from 'node:fs/promises';
-
-const SOURCE = new URL('../worker/src/index.js', import.meta.url);
-
-function extractSlug(source) {
-  const m = source.match(
-    /api\.replicate\.com\/v1\/models\/([A-Za-z0-9][\w.-]*\/[\w.-]+)\/predictions/
-  );
-  return m ? m[1] : null;
-}
+import { SAM_MODEL, SAM_INPUT_FIELDS } from '../worker/src/index.js';
 
 const token = process.env.REPLICATE_TOKEN;
 if (!token) {
@@ -31,41 +28,20 @@ if (!token) {
   process.exit(1);
 }
 
-const slug = extractSlug(await readFile(SOURCE, 'utf8'));
-if (!slug) {
-  console.error(
-    'FAIL  Could not find a Replicate model URL in worker/src/index.js.\n' +
-    '      Expected something like https://api.replicate.com/v1/models/owner/name/predictions'
-  );
-  process.exit(1);
-}
+const auth = { Authorization: `Bearer ${token}` };
+console.log(`Checking Replicate model: ${SAM_MODEL}`);
 
-console.log(`Checking Replicate model: ${slug}`);
-
-const res = await fetch(`https://api.replicate.com/v1/models/${slug}`, {
-  headers: { Authorization: `Bearer ${token}` },
-});
-
-if (res.status === 200) {
-  const body = await res.json().catch(() => ({}));
-  console.log(`PASS  "${slug}" exists and your token can see it.`);
-  if (body.latest_version?.id) {
-    console.log(`      latest version: ${body.latest_version.id.slice(0, 12)}…`);
-  }
-  if (body.description) console.log(`      ${body.description.slice(0, 120)}`);
-  process.exit(0);
-}
+const res = await fetch(`https://api.replicate.com/v1/models/${SAM_MODEL}`, { headers: auth });
 
 if (res.status === 404) {
   console.error(
-    `FAIL  Replicate has no model called "${slug}" (404).\n\n` +
-    '      The model has most likely been renamed. To fix it:\n' +
+    `FAIL  Replicate has no model called "${SAM_MODEL}" (404).\n\n` +
+    '      It has most likely been renamed. To fix it:\n' +
     '        1. Search for "SAM 2" at https://replicate.com/explore\n' +
     '        2. Note the owner/name from the model page URL\n' +
-    '        3. Edit worker/src/index.js on GitHub and replace\n' +
-    `           "${slug}" with the new owner/name\n` +
+    '        3. Edit worker/src/index.js on GitHub and change SAM_MODEL\n' +
     '        4. Re-run this check\n\n' +
-    '      Until this is fixed, "Detect my lawn" will fail for every visitor.\n' +
+    '      Until this is fixed, "Detect my lawn" fails for every visitor.\n' +
     '      Drawing a lawn by hand still works.'
   );
   process.exit(1);
@@ -80,6 +56,54 @@ if (res.status === 401 || res.status === 403) {
   process.exit(1);
 }
 
-console.error(`FAIL  Unexpected response from Replicate: ${res.status}`);
-console.error((await res.text()).slice(0, 400));
-process.exit(1);
+if (!res.ok) {
+  console.error(`FAIL  Unexpected response from Replicate: ${res.status}`);
+  console.error((await res.text()).slice(0, 400));
+  process.exit(1);
+}
+
+const model = await res.json();
+console.log(`PASS  "${SAM_MODEL}" exists and your token can see it.`);
+if (model.description) console.log(`      ${model.description.slice(0, 110)}`);
+
+/* ------------------------------------------------- a runnable version id */
+const version = model.latest_version?.id;
+if (!version) {
+  console.error(
+    `\nFAIL  "${SAM_MODEL}" has no published version, so there is nothing to run.\n` +
+    '      Pick a different SAM 2 model at https://replicate.com/explore and\n' +
+    '      change SAM_MODEL in worker/src/index.js.'
+  );
+  process.exit(1);
+}
+console.log(`PASS  It has a runnable version: ${version.slice(0, 16)}…`);
+
+/* ------------------------------------------- the fields the Worker sends */
+const schema =
+  model.latest_version?.openapi_schema?.components?.schemas?.Input?.properties;
+
+if (!schema) {
+  console.log('WARN  Could not read the input schema; skipping the field check.');
+  console.log('      This is not fatal, but a wrong field name would only show up');
+  console.log('      as a failed detection.');
+  process.exit(0);
+}
+
+const available = Object.keys(schema);
+console.log(`\nInput fields this model accepts:\n      ${available.join(', ')}`);
+
+const missing = SAM_INPUT_FIELDS.filter((f) => !available.includes(f));
+if (missing.length) {
+  console.error(
+    `\nFAIL  The Worker sends ${missing.length} field(s) this model does not accept: ` +
+    `${missing.join(', ')}\n` +
+    '      Edit the input object in worker/src/index.js to use the names listed\n' +
+    '      above, and update SAM_INPUT_FIELDS to match.'
+  );
+  process.exit(1);
+}
+
+console.log(`\nPASS  All ${SAM_INPUT_FIELDS.length} fields the Worker sends are accepted: ` +
+  SAM_INPUT_FIELDS.join(', '));
+console.log('\nNote: this confirms the request will be accepted. It does not run one --');
+console.log('use workflow 5 for that, which costs a few cents.');

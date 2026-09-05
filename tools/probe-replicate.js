@@ -11,8 +11,6 @@
  *   MAPBOX_TOKEN=pk... REPLICATE_TOKEN=r8_... node tools/probe-replicate.js
  */
 
-import { readFile } from 'node:fs/promises';
-
 const mapbox = process.env.MAPBOX_TOKEN;
 const replicate = process.env.REPLICATE_TOKEN;
 if (!mapbox || !replicate) {
@@ -20,11 +18,8 @@ if (!mapbox || !replicate) {
   process.exit(1);
 }
 
-// The same slug the Worker calls, read from the Worker so they cannot drift.
-const source = await readFile(new URL('../worker/src/index.js', import.meta.url), 'utf8');
-const slug = source.match(
-  /api\.replicate\.com\/v1\/models\/([A-Za-z0-9][\w.-]*\/[\w.-]+)\/predictions/
-)?.[1];
+// The same model the Worker calls, imported so the two cannot drift.
+const { SAM_MODEL: slug } = await import('../worker/src/index.js');
 
 // The Hudsonville parcel the county probe returns, framed the way the app does.
 const frame = { lng: -85.8637, lat: 42.8703, zoom: 18, size: 640 };
@@ -51,11 +46,20 @@ if (!img.ok) {
 // Three points, as a lawn split by a driveway would send.
 const points = [[640, 900], [400, 500], [900, 520]];
 
-console.log(`\nPOST https://api.replicate.com/v1/models/${slug}/predictions`);
+// Resolve the version, exactly as the Worker does. The per-model endpoint
+// 404s for non-official models, which is what broke detection in the first
+// place, so this uses the general endpoint with an explicit version.
+const meta = await (await fetch(`https://api.replicate.com/v1/models/${slug}`, {
+  headers: { Authorization: `Bearer ${replicate}` },
+})).json();
+const version = meta.latest_version?.id;
+console.log(`version: ${version}`);
+
+console.log(`\nPOST https://api.replicate.com/v1/predictions  (version ${String(version).slice(0, 12)}…)`);
 console.log(`points: ${JSON.stringify(points)}  labels: ${JSON.stringify(points.map(() => 1))}`);
 
 const started = Date.now();
-const res = await fetch(`https://api.replicate.com/v1/models/${slug}/predictions`, {
+const res = await fetch('https://api.replicate.com/v1/predictions', {
   method: 'POST',
   headers: {
     Authorization: `Bearer ${replicate}`,
@@ -63,6 +67,7 @@ const res = await fetch(`https://api.replicate.com/v1/models/${slug}/predictions
     Prefer: 'wait',
   },
   body: JSON.stringify({
+    version,
     input: {
       image: imageUrl,
       point_coords: points,
@@ -93,8 +98,8 @@ console.log(JSON.stringify(body.output, null, 2)?.slice(0, 1200));
 
 // If it did not finish inside the wait window, poll -- a cold start can take
 // minutes, and the app needs to know whether that is what is happening.
-if (body.status && !['succeeded', 'failed', 'canceled'].includes(body.status)) {
-  console.log(`\nNot finished inside Prefer: wait. Polling ${body.urls?.get}…`);
+if (body.status && !['succeeded', 'failed', 'canceled'].includes(body.status) && body.urls?.get) {
+  console.log(`\nNot finished inside Prefer: wait. Polling…`);
   for (let i = 0; i < 40; i++) {
     await new Promise((r) => setTimeout(r, 3000));
     const p = await fetch(body.urls.get, { headers: { Authorization: `Bearer ${replicate}` } });

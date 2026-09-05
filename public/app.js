@@ -93,8 +93,25 @@ function clientId() {
 
 const $ = (sel) => document.querySelector(sel);
 
-async function api(path, options) {
-  const res = await fetch(path, options);
+async function api(path, options = {}) {
+  // Every request gets a deadline. Without one, a Worker holding a connection
+  // open leaves the UI stuck on a spinner with nothing to react to -- which is
+  // exactly how "Detecting your lawn..." hung forever.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), options.timeoutMs || 30000);
+  let res;
+  try {
+    res = await fetch(path, { ...options, signal: controller.signal });
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      const e = new Error('The server took too long to answer.');
+      e.status = 0;
+      throw e;
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
   const type = res.headers.get('Content-Type') || '';
   const body = type.includes('application/json') ? await res.json() : null;
   if (!res.ok) {
@@ -350,11 +367,7 @@ async function confirmLocation() {
       };
       // Remember the county's own corners so the map can show which parts of
       // the final outline are still survey-accurate.
-      const ring = outerRing(state.parcel) ||
-        (state.parcel.geometry.type === 'MultiPolygon'
-          ? state.parcel.geometry.coordinates[0][0]
-          : []);
-      state.surveyed = ring.map((p) => [...p]);
+      state.surveyed = (parcelRing() || []).map((p) => [...p]);
       $('#btn-parcel-shape').hidden = false;
 
       const a = measure(state.parcel.geometry);
@@ -397,7 +410,7 @@ async function confirmLocation() {
 function armLawnPicker() {
   state.detected = false;
   diag.armed = true;
-  updatePromptHint();
+  if (!state.edgeEdit) updatePromptHint();
   map.getCanvas().style.cursor = 'crosshair';
   map.on('click', onMapClick);
   const el = map.getCanvasContainer();
@@ -536,23 +549,24 @@ function updatePromptHint() {
 
   $('#btn-detect').disabled = n === 0 || state.detected;
   $('#btn-detect').textContent =
-    n <= 1 ? 'Detect my lawn' : `Detect my lawn (${n} areas)`;
+    n <= 1 ? 'Detect my lawn' : `Detect my lawn (${n} sections)`;
   $('#btn-undo-pin').hidden = n === 0;
 
   if (n === 0) {
-    setHint('Tap the middle of your lawn');
-    setStatus(state.parcel
-      ? 'Tap each separate part of your lawn — front, back, side strips.'
-      : 'Tap each separate part of your lawn, or draw it by hand.');
+    setHint('Place a pin in every separate section of lawn');
+    setStatus(
+      'Front, back, and any strip cut off by a driveway, path or garage — each ' +
+      'needs its own pin. They all go in one detection.'
+    );
     return;
   }
 
   setHint(n === 1
-    ? 'Tap any other separate patch of lawn, or press Detect'
-    : `${n} areas marked — tap more, or press Detect`);
+    ? 'Any lawn not joined to that one? Give it a pin too'
+    : `${n} sections pinned — add more, or press Detect`);
   setStatus(
-    `${n} area${n > 1 ? 's' : ''} marked.` +
-    (left === null ? '' : ` Detecting uses 1 of your ${left} remaining today, however many areas you mark.`)
+    `${n} section${n > 1 ? 's' : ''} pinned.` +
+    (left === null ? '' : ` Detecting uses 1 of your ${left} remaining today, however many sections you pin.`)
   );
 }
 
@@ -586,7 +600,7 @@ async function detect() {
   $('#btn-detect').disabled = true;
 
   try {
-    const data = await api('/api/segment', {
+    let data = await api('/api/segment', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -594,7 +608,13 @@ async function detect() {
         clientId: state.clientId,
         promptPoint: inside,
       }),
+      // Replicate holds the connection for about a minute before answering.
+      timeoutMs: 90000,
     });
+
+    // A cold model takes longer than Replicate will hold the connection, so
+    // the server hands back an id instead of a mask and we wait it out here.
+    if (data.pending && data.id) data = await waitForPrediction(data.id, data.frame || frame);
 
     const url = maskUrl(data.mask);
     if (!url) throw new Error('The detector returned no mask. Try drawing it by hand.');
@@ -655,6 +675,40 @@ async function detect() {
     updatePromptHint();
     refreshQuota();
   }
+}
+
+/**
+ * Wait out a prediction that outlived the server's hold on the connection.
+ *
+ * The first run of the day is the slow one -- the model has to be loaded onto
+ * a GPU before it can look at anything. Saying so beats a silent spinner.
+ */
+async function waitForPrediction(id, frame) {
+  const started = Date.now();
+  const DEADLINE_MS = 4 * 60 * 1000;
+
+  while (Date.now() - started < DEADLINE_MS) {
+    await new Promise((r) => setTimeout(r, 2500));
+
+    const secs = Math.round((Date.now() - started) / 1000);
+    busy(secs < 25
+      ? 'Detecting your lawn…'
+      : `Still working — the AI is warming up (${secs}s)`);
+
+    let p;
+    try {
+      p = await api(`/api/prediction?id=${encodeURIComponent(id)}`);
+    } catch {
+      continue; // a dropped poll is not a failed prediction
+    }
+
+    if (p.status === 'succeeded') return { ...p, frame };
+    if (p.status === 'failed' || p.status === 'canceled') {
+      throw new Error(p.detail || `The detector ${p.status}.`);
+    }
+  }
+
+  throw new Error('The detector is taking unusually long. Draw the lawn by hand for now.');
 }
 
 /**
@@ -749,19 +803,32 @@ function outerRing(feature) {
   return feature?.geometry?.type === 'Polygon' ? feature.geometry.coordinates[0] : null;
 }
 
+/**
+ * The parcel outline is editable too, and deliberately before detection.
+ *
+ * Where a sidewalk sits between the recorded line and the kerb, the lawn on
+ * the far side exists only outside the parcel. The frame sent to SAM is built
+ * from the parcel's extent, so that strip is not even in the photograph unless
+ * the boundary is pushed out first -- and a pin dropped there would be
+ * discarded as outside the frame.
+ */
+const PARCEL_ID = '__parcel__';
+
 function enterEdgeMode() {
-  const features = draw.getAll().features.filter((f) => outerRing(f));
-  if (!features.length) {
-    setStatus('Draw or detect a lawn first, then you can extend an edge to the road.', 'warn');
+  const hasShape = draw.getAll().features.some((f) => outerRing(f));
+  if (!hasShape && !state.parcel) {
+    setStatus('Find a property first, or draw a lawn, then you can extend an edge to the road.', 'warn');
     return;
   }
 
   state.edgeEdit = { featureId: null, edgeIndex: null, baseRing: null };
   $('#edge-panel').hidden = false;
   $('#edge-controls').hidden = true;
-  $('#edge-info').textContent = 'Tap the edge of your lawn nearest the road.';
+  $('#edge-info').textContent = hasShape
+    ? 'Tap the boundary nearest the road — your lawn outline or the property line.'
+    : 'Tap the property line nearest the road. Extend it first if your lawn runs past it.';
   $('#edge-info').className = 'edge-info';
-  setHint('Tap an edge to select it');
+  setHint('Tap a boundary line to select it');
   armLawnPicker(); // same tap plumbing; handleMapPoint routes to edge select
 }
 
@@ -775,14 +842,17 @@ function exitEdgeMode() {
 /** Find the edge nearest a tap, across every shape, and select it. */
 function selectEdgeNear(lngLat) {
   let best = null;
-  for (const f of draw.getAll().features) {
-    const ring = outerRing(f);
-    if (!ring) continue;
+
+  const consider = (ring, featureId) => {
+    if (!ring) return;
     const hit = nearestEdge(ring, lngLat);
     if (hit && (!best || hit.distanceM < best.distanceM)) {
-      best = { ...hit, featureId: f.id, ring };
+      best = { ...hit, featureId, ring };
     }
-  }
+  };
+
+  for (const f of draw.getAll().features) consider(outerRing(f), f.id);
+  consider(parcelRing(), PARCEL_ID);
 
   if (!best || best.distanceM > 40) {
     $('#edge-info').textContent = 'No edge near there — tap closer to a boundary line.';
@@ -808,7 +878,8 @@ function selectEdgeNear(lngLat) {
   slider.value = '0';
   $('#edge-controls').hidden = false;
   $('#edge-info').textContent =
-    `Boundary selected — ${Math.round(runFeet)} ft long` +
+    (best.featureId === PARCEL_ID ? 'Property line' : 'Lawn edge') +
+    ` selected — ${Math.round(runFeet)} ft long` +
     (run.count > 1 ? ` (${run.count} segments, moving together).` : '.');
   $('#edge-info').className = 'edge-info active';
   $('#edge-bearing').textContent = `bearing ${Math.round(edgeBearing(best.ring, best.index))}\u00b0 — kept exactly`;
@@ -821,12 +892,16 @@ function applyEdgeOffset(feet) {
   const edit = state.edgeEdit;
   if (!edit?.baseRing) return;
 
-  const feature = draw.get(edit.featureId);
-  if (!feature) return;
-
   const ring = offsetEdge(edit.baseRing, edit.edgeIndex, feetToMetres(feet));
-  feature.geometry.coordinates = [ring, ...feature.geometry.coordinates.slice(1)];
-  draw.add(feature); // same id: this updates in place
+
+  if (edit.featureId === PARCEL_ID) {
+    setParcelRing(ring);
+  } else {
+    const feature = draw.get(edit.featureId);
+    if (!feature) return;
+    feature.geometry.coordinates = [ring, ...feature.geometry.coordinates.slice(1)];
+    draw.add(feature); // same id: this updates in place
+  }
 
   $('#edge-value').textContent = `${feet > 0 ? '+' : ''}${feet} ft`;
   drawEdgeHighlight();
@@ -834,9 +909,44 @@ function applyEdgeOffset(feet) {
   refreshSurveyed();
 }
 
+/** The parcel's outer ring, whatever geometry type it arrived as. */
+function parcelRing() {
+  const g = state.parcel?.geometry;
+  if (!g) return null;
+  if (g.type === 'Polygon') return g.coordinates[0];
+  if (g.type === 'MultiPolygon') return g.coordinates[0][0];
+  return null;
+}
+
+/**
+ * Replace the parcel outline and re-frame the photograph around it.
+ *
+ * Re-framing is the point: SAM only ever sees the frame we send, so extending
+ * the boundary has to widen the picture too, or the new strip is invisible to
+ * the detector and any pin dropped on it is discarded.
+ */
+function setParcelRing(ring) {
+  const g = state.parcel.geometry;
+  if (g.type === 'Polygon') g.coordinates = [ring, ...g.coordinates.slice(1)];
+  else if (g.type === 'MultiPolygon') g.coordinates[0] = [ring, ...g.coordinates[0].slice(1)];
+
+  map.getSource('parcel').setData(state.parcel);
+
+  const bbox = geometryBounds(state.parcel);
+  if (bbox) {
+    state.frame = {
+      lng: (bbox[0] + bbox[2]) / 2,
+      lat: (bbox[1] + bbox[3]) / 2,
+      zoom: zoomToFit(bbox, FRAME_SIZE),
+      size: FRAME_SIZE,
+    };
+  }
+}
+
 function currentEdgeRing() {
   const edit = state.edgeEdit;
   if (!edit?.featureId) return null;
+  if (edit.featureId === PARCEL_ID) return parcelRing();
   return outerRing(draw.get(edit.featureId));
 }
 
@@ -883,6 +993,8 @@ function refreshSurveyed() {
     const ring = outerRing(f);
     if (ring) live.push(...ring);
   }
+  const pr = parcelRing();
+  if (pr) live.push(...pr);
 
   // ~0.3 m: tighter than any real edit, looser than floating-point noise.
   const TOL = 3e-6;
@@ -902,8 +1014,7 @@ function refreshSurveyed() {
 
 /** Seed an editable shape from the parcel boundary. */
 function useParcelShape() {
-  const ring = outerRing(state.parcel) ||
-    (state.parcel?.geometry?.type === 'MultiPolygon' ? state.parcel.geometry.coordinates[0][0] : null);
+  const ring = parcelRing();
   if (!ring) return;
 
   draw.add({
