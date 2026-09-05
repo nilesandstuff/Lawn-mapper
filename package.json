@@ -2,9 +2,16 @@
   "name": "lawn-mapper",
   "private": true,
   "type": "module",
-  "description": "Root package.json exists only so tools/ scripts run as ES modules. The deployable app lives in worker/ (its own package.json) and frontend/.",
+  "description": "Measures a lawn's square footage from an address. One Cloudflare Worker serves both the API (worker/) and the site (public/).",
   "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "node tools/area.test.js && node tools/mask.test.js",
     "test:area": "node tools/area.test.js",
+    "test:mask": "node tools/mask.test.js",
     "probe:counties": "node tools/probe-counties.js"
+  },
+  "devDependencies": {
+    "wrangler": "^4.20.0"
   }
 }

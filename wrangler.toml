@@ -1,0 +1,32 @@
+name = "lawn-mapper"
+main = "worker/src/index.js"
+compatibility_date = "2025-09-01"
+
+# The site in public/ ships with the Worker as static assets. Assets are
+# matched first, so /, /app.js and friends are served straight from the edge;
+# anything with no matching file (i.e. /api/*) falls through to the Worker.
+#
+# Do NOT set not_found_handling = "single-page-application" here: that would
+# answer every unmatched path with index.html, and /api/* would never reach
+# the Worker at all.
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# Measurement quota counter. Create it before the first deploy:
+#   npx wrangler kv namespace create QUOTA
+# then paste the returned id below, replacing the placeholder.
+[[kv_namespaces]]
+binding = "QUOTA"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+# Secrets are NOT set here -- anything in this file goes into git.
+# Set them from the CLI instead:
+#   npx wrangler secret put MAPBOX_TOKEN
+#   npx wrangler secret put REPLICATE_TOKEN
+
+# Uncomment after the domain is in your Cloudflare account (see DEPLOY.md
+# step 8) to serve the app on the real hostname instead of *.workers.dev.
+# [[routes]]
+# pattern = "lawnanswers.online"
+# custom_domain = true

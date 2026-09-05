@@ -6,7 +6,7 @@
  * actually runs in production, so this test needs to exercise that file,
  * not a separate copy that could drift out of sync with it.
  */
-import { measure, geometryAreaSqM, SQM_PER_SQFT } from '../worker/src/area.js';
+import { measure, geometryAreaSqM, SQM_PER_SQFT } from '../public/lib/area.js';
 
 let failures = 0;
 function check(label, actual, expected, tolerancePct) {

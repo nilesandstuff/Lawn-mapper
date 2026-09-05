@@ -38,6 +38,13 @@ async function bump(kv, key, limit) {
   return { allowed: true, used: used + 1, limit };
 }
 
+async function unbump(kv, key) {
+  const raw = await kv.get(key);
+  const used = raw ? parseInt(raw, 10) || 0 : 0;
+  if (used <= 0) return;
+  await kv.put(key, String(used - 1), { expirationTtl: TTL_SECONDS });
+}
+
 async function peek(kv, key, limit) {
   const raw = await kv.get(key);
   const used = raw ? parseInt(raw, 10) || 0 : 0;
@@ -77,9 +84,32 @@ export async function consumeQuota(request, env, clientId) {
   if (!byClient.allowed) return byClient;
 
   const byIp = await bump(env.QUOTA, `i:${day}:${ip}`, DAILY_LIMIT_PER_IP);
-  if (!byIp.allowed) return { ...byIp, allowed: false, reason: 'shared-network' };
+  if (!byIp.allowed) {
+    // The client bump already landed. Hand it back -- being turned away by
+    // the shared-network cap should not also cost a personal measurement.
+    await unbump(env.QUOTA, `c:${day}:${clientId}`);
+    return { ...byIp, allowed: false, reason: 'shared-network' };
+  }
 
   return byClient;
+}
+
+/**
+ * Give back a measurement that was charged but never delivered.
+ *
+ * Quota has to be taken *before* the Replicate call -- charging afterwards
+ * would let a flood of parallel requests all pass the check at once. The cost
+ * of that ordering is that a failed prediction still bills the user, and a
+ * misconfiguration (wrong model slug, expired token) would burn every
+ * visitor's daily allowance on errors that produced nothing. Refunding on
+ * failure keeps the guardrail while making a broken deploy merely broken
+ * rather than broken *and* locked out for the rest of the UTC day.
+ */
+export async function refundQuota(request, env, clientId) {
+  if (!env.QUOTA) return;
+  const day = dayKey();
+  await unbump(env.QUOTA, `c:${day}:${clientId}`);
+  await unbump(env.QUOTA, `i:${day}:${clientIp(request)}`);
 }
 
 export { DAILY_LIMIT_PER_CLIENT, DAILY_LIMIT_PER_IP, clientIp };

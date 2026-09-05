@@ -1,0 +1,195 @@
+:root {
+  --green: #2f7d32;
+  --green-dark: #245f27;
+  --ink: #16211a;
+  --muted: #5d6b62;
+  --line: #dfe5e0;
+  --bg: #f6f8f6;
+  --panel-w: 380px;
+}
+
+* { box-sizing: border-box; }
+
+/* A `display` rule on an element beats the user-agent's `[hidden]` style, so
+ * anything given `display: flex` below would ignore its hidden attribute --
+ * which left the loading spinner permanently on screen. Settle it globally. */
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        "Helvetica Neue", Arial, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+}
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+/* ------------------------------------------------------------- top bar */
+.topbar {
+  height: 56px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 18px;
+  background: #fff;
+  border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: 9px; font-weight: 650; letter-spacing: -0.01em; }
+.brand-mark {
+  width: 18px; height: 18px; border-radius: 5px;
+  background: linear-gradient(140deg, #4caf50, var(--green-dark));
+}
+.quota {
+  font-size: 13px; color: var(--muted);
+  background: var(--bg); border: 1px solid var(--line);
+  padding: 4px 10px; border-radius: 999px;
+}
+
+/* -------------------------------------------------------------- layout */
+.layout {
+  display: flex;
+  height: calc(100% - 56px);
+}
+.panel {
+  width: var(--panel-w);
+  flex: 0 0 var(--panel-w);
+  padding: 22px 20px;
+  overflow-y: auto;
+  background: #fff;
+  border-right: 1px solid var(--line);
+  display: flex; flex-direction: column;
+}
+.mapwrap { position: relative; flex: 1; min-width: 0; }
+#map { position: absolute; inset: 0; }
+
+@media (max-width: 820px) {
+  .layout { flex-direction: column-reverse; }
+  .panel { width: 100%; flex: 1 1 auto; border-right: 0; border-top: 1px solid var(--line); }
+  .mapwrap { flex: 0 0 46vh; }
+}
+
+/* --------------------------------------------------------------- steps */
+h1 { font-size: 24px; line-height: 1.25; margin: 0 0 8px; letter-spacing: -0.02em; }
+h2 { font-size: 18px; margin: 0 0 10px; letter-spacing: -0.01em; }
+.sub { color: var(--muted); margin: 0 0 16px; }
+.note { color: var(--muted); font-size: 13px; margin-top: 16px; }
+.chosen { font-weight: 600; margin: 0 0 4px; }
+
+input[type=text] {
+  width: 100%; padding: 11px 12px;
+  border: 1px solid var(--line); border-radius: 9px;
+  font: inherit; background: #fff;
+}
+input[type=text]:focus { outline: 2px solid var(--green); outline-offset: 1px; border-color: transparent; }
+
+button { font: inherit; cursor: pointer; border-radius: 9px; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+
+.primary {
+  width: 100%; margin-top: 10px; padding: 11px 14px;
+  background: var(--green); color: #fff; border: 0; font-weight: 600;
+}
+.primary:hover:not(:disabled) { background: var(--green-dark); }
+
+.ghost {
+  padding: 9px 13px; background: #fff; color: var(--ink);
+  border: 1px solid var(--line); font-weight: 500;
+}
+.ghost:hover { border-color: #b9c4bc; }
+
+.link {
+  background: none; border: 0; color: var(--muted);
+  text-decoration: underline; padding: 6px 0; font-size: 13px; text-align: left;
+}
+
+.row { display: flex; gap: 8px; align-items: center; }
+.row .primary { margin-top: 0; }
+
+/* ---------------------------------------------------------- candidates */
+.candidates { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 7px; }
+.candidates button {
+  width: 100%; text-align: left; padding: 11px 12px;
+  background: #fff; border: 1px solid var(--line);
+}
+.candidates button:hover { border-color: var(--green); background: #f4faf4; }
+.candidates .addr { display: block; font-weight: 550; }
+.candidates .meta { display: block; font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.pill {
+  display: inline-block; font-size: 11px; font-weight: 600;
+  padding: 1px 7px; border-radius: 999px; margin-right: 6px;
+  background: #e8f3e9; color: var(--green-dark);
+}
+.pill.grey { background: #eef0ee; color: var(--muted); }
+
+/* -------------------------------------------------------------- result */
+.result {
+  border: 1px solid var(--line); border-radius: 12px;
+  padding: 14px 16px; margin-bottom: 14px; background: #f4faf4;
+}
+.result-figure { font-size: 34px; font-weight: 680; letter-spacing: -0.03em; line-height: 1.1; }
+.result-figure small { font-size: 15px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
+.result-sub { color: var(--muted); font-size: 13px; margin-top: 3px; }
+
+.statusline { font-size: 13.5px; color: var(--muted); min-height: 20px; margin-bottom: 10px; }
+.statusline.warn { color: #a35b00; }
+.statusline.error { color: #b3261e; }
+
+.tools { display: flex; flex-wrap: wrap; gap: 8px; }
+.tools .primary { width: auto; margin-top: 0; flex: 1 1 100%; }
+.tools .ghost { flex: 1 1 0; }
+
+.exports { display: flex; gap: 8px; margin-top: 14px; }
+.exports .ghost { flex: 1; }
+
+.help { margin-top: 16px; font-size: 13.5px; color: var(--muted); }
+.help summary { cursor: pointer; color: var(--ink); font-weight: 550; }
+.help ul { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 4px; }
+kbd {
+  font: inherit; font-size: 12px; background: #eef0ee;
+  border: 1px solid var(--line); border-radius: 4px; padding: 0 4px;
+}
+
+.debug { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--muted); margin-top: 16px; }
+.disclaimer { margin: auto 0 0; padding-top: 20px; font-size: 12px; color: var(--muted); }
+
+.fatal {
+  border: 1px solid #f0d0cc; background: #fdf5f4;
+  border-radius: 12px; padding: 16px;
+}
+.fatal h2 { color: #b3261e; }
+
+/* --------------------------------------------------------- map chrome */
+.hint {
+  position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+  background: rgba(22, 33, 26, .88); color: #fff;
+  padding: 9px 15px; border-radius: 999px; font-size: 13.5px; font-weight: 500;
+  max-width: 82%; text-align: center; pointer-events: none; z-index: 3;
+}
+.overlay {
+  position: absolute; inset: 0; z-index: 4;
+  background: rgba(246, 248, 246, .82);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+}
+.overlay p { margin: 0; font-weight: 550; }
+.spinner {
+  width: 34px; height: 34px; border-radius: 50%;
+  border: 3px solid #cfd8d1; border-top-color: var(--green);
+  animation: spin .9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 3s; } }
+
+/* ------------------------------------------------------------- printing */
+.printblock { display: none; }
+@media print {
+  .topbar, .panel, .hint, .overlay, .mapboxgl-ctrl { display: none !important; }
+  .layout { display: block; height: auto; }
+  .mapwrap { position: relative; height: 62vh; page-break-after: avoid; }
+  .printblock { display: block; padding: 18px 4px; font-size: 13px; }
+  .printblock h1 { font-size: 20px; margin: 0 0 6px; }
+  .print-figure { font-size: 26px; font-weight: 700; margin: 10px 0; }
+  .print-foot { color: #666; font-size: 11px; margin-top: 18px; }
+}

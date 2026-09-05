@@ -1,10 +1,18 @@
 /**
- * Lawn Mapper API (Cloudflare Worker).
+ * Lawn Mapper -- Cloudflare Worker. Serves both the API and the site.
+ *
+ * The frontend in public/ is attached as Workers static assets (see
+ * wrangler.toml), so one `wrangler deploy` ships the whole product to one
+ * origin. That is not just tidiness: same-origin means no CORS to configure,
+ * no second deploy target to keep in sync, and the browser can read the SAM
+ * mask off a canvas without tainting it.
  *
  * Endpoints:
+ *   GET  /api/config                   -> public Mapbox token for the browser
  *   GET  /api/geocode?q=<address>      -> candidate addresses (no quota)
  *   GET  /api/parcel?lng=&lat=         -> parcel boundary or null (no quota)
- *   GET  /api/imagery?...              -> signed satellite PNG (no quota)
+ *   GET  /api/imagery?...              -> satellite PNG (no quota)
+ *   GET  /api/mask?url=<replicate url> -> proxied SAM mask (no quota)
  *   POST /api/segment                  -> SAM lawn mask (CONSUMES QUOTA)
  *   GET  /api/quota?clientId=          -> remaining allowance
  *
@@ -13,16 +21,25 @@
  *   REPLICATE_TOKEN  -- r8_* token. NEVER exposed to the browser.
  * Bindings:
  *   QUOTA            -- KV namespace for measurement counting
+ *   ASSETS           -- the static site in public/
  */
 
 import { lookupParcel } from './parcel.js';
-import { measure } from './area.js';
 import { isCovered } from './counties.js';
-import { checkQuota, consumeQuota } from './quota.js';
+import { checkQuota, consumeQuota, refundQuota } from './quota.js';
+// Shared with the browser, which loads the same file over HTTP. See the note
+// at the top of that file for why it lives outside worker/.
+import { measure } from '../../public/lib/area.js';
 
+/**
+ * Only needed for `wrangler dev` and for anyone embedding the API. The
+ * deployed site is same-origin, so it never sends an Origin we have to match.
+ */
 const ALLOWED_ORIGINS = [
-  'https://lawn-mapper.pages.dev',
-  'http://localhost:8788',
+  'https://lawnanswers.online',
+  'https://www.lawnanswers.online',
+  'http://localhost:8787',
+  'http://127.0.0.1:8787',
 ];
 
 function cors(origin) {
@@ -111,23 +128,31 @@ async function handleParcel(url, origin) {
 
 /* ---------------------------------------------------------------- imagery */
 /**
- * Proxies one Mapbox Static Images request. Server-side so the frontend
- * never needs the token for this, and so we can pin the parameters --
- * the same frame feeds SAM and the PDF export, so it must be reproducible.
+ * Mapbox caps the static endpoint at 1280. Clamping is hoisted out of the URL
+ * builder so /api/segment can report the size it actually used: the browser
+ * converts mask pixels back to lng/lat with these exact numbers, and a frame
+ * that says 1600 when the image is 1280 puts the lawn in the wrong place.
  */
+const clampSize = (size) => Math.min(Math.max(size, 256), 1280);
+const clampZoom = (zoom) => Math.min(Math.max(zoom, 15), 20);
+
 function buildImageryUrl(lng, lat, zoom, size, token) {
-  const s = Math.min(Math.max(size, 256), 1280); // Mapbox caps at 1280
   return (
     `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/` +
-    `${lng},${lat},${zoom},0/${s}x${s}@2x?access_token=${token}&attribution=false&logo=false`
+    `${lng},${lat},${zoom},0/${size}x${size}@2x?access_token=${token}&attribution=false&logo=false`
   );
 }
 
+/**
+ * Proxies one Mapbox Static Images request. Server-side so the frontend never
+ * needs the token for this, and so we can pin the parameters -- the same
+ * frame feeds SAM and the export, so it must be reproducible.
+ */
 async function handleImagery(url, env, origin) {
   const lng = parseFloat(url.searchParams.get('lng'));
   const lat = parseFloat(url.searchParams.get('lat'));
-  const zoom = Math.min(Math.max(parseFloat(url.searchParams.get('zoom')) || 19, 15), 20);
-  const size = parseInt(url.searchParams.get('size'), 10) || 640;
+  const zoom = clampZoom(parseFloat(url.searchParams.get('zoom')) || 19);
+  const size = clampSize(parseInt(url.searchParams.get('size'), 10) || 640);
 
   if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
     return json({ error: 'lng and lat required' }, 400, origin);
@@ -141,6 +166,49 @@ async function handleImagery(url, env, origin) {
       'Content-Type': 'image/png',
       // Imagery for a fixed point/zoom never changes. Cache hard.
       'Cache-Control': 'public, max-age=86400',
+      ...cors(origin),
+    },
+  });
+}
+
+/* ------------------------------------------------------------------ mask */
+/**
+ * Proxies the SAM mask image back to the browser from our own origin.
+ *
+ * Required, not a nicety: the browser has to read the mask's pixels off a
+ * <canvas> to trace it, and a cross-origin image taints the canvas so
+ * getImageData() throws. Serving it from here keeps the canvas clean whatever
+ * CORS headers Replicate's CDN happens to send.
+ */
+const MASK_HOST = 'replicate.delivery';
+
+async function handleMask(url, origin) {
+  const raw = url.searchParams.get('url');
+  if (!raw) return json({ error: 'url required' }, 400, origin);
+
+  let target;
+  try {
+    target = new URL(raw);
+  } catch {
+    return json({ error: 'Invalid url' }, 400, origin);
+  }
+
+  // Without this check the endpoint is an open proxy: anyone could use the
+  // Worker to fetch arbitrary hosts, including addresses only reachable from
+  // Cloudflare's network.
+  const host = target.hostname;
+  const allowed =
+    target.protocol === 'https:' &&
+    (host === MASK_HOST || host.endsWith(`.${MASK_HOST}`));
+  if (!allowed) return json({ error: 'Host not allowed' }, 403, origin);
+
+  const res = await fetch(target.toString());
+  if (!res.ok) return json({ error: 'Mask unavailable' }, 502, origin);
+
+  return new Response(res.body, {
+    headers: {
+      'Content-Type': res.headers.get('Content-Type') || 'image/png',
+      'Cache-Control': 'public, max-age=3600',
       ...cors(origin),
     },
   });
@@ -163,10 +231,13 @@ async function handleSegment(request, env, origin) {
     return json({ error: 'Invalid JSON' }, 400, origin);
   }
 
-  const { lng, lat, zoom = 19, size = 640, clientId, promptPoint } = body;
+  const { lng, lat, clientId, promptPoint } = body;
   if (!Number.isFinite(lng) || !Number.isFinite(lat) || !clientId) {
     return json({ error: 'lng, lat, and clientId required' }, 400, origin);
   }
+
+  const zoom = clampZoom(Number(body.zoom) || 19);
+  const size = clampSize(Number(body.size) || 640);
 
   const quota = await consumeQuota(request, env, clientId);
   if (!quota.allowed) {
@@ -209,11 +280,13 @@ async function handleSegment(request, env, origin) {
 
   if (!res.ok) {
     const detail = await res.text();
+    await refundQuota(request, env, clientId);
     return json({ error: 'Segmentation failed', detail }, 502, origin);
   }
 
   const prediction = await res.json();
   if (prediction.status !== 'succeeded') {
+    await refundQuota(request, env, clientId);
     return json(
       { error: 'Segmentation incomplete', status: prediction.status, id: prediction.id },
       202,
@@ -246,8 +319,16 @@ export default {
 
     try {
       switch (url.pathname) {
+        // The Mapbox token is a pk.* key -- public by design; Mapbox expects
+        // it in client code and rate-limits it by URL referrer. Serving it
+        // from here rather than hardcoding it in public/app.js keeps it out
+        // of git and lets it be rotated with `wrangler secret put` alone.
+        case '/api/config':
+          return json({ mapboxToken: env.MAPBOX_TOKEN || null }, 200, origin);
         case '/api/geocode':
           return await handleGeocode(url, env, origin);
+        case '/api/mask':
+          return await handleMask(url, origin);
         case '/api/parcel':
           return await handleParcel(url, origin);
         case '/api/imagery':
@@ -260,7 +341,15 @@ export default {
           return json(await checkQuota(request, env, clientId), 200, origin);
         }
         default:
-          return json({ error: 'Not found' }, 404, origin);
+          if (url.pathname.startsWith('/api/')) {
+            return json({ error: 'Not found' }, 404, origin);
+          }
+          // Static assets are matched before the Worker runs, so anything
+          // reaching here is an unknown path. Hand back the app shell so
+          // deep links and refreshes land on the site, not on JSON.
+          return env.ASSETS
+            ? await env.ASSETS.fetch(new Request(new URL('/', url), request))
+            : json({ error: 'Not found' }, 404, origin);
       }
     } catch (err) {
       return json({ error: 'Internal error', detail: String(err.message) }, 500, origin);

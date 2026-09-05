@@ -6,72 +6,107 @@ proposes the lawn shape inside that boundary → user corrects it → export.
 
 Standalone project for now; intended to fold into lawn-answers.com later.
 
+**Deploying it? Follow [DEPLOY.md](DEPLOY.md).** It is written step by step and
+assumes no prior Cloudflare experience.
+
 ## Repo layout
 
 ```
-worker/     Cloudflare Worker -- the API. DEPLOYABLE AS-IS.
-tools/      Node scripts for local verification. Not deployed.
-frontend/   NOT YET BUILT. See "What's left" below.
+worker/src/   Cloudflare Worker -- the API
+public/       The website, served by that same Worker as static assets
+public/lib/   Maths shared by both sides (area, projection, mask tracing)
+tools/        Node scripts: tests and a live probe of the county servers
+wrangler.toml One config; one `npm run deploy` ships everything
 ```
 
-## Status: backend built, frontend not started
+The site and the API are one Worker on one origin. That means no CORS to
+configure, no second deploy target that can drift out of sync, and the browser
+can read the AI mask off a `<canvas>` without it being tainted cross-origin.
 
-**Done, in `worker/`:**
-- `src/area.js` — geodesic area math (sq ft / acres), verified against a
-  known-size reference rectangle. Ground-truth tested — see `tools/area.test.js`.
-- `src/counties.js` + `src/parcel.js` — parcel boundary lookup across 5
-  county GIS servers (Kent, Ottawa, Allegan, Muskegon; Newaygo has no
-  confirmed public endpoint yet — see Known Gaps).
-- `src/quota.js` — per-client + per-IP daily measurement cap, tested at the
-  boundary condition.
-- `src/index.js` — the API itself: `/api/geocode`, `/api/parcel`,
-  `/api/imagery`, `/api/segment` (SAM 2 via Replicate), `/api/quota`.
+## Status: complete and deployable, pending three live checks
 
-**Not built yet:**
-- The frontend. Needs: address input, a confirm-location step showing the
-  pin on the map before any paid call fires, Mapbox GL JS + Mapbox GL Draw
-  for the editable polygon, a "detecting your lawn..." state while SAM runs,
-  and a PDF/PNG export of the final map + square footage.
-- Converting the SAM mask (returned as an image) into an editable Mapbox GL
-  Draw polygon. This is real, non-trivial work — mask-to-polygon tracing
-  plus reprojecting mask pixel coordinates back to lng/lat using the `frame`
-  object `/api/segment` returns.
-- Wiring a real SAM prompt point. Right now `/api/segment` defaults to the
-  image center, which is usually the house roof, not the lawn. The frontend
-  needs to send the parcel centroid (nudged off the building) or a
-  user-tapped point instead.
+The whole path works — address in, corrected lawn polygon and square footage
+out, exportable as PNG or PDF. What has *not* been verified is anything
+requiring a network call, because neither environment that wrote this code had
+outbound access. **DEPLOY.md steps 6, 7 and 8 are those checks.** They take a
+few minutes and are the difference between "should work" and "does work".
 
-## Known gaps (not bugs — documented limitations)
+### The API (`worker/src/`)
 
-- **Newaygo County**: no confirmed public ArcGIS REST endpoint. Addresses
-  there fall through to manual boundary drawing — same path as anywhere
-  outside the 5-county footprint, so nothing breaks, but it's a gap worth
-  closing by calling their GIS office directly.
-- **Layer indexes/field names for Kent, Allegan, Muskegon** are educated
-  starting values from published service metadata, not live-verified (the
-  environment that wrote this code has no network access). Run
+| Endpoint | Purpose | Costs money |
+|---|---|---|
+| `/api/config` | Hands the browser the public Mapbox token | no |
+| `/api/geocode` | Address → up to 5 candidates, flagged by coverage | no |
+| `/api/parcel` | Point → county parcel boundary, or null | no |
+| `/api/imagery` | Satellite PNG for a fixed frame | no |
+| `/api/mask` | Proxies the AI mask back same-origin | no |
+| `/api/segment` | SAM 2 lawn detection | **yes** — quota'd |
+| `/api/quota` | Remaining daily allowance | no |
+
+`/api/mask` only accepts `replicate.delivery` URLs. Without that check it would
+be an open proxy able to reach hosts only visible from Cloudflare's network.
+
+### The frontend (`public/`)
+
+Plain ES modules, no build step — what is in the folder is what runs. Mapbox
+GL JS and Mapbox GL Draw load from Mapbox's CDN.
+
+The flow deliberately puts a **confirm-your-house step before anything slow or
+billable**. A geocode that lands one street over yields a number that looks
+entirely credible and is wrong, and no amount of downstream care recovers from
+it.
+
+`public/lib/mask.js` is the part the earlier revision of this README listed as
+unbuilt: it turns SAM's raster mask into editable polygons, tracing enclosed
+holes as interior rings so a lawn that wraps around a house doesn't bill the
+roof as turf, and keeping detached patches (front yard, back yard) as separate
+shapes the user can delete independently. `tools/mask.test.js` measures every
+synthetic case against the frame's known ground resolution.
+
+## Known gaps (documented limitations, not bugs)
+
+- **Newaygo County**: no confirmed public ArcGIS REST endpoint. Addresses there
+  fall through to manual drawing — same path as anywhere outside the footprint,
+  so nothing breaks. Closing it means calling their GIS office.
+- **Layer indexes and field names for Kent, Allegan and Muskegon** are educated
+  values from published service metadata, not live-verified. Run
   `npm run probe:counties` before trusting them.
-- **Replicate model slug** (`meta/sam-2`) needs a live check against
-  Replicate's current catalog before deploy — model identifiers do get
-  renamed, and this was written without network access to confirm it.
+- **The Replicate model slug** (`meta/sam-2`) needs a live check against
+  Replicate's catalogue — model identifiers do get renamed. DEPLOY.md step 6.
+- **`TILE_SIZE` in `public/lib/mercator.js`** encodes how wide Mapbox considers
+  the world at a given zoom. Getting it wrong scales every AI-detected area by
+  4x. The app cross-checks it against Mapbox GL's own projection at runtime and
+  logs a specific console error on a mismatch, but the assumption itself is
+  unverified offline. The "Show the raw AI mask" checkbox makes it visible: a
+  correctly georeferenced mask sits exactly on the grass it traced.
+- **Quota is a cost guardrail, not enforcement.** Clearing site data or
+  changing network gets a fresh allowance. It exists to stop a script running
+  thousands of predictions overnight, and it is a read-then-write against KV,
+  so a burst of simultaneous requests can slip past the limit by a small margin.
 
-## Setup order
+## Development
 
-1. `cd worker && npm install` (just installs wrangler)
-2. `npx wrangler kv namespace create QUOTA` → paste the returned id into
-   `worker/wrangler.toml`
-3. `npx wrangler secret put MAPBOX_TOKEN`
-4. `npx wrangler secret put REPLICATE_TOKEN` — get a **fresh** token from
-   Replicate; do not reuse one that has ever appeared in a chat log or commit
-5. `npm run probe:counties` from the repo root — confirms the parcel layer
-   config actually matches what the county servers return today
-6. `npm run test:area` — should print "All checks passed."
-7. Update `ALLOWED_ORIGINS` in `worker/src/index.js` to your real Pages URL
-8. `cd worker && npx wrangler deploy`
+```bash
+npm install
+npm test               # area maths + mask tracing, fully offline
+npm run dev            # http://localhost:8787, site and API together
+npm run probe:counties # live check of the county GIS servers
+npm run deploy
+```
+
+`npm run dev` needs the two secrets. For local runs put them in a `.dev.vars`
+file at the repo root (already gitignored):
+
+```
+MAPBOX_TOKEN=pk....
+REPLICATE_TOKEN=r8_...
+```
 
 ## The one rule that matters most
 
 Never compute area from projected map coordinates (Web Mercator / EPSG:3857).
-At Michigan's latitude that inflates area by ~1.88x, silently. `area.js`
-takes WGS84 lng/lat only — `tools/area.test.js` has a test that reproduces
-this exact error mode so it can't regress unnoticed.
+At Michigan's latitude that inflates area by ~1.88x, silently. `area.js` takes
+WGS84 lng/lat only — `tools/area.test.js` has a test that reproduces this exact
+error mode so it can't regress unnoticed, and `mercator.js` deliberately stops
+at converting pixels to lng/lat so that projected coordinates never reach the
+area code.

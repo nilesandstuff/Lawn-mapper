@@ -13,7 +13,7 @@
 
 import { COUNTIES } from '../worker/src/counties.js';
 import { lookupParcel } from '../worker/src/parcel.js';
-import { measure } from '../worker/src/area.js';
+import { measure } from '../public/lib/area.js';
 
 // Known points inside each county, for an end-to-end check.
 const TEST_POINTS = {

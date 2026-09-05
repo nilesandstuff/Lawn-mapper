@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lawn Mapper — measure your lawn from your address</title>
+<meta name="description" content="Find your lawn's square footage from your address. Uses county property lines and satellite imagery, then lets you correct the shape by hand.">
+
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.css" rel="stylesheet">
+<link href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.css" rel="stylesheet">
+<link href="/styles.css" rel="stylesheet">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <span>Lawn&nbsp;Mapper</span>
+  </div>
+  <div id="quota-badge" class="quota" hidden></div>
+</header>
+
+<div class="layout">
+  <aside class="panel" id="panel">
+
+    <!-- 0. Hard failure -------------------------------------------------- -->
+    <section class="step fatal" id="step-fatal" hidden>
+      <h2>The map didn't load</h2>
+      <p class="sub" id="fatal-text"></p>
+      <button class="primary" onclick="location.reload()">Try again</button>
+    </section>
+
+    <!-- 1. Address ------------------------------------------------------ -->
+    <section class="step" id="step-address">
+      <h1>How big is your lawn?</h1>
+      <p class="sub">Type your address. We'll pull your property line and measure
+        the grass inside it.</p>
+      <form id="address-form" autocomplete="off">
+        <label class="sr-only" for="address">Street address</label>
+        <input id="address" name="address" type="text" required minlength="4"
+               placeholder="1234 Maple Ave, Grand Rapids, MI"
+               autocomplete="street-address">
+        <button class="primary" type="submit">Find my property</button>
+      </form>
+      <p class="note">Property lines are available for Kent, Ottawa, Allegan and
+        Muskegon counties. Anywhere else, you can trace the lawn yourself.</p>
+    </section>
+
+    <!-- 2. Which address? ----------------------------------------------- -->
+    <section class="step" id="step-candidates" hidden>
+      <h2>Which one is yours?</h2>
+      <ul class="candidates" id="candidate-list"></ul>
+      <button class="link" data-action="restart">Search a different address</button>
+    </section>
+
+    <!-- 3. Confirm ------------------------------------------------------- -->
+    <section class="step" id="step-confirm" hidden>
+      <h2>Is this the right place?</h2>
+      <p class="chosen" id="chosen-label"></p>
+      <p class="sub">Check the roof and driveway on the map before we measure.</p>
+      <div class="row">
+        <button class="primary" data-action="confirm">Yes, that's it</button>
+        <button class="ghost" data-action="restart">No, go back</button>
+      </div>
+    </section>
+
+    <!-- 4. Measure ------------------------------------------------------- -->
+    <section class="step" id="step-work" hidden>
+      <div class="result" id="result" hidden>
+        <div class="result-figure"><span id="result-sqft">—</span> <small>sq ft</small></div>
+        <div class="result-sub" id="result-sub"></div>
+      </div>
+
+      <div class="statusline" id="status"></div>
+
+      <div class="tools">
+        <button class="primary" id="btn-detect" disabled>Detect my lawn</button>
+        <button class="ghost" id="btn-draw">Draw it myself</button>
+        <button class="ghost" id="btn-clear">Clear shapes</button>
+      </div>
+
+      <details class="help">
+        <summary>How to correct the shape</summary>
+        <ul>
+          <li>Click a shape to select it, then drag any white dot to move that corner.</li>
+          <li>Drag a small dot on an edge to add a new corner.</li>
+          <li>Select a shape and press <kbd>Delete</kbd> to remove it.</li>
+          <li>Use <b>Draw it myself</b> to add another patch — areas add up.</li>
+        </ul>
+      </details>
+
+      <div class="exports">
+        <button class="ghost" id="btn-png">Save image</button>
+        <button class="ghost" id="btn-print">Save as PDF</button>
+      </div>
+
+      <label class="debug">
+        <input type="checkbox" id="toggle-overlay">
+        Show the raw AI mask (alignment check)
+      </label>
+
+      <button class="link" data-action="restart">Start over with a new address</button>
+    </section>
+
+    <p class="disclaimer">Measurements come from satellite imagery and public
+      county records. Treat them as a close estimate, not a survey.</p>
+  </aside>
+
+  <main class="mapwrap">
+    <div id="map"></div>
+    <div class="hint" id="map-hint" hidden></div>
+    <div class="overlay" id="busy" hidden>
+      <div class="spinner" aria-hidden="true"></div>
+      <p id="busy-text">Working…</p>
+    </div>
+  </main>
+</div>
+
+<!-- Rendered only when printing, so the PDF carries the numbers as text. -->
+<div class="printblock" id="printblock" aria-hidden="true">
+  <h1>Lawn measurement</h1>
+  <p id="print-address"></p>
+  <p class="print-figure"><span id="print-sqft"></span> sq ft</p>
+  <p id="print-detail"></p>
+  <p class="print-foot">Measured with Lawn Mapper · estimate from satellite
+    imagery and county parcel data, not a survey.</p>
+</div>
+
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.js"></script>
+<script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.js"></script>
+<script type="module" src="/app.js"></script>
+</body>
+</html>

@@ -1,6 +1,11 @@
 /**
  * Geodesic area calculation for lawn polygons.
  *
+ * Lives under public/lib/ because both sides need it: the browser imports it
+ * over HTTP to show a live figure while the user drags vertices, and the
+ * Worker imports it at build time to measure parcels server-side. One copy,
+ * so the number the user watches and the number the API returns cannot drift.
+ *
  * CRITICAL: All input coordinates are [lng, lat] in WGS84 (EPSG:4326).
  * Never pass projected (Web Mercator / EPSG:3857) coordinates to these
  * functions. At Michigan's latitude (~43N), computing area in Web Mercator
