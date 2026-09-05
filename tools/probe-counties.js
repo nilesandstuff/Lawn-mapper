@@ -14,14 +14,7 @@
 import { COUNTIES } from '../worker/src/counties.js';
 import { lookupParcel } from '../worker/src/parcel.js';
 import { measure } from '../public/lib/area.js';
-
-// Known points inside each county, for an end-to-end check.
-const TEST_POINTS = {
-  kent:     { lng: -85.6681, lat: 42.9634, label: 'Grand Rapids' },
-  ottawa:   { lng: -86.1089, lat: 42.7875, label: 'Holland' },
-  allegan:  { lng: -85.8556, lat: 42.5292, label: 'Allegan' },
-  muskegon: { lng: -86.2484, lat: 43.2342, label: 'Muskegon' },
-};
+import { TEST_POINTS } from './test-points.js';
 
 async function listLayers(key) {
   const cfg = COUNTIES[key];
@@ -74,20 +67,34 @@ async function checkFields(key) {
 }
 
 async function endToEnd(key) {
-  const pt = TEST_POINTS[key];
-  if (!pt) return;
-  const parcel = await lookupParcel(pt.lng, pt.lat);
-  if (!parcel) return console.log(`  ${key} (${pt.label}): NO PARCEL RETURNED`);
+  const points = TEST_POINTS[key];
+  if (!points || !COUNTIES[key]?.service) return;
 
-  const m = measure(parcel.geometry);
-  console.log(
-    `  ${key} (${pt.label}): ${m.acres} ac / ${m.squareFeet.toLocaleString()} sq ft` +
-      `  pin=${parcel.properties.pin}  addr=${parcel.properties.address}`
-  );
-  // Sanity: a residential parcel should not be 0 or absurdly large.
-  if (m.acres < 0.01 || m.acres > 500) {
-    console.log('      WARNING: implausible area -- check outSR handling');
+  // Try each point in turn. One address landing on a road right-of-way or an
+  // unplatted lot is normal and says nothing about the endpoint.
+  const tried = [];
+  for (const pt of points) {
+    const parcel = await lookupParcel(pt.lng, pt.lat);
+    if (!parcel) {
+      tried.push(`${pt.label}: none`);
+      continue;
+    }
+
+    const m = measure(parcel.geometry);
+    console.log(
+      `  ${key} (${pt.label}): ${m.acres} ac / ${m.squareFeet.toLocaleString()} sq ft` +
+        `  pin=${parcel.properties.pin}  addr=${parcel.properties.address}`
+    );
+    if (tried.length) console.log(`      (no parcel at ${tried.join(', ')})`);
+
+    // Sanity: a residential parcel should not be 0 or absurdly large.
+    if (m.acres < 0.01 || m.acres > 500) {
+      console.log('      WARNING: implausible area -- check outSR handling');
+    }
+    return;
   }
+
+  console.log(`  ${key}: NO PARCEL AT ANY TEST POINT (${tried.join(', ')})`);
 }
 
 (async () => {

@@ -18,46 +18,11 @@
 import { COUNTIES } from '../worker/src/counties.js';
 import { esriToGeoJSON } from '../worker/src/parcel.js';
 import { measure } from '../public/lib/area.js';
+import { TEST_POINTS } from './test-points.js';
 
 const TIMEOUT_MS = 12000;
 const MAX_SERVICES_PER_ROOT = 8;
 const MAX_LAYERS_PER_SERVICE = 8;
-
-/**
- * Residential points well inside each county, several per county.
- *
- * The previous single point for Ottawa was Holland, which straddles the
- * Ottawa/Allegan line -- so genuine Ottawa parcel layers correctly returned
- * nothing and looked broken. Several points also survive the ordinary case of
- * one landing on a road, a river, or an unplatted lot.
- */
-const TEST_POINTS = {
-  kent: [
-    { lng: -85.5872, lat: 42.9297, label: 'Kentwood' },
-    { lng: -85.6681, lat: 42.9634, label: 'Grand Rapids' },
-    { lng: -85.5406, lat: 43.1197, label: 'Rockford' },
-  ],
-  ottawa: [
-    { lng: -85.8637, lat: 42.8703, label: 'Hudsonville' },
-    { lng: -85.7975, lat: 42.9075, label: 'Jenison' },
-    { lng: -86.2100, lat: 43.0631, label: 'Grand Haven' },
-  ],
-  allegan: [
-    { lng: -85.8556, lat: 42.5292, label: 'Allegan' },
-    { lng: -85.6447, lat: 42.6742, label: 'Wayland' },
-    { lng: -85.6431, lat: 42.4392, label: 'Plainwell area' },
-  ],
-  muskegon: [
-    { lng: -86.2639, lat: 43.1689, label: 'Norton Shores' },
-    { lng: -86.2200, lat: 43.2342, label: 'Muskegon' },
-    { lng: -86.1553, lat: 43.1319, label: 'Fruitport' },
-  ],
-  newaygo: [
-    { lng: -85.9481, lat: 43.4661, label: 'Fremont' },
-    { lng: -85.8003, lat: 43.4197, label: 'Newaygo' },
-    { lng: -85.7723, lat: 43.5503, label: 'White Cloud' },
-  ],
-};
 
 /** Archive and roll layers answer queries but are not the current parcel map. */
 const ARCHIVE_NAME = /historic|archive|assessment roll|\b(19|20)\d{2}\b|previous|old/i;
