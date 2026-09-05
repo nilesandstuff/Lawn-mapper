@@ -35,7 +35,7 @@ import { checkQuota, consumeQuota, refundQuota } from './quota.js';
 // Constants and the version lookup live in their own module: a Workers
 // entrypoint may only export handlers, and exporting a plain constant from
 // here kills the isolate on startup.
-import { DEFAULT_PROMPT, samVersion, samInput } from './sam.js';
+import { DEFAULT_PROMPT, samVersion, samInput, samThreshold } from './sam.js';
 // Shared with the browser, which loads the same file over HTTP. See the note
 // at the top of that file for why it lives outside worker/.
 import { measure } from '../../public/lib/area.js';
@@ -336,7 +336,7 @@ async function handleSegment(request, env, origin) {
     },
     body: JSON.stringify({
       version,
-      input: samInput(imageUrl, prompt),
+      input: samInput(imageUrl, prompt, samThreshold(env)),
     }),
   });
 
