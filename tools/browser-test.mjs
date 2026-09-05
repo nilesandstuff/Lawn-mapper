@@ -16,8 +16,15 @@
 import { chromium } from 'playwright';
 
 const BASE = process.argv[2] || 'http://127.0.0.1:8787';
-// A real address inside Ottawa County, whose parcel the county probe returns.
-const ADDRESS = '3300 Van Buren St, Hudsonville, MI';
+/*
+ * A real address inside Ottawa County, whose parcel the county probe returns.
+ *
+ * Overridable, because the default is a 3.3-acre rural lot: fine for proving
+ * the plumbing, misleading for judging a detection, since most of it is field
+ * rather than lawn and the frame is zoomed out far enough to coarsen the
+ * imagery. Point it at an ordinary house lot to see a number worth reading.
+ */
+const ADDRESS = process.env.TEST_ADDRESS || '3300 Van Buren St, Hudsonville, MI';
 
 let failures = 0;
 const check = (name, ok, detail = '') => {
@@ -79,8 +86,15 @@ check('reached the measure step', await page.locator('#step-work').isVisible());
 console.log(`      status: "${await page.locator('#status').textContent()}"`);
 console.log(`      hint:   "${await page.locator('#map-hint').textContent()}"`);
 
+/*
+ * `armed` means the map is listening for a tap, which is now only ever true
+ * inside the edge tool. It used to mean "waiting for you to pin each patch of
+ * lawn", and this check asserted the pin flow -- so it kept failing after the
+ * pins went away, describing a contract the app no longer has. Assert the
+ * current one: nothing on the map needs tapping before a detection.
+ */
 const armed = await page.evaluate(() => window.__lm.armed);
-check('lawn picker is armed', armed === true, `armed=${armed}`);
+check('nothing needs tapping before detection', armed === false, `armed=${armed}`);
 
 const busyVisible = await page.locator('#busy').isVisible();
 check('loading overlay is gone', busyVisible === false, `busy visible=${busyVisible}`);
@@ -107,10 +121,10 @@ check('the grass-under-trees option is offered and on by default',
  * event map.on('click') is built on.
  */
 const box = await page.locator('#map').boundingBox();
-const cx = box.x + box.width / 2;
 const cy = box.y + box.height / 2;
 
 /* -------------------------------- optionally, a real end-to-end detection */
+let detectedSqft = null;
 if (process.env.RUN_DETECT === 'true') {
   console.log('\n--- running a REAL detection (this costs money) ---');
   await page.click('#btn-detect');
@@ -128,6 +142,7 @@ if (process.env.RUN_DETECT === 'true') {
   console.log(`      RESULT: ${sqft} sq ft   (${detail})`);
 
   const n = Number(String(sqft).replace(/[^0-9]/g, ''));
+  detectedSqft = n;
   check('a real detection produced a lawn', n > 0, `${sqft} sq ft`);
   check('and it is a plausible size, not the whole frame', n > 200 && n < 200000, `${sqft} sq ft`);
 
@@ -143,11 +158,22 @@ await page.waitForTimeout(800);
 const seeded = await page.evaluate(() => window.__lmDraw ? null : document.querySelector('#result').hidden);
 check('using the property line produces a measurable shape', seeded === false,
   `result panel hidden = ${seeded}`);
-console.log(`      area from parcel: ${await page.locator('#result-sqft').textContent()} sq ft`);
+const parcelSqft = Number(
+  (await page.locator('#result-sqft').textContent()).replace(/[^0-9]/g, '')
+);
+console.log(`      area from parcel: ${parcelSqft.toLocaleString()} sq ft`);
+if (detectedSqft !== null && parcelSqft > 0) {
+  // Not an assertion: how much of a lot is lawn varies enormously. It is here
+  // because a bare square-footage says nothing about whether the detection was
+  // sensible, and the ratio does.
+  console.log(`      detected lawn is ${(100 * detectedSqft / parcelSqft).toFixed(1)}% of the parcel`);
+}
 
 await page.click('#btn-edges');
 await page.waitForTimeout(400);
 check('edge panel opens', await page.locator('#edge-panel').isVisible());
+check('the edge tool arms the map for a tap',
+  await page.evaluate(() => window.__lm.armed) === true);
 
 // Tap near the parcel outline to select an edge. The parcel fills much of the
 // map, so a tap near its left portion should land close to a boundary.
@@ -155,6 +181,19 @@ await page.touchscreen.tap(box.x + 12, cy);
 await page.waitForTimeout(700);
 const edgeInfo = await page.locator('#edge-info').textContent();
 console.log(`      ${edgeInfo}`);
+
+/*
+ * The regression guard for the bug that made the app dead on a phone: Mapbox
+ * GL Draw calls preventDefault on touchend, which stops the browser
+ * synthesising the click that map.on('click') is built on. It survived every
+ * test until someone used a real phone, because page.click() sends a mouse
+ * click even under mobile emulation. So insist the tap arrived as a *touch*.
+ */
+const taps = await page.evaluate(() => ({
+  viaTouch: window.__lm.viaTouch, viaClick: window.__lm.viaClick, clicks: window.__lm.clicks,
+}));
+check('a real touch reaches the map (not just a mouse click)', taps.viaTouch > 0,
+  `viaTouch=${taps.viaTouch} viaClick=${taps.viaClick} handled=${taps.clicks}`);
 
 if (await page.locator('#edge-controls').isVisible()) {
   const before = await page.locator('#result-sqft').textContent();
