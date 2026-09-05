@@ -97,6 +97,14 @@ if (typeof window !== 'undefined') {
         // away, so sliding one corner sweeps almost nothing and a drag that
         // worked perfectly looks like a drag that never happened.
         at: verts[0],
+        // Unrounded, and the two neighbours of that corner: moving a vertex
+        // changes the area by half the cross product of (next - prev) with the
+        // movement, so a corner whose neighbours sit on top of each other can
+        // travel a long way and change nothing. Without these a real bug and a
+        // degenerate ring look the same.
+        sqft: measure({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring] } }).squareFeet,
+        prev: verts[verts.length - 1],
+        next: verts[1],
       };
     });
   };

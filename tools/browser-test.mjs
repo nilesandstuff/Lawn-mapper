@@ -248,7 +248,7 @@ if (corner) {
     touch('touchend', x + 36, y + 24);
     await new Promise((r) => setTimeout(r, 300));
     return {
-      at: window.__lmPoints()[0].at,
+      point: window.__lmPoints()[0],
       sqft: document.querySelector('#result-sqft').textContent,
       grabbed: window.__lm.dragGrabbed,
       moved: window.__lm.dragMoved,
@@ -264,9 +264,25 @@ if (corner) {
   check('the press grabbed a corner', dragged.grabbed > 0, `dragGrabbed=${dragged.grabbed}`);
   check('and the drag registered as movement', dragged.moved > 0, `dragMoved=${dragged.moved}`);
   check('dragging a corner moves it',
-    dragged.at[0] !== corner.at[0] || dragged.at[1] !== corner.at[1],
-    `${corner.at.map((n) => n.toFixed(6))} -> ${dragged.at.map((n) => n.toFixed(6))}`);
-  console.log(`      area ${before} -> ${dragged.sqft} sq ft`);
+    dragged.point.at[0] !== corner.at[0] || dragged.point.at[1] !== corner.at[1],
+    `${corner.at.map((n) => n.toFixed(6))} -> ${dragged.point.at.map((n) => n.toFixed(6))}`);
+
+  /*
+   * How far apart that corner's neighbours are decides whether moving it can
+   * change the area at all. Reported rather than asserted: a dense boundary
+   * legitimately barely moves, and the distinction only matters when the
+   * number on screen looks stuck.
+   */
+  const span = Math.hypot(
+    (dragged.point.next[0] - dragged.point.prev[0]) * 81000,
+    (dragged.point.next[1] - dragged.point.prev[1]) * 111320
+  );
+  console.log(`      area ${before} -> ${dragged.sqft} sq ft on screen`);
+  console.log(`      exact ${corner.sqft.toFixed(1)} -> ${dragged.point.sqft.toFixed(1)} sq ft`);
+  console.log(`      that corner's neighbours are ${span.toFixed(1)} m apart`);
+  check('the measured area tracks the corner',
+    Math.abs(dragged.point.sqft - corner.sqft) > 0.5 || span < 0.5,
+    `moved ${Math.abs(dragged.point.sqft - corner.sqft).toFixed(1)} sq ft`);
 
   const counts = await page.evaluate(() => window.__lmPoints?.()[0]?.count ?? null);
   const afterDelete = await page.evaluate(async () => {
