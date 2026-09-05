@@ -1,0 +1,10 @@
+{
+  "name": "lawn-mapper",
+  "private": true,
+  "type": "module",
+  "description": "Root package.json exists only so tools/ scripts run as ES modules. The deployable app lives in worker/ (its own package.json) and frontend/.",
+  "scripts": {
+    "test:area": "node tools/area.test.js",
+    "probe:counties": "node tools/probe-counties.js"
+  }
+}

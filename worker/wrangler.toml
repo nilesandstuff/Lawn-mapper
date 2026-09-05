@@ -1,0 +1,14 @@
+name = "lawn-mapper-api"
+main = "src/index.js"
+compatibility_date = "2026-01-01"
+
+# KV namespace for measurement quota counting.
+# Create it first:  npx wrangler kv namespace create QUOTA
+# then paste the returned id below.
+[[kv_namespaces]]
+binding = "QUOTA"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+# Secrets are NOT set here. Set them from the CLI so they never enter git:
+#   npx wrangler secret put MAPBOX_TOKEN
+#   npx wrangler secret put REPLICATE_TOKEN
