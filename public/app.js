@@ -15,7 +15,7 @@
 import { measure } from './lib/area.js';
 import { maskToPolygons } from './lib/mask.js';
 import {
-  offsetEdge, nearestEdge, edgeLength, edgeBearing, edgeMidpoint,
+  offsetEdge, nearestEdge, edgeRun, edgeLength, edgeBearing, openRing,
   feetToMetres, metresToFeet,
 } from './lib/edges.js';
 import {
@@ -797,10 +797,19 @@ function selectEdgeNear(lngLat) {
     baseRing: best.ring.map((p) => [...p]),
   };
 
+  // A surveyed boundary is usually digitised as a run of nearly-collinear
+  // segments; the user thinks of it as one line and it moves as one.
+  const run = edgeRun(best.ring, best.index);
+  const n = openRing(best.ring).length;
+  let runFeet = 0;
+  for (let k = 0; k < run.count; k++) runFeet += metresToFeet(edgeLength(best.ring, (run.start + k) % n));
+
   const slider = $('#edge-slider');
   slider.value = '0';
   $('#edge-controls').hidden = false;
-  $('#edge-info').textContent = `Edge selected — ${Math.round(metresToFeet(edgeLength(best.ring, best.index)))} ft long.`;
+  $('#edge-info').textContent =
+    `Boundary selected — ${Math.round(runFeet)} ft long` +
+    (run.count > 1 ? ` (${run.count} segments, moving together).` : '.');
   $('#edge-info').className = 'edge-info active';
   $('#edge-bearing').textContent = `bearing ${Math.round(edgeBearing(best.ring, best.index))}\u00b0 — kept exactly`;
   $('#edge-value').textContent = '0 ft';
@@ -836,12 +845,16 @@ function drawEdgeHighlight() {
   const edit = state.edgeEdit;
   if (!ring || edit.edgeIndex == null) return clearEdgeHighlight();
 
-  const n = ring.length - 1;
-  const a = ring[edit.edgeIndex % n];
-  const b = ring[(edit.edgeIndex + 1) % n];
+  // Highlight the whole run that will move, not just the segment tapped.
+  const verts = openRing(ring);
+  const n = verts.length;
+  const run = edgeRun(ring, edit.edgeIndex);
+  const line = [];
+  for (let k = 0; k <= run.count; k++) line.push(verts[(run.start + k) % n]);
+
   map.getSource('edge-highlight').setData({
     type: 'Feature',
-    geometry: { type: 'LineString', coordinates: [a, b] },
+    geometry: { type: 'LineString', coordinates: line },
   });
 }
 

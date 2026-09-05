@@ -68,13 +68,37 @@ function normalise(v) {
   return len < 1e-12 ? null : [v[0] / len, v[1] / len];
 }
 
+/**
+ * How far a corner may travel, as a multiple of the distance the edge moved.
+ *
+ * A corner slides along its neighbour, so it legitimately travels further
+ * than the edge itself: d/sin(angle). At 45 degrees that is 1.41x, at 15
+ * degrees 3.9x. Below that the neighbour is nearly parallel to the edge and
+ * the meeting point races away -- on a real digitised parcel, whose outlines
+ * are full of nearly-collinear vertices, that turned a 25 ft nudge on a 100
+ * ft edge into an extra 294,000 sq ft of "lawn".
+ *
+ * Past this limit, translating the corner with the edge is the sane answer:
+ * it bends one neighbour slightly instead of producing a spike.
+ */
+const MAX_CORNER_TRAVEL = 4;
+
 /** Where two infinite lines meet, or null if they are (near) parallel. */
 function intersect(p1, d1, p2, d2) {
   const denom = cross(d1, d2);
-  // Near-parallel: the intersection shoots off to infinity and is useless.
-  if (Math.abs(denom) < 1e-9) return null;
+  // sin of the angle between two unit vectors. Below this they are parallel
+  // enough that no useful intersection exists.
+  if (Math.abs(denom) < 0.02) return null;
   const t = cross(sub(p2, p1), d2) / denom;
   return add(p1, scale(d1, t));
+}
+
+/** The intersection, unless it flings the corner implausibly far. */
+function slideCorner(corner, newLinePoint, newLineDir, neighbour, neighbourDir, fallback, limit) {
+  if (!neighbourDir) return fallback;
+  const hit = intersect(newLinePoint, newLineDir, neighbour, neighbourDir);
+  if (!hit) return fallback;
+  return Math.hypot(...sub(hit, corner)) > limit ? fallback : hit;
 }
 
 /** Perpendicular distance from p to segment ab, and the closest point on it. */
@@ -126,50 +150,106 @@ export function edgeMidpoint(ring, index) {
 }
 
 /**
- * Slide edge `index` outward by `metres`, keeping it parallel to itself.
+ * How close two consecutive edges must be in direction to count as one line.
  *
- * Negative distances pull the edge inward, which is the same operation and is
- * how the user backs off an overshoot.
+ * A surveyed frontage is rarely one segment in the county's data: it is
+ * digitised as a run of two or three that differ by a fraction of a degree.
+ * Treating them separately is both wrong for the user -- they think of it as
+ * "the edge along the road" -- and numerically hostile, because each segment
+ * is then its own near-parallel neighbour.
+ */
+const COLLINEAR_COS = Math.cos((3 * Math.PI) / 180);
+
+const dot = (p, q) => p[0] * q[0] + p[1] * q[1];
+
+function edgeDir(xy, i) {
+  const n = xy.length;
+  return normalise(sub(xy[(i + 1) % n], xy[i % n]));
+}
+
+/**
+ * The maximal run of consecutive edges pointing the same way as edge `index`.
+ * Returns { start, end } as edge indices, inclusive, possibly wrapping.
+ */
+export function edgeRun(ring, index) {
+  const verts = openRing(ring);
+  const n = verts.length;
+  if (n < 3) return { start: 0, end: 0, count: 1 };
+
+  const frame = makeFrame(verts[0]);
+  const xy = verts.map(frame.toXY);
+  const i = ((index % n) + n) % n;
+  const dir = edgeDir(xy, i);
+  if (!dir) return { start: i, end: i, count: 1 };
+
+  const aligned = (j) => {
+    const d = edgeDir(xy, ((j % n) + n) % n);
+    return d && dot(d, dir) > COLLINEAR_COS;
+  };
+
+  let start = i;
+  let end = i;
+  let count = 1;
+  // Never swallow the whole ring: a circle-ish polygon would otherwise become
+  // one "edge" and the operation would lose all meaning.
+  while (count < n - 2 && aligned(start - 1)) { start -= 1; count += 1; }
+  while (count < n - 2 && aligned(end + 1)) { end += 1; count += 1; }
+
+  return { start: ((start % n) + n) % n, end: ((end % n) + n) % n, count };
+}
+
+/**
+ * Slide the edge at `index` outward by `metres`, keeping it parallel.
  *
- * Returns a new closed ring. The two vertices at either end of the edge move;
- * every other vertex, and every other edge's bearing, is untouched.
+ * Negative distances pull it inward, which is how the user backs off an
+ * overshoot.
+ *
+ * The whole near-collinear run containing that edge moves together: every
+ * vertex in the run is translated by the same vector, so all the bearings
+ * inside the run are preserved exactly, and only the two vertices at the ends
+ * of the run slide along their outside neighbours. Every other vertex, and
+ * every other edge's bearing, is untouched.
  */
 export function offsetEdge(ring, index, metres) {
   const verts = openRing(ring);
   const n = verts.length;
   if (n < 3 || !Number.isFinite(metres)) return closeRing(verts);
 
-  const i = ((index % n) + n) % n;
   const frame = makeFrame(verts[0]);
   const xy = verts.map(frame.toXY);
 
-  const a = xy[i];
-  const b = xy[(i + 1) % n];
-  const dir = normalise(sub(b, a));
+  const run = edgeRun(ring, index);
+  const dir = edgeDir(xy, run.start);
   if (!dir) return closeRing(verts); // degenerate edge
 
   // Outward normal. For a counter-clockwise ring the outward side of an edge
   // running a->b is (dy, -dx); clockwise rings flip it.
   const ccw = signedArea(xy) > 0;
   const normal = ccw ? [dir[1], -dir[0]] : [-dir[1], dir[0]];
+  const shift = scale(normal, metres);
 
-  const shifted = add(a, scale(normal, metres));
-
-  // The neighbouring edges, as infinite lines. The moved corners slide along
-  // these, which is what keeps their bearings intact.
-  const prev = xy[(i - 1 + n) % n];
-  const next = xy[(i + 2) % n];
-  const prevDir = normalise(sub(a, prev));
-  const nextDir = normalise(sub(next, b));
-
-  // If a neighbour is parallel to this edge there is no meeting point; the
-  // honest fallback is to translate that corner with the edge.
-  const newA = (prevDir && intersect(shifted, dir, prev, prevDir)) || add(a, scale(normal, metres));
-  const newB = (nextDir && intersect(shifted, dir, next, nextDir)) || add(b, scale(normal, metres));
+  // Vertices of the run: run.start .. run.end + 1, inclusive, wrapping.
+  const idx = [];
+  for (let k = 0; k <= run.count; k++) idx.push((run.start + k) % n);
 
   const out = xy.slice();
-  out[i] = newA;
-  out[(i + 1) % n] = newB;
+  for (const j of idx) out[j] = add(xy[j], shift);
+
+  // The two ends slide along the edges just outside the run, which is what
+  // keeps those neighbours' bearings intact.
+  const firstV = idx[0];
+  const lastV = idx[idx.length - 1];
+  const beforeRun = xy[(run.start - 1 + n) % n];
+  const afterRun = xy[(run.end + 2) % n];
+  const prevDir = normalise(sub(xy[firstV], beforeRun));
+  const nextDir = normalise(sub(afterRun, xy[lastV]));
+  const limit = Math.max(Math.abs(metres) * MAX_CORNER_TRAVEL, 0.5);
+
+  const startDir = edgeDir(xy, run.start);
+  const endDir = edgeDir(xy, run.end);
+
+  out[firstV] = slideCorner(out[firstV], out[firstV], startDir, beforeRun, prevDir, out[firstV], limit);
+  out[lastV] = slideCorner(out[lastV], out[lastV], endDir, afterRun, nextDir, out[lastV], limit);
 
   return closeRing(out.map(frame.toLngLat));
 }

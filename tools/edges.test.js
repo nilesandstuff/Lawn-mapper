@@ -152,6 +152,52 @@ const LOT = rect(30, 45); // 30 m of frontage, 45 m deep
   check('area increases', geometryAreaSqM(poly(moved)) > geometryAreaSqM(poly(trapezoid)));
 }
 
+/* ------------------------------- nearly-collinear corners (the real thing) */
+{
+  // Real digitised parcels are full of vertices a fraction of a degree off
+  // collinear. Sliding a corner along a neighbour that is nearly parallel to
+  // the edge sends the meeting point racing away: on the live Hudsonville
+  // parcel this turned a 25 ft nudge on a 100 ft edge into an extra 294,000
+  // sq ft of lawn. The corner travel limit is what stops it.
+  // The frontage is digitised as two segments with a barely perceptible bend
+  // at the middle -- the neighbour of edge 0 is edge 1, running back almost
+  // exactly parallel to it. That is where the meeting point escapes.
+  const nearlyStraight = [
+    frame.toLngLat([0, 0]),
+    frame.toLngLat([15, 0.1]),   // edge 0 ends here...
+    frame.toLngLat([30, 0]),     // ...and edge 1 continues, 0.76 deg off it
+    frame.toLngLat([30, 40]),
+    frame.toLngLat([0, 40]),
+    frame.toLngLat([0, 0]),
+  ];
+
+  const metres = feetToMetres(25);
+  const moved = offsetEdge(nearlyStraight, 0, metres);
+
+  const before = geometryAreaSqM(poly(nearlyStraight));
+  const after = geometryAreaSqM(poly(moved));
+  const grew = (after - before) / before;
+
+  check('a nudge stays a nudge on a near-collinear parcel', grew < 0.5,
+    `area changed by ${(grew * 100).toFixed(1)}%  (${before.toFixed(0)} -> ${after.toFixed(0)} m^2)`);
+
+  const travel = openRing(nearlyStraight).map((p, i) =>
+    Math.hypot(...frame.toXY(openRing(moved)[i]).map((v, k) => v - frame.toXY(p)[k])));
+  const worst = Math.max(...travel);
+  check('no corner flies off', worst < metres * 4 + 0.01,
+    `furthest corner moved ${worst.toFixed(2)} m for a ${metres.toFixed(2)} m offset`);
+
+  // Both segments move as one run, so the strip is the whole 30 m frontage.
+  closeTo(after - before, 30 * metres, 25,
+    'the whole near-collinear frontage moved as one');
+
+  // And the bend between the two segments must survive untouched.
+  for (const i of [0, 1]) {
+    const drift = Math.abs(((edgeBearing(moved, i) - edgeBearing(nearlyStraight, i) + 540) % 360) - 180);
+    check(`near-collinear segment ${i} keeps its bearing`, drift < 0.01, `${drift.toFixed(4)}°`);
+  }
+}
+
 /* --------------------------------------------- winding independence */
 {
   const reversed = [...LOT].reverse();
