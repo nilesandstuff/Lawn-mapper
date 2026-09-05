@@ -1,0 +1,26 @@
+name: 6. Find a promptable AI model
+
+# meta/sam-2 is the automatic mask generator: it segments everything on a grid
+# and cannot be told "this patch of grass". The tap-a-pin design needs a model
+# whose schema accepts point prompts. This checks candidates' published input
+# schemas to find one.
+#
+# Free: reads metadata only, starts no predictions.
+on:
+  workflow_dispatch:
+
+jobs:
+  find:
+    name: Check which models accept point prompts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Search
+        env:
+          REPLICATE_TOKEN: ${{ secrets.REPLICATE_TOKEN }}
+        run: node tools/find-sam-model.js
