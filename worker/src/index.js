@@ -17,7 +17,12 @@
  *   GET  /api/quota?clientId=          -> remaining allowance
  *
  * Secrets (wrangler secret put):
- *   MAPBOX_TOKEN     -- pk.* token, also used server-side for geocoding
+ *   MAPBOX_TOKEN        -- pk.* token handed to the browser. Restrict this one
+ *                          by URL; anyone can read it out of /api/config.
+ *   MAPBOX_SERVER_TOKEN -- optional. Used for the Worker's own calls, which
+ *                          send no Referer and so cannot satisfy a URL
+ *                          restriction. Never sent to the browser. Falls back
+ *                          to MAPBOX_TOKEN when unset.
  *   REPLICATE_TOKEN  -- r8_* token. NEVER exposed to the browser.
  * Bindings:
  *   QUOTA            -- KV namespace for measurement counting
@@ -76,7 +81,7 @@ async function handleGeocode(url, env, origin) {
     'https://api.mapbox.com/search/geocode/v6/forward?' +
     new URLSearchParams({
       q,
-      access_token: env.MAPBOX_TOKEN,
+      access_token: serverToken(env),
       country: 'us',
       types: 'address',
       limit: '5',
@@ -132,6 +137,23 @@ async function handleParcel(url, origin) {
 
 /* ---------------------------------------------------------------- imagery */
 /**
+ * The token for the Worker's own calls to Mapbox.
+ *
+ * A URL restriction is enforced from the Referer header, and a request made
+ * from a Worker has no Referer at all. So the moment MAPBOX_TOKEN is properly
+ * locked to a domain, the geocode and the satellite imagery -- both made from
+ * here, not the browser -- can start failing, while the map itself keeps
+ * drawing perfectly because tile requests DO carry a Referer. That failure
+ * reads as a broken app rather than a token setting, which is what makes it
+ * worth designing out instead of watching for.
+ *
+ * So server-side calls use their own unrestricted token, kept as a Cloudflare
+ * secret and never handed to a browser. It falls back to MAPBOX_TOKEN so that
+ * a deployment without it behaves exactly as before.
+ */
+const serverToken = (env) => env.MAPBOX_SERVER_TOKEN || env.MAPBOX_TOKEN;
+
+/**
  * Mapbox caps the static endpoint at 1280. Clamping is hoisted out of the URL
  * builder so /api/segment can report the size it actually used: the browser
  * converts mask pixels back to lng/lat with these exact numbers, and a frame
@@ -162,7 +184,7 @@ async function handleImagery(url, env, origin) {
     return json({ error: 'lng and lat required' }, 400, origin);
   }
 
-  const res = await fetch(buildImageryUrl(lng, lat, zoom, size, env.MAPBOX_TOKEN));
+  const res = await fetch(buildImageryUrl(lng, lat, zoom, size, serverToken(env)));
   if (!res.ok) return json({ error: 'Imagery unavailable' }, 502, origin);
 
   return new Response(res.body, {
@@ -289,7 +311,7 @@ async function handleSegment(request, env, origin) {
     );
   }
 
-  const imageUrl = buildImageryUrl(lng, lat, zoom, size, env.MAPBOX_TOKEN);
+  const imageUrl = buildImageryUrl(lng, lat, zoom, size, serverToken(env));
 
   // A text prompt finds every patch of grass in the frame at once, including
   // the disconnected ones a person would have to remember to point at. What

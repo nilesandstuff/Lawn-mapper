@@ -33,4 +33,5 @@ jobs:
       - name: Check
         env:
           MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
+          MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN }}
         run: node tools/check-mapbox-restrictions.js "${{ inputs.domain }}" "${{ inputs.site }}"

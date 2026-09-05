@@ -79,10 +79,23 @@ jobs:
       - name: Apply the API keys
         env:
           MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
+          MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN }}
           REPLICATE_TOKEN: ${{ secrets.REPLICATE_TOKEN }}
         run: |
           printf '%s' "$MAPBOX_TOKEN"    | npx wrangler secret put MAPBOX_TOKEN
           printf '%s' "$REPLICATE_TOKEN" | npx wrangler secret put REPLICATE_TOKEN
+
+          # Optional. Without it the Worker uses MAPBOX_TOKEN for its own calls,
+          # which is fine until that token is URL-restricted -- a Worker sends no
+          # Referer, so it cannot satisfy one.
+          if [ -n "$MAPBOX_SERVER_TOKEN" ]; then
+            printf '%s' "$MAPBOX_SERVER_TOKEN" | npx wrangler secret put MAPBOX_SERVER_TOKEN
+            echo "Applied MAPBOX_SERVER_TOKEN for the Worker's own Mapbox calls."
+          else
+            echo "No MAPBOX_SERVER_TOKEN secret; the Worker will use MAPBOX_TOKEN."
+            echo "Do not URL-restrict MAPBOX_TOKEN until you add one, or address"
+            echo "search and detection will fail while the map still draws."
+          fi
 
       - name: Where it went
         run: |

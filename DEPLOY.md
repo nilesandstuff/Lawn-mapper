@@ -172,13 +172,50 @@ a few minutes if the first try warns about security.
 ## Step 7 — Lock down your Mapbox token
 
 Your `pk.` token is visible in the browser. That's normal for Mapbox, but it
-means someone could copy it and burn your quota. Restrict it to your domain:
+means someone could copy it and burn your quota, so it should be restricted to
+your domain.
 
-1. <https://account.mapbox.com/access-tokens/>
-2. Tap your token → **URL restrictions**
-3. Add `https://lawnanswers.online/*`
+**Do this in order.** The app calls Mapbox from two places, and only one of
+them can satisfy a URL restriction:
 
-**Check:** the site still works after a hard refresh.
+- the **browser** fetches map tiles, and sends a `Referer` header
+- the **Worker** fetches address searches and satellite images, and sends no
+  `Referer` at all
+
+Restrict the token they *share* and the map keeps drawing perfectly while
+address search and every detection quietly fail. So give the Worker its own
+token first.
+
+**7a. Make a second token.** At
+<https://account.mapbox.com/access-tokens/> → **Create a token**. Name it
+something like `lawn-mapper server`. Leave its URL restrictions **empty** —
+this one is never sent to a browser, so it does not need any.
+
+**7b. Give it to the deploy.** In your repo: **Settings → Secrets and
+variables → Actions → New repository secret**. Name it exactly:
+
+```
+MAPBOX_SERVER_TOKEN
+```
+
+Paste the new token as the value. Then run **2. Deploy** again.
+
+**7c. Now restrict the browser token.** Back in Mapbox, open the token that is
+in your `MAPBOX_TOKEN` secret — workflow **7. Check the Mapbox token
+restriction** prints its id so you can pick the right row — and under **URL
+restrictions** add the host the site actually runs on, plus the apex if you
+might serve from it later:
+
+```
+lawnmap.lawnanswers.online
+lawnanswers.online
+```
+
+**Check:** run workflow **7. Check the Mapbox token restriction**. It should
+report the Worker's own token working, the browser allowed on your real host,
+and an unrelated origin refused. If it says an unrelated site can use the
+token too, you have restricted a different token than the deployed one — the
+id it prints tells you which row to open.
 
 ---
 

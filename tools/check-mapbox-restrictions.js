@@ -22,6 +22,18 @@
  *   MAPBOX_TOKEN=pk.... node tools/check-mapbox-restrictions.js [domain]
  */
 
+/*
+ * Two tokens do two different jobs, and the right answer for each is the
+ * opposite of the other:
+ *
+ *   MAPBOX_TOKEN         goes to the browser, so it MUST be restricted.
+ *   MAPBOX_SERVER_TOKEN  is used by the Worker, which sends no Referer, so it
+ *                        must NOT be restricted or the Worker cannot use it.
+ *
+ * Checking only the first would pass a setup where the second is restricted
+ * too and every geocode is quietly failing.
+ */
+const serverTokenValue = process.env.MAPBOX_SERVER_TOKEN || null;
 const token = process.env.MAPBOX_TOKEN;
 if (!token) {
   console.error(
@@ -129,17 +141,45 @@ const style = results['style (browser)'];
 
 let problems = 0;
 
-if (geocode[workerKey] === false) {
+/* ---------------------------------------- the token the Worker actually uses */
+/*
+ * Which token the Worker uses decides which one has to survive a refererless
+ * request. Testing the browser token's refererless behaviour is only
+ * meaningful when there is no separate server token to use instead.
+ */
+if (serverTokenValue) {
+  const res = await fetch(
+    'https://api.mapbox.com/search/geocode/v6/forward?' +
+    new URLSearchParams({
+      q: '3300 Van Buren St, Hudsonville, MI',
+      access_token: serverTokenValue,
+      country: 'us',
+      types: 'address',
+      limit: '1',
+    })
+  );
+  if (res.ok) {
+    console.log('OK       The Worker has its own token and it works without a Referer.');
+    console.log('         MAPBOX_TOKEN can now be restricted as tightly as you like.');
+  } else {
+    problems++;
+    console.log(`PROBLEM  MAPBOX_SERVER_TOKEN is rejected (${res.status}).`);
+    console.log('         The Worker cannot geocode or fetch imagery. If you have');
+    console.log('         URL-restricted this one, remove the restriction: it is');
+    console.log('         never sent to a browser, so it does not need one.');
+  }
+} else if (geocode[workerKey] === false) {
   problems++;
   console.log('PROBLEM  The Worker cannot geocode.');
   console.log('         Server-side calls send no Referer, and this restriction');
   console.log('         rejects them. Address search and satellite imagery are');
   console.log('         both broken, even though the map itself still draws.');
-  console.log('         Fix: give the Worker its own unrestricted token, kept as');
-  console.log('         a Cloudflare secret and never sent to the browser, and');
-  console.log('         leave the restricted one for /api/config.');
+  console.log('         Fix: add a MAPBOX_SERVER_TOKEN repository secret holding');
+  console.log('         a second, unrestricted token, and deploy again.');
 } else {
-  console.log('OK       The Worker can still geocode without a Referer.');
+  console.log('OK       The Worker can geocode without a Referer.');
+  console.log('         It is sharing MAPBOX_TOKEN, so do not restrict that token');
+  console.log('         until you add a MAPBOX_SERVER_TOKEN secret.');
 }
 
 if (style[subKey] === false) {
