@@ -16,7 +16,7 @@ import { measure } from './lib/area.js';
 import { maskToPolygons, rasterizePolygon } from './lib/mask.js';
 import {
   offsetEdge, nearestEdge, edgeRun, edgeLength, edgeBearing, openRing,
-  nearestVertex, moveVertex, insertVertex, deleteVertex,
+  nearestVertex, moveVertex, insertVertex, deleteVertex, tidyRing,
   feetToMetres, metresToFeet,
 } from './lib/edges.js';
 import {
@@ -1206,6 +1206,51 @@ function deleteSelectedVertex() {
 }
 
 /**
+ * Drop the corners that carry no shape, across every outline being edited.
+ *
+ * A county boundary is digitised rather than drawn, and comes with runs of
+ * points a few centimetres apart -- 61 vertices on the parcel this was built
+ * against, one pair 10 cm from each other. Deleting them one at a time works
+ * and is tedious, which is the clunkiness this answers.
+ *
+ * It reports what it did, including when it did nothing: a tool that silently
+ * changes a boundary is worse than one that says it found nothing to change.
+ */
+function tidyShapes() {
+  let removed = 0;
+  let before = 0;
+
+  for (const { featureId, ring } of editableRings()) {
+    before += openRing(ring).length;
+    const tidied = tidyRing(ring);
+    if (tidied.removed) {
+      writeRing(featureId, tidied.ring);
+      removed += tidied.removed;
+    }
+  }
+
+  if (!removed) {
+    setStatus('Nothing to tidy — every corner on this boundary is doing something.');
+    return;
+  }
+
+  // The selection indexes into a ring that just changed shape, so it no longer
+  // means what it meant. Drop it rather than let it point at another corner.
+  state.edgeEdit = { featureId: null, edgeIndex: null, vertexIndex: null, baseRing: null };
+  $('#edge-controls').hidden = true;
+  $('#point-controls').hidden = true;
+  $('#edge-info').textContent =
+    `Removed ${removed} redundant corner${removed === 1 ? '' : 's'} of ${before}. ` +
+    'The boundary is unchanged — they were sitting on top of each other.';
+  $('#edge-info').className = 'edge-info';
+
+  clearEdgeHighlight();
+  drawPoints();
+  refreshMeasurement();
+  refreshSurveyed();
+}
+
+/**
  * Draw every corner of every editable outline, with the selected one picked
  * out.
  *
@@ -1518,6 +1563,7 @@ $('#btn-edges').addEventListener('click', () => {
   state.edgeEdit ? exitEdgeMode() : enterEdgeMode();
 });
 $('#btn-edge-done').addEventListener('click', exitEdgeMode);
+$('#btn-tidy').addEventListener('click', tidyShapes);
 $('#btn-point-add').addEventListener('click', addPointOnEdge);
 $('#btn-point-delete').addEventListener('click', deleteSelectedVertex);
 $('#edge-slider').addEventListener('input', (e) => applyEdgeOffset(Number(e.target.value)));

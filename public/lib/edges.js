@@ -317,6 +317,69 @@ export function deleteVertex(ring, index) {
 }
 
 /**
+ * How far a point may sit from the line between its neighbours and still be
+ * considered redundant, in metres.
+ *
+ * A county boundary is digitised, not drawn: the Ottawa parcel this was built
+ * against has 61 vertices, one pair of which sits 10 cm apart. Those points
+ * carry no information -- they are below the accuracy of the survey and far
+ * below the resolution of the photograph -- but they are what makes the
+ * boundary fiddly to grab, and moving one changes the area by nothing.
+ *
+ * A tenth of a metre is well under a hand's width, so nothing a person could
+ * have placed deliberately at this scale is at risk.
+ */
+export const TIDY_TOLERANCE_M = 0.1;
+
+/**
+ * Drop points that lie (almost exactly) on the line between their neighbours.
+ *
+ * Douglas-Peucker would be the reflex, but it is the wrong tool: it is
+ * shape-simplification, and it will happily cut a real corner to meet a
+ * budget. This only ever removes a point whose own deviation is under the
+ * tolerance, so every corner that carries any shape at all survives.
+ *
+ * The area is not preserved exactly. Removing a point that sits `d` from the
+ * chord between its neighbours changes the area by at most d x chord / 2, so
+ * the total is bounded by tolerance x perimeter / 2 -- for a quarter-acre lot
+ * at 0.1 m that is under 8 m^2, or a fraction of a percent, and it is
+ * comfortably inside the accuracy of the survey it came from. Where two points
+ * sit 10 cm apart it is genuinely arbitrary which one survives, and the corner
+ * moves by that 10 cm either way.
+ *
+ * Iterates, because removing one point can leave its neighbour redundant in
+ * turn -- a run of five collinear points needs more than one pass to become
+ * two. Returns { ring, removed }.
+ */
+export function tidyRing(ring, toleranceM = TIDY_TOLERANCE_M) {
+  let verts = openRing(ring);
+  if (verts.length < 4) return { ring: closeRing(verts), removed: 0 };
+
+  const frame = makeFrame(verts[0]);
+  let removed = 0;
+  let changed = true;
+
+  while (changed && verts.length > 3) {
+    changed = false;
+    for (let i = 0; i < verts.length && verts.length > 3; i++) {
+      const n = verts.length;
+      const prev = frame.toXY(verts[(i - 1 + n) % n]);
+      const here = frame.toXY(verts[i]);
+      const next = frame.toXY(verts[(i + 1) % n]);
+
+      if (distanceToSegment(here, prev, next) <= toleranceM) {
+        verts.splice(i, 1);
+        removed++;
+        changed = true;
+        i--; // the next point shifted into this slot; judge it too
+      }
+    }
+  }
+
+  return { ring: closeRing(verts), removed };
+}
+
+/**
  * Which vertex of a ring a point is nearest to.
  * Returns { index, distanceM }.
  */

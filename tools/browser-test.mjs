@@ -295,6 +295,32 @@ if (corner) {
     `${counts} -> ${afterDelete}`);
 }
 
+/* ------------------------------------------------- tidying the boundary */
+/*
+ * The real Ottawa parcel has 61 vertices with a pair 10 cm apart, so this runs
+ * against exactly the mess it exists for rather than a synthetic one.
+ */
+const tidied = await page.evaluate(async () => {
+  const before = window.__lmPoints()[0].count;
+  const area = window.__lmPoints()[0].sqft;
+  document.querySelector('#btn-tidy').click();
+  await new Promise((r) => setTimeout(r, 500));
+  return {
+    before,
+    after: window.__lmPoints()[0].count,
+    area,
+    areaAfter: window.__lmPoints()[0].sqft,
+    said: document.querySelector('#edge-info').textContent,
+  };
+});
+console.log(`      ${tidied.said}`);
+check('tidying drops redundant corners from a real county boundary',
+  tidied.after < tidied.before, `${tidied.before} -> ${tidied.after} corners`);
+check('and leaves the measurement essentially unchanged',
+  Math.abs(tidied.areaAfter - tidied.area) / tidied.area < 0.005,
+  `${tidied.area.toFixed(0)} -> ${tidied.areaAfter.toFixed(0)} sq ft ` +
+  `(${((100 * Math.abs(tidied.areaAfter - tidied.area)) / tidied.area).toFixed(3)}%)`);
+
 await page.click('#btn-edge-done');
 await page.waitForTimeout(300);
 check('edge panel closes', !(await page.locator('#edge-panel').isVisible()));

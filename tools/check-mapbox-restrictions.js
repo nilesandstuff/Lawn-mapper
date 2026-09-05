@@ -39,6 +39,26 @@ if (!token.startsWith('pk.')) {
   console.log('      public tokens, so the results below may not mean what they seem.\n');
 }
 
+/*
+ * Name the token without printing it.
+ *
+ * "The restriction is not in effect" is most often not a broken restriction
+ * but a restriction applied to a DIFFERENT token than the one deployed -- an
+ * account usually has several, and the default public token is easy to
+ * restrict by mistake. A Mapbox token carries its own id in its payload, so
+ * decoding that turns "check your tokens" into "check this row".
+ *
+ * Only the id and username are printed. The token itself never is.
+ */
+try {
+  const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
+  console.log(`This is token id ${claims.a} on account "${claims.u}".`);
+  console.log('Find that id at https://account.mapbox.com/access-tokens/ to see');
+  console.log('which token the results below are actually describing.\n');
+} catch {
+  console.log('NOTE  Could not read the token id out of the token.\n');
+}
+
 /* The two ways this app reaches Mapbox, as close to the real requests as a
  * check can get without spending anything. */
 const CALLS = {
