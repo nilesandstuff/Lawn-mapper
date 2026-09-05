@@ -33,12 +33,33 @@ if (!mapbox || !replicate) {
 const MODEL = process.env.SAM3_MODEL || 'mattsays/sam3-image';
 const auth = { Authorization: `Bearer ${replicate}` };
 
-const PROMPTS = (process.env.PROMPTS || [
-  'grass',
-  'lawn',
-  'grass lawn',
-  'mowed grass',
-].join('|')).split('|').map((p) => p.trim()).filter(Boolean);
+const PROMPTS = (process.env.PROMPTS || 'grass')
+  .split('|').map((p) => p.trim()).filter(Boolean);
+
+/**
+ * Confidence thresholds to try.
+ *
+ * Prompt wording turned out not to be the interesting variable -- "grass",
+ * "lawn" and "grass lawn" agreed to within 0.6% on a green lot. Whole sections
+ * going missing is a different failure, and one that varies between runs of the
+ * SAME prompt, which points at the confidence cut rather than the wording: a
+ * shaded or dormant patch scores lower than a bright green one, and either
+ * lands above the line or does not.
+ *
+ * An empty entry means "send no threshold at all", i.e. whatever the model
+ * defaults to -- the behaviour in production today, and the baseline every
+ * other row has to beat.
+ */
+const THRESHOLDS = (process.env.THRESHOLDS ?? '')
+  .split(',').map((t) => t.trim());
+
+/** Every combination to run, as the table's rows. */
+const RUNS = [];
+for (const prompt of PROMPTS) {
+  for (const t of THRESHOLDS) {
+    RUNS.push({ prompt, threshold: t === '' ? null : Number(t) });
+  }
+}
 
 /* ------------------------------------------- the real parcel, really fetched */
 /*
@@ -61,7 +82,38 @@ const HOUSE_SQFT = [3000, 30000]; // roughly 0.07 to 0.7 acres
 
 let parcel = null;
 let picked = null;
-for (const c of CANDIDATES) {
+
+/*
+ * A specific address beats a candidate list when chasing a reported problem.
+ * "It missed the back lawn at this house" is only reproducible at that house.
+ */
+if (process.env.ADDRESS) {
+  const res = await fetch(
+    'https://api.mapbox.com/search/geocode/v6/forward?' +
+    new URLSearchParams({
+      q: process.env.ADDRESS,
+      access_token: mapbox,
+      country: 'us',
+      types: 'address',
+      limit: '1',
+    })
+  );
+  const feature = (await res.json()).features?.[0];
+  if (!feature) {
+    console.error(`FAIL  Could not geocode "${process.env.ADDRESS}".`);
+    process.exit(1);
+  }
+  const [lng, lat] = feature.geometry.coordinates;
+  picked = { lng, lat, label: feature.properties?.full_address || process.env.ADDRESS };
+  parcel = await lookupParcel(lng, lat);
+  if (!parcel) {
+    console.error(`FAIL  No parcel at ${picked.label}.`);
+    process.exit(1);
+  }
+  console.log(`  ${picked.label}: ${measure(parcel.geometry).squareFeet.toLocaleString()} sq ft <- as asked`);
+}
+
+for (const c of parcel ? [] : CANDIDATES) {
   const p = await lookupParcel(c.lng, c.lat);
   if (!p) { console.log(`  ${c.label}: no parcel`); continue; }
   const a = measure(p.geometry);
@@ -110,19 +162,36 @@ const parcelPx = clipAt(IMG, IMG).reduce((n, v) => n + v, 0);
 console.log(`clip:    ${parcelPx.toLocaleString()} px inside the property line ` +
   `(${((parcelPx / (IMG * IMG)) * 100).toFixed(1)}% of frame)\n`);
 
-const version = (await (await fetch(`https://api.replicate.com/v1/models/${MODEL}`, { headers: auth })).json())
-  .latest_version?.id;
+const model = await (await fetch(`https://api.replicate.com/v1/models/${MODEL}`, { headers: auth })).json();
+const version = model.latest_version?.id;
 if (!version) {
   console.error(`FAIL  ${MODEL} has no runnable version.`);
   process.exit(1);
 }
-console.log(`model:   ${MODEL} @ ${version.slice(0, 12)}…\n`);
+console.log(`model:   ${MODEL} @ ${version.slice(0, 12)}…`);
+
+/*
+ * Say what the threshold field actually is before sweeping it. Its default and
+ * direction are the model's to define, and guessing at either turns a
+ * measurement into a coin toss -- a "lower is more inclusive" assumption is
+ * worth exactly nothing if the model means the opposite.
+ */
+const spec = model.latest_version?.openapi_schema
+  ?.components?.schemas?.Input?.properties?.threshold;
+if (spec) {
+  console.log(`threshold: default ${spec.default ?? '(none)'}` +
+    (spec.minimum !== undefined ? `, range ${spec.minimum}–${spec.maximum}` : '') +
+    (spec.description ? `\n           ${spec.description.slice(0, 120)}` : ''));
+} else {
+  console.log('threshold: this model publishes no such input — sweeping it will do nothing.');
+}
+console.log('');
 
 /* ----------------------------------------------------------------- the runs */
 const results = [];
 let firstPrompt = true;
 
-for (const prompt of PROMPTS) {
+for (const { prompt, threshold } of RUNS) {
   // Replicate throttles low-credit accounts hard; a short gap costs nothing
   // and keeps the comparison from collapsing into a row of 429s.
   // 6 predictions a minute means one per ten seconds; 8 was fractionally too
@@ -130,16 +199,17 @@ for (const prompt of PROMPTS) {
   if (!firstPrompt) await new Promise((r) => setTimeout(r, 12000));
   firstPrompt = false;
 
-  console.log(`--- "${prompt}"`);
+  const label = `"${prompt}"` + (threshold === null ? ' @ default' : ` @ ${threshold}`);
+  console.log(`--- ${label}`);
   const started = Date.now();
+
+  const input = { image: imageUrl, prompt, mask_only: true, save_overlay: false, return_zip: false };
+  if (threshold !== null) input.threshold = threshold;
 
   const res = await fetch('https://api.replicate.com/v1/predictions', {
     method: 'POST',
     headers: { ...auth, 'Content-Type': 'application/json', Prefer: 'wait' },
-    body: JSON.stringify({
-      version,
-      input: { image: imageUrl, prompt, mask_only: true, save_overlay: false, return_zip: false },
-    }),
+    body: JSON.stringify({ version, input }),
   });
 
   let body;
@@ -224,15 +294,15 @@ for (const prompt of PROMPTS) {
     `  = ${pctOfParcel}% of the parcel`);
   console.log(`    outside the property line: ${(looseSqft - clipSqft).toLocaleString()} sq ft\n`);
 
-  results.push({ prompt, looseSqft, clipSqft, pctOfParcel, pieces: clipped.length, secs });
+  results.push({ prompt, threshold, looseSqft, clipSqft, pctOfParcel, pieces: clipped.length, secs });
 }
 
 /* -------------------------------------------------------------- the verdict */
 console.log('='.repeat(72));
-console.log('prompt'.padEnd(34) + 'clipped sq ft'.padStart(14) + '% parcel'.padStart(10) + 'pieces'.padStart(8));
+console.log('run'.padEnd(34) + 'clipped sq ft'.padStart(14) + '% parcel'.padStart(10) + 'pieces'.padStart(8));
 for (const r of results) {
   console.log(
-    `"${r.prompt}"`.padEnd(34) +
+    (`"${r.prompt}"` + (r.threshold === null ? ' @ default' : ` @ ${r.threshold}`)).padEnd(34) +
     r.clipSqft.toLocaleString().padStart(14) +
     `${r.pctOfParcel}%`.padStart(10) +
     String(r.pieces).padStart(8)

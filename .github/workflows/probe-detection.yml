@@ -1,6 +1,6 @@
 name: 5. Test a real detection (COSTS MONEY)
 
-# Runs one real SAM 2 prediction and prints exactly what Replicate returns:
+# Runs one real SAM 3 prediction and prints exactly what Replicate returns:
 # timing, status, and the shape of the output. Everything else in this repo is
 # free to run; this is not -- it is roughly the cost of one "Detect my lawn".
 #
@@ -22,6 +22,14 @@ on:
           - sam2-points
       prompts:
         description: 'Prompts to compare, separated by | (sam3-prompts only)'
+        required: false
+        default: ''
+      thresholds:
+        description: 'Confidence thresholds to compare, comma separated. Blank = model default.'
+        required: false
+        default: ''
+      address:
+        description: 'Address to test. Blank = a known Ottawa County house.'
         required: false
         default: ''
 
@@ -48,12 +56,14 @@ jobs:
         if: inputs.probe == 'sam3-prompts'
         run: npm install pngjs --no-save
 
-      - name: Compare prompt wordings
+      - name: Compare prompts and thresholds
         if: inputs.probe == 'sam3-prompts'
         env:
           MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
           REPLICATE_TOKEN: ${{ secrets.REPLICATE_TOKEN }}
           PROMPTS: ${{ inputs.prompts }}
+          THRESHOLDS: ${{ inputs.thresholds }}
+          ADDRESS: ${{ inputs.address }}
         run: node tools/probe-sam3.js
 
       - name: Run one point-prompted prediction
