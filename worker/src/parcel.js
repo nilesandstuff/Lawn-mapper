@@ -62,11 +62,18 @@ function esriToGeoJSON(esri) {
   return { type: 'MultiPolygon', coordinates: polys };
 }
 
-async function queryCounty(countyKey, lng, lat) {
-  const cfg = COUNTIES[countyKey];
-  if (!cfg || !cfg.service) return null;
-
-  const params = new URLSearchParams({
+/**
+ * Query parameters, most capable first.
+ *
+ * Not every county server accepts the same options, and an unsupported one is
+ * rejected outright rather than ignored: `resultRecordCount` makes Allegan and
+ * Muskegon answer "Pagination is not supported", and some layers reject
+ * `geometryPrecision` with "Invalid or missing input parameters". Both were
+ * silently costing us real parcels. We ask for the good version first and fall
+ * back, rather than sending the lowest common denominator to everyone.
+ */
+function queryVariants(lng, lat) {
+  const base = {
     f: 'json',
     geometry: JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } }),
     geometryType: 'esriGeometryPoint',
@@ -75,54 +82,68 @@ async function queryCounty(countyKey, lng, lat) {
     spatialRel: 'esriSpatialRelIntersects',
     outFields: '*',
     returnGeometry: 'true',
+  };
+  return [
     // Full precision. Esri's default generalization can shave real footage.
-    geometryPrecision: '8',
-    resultRecordCount: '1',
-  });
+    { ...base, geometryPrecision: '8' },
+    base,
+  ];
+}
 
-  const url = `${cfg.service}/${cfg.layer}/query?${params}`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+async function queryCounty(countyKey, lng, lat) {
+  const cfg = COUNTIES[countyKey];
+  if (!cfg || !cfg.service) return null;
 
-  try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: { Accept: 'application/json' },
-    });
-    if (!res.ok) return null;
+  let data = null;
+  for (const params of queryVariants(lng, lat)) {
+    const url = `${cfg.service}/${cfg.layer}/query?${new URLSearchParams(params)}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-    const data = await res.json();
-    // ArcGIS returns HTTP 200 with an { error } body on failure.
-    if (data.error || !data.features || data.features.length === 0) return null;
+    try {
+      const res = await fetch(url, {
+        signal: controller.signal,
+        headers: { Accept: 'application/json' },
+      });
+      if (!res.ok) return null;
 
-    const feature = data.features[0];
-    const geometry = esriToGeoJSON(feature.geometry);
-    if (!geometry) return null;
-
-    const attrs = feature.attributes || {};
-    const f = cfg.fields;
-    const address =
-      attrs[f.address] ||
-      [attrs[f.streetNum], attrs[f.streetName]].filter(Boolean).join(' ') ||
-      null;
-
-    return {
-      type: 'Feature',
-      geometry,
-      properties: {
-        county: cfg.name,
-        countyKey,
-        pin: attrs[f.pin] ?? null,
-        address: address ? String(address).trim() : null,
-        source: 'county-gis',
-      },
-    };
-  } catch {
-    // Timeout, DNS failure, county server down -- all non-fatal.
-    return null;
-  } finally {
-    clearTimeout(timer);
+      const body = await res.json();
+      // ArcGIS returns HTTP 200 with an { error } body on failure.
+      if (body.error) continue; // try the simpler parameter set
+      data = body;
+      break;
+    } catch {
+      // Timeout, DNS failure, county server down -- all non-fatal.
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
   }
+
+  if (!data || !data.features || data.features.length === 0) return null;
+
+  const feature = data.features[0];
+  const geometry = esriToGeoJSON(feature.geometry);
+  if (!geometry) return null;
+
+  const attrs = feature.attributes || {};
+  const f = cfg.fields;
+  const address =
+    attrs[f.address] ||
+    [attrs[f.streetNum], attrs[f.streetName]].filter(Boolean).join(' ') ||
+    null;
+
+  return {
+    type: 'Feature',
+    geometry,
+    properties: {
+      county: cfg.name,
+      countyKey,
+      pin: attrs[f.pin] ?? null,
+      address: address ? String(address).trim() : null,
+      source: 'county-gis',
+    },
+  };
 }
 
 /**

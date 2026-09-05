@@ -29,9 +29,9 @@ jobs:
           echo "::error::Type 'deploy' in the confirmation box to run this workflow."
           exit 1
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: npm

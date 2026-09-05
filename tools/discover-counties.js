@@ -23,14 +23,50 @@ const TIMEOUT_MS = 12000;
 const MAX_SERVICES_PER_ROOT = 8;
 const MAX_LAYERS_PER_SERVICE = 8;
 
-/** A known point inside each county, used to prove a layer really answers. */
+/**
+ * Residential points well inside each county, several per county.
+ *
+ * The previous single point for Ottawa was Holland, which straddles the
+ * Ottawa/Allegan line -- so genuine Ottawa parcel layers correctly returned
+ * nothing and looked broken. Several points also survive the ordinary case of
+ * one landing on a road, a river, or an unplatted lot.
+ */
 const TEST_POINTS = {
-  kent: { lng: -85.6681, lat: 42.9634, label: 'Grand Rapids' },
-  ottawa: { lng: -86.1089, lat: 42.7875, label: 'Holland' },
-  allegan: { lng: -85.8556, lat: 42.5292, label: 'Allegan' },
-  muskegon: { lng: -86.2484, lat: 43.2342, label: 'Muskegon' },
-  newaygo: { lng: -85.8003, lat: 43.4197, label: 'Fremont' },
+  kent: [
+    { lng: -85.5872, lat: 42.9297, label: 'Kentwood' },
+    { lng: -85.6681, lat: 42.9634, label: 'Grand Rapids' },
+    { lng: -85.5406, lat: 43.1197, label: 'Rockford' },
+  ],
+  ottawa: [
+    { lng: -85.8637, lat: 42.8703, label: 'Hudsonville' },
+    { lng: -85.7975, lat: 42.9075, label: 'Jenison' },
+    { lng: -86.2100, lat: 43.0631, label: 'Grand Haven' },
+  ],
+  allegan: [
+    { lng: -85.8556, lat: 42.5292, label: 'Allegan' },
+    { lng: -85.6447, lat: 42.6742, label: 'Wayland' },
+    { lng: -85.6431, lat: 42.4392, label: 'Plainwell area' },
+  ],
+  muskegon: [
+    { lng: -86.2639, lat: 43.1689, label: 'Norton Shores' },
+    { lng: -86.2200, lat: 43.2342, label: 'Muskegon' },
+    { lng: -86.1553, lat: 43.1319, label: 'Fruitport' },
+  ],
+  newaygo: [
+    { lng: -85.9481, lat: 43.4661, label: 'Fremont' },
+    { lng: -85.8003, lat: 43.4197, label: 'Newaygo' },
+    { lng: -85.7723, lat: 43.5503, label: 'White Cloud' },
+  ],
 };
+
+/** Archive and roll layers answer queries but are not the current parcel map. */
+const ARCHIVE_NAME = /historic|archive|assessment roll|\b(19|20)\d{2}\b|previous|old/i;
+
+/**
+ * A residential or small rural parcel. The old bound of 2000 acres let an
+ * 85-acre polygon from a historic layer pass as a match.
+ */
+const PLAUSIBLE_ACRES = { min: 0.01, max: 160 };
 
 /**
  * Where to look. The configured host comes first; the rest are the usual
@@ -152,9 +188,15 @@ async function searchArcGISOnline(countyName) {
     .map((r) => ({ url: r.url.replace(/\/$/, ''), title: r.title, owner: r.owner }));
 }
 
-/** Point-in-polygon query against one layer. */
+/**
+ * Point-in-polygon query, mirroring the fallback in worker/src/parcel.js.
+ *
+ * resultRecordCount is gone entirely: several of these servers answer
+ * "Pagination is not supported" and return nothing at all, which is what made
+ * Allegan's and Muskegon's current parcel layers look dead.
+ */
 async function queryLayer(serviceUrl, layerId, point) {
-  const params = new URLSearchParams({
+  const base = {
     f: 'json',
     geometry: JSON.stringify({ x: point.lng, y: point.lat, spatialReference: { wkid: 4326 } }),
     geometryType: 'esriGeometryPoint',
@@ -163,10 +205,14 @@ async function queryLayer(serviceUrl, layerId, point) {
     spatialRel: 'esriSpatialRelIntersects',
     outFields: '*',
     returnGeometry: 'true',
-    geometryPrecision: '8',
-    resultRecordCount: '1',
-  });
-  return getJson(`${serviceUrl}/${layerId}/query?${params}`);
+  };
+
+  let last = null;
+  for (const params of [{ ...base, geometryPrecision: '8' }, base]) {
+    last = await getJson(`${serviceUrl}/${layerId}/query?${new URLSearchParams(params)}`);
+    if (!last.error) return last;
+  }
+  return last;
 }
 
 function summarise(attrs) {
@@ -179,75 +225,83 @@ function summarise(attrs) {
 }
 
 /** Test every plausible layer of one service. Returns true on a match. */
-async function tryService(key, serviceUrl, label, point) {
+async function tryService(key, serviceUrl, label, points) {
   const meta = await getJson(`${serviceUrl}?f=json`);
   if (meta.error) {
-    console.log(`      ✗ ${label} -- ${describe(meta.error)}`);
+    console.log(`      x ${label} -- ${describe(meta.error)}`);
     return false;
   }
 
   // A FeatureServer with a single layer often omits the list; /0 is the layer.
   const layers = meta.layers || (meta.type === 'Feature Layer' ? [{ id: 0, name: meta.name }] : []);
   if (!layers.length) {
-    console.log(`      ✗ ${label} -- no layers`);
+    console.log(`      x ${label} -- no layers`);
     return false;
   }
 
-  const named = layers.filter((l) => PARCEL_NAME.test(l.name));
-  const tryThese = (named.length ? named : layers).slice(0, MAX_LAYERS_PER_SERVICE);
-  console.log(`      → ${label}: ${layers.length} layers, testing ${tryThese.length}`);
+  const usable = layers.filter((l) => !ARCHIVE_NAME.test(l.name));
+  const named = usable.filter((l) => PARCEL_NAME.test(l.name));
+  const tryThese = (named.length ? named : usable).slice(0, MAX_LAYERS_PER_SERVICE);
+
+  const skipped = layers.length - usable.length;
+  console.log(
+    `      -> ${label}: ${layers.length} layers, testing ${tryThese.length}` +
+    (skipped ? ` (${skipped} archive//historic skipped)` : '')
+  );
 
   for (const layer of tryThese) {
-    const result = await queryLayer(serviceUrl, layer.id, point);
+    // Several points, because one can legitimately land on a road or a river.
+    for (const point of points) {
+      const result = await queryLayer(serviceUrl, layer.id, point);
 
-    // Report why a layer did not answer -- silence here is what made the last
-    // run impossible to act on.
-    if (result.error) {
-      console.log(`         [${layer.id}] ${layer.name}: ${describe(result.error)}`);
-      continue;
-    }
-    if (!result.features?.length) {
-      console.log(`         [${layer.id}] ${layer.name}: 0 features at the test point`);
-      continue;
-    }
+      if (result.error) {
+        console.log(`         [${layer.id}] ${layer.name} @${point.label}: ${describe(result.error)}`);
+        break; // a rejected query will be rejected for every point
+      }
+      if (!result.features?.length) {
+        console.log(`         [${layer.id}] ${layer.name} @${point.label}: 0 features`);
+        continue;
+      }
 
-    const feature = result.features[0];
-    const geometry = esriToGeoJSON(feature.geometry);
-    if (!geometry) {
-      console.log(`         [${layer.id}] ${layer.name}: no usable geometry`);
-      continue;
-    }
+      const feature = result.features[0];
+      const geometry = esriToGeoJSON(feature.geometry);
+      if (!geometry) {
+        console.log(`         [${layer.id}] ${layer.name} @${point.label}: no usable geometry`);
+        continue;
+      }
 
-    const area = measure(geometry);
-    if (area.acres <= 0 || area.acres > 2000) {
-      console.log(`         [${layer.id}] ${layer.name}: implausible area ${area.acres} ac -- skipped`);
-      continue;
-    }
+      const area = measure(geometry);
+      if (area.acres < PLAUSIBLE_ACRES.min || area.acres > PLAUSIBLE_ACRES.max) {
+        console.log(`         [${layer.id}] ${layer.name} @${point.label}: ${area.acres} ac -- not parcel-sized`);
+        continue;
+      }
 
-    const f = summarise(feature.attributes || {});
-    console.log(`\n         *** MATCH ***`);
-    console.log(`         [${layer.id}] ${layer.name}`);
-    console.log(`         area: ${area.acres} ac / ${area.squareFeet.toLocaleString()} sq ft`);
-    console.log(`         pin field:     ${f.pin} = ${feature.attributes[f.pin]}`);
-    console.log(`         address field: ${f.address} = ${feature.attributes[f.address]}`);
-    console.log(`\n         Paste into worker/src/counties.js:`);
-    console.log(`           ${key}: {`);
-    console.log(`             name: '${COUNTIES[key]?.name || key}',`);
-    console.log(`             fips: '${COUNTIES[key]?.fips || ''}',`);
-    console.log(`             service: '${serviceUrl}',`);
-    console.log(`             layer: ${layer.id},`);
-    console.log(`             fields: { pin: '${f.pin}', address: '${f.address}' },`);
-    console.log(`             verified: 'live',`);
-    console.log(`           },`);
-    console.log(`         all fields: ${f.names.slice(0, 30).join(', ')}\n`);
-    return true;
+      const f = summarise(feature.attributes || {});
+      console.log(`\n         *** MATCH ***  (${point.label})`);
+      console.log(`         [${layer.id}] ${layer.name}`);
+      console.log(`         area: ${area.acres} ac / ${area.squareFeet.toLocaleString()} sq ft`);
+      console.log(`         pin field:     ${f.pin} = ${feature.attributes[f.pin]}`);
+      console.log(`         address field: ${f.address} = ${feature.attributes[f.address]}`);
+      console.log(`\n         Paste into worker/src/counties.js:`);
+      console.log(`           ${key}: {`);
+      console.log(`             name: '${COUNTIES[key]?.name || key}',`);
+      console.log(`             fips: '${COUNTIES[key]?.fips || ''}',`);
+      console.log(`             service: '${serviceUrl}',`);
+      console.log(`             layer: ${layer.id},`);
+      console.log(`             fields: { pin: '${f.pin}', address: '${f.address}' },`);
+      console.log(`             verified: 'live',`);
+      console.log(`           },`);
+      console.log(`         all fields: ${f.names.slice(0, 30).join(', ')}\n`);
+      return true;
+    }
   }
   return false;
 }
 
 async function investigate(key) {
-  const point = TEST_POINTS[key];
-  console.log(`\n${'='.repeat(66)}\n${COUNTIES[key]?.name || key}  (test point: ${point.label})\n${'='.repeat(66)}`);
+  const points = TEST_POINTS[key];
+  const labels = points.map((p) => p.label).join(', ');
+  console.log(`\n${'='.repeat(66)}\n${COUNTIES[key]?.name || key}  (test points: ${labels})\n${'='.repeat(66)}`);
 
   for (const root of CANDIDATE_ROOTS[key] || []) {
     const { services, error } = await listServices(root);
@@ -273,7 +327,7 @@ async function investigate(key) {
       // produced a URL missing the folder, which is why every hosted service
       // failed on the previous run.
       const serviceUrl = `${root}/${svc.name}/${svc.type}`;
-      if (await tryService(key, serviceUrl, `${svc.name} (${svc.type})`, point)) return true;
+      if (await tryService(key, serviceUrl, `${svc.name} (${svc.type})`, points)) return true;
     }
   }
 
@@ -283,7 +337,7 @@ async function investigate(key) {
   if (!hosted.length) console.log('      no candidates found');
 
   for (const item of hosted) {
-    if (await tryService(key, item.url, `${item.title} [${item.owner}]`, point)) return true;
+    if (await tryService(key, item.url, `${item.title} [${item.owner}]`, points)) return true;
   }
 
   console.log(`  → nothing worked for ${key}.`);
