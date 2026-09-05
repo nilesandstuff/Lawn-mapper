@@ -127,6 +127,10 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .edge-readout small { color: var(--muted); font-size: 12px; }
 .edgepanel input[type=range] { width: 100%; margin: 4px 0 2px; accent-color: var(--green); }
 .edgepanel .sub { font-size: 12.5px; margin: 6px 0 12px; }
+/* Corner editing sits below the slider: available, but not competing with the
+ * extend control for the eye. Extending is the operation that keeps the
+ * surveyed bearings, so it stays the obvious one. */
+.edge-secondary { width: 100%; margin-bottom: 10px; font-size: 13.5px; }
 
 /* ---------------------------------------------------------- candidates */
 .candidates { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 7px; }

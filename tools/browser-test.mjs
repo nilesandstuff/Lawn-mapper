@@ -209,9 +209,65 @@ if (await page.locator('#edge-controls').isVisible()) {
   console.log('      (no edge selected by that tap — not a failure, geometry dependent)');
 }
 
+/* ------------------------------------------------- moving corners around */
+/*
+ * The corner tools have to be reachable by touch and must not steal taps from
+ * extending, which is the operation that preserves the surveyed bearings.
+ */
+console.log('\n--- corner editing ---');
+
+const corner = await page.evaluate(() => {
+  const src = window.__lmPoints?.();
+  return src && src.length ? src[0] : null;
+});
+check('corner handles are drawn for the shape being edited', corner !== null,
+  corner ? `${corner.count} corners` : 'no points source');
+
+if (corner) {
+  const before = await page.locator('#result-sqft').textContent();
+
+  // Aim at a corner and drag it outward. A touch drag, not a mouse one: this
+  // is the gesture that was dead on a phone.
+  await page.touchscreen.tap(corner.x, corner.y);
+  await page.waitForTimeout(500);
+  check('tapping a corner selects the corner, not the edge',
+    await page.locator('#point-controls').isVisible(),
+    await page.locator('#edge-info').textContent());
+
+  const dragged = await page.evaluate(async ([x, y]) => {
+    // The handlers live on Mapbox's canvas container, and a synthetic event
+    // dispatched on #map would bubble upward, away from it.
+    const el = document.querySelector('.mapboxgl-canvas-container');
+    const touch = (t, cx, cy) => el.dispatchEvent(new TouchEvent(t, {
+      bubbles: true, cancelable: true,
+      touches: t === 'touchend' ? [] : [new Touch({ identifier: 1, target: el, clientX: cx, clientY: cy })],
+      changedTouches: [new Touch({ identifier: 1, target: el, clientX: cx, clientY: cy })],
+    }));
+    touch('touchstart', x, y);
+    for (let i = 1; i <= 6; i++) { touch('touchmove', x + i * 6, y + i * 4); await new Promise((r) => setTimeout(r, 30)); }
+    touch('touchend', x + 36, y + 24);
+    await new Promise((r) => setTimeout(r, 300));
+    return document.querySelector('#result-sqft').textContent;
+  }, [corner.x, corner.y]);
+
+  check('dragging a corner changes the area',
+    dragged.replace(/,/g, '') !== before.replace(/,/g, ''), `${before} -> ${dragged}`);
+
+  const counts = await page.evaluate(() => window.__lmPoints?.()[0]?.count ?? null);
+  const afterDelete = await page.evaluate(async () => {
+    document.querySelector('#btn-point-delete').click();
+    await new Promise((r) => setTimeout(r, 300));
+    return window.__lmPoints?.()[0]?.count ?? null;
+  });
+  check('deleting a corner removes exactly one', afterDelete === counts - 1,
+    `${counts} -> ${afterDelete}`);
+}
+
 await page.click('#btn-edge-done');
 await page.waitForTimeout(300);
 check('edge panel closes', !(await page.locator('#edge-panel').isVisible()));
+check('corner handles go away when the tool closes',
+  await page.evaluate(() => (window.__lmPoints?.() ?? []).every((s) => s.count === 0)));
 
 await page.screenshot({ path: 'browser-test.png', fullPage: false });
 

@@ -95,6 +95,12 @@
                  aria-label="Extend this edge, in feet">
           <p class="sub">The edge stays parallel to the surveyed line — only its
             distance changes, so the direction the county recorded is kept.</p>
+          <button class="ghost edge-secondary" id="btn-point-add">Add a corner here</button>
+        </div>
+        <div class="edge-controls" id="point-controls" hidden>
+          <p class="sub">Drag it to move it. To extend a whole edge instead,
+            tap the line between two corners.</p>
+          <button class="ghost edge-secondary" id="btn-point-delete">Delete this corner</button>
         </div>
         <button class="ghost" id="btn-edge-done">Done adjusting</button>
       </div>
@@ -102,8 +108,10 @@
       <details class="help">
         <summary>How to correct the shape</summary>
         <ul>
-          <li>Tap a shape to select it, then drag any white dot to move that corner.</li>
-          <li>Drag a small dot on an edge to add a new corner.</li>
+          <li>In <b>Extend to road</b>, tap a line to slide that whole edge out,
+            or tap a white corner dot to drag, add or delete that one point.</li>
+          <li>Tapping the line wins over tapping a corner, so extending stays the
+            easy gesture — aim right at a dot when you want the point itself.</li>
           <li><b>Delete selected</b> removes a shape you don't mow.</li>
           <li><b>Draw it myself</b> adds another patch — areas add up.</li>
           <li><b>Extend to road</b> pushes an edge out past the property line

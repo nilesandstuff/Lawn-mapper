@@ -41,9 +41,9 @@ jobs:
         run: |
           echo "Preflight passed."
           echo
-          echo "Check the county step above: ottawa, allegan and muskegon should"
-          echo "each print an acreage. Kent and Newaygo have no public parcel"
-          echo "server and are expected to be absent -- those addresses fall back"
-          echo "to drawing by hand, so you can deploy either way."
+          echo "Check the county step above: kent, ottawa, allegan and muskegon"
+          echo "should each print an acreage. Newaygo has no public parcel server"
+          echo "and is expected to be absent -- those addresses fall back to"
+          echo "drawing by hand, so you can deploy either way."
           echo
           echo "Next: run the '2. Deploy' workflow."

@@ -254,6 +254,87 @@ export function offsetEdge(ring, index, metres) {
   return closeRing(out.map(frame.toLngLat));
 }
 
+/* ------------------------------------------------------- editing vertices */
+/*
+ * Sliding a whole edge keeps the survey's bearings, which is right for a
+ * frontage that runs to the road. It is the wrong tool for a corner the county
+ * digitised badly, or a run of three points a foot apart where one would do.
+ * Those need the vertices themselves, so: move one, add one, remove one.
+ *
+ * All three take and return closed rings, so they compose with offsetEdge and
+ * with everything downstream that expects a ring it can measure.
+ */
+
+/** Move one vertex to a new position. */
+export function moveVertex(ring, index, lngLat) {
+  const verts = openRing(ring);
+  const n = verts.length;
+  if (n < 3) return closeRing(verts);
+  verts[((index % n) + n) % n] = [lngLat[0], lngLat[1]];
+  return closeRing(verts);
+}
+
+/**
+ * Insert a vertex on the edge at `index`.
+ *
+ * `at` is where the user tapped, which is never exactly on the line, so it is
+ * projected onto the segment first. Dropping the point where they touched
+ * instead would put a kink in a boundary they only meant to subdivide.
+ */
+export function insertVertex(ring, index, at) {
+  const verts = openRing(ring);
+  const n = verts.length;
+  if (n < 2) return closeRing(verts);
+
+  const i = ((index % n) + n) % n;
+  const frame = makeFrame(verts[0]);
+  const a = frame.toXY(verts[i]);
+  const b = frame.toXY(verts[(i + 1) % n]);
+  const p = frame.toXY(at);
+
+  const ab = sub(b, a);
+  const len2 = ab[0] ** 2 + ab[1] ** 2;
+  let t = len2 < 1e-12 ? 0 : ((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1]) / len2;
+  t = Math.max(0, Math.min(1, t));
+
+  verts.splice(i + 1, 0, frame.toLngLat(add(a, scale(ab, t))));
+  return closeRing(verts);
+}
+
+/**
+ * Remove one vertex.
+ *
+ * A polygon needs three, so the third-to-last removal is refused: returning
+ * the ring unchanged lets the caller say so rather than producing a degenerate
+ * shape whose area is zero and whose failure appears somewhere else entirely.
+ */
+export function deleteVertex(ring, index) {
+  const verts = openRing(ring);
+  const n = verts.length;
+  if (n <= 3) return null;
+  verts.splice(((index % n) + n) % n, 1);
+  return closeRing(verts);
+}
+
+/**
+ * Which vertex of a ring a point is nearest to.
+ * Returns { index, distanceM }.
+ */
+export function nearestVertex(ring, point) {
+  const verts = openRing(ring);
+  if (!verts.length) return null;
+
+  const frame = makeFrame(verts[0]);
+  const p = frame.toXY(point);
+
+  let best = { index: 0, distanceM: Infinity };
+  for (let i = 0; i < verts.length; i++) {
+    const d = Math.hypot(...sub(frame.toXY(verts[i]), p));
+    if (d < best.distanceM) best = { index: i, distanceM: d };
+  }
+  return best;
+}
+
 /** Compass bearing of an edge, in degrees from north. For display and tests. */
 export function edgeBearing(ring, index) {
   const verts = openRing(ring);

@@ -16,6 +16,7 @@ import { measure } from './lib/area.js';
 import { maskToPolygons, rasterizePolygon } from './lib/mask.js';
 import {
   offsetEdge, nearestEdge, edgeRun, edgeLength, edgeBearing, openRing,
+  nearestVertex, moveVertex, insertVertex, deleteVertex,
   feetToMetres, metresToFeet,
 } from './lib/edges.js';
 import {
@@ -65,6 +66,27 @@ let draw;
 const diag = { clicks: 0, rejected: 0, lastMode: null, armed: false, viaTouch: 0, viaClick: 0 };
 if (typeof window !== 'undefined') {
   window.__lm = diag;
+  /*
+   * Where the corner handles are, in viewport coordinates.
+   *
+   * A browser test cannot aim at a corner it cannot locate, and reading them
+   * off a screenshot would be guesswork. One entry per editable outline, in
+   * the order a tap considers them.
+   */
+  window.__lmPoints = () => {
+    if (!map || !state.edgeEdit) return [];
+    const rect = map.getCanvasContainer().getBoundingClientRect();
+    return editableRings().map(({ featureId, ring }) => {
+      const verts = openRing(ring);
+      const at = map.project(verts[0]);
+      return {
+        featureId,
+        count: verts.length,
+        x: at.x + rect.left,
+        y: at.y + rect.top,
+      };
+    });
+  };
   Object.defineProperty(diag, 'drawMode', {
     get() {
       try {
@@ -230,6 +252,21 @@ async function initMap() {
   map.addLayer({
     id: 'edge-highlight', type: 'line', source: 'edge-highlight',
     paint: { 'line-color': '#ff6f00', 'line-width': 5, 'line-opacity': 0.9 },
+  });
+
+  // Grab handles for every corner, shown only while the adjust tool is open.
+  // Mapbox Draw draws handles for a shape it has selected and never for the
+  // parcel, which is not one of its features -- so without these there is
+  // nothing to aim at on the property line.
+  map.addSource('points', { type: 'geojson', data: empty() });
+  map.addLayer({
+    id: 'points', type: 'circle', source: 'points',
+    paint: {
+      'circle-radius': ['case', ['==', ['get', 'selected'], 1], 8, 5],
+      'circle-color': ['case', ['==', ['get', 'selected'], 1], '#ff6f00', '#ffffff'],
+      'circle-stroke-width': 2,
+      'circle-stroke-color': ['case', ['==', ['get', 'selected'], 1], '#7a3500', '#2f7d32'],
+    },
   });
 
   // Corners still backed by the county record. Drawn above everything so the
@@ -408,7 +445,8 @@ async function confirmLocation() {
 /* --------------------------------------------------------- map interaction */
 
 /**
- * The map is tapped for one thing now: choosing a boundary to extend.
+ * The map is tapped for two things now: choosing a boundary to extend, and
+ * grabbing one of its corners.
  *
  * Detection used to need a pin in every separate patch of lawn, because the
  * model could only segment what it was pointed at. Asking for "grass" finds
@@ -421,16 +459,112 @@ function armLawnPicker() {
   map.on('click', onMapClick);
   const el = map.getCanvasContainer();
   el.addEventListener('touchstart', onTouchStart, { passive: true });
+  // Not passive: dragging a corner has to stop the map panning under it, and
+  // preventDefault is the only way to say so.
+  el.addEventListener('touchmove', onTouchMove, { passive: false });
   el.addEventListener('touchend', onTouchEnd, { passive: true });
+  el.addEventListener('mousedown', onMouseDown);
+  window.addEventListener('mousemove', onMouseMove);
+  window.addEventListener('mouseup', onMouseUp);
 }
 
 function disarmLawnPicker() {
   diag.armed = false;
+  endDrag();
   map.getCanvas().style.cursor = '';
   map.off('click', onMapClick);
   const el = map.getCanvasContainer();
   el.removeEventListener('touchstart', onTouchStart);
+  el.removeEventListener('touchmove', onTouchMove);
   el.removeEventListener('touchend', onTouchEnd);
+  el.removeEventListener('mousedown', onMouseDown);
+  window.removeEventListener('mousemove', onMouseMove);
+  window.removeEventListener('mouseup', onMouseUp);
+}
+
+/* ---------------------------------------------------- dragging a corner */
+/*
+ * Tapping a corner selects it; pressing on one and moving drags it. Both come
+ * through the same press, so the drag only begins once the finger has actually
+ * travelled -- otherwise every tap would register as a zero-length drag and
+ * the distinction between "select this" and "move this" would vanish.
+ *
+ * While a drag is live the map must not pan: on a phone the gesture is
+ * identical, and without this the whole map slides away under the finger.
+ */
+let drag = null;
+const DRAG_START_PX = 4;
+
+/** The corner under a screen position, if a tap there would grab one. */
+function vertexAt(clientX, clientY) {
+  if (!state.edgeEdit) return null;
+  const rect = map.getCanvasContainer().getBoundingClientRect();
+  const at = { x: clientX - rect.left, y: clientY - rect.top };
+
+  let found = null;
+  for (const { featureId, ring } of editableRings()) {
+    openRing(ring).forEach((p, i) => {
+      const px = map.project(p);
+      const d = Math.hypot(px.x - at.x, px.y - at.y);
+      if (d <= VERTEX_GRAB_PX && (!found || d < found.d)) {
+        found = { featureId, ring, index: i, d };
+      }
+    });
+  }
+  return found;
+}
+
+function beginDrag(clientX, clientY) {
+  const hit = vertexAt(clientX, clientY);
+  if (!hit) return false;
+  drag = { ...hit, startX: clientX, startY: clientY, moved: false };
+  return true;
+}
+
+function updateDrag(clientX, clientY) {
+  if (!drag) return false;
+  if (!drag.moved) {
+    if (Math.hypot(clientX - drag.startX, clientY - drag.startY) < DRAG_START_PX) return false;
+    drag.moved = true;
+    // Select it on the first real movement, so the panel shows what is moving.
+    selectVertex({ featureId: drag.featureId, ring: drag.ring, index: drag.index });
+    map.dragPan.disable();
+  }
+
+  const rect = map.getCanvasContainer().getBoundingClientRect();
+  const lngLat = map.unproject([clientX - rect.left, clientY - rect.top]);
+  moveSelectedVertex([lngLat.lng, lngLat.lat]);
+  return true;
+}
+
+/** Finish a drag. Returns true if a corner actually moved. */
+function endDrag() {
+  const moved = Boolean(drag?.moved);
+  if (moved) {
+    map.dragPan.enable();
+    setStatus('Corner moved.');
+  }
+  drag = null;
+  return moved;
+}
+
+function onMouseDown(e) {
+  if (e.button === 0) beginDrag(e.clientX, e.clientY);
+}
+
+function onMouseMove(e) {
+  if (updateDrag(e.clientX, e.clientY)) e.preventDefault();
+}
+
+function onMouseUp() {
+  // A click follows a mouseup. Suppress it after a real drag so releasing the
+  // finger does not immediately re-select whatever is under it.
+  if (endDrag()) handled = { at: Date.now(), x: null, y: null };
+}
+
+function onTouchMove(e) {
+  if (e.touches.length !== 1) return;
+  if (updateDrag(e.touches[0].clientX, e.touches[0].clientY)) e.preventDefault();
 }
 
 /*
@@ -459,11 +593,16 @@ function onTouchStart(e) {
   touchStart = e.touches.length === 1
     ? { x: e.touches[0].clientX, y: e.touches[0].clientY, at: Date.now() }
     : null; // two fingers is a zoom, never a tap
+  if (touchStart) beginDrag(touchStart.x, touchStart.y);
 }
 
 function onTouchEnd(e) {
   const start = touchStart;
   touchStart = null;
+
+  // A finished drag is not also a tap: the corner has already moved, and
+  // re-selecting under the finger would fight the thing the user just did.
+  if (endDrag()) return;
   if (!start) return;
 
   const t = e.changedTouches && e.changedTouches[0];
@@ -514,7 +653,7 @@ function handleMapPoint(lngLat, x = null, y = null) {
     return;
   }
 
-  if (state.edgeEdit) selectEdgeNear([lngLat.lng, lngLat.lat]);
+  if (state.edgeEdit) selectNear([lngLat.lng, lngLat.lat]);
 }
 
 /** Detection needs only a frame; there is nothing for the user to place. */
@@ -790,22 +929,74 @@ function enterEdgeMode() {
     return;
   }
 
-  state.edgeEdit = { featureId: null, edgeIndex: null, baseRing: null };
+  state.edgeEdit = { featureId: null, edgeIndex: null, vertexIndex: null, baseRing: null };
   $('#edge-panel').hidden = false;
   $('#edge-controls').hidden = true;
+  $('#point-controls').hidden = true;
   $('#edge-info').textContent = hasShape
-    ? 'Tap the boundary nearest the road — your lawn outline or the property line.'
+    ? 'Tap a line to extend that edge, or a corner dot to move, add or delete it.'
     : 'Tap the property line nearest the road. Extend it first if your lawn runs past it.';
   $('#edge-info').className = 'edge-info';
-  setHint('Tap a boundary line to select it');
-  armLawnPicker(); // same tap plumbing; handleMapPoint routes to edge select
+  setHint('Tap a line to extend it, or a corner to move it');
+  armLawnPicker(); // same tap plumbing; handleMapPoint routes the tap
+  drawPoints();    // the corners have to be visible to be aimed at
 }
 
 function exitEdgeMode() {
   state.edgeEdit = null;
   $('#edge-panel').hidden = true;
+  $('#point-controls').hidden = true;
   clearEdgeHighlight();
+  clearPoints();
+  disarmLawnPicker();
   updatePromptHint();
+}
+
+/** Every editable outline, in the order a tap should consider them. */
+function editableRings() {
+  const rings = draw.getAll().features
+    .map((f) => ({ featureId: f.id, ring: outerRing(f) }))
+    .filter((r) => r.ring);
+  const parcel = parcelRing();
+  if (parcel) rings.push({ featureId: PARCEL_ID, ring: parcel });
+  return rings;
+}
+
+/**
+ * How near a tap must land on a corner to grab the corner rather than the
+ * edge, in screen pixels.
+ *
+ * Deliberately tighter than a fingertip. Extending an edge is the common
+ * operation and the one that preserves the survey's bearings, so it wins every
+ * ambiguous tap; grabbing a point is something you have to mean. Widening this
+ * would quietly make the careful tool the harder one to reach.
+ */
+const VERTEX_GRAB_PX = 16;
+
+/**
+ * Route a tap to a corner or an edge.
+ *
+ * Distance to an edge goes to zero at its endpoints, so comparing the two in
+ * metres would always favour the edge and never select a point. The decision
+ * is made in screen pixels instead, which is also the space the user is
+ * actually aiming in.
+ */
+function selectNear(lngLat) {
+  const tap = map.project(lngLat);
+  let corner = null;
+
+  for (const { featureId, ring } of editableRings()) {
+    const hit = nearestVertex(ring, lngLat);
+    if (!hit) continue;
+    const at = map.project(openRing(ring)[hit.index]);
+    const px = Math.hypot(at.x - tap.x, at.y - tap.y);
+    if (px <= VERTEX_GRAB_PX && (!corner || px < corner.px)) {
+      corner = { featureId, ring, index: hit.index, px };
+    }
+  }
+
+  if (corner) selectVertex(corner);
+  else selectEdgeNear(lngLat);
 }
 
 /** Find the edge nearest a tap, across every shape, and select it. */
@@ -820,8 +1011,7 @@ function selectEdgeNear(lngLat) {
     }
   };
 
-  for (const f of draw.getAll().features) consider(outerRing(f), f.id);
-  consider(parcelRing(), PARCEL_ID);
+  for (const { featureId, ring } of editableRings()) consider(ring, featureId);
 
   if (!best || best.distanceM > 40) {
     $('#edge-info').textContent = 'No edge near there — tap closer to a boundary line.';
@@ -829,6 +1019,8 @@ function selectEdgeNear(lngLat) {
   }
 
   state.edgeEdit = {
+    // Where the tap landed, so "Add a point" knows where to put one.
+    tapAt: [lngLat[0], lngLat[1]],
     featureId: best.featureId,
     edgeIndex: best.index,
     // The slider is absolute, so every offset is measured from the shape as
@@ -853,8 +1045,153 @@ function selectEdgeNear(lngLat) {
   $('#edge-info').className = 'edge-info active';
   $('#edge-bearing').textContent = `bearing ${Math.round(edgeBearing(best.ring, best.index))}\u00b0 — kept exactly`;
   $('#edge-value').textContent = '0 ft';
-  setHint('Slide to extend, or tap a different edge');
+  $('#point-controls').hidden = true;
+  setHint('Slide to extend, drag a corner to move it, or tap another edge');
   drawEdgeHighlight();
+  drawPoints();
+}
+
+/* ------------------------------------------------------ editing corners */
+/**
+ * Selecting a corner rather than an edge.
+ *
+ * Extending keeps the recorded bearings and is the right tool for a frontage.
+ * It is the wrong one for a corner the county digitised badly, or for the runs
+ * of three points a foot apart that make a boundary fiddly to work with --
+ * hence moving, adding and deleting individual points.
+ */
+function selectVertex({ featureId, ring, index }) {
+  state.edgeEdit = {
+    featureId,
+    vertexIndex: index,
+    edgeIndex: null,
+    baseRing: ring.map((p) => [...p]),
+  };
+
+  $('#edge-controls').hidden = true;
+  $('#point-controls').hidden = false;
+  $('#edge-info').textContent =
+    `Corner ${index + 1} of ${openRing(ring).length} on your ` +
+    (featureId === PARCEL_ID ? 'property line' : 'lawn outline') +
+    ' — drag it to move it.';
+  $('#edge-info').className = 'edge-info active';
+
+  // Three points are a polygon; two are nothing. Say so on the button rather
+  // than letting the press fail.
+  const canDelete = openRing(ring).length > 3;
+  $('#btn-point-delete').disabled = !canDelete;
+
+  setHint('Drag this corner, or delete it');
+  clearEdgeHighlight();
+  drawPoints();
+}
+
+/** The ring of whatever shape is being edited, read fresh. */
+function ringOf(featureId) {
+  if (featureId === PARCEL_ID) return parcelRing();
+  return outerRing(draw.get(featureId));
+}
+
+/** Write a ring back to whichever kind of shape it came from. */
+function writeRing(featureId, ring) {
+  if (featureId === PARCEL_ID) {
+    setParcelRing(ring);
+    return true;
+  }
+  const feature = draw.get(featureId);
+  if (!feature) return false;
+  feature.geometry.coordinates = [ring, ...feature.geometry.coordinates.slice(1)];
+  draw.add(feature); // same id: this updates in place
+  return true;
+}
+
+/** Move the selected corner. Called continuously during a drag. */
+function moveSelectedVertex(lngLat) {
+  const edit = state.edgeEdit;
+  if (!edit || edit.vertexIndex == null) return;
+
+  const ring = ringOf(edit.featureId);
+  if (!ring) return;
+
+  writeRing(edit.featureId, moveVertex(ring, edit.vertexIndex, lngLat));
+  drawPoints();
+  refreshMeasurement();
+  refreshSurveyed();
+}
+
+/** Add a corner where the user tapped on the selected edge. */
+function addPointOnEdge() {
+  const edit = state.edgeEdit;
+  if (!edit || edit.edgeIndex == null || !edit.tapAt) return;
+
+  const ring = ringOf(edit.featureId);
+  if (!ring) return;
+
+  const grown = insertVertex(ring, edit.edgeIndex, edit.tapAt);
+  if (!writeRing(edit.featureId, grown)) return;
+
+  // Select it straight away: adding a point is nearly always the first half of
+  // moving it somewhere.
+  selectVertex({ featureId: edit.featureId, ring: grown, index: edit.edgeIndex + 1 });
+  setStatus('Corner added on the line. Drag it where you want it.');
+  refreshMeasurement();
+  refreshSurveyed();
+}
+
+/** Remove the selected corner. */
+function deleteSelectedVertex() {
+  const edit = state.edgeEdit;
+  if (!edit || edit.vertexIndex == null) return;
+
+  const ring = ringOf(edit.featureId);
+  if (!ring) return;
+
+  const shrunk = deleteVertex(ring, edit.vertexIndex);
+  if (!shrunk) {
+    setStatus('That shape is down to three corners — deleting another would leave no shape at all.', 'warn');
+    return;
+  }
+
+  writeRing(edit.featureId, shrunk);
+  state.edgeEdit = { featureId: null, vertexIndex: null, edgeIndex: null, baseRing: null };
+  $('#point-controls').hidden = true;
+  $('#edge-info').textContent = 'Corner deleted. Tap another corner or edge.';
+  $('#edge-info').className = 'edge-info';
+  drawPoints();
+  refreshMeasurement();
+  refreshSurveyed();
+}
+
+/**
+ * Draw every corner of every editable outline, with the selected one picked
+ * out.
+ *
+ * Mapbox Draw shows handles only for a shape it has selected, and never for
+ * the parcel, which is not one of its features at all. Without these the
+ * corners are invisible and there is nothing to aim at.
+ */
+function drawPoints() {
+  if (!map.getSource('points')) return;
+  const edit = state.edgeEdit;
+  if (!edit) return map.getSource('points').setData(empty());
+
+  const features = [];
+  for (const { featureId, ring } of editableRings()) {
+    openRing(ring).forEach((p, i) => {
+      features.push({
+        type: 'Feature',
+        properties: {
+          selected: featureId === edit.featureId && i === edit.vertexIndex ? 1 : 0,
+        },
+        geometry: { type: 'Point', coordinates: p },
+      });
+    });
+  }
+  map.getSource('points').setData({ type: 'FeatureCollection', features });
+}
+
+function clearPoints() {
+  map.getSource('points')?.setData(empty());
 }
 
 function applyEdgeOffset(feet) {
@@ -1138,6 +1475,8 @@ $('#btn-edges').addEventListener('click', () => {
   state.edgeEdit ? exitEdgeMode() : enterEdgeMode();
 });
 $('#btn-edge-done').addEventListener('click', exitEdgeMode);
+$('#btn-point-add').addEventListener('click', addPointOnEdge);
+$('#btn-point-delete').addEventListener('click', deleteSelectedVertex);
 $('#edge-slider').addEventListener('input', (e) => applyEdgeOffset(Number(e.target.value)));
 
 $('#btn-delete').addEventListener('click', () => {

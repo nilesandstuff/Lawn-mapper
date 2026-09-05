@@ -147,21 +147,23 @@ Verified live, each confirmed by a point query returning a real parcel:
 
 | County | Status |
 |---|---|
+| Kent | working — `gis.kentcountymi.gov`, `agisprod` → `FGDBParcels` layer 0 |
 | Ottawa | working — `gis.miottawa.org`, `AR_ParcelSearch_gdb` layer 6 |
 | Allegan | working — `gis.allegancounty.org`, `Parcel_Drafter_MIL1` layer 0 |
 | Muskegon | working — `maps.muskegoncountygis.com`, `PropertyViewer` layer 23 |
-| **Kent** | **no public endpoint found** |
 | Newaygo | no public endpoint found |
 
 Every endpoint in this project's first version had already gone stale, so
 treat the table as perishable and re-run the discovery workflow when lookups
 start failing.
 
-**Kent is the notable gap** — it covers Grand Rapids. Its old host 404s at
-every known path and it publishes no parcel layer to the public ArcGIS Online
-catalogue, so finding the current one probably means asking Kent County GIS
-directly. Until then those addresses go to manual drawing, which measures just
-as accurately; only the convenience of a pre-drawn property line is lost.
+**Kent — covering Grand Rapids, the largest population here — was written off
+as having no public endpoint, and did have one all along.** Its ArcGIS Server
+runs under the instance name `agisprod` rather than the conventional `arcgis`
+or `server`, so every path the discovery tool could invent returned 404 and
+the county looked dead. Nothing was going to guess that; a person found it by
+opening the services directory in a browser. The lesson is that the candidate
+list in `discover-counties.js` is a shortcut, not a substitute for looking.
 
 ## Known gaps (documented limitations, not bugs)
 

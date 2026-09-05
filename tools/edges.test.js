@@ -13,6 +13,10 @@
 import {
   offsetEdge,
   nearestEdge,
+  nearestVertex,
+  moveVertex,
+  insertVertex,
+  deleteVertex,
   edgeLength,
   edgeBearing,
   edgeMidpoint,
@@ -236,6 +240,57 @@ const LOT = rect(30, 45); // 30 m of frontage, 45 m deep
     JSON.stringify(offsetEdge(LOT, 0, NaN)) === JSON.stringify(LOT));
 
   closeTo(metresToFeet(feetToMetres(37)), 37, 1e-9, 'feet round-trip');
+}
+
+/* --------------------------------------------------- editing vertices */
+{
+  const before = openRing(LOT).length;
+
+  /* --- picking one */
+  const near = nearestVertex(LOT, frame.toLngLat([1, 1]));
+  check('a tap near a corner picks that corner', near.index === 0, `index ${near.index}`);
+  closeTo(near.distanceM, Math.SQRT2, 0.05, 'and reports how far the tap was');
+
+  /* --- moving one */
+  const moved = moveVertex(LOT, 0, frame.toLngLat([-5, -5]));
+  check('moving a vertex keeps the ring closed',
+    moved[0][0] === moved[moved.length - 1][0] && moved[0][1] === moved[moved.length - 1][1]);
+  check('moving a vertex does not change how many there are',
+    openRing(moved).length === before, `${openRing(moved).length}`);
+  check('moving a corner outward enlarges the lot',
+    geometryAreaSqM(poly(moved)) > geometryAreaSqM(poly(LOT)));
+
+  /* --- adding one */
+  /*
+   * The tap is 4 m off the line. The new point belongs ON the line: a person
+   * subdividing an edge wants a point to grab, not a dent in their boundary.
+   */
+  const added = insertVertex(LOT, 0, frame.toLngLat([15, -4]));
+  check('adding a point adds exactly one', openRing(added).length === before + 1,
+    `${before} -> ${openRing(added).length}`);
+  closeTo(geometryAreaSqM(poly(added)), geometryAreaSqM(poly(LOT)), 0.01,
+    'and it lands on the line, so the area is unchanged');
+  closeTo(edgeBearing(added, 0), edgeBearing(LOT, 0), 1e-6,
+    'and the edge it split keeps its bearing');
+
+  const insertedAt = openRing(added)[1];
+  closeTo(frame.toXY(insertedAt)[0], 15, 0.01, 'the new point sits where the tap was, along the line');
+  closeTo(frame.toXY(insertedAt)[1], 0, 0.01, '...and on the line, not at the tap');
+
+  /* --- and taking one away */
+  const removed = deleteVertex(added, 1);
+  check('deleting the added point restores the count', openRing(removed).length === before);
+  closeTo(geometryAreaSqM(poly(removed)), geometryAreaSqM(poly(LOT)), 0.01,
+    'and the lot is back to its original area');
+
+  /*
+   * The guard that matters: three points are a polygon, two are nothing. A
+   * caller that deletes past this would get a zero-area shape whose failure
+   * shows up somewhere far away, so refuse and let it say so.
+   */
+  const tri = [frame.toLngLat([0, 0]), frame.toLngLat([20, 0]), frame.toLngLat([10, 20]), frame.toLngLat([0, 0])];
+  check('deleting below three points is refused', deleteVertex(tri, 0) === null);
+  check('deleting the fourth point of a quad is allowed', deleteVertex(LOT, 0) !== null);
 }
 
 /* ------------------------------------------- what it means in sq ft */
