@@ -96,6 +96,10 @@ async function getJson(url) {
   }
 }
 
+/** ArcGIS reports failures as an object; render it as something readable. */
+const describe = (err) =>
+  typeof err === 'string' ? err : err?.message || JSON.stringify(err).slice(0, 160);
+
 /** Every service under a root, following one level of folders. */
 async function listServices(root) {
   const top = await getJson(`${root}?f=json`);
@@ -106,7 +110,46 @@ async function listServices(root) {
     const sub = await getJson(`${root}/${folder}?f=json`);
     if (!sub.error) services.push(...(sub.services || []));
   }
-  return { services };
+  // Names already carry their folder ("Hosted/Parcels"); de-duplicate, since
+  // a service listed at the root can reappear in its folder listing.
+  const seen = new Set();
+  return {
+    services: services.filter((s) => {
+      const key = `${s.name}/${s.type}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }),
+  };
+}
+
+/**
+ * Ask ArcGIS Online for a county's parcel layer.
+ *
+ * Counties increasingly publish to ArcGIS Online rather than running their own
+ * server, in which case there is no county-hosted directory left to walk --
+ * which is exactly what Kent's 404 looks like. This searches the public
+ * catalogue instead.
+ */
+async function searchArcGISOnline(countyName) {
+  const q = `${countyName} Michigan parcels`;
+  const url =
+    'https://www.arcgis.com/sharing/rest/search?' +
+    new URLSearchParams({
+      q,
+      f: 'json',
+      num: '20',
+      sortField: 'numviews',
+      sortOrder: 'desc',
+    });
+  const data = await getJson(url);
+  if (data.error || !data.results) return [];
+
+  return data.results
+    .filter((r) => /Feature Service|Map Service/i.test(r.type) && r.url)
+    .filter((r) => PARCEL_NAME.test(r.title) || PARCEL_NAME.test(r.snippet || ''))
+    .slice(0, 6)
+    .map((r) => ({ url: r.url.replace(/\/$/, ''), title: r.title, owner: r.owner }));
 }
 
 /** Point-in-polygon query against one layer. */
@@ -135,6 +178,73 @@ function summarise(attrs) {
   };
 }
 
+/** Test every plausible layer of one service. Returns true on a match. */
+async function tryService(key, serviceUrl, label, point) {
+  const meta = await getJson(`${serviceUrl}?f=json`);
+  if (meta.error) {
+    console.log(`      ✗ ${label} -- ${describe(meta.error)}`);
+    return false;
+  }
+
+  // A FeatureServer with a single layer often omits the list; /0 is the layer.
+  const layers = meta.layers || (meta.type === 'Feature Layer' ? [{ id: 0, name: meta.name }] : []);
+  if (!layers.length) {
+    console.log(`      ✗ ${label} -- no layers`);
+    return false;
+  }
+
+  const named = layers.filter((l) => PARCEL_NAME.test(l.name));
+  const tryThese = (named.length ? named : layers).slice(0, MAX_LAYERS_PER_SERVICE);
+  console.log(`      → ${label}: ${layers.length} layers, testing ${tryThese.length}`);
+
+  for (const layer of tryThese) {
+    const result = await queryLayer(serviceUrl, layer.id, point);
+
+    // Report why a layer did not answer -- silence here is what made the last
+    // run impossible to act on.
+    if (result.error) {
+      console.log(`         [${layer.id}] ${layer.name}: ${describe(result.error)}`);
+      continue;
+    }
+    if (!result.features?.length) {
+      console.log(`         [${layer.id}] ${layer.name}: 0 features at the test point`);
+      continue;
+    }
+
+    const feature = result.features[0];
+    const geometry = esriToGeoJSON(feature.geometry);
+    if (!geometry) {
+      console.log(`         [${layer.id}] ${layer.name}: no usable geometry`);
+      continue;
+    }
+
+    const area = measure(geometry);
+    if (area.acres <= 0 || area.acres > 2000) {
+      console.log(`         [${layer.id}] ${layer.name}: implausible area ${area.acres} ac -- skipped`);
+      continue;
+    }
+
+    const f = summarise(feature.attributes || {});
+    console.log(`\n         *** MATCH ***`);
+    console.log(`         [${layer.id}] ${layer.name}`);
+    console.log(`         area: ${area.acres} ac / ${area.squareFeet.toLocaleString()} sq ft`);
+    console.log(`         pin field:     ${f.pin} = ${feature.attributes[f.pin]}`);
+    console.log(`         address field: ${f.address} = ${feature.attributes[f.address]}`);
+    console.log(`\n         Paste into worker/src/counties.js:`);
+    console.log(`           ${key}: {`);
+    console.log(`             name: '${COUNTIES[key]?.name || key}',`);
+    console.log(`             fips: '${COUNTIES[key]?.fips || ''}',`);
+    console.log(`             service: '${serviceUrl}',`);
+    console.log(`             layer: ${layer.id},`);
+    console.log(`             fields: { pin: '${f.pin}', address: '${f.address}' },`);
+    console.log(`             verified: 'live',`);
+    console.log(`           },`);
+    console.log(`         all fields: ${f.names.slice(0, 30).join(', ')}\n`);
+    return true;
+  }
+  return false;
+}
+
 async function investigate(key) {
   const point = TEST_POINTS[key];
   console.log(`\n${'='.repeat(66)}\n${COUNTIES[key]?.name || key}  (test point: ${point.label})\n${'='.repeat(66)}`);
@@ -142,7 +252,7 @@ async function investigate(key) {
   for (const root of CANDIDATE_ROOTS[key] || []) {
     const { services, error } = await listServices(root);
     if (error) {
-      console.log(`  ✗ ${root}\n      ${error}`);
+      console.log(`  ✗ ${root}\n      ${describe(error)}`);
       continue;
     }
 
@@ -153,60 +263,27 @@ async function investigate(key) {
       .slice(0, MAX_SERVICES_PER_ROOT);
 
     if (!candidates.length) {
-      const sample = services.slice(0, 12).map((s) => s.name.split('/').pop()).join(', ');
+      const sample = services.slice(0, 12).map((s) => s.name).join(', ');
       console.log(`      no parcel-ish service names. First few: ${sample}`);
       continue;
     }
 
     for (const svc of candidates) {
-      const serviceUrl = `${root}/${svc.name.split('/').pop()}/${svc.type}`;
-      const meta = await getJson(`${serviceUrl}?f=json`);
-      if (meta.error) {
-        console.log(`      ✗ ${svc.name} (${meta.error})`);
-        continue;
-      }
-
-      // Prefer layers named like parcels; fall back to any polygon layer.
-      const layers = meta.layers || [];
-      const named = layers.filter((l) => PARCEL_NAME.test(l.name));
-      const tryThese = (named.length ? named : layers).slice(0, MAX_LAYERS_PER_SERVICE);
-
-      console.log(`      → ${svc.name} (${svc.type}): ${layers.length} layers, testing ${tryThese.length}`);
-
-      for (const layer of tryThese) {
-        const result = await queryLayer(serviceUrl, layer.id, point);
-        if (result.error) continue;
-        if (!result.features?.length) continue;
-
-        const feature = result.features[0];
-        const geometry = esriToGeoJSON(feature.geometry);
-        if (!geometry) continue;
-
-        const area = measure(geometry);
-        if (area.acres <= 0 || area.acres > 2000) {
-          console.log(`         [${layer.id}] ${layer.name}: implausible area ${area.acres} ac -- skipped`);
-          continue;
-        }
-
-        const f = summarise(feature.attributes || {});
-        console.log(`\n         *** MATCH ***`);
-        console.log(`         [${layer.id}] ${layer.name}`);
-        console.log(`         area: ${area.acres} ac / ${area.squareFeet.toLocaleString()} sq ft`);
-        console.log(`         pin field:     ${f.pin}  = ${feature.attributes[f.pin]}`);
-        console.log(`         address field: ${f.address}  = ${feature.attributes[f.address]}`);
-        console.log(`\n         Paste into worker/src/counties.js:`);
-        console.log(`           ${key}: {`);
-        console.log(`             name: '${COUNTIES[key]?.name || key}',`);
-        console.log(`             fips: '${COUNTIES[key]?.fips || ''}',`);
-        console.log(`             service: '${serviceUrl}',`);
-        console.log(`             layer: ${layer.id},`);
-        console.log(`             fields: { pin: '${f.pin}', address: '${f.address}' },`);
-        console.log(`             verified: 'live',`);
-        console.log(`           },`);
-        console.log(`         all fields: ${f.names.slice(0, 25).join(', ')}\n`);
-        return true;
-      }
+      // svc.name already carries any folder ("Hosted/Parcels"). Stripping it
+      // produced a URL missing the folder, which is why every hosted service
+      // failed on the previous run.
+      const serviceUrl = `${root}/${svc.name}/${svc.type}`;
+      if (await tryService(key, serviceUrl, `${svc.name} (${svc.type})`, point)) return true;
     }
+  }
+
+  // Nothing county-hosted answered; try the public ArcGIS Online catalogue.
+  console.log(`\n  Searching ArcGIS Online for "${COUNTIES[key]?.name || key}"…`);
+  const hosted = await searchArcGISOnline((COUNTIES[key]?.name || key).replace(/ County$/, ''));
+  if (!hosted.length) console.log('      no candidates found');
+
+  for (const item of hosted) {
+    if (await tryService(key, item.url, `${item.title} [${item.owner}]`, point)) return true;
   }
 
   console.log(`  → nothing worked for ${key}.`);
