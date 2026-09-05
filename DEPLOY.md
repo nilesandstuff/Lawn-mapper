@@ -213,9 +213,22 @@ lawnanswers.online
 
 **Check:** run workflow **7. Check the Mapbox token restriction**. It should
 report the Worker's own token working, the browser allowed on your real host,
-and an unrelated origin refused. If it says an unrelated site can use the
-token too, you have restricted a different token than the deployed one — the
-id it prints tells you which row to open.
+and an unrelated origin refused.
+
+**The mistake to expect.** Both tokens start `pk.` and look identical at a
+glance, so it is easy to paste them into the wrong slots. Do that and Mapbox
+answers the Worker with a 403 while the map keeps drawing perfectly — the site
+looks fine and every address search says "Geocoding unavailable". Workflow 7
+prints each secret's token id for exactly this reason; match the ids against
+the list in your Mapbox account rather than trusting how they look:
+
+| Secret | Holds | Restrictions |
+|---|---|---|
+| `MAPBOX_TOKEN` | the token the browser gets | restricted to your domain |
+| `MAPBOX_SERVER_TOKEN` | the token the Worker uses | **none** |
+
+If it reports an unrelated site can use the browser token, you have restricted
+a different token than the deployed one — again, the id says which row to open.
 
 ---
 

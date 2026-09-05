@@ -62,14 +62,22 @@ if (!token.startsWith('pk.')) {
  *
  * Only the id and username are printed. The token itself never is.
  */
-try {
-  const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
-  console.log(`This is token id ${claims.a} on account "${claims.u}".`);
-  console.log('Find that id at https://account.mapbox.com/access-tokens/ to see');
-  console.log('which token the results below are actually describing.\n');
-} catch {
-  console.log('NOTE  Could not read the token id out of the token.\n');
-}
+const tokenId = (t) => {
+  try {
+    return JSON.parse(Buffer.from(t.split('.')[1], 'base64').toString()).a;
+  } catch {
+    return null;
+  }
+};
+
+console.log(`MAPBOX_TOKEN        (browser) is token id ${tokenId(token) ?? '(unreadable)'}`);
+console.log(`MAPBOX_SERVER_TOKEN (Worker)  is token id ` +
+  (serverTokenValue ? tokenId(serverTokenValue) ?? '(unreadable)' : '(not set — the Worker shares the browser one)'));
+console.log('Match those ids at https://account.mapbox.com/access-tokens/. The');
+console.log('browser one is the restricted token; the Worker one has no');
+console.log('restrictions. Two pk. tokens look identical at a glance, and putting');
+console.log('them in the wrong slots breaks address search while the map still');
+console.log('draws -- so the ids, not the appearance, are how to tell them apart.\n');
 
 /* The two ways this app reaches Mapbox, as close to the real requests as a
  * check can get without spending anything. */
@@ -164,9 +172,17 @@ if (serverTokenValue) {
   } else {
     problems++;
     console.log(`PROBLEM  MAPBOX_SERVER_TOKEN is rejected (${res.status}).`);
-    console.log('         The Worker cannot geocode or fetch imagery. If you have');
-    console.log('         URL-restricted this one, remove the restriction: it is');
-    console.log('         never sent to a browser, so it does not need one.');
+    console.log('         The Worker cannot geocode or fetch imagery, so address');
+    console.log('         search fails while the map still draws normally.');
+    if (results['style (browser)'][thiefKey] !== false) {
+      console.log('         The browser token is meanwhile unrestricted, so the two');
+      console.log('         are almost certainly SWAPPED: put the restricted token in');
+      console.log('         MAPBOX_TOKEN and the unrestricted one in');
+      console.log('         MAPBOX_SERVER_TOKEN, then deploy again.');
+    } else {
+      console.log('         Remove the URL restriction from this token: it is never');
+      console.log('         sent to a browser, so it does not need one.');
+    }
   }
 } else if (geocode[workerKey] === false) {
   problems++;
