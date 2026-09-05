@@ -41,6 +41,29 @@ const state = {
 let map;
 let draw;
 
+/**
+ * Support hook, exposed as window.__lm.
+ *
+ * "Tapping the map does nothing" has several possible causes that look
+ * identical from outside: the handler never fires, it fires and bails on a
+ * guard, or the map never armed the picker at all. Recording which one lets a
+ * browser test -- or anyone with a console open -- tell them apart in one go.
+ * Read-only counters; no tokens or personal data.
+ */
+const diag = { clicks: 0, rejected: 0, lastMode: null, armed: false };
+if (typeof window !== 'undefined') {
+  window.__lm = diag;
+  Object.defineProperty(diag, 'drawMode', {
+    get() {
+      try {
+        return draw ? draw.getMode() : 'draw not initialised';
+      } catch (err) {
+        return `ERROR: ${err.message}`;
+      }
+    },
+  });
+}
+
 /** Stable per-browser id for quota bucketing. Not identity, just a bucket. */
 function clientId() {
   const KEY = 'lawn-mapper-client';
@@ -329,19 +352,33 @@ async function confirmLocation() {
  */
 function armLawnPicker() {
   state.detected = false;
+  diag.armed = true;
   setHint('Tap the middle of your lawn');
   map.getCanvas().style.cursor = 'crosshair';
   map.on('click', onLawnClick);
 }
 
 function disarmLawnPicker() {
+  diag.armed = false;
   map.getCanvas().style.cursor = '';
   map.off('click', onLawnClick);
 }
 
 function onLawnClick(e) {
+  diag.clicks++;
+
   // Ignore clicks that land on a shape the user is editing.
-  if (draw.getMode() !== 'simple_select') return;
+  let mode;
+  try {
+    mode = draw.getMode();
+  } catch (err) {
+    mode = `ERROR: ${err.message}`;
+  }
+  diag.lastMode = mode;
+  if (mode !== 'simple_select') {
+    diag.rejected++;
+    return;
+  }
 
   state.promptLngLat = [e.lngLat.lng, e.lngLat.lat];
 
