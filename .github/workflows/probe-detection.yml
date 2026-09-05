@@ -1,0 +1,38 @@
+name: 5. Test a real detection (COSTS MONEY)
+
+# Runs one real SAM 2 prediction and prints exactly what Replicate returns:
+# timing, status, and the shape of the output. Everything else in this repo is
+# free to run; this is not -- it is roughly the cost of one "Detect my lawn".
+#
+# Use it when detection misbehaves in a way the free checks cannot explain.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "spend" to confirm this costs a few cents'
+        required: true
+        default: ''
+
+jobs:
+  probe:
+    name: One real prediction
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the confirmation
+        if: inputs.confirm != 'spend'
+        run: |
+          echo "::error::Type 'spend' to run this — it costs a few cents."
+          exit 1
+
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+
+      - name: Run one prediction
+        env:
+          MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
+          REPLICATE_TOKEN: ${{ secrets.REPLICATE_TOKEN }}
+        run: node tools/probe-replicate.js
