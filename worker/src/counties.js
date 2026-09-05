@@ -8,58 +8,65 @@
  * server-side and we always get back WGS84 lng/lat, which is what area.js
  * requires.
  *
- * VERIFICATION STATUS: service roots below were confirmed to exist and
- * respond publicly. The `layer` index and `fields` for each still need a
- * live probe (see probe-counties.js) -- layer numbering shifts when a county
- * republishes a service, so these are starting values, not gospel.
+ * VERIFICATION STATUS: everything below marked `live` was found by
+ * tools/discover-counties.js and confirmed by an actual point query that
+ * returned a parcel-sized polygon. Re-run the "Find county servers" workflow
+ * if lookups start failing -- counties republish these without notice, and
+ * every endpoint in the first version of this file had already gone stale.
  */
 
 const COUNTIES = {
   kent: {
     name: 'Kent County',
     fips: '26081',
-    service: 'https://gis.kentcountymi.gov/arcgis/rest/services/Public/ParcelsWithCondos/MapServer',
-    layer: 0,
-    fields: { pin: 'PARCELNO', address: 'PROPADDRESS', city: 'PROPCITY' },
-    verified: 'root',
+    // The old gis.kentcountymi.gov service is gone (404 at every known path),
+    // and Kent publishes no parcel layer to the public ArcGIS Online
+    // catalogue. Addresses here fall through to manual drawing until someone
+    // finds the current endpoint -- worth chasing, since this is Grand Rapids.
+    service: null,
+    layer: null,
+    fields: {},
+    verified: 'none',
   },
   ottawa: {
     name: 'Ottawa County',
     fips: '26139',
-    service: 'https://gis.co.ottawa.mi.us/gisweb/rest/services/layers/Parcel/MapServer',
-    layer: 1,
-    // Field names confirmed via the OpenAddresses source definition.
-    fields: {
-      pin: 'PARCELID',
-      streetNum: 'PROPSTREETNUM',
-      streetName: 'PROPSTREETNAME',
-      address: 'ADDRESS',
-      city: 'PROPCITY',
-      zip: 'PROPZIP',
-    },
-    verified: 'fields',
+    service: 'https://gis.miottawa.org/arcgis/rest/services/Hosted/AR_ParcelSearch_gdb/FeatureServer',
+    layer: 6, // Ottawa_County_Parcels
+    // `finalpin` is the parcel identifier; the discovery tool's first guess
+    // was `propertyzip`, which merely happened to sort earlier.
+    fields: { pin: 'finalpin', address: 'propertyaddress' },
+    verified: 'live', // 3.3 ac at 3300 Van Buren St, Hudsonville
   },
   allegan: {
     name: 'Allegan County',
     fips: '26005',
-    service: 'https://gis.allegancounty.org/server/rest/services/Parcel_Viewer_Map_v1_MIL1/MapServer',
-    layer: 0,
-    fields: { pin: 'PARCELID', address: 'SITEADDRESS' },
-    verified: 'root',
+    service: 'https://gis.allegancounty.org/server/rest/services/Parcel_Drafter_MIL1/MapServer',
+    layer: 0, // Parcels
+    // This layer has no single full-address column, so the address is composed
+    // from its parts. MAPPING_ID is the parcel identifier.
+    fields: {
+      pin: 'MAPPING_ID',
+      streetNum: 'propaddrnu',
+      streetName: 'propStreet',
+    },
+    verified: 'live',
   },
   muskegon: {
     name: 'Muskegon County',
     fips: '26121',
     service: 'https://maps.muskegoncountygis.com/arcgis/rest/services/PropertyViewer/MapServer',
-    // "Parcels - LS" appears at index 25 in the published layer list.
-    layer: 25,
-    fields: { pin: 'PARCELID', address: 'SITEADDRESS' },
-    verified: 'root',
+    // Layer 20 ("Parcels") rejects point queries outright; 23 answers them.
+    layer: 23, // Parcels - SS
+    // Property_Address_Combined is the whole address; Property_Address_Num is
+    // just the house number, which is what a naive field match picks first.
+    fields: { pin: 'PIN', address: 'Property_Address_Combined' },
+    verified: 'live', // 0.633 ac, PIN 61-27-118-300-0001-00, Norton Shores
   },
   newaygo: {
     name: 'Newaygo County',
     fips: '26123',
-    service: null, // no confirmed public REST endpoint yet -- needs research
+    service: null, // no public REST endpoint found -- needs a call to their GIS office
     layer: null,
     fields: {},
     verified: 'none',
@@ -74,9 +81,14 @@ const COUNTIES = {
  */
 const COUNTY_BBOX = {
   kent:     [-85.80, 42.76, -85.31, 43.29],
-  ottawa:   [-86.24, 42.76, -85.78, 43.20],
-  allegan:  [-86.22, 42.42, -85.54, 42.78],
-  muskegon: [-86.55, 43.11, -85.77, 43.55],
+  // The Ottawa/Allegan line runs at roughly 42.84, through Holland. The old
+  // values put Ottawa's southern edge below it and Allegan's northern edge
+  // above nothing at all, so Holland addresses were attributed to the wrong
+  // county. They overlap slightly on purpose: a point in the overlap simply
+  // tries both, and the first county to return a parcel wins.
+  ottawa:   [-86.24, 42.83, -85.78, 43.20],
+  allegan:  [-86.22, 42.42, -85.54, 42.85],
+  muskegon: [-86.55, 43.10, -85.77, 43.55],
   newaygo:  [-86.05, 43.29, -85.53, 43.82],
 };
 

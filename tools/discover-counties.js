@@ -80,6 +80,11 @@ const CANDIDATE_ROOTS = {
     'https://maps.kentcountymi.gov/arcgis/rest/services',
     'https://gisapps.kentcountymi.gov/arcgis/rest/services',
     'https://services.kentcountymi.gov/arcgis/rest/services',
+    // Kent runs its public property lookup under accesskent.com, so its GIS
+    // may have moved there along with everything else.
+    'https://gis.accesskent.com/arcgis/rest/services',
+    'https://maps.accesskent.com/arcgis/rest/services',
+    'https://www.accesskent.com/arcgis/rest/services',
   ],
   ottawa: [
     'https://gis.miottawa.org/arcgis/rest/services',
@@ -105,8 +110,28 @@ const CANDIDATE_ROOTS = {
 };
 
 const PARCEL_NAME = /parcel|propert|cadastr|landbase|tax.?map|assessor/i;
-const PIN_FIELD = /^(pin|parcel|pnum|prop|apn|pid)/i;
-const ADDR_FIELD = /(site.?addr|prop.*addr|full.?addr|^address$|addr.*combined|situs)/i;
+
+/*
+ * Field picking, in preference order.
+ *
+ * Loose matching gets this wrong in ways that look right: "propertyzip"
+ * starts with "prop" and was offered as a parcel id, and
+ * "Property_Address_Num" matched an address pattern while holding just the
+ * house number ("787"). Exact names are tried first, then patterns, and a
+ * candidate whose value does not look like the thing is rejected outright.
+ */
+const PIN_EXACT = /^(pin|parcelid|parcel_id|parcelno|parcel_no|parcelnum|parcelnumber|pnum|apn|pid|finalpin|mapping_?id)$/i;
+const PIN_LOOSE = /(parcel.*(id|no|num)|^pin$|packedpin)/i;
+const ADDR_EXACT = /^(propertyaddress|property_address_combined|siteaddress|site_address|fulladdress|full_address|address|situs_address)$/i;
+const ADDR_LOOSE = /(addr.*combined|full.?addr|site.?addr|situs)/i;
+
+/** Reject fields that are clearly a fragment rather than the whole value. */
+const ADDR_FRAGMENT = /(num|number|dir|direction|city|state|zip|country|unit|apt)$/i;
+
+const looksLikePin = (v) =>
+  typeof v === 'string' && v.trim().length >= 6 && /\d/.test(v);
+const looksLikeAddress = (v) =>
+  typeof v === 'string' && v.trim().length >= 5 && /\d/.test(v) && /[a-z]/i.test(v);
 
 async function getJson(url) {
   const controller = new AbortController();
@@ -217,9 +242,26 @@ async function queryLayer(serviceUrl, layerId, point) {
 
 function summarise(attrs) {
   const names = Object.keys(attrs);
+
+  const pick = (tests, valueOk, reject) => {
+    for (const test of tests) {
+      // A field that matches AND holds a sensible value beats one that only
+      // matches by name.
+      const withValue = names.find(
+        (n) => test.test(n) && !(reject && reject.test(n)) && valueOk(attrs[n])
+      );
+      if (withValue) return withValue;
+    }
+    for (const test of tests) {
+      const byName = names.find((n) => test.test(n) && !(reject && reject.test(n)));
+      if (byName) return byName;
+    }
+    return null;
+  };
+
   return {
-    pin: names.find((n) => PIN_FIELD.test(n)) || null,
-    address: names.find((n) => ADDR_FIELD.test(n)) || null,
+    pin: pick([PIN_EXACT, PIN_LOOSE], looksLikePin),
+    address: pick([ADDR_EXACT, ADDR_LOOSE], looksLikeAddress, ADDR_FRAGMENT),
     names,
   };
 }
