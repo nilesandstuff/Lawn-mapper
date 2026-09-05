@@ -18,7 +18,7 @@
 import { PNG } from 'pngjs';
 import { lookupParcel } from '../worker/src/parcel.js';
 import { measure, geometryAreaSqM } from '../public/lib/area.js';
-import { rasterizePolygon, maskToPolygons } from '../public/lib/mask.js';
+import { rasterizePolygon, maskToPolygons, binarize } from '../public/lib/mask.js';
 import {
   zoomToFit, geometryBounds, lngLatToFramePx, framePxToLngLat, metresPerPixel,
 } from '../public/lib/mercator.js';
@@ -41,14 +41,40 @@ const PROMPTS = (process.env.PROMPTS || [
 ].join('|')).split('|').map((p) => p.trim()).filter(Boolean);
 
 /* ------------------------------------------- the real parcel, really fetched */
-const TEST = { lng: -85.8637, lat: 42.8703, label: 'Hudsonville' };
+/*
+ * Pick an ordinary house, not just any parcel.
+ *
+ * The first run used a 3.3-acre lot, which is not what this product is for and
+ * makes the numbers unreadable: a normal lawn is a rounding error on a lot
+ * that size. These are candidate residential points; the first one whose
+ * parcel is house-sized wins.
+ */
+const CANDIDATES = [
+  { lng: -85.8637, lat: 42.8703, label: 'Hudsonville' },
+  { lng: -85.8600, lat: 42.8720, label: 'Hudsonville N' },
+  { lng: -85.7975, lat: 42.9075, label: 'Jenison' },
+  { lng: -85.7940, lat: 42.9050, label: 'Jenison S' },
+  { lng: -86.2100, lat: 43.0631, label: 'Grand Haven' },
+];
 
-console.log(`Looking up the parcel at ${TEST.label}…`);
-const parcel = await lookupParcel(TEST.lng, TEST.lat);
+const HOUSE_SQFT = [3000, 30000]; // roughly 0.07 to 0.7 acres
+
+let parcel = null;
+let picked = null;
+for (const c of CANDIDATES) {
+  const p = await lookupParcel(c.lng, c.lat);
+  if (!p) { console.log(`  ${c.label}: no parcel`); continue; }
+  const a = measure(p.geometry);
+  const ok = a.squareFeet >= HOUSE_SQFT[0] && a.squareFeet <= HOUSE_SQFT[1];
+  console.log(`  ${c.label}: ${a.squareFeet.toLocaleString()} sq ft ${ok ? '<- using this one' : '(not house-sized)'}`);
+  if (ok) { parcel = p; picked = c; break; }
+}
+
 if (!parcel) {
-  console.error('FAIL  No parcel returned; cannot rehearse the real pipeline.');
+  console.error('FAIL  None of the candidate points returned a house-sized parcel.');
   process.exit(1);
 }
+console.log('');
 
 const parcelArea = measure(parcel.geometry);
 const bbox = geometryBounds(parcel);
@@ -61,7 +87,7 @@ const frame = {
 };
 const IMG = SIZE * 2;
 
-console.log(`parcel:  ${parcelArea.squareFeet.toLocaleString()} sq ft (${parcelArea.acres} ac)`);
+console.log(`parcel:  ${parcelArea.squareFeet.toLocaleString()} sq ft (${parcelArea.acres} ac) at ${picked.label}`);
 console.log(`frame:   z${frame.zoom} @ ${IMG}px -> ${(metresPerPixel(frame, IMG) * 100).toFixed(1)} cm/px`);
 
 const imageUrl =
@@ -99,7 +125,9 @@ let firstPrompt = true;
 for (const prompt of PROMPTS) {
   // Replicate throttles low-credit accounts hard; a short gap costs nothing
   // and keeps the comparison from collapsing into a row of 429s.
-  if (!firstPrompt) await new Promise((r) => setTimeout(r, 8000));
+  // 6 predictions a minute means one per ten seconds; 8 was fractionally too
+  // fast and still tripped the limiter.
+  if (!firstPrompt) await new Promise((r) => setTimeout(r, 12000));
   firstPrompt = false;
 
   console.log(`--- "${prompt}"`);
@@ -164,6 +192,23 @@ for (const prompt of PROMPTS) {
   // everything is expressed in its own pixel grid rather than assumed.
   const project = (x, y) => framePxToLngLat(frame, [x, y], png.width, png.height);
   const clipMask = clipAt(png.width, png.height);
+
+  /*
+   * Before tracing anything: does the mask even land on the parcel?
+   *
+   * Comparing raw pixels answers the question the square footage cannot. If
+   * the mask covers a decent share of the frame but almost none of the
+   * parcel, the two are misaligned -- which no amount of prompt tuning fixes.
+   */
+  const bin = binarize(image);
+  let maskPx = 0, clipPx = 0, bothPx = 0;
+  for (let i = 0; i < bin.length; i++) {
+    if (bin[i]) maskPx++;
+    if (clipMask[i]) clipPx++;
+    if (bin[i] && clipMask[i]) bothPx++;
+  }
+  console.log(`    mask covers ${((maskPx / bin.length) * 100).toFixed(1)}% of the frame; ` +
+    `${((bothPx / Math.max(1, clipPx)) * 100).toFixed(1)}% of the parcel is masked`);
 
   const loose = maskToPolygons(image, project, {});
   const clipped = maskToPolygons(image, project, { clipMask });
