@@ -26,6 +26,10 @@ const TEXT_FIELDS = /^(text|prompt|text_prompt|caption)$/i;
 
 /** Models worth checking by name, most promising first. */
 const CANDIDATES = [
+  'meta/sam-3',
+  'meta/sam3',
+  'meta/sam-3-image',
+  'facebook/sam-3',
   'meta/sam-2',
   'meta/sam-2-video',
   'meta/segment-anything-2',
@@ -86,7 +90,11 @@ async function search(term) {
 
 console.log('Searching Replicate for promptable segmentation models…\n');
 
-const found = await search('segment anything point prompt');
+const found = [...new Set([
+  ...await search('segment anything point prompt'),
+  ...await search('sam 3 image segmentation'),
+  ...await search('grass lawn segmentation aerial'),
+])];
 if (found.length) {
   console.log(`search returned ${found.length}: ${found.slice(0, 20).join(', ')}\n`);
 } else {
@@ -95,6 +103,7 @@ if (found.length) {
 
 const slugs = [...new Set([...CANDIDATES, ...found])];
 const promptable = [];
+const textPromptable = [];
 
 for (const slug of slugs) {
   const { model, error } = await getModel(slug);
@@ -119,9 +128,22 @@ for (const slug of slugs) {
   console.log(`      inputs: ${info.fields.join(', ')}`);
 
   if (info.points.length) promptable.push({ slug, ...info });
+  // Text prompting may suit this job better than pins: "grass" segments every
+  // patch at once, including the disconnected ones, with nothing to tap.
+  if (info.text.length && /sam|segment/i.test(slug)) textPromptable.push({ slug, ...info });
 }
 
 console.log('\n' + '='.repeat(70));
+if (textPromptable.length) {
+  console.log(`Text-promptable segmenters (say "grass", get every patch): ${textPromptable.length}`);
+  for (const m of textPromptable) {
+    console.log(`  ${m.slug}  [${m.text.join(', ')}]`);
+    console.log(`    version: ${m.version}`);
+    console.log(`    inputs:  ${m.fields.join(', ')}`);
+  }
+  console.log('');
+}
+
 if (!promptable.length) {
   console.log('No promptable model found among the candidates.');
   console.log('\nFallback that needs no prompting: keep meta/sam-2 in automatic mode,');
