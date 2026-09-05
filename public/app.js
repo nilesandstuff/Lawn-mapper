@@ -63,7 +63,15 @@ let draw;
  * browser test -- or anyone with a console open -- tell them apart in one go.
  * Read-only counters; no tokens or personal data.
  */
-const diag = { clicks: 0, rejected: 0, lastMode: null, armed: false, viaTouch: 0, viaClick: 0 };
+const diag = {
+  clicks: 0, rejected: 0, lastMode: null, armed: false, viaTouch: 0, viaClick: 0,
+  // Dragging a corner has three ways to look identical from outside: the press
+  // never found a corner, it found one but the finger never travelled far
+  // enough to count, or it moved and the shape barely changed because the
+  // neighbouring corners were inches away. Counting them apart is the only way
+  // to tell a broken drag from an undramatic one.
+  dragGrabbed: 0, dragMoved: 0,
+};
 if (typeof window !== 'undefined') {
   window.__lm = diag;
   /*
@@ -84,6 +92,11 @@ if (typeof window !== 'undefined') {
         count: verts.length,
         x: at.x + rect.left,
         y: at.y + rect.top,
+        // The corner's actual position. Asserting on the area instead makes a
+        // weak test: on a 61-vertex parcel the neighbours are a few pixels
+        // away, so sliding one corner sweeps almost nothing and a drag that
+        // worked perfectly looks like a drag that never happened.
+        at: verts[0],
       };
     });
   };
@@ -518,6 +531,7 @@ function beginDrag(clientX, clientY) {
   const hit = vertexAt(clientX, clientY);
   if (!hit) return false;
   drag = { ...hit, startX: clientX, startY: clientY, moved: false };
+  diag.dragGrabbed++;
   return true;
 }
 
@@ -526,6 +540,7 @@ function updateDrag(clientX, clientY) {
   if (!drag.moved) {
     if (Math.hypot(clientX - drag.startX, clientY - drag.startY) < DRAG_START_PX) return false;
     drag.moved = true;
+    diag.dragMoved++;
     // Select it on the first real movement, so the panel shows what is moving.
     selectVertex({ featureId: drag.featureId, ring: drag.ring, index: drag.index });
     map.dragPan.disable();

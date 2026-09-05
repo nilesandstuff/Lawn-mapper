@@ -247,11 +247,26 @@ if (corner) {
     for (let i = 1; i <= 6; i++) { touch('touchmove', x + i * 6, y + i * 4); await new Promise((r) => setTimeout(r, 30)); }
     touch('touchend', x + 36, y + 24);
     await new Promise((r) => setTimeout(r, 300));
-    return document.querySelector('#result-sqft').textContent;
+    return {
+      at: window.__lmPoints()[0].at,
+      sqft: document.querySelector('#result-sqft').textContent,
+      grabbed: window.__lm.dragGrabbed,
+      moved: window.__lm.dragMoved,
+    };
   }, [corner.x, corner.y]);
 
-  check('dragging a corner changes the area',
-    dragged.replace(/,/g, '') !== before.replace(/,/g, ''), `${before} -> ${dragged}`);
+  /*
+   * Assert on the corner, not on the area. A 61-vertex parcel puts each
+   * corner's neighbours a few pixels away, so sliding one sweeps almost no
+   * area -- an area check passes or fails on how finely the county digitised
+   * the boundary, which is not what is being tested.
+   */
+  check('the press grabbed a corner', dragged.grabbed > 0, `dragGrabbed=${dragged.grabbed}`);
+  check('and the drag registered as movement', dragged.moved > 0, `dragMoved=${dragged.moved}`);
+  check('dragging a corner moves it',
+    dragged.at[0] !== corner.at[0] || dragged.at[1] !== corner.at[1],
+    `${corner.at.map((n) => n.toFixed(6))} -> ${dragged.at.map((n) => n.toFixed(6))}`);
+  console.log(`      area ${before} -> ${dragged.sqft} sq ft`);
 
   const counts = await page.evaluate(() => window.__lmPoints?.()[0]?.count ?? null);
   const afterDelete = await page.evaluate(async () => {
