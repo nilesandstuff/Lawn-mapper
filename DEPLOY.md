@@ -1,313 +1,234 @@
-# Deploying to lawnanswers.online
+# Deploying from a phone
 
-Written to be followed top to bottom. Every step has a check — if the check
-doesn't produce what it says, stop there rather than continuing, because each
-step depends on the one before it.
+No computer needed. Everything here happens in a mobile browser, and the parts
+that need a real machine run on GitHub's servers when you press a button.
 
-Everything runs from the repo root. There is one deploy: the API and the
-website ship together as a single Cloudflare Worker.
+**Use a browser (Safari/Chrome) at github.com, not the GitHub mobile app** —
+the app can't run workflows.
 
----
-
-## Before you start
-
-You need four things:
-
-| | What | Where to get it |
-|---|---|---|
-| 1 | **Node.js 20 or newer** | <https://nodejs.org> — the "LTS" download |
-| 2 | **A Cloudflare account** | <https://dash.cloudflare.com/sign-up> (free plan is fine) |
-| 3 | **A Mapbox access token** | You have this. It starts with `pk.` |
-| 4 | **A Replicate API token** | You have this. It starts with `r8_` |
-
-Check Node is installed — this must print a number that starts with 20, 22, or higher:
-
-```bash
-node --version
-```
+You'll do these once, in order. Steps 1–5 get you a working site; step 6 puts
+it on your own domain.
 
 ---
 
-## Step 1 — Get the code and its dependencies
+## What you need
 
-```bash
-git clone https://github.com/nilesandstuff/Lawn-mapper.git
-cd Lawn-mapper
-npm install
-```
-
-**Check:** a `node_modules` folder now exists and the command ended without
-the word `ERR!`.
+- Your **Mapbox token** (starts with `pk.`)
+- Your **Replicate token** (starts with `r8_`)
+- A **Cloudflare account** — free: <https://dash.cloudflare.com/sign-up>
 
 ---
 
-## Step 2 — Run the tests (no accounts or internet needed)
+## Step 1 — Make a Cloudflare API token
 
-```bash
-npm test
-```
+This lets GitHub deploy on your behalf.
 
-**Check:** the last line says `All checks passed.` twice — once for the area
-maths, once for the lawn-tracing maths. If either says `FAILED`, something is
-wrong with the code itself; don't deploy.
+1. Go to <https://dash.cloudflare.com/profile/api-tokens>
+2. **Create Token**
+3. Find **Edit Cloudflare Workers** → **Use template**
+4. Leave the defaults. Scroll down → **Continue to summary** → **Create Token**
+5. **Copy the token now.** Cloudflare shows it exactly once.
 
----
-
-## Step 3 — Connect your Cloudflare account
-
-```bash
-npx wrangler login
-```
-
-A browser window opens; approve the request.
-
-**Check:**
-
-```bash
-npx wrangler whoami
-```
-
-prints your Cloudflare email address.
+> This template includes the two permissions the deploy needs: editing Workers
+> and editing Workers KV storage.
 
 ---
 
-## Step 4 — Create the quota database
+## Step 2 — Put your three keys into GitHub
 
-This is the counter that stops one person (or a bot) from running up your
-Replicate bill.
+Go to:
+<https://github.com/nilesandstuff/Lawn-mapper/settings/secrets/actions>
 
-```bash
-npx wrangler kv namespace create QUOTA
-```
+Tap **New repository secret** and add these three, one at a time. The names
+must match exactly (capitals and underscores included):
 
-It prints something like:
+| Name | Value |
+|---|---|
+| `CLOUDFLARE_API_TOKEN` | the token from step 1 |
+| `MAPBOX_TOKEN` | your `pk.…` token |
+| `REPLICATE_TOKEN` | your `r8_…` token |
 
-```
-[[kv_namespaces]]
-binding = "QUOTA"
-id = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"
-```
+**Check:** the page lists all three names. (Values are hidden forever — that's
+normal. To change one, tap it and enter a new value.)
 
-Open `wrangler.toml` and replace `REPLACE_WITH_KV_NAMESPACE_ID` with the `id`
-value it printed. Keep the quotes.
-
-**Check:** `grep id wrangler.toml` shows a long string of letters and numbers,
-not the word `REPLACE`.
-
----
-
-## Step 5 — Store your two keys
-
-These are stored encrypted on Cloudflare's side. They never enter the repo.
-
-```bash
-npx wrangler secret put MAPBOX_TOKEN
-# paste your pk.... token, press Enter
-
-npx wrangler secret put REPLICATE_TOKEN
-# paste your r8_... token, press Enter
-```
-
-> **Use a fresh Replicate token.** If the one you have has ever been pasted
-> into a chat window, an email, or a commit, treat it as public: revoke it at
-> <https://replicate.com/account/api-tokens> and generate a new one. This token
-> can spend money.
-
-**Check:** `npx wrangler secret list` shows both names (values are never shown).
+> **Use a fresh Replicate token.** If the one you have has ever been in a chat,
+> an email, or a screenshot, treat it as public: delete it at
+> <https://replicate.com/account/api-tokens>, make a new one, and use that.
+> This token can spend money.
 
 ---
 
-## Step 6 — Verify the AI model name
+## Step 3 — Run the preflight checks
 
-The code calls a Replicate model called `meta/sam-2`. Model names on Replicate
-do get renamed, and this one was written without internet access to confirm it.
-**Check it before you deploy**, because a wrong name means lawn detection fails
-for every visitor.
+This is the step that replaces everything I couldn't verify. It runs on
+GitHub's servers, which have the internet access my environment didn't.
 
-```bash
-curl -s -o /dev/null -w "%{http_code}\n" \
-  -H "Authorization: Bearer YOUR_r8_TOKEN_HERE" \
-  https://api.replicate.com/v1/models/meta/sam-2
-```
+1. Go to <https://github.com/nilesandstuff/Lawn-mapper/actions>
+2. Tap **1. Preflight checks** in the left list
+3. Tap **Run workflow** → **Run workflow**
+4. Wait ~1 minute, then tap into the run to read the results
 
-**Check:** it prints `200`.
+It costs nothing and deploys nothing — it only reads.
 
-- `200` — good, nothing to do.
-- `404` — the model has moved. Search for "SAM 2" at
-  <https://replicate.com/explore>, find the current `owner/name`, and change the
-  URL in `worker/src/index.js` (search for `models/meta/sam-2`).
-- `401` — the token is wrong or revoked. Go back to step 5.
+**What you're looking for:**
 
----
-
-## Step 7 — Verify the county property-line servers
-
-Kent, Ottawa, Allegan and Muskegon each run their own map server. The addresses
-of their data layers were written from published documentation, not tested
-live. This script tests them for real:
-
-```bash
-npm run probe:counties
-```
-
-**Check:** section 3 prints an acreage for each county, like
-`kent (Grand Rapids): 0.31 ac / 13,500 sq ft`.
-
-If a county says `NO PARCEL RETURNED` or `WARNING: configured layer ... is not a
-parcel layer`, section 1 of the output lists the layers that county actually
-publishes. Update that county's `layer` number (and any `MISSING` field names
-from section 2) in `worker/src/counties.js`, then run it again.
-
-**This is not a blocker for deploying.** A county that fails just means
-addresses there fall back to "draw it yourself", which works fine. But you'll
-want it fixed, since the property line is most of the value.
-
-> Newaygo County has no known public server at all. Addresses there always fall
-> back to drawing by hand. Closing that gap means phoning their GIS office.
+- **Maths tests** — must be a green tick. If this fails, don't deploy.
+- **Does the AI model still exist?** — must be a green tick. If it's red, open
+  it: the log tells you exactly which model name to look up and which file to
+  change. This is the single most likely thing to be wrong.
+- **County property-line servers** — open this one and read it. Each of kent,
+  ottawa, allegan, muskegon should print an acreage. Any that say
+  `NO PARCEL RETURNED` just means those addresses fall back to "draw it
+  yourself" — annoying, not broken. **This step is allowed to fail; it won't
+  block you.**
 
 ---
 
-## Step 8 — Try it on your own machine first
+## Step 4 — Deploy
 
-```bash
-npm run dev
-```
+1. Same **Actions** page → **2. Deploy**
+2. **Run workflow** → type `deploy` in the confirmation box → **Run workflow**
+3. Wait ~2 minutes
 
-Open <http://localhost:8787> and measure your own address end to end.
+It runs the tests again, creates the quota database automatically, deploys, and
+then applies your two API keys to the Worker.
 
-**Check all of these:**
+**Check:** the run is a green tick, and the **Where it went** step at the bottom
+prints your site's address (something like
+`https://lawn-mapper.<your-subdomain>.workers.dev`).
+
+If it's red, open the failed step — each one says what to fix.
+
+---
+
+## Step 5 — Try it on your phone
+
+Open that workers.dev address and measure your own house.
 
 - [ ] The address box finds your house
 - [ ] The confirm step shows *your* roof
 - [ ] A dashed yellow property line appears (if you're in a covered county)
-- [ ] Tapping your lawn, then "Detect my lawn", outlines actual grass
-- [ ] The square footage looks believable for your lot
+- [ ] Tapping your lawn, then **Detect my lawn**, outlines actual grass
+- [ ] The square footage is believable for your lot
 - [ ] Dragging a white dot changes the number
-- [ ] "Save image" downloads a PNG with the number on it
 
-**Also tick "Show the raw AI mask".** The translucent mask should sit exactly
-on top of the grass it traced. If it's visibly shifted or the wrong size, stop
-and see *Troubleshooting* below — the number will be wrong.
+**Then tick "Show the raw AI mask".** A translucent shape appears over the map.
+It should sit *exactly* on the grass it traced. If it's visibly shifted or
+obviously the wrong size, see *the lawn is in the wrong place* below — the
+number can't be trusted until that's fixed.
 
-Press `Ctrl+C` in the terminal to stop.
-
----
-
-## Step 9 — Deploy
-
-```bash
-npm run deploy
-```
-
-**Check:** it prints a URL ending in `.workers.dev`. Open it. The site should
-work exactly as it did locally.
-
-At this point you are live — just not on your own domain yet.
+Detecting a lawn costs a couple of cents. Everything else is free.
 
 ---
 
-## Step 10 — Point lawnanswers.online at it
+## Step 6 — Put it on lawnanswers.online
 
-**10a. Add the domain to Cloudflare.** In the Cloudflare dashboard: *Add a
-site* → type `lawnanswers.online` → choose the **Free** plan. Cloudflare gives
-you two nameservers.
+Only do this once step 5 works.
 
-**10b. Change the nameservers at your registrar** (wherever you bought the
-domain) to the two Cloudflare gave you. This is the slow part — it usually
-takes under an hour but can take up to 24. Cloudflare emails you when the
-domain becomes *Active*.
+**6a. Add the domain to Cloudflare.** In the Cloudflare dashboard: **Add a
+site** → type `lawnanswers.online` → pick the **Free** plan. Cloudflare shows
+you two nameservers — leave that page open.
 
-**Check:** the domain shows **Active** in the Cloudflare dashboard. Don't
-continue until it does.
+**6b. Point the domain at them.** Log in wherever you bought the domain and
+replace its nameservers with the two Cloudflare gave you. Every registrar words
+this differently ("Nameservers", "DNS settings", "Custom DNS").
 
-**10c. Attach the domain to the Worker.** Open `wrangler.toml`, remove the `#`
-from the last three lines so it reads:
+This is the slow part: usually under an hour, occasionally up to 24. Cloudflare
+emails you when it's done.
 
-```toml
-[[routes]]
-pattern = "lawnanswers.online"
-custom_domain = true
-```
+**Check:** the domain shows **Active** in Cloudflare. Don't continue until it
+does — deploying early just fails.
 
-Then:
+**6c. Tell the deploy to use it.** Go to:
+<https://github.com/nilesandstuff/Lawn-mapper/settings/variables/actions>
 
-```bash
-npm run deploy
-```
+Tap **New repository variable**:
 
-**Check:** <https://lawnanswers.online> loads the site over HTTPS. The
-certificate is issued automatically; give it a couple of minutes if the first
-load warns about security.
+| Name | Value |
+|---|---|
+| `CUSTOM_DOMAIN` | `lawnanswers.online` |
+
+> A *variable*, not a secret — different tab, same page. Variables are for
+> non-secret settings.
+
+**6d.** Run **2. Deploy** again (step 4).
+
+**Check:** <https://lawnanswers.online> loads over HTTPS. Give the certificate
+a few minutes if the first try warns about security.
 
 ---
 
-## Step 11 — Lock down your Mapbox token
+## Step 7 — Lock down your Mapbox token
 
-Your `pk.` token is visible in the browser — that is normal and expected for
-Mapbox, but it means anyone could copy it and spend your quota. Restrict it:
+Your `pk.` token is visible in the browser. That's normal for Mapbox, but it
+means someone could copy it and burn your quota. Restrict it to your domain:
 
-1. Go to <https://account.mapbox.com/access-tokens/>
-2. Click your token → **URL restrictions**
+1. <https://account.mapbox.com/access-tokens/>
+2. Tap your token → **URL restrictions**
 3. Add `https://lawnanswers.online/*`
 
-**Check:** the site still works after a hard refresh (Ctrl+Shift+R).
+**Check:** the site still works after a hard refresh.
 
 ---
 
-## Step 12 — Final check on the real site
+## Making changes later
 
-Measure a property you know the size of. Compare against what the county
-assessor's website says the lot is. They should be in the same ballpark —
-your *lawn* will be smaller than the *lot*, because the lot includes the house
-and driveway.
+You can edit any file from your phone: open it on github.com, tap the pencil
+icon, edit, then **Commit changes**. Then run **2. Deploy** again.
+
+To change the daily limits, edit `worker/src/quota.js` —
+`DAILY_LIMIT_PER_CLIENT` (default 10 per browser) and `DAILY_LIMIT_PER_IP`
+(default 40 per network).
 
 ---
 
 ## What it costs
 
-Three services can charge you. Check each one's current pricing yourself —
-rates change.
+| Service | What triggers cost |
+|---|---|
+| **Replicate** | Each "Detect my lawn" press. The only per-use cost of real size — this is what the daily quota exists to cap. |
+| **Mapbox** | Geocoding, map tiles, satellite images. Generous free tier. |
+| **Cloudflare** | Requests and quota writes. Free plan covers a low-traffic site. |
+| **GitHub Actions** | Free — this repo is public. |
 
-| Service | What triggers cost | Notes |
-|---|---|---|
-| **Replicate** | Every "Detect my lawn" press | The only per-use cost of real size. This is what the daily quota protects. |
-| **Mapbox** | Geocoding, map tiles, satellite images | Generous free tier; a low-traffic site typically stays inside it. |
-| **Cloudflare** | Requests and quota writes | Free plan covers a low-traffic site comfortably. |
-
-The built-in limits are **10 detections per browser per day** and **40 per IP
-address per day**. To change them, edit `DAILY_LIMIT_PER_CLIENT` and
-`DAILY_LIMIT_PER_IP` at the top of `worker/src/quota.js` and redeploy.
-
-Failed detections are refunded automatically, so a broken configuration won't
-silently eat everyone's daily allowance.
+Check current prices on each site; they change. Failed detections are refunded
+automatically, so a misconfiguration won't quietly eat everyone's allowance.
 
 ---
 
 ## Troubleshooting
 
-**"The map didn't load"**
-The Mapbox library couldn't be fetched, or `MAPBOX_TOKEN` isn't set. Re-run
-step 5, then `npm run deploy`.
+Everything below is doable from a phone.
 
-**Everything works but no property line appears**
-Either the address is outside the four covered counties, or that county's
-server config is stale. Run step 7.
+**A workflow is red**
+Tap the run, then the red step. The last lines say what happened. Every check
+in this project is written to say what to do, not just that it failed.
+
+**"The map didn't load" on the site**
+`MAPBOX_TOKEN` didn't get applied. Confirm the secret name is spelled exactly
+right in step 2, then run **2. Deploy** again.
 
 **"Detect my lawn" always fails**
-Almost always the Replicate model name (step 6) or an expired token. To see the
-real error, run `npx wrangler tail` in a terminal and try again on the live
-site — the actual message from Replicate is printed there.
+Almost always the AI model name. Run **1. Preflight checks** — the model step
+names the fix. To see the raw error from Replicate, go to your Worker in the
+Cloudflare dashboard → **Logs** → **Begin log stream**, then try again on the
+site.
 
-**The detected lawn is offset, or the number is ~4x too big or small**
-Open the browser console (F12). If there's a message starting
-`[lawn-mapper] Projection mismatch`, change `TILE_SIZE` in
-`public/lib/mercator.js` (512 ↔ 256), run `npm test`, and redeploy. Hand-drawn
-shapes are unaffected by this, so the tool is still usable meanwhile.
+**No property line appears**
+Either that address is outside the four covered counties, or that county's
+server moved. Run **1. Preflight checks** and read the county step. The site
+still works — you draw the lawn by hand.
+
+**The lawn is in the wrong place, or the number looks ~4x off**
+Open `public/lib/mercator.js` on GitHub, change `TILE_SIZE` from `512` to `256`
+(or back), commit, and redeploy. The app also logs a specific message about
+this in the browser console when it detects the mismatch itself. Hand-drawn
+shapes are never affected, so the site stays usable meanwhile.
 
 **Numbers look wrong but the shape looks right**
-Check you're comparing lawn to lawn. The tool measures grass; the assessor
-measures the whole parcel.
+Check you're comparing like with like. This measures *grass*; your county
+assessor measures the *whole lot*, including the house and driveway.
 
-**Rolling back a bad deploy**
-`npx wrangler deployments list`, then
-`npx wrangler rollback [deployment-id]`.
+**Undo a bad deploy**
+Cloudflare dashboard → **Workers & Pages** → `lawn-mapper` → **Deployments** →
+find the previous one → **Rollback**.

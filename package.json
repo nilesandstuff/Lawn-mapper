@@ -6,10 +6,11 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "test": "node tools/area.test.js && node tools/mask.test.js",
+    "test": "node tools/area.test.js && node tools/mask.test.js && node tools/ci-prepare.test.js",
     "test:area": "node tools/area.test.js",
     "test:mask": "node tools/mask.test.js",
-    "probe:counties": "node tools/probe-counties.js"
+    "probe:counties": "node tools/probe-counties.js",
+    "check:replicate": "node tools/check-replicate.js"
   },
   "devDependencies": {
     "wrangler": "^4.20.0"

@@ -1,0 +1,48 @@
+name: 1. Preflight checks
+
+# Everything that needs a real internet connection to verify, run somewhere
+# that has one. Safe to run as often as you like: it reads, never writes, and
+# never deploys or spends anything.
+on:
+  workflow_dispatch:
+
+jobs:
+  preflight:
+    name: Check before deploying
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Maths tests (area, lawn tracing, CI config)
+        run: npm test
+
+      - name: Does the AI model still exist?
+        env:
+          REPLICATE_TOKEN: ${{ secrets.REPLICATE_TOKEN }}
+        run: node tools/check-replicate.js
+
+      # The county servers are small public assets that go down, move, and get
+      # republished without notice. A failure here is worth knowing about but
+      # is not a reason to stop: those addresses fall back to drawing by hand,
+      # which is why this step does not fail the run.
+      - name: Are the county property-line servers reachable?
+        continue-on-error: true
+        run: npm run probe:counties
+
+      - name: What to do next
+        if: success()
+        run: |
+          echo "Preflight passed."
+          echo
+          echo "Check the county step above: each of kent, ottawa, allegan and"
+          echo "muskegon should print an acreage. Any that say NO PARCEL RETURNED"
+          echo "still work as 'draw it yourself', so you can deploy either way."
+          echo
+          echo "Next: run the '2. Deploy' workflow."

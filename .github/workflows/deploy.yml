@@ -1,0 +1,100 @@
+name: 2. Deploy
+
+# Manual only. Deploying should be something you decide to do, not something
+# that happens because a file changed.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "deploy" to confirm'
+        required: true
+        default: ''
+
+# Two deploys at once would race to write the same Worker.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Cloudflare
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Check the confirmation
+        if: inputs.confirm != 'deploy'
+        run: |
+          echo "::error::Type 'deploy' in the confirmation box to run this workflow."
+          exit 1
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      # A deploy that ships broken maths is worse than no deploy.
+      - name: Tests must pass first
+        run: npm test
+
+      # Read through env, never interpolated into the script: a secret pasted
+      # straight into shell would break on any quote it happens to contain.
+      - name: Check required secrets are present
+        env:
+          CF: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          MB: ${{ secrets.MAPBOX_TOKEN }}
+          RP: ${{ secrets.REPLICATE_TOKEN }}
+        run: |
+          missing=""
+          if [ -z "$CF" ]; then missing="$missing CLOUDFLARE_API_TOKEN"; fi
+          if [ -z "$MB" ]; then missing="$missing MAPBOX_TOKEN"; fi
+          if [ -z "$RP" ]; then missing="$missing REPLICATE_TOKEN"; fi
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing"
+            echo "Add them under Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+          echo "All three secrets are set."
+
+      # Fills in the KV namespace id, and the custom domain if CUSTOM_DOMAIN is
+      # set. Only touches the runner's copy of wrangler.toml, never git.
+      - name: Prepare wrangler.toml
+        env:
+          KV_NAMESPACE_ID: ${{ vars.KV_NAMESPACE_ID }}
+          CUSTOM_DOMAIN: ${{ vars.CUSTOM_DOMAIN }}
+        run: node tools/ci-prepare.js
+
+      - name: Deploy the Worker and the site
+        run: npx wrangler deploy
+
+      # After the deploy, so the Worker exists to attach them to. Secrets
+      # persist across deploys, so this is only load-bearing the first time --
+      # but re-applying them makes rotating a key a matter of editing the
+      # repository secret and pressing this button again.
+      - name: Apply the API keys
+        env:
+          MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
+          REPLICATE_TOKEN: ${{ secrets.REPLICATE_TOKEN }}
+        run: |
+          printf '%s' "$MAPBOX_TOKEN"    | npx wrangler secret put MAPBOX_TOKEN
+          printf '%s' "$REPLICATE_TOKEN" | npx wrangler secret put REPLICATE_TOKEN
+
+      - name: Where it went
+        run: |
+          echo "Deployed."
+          echo
+          if [ -n "${{ vars.CUSTOM_DOMAIN }}" ]; then
+            echo "Your site: https://${{ vars.CUSTOM_DOMAIN }}"
+            echo "(If it does not load yet, the domain may still be activating"
+            echo " in Cloudflare, or the certificate may need a few minutes.)"
+          else
+            echo "Your site is on the workers.dev URL printed in the deploy step above."
+            echo "To use your own domain, see DEPLOY.md step 6."
+          fi
+          echo
+          echo "Open it on your phone and measure your own address."

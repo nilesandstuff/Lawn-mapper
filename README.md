@@ -6,8 +6,9 @@ proposes the lawn shape inside that boundary → user corrects it → export.
 
 Standalone project for now; intended to fold into lawn-answers.com later.
 
-**Deploying it? Follow [DEPLOY.md](DEPLOY.md).** It is written step by step and
-assumes no prior Cloudflare experience.
+**Deploying it? Follow [DEPLOY.md](DEPLOY.md).** It needs only a phone browser:
+the build, the pre-deploy checks and the deploy all run as GitHub Actions you
+trigger from the repo's Actions tab.
 
 ## Repo layout
 
@@ -15,21 +16,43 @@ assumes no prior Cloudflare experience.
 worker/src/   Cloudflare Worker -- the API
 public/       The website, served by that same Worker as static assets
 public/lib/   Maths shared by both sides (area, projection, mask tracing)
-tools/        Node scripts: tests and a live probe of the county servers
-wrangler.toml One config; one `npm run deploy` ships everything
+tools/        Tests, the county-server probe, and the CI helpers
+.github/      The two workflows that check and deploy the project
+wrangler.toml One config; one deploy ships the API and the site together
 ```
 
 The site and the API are one Worker on one origin. That means no CORS to
 configure, no second deploy target that can drift out of sync, and the browser
 can read the AI mask off a `<canvas>` without it being tainted cross-origin.
 
-## Status: complete and deployable, pending three live checks
+## Status: complete and deployable, pending live checks
 
 The whole path works — address in, corrected lawn polygon and square footage
 out, exportable as PNG or PDF. What has *not* been verified is anything
 requiring a network call, because neither environment that wrote this code had
-outbound access. **DEPLOY.md steps 6, 7 and 8 are those checks.** They take a
-few minutes and are the difference between "should work" and "does work".
+outbound access.
+
+Those checks live in **`.github/workflows/preflight.yml`**, which runs on a
+GitHub runner that does have access: it re-runs the offline tests, confirms the
+Replicate model still exists (reading the slug out of `worker/src/index.js`, so
+it checks what the code actually calls), and probes the four county GIS
+servers. Run it before the first deploy and whenever lookups start failing.
+
+## Deploying
+
+Two manual workflows, both triggered from the Actions tab:
+
+| Workflow | Does |
+|---|---|
+| **1. Preflight checks** | Tests, Replicate model check, county GIS probe. Read-only. |
+| **2. Deploy** | Tests, resolves the KV namespace, deploys, applies the API keys. |
+
+`tools/ci-prepare.js` fills in the two values that would otherwise need a
+terminal — the KV namespace id (found or created via the deploy token) and the
+custom-domain route (from a `CUSTOM_DOMAIN` repository variable). It only
+rewrites the runner's checkout; the committed `wrangler.toml` keeps its
+placeholder. Its parsing and rewriting are unit-tested, because a failure there
+surfaces as a confusing red workflow for someone with no way to debug it.
 
 ### The API (`worker/src/`)
 
@@ -72,7 +95,8 @@ synthetic case against the frame's known ground resolution.
   values from published service metadata, not live-verified. Run
   `npm run probe:counties` before trusting them.
 - **The Replicate model slug** (`meta/sam-2`) needs a live check against
-  Replicate's catalogue — model identifiers do get renamed. DEPLOY.md step 6.
+  Replicate's catalogue — model identifiers do get renamed. The preflight
+  workflow checks this; it is the single most likely thing to be stale.
 - **`TILE_SIZE` in `public/lib/mercator.js`** encodes how wide Mapbox considers
   the world at a given zoom. Getting it wrong scales every AI-detected area by
   4x. The app cross-checks it against Mapbox GL's own projection at runtime and
@@ -88,14 +112,15 @@ synthetic case against the frame's known ground resolution.
 
 ```bash
 npm install
-npm test               # area maths + mask tracing, fully offline
+npm test               # area maths, mask tracing, CI config -- fully offline
 npm run dev            # http://localhost:8787, site and API together
 npm run probe:counties # live check of the county GIS servers
 npm run deploy
 ```
 
-`npm run dev` needs the two secrets. For local runs put them in a `.dev.vars`
-file at the repo root (already gitignored):
+None of this is required to deploy — see DEPLOY.md. If you do have a terminal,
+`npm run dev` needs the two secrets in a `.dev.vars` file at the repo root
+(already gitignored):
 
 ```
 MAPBOX_TOKEN=pk....
