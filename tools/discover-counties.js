@@ -40,6 +40,13 @@ const PLAUSIBLE_ACRES = { min: 0.01, max: 160 };
  */
 const CANDIDATE_ROOTS = {
   kent: [
+    // Kent runs its ArcGIS Server under a non-standard instance name. No
+    // amount of guessing finds "agisprod" -- the convention is "arcgis" or
+    // "server" -- which is why every earlier search reported Kent dead. A
+    // person spotted it in a browser; the lesson is that this list is a
+    // shortcut, not a substitute for looking.
+    'https://gis.kentcountymi.gov/agisprod/rest/services',
+    'https://gis.kentcountymi.gov/agistest/rest/services',
     'https://gis.kentcountymi.gov/arcgis/rest/services',
     'https://gis.kentcountymi.gov/server/rest/services',
     'https://maps.kentcountymi.gov/arcgis/rest/services',
