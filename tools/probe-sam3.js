@@ -285,14 +285,43 @@ for (const { prompt, threshold } of RUNS) {
 
   const sqftOf = (ps) => Math.round(ps.reduce((s, p) => s + geometryAreaSqM(p), 0) / 0.09290304);
   const looseSqft = sqftOf(loose);
+  const clippedVerts = clipped.reduce((n, p) => n + p.coordinates[0].length, 0);
   const clipSqft = sqftOf(clipped);
   const pctOfParcel = Math.round((clipSqft / parcelArea.squareFeet) * 100);
 
   console.log(`    ${secs}s   mask ${png.width}x${png.height}`);
   console.log(`    unclipped: ${looseSqft.toLocaleString()} sq ft in ${loose.length} piece(s)`);
   console.log(`    clipped:   ${clipSqft.toLocaleString()} sq ft in ${clipped.length} piece(s)` +
-    `  = ${pctOfParcel}% of the parcel`);
-  console.log(`    outside the property line: ${(looseSqft - clipSqft).toLocaleString()} sq ft\n`);
+    `  = ${pctOfParcel}% of the parcel, ${clippedVerts} vertices`);
+  console.log(`    outside the property line: ${(looseSqft - clipSqft).toLocaleString()} sq ft`);
+
+  /*
+   * How coarse can the outline be before the number moves?
+   *
+   * A traced 1280px mask is pixel staircase, and the default tolerance of 1.5
+   * px is about 5 cm on the ground -- far finer than a lawn edge is knowable,
+   * and it produces an outline of hundreds of vertices that no one can edit on
+   * a phone. The question is what that detail is worth, and it is answerable
+   * for free: the prediction is already paid for, so re-simplifying the same
+   * mask costs nothing but a little arithmetic.
+   */
+  const mPerPx = metresPerPixel(frame, png.width);
+  console.log(`    simplification (1 px = ${(mPerPx * 100).toFixed(1)} cm on the ground):`);
+  for (const metres of [0.05, 0.15, 0.3, 0.5, 0.8, 1.2]) {
+    const tol = metres / mPerPx;
+    for (const cap of [240, 40]) {
+      const ps = maskToPolygons(image, project, { clipMask, tolerance: tol, maxVertices: cap });
+      const verts = ps.reduce((n, p) => n + p.coordinates[0].length, 0);
+      const sqft = sqftOf(ps);
+      const drift = clipSqft ? (100 * (sqft - clipSqft)) / clipSqft : 0;
+      console.log(
+        `      ${String(metres).padStart(4)} m  cap ${String(cap).padStart(3)}  ` +
+        `${String(verts).padStart(4)} vertices  ${sqft.toLocaleString().padStart(7)} sq ft  ` +
+        `${drift >= 0 ? '+' : ''}${drift.toFixed(2)}%`
+      );
+    }
+  }
+  console.log('');
 
   results.push({ prompt, threshold, looseSqft, clipSqft, pctOfParcel, pieces: clipped.length, secs });
 }
