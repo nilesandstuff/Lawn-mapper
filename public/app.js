@@ -51,6 +51,20 @@ const state = {
  */
 const TREE_GAP_SQFT = 900;
 
+/**
+ * How closely the traced outline follows the mask, in metres on the ground.
+ * See the note at the call site for the measurements behind 0.3.
+ */
+const TRACE_TOLERANCE_M = 0.3;
+
+/**
+ * A ceiling on handles per shape, for the pathological outline that stays
+ * complicated even at 0.3 m. It is not the usual limiter -- a real lawn comes
+ * out around twenty a piece -- it is there so no single shape can ever go back
+ * to being a wall of dots.
+ */
+const MAX_TRACE_VERTICES = 60;
+
 let map;
 let draw;
 
@@ -767,10 +781,34 @@ async function detect() {
       ? Math.round(TREE_GAP_SQFT / sqFtPerPx)
       : 0;
 
+    /*
+     * How finely to trace the outline, in metres on the ground rather than in
+     * pixels.
+     *
+     * The default was 1.5 px, which sounds conservative and is not: at this
+     * frame's resolution it is about 5 cm, finer than a lawn edge is knowable
+     * and far finer than anyone can aim at. It produced 308 handles on a real
+     * lot -- a necklace of dots with the boundary somewhere underneath, which
+     * is not an editing surface. Expressing it in metres also makes it mean
+     * the same thing at every zoom, which a pixel count does not.
+     *
+     * Measured on that lot, against the 3,636 sq ft the fine trace gave:
+     *
+     *   0.15 m   140 vertices   +0.03%
+     *   0.3 m     78 vertices   -0.77%
+     *   0.5 m     55 vertices   -1.54%
+     *
+     * 0.3 m is where the curve turns: a quarter of the handles for under one
+     * percent, on a figure the app already labels an estimate rather than a
+     * survey. Below that, precision nobody can use costs handles everybody
+     * has to look at.
+     */
+    const tolerance = TRACE_TOLERANCE_M / metresPerPixel(rendered, w);
+
     const polygons = maskToPolygons(
       image,
       (x, y) => framePxToLngLat(rendered, [x, y], w, h),
-      { clipMask, fillGapsUnderPx }
+      { clipMask, fillGapsUnderPx, tolerance, maxVertices: MAX_TRACE_VERTICES }
     );
 
     if (!polygons.length) {

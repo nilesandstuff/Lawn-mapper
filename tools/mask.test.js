@@ -272,5 +272,61 @@ console.log(`\nframe: zoom ${FRAME.zoom} @ ${IMG}px  ->  ${MPP.toFixed(4)} m/px\
   closeTo(gained, (89 * MPP) ** 2, 2, 'the recovered area is the canopy exactly');
 }
 
+/* ------------------------------------------- an outline a person can edit */
+/*
+ * A mask traced too finely is not more accurate, it is unusable: 308 handles
+ * on a real lawn, packed a few pixels apart, with the boundary somewhere
+ * underneath them. The app asks for 0.3 m on the ground; this asserts that
+ * asking buys what it is supposed to buy.
+ *
+ * A ragged edge stands in for the pixel staircase a real mask has. A clean
+ * rectangle would simplify to four points at any tolerance and prove nothing.
+ */
+{
+  const image = blankMask(IMG, IMG);
+  paintRect(image, 300, 300, 600, 600);
+  // A deterministic 0-3 px wobble on two edges. Multiplying by a prime and
+  // taking the remainder gives a different bump on every row without a random
+  // source, so the test says the same thing on every run.
+  for (let y = 300; y < 900; y++) {
+    const bump = (y * 7919) % 4;
+    if (bump) paintRect(image, 900, y, bump, 1);
+  }
+  for (let x = 300; x < 900; x++) {
+    const bump = (x * 6271) % 4;
+    if (bump) paintRect(image, x, 300 - bump, 1, bump);
+  }
+
+  /*
+   * Both with a cap far above what either will hit, so this measures the
+   * tolerance and nothing else. With the cap in play the ring gets simplified
+   * again and again until it fits, and on an edge whose wobble is all one size
+   * -- as this synthetic one is, unlike a real boundary -- that loosening goes
+   * over a cliff, 303 vertices to 6 in a single step. Worth knowing about, but
+   * it is not what this check is for.
+   */
+  const count = (ps) => ps.reduce((n, p) => n + p.coordinates[0].length, 0);
+  const fine = maskToPolygons(image, unproject, { tolerance: 1.5, maxVertices: 1000 });
+  const coarse = maskToPolygons(image, unproject, { tolerance: 0.3 / MPP, maxVertices: 1000 });
+
+  check('a ragged edge really does trace finely at the old default', count(fine) > 100,
+    `${count(fine)} vertices`);
+  check('0.3 m on the ground gives an outline a thumb can hit',
+    count(coarse) <= 60, `${count(coarse)} vertices`);
+  check('and it is a real reduction, not a rounding difference',
+    count(coarse) < count(fine) / 4, `${count(fine)} -> ${count(coarse)}`);
+
+  const fineArea = geometryAreaSqM(fine[0]);
+  const coarseArea = geometryAreaSqM(coarse[0]);
+  closeTo(coarseArea, fineArea, 2,
+    'while the measurement stays within a couple of percent');
+
+  // The cap is the backstop, not the usual limiter, so it must actually cap.
+  const capped = maskToPolygons(image, unproject, { tolerance: 0.05, maxVertices: 24 });
+  check('the vertex ceiling is enforced even at a fine tolerance',
+    capped.every((p) => p.coordinates[0].length <= 24),
+    capped.map((p) => p.coordinates[0].length).join(', '));
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);
