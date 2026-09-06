@@ -586,35 +586,85 @@ async function confirmLocation() {
 const ERASER_RADIUS_PX = 22;   // a fingertip, near enough
 const ERASE_GRID = 1280;       // same resolution the detector traces at
 
-let eraser = null;
+/*
+ * The same stroke, in both directions.
+ *
+ * Subtracting and adding are the identical operation with one bit flipped:
+ * paint the shapes into a grid, set the stroke's pixels to 0 or to 1, trace
+ * what is left. Writing "add" as its own feature would have meant a second
+ * copy of the rasterise-and-retrace round trip, and two places for a bug in
+ * the brush-size maths to live.
+ *
+ * Adding has one thing subtracting does not: it works from nothing. There is
+ * no shape to require before you start, because painting IS the shape.
+ */
+const BRUSH = {
+  erase: {
+    paint: 0,
+    label: 'Erase',
+    active: 'Done erasing',
+    hint: 'Drag over anything that is not lawn',
+    status: 'Erasing. Drag across the map to rub out what should not be there.',
+    needsShapes: true,
+  },
+  add: {
+    paint: 1,
+    label: 'Add',
+    active: 'Done adding',
+    hint: 'Drag over lawn the detector missed',
+    status: 'Adding. Drag across the map to paint in lawn that was missed.',
+    needsShapes: false,
+  },
+};
 
-function enterEraserMode() {
-  if (!draw.getAll().features.some((f) => outerRing(f))) {
+let eraser = null; // the active brush, or null
+
+function enterEraserMode(mode = 'erase') {
+  const spec = BRUSH[mode] || BRUSH.erase;
+  if (spec.needsShapes && !draw.getAll().features.some((f) => outerRing(f))) {
     setStatus('Nothing to erase yet — detect or draw a lawn first.', 'warn');
     return;
   }
   if (state.edgeEdit) exitEdgeMode();
-  eraser = { stroke: [] };
-  $('#btn-erase').textContent = 'Done erasing';
+  eraser = { stroke: [], mode: BRUSH[mode] ? mode : 'erase' };
+  refreshBrushButtons();
   map.getCanvas().style.cursor = 'crosshair';
-  setHint('Drag over anything that is not lawn');
-  setStatus('Erasing. Drag across the map to rub out what should not be there.');
+  setHint(spec.hint);
+  setStatus(spec.status);
   armLawnPicker(); // reuses the touch and mouse plumbing
 }
 
 function exitEraserMode() {
   eraser = null;
-  $('#btn-erase').textContent = 'Erase';
+  refreshBrushButtons();
   map.getCanvas().style.cursor = '';
   map.getSource('erase-stroke')?.setData(empty());
   disarmLawnPicker();
   updatePromptHint();
 }
 
-/** Show the stroke as it is drawn, so it is obvious what will go. */
+/** Both brush buttons show which one is live, the way a toolbar does. */
+function refreshBrushButtons() {
+  for (const [mode, spec] of Object.entries(BRUSH)) {
+    const btn = $(`#btn-brush-${mode}`);
+    if (!btn) continue;
+    const on = eraser?.mode === mode;
+    btn.classList.toggle('on', on);
+    btn.setAttribute('aria-pressed', String(on));
+    btn.querySelector('.brush-label').textContent = on ? spec.active : spec.label;
+  }
+}
+
+/** Show the stroke as it is drawn, so it is obvious what will change. */
 function drawEraseStroke() {
   if (!map.getSource('erase-stroke')) return;
   const pts = eraser?.stroke || [];
+  // Red takes away, green puts back. The stroke is the only feedback there is
+  // until the finger lifts, so it has to say which direction it is going.
+  if (map.getLayer('erase-stroke')) {
+    map.setPaintProperty('erase-stroke', 'line-color',
+      eraser?.mode === 'add' ? '#43a047' : '#e53935');
+  }
   map.getSource('erase-stroke').setData(pts.length < 2
     ? empty()
     : { type: 'Feature', geometry: { type: 'LineString', coordinates: pts } });
@@ -625,8 +675,10 @@ function drawEraseStroke() {
  */
 function applyErase() {
   const stroke = eraser?.stroke || [];
+  const mode = BRUSH[eraser?.mode] || BRUSH.erase;
   const features = draw.getAll().features.filter((f) => outerRing(f));
-  if (stroke.length < 2 || !features.length) return;
+  // Erasing nothing is a no-op; adding to nothing is how you start.
+  if (stroke.length < 2 || (!features.length && mode.paint === 0)) return;
 
   // A frame around everything involved, so nothing outside it is lost.
   let [w, s, e, n] = [Infinity, Infinity, -Infinity, -Infinity];
@@ -682,7 +734,7 @@ function applyErase() {
     const y1 = Math.min(ERASE_GRID - 1, Math.ceil(cy + radius));
     for (let y = y0; y <= y1; y++) {
       for (let x = x0; x <= x1; x++) {
-        if ((x - cx) ** 2 + (y - cy) ** 2 <= r2) keep[y * ERASE_GRID + x] = 0;
+        if ((x - cx) ** 2 + (y - cy) ** 2 <= r2) keep[y * ERASE_GRID + x] = mode.paint;
       }
     }
   };
@@ -723,9 +775,16 @@ function applyErase() {
   refreshMeasurement();
   refreshSurveyed();
   updateSelectionButtons();
-  setStatus(polygons.length
-    ? `Erased. ${polygons.length} section${polygons.length > 1 ? 's' : ''} left.`
-    : 'Erased everything. Undo, or detect again.');
+
+  const count = polygons.length;
+  const sections = `${count} section${count > 1 ? 's' : ''}`;
+  setStatus(
+    mode.paint
+      ? `Added. ${sections} of lawn.`
+      : count
+        ? `Erased. ${sections} left.`
+        : 'Erased everything. Undo, or detect again.'
+  );
 }
 
 /* ------------------------------------------------------------------ undo */
@@ -1383,6 +1442,28 @@ function hideOverlay() {
 const providerInfo = (id) =>
   state.imagery.find((p) => p.id === id) || { id, label: id, detect: true };
 
+/**
+ * The lowest layer that belongs to us, so a photograph can go underneath it.
+ *
+ * This is the whole of a real bug: choosing USGS imagery made every drawn and
+ * detected shape disappear, and switching back to Mapbox brought them all
+ * back. Nothing was lost -- the photograph was on top of them. Mapbox GL Draw
+ * adds its `gl-draw-*` layers when the control is added, which happens before
+ * the app adds its own, so the draw layers sit at the BOTTOM of our stack.
+ * Inserting the photo before 'parcel-fill' therefore put it above every shape.
+ *
+ * Asking the style where our layers actually begin beats naming one, because
+ * the answer changes with load order and the failure is silent: a correct
+ * photograph, correctly placed, hiding the thing being measured.
+ */
+function bottomOfOurLayers() {
+  const ours = /^(gl-draw|parcel-|edge-highlight|erase-stroke|points|surveyed|mask-overlay)/;
+  for (const layer of map.getStyle().layers) {
+    if (layer.id !== 'imagery-alt' && ours.test(layer.id)) return layer.id;
+  }
+  return undefined; // nothing of ours yet: the top of the basemap will do
+}
+
 /** Mirrors the Worker's detectionProvider: a look-only source detects on Mapbox. */
 const effectiveProvider = (id) => (providerInfo(id).detect ? id : 'mapbox');
 
@@ -1401,19 +1482,40 @@ function buildImageryPicker() {
   for (const p of state.imagery) {
     const opt = document.createElement('option');
     opt.value = p.id;
-    opt.textContent = p.label;
+    // Say it in the list too, not only after choosing. Picking a source and
+    // then being told it cannot measure is a wasted step.
+    opt.textContent = p.detect ? p.label : `${p.label} — view only`;
     select.append(opt);
   }
   select.value = state.provider;
   panel.hidden = false;
-  $('#imagery-note').textContent = providerInfo(state.provider).note || '';
+  renderProviderNote(state.provider);
+}
+
+/**
+ * The note under the picker, with the limitation stated first and in bold.
+ *
+ * Built from DOM nodes rather than innerHTML: the text arrives over HTTP from
+ * /api/config, and while that is our own Worker, "it is our own string" is
+ * exactly the assumption that stops being true later.
+ */
+function renderProviderNote(id) {
+  const info = providerInfo(id);
+  const el = $('#imagery-note');
+  el.textContent = '';
+  if (!info.detect) {
+    const strong = document.createElement('strong');
+    strong.textContent = 'AI detection not available for this imagery source.';
+    el.append(strong, ' ');
+  }
+  el.append(info.note || '');
 }
 
 async function setProvider(id) {
   if (id === state.provider) return;
   state.provider = id;
   $('#imagery-source').value = id;
-  $('#imagery-note').textContent = providerInfo(id).note || '';
+  renderProviderNote(id);
 
   await showImagery();
   // Switching sources re-arms detection: a different photograph is a genuinely
@@ -1440,8 +1542,7 @@ async function showImagery() {
   if (state.provider === 'mapbox') return;
 
   const info = providerInfo(state.provider);
-  // Keep the mask overlay on top of the photo if both are up.
-  const before = map.getLayer('mask-overlay') ? 'mask-overlay' : 'parcel-fill';
+  const before = bottomOfOurLayers();
 
   if (info.tiles) {
     map.addSource('imagery-alt', {
@@ -1474,7 +1575,7 @@ async function showImagery() {
     );
     state.provider = 'mapbox';
     $('#imagery-source').value = 'mapbox';
-    $('#imagery-note').textContent = providerInfo('mapbox').note || '';
+    renderProviderNote('mapbox');
     return;
   }
 
@@ -2166,9 +2267,17 @@ $('#btn-clear').addEventListener('click', () => {
 
 $('#btn-parcel-shape').addEventListener('click', useParcelShape);
 $('#btn-undo').addEventListener('click', undo);
-$('#btn-erase').addEventListener('click', () => {
-  eraser ? exitEraserMode() : enterEraserMode();
-});
+/*
+ * Pressing the live brush turns it off; pressing the other one switches to it
+ * directly. Making you turn Erase off before you can turn Add on would be a
+ * press per correction, and corrections come in runs.
+ */
+for (const mode of Object.keys(BRUSH)) {
+  $(`#btn-brush-${mode}`).addEventListener('click', () => {
+    if (eraser?.mode === mode) exitEraserMode();
+    else enterEraserMode(mode);
+  });
+}
 
 $('#btn-edges').addEventListener('click', () => {
   state.edgeEdit ? exitEdgeMode() : enterEdgeMode();

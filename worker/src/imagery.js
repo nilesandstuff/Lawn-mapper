@@ -125,10 +125,23 @@ export const PROVIDERS = {
      * detection problem, not a clearer version of the same one, and the prompt
      * has to say so.
      */
-    note: 'Infrared vegetation index. Shadows barely affect it, so lawn in shade still reads as lawn — but trees and grass look alike, so expect to erase canopy.',
-    detect: true,
-    prompt: 'green vegetation',
-    promptVar: 'SAM_PROMPT_NDVI',
+    /*
+     * Tested, and it does not work. Kept as something to look at, because
+     * seeing where the vegetation is remains useful, but it is no longer
+     * offered to the detector.
+     *
+     * The idea was sound and the imagery is not up to it. NDVI does ignore
+     * shadow, exactly as hoped -- but NAIP is 30 cm native against a frame
+     * asking for about 3.5 cm, so every edge arrives soft, and the contrast
+     * between turf and tree canopy turned out too weak to separate them at
+     * that resolution. Two failures at once: boundaries no crisper than the
+     * shadows they replaced, and no way to tell the trees from the lawn.
+     *
+     * Fixing it would need finer multispectral imagery than anything free,
+     * so this is a dead end rather than an unfinished feature.
+     */
+    detect: false,
+    note: 'Shows where vegetation is. Measured against real lawns and rejected: NAIP is too coarse at this zoom, and grass and tree canopy do not separate.',
     url: (frame) => arcgisImage(USGS_NAIP, frame, 'NDVI_Color'),
   },
 
@@ -173,7 +186,24 @@ export function detectionProvider(value) {
   return PROVIDERS[id].detect ? id : DEFAULT_PROVIDER;
 }
 
+/**
+ * The picture for a source, for LOOKING at.
+ *
+ * Deliberately not detectionProvider. Looking and detecting are different
+ * questions, and collapsing them is a bug with no symptom: asking for the NDVI
+ * preview and being handed Mapbox pixels would draw a perfectly good
+ * photograph of the right place, and the person comparing sources would be
+ * comparing Mapbox with itself. A source that cannot render one image of the
+ * frame at all (Esri, which serves only tiles) returns null rather than
+ * substituting something else.
+ */
 export function imageryUrl(provider, frame, token) {
+  const p = PROVIDERS[normaliseProvider(provider)];
+  return p.url ? p.url(frame, token) : null;
+}
+
+/** The picture for MEASURING from, which is never a source that cannot answer. */
+export function detectionImageUrl(provider, frame, token) {
   return PROVIDERS[detectionProvider(provider)].url(frame, token);
 }
 

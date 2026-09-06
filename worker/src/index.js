@@ -39,7 +39,8 @@ import { samVersion, samInput, samThreshold } from './sam.js';
 // Which satellite picture to use, and how to ask each source for exactly our
 // frame. Also lives outside the entrypoint, for the same reason as sam.js.
 import {
-  imageryUrl, imageryPrompt, detectionProvider, providerCatalogue,
+  imageryUrl, detectionImageUrl, imageryPrompt, normaliseProvider,
+  detectionProvider, providerCatalogue,
 } from './imagery.js';
 // Shared with the browser, which loads the same file over HTTP. See the note
 // at the top of that file for why it lives outside worker/.
@@ -178,7 +179,8 @@ function frameFromQuery(params) {
       zoom: clampZoom(parseFloat(params.get('zoom')) || 19),
       size: clampSize(parseInt(params.get('size'), 10) || 640),
     },
-    provider: detectionProvider(params.get('provider')),
+    // Viewing, not measuring: whatever was asked for.
+    provider: normaliseProvider(params.get('provider')),
   };
 }
 
@@ -194,7 +196,11 @@ async function handleImagery(url, env, origin) {
     return json({ error: 'lng and lat required' }, 400, origin);
   }
 
-  const res = await fetch(imageryUrl(provider, frame, serverToken(env)));
+  const src = imageryUrl(provider, frame, serverToken(env));
+  // Esri serves tiles and nothing else; the browser paints those itself.
+  if (!src) return json({ error: 'That source has no single-image form', provider }, 400, origin);
+
+  const res = await fetch(src);
   if (!res.ok) return json({ error: 'Imagery unavailable', provider }, 502, origin);
 
   return new Response(res.body, {
@@ -330,7 +336,7 @@ async function handleSegment(request, env, origin) {
    * Mapbox's carries our server token, which is why the two ArcGIS sources are
    * a small improvement as well as a new option: their URLs carry no secret.
    */
-  const imageUrl = imageryUrl(provider, { lng, lat, zoom, size }, serverToken(env));
+  const imageUrl = detectionImageUrl(provider, { lng, lat, zoom, size }, serverToken(env));
 
   // A text prompt finds every patch of grass in the frame at once, including
   // the disconnected ones a person would have to remember to point at. What

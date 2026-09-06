@@ -8,6 +8,11 @@ name: 6. Find a promptable AI model
 # Free: reads metadata only, starts no predictions.
 on:
   workflow_dispatch:
+    inputs:
+      detail:
+        description: 'Also dump the full input/output schema for these models (comma separated)'
+        required: false
+        default: 'ocg2347/sam-pointprompt,casia-iva-lab/fastsam,meta/sam-2-video'
 
 jobs:
   find:
@@ -23,4 +28,5 @@ jobs:
       - name: Search
         env:
           REPLICATE_TOKEN: ${{ secrets.REPLICATE_TOKEN }}
+          DETAIL: ${{ inputs.detail }}
         run: node tools/find-sam-model.js

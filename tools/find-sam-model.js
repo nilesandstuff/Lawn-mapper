@@ -44,7 +44,32 @@ const CANDIDATES = [
   'zsxkib/segment-anything-2',
   'ryan5453/segment-anything',
   'daanelson/segment-anything',
+  // A second sweep, after the first found only two point-promptable models and
+  // neither was a plain SAM 2 image model: meta/sam-2-video wants a video, and
+  // ocg2347/sam-pointprompt is an unknown quantity. If a maintained SAM 2 image
+  // port with click prompts exists, it is one of these.
+  'ocg2347/sam-pointprompt',
+  'casia-iva-lab/fastsam',
+  'zsxkib/sam-2',
+  'zsxkib/sam2-video',
+  'meta/sam-2-image',
+  'lucataco/segment-anything',
+  'schananas/grounded-sam',
+  'yorickvp/segment-anything',
+  'hieupham1000/sam2-image',
+  'adirik/grounding-dino',
+  'nateraw/sam-2',
 ];
+
+/**
+ * The full contract for a model worth using.
+ *
+ * A field name is not enough to build against. "input_points" could be
+ * [[x,y]], {x,y}, or a JSON string, and the difference is a failed prediction
+ * that costs money to discover. Types, defaults and the model's own
+ * descriptions are published; reading them is free and guessing is not.
+ */
+const DETAIL = (process.env.DETAIL || '').split(',').map((s) => s.trim()).filter(Boolean);
 
 async function getModel(slug) {
   const res = await fetch(`https://api.replicate.com/v1/models/${slug}`, { headers: auth });
@@ -159,3 +184,37 @@ for (const m of promptable) {
   console.log(`    all inputs:   ${m.fields.join(', ')}\n`);
 }
 console.log('Set SAM_MODEL and SAM_INPUT_FIELDS in worker/src/index.js to match one.');
+
+/*
+ * The exact contract for whichever models were asked about.
+ *
+ * Everything above is a shortlist. This is what you build against: each input's
+ * type, default, and the model's own description of it, plus the output shape.
+ * Getting the point format wrong is a failed prediction that costs money to
+ * find out about, and the schema says it for free.
+ *
+ *   DETAIL='ocg2347/sam-pointprompt,casia-iva-lab/fastsam' node tools/find-sam-model.js
+ */
+for (const slug of DETAIL) {
+  console.log('\n' + '='.repeat(70));
+  console.log(`FULL SCHEMA: ${slug}`);
+  const { model, error } = await getModel(slug);
+  if (error) { console.log(`  unreachable: ${error}`); continue; }
+
+  const v = model.latest_version;
+  console.log(`  ${(model.description || '').slice(0, 200).replace(/\s+/g, ' ')}`);
+  console.log(`  runs: ${model.run_count?.toLocaleString() ?? '?'}   version: ${v?.id?.slice(0, 12)}…`);
+
+  const schemas = v?.openapi_schema?.components?.schemas;
+  const props = schemas?.Input?.properties || {};
+  const required = schemas?.Input?.required || [];
+  console.log('  inputs:');
+  for (const [name, spec] of Object.entries(props)) {
+    const type = spec.type || (spec.allOf ? 'enum/ref' : '?');
+    const items = spec.items ? ` of ${spec.items.type || JSON.stringify(spec.items)}` : '';
+    console.log(`    ${name}${required.includes(name) ? ' (required)' : ''}: ${type}${items}` +
+      (spec.default !== undefined ? `  default=${JSON.stringify(spec.default)}` : ''));
+    if (spec.description) console.log(`        ${spec.description.slice(0, 220).replace(/\s+/g, ' ')}`);
+  }
+  console.log(`  output: ${JSON.stringify(schemas?.Output) || '(not published)'}`);
+}

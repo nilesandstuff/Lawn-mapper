@@ -80,11 +80,39 @@
         <button class="ghost" id="btn-draw">Draw it myself</button>
         <button class="ghost" id="btn-parcel-shape" hidden>Use property line</button>
         <button class="ghost" id="btn-edges">Extend to road</button>
-        <button class="ghost" id="btn-erase">Erase</button>
         <button class="ghost" id="btn-undo" disabled>Undo</button>
         <button class="ghost" id="btn-delete" disabled>Delete selected</button>
         <button class="ghost" id="btn-clear">Clear all</button>
       </div>
+
+      <!-- Paint the outline bigger or smaller, the way a selection tool in an
+           image editor does. Two buttons rather than one with a mode, so which
+           direction you are about to go is readable without pressing it. -->
+      <div class="brushbar" role="group" aria-label="Paint the lawn area">
+        <button class="brush" id="btn-brush-add" aria-pressed="false">
+          <span class="brush-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="22" height="22">
+              <circle cx="10" cy="10" r="6.2" fill="none" stroke="currentColor" stroke-width="1.9"/>
+              <line x1="14.6" y1="14.6" x2="20.5" y2="20.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+              <line x1="7.2" y1="10" x2="12.8" y2="10" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+              <line x1="10" y1="7.2" x2="10" y2="12.8" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+            </svg>
+          </span>
+          <span class="brush-label">Add</span>
+        </button>
+        <button class="brush" id="btn-brush-erase" aria-pressed="false">
+          <span class="brush-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="22" height="22">
+              <circle cx="10" cy="10" r="6.2" fill="none" stroke="currentColor" stroke-width="1.9"/>
+              <line x1="14.6" y1="14.6" x2="20.5" y2="20.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+              <line x1="7.2" y1="10" x2="12.8" y2="10" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+            </svg>
+          </span>
+          <span class="brush-label">Erase</span>
+        </button>
+      </div>
+      <p class="brushnote">Drag across the map to paint lawn in or out. The
+        outline redraws itself around what is left.</p>
 
       <!-- Which photograph. Populated from /api/config so the browser and the
            Worker cannot disagree about what each source is. -->
@@ -120,9 +148,12 @@
       <details class="help">
         <summary>How to correct the shape</summary>
         <ul>
-          <li><b>Erase</b> then drag over anything that is not lawn — a
-            driveway the AI grabbed, a flower bed, a neighbour's grass. The
-            outline redraws itself around what is left.</li>
+          <li><b>Erase</b> (magnifier with a minus) then drag over anything
+            that is not lawn — a driveway the AI grabbed, a flower bed, a
+            neighbour's grass. The outline redraws itself around what is left.</li>
+          <li><b>Add</b> (magnifier with a plus) is the same stroke in reverse,
+            for lawn the detector missed. It works on an empty map too, so you
+            can paint a lawn from scratch instead of placing corners.</li>
           <li>In <b>Extend to road</b>, tap a line to slide that whole edge out,
             or tap a white corner dot to drag, add or delete that one point.</li>
           <li>Tapping the line wins over tapping a corner, so extending stays the
