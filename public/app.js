@@ -1878,7 +1878,15 @@ function setMode(mode, tool = null) {
   disarmLawnPicker();
 
   state.mode = next;
-  if (next === 'shape') state.shapeTool = tool || state.shapeTool || 'points';
+  /*
+   * Entering lawn mode without naming a tool always lands on Points.
+   *
+   * Resuming whichever brush was last used means pressing "Lawn" can arm the
+   * eraser, and the next drag over the map removes lawn rather than selecting
+   * a corner. A destructive tool should be chosen deliberately every time, not
+   * inherited from something you did several steps ago.
+   */
+  if (next === 'shape') state.shapeTool = tool || 'points';
 
   if (next === 'parcel') enterRingEditing('parcel');
   else if (next === 'shape' && state.shapeTool === 'points') enterRingEditing('shape');

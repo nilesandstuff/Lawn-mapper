@@ -719,44 +719,41 @@ check('and the same gesture in lawn mode reaches the lawn, not the boundary',
  * reason when there are no pins to draw -- which is exactly what the first
  * version of this check did.
  */
-const pinScope = await page.evaluate(async () => {
-  const sel = document.querySelector('#model-choice');
-  if (!sel || ![...sel.options].some((o) => o.value === 'sam2')) return null;
+const hasPinModel = await page.evaluate(() =>
+  [...document.querySelectorAll('#model-choice option')].some((o) => o.value === 'sam2'));
 
-  sel.value = 'sam2';
-  sel.dispatchEvent(new Event('change'));
-  await new Promise((r) => setTimeout(r, 400));
-  const enteredPinMode =
-    document.querySelector('#mode-pins').getAttribute('aria-pressed') === 'true';
-
-  // Place one so there is something whose visibility can change.
-  const c = document.querySelector('.mapboxgl-canvas-container');
-  const r = c.getBoundingClientRect();
-  c.dispatchEvent(new MouseEvent('click', {
-    bubbles: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2,
-  }));
-  await new Promise((r2) => setTimeout(r2, 400));
-  const placed = window.__lmPins().length;
-  const shownInPinMode = window.__lmPinsDrawn();
-
-  document.querySelector('#mode-shape').click();
-  await new Promise((r2) => setTimeout(r2, 400));
-  return {
-    enteredPinMode, placed, shownInPinMode,
-    stillPlaced: window.__lmPins().length,
-    shownOutside: window.__lmPinsDrawn(),
-  };
-});
-
-if (pinScope) {
+if (hasPinModel) {
+  await page.selectOption('#model-choice', 'sam2');
+  await page.waitForTimeout(500);
   check('choosing the precise method drops you into placing pins',
-    pinScope.enteredPinMode === true);
-  check('a pin can be placed there', pinScope.placed === 1, `${pinScope.placed} pin(s)`);
-  check('and it is drawn while that is the mode', pinScope.shownInPinMode === true);
-  check('leaving the step takes the numbered pins off the map',
-    pinScope.shownOutside === false);
+    await page.evaluate(() =>
+      document.querySelector('#mode-pins').getAttribute('aria-pressed') === 'true'));
+
+  /*
+   * A real click, not a synthesised one.
+   *
+   * Mapbox GL builds its own event objects from the listeners it installs, so
+   * a hand-made MouseEvent dispatched at the canvas container never reaches
+   * map.on('click') -- the first version of this check did that and concluded
+   * pins could not be placed, when nothing had actually been clicked.
+   */
+  const mb = await page.locator('#map').boundingBox();
+  await page.mouse.click(mb.x + mb.width / 2, mb.y + mb.height / 2);
+  await page.waitForTimeout(500);
+
+  const placed = await page.evaluate(() => window.__lmPins().length);
+  check('a pin can be placed there', placed > 0, `${placed} pin(s)`);
+  check('and it is drawn while that is the mode',
+    await page.evaluate(() => window.__lmPinsDrawn()) === true);
+
+  await page.click('#mode-shape');
+  await page.waitForTimeout(400);
+  const after = await page.evaluate(() => ({
+    drawn: window.__lmPinsDrawn(), kept: window.__lmPins().length,
+  }));
+  check('leaving the step takes the numbered pins off the map', after.drawn === false);
   check('without discarding them — they are still there to detect with',
-    pinScope.stillPlaced === 1, `${pinScope.stillPlaced} pin(s) kept`);
+    after.kept === placed, `${after.kept} of ${placed} kept`);
 }
 
 await page.screenshot({ path: 'browser-test.png', fullPage: false });
