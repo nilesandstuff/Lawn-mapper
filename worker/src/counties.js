@@ -36,8 +36,14 @@ const COUNTIES = {
     // conventional "arcgis" or "server", so every path the discovery tool
     // could invent 404'd. This is Grand Rapids, the largest population in the
     // coverage area, and it was never actually missing.
-    service: 'https://gis.kentcountymi.gov/agisprod/rest/services/FGDBParcels/MapServer',
-    layer: 0, // FGDBParcels
+    // Was FGDBParcels/MapServer, which worked and then began timing out on
+    // every point within hours -- the field metadata still answered, so it
+    // looked configured correctly while returning no parcels at all. This
+    // FeatureServer on the same host returns the same parcels immediately, and
+    // serves queries directly rather than through MapServer's identify path,
+    // which is the likelier reason it holds up.
+    service: 'https://gis.kentcountymi.gov/agisprod/rest/services/ParcelsWithCondos/FeatureServer',
+    layer: 0, // Parcels With Condos
     fields: { pin: 'PNUM', address: 'PROPERTYADDRESS' },
     verified: 'live',
   },
