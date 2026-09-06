@@ -321,6 +321,43 @@ check('and leaves the measurement essentially unchanged',
   `${tidied.area.toFixed(0)} -> ${tidied.areaAfter.toFixed(0)} sq ft ` +
   `(${((100 * Math.abs(tidied.areaAfter - tidied.area)) / tidied.area).toFixed(3)}%)`);
 
+/* -------------------------------------------------------------- undo */
+/*
+ * Undo that quietly does nothing is the classic way this feature ships broken,
+ * so assert the number actually returns -- and that it stops at the start of
+ * the step rather than unwinding into the paid-for trace.
+ */
+console.log('\n--- undo ---');
+const undone = await page.evaluate(async () => {
+  const sqft = () => document.querySelector('#result-sqft').textContent;
+  const before = sqft();
+  const btn = document.querySelector('#btn-undo');
+  const enabledAfterEdits = !btn.disabled;
+
+  btn.click();
+  await new Promise((r) => setTimeout(r, 400));
+  const afterOne = sqft();
+
+  // Drain it: undo must bottom out, not throw or wander past the floor.
+  let guard = 0;
+  while (!document.querySelector('#btn-undo').disabled && guard++ < 50) {
+    document.querySelector('#btn-undo').click();
+    await new Promise((r) => setTimeout(r, 60));
+  }
+  return { before, afterOne, drained: sqft(), guard, enabledAfterEdits };
+});
+
+check('undo is offered once there is something to undo', undone.enabledAfterEdits);
+check('one undo changes the measurement back',
+  undone.afterOne !== undone.before, `${undone.before} -> ${undone.afterOne}`);
+check('undo bottoms out instead of running forever', undone.guard < 50,
+  `${undone.guard} steps to empty`);
+check('and the button disables at the floor',
+  await page.evaluate(() => document.querySelector('#btn-undo').disabled));
+console.log(`      ${undone.before} -> ${undone.afterOne} -> ${undone.drained} sq ft`);
+check('the shape survives being unwound to the start of the step',
+  Number(undone.drained.replace(/[^0-9]/g, '')) > 0, `${undone.drained} sq ft`);
+
 await page.click('#btn-edge-done');
 await page.waitForTimeout(300);
 check('edge panel closes', !(await page.locator('#edge-panel').isVisible()));

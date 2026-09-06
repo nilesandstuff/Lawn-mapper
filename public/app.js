@@ -53,17 +53,28 @@ const TREE_GAP_SQFT = 900;
 
 /**
  * How closely the traced outline follows the mask, in metres on the ground.
- * See the note at the call site for the measurements behind 0.3.
+ *
+ * 0.3 m was chosen as the point where the measurement stopped changing, which
+ * was the wrong thing to optimise. Drawing the same lawn by hand takes about
+ * twenty corners in total and looks right, so the outline does not need to be
+ * faithful to the mask -- it needs to be faithful to the lawn, and a person
+ * with ten corners beats a tracer with ninety.
+ *
+ * Coarser also loses less than it appears to. Douglas-Peucker cuts inside one
+ * bend and outside the next, so the errors are signed and largely cancel:
+ * measured on a real lot, 0.8 m moved the total by 2% while removing seven
+ * eighths of the handles.
  */
-const TRACE_TOLERANCE_M = 0.3;
+const TRACE_TOLERANCE_M = 0.8;
 
 /**
- * A ceiling on handles per shape, for the pathological outline that stays
- * complicated even at 0.3 m. It is not the usual limiter -- a real lawn comes
- * out around twenty a piece -- it is there so no single shape can ever go back
- * to being a wall of dots.
+ * A ceiling on handles per shape.
+ *
+ * Also a real limiter now, not just a backstop. Holes get half this, so a lawn
+ * wrapping a flower bed can still exceed it in total -- which is how a shape
+ * came back with 89 points at a tolerance that should have given far fewer.
  */
-const MAX_TRACE_VERTICES = 60;
+const MAX_TRACE_VERTICES = 30;
 
 let map;
 let draw;
@@ -337,6 +348,18 @@ async function initMap() {
     },
   });
 
+  /*
+   * Mapbox Draw moves vertices itself, and reports only after the fact, so the
+   * pre-change state has to be captured when the user enters the editing mode.
+   * A whole direct_select session collapses into one undo entry -- coarser
+   * than per-vertex, and the right grain for "undo what I was just doing".
+   */
+  map.on('draw.modechange', (e) => {
+    if (e.mode === 'direct_select') pushHistory('direct_select');
+    else endHistoryGroup();
+  });
+  map.on('draw.update', endHistoryGroup);
+
   map.on('draw.selectionchange', updateSelectionButtons);
   for (const evt of ['draw.create', 'draw.update', 'draw.delete']) {
     map.on(evt, refreshSurveyed);
@@ -497,6 +520,97 @@ async function confirmLocation() {
   }
 }
 
+/* ------------------------------------------------------------------ undo */
+/**
+ * Undo, scoped to the step you are in.
+ *
+ * The three stages cost different things to redo. A property line is a free
+ * lookup; a detection is money and a wait; hand corrections are only your
+ * time. So undo never crosses a stage boundary: the history is emptied the
+ * moment a detection lands, which makes that trace the floor. Pressing undo
+ * enough times returns you to the shape the model produced and stops there,
+ * and getting a different trace stays an explicit, separate decision.
+ *
+ * Snapshots rather than inverse operations. The state that matters is small --
+ * a handful of polygons -- and a snapshot cannot drift out of step with the
+ * thing it claims to reverse, which is the usual way undo goes wrong.
+ */
+const MAX_HISTORY = 30;
+let history = [];
+
+function snapshot() {
+  return {
+    features: JSON.parse(JSON.stringify(draw.getAll().features)),
+    parcel: state.parcel ? JSON.parse(JSON.stringify(state.parcel.geometry)) : null,
+  };
+}
+
+/**
+ * Record the state as it is now, before the caller changes it.
+ *
+ * Call this once per *interaction*, not once per change: a slider drag fires
+ * a hundred times and is one thing the user did. `key` collapses a run of
+ * changes into a single entry -- passing the same key again while that
+ * interaction is still current adds nothing.
+ */
+let historyKey = null;
+function pushHistory(key = null) {
+  if (key !== null && key === historyKey) return;
+  historyKey = key;
+  history.push(snapshot());
+  if (history.length > MAX_HISTORY) history.shift();
+  updateUndoButton();
+}
+
+/** End the current interaction, so the next one starts a new undo entry. */
+const endHistoryGroup = () => { historyKey = null; };
+
+function clearHistory() {
+  history = [];
+  historyKey = null;
+  updateUndoButton();
+}
+
+function undo() {
+  const prev = history.pop();
+  if (!prev) return;
+  historyKey = null;
+
+  draw.deleteAll();
+  for (const f of prev.features) draw.add(f);
+
+  // Restoring the parcel has to go through setParcelRing: extending a boundary
+  // widened the photograph's frame, so undoing it has to narrow it back or the
+  // next detection would still be framed for a boundary that no longer exists.
+  if (prev.parcel && state.parcel) {
+    const ring = prev.parcel.type === 'Polygon'
+      ? prev.parcel.coordinates[0]
+      : prev.parcel.coordinates[0][0];
+    setParcelRing(ring);
+  }
+
+  if (state.edgeEdit) {
+    state.edgeEdit = { featureId: null, edgeIndex: null, vertexIndex: null, baseRing: null };
+    $('#edge-controls').hidden = true;
+    $('#point-controls').hidden = true;
+    clearEdgeHighlight();
+  }
+
+  drawPoints();
+  refreshMeasurement();
+  refreshSurveyed();
+  updateSelectionButtons();
+  updateUndoButton();
+  setStatus(history.length
+    ? 'Undone.'
+    : 'Undone — back to where this step started.');
+}
+
+function updateUndoButton() {
+  const btn = $('#btn-undo');
+  if (btn) btn.disabled = history.length === 0;
+}
+
 /* --------------------------------------------------------- map interaction */
 
 /**
@@ -585,6 +699,7 @@ function updateDrag(clientX, clientY) {
     if (Math.hypot(clientX - drag.startX, clientY - drag.startY) < DRAG_START_PX) return false;
     drag.moved = true;
     diag.dragMoved++;
+    pushHistory('drag');
     // Select it on the first real movement, so the panel shows what is moving.
     selectVertex({ featureId: drag.featureId, ring: drag.ring, index: drag.index });
     map.dragPan.disable();
@@ -600,6 +715,7 @@ function updateDrag(clientX, clientY) {
 function endDrag() {
   const moved = Boolean(drag?.moved);
   if (moved) {
+    endHistoryGroup();
     map.dragPan.enable();
     setStatus('Corner moved.');
   }
@@ -829,6 +945,14 @@ async function detect() {
     // Re-running with the same prompt point returns the same mask, so keep
     // the button from quietly charging for a duplicate. "Clear shapes" re-arms
     // the picker for a genuine second attempt somewhere else.
+    /*
+     * The trace is where this step begins, so nothing before it is reachable
+     * by undo. Redoing a detection costs money and a wait; making that an
+     * explicit choice rather than one press too many is the whole point of
+     * scoping undo to a stage.
+     */
+    clearHistory();
+
     state.detected = true;
     state.lastMask = { url, frame: rendered };
     if ($('#toggle-overlay').checked) showOverlay();
@@ -1210,6 +1334,7 @@ function addPointOnEdge() {
   const ring = ringOf(edit.featureId);
   if (!ring) return;
 
+  pushHistory();
   const grown = insertVertex(ring, edit.edgeIndex, edit.tapAt);
   if (!writeRing(edit.featureId, grown)) return;
 
@@ -1235,6 +1360,7 @@ function deleteSelectedVertex() {
     return;
   }
 
+  pushHistory();
   writeRing(edit.featureId, shrunk);
   state.edgeEdit = { featureId: null, vertexIndex: null, edgeIndex: null, baseRing: null };
   $('#point-controls').hidden = true;
@@ -1260,6 +1386,7 @@ function tidyShapes() {
   let removed = 0;
   let before = 0;
 
+  pushHistory();
   for (const { featureId, ring } of editableRings()) {
     before += openRing(ring).length;
     const tidied = tidyRing(ring);
@@ -1341,6 +1468,10 @@ function clearPoints() {
 function applyEdgeOffset(feet) {
   const edit = state.edgeEdit;
   if (!edit?.baseRing) return;
+
+  // The slider is absolute, so every event re-derives the shape from baseRing.
+  // One entry for the whole drag, keyed on the edge being moved.
+  pushHistory(`offset:${edit.featureId}:${edit.edgeIndex}`);
 
   const ring = offsetEdge(edit.baseRing, edit.edgeIndex, feetToMetres(feet));
 
@@ -1467,6 +1598,7 @@ function useParcelShape() {
   const ring = parcelRing();
   if (!ring) return;
 
+  pushHistory();
   draw.add({
     type: 'Feature',
     properties: {},
@@ -1564,6 +1696,7 @@ function exportPng() {
 /* ------------------------------------------------------------------ wiring */
 
 function reset() {
+  clearHistory();
   draw.deleteAll();
   hideOverlay();
   disarmLawnPicker();
@@ -1597,12 +1730,14 @@ $('#btn-detect').addEventListener('click', detect);
 $('#btn-draw').addEventListener('click', () => {
   if (state.edgeEdit) exitEdgeMode();
   disarmLawnPicker();
+  pushHistory();
   draw.changeMode('draw_polygon');
   setHint('Click around the edge of your lawn. Click the first point again to finish.');
   setStatus('Drawing by hand. Every shape you add counts toward the total.');
 });
 
 $('#btn-clear').addEventListener('click', () => {
+  pushHistory();
   draw.deleteAll();
   if (state.edgeEdit) exitEdgeMode();
   refreshMeasurement();
@@ -1614,6 +1749,7 @@ $('#btn-clear').addEventListener('click', () => {
 });
 
 $('#btn-parcel-shape').addEventListener('click', useParcelShape);
+$('#btn-undo').addEventListener('click', undo);
 
 $('#btn-edges').addEventListener('click', () => {
   state.edgeEdit ? exitEdgeMode() : enterEdgeMode();
@@ -1627,6 +1763,7 @@ $('#edge-slider').addEventListener('input', (e) => applyEdgeOffset(Number(e.targ
 $('#btn-delete').addEventListener('click', () => {
   const ids = draw.getSelected().features.map((f) => f.id);
   if (!ids.length) return;
+  pushHistory();
   draw.delete(ids);
   refreshMeasurement();
   refreshSurveyed();
