@@ -47,8 +47,14 @@ jobs:
           MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN }}
           REPLICATE_TOKEN: ${{ secrets.REPLICATE_TOKEN }}
         run: |
+          # The browser here runs on 127.0.0.1, which is not one of the domains
+          # MAPBOX_TOKEN is restricted to, so handing it to the page means every
+          # tile comes back 403 and the test drives a map with no imagery on it.
+          # Locally the unrestricted token is the right one for both jobs; the
+          # restriction exists to protect the token once it is on a public page.
+          DEV_TOKEN="${MAPBOX_SERVER_TOKEN:-$MAPBOX_TOKEN}"
           printf 'MAPBOX_TOKEN=%s\nMAPBOX_SERVER_TOKEN=%s\nREPLICATE_TOKEN=%s\n' \
-            "$MAPBOX_TOKEN" "${MAPBOX_SERVER_TOKEN:-$MAPBOX_TOKEN}" "$REPLICATE_TOKEN" > .dev.vars
+            "$DEV_TOKEN" "$DEV_TOKEN" "$REPLICATE_TOKEN" > .dev.vars
           npx wrangler dev --port 8787 --local > wrangler.log 2>&1 &
           for i in $(seq 1 40); do
             if curl -sf -o /dev/null http://127.0.0.1:8787/api/config; then

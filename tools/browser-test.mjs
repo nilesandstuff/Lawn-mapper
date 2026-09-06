@@ -366,6 +366,18 @@ check('corner handles go away when the tool closes',
 
 await page.screenshot({ path: 'browser-test.png', fullPage: false });
 
+/*
+ * A 403 from api.mapbox.com means the page was handed a URL-restricted token
+ * and this host is not on its list -- the restriction working, but it leaves
+ * the test driving a map with no imagery. Call it out rather than letting it
+ * sit in a wall of console noise.
+ */
+if (errors.some((e) => e.includes('403'))) {
+  check('the map got its tiles (no 403 from Mapbox)', false,
+    'the page is using a URL-restricted token on a host it does not allow — ' +
+    'give wrangler dev the unrestricted one');
+}
+
 console.log(`\nconsole/page errors:${errors.length ? '\n  ' + errors.slice(0, 12).join('\n  ') : ' (none)'}`);
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 
