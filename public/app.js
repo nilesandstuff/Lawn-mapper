@@ -135,6 +135,27 @@ if (typeof window !== 'undefined') {
   /* The pins the point-prompted model would be sent. */
   window.__lmPins = () => state.pins.map((p) => [...p]);
 
+  /*
+   * The first corner of the current mode's outline that is actually on screen.
+   *
+   * __lmPoints() reports one corner per ring, and after a shape has been
+   * erased and repainted that corner can sit outside the viewport -- a test
+   * aiming at it taps empty space and concludes the mode is broken.
+   */
+  window.__lmOnScreenCorner = () => {
+    if (!map || !state.edgeEdit) return null;
+    const rect = map.getCanvasContainer().getBoundingClientRect();
+    for (const { ring } of editableRings()) {
+      for (const p of openRing(ring)) {
+        const at = map.project(p);
+        if (at.x > 8 && at.y > 8 && at.x < rect.width - 8 && at.y < rect.height - 8) {
+          return { x: at.x + rect.left, y: at.y + rect.top };
+        }
+      }
+    }
+    return null;
+  };
+
   /* Whether the numbered markers are actually ON the map right now. */
   window.__lmPinsDrawn = () => {
     const src = map?.getSource('lawn-pins');
@@ -1869,6 +1890,20 @@ function setMode(mode, tool = null) {
 
   // Tear the old one down first, so no two modes ever hold the map at once.
   if (eraser) exitEraserMode({ quiet: true });
+
+  /*
+   * Put Mapbox Draw back to simple_select.
+   *
+   * Selecting a corner leaves Draw in direct_select, and it stays there after
+   * the mode that selected it has gone. handleMapPoint ignores every tap
+   * unless Draw is in simple_select, so a corner touched in lawn mode made the
+   * map silently deaf in pin mode afterwards -- taps registered as rejected
+   * and no pin appeared, with nothing on screen to explain it. Leaking editing
+   * state between modes is the exact thing modes exist to stop.
+   */
+  try {
+    if (draw.getMode() !== 'simple_select') draw.changeMode('simple_select');
+  } catch { /* Draw not ready yet; nothing to reset */ }
   state.edgeEdit = null;
   clearEdgeHighlight();
   clearPoints();

@@ -694,11 +694,11 @@ console.log('\n--- mode isolation ---');
 const tapOwnCorner = async (mode) => {
   await page.click(`#mode-${mode}`);
   await page.waitForTimeout(500);
-  const pt = await page.evaluate(() => window.__lmPoints?.()[0] ?? null);
-  if (!pt) return { mode, said: '(no corners offered)' };
+  const pt = await page.evaluate(() => window.__lmOnScreenCorner?.() ?? null);
+  if (!pt) return { mode, said: '(no corner on screen)' };
   await page.touchscreen.tap(pt.x, pt.y);
   await page.waitForTimeout(600);
-  return { mode, said: (await page.locator('#edge-info').textContent()).trim(), count: pt.count };
+  return { mode, said: (await page.locator('#edge-info').textContent()).trim() };
 };
 
 const onParcel = await tapOwnCorner('parcel');
