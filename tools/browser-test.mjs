@@ -626,8 +626,11 @@ check('and does not remove everything', erased.after > 0,
 
 await page.click('#tool-erase');
 await page.waitForTimeout(200);
-check('the eraser closes', await page.evaluate(() =>
-  document.querySelector('#tool-erase').getAttribute('aria-pressed') === 'false'));
+check('pressing the live brush drops back to Points', await page.evaluate(() =>
+  document.querySelector('#tool-erase').getAttribute('aria-pressed') === 'false' &&
+  document.querySelector('#tool-points').getAttribute('aria-pressed') === 'true'));
+check('and the other brushes stay reachable',
+  await page.locator('#shape-tools').isVisible());
 
 /*
  * The same stroke in the other direction.
@@ -667,10 +670,11 @@ console.log(`      ${added.said}`);
 check('painting with the add brush increases the area', added.after > added.before,
   `${added.before.toLocaleString()} -> ${added.after.toLocaleString()} sq ft`);
 
-await page.click('#tool-add');
+await page.click('#mode-shape');
 await page.waitForTimeout(200);
-check('the add brush closes', await page.evaluate(() =>
-  document.querySelector('#tool-add').getAttribute('aria-pressed') === 'false'));
+check('the Lawn button is what closes lawn mode', await page.evaluate(() =>
+  document.querySelector('#mode-shape').getAttribute('aria-pressed') === 'false' &&
+  document.querySelector('#shape-tools').hidden === true));
 
 
 /* ------------------------------------------------------- mode isolation */

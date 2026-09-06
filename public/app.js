@@ -2772,10 +2772,16 @@ for (const mode of MODES) {
   });
 }
 
+/*
+ * Pressing the live sub-tool falls back to Points -- it does NOT leave lawn
+ * mode. Leaving would take the other tools off the screen with it, so going
+ * from Erase to Add would cost a trip back through the Lawn button, and
+ * corrections alternate constantly. Lawn is the button that closes lawn mode.
+ */
 for (const tool of ['points', 'add', 'erase']) {
   $(`#tool-${tool}`).addEventListener('click', () => {
-    if (state.mode === 'shape' && state.shapeTool === tool) setMode(null);
-    else setMode('shape', tool);
+    const live = state.mode === 'shape' && state.shapeTool === tool;
+    setMode('shape', live ? 'points' : tool);
   });
 }
 
