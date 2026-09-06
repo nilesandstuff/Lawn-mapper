@@ -125,6 +125,11 @@ const CANDIDATE_ROOTS = {
     'https://gis.co.muskegon.mi.us/arcgis/rest/services',
   ],
   newaygo: [
+    // "hosting" -- a third non-standard instance name, after Kent's "agisprod"
+    // and Washoe's move to a "gisweb" host. Three counties, three conventions,
+    // none of them the documented one. Found by a person, again.
+    'https://arcgisweb.countyofnewaygo.com/hosting/rest/services',
+    'https://arcgisweb.countyofnewaygo.com/arcgis/rest/services',
     'https://gis.countyofnewaygo.com/arcgis/rest/services',
     'https://maps.countyofnewaygo.com/arcgis/rest/services',
     'https://services.arcgis.com/newaygo/arcgis/rest/services',
