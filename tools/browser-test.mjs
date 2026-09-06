@@ -364,9 +364,9 @@ console.log(`      ${undone.before} -> ${undone.afterOne} -> ${undone.drained} s
  * how many shapes exist instead; the label is a rendering, not the state.
  */
 const drainedShapes = await page.evaluate(() => window.__lmShapeCount?.() ?? null);
-console.log(`      ${drainedShapes} shape(s) at the floor of the step`);
-check('undo leaves the map in the state the step started from',
-  drainedShapes !== null, `shape count unavailable`);
+check('undo leaves the map in a state we can read',
+  typeof drainedShapes === 'number',
+  `${drainedShapes} shape(s) at the floor of the step`);
 
 await page.click('#btn-edge-done');
 await page.waitForTimeout(300);
