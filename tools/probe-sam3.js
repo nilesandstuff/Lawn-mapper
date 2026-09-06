@@ -23,10 +23,15 @@ import {
   zoomToFit, geometryBounds, lngLatToFramePx, framePxToLngLat, metresPerPixel,
 } from '../public/lib/mercator.js';
 
-const mapbox = process.env.MAPBOX_TOKEN;
+/*
+ * Same rule as the Worker: a machine calling Mapbox sends no Referer, so it
+ * cannot use a URL-restricted token. Prefer the server token when there is
+ * one, and fall back for setups that still share a single unrestricted key.
+ */
+const mapbox = process.env.MAPBOX_SERVER_TOKEN || process.env.MAPBOX_TOKEN;
 const replicate = process.env.REPLICATE_TOKEN;
 if (!mapbox || !replicate) {
-  console.error('FAIL  Needs both MAPBOX_TOKEN and REPLICATE_TOKEN.');
+  console.error('FAIL  Needs a Mapbox token (MAPBOX_SERVER_TOKEN or MAPBOX_TOKEN) and REPLICATE_TOKEN.');
   process.exit(1);
 }
 

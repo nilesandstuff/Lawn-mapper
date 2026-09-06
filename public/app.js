@@ -542,8 +542,10 @@ function vertexAt(clientX, clientY) {
   const rect = map.getCanvasContainer().getBoundingClientRect();
   const at = { x: clientX - rect.left, y: clientY - rect.top };
 
+  // Only corners that are actually drawn can be grabbed. Grabbing an invisible
+  // one would be indistinguishable from the map moving on its own.
   let found = null;
-  for (const { featureId, ring } of editableRings()) {
+  for (const { featureId, ring } of handleRings()) {
     openRing(ring).forEach((p, i) => {
       const px = map.project(p);
       const d = Math.hypot(px.x - at.x, px.y - at.y);
@@ -1028,7 +1030,7 @@ function selectNear(lngLat) {
   const tap = map.project(lngLat);
   let corner = null;
 
-  for (const { featureId, ring } of editableRings()) {
+  for (const { featureId, ring } of handleRings()) {
     const hit = nearestVertex(ring, lngLat);
     if (!hit) continue;
     const at = map.project(openRing(ring)[hit.index]);
@@ -1258,13 +1260,29 @@ function tidyShapes() {
  * the parcel, which is not one of its features at all. Without these the
  * corners are invisible and there is nothing to aim at.
  */
+/**
+ * The outlines whose corners get handles.
+ *
+ * Only the shape being worked on. Showing every corner of every shape at once
+ * put over a thousand handles on the map, which is not an editing surface --
+ * it is a wall of dots with the boundary somewhere underneath. A tap on a line
+ * selects a shape and reveals its corners; until then there is nothing to aim
+ * at but the lines themselves, which is the correct number of things to think
+ * about.
+ */
+function handleRings() {
+  const edit = state.edgeEdit;
+  if (!edit?.featureId) return [];
+  return editableRings().filter((r) => r.featureId === edit.featureId);
+}
+
 function drawPoints() {
   if (!map.getSource('points')) return;
   const edit = state.edgeEdit;
   if (!edit) return map.getSource('points').setData(empty());
 
   const features = [];
-  for (const { featureId, ring } of editableRings()) {
+  for (const { featureId, ring } of handleRings()) {
     openRing(ring).forEach((p, i) => {
       features.push({
         type: 'Feature',

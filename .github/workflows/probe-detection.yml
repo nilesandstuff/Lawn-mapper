@@ -60,6 +60,7 @@ jobs:
         if: inputs.probe == 'sam3-prompts'
         env:
           MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
+          MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN }}
           REPLICATE_TOKEN: ${{ secrets.REPLICATE_TOKEN }}
           PROMPTS: ${{ inputs.prompts }}
           THRESHOLDS: ${{ inputs.thresholds }}
@@ -70,5 +71,6 @@ jobs:
         if: inputs.probe == 'sam2-points'
         env:
           MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
+          MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN }}
           REPLICATE_TOKEN: ${{ secrets.REPLICATE_TOKEN }}
         run: node tools/probe-replicate.js
