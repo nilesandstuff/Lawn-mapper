@@ -17,6 +17,14 @@
  * Prefer ordinary residential addresses well inside the county.
  */
 export const TEST_POINTS = {
+  // Johnston County, North Carolina. Clayton is the fast-growing Raleigh
+  // commuter end, Smithfield the county seat, Benson the rural south -- three
+  // different eras of platting, which is what a parcel layer tends to differ on.
+  johnston: [
+    { lng: -78.4560, lat: 35.6510, label: 'Clayton' },
+    { lng: -78.3450, lat: 35.5100, label: 'Smithfield' },
+    { lng: -78.5440, lat: 35.3830, label: 'Benson' },
+  ],
   // Washoe County, Nevada. Reno and Sparks are the population; Incline Village
   // is included because it sits across the Carson Range on the Tahoe shore and
   // is the part most likely to be served by a different layer, or missed.

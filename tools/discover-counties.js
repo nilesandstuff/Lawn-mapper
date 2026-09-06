@@ -48,9 +48,27 @@ const PLAUSIBLE_ACRES = { min: 0.01, max: 160 };
  */
 const STATES = {
   washoe: 'Nevada',
+  johnston: 'North Carolina',
 };
 
 const CANDIDATE_ROOTS = {
+  /*
+   * Johnston County, North Carolina -- Smithfield, Clayton, Benson, in the
+   * Raleigh commuter belt.
+   *
+   * North Carolina runs NC OneMap, a statewide programme that republishes
+   * county parcels, so the state may answer where the county does not. Worth
+   * trying both: a statewide layer is usually the more stable of the two.
+   */
+  johnston: [
+    'https://gis.johnstonnc.com/arcgis/rest/services',
+    'https://gis.johnstonnc.com/server/rest/services',
+    'https://maps.johnstonnc.com/arcgis/rest/services',
+    'https://gis.johnstoncountync.gov/arcgis/rest/services',
+    'https://services.nconemap.gov/secure/rest/services',
+    'https://nconemap.gov/arcgis/rest/services',
+  ],
+
   /*
    * Washoe County, Nevada -- Reno and Sparks. The first county outside
    * Michigan, so nothing here can be assumed from the others.

@@ -16,6 +16,14 @@
  */
 
 const COUNTIES = {
+  johnston: {
+    name: 'Johnston County',
+    fips: '37101', // North Carolina -- Smithfield, Clayton, Benson
+    service: null, // run the discovery workflow to fill this in
+    layer: null,
+    fields: {},
+    verified: 'none',
+  },
   washoe: {
     name: 'Washoe County',
     fips: '32031', // Nevada -- Reno and Sparks
@@ -110,6 +118,7 @@ const COUNTIES = {
  * [minLng, minLat, maxLng, maxLat]
  */
 const COUNTY_BBOX = {
+  johnston: [-78.70, 35.20, -78.00, 35.85],
   // Washoe runs the full height of Nevada, from Lake Tahoe to the Oregon line.
   // Almost all of it is empty; the population is the southern tip around Reno.
   washoe:   [-120.10, 38.98, -119.00, 42.01],
