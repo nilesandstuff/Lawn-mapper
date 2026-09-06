@@ -563,10 +563,10 @@ await page.waitForTimeout(700);
 check('a shape is available to erase',
   (await page.evaluate(() => window.__lmShapeCount?.() ?? 0)) > 0);
 
-await page.click('#btn-erase');
+await page.click('#btn-brush-erase');
 await page.waitForTimeout(300);
 check('the eraser opens', await page.evaluate(() =>
-  document.querySelector('#btn-erase').textContent.includes('Done')));
+  document.querySelector('#btn-brush-erase .brush-label').textContent.includes('Done')));
 
 const erased = await page.evaluate(async ([x, y]) => {
   const el = document.querySelector('.mapboxgl-canvas-container');
@@ -594,10 +594,53 @@ check('erasing removes area', erased.after < erased.before,
 check('and does not remove everything', erased.after > 0,
   `${erased.after} sq ft left`);
 
-await page.click('#btn-erase');
+await page.click('#btn-brush-erase');
 await page.waitForTimeout(200);
 check('the eraser closes', await page.evaluate(() =>
-  document.querySelector('#btn-erase').textContent.trim() === 'Erase'));
+  document.querySelector('#btn-brush-erase .brush-label').textContent.trim() === 'Erase'));
+
+/*
+ * The same stroke in the other direction.
+ *
+ * Add is the eraser with one bit flipped, so the thing worth asserting is that
+ * the bit is actually flipped: the identical gesture over the identical shape
+ * must move the measurement UP, not down. A test that only checked "the area
+ * changed" would pass on a mislabelled button that erased twice.
+ */
+console.log('\n--- add (the inverse brush) ---');
+await page.click('#btn-brush-add');
+await page.waitForTimeout(300);
+check('the add brush opens', await page.evaluate(() =>
+  document.querySelector('#btn-brush-add .brush-label').textContent.includes('Done')));
+
+const added = await page.evaluate(async ([x, y]) => {
+  const el = document.querySelector('.mapboxgl-canvas-container');
+  const sqft = () => Number(document.querySelector('#result-sqft').textContent.replace(/[^0-9]/g, ''));
+  const before = sqft();
+
+  const touch = (t, cx, cy) => el.dispatchEvent(new TouchEvent(t, {
+    bubbles: true, cancelable: true,
+    touches: t === 'touchend' ? [] : [new Touch({ identifier: 1, target: el, clientX: cx, clientY: cy })],
+    changedTouches: [new Touch({ identifier: 1, target: el, clientX: cx, clientY: cy })],
+  }));
+
+  // Straight back across the gap the eraser just cut.
+  touch('touchstart', x - 90, y);
+  for (let i = -80; i <= 80; i += 10) { touch('touchmove', x + i, y); await new Promise((r) => setTimeout(r, 12)); }
+  touch('touchend', x + 80, y);
+  await new Promise((r) => setTimeout(r, 900));
+
+  return { before, after: sqft(), said: document.querySelector('#status').textContent };
+}, [cx, cy]);
+
+console.log(`      ${added.said}`);
+check('painting with the add brush increases the area', added.after > added.before,
+  `${added.before.toLocaleString()} -> ${added.after.toLocaleString()} sq ft`);
+
+await page.click('#btn-brush-add');
+await page.waitForTimeout(200);
+check('the add brush closes', await page.evaluate(() =>
+  document.querySelector('#btn-brush-add .brush-label').textContent.trim() === 'Add'));
 
 
 await page.screenshot({ path: 'browser-test.png', fullPage: false });
