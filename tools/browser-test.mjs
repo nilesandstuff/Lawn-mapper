@@ -681,48 +681,82 @@ check('the Lawn button is what closes lawn mode', await page.evaluate(() =>
 /*
  * The reason modes exist: one thing at a time responds to a touch.
  *
- * Asserted by what the app says it selected, because that is the decision
- * under test. In property-line mode a tap near the boundary must select the
- * property line; in lawn mode the same tap must select the lawn outline. They
- * lie on top of each other here -- the lawn was seeded FROM the parcel -- so
- * before modes, which one you got was a matter of which was nearer.
+ * Aimed with __lmPoints() rather than at a guessed coordinate. The first
+ * version tapped a fixed spot near the left edge, which worked earlier in this
+ * run and missed by the time the shape had been erased and repainted -- so it
+ * reported "modes are broken" when it had simply stopped hitting anything.
+ * __lmPoints() returns the corners of whatever the CURRENT mode owns, which is
+ * both a reliable target and the fact under test: in property-line mode it can
+ * only offer property-line corners.
  */
 console.log('\n--- mode isolation ---');
-await page.click('#mode-parcel');
-await page.waitForTimeout(400);
-await page.touchscreen.tap(box.x + 12, cy);
-await page.waitForTimeout(600);
-const parcelPick = await page.locator('#edge-info').textContent();
-console.log(`      property-line mode: "${parcelPick.trim()}"`);
-check('a tap in property-line mode selects the property line',
-  /property line/i.test(parcelPick), parcelPick.trim());
 
-await page.click('#mode-shape');
-await page.waitForTimeout(400);
-await page.touchscreen.tap(box.x + 12, cy);
-await page.waitForTimeout(600);
-const lawnPick = await page.locator('#edge-info').textContent();
-console.log(`      lawn mode:          "${lawnPick.trim()}"`);
-check('and the same tap in lawn mode selects the lawn',
-  /lawn/i.test(lawnPick) && !/property line/i.test(lawnPick), lawnPick.trim());
+const tapOwnCorner = async (mode) => {
+  await page.click(`#mode-${mode}`);
+  await page.waitForTimeout(500);
+  const pt = await page.evaluate(() => window.__lmPoints?.()[0] ?? null);
+  if (!pt) return { mode, said: '(no corners offered)' };
+  await page.touchscreen.tap(pt.x, pt.y);
+  await page.waitForTimeout(600);
+  return { mode, said: (await page.locator('#edge-info').textContent()).trim(), count: pt.count };
+};
 
-/* Pins belong to the pin step and are put away outside it. */
-const pinVisibility = await page.evaluate(async () => {
+const onParcel = await tapOwnCorner('parcel');
+console.log(`      property-line mode: "${onParcel.said}"`);
+check('a tap in property-line mode reaches the property line',
+  /property line/i.test(onParcel.said), onParcel.said);
+
+const onLawn = await tapOwnCorner('shape');
+console.log(`      lawn mode:          "${onLawn.said}"`);
+check('and the same gesture in lawn mode reaches the lawn, not the boundary',
+  /lawn/i.test(onLawn.said) && !/property line/i.test(onLawn.said), onLawn.said);
+
+/*
+ * Pins belong to the pin step.
+ *
+ * Asserted on the mode AND on a pin that actually exists. Checking only
+ * "are pins drawn" right after switching models would pass for the wrong
+ * reason when there are no pins to draw -- which is exactly what the first
+ * version of this check did.
+ */
+const pinScope = await page.evaluate(async () => {
   const sel = document.querySelector('#model-choice');
   if (!sel || ![...sel.options].some((o) => o.value === 'sam2')) return null;
+
   sel.value = 'sam2';
   sel.dispatchEvent(new Event('change'));
-  await new Promise((r) => setTimeout(r, 300));
-  const inPinMode = window.__lmPinsDrawn();
+  await new Promise((r) => setTimeout(r, 400));
+  const enteredPinMode =
+    document.querySelector('#mode-pins').getAttribute('aria-pressed') === 'true';
+
+  // Place one so there is something whose visibility can change.
+  const c = document.querySelector('.mapboxgl-canvas-container');
+  const r = c.getBoundingClientRect();
+  c.dispatchEvent(new MouseEvent('click', {
+    bubbles: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2,
+  }));
+  await new Promise((r2) => setTimeout(r2, 400));
+  const placed = window.__lmPins().length;
+  const shownInPinMode = window.__lmPinsDrawn();
+
   document.querySelector('#mode-shape').click();
-  await new Promise((r) => setTimeout(r, 300));
-  return { inPinMode, outOfPinMode: window.__lmPinsDrawn() };
+  await new Promise((r2) => setTimeout(r2, 400));
+  return {
+    enteredPinMode, placed, shownInPinMode,
+    stillPlaced: window.__lmPins().length,
+    shownOutside: window.__lmPinsDrawn(),
+  };
 });
-if (pinVisibility) {
+
+if (pinScope) {
   check('choosing the precise method drops you into placing pins',
-    pinVisibility.inPinMode === true);
-  check('and the numbered pins are put away when you leave that step',
-    pinVisibility.outOfPinMode === false);
+    pinScope.enteredPinMode === true);
+  check('a pin can be placed there', pinScope.placed === 1, `${pinScope.placed} pin(s)`);
+  check('and it is drawn while that is the mode', pinScope.shownInPinMode === true);
+  check('leaving the step takes the numbered pins off the map',
+    pinScope.shownOutside === false);
+  check('without discarding them — they are still there to detect with',
+    pinScope.stillPlaced === 1, `${pinScope.stillPlaced} pin(s) kept`);
 }
 
 await page.screenshot({ path: 'browser-test.png', fullPage: false });
