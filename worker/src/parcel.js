@@ -90,13 +90,40 @@ function queryVariants(lng, lat) {
   ];
 }
 
+/**
+ * Every endpoint to try for a county, best first.
+ *
+ * Kent's configured MapServer began timing out on every point query while a
+ * FeatureServer on the same host answered instantly -- load, not
+ * decommissioning, and it may well swap back. A county that publishes more
+ * than one parcel service should use them: falling through to the second costs
+ * one timeout and saves the property line, where failing costs the user their
+ * boundary and tells them nothing.
+ */
+function endpointsFor(cfg) {
+  const list = [];
+  if (cfg.service) list.push({ service: cfg.service, layer: cfg.layer, fields: cfg.fields });
+  for (const f of cfg.fallbacks || []) {
+    list.push({ service: f.service, layer: f.layer, fields: f.fields || cfg.fields });
+  }
+  return list;
+}
+
 async function queryCounty(countyKey, lng, lat) {
   const cfg = COUNTIES[countyKey];
   if (!cfg || !cfg.service) return null;
 
+  for (const endpoint of endpointsFor(cfg)) {
+    const parcel = await queryEndpoint(cfg, countyKey, endpoint, lng, lat);
+    if (parcel) return parcel;
+  }
+  return null;
+}
+
+async function queryEndpoint(cfg, countyKey, endpoint, lng, lat) {
   let data = null;
   for (const params of queryVariants(lng, lat)) {
-    const url = `${cfg.service}/${cfg.layer}/query?${new URLSearchParams(params)}`;
+    const url = `${endpoint.service}/${endpoint.layer}/query?${new URLSearchParams(params)}`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
@@ -105,7 +132,7 @@ async function queryCounty(countyKey, lng, lat) {
         signal: controller.signal,
         headers: { Accept: 'application/json' },
       });
-      if (!res.ok) return null;
+      if (!res.ok) return null; // this endpoint is unhappy; the caller tries the next
 
       const body = await res.json();
       // ArcGIS returns HTTP 200 with an { error } body on failure.
@@ -127,7 +154,7 @@ async function queryCounty(countyKey, lng, lat) {
   if (!geometry) return null;
 
   const attrs = feature.attributes || {};
-  const f = cfg.fields;
+  const f = endpoint.fields;
   const address =
     attrs[f.address] ||
     [attrs[f.streetNum], attrs[f.streetName]].filter(Boolean).join(' ') ||

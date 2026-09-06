@@ -45,6 +45,14 @@ const COUNTIES = {
     service: 'https://gis.kentcountymi.gov/agisprod/rest/services/ParcelsWithCondos/FeatureServer',
     layer: 0, // Parcels With Condos
     fields: { pin: 'PNUM', address: 'PROPERTYADDRESS' },
+    // Kept rather than deleted: it worked this morning and timed out by
+    // evening, which reads as load rather than removal. If the FeatureServer
+    // has its own bad afternoon, one timeout gets the property line from here
+    // instead of losing it.
+    fallbacks: [{
+      service: 'https://gis.kentcountymi.gov/agisprod/rest/services/FGDBParcels/MapServer',
+      layer: 0,
+    }],
     verified: 'live',
   },
   ottawa: {

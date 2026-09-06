@@ -85,26 +85,45 @@ async function endToEnd(key) {
   const points = TEST_POINTS[key];
   if (!points || !COUNTIES[key]?.service) return;
 
-  // Try each point in turn. One address landing on a road right-of-way or an
-  // unplatted lot is normal and says nothing about the endpoint.
+  /*
+   * Every point, not just until one answers.
+   *
+   * Stopping at the first hit meant a county was declared working on the
+   * strength of a single town: Washoe passed on Reno while Sparks and Incline
+   * Village -- the latter across a mountain range on the Tahoe shore -- were
+   * never tried at all. A layer that covers part of a county is a real and
+   * invisible failure, and it costs nothing to look.
+   *
+   * One point returning nothing is still normal: addresses land on road
+   * right-of-way and unplatted lots. Only all of them failing is a fault.
+   */
   const tried = [];
+  let hits = 0;
   for (const pt of points) {
     const parcel = await lookupParcel(pt.lng, pt.lat);
     if (!parcel) {
       tried.push(`${pt.label}: none`);
       continue;
     }
+    hits++;
 
     const m = measure(parcel.geometry);
     console.log(
       `  ${key} (${pt.label}): ${m.acres} ac / ${m.squareFeet.toLocaleString()} sq ft` +
         `  pin=${parcel.properties.pin}  addr=${parcel.properties.address}`
     );
-    if (tried.length) console.log(`      (no parcel at ${tried.join(', ')})`);
 
     // Sanity: a residential parcel should not be 0 or absurdly large.
     if (m.acres < 0.01 || m.acres > 500) {
       console.log('      WARNING: implausible area -- check outSR handling');
+    }
+  }
+
+  if (hits) {
+    if (tried.length) {
+      console.log(`      no parcel at ${tried.join(', ')}` +
+        ' -- normal for a right-of-way or unplatted point, but worth a look' +
+        ' if a whole town is missing');
     }
     return;
   }
