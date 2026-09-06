@@ -691,34 +691,34 @@ check('the Lawn button is what closes lawn mode', await page.evaluate(() =>
  */
 console.log('\n--- mode isolation ---');
 
-const tapOwnCorner = async (mode) => {
-  await page.click(`#mode-${mode}`);
-  await page.waitForTimeout(500);
-  const pt = await page.evaluate(() => window.__lmOnScreenCorner?.() ?? null);
-  if (!pt) return { mode, said: '(no corner on screen)' };
-  await page.touchscreen.tap(pt.x, pt.y);
-  await page.waitForTimeout(600);
-  return { mode, said: (await page.locator('#edge-info').textContent()).trim() };
+const reachableIn = async (mode, tool) => {
+  await page.click(tool ? `#tool-${tool}` : `#mode-${mode}`);
+  await page.waitForTimeout(450);
+  return page.evaluate(() => window.__lmEditable());
 };
 
-const onParcel = await tapOwnCorner('parcel');
-console.log(`      property-line mode: "${onParcel.said}"`);
-check('a tap in property-line mode reaches the property line',
-  /property line/i.test(onParcel.said), onParcel.said);
+const inParcel = await reachableIn('parcel');
+console.log(`      property-line mode reaches: ${JSON.stringify(inParcel.ids)}`);
+check('property-line mode reaches the property line and nothing else',
+  inParcel.ids.length === 1 && inParcel.ids[0] === inParcel.parcelId,
+  JSON.stringify(inParcel.ids));
 
-const onLawn = await tapOwnCorner('shape');
-console.log(`      lawn mode:          "${onLawn.said}"`);
-check('and the same gesture in lawn mode reaches the lawn, not the boundary',
-  /lawn/i.test(onLawn.said) && !/property line/i.test(onLawn.said), onLawn.said);
+const inLawn = await reachableIn('shape');
+console.log(`      lawn mode reaches:          ${inLawn.ids.length} lawn outline(s)`);
+check('lawn mode reaches the lawn outlines',
+  inLawn.ids.length > 0 && !inLawn.ids.includes(inLawn.parcelId),
+  JSON.stringify(inLawn.ids));
 
-/*
- * Pins belong to the pin step.
- *
- * Asserted on the mode AND on a pin that actually exists. Checking only
- * "are pins drawn" right after switching models would pass for the wrong
- * reason when there are no pins to draw -- which is exactly what the first
- * version of this check did.
- */
+check('and never the property line, which is what stops the two being confused',
+  !inLawn.ids.includes(inLawn.parcelId));
+
+/* A brush is not a corner tool: nothing should be grabbable while painting. */
+const inBrush = await reachableIn('shape', 'erase');
+check('no corner is grabbable while a brush is live',
+  inBrush.ids.length === 0, JSON.stringify(inBrush.ids));
+await page.click('#tool-points');
+await page.waitForTimeout(300);
+
 const hasPinModel = await page.evaluate(() =>
   [...document.querySelectorAll('#model-choice option')].some((o) => o.value === 'sam2'));
 

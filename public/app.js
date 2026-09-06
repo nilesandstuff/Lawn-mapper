@@ -136,25 +136,22 @@ if (typeof window !== 'undefined') {
   window.__lmPins = () => state.pins.map((p) => [...p]);
 
   /*
-   * The first corner of the current mode's outline that is actually on screen.
+   * What the current mode will actually let a tap reach.
    *
-   * __lmPoints() reports one corner per ring, and after a shape has been
-   * erased and repainted that corner can sit outside the viewport -- a test
-   * aiming at it taps empty space and concludes the mode is broken.
+   * This IS the mode mechanism -- editableRings() is what handleMapPoint
+   * searches, so whatever it returns is precisely the set of things that can
+   * be selected right now. Reporting it directly beats aiming a synthetic tap
+   * at a corner and inferring from the result: a tap can miss for reasons that
+   * have nothing to do with modes (the shape moved, the corner went
+   * off-screen), and then the check reports "modes are broken" about a
+   * gesture that hit empty space.
    */
-  window.__lmOnScreenCorner = () => {
-    if (!map || !state.edgeEdit) return null;
-    const rect = map.getCanvasContainer().getBoundingClientRect();
-    for (const { ring } of editableRings()) {
-      for (const p of openRing(ring)) {
-        const at = map.project(p);
-        if (at.x > 8 && at.y > 8 && at.x < rect.width - 8 && at.y < rect.height - 8) {
-          return { x: at.x + rect.left, y: at.y + rect.top };
-        }
-      }
-    }
-    return null;
-  };
+  window.__lmEditable = () => ({
+    mode: state.mode,
+    tool: state.shapeTool,
+    ids: editableRings().map((r) => r.featureId),
+    parcelId: PARCEL_ID,
+  });
 
   /* Whether the numbered markers are actually ON the map right now. */
   window.__lmPinsDrawn = () => {
