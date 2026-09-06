@@ -18,14 +18,15 @@
 const COUNTIES = {
   washoe: {
     name: 'Washoe County',
-    fips: '32031', // Nevada
-    // Reno and Sparks. The first county outside Michigan -- run the discovery
-    // workflow to fill this in; until it has a service, addresses here fall
-    // through to drawing by hand, which measures just as accurately.
-    service: null,
-    layer: null,
-    fields: {},
-    verified: 'none',
+    fips: '32031', // Nevada -- Reno and Sparks
+    // The assessor's CAMA service, not a standalone parcel one. Layer 0 is
+    // called "Parcel Lines" and returns polygons regardless: a point query
+    // inside a lot comes back with the lot, which a polyline layer could not
+    // do. The name is the county's, not a description of the geometry.
+    service: 'https://gisweb.washoecounty.gov/arcgis/rest/services/Assessor/Assessor_GSACAMA/MapServer',
+    layer: 0,
+    fields: { pin: 'APN', address: 'ADDRESS' },
+    verified: 'live', // 0.629 ac at 1615 Belford Rd, Reno
   },
   kent: {
     name: 'Kent County',
