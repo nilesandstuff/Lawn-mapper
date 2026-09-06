@@ -170,7 +170,7 @@ for (const [name, svc] of Object.entries(SERVICES)) {
 
 /*
  * If a service would not render, ask whether it is the scale rather than the
- * service. Our frame is about 4.7 cm per pixel, which is far finer than any of
+ * service. Our frame is about 3.5 cm per pixel, which is far finer than any of
  * these hold natively -- NAIP is 30 cm -- and an ArcGIS service is entitled to
  * refuse beyond its maximum scale rather than invent detail.
  */
@@ -188,7 +188,83 @@ for (const [name, svc] of Object.entries(SERVICES)) {
   }
 }
 
+/*
+ * Esri, specifically.
+ *
+ * `export` handed back a 0x0 image at every size, with the extent we asked for
+ * and no error -- which is what a *cached* map service does when it is not
+ * allowed to draw arbitrary extents on demand. That is a statement about the
+ * operation, not the imagery: the same pixels are served happily as pre-baked
+ * tiles. Since a tile is a fixed Web Mercator square and our frame is defined
+ * in exactly those coordinates, tiles are usable for the map view -- what they
+ * cannot do is hand back one image of our exact frame, which is what the
+ * detector needs. This section establishes which half is true.
+ */
+console.log('\n--- Esri: what it will serve, given export will not');
+const esri = 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer';
+const emeta = (await get(`${esri}?f=json`)).json || {};
+console.log(`    cached (singleFusedMapCache): ${emeta.singleFusedMapCache}`);
+console.log(`    exportTilesAllowed: ${emeta.exportTilesAllowed}`);
+console.log(`    capabilities: ${emeta.capabilities}`);
+const lods = emeta.tileInfo?.lods || [];
+if (lods.length) {
+  const top = lods[lods.length - 1];
+  console.log(`    tile levels: 0..${top.level}  finest ${top.resolution.toFixed(4)} m/px`);
+}
+
+/* The XYZ tile for our centre, at the zoom the app uses. */
+const z = 19;
+const n = 2 ** z;
+const tx = Math.floor(((FRAME.lng + 180) / 360) * n);
+const latRad = (FRAME.lat * Math.PI) / 180;
+const ty = Math.floor(((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n);
+for (const host of ['services', 'server']) {
+  const t = await get(`https://${host}.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${ty}/${tx}`);
+  console.log(`    tile z${z}/${ty}/${tx} via ${host}. -> ${t.bytes ? `${(t.bytes / 1024).toFixed(0)} KB ${t.type}` : t.error}`);
+}
+
+/*
+ * How old is what we are looking at?
+ *
+ * "Find the clearest or newest image" is the whole point of offering a choice,
+ * and a source is only worth switching to if you can see its date. Both of
+ * these publish the acquisition date of the individual photo under a point --
+ * Esri through a metadata layer, NAIP through its own image catalogue.
+ */
+console.log('\n--- how old is the imagery under our test point?');
+const pointQ = new URLSearchParams({
+  geometry: `${FRAME.lng},${FRAME.lat}`,
+  geometryType: 'esriGeometryPoint',
+  inSR: '4326',
+  spatialRel: 'esriSpatialRelIntersects',
+  outFields: '*',
+  returnGeometry: 'false',
+  f: 'json',
+});
+const esriMeta = await get(
+  `https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Imagery_Metadata/MapServer/8/query?${pointQ}`
+);
+const ef = esriMeta.json?.features?.[0]?.attributes;
+console.log(ef
+  ? `    Esri: ${ef.SRC_DATE2 || ef.SRC_DATE || '?'} from ${ef.NICE_NAME || ef.SRC_DESC || '?'} at ${ef.SRC_RES ?? '?'} m`
+  : `    Esri metadata: ${esriMeta.error || JSON.stringify(esriMeta.json).slice(0, 120)}`);
+
+for (const [name, svc] of Object.entries(SERVICES)) {
+  if (svc.op !== 'exportImage') continue;
+  const q = await get(`${svc.root}/query?${pointQ}`);
+  const feats = q.json?.features || [];
+  if (!feats.length) {
+    console.log(`    ${name}: no catalogue answer (${q.error || JSON.stringify(q.json).slice(0, 90)})`);
+    continue;
+  }
+  const dates = feats
+    .map((f) => f.attributes)
+    .map((a) => a.SRC_DATE || a.AcquisitionDate || a.acquisitionDate || a.Year || a.SRC_DATE2)
+    .filter(Boolean);
+  console.log(`    ${name}: ${feats.length} photo(s), dates ${[...new Set(dates)].join(', ') || 'not published'}`);
+}
+
 console.log('\nAn extent within half a pixel is fine -- the frame is what the app');
 console.log('measures against, and each source only has to fill that rectangle.');
 console.log('A service that will not render at our scale is not a bug in it: NAIP is');
-console.log('30 cm native and our frame asks for about 5 cm.');
+console.log('30 cm native and our frame asks for about 3.5 cm.');
