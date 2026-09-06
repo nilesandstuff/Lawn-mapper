@@ -116,10 +116,25 @@ const COUNTIES = {
   newaygo: {
     name: 'Newaygo County',
     fips: '26123',
-    service: null, // no public REST endpoint found -- needs a call to their GIS office
-    layer: null,
-    fields: {},
-    verified: 'none',
+    /*
+     * Found from a root a person opened in a browser. The instance is
+     * "hosting" -- a third convention after Kent's "agisprod" and Washoe's
+     * "gisweb" host -- and the service is called DrainsParcelsNewaygoCounty,
+     * which no search for "parcels" alone would rank highly.
+     */
+    service: 'https://arcgisweb.countyofnewaygo.com/hosting/rest/services/WebApps/DrainsParcelsNewaygoCounty/MapServer',
+    layer: 0,
+    // P_ADDRESS is the whole address where it is filled in; the parts are kept
+    // as a fallback, since the discovery run found it empty on the test parcel
+    // and an address that is sometimes blank is worth composing rather than
+    // dropping.
+    fields: {
+      pin: 'PIN',
+      address: 'P_ADDRESS',
+      streetNum: 'P_NUMB',
+      streetName: 'P_STREET',
+    },
+    verified: 'live', // 0.19 ac, PIN 62-17-02-205-005
   },
 };
 
