@@ -29,11 +29,15 @@ jobs:
         run: node tools/check-replicate.js
 
       # The county servers are small public assets that go down, move, and get
-      # republished without notice. A failure here is worth knowing about but
-      # is not a reason to stop: those addresses fall back to drawing by hand,
-      # which is why this step does not fail the run.
+      # republished without notice, and this step used to swallow every failure
+      # on that reasoning. It swallowed a real one: Kent answered no parcel at
+      # any of its three test points and the run went green, so the broken
+      # config deployed and Grand Rapids lost its property lines for hours.
+      #
+      # The probe now tells the two apart. A county with no service configured
+      # is a documented state and stays silent; a county that HAS one and
+      # answers nothing anywhere has stopped working, and that fails here.
       - name: Are the county property-line servers reachable?
-        continue-on-error: true
         run: npm run probe:counties
 
       - name: What to do next
@@ -41,9 +45,10 @@ jobs:
         run: |
           echo "Preflight passed."
           echo
-          echo "Check the county step above: kent, ottawa, allegan and muskegon"
-          echo "should each print an acreage. Newaygo has no public parcel server"
-          echo "and is expected to be absent -- those addresses fall back to"
-          echo "drawing by hand, so you can deploy either way."
+          echo "Every configured county printed an acreage -- the check above"
+          echo "now fails if one of them answers nothing, rather than saying so"
+          echo "in a run that goes green anyway. Newaygo has no public parcel"
+          echo "server and is expected to be absent; those addresses fall back"
+          echo "to drawing by hand, which measures just as accurately."
           echo
           echo "Next: run the '2. Deploy' workflow."

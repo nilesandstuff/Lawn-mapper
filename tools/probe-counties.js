@@ -66,6 +66,21 @@ async function checkFields(key) {
   }
 }
 
+/**
+ * Counties that are configured with a service and returned nothing anywhere.
+ *
+ * A county with `service: null` is legitimately absent -- those addresses fall
+ * through to drawing by hand, and that is a documented state, not a fault. A
+ * county that HAS a service and answers no point at all is a broken deploy,
+ * and it needs to fail rather than print a line into a green run.
+ *
+ * This is not hypothetical. Kent passed field verification and returned no
+ * parcel at any of its three points, in the same run, and shipped -- because
+ * the fields come from a metadata request and the parcels come from a query,
+ * and only one of them had stopped working.
+ */
+const dead = [];
+
 async function endToEnd(key) {
   const points = TEST_POINTS[key];
   if (!points || !COUNTIES[key]?.service) return;
@@ -95,6 +110,7 @@ async function endToEnd(key) {
   }
 
   console.log(`  ${key}: NO PARCEL AT ANY TEST POINT (${tried.join(', ')})`);
+  dead.push(key);
 }
 
 (async () => {
@@ -106,6 +122,20 @@ async function endToEnd(key) {
 
   console.log('\n=== 3. End-to-end lookup ===');
   for (const key of Object.keys(TEST_POINTS)) await endToEnd(key);
+
+  if (dead.length) {
+    console.error(
+      `\nFAIL  ${dead.length} configured count${dead.length > 1 ? 'ies' : 'y'} ` +
+      `returned no parcel at any test point: ${dead.join(', ')}\n\n` +
+      '      These have a service configured, so this is not the expected\n' +
+      '      "no public endpoint" state -- it is a county that has stopped\n' +
+      '      answering. Every address there silently loses its property line.\n\n' +
+      '      Run the "3. Find county servers" workflow for it: the endpoint has\n' +
+      '      usually moved rather than gone, and a sibling service on the same\n' +
+      '      host often answers when the configured one has begun timing out.'
+    );
+    process.exit(1);
+  }
 
   console.log('\nDone.');
 })();
