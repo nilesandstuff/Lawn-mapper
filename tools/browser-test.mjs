@@ -360,7 +360,16 @@ if (detectedSqft !== null && parcelSqft > 0) {
   console.log(`      detected lawn is ${(100 * detectedSqft / parcelSqft).toFixed(1)}% of the parcel`);
 }
 
-await page.click('#btn-edges');
+/*
+ * Lawn mode, not property-line mode.
+ *
+ * These checks read #result-sqft, which is the area of the LAWN shapes. Since
+ * each mode now owns exactly one thing, editing the property line here would
+ * leave that figure untouched and every assertion below would be measuring
+ * something it did not move -- passing or failing for reasons unrelated to the
+ * edit. The property line gets its own check further down.
+ */
+await page.click('#mode-shape');
 await page.waitForTimeout(400);
 check('edge panel opens', await page.locator('#edge-panel').isVisible());
 check('the edge tool arms the map for a tap',
@@ -579,10 +588,15 @@ await page.waitForTimeout(700);
 check('a shape is available to erase',
   (await page.evaluate(() => window.__lmShapeCount?.() ?? 0)) > 0);
 
-await page.click('#btn-brush-erase');
+await page.click('#mode-shape');
+await page.waitForTimeout(300);
+check('the lawn tools appear inside lawn mode',
+  await page.locator('#shape-tools').isVisible());
+
+await page.click('#tool-erase');
 await page.waitForTimeout(300);
 check('the eraser opens', await page.evaluate(() =>
-  document.querySelector('#btn-brush-erase .brush-label').textContent.includes('Done')));
+  document.querySelector('#tool-erase').getAttribute('aria-pressed') === 'true'));
 
 const erased = await page.evaluate(async ([x, y]) => {
   const el = document.querySelector('.mapboxgl-canvas-container');
@@ -610,10 +624,10 @@ check('erasing removes area', erased.after < erased.before,
 check('and does not remove everything', erased.after > 0,
   `${erased.after} sq ft left`);
 
-await page.click('#btn-brush-erase');
+await page.click('#tool-erase');
 await page.waitForTimeout(200);
 check('the eraser closes', await page.evaluate(() =>
-  document.querySelector('#btn-brush-erase .brush-label').textContent.trim() === 'Erase'));
+  document.querySelector('#tool-erase').getAttribute('aria-pressed') === 'false'));
 
 /*
  * The same stroke in the other direction.
@@ -624,10 +638,10 @@ check('the eraser closes', await page.evaluate(() =>
  * changed" would pass on a mislabelled button that erased twice.
  */
 console.log('\n--- add (the inverse brush) ---');
-await page.click('#btn-brush-add');
+await page.click('#tool-add');
 await page.waitForTimeout(300);
 check('the add brush opens', await page.evaluate(() =>
-  document.querySelector('#btn-brush-add .brush-label').textContent.includes('Done')));
+  document.querySelector('#tool-add').getAttribute('aria-pressed') === 'true'));
 
 const added = await page.evaluate(async ([x, y]) => {
   const el = document.querySelector('.mapboxgl-canvas-container');
@@ -653,11 +667,59 @@ console.log(`      ${added.said}`);
 check('painting with the add brush increases the area', added.after > added.before,
   `${added.before.toLocaleString()} -> ${added.after.toLocaleString()} sq ft`);
 
-await page.click('#btn-brush-add');
+await page.click('#tool-add');
 await page.waitForTimeout(200);
 check('the add brush closes', await page.evaluate(() =>
-  document.querySelector('#btn-brush-add .brush-label').textContent.trim() === 'Add'));
+  document.querySelector('#tool-add').getAttribute('aria-pressed') === 'false'));
 
+
+/* ------------------------------------------------------- mode isolation */
+/*
+ * The reason modes exist: one thing at a time responds to a touch.
+ *
+ * Asserted by what the app says it selected, because that is the decision
+ * under test. In property-line mode a tap near the boundary must select the
+ * property line; in lawn mode the same tap must select the lawn outline. They
+ * lie on top of each other here -- the lawn was seeded FROM the parcel -- so
+ * before modes, which one you got was a matter of which was nearer.
+ */
+console.log('\n--- mode isolation ---');
+await page.click('#mode-parcel');
+await page.waitForTimeout(400);
+await page.touchscreen.tap(box.x + 12, cy);
+await page.waitForTimeout(600);
+const parcelPick = await page.locator('#edge-info').textContent();
+console.log(`      property-line mode: "${parcelPick.trim()}"`);
+check('a tap in property-line mode selects the property line',
+  /property line/i.test(parcelPick), parcelPick.trim());
+
+await page.click('#mode-shape');
+await page.waitForTimeout(400);
+await page.touchscreen.tap(box.x + 12, cy);
+await page.waitForTimeout(600);
+const lawnPick = await page.locator('#edge-info').textContent();
+console.log(`      lawn mode:          "${lawnPick.trim()}"`);
+check('and the same tap in lawn mode selects the lawn',
+  /lawn/i.test(lawnPick) && !/property line/i.test(lawnPick), lawnPick.trim());
+
+/* Pins belong to the pin step and are put away outside it. */
+const pinVisibility = await page.evaluate(async () => {
+  const sel = document.querySelector('#model-choice');
+  if (!sel || ![...sel.options].some((o) => o.value === 'sam2')) return null;
+  sel.value = 'sam2';
+  sel.dispatchEvent(new Event('change'));
+  await new Promise((r) => setTimeout(r, 300));
+  const inPinMode = window.__lmPinsDrawn();
+  document.querySelector('#mode-shape').click();
+  await new Promise((r) => setTimeout(r, 300));
+  return { inPinMode, outOfPinMode: window.__lmPinsDrawn() };
+});
+if (pinVisibility) {
+  check('choosing the precise method drops you into placing pins',
+    pinVisibility.inPinMode === true);
+  check('and the numbered pins are put away when you leave that step',
+    pinVisibility.outOfPinMode === false);
+}
 
 await page.screenshot({ path: 'browser-test.png', fullPage: false });
 

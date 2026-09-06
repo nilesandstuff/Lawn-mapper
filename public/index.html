@@ -85,11 +85,20 @@
       <div class="tools">
         <button class="primary" id="btn-detect" disabled>Detect my lawn</button>
         <button class="ghost" id="btn-draw">Draw it myself</button>
+        <button class="ghost" id="btn-draw-parcel" hidden>Draw the property line</button>
         <button class="ghost" id="btn-parcel-shape" hidden>Use property line</button>
-        <button class="ghost" id="btn-edges">Extend to road</button>
         <button class="ghost" id="btn-undo" disabled>Undo</button>
         <button class="ghost" id="btn-delete" disabled>Delete selected</button>
         <button class="ghost" id="btn-clear">Clear all</button>
+      </div>
+
+      <!-- How much of the detector's mask counts as lawn. Free to move: it
+           re-reads a picture already downloaded, and runs no prediction. -->
+      <div class="imagery" id="sens-panel" hidden>
+        <label for="sens-slider">How much counts as lawn</label>
+        <input type="range" id="sens-slider" min="40" max="220" step="5" value="128"
+               aria-label="How much of the detection counts as lawn">
+        <p class="sub" id="sens-note"></p>
       </div>
 
       <!-- Only for the point-prompted model, which cannot run without pins. -->
@@ -98,34 +107,6 @@
         <button class="ghost edge-secondary" id="btn-pins-clear">Remove all pins</button>
       </div>
 
-      <!-- Paint the outline bigger or smaller, the way a selection tool in an
-           image editor does. Two buttons rather than one with a mode, so which
-           direction you are about to go is readable without pressing it. -->
-      <div class="brushbar" role="group" aria-label="Paint the lawn area">
-        <button class="brush" id="btn-brush-add" aria-pressed="false">
-          <span class="brush-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="22" height="22">
-              <circle cx="10" cy="10" r="6.2" fill="none" stroke="currentColor" stroke-width="1.9"/>
-              <line x1="14.6" y1="14.6" x2="20.5" y2="20.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
-              <line x1="7.2" y1="10" x2="12.8" y2="10" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
-              <line x1="10" y1="7.2" x2="10" y2="12.8" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
-            </svg>
-          </span>
-          <span class="brush-label">Add</span>
-        </button>
-        <button class="brush" id="btn-brush-erase" aria-pressed="false">
-          <span class="brush-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="22" height="22">
-              <circle cx="10" cy="10" r="6.2" fill="none" stroke="currentColor" stroke-width="1.9"/>
-              <line x1="14.6" y1="14.6" x2="20.5" y2="20.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
-              <line x1="7.2" y1="10" x2="12.8" y2="10" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
-            </svg>
-          </span>
-          <span class="brush-label">Erase</span>
-        </button>
-      </div>
-      <p class="brushnote">Drag across the map to paint lawn in or out. The
-        outline redraws itself around what is left.</p>
 
       <!-- Which photograph. Populated from /api/config so the browser and the
            Worker cannot disagree about what each source is. -->
@@ -161,23 +142,31 @@
       <details class="help">
         <summary>How to correct the shape</summary>
         <ul>
-          <li><b>Erase</b> (magnifier with a minus) then drag over anything
-            that is not lawn — a driveway the AI grabbed, a flower bed, a
-            neighbour's grass. The outline redraws itself around what is left.</li>
-          <li><b>Add</b> (magnifier with a plus) is the same stroke in reverse,
-            for lawn the detector missed. It works on an empty map too, so you
-            can paint a lawn from scratch instead of placing corners.</li>
-          <li>In <b>Extend to road</b>, tap a line to slide that whole edge out,
-            or tap a white corner dot to drag, add or delete that one point.</li>
-          <li>Tapping the line wins over tapping a corner, so extending stays the
+          <li>The buttons down the right of the map choose <b>what you are
+            editing</b>. Only that thing responds to a touch, so correcting a
+            lawn outline can no longer move the property line by accident.</li>
+          <li><b>Line</b> edits the property boundary: tap a line to slide that
+            whole edge out to the road, or a corner to move, add or delete it.</li>
+          <li><b>Pins</b> appears only for the precise AI method. The numbered
+            markers are visible while you are placing them and put away
+            afterwards, so they are never in front of the lawn.</li>
+          <li><b>Lawn</b> edits the measured shape, with three tools:
+            <b>Points</b> to drag corners, <b>Add</b> to paint lawn in, and
+            <b>Erase</b> to rub out anything that is not lawn — a driveway the
+            AI grabbed, a flower bed, a neighbour's grass. The outline redraws
+            itself around what is left.</li>
+          <li><b>Add</b> works on an empty map too, so you can paint a lawn from
+            scratch instead of placing corners.</li>
+          <li>Tapping a line wins over tapping a corner, so extending stays the
             easy gesture — aim right at a dot when you want the point itself.</li>
+          <li><b>How much counts as lawn</b> re-reads the detection you already
+            paid for at a stricter or looser cut. It costs nothing and runs no
+            new detection.</li>
           <li><b>Satellite image</b> switches between photographs of the same
             ground, taken in different years and different light. If shadows or
             leaf cover are hiding your lawn, try another one and detect again.</li>
           <li><b>Delete selected</b> removes a shape you don't mow.</li>
           <li><b>Draw it myself</b> adds another patch — areas add up.</li>
-          <li><b>Extend to road</b> pushes an edge out past the property line
-            without twisting it, for the strip between your line and the kerb.</li>
           <li>Yellow dots are corners taken straight from the county map.</li>
           <li>The AI finds grass inside your property line only — the
             neighbours' lawn is trimmed off automatically.</li>
@@ -211,6 +200,62 @@
 
   <main class="mapwrap">
     <div id="map"></div>
+
+    <!--
+      What you are editing, on the map rather than in the panel.
+
+      One mode at a time, and only the things that mode owns respond to a
+      touch. Before this, a tap near the property line while correcting a lawn
+      outline moved the property line, and the numbered detection pins sat on
+      top of everything whether or not they were relevant.
+    -->
+    <div class="maprail" id="maprail" role="toolbar" aria-label="Editing mode" hidden>
+      <button class="railbtn" id="mode-parcel" aria-pressed="false" title="Property line">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="1"
+          fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3.4 2.6"/></svg>
+        <span>Line</span>
+      </button>
+
+      <button class="railbtn" id="mode-pins" aria-pressed="false" title="Detection pins" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path
+          d="M12 2.6c-3.5 0-6.3 2.8-6.3 6.3 0 4.7 6.3 12.5 6.3 12.5s6.3-7.8 6.3-12.5c0-3.5-2.8-6.3-6.3-6.3z"
+          fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="9" r="2.3" fill="currentColor"/></svg>
+        <span>Pins</span>
+      </button>
+
+      <button class="railbtn" id="mode-shape" aria-pressed="false" title="Lawn shape">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8l6-4 10 5-3 9-9 1z"
+          fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+        <span>Lawn</span>
+      </button>
+
+      <!-- Sub-tools, only while the lawn shape is being edited. -->
+      <div class="railsub" id="shape-tools" hidden>
+        <button class="railbtn sub" id="tool-points" aria-pressed="false" title="Move corners">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 17l5-9 4 5 5-7"
+            fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <circle cx="5" cy="17" r="2.4" fill="currentColor"/><circle cx="10" cy="8" r="2.4" fill="currentColor"/>
+            <circle cx="14" cy="13" r="2.4" fill="currentColor"/><circle cx="19" cy="6" r="2.4" fill="currentColor"/></svg>
+          <span>Points</span>
+        </button>
+        <button class="railbtn sub" id="tool-add" aria-pressed="false" title="Paint lawn in">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="10" cy="10" r="6.2" fill="none" stroke="currentColor" stroke-width="1.9"/>
+            <line x1="14.6" y1="14.6" x2="20.5" y2="20.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+            <line x1="7.2" y1="10" x2="12.8" y2="10" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+            <line x1="10" y1="7.2" x2="10" y2="12.8" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
+          <span>Add</span>
+        </button>
+        <button class="railbtn sub" id="tool-erase" aria-pressed="false" title="Rub lawn out">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="10" cy="10" r="6.2" fill="none" stroke="currentColor" stroke-width="1.9"/>
+            <line x1="14.6" y1="14.6" x2="20.5" y2="20.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+            <line x1="7.2" y1="10" x2="12.8" y2="10" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
+          <span>Erase</span>
+        </button>
+      </div>
+    </div>
+
     <div class="hint" id="map-hint" hidden></div>
     <div class="overlay" id="busy" hidden>
       <div class="spinner" aria-hidden="true"></div>

@@ -137,28 +137,42 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 }
 .pin-count { margin: 0 0 10px; font-size: 13.5px; font-weight: 550; }
 
-/* ---------------------------------------------------------------- brush */
-/* Two big targets, side by side, the way a selection tool pairs add and
- * subtract. Sized for a thumb: these are the tools used most after a
- * detection, and they are used while looking at the map, not the panel. */
-.brushbar { display: flex; gap: 8px; margin-top: 12px; }
-.brush {
-  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
-  padding: 10px 6px 9px; font: inherit; font-size: 13px; font-weight: 600;
-  color: var(--ink); background: #fff; cursor: pointer;
-  border: 1px solid var(--line); border-radius: 11px;
+/* ------------------------------------------------------------- map rail */
+/*
+ * The editing modes live on the map, not in the panel below it. They are used
+ * while looking at the lawn, and the panel had grown long enough that reaching
+ * them meant scrolling away from the thing being edited.
+ */
+.maprail {
+  position: absolute; top: 96px; right: 10px; z-index: 3;
+  display: flex; flex-direction: column; gap: 6px;
 }
-.brush-icon { display: flex; color: var(--muted); }
-.brush:active { background: #f2f5f2; }
-/* The live tool is unmistakable: you are about to change the map with it. */
-#btn-brush-add.on {
-  background: #e8f5e9; border-color: #43a047; color: #1b5e20;
+.railbtn {
+  width: 54px; padding: 7px 2px 5px;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  font: inherit; font-size: 10.5px; font-weight: 600; line-height: 1;
+  color: #1f2d24; background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(0, 0, 0, 0.16); border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.22);
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
 }
-#btn-brush-erase.on {
-  background: #fdecea; border-color: #e53935; color: #b71c1c;
+.railbtn svg { width: 22px; height: 22px; }
+.railbtn:active { background: #eef2ee; }
+.railbtn[aria-pressed="true"] { background: #1b5e20; border-color: #14401a; color: #fff; }
+
+/* The sub-tools sit indented, so it reads as "inside lawn mode". */
+.railsub {
+  display: flex; flex-direction: column; gap: 5px;
+  margin-left: 10px; padding-left: 7px; border-left: 2px solid rgba(255, 255, 255, 0.85);
 }
-.brush.on .brush-icon { color: inherit; }
-.brushnote { margin: 7px 0 0; font-size: 12.5px; color: var(--muted); }
+.railbtn.sub { width: 46px; font-size: 9.5px; }
+.railbtn.sub svg { width: 19px; height: 19px; }
+#tool-add[aria-pressed="true"]   { background: #2e7d32; border-color: #1b5e20; }
+#tool-erase[aria-pressed="true"] { background: #c62828; border-color: #8e0000; }
+
+@media (max-width: 700px) {
+  .maprail { top: 88px; right: 8px; }
+}
 
 /* ------------------------------------------------------- imagery source */
 .imagery {
@@ -175,6 +189,7 @@ button:disabled { opacity: .45; cursor: not-allowed; }
   border: 1px solid var(--line); border-radius: 9px;
 }
 .imagery .sub { margin: 7px 0 0; font-size: 12.5px; }
+.imagery input[type=range] { width: 100%; margin: 2px 0 0; accent-color: var(--green); }
 
 /* --------------------------------------------------------- edge editing */
 .edgepanel {

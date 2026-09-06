@@ -19,6 +19,7 @@
 
 import * as entrypoint from '../worker/src/index.js';
 import { MODELS, DEFAULT_MODEL, DEFAULT_PROMPT } from '../worker/src/sam.js';
+import { dayKey, DAILY_LIMIT_PER_CLIENT } from '../worker/src/quota.js';
 
 let failures = 0;
 const check = (name, ok, detail = '') => {
@@ -58,6 +59,40 @@ check('the default model needs no pins',
   MODELS[DEFAULT_MODEL].needsPoints === false,
   'a first-time user should not have to tap anything to get a measurement');
 check('there is a default prompt', !!DEFAULT_PROMPT, JSON.stringify(DEFAULT_PROMPT));
+
+
+/* ------------------------------------------------------------ the quota day */
+/*
+ * "It does not seem to be resetting" was a real observation about a real
+ * boundary. The count was keyed on the UTC date, which turns over at 7 or 8 in
+ * the evening in Michigan -- so an allowance spent after dinner was already on
+ * tomorrow's tally, and one spent at lunch came back the same evening. Neither
+ * matches the day a person is having, which is what makes it read as broken.
+ *
+ * Asserted at the boundary rather than "today", because a test that asks what
+ * day it is right now passes for twenty of every twenty-four hours regardless
+ * of which timezone the code uses.
+ */
+const eveningBefore = new Date('2026-07-01T02:00:00Z'); // 22:00 Jun 30, EDT
+const afterMidnight = new Date('2026-07-01T05:00:00Z'); // 01:00 Jul 1,  EDT
+
+check('an evening measurement counts against that evening, not tomorrow',
+  dayKey(eveningBefore) === '2026-06-30',
+  `UTC would say ${eveningBefore.toISOString().slice(0, 10)}; dayKey says ${dayKey(eveningBefore)}`);
+
+check('and the count rolls over at local midnight',
+  dayKey(afterMidnight) === '2026-07-01', dayKey(afterMidnight));
+
+check('the two really are different days (the boundary is being crossed)',
+  dayKey(eveningBefore) !== dayKey(afterMidnight));
+
+/* Winter, when the offset is UTC-5 rather than UTC-4. */
+check('and it still holds when daylight saving is off',
+  dayKey(new Date('2026-01-15T04:00:00Z')) === '2026-01-14',
+  dayKey(new Date('2026-01-15T04:00:00Z')));
+
+check('the daily allowance is 20', DAILY_LIMIT_PER_CLIENT === 20,
+  String(DAILY_LIMIT_PER_CLIENT));
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);

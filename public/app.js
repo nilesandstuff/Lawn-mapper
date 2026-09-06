@@ -47,6 +47,10 @@ const state = {
   model: 'sam3',      // which one Detect will use
   detectedBy: null,   // which one the shapes on screen actually came from
   pins: [],           // [lng, lat] the point-prompted model is told to look at
+  mode: null,         // 'parcel' | 'pins' | 'shape' | null -- what taps act on
+  shapeTool: 'points',// within shape mode: 'points' | 'add' | 'erase'
+  sensitivity: 128,   // the cut between lawn and not-lawn in the mask
+  drawingParcel: false,
 };
 
 /**
@@ -130,6 +134,12 @@ if (typeof window !== 'undefined') {
 
   /* The pins the point-prompted model would be sent. */
   window.__lmPins = () => state.pins.map((p) => [...p]);
+
+  /* Whether the numbered markers are actually ON the map right now. */
+  window.__lmPinsDrawn = () => {
+    const src = map?.getSource('lawn-pins');
+    return Boolean(src?._data?.features?.length);
+  };
 
   window.__lmImagery = () => ({
     provider: state.provider,
@@ -341,6 +351,14 @@ async function initMap() {
   for (const evt of ['draw.create', 'draw.update', 'draw.delete']) {
     map.on(evt, refreshMeasurement);
   }
+
+  // A polygon drawn while "Draw the property line" is armed becomes the
+  // boundary rather than a patch of lawn.
+  map.on('draw.create', (e) => {
+    if (!state.drawingParcel) return;
+    state.drawingParcel = false;
+    adoptDrawnParcel(e.features?.[0]);
+  });
 
   await new Promise((resolve) => map.on('load', resolve));
 
@@ -568,6 +586,7 @@ async function confirmLocation() {
       // the final outline are still survey-accurate.
       state.surveyed = (parcelRing() || []).map((p) => [...p]);
       $('#btn-parcel-shape').hidden = false;
+      $('#btn-draw-parcel').hidden = true;
 
       const a = measure(state.parcel.geometry);
       setStatus(
@@ -578,12 +597,13 @@ async function confirmLocation() {
       map.getSource('parcel').setData(empty());
       state.surveyed = [];
       $('#btn-parcel-shape').hidden = true;
+      $('#btn-draw-parcel').hidden = false;
       map.flyTo({ center: [lng, lat], zoom: IMAGERY_ZOOM_FALLBACK, duration: 600 });
       state.frame = { lng, lat, zoom: IMAGERY_ZOOM_FALLBACK, size: FRAME_SIZE };
       setStatus(
         data.covered
-          ? "Your county has records, but not for this parcel. You can still measure it."
-          : 'No property line available for this address. Trace your lawn instead — the measurement is just as accurate.'
+          ? 'Your county has records, but not for this parcel. Trace the property line and you can still measure it.'
+          : 'No county record for this address. Press "Draw the property line" and trace your boundary — detection needs it to know where your lot ends.'
       );
     }
 
@@ -592,11 +612,11 @@ async function confirmLocation() {
     // there is one.
     buildImageryPicker();
     buildModelPicker();
-    syncPinPicker();
+    refreshRail();
     refreshPins();
     setHint(state.parcel
       ? 'Press "Detect my lawn" — or extend the boundary first if your lawn runs to the road'
-      : 'Press "Detect my lawn", or draw it by hand');
+      : 'Trace your property line first');
   } catch (err) {
     setStatus(err.message, 'error');
   } finally {
@@ -666,36 +686,20 @@ function enterEraserMode(mode = 'erase') {
     setStatus('Nothing to erase yet — detect or draw a lawn first.', 'warn');
     return;
   }
-  if (state.edgeEdit) exitEdgeMode();
   eraser = { stroke: [], mode: BRUSH[mode] ? mode : 'erase' };
-  refreshBrushButtons();
   map.getCanvas().style.cursor = 'crosshair';
   setHint(spec.hint);
   setStatus(spec.status);
   armLawnPicker(); // reuses the touch and mouse plumbing
 }
 
-function exitEraserMode() {
+function exitEraserMode({ quiet = false } = {}) {
   eraser = null;
-  refreshBrushButtons();
   map.getCanvas().style.cursor = '';
   map.getSource('erase-stroke')?.setData(empty());
-  disarmLawnPicker();
-  // The pin model wants the map listening too, and leaving the brush should
-  // not quietly take that away.
-  syncPinPicker();
-  updatePromptHint();
-}
-
-/** Both brush buttons show which one is live, the way a toolbar does. */
-function refreshBrushButtons() {
-  for (const [mode, spec] of Object.entries(BRUSH)) {
-    const btn = $(`#btn-brush-${mode}`);
-    if (!btn) continue;
-    const on = eraser?.mode === mode;
-    btn.classList.toggle('on', on);
-    btn.setAttribute('aria-pressed', String(on));
-    btn.querySelector('.brush-label').textContent = on ? spec.active : spec.label;
+  if (!quiet) {
+    disarmLawnPicker();
+    updatePromptHint();
   }
 }
 
@@ -1168,7 +1172,7 @@ function handleMapPoint(lngLat, x = null, y = null) {
   }
 
   if (state.edgeEdit) return selectNear([lngLat.lng, lngLat.lat]);
-  if (pinsWanted()) addPin([lngLat.lng, lngLat.lat]);
+  if (placingPins()) addPin([lngLat.lng, lngLat.lat]);
 }
 
 /* ------------------------------------------------------------------ pins */
@@ -1186,19 +1190,8 @@ const modelInfo = (id) =>
 
 const pinsWanted = () => Boolean(state.frame) && modelInfo(state.model).needsPoints;
 
-/**
- * Keep the map listening for taps exactly when pins are wanted.
- *
- * The brush and the edge tool arm the same plumbing for their own reasons and
- * disarm it when they close, so this is called on the way out of both: without
- * it, using the eraser once would silently stop pins being placeable, with no
- * visible cause.
- */
-function syncPinPicker() {
-  if (eraser || state.edgeEdit) return;   // they own the map while they are open
-  if (pinsWanted()) armLawnPicker();
-  else disarmLawnPicker();
-}
+/** Taps place pins only while that is the mode you chose. */
+const placingPins = () => state.mode === 'pins' && pinsWanted();
 
 function addPin(lngLat) {
   pushHistory('pin');
@@ -1213,16 +1206,25 @@ function clearPins() {
 }
 
 function refreshPins() {
+  /*
+   * Shown only while you are placing them.
+   *
+   * Seven numbered markers sitting over the lawn while you are trying to
+   * correct its outline are seven things in the way that cannot be moved and
+   * do not do anything. They belong to the pin step, so they live and die
+   * with it.
+   */
+  const visible = placingPins() ? state.pins : [];
   map.getSource('lawn-pins')?.setData({
     type: 'FeatureCollection',
-    features: state.pins.map((p, i) => ({
+    features: visible.map((p, i) => ({
       type: 'Feature',
       properties: { n: String(i + 1) },
       geometry: { type: 'Point', coordinates: p },
     })),
   });
 
-  const wanted = pinsWanted();
+  const wanted = placingPins();
   $('#pin-panel').hidden = !wanted;
   $('#btn-pins-clear').disabled = !state.pins.length;
   if (wanted) {
@@ -1247,14 +1249,32 @@ function updatePromptHint() {
   // is dark rather than just being dark.
   const needsPins = pinsWanted() && !state.pins.length;
 
-  $('#btn-detect').disabled = !state.frame || same || needsPins;
+  /*
+   * No property line, no detection.
+   *
+   * The detector reads the whole frame, and the frame is wider than the lot --
+   * so without a boundary to clip against, what comes back includes the
+   * neighbours' grass. On the lot this was first tested against that was 3,721
+   * sq ft of someone else's lawn, a third of everything found, and the number
+   * looked entirely reasonable. A measurement nobody can tell is wrong is
+   * worse than no measurement, so the boundary is now a precondition rather
+   * than an improvement.
+   *
+   * Nothing is taken away by this: an address with no county record can still
+   * draw its own boundary, which is what "Draw the property line" is for.
+   */
+  const needsParcel = !parcelRing();
+
+  $('#btn-detect').disabled = !state.frame || same || needsPins || needsParcel;
   $('#btn-detect').textContent = same
     ? 'Lawn detected'
-    : needsPins
-      ? 'Tap your lawn to place a pin'
-      : state.detected
-        ? 'Detect again'
-        : 'Detect my lawn';
+    : needsParcel
+      ? 'Property line needed first'
+      : needsPins
+        ? 'Tap your lawn to place a pin'
+        : state.detected
+          ? 'Detect again'
+          : 'Detect my lawn';
 }
 
 /* ---------------------------------------------------------- model picker */
@@ -1289,14 +1309,14 @@ function setModel(id) {
    */
   if (state.pins.length && !modelInfo(id).needsPoints) clearPins();
 
-  refreshPins();
-  syncPinPicker();
-  if (pinsWanted() && !state.pins.length) {
-    setHint('Tap each separate patch of lawn');
-    setStatus('Tap your lawn to place pins, then press Detect. The AI segments exactly what you point at.');
-  } else {
-    setHint('');
-  }
+  /*
+   * Picking the precise method puts you straight into placing pins, because
+   * that is the only thing you can do next -- it cannot run without them. And
+   * leaving it drops you out of a mode that no longer exists.
+   */
+  if (modelInfo(id).needsPoints) setMode('pins');
+  else if (state.mode === 'pins') setMode(null);
+  else { refreshPins(); refreshRail(); updatePromptHint(); }
 }
 
 /* ------------------------------------------------------------- detection */
@@ -1414,7 +1434,8 @@ async function detect() {
     const polygons = maskToPolygons(
       image,
       (x, y) => framePxToLngLat(rendered, [x, y], w, h),
-      { clipMask, fillGapsUnderPx, tolerance, maxVertices: MAX_TRACE_VERTICES }
+      { clipMask, fillGapsUnderPx, tolerance, maxVertices: MAX_TRACE_VERTICES,
+        threshold: state.sensitivity }
     );
 
     if (!polygons.length) {
@@ -1448,13 +1469,15 @@ async function detect() {
     // a look-only source, and the status line has to name the real one.
     state.detectedWith = rendered.provider || provider;
     state.detectedBy = data.model || model;
-    state.lastMask = { url, frame: rendered };
+    state.lastMask = { url, frame: rendered, image };
     if ($('#toggle-overlay').checked) showOverlay();
+    refreshSensitivity();
 
     refreshMeasurement();
     refreshSurveyed();
     updateSelectionButtons();
-    setHint('Drag the white dots to correct the shape');
+    refreshRail();
+    setHint('Use the buttons on the right of the map to correct the shape');
 
     const gaps = polygons.filledGaps
       ? ` ${polygons.filledGaps} gap${polygons.filledGaps > 1 ? 's' : ''} counted as grass under trees` +
@@ -1818,46 +1841,274 @@ function outerRing(feature) {
  */
 const PARCEL_ID = '__parcel__';
 
-function enterEdgeMode() {
-  if (eraser) exitEraserMode();
-  const hasShape = draw.getAll().features.some((f) => outerRing(f));
-  if (!hasShape && !state.parcel) {
-    setStatus('Find a property first, or draw a lawn, then you can extend an edge to the road.', 'warn');
+/* --------------------------------------------------------------- modes */
+/*
+ * One thing at a time.
+ *
+ * Every tool used to be live at once: the property line, the lawn outlines and
+ * the detection pins all responded to the same tap, and which one you got
+ * depended on what happened to be nearest. That is fine until two of them
+ * overlap, which on a lawn traced to its own boundary is always.
+ *
+ * So there are three modes and you are in exactly one, or none:
+ *
+ *   parcel  the property line, and nothing else, responds
+ *   pins    the detection pins -- placed, numbered, and visible ONLY here
+ *   shape   the lawn outlines, with two sub-tools:
+ *             points  drag, add and delete corners
+ *             add / erase  paint the outline bigger or smaller
+ *
+ * Leaving a mode puts its handles away, which is why the pins vanish when you
+ * are not placing them: a numbered marker you cannot move and did not ask for
+ * is just something in front of the lawn.
+ */
+const MODES = ['parcel', 'pins', 'shape'];
+
+function setMode(mode, tool = null) {
+  const next = MODES.includes(mode) ? mode : null;
+
+  // Tear the old one down first, so no two modes ever hold the map at once.
+  if (eraser) exitEraserMode({ quiet: true });
+  state.edgeEdit = null;
+  clearEdgeHighlight();
+  clearPoints();
+  $('#edge-panel').hidden = true;
+  $('#point-controls').hidden = true;
+  $('#edge-controls').hidden = true;
+  disarmLawnPicker();
+
+  state.mode = next;
+  if (next === 'shape') state.shapeTool = tool || state.shapeTool || 'points';
+
+  if (next === 'parcel') enterRingEditing('parcel');
+  else if (next === 'shape' && state.shapeTool === 'points') enterRingEditing('shape');
+  else if (next === 'shape') enterEraserMode(state.shapeTool);
+  else if (next === 'pins') {
+    armLawnPicker();
+    setHint('Tap each separate patch of lawn');
+    setStatus(state.pins.length
+      ? 'Placing pins. Tap to add more, or press Detect.'
+      : 'Tap your lawn to place pins, then press Detect. The AI segments exactly what you point at.');
+  } else {
+    setHint('');
+  }
+
+  refreshPins();
+  refreshRail();
+  updatePromptHint();
+}
+
+/** Corner-and-edge editing, for whichever outline the mode owns. */
+function enterRingEditing(which) {
+  const rings = editableRings();
+  if (!rings.length) {
+    setStatus(which === 'parcel'
+      ? 'No property line yet. Use "Draw the property line" to trace one.'
+      : 'No lawn shape yet. Detect one, or draw it by hand.', 'warn');
     return;
   }
 
   state.edgeEdit = { featureId: null, edgeIndex: null, vertexIndex: null, baseRing: null };
   $('#edge-panel').hidden = false;
-  $('#edge-controls').hidden = true;
-  $('#point-controls').hidden = true;
-  $('#edge-info').textContent = hasShape
-    ? 'Tap a line to extend that edge, or a corner dot to move, add or delete it.'
-    : 'Tap the property line nearest the road. Extend it first if your lawn runs past it.';
+  $('#edge-info').textContent = which === 'parcel'
+    ? 'Tap a line to extend that edge out to the road, or a corner to move it.'
+    : 'Tap a line to slide that edge, or a corner dot to move, add or delete it.';
   $('#edge-info').className = 'edge-info';
   setHint('Tap a line to extend it, or a corner to move it');
   armLawnPicker(); // same tap plumbing; handleMapPoint routes the tap
   drawPoints();    // the corners have to be visible to be aimed at
 }
 
-function exitEdgeMode() {
-  state.edgeEdit = null;
-  $('#edge-panel').hidden = true;
-  $('#point-controls').hidden = true;
-  clearEdgeHighlight();
-  clearPoints();
-  disarmLawnPicker();
-  syncPinPicker(); // same reason as the brush: pins still want the map
-  updatePromptHint();
+/* -------------------------------------------------------- sensitivity */
+/*
+ * How much of the mask counts as lawn -- moved without paying again.
+ *
+ * The detector hands back a picture, and turning that picture into a yes/no
+ * per pixel needs a cut. That cut is ours, not the model's, which matters here
+ * because the point-prompted model publishes no threshold of its own: its
+ * schema is `image` and `input_points` and nothing else, so there is no
+ * model-side knob to turn. This is the one that exists.
+ *
+ * It costs nothing to move, because the mask is already downloaded and
+ * decoded: re-tracing is arithmetic on pixels we have. Detection is the
+ * expensive step and it does not run again.
+ *
+ * It only does something if the mask has mid-tones. A model that returns pure
+ * black and white has already made the decision, and no cut between 1 and 254
+ * will change a single pixel -- so measure the mask when it arrives and say so
+ * rather than offering a control that silently does nothing.
+ */
+const DEFAULT_SENSITIVITY = 128;
+
+/** Share of pixels that are neither nearly-black nor nearly-white. */
+function maskSoftness(image) {
+  const d = image.data;
+  let mid = 0;
+  // Every 4th pixel: this is a 1280x1280 image and the answer is a proportion.
+  for (let i = 0; i < d.length; i += 16) {
+    const v = d[i];
+    if (v > 24 && v < 231) mid++;
+  }
+  return mid / (d.length / 16);
 }
 
-/** Every editable outline, in the order a tap should consider them. */
+function refreshSensitivity() {
+  const panel = $('#sens-panel');
+  if (!panel) return;
+
+  const mask = state.lastMask;
+  if (!mask?.image) { panel.hidden = true; return; }
+
+  const soft = maskSoftness(mask.image);
+  panel.hidden = false;
+  $('#sens-slider').disabled = soft < 0.01;
+  $('#sens-note').textContent = soft < 0.01
+    ? 'This model returns a hard yes/no mask, so there is nothing to loosen or tighten. Use Erase to take out what it got wrong.'
+    : 'Right is stricter — less gets called lawn. Free: it re-reads the picture you already paid for.';
+}
+
+/** Re-trace the mask already in hand at the current cut. */
+function retrace() {
+  const mask = state.lastMask;
+  if (!mask?.image) return;
+
+  const { image, frame: rendered } = mask;
+  const w = image.width;
+  const h = image.height;
+
+  const ring = parcelRing();
+  const clipMask = ring
+    ? rasterizePolygon(
+        state.parcel.geometry.type === 'Polygon'
+          ? state.parcel.geometry.coordinates
+          : state.parcel.geometry.coordinates[0],
+        w, h,
+        (ll) => lngLatToFramePx(rendered, ll, w, h)
+      )
+    : null;
+
+  const sqFtPerPx = (metresPerPixel(rendered, w) ** 2) / 0.09290304;
+  const polygons = maskToPolygons(
+    image,
+    (x, y) => framePxToLngLat(rendered, [x, y], w, h),
+    {
+      clipMask,
+      fillGapsUnderPx: $('#toggle-trees').checked ? Math.round(TREE_GAP_SQFT / sqFtPerPx) : 0,
+      tolerance: TRACE_TOLERANCE_M / metresPerPixel(rendered, w),
+      maxVertices: MAX_TRACE_VERTICES,
+      threshold: state.sensitivity,
+    }
+  );
+
+  // A snapshot per change would bury the detection under a hundred steps of
+  // slider, so the whole drag collapses into one undoable move.
+  pushHistory('sensitivity');
+  draw.deleteAll();
+  for (const geometry of polygons) draw.add({ type: 'Feature', properties: {}, geometry });
+
+  refreshMeasurement();
+  refreshSurveyed();
+  updateSelectionButtons();
+  setStatus(polygons.length
+    ? `${polygons.length} section${polygons.length > 1 ? 's' : ''} of lawn at this setting.`
+    : 'Nothing left at this setting — move it back to the left.', polygons.length ? '' : 'warn');
+}
+
+/**
+ * Turn a just-drawn polygon into the property line.
+ *
+ * Taken out of Draw entirely rather than left as a feature with a flag: the
+ * boundary and the lawn are measured against each other, and a boundary that
+ * is also one of the shapes being measured would count its own area.
+ */
+function adoptDrawnParcel(feature) {
+  const ring = feature && outerRing(feature);
+  if (!ring || ring.length < 4) {
+    setStatus('That outline was not closed. Try tracing the boundary again.', 'warn');
+    return;
+  }
+
+  draw.delete(feature.id);
+
+  state.parcel = {
+    type: 'Feature',
+    // `county` is what the print-out and the status line quote as the source.
+    // Saying "traced by hand" there is the difference between an estimate the
+    // reader can weigh and a number that implies a survey.
+    properties: { county: 'traced by hand', drawn: true },
+    geometry: { type: 'Polygon', coordinates: [ring.map((p) => [...p])] },
+  };
+  map.getSource('parcel').setData(state.parcel);
+
+  // No corner here came from a county record, so none of them get the yellow
+  // "surveyed" treatment.
+  state.surveyed = [];
+
+  const bbox = geometryBounds(state.parcel);
+  if (bbox) {
+    state.frame = {
+      lng: (bbox[0] + bbox[2]) / 2,
+      lat: (bbox[1] + bbox[3]) / 2,
+      zoom: zoomToFit(bbox, FRAME_SIZE),
+      size: FRAME_SIZE,
+    };
+  }
+
+  const a = measure(state.parcel.geometry);
+  $('#btn-draw-parcel').hidden = true;
+  $('#btn-parcel-shape').hidden = false;
+  refreshSurveyed();
+  refreshRail();
+  updatePromptHint();
+  setHint('');
+  setStatus(`Property line traced — ${a.acres} acres. Press "Detect my lawn".`);
+}
+
+/** Paint every rail button with what is actually live. */
+function refreshRail() {
+  const rail = $('#maprail');
+  if (!rail) return;
+  rail.hidden = !state.frame;
+
+  // Pins are only a concept for the model that uses them.
+  $('#mode-pins').hidden = !modelInfo(state.model).needsPoints;
+
+  for (const m of MODES) {
+    $(`#mode-${m}`)?.setAttribute('aria-pressed', String(state.mode === m));
+  }
+
+  $('#shape-tools').hidden = state.mode !== 'shape';
+  for (const [id, tool] of [['#tool-points', 'points'], ['#tool-add', 'add'], ['#tool-erase', 'erase']]) {
+    $(id)?.setAttribute('aria-pressed',
+      String(state.mode === 'shape' && state.shapeTool === tool));
+  }
+}
+
+/* Kept as the names the rest of the file already calls. */
+const exitEdgeMode = () => setMode(null);
+
+/**
+ * Every editable outline, in the order a tap should consider them.
+ *
+ * Scoped to the mode, and that is the whole point of modes: this used to
+ * return the lawn outlines AND the property line together, so a tap meant for
+ * a lawn corner near the boundary moved the boundary instead. Both were
+ * legitimate targets and only one was wanted, and nothing on screen said which
+ * would win.
+ */
 function editableRings() {
-  const rings = draw.getAll().features
-    .map((f) => ({ featureId: f.id, ring: outerRing(f) }))
-    .filter((r) => r.ring);
-  const parcel = parcelRing();
-  if (parcel) rings.push({ featureId: PARCEL_ID, ring: parcel });
-  return rings;
+  if (state.mode === 'parcel') {
+    const parcel = parcelRing();
+    return parcel ? [{ featureId: PARCEL_ID, ring: parcel }] : [];
+  }
+
+  if (state.mode === 'shape' && state.shapeTool === 'points') {
+    return draw.getAll().features
+      .map((f) => ({ featureId: f.id, ring: outerRing(f) }))
+      .filter((r) => r.ring);
+  }
+
+  return [];
 }
 
 /**
@@ -2416,7 +2667,16 @@ function reset() {
   state.provider = 'mapbox';
   state.model = 'sam3';
   state.pins = [];
+  state.mode = null;
+  state.shapeTool = 'points';
+  state.drawingParcel = false;
+  state.sensitivity = DEFAULT_SENSITIVITY;
+  $('#sens-slider').value = String(DEFAULT_SENSITIVITY);
+  $('#sens-panel').hidden = true;
+  $('#btn-draw-parcel').hidden = true;
   refreshPins();
+  refreshRail();
+  $('#maprail').hidden = true;
   $('#imagery-panel').hidden = true;
   $('#model-panel').hidden = true;
   $('#pin-panel').hidden = true;
@@ -2444,15 +2704,43 @@ $('#btn-detect').addEventListener('click', detect);
 
 $('#imagery-source').addEventListener('change', (e) => setProvider(e.target.value));
 $('#model-choice').addEventListener('change', (e) => setModel(e.target.value));
+/*
+ * `input` would re-trace on every pixel of travel, which on a 1280px mask is a
+ * visible stutter and a lot of wasted work for positions nobody stopped at.
+ * `change` fires once the finger lifts.
+ */
+$('#sens-slider').addEventListener('change', (e) => {
+  state.sensitivity = Number(e.target.value) || DEFAULT_SENSITIVITY;
+  retrace();
+});
+
 $('#btn-pins-clear').addEventListener('click', () => {
   clearPins();
   setStatus('Pins removed. Tap the lawn to place new ones.');
 });
 
+/*
+ * Tracing your own boundary.
+ *
+ * Detection needs a property line to clip against, and only seven counties
+ * publish one. Without this, every address outside them would be refused a
+ * measurement it used to be given -- so requiring a boundary and providing no
+ * way to supply one would be a straight loss of function dressed up as rigour.
+ *
+ * A boundary drawn here is treated exactly like a surveyed one, except that
+ * refreshSurveyed() knows none of its corners came from the county, so nothing
+ * on the map claims a precision it does not have.
+ */
+$('#btn-draw-parcel').addEventListener('click', () => {
+  setMode(null);
+  state.drawingParcel = true;
+  draw.changeMode('draw_polygon');
+  setHint('Tap each corner of your property. Tap the first one again to close it.');
+  setStatus('Tracing the property line. Follow the kerb, the fences and the neighbours’ edges.');
+});
+
 $('#btn-draw').addEventListener('click', () => {
-  if (eraser) exitEraserMode();
-  if (state.edgeEdit) exitEdgeMode();
-  disarmLawnPicker();
+  setMode(null); // drawing owns the map while it is open
   pushHistory();
   draw.changeMode('draw_polygon');
   setHint('Click around the edge of your lawn. Click the first point again to finish.');
@@ -2462,7 +2750,7 @@ $('#btn-draw').addEventListener('click', () => {
 $('#btn-clear').addEventListener('click', () => {
   pushHistory();
   draw.deleteAll();
-  if (state.edgeEdit) exitEdgeMode();
+  if (state.mode === 'shape') setMode(null);
   refreshMeasurement();
   refreshSurveyed();
   updateSelectionButtons();
@@ -2474,21 +2762,24 @@ $('#btn-clear').addEventListener('click', () => {
 $('#btn-parcel-shape').addEventListener('click', useParcelShape);
 $('#btn-undo').addEventListener('click', undo);
 /*
- * Pressing the live brush turns it off; pressing the other one switches to it
- * directly. Making you turn Erase off before you can turn Add on would be a
+ * The rail. Pressing the live mode turns it off; pressing another switches
+ * straight to it -- making you close one before opening the next would be a
  * press per correction, and corrections come in runs.
  */
-for (const mode of Object.keys(BRUSH)) {
-  $(`#btn-brush-${mode}`).addEventListener('click', () => {
-    if (eraser?.mode === mode) exitEraserMode();
-    else enterEraserMode(mode);
+for (const mode of MODES) {
+  $(`#mode-${mode}`).addEventListener('click', () => {
+    setMode(state.mode === mode ? null : mode);
   });
 }
 
-$('#btn-edges').addEventListener('click', () => {
-  state.edgeEdit ? exitEdgeMode() : enterEdgeMode();
-});
-$('#btn-edge-done').addEventListener('click', exitEdgeMode);
+for (const tool of ['points', 'add', 'erase']) {
+  $(`#tool-${tool}`).addEventListener('click', () => {
+    if (state.mode === 'shape' && state.shapeTool === tool) setMode(null);
+    else setMode('shape', tool);
+  });
+}
+
+$('#btn-edge-done').addEventListener('click', () => setMode(null));
 $('#btn-tidy').addEventListener('click', tidyShapes);
 $('#btn-point-add').addEventListener('click', addPointOnEdge);
 $('#btn-point-delete').addEventListener('click', deleteSelectedVertex);

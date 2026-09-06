@@ -14,12 +14,33 @@
  * that a scraper rotating client ids still runs into.
  */
 
-const DAILY_LIMIT_PER_CLIENT = 10;
-const DAILY_LIMIT_PER_IP = 40; // generous -- shared/NAT addresses are real
-const TTL_SECONDS = 60 * 60 * 24;
+const DAILY_LIMIT_PER_CLIENT = 20;
+const DAILY_LIMIT_PER_IP = 80; // generous -- shared/NAT addresses are real
+// Long enough that a key always outlives the day it belongs to, whatever the
+// offset. The key name is what resets the count; the TTL only sweeps up.
+const TTL_SECONDS = 60 * 60 * 48;
 
-function dayKey() {
-  return new Date().toISOString().slice(0, 10); // YYYY-MM-DD, UTC
+/*
+ * Which day it is, where the users are.
+ *
+ * This was the UTC date, which rolls over at 7 or 8 in the evening in
+ * Michigan depending on daylight saving. So an allowance spent in the
+ * afternoon came back a few hours later, and one spent at nine in the evening
+ * was already on tomorrow's count -- both of which read as "the reset is
+ * broken" because neither matches the day a person is having.
+ *
+ * en-CA formats as YYYY-MM-DD, which is what the key wants, and the timezone
+ * database is available in Workers. If it ever is not, UTC is the fallback:
+ * a wrong-by-hours reset beats a thrown error inside quota accounting.
+ */
+const RESET_ZONE = 'America/Detroit';
+
+export function dayKey(now = new Date()) {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: RESET_ZONE }).format(now);
+  } catch {
+    return now.toISOString().slice(0, 10);
+  }
 }
 
 function clientIp(request) {
