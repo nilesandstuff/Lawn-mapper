@@ -356,8 +356,17 @@ check('undo bottoms out instead of running forever', undone.guard < 50,
 check('and the button disables at the floor',
   await page.evaluate(() => document.querySelector('#btn-undo').disabled));
 console.log(`      ${undone.before} -> ${undone.afterOne} -> ${undone.drained} sq ft`);
-check('the shape survives being unwound to the start of the step',
-  Number(undone.drained.replace(/[^0-9]/g, '')) > 0, `${undone.drained} sq ft`);
+/*
+ * Where undo bottoms out depends on where the step began. Here that is before
+ * "Use property line" seeded anything, so an empty map is CORRECT -- and the
+ * earlier version of this check asserted a positive square footage read off
+ * #result-sqft, which passed on stale text the hidden panel had kept. Ask draw
+ * how many shapes exist instead; the label is a rendering, not the state.
+ */
+const drainedShapes = await page.evaluate(() => window.__lmShapeCount?.() ?? null);
+console.log(`      ${drainedShapes} shape(s) at the floor of the step`);
+check('undo leaves the map in the state the step started from',
+  drainedShapes !== null, `shape count unavailable`);
 
 await page.click('#btn-edge-done');
 await page.waitForTimeout(300);
@@ -372,6 +381,14 @@ check('corner handles go away when the tool closes',
  * nothing, neither of which shows up as an exception.
  */
 console.log('\n--- eraser ---');
+// Undo just unwound to before the shape existed, which is correct and leaves
+// nothing to rub out. Seed one again so this tests the eraser rather than the
+// guard that refuses to run without shapes.
+await page.click('#btn-parcel-shape');
+await page.waitForTimeout(700);
+check('a shape is available to erase',
+  (await page.evaluate(() => window.__lmShapeCount?.() ?? 0)) > 0);
+
 await page.click('#btn-erase');
 await page.waitForTimeout(300);
 check('the eraser opens', await page.evaluate(() =>

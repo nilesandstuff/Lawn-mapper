@@ -106,6 +106,9 @@ if (typeof window !== 'undefined') {
    * off a screenshot would be guesswork. One entry per editable outline, in
    * the order a tap considers them.
    */
+  /* How many shapes the measurement is actually made of. */
+  window.__lmShapeCount = () => (draw ? draw.getAll().features.length : 0);
+
   window.__lmPoints = (want = null) => {
     if (!map || !state.edgeEdit) return [];
     const rect = map.getCanvasContainer().getBoundingClientRect();
@@ -1814,7 +1817,15 @@ function refreshMeasurement() {
   const fc = draw.getAll();
   const hasShapes = fc.features.length > 0;
   $('#result').hidden = !hasShapes;
-  if (!hasShapes) return;
+  if (!hasShapes) {
+    // Clear the figure rather than just hiding it. A hidden panel keeps its
+    // last text, which reads as a live measurement to anything looking at the
+    // DOM -- a browser check did exactly that and passed on a stale number
+    // while the map was empty.
+    $('#result-sqft').textContent = '—';
+    $('#result-sub').textContent = '';
+    return;
+  }
 
   const m = measure(fc);
   const patches = fc.features.length;
