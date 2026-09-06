@@ -184,10 +184,12 @@ if (sources.includes('esri')) {
     shot.detectsWith === 'mapbox', `detectsWith=${shot.detectsWith}`);
 }
 
-await page.selectOption('#imagery-source', 'mapbox');
-await page.waitForTimeout(500);
-check('switching back removes the extra photograph',
-  (await page.evaluate(() => window.__lmImagery())).layer === false);
+if (sources.includes('mapbox')) {
+  await page.selectOption('#imagery-source', 'mapbox');
+  await page.waitForTimeout(500);
+  check('switching back removes the extra photograph',
+    (await page.evaluate(() => window.__lmImagery())).layer === false);
+}
 
 /*
  * The map still has to accept a touch, because the edge tool uses it. This is

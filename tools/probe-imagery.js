@@ -24,6 +24,7 @@
  */
 
 import { frameCorners, metresPerPixel } from '../public/lib/mercator.js';
+import { PROVIDERS, imagePixels } from '../worker/src/imagery.js';
 
 /* A real frame, the size the app really uses. */
 const FRAME = { lng: -85.8637, lat: 42.8703, zoom: 19.66, size: 640 };
@@ -262,6 +263,51 @@ for (const [name, svc] of Object.entries(SERVICES)) {
     .map((a) => a.SRC_DATE || a.AcquisitionDate || a.acquisitionDate || a.Year || a.SRC_DATE2)
     .filter(Boolean);
   console.log(`    ${name}: ${feats.length} photo(s), dates ${[...new Set(dates)].join(', ') || 'not published'}`);
+}
+
+/*
+ * The URLs the Worker will actually build.
+ *
+ * Everything above tests services. This tests the shipped code: it imports the
+ * Worker's own provider table and asks for each source exactly as production
+ * will. It matters most for NDVI, which is not a different service but the same
+ * one with a renderingRule -- and a rendering rule that a service rejects
+ * fails on its own, however healthy the endpoint underneath it is.
+ */
+console.log('\n--- the URLs the Worker will actually build');
+const PROBE_FRAME = { ...FRAME, size: IMG / 2 }; // imagePixels() doubles it
+for (const [id, p] of Object.entries(PROVIDERS)) {
+  if (!p.detect) {
+    console.log(`    ${id}: look-only (${p.tiles ? 'tiles' : 'no source'}) — not asked`);
+    continue;
+  }
+
+  const built = p.url(PROBE_FRAME, process.env.MAPBOX_SERVER_TOKEN || process.env.MAPBOX_TOKEN || 'NO_TOKEN');
+
+  // Mapbox has no f=json mode; for the ArcGIS ones, asking the same URL in
+  // json mode is what reports the extent actually served.
+  if (built.includes('f=image')) {
+    const meta = await get(built.replace('f=image', 'f=json'));
+    if (meta.error || meta.json?.error) {
+      console.log(`    ${id}: REJECTED — ${meta.error || JSON.stringify(meta.json.error).slice(0, 140)}`);
+      continue;
+    }
+    const e = meta.json.extent || {};
+    const worstOff = Math.max(
+      Math.abs(e.xmin - bbox[0]), Math.abs(e.ymin - bbox[1]),
+      Math.abs(e.xmax - bbox[2]), Math.abs(e.ymax - bbox[3])
+    );
+    const want = imagePixels(PROBE_FRAME);
+    const sizeOk = meta.json.width === want && meta.json.height === want;
+    console.log(`    ${id}: ${meta.json.width}x${meta.json.height} px ` +
+      `(wanted ${want}), extent off by ${worstOff.toFixed(3)} m — ` +
+      (sizeOk && worstOff < 0.5 ? 'GOOD' : 'PROBLEM'));
+  }
+
+  const img = await get(built);
+  console.log(img.bytes
+    ? `        image: ${(img.bytes / 1024).toFixed(0)} KB ${img.type}`
+    : `        image FAILED: ${img.error || JSON.stringify(img.json).slice(0, 140)}`);
 }
 
 console.log('\nAn extent within half a pixel is fine -- the frame is what the app');
