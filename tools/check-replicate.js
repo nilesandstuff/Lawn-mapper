@@ -16,7 +16,7 @@
  *   REPLICATE_TOKEN=r8_... node tools/check-replicate.js
  */
 
-import { SAM_MODEL, SAM_INPUT_FIELDS } from '../worker/src/sam.js';
+import { MODELS, DEFAULT_MODEL } from '../worker/src/sam.js';
 
 const token = process.env.REPLICATE_TOKEN;
 if (!token) {
@@ -29,81 +29,104 @@ if (!token) {
 }
 
 const auth = { Authorization: `Bearer ${token}` };
-console.log(`Checking Replicate model: ${SAM_MODEL}`);
 
-const res = await fetch(`https://api.replicate.com/v1/models/${SAM_MODEL}`, { headers: auth });
+/*
+ * Every model the Worker can be asked for, not just the default.
+ *
+ * The one that breaks silently is the one nobody runs by accident: a person
+ * who picks "Precise" once a week would be the only one to discover that its
+ * field names had drifted, and they would discover it as a failed detection
+ * they had already been charged for.
+ */
+let failures = 0;
 
-if (res.status === 404) {
-  console.error(
-    `FAIL  Replicate has no model called "${SAM_MODEL}" (404).\n\n` +
-    '      It has most likely been renamed. To fix it:\n' +
-    '        1. Search for "SAM 2" at https://replicate.com/explore\n' +
-    '        2. Note the owner/name from the model page URL\n' +
-    '        3. Edit worker/src/sam.js on GitHub and change SAM_MODEL\n' +
-    '        4. Re-run this check\n\n' +
-    '      Until this is fixed, "Detect my lawn" fails for every visitor.\n' +
-    '      Drawing a lawn by hand still works.'
-  );
-  process.exit(1);
+for (const [id, model] of Object.entries(MODELS)) {
+  const slug = model.slug;
+  console.log(`\n=== ${id}: ${slug}`);
+
+  const res = await fetch(`https://api.replicate.com/v1/models/${slug}`, { headers: auth });
+
+  if (res.status === 404) {
+    console.error(
+      `FAIL  Replicate has no model called "${slug}" (404).\n` +
+      '      It has most likely been renamed or withdrawn. To fix it:\n' +
+      '        1. Run workflow 6 ("Find a promptable AI model") to see what exists\n' +
+      `        2. Edit MODELS.${id}.slug in worker/src/sam.js\n` +
+      '        3. Re-run this check\n' +
+      (id === DEFAULT_MODEL
+        ? '      Until this is fixed, detection fails for every visitor.\n'
+        : `      Detection still works; only the "${model.label}" option is broken.\n`) +
+      '      Drawing a lawn by hand always works.'
+    );
+    failures++;
+    continue;
+  }
+
+  if (res.status === 401 || res.status === 403) {
+    console.error(
+      `FAIL  Replicate rejected the token (${res.status}).\n` +
+      '      Generate a fresh one at https://replicate.com/account/api-tokens\n' +
+      '      and update the REPLICATE_TOKEN repository secret.'
+    );
+    process.exit(1); // a bad token is not per-model; stop here
+  }
+
+  if (!res.ok) {
+    console.error(`FAIL  Unexpected response from Replicate: ${res.status}`);
+    console.error((await res.text()).slice(0, 400));
+    failures++;
+    continue;
+  }
+
+  const meta = await res.json();
+  console.log(`PASS  "${slug}" exists and your token can see it.`);
+  if (meta.description) console.log(`      ${meta.description.slice(0, 110)}`);
+  if (meta.run_count !== undefined) {
+    console.log(`      ${meta.run_count.toLocaleString()} runs to date`);
+  }
+
+  const version = meta.latest_version?.id;
+  if (!version) {
+    console.error(`FAIL  "${slug}" has no published version, so there is nothing to run.`);
+    failures++;
+    continue;
+  }
+  console.log(`PASS  It has a runnable version: ${version.slice(0, 16)}…`);
+
+  const schema = meta.latest_version?.openapi_schema?.components?.schemas?.Input?.properties;
+  if (!schema) {
+    console.log('WARN  Could not read the input schema; skipping the field check.');
+    continue;
+  }
+
+  const available = Object.keys(schema);
+  console.log(`      accepts: ${available.join(', ')}`);
+
+  const missing = model.fields.filter((f) => !available.includes(f));
+  if (missing.length) {
+    console.error(
+      `FAIL  The Worker sends ${missing.length} field(s) this model does not accept: ` +
+      `${missing.join(', ')}\n` +
+      `      Fix MODELS.${id}.input() and .fields in worker/src/sam.js.`
+    );
+    failures++;
+    continue;
+  }
+
+  console.log(`PASS  All ${model.fields.length} fields it is sent are accepted: ${model.fields.join(', ')}`);
+
+  // A point-prompted model that stopped taking points would still pass the
+  // field check above if its schema kept the name and changed nothing else,
+  // but a model that lost the field entirely is caught here with a reason.
+  if (model.needsPoints) {
+    const pointish = available.filter((f) => /point|click|coord/i.test(f));
+    console.log(pointish.length
+      ? `PASS  It still takes point prompts: ${pointish.join(', ')}`
+      : 'FAIL  It no longer publishes any point field, so pins cannot reach it.');
+    if (!pointish.length) failures++;
+  }
 }
 
-if (res.status === 401 || res.status === 403) {
-  console.error(
-    `FAIL  Replicate rejected the token (${res.status}).\n` +
-    '      Generate a fresh one at https://replicate.com/account/api-tokens\n' +
-    '      and update the REPLICATE_TOKEN repository secret.'
-  );
-  process.exit(1);
-}
-
-if (!res.ok) {
-  console.error(`FAIL  Unexpected response from Replicate: ${res.status}`);
-  console.error((await res.text()).slice(0, 400));
-  process.exit(1);
-}
-
-const model = await res.json();
-console.log(`PASS  "${SAM_MODEL}" exists and your token can see it.`);
-if (model.description) console.log(`      ${model.description.slice(0, 110)}`);
-
-/* ------------------------------------------------- a runnable version id */
-const version = model.latest_version?.id;
-if (!version) {
-  console.error(
-    `\nFAIL  "${SAM_MODEL}" has no published version, so there is nothing to run.\n` +
-    '      Pick a different SAM 2 model at https://replicate.com/explore and\n' +
-    '      change SAM_MODEL in worker/src/sam.js.'
-  );
-  process.exit(1);
-}
-console.log(`PASS  It has a runnable version: ${version.slice(0, 16)}…`);
-
-/* ------------------------------------------- the fields the Worker sends */
-const schema =
-  model.latest_version?.openapi_schema?.components?.schemas?.Input?.properties;
-
-if (!schema) {
-  console.log('WARN  Could not read the input schema; skipping the field check.');
-  console.log('      This is not fatal, but a wrong field name would only show up');
-  console.log('      as a failed detection.');
-  process.exit(0);
-}
-
-const available = Object.keys(schema);
-console.log(`\nInput fields this model accepts:\n      ${available.join(', ')}`);
-
-const missing = SAM_INPUT_FIELDS.filter((f) => !available.includes(f));
-if (missing.length) {
-  console.error(
-    `\nFAIL  The Worker sends ${missing.length} field(s) this model does not accept: ` +
-    `${missing.join(', ')}\n` +
-    '      Edit samInput() in worker/src/sam.js to use the names listed\n' +
-    '      above, and update SAM_INPUT_FIELDS to match.'
-  );
-  process.exit(1);
-}
-
-console.log(`\nPASS  All ${SAM_INPUT_FIELDS.length} fields the Worker sends are accepted: ` +
-  SAM_INPUT_FIELDS.join(', '));
-console.log('\nNote: this confirms the request will be accepted. It does not run one --');
+console.log('\nNote: this confirms the requests will be accepted. It does not run one --');
 console.log('use workflow 5 for that, which costs a few cents.');
+process.exit(failures === 0 ? 0 : 1);

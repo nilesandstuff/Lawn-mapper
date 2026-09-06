@@ -20,6 +20,7 @@ on:
         options:
           - sam3-prompts
           - sam2-points
+          - point-format
       sources:
         description: 'Imagery to compare, separated by | — mapbox, naip, ndvi'
         required: false
@@ -57,8 +58,19 @@ jobs:
 
       # Only this probe needs it, so it is not a project dependency.
       - name: Install a PNG decoder
-        if: inputs.probe == 'sam3-prompts'
+        if: inputs.probe == 'sam3-prompts' || inputs.probe == 'point-format'
         run: npm install pngjs --no-save
+
+      # Settles what ocg2347/sam-pointprompt wants and whether what it returns
+      # is a mask we can trace. Its schema says neither.
+      - name: Work out the point-prompt format
+        if: inputs.probe == 'point-format'
+        env:
+          MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
+          MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN }}
+          REPLICATE_TOKEN: ${{ secrets.REPLICATE_TOKEN }}
+          ADDRESS: ${{ inputs.address }}
+        run: node tools/probe-points.js
 
       - name: Compare prompts and thresholds
         if: inputs.probe == 'sam3-prompts'

@@ -43,6 +43,10 @@ const state = {
   imagery: [],        // sources, from /api/config
   provider: 'mapbox', // which one is on screen and will be detected from
   detectedWith: null, // which one the shapes on screen actually came from
+  models: [],         // detection methods, from /api/config
+  model: 'sam3',      // which one Detect will use
+  detectedBy: null,   // which one the shapes on screen actually came from
+  pins: [],           // [lng, lat] the point-prompted model is told to look at
 };
 
 /**
@@ -121,6 +125,12 @@ if (typeof window !== 'undefined') {
    * plausible. So report both rectangles and let the test compare them, rather
    * than reporting "a layer exists", which is true of a picture of anywhere.
    */
+  /* Layer order, bottom first. The photograph must sit under the shapes. */
+  window.__lmLayerOrder = () => (map ? map.getStyle().layers.map((l) => l.id) : []);
+
+  /* The pins the point-prompted model would be sent. */
+  window.__lmPins = () => state.pins.map((p) => [...p]);
+
   window.__lmImagery = () => ({
     provider: state.provider,
     detectsWith: effectiveProvider(state.provider),
@@ -298,8 +308,9 @@ async function initMap() {
     return;
   }
 
-  const { mapboxToken, imagery } = await api('/api/config');
+  const { mapboxToken, imagery, models } = await api('/api/config');
   state.imagery = Array.isArray(imagery) ? imagery : [];
+  state.models = Array.isArray(models) ? models : [];
   if (!mapboxToken) {
     fatal(
       'This site is missing its Mapbox key, so the map cannot start. ' +
@@ -365,6 +376,33 @@ async function initMap() {
   // Mapbox Draw draws handles for a shape it has selected and never for the
   // parcel, which is not one of its features -- so without these there is
   // nothing to aim at on the property line.
+  /*
+   * Pins for the point-prompted model. Numbered, because "did that tap
+   * register?" is the question a person asks on a phone, and a count in the
+   * panel is not an answer about THIS pin.
+   */
+  map.addSource('lawn-pins', { type: 'geojson', data: empty() });
+  map.addLayer({
+    id: 'lawn-pins-halo', type: 'circle', source: 'lawn-pins',
+    paint: {
+      'circle-radius': 13,
+      'circle-color': '#ffd54f',
+      'circle-opacity': 0.9,
+      'circle-stroke-width': 2,
+      'circle-stroke-color': '#5d4037',
+    },
+  });
+  map.addLayer({
+    id: 'lawn-pins-label', type: 'symbol', source: 'lawn-pins',
+    layout: {
+      'text-field': ['get', 'n'],
+      'text-size': 13,
+      'text-font': ['DIN Offc Pro Bold', 'Arial Unicode MS Bold'],
+      'text-allow-overlap': true,
+    },
+    paint: { 'text-color': '#3e2723' },
+  });
+
   map.addSource('points', { type: 'geojson', data: empty() });
   map.addLayer({
     id: 'points', type: 'circle', source: 'points',
@@ -550,9 +588,12 @@ async function confirmLocation() {
     }
 
     updatePromptHint();
-    // The picker measures against the frame, so it only becomes real once
+    // The pickers measure against the frame, so they only become real once
     // there is one.
     buildImageryPicker();
+    buildModelPicker();
+    syncPinPicker();
+    refreshPins();
     setHint(state.parcel
       ? 'Press "Detect my lawn" — or extend the boundary first if your lawn runs to the road'
       : 'Press "Detect my lawn", or draw it by hand');
@@ -640,6 +681,9 @@ function exitEraserMode() {
   map.getCanvas().style.cursor = '';
   map.getSource('erase-stroke')?.setData(empty());
   disarmLawnPicker();
+  // The pin model wants the map listening too, and leaving the brush should
+  // not quietly take that away.
+  syncPinPicker();
   updatePromptHint();
 }
 
@@ -809,6 +853,9 @@ function snapshot() {
   return {
     features: JSON.parse(JSON.stringify(draw.getAll().features)),
     parcel: state.parcel ? JSON.parse(JSON.stringify(state.parcel.geometry)) : null,
+    // Placing pins is work too. Undo that skipped them would quietly make
+    // "remove all pins" the only way back from one stray tap.
+    pins: state.pins.map((p) => [...p]),
   };
 }
 
@@ -862,6 +909,9 @@ function undo() {
     $('#point-controls').hidden = true;
     clearEdgeHighlight();
   }
+
+  state.pins = (prev.pins || []).map((p) => [...p]);
+  refreshPins();
 
   drawPoints();
   refreshMeasurement();
@@ -1117,22 +1167,136 @@ function handleMapPoint(lngLat, x = null, y = null) {
     return;
   }
 
-  if (state.edgeEdit) selectNear([lngLat.lng, lngLat.lat]);
+  if (state.edgeEdit) return selectNear([lngLat.lng, lngLat.lat]);
+  if (pinsWanted()) addPin([lngLat.lng, lngLat.lat]);
 }
 
-/** Detection needs only a frame; there is nothing for the user to place. */
+/* ------------------------------------------------------------------ pins */
+/*
+ * Where to look, for the model that has to be told.
+ *
+ * The text-prompted model reads the whole frame and needs nothing placed. The
+ * point-prompted one segments what you point at and nothing else, so the pins
+ * ARE the request: no pins, no prediction, which is why the Worker refuses
+ * that call before touching the quota rather than charging for an empty
+ * answer.
+ */
+const modelInfo = (id) =>
+  state.models.find((m) => m.id === id) || { id, label: id, needsPoints: false };
+
+const pinsWanted = () => Boolean(state.frame) && modelInfo(state.model).needsPoints;
+
+/**
+ * Keep the map listening for taps exactly when pins are wanted.
+ *
+ * The brush and the edge tool arm the same plumbing for their own reasons and
+ * disarm it when they close, so this is called on the way out of both: without
+ * it, using the eraser once would silently stop pins being placeable, with no
+ * visible cause.
+ */
+function syncPinPicker() {
+  if (eraser || state.edgeEdit) return;   // they own the map while they are open
+  if (pinsWanted()) armLawnPicker();
+  else disarmLawnPicker();
+}
+
+function addPin(lngLat) {
+  pushHistory('pin');
+  state.pins.push(lngLat);
+  refreshPins();
+}
+
+function clearPins() {
+  if (state.pins.length) pushHistory();
+  state.pins = [];
+  refreshPins();
+}
+
+function refreshPins() {
+  map.getSource('lawn-pins')?.setData({
+    type: 'FeatureCollection',
+    features: state.pins.map((p, i) => ({
+      type: 'Feature',
+      properties: { n: String(i + 1) },
+      geometry: { type: 'Point', coordinates: p },
+    })),
+  });
+
+  const wanted = pinsWanted();
+  $('#pin-panel').hidden = !wanted;
+  $('#btn-pins-clear').disabled = !state.pins.length;
+  if (wanted) {
+    const n = state.pins.length;
+    $('#pin-count').textContent = n
+      ? `${n} pin${n > 1 ? 's' : ''} placed — add more for any patch not covered`
+      : 'Tap each part of your lawn to place a pin';
+  }
+  updatePromptHint();
+}
+
 function updatePromptHint() {
-  // Already detected from THIS photograph is the only case worth blocking.
-  // Re-running the same source returns the same mask and charges again;
-  // running a different source is a real second opinion, and the whole reason
-  // the picker exists.
-  const here = state.detected && state.detectedWith === effectiveProvider(state.provider);
-  $('#btn-detect').disabled = !state.frame || here;
-  $('#btn-detect').textContent = here
+  // Already detected from THIS photograph, with THIS model, is the only case
+  // worth blocking. Re-running the same pair returns the same mask and charges
+  // again; changing either is a real second opinion, and the whole reason the
+  // two pickers exist.
+  const same = state.detected &&
+    state.detectedWith === effectiveProvider(state.provider) &&
+    state.detectedBy === state.model;
+
+  // The point-prompted model cannot run on nothing, so the button says why it
+  // is dark rather than just being dark.
+  const needsPins = pinsWanted() && !state.pins.length;
+
+  $('#btn-detect').disabled = !state.frame || same || needsPins;
+  $('#btn-detect').textContent = same
     ? 'Lawn detected'
-    : state.detected
-      ? 'Detect on this image'
-      : 'Detect my lawn';
+    : needsPins
+      ? 'Tap your lawn to place a pin'
+      : state.detected
+        ? 'Detect again'
+        : 'Detect my lawn';
+}
+
+/* ---------------------------------------------------------- model picker */
+
+function buildModelPicker() {
+  const select = $('#model-choice');
+  if (state.models.length < 2) { $('#model-panel').hidden = true; return; }
+
+  select.innerHTML = '';
+  for (const m of state.models) {
+    const opt = document.createElement('option');
+    opt.value = m.id;
+    opt.textContent = m.label;
+    select.append(opt);
+  }
+  select.value = state.model;
+  $('#model-panel').hidden = false;
+  $('#model-note').textContent = modelInfo(state.model).note || '';
+}
+
+function setModel(id) {
+  if (id === state.model) return;
+  state.model = id;
+  $('#model-choice').value = id;
+  $('#model-note').textContent = modelInfo(id).note || '';
+
+  /*
+   * Pins belong to the model that uses them. Switching to the text-prompted
+   * one leaves them on the map as clutter that does nothing; switching back
+   * would silently reuse pins placed for a different question. Dropping them
+   * is the honest move, and undo still has them.
+   */
+  if (state.pins.length && !modelInfo(id).needsPoints) clearPins();
+
+  refreshPins();
+  syncPinPicker();
+  if (pinsWanted() && !state.pins.length) {
+    setHint('Tap each separate patch of lawn');
+    setStatus('Tap your lawn to place pins, then press Detect. The AI segments exactly what you point at.');
+  } else {
+    setHint('');
+  }
 }
 
 /* ------------------------------------------------------------- detection */
@@ -1142,6 +1306,22 @@ async function detect() {
 
   const frame = state.frame;
   const provider = effectiveProvider(state.provider);
+  const model = state.model;
+
+  /*
+   * Pins, converted here rather than in the Worker.
+   *
+   * The model is shown the image, so its coordinates are image pixels -- and
+   * the browser is the side that knows how big that image is. Mapbox renders
+   * the static endpoint at @2x, so a 640 frame comes back 1280 px wide; a pin
+   * sent in frame units would land at half the distance from the corner, which
+   * is a plausible-looking spot somewhere else on the property.
+   */
+  const imgPx = Math.min(frame.size * 2, 2560);
+  const points = state.pins.map((ll) => {
+    const [x, y] = lngLatToFramePx(frame, ll, imgPx, imgPx);
+    return [Math.round(x), Math.round(y)];
+  });
 
   /*
    * Detecting replaces every shape on the map, so when there is work on screen
@@ -1162,7 +1342,7 @@ async function detect() {
     let data = await api('/api/segment', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...frame, provider, clientId: state.clientId }),
+      body: JSON.stringify({ ...frame, provider, model, points, clientId: state.clientId }),
       // Replicate holds the connection for about a minute before answering.
       timeoutMs: 90000,
     });
@@ -1267,6 +1447,7 @@ async function detect() {
     // The server's word for which source it used, not ours: it falls back for
     // a look-only source, and the status line has to name the real one.
     state.detectedWith = rendered.provider || provider;
+    state.detectedBy = data.model || model;
     state.lastMask = { url, frame: rendered };
     if ($('#toggle-overlay').checked) showOverlay();
 
@@ -1457,7 +1638,7 @@ const providerInfo = (id) =>
  * photograph, correctly placed, hiding the thing being measured.
  */
 function bottomOfOurLayers() {
-  const ours = /^(gl-draw|parcel-|edge-highlight|erase-stroke|points|surveyed|mask-overlay)/;
+  const ours = /^(gl-draw|parcel-|edge-highlight|erase-stroke|points|surveyed|mask-overlay|lawn-pins)/;
   for (const layer of map.getStyle().layers) {
     if (layer.id !== 'imagery-alt' && ours.test(layer.id)) return layer.id;
   }
@@ -1652,6 +1833,7 @@ function exitEdgeMode() {
   clearEdgeHighlight();
   clearPoints();
   disarmLawnPicker();
+  syncPinPicker(); // same reason as the brush: pins still want the map
   updatePromptHint();
 }
 
@@ -2217,8 +2399,14 @@ function reset() {
   state.lastMask = null;
   state.detected = false;
   state.detectedWith = null;
+  state.detectedBy = null;
   state.provider = 'mapbox';
+  state.model = 'sam3';
+  state.pins = [];
+  refreshPins();
   $('#imagery-panel').hidden = true;
+  $('#model-panel').hidden = true;
+  $('#pin-panel').hidden = true;
   state.edgeEdit = null;
   state.surveyed = [];
   $('#result').hidden = true;
@@ -2242,6 +2430,11 @@ document.addEventListener('click', (e) => {
 $('#btn-detect').addEventListener('click', detect);
 
 $('#imagery-source').addEventListener('change', (e) => setProvider(e.target.value));
+$('#model-choice').addEventListener('change', (e) => setModel(e.target.value));
+$('#btn-pins-clear').addEventListener('click', () => {
+  clearPins();
+  setStatus('Pins removed. Tap the lawn to place new ones.');
+});
 
 $('#btn-draw').addEventListener('click', () => {
   if (eraser) exitEraserMode();

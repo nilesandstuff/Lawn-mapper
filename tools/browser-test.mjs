@@ -167,6 +167,53 @@ if (sources.includes('naip')) {
     `${fetched.type} ${fetched.bytes} bytes`);
 }
 
+/*
+ * The bug that made this whole feature useless: choosing USGS imagery hid
+ * every shape on the map, and switching back to Mapbox brought them all
+ * back. Nothing was lost -- the photograph was being inserted ABOVE the draw
+ * layers, because Mapbox GL Draw adds its own when the control is added, which
+ * is before the app adds any of its own.
+ *
+ * Asserted structurally rather than by screenshot: the photograph must sit
+ * below every gl-draw layer in the style. A pixel check would pass on a lawn
+ * that happens to be dark.
+ */
+if (sources.includes('naip')) {
+  await page.selectOption('#imagery-source', 'naip');
+  await page.waitForTimeout(2000);
+
+  const order = await page.evaluate(() => {
+    const ids = window.__lmLayerOrder();
+    return {
+      photo: ids.indexOf('imagery-alt'),
+      firstDraw: ids.findIndex((id) => id.startsWith('gl-draw')),
+      ids,
+    };
+  });
+  check('the photograph is on the map', order.photo >= 0);
+  check('and it sits UNDER the drawn shapes, not over them',
+    order.firstDraw === -1 || order.photo < order.firstDraw,
+    `photo at ${order.photo}, first draw layer at ${order.firstDraw}`);
+}
+
+/* NDVI was measured against real lawns and rejected, so it must not be
+ * offered to the detector -- and must say so rather than just failing. */
+if (sources.includes('ndvi')) {
+  await page.selectOption('#imagery-source', 'ndvi');
+  await page.waitForTimeout(2000);
+  const shot = await page.evaluate(() => ({
+    ...window.__lmImagery(),
+    note: document.querySelector('#imagery-note').textContent,
+    bold: document.querySelector('#imagery-note strong')?.textContent || '',
+  }));
+  check('NDVI is view-only', shot.detectsWith === 'mapbox', `detectsWith=${shot.detectsWith}`);
+  check('and says so in bold',
+    /AI detection not available for this imagery source/.test(shot.bold),
+    JSON.stringify(shot.bold));
+  check('and the NDVI preview really is NDVI, not Mapbox in disguise',
+    /provider=ndvi/.test(shot.frameImageUrl || ''), shot.frameImageUrl);
+}
+
 if (sources.includes('esri')) {
   await page.selectOption('#imagery-source', 'esri');
   await page.waitForTimeout(1500);
@@ -189,6 +236,56 @@ if (sources.includes('mapbox')) {
   await page.waitForTimeout(500);
   check('switching back removes the extra photograph',
     (await page.evaluate(() => window.__lmImagery())).layer === false);
+}
+
+/* ------------------------------------------------------- the two AI methods */
+/*
+ * The point-prompted model cannot run on nothing, so the interesting property
+ * is that the app refuses to spend a detection until there are pins -- and
+ * says why, rather than offering a button that fails.
+ */
+console.log('\n--- AI method ---');
+const methods = await page.evaluate(() =>
+  [...document.querySelectorAll('#model-choice option')].map((o) => o.value));
+check('both AI methods are offered', methods.length > 1, methods.join(', '));
+
+if (methods.includes('sam2')) {
+  await page.selectOption('#model-choice', 'sam2');
+  await page.waitForTimeout(500);
+
+  const armed = await page.evaluate(() => ({
+    disabled: document.querySelector('#btn-detect').disabled,
+    text: document.querySelector('#btn-detect').textContent.trim(),
+    panel: !document.querySelector('#pin-panel').hidden,
+    pins: window.__lmPins().length,
+  }));
+  check('choosing the pin model asks for pins before it will spend anything',
+    armed.disabled && /pin/i.test(armed.text), `"${armed.text}" disabled=${armed.disabled}`);
+  check('and the pin panel appears', armed.panel);
+
+  // Place one by tapping the map, the way a person would. (The shared cx/cy
+  // are computed further down, after this section.)
+  const mapBox = await page.locator('#map').boundingBox();
+  await page.mouse.click(mapBox.x + mapBox.width / 2, mapBox.y + mapBox.height / 2);
+  await page.waitForTimeout(400);
+  const after = await page.evaluate(() => ({
+    pins: window.__lmPins().length,
+    disabled: document.querySelector('#btn-detect').disabled,
+    text: document.querySelector('#btn-detect').textContent.trim(),
+  }));
+  check('tapping the map places a pin', after.pins === 1, `${after.pins} pin(s)`);
+  check('and that unlocks detection', after.disabled === false, `"${after.text}"`);
+
+  // Pins are work, so undo has to reach them.
+  await page.click('#btn-undo');
+  await page.waitForTimeout(300);
+  check('undo removes a pin',
+    (await page.evaluate(() => window.__lmPins().length)) === 0);
+
+  await page.selectOption('#model-choice', 'sam3');
+  await page.waitForTimeout(400);
+  check('switching back to the quick method needs no pins',
+    (await page.evaluate(() => document.querySelector('#btn-detect').disabled)) === false);
 }
 
 /*

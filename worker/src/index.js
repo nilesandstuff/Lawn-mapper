@@ -35,7 +35,9 @@ import { checkQuota, consumeQuota, refundQuota } from './quota.js';
 // Constants and the version lookup live in their own module: a Workers
 // entrypoint may only export handlers, and exporting a plain constant from
 // here kills the isolate on startup.
-import { samVersion, samInput, samThreshold } from './sam.js';
+import {
+  MODELS, samVersion, samThreshold, normaliseModel, modelCatalogue,
+} from './sam.js';
 // Which satellite picture to use, and how to ask each source for exactly our
 // frame. Also lives outside the entrypoint, for the same reason as sam.js.
 import {
@@ -314,6 +316,34 @@ async function handleSegment(request, env, origin) {
   const zoom = clampZoom(Number(body.zoom) || 19);
   const size = clampSize(Number(body.size) || 640);
   const provider = detectionProvider(body.provider);
+  const modelId = normaliseModel(body.model);
+  const model = MODELS[modelId];
+
+  /*
+   * Pins, in the pixel space of the image the model will be shown.
+   *
+   * The browser sends them already converted, because it is the only side that
+   * knows the image's real dimensions -- Mapbox renders at @2x, so a 640
+   * frame arrives as 1280 px, and a point in the wrong space lands somewhere
+   * else in the photograph entirely. Validated rather than trusted: a
+   * malformed point is a wasted prediction and a confusing failure.
+   */
+  const points = Array.isArray(body.points)
+    ? body.points
+        .filter((p) => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite))
+        .map(([x, y]) => [Math.round(x), Math.round(y)])
+        .slice(0, 32)
+    : [];
+
+  if (model.needsPoints && !points.length) {
+    // Before the quota is touched: this one is the caller's mistake, and
+    // charging a detection for it would be charging for nothing.
+    return json(
+      { error: 'That model needs at least one pin. Tap the lawn first.' },
+      400,
+      origin
+    );
+  }
 
   const quota = await consumeQuota(request, env, clientId);
   if (!quota.allowed) {
@@ -349,7 +379,7 @@ async function handleSegment(request, env, origin) {
 
   let version;
   try {
-    version = await samVersion(env);
+    version = await samVersion(env, modelId);
   } catch (err) {
     await refundQuota(request, env, clientId);
     return json({ error: 'Segmentation unavailable', detail: err.message }, 502, origin);
@@ -364,7 +394,7 @@ async function handleSegment(request, env, origin) {
     },
     body: JSON.stringify({
       version,
-      input: samInput(imageUrl, prompt, samThreshold(env)),
+      input: model.input(imageUrl, { prompt, threshold: samThreshold(env), points }),
     }),
   });
 
@@ -400,7 +430,7 @@ async function handleSegment(request, env, origin) {
         pending: true,
         status: prediction.status,
         id: prediction.id,
-        frame: { lng, lat, zoom, size, provider },
+        frame: { lng, lat, zoom, size, provider }, model: modelId,
         remaining: quota.limit - quota.used,
       },
       202,
@@ -414,7 +444,7 @@ async function handleSegment(request, env, origin) {
       remaining: quota.limit - quota.used,
       // Frame parameters must round-trip to the client: converting mask
       // pixels back to lng/lat requires the exact centre, zoom, and size.
-      frame: { lng, lat, zoom, size, provider },
+      frame: { lng, lat, zoom, size, provider }, model: modelId,
     },
     200,
     origin
@@ -443,7 +473,7 @@ export default {
           // have to agree on what "ndvi" means, and a second copy of a list is
           // a second copy that can be wrong.
           return json(
-            { mapboxToken: env.MAPBOX_TOKEN || null, imagery: providerCatalogue() },
+            { mapboxToken: env.MAPBOX_TOKEN || null, imagery: providerCatalogue(), models: modelCatalogue() },
             200,
             origin
           );

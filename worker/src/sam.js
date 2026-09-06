@@ -20,6 +20,91 @@ export const SAM_INPUT_FIELDS = [
 ];
 
 /**
+ * The two ways to ask.
+ *
+ * A text prompt is one press and finds every patch at once, including the
+ * disconnected ones a person would forget. What it cannot do is be argued
+ * with: when it decides a shaded strip is not grass, there is no way to say
+ * "yes it is" -- only to draw the strip by hand afterwards. Point prompts are
+ * the other trade: slower, and you are telling it exactly what to include.
+ *
+ * Neither is better in general, so both are offered and the person picks per
+ * property. They differ in what they need from the browser, which is why this
+ * is a table rather than a slug: `needsPoints` drives the whole interaction,
+ * and `input` is the only place the wire format for each model lives.
+ */
+export const MODELS = {
+  sam3: {
+    slug: 'mattsays/sam3-image',
+    label: 'Quick',
+    note: 'One press. Finds every patch of grass it recognises, including pieces you might forget.',
+    needsPoints: false,
+    fields: SAM_INPUT_FIELDS,
+    input: (image, { prompt, threshold }) => ({
+      image,
+      prompt,
+      // The bare mask, not an overlay on the photograph, and not zipped: the
+      // browser traces these pixels directly.
+      mask_only: true,
+      save_overlay: false,
+      return_zip: false,
+      threshold,
+    }),
+  },
+
+  /*
+   * The point-prompted one.
+   *
+   * A note on what this is, because the obvious choice does not exist:
+   * meta/sam-2 on Replicate is the AUTOMATIC mask generator -- image, use_m2m,
+   * points_per_side -- with no way to say "this patch". Of everything
+   * tools/find-sam-model.js could reach, exactly three take point prompts:
+   *
+   *   meta/sam-2-video       real SAM 2, binary masks, wants a VIDEO file --
+   *                          which a Worker cannot build from one PNG
+   *   casia-iva-lab/fastsam  well used, point_prompt/point_label documented,
+   *                          but it returns the photograph with masks drawn
+   *                          ON it and has no mask_only, so the tracer would
+   *                          be reading colours off an annotated picture
+   *   ocg2347/sam-pointprompt   image + input_points, and nothing else
+   *
+   * So this one, by elimination rather than enthusiasm. It is lightly used
+   * (about 1,800 runs) and publishes no description of its point format or its
+   * output, which is why tools/probe-points.js exists: the format is settled by
+   * one paid prediction rather than by a guess that fails in production.
+   *
+   * Overridable by env, so a better model can be swapped in without a deploy
+   * of new code -- which matters more than usual for a dependency this thin.
+   */
+  sam2: {
+    slug: 'ocg2347/sam-pointprompt',
+    slugVar: 'SAM2_MODEL',
+    label: 'Precise',
+    note: 'You place pins on the lawn and it segments exactly what you point at. Slower, but it cannot decide your grass is not grass.',
+    needsPoints: true,
+    fields: ['image', 'input_points'],
+    // Pixel coordinates in the image we send, which is the convention every
+    // SAM port uses. Sent as JSON in a string because the schema types this
+    // field as a string, not an array.
+    input: (image, { points }) => ({
+      image,
+      input_points: JSON.stringify(points),
+    }),
+  },
+};
+
+export const DEFAULT_MODEL = 'sam3';
+
+export const normaliseModel = (value) =>
+  Object.prototype.hasOwnProperty.call(MODELS, value) ? value : DEFAULT_MODEL;
+
+/** What the browser needs to build the picker, without a second copy of it. */
+export const modelCatalogue = () =>
+  Object.entries(MODELS).map(([id, m]) => ({
+    id, label: m.label, note: m.note, needsPoints: Boolean(m.needsPoints),
+  }));
+
+/**
  * How confident the model must be before it calls something grass.
  *
  * The model's own default is 0.5, and for a long time the Worker sent no
@@ -83,34 +168,28 @@ export const DEFAULT_PROMPT = 'grass';
  * up. Cached per isolate: the id changes only when the model is republished,
  * and paying an extra round trip on every detection to re-learn it is waste.
  */
-let cachedVersion = null;
+const cachedVersion = new Map();
 
-export async function samVersion(env) {
-  if (cachedVersion) return cachedVersion;
+/** The slug for a model, honouring its env override. */
+export function modelSlug(modelId, env) {
+  const m = MODELS[normaliseModel(modelId)];
+  return (m.slugVar && env?.[m.slugVar]) || m.slug;
+}
 
-  const res = await fetch(`https://api.replicate.com/v1/models/${SAM_MODEL}`, {
+export async function samVersion(env, modelId = DEFAULT_MODEL) {
+  const slug = modelSlug(modelId, env);
+  if (cachedVersion.has(slug)) return cachedVersion.get(slug);
+
+  const res = await fetch(`https://api.replicate.com/v1/models/${slug}`, {
     headers: { Authorization: `Bearer ${env.REPLICATE_TOKEN}` },
   });
-  if (!res.ok) throw new Error(`Could not look up ${SAM_MODEL} (HTTP ${res.status})`);
+  if (!res.ok) throw new Error(`Could not look up ${slug} (HTTP ${res.status})`);
 
   const model = await res.json();
   const id = model.latest_version?.id;
-  if (!id) throw new Error(`${SAM_MODEL} has no published version to run`);
+  if (!id) throw new Error(`${slug} has no published version to run`);
 
-  cachedVersion = id;
+  cachedVersion.set(slug, id);
   return id;
 }
 
-/** The input object for one segmentation, in one place. */
-export function samInput(imageUrl, prompt, threshold = DEFAULT_THRESHOLD) {
-  return {
-    image: imageUrl,
-    prompt,
-    // The bare mask, not an overlay on the photograph, and not zipped: the
-    // browser traces these pixels directly.
-    mask_only: true,
-    save_overlay: false,
-    return_zip: false,
-    threshold,
-  };
-}

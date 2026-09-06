@@ -75,6 +75,13 @@
 
       <div class="statusline" id="status"></div>
 
+      <!-- How to ask. Populated from /api/config, like the imagery list. -->
+      <div class="models" id="model-panel" hidden>
+        <label for="model-choice">AI method</label>
+        <select id="model-choice"></select>
+        <p class="sub" id="model-note"></p>
+      </div>
+
       <div class="tools">
         <button class="primary" id="btn-detect" disabled>Detect my lawn</button>
         <button class="ghost" id="btn-draw">Draw it myself</button>
@@ -83,6 +90,12 @@
         <button class="ghost" id="btn-undo" disabled>Undo</button>
         <button class="ghost" id="btn-delete" disabled>Delete selected</button>
         <button class="ghost" id="btn-clear">Clear all</button>
+      </div>
+
+      <!-- Only for the point-prompted model, which cannot run without pins. -->
+      <div class="pins" id="pin-panel" hidden>
+        <p class="pin-count" id="pin-count">Tap each part of your lawn</p>
+        <button class="ghost edge-secondary" id="btn-pins-clear">Remove all pins</button>
       </div>
 
       <!-- Paint the outline bigger or smaller, the way a selection tool in an
