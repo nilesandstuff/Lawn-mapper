@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       county:
-        description: 'One county (kent, ottawa, allegan, muskegon, newaygo), or blank for all'
+        description: 'One county (washoe, kent, ottawa, allegan, muskegon, newaygo), or blank for all'
         required: false
         default: ''
 

@@ -16,6 +16,17 @@
  */
 
 const COUNTIES = {
+  washoe: {
+    name: 'Washoe County',
+    fips: '32031', // Nevada
+    // Reno and Sparks. The first county outside Michigan -- run the discovery
+    // workflow to fill this in; until it has a service, addresses here fall
+    // through to drawing by hand, which measures just as accurately.
+    service: null,
+    layer: null,
+    fields: {},
+    verified: 'none',
+  },
   kent: {
     name: 'Kent County',
     fips: '26081',
@@ -84,6 +95,9 @@ const COUNTIES = {
  * [minLng, minLat, maxLng, maxLat]
  */
 const COUNTY_BBOX = {
+  // Washoe runs the full height of Nevada, from Lake Tahoe to the Oregon line.
+  // Almost all of it is empty; the population is the southern tip around Reno.
+  washoe:   [-120.10, 38.98, -119.00, 42.01],
   kent:     [-85.80, 42.76, -85.31, 43.29],
   // The Ottawa/Allegan line runs at roughly 42.84, through Holland. The old
   // values put Ottawa's southern edge below it and Allegan's northern edge

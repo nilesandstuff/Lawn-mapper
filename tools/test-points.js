@@ -17,6 +17,14 @@
  * Prefer ordinary residential addresses well inside the county.
  */
 export const TEST_POINTS = {
+  // Washoe County, Nevada. Reno and Sparks are the population; Incline Village
+  // is included because it sits across the Carson Range on the Tahoe shore and
+  // is the part most likely to be served by a different layer, or missed.
+  washoe: [
+    { lng: -119.8330, lat: 39.4980, label: 'Reno (Lakeridge)' },
+    { lng: -119.7480, lat: 39.5490, label: 'Sparks' },
+    { lng: -119.9460, lat: 39.2510, label: 'Incline Village' },
+  ],
   kent: [
     { lng: -85.5872, lat: 42.9297, label: 'Kentwood' },
     { lng: -85.6681, lat: 42.9634, label: 'Grand Rapids' },

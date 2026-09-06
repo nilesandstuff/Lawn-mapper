@@ -38,7 +38,39 @@ const PLAUSIBLE_ACRES = { min: 0.01, max: 160 };
  * places a county moves its GIS to (a rebrand to the county's public domain,
  * or a switch between ArcGIS Server layouts).
  */
+/**
+ * Which state each county is in, for the ArcGIS Online catalogue search.
+ *
+ * The coverage area started as West Michigan and the search string said so.
+ * Searching "washoe Michigan parcels" would find nothing and report the county
+ * dead, which is a confident wrong answer -- the worst kind from a tool whose
+ * whole job is telling you whether an endpoint exists.
+ */
+const STATES = {
+  washoe: 'Nevada',
+};
+
 const CANDIDATE_ROOTS = {
+  /*
+   * Washoe County, Nevada -- Reno and Sparks. The first county outside
+   * Michigan, so nothing here can be assumed from the others.
+   *
+   * Both instance names are tried on every host after Kent, whose server ran
+   * under "agisprod" and was written off as non-existent for weeks because
+   * only "arcgis" and "server" were guessed.
+   */
+  washoe: [
+    'https://gis.washoecounty.gov/arcgis/rest/services',
+    'https://gis.washoecounty.gov/server/rest/services',
+    'https://gisweb.washoecounty.gov/arcgis/rest/services',
+    'https://maps.washoecounty.gov/arcgis/rest/services',
+    'https://arcgis.washoecounty.gov/arcgis/rest/services',
+    'https://gis.washoecounty.us/arcgis/rest/services',
+    // Reno and Sparks run their own GIS; a city server may publish the county
+    // parcel layer even when the county's own directory is closed.
+    'https://gis.reno.gov/arcgis/rest/services',
+    'https://maps.cityofsparks.us/arcgis/rest/services',
+  ],
   kent: [
     // Kent runs its ArcGIS Server under a non-standard instance name. No
     // amount of guessing finds "agisprod" -- the convention is "arcgis" or
@@ -165,7 +197,7 @@ async function listServices(root) {
  * catalogue instead.
  */
 async function searchArcGISOnline(countyName) {
-  const q = `${countyName} Michigan parcels`;
+  const q = `${countyName} ${STATES[countyName] || 'Michigan'} parcels`;
   const url =
     'https://www.arcgis.com/sharing/rest/search?' +
     new URLSearchParams({
