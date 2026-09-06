@@ -121,6 +121,7 @@ check('the grass-under-trees option is offered and on by default',
  * event map.on('click') is built on.
  */
 const box = await page.locator('#map').boundingBox();
+const cx = box.x + box.width / 2;
 const cy = box.y + box.height / 2;
 
 /* -------------------------------- optionally, a real end-to-end detection */
@@ -363,6 +364,50 @@ await page.waitForTimeout(300);
 check('edge panel closes', !(await page.locator('#edge-panel').isVisible()));
 check('corner handles go away when the tool closes',
   await page.evaluate(() => (window.__lmPoints?.() ?? []).every((s) => s.count === 0)));
+
+/* ------------------------------------------------------------ eraser */
+/*
+ * The eraser goes through a raster round trip -- paint the shapes, punch out
+ * the stroke, re-trace -- so the way it fails is by erasing everything or
+ * nothing, neither of which shows up as an exception.
+ */
+console.log('\n--- eraser ---');
+await page.click('#btn-erase');
+await page.waitForTimeout(300);
+check('the eraser opens', await page.evaluate(() =>
+  document.querySelector('#btn-erase').textContent.includes('Done')));
+
+const erased = await page.evaluate(async ([x, y]) => {
+  const el = document.querySelector('.mapboxgl-canvas-container');
+  const sqft = () => Number(document.querySelector('#result-sqft').textContent.replace(/[^0-9]/g, ''));
+  const before = sqft();
+
+  const touch = (t, cx, cy) => el.dispatchEvent(new TouchEvent(t, {
+    bubbles: true, cancelable: true,
+    touches: t === 'touchend' ? [] : [new Touch({ identifier: 1, target: el, clientX: cx, clientY: cy })],
+    changedTouches: [new Touch({ identifier: 1, target: el, clientX: cx, clientY: cy })],
+  }));
+
+  // A stroke straight across the shape, which must remove some of it.
+  touch('touchstart', x - 90, y);
+  for (let i = -80; i <= 80; i += 10) { touch('touchmove', x + i, y); await new Promise((r) => setTimeout(r, 12)); }
+  touch('touchend', x + 80, y);
+  await new Promise((r) => setTimeout(r, 700));
+
+  return { before, after: sqft(), said: document.querySelector('#status').textContent };
+}, [cx, cy]);
+
+console.log(`      ${erased.said}`);
+check('erasing removes area', erased.after < erased.before,
+  `${erased.before.toLocaleString()} -> ${erased.after.toLocaleString()} sq ft`);
+check('and does not remove everything', erased.after > 0,
+  `${erased.after} sq ft left`);
+
+await page.click('#btn-erase');
+await page.waitForTimeout(200);
+check('the eraser closes', await page.evaluate(() =>
+  document.querySelector('#btn-erase').textContent.trim() === 'Erase'));
+
 
 await page.screenshot({ path: 'browser-test.png', fullPage: false });
 

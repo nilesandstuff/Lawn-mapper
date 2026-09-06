@@ -320,6 +320,18 @@ async function initMap() {
     paint: { 'line-color': '#ff6f00', 'line-width': 5, 'line-opacity': 0.9 },
   });
 
+  map.addSource('erase-stroke', { type: 'geojson', data: empty() });
+  map.addLayer({
+    id: 'erase-stroke', type: 'line', source: 'erase-stroke',
+    paint: {
+      'line-color': '#e53935',
+      'line-width': 24,
+      'line-opacity': 0.45,
+      'line-cap': 'round',
+      'line-join': 'round',
+    },
+  });
+
   // Grab handles for every corner, shown only while the adjust tool is open.
   // Mapbox Draw draws handles for a shape it has selected and never for the
   // parcel, which is not one of its features -- so without these there is
@@ -520,6 +532,170 @@ async function confirmLocation() {
   }
 }
 
+/* ---------------------------------------------------------------- eraser */
+/**
+ * Rub out anything the detector got wrong, by dragging over it.
+ *
+ * Dragging corners is right for nudging a boundary and wrong for "this whole
+ * lobe is not lawn" -- that is fifteen precise drags to express one obvious
+ * intention. A stroke says it once.
+ *
+ * It works by going back through the raster. The shapes are painted into a
+ * pixel grid, the stroke is painted as holes, and the result is traced by the
+ * same code that turns a SAM mask into polygons. That is not a detour: it
+ * means splitting one shape into two, opening a hole in the middle, and
+ * dropping a piece entirely all fall out for free, where polygon subtraction
+ * would need a geometry library and three special cases.
+ *
+ * The grid is fitted to the shapes and the stroke rather than reusing the
+ * detection frame, because a hand-drawn shape can sit outside that frame and
+ * would be quietly erased by the round trip.
+ */
+const ERASER_RADIUS_PX = 22;   // a fingertip, near enough
+const ERASE_GRID = 1280;       // same resolution the detector traces at
+
+let eraser = null;
+
+function enterEraserMode() {
+  if (!draw.getAll().features.some((f) => outerRing(f))) {
+    setStatus('Nothing to erase yet — detect or draw a lawn first.', 'warn');
+    return;
+  }
+  if (state.edgeEdit) exitEdgeMode();
+  eraser = { stroke: [] };
+  $('#btn-erase').textContent = 'Done erasing';
+  map.getCanvas().style.cursor = 'crosshair';
+  setHint('Drag over anything that is not lawn');
+  setStatus('Erasing. Drag across the map to rub out what should not be there.');
+  armLawnPicker(); // reuses the touch and mouse plumbing
+}
+
+function exitEraserMode() {
+  eraser = null;
+  $('#btn-erase').textContent = 'Erase';
+  map.getCanvas().style.cursor = '';
+  map.getSource('erase-stroke')?.setData(empty());
+  disarmLawnPicker();
+  updatePromptHint();
+}
+
+/** Show the stroke as it is drawn, so it is obvious what will go. */
+function drawEraseStroke() {
+  if (!map.getSource('erase-stroke')) return;
+  const pts = eraser?.stroke || [];
+  map.getSource('erase-stroke').setData(pts.length < 2
+    ? empty()
+    : { type: 'Feature', geometry: { type: 'LineString', coordinates: pts } });
+}
+
+/**
+ * Apply the stroke: paint the shapes, punch out the stroke, trace what is left.
+ */
+function applyErase() {
+  const stroke = eraser?.stroke || [];
+  const features = draw.getAll().features.filter((f) => outerRing(f));
+  if (stroke.length < 2 || !features.length) return;
+
+  // A frame around everything involved, so nothing outside it is lost.
+  let [w, s, e, n] = [Infinity, Infinity, -Infinity, -Infinity];
+  const see = ([lng, lat]) => {
+    w = Math.min(w, lng); e = Math.max(e, lng);
+    s = Math.min(s, lat); n = Math.max(n, lat);
+  };
+  for (const f of features) for (const ring of f.geometry.coordinates) ring.forEach(see);
+  stroke.forEach(see);
+
+  const pad = 0.0004; // a few dozen metres, so nothing sits on the edge
+  const bbox = [w - pad, s - pad, e + pad, n + pad];
+  const frame = {
+    lng: (bbox[0] + bbox[2]) / 2,
+    lat: (bbox[1] + bbox[3]) / 2,
+    zoom: zoomToFit(bbox, ERASE_GRID / 2),
+    size: ERASE_GRID / 2,
+  };
+  const project = (ll) => lngLatToFramePx(frame, ll, ERASE_GRID, ERASE_GRID);
+
+  // What the shapes cover.
+  const keep = new Uint8Array(ERASE_GRID * ERASE_GRID);
+  for (const f of features) {
+    const m = rasterizePolygon(f.geometry.coordinates, ERASE_GRID, ERASE_GRID, project);
+    for (let i = 0; i < keep.length; i++) if (m[i]) keep[i] = 1;
+  }
+
+  /*
+   * The stroke, as overlapping discs along it. Sampling only the points the
+   * pointer reported would leave gaps at speed, so consecutive points are
+   * joined by stepping along the segment.
+   */
+  /*
+   * The brush is a fingertip on screen, so its size in metres depends on how
+   * far the user has zoomed in -- and then that has to be expressed in this
+   * grid's pixels, which are a different size again. Measuring the screen
+   * scale by unprojecting two points beats deriving it: it asks the map what
+   * it is actually showing rather than assuming the zoom maths agree.
+   */
+  const a = map.unproject([0, 0]);
+  const b = map.unproject([ERASER_RADIUS_PX, 0]);
+  const brushMetres = Math.hypot(
+    (b.lng - a.lng) * 111320 * Math.cos((a.lat * Math.PI) / 180),
+    (b.lat - a.lat) * 111320
+  );
+  const radius = Math.max(2, brushMetres / metresPerPixel(frame, ERASE_GRID));
+
+  const disc = (cx, cy) => {
+    const r2 = radius * radius;
+    const x0 = Math.max(0, Math.floor(cx - radius));
+    const x1 = Math.min(ERASE_GRID - 1, Math.ceil(cx + radius));
+    const y0 = Math.max(0, Math.floor(cy - radius));
+    const y1 = Math.min(ERASE_GRID - 1, Math.ceil(cy + radius));
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        if ((x - cx) ** 2 + (y - cy) ** 2 <= r2) keep[y * ERASE_GRID + x] = 0;
+      }
+    }
+  };
+
+  let prev = project(stroke[0]);
+  disc(prev[0], prev[1]);
+  for (let i = 1; i < stroke.length; i++) {
+    const cur = project(stroke[i]);
+    const steps = Math.ceil(Math.hypot(cur[0] - prev[0], cur[1] - prev[1]) / (radius / 2)) || 1;
+    for (let k = 1; k <= steps; k++) {
+      disc(prev[0] + ((cur[0] - prev[0]) * k) / steps,
+           prev[1] + ((cur[1] - prev[1]) * k) / steps);
+    }
+    prev = cur;
+  }
+
+  // Back through the tracer, which owns simplification and hole handling.
+  const data = new Uint8ClampedArray(ERASE_GRID * ERASE_GRID * 4);
+  for (let p = 0; p < keep.length; p++) {
+    const v = keep[p] ? 255 : 0;
+    data[p * 4] = data[p * 4 + 1] = data[p * 4 + 2] = v;
+    data[p * 4 + 3] = 255;
+  }
+
+  const polygons = maskToPolygons(
+    { width: ERASE_GRID, height: ERASE_GRID, data },
+    (x, y) => framePxToLngLat(frame, [x, y], ERASE_GRID, ERASE_GRID),
+    {
+      tolerance: TRACE_TOLERANCE_M / metresPerPixel(frame, ERASE_GRID),
+      maxVertices: MAX_TRACE_VERTICES,
+    }
+  );
+
+  pushHistory();
+  draw.deleteAll();
+  for (const geometry of polygons) draw.add({ type: 'Feature', properties: {}, geometry });
+
+  refreshMeasurement();
+  refreshSurveyed();
+  updateSelectionButtons();
+  setStatus(polygons.length
+    ? `Erased. ${polygons.length} section${polygons.length > 1 ? 's' : ''} left.`
+    : 'Erased everything. Undo, or detect again.');
+}
+
 /* ------------------------------------------------------------------ undo */
 /**
  * Undo, scoped to the step you are in.
@@ -686,6 +862,12 @@ function vertexAt(clientX, clientY) {
 }
 
 function beginDrag(clientX, clientY) {
+  if (eraser) {
+    eraser.stroke = [];
+    eraser.painting = true;
+    map.dragPan.disable();
+    return true;
+  }
   const hit = vertexAt(clientX, clientY);
   if (!hit) return false;
   drag = { ...hit, startX: clientX, startY: clientY, moved: false };
@@ -694,6 +876,13 @@ function beginDrag(clientX, clientY) {
 }
 
 function updateDrag(clientX, clientY) {
+  if (eraser?.painting) {
+    const rect = map.getCanvasContainer().getBoundingClientRect();
+    const ll = map.unproject([clientX - rect.left, clientY - rect.top]);
+    eraser.stroke.push([ll.lng, ll.lat]);
+    drawEraseStroke();
+    return true;
+  }
   if (!drag) return false;
   if (!drag.moved) {
     if (Math.hypot(clientX - drag.startX, clientY - drag.startY) < DRAG_START_PX) return false;
@@ -713,6 +902,15 @@ function updateDrag(clientX, clientY) {
 
 /** Finish a drag. Returns true if a corner actually moved. */
 function endDrag() {
+  if (eraser?.painting) {
+    eraser.painting = false;
+    map.dragPan.enable();
+    const painted = eraser.stroke.length >= 2;
+    if (painted) applyErase();
+    eraser.stroke = [];
+    drawEraseStroke();
+    return painted;
+  }
   const moved = Boolean(drag?.moved);
   if (moved) {
     endHistoryGroup();
@@ -1130,6 +1328,7 @@ function outerRing(feature) {
 const PARCEL_ID = '__parcel__';
 
 function enterEdgeMode() {
+  if (eraser) exitEraserMode();
   const hasShape = draw.getAll().features.some((f) => outerRing(f));
   if (!hasShape && !state.parcel) {
     setStatus('Find a property first, or draw a lawn, then you can extend an edge to the road.', 'warn');
@@ -1728,6 +1927,7 @@ document.addEventListener('click', (e) => {
 $('#btn-detect').addEventListener('click', detect);
 
 $('#btn-draw').addEventListener('click', () => {
+  if (eraser) exitEraserMode();
   if (state.edgeEdit) exitEdgeMode();
   disarmLawnPicker();
   pushHistory();
@@ -1750,6 +1950,9 @@ $('#btn-clear').addEventListener('click', () => {
 
 $('#btn-parcel-shape').addEventListener('click', useParcelShape);
 $('#btn-undo').addEventListener('click', undo);
+$('#btn-erase').addEventListener('click', () => {
+  eraser ? exitEraserMode() : enterEraserMode();
+});
 
 $('#btn-edges').addEventListener('click', () => {
   state.edgeEdit ? exitEdgeMode() : enterEdgeMode();

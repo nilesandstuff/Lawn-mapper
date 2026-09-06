@@ -42,9 +42,9 @@
                autocomplete="street-address">
         <button class="primary" type="submit">Find my property</button>
       </form>
-      <p class="note">Property lines are available for Ottawa, Allegan and
-        Muskegon counties. Anywhere else &mdash; including Kent &mdash; you trace
-        the lawn yourself, which works just as well.</p>
+      <p class="note">Property lines come from county records &mdash; Kent,
+        Ottawa, Allegan and Muskegon in Michigan, and Washoe County, Nevada.
+        Anywhere else you trace the lawn yourself, which works just as well.</p>
     </section>
 
     <!-- 2. Which address? ----------------------------------------------- -->
@@ -79,6 +79,7 @@
         <button class="ghost" id="btn-draw">Draw it myself</button>
         <button class="ghost" id="btn-parcel-shape" hidden>Use property line</button>
         <button class="ghost" id="btn-edges">Extend to road</button>
+        <button class="ghost" id="btn-erase">Erase</button>
         <button class="ghost" id="btn-undo" disabled>Undo</button>
         <button class="ghost" id="btn-delete" disabled>Delete selected</button>
         <button class="ghost" id="btn-clear">Clear all</button>
@@ -110,6 +111,9 @@
       <details class="help">
         <summary>How to correct the shape</summary>
         <ul>
+          <li><b>Erase</b> then drag over anything that is not lawn — a
+            driveway the AI grabbed, a flower bed, a neighbour's grass. The
+            outline redraws itself around what is left.</li>
           <li>In <b>Extend to road</b>, tap a line to slide that whole edge out,
             or tap a white corner dot to drag, add or delete that one point.</li>
           <li>Tapping the line wins over tapping a corner, so extending stays the
