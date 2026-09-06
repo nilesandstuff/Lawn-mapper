@@ -153,8 +153,13 @@ to 0.000 m.
 | --- | --- | --- | --- |
 | Mapbox satellite | yes | yes | the default, and the sharpest |
 | USGS NAIP | yes | yes | 30 cm native, reflown every 2–3 years |
-| USGS NAIP NDVI | yes | yes | infrared vegetation index |
-| Esri World Imagery | yes | **no** | see below |
+| USGS NAIP NDVI | yes | **no** | tested and rejected — see below |
+| Esri World Imagery | yes | **no** | cached basemap, see below |
+
+A view-only source is not a silent fallback. The picker marks it in the list,
+the note under it opens with **AI detection not available for this imagery
+source** in bold, and if you detect anyway the status line names the source
+that actually answered.
 
 Esri is a cached basemap: `singleFusedMapCache` is true and
 `exportTilesAllowed` is false, so its `export` operation answers every request
@@ -164,16 +169,58 @@ look at and not enough to detect from. It is kept because looking is most of the
 point: judging whether the trees are in leaf costs nothing and happens before
 any money is spent. Detection falls back to Mapbox and the status line says so.
 
-NDVI is the interesting one, and the reason the picker exists at all. NAIP
-carries a near-infrared band, and healthy vegetation reflects far more infrared
-than anything built, so the contrast between those bands separates growing
-things from pavement using a signal a shadow barely touches — which is the
-failure we keep hitting, lawn in shade read as not-lawn. It is not a clearer
-version of the same problem, though: NDVI does not tell grass from trees, so the
-prompt belongs to the source rather than to the app. Each source carries its own
-(`SAM_PROMPT`, `SAM_PROMPT_NDVI`), and `SOURCES='mapbox|ndvi' node
-tools/probe-sam3.js` measures one against the other on the same house, same
-parcel, same clip.
+NDVI was the interesting idea, and it does not work. NAIP carries a
+near-infrared band, and vegetation reflects far more infrared than anything
+built, so the contrast between those bands should separate growing things from
+pavement using a signal a shadow barely touches — exactly the failure we kept
+hitting, lawn in shade read as not-lawn. Measured on real lawns it failed twice
+over: NAIP is 30 cm native against a frame asking for about 3.5 cm, so every
+edge arrives soft, and turf and tree canopy do not separate at that resolution.
+Boundaries no crisper than the shadows they replaced, and no way to tell the
+trees from the grass. Fixing it would need finer multispectral imagery than
+anything free, so it is a dead end rather than an unfinished feature — kept as a
+view layer, because seeing where the vegetation is still tells you something.
+
+### Two ways to ask
+
+`worker/src/sam.js` holds both, as a table rather than a slug, because they
+differ in what they need from the browser rather than just in name.
+
+**Quick** is a text prompt: one press, every patch in the frame at once,
+including the disconnected ones a person would forget. What it cannot do is be
+argued with — when it decides a shaded strip is not grass, there is no way to
+say otherwise.
+
+**Precise** takes pins. That one needs a caveat about what it actually is:
+`meta/sam-2` on Replicate is the *automatic* mask generator (image, use_m2m,
+points_per_side) with no way to say "this patch", which is why the original pin
+flow was abandoned early in this project. Of every model
+`tools/find-sam-model.js` can reach, exactly three accept point prompts:
+
+- `meta/sam-2-video` — real SAM 2, returns binary masks, but wants a **video
+  file**, which a Worker cannot build from one PNG
+- `casia-iva-lab/fastsam` — well used and properly documented, but returns the
+  photograph with masks drawn **on** it and has no `mask_only`, so the tracer
+  would be reading colours off an annotated picture
+- `ocg2347/sam-pointprompt` — `image` and `input_points`, and nothing else
+
+So the third, by elimination rather than enthusiasm. Its schema describes
+neither the point format nor the output, so `tools/probe-points.js` settles both
+with one paid prediction: it sends real pins at a real house, tries each
+plausible format until one is accepted, and checks whether what comes back is
+actually a mask (a binary mask is >95% pure black and white; an overlay on the
+photograph is nowhere near). Nothing is claimed about its accuracy, because
+nothing has been measured.
+
+Pins are converted to image pixels in the **browser**, not the Worker, because
+the browser is the side that knows the image's real dimensions — Mapbox renders
+at @2x, so a 640 frame arrives 1280 px wide, and a pin sent in frame units lands
+at half the distance from the corner: a plausible-looking spot somewhere else on
+the property.
+
+`tools/check-replicate.js` validates every model in the table against its
+published schema, not just the default. The one that breaks silently is the one
+nobody runs by accident.
 
 `public/lib/edges.js` handles the other half of a real measurement: parcels
 that stop at the right-of-way easement while the owner mows to the kerb. The
