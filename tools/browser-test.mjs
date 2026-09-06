@@ -129,9 +129,25 @@ const sources = await page.evaluate(() =>
 );
 check('more than one imagery source is offered', sources.length > 1, sources.join(', '));
 
+/*
+ * Waiting on the condition, not on a guess.
+ *
+ * A fixed sleep failed here for a reason worth keeping: USGS took 6.7 seconds
+ * to answer a cold request for one frame, and a 2.5-second wait reported the
+ * feature broken when it was merely slow. The second attempt then passed
+ * because the image was cached -- which is exactly how a flaky test is born.
+ */
+const waitForPhoto = async (ms = 25000) => {
+  try {
+    await page.waitForFunction(() => window.__lmImagery().layer === true, { timeout: ms });
+    return true;
+  } catch { return false; }
+};
+
 if (sources.includes('naip')) {
   await page.selectOption('#imagery-source', 'naip');
-  await page.waitForTimeout(2500);
+  const arrived = await waitForPhoto();
+  check('the USGS photograph arrives (however slowly)', arrived);
 
   const shot = await page.evaluate(() => window.__lmImagery());
   check('choosing USGS NAIP puts a photograph on the map', shot.layer === true,
@@ -180,7 +196,7 @@ if (sources.includes('naip')) {
  */
 if (sources.includes('naip')) {
   await page.selectOption('#imagery-source', 'naip');
-  await page.waitForTimeout(2000);
+  await waitForPhoto();
 
   const order = await page.evaluate(() => {
     const ids = window.__lmLayerOrder();
@@ -200,7 +216,7 @@ if (sources.includes('naip')) {
  * offered to the detector -- and must say so rather than just failing. */
 if (sources.includes('ndvi')) {
   await page.selectOption('#imagery-source', 'ndvi');
-  await page.waitForTimeout(2000);
+  await waitForPhoto();
   const shot = await page.evaluate(() => ({
     ...window.__lmImagery(),
     note: document.querySelector('#imagery-note').textContent,

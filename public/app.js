@@ -1746,10 +1746,20 @@ async function showImagery() {
    * looks identical. NAIP genuinely has gaps, so "no photo here" is a real
    * answer that deserves saying rather than hiding.
    */
+  /*
+   * Say something while it loads.
+   *
+   * USGS took 6.7 seconds to answer a cold request for one frame, through the
+   * Worker, on a fast network. Six seconds of a map that has not changed reads
+   * as a dead button, and the natural response is to press it again. The wait
+   * is the source's, not ours -- but silence about it is.
+   */
+  busy(`Fetching ${info.label}…`);
   try {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
   } catch (err) {
+    idle();
     setStatus(
       `${info.label} has no photograph of this spot (${err.message}). Staying on Mapbox.`,
       'warn'
@@ -1764,7 +1774,10 @@ async function showImagery() {
     type: 'image', url, coordinates: frameCorners(state.frame),
   });
   map.addLayer({ id: 'imagery-alt', type: 'raster', source: 'imagery-alt' }, before);
-  setStatus(`Showing ${info.label} over the measurement frame. Detect again to use it.`);
+  idle();
+  setStatus(info.detect
+    ? `Showing ${info.label} over the measurement frame. Detect again to use it.`
+    : `Showing ${info.label}. This one is for looking at — detection uses Mapbox.`);
 }
 
 /** The same URL the Worker builds, asked for through our own origin. */
