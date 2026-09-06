@@ -144,12 +144,22 @@ for (const [name, svc] of Object.entries(SERVICES)) {
   const worst = Math.max(...Object.values(off).map(Math.abs));
   const mpp = metresPerPixel(FRAME, IMG);
 
-  console.log(`    served ${shot.json.width}x${shot.json.height} px`);
+  /*
+   * Both halves, or the verdict is worthless. Esri answered with a correct
+   * extent and an image 0 pixels wide, and an extent-only check called that
+   * ALIGNED -- a picture containing nothing covers any rectangle you like.
+   */
+  const sized = shot.json.width === IMG && shot.json.height === IMG;
+  const placed = worst / mpp < 0.5;
+
+  console.log(`    served ${shot.json.width}x${shot.json.height} px (asked for ${IMG}x${IMG})`);
   console.log(`    extent off by ${worst.toFixed(3)} m = ${(worst / mpp).toFixed(2)} px`);
   console.log(
-    worst / mpp < 0.5
-      ? '    ALIGNED: the picture covers the frame we measure against'
-      : '    MISALIGNED: every lawn traced from this would be measured against the wrong ground'
+    sized && placed
+      ? '    USABLE: right size, right place'
+      : !sized
+        ? '    UNUSABLE: the service did not render at this size'
+        : '    MISALIGNED: every lawn traced from this would be measured against the wrong ground'
   );
 
   const png = await get(`${svc.root}/${svc.op}?${params.toString().replace('f=json', 'f=image')}`);
@@ -158,5 +168,27 @@ for (const [name, svc] of Object.entries(SERVICES)) {
     : `    image failed: ${png.error || 'unknown'}\n`);
 }
 
-console.log('An extent within half a pixel is fine -- the frame is what the app');
+/*
+ * If a service would not render, ask whether it is the scale rather than the
+ * service. Our frame is about 4.7 cm per pixel, which is far finer than any of
+ * these hold natively -- NAIP is 30 cm -- and an ArcGIS service is entitled to
+ * refuse beyond its maximum scale rather than invent detail.
+ */
+console.log('--- retry at coarser scales, to separate "cannot" from "will not"');
+for (const [name, svc] of Object.entries(SERVICES)) {
+  for (const px of [512, 256]) {
+    const p = new URLSearchParams({
+      bbox: bbox.join(','), bboxSR: '3857', imageSR: '3857',
+      size: `${px},${px}`, format: 'png', f: 'json',
+    });
+    const r = await get(`${svc.root}/${svc.op}?${p}`);
+    const w = r.json?.width ?? 0;
+    console.log(`    ${name} @ ${px}px -> ${w ? `${w}x${r.json.height}` : (r.error || JSON.stringify(r.json?.error || r.json).slice(0, 90))}`);
+    if (w) break;
+  }
+}
+
+console.log('\nAn extent within half a pixel is fine -- the frame is what the app');
 console.log('measures against, and each source only has to fill that rectangle.');
+console.log('A service that will not render at our scale is not a bug in it: NAIP is');
+console.log('30 cm native and our frame asks for about 5 cm.');
