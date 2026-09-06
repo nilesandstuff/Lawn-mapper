@@ -132,6 +132,49 @@ lawn rather than subtracted; it is a toggle, on by default, and the app always
 reports how much it filled in. Anything it gets wrong is fixable by hand —
 every detected piece is an editable polygon that can be reshaped or deleted.
 
+### Which photograph
+
+A lawn photographed in April and in July is two different problems: bare trees
+and long shadows against full canopy and a high sun. `worker/src/imagery.js`
+offers a choice of source, and `tools/probe-imagery.js` is what decides whether
+a source is allowed in.
+
+That probe is the load-bearing part. Every measurement is made against the
+**frame** — a centre, a zoom and a pixel size — and the pixel-to-lng/lat maths
+assumes the picture covers exactly that rectangle. Mapbox's static endpoint is
+defined that way; an ArcGIS service is not, and may return a slightly different
+extent snapped to its own grid. A source that is off by a few metres does not
+look broken: the lawn traces cleanly and the number is wrong. So each source is
+asked, in `f=json` mode, what extent it actually served, and is only added here
+if it matches to well under a pixel. Both USGS services return our exact extent
+to 0.000 m.
+
+| Source | On the map | Detection | Notes |
+| --- | --- | --- | --- |
+| Mapbox satellite | yes | yes | the default, and the sharpest |
+| USGS NAIP | yes | yes | 30 cm native, reflown every 2–3 years |
+| USGS NAIP NDVI | yes | yes | infrared vegetation index |
+| Esri World Imagery | yes | **no** | see below |
+
+Esri is a cached basemap: `singleFusedMapCache` is true and
+`exportTilesAllowed` is false, so its `export` operation answers every request
+with the extent you asked for and an image **zero pixels wide** — at 1280 px,
+512 px and 256 px alike. It serves pre-baked tiles happily, which is enough to
+look at and not enough to detect from. It is kept because looking is most of the
+point: judging whether the trees are in leaf costs nothing and happens before
+any money is spent. Detection falls back to Mapbox and the status line says so.
+
+NDVI is the interesting one, and the reason the picker exists at all. NAIP
+carries a near-infrared band, and healthy vegetation reflects far more infrared
+than anything built, so the contrast between those bands separates growing
+things from pavement using a signal a shadow barely touches — which is the
+failure we keep hitting, lawn in shade read as not-lawn. It is not a clearer
+version of the same problem, though: NDVI does not tell grass from trees, so the
+prompt belongs to the source rather than to the app. Each source carries its own
+(`SAM_PROMPT`, `SAM_PROMPT_NDVI`), and `SOURCES='mapbox|ndvi' node
+tools/probe-sam3.js` measures one against the other on the same house, same
+parcel, same clip.
+
 `public/lib/edges.js` handles the other half of a real measurement: parcels
 that stop at the right-of-way easement while the owner mows to the kerb. The
 user picks a boundary and slides it outward in feet; it stays exactly parallel

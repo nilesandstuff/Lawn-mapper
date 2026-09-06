@@ -114,6 +114,81 @@ console.log(`      hint:   "${await page.locator('#map-hint').textContent()}"`);
 check('the grass-under-trees option is offered and on by default',
   await page.locator('#toggle-trees').isChecked());
 
+/* ------------------------------------------------------- imagery sources */
+/*
+ * A second photograph is only worth having if it covers the same ground.
+ *
+ * Everything this app reports is measured against the frame, so a source that
+ * returns a rectangle a few metres off produces a lawn that traces beautifully
+ * and measures wrong. That is the property under test here -- not that a layer
+ * was added, which would be equally true of a picture of the next street.
+ */
+console.log('\n--- imagery sources ---');
+const sources = await page.evaluate(() =>
+  [...document.querySelectorAll('#imagery-source option')].map((o) => o.value)
+);
+check('more than one imagery source is offered', sources.length > 1, sources.join(', '));
+
+if (sources.includes('naip')) {
+  await page.selectOption('#imagery-source', 'naip');
+  await page.waitForTimeout(2500);
+
+  const shot = await page.evaluate(() => window.__lmImagery());
+  check('choosing USGS NAIP puts a photograph on the map', shot.layer === true,
+    `provider=${shot.provider} layer=${shot.layer}`);
+  check('and it is fetched as one image of the frame, not tiles',
+    shot.sourceType === 'image', `sourceType=${shot.sourceType}`);
+
+  // The whole point: the picture's corners ARE the frame's corners.
+  const drift = shot.corners && shot.frameCorners
+    ? Math.max(...shot.corners.flatMap((c, i) =>
+        [Math.abs(c[0] - shot.frameCorners[i][0]), Math.abs(c[1] - shot.frameCorners[i][1])]))
+    : Infinity;
+  check('and it covers exactly the frame the measurement is made against',
+    drift < 1e-9, `worst corner off by ${drift} degrees`);
+
+  /*
+   * And the Worker actually got an image back.
+   *
+   * An image source that fails is invisible: Mapbox GL just never paints the
+   * layer, the basemap shows through, and the new source looks identical to
+   * the old one. Fetching the same URL the layer uses is the difference
+   * between "we asked USGS" and "USGS answered".
+   */
+  const fetched = await page.evaluate(async () => {
+    const url = window.__lmImagery().frameImageUrl;
+    if (!url) return { ok: false, why: 'no url' };
+    const res = await fetch(url);
+    const buf = await res.arrayBuffer();
+    return { ok: res.ok, type: res.headers.get('content-type'), bytes: buf.byteLength };
+  });
+  check('USGS returned a real photograph for that frame',
+    fetched.ok && /^image\//.test(fetched.type || '') && fetched.bytes > 5000,
+    `${fetched.type} ${fetched.bytes} bytes`);
+}
+
+if (sources.includes('esri')) {
+  await page.selectOption('#imagery-source', 'esri');
+  await page.waitForTimeout(1500);
+
+  const shot = await page.evaluate(() => window.__lmImagery());
+  check('Esri is painted as tiles', shot.sourceType === 'raster',
+    `sourceType=${shot.sourceType}`);
+  /*
+   * Esri's export operation returns a 0x0 image, so it cannot answer the
+   * detector. Falling back is correct; falling back silently is not, and the
+   * status line names the substitution. What is asserted here is that the
+   * fallback is decided the same way in the browser as in the Worker.
+   */
+  check('and detection falls back to a source that can answer',
+    shot.detectsWith === 'mapbox', `detectsWith=${shot.detectsWith}`);
+}
+
+await page.selectOption('#imagery-source', 'mapbox');
+await page.waitForTimeout(500);
+check('switching back removes the extra photograph',
+  (await page.evaluate(() => window.__lmImagery())).layer === false);
+
 /*
  * The map still has to accept a touch, because the edge tool uses it. This is
  * the regression guard for the bug that made the whole app dead on a phone:

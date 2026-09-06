@@ -40,6 +40,9 @@ const state = {
   parcel: null,       // GeoJSON Feature or null
   frame: null,        // { lng, lat, zoom, size } used for the last/next SAM call
   quota: null,
+  imagery: [],        // sources, from /api/config
+  provider: 'mapbox', // which one is on screen and will be detected from
+  detectedWith: null, // which one the shapes on screen actually came from
 };
 
 /**
@@ -108,6 +111,28 @@ if (typeof window !== 'undefined') {
    */
   /* How many shapes the measurement is actually made of. */
   window.__lmShapeCount = () => (draw ? draw.getAll().features.length : 0);
+
+  /*
+   * What the imagery picker has actually done to the map.
+   *
+   * The only property that matters is that the photograph on screen covers the
+   * frame the detector measures against -- everything else about a second
+   * source is cosmetic, and a wrong answer here would look completely
+   * plausible. So report both rectangles and let the test compare them, rather
+   * than reporting "a layer exists", which is true of a picture of anywhere.
+   */
+  window.__lmImagery = () => ({
+    provider: state.provider,
+    detectsWith: effectiveProvider(state.provider),
+    detectedWith: state.detectedWith,
+    layer: !!(map && map.getLayer('imagery-alt')),
+    sourceType: map?.getSource('imagery-alt')?.type ?? null,
+    corners: map?.getSource('imagery-alt')?.coordinates ?? null,
+    frameCorners: state.frame ? frameCorners(state.frame) : null,
+    frameImageUrl: state.frame && !providerInfo(state.provider).tiles
+      ? imageryUrlFor(state.provider, state.frame)
+      : null,
+  });
 
   window.__lmPoints = (want = null) => {
     if (!map || !state.edgeEdit) return [];
@@ -273,7 +298,8 @@ async function initMap() {
     return;
   }
 
-  const { mapboxToken } = await api('/api/config');
+  const { mapboxToken, imagery } = await api('/api/config');
+  state.imagery = Array.isArray(imagery) ? imagery : [];
   if (!mapboxToken) {
     fatal(
       'This site is missing its Mapbox key, so the map cannot start. ' +
@@ -524,6 +550,9 @@ async function confirmLocation() {
     }
 
     updatePromptHint();
+    // The picker measures against the frame, so it only becomes real once
+    // there is one.
+    buildImageryPicker();
     setHint(state.parcel
       ? 'Press "Detect my lawn" — or extend the boundary first if your lawn runs to the road'
       : 'Press "Detect my lawn", or draw it by hand');
@@ -1034,9 +1063,17 @@ function handleMapPoint(lngLat, x = null, y = null) {
 
 /** Detection needs only a frame; there is nothing for the user to place. */
 function updatePromptHint() {
-  const ready = !!state.frame && !state.detected;
-  $('#btn-detect').disabled = !ready;
-  $('#btn-detect').textContent = state.detected ? 'Lawn detected' : 'Detect my lawn';
+  // Already detected from THIS photograph is the only case worth blocking.
+  // Re-running the same source returns the same mask and charges again;
+  // running a different source is a real second opinion, and the whole reason
+  // the picker exists.
+  const here = state.detected && state.detectedWith === effectiveProvider(state.provider);
+  $('#btn-detect').disabled = !state.frame || here;
+  $('#btn-detect').textContent = here
+    ? 'Lawn detected'
+    : state.detected
+      ? 'Detect on this image'
+      : 'Detect my lawn';
 }
 
 /* ------------------------------------------------------------- detection */
@@ -1045,6 +1082,19 @@ async function detect() {
   if (!state.frame) return;
 
   const frame = state.frame;
+  const provider = effectiveProvider(state.provider);
+
+  /*
+   * Detecting replaces every shape on the map, so when there is work on screen
+   * that did not come from this run, say so before destroying it. Before the
+   * picker existed this could not happen -- the button disabled itself after a
+   * detection -- and re-arming it for a second source quietly put hand-drawn
+   * shapes and every correction at risk.
+   */
+  if (draw.getAll().features.length && !confirm(
+    'Detecting again replaces the shapes on the map, including any corrections ' +
+    'you have made. Carry on?'
+  )) return;
 
   busy('Detecting your lawn…');
   $('#btn-detect').disabled = true;
@@ -1053,7 +1103,7 @@ async function detect() {
     let data = await api('/api/segment', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...frame, clientId: state.clientId }),
+      body: JSON.stringify({ ...frame, provider, clientId: state.clientId }),
       // Replicate holds the connection for about a minute before answering.
       timeoutMs: 90000,
     });
@@ -1155,6 +1205,9 @@ async function detect() {
     clearHistory();
 
     state.detected = true;
+    // The server's word for which source it used, not ours: it falls back for
+    // a look-only source, and the status line has to name the real one.
+    state.detectedWith = rendered.provider || provider;
     state.lastMask = { url, frame: rendered };
     if ($('#toggle-overlay').checked) showOverlay();
 
@@ -1169,9 +1222,18 @@ async function detect() {
         ' untick the box below if any of those is a pool or a shed.'
       : '';
 
+    // Name the source only when it is not the one showing, i.e. when a
+    // look-only choice was silently substituted. Saying "on Mapbox satellite"
+    // after every ordinary detection is noise; saying it when the user picked
+    // Esri is the difference between a fallback and a lie.
+    const on = state.detectedWith === state.provider
+      ? ''
+      : ` on ${providerInfo(state.detectedWith).label}` +
+        ` (${providerInfo(state.provider).label} cannot be measured from)`;
+
     setStatus(
       `Found ${polygons.length} section${polygons.length > 1 ? 's' : ''} of lawn` +
-      (ring ? ', trimmed to your property line' : '') + '.' + gaps +
+      (ring ? ', trimmed to your property line' : '') + on + '.' + gaps +
       ' Correct anything it got wrong.'
     );
   } catch (err) {
@@ -1297,6 +1359,137 @@ function showOverlay() {
 function hideOverlay() {
   if (map.getLayer('mask-overlay')) map.removeLayer('mask-overlay');
   if (map.getSource('mask-overlay')) map.removeSource('mask-overlay');
+}
+
+/* --------------------------------------------------------- imagery source */
+
+/*
+ * Which photograph to look at, and to measure from.
+ *
+ * The same lawn photographed in April and in July is two different problems:
+ * bare trees and long shadows against full canopy and a high sun. We were
+ * chasing a shaded strip for an hour that turned out not to be lawn at all,
+ * which no amount of prompt tuning would have settled -- a second picture of
+ * the same ground would have, in seconds and for free.
+ *
+ * Every source draws the same rectangle: the frame. That is what makes this
+ * safe. Switching pictures cannot move the measurement, because the ground the
+ * pixels cover is fixed by the frame and verified per source in
+ * tools/probe-imagery.js -- both USGS services return our exact extent, to
+ * 0.000 m. Esri cannot return an arbitrary extent at all, so it is here to look
+ * at and detection falls back to Mapbox, out loud, in the status line.
+ */
+
+const providerInfo = (id) =>
+  state.imagery.find((p) => p.id === id) || { id, label: id, detect: true };
+
+/** Mirrors the Worker's detectionProvider: a look-only source detects on Mapbox. */
+const effectiveProvider = (id) => (providerInfo(id).detect ? id : 'mapbox');
+
+function buildImageryPicker() {
+  const select = $('#imagery-source');
+  const panel = $('#imagery-panel');
+
+  // One source is not a choice. If the Worker is old enough not to send a
+  // list, the picker simply does not appear and everything behaves as before.
+  if (state.imagery.length < 2) {
+    panel.hidden = true;
+    return;
+  }
+
+  select.innerHTML = '';
+  for (const p of state.imagery) {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = p.label;
+    select.append(opt);
+  }
+  select.value = state.provider;
+  panel.hidden = false;
+  $('#imagery-note').textContent = providerInfo(state.provider).note || '';
+}
+
+async function setProvider(id) {
+  if (id === state.provider) return;
+  state.provider = id;
+  $('#imagery-source').value = id;
+  $('#imagery-note').textContent = providerInfo(id).note || '';
+
+  await showImagery();
+  // Switching sources re-arms detection: a different photograph is a genuinely
+  // different prediction, not a second charge for the same one.
+  updatePromptHint();
+}
+
+function hideImagery() {
+  if (map.getLayer('imagery-alt')) map.removeLayer('imagery-alt');
+  if (map.getSource('imagery-alt')) map.removeSource('imagery-alt');
+}
+
+/**
+ * Put the chosen photograph on the map.
+ *
+ * Two shapes of source, for the reason the probe found: a tiled basemap (Esri)
+ * is painted as tiles across the whole map, while an image service is fetched
+ * as one picture of exactly the frame -- literally the image the detector will
+ * be shown, placed on its own corners. Seeing precisely what the AI sees is
+ * worth more here than covering the whole screen.
+ */
+async function showImagery() {
+  hideImagery();
+  if (state.provider === 'mapbox') return;
+
+  const info = providerInfo(state.provider);
+  // Keep the mask overlay on top of the photo if both are up.
+  const before = map.getLayer('mask-overlay') ? 'mask-overlay' : 'parcel-fill';
+
+  if (info.tiles) {
+    map.addSource('imagery-alt', {
+      type: 'raster', tiles: [info.tiles], tileSize: 256, maxzoom: 23,
+      attribution: 'Esri, Maxar, Earthstar Geographics',
+    });
+    map.addLayer({ id: 'imagery-alt', type: 'raster', source: 'imagery-alt' }, before);
+    return;
+  }
+
+  if (!state.frame) return;
+
+  const url = imageryUrlFor(state.provider, state.frame);
+
+  /*
+   * Ask for it before handing it to Mapbox GL.
+   *
+   * An image source that 404s fails silently -- the layer is simply never
+   * painted, and the user sees the Mapbox basemap and concludes the new source
+   * looks identical. NAIP genuinely has gaps, so "no photo here" is a real
+   * answer that deserves saying rather than hiding.
+   */
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  } catch (err) {
+    setStatus(
+      `${info.label} has no photograph of this spot (${err.message}). Staying on Mapbox.`,
+      'warn'
+    );
+    state.provider = 'mapbox';
+    $('#imagery-source').value = 'mapbox';
+    $('#imagery-note').textContent = providerInfo('mapbox').note || '';
+    return;
+  }
+
+  map.addSource('imagery-alt', {
+    type: 'image', url, coordinates: frameCorners(state.frame),
+  });
+  map.addLayer({ id: 'imagery-alt', type: 'raster', source: 'imagery-alt' }, before);
+  setStatus(`Showing ${info.label} over the measurement frame. Detect again to use it.`);
+}
+
+/** The same URL the Worker builds, asked for through our own origin. */
+function imageryUrlFor(provider, frame) {
+  return '/api/imagery?' + new URLSearchParams({
+    lng: frame.lng, lat: frame.lat, zoom: frame.zoom, size: frame.size, provider,
+  });
 }
 
 /* ------------------------------------------------------------ edge tools */
@@ -1723,6 +1916,12 @@ function setParcelRing(ring) {
       zoom: zoomToFit(bbox, FRAME_SIZE),
       size: FRAME_SIZE,
     };
+    // An image-service photograph is pinned to the frame's four corners, so
+    // re-framing moves the ground out from under it. Refetch for the new
+    // rectangle rather than leave a correctly-drawn picture of the old one.
+    if (map.getLayer('imagery-alt') && !providerInfo(state.provider).tiles) {
+      showImagery(); // deliberately not awaited: nothing here depends on it
+    }
   }
 }
 
@@ -1909,12 +2108,16 @@ function reset() {
   clearHistory();
   draw.deleteAll();
   hideOverlay();
+  hideImagery();
   disarmLawnPicker();
   map.getSource('parcel').setData(empty());
   state.marker?.remove();
   state.chosen = state.parcel = state.frame = null;
   state.lastMask = null;
   state.detected = false;
+  state.detectedWith = null;
+  state.provider = 'mapbox';
+  $('#imagery-panel').hidden = true;
   state.edgeEdit = null;
   state.surveyed = [];
   $('#result').hidden = true;
@@ -1936,6 +2139,8 @@ document.addEventListener('click', (e) => {
 });
 
 $('#btn-detect').addEventListener('click', detect);
+
+$('#imagery-source').addEventListener('change', (e) => setProvider(e.target.value));
 
 $('#btn-draw').addEventListener('click', () => {
   if (eraser) exitEraserMode();

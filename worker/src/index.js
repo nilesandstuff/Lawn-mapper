@@ -8,7 +8,7 @@
  * mask off a canvas without tainting it.
  *
  * Endpoints:
- *   GET  /api/config                   -> public Mapbox token for the browser
+ *   GET  /api/config                   -> public Mapbox token + imagery sources
  *   GET  /api/geocode?q=<address>      -> candidate addresses (no quota)
  *   GET  /api/parcel?lng=&lat=         -> parcel boundary or null (no quota)
  *   GET  /api/imagery?...              -> satellite PNG (no quota)
@@ -35,7 +35,12 @@ import { checkQuota, consumeQuota, refundQuota } from './quota.js';
 // Constants and the version lookup live in their own module: a Workers
 // entrypoint may only export handlers, and exporting a plain constant from
 // here kills the isolate on startup.
-import { DEFAULT_PROMPT, samVersion, samInput, samThreshold } from './sam.js';
+import { samVersion, samInput, samThreshold } from './sam.js';
+// Which satellite picture to use, and how to ask each source for exactly our
+// frame. Also lives outside the entrypoint, for the same reason as sam.js.
+import {
+  imageryUrl, imageryPrompt, detectionProvider, providerCatalogue,
+} from './imagery.js';
 // Shared with the browser, which loads the same file over HTTP. See the note
 // at the top of that file for why it lives outside worker/.
 import { measure } from '../../public/lib/area.js';
@@ -162,35 +167,43 @@ const serverToken = (env) => env.MAPBOX_SERVER_TOKEN || env.MAPBOX_TOKEN;
 const clampSize = (size) => Math.min(Math.max(size, 256), 1280);
 const clampZoom = (zoom) => Math.min(Math.max(zoom, 15), 20);
 
-function buildImageryUrl(lng, lat, zoom, size, token) {
-  return (
-    `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/` +
-    `${lng},${lat},${zoom},0/${size}x${size}@2x?access_token=${token}&attribution=false&logo=false`
-  );
+/** The frame and source named by a query string, clamped and defaulted. */
+function frameFromQuery(params) {
+  const lng = parseFloat(params.get('lng'));
+  const lat = parseFloat(params.get('lat'));
+  return {
+    frame: {
+      lng,
+      lat,
+      zoom: clampZoom(parseFloat(params.get('zoom')) || 19),
+      size: clampSize(parseInt(params.get('size'), 10) || 640),
+    },
+    provider: detectionProvider(params.get('provider')),
+  };
 }
 
 /**
- * Proxies one Mapbox Static Images request. Server-side so the frontend never
- * needs the token for this, and so we can pin the parameters -- the same
- * frame feeds SAM and the export, so it must be reproducible.
+ * Proxies one satellite image request. Server-side so the frontend never needs
+ * a token for this, and so we can pin the parameters -- the same frame feeds
+ * SAM and the export, so it must be reproducible.
  */
 async function handleImagery(url, env, origin) {
-  const lng = parseFloat(url.searchParams.get('lng'));
-  const lat = parseFloat(url.searchParams.get('lat'));
-  const zoom = clampZoom(parseFloat(url.searchParams.get('zoom')) || 19);
-  const size = clampSize(parseInt(url.searchParams.get('size'), 10) || 640);
+  const { frame, provider } = frameFromQuery(url.searchParams);
 
-  if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+  if (!Number.isFinite(frame.lng) || !Number.isFinite(frame.lat)) {
     return json({ error: 'lng and lat required' }, 400, origin);
   }
 
-  const res = await fetch(buildImageryUrl(lng, lat, zoom, size, serverToken(env)));
-  if (!res.ok) return json({ error: 'Imagery unavailable' }, 502, origin);
+  const res = await fetch(imageryUrl(provider, frame, serverToken(env)));
+  if (!res.ok) return json({ error: 'Imagery unavailable', provider }, 502, origin);
 
   return new Response(res.body, {
     headers: {
-      'Content-Type': 'image/png',
-      // Imagery for a fixed point/zoom never changes. Cache hard.
+      // USGS answers image/png; Mapbox answers image/png too, but take the
+      // source's own word rather than asserting it for whatever gets added
+      // next.
+      'Content-Type': res.headers.get('Content-Type') || 'image/png',
+      // Imagery for a fixed frame and source never changes. Cache hard.
       'Cache-Control': 'public, max-age=86400',
       ...cors(origin),
     },
@@ -294,6 +307,7 @@ async function handleSegment(request, env, origin) {
 
   const zoom = clampZoom(Number(body.zoom) || 19);
   const size = clampSize(Number(body.size) || 640);
+  const provider = detectionProvider(body.provider);
 
   const quota = await consumeQuota(request, env, clientId);
   if (!quota.allowed) {
@@ -311,13 +325,21 @@ async function handleSegment(request, env, origin) {
     );
   }
 
-  const imageUrl = buildImageryUrl(lng, lat, zoom, size, serverToken(env));
+  /*
+   * Replicate fetches this URL itself, so it has to be publicly reachable.
+   * Mapbox's carries our server token, which is why the two ArcGIS sources are
+   * a small improvement as well as a new option: their URLs carry no secret.
+   */
+  const imageUrl = imageryUrl(provider, { lng, lat, zoom, size }, serverToken(env));
 
   // A text prompt finds every patch of grass in the frame at once, including
   // the disconnected ones a person would have to remember to point at. What
   // it also finds is the neighbours' grass, so the browser clips the result
   // to the property line before measuring anything.
-  const prompt = (env.SAM_PROMPT || DEFAULT_PROMPT).trim();
+  //
+  // The wording belongs to the source: an infrared vegetation index has no
+  // "grass" in it to find, only vegetation, so each provider carries its own.
+  const prompt = imageryPrompt(provider, env);
 
   let version;
   try {
@@ -372,7 +394,7 @@ async function handleSegment(request, env, origin) {
         pending: true,
         status: prediction.status,
         id: prediction.id,
-        frame: { lng, lat, zoom, size },
+        frame: { lng, lat, zoom, size, provider },
         remaining: quota.limit - quota.used,
       },
       202,
@@ -386,7 +408,7 @@ async function handleSegment(request, env, origin) {
       remaining: quota.limit - quota.used,
       // Frame parameters must round-trip to the client: converting mask
       // pixels back to lng/lat requires the exact centre, zoom, and size.
-      frame: { lng, lat, zoom, size },
+      frame: { lng, lat, zoom, size, provider },
     },
     200,
     origin
@@ -410,7 +432,15 @@ export default {
         // from here rather than hardcoding it in public/app.js keeps it out
         // of git and lets it be rotated with `wrangler secret put` alone.
         case '/api/config':
-          return json({ mapboxToken: env.MAPBOX_TOKEN || null }, 200, origin);
+          // The imagery list ships from here rather than being written out
+          // again in app.js: the browser's picker and the Worker's URL builder
+          // have to agree on what "ndvi" means, and a second copy of a list is
+          // a second copy that can be wrong.
+          return json(
+            { mapboxToken: env.MAPBOX_TOKEN || null, imagery: providerCatalogue() },
+            200,
+            origin
+          );
         case '/api/geocode':
           return await handleGeocode(url, env, origin);
         case '/api/mask':

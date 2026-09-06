@@ -86,6 +86,14 @@
         <button class="ghost" id="btn-clear">Clear all</button>
       </div>
 
+      <!-- Which photograph. Populated from /api/config so the browser and the
+           Worker cannot disagree about what each source is. -->
+      <div class="imagery" id="imagery-panel" hidden>
+        <label for="imagery-source">Satellite image</label>
+        <select id="imagery-source"></select>
+        <p class="sub" id="imagery-note"></p>
+      </div>
+
       <!-- Edge adjustment: for parcels that stop short of the road. -->
       <div class="edgepanel" id="edge-panel" hidden>
         <p class="edge-info" id="edge-info">Tap the edge of your lawn nearest the road.</p>
@@ -119,6 +127,9 @@
             or tap a white corner dot to drag, add or delete that one point.</li>
           <li>Tapping the line wins over tapping a corner, so extending stays the
             easy gesture — aim right at a dot when you want the point itself.</li>
+          <li><b>Satellite image</b> switches between photographs of the same
+            ground, taken in different years and different light. If shadows or
+            leaf cover are hiding your lawn, try another one and detect again.</li>
           <li><b>Delete selected</b> removes a shape you don't mow.</li>
           <li><b>Draw it myself</b> adds another patch — areas add up.</li>
           <li><b>Extend to road</b> pushes an edge out past the property line

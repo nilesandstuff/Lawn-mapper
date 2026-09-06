@@ -17,6 +17,7 @@
 
 import { PNG } from 'pngjs';
 import { lookupParcel } from '../worker/src/parcel.js';
+import { imageryUrl, imageryPrompt, PROVIDERS } from '../worker/src/imagery.js';
 import { measure, geometryAreaSqM } from '../public/lib/area.js';
 import { rasterizePolygon, maskToPolygons, binarize } from '../public/lib/mask.js';
 import {
@@ -38,8 +39,36 @@ if (!mapbox || !replicate) {
 const MODEL = process.env.SAM3_MODEL || 'mattsays/sam3-image';
 const auth = { Authorization: `Bearer ${replicate}` };
 
-const PROMPTS = (process.env.PROMPTS || 'grass')
-  .split('|').map((p) => p.trim()).filter(Boolean);
+/*
+ * Which picture to show the detector.
+ *
+ * "Feed it NDVI instead" is a good idea and an untested one. Infrared says
+ * nothing about how bright a patch is, so a lawn in shade should read the same
+ * as a lawn in sun -- which, if true, fixes the failure we keep hitting. But it
+ * also means grass and trees look alike, which could easily cost more than the
+ * shadows do. That is a question with a number, and this is where the number
+ * comes from: same house, same parcel, same clip, different source.
+ *
+ *   SOURCES='mapbox|ndvi' node tools/probe-sam3.js
+ */
+const SOURCES = (process.env.SOURCES || 'mapbox')
+  .split('|').map((s) => s.trim()).filter(Boolean);
+
+const unknown = SOURCES.filter((s) => !PROVIDERS[s]);
+if (unknown.length) {
+  console.error(`FAIL  Unknown source(s): ${unknown.join(', ')}. Known: ${Object.keys(PROVIDERS).join(', ')}.`);
+  process.exit(1);
+}
+
+/*
+ * With no PROMPTS given, each source gets its own default wording rather than a
+ * shared one. Asking an infrared index for "grass" is asking about something
+ * that is not in the picture, and a comparison rigged that way would tell us
+ * about the prompt rather than about the imagery.
+ */
+const PROMPTS = process.env.PROMPTS
+  ? process.env.PROMPTS.split('|').map((p) => p.trim()).filter(Boolean)
+  : null;
 
 /**
  * Confidence thresholds to try.
@@ -60,9 +89,11 @@ const THRESHOLDS = (process.env.THRESHOLDS ?? '')
 
 /** Every combination to run, as the table's rows. */
 const RUNS = [];
-for (const prompt of PROMPTS) {
-  for (const t of THRESHOLDS) {
-    RUNS.push({ prompt, threshold: t === '' ? null : Number(t) });
+for (const source of SOURCES) {
+  for (const prompt of PROMPTS || [imageryPrompt(source, {})]) {
+    for (const t of THRESHOLDS) {
+      RUNS.push({ source, prompt, threshold: t === '' ? null : Number(t) });
+    }
   }
 }
 
@@ -147,11 +178,6 @@ const IMG = SIZE * 2;
 console.log(`parcel:  ${parcelArea.squareFeet.toLocaleString()} sq ft (${parcelArea.acres} ac) at ${picked.label}`);
 console.log(`frame:   z${frame.zoom} @ ${IMG}px -> ${(metresPerPixel(frame, IMG) * 100).toFixed(1)} cm/px`);
 
-const imageUrl =
-  `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/` +
-  `${frame.lng},${frame.lat},${frame.zoom},0/${SIZE}x${SIZE}@2x` +
-  `?access_token=${mapbox}&attribution=false&logo=false`;
-
 /*
  * Rasterise the property line into the same pixel grid the app will use, so
  * "clipped" here means exactly what it will mean in production.
@@ -196,7 +222,7 @@ console.log('');
 const results = [];
 let firstPrompt = true;
 
-for (const { prompt, threshold } of RUNS) {
+for (const { source, prompt, threshold } of RUNS) {
   // Replicate throttles low-credit accounts hard; a short gap costs nothing
   // and keeps the comparison from collapsing into a row of 429s.
   // 6 predictions a minute means one per ten seconds; 8 was fractionally too
@@ -204,9 +230,16 @@ for (const { prompt, threshold } of RUNS) {
   if (!firstPrompt) await new Promise((r) => setTimeout(r, 12000));
   firstPrompt = false;
 
-  const label = `"${prompt}"` + (threshold === null ? ' @ default' : ` @ ${threshold}`);
+  const label = `${source} "${prompt}"` + (threshold === null ? ' @ default' : ` @ ${threshold}`);
   console.log(`--- ${label}`);
   const started = Date.now();
+
+  /*
+   * The Worker's own URL builder, not a copy of it. A probe that measures a
+   * differently-framed image than production ships is worse than no probe: it
+   * produces a confident number about something nobody is running.
+   */
+  const imageUrl = imageryUrl(source, frame, mapbox);
 
   const input = { image: imageUrl, prompt, mask_only: true, save_overlay: false, return_zip: false };
   if (threshold !== null) input.threshold = threshold;
@@ -328,15 +361,15 @@ for (const { prompt, threshold } of RUNS) {
   }
   console.log('');
 
-  results.push({ prompt, threshold, looseSqft, clipSqft, pctOfParcel, pieces: clipped.length, secs });
+  results.push({ source, prompt, threshold, looseSqft, clipSqft, pctOfParcel, pieces: clipped.length, secs });
 }
 
 /* -------------------------------------------------------------- the verdict */
 console.log('='.repeat(72));
-console.log('run'.padEnd(34) + 'clipped sq ft'.padStart(14) + '% parcel'.padStart(10) + 'pieces'.padStart(8));
+console.log('run'.padEnd(40) + 'clipped sq ft'.padStart(14) + '% parcel'.padStart(10) + 'pieces'.padStart(8));
 for (const r of results) {
   console.log(
-    (`"${r.prompt}"` + (r.threshold === null ? ' @ default' : ` @ ${r.threshold}`)).padEnd(34) +
+    (`${r.source} "${r.prompt}"` + (r.threshold === null ? ' @ default' : ` @ ${r.threshold}`)).padEnd(40) +
     r.clipSqft.toLocaleString().padStart(14) +
     `${r.pctOfParcel}%`.padStart(10) +
     String(r.pieces).padStart(8)

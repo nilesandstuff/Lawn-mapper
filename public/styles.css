@@ -115,6 +115,22 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .opt input { margin-top: 3px; flex: none; }
 .opt small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
 
+/* ------------------------------------------------------- imagery source */
+.imagery {
+  margin-top: 12px; padding: 11px 13px 12px;
+  border: 1px solid var(--line); border-radius: 11px; background: #fbfcfb;
+}
+.imagery label {
+  display: block; font-size: 12.5px; font-weight: 600;
+  color: var(--muted); margin-bottom: 5px;
+}
+.imagery select {
+  width: 100%; padding: 9px 10px; font: inherit; font-size: 14px;
+  color: var(--ink); background: #fff;
+  border: 1px solid var(--line); border-radius: 9px;
+}
+.imagery .sub { margin: 7px 0 0; font-size: 12.5px; }
+
 /* --------------------------------------------------------- edge editing */
 .edgepanel {
   margin-top: 12px; padding: 12px 13px;

@@ -20,8 +20,12 @@ on:
         options:
           - sam3-prompts
           - sam2-points
+      sources:
+        description: 'Imagery to compare, separated by | — mapbox, naip, ndvi'
+        required: false
+        default: 'mapbox'
       prompts:
-        description: 'Prompts to compare, separated by | (sam3-prompts only)'
+        description: 'Prompts to compare, separated by |. Blank = each source''s own default.'
         required: false
         default: ''
       thresholds:
@@ -62,6 +66,7 @@ jobs:
           MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
           MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN }}
           REPLICATE_TOKEN: ${{ secrets.REPLICATE_TOKEN }}
+          SOURCES: ${{ inputs.sources }}
           PROMPTS: ${{ inputs.prompts }}
           THRESHOLDS: ${{ inputs.thresholds }}
           ADDRESS: ${{ inputs.address }}
