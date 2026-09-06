@@ -19,10 +19,22 @@ const COUNTIES = {
   johnston: {
     name: 'Johnston County',
     fips: '37101', // North Carolina -- Smithfield, Clayton, Benson
-    service: null, // run the discovery workflow to fill this in
-    layer: null,
-    fields: {},
-    verified: 'none',
+    /*
+     * NC OneMap, which is statewide rather than Johnston's own. The county
+     * runs no reachable public server; the state republishes every county's
+     * parcels on one layer, which is the more stable of the two anyway.
+     *
+     * Worth knowing: this endpoint covers ALL of North Carolina. Adding
+     * another NC county is a bbox entry and nothing else -- no discovery, no
+     * new field names. The bbox is what limits us to Johnston today.
+     */
+    service: 'https://services.nconemap.gov/secure/rest/services/NC1Map_Parcels/FeatureServer',
+    layer: 1, // Parcels (polys)
+    // North Carolina's standard parcel schema. The discovery tool could not
+    // name these -- "parno" and "siteadd" match none of its patterns -- so
+    // they are set by hand and the patterns have been taught them.
+    fields: { pin: 'parno', address: 'siteadd' },
+    verified: 'live', // 0.259 ac at Benson
   },
   washoe: {
     name: 'Washoe County',

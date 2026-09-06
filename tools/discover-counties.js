@@ -142,9 +142,9 @@ const PARCEL_NAME = /parcel|propert|cadastr|landbase|tax.?map|assessor/i;
  * house number ("787"). Exact names are tried first, then patterns, and a
  * candidate whose value does not look like the thing is rejected outright.
  */
-const PIN_EXACT = /^(pin|parcelid|parcel_id|parcelno|parcel_no|parcelnum|parcelnumber|pnum|apn|pid|finalpin|mapping_?id)$/i;
+const PIN_EXACT = /^(pin|parcelid|parcel_id|parcelno|parcel_no|parcelnum|parcelnumber|pnum|apn|pid|finalpin|mapping_?id|parno|altparno)$/i;
 const PIN_LOOSE = /(parcel.*(id|no|num)|^pin$|packedpin)/i;
-const ADDR_EXACT = /^(propertyaddress|property_address_combined|siteaddress|site_address|fulladdress|full_address|address|situs_address)$/i;
+const ADDR_EXACT = /^(propertyaddress|property_address_combined|siteaddress|site_address|siteadd|fulladdress|full_address|address|situs_address)$/i;
 const ADDR_LOOSE = /(addr.*combined|full.?addr|site.?addr|situs)/i;
 
 /** Reject fields that are clearly a fragment rather than the whole value. */
