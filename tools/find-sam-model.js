@@ -59,6 +59,33 @@ const CANDIDATES = [
   'hieupham1000/sam2-image',
   'adirik/grounding-dino',
   'nateraw/sam-2',
+  /*
+   * A third sweep, after the point-prompted model turned out to be unusable in
+   * practice: it could not tell a tree's shadow on a lawn from dense woodland,
+   * which is the one distinction this product needs most.
+   *
+   * So the search widens past "takes points". What matters is a model that
+   * understands what it is looking at well enough to separate mown grass from
+   * canopy -- open-vocabulary detectors that ground a phrase in the image, and
+   * anything trained on aerial or satellite imagery rather than on photographs
+   * of dogs.
+   */
+  'schananas/grounded_sam',
+  'idea-research/grounded-sam',
+  'gwang-kim/grounded-sam',
+  'lucataco/grounded-sam',
+  'adirik/grounded-sam',
+  'tmappdev/lang-segment-anything',
+  'hilberts-drinking-problem/lang-sam',
+  'cjwbw/semantic-segment-anything',
+  'zsxkib/molmo-7b',
+  'lucataco/florence-2-large',
+  'microsoft/florence-2-large',
+  'nvidia/segformer-b0-finetuned-ade-512-512',
+  'cjwbw/segformer',
+  'mattsays/sam3-image',
+  'lucataco/sam3',
+  'meta/sam-3',
 ];
 
 /**
