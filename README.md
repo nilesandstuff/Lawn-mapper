@@ -245,6 +245,29 @@ The shortlist it runs, and why each is on it:
 | `tmappdev/lang-segment-anything` | the same grounding-plus-SAM idea with five million runs behind it, and two inputs total |
 | `casia-iva-lab/fastsam` | text-promptable, but publishes no `mask_only`, so it is expected to fail the purity check — expected is not measured |
 
+It has been run. On a 21,740 sq ft Jenison lot, asking for "grass" and ruling
+out "trees, forest, woods, bushes, shrubs":
+
+| Candidate | Verdict | Clipped | % of lot | Pieces |
+| --- | --- | --- | --- | --- |
+| `mattsays/sam3-image` | hard mask | 9,133 sq ft | 42% | 4 |
+| `schananas/grounded_sam` | hard mask | 21,012 sq ft | 97% | 1 |
+| `tmappdev/lang-segment-anything` | soft mask | 3,771 sq ft | 17% | 1 |
+| `casia-iva-lab/fastsam` | annotated photo | — | — | — |
+
+**Nothing beat the incumbent, and the two that ran failed in opposite
+directions.** grounded_sam masked 70% of the entire frame and returned it as
+one piece — house, drive and neighbours included; its published default prompt
+is `"clothes,shoes"`, and aerial imagery appears to be outside what it does.
+lang-segment-anything returned a single region of 17%, which is one patch of a
+property that has several. Only sam3's answer has the shape of a real lot:
+several separate patches making 42% of a parcel that also carries a house and
+a driveway. FastSAM was confirmed unusable — 41% of its output pixels carry
+real colour — which is what a model with no `mask_only` was always going to do.
+
+So the picker stays at one model, and correcting the outline stays the job of
+the editing tools rather than of a second opinion that does not exist.
+
 What no probe can settle is the thing that actually broke the last model:
 whether a tree's shadow on grass is counted as grass. That needs a lot where
 the true answer is already known, which is why the tool takes an `ADDRESS`.
