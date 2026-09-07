@@ -268,9 +268,42 @@ real colour — which is what a model with no `mask_only` was always going to do
 So the picker stays at one model, and correcting the outline stays the job of
 the editing tools rather than of a second opinion that does not exist.
 
-What no probe can settle is the thing that actually broke the last model:
-whether a tree's shadow on grass is counted as grass. That needs a lot where
-the true answer is already known, which is why the tool takes an `ADDRESS`.
+### Measured against a lot whose answer is known
+
+A percentage of a parcel is not proof. So the same probe was pointed at a
+1.75-acre Rockford lot whose owner knows it: **28,000 sq ft mown in total, of
+which about 20,000 is visible lawn** and the rest is grass under a continuous
+tree canopy. It has a large wooded area behind the house, scattered trees, and
+open ground -- the exact mix that broke the point-prompted model.
+
+| Candidate | Found | vs 20,000 visible | Pieces |
+| --- | --- | --- | --- |
+| `mattsays/sam3-image` | 17,386 sq ft | **13% under** | 2 |
+| `schananas/grounded_sam` | 0 sq ft | found nothing | 0 |
+| `tmappdev/lang-segment-anything` | 47,930 sq ft | **2.4x over** | 3 |
+
+lang-segment-anything masked 69% of the entire frame -- 209,817 sq ft before
+clipping -- which is the woods being called grass: the original failure,
+reproduced. grounded_sam returned an empty mask here and 97% of the lot on the
+other test, so it is all-or-nothing on aerial imagery rather than mistunable.
+Both are out on evidence.
+
+sam3 found the visible lawn to within 13%, in two pieces, and did not claim
+the woodland. That under-read matches the direction and rough size of the gap
+against measuremylawn.com, so the error looks systematic and mild rather than
+erratic.
+
+**What that test also exposed:** "Count grass under trees" contributed
+**nothing** on this lot -- `+0 sq ft in 0 gaps`. It fills holes ENCLOSED
+inside the lawn, and a treeline adjoining the lawn is not a hole. So the
+8,000 sq ft between this owner's two figures is not recoverable automatically,
+and the honest description of what this app measures is *visible* lawn, with
+the canopy option helping only where trees are scattered within it. Grass under
+a solid canopy has to be painted in with the Add brush.
+
+What no probe can settle by itself is which of those two numbers a customer
+means. That needs a lot where the true answer is already known, which is why
+the tool takes an `ADDRESS`.
 
 The pin interaction survives it — the mode, the numbered markers, the
 conversion below — because what is wanted is a model that understands mown
