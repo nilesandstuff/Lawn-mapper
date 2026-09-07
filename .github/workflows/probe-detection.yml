@@ -19,11 +19,20 @@ on:
         type: choice
         options:
           - sam3-prompts
+          - candidates
           - one-prediction
       sources:
         description: 'Imagery to compare, separated by | — mapbox, google, naip, ndvi'
         required: false
         default: 'mapbox'
+      negative:
+        description: 'For "candidates": what to rule OUT (models that accept a negative prompt)'
+        required: false
+        default: 'trees, forest, woods, bushes, shrubs'
+      models:
+        description: 'For "candidates": which to run — sam3,grounded_sam,langsam,fastsam'
+        required: false
+        default: 'sam3,grounded_sam,langsam,fastsam'
       prompts:
         description: 'Prompts to compare, separated by |. Blank = each source''s own default.'
         required: false
@@ -57,8 +66,23 @@ jobs:
 
       # Only this probe needs it, so it is not a project dependency.
       - name: Install a PNG decoder
-        if: inputs.probe == 'sam3-prompts'
+        if: inputs.probe == 'sam3-prompts' || inputs.probe == 'candidates'
         run: npm install pngjs --no-save
+
+      # Auditions replacements for the detector on a real lot: one prediction
+      # each, every one clipped to the same property line so the square
+      # footages are directly comparable.
+      - name: Audition replacement models
+        if: inputs.probe == 'candidates'
+        env:
+          MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
+          MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN }}
+          REPLICATE_TOKEN: ${{ secrets.REPLICATE_TOKEN }}
+          MODELS: ${{ inputs.models }}
+          PROMPT: ${{ inputs.prompts }}
+          NEGATIVE: ${{ inputs.negative }}
+          ADDRESS: ${{ inputs.address }}
+        run: node tools/probe-candidates.js
 
       - name: Compare prompts and thresholds
         if: inputs.probe == 'sam3-prompts'

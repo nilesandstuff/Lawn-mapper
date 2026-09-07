@@ -227,6 +227,28 @@ this product depends on. Being able to point at a patch buys nothing when the
 model then decides the patch is forest, so it went, rather than staying in the
 picker as an option that produces confidently wrong answers.
 
+`tools/probe-candidates.js` (workflow **5**, probe `candidates`) is how the
+replacement gets chosen: it runs each candidate through the real pipeline on
+one real lot — same frame, same property line, same tracer — and prints the
+square footage each returns, so they can be compared against a number we
+already know. Two things are checked before that, because both are
+disqualifying and neither is in any model's description: whether the output is
+a **bare mask** (95% pure black and white; several of these return the
+photograph with masks painted on it, which traces into confident nonsense) and
+whether the mask **lands on the parcel** at all.
+
+The shortlist it runs, and why each is on it:
+
+| Candidate | Why |
+| --- | --- |
+| `schananas/grounded_sam` | takes a **negative** prompt — "grass", ruling out "trees, forest, woods". The failure that killed the last model is exactly a case where saying what is *not* lawn is easier than scoring what is |
+| `tmappdev/lang-segment-anything` | the same grounding-plus-SAM idea with five million runs behind it, and two inputs total |
+| `casia-iva-lab/fastsam` | text-promptable, but publishes no `mask_only`, so it is expected to fail the purity check — expected is not measured |
+
+What no probe can settle is the thing that actually broke the last model:
+whether a tree's shadow on grass is counted as grass. That needs a lot where
+the true answer is already known, which is why the tool takes an `ADDRESS`.
+
 The pin interaction survives it — the mode, the numbered markers, the
 conversion below — because what is wanted is a model that understands mown
 grass, not necessarily one that takes points, and the search
