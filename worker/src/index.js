@@ -35,6 +35,10 @@
 import { lookupParcel } from './parcel.js';
 import { isCovered } from './counties.js';
 import { checkQuota, consumeQuota, refundQuota } from './quota.js';
+// Why an upstream refused us, redacted. In its own module because a Workers
+// entrypoint may only export handlers, and this needs a test: it is the only
+// thing between an upstream error page and a leaked API key.
+import { upstreamReason } from './upstream.js';
 // Constants and the version lookup live in their own module: a Workers
 // entrypoint may only export handlers, and exporting a plain constant from
 // here kills the isolate on startup.
@@ -209,7 +213,13 @@ async function handleImagery(url, env, origin) {
   if (!src) return json({ error: 'That source has no single-image form', provider }, 400, origin);
 
   const res = await fetch(src);
-  if (!res.ok) return json({ error: 'Imagery unavailable', provider }, 502, origin);
+  if (!res.ok) {
+    return json({
+      error: 'Imagery unavailable', provider,
+      upstream: res.status,
+      reason: await upstreamReason(res),
+    }, 502, origin);
+  }
 
   return new Response(res.body, {
     headers: {

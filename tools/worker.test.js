@@ -20,6 +20,7 @@
 import * as entrypoint from '../worker/src/index.js';
 import { MODELS, DEFAULT_MODEL, DEFAULT_PROMPT, modelCatalogue } from '../worker/src/sam.js';
 import { dayKey, DAILY_LIMIT_PER_CLIENT } from '../worker/src/quota.js';
+import { upstreamReason, redactSecrets } from '../worker/src/upstream.js';
 import {
   providerCatalogue, providerFrame, detectionImageUrl,
 } from '../worker/src/imagery.js';
@@ -150,6 +151,59 @@ check('the daily allowance is 20', DAILY_LIMIT_PER_CLIENT === 20,
   check('and offered when there is one',
     providerCatalogue({ GOOGLE_MAPS_KEY: 'K' }).some((p) => p.id === 'google'));
 
+}
+
+/* ------------------------------------------------- passing an error along */
+/*
+ * When a source refuses us, the browser is now shown what it said -- which is
+ * the difference between "no photograph of this spot" (wrong, and sends you
+ * hunting for a coverage problem) and Google's own "This API project is not
+ * authorized to use this API" (the answer, in one sentence).
+ *
+ * That text comes from outside and goes to a browser, and the URL it is about
+ * has our key in it. So the redaction is the part under test: an upstream that
+ * echoes the request back in its error would otherwise hand out the key.
+ */
+{
+  const echoed =
+    'Request failed: https://maps.googleapis.com/maps/api/staticmap?center=1,2&key=AIzaSECRETVALUE123&size=640x640';
+  const clean = redactSecrets(echoed);
+
+  check('an echoed key is redacted out of an upstream error',
+    !clean.includes('AIzaSECRETVALUE123'), clean);
+  check('and the parameter name survives, so the message still reads',
+    clean.includes('key=REDACTED'), clean);
+
+  check('a Mapbox token is redacted too, by its own parameter name',
+    !redactSecrets('...&access_token=pk.eyJ1SECRET&x=1').includes('pk.eyJ1SECRET'),
+    redactSecrets('...&access_token=pk.eyJ1SECRET&x=1'));
+
+  check('ordinary words are left alone',
+    redactSecrets('The provided API key is invalid.') === 'The provided API key is invalid.');
+
+  /*
+   * The real shape of the failure being diagnosed, start to finish: Google
+   * answers 403 with a plain sentence, and that sentence has to arrive intact.
+   */
+  const refusal = new Response(
+    'The Google Maps Platform server rejected your request. This API project is not authorized to use this API.',
+    { status: 403, headers: { 'Content-Type': 'text/plain; charset=UTF-8' } }
+  );
+  check('a plain-text refusal is passed through in full',
+    /not authorized to use this API/.test(await upstreamReason(refusal)));
+
+  /* An error delivered as an image has nothing readable in it; say nothing. */
+  const imageErr = new Response('\x89PNG\r\n', {
+    status: 500, headers: { 'Content-Type': 'image/png' },
+  });
+  check('a binary error body is not paraphrased into the status line',
+    (await upstreamReason(imageErr)) === null);
+
+  const huge = new Response('x'.repeat(50000), {
+    status: 500, headers: { 'Content-Type': 'text/html' },
+  });
+  check('and a giant error page is cut down, not pasted into the UI',
+    (await upstreamReason(huge)).length <= 400);
 }
 
 /*

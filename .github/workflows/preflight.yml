@@ -40,6 +40,22 @@ jobs:
       - name: Are the county property-line servers reachable?
         run: npm run probe:counties
 
+      # Only meaningful once someone has added the key, and a key that has just
+      # been created in the Cloud console fails in four different ways that look
+      # identical inside the app. Google names the one that applies; this puts
+      # its sentence on screen and, where the sentence is a known one, the
+      # click that fixes it.
+      #
+      # continue-on-error because Google is optional: a missing or misconfigured
+      # key must not stand between anyone and a working deploy. The step is not
+      # gated on the secret existing, because the `secrets` context cannot be
+      # read from an `if:` -- the tool says "not configured, skipping" instead.
+      - name: Does the Google satellite key work?
+        continue-on-error: true
+        env:
+          GOOGLE_MAPS_KEY: ${{ secrets.GOOGLE_MAPS_KEY }}
+        run: node tools/check-google.js
+
       - name: What to do next
         if: success()
         run: |

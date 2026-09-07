@@ -1993,12 +1993,32 @@ async function showImagery() {
   busy(`Fetching ${info.label}…`);
   try {
     const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+      /*
+       * Say which kind of failure this is, because they need opposite actions.
+       *
+       * "No photograph of this spot" is a real answer -- NAIP genuinely has
+       * gaps -- but it was also what got said when a brand new Google key was
+       * refused for not having its API enabled. That sentence sent someone
+       * looking for a coverage problem while the response body sat there
+       * saying "This API project is not authorized to use this API".
+       *
+       * A 4xx from the source is the source refusing US: configuration, not
+       * geography. Anything else is the picture genuinely not being there.
+       */
+      let body = null;
+      try { body = await res.json(); } catch { /* not our JSON: keep the code */ }
+      const err = new Error(body?.reason || `HTTP ${res.status}`);
+      err.refused = body?.upstream >= 400 && body?.upstream < 500;
+      throw err;
+    }
   } catch (err) {
     idle();
     setStatus(
-      `${info.label} has no photograph of this spot (${err.message}). Staying on Mapbox.`,
-      'warn'
+      err.refused
+        ? `${info.label} refused the request — this is a set-up problem, not a gap in the photography. It said: “${err.message}” Staying on Mapbox.`
+        : `${info.label} has no photograph of this spot (${err.message}). Staying on Mapbox.`,
+      err.refused ? 'error' : 'warn'
     );
     state.provider = 'mapbox';
     $('#imagery-source').value = 'mapbox';
