@@ -114,6 +114,148 @@ console.log(`      hint:   "${await page.locator('#map-hint').textContent()}"`);
 check('the grass-under-trees option is offered and on by default',
   await page.locator('#toggle-trees').isChecked());
 
+/* ----------------------------------------------------------------- tips */
+/*
+ * A tip that appears is not the feature. The feature is a tip that POINTS at
+ * the control it is talking about: every button on this map is an unlabelled
+ * icon, so "press Layers" is useless unless the reader can tell which of nine
+ * icons that is. So the arrow's own rectangle is compared against the target
+ * button's, which is the only way this can fail -- the words are static text
+ * and cannot drift, the aim can.
+ */
+console.log('\n--- tips ---');
+check('tips are on by default', await page.locator('#toggle-tutorials').isChecked());
+
+/** Does the arrow actually touch the button it claims to point at? */
+const pointsAt = (tip) => {
+  if (!tip.arrow || !tip.target) return { ok: false, why: 'no arrow or no target' };
+  const t = tip.target;
+  const gapLeft = t.left - tip.arrow.x;   // arrow to the left of the button
+  const gapRight = tip.arrow.x - t.right; // arrow to the right of it
+  const near = Math.max(gapLeft, gapRight);
+  const vertical = tip.arrow.y >= t.top - 6 && tip.arrow.y <= t.bottom + 6;
+  return {
+    ok: near >= 0 && near < 40 && vertical,
+    why: `horizontal gap ${Math.round(near)}px, arrow y ${Math.round(tip.arrow.y)} vs button ${Math.round(t.top)}–${Math.round(t.bottom)}`,
+  };
+};
+
+const parcelTip = await page.evaluate(() => window.__lmTip());
+check('the first tip is about the property line',
+  parcelTip.visible && parcelTip.stage === 'parcel',
+  `stage=${parcelTip.stage} visible=${parcelTip.visible}`);
+console.log(`      "${parcelTip.text}"`);
+
+if (parcelTip.targetId) {
+  const aim = pointsAt(parcelTip);
+  check(`and its arrow points at #${parcelTip.targetId}`, aim.ok, aim.why);
+}
+
+await page.click('#coach-ok');
+await page.waitForTimeout(250);
+
+/*
+ * The imagery tip follows the property line, so it only follows the FIRST tip
+ * when the county supplied one. For an address with no record the boundary has
+ * to be traced first, and the tip fires from there instead -- so this is
+ * conditional on what the parcel lookup actually returned, not on the test
+ * address being a covered one.
+ */
+// "Use property line" is only offered when the county actually returned one.
+const hasParcel = await page.locator('#btn-parcel-shape').isVisible();
+const layerTip = await page.evaluate(() => window.__lmTip());
+check(hasParcel
+  ? 'dismissing it leads to the imagery tip'
+  : 'with no county line, the imagery tip waits until one is drawn',
+  hasParcel
+    ? (layerTip.visible && layerTip.stage === 'layers')
+    : layerTip.visible === false,
+  `stage=${layerTip.stage} visible=${layerTip.visible} parcel=${hasParcel}`);
+if (layerTip.text) console.log(`      "${layerTip.text}"`);
+
+if (layerTip.stage === 'layers') {
+  const aim = pointsAt(layerTip);
+  check('and its arrow points at the Layers button',
+    aim.ok && layerTip.targetId === 'btn-layers', `${layerTip.targetId}: ${aim.why}`);
+
+  /*
+   * The one fact a person cannot discover for themselves: some of these
+   * photographs can be measured from and some cannot. Built from the live
+   * catalogue, so it is checked against what this deployment actually offers
+   * rather than against a list written down here.
+   */
+  const catalogue = await page.evaluate(() => window.__lmImageryCatalogue());
+  const named = catalogue.filter((p) => p.detect).every((p) => layerTip.text.includes(p.label));
+  check('and it names exactly the sources the AI can be given', named,
+    catalogue.map((p) => `${p.label}${p.detect ? '' : ' (view only)'}`).join(', '));
+}
+
+/* The switch has to actually switch it off, and back on. */
+if (layerTip.visible) {
+  await page.uncheck('#toggle-tutorials');
+  await page.waitForTimeout(200);
+  check('unticking "show me tips" puts the tip away',
+    (await page.evaluate(() => window.__lmTip().visible)) === false);
+
+  await page.check('#toggle-tutorials');
+  await page.waitForTimeout(200);
+  const back = await page.evaluate(() => window.__lmTip());
+  check('and ticking it brings tips back, at the step you are actually on',
+    back.visible && back.stage === layerTip.stage,
+    `was ${layerTip.stage}, came back as ${back.stage}`);
+
+  await page.click('#coach-ok');
+  await page.waitForTimeout(200);
+}
+
+check('no tip is left sitting over the map',
+  (await page.evaluate(() => window.__lmTip().visible)) === false);
+
+/* ------------------------------------------------------- the Layers button */
+console.log('\n--- the Layers button ---');
+const layersBefore = await page.evaluate(() => window.__lmLayers());
+check('the Layers button is on the map', layersBefore.buttonVisible);
+check('and its list starts closed', layersBefore.open === false);
+
+await page.click('#btn-layers');
+await page.waitForTimeout(200);
+const opened = await page.evaluate(() => window.__lmLayers());
+check('pressing it opens the source list', opened.open === true);
+check('the list offers every source the panel does',
+  opened.options.length === (await page.evaluate(() =>
+    document.querySelectorAll('#imagery-source option').length)),
+  opened.options.map((o) => o.id).join(', '));
+check('and exactly one is ticked',
+  opened.options.filter((o) => o.checked).length === 1,
+  opened.options.filter((o) => o.checked).map((o) => o.id).join(', '));
+
+/*
+ * Choosing from the on-map list must be the same act as choosing from the
+ * panel, not a second, parallel setting. Two controls for one choice is how a
+ * detection ends up running against a photograph the user is not looking at.
+ */
+const other = opened.options.map((o) => o.id).find((id) => id !== 'mapbox');
+if (other) {
+  await page.click(`#layer-list button[data-provider="${other}"]`);
+  await page.waitForTimeout(600);
+  const after = await page.evaluate(() => ({
+    provider: window.__lmImagery().provider,
+    select: document.querySelector('#imagery-source').value,
+    open: window.__lmLayers().open,
+  }));
+  check(`picking ${other} from the map list selects it`, after.provider === other,
+    `provider=${after.provider}`);
+  check('and the panel picker agrees', after.select === after.provider,
+    `list=${after.provider} select=${after.select}`);
+  check('and the list closes behind you', after.open === false);
+
+  await page.selectOption('#imagery-source', 'mapbox');
+  await page.waitForTimeout(400);
+  check('choosing from the panel ticks the map list too',
+    (await page.evaluate(() =>
+      window.__lmLayers().options.find((o) => o.id === 'mapbox')?.checked)) === true);
+}
+
 /* ------------------------------------------------------- imagery sources */
 /*
  * A second photograph is only worth having if it covers the same ground.
@@ -254,16 +396,25 @@ if (sources.includes('mapbox')) {
     (await page.evaluate(() => window.__lmImagery())).layer === false);
 }
 
-/* ------------------------------------------------------- the two AI methods */
+/* ----------------------------------------------------------- the AI method */
 /*
- * The point-prompted model cannot run on nothing, so the interesting property
- * is that the app refuses to spend a detection until there are pins -- and
- * says why, rather than offering a button that fails.
+ * There is one model again. The point-prompted one was removed because it
+ * could not tell a tree's shadow on a lawn from woodland, and the check that
+ * used to be here asserted "more than one method is offered" -- which would
+ * now fail on a deliberate removal and read as a regression.
+ *
+ * What is worth asserting is the rule that survives either way: a picker with
+ * a single option is not a choice, so it is not shown, and detection must be
+ * ready without one.
  */
 console.log('\n--- AI method ---');
 const methods = await page.evaluate(() =>
   [...document.querySelectorAll('#model-choice option')].map((o) => o.value));
-check('both AI methods are offered', methods.length > 1, methods.join(', '));
+check('a one-option picker is not shown at all',
+  methods.length > 1 || (await page.locator('#model-panel').isHidden()),
+  `${methods.length} option(s)`);
+check('and detection is ready regardless',
+  await page.locator('#btn-detect').isEnabled());
 
 if (methods.includes('sam2')) {
   await page.selectOption('#model-choice', 'sam2');
@@ -339,7 +490,23 @@ if (process.env.RUN_DETECT === 'true') {
 
   const shapes = await page.evaluate(() => window.__lmShapes ?? null);
   if (shapes !== null) console.log(`      shapes: ${shapes}`);
+
+  /* The third and last tip: the AI has answered, now correct it. */
+  const toolTip = await page.evaluate(() => window.__lmTip());
+  check('a detection is followed by the editing tip',
+    toolTip.visible && toolTip.stage === 'tools',
+    `stage=${toolTip.stage} visible=${toolTip.visible}`);
+  if (toolTip.visible) {
+    const aim = pointsAt(toolTip);
+    check('and it points at the shape tools', aim.ok, `${toolTip.targetId}: ${aim.why}`);
+    await page.click('#coach-ok');
+    await page.waitForTimeout(200);
+  }
 }
+
+/* Nothing may be left covering the map before the tap-based checks below. */
+check('the map is clear of tips before the editing checks',
+  (await page.evaluate(() => window.__lmTip().visible)) === false);
 
 /* --------------------------------------------- the edge extension tool */
 console.log('\n--- edge extension ---');

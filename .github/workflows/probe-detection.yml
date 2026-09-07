@@ -19,10 +19,9 @@ on:
         type: choice
         options:
           - sam3-prompts
-          - sam2-points
-          - point-format
+          - one-prediction
       sources:
-        description: 'Imagery to compare, separated by | — mapbox, naip, ndvi'
+        description: 'Imagery to compare, separated by | — mapbox, google, naip, ndvi'
         required: false
         default: 'mapbox'
       prompts:
@@ -58,19 +57,8 @@ jobs:
 
       # Only this probe needs it, so it is not a project dependency.
       - name: Install a PNG decoder
-        if: inputs.probe == 'sam3-prompts' || inputs.probe == 'point-format'
+        if: inputs.probe == 'sam3-prompts'
         run: npm install pngjs --no-save
-
-      # Settles what ocg2347/sam-pointprompt wants and whether what it returns
-      # is a mask we can trace. Its schema says neither.
-      - name: Work out the point-prompt format
-        if: inputs.probe == 'point-format'
-        env:
-          MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
-          MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN }}
-          REPLICATE_TOKEN: ${{ secrets.REPLICATE_TOKEN }}
-          ADDRESS: ${{ inputs.address }}
-        run: node tools/probe-points.js
 
       - name: Compare prompts and thresholds
         if: inputs.probe == 'sam3-prompts'
@@ -84,8 +72,10 @@ jobs:
           ADDRESS: ${{ inputs.address }}
         run: node tools/probe-sam3.js
 
-      - name: Run one point-prompted prediction
-        if: inputs.probe == 'sam2-points'
+      # One bare prediction against the default model, for when the question is
+      # "is Replicate answering at all" rather than "which prompt is better".
+      - name: Run one prediction
+        if: inputs.probe == 'one-prediction'
         env:
           MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
           MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN }}

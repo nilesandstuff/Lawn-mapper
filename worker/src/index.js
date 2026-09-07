@@ -24,6 +24,9 @@
  *                          restriction. Never sent to the browser. Falls back
  *                          to MAPBOX_TOKEN when unset.
  *   REPLICATE_TOKEN  -- r8_* token. NEVER exposed to the browser.
+ *   GOOGLE_MAPS_KEY  -- optional. Enables the Google satellite source; without
+ *                       it that source is not offered at all. Billed per
+ *                       request, so it is never sent to the browser either.
  * Bindings:
  *   QUOTA            -- KV namespace for measurement counting
  *   ASSETS           -- the static site in public/
@@ -42,7 +45,7 @@ import {
 // frame. Also lives outside the entrypoint, for the same reason as sam.js.
 import {
   imageryUrl, detectionImageUrl, imageryPrompt, normaliseProvider,
-  detectionProvider, providerCatalogue,
+  detectionProvider, providerCatalogue, providerFrame, providerAvailable,
 } from './imagery.js';
 // Shared with the browser, which loads the same file over HTTP. See the note
 // at the top of that file for why it lives outside worker/.
@@ -198,7 +201,10 @@ async function handleImagery(url, env, origin) {
     return json({ error: 'lng and lat required' }, 400, origin);
   }
 
-  const src = imageryUrl(provider, frame, serverToken(env));
+  if (!providerAvailable(provider, env)) {
+    return json({ error: 'That source is not configured here', provider }, 400, origin);
+  }
+  const src = imageryUrl(provider, frame, serverToken(env), env);
   // Esri serves tiles and nothing else; the browser paints those itself.
   if (!src) return json({ error: 'That source has no single-image form', provider }, 400, origin);
 
@@ -366,7 +372,14 @@ async function handleSegment(request, env, origin) {
    * Mapbox's carries our server token, which is why the two ArcGIS sources are
    * a small improvement as well as a new option: their URLs carry no secret.
    */
-  const imageUrl = detectionImageUrl(provider, { lng, lat, zoom, size }, serverToken(env));
+  /*
+   * The frame the source can actually serve, which is not always the frame we
+   * asked for -- Google only takes integer zoom. Whatever comes back here is
+   * what the mask must be unprojected against, so it is this that gets echoed
+   * to the browser below, not the requested one.
+   */
+  const served = providerFrame(provider, { lng, lat, zoom, size });
+  const imageUrl = detectionImageUrl(provider, served, serverToken(env), env);
 
   // A text prompt finds every patch of grass in the frame at once, including
   // the disconnected ones a person would have to remember to point at. What
@@ -430,7 +443,7 @@ async function handleSegment(request, env, origin) {
         pending: true,
         status: prediction.status,
         id: prediction.id,
-        frame: { lng, lat, zoom, size, provider }, model: modelId,
+        frame: { ...served, provider }, model: modelId,
         remaining: quota.limit - quota.used,
       },
       202,
@@ -444,7 +457,7 @@ async function handleSegment(request, env, origin) {
       remaining: quota.limit - quota.used,
       // Frame parameters must round-trip to the client: converting mask
       // pixels back to lng/lat requires the exact centre, zoom, and size.
-      frame: { lng, lat, zoom, size, provider }, model: modelId,
+      frame: { ...served, provider }, model: modelId,
     },
     200,
     origin
@@ -473,7 +486,7 @@ export default {
           // have to agree on what "ndvi" means, and a second copy of a list is
           // a second copy that can be wrong.
           return json(
-            { mapboxToken: env.MAPBOX_TOKEN || null, imagery: providerCatalogue(), models: modelCatalogue() },
+            { mapboxToken: env.MAPBOX_TOKEN || null, imagery: providerCatalogue(env), models: modelCatalogue() },
             200,
             origin
           );

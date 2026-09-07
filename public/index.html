@@ -23,6 +23,19 @@
 <div class="layout">
   <aside class="panel" id="panel">
 
+    <!--
+      Tips, and the switch that turns them off.
+
+      At the very top of the panel because that is where someone goes looking
+      when a box keeps appearing over their map. On by default: the tools on
+      the map are unlabelled icons, and a first-timer has no way to know that
+      only two of the satellite sources can be measured from.
+    -->
+    <label class="tiptoggle">
+      <input type="checkbox" id="toggle-tutorials" checked>
+      <span>Show me tips as I go</span>
+    </label>
+
     <!-- 0. Hard failure -------------------------------------------------- -->
     <section class="step fatal" id="step-fatal" hidden>
       <h2>The map didn't load</h2>
@@ -148,9 +161,12 @@
             lawn outline can no longer move the property line by accident.</li>
           <li><b>Line</b> edits the property boundary: tap a line to slide that
             whole edge out to the road, or a corner to move, add or delete it.</li>
-          <li><b>Pins</b> appears only for the precise AI method. The numbered
-            markers are visible while you are placing them and put away
-            afterwards, so they are never in front of the lawn.</li>
+          <li><b>Layers</b>, on the left of the map, switches between
+            photographs of the same ground taken in different years and
+            different light. Only the sources marked as measurable can be sent
+            to the AI; the rest are there to look at, and detection quietly
+            falls back to Mapbox for those. If shadows or leaf cover are hiding
+            your lawn, try another picture and detect again.</li>
           <li><b>Lawn</b> edits the measured shape, with three tools:
             <b>Points</b> to drag corners, <b>Add</b> to paint lawn in, and
             <b>Erase</b> to rub out anything that is not lawn — a driveway the
@@ -170,9 +186,6 @@
             the AI ran along a driveway or a fence.</li>
           <li><b>Undo</b> is on the map as well as below it, since that is
             where you are looking when something goes wrong.</li>
-          <li><b>Satellite image</b> switches between photographs of the same
-            ground, taken in different years and different light. If shadows or
-            leaf cover are hiding your lawn, try another one and detect again.</li>
           <li><b>Delete selected</b> removes a shape you don't mow.</li>
           <li><b>Draw it myself</b> adds another patch — areas add up.</li>
           <li>Yellow dots are corners taken straight from the county map.</li>
@@ -276,6 +289,40 @@
           <span>Erase</span>
         </button>
       </div>
+    </div>
+
+    <!-- Layers, on the left. The classic stack-of-sheets, because that is what
+         everyone already reaches for to change what the map is showing. -->
+    <div class="maprail maprail-left" id="maprail-left" hidden>
+      <button class="railbtn" id="btn-layers" aria-pressed="false" title="Choose the satellite image">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 3 2.5 8 12 13l9.5-5L12 3z" fill="none" stroke="currentColor"
+                stroke-width="1.9" stroke-linejoin="round"/>
+          <path d="M2.5 12.2 12 17.2l9.5-5" fill="none" stroke="currentColor"
+                stroke-width="1.9" stroke-linejoin="round"/>
+          <path d="M2.5 16.4 12 21.4l9.5-5" fill="none" stroke="currentColor"
+                stroke-width="1.9" stroke-linejoin="round"/>
+        </svg>
+        <span>Layers</span>
+      </button>
+
+      <!-- The sources themselves, on the map rather than down in the panel:
+           you are comparing photographs, so the choice belongs next to the
+           photograph. Populated from /api/config. -->
+      <div class="layerlist" id="layer-list" role="menu" aria-label="Satellite image" hidden></div>
+    </div>
+
+    <!--
+      One tip at a time, pointed at the thing it is talking about.
+
+      Placed by app.js from the target button's own position, so it keeps
+      pointing at the right control on any screen width.
+    -->
+    <div class="coach" id="coach" role="dialog" aria-live="polite" hidden>
+      <div class="coach-arrow" id="coach-arrow" hidden></div>
+      <p class="coach-title" id="coach-title"></p>
+      <p class="coach-text" id="coach-text"></p>
+      <button class="coach-ok" id="coach-ok">Got it</button>
     </div>
 
     <div class="hint" id="map-hint" hidden></div>

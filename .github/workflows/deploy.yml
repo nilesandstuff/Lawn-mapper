@@ -81,9 +81,22 @@ jobs:
           MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
           MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN }}
           REPLICATE_TOKEN: ${{ secrets.REPLICATE_TOKEN }}
+          GOOGLE_MAPS_KEY: ${{ secrets.GOOGLE_MAPS_KEY }}
         run: |
           printf '%s' "$MAPBOX_TOKEN"    | npx wrangler secret put MAPBOX_TOKEN
           printf '%s' "$REPLICATE_TOKEN" | npx wrangler secret put REPLICATE_TOKEN
+
+          # Optional. Google's aerial photography is often a different year and
+          # a different sun angle from Mapbox's, which is exactly the second
+          # opinion a shaded lawn needs. Without this secret the source is not
+          # offered at all, rather than appearing and failing.
+          if [ -n "$GOOGLE_MAPS_KEY" ]; then
+            printf '%s' "$GOOGLE_MAPS_KEY" | npx wrangler secret put GOOGLE_MAPS_KEY
+            echo "Applied GOOGLE_MAPS_KEY; Google satellite will appear in Layers."
+          else
+            echo "No GOOGLE_MAPS_KEY secret; Google satellite is hidden."
+            echo "Add one (Google Cloud console -> Maps Static API) to offer it."
+          fi
 
           # Optional. Without it the Worker uses MAPBOX_TOKEN for its own calls,
           # which is fine until that token is URL-restricted -- a Worker sends no

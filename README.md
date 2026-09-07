@@ -152,9 +152,32 @@ to 0.000 m.
 | Source | On the map | Detection | Notes |
 | --- | --- | --- | --- |
 | Mapbox satellite | yes | yes | the default, and the sharpest |
+| Google satellite | yes | yes | only with a `GOOGLE_MAPS_KEY`; usually a different year and sun angle |
 | USGS NAIP | yes | yes | 30 cm native, reflown every 2–3 years |
 | USGS NAIP NDVI | yes | **no** | tested and rejected — see below |
 | Esri World Imagery | yes | **no** | cached basemap, see below |
+
+Google is the second opinion worth having, because it is usually flown in a
+different year and a different light from Mapbox — the one thing that actually
+moves a shaded lawn from "not grass" to "grass". It needs two conversions, and
+both are silently catastrophic if wrong, so both are asserted in
+`tools/worker.test.js` against the world size each scheme describes:
+
+- **Tile scale.** Google Static Maps is a 256-pixel tile scheme, Mapbox is 512,
+  so the same ground scale is Google zoom = Mapbox zoom **+ 1**. Off by one is
+  a factor of two in every distance and four in every area, and the picture
+  still looks like a house from above.
+- **Whole zoom levels only.** Google floors fractional zoom. Our frames are
+  fractional, so `providerFrame()` rebuilds the frame at a zoom Google can
+  serve — floored, never rounded up, so a parcel that fitted still fits — and
+  the Worker echoes that served frame back as the authoritative one. The
+  browser applies the same rule before laying the preview on the map, or the
+  photograph would sit on the wrong rectangle while looking perfectly sharp.
+
+The key never reaches the browser: the catalogue at `/api/config` carries
+labels and capabilities only, the image is fetched through `/api/imagery`, and
+`tools/worker.test.js` asserts that a configured key does not appear in what is
+sent out.
 
 A view-only source is not a silent fallback. The picker marks it in the list,
 the note under it opens with **AI detection not available for this imagery
@@ -181,36 +204,33 @@ trees from the grass. Fixing it would need finer multispectral imagery than
 anything free, so it is a dead end rather than an unfinished feature — kept as a
 view layer, because seeing where the vegetation is still tells you something.
 
-### Two ways to ask
+### One way to ask, and why the second was removed
 
-`worker/src/sam.js` holds both, as a table rather than a slug, because they
-differ in what they need from the browser rather than just in name.
+`worker/src/sam.js` holds the models as a table rather than a slug, because
+they differ in what they need from the browser rather than just in name. There
+is one entry in it.
 
 **Quick** is a text prompt: one press, every patch in the frame at once,
 including the disconnected ones a person would forget. What it cannot do is be
 argued with — when it decides a shaded strip is not grass, there is no way to
 say otherwise.
 
-**Precise** takes pins. That one needs a caveat about what it actually is:
-`meta/sam-2` on Replicate is the *automatic* mask generator (image, use_m2m,
-points_per_side) with no way to say "this patch", which is why the original pin
-flow was abandoned early in this project. Of every model
-`tools/find-sam-model.js` can reach, exactly three accept point prompts:
+**Precise** took pins, and has been removed. Of every model
+`tools/find-sam-model.js` could reach, exactly three accepted point prompts:
+`meta/sam-2-video` (real SAM 2, binary masks, but wants a **video file** a
+Worker cannot build from one PNG), `casia-iva-lab/fastsam` (well used, but
+returns the photograph with masks drawn **on** it and has no `mask_only`), and
+`ocg2347/sam-pointprompt` — so the third, by elimination rather than
+enthusiasm. The plumbing worked. The model did not: it could not tell a tree's
+shadow lying across a lawn from dense woodland, which is the single distinction
+this product depends on. Being able to point at a patch buys nothing when the
+model then decides the patch is forest, so it went, rather than staying in the
+picker as an option that produces confidently wrong answers.
 
-- `meta/sam-2-video` — real SAM 2, returns binary masks, but wants a **video
-  file**, which a Worker cannot build from one PNG
-- `casia-iva-lab/fastsam` — well used and properly documented, but returns the
-  photograph with masks drawn **on** it and has no `mask_only`, so the tracer
-  would be reading colours off an annotated picture
-- `ocg2347/sam-pointprompt` — `image` and `input_points`, and nothing else
-
-So the third, by elimination rather than enthusiasm. Its schema describes
-neither the point format nor the output, so `tools/probe-points.js` settles both
-with one paid prediction: it sends real pins at a real house, tries each
-plausible format until one is accepted, and checks whether what comes back is
-actually a mask (a binary mask is >95% pure black and white; an overlay on the
-photograph is nowhere near). Nothing is claimed about its accuracy, because
-nothing has been measured.
+The pin interaction survives it — the mode, the numbered markers, the
+conversion below — because what is wanted is a model that understands mown
+grass, not necessarily one that takes points, and the search
+(`tools/find-sam-model.js`) is deliberately not limited to point prompts.
 
 Pins are converted to image pixels in the **browser**, not the Worker, because
 the browser is the side that knows the image's real dimensions — Mapbox renders

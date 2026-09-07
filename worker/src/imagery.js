@@ -51,6 +51,30 @@ export function frameBbox3857(frame) {
  */
 export const imagePixels = (frame) => Math.min(frame.size * 2, 2560);
 
+/* ------------------------------------------------------------ the frame */
+/**
+ * Some sources cannot serve an arbitrary frame, so the frame moves to them.
+ *
+ * Google's Static Maps endpoint takes an INTEGER zoom. Our frames come from
+ * zoomToFit and are fractional -- 19.66 on a real lot -- and Google floors
+ * anything else, which would return a picture of a different rectangle than
+ * the one the mask is unprojected against. Every lawn traced from it would be
+ * measured against the wrong ground and look completely plausible.
+ *
+ * The fix is not to fight it: the frame is ours to choose, so when Google is
+ * the source the frame is rebuilt at a zoom Google can actually serve. Always
+ * DOWN (Math.floor), never up -- flooring zooms out, so the parcel that fitted
+ * before still fits. Rounding up could crop the far end of a deep lot.
+ *
+ * Everything downstream already treats the server's echoed frame as
+ * authoritative, so an adjusted frame flows through unprojection, the overlay
+ * and the export without any of them needing to know why.
+ */
+export function providerFrame(provider, frame) {
+  const p = PROVIDERS[normaliseProvider(provider)];
+  return p.frame ? p.frame(frame) : frame;
+}
+
 /* -------------------------------------------------------------- sources */
 
 const USGS_NAIP = 'https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer';
@@ -145,6 +169,46 @@ export const PROVIDERS = {
     url: (frame) => arcgisImage(USGS_NAIP, frame, 'NDVI_Color'),
   },
 
+  /*
+   * Google's satellite view, which is what most people picture when they think
+   * of aerial imagery, and often a different year again from Mapbox.
+   *
+   * Only offered when GOOGLE_MAPS_KEY is set -- the Static Maps endpoint is
+   * billed per request, so an unconfigured deployment must not advertise a
+   * source that will 403 the moment anyone picks it.
+   *
+   * Two conversions matter and neither is optional:
+   *
+   *   TILES. Google is a 256-pixel tile scheme; Mapbox is 512. The same ground
+   *   scale is therefore Google zoom = Mapbox zoom + 1, because
+   *   512 * 2^z === 256 * 2^(z+1). Getting this wrong is a factor of two in
+   *   every distance and a factor of four in every area.
+   *
+   *   SIZE. 640x640 at scale=2 is Google's maximum and returns 1280 px, which
+   *   is exactly what Mapbox @2x gives for a 640 frame. The two sources are
+   *   the same picture size of the same ground.
+   */
+  google: {
+    label: 'Google satellite',
+    note: 'Often a different year again, and the imagery most people recognise. Costs a fraction of a cent per look.',
+    detect: true,
+    prompt: 'grass',
+    promptVar: 'SAM_PROMPT',
+    keyVar: 'GOOGLE_MAPS_KEY',
+    // Google floors fractional zoom, so meet it at an integer one.
+    frame: (frame) => ({ ...frame, zoom: Math.floor(frame.zoom) }),
+    url: (frame, _token, env) =>
+      'https://maps.googleapis.com/maps/api/staticmap?' + new URLSearchParams({
+        center: `${frame.lat},${frame.lng}`,
+        zoom: String(Math.floor(frame.zoom) + 1), // 512px tiles -> 256px tiles
+        size: '640x640',
+        scale: '2',
+        maptype: 'satellite',
+        format: 'png',
+        key: env?.GOOGLE_MAPS_KEY || '',
+      }),
+  },
+
   esri: {
     label: 'Esri World Imagery (look only)',
     /*
@@ -197,14 +261,15 @@ export function detectionProvider(value) {
  * frame at all (Esri, which serves only tiles) returns null rather than
  * substituting something else.
  */
-export function imageryUrl(provider, frame, token) {
+export function imageryUrl(provider, frame, token, env) {
   const p = PROVIDERS[normaliseProvider(provider)];
-  return p.url ? p.url(frame, token) : null;
+  return p.url ? p.url(providerFrame(provider, frame), token, env) : null;
 }
 
 /** The picture for MEASURING from, which is never a source that cannot answer. */
-export function detectionImageUrl(provider, frame, token) {
-  return PROVIDERS[detectionProvider(provider)].url(frame, token);
+export function detectionImageUrl(provider, frame, token, env) {
+  const id = detectionProvider(provider);
+  return PROVIDERS[id].url(providerFrame(id, frame), token, env);
 }
 
 /** The wording the detector gets, for this source, with env overrides. */
@@ -213,12 +278,29 @@ export function imageryPrompt(provider, env) {
   return String(env?.[p.promptVar] || p.prompt).trim();
 }
 
-/** What the browser needs to build the picker, without duplicating the list. */
-export const providerCatalogue = () =>
-  Object.entries(PROVIDERS).map(([id, p]) => ({
-    id,
-    label: p.label,
-    note: p.note,
-    detect: Boolean(p.detect),
-    tiles: p.tiles || null,
-  }));
+/**
+ * What the browser needs to build the picker, without duplicating the list.
+ *
+ * A source that needs a key it has not been given is left out entirely rather
+ * than offered and then failing: picking it would spend a click to learn that
+ * the deployment was never configured for it.
+ */
+export const providerCatalogue = (env) =>
+  Object.entries(PROVIDERS)
+    .filter(([, p]) => !p.keyVar || Boolean(env?.[p.keyVar]))
+    .map(([id, p]) => ({
+      id,
+      label: p.label,
+      note: p.note,
+      detect: Boolean(p.detect),
+      tiles: p.tiles || null,
+      // The frame this source will actually be served at, so the browser can
+      // place a preview on the same ground the detector will measure.
+      integerZoom: Boolean(p.frame),
+    }));
+
+/** Is this source usable at all in this deployment? */
+export const providerAvailable = (provider, env) => {
+  const p = PROVIDERS[normaliseProvider(provider)];
+  return !p.keyVar || Boolean(env?.[p.keyVar]);
+};

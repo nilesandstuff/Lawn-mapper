@@ -20,18 +20,12 @@ export const SAM_INPUT_FIELDS = [
 ];
 
 /**
- * The two ways to ask.
+ * How to ask.
  *
- * A text prompt is one press and finds every patch at once, including the
- * disconnected ones a person would forget. What it cannot do is be argued
- * with: when it decides a shaded strip is not grass, there is no way to say
- * "yes it is" -- only to draw the strip by hand afterwards. Point prompts are
- * the other trade: slower, and you are telling it exactly what to include.
- *
- * Neither is better in general, so both are offered and the person picks per
- * property. They differ in what they need from the browser, which is why this
- * is a table rather than a slug: `needsPoints` drives the whole interaction,
- * and `input` is the only place the wire format for each model lives.
+ * A table rather than a slug because models differ in what they need from the
+ * browser, not just in name: `needsPoints` would drive a whole interaction,
+ * and `input` is the only place a model's wire format lives. One entry today;
+ * the shape is what lets a second be added without touching the Worker.
  */
 export const MODELS = {
   sam3: {
@@ -52,46 +46,22 @@ export const MODELS = {
     }),
   },
 
-  /*
-   * The point-prompted one.
-   *
-   * A note on what this is, because the obvious choice does not exist:
-   * meta/sam-2 on Replicate is the AUTOMATIC mask generator -- image, use_m2m,
-   * points_per_side -- with no way to say "this patch". Of everything
-   * tools/find-sam-model.js could reach, exactly three take point prompts:
-   *
-   *   meta/sam-2-video       real SAM 2, binary masks, wants a VIDEO file --
-   *                          which a Worker cannot build from one PNG
-   *   casia-iva-lab/fastsam  well used, point_prompt/point_label documented,
-   *                          but it returns the photograph with masks drawn
-   *                          ON it and has no mask_only, so the tracer would
-   *                          be reading colours off an annotated picture
-   *   ocg2347/sam-pointprompt   image + input_points, and nothing else
-   *
-   * So this one, by elimination rather than enthusiasm. It is lightly used
-   * (about 1,800 runs) and publishes no description of its point format or its
-   * output, which is why tools/probe-points.js exists: the format is settled by
-   * one paid prediction rather than by a guess that fails in production.
-   *
-   * Overridable by env, so a better model can be swapped in without a deploy
-   * of new code -- which matters more than usual for a dependency this thin.
-   */
-  sam2: {
-    slug: 'ocg2347/sam-pointprompt',
-    slugVar: 'SAM2_MODEL',
-    label: 'Precise',
-    note: 'You place pins on the lawn and it segments exactly what you point at. Slower, but it cannot decide your grass is not grass.',
-    needsPoints: true,
-    fields: ['image', 'input_points'],
-    // Pixel coordinates in the image we send, which is the convention every
-    // SAM port uses. Sent as JSON in a string because the schema types this
-    // field as a string, not an array.
-    input: (image, { points }) => ({
-      image,
-      input_points: JSON.stringify(points),
-    }),
-  },
 };
+
+/*
+ * There was a second, point-prompted model here. It is gone.
+ *
+ * ocg2347/sam-pointprompt accepted pins and returned masks, so the plumbing
+ * worked -- but it could not tell a tree's shadow lying across a lawn from
+ * dense woodland, and that is the single distinction this product depends on.
+ * Being able to point at a patch buys nothing when the model then decides the
+ * patch is forest. Removed rather than left in the picker, because an option
+ * that produces confidently wrong answers is worse than no option.
+ *
+ * The search for a replacement is deliberately not limited to point prompts:
+ * see tools/find-sam-model.js. What is wanted is a model that understands
+ * mown grass, however it is asked.
+ */
 
 export const DEFAULT_MODEL = 'sam3';
 

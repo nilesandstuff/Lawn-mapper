@@ -230,6 +230,49 @@ the list in your Mapbox account rather than trusting how they look:
 If it reports an unrelated site can use the browser token, you have restricted
 a different token than the deployed one — again, the id says which row to open.
 
+
+---
+
+## Optional: add Google's satellite photographs
+
+Skip this and everything works; the Layers button simply offers one fewer
+picture.
+
+Google's aerial imagery is usually flown in a different year and a different
+light from Mapbox's, and that is the whole value of it: a lawn under long
+shadows in one photograph is often plain in the other, and the AI can only find
+what the picture shows. Both are sources the detector can be pointed at, so
+this is a real second attempt rather than a second thing to look at.
+
+**8a. Get a key.** In the Google Cloud console
+(<https://console.cloud.google.com/>): create a project, then **APIs & Services
+→ Library → Maps Static API → Enable**, then **APIs & Services → Credentials →
+Create credentials → API key**. Restrict it to the **Maps Static API** under
+*API restrictions*. Leave the *Application restrictions* as **None** — the key
+is used by the Worker, which sends no `Referer` for a website restriction to
+match, exactly like `MAPBOX_SERVER_TOKEN` above.
+
+Google bills the Maps Static API per request with a monthly free allowance;
+this app asks for one image each time you switch to that source or detect from
+it, so ordinary use sits well inside it. Set a budget alert if you would rather
+be certain.
+
+**8b. Give it to the deploy.** **Settings → Secrets and variables → Actions →
+New repository secret**, named exactly:
+
+```
+GOOGLE_MAPS_KEY
+```
+
+Then run **2. Deploy** again. The key stays in Cloudflare: the browser is only
+ever told that a source called "Google satellite" exists, and the picture comes
+back through this site's own `/api/imagery`.
+
+**Check:** open the site, search an address, and press **Layers** on the left of
+the map. "Google satellite" appears in the list. If it does not, the secret did
+not reach the Worker — check the name is exactly `GOOGLE_MAPS_KEY` and deploy
+again.
+
 ---
 
 ## Making changes later

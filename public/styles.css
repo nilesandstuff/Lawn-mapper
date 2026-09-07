@@ -113,6 +113,16 @@ button:disabled { opacity: .45; cursor: not-allowed; }
   margin-top: 14px; font-size: 13.5px; cursor: pointer;
 }
 .opt input { margin-top: 3px; flex: none; }
+
+/* The tips switch, at the very top of the panel. Small, because it is a
+ * preference and not a step. */
+.tiptoggle {
+  display: flex; align-items: center; gap: 8px;
+  margin: -4px 0 14px; padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px; color: var(--muted); cursor: pointer;
+}
+.tiptoggle input { flex: none; accent-color: var(--green); }
 .opt small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
 
 /* ------------------------------------------------------ model + pins */
@@ -173,9 +183,68 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 #tool-add[aria-pressed="true"]   { background: #2e7d32; border-color: #1b5e20; }
 #tool-erase[aria-pressed="true"] { background: #c62828; border-color: #8e0000; }
 
+/* Layers sits opposite the editing tools: what you are LOOKING at on one
+ * side, what you are CHANGING on the other. */
+.maprail-left { right: auto; left: 10px; }
+
+/* The source list hangs off the Layers button rather than sitting in the
+ * rail's flex column, which would stretch the rail to the width of the
+ * longest source name. */
+.layerlist {
+  position: absolute; top: 58px; left: 0; width: 212px; max-width: 60vw;
+  display: flex; flex-direction: column; gap: 2px; padding: 5px;
+  background: rgba(255, 255, 255, .97);
+  border: 1px solid rgba(0, 0, 0, .16); border-radius: 11px;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, .26);
+}
+.layerlist button {
+  text-align: left; padding: 8px 10px; font: inherit; font-size: 13px;
+  background: none; border: 0; border-radius: 8px; color: var(--ink);
+  display: flex; align-items: baseline; gap: 6px;
+}
+.layerlist button:hover { background: #eef2ee; }
+.layerlist button[aria-checked="true"] { background: #1b5e20; color: #fff; font-weight: 600; }
+/* "View only" is said in the list, not after choosing: picking a source and
+ * then being told it cannot be measured from is a wasted step. */
+.layerlist .viewonly { font-size: 11px; opacity: .72; margin-left: auto; white-space: nowrap; }
+
 @media (max-width: 700px) {
   .maprail { top: 88px; right: 8px; }
+  .maprail-left { right: auto; left: 8px; }
 }
+
+/* ---------------------------------------------------------- coach marks */
+/*
+ * A tip, pointed at the control it is about.
+ *
+ * Every button on this map is an unlabelled icon on a photograph, and two of
+ * the decisions here (which picture the AI is shown, that only some pictures
+ * can be sent to it at all) are invisible in the interface. The arrow is the
+ * part that matters: "press Layers" is useless if Layers is one of nine icons.
+ */
+.coach {
+  position: absolute; z-index: 6; width: 268px; max-width: min(78vw, 268px);
+  padding: 13px 14px 11px;
+  background: #fff; color: var(--ink);
+  border: 1px solid rgba(0, 0, 0, .14); border-radius: 13px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, .28);
+}
+.coach-title { margin: 0 0 5px; font-size: 13.5px; font-weight: 680; letter-spacing: -0.01em; }
+.coach-text { margin: 0 0 11px; font-size: 13px; line-height: 1.45; color: #33413a; }
+.coach-ok {
+  width: 100%; padding: 8px 12px; font-weight: 600; font-size: 13.5px;
+  background: var(--green); color: #fff; border: 0;
+}
+.coach-ok:hover { background: var(--green-dark); }
+
+/* Drawn as a rotated square so the border and shadow carry round the point. */
+.coach-arrow {
+  position: absolute; width: 13px; height: 13px;
+  background: #fff; border: 1px solid rgba(0, 0, 0, .14);
+  transform: rotate(45deg);
+}
+.coach-arrow.at-left  { left: -7px;  border-right: 0; border-top: 0; }
+.coach-arrow.at-right { right: -7px; border-left: 0;  border-bottom: 0; }
 
 /* ------------------------------------------------------- imagery source */
 .imagery {
@@ -288,7 +357,8 @@ kbd {
 /* ------------------------------------------------------------- printing */
 .printblock { display: none; }
 @media print {
-  .topbar, .panel, .hint, .overlay, .mapboxgl-ctrl { display: none !important; }
+  .topbar, .panel, .hint, .overlay, .mapboxgl-ctrl,
+  .maprail, .coach, .layerlist { display: none !important; }
   .layout { display: block; height: auto; }
   .mapwrap { position: relative; height: 62vh; page-break-after: avoid; }
   .printblock { display: block; padding: 18px 4px; font-size: 13px; }

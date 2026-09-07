@@ -168,6 +168,47 @@ if (typeof window !== 'undefined') {
     return Boolean(src?._data?.features?.length);
   };
 
+  /*
+   * The tip, and whether its arrow really points at the control it names.
+   *
+   * Reporting "a tip is showing" would pass for a box in the corner pointing
+   * at nothing, which is the only way this feature can fail: the words are
+   * static text and cannot be wrong, the aim can. So hand back both rectangles
+   * -- the arrow's and the target button's -- and let the check compare them.
+   */
+  window.__lmTip = () => {
+    const box = document.getElementById('coach');
+    const arrow = document.getElementById('coach-arrow');
+    const t = tips.target?.getBoundingClientRect();
+    const a = arrow.hidden ? null : arrow.getBoundingClientRect();
+    return {
+      stage: tips.stage,
+      visible: !box.hidden,
+      targetId: tips.target?.id || null,
+      text: document.getElementById('coach-text').textContent,
+      arrow: a ? { x: (a.left + a.right) / 2, y: (a.top + a.bottom) / 2 } : null,
+      target: t ? { left: t.left, right: t.right, top: t.top, bottom: t.bottom } : null,
+    };
+  };
+
+  /* The imagery catalogue as the Worker described it, for checks that must be
+   * made against what this deployment really offers rather than a hard-coded
+   * list (Google only exists when a key is configured for it). */
+  window.__lmImageryCatalogue = () => state.imagery.map((p) => ({ ...p }));
+
+  /* The on-map source list: what it offers, and which one is ticked. */
+  window.__lmLayers = () => {
+    const list = document.getElementById('layer-list');
+    return {
+      buttonVisible: !document.getElementById('maprail-left').hidden,
+      open: !list.hidden,
+      options: [...list.querySelectorAll('button')].map((b) => ({
+        id: b.dataset.provider,
+        checked: b.getAttribute('aria-checked') === 'true',
+      })),
+    };
+  };
+
   window.__lmImagery = () => ({
     provider: state.provider,
     detectsWith: effectiveProvider(state.provider),
@@ -175,9 +216,11 @@ if (typeof window !== 'undefined') {
     layer: !!(map && map.getLayer('imagery-alt')),
     sourceType: map?.getSource('imagery-alt')?.type ?? null,
     corners: map?.getSource('imagery-alt')?.coordinates ?? null,
-    frameCorners: state.frame ? frameCorners(state.frame) : null,
+    // The frame as this source serves it: for Google that is a whole zoom
+    // level, and the photograph must be compared against THAT rectangle.
+    frameCorners: state.frame ? frameCorners(frameFor(state.provider, state.frame)) : null,
     frameImageUrl: state.frame && !providerInfo(state.provider).tiles
-      ? imageryUrlFor(state.provider, state.frame)
+      ? imageryUrlFor(state.provider, frameFor(state.provider, state.frame))
       : null,
   });
 
@@ -510,6 +553,21 @@ async function initMap() {
     map.on(evt, refreshSurveyed);
   }
 
+  /*
+   * Touching the map puts the tip away.
+   *
+   * A tip is advice about what to do next, and the moment someone starts doing
+   * something it is a box sitting in the middle of their photograph. It cannot
+   * swallow the gesture that dismisses it -- this fires only for taps that
+   * reached the map, so pressing "Got it" still goes to the button.
+   */
+  map.on('click', () => { if (tips.stage) hideTip(); });
+  map.on('dragstart', () => { if (tips.stage) hideTip(); });
+
+  // The map moves under a fixed box, so a tip pinned to a rail button has to
+  // be re-aimed when the layout changes rather than when the map pans.
+  map.on('resize', placeTip);
+
   verifyProjection();
 }
 
@@ -665,6 +723,7 @@ async function confirmLocation() {
     setHint(state.parcel
       ? 'Press "Detect my lawn" — or extend the boundary first if your lawn runs to the road'
       : 'Trace your property line first');
+    showTip('parcel');
   } catch (err) {
     setStatus(err.message, 'error');
   } finally {
@@ -1545,6 +1604,7 @@ async function detect() {
     updateSelectionButtons();
     refreshRail();
     setHint('Use the buttons on the right of the map to correct the shape');
+    showTip('tools');
 
     const gaps = polygons.filledGaps
       ? ` ${polygons.filledGaps} gap${polygons.filledGaps > 1 ? 's' : ''} counted as grass under trees` +
@@ -1738,6 +1798,24 @@ function bottomOfOurLayers() {
 /** Mirrors the Worker's detectionProvider: a look-only source detects on Mapbox. */
 const effectiveProvider = (id) => (providerInfo(id).detect ? id : 'mapbox');
 
+/**
+ * The frame as the chosen source will actually serve it.
+ *
+ * Mirrors providerFrame() in the Worker. Google Static Maps takes whole zoom
+ * levels only and floors anything else, so asking it for z19.66 returns z19 --
+ * a photograph of a wider piece of ground than the frame describes. Left
+ * unadjusted here, the preview would be laid on the frame's corners and every
+ * feature in it would sit about 60% too far from the centre: a picture that
+ * looks perfectly sharp and is in the wrong place.
+ *
+ * Floored, never rounded, on both sides for the same reason: rounding up
+ * crops, and a parcel that fitted the frame would lose its edges.
+ */
+const frameFor = (provider, frame) =>
+  (frame && providerInfo(provider).integerZoom
+    ? { ...frame, zoom: Math.floor(frame.zoom) }
+    : frame);
+
 function buildImageryPicker() {
   const select = $('#imagery-source');
   const panel = $('#imagery-panel');
@@ -1761,6 +1839,70 @@ function buildImageryPicker() {
   select.value = state.provider;
   panel.hidden = false;
   renderProviderNote(state.provider);
+  buildLayerList();
+}
+
+/* ------------------------------------------------------- the Layers button */
+/*
+ * The same choice, on the map.
+ *
+ * The picker in the panel works, but it is below a result, a status line, two
+ * other panels and a row of buttons -- and on a phone the panel is under the
+ * map entirely, so choosing a photograph means scrolling away from the
+ * photograph. The stack-of-sheets icon is the one control everybody already
+ * knows means "change what I am looking at", so it goes where everybody
+ * expects it: the opposite edge from the editing tools.
+ */
+function buildLayerList() {
+  const list = $('#layer-list');
+  list.innerHTML = '';
+
+  for (const p of state.imagery) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('role', 'menuitemradio');
+    b.setAttribute('aria-checked', String(p.id === state.provider));
+    b.dataset.provider = p.id;
+
+    const label = document.createElement('span');
+    label.textContent = p.label;
+    b.append(label);
+
+    // Which sources the AI can be pointed at is the single most consequential
+    // thing about this list, and it is invisible in the pictures themselves.
+    if (!p.detect) {
+      const tag = document.createElement('span');
+      tag.className = 'viewonly';
+      tag.textContent = 'view only';
+      b.append(tag);
+    }
+
+    b.addEventListener('click', () => {
+      closeLayerList();
+      setProvider(p.id);
+    });
+    list.append(b);
+  }
+}
+
+/** Repaint the ticks without rebuilding, so the open list does not flicker. */
+function refreshLayerList() {
+  for (const b of $('#layer-list').querySelectorAll('button')) {
+    b.setAttribute('aria-checked', String(b.dataset.provider === state.provider));
+  }
+}
+
+function closeLayerList() {
+  $('#layer-list').hidden = true;
+  $('#btn-layers').setAttribute('aria-pressed', 'false');
+}
+
+function toggleLayerList() {
+  const list = $('#layer-list');
+  const open = list.hidden;
+  list.hidden = !open;
+  $('#btn-layers').setAttribute('aria-pressed', String(open));
+  if (open) refreshLayerList();
 }
 
 /**
@@ -1787,6 +1929,7 @@ async function setProvider(id) {
   state.provider = id;
   $('#imagery-source').value = id;
   renderProviderNote(id);
+  refreshLayerList();
 
   await showImagery();
   // Switching sources re-arms detection: a different photograph is a genuinely
@@ -1826,7 +1969,10 @@ async function showImagery() {
 
   if (!state.frame) return;
 
-  const url = imageryUrlFor(state.provider, state.frame);
+  // The frame this source will really serve, not the one we asked for -- the
+  // picture has to be laid on the ground it actually covers.
+  const served = frameFor(state.provider, state.frame);
+  const url = imageryUrlFor(state.provider, served);
 
   /*
    * Ask for it before handing it to Mapbox GL.
@@ -1857,11 +2003,12 @@ async function showImagery() {
     state.provider = 'mapbox';
     $('#imagery-source').value = 'mapbox';
     renderProviderNote('mapbox');
+    refreshLayerList();
     return;
   }
 
   map.addSource('imagery-alt', {
-    type: 'image', url, coordinates: frameCorners(state.frame),
+    type: 'image', url, coordinates: frameCorners(served),
   });
   map.addLayer({ id: 'imagery-alt', type: 'raster', source: 'imagery-alt' }, before);
   idle();
@@ -2173,6 +2320,9 @@ function adoptDrawnParcel(feature) {
   updatePromptHint();
   setHint('');
   setStatus(`Property line traced — ${a.acres} acres. Press "Detect my lawn".`);
+  // The boundary is what the imagery choice is for, so the moment it exists is
+  // the moment to say which pictures the AI can be shown.
+  showTip('layers');
 }
 
 /** Paint every rail button with what is actually live. */
@@ -2180,6 +2330,14 @@ function refreshRail() {
   const rail = $('#maprail');
   if (!rail) return;
   rail.hidden = !state.frame;
+
+  // One source is not a choice, so the Layers button only exists when there is
+  // something to switch between.
+  const layers = $('#maprail-left');
+  if (layers) {
+    layers.hidden = !state.frame || state.imagery.length < 2;
+    if (layers.hidden) closeLayerList();
+  }
 
   // Pins are only a concept for the model that uses them.
   $('#mode-pins').hidden = !modelInfo(state.model).needsPoints;
@@ -2193,6 +2351,204 @@ function refreshRail() {
     $(id)?.setAttribute('aria-pressed',
       String(state.mode === 'shape' && state.shapeTool === tool));
   }
+}
+
+/* ------------------------------------------------------------ the tips */
+/*
+ * One tip per stage, pointed at the control it is about.
+ *
+ * There are three moments where this app expects something a first-time
+ * visitor cannot possibly know:
+ *
+ *   parcel  the measurement is clipped to the property line, so a boundary
+ *           that stops short of the road silently costs you frontage
+ *   layers  there are several photographs of the same ground, they disagree,
+ *           and only some of them can be sent to the AI at all
+ *   tools   the detected outline is a first guess that you are expected to
+ *           correct, using nine unlabelled icons on the map
+ *
+ * Every one of those was already written down in the panel, and every one of
+ * them was missed, because the panel is below the map (and on a phone, off
+ * the bottom of the screen entirely) at exactly the moment it matters. The
+ * arrow is the part that does the work: "press Layers" means nothing when
+ * Layers is an icon among icons.
+ *
+ * Stages fire once each per address. The switch at the top of the panel turns
+ * the whole thing off, and is remembered.
+ */
+const TIPS_KEY = 'lm_tips';
+
+/*
+ * `on` is held here rather than read back from storage each time. A browser in
+ * private mode can throw on both reading and writing localStorage, and a
+ * preference that reads back as "on" because the write failed is a switch that
+ * does nothing -- the setting is remembered where it can be, and obeyed
+ * always.
+ */
+const tips = {
+  seen: new Set(),
+  stage: null,
+  target: null,
+  on: (() => {
+    try { return localStorage.getItem(TIPS_KEY) !== '0'; } catch { return true; }
+  })(),
+};
+
+const tipsOn = () => tips.on;
+
+function setTipsOn(on) {
+  tips.on = on;
+  try { localStorage.setItem(TIPS_KEY, on ? '1' : '0'); } catch { /* private mode */ }
+  $('#toggle-tutorials').checked = on;
+  if (on) {
+    // Turning them back on resumes from wherever the user actually is, rather
+    // than replaying steps they have already worked out for themselves.
+    tips.seen.clear();
+    showTip(currentStage());
+  } else {
+    hideTip();
+  }
+}
+
+/** Which tip belongs to where the user has got to. */
+function currentStage() {
+  if (state.detected || draw.getAll().features.length) return 'tools';
+  if (parcelRing()) return 'layers';
+  return 'parcel';
+}
+
+/**
+ * What each stage says, built when it is shown.
+ *
+ * The imagery text is generated from the catalogue rather than written out,
+ * because which sources exist depends on what the Worker is configured with:
+ * Google only appears when there is a key for it, and a tip that names a
+ * source the user cannot see is worse than no tip.
+ */
+function tipContent(stage) {
+  if (stage === 'parcel') {
+    return parcelRing()
+      ? {
+          target: '#mode-parcel',
+          title: 'First: check your property line',
+          text: 'The dashed outline is your lot, from the county record. Only '
+              + 'grass inside it gets measured — so if your lawn runs past it '
+              + 'to the road, press Line and slide that edge out before you '
+              + 'detect.',
+        }
+      : {
+          target: null,
+          title: 'First: trace your property line',
+          text: 'Your county has no line on file for this lot, so draw one: '
+              + 'press "Draw the property line" and tap each corner. Detection '
+              + 'needs it — without a boundary the AI counts the neighbours’ '
+              + 'grass as yours.',
+        };
+  }
+
+  if (stage === 'layers') {
+    const detect = state.imagery.filter((p) => p.detect).map((p) => p.label);
+    const look = state.imagery.filter((p) => !p.detect).map((p) => p.label);
+    return {
+      target: '#btn-layers',
+      title: 'Next: pick the clearest picture',
+      text: 'These are photographs of the same ground taken in different years '
+          + 'and different light, and they disagree about where your lawn is. '
+          + `Only ${listSentence(detect)} can be sent to the AI — pick whichever `
+          + 'of those shows your grass most clearly, then detect. '
+          + (look.length
+              ? `${listSentence(look)} ${look.length > 1 ? 'are' : 'is'} there to look at; `
+                + 'choosing one of those measures from Mapbox instead.'
+              : ''),
+    };
+  }
+
+  return {
+    target: '#mode-shape',
+    title: 'Last: correct what it got wrong',
+    text: 'The AI is a good first guess, not the final word. Press Lawn, then '
+        + 'Erase to rub out a driveway or a flower bed, Add to paint in grass '
+        + 'it missed, or Points to drag a corner. Move is the only mode where a '
+        + 'whole patch can be dragged, and Undo is on the map next to them.',
+  };
+}
+
+/** "a", "a and b", "a, b and c" — the list is built from live data. */
+function listSentence(items) {
+  if (items.length <= 1) return items[0] || 'nothing here';
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+}
+
+function showTip(stage) {
+  if (!tipsOn() || tips.seen.has(stage) || !state.frame) return;
+  const { target, title, text } = tipContent(stage);
+
+  // A tip pointed at a hidden button would sit in the corner talking about
+  // something that is not on screen. Better to say nothing.
+  const el = target ? $(target) : null;
+  if (target && (!el || el.offsetParent === null)) return;
+
+  tips.seen.add(stage);
+  tips.stage = stage;
+  tips.target = el;
+
+  $('#coach-title').textContent = title;
+  $('#coach-text').textContent = text;
+  $('#coach').hidden = false;
+  placeTip();
+}
+
+function hideTip() {
+  $('#coach').hidden = true;
+  tips.stage = null;
+  tips.target = null;
+}
+
+/**
+ * Put the box beside its target, with the arrow still aimed at it.
+ *
+ * The box is clamped inside the map, which on a narrow phone can mean it no
+ * longer sits directly beside the button. The arrow is positioned from the
+ * target's own centre rather than from the box, so it keeps pointing at the
+ * right control even when the box has been pushed away from it.
+ */
+function placeTip() {
+  const box = $('#coach');
+  const arrow = $('#coach-arrow');
+  if (box.hidden) return;
+
+  const wrap = $('#map').parentElement.getBoundingClientRect();
+  const target = tips.target;
+
+  if (!target) {
+    // Nothing to point at: sit under the hint, centred, no arrow.
+    arrow.hidden = true;
+    box.style.left = `${Math.max(8, (wrap.width - box.offsetWidth) / 2)}px`;
+    box.style.top = '58px';
+    return;
+  }
+
+  const t = target.getBoundingClientRect();
+  const GAP = 12;
+  const EDGE = 8;
+  const w = box.offsetWidth;
+  const h = box.offsetHeight;
+
+  // A target on the left half gets the box on its right, and vice versa.
+  const onLeft = (t.left + t.width / 2 - wrap.left) < wrap.width / 2;
+  let left = onLeft ? (t.right - wrap.left + GAP) : (t.left - wrap.left - GAP - w);
+  left = Math.min(Math.max(left, EDGE), Math.max(EDGE, wrap.width - w - EDGE));
+
+  let top = t.top - wrap.top + t.height / 2 - h / 2;
+  top = Math.min(Math.max(top, EDGE), Math.max(EDGE, wrap.height - h - EDGE));
+
+  box.style.left = `${left}px`;
+  box.style.top = `${top}px`;
+
+  arrow.hidden = false;
+  arrow.className = `coach-arrow ${onLeft ? 'at-left' : 'at-right'}`;
+  const ay = t.top - wrap.top + t.height / 2 - top;
+  arrow.style.top = `${Math.min(Math.max(ay - 6, 12), Math.max(12, h - 24))}px`;
 }
 
 /* Kept as the names the rest of the file already calls. */
@@ -2785,9 +3141,13 @@ function reset() {
   $('#sens-slider').value = String(DEFAULT_EDGE_FT);
   $('#sens-panel').hidden = true;
   $('#btn-draw-parcel').hidden = true;
+  tips.seen.clear();
+  hideTip();
+  closeLayerList();
   refreshPins();
   refreshRail();
   $('#maprail').hidden = true;
+  $('#maprail-left').hidden = true;
   $('#imagery-panel').hidden = true;
   $('#model-panel').hidden = true;
   $('#pin-panel').hidden = true;
@@ -2914,6 +3274,37 @@ $('#btn-delete').addEventListener('click', () => {
   updateSelectionButtons();
   setStatus('Removed. The total now covers only the shapes still on the map.');
 });
+
+/*
+ * Pressing the button a tip is pointing at is the tip being taken. Leaving the
+ * box open on top of the list it just told you to open is the sort of thing
+ * that makes people hunt for a close button.
+ */
+$('#btn-layers').addEventListener('click', () => {
+  if (tips.stage === 'layers') hideTip();
+  toggleLayerList();
+});
+
+/* Tips ------------------------------------------------------------------- */
+$('#toggle-tutorials').checked = tipsOn();
+$('#toggle-tutorials').addEventListener('change', (e) => setTipsOn(e.target.checked));
+
+$('#coach-ok').addEventListener('click', () => {
+  const done = tips.stage;
+  hideTip();
+  // The property-line tip leads straight into the imagery one when there is
+  // already a boundary; when there is not, the tip that follows tracing it
+  // fires from adoptDrawnParcel instead.
+  if (done === 'parcel' && parcelRing()) showTip('layers');
+});
+
+for (const mode of MODES) {
+  $(`#mode-${mode}`).addEventListener('click', () => {
+    if (tips.stage) hideTip();
+  });
+}
+
+window.addEventListener('resize', placeTip);
 
 $('#btn-png').addEventListener('click', exportPng);
 $('#btn-print').addEventListener('click', () => window.print());
