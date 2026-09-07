@@ -17,7 +17,7 @@
 
 import { PNG } from 'pngjs';
 import { lookupParcel } from '../worker/src/parcel.js';
-import { imageryUrl, imageryPrompt, PROVIDERS } from '../worker/src/imagery.js';
+import { imageryUrl, imageryPrompt, providerFrame, PROVIDERS } from '../worker/src/imagery.js';
 import { measure, geometryAreaSqM } from '../public/lib/area.js';
 import { rasterizePolygon, maskToPolygons, binarize } from '../public/lib/mask.js';
 import {
@@ -186,10 +186,12 @@ const rings = parcel.geometry.type === 'Polygon'
   ? parcel.geometry.coordinates
   : parcel.geometry.coordinates[0];
 
-const clipAt = (w, h) =>
-  rasterizePolygon(rings, w, h, (ll) => lngLatToFramePx(frame, ll, w, h));
+/* Takes the served frame: the parcel has to be painted into the same
+ * rectangle the photograph occupies, not the one we asked for. */
+const clipAt = (f, w, h) =>
+  rasterizePolygon(rings, w, h, (ll) => lngLatToFramePx(f, ll, w, h));
 
-const parcelPx = clipAt(IMG, IMG).reduce((n, v) => n + v, 0);
+const parcelPx = clipAt(frame, IMG, IMG).reduce((n, v) => n + v, 0);
 console.log(`clip:    ${parcelPx.toLocaleString()} px inside the property line ` +
   `(${((parcelPx / (IMG * IMG)) * 100).toFixed(1)}% of frame)\n`);
 
@@ -238,8 +240,19 @@ for (const { source, prompt, threshold } of RUNS) {
    * The Worker's own URL builder, not a copy of it. A probe that measures a
    * differently-framed image than production ships is worse than no probe: it
    * produces a confident number about something nobody is running.
+   *
+   * And the frame each source ACTUALLY serves, which is not always the one
+   * asked for. Google takes whole zoom levels only and floors anything else,
+   * so a fractional frame comes back covering wider ground -- and every
+   * pixel-to-lng/lat conversion below would then be reading the mask against a
+   * rectangle the picture does not occupy. The lawn would trace cleanly, land
+   * in the wrong place, and measure wrong by a factor of about two and a half.
+   * The Worker and the browser both apply this; the probe was the one place
+   * left that did not, which would have made the first Google comparison
+   * confidently wrong.
    */
-  const imageUrl = imageryUrl(source, frame, mapbox);
+  const served = providerFrame(source, frame);
+  const imageUrl = imageryUrl(source, served, mapbox, process.env);
 
   const input = { image: imageUrl, prompt, mask_only: true, save_overlay: false, return_zip: false };
   if (threshold !== null) input.threshold = threshold;
@@ -298,8 +311,8 @@ for (const { source, prompt, threshold } of RUNS) {
 
   // The mask may come back at a different resolution than we asked for, so
   // everything is expressed in its own pixel grid rather than assumed.
-  const project = (x, y) => framePxToLngLat(frame, [x, y], png.width, png.height);
-  const clipMask = clipAt(png.width, png.height);
+  const project = (x, y) => framePxToLngLat(served, [x, y], png.width, png.height);
+  const clipMask = clipAt(served, png.width, png.height);
 
   /*
    * Before tracing anything: does the mask even land on the parcel?
@@ -343,7 +356,7 @@ for (const { source, prompt, threshold } of RUNS) {
    * for free: the prediction is already paid for, so re-simplifying the same
    * mask costs nothing but a little arithmetic.
    */
-  const mPerPx = metresPerPixel(frame, png.width);
+  const mPerPx = metresPerPixel(served, png.width);
   console.log(`    simplification (1 px = ${(mPerPx * 100).toFixed(1)} cm on the ground):`);
   for (const metres of [0.05, 0.15, 0.3, 0.5, 0.8, 1.2]) {
     const tol = metres / mPerPx;

@@ -90,6 +90,8 @@ jobs:
           MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
           MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN }}
           REPLICATE_TOKEN: ${{ secrets.REPLICATE_TOKEN }}
+          # Needed to compare 'google' as a source; without it that row 403s.
+          GOOGLE_MAPS_KEY: ${{ secrets.GOOGLE_MAPS_KEY }}
           SOURCES: ${{ inputs.sources }}
           PROMPTS: ${{ inputs.prompts }}
           THRESHOLDS: ${{ inputs.thresholds }}
