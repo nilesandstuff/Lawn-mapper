@@ -63,6 +63,10 @@ if (!mapbox || !replicate) {
 }
 const auth = { Authorization: `Bearer ${replicate}` };
 
+/* The app's own canopy rule: a hole smaller than this is grass under a tree,
+ * anything bigger is a pool or a shed. Mirrors TREE_GAP_SQFT in public/app.js. */
+const TREE_GAP_SQFT = 900;
+
 const PROMPT = process.env.PROMPT || 'grass';
 const NEGATIVE = process.env.NEGATIVE ?? 'trees, forest, woods, bushes, shrubs';
 
@@ -427,23 +431,44 @@ for (const id of WANTED) {
 
   console.log(`  unclipped: ${looseSqft.toLocaleString()} sq ft in ${loose.length} piece(s)`);
   console.log(`  clipped:   ${clipSqft.toLocaleString()} sq ft in ${clipped.length} piece(s) = ${pct}% of the lot`);
-  console.log(`  outside the property line: ${(looseSqft - clipSqft).toLocaleString()} sq ft\n`);
+  console.log(`  outside the property line: ${(looseSqft - clipSqft).toLocaleString()} sq ft`);
+
+  /*
+   * And again with canopy gaps filled, because that is the number the app
+   * actually shows.
+   *
+   * The tick box "Count grass under trees" treats a small hole INSIDE the lawn
+   * as grass the canopy is hiding, and a big one (a pool, a shed) as not. So a
+   * lot reports two different truths -- what the camera can see, and what is
+   * really mown -- and comparing a probe figure against an owner's own number
+   * is meaningless unless it says which of the two it is.
+   */
+  const sqFtPerPx = (mPerPx ** 2) / 0.09290304;
+  const filled = maskToPolygons(image, project, {
+    clipMask, tolerance: 0.3 / mPerPx, maxVertices: 240,
+    fillGapsUnderPx: Math.round(TREE_GAP_SQFT / sqFtPerPx),
+  });
+  const filledSqft = sqftOf(filled);
+  console.log(`  under trees counted: ${filledSqft.toLocaleString()} sq ft ` +
+    `(+${(filledSqft - clipSqft).toLocaleString()} in ${filled.filledGaps || 0} gap(s)) ` +
+    `= ${Math.round((filledSqft / parcelArea.squareFeet) * 100)}% of the lot\n`);
 
   results.push({
-    id, verdict: kind, purity: best.purity, colour: best.colour, clipSqft, pct,
+    id, verdict: kind, purity: best.purity, colour: best.colour, clipSqft, pct, filledSqft,
     pieces: clipped.length, onParcel, secs,
   });
 }
 
 /* -------------------------------------------------------------- the verdict */
 console.log('='.repeat(72));
-console.log('candidate'.padEnd(16) + 'verdict'.padEnd(14) + 'clipped sq ft'.padStart(14) +
-  '% lot'.padStart(8) + 'pieces'.padStart(8));
+console.log('candidate'.padEnd(16) + 'verdict'.padEnd(14) + 'visible'.padStart(11) +
+  'w/ trees'.padStart(11) + '% lot'.padStart(7) + 'pieces'.padStart(8));
 for (const r of results) {
   console.log(
     r.id.padEnd(16) + r.verdict.padEnd(14) +
-    (r.clipSqft === undefined ? '—' : r.clipSqft.toLocaleString()).padStart(14) +
-    (r.pct === undefined ? '—' : `${r.pct}%`).padStart(8) +
+    (r.clipSqft === undefined ? '—' : r.clipSqft.toLocaleString()).padStart(11) +
+    (r.filledSqft === undefined ? '—' : r.filledSqft.toLocaleString()).padStart(11) +
+    (r.pct === undefined ? '—' : `${r.pct}%`).padStart(7) +
     (r.pieces === undefined ? '—' : String(r.pieces)).padStart(8)
   );
 }
