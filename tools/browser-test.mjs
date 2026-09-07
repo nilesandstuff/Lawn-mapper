@@ -691,8 +691,24 @@ check('the Lawn button is what closes lawn mode', await page.evaluate(() =>
  */
 console.log('\n--- mode isolation ---');
 
+/*
+ * The sub-tools only exist inside lawn mode, so reaching one means opening
+ * lawn mode first. Skipping that step made the check wait thirty seconds on a
+ * hidden button -- which is the UI behaving correctly, since a person cannot
+ * press it from Move mode either.
+ */
 const reachableIn = async (mode, tool) => {
-  await page.click(tool ? `#tool-${tool}` : `#mode-${mode}`);
+  if (tool) {
+    const inShape = await page.evaluate(() =>
+      document.querySelector('#mode-shape').getAttribute('aria-pressed') === 'true');
+    if (!inShape) {
+      await page.click('#mode-shape');
+      await page.waitForTimeout(350);
+    }
+    await page.click(`#tool-${tool}`);
+  } else {
+    await page.click(`#mode-${mode}`);
+  }
   await page.waitForTimeout(450);
   return page.evaluate(() => window.__lmEditable());
 };
