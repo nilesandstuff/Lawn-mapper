@@ -210,7 +210,10 @@ export const PROVIDERS = {
   },
 
   esri: {
-    label: 'Esri World Imagery (look only)',
+    // No "(look only)" in the name. The picker, the on-map list and the tip
+    // all mark a view-only source themselves, from `detect` -- baking it into
+    // the label as well produced "Esri World Imagery (look only) (view only)".
+    label: 'Esri World Imagery',
     /*
      * Esri is a cached basemap: singleFusedMapCache is true and
      * exportTilesAllowed is false, so it serves pre-baked tiles and refuses to
