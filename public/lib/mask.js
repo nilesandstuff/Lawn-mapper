@@ -333,6 +333,84 @@ function simplifyRing(contour, { tolerance, maxVertices }) {
  * `unproject(px, py)` converts image pixel coordinates to [lng, lat]; the
  * caller supplies it so this module stays independent of the projection.
  */
+/**
+ * Shrink or grow a binary mask by a distance, in pixels.
+ *
+ * This is the sensitivity control that a hard mask actually admits. The
+ * brightness cut in binarize() only means something when the detector returns
+ * mid-tones; both models in use return pure black and white, so there is
+ * nothing between to move the line to. What CAN be moved is the edge itself:
+ * pull it in and less counts as lawn, push it out and more does.
+ *
+ * Done with a two-pass chamfer distance transform rather than repeated
+ * erosion, so the cost is one sweep of the image regardless of the distance
+ * asked for. Chamfer (3, 4) approximates Euclidean distance to within about
+ * 6%, which is far finer than the question being asked -- the caller is
+ * choosing how generous to be about a lawn edge, not measuring one.
+ *
+ * Positive grows, negative shrinks, zero returns the input untouched.
+ */
+export function growMask(bin, width, height, px) {
+  if (!px) return bin;
+
+  const r = Math.abs(px) * 3; // chamfer units: 3 per orthogonal step
+  const grow = px > 0;
+
+  /*
+   * Seed the transform from whichever side we are measuring away from.
+   * Growing measures how far each background pixel is from lawn; shrinking
+   * measures how far each lawn pixel is from the outside.
+   */
+  const INF = 0x3fffffff;
+  const d = new Int32Array(width * height);
+  for (let i = 0; i < d.length; i++) {
+    const isSeed = grow ? bin[i] === 1 : bin[i] === 0;
+    d[i] = isSeed ? 0 : INF;
+  }
+
+  const at = (x, y) => d[y * width + x];
+
+  // Forward: up-left neighbours.
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      if (d[i] === 0) continue;
+      let best = d[i];
+      if (y > 0) {
+        if (x > 0) best = Math.min(best, at(x - 1, y - 1) + 4);
+        best = Math.min(best, at(x, y - 1) + 3);
+        if (x < width - 1) best = Math.min(best, at(x + 1, y - 1) + 4);
+      }
+      if (x > 0) best = Math.min(best, at(x - 1, y) + 3);
+      d[i] = best;
+    }
+  }
+
+  // Backward: down-right neighbours.
+  for (let y = height - 1; y >= 0; y--) {
+    for (let x = width - 1; x >= 0; x--) {
+      const i = y * width + x;
+      if (d[i] === 0) continue;
+      let best = d[i];
+      if (y < height - 1) {
+        if (x < width - 1) best = Math.min(best, at(x + 1, y + 1) + 4);
+        best = Math.min(best, at(x, y + 1) + 3);
+        if (x > 0) best = Math.min(best, at(x - 1, y + 1) + 4);
+      }
+      if (x < width - 1) best = Math.min(best, at(x + 1, y) + 3);
+      d[i] = best;
+    }
+  }
+
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < out.length; i++) {
+    out[i] = grow
+      ? (bin[i] || d[i] <= r) ? 1 : 0     // background within r of lawn joins it
+      : (bin[i] && d[i] > r) ? 1 : 0;     // lawn within r of the edge is dropped
+  }
+  return out;
+}
+
 export function maskToPolygons(image, unproject, options = {}) {
   const {
     threshold = 128,
@@ -351,11 +429,21 @@ export function maskToPolygons(image, unproject, options = {}) {
     // is the only signal available from overhead, so the caller sets the line
     // and the UI reports what was filled.
     fillGapsUnderPx = 0,
+    // Move the edge of the mask in (negative) or out (positive), in pixels.
+    // See growMask: this is the only sensitivity a hard yes/no mask has.
+    growPx = 0,
   } = options;
 
   const { width, height } = image;
   const total = width * height;
-  const bin = binarize(image, threshold);
+  let bin = binarize(image, threshold);
+
+  /*
+   * Grow before clipping, never after. Growing a mask that has already been
+   * cut to the property line would push it back over the boundary and count
+   * the neighbours' grass again -- the clip has to be the last word.
+   */
+  if (growPx) bin = growMask(bin, width, height, growPx);
 
   if (clipMask) {
     for (let p = 0; p < bin.length; p++) bin[p] &= clipMask[p];

@@ -167,6 +167,9 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 }
 .railbtn.sub { width: 46px; font-size: 9.5px; }
 .railbtn.sub svg { width: 19px; height: 19px; }
+.railundo { margin-top: 4px; }
+.railundo:disabled { opacity: .4; cursor: not-allowed; }
+#mode-move[aria-pressed="true"] { background: #1565c0; border-color: #0d47a1; }
 #tool-add[aria-pressed="true"]   { background: #2e7d32; border-color: #1b5e20; }
 #tool-erase[aria-pressed="true"] { background: #c62828; border-color: #8e0000; }
 

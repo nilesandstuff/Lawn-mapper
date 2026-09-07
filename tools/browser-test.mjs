@@ -712,10 +712,40 @@ check('lawn mode reaches the lawn outlines',
 check('and never the property line, which is what stops the two being confused',
   !inLawn.ids.includes(inLawn.parcelId));
 
+/*
+ * Shapes are locked unless you asked to move one.
+ *
+ * The reported bug: a single tap with the eraser grabbed the lawn and slid it
+ * across the map. That is Mapbox Draw's own simple_select dragging, which was
+ * live in every mode. Asserted twice -- that Draw is in `static` (the
+ * mechanism), and that a real drag across a shape leaves it where it was (the
+ * consequence, which is what the person actually experienced).
+ */
+check('shapes are locked while a corner tool is live',
+  inLawn.drawMode === 'static', `draw is in ${inLawn.drawMode}`);
+
+const before = await page.evaluate(() => window.__lmCentroids());
+await page.mouse.move(cx - 40, cy);
+await page.mouse.down();
+await page.mouse.move(cx + 40, cy + 30, { steps: 8 });
+await page.mouse.up();
+await page.waitForTimeout(500);
+const afterDrag = await page.evaluate(() => window.__lmCentroids());
+const moved = before.some((c, i) =>
+  !afterDrag[i] || Math.hypot(afterDrag[i][0] - c[0], afterDrag[i][1] - c[1]) > 1e-7);
+check('and dragging across one does not slide it', moved === false,
+  moved ? 'a shape moved when it should have been locked' : 'nothing moved');
+
+const inMove = await reachableIn('move');
+check('Move mode unlocks dragging, and only Move mode',
+  inMove.drawMode === 'simple_select', `draw is in ${inMove.drawMode}`);
+
 /* A brush is not a corner tool: nothing should be grabbable while painting. */
 const inBrush = await reachableIn('shape', 'erase');
 check('no corner is grabbable while a brush is live',
   inBrush.ids.length === 0, JSON.stringify(inBrush.ids));
+check('and shapes stay locked under the brush too',
+  inBrush.drawMode === 'static', `draw is in ${inBrush.drawMode}`);
 await page.click('#tool-points');
 await page.waitForTimeout(300);
 

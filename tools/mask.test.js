@@ -14,6 +14,7 @@
 import {
   rasterizePolygon,
   binarize,
+  growMask,
   labelComponents,
   traceRegion,
   simplify,
@@ -326,6 +327,49 @@ console.log(`\nframe: zoom ${FRAME.zoom} @ ${IMG}px  ->  ${MPP.toFixed(4)} m/px\
   check('the vertex ceiling is enforced even at a fine tolerance',
     capped.every((p) => p.coordinates[0].length <= 24),
     capped.map((p) => p.coordinates[0].length).join(', '));
+}
+
+
+/* --------------------------------------------------- shrinking and growing */
+/*
+ * The sensitivity control that a hard mask actually admits.
+ *
+ * Checked against a shape whose answer is known by hand: a 20x20 square
+ * eroded by r must be exactly (20-2r) on a side, because erosion by a disc
+ * takes r off every straight edge. Dilation is deliberately NOT checked
+ * against (20+2r)^2 -- growing by a disc rounds the corners, so the true area
+ * is 400 + 4*20*r + pi*r^2, and asserting the square figure would be
+ * asserting a bug.
+ */
+{
+  const W = 40, H = 40;
+  const square = new Uint8Array(W * H);
+  for (let y = 10; y < 30; y++) for (let x = 10; x < 30; x++) square[y * W + x] = 1;
+  const area = (b) => b.reduce((n, v) => n + v, 0);
+
+  check('growMask(0) changes nothing', area(growMask(square, W, H, 0)) === 400);
+
+  for (const r of [1, 3, 5]) {
+    const side = 20 - 2 * r;
+    check(`eroding by ${r} px leaves a ${side}x${side} square`,
+      area(growMask(square, W, H, -r)) === side * side,
+      `${area(growMask(square, W, H, -r))} px, expected ${side * side}`);
+  }
+
+  for (const r of [2, 5]) {
+    const got = area(growMask(square, W, H, r));
+    const ideal = 400 + 4 * 20 * r + Math.PI * r * r; // square grown by a disc
+    check(`dilating by ${r} px grows toward a rounded square`,
+      Math.abs(got - ideal) / ideal < 0.05,
+      `${got} px vs ${ideal.toFixed(0)} ideal (${(100 * (got - ideal) / ideal).toFixed(1)}%)`);
+  }
+
+  check('eroding past the shape empties it',
+    area(growMask(square, W, H, -20)) === 0);
+
+  /* Growing must not invent lawn where none was found at all. */
+  check('growing an empty mask keeps it empty',
+    area(growMask(new Uint8Array(W * H), W, H, 4)) === 0);
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);

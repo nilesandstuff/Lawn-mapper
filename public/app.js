@@ -49,7 +49,7 @@ const state = {
   pins: [],           // [lng, lat] the point-prompted model is told to look at
   mode: null,         // 'parcel' | 'pins' | 'shape' | null -- what taps act on
   shapeTool: 'points',// within shape mode: 'points' | 'add' | 'erase'
-  sensitivity: 128,   // the cut between lawn and not-lawn in the mask
+  edgeFt: 0,          // shrink (-) or grow (+) the detected outline, in feet
   drawingParcel: false,
 };
 
@@ -151,6 +151,15 @@ if (typeof window !== 'undefined') {
     tool: state.shapeTool,
     ids: editableRings().map((r) => r.featureId),
     parcelId: PARCEL_ID,
+    // Draw's own mode: 'static' means a finger cannot drag a whole shape.
+    drawMode: (() => { try { return draw.getMode(); } catch { return null; } })(),
+  });
+
+  /* Every shape's centroid, for proving nothing moved when it should not. */
+  window.__lmCentroids = () => draw.getAll().features.map((f) => {
+    const ring = outerRing(f) || [];
+    const n = Math.max(1, ring.length);
+    return ring.reduce((a, p) => [a[0] + p[0] / n, a[1] + p[1] / n], [0, 0]);
   });
 
   /* Whether the numbered markers are actually ON the map right now. */
@@ -946,8 +955,12 @@ function undo() {
 }
 
 function updateUndoButton() {
-  const btn = $('#btn-undo');
-  if (btn) btn.disabled = history.length === 0;
+  // Two buttons, one state: the panel's and the one on the map. Undo is
+  // pressed while looking at whatever went wrong, which is on the map.
+  for (const id of ['#btn-undo', '#rail-undo']) {
+    const btn = $(id);
+    if (btn) btn.disabled = history.length === 0;
+  }
 }
 
 /* --------------------------------------------------------- map interaction */
@@ -1025,6 +1038,15 @@ function vertexAt(clientX, clientY) {
 }
 
 function beginDrag(clientX, clientY) {
+  /*
+   * In Move mode the drag belongs to Draw. Snapshot first so the move can be
+   * undone: Draw reports the change only after it has happened, by which time
+   * the previous position is gone. The key collapses one drag into one entry.
+   */
+  if (state.mode === 'move') {
+    pushHistory('move');
+    return false;
+  }
   if (eraser) {
     eraser.stroke = [];
     eraser.painting = true;
@@ -1183,8 +1205,15 @@ function handleMapPoint(lngLat, x = null, y = null) {
   }
   diag.lastMode = mode;
 
-  // Ignore taps meant for a shape the user is drawing or editing.
-  if (mode !== 'simple_select') {
+  /*
+   * Ignore taps only while a polygon is being drawn.
+   *
+   * This used to require simple_select, which was a proxy for "not mid-draw"
+   * and stopped being true the moment shapes were locked with `static`. The
+   * question it is really asking is whether Draw is collecting points for a
+   * new outline; ask that.
+   */
+  if (/^draw_/.test(String(mode))) {
     diag.rejected++;
     return;
   }
@@ -1452,8 +1481,7 @@ async function detect() {
     const polygons = maskToPolygons(
       image,
       (x, y) => framePxToLngLat(rendered, [x, y], w, h),
-      { clipMask, fillGapsUnderPx, tolerance, maxVertices: MAX_TRACE_VERTICES,
-        threshold: state.sensitivity }
+      { clipMask, fillGapsUnderPx, tolerance, maxVertices: MAX_TRACE_VERTICES }
     );
 
     if (!polygons.length) {
@@ -1880,7 +1908,7 @@ const PARCEL_ID = '__parcel__';
  * are not placing them: a numbered marker you cannot move and did not ask for
  * is just something in front of the lawn.
  */
-const MODES = ['parcel', 'pins', 'shape'];
+const MODES = ['parcel', 'pins', 'move', 'shape'];
 
 function setMode(mode, tool = null) {
   const next = MODES.includes(mode) ? mode : null;
@@ -1889,18 +1917,21 @@ function setMode(mode, tool = null) {
   if (eraser) exitEraserMode({ quiet: true });
 
   /*
-   * Put Mapbox Draw back to simple_select.
+   * Hand the map back to Draw in the right state for the mode being entered.
    *
-   * Selecting a corner leaves Draw in direct_select, and it stays there after
-   * the mode that selected it has gone. handleMapPoint ignores every tap
-   * unless Draw is in simple_select, so a corner touched in lawn mode made the
-   * map silently deaf in pin mode afterwards -- taps registered as rejected
-   * and no pin appeared, with nothing on screen to explain it. Leaking editing
-   * state between modes is the exact thing modes exist to stop.
+   * Two problems, one lever. The first: selecting a corner leaves Draw in
+   * direct_select and it stays there after the mode that selected it has
+   * gone, which made the map silently deaf afterwards. The second: in
+   * simple_select, Draw lets a finger drag a whole shape -- so a single tap
+   * with the eraser could grab the lawn and slide it across the map, which is
+   * both invisible while it happens and catastrophic to the measurement.
+   *
+   * So shapes are LOCKED everywhere except Move mode, using Draw's own
+   * `static` mode. Nothing about our tap handling depends on simple_select
+   * any more (see handleMapPoint), and moving a whole shape is now a thing
+   * you ask for rather than a thing that happens to you.
    */
-  try {
-    if (draw.getMode() !== 'simple_select') draw.changeMode('simple_select');
-  } catch { /* Draw not ready yet; nothing to reset */ }
+  setDrawLock(next !== 'move');
   state.edgeEdit = null;
   clearEdgeHighlight();
   clearPoints();
@@ -1920,7 +1951,13 @@ function setMode(mode, tool = null) {
    */
   if (next === 'shape') state.shapeTool = tool || 'points';
 
-  if (next === 'parcel') enterRingEditing('parcel');
+  if (next === 'move') {
+    // Our own listeners run first and decline everything here, which is what
+    // lets beginDrag() take the undo snapshot before Draw moves the shape.
+    armLawnPicker();
+    setHint('Tap a shape, then drag it');
+    setStatus('Move mode. Drag a whole patch of lawn into place — nothing else responds while this is on.');
+  } else if (next === 'parcel') enterRingEditing('parcel');
   else if (next === 'shape' && state.shapeTool === 'points') enterRingEditing('shape');
   else if (next === 'shape') enterEraserMode(state.shapeTool);
   else if (next === 'pins') {
@@ -1936,6 +1973,24 @@ function setMode(mode, tool = null) {
   refreshPins();
   refreshRail();
   updatePromptHint();
+}
+
+/**
+ * Lock or unlock Draw's own dragging.
+ *
+ * `static` renders every shape and responds to nothing, which is exactly what
+ * is wanted while a brush or a corner tool owns the gesture. If this build of
+ * Draw has no static mode the fallback is simple_select -- shapes stay
+ * draggable, which is the old behaviour rather than a broken one, and the
+ * browser check asserts which of the two is actually in force.
+ */
+function setDrawLock(locked) {
+  try {
+    const want = locked ? 'static' : 'simple_select';
+    if (draw.getMode() !== want) draw.changeMode(want);
+  } catch {
+    try { draw.changeMode('simple_select'); } catch { /* Draw not ready */ }
+  }
 }
 
 /** Corner-and-edge editing, for whichever outline the mode owns. */
@@ -1961,50 +2016,41 @@ function enterRingEditing(which) {
 
 /* -------------------------------------------------------- sensitivity */
 /*
- * How much of the mask counts as lawn -- moved without paying again.
+ * How generous to be about the edge of the lawn -- moved without paying again.
  *
- * The detector hands back a picture, and turning that picture into a yes/no
- * per pixel needs a cut. That cut is ours, not the model's, which matters here
- * because the point-prompted model publishes no threshold of its own: its
- * schema is `image` and `input_points` and nothing else, so there is no
- * model-side knob to turn. This is the one that exists.
+ * The first version of this moved the brightness cut used to turn the
+ * detector's picture into a yes/no per pixel. That was built on an assumption
+ * that turned out to be false for every model actually in use: both return
+ * pure black and white, so there are no mid-tones and no line to move. The
+ * control correctly reported that it could do nothing, which is honest and
+ * useless.
  *
- * It costs nothing to move, because the mask is already downloaded and
- * decoded: re-tracing is arithmetic on pixels we have. Detection is the
- * expensive step and it does not run again.
+ * What a hard mask does admit is moving the edge itself: pull it in and less
+ * counts as lawn, push it out and more does. That is growMask() in mask.js,
+ * and it is still free -- the mask is already downloaded and decoded, so this
+ * is arithmetic on pixels in hand and runs no new detection.
  *
- * It only does something if the mask has mid-tones. A model that returns pure
- * black and white has already made the decision, and no cut between 1 and 254
- * will change a single pixel -- so measure the mask when it arrives and say so
- * rather than offering a control that silently does nothing.
+ * Expressed in feet on the ground rather than pixels, so it means the same
+ * thing at every zoom and reads as a decision about a lawn rather than about
+ * an image.
  */
-const DEFAULT_SENSITIVITY = 128;
-
-/** Share of pixels that are neither nearly-black nor nearly-white. */
-function maskSoftness(image) {
-  const d = image.data;
-  let mid = 0;
-  // Every 4th pixel: this is a 1280x1280 image and the answer is a proportion.
-  for (let i = 0; i < d.length; i += 16) {
-    const v = d[i];
-    if (v > 24 && v < 231) mid++;
-  }
-  return mid / (d.length / 16);
-}
+const DEFAULT_EDGE_FT = 0;
 
 function refreshSensitivity() {
   const panel = $('#sens-panel');
   if (!panel) return;
+  panel.hidden = !state.lastMask?.image;
+  $('#sens-slider').value = String(state.edgeFt);
+  describeEdgeShift();
+}
 
-  const mask = state.lastMask;
-  if (!mask?.image) { panel.hidden = true; return; }
-
-  const soft = maskSoftness(mask.image);
-  panel.hidden = false;
-  $('#sens-slider').disabled = soft < 0.01;
-  $('#sens-note').textContent = soft < 0.01
-    ? 'This model returns a hard yes/no mask, so there is nothing to loosen or tighten. Use Erase to take out what it got wrong.'
-    : 'Right is stricter — less gets called lawn. Free: it re-reads the picture you already paid for.';
+function describeEdgeShift() {
+  const ft = state.edgeFt;
+  $('#sens-note').textContent = ft === 0
+    ? 'As detected. Slide left to pull the outline in, right to push it out.'
+    : ft < 0
+      ? `Pulled in ${Math.abs(ft)} ft all round — tighter, and thin strips drop out.`
+      : `Pushed out ${ft} ft all round, still trimmed to your property line.`;
 }
 
 /** Re-trace the mask already in hand at the current cut. */
@@ -2036,7 +2082,8 @@ function retrace() {
       fillGapsUnderPx: $('#toggle-trees').checked ? Math.round(TREE_GAP_SQFT / sqFtPerPx) : 0,
       tolerance: TRACE_TOLERANCE_M / metresPerPixel(rendered, w),
       maxVertices: MAX_TRACE_VERTICES,
-      threshold: state.sensitivity,
+      // Feet on the ground -> pixels of this particular mask.
+      growPx: Math.round((state.edgeFt * 0.3048) / metresPerPixel(rendered, w)),
     }
   );
 
@@ -2049,9 +2096,10 @@ function retrace() {
   refreshMeasurement();
   refreshSurveyed();
   updateSelectionButtons();
+  describeEdgeShift();
   setStatus(polygons.length
     ? `${polygons.length} section${polygons.length > 1 ? 's' : ''} of lawn at this setting.`
-    : 'Nothing left at this setting — move it back to the left.', polygons.length ? '' : 'warn');
+    : 'Nothing left at this setting — slide back to the right.', polygons.length ? '' : 'warn');
 }
 
 /**
@@ -2710,8 +2758,8 @@ function reset() {
   state.mode = null;
   state.shapeTool = 'points';
   state.drawingParcel = false;
-  state.sensitivity = DEFAULT_SENSITIVITY;
-  $('#sens-slider').value = String(DEFAULT_SENSITIVITY);
+  state.edgeFt = DEFAULT_EDGE_FT;
+  $('#sens-slider').value = String(DEFAULT_EDGE_FT);
   $('#sens-panel').hidden = true;
   $('#btn-draw-parcel').hidden = true;
   refreshPins();
@@ -2750,7 +2798,7 @@ $('#model-choice').addEventListener('change', (e) => setModel(e.target.value));
  * `change` fires once the finger lifts.
  */
 $('#sens-slider').addEventListener('change', (e) => {
-  state.sensitivity = Number(e.target.value) || DEFAULT_SENSITIVITY;
+  state.edgeFt = Number(e.target.value) || DEFAULT_EDGE_FT;
   retrace();
 });
 
@@ -2800,7 +2848,9 @@ $('#btn-clear').addEventListener('click', () => {
 });
 
 $('#btn-parcel-shape').addEventListener('click', useParcelShape);
-$('#btn-undo').addEventListener('click', undo);
+for (const id of ['#btn-undo', '#rail-undo']) {
+  $(id).addEventListener('click', undo);
+}
 /*
  * The rail. Pressing the live mode turns it off; pressing another switches
  * straight to it -- making you close one before opening the next would be a
