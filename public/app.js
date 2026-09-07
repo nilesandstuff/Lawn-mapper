@@ -368,10 +368,31 @@ async function initMap() {
   });
   map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
 
+  /*
+   * A locked mode of our own.
+   *
+   * The shapes must be undraggable except in Move mode, and Draw's built-in
+   * `static` is not registered in this build -- changeMode('static') threw,
+   * the fallback quietly put it back in simple_select, and every shape stayed
+   * draggable while the code claimed otherwise. The browser check caught it by
+   * asking Draw what mode it was actually in, which is the only reason this is
+   * not still shipping.
+   *
+   * So define one. A mode that renders every feature and registers no
+   * handlers is the whole requirement, and it cannot go missing from a
+   * library version.
+   */
   draw = new MapboxDraw({
     displayControlsDefault: false,
     controls: {},
     defaultMode: 'simple_select',
+    modes: {
+      ...MapboxDraw.modes,
+      [LOCKED_MODE]: {
+        onSetup() { this.setActionableState(); return {}; },
+        toDisplayFeatures(state, geojson, display) { display(geojson); },
+      },
+    },
   });
   map.addControl(draw);
 
@@ -1887,6 +1908,9 @@ function outerRing(feature) {
  */
 const PARCEL_ID = '__parcel__';
 
+/** Draw's mode when shapes must not be draggable. Registered in initMap. */
+const LOCKED_MODE = 'lm_locked';
+
 /* --------------------------------------------------------------- modes */
 /*
  * One thing at a time.
@@ -1978,15 +2002,14 @@ function setMode(mode, tool = null) {
 /**
  * Lock or unlock Draw's own dragging.
  *
- * `static` renders every shape and responds to nothing, which is exactly what
- * is wanted while a brush or a corner tool owns the gesture. If this build of
- * Draw has no static mode the fallback is simple_select -- shapes stay
- * draggable, which is the old behaviour rather than a broken one, and the
- * browser check asserts which of the two is actually in force.
+ * The locked mode renders every shape and responds to nothing, which is
+ * exactly what is wanted while a brush or a corner tool owns the gesture.
+ * The browser check asserts which mode is actually in force rather than
+ * trusting that the call landed -- that is how the missing `static` was found.
  */
 function setDrawLock(locked) {
   try {
-    const want = locked ? 'static' : 'simple_select';
+    const want = locked ? LOCKED_MODE : 'simple_select';
     if (draw.getMode() !== want) draw.changeMode(want);
   } catch {
     try { draw.changeMode('simple_select'); } catch { /* Draw not ready */ }

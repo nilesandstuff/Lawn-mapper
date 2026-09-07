@@ -738,7 +738,7 @@ check('and never the property line, which is what stops the two being confused',
  * consequence, which is what the person actually experienced).
  */
 check('shapes are locked while a corner tool is live',
-  inLawn.drawMode === 'static', `draw is in ${inLawn.drawMode}`);
+  inLawn.drawMode === 'lm_locked', `draw is in ${inLawn.drawMode}`);
 
 const before = await page.evaluate(() => window.__lmCentroids());
 await page.mouse.move(cx - 40, cy);
@@ -761,7 +761,7 @@ const inBrush = await reachableIn('shape', 'erase');
 check('no corner is grabbable while a brush is live',
   inBrush.ids.length === 0, JSON.stringify(inBrush.ids));
 check('and shapes stay locked under the brush too',
-  inBrush.drawMode === 'static', `draw is in ${inBrush.drawMode}`);
+  inBrush.drawMode === 'lm_locked', `draw is in ${inBrush.drawMode}`);
 await page.click('#tool-points');
 await page.waitForTimeout(300);
 
