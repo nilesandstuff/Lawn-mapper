@@ -15,13 +15,23 @@
  * disqualifying and neither is visible in a model's description:
  *
  *   IS IT A MASK?  Several of these return the photograph with masks drawn ON
- *   it. That looks like a segmentation result and traces into garbage -- the
- *   tracer would be reading colours off an annotated picture. A real mask is
- *   nearly all pure black and pure white; an overlay is nowhere near.
+ *   it. That traces into garbage -- the tracer would be reading colours off an
+ *   annotated picture. The test is COLOUR, not brightness: a mask is grey, so
+ *   red, green and blue are equal in every pixel, while an overlay has grass
+ *   and roof and tarmac in it. The first version of this tested brightness
+ *   instead and threw away a soft probability mask as "an annotated
+ *   photograph", which was simply wrong -- a soft mask is a fine mask that
+ *   happens to need a threshold, and the tracer already applies one.
  *
  *   IS IT ON THE PARCEL?  A mask that covers a good share of the frame but
  *   almost none of the property line is misaligned, and no prompt fixes that
  *   either.
+ *
+ * The first run of this tool produced three failures that were all its own:
+ * a PNG decoder pointed at JPEG output, a brightness test that rejected soft
+ * masks, and a Mapbox URL with no file extension that FastSAM's downloader
+ * would not open. A probe that blames the thing it is measuring is worse than
+ * no probe, so all three are fixed here and the reasons kept in place.
  *
  * THIS COSTS MONEY: one prediction per candidate.
  *
@@ -36,6 +46,7 @@
  */
 
 import { PNG } from 'pngjs';
+import jpeg from 'jpeg-js';
 import { lookupParcel } from '../worker/src/parcel.js';
 import { imageryUrl } from '../worker/src/imagery.js';
 import { measure, geometryAreaSqM } from '../public/lib/area.js';
@@ -191,23 +202,77 @@ const rings = parcel.geometry.type === 'Polygon'
 const clipAt = (w, h) =>
   rasterizePolygon(rings, w, h, (ll) => lngLatToFramePx(frame, ll, w, h));
 
-const imageUrl = imageryUrl('mapbox', frame, mapbox);
+/**
+ * Hand every model the picture as a data URI, not as a Mapbox link.
+ *
+ * FastSAM rejected the Mapbox URL outright: "No images or videos found in
+ * /tmp/tmphrr7w7a_640x640@2x". That is not a verdict on the model, it is a
+ * FILENAME complaint -- the static endpoint's path ends "640x640@2x" with no
+ * extension, so its downloader saved a file Ultralytics would not open. A
+ * probe that reports a model as broken because of how our URL is spelled is
+ * measuring itself.
+ *
+ * A data URI fixes it for every candidate at once, declares the type
+ * explicitly, and stops four models being handed a URL with our Mapbox token
+ * in it.
+ */
+const imageBytes = Buffer.from(await (await fetch(imageryUrl('mapbox', frame, mapbox))).arrayBuffer());
+const imageUrl = `data:image/png;base64,${imageBytes.toString('base64')}`;
+console.log(`image:   ${(imageBytes.length / 1024).toFixed(0)} KB, sent inline as a data URI\n`);
 
 /**
- * How close an image is to being a bare black-and-white mask.
+ * Decode whatever came back, by what it actually is.
  *
- * This is the check that disqualifies a model outright. An overlay on the
- * photograph has grass, roof and tarmac in it, none of which is near 0 or 255,
- * so it scores low -- and tracing it would produce a confident outline of
- * something that is not a mask at all.
+ * The first run called every output "unreadable": grounded_sam returned four
+ * images and pngjs failed on all four identically, which is not what a corrupt
+ * file looks like -- it is what the wrong decoder looks like. Nothing had said
+ * these were PNGs except me.
  */
-function purity(png) {
-  let pure = 0;
-  for (let i = 0; i < png.data.length; i += 4) {
-    const v = png.data[i];
-    if (v <= 12 || v >= 243) pure++;
+function decodeImage(bytes) {
+  const isPng = bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e;
+  const isJpeg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+
+  if (isPng) {
+    const png = PNG.sync.read(bytes);
+    return { width: png.width, height: png.height, data: png.data, format: 'png' };
   }
-  return pure / (png.data.length / 4);
+  if (isJpeg) {
+    // Decoded to RGBA so everything downstream reads the same shape as a PNG.
+    const jpg = jpeg.decode(bytes, { useTArray: true, formatAsRGBA: true });
+    return { width: jpg.width, height: jpg.height, data: jpg.data, format: 'jpeg' };
+  }
+
+  const magic = [...bytes.slice(0, 4)].map((b) => b.toString(16).padStart(2, '0')).join(' ');
+  throw new Error(`not PNG or JPEG (starts ${magic})`);
+}
+
+/**
+ * Two different questions that the first version asked as one, and got wrong.
+ *
+ * PURITY is how much of the image is pure black or pure white. A hard mask is
+ * ~100%. But a SOFT mask -- a probability map, grey in the uncertain parts --
+ * scores low, and the first version called that "an annotated photograph, not
+ * a mask" and threw it away. A soft mask is a perfectly good mask; it just
+ * needs a threshold, which the tracer already applies.
+ *
+ * COLOUR is what actually separates the two. A mask, hard or soft, is grey:
+ * red, green and blue are equal in every pixel. An overlay on the photograph
+ * has grass and roof and tarmac in it, and those are not grey. So colour is
+ * the disqualifying test, and purity only says which KIND of mask arrived.
+ */
+function analyse(image) {
+  let pure = 0;
+  let coloured = 0;
+  const n = image.data.length / 4;
+
+  for (let i = 0; i < image.data.length; i += 4) {
+    const r = image.data[i], g = image.data[i + 1], b = image.data[i + 2];
+    if (r <= 12 || r >= 243) pure++;
+    // 12 of 255 tolerates JPEG's colour ringing without admitting real colour.
+    if (Math.max(Math.abs(r - g), Math.abs(g - b), Math.abs(r - b)) > 12) coloured++;
+  }
+
+  return { purity: pure / n, colour: coloured / n };
 }
 
 const sqftOf = (ps) => Math.round(ps.reduce((s, p) => s + geometryAreaSqM(p), 0) / 0.09290304);
@@ -295,14 +360,21 @@ for (const id of WANTED) {
   let best = null;
   for (const [i, url] of urls.entries()) {
     const bytes = Buffer.from(await (await fetch(url)).arrayBuffer());
-    let png;
-    try { png = PNG.sync.read(bytes); } catch (e) {
-      console.log(`    output ${i}: not a readable PNG (${bytes.length} bytes) — ${e.message}`);
+    let img;
+    try { img = decodeImage(bytes); } catch (e) {
+      console.log(`    output ${i}: unreadable (${bytes.length} bytes) — ${e.message}`);
       continue;
     }
-    const p = purity(png);
-    console.log(`    output ${i}: ${png.width}x${png.height}, ${(p * 100).toFixed(1)}% pure black/white`);
-    if (!best || p > best.purity) best = { png, purity: p, index: i };
+    const { purity, colour } = analyse(img);
+    console.log(`    output ${i}: ${img.width}x${img.height} ${img.format}, ` +
+      `${(purity * 100).toFixed(1)}% pure, ${(colour * 100).toFixed(1)}% coloured`);
+
+    /*
+     * Prefer the greyest output. A model that returns several images does not
+     * label them, and the mask is the grey one -- picking the first would have
+     * judged grounded_sam on whichever it happened to list first.
+     */
+    if (!best || colour < best.colour) best = { image: img, purity, colour, index: i };
   }
 
   if (!best) {
@@ -312,22 +384,25 @@ for (const id of WANTED) {
   }
 
   /*
-   * 95% is the line, and it is not arbitrary: a bare mask is black and white
-   * apart from a one-pixel antialiased rim, which on a 1280px frame is well
-   * under 5% of it. Anything below that is a photograph with paint on it.
+   * Colour is the disqualifier, not purity. Above about 2% of pixels carrying
+   * real colour, this is the photograph with masks painted on it, and tracing
+   * it would read colours off a picture and report a confident wrong number.
    */
-  if (best.purity < 0.95) {
-    console.log(`  REJECT  output ${best.index} is only ${(best.purity * 100).toFixed(1)}% pure —`);
-    console.log('          this is an annotated photograph, not a mask. Tracing it would');
-    console.log('          read colours off a picture and report a confident wrong number.\n');
-    results.push({ id, verdict: 'not a mask', purity: best.purity });
+  if (best.colour > 0.02) {
+    console.log(`  REJECT  output ${best.index} is ${(best.colour * 100).toFixed(1)}% coloured —`);
+    console.log('          an annotated photograph, not a mask.\n');
+    results.push({ id, verdict: 'annotated photo', colour: best.colour });
     continue;
   }
 
-  const png = best.png;
-  const image = { width: png.width, height: png.height, data: png.data };
-  const project = (x, y) => framePxToLngLat(frame, [x, y], png.width, png.height);
-  const clipMask = clipAt(png.width, png.height);
+  // Grey, so it IS a mask. Purity only says which kind, and both are traceable:
+  // the tracer thresholds at mid-grey either way.
+  const kind = best.purity >= 0.95 ? 'hard mask' : 'soft mask';
+  console.log(`  ${kind} (${(best.purity * 100).toFixed(1)}% pure, ${(best.colour * 100).toFixed(1)}% coloured)`);
+
+  const image = best.image;
+  const project = (x, y) => framePxToLngLat(frame, [x, y], image.width, image.height);
+  const clipMask = clipAt(image.width, image.height);
 
   const bin = binarize(image);
   let maskPx = 0, clipPx = 0, bothPx = 0;
@@ -340,7 +415,7 @@ for (const id of WANTED) {
   console.log(`  mask covers ${((maskPx / bin.length) * 100).toFixed(1)}% of the frame; ` +
     `${onParcel.toFixed(1)}% of the parcel is masked`);
 
-  const mPerPx = metresPerPixel(frame, png.width);
+  const mPerPx = metresPerPixel(frame, image.width);
   const loose = maskToPolygons(image, project, {});
   const clipped = maskToPolygons(image, project, {
     clipMask, tolerance: 0.3 / mPerPx, maxVertices: 240,
@@ -355,7 +430,7 @@ for (const id of WANTED) {
   console.log(`  outside the property line: ${(looseSqft - clipSqft).toLocaleString()} sq ft\n`);
 
   results.push({
-    id, verdict: 'mask', purity: best.purity, clipSqft, pct,
+    id, verdict: kind, purity: best.purity, colour: best.colour, clipSqft, pct,
     pieces: clipped.length, onParcel, secs,
   });
 }

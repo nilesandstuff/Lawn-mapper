@@ -67,7 +67,7 @@ jobs:
       # Only this probe needs it, so it is not a project dependency.
       - name: Install a PNG decoder
         if: inputs.probe == 'sam3-prompts' || inputs.probe == 'candidates'
-        run: npm install pngjs --no-save
+        run: npm install pngjs jpeg-js --no-save
 
       # Auditions replacements for the detector on a real lot: one prediction
       # each, every one clipped to the same property line so the square
