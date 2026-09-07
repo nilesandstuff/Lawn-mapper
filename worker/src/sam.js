@@ -94,22 +94,42 @@ export const modelCatalogue = () =>
  * the same prompt on the same house disagreed about which sections existed:
  * marginal regions fall either side of the cut from one run to the next.
  *
- * Note what that table does NOT contain: a plateau. Recovered area climbs
- * smoothly all the way to 0.05, so no threshold is picked out as correct by
- * the numbers, and any claim that one is would be invented. This is a choice
- * about which way to be wrong.
+ * That table had no plateau, so no value in it was picked out as correct by
+ * the numbers, and 0.1 was chosen as a judgement about which way to be wrong:
+ * inclusive, because a patch that should not be there is visible on the map
+ * and one tap to delete, while a missing patch is invisible unless the owner
+ * happens to know their own back lawn is gone.
  *
- * Inclusive is the right way to be wrong here. A patch that should not be
- * there is visible on the map and one tap to delete; a patch that is missing
- * is invisible unless the owner happens to know their own back lawn is gone,
- * and it silently understates every quote built on the number. 0.1 lands at
- * about a third of this lot, which is credible for a property carrying a
- * house, a pool, a patio and a drive.
+ * THEN A LOT WITH A KNOWN ANSWER SETTLED IT.
+ *
+ * 7315 Brooks Lane, Rockford: 76,250 sq ft, about 28,000 of it mown, with a
+ * large wooded area behind the house. Photographed leaf-off with a low sun, so
+ * long tree shadows lie across the grass -- and the owner's own screenshot
+ * showed the detected outline tracing the boundary between sunlit and shaded
+ * lawn exactly. Not confusion about what grass is: a brightness cut.
+ *
+ *   0.1    17,393 sq ft   23% of parcel   2 pieces
+ *   0.05   25,059 sq ft   33%             2 pieces
+ *   0.02   25,247 sq ft   33%             2 pieces
+ *
+ * 0.05 recovers 7,666 sq ft of shaded grass, which is very nearly the whole
+ * gap between what this owner can see from the air and what he actually mows.
+ *
+ * And 0.02 adds 0.75%. THAT is the plateau the first table lacked, and it is
+ * the part that makes this safe rather than merely bigger: it says 0.05 has
+ * reached the real edge of the lawn and found everything there is. A model
+ * beginning to call the woodland grass would not flatten here, it would run
+ * away -- on this same lot lang-segment-anything did exactly that, reporting
+ * 47,930 sq ft from a mask covering 69% of the frame. Piece count also holds
+ * at 2 rather than fragmenting.
+ *
+ * So 0.05, on evidence, and no longer only on which-way-to-be-wrong. It is
+ * still the inclusive direction; it now has a floor under it.
  *
  * Overridable with a SAM_THRESHOLD variable, because the right value is a
  * property of the imagery and not something to hard-code forever.
  */
-export const DEFAULT_THRESHOLD = 0.1;
+export const DEFAULT_THRESHOLD = 0.05;
 
 /** The threshold to send, clamped to the range the model accepts. */
 export function samThreshold(env) {

@@ -18,7 +18,9 @@
  */
 
 import * as entrypoint from '../worker/src/index.js';
-import { MODELS, DEFAULT_MODEL, DEFAULT_PROMPT, modelCatalogue } from '../worker/src/sam.js';
+import {
+  MODELS, DEFAULT_MODEL, DEFAULT_PROMPT, modelCatalogue, DEFAULT_THRESHOLD, samThreshold,
+} from '../worker/src/sam.js';
 import { dayKey, DAILY_LIMIT_PER_CLIENT } from '../worker/src/quota.js';
 import { upstreamReason, redactSecrets } from '../worker/src/upstream.js';
 import {
@@ -152,6 +154,33 @@ check('the daily allowance is 20', DAILY_LIMIT_PER_CLIENT === 20,
     providerCatalogue({ GOOGLE_MAPS_KEY: 'K' }).some((p) => p.id === 'google'));
 
 }
+
+/* ------------------------------------------------------- the threshold */
+/*
+ * The confidence cut is the single number that decides how much shaded grass
+ * gets counted, and it was lowered from 0.1 to 0.05 on measured evidence at a
+ * lot with a known answer. Asserting the constant equals itself would prove
+ * nothing, so this tests the function that decides what is actually SENT --
+ * including the override, which is how the value gets retuned without a
+ * deploy, and the clamp, which is what stops a typo'd variable being passed
+ * to the model as a threshold it will reject.
+ */
+check('with nothing configured, the measured default is what gets sent',
+  samThreshold({}) === DEFAULT_THRESHOLD, String(samThreshold({})));
+
+check('and the default is the one the evidence chose',
+  DEFAULT_THRESHOLD === 0.05,
+  '0.05 recovered 7,666 sq ft of shaded lawn at Brooks Lane and then plateaued');
+
+check('an override wins, so it can be retuned without a deploy',
+  samThreshold({ SAM_THRESHOLD: '0.2' }) === 0.2);
+
+check('a nonsense override falls back rather than being sent',
+  samThreshold({ SAM_THRESHOLD: 'wide open' }) === DEFAULT_THRESHOLD);
+
+check('and an out-of-range one is clamped to what the model accepts',
+  samThreshold({ SAM_THRESHOLD: '9' }) === 1 && samThreshold({ SAM_THRESHOLD: '-3' }) === 0);
+
 
 /* ------------------------------------------------- passing an error along */
 /*

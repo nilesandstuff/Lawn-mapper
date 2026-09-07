@@ -293,6 +293,35 @@ the woodland. That under-read matches the direction and rough size of the gap
 against measuremylawn.com, so the error looks systematic and mild rather than
 erratic.
 
+**And then the owner's screenshot showed exactly where it was losing area:**
+the outline traced the boundary between sunlit and shaded grass, precisely.
+Not confusion about what grass is -- a brightness cut. The photograph is
+leaf-off with a low sun, so long shadows stripe the lawn and the grass under
+them scored just below the confidence threshold. That made it a tunable
+problem rather than a model problem, and the sweep settled it:
+
+| Source | Threshold | Found | Pieces |
+| --- | --- | --- | --- |
+| Mapbox | 0.1 (was) | 17,393 sq ft | 2 |
+| **Mapbox** | **0.05 (now)** | **25,059 sq ft** | 2 |
+| Mapbox | 0.02 | 25,247 sq ft | 2 |
+| Google | 0.1 | 13,847 sq ft | 1 |
+| Google | 0.05 | 13,991 sq ft | 1 |
+| Google | 0.02 | 14,338 sq ft | 1 |
+
+0.05 recovers 7,666 sq ft of shaded grass -- very nearly the whole gap between
+what this owner sees from the air and what he mows -- and **0.02 then adds
+0.75%**. That plateau is what makes the change safe rather than merely bigger:
+it says 0.05 has found the real edge of the lawn. A model starting to call the
+woodland grass does not flatten, it runs away, which is precisely what
+lang-segment-anything did on this same lot. See `worker/src/sam.js`.
+
+Google was worse here for a structural reason worth knowing: it serves whole
+zoom levels only, and this lot's fitted zoom is fractional, so Google returned
+a wider frame at the same 1280 px and lost resolution (21.8 cm/px). Coarser
+pixels found one blob instead of two. Google is a genuine second opinion on
+lots whose fitted zoom lands near a whole level, and a coarser one otherwise.
+
 **What that test also exposed:** "Count grass under trees" contributed
 **nothing** on this lot -- `+0 sq ft in 0 gaps`. It fills holes ENCLOSED
 inside the lawn, and a treeline adjoining the lawn is not a hole. So the
