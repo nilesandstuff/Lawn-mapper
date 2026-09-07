@@ -247,17 +247,38 @@ this is a real second attempt rather than a second thing to look at.
 **8a. Get a key.** In the Google Cloud console
 (<https://console.cloud.google.com/>): create a project, then **APIs & Services
 → Library → Maps Static API → Enable**, then **APIs & Services → Credentials →
-Create credentials → API key**. Restrict it to the **Maps Static API** under
-*API restrictions*. Leave the *Application restrictions* as **None** — the key
-is used by the Worker, which sends no `Referer` for a website restriction to
-match, exactly like `MAPBOX_SERVER_TOKEN` above.
+Create credentials → API key**.
 
-Google bills the Maps Static API per request with a monthly free allowance;
-this app asks for one image each time you switch to that source or detect from
-it, so ordinary use sits well inside it. Set a budget alert if you would rather
-be certain.
+Under *API restrictions*, restrict it to the **Maps Static API**. That is the
+only Google endpoint this app calls — `maps/api/staticmap`, in
+`worker/src/imagery.js`. Aerial View is a different product (3D fly-around
+video of a building, nothing measurable) and Map Tiles serves a tile pyramid
+under a session token, where what is needed here is one image of one exact
+rectangle. Neither is a substitute, so neither needs ticking.
 
-**8b. Give it to the deploy.** **Settings → Secrets and variables → Actions →
+Leave *Application restrictions* as **None**, and know why:
+
+- **Websites (HTTP referrers)** matches the `Referer` header a *browser*
+  sends. This key is used by the Worker, which sends none — so the restriction
+  would 403 every Google image while the map kept drawing perfectly. That is
+  precisely the `MAPBOX_SERVER_TOKEN` trap in step 7, in a second costume.
+- **IP addresses** is the right *kind* of restriction for a server-side key,
+  but Cloudflare Workers egress from Cloudflare's anycast network with no
+  stable published range to allowlist.
+
+**8b. Cap the spend, because no restriction above does.** The key never
+reaches a browser — the Worker fetches Google and streams the picture back
+from this site's own origin — but `/api/imagery` is public and deliberately
+unmetered, so anyone who finds the URL can call it in a loop on your bill. An
+application restriction cannot stop that. A quota can, and it stops rather
+than warns:
+
+**APIs & Services → Maps Static API → Quotas → requests per day.** 500 is
+generous: this app asks for one image when you switch to Google and one more
+when you detect from it. A budget alert is worth adding as well, but an alert
+is a message after the money is spent.
+
+**8c. Give it to the deploy.** **Settings → Secrets and variables → Actions →
 New repository secret**, named exactly:
 
 ```
@@ -268,7 +289,7 @@ Then run **2. Deploy** again. The key stays in Cloudflare: the browser is only
 ever told that a source called "Google satellite" exists, and the picture comes
 back through this site's own `/api/imagery`.
 
-**Check:** open the site, search an address, and press **Layers** on the left of
+**8d. Check:** open the site, search an address, and press **Layers** on the left of
 the map. "Google satellite" appears in the list. If it does not, the secret did
 not reach the Worker — check the name is exactly `GOOGLE_MAPS_KEY` and deploy
 again.
