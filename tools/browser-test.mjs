@@ -941,8 +941,19 @@ check('the Lawn button is what closes lawn mode', await page.evaluate(() =>
  * well beyond a suburban lot. Inside the line, that stroke must add nothing.
  */
 console.log('\n--- the Add brush respects the property line ---');
-if (await page.locator('#outside-opt').isVisible()) {
-  check('the outside toggle is offered once there is a boundary', true);
+/*
+ * Tied to whether this address actually has a boundary, rather than to
+ * whatever the page happens to be showing. Written the other way first --
+ * a bare `if (visible)` around a `check(..., true)` -- which asserted nothing
+ * and would have skipped the entire section in silence had the toggle failed
+ * to appear, reporting a green run that had tested none of this.
+ */
+const outsideVisible = await page.locator('#outside-opt').isVisible();
+check('the outside-the-line toggle appears exactly when there is a boundary',
+  outsideVisible === hasParcel,
+  `toggle visible=${outsideVisible}, county parcel=${hasParcel}`);
+
+if (outsideVisible) {
   check('and it is off by default, so the boundary is honoured',
     (await page.locator('#toggle-outside').isChecked()) === false);
 
