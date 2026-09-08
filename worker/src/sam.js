@@ -115,16 +115,30 @@ export const modelCatalogue = () =>
  * 0.05 recovers 7,666 sq ft of shaded grass, which is very nearly the whole
  * gap between what this owner can see from the air and what he actually mows.
  *
- * And 0.02 adds 0.75%. THAT is the plateau the first table lacked, and it is
- * the part that makes this safe rather than merely bigger: it says 0.05 has
- * reached the real edge of the lawn and found everything there is. A model
- * beginning to call the woodland grass would not flatten here, it would run
- * away -- on this same lot lang-segment-anything did exactly that, reporting
- * 47,930 sq ft from a mask covering 69% of the frame. Piece count also holds
- * at 2 rather than fragmenting.
+ * And 0.02 adds 0.75%. THAT is the plateau the first table lacked: recovered
+ * area stops growing, so 0.05 has found essentially everything this model is
+ * going to find on this lot.
  *
- * So 0.05, on evidence, and no longer only on which-way-to-be-wrong. It is
- * still the inclusive direction; it now has a floor under it.
+ * WHAT THE PLATEAU DOES NOT SAY, and was claimed here for a while: that the
+ * extra area is all lawn. It says the total stopped growing. It says nothing
+ * about what the total is made of. The owner then looked at the result in the
+ * app and reported that part of the gain is a disconnected patch away in the
+ * woods -- so some woodland IS being counted at 0.05, alongside a genuine
+ * increase in real lawn. Both things are true at once, and only the first was
+ * visible in the numbers.
+ *
+ * The reasoning that was wrong is worth keeping visible: "it would run away if
+ * it were eating the woods" describes a model that cannot tell trees from
+ * grass anywhere, which is what lang-segment-anything did on this same lot
+ * (47,930 sq ft from a mask covering 69% of the frame). It does not describe a
+ * model that takes one wrong bite and stops. A flat curve cannot distinguish
+ * those two.
+ *
+ * 0.05 stands anyway, on the owner's own judgement of the result: it recovers
+ * more real lawn than it wrongly adds, and a stray section is visible on the
+ * map and one tap to delete, while missing lawn is invisible. That is the same
+ * which-way-to-be-wrong argument as before -- now with a measurement showing
+ * what it costs, rather than a claim that it costs nothing.
  *
  * Overridable with a SAM_THRESHOLD variable, because the right value is a
  * property of the imagery and not something to hard-code forever.

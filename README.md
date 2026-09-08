@@ -311,10 +311,18 @@ problem rather than a model problem, and the sweep settled it:
 
 0.05 recovers 7,666 sq ft of shaded grass -- very nearly the whole gap between
 what this owner sees from the air and what he mows -- and **0.02 then adds
-0.75%**. That plateau is what makes the change safe rather than merely bigger:
-it says 0.05 has found the real edge of the lawn. A model starting to call the
-woodland grass does not flatten, it runs away, which is precisely what
-lang-segment-anything did on this same lot. See `worker/src/sam.js`.
+0.75%**, so 0.05 has found essentially everything this model will find here.
+
+The app was then checked against the probe on the same lot and agreed at about
+25,000 sq ft, which is the one thing none of the earlier numbers established.
+Looking at that result, the owner reported that part of the gain is a
+disconnected patch away in the woods: **some woodland is counted at 0.05**,
+alongside a real increase in genuine lawn. The plateau never ruled that out --
+it says the total stopped growing, not what the total is made of, and this
+README previously claimed more than that. 0.05 stands because it recovers more
+real lawn than it wrongly adds and a stray section is one tap to delete, which
+is a judgement about which way to be wrong rather than a free lunch. See
+`worker/src/sam.js`.
 
 Google was worse here for a structural reason worth knowing: it serves whole
 zoom levels only, and this lot's fitted zoom is fractional, so Google returned
