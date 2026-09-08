@@ -1083,6 +1083,22 @@ if (errors.some((e) => e.includes('403'))) {
     'give wrangler dev the unrestricted one');
 }
 
+/*
+ * An uncaught exception is a failure, not a footnote.
+ *
+ * These were collected and printed and never asserted on, so the run that
+ * introduced "There is already a source with ID imagery-alt" reported All
+ * checks passed with the exception sitting in the output directly above it.
+ * A thrown error means some code did not run, and what did not run is by
+ * definition not covered by the checks that passed.
+ *
+ * Console errors stay advisory: third-party libraries log them for things
+ * that are not ours and not fatal. A PAGEERROR is ours.
+ */
+const thrown = errors.filter((e) => e.startsWith('PAGEERROR'));
+check('the page threw no uncaught errors', thrown.length === 0,
+  thrown.join('\n      '));
+
 console.log(`\nconsole/page errors:${errors.length ? '\n  ' + errors.slice(0, 12).join('\n  ') : ' (none)'}`);
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 

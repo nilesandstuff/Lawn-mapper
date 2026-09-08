@@ -2098,7 +2098,23 @@ function hideImagery() {
  * be shown, placed on its own corners. Seeing precisely what the AI sees is
  * worth more here than covering the whole screen.
  */
+/*
+ * Which fetch is allowed to paint.
+ *
+ * showImagery is async and is fired from more than one place, one of them
+ * deliberately un-awaited when the frame is rebuilt. Two calls could therefore
+ * both run hideImagery(), both wait on their fetch, and both addSource --
+ * which throws "There is already a source with ID imagery-alt" and leaves the
+ * map without the picture either of them was fetching.
+ *
+ * A counter settles it, and settles ordering too: a slow fetch for the source
+ * you have just switched AWAY from must not paint over the one you switched
+ * to, however long it took to arrive.
+ */
+let imageryRun = 0;
+
 async function showImagery() {
+  const run = ++imageryRun;
   hideImagery();
   if (state.provider === 'mapbox') return;
 
@@ -2160,6 +2176,9 @@ async function showImagery() {
       throw err;
     }
   } catch (err) {
+    // A failure for a source the user has already moved on from is not news,
+    // and falling back to Mapbox on their behalf would undo their choice.
+    if (run !== imageryRun) return;
     idle();
     setStatus(
       err.refused
@@ -2173,6 +2192,11 @@ async function showImagery() {
     refreshLayerList();
     return;
   }
+
+  // Someone else has asked for a different picture since this one was
+  // requested. Theirs is the one the user is waiting to see.
+  if (run !== imageryRun) return;
+  hideImagery(); // in case a later-started run already put something up
 
   map.addSource('imagery-alt', {
     type: 'image', url, coordinates: frameCorners(served),
