@@ -199,6 +199,21 @@
         <button class="ghost" id="btn-print">Save as PDF</button>
       </div>
 
+      <!--
+        The boundary is usually where the measurement should stop, but not
+        always: a recorded parcel often ends at the easement while the owner
+        mows to the kerb. Off by default, because counting the neighbour's
+        grass is the more expensive mistake.
+      -->
+      <label class="opt" id="outside-opt" hidden>
+        <input type="checkbox" id="toggle-outside">
+        <span>Measure outside the property line
+          <small>Lets the Add brush paint past your boundary. Turning it back
+            off trims everything to the line again — your detected lawn is kept,
+            not re-run.</small>
+        </span>
+      </label>
+
       <label class="opt">
         <input type="checkbox" id="toggle-trees" checked>
         <span>Count grass under trees

@@ -520,6 +520,28 @@ const parcelSqft = Number(
   (await page.locator('#result-sqft').textContent()).replace(/[^0-9]/g, '')
 );
 console.log(`      area from parcel: ${parcelSqft.toLocaleString()} sq ft`);
+
+/*
+ * Pressing it twice must not measure the lot twice.
+ *
+ * It used to: the button added a whole-parcel polygon every time, so a second
+ * press doubled the total and a third tripled it, with nothing on the map
+ * looking wrong because each duplicate sat exactly on top of the last. The old
+ * check pressed it once from an empty map, which is the one sequence that
+ * cannot see the bug.
+ */
+page.once('dialog', (d) => d.accept());
+await page.click('#btn-parcel-shape');
+await page.waitForTimeout(900);
+
+const twice = Number(
+  (await page.locator('#result-sqft').textContent()).replace(/[^0-9]/g, '')
+);
+const shapesNow = await page.evaluate(() => window.__lmShapeCount());
+check('pressing "use property line" twice does not count the lot twice',
+  twice === parcelSqft, `${parcelSqft.toLocaleString()} -> ${twice.toLocaleString()} sq ft`);
+check('and leaves exactly one shape, not a stack of them',
+  shapesNow === 1, `${shapesNow} shape(s)`);
 if (detectedSqft !== null && parcelSqft > 0) {
   // Not an assertion: how much of a lot is lawn varies enormously. It is here
   // because a bare square-footage says nothing about whether the detection was
@@ -907,6 +929,75 @@ await page.waitForTimeout(200);
 check('the Lawn button is what closes lawn mode', await page.evaluate(() =>
   document.querySelector('#mode-shape').getAttribute('aria-pressed') === 'false' &&
   document.querySelector('#shape-tools').hidden === true));
+
+/* ------------------------------------- the brush stops at the boundary */
+/*
+ * Painting past the property line put someone else's ground into the total,
+ * and a brush is loose by nature -- a wide stroke along the frontage picks up
+ * the verge without anyone meaning it. The detection is already trimmed to
+ * this line, so the brush honouring it is what makes the two agree.
+ *
+ * Tested by painting somewhere definitely outside: the far corner of the map,
+ * well beyond a suburban lot. Inside the line, that stroke must add nothing.
+ */
+console.log('\n--- the Add brush respects the property line ---');
+if (await page.locator('#outside-opt').isVisible()) {
+  check('the outside toggle is offered once there is a boundary', true);
+  check('and it is off by default, so the boundary is honoured',
+    (await page.locator('#toggle-outside').isChecked()) === false);
+
+  await page.click('#mode-shape');
+  await page.waitForTimeout(250);
+  await page.click('#tool-add');
+  await page.waitForTimeout(250);
+
+  const mapBox = await page.locator('#map').boundingBox();
+  const paintFarCorner = async () => {
+    const x = mapBox.x + mapBox.width * 0.06;
+    const y = mapBox.y + mapBox.height * 0.08;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + 40, y + 10, { steps: 8 });
+    await page.mouse.move(x + 70, y + 30, { steps: 8 });
+    await page.mouse.up();
+    await page.waitForTimeout(900);
+  };
+
+  const beforePaint = await page.evaluate(() => window.__lmSqft());
+  await paintFarCorner();
+  const afterPaint = await page.evaluate(() => window.__lmSqft());
+
+  check('painting outside the property line adds nothing to the total',
+    Math.abs(afterPaint - beforePaint) < 1,
+    `${Math.round(beforePaint).toLocaleString()} -> ${Math.round(afterPaint).toLocaleString()} sq ft`);
+
+  /* With the toggle on, the same stroke is allowed. */
+  await page.check('#toggle-outside');
+  await page.waitForTimeout(300);
+  await paintFarCorner();
+  const allowed = await page.evaluate(() => window.__lmSqft());
+  check('turning the toggle on lets the same stroke through',
+    allowed > afterPaint,
+    `${Math.round(afterPaint).toLocaleString()} -> ${Math.round(allowed).toLocaleString()} sq ft`);
+
+  /*
+   * And back. The detection must survive the round trip -- that is the whole
+   * reason this re-clips in place instead of asking for a fresh prediction.
+   */
+  await page.uncheck('#toggle-outside');
+  await page.waitForTimeout(1200);
+  const back = await page.evaluate(() => window.__lmSqft());
+  check('turning it off trims back to the line again',
+    Math.abs(back - afterPaint) < Math.max(50, afterPaint * 0.02),
+    `${Math.round(allowed).toLocaleString()} -> ${Math.round(back).toLocaleString()} sq ft ` +
+    `(was ${Math.round(afterPaint).toLocaleString()} before going outside)`);
+  check('and the lawn is still there — trimming is not re-detecting',
+    back > 0 && (await page.evaluate(() => window.__lmShapeCount())) > 0,
+    `${Math.round(back).toLocaleString()} sq ft still measured`);
+
+  await page.click('#mode-shape');
+  await page.waitForTimeout(200);
+}
 
 /* --------------------------------------------------- phantom midpoints */
 /*

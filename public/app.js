@@ -50,6 +50,7 @@ const state = {
   mode: null,         // 'parcel' | 'pins' | 'shape' | null -- what taps act on
   shapeTool: 'points',// within shape mode: 'points' | 'add' | 'erase'
   brushSize: 'bulk',  // 'fine' for trimming, 'bulk' for clearing
+  measureOutside: false, // may the brush paint past the property line?
 
   edgeFt: 0,          // shrink (-) or grow (+) the detected outline, in feet
   drawingParcel: false,
@@ -121,6 +122,9 @@ if (typeof window !== 'undefined') {
    */
   /* How many shapes the measurement is actually made of. */
   window.__lmShapeCount = () => (draw ? draw.getAll().features.length : 0);
+
+  /* The measured area, from the geometry rather than the formatted panel. */
+  window.__lmSqft = () => (draw ? totalSquareFeet() : 0);
 
   /*
    * What the imagery picker has actually done to the map.
@@ -924,6 +928,25 @@ function drawEraseStroke() {
     : { type: 'Feature', geometry: { type: 'LineString', coordinates: pts } });
 }
 
+/**
+ * The property line, painted into a pixel grid.
+ *
+ * One definition, used by detection to trim the AI's answer and by the brush
+ * to stop you painting over the boundary. Two copies of "which pixels are
+ * inside the lot" would be two chances to disagree about where someone's
+ * property ends, on the same screen, in the same measurement.
+ *
+ * Returns null when there is no boundary, which callers read as "no limit"
+ * rather than "nothing is allowed".
+ */
+function parcelRaster(w, h, project) {
+  if (!parcelRing() || !state.parcel) return null;
+  const rings = state.parcel.geometry.type === 'Polygon'
+    ? state.parcel.geometry.coordinates
+    : state.parcel.geometry.coordinates[0];
+  return rasterizePolygon(rings, w, h, project);
+}
+
 /** The brush's radius on the ground, in degrees-ish, for reach tests. */
 function brushGroundRadius() {
   const a = map.unproject([0, 0]);
@@ -1025,6 +1048,26 @@ function applyErase() {
   );
   const radius = Math.max(1, brushMetres / metresPerPixel(frame, ERASE_GRID));
 
+  /*
+   * Adding stops at the property line; erasing never needs to.
+   *
+   * Painting past the boundary put someone else's ground into the total, and
+   * because a brush stroke is loose by nature it happened by accident rather
+   * than by intent -- a wide brush run along the frontage would pick up the
+   * verge and the neighbour's grass without anyone meaning it. The line is
+   * already the thing the AI is trimmed to, so the brush honouring it makes
+   * the two agree.
+   *
+   * The toggle exists because the boundary is not always where the mowing
+   * stops: a recorded parcel often ends at the easement while the owner mows
+   * to the kerb. Extending the edge is the better answer there, because it
+   * keeps the boundary meaningful -- but the choice belongs to the person who
+   * knows the property.
+   */
+  const limit = (mode.paint && !state.measureOutside)
+    ? parcelRaster(ERASE_GRID, ERASE_GRID, project)
+    : null;
+
   const disc = (cx, cy) => {
     const r2 = radius * radius;
     const x0 = Math.max(0, Math.floor(cx - radius));
@@ -1033,7 +1076,10 @@ function applyErase() {
     const y1 = Math.min(ERASE_GRID - 1, Math.ceil(cy + radius));
     for (let y = y0; y <= y1; y++) {
       for (let x = x0; x <= x1; x++) {
-        if ((x - cx) ** 2 + (y - cy) ** 2 <= r2) keep[y * ERASE_GRID + x] = mode.paint;
+        if ((x - cx) ** 2 + (y - cy) ** 2 > r2) continue;
+        const idx = y * ERASE_GRID + x;
+        if (limit && !limit[idx]) continue; // outside the lot: not yours to add
+        keep[idx] = mode.paint;
       }
     }
   };
@@ -1087,6 +1133,77 @@ function applyErase() {
         ? `Erased. ${sections} left.`
         : 'Erased everything. Undo, or detect again.'
   );
+}
+
+/**
+ * Trim everything on the map back inside the property line.
+ *
+ * The detection SURVIVES this. That is the point of doing it here rather than
+ * by detecting again: the shapes are transformed where they stand, so going
+ * back to measuring inside the boundary costs neither the wait nor the money
+ * of a second prediction, and nothing that was already inside the line moves.
+ *
+ * Same round trip as the brush -- rasterise, intersect, re-trace -- because
+ * clipping a polygon to an arbitrary boundary is the operation that pixel grid
+ * already does exactly, including splitting one shape into several where the
+ * line cuts through it.
+ */
+function clipShapesToParcel() {
+  const features = draw.getAll().features.filter((f) => outerRing(f));
+  if (!features.length || !parcelRing()) return { trimmed: 0, before: 0, after: 0 };
+
+  let [w, s, e, n] = [Infinity, Infinity, -Infinity, -Infinity];
+  const see = ([lng, lat]) => {
+    w = Math.min(w, lng); e = Math.max(e, lng);
+    s = Math.min(s, lat); n = Math.max(n, lat);
+  };
+  for (const f of features) for (const ring of f.geometry.coordinates) ring.forEach(see);
+
+  const pad = 0.0004;
+  const bbox = [w - pad, s - pad, e + pad, n + pad];
+  const frame = {
+    lng: (bbox[0] + bbox[2]) / 2,
+    lat: (bbox[1] + bbox[3]) / 2,
+    zoom: zoomToFit(bbox, ERASE_GRID / 2),
+    size: ERASE_GRID / 2,
+  };
+  const project = (ll) => lngLatToFramePx(frame, ll, ERASE_GRID, ERASE_GRID);
+  const inside = parcelRaster(ERASE_GRID, ERASE_GRID, project);
+  if (!inside) return { trimmed: 0, before: 0, after: 0 };
+
+  const keep = new Uint8Array(ERASE_GRID * ERASE_GRID);
+  for (const f of features) {
+    const m = rasterizePolygon(f.geometry.coordinates, ERASE_GRID, ERASE_GRID, project);
+    for (let i = 0; i < keep.length; i++) if (m[i] && inside[i]) keep[i] = 1;
+  }
+
+  const data = new Uint8ClampedArray(ERASE_GRID * ERASE_GRID * 4);
+  for (let p = 0; p < keep.length; p++) {
+    const v = keep[p] ? 255 : 0;
+    data[p * 4] = data[p * 4 + 1] = data[p * 4 + 2] = v;
+    data[p * 4 + 3] = 255;
+  }
+
+  const polygons = maskToPolygons(
+    { width: ERASE_GRID, height: ERASE_GRID, data },
+    (x, y) => framePxToLngLat(frame, [x, y], ERASE_GRID, ERASE_GRID),
+    {
+      tolerance: TRACE_TOLERANCE_M / metresPerPixel(frame, ERASE_GRID),
+      maxVertices: MAX_TRACE_VERTICES,
+    }
+  );
+
+  const before = totalSquareFeet();
+  pushHistory();
+  draw.deleteAll();
+  for (const geometry of polygons) draw.add({ type: 'Feature', properties: {}, geometry });
+
+  refreshMeasurement();
+  refreshSurveyed();
+  updateSelectionButtons();
+
+  const after = totalSquareFeet();
+  return { trimmed: Math.max(0, before - after), before, after };
 }
 
 /* ------------------------------------------------------------------ undo */
@@ -1538,6 +1655,9 @@ function updatePromptHint() {
    * draw its own boundary, which is what "Draw the property line" is for.
    */
   const needsParcel = !parcelRing();
+
+  // Nothing to measure outside of until there is a boundary to be outside of.
+  $('#outside-opt').hidden = needsParcel;
 
   $('#btn-detect').disabled = !state.frame || same || needsPins || needsParcel;
   $('#btn-detect').textContent = same
@@ -3290,11 +3410,31 @@ function refreshSurveyed() {
 }
 
 /** Seed an editable shape from the parcel boundary. */
+/**
+ * Start the measurement from the property line.
+ *
+ * REPLACES what is on the map. It used to add, which made the button a way to
+ * count your lot twice: press it with a detected lawn on screen and the whole
+ * parcel was added on top, press it again and another whole parcel went on top
+ * of that. The total climbed by an acre a tap and nothing on the map looked
+ * wrong, because the duplicate sat exactly on the original.
+ *
+ * "Started from your property line" was always what the button said it did.
+ * Now it does it.
+ */
 function useParcelShape() {
   const ring = parcelRing();
   if (!ring) return;
 
+  // Same protection detection gives: shapes on the map may be hand corrections
+  // that took real work, and replacing them silently is not the button's call.
+  if (draw.getAll().features.length && !confirm(
+    'Start again from the property line? This replaces the shapes on the map, ' +
+    'including any corrections you have made.'
+  )) return;
+
   pushHistory();
+  draw.deleteAll();
   draw.add({
     type: 'Feature',
     properties: {},
@@ -3306,6 +3446,15 @@ function useParcelShape() {
 }
 
 /* ----------------------------------------------------------- measurement */
+
+/**
+ * The measurement, as a number, from the shapes themselves.
+ *
+ * Read from the geometry rather than from the text in the panel: that text is
+ * formatted, localised and rounded, and anything comparing before with after
+ * by parsing it back is measuring the formatter.
+ */
+const totalSquareFeet = () => measure(draw.getAll()).squareFeet;
 
 function refreshMeasurement() {
   const fc = draw.getAll();
@@ -3418,6 +3567,9 @@ function reset() {
   state.mode = null;
   state.shapeTool = 'points';
   state.brushSize = 'bulk';
+  state.measureOutside = false;
+  $('#toggle-outside').checked = false;
+  $('#outside-opt').hidden = true;
   state.drawingParcel = false;
   state.edgeFt = DEFAULT_EDGE_FT;
   $('#sens-slider').value = String(DEFAULT_EDGE_FT);
@@ -3594,6 +3746,28 @@ window.addEventListener('resize', placeTip);
 
 $('#btn-png').addEventListener('click', exportPng);
 $('#btn-print').addEventListener('click', () => window.print());
+/*
+ * Going back inside the line must not cost a detection.
+ *
+ * Unticking this re-clips what is already on the map rather than asking for a
+ * fresh prediction: the AI's work is kept and simply trimmed, so switching
+ * between the two ways of measuring is free and reversible with undo.
+ */
+$('#toggle-outside').addEventListener('change', (e) => {
+  state.measureOutside = e.target.checked;
+
+  if (state.measureOutside) {
+    setStatus('Measuring outside the property line. The Add brush will paint '
+      + 'anywhere — take care not to pick up the neighbours\' grass.', 'warn');
+    return;
+  }
+
+  const { trimmed } = clipShapesToParcel();
+  setStatus(trimmed > 0
+    ? `Trimmed back to your property line — ${Math.round(trimmed).toLocaleString()} sq ft removed. Your detected lawn is kept.`
+    : 'Back inside your property line. Nothing was outside it.');
+});
+
 $('#toggle-overlay').addEventListener('change', (e) => {
   e.target.checked ? showOverlay() : hideOverlay();
 });
