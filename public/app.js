@@ -49,6 +49,8 @@ const state = {
   pins: [],           // [lng, lat] the point-prompted model is told to look at
   mode: null,         // 'parcel' | 'pins' | 'shape' | null -- what taps act on
   shapeTool: 'points',// within shape mode: 'points' | 'add' | 'erase'
+  brushSize: 'bulk',  // 'fine' for trimming, 'bulk' for clearing
+
   edgeFt: 0,          // shrink (-) or grow (+) the detected outline, in feet
   drawingParcel: false,
 };
@@ -154,6 +156,42 @@ if (typeof window !== 'undefined') {
     // Draw's own mode: 'static' means a finger cannot drag a whole shape.
     drawMode: (() => { try { return draw.getMode(); } catch { return null; } })(),
   });
+
+  /*
+   * Every shape's full outline, to the coordinate.
+   *
+   * Centroids were not enough to catch the bug this exists for: a stroke
+   * re-traced every shape on the map, so vertices everywhere shifted by a
+   * fraction of a pixel while the centroid barely moved. Comparing the actual
+   * coordinate lists is the only way to see it.
+   */
+  window.__lmRings = () => draw.getAll().features
+    .map((f) => outerRing(f))
+    .filter(Boolean)
+    .map((ring) => ring.map((p) => [...p]));
+
+  /*
+   * The brush, as both numbers that have to agree: what the preview line
+   * draws, and what the raster actually paints. The bug was that they did not.
+   */
+  window.__lmBrush = () => ({
+    size: state.brushSize,
+    diameterPx: brushDiameterPx(),
+    previewWidth: map?.getLayer('erase-stroke')
+      ? map.getPaintProperty('erase-stroke', 'line-width')
+      : null,
+  });
+
+  /* The phantom midpoints, where they are on screen, ready to be tapped. */
+  window.__lmMidpoints = () => {
+    if (!state.edgeEdit) return [];
+    const rect = map.getCanvasContainer().getBoundingClientRect();
+    return midpointHandles().map((m) => {
+      const at = map.project(m.at);
+      return { featureId: m.featureId, edgeIndex: m.edgeIndex,
+        x: rect.left + at.x, y: rect.top + at.y };
+    });
+  };
 
   /* Every shape's centroid, for proving nothing moved when it should not. */
   window.__lmCentroids = () => draw.getAll().features.map((f) => {
@@ -516,9 +554,18 @@ async function initMap() {
   map.addLayer({
     id: 'points', type: 'circle', source: 'points',
     paint: {
-      'circle-radius': ['case', ['==', ['get', 'selected'], 1], 8, 5],
+      // Phantoms are smaller and see-through: present enough to aim at,
+      // faint enough that the real corners still read as the real corners.
+      'circle-radius': [
+        'case',
+        ['==', ['get', 'selected'], 1], 8,
+        ['==', ['get', 'phantom'], 1], 4,
+        5,
+      ],
       'circle-color': ['case', ['==', ['get', 'selected'], 1], '#ff6f00', '#ffffff'],
-      'circle-stroke-width': 2,
+      'circle-opacity': ['case', ['==', ['get', 'phantom'], 1], 0.45, 1],
+      'circle-stroke-width': ['case', ['==', ['get', 'phantom'], 1], 1.5, 2],
+      'circle-stroke-opacity': ['case', ['==', ['get', 'phantom'], 1], 0.55, 1],
       'circle-stroke-color': ['case', ['==', ['get', 'selected'], 1], '#7a3500', '#2f7d32'],
     },
   });
@@ -563,6 +610,14 @@ async function initMap() {
    */
   map.on('click', () => { if (tips.stage) hideTip(); });
   map.on('dragstart', () => { if (tips.stage) hideTip(); });
+
+  /*
+   * Which segments are long enough to deserve a phantom midpoint is a question
+   * about screen pixels, so zooming changes the answer. On `moveend` rather
+   * than `move`: projecting every vertex on every animation frame is real work
+   * for a dot that nobody can tap mid-gesture anyway.
+   */
+  map.on('moveend', () => { if (state.edgeEdit) drawPoints(); });
 
   // The map moves under a fixed box, so a tip pinned to a rail button has to
   // be re-aimed when the layout changes rather than when the map pans.
@@ -751,7 +806,21 @@ async function confirmLocation() {
  * detection frame, because a hand-drawn shape can sit outside that frame and
  * would be quietly erased by the round trip.
  */
-const ERASER_RADIUS_PX = 22;   // a fingertip, near enough
+/**
+ * Brush sizes, as DIAMETERS in screen pixels.
+ *
+ * Diameters, and stated once, because the previous bug was exactly the
+ * confusion this prevents: the preview line was 24 px WIDE while the brush
+ * painted a 22 px RADIUS, so every stroke came out 44 px across -- 1.8 times
+ * the line the user had just watched themselves draw. Both numbers now come
+ * from here, and the preview is set from the same constant that drives the
+ * raster, so they cannot drift apart again.
+ *
+ * Two sizes because the job is two jobs. Rubbing out a driveway wants a
+ * roller; taking a foot off the edge of a bed wants a pencil, and one brush
+ * cannot be both without being wrong for one of them.
+ */
+const BRUSH_PX = { fine: 12, bulk: 40 };
 const ERASE_GRID = 1280;       // same resolution the detector traces at
 
 /*
@@ -787,6 +856,35 @@ const BRUSH = {
 
 let eraser = null; // the active brush, or null
 
+/** The live brush width on screen, in pixels. One number, two consumers. */
+const brushDiameterPx = () => BRUSH_PX[state.brushSize] || BRUSH_PX.bulk;
+
+/**
+ * Make the preview line exactly as wide as the brush actually paints.
+ *
+ * This is the whole fix for "it paints a strip about double the brush": the
+ * only brush the user can see is this line, so it IS the brush as far as they
+ * are concerned, and any disagreement between it and the raster is the tool
+ * lying about what it is going to do.
+ */
+function refreshBrushWidth() {
+  if (map?.getLayer('erase-stroke')) {
+    map.setPaintProperty('erase-stroke', 'line-width', brushDiameterPx());
+  }
+  for (const size of Object.keys(BRUSH_PX)) {
+    $(`#size-${size}`)?.setAttribute('aria-pressed', String(state.brushSize === size));
+  }
+}
+
+function setBrushSize(size) {
+  if (!BRUSH_PX[size]) return;
+  state.brushSize = size;
+  refreshBrushWidth();
+  setStatus(size === 'fine'
+    ? 'Fine brush. Narrow enough to trim an edge or take out a path.'
+    : 'Bulk brush. Wide, for clearing or filling a whole area quickly.');
+}
+
 function enterEraserMode(mode = 'erase') {
   const spec = BRUSH[mode] || BRUSH.erase;
   if (spec.needsShapes && !draw.getAll().features.some((f) => outerRing(f))) {
@@ -794,6 +892,7 @@ function enterEraserMode(mode = 'erase') {
     return;
   }
   eraser = { stroke: [], mode: BRUSH[mode] ? mode : 'erase' };
+  refreshBrushWidth();
   map.getCanvas().style.cursor = 'crosshair';
   setHint(spec.hint);
   setStatus(spec.status);
@@ -825,6 +924,29 @@ function drawEraseStroke() {
     : { type: 'Feature', geometry: { type: 'LineString', coordinates: pts } });
 }
 
+/** The brush's radius on the ground, in degrees-ish, for reach tests. */
+function brushGroundRadius() {
+  const a = map.unproject([0, 0]);
+  const b = map.unproject([brushDiameterPx() / 2, 0]);
+  // Longitude degrees are the wider of the two here, so using them for both
+  // axes overestimates reach slightly. Overestimating is the safe direction:
+  // it can only pull a shape INTO the re-trace that did not need it.
+  return Math.max(Math.abs(b.lng - a.lng), Math.abs(b.lat - a.lat));
+}
+
+/** The ground the stroke can affect: its extent, grown by the brush. */
+function strokeBounds(stroke, pad) {
+  let [w, s, e, n] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const [lng, lat] of stroke) {
+    w = Math.min(w, lng); e = Math.max(e, lng);
+    s = Math.min(s, lat); n = Math.max(n, lat);
+  }
+  return [w - pad, s - pad, e + pad, n + pad];
+}
+
+const boxesOverlap = (a, b) =>
+  Boolean(a && b) && a[0] <= b[2] && a[2] >= b[0] && a[1] <= b[3] && a[3] >= b[1];
+
 /**
  * Apply the stroke: paint the shapes, punch out the stroke, trace what is left.
  */
@@ -835,13 +957,35 @@ function applyErase() {
   // Erasing nothing is a no-op; adding to nothing is how you start.
   if (stroke.length < 2 || (!features.length && mode.paint === 0)) return;
 
-  // A frame around everything involved, so nothing outside it is lost.
+  /*
+   * Only re-trace what the stroke actually reached.
+   *
+   * This is the "using the brush subtly shifts every point in the whole shape"
+   * bug, and it was the round trip being applied to everything: every feature
+   * on the map was rasterised and re-traced on every stroke, so every vertex
+   * -- including those of shapes on the far side of the property that the
+   * brush never went near -- got resnapped to the pixel grid and moved a
+   * little. Corrections made by hand were quietly undone by an unrelated dab
+   * of the brush somewhere else.
+   *
+   * A feature whose bounding box does not reach the stroke cannot have been
+   * changed by it, so it is passed through untouched, vertex for vertex. The
+   * test is deliberately the coarse one: a box that overlaps but a shape that
+   * does not is merely re-traced as before, which is safe, while a box that
+   * does NOT overlap is proof of no contact.
+   */
+  const strokeBox = strokeBounds(stroke, brushGroundRadius());
+  const touched = features.filter((f) => boxesOverlap(strokeBox, geometryBounds(f.geometry)));
+  const untouched = features.filter((f) => !touched.includes(f));
+
+  // A frame around everything involved, so nothing outside it is lost. Built
+  // from the touched shapes alone, which also makes its pixels finer.
   let [w, s, e, n] = [Infinity, Infinity, -Infinity, -Infinity];
   const see = ([lng, lat]) => {
     w = Math.min(w, lng); e = Math.max(e, lng);
     s = Math.min(s, lat); n = Math.max(n, lat);
   };
-  for (const f of features) for (const ring of f.geometry.coordinates) ring.forEach(see);
+  for (const f of touched) for (const ring of f.geometry.coordinates) ring.forEach(see);
   stroke.forEach(see);
 
   const pad = 0.0004; // a few dozen metres, so nothing sits on the edge
@@ -856,7 +1000,7 @@ function applyErase() {
 
   // What the shapes cover.
   const keep = new Uint8Array(ERASE_GRID * ERASE_GRID);
-  for (const f of features) {
+  for (const f of touched) {
     const m = rasterizePolygon(f.geometry.coordinates, ERASE_GRID, ERASE_GRID, project);
     for (let i = 0; i < keep.length; i++) if (m[i]) keep[i] = 1;
   }
@@ -874,12 +1018,12 @@ function applyErase() {
    * it is actually showing rather than assuming the zoom maths agree.
    */
   const a = map.unproject([0, 0]);
-  const b = map.unproject([ERASER_RADIUS_PX, 0]);
+  const b = map.unproject([brushDiameterPx() / 2, 0]);
   const brushMetres = Math.hypot(
     (b.lng - a.lng) * 111320 * Math.cos((a.lat * Math.PI) / 180),
     (b.lat - a.lat) * 111320
   );
-  const radius = Math.max(2, brushMetres / metresPerPixel(frame, ERASE_GRID));
+  const radius = Math.max(1, brushMetres / metresPerPixel(frame, ERASE_GRID));
 
   const disc = (cx, cy) => {
     const r2 = radius * radius;
@@ -925,13 +1069,16 @@ function applyErase() {
 
   pushHistory();
   draw.deleteAll();
+  // The shapes the brush never reached go back exactly as they were, keeping
+  // every corner the user placed by hand.
+  for (const f of untouched) draw.add(f);
   for (const geometry of polygons) draw.add({ type: 'Feature', properties: {}, geometry });
 
   refreshMeasurement();
   refreshSurveyed();
   updateSelectionButtons();
 
-  const count = polygons.length;
+  const count = polygons.length + untouched.length;
   const sections = `${count} section${count > 1 ? 's' : ''}`;
   setStatus(
     mode.paint
@@ -2371,6 +2518,14 @@ function refreshRail() {
     $(id)?.setAttribute('aria-pressed',
       String(state.mode === 'shape' && state.shapeTool === tool));
   }
+
+  // Brush width belongs to the brushes, so it appears with them and not with
+  // the corner tool, where it would do nothing.
+  const sizes = $('#brush-sizes');
+  if (sizes) {
+    sizes.hidden = !(state.mode === 'shape' && state.shapeTool !== 'points');
+    if (!sizes.hidden) refreshBrushWidth();
+  }
 }
 
 /* ------------------------------------------------------------ the tips */
@@ -2631,8 +2786,25 @@ function selectNear(lngLat) {
     }
   }
 
-  if (corner) selectVertex(corner);
-  else selectEdgeNear(lngLat);
+  if (corner) return selectVertex(corner);
+
+  /*
+   * Then a phantom midpoint, which turns into a real corner where it stands.
+   *
+   * Checked after real corners and before edges: a corner is the thing you had
+   * to aim hardest at, and tapping the line generally is still how you grab a
+   * whole edge to slide it. The phantom sits in between because it is visible
+   * and small, so hitting one is a deliberate act.
+   */
+  let phantom = null;
+  for (const m of midpointHandles()) {
+    const at = map.project(m.at);
+    const px = Math.hypot(at.x - tap.x, at.y - tap.y);
+    if (px <= VERTEX_GRAB_PX && (!phantom || px < phantom.px)) phantom = { ...m, px };
+  }
+  if (phantom) return addPointAt(phantom.featureId, phantom.edgeIndex, phantom.at);
+
+  selectEdgeNear(lngLat);
 }
 
 /** Find the edge nearest a tap, across every shape, and select it. */
@@ -2756,23 +2928,33 @@ function moveSelectedVertex(lngLat) {
 }
 
 /** Add a corner where the user tapped on the selected edge. */
-function addPointOnEdge() {
-  const edit = state.edgeEdit;
-  if (!edit || edit.edgeIndex == null || !edit.tapAt) return;
-
-  const ring = ringOf(edit.featureId);
+/**
+ * Put a corner on an edge, wherever it was asked for.
+ *
+ * Shared by the phantom midpoints on the map and the button in the panel, so
+ * the two cannot drift into behaving differently -- the button is now just a
+ * second way to reach this.
+ */
+function addPointAt(featureId, edgeIndex, at) {
+  const ring = ringOf(featureId);
   if (!ring) return;
 
   pushHistory();
-  const grown = insertVertex(ring, edit.edgeIndex, edit.tapAt);
-  if (!writeRing(edit.featureId, grown)) return;
+  const grown = insertVertex(ring, edgeIndex, at);
+  if (!writeRing(featureId, grown)) return;
 
   // Select it straight away: adding a point is nearly always the first half of
   // moving it somewhere.
-  selectVertex({ featureId: edit.featureId, ring: grown, index: edit.edgeIndex + 1 });
-  setStatus('Corner added on the line. Drag it where you want it.');
+  selectVertex({ featureId, ring: grown, index: edgeIndex + 1 });
+  setStatus('Corner added. Drag it where you want it.');
   refreshMeasurement();
   refreshSurveyed();
+}
+
+function addPointOnEdge() {
+  const edit = state.edgeEdit;
+  if (!edit || edit.edgeIndex == null || !edit.tapAt) return;
+  addPointAt(edit.featureId, edit.edgeIndex, edit.tapAt);
 }
 
 /** Remove the selected corner. */
@@ -2870,23 +3052,78 @@ function handleRings() {
   return editableRings().filter((r) => r.featureId === edit.featureId);
 }
 
+/**
+ * How long a segment must look on screen before it is offered a midpoint.
+ *
+ * A traced outline can carry two hundred corners a few pixels apart, and
+ * putting a phantom between every neighbouring pair would bury the real
+ * corners under twice as many fake ones. A segment you cannot see is not a
+ * segment you want to split.
+ */
+const MIDPOINT_MIN_PX = 30;
+
+/**
+ * The phantom midpoints: one per segment long enough to be worth splitting.
+ *
+ * Tapping one adds a corner there. Before this, adding a corner meant tapping
+ * the line, then scrolling the panel below the map, then pressing "Add a
+ * corner here" -- three actions and a trip away from the thing being edited,
+ * for what every other editor on earth does with one tap on a hollow dot.
+ */
+function midpointHandles() {
+  const out = [];
+  for (const { featureId, ring } of editableRings()) {
+    const verts = openRing(ring);
+    for (let i = 0; i < verts.length; i++) {
+      const a = verts[i];
+      const b = verts[(i + 1) % verts.length];
+      const pa = map.project(a);
+      const pb = map.project(b);
+      if (Math.hypot(pb.x - pa.x, pb.y - pa.y) < MIDPOINT_MIN_PX) continue;
+      out.push({
+        featureId,
+        edgeIndex: i,
+        at: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2],
+      });
+    }
+  }
+  return out;
+}
+
 function drawPoints() {
   if (!map.getSource('points')) return;
   const edit = state.edgeEdit;
   if (!edit) return map.getSource('points').setData(empty());
 
   const features = [];
-  for (const { featureId, ring } of handleRings()) {
+
+  /*
+   * Real corners, for every outline this mode can edit -- not only the one
+   * already selected. The handles are what tell you a shape is editable at
+   * all, and hiding them until after a successful tap meant the first tap was
+   * always aimed at something invisible.
+   */
+  for (const { featureId, ring } of editableRings()) {
     openRing(ring).forEach((p, i) => {
       features.push({
         type: 'Feature',
         properties: {
+          phantom: 0,
           selected: featureId === edit.featureId && i === edit.vertexIndex ? 1 : 0,
         },
         geometry: { type: 'Point', coordinates: p },
       });
     });
   }
+
+  for (const { at } of midpointHandles()) {
+    features.push({
+      type: 'Feature',
+      properties: { phantom: 1, selected: 0 },
+      geometry: { type: 'Point', coordinates: at },
+    });
+  }
+
   map.getSource('points').setData({ type: 'FeatureCollection', features });
 }
 
@@ -3156,6 +3393,7 @@ function reset() {
   state.pins = [];
   state.mode = null;
   state.shapeTool = 'points';
+  state.brushSize = 'bulk';
   state.drawingParcel = false;
   state.edgeFt = DEFAULT_EDGE_FT;
   $('#sens-slider').value = String(DEFAULT_EDGE_FT);
@@ -3271,6 +3509,10 @@ for (const mode of MODES) {
  * from Erase to Add would cost a trip back through the Lawn button, and
  * corrections alternate constantly. Lawn is the button that closes lawn mode.
  */
+for (const size of ['fine', 'bulk']) {
+  $(`#size-${size}`).addEventListener('click', () => setBrushSize(size));
+}
+
 for (const tool of ['points', 'add', 'erase']) {
   $(`#tool-${tool}`).addEventListener('click', () => {
     const live = state.mode === 'shape' && state.shapeTool === tool;

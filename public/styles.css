@@ -366,3 +366,10 @@ kbd {
   .print-figure { font-size: 26px; font-weight: 700; margin: 10px 0; }
   .print-foot { color: #666; font-size: 11px; margin-top: 18px; }
 }
+
+/* Brush width, indented under the brush it belongs to. */
+.railsize {
+  display: flex; flex-direction: column; gap: 5px;
+  margin-top: 4px; padding-top: 5px;
+  border-top: 2px solid rgba(255, 255, 255, 0.85);
+}

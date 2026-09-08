@@ -837,11 +837,111 @@ console.log(`      ${added.said}`);
 check('painting with the add brush increases the area', added.after > added.before,
   `${added.before.toLocaleString()} -> ${added.after.toLocaleString()} sq ft`);
 
+/* ------------------------------------------------------- brush width */
+/*
+ * The only brush anyone can see is the coloured line under their finger, so
+ * that line IS the brush. It used to be 24 px wide while the raster painted a
+ * 22 px RADIUS -- 44 px across, near enough double what had just been drawn,
+ * which is exactly how it was reported. The two numbers now come from one
+ * constant, and this asserts they still agree rather than trusting that.
+ */
+console.log('\n--- brush width ---');
+await page.click('#tool-erase');
+await page.waitForTimeout(300);
+
+const bulk = await page.evaluate(() => window.__lmBrush());
+check('the preview line is exactly as wide as the brush paints',
+  bulk.previewWidth === bulk.diameterPx,
+  `preview ${bulk.previewWidth} px vs brush ${bulk.diameterPx} px`);
+
+check('the size control appears with the brush', await page.locator('#brush-sizes').isVisible());
+
+await page.click('#size-fine');
+await page.waitForTimeout(250);
+const fine = await page.evaluate(() => window.__lmBrush());
+check('a fine brush is genuinely narrower', fine.diameterPx < bulk.diameterPx,
+  `fine ${fine.diameterPx} px vs bulk ${bulk.diameterPx} px`);
+check('and the preview follows it', fine.previewWidth === fine.diameterPx,
+  `preview ${fine.previewWidth} px vs brush ${fine.diameterPx} px`);
+
+/* ------------------------------- a stroke must not disturb what it missed */
+/*
+ * The reported symptom was that using a brush "subtly shifts every point in
+ * the whole shape". It did: every feature on the map was rasterised and
+ * re-traced on every stroke, so vertices far from the brush were resnapped to
+ * the pixel grid.
+ *
+ * Asserted on the coordinates themselves. A centroid barely moves when every
+ * vertex shifts a fraction of a pixel outward, so a centroid check would have
+ * passed straight through this bug.
+ */
+console.log('\n--- a stroke leaves distant shapes alone ---');
+const ringsBefore = await page.evaluate(() => window.__lmRings());
+
+if (ringsBefore.length) {
+  // Paint a small new blob in a far corner, well away from the existing lawn.
+  await page.click('#tool-add');
+  await page.waitForTimeout(250);
+  const mb = await page.locator('#map').boundingBox();
+  const fx = mb.x + mb.width * 0.10;
+  const fy = mb.y + mb.height * 0.88;
+  await page.mouse.move(fx, fy);
+  await page.mouse.down();
+  await page.mouse.move(fx + 26, fy, { steps: 6 });
+  await page.mouse.move(fx + 26, fy - 22, { steps: 6 });
+  await page.mouse.up();
+  await page.waitForTimeout(900);
+
+  const ringsAfter = await page.evaluate(() => window.__lmRings());
+  const same = (a, b) => a.length === b.length &&
+    a.every((p, i) => p[0] === b[i][0] && p[1] === b[i][1]);
+  const survived = ringsBefore.filter((ring) => ringsAfter.some((r) => same(ring, r)));
+
+  check('every shape the brush never reached is preserved to the coordinate',
+    survived.length === ringsBefore.length,
+    `${survived.length} of ${ringsBefore.length} untouched shapes came back identical`);
+}
+
 await page.click('#mode-shape');
 await page.waitForTimeout(200);
 check('the Lawn button is what closes lawn mode', await page.evaluate(() =>
   document.querySelector('#mode-shape').getAttribute('aria-pressed') === 'false' &&
   document.querySelector('#shape-tools').hidden === true));
+
+/* --------------------------------------------------- phantom midpoints */
+/*
+ * Adding a corner used to mean tapping the line, scrolling the panel below the
+ * map, and pressing a button -- three actions and a trip away from the thing
+ * being edited. A hollow dot on the line does it in one tap.
+ */
+console.log('\n--- phantom midpoints ---');
+await page.click('#mode-shape');
+await page.waitForTimeout(300);
+await page.click('#tool-points');
+await page.waitForTimeout(500);
+
+const mids = await page.evaluate(() => window.__lmMidpoints());
+check('phantom midpoints are offered on the lines', mids.length > 0, `${mids.length} shown`);
+
+if (mids.length) {
+  const cornersBefore = await page.evaluate(() =>
+    window.__lmRings().reduce((n, r) => n + r.length, 0));
+
+  const m = mids[Math.floor(mids.length / 2)];
+  await page.mouse.click(m.x, m.y);
+  await page.waitForTimeout(600);
+
+  const cornersAfter = await page.evaluate(() =>
+    window.__lmRings().reduce((n, r) => n + r.length, 0));
+
+  check('tapping one adds a corner, without opening the panel',
+    cornersAfter === cornersBefore + 1,
+    `${cornersBefore} -> ${cornersAfter} corners`);
+
+  check('and the new corner is selected, ready to drag',
+    (await page.evaluate(() => window.__lmEditable().mode)) === 'shape' &&
+    (await page.locator('#point-controls').isVisible()));
+}
 
 
 /* ------------------------------------------------------- mode isolation */
