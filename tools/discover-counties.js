@@ -413,7 +413,30 @@ async function investigate(key) {
 }
 
 const only = process.argv[2];
-const keys = only ? [only] : Object.keys(CANDIDATE_ROOTS);
+
+/*
+ * Say what is wrong, rather than throwing.
+ *
+ * A name this file does not know used to reach investigate() and die on
+ * `TEST_POINTS[key].map` with a stack trace -- from a diagnostic tool whose
+ * whole audience is someone on a phone with no way to read one. It is also the
+ * only tool here that takes a free-text name, so a typo is the expected input,
+ * not the exceptional one. `none` is accepted as a way to run the workflow for
+ * its statewide half alone.
+ */
+const known = Object.keys(CANDIDATE_ROOTS);
+if (only && only !== 'none' && !known.includes(only)) {
+  console.error(`No county called "${only}" is configured here.`);
+  console.error(`Known: ${known.join(', ')}`);
+  console.error('Or "none" to skip the county search entirely.');
+  process.exit(1);
+}
+if (only === 'none') {
+  console.log('Skipping the county search (county: none).');
+  process.exit(0);
+}
+
+const keys = only ? [only] : known;
 const found = [];
 
 for (const key of keys) {
