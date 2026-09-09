@@ -48,24 +48,23 @@ const PLAUSIBLE_ACRES = { min: 0.01, max: 160 };
  */
 const STATES = {
   washoe: 'Nevada',
-  johnston: 'North Carolina',
+  northcarolina: 'North Carolina',
 };
 
 const CANDIDATE_ROOTS = {
   /*
-   * Johnston County, North Carolina -- Smithfield, Clayton, Benson, in the
-   * Raleigh commuter belt.
+   * North Carolina, statewide, through NC OneMap.
    *
-   * North Carolina runs NC OneMap, a statewide programme that republishes
-   * county parcels, so the state may answer where the county does not. Worth
-   * trying both: a statewide layer is usually the more stable of the two.
+   * This began as a hunt for Johnston County's own server and never found one
+   * -- gis.johnstonnc.com and its variants all failed. What answered was the
+   * state, republishing every county's parcels on one layer, and that is what
+   * ships. The county roots are gone from this list because they were never
+   * the thing that worked, and leaving them would send the next person looking
+   * down the road that already turned out to be a dead end.
    */
-  johnston: [
-    'https://gis.johnstonnc.com/arcgis/rest/services',
-    'https://gis.johnstonnc.com/server/rest/services',
-    'https://maps.johnstonnc.com/arcgis/rest/services',
-    'https://gis.johnstoncountync.gov/arcgis/rest/services',
+  northcarolina: [
     'https://services.nconemap.gov/secure/rest/services',
+    'https://services.nconemap.gov/arcgis/rest/services',
     'https://nconemap.gov/arcgis/rest/services',
   ],
 

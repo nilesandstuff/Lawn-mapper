@@ -9,7 +9,17 @@ on:
   workflow_dispatch:
     inputs:
       county:
-        description: 'One county (johnston, washoe, kent, ottawa, allegan, muskegon, newaygo), or blank for all'
+        description: 'One county (washoe, kent, ottawa, allegan, muskegon, newaygo), or blank for all'
+        required: false
+        default: ''
+      statewide:
+        description: 'Also hunt for STATEWIDE parcel services (one endpoint per state)'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+      states:
+        description: 'Which states to probe, comma separated. Blank = all candidates.'
         required: false
         default: ''
 
@@ -29,3 +39,13 @@ jobs:
 
       - name: Search
         run: node tools/discover-counties.js ${{ inputs.county }}
+
+      # North Carolina turned out to publish every county's parcels from one
+      # state endpoint, which made adding the whole state a bounding box. This
+      # asks which other states do the same. Every URL it tries is a guess;
+      # the point of running it is to find out which guesses are right.
+      - name: Hunt for statewide parcel services
+        if: inputs.statewide == 'true'
+        env:
+          STATES: ${{ inputs.states }}
+        run: node tools/probe-statewide.js

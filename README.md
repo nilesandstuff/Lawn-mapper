@@ -368,15 +368,36 @@ dots and stop being marked once an edge moves them.
 
 ## County coverage
 
-Verified live, each confirmed by a point query returning a real parcel:
+Each confirmed by a point query that returned a real parcel:
 
-| County | Status |
+| Area | Source |
 |---|---|
-| Kent | working — `gis.kentcountymi.gov`, `agisprod` → `FGDBParcels` layer 0 |
-| Ottawa | working — `gis.miottawa.org`, `AR_ParcelSearch_gdb` layer 6 |
-| Allegan | working — `gis.allegancounty.org`, `Parcel_Drafter_MIL1` layer 0 |
-| Muskegon | working — `maps.muskegoncountygis.com`, `PropertyViewer` layer 23 |
-| Newaygo | no public endpoint found |
+| **North Carolina — all of it** | `services.nconemap.gov`, `NC1Map_Parcels` layer 1 |
+| Washoe County, NV | `gisweb.washoecounty.gov`, `Assessor_GSACAMA` layer 0 |
+| Kent County, MI | `gis.kentcountymi.gov`, `agisprod` → `ParcelsWithCondos` layer 0 |
+| Ottawa County, MI | `gis.miottawa.org`, `AR_ParcelSearch_gdb` layer 6 |
+| Allegan County, MI | `gis.allegancounty.org`, `Parcel_Drafter_MIL1` layer 0 |
+| Muskegon County, MI | `maps.muskegoncountygis.com`, `PropertyViewer` layer 23 |
+| Newaygo County, MI | `arcgisweb.countyofnewaygo.com`, `hosting` → `DrainsParcelsNewaygoCounty` |
+
+**North Carolina is one entry for a hundred counties**, and that was an
+accident. The hunt was for Johnston County's own server, which does not exist
+in any reachable form; what answered was NC OneMap, the state republishing
+every county's parcels on one layer with one schema. For a long time a bounding
+box around Smithfield was the only thing holding it to one county. Widening
+that box to the state was the entire change.
+
+What it does not promise is that every county is *in* there. NC OneMap carries
+what each county has submitted, so a gap returns no parcel — which the app
+already handles by offering to trace by hand. The preflight probe therefore
+tests five counties five hundred miles apart rather than five points in one
+town, because one town proves nothing about a claim this size.
+
+`tools/probe-statewide.js` (workflow **3**, tick *statewide*) asks which other
+states publish this way. Every URL in it is a guess written from recollection
+of state GIS programmes; the tool exists precisely because a plausible URL that
+answers with the wrong layer is indistinguishable from a working one until you
+ask it for a house and measure what comes back.
 
 Every endpoint in this project's first version had already gone stale, so
 treat the table as perishable and re-run the discovery workflow when lookups

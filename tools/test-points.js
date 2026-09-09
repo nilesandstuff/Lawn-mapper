@@ -17,13 +17,25 @@
  * Prefer ordinary residential addresses well inside the county.
  */
 export const TEST_POINTS = {
-  // Johnston County, North Carolina. Clayton is the fast-growing Raleigh
-  // commuter end, Smithfield the county seat, Benson the rural south -- three
-  // different eras of platting, which is what a parcel layer tends to differ on.
-  johnston: [
-    { lng: -78.4560, lat: 35.6510, label: 'Clayton' },
-    { lng: -78.3450, lat: 35.5100, label: 'Smithfield' },
-    { lng: -78.5440, lat: 35.3830, label: 'Benson' },
+  /*
+   * North Carolina, spread across the whole state on purpose.
+   *
+   * This entry covers all hundred counties through NC OneMap, so testing it in
+   * one town would prove almost nothing about the claim being made. These are
+   * five different counties, five hundred miles apart, in five different
+   * assessors' offices -- because NC OneMap is the state REPUBLISHING what
+   * each county sends it, and a county that has sent nothing is a hole that
+   * looks exactly like a working service from Raleigh.
+   *
+   * Clayton is the point the original entry was verified at, kept so a
+   * regression there is still visible.
+   */
+  northcarolina: [
+    { lng: -78.4560, lat: 35.6510, label: 'Clayton (Johnston)' },
+    { lng: -80.8300, lat: 35.2050, label: 'Charlotte (Mecklenburg)' },
+    { lng: -82.5540, lat: 35.5850, label: 'Asheville (Buncombe)' },
+    { lng: -77.8900, lat: 34.2100, label: 'Wilmington (New Hanover)' },
+    { lng: -79.8200, lat: 36.0900, label: 'Greensboro (Guilford)' },
   ],
   // Washoe County, Nevada. Reno and Sparks are the population; Incline Village
   // is included because it sits across the Carson Range on the Tahoe shore and

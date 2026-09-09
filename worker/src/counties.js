@@ -16,18 +16,29 @@
  */
 
 const COUNTIES = {
-  johnston: {
-    name: 'Johnston County',
-    fips: '37101', // North Carolina -- Smithfield, Clayton, Benson
-    /*
-     * NC OneMap, which is statewide rather than Johnston's own. The county
-     * runs no reachable public server; the state republishes every county's
-     * parcels on one layer, which is the more stable of the two anyway.
-     *
-     * Worth knowing: this endpoint covers ALL of North Carolina. Adding
-     * another NC county is a bbox entry and nothing else -- no discovery, no
-     * new field names. The bbox is what limits us to Johnston today.
-     */
+  /*
+   * North Carolina, all of it, from one endpoint.
+   *
+   * This entry used to be "Johnston County" with a bbox around Smithfield,
+   * because that is the county that was being chased when it was found. But
+   * the service was never Johnston's -- the county runs no reachable public
+   * server, and NC OneMap is the state republishing EVERY county's parcels on
+   * one layer with one schema. The bbox was the only thing holding it to one
+   * county, so the bbox is now the state.
+   *
+   * That makes this the first entry here that is not a county at all, which is
+   * why `name` reads as a state: it is what the status line quotes as the
+   * source of a measurement, and calling it a county would be a lie about
+   * where the number came from.
+   *
+   * Not every one of the hundred counties is promised. NC OneMap's coverage
+   * depends on what each county has submitted to the state, and a gap returns
+   * no parcel, which the app already handles by offering to trace by hand.
+   * Verified at Benson; the rest is the state's claim, not a measurement.
+   */
+  northcarolina: {
+    name: 'North Carolina (NC OneMap)',
+    statewide: true,
     service: 'https://services.nconemap.gov/secure/rest/services/NC1Map_Parcels/FeatureServer',
     layer: 1, // Parcels (polys)
     // North Carolina's standard parcel schema. The discovery tool could not
@@ -145,7 +156,14 @@ const COUNTIES = {
  * [minLng, minLat, maxLng, maxLat]
  */
 const COUNTY_BBOX = {
-  johnston: [-78.70, 35.20, -78.00, 35.85],
+  /*
+   * The whole state, corner to corner: the Atlantic at Cape Hatteras out to
+   * the Tennessee line, and the Virginia line down to South Carolina and
+   * Georgia. Generous on purpose, like every box here -- a point that falls in
+   * the sea or over the border costs one query that returns nothing, and the
+   * app then offers to trace by hand, which is what it would have done anyway.
+   */
+  northcarolina: [-84.40, 33.75, -75.35, 36.62],
   // Washoe runs the full height of Nevada, from Lake Tahoe to the Oregon line.
   // Almost all of it is empty; the population is the southern tip around Reno.
   washoe:   [-120.10, 38.98, -119.00, 42.01],

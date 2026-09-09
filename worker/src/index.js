@@ -83,10 +83,23 @@ const json = (data, status, origin) =>
 
 /* ---------------------------------------------------------------- geocode */
 /**
- * Address -> coordinates. Returns up to 5 candidates so the UI can make the
- * user confirm the right one before we spend anything on imagery. Restricted
- * to Michigan addresses; a bad geocode that lands in Ohio wastes a SAM call
- * and produces a confidently wrong number.
+ * Address -> coordinates. Returns up to 5 candidates so the user confirms the
+ * right one before anything is spent on imagery.
+ *
+ * NO PROXIMITY BIAS. There used to be one, pinned at -85.67,43.00 -- a point
+ * in West Michigan -- from when that was the entire coverage area. It is a
+ * ranking thumb on the scale, not a filter, so it never blocked anything; what
+ * it did was quietly sort a Raleigh street above or below its Michigan
+ * namesake by distance from Grand Rapids. With North Carolina statewide and
+ * Nevada in the list, that thumb is pressing for the wrong place most of the
+ * time, and it would go on doing so invisibly: the user sees five plausible
+ * addresses in a sensible-looking order and no sign that the order was decided
+ * by a constant written for a different product.
+ *
+ * Nothing replaces it. The Worker has no idea where the user is -- and
+ * guessing from the request would be worse than not guessing -- so the honest
+ * ranking is Mapbox's own, over the whole country, with the user picking from
+ * the candidates. That is what the confirm step is for.
  */
 async function handleGeocode(url, env, origin) {
   const q = (url.searchParams.get('q') || '').trim();
@@ -100,8 +113,6 @@ async function handleGeocode(url, env, origin) {
       country: 'us',
       types: 'address',
       limit: '5',
-      // Bias toward West Michigan without hard-excluding the rest of the state.
-      proximity: '-85.67,43.00',
     });
 
   const res = await fetch(endpoint);
