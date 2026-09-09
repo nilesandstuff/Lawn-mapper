@@ -47,6 +47,32 @@ const COUNTIES = {
     fields: { pin: 'parno', address: 'siteadd' },
     verified: 'live', // 0.259 ac at Benson
   },
+  /*
+   * Vermont, statewide, from VCGI's standardised parcel layer.
+   *
+   * Found by tools/probe-statewide.js, which tried twelve states and got one.
+   * The other eleven guesses were wrong in every way a guess can be: invalid
+   * URLs, services that have moved, and two that answered "Token Required" --
+   * a statewide programme can exist and still not be public, which no amount
+   * of reading about it would have settled.
+   *
+   * "Standardised" is the load-bearing word. Vermont, like North Carolina,
+   * republishes what its towns send to one schema, so this is one entry for
+   * 250-odd municipalities rather than 250 servers.
+   *
+   * The probe's own test point returned 16 acres in central Burlington, which
+   * is a campus or a park rather than a house. It is listed here because the
+   * residential points in test-points.js then answered with house-sized lots;
+   * that first number is why they exist.
+   */
+  vermont: {
+    name: 'Vermont (VCGI)',
+    statewide: true,
+    service: 'https://services1.arcgis.com/BkFxaEFNwHqX3tAw/arcgis/rest/services/FS_VCGI_OPENDATA_Cadastral_VTPARCELS_poly_standardized_parcels_SP_v1/FeatureServer',
+    layer: 0,
+    fields: { pin: 'MAPID', address: 'ADDRGL1' },
+    verified: 'probe', // upgraded to 'live' once the preflight points pass
+  },
   washoe: {
     name: 'Washoe County',
     fips: '32031', // Nevada -- Reno and Sparks
@@ -164,6 +190,11 @@ const COUNTY_BBOX = {
    * app then offers to trace by hand, which is what it would have done anyway.
    */
   northcarolina: [-84.40, 33.75, -75.35, 36.62],
+  /*
+   * Vermont, corner to corner: the Quebec line down to the Massachusetts
+   * border, and Lake Champlain across to the Connecticut River.
+   */
+  vermont:  [-73.45, 42.72, -71.46, 45.02],
   // Washoe runs the full height of Nevada, from Lake Tahoe to the Oregon line.
   // Almost all of it is empty; the population is the southern tip around Reno.
   washoe:   [-120.10, 38.98, -119.00, 42.01],
