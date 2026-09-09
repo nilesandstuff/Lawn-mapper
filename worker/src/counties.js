@@ -98,7 +98,12 @@ const COUNTIES = {
   maryland: {
     name: 'Maryland (MD iMAP)',
     statewide: true,
-    service: 'https://mdgeodata.md.gov/imap/rest/services/PlanningCadastre/MD_ParcelBoundaries/MapServer/0',
+    // The layer index is its OWN field, not part of the URL: parcel.js builds
+    // `${service}/${layer}/query`, so folding the 0 into the service produced
+    // ".../MapServer/0/undefined/query" and every Maryland address silently
+    // lost its property line. The preflight caught it; nothing else would have.
+    service: 'https://mdgeodata.md.gov/imap/rest/services/PlanningCadastre/MD_ParcelBoundaries/MapServer',
+    layer: 0,
     fields: { pin: 'ACCTID', address: 'ADDRESS' },
     verified: 'probe', // 0.109 ac Baltimore, 2.249 ac Oakland -- preflight pending
   },
@@ -113,7 +118,8 @@ const COUNTIES = {
   newhampshire: {
     name: 'New Hampshire (GRANIT)',
     statewide: true,
-    service: 'https://nhgeodata.unh.edu/hosting/rest/services/Hosted/CAD_ParcelMosaic/FeatureServer/1',
+    service: 'https://nhgeodata.unh.edu/hosting/rest/services/Hosted/CAD_ParcelMosaic/FeatureServer',
+    layer: 1,
     fields: { pin: 'pid', address: 'streetaddress' },
     verified: 'probe', // 0.122 ac at Concord -- preflight pending
   },

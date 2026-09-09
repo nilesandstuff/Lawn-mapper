@@ -392,8 +392,20 @@ if (usable.length) {
     console.log(`  ${f.key}: {`);
     console.log(`    name: '${f.state.name}',`);
     console.log('    statewide: true,');
-    console.log(`    service: '${f.best.service}',`);
-    if (f.best.layer !== null) console.log(`    layer: ${f.best.layer}, // ${f.best.layerName}`);
+    /*
+     * Always emit service and layer SEPARATELY.
+     *
+     * When a catalogue URL is already a layer endpoint (".../FeatureServer/1")
+     * this used to print it whole with no `layer:` line, and pasting that into
+     * the registry built ".../FeatureServer/1/undefined/query". Both Maryland
+     * and New Hampshire went in that way and returned nothing at every test
+     * point, looking exactly like two dead services.
+     */
+    const tail = f.best.service.match(/^(.*\/(?:Feature|Map)Server)\/(\d+)$/);
+    const service = tail ? tail[1] : f.best.service;
+    const layer = tail ? Number(tail[2]) : f.best.layer;
+    console.log(`    service: '${service}',`);
+    if (layer !== null && layer !== undefined) console.log(`    layer: ${layer}, // ${f.best.layerName}`);
     console.log(`    fields: { pin: '${f.best.pin || 'SET_ME'}', address: '${f.best.address || 'SET_ME'}' },`);
     console.log(`    verified: 'probe', // ${f.best.acres} ac at ${f.state.where}, ${f.best.farAcres} ac at ${f.state.farWhere}`);
     console.log('  },');
