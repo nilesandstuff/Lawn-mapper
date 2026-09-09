@@ -25,8 +25,14 @@ id = "REPLACE_WITH_KV_NAMESPACE_ID"
 #   npx wrangler secret put MAPBOX_TOKEN
 #   npx wrangler secret put REPLICATE_TOKEN
 
-# Uncomment after the domain is in your Cloudflare account (see DEPLOY.md
-# step 8) to serve the app on the real hostname instead of *.workers.dev.
+# Normally you do NOT edit this block. CI appends it from the CUSTOM_DOMAIN
+# repository variable (tools/ci-prepare.js), which is why moving the site to a
+# new hostname is a one-field change and not a commit -- and why ci-prepare
+# refuses to run if a [[routes]] block is already here, rather than attaching
+# the Worker to two hostnames nobody asked for.
+#
+# Uncomment only to deploy from a laptop with `npx wrangler deploy`, where
+# there is no CI to fill it in.
 # [[routes]]
-# pattern = "lawnanswers.online"
+# pattern = "lawnmap.nilesandstuff.com"
 # custom_domain = true

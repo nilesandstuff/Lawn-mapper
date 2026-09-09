@@ -6,8 +6,8 @@
  * spend the owner's quota. But "the map still loads" is weak evidence that the
  * restriction is correct, for two reasons:
  *
- *   1. The site runs on a SUBDOMAIN (lawnmap.lawnanswers.online) while the
- *      restriction names the apex (lawnanswers.online). Whether one covers the
+ *   1. The site runs on a SUBDOMAIN (lawnmap.nilesandstuff.com) while the
+ *      restriction names the apex (nilesandstuff.com). Whether one covers the
  *      other is Mapbox's rule to define, not something to assume.
  *
  *   2. This app calls Mapbox from TWO places. The browser fetches tiles and
@@ -43,7 +43,7 @@ if (!token) {
   process.exit(1);
 }
 
-const APEX = process.argv[2] || 'lawnanswers.online';
+const APEX = process.argv[2] || 'nilesandstuff.com';
 const SUB = process.argv[3] || `lawnmap.${APEX}`;
 
 if (!token.startsWith('pk.')) {

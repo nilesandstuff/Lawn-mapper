@@ -132,40 +132,64 @@ Detecting a lawn costs a couple of cents. Everything else is free.
 
 ---
 
-## Step 6 — Put it on lawnanswers.online
+## Step 6 — Put it on lawnmap.nilesandstuff.com
 
 Only do this once step 5 works.
 
-**6a. Add the domain to Cloudflare.** In the Cloudflare dashboard: **Add a
-site** → type `lawnanswers.online` → pick the **Free** plan. Cloudflare shows
-you two nameservers — leave that page open.
+The hostname is **not in the code**. It lives in one GitHub repository
+variable, which is what makes moving the site later a one-field change rather
+than a hunt through the repo.
 
-**6b. Point the domain at them.** Log in wherever you bought the domain and
-replace its nameservers with the two Cloudflare gave you. Every registrar words
-this differently ("Nameservers", "DNS settings", "Custom DNS").
+**6a. Get the domain into Cloudflare.** *If you bought the domain through
+Cloudflare Registrar, this is already done* — a domain registered with
+Cloudflare is in your account as an Active zone from the moment you buy it, so
+skip to 6b.
 
-This is the slow part: usually under an hour, occasionally up to 24. Cloudflare
-emails you when it's done.
+Otherwise: Cloudflare dashboard → **Add a site** → type your domain → **Free**
+plan. Cloudflare shows two nameservers. Log in wherever you bought the domain
+and replace its nameservers with those two — every registrar words this
+differently ("Nameservers", "DNS settings", "Custom DNS"). Usually under an
+hour, occasionally up to 24; Cloudflare emails you when it's done.
 
 **Check:** the domain shows **Active** in Cloudflare. Don't continue until it
 does — deploying early just fails.
 
-**6c. Tell the deploy to use it.** Go to:
+You do **not** need to create a DNS record for the subdomain by hand. A Workers
+custom domain makes its own record when the deploy attaches it.
+
+**6b. Tell the deploy to use it.** Go to:
 <https://github.com/nilesandstuff/Lawn-mapper/settings/variables/actions>
 
-Tap **New repository variable**:
+Tap **New repository variable** (or **edit** the existing one to move the site
+to a different host):
 
 | Name | Value |
 |---|---|
-| `CUSTOM_DOMAIN` | `lawnanswers.online` |
+| `CUSTOM_DOMAIN` | `lawnmap.nilesandstuff.com` |
 
 > A *variable*, not a secret — different tab, same page. Variables are for
 > non-secret settings.
 
-**6d.** Run **2. Deploy** again (step 4).
+Put the **exact host you want the site served on**, subdomain and all. Whatever
+you type here is the hostname Cloudflare attaches to the Worker.
 
-**Check:** <https://lawnanswers.online> loads over HTTPS. Give the certificate
-a few minutes if the first try warns about security.
+**6c.** Run **2. Deploy** again (step 4).
+
+**Check:** <https://lawnmap.nilesandstuff.com> loads over HTTPS. Give the
+certificate a few minutes if the first try warns about security.
+
+**If you are MOVING from an old domain,** two things do not happen by
+themselves:
+
+- **The old hostname stays attached.** Changing the variable adds the new
+  custom domain; it does not detach the old one, which keeps serving the app.
+  Remove it under **Workers & Pages → lawn-mapper → Settings → Domains &
+  Routes** if you want it gone, or leave it as a second front door.
+- **The Mapbox restriction still names the old domain**, which breaks the map
+  on the new one. Do step 7c again with the new host before you announce the
+  new address. This is the failure worth expecting, because of how it looks:
+  everything works right up until the map tiles, and the browser console shows
+  a 401 from Mapbox rather than anything the app says out loud.
 
 ---
 
@@ -207,8 +231,8 @@ restrictions** add the host the site actually runs on, plus the apex if you
 might serve from it later:
 
 ```
-lawnmap.lawnanswers.online
-lawnanswers.online
+lawnmap.nilesandstuff.com
+nilesandstuff.com
 ```
 
 **Check:** run workflow **7. Check the Mapbox token restriction**. It should

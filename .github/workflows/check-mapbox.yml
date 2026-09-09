@@ -9,14 +9,14 @@ on:
   workflow_dispatch:
     inputs:
       domain:
-        description: 'The domain you allowed in Mapbox (e.g. lawnanswers.online)'
+        description: 'The domain you allowed in Mapbox (e.g. nilesandstuff.com)'
         required: false
-        default: 'lawnanswers.online'
+        default: 'nilesandstuff.com'
         type: string
       site:
-        description: 'Where the site actually runs (e.g. lawnmap.lawnanswers.online)'
+        description: 'Where the site actually runs (e.g. lawnmap.nilesandstuff.com)'
         required: false
-        default: 'lawnmap.lawnanswers.online'
+        default: 'lawnmap.nilesandstuff.com'
         type: string
 
 jobs:

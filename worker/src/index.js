@@ -60,8 +60,9 @@ import { measure } from '../../public/lib/area.js';
  * deployed site is same-origin, so it never sends an Origin we have to match.
  */
 const ALLOWED_ORIGINS = [
-  'https://lawnanswers.online',
-  'https://www.lawnanswers.online',
+  'https://lawnmap.nilesandstuff.com',
+  'https://nilesandstuff.com',
+  'https://www.nilesandstuff.com',
   'http://localhost:8787',
   'http://127.0.0.1:8787',
 ];

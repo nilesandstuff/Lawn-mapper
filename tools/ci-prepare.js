@@ -18,7 +18,7 @@
  * Env:
  *   CLOUDFLARE_API_TOKEN  required, same token used to deploy
  *   KV_NAMESPACE_ID       optional; skips discovery if you already know it
- *   CUSTOM_DOMAIN         optional, e.g. lawnanswers.online
+ *   CUSTOM_DOMAIN         optional, e.g. lawnmap.nilesandstuff.com
  */
 
 import { execFileSync } from 'node:child_process';
