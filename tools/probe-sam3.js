@@ -89,6 +89,48 @@ if (unknown.length) {
  */
 const SUBTRACT = /^(1|true|yes)$/i.test(process.env.SUBTRACT || '');
 
+/**
+ * Lots whose composition is known, from the owner walking the ground.
+ *
+ * "Does this look about right" is not a test. A number is only judgeable
+ * against another number, and for subtract mode the useful one is not the
+ * lawn -- it is how much of the parcel each named concept SHOULD cover. That
+ * turns "the mask found 20.7%" from a shrug into a verdict.
+ *
+ * Brooks Lane, reported by the owner:
+ *
+ *   house                                    3,500 sq ft
+ *   house + pool + deck + driveway + beds
+ *     + the road inside the property line    9,500
+ *   woods                                   34,500
+ *   ---------------------------------------------
+ *   everything that is not lawn             44,000  = 58% of the parcel
+ *   mown lawn                              ~28,000
+ *
+ * Parcel is 76,250, so about 4,250 is unaccounted -- rough edges, and small
+ * against the quantities that matter.
+ *
+ * THE NUMBER THAT REFRAMES THE PROBLEM: the woods is 45% of this parcel and
+ * 78% of everything subtraction has to find. Buildings and paving together are
+ * 12.5%. So a subtract mask that covers ~20% of the parcel has found roughly
+ * the built area and MISSED THE WOODS ENTIRELY -- which is what the first
+ * sweep did, and it means the concept to test is trees, not buildings.
+ */
+const KNOWN_LOTS = [
+  {
+    match: /brooks\s*(lane|ln)/i,
+    label: '7315 Brooks Lane',
+    parts: [
+      ['house', 3500],
+      ['house, pool, deck, drive, beds, road', 9500],
+      ['woods', 34500],
+      ['everything not lawn', 44000],
+      ['mown lawn', 28000],
+    ],
+    notLawnSqFt: 44000,
+  },
+];
+
 const PROMPTS = process.env.PROMPTS
   ? process.env.PROMPTS.split('|').map((p) => p.trim()).filter(Boolean)
   : SUBTRACT ? [NOT_LAWN_PROMPT] : null;
@@ -119,7 +161,11 @@ const THRESHOLDS = (process.env.THRESHOLDS || '').trim()
   // model's own default for normal mode -- that being the production baseline
   // every other row has to beat -- and a sweep for subtract mode, which has no
   // baseline yet and whose shipped guess is the middle row.
-  : SUBTRACT ? ['0.2', String(SUBTRACT_THRESHOLD), '0.6'] : [''];
+  // Deduped: the shipped default is one of the sweep points, and when it was
+  // retuned onto another the sweep silently paid for the same prediction twice
+  // and printed two identical rows -- which reads exactly like a setting that
+  // is being ignored.
+  : SUBTRACT ? [...new Set(['0.1', String(SUBTRACT_THRESHOLD), '0.3'])] : [''];
 
 /*
  * Refuse an over-long prompt before spending anything.
@@ -143,6 +189,28 @@ for (const p of PROMPTS || SOURCES.map((s) => imageryPrompt(s, {}))) {
     process.exit(1);
   }
 }
+
+/*
+ * Say what is about to run, before running it.
+ *
+ * Two settings decide everything here and neither is visible in the results:
+ * the subtract tickbox, and whose prompt wins. Type "building" into the box
+ * with subtract UNTICKED and the probe obediently hunts for buildings as if
+ * they were grass, reports a small polygon, and looks for all the world like
+ * the prompt was ignored. Printing the resolved configuration turns that from
+ * a mystery into one glance.
+ */
+console.log(`mode:    ${SUBTRACT ? 'SUBTRACT (mask the not-lawn, measure the remainder)' : 'normal (mask the grass)'}`);
+console.log(`prompts: ${(PROMPTS || SOURCES.map((s) => imageryPrompt(s, {}))).map((p) => `"${p}"`).join(', ')}`);
+console.log(`         ${PROMPTS ? 'from PROMPTS' : SUBTRACT ? 'subtract default' : "each source's default"}`);
+console.log(`cuts:    ${THRESHOLDS.map((t) => t === '' ? "the model's own default" : t).join(', ')}`);
+if (PROMPTS && !SUBTRACT) {
+  console.log('');
+  console.log('NOTE  A prompt is set but subtract mode is OFF, so whatever you named');
+  console.log('      is being treated as the thing to MEASURE, not the thing to remove.');
+  console.log('      Tick "subtract" if you meant to test a not-lawn concept.');
+}
+console.log('');
 
 /** Every combination to run, as the table's rows. */
 const RUNS = [];
@@ -233,6 +301,17 @@ const frame = {
 const IMG = SIZE * 2;
 
 console.log(`parcel:  ${parcelArea.squareFeet.toLocaleString()} sq ft (${parcelArea.acres} ac) at ${picked.label}`);
+
+/* If this is a lot whose composition is known, print it: every percentage
+ * below then has something to be measured against. */
+const known = KNOWN_LOTS.find((l) => l.match.test(picked.label));
+if (known) {
+  console.log(`known:   ${known.label}, as reported by the owner --`);
+  for (const [what, sqft] of known.parts) {
+    const pct = ((sqft / parcelArea.squareFeet) * 100).toFixed(1);
+    console.log(`           ${String(sqft).padStart(6)} sq ft  ${String(pct).padStart(5)}%  ${what}`);
+  }
+}
 console.log(`frame:   z${frame.zoom} @ ${IMG}px -> ${(metresPerPixel(frame, IMG) * 100).toFixed(1)} cm/px`);
 
 /*
@@ -389,8 +468,22 @@ for (const { source, prompt, threshold } of RUNS) {
     if (bin[i] && clipMask[i]) bothPx++;
   }
   const of = SUBTRACT ? 'NOT-lawn mask' : 'mask';
+  const maskedPct = (bothPx / Math.max(1, clipPx)) * 100;
   console.log(`    ${of} covers ${((maskPx / bin.length) * 100).toFixed(1)}% of the frame; ` +
-    `${((bothPx / Math.max(1, clipPx)) * 100).toFixed(1)}% of the parcel is masked`);
+    `${maskedPct.toFixed(1)}% of the parcel is masked`);
+
+  /*
+   * Score it against the ground truth rather than against an impression.
+   * In subtract mode the masked share is the thing with a right answer, and
+   * the lawn is just its complement -- so this is where the verdict belongs.
+   */
+  if (SUBTRACT && known) {
+    const want = (known.notLawnSqFt / parcelArea.squareFeet) * 100;
+    const foundSqFt = Math.round((maskedPct / 100) * parcelArea.squareFeet);
+    console.log(`    vs truth: ${foundSqFt.toLocaleString()} sq ft masked, ` +
+      `want ~${known.notLawnSqFt.toLocaleString()} (${want.toFixed(0)}%) -- ` +
+      `${(maskedPct - want >= 0 ? '+' : '')}${(maskedPct - want).toFixed(1)} points`);
+  }
 
   if (SUBTRACT) {
     /*
