@@ -66,7 +66,14 @@ check('draw reports a usable mode', drawMode === 'simple_select', drawMode);
 /* ------------------------------------------------------------ the flow */
 await page.fill('#address', ADDRESS);
 await page.click('#address-form button[type=submit]');
-await page.waitForTimeout(4000);
+/* Same reason as the confirm below: a geocode is a network call, so wait for
+ * whichever step it lands on rather than for a guess at how long it takes. */
+await page.waitForFunction(
+  () => document.querySelector('#step-candidates')?.hidden === false
+    || document.querySelector('#step-confirm')?.hidden === false,
+  { timeout: 60000 }
+).catch(() => {});
+await page.waitForTimeout(400);
 
 const onCandidates = await page.locator('#step-candidates').isVisible();
 if (onCandidates) {
@@ -80,7 +87,25 @@ check('reached the confirm step', await page.locator('#step-confirm').isVisible(
 console.log(`      confirming: ${await page.locator('#chosen-label').textContent()}`);
 
 await page.click('[data-action=confirm]');
-await page.waitForTimeout(6000);
+/*
+ * Wait for the app to be READY, not for a guess at how long that takes.
+ *
+ * This was a flat 6000 ms, and a county GIS server is not a thing with a
+ * predictable latency: one run logged `GET /api/parcel 200 OK (6602ms)` and
+ * the test began asserting while the confirm step was still on screen. Three
+ * checks failed -- the busy overlay, the detect button, the first tip -- all
+ * reporting a working app as broken because Ottawa was half a second slower
+ * than a number someone typed.
+ *
+ * The condition is the thing to wait for. The generous ceiling costs nothing
+ * on a fast run, because it returns the moment the overlay goes.
+ */
+await page.waitForFunction(
+  () => document.querySelector('#busy')?.hidden === true
+    && document.querySelector('#step-work')?.hidden === false,
+  { timeout: 60000 }
+).catch(() => {});
+await page.waitForTimeout(1200); // let the first tip settle after the load
 
 check('reached the measure step', await page.locator('#step-work').isVisible());
 console.log(`      status: "${await page.locator('#status').textContent()}"`);
