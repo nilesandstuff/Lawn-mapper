@@ -30,6 +30,22 @@
  * off as having no public endpoint because its server runs under an
  * unguessable instance name, and it was there the whole time.
  *
+ * AND THEN THE SEARCH VERSION FOUND TEN STATES, MOST OF THEM COUNTIES.
+ *
+ * Asking at one point per state let any county service covering that state's
+ * capital pass as statewide. It "found" Ohio at gis.franklincountyohio.gov --
+ * Columbus is in Franklin County. Florida at leoncountyfl.gov; Tallahassee is
+ * in Leon County. Arizona at gis.maricopa.gov; Phoenix is in Maricopa. Each
+ * returned a house-sized parcel at the address it was asked about and would
+ * have returned nothing for most of the state.
+ *
+ * So every candidate is now asked at TWO points a long way apart -- a capital
+ * and a city at the other end of the state -- and has to answer at both. That
+ * is the difference between a county service and a statewide one, and it
+ * cannot be seen from a single query however carefully the result is measured.
+ * Oregon's "hit" was also a Public Land Survey section grid at 625 acres,
+ * which is why the acreage of both points is printed rather than summarised.
+ *
  * Free: catalogue searches and point queries. No imagery, no AI.
  *
  *   node tools/probe-statewide.js
@@ -48,36 +64,96 @@ import { measure } from '../public/lib/area.js';
  * campus or a road, exactly as two of Vermont's did. The tool says which.
  */
 const STATES = {
-  utah:          { name: 'Utah',           at: [-111.8600, 40.7350], where: 'Salt Lake City' },
-  wisconsin:     { name: 'Wisconsin',      at: [-89.3900, 43.0900],  where: 'Madison' },
-  massachusetts: { name: 'Massachusetts',  at: [-71.4180, 42.2700],  where: 'Worcester' },
-  montana:       { name: 'Montana',        at: [-111.0400, 45.6820], where: 'Bozeman' },
-  newjersey:     { name: 'New Jersey',     at: [-74.7500, 40.2300],  where: 'Trenton' },
-  maryland:      { name: 'Maryland',       at: [-76.6400, 39.3400],  where: 'Baltimore' },
-  delaware:      { name: 'Delaware',       at: [-75.5500, 39.1700],  where: 'Wilmington' },
-  connecticut:   { name: 'Connecticut',    at: [-72.6900, 41.7700],  where: 'Hartford' },
-  rhodeisland:   { name: 'Rhode Island',   at: [-71.4300, 41.8300],  where: 'Providence' },
-  tennessee:     { name: 'Tennessee',      at: [-86.8000, 36.1500],  where: 'Nashville' },
-  kentucky:      { name: 'Kentucky',       at: [-84.5100, 38.0300],  where: 'Lexington' },
-  newyork:       { name: 'New York',       at: [-73.7800, 42.6800],  where: 'Albany' },
-  virginia:      { name: 'Virginia',       at: [-77.4700, 37.5500],  where: 'Richmond' },
-  minnesota:     { name: 'Minnesota',      at: [-93.2400, 44.9600],  where: 'Minneapolis' },
-  iowa:          { name: 'Iowa',           at: [-93.6500, 41.5900],  where: 'Des Moines' },
-  arkansas:      { name: 'Arkansas',       at: [-92.3200, 34.7500],  where: 'Little Rock' },
-  oregon:        { name: 'Oregon',         at: [-123.0300, 44.9300], where: 'Salem' },
-  colorado:      { name: 'Colorado',       at: [-104.9700, 39.7200], where: 'Denver' },
-  florida:       { name: 'Florida',        at: [-84.2600, 30.4500],  where: 'Tallahassee' },
-  maine:         { name: 'Maine',          at: [-70.2700, 43.6700],  where: 'Portland' },
-  newhampshire:  { name: 'New Hampshire',  at: [-71.5400, 43.2100],  where: 'Concord' },
-  pennsylvania:  { name: 'Pennsylvania',   at: [-76.8800, 40.2700],  where: 'Harrisburg' },
-  ohio:          { name: 'Ohio',           at: [-83.0100, 39.9800],  where: 'Columbus' },
-  indiana:       { name: 'Indiana',        at: [-86.1500, 39.8000],  where: 'Indianapolis' },
-  michigan:      { name: 'Michigan',       at: [-84.5400, 42.7400],  where: 'Lansing' },
-  illinois:      { name: 'Illinois',       at: [-89.6400, 39.7900],  where: 'Springfield' },
-  washington:    { name: 'Washington',     at: [-122.9000, 47.0400], where: 'Olympia' },
-  idaho:         { name: 'Idaho',          at: [-116.2200, 43.6100], where: 'Boise' },
-  arizona:       { name: 'Arizona',        at: [-111.9200, 33.4300], where: 'Phoenix' },
-  southcarolina: { name: 'South Carolina', at: [-81.0200, 34.0300],  where: 'Columbia' },
+  utah: { name: 'Utah',
+    at: [-111.86, 40.735], where: 'Salt Lake City',
+    far: [-113.583, 37.105], farWhere: 'St George' },
+  wisconsin: { name: 'Wisconsin',
+    at: [-89.39, 43.09], where: 'Madison',
+    far: [-87.91, 44.87], farWhere: 'Green Bay' },
+  massachusetts: { name: 'Massachusetts',
+    at: [-71.418, 42.27], where: 'Worcester',
+    far: [-70.93, 42.53], farWhere: 'Salem' },
+  montana: { name: 'Montana',
+    at: [-111.04, 45.682], where: 'Bozeman',
+    far: [-104.52, 47.1], farWhere: 'Glendive' },
+  newjersey: { name: 'New Jersey',
+    at: [-74.75, 40.23], where: 'Trenton',
+    far: [-74.43, 39.36], farWhere: 'Atlantic City' },
+  maryland: { name: 'Maryland',
+    at: [-76.64, 39.34], where: 'Baltimore',
+    far: [-79.41, 39.41], farWhere: 'Oakland' },
+  delaware: { name: 'Delaware',
+    at: [-75.55, 39.17], where: 'Wilmington',
+    far: [-75.39, 38.69], farWhere: 'Georgetown' },
+  connecticut: { name: 'Connecticut',
+    at: [-72.69, 41.77], where: 'Hartford',
+    far: [-71.98, 41.4], farWhere: 'Stonington' },
+  rhodeisland: { name: 'Rhode Island',
+    at: [-71.43, 41.83], where: 'Providence',
+    far: [-71.52, 41.7], farWhere: 'West Warwick' },
+  tennessee: { name: 'Tennessee',
+    at: [-86.8, 36.15], where: 'Nashville',
+    far: [-89.97, 35.13], farWhere: 'Memphis' },
+  kentucky: { name: 'Kentucky',
+    at: [-84.51, 38.03], where: 'Lexington',
+    far: [-88.32, 36.61], farWhere: 'Murray' },
+  newyork: { name: 'New York',
+    at: [-73.78, 42.68], where: 'Albany',
+    far: [-78.86, 42.9], farWhere: 'Buffalo' },
+  virginia: { name: 'Virginia',
+    at: [-77.47, 37.55], where: 'Richmond',
+    far: [-81.97, 36.71], farWhere: 'Abingdon' },
+  minnesota: { name: 'Minnesota',
+    at: [-93.24, 44.96], where: 'Minneapolis',
+    far: [-92.1, 46.78], farWhere: 'Duluth' },
+  iowa: { name: 'Iowa',
+    at: [-93.65, 41.59], where: 'Des Moines',
+    far: [-96.4, 42.5], farWhere: 'Sioux City' },
+  arkansas: { name: 'Arkansas',
+    at: [-92.32, 34.75], where: 'Little Rock',
+    far: [-94.21, 36.33], farWhere: 'Bentonville' },
+  oregon: { name: 'Oregon',
+    at: [-123.03, 44.93], where: 'Salem',
+    far: [-117.83, 44.77], farWhere: 'Baker City' },
+  colorado: { name: 'Colorado',
+    at: [-104.97, 39.72], where: 'Denver',
+    far: [-107.88, 38.47], farWhere: 'Montrose' },
+  florida: { name: 'Florida',
+    at: [-84.26, 30.45], where: 'Tallahassee',
+    far: [-80.14, 26.12], farWhere: 'Fort Lauderdale' },
+  maine: { name: 'Maine',
+    at: [-70.27, 43.67], where: 'Portland',
+    far: [-68.77, 44.8], farWhere: 'Bangor' },
+  newhampshire: { name: 'New Hampshire',
+    at: [-71.54, 43.21], where: 'Concord',
+    far: [-71.17, 44.47], farWhere: 'Berlin' },
+  pennsylvania: { name: 'Pennsylvania',
+    at: [-76.88, 40.27], where: 'Harrisburg',
+    far: [-80.0, 40.44], farWhere: 'Pittsburgh' },
+  ohio: { name: 'Ohio',
+    at: [-83.01, 39.98], where: 'Columbus',
+    far: [-81.69, 41.48], farWhere: 'Cleveland' },
+  indiana: { name: 'Indiana',
+    at: [-86.15, 39.8], where: 'Indianapolis',
+    far: [-87.55, 37.97], farWhere: 'Evansville' },
+  michigan: { name: 'Michigan',
+    at: [-84.54, 42.74], where: 'Lansing',
+    far: [-84.34, 46.49], farWhere: 'Sault Ste Marie' },
+  illinois: { name: 'Illinois',
+    at: [-89.64, 39.79], where: 'Springfield',
+    far: [-87.68, 41.88], farWhere: 'Chicago' },
+  washington: { name: 'Washington',
+    at: [-122.9, 47.04], where: 'Olympia',
+    far: [-117.41, 47.66], farWhere: 'Spokane' },
+  idaho: { name: 'Idaho',
+    at: [-116.22, 43.61], where: 'Boise',
+    far: [-116.78, 47.68], farWhere: 'Coeur d Alene' },
+  arizona: { name: 'Arizona',
+    at: [-111.92, 33.43], where: 'Phoenix',
+    far: [-110.95, 32.22], farWhere: 'Tucson' },
+  southcarolina: { name: 'South Carolina',
+    at: [-81.02, 34.03], where: 'Columbia',
+    far: [-79.94, 32.8], farWhere: 'Charleston' },
 };
 
 const WANT = (process.env.STATES || Object.keys(STATES).join(','))
@@ -157,8 +233,31 @@ const pick = (fields, patterns) => {
   return null;
 };
 
-/** Ask one service for a parcel at the point. Returns a finding or null. */
-async function tryService(serviceUrl, [lng, lat]) {
+/** Query one layer at one point. Returns the parcel found, or null. */
+async function queryPoint(base, [lng, lat]) {
+  const q = `${base}/query?` + new URLSearchParams({
+    geometry: `${lng},${lat}`,
+    geometryType: 'esriGeometryPoint',
+    inSR: '4326', outSR: '4326',
+    spatialRel: 'esriSpatialRelIntersects',
+    outFields: '*', returnGeometry: 'true',
+    resultRecordCount: '1', f: 'json',
+  });
+  const hit = await getJson(q);
+  const feature = hit?.features?.[0];
+  if (!feature?.geometry?.rings?.length) return null;
+  return measure({
+    type: 'Polygon',
+    coordinates: feature.geometry.rings.map((r) => r.map(([x, y]) => [x, y])),
+  });
+}
+
+/**
+ * Ask one service for a parcel at BOTH points. Returns a finding or null.
+ *
+ * Both, because one is what a county service passes.
+ */
+async function tryService(serviceUrl, state) {
   const meta = await getJson(`${serviceUrl}?f=json`);
   if (!meta || meta.error) return null;
 
@@ -171,22 +270,8 @@ async function tryService(serviceUrl, [lng, lat]) {
     const info = await getJson(`${base}?f=json`);
     if (!info || !/Polygon/i.test(info.geometryType || '')) continue;
 
-    const q = `${base}/query?` + new URLSearchParams({
-      geometry: `${lng},${lat}`,
-      geometryType: 'esriGeometryPoint',
-      inSR: '4326', outSR: '4326',
-      spatialRel: 'esriSpatialRelIntersects',
-      outFields: '*', returnGeometry: 'true',
-      resultRecordCount: '1', f: 'json',
-    });
-    const hit = await getJson(q);
-    const feature = hit?.features?.[0];
-    if (!feature?.geometry?.rings?.length) continue;
-
-    const area = measure({
-      type: 'Polygon',
-      coordinates: feature.geometry.rings.map((r) => r.map(([x, y]) => [x, y])),
-    });
+    const near = await queryPoint(base, state.at);
+    if (!near) continue;
 
     /*
      * Anything enormous is a county, a township or a right-of-way, and using
@@ -194,15 +279,25 @@ async function tryService(serviceUrl, [lng, lat]) {
      * rather than judged: Vermont's first hit was 16 acres of university and
      * the layer was still the right one.
      */
-    if (area.squareFeet > 40_000_000) continue;
+    if (near.squareFeet > 40_000_000) continue;
+
+    // THE STATEWIDE TEST. A county service answers at its own county seat and
+    // nowhere else, and looks identical to a state one until you ask.
+    const far = await queryPoint(base, state.far);
+    if (!far) {
+      console.log(`      · answered at ${state.where} but NOT at ${state.farWhere}` +
+        ' — a county service, not a statewide one');
+      continue;
+    }
 
     const fields = info.fields || [];
     return {
       service: serviceUrl,
       layer: id,
       layerName: info.name || '(single layer)',
-      acres: area.acres,
-      squareFeet: area.squareFeet,
+      acres: near.acres,
+      farAcres: far.acres,
+      squareFeet: near.squareFeet,
       pin: pick(fields, PIN_PATTERNS),
       address: pick(fields, ADDR_PATTERNS),
       sample: fields.slice(0, 6).map((f) => f.name).join(', '),
@@ -219,7 +314,7 @@ const findings = [];
 for (const key of WANT) {
   const state = STATES[key];
   console.log('='.repeat(72));
-  console.log(`${key}  —  ${state.name}, testing at ${state.where}`);
+  console.log(`${key}  —  ${state.name}: must answer at ${state.where} AND ${state.farWhere}`);
 
   const candidates = await searchCatalogue(state);
   if (!candidates.length) {
@@ -233,14 +328,15 @@ for (const key of WANT) {
   let tried = 0;
   for (const c of candidates.slice(0, MAX_CANDIDATES)) {
     tried++;
-    const found = await tryService(c.url, state.at);
+    const found = await tryService(c.url, state);
     if (!found) {
       console.log(`    ✗ ${c.title} (${c.owner})`);
       continue;
     }
     console.log(`    ✓ ${c.title} (${c.owner})`);
-    console.log(`      ${found.acres} ac / ${found.squareFeet.toLocaleString()} sq ft` +
-      `  layer ${found.layer ?? '—'} "${found.layerName}"`);
+    console.log(`      ${state.where}: ${found.acres} ac` +
+      `   ${state.farWhere}: ${found.farAcres} ac` +
+      `   layer ${found.layer ?? '—'} "${found.layerName}"`);
     console.log(`      pin: ${found.pin || '(no match)'}   address: ${found.address || '(no match)'}`);
     if (!found.pin || !found.address) console.log(`      fields: ${found.sample}`);
     best = { ...found, title: c.title, owner: c.owner };
@@ -255,10 +351,10 @@ for (const key of WANT) {
 /* ------------------------------------------------------------- the verdict */
 console.log('='.repeat(72));
 const usable = findings.filter((f) => f.best);
-console.log(`${usable.length} of ${findings.length} states returned a parcel at a real address.\n`);
+console.log(`${usable.length} of ${findings.length} states answered at BOTH ends of the state.\n`);
 
 for (const f of findings) {
-  const size = f.best ? `${f.best.acres} ac` : '';
+  const size = f.best ? `${f.best.acres} ac / ${f.best.farAcres} ac` : '';
   console.log(`${f.best ? 'YES ' : ' no '} ${f.key.padEnd(15)} ${f.state.name.padEnd(16)} ${size}`);
 }
 
@@ -271,7 +367,7 @@ if (usable.length) {
     console.log(`    service: '${f.best.service}',`);
     if (f.best.layer !== null) console.log(`    layer: ${f.best.layer}, // ${f.best.layerName}`);
     console.log(`    fields: { pin: '${f.best.pin || 'SET_ME'}', address: '${f.best.address || 'SET_ME'}' },`);
-    console.log(`    verified: 'probe', // ${f.best.acres} ac at ${f.state.where}`);
+    console.log(`    verified: 'probe', // ${f.best.acres} ac at ${f.state.where}, ${f.best.farAcres} ac at ${f.state.farWhere}`);
     console.log('  },');
   }
   console.log('\nEach needs a bounding box in COUNTY_BBOX and its own residential');
