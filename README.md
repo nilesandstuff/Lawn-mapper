@@ -373,6 +373,7 @@ Each confirmed by a point query that returned a real parcel:
 | Area | Source |
 |---|---|
 | **North Carolina — all of it** | `services.nconemap.gov`, `NC1Map_Parcels` layer 1 |
+| **Vermont — all of it** | VCGI standardised parcels, `services1.arcgis.com` layer 0 |
 | Washoe County, NV | `gisweb.washoecounty.gov`, `Assessor_GSACAMA` layer 0 |
 | Kent County, MI | `gis.kentcountymi.gov`, `agisprod` → `ParcelsWithCondos` layer 0 |
 | Ottawa County, MI | `gis.miottawa.org`, `AR_ParcelSearch_gdb` layer 6 |
@@ -398,6 +399,21 @@ states publish this way. Every URL in it is a guess written from recollection
 of state GIS programmes; the tool exists precisely because a plausible URL that
 answers with the wrong layer is indistinguishable from a working one until you
 ask it for a house and measure what comes back.
+
+**It found one state in twelve.** Vermont's VCGI layer is the same
+arrangement as North Carolina's — the state republishing what its 250-odd
+municipalities submit, standardised to one schema. The other eleven guesses
+failed in every way a guess can: invalid URLs, services that have moved, and
+two that answered *Token Required*, because a statewide programme can exist
+and still not be public. Reading about them would never have settled that.
+
+Vermont's first probe hit returned **16 acres in central Burlington** — a
+campus, not a house — which cleared the sanity range while proving nothing.
+Of the four preflight points that followed, two landed on real lots (0.244 ac
+in Montpelier, 0.268 in St Johnsbury) and two on university land and a
+right-of-way. All four returned *a* parcel, which is what statewide coverage
+rests on; the acreages say more about aiming a coordinate at a town you have
+never seen.
 
 Every endpoint in this project's first version had already gone stale, so
 treat the table as perishable and re-run the discovery workflow when lookups

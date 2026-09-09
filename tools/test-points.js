@@ -50,18 +50,24 @@ export const TEST_POINTS = {
   /*
    * Vermont, in four towns across the state.
    *
-   * The probe that found this service tested one point in central Burlington
-   * and got a 16-acre parcel -- a campus or a park, not a house. That is not
-   * a failure of the service, it is a badly aimed point, and it is exactly why
-   * these are ordinary residential streets in four separate towns: what needs
-   * proving is that a HOUSE comes back, in more than one municipality, since
-   * VCGI republishes what each town submits.
+   * Montpelier and St Johnsbury are the two that landed on actual houses --
+   * 0.244 and 0.268 acres -- and they are the ones that mean something if they
+   * stop answering.
+   *
+   * The other two are kept as they are, mislanded, and labelled so. South
+   * Burlington hit university land at 49 acres and Rutland hit a right-of-way
+   * parcel at 1,843, which the probe flagged as implausible. Neither is the
+   * service failing: every one of the four returned a parcel, which is the
+   * thing statewide coverage actually rests on. Aiming a point from memory at
+   * a town you have never seen is how you land on a campus, and pretending
+   * otherwise by quietly nudging the coordinates until the numbers look tidy
+   * would make these points prove less, not more.
    */
   vermont: [
-    { lng: -73.1900, lat: 44.4560, label: 'South Burlington' },
-    { lng: -72.9720, lat: 43.6100, label: 'Rutland' },
-    { lng: -72.5750, lat: 44.2600, label: 'Montpelier' },
-    { lng: -72.0150, lat: 44.4190, label: 'St Johnsbury' },
+    { lng: -72.5750, lat: 44.2600, label: 'Montpelier (house, 0.244 ac)' },
+    { lng: -72.0150, lat: 44.4190, label: 'St Johnsbury (house, 0.268 ac)' },
+    { lng: -73.1900, lat: 44.4560, label: 'South Burlington (lands on UVM land)' },
+    { lng: -72.9720, lat: 43.6100, label: 'Rutland (lands on a right-of-way)' },
   ],
   // Washoe County, Nevada. Reno and Sparks are the population; Incline Village
   // is included because it sits across the Carson Range on the Tahoe shore and

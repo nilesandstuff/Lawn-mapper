@@ -60,10 +60,24 @@ const COUNTIES = {
    * republishes what its towns send to one schema, so this is one entry for
    * 250-odd municipalities rather than 250 servers.
    *
-   * The probe's own test point returned 16 acres in central Burlington, which
-   * is a campus or a park rather than a house. It is listed here because the
-   * residential points in test-points.js then answered with house-sized lots;
-   * that first number is why they exist.
+   * What the four preflight points actually returned, since a rounder story
+   * was written here before they were run:
+   *
+   *   Montpelier      0.244 ac   73 Main St        a real lot
+   *   St Johnsbury    0.268 ac   58 Edwards St     a real lot
+   *   South Burlington 49.1 ac   109 S Prospect St UVM land, badly aimed point
+   *   Rutland         1843 ac    pin "ROW 1"       a right-of-way
+   *
+   * So two of four are houses. The other two are not the service failing --
+   * every point returned SOMETHING, in four separate municipalities, with the
+   * field names confirmed -- they are two coordinates I picked from memory
+   * that happened to land on a university and a road corridor. Vermont towns
+   * carry right-of-way parcels the way Allegan does, and a point in one gets
+   * the whole corridor.
+   *
+   * That is enough to call this live: the layer answers statewide, and where a
+   * point lands on a house it returns that house. It is not enough to claim
+   * every town is in there, which is the same caveat North Carolina carries.
    */
   vermont: {
     name: 'Vermont (VCGI)',
@@ -71,7 +85,7 @@ const COUNTIES = {
     service: 'https://services1.arcgis.com/BkFxaEFNwHqX3tAw/arcgis/rest/services/FS_VCGI_OPENDATA_Cadastral_VTPARCELS_poly_standardized_parcels_SP_v1/FeatureServer',
     layer: 0,
     fields: { pin: 'MAPID', address: 'ADDRGL1' },
-    verified: 'probe', // upgraded to 'live' once the preflight points pass
+    verified: 'live', // 0.244 ac at 73 Main St, Montpelier
   },
   washoe: {
     name: 'Washoe County',
