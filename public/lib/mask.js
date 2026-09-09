@@ -95,7 +95,7 @@ const MOORE = [
  * transparent background, and a white-on-black opaque bitmap. Alpha wins when
  * present; luminance decides otherwise.
  */
-export function binarize(image, threshold = 128) {
+export function binarize(image, threshold = 128, { autoPolarity = true } = {}) {
   const { width, height, data } = image;
   const bin = new Uint8Array(width * height);
   let on = 0;
@@ -109,11 +109,21 @@ export function binarize(image, threshold = 128) {
     }
   }
 
-  // A mask that is almost entirely "on" is an inverted one (dark subject on a
-  // light field). Nothing we segment legitimately covers >90% of the frame --
-  // the frame is sized to the parcel, which always includes a house and a
-  // driveway -- so treat that as polarity, not as a very large lawn.
-  if (on > 0.9 * bin.length) {
+  /*
+   * A mask that is almost entirely "on" is an inverted one (dark subject on a
+   * light field). Nothing we segment legitimately covers >90% of the frame --
+   * the frame is sized to the parcel, which always includes a house and a
+   * driveway -- so treat that as polarity, not as a very large lawn.
+   *
+   * That premise is FALSE for a subtract-mode mask, which is why the caller
+   * can switch this off. When the prompt names everything that is not lawn,
+   * ">90% on" is an ordinary answer for a wooded lot, and flipping it here
+   * would hand the caller the woods to invert back into "lawn" -- a confident,
+   * silent, exactly-wrong measurement. Two plausible readings of one bitmap,
+   * and no way to tell them apart from inside this function: the caller knows
+   * what it asked for, so the caller decides.
+   */
+  if (autoPolarity && on > 0.9 * bin.length) {
     for (let p = 0; p < bin.length; p++) bin[p] ^= 1;
   }
 
@@ -432,11 +442,28 @@ export function maskToPolygons(image, unproject, options = {}) {
     // Move the edge of the mask in (negative) or out (positive), in pixels.
     // See growMask: this is the only sensitivity a hard yes/no mask has.
     growPx = 0,
+    /*
+     * The mask marks what is NOT lawn, so flip it before doing anything else.
+     *
+     * For subtract mode, where the detector is asked for buildings, trees,
+     * water and beds and the lawn is whatever is left over. Everything
+     * downstream -- growing, clipping, component ranking, hole filling -- then
+     * operates on an ordinary lawn mask and needs no idea this happened.
+     *
+     * Order is the whole trick. Inverting BEFORE the clip is what keeps the
+     * property line as the last word: the raw inverse covers the entire frame
+     * edge to edge, neighbours' land included, and it is the clip that cuts it
+     * back to this lot. Invert after clipping and you would get the lot's
+     * buildings plus the whole rest of the world.
+     */
+    invert = false,
   } = options;
 
   const { width, height } = image;
   const total = width * height;
-  let bin = binarize(image, threshold);
+  // Subtract mode has to keep the polarity it was given -- see binarize.
+  let bin = binarize(image, threshold, { autoPolarity: !invert });
+  if (invert) for (let p = 0; p < bin.length; p++) bin[p] ^= 1;
 
   /*
    * Grow before clipping, never after. Growing a mask that has already been

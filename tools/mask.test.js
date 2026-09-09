@@ -160,6 +160,65 @@ console.log(`\nframe: zoom ${FRAME.zoom} @ ${IMG}px  ->  ${MPP.toFixed(4)} m/px\
   const on = bin.reduce((s, v) => s + v, 0);
   check('near-total mask is treated as inverted', on < 0.5 * bin.length,
     `${((on / bin.length) * 100).toFixed(1)}% foreground after polarity fix`);
+
+  /*
+   * ...and that the caller can switch it off, which subtract mode depends on.
+   *
+   * The guard's premise -- "nothing we segment legitimately covers >90%" -- is
+   * false for a not-lawn mask on a wooded lot. If autoPolarity ignored the
+   * flag, this mask would be flipped here and flipped BACK by invert, and the
+   * mode would report the buildings as the lawn.
+   */
+  const kept = binarize(img, 128, { autoPolarity: false });
+  const keptOn = kept.reduce((s, v) => s + v, 0);
+  check('polarity can be left alone for subtract mode', keptOn > 0.9 * kept.length,
+    `${((keptOn / kept.length) * 100).toFixed(1)}% foreground with autoPolarity off`);
+}
+
+/* ---------------------------------------------- 6b. subtract-mode inversion */
+{
+  /*
+   * The whole mode in one check: a mask of what is NOT lawn must trace as the
+   * complement, and the property line must still be the last word.
+   *
+   * A 400x400 px "building" in the middle of the frame. Inverted, the lawn is
+   * everything else -- so the measured area has to be the CLIP area minus the
+   * building, not the building, and not the whole frame.
+   */
+  const img = blankMask(IMG, IMG);
+  paintRect(img, 440, 440, 400, 400);      // the structure the model found
+
+  const plain = maskToPolygons(img, unproject);
+  const flipped = maskToPolygons(img, unproject, { invert: true });
+
+  const areaOf = (ps) => ps.reduce((s, p) => s + geometryAreaSqM(p), 0);
+  const frameArea = (IMG * MPP) ** 2;
+  const buildingArea = (400 * MPP) ** 2;
+
+  closeTo(areaOf(plain), buildingArea, 2, 'without invert, the structure is what gets measured');
+  closeTo(areaOf(flipped), frameArea - buildingArea, 2,
+    'with invert, the lawn is the frame minus the structure');
+
+  /*
+   * The hole matters as much as the area. Inverting produces one polygon with
+   * the building as an interior ring -- not two, and not a solid rectangle
+   * that happens to have the right total. A mode that measured correctly but
+   * drew a lawn over the house would be unusable on screen.
+   */
+  check('the structure survives as a hole, not a second polygon',
+    flipped.length === 1 && flipped[0].coordinates.length === 2,
+    `${flipped.length} polygon(s), ${flipped[0]?.coordinates.length} ring(s)`);
+
+  /*
+   * And the ordering rule from maskToPolygons: invert, THEN clip. Get it
+   * backwards and the clip would be inverted too, handing back everything
+   * outside the property line.
+   */
+  const clipMask = new Uint8Array(IMG * IMG);
+  for (let y = 200; y < 1080; y++) for (let x = 200; x < 1080; x++) clipMask[y * IMG + x] = 1;
+  const clipped = maskToPolygons(img, unproject, { invert: true, clipMask });
+  closeTo(areaOf(clipped), (880 * MPP) ** 2 - buildingArea, 2,
+    'inverting happens before the clip, so the property line still bounds it');
 }
 
 /* ------------------------------------------------------ 7. vertex budgeting */

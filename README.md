@@ -208,12 +208,56 @@ view layer, because seeing where the vegetation is still tells you something.
 
 `worker/src/sam.js` holds the models as a table rather than a slug, because
 they differ in what they need from the browser rather than just in name. There
-is one entry in it.
+are two entries in it, and they run the same model with opposite questions.
 
-**Quick** is a text prompt: one press, every patch in the frame at once,
-including the disconnected ones a person would forget. What it cannot do is be
-argued with — when it decides a shaded strip is not grass, there is no way to
-say otherwise.
+**Quick** is a text prompt for `grass`: one press, every patch in the frame at
+once, including the disconnected ones a person would forget. What it cannot do
+is be argued with — when it decides a shaded strip is not grass, there is no
+way to say otherwise.
+
+**Subtract** asks for `building, roof, driveway, road, sidewalk, parking lot,
+tree, woods, forest, shrub, swimming pool, water, garden bed, mulch bed, car`
+and the browser flips the mask, taking the lawn as the remainder.
+
+It exists for a failure that is not a threshold problem. Warm-season turf —
+bermuda, zoysia, St Augustine — goes straw-brown when dormant, and imagery
+flown in that season shows a lawn the detector does not recognise as grass at
+all. Lowering the cut finds more of a thing the model is looking for; it does
+not make the model look for a different thing, so a dormant lawn can score near
+zero at any threshold. A house, a driveway and a treeline look like themselves
+whatever the season, so subtract mode names those instead.
+
+The trade is exact and worth stating plainly: **subtraction has no concept of
+grass, so it cannot decline to measure something that is not grass.** Anything
+the prompt forgot to name becomes lawn — a gravel yard, a bare-earth field, a
+tennis court. Quick errs by missing lawn; Subtract errs by inventing it. Which
+is the better failure depends on the lot, which is why it is a second option
+rather than a replacement.
+
+Three things about it are worth knowing before trusting a number:
+
+- **Its threshold means the reverse.** `DEFAULT_THRESHOLD` is 0.05 because
+  being inclusive about grass is the safe way to be wrong. Asked "is this a
+  building", that same number is inclusive about *buildings*, and everything it
+  is confident about gets erased from the lawn. The safe direction is not a
+  value, it is *toward more lawn* — so Subtract sits at 0.4, in its own
+  `SAM_SUBTRACT_THRESHOLD` variable, and the two cannot be retuned by accident
+  through one setting.
+- **The polarity guard had to be switched off for it.** `binarize` treats a
+  mask covering >90% of the frame as an inverted one, on the premise that
+  nothing we segment legitimately covers that much. For a *not-lawn* mask on a
+  wooded lot that premise is false, and left on it would flip the mask before
+  `invert` flipped it back — handing back the woods as lawn, confidently and
+  silently.
+- **Its central assumption is unverified.** Whether this model reads a
+  comma-separated list as fifteen concepts or one confused phrase is not
+  documented and not knowable offline. Workflow **5** with **subtract** ticked
+  answers it: the "% of the parcel masked" line is the tell. Near zero means
+  the list did not resolve, and the inverted lawn below it is the whole lot.
+
+Every threshold number elsewhere in this repo came from a lot with a known
+answer. Subtract mode has no such table yet — 0.4 is a starting point chosen
+for its direction, not a finding.
 
 **Precise** took pins, and has been removed. Of every model
 `tools/find-sam-model.js` could reach, exactly three accepted point prompts:

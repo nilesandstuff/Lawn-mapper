@@ -20,6 +20,58 @@ export const SAM_INPUT_FIELDS = [
 ];
 
 /**
+ * What subtract mode asks for: everything a lawn is not.
+ *
+ * Ordered roughly by how much of a typical lot each covers, which costs
+ * nothing and makes the list readable. The reasoning behind the membership:
+ *
+ *   - "building", "roof", "driveway", "road", "sidewalk", "parking lot"
+ *     rather than one "man-made structures". Concept segmentation answers
+ *     nouns it can picture; an abstract category is a worse handle on a
+ *     driveway than the word driveway. Paved surfaces are listed separately
+ *     because they are the largest non-lawn area on most suburban lots and
+ *     the one a "structures" prompt is most likely to walk past.
+ *   - "swimming pool" as well as "water": a pool is not what a model pictures
+ *     for a body of water, and it is the one that turns up in back gardens.
+ *   - "garden bed" and "mulch bed" for landscape beds, plus "shrub", since a
+ *     planting bed is often read as its plants rather than as a bed.
+ *   - "car" because a driveway with a car on it is otherwise a car-shaped
+ *     island of lawn.
+ *
+ * Whether this model takes a comma-separated list as several concepts or as
+ * one confused phrase is NOT KNOWN, and it is the assumption this whole mode
+ * rests on. tools/probe-sam3.js with SUBTRACT=1 answers it against a real lot:
+ * if a list works, the mask covers the house AND the trees AND the drive; if
+ * it does not, expect one of them, or nothing.
+ *
+ * Overridable with SAM_NOT_LAWN_PROMPT, because this list is a guess that
+ * wants retuning against real lots and should not need a deploy to change.
+ */
+export const NOT_LAWN_PROMPT = [
+  'building', 'roof', 'driveway', 'road', 'sidewalk', 'parking lot',
+  'tree', 'woods', 'forest', 'shrub',
+  'swimming pool', 'water', 'garden bed', 'mulch bed', 'car',
+].join(', ');
+
+/**
+ * The confidence cut for subtract mode, where it means the OPPOSITE thing.
+ *
+ * DEFAULT_THRESHOLD is 0.05 because being inclusive about grass is the safe
+ * way to be wrong: a stray patch is visible and one tap to delete, a missing
+ * one is invisible. Reuse that number here and the same instinct produces the
+ * opposite behaviour -- 0.05 is inclusive about BUILDINGS, and everything
+ * subtract mode is confident about gets erased from the lawn. The safe
+ * direction is not a value, it is "toward more lawn", and which value that is
+ * depends on which question was asked.
+ *
+ * So this sits high instead: only things the model is fairly sure are not
+ * lawn are taken out. 0.4 is a starting point chosen for that direction, near
+ * the model's own 0.5 default, and it is a guess -- unlike DEFAULT_THRESHOLD,
+ * no lot with a known answer has ranged over it yet.
+ */
+export const SUBTRACT_THRESHOLD = 0.4;
+
+/**
  * How to ask.
  *
  * A table rather than a slug because models differ in what they need from the
@@ -46,6 +98,55 @@ export const MODELS = {
     }),
   },
 
+  /*
+   * SUBTRACT MODE. Same model, opposite question.
+   *
+   * "Grass" fails in a specific, geographic way: warm-season turf -- bermuda,
+   * zoysia, St Augustine -- goes straw-brown when dormant, and imagery flown in
+   * that season shows a lawn the detector does not recognise as grass at all.
+   * Not a threshold problem this time. Lowering the cut finds more of a thing
+   * the model is looking for; it does not make the model look for a different
+   * thing. A dormant lawn can score near zero on "grass" at any threshold.
+   *
+   * So stop asking. A house, a driveway, a treeline, a pool and a mulch bed all
+   * look like themselves whatever the season -- their appearance does not
+   * depend on the grass being green. Name those, and take the lawn as the
+   * remainder.
+   *
+   * WHAT THIS TRADES AWAY. Subtraction has no concept of grass, so it cannot
+   * decline to measure something that is not grass. Anything the prompt forgot
+   * to name becomes lawn: a gravel yard, a bare-earth field, a tennis court, a
+   * neighbour's roof the clip did not reach. "Quick" errs by missing lawn;
+   * this errs by inventing it. Which is the better failure depends entirely on
+   * the lot, which is why this is a second option and not a replacement.
+   *
+   * NOT YET MEASURED. Every number in this file elsewhere came from a real lot
+   * with a known answer. There is no such table for this mode yet, and the
+   * threshold below is a starting point rather than a finding. Run
+   * tools/probe-sam3.js with SUBTRACT=1 against a dormant-season lot to get
+   * one, and put the numbers here when they exist.
+   */
+  sam3_subtract: {
+    slug: 'mattsays/sam3-image',
+    label: 'Subtract',
+    note: 'For brown or dormant grass. Finds the buildings, trees and beds instead, and calls the rest lawn.',
+    needsPoints: false,
+    // Tells the browser to flip the mask before tracing. See maskToPolygons.
+    invert: true,
+    prompt: NOT_LAWN_PROMPT,
+    promptVar: 'SAM_NOT_LAWN_PROMPT',
+    threshold: SUBTRACT_THRESHOLD,
+    thresholdVar: 'SAM_SUBTRACT_THRESHOLD',
+    fields: SAM_INPUT_FIELDS,
+    input: (image, { prompt, threshold }) => ({
+      image,
+      prompt,
+      mask_only: true,
+      save_overlay: false,
+      return_zip: false,
+      threshold,
+    }),
+  },
 };
 
 /*
@@ -68,11 +169,38 @@ export const DEFAULT_MODEL = 'sam3';
 export const normaliseModel = (value) =>
   Object.prototype.hasOwnProperty.call(MODELS, value) ? value : DEFAULT_MODEL;
 
-/** What the browser needs to build the picker, without a second copy of it. */
+/**
+ * What the browser needs to build the picker, without a second copy of it.
+ *
+ * `invert` is here because the flip happens in the BROWSER, in the tracer, not
+ * on the wire: the Worker returns the same kind of mask either way. The client
+ * cannot know a mask needs inverting by looking at it -- that is the whole
+ * problem with a bitmap that is 92% white -- so the fact travels with the
+ * model description instead.
+ */
 export const modelCatalogue = () =>
   Object.entries(MODELS).map(([id, m]) => ({
-    id, label: m.label, note: m.note, needsPoints: Boolean(m.needsPoints),
+    id,
+    label: m.label,
+    note: m.note,
+    needsPoints: Boolean(m.needsPoints),
+    invert: Boolean(m.invert),
   }));
+
+/**
+ * What to ask this model to find.
+ *
+ * The provider normally owns the wording, because it depends on the picture:
+ * an infrared vegetation index has no "grass" in it to find, only vegetation.
+ * A model that carries its own prompt overrides that, because for subtract
+ * mode the wording is not a description of the imagery, it is the entire
+ * method -- asking an inverting model for "grass" would measure the house.
+ */
+export function samPrompt(modelId, providerPrompt, env) {
+  const m = MODELS[normaliseModel(modelId)];
+  if (!m.prompt) return providerPrompt;
+  return String(env?.[m.promptVar] || m.prompt).trim();
+}
 
 /**
  * How confident the model must be before it calls something grass.
@@ -145,10 +273,19 @@ export const modelCatalogue = () =>
  */
 export const DEFAULT_THRESHOLD = 0.05;
 
-/** The threshold to send, clamped to the range the model accepts. */
-export function samThreshold(env) {
-  const raw = Number(env?.SAM_THRESHOLD);
-  if (!Number.isFinite(raw)) return DEFAULT_THRESHOLD;
+/**
+ * The threshold to send, clamped to the range the model accepts.
+ *
+ * Per model, because the number means opposite things in the two modes and a
+ * single SAM_THRESHOLD would have quietly applied a grass-inclusive 0.05 to a
+ * mode where that erases the lawn. Each model names its own variable, so
+ * either can be retuned without disturbing the other.
+ */
+export function samThreshold(env, modelId = DEFAULT_MODEL) {
+  const m = MODELS[normaliseModel(modelId)];
+  const fallback = typeof m.threshold === 'number' ? m.threshold : DEFAULT_THRESHOLD;
+  const raw = Number(env?.[m.thresholdVar || 'SAM_THRESHOLD']);
+  if (!Number.isFinite(raw)) return fallback;
   return Math.min(Math.max(raw, 0), 1);
 }
 

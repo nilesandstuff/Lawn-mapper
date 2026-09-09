@@ -18,6 +18,7 @@
 import { PNG } from 'pngjs';
 import { lookupParcel } from '../worker/src/parcel.js';
 import { imageryUrl, imageryPrompt, providerFrame, PROVIDERS } from '../worker/src/imagery.js';
+import { NOT_LAWN_PROMPT, SUBTRACT_THRESHOLD } from '../worker/src/sam.js';
 import { measure, geometryAreaSqM } from '../public/lib/area.js';
 import { rasterizePolygon, maskToPolygons, binarize } from '../public/lib/mask.js';
 import {
@@ -66,9 +67,29 @@ if (unknown.length) {
  * that is not in the picture, and a comparison rigged that way would tell us
  * about the prompt rather than about the imagery.
  */
+/*
+ * SUBTRACT=1 runs the other mode: ask for everything that is NOT lawn, then
+ * flip the mask and measure the remainder.
+ *
+ * This is the mode's only source of numbers. Two things have to be true for it
+ * to work and neither is knowable without spending a prediction:
+ *
+ *   1. That the model reads a comma-separated list as SEVERAL concepts. If it
+ *      does not, the mask comes back covering one of them, or nothing, and the
+ *      inverted "lawn" is most of the lot.
+ *   2. That what it does mask is actually the buildings and trees. A mask that
+ *      is the right SIZE for the wrong reason inverts into a plausible number
+ *      with no lawn under it.
+ *
+ * The "% of the parcel masked" line answers the first. Only eyes on the
+ * overlay in the app answer the second, so treat a good number here as
+ * permission to go look, not as a result.
+ */
+const SUBTRACT = /^(1|true|yes)$/i.test(process.env.SUBTRACT || '');
+
 const PROMPTS = process.env.PROMPTS
   ? process.env.PROMPTS.split('|').map((p) => p.trim()).filter(Boolean)
-  : null;
+  : SUBTRACT ? [NOT_LAWN_PROMPT] : null;
 
 /**
  * Confidence thresholds to try.
@@ -84,8 +105,19 @@ const PROMPTS = process.env.PROMPTS
  * defaults to -- the behaviour in production today, and the baseline every
  * other row has to beat.
  */
-const THRESHOLDS = (process.env.THRESHOLDS ?? '')
-  .split(',').map((t) => t.trim());
+/*
+ * Subtract mode sweeps its own range, because the number means the reverse
+ * there: a LOW threshold is inclusive about buildings, which erases lawn. The
+ * shipped default sits in the middle of this sweep so the run says whether it
+ * was a good guess.
+ */
+const THRESHOLDS = (process.env.THRESHOLDS || '').trim()
+  ? process.env.THRESHOLDS.split(',').map((t) => t.trim())
+  // Empty, which is how the workflow passes "not specified": one run at the
+  // model's own default for normal mode -- that being the production baseline
+  // every other row has to beat -- and a sweep for subtract mode, which has no
+  // baseline yet and whose shipped guess is the middle row.
+  : SUBTRACT ? ['0.2', String(SUBTRACT_THRESHOLD), '0.6'] : [''];
 
 /** Every combination to run, as the table's rows. */
 const RUNS = [];
@@ -321,18 +353,45 @@ for (const { source, prompt, threshold } of RUNS) {
    * the mask covers a decent share of the frame but almost none of the
    * parcel, the two are misaligned -- which no amount of prompt tuning fixes.
    */
-  const bin = binarize(image);
+  // Report the mask AS RETURNED, so subtract mode's coverage figure is about
+  // the buildings it was asked for. Inverting first would print a number about
+  // the lawn and hide the only evidence of whether the prompt worked.
+  const bin = binarize(image, 128, { autoPolarity: !SUBTRACT });
   let maskPx = 0, clipPx = 0, bothPx = 0;
   for (let i = 0; i < bin.length; i++) {
     if (bin[i]) maskPx++;
     if (clipMask[i]) clipPx++;
     if (bin[i] && clipMask[i]) bothPx++;
   }
-  console.log(`    mask covers ${((maskPx / bin.length) * 100).toFixed(1)}% of the frame; ` +
+  const of = SUBTRACT ? 'NOT-lawn mask' : 'mask';
+  console.log(`    ${of} covers ${((maskPx / bin.length) * 100).toFixed(1)}% of the frame; ` +
     `${((bothPx / Math.max(1, clipPx)) * 100).toFixed(1)}% of the parcel is masked`);
 
-  const loose = maskToPolygons(image, project, {});
-  const clipped = maskToPolygons(image, project, { clipMask });
+  if (SUBTRACT) {
+    /*
+     * The tell for "the list was read as one concept, not fifteen".
+     *
+     * A suburban lot is roughly a third house, drive and trees. A NOT-lawn
+     * mask covering almost none of the parcel means the prompt found almost
+     * nothing -- and inverting nothing yields the whole lot as lawn, which is
+     * a large, confident, completely wrong number. Say so here, next to the
+     * evidence, rather than leaving a suspiciously good sq ft figure to be
+     * believed further down.
+     */
+    const pct = (bothPx / Math.max(1, clipPx)) * 100;
+    if (pct < 5) {
+      console.log('    ^^ SUSPECT: almost nothing was masked, so the inverted lawn below is');
+      console.log('       essentially the whole parcel. Most likely the prompt list did not');
+      console.log('       resolve. Try a single concept (PROMPTS="building") to find out.');
+    } else if (pct > 90) {
+      console.log('    ^^ SUSPECT: nearly the whole parcel was masked, so the inverted lawn');
+      console.log('       below is a sliver. Threshold may be far too low for this mode.');
+    }
+  }
+
+  const trace = (opts) => maskToPolygons(image, project, { ...opts, invert: SUBTRACT });
+  const loose = trace({});
+  const clipped = trace({ clipMask });
 
   const sqftOf = (ps) => Math.round(ps.reduce((s, p) => s + geometryAreaSqM(p), 0) / 0.09290304);
   const looseSqft = sqftOf(loose);
@@ -344,7 +403,12 @@ for (const { source, prompt, threshold } of RUNS) {
   console.log(`    unclipped: ${looseSqft.toLocaleString()} sq ft in ${loose.length} piece(s)`);
   console.log(`    clipped:   ${clipSqft.toLocaleString()} sq ft in ${clipped.length} piece(s)` +
     `  = ${pctOfParcel}% of the parcel, ${clippedVerts} vertices`);
-  console.log(`    outside the property line: ${(looseSqft - clipSqft).toLocaleString()} sq ft`);
+  console.log(`    outside the property line: ${(looseSqft - clipSqft).toLocaleString()} sq ft` +
+    // In subtract mode the inverse covers the frame edge to edge, so this
+    // figure is "the rest of the world" and carries no information. In normal
+    // mode a big number here means the prompt reached the neighbours' grass,
+    // which does mean something -- so don't let the same line be read as both.
+    (SUBTRACT ? '  (expected: the inverse fills the frame; the clip is what matters)' : ''));
 
   /*
    * How coarse can the outline be before the number moves?
@@ -361,7 +425,7 @@ for (const { source, prompt, threshold } of RUNS) {
   for (const metres of [0.05, 0.15, 0.3, 0.5, 0.8, 1.2]) {
     const tol = metres / mPerPx;
     for (const cap of [240, 40]) {
-      const ps = maskToPolygons(image, project, { clipMask, tolerance: tol, maxVertices: cap });
+      const ps = trace({ clipMask, tolerance: tol, maxVertices: cap });
       const verts = ps.reduce((n, p) => n + p.coordinates[0].length, 0);
       const sqft = sqftOf(ps);
       const drift = clipSqft ? (100 * (sqft - clipSqft)) / clipSqft : 0;

@@ -45,6 +45,11 @@ on:
         description: 'Address to test. Blank = a known Ottawa County house.'
         required: false
         default: ''
+      subtract:
+        description: 'Subtract mode: ask for buildings/trees/beds and measure what is left (for dormant grass)'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   probe:
@@ -96,6 +101,10 @@ jobs:
           PROMPTS: ${{ inputs.prompts }}
           THRESHOLDS: ${{ inputs.thresholds }}
           ADDRESS: ${{ inputs.address }}
+          # Leave "prompts" and "thresholds" blank with this on: subtract mode
+          # supplies its own not-lawn prompt and its own sweep, and anything
+          # typed in those boxes overrides them.
+          SUBTRACT: ${{ inputs.subtract }}
         run: node tools/probe-sam3.js
 
       # One bare prediction against the default model, for when the question is

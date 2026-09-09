@@ -20,6 +20,7 @@
 import * as entrypoint from '../worker/src/index.js';
 import {
   MODELS, DEFAULT_MODEL, DEFAULT_PROMPT, modelCatalogue, DEFAULT_THRESHOLD, samThreshold,
+  samPrompt, NOT_LAWN_PROMPT, SUBTRACT_THRESHOLD,
 } from '../worker/src/sam.js';
 import { dayKey, DAILY_LIMIT_PER_CLIENT } from '../worker/src/quota.js';
 import { upstreamReason, redactSecrets } from '../worker/src/upstream.js';
@@ -180,6 +181,83 @@ check('a nonsense override falls back rather than being sent',
 
 check('and an out-of-range one is clamped to what the model accepts',
   samThreshold({ SAM_THRESHOLD: '9' }) === 1 && samThreshold({ SAM_THRESHOLD: '-3' }) === 0);
+
+
+/* ------------------------------------------------------------ subtract mode */
+/*
+ * The second detection mode asks for everything that is NOT lawn and lets the
+ * browser take the remainder, for warm-season turf that goes brown and stops
+ * reading as "grass" at any threshold.
+ *
+ * What these guard is not the plumbing but the two places where the mode's
+ * meaning is the REVERSE of the first one's, and where a reasonable-looking
+ * change would therefore break it silently.
+ */
+check('subtract mode is offered', !!MODELS.sam3_subtract, Object.keys(MODELS).join(', '));
+
+check('it tells the browser to flip the mask',
+  MODELS.sam3_subtract.invert === true,
+  'without this the app would trace the buildings and call them the lawn');
+
+check('and that fact reaches the browser, which cannot see it in the pixels',
+  modelCatalogue().find((m) => m.id === 'sam3_subtract')?.invert === true);
+
+check('the normal model is not marked inverting',
+  modelCatalogue().find((m) => m.id === DEFAULT_MODEL)?.invert === false);
+
+/*
+ * THE DIRECTION TRAP. 0.05 is deliberately inclusive about grass, which is the
+ * safe way to be wrong when the question is "is this grass". Asked "is this a
+ * building", the same number is inclusive about BUILDINGS -- and every one it
+ * is confident about gets erased from the lawn. Same value, opposite bias.
+ *
+ * So the two modes must not share a threshold, and subtract's must sit high.
+ */
+check('subtract mode does not inherit the grass-inclusive threshold',
+  samThreshold({}, 'sam3_subtract') !== samThreshold({}, DEFAULT_MODEL),
+  `subtract ${samThreshold({}, 'sam3_subtract')} vs grass ${samThreshold({}, DEFAULT_MODEL)}`);
+
+check('and it sits high, because low here means "erase more lawn"',
+  samThreshold({}, 'sam3_subtract') >= 0.3,
+  String(samThreshold({}, 'sam3_subtract')));
+
+check('each mode is retunable without disturbing the other',
+  samThreshold({ SAM_THRESHOLD: '0.9' }, 'sam3_subtract') === SUBTRACT_THRESHOLD
+  && samThreshold({ SAM_SUBTRACT_THRESHOLD: '0.7' }, DEFAULT_MODEL) === DEFAULT_THRESHOLD,
+  'one variable moving both would make every tuning run tell you about two changes');
+
+check('the subtract override still applies and clamps',
+  samThreshold({ SAM_SUBTRACT_THRESHOLD: '0.55' }, 'sam3_subtract') === 0.55
+  && samThreshold({ SAM_SUBTRACT_THRESHOLD: '4' }, 'sam3_subtract') === 1);
+
+/*
+ * The prompt is the method here, not a description of the imagery, so the
+ * model has to outrank the provider. If the provider won, subtract mode would
+ * ask for "grass", get a grass mask, invert it, and confidently measure the
+ * house -- the exact failure this mode exists to avoid, arrived at backwards.
+ */
+check('subtract mode overrides whatever the imagery source wanted to ask',
+  samPrompt('sam3_subtract', 'grass', {}) === NOT_LAWN_PROMPT);
+
+check('and the normal model still lets the source choose its wording',
+  samPrompt(DEFAULT_MODEL, 'vegetation', {}) === 'vegetation',
+  'infrared has no "grass" in it to find, only vegetation');
+
+check('the not-lawn list is retunable without a deploy',
+  samPrompt('sam3_subtract', 'grass', { SAM_NOT_LAWN_PROMPT: 'house, tree' }) === 'house, tree');
+
+/*
+ * Paved surfaces are the largest non-lawn area on most suburban lots and the
+ * likeliest thing a "man-made structures" phrasing walks past. Naming them is
+ * the difference between subtracting a house and subtracting a property.
+ */
+for (const concept of ['building', 'driveway', 'tree', 'swimming pool']) {
+  check(`the not-lawn list names ${concept}`, NOT_LAWN_PROMPT.includes(concept));
+}
+
+check('it asks for concrete nouns rather than a category',
+  !/structure/i.test(NOT_LAWN_PROMPT),
+  'concept segmentation answers nouns it can picture; "man-made structures" is not one');
 
 
 /* ------------------------------------------------- passing an error along */

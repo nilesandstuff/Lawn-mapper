@@ -238,6 +238,15 @@ if (typeof window !== 'undefined') {
    * list (Google only exists when a key is configured for it). */
   window.__lmImageryCatalogue = () => state.imagery.map((p) => ({ ...p }));
 
+  /* The detection methods this deployment offers, which is what decides
+   * whether the picker appears at all, plus which one is selected and whether
+   * it inverts -- the flag that cannot be checked by looking at the map. */
+  window.__lmModels = () => ({
+    chosen: state.model,
+    panelVisible: !document.getElementById('model-panel').hidden,
+    options: state.models.map((m) => ({ ...m })),
+  });
+
   /* The on-map source list: what it offers, and which one is ticked. */
   window.__lmLayers = () => {
     const list = document.getElementById('layer-list');
@@ -1577,7 +1586,11 @@ function handleMapPoint(lngLat, x = null, y = null) {
  * answer.
  */
 const modelInfo = (id) =>
-  state.models.find((m) => m.id === id) || { id, label: id, needsPoints: false };
+  state.models.find((m) => m.id === id)
+  // The fallback must default `invert` to false, not leave it undefined: an
+  // unknown id already means something has gone wrong, and the safe reading of
+  // a mask you cannot identify is the literal one.
+  || { id, label: id, needsPoints: false, invert: false };
 
 const pinsWanted = () => Boolean(state.frame) && modelInfo(state.model).needsPoints;
 
@@ -1828,7 +1841,12 @@ async function detect() {
     const polygons = maskToPolygons(
       image,
       (x, y) => framePxToLngLat(rendered, [x, y], w, h),
-      { clipMask, fillGapsUnderPx, tolerance, maxVertices: MAX_TRACE_VERTICES }
+      {
+        clipMask, fillGapsUnderPx, tolerance, maxVertices: MAX_TRACE_VERTICES,
+        // Subtract mode returns a mask of what is NOT lawn. The model we just
+        // asked is the one that decides, not whatever the picker says later.
+        invert: modelInfo(model).invert,
+      }
     );
 
     if (!polygons.length) {
@@ -1862,7 +1880,12 @@ async function detect() {
     // a look-only source, and the status line has to name the real one.
     state.detectedWith = rendered.provider || provider;
     state.detectedBy = data.model || model;
-    state.lastMask = { url, frame: rendered, image };
+    // `invert` is stored with the mask, not read from the picker at re-trace
+    // time. The sensitivity slider re-traces these same pixels, and by then the
+    // user may well have changed the picker -- which must not silently reverse
+    // the polarity of a measurement already on screen.
+    state.lastMask = { url, frame: rendered, image, invert: modelInfo(model).invert };
+    refreshOverlayLabel();
     if ($('#toggle-overlay').checked) showOverlay();
     refreshSensitivity();
 
@@ -2016,6 +2039,23 @@ function showOverlay() {
 function hideOverlay() {
   if (map.getLayer('mask-overlay')) map.removeLayer('mask-overlay');
   if (map.getSource('mask-overlay')) map.removeSource('mask-overlay');
+}
+
+/**
+ * Say which way round the overlay is.
+ *
+ * This checkbox exists to catch misalignment, and it does that by inviting the
+ * eye to confirm "the white bit is on the grass". In subtract mode the white
+ * bit is on the HOUSE, and a check meant to expose a bug becomes a very
+ * convincing report of one. The mask is raw either way -- what changes is what
+ * was asked for -- so the label has to say which.
+ */
+function refreshOverlayLabel() {
+  const el = $('#overlay-label');
+  if (!el) return;
+  el.textContent = state.lastMask?.invert
+    ? 'Show the raw AI mask — in Subtract mode this covers the buildings and trees, not the lawn'
+    : 'Show the raw AI mask (alignment check)';
 }
 
 /* --------------------------------------------------------- imagery source */
@@ -2565,6 +2605,8 @@ function retrace() {
       maxVertices: MAX_TRACE_VERTICES,
       // Feet on the ground -> pixels of this particular mask.
       growPx: Math.round((state.edgeFt * 0.3048) / metresPerPixel(rendered, w)),
+      // Whatever produced these pixels, not whatever the picker says now.
+      invert: Boolean(mask.invert),
     }
   );
 

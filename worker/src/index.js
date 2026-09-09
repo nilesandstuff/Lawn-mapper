@@ -43,7 +43,7 @@ import { upstreamReason } from './upstream.js';
 // entrypoint may only export handlers, and exporting a plain constant from
 // here kills the isolate on startup.
 import {
-  MODELS, samVersion, samThreshold, normaliseModel, modelCatalogue,
+  MODELS, samVersion, samThreshold, samPrompt, normaliseModel, modelCatalogue,
 } from './sam.js';
 // Which satellite picture to use, and how to ask each source for exactly our
 // frame. Also lives outside the entrypoint, for the same reason as sam.js.
@@ -410,7 +410,12 @@ async function handleSegment(request, env, origin) {
   //
   // The wording belongs to the source: an infrared vegetation index has no
   // "grass" in it to find, only vegetation, so each provider carries its own.
-  const prompt = imageryPrompt(provider, env);
+  //
+  // Unless the MODEL owns it. Subtract mode asks for buildings and trees and
+  // lets the browser take the remainder, so for it the prompt is the method
+  // rather than a description of the picture, and the provider does not get a
+  // vote. See samPrompt.
+  const prompt = samPrompt(modelId, imageryPrompt(provider, env), env);
 
   let version;
   try {
@@ -429,7 +434,7 @@ async function handleSegment(request, env, origin) {
     },
     body: JSON.stringify({
       version,
-      input: model.input(imageUrl, { prompt, threshold: samThreshold(env), points }),
+      input: model.input(imageUrl, { prompt, threshold: samThreshold(env, modelId), points }),
     }),
   });
 

@@ -211,6 +211,54 @@ if (layerTip.visible) {
 check('no tip is left sitting over the map',
   (await page.evaluate(() => window.__lmTip().visible)) === false);
 
+/* ------------------------------------------------------ the detection modes */
+console.log('\n--- detection modes ---');
+{
+  /*
+   * The picker hides itself below two models, so adding subtract mode is the
+   * first thing that makes this UI reachable at all. Checked against the live
+   * catalogue rather than a list here: the Worker decides what is on offer.
+   */
+  const models = await page.evaluate(() => window.__lmModels());
+  const ids = models.options.map((m) => m.id);
+
+  check('the deployment offers more than one detection method', models.options.length > 1,
+    ids.join(', ') || '(none)');
+  check('so the picker is on screen', models.panelVisible);
+  check('every method is labelled and explained',
+    models.options.every((m) => m.label && m.note),
+    ids.join(', '));
+
+  const subtract = models.options.find((m) => m.id === 'sam3_subtract');
+  check('subtract mode is among them', !!subtract);
+
+  /*
+   * The flag the whole mode turns on, and the one thing here that cannot be
+   * confirmed by looking at the screen: a mask traced the wrong way round
+   * produces a perfectly plausible lawn drawn over the house.
+   */
+  check('and it arrives marked as inverting', subtract?.invert === true,
+    JSON.stringify(subtract));
+  check('while the default method is not',
+    models.options.find((m) => m.id === models.chosen)?.invert === false,
+    `chosen: ${models.chosen}`);
+
+  /* Switching must not leave the note describing the previous method. */
+  if (subtract) {
+    await page.selectOption('#model-choice', 'sam3_subtract');
+    await page.waitForTimeout(200);
+    const note = await page.textContent('#model-note');
+    check('picking it updates the description', note.trim() === subtract.note,
+      `showing: ${note.trim().slice(0, 60)}`);
+    check('and the app records the switch',
+      (await page.evaluate(() => window.__lmModels().chosen)) === 'sam3_subtract');
+
+    // Put it back: nothing after this section should be measuring inverted.
+    await page.selectOption('#model-choice', models.chosen);
+    await page.waitForTimeout(200);
+  }
+}
+
 /* ------------------------------------------------------- the Layers button */
 console.log('\n--- the Layers button ---');
 const layersBefore = await page.evaluate(() => window.__lmLayers());
