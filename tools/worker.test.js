@@ -201,25 +201,26 @@ check('it tells the browser to flip the mask',
   'without this the app would trace the buildings and call them the lawn');
 
 /*
- * AND IT IS NOT OFFERED, on measured evidence.
- *
- * At Brooks Lane the not-lawn mask floods the frame below 0.1 and vanishes by
- * 0.4; at the shipped 0.4 it returned the ENTIRE parcel as lawn in six
- * vertices. That is the worst failure available -- maximally wrong, and shaped
- * like a clean answer. Same judgement that retired the point-prompted model:
- * an option that is confidently wrong is worse than no option.
- *
- * This is the assertion that would fail if someone un-hid it without fixing
- * the prompt, so it carries the reason.
+ * AND IT IS OFFERED AGAIN, on measured evidence, having been withheld on the
+ * same basis. It reported the entire parcel while its prompt was a list; with
+ * a single word it lands within 3% of the owner's own figure for the mown
+ * area, which is closer than the default mode manages on that lot.
  */
-check('but it is withheld from the picker until the prompt works',
-  MODELS.sam3_subtract.hidden === true
-  && !modelCatalogue().some((m) => m.id === 'sam3_subtract'),
-  'at 0.4 it reported 76,079 sq ft on a lot with ~28,000 sq ft of lawn');
+check('it is offered', !MODELS.sam3_subtract.hidden
+  && modelCatalogue().some((m) => m.id === 'sam3_subtract'));
 
-check('the model that IS offered does not invert',
-  modelCatalogue().every((m) => m.invert === false),
-  modelCatalogue().map((m) => m.id).join(', '));
+/*
+ * The label has to say what it LEAVES, not just what it removes. This mode
+ * subtracts trees and nothing else, so a driveway stays in the total. That is
+ * an acceptable way to be wrong -- it is visible on the map and one tap to
+ * delete -- but only for someone who was told to look.
+ */
+check('and its note warns about what it does not remove',
+  /driveway|roof/i.test(MODELS.sam3_subtract.note), MODELS.sam3_subtract.note);
+
+check('the default model is still the non-inverting one',
+  MODELS[DEFAULT_MODEL].invert !== true
+  && modelCatalogue().find((m) => m.id === DEFAULT_MODEL)?.invert === false);
 
 check('and the browser is still told about invert for what it is offered',
   modelCatalogue().every((m) => typeof m.invert === 'boolean'),
@@ -278,17 +279,29 @@ check('the not-lawn list is retunable without a deploy',
   samPrompt('sam3_subtract', 'grass', { SAM_NOT_LAWN_PROMPT: 'house, tree' }) === 'house, tree');
 
 /*
- * Paved surfaces are the largest non-lawn area on most suburban lots and the
- * likeliest thing a "man-made structures" phrasing walks past. Naming them is
- * the difference between subtracting a house and subtracting a property.
+ * ONE CONCEPT, NOT A LIST -- the finding the whole mode turns on.
+ *
+ * Measured at Brooks Lane, all at 0.2, on a parcel 58% not-lawn with ~28,000
+ * sq ft mown:
+ *
+ *   "trees"                                     28,788 sq ft    38%
+ *   "trees, building"                           37,537          49%
+ *   "trees, building, driveway"                 76,079         100%
+ *   "trees, building, driveway, swimming pool"  76,079         100%
+ *   the original eight-item list                59,824          78%
+ *
+ * Monotonic: every word added makes it worse, and by three the mask has
+ * collapsed so the whole parcel returns as lawn. So this asserts the SHAPE of
+ * the prompt, which is the thing a well-meaning edit would undo -- adding
+ * "building" here looks like an obvious improvement and measurably is not.
  */
-for (const concept of ['building', 'driveway', 'tree', 'swimming pool']) {
-  check(`the not-lawn list names ${concept}`, NOT_LAWN_PROMPT.includes(concept));
-}
+check('the not-lawn prompt is a single concept',
+  !NOT_LAWN_PROMPT.includes(','),
+  `"${NOT_LAWN_PROMPT}" -- adding a second concept measured worse, and a third collapsed it`);
 
-check('it asks for concrete nouns rather than a category',
-  !/structure/i.test(NOT_LAWN_PROMPT),
-  'concept segmentation answers nouns it can picture; "man-made structures" is not one');
+check('and it is the one that covers the most ground',
+  /tree|wood|forest/i.test(NOT_LAWN_PROMPT),
+  'the woods was 45% of the parcel; "building" alone masked 9.2% against 58% wanted');
 
 /*
  * THE 32-TOKEN CEILING, learned the expensive way.

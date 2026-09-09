@@ -208,102 +208,76 @@ view layer, because seeing where the vegetation is still tells you something.
 
 `worker/src/sam.js` holds the models as a table rather than a slug, because
 they differ in what they need from the browser rather than just in name. There
-are two entries in it -- the same model asked opposite questions -- but only
-the first is offered.
+are two entries in it: the same model, asked opposite questions.
 
 **Quick** is a text prompt for `grass`: one press, every patch in the frame at
 once, including the disconnected ones a person would forget. What it cannot do
 is be argued with — when it decides a shaded strip is not grass, there is no
 way to say otherwise.
 
-**Subtract** asks for `building, roof, driveway, tree, shrub, swimming pool,
-garden bed, car` and the browser flips the mask, taking the lawn as the
-remainder. **It is built and it is not offered**, because it was measured and
-it does not work — see the table below.
+**Subtract trees** asks for one word — `trees` — and the browser flips the
+mask, taking the lawn as the remainder. It exists for a failure the threshold
+cannot reach: warm-season turf goes straw-brown when dormant, and imagery flown
+in that season shows a lawn the detector does not recognise as grass at all.
+Lowering the cut finds more of a thing the model is looking for; it does not
+make the model look for a different thing.
 
-It exists for a failure that is not a threshold problem. Warm-season turf —
-bermuda, zoysia, St Augustine — goes straw-brown when dormant, and imagery
-flown in that season shows a lawn the detector does not recognise as grass at
-all. Lowering the cut finds more of a thing the model is looking for; it does
-not make the model look for a different thing, so a dormant lawn can score near
-zero at any threshold. A house, a driveway and a treeline look like themselves
-whatever the season, so subtract mode names those instead.
+### One concept, not a list
 
-The trade is exact and worth stating plainly: **subtraction has no concept of
-grass, so it cannot decline to measure something that is not grass.** Anything
-the prompt forgot to name becomes lawn — a gravel yard, a bare-earth field, a
-tennis court. Quick errs by missing lawn; Subtract errs by inventing it. Which
-is the better failure depends on the lot, which is why it is a second option
-rather than a replacement.
+This mode started as a fifteen-item list of everything a lawn is not, on the
+reasoning that naming more must cover more. That reasoning is wrong for this
+model, and the measurements are not subtle. Brooks Lane, Rockford — 76,250 sq
+ft, of which the owner reports 34,500 woods, 9,500 built (house, pool, deck,
+drive, beds, road inside the line), 44,000 not-lawn in total, and ~28,000 mown.
+All at threshold 0.2:
 
-### What the measurement said
+| prompt | words | parcel masked | vs the 58% wanted | inverted lawn |
+|---|---|---|---|---|
+| `woods` | 1 | 57.2% | **−0.5 pts** | 32,768 |
+| `forest` | 1 | 58.3% | +0.6 | 31,236 |
+| `trees` | 1 | 61.5% | +3.8 | **28,788** |
+| `building` | 1 | 9.2% | −48.5 | 69,122 |
+| `trees, building` | 2 | — | — | 37,537 |
+| `trees, building, driveway` | 3 | — | — | 76,079 (whole parcel) |
+| the original 8-item list | 8 | 20.7% | −37.0 | 59,824 |
 
-Brooks Lane, Rockford: 76,250 sq ft, about 28,000 mown, about 20,000 visible
-from the air. The lot **Quick** measures at 25,059 sq ft, within roughly 10% of
-the owner's own figure.
+Monotonic. Every word added makes the answer worse, and by three the mask has
+collapsed so the entire parcel comes back as lawn. **This model resolves one
+concept per prediction.** Covering trees *and* buildings would need two
+predictions unioned, at twice the cost per detection.
 
-| threshold | parcel masked | inverted lawn | % of parcel |
-|---|---|---|---|
-| 0.02 | 100% | 0 | 0% |
-| 0.05 | 100% | 0 | 0% |
-| 0.10 | 100% | 0 | 0% |
-| 0.20 | 20.7% | 59,824 | 78% |
-| 0.40 | 0.0% | 76,079 | **100%** |
-| 0.60 | 0.0% | 76,079 | **100%** |
+`trees` is the word worth spending it on: the woods is 45% of this parcel and
+78% of everything subtraction has to remove. Its inverted lawn, 28,788 sq ft
+against a mown ~28,000, is +2.8% — where Quick gets 25,059 and is −10.5%.
 
-That is not a curve, it is a cliff with one point on the face of it. The mask
-floods the whole frame up to 0.1 and vanishes by 0.4. No setting produces a
-believable lawn: the best of them reports more than double the truth, and the
-value originally shipped as the default reported **the entire parcel**, in six
-vertices, looking exactly like a clean answer.
+**What it does not remove.** Trees, and nothing else. On this lot the house and
+drive are small enough to be lost in the rounding; on a bare suburban lot with
+a wide driveway the tarmac lands in the total. That is a visible, deletable
+error rather than an invisible one, which is why the mode ships with a label
+that tells you to check the driveway and roof.
 
-**The mechanism is not what failed.** Inversion, the polarity handling and the
-invert-then-clip order are all proven by `tools/mask.test.js`, and the mask
-lands on the parcel. What failed is the prompt. An all-or-nothing response with
-almost no middle is what a comma-separated list looks like when the model
-resolves it as one vague phrase rather than as eight concepts -- which was
-named as this mode's load-bearing assumption before any of it ran.
-
-So it is hidden rather than deleted: `hidden: true` keeps it out of the picker
-while the Worker will still run it by id, which is what the probe needs. An
-option that reports a whole parcel as lawn is worse than no option, which is
-the same judgement that retired the point-prompted model.
-
-**The next experiment is one prediction.** Run workflow **5** with **subtract**
-ticked and `building` in the prompts box. If a single noun produces a mask
-shaped like a house, the fix is a prompt -- perhaps several single-concept
-passes unioned, rather than one list. If it does not, this model cannot do
-subtraction and the mode should go the way `sam2` did.
-
-### Two things that were traps, and stay fixed either way
+### Three traps along the way
 
 - **The threshold means the reverse.** `DEFAULT_THRESHOLD` is 0.05 because
   being inclusive about grass is the safe way to be wrong. Asked "is this a
-  building", that same number is inclusive about *buildings* and erases lawn.
-  Subtract keeps its own `SAM_SUBTRACT_THRESHOLD` so the two cannot be retuned
-  through one setting. Worth recording that the reasoning still lost to the
-  data: the *high* threshold produced the maximal overstatement, not the safe
-  one, because at 0.4 the model found nothing to subtract at all.
-- **The polarity guard had to be switched off for it.** `binarize` treats a
-  mask covering >90% of the frame as inverted, on the premise that nothing we
+  tree", that same number is inclusive about *trees* and erases lawn. Subtract
+  keeps its own `SAM_SUBTRACT_THRESHOLD` so the two cannot be retuned through
+  one setting. The reasoning still lost to the data once: with the list prompt,
+  the *high* threshold produced the maximal overstatement, because at 0.4 the
+  model found nothing to subtract at all.
+- **The polarity guard had to be switched off.** `binarize` treats a mask
+  covering >90% of the frame as inverted, on the premise that nothing we
   segment legitimately covers that much. For a *not-lawn* mask that premise is
-  false -- and at 0.1 the mask really did cover 99.5% of the frame, so this was
-  never hypothetical. Left on, it would have flipped the mask before `invert`
-  flipped it back, handing back the woods as lawn.
-
-### The 32-token ceiling
-
-The text encoder takes 32 tokens and **errors** past it rather than truncating:
-
-```
-Sequence length must be less than max_position_embeddings
-(got `sequence length`: 36 and max_position_embeddings: 32)
-```
-
-A first fifteen-concept list came to 36, and every prediction failed outright.
-You cannot buy coverage by naming more things. `estimatePromptTokens` counts
-words and commas -- it returns exactly 36 for that string -- and the probe now
-refuses an over-long prompt before spending anything.
+  false — at 0.1 the mask really did cover 99.5% of the frame. Left on, it
+  would have flipped the mask before `invert` flipped it back, handing back the
+  woods as lawn.
+- **The 32-token ceiling is real and was a red herring.** The text encoder
+  errors rather than truncating (`got sequence length: 36 and
+  max_position_embeddings: 32`), so a fifteen-item list failed every prediction
+  outright. Shortening it to eight got past the error — and the mode still did
+  not work, because a list of any length is the wrong shape. The guard stays,
+  since a long prompt is a total failure worth catching before it is paid for,
+  but fitting under it fixed nothing.
 
 **Precise** took pins, and has been removed. Of every model
 `tools/find-sam-model.js` could reach, exactly three accepted point prompts:

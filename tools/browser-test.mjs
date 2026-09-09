@@ -224,24 +224,36 @@ console.log('\n--- detection modes ---');
     ids.join(', '));
 
   /*
-   * SUBTRACT MODE MUST NOT BE HERE.
-   *
-   * It is built, tested and reachable by id, and it is withheld because the
-   * measurement says it does not work: at Brooks Lane it reported the entire
-   * 76,250 sq ft parcel as lawn on a lot with roughly 28,000 sq ft of it.
-   *
-   * This is the check that catches it being turned back on by accident -- an
-   * un-hidden model would appear in this catalogue and be one tap away from
-   * producing that number for a real person.
+   * Subtract mode is back on offer, with a one-word prompt, after being
+   * withheld while its prompt was a list that reported whole parcels as lawn.
    */
-  check('subtract mode is not offered while its prompt is still wrong',
-    !ids.includes('sam3_subtract'), ids.join(', '));
+  const subtract = models.options.find((m) => m.id === 'sam3_subtract');
+  check('subtract mode is offered', !!subtract, ids.join(', '));
 
-  /* Nothing reachable from the picker inverts, so no mask can be traced
-   * backwards by choosing the wrong entry. */
-  check('nothing on offer traces an inverted mask',
-    models.options.every((m) => m.invert === false),
-    ids.join(', '));
+  /*
+   * The flag the mode turns on, and the one thing here that cannot be checked
+   * by looking at the map: a mask traced the wrong way round draws a
+   * completely plausible lawn over the house.
+   */
+  check('and it arrives marked as inverting', subtract?.invert === true,
+    JSON.stringify(subtract));
+  check('while the default one does not',
+    models.options.find((m) => m.id === models.chosen)?.invert === false,
+    `chosen: ${models.chosen}`);
+
+  if (subtract) {
+    await page.selectOption('#model-choice', 'sam3_subtract');
+    await page.waitForTimeout(200);
+    const note = await page.textContent('#model-note');
+    check('picking it updates the description', note.trim() === subtract.note,
+      `showing: ${note.trim().slice(0, 70)}`);
+    check('and the app records the switch',
+      (await page.evaluate(() => window.__lmModels().chosen)) === 'sam3_subtract');
+
+    // Back to the default: nothing after this should be measuring inverted.
+    await page.selectOption('#model-choice', models.chosen);
+    await page.waitForTimeout(200);
+  }
 
   /* One model means no picker: an empty dropdown is worse than none. */
   check('the picker hides itself when there is nothing to choose between',

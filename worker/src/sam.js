@@ -20,37 +20,41 @@ export const SAM_INPUT_FIELDS = [
 ];
 
 /**
- * What subtract mode asks for: everything a lawn is not.
+ * What subtract mode asks for.
  *
- * Ordered roughly by how much of a typical lot each covers, which costs
- * nothing and makes the list readable. The reasoning behind the membership:
+ * ONE WORD, and that is the whole finding. This started as a fifteen-concept
+ * list on the reasoning that a lawn is defined by everything it is not, so
+ * naming more of those things must cover more ground. The measurements below
+ * say the opposite: every word added made the answer worse.
  *
- *   - "building", "roof", "driveway", "road", "sidewalk", "parking lot"
- *     rather than one "man-made structures". Concept segmentation answers
- *     nouns it can picture; an abstract category is a worse handle on a
- *     driveway than the word driveway. Paved surfaces are listed separately
- *     because they are the largest non-lawn area on most suburban lots and
- *     the one a "structures" prompt is most likely to walk past.
- *   - "swimming pool" as well as "water": a pool is not what a model pictures
- *     for a body of water, and it is the one that turns up in back gardens.
- *   - "garden bed" and "mulch bed" for landscape beds, plus "shrub", since a
- *     planting bed is often read as its plants rather than as a bed.
- *   - "car" because a driveway with a car on it is otherwise a car-shaped
- *     island of lawn.
- *
- * Whether this model takes a comma-separated list as several concepts or as
- * one confused phrase is NOT KNOWN, and it is the assumption this whole mode
- * rests on. tools/probe-sam3.js with SUBTRACT=1 answers it against a real lot:
- * if a list works, the mask covers the house AND the trees AND the drive; if
- * it does not, expect one of them, or nothing.
- *
- * Overridable with SAM_NOT_LAWN_PROMPT, because this list is a guess that
- * wants retuning against real lots and should not need a deploy to change.
+ * Overridable with SAM_NOT_LAWN_PROMPT, so it can be retuned against real lots
+ * without a deploy -- but see the table before lengthening it.
  */
-export const NOT_LAWN_PROMPT = [
-  'building', 'roof', 'driveway', 'tree', 'shrub', 'swimming pool',
-  'garden bed', 'car',
-].join(', ');
+export const NOT_LAWN_PROMPT = 'trees';
+
+/*
+ * ONE CONCEPT. NOT A LIST. Measured at Brooks Lane, all at 0.2, against a
+ * parcel that is 58% not-lawn and ~28,000 sq ft mown:
+ *
+ *   "trees"                                        28,788 sq ft   38%
+ *   "trees, building"                              37,537         49%
+ *   "trees, building, driveway"                    76,079        100%
+ *   "trees, building, driveway, swimming pool"     76,079        100%
+ *   (the original eight-item list)                 59,824         78%
+ *
+ * Monotonic, and it does not need interpreting: every word added makes the
+ * answer worse, and by three the mask has collapsed to nothing so the whole
+ * parcel comes back as lawn. This model resolves ONE concept per prediction.
+ *
+ * That is why naming more things could never have worked, and why the 32-token
+ * ceiling was a red herring: a list short enough to fit still fails. Covering
+ * trees AND buildings needs two predictions unioned, at twice the cost per
+ * detection -- worth knowing, and not what ships today.
+ *
+ * "trees" is the single word to spend it on: the woods is 45% of this parcel
+ * and 78% of everything subtraction has to remove, and no other concept comes
+ * close. "building" alone masked 9.2% against the 58% wanted.
+ */
 
 /**
  * The text encoder takes 32 tokens. That is the budget, and it is hard.
@@ -65,14 +69,12 @@ export const NOT_LAWN_PROMPT = [
  * is the shape of the limit: you cannot buy coverage by listing more things,
  * and a prompt that grows past the line stops producing answers entirely.
  *
- * Which is why the list is now the eight concepts that cover the most ground
- * on an ordinary lot. What was dropped, and why it was affordable:
- *
- *   road, sidewalk, parking lot  mostly fall outside the property line, and
- *                                the clip removes them anyway
- *   woods, forest                "tree" already reaches them
- *   water                        "swimming pool" is the one in back gardens
- *   mulch bed                    "garden bed" covers the same thing
+ * This ceiling turned out to be a RED HERRING, and it is worth saying so where
+ * it is documented: shortening the list to eight got past the error, and the
+ * mode still did not work, because a list of any length is the wrong shape for
+ * this model. The guard stays -- a long prompt is still a total failure rather
+ * than a degraded one, and that is worth catching before it is paid for -- but
+ * fitting under it was never what fixed anything.
  *
  * ESTIMATED, not measured: this counts words and commas, because the real
  * tokenizer is not available here. Calibrated against the one prompt whose
@@ -235,12 +237,13 @@ export const MODELS = {
    */
   sam3_subtract: {
     slug: 'mattsays/sam3-image',
-    label: 'Subtract',
-    note: 'For brown or dormant grass. Finds the buildings, trees and beds instead, and calls the rest lawn.',
+    label: 'Subtract trees',
+    // Says what it removes AND what it leaves. It takes out the trees and
+    // keeps everything else, so on a lot with a wide drive the tarmac lands
+    // in the total -- visible on the map and one tap to delete, but only if
+    // the label told you to look.
+    note: 'For dormant grass and wooded lots. Removes the trees and measures what is left, so check the driveway and roof.',
     needsPoints: false,
-    // Keeps it out of the picker while the prompt is still wrong. The Worker
-    // will still run it if asked by id, which is what the probe needs.
-    hidden: true,
     // Tells the browser to flip the mask before tracing. See maskToPolygons.
     invert: true,
     prompt: NOT_LAWN_PROMPT,
