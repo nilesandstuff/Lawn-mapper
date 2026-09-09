@@ -214,49 +214,43 @@ check('no tip is left sitting over the map',
 /* ------------------------------------------------------ the detection modes */
 console.log('\n--- detection modes ---');
 {
-  /*
-   * The picker hides itself below two models, so adding subtract mode is the
-   * first thing that makes this UI reachable at all. Checked against the live
-   * catalogue rather than a list here: the Worker decides what is on offer.
-   */
   const models = await page.evaluate(() => window.__lmModels());
   const ids = models.options.map((m) => m.id);
 
-  check('the deployment offers more than one detection method', models.options.length > 1,
+  check('the deployment offers at least one detection method', models.options.length >= 1,
     ids.join(', ') || '(none)');
-  check('so the picker is on screen', models.panelVisible);
-  check('every method is labelled and explained',
+  check('every offered method is labelled and explained',
     models.options.every((m) => m.label && m.note),
     ids.join(', '));
 
-  const subtract = models.options.find((m) => m.id === 'sam3_subtract');
-  check('subtract mode is among them', !!subtract);
-
   /*
-   * The flag the whole mode turns on, and the one thing here that cannot be
-   * confirmed by looking at the screen: a mask traced the wrong way round
-   * produces a perfectly plausible lawn drawn over the house.
+   * SUBTRACT MODE MUST NOT BE HERE.
+   *
+   * It is built, tested and reachable by id, and it is withheld because the
+   * measurement says it does not work: at Brooks Lane it reported the entire
+   * 76,250 sq ft parcel as lawn on a lot with roughly 28,000 sq ft of it.
+   *
+   * This is the check that catches it being turned back on by accident -- an
+   * un-hidden model would appear in this catalogue and be one tap away from
+   * producing that number for a real person.
    */
-  check('and it arrives marked as inverting', subtract?.invert === true,
-    JSON.stringify(subtract));
-  check('while the default method is not',
-    models.options.find((m) => m.id === models.chosen)?.invert === false,
+  check('subtract mode is not offered while its prompt is still wrong',
+    !ids.includes('sam3_subtract'), ids.join(', '));
+
+  /* Nothing reachable from the picker inverts, so no mask can be traced
+   * backwards by choosing the wrong entry. */
+  check('nothing on offer traces an inverted mask',
+    models.options.every((m) => m.invert === false),
+    ids.join(', '));
+
+  /* One model means no picker: an empty dropdown is worse than none. */
+  check('the picker hides itself when there is nothing to choose between',
+    models.panelVisible === (models.options.length > 1),
+    `${models.options.length} option(s), panel ${models.panelVisible ? 'shown' : 'hidden'}`);
+
+  /* Whatever is selected must be something the Worker actually offers. */
+  check('the selected method is one of the offered ones', ids.includes(models.chosen),
     `chosen: ${models.chosen}`);
-
-  /* Switching must not leave the note describing the previous method. */
-  if (subtract) {
-    await page.selectOption('#model-choice', 'sam3_subtract');
-    await page.waitForTimeout(200);
-    const note = await page.textContent('#model-note');
-    check('picking it updates the description', note.trim() === subtract.note,
-      `showing: ${note.trim().slice(0, 60)}`);
-    check('and the app records the switch',
-      (await page.evaluate(() => window.__lmModels().chosen)) === 'sam3_subtract');
-
-    // Put it back: nothing after this section should be measuring inverted.
-    await page.selectOption('#model-choice', models.chosen);
-    await page.waitForTimeout(200);
-  }
 }
 
 /* ------------------------------------------------------- the Layers button */

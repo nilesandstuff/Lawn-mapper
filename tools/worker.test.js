@@ -194,17 +194,36 @@ check('and an out-of-range one is clamped to what the model accepts',
  * meaning is the REVERSE of the first one's, and where a reasonable-looking
  * change would therefore break it silently.
  */
-check('subtract mode is offered', !!MODELS.sam3_subtract, Object.keys(MODELS).join(', '));
+check('subtract mode exists', !!MODELS.sam3_subtract, Object.keys(MODELS).join(', '));
 
 check('it tells the browser to flip the mask',
   MODELS.sam3_subtract.invert === true,
   'without this the app would trace the buildings and call them the lawn');
 
-check('and that fact reaches the browser, which cannot see it in the pixels',
-  modelCatalogue().find((m) => m.id === 'sam3_subtract')?.invert === true);
+/*
+ * AND IT IS NOT OFFERED, on measured evidence.
+ *
+ * At Brooks Lane the not-lawn mask floods the frame below 0.1 and vanishes by
+ * 0.4; at the shipped 0.4 it returned the ENTIRE parcel as lawn in six
+ * vertices. That is the worst failure available -- maximally wrong, and shaped
+ * like a clean answer. Same judgement that retired the point-prompted model:
+ * an option that is confidently wrong is worse than no option.
+ *
+ * This is the assertion that would fail if someone un-hid it without fixing
+ * the prompt, so it carries the reason.
+ */
+check('but it is withheld from the picker until the prompt works',
+  MODELS.sam3_subtract.hidden === true
+  && !modelCatalogue().some((m) => m.id === 'sam3_subtract'),
+  'at 0.4 it reported 76,079 sq ft on a lot with ~28,000 sq ft of lawn');
 
-check('the normal model is not marked inverting',
-  modelCatalogue().find((m) => m.id === DEFAULT_MODEL)?.invert === false);
+check('the model that IS offered does not invert',
+  modelCatalogue().every((m) => m.invert === false),
+  modelCatalogue().map((m) => m.id).join(', '));
+
+check('and the browser is still told about invert for what it is offered',
+  modelCatalogue().every((m) => typeof m.invert === 'boolean'),
+  'the flag must always be present; a missing one reads as undefined');
 
 /*
  * THE DIRECTION TRAP. 0.05 is deliberately inclusive about grass, which is the
@@ -218,9 +237,20 @@ check('subtract mode does not inherit the grass-inclusive threshold',
   samThreshold({}, 'sam3_subtract') !== samThreshold({}, DEFAULT_MODEL),
   `subtract ${samThreshold({}, 'sam3_subtract')} vs grass ${samThreshold({}, DEFAULT_MODEL)}`);
 
-check('and it sits high, because low here means "erase more lawn"',
-  samThreshold({}, 'sam3_subtract') >= 0.3,
-  String(samThreshold({}, 'sam3_subtract')));
+/*
+ * This check used to demand >= 0.3, on the argument that a high cut is the
+ * safe direction because a low one erases lawn. The argument is sound and the
+ * model does not obey it: at 0.4 the mask found NOTHING, so inverting returned
+ * the whole parcel -- the high threshold produced the maximal overstatement,
+ * not the conservative one.
+ *
+ * So the assertion is now about the measured usable band rather than about the
+ * reasoning. Anything at or above 0.4 is known to report 100% of the lot, and
+ * 0.1 and below is known to report zero.
+ */
+check('the threshold sits in the only band that produced anything at all',
+  samThreshold({}, 'sam3_subtract') > 0.1 && samThreshold({}, 'sam3_subtract') < 0.4,
+  `${samThreshold({}, 'sam3_subtract')}; <=0.1 gave 0 sq ft and >=0.4 gave the entire parcel`);
 
 check('each mode is retunable without disturbing the other',
   samThreshold({ SAM_THRESHOLD: '0.9' }, 'sam3_subtract') === SUBTRACT_THRESHOLD

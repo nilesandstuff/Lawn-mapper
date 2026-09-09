@@ -103,12 +103,29 @@ export const estimatePromptTokens = (prompt) =>
  * direction is not a value, it is "toward more lawn", and which value that is
  * depends on which question was asked.
  *
- * So this sits high instead: only things the model is fairly sure are not
- * lawn are taken out. 0.4 is a starting point chosen for that direction, near
- * the model's own 0.5 default, and it is a guess -- unlike DEFAULT_THRESHOLD,
- * no lot with a known answer has ranged over it yet.
+ * That reasoning is sound and it did not survive contact with the model. The
+ * sweep at Brooks Lane (76,250 sq ft, ~28,000 of it mown, ~20,000 visible):
+ *
+ *   threshold   parcel masked   inverted lawn   % of parcel
+ *   0.02            100%                  0        0%
+ *   0.05            100%                  0        0%
+ *   0.10            100%                  0        0%
+ *   0.20             20.7%           59,824       78%
+ *   0.40              0.0%           76,079      100%
+ *   0.60              0.0%           76,079      100%
+ *
+ * That is not a curve, it is a cliff with one point on the face of it. The
+ * mask floods the entire frame up to 0.1 and vanishes by 0.4. There is no
+ * value that yields a believable lawn: the best of them, 0.2, gives 78% of a
+ * lot that is 37% mown -- more than double, on a lot where "Quick" lands
+ * within about 10% of the owner's own figure.
+ *
+ * 0.2 is kept only because it is the one setting that produces anything at
+ * all, and because 0.4 produced the entire parcel in six vertices, which is
+ * the worst failure available here: maximally wrong and shaped exactly like a
+ * clean answer.
  */
-export const SUBTRACT_THRESHOLD = 0.4;
+export const SUBTRACT_THRESHOLD = 0.2;
 
 /**
  * How to ask.
@@ -159,17 +176,39 @@ export const MODELS = {
    * this errs by inventing it. Which is the better failure depends entirely on
    * the lot, which is why this is a second option and not a replacement.
    *
-   * NOT YET MEASURED. Every number in this file elsewhere came from a real lot
-   * with a known answer. There is no such table for this mode yet, and the
-   * threshold below is a starting point rather than a finding. Run
-   * tools/probe-sam3.js with SUBTRACT=1 against a dormant-season lot to get
-   * one, and put the numbers here when they exist.
+   * MEASURED, AND IT DOES NOT WORK YET -- so it is not offered. See the
+   * threshold table below: at Brooks Lane the not-lawn mask floods the whole
+   * frame up to 0.1 and disappears by 0.4, with one usable-looking point
+   * between that still reports 78% of a lot that is 37% mown.
+   *
+   * The mechanism is fine. Inversion, the polarity guard and the invert-then-
+   * clip order are all proven by mask.test.js, and the mask lands on the
+   * parcel. What fails is the PROMPT: a bimodal response like that -- all or
+   * nothing, with almost no middle -- is what a comma-separated list looks
+   * like when the model resolves it as one vague phrase rather than as eight
+   * concepts. That was named here as the mode's load-bearing assumption before
+   * any of this ran, and the sweep is the evidence against it.
+   *
+   * Kept rather than deleted, because the next experiment is cheap and the
+   * plumbing is the part that is already right: try ONE concept
+   * (PROMPTS="building" with SUBTRACT=1) and see whether a single noun
+   * produces a mask shaped like a house. If it does, the fix is a prompt; if
+   * it does not, this model cannot do subtraction and the mode should go the
+   * way sam2 did.
+   *
+   * Hidden, not removed. An option that reports the entire parcel as lawn is
+   * worse than no option -- the same judgement that retired the point-prompted
+   * model -- and 0.4 did exactly that, in six vertices, looking like a clean
+   * answer.
    */
   sam3_subtract: {
     slug: 'mattsays/sam3-image',
     label: 'Subtract',
     note: 'For brown or dormant grass. Finds the buildings, trees and beds instead, and calls the rest lawn.',
     needsPoints: false,
+    // Keeps it out of the picker while the prompt is still wrong. The Worker
+    // will still run it if asked by id, which is what the probe needs.
+    hidden: true,
     // Tells the browser to flip the mask before tracing. See maskToPolygons.
     invert: true,
     prompt: NOT_LAWN_PROMPT,
@@ -218,7 +257,7 @@ export const normaliseModel = (value) =>
  * model description instead.
  */
 export const modelCatalogue = () =>
-  Object.entries(MODELS).map(([id, m]) => ({
+  Object.entries(MODELS).filter(([, m]) => !m.hidden).map(([id, m]) => ({
     id,
     label: m.label,
     note: m.note,
