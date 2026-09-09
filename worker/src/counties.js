@@ -87,6 +87,36 @@ const COUNTIES = {
     fields: { pin: 'MAPID', address: 'ADDRGL1' },
     verified: 'live', // 0.244 ac at 73 Main St, Montpelier
   },
+  /*
+   * Maryland, statewide, from MD iMAP's parcel boundaries.
+   *
+   * The cleanest result the statewide hunt produced: 0.109 acres in Baltimore
+   * and 2.249 in Oakland, three hours apart at opposite ends of the state,
+   * both the size of an actual lot, from the state's own host with proper
+   * account and address fields.
+   */
+  maryland: {
+    name: 'Maryland (MD iMAP)',
+    statewide: true,
+    service: 'https://mdgeodata.md.gov/imap/rest/services/PlanningCadastre/MD_ParcelBoundaries/MapServer/0',
+    fields: { pin: 'ACCTID', address: 'ADDRESS' },
+    verified: 'probe', // 0.109 ac Baltimore, 2.249 ac Oakland -- preflight pending
+  },
+  /*
+   * New Hampshire, statewide, from GRANIT's parcel mosaic hosted at UNH.
+   *
+   * "Mosaic" is the honest word for it and the reason for the caveat: it is
+   * assembled from what each town supplies, so coverage follows the towns
+   * rather than the state line. Concord returned 0.122 acres; Berlin returned
+   * 62, which is a plausible lot in the north woods rather than a failure.
+   */
+  newhampshire: {
+    name: 'New Hampshire (GRANIT)',
+    statewide: true,
+    service: 'https://nhgeodata.unh.edu/hosting/rest/services/Hosted/CAD_ParcelMosaic/FeatureServer/1',
+    fields: { pin: 'pid', address: 'streetaddress' },
+    verified: 'probe', // 0.122 ac at Concord -- preflight pending
+  },
   washoe: {
     name: 'Washoe County',
     fips: '32031', // Nevada -- Reno and Sparks
@@ -209,6 +239,8 @@ const COUNTY_BBOX = {
    * border, and Lake Champlain across to the Connecticut River.
    */
   vermont:  [-73.45, 42.72, -71.46, 45.02],
+  maryland: [-79.50, 37.88, -75.04, 39.73],
+  newhampshire: [-72.57, 42.69, -70.70, 45.31],
   // Washoe runs the full height of Nevada, from Lake Tahoe to the Oregon line.
   // Almost all of it is empty; the population is the southern tip around Reno.
   washoe:   [-120.10, 38.98, -119.00, 42.01],

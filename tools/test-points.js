@@ -69,6 +69,28 @@ export const TEST_POINTS = {
     { lng: -73.1900, lat: 44.4560, label: 'South Burlington (lands on UVM land)' },
     { lng: -72.9720, lat: 43.6100, label: 'Rutland (lands on a right-of-way)' },
   ],
+  /*
+   * Maryland, across the state: the Eastern Shore, the bay, the Baltimore
+   * corridor and the western panhandle are four different worlds of platting.
+   */
+  maryland: [
+    { lng: -76.6400, lat: 39.3400, label: 'Baltimore (0.109 ac when found)' },
+    { lng: -79.4100, lat: 39.4100, label: 'Oakland (2.249 ac when found)' },
+    { lng: -76.4900, lat: 38.9800, label: 'Annapolis' },
+    { lng: -75.6000, lat: 38.3600, label: 'Salisbury (Eastern Shore)' },
+  ],
+  /*
+   * New Hampshire. GRANIT's layer is a MOSAIC of what each town supplies, so
+   * these deliberately mix a city, the seacoast belt and the north country --
+   * where a town that has not submitted is exactly what would show up as a
+   * hole.
+   */
+  newhampshire: [
+    { lng: -71.5400, lat: 43.2100, label: 'Concord (0.122 ac when found)' },
+    { lng: -71.4700, lat: 42.7600, label: 'Nashua' },
+    { lng: -72.2800, lat: 42.9300, label: 'Keene' },
+    { lng: -71.1700, lat: 44.4700, label: 'Berlin (north country)' },
+  ],
   // Washoe County, Nevada. Reno and Sparks are the population; Incline Village
   // is included because it sits across the Carson Range on the Tahoe shore and
   // is the part most likely to be served by a different layer, or missed.

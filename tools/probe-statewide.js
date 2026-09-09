@@ -290,6 +290,26 @@ async function tryService(serviceUrl, state) {
       continue;
     }
 
+    /*
+     * A survey grid, not parcels.
+     *
+     * The two-point test removed the county services and let a new impostor
+     * through: Utah, Montana, Oregon and Arizona all "answered" at both ends
+     * of the state with 616 to 656 acres. That is one square mile -- a Public
+     * Land Survey section -- and a section grid is statewide, consistent, and
+     * has nothing to do with who owns what.
+     *
+     * Real parcels vary wildly between two random addresses; a grid does not.
+     * So near-equal areas that are both far too big for any lot is the
+     * signature, and it is a shape no amount of measuring ONE polygon can see.
+     */
+    const ratio = Math.min(near.acres, far.acres) / Math.max(near.acres, far.acres);
+    if (ratio > 0.85 && Math.min(near.acres, far.acres) > 100) {
+      console.log(`      · ${near.acres} ac and ${far.acres} ac -- near-identical and huge:` +
+        ' a survey section grid, not parcels');
+      continue;
+    }
+
     const fields = info.fields || [];
     return {
       service: serviceUrl,
@@ -354,8 +374,16 @@ const usable = findings.filter((f) => f.best);
 console.log(`${usable.length} of ${findings.length} states answered at BOTH ends of the state.\n`);
 
 for (const f of findings) {
-  const size = f.best ? `${f.best.acres} ac / ${f.best.farAcres} ac` : '';
-  console.log(`${f.best ? 'YES ' : ' no '} ${f.key.padEnd(15)} ${f.state.name.padEnd(16)} ${size}`);
+  if (!f.best) { console.log(` no  ${f.key.padEnd(15)} ${f.state.name}`); continue; }
+  /*
+   * "Answered twice" is not the same as "these are houses". A layer where
+   * neither point looks like a lot may still be parcels badly aimed at, as
+   * Vermont was -- so it is reported as needing a look rather than either
+   * claimed or discarded.
+   */
+  const houseLike = Math.min(f.best.acres, f.best.farAcres) < 5;
+  console.log(`${houseLike ? 'YES ' : ' ?  '} ${f.key.padEnd(15)} ${f.state.name.padEnd(16)}` +
+    ` ${f.best.acres} ac / ${f.best.farAcres} ac${houseLike ? '' : '   neither looks like a lot'}`);
 }
 
 if (usable.length) {
