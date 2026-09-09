@@ -21,6 +21,7 @@ import * as entrypoint from '../worker/src/index.js';
 import {
   MODELS, DEFAULT_MODEL, DEFAULT_PROMPT, modelCatalogue, DEFAULT_THRESHOLD, samThreshold,
   samPrompt, NOT_LAWN_PROMPT, SUBTRACT_THRESHOLD,
+  MAX_PROMPT_TOKENS, estimatePromptTokens,
 } from '../worker/src/sam.js';
 import { dayKey, DAILY_LIMIT_PER_CLIENT } from '../worker/src/quota.js';
 import { upstreamReason, redactSecrets } from '../worker/src/upstream.js';
@@ -258,6 +259,46 @@ for (const concept of ['building', 'driveway', 'tree', 'swimming pool']) {
 check('it asks for concrete nouns rather than a category',
   !/structure/i.test(NOT_LAWN_PROMPT),
   'concept segmentation answers nouns it can picture; "man-made structures" is not one');
+
+/*
+ * THE 32-TOKEN CEILING, learned the expensive way.
+ *
+ * The first version of this list ran to fifteen concepts and every prediction
+ * failed outright: "Sequence length must be less than max_position_embeddings
+ * (got 36 and 32)". The encoder errors rather than truncating, so a list that
+ * grows past the line does not get worse -- it stops working.
+ *
+ * The estimator is calibrated on that one known count, which is the only real
+ * measurement available offline, so this pins it. If it ever stops returning
+ * 36 for that string the estimate has drifted and the budget check below is
+ * measuring something else.
+ */
+const THE_PROMPT_THAT_FAILED =
+  'building, roof, driveway, road, sidewalk, parking lot, tree, woods, forest, '
+  + 'shrub, swimming pool, water, garden bed, mulch bed, car';
+
+check('the estimator reproduces the count the model itself reported',
+  estimatePromptTokens(THE_PROMPT_THAT_FAILED) === 36,
+  `got ${estimatePromptTokens(THE_PROMPT_THAT_FAILED)}, model said 36`);
+
+check('and would have caught that list before it was ever sent',
+  estimatePromptTokens(THE_PROMPT_THAT_FAILED) > MAX_PROMPT_TOKENS);
+
+check('the shipped not-lawn list fits the encoder',
+  estimatePromptTokens(NOT_LAWN_PROMPT) <= MAX_PROMPT_TOKENS,
+  `${estimatePromptTokens(NOT_LAWN_PROMPT)} of ${MAX_PROMPT_TOKENS} tokens`);
+
+/*
+ * And fits with room to spare. A list sitting one token under a limit
+ * estimated by counting words is not safe: a single unusual word that the real
+ * tokenizer splits in two puts it over, and the failure is total.
+ */
+check('with margin, because the estimate is not a tokenizer',
+  estimatePromptTokens(NOT_LAWN_PROMPT) <= MAX_PROMPT_TOKENS - 6,
+  `${estimatePromptTokens(NOT_LAWN_PROMPT)} tokens, want <= ${MAX_PROMPT_TOKENS - 6}`);
+
+check('the grass prompt is nowhere near the ceiling',
+  estimatePromptTokens(DEFAULT_PROMPT) <= MAX_PROMPT_TOKENS);
 
 
 /* ------------------------------------------------- passing an error along */

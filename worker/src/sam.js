@@ -48,10 +48,49 @@ export const SAM_INPUT_FIELDS = [
  * wants retuning against real lots and should not need a deploy to change.
  */
 export const NOT_LAWN_PROMPT = [
-  'building', 'roof', 'driveway', 'road', 'sidewalk', 'parking lot',
-  'tree', 'woods', 'forest', 'shrub',
-  'swimming pool', 'water', 'garden bed', 'mulch bed', 'car',
+  'building', 'roof', 'driveway', 'tree', 'shrub', 'swimming pool',
+  'garden bed', 'car',
 ].join(', ');
+
+/**
+ * The text encoder takes 32 tokens. That is the budget, and it is hard.
+ *
+ * A fifteen-concept list came to 36 and every prediction failed outright:
+ *
+ *   Sequence length must be less than max_position_embeddings
+ *   (got `sequence length`: 36 and max_position_embeddings: 32)
+ *
+ * Not a warning and not a truncation -- an error, before inference, so the
+ * mode did not work at all rather than working badly. Worth knowing that this
+ * is the shape of the limit: you cannot buy coverage by listing more things,
+ * and a prompt that grows past the line stops producing answers entirely.
+ *
+ * Which is why the list is now the eight concepts that cover the most ground
+ * on an ordinary lot. What was dropped, and why it was affordable:
+ *
+ *   road, sidewalk, parking lot  mostly fall outside the property line, and
+ *                                the clip removes them anyway
+ *   woods, forest                "tree" already reaches them
+ *   water                        "swimming pool" is the one in back gardens
+ *   mulch bed                    "garden bed" covers the same thing
+ *
+ * ESTIMATED, not measured: this counts words and commas, because the real
+ * tokenizer is not available here. Calibrated against the one prompt whose
+ * true count is known -- the model reported 36 for the list that failed, and
+ * this returns exactly 36 for it.
+ *
+ * One agreeing data point is not a tokenizer. A word this happens to count as
+ * one token could be two ("bermudagrass", a hyphenation, anything unusual), so
+ * it can undercount on wording it has never seen. Keep a real margin rather
+ * than trimming a list until it just fits: this is a tripwire for a list that
+ * has clearly grown too long, not a licence to sit one token under the line.
+ */
+export const MAX_PROMPT_TOKENS = 32;
+
+export const estimatePromptTokens = (prompt) =>
+  String(prompt).trim().split(/\s+/).filter(Boolean).length
+  + (String(prompt).match(/,/g) || []).length
+  + 3; // start/end markers, plus one for the undercount above
 
 /**
  * The confidence cut for subtract mode, where it means the OPPOSITE thing.

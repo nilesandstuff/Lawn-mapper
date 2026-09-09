@@ -18,7 +18,9 @@
 import { PNG } from 'pngjs';
 import { lookupParcel } from '../worker/src/parcel.js';
 import { imageryUrl, imageryPrompt, providerFrame, PROVIDERS } from '../worker/src/imagery.js';
-import { NOT_LAWN_PROMPT, SUBTRACT_THRESHOLD } from '../worker/src/sam.js';
+import {
+  NOT_LAWN_PROMPT, SUBTRACT_THRESHOLD, MAX_PROMPT_TOKENS, estimatePromptTokens,
+} from '../worker/src/sam.js';
 import { measure, geometryAreaSqM } from '../public/lib/area.js';
 import { rasterizePolygon, maskToPolygons, binarize } from '../public/lib/mask.js';
 import {
@@ -118,6 +120,29 @@ const THRESHOLDS = (process.env.THRESHOLDS || '').trim()
   // every other row has to beat -- and a sweep for subtract mode, which has no
   // baseline yet and whose shipped guess is the middle row.
   : SUBTRACT ? ['0.2', String(SUBTRACT_THRESHOLD), '0.6'] : [''];
+
+/*
+ * Refuse an over-long prompt before spending anything.
+ *
+ * The text encoder takes 32 tokens and ERRORS past that rather than
+ * truncating, so a long list does not degrade -- it returns nothing at all.
+ * The first subtract run learned this by failing three predictions in 27
+ * seconds, which is a cheap way to find out and still a slower one than being
+ * told here.
+ *
+ * Checked against every prompt about to run, including ones typed into the
+ * workflow box, since that is where a long list is most likely to come from.
+ */
+for (const p of PROMPTS || SOURCES.map((s) => imageryPrompt(s, {}))) {
+  const est = estimatePromptTokens(p);
+  if (est > MAX_PROMPT_TOKENS) {
+    console.error(`FAIL  Prompt is about ${est} tokens; the model's limit is ${MAX_PROMPT_TOKENS}.`);
+    console.error(`      "${p}"`);
+    console.error('      It would fail every prediction rather than truncating.');
+    console.error('      Drop concepts until it fits -- fewer, broader words beat a longer list.');
+    process.exit(1);
+  }
+}
 
 /** Every combination to run, as the table's rows. */
 const RUNS = [];
