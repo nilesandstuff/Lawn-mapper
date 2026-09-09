@@ -373,7 +373,9 @@ Each confirmed by a point query that returned a real parcel:
 | Area | Source |
 |---|---|
 | **North Carolina — all of it** | `services.nconemap.gov`, `NC1Map_Parcels` layer 1 |
+| **Maryland — all of it** | MD iMAP, `mdgeodata.md.gov`, `MD_ParcelBoundaries` layer 0 |
 | **Vermont — all of it** | VCGI standardised parcels, `services1.arcgis.com` layer 0 |
+| **New Hampshire — most of it** | GRANIT, `nhgeodata.unh.edu`, `CAD_ParcelMosaic` layer 1 |
 | Washoe County, NV | `gisweb.washoecounty.gov`, `Assessor_GSACAMA` layer 0 |
 | Kent County, MI | `gis.kentcountymi.gov`, `agisprod` → `ParcelsWithCondos` layer 0 |
 | Ottawa County, MI | `gis.miottawa.org`, `AR_ParcelSearch_gdb` layer 6 |

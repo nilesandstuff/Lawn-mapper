@@ -90,10 +90,17 @@ const COUNTIES = {
   /*
    * Maryland, statewide, from MD iMAP's parcel boundaries.
    *
-   * The cleanest result the statewide hunt produced: 0.109 acres in Baltimore
-   * and 2.249 in Oakland, three hours apart at opposite ends of the state,
-   * both the size of an actual lot, from the state's own host with proper
-   * account and address fields.
+   * The cleanest result the statewide hunt produced, and the only entry added
+   * in this project that answered at EVERY test point with a street address:
+   *
+   *   Baltimore   0.109 ac   4227 Newport Ave
+   *   Annapolis   0.038 ac   64 Maryland Ave
+   *   Salisbury   0.111 ac   210 W Vine St
+   *   Oakland     2.249 ac   (no address on the record)
+   *
+   * Four counties, the Eastern Shore to the western panhandle, all
+   * residential-sized, from the state's own host with proper account and
+   * address fields. Nothing here needed a caveat about badly aimed points.
    */
   maryland: {
     name: 'Maryland (MD iMAP)',
@@ -105,15 +112,25 @@ const COUNTIES = {
     service: 'https://mdgeodata.md.gov/imap/rest/services/PlanningCadastre/MD_ParcelBoundaries/MapServer',
     layer: 0,
     fields: { pin: 'ACCTID', address: 'ADDRESS' },
-    verified: 'probe', // 0.109 ac Baltimore, 2.249 ac Oakland -- preflight pending
+    verified: 'live', // 4 of 4 points, 0.038-2.249 ac, all with addresses
   },
   /*
    * New Hampshire, statewide, from GRANIT's parcel mosaic hosted at UNH.
    *
    * "Mosaic" is the honest word for it and the reason for the caveat: it is
    * assembled from what each town supplies, so coverage follows the towns
-   * rather than the state line. Concord returned 0.122 acres; Berlin returned
-   * 62, which is a plausible lot in the north woods rather than a failure.
+   * rather than the state line.
+   *
+   *   Concord   0.122 ac   62 N State St
+   *   Nashua    2.446 ac   100 Factory St
+   *   Berlin    62.3 ac    1 Community Street -- a north-country lot
+   *   Keene     nothing
+   *
+   * Three of four, with real addresses. Keene is either a hand-aimed
+   * coordinate in a road or a town that has not submitted, and from here those
+   * look identical -- which is exactly the shape of gap a mosaic has and a
+   * genuinely statewide layer does not. Worth knowing before promising anyone
+   * blanket New Hampshire coverage.
    */
   newhampshire: {
     name: 'New Hampshire (GRANIT)',
@@ -121,7 +138,7 @@ const COUNTIES = {
     service: 'https://nhgeodata.unh.edu/hosting/rest/services/Hosted/CAD_ParcelMosaic/FeatureServer',
     layer: 1,
     fields: { pin: 'pid', address: 'streetaddress' },
-    verified: 'probe', // 0.122 ac at Concord -- preflight pending
+    verified: 'live', // 3 of 4 points; Keene returns nothing
   },
   washoe: {
     name: 'Washoe County',
