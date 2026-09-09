@@ -771,6 +771,27 @@ check('and leaves the measurement essentially unchanged',
  * the step rather than unwinding into the paid-for trace.
  */
 console.log('\n--- undo ---');
+/*
+ * ASSERT ON WHAT THE LAST EDIT ACTUALLY MOVED.
+ *
+ * This read #result-sqft, which is the area of the LAWN. Every edit
+ * immediately above it -- dragging a corner, deleting one, tidying -- is an
+ * edit to the PROPERTY LINE, and undoing one of those correctly leaves the
+ * lawn figure alone. So the check failed while the feature worked, reporting
+ * "41,010 -> 41,010" as a bug in undo.
+ *
+ * The file already warns about exactly this a few hundred lines up, where the
+ * modes were split: a check that reads a number the edit does not touch
+ * "passes or fails for reasons unrelated to the edit". This is that, missed
+ * when the warning was written.
+ *
+ * The corner count is the honest quantity here, because every edit above it
+ * changes one. Asserted as "it changed", not as "+1": the entry undo actually
+ * pops is whichever came last, and tidying a real county boundary removes
+ * fifty-three corners in one go. A first version of this demanded exactly one
+ * back and would have failed on the very lot it was written against.
+ */
+const cornersBeforeUndo = await page.evaluate(() => window.__lmPoints?.()[0]?.count ?? null);
 const undone = await page.evaluate(async () => {
   const sqft = () => document.querySelector('#result-sqft').textContent;
   const before = sqft();
@@ -780,6 +801,7 @@ const undone = await page.evaluate(async () => {
   btn.click();
   await new Promise((r) => setTimeout(r, 400));
   const afterOne = sqft();
+  const cornersAfterOne = window.__lmPoints?.()[0]?.count ?? null;
 
   // Drain it: undo must bottom out, not throw or wander past the floor.
   let guard = 0;
@@ -787,12 +809,14 @@ const undone = await page.evaluate(async () => {
     document.querySelector('#btn-undo').click();
     await new Promise((r) => setTimeout(r, 60));
   }
-  return { before, afterOne, drained: sqft(), guard, enabledAfterEdits };
+  return { before, afterOne, cornersAfterOne, drained: sqft(), guard, enabledAfterEdits };
 });
 
 check('undo is offered once there is something to undo', undone.enabledAfterEdits);
-check('one undo changes the measurement back',
-  undone.afterOne !== undone.before, `${undone.before} -> ${undone.afterOne}`);
+check('one undo reverses the last boundary edit',
+  cornersBeforeUndo !== null && undone.cornersAfterOne !== cornersBeforeUndo,
+  `${cornersBeforeUndo} -> ${undone.cornersAfterOne} corners` +
+  `, lawn ${undone.before} -> ${undone.afterOne}`);
 check('undo bottoms out instead of running forever', undone.guard < 50,
   `${undone.guard} steps to empty`);
 check('and the button disables at the floor',

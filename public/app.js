@@ -1248,9 +1248,29 @@ function clipShapesToParcel() {
   const inside = parcelRaster(ERASE_GRID, ERASE_GRID, project);
   if (!inside) return { trimmed: 0, before: 0, after: 0 };
 
+  /*
+   * Only round-trip the shapes that actually cross the line.
+   *
+   * The same lossy loop as the brush, in a second place. Rasterising a polygon
+   * and tracing it back snaps its corners to pixel centres, and here the frame
+   * spans EVERY shape at once -- so one blob painted out at the edge of the
+   * map stretches the frame, coarsens every pixel in it, and the untouched
+   * lawn in the middle comes back measurably smaller for it. Toggling
+   * "measure outside the line" off cost about 3% of a real lot that way, none
+   * of which had anything to do with the boundary.
+   *
+   * A shape wholly inside the parcel has nothing to clip, so it is passed
+   * through vertex for vertex. Only shapes with pixels on the wrong side go
+   * into the raster -- and a shape wholly OUTSIDE simply contributes nothing
+   * to it, which is how it disappears.
+   */
   const keep = new Uint8Array(ERASE_GRID * ERASE_GRID);
+  const untouched = [];
   for (const f of features) {
     const m = rasterizePolygon(f.geometry.coordinates, ERASE_GRID, ERASE_GRID, project);
+    let outside = 0;
+    for (let i = 0; i < m.length; i++) if (m[i] && !inside[i]) { outside = 1; break; }
+    if (!outside) { untouched.push(f); continue; }
     for (let i = 0; i < keep.length; i++) if (m[i] && inside[i]) keep[i] = 1;
   }
 
@@ -1273,6 +1293,8 @@ function clipShapesToParcel() {
   const before = totalSquareFeet();
   pushHistory();
   draw.deleteAll();
+  // The shapes that were already inside go back exactly as they were.
+  for (const f of untouched) draw.add(f);
   for (const geometry of polygons) draw.add({ type: 'Feature', properties: {}, geometry });
 
   refreshMeasurement();
