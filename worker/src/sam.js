@@ -104,7 +104,8 @@ export const estimatePromptTokens = (prompt) =>
  * depends on which question was asked.
  *
  * That reasoning is sound and it did not survive contact with the model. The
- * sweep at Brooks Lane (76,250 sq ft, ~28,000 of it mown, ~20,000 visible):
+ * sweep at Brooks Lane with the EIGHT-CONCEPT LIST (76,250 sq ft, ~28,000 of
+ * it mown, ~20,000 visible):
  *
  *   threshold   parcel masked   inverted lawn   % of parcel
  *   0.02            100%                  0        0%
@@ -120,10 +121,41 @@ export const estimatePromptTokens = (prompt) =>
  * lot that is 37% mown -- more than double, on a lot where "Quick" lands
  * within about 10% of the owner's own figure.
  *
- * 0.2 is kept only because it is the one setting that produces anything at
- * all, and because 0.4 produced the entire parcel in six vertices, which is
- * the worst failure available here: maximally wrong and shaped exactly like a
- * clean answer.
+ * 0.2 is kept because it is the one setting that produced anything at all with
+ * that list, and because 0.4 produced the entire parcel in six vertices, which
+ * is the worst failure available here: maximally wrong and shaped exactly like
+ * a clean answer.
+ *
+ * AND THEN THE LIST TURNED OUT TO BE THE PROBLEM, NOT THE THRESHOLD.
+ *
+ * The owner walked the lot and gave real components: woods 34,500, everything
+ * built 9,500, not-lawn 44,000 (58% of the parcel), mown lawn ~28,000. That
+ * made single concepts judgeable, and at the same 0.2:
+ *
+ *   prompt      parcel masked   vs the 58% wanted   inverted lawn
+ *   "woods"          57.2%            -0.5 points        32,768
+ *   "forest"         58.3%            +0.6              31,236
+ *   "trees"          61.5%            +3.8              28,788
+ *   "building"        9.2%           -48.5              69,122
+ *   (the 8-item list)  20.7%         -37.0              59,824
+ *
+ * One word lands within half a point of ground truth. The list of eight,
+ * containing that same word, lands thirty-seven points away. That is the
+ * assumption this mode was built on, answered: THE MODEL DOES NOT READ A
+ * COMMA LIST AS SEVERAL CONCEPTS. Every earlier reading of these numbers --
+ * "the threshold is wrong", "the model cannot see buildings from overhead" --
+ * was an explanation for a symptom of that.
+ *
+ * "trees" alone inverts to 28,788 sq ft against a mown 28,000: +2.8%, where
+ * Quick gets 25,059 and is -10.5%. On this lot, subtraction with one word is
+ * the better measurement.
+ *
+ * Not yet a shipping default, for a reason the table cannot show: "trees"
+ * removes no house, drive or pool, and it only lands here because on a lot
+ * this wooded those are small and partly caught anyway. On a bare suburban lot
+ * with a wide driveway it would count the tarmac as lawn. Whether a SHORT list
+ * resolves where a long one does not is the open question, and the one that
+ * decides between one prediction per detection and several unioned.
  */
 export const SUBTRACT_THRESHOLD = 0.2;
 

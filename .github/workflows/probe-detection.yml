@@ -33,8 +33,12 @@ on:
         description: 'For "candidates": which to run — sam3,grounded_sam,langsam,fastsam'
         required: false
         default: 'sam3,grounded_sam,langsam,fastsam'
+      # Named "prompts" (plural) and sitting below "negative", which is a
+      # different box for a different probe. A run that quietly used the
+      # default list looks identical to one that ignored what you typed, so
+      # the probe now echoes the prompt it resolved before it spends anything.
       prompts:
-        description: 'Prompts to compare, separated by |. Blank = each source''s own default.'
+        description: 'For "sam3-prompts": what to look for, separated by |. Blank = the default for the mode.'
         required: false
         default: ''
       thresholds:
