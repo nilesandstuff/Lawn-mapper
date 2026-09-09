@@ -193,6 +193,50 @@ themselves:
 
 ---
 
+## Step 6b — Optional: keep a log of tested addresses
+
+Off unless you switch it on. When it is on, every detection records the
+address, the coordinates, the imagery source, the model, the confidence cut and
+the county's own lot size — enough to turn "it got my back lawn wrong" into a
+probe run instead of a guess.
+
+**It stores street addresses**, which say where identifiable people live. Two
+things follow, and they are why this is a switch rather than a default:
+
+- Nothing serves it back without a token, and there is no token unless you make
+  one. A deployment that never sets `LOG_TOKEN` cannot leak the log even by
+  accident — `/api/log` answers 404, exactly as an unknown route does.
+- No IP addresses and no user agents are stored. Neither helps reproduce a bad
+  measurement.
+
+Entries expire by themselves after 90 days.
+
+**To turn it on.** Add a repository *variable* (Settings → Variables → Actions):
+
+| Name | Value |
+|---|---|
+| `LOG_TESTS` | `1` |
+
+**To be able to read it,** add a repository *secret* (different tab, same page)
+named `LOG_TOKEN`, with a long random string as the value — treat it like a
+password, because anyone holding it can read every address.
+
+Then run **2. Deploy** and read the log at:
+
+```
+https://lawnmap.nilesandstuff.com/api/log?token=YOUR_TOKEN
+```
+
+Newest first.
+
+**To turn it off again, set `LOG_TESTS` to `0` and redeploy** — do not just
+delete the variable. A blank box and a variable that was never set look
+identical to the deploy, so it leaves the last value in place, and a log you
+believe is off is worse than one you know is on. The deploy prints which state
+it applied, so read that line.
+
+---
+
 ## Step 7 — Lock down your Mapbox token
 
 Your `pk.` token is visible in the browser. That's normal for Mapbox, but it

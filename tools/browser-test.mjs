@@ -978,6 +978,66 @@ if (ringsBefore.length) {
     `${survived.length} of ${ringsBefore.length} untouched shapes came back identical`);
 }
 
+/* ---------------------------------- a stroke that changes nothing does nothing */
+/*
+ * The half the bounding-box fix missed, reported as: "it even happens if the
+ * swipe doesn't actually change anything -- + swipe within an existing shape,
+ * or - swipe outside of a shape".
+ *
+ * Both are strokes with no effect on the lawn, and both used to send the
+ * shapes they overlapped through rasterise-and-retrace anyway. That loop is
+ * lossy -- corners land on pixel centres and the simplifier trims them -- so
+ * every idle swipe shaved the shape a little, and it accumulated.
+ *
+ * Coordinates again, not area: a square losing a pixel off each corner barely
+ * moves its total, which is exactly how this survived an area check.
+ */
+console.log('\n--- an idle stroke changes nothing at all ---');
+{
+  const before = await page.evaluate(() => window.__lmRings());
+  const beforeSqFt = await page.evaluate(() => window.__lmSqft());
+
+  if (before.length) {
+    /*
+     * Aim inside a shape that is really there, rather than at the middle of
+     * the map and hoping. The largest ring's own vertices give a point that
+     * is certainly interior: the average of a convex-ish ring.
+     */
+    const biggest = before.reduce((a, b) => (b.length > a.length ? b : a));
+    const centre = biggest.reduce(
+      (acc, p) => [acc[0] + p[0] / biggest.length, acc[1] + p[1] / biggest.length],
+      [0, 0]
+    );
+    const at = await page.evaluate((ll) => {
+      const pt = window.__lmProject(ll);
+      return pt ? { x: pt.x, y: pt.y } : null;
+    }, centre);
+
+    if (at) {
+      const mb = await page.locator('#map').boundingBox();
+      await page.click('#tool-add');
+      await page.waitForTimeout(250);
+      // A short swipe entirely inside ground already counted as lawn.
+      await page.mouse.move(mb.x + at.x, mb.y + at.y);
+      await page.mouse.down();
+      await page.mouse.move(mb.x + at.x + 12, mb.y + at.y, { steps: 5 });
+      await page.mouse.up();
+      await page.waitForTimeout(900);
+
+      const after = await page.evaluate(() => window.__lmRings());
+      const afterSqFt = await page.evaluate(() => window.__lmSqft());
+      const same = (a, b) => a.length === b.length &&
+        a.every((p, i) => p[0] === b[i][0] && p[1] === b[i][1]);
+
+      check('adding inside existing lawn leaves every coordinate untouched',
+        after.length === before.length && before.every((r, i) => same(r, after[i])),
+        `${before.length} rings before, ${after.length} after`);
+      check('and the measurement does not drift',
+        afterSqFt === beforeSqFt, `${beforeSqFt} -> ${afterSqFt} sq ft`);
+    }
+  }
+}
+
 await page.click('#mode-shape');
 await page.waitForTimeout(200);
 check('the Lawn button is what closes lawn mode', await page.evaluate(() =>

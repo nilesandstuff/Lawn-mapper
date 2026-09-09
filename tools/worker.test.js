@@ -25,6 +25,7 @@ import {
 } from '../worker/src/sam.js';
 import { dayKey, DAILY_LIMIT_PER_CLIENT } from '../worker/src/quota.js';
 import { upstreamReason, redactSecrets } from '../worker/src/upstream.js';
+import { logMeasurement, readLog, loggingEnabled } from '../worker/src/testlog.js';
 import {
   providerCatalogue, providerFrame, detectionImageUrl,
 } from '../worker/src/imagery.js';
@@ -414,6 +415,102 @@ check('and is not offered to the browser',
 check('every remaining model works without pins',
   Object.values(MODELS).every((m) => m.needsPoints === false),
   'nothing left needs a pin, so the pin UI is dormant rather than broken');
+
+
+
+/* ------------------------------------------------------------- the test log */
+/*
+ * A record of which addresses have been measured, so a report of a bad number
+ * can be turned back into a probe run. It stores street addresses, so what
+ * these guard is not that it works but that it cannot be read by accident.
+ */
+{
+  /** A KV stand-in that records what it was asked to do. */
+  const fakeKv = () => {
+    const store = new Map();
+    return {
+      store,
+      async put(k, v) { store.set(k, v); },
+      async get(k) { return store.get(k) ?? null; },
+      async list({ prefix, limit }) {
+        const keys = [...store.keys()].filter((k) => k.startsWith(prefix)).sort();
+        return { keys: keys.slice(0, limit).map((name) => ({ name })), list_complete: true };
+      },
+    };
+  };
+
+  /*
+   * OFF UNLESS SWITCHED ON. Storing where people live should be a decision
+   * somebody made, not a side effect of a KV binding existing for the quota.
+   */
+  check('logging is off when nothing asked for it', !loggingEnabled({ QUOTA: fakeKv() }));
+  check('and on when it is switched on', loggingEnabled({ QUOTA: fakeKv(), LOG_TESTS: '1' }));
+  check('but never without somewhere to put it', !loggingEnabled({ LOG_TESTS: '1' }));
+
+  const kv = fakeKv();
+  const env = { QUOTA: kv, LOG_TESTS: 'true', LOG_TOKEN: 'sekret' };
+  await logMeasurement(env, {
+    address: '7315 Brooks Lane, Rockford, MI', lng: -85.5, lat: 43.1, zoom: 17.7,
+    provider: 'mapbox', model: 'sam3', prompt: 'grass', threshold: 0.05,
+    parcelSqFt: 76250, county: 'Kent County', clientId: 'abc', outcome: 'succeeded',
+  });
+  check('a measurement is recorded', kv.store.size === 1);
+
+  /*
+   * NOT READABLE WITHOUT THE TOKEN, and the failure is indistinguishable from
+   * the route not existing -- a refusal would confirm there is something here
+   * worth attacking.
+   */
+  check('no token, no read', (await readLog(env, null)) === null);
+  check('a wrong token reads as absent', (await readLog(env, 'guess')) === null);
+  check('a wrong token of the right length too',
+    (await readLog(env, 'sekres')) === null);
+  check('and a deployment with no token configured can never serve it',
+    (await readLog({ ...env, LOG_TOKEN: '' }, 'sekret')) === null,
+    'this is what makes forgetting to set one safe rather than dangerous');
+
+  const found = await readLog(env, 'sekret');
+  check('the right token reads it back', found?.entries.length === 1);
+  check('and the address is what was stored',
+    found.entries[0].address === '7315 Brooks Lane, Rockford, MI');
+  check('with the lot size beside it, which is the yardstick',
+    found.entries[0].parcelSqFt === 76250);
+
+  /*
+   * NO IP, NO USER AGENT. Neither helps reproduce a bad measurement, and
+   * collecting a field because it is available is how a testing log becomes
+   * something that needs a privacy policy.
+   */
+  const stored = JSON.stringify(found.entries[0]);
+  check('and nothing was collected that cannot help reproduce a bug',
+    !/\bip\b|user.?agent|referer/i.test(stored), stored);
+
+  /* Failures are the interesting reports: "it found nothing at my house"
+   * needs the address kept precisely when there is no mask to show for it. */
+  await logMeasurement(env, { address: 'somewhere', outcome: 'failed' });
+  const both = await readLog(env, 'sekret');
+  check('a failed detection is logged too, which is the point',
+    both.entries.some((e) => e.outcome === 'failed'), `${both.entries.length} entries`);
+
+  check('newest first, so a fresh report is at the top',
+    new Date(both.entries[0].at) >= new Date(both.entries[1].at));
+
+  /* Bookkeeping must never be able to break a measurement that worked. */
+  const broken = { QUOTA: { put() { throw new Error('KV down'); } }, LOG_TESTS: '1' };
+  let threw = false;
+  try { await logMeasurement(broken, { address: 'x' }); } catch { threw = true; }
+  check('a broken log does not break the measurement', !threw);
+
+  /* Writing nothing when logging is off is the whole of the off switch. */
+  const quiet = fakeKv();
+  await logMeasurement({ QUOTA: quiet }, { address: '10 Downing St' });
+  check('nothing is stored while logging is off', quiet.store.size === 0);
+
+  /* One enormous "address" must not become one enormous KV value. */
+  await logMeasurement(env, { address: 'x'.repeat(5000) });
+  const big = (await readLog(env, 'sekret')).entries.find((e) => e.address?.startsWith('xxx'));
+  check('free text is capped', big.address.length <= 200, `${big.address.length} chars`);
+}
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);

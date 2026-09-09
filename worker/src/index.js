@@ -39,6 +39,7 @@ import { checkQuota, consumeQuota, refundQuota } from './quota.js';
 // entrypoint may only export handlers, and this needs a test: it is the only
 // thing between an upstream error page and a leaked API key.
 import { upstreamReason } from './upstream.js';
+import { logMeasurement, readLog, loggingEnabled } from './testlog.js';
 // Constants and the version lookup live in their own module: a Workers
 // entrypoint may only export handlers, and exporting a plain constant from
 // here kills the isolate on startup.
@@ -460,7 +461,26 @@ async function handleSegment(request, env, origin) {
     return json({ error: 'Segmentation failed', detail }, 502, origin);
   }
 
+  /*
+   * Record the attempt, whatever happens next.
+   *
+   * Logged here rather than after a successful trace because the interesting
+   * reports are the failures: "it found nothing at my house" needs the address
+   * kept precisely when there is no mask to show for it. Not awaited -- the
+   * measurement must not wait on bookkeeping, nor fail with it.
+   */
   const prediction = await res.json();
+  logMeasurement(env, {
+    address: body.address,
+    lng, lat, zoom: served.zoom,
+    provider, model: modelId, prompt,
+    threshold: samThreshold(env, modelId),
+    parcelSqFt: body.parcelSqFt,
+    county: body.county,
+    clientId,
+    outcome: prediction.status,
+  });
+
   if (prediction.status !== 'succeeded') {
     // Not a failure: `Prefer: wait` gives up after about a minute, and a cold
     // model can take several. The quota stays spent because the prediction is
@@ -530,6 +550,18 @@ export default {
         case '/api/segment':
           if (request.method !== 'POST') return json({ error: 'POST required' }, 405, origin);
           return await handleSegment(request, env, origin);
+        /*
+         * The test log, readable only with the token.
+         *
+         * 404 rather than 403 when the token is missing or wrong: a refusal
+         * confirms there is something here worth the trouble of guessing at.
+         * With no LOG_TOKEN configured this route simply does not exist.
+         */
+        case '/api/log': {
+          const found = await readLog(env, url.searchParams.get('token'));
+          if (!found) return json({ error: 'Not found' }, 404, origin);
+          return json({ ...found, logging: loggingEnabled(env) }, 200, origin);
+        }
         case '/api/quota': {
           const clientId = url.searchParams.get('clientId') || 'anon';
           return json(await checkQuota(request, env, clientId), 200, origin);

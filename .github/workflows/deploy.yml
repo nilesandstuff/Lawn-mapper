@@ -82,6 +82,9 @@ jobs:
           MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN }}
           REPLICATE_TOKEN: ${{ secrets.REPLICATE_TOKEN }}
           GOOGLE_MAPS_KEY: ${{ secrets.GOOGLE_MAPS_KEY }}
+          # The address log: a variable to switch it on, a secret to read it.
+          LOG_TESTS: ${{ vars.LOG_TESTS }}
+          LOG_TOKEN: ${{ secrets.LOG_TOKEN }}
         run: |
           printf '%s' "$MAPBOX_TOKEN"    | npx wrangler secret put MAPBOX_TOKEN
           printf '%s' "$REPLICATE_TOKEN" | npx wrangler secret put REPLICATE_TOKEN
@@ -108,6 +111,35 @@ jobs:
             echo "No MAPBOX_SERVER_TOKEN secret; the Worker will use MAPBOX_TOKEN."
             echo "Do not URL-restrict MAPBOX_TOKEN until you add one, or address"
             echo "search and detection will fail while the map still draws."
+          fi
+
+          # The test log. Both are applied as Worker secrets because that is
+          # how a value reaches the runtime here; LOG_TESTS is not secret, it
+          # just travels the same road.
+          #
+          # There is no way to UNSET one of these from a blank box -- a blank
+          # box is indistinguishable from never having set it -- so switching
+          # the log off means setting LOG_TESTS to 0, which the Worker reads as
+          # off. Deleting the variable leaves the last value in place, and a
+          # log you believe is off is worse than one you know is on.
+          if [ -n "$LOG_TESTS" ]; then
+            printf '%s' "$LOG_TESTS" | npx wrangler secret put LOG_TESTS
+            case "$LOG_TESTS" in
+              1|true|yes|on|TRUE|YES|ON)
+                echo "Address logging is ON. Every detection records the address." ;;
+              *)
+                echo "Address logging is OFF (LOG_TESTS=$LOG_TESTS)." ;;
+            esac
+          else
+            echo "No LOG_TESTS variable; address logging stays off."
+          fi
+
+          if [ -n "$LOG_TOKEN" ]; then
+            printf '%s' "$LOG_TOKEN" | npx wrangler secret put LOG_TOKEN
+            echo "Applied LOG_TOKEN. Read the log at /api/log?token=..."
+          else
+            echo "No LOG_TOKEN secret, so /api/log answers 404 and nothing can"
+            echo "read the log back. That is the safe state, not a broken one."
           fi
 
       - name: Where it went

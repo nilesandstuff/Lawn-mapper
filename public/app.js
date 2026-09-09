@@ -126,6 +126,14 @@ if (typeof window !== 'undefined') {
   /* The measured area, from the geometry rather than the formatted panel. */
   window.__lmSqft = () => (draw ? totalSquareFeet() : 0);
 
+  /* lng/lat -> a point on screen, so a test can aim at a shape that is really
+   * there rather than at the middle of the map and hope. */
+  window.__lmProject = (lngLat) => {
+    if (!map || !Array.isArray(lngLat)) return null;
+    const p = map.project(lngLat);
+    return { x: p.x, y: p.y };
+  };
+
   /*
    * What the imagery picker has actually done to the map.
    *
@@ -993,31 +1001,31 @@ function applyErase() {
    * Only re-trace what the stroke actually reached.
    *
    * This is the "using the brush subtly shifts every point in the whole shape"
-   * bug, and it was the round trip being applied to everything: every feature
-   * on the map was rasterised and re-traced on every stroke, so every vertex
-   * -- including those of shapes on the far side of the property that the
-   * brush never went near -- got resnapped to the pixel grid and moved a
-   * little. Corrections made by hand were quietly undone by an unrelated dab
-   * of the brush somewhere else.
+   * bug. Rasterising a polygon and tracing it back is lossy -- corners land on
+   * pixel centres and the simplifier trims them -- so a shape that makes that
+   * round trip comes back a little smaller. Do it on every stroke and the
+   * shrinking accumulates, which is what the nudging is.
    *
-   * A feature whose bounding box does not reach the stroke cannot have been
-   * changed by it, so it is passed through untouched, vertex for vertex. The
-   * test is deliberately the coarse one: a box that overlaps but a shape that
-   * does not is merely re-traced as before, which is safe, while a box that
-   * does NOT overlap is proof of no contact.
+   * The bounding box below only narrows the field to shapes worth rasterising,
+   * and is not the test. A box that overlaps is not proof of contact: swipe
+   * the add brush inside a square you already have and its box overlaps, so
+   * the coarse test alone still sent it round the loop and still shaved its
+   * corners, for a stroke that changed nothing. The real test is pixel
+   * contact with the stroke, made further down once there is a raster to make
+   * it against, and after that a check for whether the stroke altered a single
+   * pixel at all.
    */
   const strokeBox = strokeBounds(stroke, brushGroundRadius());
-  const touched = features.filter((f) => boxesOverlap(strokeBox, geometryBounds(f.geometry)));
-  const untouched = features.filter((f) => !touched.includes(f));
+  const candidates = features.filter((f) => boxesOverlap(strokeBox, geometryBounds(f.geometry)));
 
   // A frame around everything involved, so nothing outside it is lost. Built
-  // from the touched shapes alone, which also makes its pixels finer.
+  // from the candidates alone, which also makes its pixels finer.
   let [w, s, e, n] = [Infinity, Infinity, -Infinity, -Infinity];
   const see = ([lng, lat]) => {
     w = Math.min(w, lng); e = Math.max(e, lng);
     s = Math.min(s, lat); n = Math.max(n, lat);
   };
-  for (const f of touched) for (const ring of f.geometry.coordinates) ring.forEach(see);
+  for (const f of candidates) for (const ring of f.geometry.coordinates) ring.forEach(see);
   stroke.forEach(see);
 
   const pad = 0.0004; // a few dozen metres, so nothing sits on the edge
@@ -1030,12 +1038,11 @@ function applyErase() {
   };
   const project = (ll) => lngLatToFramePx(frame, ll, ERASE_GRID, ERASE_GRID);
 
-  // What the shapes cover.
-  const keep = new Uint8Array(ERASE_GRID * ERASE_GRID);
-  for (const f of touched) {
-    const m = rasterizePolygon(f.geometry.coordinates, ERASE_GRID, ERASE_GRID, project);
-    for (let i = 0; i < keep.length; i++) if (m[i]) keep[i] = 1;
-  }
+  // Each candidate's own pixels, kept separately: which of them the stroke
+  // really reaches is decided below, and that needs them one at a time.
+  const rasters = candidates.map(
+    (f) => rasterizePolygon(f.geometry.coordinates, ERASE_GRID, ERASE_GRID, project)
+  );
 
   /*
    * The stroke, as overlapping discs along it. Sampling only the points the
@@ -1077,6 +1084,12 @@ function applyErase() {
     ? parcelRaster(ERASE_GRID, ERASE_GRID, project)
     : null;
 
+  /*
+   * Paint the stroke into a mask of its OWN, rather than straight into the
+   * shapes. Which shapes it truly reaches is the whole question below, and
+   * that cannot be asked once the two are mixed together.
+   */
+  const strokeMask = new Uint8Array(ERASE_GRID * ERASE_GRID);
   const disc = (cx, cy) => {
     const r2 = radius * radius;
     const x0 = Math.max(0, Math.floor(cx - radius));
@@ -1088,7 +1101,7 @@ function applyErase() {
         if ((x - cx) ** 2 + (y - cy) ** 2 > r2) continue;
         const idx = y * ERASE_GRID + x;
         if (limit && !limit[idx]) continue; // outside the lot: not yours to add
-        keep[idx] = mode.paint;
+        strokeMask[idx] = 1;
       }
     }
   };
@@ -1103,6 +1116,61 @@ function applyErase() {
            prev[1] + ((cur[1] - prev[1]) * k) / steps);
     }
     prev = cur;
+  }
+
+  /*
+   * WHICH SHAPES THE STROKE ACTUALLY REACHED, in pixels rather than in
+   * bounding boxes.
+   *
+   * This is the rest of the "the brush nudges every corner inward" bug. The
+   * first fix spared shapes the stroke came nowhere near, which was real but
+   * only half of it: a box that OVERLAPS is not proof of contact. Swipe the
+   * add brush inside a square you already have and its box overlaps, so the
+   * square went through rasterise-and-retrace and came back with its corners
+   * resnapped to the pixel grid -- a little smaller, every single time, for a
+   * stroke that changed nothing whatsoever.
+   *
+   * Sharing one pixel with the stroke is the real test, and it is exact for
+   * both directions: erasing can only alter a shape it overlaps, and adding
+   * can only grow or merge one it overlaps. A stroke that touches nothing
+   * becomes its own new shape and leaves every existing one alone.
+   */
+  const reaches = (m) => {
+    for (let i = 0; i < m.length; i++) if (m[i] && strokeMask[i]) return true;
+    return false;
+  };
+  const touched = candidates.filter((f, i) => reaches(rasters[i]));
+  const untouched = features.filter((f) => !touched.includes(f));
+
+  // The touched shapes as one raster, before the stroke is applied to it.
+  const keep = new Uint8Array(ERASE_GRID * ERASE_GRID);
+  for (let i = 0; i < candidates.length; i++) {
+    if (!touched.includes(candidates[i])) continue;
+    const m = rasters[i];
+    for (let p = 0; p < keep.length; p++) if (m[p]) keep[p] = 1;
+  }
+
+  /*
+   * Now the stroke, and a check for whether it changed anything at all.
+   *
+   * Rubbing out where there is nothing, or painting over ground already
+   * counted, is a stroke with no effect -- and the round trip is not free, so
+   * "no effect" has to mean the shapes are left strictly alone rather than
+   * rebuilt identically. Returning here is what makes an idle swipe cost
+   * nothing: no history entry to undo, no redraw, no resnapped corners.
+   */
+  let changed = false;
+  for (let p = 0; p < keep.length; p++) {
+    if (!strokeMask[p]) continue;
+    if (keep[p] === mode.paint) continue;
+    keep[p] = mode.paint;
+    changed = true;
+  }
+  if (!changed) {
+    setStatus(mode.paint
+      ? 'That is already counted as lawn.'
+      : 'Nothing to erase there.');
+    return;
   }
 
   // Back through the tracer, which owns simplification and hole handling.
@@ -1769,7 +1837,19 @@ async function detect() {
     let data = await api('/api/segment', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...frame, provider, model, points, clientId: state.clientId }),
+      /*
+       * The address and the lot size ride along for the test log. Neither
+       * changes what gets detected -- the server measures from the frame --
+       * but "it got my back lawn wrong" cannot be reproduced from a pair of
+       * coordinates alone, and the county's own acreage is the yardstick any
+       * complaint about a lawn figure is really being made against.
+       */
+      body: JSON.stringify({
+        ...frame, provider, model, points, clientId: state.clientId,
+        address: state.chosen?.label || null,
+        parcelSqFt: state.parcel ? measure(state.parcel.geometry).squareFeet : null,
+        county: state.parcel?.properties?.county || null,
+      }),
       // Replicate holds the connection for about a minute before answering.
       timeoutMs: 90000,
     });
