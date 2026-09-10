@@ -85,15 +85,21 @@ function geometryAreaSqM(geometry) {
 }
 
 /**
- * Primary entry point. Returns the measurement in every unit the UI needs.
+ * Square metres -> the measurement in every unit the UI needs.
+ *
+ * Split out from measure() so a caller that has adjusted the area can present
+ * it through the SAME rounding rules rather than reimplementing them. The
+ * overlap correction in the browser is exactly that caller: it scales the area
+ * down for ground counted twice, and a second copy of these five roundings
+ * would be a second chance for the printed figure to disagree with the one on
+ * screen.
  *
  * `precision` mirrors what we can honestly claim: satellite imagery is
  * roughly 0.5-1 ft/px and users trace by hand, so square footage is
  * rounded to the nearest 10 sq ft. Reporting 4,127 sq ft implies accuracy
  * the input data does not have.
  */
-function measure(geometry) {
-  const sqm = geometryAreaSqM(geometry);
+function fromSquareMeters(sqm) {
   const sqft = sqm / SQM_PER_SQFT;
 
   return {
@@ -106,4 +112,18 @@ function measure(geometry) {
   };
 }
 
-export { measure, geometryAreaSqM, ringAreaSqM, SQM_PER_SQFT };
+/**
+ * Primary entry point.
+ *
+ * NOTE FOR A FEATURECOLLECTION: this SUMS its features. Two shapes lying on
+ * top of each other are counted twice, because plain geodesic maths has no way
+ * to know they cover the same ground -- working that out means intersecting
+ * polygons, which this module deliberately does not do. The browser corrects
+ * for it before showing a total; see distinctFraction in mask.js. Anything
+ * else calling this on overlapping shapes will get the sum.
+ */
+function measure(geometry) {
+  return fromSquareMeters(geometryAreaSqM(geometry));
+}
+
+export { measure, fromSquareMeters, geometryAreaSqM, ringAreaSqM, SQM_PER_SQFT };

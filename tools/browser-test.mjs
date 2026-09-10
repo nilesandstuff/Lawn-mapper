@@ -695,6 +695,42 @@ check('pressing "use property line" twice does not count the lot twice',
   twice === parcelSqft, `${parcelSqft.toLocaleString()} -> ${twice.toLocaleString()} sq ft`);
 check('and leaves exactly one shape, not a stack of them',
   shapesNow === 1, `${shapesNow} shape(s)`);
+
+/*
+ * TWO SHAPES ON THE SAME GROUND ARE ONE LAWN.
+ *
+ * "Use property line" defends itself by replacing rather than adding, but
+ * nothing else did: geodesic area SUMS a FeatureCollection, so a shape lying on
+ * another was counted twice and the panel reported a bigger lawn. The add
+ * brush, drawing by hand, and re-detecting over corrections can all get there,
+ * and it is invisible on the map because the copy sits exactly on the original.
+ *
+ * Stacked deliberately here, because no gesture produces it reliably -- which
+ * is exactly why it went unnoticed.
+ */
+{
+  const before = await page.evaluate(() => window.__lmSqft());
+  const count = await page.evaluate(() => window.__lmDuplicateShape());
+  await page.waitForTimeout(300);
+  const after = await page.evaluate(() => window.__lmSqft());
+
+  check('duplicating a shape really does put two on the map',
+    count === 2, `${count} shape(s)`);
+  check('but the same ground is not measured twice',
+    after === before, `${before.toLocaleString()} -> ${after.toLocaleString()} sq ft`);
+
+  // And the panel says why the figure is smaller than the parts add up to,
+  // rather than leaving it looking like lost lawn.
+  const sub = await page.textContent('#result-sub');
+  check('and the panel says the overlap was counted once',
+    /overlap counted once/i.test(sub), sub.trim());
+
+  await page.click('#btn-undo');
+  await page.waitForTimeout(300);
+  const restored = await page.evaluate(() => window.__lmSqft());
+  check('and undo puts the map back where it was',
+    restored === before, `${restored.toLocaleString()} sq ft`);
+}
 if (detectedSqft !== null && parcelSqft > 0) {
   // Not an assertion: how much of a lot is lawn varies enormously. It is here
   // because a bare square-footage says nothing about whether the detection was

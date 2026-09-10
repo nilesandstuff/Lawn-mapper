@@ -82,6 +82,52 @@ export function rasterizePolygon(rings, width, height, project) {
   return mask;
 }
 
+/**
+ * How much of the SUM of these shapes is distinct ground, as a fraction.
+ *
+ * Geodesic area has no way to know two shapes cover the same lawn -- it adds
+ * them up, so a shape drawn twice measures double. Working it out properly
+ * means intersecting polygons, which is the genuinely hard problem this file
+ * exists to avoid; rasterising and counting is exact for any shape, holes
+ * included, and needs no library.
+ *
+ * A RATIO RATHER THAN AN AREA, deliberately. Returning square metres would
+ * mean converting pixels to ground units and mixing a raster estimate into a
+ * geodesic figure -- two methods, one number, disagreeing in the last digits
+ * even when nothing overlaps at all. A dimensionless fraction needs no scale,
+ * so the caller keeps its exact geodesic total and merely scales it.
+ *
+ * Which gives the property that matters: for shapes that do not overlap, the
+ * union and the sum contain exactly the same pixels, so this returns exactly 1
+ * and the measurement is bit-for-bit what it was before. A correction that
+ * cannot fire on ordinary lawns is a correction that cannot break them.
+ *
+ * `shapes` is a list of GeoJSON-style ring lists (outer first, then holes).
+ * A shape too thin to light a single pixel contributes nothing here and keeps
+ * its full geodesic area, which errs toward the old behaviour rather than
+ * against it.
+ */
+export function distinctFraction(shapes, width, height, project) {
+  if (!Array.isArray(shapes) || shapes.length < 2) return 1;
+
+  const union = new Uint8Array(width * height);
+  let sum = 0;
+
+  for (const rings of shapes) {
+    const m = rasterizePolygon(rings, width, height, project);
+    for (let p = 0; p < m.length; p++) {
+      if (!m[p]) continue;
+      sum++;
+      union[p] = 1;
+    }
+  }
+  if (!sum) return 1;
+
+  let distinct = 0;
+  for (let p = 0; p < union.length; p++) if (union[p]) distinct++;
+  return distinct / sum;
+}
+
 /** Clockwise Moore neighbourhood, starting due east. */
 const MOORE = [
   [1, 0], [1, 1], [0, 1], [-1, 1],

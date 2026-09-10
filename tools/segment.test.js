@@ -175,6 +175,49 @@ async function post(payload) {
     r.status === 400 && r.sent.length === 0, `${r.status}: ${r.body.error}`);
 }
 
+/* -------------------------------------------------- the developer allowance */
+/*
+ * The flag has to reach the quota, not just exist in the body. Checked through
+ * the real endpoint with a real KV stand-in, because the wiring is where it
+ * would silently do nothing: the Worker would still answer, still detect, and
+ * still refuse at twenty, with the badge cheerfully saying fifty.
+ */
+{
+  const store = new Map();
+  const kvEnv = {
+    ...env,
+    QUOTA: {
+      async put(k, v) { store.set(k, v); },
+      async get(k) { return store.get(k) ?? null; },
+    },
+  };
+  const spend = async (n, dev) => {
+    const res = await worker.fetch(new Request('https://example.test/api/segment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        lng: -85.5, lat: 43.1, zoom: 19, size: 640, clientId: 'tinkerer',
+        model: 'sam3_exclude', exclude: ['built', 'trees'], dev,
+      }),
+    }), kvEnv, ctx);
+    return { status: res.status, body: await res.json() };
+  };
+
+  // Two passes a press, so eleven presses is 22 -- past the ordinary 20.
+  let last;
+  for (let i = 0; i < 11; i++) last = await spend(2, true);
+  check('developer mode keeps going past the ordinary cap',
+    last.status === 200, `${last.status}: ${JSON.stringify(last.body).slice(0, 90)}`);
+  check('and the response reports the raised ceiling',
+    last.body.remaining === 50 - 22, `remaining ${last.body.remaining}`);
+
+  /* The same counter, so dropping the flag hits the ordinary line at once. */
+  const plain = await spend(2, false);
+  check('and dropping the flag falls straight back to the ordinary ceiling',
+    plain.status === 429 && plain.body.limit === 20,
+    `${plain.status}: ${JSON.stringify(plain.body)}`);
+}
+
 /* ------------------------------------------------------- unknown concepts */
 {
   const r = await post({ model: 'sam3_exclude', exclude: ['built', 'unicorns'] });

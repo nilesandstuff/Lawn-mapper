@@ -12,10 +12,10 @@
  * own roof first is the cheapest correctness check available.
  */
 
-import { measure } from './lib/area.js';
+import { measure, fromSquareMeters, geometryAreaSqM } from './lib/area.js';
 import {
   maskToPolygons, rasterizePolygon, maskBinary, unionMasks, subtractMasks,
-  coverage, polygonsFromBinary,
+  coverage, polygonsFromBinary, distinctFraction,
 } from './lib/mask.js';
 import {
   offsetEdge, nearestEdge, edgeRun, edgeLength, edgeBearing, openRing,
@@ -135,6 +135,35 @@ if (typeof window !== 'undefined') {
 
   /* The measured area, from the geometry rather than the formatted panel. */
   window.__lmSqft = () => (draw ? totalSquareFeet() : 0);
+
+  /*
+   * Duplicate the largest shape exactly on top of itself.
+   *
+   * There is no gesture that reliably produces two shapes on the same ground,
+   * which is why the double-counting survived so long: geodesic area sums a
+   * FeatureCollection, so a lawn drawn twice measured twice, and the map looked
+   * completely normal because the copy sat exactly on the original. This makes
+   * that case reachable from a test rather than only from a user who happens to
+   * paint over their own work.
+   */
+  window.__lmDuplicateShape = () => {
+    if (!draw) return 0;
+    const shapes = draw.getAll().features.filter((f) => f.geometry?.type === 'Polygon');
+    if (!shapes.length) return 0;
+    const biggest = shapes
+      .slice()
+      .sort((a, b) => measure(b.geometry).squareFeetRaw - measure(a.geometry).squareFeetRaw)[0];
+    // Through the same undo stack a real edit uses, so this is a duplicate the
+    // user could have made and can take back, not a poke at internal state.
+    pushHistory();
+    draw.add({
+      type: 'Feature',
+      properties: {},
+      geometry: JSON.parse(JSON.stringify(biggest.geometry)),
+    });
+    refreshMeasurement();
+    return draw.getAll().features.length;
+  };
 
   /* Developer mode: whether it is unlocked, and what it would send. */
   window.__lmDev = () => ({
@@ -2080,6 +2109,10 @@ async function detect() {
         // use them, because the Worker decides which fields apply and a
         // second copy of that rule here is a second copy that can be wrong.
         exclude: state.exclude,
+        // Asks for the larger developer allowance. Not a credential and not
+        // treated as one -- see quota.js for why a client-side secret could
+        // not make it stronger than the unlock key already in this file.
+        dev: state.dev || undefined,
         ...devOverrides(),
         address: state.chosen?.label || null,
         parcelSqFt: state.parcel ? measure(state.parcel.geometry).squareFeet : null,
@@ -3222,6 +3255,9 @@ const devExit = () => {
   state.devPrompt = '';
   state.devThreshold = null;
   refreshDevPanel();
+  // The ceiling just dropped back to the ordinary one, and a badge still
+  // showing the developer figure would promise detections that get refused.
+  refreshQuota();
   setStatus('Developer mode off. Detection is back to its own settings.');
 };
 
@@ -3232,6 +3268,13 @@ const devExit = () => {
  * fields are omitted entirely rather than sent as blanks -- the Worker treats
  * absent and empty the same way, and this keeps an idle panel from looking
  * like an override in the test log.
+ */
+/*
+ * NOTE: the larger developer allowance is NOT requested from here. This
+ * function answers "what is the panel changing about the detection", and the
+ * daily cap changes nothing about it -- folding the two together would make an
+ * idle panel look like an override in the test log, which is the exact thing
+ * the paragraph above is about. detect() sends the flag on its own.
  */
 function devOverrides() {
   if (!state.dev) return {};
@@ -4149,7 +4192,101 @@ function useParcelShape() {
  * formatted, localised and rounded, and anything comparing before with after
  * by parsing it back is measuring the formatter.
  */
-const totalSquareFeet = () => measure(draw.getAll()).squareFeet;
+const totalSquareFeet = () => measureLawn(draw.getAll()).squareFeet;
+
+/*
+ * How finely the overlap is measured.
+ *
+ * Not ERASE_GRID (1280): this runs on every measurement refresh, which
+ * includes every frame of a corner drag, and 1.6M pixels per shape per frame
+ * is a stutter on a phone for a correction that does not need that resolution.
+ * The answer wanted is a RATIO, and at 320 across a 400 ft lot each pixel is
+ * about 1.6 sq ft -- so a thousand square feet of double-counted lawn is some
+ * six hundred pixels, which is far more precision than a figure rounded to the
+ * nearest ten needs.
+ */
+const OVERLAP_GRID = 320;
+
+/**
+ * The lawn total, counting ground that two shapes share only once.
+ *
+ * WHY THIS IS NOT JUST measure(). Geodesic area sums a FeatureCollection,
+ * because plain spherical maths cannot tell that two shapes cover the same
+ * grass. Draw a square, draw it again on top, and the panel reported both --
+ * 48,810 sq ft became 97,620. Nothing in the app prevented that: the add
+ * brush, "Use property line", and drawing by hand can all put one shape over
+ * another, and the result looked like a bigger lawn rather than like a bug.
+ *
+ * THE SHAPES ARE LEFT ALONE. The obvious alternative is to merge overlapping
+ * shapes on the map, and that would mean a rasterise-and-retrace round trip --
+ * the same lossy loop that used to nudge every corner inward on an idle brush
+ * stroke. Corners the user placed by hand must survive being measured. So the
+ * geometry is untouched and only the total is corrected, with the panel saying
+ * when it has done so, because a number smaller than the visible parts adds up
+ * to needs explaining.
+ */
+function measureLawn(fc) {
+  const plain = measure(fc);
+  const shapes = (fc?.features || [])
+    .map((f) => f.geometry?.coordinates)
+    .filter((rings) => Array.isArray(rings) && rings.length);
+
+  if (shapes.length < 2) return { ...plain, overlapSqFt: 0 };
+
+  /*
+   * Bounding boxes first, because they are nearly free and almost always
+   * settle it. Detection hands back disconnected components and most lawns are
+   * one or two of them, so the raster below usually never runs at all.
+   */
+  const boxes = shapes.map((rings) => {
+    let [w, s, e, n] = [Infinity, Infinity, -Infinity, -Infinity];
+    for (const [lng, lat] of rings[0]) {
+      w = Math.min(w, lng); e = Math.max(e, lng);
+      s = Math.min(s, lat); n = Math.max(n, lat);
+    }
+    return [w, s, e, n];
+  });
+
+  let mayTouch = false;
+  for (let i = 0; i < boxes.length && !mayTouch; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      const [aw, as, ae, an] = boxes[i];
+      const [bw, bs, be, bn] = boxes[j];
+      if (aw <= be && bw <= ae && as <= bn && bs <= an) { mayTouch = true; break; }
+    }
+  }
+  if (!mayTouch) return { ...plain, overlapSqFt: 0 };
+
+  // One frame around everything, so every shape lands in the same pixel grid.
+  let [w, s, e, n] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const [bw, bs, be, bn] of boxes) {
+    w = Math.min(w, bw); e = Math.max(e, be);
+    s = Math.min(s, bs); n = Math.max(n, bn);
+  }
+  const pad = 0.0001;
+  const bbox = [w - pad, s - pad, e + pad, n + pad];
+  const frame = {
+    lng: (bbox[0] + bbox[2]) / 2,
+    lat: (bbox[1] + bbox[3]) / 2,
+    zoom: zoomToFit(bbox, OVERLAP_GRID),
+    size: OVERLAP_GRID,
+  };
+
+  const fraction = distinctFraction(
+    shapes, OVERLAP_GRID, OVERLAP_GRID,
+    (ll) => lngLatToFramePx(frame, ll, OVERLAP_GRID, OVERLAP_GRID)
+  );
+
+  // Exactly 1 when the boxes overlapped but the shapes did not, which is the
+  // common case this has to leave completely alone.
+  if (!(fraction < 1)) return { ...plain, overlapSqFt: 0 };
+
+  const corrected = fromSquareMeters(geometryAreaSqM(fc) * fraction);
+  return {
+    ...corrected,
+    overlapSqFt: Math.round((plain.squareFeetRaw - corrected.squareFeetRaw) / 10) * 10,
+  };
+}
 
 function refreshMeasurement() {
   const fc = draw.getAll();
@@ -4165,13 +4302,23 @@ function refreshMeasurement() {
     return;
   }
 
-  const m = measure(fc);
+  const m = measureLawn(fc);
   const patches = fc.features.length;
 
   $('#result-sqft').textContent = m.squareFeet.toLocaleString();
+  /*
+   * Say when ground has been counted once rather than twice.
+   *
+   * Without this the panel would show a total smaller than the shapes visibly
+   * add up to, with nothing to explain it -- which reads as the measurement
+   * losing lawn rather than as it declining to sell the same grass twice.
+   */
   $('#result-sub').textContent =
     `${m.thousandSqFt.toFixed(2)}k sq ft · ${m.acres} acres` +
-    (patches > 1 ? ` · ${patches} areas` : '');
+    (patches > 1 ? ` · ${patches} areas` : '') +
+    (m.overlapSqFt > 0
+      ? ` · ${m.overlapSqFt.toLocaleString()} sq ft of overlap counted once`
+      : '');
 
   $('#print-sqft').textContent = m.squareFeet.toLocaleString();
   $('#print-address').textContent = state.chosen?.label || '';
@@ -4196,7 +4343,11 @@ function updateSelectionButtons() {
 
 async function refreshQuota() {
   try {
-    state.quota = await api(`/api/quota?clientId=${encodeURIComponent(state.clientId)}`);
+    // The badge must count against the ceiling a detection will actually meet,
+    // or an unlocked panel reads "12 left" and then gets refused at 20.
+    state.quota = await api(
+      `/api/quota?clientId=${encodeURIComponent(state.clientId)}${state.dev ? '&dev=1' : ''}`
+    );
     const left = Math.max(0, state.quota.limit - state.quota.used);
     const badge = $('#quota-badge');
     badge.textContent = `${left} of ${state.quota.limit} detections left today`;
@@ -4222,7 +4373,7 @@ function exportPng() {
   ctx.fillStyle = '#16211a';
   ctx.fillRect(0, src.height, canvas.width, barH);
 
-  const m = measure(draw.getAll());
+  const m = measureLawn(draw.getAll());
   const scale = src.width / 900;
   ctx.fillStyle = '#fff';
   ctx.font = `700 ${Math.round(30 * scale)}px system-ui, sans-serif`;
@@ -4494,6 +4645,8 @@ window.addEventListener('hashchange', () => {
     // yet. Rebuilding is what makes the method appear without a reload.
     buildModelPicker();
     refreshDevPanel();
+    // The allowance is larger in here, so the badge has to say so.
+    refreshQuota();
     setStatus('Developer mode on. Pick "Testing" under AI method to control the prompt, cut and inversion.');
   }
 });

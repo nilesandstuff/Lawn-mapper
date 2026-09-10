@@ -19,6 +19,7 @@ import {
   traceRegion,
   simplify,
   maskToPolygons,
+  distinctFraction,
   maskBinary,
   unionMasks,
   subtractMasks,
@@ -555,6 +556,83 @@ console.log(`\nframe: zoom ${FRAME.zoom} @ ${IMG}px  ->  ${MPP.toFixed(4)} m/px\
   check('and the guess is still there for the mode that wants it',
     on(maskBinary(mostlyWhite, { autoPolarity: true })) === 20,
     'find-grass keeps the polarity guard; exclude mode switches it off');
+}
+
+/* ------------------------------ 10. overlapping shapes on the map */
+/*
+ * THE ADDITIVE HALF OF THE SAME PROBLEM.
+ *
+ * Exclusions union, so two masks covering the same trees remove that ground
+ * once. The shapes on the MAP had no such protection: geodesic area sums a
+ * FeatureCollection, so a square drawn twice measured 97,620 sq ft where the
+ * square itself is 48,810. The add brush, "Use property line" and drawing by
+ * hand can all produce that, and it looked like a bigger lawn rather than a
+ * bug.
+ *
+ * distinctFraction is the correction, and the property that matters most is
+ * the one about shapes that DON'T overlap: it must return exactly 1, so an
+ * ordinary lawn measures exactly what it measured before.
+ */
+{
+  const W = 200;
+  const H = 200;
+  // A plain pixel-space projection: this function's job is set overlap, and a
+  // real map projection would only add curvature to an answer about pixels.
+  const project = ([x, y]) => [x, y];
+  const box = (x0, y0, w, h) => [[
+    [x0, y0], [x0 + w, y0], [x0 + w, y0 + h], [x0, y0 + h], [x0, y0],
+  ]];
+
+  check('one shape needs no correction at all',
+    distinctFraction([box(10, 10, 50, 50)], W, H, project) === 1);
+
+  check('two shapes that do not touch measure exactly as before',
+    distinctFraction([box(10, 10, 40, 40), box(100, 100, 40, 40)], W, H, project) === 1,
+    'anything other than exactly 1 here would move every ordinary measurement');
+
+  /*
+   * TOUCHING IS NOT OVERLAPPING. Front and back lawn meeting along the side of
+   * a house share an edge and no ground; a correction that fired on that would
+   * quietly shave real lawn off most results.
+   */
+  check('and shapes that merely share an edge are not counted as overlapping',
+    distinctFraction([box(10, 10, 40, 40), box(50, 10, 40, 40)], W, H, project) === 1);
+
+  /* The same shape twice: half the sum is duplicate, so half of it survives. */
+  const twice = distinctFraction([box(20, 20, 60, 60), box(20, 20, 60, 60)], W, H, project);
+  check('the same shape drawn twice counts once',
+    Math.abs(twice - 0.5) < 1e-9, `${twice}`);
+
+  /*
+   * A QUARTER OVERLAP, checked against arithmetic rather than against itself.
+   * Two 60x60 squares offset by 30 in both axes share a 30x30 corner: the sum
+   * is 7,200 px, the distinct ground is 6,300, so 0.875.
+   */
+  const quarter = distinctFraction([box(20, 20, 60, 60), box(50, 50, 60, 60)], W, H, project);
+  check('a partial overlap is measured, not guessed',
+    Math.abs(quarter - 6300 / 7200) < 0.01, `${quarter} vs ${(6300 / 7200).toFixed(4)}`);
+
+  /* Three shapes stacked on one another must not subtract the shared ground
+   * twice over -- a pixel is either counted or it is not. */
+  const thrice = distinctFraction(
+    [box(20, 20, 60, 60), box(20, 20, 60, 60), box(20, 20, 60, 60)], W, H, project);
+  check('three copies still count the ground exactly once',
+    Math.abs(thrice - 1 / 3) < 1e-9, `${thrice}`);
+
+  /*
+   * A HOLE IS NOT LAWN, so ground under a shape's cut-out is not "shared" with
+   * the shape sitting in it. Rasterising fills even-odd, so this comes out
+   * right without being special-cased -- which is worth pinning, because a
+   * lawn wrapping a flower bed is the ordinary case, not an exotic one.
+   */
+  const ring = [
+    [[20, 20], [100, 20], [100, 100], [20, 100], [20, 20]],
+    [[40, 40], [80, 40], [80, 80], [40, 80], [40, 40]],
+  ];
+  const inHole = box(45, 45, 30, 30);
+  check('a shape sitting in another shape\'s hole overlaps nothing',
+    distinctFraction([ring, inHole], W, H, project) === 1,
+    'the hole is not lawn, so nothing there is being counted twice');
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);

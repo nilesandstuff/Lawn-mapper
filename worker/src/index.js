@@ -463,7 +463,17 @@ async function handleSegment(request, env, origin, ctx) {
   // Every pass is a separate prediction and a separate bill, so the allowance
   // is charged for all of them at once -- all or nothing, because a detection
   // missing one exclusion is a wrong answer rather than a smaller one.
-  const quota = await consumeQuota(request, env, clientId, passes.length);
+  /*
+   * Developer mode asks for the larger allowance by sending a flag.
+   *
+   * Unguarded, and deliberately not dressed up as anything else: the unlock
+   * key is a plain string in app.js, so there is no client-side secret that
+   * could make this a real check. It raises one person's ceiling; the per-IP
+   * backstop that actually limits the damage is untouched. See quota.js.
+   */
+  const dev = body.dev === true;
+
+  const quota = await consumeQuota(request, env, clientId, passes.length, dev);
   if (!quota.allowed) {
     return json(
       {
@@ -724,7 +734,13 @@ export default {
         }
         case '/api/quota': {
           const clientId = url.searchParams.get('clientId') || 'anon';
-          return json(await checkQuota(request, env, clientId), 200, origin);
+          return json(
+            // The badge has to count against the same ceiling the detection
+            // will, or it reads "12 left" and then refuses at 20.
+            await checkQuota(request, env, clientId, url.searchParams.get('dev') === '1'),
+            200,
+            origin
+          );
         }
         default:
           if (url.pathname.startsWith('/api/')) {

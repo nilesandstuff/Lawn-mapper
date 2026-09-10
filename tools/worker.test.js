@@ -26,7 +26,8 @@ import {
   MAX_PROMPT_TOKENS, estimatePromptTokens, promptProblem,
 } from '../worker/src/sam.js';
 import {
-  dayKey, DAILY_LIMIT_PER_CLIENT, consumeQuota, refundQuota,
+  dayKey, DAILY_LIMIT_PER_CLIENT, DAILY_LIMIT_PER_DEV, DAILY_LIMIT_PER_IP,
+  consumeQuota, refundQuota, checkQuota,
 } from '../worker/src/quota.js';
 import { upstreamReason, redactSecrets } from '../worker/src/upstream.js';
 import { logMeasurement, readLog, loggingEnabled, recordLater } from '../worker/src/testlog.js';
@@ -168,6 +169,54 @@ check('the daily allowance is 20', DAILY_LIMIT_PER_CLIENT === 20,
   await refundQuota(req, broke, 'someone', 4);
   check('and a failure hands back all of them, not one', count(broke) === 0,
     `${count(broke)} left charged`);
+
+  /* ------------------------------------------- the developer allowance */
+  /*
+   * Tuning a prompt means running one lot a dozen times, and exclude mode
+   * spends one of these per ticked box, so the ordinary twenty is three or four
+   * real experiments.
+   */
+  check('developer mode raises the personal ceiling', DAILY_LIMIT_PER_DEV === 50,
+    String(DAILY_LIMIT_PER_DEV));
+  check('and it really is higher than the ordinary one',
+    DAILY_LIMIT_PER_DEV > DAILY_LIMIT_PER_CLIENT);
+
+  const asDev = { QUOTA: kv() };
+  const past = await consumeQuota(req, asDev, 'someone', DAILY_LIMIT_PER_CLIENT + 5, true);
+  check('a developer run passes the ordinary cap', past.allowed && past.limit === 50,
+    JSON.stringify(past));
+
+  /*
+   * ONE COUNTER, NOT TWO. A separate developer bucket would let the same
+   * browser spend twenty ordinary detections and then fifty more by flipping a
+   * switch -- seventy against a cap of twenty.
+   */
+  const shared = { QUOTA: kv() };
+  await consumeQuota(req, shared, 'someone', 18, true);
+  const ordinary = await consumeQuota(req, shared, 'someone', 5, false);
+  check('leaving developer mode does not hand back a fresh allowance',
+    !ordinary.allowed && count(shared) === 18,
+    `${count(shared)} already spent against a cap of ${DAILY_LIMIT_PER_CLIENT}`);
+
+  /*
+   * AND THE SHARED-NETWORK BACKSTOP IS NOT RAISED. This flag is unguarded --
+   * anyone can post it -- so what actually limits the damage is the per-IP
+   * ceiling, which must stay where it is.
+   */
+  const flood = { QUOTA: kv() };
+  const ipCount = (env) => Number([...env.QUOTA.store].find(([k]) => k.startsWith('i:'))?.[1] || 0);
+  await consumeQuota(req, flood, 'a', 40, true);
+  await consumeQuota(req, flood, 'b', 40, true);
+  const third = await consumeQuota(req, flood, 'c', 40, true);
+  check('the per-address backstop still stops a flood of developer requests',
+    !third.allowed && third.reason === 'shared-network'
+    && ipCount(flood) <= DAILY_LIMIT_PER_IP,
+    `${ipCount(flood)} against an IP cap of ${DAILY_LIMIT_PER_IP}`);
+
+  check('and the badge counts against the ceiling that will actually apply',
+    (await checkQuota(req, asDev, 'someone', true)).limit === DAILY_LIMIT_PER_DEV
+    && (await checkQuota(req, asDev, 'someone', false)).limit === DAILY_LIMIT_PER_CLIENT,
+    'otherwise it reads "12 left" and then refuses at 20');
 }
 
 
