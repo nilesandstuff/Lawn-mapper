@@ -4084,6 +4084,24 @@ state.dev = devUnlocked();
 wireDevPanel();
 refreshDevPanel();
 
+/*
+ * Typing the key onto a page that is ALREADY OPEN has to work too.
+ *
+ * Adding a hash to the current URL is a same-document navigation: the browser
+ * fires hashchange and does not reload, so nothing above this line runs again.
+ * Without this the key appears broken in the most likely way anyone would try
+ * it -- you are looking at your lawn, you append the word, the address bar
+ * takes it, and absolutely nothing happens.
+ */
+window.addEventListener('hashchange', () => {
+  if (state.dev) return;
+  state.dev = devUnlocked();
+  if (state.dev) {
+    refreshDevPanel();
+    setStatus('Developer mode on. The prompt and confidence cut are yours now.');
+  }
+});
+
 initMap()
   .then(refreshQuota)
   .catch((err) => {
