@@ -263,6 +263,34 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .imagery .sub { margin: 7px 0 0; font-size: 12.5px; }
 .imagery input[type=range] { width: 100%; margin: 2px 0 0; accent-color: var(--green); }
 
+/* ------------------------------------------------------- developer mode */
+/*
+ * Deliberately unlike the rest of the panel. Everything else here is trying
+ * to look calm and finished; this is a set of raw knobs that change what the
+ * detector is asked, and it should be obvious at a glance that the app is in
+ * a state an ordinary visitor never sees.
+ */
+.devpanel {
+  margin: 10px 0 0; padding: 11px 13px 12px;
+  border: 1px dashed #b08900; border-radius: 11px; background: #fffdf3;
+}
+.devpanel label {
+  display: block; font-size: 12.5px; font-weight: 600;
+  color: var(--muted); margin: 8px 0 5px;
+}
+.devpanel label:first-child { margin-top: 0; }
+.devpanel input[type=text] {
+  width: 100%; padding: 9px 10px; font: inherit; font-size: 14px;
+  color: var(--ink); background: #fff;
+  border: 1px solid var(--line); border-radius: 9px;
+}
+.devpanel input[type=range] { width: 100%; margin: 2px 0 0; accent-color: #b08900; }
+.devpanel .sub { margin: 7px 0 0; font-size: 12.5px; }
+.devpanel .tools { margin-top: 10px; }
+/* The token count sits on the label line, so it must not take a line of its
+ * own the way .sub otherwise would. */
+.devpanel label .sub { display: inline; margin: 0 0 0 4px; font-weight: 400; }
+
 /* --------------------------------------------------------- edge editing */
 .edgepanel {
   margin-top: 12px; padding: 12px 13px;

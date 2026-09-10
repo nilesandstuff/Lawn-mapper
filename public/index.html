@@ -36,6 +36,34 @@
       <span>Show me tips as I go</span>
     </label>
 
+    <!--
+      Developer mode. Hidden unless unlocked, and unlocked by a string in
+      the URL rather than by anything on screen -- see DEV_KEY in app.js.
+      Obscured, not secured: the Worker accepts these fields from anyone,
+      which is fine because an arbitrary prompt costs exactly one prediction
+      and the daily allowance already caps that.
+
+      Deliberately OUTSIDE the measure step, so it appears the moment the key
+      is entered rather than after an address has been confirmed. A panel that
+      shows up only once you have done something else reads as the key not
+      having worked -- which is the same way this failed once already.
+    -->
+    <div class="devpanel" id="dev-panel" hidden>
+      <label for="dev-prompt">Prompt <span class="sub" id="dev-tokens"></span></label>
+      <input type="text" id="dev-prompt" autocomplete="off" autocapitalize="none"
+             autocorrect="off" spellcheck="false"
+             placeholder="grass">
+      <label for="dev-threshold">Confidence cut <b id="dev-threshold-value">0.05</b></label>
+      <input type="range" id="dev-threshold" min="0" max="1" step="0.01" value="0.05"
+             aria-label="Confidence threshold sent to the model">
+      <p class="sub" id="dev-note"></p>
+      <div class="tools">
+        <button class="ghost" id="dev-reset" type="button">Back to defaults</button>
+        <button class="link" id="dev-exit" type="button">Leave developer mode</button>
+      </div>
+    </div>
+
+
     <!-- 0. Hard failure -------------------------------------------------- -->
     <section class="step fatal" id="step-fatal" hidden>
       <h2>The map didn't load</h2>
@@ -109,28 +137,6 @@
       <!-- Pull the detected outline in or push it out, in feet on the ground.
            Free to move: it re-reads a mask already downloaded and runs no
            new detection. -->
-      <!--
-        Developer mode. Hidden unless unlocked, and unlocked by a string in
-        the URL rather than by anything on screen -- see DEV_KEY in app.js.
-        Obscured, not secured: the Worker accepts these fields from anyone,
-        which is fine because an arbitrary prompt costs exactly one prediction
-        and the daily allowance already caps that.
-      -->
-      <div class="imagery" id="dev-panel" hidden>
-        <label for="dev-prompt">Prompt <span class="sub" id="dev-tokens"></span></label>
-        <input type="text" id="dev-prompt" autocomplete="off" autocapitalize="none"
-               autocorrect="off" spellcheck="false"
-               placeholder="grass">
-        <label for="dev-threshold">Confidence cut <b id="dev-threshold-value">0.05</b></label>
-        <input type="range" id="dev-threshold" min="0" max="1" step="0.01" value="0.05"
-               aria-label="Confidence threshold sent to the model">
-        <p class="sub" id="dev-note"></p>
-        <div class="tools">
-          <button class="ghost" id="dev-reset" type="button">Back to defaults</button>
-          <button class="link" id="dev-exit" type="button">Leave developer mode</button>
-        </div>
-      </div>
-
       <div class="imagery" id="sens-panel" hidden>
         <label for="sens-slider">Trim or extend the edge</label>
         <input type="range" id="sens-slider" min="-3" max="3" step="0.25" value="0"

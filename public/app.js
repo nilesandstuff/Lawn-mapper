@@ -132,7 +132,13 @@ if (typeof window !== 'undefined') {
   /* Developer mode: whether it is unlocked, and what it would send. */
   window.__lmDev = () => ({
     on: state.dev,
-    panelVisible: !document.getElementById('dev-panel').hidden,
+    /*
+     * Real visibility, not the element's own `hidden` attribute. The panel
+     * once sat inside the measure step, so its own attribute said "shown"
+     * while an ancestor kept it off screen -- a diagnostic that reports
+     * visible for something nobody can see is worse than none.
+     */
+    panelVisible: document.getElementById('dev-panel').offsetParent !== null,
     overrides: devOverrides(),
     blocked: devPromptBlocked(),
   });

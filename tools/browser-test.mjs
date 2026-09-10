@@ -1389,6 +1389,14 @@ console.log('\n--- developer mode ---');
   check('and it is remembered on the next visit without the key',
     (await page.evaluate(() => window.__lmDev())).on === true);
 
+  /*
+   * The panel is reachable from the address step, which is the point of it
+   * living outside the measure step: the key has to show something the moment
+   * it is entered, not once an address has been confirmed.
+   */
+  check('and it is usable straight away, without confirming an address first',
+    await page.locator('#dev-prompt').isVisible());
+
   /* A typed prompt reaches the request; an untouched panel sends nothing. */
   await page.fill('#dev-prompt', 'dormant bermuda');
   await page.waitForTimeout(200);
