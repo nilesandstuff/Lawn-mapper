@@ -94,6 +94,9 @@ export async function logMeasurement(env, record) {
       model: text(record.model, 40),
       prompt: text(record.prompt, 200),
       threshold: num(record.threshold),
+      // How many predictions one press ran. Exclude mode charges per ticked
+      // box, so this is what turns a bill into an explanation.
+      passes: num(record.passes),
       // What the county said the lot is, which is the yardstick every
       // complaint about a lawn figure is really being made against.
       parcelSqFt: num(record.parcelSqFt),

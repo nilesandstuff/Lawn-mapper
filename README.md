@@ -210,17 +210,61 @@ view layer, because seeing where the vegetation is still tells you something.
 they differ in what they need from the browser rather than just in name. There
 are two entries in it: the same model, asked opposite questions.
 
-**Quick** is a text prompt for `grass`: one press, every patch in the frame at
-once, including the disconnected ones a person would forget. What it cannot do
-is be argued with — when it decides a shaded strip is not grass, there is no
-way to say otherwise.
+**Find grass** is a text prompt for `grass`: one press, one AI pass, every
+patch in the frame at once, including the disconnected ones a person would
+forget. What it cannot do is be argued with — when it decides a shaded strip is
+not grass, there is no way to say otherwise.
 
-**Subtract trees** asks for one word — `trees` — and the browser flips the
-mask, taking the lawn as the remainder. It exists for a failure the threshold
-cannot reach: warm-season turf goes straw-brown when dormant, and imagery flown
-in that season shows a lawn the detector does not recognise as grass at all.
-Lowering the cut finds more of a thing the model is looking for; it does not
-make the model look for a different thing.
+**Exclude objects** starts from the property line as solid lawn and takes away
+what you tick. It exists for a failure the threshold cannot reach: warm-season
+turf goes straw-brown when dormant, and imagery flown in that season shows a
+lawn the detector does not recognise as grass at all. Lowering the cut finds
+more of a thing the model is looking for; it does not make the model look for a
+different thing.
+
+Each tick box is **one concept and one prediction**, and the masks are added
+together before anything is traced:
+
+| box | prompt | cut | on by default |
+|---|---|---|---|
+| Buildings, drives and paving | `man-made` | 0.05 | **yes** |
+| Trees | `trees` | 0.2 | no |
+| Woods | `forest` | 0.2 | no |
+| Ponds and creeks | `bodies of water` | 0.2 | no |
+
+`man-made` is the box that ships ticked, and it was found by hand in the
+developer panel rather than derived from anything here: one concept that covers
+house, garage, driveway, patio, pool, deck and sidewalk together. That is
+consistent with the finding below rather than an exception to it — the problem
+with `house, driveway, pool` was never the number of *things*, it was the
+number of *concepts*.
+
+**Subtractive, not inverting**, and the distinction only shows up at two boxes.
+For one concept, "flip the mask then clip to the parcel" and "start from the
+parcel then remove the mask" are the same set — `tools/mask.test.js` asserts
+that, which is why the single-concept measurements below still stand. For two,
+inverting each mask *intersects* them: a pixel would have to be simultaneously
+not-a-tree and not-a-building, and two independently noisy masks intersect to
+slivers. Subtracting accumulates. That is the whole reason the mode was rebuilt
+around the property line.
+
+**The cost is per box, and it is on screen.** Four ticks is four predictions,
+four items of the daily allowance and four times the bill for one press. The
+Worker charges the allowance for all of them at once and refuses the lot if
+they will not fit, because a detection that quietly dropped one exclusion would
+not be a smaller answer — it would be a wrong one, with the trees counted as
+lawn and nothing saying so.
+
+**What it does not remove.** Whatever is not ticked. Exclude mode has no
+concept of grass, so it cannot decline to measure something that is not grass:
+a gravel yard, a bare-earth field, a tennis court all stay in the total. *Find
+grass* errs by missing lawn; this errs by inventing it. Which is the better
+failure depends entirely on the lot, which is why both ship.
+
+**When a box swallows the lot.** The documented failure of this model is a
+concept that comes back covering the whole frame; subtracting that leaves zero.
+A pass covering more than 98% of the parcel is dropped and **named on screen**,
+rather than reporting nought square feet with no explanation.
 
 ### One concept, not a list
 
@@ -249,37 +293,38 @@ in the middle of it.
 
 What the table does support: one concept is clearly best and a list is
 unreliable at any length. **This model is worth one concept per prediction.**
-Covering trees *and* buildings would need two predictions unioned, at twice the
-cost per detection.
+Covering trees *and* buildings needs two predictions unioned, at twice the cost
+per detection — which is exactly what the tick boxes now do, with the cost
+stated before it is spent.
 
 Untested: whether a comma list behaves this badly in *normal* mode. Every row
-is subtract mode on one lot.
+is exclude mode on one lot.
 
-`trees` is the word worth spending it on: the woods is 45% of this parcel and
-78% of everything subtraction has to remove. Its inverted lawn, 28,788 sq ft
-against a mown ~28,000, is +2.8% — where Quick gets 25,059 and is −10.5%.
-
-**What it does not remove.** Trees, and nothing else. On this lot the house and
-drive are small enough to be lost in the rounding; on a bare suburban lot with
-a wide driveway the tarmac lands in the total. That is a visible, deletable
-error rather than an invisible one, which is why the mode ships with a label
-that tells you to check the driveway and roof.
+`trees` was the word worth spending a single pass on: the woods is 45% of this
+parcel and 78% of everything subtraction has to remove. Its lawn, 28,788 sq ft
+against a mown ~28,000, is +2.8% — where *Find grass* gets 25,059 and is
+−10.5%. On a bare suburban lot with a wide driveway it would be the wrong
+single word, which is why the shipped default is `man-made` and why the boxes
+exist at all.
 
 ### Three traps along the way
 
-- **The threshold means the reverse.** `DEFAULT_THRESHOLD` is 0.05 because
-  being inclusive about grass is the safe way to be wrong. Asked "is this a
-  tree", that same number is inclusive about *trees* and erases lawn. Subtract
-  keeps its own `SAM_SUBTRACT_THRESHOLD` so the two cannot be retuned through
-  one setting. The reasoning still lost to the data once: with the list prompt,
-  the *high* threshold produced the maximal overstatement, because at 0.4 the
-  model found nothing to subtract at all.
+- **The threshold means the reverse, and it is per concept.**
+  `DEFAULT_THRESHOLD` is 0.05 because being inclusive about grass is the safe
+  way to be wrong. Asked "is this a tree", that same number is inclusive about
+  *trees* and erases lawn. The two measured concepts then disagreed by a factor
+  of four — `trees` floods the whole frame at 0.1 and below, `man-made` reads
+  well at 0.05 — so each exclusion carries its own cut and its own `SAM_…`
+  override. One shared number would have to be wrong for one of them. The
+  reasoning still lost to the data once: with the list prompt, the *high*
+  threshold produced the maximal overstatement, because at 0.4 the model found
+  nothing to subtract at all.
 - **The polarity guard had to be switched off.** `binarize` treats a mask
   covering >90% of the frame as inverted, on the premise that nothing we
   segment legitimately covers that much. For a *not-lawn* mask that premise is
   false — at 0.1 the mask really did cover 99.5% of the frame. Left on, it
-  would have flipped the mask before `invert` flipped it back, handing back the
-  woods as lawn.
+  would have handed back the lawn as the thing to remove: confident, silent,
+  exactly inverted.
 - **The 32-token ceiling is real and was a red herring.** The text encoder
   errors rather than truncating (`got sequence length: 36 and
   max_position_embeddings: 32`), so a fifteen-item list failed every prediction

@@ -421,49 +421,87 @@ export function growMask(bin, width, height, px) {
   return out;
 }
 
-export function maskToPolygons(image, unproject, options = {}) {
+/**
+ * One mask image -> one binary layer, read literally or flipped.
+ *
+ * Split out of maskToPolygons because exclude mode needs several of these
+ * before anything is traced, and because "what does this bitmap mean" is a
+ * different question from "what shape is it". The caller says which reading it
+ * wants; this does not guess.
+ */
+export function maskBinary(image, { threshold = 128, invert = false, autoPolarity } = {}) {
+  // Inverting and auto-polarity are two answers to the same question, and only
+  // one of them can be right. See binarize: a caller that has said "this mask
+  // is the opposite of what I want" has already told us the polarity, so
+  // guessing on top of that would flip it back.
+  const auto = autoPolarity === undefined ? !invert : autoPolarity;
+  const bin = binarize(image, threshold, { autoPolarity: auto });
+  if (invert) for (let p = 0; p < bin.length; p++) bin[p] ^= 1;
+  return bin;
+}
+
+/**
+ * Everything any of these masks found, in one layer.
+ *
+ * The union is what makes stacking work: three concepts, three predictions,
+ * and a pixel is excluded if ANY of them claimed it. Intersecting instead
+ * would ask for pixels that are simultaneously a tree and a driveway, which is
+ * nothing.
+ */
+export function unionMasks(masks) {
+  const first = masks[0];
+  if (!first) return null;
+  const out = new Uint8Array(first.length);
+  for (const m of masks) {
+    for (let p = 0; p < out.length; p++) if (m[p]) out[p] = 1;
+  }
+  return out;
+}
+
+/**
+ * The property, minus what was found on it.
+ *
+ * This is the whole of exclude mode's arithmetic, and it is deliberately the
+ * opposite end of the same operation that `invert` performs. Inverting flips a
+ * mask and then clips it to the parcel; this starts from the parcel and takes
+ * the mask away. For ONE mask the two produce identical pixels. For several,
+ * only this one accumulates -- which is the reason it exists.
+ */
+export function subtractMasks(base, remove) {
+  const out = new Uint8Array(base.length);
+  for (let p = 0; p < out.length; p++) out[p] = base[p] && !remove?.[p] ? 1 : 0;
+  return out;
+}
+
+/** How much of `base` a mask claims, as a fraction. Zero base reads as zero. */
+export function coverage(mask, base) {
+  let on = 0;
+  let total = 0;
+  for (let p = 0; p < base.length; p++) {
+    if (!base[p]) continue;
+    total++;
+    if (mask[p]) on++;
+  }
+  return total ? on / total : 0;
+}
+
+/**
+ * A binary layer -> GeoJSON polygons. The tail half of maskToPolygons, reused
+ * by exclude mode, which arrives with its pixels already decided.
+ */
+export function polygonsFromBinary(bin, width, height, unproject, options = {}) {
   const {
-    threshold = 128,
-    // Fractions of the frame. A 640-logical-px frame at zoom 19 is roughly a
-    // 70m square, so 0.2% is about 10 m^2 -- below a patch of grass anyone
-    // would bother mowing, and comfortably above JPEG noise.
     minAreaFraction = 0.002,
     minHoleFraction = 0.0015,
     tolerance = 1.5,
     maxVertices = 240,
     maxPolygons = 6,
-    // Pixels outside the property line, zeroed before anything else runs.
     clipMask = null,
-    // Gaps smaller than this are kept as lawn rather than subtracted. A tree
-    // canopy hides grass that is really there; a pool or a shed does not. Size
-    // is the only signal available from overhead, so the caller sets the line
-    // and the UI reports what was filled.
     fillGapsUnderPx = 0,
-    // Move the edge of the mask in (negative) or out (positive), in pixels.
-    // See growMask: this is the only sensitivity a hard yes/no mask has.
     growPx = 0,
-    /*
-     * The mask marks what is NOT lawn, so flip it before doing anything else.
-     *
-     * For subtract mode, where the detector is asked for buildings, trees,
-     * water and beds and the lawn is whatever is left over. Everything
-     * downstream -- growing, clipping, component ranking, hole filling -- then
-     * operates on an ordinary lawn mask and needs no idea this happened.
-     *
-     * Order is the whole trick. Inverting BEFORE the clip is what keeps the
-     * property line as the last word: the raw inverse covers the entire frame
-     * edge to edge, neighbours' land included, and it is the clip that cuts it
-     * back to this lot. Invert after clipping and you would get the lot's
-     * buildings plus the whole rest of the world.
-     */
-    invert = false,
   } = options;
 
-  const { width, height } = image;
   const total = width * height;
-  // Subtract mode has to keep the polarity it was given -- see binarize.
-  let bin = binarize(image, threshold, { autoPolarity: !invert });
-  if (invert) for (let p = 0; p < bin.length; p++) bin[p] ^= 1;
 
   /*
    * Grow before clipping, never after. Growing a mask that has already been
@@ -527,4 +565,50 @@ export function maskToPolygons(image, unproject, options = {}) {
   polygons.filledGaps = filledGaps;
   polygons.filledGapPx = filledGapPx;
   return polygons;
+}
+
+export function maskToPolygons(image, unproject, options = {}) {
+  const {
+    threshold = 128,
+    // Fractions of the frame. A 640-logical-px frame at zoom 19 is roughly a
+    // 70m square, so 0.2% is about 10 m^2 -- below a patch of grass anyone
+    // would bother mowing, and comfortably above JPEG noise.
+    minAreaFraction = 0.002,
+    minHoleFraction = 0.0015,
+    tolerance = 1.5,
+    maxVertices = 240,
+    maxPolygons = 6,
+    // Pixels outside the property line, zeroed before anything else runs.
+    clipMask = null,
+    // Gaps smaller than this are kept as lawn rather than subtracted. A tree
+    // canopy hides grass that is really there; a pool or a shed does not. Size
+    // is the only signal available from overhead, so the caller sets the line
+    // and the UI reports what was filled.
+    fillGapsUnderPx = 0,
+    // Move the edge of the mask in (negative) or out (positive), in pixels.
+    // See growMask: this is the only sensitivity a hard yes/no mask has.
+    growPx = 0,
+    /*
+     * The mask marks what is NOT lawn, so flip it before doing anything else.
+     *
+     * For subtract mode, where the detector is asked for buildings, trees,
+     * water and beds and the lawn is whatever is left over. Everything
+     * downstream -- growing, clipping, component ranking, hole filling -- then
+     * operates on an ordinary lawn mask and needs no idea this happened.
+     *
+     * Order is the whole trick. Inverting BEFORE the clip is what keeps the
+     * property line as the last word: the raw inverse covers the entire frame
+     * edge to edge, neighbours' land included, and it is the clip that cuts it
+     * back to this lot. Invert after clipping and you would get the lot's
+     * buildings plus the whole rest of the world.
+     */
+    invert = false,
+  } = options;
+
+  const { width, height } = image;
+  return polygonsFromBinary(
+    maskBinary(image, { threshold, invert }),
+    width, height, unproject,
+    { minAreaFraction, minHoleFraction, tolerance, maxVertices, maxPolygons, clipMask, fillGapsUnderPx, growPx }
+  );
 }

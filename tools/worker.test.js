@@ -20,10 +20,14 @@
 import * as entrypoint from '../worker/src/index.js';
 import {
   MODELS, DEFAULT_MODEL, DEFAULT_PROMPT, modelCatalogue, DEFAULT_THRESHOLD, samThreshold,
-  samPrompt, NOT_LAWN_PROMPT, SUBTRACT_THRESHOLD,
+  samPrompt, NOT_LAWN_PROMPT, SUBTRACT_THRESHOLD, normaliseModel,
+  EXCLUSIONS, DEFAULT_EXCLUSIONS, MAX_EXCLUSIONS, normaliseExclusions,
+  exclusionPass, exclusionCatalogue,
   MAX_PROMPT_TOKENS, estimatePromptTokens, promptProblem,
 } from '../worker/src/sam.js';
-import { dayKey, DAILY_LIMIT_PER_CLIENT } from '../worker/src/quota.js';
+import {
+  dayKey, DAILY_LIMIT_PER_CLIENT, consumeQuota, refundQuota,
+} from '../worker/src/quota.js';
 import { upstreamReason, redactSecrets } from '../worker/src/upstream.js';
 import { logMeasurement, readLog, loggingEnabled, recordLater } from '../worker/src/testlog.js';
 import {
@@ -104,6 +108,67 @@ check('and it still holds when daylight saving is off',
 
 check('the daily allowance is 20', DAILY_LIMIT_PER_CLIENT === 20,
   String(DAILY_LIMIT_PER_CLIENT));
+
+/* --------------------------------------------- charging for several passes */
+/*
+ * ONE PRESS CAN NOW COST FOUR PREDICTIONS.
+ *
+ * Exclude mode runs one prediction per ticked box, and Replicate bills each of
+ * them. A guardrail that counted presses rather than predictions would stop
+ * guarding at exactly the moment the expensive mode is used: twenty presses of
+ * four boxes is eighty predictions against a cap of twenty.
+ */
+{
+  const kv = () => {
+    const store = new Map();
+    return {
+      store,
+      async put(k, v) { store.set(k, v); },
+      async get(k) { return store.get(k) ?? null; },
+    };
+  };
+  const req = { headers: { get: () => '203.0.113.9' } };
+  const count = (env) => Number([...env.QUOTA.store].find(([k]) => k.startsWith('c:'))?.[1] || 0);
+
+  const one = { QUOTA: kv() };
+  await consumeQuota(req, one, 'someone');
+  check('a single-pass detection still costs one', count(one) === 1);
+
+  const four = { QUOTA: kv() };
+  const got = await consumeQuota(req, four, 'someone', 4);
+  check('four ticked boxes cost four', got.allowed && count(four) === 4, `${count(four)}`);
+
+  /*
+   * ALL OR NOTHING. Letting three of four through because that is what was
+   * left would produce a measurement with one exclusion missing -- not a
+   * smaller answer, a wrong one, with the trees counted as lawn and nothing
+   * on screen saying so.
+   */
+  const nearly = { QUOTA: kv() };
+  await consumeQuota(req, nearly, 'someone', DAILY_LIMIT_PER_CLIENT - 2);
+  const refused = await consumeQuota(req, nearly, 'someone', 3);
+  check('a press that does not fit is refused whole, not part-run',
+    !refused.allowed && count(nearly) === DAILY_LIMIT_PER_CLIENT - 2,
+    `${count(nearly)} used, asked for 3 with 2 left`);
+
+  check('and the refusal says how many it needed, so the UI can say what to untick',
+    refused.wanted === 3, JSON.stringify(refused));
+
+  /* Two left and two wanted still fits: the cap is a ceiling, not a margin. */
+  const exact = await consumeQuota(req, nearly, 'someone', 2);
+  check('an exact fit is allowed', exact.allowed && count(nearly) === DAILY_LIMIT_PER_CLIENT);
+
+  /*
+   * A FAILED DETECTION REFUNDS EVERY PASS IT CHARGED FOR. Refunding one of
+   * four would silently eat three quarters of the allowance on each broken
+   * deploy -- the exact runaway the refund exists to prevent.
+   */
+  const broke = { QUOTA: kv() };
+  await consumeQuota(req, broke, 'someone', 4);
+  await refundQuota(req, broke, 'someone', 4);
+  check('and a failure hands back all of them, not one', count(broke) === 0,
+    `${count(broke)} left charged`);
+}
 
 
 /* ------------------------------------------------------- the Google frame */
@@ -196,89 +261,186 @@ check('and an out-of-range one is clamped to what the model accepts',
  * meaning is the REVERSE of the first one's, and where a reasonable-looking
  * change would therefore break it silently.
  */
-check('subtract mode exists', !!MODELS.sam3_subtract, Object.keys(MODELS).join(', '));
-
-check('it tells the browser to flip the mask',
-  MODELS.sam3_subtract.invert === true,
-  'without this the app would trace the buildings and call them the lawn');
+check('exclude mode exists', !!MODELS.sam3_exclude, Object.keys(MODELS).join(', '));
 
 /*
- * AND IT IS OFFERED AGAIN, on measured evidence, having been withheld on the
- * same basis. It reported the entire parcel while its prompt was a list; with
- * a single word it lands within 3% of the owner's own figure for the mown
- * area, which is closer than the default mode manages on that lot.
- */
-check('it is offered', !MODELS.sam3_subtract.hidden
-  && modelCatalogue().some((m) => m.id === 'sam3_subtract'));
-
-/*
- * The label has to say what it LEAVES, not just what it removes. This mode
- * subtracts trees and nothing else, so a driveway stays in the total. That is
- * an acceptable way to be wrong -- it is visible on the map and one tap to
- * delete -- but only for someone who was told to look.
- */
-check('and its note warns about what it does not remove',
-  /driveway|roof/i.test(MODELS.sam3_subtract.note), MODELS.sam3_subtract.note);
-
-check('the default model is still the non-inverting one',
-  MODELS[DEFAULT_MODEL].invert !== true
-  && modelCatalogue().find((m) => m.id === DEFAULT_MODEL)?.invert === false);
-
-check('and the browser is still told about invert for what it is offered',
-  modelCatalogue().every((m) => typeof m.invert === 'boolean'),
-  'the flag must always be present; a missing one reads as undefined');
-
-/*
- * THE DIRECTION TRAP. 0.05 is deliberately inclusive about grass, which is the
- * safe way to be wrong when the question is "is this grass". Asked "is this a
- * building", the same number is inclusive about BUILDINGS -- and every one it
- * is confident about gets erased from the lawn. Same value, opposite bias.
+ * SUBTRACTIVE, NOT INVERTING, and the difference only shows up at two masks.
  *
- * So the two modes must not share a threshold, and subtract's must sit high.
+ * For one concept they are the same pixels written from opposite ends. For two
+ * they are opposites: inverting each mask and combining INTERSECTS them -- a
+ * pixel would have to be both not-a-tree and not-a-building, and two
+ * independently noisy masks intersect to slivers. Subtracting each from the
+ * parcel accumulates, which is the whole reason the mode was rebuilt.
  */
-check('subtract mode does not inherit the grass-inclusive threshold',
-  samThreshold({}, 'sam3_subtract') !== samThreshold({}, DEFAULT_MODEL),
-  `subtract ${samThreshold({}, 'sam3_subtract')} vs grass ${samThreshold({}, DEFAULT_MODEL)}`);
+check('it subtracts from the property rather than flipping the mask',
+  MODELS.sam3_exclude.subtractive === true && !MODELS.sam3_exclude.invert,
+  'inverting cannot stack: two flipped masks intersect, they do not add up');
+
+check('and it is driven by the tick boxes',
+  MODELS.sam3_exclude.exclusions === true);
 
 /*
- * This check used to demand >= 0.3, on the argument that a high cut is the
- * safe direction because a low one erases lawn. The argument is sound and the
- * model does not obey it: at 0.4 the mask found NOTHING, so inverting returned
- * the whole parcel -- the high threshold produced the maximal overstatement,
- * not the conservative one.
+ * AND IT IS OFFERED, on measured evidence, having been withheld on the same
+ * basis. It reported the entire parcel while its prompt was a comma list; one
+ * concept per pass lands within 3% of the owner's own figure for the mown area.
+ */
+check('it is offered', !MODELS.sam3_exclude.hidden
+  && modelCatalogue().some((m) => m.id === 'sam3_exclude'));
+
+/*
+ * The note has to say what it KEEPS, not just what it removes. This mode starts
+ * from the whole lot, so anything the ticked boxes fail to find stays in the
+ * total -- gravel, a bare field, a tennis court. An acceptable way to be wrong
+ * (visible on the map, one tap to delete) but only for someone told to look.
+ */
+check('and its note warns that anything unticked counts as lawn',
+  /not ticked|counts as lawn|check the result/i.test(MODELS.sam3_exclude.note),
+  MODELS.sam3_exclude.note);
+
+/*
+ * A browser cached from before the rename must not be silently handed the
+ * OPPOSITE question. Falling through to the default would answer "find grass"
+ * to a request for "subtract", confidently, with nothing on screen saying so.
+ */
+check('the old id still resolves to the mode that replaced it',
+  normaliseModel('sam3_subtract') === 'sam3_exclude');
+
+check('and a genuinely unknown id still falls back to the default',
+  normaliseModel('sam9_imaginary') === DEFAULT_MODEL);
+
+check('the default model does not subtract',
+  !MODELS[DEFAULT_MODEL].subtractive
+  && modelCatalogue().find((m) => m.id === DEFAULT_MODEL)?.subtractive === false);
+
+check('and the browser is always told, never left to infer',
+  modelCatalogue().every((m) =>
+    typeof m.invert === 'boolean' && typeof m.subtractive === 'boolean'
+    && typeof m.exclusions === 'boolean'),
+  'a missing flag reads as undefined, which is falsy by luck rather than by decision');
+
+/* ------------------------------------------------------ the exclusions */
+/*
+ * One concept per pass. The reason this is a table of separate entries rather
+ * than one longer prompt is measured, not stylistic: at Brooks Lane a
+ * three-concept list masked 0% of a parcel that is 58% not-lawn, handing back
+ * the entire lot as lawn in six vertices -- maximally wrong and shaped exactly
+ * like a clean answer.
+ */
+check('every exclusion is a single concept',
+  Object.values(EXCLUSIONS).every((e) => !e.prompt.includes(',')),
+  Object.values(EXCLUSIONS).map((e) => e.prompt).join(' | '));
+
+/*
+ * THE DIRECTION TRAP, now per concept. 0.05 is deliberately inclusive about
+ * grass, which is the safe way to be wrong when the question is "is this
+ * grass". Asked "is this a tree", the same number is inclusive about TREES, and
+ * every one it is confident about gets erased from the lawn.
  *
- * So the assertion is now about the measured usable band rather than about the
- * reasoning. Anything at or above 0.4 is known to report 100% of the lot, and
- * 0.1 and below is known to report zero.
+ * The two measured concepts disagree by a factor of four, which is why each
+ * carries its own number rather than sharing one: "trees" flooded the entire
+ * frame at 0.1 and below, while "man-made" reads well at 0.05 on a real lot.
+ * A single shared threshold would have to be wrong for one of them.
  */
-check('the threshold sits in the only band that produced anything at all',
-  samThreshold({}, 'sam3_subtract') > 0.1 && samThreshold({}, 'sam3_subtract') < 0.4,
-  `${samThreshold({}, 'sam3_subtract')}; <=0.1 gave 0 sq ft and >=0.4 gave the entire parcel`);
+check('the tree concepts sit in the only band that produced anything at all',
+  EXCLUSIONS.trees.threshold > 0.1 && EXCLUSIONS.trees.threshold < 0.4,
+  `${EXCLUSIONS.trees.threshold}; <=0.1 masked the whole frame and >=0.4 masked nothing`);
 
-check('each mode is retunable without disturbing the other',
-  samThreshold({ SAM_THRESHOLD: '0.9' }, 'sam3_subtract') === SUBTRACT_THRESHOLD
-  && samThreshold({ SAM_SUBTRACT_THRESHOLD: '0.7' }, DEFAULT_MODEL) === DEFAULT_THRESHOLD,
-  'one variable moving both would make every tuning run tell you about two changes');
+check('and the built concept keeps the lower cut it was measured at',
+  EXCLUSIONS.built.threshold === 0.05,
+  'reported working on a real lot for house, drive, pool, deck and sidewalk');
 
-check('the subtract override still applies and clamps',
-  samThreshold({ SAM_SUBTRACT_THRESHOLD: '0.55' }, 'sam3_subtract') === 0.55
-  && samThreshold({ SAM_SUBTRACT_THRESHOLD: '4' }, 'sam3_subtract') === 1);
+check('so the concepts do not share one threshold',
+  EXCLUSIONS.built.threshold !== EXCLUSIONS.trees.threshold,
+  'one number for both would have to be wrong for one of them');
 
 /*
- * The prompt is the method here, not a description of the imagery, so the
- * model has to outrank the provider. If the provider won, subtract mode would
- * ask for "grass", get a grass mask, invert it, and confidently measure the
- * house -- the exact failure this mode exists to avoid, arrived at backwards.
+ * DEFAULT ON is the one that has actually been tried on a real property. The
+ * others are off because an untried concept that silently removes a third of
+ * someone's lawn is worse than a box they had to tick themselves.
  */
-check('subtract mode overrides whatever the imagery source wanted to ask',
-  samPrompt('sam3_subtract', 'grass', {}) === NOT_LAWN_PROMPT);
+check('exactly one box starts ticked, and it is the measured one',
+  DEFAULT_EXCLUSIONS.length === 1 && DEFAULT_EXCLUSIONS[0] === 'built',
+  DEFAULT_EXCLUSIONS.join(', '));
+
+check('the default is the man-made concept',
+  EXCLUSIONS[DEFAULT_EXCLUSIONS[0]].prompt === 'man-made');
+
+/* Every entry has to be runnable: an over-long one errors rather than
+ * answering badly, and would cost a prediction to discover that. */
+check('every exclusion prompt is within the encoder budget',
+  Object.values(EXCLUSIONS).every((e) => promptProblem(e.prompt) === null));
+
+check('and every threshold is a real fraction',
+  Object.values(EXCLUSIONS).every((e) => e.threshold >= 0 && e.threshold <= 1));
+
+/* The catalogue is what the browser draws the boxes from, so a missing field
+ * is a box with no label rather than an error anyone would notice. */
+check('the catalogue carries everything the browser needs',
+  exclusionCatalogue().length === Object.keys(EXCLUSIONS).length
+  && exclusionCatalogue().every((e) => e.id && e.label && typeof e.byDefault === 'boolean'));
+
+check('and it never ships the prompts themselves',
+  !JSON.stringify(exclusionCatalogue()).includes('man-made'),
+  'the wording is the method; the browser picks concepts, not prompts');
+
+/* ---------------------------------------------- normalising the tick list */
+check('a normal request comes through in order',
+  normaliseExclusions(['built', 'trees']).join(',') === 'built,trees');
+
+/*
+ * Unknown ids are DROPPED, not rejected. A browser cached from before a concept
+ * was renamed should lose that box, not lose the whole detection.
+ */
+check('an unknown concept is dropped rather than failing the detection',
+  normaliseExclusions(['built', 'unicorns']).join(',') === 'built');
+
+check('duplicates are collapsed, so one box cannot be billed twice',
+  normaliseExclusions(['trees', 'trees', 'trees']).join(',') === 'trees');
+
+check('the list is capped, because it arrives over the wire',
+  normaliseExclusions(Array(50).fill('trees').map((_, i) => Object.keys(EXCLUSIONS)[i % 4]))
+    .length <= MAX_EXCLUSIONS,
+  'without a cap one request could ask for a hundred predictions');
+
+/*
+ * EMPTY STAYS EMPTY. Substituting the defaults for "remove nothing" would spend
+ * money on a question nobody asked; the caller refuses it with a sentence.
+ */
+check('an empty list is not quietly replaced with the defaults',
+  normaliseExclusions([]).length === 0 && normaliseExclusions('built').length === 0);
+
+/* ------------------------------------------------------- one pass's wiring */
+check('a pass carries its own wording and its own cut',
+  exclusionPass('trees', {}).prompt === 'trees'
+  && exclusionPass('trees', {}).threshold === EXCLUSIONS.trees.threshold);
+
+check('each concept is retunable without disturbing the others',
+  exclusionPass('trees', { SAM_SUBTRACT_THRESHOLD: '0.35' }).threshold === 0.35
+  && exclusionPass('built', { SAM_SUBTRACT_THRESHOLD: '0.35' }).threshold
+     === EXCLUSIONS.built.threshold,
+  'one variable moving several would make every tuning run tell you about two changes');
+
+check('and the wording too',
+  exclusionPass('built', { SAM_EXCLUDE_BUILT_PROMPT: 'rooftops' }).prompt === 'rooftops');
+
+check('the override clamps like every other source for this number',
+  exclusionPass('trees', {}, '4').threshold === 1
+  && exclusionPass('trees', {}, '-1').threshold === 0);
+
+/*
+ * Zero is a legitimate cut, so the override must test for finite rather than
+ * for truthy. `override || fallback` would silently ignore the entire low end.
+ */
+check('a zero override is honoured rather than read as "unset"',
+  exclusionPass('trees', {}, 0).threshold === 0);
+
+check('and an untouched slider leaves the concept its own number',
+  exclusionPass('trees', {}, null).threshold === EXCLUSIONS.trees.threshold
+  && exclusionPass('trees', {}, '').threshold === EXCLUSIONS.trees.threshold);
 
 check('and the normal model still lets the source choose its wording',
   samPrompt(DEFAULT_MODEL, 'vegetation', {}) === 'vegetation',
   'infrared has no "grass" in it to find, only vegetation');
-
-check('the not-lawn list is retunable without a deploy',
-  samPrompt('sam3_subtract', 'grass', { SAM_NOT_LAWN_PROMPT: 'house, tree' }) === 'house, tree');
 
 /*
  * ONE CONCEPT, NOT A LIST -- the finding the whole mode turns on.
@@ -566,7 +728,7 @@ check('every remaining model works without pins',
  * sent it.
  */
 check('a typed prompt outranks the model and the source',
-  samPrompt('sam3_subtract', 'grass', { SAM_NOT_LAWN_PROMPT: 'shrubs' }, 'bermudagrass')
+  samPrompt('sam3_exclude', 'grass', { SAM_NOT_LAWN_PROMPT: 'shrubs' }, 'bermudagrass')
     === 'bermudagrass',
   'the whole point is trying a wording the code does not contain');
 
@@ -585,8 +747,20 @@ check('including zero, which a truthiness check would swallow',
   samThreshold({}, DEFAULT_MODEL, 0) === 0);
 
 check('an untouched slider leaves the model default alone',
-  samThreshold({}, DEFAULT_MODEL, null) === DEFAULT_THRESHOLD
-  && samThreshold({}, 'sam3_subtract', null) === SUBTRACT_THRESHOLD);
+  samThreshold({}, DEFAULT_MODEL, null) === DEFAULT_THRESHOLD);
+
+/*
+ * Exclude mode has no threshold of its own AT THE MODEL LEVEL, and that is the
+ * point: the number belongs to the concept, not to the method. "man-made" reads
+ * well at 0.05 and "trees" floods the frame there, so a model-wide setting
+ * would have to be wrong for one of them. samThreshold is not what drives an
+ * exclusion pass -- exclusionPass is -- and this asserts that nobody has
+ * quietly reintroduced a single number above them.
+ */
+check('exclude mode carries no method-wide threshold to override its concepts',
+  MODELS.sam3_exclude.threshold === undefined
+  && exclusionPass('built', {}).threshold !== exclusionPass('trees', {}).threshold,
+  `${exclusionPass('built', {}).threshold} vs ${exclusionPass('trees', {}).threshold}`);
 
 check('and a typed threshold is still clamped',
   samThreshold({}, DEFAULT_MODEL, 5) === 1 && samThreshold({}, DEFAULT_MODEL, -2) === 0);
@@ -615,17 +789,17 @@ check('the shipped prompts pass their own check',
 /*
  * A separate entry rather than an override applied to the shipped ones.
  *
- * The reason is legibility, not tidiness: overriding the prompt on Subtract
- * leaves Subtract's inversion and threshold in play, so an odd result has two
- * possible causes and the panel cannot say which. Testing starts from nothing,
- * so a result is attributable to what was typed.
+ * The reason is legibility, not tidiness: overriding the prompt on Exclude
+ * leaves that method's subtraction and per-concept cuts in play, so an odd
+ * result has two possible causes and the panel cannot say which. Testing starts
+ * from nothing, so a result is attributable to what was typed.
  */
 check('the Testing method exists', !!MODELS.sam3_testing);
 
 check('it is developer-only', MODELS.sam3_testing.devOnly === true);
 
 check('and the shipped methods are not',
-  !MODELS[DEFAULT_MODEL].devOnly && !MODELS.sam3_subtract.devOnly);
+  !MODELS[DEFAULT_MODEL].devOnly && !MODELS.sam3_exclude.devOnly);
 
 /*
  * NOTHING OF ITS OWN. Each of these is a setting that, if it had one, would

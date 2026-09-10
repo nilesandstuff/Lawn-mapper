@@ -13,7 +13,10 @@
  */
 
 import { measure } from './lib/area.js';
-import { maskToPolygons, rasterizePolygon } from './lib/mask.js';
+import {
+  maskToPolygons, rasterizePolygon, maskBinary, unionMasks, subtractMasks,
+  coverage, polygonsFromBinary,
+} from './lib/mask.js';
 import {
   offsetEdge, nearestEdge, edgeRun, edgeLength, edgeBearing, openRing,
   nearestVertex, moveVertex, insertVertex, deleteVertex, tidyRing,
@@ -50,6 +53,9 @@ const state = {
   devInvert: false,   // Testing's inversion, which no shipped model owns
   model: 'sam3',      // which one Detect will use
   detectedBy: null,   // which one the shapes on screen actually came from
+  exclusions: [],     // what exclude mode can remove, from /api/config
+  exclude: [],        // which of those are ticked -- one AI pass each
+  detectedExcluding: null, // the tick set the shapes on screen came from
   pins: [],           // [lng, lat] the point-prompted model is told to look at
   mode: null,         // 'parcel' | 'pins' | 'shape' | null -- what taps act on
   shapeTool: 'points',// within shape mode: 'points' | 'add' | 'erase'
@@ -287,6 +293,20 @@ if (typeof window !== 'undefined') {
     chosen: state.model,
     panelVisible: !document.getElementById('model-panel').hidden,
     options: state.models.map((m) => ({ ...m })),
+    /*
+     * The exclusion boxes as they actually are on screen, not as state thinks.
+     * `rendered` is read back out of the DOM on purpose: the bug worth catching
+     * is a tick list that has drifted from the boxes somebody is looking at.
+     */
+    excludes: {
+      // Real visibility, not the element's own attribute -- the panel sits
+      // inside the measure step, which has its own hidden ancestor.
+      visible: document.getElementById('exclude-panel')?.offsetParent != null,
+      ticked: state.exclude.slice(),
+      rendered: [...document.querySelectorAll('#exclude-list input')]
+        .map((b) => ({ id: b.id.replace(/^excl-/, ''), checked: b.checked })),
+      cost: document.getElementById('exclude-cost')?.textContent || '',
+    },
   });
 
   /* The on-map source list: what it offers, and which one is ticked. */
@@ -481,9 +501,15 @@ async function initMap() {
     return;
   }
 
-  const { mapboxToken, imagery, models } = await api('/api/config');
+  const {
+    mapboxToken, imagery, models, exclusions, defaultExclusions,
+  } = await api('/api/config');
   state.imagery = Array.isArray(imagery) ? imagery : [];
   state.models = Array.isArray(models) ? models : [];
+  state.exclusions = Array.isArray(exclusions) ? exclusions : [];
+  state.exclude = Array.isArray(defaultExclusions)
+    ? defaultExclusions.slice()
+    : state.exclusions.filter((e) => e.byDefault).map((e) => e.id);
   if (!mapboxToken) {
     fatal(
       'This site is missing its Mapbox key, so the map cannot start. ' +
@@ -1784,7 +1810,12 @@ function updatePromptHint() {
   // two pickers exist.
   const same = state.detected &&
     state.detectedWith === effectiveProvider(state.provider) &&
-    state.detectedBy === state.model;
+    state.detectedBy === state.model &&
+    // A different set of tick boxes is a different question, even on the same
+    // method and the same photograph. Without this the button would stay dark
+    // after unticking "Woods", which reads as the app being stuck rather than
+    // as a saving.
+    (!excludesWanted() || state.detectedExcluding === excludeKey());
 
   // The point-prompted model cannot run on nothing, so the button says why it
   // is dark rather than just being dark.
@@ -1806,19 +1837,33 @@ function updatePromptHint() {
    */
   const needsParcel = !parcelRing();
 
+  /*
+   * Exclude mode with nothing ticked has no question to ask.
+   *
+   * It would not be a cheap detection, it would be a meaningless one: the
+   * answer is "your whole lot is lawn", which the app already knows for free
+   * from the property line. Refused here as well as in the Worker, because
+   * being told after the press why nothing happened is worse than the button
+   * saying what it needs.
+   */
+  const needsExclusion = excludesWanted() && !state.exclude.length;
+
   // Nothing to measure outside of until there is a boundary to be outside of.
   $('#outside-opt').hidden = needsParcel;
 
-  $('#btn-detect').disabled = !state.frame || same || needsPins || needsParcel;
+  $('#btn-detect').disabled =
+    !state.frame || same || needsPins || needsParcel || needsExclusion;
   $('#btn-detect').textContent = same
     ? 'Lawn detected'
     : needsParcel
       ? 'Property line needed first'
       : needsPins
         ? 'Tap your lawn to place a pin'
-        : state.detected
-          ? 'Detect again'
-          : 'Detect my lawn';
+        : needsExclusion
+          ? 'Tick something to remove'
+          : state.detected
+            ? 'Detect again'
+            : 'Detect my lawn';
 }
 
 /* ---------------------------------------------------------- model picker */
@@ -1848,6 +1893,101 @@ function buildModelPicker() {
   select.value = state.model;
   $('#model-panel').hidden = false;
   $('#model-note').textContent = modelInfo(state.model).note || '';
+  buildExclusions();
+}
+
+/* ------------------------------------------------------------- exclusions */
+/*
+ * What to take off the property, one tick box per concept.
+ *
+ * These are separate boxes rather than one longer prompt because the model
+ * resolves ONE CONCEPT PER PREDICTION -- a comma list comes back as one vague
+ * phrase, and at three concepts it can collapse to nothing and hand back the
+ * whole parcel looking like a clean answer. So each concept is its own
+ * prediction, and the masks are added together before anything is traced.
+ *
+ * Which makes the cost real and visible: four ticks is four predictions, four
+ * items of the daily allowance and four times the money for one press. The
+ * cost line is not decoration.
+ */
+function exclusionInfo(id) {
+  return state.exclusions.find((e) => e.id === id) || { id, label: id, note: '' };
+}
+
+/** A stable fingerprint of the tick set, for "have I already run this?". */
+const excludeKey = () => state.exclude.slice().sort().join(',');
+
+const excludesWanted = () => Boolean(modelInfo(state.model).exclusions);
+
+function buildExclusions() {
+  const list = $('#exclude-list');
+  if (!list) return;
+  list.innerHTML = '';
+
+  for (const e of state.exclusions) {
+    const row = document.createElement('label');
+    row.className = 'excl-item';
+
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.id = `excl-${e.id}`;
+    box.checked = state.exclude.includes(e.id);
+    box.addEventListener('change', () => toggleExclusion(e.id, box.checked));
+
+    const text = document.createElement('span');
+    text.textContent = e.label;
+    if (e.note) {
+      const note = document.createElement('small');
+      note.textContent = e.note;
+      text.append(note);
+    }
+
+    row.append(box, text);
+    list.append(row);
+  }
+
+  refreshExclusions();
+}
+
+function toggleExclusion(id, on) {
+  state.exclude = on
+    ? [...new Set([...state.exclude, id])]
+    : state.exclude.filter((x) => x !== id);
+  refreshExclusions();
+  // A different set of boxes is a different question, so the button has to
+  // come back to life -- see updatePromptHint.
+  updatePromptHint();
+}
+
+function refreshExclusions() {
+  const panel = $('#exclude-panel');
+  if (!panel) return;
+  panel.hidden = !excludesWanted();
+  if (panel.hidden) return;
+
+  for (const e of state.exclusions) {
+    const box = $(`#excl-${e.id}`);
+    if (box) box.checked = state.exclude.includes(e.id);
+  }
+
+  const n = state.exclude.length;
+  const cost = $('#exclude-cost');
+  if (!cost) return;
+
+  /*
+   * Say the cost before it is spent, and name the redundancy.
+   *
+   * "Trees" and "Woods" measured 61.5% and 58.3% of the same parcel -- the
+   * same answer twice, at twice the price. Someone reading two plausible
+   * labels has no way to know that, so the line says it at the moment both are
+   * ticked rather than in a note nobody opens.
+   */
+  const both = state.exclude.includes('trees') && state.exclude.includes('forest');
+  cost.textContent = n === 0
+    ? 'Nothing ticked — there is nothing for the AI to remove.'
+    : `${n} AI pass${n > 1 ? 'es' : ''} per detection, out of your daily allowance.`
+      + (both ? ' Trees and Woods usually find the same thing — one will do.' : '');
+  cost.style.color = n === 0 ? '#b3261e' : '';
 }
 
 function setModel(id) {
@@ -1855,6 +1995,7 @@ function setModel(id) {
   state.model = id;
   $('#model-choice').value = id;
   $('#model-note').textContent = modelInfo(id).note || '';
+  refreshExclusions();
 
   /*
    * Pins belong to the model that uses them. Switching to the text-prompted
@@ -1935,6 +2076,10 @@ async function detect() {
        */
       body: JSON.stringify({
         ...frame, provider, model, points, clientId: state.clientId,
+        // One prediction per ticked box. Sent even when the method does not
+        // use them, because the Worker decides which fields apply and a
+        // second copy of that rule here is a second copy that can be wrong.
+        exclude: state.exclude,
         ...devOverrides(),
         address: state.chosen?.label || null,
         parcelSqFt: state.parcel ? measure(state.parcel.geometry).squareFeet : null,
@@ -1944,86 +2089,55 @@ async function detect() {
       timeoutMs: 90000,
     });
 
-    // A cold model takes longer than Replicate will hold the connection, so
-    // the server hands back an id instead of a mask and we wait it out here.
-    if (data.pending && data.id) data = await waitForPrediction(data.id, data.frame || frame);
-
-    const url = maskUrl(data.mask);
-    if (!url) throw new Error('The detector returned no mask. Try drawing it by hand.');
-
     // data.frame is authoritative: the server clamps zoom and size, so the
     // frame we sent is not necessarily the frame that was rendered.
     const rendered = data.frame || frame;
-    const image = await loadMask(url);
-    const w = image.width;
-    const h = image.height;
 
     /*
-     * Clip to the property line before measuring anything.
+     * Every pass, waited out and downloaded.
      *
-     * Asking for "grass" finds every lawn in the photograph, the neighbours'
-     * included -- on a real lot that was 3,700 sq ft of someone else's grass,
-     * a third of everything detected. Painting the parcel into the same pixel
-     * grid and intersecting is exact for any parcel shape and needs no
-     * polygon-boolean library.
+     * A cold model takes longer than Replicate will hold the connection, so
+     * some passes come back with an id instead of a mask. They are polled in
+     * PARALLEL -- four passes waited on one after another would be four cold
+     * starts end to end, when they were all started at the same moment and are
+     * warming up together.
      */
-    const ring = parcelRing();
-    const clipMask = ring
-      ? rasterizePolygon(
-          state.parcel.geometry.type === 'Polygon'
-            ? state.parcel.geometry.coordinates
-            : state.parcel.geometry.coordinates[0],
-          w, h,
-          (ll) => lngLatToFramePx(rendered, ll, w, h)
-        )
-      : null;
+    const layers = await Promise.all((data.passes || [{ ...data, exclusion: null }])
+      .map(async (pass) => {
+        const done = pass.status === 'succeeded'
+          ? pass
+          : await waitForPrediction(pass.id, rendered);
+        const url = maskUrl(done.mask);
+        if (!url) {
+          throw new Error(pass.exclusion
+            ? `The detector returned nothing for "${exclusionInfo(pass.exclusion).label}".`
+            : 'The detector returned no mask. Try drawing it by hand.');
+        }
+        return {
+          url,
+          exclusion: pass.exclusion || null,
+          label: pass.exclusion ? exclusionInfo(pass.exclusion).label : null,
+          image: await loadMask(url),
+        };
+      }));
 
-    // Canopy gaps, in pixels, from the frame's own ground resolution.
-    const sqFtPerPx = (metresPerPixel(rendered, w) ** 2) / 0.09290304;
-    const fillGapsUnderPx = $('#toggle-trees').checked
-      ? Math.round(TREE_GAP_SQFT / sqFtPerPx)
-      : 0;
-
-    /*
-     * How finely to trace the outline, in metres on the ground rather than in
-     * pixels.
-     *
-     * The default was 1.5 px, which sounds conservative and is not: at this
-     * frame's resolution it is about 5 cm, finer than a lawn edge is knowable
-     * and far finer than anyone can aim at. It produced 308 handles on a real
-     * lot -- a necklace of dots with the boundary somewhere underneath, which
-     * is not an editing surface. Expressing it in metres also makes it mean
-     * the same thing at every zoom, which a pixel count does not.
-     *
-     * Measured on that lot, against the 3,636 sq ft the fine trace gave:
-     *
-     *   0.15 m   140 vertices   +0.03%
-     *   0.3 m     78 vertices   -0.77%
-     *   0.5 m     55 vertices   -1.54%
-     *
-     * 0.3 m is where the curve turns: a quarter of the handles for under one
-     * percent, on a figure the app already labels an estimate rather than a
-     * survey. Below that, precision nobody can use costs handles everybody
-     * has to look at.
-     */
-    const tolerance = TRACE_TOLERANCE_M / metresPerPixel(rendered, w);
-
-    const polygons = maskToPolygons(
-      image,
-      (x, y) => framePxToLngLat(rendered, [x, y], w, h),
-      {
-        clipMask, fillGapsUnderPx, tolerance, maxVertices: MAX_TRACE_VERTICES,
-        // Subtract mode returns a mask of what is NOT lawn. The model we just
-        // asked is the one that decides, not whatever the picker says later.
-        invert: modelInverts(model),
-      }
-    );
+    const subtractive = Boolean(data.subtractive);
+    const traced = traceDetection({
+      layers, subtractive, rendered,
+      // Whatever produced these pixels decides the polarity, not the picker,
+      // which the user may change before the next re-trace.
+      invert: modelInverts(model),
+    });
+    const { polygons, collapsed } = traced;
 
     if (!polygons.length) {
       setStatus(
-        ring
-          ? 'No grass found inside your property line. Draw the lawn by hand, or extend the boundary if it stops short of the road.'
-          : 'No grass found in that view. Draw the lawn by hand.',
+        subtractive
+          ? 'Everything inside your property line was excluded, so there is no lawn left. '
+            + 'Untick a box, or draw the lawn by hand.'
+          : parcelRing()
+            ? 'No grass found inside your property line. Draw the lawn by hand, or extend the boundary if it stops short of the road.'
+            : 'No grass found in that view. Draw the lawn by hand.',
         'warn'
       );
       return;
@@ -2050,11 +2164,21 @@ async function detect() {
     // a look-only source, and the status line has to name the real one.
     state.detectedWith = rendered.provider || provider;
     state.detectedBy = data.model || model;
-    // `invert` is stored with the mask, not read from the picker at re-trace
-    // time. The sensitivity slider re-traces these same pixels, and by then the
-    // user may well have changed the picker -- which must not silently reverse
-    // the polarity of a measurement already on screen.
-    state.lastMask = { url, frame: rendered, image, invert: modelInverts(model) };
+    state.detectedExcluding = excludesWanted() ? excludeKey() : null;
+    /*
+     * How to read these pixels is stored WITH them, not looked up at re-trace
+     * time. The sensitivity slider re-traces this same set, and by then the
+     * user may well have changed the method or the tick boxes -- which must not
+     * silently reverse the polarity, or the arithmetic, of a measurement
+     * already on screen.
+     */
+    state.lastMask = {
+      url: layers[0].url,
+      frame: rendered,
+      layers,
+      subtractive,
+      invert: modelInverts(model),
+    };
     refreshOverlayLabel();
     if ($('#toggle-overlay').checked) showOverlay();
     refreshSensitivity();
@@ -2068,8 +2192,22 @@ async function detect() {
 
     const gaps = polygons.filledGaps
       ? ` ${polygons.filledGaps} gap${polygons.filledGaps > 1 ? 's' : ''} counted as grass under trees` +
-        ` (about ${Math.round(polygons.filledGapPx * sqFtPerPx).toLocaleString()} sq ft) —` +
+        ` (about ${Math.round(polygons.filledGapPx * traced.sqFtPerPx).toLocaleString()} sq ft) —` +
         ' untick the box below if any of those is a pool or a shed.'
+      : '';
+
+    /*
+     * Name any pass that swallowed the whole lot.
+     *
+     * This is the documented failure of this model: at the wrong cut a concept
+     * comes back covering the entire frame, and subtracting that leaves zero
+     * lawn. Dropping the pass keeps the other exclusions usable, but doing it
+     * silently would report a suspiciously large lawn with no hint that a box
+     * the user ticked did nothing.
+     */
+    const lost = collapsed.length
+      ? ` "${collapsed.join('" and "')}" covered the whole lot, so ${collapsed.length > 1 ? 'they were' : 'it was'} ignored —`
+        + ' that concept is not usable on this photograph.'
       : '';
 
     // Name the source only when it is not the one showing, i.e. when a
@@ -2082,17 +2220,31 @@ async function detect() {
         ` (${providerInfo(state.provider).label} cannot be measured from)`;
 
     setStatus(
-      `Found ${polygons.length} section${polygons.length > 1 ? 's' : ''} of lawn` +
-      (ring ? ', trimmed to your property line' : '') + on + '.' + gaps +
+      (subtractive
+        ? `${polygons.length} section${polygons.length > 1 ? 's' : ''} of lawn left after removing `
+          + `${layers.length} thing${layers.length > 1 ? 's' : ''}`
+        : `Found ${polygons.length} section${polygons.length > 1 ? 's' : ''} of lawn`) +
+      (parcelRing() ? ', trimmed to your property line' : '') + on + '.' + lost + gaps +
       ' Correct anything it got wrong.'
     );
   } catch (err) {
     if (err.status === 429) {
       const b = err.body || {};
+      /*
+       * "You have used today's detections" is a lie when four are left and this
+       * press wanted five. The counter on screen would plainly disagree with
+       * the refusal, which reads as the app being broken rather than as a
+       * choice the user can change by unticking a box.
+       */
+      const left = Number.isFinite(b.limit - b.used) ? b.limit - b.used : null;
+      const short = b.wanted > 1 && left !== null && left > 0;
       setStatus(
-        b.reason === 'shared-network'
-          ? "Your network has hit today's detection limit. You can still draw the lawn by hand."
-          : "You've used today's detections. You can still draw the lawn by hand.",
+        short
+          ? `That needs ${b.wanted} AI passes and you have ${left} left today. `
+            + 'Untick a box or two, or draw the lawn by hand.'
+          : b.reason === 'shared-network'
+            ? "Your network has hit today's detection limit. You can still draw the lawn by hand."
+            : "You've used today's detections. You can still draw the lawn by hand.",
         'warn'
       );
     } else {
@@ -2215,17 +2367,30 @@ function hideOverlay() {
  * Say which way round the overlay is.
  *
  * This checkbox exists to catch misalignment, and it does that by inviting the
- * eye to confirm "the white bit is on the grass". In subtract mode the white
- * bit is on the HOUSE, and a check meant to expose a bug becomes a very
- * convincing report of one. The mask is raw either way -- what changes is what
- * was asked for -- so the label has to say which.
+ * eye to confirm "the white bit is on the grass". In exclude mode the white bit
+ * is on the HOUSE, and a check meant to expose a bug becomes a very convincing
+ * report of one. The mask is raw either way -- what changes is what was asked
+ * for -- so the label has to say which.
+ *
+ * And with several passes there are several masks, of which only the first is
+ * drawn: overlaying four translucent bitmaps would produce a grey wash that
+ * cannot be aligned against anything. Naming the one on show is the difference
+ * between a partial view and a wrong one.
  */
 function refreshOverlayLabel() {
   const el = $('#overlay-label');
   if (!el) return;
-  el.textContent = state.lastMask?.invert
-    ? 'Show the raw AI mask — in Subtract mode this covers the buildings and trees, not the lawn'
-    : 'Show the raw AI mask (alignment check)';
+  const mask = state.lastMask;
+  const layers = mask?.layers || [];
+  const first = layers[0];
+
+  el.textContent = mask?.subtractive
+    ? `Show the raw AI mask — this is "${first?.label || 'the first pass'}"`
+      + (layers.length > 1 ? ` (1 of ${layers.length}), ` : ', ')
+      + 'so it covers what was removed, not the lawn'
+    : mask?.invert
+      ? 'Show the raw AI mask — this covers what was removed, not the lawn'
+      : 'Show the raw AI mask (alignment check)';
 }
 
 /* --------------------------------------------------------- imagery source */
@@ -2727,10 +2892,129 @@ function enterRingEditing(which) {
  */
 const DEFAULT_EDGE_FT = 0;
 
+/**
+ * A pass whose mask covers this much of the property is not an answer.
+ *
+ * The documented failure of this model is a concept that floods the entire
+ * frame: at Brooks Lane the not-lawn prompt masked 100% of the parcel at three
+ * different cuts. Subtracting that leaves nothing, so the measurement reads
+ * zero and the cause is invisible.
+ *
+ * 0.98 rather than something like 0.9, because a genuinely wooded lot really
+ * can be 95% trees and that is a real answer, not a collapse. The line is set
+ * where "there is no lot left at all" begins, and what is dropped is always
+ * named on screen.
+ */
+const COLLAPSE_FRACTION = 0.98;
+
+/**
+ * Mask pixels -> polygons, for both questions the app can ask.
+ *
+ * Shared by the detection and by the sensitivity slider, which re-runs exactly
+ * this on masks already downloaded. Keeping it in one place is not tidiness:
+ * the two used to be near-copies, and a near-copy of "which way round is this
+ * bitmap" is a measurement that can disagree with itself between the moment it
+ * was detected and the moment the slider was nudged.
+ *
+ * TWO ARITHMETICS, and the difference only appears at two masks:
+ *
+ *   FIND GRASS traces the mask and clips the result to the property line.
+ *
+ *   EXCLUDE starts from the property line as solid lawn and takes each mask
+ *   away. Adding a second exclusion adds a second subtraction, which is what
+ *   makes them stack. Inverting each mask instead -- the old arrangement --
+ *   would INTERSECT them: a pixel would have to be simultaneously not-a-tree
+ *   and not-a-building, and two independently noisy masks intersect to
+ *   slivers. Same pixels for one concept, incompatible for two.
+ */
+function traceDetection({ layers, subtractive, invert, rendered, edgeFt = 0 }) {
+  const { width: w, height: h } = layers[0].image;
+
+  // All passes are the same model on the same image, so this should never
+  // fire. If it ever does, the layers cannot be combined pixel for pixel and
+  // saying so beats indexing one mask with another's dimensions.
+  for (const l of layers) {
+    if (l.image.width !== w || l.image.height !== h) {
+      throw new Error('The detector returned masks of different sizes, so they cannot be combined.');
+    }
+  }
+
+  const mPerPx = metresPerPixel(rendered, w);
+  const sqFtPerPx = (mPerPx ** 2) / 0.09290304;
+  // One definition of "inside the lot", shared with the brush -- see
+  // parcelRaster. Two copies would be two chances to disagree about where
+  // someone's property ends, in the same measurement.
+  const clipMask = parcelRaster(w, h, (ll) => lngLatToFramePx(rendered, ll, w, h));
+
+  const options = {
+    /*
+     * Clip to the property line, always.
+     *
+     * Asking for "grass" finds every lawn in the photograph, the neighbours'
+     * included -- on a real lot that was 3,700 sq ft of someone else's grass,
+     * a third of everything detected. Painting the parcel into the same pixel
+     * grid and intersecting is exact for any parcel shape and needs no
+     * polygon-boolean library.
+     */
+    clipMask,
+    fillGapsUnderPx: $('#toggle-trees').checked ? Math.round(TREE_GAP_SQFT / sqFtPerPx) : 0,
+    /*
+     * How finely to trace the outline, in metres on the ground rather than in
+     * pixels. The default was 1.5 px, which sounds conservative and is not: at
+     * this frame's resolution it is about 5 cm, finer than a lawn edge is
+     * knowable and far finer than anyone can aim at. Measured on a real lot,
+     * against the 3,636 sq ft the fine trace gave: 0.15 m gave 140 vertices
+     * and +0.03%, 0.3 m gave 78 and -0.77%, 0.5 m gave 55 and -1.54%.
+     */
+    tolerance: TRACE_TOLERANCE_M / mPerPx,
+    maxVertices: MAX_TRACE_VERTICES,
+    growPx: Math.round((edgeFt * 0.3048) / mPerPx),
+  };
+
+  const unproject = (x, y) => framePxToLngLat(rendered, [x, y], w, h);
+
+  if (!subtractive) {
+    return {
+      sqFtPerPx,
+      collapsed: [],
+      polygons: polygonsFromBinary(
+        maskBinary(layers[0].image, { invert: Boolean(invert) }),
+        w, h, unproject, options
+      ),
+    };
+  }
+
+  // Exclude mode is defined against the property line, so without one there is
+  // nothing to subtract from. The detect button already refuses this; the
+  // check is here because a measurement with no base is not a small error.
+  if (!clipMask) return { sqFtPerPx, collapsed: [], polygons: [] };
+
+  const collapsed = [];
+  const kept = [];
+  for (const layer of layers) {
+    /*
+     * Read literally. autoPolarity guesses that a mostly-white bitmap must be
+     * upside down, on the premise that nothing legitimately covers most of a
+     * frame -- which is false here, where a mask of the woods on a wooded lot
+     * is exactly that. Guessing would hand back the lawn as the thing to
+     * remove: confident, silent, and exactly inverted.
+     */
+    const bin = maskBinary(layer.image, { autoPolarity: false });
+    if (coverage(bin, clipMask) > COLLAPSE_FRACTION) {
+      collapsed.push(layer.label || 'that concept');
+      continue;
+    }
+    kept.push(bin);
+  }
+
+  const lawn = subtractMasks(clipMask, unionMasks(kept));
+  return { sqFtPerPx, collapsed, polygons: polygonsFromBinary(lawn, w, h, unproject, options) };
+}
+
 function refreshSensitivity() {
   const panel = $('#sens-panel');
   if (!panel) return;
-  panel.hidden = !state.lastMask?.image;
+  panel.hidden = !state.lastMask?.layers?.length;
   $('#sens-slider').value = String(state.edgeFt);
   describeEdgeShift();
 }
@@ -2744,41 +3028,19 @@ function describeEdgeShift() {
       : `Pushed out ${ft} ft all round, still trimmed to your property line.`;
 }
 
-/** Re-trace the mask already in hand at the current cut. */
+/** Re-trace the masks already in hand at the current edge setting. */
 function retrace() {
   const mask = state.lastMask;
-  if (!mask?.image) return;
+  if (!mask?.layers?.length) return;
 
-  const { image, frame: rendered } = mask;
-  const w = image.width;
-  const h = image.height;
-
-  const ring = parcelRing();
-  const clipMask = ring
-    ? rasterizePolygon(
-        state.parcel.geometry.type === 'Polygon'
-          ? state.parcel.geometry.coordinates
-          : state.parcel.geometry.coordinates[0],
-        w, h,
-        (ll) => lngLatToFramePx(rendered, ll, w, h)
-      )
-    : null;
-
-  const sqFtPerPx = (metresPerPixel(rendered, w) ** 2) / 0.09290304;
-  const polygons = maskToPolygons(
-    image,
-    (x, y) => framePxToLngLat(rendered, [x, y], w, h),
-    {
-      clipMask,
-      fillGapsUnderPx: $('#toggle-trees').checked ? Math.round(TREE_GAP_SQFT / sqFtPerPx) : 0,
-      tolerance: TRACE_TOLERANCE_M / metresPerPixel(rendered, w),
-      maxVertices: MAX_TRACE_VERTICES,
-      // Feet on the ground -> pixels of this particular mask.
-      growPx: Math.round((state.edgeFt * 0.3048) / metresPerPixel(rendered, w)),
-      // Whatever produced these pixels, not whatever the picker says now.
-      invert: Boolean(mask.invert),
-    }
-  );
+  const { polygons } = traceDetection({
+    layers: mask.layers,
+    subtractive: mask.subtractive,
+    invert: mask.invert,
+    rendered: mask.frame,
+    // Feet on the ground -> pixels of this particular mask.
+    edgeFt: state.edgeFt,
+  });
 
   // A snapshot per change would bury the detection under a hundred steps of
   // slider, so the whole drag collapses into one undoable move.
@@ -3034,10 +3296,10 @@ function refreshDevPanel() {
   /*
    * Say which method the panel is actually driving.
    *
-   * This is the confusion the Testing method exists to end: with Subtract
-   * selected, a typed prompt is combined with Subtract's inversion and its own
-   * threshold, and nothing on screen said so. Now the note names the method
-   * and says exactly which of its settings the panel has taken over.
+   * This is the confusion the Testing method exists to end: with Exclude
+   * selected, a typed prompt used to be combined with that method's own
+   * settings, and nothing on screen said so. Now the note names the method and
+   * says exactly which of its settings the panel has taken over.
    */
   const testing = modelInfo(state.model).devOnly;
   const note = $('#dev-note');
@@ -3049,6 +3311,18 @@ function refreshDevPanel() {
         ? `Testing sends exactly this: "${typed}", cut ${cut === null ? DEV_TESTING_CUT : cut}`
           + `, ${state.devInvert ? 'inverted' : 'not inverted'}.`
         : 'Testing needs a prompt — it has none of its own.';
+    } else if (excludesWanted()) {
+      /*
+       * On Exclude a typed prompt REPLACES the tick boxes with one pass of its
+       * own, rather than joining them. Combining would put a surprising mask
+       * beyond attribution -- which of five things produced it? -- and this is
+       * the method whose whole job is to be readable. Saying so here matters
+       * because the boxes stay visible and ticked while the prompt overrides
+       * them, which otherwise looks like they are still in play.
+       */
+      note.textContent = typed
+        ? `Sending one pass of "${typed}" instead of the ticked boxes, and taking it off the property.`
+        : `The ticked boxes decide. Type a prompt to run that one concept instead of them.`;
     } else {
       note.textContent = `Prompt and cut override ${modelInfo(state.model).label}`
         + `, which still ${modelInverts(state.model) ? 'inverts' : 'does not invert'} the mask.`
@@ -3982,6 +4256,7 @@ function reset() {
   state.detected = false;
   state.detectedWith = null;
   state.detectedBy = null;
+  state.detectedExcluding = null;
   state.provider = 'mapbox';
   state.model = 'sam3';
   state.pins = [];

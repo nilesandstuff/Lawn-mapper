@@ -126,6 +126,15 @@
         <label for="model-choice">AI method</label>
         <select id="model-choice"></select>
         <p class="sub" id="model-note"></p>
+
+        <!-- Exclude mode only. Each ticked box is a separate AI pass, which is
+             separate money and a separate wait, so the cost line is not an
+             extra: it is the thing that makes the choice an informed one. -->
+        <div class="excludes" id="exclude-panel" hidden>
+          <p class="excl-lead">Take these off the property:</p>
+          <div id="exclude-list"></div>
+          <p class="sub" id="exclude-cost"></p>
+        </div>
       </div>
 
       <div class="tools">

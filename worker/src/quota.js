@@ -51,19 +51,33 @@ function clientIp(request) {
   );
 }
 
-async function bump(kv, key, limit) {
+/*
+ * `n` is how many predictions this one press will run.
+ *
+ * Exclude mode charges per ticked box, because that is what Replicate charges:
+ * four concepts is four predictions, four waits and four times the money. A
+ * measurement that costs four times as much and one twentieth of the allowance
+ * would be a guardrail that stops guarding the moment the interesting mode is
+ * used.
+ *
+ * All or nothing, deliberately. Letting three of four passes through because
+ * that is what was left would produce a measurement missing one exclusion,
+ * which is not a smaller answer -- it is a wrong one, silently, with the
+ * missing concept counted as lawn.
+ */
+async function bump(kv, key, limit, n = 1) {
   const raw = await kv.get(key);
   const used = raw ? parseInt(raw, 10) || 0 : 0;
-  if (used >= limit) return { allowed: false, used, limit };
-  await kv.put(key, String(used + 1), { expirationTtl: TTL_SECONDS });
-  return { allowed: true, used: used + 1, limit };
+  if (used + n > limit) return { allowed: false, used, limit, wanted: n };
+  await kv.put(key, String(used + n), { expirationTtl: TTL_SECONDS });
+  return { allowed: true, used: used + n, limit };
 }
 
-async function unbump(kv, key) {
+async function unbump(kv, key, n = 1) {
   const raw = await kv.get(key);
   const used = raw ? parseInt(raw, 10) || 0 : 0;
   if (used <= 0) return;
-  await kv.put(key, String(used - 1), { expirationTtl: TTL_SECONDS });
+  await kv.put(key, String(Math.max(0, used - n)), { expirationTtl: TTL_SECONDS });
 }
 
 async function peek(kv, key, limit) {
@@ -95,20 +109,20 @@ export async function checkQuota(request, env, clientId) {
  * enough that charging quota for them just frustrates people who mistyped
  * an address.
  */
-export async function consumeQuota(request, env, clientId) {
+export async function consumeQuota(request, env, clientId, n = 1) {
   if (!env.QUOTA) return { allowed: true, used: 0, limit: DAILY_LIMIT_PER_CLIENT };
 
   const day = dayKey();
   const ip = clientIp(request);
 
-  const byClient = await bump(env.QUOTA, `c:${day}:${clientId}`, DAILY_LIMIT_PER_CLIENT);
+  const byClient = await bump(env.QUOTA, `c:${day}:${clientId}`, DAILY_LIMIT_PER_CLIENT, n);
   if (!byClient.allowed) return byClient;
 
-  const byIp = await bump(env.QUOTA, `i:${day}:${ip}`, DAILY_LIMIT_PER_IP);
+  const byIp = await bump(env.QUOTA, `i:${day}:${ip}`, DAILY_LIMIT_PER_IP, n);
   if (!byIp.allowed) {
     // The client bump already landed. Hand it back -- being turned away by
     // the shared-network cap should not also cost a personal measurement.
-    await unbump(env.QUOTA, `c:${day}:${clientId}`);
+    await unbump(env.QUOTA, `c:${day}:${clientId}`, n);
     return { ...byIp, allowed: false, reason: 'shared-network' };
   }
 
@@ -126,11 +140,11 @@ export async function consumeQuota(request, env, clientId) {
  * failure keeps the guardrail while making a broken deploy merely broken
  * rather than broken *and* locked out for the rest of the UTC day.
  */
-export async function refundQuota(request, env, clientId) {
+export async function refundQuota(request, env, clientId, n = 1) {
   if (!env.QUOTA) return;
   const day = dayKey();
-  await unbump(env.QUOTA, `c:${day}:${clientId}`);
-  await unbump(env.QUOTA, `i:${day}:${clientIp(request)}`);
+  await unbump(env.QUOTA, `c:${day}:${clientId}`, n);
+  await unbump(env.QUOTA, `i:${day}:${clientIp(request)}`, n);
 }
 
 export { DAILY_LIMIT_PER_CLIENT, DAILY_LIMIT_PER_IP, clientIp };

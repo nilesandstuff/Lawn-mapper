@@ -20,18 +20,172 @@ export const SAM_INPUT_FIELDS = [
 ];
 
 /**
- * What subtract mode asks for.
+ * The things a lawn is measured by NOT being, one concept at a time.
  *
- * ONE WORD, and that is the whole finding. This started as a fifteen-concept
- * list on the reasoning that a lawn is defined by everything it is not, so
- * naming more of those things must cover more ground. The measurements below
- * say otherwise: one concept beats every list tried, and lists misbehave
+ * ONE CONCEPT PER PREDICTION, and that is the whole finding. This started as a
+ * fifteen-concept list on the reasoning that a lawn is defined by everything it
+ * is not, so naming more of those things must cover more ground. The table
+ * below says otherwise: one concept beats every list tried, and lists misbehave
  * unpredictably rather than simply less well.
  *
- * Overridable with SAM_NOT_LAWN_PROMPT, so it can be retuned against real lots
- * without a deploy -- but see the table before lengthening it.
+ * So the way to cover several concepts is several predictions, unioned -- which
+ * is what this table is for. Each entry is one pass: its own wording, its own
+ * confidence cut, its own tick box, and its own cost.
+ *
+ * EACH CARRIES ITS OWN THRESHOLD, and that is not tidiness. The number means
+ * different things to different concepts, and the two that have been measured
+ * disagree by a factor of four: "man-made" reads well at 0.05 on a suburban lot
+ * while "trees" needs 0.2 to avoid flooding the frame. One shared number would
+ * have to be wrong for one of them.
+ *
+ * `env` overrides exist per entry so a concept can be retuned against real lots
+ * without a deploy. There is deliberately no way to put a comma list in one:
+ * see the table under NOT_LAWN_PROMPT for what that does.
  */
-export const NOT_LAWN_PROMPT = 'trees';
+export const EXCLUSIONS = {
+  /*
+   * DEFAULT ON, because it is the one that has been tried on a real lot and
+   * reported to work: the owner ran "man-made" through the developer panel at
+   * the ordinary 0.05 cut and it took the house, driveway, road, pool, deck and
+   * sidewalk together.
+   *
+   * That is a genuinely surprising result next to the rest of this file.
+   * "building" alone masked 9.2% of Brooks Lane where everything built is 12.5%
+   * -- decent, but only buildings. "man-made" is not a list of those things, it
+   * is a category that contains them, and the model appears to resolve it as
+   * one concept. Which is consistent with the finding rather than an exception
+   * to it: the problem with "house, driveway, pool" was never the number of
+   * THINGS, it was the number of CONCEPTS in one prompt.
+   */
+  built: {
+    label: 'Buildings, drives and paving',
+    prompt: 'man-made',
+    promptVar: 'SAM_EXCLUDE_BUILT_PROMPT',
+    threshold: 0.05,
+    thresholdVar: 'SAM_EXCLUDE_BUILT_THRESHOLD',
+    byDefault: true,
+    note: 'House, garage, driveway, patio, pool, deck, sidewalk, and any road inside the line.',
+  },
+
+  /*
+   * 0.2, from the sweep at Brooks Lane: "trees" masked 61.5% of a parcel that
+   * is 58% not-lawn, and inverted to 28,788 sq ft against an owner-reported
+   * 28,000 mown. At 0.1 and below the same prompt flooded the whole frame.
+   */
+  trees: {
+    label: 'Trees',
+    prompt: 'trees',
+    promptVar: 'SAM_NOT_LAWN_PROMPT',
+    threshold: 0.2,
+    thresholdVar: 'SAM_SUBTRACT_THRESHOLD',
+    byDefault: false,
+    note: 'Canopy, whether one tree on the lawn or a whole treeline.',
+  },
+
+  /*
+   * "forest" measured 58.3% against the 58% wanted -- the closest single
+   * concept tried, half a point out. It overlaps "trees" almost entirely, so
+   * ticking both costs two predictions for one answer; the UI says so.
+   */
+  forest: {
+    label: 'Woods',
+    prompt: 'forest',
+    promptVar: 'SAM_EXCLUDE_FOREST_PROMPT',
+    threshold: 0.2,
+    thresholdVar: 'SAM_EXCLUDE_FOREST_THRESHOLD',
+    byDefault: false,
+    note: 'A continuous block of woodland. Largely the same answer as Trees, so pick one.',
+  },
+
+  /*
+   * UNMEASURED, and labelled as such rather than quietly shipped as though it
+   * were. There is no lot with a known pond in the record, and a swimming pool
+   * is already inside "man-made" by the owner's own account -- so this earns
+   * its place only on a property with real water, and it is off by default.
+   */
+  water: {
+    label: 'Ponds and creeks',
+    prompt: 'bodies of water',
+    promptVar: 'SAM_EXCLUDE_WATER_PROMPT',
+    threshold: 0.2,
+    thresholdVar: 'SAM_EXCLUDE_WATER_THRESHOLD',
+    byDefault: false,
+    note: 'Untested. A swimming pool is already covered by the first box.',
+  },
+};
+
+/** Which boxes start ticked. */
+export const DEFAULT_EXCLUSIONS = Object.entries(EXCLUSIONS)
+  .filter(([, e]) => e.byDefault)
+  .map(([id]) => id);
+
+/**
+ * A ceiling on passes per detection.
+ *
+ * Every tick is a separate Replicate prediction, paid for and waited on. Four
+ * is the whole table today, so this is not a restriction anyone can feel -- it
+ * is a guard on the wire, where `exclude` is a list a caller can post whatever
+ * it likes into. Without it, one request could ask for a hundred predictions.
+ */
+export const MAX_EXCLUSIONS = 4;
+
+/**
+ * Clean a requested exclusion list into one that can be run.
+ *
+ * Unknown ids are dropped rather than rejected: a browser cached from before a
+ * concept was renamed should lose that box, not lose the whole detection.
+ * An empty result stays empty -- "remove nothing" is a real (if useless)
+ * request, and the caller refuses it with a sentence rather than silently
+ * substituting the defaults, which would spend money on something not asked
+ * for.
+ */
+export function normaliseExclusions(list) {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const raw of list) {
+    const id = String(raw);
+    if (!Object.prototype.hasOwnProperty.call(EXCLUSIONS, id)) continue;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+    if (out.length >= MAX_EXCLUSIONS) break;
+  }
+  return out;
+}
+
+/** One pass's wording and cut, honouring any env override. */
+export function exclusionPass(id, env, thresholdOverride = null) {
+  const e = EXCLUSIONS[id];
+  if (!e) return null;
+  const raw = Number(env?.[e.thresholdVar]);
+  let threshold = Number.isFinite(raw) ? raw : e.threshold;
+  const dev = Number(thresholdOverride);
+  if (thresholdOverride !== null && thresholdOverride !== '' && Number.isFinite(dev)) {
+    threshold = dev;
+  }
+  return {
+    id,
+    prompt: String(env?.[e.promptVar] || e.prompt).trim(),
+    threshold: Math.min(Math.max(threshold, 0), 1),
+  };
+}
+
+/** What the browser needs to draw the tick boxes, without a second copy. */
+export const exclusionCatalogue = () =>
+  Object.entries(EXCLUSIONS).map(([id, e]) => ({
+    id,
+    label: e.label,
+    note: e.note,
+    byDefault: Boolean(e.byDefault),
+  }));
+
+/**
+ * Kept as named exports because the probe tool sweeps against them, and
+ * because the measurements they carry are the reason the trees entry has the
+ * numbers it has. They are views onto the table now, not a second source.
+ */
+export const NOT_LAWN_PROMPT = EXCLUSIONS.trees.prompt;
 
 /*
  * ONE CONCEPT. NOT A LIST. Measured at Brooks Lane, all at 0.2, against a
@@ -170,14 +324,22 @@ export const estimatePromptTokens = (prompt) =>
  * Quick gets 25,059 and is -10.5%. On this lot, subtraction with one word is
  * the better measurement.
  *
- * Not yet a shipping default, for a reason the table cannot show: "trees"
- * removes no house, drive or pool, and it only lands here because on a lot
- * this wooded those are small and partly caught anyway. On a bare suburban lot
- * with a wide driveway it would count the tarmac as lawn. Whether a SHORT list
- * resolves where a long one does not is the open question, and the one that
- * decides between one prediction per detection and several unioned.
+ * Not a shipping default on its own, for a reason the table cannot show:
+ * "trees" removes no house, drive or pool, and it only lands here because on a
+ * lot this wooded those are small and partly caught anyway. On a bare suburban
+ * lot with a wide driveway it would count the tarmac as lawn.
+ *
+ * THAT OPEN QUESTION IS NOW ANSWERED, and the answer was neither of the two on
+ * offer. "Whether a SHORT list resolves where a long one does not" assumed the
+ * choice was between one prompt and one prompt with more words in it. The lot
+ * owner found the third option by hand in the developer panel: "man-made", one
+ * concept, which covers house, drive, pool, deck and sidewalk together because
+ * it names the CATEGORY rather than listing its members.
+ *
+ * So the shipped arrangement is several predictions unioned, one concept each,
+ * and the several-unioned cost is real and per-pass. See EXCLUSIONS.
  */
-export const SUBTRACT_THRESHOLD = 0.2;
+export const SUBTRACT_THRESHOLD = EXCLUSIONS.trees.threshold;
 
 /**
  * How to ask.
@@ -190,8 +352,12 @@ export const SUBTRACT_THRESHOLD = 0.2;
 export const MODELS = {
   sam3: {
     slug: 'mattsays/sam3-image',
-    label: 'Quick',
-    note: 'One press. Finds every patch of grass it recognises, including pieces you might forget.',
+    // Named for the question it asks, now that the other method asks the
+    // opposite one. "Quick" described how it felt to use and said nothing about
+    // what it does, which was fine while it was the only option and useless
+    // next to a method whose entire difference is the question.
+    label: 'Find grass',
+    note: 'One press, one AI pass. Finds every patch of grass it recognises, including pieces you might forget.',
     needsPoints: false,
     fields: SAM_INPUT_FIELDS,
     input: (image, { prompt, threshold }) => ({
@@ -228,40 +394,34 @@ export const MODELS = {
    * this errs by inventing it. Which is the better failure depends entirely on
    * the lot, which is why this is a second option and not a replacement.
    *
-   * MEASURED, AND IT DOES NOT WORK YET -- so it is not offered. See the
-   * threshold table below: at Brooks Lane the not-lawn mask floods the whole
-   * frame up to 0.1 and disappears by 0.4, with one usable-looking point
-   * between that still reports 78% of a lot that is 37% mown.
+   * IT DID NOT WORK FOR A LONG TIME, and the record of why is worth keeping,
+   * because the wrong diagnosis survived three rounds of measurement. At Brooks
+   * Lane the not-lawn mask flooded the whole frame up to 0.1 and disappeared by
+   * 0.4, with one usable-looking point between that still reported 78% of a lot
+   * that is 37% mown. That was read as a threshold problem, then as the model
+   * being unable to see buildings from overhead. It was neither: the prompt was
+   * a comma list, and the model resolves a list as one vague phrase rather than
+   * as eight concepts. A bimodal all-or-nothing response is what that looks
+   * like from outside.
    *
-   * The mechanism is fine. Inversion, the polarity guard and the invert-then-
-   * clip order are all proven by mask.test.js, and the mask lands on the
-   * parcel. What fails is the PROMPT: a bimodal response like that -- all or
-   * nothing, with almost no middle -- is what a comma-separated list looks
-   * like when the model resolves it as one vague phrase rather than as eight
-   * concepts. That was named here as the mode's load-bearing assumption before
-   * any of this ran, and the sweep is the evidence against it.
+   * The mechanism was never the problem -- the polarity guard and the ordering
+   * were proven by mask.test.js throughout. What fixed it was one concept per
+   * prediction, and then the owner finding "man-made" by hand: a single concept
+   * that happens to contain house, drive, pool, deck and sidewalk.
    *
-   * Kept rather than deleted, because the next experiment is cheap and the
-   * plumbing is the part that is already right: try ONE concept
-   * (PROMPTS="building" with SUBTRACT=1) and see whether a single noun
-   * produces a mask shaped like a house. If it does, the fix is a prompt; if
-   * it does not, this model cannot do subtraction and the mode should go the
-   * way sam2 did.
-   *
-   * Hidden, not removed. An option that reports the entire parcel as lawn is
-   * worse than no option -- the same judgement that retired the point-prompted
-   * model -- and 0.4 did exactly that, in six vertices, looking like a clean
-   * answer.
+   * ONE CONCEPT PER PASS, SEVERAL PASSES, ADDED UP. That is what ships, and the
+   * cost is honest: every tick box is another prediction.
    */
   /*
    * TESTING. The developer panel's own method, and deliberately a separate
    * entry rather than an override applied to the shipped ones.
    *
    * The reason is that "am I testing a prompt, or a prompt plus whatever
-   * Subtract already does to it?" has no answer you can see from the screen.
-   * Overriding the prompt on sam3_subtract leaves its inversion and its own
-   * threshold in play, so a surprising result has two possible causes and the
-   * panel cannot tell you which. This entry starts from nothing: no prompt of
+   * Exclude already does to it?" has no answer you can see from the screen.
+   * Overriding the prompt on sam3_exclude leaves its subtraction and its
+   * per-concept thresholds in play, so a surprising result has two possible
+   * causes and the panel cannot tell you which. This entry starts from nothing:
+   * no prompt of
    * its own, no inversion of its own, no threshold of its own. Everything it
    * sends comes from the panel, so a result is attributable to what was typed.
    *
@@ -290,21 +450,33 @@ export const MODELS = {
     }),
   },
 
-  sam3_subtract: {
+  sam3_exclude: {
     slug: 'mattsays/sam3-image',
-    label: 'Subtract trees',
-    // Says what it removes AND what it leaves. It takes out the trees and
-    // keeps everything else, so on a lot with a wide drive the tarmac lands
-    // in the total -- visible on the map and one tap to delete, but only if
-    // the label told you to look.
-    note: 'For dormant grass and wooded lots. Removes the trees and measures what is left, so check the driveway and roof.',
+    label: 'Exclude objects',
+    // Says what it starts from as well as what it removes, because that is the
+    // part that changes how to read a wrong answer. It begins with the WHOLE
+    // LOT counted as lawn, so anything the ticked boxes fail to find stays in
+    // the total -- gravel, a bare field, a tennis court. Visible on the map and
+    // one tap to delete, but only if the label told you to look.
+    note: 'Starts with your whole property and takes out what you tick. Best for dormant grass. Anything not ticked counts as lawn, so check the result.',
     needsPoints: false,
-    // Tells the browser to flip the mask before tracing. See maskToPolygons.
-    invert: true,
-    prompt: NOT_LAWN_PROMPT,
-    promptVar: 'SAM_NOT_LAWN_PROMPT',
-    threshold: SUBTRACT_THRESHOLD,
-    thresholdVar: 'SAM_SUBTRACT_THRESHOLD',
+    /*
+     * SUBTRACTIVE, which replaced `invert: true`.
+     *
+     * They are the same pixels for one prompt -- "flip the mask, then clip to
+     * the parcel" and "start from the parcel, then remove the mask" are the
+     * same set operation written from opposite ends. The difference is what
+     * happens with TWO prompts. Inverting is per-mask, so two inverted masks
+     * intersect: a pixel counts as lawn only if it is neither a tree nor a
+     * building, which sounds right and is unreachable, because you cannot
+     * intersect two independently-flooded masks and get anything but slivers.
+     * Subtracting is per-parcel, so passes accumulate the way the user
+     * describes them: one shape, minus this, minus that.
+     *
+     * That is the whole reason for the change, and it only shows up at two.
+     */
+    subtractive: true,
+    exclusions: true,
     fields: SAM_INPUT_FIELDS,
     input: (image, { prompt, threshold }) => ({
       image,
@@ -315,6 +487,20 @@ export const MODELS = {
       threshold,
     }),
   },
+};
+
+/**
+ * Old ids that still name something real.
+ *
+ * `normaliseModel` falls back to the default for anything it does not know, so
+ * without this a browser cached from before the rename would ask for
+ * "Subtract trees" and silently be given "Find grass" -- the opposite question,
+ * answered confidently, with nothing on screen to say a substitution happened.
+ * The exclusion boxes then start at their defaults, which is the honest landing
+ * place: same method, and it says what it is removing.
+ */
+export const MODEL_ALIASES = {
+  sam3_subtract: 'sam3_exclude',
 };
 
 /*
@@ -334,17 +520,19 @@ export const MODELS = {
 
 export const DEFAULT_MODEL = 'sam3';
 
-export const normaliseModel = (value) =>
-  Object.prototype.hasOwnProperty.call(MODELS, value) ? value : DEFAULT_MODEL;
+export const normaliseModel = (value) => {
+  const id = MODEL_ALIASES[value] || value;
+  return Object.prototype.hasOwnProperty.call(MODELS, id) ? id : DEFAULT_MODEL;
+};
 
 /**
  * What the browser needs to build the picker, without a second copy of it.
  *
- * `invert` is here because the flip happens in the BROWSER, in the tracer, not
- * on the wire: the Worker returns the same kind of mask either way. The client
- * cannot know a mask needs inverting by looking at it -- that is the whole
- * problem with a bitmap that is 92% white -- so the fact travels with the
- * model description instead.
+ * `invert` and `subtractive` are here because both happen in the BROWSER, in
+ * the tracer, not on the wire: the Worker returns the same kind of mask either
+ * way. The client cannot know a mask needs flipping by looking at it -- that is
+ * the whole problem with a bitmap that is 92% white -- so the fact travels with
+ * the model description instead.
  */
 export const modelCatalogue = () =>
   Object.entries(MODELS).filter(([, m]) => !m.hidden).map(([id, m]) => ({
@@ -353,6 +541,13 @@ export const modelCatalogue = () =>
     note: m.note,
     needsPoints: Boolean(m.needsPoints),
     invert: Boolean(m.invert),
+    // Start from the property line and take the mask away, rather than tracing
+    // the mask. See the sam3_exclude entry for why the distinction only
+    // matters once there is more than one mask.
+    subtractive: Boolean(m.subtractive),
+    // Whether this method is driven by the tick boxes, and therefore costs one
+    // prediction per tick rather than one per press.
+    exclusions: Boolean(m.exclusions),
     /*
      * Developer-only methods travel in the catalogue and are filtered out by
      * the browser, rather than withheld here.

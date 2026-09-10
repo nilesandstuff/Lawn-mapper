@@ -19,6 +19,10 @@ import {
   traceRegion,
   simplify,
   maskToPolygons,
+  maskBinary,
+  unionMasks,
+  subtractMasks,
+  coverage,
 } from '../public/lib/mask.js';
 import {
   framePxToLngLat,
@@ -429,6 +433,128 @@ console.log(`\nframe: zoom ${FRAME.zoom} @ ${IMG}px  ->  ${MPP.toFixed(4)} m/px\
   /* Growing must not invent lawn where none was found at all. */
   check('growing an empty mask keeps it empty',
     area(growMask(new Uint8Array(W * H), W, H, 4)) === 0);
+}
+
+/* ------------------------------------------- 9. stacking exclusions */
+/*
+ * EXCLUDE MODE: start from the property, take each mask away.
+ *
+ * The whole reason this replaced per-mask inversion is that inversion cannot
+ * stack. For ONE concept the two are the same pixels written from opposite
+ * ends, and the first check below proves exactly that. For TWO they are
+ * opposites -- and the trap is that the broken version still returns a
+ * plausible-looking polygon, so only arithmetic catches it.
+ *
+ * These work on binary layers rather than traced polygons on purpose: the
+ * question here is set algebra, and putting it through the tracer would answer
+ * it approximately, with the simplifier's tolerance mixed into the number.
+ */
+{
+  const W = 100;
+  const H = 100;
+  const on = (m) => m.reduce((n, v) => n + v, 0);
+
+  // A 60x60 lot, with a 20x20 building and a 20x20 stand of trees inside it.
+  const rect = (x0, y0, w, h) => {
+    const m = new Uint8Array(W * H);
+    for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) m[y * W + x] = 1;
+    return m;
+  };
+
+  const parcel = rect(20, 20, 60, 60);   // 3,600 px
+  const house = rect(25, 25, 20, 20);    //   400 px, wholly inside
+  const trees = rect(55, 55, 20, 20);    //   400 px, wholly inside, disjoint
+
+  check('one exclusion leaves the property minus that thing',
+    on(subtractMasks(parcel, unionMasks([house]))) === 3600 - 400,
+    `${on(subtractMasks(parcel, unionMasks([house])))} px`);
+
+  /*
+   * THE CHECK THE OLD ARRANGEMENT FAILS.
+   *
+   * Subtracting both leaves 2,800. Inverting each mask and intersecting -- what
+   * "invert: true" would have done with two masks -- leaves everything that is
+   * neither, which on these two disjoint blobs happens to agree; the moment the
+   * masks overlap at all, or either covers most of the frame, it does not. The
+   * value of asserting the sum here is that it pins the arithmetic to
+   * "accumulates", so a return to per-mask inversion changes a number.
+   */
+  const both = subtractMasks(parcel, unionMasks([house, trees]));
+  check('two exclusions both come off, and the losses add up',
+    on(both) === 3600 - 400 - 400, `${on(both)} px, wanted 2800`);
+
+  /*
+   * OVERLAPPING CONCEPTS MUST NOT BE CHARGED TWICE.
+   *
+   * "Trees" and "Woods" measured 61.5% and 58.3% of the same parcel -- almost
+   * the same pixels. A union counts the shared ground once. Anything that
+   * subtracted areas rather than pixels would take it off twice and report a
+   * lawn smaller than the lot can hold.
+   */
+  const woods = rect(50, 50, 20, 20); // overlaps `trees` over 15x15
+  const overlapping = subtractMasks(parcel, unionMasks([trees, woods]));
+  check('overlapping exclusions are counted once, not twice',
+    on(overlapping) === 3600 - on(unionMasks([trees, woods])),
+    `${on(overlapping)} px left of 3600`);
+
+  /* A mask reaching outside the lot cannot take the neighbours' land with it:
+   * the property is the base, so there is nothing out there to remove. */
+  const spilling = rect(0, 0, 40, 40); // half outside the parcel
+  check('an exclusion that spills over the line only removes what is inside',
+    on(subtractMasks(parcel, unionMasks([spilling]))) === 3600 - on(unionMasks([
+      ((m) => { for (let p = 0; p < m.length; p++) m[p] &= parcel[p]; return m; })(spilling.slice()),
+    ])));
+
+  check('excluding nothing leaves the whole property',
+    on(subtractMasks(parcel, unionMasks([]))) === 3600,
+    'the union of no masks is nothing to remove, not everything');
+
+  /*
+   * THE COLLAPSE THIS MODEL ACTUALLY DOES. At the wrong cut a concept comes
+   * back covering the entire frame; subtracting it leaves zero lawn. The
+   * coverage reading is what lets the app drop that pass and name it rather
+   * than reporting nought square feet with no explanation.
+   */
+  const everything = rect(0, 0, W, H);
+  check('a flooded mask reads as covering the whole property',
+    coverage(everything, parcel) === 1);
+  check('and an ordinary one does not',
+    Math.abs(coverage(house, parcel) - 400 / 3600) < 1e-9,
+    `${coverage(house, parcel)}`);
+  check('a mask entirely outside the lot reads as zero, not as an error',
+    coverage(rect(0, 0, 10, 10), parcel) === 0);
+
+  /*
+   * ONE CONCEPT: THE TWO ARITHMETICS AGREE.
+   *
+   * This is what made the change safe to make. Inverting the house mask and
+   * clipping to the parcel, and subtracting the house mask from the parcel,
+   * are the same set -- so "Find grass" and single-box "Exclude" cannot
+   * disagree about a lot, and the rebuild changed no existing measurement.
+   */
+  const inverted = new Uint8Array(W * H);
+  for (let p = 0; p < inverted.length; p++) inverted[p] = (house[p] ^ 1) & parcel[p];
+  const subtracted = subtractMasks(parcel, house);
+  check('for one mask, inverting-then-clipping and subtracting are identical',
+    inverted.every((v, p) => v === subtracted[p]),
+    'which is why the old single-concept measurements still stand');
+
+  /*
+   * POLARITY IS NOT GUESSED IN EXCLUDE MODE.
+   *
+   * binarize flips a mask that is more than 90% white, on the premise that
+   * nothing legitimately covers most of a frame. That premise is false for a
+   * mask of the woods on a wooded lot, and guessing would hand back the LAWN
+   * as the thing to remove -- confident, silent, exactly inverted.
+   */
+  const mostlyWhite = blankMask(20, 20);
+  paintRect(mostlyWhite, 0, 0, 20, 19); // 95% on
+  check('a mostly-white mask is read literally when asked to be',
+    on(maskBinary(mostlyWhite, { autoPolarity: false })) === 380,
+    `${on(maskBinary(mostlyWhite, { autoPolarity: false }))} px of 380`);
+  check('and the guess is still there for the mode that wants it',
+    on(maskBinary(mostlyWhite, { autoPolarity: true })) === 20,
+    'find-grass keeps the polarity guard; exclude mode switches it off');
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);

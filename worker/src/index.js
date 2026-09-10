@@ -45,7 +45,8 @@ import { logMeasurement, readLog, loggingEnabled, recordLater } from './testlog.
 // here kills the isolate on startup.
 import {
   MODELS, samVersion, samThreshold, samPrompt, normaliseModel, modelCatalogue,
-  promptProblem,
+  promptProblem, normaliseExclusions, exclusionPass, exclusionCatalogue,
+  DEFAULT_EXCLUSIONS,
 } from './sam.js';
 // Which satellite picture to use, and how to ask each source for exactly our
 // frame. Also lives outside the entrypoint, for the same reason as sam.js.
@@ -409,13 +410,70 @@ async function handleSegment(request, env, origin, ctx) {
     );
   }
 
-  const quota = await consumeQuota(request, env, clientId);
+  /*
+   * WHAT TO ASK, AND HOW MANY TIMES.
+   *
+   * "Find grass" asks one question. "Exclude objects" asks one question per
+   * ticked box, because the model resolves one concept per prediction and a
+   * comma list is not several concepts -- it is one vague phrase, which is the
+   * finding that took three rounds of measurement to reach. See EXCLUSIONS.
+   *
+   * So a pass is the unit of everything downstream: one prompt, one threshold,
+   * one prediction, one item of the daily allowance, one mask for the browser
+   * to take away from the property.
+   */
+  const devThreshold = body.threshold ?? null;
+  let passes;
+
+  if (model.exclusions) {
+    const wanted = normaliseExclusions(body.exclude);
+    if (devPrompt) {
+      /*
+       * A typed prompt REPLACES the boxes rather than joining them.
+       *
+       * Adding to them would make a panel result unreadable in exactly the way
+       * the Testing method exists to prevent: a surprising mask would have two
+       * possible sources and the screen could not say which. One typed concept,
+       * one pass, one thing to attribute the answer to -- which is also how
+       * "man-made" was found.
+       */
+      passes = [{ id: 'typed', prompt: devPrompt, threshold: samThreshold(env, modelId, devThreshold) }];
+    } else if (!wanted.length) {
+      // Before the allowance is touched: nothing to remove means the answer is
+      // the whole lot, which needs no AI and should cost nothing.
+      return json(
+        {
+          error: 'Tick at least one thing to remove, or switch to "Find grass".',
+          exclude: [],
+        },
+        400,
+        origin
+      );
+    } else {
+      passes = wanted.map((id) => exclusionPass(id, env, devThreshold));
+    }
+  } else {
+    passes = [{
+      id: null,
+      prompt: samPrompt(modelId, imageryPrompt(provider, env), env, devPrompt),
+      threshold: samThreshold(env, modelId, devThreshold),
+    }];
+  }
+
+  // Every pass is a separate prediction and a separate bill, so the allowance
+  // is charged for all of them at once -- all or nothing, because a detection
+  // missing one exclusion is a wrong answer rather than a smaller one.
+  const quota = await consumeQuota(request, env, clientId, passes.length);
   if (!quota.allowed) {
     return json(
       {
         error: 'quota_exceeded',
         used: quota.used,
         limit: quota.limit,
+        // How many this press needed, so the browser can say "this one needs
+        // three and you have two left" rather than a flat refusal that reads
+        // as broken when the counter plainly shows some remaining.
+        wanted: quota.wanted || passes.length,
         // Distinguishes "you used yours" from "your network used theirs",
         // which matters when a whole apartment building shares an address.
         reason: quota.reason || 'client',
@@ -447,46 +505,68 @@ async function handleSegment(request, env, origin, ctx) {
   // The wording belongs to the source: an infrared vegetation index has no
   // "grass" in it to find, only vegetation, so each provider carries its own.
   //
-  // Unless the MODEL owns it. Subtract mode asks for buildings and trees and
-  // lets the browser take the remainder, so for it the prompt is the method
-  // rather than a description of the picture, and the provider does not get a
-  // vote. See samPrompt.
-  const prompt = samPrompt(modelId, imageryPrompt(provider, env), env, devPrompt);
-  const threshold = samThreshold(env, modelId, body.threshold ?? null);
+  // Unless the MODEL owns it. Exclude mode asks for buildings and trees and
+  // lets the browser take them off the property, so for it the prompt is the
+  // method rather than a description of the picture, and the provider does not
+  // get a vote. See samPrompt and EXCLUSIONS.
 
   let version;
   try {
     version = await samVersion(env, modelId);
   } catch (err) {
-    await refundQuota(request, env, clientId);
+    await refundQuota(request, env, clientId, passes.length);
     return json({ error: 'Segmentation unavailable', detail: err.message }, 502, origin);
   }
 
-  const res = await fetch('https://api.replicate.com/v1/predictions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${env.REPLICATE_TOKEN}`,
-      'Content-Type': 'application/json',
-      Prefer: 'wait',
-    },
-    body: JSON.stringify({
-      version,
-      input: model.input(imageUrl, { prompt, threshold, points }),
-    }),
-  });
+  /*
+   * All passes at once, not one after another.
+   *
+   * Replicate holds each connection for about a minute under `Prefer: wait`.
+   * Four sequential passes would be four minutes of somebody watching a
+   * spinner, and would blow past every timeout between here and the browser.
+   * In parallel the wait is the slowest single pass -- the same wait a
+   * one-concept detection has always had.
+   */
+  const results = await Promise.all(passes.map(async (pass) => {
+    const res = await fetch('https://api.replicate.com/v1/predictions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${env.REPLICATE_TOKEN}`,
+        'Content-Type': 'application/json',
+        Prefer: 'wait',
+      },
+      body: JSON.stringify({
+        version,
+        input: model.input(imageUrl, { prompt: pass.prompt, threshold: pass.threshold, points }),
+      }),
+    });
+    if (!res.ok) return { pass, http: res.status, detail: await res.text() };
+    return { pass, prediction: await res.json() };
+  }));
 
-  if (!res.ok) {
-    const detail = await res.text();
-    await refundQuota(request, env, clientId);
+  /*
+   * One refused pass fails the whole detection.
+   *
+   * Carrying on with the rest would produce a measurement with one exclusion
+   * missing -- and a missing exclusion is not a smaller answer, it is a wrong
+   * one: the trees stay counted as lawn and nothing on screen says so. Better
+   * to hand back the allowance and say what happened.
+   */
+  const failed = results.find((r) => r.http);
+  if (failed) {
+    await refundQuota(request, env, clientId, passes.length);
 
     // Replicate throttles low-credit accounts to a handful of predictions a
     // minute. That is an account problem, not a bug, and saying so beats a
-    // generic failure that sends the owner hunting through code.
-    if (res.status === 429) {
+    // generic failure that sends the owner hunting through code. It is also
+    // the likeliest thing to go wrong now that one press can fire four at once.
+    if (failed.http === 429) {
       return json(
         {
-          error: 'The detector is rate limited right now. Try again in a minute.',
-          detail,
+          error: passes.length > 1
+            ? 'The detector is rate limited. Untick a box or two, or try again in a minute.'
+            : 'The detector is rate limited right now. Try again in a minute.',
+          detail: failed.detail,
           rateLimited: true,
         },
         429,
@@ -494,8 +574,17 @@ async function handleSegment(request, env, origin, ctx) {
       );
     }
 
-    return json({ error: 'Segmentation failed', detail }, 502, origin);
+    return json({ error: 'Segmentation failed', detail: failed.detail }, 502, origin);
   }
+
+  const answered = results.map(({ pass, prediction }) => ({
+    exclusion: pass.id,
+    prompt: pass.prompt,
+    threshold: pass.threshold,
+    status: prediction.status,
+    id: prediction.id,
+    mask: prediction.output ?? null,
+  }));
 
   /*
    * Record the attempt, whatever happens next.
@@ -510,30 +599,48 @@ async function handleSegment(request, env, origin, ctx) {
    * entries. waitUntil keeps the request alive for the write without making
    * the response wait for it, which is what "must not wait on bookkeeping"
    * should have meant.
+   *
+   * ONE ENTRY PER PRESS, not per pass. What a report needs to be reproduced is
+   * the whole request -- four passes of one detection are one thing that
+   * happened at one address, and splitting them across four rows would make
+   * the log harder to read for no gain.
    */
-  const prediction = await res.json();
+  const pending = answered.filter((a) => a.status !== 'succeeded');
   recordLater(ctx, logMeasurement(env, {
     address: body.address,
     lng, lat, zoom: served.zoom,
-    provider, model: modelId, prompt,
-    threshold,
+    provider, model: modelId,
+    prompt: answered.map((a) => a.prompt).join(' + '),
+    threshold: answered[0].threshold,
+    passes: answered.length,
     parcelSqFt: body.parcelSqFt,
     county: body.county,
     clientId,
-    outcome: prediction.status,
+    outcome: pending.length ? pending[0].status : 'succeeded',
   }));
 
-  if (prediction.status !== 'succeeded') {
+  const shape = {
+    passes: answered,
+    subtractive: Boolean(model.subtractive),
+    remaining: quota.limit - quota.used,
+    // Frame parameters must round-trip to the client: converting mask
+    // pixels back to lng/lat requires the exact centre, zoom, and size.
+    frame: { ...served, provider }, model: modelId,
+  };
+
+  if (pending.length) {
     // Not a failure: `Prefer: wait` gives up after about a minute, and a cold
-    // model can take several. The quota stays spent because the prediction is
-    // running and will be billed; the client polls /api/prediction for it.
+    // model can take several. The quota stays spent because the predictions
+    // are running and will be billed; the client polls /api/prediction.
     return json(
       {
+        ...shape,
         pending: true,
-        status: prediction.status,
-        id: prediction.id,
-        frame: { ...served, provider }, model: modelId,
-        remaining: quota.limit - quota.used,
+        // The single-pass shape, still, for a browser cached from before
+        // `passes` existed. Sending only the new field would leave such a tab
+        // polling `undefined` forever rather than failing visibly.
+        status: answered[0].status,
+        id: answered[0].id,
       },
       202,
       origin
@@ -542,14 +649,13 @@ async function handleSegment(request, env, origin, ctx) {
 
   return json(
     {
-      mask: prediction.output,
-      remaining: quota.limit - quota.used,
-      // Frame parameters must round-trip to the client: converting mask
-      // pixels back to lng/lat requires the exact centre, zoom, and size.
-      frame: { ...served, provider }, model: modelId,
+      ...shape,
+      // Likewise: the first mask under the old name, so an old tab measuring
+      // with "Find grass" keeps working through the deploy.
+      mask: answered[0].mask,
       // What was actually asked, so a developer-mode run is attributable to
       // its own settings rather than to whatever the panel says now.
-      used: { prompt, threshold },
+      used: { prompt: answered[0].prompt, threshold: answered[0].threshold },
     },
     200,
     origin
@@ -578,7 +684,16 @@ export default {
           // have to agree on what "ndvi" means, and a second copy of a list is
           // a second copy that can be wrong.
           return json(
-            { mapboxToken: env.MAPBOX_TOKEN || null, imagery: providerCatalogue(env), models: modelCatalogue() },
+            {
+              mapboxToken: env.MAPBOX_TOKEN || null,
+              imagery: providerCatalogue(env),
+              models: modelCatalogue(),
+              // The things exclude mode can remove, and which start ticked.
+              // Same reasoning as the imagery list: the browser draws the boxes
+              // and the Worker runs the prompts, so one list, sent once.
+              exclusions: exclusionCatalogue(),
+              defaultExclusions: DEFAULT_EXCLUSIONS,
+            },
             200,
             origin
           );

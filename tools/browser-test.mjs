@@ -249,35 +249,88 @@ console.log('\n--- detection modes ---');
     ids.join(', '));
 
   /*
-   * Subtract mode is back on offer, with a one-word prompt, after being
-   * withheld while its prompt was a list that reported whole parcels as lawn.
+   * Exclude mode: start from the property line and take away what is ticked.
+   * On offer after being withheld while its prompt was a comma list that
+   * reported whole parcels as lawn.
    */
-  const subtract = models.options.find((m) => m.id === 'sam3_subtract');
-  check('subtract mode is offered', !!subtract, ids.join(', '));
+  const exclude = models.options.find((m) => m.id === 'sam3_exclude');
+  check('exclude mode is offered', !!exclude, ids.join(', '));
 
   /*
-   * The flag the mode turns on, and the one thing here that cannot be checked
-   * by looking at the map: a mask traced the wrong way round draws a
+   * The flags the mode turns on, and the one thing here that cannot be checked
+   * by looking at the map: a mask combined the wrong way round draws a
    * completely plausible lawn over the house.
    */
-  check('and it arrives marked as inverting', subtract?.invert === true,
-    JSON.stringify(subtract));
-  check('while the default one does not',
-    models.options.find((m) => m.id === models.chosen)?.invert === false,
+  check('and it arrives marked as subtractive, not inverting',
+    exclude?.subtractive === true && exclude?.invert === false,
+    JSON.stringify(exclude));
+  check('while the default one is neither',
+    models.options.find((m) => m.id === models.chosen)?.subtractive === false
+    && models.options.find((m) => m.id === models.chosen)?.invert === false,
     `chosen: ${models.chosen}`);
 
-  if (subtract) {
-    await page.selectOption('#model-choice', 'sam3_subtract');
-    await page.waitForTimeout(200);
+  /* The boxes belong to exclude mode, so they must not be sitting there under
+   * "Find grass" doing nothing. */
+  check('the tick boxes are hidden until exclude mode is chosen',
+    models.excludes.visible === false, JSON.stringify(models.excludes));
+
+  if (exclude) {
+    await page.selectOption('#model-choice', 'sam3_exclude');
+    await page.waitForFunction(() => window.__lmModels().excludes.visible === true,
+      null, { timeout: 4000 }).catch(() => {});
+
     const note = await page.textContent('#model-note');
-    check('picking it updates the description', note.trim() === subtract.note,
+    check('picking it updates the description', note.trim() === exclude.note,
       `showing: ${note.trim().slice(0, 70)}`);
     check('and the app records the switch',
-      (await page.evaluate(() => window.__lmModels().chosen)) === 'sam3_subtract');
+      (await page.evaluate(() => window.__lmModels().chosen)) === 'sam3_exclude');
 
-    // Back to the default: nothing after this should be measuring inverted.
+    const boxes = (await page.evaluate(() => window.__lmModels())).excludes;
+    check('the tick boxes appear with it', boxes.visible === true,
+      JSON.stringify(boxes));
+    check('there is more than one thing to remove', boxes.rendered.length >= 2,
+      boxes.rendered.map((b) => b.id).join(', '));
+
+    /*
+     * ONE TICKED BY DEFAULT, and it is the concept that has been tried on a
+     * real property. Zero would leave the button dead on arrival; all of them
+     * would quietly spend four predictions on the first press.
+     */
+    check('exactly one starts ticked', boxes.ticked.length === 1,
+      boxes.ticked.join(', '));
+    check('and the rendered boxes agree with what will be sent',
+      boxes.rendered.filter((b) => b.checked).map((b) => b.id).join(',')
+        === boxes.ticked.slice().sort().join(','),
+      `${JSON.stringify(boxes.rendered)} vs ${boxes.ticked}`);
+
+    /*
+     * THE COST HAS TO BE ON SCREEN BEFORE IT IS SPENT.
+     *
+     * Every tick is another prediction, another wait and another item of the
+     * daily allowance. A checkbox that silently quadruples the bill of a press
+     * is the one thing this panel must not be.
+     */
+    check('the cost of the ticked boxes is stated', /1 AI pass/.test(boxes.cost),
+      boxes.cost);
+
+    const second = boxes.rendered.find((b) => !b.checked);
+    if (second) {
+      await page.click(`#excl-${second.id}`);
+      await page.waitForFunction(() => window.__lmModels().excludes.ticked.length === 2,
+        null, { timeout: 4000 }).catch(() => {});
+      const after = (await page.evaluate(() => window.__lmModels())).excludes;
+      check('ticking a second box is recorded', after.ticked.length === 2,
+        after.ticked.join(', '));
+      check('and the stated cost goes up with it', /2 AI passes/.test(after.cost),
+        after.cost);
+      await page.click(`#excl-${second.id}`); // back to the default set
+    }
+
+    // Back to the default method: nothing after this should be subtracting.
     await page.selectOption('#model-choice', models.chosen);
     await page.waitForTimeout(200);
+    check('and the boxes go away again with it',
+      (await page.evaluate(() => window.__lmModels().excludes.visible)) === false);
   }
 
   /*
@@ -1464,7 +1517,7 @@ console.log('\n--- developer mode ---');
 
   /*
    * THE TESTING METHOD. Its reason for existing is that overriding the prompt
-   * on Subtract left Subtract's inversion and threshold in play, so a
+   * on a shipped method left that method's own settings in play, so a
    * surprising result had two possible causes and nothing on screen said
    * which. Testing starts from nothing.
    */
@@ -1502,20 +1555,21 @@ console.log('\n--- developer mode ---');
     (await page.evaluate(() => window.__lmDev())).inverts === true);
 
   /*
-   * On a shipped method the box must NOT decide -- Subtract owns its own
-   * inversion, and a live control that silently does nothing is a lie.
+   * On a shipped method the box must NOT decide. Exclude does not invert at
+   * all -- it subtracts from the property line -- and a live control that
+   * silently does nothing is a lie.
    */
-  await page.evaluate(() => window.__lmSetModel('sam3_subtract'));
+  await page.evaluate(() => window.__lmSetModel('sam3_exclude'));
   await page.waitForTimeout(250);
   const sub = await page.evaluate(() => window.__lmDev());
-  check('Subtract keeps its own inversion regardless of the box',
-    sub.inverts === true, `inverts=${sub.inverts}`);
+  check('Exclude ignores the inversion box, which is not how it works',
+    sub.inverts === false, `inverts=${sub.inverts}`);
   check('and the box is disabled there, rather than pretending to work',
     await page.locator('#dev-invert').isDisabled());
 
   await page.evaluate(() => window.__lmSetModel('sam3'));
   await page.waitForTimeout(250);
-  check('Quick does not invert either', 
+  check('Find grass does not invert either',
     (await page.evaluate(() => window.__lmDev())).inverts === false);
   await page.fill('#dev-prompt', '');
   await page.waitForTimeout(200);

@@ -141,6 +141,26 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 }
 .models .sub { margin: 7px 0 0; font-size: 12.5px; }
 
+/* --------------------------------------------------- exclusion tick boxes */
+/*
+ * Each box is one AI pass: one prediction, one wait, one item of the daily
+ * allowance. The cost line under them is the load-bearing part -- ticking a
+ * fourth box is not a preference, it is four times the bill of one -- so it
+ * gets the emphasis rather than being tucked away as fine print.
+ */
+.excludes { margin-top: 11px; padding-top: 10px; border-top: 1px solid var(--line); }
+.excl-lead {
+  margin: 0 0 7px; font-size: 12.5px; font-weight: 600; color: var(--muted);
+}
+.excl-item {
+  display: flex; gap: 9px; align-items: flex-start;
+  padding: 6px 0; cursor: pointer;
+}
+.excl-item input { margin: 2px 0 0; flex: none; accent-color: var(--green); }
+.excl-item span { font-size: 13.5px; font-weight: 550; }
+.excl-item small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
+#exclude-cost { font-weight: 600; }
+
 .pins {
   margin-top: 12px; padding: 11px 13px 2px;
   border: 1px solid #ffd54f; border-radius: 11px; background: #fffdf5;
