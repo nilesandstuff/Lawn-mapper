@@ -47,6 +47,7 @@ const state = {
   dev: false,         // developer mode: prompt/threshold by hand
   devPrompt: '',
   devThreshold: null, // null means "let the model decide"
+  devInvert: false,   // Testing's inversion, which no shipped model owns
   model: 'sam3',      // which one Detect will use
   detectedBy: null,   // which one the shapes on screen actually came from
   pins: [],           // [lng, lat] the point-prompted model is told to look at
@@ -141,6 +142,11 @@ if (typeof window !== 'undefined') {
     panelVisible: document.getElementById('dev-panel').offsetParent !== null,
     overrides: devOverrides(),
     blocked: devPromptBlocked(),
+    model: state.model,
+    inverts: modelInverts(state.model),
+    /* Which methods the picker is offering right now -- the thing that has to
+     * differ between an ordinary visitor and an unlocked one. */
+    offered: offeredModels().map((m) => m.id),
   });
 
   /* lng/lat -> a point on screen, so a test can aim at a shape that is really
@@ -1692,6 +1698,19 @@ function handleMapPoint(lngLat, x = null, y = null) {
  * that call before touching the quota rather than charging for an empty
  * answer.
  */
+/*
+ * Does this method trace the mask inverted?
+ *
+ * Every shipped method answers for itself. The Testing method has no answer of
+ * its own on purpose: it exists so a prompt can be tried without also
+ * inheriting Subtract's inversion and threshold, which is the exact ambiguity
+ * that made panel results unreadable -- a surprising number had two possible
+ * causes and the screen could not say which. So for that one the checkbox in
+ * the panel decides, and nothing else does.
+ */
+const modelInverts = (id) =>
+  modelInfo(id).devOnly ? state.devInvert : Boolean(modelInfo(id).invert);
+
 const modelInfo = (id) =>
   state.models.find((m) => m.id === id)
   // The fallback must default `invert` to false, not leave it undefined: an
@@ -1793,12 +1812,23 @@ function updatePromptHint() {
 
 /* ---------------------------------------------------------- model picker */
 
+/*
+ * The methods on offer here and now.
+ *
+ * Developer-only ones travel in the catalogue and are filtered out here rather
+ * than withheld by the Worker -- which runs whatever id it is given, so
+ * withholding the name would suggest a guard that does not exist.
+ */
+const offeredModels = () =>
+  state.models.filter((m) => !m.devOnly || state.dev);
+
 function buildModelPicker() {
   const select = $('#model-choice');
-  if (state.models.length < 2) { $('#model-panel').hidden = true; return; }
+  const offered = offeredModels();
+  if (offered.length < 2) { $('#model-panel').hidden = true; return; }
 
   select.innerHTML = '';
-  for (const m of state.models) {
+  for (const m of offered) {
     const opt = document.createElement('option');
     opt.value = m.id;
     opt.textContent = m.label;
@@ -1831,6 +1861,9 @@ function setModel(id) {
   if (modelInfo(id).needsPoints) setMode('pins');
   else if (state.mode === 'pins') setMode(null);
   else { refreshPins(); refreshRail(); updatePromptHint(); }
+
+  // The panel's note names the method it is driving, so it has to follow.
+  refreshDevPanel();
 }
 
 /* ------------------------------------------------------------- detection */
@@ -1971,7 +2004,7 @@ async function detect() {
         clipMask, fillGapsUnderPx, tolerance, maxVertices: MAX_TRACE_VERTICES,
         // Subtract mode returns a mask of what is NOT lawn. The model we just
         // asked is the one that decides, not whatever the picker says later.
-        invert: modelInfo(model).invert,
+        invert: modelInverts(model),
       }
     );
 
@@ -2010,7 +2043,7 @@ async function detect() {
     // time. The sensitivity slider re-traces these same pixels, and by then the
     // user may well have changed the picker -- which must not silently reverse
     // the polarity of a measurement already on screen.
-    state.lastMask = { url, frame: rendered, image, invert: modelInfo(model).invert };
+    state.lastMask = { url, frame: rendered, image, invert: modelInverts(model) };
     refreshOverlayLabel();
     if ($('#toggle-overlay').checked) showOverlay();
     refreshSensitivity();
@@ -2933,11 +2966,30 @@ function devOverrides() {
   const typed = ($('#dev-prompt')?.value || '').trim();
   if (typed) out.prompt = typed;
   if (state.devThreshold !== null) out.threshold = state.devThreshold;
+  /*
+   * Testing always sends a number, even untouched. Letting it fall through to
+   * a server-side default would put a setting in play that the panel does not
+   * show -- the precise thing this method exists to avoid.
+   */
+  if (modelInfo(state.model).devOnly && state.devThreshold === null) {
+    out.threshold = DEV_TESTING_CUT;
+  }
   return out;
 }
 
 /** Mirror of the Worker's estimate, so the count is live as you type. */
 const DEV_MAX_TOKENS = 32;
+
+/*
+ * Testing's cut when the slider has not been moved.
+ *
+ * It needs a number of its own because "the model default" would be a hidden
+ * setting, and this method's whole claim is that it sends only what the panel
+ * shows. Same value as the grass default, so an untouched panel reproduces
+ * Quick when you type "grass" -- which makes it a usable baseline rather than
+ * a fourth unknown.
+ */
+const DEV_TESTING_CUT = 0.05;
 const devTokens = (prompt) =>
   String(prompt).trim().split(/\s+/).filter(Boolean).length
   + (String(prompt).match(/,/g) || []).length
@@ -2968,11 +3020,37 @@ function refreshDevPanel() {
   const value = $('#dev-threshold-value');
   if (value) value.textContent = cut === null ? 'model default' : cut.toFixed(2);
 
+  /*
+   * Say which method the panel is actually driving.
+   *
+   * This is the confusion the Testing method exists to end: with Subtract
+   * selected, a typed prompt is combined with Subtract's inversion and its own
+   * threshold, and nothing on screen said so. Now the note names the method
+   * and says exactly which of its settings the panel has taken over.
+   */
+  const testing = modelInfo(state.model).devOnly;
   const note = $('#dev-note');
   if (note) {
-    note.textContent = over
-      ? 'Too long — the model errors past 32 tokens rather than answering.'
-      : `Applies to the next detection${typed ? '' : '. Blank uses the method\u2019s own prompt'}.`;
+    if (over) {
+      note.textContent = 'Too long — the model errors past 32 tokens rather than answering.';
+    } else if (testing) {
+      note.textContent = typed
+        ? `Testing sends exactly this: "${typed}", cut ${cut === null ? DEV_TESTING_CUT : cut}`
+          + `, ${state.devInvert ? 'inverted' : 'not inverted'}.`
+        : 'Testing needs a prompt — it has none of its own.';
+    } else {
+      note.textContent = `Prompt and cut override ${modelInfo(state.model).label}`
+        + `, which still ${modelInverts(state.model) ? 'inverts' : 'does not invert'} the mask.`
+        + ' Pick "Testing" to control that too.';
+    }
+  }
+
+  /* The inversion box only decides anything for Testing; everywhere else the
+   * method owns it, and a live control that does nothing is a lie. */
+  const invertBox = $('#dev-invert');
+  if (invertBox) {
+    invertBox.disabled = !testing;
+    invertBox.closest('.devcheck')?.style.setProperty('opacity', testing ? '1' : '0.45');
   }
 
 }
@@ -2988,6 +3066,11 @@ function refreshDevPanel() {
 function devPromptBlocked() {
   if (!state.dev) return null;
   const typed = ($('#dev-prompt')?.value || '').trim();
+  // Testing has no prompt of its own, so a blank box is not "use the default",
+  // it is "nothing to ask". Say that rather than quietly sending "grass".
+  if (!typed && modelInfo(state.model).devOnly) {
+    return 'Testing has no prompt of its own — type one before detecting.';
+  }
   if (!typed) return null;
   const est = devTokens(typed);
   if (est <= DEV_MAX_TOKENS) return null;
@@ -3005,9 +3088,18 @@ function wireDevPanel() {
       refreshDevPanel();
     });
   }
+  const invert = $('#dev-invert');
+  if (invert) {
+    invert.addEventListener('change', () => {
+      state.devInvert = invert.checked;
+      refreshDevPanel();
+    });
+  }
   $('#dev-reset')?.addEventListener('click', () => {
     if (prompt) prompt.value = '';
     state.devThreshold = null;
+    state.devInvert = false;
+    if (invert) invert.checked = false;
     refreshDevPanel();
   });
   $('#dev-exit')?.addEventListener('click', devExit);
@@ -4112,8 +4204,11 @@ window.addEventListener('hashchange', () => {
   if (state.dev) return;
   state.dev = devUnlocked();
   if (state.dev) {
+    // The picker was built before the unlock, so it has no Testing entry in it
+    // yet. Rebuilding is what makes the method appear without a reload.
+    buildModelPicker();
     refreshDevPanel();
-    setStatus('Developer mode on. The prompt and confidence cut are yours now.');
+    setStatus('Developer mode on. Pick "Testing" under AI method to control the prompt, cut and inversion.');
   }
 });
 

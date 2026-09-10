@@ -395,6 +395,20 @@ async function handleSegment(request, env, origin) {
     if (problem) return json({ error: problem, prompt: devPrompt }, 400, origin);
   }
 
+  /*
+   * The Testing method has no prompt of its own, so a blank one is not "use
+   * the default" -- there is no default to use. Falling through would send the
+   * imagery source's "grass" and quietly turn a test of nothing into a test of
+   * something else, which is the ambiguity this method exists to remove.
+   */
+  if (model.devOnly && !devPrompt) {
+    return json(
+      { error: 'The Testing method needs a prompt; it has none of its own.' },
+      400,
+      origin
+    );
+  }
+
   const quota = await consumeQuota(request, env, clientId);
   if (!quota.allowed) {
     return json(

@@ -25,7 +25,8 @@ export const SAM_INPUT_FIELDS = [
  * ONE WORD, and that is the whole finding. This started as a fifteen-concept
  * list on the reasoning that a lawn is defined by everything it is not, so
  * naming more of those things must cover more ground. The measurements below
- * say the opposite: every word added made the answer worse.
+ * say otherwise: one concept beats every list tried, and lists misbehave
+ * unpredictably rather than simply less well.
  *
  * Overridable with SAM_NOT_LAWN_PROMPT, so it can be retuned against real lots
  * without a deploy -- but see the table before lengthening it.
@@ -36,18 +37,35 @@ export const NOT_LAWN_PROMPT = 'trees';
  * ONE CONCEPT. NOT A LIST. Measured at Brooks Lane, all at 0.2, against a
  * parcel that is 58% not-lawn and ~28,000 sq ft mown:
  *
- *   "trees"                                        28,788 sq ft   38%
- *   "trees, building"                              37,537         49%
- *   "trees, building, driveway"                    76,079        100%
- *   "trees, building, driveway, swimming pool"     76,079        100%
- *   (the original eight-item list)                 59,824         78%
+ *   concepts  prompt                                    masked   lawn
+ *      1      "trees"                                    61.5%    38%
+ *      2      "trees, building"                          ~51%     49%
+ *      3      "trees, building, driveway"                  0%    100%
+ *      4      "trees, building, driveway, swimming pool"   0%    100%
+ *      8      the original eight-item list                20.7%   78%
  *
- * Monotonic, and it does not need interpreting: every word added makes the
- * answer worse, and by three the mask has collapsed to nothing so the whole
- * parcel comes back as lawn. This model resolves ONE concept per prediction.
+ * The parcel is 58% not-lawn, so the "masked" column wants to be near 58 and
+ * one concept is the only row that gets close.
+ *
+ * NOT MONOTONIC, and this comment claimed it was. Eight concepts (20.7%
+ * masked) beat three and four, which found nothing at all. So "every word
+ * added makes it worse" is simply false, and the real shape is worse than
+ * monotonic would be: adding concepts degrades the answer ERRATICALLY, and
+ * somewhere around three it can collapse to nothing and hand back the whole
+ * parcel. A curve you could extrapolate would at least be predictable; this
+ * has a hole in the middle of it.
+ *
+ * What the table does support is the thing that matters: one concept is
+ * clearly best, and a list is unreliable at any length. This model is worth
+ * one concept per prediction.
  *
  * That is why naming more things could never have worked, and why the 32-token
- * ceiling was a red herring: a list short enough to fit still fails. Covering
+ * ceiling was a red herring: a list short enough to fit still fails.
+ *
+ * ALSO UNTESTED: whether a comma list behaves this badly in NORMAL mode. Every
+ * row above is subtract mode on one lot. "grass", "lawn" and "grass lawn"
+ * agreed to within 0.6% early on, but that is one concept phrased three ways,
+ * not two concepts combined, and it says nothing about "grass, clover". Covering
  * trees AND buildings needs two predictions unioned, at twice the cost per
  * detection -- worth knowing, and not what ships today.
  *
@@ -235,6 +253,43 @@ export const MODELS = {
    * model -- and 0.4 did exactly that, in six vertices, looking like a clean
    * answer.
    */
+  /*
+   * TESTING. The developer panel's own method, and deliberately a separate
+   * entry rather than an override applied to the shipped ones.
+   *
+   * The reason is that "am I testing a prompt, or a prompt plus whatever
+   * Subtract already does to it?" has no answer you can see from the screen.
+   * Overriding the prompt on sam3_subtract leaves its inversion and its own
+   * threshold in play, so a surprising result has two possible causes and the
+   * panel cannot tell you which. This entry starts from nothing: no prompt of
+   * its own, no inversion of its own, no threshold of its own. Everything it
+   * sends comes from the panel, so a result is attributable to what was typed.
+   *
+   * devOnly keeps it out of the picker for everyone else. Like the rest of
+   * developer mode that is obscurity, not a guard -- the Worker will run it
+   * for anyone who names it, and that costs exactly one prediction.
+   */
+  sam3_testing: {
+    slug: 'mattsays/sam3-image',
+    label: 'Testing',
+    note: 'Sends exactly what the panel says. No prompt, threshold or inversion of its own.',
+    needsPoints: false,
+    devOnly: true,
+    // Both false by design, and both overridden by the panel. Written out
+    // rather than omitted so that reading this entry answers the question
+    // "what does it do on its own?" -- which is: nothing.
+    invert: false,
+    fields: SAM_INPUT_FIELDS,
+    input: (image, { prompt, threshold }) => ({
+      image,
+      prompt,
+      mask_only: true,
+      save_overlay: false,
+      return_zip: false,
+      threshold,
+    }),
+  },
+
   sam3_subtract: {
     slug: 'mattsays/sam3-image',
     label: 'Subtract trees',
@@ -298,6 +353,17 @@ export const modelCatalogue = () =>
     note: m.note,
     needsPoints: Boolean(m.needsPoints),
     invert: Boolean(m.invert),
+    /*
+     * Developer-only methods travel in the catalogue and are filtered out by
+     * the browser, rather than withheld here.
+     *
+     * That is the honest arrangement given what developer mode already is: the
+     * Worker runs whatever model id it is given, so hiding the name would buy
+     * nothing but would suggest a guard that does not exist. Anyone reading
+     * /api/config can see there is a Testing method; nobody who has not
+     * unlocked the panel gets a control for it.
+     */
+    devOnly: Boolean(m.devOnly),
   }));
 
 /**

@@ -241,10 +241,19 @@ All at threshold 0.2:
 | `trees, building, driveway` | 3 | — | — | 76,079 (whole parcel) |
 | the original 8-item list | 8 | 20.7% | −37.0 | 59,824 |
 
-Monotonic. Every word added makes the answer worse, and by three the mask has
-collapsed so the entire parcel comes back as lawn. **This model resolves one
-concept per prediction.** Covering trees *and* buildings would need two
-predictions unioned, at twice the cost per detection.
+**Not monotonic** — eight concepts beat three and four, which found nothing at
+all. Adding concepts degrades the answer *erratically*, and somewhere around
+three it can collapse entirely and hand back the whole parcel. That is worse
+than a monotonic decline would be: a curve can be extrapolated, this has a hole
+in the middle of it.
+
+What the table does support: one concept is clearly best and a list is
+unreliable at any length. **This model is worth one concept per prediction.**
+Covering trees *and* buildings would need two predictions unioned, at twice the
+cost per detection.
+
+Untested: whether a comma list behaves this badly in *normal* mode. Every row
+is subtract mode on one lot.
 
 `trees` is the word worth spending it on: the woods is 45% of this parcel and
 78% of everything subtraction has to remove. Its inverted lawn, 28,788 sq ft

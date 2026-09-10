@@ -1366,6 +1366,8 @@ console.log('\n--- developer mode ---');
     JSON.stringify(shut));
   check('and nothing is being sent with a detection',
     Object.keys(shut.overrides).length === 0, JSON.stringify(shut.overrides));
+  check('and the Testing method is not among the ones offered',
+    !shut.offered.includes('sam3_testing'), shut.offered.join(', '));
 
   /* Unlocking is by URL, which is the only thing typeable on a phone. */
   await page.goto(`${BASE}#tinker`, { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -1438,6 +1440,64 @@ console.log('\n--- developer mode ---');
   const zero = await page.evaluate(() => window.__lmDev());
   check('and a threshold of zero survives, which truthiness would drop',
     zero.overrides.threshold === 0, JSON.stringify(zero.overrides));
+
+  /*
+   * THE TESTING METHOD. Its reason for existing is that overriding the prompt
+   * on Subtract left Subtract's inversion and threshold in play, so a
+   * surprising result had two possible causes and nothing on screen said
+   * which. Testing starts from nothing.
+   */
+  const withDev = await page.evaluate(() => window.__lmDev());
+  check('the Testing method is offered once unlocked',
+    withDev.offered.includes('sam3_testing'), withDev.offered.join(', '));
+
+  await page.selectOption('#model-choice', 'sam3_testing');
+  await page.waitForTimeout(250);
+
+  /* It has no prompt of its own, so a blank box is "nothing to ask" rather
+   * than "use the default" -- and must be refused before it costs anything. */
+  await page.fill('#dev-prompt', '');
+  await page.waitForTimeout(200);
+  const blank = await page.evaluate(() => window.__lmDev());
+  check('Testing refuses to run without a prompt',
+    typeof blank.blocked === 'string' && /no prompt of its own/i.test(blank.blocked),
+    String(blank.blocked));
+
+  /* And it always sends a cut, even untouched: a server-side default would be
+   * a setting in play that the panel does not show. */
+  await page.fill('#dev-prompt', 'clover');
+  await page.waitForTimeout(200);
+  const testing = await page.evaluate(() => window.__lmDev());
+  check('and sends an explicit cut even with the slider untouched',
+    typeof testing.overrides.threshold === 'number',
+    JSON.stringify(testing.overrides));
+  check('with the typed prompt', testing.overrides.prompt === 'clover');
+
+  /* The inversion checkbox is the control the shipped methods do not expose. */
+  check('Testing does not invert until asked', testing.inverts === false);
+  await page.check('#dev-invert');
+  await page.waitForTimeout(200);
+  check('and ticking the box inverts it',
+    (await page.evaluate(() => window.__lmDev())).inverts === true);
+
+  /*
+   * On a shipped method the box must NOT decide -- Subtract owns its own
+   * inversion, and a live control that silently does nothing is a lie.
+   */
+  await page.selectOption('#model-choice', 'sam3_subtract');
+  await page.waitForTimeout(250);
+  const sub = await page.evaluate(() => window.__lmDev());
+  check('Subtract keeps its own inversion regardless of the box',
+    sub.inverts === true, `inverts=${sub.inverts}`);
+  check('and the box is disabled there, rather than pretending to work',
+    await page.locator('#dev-invert').isDisabled());
+
+  await page.selectOption('#model-choice', 'sam3');
+  await page.waitForTimeout(250);
+  check('Quick does not invert either', 
+    (await page.evaluate(() => window.__lmDev())).inverts === false);
+  await page.fill('#dev-prompt', '');
+  await page.waitForTimeout(200);
 
   /* Leaving must actually forget it, or "off" is a lie until storage clears. */
   await page.click('#dev-exit');

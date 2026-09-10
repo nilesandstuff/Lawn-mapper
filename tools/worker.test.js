@@ -569,5 +569,51 @@ check('a sensible prompt is allowed', promptProblem('dormant bermuda grass') ===
 check('the shipped prompts pass their own check',
   promptProblem(DEFAULT_PROMPT) === null && promptProblem(NOT_LAWN_PROMPT) === null);
 
+
+/* ------------------------------------------------------ the Testing method */
+/*
+ * A separate entry rather than an override applied to the shipped ones.
+ *
+ * The reason is legibility, not tidiness: overriding the prompt on Subtract
+ * leaves Subtract's inversion and threshold in play, so an odd result has two
+ * possible causes and the panel cannot say which. Testing starts from nothing,
+ * so a result is attributable to what was typed.
+ */
+check('the Testing method exists', !!MODELS.sam3_testing);
+
+check('it is developer-only', MODELS.sam3_testing.devOnly === true);
+
+check('and the shipped methods are not',
+  !MODELS[DEFAULT_MODEL].devOnly && !MODELS.sam3_subtract.devOnly);
+
+/*
+ * NOTHING OF ITS OWN. Each of these is a setting that, if it had one, would
+ * silently join whatever the panel sent -- which is the confusion being fixed.
+ */
+check('it carries no prompt of its own', !MODELS.sam3_testing.prompt);
+check('and no threshold of its own', MODELS.sam3_testing.threshold === undefined);
+check('and does not invert on its own', MODELS.sam3_testing.invert === false);
+
+check('so a blank prompt falls through to the source rather than inventing one',
+  samPrompt('sam3_testing', 'grass', {}) === 'grass',
+  'the Worker refuses that case outright; this pins WHY it has to');
+
+check('and a typed prompt is sent verbatim',
+  samPrompt('sam3_testing', 'grass', {}, 'dormant zoysia') === 'dormant zoysia');
+
+/*
+ * The catalogue must carry devOnly to the browser, which is what filters the
+ * method out of the picker. Withholding it here would suggest a guard that
+ * does not exist -- the Worker runs whatever id it is given.
+ */
+{
+  const testing = modelCatalogue().find((m) => m.id === 'sam3_testing');
+  check('the browser is told it is developer-only', testing?.devOnly === true);
+  check('and the shipped ones are told they are not',
+    modelCatalogue().filter((m) => m.id !== 'sam3_testing')
+      .every((m) => m.devOnly === false),
+    modelCatalogue().map((m) => `${m.id}:${m.devOnly}`).join(', '));
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);

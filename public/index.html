@@ -53,6 +53,10 @@
       <input type="text" id="dev-prompt" autocomplete="off" autocapitalize="none"
              autocorrect="off" spellcheck="false"
              placeholder="grass">
+      <label class="devcheck" for="dev-invert">
+        <input type="checkbox" id="dev-invert">
+        <span>Invert the selection (measure what is NOT matched)</span>
+      </label>
       <label for="dev-threshold">Confidence cut <b id="dev-threshold-value">0.05</b></label>
       <input type="range" id="dev-threshold" min="0" max="1" step="0.01" value="0.05"
              aria-label="Confidence threshold sent to the model">

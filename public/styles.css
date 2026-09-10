@@ -287,6 +287,11 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .devpanel input[type=range] { width: 100%; margin: 2px 0 0; accent-color: #b08900; }
 .devpanel .sub { margin: 7px 0 0; font-size: 12.5px; }
 .devpanel .tools { margin-top: 10px; }
+.devcheck {
+  display: flex !important; align-items: flex-start; gap: 8px;
+  font-weight: 400 !important; color: var(--ink) !important; cursor: pointer;
+}
+.devcheck input { margin: 2px 0 0; accent-color: #b08900; }
 /* The token count sits on the label line, so it must not take a line of its
  * own the way .sub otherwise would. */
 .devpanel label .sub { display: inline; margin: 0 0 0 4px; font-weight: 400; }
