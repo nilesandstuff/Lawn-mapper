@@ -25,11 +25,12 @@ import {
 } from '../worker/src/sam.js';
 import { dayKey, DAILY_LIMIT_PER_CLIENT } from '../worker/src/quota.js';
 import { upstreamReason, redactSecrets } from '../worker/src/upstream.js';
-import { logMeasurement, readLog, loggingEnabled } from '../worker/src/testlog.js';
+import { logMeasurement, readLog, loggingEnabled, recordLater } from '../worker/src/testlog.js';
 import {
   providerCatalogue, providerFrame, detectionImageUrl,
 } from '../worker/src/imagery.js';
 import { worldSize } from '../public/lib/mercator.js';
+import { readFile } from 'node:fs/promises';
 
 let failures = 0;
 const check = (name, ok, detail = '') => {
@@ -510,6 +511,46 @@ check('every remaining model works without pins',
   await logMeasurement(env, { address: 'x'.repeat(5000) });
   const big = (await readLog(env, 'sekret')).entries.find((e) => e.address?.startsWith('xxx'));
   check('free text is capped', big.address.length <= 200, `${big.address.length} chars`);
+
+  /*
+   * THE BUG EVERY TEST ABOVE PASSED THROUGH.
+   *
+   * All of it worked here and stored nothing in production, because a Worker
+   * cancels any promise still pending when the handler returns its Response.
+   * The write was started and never allowed to finish. `logging: true`, zero
+   * entries, and not one failing assertion -- because a test awaits, and a
+   * Worker does not.
+   *
+   * So the thing to test is not that the write works. It is that the write is
+   * HANDED TO waitUntil, which is the only part production does differently.
+   */
+  const registered = [];
+  const fakeCtx = { waitUntil: (p) => registered.push(p) };
+  const write = logMeasurement(env, { address: 'later', outcome: 'succeeded' });
+  check('a write is handed to waitUntil, not merely started',
+    recordLater(fakeCtx, write) === true && registered.length === 1);
+  await Promise.all(registered);
+  check('and it lands', (await readLog(env, 'sekret')).entries.some((e) => e.address === 'later'));
+
+  check('with no ctx the promise comes back so a caller can await it',
+    typeof recordLater(undefined, Promise.resolve()).then === 'function',
+    'dropping it on the floor is what the outage was');
+  check('and a ctx without waitUntil is treated as no ctx',
+    typeof recordLater({}, Promise.resolve()).then === 'function');
+
+  /*
+   * Source check, because the mistake was at the CALL SITE, not in the module.
+   * logMeasurement is safe to call and useless to call bare -- so the rule is
+   * that index.js never calls it without recordLater around it.
+   */
+  const workerSrc = await readFile(new URL('../worker/src/index.js', import.meta.url), 'utf8');
+  const bareCalls = workerSrc
+    .split('\n')
+    .filter((l) => /logMeasurement\(/.test(l) && !/recordLater\(/.test(l) && !/^\s*import/.test(l));
+  check('every log write in the worker goes through recordLater',
+    bareCalls.length === 0, bareCalls.join(' | '));
+  check('and the fetch handler takes the ctx that makes that possible',
+    /async fetch\(request, env, ctx\)/.test(workerSrc));
 }
 
 

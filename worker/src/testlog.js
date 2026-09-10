@@ -48,6 +48,32 @@ export const loggingEnabled = (env) =>
   Boolean(env?.QUOTA) && /^(1|true|yes|on)$/i.test(String(env?.LOG_TESTS || ''));
 
 /**
+ * Register a write so it actually happens.
+ *
+ * THE FOOTGUN THIS EXISTS FOR: a Worker cancels any promise still pending when
+ * the handler returns its Response. "Fire and forget" is not a thing here --
+ * it is fire and have it killed a millisecond later. The log looked correct in
+ * every test, wrote nothing in production, and reported `logging: true` while
+ * storing not one entry.
+ *
+ * waitUntil is the mechanism that was actually wanted all along: it keeps the
+ * request alive until the write settles WITHOUT making the response wait for
+ * it. The instinct -- "a measurement must not wait on bookkeeping" -- was
+ * right; the implementation of it was the bug.
+ *
+ * Falls back to returning the promise when there is no ctx, so a caller
+ * without one (a test, a direct invocation) can await it instead of silently
+ * dropping the write.
+ */
+export function recordLater(ctx, promise) {
+  if (ctx && typeof ctx.waitUntil === 'function') {
+    ctx.waitUntil(promise);
+    return true;
+  }
+  return promise;
+}
+
+/**
  * Record one measurement attempt.
  *
  * Never throws and never blocks the answer. A measurement that worked must not

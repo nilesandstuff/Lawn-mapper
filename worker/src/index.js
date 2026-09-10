@@ -39,7 +39,7 @@ import { checkQuota, consumeQuota, refundQuota } from './quota.js';
 // entrypoint may only export handlers, and this needs a test: it is the only
 // thing between an upstream error page and a leaked API key.
 import { upstreamReason } from './upstream.js';
-import { logMeasurement, readLog, loggingEnabled } from './testlog.js';
+import { logMeasurement, readLog, loggingEnabled, recordLater } from './testlog.js';
 // Constants and the version lookup live in their own module: a Workers
 // entrypoint may only export handlers, and exporting a plain constant from
 // here kills the isolate on startup.
@@ -330,7 +330,7 @@ async function handlePrediction(url, env, origin) {
  * file uses against the model's published schema, rather than a copy that can
  * drift.
  */
-async function handleSegment(request, env, origin) {
+async function handleSegment(request, env, origin, ctx) {
   let body;
   try {
     body = await request.json();
@@ -502,11 +502,17 @@ async function handleSegment(request, env, origin) {
    *
    * Logged here rather than after a successful trace because the interesting
    * reports are the failures: "it found nothing at my house" needs the address
-   * kept precisely when there is no mask to show for it. Not awaited -- the
-   * measurement must not wait on bookkeeping, nor fail with it.
+   * kept precisely when there is no mask to show for it.
+   *
+   * Through waitUntil, NOT fire-and-forget. A Worker cancels any promise still
+   * pending when the handler returns, so calling this and moving on wrote
+   * nothing at all: the endpoint reported logging as on and stored zero
+   * entries. waitUntil keeps the request alive for the write without making
+   * the response wait for it, which is what "must not wait on bookkeeping"
+   * should have meant.
    */
   const prediction = await res.json();
-  logMeasurement(env, {
+  recordLater(ctx, logMeasurement(env, {
     address: body.address,
     lng, lat, zoom: served.zoom,
     provider, model: modelId, prompt,
@@ -515,7 +521,7 @@ async function handleSegment(request, env, origin) {
     county: body.county,
     clientId,
     outcome: prediction.status,
-  });
+  }));
 
   if (prediction.status !== 'succeeded') {
     // Not a failure: `Prefer: wait` gives up after about a minute, and a cold
@@ -552,7 +558,7 @@ async function handleSegment(request, env, origin) {
 
 /* ------------------------------------------------------------------ router */
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const origin = request.headers.get('Origin') || '';
 
@@ -588,7 +594,7 @@ export default {
           return await handleImagery(url, env, origin);
         case '/api/segment':
           if (request.method !== 'POST') return json({ error: 'POST required' }, 405, origin);
-          return await handleSegment(request, env, origin);
+          return await handleSegment(request, env, origin, ctx);
         /*
          * The test log, readable only with the token.
          *
