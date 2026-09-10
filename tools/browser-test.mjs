@@ -1342,6 +1342,106 @@ await page.screenshot({ path: 'browser-test.png', fullPage: false });
  * the test driving a map with no imagery. Call it out rather than letting it
  * sit in a wall of console noise.
  */
+/*
+ * LAST ON PURPOSE. This section navigates, which resets the app to a blank
+ * address bar -- run it any earlier and every check after it would be driving
+ * a page that never got past step one, passing or failing for reasons that
+ * have nothing to do with what they claim to test.
+ */
+/* -------------------------------------------------------- developer mode */
+/*
+ * A hidden panel for trying prompts and thresholds on a real lot.
+ *
+ * The property worth testing is the one that fails silently: that an ordinary
+ * visitor never sees it. A stray `hidden` removed, or a key that matches too
+ * easily, and every friend testing their lawn gets a box of knobs that produce
+ * confidently wrong numbers -- and nothing else in the suite would notice,
+ * because the app works perfectly with the panel showing.
+ */
+console.log('\n--- developer mode ---');
+{
+  const shut = await page.evaluate(() => window.__lmDev());
+  check('the developer panel is not shown to an ordinary visitor',
+    shut.on === false && shut.panelVisible === false,
+    JSON.stringify(shut));
+  check('and nothing is being sent with a detection',
+    Object.keys(shut.overrides).length === 0, JSON.stringify(shut.overrides));
+
+  /* Unlocking is by URL, which is the only thing typeable on a phone. */
+  await page.goto(`${BASE}#tinker`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await page.waitForFunction(() => window.__lmDev !== undefined, { timeout: 30000 });
+  await page.waitForTimeout(1500);
+
+  const open = await page.evaluate(() => window.__lmDev());
+  check('the key unlocks it', open.on === true && open.panelVisible === true,
+    JSON.stringify(open));
+
+  /* The key is taken back out of the address bar, so a screenshot or a copied
+   * link does not hand it to someone who was not looking for it. */
+  check('and the key is removed from the address bar',
+    !(await page.evaluate(() => location.hash)).includes('tinker'),
+    await page.evaluate(() => location.href));
+
+  /* It is remembered, so the key is needed once rather than every visit. */
+  await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await page.waitForFunction(() => window.__lmDev !== undefined, { timeout: 30000 });
+  await page.waitForTimeout(1500);
+  check('and it is remembered on the next visit without the key',
+    (await page.evaluate(() => window.__lmDev())).on === true);
+
+  /* A typed prompt reaches the request; an untouched panel sends nothing. */
+  await page.fill('#dev-prompt', 'dormant bermuda');
+  await page.waitForTimeout(200);
+  const typed = await page.evaluate(() => window.__lmDev());
+  check('a typed prompt is what would be sent', typed.overrides.prompt === 'dormant bermuda',
+    JSON.stringify(typed.overrides));
+  check('and it is not blocked', typed.blocked === null);
+
+  /*
+   * Past 32 tokens the encoder errors rather than answering, so this has to be
+   * caught before a prediction and an allowance slot are spent on it.
+   */
+  await page.fill('#dev-prompt', Array.from({ length: 40 }, (_, i) => `word${i}`).join(' '));
+  await page.waitForTimeout(200);
+  const over = await page.evaluate(() => window.__lmDev());
+  check('an over-long prompt is refused before it can be spent',
+    typeof over.blocked === 'string' && /fewer words/i.test(over.blocked),
+    String(over.blocked));
+
+  await page.fill('#dev-prompt', '');
+  await page.waitForTimeout(200);
+
+  /* The slider only overrides once moved: blank means "let the model decide". */
+  const idle = await page.evaluate(() => window.__lmDev());
+  check('an untouched panel overrides nothing',
+    Object.keys(idle.overrides).length === 0, JSON.stringify(idle.overrides));
+
+  await page.evaluate(() => {
+    const s = document.querySelector('#dev-threshold');
+    s.value = '0';
+    s.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.waitForTimeout(200);
+  /*
+   * Zero specifically. Written as `override || fallback` anywhere along this
+   * path it would be dropped, and zero is the end of the slider someone
+   * testing a stubborn lawn reaches for first.
+   */
+  const zero = await page.evaluate(() => window.__lmDev());
+  check('and a threshold of zero survives, which truthiness would drop',
+    zero.overrides.threshold === 0, JSON.stringify(zero.overrides));
+
+  /* Leaving must actually forget it, or "off" is a lie until storage clears. */
+  await page.click('#dev-exit');
+  await page.waitForTimeout(300);
+  await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await page.waitForFunction(() => window.__lmDev !== undefined, { timeout: 30000 });
+  await page.waitForTimeout(1500);
+  const left = await page.evaluate(() => window.__lmDev());
+  check('leaving developer mode is remembered too',
+    left.on === false && left.panelVisible === false, JSON.stringify(left));
+}
+
 if (errors.some((e) => e.includes('403'))) {
   check('the map got its tiles (no 403 from Mapbox)', false,
     'the page is using a URL-restricted token on a host it does not allow — ' +

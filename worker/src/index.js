@@ -45,6 +45,7 @@ import { logMeasurement, readLog, loggingEnabled } from './testlog.js';
 // here kills the isolate on startup.
 import {
   MODELS, samVersion, samThreshold, samPrompt, normaliseModel, modelCatalogue,
+  promptProblem,
 } from './sam.js';
 // Which satellite picture to use, and how to ask each source for exactly our
 // frame. Also lives outside the entrypoint, for the same reason as sam.js.
@@ -374,6 +375,26 @@ async function handleSegment(request, env, origin) {
     );
   }
 
+  /*
+   * Developer mode's overrides, checked BEFORE the allowance is touched.
+   *
+   * A prompt over the encoder's 32-token limit does not answer badly, it
+   * errors -- and charging a slot of a twenty-a-day allowance for a request
+   * that cannot succeed is the wrong way round. This is the caller's mistake,
+   * like a missing pin, so it is refused here and costs nothing.
+   *
+   * Nothing about this is a security boundary: the panel is hidden, not
+   * guarded, and anyone can post these fields. That is deliberate and it is
+   * fine -- an arbitrary prompt costs exactly one prediction, which the quota
+   * already caps. What the Worker still owes is validation, because a bad
+   * value from anywhere is a wasted prediction and a confusing failure.
+   */
+  const devPrompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
+  if (devPrompt) {
+    const problem = promptProblem(devPrompt);
+    if (problem) return json({ error: problem, prompt: devPrompt }, 400, origin);
+  }
+
   const quota = await consumeQuota(request, env, clientId);
   if (!quota.allowed) {
     return json(
@@ -416,7 +437,8 @@ async function handleSegment(request, env, origin) {
   // lets the browser take the remainder, so for it the prompt is the method
   // rather than a description of the picture, and the provider does not get a
   // vote. See samPrompt.
-  const prompt = samPrompt(modelId, imageryPrompt(provider, env), env);
+  const prompt = samPrompt(modelId, imageryPrompt(provider, env), env, devPrompt);
+  const threshold = samThreshold(env, modelId, body.threshold ?? null);
 
   let version;
   try {
@@ -435,7 +457,7 @@ async function handleSegment(request, env, origin) {
     },
     body: JSON.stringify({
       version,
-      input: model.input(imageUrl, { prompt, threshold: samThreshold(env, modelId), points }),
+      input: model.input(imageUrl, { prompt, threshold, points }),
     }),
   });
 
@@ -474,7 +496,7 @@ async function handleSegment(request, env, origin) {
     address: body.address,
     lng, lat, zoom: served.zoom,
     provider, model: modelId, prompt,
-    threshold: samThreshold(env, modelId),
+    threshold,
     parcelSqFt: body.parcelSqFt,
     county: body.county,
     clientId,
@@ -505,6 +527,9 @@ async function handleSegment(request, env, origin) {
       // Frame parameters must round-trip to the client: converting mask
       // pixels back to lng/lat requires the exact centre, zoom, and size.
       frame: { ...served, provider }, model: modelId,
+      // What was actually asked, so a developer-mode run is attributable to
+      // its own settings rather than to whatever the panel says now.
+      used: { prompt, threshold },
     },
     200,
     origin

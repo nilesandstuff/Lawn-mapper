@@ -44,6 +44,9 @@ const state = {
   provider: 'mapbox', // which one is on screen and will be detected from
   detectedWith: null, // which one the shapes on screen actually came from
   models: [],         // detection methods, from /api/config
+  dev: false,         // developer mode: prompt/threshold by hand
+  devPrompt: '',
+  devThreshold: null, // null means "let the model decide"
   model: 'sam3',      // which one Detect will use
   detectedBy: null,   // which one the shapes on screen actually came from
   pins: [],           // [lng, lat] the point-prompted model is told to look at
@@ -125,6 +128,14 @@ if (typeof window !== 'undefined') {
 
   /* The measured area, from the geometry rather than the formatted panel. */
   window.__lmSqft = () => (draw ? totalSquareFeet() : 0);
+
+  /* Developer mode: whether it is unlocked, and what it would send. */
+  window.__lmDev = () => ({
+    on: state.dev,
+    panelVisible: !document.getElementById('dev-panel').hidden,
+    overrides: devOverrides(),
+    blocked: devPromptBlocked(),
+  });
 
   /* lng/lat -> a point on screen, so a test can aim at a shape that is really
    * there rather than at the middle of the map and hope. */
@@ -1821,6 +1832,12 @@ function setModel(id) {
 async function detect() {
   if (!state.frame) return;
 
+  // Developer mode can type a prompt the encoder cannot take. Stopping here
+  // costs nothing; letting it through costs a prediction and an allowance slot
+  // for an answer that was never going to arrive.
+  const blocked = devPromptBlocked();
+  if (blocked) { setStatus(blocked, 'warn'); return; }
+
   const frame = state.frame;
   const provider = effectiveProvider(state.provider);
   const model = state.model;
@@ -1868,6 +1885,7 @@ async function detect() {
        */
       body: JSON.stringify({
         ...frame, provider, model, points, clientId: state.clientId,
+        ...devOverrides(),
         address: state.chosen?.label || null,
         parcelSqFt: state.parcel ? measure(state.parcel.geometry).squareFeet : null,
         county: state.parcel?.properties?.county || null,
@@ -2839,6 +2857,147 @@ function refreshRail() {
  * Stages fire once each per address. The switch at the top of the panel turns
  * the whole thing off, and is remembered.
  */
+/* ------------------------------------------------------ developer mode */
+/**
+ * A hidden panel for trying prompts and thresholds against the real map.
+ *
+ * OBSCURED, NOT SECURED, and worth being exact about the difference. The
+ * Worker accepts a prompt and a threshold from anybody -- this key hides the
+ * controls, it does not guard the endpoint. That is a deliberate choice rather
+ * than an oversight: an arbitrary prompt costs exactly one prediction, the
+ * daily allowance already caps how many of those anyone gets, and a
+ * segmentation model has nothing to be injected into. The thing being avoided
+ * is a friend testing their lawn and finding a box of knobs that produce
+ * confidently wrong numbers, not an attacker.
+ *
+ * Unlocked from the URL because that is the only thing typeable on a phone
+ * without a keyboard shortcut, and remembered afterwards so the key is needed
+ * once rather than every visit. "Leave developer mode" in the panel forgets
+ * it.
+ */
+const DEV_KEY = 'tinker';
+const DEV_STORE = 'lm_dev';
+
+const devUnlocked = () => {
+  try {
+    if (localStorage.getItem(DEV_STORE) === '1') return true;
+  } catch { /* private mode */ }
+  // Hash rather than a query string: it never reaches the Worker, so it stays
+  // out of request logs, and it survives as a bookmark.
+  const asked = location.hash.replace(/^#/, '').toLowerCase() === DEV_KEY;
+  if (asked) {
+    try { localStorage.setItem(DEV_STORE, '1'); } catch { /* private mode */ }
+    // Take it back out of the address bar so a shared screenshot or a copied
+    // link does not hand the key to someone who was not looking for it.
+    history.replaceState(null, '', location.pathname + location.search);
+    return true;
+  }
+  return false;
+};
+
+const devExit = () => {
+  try { localStorage.removeItem(DEV_STORE); } catch { /* private mode */ }
+  state.dev = false;
+  state.devPrompt = '';
+  state.devThreshold = null;
+  refreshDevPanel();
+  setStatus('Developer mode off. Detection is back to its own settings.');
+};
+
+/**
+ * What developer mode will send, or nothing at all.
+ *
+ * An empty prompt and an untouched slider mean "use the defaults", so the
+ * fields are omitted entirely rather than sent as blanks -- the Worker treats
+ * absent and empty the same way, and this keeps an idle panel from looking
+ * like an override in the test log.
+ */
+function devOverrides() {
+  if (!state.dev) return {};
+  const out = {};
+  const typed = ($('#dev-prompt')?.value || '').trim();
+  if (typed) out.prompt = typed;
+  if (state.devThreshold !== null) out.threshold = state.devThreshold;
+  return out;
+}
+
+/** Mirror of the Worker's estimate, so the count is live as you type. */
+const DEV_MAX_TOKENS = 32;
+const devTokens = (prompt) =>
+  String(prompt).trim().split(/\s+/).filter(Boolean).length
+  + (String(prompt).match(/,/g) || []).length
+  + 3;
+
+function refreshDevPanel() {
+  const panel = $('#dev-panel');
+  if (!panel) return;
+  panel.hidden = !state.dev;
+  if (!state.dev) return;
+
+  const typed = ($('#dev-prompt')?.value || '').trim();
+  const est = typed ? devTokens(typed) : 0;
+  const over = est > DEV_MAX_TOKENS;
+
+  /*
+   * The token count is shown because going over does not degrade the answer,
+   * it errors -- the encoder refuses past 32 and the prediction fails outright.
+   * Better to see that while typing than to spend an allowance discovering it.
+   */
+  const tokens = $('#dev-tokens');
+  if (tokens) {
+    tokens.textContent = typed ? `~${est}/${DEV_MAX_TOKENS} tokens` : '';
+    tokens.style.color = over ? '#b3261e' : '';
+  }
+
+  const cut = state.devThreshold;
+  const value = $('#dev-threshold-value');
+  if (value) value.textContent = cut === null ? 'model default' : cut.toFixed(2);
+
+  const note = $('#dev-note');
+  if (note) {
+    note.textContent = over
+      ? 'Too long — the model errors past 32 tokens rather than answering.'
+      : `Applies to the next detection${typed ? '' : '. Blank uses the method\u2019s own prompt'}.`;
+  }
+
+}
+
+/*
+ * Refuse an over-long prompt here rather than by disabling the button.
+ *
+ * The detect button's enabled state is owned by the normal flow -- whether
+ * there is a frame yet, whether a detection is running -- and a second writer
+ * would fight it: this function would grey it out and the next refresh would
+ * turn it straight back on. So the panel warns, and the press is what stops.
+ */
+function devPromptBlocked() {
+  if (!state.dev) return null;
+  const typed = ($('#dev-prompt')?.value || '').trim();
+  if (!typed) return null;
+  const est = devTokens(typed);
+  if (est <= DEV_MAX_TOKENS) return null;
+  return `That prompt is about ${est} tokens and the model's limit is `
+    + `${DEV_MAX_TOKENS}. It would fail rather than answer badly — use fewer words.`;
+}
+
+function wireDevPanel() {
+  const prompt = $('#dev-prompt');
+  const slider = $('#dev-threshold');
+  if (prompt) prompt.addEventListener('input', refreshDevPanel);
+  if (slider) {
+    slider.addEventListener('input', () => {
+      state.devThreshold = Number(slider.value);
+      refreshDevPanel();
+    });
+  }
+  $('#dev-reset')?.addEventListener('click', () => {
+    if (prompt) prompt.value = '';
+    state.devThreshold = null;
+    refreshDevPanel();
+  });
+  $('#dev-exit')?.addEventListener('click', devExit);
+}
+
 const TIPS_KEY = 'lm_tips';
 
 /*
@@ -3915,6 +4074,15 @@ $('#toggle-outside').addEventListener('change', (e) => {
 $('#toggle-overlay').addEventListener('change', (e) => {
   e.target.checked ? showOverlay() : hideOverlay();
 });
+
+/*
+ * Developer mode is decided before the map loads, so the panel is either there
+ * from the start or never appears -- a box of knobs that materialises later
+ * looks like a bug to anyone who was not expecting it.
+ */
+state.dev = devUnlocked();
+wireDevPanel();
+refreshDevPanel();
 
 initMap()
   .then(refreshQuota)

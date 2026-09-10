@@ -309,10 +309,36 @@ export const modelCatalogue = () =>
  * mode the wording is not a description of the imagery, it is the entire
  * method -- asking an inverting model for "grass" would measure the house.
  */
-export function samPrompt(modelId, providerPrompt, env) {
+export function samPrompt(modelId, providerPrompt, env, override = null) {
+  // Developer mode sends its own wording. It outranks everything, because the
+  // entire point of it is to try a prompt this file does not contain.
+  const typed = typeof override === 'string' ? override.trim() : '';
+  if (typed) return typed;
   const m = MODELS[normaliseModel(modelId)];
   if (!m.prompt) return providerPrompt;
   return String(env?.[m.promptVar] || m.prompt).trim();
+}
+
+/**
+ * Is this prompt runnable at all?
+ *
+ * The encoder takes 32 tokens and ERRORS past that rather than truncating, so
+ * an over-long prompt is not a worse measurement, it is no measurement -- and
+ * it would still cost a prediction and a slot of the daily allowance. Checked
+ * here so the caller can refuse before spending either.
+ *
+ * Returns null when fine, or a sentence to show the person who typed it.
+ */
+export function promptProblem(prompt) {
+  const text = String(prompt ?? '').trim();
+  if (!text) return 'Type something for the detector to look for.';
+  if (text.length > 300) return 'That prompt is far too long.';
+  const est = estimatePromptTokens(text);
+  if (est > MAX_PROMPT_TOKENS) {
+    return `That is about ${est} tokens and the model's limit is ${MAX_PROMPT_TOKENS}. `
+      + 'It would fail rather than answer badly. Use fewer words.';
+  }
+  return null;
 }
 
 /**
@@ -394,9 +420,16 @@ export const DEFAULT_THRESHOLD = 0.05;
  * mode where that erases the lawn. Each model names its own variable, so
  * either can be retuned without disturbing the other.
  */
-export function samThreshold(env, modelId = DEFAULT_MODEL) {
+export function samThreshold(env, modelId = DEFAULT_MODEL, override = null) {
   const m = MODELS[normaliseModel(modelId)];
   const fallback = typeof m.threshold === 'number' ? m.threshold : DEFAULT_THRESHOLD;
+  // Developer mode's slider, clamped like any other source for this number.
+  // Note that 0 is a legitimate setting, so this tests for finite rather than
+  // for truthy -- `override || fallback` would silently ignore the low end.
+  const dev = Number(override);
+  if (override !== null && override !== '' && Number.isFinite(dev)) {
+    return Math.min(Math.max(dev, 0), 1);
+  }
   const raw = Number(env?.[m.thresholdVar || 'SAM_THRESHOLD']);
   if (!Number.isFinite(raw)) return fallback;
   return Math.min(Math.max(raw, 0), 1);

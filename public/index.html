@@ -109,6 +109,28 @@
       <!-- Pull the detected outline in or push it out, in feet on the ground.
            Free to move: it re-reads a mask already downloaded and runs no
            new detection. -->
+      <!--
+        Developer mode. Hidden unless unlocked, and unlocked by a string in
+        the URL rather than by anything on screen -- see DEV_KEY in app.js.
+        Obscured, not secured: the Worker accepts these fields from anyone,
+        which is fine because an arbitrary prompt costs exactly one prediction
+        and the daily allowance already caps that.
+      -->
+      <div class="imagery" id="dev-panel" hidden>
+        <label for="dev-prompt">Prompt <span class="sub" id="dev-tokens"></span></label>
+        <input type="text" id="dev-prompt" autocomplete="off" autocapitalize="none"
+               autocorrect="off" spellcheck="false"
+               placeholder="grass">
+        <label for="dev-threshold">Confidence cut <b id="dev-threshold-value">0.05</b></label>
+        <input type="range" id="dev-threshold" min="0" max="1" step="0.01" value="0.05"
+               aria-label="Confidence threshold sent to the model">
+        <p class="sub" id="dev-note"></p>
+        <div class="tools">
+          <button class="ghost" id="dev-reset" type="button">Back to defaults</button>
+          <button class="link" id="dev-exit" type="button">Leave developer mode</button>
+        </div>
+      </div>
+
       <div class="imagery" id="sens-panel" hidden>
         <label for="sens-slider">Trim or extend the edge</label>
         <input type="range" id="sens-slider" min="-3" max="3" step="0.25" value="0"

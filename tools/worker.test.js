@@ -21,7 +21,7 @@ import * as entrypoint from '../worker/src/index.js';
 import {
   MODELS, DEFAULT_MODEL, DEFAULT_PROMPT, modelCatalogue, DEFAULT_THRESHOLD, samThreshold,
   samPrompt, NOT_LAWN_PROMPT, SUBTRACT_THRESHOLD,
-  MAX_PROMPT_TOKENS, estimatePromptTokens,
+  MAX_PROMPT_TOKENS, estimatePromptTokens, promptProblem,
 } from '../worker/src/sam.js';
 import { dayKey, DAILY_LIMIT_PER_CLIENT } from '../worker/src/quota.js';
 import { upstreamReason, redactSecrets } from '../worker/src/upstream.js';
@@ -511,6 +511,63 @@ check('every remaining model works without pins',
   const big = (await readLog(env, 'sekret')).entries.find((e) => e.address?.startsWith('xxx'));
   check('free text is capped', big.address.length <= 200, `${big.address.length} chars`);
 }
+
+
+/* ------------------------------------------------------- developer mode */
+/*
+ * A hidden panel that sends its own prompt and threshold, so real lots can be
+ * used to try wordings this file does not contain.
+ *
+ * OBSCURED, NOT SECURED: the Worker takes these fields from anyone, and that
+ * is deliberate -- an arbitrary prompt costs exactly one prediction and the
+ * daily allowance already caps that. What the Worker owes is VALIDATION, which
+ * is what these check, because a bad value is a wasted prediction whoever
+ * sent it.
+ */
+check('a typed prompt outranks the model and the source',
+  samPrompt('sam3_subtract', 'grass', { SAM_NOT_LAWN_PROMPT: 'shrubs' }, 'bermudagrass')
+    === 'bermudagrass',
+  'the whole point is trying a wording the code does not contain');
+
+check('and blank falls back rather than sending an empty prompt',
+  samPrompt(DEFAULT_MODEL, 'grass', {}, '') === 'grass'
+  && samPrompt(DEFAULT_MODEL, 'grass', {}, '   ') === 'grass');
+
+check('a typed threshold is used', samThreshold({}, DEFAULT_MODEL, 0.42) === 0.42);
+
+/*
+ * ZERO IS A REAL SETTING. Written as `override || fallback` this passes every
+ * other case and silently ignores the bottom of the slider -- which is exactly
+ * the end someone testing a stubborn lawn would reach for.
+ */
+check('including zero, which a truthiness check would swallow',
+  samThreshold({}, DEFAULT_MODEL, 0) === 0);
+
+check('an untouched slider leaves the model default alone',
+  samThreshold({}, DEFAULT_MODEL, null) === DEFAULT_THRESHOLD
+  && samThreshold({}, 'sam3_subtract', null) === SUBTRACT_THRESHOLD);
+
+check('and a typed threshold is still clamped',
+  samThreshold({}, DEFAULT_MODEL, 5) === 1 && samThreshold({}, DEFAULT_MODEL, -2) === 0);
+
+check('nonsense from the wire falls back rather than being sent',
+  samThreshold({}, DEFAULT_MODEL, 'high') === DEFAULT_THRESHOLD);
+
+/*
+ * The check that saves an allowance slot. Past 32 tokens the encoder errors
+ * rather than truncating, so this has to be caught BEFORE the quota is spent
+ * -- a failed prediction that also cost a measurement is the worst outcome.
+ */
+check('an over-long prompt is refused', !!promptProblem(THE_PROMPT_THAT_FAILED),
+  promptProblem(THE_PROMPT_THAT_FAILED) || '(allowed!)');
+
+check('and the refusal says what to do about it',
+  /fewer words/i.test(promptProblem(THE_PROMPT_THAT_FAILED)));
+
+check('an empty prompt is refused too', !!promptProblem('   '));
+check('a sensible prompt is allowed', promptProblem('dormant bermuda grass') === null);
+check('the shipped prompts pass their own check',
+  promptProblem(DEFAULT_PROMPT) === null && promptProblem(NOT_LAWN_PROMPT) === null);
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);
