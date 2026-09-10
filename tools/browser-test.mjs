@@ -280,6 +280,19 @@ console.log('\n--- detection modes ---');
     await page.waitForTimeout(200);
   }
 
+  /*
+   * The developer-only method must not be in the REAL dropdown for an
+   * ordinary visitor. Checked against the rendered <option> list rather than
+   * app state, because that list is what a person can actually reach -- and
+   * this section runs with the measure step on screen, which is the only place
+   * the picker is visible.
+   */
+  const optionIds = await page.$$eval('#model-choice option', (o) => o.map((x) => x.value));
+  check('the Testing method is not in the dropdown an ordinary visitor sees',
+    !optionIds.includes('sam3_testing'), optionIds.join(', '));
+  check('and the dropdown matches what the app thinks it is offering',
+    optionIds.join(',') === ids.join(','), `${optionIds.join(',')} vs ${ids.join(',')}`);
+
   /* One model means no picker: an empty dropdown is worse than none. */
   check('the picker hides itself when there is nothing to choose between',
     models.panelVisible === (models.options.length > 1),
@@ -1451,7 +1464,7 @@ console.log('\n--- developer mode ---');
   check('the Testing method is offered once unlocked',
     withDev.offered.includes('sam3_testing'), withDev.offered.join(', '));
 
-  await page.selectOption('#model-choice', 'sam3_testing');
+  await page.evaluate(() => window.__lmSetModel('sam3_testing'));
   await page.waitForTimeout(250);
 
   /* It has no prompt of its own, so a blank box is "nothing to ask" rather
@@ -1484,7 +1497,7 @@ console.log('\n--- developer mode ---');
    * On a shipped method the box must NOT decide -- Subtract owns its own
    * inversion, and a live control that silently does nothing is a lie.
    */
-  await page.selectOption('#model-choice', 'sam3_subtract');
+  await page.evaluate(() => window.__lmSetModel('sam3_subtract'));
   await page.waitForTimeout(250);
   const sub = await page.evaluate(() => window.__lmDev());
   check('Subtract keeps its own inversion regardless of the box',
@@ -1492,7 +1505,7 @@ console.log('\n--- developer mode ---');
   check('and the box is disabled there, rather than pretending to work',
     await page.locator('#dev-invert').isDisabled());
 
-  await page.selectOption('#model-choice', 'sam3');
+  await page.evaluate(() => window.__lmSetModel('sam3'));
   await page.waitForTimeout(250);
   check('Quick does not invert either', 
     (await page.evaluate(() => window.__lmDev())).inverts === false);

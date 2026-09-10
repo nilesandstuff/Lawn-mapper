@@ -149,6 +149,17 @@ if (typeof window !== 'undefined') {
     offered: offeredModels().map((m) => m.id),
   });
 
+  /*
+   * Choose a method without going through the <select>.
+   *
+   * The picker lives inside the measure step, so it is not visible until an
+   * address has been confirmed -- and the developer-mode checks run on a fresh
+   * page, deliberately, to prove the key survives a reload. This drives the
+   * real setModel path; that the picker itself lists and switches methods is
+   * covered where the measure step is actually on screen.
+   */
+  window.__lmSetModel = (id) => { setModel(id); return state.model; };
+
   /* lng/lat -> a point on screen, so a test can aim at a shape that is really
    * there rather than at the middle of the map and hope. */
   window.__lmProject = (lngLat) => {
