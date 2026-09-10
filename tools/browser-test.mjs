@@ -290,8 +290,16 @@ console.log('\n--- detection modes ---');
   const optionIds = await page.$$eval('#model-choice option', (o) => o.map((x) => x.value));
   check('the Testing method is not in the dropdown an ordinary visitor sees',
     !optionIds.includes('sam3_testing'), optionIds.join(', '));
-  check('and the dropdown matches what the app thinks it is offering',
-    optionIds.join(',') === ids.join(','), `${optionIds.join(',')} vs ${ids.join(',')}`);
+  /*
+   * Compared against the methods the app is OFFERING, not against everything
+   * in its catalogue. __lmModels lists all of them, developer-only included --
+   * which is what it is for -- so comparing the dropdown to that list asserts
+   * the opposite of the filter: it demands the hidden method be on screen.
+   */
+  const shouldBeListed = models.options.filter((m) => !m.devOnly).map((m) => m.id);
+  check('and the dropdown lists exactly the methods on offer',
+    optionIds.join(',') === shouldBeListed.join(','),
+    `dropdown: ${optionIds.join(',')} vs offered: ${shouldBeListed.join(',')}`);
 
   /* One model means no picker: an empty dropdown is worse than none. */
   check('the picker hides itself when there is nothing to choose between',
