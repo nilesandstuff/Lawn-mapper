@@ -2893,9 +2893,18 @@ const devUnlocked = () => {
   const asked = location.hash.replace(/^#/, '').toLowerCase() === DEV_KEY;
   if (asked) {
     try { localStorage.setItem(DEV_STORE, '1'); } catch { /* private mode */ }
-    // Take it back out of the address bar so a shared screenshot or a copied
-    // link does not hand the key to someone who was not looking for it.
-    history.replaceState(null, '', location.pathname + location.search);
+    /*
+     * Take it back out of the address bar so a shared screenshot or a copied
+     * link does not hand the key to someone who was not looking for it.
+     *
+     * WINDOW.history, spelled out. This module declares `let history = []`
+     * for the undo stack, which shadows the DOM's history for the whole file
+     * -- so the bare name resolves to an Array and `history.replaceState` is
+     * not a function. It threw here, after the unlock had been stored but
+     * before it was returned, which made the mode look half-on: remembered on
+     * the next visit, invisible on this one.
+     */
+    window.history.replaceState(null, '', location.pathname + location.search);
     return true;
   }
   return false;
