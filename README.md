@@ -291,6 +291,50 @@ three it can collapse entirely and hand back the whole parcel. That is worse
 than a monotonic decline would be: a curve can be extrapolated, this has a hole
 in the middle of it.
 
+### The threshold is a switch, not a dial
+
+Measured on the same lot against the owner's figure for the woods alone —
+34,500 sq ft, 45% of the parcel — as raw mask area:
+
+| prompt | 0.2 | 0.25 | 0.3 | 0.35 | 0.4 | 0.5 | 0.6+ |
+|---|---|---|---|---|---|---|---|
+| `woods` | 42,727 | 42,727 | 42,727 | 42,727 | 42,727 | 42,727 | **0** |
+| `forest` | 44,682 | 44,682 | 44,682 | 44,682 | — | — | — |
+| `trees` | 46,155 | 45,352 | 44,459 | 44,459 | — | — | — |
+
+`woods` is **identical** at every setting from 0.2 to 0.5 and then vanishes.
+One detection, one score somewhere in 0.5–0.6, fully in or fully out — so no
+value of this number makes the mask smaller, only one makes it nothing.
+`trees` moves 3.7% because it returns four to six separate pieces and raising
+the cut drops the weakest, then it flattens too.
+
+So 0.2 is not "the value that works"; it is the low end of a plateau, and
+moving it inside 0.2–0.5 spends a prediction to learn nothing.
+
+This corrects an earlier reading of the same control. The `grass` sweep above
+swings 5× across its range, which made the threshold look like a dial — but
+that prompt returns *many* marginal detections, and each step of the cut drops
+some. A prompt with one dominant detection has nothing to gate. Same mechanism,
+opposite usefulness.
+
+### Three axes, none of them a way out
+
+Every wording overshoots the woods, and nothing available moves it into range:
+
+| | sq ft | vs 34,500 |
+|---|---|---|
+| mapbox `woods` | 42,727 | +24% |
+| mapbox `forest` | 44,682 | +29% |
+| mapbox `trees` | 46,155 | +34% |
+| **naip** `trees` | 47,684 | +38% |
+| **naip** `woods` | 48,124 | +39% |
+
+Threshold does nothing, wording moves it 5%, and the other photograph is 12%
+*worse*. The model's idea of where woodland ends is further out than the
+owner's — outer branches, shadow, the scrubby margin. That is a disagreement
+about an **edge**, not a confidence that can be tuned, which makes the edge
+shift the tool for it rather than the threshold.
+
 What the table does support: one concept is clearly best and a list is
 unreliable at any length. **This model is worth one concept per prediction.**
 Covering trees *and* buildings needs two predictions unioned, at twice the cost

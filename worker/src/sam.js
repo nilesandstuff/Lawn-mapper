@@ -71,6 +71,26 @@ export const EXCLUSIONS = {
    * 0.2, from the sweep at Brooks Lane: "trees" masked 61.5% of a parcel that
    * is 58% not-lawn, and inverted to 28,788 sq ft against an owner-reported
    * 28,000 mown. At 0.1 and below the same prompt flooded the whole frame.
+   *
+   * AND THE THRESHOLD IS A SWITCH, NOT A DIAL. Measured against the owner's
+   * own figure for the woods (34,500 sq ft, 45% of the lot), raw mask area,
+   * Mapbox imagery:
+   *
+   *   prompt     0.2      0.25     0.3      0.35     0.4      0.5     0.6+
+   *   "woods"    42,727   42,727   42,727   42,727   42,727   42,727    0
+   *   "forest"   44,682   44,682   44,682   44,682     --       --     --
+   *   "trees"    46,155   45,352   44,459   44,459     --       --     --
+   *
+   * "woods" is IDENTICAL at every setting from 0.2 to 0.5 and then vanishes.
+   * One detection, one score in 0.5-0.6, fully in or fully out -- so there is
+   * no value of this number that makes the mask smaller, only one that makes
+   * it nothing. "trees" moves 3.7% because it returns four to six separate
+   * pieces and raising the cut drops the weakest, then it too flattens.
+   *
+   * So the band 0.2-0.5 is one setting wearing six hats, and 0.2 is not "the
+   * value that works" -- it is the low end of a plateau. Anyone retuning this
+   * should know that moving it within that range spends a prediction to learn
+   * nothing, and that the cliff is between 0.5 and 0.6.
    */
   trees: {
     label: 'Trees',
@@ -86,6 +106,24 @@ export const EXCLUSIONS = {
    * "forest" measured 58.3% against the 58% wanted -- the closest single
    * concept tried, half a point out. It overlaps "trees" almost entirely, so
    * ticking both costs two predictions for one answer; the UI says so.
+   *
+   * THAT 58% WAS THE WRONG YARDSTICK, and the correction matters. It was
+   * compared against everything-not-lawn (58% of the lot). Judged against the
+   * WOODS alone, which is what these prompts actually name, the owner's figure
+   * is 34,500 sq ft -- 45% -- and every wording overshoots it:
+   *
+   *   mapbox "woods"   42,727   +24%      naip "woods"   48,124   +39%
+   *   mapbox "forest"  44,682   +29%      naip "trees"   47,684   +38%
+   *   mapbox "trees"   46,155   +34%
+   *
+   * Three axes, none of them a way out: the threshold does nothing (see the
+   * trees entry), the wording moves it 5%, and the other photograph is 12%
+   * WORSE. The model's idea of where woodland ends is simply further out than
+   * the owner's -- outer branches, shadow, the scrubby margin -- and that is a
+   * disagreement about an edge, not a confidence that can be tuned.
+   *
+   * Which makes the edge shift the tool for it, not this number. Worth knowing
+   * before spending anything on another sweep.
    */
   forest: {
     label: 'Woods',
