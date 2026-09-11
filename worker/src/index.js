@@ -473,8 +473,38 @@ async function handleSegment(request, env, origin, ctx) {
    */
   const dev = body.dev === true;
 
+  /*
+   * Record what happened, whatever happened.
+   *
+   * The log sat AFTER the Replicate call, which meant the two failures most
+   * worth debugging -- our own allowance refusing a press, and the detector
+   * refusing us -- were the only outcomes it never captured. "It says I have
+   * used today's detections and I have not" was reported, and the log had
+   * nothing to say about it, because a refused detection left no trace at all.
+   *
+   * `detail` carries the numbers behind the refusal, which is the whole reason
+   * for logging one: "refused, 20 of 20" and "refused by the detector" are
+   * different problems that produce the same sentence on screen.
+   */
+  const note = (outcome, detail = null) => recordLater(ctx, logMeasurement(env, {
+    address: body.address,
+    lng, lat, zoom,
+    provider, model: modelId,
+    prompt: passes.map((pass) => pass.prompt).join(' + '),
+    threshold: passes[0]?.threshold,
+    passes: passes.length,
+    parcelSqFt: body.parcelSqFt,
+    county: body.county,
+    clientId,
+    outcome,
+    detail,
+  }));
+
   const quota = await consumeQuota(request, env, clientId, passes.length, dev);
   if (!quota.allowed) {
+    note('quota_exceeded',
+      `${quota.used} of ${quota.limit} used, wanted ${quota.wanted || passes.length}`
+      + `, ${quota.reason || 'client'}${dev ? ', dev' : ''}`);
     return json(
       {
         error: 'quota_exceeded',
@@ -525,6 +555,7 @@ async function handleSegment(request, env, origin, ctx) {
     version = await samVersion(env, modelId);
   } catch (err) {
     await refundQuota(request, env, clientId, passes.length);
+    note('no_version', err.message);
     return json({ error: 'Segmentation unavailable', detail: err.message }, 502, origin);
   }
 
@@ -591,6 +622,8 @@ async function handleSegment(request, env, origin, ctx) {
   const failed = results.find((r) => r.http);
   if (failed) {
     await refundQuota(request, env, clientId, passes.length);
+    note(failed.http === 429 ? 'rate_limited' : 'upstream_error',
+      `HTTP ${failed.http} from the detector, refunded ${passes.length}`);
 
     // Replicate throttles low-credit accounts to a handful of predictions a
     // minute. That is an account problem, not a bug, and saying so beats a
@@ -642,18 +675,8 @@ async function handleSegment(request, env, origin, ctx) {
    * the log harder to read for no gain.
    */
   const pending = answered.filter((a) => a.status !== 'succeeded');
-  recordLater(ctx, logMeasurement(env, {
-    address: body.address,
-    lng, lat, zoom: served.zoom,
-    provider, model: modelId,
-    prompt: answered.map((a) => a.prompt).join(' + '),
-    threshold: answered[0].threshold,
-    passes: answered.length,
-    parcelSqFt: body.parcelSqFt,
-    county: body.county,
-    clientId,
-    outcome: pending.length ? pending[0].status : 'succeeded',
-  }));
+  note(pending.length ? pending[0].status : 'succeeded',
+    pending.length ? `${pending.length} of ${answered.length} not ready yet` : null);
 
   const shape = {
     passes: answered,

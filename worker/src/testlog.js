@@ -103,6 +103,11 @@ export async function logMeasurement(env, record) {
       county: text(record.county, 60),
       client: text(record.clientId, 40),
       outcome: text(record.outcome, 40),
+      // Why, when the outcome alone does not say. A refusal by our own
+      // allowance and a refusal by the detector read identically on screen and
+      // are completely different problems; this is the field that separates
+      // them without another round trip through somebody's memory.
+      detail: text(record.detail, 120),
     };
     await env.QUOTA.put(keyFor(now), JSON.stringify(entry), {
       expirationTtl: TTL_SECONDS,

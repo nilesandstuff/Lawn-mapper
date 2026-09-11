@@ -57,6 +57,33 @@ const env = { REPLICATE_TOKEN: 'test', MAPBOX_SERVER_TOKEN: 'sk.test' };
 // No waitUntil work is asserted here; testlog.js owns that.
 const ctx = { waitUntil() {} };
 
+/*
+ * A worker whose log is switched on and readable, for the refusal checks.
+ *
+ * The log used to sit AFTER the Replicate call, so the two failures most worth
+ * debugging -- our allowance refusing a press, and the detector refusing us --
+ * were the only outcomes it never recorded. "It says I have used today's
+ * detections and I have not" was reported, and the log had nothing to say,
+ * because a refused detection left no trace at all.
+ */
+function loggingEnv() {
+  const store = new Map();
+  return {
+    ...env,
+    LOG_TESTS: '1',
+    LOG_TOKEN: 'sekret',
+    QUOTA: {
+      store,
+      async put(k, v) { store.set(k, v); },
+      async get(k) { return store.get(k) ?? null; },
+      async list({ prefix, limit }) {
+        const keys = [...store.keys()].filter((k) => k.startsWith(prefix)).sort();
+        return { keys: keys.slice(0, limit).map((name) => ({ name })), list_complete: true };
+      },
+    },
+  };
+}
+
 async function post(payload) {
   calls.length = 0;
   const res = await worker.fetch(new Request('https://example.test/api/segment', {
@@ -336,6 +363,57 @@ async function post(payload) {
     `${attempts} attempts for 2 passes`);
 
   globalThis.fetch = realFetch;
+}
+
+/* ------------------------------------------- refusals reach the log */
+/*
+ * EVERY REFUSAL IS RECORDED, AND SAYS WHICH ONE IT WAS.
+ *
+ * A quota refusal and an upstream throttle produce the same shape of failure on
+ * screen, and until now neither appeared in the log at all -- so "it refused me
+ * and I do not know why" could not be answered from the record. `detail` is
+ * what separates them without another round trip through somebody's memory.
+ */
+{
+  const { readLog } = await import('../worker/src/testlog.js');
+  const spend = async (e, n) => worker.fetch(new Request('https://example.test/api/segment', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      lng: -85.5, lat: 43.1, zoom: 19, size: 640, clientId: 'logger',
+      model: 'sam3_exclude', exclude: ['built', 'woods'], ...(n || {}),
+    }),
+  }), e, ctx);
+
+  /* Spend the ordinary allowance, then ask for two more than exist. */
+  const e1 = loggingEnv();
+  for (let i = 0; i < 10; i++) await spend(e1);
+  const refused = await spend(e1);
+  check('a quota refusal is 429', refused.status === 429);
+
+  const log1 = await readLog(e1, 'sekret');
+  const quotaRow = log1.entries.find((r) => r.outcome === 'quota_exceeded');
+  check('and it reaches the log, which it never used to',
+    !!quotaRow, log1.entries.map((r) => r.outcome).join(', '));
+  check('carrying the numbers that explain it',
+    /\d+ of \d+ used/.test(quotaRow?.detail || ''), quotaRow?.detail);
+  check('and the pass count, so the cost of the press is visible',
+    quotaRow?.passes === 2, String(quotaRow?.passes));
+
+  /* And a throttle from the detector, which looks the same on screen. */
+  httpStatus = 429;
+  const e2 = loggingEnv();
+  const throttled = await spend(e2);
+  httpStatus = 200;
+  check('an upstream throttle is 429 too', throttled.status === 429);
+
+  const log2 = await readLog(e2, 'sekret');
+  const rateRow = log2.entries.find((r) => r.outcome === 'rate_limited');
+  check('and it is logged as a DIFFERENT outcome, not as our allowance',
+    !!rateRow && !log2.entries.some((r) => r.outcome === 'quota_exceeded'),
+    log2.entries.map((r) => r.outcome).join(', '));
+  check('which is the distinction the screen could not make',
+    /HTTP 429/.test(rateRow?.detail || ''), rateRow?.detail);
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
