@@ -131,30 +131,41 @@ check('and every tool points at a tab that exists', badTabs.length === 0,
  */
 const tipBody = js.slice(js.indexOf('function tipContent'), js.indexOf('function listSentence'));
 
-const literalTargets = [...tipBody.matchAll(/target:\s*'(#[A-Za-z0-9_-]+)'/g)].map((m) => m[1]);
-const guardedTargets = [...tipBody.matchAll(/target:\s*tipTarget\('(#[^']+)',\s*'(#[^']+)'\)/g)];
+const tipTargets = [...new Set(
+  [...tipBody.matchAll(/target:\s*'(#[A-Za-z0-9_-]+)'/g)].map((m) => m[1])
+)];
 
-check('the tips were found in the source',
-  literalTargets.length + guardedTargets.length >= 3,
-  `${literalTargets.length} plain, ${guardedTargets.length} guarded`);
+check('the tips were found in the source', tipTargets.length >= 2, tipTargets.join(', '));
 
-const unguarded = literalTargets.filter((t) => t.startsWith('#mode-'));
-check('no tip points straight at a map tool that a tab can hide',
-  unguarded.length === 0,
-  unguarded.length
-    ? `${unguarded.join(', ')} — wrap in tipTarget('<tool>', '#tab-<step>')`
-    : 'every map tool a tip names has a tab to fall back to');
+const absentTargets = tipTargets.filter((t) => !declared.has(t.slice(1)));
+check('every control a tip names exists', absentTargets.length === 0, absentTargets.join(', '));
 
-const tipTargets = [...literalTargets, ...guardedTargets.flat().slice(0)]
-  .filter((t) => typeof t === 'string' && t.startsWith('#'));
-const absentTargets = [...new Set(tipTargets)].filter((t) => !declared.has(t.slice(1)));
-check('and every control a tip names exists',
-  absentTargets.length === 0, absentTargets.join(', '));
+/*
+ * A TIP CAN ONLY POINT AT SOMETHING ON THE MAP.
+ *
+ * The coaching box is positioned inside the map and clamped to it, so a tip
+ * naming a control in the panel could not reach it. That is not a limitation
+ * to work around -- it was tried, by letting the box out to point at a tab,
+ * and the box landed across the tab strip and made every tab unclickable. The
+ * box stays in the map; targets stay in the map with it.
+ */
+const mapMarkup = html.slice(html.indexOf('<main'), html.indexOf('</main>'));
+const offMap = tipTargets.filter((t) => !mapMarkup.includes(`id="${t.slice(1)}"`));
+check('and lives on the map, where the tip box can reach it',
+  offMap.length === 0,
+  offMap.length ? `${offMap.join(', ')} is in the panel` : tipTargets.join(', '));
 
-const badFallbacks = guardedTargets
-  .map(([, , tab]) => tab)
-  .filter((t) => !tabs.includes(t.replace('#tab-', '')));
-check('and every fallback is a real tab', badFallbacks.length === 0, badFallbacks.join(', '));
+/*
+ * AND A TIP WHOSE CONTROL IS ON ANOTHER TAB MUST WAIT, NOT VANISH.
+ *
+ * showTip declines to point at a hidden control, which is right. What it must
+ * not do is treat that as "never": every map tool is hidden on three tabs out
+ * of four, so a silent return is how the first tip in the app stopped
+ * appearing at all, with nothing failing.
+ */
+check('a tip whose control is on another tab waits for that tab',
+  /pendingTip = stage/.test(js) && /function flushPendingTip/.test(js),
+  'showTip must record the stage and setTab must flush it');
 
 /* ------------------------------------------------------------- styling */
 /*

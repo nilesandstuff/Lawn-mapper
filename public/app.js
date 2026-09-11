@@ -1054,9 +1054,13 @@ async function confirmLocation() {
       $('#btn-draw-parcel').hidden = true;
 
       const a = measure(state.parcel.geometry);
+      // Names the next STEP rather than the next button, because the button is
+      // on a tab you are not looking at -- "press Detect" with no Detect on
+      // screen reads as the app having lost it.
       setStatus(
         `Found your property line — ${a.acres} acres total ` +
-        `(${state.parcel.properties.county}). Press "Detect my lawn".`
+        `(${state.parcel.properties.county}). Check it, then open AI to detect ` +
+        'your lawn — or Draw to trace it yourself.'
       );
     } else {
       map.getSource('parcel').setData(empty());
@@ -1073,13 +1077,16 @@ async function confirmLocation() {
     }
 
     /*
-     * A boundary already on file means step one is done, so move to step two.
+     * You land on step one, whether or not the county had a line on file.
      *
-     * Without one, the only thing to do is trace it, and that is an address-tab
-     * job -- landing on a detection tab whose button reads "Property line
-     * needed first" is a dead end pointing back the way you came.
+     * Skipping ahead when there is a boundary looks helpful and is not. The
+     * boundary is the thing every later number is measured against, and the
+     * first tip exists to say "check it before you detect" -- advice that
+     * cannot be given from a tab where the tool it names is not on screen.
+     * Moving to step two yourself is one press, and it is the press that
+     * teaches what the tabs are.
      */
-    setTab(state.parcel ? 'detect' : 'address');
+    setTab('address');
 
     updatePromptHint();
     // The pickers measure against the frame, so they only become real once
@@ -1089,7 +1096,7 @@ async function confirmLocation() {
     refreshRail();
     refreshPins();
     setHint(state.parcel
-      ? 'Press "Detect my lawn" — or extend the boundary first if your lawn runs to the road'
+      ? 'Check the boundary, then open the AI or Draw step'
       : 'Trace your property line first');
     showTip('parcel');
   } catch (err) {
@@ -1697,6 +1704,14 @@ function updateUndoButton() {
     const btn = $(id);
     if (btn) btn.disabled = history.length === 0;
   }
+
+  /*
+   * On a step with no map tools of its own, Undo is the only reason the rail
+   * exists -- so whether there is anything to undo decides whether the rail is
+   * on screen at all. Without this the bar would appear and disappear one
+   * refresh late, or not at all.
+   */
+  if (map) refreshRail();
 }
 
 /* --------------------------------------------------------- map interaction */
@@ -3671,19 +3686,29 @@ const asked = new Set();
  * one that appears twice for the same detection reads as a bug.
  */
 function askFeedback() {
-  if (!state.detected || !state.lastMask || !state.chosen) return;
+  if (!state.detected || !state.lastMask || !state.chosen) return false;
   const key = `${state.chosen.label}|${state.detectedBy}|${state.detectedExcluding || ''}`;
-  if (asked.has(key)) return;
+  if (asked.has(key)) return false;
   asked.add(key);
 
   feedbackFor = key;
   $('#feedback-note').value = '';
   $('#feedback').hidden = false;
+  return true;
 }
 
 function closeFeedback() {
   $('#feedback').hidden = true;
   feedbackFor = null;
+  /*
+   * The tip this dialog jumped in front of.
+   *
+   * Both want the same moment -- arriving at the drawing tools -- and a
+   * coaching box underneath a modal question is a box nobody can read and a
+   * question that looks broken. The question goes first because it is modal
+   * and asked once; the tip is about tools that will still be there.
+   */
+  flushPendingTip();
 }
 
 /**
@@ -3830,7 +3855,24 @@ function setTab(name) {
 
   // Arriving at the drawing tools after a detection IS the handover, however
   // you got here -- the tab, the "correct it by hand" button, or a map tool.
-  if (next === 'draw') askFeedback();
+  // A tip waiting for this tab queues behind it; see closeFeedback.
+  if (next === 'draw' && askFeedback()) return;
+
+  flushPendingTip();
+}
+
+/**
+ * Show a tip that was waiting for its tab, now that the tab is open.
+ *
+ * See pendingTip: a tip explaining the brushes is worth reading when you
+ * arrive at the brushes, so one that fired while they were a tab away waits
+ * rather than being lost or pointed somewhere else.
+ */
+function flushPendingTip() {
+  if (!pendingTip) return;
+  const waiting = pendingTip;
+  pendingTip = null;
+  showTip(waiting); // puts it back if the control is still not on screen
 }
 
 /** Which tab each map tool belongs to. One table, two readers. */
@@ -4374,12 +4416,16 @@ function adoptDrawnParcel(feature) {
   $('#btn-draw-parcel').hidden = true;
   $('#btn-parcel-shape').hidden = false;
   refreshSurveyed();
-  // Step one is finished the moment a boundary exists, however it got there.
+  /*
+   * Step one is finished the moment a boundary exists, however it got there --
+   * and tracing one by hand is deliberate enough that moving on is welcome
+   * rather than presumptuous. Unlike the county lookup, which happens TO you.
+   */
   setTab('detect');
   refreshRail();
   updatePromptHint();
   setHint('');
-  setStatus(`Property line traced — ${a.acres} acres. Press "Detect my lawn".`);
+  setStatus(`Property line traced — ${a.acres} acres. Detect your lawn, or open Draw to trace it yourself.`);
   // The boundary is what the imagery choice is for, so the moment it exists is
   // the moment to say which pictures the AI can be shown.
   showTip('layers');
@@ -4411,13 +4457,27 @@ function refreshRail() {
    *
    * Pins are additionally only a concept for the model that uses them.
    */
+  let anyTool = false;
   for (const m of MODES) {
     const btn = $(`#mode-${m}`);
     if (!btn) continue;
     const mine = modeBelongsTo(m, state.tab);
     btn.hidden = !mine || (m === 'pins' && !modelInfo(state.model).needsPoints);
+    if (!btn.hidden) anyTool = true;
     btn.setAttribute('aria-pressed', String(state.mode === m));
   }
+
+  /*
+   * A rail with nothing in it is a bar of empty space over the map.
+   *
+   * The AI step is the case: the text-prompted model needs no pins, so none of
+   * the four tools belong to it and every button is hidden while the rail
+   * itself stayed on screen. Undo is the exception -- it is useful on any step
+   * and is the only undo reachable from one where the panel's copy is a tab
+   * away -- so the rail survives for its sake alone.
+   */
+  const undo = $('#rail-undo');
+  if (undo) rail.hidden = rail.hidden || (!anyTool && undo.disabled);
 
   $('#shape-tools').hidden = state.mode !== 'shape';
   for (const [id, tool] of [['#tool-points', 'points'], ['#tool-add', 'add'], ['#tool-erase', 'erase']]) {
@@ -4737,35 +4797,16 @@ function currentStage() {
  * Google only appears when there is a key for it, and a tip that names a
  * source the user cannot see is worse than no tip.
  */
-/**
- * Point at the tool if it is on screen, otherwise at the tab that opens it.
- *
- * The tools live on tabs now, so the control a tip is about is frequently not
- * showing when the tip fires -- the property-line tip arrives while you are
- * looking at the AI step, because a county boundary means that is where you
- * landed. showTip refuses to point at a hidden button, and rightly: a box in
- * the corner talking about something not on screen is worse than silence.
- *
- * But silence was not the right answer either. It is how the first tip in the
- * app stopped appearing at all, with nothing failing and nothing to see. The
- * tab IS the way to the tool, so when the tool is away, that is the thing to
- * aim at.
- */
-function tipTarget(toolSelector, tabSelector) {
-  const tool = $(toolSelector);
-  return tool && tool.offsetParent !== null ? toolSelector : tabSelector;
-}
-
 function tipContent(stage) {
   if (stage === 'parcel') {
     return parcelRing()
       ? {
-          target: tipTarget('#mode-parcel', '#tab-address'),
+          target: '#mode-parcel',
           title: 'First: check your property line',
           text: 'The dashed outline is your lot, from the county record. Only '
               + 'grass inside it gets measured — so if your lawn runs past it '
-              + 'to the road, open Address and press Line to slide that edge '
-              + 'out before you detect.',
+              + 'to the road, press Line and slide that edge out. Then open '
+              + 'the AI step, or Draw to trace it yourself.',
         }
       : {
           target: null,
@@ -4795,12 +4836,12 @@ function tipContent(stage) {
   }
 
   return {
-    target: tipTarget('#mode-shape', '#tab-draw'),
+    target: '#mode-shape',
     title: 'Last: correct what it got wrong',
-    text: 'The AI is a good first guess, not the final word. Open Draw, press '
-        + 'Lawn, then Erase to rub out a driveway or a flower bed, Add to paint '
-        + 'in grass it missed, or Points to drag a corner. Move is the only mode '
-        + 'where a whole patch can be dragged, and Undo is on the map next to them.',
+    text: 'The AI is a good first guess, not the final word. Press Lawn, then '
+        + 'Erase to rub out a driveway or a flower bed, Add to paint in grass '
+        + 'it missed, or Points to drag a corner. Move is the only mode where a '
+        + 'whole patch can be dragged, and Undo is on the map next to them.',
   };
 }
 
@@ -4810,14 +4851,39 @@ function listSentence(items) {
   return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
 }
 
+/**
+ * A tip whose control is on another tab, waiting for that tab.
+ *
+ * THE MISTAKE THIS REPLACES, TWICE OVER. Once the tools moved onto tabs, a tip
+ * would routinely fire while the button it is about was on a tab you were not
+ * looking at -- and showTip, correctly refusing to point at a hidden control,
+ * silently showed nothing at all. The first attempt at a fix pointed the tip at
+ * the TAB instead, which required the box to escape the map, and it landed on
+ * top of the tab strip: the tabs stopped being clickable, which is a great deal
+ * worse than a missing tip.
+ *
+ * The honest answer is that a tip belongs beside the thing it explains, and if
+ * that thing is not here yet then neither is the tip. So it waits. Opening the
+ * tab brings the control and its explanation at the same moment, which is also
+ * when it is useful -- the drawing tips are worth reading when you reach the
+ * drawing tools, not while you are still looking at the AI.
+ */
+let pendingTip = null;
+
 function showTip(stage) {
   if (!tipsOn() || tips.seen.has(stage) || !state.frame) return;
   const { target, title, text } = tipContent(stage);
 
-  // A tip pointed at a hidden button would sit in the corner talking about
-  // something that is not on screen. Better to say nothing.
+  /*
+   * Not now, but not never. Deliberately NOT added to `seen`, so opening the
+   * tab it belongs to brings it back rather than skipping it for good.
+   */
   const el = target ? $(target) : null;
-  if (target && (!el || el.offsetParent === null)) return;
+  if (target && (!el || el.offsetParent === null)) {
+    pendingTip = stage;
+    return;
+  }
+  pendingTip = null;
 
   tips.seen.add(stage);
   tips.stage = stage;
@@ -4849,22 +4915,22 @@ function placeTip() {
   if (box.hidden) return;
 
   /*
-   * The viewport, because a tip can now point at either half of the screen.
+   * The map, which is also the only place the box can be.
    *
-   * It used to be the map wrapper, which was right while every control worth
-   * pointing at was a button on the map. The tools live on tabs in the panel
-   * now, so a box clamped inside the map could not reach the thing it was
-   * talking about -- and showTip, correctly refusing to point at something off
-   * screen, silently stopped showing the first tip in the app.
+   * Every tip points at a button on the map; one whose control is on a tab you
+   * are not looking at waits for that tab rather than pointing somewhere else
+   * (see pendingTip). Clamping to the map is therefore not a limitation -- it
+   * is what keeps the box off the panel, and off the tab strip, which it
+   * covered and made unclickable the one time it was allowed out.
    */
-  const wrap = { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+  const wrap = $('#map').parentElement.getBoundingClientRect();
   const target = tips.target;
 
   if (!target) {
-    // Nothing to point at: sit under the top bar, centred, no arrow.
+    // Nothing to point at: sit under the hint, centred, no arrow.
     arrow.hidden = true;
     box.style.left = `${Math.max(8, (wrap.width - box.offsetWidth) / 2)}px`;
-    box.style.top = '78px';
+    box.style.top = '58px';
     return;
   }
 

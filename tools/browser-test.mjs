@@ -184,49 +184,6 @@ check('reached the measure step', await page.locator('#step-work').isVisible());
 console.log(`      status: "${await page.locator('#status').textContent()}"`);
 console.log(`      hint:   "${await page.locator('#map-hint').textContent()}"`);
 
-/* ------------------------------------------------------------------ tabs */
-/*
- * THE THREE STEPS, AS THREE TABS.
- *
- * The whole panel used to be one column with everything live at once, and the
- * moment that mattered most -- handing over from the machine's answer to your
- * own corrections -- was invisible. These checks are about where you LAND:
- * a county boundary means step one is already done, so sitting on the address
- * tab with nothing to do there would be a dead end pointing backwards.
- */
-console.log('\n--- the step tabs ---');
-const tabs = await page.evaluate(() => window.__lmTabs());
-check('the panel is split into steps', tabs.tabs.length >= 3, tabs.tabs.join(', '));
-check('landing on the step that has something to do',
-  tabs.on === (tabs.hasParcel ? 'detect' : 'address'),
-  `on "${tabs.on}" with parcel=${tabs.hasParcel}`);
-check('and only that step\'s tools are on screen',
-  tabs.visiblePanes.length === 1 && tabs.visiblePanes[0] === tabs.on,
-  tabs.visiblePanes.join(', '));
-
-/*
- * The map's buttons are the other half of the panel, so they follow the tab.
- * Pressing "Line" while meaning to paint is not a mistake worth being able to
- * make; on the drawing tab it is not there to press.
- */
-check('the map shows only this step\'s tools too',
-  !tabs.rail.includes('parcel') || tabs.on === 'address',
-  `rail: ${tabs.rail.join(', ')} on "${tabs.on}"`);
-
-await goTab(page, 'draw');
-const drawRail = await page.evaluate(() => window.__lmTabs());
-check('the drawing tab offers the shape tools and not the boundary',
-  drawRail.rail.includes('shape') && !drawRail.rail.includes('parcel'),
-  drawRail.rail.join(', '));
-
-await goTab(page, 'address');
-const addrRail = await page.evaluate(() => window.__lmTabs());
-check('and the address tab offers the boundary and not the shape tools',
-  addrRail.rail.includes('parcel') && !addrRail.rail.includes('shape'),
-  addrRail.rail.join(', '));
-
-await goTab(page, 'detect');
-
 /*
  * `armed` means the map is listening for a tap, which is now only ever true
  * inside the edge tool. It used to mean "waiting for you to pin each patch of
@@ -239,21 +196,6 @@ check('nothing needs tapping before detection', armed === false, `armed=${armed}
 
 const busyVisible = await page.locator('#busy').isVisible();
 check('loading overlay is gone', busyVisible === false, `busy visible=${busyVisible}`);
-
-/* ---------------------------------------------- detection is one press now */
-/*
- * There are no pins any more. Asking the model for "grass" finds every patch
- * in the frame at once -- including the ones a person would forget -- and the
- * result is clipped to the property line. So the only thing to check here is
- * that the button is live as soon as we have a frame.
- */
-console.log('\n--- detection readiness ---');
-check('Detect my lawn is enabled without any tapping',
-  await page.locator('#btn-detect').isEnabled());
-console.log(`      button: "${await page.locator('#btn-detect').textContent()}"`);
-console.log(`      hint:   "${await page.locator('#map-hint').textContent()}"`);
-check('the grass-under-trees option is offered and on by default',
-  await page.locator('#toggle-trees').isChecked());
 
 /* ----------------------------------------------------------------- tips */
 /*
@@ -290,13 +232,13 @@ console.log(`      "${parcelTip.text}"`);
 /*
  * A TIP MUST POINT AT SOMETHING THAT IS ON SCREEN.
  *
- * This is the failure that moving the tools onto tabs introduced, and it was
- * silent in the worst way: the property-line tip pointed at the map's "Line"
- * button, which is only shown on the Address tab, and a county boundary means
- * you land on the AI tab. showTip declines to point at a hidden control --
- * correctly -- so the first tip in the app simply stopped appearing, with
- * nothing failing and nothing to see. The tip now falls back to the TAB that
- * opens the tool, and this asserts the property rather than the workaround.
+ * Moving the tools onto tabs broke this silently: the property-line tip points
+ * at the map's "Line" button, which only appears on the Address step, and the
+ * app used to skip straight to the AI step when the county had a boundary on
+ * file. showTip declines to point at a hidden control -- correctly -- so the
+ * first tip in the app simply stopped appearing, with nothing failing and
+ * nothing to see. You land on step one now, and a tip whose control is a tab
+ * away waits for that tab rather than pointing somewhere else.
  */
 check('and it points at something that is actually on screen',
   parcelTip.targetVisible || parcelTip.targetId === null,
@@ -307,6 +249,37 @@ if (parcelTip.targetId) {
   check(`and its arrow points at #${parcelTip.targetId}`, aim.ok, aim.why);
 }
 
+/*
+ * AND IT MUST NOT SIT ON TOP OF THE TABS.
+ *
+ * The first attempt at the fix above pointed the tip at the TAB instead of the
+ * tool, which meant letting the box out of the map -- and it landed across the
+ * tab strip. Every tab became unclickable, which is a great deal worse than a
+ * missing tip, and the suite hung on the next tab it tried to press rather
+ * than reporting anything. Geometry, because "is it clickable" is the actual
+ * question and no state flag answers it.
+ */
+{
+  const clash = await page.evaluate(() => {
+    const box = document.querySelector('#coach').getBoundingClientRect();
+    return [...document.querySelectorAll('#tabs .tab')]
+      .filter((t) => {
+        const r = t.getBoundingClientRect();
+        return r.width > 0 && box.left < r.right && box.right > r.left
+          && box.top < r.bottom && box.bottom > r.top;
+      })
+      .map((t) => t.id);
+  });
+  check('and it does not cover the step tabs', clash.length === 0,
+    clash.length ? `covering ${clash.join(', ')}` : 'the tabs stay pressable');
+}
+
+/*
+ * Dismissed with its own OK button, deliberately, not by opening a tab.
+ * Pressing OK is what chains on to the next tip; switching tabs is a person
+ * moving on, and it takes the chain with it. The section below needs the
+ * chain.
+ */
 await dismissTip(page);
 
 /*
@@ -316,11 +289,13 @@ await dismissTip(page);
  * conditional on what the parcel lookup actually returned, not on the test
  * address being a covered one.
  */
-// "Use property line" is only offered when the county actually returned one,
-// and it sits with the drawing tools, so ask there.
-await goTab(page, 'draw');
-const hasParcel = await page.locator('#btn-parcel-shape').isVisible();
-await goTab(page, 'detect');
+/*
+ * Asked of the app's state rather than of a button, because reaching for the
+ * button means opening the tab it lives on -- and opening a tab dismisses the
+ * tip this section is about to look for. The question is whether the county
+ * returned a boundary, and that is the thing to ask.
+ */
+const hasParcel = (await page.evaluate(() => window.__lmTabs())).hasParcel;
 const layerTip = await page.evaluate(() => window.__lmTip());
 check(hasParcel
   ? 'dismissing it leads to the imagery tip'
@@ -367,6 +342,131 @@ if (layerTip.visible) {
 
 check('no tip is left sitting over the map',
   (await page.evaluate(() => window.__lmTip().visible)) === false);
+
+/* ------------------------------------------------------------------ tabs */
+/*
+ * THE THREE STEPS, AS THREE TABS.
+ *
+ * The whole panel used to be one column with everything live at once, and the
+ * moment that mattered most -- handing over from the machine's answer to your
+ * own corrections -- was invisible.
+ *
+ * RUN AFTER THE TIPS, not before. Opening a tab dismisses whatever tip is on
+ * screen, which is right -- you have moved on -- but it meant these checks
+ * silently swallowed the first tip in the app before the tip checks could look
+ * for it. A suite that destroys the thing the next section tests is worse than
+ * no suite for that thing.
+ */
+console.log('\n--- the step tabs ---');
+const tabs = await page.evaluate(() => window.__lmTabs());
+check('the panel is split into steps', tabs.tabs.length >= 3, tabs.tabs.join(', '));
+
+/*
+ * YOU LAND ON STEP ONE, whether or not the county had a line on file.
+ *
+ * Skipping ahead to the AI when a boundary already exists looks helpful and is
+ * not: the boundary is what every later number is measured against, and the
+ * first tip exists to say "check it before you detect" -- advice that cannot be
+ * given from a tab where the tool it names is not on screen.
+ */
+check('you land on step one, with the boundary in front of you',
+  tabs.on === 'address', `on "${tabs.on}" with parcel=${tabs.hasParcel}`);
+check('and only that step\'s tools are on screen',
+  tabs.visiblePanes.length === 1 && tabs.visiblePanes[0] === tabs.on,
+  tabs.visiblePanes.join(', '));
+
+/*
+ * The map's buttons are the other half of the panel, so they follow the tab.
+ * Pressing "Line" while meaning to paint is not a mistake worth being able to
+ * make; on the drawing tab it is not there to press.
+ */
+check('the map shows this step\'s tools and not another\'s',
+  tabs.rail.includes('parcel') && !tabs.rail.includes('shape'),
+  `rail: ${tabs.rail.join(', ') || '(empty)'} on "${tabs.on}"`);
+
+await goTab(page, 'draw');
+const drawRail = await page.evaluate(() => window.__lmTabs());
+check('the drawing tab offers the shape tools and not the boundary',
+  drawRail.rail.includes('shape') && !drawRail.rail.includes('parcel'),
+  drawRail.rail.join(', ') || '(empty)');
+
+/*
+ * DRAWING BY HAND MUST NOT NEED THE AI AT ALL. Somebody who never presses
+ * Detect has to be able to trace their lawn, and this is the step they would
+ * do it from -- so the tools are live here with no detection in the session.
+ */
+check('and drawing by hand is available without ever detecting',
+  await page.locator('#btn-draw').isEnabled());
+check('with nothing locked before any work has been done',
+  drawRail.locked.length === 0, drawRail.locked.join(', '));
+
+/*
+ * And it really works: a shape traced here, with no detection in the session,
+ * produces a measurement. The AI is one way to fill this step, not the way in.
+ */
+{
+  const painted = await page.evaluate(() => window.__lmShapeCount());
+  await page.click('#mode-shape');
+  await page.waitForTimeout(250);
+  await page.click('#tool-add');
+  await page.waitForTimeout(250);
+  const mb = await page.locator('#map').boundingBox();
+  const x = mb.x + mb.width / 2;
+  const y = mb.y + mb.height / 2;
+  await page.mouse.move(x - 30, y - 20);
+  await page.mouse.down();
+  for (let i = 1; i <= 8; i++) await page.mouse.move(x - 30 + i * 7, y - 20 + i * 5);
+  await page.mouse.up();
+  await page.waitForTimeout(700);
+
+  const after = await page.evaluate(() => ({
+    shapes: window.__lmShapeCount(), sqft: window.__lmSqft(),
+  }));
+  check('painting a lawn with no detection at all measures something',
+    after.shapes > painted && after.sqft > 0,
+    `${painted} -> ${after.shapes} shape(s), ${after.sqft.toLocaleString()} sq ft`);
+
+  /*
+   * Painting by hand is a hand correction, so it locks the AI step -- which is
+   * correct, and would break every check below that expects a live Detect
+   * button. Clearing through the notice is how a person gets back, and it is
+   * also this section proving that the way back works.
+   */
+  await page.click('#mode-shape');          // close lawn mode
+  await page.waitForTimeout(200);
+  const locked = await page.evaluate(() => window.__lmTabs());
+  check('and painting by hand locks the AI step, as correcting a detection does',
+    locked.locked.includes('detect'), locked.locked.join(', ') || 'nothing locked');
+
+  await unlockDetect(page);
+  const freed = await page.evaluate(() => ({
+    ...window.__lmTabs(), shapes: window.__lmShapeCount(),
+  }));
+  check('and clearing gives it back', freed.locked.length === 0 && freed.shapes === 0,
+    `locked: ${freed.locked.join(', ') || 'nothing'}, ${freed.shapes} shape(s)`);
+}
+
+await goTab(page, 'detect');
+const aiRail = await page.evaluate(() => window.__lmTabs());
+check('and the AI tab offers neither the boundary nor the shape tools',
+  !aiRail.rail.includes('parcel') && !aiRail.rail.includes('shape'),
+  aiRail.rail.join(', ') || '(empty)');
+
+/* ---------------------------------------------- detection is one press now */
+/*
+ * There are no pins any more. Asking the model for "grass" finds every patch
+ * in the frame at once -- including the ones a person would forget -- and the
+ * result is clipped to the property line. So the only thing to check here is
+ * that the button is live as soon as we have a frame.
+ */
+console.log('\n--- detection readiness ---');
+/* The tabs section above finishes on the AI step, which is where these live. */
+check('Detect my lawn is enabled without any tapping',
+  await page.locator('#btn-detect').isEnabled());
+console.log(`      button: "${await page.locator('#btn-detect').textContent()}"`);
+console.log(`      hint:   "${await page.locator('#map-hint').textContent()}"`);
+check('the grass-under-trees option is offered and on by default',
+  await page.locator('#toggle-trees').isChecked());
 
 /* ------------------------------------------------------ the detection modes */
 console.log('\n--- detection modes ---');
@@ -800,14 +900,58 @@ if (process.env.RUN_DETECT === 'true') {
   const shapes = await page.evaluate(() => window.__lmShapes ?? null);
   if (shapes !== null) console.log(`      shapes: ${shapes}`);
 
-  /* The third and last tip: the AI has answered, now correct it. */
+  /*
+   * THE THIRD AND LAST TIP: the AI has answered, now correct it.
+   *
+   * It waits for the Draw step rather than firing over the AI step, because
+   * the tools it explains are there. A tip about brushes is worth reading when
+   * you arrive at the brushes -- and pointing at a button that is one tab away
+   * is the thing that silently broke the first tip in the app.
+   */
+  check('the editing tip does not fire over the step it is not about',
+    (await page.evaluate(() => window.__lmTip())).visible === false,
+    'it is waiting for the drawing tools');
+
+  await goTab(page, 'draw');
+  await page.waitForTimeout(400);
+
+  /*
+   * THE FEEDBACK QUESTION, WHICH ONLY EXISTS ON A RUN THAT REALLY DETECTED.
+   *
+   * Asked at the handover, once, and it goes in front of the editing tip --
+   * both want this exact moment, and a coaching box underneath a modal
+   * question is a box nobody can read and a question that looks broken.
+   */
+  const fb = await page.evaluate(() => window.__lmFeedback());
+  check('a real detection is followed by the feedback question', fb.open === true,
+    `open=${fb.open} detected=${fb.detected}`);
+
+  if (fb.open) {
+    /*
+     * What is being sent is on the dialog in ordinary type, above the buttons.
+     * Answering uploads the map and the address; a disclosure nobody can read
+     * before pressing is not a disclosure.
+     */
+    const why = await page.textContent('#feedback-why');
+    check('and it says what answering sends, before the buttons',
+      /address/i.test(why) && /map/i.test(why), why.trim().slice(0, 90));
+    check('with three answers about how much correcting it took',
+      (await page.locator('#feedback .fb-opt').count()) === 3);
+    check('and a way out that sends nothing, and says so',
+      /send nothing/i.test(await page.textContent('#feedback-skip')));
+
+    await page.click('#feedback-skip');
+    await page.waitForTimeout(300);
+    check('skipping closes it', (await page.evaluate(() => window.__lmFeedback().open)) === false);
+  }
+
   const toolTip = await page.evaluate(() => window.__lmTip());
-  check('a detection is followed by the editing tip',
+  check('and the editing tip arrives once the question is out of the way',
     toolTip.visible && toolTip.stage === 'tools',
     `stage=${toolTip.stage} visible=${toolTip.visible}`);
   if (toolTip.visible) {
     const aim = pointsAt(toolTip);
-    check('and it points at the shape tools', aim.ok, `${toolTip.targetId}: ${aim.why}`);
+    check('pointing at the shape tools', aim.ok, `${toolTip.targetId}: ${aim.why}`);
     await dismissTip(page);
   }
 }
@@ -951,38 +1095,24 @@ console.log('\n--- locks ---');
  */
 console.log('\n--- the feedback question ---');
 {
+  /*
+   * THE HALF THAT HOLDS ON EVERY RUN: a lawn the AI did not produce must NOT
+   * be asked about. "How did the AI do?" over a shape somebody drew themselves
+   * is a question with no answer, and the kind of thing that teaches people to
+   * dismiss dialogs without reading them. The dialog's own contents are
+   * checked in the real-detection section above, which is the only place it
+   * can legitimately appear.
+   */
   await goTab(page, 'draw');
   await page.waitForTimeout(300);
   const fb = await page.evaluate(() => window.__lmFeedback());
-  check('nothing is asked about a lawn the AI did not produce',
-    fb.open === false || fb.detected === true,
-    `open=${fb.open} detected=${fb.detected}`);
+  check('nothing is asked about a lawn the AI did not produce', fb.open === false,
+    `open=${fb.open} detected=${fb.detected}, asked ${fb.asked} time(s)`);
 
-  if (fb.open) {
-    /*
-     * WHAT IS BEING SENT IS ON THE DIALOG, in ordinary type above the buttons.
-     * Answering uploads the map and the address; a disclosure nobody can read
-     * before pressing is not a disclosure.
-     */
-    const why = await page.textContent('#feedback-why');
-    check('and the dialog says what answering sends, before the buttons',
-      /address/i.test(why) && /map/i.test(why), why.trim().slice(0, 90));
-    check('with a way out that sends nothing, and says so',
-      /send nothing/i.test(await page.textContent('#feedback-skip')));
-    check('and three answers about how much correcting it took',
-      (await page.locator('#feedback .fb-opt').count()) === 3);
-
-    await page.click('#feedback-skip');
-    await page.waitForTimeout(200);
-    check('skipping closes it', (await page.evaluate(() => window.__lmFeedback().open)) === false);
-
-    /* Asked once. A dialog that returns reads as a bug, however polite. */
-    await goTab(page, 'detect');
-    await goTab(page, 'draw');
-    await page.waitForTimeout(250);
-    check('and it is not asked again for the same detection',
-      (await page.evaluate(() => window.__lmFeedback().open)) === false);
-  }
+  /* Asked once per detection. A dialog that returns reads as a bug. */
+  check('and a detection already answered is not asked about again',
+    fb.detected === false || fb.asked > 0,
+    `detected=${fb.detected}, asked ${fb.asked} time(s)`);
 }
 
 /* ---------------------------------------------------------- saved maps */

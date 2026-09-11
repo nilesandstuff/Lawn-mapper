@@ -243,17 +243,16 @@ button:disabled { opacity: .45; cursor: not-allowed; }
  * part that matters: "press Layers" is useless if Layers is one of nine icons.
  */
 /*
- * Fixed to the viewport, not to the map.
+ * Absolute inside the map, and it stays that way.
  *
- * It used to be absolute inside the map wrapper, which was fine while every
- * control a tip could point at was a button on the map. The tools live on
- * tabs now, and a tip about the property line has to be able to point at the
- * Address tab -- which is in the panel, the other half of the screen. A box
- * clamped inside the map could not reach it, and showTip's refusal to point
- * at something off screen turned into the first tip never appearing at all.
+ * Briefly made fixed to the viewport so a tip could point at a tab, which put
+ * the box on top of the tab strip and made the tabs unclickable -- far worse
+ * than the missing tip it was meant to fix. Tips now wait for the tab their
+ * control lives on (see pendingTip), so every target is a button on the map
+ * again and the box never needs to leave it.
  */
 .coach {
-  position: fixed; z-index: 7; width: 268px; max-width: min(78vw, 268px);
+  position: absolute; z-index: 6; width: 268px; max-width: min(78vw, 268px);
   padding: 13px 14px 11px;
   background: #fff; color: var(--ink);
   border: 1px solid rgba(0, 0, 0, .14); border-radius: 13px;
