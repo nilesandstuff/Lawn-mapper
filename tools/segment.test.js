@@ -336,60 +336,73 @@ async function post(payload) {
   httpStatus = 200;
 }
 
-/* ------------------------------------------- the passes do not overlap */
+/* ----------------------------------------- a throttled pass waits and retries */
 /*
- * ONE AT A TIME, and this is the check that would have caught the bug.
+ * THE DIAGNOSIS CHANGED TWICE HERE, SO THE TEST PINS THE MESSAGE, NOT A THEORY.
  *
- * Ticking a second box produced HTTP 429 from Replicate every time while one
- * box never failed -- a concurrency ceiling, not a rate limit. The first fix
- * spread the STARTS by 300ms and retried; both change when the second request
- * is made and neither stops the two predictions from overlapping, which is the
- * thing being refused.
+ * First reading: a burst, fixed by staggering the starts. Second: concurrency,
+ * fixed by running the passes one at a time. Replicate's own sentence settled
+ * it -- "your rate limit for creating predictions is reduced to 6 requests per
+ * minute" -- a RATE limit, which neither of those touches. Warm predictions
+ * here finish in about 0.6s, so sequential put both creations in the same
+ * minute anyway.
  *
- * So the property to hold is not "spaced out", it is "never both in flight".
+ * What is actually load-bearing is waiting the amount the server asks for, and
+ * passing its words through instead of replacing them with a status code.
  */
 {
-  let inFlight = 0;
-  let everOverlapped = false;
+  const waited = [];
+  let attempts = 0;
   const realFetch = globalThis.fetch;
   globalThis.fetch = async (url, init) => {
     if (!String(url).includes('/v1/predictions')) return realFetch(url, init);
-    inFlight++;
-    if (inFlight > 1) everOverlapped = true;
-    // Long enough that a parallel implementation could not help but overlap.
-    await new Promise((r) => setTimeout(r, 30));
-    inFlight--;
+    attempts++;
+    // Throttle the first attempt of each pass, then let it through.
+    if (attempts <= 2) {
+      return new Response('{"detail":"Request was throttled."}', {
+        status: 429,
+        headers: { 'Retry-After': '1', 'Content-Type': 'application/json' },
+      });
+    }
     return realFetch(url, init);
   };
 
-  const r = await post({ model: 'sam3_exclude', exclude: Object.keys(EXCLUSIONS) });
-  check('every box still runs', r.sent.length === Object.keys(EXCLUSIONS).length);
-  check('but never two predictions at once', !everOverlapped,
-    'the detector refuses the second while the first is running');
+  const started = Date.now();
+  const r = await post({ model: 'sam3_exclude', exclude: ['built', 'woods'] });
+  waited.push(Date.now() - started);
+
+  check('a throttled detection recovers rather than failing', r.status === 200,
+    `${r.status}: ${JSON.stringify(r.body).slice(0, 80)}`);
+  check('and it waited roughly what the server asked for',
+    waited[0] >= 1000, `${waited[0]}ms for a 1s Retry-After`);
 
   globalThis.fetch = realFetch;
 }
 
 /*
- * AND A REFUSAL STOPS THE REST. Starting pass three against a limit that just
- * turned pass two away spends a request to be told the same thing again.
+ * AND THE UPSTREAM'S OWN SENTENCE REACHES THE BROWSER.
+ *
+ * "HTTP 429" alone made a rate limit and a concurrency limit look identical and
+ * cost two rounds of guessing. The sentence names which one, and in this case
+ * names something only the account owner can act on -- so it travels verbatim
+ * rather than being replaced with a tidier summary.
  */
 {
-  let attempts = 0;
   const realFetch = globalThis.fetch;
   globalThis.fetch = async (url, init) => {
-    if (String(url).includes('/v1/predictions')) {
-      attempts++;
-      return new Response('You have reached your concurrency limit', { status: 429 });
-    }
-    return realFetch(url, init);
+    if (!String(url).includes('/v1/predictions')) return realFetch(url, init);
+    return new Response(
+      '{"detail":"Request was throttled. Your rate limit for creating predictions '
+      + 'is reduced to 6 requests per minute"}',
+      { status: 429, headers: { 'Content-Type': 'application/json' } }
+    );
   };
 
-  const r = await post({ model: 'sam3_exclude', exclude: Object.keys(EXCLUSIONS) });
-  check('a refusal stops the remaining passes', r.status === 429 && attempts <= 2,
-    `${attempts} attempts for ${Object.keys(EXCLUSIONS).length} boxes (one retry allowed)`);
-  check("and the upstream's own words reach the response, not just the status",
-    /concurrency limit/.test(r.body.detail || ''), r.body.detail);
+  const r = await post({ model: 'sam3_exclude', exclude: ['built', 'woods'] });
+  check('a refusal carries the number the server named',
+    /6 requests per minute/.test(r.body.detail || ''), r.body.detail);
+  check('and is still flagged as an upstream limit, not our allowance',
+    r.body.rateLimited === true && r.body.used === undefined);
 
   globalThis.fetch = realFetch;
 }

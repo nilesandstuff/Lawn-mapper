@@ -2047,18 +2047,14 @@ function refreshExclusions() {
    * digging it.
    */
   /*
-   * Time as well as money, now that the passes run one after another.
-   *
-   * The detector refuses a second prediction while the first is still going, so
-   * they cannot overlap -- which makes the wait scale with the boxes, not just
-   * the bill. Somebody who ticks a third box and then watches a spinner for
-   * ninety seconds should have been told, rather than left wondering whether it
-   * has hung.
+   * Cost, not time. The passes run together again, so a second box costs a
+   * second prediction and barely any extra wait -- see the note in index.js
+   * about the sequential version, which was built on a wrong diagnosis and
+   * charged real seconds for it.
    */
   cost.textContent = n === 0
     ? 'Nothing ticked — there is nothing for the AI to remove.'
-    : `${n} AI pass${n > 1 ? 'es' : ''} per detection, out of your daily allowance`
-      + (n > 1 ? `, and about ${n}× the wait — they run one at a time.` : '.');
+    : `${n} AI pass${n > 1 ? 'es' : ''} per detection, out of your daily allowance.`;
   cost.style.color = n === 0 ? '#b3261e' : '';
 }
 
@@ -2185,14 +2181,14 @@ async function detect() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(detectionRequest(frame, provider, model, points)),
       /*
-       * Long enough for every pass, because they no longer overlap.
+       * Room for a throttled pass to wait and try again.
        *
-       * Replicate holds each connection for about a minute, and the Worker runs
-       * the passes one at a time -- so four boxes is up to four of those in a
-       * row. A flat 90 seconds would abort a detection that was working, and
-       * the quota would stay spent on predictions nobody collected.
+       * Replicate holds each connection for about a minute, and a 429 now backs
+       * off for as long as the server asks before retrying. A flat 90 seconds
+       * would abort a detection that was merely being patient, leaving the
+       * quota spent on predictions nobody collected.
        */
-      timeoutMs: 60000 + 60000 * Math.max(1, excludesWanted() ? state.exclude.length : 1),
+      timeoutMs: 150000,
     });
 
     // data.frame is authoritative: the server clamps zoom and size, so the

@@ -569,28 +569,42 @@ async function handleSegment(request, env, origin, ctx) {
    * one-concept detection has always had.
    */
   /*
-   * ONE AT A TIME. This was parallel, and parallel is what broke it.
+   * PARALLEL AGAIN, WITH A BACKOFF THAT LISTENS.
    *
-   * Ticking a second box produced HTTP 429 from Replicate every time, while one
-   * box never failed. Two requests cannot trip a per-minute rate limit, so the
-   * ceiling being hit is CONCURRENCY: the second prediction is refused because
-   * the first is still running, and `Prefer: wait` holds that first one open
-   * for up to a minute.
+   * This was made sequential on a wrong diagnosis. The reasoning looked sound
+   * -- one box never failed, two always did, so the second must be refused for
+   * overlapping the first -- and Replicate's own message says otherwise:
    *
-   * Which is why the first attempt at this -- spreading the starts by 300ms and
-   * retrying once after 1.5s -- did nothing. Both move WHEN the second request
-   * is made; neither stops the two predictions from overlapping, and overlap is
-   * the thing being refused. Staggering a concurrency limit is a fix for a
-   * problem that was not happening.
+   *   Request was throttled. Your rate limit for creating predictions is
+   *   reduced to 6 requests per minute
    *
-   * The cost is real and it is linear: two boxes take about twice as long as
-   * one, four about four times. That is the price of the account's limit rather
-   * than a choice, and the panel says so before the press. Restore the parallel
-   * version if that limit is ever raised -- the passes are independent and
-   * nothing else about them needs to be sequential.
+   * A RATE limit, counted per minute, not a concurrency one. Sequential cannot
+   * help with that and was never going to: a warm prediction here finishes in
+   * about 0.6s, so running two in a row still puts both creations inside the
+   * same minute. It cost wait time and bought nothing, which is what a fix
+   * built on a guess usually does.
+   *
+   * What does help is waiting the amount the server asks for. A 429 carries
+   * Retry-After; honouring it is the difference between recovering and
+   * hammering a closed door. Retries are free -- a refused request creates no
+   * prediction, so nothing was billed and there is nothing to refund.
+   *
+   * Note "reduced": that is a throttle applied to the account rather than
+   * Replicate's ordinary ceiling, so the real lever is the account, not this
+   * code. The message is passed through to the browser verbatim for exactly
+   * that reason.
    */
-  const RETRY_AFTER_MS = 2000;
+  const RETRIES = 2;
+  const FALLBACK_WAIT_MS = 12000; // just over a tenth of a minute at 6/min
+  const MAX_WAIT_MS = 30000;
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  /** How long the server asked us to wait, clamped to something survivable. */
+  const retryAfterMs = (res) => {
+    const raw = Number(res.headers.get('Retry-After'));
+    const ms = Number.isFinite(raw) && raw > 0 ? raw * 1000 : FALLBACK_WAIT_MS;
+    return Math.min(ms, MAX_WAIT_MS);
+  };
 
   const startPass = (pass) => fetch('https://api.replicate.com/v1/predictions', {
     method: 'POST',
@@ -605,28 +619,20 @@ async function handleSegment(request, env, origin, ctx) {
     }),
   });
 
-  const results = [];
-  for (const pass of passes) {
+  const results = await Promise.all(passes.map(async (pass) => {
     let res = await startPass(pass);
-    /*
-     * One retry, and it is free: a refused request creates no prediction, so
-     * nothing was billed and there is nothing to refund. Kept even now that the
-     * passes do not overlap, because a limit can be busy for reasons that have
-     * nothing to do with us.
-     */
-    if (res.status === 429) {
-      await wait(RETRY_AFTER_MS);
+    for (let tries = 0; res.status === 429 && tries < RETRIES; tries++) {
+      await wait(retryAfterMs(res));
       res = await startPass(pass);
     }
     if (!res.ok) {
-      // The upstream's OWN words, redacted. Logging "HTTP 429" and throwing
-      // away the sentence that says which limit was hit cost a round trip:
-      // rate and concurrency are different problems with different fixes.
-      results.push({ pass, http: res.status, detail: await upstreamReason(res) });
-      break; // no point starting the next one against a limit already refusing
+      // The upstream's OWN words, redacted. Logging "HTTP 429" and discarding
+      // the sentence naming which limit was hit is what made a rate limit and a
+      // concurrency limit indistinguishable, and cost two rounds of guessing.
+      return { pass, http: res.status, detail: await upstreamReason(res) };
     }
-    results.push({ pass, prediction: await res.json() });
-  }
+    return { pass, prediction: await res.json() };
+  }));
 
   /*
    * One refused pass fails the whole detection.
@@ -650,8 +656,12 @@ async function handleSegment(request, env, origin, ctx) {
       return json(
         {
           error: passes.length > 1
-            ? 'The detector is rate limited. Untick a box or two, or try again in a minute.'
-            : 'The detector is rate limited right now. Try again in a minute.',
+            ? 'The detector is rate limited. Untick a box or two, or wait a minute.'
+            : 'The detector is rate limited right now. Wait a minute and try again.',
+          // Verbatim, because it names the account-level cause -- "reduced to 6
+          // requests per minute" is a fact about the Replicate account that no
+          // amount of care in this file can work around, and the owner is the
+          // only person who can act on it.
           detail: failed.detail,
           rateLimited: true,
         },
