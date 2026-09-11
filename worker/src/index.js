@@ -569,43 +569,42 @@ async function handleSegment(request, env, origin, ctx) {
    * one-concept detection has always had.
    */
   /*
-   * PARALLEL AGAIN, WITH A BACKOFF THAT LISTENS.
+   * ONE AT A TIME, AND NO RETRY. Both for the same reason: the budget is tiny.
    *
-   * This was made sequential on a wrong diagnosis. The reasoning looked sound
-   * -- one box never failed, two always did, so the second must be refused for
-   * overlapping the first -- and Replicate's own message says otherwise:
+   * Replicate's own sentence, once the log carried it:
    *
    *   Request was throttled. Your rate limit for creating predictions is
    *   reduced to 6 requests per minute
    *
-   * A RATE limit, counted per minute, not a concurrency one. Sequential cannot
-   * help with that and was never going to: a warm prediction here finishes in
-   * about 0.6s, so running two in a row still puts both creations inside the
-   * same minute. It cost wait time and bought nothing, which is what a fix
-   * built on a guess usually does.
+   * SIX A MINUTE. That is the whole constraint, and it makes every request a
+   * thing worth counting rather than a thing to be clever about. Two earlier
+   * diagnoses -- a burst, then a concurrency ceiling -- were both wrong, and
+   * both produced fixes that spent MORE requests to work around a limit on the
+   * number of requests.
    *
-   * What does help is waiting the amount the server asks for. A 429 carries
-   * Retry-After; honouring it is the difference between recovering and
-   * hammering a closed door. Retries are free -- a refused request creates no
-   * prediction, so nothing was billed and there is nothing to refund.
+   * The retry was the worst of it. It waited two seconds and asked again,
+   * against a window measured in minutes: it could not succeed, and a refused
+   * request still counts, so every throttled press quietly cost two starts
+   * instead of one and made the next press likelier to fail. That is the
+   * amplification the owner spotted. It is gone.
    *
-   * Note "reduced": that is a throttle applied to the account rather than
-   * Replicate's ordinary ceiling, so the real lever is the account, not this
-   * code. The message is passed through to the browser verbatim for exactly
-   * that reason.
+   * Sequential earns its place here on budget, NOT on the concurrency theory it
+   * was first written for: going one at a time is what lets a refusal stop the
+   * passes that have not been sent yet. A throttled four-box press now costs a
+   * single start instead of four. In time it costs almost nothing -- a warm
+   * prediction on this model returns in about 0.6s.
+   *
+   * The per-minute budget, spent by a press:
+   *
+   *   1 box   1 start    6 presses a minute
+   *   2 boxes 2 starts   3
+   *   3 boxes 3 starts   2
+   *   throttled          1, whatever was ticked
+   *
+   * Replicate reduces this limit for accounts holding less than a threshold of
+   * credit, so the real lever is the account balance rather than anything in
+   * this file. Which is why the sentence travels to the browser intact.
    */
-  const RETRIES = 2;
-  const FALLBACK_WAIT_MS = 12000; // just over a tenth of a minute at 6/min
-  const MAX_WAIT_MS = 30000;
-  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-
-  /** How long the server asked us to wait, clamped to something survivable. */
-  const retryAfterMs = (res) => {
-    const raw = Number(res.headers.get('Retry-After'));
-    const ms = Number.isFinite(raw) && raw > 0 ? raw * 1000 : FALLBACK_WAIT_MS;
-    return Math.min(ms, MAX_WAIT_MS);
-  };
-
   const startPass = (pass) => fetch('https://api.replicate.com/v1/predictions', {
     method: 'POST',
     headers: {
@@ -619,20 +618,18 @@ async function handleSegment(request, env, origin, ctx) {
     }),
   });
 
-  const results = await Promise.all(passes.map(async (pass) => {
-    let res = await startPass(pass);
-    for (let tries = 0; res.status === 429 && tries < RETRIES; tries++) {
-      await wait(retryAfterMs(res));
-      res = await startPass(pass);
-    }
+  const results = [];
+  for (const pass of passes) {
+    const res = await startPass(pass);
     if (!res.ok) {
-      // The upstream's OWN words, redacted. Logging "HTTP 429" and discarding
-      // the sentence naming which limit was hit is what made a rate limit and a
-      // concurrency limit indistinguishable, and cost two rounds of guessing.
-      return { pass, http: res.status, detail: await upstreamReason(res) };
+      // The upstream's OWN words. Discarding the sentence that names which
+      // limit was hit is what made a rate limit and a concurrency limit
+      // indistinguishable, and cost two rounds of guessing.
+      results.push({ pass, http: res.status, detail: await upstreamReason(res) });
+      break; // spending another start to be told the same thing helps nobody
     }
-    return { pass, prediction: await res.json() };
-  }));
+    results.push({ pass, prediction: await res.json() });
+  }
 
   /*
    * One refused pass fails the whole detection.

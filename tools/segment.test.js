@@ -336,61 +336,26 @@ async function post(payload) {
   httpStatus = 200;
 }
 
-/* ----------------------------------------- a throttled pass waits and retries */
+/* ------------------------------------------ a refusal costs exactly one start */
 /*
- * THE DIAGNOSIS CHANGED TWICE HERE, SO THE TEST PINS THE MESSAGE, NOT A THEORY.
+ * THE BUDGET IS SIX STARTS A MINUTE, so every request is worth counting.
  *
- * First reading: a burst, fixed by staggering the starts. Second: concurrency,
- * fixed by running the passes one at a time. Replicate's own sentence settled
- * it -- "your rate limit for creating predictions is reduced to 6 requests per
- * minute" -- a RATE limit, which neither of those touches. Warm predictions
- * here finish in about 0.6s, so sequential put both creations in the same
- * minute anyway.
+ * Two earlier diagnoses -- a burst, then a concurrency ceiling -- both produced
+ * fixes that spent MORE requests to work around a limit on the number of
+ * requests. The retry was the worst: it waited two seconds and asked again
+ * against a window measured in minutes, so it could not succeed, and a refused
+ * request still counts. Every throttled press quietly cost two starts instead
+ * of one and made the next press likelier to fail.
  *
- * What is actually load-bearing is waiting the amount the server asks for, and
- * passing its words through instead of replacing them with a status code.
+ * So the property to hold is arithmetic, not timing: a throttled press spends
+ * ONE start no matter how many boxes are ticked.
  */
 {
-  const waited = [];
-  let attempts = 0;
+  let starts = 0;
   const realFetch = globalThis.fetch;
   globalThis.fetch = async (url, init) => {
     if (!String(url).includes('/v1/predictions')) return realFetch(url, init);
-    attempts++;
-    // Throttle the first attempt of each pass, then let it through.
-    if (attempts <= 2) {
-      return new Response('{"detail":"Request was throttled."}', {
-        status: 429,
-        headers: { 'Retry-After': '1', 'Content-Type': 'application/json' },
-      });
-    }
-    return realFetch(url, init);
-  };
-
-  const started = Date.now();
-  const r = await post({ model: 'sam3_exclude', exclude: ['built', 'woods'] });
-  waited.push(Date.now() - started);
-
-  check('a throttled detection recovers rather than failing', r.status === 200,
-    `${r.status}: ${JSON.stringify(r.body).slice(0, 80)}`);
-  check('and it waited roughly what the server asked for',
-    waited[0] >= 1000, `${waited[0]}ms for a 1s Retry-After`);
-
-  globalThis.fetch = realFetch;
-}
-
-/*
- * AND THE UPSTREAM'S OWN SENTENCE REACHES THE BROWSER.
- *
- * "HTTP 429" alone made a rate limit and a concurrency limit look identical and
- * cost two rounds of guessing. The sentence names which one, and in this case
- * names something only the account owner can act on -- so it travels verbatim
- * rather than being replaced with a tidier summary.
- */
-{
-  const realFetch = globalThis.fetch;
-  globalThis.fetch = async (url, init) => {
-    if (!String(url).includes('/v1/predictions')) return realFetch(url, init);
+    starts++;
     return new Response(
       '{"detail":"Request was throttled. Your rate limit for creating predictions '
       + 'is reduced to 6 requests per minute"}',
@@ -398,40 +363,23 @@ async function post(payload) {
     );
   };
 
-  const r = await post({ model: 'sam3_exclude', exclude: ['built', 'woods'] });
-  check('a refusal carries the number the server named',
-    /6 requests per minute/.test(r.body.detail || ''), r.body.detail);
-  check('and is still flagged as an upstream limit, not our allowance',
+  const r = await post({ model: 'sam3_exclude', exclude: Object.keys(EXCLUSIONS) });
+  check('a throttled press spends one start, not one per box',
+    starts === 1, `${starts} starts for ${Object.keys(EXCLUSIONS).length} boxes`);
+  check('and is not retried, because a retry cannot beat a per-minute window',
+    starts === 1, 'a refused request still counts against the limit');
+
+  /*
+   * AND THE SENTENCE SURVIVES, unwrapped from Replicate's JSON envelope. It
+   * names the number and, in "reduced", a condition on the account -- the only
+   * part of this that anyone can act on.
+   */
+  check("the detector's own sentence reaches the browser",
+    /reduced to 6 requests per minute/.test(r.body.detail || ''), r.body.detail);
+  check('without the JSON envelope around it',
+    !/[{}"]/.test(r.body.detail || ''), r.body.detail);
+  check('and it is flagged as an upstream limit, not our allowance',
     r.body.rateLimited === true && r.body.used === undefined);
-
-  globalThis.fetch = realFetch;
-}
-
-/* --------------------------------------------- a throttled pass is retried */
-/*
- * A REFUSED REQUEST CREATES NO PREDICTION, so retrying one costs nothing and
- * risks nothing -- unlike retrying something that succeeded. Replicate throttles
- * bursts, and ticking a second box was enough of a burst to trip it, so a
- * single second attempt is the difference between a working detection and a
- * confusing refusal.
- */
-{
-  let attempts = 0;
-  const realFetch = globalThis.fetch;
-  globalThis.fetch = async (url, init) => {
-    if (String(url).includes('/v1/predictions')) {
-      attempts++;
-      // Throttle only the very first attempt, as a burst limiter would.
-      if (attempts === 1) return new Response('slow down', { status: 429 });
-    }
-    return realFetch(url, init);
-  };
-
-  const r = await post({ model: 'sam3_exclude', exclude: ['built', 'trees'] });
-  check('a throttled pass is tried once more rather than failing the press',
-    r.status === 200, `${r.status}: ${JSON.stringify(r.body).slice(0, 90)}`);
-  check('and both passes still come back', r.body.passes?.length === 2,
-    `${attempts} attempts for 2 passes`);
 
   globalThis.fetch = realFetch;
 }

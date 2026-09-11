@@ -46,5 +46,22 @@ export async function upstreamReason(res) {
     return null;
   }
 
-  return redactSecrets(body).replace(/\s+/g, ' ').trim() || null;
+  /*
+   * Unwrap the sentence, when there is one.
+   *
+   * Replicate answers {"detail":"Request was throttled. Your rate limit for
+   * creating predictions is reduced to 6 requests per minute"} -- the useful
+   * part is the sentence, and showing the JSON around it makes a readable
+   * explanation look like a stack trace. Falls back to the raw body, because a
+   * message in an unexpected shape is still better than no message at all.
+   */
+  const clean = redactSecrets(body).replace(/\s+/g, ' ').trim();
+  try {
+    const parsed = JSON.parse(clean);
+    const sentence = parsed?.detail || parsed?.error || parsed?.message;
+    if (typeof sentence === 'string' && sentence.trim()) return sentence.trim();
+  } catch {
+    /* Not JSON, or truncated mid-object. The raw text is the answer then. */
+  }
+  return clean || null;
 }

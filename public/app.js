@@ -2348,7 +2348,20 @@ async function detect() {
        * throttle. One box never did.
        */
       if (b.rateLimited) {
-        setStatus(`${b.error} Nothing was charged for it.`, 'warn');
+        /*
+         * Show the detector's OWN sentence alongside ours.
+         *
+         * "The detector is rate limited" is true and unactionable. What it
+         * actually says -- "your rate limit for creating predictions is reduced
+         * to 6 requests per minute" -- names a number and, in the word
+         * "reduced", a condition on the account that the owner can change. That
+         * is the difference between waiting and knowing why.
+         */
+        setStatus(
+          `${b.error} Nothing was charged for it.`
+          + (b.detail ? ` The detector said: “${b.detail}”` : ''),
+          'warn'
+        );
         return;
       }
 
