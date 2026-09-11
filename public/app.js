@@ -2340,6 +2340,29 @@ async function detect() {
       }
 
       /*
+       * AND NEITHER IS A 429 THAT CARRIES NO ACCOUNTING AT ALL.
+       *
+       * Fixing the rate-limit case above only fixed the case that announced
+       * itself. Every OTHER 429 still fell through to the daily-limit sentence:
+       * one from Cloudflare's edge, a throttle from a proxy, anything that
+       * answers with an HTML body the client cannot parse. `err.body` is null
+       * for those, so `used` and `limit` are undefined, every test below is
+       * false, and the app confidently blames an allowance it never consulted.
+       *
+       * Our own refusal always carries both numbers. If they are not here, this
+       * did not come from our counter, and saying so beats inventing a cause.
+       */
+      if (!Number.isFinite(b.used) || !Number.isFinite(b.limit)) {
+        setStatus(
+          `${b.error || 'The detector turned that request away.'} `
+          + 'This is not your daily limit — try again in a minute, '
+          + 'or draw the lawn by hand.',
+          'warn'
+        );
+        return;
+      }
+
+      /*
        * "You have used today's detections" is a lie when four are left and this
        * press wanted five. The counter on screen would plainly disagree with
        * the refusal, which reads as the app being broken rather than as a

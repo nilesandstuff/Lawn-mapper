@@ -236,6 +236,20 @@ async function post(payload) {
   check('and dropping the flag falls straight back to the ordinary ceiling',
     plain.status === 429 && plain.body.limit === 20,
     `${plain.status}: ${JSON.stringify(plain.body)}`);
+
+  /*
+   * AND OUR REFUSAL CARRIES THE PAIR THAT IDENTIFIES IT.
+   *
+   * `used` and `limit` together are the only reliable way the browser can tell
+   * our own accounting from a 429 raised by Replicate, by Cloudflare's edge, or
+   * by anything in between -- none of which carry them. Drop them from a
+   * refusal and the app goes back to blaming an allowance it never consulted,
+   * which is exactly the bug that cost a night of debugging.
+   */
+  check('and a real quota refusal is identifiable as one',
+    Number.isFinite(plain.body.used) && Number.isFinite(plain.body.limit)
+    && !plain.body.rateLimited,
+    JSON.stringify(plain.body));
 }
 
 /* ------------------------------------------------------- unknown concepts */
@@ -291,6 +305,7 @@ async function post(payload) {
     r.body.limit === undefined && r.body.used === undefined
     && r.body.reason === undefined,
     JSON.stringify(r.body).slice(0, 120));
+
   httpStatus = 200;
 }
 
