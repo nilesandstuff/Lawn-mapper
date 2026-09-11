@@ -1580,7 +1580,7 @@ console.log('\n--- developer mode ---');
    * disagree on screen exactly as they did when this was broken. */
   const badge = await page.textContent('#quota-badge');
   check('and the badge counts against the developer ceiling too',
-    /of 200 AI passes/.test(badge), badge.trim());
+    /of 80 AI passes/.test(badge), badge.trim());
 
   /* And it must name the UNIT it counts. It said "detections" while counting
    * Replicate predictions, which are the same thing only until a second box is

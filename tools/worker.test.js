@@ -178,7 +178,7 @@ check('the daily allowance is 20', DAILY_LIMIT_PER_CLIENT === 20,
    * real experiments.
    */
   check('developer mode raises the personal ceiling',
-    DAILY_LIMIT_PER_DEV === 200, String(DAILY_LIMIT_PER_DEV));
+    DAILY_LIMIT_PER_DEV === 80, String(DAILY_LIMIT_PER_DEV));
   check('and it really is higher than the ordinary one',
     DAILY_LIMIT_PER_DEV > DAILY_LIMIT_PER_CLIENT);
 
@@ -206,20 +206,31 @@ check('the daily allowance is 20', DAILY_LIMIT_PER_CLIENT === 20,
    */
   const flood = { QUOTA: kv() };
   const ipCount = (env) => Number([...env.QUOTA.store].find(([k]) => k.startsWith('i:'))?.[1] || 0);
-  for (const who of ['a', 'b', 'c', 'd', 'e', 'f', 'g']) {
-    await consumeQuota(req, flood, who, 40, true);
+  /*
+   * Spent in small presses across a stream of fresh client ids, which is what a
+   * scraper clearing storage actually looks like. Whole-budget chunks would not
+   * reach the address ceiling at all -- the second id's 80 would overshoot 120
+   * and be refused with the counter still at 80, which proves nothing about the
+   * backstop being the thing that binds.
+   */
+  let stopped = null;
+  for (let i = 0; i < 40 && !stopped; i++) {
+    const got = await consumeQuota(req, flood, `id-${i}`, 4, true);
+    if (!got.allowed) stopped = got;
   }
-  const beyond = await consumeQuota(req, flood, 'h', 40, true);
   check('the per-address backstop still stops a flood of developer requests',
-    !beyond.allowed && beyond.reason === 'shared-network'
+    stopped && stopped.reason === 'shared-network'
     && ipCount(flood) <= DAILY_LIMIT_PER_IP_DEV,
     `${ipCount(flood)} against a developer IP cap of ${DAILY_LIMIT_PER_IP_DEV}`);
 
-  /* Rotating client ids is exactly what the address ceiling is for, and it
-   * still catches that in developer mode -- just at a higher line. */
+  /*
+   * Rotating client ids is exactly what the address ceiling is for. Each fresh
+   * id gets its own personal budget; the address does not, which is what makes
+   * it a backstop rather than a second copy of the same limit.
+   */
   check('and it is the address, not the client id, that stops them',
     ipCount(flood) > DAILY_LIMIT_PER_DEV,
-    'each fresh client id got its own personal budget; the address did not');
+    `${ipCount(flood)} spent across ids, past the personal ${DAILY_LIMIT_PER_DEV}`);
 
   check('and the badge counts against the ceiling that will actually apply',
     (await checkQuota(req, asDev, 'someone', true)).limit === DAILY_LIMIT_PER_DEV
@@ -276,23 +287,34 @@ check('the daily allowance is 20', DAILY_LIMIT_PER_CLIENT === 20,
     DAILY_LIMIT_PER_IP > DAILY_LIMIT_PER_CLIENT,
     `address ${DAILY_LIMIT_PER_IP} vs personal ${DAILY_LIMIT_PER_CLIENT}`);
 
+  /*
+   * A PASS BUDGET BUYS FEWER PRESSES AS BOXES ARE TICKED, and that is the whole
+   * thing the badge used to hide by calling passes "detections". Asserted as
+   * arithmetic against the real constants rather than as a fixed number, so
+   * changing the budget cannot quietly make the label wrong again.
+   */
   const roomy = { QUOTA: kv() };
   let pressed = 0;
-  for (let i = 0; i < 50; i++) {
+  for (let i = 0; i < DAILY_LIMIT_PER_DEV; i++) {
     if ((await consumeQuota(req, roomy, 'owner', MAX_EXCLUSIONS, true)).allowed) pressed++;
   }
-  check('so fifty detections with every box ticked really do fit', pressed === 50,
-    `${pressed} of 50 presses got through at ${MAX_EXCLUSIONS} passes each`);
+  check('every box ticked spends the budget four times as fast',
+    pressed === Math.floor(DAILY_LIMIT_PER_DEV / MAX_EXCLUSIONS),
+    `${pressed} presses at ${MAX_EXCLUSIONS} passes each, from ${DAILY_LIMIT_PER_DEV} passes`);
 
-  /*
-   * AND THE BADGE MUST NOT CALL THESE DETECTIONS. The counter counts passes;
-   * at four boxes a single press spends four of them. Labelling passes as
-   * detections is how "50" came to mean twelve.
-   */
-  check('the budget is a pass budget, so it buys fewer presses as boxes are ticked',
-    Math.floor(DAILY_LIMIT_PER_DEV / MAX_EXCLUSIONS) === 50
-    && DAILY_LIMIT_PER_DEV > 50,
-    `${DAILY_LIMIT_PER_DEV} passes = 50 presses at ${MAX_EXCLUSIONS} boxes`);
+  const single = { QUOTA: kv() };
+  let singles = 0;
+  for (let i = 0; i < DAILY_LIMIT_PER_DEV + 5; i++) {
+    if ((await consumeQuota(req, single, 'owner', 1, true)).allowed) singles++;
+  }
+  check('and one box ticked spends it one at a time',
+    singles === DAILY_LIMIT_PER_DEV,
+    `${singles} one-pass presses from ${DAILY_LIMIT_PER_DEV} passes`);
+
+  /* Four times what an ordinary visitor gets, which is the point of the mode. */
+  check('the developer budget is a real step up from the ordinary one',
+    DAILY_LIMIT_PER_DEV === DAILY_LIMIT_PER_CLIENT * 4,
+    `${DAILY_LIMIT_PER_DEV} vs ${DAILY_LIMIT_PER_CLIENT}`);
 
   /* The ordinary ceiling is untouched by all of this. */
   check('and an ordinary visitor still meets the original address limit',

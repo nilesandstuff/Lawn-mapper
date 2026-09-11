@@ -209,7 +209,7 @@ async function post(payload) {
   check('developer mode keeps going past the ordinary cap',
     last.status === 200, `${last.status}: ${JSON.stringify(last.body).slice(0, 90)}`);
   check('and the response reports the raised ceiling',
-    last.body.remaining === 200 - 22, `remaining ${last.body.remaining}`);
+    last.body.remaining === 80 - 22, `remaining ${last.body.remaining}`);
 
   /* The same counter, so dropping the flag hits the ordinary line at once. */
   const plain = await spend(2, false);

@@ -38,18 +38,25 @@ const DAILY_LIMIT_PER_CLIENT = 20;
  *
  * COUNTED IN PASSES, NOT PRESSES, which is the second half of the same
  * mistake. Every one of these buys one Replicate prediction, and exclude mode
- * spends one per ticked box -- so a budget of 50 is fifty detections at one
- * box and twelve at four, while the badge cheerfully called all of them
- * "detections". The request was for fifty detections a day, so the budget is
- * the worst case of that: fifty presses at the four passes exclude mode can
- * cost. At one box it is 200 detections, which is simply generous.
+ * spends one per ticked box -- so the badge calling them all "detections" made
+ * the number mean different things on different days. It says "passes" now.
+ *
+ * 80 passes, chosen by the owner over a larger figure once the unit was clear:
+ *
+ *     1 box    80 detections
+ *     2 boxes  40
+ *     3 boxes  26
+ *     4 boxes  20
+ *
+ * Four times the ordinary allowance, and enough to answer a question about a
+ * prompt without being enough to run up a surprising bill on a flag that
+ * anybody can send.
  *
  * The unit stays passes because passes are what cost money -- charging a
  * four-box press the same as a one-box press would make the guardrail stop
- * guarding exactly where the spending starts. What changed is that the badge
- * now says "passes" instead of quietly meaning one and printing the other.
+ * guarding exactly where the spending starts.
  */
-const DAILY_LIMIT_PER_DEV = 200;
+const DAILY_LIMIT_PER_DEV = 80;
 
 const DAILY_LIMIT_PER_IP = 80; // generous -- shared/NAT addresses are real
 
@@ -65,16 +72,14 @@ const DAILY_LIMIT_PER_IP = 80; // generous -- shared/NAT addresses are real
  *
  * It has to sit ABOVE the personal budget or it simply becomes the binding one
  * again and the personal number goes back to being decoration -- the bug this
- * pair exists to fix. The margin is what lets a second device, or a browser
- * whose stored id was cleared, keep working on the same address without
- * instantly running into the backstop.
+ * pair exists to fix.
  *
- * This is a real increase in the worst case one address can spend, and the
- * flag is unguarded, so anyone who sends it gets this ceiling. That is the
- * price of the guardrail matching the promise; lower both numbers here if the
- * trade stops being worth it.
+ * 120 is half again the personal 80: room for a second device, or for a browser
+ * whose stored id was cleared, without the backstop stopping being one. The
+ * flag is unguarded, so anyone who sends it gets this ceiling -- which is why
+ * the margin is a margin and not another multiple.
  */
-const DAILY_LIMIT_PER_IP_DEV = 240;
+const DAILY_LIMIT_PER_IP_DEV = 120;
 // Long enough that a key always outlives the day it belongs to, whatever the
 // offset. The key name is what resets the count; the TTL only sweeps up.
 const TTL_SECONDS = 60 * 60 * 48;
