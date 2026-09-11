@@ -35,7 +35,19 @@ const keyFor = (now) =>
 const text = (v, max = 200) =>
   typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : null;
 
-const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
+/**
+ * A number, or null when there wasn't one.
+ *
+ * The null and empty-string guards are not decoration: `Number(null)` is 0 and
+ * `Number('')` is 0, so "no parcel record" logged as a parcel of 0 sq ft and
+ * "several passes, so no single threshold" logged as a cut of 0 -- both of
+ * them readings a person would try to explain rather than dismiss. A missing
+ * measurement has to look missing.
+ */
+const num = (v) => {
+  if (v === null || v === undefined || v === '') return null;
+  return Number.isFinite(Number(v)) ? Number(v) : null;
+};
 
 /**
  * Is logging switched on?
@@ -92,7 +104,15 @@ export async function logMeasurement(env, record) {
       zoom: num(record.zoom),
       provider: text(record.provider, 40),
       model: text(record.model, 40),
+      // Exclude mode joins several as "man-made @0.05 + woods @0.2", because
+      // each pass runs at its own confidence cut and a single `threshold`
+      // field beside a joined prompt reported the first one as if it were all
+      // of them. Pairs cannot be mismatched; a separate list beside a separate
+      // list can.
       prompt: text(record.prompt, 200),
+      // The cut, when exactly one pass ran. Null for several -- the prompt
+      // field above is where those live, attached to the concept each belongs
+      // to.
       threshold: num(record.threshold),
       // How many predictions one press ran. Exclude mode charges per ticked
       // box, so this is what turns a bill into an explanation.

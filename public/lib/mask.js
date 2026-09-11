@@ -561,12 +561,30 @@ export function polygonsFromBinary(bin, width, height, unproject, options = {}) 
   }
   const { labels, sizes } = labelComponents(bin, width, height);
 
-  const ranked = sizes
+  const components = sizes
     .map((size, id) => ({ size, id }))
     .slice(1)
+    .sort((a, b) => b.size - a.size);
+
+  const ranked = components
     .filter((c) => c.size >= minAreaFraction * total)
-    .sort((a, b) => b.size - a.size)
     .slice(0, maxPolygons);
+
+  /*
+   * What the two limits above threw away.
+   *
+   * Both are presentation limits -- speckle is not worth a draggable shape,
+   * and forty handles on a phone is not usable -- but what they discard is
+   * lawn, and discarding lawn silently is how a total ends up smaller than
+   * the ground with nothing on screen to say why. It matters most in exclude
+   * mode: subtracting a second concept cuts the remaining lawn into more
+   * pieces, so the press that adds a tick can drop pieces the press before it
+   * kept, and neither concept ever claimed that ground.
+   */
+  const droppedPx = components
+    .filter((c) => !ranked.includes(c))
+    .reduce((n, c) => n + c.size, 0);
+  const droppedCount = components.length - ranked.length;
 
   const polygons = [];
   let filledGaps = 0;
@@ -610,6 +628,8 @@ export function polygonsFromBinary(bin, width, height, unproject, options = {}) 
   // than quietly inflating the number.
   polygons.filledGaps = filledGaps;
   polygons.filledGapPx = filledGapPx;
+  polygons.droppedCount = droppedCount;
+  polygons.droppedPx = droppedPx;
   return polygons;
 }
 

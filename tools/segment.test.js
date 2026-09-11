@@ -152,6 +152,18 @@ async function post(payload) {
     new Set(r.sent.map((s) => s.threshold)).size > 1,
     r.sent.map((s) => `${s.prompt}@${s.threshold}`).join(' | '));
 
+  /*
+   * AND THE CUT IS THE ONE IN THE TABLE, box by box. The check above only says
+   * they differ from each other, which a shared-but-shuffled bug would also
+   * satisfy. This says each concept arrived at the number it was measured at,
+   * however many boxes were ticked alongside it.
+   */
+  const sentFor = (p) => r.sent.find((s) => s.prompt === p)?.threshold;
+  for (const [id, e] of Object.entries(EXCLUSIONS)) {
+    check(`"${id}" is sent at its own ${e.threshold}, alongside every other box`,
+      sentFor(e.prompt) === e.threshold, String(sentFor(e.prompt)));
+  }
+
   check('every pass hands back a mask for the browser to subtract',
     r.body.passes.length === every.length && r.body.passes.every((p) => p.mask));
 }
@@ -433,6 +445,32 @@ async function post(payload) {
     log2.entries.map((r) => r.outcome).join(', '));
   check('which is the distinction the screen could not make',
     /HTTP 429/.test(rateRow?.detail || ''), rateRow?.detail);
+
+  /*
+   * EVERY PASS'S CUT REACHES THE LOG.
+   *
+   * It used to write the FIRST pass's threshold beside a prompt field that
+   * already joined all of them, so "man-made + woods" logged 0.05 and said
+   * nothing about the 0.2 the second prediction ran at. Right for one pass,
+   * silently wrong for two -- and a log that misreports the settings is worse
+   * than no log, because the next hour goes into debugging the wrong number.
+   */
+  const e3 = loggingEnv();
+  await spend(e3);
+  const row = (await readLog(e3, 'sekret')).entries[0];
+  check('a two-box press logs both concepts with their own cuts',
+    row?.prompt === `${EXCLUSIONS.built.prompt} @${EXCLUSIONS.built.threshold}`
+      + ` + ${EXCLUSIONS.woods.prompt} @${EXCLUSIONS.woods.threshold}`,
+    row?.prompt);
+  check('and does not report one of them as if it were both',
+    row?.threshold === null, String(row?.threshold));
+
+  /* One pass still fills the numeric field, which is what it is for. */
+  const e4 = loggingEnv();
+  await spend(e4, { exclude: ['woods'] });
+  const one = (await readLog(e4, 'sekret')).entries[0];
+  check('a one-box press keeps the plain numeric threshold',
+    one?.threshold === EXCLUSIONS.woods.threshold, String(one?.threshold));
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);

@@ -485,13 +485,26 @@ async function handleSegment(request, env, origin, ctx) {
    * `detail` carries the numbers behind the refusal, which is the whole reason
    * for logging one: "refused, 20 of 20" and "refused by the detector" are
    * different problems that produce the same sentence on screen.
+   *
+   * EACH PASS CARRIES ITS OWN CUT, so the log has to as well. It used to write
+   * `threshold: passes[0].threshold` beside a prompt field that already joined
+   * every pass -- so "man-made + woods" logged 0.05 and said nothing about the
+   * 0.2 that the second prediction actually used. The number was right for one
+   * pass and silently wrong for two, which is the shape of bug a log is
+   * supposed to catch rather than produce. Pairing the cut with the concept it
+   * belongs to makes them impossible to mismatch, whatever the pass count.
    */
+  const passLabel = (pass) =>
+    Number.isFinite(pass.threshold) ? `${pass.prompt} @${pass.threshold}` : pass.prompt;
+
   const note = (outcome, detail = null) => recordLater(ctx, logMeasurement(env, {
     address: body.address,
     lng, lat, zoom,
     provider, model: modelId,
-    prompt: passes.map((pass) => pass.prompt).join(' + '),
-    threshold: passes[0]?.threshold,
+    prompt: passes.map(passLabel).join(' + '),
+    // Only meaningful when there is one; the pairs above are the answer for
+    // several. See testlog.js.
+    threshold: passes.length === 1 ? passes[0]?.threshold : null,
     passes: passes.length,
     parcelSqFt: body.parcelSqFt,
     county: body.county,

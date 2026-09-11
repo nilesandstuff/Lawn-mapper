@@ -264,7 +264,12 @@
         </span>
       </label>
 
-      <label class="opt">
+      <!--
+        Only shown for "Find grass". In exclude mode a gap in the lawn is
+        something the user ticked a box to remove, so filling it back in would
+        undo the tick -- see traceDetection.
+      -->
+      <label class="opt" id="trees-opt">
         <input type="checkbox" id="toggle-trees" checked>
         <span>Count grass under trees
           <small>Canopy hides lawn that is really there. Small gaps inside your

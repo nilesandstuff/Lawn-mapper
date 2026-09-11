@@ -24,6 +24,7 @@ import {
   unionMasks,
   subtractMasks,
   coverage,
+  polygonsFromBinary,
 } from '../public/lib/mask.js';
 import {
   framePxToLngLat,
@@ -556,6 +557,99 @@ console.log(`\nframe: zoom ${FRAME.zoom} @ ${IMG}px  ->  ${MPP.toFixed(4)} m/px\
   check('and the guess is still there for the mode that wants it',
     on(maskBinary(mostlyWhite, { autoPolarity: true })) === 20,
     'find-grass keeps the polarity guard; exclude mode switches it off');
+
+  /*
+   * GAP FILLING GIVES BACK EXACTLY WHAT THE TICK BOX TOOK OFF.
+   *
+   * "Count grass under trees" fills an enclosed hole smaller than a large tree
+   * canopy, on the reasoning that the detector could not see the grass beneath
+   * it. Sound in find-grass mode, where a hole is somewhere the model failed to
+   * find lawn.
+   *
+   * In exclude mode a hole is not a failure -- it IS the thing a ticked box
+   * removed. So a tree clump under the canopy limit was subtracted and then
+   * added straight back, and a 900 sq ft limit is a tree about 30 ft across:
+   * most individual trees on an ordinary lot. The box did the least on exactly
+   * the lots it was ticked for, and the amount given back grew with the number
+   * of boxes, because every extra concept punches more holes.
+   *
+   * These clumps are 100 px each against a 400 px limit -- the same shape as a
+   * scattered-tree lot, and the arithmetic to pin, because the tracer is where
+   * it would come back.
+   */
+  const unproject = (x, y) => [x, y];
+  const clumps = new Uint8Array(W * H);
+  for (const [cx, cy] of [[30, 30], [50, 30], [30, 50], [50, 50]]) {
+    for (let y = cy; y < cy + 10; y++) for (let x = cx; x < cx + 10; x++) clumps[y * W + x] = 1;
+  }
+  const trueLawn = subtractMasks(parcel, clumps);
+  const filling = { clipMask: parcel, minAreaFraction: 0, minHoleFraction: 0, fillGapsUnderPx: 400 };
+
+  const filled = polygonsFromBinary(trueLawn.slice(), W, H, unproject, filling);
+  check('gap filling hands back ground the ticked box removed',
+    filled.filledGapPx === on(clumps),
+    `${filled.filledGapPx} px of the ${on(clumps)} px removed came straight back`);
+
+  const honest = polygonsFromBinary(trueLawn.slice(), W, H, unproject,
+    { ...filling, fillGapsUnderPx: 0 });
+  check('and with it off, what was removed stays removed',
+    honest.filledGapPx === 0 && honest[0].coordinates.length === 1 + 4,
+    `${honest[0].coordinates.length - 1} holes traced, wanted 4`);
+
+  /*
+   * THE SAME HOLE IN THE OTHER LIMIT. Holes below minHoleFraction are not
+   * traced either, which fills them just as silently and is not something the
+   * tick box controls -- the default floor is around 90 sq ft on a typical
+   * lot, which is a shed. Exclude mode drops it to roughly 40 sq ft, below
+   * anything anyone would call an object, so a ticked box removes what it says
+   * it removes.
+   */
+  const coarse = polygonsFromBinary(trueLawn.slice(), W, H, unproject,
+    { clipMask: parcel, minAreaFraction: 0, minHoleFraction: 0.1, fillGapsUnderPx: 0 });
+  check('a hole floor fills small exclusions back in without being asked to',
+    coarse[0].coordinates.length === 1,
+    `${coarse[0].coordinates.length - 1} of 4 holes survived a 10% floor`);
+
+  /*
+   * NOTHING IS DROPPED SILENTLY.
+   *
+   * The shape limits exist for the editor's sake -- speckle is not worth a
+   * draggable handle, and forty handles on a phone is not usable -- but what
+   * they drop is lawn, and it is exactly the fragments a second exclusion
+   * creates. A total short by an unnamed amount is an error nobody can report,
+   * so the tracer hands back what it left out and the screen says so.
+   */
+  const bands = new Uint8Array(W * H);
+  for (let i = 0; i < 5; i++) {
+    for (let y = 24 + i * 10; y < 28 + i * 10; y++) {
+      for (let x = 20; x < 80; x++) bands[y * W + x] = 1;
+    }
+  }
+  const fragmented = subtractMasks(parcel, bands);
+  const strips = 6; // five bands across the lot leave six strips of grass
+
+  const capped = polygonsFromBinary(fragmented.slice(), W, H, unproject,
+    { clipMask: parcel, maxPolygons: 2, minAreaFraction: 0 });
+  check('the shape cap reports the pieces it left out',
+    capped.length === 2 && capped.droppedCount === strips - 2 && capped.droppedPx > 0,
+    `${capped.length} kept, ${capped.droppedCount} dropped, ${capped.droppedPx} px`);
+
+  const uncapped = polygonsFromBinary(fragmented.slice(), W, H, unproject,
+    { clipMask: parcel, maxPolygons: 24, minAreaFraction: 0 });
+  check('a cap large enough for a fragmented lawn drops nothing',
+    uncapped.length === strips && uncapped.droppedCount === 0 && uncapped.droppedPx === 0,
+    `${uncapped.length} kept, ${uncapped.droppedCount} dropped`);
+
+  /* The dropped pixels are the lawn that is missing from the shapes, exactly. */
+  check('and what was dropped accounts for the difference',
+    capped.droppedPx === on(fragmented) - stripsPx(capped, labelComponents, fragmented),
+    `${capped.droppedPx} px`);
+}
+
+/** Pixels belonging to the components a polygon list actually kept. */
+function stripsPx(kept, label, mask) {
+  const { sizes } = label(mask, 100, 100);
+  return sizes.slice(1).sort((a, b) => b - a).slice(0, kept.length).reduce((n, v) => n + v, 0);
 }
 
 /* ------------------------------ 10. overlapping shapes on the map */

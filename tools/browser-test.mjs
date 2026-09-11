@@ -326,11 +326,24 @@ console.log('\n--- detection modes ---');
       await page.click(`#excl-${second.id}`); // back to the default set
     }
 
+    /*
+     * AND THE OPTION THAT NO LONGER APPLIES GOES AWAY.
+     *
+     * "Count grass under trees" fills small holes in the lawn back in. In
+     * exclude mode a hole is something a ticked box removed, so filling it
+     * would undo the tick -- the option does nothing here, and a switch that
+     * is visible, ticked and inert reads as a setting being ignored.
+     */
+    check('the grass-under-trees option is withdrawn in exclude mode',
+      await page.locator('#trees-opt').isHidden());
+
     // Back to the default method: nothing after this should be subtracting.
     await page.selectOption('#model-choice', models.chosen);
     await page.waitForTimeout(200);
     check('and the boxes go away again with it',
       (await page.evaluate(() => window.__lmModels().excludes.visible)) === false);
+    check('and the grass-under-trees option comes back with Find grass',
+      await page.locator('#trees-opt').isVisible());
   }
 
   /*

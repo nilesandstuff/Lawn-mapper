@@ -76,6 +76,44 @@ const state = {
 const TREE_GAP_SQFT = 900;
 
 /**
+ * How many separate pieces of lawn exclude mode may hand back.
+ *
+ * Find-grass mode keeps six, which is the number of shapes a person can
+ * reasonably be handed to drag. Exclude mode earns a larger one: it starts
+ * from the whole lot and cuts pieces out of it, so each additional ticked box
+ * fragments what is left, and a lot with a drive and scattered trees really is
+ * more than six pieces of grass. The old cap silently discarded the rest --
+ * ground no prompt had claimed, vanishing in proportion to how many boxes were
+ * ticked.
+ *
+ * Twenty-four rather than unlimited because the tail of that list is speckle
+ * along a mask edge, not lawn anyone mows, and every shape past the first
+ * handful is one more thing to scroll past on a phone. Whatever the cap does
+ * drop is now named on screen with its area, so the number on the total is
+ * never quietly short.
+ */
+const MAX_EXCLUDE_POLYGONS = 24;
+
+/**
+ * Below this, dropped scraps are not worth a sentence.
+ *
+ * 200 sq ft is a patch about fourteen feet square -- small enough that nobody
+ * quotes it separately, large enough that leaving it out of a total without
+ * saying so would be hiding something.
+ */
+const DROPPED_NOTE_SQFT = 200;
+
+/**
+ * The smallest hole exclude mode will cut out of the lawn.
+ *
+ * 40 sq ft is a patch about six feet across -- smaller than anything a person
+ * would call an object, and the point below which a hole in a mask is speckle
+ * rather than a thing. Everything above it gets traced, so a ticked box
+ * removes what it says it removes.
+ */
+const MIN_HOLE_SQFT = 40;
+
+/**
  * How closely the traced outline follows the mask, in metres on the ground.
  *
  * 0.3 m was chosen as the point where the measurement stopped changing, which
@@ -1915,6 +1953,19 @@ function updatePromptHint() {
   // Nothing to measure outside of until there is a boundary to be outside of.
   $('#outside-opt').hidden = needsParcel;
 
+  /*
+   * "Count grass under trees" belongs to Find grass only.
+   *
+   * In exclude mode every gap in the lawn is something a ticked box put there,
+   * so the option has nothing left to act on -- and a switch that is visible,
+   * ticked, and inert reads as a setting that is being ignored. Follows the
+   * measurement on screen once there is one, because that is what the option
+   * would re-trace; the picker can be changed without re-detecting.
+   */
+  $('#trees-opt').hidden = state.lastMask
+    ? Boolean(state.lastMask.subtractive)
+    : excludesWanted();
+
   $('#btn-detect').disabled =
     !state.frame || same || needsPins || needsParcel || needsExclusion;
   $('#btn-detect').textContent = same
@@ -2312,6 +2363,23 @@ async function detect() {
         + ' that concept is not usable on this photograph.'
       : '';
 
+    /*
+     * Say what the shape limits threw away.
+     *
+     * Scraps too small to be worth a draggable shape are dropped, and that is
+     * the right call -- but they are still lawn, and a total that is short by
+     * an unnamed amount is the kind of error nobody can report because there is
+     * nothing on screen to point at. Reported only when it adds up to something
+     * a person would care about; a few stray pixels along a mask edge is noise
+     * in a sentence, not information.
+     */
+    const droppedSqFt = Math.round((polygons.droppedPx || 0) * traced.sqFtPerPx);
+    const scraps = droppedSqFt >= DROPPED_NOTE_SQFT
+      ? ` ${polygons.droppedCount} scrap${polygons.droppedCount > 1 ? 's' : ''} too small to edit`
+        + ` (about ${droppedSqFt.toLocaleString()} sq ft) ${polygons.droppedCount > 1 ? 'are' : 'is'} not counted —`
+        + ' paint them in with Add if they are lawn.'
+      : '';
+
     // Name the source only when it is not the one showing, i.e. when a
     // look-only choice was silently substituted. Saying "on Mapbox satellite"
     // after every ordinary detection is noise; saying it when the user picked
@@ -2326,7 +2394,7 @@ async function detect() {
         ? `${polygons.length} section${polygons.length > 1 ? 's' : ''} of lawn left after removing `
           + `${layers.length} thing${layers.length > 1 ? 's' : ''}`
         : `Found ${polygons.length} section${polygons.length > 1 ? 's' : ''} of lawn`) +
-      (parcelRing() ? ', trimmed to your property line' : '') + on + '.' + lost + gaps +
+      (parcelRing() ? ', trimmed to your property line' : '') + on + '.' + lost + gaps + scraps +
       ' Correct anything it got wrong.'
     );
   } catch (err) {
@@ -3178,7 +3246,58 @@ function traceDetection({ layers, subtractive, invert, rendered, edgeFt = 0 }) {
      * polygon-boolean library.
      */
     clipMask,
-    fillGapsUnderPx: $('#toggle-trees').checked ? Math.round(TREE_GAP_SQFT / sqFtPerPx) : 0,
+    /*
+     * FILLING GAPS IS A FIND-GRASS IDEA, AND IT IS WRONG IN EXCLUDE MODE.
+     *
+     * In find-grass mode a hole in the lawn is somewhere the detector could not
+     * see grass, and a small one is usually canopy hiding grass that is really
+     * there -- so filling it is the better guess.
+     *
+     * In exclude mode a hole in the lawn is, by construction, something the
+     * user TICKED A BOX to remove. Filling it hands back exactly what they
+     * asked to be taken off, and the size test cannot tell a tree clump from a
+     * shed any better here than anywhere else.
+     *
+     * Worse, it changed with the number of boxes. A tree clump touching the
+     * property line is not an enclosed hole, so nothing filled it; tick
+     * buildings as well and the extra subtraction can close the gap around that
+     * same clump, which turns it into a hole and fills it back in as lawn. So
+     * adding a second exclusion could ADD square footage -- the thing that
+     * cannot happen when you take more away, and the reason this is off here.
+     */
+    fillGapsUnderPx: !subtractive && $('#toggle-trees').checked
+      ? Math.round(TREE_GAP_SQFT / sqFtPerPx)
+      : 0,
+    /*
+     * The same hole, in the other limit.
+     *
+     * Holes below this are not traced at all, which counts them as lawn just
+     * as effectively as filling them -- and unlike the tick box, nothing on
+     * screen says so. The default is 0.15% of the frame, around 90 sq ft on a
+     * typical lot: a shed, a hot tub, a parking pad. Fine when a hole means
+     * "the model did not find grass here"; wrong when it means "the user
+     * ticked a box to remove this".
+     *
+     * Not zero, because every speck along a mask edge would then become a ring
+     * to trace and a handle to drag. MIN_HOLE_SQFT is below anything anyone
+     * would call an object, which is the line that belongs here.
+     */
+    minHoleFraction: subtractive
+      ? (MIN_HOLE_SQFT / sqFtPerPx) / (w * h)
+      : undefined,
+    /*
+     * How many separate pieces of lawn to hand back.
+     *
+     * Six is plenty for "find the grass", which comes back as a front lawn, a
+     * back lawn and some strips. Exclude mode is different in kind: every
+     * concept subtracted cuts the remainder into more pieces, and a lot with
+     * scattered trees and a drive genuinely IS twenty pieces of lawn. Capping
+     * that at six drops real ground that neither prompt claimed, and it drops
+     * more of it the more boxes are ticked -- so the cap has to follow the
+     * arithmetic rather than the other way round. Anything still dropped is
+     * named on screen.
+     */
+    maxPolygons: subtractive ? MAX_EXCLUDE_POLYGONS : undefined,
     /*
      * How finely to trace the outline, in metres on the ground rather than in
      * pixels. The default was 1.5 px, which sounds conservative and is not: at
@@ -4639,6 +4758,8 @@ function reset() {
   state.measureOutside = false;
   $('#toggle-outside').checked = false;
   $('#outside-opt').hidden = true;
+  // Back to Find grass, where this option means something again.
+  $('#trees-opt').hidden = false;
   state.drawingParcel = false;
   state.edgeFt = DEFAULT_EDGE_FT;
   $('#edge-ft').value = String(DEFAULT_EDGE_FT);
