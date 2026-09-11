@@ -1580,7 +1580,14 @@ console.log('\n--- developer mode ---');
    * disagree on screen exactly as they did when this was broken. */
   const badge = await page.textContent('#quota-badge');
   check('and the badge counts against the developer ceiling too',
-    /of 50 detections/.test(badge), badge.trim());
+    /of 200 AI passes/.test(badge), badge.trim());
+
+  /* And it must name the UNIT it counts. It said "detections" while counting
+   * Replicate predictions, which are the same thing only until a second box is
+   * ticked -- then one detection costs two and the number stops matching the
+   * word beside it. That mislabelling is how "50" came to mean twelve. */
+  check('and the badge names passes, which is what it actually counts',
+    /AI passes/.test(badge) && !/detections left/.test(badge), badge.trim());
 
   /*
    * THE TESTING METHOD. Its reason for existing is that overriding the prompt
