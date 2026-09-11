@@ -327,23 +327,29 @@ console.log('\n--- detection modes ---');
     }
 
     /*
-     * AND THE OPTION THAT NO LONGER APPLIES GOES AWAY.
+     * AND THE GAP OPTION FLIPS WITH THE ARITHMETIC.
      *
-     * "Count grass under trees" fills small holes in the lawn back in. In
-     * exclude mode a hole is something a ticked box removed, so filling it
-     * would undo the tick -- the option does nothing here, and a switch that
-     * is visible, ticked and inert reads as a setting being ignored.
+     * "Count grass under trees" fills small holes in the lawn back in. Finding
+     * grass, a hole is canopy over real grass, so it is on. Excluding objects,
+     * a hole is something a ticked box removed, so filling it undoes the tick
+     * -- off by default, still offered, because the trees prompt runs wide.
+     * Still visible either way: withdrawing it would hide the override.
      */
-    check('the grass-under-trees option is withdrawn in exclude mode',
-      await page.locator('#trees-opt').isHidden());
+    check('the gap option is still offered in exclude mode',
+      await page.locator('#trees-opt').isVisible());
+    check('but unticked, because a gap here is something a box removed',
+      (await page.locator('#toggle-trees').isChecked()) === false);
+    const exclNote = await page.textContent('#trees-note');
+    check('and it says what it does HERE, not what it does in the other mode',
+      /removed|asked for/.test(exclNote), exclNote.trim().slice(0, 80));
 
     // Back to the default method: nothing after this should be subtracting.
     await page.selectOption('#model-choice', models.chosen);
     await page.waitForTimeout(200);
     check('and the boxes go away again with it',
       (await page.evaluate(() => window.__lmModels().excludes.visible)) === false);
-    check('and the grass-under-trees option comes back with Find grass',
-      await page.locator('#trees-opt').isVisible());
+    check('and the gap option comes back ticked for Find grass',
+      await page.locator('#toggle-trees').isChecked());
   }
 
   /*
@@ -1111,6 +1117,47 @@ check('a fine brush is genuinely narrower', fine.diameterPx < bulk.diameterPx,
   `fine ${fine.diameterPx} px vs bulk ${bulk.diameterPx} px`);
 check('and the preview follows it', fine.previewWidth === fine.diameterPx,
   `preview ${fine.previewWidth} px vs brush ${fine.diameterPx} px`);
+
+/* --------------------------------------------- moving the map with a tool on */
+/*
+ * THE COMPLAINT: with a brush selected the map could not be moved at all.
+ *
+ * It could not, and this is the exact mechanism. Mapbox's `dragPan` is ONE
+ * handler covering one finger and two, so switching it off to stop a brush
+ * stroke panning the map also removed the two-finger pan that would have been
+ * the way out. On a phone that is a dead end: the part of the lawn that is off
+ * screen cannot be reached without putting the tool down, scrolling, and
+ * picking it up again.
+ *
+ * A tool now claims the gesture in the capture phase instead, so Mapbox's
+ * handlers stay enabled throughout and a second finger gets an ordinary map.
+ * "Is dragPan still enabled while a brush is live" is the whole question, and
+ * nothing on screen can answer it.
+ */
+console.log('\n--- panning while a tool is armed ---');
+const withTool = await page.evaluate(() => window.__lmGestures());
+check('the map can still be panned with a brush selected',
+  withTool.dragPan === true,
+  'disabling this is what made two-finger panning impossible');
+check('and pinch-zoom is still live alongside it', withTool.touchZoom === true);
+check('a held press is offered as the one-handed way out',
+  withTool.holdMs >= 300 && withTool.holdMs <= 800, `${withTool.holdMs} ms`);
+check('and nothing is panning until somebody asks for it',
+  withTool.panning === false);
+
+/* ------------------------------------------------------------ north is up */
+/*
+ * A two-finger twist is easy to trigger by accident while pinching, and there
+ * is no compass on screen to undo it with. Every measurement here is read
+ * against a satellite photograph, so "which way is the street" is how a person
+ * checks they are looking at their own lot.
+ */
+console.log('\n--- north stays up ---');
+const facing = await page.evaluate(() => window.__lmGestures());
+check('rotation is switched off, not merely unused', facing.dragRotate === false,
+  'a gesture that cannot fire cannot leave the map crooked');
+check('north is up', facing.bearing === 0, `${facing.bearing}°`);
+check('and the map is not tilted', facing.pitch === 0, `${facing.pitch}°`);
 
 /* ------------------------------- a stroke must not disturb what it missed */
 /*

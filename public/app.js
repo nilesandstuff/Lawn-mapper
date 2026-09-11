@@ -64,6 +64,22 @@ const state = {
 
   edgeFt: 0,          // shrink (-) or grow (+) the detected outline, in feet
   drawingParcel: false,
+
+  /*
+   * "Count grass under trees", remembered per arithmetic rather than globally.
+   *
+   * The option means opposite things in the two modes. Finding grass, a hole in
+   * the lawn is somewhere the model could not see through canopy, and filling
+   * it is the better guess -- so it is on. Excluding objects, a hole is
+   * something a ticked box removed, and filling it hands that straight back --
+   * so it is off, and ticking it is a deliberate "the trees box is too greedy,
+   * give me the small gaps back".
+   *
+   * Two remembered values rather than one, because a single switch would carry
+   * a decision made about one arithmetic into the other, where it means the
+   * reverse. Whichever mode is showing puts its own answer in the box.
+   */
+  fillGaps: { find: true, exclude: false },
 };
 
 /**
@@ -334,6 +350,25 @@ if (typeof window !== 'undefined') {
     previewWidth: map?.getLayer('erase-stroke')
       ? map.getPaintProperty('erase-stroke', 'line-width')
       : null,
+  });
+
+  /*
+   * The map's own gesture settings, for proving north stays north and that a
+   * tool never takes panning away with it.
+   *
+   * dragPan is the one that matters: it is a single handler for one finger and
+   * two, so a brush that switched it off to protect its stroke also removed the
+   * two-finger pan. "Is it still enabled while a brush is live" is the exact
+   * question, and it is not answerable by looking at the screen.
+   */
+  window.__lmGestures = () => ({
+    bearing: map ? map.getBearing() : null,
+    pitch: map ? map.getPitch() : null,
+    dragRotate: Boolean(map?.dragRotate?.isEnabled()),
+    dragPan: Boolean(map?.dragPan?.isEnabled()),
+    touchZoom: Boolean(map?.touchZoomRotate?.isEnabled()),
+    panning: panningHeld(),
+    holdMs: PAN_HOLD_MS,
   });
 
   /* The phantom midpoints, where they are on screen, ready to be tapped. */
@@ -626,10 +661,32 @@ async function initMap() {
     style: 'mapbox://styles/mapbox/satellite-streets-v12',
     center: [-85.67, 43.0],
     zoom: 9,
+    /*
+     * NORTH IS UP, AND STAYS UP.
+     *
+     * A two-finger twist is easy to do by accident while pinching to zoom, and
+     * a rotated aerial photograph is genuinely disorienting: the roof you were
+     * using to find your house is suddenly at the wrong angle, and there is no
+     * compass on screen to put it back with (the navigation control is built
+     * without one). Worse for this app than for a map in general -- every
+     * measurement is read against a satellite image, and "which way is the
+     * street" is how a person checks they are looking at the right lot.
+     *
+     * Tilt goes with it. There is nothing to see in three dimensions here, and
+     * a pitched view makes the shapes on the ground the wrong shape.
+     */
+    bearing: 0,
+    pitch: 0,
+    dragRotate: false,
+    pitchWithRotate: false,
+    touchPitch: false,
     // Required so the map canvas can still be read after the browser has
     // composited it -- without this, "Save image" produces a blank PNG.
     preserveDrawingBuffer: true,
   });
+  // The constructor flag covers the mouse; this is the two-finger twist, which
+  // is a separate handler and the one that actually gets triggered by accident.
+  map.touchZoomRotate.disableRotation();
   map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
 
   /*
@@ -1579,16 +1636,44 @@ function updateUndoButton() {
  * all of them at once, including the ones a person would forget, so the taps
  * went away and the plumbing stayed.
  */
+/*
+ * WHY THE TOUCH LISTENERS SIT ON THE CONTAINER, IN THE CAPTURE PHASE.
+ *
+ * Mapbox registers its own touch handlers on the canvas container, and it
+ * registers them at construction -- before any of ours. Two listeners on the
+ * same element both run, in registration order, and preventDefault does not
+ * stop the other one. So while a brush was armed there was no way to say "this
+ * drag is mine" except `map.dragPan.disable()`.
+ *
+ * That worked, and it is what made the map unpannable with a tool selected:
+ * dragPan is ONE handler covering one finger and two, so switching it off to
+ * protect a brush stroke also switched off the two-finger pan that would have
+ * been the way out.
+ *
+ * Capturing on the container -- the parent of the element Mapbox listens on --
+ * means our handler runs FIRST and can decide, per event, who the gesture
+ * belongs to. stopPropagation keeps a one-finger paint away from the map;
+ * letting the event through hands the map a real two-finger gesture with its
+ * own handlers fully enabled, so pan and pinch-zoom work exactly as they do
+ * with no tool armed. Nothing is disabled, so nothing has to be remembered and
+ * put back.
+ *
+ * The mouse keeps dragPan.disable(), because Mapbox listens for mousemove on
+ * the document and a capture listener on the map cannot get in front of that.
+ * A mouse has no second finger to pan with anyway; press-and-hold is its way
+ * out, and that path drives the map directly.
+ */
 function armLawnPicker() {
   diag.armed = true;
   map.getCanvas().style.cursor = 'crosshair';
   map.on('click', onMapClick);
-  const el = map.getCanvasContainer();
-  el.addEventListener('touchstart', onTouchStart, { passive: true });
-  // Not passive: dragging a corner has to stop the map panning under it, and
-  // preventDefault is the only way to say so.
-  el.addEventListener('touchmove', onTouchMove, { passive: false });
-  el.addEventListener('touchend', onTouchEnd, { passive: true });
+  const el = map.getContainer();
+  el.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });
+  // Not passive: a gesture we claim has to stop the page scrolling under it,
+  // and preventDefault is the only way to say so.
+  el.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
+  el.addEventListener('touchend', onTouchEnd, { capture: true, passive: true });
+  el.addEventListener('touchcancel', onTouchEnd, { capture: true, passive: true });
   el.addEventListener('mousedown', onMouseDown);
   window.addEventListener('mousemove', onMouseMove);
   window.addEventListener('mouseup', onMouseUp);
@@ -1596,16 +1681,122 @@ function armLawnPicker() {
 
 function disarmLawnPicker() {
   diag.armed = false;
+  endPanHold();
   endDrag();
   map.getCanvas().style.cursor = '';
   map.off('click', onMapClick);
-  const el = map.getCanvasContainer();
-  el.removeEventListener('touchstart', onTouchStart);
-  el.removeEventListener('touchmove', onTouchMove);
-  el.removeEventListener('touchend', onTouchEnd);
+  const el = map.getContainer();
+  el.removeEventListener('touchstart', onTouchStart, { capture: true });
+  el.removeEventListener('touchmove', onTouchMove, { capture: true });
+  el.removeEventListener('touchend', onTouchEnd, { capture: true });
+  el.removeEventListener('touchcancel', onTouchEnd, { capture: true });
   el.removeEventListener('mousedown', onMouseDown);
   window.removeEventListener('mousemove', onMouseMove);
   window.removeEventListener('mouseup', onMouseUp);
+}
+
+/* ------------------------------------------------- panning with a tool on */
+/**
+ * Press and hold, and the tool gets out of the way.
+ *
+ * The complaint this answers: with a brush selected there was no way to move
+ * the map. Every drag painted. On a phone that is a dead end -- you cannot
+ * reach the part of the lawn that is off screen without first putting the tool
+ * away, scrolling, and picking it up again, three times per lawn.
+ *
+ * Two ways out, because they suit different moments. Two fingers is the one
+ * people already know and it needs no waiting, so it is the main answer. A
+ * held press is the one-handed answer, and half a second is long enough that
+ * no ordinary brush stroke starts with one: a stroke begins by moving, and any
+ * movement at all cancels the hold.
+ *
+ * The pan is driven here rather than handed back to Mapbox. Handing over
+ * mid-gesture means Mapbox has to pick up a drag it never saw begin, which it
+ * has no way to do; panBy from our own deltas is exact, works identically for
+ * a finger and a mouse, and cannot leave the map in a half-started state.
+ */
+const PAN_HOLD_MS = 500;
+let panHold = null; // { x, y, timer, active }
+
+/**
+ * Which kind of pointer started the gesture in progress.
+ *
+ * It decides how the map is kept still while a tool paints, and the two
+ * answers are not interchangeable. A touch gesture is stopped by claiming the
+ * event in the capture phase, which leaves every Mapbox handler enabled and
+ * ready for a second finger. A mouse cannot be stopped that way -- Mapbox
+ * listens for mousemove on the document, in front of which nothing on the map
+ * can get -- so it still needs dragPan switched off and switched back on.
+ *
+ * Using the mouse answer for touch is the bug this replaces: dragPan is one
+ * handler for one finger and two, so disabling it to protect a brush stroke
+ * disabled the two-finger pan as well.
+ */
+let gestureIsTouch = false;
+
+/** Stop the map moving under a stroke, by whichever means suits the pointer. */
+function holdMapStill() {
+  if (!gestureIsTouch) map.dragPan.disable();
+}
+
+function beginPanHold(x, y) {
+  cancelPanHold();
+  panHold = {
+    x, y, active: false,
+    timer: setTimeout(() => {
+      if (!panHold) return;
+      panHold.active = true;
+      // Whatever was half-drawn belongs to the gesture being abandoned.
+      discardStroke();
+      map.getCanvas().style.cursor = 'grabbing';
+      $('#pan-badge').hidden = false;
+      setHint('Panning — lift your finger to go back to the tool');
+    }, PAN_HOLD_MS),
+  };
+}
+
+/** Movement means it was a stroke after all, so the hold never matures. */
+function cancelPanHold() {
+  if (panHold?.timer) clearTimeout(panHold.timer);
+  panHold = null;
+}
+
+const panningHeld = () => Boolean(panHold?.active);
+
+/** Drag the map by the distance the pointer has travelled since the last event. */
+function panHoldTo(x, y) {
+  if (!panHold) return;
+  map.panBy([panHold.x - x, panHold.y - y], { duration: 0 });
+  panHold.x = x;
+  panHold.y = y;
+}
+
+function endPanHold() {
+  const was = panningHeld();
+  cancelPanHold();
+  if (!was) return false;
+  $('#pan-badge').hidden = true;
+  map.getCanvas().style.cursor = eraser || diag.armed ? 'crosshair' : '';
+  updatePromptHint();
+  return true;
+}
+
+/**
+ * Abandon a stroke without applying it.
+ *
+ * A pan must not erase a swathe of lawn on its way past, and a second finger
+ * landing mid-stroke is a person changing their mind about what this gesture
+ * was. endDrag() would commit what had been painted so far; this throws it
+ * away, which is the only safe reading of "I did not mean that".
+ */
+function discardStroke() {
+  if (eraser) {
+    eraser.painting = false;
+    eraser.stroke = [];
+    drawEraseStroke();
+    map.dragPan.enable();
+  }
+  drag = null;
 }
 
 /* ---------------------------------------------------- dragging a corner */
@@ -1655,7 +1846,7 @@ function beginDrag(clientX, clientY) {
   if (eraser) {
     eraser.stroke = [];
     eraser.painting = true;
-    map.dragPan.disable();
+    holdMapStill();
     return true;
   }
   const hit = vertexAt(clientX, clientY);
@@ -1681,7 +1872,7 @@ function updateDrag(clientX, clientY) {
     pushHistory('drag');
     // Select it on the first real movement, so the panel shows what is moving.
     selectVertex({ featureId: drag.featureId, ring: drag.ring, index: drag.index });
-    map.dragPan.disable();
+    holdMapStill();
   }
 
   const rect = map.getCanvasContainer().getBoundingClientRect();
@@ -1712,22 +1903,78 @@ function endDrag() {
 }
 
 function onMouseDown(e) {
-  if (e.button === 0) beginDrag(e.clientX, e.clientY);
+  if (e.button !== 0) return;
+  gestureIsTouch = false;
+  beginPanHold(e.clientX, e.clientY);
+  beginDrag(e.clientX, e.clientY);
 }
 
 function onMouseMove(e) {
+  if (panningHeld()) {
+    panHoldTo(e.clientX, e.clientY);
+    e.preventDefault();
+    return;
+  }
+  if (movedEnoughToCancelHold(e.clientX, e.clientY)) cancelPanHold();
   if (updateDrag(e.clientX, e.clientY)) e.preventDefault();
 }
 
 function onMouseUp() {
+  // A held press that turned into a pan is not also a click on the map.
+  if (endPanHold()) { handled = { at: Date.now(), x: null, y: null }; return; }
   // A click follows a mouseup. Suppress it after a real drag so releasing the
   // finger does not immediately re-select whatever is under it.
   if (endDrag()) handled = { at: Date.now(), x: null, y: null };
 }
 
+/** Has the pointer travelled far enough that this is a stroke, not a hold? */
+function movedEnoughToCancelHold(x, y) {
+  return Boolean(panHold) && !panHold.active
+    && Math.hypot(x - panHold.x, y - panHold.y) > TAP_SLOP_PX;
+}
+
+/**
+ * One finger is the tool's. Two are the map's. A held one is the map's too.
+ *
+ * Every branch either claims the gesture -- stopPropagation, so Mapbox's own
+ * handlers never see it -- or lets it through untouched. There is no third
+ * state, and nothing is left disabled afterwards, which is what went wrong
+ * with the version that switched dragPan off: the switch protected the brush
+ * and took the way out with it.
+ */
 function onTouchMove(e) {
-  if (e.touches.length !== 1) return;
-  if (updateDrag(e.touches[0].clientX, e.touches[0].clientY)) e.preventDefault();
+  if (panningHeld()) {
+    const t = e.touches[0];
+    if (t) panHoldTo(t.clientX, t.clientY);
+    claim(e);
+    return;
+  }
+
+  /*
+   * A SECOND FINGER HANDS THE MAP BACK.
+   *
+   * Not swallowed, so Mapbox gets a genuine multi-touch gesture with pan and
+   * pinch-zoom both live -- the ordinary map behaviour, available without
+   * putting the tool down. Whatever the first finger had started is thrown
+   * away rather than committed: two fingers is somebody changing their mind,
+   * not somebody finishing a stroke.
+   */
+  if (e.touches.length !== 1) {
+    cancelPanHold();
+    discardStroke();
+    touchStart = null;
+    return;
+  }
+
+  const t = e.touches[0];
+  if (movedEnoughToCancelHold(t.clientX, t.clientY)) cancelPanHold();
+  if (updateDrag(t.clientX, t.clientY)) claim(e);
+}
+
+/** This gesture is ours: no map pan, no page scroll, no Mapbox handlers. */
+function claim(e) {
+  e.preventDefault();
+  e.stopPropagation();
 }
 
 /*
@@ -1753,15 +2000,33 @@ const ECHO_MS = 700;       // a synthetic click follows its touch closely
 const ECHO_SLOP_PX = 30;   // ...and lands on the same spot
 
 function onTouchStart(e) {
-  touchStart = e.touches.length === 1
-    ? { x: e.touches[0].clientX, y: e.touches[0].clientY, at: Date.now() }
-    : null; // two fingers is a zoom, never a tap
-  if (touchStart) beginDrag(touchStart.x, touchStart.y);
+  /*
+   * Deliberately NOT claimed, however many fingers there are.
+   *
+   * Mapbox arms its pan on touchstart and only acts on touchmove, so letting
+   * the start through costs nothing and keeps its handlers primed. Swallowing
+   * it would leave the map unable to pan even once we decide the gesture is
+   * not ours -- which is the whole point of deciding per move.
+   */
+  if (e.touches.length !== 1) {
+    // Two fingers is a zoom or a pan, never a tap, and never a stroke.
+    touchStart = null;
+    cancelPanHold();
+    discardStroke();
+    return;
+  }
+  gestureIsTouch = true;
+  touchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY, at: Date.now() };
+  beginPanHold(touchStart.x, touchStart.y);
+  beginDrag(touchStart.x, touchStart.y);
 }
 
 function onTouchEnd(e) {
   const start = touchStart;
   touchStart = null;
+
+  // A held press that became a pan is not a tap on whatever is underneath it.
+  if (endPanHold()) return;
 
   // A finished drag is not also a tap: the corner has already moved, and
   // re-selecting under the finger would fight the thing the user just did.
@@ -1953,18 +2218,7 @@ function updatePromptHint() {
   // Nothing to measure outside of until there is a boundary to be outside of.
   $('#outside-opt').hidden = needsParcel;
 
-  /*
-   * "Count grass under trees" belongs to Find grass only.
-   *
-   * In exclude mode every gap in the lawn is something a ticked box put there,
-   * so the option has nothing left to act on -- and a switch that is visible,
-   * ticked, and inert reads as a setting that is being ignored. Follows the
-   * measurement on screen once there is one, because that is what the option
-   * would re-trace; the picker can be changed without re-detecting.
-   */
-  $('#trees-opt').hidden = state.lastMask
-    ? Boolean(state.lastMask.subtractive)
-    : excludesWanted();
+  refreshTreesOption();
 
   $('#btn-detect').disabled =
     !state.frame || same || needsPins || needsParcel || needsExclusion;
@@ -2033,6 +2287,42 @@ function exclusionInfo(id) {
 const excludeKey = () => state.exclude.slice().sort().join(',');
 
 const excludesWanted = () => Boolean(modelInfo(state.model).exclusions);
+
+/**
+ * Which arithmetic the tree option is currently answering for.
+ *
+ * The measurement on screen wins over the picker, because the option re-traces
+ * what is already there -- and the picker can be changed without detecting
+ * again, which would otherwise flip the box under a result it does not belong
+ * to.
+ */
+const fillGapsMode = () =>
+  (state.lastMask ? Boolean(state.lastMask.subtractive) : excludesWanted())
+    ? 'exclude'
+    : 'find';
+
+/**
+ * Put the remembered answer for this mode in the box, and say what it does
+ * HERE.
+ *
+ * The same sentence cannot describe both. Finding grass, filling a gap is a
+ * correction to the model. Excluding objects, it is an override of a box the
+ * user ticked -- worth offering, since the trees prompt reads about 25% wider
+ * than the trees really are, but not worth doing silently.
+ */
+function refreshTreesOption() {
+  const opt = $('#trees-opt');
+  if (!opt) return;
+  const mode = fillGapsMode();
+  const box = $('#toggle-trees');
+  box.checked = Boolean(state.fillGaps[mode]);
+  $('#trees-note').textContent = mode === 'exclude'
+    ? 'Small gaps left inside your lawn are counted as grass again — including '
+      + 'small trees the box above removed. Off by default here: you asked for '
+      + 'those to come off.'
+    : 'Canopy hides lawn that is really there. Small gaps inside your lawn are '
+      + 'counted as grass; big ones (a pool, a shed) are not.';
+}
 
 function buildExclusions() {
   const list = $('#exclude-list');
@@ -2335,6 +2625,10 @@ async function detect() {
     refreshOverlayLabel();
     if ($('#toggle-overlay').checked) showOverlay();
     refreshSensitivity();
+    // The measurement now on screen decides which arithmetic the gap option is
+    // answering for, so it has to be re-read against the result rather than
+    // against whatever the picker says next.
+    refreshTreesOption();
 
     refreshMeasurement();
     refreshSurveyed();
@@ -3265,7 +3559,22 @@ function traceDetection({ layers, subtractive, invert, rendered, edgeFt = 0 }) {
      * adding a second exclusion could ADD square footage -- the thing that
      * cannot happen when you take more away, and the reason this is off here.
      */
-    fillGapsUnderPx: !subtractive && $('#toggle-trees').checked
+    /*
+     * FILLING GAPS MEANS OPPOSITE THINGS IN THE TWO MODES, which is why the
+     * answer is remembered per mode rather than read off one global switch.
+     *
+     * Finding grass, a hole in the lawn is somewhere the detector could not see
+     * -- usually canopy over grass that is really there -- so filling it is the
+     * better guess and it is on by default.
+     *
+     * Excluding objects, a hole IS the thing a ticked box removed. Filling it
+     * hands that straight back, and at 900 sq ft the limit covers most
+     * individual trees, so the box would largely undo itself. Off by default
+     * here, and still offered, because the trees prompt reads about 25% wider
+     * than the trees really are and giving the small gaps back is a reasonable
+     * thing to want. Deliberate, not silent.
+     */
+    fillGapsUnderPx: $('#toggle-trees').checked
       ? Math.round(TREE_GAP_SQFT / sqFtPerPx)
       : 0,
     /*
@@ -4758,8 +5067,8 @@ function reset() {
   state.measureOutside = false;
   $('#toggle-outside').checked = false;
   $('#outside-opt').hidden = true;
-  // Back to Find grass, where this option means something again.
-  $('#trees-opt').hidden = false;
+  // Back to Find grass, and to both defaults for the gap option.
+  state.fillGaps = { find: true, exclude: false };
   state.drawingParcel = false;
   state.edgeFt = DEFAULT_EDGE_FT;
   $('#edge-ft').value = String(DEFAULT_EDGE_FT);
@@ -4942,6 +5251,19 @@ window.addEventListener('resize', placeTip);
 
 $('#btn-png').addEventListener('click', exportPng);
 $('#btn-print').addEventListener('click', () => window.print());
+
+/*
+ * Ticking this used to do NOTHING until the next detection.
+ *
+ * The option changes how a mask already in hand is traced, which costs nothing
+ * and takes no time -- so the only reason it waited for a fresh prediction was
+ * that nothing was listening. A switch whose effect appears several minutes and
+ * one payment later is indistinguishable from a switch that does not work.
+ */
+$('#toggle-trees').addEventListener('change', (e) => {
+  state.fillGaps[fillGapsMode()] = e.target.checked;
+  retrace();
+});
 /*
  * Going back inside the line must not cost a detection.
  *

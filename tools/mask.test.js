@@ -573,6 +573,11 @@ console.log(`\nframe: zoom ${FRAME.zoom} @ ${IMG}px  ->  ${MPP.toFixed(4)} m/px\
    * the lots it was ticked for, and the amount given back grew with the number
    * of boxes, because every extra concept punches more holes.
    *
+   * So it is off by default in exclude mode -- still offered, because the trees
+   * prompt reads about 25% wider than the trees really are and asking for the
+   * small gaps back is a reasonable thing to want, but never the silent
+   * default.
+   *
    * These clumps are 100 px each against a 400 px limit -- the same shape as a
    * scattered-tree lot, and the arithmetic to pin, because the tracer is where
    * it would come back.

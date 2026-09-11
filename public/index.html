@@ -265,15 +265,18 @@
       </label>
 
       <!--
-        Only shown for "Find grass". In exclude mode a gap in the lawn is
-        something the user ticked a box to remove, so filling it back in would
-        undo the tick -- see traceDetection.
+        Offered in both modes, but it means opposite things in them, so the
+        answer is remembered per mode and the wording below is rewritten to
+        match -- see refreshTreesOption. On for "find grass" (a gap is canopy
+        over real grass), off for "exclude" (a gap is something a ticked box
+        removed).
       -->
       <label class="opt" id="trees-opt">
         <input type="checkbox" id="toggle-trees" checked>
         <span>Count grass under trees
-          <small>Canopy hides lawn that is really there. Small gaps inside your
-            lawn are counted as grass; big ones (a pool, a shed) are not.</small>
+          <small id="trees-note">Canopy hides lawn that is really there. Small
+            gaps inside your lawn are counted as grass; big ones (a pool, a
+            shed) are not.</small>
         </span>
       </label>
 
@@ -407,6 +410,20 @@
       <p class="coach-title" id="coach-title"></p>
       <p class="coach-text" id="coach-text"></p>
       <button class="coach-ok" id="coach-ok">Got it</button>
+    </div>
+
+    <!--
+      Shown while a held press has taken the gesture away from the tool. A
+      cursor change says this on a desktop; on a phone there is no cursor, and
+      "why is the map moving instead of painting" needs an answer on screen.
+    -->
+    <div class="panbadge" id="pan-badge" hidden aria-hidden="true">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M9 11V5.4a1.4 1.4 0 0 1 2.8 0V11m0-1.2V4.3a1.4 1.4 0 0 1 2.8 0v5.5m0-.7a1.4 1.4 0 0 1 2.8 0V15m-8.4-4a1.4 1.4 0 0 0-2.8 0v3.2c0 3.6 2.4 6.6 6 6.6h1.4c3 0 5.4-2.4 5.4-5.4V11"
+              fill="none" stroke="currentColor" stroke-width="1.7"
+              stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span>Panning</span>
     </div>
 
     <div class="hint" id="map-hint" hidden></div>
