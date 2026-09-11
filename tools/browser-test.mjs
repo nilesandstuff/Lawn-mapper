@@ -1593,6 +1593,10 @@ console.log('\n--- developer mode ---');
   check('a half-typed minus leaves the setting alone',
     await page.evaluate(() => window.__lmSetEdge('-')) === -3);
   check('as does a word', await page.evaluate(() => window.__lmSetEdge('abc')) === -3);
+  check('and a bare unit left behind by a half-deleted entry',
+    await page.evaluate(() => window.__lmSetEdge('ft')) === -3);
+  check('and an empty field', await page.evaluate(() => window.__lmSetEdge('')) === -3,
+    'stripping these leaves "", and Number("") is 0 -- which flattened the outline');
 
   check('and a pasted unit is read, not rejected',
     await page.evaluate(() => window.__lmSetEdge('4 ft')) === 4);

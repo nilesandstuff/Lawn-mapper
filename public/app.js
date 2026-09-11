@@ -3038,7 +3038,15 @@ const EDGE_STEP_FT = 1;
  * silently re-tracing the lawn underneath the person typing.
  */
 function parseEdgeFt(text) {
-  const n = Number(String(text).trim().replace(/[^0-9.+-]/g, ''));
+  const cleaned = String(text).trim().replace(/[^0-9.+-]/g, '');
+  /*
+   * A DIGIT IS REQUIRED, and leaving that out was a real bug this test caught:
+   * stripping "abc" leaves "", and Number("") is 0, not NaN -- so typing a word
+   * snapped the outline flat instead of being ignored. Same for "-", "+", "."
+   * and the bare "ft" left behind by a half-deleted entry.
+   */
+  if (!/[0-9]/.test(cleaned)) return null;
+  const n = Number(cleaned);
   if (!Number.isFinite(n)) return null;
   // Quarter feet, which is finer than anyone can see on the map and keeps the
   // field from filling with floating-point dust.
