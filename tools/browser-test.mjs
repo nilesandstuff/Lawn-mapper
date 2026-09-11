@@ -1479,6 +1479,13 @@ console.log('\n--- developer mode ---');
   check('and the Testing method is not among the ones offered',
     !shut.offered.includes('sam3_testing'), shut.offered.join(', '));
 
+  /* And an ordinary visitor must not be asking for the larger allowance --
+   * the flag is unguarded, so the only thing keeping it honest is that the
+   * app does not send it unless the mode is really on. */
+  const shutBody = await page.evaluate(() => window.__lmDetectBody());
+  check('and an ordinary visitor does not ask for the developer allowance',
+    !('dev' in shutBody), JSON.stringify(shutBody.dev));
+
   /* Unlocking is by URL, which is the only thing typeable on a phone. */
   await page.goto(`${BASE}#tinker`, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await page.waitForFunction(() => window.__lmDev !== undefined, { timeout: 30000 });
@@ -1550,6 +1557,30 @@ console.log('\n--- developer mode ---');
   const zero = await page.evaluate(() => window.__lmDev());
   check('and a threshold of zero survives, which truthiness would drop',
     zero.overrides.threshold === 0, JSON.stringify(zero.overrides));
+
+  /*
+   * THE LARGER ALLOWANCE HAS TO BE IN THE REQUEST, not just in the app.
+   *
+   * This shipped broken and every layer had a passing test: the Worker honoured
+   * the flag, the badge asked for it and showed fifty, and the detection was
+   * still refused at twenty. Nothing checked the one link between them --
+   * whether the browser actually put the flag in the body it posts.
+   *
+   * Read off the REAL builder that detect() calls, not a copy of it. A test
+   * that assembled its own body would have agreed with itself and proved
+   * nothing, which is how this got through in the first place.
+   */
+  const devBody = await page.evaluate(() => window.__lmDetectBody());
+  check('an unlocked browser asks for the developer allowance in the request',
+    devBody.dev === true, `dev=${JSON.stringify(devBody.dev)}`);
+  check('and still sends its client id, which is what the allowance counts',
+    typeof devBody.clientId === 'string' && devBody.clientId.length > 0);
+
+  /* And the badge has to be asking against the same ceiling, or the two
+   * disagree on screen exactly as they did when this was broken. */
+  const badge = await page.textContent('#quota-badge');
+  check('and the badge counts against the developer ceiling too',
+    /of 50 detections/.test(badge), badge.trim());
 
   /*
    * THE TESTING METHOD. Its reason for existing is that overriding the prompt

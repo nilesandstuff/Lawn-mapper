@@ -165,6 +165,22 @@ if (typeof window !== 'undefined') {
     return draw.getAll().features.length;
   };
 
+  /*
+   * The real body a detection would post, built by the real function.
+   *
+   * Not a reconstruction: detect() calls this same function. A test that built
+   * its own copy of the body would agree with itself no matter what the app
+   * sent, which is exactly how the developer allowance shipped broken -- the
+   * Worker honoured the flag, the badge asked for it, and nothing checked that
+   * the browser put it in the request.
+   */
+  window.__lmDetectBody = () => detectionRequest(
+    state.frame || { lng: 0, lat: 0, zoom: 19, size: 640 },
+    effectiveProvider(state.provider),
+    state.model,
+    []
+  );
+
   /* Developer mode: whether it is unlocked, and what it would send. */
   window.__lmDev = () => ({
     on: state.dev,
@@ -2049,6 +2065,50 @@ function setModel(id) {
 
 /* ------------------------------------------------------------- detection */
 
+/**
+ * Exactly what a detection posts.
+ *
+ * A named function rather than an object literal inside detect(), so a test can
+ * look at the real thing instead of at a reconstruction of it. That distinction
+ * is the whole reason this exists: "the developer allowance is not being
+ * applied" was reported with the badge reading fifty and the refusal counting
+ * against twenty, and every layer had a passing test -- the Worker honours the
+ * flag, the badge asks for it -- because nothing tested whether the browser
+ * actually PUT it in the body. A second copy of this logic written for a test
+ * would have agreed with itself and proved nothing.
+ */
+function detectionRequest(frame, provider, model, points) {
+  return {
+    ...frame, provider, model, points, clientId: state.clientId,
+    // One prediction per ticked box. Sent even when the method does not use
+    // them, because the Worker decides which fields apply and a second copy of
+    // that rule here is a second copy that can be wrong.
+    exclude: state.exclude,
+    /*
+     * Asks for the larger developer allowance.
+     *
+     * `true` or absent, never `false`: the Worker tests `=== true`, and sending
+     * an explicit false is a third state for something that has two.
+     *
+     * Not a credential and not treated as one -- see quota.js for why a
+     * client-side secret could not make it stronger than the unlock key that is
+     * already plain text in this file.
+     */
+    ...(state.dev ? { dev: true } : {}),
+    ...devOverrides(),
+    /*
+     * The address and the lot size ride along for the test log. Neither changes
+     * what gets detected -- the server measures from the frame -- but "it got
+     * my back lawn wrong" cannot be reproduced from a pair of coordinates
+     * alone, and the county's own acreage is the yardstick any complaint about
+     * a lawn figure is really being made against.
+     */
+    address: state.chosen?.label || null,
+    parcelSqFt: state.parcel ? measure(state.parcel.geometry).squareFeet : null,
+    county: state.parcel?.properties?.county || null,
+  };
+}
+
 async function detect() {
   if (!state.frame) return;
 
@@ -2096,28 +2156,7 @@ async function detect() {
     let data = await api('/api/segment', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      /*
-       * The address and the lot size ride along for the test log. Neither
-       * changes what gets detected -- the server measures from the frame --
-       * but "it got my back lawn wrong" cannot be reproduced from a pair of
-       * coordinates alone, and the county's own acreage is the yardstick any
-       * complaint about a lawn figure is really being made against.
-       */
-      body: JSON.stringify({
-        ...frame, provider, model, points, clientId: state.clientId,
-        // One prediction per ticked box. Sent even when the method does not
-        // use them, because the Worker decides which fields apply and a
-        // second copy of that rule here is a second copy that can be wrong.
-        exclude: state.exclude,
-        // Asks for the larger developer allowance. Not a credential and not
-        // treated as one -- see quota.js for why a client-side secret could
-        // not make it stronger than the unlock key already in this file.
-        dev: state.dev || undefined,
-        ...devOverrides(),
-        address: state.chosen?.label || null,
-        parcelSqFt: state.parcel ? measure(state.parcel.geometry).squareFeet : null,
-        county: state.parcel?.properties?.county || null,
-      }),
+      body: JSON.stringify(detectionRequest(frame, provider, model, points)),
       // Replicate holds the connection for about a minute before answering.
       timeoutMs: 90000,
     });
@@ -2271,13 +2310,23 @@ async function detect() {
        */
       const left = Number.isFinite(b.limit - b.used) ? b.limit - b.used : null;
       const short = b.wanted > 1 && left !== null && left > 0;
+      /*
+       * NAME THE CEILING THAT REFUSED IT.
+       *
+       * "You've used today's detections" was true and useless. The badge said
+       * fifty left and the refusal counted against twenty, and the message
+       * carried neither number -- so the one screen that could have shown the
+       * two halves disagreeing showed a sentence instead. A refusal that
+       * reports "20 of 20" next to a badge reading 50 diagnoses itself.
+       */
+      const counted = left !== null ? ` (${b.used} of ${b.limit} used)` : '';
       setStatus(
         short
           ? `That needs ${b.wanted} AI passes and you have ${left} left today. `
             + 'Untick a box or two, or draw the lawn by hand.'
           : b.reason === 'shared-network'
-            ? "Your network has hit today's detection limit. You can still draw the lawn by hand."
-            : "You've used today's detections. You can still draw the lawn by hand.",
+            ? `Your network has hit today's detection limit${counted}. You can still draw the lawn by hand.`
+            : `You've used today's detections${counted}. You can still draw the lawn by hand.`,
         'warn'
       );
     } else {
