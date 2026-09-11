@@ -32,6 +32,35 @@ const check = (name, ok, detail = '') => {
   if (!ok) failures++;
 };
 
+/**
+ * Open the tab a control lives on before reaching for it.
+ *
+ * The panel is three steps in three tabs now, so a control that is not on the
+ * open tab is not on the page. Written as a helper rather than a click per
+ * site because the mapping of control to tab is exactly the thing under test:
+ * if something moves tab, this file should need one line changed, not thirty.
+ */
+async function goTab(page, name) {
+  await page.click(`#tab-${name}`);
+  await page.waitForTimeout(150);
+}
+
+/**
+ * Take the lock off the detection tab, the way a person would.
+ *
+ * Hand corrections lock the AI controls, which is the point of them -- so a
+ * later section that wants to touch the model picker has to clear the lawn
+ * first, exactly as a user would. Pressing the notice's own button rather than
+ * reaching past it keeps this honest: if the button stops working, this fails.
+ */
+async function unlockDetect(page) {
+  await goTab(page, 'detect');
+  if (await page.locator('#lock-notice').isVisible()) {
+    await page.click('#btn-lock-clear');
+    await page.waitForTimeout(300);
+  }
+}
+
 const browser = await chromium.launch();
 const page = await browser.newPage({
   // Deliberately a phone: this is how it is being used, and touch changes how
@@ -111,6 +140,49 @@ check('reached the measure step', await page.locator('#step-work').isVisible());
 console.log(`      status: "${await page.locator('#status').textContent()}"`);
 console.log(`      hint:   "${await page.locator('#map-hint').textContent()}"`);
 
+/* ------------------------------------------------------------------ tabs */
+/*
+ * THE THREE STEPS, AS THREE TABS.
+ *
+ * The whole panel used to be one column with everything live at once, and the
+ * moment that mattered most -- handing over from the machine's answer to your
+ * own corrections -- was invisible. These checks are about where you LAND:
+ * a county boundary means step one is already done, so sitting on the address
+ * tab with nothing to do there would be a dead end pointing backwards.
+ */
+console.log('\n--- the step tabs ---');
+const tabs = await page.evaluate(() => window.__lmTabs());
+check('the panel is split into steps', tabs.tabs.length >= 3, tabs.tabs.join(', '));
+check('landing on the step that has something to do',
+  tabs.on === (tabs.hasParcel ? 'detect' : 'address'),
+  `on "${tabs.on}" with parcel=${tabs.hasParcel}`);
+check('and only that step\'s tools are on screen',
+  tabs.visiblePanes.length === 1 && tabs.visiblePanes[0] === tabs.on,
+  tabs.visiblePanes.join(', '));
+
+/*
+ * The map's buttons are the other half of the panel, so they follow the tab.
+ * Pressing "Line" while meaning to paint is not a mistake worth being able to
+ * make; on the drawing tab it is not there to press.
+ */
+check('the map shows only this step\'s tools too',
+  !tabs.rail.includes('parcel') || tabs.on === 'address',
+  `rail: ${tabs.rail.join(', ')} on "${tabs.on}"`);
+
+await goTab(page, 'draw');
+const drawRail = await page.evaluate(() => window.__lmTabs());
+check('the drawing tab offers the shape tools and not the boundary',
+  drawRail.rail.includes('shape') && !drawRail.rail.includes('parcel'),
+  drawRail.rail.join(', '));
+
+await goTab(page, 'address');
+const addrRail = await page.evaluate(() => window.__lmTabs());
+check('and the address tab offers the boundary and not the shape tools',
+  addrRail.rail.includes('parcel') && !addrRail.rail.includes('shape'),
+  addrRail.rail.join(', '));
+
+await goTab(page, 'detect');
+
 /*
  * `armed` means the map is listening for a tap, which is now only ever true
  * inside the edge tool. It used to mean "waiting for you to pin each patch of
@@ -186,8 +258,11 @@ await page.waitForTimeout(250);
  * conditional on what the parcel lookup actually returned, not on the test
  * address being a covered one.
  */
-// "Use property line" is only offered when the county actually returned one.
+// "Use property line" is only offered when the county actually returned one,
+// and it sits with the drawing tools, so ask there.
+await goTab(page, 'draw');
 const hasParcel = await page.locator('#btn-parcel-shape').isVisible();
+await goTab(page, 'detect');
 const layerTip = await page.evaluate(() => window.__lmTip());
 check(hasParcel
   ? 'dismissing it leads to the imagery tip'
@@ -682,6 +757,9 @@ check('the map is clear of tips before the editing checks',
 
 /* --------------------------------------------- the edge extension tool */
 console.log('\n--- edge extension ---');
+// "Use property line" makes a lawn the size of the lot, so it sits with the
+// drawing tools rather than with the boundary it is copied from.
+await goTab(page, 'draw');
 await page.click('#btn-parcel-shape');
 await page.waitForTimeout(800);
 
@@ -755,6 +833,94 @@ if (detectedSqft !== null && parcelSqft > 0) {
   // because a bare square-footage says nothing about whether the detection was
   // sensible, and the ratio does.
   console.log(`      detected lawn is ${(100 * detectedSqft / parcelSqft).toFixed(1)}% of the parcel`);
+}
+
+/* ------------------------------------------------- locks on redoing a step */
+/*
+ * A step cannot be redone once a later one has built on it.
+ *
+ * There is a lawn on the map now, put there by hand. Running the AI over it
+ * would throw those corrections away and moving the property line would
+ * re-trim them -- both silently, from a tab somebody wandered into. So both
+ * are greyed out with the reason on them, and both are one press from being
+ * available again. Refusing outright would be worse than the accident.
+ */
+console.log('\n--- locks ---');
+{
+  await goTab(page, 'detect');
+  const det = await page.evaluate(() => window.__lmTabs());
+  check('correcting by hand locks the AI tab', det.locked.includes('detect'),
+    `locked: ${det.locked.join(', ') || 'nothing'}`);
+  check('and says why, rather than just greying out',
+    det.noticeVisible === true);
+  check('the detect button is genuinely dead, not merely faded',
+    await page.evaluate(() => document.querySelector('#btn-detect').disabled) === true);
+
+  await goTab(page, 'address');
+  const addr = await page.evaluate(() => window.__lmTabs());
+  check('and a measured lawn locks the boundary tools too',
+    !addr.hasParcel || addr.locked.includes('address'),
+    `locked: ${addr.locked.join(', ') || 'nothing'} (parcel=${addr.hasParcel})`);
+
+  /* The way out is on the notice, and it keeps the boundary. */
+  await goTab(page, 'detect');
+  await page.click('#btn-lock-clear');
+  await page.waitForTimeout(400);
+  const freed = await page.evaluate(() => ({
+    ...window.__lmTabs(),
+    shapes: window.__lmShapeCount(),
+    parcel: Boolean(window.__lmTabs().hasParcel),
+  }));
+  check('clearing the lawn lifts every lock', freed.locked.length === 0,
+    `still locked: ${freed.locked.join(', ') || 'nothing'}`);
+  check('and takes the lawn with it', freed.shapes === 0, `${freed.shapes} shape(s)`);
+  check('but keeps the property line, which is the slow thing to redo',
+    freed.parcel === hasParcel, `parcel=${freed.parcel}`);
+}
+
+/* ---------------------------------------------------------- saved maps */
+/*
+ * A measurement is kept without being asked to be. A save button would mean
+ * losing work by forgetting to press it, and there is nothing here worth
+ * making somebody decide about.
+ */
+console.log('\n--- saved maps ---');
+{
+  await goTab(page, 'draw');
+  await page.click('#btn-parcel-shape');
+  await page.waitForTimeout(2200); // the write is debounced: a stroke is one edit
+
+  await goTab(page, 'saved');
+  const saved = await page.evaluate(() => window.__lmSaves());
+  check('a measurement is kept on its own', saved.entries.length > 0,
+    `${saved.entries.length} save(s)`);
+  check('and is listed under its address',
+    saved.rendered.length === saved.entries.length && saved.rendered.length > 0,
+    saved.rendered.join(' | '));
+  check('the store is capped so it cannot grow forever',
+    saved.entries.length <= saved.max, `${saved.entries.length} of ${saved.max}`);
+
+  /*
+   * ADDRESS + METHOD + ARITHMETIC IS WHAT MAKES TWO SAVES THE SAME SAVE.
+   * Re-measuring the same lot the same way updates that map rather than
+   * piling up a third, which is what lets one address hold two.
+   */
+  const before = saved.entries.length;
+  await goTab(page, 'draw');
+  // There are shapes on the map now, so the button asks before replacing them.
+  page.once('dialog', (d) => d.accept());
+  await page.click('#btn-parcel-shape');
+  await page.waitForTimeout(2200);
+  const again = await page.evaluate(() => window.__lmSaves());
+  check('measuring the same lot the same way updates that save, not a new one',
+    again.entries.length === before, `${before} -> ${again.entries.length}`);
+
+  /* The map goes away on the saves tab: there is nothing to edit there. */
+  await goTab(page, 'saved');
+  const onSaves = await page.evaluate(() => window.__lmTabs());
+  check('and no editing tools are offered while browsing saves',
+    onSaves.rail.length === 0, onSaves.rail.join(', '));
+  await goTab(page, 'draw');
 }
 
 /*
@@ -1467,6 +1633,13 @@ check('and shapes stay locked under the brush too',
 await page.click('#tool-points');
 await page.waitForTimeout(300);
 
+/*
+ * Everything above corrected the lawn by hand, which locks the AI tab on
+ * purpose. Clearing through the notice is how a person gets back to the model
+ * picker, so that is how this does it.
+ */
+await unlockDetect(page);
+
 const hasPinModel = await page.evaluate(() =>
   [...document.querySelectorAll('#model-choice option')].some((o) => o.value === 'sam2'));
 
@@ -1494,6 +1667,7 @@ if (hasPinModel) {
   check('and it is drawn while that is the mode',
     await page.evaluate(() => window.__lmPinsDrawn()) === true);
 
+  await goTab(page, 'draw');
   await page.click('#mode-shape');
   await page.waitForTimeout(400);
   const after = await page.evaluate(() => ({

@@ -113,74 +113,69 @@
     </section>
 
     <!-- 4. Measure ------------------------------------------------------- -->
+    <!--
+      THREE JOBS, THREE TABS.
+
+      Everything below used to be one long column: the address, the AI, the
+      drawing tools and the boundary editor all stacked together, all live at
+      once. Which made it impossible to tell which step you were on, and that
+      matters more now that a measurement can be saved and come back -- a save
+      is of a particular moment in a particular job.
+
+      So each tab shows only its own tools, and the map's own buttons follow
+      the tab (see refreshRail). Nothing is hidden that is in use; a tab whose
+      tools would now change a measurement you have already corrected by hand
+      greys them out and offers the two honest ways forward instead.
+    -->
     <section class="step" id="step-work" hidden>
       <div class="result" id="result" hidden>
         <div class="result-figure"><span id="result-sqft">—</span> <small>sq ft</small></div>
         <div class="result-sub" id="result-sub"></div>
       </div>
 
+      <nav class="tabs" id="tabs" role="tablist" aria-label="Which step you are on">
+        <button class="tab" type="button" id="tab-address" role="tab"
+                data-tab="address" aria-selected="false" aria-controls="pane-address">
+          <span class="tab-step">1</span>Address
+        </button>
+        <button class="tab" type="button" id="tab-detect" role="tab"
+                data-tab="detect" aria-selected="false" aria-controls="pane-detect">
+          <span class="tab-step">2</span>AI
+        </button>
+        <button class="tab" type="button" id="tab-draw" role="tab"
+                data-tab="draw" aria-selected="false" aria-controls="pane-draw">
+          <span class="tab-step">3</span>Draw
+        </button>
+        <button class="tab" type="button" id="tab-saved" role="tab"
+                data-tab="saved" aria-selected="false" aria-controls="pane-saved">
+          Saved
+        </button>
+      </nav>
+
       <div class="statusline" id="status"></div>
 
-      <!-- How to ask. Populated from /api/config, like the imagery list. -->
-      <div class="models" id="model-panel" hidden>
-        <label for="model-choice">AI method</label>
-        <select id="model-choice"></select>
-        <p class="sub" id="model-note"></p>
-
-        <!-- Exclude mode only. Each ticked box is a separate AI pass, which is
-             separate money and a separate wait, so the cost line is not an
-             extra: it is the thing that makes the choice an informed one. -->
-        <div class="excludes" id="exclude-panel" hidden>
-          <p class="excl-lead">Take these off the property:</p>
-          <div id="exclude-list"></div>
-          <p class="sub" id="exclude-cost"></p>
+      <!--
+        Shown at the top of a tab whose tools would undo work already done by
+        hand. Greying the controls out without saying why is how an app reads
+        as broken, so the reason and both ways forward live here together.
+      -->
+      <div class="locked" id="lock-notice" hidden>
+        <p class="lock-text" id="lock-text"></p>
+        <div class="tools">
+          <button class="ghost" type="button" id="btn-lock-clear">Clear the lawn and start again</button>
+          <button class="ghost" type="button" id="btn-lock-redetect">Run a new detection</button>
         </div>
       </div>
 
-      <div class="tools">
-        <button class="primary" id="btn-detect" disabled>Detect my lawn</button>
-        <button class="ghost" id="btn-draw">Draw it myself</button>
-        <button class="ghost" id="btn-draw-parcel" hidden>Draw the property line</button>
-        <button class="ghost" id="btn-parcel-shape" hidden>Use property line</button>
-        <button class="ghost" id="btn-undo" disabled>Undo</button>
-        <button class="ghost" id="btn-delete" disabled>Delete selected</button>
-        <button class="ghost" id="btn-clear">Clear all</button>
-      </div>
+      <!--
+        Corner and edge editing, for whichever outline is being edited.
 
-      <!-- Pull the detected outline in or push it out, in feet on the ground.
-           Free to move: it re-reads a mask already downloaded and runs no
-           new detection. -->
-      <div class="imagery" id="sens-panel" hidden>
-        <label for="edge-ft">Trim or extend the edge</label>
-        <!-- Buttons for nudging, a real field for typing. A slider could not
-             reach far enough to correct a treeline the AI puts several feet
-             too wide, and widening one only makes every step coarser. -->
-        <div class="stepper">
-          <button type="button" class="stepbtn" id="edge-minus" aria-label="Pull the outline in one foot">−</button>
-          <input type="text" id="edge-ft" inputmode="decimal" value="0"
-                 aria-label="How far to move the lawn outline, in feet">
-          <span class="stepunit">ft</span>
-          <button type="button" class="stepbtn" id="edge-plus" aria-label="Push the outline out one foot">+</button>
-        </div>
-        <p class="sub" id="sens-note"></p>
-      </div>
-
-      <!-- Only for the point-prompted model, which cannot run without pins. -->
-      <div class="pins" id="pin-panel" hidden>
-        <p class="pin-count" id="pin-count">Tap each part of your lawn</p>
-        <button class="ghost edge-secondary" id="btn-pins-clear">Remove all pins</button>
-      </div>
-
-
-      <!-- Which photograph. Populated from /api/config so the browser and the
-           Worker cannot disagree about what each source is. -->
-      <div class="imagery" id="imagery-panel" hidden>
-        <label for="imagery-source">Satellite image</label>
-        <select id="imagery-source"></select>
-        <p class="sub" id="imagery-note"></p>
-      </div>
-
-      <!-- Edge adjustment: for parcels that stop short of the road. -->
+        OUTSIDE the tabs on purpose: the same panel serves the property line on
+        the Address tab and the lawn's own corners on the Draw tab -- one set of
+        controls, two things they can be pointed at, and the wording inside is
+        rewritten to say which (see enterRingEditing). Two copies in two tabs
+        would be two chances for them to drift apart.
+      -->
       <div class="edgepanel" id="edge-panel" hidden>
         <p class="edge-info" id="edge-info">Tap the edge of your lawn nearest the road.</p>
         <div class="edge-controls" id="edge-controls" hidden>
@@ -202,6 +197,130 @@
         <button class="ghost edge-secondary" id="btn-tidy">Tidy up this boundary</button>
         <button class="ghost" id="btn-edge-done">Done adjusting</button>
       </div>
+
+      <!-- 4a. Address and property line ---------------------------------- -->
+      <div class="tabpane" id="pane-address" role="tabpanel" aria-labelledby="tab-address" hidden>
+        <p class="chosen" id="work-address"></p>
+
+        <div class="tools">
+          <button class="ghost" id="btn-draw-parcel" hidden>Draw the property line</button>
+        </div>
+
+        <p class="sub">Press <b>Line</b> on the map to move the boundary, or a
+          corner of it. Everything measured is trimmed to this line.</p>
+
+        <button class="link" data-action="restart">Start over with a new address</button>
+      </div>
+
+      <!-- 4b. AI detection ------------------------------------------------ -->
+      <div class="tabpane" id="pane-detect" role="tabpanel" aria-labelledby="tab-detect" hidden>
+        <!-- How to ask. Populated from /api/config, like the imagery list. -->
+        <div class="models" id="model-panel" hidden>
+          <label for="model-choice">AI method</label>
+          <select id="model-choice"></select>
+          <p class="sub" id="model-note"></p>
+
+          <!-- Exclude mode only. Each ticked box is a separate AI pass, which is
+               separate money and a separate wait, so the cost line is not an
+               extra: it is the thing that makes the choice an informed one. -->
+          <div class="excludes" id="exclude-panel" hidden>
+            <p class="excl-lead">Take these off the property:</p>
+            <div id="exclude-list"></div>
+            <p class="sub" id="exclude-cost"></p>
+          </div>
+        </div>
+
+        <!-- Only for the point-prompted model, which cannot run without pins. -->
+        <div class="pins" id="pin-panel" hidden>
+          <p class="pin-count" id="pin-count">Tap each part of your lawn</p>
+          <button class="ghost edge-secondary" id="btn-pins-clear">Remove all pins</button>
+        </div>
+
+        <!-- Which photograph. Populated from /api/config so the browser and the
+             Worker cannot disagree about what each source is. -->
+        <div class="imagery" id="imagery-panel" hidden>
+          <label for="imagery-source">Satellite image</label>
+          <select id="imagery-source"></select>
+          <p class="sub" id="imagery-note"></p>
+        </div>
+
+        <div class="tools">
+          <button class="primary" id="btn-detect" disabled>Detect my lawn</button>
+        </div>
+
+        <!-- Pull the detected outline in or push it out, in feet on the ground.
+             Free to move: it re-reads a mask already downloaded and runs no
+             new detection. -->
+        <div class="imagery" id="sens-panel" hidden>
+          <label for="edge-ft">Trim or extend the edge</label>
+          <!-- Buttons for nudging, a real field for typing. A slider could not
+               reach far enough to correct a treeline the AI puts several feet
+               too wide, and widening one only makes every step coarser. -->
+          <div class="stepper">
+            <button type="button" class="stepbtn" id="edge-minus" aria-label="Pull the outline in one foot">−</button>
+            <input type="text" id="edge-ft" inputmode="decimal" value="0"
+                   aria-label="How far to move the lawn outline, in feet">
+            <span class="stepunit">ft</span>
+            <button type="button" class="stepbtn" id="edge-plus" aria-label="Push the outline out one foot">+</button>
+          </div>
+          <p class="sub" id="sens-note"></p>
+        </div>
+
+        <!--
+          Offered in both modes, but it means opposite things in them, so the
+          answer is remembered per mode and the wording below is rewritten to
+          match -- see refreshTreesOption. On for "find grass" (a gap is canopy
+          over real grass), off for "exclude" (a gap is something a ticked box
+          removed).
+        -->
+        <label class="opt" id="trees-opt">
+          <input type="checkbox" id="toggle-trees" checked>
+          <span>Count grass under trees
+            <small id="trees-note">Canopy hides lawn that is really there. Small
+              gaps inside your lawn are counted as grass; big ones (a pool, a
+              shed) are not.</small>
+          </span>
+        </label>
+
+        <label class="debug">
+          <input type="checkbox" id="toggle-overlay">
+          <span id="overlay-label">Show the raw AI mask (alignment check)</span>
+        </label>
+
+        <button class="ghost" id="btn-to-draw">Correct it by hand →</button>
+      </div>
+
+      <!-- 4c. Drawing by hand --------------------------------------------- -->
+      <div class="tabpane" id="pane-draw" role="tabpanel" aria-labelledby="tab-draw" hidden>
+        <!--
+          "Use property line" makes a LAWN the size of the lot, which is a
+          starting point to carve down rather than a boundary edit -- so it
+          belongs here with the drawing tools and not on the Address tab, where
+          it would also be the one lawn-creating button sitting behind the
+          boundary lock.
+        -->
+        <div class="tools">
+          <button class="ghost" id="btn-draw">Draw a patch</button>
+          <button class="ghost" id="btn-parcel-shape" hidden>Use property line</button>
+          <button class="ghost" id="btn-undo" disabled>Undo</button>
+          <button class="ghost" id="btn-delete" disabled>Delete selected</button>
+          <button class="ghost" id="btn-clear">Clear all</button>
+        </div>
+
+        <!--
+          The boundary is usually where the measurement should stop, but not
+          always: a recorded parcel often ends at the easement while the owner
+          mows to the kerb. Off by default, because counting the neighbour's
+          grass is the more expensive mistake.
+        -->
+        <label class="opt" id="outside-opt" hidden>
+          <input type="checkbox" id="toggle-outside">
+          <span>Measure outside the property line
+            <small>Lets the Add brush paint past your boundary. Turning it back
+              off trims everything to the line again — your detected lawn is kept,
+              not re-run.</small>
+          </span>
+        </label>
 
       <details class="help">
         <summary>How to correct the shape</summary>
@@ -242,50 +361,29 @@
           <li>The AI finds grass inside your property line only — the
             neighbours' lawn is trimmed off automatically.</li>
         </ul>
-      </details>
+        </details>
+      </div>
 
+      <!-- 4d. Saved maps --------------------------------------------------- -->
+      <!--
+        Kept in this browser only, for now. The list is built by app.js from
+        localStorage; the empty state is here so the tab says something useful
+        before anything has been saved.
+      -->
+      <div class="tabpane" id="pane-saved" role="tabpanel" aria-labelledby="tab-saved" hidden>
+        <p class="sub" id="saved-lead">Maps you have measured are kept on this
+          device so you can come back to them.</p>
+        <ul class="saves" id="saved-list"></ul>
+        <p class="note" id="saved-note">Saved in this browser only — clearing
+          your browser data clears these. Accounts are coming, and will carry
+          them with you.</p>
+      </div>
+
+      <!-- Always available: the figure is the point, whichever tab is open. -->
       <div class="exports">
         <button class="ghost" id="btn-png">Save image</button>
         <button class="ghost" id="btn-print">Save as PDF</button>
       </div>
-
-      <!--
-        The boundary is usually where the measurement should stop, but not
-        always: a recorded parcel often ends at the easement while the owner
-        mows to the kerb. Off by default, because counting the neighbour's
-        grass is the more expensive mistake.
-      -->
-      <label class="opt" id="outside-opt" hidden>
-        <input type="checkbox" id="toggle-outside">
-        <span>Measure outside the property line
-          <small>Lets the Add brush paint past your boundary. Turning it back
-            off trims everything to the line again — your detected lawn is kept,
-            not re-run.</small>
-        </span>
-      </label>
-
-      <!--
-        Offered in both modes, but it means opposite things in them, so the
-        answer is remembered per mode and the wording below is rewritten to
-        match -- see refreshTreesOption. On for "find grass" (a gap is canopy
-        over real grass), off for "exclude" (a gap is something a ticked box
-        removed).
-      -->
-      <label class="opt" id="trees-opt">
-        <input type="checkbox" id="toggle-trees" checked>
-        <span>Count grass under trees
-          <small id="trees-note">Canopy hides lawn that is really there. Small
-            gaps inside your lawn are counted as grass; big ones (a pool, a
-            shed) are not.</small>
-        </span>
-      </label>
-
-      <label class="debug">
-        <input type="checkbox" id="toggle-overlay">
-        <span id="overlay-label">Show the raw AI mask (alignment check)</span>
-      </label>
-
-      <button class="link" data-action="restart">Start over with a new address</button>
     </section>
 
     <p class="disclaimer">Measurements come from satellite imagery and public

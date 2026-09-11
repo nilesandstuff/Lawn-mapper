@@ -80,6 +80,9 @@ const state = {
    * reverse. Whichever mode is showing puts its own answer in the box.
    */
   fillGaps: { find: true, exclude: false },
+
+  tab: 'address',     // which step's tools are on screen -- see setTab
+  handEdited: false,  // has the lawn been corrected by hand since it appeared?
 };
 
 /**
@@ -369,6 +372,35 @@ if (typeof window !== 'undefined') {
     touchZoom: Boolean(map?.touchZoomRotate?.isEnabled()),
     panning: panningHeld(),
     holdMs: PAN_HOLD_MS,
+  });
+
+  /*
+   * Which step is on screen, and what it is offering.
+   *
+   * The rail is reported alongside the tab because they are one decision: the
+   * map's buttons and the panel's tools belong to the same step, and the bug
+   * this guards against is them disagreeing -- a brush live on the map while
+   * the panel shows the boundary editor.
+   */
+  window.__lmTabs = () => ({
+    on: state.tab,
+    tabs: TABS.slice(),
+    visiblePanes: TABS.filter((t) => document.querySelector(`#pane-${t}`)?.hidden === false),
+    rail: MODES.filter((m) => document.querySelector(`#mode-${m}`)?.hidden === false),
+    locked: TABS.filter((t) => Boolean(tabLock(t))),
+    noticeVisible: document.querySelector('#lock-notice')?.hidden === false,
+    handEdited: state.handEdited,
+    hasParcel: Boolean(state.parcel),
+  });
+
+  /* The saved maps, as the list itself would show them. */
+  window.__lmSaves = () => ({
+    max: MAX_SAVES,
+    entries: readSaves().map((s) => ({
+      id: s.id, address: s.address, mode: s.mode,
+      model: s.model, squareFeet: s.squareFeet, at: s.at,
+    })),
+    rendered: [...document.querySelectorAll('#saved-list .save-addr')].map((n) => n.textContent),
   });
 
   /* The phantom midpoints, where they are on screen, ready to be tapped. */
@@ -724,7 +756,12 @@ async function initMap() {
   // A polygon drawn while "Draw the property line" is armed becomes the
   // boundary rather than a patch of lawn.
   map.on('draw.create', (e) => {
-    if (!state.drawingParcel) return;
+    if (!state.drawingParcel) {
+      // A patch drawn by hand is a hand correction, whether it is the first
+      // shape on the map or the tenth on top of a detection.
+      markHandEdited();
+      return;
+    }
     state.drawingParcel = false;
     adoptDrawnParcel(e.features?.[0]);
   });
@@ -966,6 +1003,10 @@ function choose(result) {
 
 async function confirmLocation() {
   showStep('work');
+  // The address tab is where you land: the property line is the first thing
+  // that has to be right, and everything after it is measured against it.
+  $('#work-address').textContent = state.chosen?.label || '';
+  setTab('address');
   busy('Checking county records for your property line…');
 
   try {
@@ -1007,6 +1048,15 @@ async function confirmLocation() {
           : 'No county record for this address. Press "Draw the property line" and trace your boundary — detection needs it to know where your lot ends.'
       );
     }
+
+    /*
+     * A boundary already on file means step one is done, so move to step two.
+     *
+     * Without one, the only thing to do is trace it, and that is an address-tab
+     * job -- landing on a detection tab whose button reads "Property line
+     * needed first" is a dead end pointing back the way you came.
+     */
+    setTab(state.parcel ? 'detect' : 'address');
 
     updatePromptHint();
     // The pickers measure against the frame, so they only become real once
@@ -1215,6 +1265,7 @@ function applyErase() {
   const features = draw.getAll().features.filter((f) => outerRing(f));
   // Erasing nothing is a no-op; adding to nothing is how you start.
   if (stroke.length < 2 || (!features.length && mode.paint === 0)) return;
+  markHandEdited();
 
   /*
    * Only re-trace what the stroke actually reached.
@@ -2220,19 +2271,29 @@ function updatePromptHint() {
 
   refreshTreesOption();
 
+  // A locked tab greys its controls out, but the button has to be genuinely
+  // dead as well: opacity is not a guard, and a keyboard can still reach it.
+  const locked = Boolean(tabLock('detect'));
+
   $('#btn-detect').disabled =
-    !state.frame || same || needsPins || needsParcel || needsExclusion;
-  $('#btn-detect').textContent = same
-    ? 'Lawn detected'
-    : needsParcel
-      ? 'Property line needed first'
-      : needsPins
-        ? 'Tap your lawn to place a pin'
-        : needsExclusion
-          ? 'Tick something to remove'
-          : state.detected
-            ? 'Detect again'
-            : 'Detect my lawn';
+    !state.frame || same || needsPins || needsParcel || needsExclusion || locked;
+  $('#btn-detect').textContent = locked
+    ? 'Corrected by hand'
+    : same
+      ? 'Lawn detected'
+      : needsParcel
+        ? 'Property line needed first'
+        : needsPins
+          ? 'Tap your lawn to place a pin'
+          : needsExclusion
+            ? 'Tick something to remove'
+            : state.detected
+              ? 'Detect again'
+              : 'Detect my lawn';
+
+  // "Correct it by hand" is only an offer once there is something to correct.
+  const toDraw = $('#btn-to-draw');
+  if (toDraw) toDraw.hidden = !hasLawn();
 }
 
 /* ---------------------------------------------------------- model picker */
@@ -2603,6 +2664,13 @@ async function detect() {
     clearHistory();
 
     state.detected = true;
+    /*
+     * A fresh detection replaces every shape on the map, so there are no hand
+     * corrections left to protect and the lock comes off. Leaving it on would
+     * mean the first detection after a corrected one locked itself out.
+     */
+    state.handEdited = false;
+    refreshTabs();
     // The server's word for which source it used, not ours: it falls back for
     // a look-only source, and the status line has to name the real one.
     state.detectedWith = rendered.provider || provider;
@@ -3274,6 +3342,430 @@ const PARCEL_ID = '__parcel__';
 /** Draw's mode when shapes must not be draggable. Registered in initMap. */
 const LOCKED_MODE = 'lm_locked';
 
+/* --------------------------------------------------------------- saves */
+/*
+ * MAPS YOU HAVE MADE, KEPT SO YOU CAN COME BACK TO THEM.
+ *
+ * In this browser, for now. An account system is the obvious next step and
+ * this is shaped for it: every save is a self-contained, JSON-serialisable
+ * record of one measurement -- address, boundary, shapes, and the settings
+ * that produced them -- so moving the store from localStorage to a table
+ * behind a login changes where readSaves() and writeSaves() read from, and
+ * nothing else.
+ *
+ * WHAT MAKES TWO SAVES THE SAME SAVE: the address, the AI method, and which
+ * arithmetic it used. Those three are what a person is choosing between when
+ * they say "the other one I did for this house" -- the same lot measured by
+ * finding grass and by excluding objects are two genuinely different answers
+ * worth keeping side by side, and re-running either should update that one
+ * rather than pile up a third. Everything else about a measurement is a
+ * refinement of one of those, not a new one.
+ *
+ * Saving happens on its own. A "save" button would mean losing work by
+ * forgetting to press it, and there is nothing here worth making somebody
+ * decide about: the measurement exists, so it is kept.
+ */
+const SAVES_KEY = 'lawnmapper.saves.v1';
+
+/**
+ * How many maps to keep.
+ *
+ * Five is the number a phone can show without scrolling and roughly the number
+ * of properties anybody is comparing at once. It is a default rather than a
+ * limit of the format -- the account version will want more, and nothing about
+ * the record shape changes when it does.
+ */
+const MAX_SAVES = 5;
+
+/** Settle before writing: a brush stroke is a hundred changes and one edit. */
+const SAVE_DEBOUNCE_MS = 1200;
+let saveTimer = null;
+
+/**
+ * Reading and writing, either of which can simply fail.
+ *
+ * Private browsing refuses localStorage outright, a full quota throws on
+ * write, and another tab can leave something unparseable behind. None of that
+ * is worth interrupting a measurement over: a history that cannot be kept is a
+ * feature that is missing, not a session that is broken.
+ */
+function readSaves() {
+  try {
+    const raw = localStorage.getItem(SAVES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed?.saves) ? parsed.saves : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeSaves(saves) {
+  try {
+    localStorage.setItem(SAVES_KEY, JSON.stringify({ v: 1, saves }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Which arithmetic produced the shapes on screen, in words a save can carry. */
+function saveMode() {
+  if (!state.detectedBy) return 'manual';
+  return modelInfo(state.detectedBy).subtractive ? 'exclude' : 'find';
+}
+
+const MODE_LABEL = {
+  find: 'Find grass',
+  exclude: 'Exclude objects',
+  manual: 'Drawn by hand',
+};
+
+/** Address + method + arithmetic. Same three, same save. */
+const saveKeyFor = (address, model, mode) =>
+  `${String(address || '').trim().toLowerCase()}|${model || 'none'}|${mode}`;
+
+/**
+ * Everything needed to put this measurement back on the map.
+ *
+ * Deliberately the whole picture rather than a reference to one: an imagery
+ * frame and a set of tick boxes are not recoverable from the shapes, and a
+ * saved map that comes back measuring something different from what it said is
+ * worse than no saved map.
+ */
+function snapshotForSave() {
+  const shapes = draw.getAll();
+  const lawn = shapes.features.filter((f) => outerRing(f));
+  if (!lawn.length || !state.chosen) return null;
+
+  const m = measureLawn({ type: 'FeatureCollection', features: lawn });
+  const mode = saveMode();
+
+  return {
+    id: saveKeyFor(state.chosen.label, state.detectedBy || state.model, mode),
+    at: new Date().toISOString(),
+    address: state.chosen.label,
+    lng: state.chosen.lng,
+    lat: state.chosen.lat,
+    county: state.parcel?.properties?.county || null,
+    model: state.detectedBy || state.model,
+    modelLabel: modelInfo(state.detectedBy || state.model).label || null,
+    mode,
+    provider: state.detectedWith || state.provider,
+    exclude: state.detectedExcluding ? state.detectedExcluding.split(',') : [],
+    edgeFt: state.edgeFt,
+    fillGaps: { ...state.fillGaps },
+    handEdited: state.handEdited,
+    squareFeet: m.squareFeet,
+    acres: m.acres,
+    frame: state.frame ? { ...state.frame } : null,
+    parcel: state.parcel || null,
+    // Ids are Draw's own and mean nothing after a reload, so they are dropped
+    // rather than restored into a Draw instance that has its own idea of them.
+    shapes: lawn.map((f) => ({ type: 'Feature', properties: {}, geometry: f.geometry })),
+  };
+}
+
+/** Keep this measurement, replacing the one it supersedes. */
+function recordSave() {
+  const entry = snapshotForSave();
+  if (!entry) return;
+
+  const saves = readSaves().filter((s) => s.id !== entry.id);
+  saves.unshift(entry);
+  writeSaves(saves.slice(0, MAX_SAVES));
+  if (state.tab === 'saved') renderSaves();
+}
+
+/** Called from everywhere a measurement changes; writes once it settles. */
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(recordSave, SAVE_DEBOUNCE_MS);
+}
+
+function deleteSave(id) {
+  writeSaves(readSaves().filter((s) => s.id !== id));
+  renderSaves();
+}
+
+/** "3 minutes ago", because a timestamp is not what anybody is asking. */
+function agoText(iso) {
+  const then = Date.parse(iso);
+  if (!Number.isFinite(then)) return '';
+  const mins = Math.round((Date.now() - then) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+  const days = Math.round(hours / 24);
+  return `${days} day${days > 1 ? 's' : ''} ago`;
+}
+
+function renderSaves() {
+  const list = $('#saved-list');
+  if (!list) return;
+  const saves = readSaves();
+  list.innerHTML = '';
+
+  $('#saved-lead').textContent = saves.length
+    ? `${saves.length} of ${MAX_SAVES} kept. Opening one puts it back on the map.`
+    : 'Nothing saved yet. Measure a lawn and it is kept here automatically.';
+
+  for (const s of saves) {
+    const li = document.createElement('li');
+    li.className = 'save';
+
+    const main = document.createElement('button');
+    main.type = 'button';
+    main.className = 'save-open';
+    main.innerHTML = `
+      <span class="save-addr"></span>
+      <span class="save-meta"></span>
+      <span class="save-figure"></span>`;
+    main.querySelector('.save-addr').textContent = s.address;
+    main.querySelector('.save-meta').textContent =
+      `${MODE_LABEL[s.mode] || s.mode}${s.handEdited ? ' · corrected' : ''} · ${agoText(s.at)}`;
+    main.querySelector('.save-figure').textContent =
+      `${Number(s.squareFeet || 0).toLocaleString()} sq ft`;
+    main.addEventListener('click', () => openSave(s.id));
+
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'save-del';
+    del.setAttribute('aria-label', `Forget the ${MODE_LABEL[s.mode] || s.mode} map of ${s.address}`);
+    del.textContent = '×';
+    del.addEventListener('click', () => deleteSave(s.id));
+
+    li.append(main, del);
+    list.append(li);
+  }
+}
+
+/**
+ * Put a saved map back.
+ *
+ * Restores the settings BEFORE the shapes, so everything that reads them --
+ * the pickers, the rail, the measurement -- sees a consistent world. The
+ * shapes are the last thing in, and the map is moved to them rather than to
+ * the saved frame's centre, because a boundary that was extended after the
+ * frame was taken would otherwise sit half off screen.
+ */
+function openSave(id) {
+  const s = readSaves().find((x) => x.id === id);
+  if (!s) return;
+
+  clearHistory();
+  draw.deleteAll();
+  hideOverlay();
+  state.lastMask = null;
+
+  state.chosen = { label: s.address, lng: s.lng, lat: s.lat };
+  state.parcel = s.parcel || null;
+  state.frame = s.frame || null;
+  state.provider = s.provider || 'mapbox';
+  state.model = s.model || 'sam3';
+  state.exclude = Array.isArray(s.exclude) ? s.exclude.filter(Boolean) : [];
+  state.edgeFt = Number.isFinite(s.edgeFt) ? s.edgeFt : DEFAULT_EDGE_FT;
+  state.fillGaps = { find: true, exclude: false, ...(s.fillGaps || {}) };
+  state.surveyed = [];
+  state.pins = [];
+
+  /*
+   * A restored map is somebody else's answer as far as this session is
+   * concerned: there is no mask in hand, so the AI cannot be "re-run" on it
+   * and the corrections are already baked into the shapes. Marking it
+   * hand-edited is the honest reading -- it locks the detection controls until
+   * the user explicitly clears, which is exactly the choice they should be
+   * making before overwriting a saved measurement.
+   */
+  state.detected = true;
+  state.detectedBy = s.model || null;
+  state.detectedWith = s.provider || null;
+  state.detectedExcluding = state.exclude.length ? state.exclude.slice().sort().join(',') : null;
+  state.handEdited = true;
+
+  map.getSource('parcel').setData(state.parcel || empty());
+  for (const f of (s.shapes || [])) {
+    draw.add({ type: 'Feature', properties: {}, geometry: f.geometry });
+  }
+
+  showStep('work');
+  $('#work-address').textContent = s.address;
+  $('#chosen-label').textContent = s.address;
+
+  buildImageryPicker();
+  buildModelPicker();
+  refreshExclusions();
+  refreshSensitivity();
+  refreshTreesOption();
+  refreshSurveyed();
+  refreshMeasurement();
+  updateSelectionButtons();
+  setTab('draw');
+
+  const box = state.parcel ? geometryBounds(state.parcel) : null;
+  if (box) {
+    map.fitBounds([[box[0], box[1]], [box[2], box[3]]], { padding: 60, duration: 700 });
+  } else if (Number.isFinite(s.lng)) {
+    map.flyTo({ center: [s.lng, s.lat], zoom: s.frame?.zoom || IMAGERY_ZOOM_FALLBACK, duration: 700 });
+  }
+
+  setStatus(`Opened your ${(MODE_LABEL[s.mode] || s.mode).toLowerCase()} map of ${s.address}`
+    + ` — ${Number(s.squareFeet || 0).toLocaleString()} sq ft, saved ${agoText(s.at)}.`
+    + ' Correct it further, or clear it to detect again.');
+  refreshQuota();
+}
+
+/* ---------------------------------------------------------------- tabs */
+/*
+ * THREE JOBS, AND ONLY ONE OF THEM IS YOURS AT A TIME.
+ *
+ * Everything used to be in one column: the address, the AI, the drawing tools
+ * and the boundary editor, all on screen and all live. It worked, and it made
+ * the app impossible to read. There was no moment at which you had finished
+ * with the AI and started correcting by hand -- which is the moment that
+ * matters most, because it is where a measurement stops being the machine's
+ * answer and starts being yours.
+ *
+ * So: one tab per job, and the map's own buttons follow the tab. Pressing
+ * "Line" while you meant to paint was never a thing anyone wanted to be able
+ * to do; now it is not on screen to press.
+ *
+ * The tab is a view, not a mode -- switching never changes a measurement, and
+ * a tab whose tools WOULD change one you have already corrected is greyed out
+ * with the reason on it rather than silently allowed to undo your work.
+ */
+const TABS = ['address', 'detect', 'draw', 'saved'];
+
+/**
+ * Why a tab's tools are not available, or null when they are.
+ *
+ * Two locks, and they are the same idea pointed in opposite directions: a step
+ * cannot be redone once a later step has built on it. Detecting again throws
+ * away hand corrections; moving the boundary re-trims a lawn that has already
+ * been measured against the old one.
+ *
+ * Neither is forbidden -- both are one press away. What is forbidden is doing
+ * it by accident, which is what a live button on a tab you wandered into
+ * amounts to.
+ */
+function tabLock(tab) {
+  if (tab === 'detect' && state.handEdited) {
+    return {
+      text: 'You have corrected this lawn by hand. Running the AI again would '
+        + 'throw those corrections away, so the detection controls are off '
+        + 'until you say which you want.',
+      clear: true,
+      redetect: true,
+    };
+  }
+  if (tab === 'address' && hasLawn() && state.parcel) {
+    return {
+      text: 'There is a lawn measured against this property line. Moving the '
+        + 'line now would re-trim it, so the boundary tools are off until the '
+        + 'lawn is cleared.',
+      clear: true,
+      redetect: false,
+    };
+  }
+  return null;
+}
+
+const hasLawn = () => Boolean(draw?.getAll().features.some((f) => outerRing(f)));
+
+/**
+ * Anything the user did to the shapes themselves.
+ *
+ * Not "opened the drawing tab" -- looking at a tool is not using one, and
+ * locking the AI because somebody glanced at the brushes would be maddening.
+ * The lock is about work that would be lost, so it starts when there is work.
+ */
+function markHandEdited() {
+  if (state.handEdited) return;
+  state.handEdited = true;
+  refreshTabs();
+}
+
+function setTab(name) {
+  const next = TABS.includes(name) ? name : 'address';
+  state.tab = next;
+
+  /*
+   * Leaving a tab puts its map tools away.
+   *
+   * A mode whose button is no longer on screen is a mode you cannot get out
+   * of: the map would still be routing every tap to the brush with nothing
+   * visible saying so. Whether the mode belongs to the tab is the same
+   * question the rail asks, so it is answered in one place.
+   */
+  if (state.mode && !modeBelongsTo(state.mode, next)) setMode(null);
+
+  for (const t of TABS) {
+    const tab = $(`#tab-${t}`);
+    const pane = $(`#pane-${t}`);
+    if (tab) tab.setAttribute('aria-selected', String(t === next));
+    if (tab) tab.classList.toggle('is-on', t === next);
+    if (pane) pane.hidden = t !== next;
+  }
+
+  if (next === 'saved') renderSaves();
+  refreshTabs();
+  refreshRail();
+  updatePromptHint();
+}
+
+/** Which tab each map tool belongs to. One table, two readers. */
+const MODE_TAB = { parcel: 'address', pins: 'detect', move: 'draw', shape: 'draw' };
+const modeBelongsTo = (mode, tab) => MODE_TAB[mode] === tab;
+
+function refreshTabs() {
+  const bar = $('#tabs');
+  if (!bar) return;
+
+  const lock = tabLock(state.tab);
+  const pane = $(`#pane-${state.tab}`);
+  if (pane) pane.classList.toggle('is-locked', Boolean(lock));
+
+  const notice = $('#lock-notice');
+  notice.hidden = !lock;
+  if (lock) {
+    $('#lock-text').textContent = lock.text;
+    $('#btn-lock-clear').hidden = !lock.clear;
+    $('#btn-lock-redetect').hidden = !lock.redetect;
+  }
+
+  // A tab with a lock on it says so on the tab itself, so the reason is
+  // findable without opening it and wondering why everything is grey.
+  for (const t of TABS) {
+    $(`#tab-${t}`)?.classList.toggle('is-locked', Boolean(tabLock(t)));
+  }
+}
+
+/**
+ * Clear the lawn, keep the property line.
+ *
+ * "Start over" that also threw away the boundary would be punishing: tracing
+ * one by hand is the slowest thing in the app, and it is not what went wrong.
+ * So this rewinds exactly as far as the lock was protecting and no further.
+ */
+function clearLawnAndUnlock({ toDetect = false } = {}) {
+  pushHistory();
+  draw.deleteAll();
+  state.handEdited = false;
+  state.detected = false;
+  state.detectedExcluding = null;
+  state.lastMask = null;
+  state.edgeFt = DEFAULT_EDGE_FT;
+  hideOverlay();
+  refreshSensitivity();
+  refreshMeasurement();
+  updateSelectionButtons();
+  setTab(toDetect ? 'detect' : state.tab);
+  setStatus(toDetect
+    ? 'Cleared. The property line is kept — press "Detect my lawn" for a fresh answer.'
+    : 'Lawn cleared. The property line is kept.');
+}
+
 /* --------------------------------------------------------------- modes */
 /*
  * One thing at a time.
@@ -3763,6 +4255,8 @@ function adoptDrawnParcel(feature) {
   $('#btn-draw-parcel').hidden = true;
   $('#btn-parcel-shape').hidden = false;
   refreshSurveyed();
+  // Step one is finished the moment a boundary exists, however it got there.
+  setTab('detect');
   refreshRail();
   updatePromptHint();
   setHint('');
@@ -3776,21 +4270,34 @@ function adoptDrawnParcel(feature) {
 function refreshRail() {
   const rail = $('#maprail');
   if (!rail) return;
-  rail.hidden = !state.frame;
+  const onSaves = state.tab === 'saved';
+  rail.hidden = !state.frame || onSaves;
 
   // One source is not a choice, so the Layers button only exists when there is
   // something to switch between.
   const layers = $('#maprail-left');
   if (layers) {
-    layers.hidden = !state.frame || state.imagery.length < 2;
+    layers.hidden = !state.frame || state.imagery.length < 2 || onSaves;
     if (layers.hidden) closeLayerList();
   }
 
-  // Pins are only a concept for the model that uses them.
-  $('#mode-pins').hidden = !modelInfo(state.model).needsPoints;
-
+  /*
+   * THE MAP'S BUTTONS FOLLOW THE TAB.
+   *
+   * The rail is the other half of the panel, not a separate thing: "Line",
+   * "Pins" and "Lawn" are the tools of three different steps, and having all
+   * of them live at once was the same confusion as the one long column in the
+   * panel. Pressing Line while meaning to paint is not a mistake worth being
+   * able to make, so on the drawing tab it is not there to press.
+   *
+   * Pins are additionally only a concept for the model that uses them.
+   */
   for (const m of MODES) {
-    $(`#mode-${m}`)?.setAttribute('aria-pressed', String(state.mode === m));
+    const btn = $(`#mode-${m}`);
+    if (!btn) continue;
+    const mine = modeBelongsTo(m, state.tab);
+    btn.hidden = !mine || (m === 'pins' && !modelInfo(state.model).needsPoints);
+    btn.setAttribute('aria-pressed', String(state.mode === m));
   }
 
   $('#shape-tools').hidden = state.mode !== 'shape';
@@ -4432,6 +4939,10 @@ function moveSelectedVertex(lngLat) {
   const ring = ringOf(edit.featureId);
   if (!ring) return;
 
+  // A corner of the LAWN is a hand correction; a corner of the property line
+  // is not -- the lock exists to protect work the AI would overwrite, and the
+  // AI does not draw boundaries.
+  if (state.mode === 'shape') markHandEdited();
   writeRing(edit.featureId, moveVertex(ring, edit.vertexIndex, lngLat));
   drawPoints();
   refreshMeasurement();
@@ -4451,6 +4962,7 @@ function addPointAt(featureId, edgeIndex, at) {
   if (!ring) return;
 
   pushHistory();
+  if (state.mode === 'shape') markHandEdited();
   const grown = insertVertex(ring, edgeIndex, at);
   if (!writeRing(featureId, grown)) return;
 
@@ -4483,6 +4995,7 @@ function deleteSelectedVertex() {
   }
 
   pushHistory();
+  if (state.mode === 'shape') markHandEdited();
   writeRing(edit.featureId, shrunk);
   state.edgeEdit = { featureId: null, vertexIndex: null, edgeIndex: null, baseRing: null };
   $('#point-controls').hidden = true;
@@ -4801,6 +5314,9 @@ function useParcelShape() {
   )) return;
 
   pushHistory();
+  // A lawn the size of the lot is a starting point somebody chose, and a
+  // detection would wipe it. That is exactly what the lock is for.
+  markHandEdited();
   draw.deleteAll();
   draw.add({
     type: 'Feature',
@@ -4954,6 +5470,16 @@ function refreshMeasurement() {
   $('#print-detail').textContent =
     `${m.acres} acres · ${m.thousandSqFt.toFixed(2)} thousand sq ft` +
     (state.parcel ? ` · parcel from ${state.parcel.properties.county}` : '');
+
+  /*
+   * Every change to the measurement is worth keeping, so this is where the
+   * save is triggered from rather than from a button.
+   *
+   * Debounced, because this runs on every event of a brush stroke and a stroke
+   * is one edit; and placed after the figure is on screen, so a save never
+   * holds up the number somebody is waiting for.
+   */
+  scheduleSave();
 }
 
 function updateSelectionButtons() {
@@ -5069,6 +5595,8 @@ function reset() {
   $('#outside-opt').hidden = true;
   // Back to Find grass, and to both defaults for the gap option.
   state.fillGaps = { find: true, exclude: false };
+  state.handEdited = false;
+  setTab('address');
   state.drawingParcel = false;
   state.edgeFt = DEFAULT_EDGE_FT;
   $('#edge-ft').value = String(DEFAULT_EDGE_FT);
@@ -5129,6 +5657,31 @@ $('#btn-pins-clear').addEventListener('click', () => {
   setStatus('Pins removed. Tap the lawn to place new ones.');
 });
 
+/* ------------------------------------------------------------- the tabs */
+for (const t of TABS) {
+  $(`#tab-${t}`).addEventListener('click', () => {
+    if (tips.stage) hideTip();
+    setTab(t);
+  });
+}
+
+/*
+ * The handover from the machine's answer to yours.
+ *
+ * A button rather than only a tab, because this is the step people do not
+ * realise is a step: the AI gives you a shape, and the next thing to do is
+ * argue with it. Naming that as an action makes the drawing tools findable
+ * for somebody who has never scrolled past the detect button.
+ */
+$('#btn-to-draw').addEventListener('click', () => {
+  setTab('draw');
+  setStatus('Correcting by hand. Use Lawn on the map to drag corners or paint '
+    + 'with a brush; the total follows every change.');
+});
+
+$('#btn-lock-clear').addEventListener('click', () => clearLawnAndUnlock());
+$('#btn-lock-redetect').addEventListener('click', () => clearLawnAndUnlock({ toDetect: true }));
+
 /*
  * Tracing your own boundary.
  *
@@ -5165,6 +5718,10 @@ $('#btn-clear').addEventListener('click', () => {
   refreshSurveyed();
   updateSelectionButtons();
   state.detected = false;
+  // Nothing left to protect, so the AI and the boundary are free again. A
+  // lock that outlived the work it was guarding would just be in the way.
+  state.handEdited = false;
+  refreshTabs();
   updatePromptHint();
   setStatus('Cleared. Detect again, or draw the lawn by hand.');
 });
@@ -5211,6 +5768,7 @@ $('#btn-delete').addEventListener('click', () => {
   const ids = draw.getSelected().features.map((f) => f.id);
   if (!ids.length) return;
   pushHistory();
+  markHandEdited();
   draw.delete(ids);
   refreshMeasurement();
   refreshSurveyed();
