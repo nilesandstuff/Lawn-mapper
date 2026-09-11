@@ -256,7 +256,51 @@ async function post(payload) {
     r.status === 429 && r.body.rateLimited === true, JSON.stringify(r.body).slice(0, 120));
   check('and the message says what to do about it with several boxes ticked',
     /untick/i.test(r.body.error), r.body.error);
+
+  /*
+   * FLAGGED AS AN UPSTREAM LIMIT, NOT OURS, and this field is the only thing
+   * that separates them: both answer 429.
+   *
+   * The browser read every 429 as a quota refusal, so a throttled detection
+   * came out as "You've used today's detections" on a counter that had just
+   * reset -- reported, and exactly right. A quota body carries limit/used and
+   * this one does not, so the absence of those fields is what the wrong branch
+   * fell through.
+   */
+  check('and it carries none of the quota fields, because it is not a quota refusal',
+    r.body.limit === undefined && r.body.used === undefined
+    && r.body.reason === undefined,
+    JSON.stringify(r.body).slice(0, 120));
   httpStatus = 200;
+}
+
+/* --------------------------------------------- a throttled pass is retried */
+/*
+ * A REFUSED REQUEST CREATES NO PREDICTION, so retrying one costs nothing and
+ * risks nothing -- unlike retrying something that succeeded. Replicate throttles
+ * bursts, and ticking a second box was enough of a burst to trip it, so a
+ * single second attempt is the difference between a working detection and a
+ * confusing refusal.
+ */
+{
+  let attempts = 0;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    if (String(url).includes('/v1/predictions')) {
+      attempts++;
+      // Throttle only the very first attempt, as a burst limiter would.
+      if (attempts === 1) return new Response('slow down', { status: 429 });
+    }
+    return realFetch(url, init);
+  };
+
+  const r = await post({ model: 'sam3_exclude', exclude: ['built', 'trees'] });
+  check('a throttled pass is tried once more rather than failing the press',
+    r.status === 200, `${r.status}: ${JSON.stringify(r.body).slice(0, 90)}`);
+  check('and both passes still come back', r.body.passes?.length === 2,
+    `${attempts} attempts for 2 passes`);
+
+  globalThis.fetch = realFetch;
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);

@@ -2302,6 +2302,26 @@ async function detect() {
   } catch (err) {
     if (err.status === 429) {
       const b = err.body || {};
+
+      /*
+       * NOT EVERY 429 IS OUR ALLOWANCE.
+       *
+       * Replicate answers 429 when it throttles the account, and this branch
+       * used to read every 429 as a quota refusal -- so an upstream rate limit
+       * arrived with no `limit`, `used` or `reason` on it, fell through every
+       * test below, and came out as "You've used today's detections" on a
+       * counter that had just reset. The Worker had sent the correct sentence;
+       * the browser replaced it with a wrong one.
+       *
+       * Which is why it only happened with more than one box ticked: several
+       * boxes fire several predictions at once, and a burst is what trips the
+       * throttle. One box never did.
+       */
+      if (b.rateLimited) {
+        setStatus(`${b.error} Nothing was charged for it.`, 'warn');
+        return;
+      }
+
       /*
        * "You have used today's detections" is a lie when four are left and this
        * press wanted five. The counter on screen would plainly disagree with

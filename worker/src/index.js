@@ -537,19 +537,45 @@ async function handleSegment(request, env, origin, ctx) {
    * In parallel the wait is the slowest single pass -- the same wait a
    * one-concept detection has always had.
    */
-  const results = await Promise.all(passes.map(async (pass) => {
-    const res = await fetch('https://api.replicate.com/v1/predictions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${env.REPLICATE_TOKEN}`,
-        'Content-Type': 'application/json',
-        Prefer: 'wait',
-      },
-      body: JSON.stringify({
-        version,
-        input: model.input(imageUrl, { prompt: pass.prompt, threshold: pass.threshold, points }),
-      }),
-    });
+  /*
+   * Spread the starts, and give a throttled pass one second chance.
+   *
+   * Firing four predictions in the same millisecond is what a rate limiter is
+   * built to reject, and Replicate throttles low-credit accounts to a handful
+   * a minute. Ticking a second box was enough to trip it -- the burst, not the
+   * volume. A few hundred milliseconds between starts costs nothing against a
+   * prediction that takes tens of seconds, and the passes still overlap almost
+   * entirely, which is the point of running them together at all.
+   *
+   * THE RETRY IS FREE. A refused request creates no prediction, so nothing was
+   * billed for it and there is nothing to refund -- unlike a retry of anything
+   * that succeeded. One attempt only: if the account is genuinely out of room,
+   * hammering it is rude and does not help.
+   */
+  const START_GAP_MS = 300;
+  const RETRY_AFTER_MS = 1500;
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  const startPass = (pass) => fetch('https://api.replicate.com/v1/predictions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${env.REPLICATE_TOKEN}`,
+      'Content-Type': 'application/json',
+      Prefer: 'wait',
+    },
+    body: JSON.stringify({
+      version,
+      input: model.input(imageUrl, { prompt: pass.prompt, threshold: pass.threshold, points }),
+    }),
+  });
+
+  const results = await Promise.all(passes.map(async (pass, i) => {
+    if (i) await wait(i * START_GAP_MS);
+    let res = await startPass(pass);
+    if (res.status === 429) {
+      await wait(RETRY_AFTER_MS);
+      res = await startPass(pass);
+    }
     if (!res.ok) return { pass, http: res.status, detail: await res.text() };
     return { pass, prediction: await res.json() };
   }));
