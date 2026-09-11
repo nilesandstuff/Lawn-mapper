@@ -336,6 +336,64 @@ async function post(payload) {
   httpStatus = 200;
 }
 
+/* ------------------------------------------- the passes do not overlap */
+/*
+ * ONE AT A TIME, and this is the check that would have caught the bug.
+ *
+ * Ticking a second box produced HTTP 429 from Replicate every time while one
+ * box never failed -- a concurrency ceiling, not a rate limit. The first fix
+ * spread the STARTS by 300ms and retried; both change when the second request
+ * is made and neither stops the two predictions from overlapping, which is the
+ * thing being refused.
+ *
+ * So the property to hold is not "spaced out", it is "never both in flight".
+ */
+{
+  let inFlight = 0;
+  let everOverlapped = false;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    if (!String(url).includes('/v1/predictions')) return realFetch(url, init);
+    inFlight++;
+    if (inFlight > 1) everOverlapped = true;
+    // Long enough that a parallel implementation could not help but overlap.
+    await new Promise((r) => setTimeout(r, 30));
+    inFlight--;
+    return realFetch(url, init);
+  };
+
+  const r = await post({ model: 'sam3_exclude', exclude: Object.keys(EXCLUSIONS) });
+  check('every box still runs', r.sent.length === Object.keys(EXCLUSIONS).length);
+  check('but never two predictions at once', !everOverlapped,
+    'the detector refuses the second while the first is running');
+
+  globalThis.fetch = realFetch;
+}
+
+/*
+ * AND A REFUSAL STOPS THE REST. Starting pass three against a limit that just
+ * turned pass two away spends a request to be told the same thing again.
+ */
+{
+  let attempts = 0;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    if (String(url).includes('/v1/predictions')) {
+      attempts++;
+      return new Response('You have reached your concurrency limit', { status: 429 });
+    }
+    return realFetch(url, init);
+  };
+
+  const r = await post({ model: 'sam3_exclude', exclude: Object.keys(EXCLUSIONS) });
+  check('a refusal stops the remaining passes', r.status === 429 && attempts <= 2,
+    `${attempts} attempts for ${Object.keys(EXCLUSIONS).length} boxes (one retry allowed)`);
+  check("and the upstream's own words reach the response, not just the status",
+    /concurrency limit/.test(r.body.detail || ''), r.body.detail);
+
+  globalThis.fetch = realFetch;
+}
+
 /* --------------------------------------------- a throttled pass is retried */
 /*
  * A REFUSED REQUEST CREATES NO PREDICTION, so retrying one costs nothing and

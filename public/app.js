@@ -2046,9 +2046,19 @@ function refreshExclusions() {
    * now, which is the better fix: a warning about a trap is worse than not
    * digging it.
    */
+  /*
+   * Time as well as money, now that the passes run one after another.
+   *
+   * The detector refuses a second prediction while the first is still going, so
+   * they cannot overlap -- which makes the wait scale with the boxes, not just
+   * the bill. Somebody who ticks a third box and then watches a spinner for
+   * ninety seconds should have been told, rather than left wondering whether it
+   * has hung.
+   */
   cost.textContent = n === 0
     ? 'Nothing ticked — there is nothing for the AI to remove.'
-    : `${n} AI pass${n > 1 ? 'es' : ''} per detection, out of your daily allowance.`;
+    : `${n} AI pass${n > 1 ? 'es' : ''} per detection, out of your daily allowance`
+      + (n > 1 ? `, and about ${n}× the wait — they run one at a time.` : '.');
   cost.style.color = n === 0 ? '#b3261e' : '';
 }
 
@@ -2174,8 +2184,15 @@ async function detect() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(detectionRequest(frame, provider, model, points)),
-      // Replicate holds the connection for about a minute before answering.
-      timeoutMs: 90000,
+      /*
+       * Long enough for every pass, because they no longer overlap.
+       *
+       * Replicate holds each connection for about a minute, and the Worker runs
+       * the passes one at a time -- so four boxes is up to four of those in a
+       * row. A flat 90 seconds would abort a detection that was working, and
+       * the quota would stay spent on predictions nobody collected.
+       */
+      timeoutMs: 60000 + 60000 * Math.max(1, excludesWanted() ? state.exclude.length : 1),
     });
 
     // data.frame is authoritative: the server clamps zoom and size, so the

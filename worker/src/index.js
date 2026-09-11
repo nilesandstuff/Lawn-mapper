@@ -569,22 +569,27 @@ async function handleSegment(request, env, origin, ctx) {
    * one-concept detection has always had.
    */
   /*
-   * Spread the starts, and give a throttled pass one second chance.
+   * ONE AT A TIME. This was parallel, and parallel is what broke it.
    *
-   * Firing four predictions in the same millisecond is what a rate limiter is
-   * built to reject, and Replicate throttles low-credit accounts to a handful
-   * a minute. Ticking a second box was enough to trip it -- the burst, not the
-   * volume. A few hundred milliseconds between starts costs nothing against a
-   * prediction that takes tens of seconds, and the passes still overlap almost
-   * entirely, which is the point of running them together at all.
+   * Ticking a second box produced HTTP 429 from Replicate every time, while one
+   * box never failed. Two requests cannot trip a per-minute rate limit, so the
+   * ceiling being hit is CONCURRENCY: the second prediction is refused because
+   * the first is still running, and `Prefer: wait` holds that first one open
+   * for up to a minute.
    *
-   * THE RETRY IS FREE. A refused request creates no prediction, so nothing was
-   * billed for it and there is nothing to refund -- unlike a retry of anything
-   * that succeeded. One attempt only: if the account is genuinely out of room,
-   * hammering it is rude and does not help.
+   * Which is why the first attempt at this -- spreading the starts by 300ms and
+   * retrying once after 1.5s -- did nothing. Both move WHEN the second request
+   * is made; neither stops the two predictions from overlapping, and overlap is
+   * the thing being refused. Staggering a concurrency limit is a fix for a
+   * problem that was not happening.
+   *
+   * The cost is real and it is linear: two boxes take about twice as long as
+   * one, four about four times. That is the price of the account's limit rather
+   * than a choice, and the panel says so before the press. Restore the parallel
+   * version if that limit is ever raised -- the passes are independent and
+   * nothing else about them needs to be sequential.
    */
-  const START_GAP_MS = 300;
-  const RETRY_AFTER_MS = 1500;
+  const RETRY_AFTER_MS = 2000;
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
   const startPass = (pass) => fetch('https://api.replicate.com/v1/predictions', {
@@ -600,16 +605,28 @@ async function handleSegment(request, env, origin, ctx) {
     }),
   });
 
-  const results = await Promise.all(passes.map(async (pass, i) => {
-    if (i) await wait(i * START_GAP_MS);
+  const results = [];
+  for (const pass of passes) {
     let res = await startPass(pass);
+    /*
+     * One retry, and it is free: a refused request creates no prediction, so
+     * nothing was billed and there is nothing to refund. Kept even now that the
+     * passes do not overlap, because a limit can be busy for reasons that have
+     * nothing to do with us.
+     */
     if (res.status === 429) {
       await wait(RETRY_AFTER_MS);
       res = await startPass(pass);
     }
-    if (!res.ok) return { pass, http: res.status, detail: await res.text() };
-    return { pass, prediction: await res.json() };
-  }));
+    if (!res.ok) {
+      // The upstream's OWN words, redacted. Logging "HTTP 429" and throwing
+      // away the sentence that says which limit was hit cost a round trip:
+      // rate and concurrency are different problems with different fixes.
+      results.push({ pass, http: res.status, detail: await upstreamReason(res) });
+      break; // no point starting the next one against a limit already refusing
+    }
+    results.push({ pass, prediction: await res.json() });
+  }
 
   /*
    * One refused pass fails the whole detection.
@@ -623,7 +640,7 @@ async function handleSegment(request, env, origin, ctx) {
   if (failed) {
     await refundQuota(request, env, clientId, passes.length);
     note(failed.http === 429 ? 'rate_limited' : 'upstream_error',
-      `HTTP ${failed.http} from the detector, refunded ${passes.length}`);
+      `HTTP ${failed.http}: ${failed.detail || 'no message'}`);
 
     // Replicate throttles low-credit accounts to a handful of predictions a
     // minute. That is an account problem, not a bug, and saying so beats a
