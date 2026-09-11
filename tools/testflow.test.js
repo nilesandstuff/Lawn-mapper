@@ -86,6 +86,25 @@ for (const m of html.matchAll(/\bid="(tool-[a-z]+|size-[a-z]+|shape-tools|brush-
   owner.set(m[1], lawnStep);
 }
 
+/*
+ * Controls built at runtime are not in the markup, so they are owned by
+ * whatever container they are built into.
+ *
+ * The exclusion tick boxes are the case: "#excl-built" exists only once the
+ * catalogue has arrived from the Worker, and nothing in index.html mentions
+ * it. Without this the linter would see a press it has no opinion about, which
+ * is the one outcome worse than a wrong opinion -- it looks like coverage.
+ */
+const GENERATED = [
+  [/^excl-/, owner.get('exclude-list')],
+];
+const ownerOf = (id) => owner.get(id)
+  || (GENERATED.find(([re]) => re.test(id)) || [])[1];
+
+check('the runtime-built controls have a step as well',
+  Boolean(owner.get('exclude-list')),
+  `the tick boxes are built into #exclude-list, on the "${owner.get('exclude-list')}" step`);
+
 /* ------------------------------------------------ walk the check script */
 
 /*
@@ -159,7 +178,7 @@ for (const [i, raw] of lines.entries()) {
   /* reachableIn('mode') presses a map tool; reachableIn('x', 'tool') a sub-tool. */
   const reached = line.match(/reachableIn\('([a-z]+)'(?:,\s*'([a-z]+)')?\)/);
   if (reached) {
-    const need = reached[2] ? lawnStep : owner.get(`mode-${reached[1]}`);
+    const need = reached[2] ? lawnStep : ownerOf(`mode-${reached[1]}`);
     if (tab && need && need !== tab) {
       problems.push(`line ${i + 1}: reachableIn('${reached[1]}') needs the `
         + `"${need}" step, but the script is on "${tab}"`);
@@ -176,7 +195,7 @@ for (const [i, raw] of lines.entries()) {
     const hit = line.match(re);
     if (!hit) continue;
     seen.actions++;
-    const need = owner.get(hit[1]);
+    const need = ownerOf(hit[1]);
     if (need) seen.gated++;
     if (locked(need)) seen.whileLocked++;
     if (tab && need && need !== tab) {

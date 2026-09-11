@@ -3802,8 +3802,9 @@ function tabLock(tab) {
   if (tab === 'address' && hasLawn() && state.parcel) {
     return {
       text: 'There is a lawn measured against this property line. Moving the '
-        + 'line now would re-trim it, so the boundary tools are off until the '
-        + 'lawn is cleared.',
+        + 'line now would re-trim it, so the boundary tools are off — on the '
+        + 'map as well as here — until the lawn is cleared. Clearing keeps the '
+        + 'line itself, so you can move it and then measure again.',
       clear: true,
       redetect: false,
     };

@@ -310,6 +310,24 @@ await dismissTip(page);
  * returned a boundary, and that is the thing to ask.
  */
 const hasParcel = (await page.evaluate(() => window.__lmTabs())).hasParcel;
+
+/*
+ * SAY IT ONCE, HERE, IF THIS ADDRESS HAS NO BOUNDARY ON FILE.
+ *
+ * Several sections below seed a lawn with "Use property line", which does not
+ * exist without one -- so an uncovered address does not fail those checks, it
+ * stops the run on a button that is not there, ten seconds later and with
+ * nothing saying why. The address is an input to this workflow, so that is a
+ * thing somebody will do. One line here turns a mystery into an expected
+ * outcome.
+ */
+if (!hasParcel) {
+  console.log('      NOTE: no county boundary for this address. Sections that');
+  console.log('            seed a lawn from the property line cannot run, and');
+  console.log('            the run will stop when it reaches one. Try the');
+  console.log('            default address to exercise the whole suite.');
+}
+
 const layerTip = await page.evaluate(() => window.__lmTip());
 check(hasParcel
   ? 'dismissing it leads to the imagery tip'
