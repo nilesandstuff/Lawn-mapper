@@ -181,6 +181,25 @@ if (typeof window !== 'undefined') {
     []
   );
 
+  /*
+   * The edge tool, driven through the real setter.
+   *
+   * Its panel only appears once there is a mask, so the free browser run cannot
+   * click the buttons -- but the buttons are the trivial part. What can go
+   * wrong is the parsing: a half-typed "-" snapping the outline to zero, a
+   * pasted "20ft" clamping somewhere unexpected, a value accepted past the
+   * range the tracer can actually honour. That is reachable without spending a
+   * detection, so it is tested.
+   */
+  window.__lmEdge = () => ({
+    ft: state.edgeFt,
+    max: MAX_EDGE_FT,
+    step: EDGE_STEP_FT,
+    field: document.getElementById('edge-ft')?.value,
+    note: document.getElementById('sens-note')?.textContent || '',
+  });
+  window.__lmSetEdge = (v) => { setEdgeFt(v); return state.edgeFt; };
+
   /* Developer mode: whether it is unlocked, and what it would send. */
   window.__lmDev = () => ({
     on: state.dev,
@@ -2020,18 +2039,16 @@ function refreshExclusions() {
   if (!cost) return;
 
   /*
-   * Say the cost before it is spent, and name the redundancy.
+   * Say the cost before it is spent.
    *
-   * "Trees" and "Woods" measured 61.5% and 58.3% of the same parcel -- the
-   * same answer twice, at twice the price. Someone reading two plausible
-   * labels has no way to know that, so the line says it at the moment both are
-   * ticked rather than in a note nobody opens.
+   * There used to be a warning here about ticking Trees and Woods together --
+   * two boxes measuring the same ground at twice the price. They are one box
+   * now, which is the better fix: a warning about a trap is worse than not
+   * digging it.
    */
-  const both = state.exclude.includes('trees') && state.exclude.includes('forest');
   cost.textContent = n === 0
     ? 'Nothing ticked — there is nothing for the AI to remove.'
-    : `${n} AI pass${n > 1 ? 'es' : ''} per detection, out of your daily allowance.`
-      + (both ? ' Trees and Woods usually find the same thing — one will do.' : '');
+    : `${n} AI pass${n > 1 ? 'es' : ''} per detection, out of your daily allowance.`;
   cost.style.color = n === 0 ? '#b3261e' : '';
 }
 
@@ -2995,6 +3012,51 @@ function enterRingEditing(which) {
 const DEFAULT_EDGE_FT = 0;
 
 /**
+ * How far the edge tool can move the outline, in feet.
+ *
+ * WIDENED FROM 3, because 3 was sized for the wrong job. Tidying a lawn edge is
+ * a foot or two; correcting an exclusion is not. Measured at Brooks Lane, the
+ * AI's idea of the woods is about 25% wider than the owner's -- 42,727 sq ft
+ * against 34,500 -- and closing that means pulling the treeline in something
+ * like five feet, which the old range could not reach. A control that stops
+ * short of the correction it exists for is a control that looks broken.
+ *
+ * 15 is generous rather than precise: past about ten feet a lawn edge is being
+ * invented rather than trimmed, and the number is right there on screen to say
+ * so.
+ */
+const MAX_EDGE_FT = 15;
+
+/** One foot a press: fine enough to aim, coarse enough to get somewhere. */
+const EDGE_STEP_FT = 1;
+
+/**
+ * Read a typed distance, or refuse it.
+ *
+ * Returns null for anything that is not a number, so a half-typed "-" or a
+ * stray letter leaves the setting alone instead of snapping it to zero and
+ * silently re-tracing the lawn underneath the person typing.
+ */
+function parseEdgeFt(text) {
+  const n = Number(String(text).trim().replace(/[^0-9.+-]/g, ''));
+  if (!Number.isFinite(n)) return null;
+  // Quarter feet, which is finer than anyone can see on the map and keeps the
+  // field from filling with floating-point dust.
+  const clamped = Math.min(Math.max(n, -MAX_EDGE_FT), MAX_EDGE_FT);
+  return Math.round(clamped * 4) / 4;
+}
+
+/** Set the edge distance and re-trace, unless nothing actually changed. */
+function setEdgeFt(ft) {
+  const next = parseEdgeFt(ft);
+  if (next === null) { refreshSensitivity(); return; }
+  if (next === state.edgeFt) { refreshSensitivity(); return; }
+  state.edgeFt = next;
+  refreshSensitivity();
+  retrace();
+}
+
+/**
  * A pass whose mask covers this much of the property is not an answer.
  *
  * The documented failure of this model is a concept that floods the entire
@@ -3117,14 +3179,27 @@ function refreshSensitivity() {
   const panel = $('#sens-panel');
   if (!panel) return;
   panel.hidden = !state.lastMask?.layers?.length;
-  $('#sens-slider').value = String(state.edgeFt);
+
+  /*
+   * Do not fight the person typing. Writing the value back while the field has
+   * focus would move the caret mid-keystroke and make "-12" impossible to type,
+   * so the field owns its own text until it is committed.
+   */
+  const field = $('#edge-ft');
+  if (field && document.activeElement !== field) field.value = String(state.edgeFt);
+
+  const minus = $('#edge-minus');
+  const plus = $('#edge-plus');
+  if (minus) minus.disabled = state.edgeFt <= -MAX_EDGE_FT;
+  if (plus) plus.disabled = state.edgeFt >= MAX_EDGE_FT;
+
   describeEdgeShift();
 }
 
 function describeEdgeShift() {
   const ft = state.edgeFt;
   $('#sens-note').textContent = ft === 0
-    ? 'As detected. Slide left to pull the outline in, right to push it out.'
+    ? `As detected. Minus pulls the outline in, plus pushes it out, up to ${MAX_EDGE_FT} ft.`
     : ft < 0
       ? `Pulled in ${Math.abs(ft)} ft all round — tighter, and thin strips drop out.`
       : `Pushed out ${ft} ft all round, still trimmed to your property line.`;
@@ -4509,7 +4584,7 @@ function reset() {
   $('#outside-opt').hidden = true;
   state.drawingParcel = false;
   state.edgeFt = DEFAULT_EDGE_FT;
-  $('#sens-slider').value = String(DEFAULT_EDGE_FT);
+  $('#edge-ft').value = String(DEFAULT_EDGE_FT);
   $('#sens-panel').hidden = true;
   $('#btn-draw-parcel').hidden = true;
   tips.seen.clear();
@@ -4547,13 +4622,19 @@ $('#btn-detect').addEventListener('click', detect);
 $('#imagery-source').addEventListener('change', (e) => setProvider(e.target.value));
 $('#model-choice').addEventListener('change', (e) => setModel(e.target.value));
 /*
- * `input` would re-trace on every pixel of travel, which on a 1280px mask is a
- * visible stutter and a lot of wasted work for positions nobody stopped at.
- * `change` fires once the finger lifts.
+ * Re-tracing is not free -- it is a full pass over a 1280px mask -- so it runs
+ * on a committed value, never on a keystroke. Typing "12" would otherwise
+ * re-trace at 1 on the way past.
  */
-$('#sens-slider').addEventListener('change', (e) => {
-  state.edgeFt = Number(e.target.value) || DEFAULT_EDGE_FT;
-  retrace();
+$('#edge-minus').addEventListener('click', () => setEdgeFt(state.edgeFt - EDGE_STEP_FT));
+$('#edge-plus').addEventListener('click', () => setEdgeFt(state.edgeFt + EDGE_STEP_FT));
+
+/* `change` fires on blur and on Enter; the explicit keydown makes Enter commit
+ * without dismissing the on-screen keyboard first, which is how a phone user
+ * actually finishes typing. */
+$('#edge-ft').addEventListener('change', (e) => setEdgeFt(e.target.value));
+$('#edge-ft').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); setEdgeFt(e.target.value); }
 });
 
 $('#btn-pins-clear').addEventListener('click', () => {

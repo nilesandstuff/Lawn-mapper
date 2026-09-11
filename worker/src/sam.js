@@ -68,71 +68,46 @@ export const EXCLUSIONS = {
   },
 
   /*
-   * 0.2, from the sweep at Brooks Lane: "trees" masked 61.5% of a parcel that
-   * is 58% not-lawn, and inverted to 28,788 sq ft against an owner-reported
-   * 28,000 mown. At 0.1 and below the same prompt flooded the whole frame.
+   * ONE TREE BOX, AND THE PROMPT IS "woods".
    *
-   * AND THE THRESHOLD IS A SWITCH, NOT A DIAL. Measured against the owner's
-   * own figure for the woods (34,500 sq ft, 45% of the lot), raw mask area,
-   * Mapbox imagery:
+   * There were two -- "trees" and "forest" -- and they answered the same
+   * question at twice the price, which the panel had to warn about. Measured at
+   * Brooks Lane against the owner's figure for the woods (34,500 sq ft, 45% of
+   * the lot), raw mask area, Mapbox imagery:
    *
-   *   prompt     0.2      0.25     0.3      0.35     0.4      0.5     0.6+
-   *   "woods"    42,727   42,727   42,727   42,727   42,727   42,727    0
-   *   "forest"   44,682   44,682   44,682   44,682     --       --     --
-   *   "trees"    46,155   45,352   44,459   44,459     --       --     --
+   *   prompt     0.2      0.25     0.3      0.35     0.4      0.5     0.6+   pieces
+   *   "woods"    42,727   42,727   42,727   42,727   42,727   42,727    0      1
+   *   "forest"   44,682   44,682   44,682   44,682     --       --     --      1
+   *   "trees"    46,155   45,352   44,459   44,459     --       --     --     4-6
    *
-   * "woods" is IDENTICAL at every setting from 0.2 to 0.5 and then vanishes.
-   * One detection, one score in 0.5-0.6, fully in or fully out -- so there is
-   * no value of this number that makes the mask smaller, only one that makes
-   * it nothing. "trees" moves 3.7% because it returns four to six separate
-   * pieces and raising the cut drops the weakest, then it too flattens.
+   * "woods" wins on both things that matter: the smallest overshoot, and ONE
+   * clean piece where "trees" returns four to six fragments. The label says
+   * Trees because that is what a person calls them; the prompt says woods
+   * because that is what this model draws best.
    *
-   * So the band 0.2-0.5 is one setting wearing six hats, and 0.2 is not "the
-   * value that works" -- it is the low end of a plateau. Anyone retuning this
-   * should know that moving it within that range spends a prediction to learn
-   * nothing, and that the cliff is between 0.5 and 0.6.
+   * THE THRESHOLD IS A SWITCH, NOT A DIAL. "woods" is IDENTICAL at every
+   * setting from 0.2 to 0.5 and then vanishes -- one detection, one score in
+   * 0.5-0.6, fully in or fully out. No value of this number makes the mask
+   * smaller; one makes it nothing. "trees" moved 3.7% only because it returns
+   * several pieces and raising the cut drops the weakest. So 0.2 is not "the
+   * value that works", it is the low end of a plateau, and moving it inside
+   * that band spends a prediction to learn nothing.
+   *
+   * AND NOTHING REACHES THE GROUND TRUTH. Threshold does nothing, wording moves
+   * it 5%, and the other photograph is WORSE (naip "woods" 48,124, +39%;
+   * "trees" 47,684, +38%). The model's idea of where woodland ends is further
+   * out than the owner's -- outer branches, shadow, the scrubby margin. That is
+   * a disagreement about an EDGE, which is why the edge tool is what corrects
+   * it and this number is not.
    */
-  trees: {
+  woods: {
     label: 'Trees',
-    prompt: 'trees',
+    prompt: 'woods',
     promptVar: 'SAM_NOT_LAWN_PROMPT',
     threshold: 0.2,
     thresholdVar: 'SAM_SUBTRACT_THRESHOLD',
     byDefault: false,
-    note: 'Canopy, whether one tree on the lawn or a whole treeline.',
-  },
-
-  /*
-   * "forest" measured 58.3% against the 58% wanted -- the closest single
-   * concept tried, half a point out. It overlaps "trees" almost entirely, so
-   * ticking both costs two predictions for one answer; the UI says so.
-   *
-   * THAT 58% WAS THE WRONG YARDSTICK, and the correction matters. It was
-   * compared against everything-not-lawn (58% of the lot). Judged against the
-   * WOODS alone, which is what these prompts actually name, the owner's figure
-   * is 34,500 sq ft -- 45% -- and every wording overshoots it:
-   *
-   *   mapbox "woods"   42,727   +24%      naip "woods"   48,124   +39%
-   *   mapbox "forest"  44,682   +29%      naip "trees"   47,684   +38%
-   *   mapbox "trees"   46,155   +34%
-   *
-   * Three axes, none of them a way out: the threshold does nothing (see the
-   * trees entry), the wording moves it 5%, and the other photograph is 12%
-   * WORSE. The model's idea of where woodland ends is simply further out than
-   * the owner's -- outer branches, shadow, the scrubby margin -- and that is a
-   * disagreement about an edge, not a confidence that can be tuned.
-   *
-   * Which makes the edge shift the tool for it, not this number. Worth knowing
-   * before spending anything on another sweep.
-   */
-  forest: {
-    label: 'Woods',
-    prompt: 'forest',
-    promptVar: 'SAM_EXCLUDE_FOREST_PROMPT',
-    threshold: 0.2,
-    thresholdVar: 'SAM_EXCLUDE_FOREST_THRESHOLD',
-    byDefault: false,
-    note: 'A continuous block of woodland. Largely the same answer as Trees, so pick one.',
+    note: 'Canopy, whether one tree on the lawn or a whole treeline. Reads about 25% wider than the trees really are, so trim the edge after.',
   },
 
   /*
@@ -152,6 +127,19 @@ export const EXCLUSIONS = {
   },
 };
 
+/**
+ * Retired ids that still name something real.
+ *
+ * "trees" and "forest" were two boxes asking one question; they are now the
+ * single "woods" entry. Dropping the ids instead would silently untick a box
+ * somebody had chosen -- and an exclusion that quietly stops being applied
+ * makes the lawn BIGGER, which is the direction nobody notices.
+ */
+export const EXCLUSION_ALIASES = {
+  trees: 'woods',
+  forest: 'woods',
+};
+
 /** Which boxes start ticked. */
 export const DEFAULT_EXCLUSIONS = Object.entries(EXCLUSIONS)
   .filter(([, e]) => e.byDefault)
@@ -160,12 +148,15 @@ export const DEFAULT_EXCLUSIONS = Object.entries(EXCLUSIONS)
 /**
  * A ceiling on passes per detection.
  *
- * Every tick is a separate Replicate prediction, paid for and waited on. Four
- * is the whole table today, so this is not a restriction anyone can feel -- it
- * is a guard on the wire, where `exclude` is a list a caller can post whatever
- * it likes into. Without it, one request could ask for a hundred predictions.
+ * Every tick is a separate Replicate prediction, paid for and waited on. This
+ * is the whole table, so it is not a restriction anyone can feel -- it is a
+ * guard on the wire, where `exclude` is a list a caller can post whatever it
+ * likes into. Without it, one request could ask for a hundred predictions.
+ *
+ * Derived rather than written out, so adding a box cannot leave the cap behind
+ * and silently make the newest one unreachable.
  */
-export const MAX_EXCLUSIONS = 4;
+export const MAX_EXCLUSIONS = Object.keys(EXCLUSIONS).length;
 
 /**
  * Clean a requested exclusion list into one that can be run.
@@ -182,7 +173,7 @@ export function normaliseExclusions(list) {
   const seen = new Set();
   const out = [];
   for (const raw of list) {
-    const id = String(raw);
+    const id = EXCLUSION_ALIASES[String(raw)] || String(raw);
     if (!Object.prototype.hasOwnProperty.call(EXCLUSIONS, id)) continue;
     if (seen.has(id)) continue;
     seen.add(id);
@@ -223,7 +214,7 @@ export const exclusionCatalogue = () =>
  * because the measurements they carry are the reason the trees entry has the
  * numbers it has. They are views onto the table now, not a second source.
  */
-export const NOT_LAWN_PROMPT = EXCLUSIONS.trees.prompt;
+export const NOT_LAWN_PROMPT = EXCLUSIONS.woods.prompt;
 
 /*
  * ONE CONCEPT. NOT A LIST. Measured at Brooks Lane, all at 0.2, against a
@@ -377,7 +368,7 @@ export const estimatePromptTokens = (prompt) =>
  * So the shipped arrangement is several predictions unioned, one concept each,
  * and the several-unioned cost is real and per-pass. See EXCLUSIONS.
  */
-export const SUBTRACT_THRESHOLD = EXCLUSIONS.trees.threshold;
+export const SUBTRACT_THRESHOLD = EXCLUSIONS.woods.threshold;
 
 /**
  * How to ask.

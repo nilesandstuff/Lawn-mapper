@@ -283,6 +283,27 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .imagery .sub { margin: 7px 0 0; font-size: 12.5px; }
 .imagery input[type=range] { width: 100%; margin: 2px 0 0; accent-color: var(--green); }
 
+/* ------------------------------------------------------------- the stepper */
+/*
+ * Buttons for nudging, a field for typing. The touch targets are 44px because
+ * this is used one-handed on a phone while looking at a map, and a control you
+ * have to aim at is a control that interrupts what you are looking at.
+ */
+.stepper { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.stepbtn {
+  flex: none; width: 44px; height: 44px; font-size: 22px; line-height: 1;
+  color: var(--ink); background: #fff;
+  border: 1px solid var(--line); border-radius: 10px; cursor: pointer;
+}
+.stepbtn:active { background: #eef3ee; }
+.stepper input[type=text] {
+  flex: 1; min-width: 0; height: 44px; padding: 0 10px;
+  font: inherit; font-size: 16px; /* 16px or iOS zooms the page on focus */
+  text-align: center; color: var(--ink); background: #fff;
+  border: 1px solid var(--line); border-radius: 10px;
+}
+.stepunit { flex: none; font-size: 13px; color: var(--muted); }
+
 /* ------------------------------------------------------- developer mode */
 /*
  * Deliberately unlike the rest of the panel. Everything else here is trying

@@ -1558,6 +1558,48 @@ console.log('\n--- developer mode ---');
   check('and a threshold of zero survives, which truthiness would drop',
     zero.overrides.threshold === 0, JSON.stringify(zero.overrides));
 
+  /* ------------------------------------------------- the edge tool */
+  /*
+   * Buttons and a typed field replaced a slider, and the range went from 3 ft
+   * to 15 -- because 3 was sized for tidying a lawn edge, not for correcting an
+   * exclusion. The AI's woods at Brooks Lane runs about 25% wider than the
+   * owner's, which needs roughly five feet of trim: a control that stops short
+   * of the correction it exists for looks broken.
+   *
+   * Driven through the real setter, so this is the parsing the app actually
+   * uses rather than a copy of it.
+   */
+  const edge = await page.evaluate(() => window.__lmEdge());
+  check('the edge tool reaches far enough to trim a treeline',
+    edge.max >= 10, `${edge.max} ft`);
+  check('and starts at nothing', edge.ft === 0 && edge.field === '0');
+
+  check('a typed distance is taken', await page.evaluate(() => window.__lmSetEdge('-5')) === -5);
+  check('and the note says which way it went',
+    /pulled in 5 ft/i.test((await page.evaluate(() => window.__lmEdge())).note),
+    (await page.evaluate(() => window.__lmEdge())).note);
+
+  check('past the range it clamps rather than refusing',
+    await page.evaluate(() => window.__lmSetEdge('999')) === edge.max);
+  check('in both directions',
+    await page.evaluate(() => window.__lmSetEdge('-999')) === -edge.max);
+
+  /*
+   * A HALF-TYPED VALUE MUST NOT MOVE THE LAWN. "-" on the way to "-5" parses as
+   * nothing, and treating nothing as zero would re-trace the outline underneath
+   * somebody mid-keystroke.
+   */
+  await page.evaluate(() => window.__lmSetEdge('-3'));
+  check('a half-typed minus leaves the setting alone',
+    await page.evaluate(() => window.__lmSetEdge('-')) === -3);
+  check('as does a word', await page.evaluate(() => window.__lmSetEdge('abc')) === -3);
+
+  check('and a pasted unit is read, not rejected',
+    await page.evaluate(() => window.__lmSetEdge('4 ft')) === 4);
+
+  await page.evaluate(() => window.__lmSetEdge(0));
+  check('back to nothing', (await page.evaluate(() => window.__lmEdge())).ft === 0);
+
   /*
    * THE LARGER ALLOWANCE HAS TO BE IN THE REQUEST, not just in the app.
    *

@@ -15,6 +15,7 @@
  */
 
 import worker from '../worker/src/index.js';
+import { EXCLUSIONS } from '../worker/src/sam.js';
 
 let failures = 0;
 const check = (name, ok, detail = '') => {
@@ -95,16 +96,23 @@ async function post(payload) {
 }
 
 /* --------------------------------------------------- exclude, every box */
+/*
+ * Driven off the real table rather than a hard-coded list of ids, so removing
+ * a box (as "trees" and "forest" were, collapsed into one) cannot leave this
+ * asserting a count the product no longer has.
+ */
 {
-  const r = await post({ model: 'sam3_exclude', exclude: ['built', 'trees', 'forest', 'water'] });
-  check('four boxes are four predictions', r.sent.length === 4, String(r.sent.length));
+  const every = Object.keys(EXCLUSIONS);
+  const r = await post({ model: 'sam3_exclude', exclude: every });
+  check('every box is its own prediction', r.sent.length === every.length,
+    `${r.sent.length} for ${every.length} boxes`);
 
   /*
-   * FOUR DIFFERENT CONCEPTS, which is the whole reason for the rebuild. One
-   * prompt repeated four times would cost the same and answer once.
+   * A DIFFERENT CONCEPT EACH, which is the whole reason for the rebuild. One
+   * prompt repeated would cost the same and answer once.
    */
   check('each pass asks a different concept',
-    new Set(r.sent.map((s) => s.prompt)).size === 4,
+    new Set(r.sent.map((s) => s.prompt)).size === every.length,
     r.sent.map((s) => s.prompt).join(' | '));
 
   /*
@@ -118,7 +126,7 @@ async function post(payload) {
     r.sent.map((s) => `${s.prompt}@${s.threshold}`).join(' | '));
 
   check('every pass hands back a mask for the browser to subtract',
-    r.body.passes.length === 4 && r.body.passes.every((p) => p.mask));
+    r.body.passes.length === every.length && r.body.passes.every((p) => p.mask));
 }
 
 /* -------------------------------------------------------- nothing ticked */
@@ -145,7 +153,19 @@ async function post(payload) {
   const r = await post({ model: 'sam3_subtract', exclude: ['trees'] });
   check('the retired id still resolves to the mode that replaced it',
     r.body.model === 'sam3_exclude' && r.body.subtractive === true, r.body.model);
-  check('and it asks for trees rather than grass', r.sent[0].prompt === 'trees');
+
+  /*
+   * AND THE RETIRED BOX ID STILL ASKS ITS QUESTION. "trees" and "forest" were
+   * folded into one "woods" entry; dropping the ids would quietly untick a box
+   * somebody had chosen, and an exclusion that stops being applied makes the
+   * lawn BIGGER -- the direction nobody notices.
+   */
+  check('and the retired tick id still runs the box that replaced it',
+    r.sent.length === 1 && r.sent[0].prompt === EXCLUSIONS.woods.prompt,
+    r.sent[0]?.prompt);
+  check('as does the other one it was merged with',
+    (await post({ model: 'sam3_exclude', exclude: ['forest'] })).sent[0].prompt
+      === EXCLUSIONS.woods.prompt);
 }
 
 /* ---------------------------------------------------- the developer panel */

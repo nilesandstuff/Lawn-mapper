@@ -228,8 +228,7 @@ together before anything is traced:
 | box | prompt | cut | on by default |
 |---|---|---|---|
 | Buildings, drives and paving | `man-made` | 0.05 | **yes** |
-| Trees | `trees` | 0.2 | no |
-| Woods | `forest` | 0.2 | no |
+| Trees | `woods` | 0.2 | no |
 | Ponds and creeks | `bodies of water` | 0.2 | no |
 
 `man-made` is the box that ships ticked, and it was found by hand in the
@@ -291,6 +290,17 @@ three it can collapse entirely and hand back the whole parcel. That is worse
 than a monotonic decline would be: a curve can be extrapolated, this has a hole
 in the middle of it.
 
+### One tree box, and the prompt is `woods`
+
+There were two — Trees (`trees`) and Woods (`forest`) — answering the same
+question at twice the price, which the panel had to warn about. `woods` wins on
+both things that matter: the smallest overshoot, and **one clean piece** where
+`trees` returns four to six fragments. The label says Trees because that is what
+a person calls them; the prompt says `woods` because that is what this model
+draws best. Both retired ids still resolve to it, so a browser that had either
+ticked keeps its exclusion — an exclusion that quietly stops applying makes the
+lawn *bigger*, which is the direction nobody notices.
+
 ### The threshold is a switch, not a dial
 
 Measured on the same lot against the owner's figure for the woods alone —
@@ -298,7 +308,7 @@ Measured on the same lot against the owner's figure for the woods alone —
 
 | prompt | 0.2 | 0.25 | 0.3 | 0.35 | 0.4 | 0.5 | 0.6+ |
 |---|---|---|---|---|---|---|---|
-| `woods` | 42,727 | 42,727 | 42,727 | 42,727 | 42,727 | 42,727 | **0** |
+| `woods` (shipped) | 42,727 | 42,727 | 42,727 | 42,727 | 42,727 | 42,727 | **0** |
 | `forest` | 44,682 | 44,682 | 44,682 | 44,682 | — | — | — |
 | `trees` | 46,155 | 45,352 | 44,459 | 44,459 | — | — | — |
 
@@ -344,7 +354,7 @@ stated before it is spent.
 Untested: whether a comma list behaves this badly in *normal* mode. Every row
 is exclude mode on one lot.
 
-`trees` was the word worth spending a single pass on: the woods is 45% of this
+`woods` is the word worth spending a single pass on: the woods is 45% of this
 parcel and 78% of everything subtraction has to remove. Its lawn, 28,788 sq ft
 against a mown ~28,000, is +2.8% — where *Find grass* gets 25,059 and is
 −10.5%. On a bare suburban lot with a wide driveway it would be the wrong

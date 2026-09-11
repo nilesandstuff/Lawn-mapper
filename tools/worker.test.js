@@ -493,15 +493,15 @@ check('every exclusion is a single concept',
  * A single shared threshold would have to be wrong for one of them.
  */
 check('the tree concepts sit in the only band that produced anything at all',
-  EXCLUSIONS.trees.threshold > 0.1 && EXCLUSIONS.trees.threshold < 0.4,
-  `${EXCLUSIONS.trees.threshold}; <=0.1 masked the whole frame and >=0.4 masked nothing`);
+  EXCLUSIONS.woods.threshold > 0.1 && EXCLUSIONS.woods.threshold < 0.4,
+  `${EXCLUSIONS.woods.threshold}; <=0.1 masked the whole frame and >=0.4 masked nothing`);
 
 check('and the built concept keeps the lower cut it was measured at',
   EXCLUSIONS.built.threshold === 0.05,
   'reported working on a real lot for house, drive, pool, deck and sidewalk');
 
 check('so the concepts do not share one threshold',
-  EXCLUSIONS.built.threshold !== EXCLUSIONS.trees.threshold,
+  EXCLUSIONS.built.threshold !== EXCLUSIONS.woods.threshold,
   'one number for both would have to be wrong for one of them');
 
 /*
@@ -509,6 +509,12 @@ check('so the concepts do not share one threshold',
  * others are off because an untried concept that silently removes a third of
  * someone's lawn is worse than a box they had to tick themselves.
  */
+/* One tree box, not two. They asked the same question at twice the price. */
+check('there is a single tree box, and it is labelled for people not prompts',
+  !EXCLUSIONS.trees && !EXCLUSIONS.forest
+  && EXCLUSIONS.woods.label === 'Trees' && EXCLUSIONS.woods.prompt === 'woods',
+  Object.keys(EXCLUSIONS).join(', '));
+
 check('exactly one box starts ticked, and it is the measured one',
   DEFAULT_EXCLUSIONS.length === 1 && DEFAULT_EXCLUSIONS[0] === 'built',
   DEFAULT_EXCLUSIONS.join(', '));
@@ -536,7 +542,21 @@ check('and it never ships the prompts themselves',
 
 /* ---------------------------------------------- normalising the tick list */
 check('a normal request comes through in order',
-  normaliseExclusions(['built', 'trees']).join(',') === 'built,trees');
+  normaliseExclusions(['built', 'woods']).join(',') === 'built,woods');
+
+/*
+ * RETIRED IDS MIGRATE RATHER THAN VANISH. "trees" and "forest" were two boxes
+ * asking one question and are now the single "woods" entry. Dropping the ids
+ * would quietly untick a box somebody had chosen -- and an exclusion that stops
+ * being applied makes the lawn BIGGER, which is the direction nobody notices.
+ */
+check('both retired tree ids resolve to the box that replaced them',
+  normaliseExclusions(['trees']).join(',') === 'woods'
+  && normaliseExclusions(['forest']).join(',') === 'woods');
+
+check('and ticking both of them is still one prediction, not two',
+  normaliseExclusions(['trees', 'forest']).join(',') === 'woods',
+  'they measured the same ground at twice the price, which is why they merged');
 
 /*
  * Unknown ids are DROPPED, not rejected. A browser cached from before a concept
@@ -546,11 +566,12 @@ check('an unknown concept is dropped rather than failing the detection',
   normaliseExclusions(['built', 'unicorns']).join(',') === 'built');
 
 check('duplicates are collapsed, so one box cannot be billed twice',
-  normaliseExclusions(['trees', 'trees', 'trees']).join(',') === 'trees');
+  normaliseExclusions(['woods', 'woods', 'woods']).join(',') === 'woods');
 
 check('the list is capped, because it arrives over the wire',
-  normaliseExclusions(Array(50).fill('trees').map((_, i) => Object.keys(EXCLUSIONS)[i % 4]))
-    .length <= MAX_EXCLUSIONS,
+  normaliseExclusions(
+    Array(50).fill(0).map((_, i) => Object.keys(EXCLUSIONS)[i % MAX_EXCLUSIONS])
+  ).length <= MAX_EXCLUSIONS,
   'without a cap one request could ask for a hundred predictions');
 
 /*
@@ -562,11 +583,11 @@ check('an empty list is not quietly replaced with the defaults',
 
 /* ------------------------------------------------------- one pass's wiring */
 check('a pass carries its own wording and its own cut',
-  exclusionPass('trees', {}).prompt === 'trees'
-  && exclusionPass('trees', {}).threshold === EXCLUSIONS.trees.threshold);
+  exclusionPass('woods', {}).prompt === 'woods'
+  && exclusionPass('woods', {}).threshold === EXCLUSIONS.woods.threshold);
 
 check('each concept is retunable without disturbing the others',
-  exclusionPass('trees', { SAM_SUBTRACT_THRESHOLD: '0.35' }).threshold === 0.35
+  exclusionPass('woods', { SAM_SUBTRACT_THRESHOLD: '0.35' }).threshold === 0.35
   && exclusionPass('built', { SAM_SUBTRACT_THRESHOLD: '0.35' }).threshold
      === EXCLUSIONS.built.threshold,
   'one variable moving several would make every tuning run tell you about two changes');
@@ -575,19 +596,19 @@ check('and the wording too',
   exclusionPass('built', { SAM_EXCLUDE_BUILT_PROMPT: 'rooftops' }).prompt === 'rooftops');
 
 check('the override clamps like every other source for this number',
-  exclusionPass('trees', {}, '4').threshold === 1
-  && exclusionPass('trees', {}, '-1').threshold === 0);
+  exclusionPass('woods', {}, '4').threshold === 1
+  && exclusionPass('woods', {}, '-1').threshold === 0);
 
 /*
  * Zero is a legitimate cut, so the override must test for finite rather than
  * for truthy. `override || fallback` would silently ignore the entire low end.
  */
 check('a zero override is honoured rather than read as "unset"',
-  exclusionPass('trees', {}, 0).threshold === 0);
+  exclusionPass('woods', {}, 0).threshold === 0);
 
 check('and an untouched slider leaves the concept its own number',
-  exclusionPass('trees', {}, null).threshold === EXCLUSIONS.trees.threshold
-  && exclusionPass('trees', {}, '').threshold === EXCLUSIONS.trees.threshold);
+  exclusionPass('woods', {}, null).threshold === EXCLUSIONS.woods.threshold
+  && exclusionPass('woods', {}, '').threshold === EXCLUSIONS.woods.threshold);
 
 check('and the normal model still lets the source choose its wording',
   samPrompt(DEFAULT_MODEL, 'vegetation', {}) === 'vegetation',
@@ -910,8 +931,8 @@ check('an untouched slider leaves the model default alone',
  */
 check('exclude mode carries no method-wide threshold to override its concepts',
   MODELS.sam3_exclude.threshold === undefined
-  && exclusionPass('built', {}).threshold !== exclusionPass('trees', {}).threshold,
-  `${exclusionPass('built', {}).threshold} vs ${exclusionPass('trees', {}).threshold}`);
+  && exclusionPass('built', {}).threshold !== exclusionPass('woods', {}).threshold,
+  `${exclusionPass('built', {}).threshold} vs ${exclusionPass('woods', {}).threshold}`);
 
 check('and a typed threshold is still clamped',
   samThreshold({}, DEFAULT_MODEL, 5) === 1 && samThreshold({}, DEFAULT_MODEL, -2) === 0);
