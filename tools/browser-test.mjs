@@ -71,11 +71,55 @@ const page = await browser.newPage({
   hasTouch: true,
 });
 
+/*
+ * FAIL FAST, AND SAY WHAT YOU HAD.
+ *
+ * Playwright's default is to retry an action for thirty seconds before giving
+ * up, then throw -- and a throw at the top level of a module is an unhandled
+ * rejection that ends the process. So one control that never appears produced
+ * half a minute of silent retrying, a stack trace, and NOTHING: no summary, no
+ * count, and none of the two hundred checks that had already run.
+ *
+ * That is the worst possible failure mode for a suite whose whole job is to be
+ * read on a phone from a workflow log. Ten seconds is far longer than anything
+ * here legitimately takes, and the handler below turns the death into a report.
+ */
+page.setDefaultTimeout(10000);
+
 const errors = [];
 page.on('pageerror', (e) => errors.push(`PAGEERROR: ${e.message}`));
 page.on('console', (m) => {
   if (m.type() === 'error') errors.push(`CONSOLE: ${m.text().slice(0, 200)}`);
 });
+
+/** Print what we learned before dying, rather than instead of it. */
+async function bailOut(err) {
+  console.log(`\nSTOPPED  the run could not continue:\n      ${String(err?.message || err).split('\n')[0]}`);
+  console.log('      Every check above this line still ran; everything below it did not.');
+  if (errors.length) console.log(`\nconsole/page errors:\n  ${errors.slice(0, 12).join('\n  ')}`);
+  console.log(`\n${failures} check(s) FAILED before the run stopped.\n`);
+  try { await page.screenshot({ path: 'browser-test.png', fullPage: false }); } catch { /* gone */ }
+  try { await browser.close(); } catch { /* already down */ }
+  process.exit(1);
+}
+
+process.on('unhandledRejection', bailOut);
+process.on('uncaughtException', bailOut);
+
+/**
+ * Dismiss a coaching tip if one is up.
+ *
+ * Guarded rather than clicked blind: whether a tip appears depends on what the
+ * county returned and on which tab you landed on, so "press OK" is a
+ * conditional even when it usually happens. Clicking a hidden button is what
+ * turned a missing tip into a dead run.
+ */
+async function dismissTip(page) {
+  if (await page.locator('#coach').isVisible()) {
+    await page.click('#coach-ok');
+    await page.waitForTimeout(250);
+  }
+}
 
 console.log(`\nOpening ${BASE}\n`);
 await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -243,13 +287,27 @@ check('the first tip is about the property line',
   `stage=${parcelTip.stage} visible=${parcelTip.visible}`);
 console.log(`      "${parcelTip.text}"`);
 
+/*
+ * A TIP MUST POINT AT SOMETHING THAT IS ON SCREEN.
+ *
+ * This is the failure that moving the tools onto tabs introduced, and it was
+ * silent in the worst way: the property-line tip pointed at the map's "Line"
+ * button, which is only shown on the Address tab, and a county boundary means
+ * you land on the AI tab. showTip declines to point at a hidden control --
+ * correctly -- so the first tip in the app simply stopped appearing, with
+ * nothing failing and nothing to see. The tip now falls back to the TAB that
+ * opens the tool, and this asserts the property rather than the workaround.
+ */
+check('and it points at something that is actually on screen',
+  parcelTip.targetVisible || parcelTip.targetId === null,
+  `target #${parcelTip.targetId}, visible=${parcelTip.targetVisible}`);
+
 if (parcelTip.targetId) {
   const aim = pointsAt(parcelTip);
   check(`and its arrow points at #${parcelTip.targetId}`, aim.ok, aim.why);
 }
 
-await page.click('#coach-ok');
-await page.waitForTimeout(250);
+await dismissTip(page);
 
 /*
  * The imagery tip follows the property line, so it only follows the FIRST tip
@@ -304,8 +362,7 @@ if (layerTip.visible) {
     back.visible && back.stage === layerTip.stage,
     `was ${layerTip.stage}, came back as ${back.stage}`);
 
-  await page.click('#coach-ok');
-  await page.waitForTimeout(200);
+  await dismissTip(page);
 }
 
 check('no tip is left sitting over the map',
@@ -690,8 +747,13 @@ if (methods.includes('sam2')) {
   check('tapping the map places a pin', after.pins === 1, `${after.pins} pin(s)`);
   check('and that unlocks detection', after.disabled === false, `"${after.text}"`);
 
-  // Pins are work, so undo has to reach them.
-  await page.click('#btn-undo');
+  /*
+   * Pins are work, so undo has to reach them -- and this is the map's copy of
+   * undo, not the panel's, because that is the only one available from here.
+   * The panel's lives with the drawing tools, one tab away; the rail's is on
+   * the map on every tab, which is the whole reason it exists.
+   */
+  await page.click('#rail-undo');
   await page.waitForTimeout(300);
   check('undo removes a pin',
     (await page.evaluate(() => window.__lmPins().length)) === 0);
@@ -746,8 +808,7 @@ if (process.env.RUN_DETECT === 'true') {
   if (toolTip.visible) {
     const aim = pointsAt(toolTip);
     check('and it points at the shape tools', aim.ok, `${toolTip.targetId}: ${aim.why}`);
-    await page.click('#coach-ok');
-    await page.waitForTimeout(200);
+    await dismissTip(page);
   }
 }
 

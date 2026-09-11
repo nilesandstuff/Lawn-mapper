@@ -242,8 +242,18 @@ button:disabled { opacity: .45; cursor: not-allowed; }
  * can be sent to it at all) are invisible in the interface. The arrow is the
  * part that matters: "press Layers" is useless if Layers is one of nine icons.
  */
+/*
+ * Fixed to the viewport, not to the map.
+ *
+ * It used to be absolute inside the map wrapper, which was fine while every
+ * control a tip could point at was a button on the map. The tools live on
+ * tabs now, and a tip about the property line has to be able to point at the
+ * Address tab -- which is in the panel, the other half of the screen. A box
+ * clamped inside the map could not reach it, and showTip's refusal to point
+ * at something off screen turned into the first tip never appearing at all.
+ */
 .coach {
-  position: absolute; z-index: 6; width: 268px; max-width: min(78vw, 268px);
+  position: fixed; z-index: 7; width: 268px; max-width: min(78vw, 268px);
   padding: 13px 14px 11px;
   background: #fff; color: var(--ink);
   border: 1px solid rgba(0, 0, 0, .14); border-radius: 13px;
@@ -508,8 +518,10 @@ kbd {
  * Over the map, not in the panel: it is about the shape on the map, and on a
  * phone the panel is the half of the screen the map is not on.
  */
+/* Above the coaching tip, which is fixed at 7: a modal question is the one
+ * thing that should never have something else sitting on top of it. */
 .feedback {
-  position: absolute; inset: 0; z-index: 6;
+  position: absolute; inset: 0; z-index: 8;
   display: flex; align-items: center; justify-content: center;
   padding: 18px; background: rgba(22, 33, 26, .55);
 }

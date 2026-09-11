@@ -114,6 +114,48 @@ const badTabs = mapped.filter(([, tab]) => !tabs.includes(tab));
 check('and every tool points at a tab that exists', badTabs.length === 0,
   badTabs.map(([a, b]) => `${a}->${b}`).join(', '));
 
+/* ------------------------------------------------------------- the tips */
+/*
+ * A TIP MUST BE ABLE TO POINT AT SOMETHING VISIBLE.
+ *
+ * showTip declines to open when its target is hidden, which is right -- a box
+ * in the corner talking about a button that is not on screen is worse than
+ * silence. But once the tools moved onto tabs, the first tip in the app
+ * pointed at a map button that only appears on a tab you do not land on, so it
+ * stopped appearing at all: nothing failed, nothing threw, and the only way to
+ * notice was that a box was missing.
+ *
+ * A map-rail button is exactly the kind of target that can be away, because
+ * refreshRail hides every one whose tab is not open. So pointing at one is
+ * only safe through tipTarget, which falls back to the tab that opens it.
+ */
+const tipBody = js.slice(js.indexOf('function tipContent'), js.indexOf('function listSentence'));
+
+const literalTargets = [...tipBody.matchAll(/target:\s*'(#[A-Za-z0-9_-]+)'/g)].map((m) => m[1]);
+const guardedTargets = [...tipBody.matchAll(/target:\s*tipTarget\('(#[^']+)',\s*'(#[^']+)'\)/g)];
+
+check('the tips were found in the source',
+  literalTargets.length + guardedTargets.length >= 3,
+  `${literalTargets.length} plain, ${guardedTargets.length} guarded`);
+
+const unguarded = literalTargets.filter((t) => t.startsWith('#mode-'));
+check('no tip points straight at a map tool that a tab can hide',
+  unguarded.length === 0,
+  unguarded.length
+    ? `${unguarded.join(', ')} — wrap in tipTarget('<tool>', '#tab-<step>')`
+    : 'every map tool a tip names has a tab to fall back to');
+
+const tipTargets = [...literalTargets, ...guardedTargets.flat().slice(0)]
+  .filter((t) => typeof t === 'string' && t.startsWith('#'));
+const absentTargets = [...new Set(tipTargets)].filter((t) => !declared.has(t.slice(1)));
+check('and every control a tip names exists',
+  absentTargets.length === 0, absentTargets.join(', '));
+
+const badFallbacks = guardedTargets
+  .map(([, , tab]) => tab)
+  .filter((t) => !tabs.includes(t.replace('#tab-', '')));
+check('and every fallback is a real tab', badFallbacks.length === 0, badFallbacks.join(', '));
+
 /* ------------------------------------------------------------- styling */
 /*
  * A class the code toggles but nothing styles is a state change nobody can

@@ -457,6 +457,16 @@ if (typeof window !== 'undefined') {
       stage: tips.stage,
       visible: !box.hidden,
       targetId: tips.target?.id || null,
+      /*
+       * Whether the thing being pointed at is actually on screen.
+       *
+       * The failure this exists for is silent in both directions: showTip
+       * declines to open when its target is hidden, so the tip simply never
+       * appears, and a tip that DID open while its target got hidden would
+       * point at nothing. Moving the tools onto tabs made both reachable, and
+       * the first tip in the app stopped appearing with nothing failing.
+       */
+      targetVisible: Boolean(tips.target && tips.target.offsetParent !== null),
       text: document.getElementById('coach-text').textContent,
       arrow: a ? { x: (a.left + a.right) / 2, y: (a.top + a.bottom) / 2 } : null,
       target: t ? { left: t.left, right: t.right, top: t.top, bottom: t.bottom } : null,
@@ -4727,16 +4737,35 @@ function currentStage() {
  * Google only appears when there is a key for it, and a tip that names a
  * source the user cannot see is worse than no tip.
  */
+/**
+ * Point at the tool if it is on screen, otherwise at the tab that opens it.
+ *
+ * The tools live on tabs now, so the control a tip is about is frequently not
+ * showing when the tip fires -- the property-line tip arrives while you are
+ * looking at the AI step, because a county boundary means that is where you
+ * landed. showTip refuses to point at a hidden button, and rightly: a box in
+ * the corner talking about something not on screen is worse than silence.
+ *
+ * But silence was not the right answer either. It is how the first tip in the
+ * app stopped appearing at all, with nothing failing and nothing to see. The
+ * tab IS the way to the tool, so when the tool is away, that is the thing to
+ * aim at.
+ */
+function tipTarget(toolSelector, tabSelector) {
+  const tool = $(toolSelector);
+  return tool && tool.offsetParent !== null ? toolSelector : tabSelector;
+}
+
 function tipContent(stage) {
   if (stage === 'parcel') {
     return parcelRing()
       ? {
-          target: '#mode-parcel',
+          target: tipTarget('#mode-parcel', '#tab-address'),
           title: 'First: check your property line',
           text: 'The dashed outline is your lot, from the county record. Only '
               + 'grass inside it gets measured — so if your lawn runs past it '
-              + 'to the road, press Line and slide that edge out before you '
-              + 'detect.',
+              + 'to the road, open Address and press Line to slide that edge '
+              + 'out before you detect.',
         }
       : {
           target: null,
@@ -4766,12 +4795,12 @@ function tipContent(stage) {
   }
 
   return {
-    target: '#mode-shape',
+    target: tipTarget('#mode-shape', '#tab-draw'),
     title: 'Last: correct what it got wrong',
-    text: 'The AI is a good first guess, not the final word. Press Lawn, then '
-        + 'Erase to rub out a driveway or a flower bed, Add to paint in grass '
-        + 'it missed, or Points to drag a corner. Move is the only mode where a '
-        + 'whole patch can be dragged, and Undo is on the map next to them.',
+    text: 'The AI is a good first guess, not the final word. Open Draw, press '
+        + 'Lawn, then Erase to rub out a driveway or a flower bed, Add to paint '
+        + 'in grass it missed, or Points to drag a corner. Move is the only mode '
+        + 'where a whole patch can be dragged, and Undo is on the map next to them.',
   };
 }
 
@@ -4819,14 +4848,23 @@ function placeTip() {
   const arrow = $('#coach-arrow');
   if (box.hidden) return;
 
-  const wrap = $('#map').parentElement.getBoundingClientRect();
+  /*
+   * The viewport, because a tip can now point at either half of the screen.
+   *
+   * It used to be the map wrapper, which was right while every control worth
+   * pointing at was a button on the map. The tools live on tabs in the panel
+   * now, so a box clamped inside the map could not reach the thing it was
+   * talking about -- and showTip, correctly refusing to point at something off
+   * screen, silently stopped showing the first tip in the app.
+   */
+  const wrap = { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
   const target = tips.target;
 
   if (!target) {
-    // Nothing to point at: sit under the hint, centred, no arrow.
+    // Nothing to point at: sit under the top bar, centred, no arrow.
     arrow.hidden = true;
     box.style.left = `${Math.max(8, (wrap.width - box.offsetWidth) / 2)}px`;
-    box.style.top = '58px';
+    box.style.top = '78px';
     return;
   }
 
