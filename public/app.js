@@ -3839,6 +3839,9 @@ function setTab(name) {
    * question the rail asks, so it is answered in one place.
    */
   if (state.mode && !modeBelongsTo(state.mode, next)) setMode(null);
+  // ...and a tool whose step is locked is not usable either, even if it
+  // belongs to the step you are arriving at. See refreshRail.
+  else if (state.mode && tabLock(next)) setMode(null);
 
   for (const t of TABS) {
     const tab = $(`#tab-${t}`);
@@ -3900,6 +3903,15 @@ function refreshTabs() {
   for (const t of TABS) {
     $(`#tab-${t}`)?.classList.toggle('is-locked', Boolean(tabLock(t)));
   }
+
+  /*
+   * The map's half of this step has to follow the lock in the same breath.
+   *
+   * A lock engages the moment somebody paints, and the rail is redrawn from
+   * elsewhere -- so without this the "Line" button stayed pressable until the
+   * next unrelated refresh, which is exactly long enough to use it.
+   */
+  if (map) refreshRail();
 }
 
 /**
@@ -4457,12 +4469,24 @@ function refreshRail() {
    *
    * Pins are additionally only a concept for the model that uses them.
    */
+  /*
+   * A LOCKED STEP'S MAP TOOLS ARE LOCKED TOO.
+   *
+   * The lock greys out the panel, and the panel is only half of a step: "Line"
+   * lives on the map. Leaving it pressable meant the boundary tools were
+   * visibly disabled and still completely usable -- you could drag the property
+   * line with the panel greyed out beside you, re-trimming the very lawn the
+   * lock exists to protect. A lock with a way round it is worse than no lock,
+   * because it says the work is safe.
+   */
+  const shut = Boolean(tabLock(state.tab));
+
   let anyTool = false;
   for (const m of MODES) {
     const btn = $(`#mode-${m}`);
     if (!btn) continue;
     const mine = modeBelongsTo(m, state.tab);
-    btn.hidden = !mine || (m === 'pins' && !modelInfo(state.model).needsPoints);
+    btn.hidden = !mine || shut || (m === 'pins' && !modelInfo(state.model).needsPoints);
     if (!btn.hidden) anyTool = true;
     btn.setAttribute('aria-pressed', String(state.mode === m));
   }

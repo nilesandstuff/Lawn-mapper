@@ -92,9 +92,23 @@ page.on('console', (m) => {
   if (m.type() === 'error') errors.push(`CONSOLE: ${m.text().slice(0, 200)}`);
 });
 
-/** Print what we learned before dying, rather than instead of it. */
+/**
+ * Print what we learned before dying, rather than instead of it.
+ *
+ * AND NAME THE CONTROL. The first version printed only the first line of the
+ * error -- "page.click: Timeout 10000ms exceeded." -- which says a press failed
+ * and not which one. Playwright puts that in the call log underneath, in a
+ * "waiting for locator('#x')" line, so throwing away everything after the first
+ * newline discarded the single most useful fact in the message. Two runs were
+ * reported with nothing but the timeout, and the answer was sitting in the part
+ * that got cut.
+ */
 async function bailOut(err) {
-  console.log(`\nSTOPPED  the run could not continue:\n      ${String(err?.message || err).split('\n')[0]}`);
+  const text = String(err?.message || err);
+  const waitingFor = text.match(/waiting for (.+)/);
+  console.log(`\nSTOPPED  the run could not continue:\n      ${text.split('\n')[0]}`);
+  if (waitingFor) console.log(`      it was waiting for ${waitingFor[1].trim()}`);
+  console.log(`      ${text.split('\n').slice(1, 6).map((l) => l.trim()).filter(Boolean).join('\n      ')}`);
   console.log('      Every check above this line still ran; everything below it did not.');
   if (errors.length) console.log(`\nconsole/page errors:\n  ${errors.slice(0, 12).join('\n  ')}`);
   console.log(`\n${failures} check(s) FAILED before the run stopped.\n`);
@@ -1818,11 +1832,35 @@ const reachableIn = async (mode, tool) => {
   return page.evaluate(() => window.__lmEditable());
 };
 
+/*
+ * THE BOUNDARY HALF HAS TO BE DONE WITH NO LAWN ON THE MAP.
+ *
+ * Not an inconvenience of testing -- it is the product. A measured lawn locks
+ * the boundary step, because moving the line would re-trim a lawn already
+ * measured against the old one, and the lock takes the map's "Line" button
+ * away with the panel's controls. (It did not, at first: the panel greyed out
+ * while Line stayed pressable, so the boundary was visibly disabled and
+ * completely usable. A lock with a way round it is worse than no lock, because
+ * it says the work is safe.)
+ *
+ * So: clear through the notice, check the boundary mode in isolation, then put
+ * a lawn back and check the lawn mode. Which is also the order a person would
+ * be forced into.
+ */
+await unlockDetect(page);
+await goTab(page, 'address');
 const inParcel = await reachableIn('parcel');
 console.log(`      property-line mode reaches: ${JSON.stringify(inParcel.ids)}`);
 check('property-line mode reaches the property line and nothing else',
   inParcel.ids.length === 1 && inParcel.ids[0] === inParcel.parcelId,
   JSON.stringify(inParcel.ids));
+
+/* A lawn to isolate the boundary FROM, put back the way a person would. */
+await goTab(page, 'draw');
+await page.click('#btn-parcel-shape');
+await page.waitForTimeout(800);
+check('and a lawn can be put back to isolate it from',
+  (await page.evaluate(() => window.__lmShapeCount())) > 0);
 
 const inLawn = await reachableIn('shape');
 console.log(`      lawn mode reaches:          ${inLawn.ids.length} lawn outline(s)`);
