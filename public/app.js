@@ -4399,7 +4399,28 @@ async function refreshQuota() {
     );
     const left = Math.max(0, state.quota.limit - state.quota.used);
     const badge = $('#quota-badge');
-    badge.textContent = `${left} of ${state.quota.limit} detections left today`;
+    /*
+     * Say when the number being shown is the SHARED one.
+     *
+     * The Worker now reports whichever ceiling has the least headroom, because
+     * reporting the personal one while the address was nearly full produced
+     * "30 of 50 detections left today" immediately followed by a refusal. The
+     * count was honest about a limit that was not the one in the way; naming
+     * which limit it is makes the two agree on screen.
+     */
+    /*
+     * PASSES, NOT DETECTIONS, because passes are what the counter counts.
+     *
+     * It said "detections" while counting Replicate predictions, which are the
+     * same thing only until a second box is ticked -- then one detection costs
+     * two and the badge drops by two, so the number on screen stops matching
+     * the word beside it. The exclusion panel says "2 AI passes per detection"
+     * right above this, which is what makes the unit readable rather than
+     * jargon.
+     */
+    badge.textContent = state.quota.reason === 'shared-network'
+      ? `${left} of ${state.quota.limit} AI passes left today on this network`
+      : `${left} of ${state.quota.limit} AI passes left today`;
     badge.hidden = false;
   } catch {
     // A quota read failing is not worth interrupting anyone over.

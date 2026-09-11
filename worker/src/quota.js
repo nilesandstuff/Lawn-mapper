@@ -27,14 +27,54 @@ const DAILY_LIMIT_PER_CLIENT = 20;
  * flag, and anyone can send that flag. It is worth being blunt about why that
  * is acceptable rather than implying a check that does not exist: the unlock
  * key is a plain string in app.js that anybody can read, so no client-side
- * secret could make this stronger than it is. What actually caps the damage is
- * DAILY_LIMIT_PER_IP below, which developer mode does NOT raise -- so the
- * worst a stranger gains from finding the flag is their share of a per-address
- * ceiling that was already there.
+ * secret could make this stronger than it is.
+ *
+ * This comment used to go on to say that the per-address ceiling was NOT
+ * raised, so a stranger finding the flag gained nothing but a share of a limit
+ * that was already there. That was the design, and it was wrong in a way worth
+ * recording: it made the number one the app could display and not honour. The
+ * address ceiling is the tighter of the two in ordinary use, so it, not this,
+ * decided when detection stopped. See DAILY_LIMIT_PER_IP_DEV.
+ *
+ * COUNTED IN PASSES, NOT PRESSES, which is the second half of the same
+ * mistake. Every one of these buys one Replicate prediction, and exclude mode
+ * spends one per ticked box -- so a budget of 50 is fifty detections at one
+ * box and twelve at four, while the badge cheerfully called all of them
+ * "detections". The request was for fifty detections a day, so the budget is
+ * the worst case of that: fifty presses at the four passes exclude mode can
+ * cost. At one box it is 200 detections, which is simply generous.
+ *
+ * The unit stays passes because passes are what cost money -- charging a
+ * four-box press the same as a one-box press would make the guardrail stop
+ * guarding exactly where the spending starts. What changed is that the badge
+ * now says "passes" instead of quietly meaning one and printing the other.
  */
-const DAILY_LIMIT_PER_DEV = 50;
+const DAILY_LIMIT_PER_DEV = 200;
 
 const DAILY_LIMIT_PER_IP = 80; // generous -- shared/NAT addresses are real
+
+/**
+ * The per-address ceiling in developer mode.
+ *
+ * RAISED BECAUSE 50 WAS NOT ACTUALLY 50. Raising only the personal cap was a
+ * half-measure that read as a bug: the badge said "30 of 50 detections left"
+ * and the very next press was refused, because the address had spent 79 of 80
+ * and exclude mode wanted two passes. The tighter ceiling is the real one, and
+ * leaving it at 80 meant developer mode could promise an allowance it could
+ * not deliver.
+ *
+ * It has to sit ABOVE the personal budget or it simply becomes the binding one
+ * again and the personal number goes back to being decoration -- the bug this
+ * pair exists to fix. The margin is what lets a second device, or a browser
+ * whose stored id was cleared, keep working on the same address without
+ * instantly running into the backstop.
+ *
+ * This is a real increase in the worst case one address can spend, and the
+ * flag is unguarded, so anyone who sends it gets this ceiling. That is the
+ * price of the guardrail matching the promise; lower both numbers here if the
+ * trade stops being worth it.
+ */
+const DAILY_LIMIT_PER_IP_DEV = 240;
 // Long enough that a key always outlives the day it belongs to, whatever the
 // offset. The key name is what resets the count; the TTL only sweeps up.
 const TTL_SECONDS = 60 * 60 * 48;
@@ -111,16 +151,30 @@ async function peek(kv, key, limit) {
  */
 export async function checkQuota(request, env, clientId, dev = false) {
   const limit = personalLimit(dev);
+  const ipLimit = addressLimit(dev);
   if (!env.QUOTA) return { allowed: true, used: 0, limit };
 
   const day = dayKey();
   const ip = clientIp(request);
   const byClient = await peek(env.QUOTA, `c:${day}:${clientId}`, limit);
-  const byIp = await peek(env.QUOTA, `i:${day}:${ip}`, DAILY_LIMIT_PER_IP);
+  const byIp = await peek(env.QUOTA, `i:${day}:${ip}`, ipLimit);
 
-  return byClient.allowed && byIp.allowed
-    ? byClient
-    : { ...(byClient.allowed ? byIp : byClient), allowed: false };
+  /*
+   * REPORT WHICHEVER CEILING WILL ACTUALLY REFUSE THE NEXT PRESS.
+   *
+   * This used to hand back the personal count whenever BOTH were individually
+   * under their line, which hides the binding constraint completely: with 30
+   * personal detections left and one slot left on the address, the badge said
+   * "30 of 50 detections left today" and the next press was refused. The
+   * number was true about a ceiling that was not the one in the way.
+   *
+   * Headroom, not `allowed`, decides which to show -- an address with one slot
+   * left is still "allowed" and still about to refuse a two-pass detection.
+   */
+  const allowed = byClient.allowed && byIp.allowed;
+  return (ipLimit - byIp.used) < (limit - byClient.used)
+    ? { ...byIp, allowed, reason: 'shared-network' }
+    : { ...byClient, allowed };
 }
 
 /**
@@ -139,7 +193,7 @@ export async function consumeQuota(request, env, clientId, n = 1, dev = false) {
   const byClient = await bump(env.QUOTA, `c:${day}:${clientId}`, limit, n);
   if (!byClient.allowed) return byClient;
 
-  const byIp = await bump(env.QUOTA, `i:${day}:${ip}`, DAILY_LIMIT_PER_IP, n);
+  const byIp = await bump(env.QUOTA, `i:${day}:${ip}`, addressLimit(dev), n);
   if (!byIp.allowed) {
     // The client bump already landed. Hand it back -- being turned away by
     // the shared-network cap should not also cost a personal measurement.
@@ -177,7 +231,17 @@ export async function refundQuota(request, env, clientId, n = 1) {
  */
 const personalLimit = (dev) => (dev ? DAILY_LIMIT_PER_DEV : DAILY_LIMIT_PER_CLIENT);
 
+/**
+ * The shared-address ceiling for today.
+ *
+ * Raised in developer mode too, because otherwise it is the ceiling that
+ * actually binds and the personal one is decoration -- see
+ * DAILY_LIMIT_PER_IP_DEV.
+ */
+const addressLimit = (dev) => (dev ? DAILY_LIMIT_PER_IP_DEV : DAILY_LIMIT_PER_IP);
+
 export {
-  DAILY_LIMIT_PER_CLIENT, DAILY_LIMIT_PER_DEV, DAILY_LIMIT_PER_IP,
-  personalLimit, clientIp,
+  DAILY_LIMIT_PER_CLIENT, DAILY_LIMIT_PER_DEV,
+  DAILY_LIMIT_PER_IP, DAILY_LIMIT_PER_IP_DEV,
+  personalLimit, addressLimit, clientIp,
 };

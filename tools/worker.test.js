@@ -26,8 +26,9 @@ import {
   MAX_PROMPT_TOKENS, estimatePromptTokens, promptProblem,
 } from '../worker/src/sam.js';
 import {
-  dayKey, DAILY_LIMIT_PER_CLIENT, DAILY_LIMIT_PER_DEV, DAILY_LIMIT_PER_IP,
-  consumeQuota, refundQuota, checkQuota,
+  dayKey, DAILY_LIMIT_PER_CLIENT, DAILY_LIMIT_PER_DEV,
+  DAILY_LIMIT_PER_IP, DAILY_LIMIT_PER_IP_DEV,
+  consumeQuota, refundQuota, checkQuota, personalLimit, addressLimit,
 } from '../worker/src/quota.js';
 import { upstreamReason, redactSecrets } from '../worker/src/upstream.js';
 import { logMeasurement, readLog, loggingEnabled, recordLater } from '../worker/src/testlog.js';
@@ -176,15 +177,15 @@ check('the daily allowance is 20', DAILY_LIMIT_PER_CLIENT === 20,
    * spends one of these per ticked box, so the ordinary twenty is three or four
    * real experiments.
    */
-  check('developer mode raises the personal ceiling', DAILY_LIMIT_PER_DEV === 50,
-    String(DAILY_LIMIT_PER_DEV));
+  check('developer mode raises the personal ceiling',
+    DAILY_LIMIT_PER_DEV === 200, String(DAILY_LIMIT_PER_DEV));
   check('and it really is higher than the ordinary one',
     DAILY_LIMIT_PER_DEV > DAILY_LIMIT_PER_CLIENT);
 
   const asDev = { QUOTA: kv() };
   const past = await consumeQuota(req, asDev, 'someone', DAILY_LIMIT_PER_CLIENT + 5, true);
-  check('a developer run passes the ordinary cap', past.allowed && past.limit === 50,
-    JSON.stringify(past));
+  check('a developer run passes the ordinary cap',
+    past.allowed && past.limit === DAILY_LIMIT_PER_DEV, JSON.stringify(past));
 
   /*
    * ONE COUNTER, NOT TWO. A separate developer bucket would let the same
@@ -205,18 +206,97 @@ check('the daily allowance is 20', DAILY_LIMIT_PER_CLIENT === 20,
    */
   const flood = { QUOTA: kv() };
   const ipCount = (env) => Number([...env.QUOTA.store].find(([k]) => k.startsWith('i:'))?.[1] || 0);
-  await consumeQuota(req, flood, 'a', 40, true);
-  await consumeQuota(req, flood, 'b', 40, true);
-  const third = await consumeQuota(req, flood, 'c', 40, true);
+  for (const who of ['a', 'b', 'c', 'd', 'e', 'f', 'g']) {
+    await consumeQuota(req, flood, who, 40, true);
+  }
+  const beyond = await consumeQuota(req, flood, 'h', 40, true);
   check('the per-address backstop still stops a flood of developer requests',
-    !third.allowed && third.reason === 'shared-network'
-    && ipCount(flood) <= DAILY_LIMIT_PER_IP,
-    `${ipCount(flood)} against an IP cap of ${DAILY_LIMIT_PER_IP}`);
+    !beyond.allowed && beyond.reason === 'shared-network'
+    && ipCount(flood) <= DAILY_LIMIT_PER_IP_DEV,
+    `${ipCount(flood)} against a developer IP cap of ${DAILY_LIMIT_PER_IP_DEV}`);
+
+  /* Rotating client ids is exactly what the address ceiling is for, and it
+   * still catches that in developer mode -- just at a higher line. */
+  check('and it is the address, not the client id, that stops them',
+    ipCount(flood) > DAILY_LIMIT_PER_DEV,
+    'each fresh client id got its own personal budget; the address did not');
 
   check('and the badge counts against the ceiling that will actually apply',
     (await checkQuota(req, asDev, 'someone', true)).limit === DAILY_LIMIT_PER_DEV
     && (await checkQuota(req, asDev, 'someone', false)).limit === DAILY_LIMIT_PER_CLIENT,
     'otherwise it reads "12 left" and then refuses at 20');
+
+  /* ------------------------------- the badge must show the BINDING ceiling */
+  /*
+   * REPORTED, AND EXACTLY REPRODUCED HERE: "I'm at 30 out of 50 detections but
+   * I was just told you've reached today's detections."
+   *
+   * Two ceilings apply and only one of them is in the way. checkQuota used to
+   * hand back the personal count whenever BOTH were individually under their
+   * line -- so with thirty personal detections left and one slot left on the
+   * address, the badge said "30 of 50 detections left today" and the very next
+   * press was refused. Every number on screen was true; none of them was about
+   * the limit doing the refusing.
+   *
+   * `allowed` is the wrong thing to branch on, which is what made it subtle: an
+   * address with one slot left is still "allowed" and still about to turn down
+   * a two-pass detection. Headroom is the question.
+   */
+  const day = dayKey();
+  const squeezed = { QUOTA: kv() };
+  await squeezed.QUOTA.put(`c:${day}:owner`, '20');
+  await squeezed.QUOTA.put(`i:${day}:203.0.113.9`, String(DAILY_LIMIT_PER_IP_DEV - 1));
+
+  const badge = await checkQuota(req, squeezed, 'owner', true);
+  check('the badge reports the ceiling with the least headroom, not the roomiest',
+    badge.limit === DAILY_LIMIT_PER_IP_DEV && badge.reason === 'shared-network',
+    `showing ${badge.limit - badge.used} of ${badge.limit}`);
+
+  const press = await consumeQuota(req, squeezed, 'owner', 2, true);
+  check('and that is the ceiling that really refuses the next press',
+    !press.allowed && press.limit === badge.limit,
+    `badge said ${badge.limit}, refusal said ${press.limit}`);
+
+  /*
+   * AND FIFTY HAS TO BE REACHABLE. Raising only the personal cap made it a
+   * number the app could display and not honour: at four ticked boxes, fifty
+   * detections is two hundred passes, and the address ceiling stopped it at
+   * eighty. A promised allowance that the guardrail contradicts is worse than
+   * a smaller honest one.
+   */
+  /*
+   * The address ceiling must sit ABOVE the personal budget. Equal or below and
+   * it becomes the binding one again, which is the whole bug: the personal
+   * number goes back to being something the app prints and cannot honour.
+   */
+  check('the address ceiling leaves room for the whole personal budget',
+    DAILY_LIMIT_PER_IP_DEV > DAILY_LIMIT_PER_DEV,
+    `address ${DAILY_LIMIT_PER_IP_DEV} vs personal ${DAILY_LIMIT_PER_DEV}`);
+  check('and the ordinary pair is the same shape',
+    DAILY_LIMIT_PER_IP > DAILY_LIMIT_PER_CLIENT,
+    `address ${DAILY_LIMIT_PER_IP} vs personal ${DAILY_LIMIT_PER_CLIENT}`);
+
+  const roomy = { QUOTA: kv() };
+  let pressed = 0;
+  for (let i = 0; i < 50; i++) {
+    if ((await consumeQuota(req, roomy, 'owner', MAX_EXCLUSIONS, true)).allowed) pressed++;
+  }
+  check('so fifty detections with every box ticked really do fit', pressed === 50,
+    `${pressed} of 50 presses got through at ${MAX_EXCLUSIONS} passes each`);
+
+  /*
+   * AND THE BADGE MUST NOT CALL THESE DETECTIONS. The counter counts passes;
+   * at four boxes a single press spends four of them. Labelling passes as
+   * detections is how "50" came to mean twelve.
+   */
+  check('the budget is a pass budget, so it buys fewer presses as boxes are ticked',
+    Math.floor(DAILY_LIMIT_PER_DEV / MAX_EXCLUSIONS) === 50
+    && DAILY_LIMIT_PER_DEV > 50,
+    `${DAILY_LIMIT_PER_DEV} passes = 50 presses at ${MAX_EXCLUSIONS} boxes`);
+
+  /* The ordinary ceiling is untouched by all of this. */
+  check('and an ordinary visitor still meets the original address limit',
+    addressLimit(false) === DAILY_LIMIT_PER_IP && personalLimit(false) === DAILY_LIMIT_PER_CLIENT);
 }
 
 
