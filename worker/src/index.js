@@ -40,6 +40,7 @@ import { checkQuota, consumeQuota, refundQuota } from './quota.js';
 // thing between an upstream error page and a leaked API key.
 import { upstreamReason } from './upstream.js';
 import { logMeasurement, readLog, loggingEnabled, recordLater } from './testlog.js';
+import { recordFeedback, readFeedback, feedbackEnabled } from './feedback.js';
 // Constants and the version lookup live in their own module: a Workers
 // entrypoint may only export handlers, and exporting a plain constant from
 // here kills the isolate on startup.
@@ -817,6 +818,33 @@ export default {
           const found = await readLog(env, url.searchParams.get('token'));
           if (!found) return json({ error: 'Not found' }, 404, origin);
           return json({ ...found, logging: loggingEnabled(env) }, 200, origin);
+        }
+        /*
+         * "Was the AI's answer any good?"
+         *
+         * Writable by anyone, like the detection itself -- the answer is only
+         * worth having from the person who just looked at the map. Readable
+         * only with the token, because a report is a street address and a
+         * picture of somebody's garden. See feedback.js.
+         */
+        case '/api/feedback': {
+          if (request.method !== 'POST') return json({ error: 'POST required' }, 405, origin);
+          let body;
+          try {
+            body = await request.json();
+          } catch {
+            return json({ error: 'Invalid JSON' }, 400, origin);
+          }
+          const saved = await recordFeedback(env, body, request);
+          // "off" is not an error the visitor can do anything about, and a
+          // failure here must never make a working measurement look broken:
+          // the app says thank you either way and this says what happened.
+          return json({ ok: saved.ok, reason: saved.reason || null }, saved.ok ? 200 : 202, origin);
+        }
+        case '/api/feedback/list': {
+          const found = await readFeedback(env, url.searchParams.get('token'));
+          if (!found) return json({ error: 'Not found' }, 404, origin);
+          return json({ ...found, enabled: feedbackEnabled(env) }, 200, origin);
         }
         case '/api/quota': {
           const clientId = url.searchParams.get('clientId') || 'anon';

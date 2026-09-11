@@ -85,6 +85,10 @@ jobs:
           # The address log: a variable to switch it on, a secret to read it.
           LOG_TESTS: ${{ vars.LOG_TESTS }}
           LOG_TOKEN: ${{ secrets.LOG_TOKEN }}
+          # Detection feedback. Same arrangement, same reasoning, and it shares
+          # LOG_TOKEN as its reader -- one secret for one person is easier to
+          # keep track of than two, and both hold the same kind of thing.
+          FEEDBACK: ${{ vars.FEEDBACK }}
         run: |
           printf '%s' "$MAPBOX_TOKEN"    | npx wrangler secret put MAPBOX_TOKEN
           printf '%s' "$REPLICATE_TOKEN" | npx wrangler secret put REPLICATE_TOKEN
@@ -134,12 +138,30 @@ jobs:
             echo "No LOG_TESTS variable; address logging stays off."
           fi
 
+          # Detection feedback. Off unless switched on, for the same reason the
+          # log is: a report is an address and a picture of somebody's garden,
+          # and collecting that should be a decision somebody made and can see.
+          if [ -n "$FEEDBACK" ]; then
+            printf '%s' "$FEEDBACK" | npx wrangler secret put FEEDBACK
+            case "$FEEDBACK" in
+              1|true|yes|on|TRUE|YES|ON)
+                echo "Detection feedback is ON. The app asks once per detection." ;;
+              *)
+                echo "Detection feedback is OFF (FEEDBACK=$FEEDBACK)." ;;
+            esac
+          else
+            echo "No FEEDBACK variable; the app still asks, and the answer is"
+            echo "discarded rather than stored. Set FEEDBACK=1 to keep them."
+          fi
+
           if [ -n "$LOG_TOKEN" ]; then
             printf '%s' "$LOG_TOKEN" | npx wrangler secret put LOG_TOKEN
             echo "Applied LOG_TOKEN. Read the log at /api/log?token=..."
+            echo "Read the feedback on your phone at /review.html#token=..."
           else
-            echo "No LOG_TOKEN secret, so /api/log answers 404 and nothing can"
-            echo "read the log back. That is the safe state, not a broken one."
+            echo "No LOG_TOKEN secret, so /api/log and the feedback list answer"
+            echo "404 and nothing can read either back. That is the safe state,"
+            echo "not a broken one."
           fi
 
       - name: Where it went

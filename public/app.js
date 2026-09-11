@@ -393,6 +393,19 @@ if (typeof window !== 'undefined') {
     hasParcel: Boolean(state.parcel),
   });
 
+  /*
+   * The feedback question: whether it is up, and whether it should be.
+   *
+   * `detected` travels with it because the rule worth checking is not "does
+   * the dialog open" but "does it open about something the AI produced". A
+   * question with no possible answer is how people learn to dismiss dialogs.
+   */
+  window.__lmFeedback = () => ({
+    open: document.querySelector('#feedback')?.hidden === false,
+    detected: Boolean(state.detected && state.lastMask),
+    asked: asked.size,
+  });
+
   /* The saved maps, as the list itself would show them. */
   window.__lmSaves = () => ({
     max: MAX_SAVES,
@@ -3616,6 +3629,98 @@ function openSave(id) {
   refreshQuota();
 }
 
+/* ------------------------------------------------------------ feedback */
+/*
+ * "HOW DID THE AI DO?" -- ASKED ONCE, AT THE HANDOVER.
+ *
+ * The AI's answer can only be judged at one moment: it is on screen, the
+ * person has looked at it, and they are about to start correcting it. Earlier
+ * there is nothing to judge. Later they are elbow-deep in a brush and the
+ * original answer no longer exists to have an opinion about.
+ *
+ * So it is asked exactly there, exactly once per detection, and never for a
+ * measurement the AI did not produce -- asking somebody how the machine did on
+ * a lawn they drew themselves is a question with no answer.
+ *
+ * WHAT IS SENT IS ON THE DIALOG, NOT UNDER IT. Answering uploads the map and
+ * the address, which together say where an identifiable person lives. That is
+ * a sentence above the buttons in ordinary type, because a disclosure nobody
+ * reads before pressing is not a disclosure. Skip sends nothing at all, and
+ * says so on the button.
+ */
+let feedbackFor = null; // the detection currently being asked about
+
+/** Has this exact measurement already been asked about? One ask, one answer. */
+const asked = new Set();
+
+/**
+ * Offer the question, if there is anything to ask about.
+ *
+ * Silent about every reason not to: no detection, already answered, nothing on
+ * the map. A dialog that appears after a hand-drawn lawn would be noise, and
+ * one that appears twice for the same detection reads as a bug.
+ */
+function askFeedback() {
+  if (!state.detected || !state.lastMask || !state.chosen) return;
+  const key = `${state.chosen.label}|${state.detectedBy}|${state.detectedExcluding || ''}`;
+  if (asked.has(key)) return;
+  asked.add(key);
+
+  feedbackFor = key;
+  $('#feedback-note').value = '';
+  $('#feedback').hidden = false;
+}
+
+function closeFeedback() {
+  $('#feedback').hidden = true;
+  feedbackFor = null;
+}
+
+/**
+ * Send one report, and never let it matter to the person sending it.
+ *
+ * No await on the way out of the dialog, no error if it fails, no retry. The
+ * measurement is what they came for; feedback is a favour they are doing, and
+ * a favour that produces an error message is a punishment for helping.
+ */
+async function sendFeedback(rating) {
+  const note = $('#feedback-note').value;
+  closeFeedback();
+  setStatus('Thank you — that is genuinely how this gets better.');
+
+  const shapes = draw.getAll().features.filter((f) => outerRing(f));
+  const m = measureLawn({ type: 'FeatureCollection', features: shapes });
+
+  try {
+    await api('/api/feedback', {
+      method: 'POST',
+      body: JSON.stringify({
+        rating,
+        note,
+        clientId: state.clientId,
+        address: state.chosen?.label || null,
+        lng: state.chosen?.lng,
+        lat: state.chosen?.lat,
+        county: state.parcel?.properties?.county || null,
+        model: state.detectedBy,
+        modelLabel: modelInfo(state.detectedBy).label || null,
+        mode: saveMode(),
+        provider: state.detectedWith,
+        exclude: state.detectedExcluding ? state.detectedExcluding.split(',') : [],
+        edgeFt: state.edgeFt,
+        fillGaps: $('#toggle-trees').checked,
+        squareFeet: m.squareFeet,
+        parcelSqFt: state.parcel ? Math.round(measure(state.parcel.geometry).squareFeet) : null,
+        frame: state.lastMask?.frame || state.frame || null,
+        parcel: state.parcel || null,
+        shapes: shapes.map((f) => ({ geometry: f.geometry })),
+      }),
+    });
+  } catch {
+    /* A report that did not arrive is not the reporter's problem. */
+  }
+}
+
 /* ---------------------------------------------------------------- tabs */
 /*
  * THREE JOBS, AND ONLY ONE OF THEM IS YOURS AT A TIME.
@@ -3712,6 +3817,10 @@ function setTab(name) {
   refreshTabs();
   refreshRail();
   updatePromptHint();
+
+  // Arriving at the drawing tools after a detection IS the handover, however
+  // you got here -- the tab, the "correct it by hand" button, or a map tool.
+  if (next === 'draw') askFeedback();
 }
 
 /** Which tab each map tool belongs to. One table, two readers. */
@@ -5681,6 +5790,15 @@ $('#btn-to-draw').addEventListener('click', () => {
 
 $('#btn-lock-clear').addEventListener('click', () => clearLawnAndUnlock());
 $('#btn-lock-redetect').addEventListener('click', () => clearLawnAndUnlock({ toDetect: true }));
+
+for (const btn of document.querySelectorAll('#feedback .fb-opt')) {
+  btn.addEventListener('click', () => sendFeedback(btn.dataset.rating));
+}
+$('#feedback-skip').addEventListener('click', () => {
+  closeFeedback();
+  // No thank-you, no guilt, no second ask. Skipping is a complete answer.
+  setStatus('No problem. Correct the shape however you like.');
+});
 
 /*
  * Tracing your own boundary.

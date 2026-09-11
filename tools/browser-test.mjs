@@ -878,6 +878,52 @@ console.log('\n--- locks ---');
     freed.parcel === hasParcel, `parcel=${freed.parcel}`);
 }
 
+/* ------------------------------------------------------ feedback prompt */
+/*
+ * The question can only be asked at the handover, and only about a detection.
+ *
+ * This run has not paid for one unless RUN_DETECT was set, so what is checked
+ * here is the half that holds either way: a lawn that the AI did not produce
+ * must NOT be asked about. "How did the AI do?" over a shape somebody drew
+ * themselves is a question with no answer, and the kind of thing that trains
+ * people to dismiss the dialog without reading it.
+ */
+console.log('\n--- the feedback question ---');
+{
+  await goTab(page, 'draw');
+  await page.waitForTimeout(300);
+  const fb = await page.evaluate(() => window.__lmFeedback());
+  check('nothing is asked about a lawn the AI did not produce',
+    fb.open === false || fb.detected === true,
+    `open=${fb.open} detected=${fb.detected}`);
+
+  if (fb.open) {
+    /*
+     * WHAT IS BEING SENT IS ON THE DIALOG, in ordinary type above the buttons.
+     * Answering uploads the map and the address; a disclosure nobody can read
+     * before pressing is not a disclosure.
+     */
+    const why = await page.textContent('#feedback-why');
+    check('and the dialog says what answering sends, before the buttons',
+      /address/i.test(why) && /map/i.test(why), why.trim().slice(0, 90));
+    check('with a way out that sends nothing, and says so',
+      /send nothing/i.test(await page.textContent('#feedback-skip')));
+    check('and three answers about how much correcting it took',
+      (await page.locator('#feedback .fb-opt').count()) === 3);
+
+    await page.click('#feedback-skip');
+    await page.waitForTimeout(200);
+    check('skipping closes it', (await page.evaluate(() => window.__lmFeedback().open)) === false);
+
+    /* Asked once. A dialog that returns reads as a bug, however polite. */
+    await goTab(page, 'detect');
+    await goTab(page, 'draw');
+    await page.waitForTimeout(250);
+    check('and it is not asked again for the same detection',
+      (await page.evaluate(() => window.__lmFeedback().open)) === false);
+  }
+}
+
 /* ---------------------------------------------------------- saved maps */
 /*
  * A measurement is kept without being asked to be. A save button would mean

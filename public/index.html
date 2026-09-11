@@ -524,6 +524,43 @@
       <span>Panning</span>
     </div>
 
+    <!--
+      Asked once, at the handover from the AI's answer to your corrections.
+
+      That is the only moment anyone can answer it: before, there is nothing to
+      judge; after, you are busy and the original answer is gone. Four buttons
+      because "how much correcting did it take" has three useful answers and
+      one honest refusal, and the disclosure sits above them rather than in
+      small print below -- what is being sent is a picture of somebody's garden
+      and the address it belongs to, and that has to be readable before the
+      press, not after.
+    -->
+    <div class="feedback" id="feedback" role="dialog" aria-modal="true"
+         aria-labelledby="feedback-title" hidden>
+      <div class="feedback-card">
+        <p class="feedback-title" id="feedback-title">How did the AI do?</p>
+        <p class="feedback-why" id="feedback-why">This is the only way the detection gets better.
+          Answering sends <b>this map and its address</b> so a bad one can be
+          looked at and fixed. Skipping sends nothing.</p>
+
+        <button class="fb-opt" type="button" data-rating="great">
+          <b>Great</b><small>Little or no editing. Much faster than by hand.</small>
+        </button>
+        <button class="fb-opt" type="button" data-rating="close">
+          <b>Close enough</b><small>Some editing needed. Somewhat faster than by hand.</small>
+        </button>
+        <button class="fb-opt" type="button" data-rating="bad">
+          <b>Bad</b><small>A lot of editing. As slow as drawing it myself, or slower.</small>
+        </button>
+
+        <label class="sr-only" for="feedback-note">Anything else worth knowing</label>
+        <input type="text" id="feedback-note" maxlength="240"
+               placeholder="Optional: what did it get wrong?">
+
+        <button class="link" type="button" id="feedback-skip">Skip — send nothing</button>
+      </div>
+    </div>
+
     <div class="hint" id="map-hint" hidden></div>
     <div class="overlay" id="busy" hidden>
       <div class="spinner" aria-hidden="true"></div>
