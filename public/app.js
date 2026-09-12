@@ -91,6 +91,7 @@ const state = {
   user: null,
   providers: [],      // the sign-in doors this deployment has keys for
   emailSignin: false, // ...and whether it can send a link
+  saves: [],          // the account's maps, cached so the list is not a wait
 };
 
 /**
@@ -417,7 +418,7 @@ if (typeof window !== 'undefined') {
   /* The saved maps, as the list itself would show them. */
   window.__lmSaves = () => ({
     max: MAX_SAVES,
-    entries: readSaves().map((s) => ({
+    entries: (signedIn() ? state.saves : readLocalSaves()).map((s) => ({
       id: s.id, address: s.address, mode: s.mode,
       model: s.model, squareFeet: s.squareFeet, at: s.at,
     })),
@@ -2807,6 +2808,24 @@ async function detect() {
       ' Correct anything it got wrong.'
     );
   } catch (err) {
+    /*
+     * OUT OF CREDITS IS NOT OUT OF ALLOWANCE, and the difference is the whole
+     * sentence: one comes back tomorrow, the other has to be topped up. 402
+     * rather than 429 because nothing is rate limited -- there is simply
+     * nothing left to spend.
+     */
+    if (err.status === 402) {
+      const b = err.body || {};
+      setStatus(
+        `You have ${b.credits || 0} detection credit${b.credits === 1 ? '' : 's'} `
+        + `and this press needs ${b.wanted || 1}. `
+        + 'Drawing by hand is unlimited and costs nothing — open the Draw step.',
+        'warn'
+      );
+      refreshQuota();
+      return;
+    }
+
     if (err.status === 429) {
       const b = err.body || {};
 
@@ -3507,6 +3526,16 @@ async function refreshAccount() {
     state.user = null;
   }
   renderAccountButton();
+
+  /*
+   * The moment an account has to be worth making: whatever this browser was
+   * holding goes up with it. Showing an empty list where three measurements
+   * used to be would be the feature taking something away.
+   */
+  if (state.user) {
+    await liftSavesToAccount();
+    if (state.tab === 'saved') renderSaves();
+  }
 }
 
 /**
@@ -3537,12 +3566,16 @@ function readSigninOutcome() {
 /*
  * MAPS YOU HAVE MADE, KEPT SO YOU CAN COME BACK TO THEM.
  *
- * In this browser, for now. An account system is the obvious next step and
- * this is shaped for it: every save is a self-contained, JSON-serialisable
- * record of one measurement -- address, boundary, shapes, and the settings
- * that produced them -- so moving the store from localStorage to a table
- * behind a login changes where readSaves() and writeSaves() read from, and
- * nothing else.
+ * IN THE ACCOUNT WHEN THERE IS ONE, in this browser when there is not. Both
+ * are real answers: signing in is optional here and always will be, so the
+ * local store is not a stepping stone to be removed -- it is what a
+ * signed-out visitor gets, permanently. What an account adds is that the maps
+ * follow the person to their laptop instead of staying on the phone.
+ *
+ * Every save is a self-contained, JSON-serialisable record of one measurement
+ * -- address, boundary, shapes, and the settings that produced them -- which
+ * is what made moving it to a table a change to four functions rather than to
+ * everything that touches a save. See loadSaves/putSave/dropSave.
  *
  * WHAT MAKES TWO SAVES THE SAME SAVE: the address, the AI method, and which
  * arithmetic it used. Those three are what a person is choosing between when
@@ -3580,7 +3613,7 @@ let saveTimer = null;
  * is worth interrupting a measurement over: a history that cannot be kept is a
  * feature that is missing, not a session that is broken.
  */
-function readSaves() {
+function readLocalSaves() {
   try {
     const raw = localStorage.getItem(SAVES_KEY);
     if (!raw) return [];
@@ -3591,13 +3624,122 @@ function readSaves() {
   }
 }
 
-function writeSaves(saves) {
+function writeLocalSaves(saves) {
   try {
     localStorage.setItem(SAVES_KEY, JSON.stringify({ v: 1, saves }));
     return true;
   } catch {
     return false;
   }
+}
+
+/* ------------------------------------------------ the store, either kind */
+/*
+ * TWO STORES, ONE SHAPE, AND THE REST OF THE FILE CANNOT TELL THEM APART.
+ *
+ * Signed out, a save lives in this browser and there is nowhere else for it to
+ * go. Signed in, it lives in the account and follows the person to their
+ * laptop -- which is the whole reason accounts exist here. Everything above
+ * and below this point asks for "the saves" and gets them.
+ *
+ * The account copy is cached in `state.saves` so that drawing the list is not
+ * a round trip: it is re-read after every write, and a stale list is the one
+ * thing a list of your own measurements must not be.
+ */
+const signedIn = () => Boolean(state.user);
+
+/** The saves, from wherever this visitor's live. */
+async function loadSaves() {
+  if (!signedIn()) return readLocalSaves();
+  try {
+    const out = await api('/api/maps');
+    state.saves = Array.isArray(out.maps) ? out.maps : [];
+    return state.saves;
+  } catch {
+    /*
+     * A network failure falls back to what this browser has rather than to an
+     * empty list. "Your saved maps are gone" is a far worse thing to say to
+     * somebody than showing them a slightly old copy.
+     */
+    return state.saves.length ? state.saves : readLocalSaves();
+  }
+}
+
+/** Keep one. Writes where this visitor's saves live, and nowhere else. */
+async function putSave(entry) {
+  if (!signedIn()) {
+    const saves = readLocalSaves().filter((s) => s.id !== entry.id);
+    saves.unshift(entry);
+    writeLocalSaves(saves.slice(0, MAX_SAVES));
+    return;
+  }
+  try {
+    await api('/api/maps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(entry),
+    });
+    state.saves = [entry, ...state.saves.filter((s) => s.id !== entry.id)];
+  } catch {
+    /*
+     * Kept locally when the account could not be reached, so the measurement
+     * is not lost -- and picked up by the next sign-in sweep, which is the
+     * same path that carries saves made before there was an account at all.
+     */
+    const saves = readLocalSaves().filter((s) => s.id !== entry.id);
+    saves.unshift(entry);
+    writeLocalSaves(saves.slice(0, MAX_SAVES));
+  }
+}
+
+async function dropSave(id) {
+  if (!signedIn()) {
+    writeLocalSaves(readLocalSaves().filter((s) => s.id !== id));
+    return;
+  }
+  try {
+    await api(`/api/maps?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+    state.saves = state.saves.filter((s) => s.id !== id);
+  } catch { /* the list is re-read after this, so a failure simply shows */ }
+}
+
+/**
+ * Hand this browser's saves up to the account, once.
+ *
+ * SOMEBODY WHO MEASURED THREE LAWNS BEFORE SIGNING UP HAS NOT LOST THEM. That
+ * is the entire job here, and it is the moment an account has to be worth
+ * making: if the first thing signing in does is show an empty list where three
+ * measurements used to be, the feature has taken something away.
+ *
+ * The account wins on a clash. A map that exists in both was measured on this
+ * device and then again somewhere else, and the account's copy is the newer of
+ * the two by definition -- it is the one that has been synced since. Sending
+ * ours anyway would quietly overwrite a correction made on the laptop.
+ */
+async function liftSavesToAccount() {
+  const local = readLocalSaves();
+  if (!local.length) return;
+
+  try {
+    const existing = new Set((await api('/api/maps')).maps?.map((m) => m.id) || []);
+    const fresh = local.filter((s) => !existing.has(s.id));
+    if (fresh.length) {
+      await api('/api/maps', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ maps: fresh }),
+      });
+    }
+    /*
+     * Cleared only after they are safely up. Clearing first and failing would
+     * be the one outcome worse than not migrating at all.
+     */
+    writeLocalSaves([]);
+    if (fresh.length) {
+      setStatus(`${fresh.length} map${fresh.length > 1 ? 's' : ''} from this browser `
+        + 'moved into your account.');
+    }
+  } catch { /* tried again on the next sign-in */ }
 }
 
 /** Which arithmetic produced the shapes on screen, in words a save can carry. */
@@ -3658,13 +3800,10 @@ function snapshotForSave() {
 }
 
 /** Keep this measurement, replacing the one it supersedes. */
-function recordSave() {
+async function recordSave() {
   const entry = snapshotForSave();
   if (!entry) return;
-
-  const saves = readSaves().filter((s) => s.id !== entry.id);
-  saves.unshift(entry);
-  writeSaves(saves.slice(0, MAX_SAVES));
+  await putSave(entry);
   if (state.tab === 'saved') renderSaves();
 }
 
@@ -3674,8 +3813,8 @@ function scheduleSave() {
   saveTimer = setTimeout(recordSave, SAVE_DEBOUNCE_MS);
 }
 
-function deleteSave(id) {
-  writeSaves(readSaves().filter((s) => s.id !== id));
+async function deleteSave(id) {
+  await dropSave(id);
   renderSaves();
 }
 
@@ -3692,10 +3831,19 @@ function agoText(iso) {
   return `${days} day${days > 1 ? 's' : ''} ago`;
 }
 
-function renderSaves() {
+async function renderSaves() {
   const list = $('#saved-list');
   if (!list) return;
-  const saves = readSaves();
+
+  /*
+   * Say something while it loads, rather than showing an empty list that
+   * happens to be right for a moment. "Nothing saved yet" appearing and then
+   * being replaced by four maps is the list lying to you, briefly, about the
+   * thing it exists to be trusted about.
+   */
+  if (signedIn() && !state.saves.length) $('#saved-lead').textContent = 'Loading your maps…';
+
+  const saves = await loadSaves();
   list.innerHTML = '';
 
   $('#saved-lead').textContent = saves.length
@@ -3741,8 +3889,8 @@ function renderSaves() {
  * the saved frame's centre, because a boundary that was extended after the
  * frame was taken would otherwise sit half off screen.
  */
-function openSave(id) {
-  const s = readSaves().find((x) => x.id === id);
+async function openSave(id) {
+  const s = (await loadSaves()).find((x) => x.id === id);
   if (!s) return;
 
   clearHistory();
@@ -5888,8 +6036,26 @@ async function refreshQuota() {
     state.quota = await api(
       `/api/quota?clientId=${encodeURIComponent(state.clientId)}${state.dev ? '&dev=1' : ''}`
     );
-    const left = Math.max(0, state.quota.limit - state.quota.used);
     const badge = $('#quota-badge');
+
+    /*
+     * CREDITS AND AN ALLOWANCE ARE DIFFERENT THINGS, so the badge says which.
+     *
+     * An allowance is today's and comes back tomorrow; credits are yours and
+     * do not. "4 left" under one arrangement means "wait until morning" and
+     * under the other means "buy more", and a number that does not say which
+     * sends people to wait for a reset that is never coming.
+     */
+    if (state.quota.kind === 'credits') {
+      badge.textContent = state.quota.unlimited
+        ? 'Unlimited detections'
+        : `${Number(state.quota.credits || 0).toLocaleString()} credit`
+          + `${state.quota.credits === 1 ? '' : 's'}`;
+      badge.hidden = false;
+      return;
+    }
+
+    const left = Math.max(0, state.quota.limit - state.quota.used);
     /*
      * Say when the number being shown is the SHARED one.
      *

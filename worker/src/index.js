@@ -35,6 +35,7 @@
 import { lookupParcel } from './parcel.js';
 import { isCovered } from './counties.js';
 import { checkQuota, consumeQuota, refundQuota } from './quota.js';
+import { charge, refund, allowance } from './allowance.js';
 // Why an upstream refused us, redacted. In its own module because a Workers
 // entrypoint may only export handlers, and this needs a test: it is the only
 // thing between an upstream error page and a leaked API key.
@@ -42,7 +43,9 @@ import { upstreamReason } from './upstream.js';
 import { logMeasurement, readLog, loggingEnabled, recordLater } from './testlog.js';
 import { recordFeedback, readFeedback, feedbackEnabled } from './feedback.js';
 import { handleAuth, isAuthPath } from './routes-auth.js';
-import { accountsEnabled } from './db.js';
+import { handleMaps } from './routes-maps.js';
+import { accountsEnabled, publicUser } from './db.js';
+import { currentUser } from './auth.js';
 // Constants and the version lookup live in their own module: a Workers
 // entrypoint may only export handlers, and exporting a plain constant from
 // here kills the isolate on startup.
@@ -91,7 +94,7 @@ function cors(origin) {
   const allow = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
   return {
     'Access-Control-Allow-Origin': allow,
-    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
   };
 }
@@ -356,6 +359,13 @@ async function handleSegment(request, env, origin, ctx) {
     return json({ error: 'Invalid JSON' }, 400, origin);
   }
 
+  /*
+   * Who is asking, if anybody. Null is the ordinary case and must stay
+   * cheap: a signed-out visitor measuring a lawn is what this app is for, and
+   * accounts are an addition to that rather than a gate in front of it.
+   */
+  const user = await currentUser(request, env, ctx);
+
   const { lng, lat, clientId } = body;
   if (!Number.isFinite(lng) || !Number.isFinite(lat) || !clientId) {
     return json({ error: 'lng, lat, and clientId required' }, 400, origin);
@@ -530,8 +540,37 @@ async function handleSegment(request, env, origin, ctx) {
     detail,
   }));
 
-  const quota = await consumeQuota(request, env, clientId, passes.length, dev);
+  /*
+   * WHO PAYS, AND HOW.
+   *
+   * A signed-in person spends credits, which are theirs and do not reset; a
+   * signed-out one spends a daily allowance counted per browser and per
+   * address. Both buy the same thing -- one Replicate prediction per pass --
+   * so both are counted in passes and both refuse before any money moves. See
+   * allowance.js, which owns that decision so this handler does not.
+   */
+  const quota = await charge(request, env, {
+    user, clientId, n: passes.length, dev,
+    detail: `${passes.length} pass${passes.length > 1 ? 'es' : ''}`
+      + `${body.address ? ` at ${String(body.address).slice(0, 60)}` : ''}`,
+  });
+
   if (!quota.allowed) {
+    /*
+     * An empty balance is not the same refusal as a spent allowance, and
+     * saying so is the difference between "come back tomorrow" and "here is
+     * how to get more". 402 rather than 429 for the same reason: nothing is
+     * rate limited, there is simply nothing left to spend.
+     */
+    if (quota.reason === 'no-credits') {
+      note('no_credits', `${quota.credits} left, wanted ${quota.wanted}`);
+      return json(
+        { error: 'no_credits', credits: quota.credits, wanted: quota.wanted },
+        402,
+        origin
+      );
+    }
+
     note('quota_exceeded',
       `${quota.used} of ${quota.limit} used, wanted ${quota.wanted || passes.length}`
       + `, ${quota.reason || 'client'}${dev ? ', dev' : ''}`);
@@ -584,7 +623,7 @@ async function handleSegment(request, env, origin, ctx) {
   try {
     version = await samVersion(env, modelId);
   } catch (err) {
-    await refundQuota(request, env, clientId, passes.length);
+    await refund(request, env, { user, clientId, n: passes.length });
     note('no_version', err.message);
     return json({ error: 'Segmentation unavailable', detail: err.message }, 502, origin);
   }
@@ -671,7 +710,7 @@ async function handleSegment(request, env, origin, ctx) {
    */
   const failed = results.find((r) => r.http);
   if (failed) {
-    await refundQuota(request, env, clientId, passes.length);
+    await refund(request, env, { user, clientId, n: passes.length });
     note(failed.http === 429 ? 'rate_limited' : 'upstream_error',
       `HTTP ${failed.http}: ${failed.detail || 'no message'}`);
 
@@ -884,12 +923,21 @@ export default {
           const clientId = url.searchParams.get('clientId') || 'anon';
           return json(
             // The badge has to count against the same ceiling the detection
-            // will, or it reads "12 left" and then refuses at 20.
-            await checkQuota(request, env, clientId, url.searchParams.get('dev') === '1'),
+            // will, or it reads "12 left" and then refuses at 20 -- which now
+            // means asking the same question the charge will ask, including
+            // which of the two arrangements this visitor is under.
+            await allowance(request, env, {
+              user: await currentUser(request, env, ctx),
+              clientId,
+              dev: url.searchParams.get('dev') === '1',
+            }),
             200,
             origin
           );
         }
+        /* The saved maps, once they belong to an account. See routes-maps.js. */
+        case '/api/maps':
+          return await handleMaps(request, env, url, origin, ctx, json);
         default:
           if (url.pathname.startsWith('/api/')) {
             return json({ error: 'Not found' }, 404, origin);
