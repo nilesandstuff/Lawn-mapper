@@ -415,6 +415,20 @@ if (typeof window !== 'undefined') {
     asked: asked.size,
   });
 
+  /*
+   * Who is signed in, and whether this deployment can sign anybody in.
+   *
+   * Both, because the property worth checking is that they agree: a button
+   * offering a sign-in that cannot work is worse than no button, and a signed
+   * -in person with no button is a session nobody can get out of.
+   */
+  window.__lmAccount = () => ({
+    accountsOn: state.accountsOn,
+    user: state.user,
+    providers: state.providers.map((p) => p.id),
+    emailSignin: state.emailSignin,
+  });
+
   /* The saved maps, as the list itself would show them. */
   window.__lmSaves = () => ({
     max: MAX_SAVES,

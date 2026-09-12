@@ -375,6 +375,43 @@ if (layerTip.visible) {
 check('no tip is left sitting over the map',
   (await page.evaluate(() => window.__lmTip().visible)) === false);
 
+/* --------------------------------------------------------------- accounts */
+/*
+ * SIGNING IN IS OPTIONAL AND MUST STAY OPTIONAL.
+ *
+ * Everything above this line -- finding an address, pulling a boundary, being
+ * offered a detection -- happened with nobody signed in, which is the property
+ * worth asserting: accounts are an addition to the app, not a gate in front of
+ * it. A deployment with no account store shows no button at all, because one
+ * that cannot work is worse than one less button.
+ */
+console.log('\n--- accounts are optional ---');
+{
+  const account = await page.evaluate(() => ({
+    on: window.__lmAccount().accountsOn,
+    user: window.__lmAccount().user,
+    buttonVisible: document.querySelector('#account-btn')?.hidden === false,
+  }));
+  check('the app works with nobody signed in', account.user === null,
+    `accounts ${account.on ? 'on' : 'off'} for this deployment`);
+  check('and the sign-in button appears only where it can work',
+    account.buttonVisible === account.on,
+    `button ${account.buttonVisible ? 'shown' : 'hidden'}, accounts ${account.on}`);
+  check('with no sheet in the way of the map',
+    (await page.locator('#signin').isHidden())
+    && (await page.locator('#account-sheet').isHidden()));
+
+  if (account.on) {
+    await page.click('#account-btn');
+    await page.waitForTimeout(250);
+    check('pressing it offers a way in', await page.locator('#signin').isVisible());
+    await page.click('#signin-close');
+    await page.waitForTimeout(200);
+    check('and closing it puts the map back',
+      await page.locator('#signin').isHidden());
+  }
+}
+
 /* ------------------------------------------------------------------ tabs */
 /*
  * THE THREE STEPS, AS THREE TABS.
