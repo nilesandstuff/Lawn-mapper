@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lawn Mapper — console</title>
+<!--
+  THE CONSOLE.
+
+  A separate page rather than a tab inside the app, because it is a different
+  job for a different person: nothing here helps measure a lawn, and everything
+  here would be noise in a panel that is already three steps deep. It is also
+  the only page that should be reachable by exactly one person, and keeping
+  that boundary at the file level means the measuring app never carries the
+  code for it.
+
+  Built for a phone first, because that is the device the person who owns this
+  site actually has when a friend says the detection got their driveway.
+
+  Nothing is gated here in the markup -- the gate is on the API, which answers
+  404 to anybody who is not an administrator. A page that hides its own buttons
+  is not a permission system; it is a permission system's screenshot.
+-->
+<link href="/styles.css" rel="stylesheet">
+<style>
+  body { background: var(--bg); }
+  .console { max-width: 760px; margin: 0 auto; padding: 16px 16px 40px; }
+
+  .conhead {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    margin-bottom: 14px;
+  }
+  .conhead h1 { font-size: 19px; margin: 0; }
+  .conhead a { font-size: 13px; color: var(--green-dark); }
+
+  .locked-out {
+    background: #fff; border: 1px solid var(--line); border-radius: 14px;
+    padding: 20px; text-align: center;
+  }
+
+  /* Numbers first: on a phone this is what the page is for. */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+  .tile {
+    background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
+  }
+  .tile b { display: block; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+  .tile span { font-size: 12px; color: var(--muted); }
+  .tile small { display: block; font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+
+  .card {
+    background: #fff; border: 1px solid var(--line); border-radius: 14px;
+    padding: 14px; margin-top: 12px;
+  }
+  .card h2 { font-size: 14px; margin: 0 0 10px; }
+
+  /*
+   * A bar per day rather than a line chart. The question is "was yesterday
+   * unusual", which a reader answers by comparing heights -- and a bar that is
+   * a div needs no library, no canvas and no second network request.
+   */
+  .days { display: flex; align-items: flex-end; gap: 3px; height: 92px; }
+  .day { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; }
+  .day i {
+    display: block; background: var(--green); border-radius: 3px 3px 0 0; min-height: 2px;
+  }
+  .day u { display: block; font-size: 9px; color: var(--muted); text-align: center;
+           text-decoration: none; margin-top: 3px; overflow: hidden; }
+
+  .search { width: 100%; padding: 10px 12px; font: inherit; font-size: 15px;
+            border: 1px solid var(--line); border-radius: 10px; margin-bottom: 10px; }
+
+  .person {
+    border-top: 1px solid var(--line); padding: 11px 0;
+    display: grid; gap: 3px;
+  }
+  .person:first-of-type { border-top: 0; }
+  .person .who { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; }
+  .person .who b { font-size: 13.5px; }
+  .person .meta { font-size: 12px; color: var(--muted); }
+  .pill {
+    font-size: 10.5px; font-weight: 700; letter-spacing: .02em;
+    padding: 1px 7px; border-radius: 999px; background: #e4f2e5; color: #1f5b22;
+  }
+  .pill.free { background: #eef0ee; color: var(--muted); }
+  .actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .actions button, .actions input {
+    font: inherit; font-size: 12.5px; padding: 6px 10px;
+    border: 1px solid var(--line); border-radius: 8px; background: #fff; cursor: pointer;
+  }
+  .actions input { width: 76px; cursor: text; }
+  .actions button:hover { border-color: var(--green); }
+
+  .entry { border-top: 1px solid var(--line); padding: 9px 0; font-size: 12.5px; }
+  .entry:first-of-type { border-top: 0; }
+  .entry .top { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .entry b { font-size: 13px; }
+  .entry .meta { color: var(--muted); font-size: 11.5px; }
+  .entry .note { margin: 4px 0 0; padding: 6px 9px; background: var(--bg); border-radius: 7px; }
+
+  .rate { font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px; }
+  .rate.great { background: #e4f2e5; color: #1f5b22; }
+  .rate.close { background: #fdf3e0; color: #8a5a00; }
+  .rate.bad   { background: #fdeceb; color: #b3261e; }
+
+  .empty { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+
+<div class="console">
+  <div class="conhead">
+    <h1>Console</h1>
+    <a href="/">← back to the map</a>
+  </div>
+
+  <div class="locked-out" id="locked" hidden>
+    <p class="sub" id="locked-text">Checking…</p>
+    <a class="link" href="/">Go to the map</a>
+  </div>
+
+  <div id="body" hidden>
+    <div class="tiles" id="tiles"></div>
+
+    <div class="card">
+      <h2>AI passes, last 30 days</h2>
+      <div class="days" id="days"></div>
+      <p class="empty" id="days-empty" hidden>Nothing detected yet.</p>
+    </div>
+
+    <div class="card">
+      <h2>People</h2>
+      <input class="search" id="search" type="search" placeholder="Search by email or name">
+      <div id="people"></div>
+    </div>
+
+    <div class="card">
+      <h2>Detection feedback</h2>
+      <div id="feedback"><p class="empty">Loading…</p></div>
+    </div>
+
+    <div class="card">
+      <h2>Measurement log</h2>
+      <div id="log"><p class="empty">Loading…</p></div>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="/admin.js"></script>
+</body>
+</html>

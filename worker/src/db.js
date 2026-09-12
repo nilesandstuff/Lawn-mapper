@@ -281,11 +281,18 @@ export async function sweepExpired(env) {
 
 /* ---------------------------------------------------------------- credits */
 
-/** A row in the credit history. The balance is the sum; this is what of. */
-export async function recordLedger(env, userId, delta, reason, detail = null) {
+/**
+ * A row in the credit history. The balance is the sum; this is what of.
+ *
+ * `units` is the number of AI passes the row is about, which is not the same
+ * as what it cost: the owner's account is uncharged, not unused, and its
+ * detections cost real money at Replicate even though no balance moves.
+ * Counting usage from `delta` alone would report the busiest account as idle.
+ */
+export async function recordLedger(env, userId, delta, reason, detail = null, units = 0) {
   await env.DB.prepare(
-    'INSERT INTO ledger (user_id, delta, reason, detail, at) VALUES (?, ?, ?, ?, ?)'
-  ).bind(userId, delta, reason, detail, now()).run();
+    'INSERT INTO ledger (user_id, delta, units, reason, detail, at) VALUES (?, ?, ?, ?, ?, ?)'
+  ).bind(userId, delta, units, reason, detail, now()).run();
 }
 
 /**
@@ -307,7 +314,7 @@ export async function spendCredits(env, user, amount, detail = null) {
   if (!cost) return { ok: true, spent: 0, balance: user.credits, unlimited: !!user.unlimited };
 
   if (user.unlimited) {
-    await recordLedger(env, user.id, 0, 'detect', detail);
+    await recordLedger(env, user.id, 0, 'detect', detail, cost);
     return { ok: true, spent: 0, balance: user.credits, unlimited: true };
   }
 
@@ -321,7 +328,7 @@ export async function spendCredits(env, user, amount, detail = null) {
     return { ok: false, spent: 0, balance: fresh?.credits ?? 0, wanted: cost, unlimited: false };
   }
 
-  await recordLedger(env, user.id, -cost, 'detect', detail);
+  await recordLedger(env, user.id, -cost, 'detect', detail, cost);
   const fresh = await env.DB.prepare('SELECT credits FROM users WHERE id = ?')
     .bind(user.id).first();
   return { ok: true, spent: cost, balance: fresh?.credits ?? 0, unlimited: false };
@@ -338,7 +345,7 @@ export async function refundCredits(env, user, amount, detail = null) {
   if (!back || user.unlimited) return;
   await env.DB.prepare('UPDATE users SET credits = credits + ? WHERE id = ?')
     .bind(back, user.id).run();
-  await recordLedger(env, user.id, back, 'refund', detail);
+  await recordLedger(env, user.id, back, 'refund', detail, -back);
 }
 
 /** Move a balance by hand, from the admin console. */

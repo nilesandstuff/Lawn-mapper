@@ -148,6 +148,22 @@ export async function readLog(env, given, limit = 100) {
   const expected = env?.LOG_TOKEN;
   if (!expected || !given) return null;
   if (!timingSafeEqual(String(given), String(expected))) return null;
+  return logEntries(env, limit);
+}
+
+/**
+ * The entries themselves, with NO check of who is asking.
+ *
+ * Split out because the admin console is allowed to read these by virtue of
+ * being an administrator, not because a shared token happens to be configured.
+ * Handing it the token to hand back was a coupling that read as a check and
+ * was not one: it made the console's access depend on a setting that has
+ * nothing to do with who is signed in, so a deployment with no LOG_TOKEN had
+ * an administrator who could not see the log.
+ *
+ * Every caller of this is responsible for having established that already.
+ */
+export async function logEntries(env, limit = 100) {
   if (!env?.QUOTA) return { entries: [] };
 
   const list = await env.QUOTA.list({ prefix: 'log:', limit: Math.min(limit, 1000) });

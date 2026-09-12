@@ -133,6 +133,13 @@ CREATE TABLE IF NOT EXISTS ledger (
   id       INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id  TEXT NOT NULL,
   delta    INTEGER NOT NULL,        -- negative is spending
+  -- How many AI passes the row is about, whether or not they were charged.
+  --
+  -- Separate from `delta` because the owner's account is UNCHARGED, not
+  -- unused: its detections move no balance and still cost real money at
+  -- Replicate. Counting usage from `delta` alone would report the account
+  -- doing the most detecting as doing none.
+  units    INTEGER NOT NULL DEFAULT 0,
   reason   TEXT NOT NULL,           -- 'welcome' | 'detect' | 'refund' | 'grant'
   detail   TEXT,
   at       TEXT NOT NULL

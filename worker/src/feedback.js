@@ -224,6 +224,18 @@ export async function readFeedback(env, given, limit = 60) {
   const expected = env?.LOG_TOKEN;
   if (!expected || !given) return null;
   if (!timingSafeEqual(String(given), String(expected))) return null;
+  return feedbackEntries(env, limit);
+}
+
+/**
+ * The reports themselves, with NO check of who is asking.
+ *
+ * Split out for the admin console, which is allowed to read these because the
+ * person is an administrator -- not because a shared token is configured. See
+ * the same note in testlog.js. Every caller is responsible for having
+ * established that first.
+ */
+export async function feedbackEntries(env, limit = 60) {
   if (!env?.QUOTA) return { entries: [] };
 
   const list = await env.QUOTA.list({ prefix: 'fb:', limit: Math.min(limit, 500) });

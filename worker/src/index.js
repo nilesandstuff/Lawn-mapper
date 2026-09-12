@@ -44,6 +44,7 @@ import { logMeasurement, readLog, loggingEnabled, recordLater } from './testlog.
 import { recordFeedback, readFeedback, feedbackEnabled } from './feedback.js';
 import { handleAuth, isAuthPath } from './routes-auth.js';
 import { handleMaps } from './routes-maps.js';
+import { handleAdmin, isAdminPath } from './routes-admin.js';
 import { accountsEnabled, publicUser } from './db.js';
 import { currentUser } from './auth.js';
 // Constants and the version lookup live in their own module: a Workers
@@ -836,6 +837,14 @@ export default {
        */
       if (isAuthPath(url.pathname)) {
         return await handleAuth(request, env, url, origin, ctx, json);
+      }
+
+      /*
+       * The console, likewise patterned rather than fixed, and refused as a
+       * 404 to anybody who is not an administrator -- see routes-admin.js.
+       */
+      if (isAdminPath(url.pathname)) {
+        return await handleAdmin(request, env, url, origin, ctx, json);
       }
 
       switch (url.pathname) {
