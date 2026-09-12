@@ -84,6 +84,38 @@ There is no password. The link in the email *is* the verification: receiving it
 proves the address is yours, which is what makes it safe for the address to be
 the account. Nothing to forget, reuse, leak or reset.
 
+### What the DNS should end up looking like
+
+A working zone, as a reference — this is every record the whole site needs,
+mail and app together. Written down because it is easy to check against and
+tedious to reconstruct from four provider help pages.
+
+| Type | Name | Points at | Proxy |
+| --- | --- | --- | --- |
+| Worker | `lawnmap` | the Worker | **Proxied** (orange) |
+| TXT | `resend._domainkey` | `p=MIGf…` (DKIM) | DNS only |
+| TXT | `send` | `v=spf1 include:amazonses.com ~all` | DNS only |
+| MX | `send` | `feedback-smtp.<region>.amazonses.com`, priority 10 | DNS only |
+| TXT | `_dmarc` | `v=DMARC1; p=none; rua=mailto:you@example.com` | DNS only |
+| CNAME | `links` | `links1.resend-dns.com` | DNS only — *only if* click tracking is on |
+
+**The app's record must stay proxied.** Workers custom domains only work
+through Cloudflare's proxy, so the orange cloud on that row is load-bearing:
+switching it to DNS only takes the site down. Every mail record is grey, and it
+is worth not generalising from that to the one row where it matters.
+
+**Why SPF is on `send` and not on the domain itself**, which looks wrong and is
+not: Resend sends with an envelope sender at `send.yourdomain.com` while the
+visible From is `yourdomain.com`. DMARC's relaxed alignment treats those as one
+organisation, so SPF aligns — and DKIM signs as the domain proper, which aligns
+directly. Adding an SPF record at the apex buys nothing.
+
+**Cloudflare will say visitors cannot reach the apex or `www`.** True, and not a
+problem: the app is on its own subdomain. Pointing the apex somewhere is
+optional, and mildly worth doing for a reason Cloudflare does not mention — a
+sending domain whose root does not resolve at all is a small negative signal to
+some filters.
+
 ### When the link goes to spam
 
 Expect this at first. A sign-in link is a phishing email by construction —
