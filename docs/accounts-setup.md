@@ -17,11 +17,25 @@ tables appear on their own and nothing has to be run by hand.
 
 If the Cloudflare API token cannot create databases, the deploy **still
 succeeds** and accounts stay off — the binding is removed rather than left with
-a placeholder in it. The workflow log says which happened.
+a placeholder in it. The workflow log says which happened, and why.
 
-If you want it on and it isn't: the token needs **D1: Edit** alongside the
-Workers and KV permissions. The "Edit Cloudflare Workers" template at
-<https://dash.cloudflare.com/profile/api-tokens> includes it.
+**This is the usual first-run snag.** D1 is newer than this project, so a token
+created before it existed carries Workers and KV permissions and not D1, and
+the deploy reports:
+
+```
+  could not create one (… Authentication error [code: 10000])
+  ACCOUNTS ARE OFF for this deploy.
+```
+
+Fix: **<https://dash.cloudflare.com/profile/api-tokens>** → your token → **Edit**
+→ add permission **Account · D1 · Edit** → save. Then deploy again. Nothing else
+changes and nothing is lost; the database is created and the schema applied on
+the next run.
+
+If you would rather not touch the token: make it by hand in the Cloudflare
+dashboard (**Storage & Databases → D1 → Create**, named `lawn-mapper`) and set
+its id as a repository **variable** called `D1_DATABASE_ID`.
 
 ---
 

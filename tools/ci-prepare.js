@@ -209,7 +209,21 @@ function resolveDbId() {
     return id;
   } catch (err) {
     console.log(`  could not create one (${firstLine(err)})`);
-    console.log('  accounts will be OFF; the site deploys and works without them.');
+    console.log('');
+    console.log('  ACCOUNTS ARE OFF for this deploy. The site itself is fine --');
+    console.log('  measuring, correcting and saving to the browser all work.');
+    console.log('');
+    console.log('  Almost always this is the API token. D1 is newer than this');
+    console.log('  project, so a token made before it existed carries Workers and');
+    console.log('  KV permissions and not D1. Edit the token at');
+    console.log('    https://dash.cloudflare.com/profile/api-tokens');
+    console.log('  add the "D1: Edit" permission, and deploy again. Nothing else');
+    console.log('  changes and nothing is lost -- the database is created and the');
+    console.log('  schema applied on the next run.');
+    console.log('');
+    console.log('  Or make it by hand (Cloudflare dashboard -> Storage & Databases');
+    console.log('  -> D1 -> Create, named "lawn-mapper") and set its id as a');
+    console.log('  repository variable named D1_DATABASE_ID.');
     return null;
   }
 }
@@ -233,8 +247,27 @@ function migrate() {
   }
 }
 
-const firstLine = (err) =>
-  String(err.stderr || err.message || err).trim().split('\n')[0].slice(0, 160);
+/**
+ * What the tool actually said, not just its first line.
+ *
+ * Wrangler's own first line for a permissions failure is "A request to the
+ * Cloudflare API (/accounts/.../d1/database) failed." -- which names the
+ * endpoint and not the reason. The reason is underneath, in the lines about
+ * authentication, and cutting at the first newline threw away the only part
+ * anybody could act on. The colour codes go too, or the message arrives in a
+ * log as escape sequences.
+ */
+const firstLine = (err) => {
+  const text = String(err.stderr || err.message || err);
+  return text
+    .replace(new RegExp(String.fromCharCode(27) + '\\[[0-9;]*m', 'g'), '')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .slice(0, 4)
+    .join(' | ')
+    .slice(0, 400);
+};
 
 function main() {
   try {
