@@ -167,6 +167,53 @@ check('a tip whose control is on another tab waits for that tab',
   /pendingTip = stage/.test(js) && /function flushPendingTip/.test(js),
   'showTip must record the stage and setTab must flush it');
 
+/* ----------------------------------------------- the free controls */
+/*
+ * A LOCKED STEP MUST NOT DIM THE CONTROLS THAT COST NOTHING.
+ *
+ * The lock exists to stop a PAID re-detection throwing hand corrections away.
+ * Two settings on that tab spend nothing -- the trees option re-reads a mask
+ * already downloaded, the overlay only draws it -- so they stay usable, and
+ * they are marked `stays-free`.
+ *
+ * The trap this pins is CSS and would pass every other check here: opacity on
+ * the pane composites the whole subtree at once, so a child at opacity 1
+ * inside a parent at .42 is still drawn at .42. No specificity fixes it. The
+ * dimming has to be applied per child or the opt-out silently does nothing --
+ * and "silently does nothing" would look exactly like it working, because
+ * pointer-events WOULD come back and the control would be usable while still
+ * greyed out, reading as broken.
+ */
+{
+  const free = [...html.matchAll(/class="[^"]*\bstays-free\b[^"]*"/g)].length;
+  check('the free controls are marked on the page', free >= 2, `${free} marked`);
+
+  const rule = css.match(/\.tabpane\.is-locked[^{]*\{[^}]*\}/);
+  check('and the locked pane has a dimming rule at all', Boolean(rule),
+    rule ? rule[0].replace(/\s+/g, ' ') : 'no .tabpane.is-locked rule found');
+
+  check('which dims the children, not the pane, so the opt-out can work',
+    Boolean(rule) && /\.tabpane\.is-locked\s*>\s*\*:not\(\.stays-free\)/.test(css),
+    'opacity on the pane cannot be undone by a child at any specificity');
+
+  check('and the opt-out is a class the stylesheet actually knows',
+    /\.stays-free\b/.test(css));
+}
+
+/* ------------------------------------------- numbers said out loud */
+/*
+ * A THRESHOLD QUOTED TO THE USER COMES FROM THE CONSTANT.
+ *
+ * The trees option names the gap size it fills, because "small" is the entire
+ * question -- it decides whether the shed in the middle of the lawn is counted
+ * as grass. A number typed into the sentence would be right until the constant
+ * moved, and then it would be a confident, specific, wrong promise, which is
+ * worse than the vague wording it replaced.
+ */
+check('the trees note quotes the threshold from the constant',
+  /TREE_GAP_SQFT\.toLocaleString\(\)/.test(js),
+  'the sentence must read the constant, not repeat its value');
+
 /* ------------------------------------------------- shadowed globals */
 /*
  * A MODULE-LEVEL `let history = []` SHADOWS THE DOM'S `history` FOR THE WHOLE

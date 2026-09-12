@@ -42,9 +42,12 @@
   <div class="sheet-card">
     <button class="sheet-x" id="signin-close" type="button" aria-label="Close">×</button>
     <p class="sheet-title" id="signin-title">Keep your maps</p>
-    <p class="sheet-why">An account keeps your measurements across devices, so
-      the lawn you mapped on your phone is there on your laptop. It is also how
-      detection credits are held.</p>
+    <!-- Both rewritten when the sheet is opened for a particular reason --
+         "you have run out of AI passes" wants a different first sentence from
+         "you tapped the account button". See promptSignin. -->
+    <p class="sheet-why" id="signin-why">An account keeps your measurements
+      across devices, so the lawn you mapped on your phone is there on your
+      laptop. It also raises how many AI detections you get each day.</p>
 
     <form id="signin-email-form" autocomplete="on" hidden>
       <label class="sr-only" for="signin-email">Email address</label>
@@ -261,6 +264,15 @@
         <p class="sub">Press <b>Line</b> on the map to move the boundary, or a
           corner of it. Everything measured is trimmed to this line.</p>
 
+        <!--
+          The same handover as "Correct it by hand" on the next tab, and for
+          the same reason: the tabs say what the steps ARE and nothing says
+          which one comes next. Somebody who has just set a property line has
+          finished step one, and a button naming step two is the difference
+          between a workflow and four things to choose between.
+        -->
+        <button class="ghost" id="btn-to-detect" hidden>Find the lawn →</button>
+
         <button class="link" data-action="restart">Start over with a new address</button>
       </div>
 
@@ -325,7 +337,14 @@
           over real grass), off for "exclude" (a gap is something a ticked box
           removed).
         -->
-        <label class="opt" id="trees-opt">
+        <!--
+          THESE TWO STAY LIVE WHEN THE STEP IS LOCKED (class "stays-free").
+          Neither spends a detection: one re-reads a mask already downloaded,
+          the other just draws it on top. The lock exists to stop a PAID
+          re-detection throwing hand corrections away, and greying out the
+          free controls with it was the lock overreaching -- see tabLock.
+        -->
+        <label class="opt stays-free" id="trees-opt">
           <input type="checkbox" id="toggle-trees" checked>
           <span>Count grass under trees
             <small id="trees-note">Canopy hides lawn that is really there. Small
@@ -334,7 +353,7 @@
           </span>
         </label>
 
-        <label class="debug">
+        <label class="debug stays-free">
           <input type="checkbox" id="toggle-overlay">
           <span id="overlay-label">Show the raw AI mask (alignment check)</span>
         </label>
@@ -425,9 +444,16 @@
         <p class="sub" id="saved-lead">Maps you have measured are kept on this
           device so you can come back to them.</p>
         <ul class="saves" id="saved-list"></ul>
+        <!--
+          Rewritten by renderSaves, because the true sentence depends on
+          whether there is an account: these live in this browser or they live
+          with you, and which one it is decides whether clearing browser data
+          loses them. The text here is the signed-out case, so the tab reads
+          correctly before any script has run.
+        -->
         <p class="note" id="saved-note">Saved in this browser only — clearing
-          your browser data clears these. Accounts are coming, and will carry
-          them with you.</p>
+          your browser data clears these.</p>
+        <button class="link" id="saved-signin" hidden>Sign in to keep them on every device</button>
       </div>
 
       <!-- Always available: the figure is the point, whichever tab is open. -->

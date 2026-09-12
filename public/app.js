@@ -91,6 +91,7 @@ const state = {
   user: null,
   emailSignin: false, // can this deployment send a sign-in link?
   saves: [],          // the account's maps, cached so the list is not a wait
+  saveMax: 0,         // how many an account keeps, as the Worker reports it
 };
 
 /**
@@ -2354,6 +2355,13 @@ function updatePromptHint() {
   // "Correct it by hand" is only an offer once there is something to correct.
   const toDraw = $('#btn-to-draw');
   if (toDraw) toDraw.hidden = !hasLawn();
+
+  // ...and its opposite number one step earlier: "Find the lawn" appears once
+  // there is a boundary to measure inside, which is what finishing step one
+  // means. Updated from here because this already runs on every change that
+  // could produce or remove a property line.
+  const toDetect = $('#btn-to-detect');
+  if (toDetect) toDetect.hidden = !parcelRing();
 }
 
 /* ---------------------------------------------------------- model picker */
@@ -2437,12 +2445,38 @@ function refreshTreesOption() {
   const mode = fillGapsMode();
   const box = $('#toggle-trees');
   box.checked = Boolean(state.fillGaps[mode]);
-  $('#trees-note').textContent = mode === 'exclude'
-    ? 'Small gaps left inside your lawn are counted as grass again — including '
-      + 'small trees the box above removed. Off by default here: you asked for '
-      + 'those to come off.'
-    : 'Canopy hides lawn that is really there. Small gaps inside your lawn are '
-      + 'counted as grass; big ones (a pool, a shed) are not.';
+
+  /*
+   * NAME THE THRESHOLD, because "small" is the entire question.
+   *
+   * The cut-off is a real number -- TREE_GAP_SQFT -- and it is what decides
+   * whether the shed in the middle of the lawn gets counted as grass. Leaving
+   * it as "small" made the option something to try and see, which on a lot
+   * with a pool is a wrong total that looks like a right one. The figure comes
+   * from the constant rather than the sentence, so the two cannot drift.
+   *
+   * Built from nodes rather than innerHTML. There is no user text in here
+   * today and there does not need to be a first time.
+   */
+  const note = $('#trees-note');
+  note.textContent = '';
+  const gap = `${TREE_GAP_SQFT.toLocaleString()} square feet`;
+  const bold = (t) => { const b = document.createElement('b'); b.textContent = t; return b; };
+
+  if (mode === 'exclude') {
+    note.append(
+      'Gaps left inside your lawn are counted as grass again — including ',
+      bold('small trees'),
+      ` the box above removed. "Small" means under ${gap}.`
+    );
+  } else {
+    note.append(
+      'Canopy hides lawn that is really there. ',
+      bold('Small gaps'),
+      ` inside your lawn — under ${gap} — are counted as grass; bigger ones `,
+      '(a pool, a shed) are not.'
+    );
+  }
 }
 
 function buildExclusions() {
@@ -2835,7 +2869,11 @@ async function detect() {
       setStatus(
         `${left} of your ${b.limit || 0} AI passes left today and this press `
         + `needs ${b.wanted || 1}. They come back in the morning. `
-        + 'Drawing by hand is unlimited and costs nothing — open the Draw step.',
+        + 'Drawing by hand is unlimited and costs nothing — open the Draw step.'
+        // Only reachable signed out on a deployment where 402 can happen
+        // without an account; harmless either way, and it means the invitation
+        // lives in one place rather than in each branch's idea of it.
+        + offerMoreDetections(b.limit),
         'warn'
       );
       refreshQuota();
@@ -2918,13 +2956,25 @@ async function detect() {
        * reports "20 of 20" next to a badge reading 50 diagnoses itself.
        */
       const counted = left !== null ? ` (${b.used} of ${b.limit} used)` : '';
+
+      /*
+       * THE INVITATION GOES ON THE "YOU ARE OUT" CASE ONLY.
+       *
+       * Not on `short`, where there are passes left and the answer is to untick
+       * a box -- offering an account there would be answering a question
+       * nobody asked with a sign-up. And not on the shared-network refusal,
+       * where an account genuinely would not help: the address ceiling is the
+       * one limit an account does not raise, so saying it would is a promise
+       * the next press would break.
+       */
       setStatus(
         short
           ? `That needs ${b.wanted} AI passes and you have ${left} left today. `
             + 'Untick a box or two, or draw the lawn by hand.'
           : b.reason === 'shared-network'
             ? `Your network has hit today's detection limit${counted}. You can still draw the lawn by hand.`
-            : `You've used today's detections${counted}. You can still draw the lawn by hand.`,
+            : `You've used today's detections${counted}. You can still draw the lawn by hand.`
+              + offerMoreDetections(b.limit),
         'warn'
       );
     } else {
@@ -3488,6 +3538,81 @@ function renderAccountSheet() {
 }
 
 /**
+ * Is an account a thing this visitor could actually get?
+ *
+ * `emailSignin` is part of it because an UNPROMPTED offer has to be one that
+ * works: a deployment with no mail provider cannot send a link, and inviting
+ * somebody into a panel that can only apologise is worse than not asking.
+ *
+ * A deliberate press is the other case and is not gated on it -- see the
+ * `force` path in promptSignin. Somebody who taps "sign in" and gets nothing
+ * at all has found a broken button; they should get the explanation.
+ */
+const canOfferAccount = () => state.accountsOn && state.emailSignin && !signedIn();
+
+/*
+ * ASKED ONCE A SESSION, NOT ONCE A REFUSAL.
+ *
+ * Running out of passes is not a single event -- somebody who has run out will
+ * press Detect again, and a sheet that reappears every time turns a reasonable
+ * offer into something to fight past on the way to drawing by hand. The status
+ * line keeps saying it; the sheet asks once.
+ */
+let offeredAccount = false;
+
+/**
+ * Open the sign-in sheet with a reason attached.
+ *
+ * The sheet's own wording answers "why would I". When it opens because the
+ * day's AI passes are gone, that answer is a different one and a better one --
+ * it is the thing the person wanted thirty seconds ago -- so the copy is
+ * written from the reason rather than being one paragraph that has to cover
+ * every way in.
+ */
+function promptSignin({ title, why, force = false } = {}) {
+  if (signedIn() || !state.accountsOn) return false;
+  if (!force && (!canOfferAccount() || offeredAccount)) return false;
+  offeredAccount = true;
+
+  $('#signin-title').textContent = title || 'Keep your maps';
+  $('#signin-why').textContent = why
+    || 'An account keeps your measurements across devices, so the lawn you '
+    + 'mapped on your phone is there on your laptop. It also raises how many '
+    + 'AI detections you get each day.';
+  $('#signin-note').textContent = 'No password. We send a link that signs you '
+    + 'in and expires in 20 minutes.';
+  $('#signin-note').className = 'sheet-note';
+  renderSigninOptions();
+  openSheet('#signin');
+  return true;
+}
+
+/**
+ * The offer made when the day's passes run out, in one place.
+ *
+ * Both refusal paths -- 402 for an account, 429 for a browser -- end up here,
+ * because "you are out" is the same moment whichever counter said so, and the
+ * sentence that follows it should not depend on which branch of an error
+ * handler the reader happened to reach.
+ */
+function offerMoreDetections(limit) {
+  if (!canOfferAccount()) return '';
+  const more = state.quota?.accountLimit;
+  promptSignin({
+    title: 'Out of AI passes for today',
+    why: more
+      ? `A free account gets ${more} AI detections a day instead of `
+        + `${limit || state.quota?.limit || 'a handful'}, and keeps your saved `
+        + 'maps across devices. No password — just an emailed link.'
+      : 'A free account gets more AI detections each day, and keeps your saved '
+        + 'maps across devices. No password — just an emailed link.',
+  });
+  return more
+    ? ` A free account gets ${more} a day and saves your maps across devices.`
+    : ' A free account gets more each day and saves your maps across devices.';
+}
+
+/**
  * One door, so there is nothing to choose between.
  *
  * The panel is a single field and a button. If the site cannot send mail there
@@ -3654,6 +3779,10 @@ async function loadSaves() {
   try {
     const out = await api('/api/maps');
     state.saves = Array.isArray(out.maps) ? out.maps : [];
+    // The Worker's own cap, not a second copy of the number here. Two
+    // constants for one rule drift, and this one is only ever shown to
+    // somebody as a promise about how many maps they get to keep.
+    if (Number.isFinite(out.max)) state.saveMax = out.max;
     return state.saves;
   } catch {
     /*
@@ -3849,6 +3978,32 @@ async function renderSaves() {
   $('#saved-lead').textContent = saves.length
     ? `${saves.length} of ${MAX_SAVES} kept. Opening one puts it back on the map.`
     : 'Nothing saved yet. Measure a lawn and it is kept here automatically.';
+
+  /*
+   * WHERE THESE ACTUALLY LIVE, which is a different answer per visitor.
+   *
+   * The markup said "Accounts are coming, and will carry them with you" -- true
+   * when it was written and now a promise the site already keeps, which is the
+   * worst kind of stale copy: it tells somebody to wait for a thing that is on
+   * the screen behind it.
+   *
+   * Signed in, these follow the person; signed out, they are in this browser
+   * and one cleared cache from gone. That difference is the whole argument for
+   * an account, so this is where it belongs -- next to the maps it is about,
+   * rather than only in a sheet nobody opens.
+   */
+  const note = $('#saved-note');
+  const invite = $('#saved-signin');
+  if (signedIn()) {
+    note.textContent = 'Kept with your account, so they are on every device you '
+      + `sign in on.${state.saveMax ? ` Up to ${state.saveMax} of them.` : ''}`;
+    invite.hidden = true;
+  } else {
+    note.textContent = 'Saved in this browser only — clearing your browser data '
+      + 'clears these.'
+      + (canOfferAccount() ? ' An account keeps them on every device instead.' : '');
+    invite.hidden = !canOfferAccount();
+  }
 
   for (const s of saves) {
     const li = document.createElement('li');
@@ -4097,9 +4252,19 @@ const TABS = ['address', 'detect', 'draw', 'saved'];
 function tabLock(tab) {
   if (tab === 'detect' && state.handEdited) {
     return {
+      /*
+       * NAMES WHAT IS STILL LIVE, because two of the controls on this tab are.
+       *
+       * The lock is about a PAID re-detection replacing work you did by hand.
+       * The trees option and the raw-mask overlay cost nothing -- one re-reads
+       * a mask already downloaded, the other only draws it -- so they stay
+       * usable, and a notice saying "the detection controls are off" while two
+       * of them plainly still work is the notice being wrong about its own
+       * page.
+       */
       text: 'You have corrected this lawn by hand. Running the AI again would '
-        + 'throw those corrections away, so the detection controls are off '
-        + 'until you say which you want.',
+        + 'throw those corrections away, so detecting is off until you say '
+        + 'which you want. The two free settings at the bottom still work.',
       clear: true,
       redetect: true,
     };
@@ -4675,9 +4840,28 @@ function retrace() {
   refreshSurveyed();
   updateSelectionButtons();
   describeEdgeShift();
-  setStatus(polygons.length
-    ? `${polygons.length} section${polygons.length > 1 ? 's' : ''} of lawn at this setting.`
-    : 'Nothing left at this setting — slide back to the right.', polygons.length ? '' : 'warn');
+
+  if (!polygons.length) {
+    setStatus('Nothing left at this setting — slide back to the right.', 'warn');
+    return;
+  }
+
+  /*
+   * SAY SO WHEN THIS REPLACED WORK SOMEBODY DID BY HAND.
+   *
+   * Re-tracing rebuilds every shape from the mask, so hand corrections are
+   * gone -- and that is fine and reversible (the snapshot above is exactly
+   * one undo away), but only if it is not silent. These controls are reachable
+   * after hand-editing precisely because they cost no detection, which makes
+   * "free" and "harmless" two different things worth not conflating: the money
+   * is free, the corrections are not.
+   */
+  const lost = state.handEdited;
+  setStatus(
+    `${polygons.length} section${polygons.length > 1 ? 's' : ''} of lawn at this setting.`
+    + (lost ? ' Your hand corrections were redrawn from the AI mask — Undo puts them back.' : ''),
+    lost ? 'warn' : ''
+  );
 }
 
 /**
@@ -6258,6 +6442,37 @@ $('#btn-to-draw').addEventListener('click', () => {
     + 'with a brush; the total follows every change.');
 });
 
+/*
+ * The same handover one step earlier.
+ *
+ * The tabs name the steps and nothing says which one comes next, so a person
+ * who has just set a property line is finished and has no indication of it.
+ * "Correct it by hand" already does this job between steps two and three; this
+ * is its opposite number between one and two, and the pair is what turns four
+ * tabs into a sequence.
+ */
+$('#btn-to-detect').addEventListener('click', () => {
+  setTab('detect');
+});
+
+/*
+ * `force`, because this one is a deliberate press.
+ *
+ * The once-a-session guard exists to stop the sheet appearing UNASKED after
+ * every refused detection. Somebody who taps a button labelled "sign in" has
+ * asked, and refusing to open because an automatic offer was already spent
+ * would be the guard working against the person it protects.
+ */
+$('#saved-signin').addEventListener('click', () => {
+  promptSignin({
+    title: 'Keep your maps',
+    why: 'Saved maps live in this browser until you have an account. Signing '
+      + 'in carries the ones you already have with you and keeps new ones on '
+      + 'every device. It also raises how many AI detections you get each day.',
+    force: true,
+  });
+});
+
 $('#btn-lock-clear').addEventListener('click', () => clearLawnAndUnlock());
 $('#btn-lock-redetect').addEventListener('click', () => clearLawnAndUnlock({ toDetect: true }));
 
@@ -6474,11 +6689,9 @@ $('#account-btn').addEventListener('click', () => {
     renderAccountSheet();
     openSheet('#account-sheet');
   } else {
-    $('#signin-note').textContent = 'No password. We send a link that signs you '
-      + 'in and expires in 20 minutes.';
-    $('#signin-note').className = 'sheet-note';
-    renderSigninOptions();
-    openSheet('#signin');
+    // force: tapping the account button IS the ask, so the once-a-session
+    // guard on the automatic offer must not swallow it.
+    promptSignin({ force: true });
   }
 });
 

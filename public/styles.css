@@ -499,8 +499,17 @@ button:disabled { opacity: .45; cursor: not-allowed; }
  * A locked pane is visibly out of action but still readable, so you can see
  * what the settings ARE before deciding to throw your corrections away.
  * pointer-events alone would leave it looking live.
+ *
+ * DIMMED PER CHILD, NOT ON THE PANE, so that `.stays-free` can opt back out.
+ * Opacity on the parent could not be undone by a child at any specificity --
+ * it composites the whole subtree once, so a child at opacity 1 inside a
+ * parent at .42 is still drawn at .42. The controls that cost nothing have to
+ * stay properly usable, which means the dimming can never be applied above
+ * them in the first place.
  */
-.tabpane.is-locked { opacity: .42; pointer-events: none; user-select: none; }
+.tabpane.is-locked > *:not(.stays-free) {
+  opacity: .42; pointer-events: none; user-select: none;
+}
 
 .locked {
   border: 1px solid #f0e2c4; background: #fdf9ef;
