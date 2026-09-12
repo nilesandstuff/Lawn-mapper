@@ -240,8 +240,8 @@ jobs:
             echo
             echo "If sign-in mail lands in spam, the fixes are DNS-side and are"
             echo "listed in docs/accounts-setup.md under \"When the link goes to"
-            echo "spam\" -- a DMARC record and Resend's click tracking are the"
-            echo "two that matter most."
+            echo "spam\" -- a DMARC record, and checking that click tracking is"
+            echo "not rewriting links onto a domain that is not yours."
           fi
           if [ -z "$ADMIN_EMAILS" ]; then
             echo "No ADMIN_EMAILS variable, so no account will be an administrator."

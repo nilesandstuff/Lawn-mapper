@@ -105,13 +105,28 @@ missing. In Cloudflare DNS add a **TXT** record:
 it is safe to add without understanding the rest of DMARC. Put your own address
 in `rua` and you get a weekly report of who is sending as your domain.
 
-**2. Turn off click and open tracking in Resend**, at least for this domain.
-This one is easy to miss and does real damage: with click tracking on, Resend
-rewrites every link to point at *its* tracking domain. So the email says it is
-from your domain while its button goes somewhere else — which is precisely the
-pattern spam filters are looking for — and you inherit a shared domain's
-reputation. A sign-in link should not be tracked anyway. It is in Resend under
-**Domains → your domain → Settings**.
+**2. Make sure links are not rewritten to somebody else's domain.** With click
+tracking on, Resend replaces every link with one pointing at *its* tracking
+host — so the mail says it is from you while its button goes somewhere else,
+which is the pattern spam filters hunt for, and you inherit a shared domain's
+reputation.
+
+Check **Domains → your domain → Settings** in Resend. There are two good
+outcomes and one bad one:
+
+- **Click tracking off** — nothing to do, and this is the default. A sign-in
+  link should not be tracked anyway.
+- **Click tracking on, with a tracking domain of your own** — also fine. The
+  rewritten link is then on *your* domain, so there is no mismatch. Resend asks
+  for a subdomain and a CNAME to go with it.
+- **Click tracking on, using Resend's shared host** — the bad one. Turn it off,
+  or give it a domain of your own.
+
+If you do set a tracking subdomain, `links.yourdomain.com` is a good name.
+Do **not** reuse `send.` (that is the sending subdomain, and already holds the
+SPF and DKIM records) and do not use the subdomain the site itself is served
+from. In Cloudflare, set the CNAME to **DNS only** — the grey cloud, not the
+orange one. Proxying it breaks the tracking host's certificate.
 
 **3. Send from the site's own domain**, so the link and the sender match. The
 deploy log checks this and warns if they do not.
@@ -271,7 +286,8 @@ Resend's own refusal, which usually names the reason.
 
 **The email arrives, in spam.** Expected on a new domain, and fixable — see
 [When the link goes to spam](#when-the-link-goes-to-spam) above. The short
-version: add a DMARC record, and turn Resend's click tracking off.
+version: add a DMARC record, and check that Resend is not rewriting your links
+to its own domain.
 
 **"This site cannot send email yet."** `RESEND_API_KEY` is not set, so there is
 no way in at all. Measuring and saving to this browser still work.
