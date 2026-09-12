@@ -1096,7 +1096,7 @@ async function confirmLocation() {
     refreshRail();
     refreshPins();
     setHint(state.parcel
-      ? 'Check the boundary, then open the AI or Draw step'
+      ? 'Check the property line, then open the AI or Draw step'
       : 'Trace your property line first');
     showTip('parcel');
   } catch (err) {
@@ -3780,14 +3780,18 @@ const TABS = ['address', 'detect', 'draw', 'saved'];
 /**
  * Why a tab's tools are not available, or null when they are.
  *
- * Two locks, and they are the same idea pointed in opposite directions: a step
- * cannot be redone once a later step has built on it. Detecting again throws
- * away hand corrections; moving the boundary re-trims a lawn that has already
- * been measured against the old one.
+ * ONE LOCK, AND ONLY ONE. Running the AI again replaces every shape on the
+ * map, so doing it by accident from a tab you wandered into destroys hand
+ * corrections that took real work. That is worth a gate.
  *
- * Neither is forbidden -- both are one press away. What is forbidden is doing
- * it by accident, which is what a live button on a tab you wandered into
- * amounts to.
+ * THE PROPERTY LINE IS NOT. It was gated too, on the reasoning that moving the
+ * boundary re-trims a lawn measured against the old one -- which sounded right
+ * and was wrong in practice. Noticing that your lawn runs past the recorded
+ * line to the road is something you notice AFTER seeing the detection, and the
+ * lock made fixing it cost a second paid detection. Moving the line does not
+ * touch the shapes on the map; it changes what the NEXT measurement is clipped
+ * to, and the edge tools re-clip what is there for free. Gating a free,
+ * reversible correction behind a paid one is the wrong trade.
  */
 function tabLock(tab) {
   if (tab === 'detect' && state.handEdited) {
@@ -3797,16 +3801,6 @@ function tabLock(tab) {
         + 'until you say which you want.',
       clear: true,
       redetect: true,
-    };
-  }
-  if (tab === 'address' && hasLawn() && state.parcel) {
-    return {
-      text: 'There is a lawn measured against this property line. Moving the '
-        + 'line now would re-trim it, so the boundary tools are off — on the '
-        + 'map as well as here — until the lawn is cleared. Clearing keeps the '
-        + 'line itself, so you can move it and then measure again.',
-      clear: true,
-      redetect: false,
     };
   }
   return null;
@@ -4830,8 +4824,8 @@ function tipContent(stage) {
           title: 'First: check your property line',
           text: 'The dashed outline is your lot, from the county record. Only '
               + 'grass inside it gets measured — so if your lawn runs past it '
-              + 'to the road, press Line and slide that edge out. Then open '
-              + 'the AI step, or Draw to trace it yourself.',
+              + 'to the road, press Line and slide that edge out — you can '
+              + 'come back and do that at any time, even after measuring.',
         }
       : {
           target: null,

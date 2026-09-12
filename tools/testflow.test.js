@@ -136,17 +136,26 @@ const problems = [];
 const seen = { actions: 0, gated: 0, hops: 0, skipped: 0, whileLocked: 0, lockOn: 0 };
 
 /*
- * The two facts the locks are made of.
+ * The facts the locks are made of.
  *
- * A step is locked when redoing it would undo later work: the AI step once the
- * lawn has been corrected by hand, the boundary step once a lawn has been
- * measured against it. A locked step greys its pane AND takes its map tools
- * away, so anything reached for there waits forever -- the same hang as a
- * control on another tab, wearing a different hat.
+ * A step is locked when redoing it would undo later work. A locked step greys
+ * its pane AND takes its map tools away, so anything reached for there waits
+ * forever -- the same hang as a control on another tab, wearing a different
+ * hat. Which steps those are is read out of the app below rather than assumed.
  */
 let lawn = false;
 let edited = false;
-const locked = (step) => (step === 'detect' && edited) || (step === 'address' && lawn);
+
+/*
+ * Read out of app.js rather than written down here, because the set of locked
+ * steps is a product decision that has already changed once: the property line
+ * was gated and is not any more. A copy of that decision in a linter is a copy
+ * that goes stale and starts reporting a lock the app no longer has.
+ */
+const locksDetect = /tab === 'detect' && state\.handEdited/.test(js);
+const locksAddress = /tab === 'address' && hasLawn\(\)/.test(js);
+const locked = (step) => (step === 'detect' && edited && locksDetect)
+  || (step === 'address' && lawn && locksAddress);
 
 for (const [i, raw] of lines.entries()) {
   const line = raw.trim();
@@ -249,7 +258,10 @@ check('and it actually read the script rather than skipping it',
  * seeds a lawn repeatedly, so the flags must turn on somewhere.
  */
 check('and the lock tracking engages somewhere in the run',
-  seen.lockOn > 0, `${seen.lockOn} presses put a step into a locked state`);
+  seen.lockOn > 0,
+  `${seen.lockOn} presses put a step into a locked state; `
+  + `steps that can lock: ${[locksDetect && 'detect', locksAddress && 'address']
+      .filter(Boolean).join(', ') || 'none'}`);
 
 /*
  * A press on a locked step is the same failure wearing a different hat: the

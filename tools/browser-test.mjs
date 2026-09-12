@@ -1093,11 +1093,24 @@ console.log('\n--- locks ---');
   check('the detect button is genuinely dead, not merely faded',
     await page.evaluate(() => document.querySelector('#btn-detect').disabled) === true);
 
+  /*
+   * BUT THE PROPERTY LINE STAYS EDITABLE, deliberately.
+   *
+   * It was gated too, on the reasoning that moving the boundary re-trims a
+   * lawn measured against the old one. That sounded right and was wrong in
+   * practice: noticing your lawn runs past the recorded line to the road is
+   * something you notice AFTER seeing the detection, and the gate made fixing
+   * it cost a second paid detection. Moving the line does not touch the shapes
+   * on the map, so gating a free correction behind a paid one is the wrong
+   * trade.
+   */
   await goTab(page, 'address');
   const addr = await page.evaluate(() => window.__lmTabs());
-  check('and a measured lawn locks the boundary tools too',
-    !addr.hasParcel || addr.locked.includes('address'),
+  check('but a measured lawn does NOT lock the property line',
+    !addr.locked.includes('address'),
     `locked: ${addr.locked.join(', ') || 'nothing'} (parcel=${addr.hasParcel})`);
+  check('and its map tool is still there to press',
+    addr.rail.includes('parcel'), addr.rail.join(', ') || '(empty)');
 
   /* The way out is on the notice, and it keeps the boundary. */
   await goTab(page, 'detect');
@@ -1851,19 +1864,9 @@ const reachableIn = async (mode, tool) => {
 };
 
 /*
- * THE BOUNDARY HALF HAS TO BE DONE WITH NO LAWN ON THE MAP.
- *
- * Not an inconvenience of testing -- it is the product. A measured lawn locks
- * the boundary step, because moving the line would re-trim a lawn already
- * measured against the old one, and the lock takes the map's "Line" button
- * away with the panel's controls. (It did not, at first: the panel greyed out
- * while Line stayed pressable, so the boundary was visibly disabled and
- * completely usable. A lock with a way round it is worse than no lock, because
- * it says the work is safe.)
- *
- * So: clear through the notice, check the boundary mode in isolation, then put
- * a lawn back and check the lawn mode. Which is also the order a person would
- * be forced into.
+ * The boundary half is done with no lawn on the map, so that "reaches only the
+ * property line" means something -- with lawn shapes present, an empty result
+ * and a correct one would look the same.
  */
 await unlockDetect(page);
 await goTab(page, 'address');

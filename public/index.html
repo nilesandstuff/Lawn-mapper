@@ -136,7 +136,7 @@
       <nav class="tabs" id="tabs" role="tablist" aria-label="Which step you are on">
         <button class="tab" type="button" id="tab-address" role="tab"
                 data-tab="address" aria-selected="false" aria-controls="pane-address">
-          <span class="tab-step">1</span>Address
+          <span class="tab-step">1</span>Property line
         </button>
         <button class="tab" type="button" id="tab-detect" role="tab"
                 data-tab="detect" aria-selected="false" aria-controls="pane-detect">
@@ -171,8 +171,8 @@
         Corner and edge editing, for whichever outline is being edited.
 
         OUTSIDE the tabs on purpose: the same panel serves the property line on
-        the Address tab and the lawn's own corners on the Draw tab -- one set of
-        controls, two things they can be pointed at, and the wording inside is
+        the Property line tab and the lawn's own corners on the Draw tab -- one
+        set of controls, two things they can be pointed at, and the wording is
         rewritten to say which (see enterRingEditing). Two copies in two tabs
         would be two chances for them to drift apart.
       -->
@@ -295,9 +295,8 @@
         <!--
           "Use property line" makes a LAWN the size of the lot, which is a
           starting point to carve down rather than a boundary edit -- so it
-          belongs here with the drawing tools and not on the Address tab, where
-          it would also be the one lawn-creating button sitting behind the
-          boundary lock.
+          belongs here with the drawing tools and not on the Property line tab,
+          where it would sit among the tools for a step it is not part of.
         -->
         <div class="tools">
           <button class="ghost" id="btn-draw">Draw a patch</button>

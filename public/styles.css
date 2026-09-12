@@ -408,10 +408,17 @@ button:disabled { opacity: .45; cursor: not-allowed; }
   padding: 6px 0; background: #fff;
   border-bottom: 1px solid var(--line);
 }
+/*
+ * Sized to their words rather than split four equal ways.
+ *
+ * "Property line" is three times the width of "AI", and equal columns either
+ * clipped it or forced every tab down to a size that fitted the longest. Let
+ * each take what it needs and share what is left over.
+ */
 .tab {
-  flex: 1 1 0; min-width: 0;
+  flex: 1 1 auto; min-width: 0;
   display: flex; align-items: center; justify-content: center; gap: 5px;
-  padding: 9px 4px; border: 0; border-radius: 8px;
+  padding: 9px 6px; border: 0; border-radius: 8px;
   background: transparent; color: var(--muted);
   font: inherit; font-size: 13px; font-weight: 550; letter-spacing: -0.01em;
   cursor: pointer; white-space: nowrap;
