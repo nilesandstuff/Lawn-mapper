@@ -3542,7 +3542,18 @@ function readSigninOutcome() {
   const error = raw.startsWith('signin-error=') ? raw.slice('signin-error='.length) : null;
   if (raw !== 'signed-in' && !error) return;
 
-  history.replaceState(null, '', location.pathname + location.search);
+  /*
+   * WINDOW.history, SPELLED OUT, and never the bare name in this file.
+   *
+   * This module declares `let history = []` for the undo stack, which shadows
+   * the DOM's `history` for the whole file -- so the bare name is an Array and
+   * `.replaceState` is undefined. The failure is nastier than it looks: this
+   * runs during boot, on the return from a sign-in link, so the throw took the
+   * map's own setup down with it and the visible symptom was "The map didn't
+   * load" on a working map, for signed-in visitors only, unfixable by
+   * reloading because the fragment was still in the URL.
+   */
+  window.history.replaceState(null, '', location.pathname + location.search);
 
   if (error) {
     setStatus(SIGNIN_ERRORS[error] || 'That sign-in did not complete.', 'warn');
@@ -6528,14 +6539,44 @@ $('#account-signout').addEventListener('click', async () => {
 
 $('#account-admin').addEventListener('click', () => { location.href = '/admin.html'; });
 
+/*
+ * THE FATAL BANNER SPEAKS FOR THE MAP AND NOTHING ELSE.
+ *
+ * These used to be one chain with one catch, so anything that threw after the
+ * map -- the quota badge, the account lookup, the sign-in notice -- was
+ * reported as "The map didn't load". That shipped, and the bug it hid took a
+ * report to find: a sign-in notice threw during boot, the map was already on
+ * screen and working, and the app covered it with a banner blaming the map and
+ * telling people to reload. Which could not help, because the thing that threw
+ * was reading the URL fragment that a reload preserves.
+ *
+ * A wrong diagnosis is worse than a bare stack trace. It sends the reader to
+ * the wrong file, and it tells the person at the other end to do the one thing
+ * that cannot work.
+ *
+ * So: the map's own failure is fatal, because without it there is no app. What
+ * comes after it is decoration on a working map -- a badge, a name in the
+ * corner, a sentence about signing in -- and none of it is worth taking the
+ * page down for. Each says so in the console and lets the rest continue.
+ */
+const afterMap = (name, fn) => async () => {
+  try {
+    await fn();
+  } catch (err) {
+    console.error(`${name} failed, which does not stop the map:`, err);
+  }
+};
+
 initMap()
-  .then(refreshQuota)
-  // After the map, because /api/config is what says whether this deployment
-  // has accounts at all -- and before nothing, because a signed-out visitor is
-  // the normal case and must not wait on it.
-  .then(refreshAccount)
-  .then(readSigninOutcome)
   .catch((err) => {
     console.error(err);
     fatal(`${err.message}. Reloading the page usually clears this.`);
-  });
+    throw err;                       // the steps below need a map to decorate
+  })
+  // After the map, because /api/config is what says whether this deployment
+  // has accounts at all -- and before nothing, because a signed-out visitor is
+  // the normal case and must not wait on it.
+  .then(afterMap('the allowance badge', refreshQuota))
+  .then(afterMap('the account lookup', refreshAccount))
+  .then(afterMap('the sign-in notice', readSigninOutcome))
+  .catch(() => {});                  // already reported above

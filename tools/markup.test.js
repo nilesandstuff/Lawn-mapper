@@ -167,6 +167,79 @@ check('a tip whose control is on another tab waits for that tab',
   /pendingTip = stage/.test(js) && /function flushPendingTip/.test(js),
   'showTip must record the stage and setTab must flush it');
 
+/* ------------------------------------------------- shadowed globals */
+/*
+ * A MODULE-LEVEL `let history = []` SHADOWS THE DOM'S `history` FOR THE WHOLE
+ * FILE, and the undo stack is called exactly that.
+ *
+ * So `history.replaceState(...)` is a method call on an Array: undefined, a
+ * TypeError, at runtime, in whatever path happens to reach it. It shipped
+ * once. The path was the return from a sign-in link, during boot, so the throw
+ * took the map's setup down with it -- and the visible symptom was "The map
+ * didn't load" for signed-in visitors only, which points nowhere near the
+ * cause and does not clear on a reload because the fragment is still there.
+ *
+ * There WAS a comment at the other call site explaining all of this. The
+ * second one was written anyway, which is the argument for a check: a note
+ * explains a rule to whoever reads that line, and this enforces it for
+ * whoever does not.
+ */
+/*
+ * NAMED EXPLICITLY, because this runs in Node and `history` is not a global
+ * here -- testing `name in globalThis` finds nothing and passes, which is the
+ * check quietly examining an empty list. Each entry is the members that only
+ * the DOM object has, so `history.push(snapshot())` on the undo stack reads as
+ * what it is and `history.replaceState(...)` does not.
+ */
+const DOM_GLOBALS = {
+  history: ['replaceState', 'pushState', 'back', 'forward', 'go', 'state'],
+  location: ['href', 'pathname', 'hash', 'search', 'assign', 'reload', 'origin'],
+  screen: ['width', 'height', 'availWidth', 'availHeight', 'orientation'],
+  navigator: ['userAgent', 'clipboard', 'geolocation', 'share', 'platform'],
+  status: ['toLowerCase'],
+  origin: ['startsWith'],
+};
+
+{
+  /*
+   * COMMENTS ARE NOT CODE, and this check is the one place that bites.
+   *
+   * The call site that got it right carries a comment explaining the trap, and
+   * that comment necessarily spells out `history.replaceState` to say what not
+   * to write. Scanning the raw file flagged the explanation and reported a bug
+   * in the one line that had already fixed it -- a linter that fails on
+   * correct code gets switched off, which costs more than it ever caught.
+   */
+  const code = js
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/^\s*\/\/.*$/gm, ' ');
+
+  const shadowed = [...code.matchAll(/^(?:let|const|var)\s+([A-Za-z_$][\w$]*)\s*=/gm)]
+    .map((m) => m[1])
+    .filter((name) => name in DOM_GLOBALS);
+
+  check('this file still shadows the global the bug was about',
+    shadowed.includes('history'),
+    shadowed.join(', ') || 'none -- if the undo stack was renamed, drop this check');
+
+  /*
+   * Only a shadowed name followed by one of the DOM object's own members, and
+   * not where it is already spelled `window.history`.
+   */
+  const wrong = [];
+  for (const name of shadowed) {
+    for (const m of code.matchAll(new RegExp(`(\\w+\\.)?\\b${name}\\.(\\w+)`, 'g'))) {
+      if (m[1]) continue;                       // window.history.replaceState
+      if (DOM_GLOBALS[name].includes(m[2])) wrong.push(`${name}.${m[2]}`);
+    }
+  }
+  check('and no call reaches the DOM one through the shadowing name',
+    wrong.length === 0,
+    wrong.length
+      ? `${[...new Set(wrong)].join(', ')} -- spell it window.${shadowed[0]}`
+      : `${shadowed.join(', ')} shadowed, every DOM use spelled out`);
+}
+
 /* --------------------------------------------------------- the console */
 /*
  * THE SAME CHECK FOR THE OTHER PAGE, because it has the same failure mode and
