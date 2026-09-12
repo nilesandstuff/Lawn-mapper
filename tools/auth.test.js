@@ -452,6 +452,36 @@ const rows = async (e, sql, ...args) => (await e.DB.prepare(sql).bind(...args).a
   check('nothing is sent for a signed-out visitor', publicUser(null) === null);
 }
 
+/* ------------------------------------------------------------- reply-to */
+/*
+ * A From address that eats replies is a small deliverability signal and a dead
+ * end for the person: answering the email is the first thing somebody does
+ * with mail they did not expect. Optional, because a deployment with no
+ * monitored mailbox should not claim to have one -- so both directions are
+ * checked, and the absent case must send no header at all rather than an empty
+ * one.
+ */
+{
+  const grab = async (extra) => {
+    const e = env({ RESEND_API_KEY: 'test', MAIL_FROM: 'a@b.com', ...extra });
+    const real = globalThis.fetch;
+    let body = null;
+    globalThis.fetch = async (_u, init) => {
+      body = JSON.parse(init.body);
+      return new Response('{}', { status: 200 });
+    };
+    await beginMagicLink(new Request('https://site.test/x', { method: 'POST' }), e, 'r@b.com');
+    globalThis.fetch = real;
+    return body;
+  };
+
+  check('a reply address is sent when the deployment has one',
+    (await grab({ MAIL_REPLY_TO: 'hello@b.com' })).reply_to === 'hello@b.com');
+  check('and the field is absent, not empty, when it does not',
+    !('reply_to' in (await grab({}))),
+    'an empty reply_to is a header saying replies go nowhere');
+}
+
 /* --------------------------------------------------------- the magic link */
 /*
  * RECEIVING THE LINK IS THE VERIFICATION. There is no `email_verified` claim
@@ -481,6 +511,31 @@ const rows = async (e, sql, ...args) => (await e.DB.prepare(sql).bind(...args).a
   const link = sent[0].body.text.match(/https:\/\/\S+/)?.[0];
   check('and carries a link on this site, not somewhere else',
     link?.startsWith('https://site.test/api/auth/email/verify?token='), link);
+
+  /*
+   * THE PARTS THAT KEEP IT OUT OF SPAM, pinned because they are invisible.
+   *
+   * A magic link is a phishing email by construction -- short, from a domain
+   * you have never heard from, one urgent button, an expiry. Gmail scores that
+   * template, which is how the first one from a new domain lands in spam with
+   * SPF and DKIM both passing.
+   *
+   * These three are what a filter can actually see, and each is something real
+   * mail does and forged mail usually does not. They are also exactly the kind
+   * of thing a later tidy-up removes as wordy, so they are asserted rather than
+   * left to a comment.
+   */
+  const body = sent[0].body;
+  check('the email names the person it was sent to',
+    body.text.includes('new@example.com') && body.html.includes('new@example.com'),
+    'phishing is sent to a list and does not know who you are');
+  check('and shows the destination as text, not only behind a button',
+    body.text.includes(link) && body.html.includes(`>${link}<`),
+    'a link whose text and target agree is checkable by a person and a filter');
+  check('and says what the site is, for somebody who signed up ten minutes ago',
+    /measures a lawn/i.test(body.text) && /measures a lawn/i.test(body.html));
+  check('the subject names the action rather than dangling a credential',
+    body.subject === 'Sign in to Lawn Mapper', body.subject);
 
   const token = new URL(link).searchParams.get('token');
   const signedIn = await finishMagicLink(e, token);

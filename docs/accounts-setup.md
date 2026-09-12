@@ -73,6 +73,7 @@ Comma- or space-separated for more than one.
 | --- | --- | --- |
 | Secret | `RESEND_API_KEY` | the key, starting `re_` |
 | Variable | `MAIL_FROM` | `Lawn Mapper <hello@nilesandstuff.com>` |
+| Variable | `MAIL_REPLY_TO` | optional — an address you actually read |
 
 **Without `MAIL_FROM`** it uses Resend's shared `onboarding@resend.dev`, which
 works immediately and **only delivers to your own Resend account address**.
@@ -82,6 +83,57 @@ before friends try to sign in.
 There is no password. The link in the email *is* the verification: receiving it
 proves the address is yours, which is what makes it safe for the address to be
 the account. Nothing to forget, reuse, leak or reset.
+
+### When the link goes to spam
+
+Expect this at first. A sign-in link is a phishing email by construction —
+short, from a domain nobody has heard from, one urgent button, an expiry — and
+a brand-new sending domain has no reputation to argue with. SPF and DKIM
+passing is not enough on its own.
+
+In rough order of how much each one buys you:
+
+**1. Add a DMARC record.** Resend sets up SPF and DKIM and does *not* ask for
+this, and it is the biggest single thing Gmail looks at that you are probably
+missing. In Cloudflare DNS add a **TXT** record:
+
+| Name | Value |
+| --- | --- |
+| `_dmarc` | `v=DMARC1; p=none; rua=mailto:you@example.com` |
+
+`p=none` is monitoring only — it cannot cause your own mail to be rejected, so
+it is safe to add without understanding the rest of DMARC. Put your own address
+in `rua` and you get a weekly report of who is sending as your domain.
+
+**2. Turn off click and open tracking in Resend**, at least for this domain.
+This one is easy to miss and does real damage: with click tracking on, Resend
+rewrites every link to point at *its* tracking domain. So the email says it is
+from your domain while its button goes somewhere else — which is precisely the
+pattern spam filters are looking for — and you inherit a shared domain's
+reputation. A sign-in link should not be tracked anyway. It is in Resend under
+**Domains → your domain → Settings**.
+
+**3. Send from the site's own domain**, so the link and the sender match. The
+deploy log checks this and warns if they do not.
+
+**4. Give it a reply address.** Set `MAIL_REPLY_TO` to something you read, even
+a forward. Mail nobody can reply to is a small negative signal, and a bigger
+problem for the confused person trying to reply.
+
+**5. For your own inbox, right now**: open the message in spam, press **Report
+not spam**, then add the sender to Contacts. In Gmail you can also make a
+filter — search `from:hello@yourdomain.com`, then *Create filter* → *Never send
+it to spam*. This fixes your mailbox immediately and does nothing for anybody
+else's, so do it to unblock your own testing and then fix the DNS properly.
+
+**6. Then just wait.** A new domain's first handful of messages often land in
+spam and get better as real people open them and do not complain. Low volume
+and nobody marking it as spam is exactly how reputation gets built.
+
+The email itself already does what it can: it names the recipient, shows the
+link as visible text rather than hiding it behind a button, and says what the
+site is. Those are the differences a filter can see between real transactional
+mail and a forgery. They do not outweigh the DNS.
 
 **Why not "sign in with Google"?** It was built and then removed. What it buys
 is one tap instead of a trip to an inbox; what it costs is a registered
@@ -215,8 +267,11 @@ They are the way back in if something about accounts goes wrong.
 
 **The email never arrives.** If `MAIL_FROM` is unset, Resend only delivers to
 your own account address. Verify a domain and set it. The sign-in panel shows
-Resend's own refusal, which usually names the reason. Check spam too — a new
-sending domain has no reputation for the first few messages.
+Resend's own refusal, which usually names the reason.
+
+**The email arrives, in spam.** Expected on a new domain, and fixable — see
+[When the link goes to spam](#when-the-link-goes-to-spam) above. The short
+version: add a DMARC record, and turn Resend's click tracking off.
 
 **"This site cannot send email yet."** `RESEND_API_KEY` is not set, so there is
 no way in at all. Measuring and saving to this browser still work.

@@ -93,6 +93,13 @@ jobs:
           # accounts existed, which is a working site and not a broken one.
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           MAIL_FROM: ${{ vars.MAIL_FROM }}
+          # Optional, and only a Worker secret because that is how a value gets
+          # to the runtime. Replies to a sign-in link are the first thing a
+          # confused person sends, and a From address that eats them is both a
+          # deliverability signal and a dead end for them.
+          MAIL_REPLY_TO: ${{ vars.MAIL_REPLY_TO }}
+          # Read here only to check it against MAIL_FROM's domain below.
+          CUSTOM_DOMAIN: ${{ vars.CUSTOM_DOMAIN }}
           ADMIN_EMAILS: ${{ vars.ADMIN_EMAILS }}
           # The daily allowances. These are DEFAULTS: once the site is up they
           # are editable from the console, which writes them to the database,
@@ -183,6 +190,7 @@ jobs:
           for pair in \
             "RESEND_API_KEY:$RESEND_API_KEY" \
             "MAIL_FROM:$MAIL_FROM" \
+            "MAIL_REPLY_TO:$MAIL_REPLY_TO" \
             "ADMIN_EMAILS:$ADMIN_EMAILS" \
             "ANON_DAILY:$ANON_DAILY" \
             "FREE_DAILY:$FREE_DAILY" \
@@ -205,6 +213,35 @@ jobs:
             echo "No MAIL_FROM, so mail goes from Resend's shared onboarding"
             echo "address, which ONLY delivers to your own Resend account."
             echo "Verify a domain and set MAIL_FROM before friends try to sign in."
+          else
+            # DOES THE SENDER MATCH THE SITE?
+            #
+            # A sign-in link points at the site, so a From address on some
+            # other domain makes every message a cross-domain link -- which is
+            # the shape of a phishing email and is scored as one. Cheap to
+            # check here, invisible otherwise until somebody reports that the
+            # mail went to spam.
+            from_domain=$(printf '%s' "$MAIL_FROM" | sed -n 's/.*@\([^ >]*\).*/\1/p')
+            site_domain="${CUSTOM_DOMAIN}"
+            # Compare the registrable part, so lawnmap.example.com and
+            # hello@example.com count as the same organisation (they are, to
+            # DMARC's relaxed alignment as well).
+            base() { printf '%s' "$1" | awk -F. '{ if (NF>=2) print $(NF-1)"."$NF; else print $0 }'; }
+            if [ -n "$from_domain" ] && [ -n "$site_domain" ] \
+               && [ "$(base "$from_domain")" != "$(base "$site_domain")" ]; then
+              echo "::warning::MAIL_FROM is @$from_domain but the site is $site_domain."
+              echo "Sign-in links will point at a different domain from the sender,"
+              echo "which mail providers treat as a phishing signal. Send from the"
+              echo "site's own domain if you can."
+            else
+              echo "Sign-in mail comes from @$from_domain, matching the site."
+            fi
+
+            echo
+            echo "If sign-in mail lands in spam, the fixes are DNS-side and are"
+            echo "listed in docs/accounts-setup.md under \"When the link goes to"
+            echo "spam\" -- a DMARC record and Resend's click tracking are the"
+            echo "two that matter most."
           fi
           if [ -z "$ADMIN_EMAILS" ]; then
             echo "No ADMIN_EMAILS variable, so no account will be an administrator."

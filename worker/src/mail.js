@@ -36,17 +36,35 @@ export const mailFrom = (env) =>
  * One POST. Returns a reason rather than throwing, because the caller is
  * answering a person who pressed a button and needs to say something.
  */
+/**
+ * An address replies can go to, if the deployment has one.
+ *
+ * A From address that silently swallows replies is a small negative signal at
+ * every mailbox provider, and a large one to a person: the first thing somebody
+ * does with mail they did not expect is answer it and ask. Optional, because a
+ * deployment without a monitored mailbox should not claim to have one.
+ */
+export const mailReplyTo = (env) => String(env?.MAIL_REPLY_TO || '').trim() || null;
+
 export async function sendMail(env, { to, subject, text, html }) {
   if (!mailConfigured(env)) return { ok: false, detail: 'no mail provider configured' };
 
   try {
+    const reply = mailReplyTo(env);
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${env.RESEND_API_KEY}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ from: mailFrom(env), to: [to], subject, text, html }),
+      body: JSON.stringify({
+        from: mailFrom(env),
+        to: [to],
+        subject,
+        text,
+        html,
+        ...(reply ? { reply_to: reply } : {}),
+      }),
     });
 
     if (res.ok) return { ok: true };
@@ -84,33 +102,73 @@ export async function sendMail(env, { to, subject, text, html }) {
  * they press it, not after.
  */
 export async function sendMagicLink(env, to, link) {
+  /*
+   * WRITTEN AGAINST THE SHAPE OF A PHISHING EMAIL, because a magic link is one
+   * by construction: short, from a domain you have never heard from, a single
+   * urgent button, an expiry, and nothing else. That is the template, and
+   * Gmail scores it as the template -- which is how the first one sent from a
+   * new domain lands in spam even with SPF and DKIM passing.
+   *
+   * The differences below are the ones a filter can actually see, and each is
+   * something real mail does and forged mail usually does not:
+   *
+   *   - IT NAMES THE RECIPIENT. Phishing is sent to a list and does not know
+   *     who you are. "You asked to sign in as <address>" is also the sentence
+   *     that lets somebody catch a link they did not request.
+   *   - THE DESTINATION IS VISIBLE AS TEXT, not hidden behind a button. A link
+   *     whose text and target agree is checkable by a person and by a filter;
+   *     it is also the fallback when a client strips the button.
+   *   - IT SAYS WHAT THE SITE IS. Two words of context, so the message stands
+   *     on its own to somebody who signed up ten minutes ago and forgot.
+   *
+   * None of this outweighs DNS. It is the part the code owns.
+   */
+  const site = new URL(link).origin;
+  const host = new URL(link).host;
+
   const text = [
-    'Here is your sign-in link for Lawn Mapper:',
+    `You asked to sign in to Lawn Mapper as ${to}.`,
     '',
+    'Open this link to finish:',
     link,
     '',
     'It works once and expires in 20 minutes.',
-    'If you did not ask to sign in, you can ignore this — nothing has changed.',
+    '',
+    `Lawn Mapper measures a lawn's square footage from its address — ${site}`,
+    'If you did not ask to sign in, ignore this email. Nothing has changed and',
+    'no account was created.',
   ].join('\n');
 
   const html = `
     <div style="font:15px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#16211a">
-      <p style="margin:0 0 14px">Here is your sign-in link for <b>Lawn&nbsp;Mapper</b>.</p>
-      <p style="margin:0 0 18px">
+      <p style="margin:0 0 14px">You asked to sign in to <b>Lawn&nbsp;Mapper</b>
+        as ${escapeHtml(to)}.</p>
+      <p style="margin:0 0 16px">
         <a href="${escapeHtml(link)}"
            style="display:inline-block;padding:11px 18px;border-radius:10px;background:#2f7d32;color:#fff;text-decoration:none;font-weight:600">
           Sign in
         </a>
       </p>
+      <p style="margin:0 0 16px;color:#5d6b62;font-size:13px">
+        Or paste this into your browser:<br>
+        <a href="${escapeHtml(link)}" style="color:#2f7d32;word-break:break-all">${escapeHtml(link)}</a>
+      </p>
       <p style="margin:0 0 6px;color:#5d6b62;font-size:13px">
         It works once and expires in 20 minutes.
       </p>
-      <p style="margin:0;color:#5d6b62;font-size:13px">
-        If you did not ask to sign in, ignore this — nothing has changed.
+      <p style="margin:0 0 6px;color:#5d6b62;font-size:13px">
+        If you did not ask to sign in, ignore this — nothing has changed and no
+        account was created.
+      </p>
+      <p style="margin:14px 0 0;color:#8a978f;font-size:12px">
+        Lawn Mapper measures a lawn's square footage from its address.
+        <a href="${escapeHtml(site)}" style="color:#8a978f">${escapeHtml(host)}</a>
       </p>
     </div>`;
 
-  return sendMail(env, { to, subject: 'Your Lawn Mapper sign-in link', text, html });
+  // Plain, and it says what it is. "Your ... link" reads like every credential
+  // phish there has ever been; naming the action and the site does not.
+  return sendMail(env, { to, subject: 'Sign in to Lawn Mapper', text, html });
 }
 
 /**
