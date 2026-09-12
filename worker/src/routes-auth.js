@@ -13,9 +13,10 @@ import {
   currentUser,
 } from './auth.js';
 import {
-  accountsEnabled, createSession, publicUser, sweepExpired,
+  accountsEnabled, createSession, publicUser, sweepExpired, dailyState,
 } from './db.js';
 import { mailConfigured } from './mail.js';
+import { limits } from './limits.js';
 
 export const isAuthPath = (pathname) => pathname.startsWith('/api/auth/');
 
@@ -66,8 +67,17 @@ export async function handleAuth(request, env, url, origin, ctx, json) {
     // every page load, the deletes are indexed, and a cron trigger is one more
     // thing to set up from a phone for a job this cheap.
     if (ctx?.waitUntil) ctx.waitUntil(sweepExpired(env));
+    /*
+     * Today's allowance travels with the account, not only with the quota
+     * badge. The account sheet is where somebody looks when the badge says
+     * they are out, so it is the one place that must not be able to show a
+     * stale or different number.
+     */
+    const daily = user && !user.unlimited
+      ? await dailyState(env, user, (await limits(env)).free_daily)
+      : null;
     return json({
-      user: publicUser(user),
+      user: publicUser(user, daily),
       // Whether this deployment can send a link. Without it there is no way in
       // at all, and the panel says so rather than showing a form that cannot
       // work.

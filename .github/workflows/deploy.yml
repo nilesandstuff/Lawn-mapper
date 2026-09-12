@@ -94,6 +94,19 @@ jobs:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           MAIL_FROM: ${{ vars.MAIL_FROM }}
           ADMIN_EMAILS: ${{ vars.ADMIN_EMAILS }}
+          # The daily allowances. These are DEFAULTS: once the site is up they
+          # are editable from the console, which writes them to the database,
+          # and a stored value beats the variable. Setting one here decides
+          # what a fresh deployment starts with and what applies if the
+          # settings table cannot be read.
+          #
+          # WELCOME_CREDITS is still read, as the fallback for FREE_DAILY. It
+          # named a one-off grant that is now a daily allowance, and honouring
+          # it means the number already chosen keeps applying rather than
+          # silently reverting.
+          ANON_DAILY: ${{ vars.ANON_DAILY }}
+          FREE_DAILY: ${{ vars.FREE_DAILY }}
+          IP_DAILY: ${{ vars.IP_DAILY }}
           WELCOME_CREDITS: ${{ vars.WELCOME_CREDITS }}
         run: |
           printf '%s' "$MAPBOX_TOKEN"    | npx wrangler secret put MAPBOX_TOKEN
@@ -171,6 +184,9 @@ jobs:
             "RESEND_API_KEY:$RESEND_API_KEY" \
             "MAIL_FROM:$MAIL_FROM" \
             "ADMIN_EMAILS:$ADMIN_EMAILS" \
+            "ANON_DAILY:$ANON_DAILY" \
+            "FREE_DAILY:$FREE_DAILY" \
+            "IP_DAILY:$IP_DAILY" \
             "WELCOME_CREDITS:$WELCOME_CREDITS"
           do
             name="${pair%%:*}"
@@ -194,6 +210,10 @@ jobs:
             echo "No ADMIN_EMAILS variable, so no account will be an administrator."
             echo "Set it to your own address to get the console and unlimited detections."
           fi
+
+          echo "Daily AI passes: signed out ${ANON_DAILY:-5}, account ${FREE_DAILY:-${WELCOME_CREDITS:-30}},"
+          echo "any one address ${IP_DAILY:-80}. These are the starting numbers;"
+          echo "change them in the console under Daily limits, with no deploy."
 
           if [ -n "$LOG_TOKEN" ]; then
             printf '%s' "$LOG_TOKEN" | npx wrangler secret put LOG_TOKEN

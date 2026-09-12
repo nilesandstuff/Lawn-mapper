@@ -97,15 +97,53 @@ records which was used.
 
 ---
 
-## 3. Credits (optional)
+## 3. Daily limits (optional — and editable later without a deploy)
 
-| Where | Name | Value | Default |
+Everybody gets a daily allowance of AI passes that comes back in the morning.
+Signing in makes it bigger. That is the whole arrangement.
+
+| Where | Name | What it is | Default |
 | --- | --- | --- | --- |
-| Variable | `WELCOME_CREDITS` | what a new account starts with | `20` |
+| Variable | `ANON_DAILY` | signed out, per browser | `5` |
+| Variable | `FREE_DAILY` | a signed-in account | `30` |
+| Variable | `IP_DAILY` | any one address, shared | `80` |
 
-`0` is a valid answer and means new accounts start empty.
+**These are only the starting numbers.** Once the site is up, all of them are
+in the console under **Daily limits**, and a change there takes effect in about
+fifteen seconds with no deploy. Change them there; the variables decide what a
+fresh deployment begins with.
 
-Your own account ignores this entirely — `ADMIN_EMAILS` makes it unlimited.
+`0` is a valid answer everywhere and means exactly zero, not "use the default".
+
+If you already set `WELCOME_CREDITS`, it still works — it is read as the
+free-account number. It used to name a one-off grant and now names the daily
+allowance, so the number you chose keeps applying.
+
+Your own account ignores all of it — `ADMIN_EMAILS` makes it unlimited.
+
+### Why there is no "one account per address" rule
+
+Making accounts is the obvious way round a limit, and three things answer it.
+
+**There is nothing to farm.** The allowance is daily, not a signing-up bonus, so
+a fresh account buys tomorrow's passes today and nothing beyond that. New
+accounts start with a balance of zero — the allowance *is* what they get.
+
+**The address ceiling is shared by everyone behind it**, accounts included. Ten
+accounts on one wifi do not get ten allowances; they get the address's 80. It is
+the one number a new account cannot move, so it is the only real limit, and it
+is what to raise or lower if farming ever actually happens.
+
+**And a ceiling needs a door.** An office of eight people sharing one IP looks
+exactly like eight accounts made by one person, and no rule will ever tell them
+apart. So the console does instead: give that account its own daily limit, and
+it is both raised *and* taken out of the shared-address count entirely. Four
+seconds, one field, and a person made the judgement.
+
+A cap on accounts per address was considered and rejected. It fails precisely
+where it matters — households, offices and phone networks are all one address
+with many real people behind it — and it stops nobody who can clear a cookie or
+switch to mobile data.
 
 ---
 
@@ -124,13 +162,15 @@ database was created and the schema applied.
 | --- | --- | --- | --- |
 | Measure a lawn | yes | yes | yes |
 | Saved maps | this browser, 5 | the account, 50, any device | same |
-| Detections | 20 passes a day | credits | unlimited |
+| AI passes | 5 a day | 30 a day | unlimited |
 | Console | — | — | `/admin.html` |
 
-Everyone, signed in or not, is still subject to the per-address daily ceiling.
-That is deliberate: an account starts with free credits, so without it "make
-more accounts" would be a way to detect for free forever. It is generous enough
-that a household never meets it.
+Drawing by hand is unlimited for everybody and always was — the allowance is
+only for the AI passes, because those are the ones Replicate bills for.
+
+Everyone, signed in or not, is still subject to the per-address daily ceiling,
+for the reasons above. It is generous enough that a household never meets it,
+and one field in the console excuses an account that does.
 
 ---
 
@@ -141,8 +181,13 @@ that a household never meets it.
 - **AI passes** today, this week, this month, and a bar per day — the shape of
   the Replicate bill. Passes, not presses, because a four-box detection costs
   four predictions.
-- **Every account**: balance, passes spent, maps saved, last seen. Search it.
-  Grant or take credits, make somebody unlimited, make somebody an admin.
+- **Daily limits** — the three numbers above, editable in place. Each box saves
+  on its own and says whether the number in it is stored here or inherited from
+  the deployment, so you can tell a save landed. "Use 5" puts one back.
+- **Every account**: today's allowance, passes spent, maps saved, last seen.
+  Search it. Give somebody its own daily limit (which also exempts them from
+  the shared-address ceiling), grant or take bought credits, make somebody
+  unlimited, make somebody an admin.
 - **Credit history** for any account — "why do I have 12 credits" is the
   question people ask, and this is the answer.
 - **Detection feedback**, worst first.

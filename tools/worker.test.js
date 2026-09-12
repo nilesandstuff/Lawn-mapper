@@ -108,7 +108,18 @@ check('and it still holds when daylight saving is off',
   dayKey(new Date('2026-01-15T04:00:00Z')) === '2026-01-14',
   dayKey(new Date('2026-01-15T04:00:00Z')));
 
-check('the daily allowance is 20', DAILY_LIMIT_PER_CLIENT === 20,
+/*
+ * FIVE, DOWN FROM TWENTY, and the drop is the other half of making an account
+ * worth having. Twenty free passes without an account and thirty with one is
+ * not a reason to sign in; five is enough to measure your own lawn and see
+ * whether the thing works, which is what a signed-out visitor is there for.
+ *
+ * This is the DEFAULT and not the policy -- the live number comes from the
+ * settings table via limits.js, so the owner can move it from the console. The
+ * constant is what a fresh deployment starts with and what applies when there
+ * is no database to read a setting from.
+ */
+check('the signed-out allowance defaults to 5', DAILY_LIMIT_PER_CLIENT === 5,
   String(DAILY_LIMIT_PER_CLIENT));
 
 /* --------------------------------------------- charging for several passes */
@@ -311,9 +322,19 @@ check('the daily allowance is 20', DAILY_LIMIT_PER_CLIENT === 20,
     singles === DAILY_LIMIT_PER_DEV,
     `${singles} one-pass presses from ${DAILY_LIMIT_PER_DEV} passes`);
 
-  /* Four times what an ordinary visitor gets, which is the point of the mode. */
+  /*
+   * A real step up, which is the point of the mode -- tuning a prompt means
+   * running one lot a dozen times.
+   *
+   * NO LONGER A FIXED MULTIPLE of the signed-out allowance. It was four times
+   * twenty; the signed-out number is now five and the developer one is
+   * unchanged, because they answer different questions -- how much does a
+   * stranger get to try, and how much does it take to answer a question about
+   * a prompt. Tying them together would have quietly cut the developer budget
+   * to twenty when the first one moved.
+   */
   check('the developer budget is a real step up from the ordinary one',
-    DAILY_LIMIT_PER_DEV === DAILY_LIMIT_PER_CLIENT * 4,
+    DAILY_LIMIT_PER_DEV >= DAILY_LIMIT_PER_CLIENT * 4,
     `${DAILY_LIMIT_PER_DEV} vs ${DAILY_LIMIT_PER_CLIENT}`);
 
   /* The ordinary ceiling is untouched by all of this. */

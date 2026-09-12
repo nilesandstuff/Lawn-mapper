@@ -2821,16 +2821,20 @@ async function detect() {
     );
   } catch (err) {
     /*
-     * OUT OF CREDITS IS NOT OUT OF ALLOWANCE, and the difference is the whole
-     * sentence: one comes back tomorrow, the other has to be topped up. 402
-     * rather than 429 because nothing is rate limited -- there is simply
-     * nothing left to spend.
+     * An account out of today's passes. 402 rather than 429 because nothing is
+     * rate limited -- the day's allowance is simply spent.
+     *
+     * IT COMES BACK IN THE MORNING, and this sentence used to say the opposite:
+     * when credits were a permanent balance it read "you have 0 credits", which
+     * sent people looking for a way to buy some. The allowance resets, so the
+     * sentence names both ways forward -- wait, or draw it by hand now.
      */
     if (err.status === 402) {
       const b = err.body || {};
+      const left = Math.max(0, (b.limit || 0) - (b.used || 0));
       setStatus(
-        `You have ${b.credits || 0} detection credit${b.credits === 1 ? '' : 's'} `
-        + `and this press needs ${b.wanted || 1}. `
+        `${left} of your ${b.limit || 0} AI passes left today and this press `
+        + `needs ${b.wanted || 1}. They come back in the morning. `
         + 'Drawing by hand is unlimited and costs nothing — open the Draw step.',
         'warn'
       );
@@ -3464,10 +3468,22 @@ function renderAccountSheet() {
   if (!me) return;
   $('#account-name').textContent = 'Your account';
   $('#account-email').textContent = me.email;
+  /*
+   * The day's allowance, not a balance, and the sheet has to say so.
+   *
+   * This is where somebody looks the moment the badge refuses a press, so it
+   * is the place that has to answer "is this coming back". "2 credits left"
+   * reads as an account winding down; "2 of 30 AI passes left today" reads as
+   * a morning away, which is what it is.
+   */
+  const daily = me.daily;
+  const bought = Number(me.credits || 0);
   $('#account-credits').textContent = me.unlimited
     ? 'Unlimited detections'
-    : `${Number(me.credits || 0).toLocaleString()} detection credit`
-      + `${me.credits === 1 ? '' : 's'} left`;
+    : (daily
+      ? `${Math.max(0, daily.limit - daily.used)} of ${daily.limit} AI passes left today`
+      : 'Daily AI passes')
+      + (bought ? `, plus ${bought.toLocaleString()} bought` : '');
   $('#account-admin').hidden = !me.admin;
 }
 
@@ -6012,18 +6028,29 @@ async function refreshQuota() {
     const badge = $('#quota-badge');
 
     /*
-     * CREDITS AND AN ALLOWANCE ARE DIFFERENT THINGS, so the badge says which.
+     * ONE SENTENCE FOR BOTH KINDS OF VISITOR, because there is now one kind of
+     * number: a daily allowance that comes back in the morning, bigger if you
+     * are signed in.
      *
-     * An allowance is today's and comes back tomorrow; credits are yours and
-     * do not. "4 left" under one arrangement means "wait until morning" and
-     * under the other means "buy more", and a number that does not say which
-     * sends people to wait for a reset that is never coming.
+     * This used to read "4 credits" for an account and "4 of 20 left today"
+     * for everybody else, which was two units on one badge -- and the first
+     * one quietly meant "and then never again". Saying "of" and saying "today"
+     * is what makes the number mean the same thing to everyone looking at it.
+     *
+     * Bought credits are named separately when there are any, for the same
+     * reason: they do not reset, so adding them into the day's count would
+     * produce a total that half comes back tomorrow.
      */
     if (state.quota.kind === 'credits') {
-      badge.textContent = state.quota.unlimited
-        ? 'Unlimited detections'
-        : `${Number(state.quota.credits || 0).toLocaleString()} credit`
-          + `${state.quota.credits === 1 ? '' : 's'}`;
+      if (state.quota.unlimited) {
+        badge.textContent = 'Unlimited detections';
+        badge.hidden = false;
+        return;
+      }
+      const free = Math.max(0, (state.quota.limit || 0) - (state.quota.used || 0));
+      const bought = Number(state.quota.credits || 0);
+      badge.textContent = `${free} of ${state.quota.limit} AI passes left today`
+        + (bought ? `, plus ${bought.toLocaleString()} bought` : '');
       badge.hidden = false;
       return;
     }
@@ -6048,9 +6075,26 @@ async function refreshQuota() {
      * right above this, which is what makes the unit readable rather than
      * jargon.
      */
-    badge.textContent = state.quota.reason === 'shared-network'
+    /*
+     * SAY WHAT AN ACCOUNT WOULD BE WORTH, and only once it matters.
+     *
+     * The signed-out allowance is small on purpose, so the badge is where
+     * somebody finds out that signing in is the answer rather than waiting
+     * until tomorrow. Naming the actual number beats "sign in for more" --
+     * and it comes from the Worker, so it is the real one rather than a
+     * figure in the browser that goes stale the moment the owner changes it.
+     *
+     * Held back until the allowance is half gone. Before that it is an advert
+     * on a number nobody is having a problem with.
+     */
+    const offer = state.accountsOn && !signedIn() && state.quota.accountLimit
+      && left <= Math.floor((state.quota.limit || 0) / 2)
+      ? ` · an account gets ${state.quota.accountLimit} a day`
+      : '';
+
+    badge.textContent = (state.quota.reason === 'shared-network'
       ? `${left} of ${state.quota.limit} AI passes left today on this network`
-      : `${left} of ${state.quota.limit} AI passes left today`;
+      : `${left} of ${state.quota.limit} AI passes left today`) + offer;
     badge.hidden = false;
   } catch {
     // A quota read failing is not worth interrupting anyone over.

@@ -167,6 +167,62 @@ check('a tip whose control is on another tab waits for that tab',
   /pendingTip = stage/.test(js) && /function flushPendingTip/.test(js),
   'showTip must record the stage and setTab must flush it');
 
+/* --------------------------------------------------------- the console */
+/*
+ * THE SAME CHECK FOR THE OTHER PAGE, because it has the same failure mode and
+ * far less traffic over it.
+ *
+ * admin.js addresses its markup by id exactly as app.js does, and a missing one
+ * is just as silent -- `$('#settings')` returns null, `.innerHTML = ''` throws
+ * inside a promise nobody awaits, and the card is simply absent from a page
+ * one person ever looks at. The measuring app at least gets used daily; a hole
+ * in the console can sit there for a month.
+ *
+ * The console keeps most of its rules inline AND links the shared stylesheet,
+ * so a class is styled if either has it. Checking only the inline block would
+ * fail on `.link`, which is real and lives in styles.css -- a linter that
+ * reports working code is worse than no linter, because the next person turns
+ * it off.
+ */
+{
+  const adminHtml = readFileSync(join(root, 'public/admin.html'), 'utf8');
+  const adminJs = readFileSync(join(root, 'public/admin.js'), 'utf8');
+
+  const has = new Set([...adminHtml.matchAll(/\bid="([A-Za-z0-9_-]+)"/g)].map((m) => m[1]));
+  const asks = new Map();
+  for (const m of adminJs.matchAll(/\$\('#([A-Za-z0-9_-]+)'\)/g)) asks.set(m[1], `$('#${m[1]}')`);
+
+  const gone = [...asks.keys()].filter((id) => !has.has(id));
+  check('every element the console reaches for is on its page',
+    gone.length === 0,
+    gone.length ? gone.map((id) => asks.get(id)).join(', ') : `${asks.size} referenced, all present`);
+
+  /*
+   * A class the console builds and nothing styles is an unstyled row rather
+   * than a missing one -- quieter still, and the reason the settings card
+   * needed its own rules rather than borrowing the people card's.
+   */
+  const built = new Set(
+    [...adminJs.matchAll(/\bel\('[a-z]+',\s*'([a-z0-9- ]+)'/g)]
+      .flatMap((m) => m[1].split(/\s+/))
+  );
+  /*
+   * A WORD BOUNDARY, NOT A SUBSTRING.
+   *
+   * `includes('.setting')` is satisfied by a rule for `.settingx`, so renaming
+   * `.setting` to anything with it as a prefix passed -- which is the single
+   * most likely way this breaks and the one case the check existed to catch.
+   * Proved by renaming it and watching this stay green before the boundary
+   * went in.
+   */
+  const styled = (c) => new RegExp(`\\.${c}(?![A-Za-z0-9_-])`).test(adminHtml)
+    || new RegExp(`\\.${c}(?![A-Za-z0-9_-])`).test(css);
+  const bare = [...built].filter((c) => c && !styled(c));
+  check('and every class it builds has a rule',
+    bare.length === 0,
+    bare.length ? bare.map((c) => `.${c}`).join(', ') : `${built.size} classes`);
+}
+
 /* ------------------------------------------------------------- styling */
 /*
  * A class the code toggles but nothing styles is a state change nobody can

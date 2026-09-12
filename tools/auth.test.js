@@ -23,7 +23,7 @@ import {
   findOrCreateUser, createSession, sessionUser, endSession, endAllSessions,
   createChallenge, useChallenge, spendCredits, refundCredits, grantCredits,
   publicUser, isAdminEmail, welcomeCredits, hash, newSecret, timingSafeEqual,
-  accountsEnabled, sweepExpired,
+  accountsEnabled, sweepExpired, dailyState, setDailyLimit,
 } from '../worker/src/db.js';
 import {
   safeNext, looksLikeEmail, readCookie, sessionCookie, beginMagicLink,
@@ -118,7 +118,24 @@ const rows = async (e, sql, ...args) => (await e.DB.prepare(sql).bind(...args).a
 
   const guest = await findOrCreateUser(e, { email: 'guest@example.com', provider: 'email', subject: 'g' });
   check('while anybody else is an ordinary account', guest.role === 'user' && guest.unlimited === 0);
-  check('with the welcome credits', guest.credits === welcomeCredits(e), String(guest.credits));
+
+  /*
+   * NOBODY GETS A SIGNING-UP BONUS, and its absence is the anti-farming design
+   * rather than a feature somebody forgot.
+   *
+   * A welcome grant is the only part of this that multiplies: twenty free
+   * predictions for the cost of a throwaway address, repeatable all evening.
+   * What an account gets instead is a bigger DAILY allowance, which cannot be
+   * farmed -- a fresh account buys tomorrow's passes today and nothing more.
+   *
+   * So `credits` starts at zero for everybody. It is the BOUGHT balance now,
+   * and nothing has been bought.
+   */
+  check('and no account is given a balance just for existing',
+    guest.credits === 0, String(guest.credits));
+  check('the free tier is a daily allowance instead, and it is the bigger number',
+    welcomeCredits(e) === 30 && welcomeCredits(e) > guest.credits,
+    `${welcomeCredits(e)} a day`);
 
   /*
    * Adding an address to the list has to take effect on the next sign-in.
@@ -222,40 +239,173 @@ const rows = async (e, sql, ...args) => (await e.DB.prepare(sql).bind(...args).a
 {
   const e = env();
   const user = await findOrCreateUser(e, { email: 'c@b.com', provider: 'email', subject: 'c' });
-  const start = user.credits;
 
-  const one = await spendCredits(e, user, 2, 'two passes');
-  check('spending takes exactly what it asked for',
-    one.ok && one.spent === 2 && one.balance === start - 2,
-    `${start} -> ${one.balance}`);
-
-  /* Racing: every attempt at once, against a balance that cannot cover them. */
+  /* Bought credits, so there is something to race against. */
+  await grantCredits(e, user.id, 3, 'a pack');
   const fresh = await e.DB.prepare('SELECT * FROM users WHERE id = ?').bind(user.id).first();
-  await e.DB.prepare('UPDATE users SET credits = 3 WHERE id = ?').bind(user.id).run();
+
+  /*
+   * Racing: every attempt at once, against a balance that cannot cover them.
+   * DAILY is zero here so the race is genuinely about the bought balance --
+   * with an allowance in the way the attempts would not compete for anything.
+   */
   const attempts = await Promise.all(
-    [1, 1, 1, 1, 1].map(() => spendCredits(e, { ...fresh, credits: 3 }, 1, 'race'))
+    [1, 1, 1, 1, 1].map(() => spendCredits(e, fresh, 1, 'race', 0))
   );
   const won = attempts.filter((a) => a.ok).length;
   const left = await e.DB.prepare('SELECT credits FROM users WHERE id = ?').bind(user.id).first();
   check('five requests against three credits spend three, not five',
     won === 3 && left.credits === 0, `${won} succeeded, ${left.credits} left`);
 
-  const broke = await spendCredits(e, { ...fresh, credits: 0 }, 1, 'nope');
+  const broke = await spendCredits(e, { ...fresh, credits: 0 }, 1, 'nope', 0);
   check('and an empty balance refuses rather than going negative',
     broke.ok === false && broke.balance === 0, JSON.stringify(broke));
 
   /* A refund is unconditional: money taken for nothing is the worse failure. */
-  await refundCredits(e, { ...fresh, credits: 0, unlimited: 0 }, 2, 'detector refused');
+  await refundCredits(e, { ...fresh, credits: 0, unlimited: 0 }, 2, 'detector refused', 0);
   const back = await e.DB.prepare('SELECT credits FROM users WHERE id = ?').bind(user.id).first();
   check('a refund puts them back', back.credits === 2, String(back.credits));
 
   /* The ledger explains the balance, which is what people ask about. */
   const history = await rows(e, 'SELECT reason, delta FROM ledger WHERE user_id = ? ORDER BY id', user.id);
   check('and every movement is on the ledger',
-    history.some((h) => h.reason === 'welcome')
+    history.some((h) => h.reason === 'grant' && h.delta > 0)
     && history.some((h) => h.reason === 'detect' && h.delta < 0)
     && history.some((h) => h.reason === 'refund' && h.delta > 0),
     history.map((h) => `${h.reason}${h.delta >= 0 ? '+' : ''}${h.delta}`).join(' '));
+}
+
+/* ------------------------------------------------------- the daily allowance */
+/*
+ * THE CHANGE THIS SECTION EXISTS FOR: credits used to be a permanent balance
+ * and are now a daily one. The difference is the whole anti-farming argument
+ * -- a fresh account buys tomorrow's passes today and nothing beyond that --
+ * so "does it actually reset" is not a detail, it is the property.
+ */
+{
+  const e = env();
+  const user = await findOrCreateUser(e, { email: 'd@b.com', provider: 'email', subject: 'd' });
+  const TIER = 10;
+
+  const first = await spendCredits(e, user, 4, 'four passes', TIER);
+  check('a detection comes out of the day\'s allowance, not the balance',
+    first.ok && first.spent === 0 && first.fromDaily === 4,
+    JSON.stringify(first.daily));
+
+  const state = await dailyState(e, user, TIER);
+  check('and the day\'s count says so', state.used === 4 && state.limit === TIER,
+    `${state.used} of ${state.limit}`);
+
+  /* All or nothing, the same rule as everywhere else. */
+  const tooBig = await spendCredits(e, user, 9, 'nine passes', TIER);
+  check('a press that does not fit in what is left is refused whole',
+    !tooBig.ok && (await dailyState(e, user, TIER)).used === 4,
+    JSON.stringify(tooBig));
+
+  /*
+   * THE RESET IS PART OF THE SPEND, not a scheduled job -- so it is tested by
+   * ageing the row rather than by waiting for midnight. A row from a previous
+   * day is not stale data to sweep up; it simply does not match today's key.
+   */
+  e.DB.raw.prepare('UPDATE allowances SET day = ? WHERE user_id = ?').run('2000-01-01', user.id);
+  const tomorrow = await dailyState(e, user, TIER);
+  check('yesterday\'s count is not today\'s', tomorrow.used === 0, String(tomorrow.used));
+
+  const morning = await spendCredits(e, user, 9, 'the next day', TIER);
+  check('and the press that did not fit yesterday fits this morning',
+    morning.ok && morning.fromDaily === 9, JSON.stringify(morning.daily));
+
+  /*
+   * Racing the reset: several presses at once against a row that belongs to a
+   * previous day. Each one folds the reset into its own statement, so the
+   * danger is that they ALL reset and each starts from zero -- which would
+   * hand out an unbounded number of free passes at midnight.
+   */
+  const r = env();
+  const racer = await findOrCreateUser(r, { email: 'r@b.com', provider: 'email', subject: 'r' });
+  await spendCredits(r, racer, 1, 'yesterday', 5);
+  r.DB.raw.prepare('UPDATE allowances SET day = ? WHERE user_id = ?').run('2000-01-01', racer.id);
+
+  const dawn = await Promise.all(
+    [1, 1, 1, 1, 1, 1, 1, 1].map(() => spendCredits(r, racer, 1, 'dawn', 5))
+  );
+  const through = dawn.filter((a) => a.ok).length;
+  check('and eight presses at the stroke of midnight spend five, not forty',
+    through === 5 && (await dailyState(r, racer, 5)).used === 5,
+    `${through} got through`);
+}
+
+/* --------------------------------------------- the allowance, then the balance */
+/*
+ * Free passes perish and bought ones do not, so the perishable pocket is
+ * emptied first. Any other order quietly burns something somebody paid for
+ * while a free pass sits unused beside it.
+ */
+{
+  const e = env();
+  const user = await findOrCreateUser(e, { email: 'split@b.com', provider: 'email', subject: 's' });
+  await grantCredits(e, user.id, 10, 'a pack');
+  const have = await e.DB.prepare('SELECT * FROM users WHERE id = ?').bind(user.id).first();
+
+  const free = await spendCredits(e, have, 2, 'within the day', 3);
+  check('the day\'s passes go first while there are any',
+    free.ok && free.fromDaily === 2 && free.spent === 0, JSON.stringify(free));
+
+  /*
+   * ONE PASS OF ALLOWANCE LEFT AND A THREE-PASS PRESS. Taking it all from one
+   * pocket would refuse a detection the account can plainly afford, so the
+   * charge splits: the last free pass, then two bought ones.
+   */
+  const mixed = await spendCredits(e, have, 3, 'across both', 3);
+  check('and a press that outgrows the day finishes on the bought balance',
+    mixed.ok && mixed.fromDaily === 1 && mixed.spent === 2,
+    `${mixed.fromDaily} free + ${mixed.spent} bought`);
+
+  const now = await e.DB.prepare('SELECT credits FROM users WHERE id = ?').bind(user.id).first();
+  check('which is what actually left the balance', now.credits === 8, String(now.credits));
+
+  /*
+   * AND A REFUND GOES BACK INTO THE POCKETS IT CAME OUT OF. Putting all five
+   * back as bought credits would turn every failed detection into a small
+   * gift, and one that compounds.
+   */
+  await refundCredits(e, have, 3, 'the detector refused', 1);
+  const after = await e.DB.prepare('SELECT credits FROM users WHERE id = ?').bind(user.id).first();
+  check('a refund puts the free part back as free and the bought part as bought',
+    after.credits === 10 && (await dailyState(e, have, 3)).used === 2,
+    `${after.credits} bought, ${(await dailyState(e, have, 3)).used} of 3 used`);
+}
+
+/* ------------------------------------------------------- a vouched account */
+/*
+ * An office of eight behind one IP is indistinguishable from eight accounts
+ * made by one person, and no rule will ever separate them -- so a person
+ * decides, in the console, by giving the account its own daily limit.
+ */
+{
+  const e = env();
+  const user = await findOrCreateUser(e, { email: 'firm@b.com', provider: 'email', subject: 'f' });
+
+  const before = await dailyState(e, user, 30);
+  check('an ordinary account is on the free tier and is not vouched',
+    before.limit === 30 && before.own === false, JSON.stringify(before));
+
+  await setDailyLimit(e, user.id, 400);
+  const raised = await dailyState(e, user, 30);
+  check('a hand-set limit is the account\'s own, and marks it vouched',
+    raised.limit === 400 && raised.own === true, JSON.stringify(raised));
+
+  const big = await spendCredits(e, user, 200, 'a working day', 30);
+  check('and it can spend past the free tier', big.ok && big.fromDaily === 200,
+    JSON.stringify(big.daily));
+
+  /* Both directions, or the console can only ever make exceptions. */
+  await setDailyLimit(e, user.id, null);
+  const cleared = await dailyState(e, user, 30);
+  check('clearing it puts the account back on the tier, and un-vouches it',
+    cleared.limit === 30 && cleared.own === false, JSON.stringify(cleared));
+  check('and today\'s spending is not forgotten along with it',
+    cleared.used === 200, String(cleared.used));
 }
 
 /* An unlimited account is uncharged, not unrecorded. */
@@ -295,7 +445,7 @@ const rows = async (e, sql, ...args) => (await e.DB.prepare(sql).bind(...args).a
    * exclude it.
    */
   check('only the agreed fields reach the browser',
-    Object.keys(shown).sort().join(',') === 'admin,credits,email,id,name,picture,unlimited',
+    Object.keys(shown).sort().join(',') === 'admin,credits,daily,email,id,name,picture,unlimited',
     Object.keys(shown).join(','));
   check('and an unlimited account reports no number to count down',
     shown.credits === null && shown.unlimited === true);

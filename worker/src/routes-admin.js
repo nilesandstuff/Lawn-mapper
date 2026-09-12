@@ -19,7 +19,10 @@
  */
 
 import { currentUser } from './auth.js';
-import { accountsEnabled, grantCredits, publicUser } from './db.js';
+import {
+  accountsEnabled, grantCredits, publicUser, setDailyLimit, dayKey,
+} from './db.js';
+import { limits, limitsForConsole, setLimit, LIMITS } from './limits.js';
 import { logEntries, loggingEnabled } from './testlog.js';
 import { feedbackEntries, feedbackEnabled } from './feedback.js';
 
@@ -90,6 +93,38 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
     }, 200, origin);
   }
 
+  /* ------------------------------------------------------------ the prices */
+  /*
+   * The daily allowances, readable and writable without a deploy.
+   *
+   * THE REASON THIS ROUTE EXISTS. These numbers are the price list, and every
+   * question about them -- is five a day too mean, is the address ceiling
+   * stopping a real customer -- is answered by changing one and watching. A
+   * change that costs a trip to a repository settings page and a deploy, from
+   * a phone, does not get made often enough to answer anything, so the numbers
+   * stay at whatever was guessed first.
+   */
+  if (path === 'settings') {
+    if (request.method === 'POST') {
+      let body;
+      try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, 400, origin); }
+
+      const rejected = [];
+      for (const [key, value] of Object.entries(body || {})) {
+        if (!LIMITS[key]) { rejected.push(key); continue; }
+        // `null` clears the row and goes back to the deployment's own number.
+        // It has to be expressible, or a mistyped value can only be replaced
+        // by remembering what was there before it.
+        if (!(await setLimit(env, key, value, me.email))) rejected.push(key);
+      }
+      if (rejected.length) {
+        return json({ error: `not a number, or not a setting: ${rejected.join(', ')}` }, 400, origin);
+      }
+    }
+
+    return json({ settings: await limitsForConsole(env) }, 200, origin);
+  }
+
   /* -------------------------------------------------------------- people */
   if (path === 'users') {
     const q = (url.searchParams.get('q') || '').trim().toLowerCase();
@@ -109,30 +144,47 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
      */
     const like = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 
+    const tier = (await limits(env)).free_daily;
+
     const { results } = await env.DB.prepare(
       `SELECT u.*,
+              a.day dayk, a.used dayused, a.daily_limit ownlimit,
               (SELECT COUNT(*) FROM maps m WHERE m.user_id = u.id) maps,
               (SELECT COALESCE(SUM(units), 0) FROM ledger l
                 WHERE l.user_id = u.id AND l.reason = 'detect') passes
        FROM users u
+       LEFT JOIN allowances a ON a.user_id = u.id
        WHERE ? = ''
           OR lower(u.email) LIKE ? ESCAPE '\\'
           OR lower(COALESCE(u.name, '')) LIKE ? ESCAPE '\\'
        ORDER BY u.last_seen_at DESC NULLS LAST LIMIT 100`
     ).bind(q, like, like).all();
 
+    const today = dayKey();
+
     return json({
       users: results.map((u) => ({
-        ...publicUser(u),
+        ...publicUser(u, {
+          // A row from a previous day is an unspent day, not yesterday's
+          // count -- the same rule the charge applies, so the console and the
+          // detection cannot disagree about whether it is tomorrow yet.
+          used: u.dayk === today ? Math.max(0, u.dayused || 0) : 0,
+          limit: u.ownlimit === null || u.ownlimit === undefined ? tier : u.ownlimit,
+        }),
         // The console needs the true balance even for an unlimited account --
         // publicUser hides it, correctly, from the account's own owner.
         rawCredits: u.credits,
+        // null means "whatever the free tier is", which is not the same as a
+        // hand-set limit that happens to equal it: the second one also means
+        // somebody vouched for this account. See allowance.js.
+        dailyLimit: u.ownlimit === null || u.ownlimit === undefined ? null : u.ownlimit,
         role: u.role,
         maps: u.maps,
         passes: u.passes,
         createdAt: u.created_at,
         lastSeenAt: u.last_seen_at,
       })),
+      tier,
     }, 200, origin);
   }
 
@@ -180,8 +232,46 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
         .bind(body.unlimited ? 1 : 0, id).run();
     }
 
+    /*
+     * This account's own daily allowance, and the door in the address ceiling.
+     *
+     * Setting one is also how an account is VOUCHED FOR: an office of eight
+     * people behind one IP is indistinguishable from eight accounts made by
+     * one person, and no rule will ever separate them -- so a person does,
+     * here, in four seconds. A vouched account stops being counted against the
+     * shared address. See allowance.js.
+     *
+     * `null` clears it and puts the account back on the free tier, which also
+     * un-vouches it. Both directions have to be reachable or the console can
+     * only ever make exceptions, never end one.
+     */
+    if ('dailyLimit' in body) {
+      const raw = body.dailyLimit;
+      const clear = raw === null || raw === '';
+      if (!clear && (!Number.isFinite(Number(raw)) || Number(raw) < 0)) {
+        return json({ error: 'A daily limit is a number of passes, or blank.' }, 400, origin);
+      }
+      await setDailyLimit(env, id, clear ? null : Number(raw));
+    }
+
     const after = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(id).first();
-    return json({ user: { ...publicUser(after), rawCredits: after.credits, role: after.role } }, 200, origin);
+    const own = await env.DB.prepare('SELECT day, used, daily_limit FROM allowances WHERE user_id = ?')
+      .bind(id).first();
+    const tier = (await limits(env)).free_daily;
+
+    return json({
+      user: {
+        ...publicUser(after, {
+          used: own && own.day === dayKey() ? Math.max(0, own.used) : 0,
+          limit: own && own.daily_limit !== null && own.daily_limit !== undefined
+            ? own.daily_limit : tier,
+        }),
+        rawCredits: after.credits,
+        dailyLimit: own && own.daily_limit !== null && own.daily_limit !== undefined
+          ? own.daily_limit : null,
+        role: after.role,
+      },
+    }, 200, origin);
   }
 
   /* --------------------------------------------------- the logs, session-gated */

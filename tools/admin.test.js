@@ -15,7 +15,8 @@
 
 import { testDb } from './d1.js';
 import { handleAdmin, isAdminPath } from '../worker/src/routes-admin.js';
-import { findOrCreateUser, createSession, spendCredits } from '../worker/src/db.js';
+import { findOrCreateUser, createSession, spendCredits, dailyState } from '../worker/src/db.js';
+import { limits, setLimit, LIMIT_KEYS } from '../worker/src/limits.js';
 import { SESSION_COOKIE } from '../worker/src/auth.js';
 
 let failures = 0;
@@ -79,6 +80,9 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
   const routes = [
     ['overview'], ['users'], ['log'], ['feedback'],
     ['ledger?user=usr_x'], ['user', { method: 'POST', body: { id: 'usr_x', grant: 1000 } }],
+    // The price list. Reading it is harmless; writing it is the whole site's
+    // cost guardrail, so it is gated exactly like everything else.
+    ['settings'], ['settings', { method: 'POST', body: { anon_daily: 100000 } }],
   ];
 
   const asStranger = [];
@@ -127,8 +131,9 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
 {
   const { env, ownerToken, owner, guest } = await world();
 
-  await spendCredits(env, guest, 3, 'three passes');
-  await spendCredits(env, owner, 2, 'two passes');   // unlimited: uncharged
+  // Out of the day's allowance, which is what an ordinary detection spends.
+  await spendCredits(env, guest, 3, 'three passes', 30);
+  await spendCredits(env, owner, 2, 'two passes', 30);   // unlimited: uncharged
 
   const { body } = await ask(env, ownerToken, 'overview');
   check('the console counts the accounts', body.users === 2, String(body.users));
@@ -146,13 +151,117 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
     body.today.presses === 2,
     'forty passes from ten people and from one person are different situations');
 
-  check('and reports what is owed to accounts',
-    body.creditsOutstanding === guest.credits - 3,
-    String(body.creditsOutstanding));
+  /*
+   * WHAT IS OWED IS THE BOUGHT BALANCE, and only that.
+   *
+   * Daily allowances are not a liability -- they expire nightly whether or not
+   * anybody spends them, and adding them in would report the site as owing
+   * thirty passes to every account that ever signed in. What is owed is what
+   * somebody was given or paid for and has not used.
+   */
+  const { grantCredits } = await import('../worker/src/db.js');
+  await grantCredits(env, guest.id, 12, 'a pack');
+  const owed = (await ask(env, ownerToken, 'overview')).body;
+  check('and reports what is owed to accounts, which the allowance is not',
+    owed.creditsOutstanding === 12, String(owed.creditsOutstanding));
 
   check('with a day-by-day shape for the bill',
     Array.isArray(body.daily) && body.daily[0]?.passes === 5,
     JSON.stringify(body.daily));
+}
+
+/* --------------------------------------------------------- the price list */
+/*
+ * THE NUMBERS HAVE TO BE CHANGEABLE FROM A PHONE, which is the whole reason
+ * this route exists -- "is five a day too mean" is answered by changing it and
+ * watching, and a change that costs a repository settings page and a deploy
+ * does not get made often enough to answer anything.
+ */
+{
+  const { env, ownerToken } = await world();
+
+  const before = await ask(env, ownerToken, 'settings');
+  const find = (body, key) => body.settings.find((s) => s.key === key);
+
+  check('the console can read every limit',
+    before.body.settings.length === LIMIT_KEYS.length,
+    before.body.settings.map((s) => s.key).join(','));
+  check('and a fresh deployment is already on working numbers',
+    find(before.body, 'anon_daily').value === 5
+    && find(before.body, 'free_daily').value === 30,
+    'nobody has to open the console before the site works');
+  check('which it says are the deployment\'s, not a stored choice',
+    find(before.body, 'anon_daily').stored === false);
+
+  const saved = await ask(env, ownerToken, 'settings',
+    { method: 'POST', body: { anon_daily: 9, free_daily: 60 } });
+  check('a written limit takes effect and is reported back',
+    find(saved.body, 'anon_daily').value === 9 && find(saved.body, 'free_daily').value === 60,
+    JSON.stringify(saved.body.settings.map((s) => `${s.key}=${s.value}`)));
+  check('and is marked as a stored choice rather than an inherited number',
+    find(saved.body, 'anon_daily').stored === true);
+
+  /*
+   * IT REACHES THE CHARGE, not just the console. A settings page that writes a
+   * row nothing reads is the worst of both worlds: it looks like the limit
+   * changed and the site keeps refusing at the old number.
+   */
+  const live = await limits(env);
+  check('and the number the charge will use is the one just written',
+    live.anon_daily === 9 && live.free_daily === 60, JSON.stringify(live));
+
+  /*
+   * ZERO HAS TO SURVIVE. "Nobody detects without an account" is a policy
+   * somebody might want, and a `||` chain turns it back into the default
+   * silently -- the kind of bug that presents as "I set it to zero and it
+   * ignored me".
+   */
+  await ask(env, ownerToken, 'settings', { method: 'POST', body: { anon_daily: 0 } });
+  check('zero is a limit, not a missing one',
+    (await limits(env)).anon_daily === 0, String((await limits(env)).anon_daily));
+
+  /* And a way back, or a mistyped number can only be fixed by remembering. */
+  const cleared = await ask(env, ownerToken, 'settings',
+    { method: 'POST', body: { anon_daily: null } });
+  check('clearing one goes back to the deployment\'s own number',
+    find(cleared.body, 'anon_daily').value === 5
+    && find(cleared.body, 'anon_daily').stored === false,
+    String(find(cleared.body, 'anon_daily').value));
+
+  const bad = await ask(env, ownerToken, 'settings',
+    { method: 'POST', body: { free_daily: 'lots' } });
+  check('nonsense is refused rather than stored',
+    bad.status === 400 && (await limits(env)).free_daily === 60,
+    `${bad.status}: ${bad.body.error}`);
+
+  const notASetting = await ask(env, ownerToken, 'settings',
+    { method: 'POST', body: { admin_is_free: 1 } });
+  check('and an invented key is refused rather than quietly kept',
+    notASetting.status === 400, `${notASetting.status}`);
+}
+
+/* The deployment's variables are the defaults, and the table beats them. */
+{
+  const env = { DB: testDb(), ANON_DAILY: '7', WELCOME_CREDITS: '44' };
+  check('a repository variable sets the default',
+    (await limits(env)).anon_daily === 7, String((await limits(env)).anon_daily));
+  /*
+   * WELCOME_CREDITS IS STILL READ, deliberately. It is the variable this
+   * deployment already has set, from when an account got a one-off grant
+   * rather than a daily allowance -- so honouring it means the number the
+   * owner already chose keeps applying across the change instead of silently
+   * reverting to the built-in default.
+   */
+  check('and the old WELCOME_CREDITS name still means the free tier',
+    (await limits(env)).free_daily === 44, String((await limits(env)).free_daily));
+
+  await setLimit(env, 'free_daily', 12, 'a test');
+  check('a stored setting beats the deployment\'s variable',
+    (await limits(env)).free_daily === 12, String((await limits(env)).free_daily));
+
+  /* A site with no database still has numbers rather than no limits at all. */
+  check('and with no database at all the variables still apply',
+    (await limits({ ANON_DAILY: '3' })).anon_daily === 3);
 }
 
 /* ----------------------------------------------------------- the people */
@@ -220,6 +329,49 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
 
   check('and a GET to the change route is refused',
     (await ask(env, ownerToken, 'user')).status === 405);
+}
+
+/* -------------------------------------------------------- vouching for one */
+/*
+ * THE ANSWER TO "A BUSINESS CANNOT USE THIS BECAUSE ITS OFFICE SHARES ONE IP".
+ *
+ * Eight people in an office behind one address are indistinguishable from
+ * eight accounts made by one person, and no rule will ever separate them. So
+ * one is not attempted: a person looks, decides, and sets the account's own
+ * daily limit -- which both raises its allowance and takes it out of the
+ * shared-address count entirely.
+ */
+{
+  const { env, ownerToken, guest } = await world();
+
+  const plain = await ask(env, ownerToken, 'users?q=guest');
+  check('an ordinary account is on the tier and shows no limit of its own',
+    plain.body.users[0].dailyLimit === null
+    && plain.body.users[0].daily.limit === plain.body.tier,
+    JSON.stringify(plain.body.users[0].daily));
+
+  const raised = await ask(env, ownerToken, 'user',
+    { method: 'POST', body: { id: guest.id, dailyLimit: 500 } });
+  check('the console can give one account its own daily allowance',
+    raised.body.user.dailyLimit === 500 && raised.body.user.daily.limit === 500,
+    JSON.stringify(raised.body.user.daily));
+  check('and the charge sees it, not just the console',
+    (await dailyState(env, guest, 30)).limit === 500
+    && (await dailyState(env, guest, 30)).own === true,
+    JSON.stringify(await dailyState(env, guest, 30)));
+
+  /* Both directions, or the console can only ever make exceptions. */
+  const cleared = await ask(env, ownerToken, 'user',
+    { method: 'POST', body: { id: guest.id, dailyLimit: null } });
+  check('and can put the account back on the free tier',
+    cleared.body.user.dailyLimit === null
+    && (await dailyState(env, guest, 30)).own === false,
+    JSON.stringify(cleared.body.user.daily));
+
+  const bad = await ask(env, ownerToken, 'user',
+    { method: 'POST', body: { id: guest.id, dailyLimit: 'plenty' } });
+  check('nonsense is refused rather than stored as a limit of nothing',
+    bad.status === 400, `${bad.status}: ${bad.body.error}`);
 }
 
 /*

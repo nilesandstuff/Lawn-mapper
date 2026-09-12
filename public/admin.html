@@ -89,6 +89,18 @@
   }
   .actions input { width: 76px; cursor: text; }
   .actions button:hover { border-color: var(--green); }
+  /* A note beside the buttons rather than under them: "saved here" belongs to
+     the field it describes, and a row of its own reads as a separate fact. */
+  .actions small { align-self: center; color: var(--muted); font-size: 11.5px; }
+
+  .setting {
+    border-top: 1px solid var(--line); padding: 11px 0;
+    display: grid; gap: 3px;
+  }
+  .setting:first-of-type { border-top: 0; }
+  .setting b { font-size: 13.5px; }
+  .setting .meta { font-size: 11.5px; color: var(--muted); }
+  .setting .actions input { width: 92px; }
 
   .entry { border-top: 1px solid var(--line); padding: 9px 0; font-size: 12.5px; }
   .entry:first-of-type { border-top: 0; }
@@ -125,6 +137,16 @@
       <h2>AI passes, last 30 days</h2>
       <div class="days" id="days"></div>
       <p class="empty" id="days-empty" hidden>Nothing detected yet.</p>
+    </div>
+
+    <div class="card">
+      <h2>Daily limits</h2>
+      <p class="sub">
+        AI passes a day. Everyone gets an allowance that comes back in the
+        morning; signing in makes it bigger. Changes take effect within about
+        fifteen seconds, with no deploy.
+      </p>
+      <div id="settings"><p class="empty">Loading…</p></div>
     </div>
 
     <div class="card">

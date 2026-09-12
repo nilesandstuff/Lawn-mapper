@@ -72,7 +72,10 @@ function renderTiles(o) {
     ['Last 30 days', o.month?.passes, `${n(o.month?.presses)} presses`],
     ['Accounts', o.users, `${n(o.sessions)} signed in`],
     ['Saved maps', o.maps, ''],
-    ['Credits held', o.creditsOutstanding, 'owed to accounts'],
+    // Bought credits only. Daily allowances expire nightly whether or not
+    // anybody spends them, so counting them here would report the site as
+    // owing thirty passes to everyone who ever signed in.
+    ['Credits held', o.creditsOutstanding, 'bought, not yet spent'],
   ];
 
   for (const [label, value, note] of cells) {
@@ -110,13 +113,88 @@ function renderDays(daily) {
   }
 }
 
+/* ------------------------------------------------------------- the prices */
+
+/**
+ * The daily allowances, editable in place.
+ *
+ * WHY THIS IS A CARD AND NOT A DOCUMENTED VARIABLE. These are the numbers the
+ * owner will actually want to change -- is five a day too mean, is thirty too
+ * generous -- and a number that costs a repository settings page and a deploy
+ * to change is a number that stays at whatever was guessed first. Each box
+ * saves on its own; there is no form to submit, because a form implies the
+ * five numbers are one decision and they are not.
+ *
+ * Each row says where its value came from. "80" beside a box you just typed 80
+ * into tells you nothing about whether the save landed, and "from the
+ * settings" versus "from the deployment" is the only question anybody has
+ * after pressing save.
+ */
+async function renderSettings() {
+  const box = $('#settings');
+  const { settings } = await get('/api/admin/settings');
+
+  box.innerHTML = '';
+  for (const s of settings) box.append(settingRow(s));
+}
+
+function settingRow(s) {
+  const row = el('div', 'setting');
+  row.append(el('b', null, s.label));
+
+  const field = el('div', 'actions');
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.min = '0';
+  input.value = String(s.value);
+  input.setAttribute('aria-label', s.label);
+
+  const save = el('button', null, 'Save');
+  const where = el('small', 'meta',
+    s.stored ? 'saved here' : 'from the deployment');
+
+  const write = async (value) => {
+    save.disabled = true;
+    try {
+      const { settings: after } = await post('/api/admin/settings', { [s.key]: value });
+      const fresh = after.find((x) => x.key === s.key) || s;
+      row.replaceWith(settingRow(fresh));
+    } catch (err) {
+      where.textContent = `could not save: ${err.message}`;
+    } finally {
+      save.disabled = false;
+    }
+  };
+
+  save.addEventListener('click', () => write(Number(input.value)));
+  field.append(input, save);
+
+  /*
+   * A way back to the deployment's own number.
+   *
+   * Only offered once there is something to undo. Without it the only way out
+   * of a mistyped value is remembering what was there before it, which is
+   * exactly what somebody who has just mistyped a value does not have.
+   */
+  if (s.stored) {
+    const reset = el('button', null, `Use ${s.fallback}`);
+    reset.addEventListener('click', () => write(null));
+    field.append(reset);
+  }
+
+  field.append(where);
+  row.append(field);
+  row.append(el('div', 'meta', s.help));
+  return row;
+}
+
 /* --------------------------------------------------------------- people */
 
 let searchTimer = null;
 
 async function renderPeople(q = '') {
   const box = $('#people');
-  const { users } = await get(`/api/admin/users?q=${encodeURIComponent(q)}`);
+  const { users, tier } = await get(`/api/admin/users?q=${encodeURIComponent(q)}`);
 
   box.innerHTML = '';
   if (!users.length) {
@@ -124,7 +202,9 @@ async function renderPeople(q = '') {
     return;
   }
 
-  for (const u of users) box.append(personRow(u));
+  // Carried onto each row so the "own daily limit" box can show what leaving
+  // it blank means, in the number that is actually in force today.
+  for (const u of users) box.append(personRow({ ...u, tier }));
 }
 
 function personRow(u) {
@@ -132,8 +212,24 @@ function personRow(u) {
 
   const who = el('div', 'who');
   who.append(el('b', null, u.name || u.email));
-  if (u.unlimited) who.append(el('span', 'pill', 'unlimited'));
-  else who.append(el('span', 'pill free', `${n(u.rawCredits)} credits`));
+  if (u.unlimited) {
+    who.append(el('span', 'pill', 'unlimited'));
+  } else {
+    /*
+     * TODAY'S ALLOWANCE IS THE HEADLINE, and the bought balance is a footnote,
+     * because that is their relative size in practice: everybody has an
+     * allowance and almost nobody has bought anything. It used to read
+     * "0 credits" for a perfectly healthy new account, which is the pill
+     * saying the account is broken when it is not.
+     */
+    const d = u.daily || { used: 0, limit: 0 };
+    who.append(el('span', 'pill free', `${Math.max(0, d.limit - d.used)}/${d.limit} today`));
+    if (u.rawCredits) who.append(el('span', 'pill', `${n(u.rawCredits)} bought`));
+  }
+  // Somebody decided this account is real, which is also what exempts it from
+  // the shared-address ceiling. Worth showing, since it is the one thing here
+  // that changes how a detection is counted rather than how much of it is free.
+  if (u.dailyLimit !== null && u.dailyLimit !== undefined) who.append(el('span', 'pill', 'vouched'));
   if (u.role === 'admin') who.append(el('span', 'pill', 'admin'));
   row.append(who);
 
@@ -154,6 +250,7 @@ function personRow(u) {
   amount.setAttribute('aria-label', `Credits to add or remove for ${u.email}`);
 
   const give = el('button', null, 'Grant');
+  give.title = 'Bought credits, which do not expire and are spent after the day\'s allowance.';
   give.addEventListener('click', () => change(u, { grant: Number(amount.value) }, row));
 
   const take = el('button', null, 'Take');
@@ -168,6 +265,36 @@ function personRow(u) {
 
   actions.append(amount, give, take, unlimited, admin);
   row.append(actions);
+
+  /*
+   * THIS ACCOUNT'S OWN DAILY LIMIT, which is also the answer to "a business
+   * cannot use the site because its office shares one IP".
+   *
+   * Setting it does two things at once, deliberately: it gives the account
+   * whatever allowance it needs, and it marks the account as one a person has
+   * looked at and decided is real -- which stops it being counted against the
+   * shared address at all. Eight people in an office behind one IP are
+   * indistinguishable from eight accounts made by one person, and no rule will
+   * ever separate them, so a person does it here in four seconds.
+   *
+   * Blank puts the account back on the free tier and un-vouches it. Both
+   * directions have to be reachable or the console can only make exceptions.
+   */
+  const vouch = el('div', 'actions');
+  const limit = document.createElement('input');
+  limit.type = 'number';
+  limit.min = '0';
+  limit.placeholder = `free tier${u.tier ? ` (${u.tier})` : ''}`;
+  limit.value = u.dailyLimit === null || u.dailyLimit === undefined ? '' : String(u.dailyLimit);
+  limit.setAttribute('aria-label', `Daily AI passes for ${u.email}`);
+
+  const setLimit = el('button', null, 'Set daily limit');
+  setLimit.addEventListener('click', () =>
+    change(u, { dailyLimit: limit.value.trim() === '' ? null : Number(limit.value) }, row));
+
+  vouch.append(limit, setLimit,
+    el('small', 'meta', 'Own allowance; also exempt from the shared-address ceiling.'));
+  row.append(vouch);
 
   /* The history, because "why do I have 12 credits" is the question asked. */
   const history = el('button', null, 'History');
@@ -307,6 +434,7 @@ async function renderLog() {
   renderDays(overview.daily);
 
   /* Each section fails on its own. A broken log must not hide the people. */
+  renderSettings().catch(() => { $('#settings').textContent = 'Could not load the limits.'; });
   renderPeople().catch(() => { $('#people').textContent = 'Could not load accounts.'; });
   renderFeedback().catch(() => { $('#feedback').textContent = 'Could not load feedback.'; });
   renderLog().catch(() => { $('#log').textContent = 'Could not load the log.'; });

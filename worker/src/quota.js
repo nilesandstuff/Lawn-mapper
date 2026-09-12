@@ -14,14 +14,36 @@
  * that a scraper rotating client ids still runs into.
  */
 
-const DAILY_LIMIT_PER_CLIENT = 20;
+/*
+ * THE NUMBERS HERE ARE DEFAULTS, NOT THE POLICY.
+ *
+ * Every function below takes an optional `limits` object and falls back to
+ * these when it is not given one. The live numbers come from limits.js, which
+ * reads the settings table so the owner can change them from the console
+ * without a deploy -- and these are what a deployment starts with, and what
+ * applies when there is no database to read a setting from.
+ *
+ * So: editing a constant here changes the default for a new deployment and
+ * nothing about a running one. Change those in the console.
+ */
+
+/**
+ * Signed out, per browser.
+ *
+ * FIVE, AND IT USED TO BE TWENTY. The drop is not a tightening; it is the
+ * other half of making an account mean something. Twenty free passes without
+ * an account and thirty with one is not a reason to sign in, so the signed-out
+ * number is now what it takes to measure your own lawn and see whether this
+ * thing works: five passes is two or three real detections.
+ */
+const DAILY_LIMIT_PER_CLIENT = 5;
 
 /**
  * The allowance in developer mode.
  *
  * Tuning a prompt means running the same lot a dozen times, and exclude mode
- * spends one of these per ticked box -- so twenty is three or four real
- * experiments, which is not enough to answer a question with.
+ * spends one of these per ticked box -- so the signed-out allowance is one or
+ * two real experiments, which is not enough to answer a question with.
  *
  * NOT A PRIVILEGE, AND NOT GUARDED. The browser asks for this by sending a
  * flag, and anyone can send that flag. It is worth being blunt about why that
@@ -58,7 +80,21 @@ const DAILY_LIMIT_PER_CLIENT = 20;
  */
 const DAILY_LIMIT_PER_DEV = 80;
 
-const DAILY_LIMIT_PER_IP = 80; // generous -- shared/NAT addresses are real
+/**
+ * Any one address, shared by every browser and every account behind it.
+ *
+ * THE ONLY NUMBER A NEW ACCOUNT CANNOT MOVE, which is what makes it the
+ * anti-farming lever now that accounts have the larger allowance. Ten accounts
+ * on one wifi do not get ten allowances; they get this. Everything else about
+ * farming is handled by there being nothing to farm -- see allowance.js.
+ *
+ * Generous, because shared and NAT addresses are real: a household of four
+ * measuring their own lawns never meets it. An office that does is one field
+ * in the console away from not being counted here at all, which is the right
+ * way round -- a ceiling with no door is a policy about who may not be a
+ * customer.
+ */
+const DAILY_LIMIT_PER_IP = 80;
 
 /**
  * The per-address ceiling in developer mode.
@@ -154,9 +190,9 @@ async function peek(kv, key, limit) {
  * Check quota without consuming it. Use before showing the UI so the user
  * is told up front, not after they have drawn a boundary.
  */
-export async function checkQuota(request, env, clientId, dev = false) {
-  const limit = personalLimit(dev);
-  const ipLimit = addressLimit(dev);
+export async function checkQuota(request, env, clientId, dev = false, caps = null) {
+  const limit = caps ? caps.personal : personalLimit(dev);
+  const ipLimit = caps ? caps.address : addressLimit(dev);
   if (!env.QUOTA) return { allowed: true, used: 0, limit };
 
   const day = dayKey();
@@ -188,8 +224,8 @@ export async function checkQuota(request, env, clientId, dev = false) {
  * enough that charging quota for them just frustrates people who mistyped
  * an address.
  */
-export async function consumeQuota(request, env, clientId, n = 1, dev = false) {
-  const limit = personalLimit(dev);
+export async function consumeQuota(request, env, clientId, n = 1, dev = false, caps = null) {
+  const limit = caps ? caps.personal : personalLimit(dev);
   if (!env.QUOTA) return { allowed: true, used: 0, limit };
 
   const day = dayKey();
@@ -198,7 +234,7 @@ export async function consumeQuota(request, env, clientId, n = 1, dev = false) {
   const byClient = await bump(env.QUOTA, `c:${day}:${clientId}`, limit, n);
   if (!byClient.allowed) return byClient;
 
-  const byIp = await bump(env.QUOTA, `i:${day}:${ip}`, addressLimit(dev), n);
+  const byIp = await bump(env.QUOTA, `i:${day}:${ip}`, caps ? caps.address : addressLimit(dev), n);
   if (!byIp.allowed) {
     // The client bump already landed. Hand it back -- being turned away by
     // the shared-network cap should not also cost a personal measurement.

@@ -16,6 +16,7 @@
 
 import worker from '../worker/src/index.js';
 import { EXCLUSIONS } from '../worker/src/sam.js';
+import { DAILY_LIMIT_PER_CLIENT } from '../worker/src/quota.js';
 
 let failures = 0;
 const check = (name, ok, detail = '') => {
@@ -273,7 +274,7 @@ async function post(payload) {
   /* The same counter, so dropping the flag hits the ordinary line at once. */
   const plain = await spend(2, false);
   check('and dropping the flag falls straight back to the ordinary ceiling',
-    plain.status === 429 && plain.body.limit === 20,
+    plain.status === 429 && plain.body.limit === DAILY_LIMIT_PER_CLIENT,
     `${plain.status}: ${JSON.stringify(plain.body)}`);
 
   /*

@@ -194,8 +194,9 @@ const sample = (over = {}) => ({
 
 /* ----------------------------------------------------------- who pays */
 /*
- * Signed out: today's allowance, counted per browser and per address.
- * Signed in: credits, which are the account's and do not reset.
+ * ONE ARRANGEMENT, TWO SIZES. Both kinds of visitor spend a daily allowance
+ * that comes back in the morning; signing in makes it bigger. Bought credits
+ * are a separate, non-perishable pocket spent only once the day's are gone.
  */
 {
   const env = { DB: testDb(), QUOTA: kv() };
@@ -214,34 +215,72 @@ const sample = (over = {}) => ({
   const req = new Request('https://site.test/api/segment', { headers: { 'CF-Connecting-IP': '5.6.7.8' } });
 
   const paid = await charge(req, env, { user, clientId: 'c1', n: 2, detail: 'two passes' });
-  check('a signed-in press spends credits instead',
-    paid.allowed && paid.paidWith === 'credits' && paid.spent === 2,
+  check('a signed-in press spends the account\'s bigger daily allowance',
+    paid.allowed && paid.paidWith === 'credits' && paid.fromDaily === 2 && paid.spent === 0,
     JSON.stringify(paid));
-  check('and the balance goes down by what it cost',
-    paid.credits === user.credits - 2, `${user.credits} -> ${paid.credits}`);
+  /*
+   * AND NOT THE BOUGHT BALANCE, which is the ordering the whole design rests
+   * on: free passes perish and bought ones do not, so spending the perishable
+   * pocket first is the only order that does not quietly burn something
+   * somebody paid for.
+   */
+  check('and the bought balance is untouched while the day has passes in it',
+    paid.credits === user.credits, `${user.credits} -> ${paid.credits}`);
 
-  const seen = await allowance(req, env, { user: { ...user, credits: paid.credits }, clientId: 'c1' });
-  check('and is told about credits, which do not reset', seen.kind === 'credits', seen.kind);
+  const seen = await allowance(req, env, { user, clientId: 'c1' });
+  check('and the count it is shown is today\'s, of a stated limit',
+    seen.kind === 'credits' && seen.used === 2 && seen.limit > 0,
+    `${seen.used} of ${seen.limit}`);
+  check('which is larger than a signed-out visitor gets',
+    seen.limit > (await allowance(req, env, { user: null, clientId: 'c9' })).limit,
+    `${seen.limit} signed in`);
 }
 
-/* An empty balance refuses, and says so as its own thing. */
+/* A spent day refuses, and says so as its own thing. */
 {
-  const { env, user } = await signedInEnv();
-  await env.DB.prepare('UPDATE users SET credits = 1 WHERE id = ?').bind(user.id).run();
+  const { env, user } = await signedInEnv({ FREE_DAILY: '4' });
   const req = new Request('https://site.test/api/segment', { headers: { 'CF-Connecting-IP': '9.9.9.9' } });
 
-  const broke = await charge(req, env, { user: { ...user, credits: 1 }, clientId: 'c', n: 3 });
+  await charge(req, env, { user, clientId: 'c', n: 3 });
+  const broke = await charge(req, env, { user, clientId: 'c', n: 3 });
   check('a press that costs more than is left is refused',
     broke.allowed === false && broke.reason === 'no-credits', JSON.stringify(broke));
+
+  /*
+   * AND THE REFUSAL CARRIES THE DAY'S NUMBERS, because the sentence on screen
+   * is "1 of your 4 left today, they come back in the morning" -- which needs
+   * both, and which is a different sentence from the one this used to produce
+   * when credits were permanent and the answer was "buy more".
+   */
+  check('and says how much of today is left, so the app can say when it returns',
+    broke.used === 3 && broke.limit === 4, `${broke.used} of ${broke.limit}`);
 
   /*
    * ALL OR NOTHING. Letting one of three passes through because that is what
    * was affordable produces a measurement missing two exclusions -- not a
    * smaller answer, a wrong one, with the missing concepts counted as lawn.
    */
-  const left = await env.DB.prepare('SELECT credits FROM users WHERE id = ?').bind(user.id).first();
+  const { dailyState } = await import('../worker/src/db.js');
   check('and nothing is taken for the passes it could have afforded',
-    left.credits === 1, `${left.credits} left`);
+    (await dailyState(env, user, 4)).used === 3,
+    `${(await dailyState(env, user, 4)).used} spent`);
+}
+
+/* A bought balance is what a spent day falls through to. */
+{
+  const { env, user } = await signedInEnv({ FREE_DAILY: '2' });
+  const { grantCredits } = await import('../worker/src/db.js');
+  await grantCredits(env, user.id, 5, 'a pack');
+  const req = new Request('https://site.test/api/segment', { headers: { 'CF-Connecting-IP': '9.1.1.1' } });
+
+  await charge(req, env, { user, clientId: 'c', n: 2 });
+  const after = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(user.id).first();
+  const bought = await charge(req, env, { user: after, clientId: 'c', n: 2 });
+  check('once the day is spent, bought credits carry the next press',
+    bought.allowed && bought.fromDaily === 0 && bought.spent === 2,
+    JSON.stringify(bought));
+  check('and they do not reset, so they are reported separately',
+    bought.credits === 3, `${bought.credits} bought left`);
 }
 
 /* An unlimited account is never short, and is not charged. */
@@ -255,10 +294,14 @@ const sample = (over = {}) => ({
 
 /* -------------------------------------------------- the address backstop */
 /*
- * THE PART WORTH DEFENDING. An account starts with a welcome balance, so
- * "make more accounts" is the obvious way to turn a cost guardrail into a
- * formality -- twenty free predictions at a time, as fast as you can click
- * through a sign-up. The per-address ceiling is what makes that tedious.
+ * THE PART WORTH DEFENDING, and the only real limit on making accounts.
+ *
+ * A signed-in account gets the larger allowance, so "make more accounts" is
+ * the obvious way to turn a cost guardrail into a formality. Two things answer
+ * it and only this one is a wall: the allowance is DAILY, so a fresh account
+ * buys tomorrow's passes today and nothing beyond that -- and the per-address
+ * ceiling is shared by everyone behind it, accounts included, so ten accounts
+ * on one wifi get one address's worth between them rather than ten.
  */
 {
   const { env, user } = await signedInEnv();
@@ -281,6 +324,33 @@ const sample = (over = {}) => ({
   check('and that refusal costs nothing',
     again.allowed === false && after.credits === before.credits,
     `${before.credits} -> ${after.credits}`);
+
+  /*
+   * SEVERAL ACCOUNTS BEHIND ONE ADDRESS SHARE ITS CEILING, which is the
+   * property that makes farming pointless rather than merely tedious. A second
+   * account on the same IP arrives to find the budget already spent -- it does
+   * not get its own.
+   */
+  const second = await findOrCreateUser(env, { email: 'farm@b.com', provider: 'email', subject: 'f' });
+  await env.DB.prepare('UPDATE users SET credits = 10000 WHERE id = ?').bind(second.id).run();
+  const alsoRich = { ...second, credits: 10000 };
+  const farmed = await charge(req, env, { user: alsoRich, clientId: 'c2', n: 1 });
+  check('and a fresh account on the same address does not get a fresh ceiling',
+    farmed.allowed === false && farmed.reason === 'shared-network',
+    JSON.stringify(farmed));
+
+  /*
+   * AND A CEILING NEEDS A DOOR. An office of eight behind one IP is
+   * indistinguishable from eight accounts made by one person, so the
+   * separation is not attempted: somebody sets that account's own daily limit
+   * in the console, which is a judgement made by a person, and a vouched
+   * account stops being counted against the address at all.
+   */
+  const { setDailyLimit } = await import('../worker/src/db.js');
+  await setDailyLimit(env, second.id, 200);
+  const office = await charge(req, env, { user: alsoRich, clientId: 'c2', n: 1 });
+  check('but a vouched account is not counted against the address at all',
+    office.allowed === true && office.fromDaily === 1, JSON.stringify(office));
 }
 
 /* A refusal upstream gives the money back. */

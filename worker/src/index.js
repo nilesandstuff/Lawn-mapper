@@ -544,11 +544,12 @@ async function handleSegment(request, env, origin, ctx) {
   /*
    * WHO PAYS, AND HOW.
    *
-   * A signed-in person spends credits, which are theirs and do not reset; a
-   * signed-out one spends a daily allowance counted per browser and per
-   * address. Both buy the same thing -- one Replicate prediction per pass --
-   * so both are counted in passes and both refuse before any money moves. See
-   * allowance.js, which owns that decision so this handler does not.
+   * Everybody spends a daily allowance of AI passes that comes back in the
+   * morning; signing in makes it bigger, and bought credits are spent only
+   * once the day's are gone. Every pass is one Replicate prediction either
+   * way, so all of it is counted in passes and all of it refuses before any
+   * money moves. See allowance.js, which owns that decision -- including why
+   * making extra accounts is not a way round it -- so this handler does not.
    */
   const quota = await charge(request, env, {
     user, clientId, n: passes.length, dev,
@@ -558,15 +559,27 @@ async function handleSegment(request, env, origin, ctx) {
 
   if (!quota.allowed) {
     /*
-     * An empty balance is not the same refusal as a spent allowance, and
-     * saying so is the difference between "come back tomorrow" and "here is
-     * how to get more". 402 rather than 429 for the same reason: nothing is
-     * rate limited, there is simply nothing left to spend.
+     * An account that has spent today's allowance is refused differently from
+     * a browser that has, because the account can be told about the bought
+     * credits it has left -- and 402 rather than 429 because nothing is rate
+     * limited here: the day's passes are simply gone.
+     *
+     * BOTH RESET, which is the change worth being careful about. The allowance
+     * used to be a permanent balance, so this refusal meant "buy more"; it now
+     * means "come back in the morning, or buy more", and sending the day's
+     * numbers along is what lets the browser say which.
      */
     if (quota.reason === 'no-credits') {
-      note('no_credits', `${quota.credits} left, wanted ${quota.wanted}`);
+      note('no_credits',
+        `${quota.used} of ${quota.limit} today, ${quota.credits} bought, wanted ${quota.wanted}`);
       return json(
-        { error: 'no_credits', credits: quota.credits, wanted: quota.wanted },
+        {
+          error: 'no_credits',
+          credits: quota.credits,
+          used: quota.used,
+          limit: quota.limit,
+          wanted: quota.wanted,
+        },
         402,
         origin
       );
@@ -624,7 +637,7 @@ async function handleSegment(request, env, origin, ctx) {
   try {
     version = await samVersion(env, modelId);
   } catch (err) {
-    await refund(request, env, { user, clientId, n: passes.length });
+    await refund(request, env, { user, clientId, n: passes.length, fromDaily: quota.fromDaily });
     note('no_version', err.message);
     return json({ error: 'Segmentation unavailable', detail: err.message }, 502, origin);
   }
@@ -711,7 +724,7 @@ async function handleSegment(request, env, origin, ctx) {
    */
   const failed = results.find((r) => r.http);
   if (failed) {
-    await refund(request, env, { user, clientId, n: passes.length });
+    await refund(request, env, { user, clientId, n: passes.length, fromDaily: quota.fromDaily });
     note(failed.http === 429 ? 'rate_limited' : 'upstream_error',
       `HTTP ${failed.http}: ${failed.detail || 'no message'}`);
 
@@ -775,7 +788,16 @@ async function handleSegment(request, env, origin, ctx) {
   const shape = {
     passes: answered,
     subtractive: Boolean(model.subtractive),
-    remaining: quota.limit - quota.used,
+    /*
+     * What is left after this press. `null` for an unlimited account, because
+     * there is no number -- and a `0` there would be a wrong one rather than
+     * an absent one, which is the sort of field that is fine until the day
+     * something starts reading it.
+     */
+    remaining: quota.unlimited ? null
+      : (Number.isFinite(quota.remaining)
+        ? quota.remaining
+        : Math.max(0, (quota.limit || 0) - (quota.used || 0))),
     // Frame parameters must round-trip to the client: converting mask
     // pixels back to lng/lat requires the exact centre, zoom, and size.
     frame: { ...served, provider }, model: modelId,

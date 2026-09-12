@@ -31,6 +31,9 @@ CREATE TABLE IF NOT EXISTS users (
   -- 'user' or 'admin'. Admin is granted from the ADMIN_EMAILS setting at sign
   -- in, so the first one can be created from a phone with no SQL console.
   role          TEXT NOT NULL DEFAULT 'user',
+  -- BOUGHT credits, which do not expire and are spent only once today's
+  -- allowance is gone. See `allowances` below for the allowance itself, and
+  -- for why the two are separate things rather than one number.
   credits       INTEGER NOT NULL DEFAULT 0,
   -- The owner's account. Kept as a flag rather than a huge balance so the
   -- ledger below stays honest about what was actually spent.
@@ -145,9 +148,64 @@ CREATE TABLE IF NOT EXISTS ledger (
   -- Replicate. Counting usage from `delta` alone would report the account
   -- doing the most detecting as doing none.
   units    INTEGER NOT NULL DEFAULT 0,
-  reason   TEXT NOT NULL,           -- 'welcome' | 'detect' | 'refund' | 'grant'
+  -- 'detect' | 'refund' | 'grant'. ('welcome' appears in rows written before
+  -- new accounts stopped getting a signing-up grant -- see allowance.js for
+  -- why they no longer do. Kept readable rather than rewritten: a ledger that
+  -- is edited to match today's rules is not a ledger.)
+  reason   TEXT NOT NULL,
   detail   TEXT,
   at       TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS ledger_user_at ON ledger(user_id, at DESC);
 CREATE INDEX IF NOT EXISTS ledger_at ON ledger(at DESC);
+
+-- ------------------------------------------------------------ the allowance
+-- Today's free passes for one account.
+--
+-- AN ALLOWANCE IS NOT A BALANCE, which is why this is not another column on
+-- `users`. A balance is a thing you own: spend it and it is gone until you get
+-- more. An allowance is a thing you are lent daily: spend it and it is back in
+-- the morning. Keeping both on one number would mean either credits that
+-- evaporate overnight or an allowance that accumulates, and the second is the
+-- one that turns "30 a day" into "300 if you wait a week and then run a
+-- script".
+--
+-- So: this table resets, `users.credits` does not, and a detection spends this
+-- one first. Which also makes a future paid top-up mean what people will
+-- expect -- extra, on top of the free daily passes, not instead of them.
+--
+-- THE RESET IS A DATE STRING, NOT A CLOCK OR A CRON. `day` is the local
+-- calendar day the count belongs to (America/Detroit -- see quota.js for why
+-- the users' day and not UTC's). A row from yesterday is not stale data to
+-- sweep up; it simply does not match today's key, so the spend below treats
+-- the count as zero and overwrites it. There is nothing scheduled to fail.
+--
+-- `daily_limit` is a per-account override, NULL meaning "whatever the free
+-- tier is today". It is what a business gets when the shared-address ceiling
+-- is in its way, and setting it is also a statement that the account is
+-- vouched for -- see allowance.js.
+CREATE TABLE IF NOT EXISTS allowances (
+  user_id      TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  day          TEXT,
+  used         INTEGER NOT NULL DEFAULT 0,
+  daily_limit  INTEGER,
+  updated_at   TEXT
+);
+
+-- ------------------------------------------------------------- the settings
+-- Numbers the owner can change without a deploy.
+--
+-- These started as constants, then became repository variables, and both have
+-- the same problem: changing one is a trip to a settings page and a deploy,
+-- from a phone, to answer a question like "is five a day too mean". A number
+-- nobody can adjust in the moment is a number that stays wrong.
+--
+-- Rows here WIN OVER the environment variables, which stay as the defaults --
+-- so a fresh deployment has sensible numbers before anybody opens the console,
+-- and clearing a row here goes back to them rather than to zero. See limits.js.
+CREATE TABLE IF NOT EXISTS settings (
+  key         TEXT PRIMARY KEY,
+  value       TEXT NOT NULL,
+  updated_at  TEXT NOT NULL,
+  updated_by  TEXT
+);
