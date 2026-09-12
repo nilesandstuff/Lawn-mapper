@@ -2,14 +2,13 @@
  * The sign-in routes, kept out of the main router.
  *
  * Not tidiness: these are the only routes in the app that answer with a
- * REDIRECT and a Set-Cookie rather than with JSON, and the only ones a person
- * arrives at by following a link from somewhere else. Mixing them into the
+ * REDIRECT and a Set-Cookie rather than with JSON, and the only one a person
+ * arrives at by following a link from their mail client. Mixing them into the
  * switch that serves the measurement API meant every one of those differences
  * had to be remembered in the middle of unrelated code.
  */
 
 import {
-  PROVIDERS, availableProviders, beginOAuth, finishOAuth,
   beginMagicLink, finishMagicLink, signOut, sessionCookie, clearedCookie,
   currentUser,
 } from './auth.js';
@@ -27,10 +26,11 @@ const isSecure = (url) => new URL(url).protocol === 'https:';
  * Land somewhere on the site, saying how it went.
  *
  * A redirect rather than a JSON body because the browser got here by
- * NAVIGATING -- from Google, or from a mail client. There is no fetch waiting
- * for a response to read; there is a person looking at a page. The outcome
- * travels in the fragment so the app can say it and then clear it, and so a
- * failed attempt is not left sitting in history as a query string.
+ * NAVIGATING -- from a mail client. There is no fetch waiting for a response
+ * to read; there is a person looking at a page. The outcome travels in the
+ * fragment so the app can say it and then clear it, so it is never sent to the
+ * server, and so a failed attempt is not left sitting in history as a query
+ * string.
  */
 function land(url, path, outcome, headers = {}) {
   return new Response(null, {
@@ -68,7 +68,9 @@ export async function handleAuth(request, env, url, origin, ctx, json) {
     if (ctx?.waitUntil) ctx.waitUntil(sweepExpired(env));
     return json({
       user: publicUser(user),
-      providers: availableProviders(env),
+      // Whether this deployment can send a link. Without it there is no way in
+      // at all, and the panel says so rather than showing a form that cannot
+      // work.
       email: mailConfigured(env),
     }, 200, origin);
   }
@@ -97,11 +99,10 @@ export async function handleAuth(request, env, url, origin, ctx, json) {
     const sent = await beginMagicLink(request, env, body.email, body.next);
 
     /*
-     * "bad-email" is told; "no such account" never happens and "send failed"
-     * is told too. What is NOT told is whether an account already existed --
-     * the link creates one if it has to, so the same answer is the honest one
-     * either way, and a sign-in form stops being a way to ask the site which
-     * of your friends have signed up.
+     * "bad-email" is told; "send failed" is told too. What is NOT told is
+     * whether an account already existed -- the link creates one if it has to,
+     * so the same answer is the honest one either way, and a sign-in form
+     * stops being a way to ask the site which of your friends have signed up.
      */
     if (sent.error === 'bad-email') {
       return json({ error: 'bad-email', message: 'That does not look like an email address.' }, 400, origin);
@@ -124,24 +125,6 @@ export async function handleAuth(request, env, url, origin, ctx, json) {
     return land(request.url, done.next, 'signed-in', {
       'Set-Cookie': sessionCookie(session.token, { maxAge: session.maxAge, secure }),
     });
-  }
-
-  /* -------------------------------------------------------- a provider */
-  const asCallback = path.match(/^([a-z0-9]+)\/callback$/);
-  if (asCallback) {
-    const done = await finishOAuth(request, env, asCallback[1], url);
-    if (done.error) return land(request.url, '/', `signin-error=${done.error}`);
-
-    const session = await createSession(env, done.user.id);
-    return land(request.url, done.next, 'signed-in', {
-      'Set-Cookie': sessionCookie(session.token, { maxAge: session.maxAge, secure }),
-    });
-  }
-
-  if (PROVIDERS[path]) {
-    const to = await beginOAuth(request, env, path, url.searchParams.get('next'));
-    if (!to) return land(request.url, '/', 'signin-error=provider-not-configured');
-    return new Response(null, { status: 302, headers: { Location: to, 'Cache-Control': 'no-store' } });
   }
 
   return json({ error: 'Not found' }, 404, origin);

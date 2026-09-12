@@ -4,8 +4,8 @@ Everything here is optional and the site works without any of it. With none of
 it set up, Lawn Mapper is what it was before: measure, correct, save to this
 browser. Each piece below switches one more thing on.
 
-All of it is done from a phone: GitHub settings pages, two sign-ups, then press
-**Deploy**.
+All of it is done from a phone: one sign-up, a couple of GitHub settings pages,
+then press **Deploy**.
 
 ---
 
@@ -46,48 +46,14 @@ Comma- or space-separated for more than one.
 
 ---
 
-## 2. Sign in with Google
-
-**<https://console.cloud.google.com/apis/credentials>**
-
-1. Create a project if you have none.
-2. **OAuth consent screen** → External → fill in the app name and your email.
-   While it is in *Testing* only addresses you list as test users can sign in;
-   **Publish** it when you want anyone to. No review is needed for the
-   `email`/`profile` scopes.
-3. **Credentials → Create credentials → OAuth client ID → Web application**.
-4. Under **Authorised redirect URIs**, add exactly:
-
-   ```
-   https://lawnmap.nilesandstuff.com/api/auth/google/callback
-   ```
-
-   It has to match character for character, including the scheme and no
-   trailing slash.
-
-Then, in **GitHub → Secrets** (not variables — these are secret):
-
-| Name | Value |
-| --- | --- |
-| `GOOGLE_CLIENT_ID` | the client ID, ending `.apps.googleusercontent.com` |
-| `GOOGLE_CLIENT_SECRET` | the client secret |
-
-**Facebook** is shaped for in `worker/src/auth.js` but deliberately not
-enabled: its `email` permission needs Business Verification before it works for
-anyone outside your own testers, and an account with no email address is the one
-thing this design cannot have — the address *is* the account. Say the word when
-you want it and the verification is done.
-
----
-
-## 3. Sign in by email
+## 2. Sign in
 
 **<https://resend.com>** — free tier, no card.
 
 1. Sign up.
 2. **API Keys → Create**. Copy it.
-3. Optionally **Domains → Add** `nilesandstuff.com` and add the DNS records it
-   gives you (Cloudflare, so this is a few taps).
+3. **Domains → Add** `nilesandstuff.com` and add the DNS records it gives you.
+   Cloudflare hosts the DNS, so this is a few taps.
 
 | Where | Name | Value |
 | --- | --- | --- |
@@ -97,14 +63,27 @@ you want it and the verification is done.
 **Without `MAIL_FROM`** it uses Resend's shared `onboarding@resend.dev`, which
 works immediately and **only delivers to your own Resend account address**.
 That is right for trying it and useless for anyone else — so verify the domain
-before friends try to sign in by email.
+before friends try to sign in.
 
-Using something other than Resend is one function: `sendMail()` in
-`worker/src/mail.js`, one `fetch`.
+There is no password. The link in the email *is* the verification: receiving it
+proves the address is yours, which is what makes it safe for the address to be
+the account. Nothing to forget, reuse, leak or reset.
+
+**Why not "sign in with Google"?** It was built and then removed. What it buys
+is one tap instead of a trip to an inbox; what it costs is a registered
+application, a consent screen to keep current, a client secret to rotate, and a
+second code path through the most security-sensitive part of the app. It also
+rests on remembering to check the provider's `email_verified` claim every time
+a provider is added — a rule that fails silently when somebody forgets. With
+one door, that rule is not a rule, it is the mechanism.
+
+Adding one later is a configuration change, not a migration: the account model
+already supports several ways in to one address, and `identities` already
+records which was used.
 
 ---
 
-## 4. Credits (optional)
+## 3. Credits (optional)
 
 | Where | Name | Value | Default |
 | --- | --- | --- | --- |
@@ -116,7 +95,7 @@ Your own account ignores this entirely — `ADMIN_EMAILS` makes it unlimited.
 
 ---
 
-## 5. Deploy
+## 4. Deploy
 
 **Actions → 2. Deploy → Run workflow**, type `deploy`.
 
@@ -165,13 +144,13 @@ They are the way back in if something about accounts goes wrong.
 **The account button is not there.** `/api/config` reports
 `accounts: false` — the database is not bound. Check the deploy log.
 
-**"redirect_uri_mismatch" from Google.** The URI in the Google console is not
-character-for-character what the Worker sent. It is
-`https://<your domain>/api/auth/google/callback`, with no trailing slash.
-
 **The email never arrives.** If `MAIL_FROM` is unset, Resend only delivers to
 your own account address. Verify a domain and set it. The sign-in panel shows
-Resend's own refusal, which usually names the reason.
+Resend's own refusal, which usually names the reason. Check spam too — a new
+sending domain has no reputation for the first few messages.
+
+**"This site cannot send email yet."** `RESEND_API_KEY` is not set, so there is
+no way in at all. Measuring and saving to this browser still work.
 
 **Signed in, but the console says it is not for you.** The account was created
 before `ADMIN_EMAILS` listed it. Sign out and back in — the flag is applied at

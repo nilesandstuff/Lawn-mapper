@@ -89,8 +89,7 @@ const state = {
   // precondition for measuring a lawn.
   accountsOn: false,
   user: null,
-  providers: [],      // the sign-in doors this deployment has keys for
-  emailSignin: false, // ...and whether it can send a link
+  emailSignin: false, // can this deployment send a sign-in link?
   saves: [],          // the account's maps, cached so the list is not a wait
 };
 
@@ -425,7 +424,6 @@ if (typeof window !== 'undefined') {
   window.__lmAccount = () => ({
     accountsOn: state.accountsOn,
     user: state.user,
-    providers: state.providers.map((p) => p.id),
     emailSignin: state.emailSignin,
   });
 
@@ -3436,28 +3434,10 @@ const LOCKED_MODE = 'lm_locked';
  * The email address is the identity and a provider is a door to it, which is
  * why a magic link and Google reach the same account. See worker/src/auth.js.
  */
-const MARKS = {
-  /* Google's own mark, because a plain button is one people do not trust. */
-  google: `<svg viewBox="0 0 18 18" aria-hidden="true">
-    <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"/>
-    <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"/>
-    <path fill="#FBBC05" d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33z"/>
-    <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.46 3.44 1.35l2.58-2.58C13.46.89 11.42 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/>
-  </svg>`,
-};
-
-/** What went wrong at the provider, in words rather than in a code. */
+/** What went wrong following a link, in words rather than in a code. */
 const SIGNIN_ERRORS = {
-  declined: 'You cancelled that sign-in. Nothing has changed.',
-  expired: 'That sign-in took too long, or the link had already been used. Try again.',
-  'unverified-email': 'That account has no verified email address, so we cannot '
-    + 'use it to sign you in — an unverified address would let somebody else '
-    + 'claim your maps. Use an email link instead.',
-  'exchange-failed': 'The provider would not complete the sign-in. Try again.',
-  'no-identity': 'The provider did not send an identity we could read.',
-  'provider-not-configured': 'That way of signing in is not set up on this site.',
-  incomplete: 'That sign-in came back incomplete. Try again.',
-  'unknown-provider': 'That way of signing in is not one this site offers.',
+  expired: 'That link had expired, or had already been used. Ask for another '
+    + '— they work once and last twenty minutes.',
 };
 
 function openSheet(id) {
@@ -3473,22 +3453,16 @@ function renderAccountButton() {
   if (!btn) return;
   btn.hidden = !state.accountsOn;
 
-  const me = state.user;
-  const face = $('#account-face');
-  face.hidden = !me?.picture;
-  if (me?.picture) face.src = me.picture;
-
   // The first part of the address rather than the whole of it: a topbar is not
-  // where a long email belongs, and the name is what people recognise anyway.
-  $('#account-label').textContent = me
-    ? (me.name || me.email.split('@')[0])
-    : 'Sign in';
+  // where a long email belongs, and it is the part people recognise as theirs.
+  const me = state.user;
+  $('#account-label').textContent = me ? me.email.split('@')[0] : 'Sign in';
 }
 
 function renderAccountSheet() {
   const me = state.user;
   if (!me) return;
-  $('#account-name').textContent = me.name || 'Your account';
+  $('#account-name').textContent = 'Your account';
   $('#account-email').textContent = me.email;
   $('#account-credits').textContent = me.unlimited
     ? 'Unlimited detections'
@@ -3497,35 +3471,21 @@ function renderAccountSheet() {
   $('#account-admin').hidden = !me.admin;
 }
 
+/**
+ * One door, so there is nothing to choose between.
+ *
+ * The panel is a single field and a button. If the site cannot send mail there
+ * is no way in at all, and it says that rather than showing a form that would
+ * fail on submit.
+ */
 function renderSigninOptions() {
-  const box = $('#signin-providers');
-  box.innerHTML = '';
-
-  for (const p of state.providers) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'provider';
-    btn.innerHTML = MARKS[p.id] || '';
-    btn.append(document.createTextNode(`Continue with ${p.label}`));
-    /*
-     * A NAVIGATION, NOT A FETCH. The provider answers with a page of its own
-     * that the person has to see and interact with, so the browser has to go
-     * there. `next` brings them back to where they were rather than to the
-     * front page with their address search lost.
-     */
-    btn.addEventListener('click', () => {
-      location.href = `/api/auth/${p.id}?next=${encodeURIComponent(location.pathname)}`;
-    });
-    box.append(btn);
-  }
-
   $('#signin-email-form').hidden = !state.emailSignin;
-  $('#signin-or').hidden = !(state.providers.length && state.emailSignin);
+  if (state.emailSignin) return;
 
-  if (!state.providers.length && !state.emailSignin) {
-    $('#signin-note').textContent = 'This site has no way to sign in configured yet.';
-    $('#signin-note').className = 'sheet-note warn';
-  }
+  $('#signin-note').textContent =
+    'This site cannot send email yet, so there is no way to sign in. '
+    + 'Measuring and saving to this browser still work.';
+  $('#signin-note').className = 'sheet-note warn';
 }
 
 /** Ask who is signed in. Never throws: not knowing means signed out. */
@@ -3534,7 +3494,6 @@ async function refreshAccount() {
   try {
     const me = await api('/api/auth/me');
     state.user = me.user || null;
-    state.providers = Array.isArray(me.providers) ? me.providers : [];
     state.emailSignin = Boolean(me.email);
   } catch {
     state.user = null;

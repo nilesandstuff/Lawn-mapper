@@ -26,8 +26,8 @@ import {
   accountsEnabled, sweepExpired,
 } from '../worker/src/db.js';
 import {
-  decodeJwtPayload, safeNext, looksLikeEmail, readCookie, sessionCookie,
-  PROVIDERS, availableProviders, finishOAuth,
+  safeNext, looksLikeEmail, readCookie, sessionCookie, beginMagicLink,
+  finishMagicLink,
 } from '../worker/src/auth.js';
 
 let failures = 0;
@@ -55,37 +55,41 @@ const rows = async (e, sql, ...args) => (await e.DB.prepare(sql).bind(...args).a
 
 /* ------------------------------------------------------ the email is the account */
 /*
- * THE RULE THE WHOLE DESIGN RESTS ON. Google today and a magic link next month
- * must land on one account with one set of saved maps -- otherwise a person
- * signs in the "wrong" way and their measurements are gone.
+ * THE RULE THE WHOLE DESIGN RESTS ON. Signing in twice must land on ONE
+ * account with one set of saved maps -- otherwise a person types their address
+ * slightly differently and their measurements are gone.
+ *
+ * With one door this is a UNIQUE constraint and a lowercase, which is exactly
+ * why there is one door: the multi-provider version rested on every provider
+ * being checked for a verified address, and that is a rule that fails silently
+ * the first time somebody adds a provider carelessly.
  */
 {
   const e = env();
-  const viaGoogle = await findOrCreateUser(e, {
-    email: 'Sam@Example.com', name: 'Sam', picture: 'https://x/p.png',
-    provider: 'google', subject: 'g-1',
+  const first = await findOrCreateUser(e, {
+    email: 'Sam@Example.com', provider: 'email', subject: 'sam@example.com',
   });
-  const viaEmail = await findOrCreateUser(e, {
+  const second = await findOrCreateUser(e, {
     email: 'sam@example.com', provider: 'email', subject: 'sam@example.com',
   });
 
-  check('two doors, one account', viaGoogle.id === viaEmail.id,
-    `${viaGoogle.id} vs ${viaEmail.id}`);
+  check('signing in twice lands on one account', first.id === second.id,
+    `${first.id} vs ${second.id}`);
   check('and the address is stored lowercased, so case cannot fork it',
-    viaGoogle.email === 'sam@example.com', viaGoogle.email);
-  check('with both ways in recorded against it',
-    (await rows(e, 'SELECT provider FROM identities WHERE user_id = ?', viaGoogle.id))
-      .map((r) => r.provider).sort().join(',') === 'email,google');
-  check('and exactly one row in users',
+    first.email === 'sam@example.com', first.email);
+  check('and there is exactly one row in users',
     (await rows(e, 'SELECT id FROM users')).length === 1);
 
   /*
-   * A provider that knows less must not blank what another one told us.
-   * Signing in by email after Google should not wipe the name.
+   * The account model still records WHICH door was used, and still supports
+   * more than one. Keeping that is what makes adding a provider later a
+   * configuration change rather than a migration.
    */
-  check('a later sign-in does not erase what an earlier one knew',
-    viaEmail.name === 'Sam' && viaEmail.picture === 'https://x/p.png',
-    `${viaEmail.name} / ${viaEmail.picture}`);
+  check('with the way in recorded against it, once',
+    (await rows(e, 'SELECT provider FROM identities WHERE user_id = ?', first.id))
+      .map((r) => r.provider).join(',') === 'email',
+    'the subject is the normalised address, so capitalising it differently does '
+    + 'not add a second row saying the same thing');
 }
 
 /* An address is required, and has to be one. */
@@ -298,49 +302,63 @@ const rows = async (e, sql, ...args) => (await e.DB.prepare(sql).bind(...args).a
   check('nothing is sent for a signed-out visitor', publicUser(null) === null);
 }
 
-/* -------------------------------------------------------- provider claims */
+/* --------------------------------------------------------- the magic link */
 /*
- * AN UNVERIFIED ADDRESS MUST NEVER BECOME AN ACCOUNT. The account IS the
- * address, so a provider that hands over one it has not checked would let
- * anyone take over anyone else's by typing it in. This is the single rule that
- * makes "two doors, one account" safe.
+ * RECEIVING THE LINK IS THE VERIFICATION. There is no `email_verified` claim
+ * to trust, forget to check, or get wrong when a provider is added -- the
+ * token went to that inbox and came back, which is the whole proof. This is
+ * the reason the single door is not a compromise.
  */
 {
-  const g = PROVIDERS.google;
-  const e = { GOOGLE_CLIENT_ID: 'client-1' };
-  const good = {
-    aud: 'client-1', iss: 'https://accounts.google.com',
-    email_verified: true, email: 'ok@b.com', sub: '123', name: 'OK',
+  const sent = [];
+  const e = env({ RESEND_API_KEY: 'test', MAIL_FROM: 'a@b.com' });
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    sent.push({ url: String(url), body: JSON.parse(init.body) });
+    return new Response('{}', { status: 200 });
   };
 
-  check('a verified claim becomes a profile', g.profile(good, e)?.email === 'ok@b.com');
-  check('an unverified address is refused',
-    g.profile({ ...good, email_verified: false }, e) === null);
-  check('a missing verification flag is refused too, not assumed true',
-    g.profile({ ...good, email_verified: undefined }, e) === null);
-  check('a token minted for another application is refused',
-    g.profile({ ...good, aud: 'someone-else' }, e) === null);
-  check('and one from somewhere that is not Google is refused',
-    g.profile({ ...good, iss: 'https://evil.example' }, e) === null);
+  const req = new Request('https://site.test/api/auth/email', { method: 'POST' });
+  const asked = await beginMagicLink(req, e, 'New@Example.com', '/saved');
+  globalThis.fetch = realFetch;
 
-  check('a provider with no keys configured is not offered',
-    availableProviders({}).length === 0);
-  check('and one with both is',
-    availableProviders({ GOOGLE_CLIENT_ID: 'a', GOOGLE_CLIENT_SECRET: 'b' })
-      .map((p) => p.id).join(',') === 'google');
+  check('asking for a link sends exactly one email', asked.ok && sent.length === 1,
+    JSON.stringify(asked));
+  check('to the address that asked for it', sent[0].body.to[0] === 'new@example.com',
+    sent[0]?.body?.to?.[0]);
+
+  /* The link has to be followable from a mail client that shows plain text. */
+  const link = sent[0].body.text.match(/https:\/\/\S+/)?.[0];
+  check('and carries a link on this site, not somewhere else',
+    link?.startsWith('https://site.test/api/auth/email/verify?token='), link);
+
+  const token = new URL(link).searchParams.get('token');
+  const signedIn = await finishMagicLink(e, token);
+  check('following it creates the account and signs them in',
+    signedIn.user?.email === 'new@example.com', JSON.stringify(signedIn.error || signedIn.user?.email));
+  check('and lands where they were, not on the front page',
+    signedIn.next === '/saved', signedIn.next);
+
+  /*
+   * ONCE. A forwarded email is two clicks on the same link, and an inbox is
+   * not a place where a reusable credential should sit for twenty minutes.
+   */
+  check('and it cannot be followed a second time',
+    (await finishMagicLink(e, token)).error === 'expired');
+
+  check('a token nobody issued signs nobody in',
+    (await finishMagicLink(e, 'made-up')).error === 'expired');
 }
 
-/* An OAuth callback with nothing parked for it cannot mint a session. */
+/* No mail provider is no sign-in, said plainly rather than failing on submit. */
 {
-  const e = env({ GOOGLE_CLIENT_ID: 'a', GOOGLE_CLIENT_SECRET: 'b' });
-  const url = new URL('https://site.test/api/auth/google/callback?code=x&state=made-up');
-  const out = await finishOAuth(new Request(url), e, 'google', url);
-  check('a callback carrying a state we never issued is refused',
-    out.error === 'expired', JSON.stringify(out));
-
-  const declined = new URL('https://site.test/api/auth/google/callback?error=access_denied');
-  check('and a refusal at the provider is reported as one',
-    (await finishOAuth(new Request(declined), e, 'google', declined)).error === 'declined');
+  const e = env();
+  const req = new Request('https://site.test/api/auth/email', { method: 'POST' });
+  check('with no mail configured there is no way in, and it says so',
+    (await beginMagicLink(req, e, 'a@b.com')).error === 'no-mail');
+  check('and an implausible address is refused before anything is sent',
+    (await beginMagicLink(req, env({ RESEND_API_KEY: 'x' }), 'not-an-address')).error
+      === 'bad-email');
 }
 
 /* ------------------------------------------------------------- the small parts */
@@ -379,15 +397,6 @@ const rows = async (e, sql, ...args) => (await e.DB.prepare(sql).bind(...args).a
   check('but not over plain http, where a browser would silently drop it',
     !/Secure/.test(sessionCookie('tok', { maxAge: 100, secure: false })),
     'otherwise signing in on a dev server looks broken rather than refused');
-
-  /* A JWT payload with a non-ASCII name has to survive the trip. */
-  const payload = { name: 'Zoë Ström', email: 'z@b.com' };
-  const b64 = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
-  check('a provider token is decoded as UTF-8, not Latin-1',
-    decodeJwtPayload(`x.${b64}.y`)?.name === 'Zoë Ström',
-    decodeJwtPayload(`x.${b64}.y`)?.name);
-  check('and rubbish decodes to nothing rather than throwing',
-    decodeJwtPayload('not-a-token') === null && decodeJwtPayload('') === null);
 
   check('comparing secrets does not leak how much was right',
     timingSafeEqual('abc', 'abc') && !timingSafeEqual('abc', 'abd')

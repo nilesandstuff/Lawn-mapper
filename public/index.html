@@ -25,19 +25,18 @@
       because a button that cannot work is worse than one less button.
     -->
     <button class="account" id="account-btn" type="button" hidden>
-      <img class="account-face" id="account-face" alt="" hidden>
       <span id="account-label">Sign in</span>
     </button>
   </div>
 </header>
 
 <!--
-  Signing in.
+  Signing in. One field, because there is one door.
 
   Over everything, because it is a decision that has to be finished before the
-  page underneath means anything different. Providers are listed from what the
-  Worker actually has keys for -- an offer to "continue with Google" that
-  cannot work is worse than no offer.
+  page underneath means anything different. No password: there is nothing to
+  forget, to reuse from another site, to leak, or to reset. Receiving the link
+  is the verification, which is also why the address can safely BE the account.
 -->
 <div class="sheet" id="signin" role="dialog" aria-modal="true" aria-labelledby="signin-title" hidden>
   <div class="sheet-card">
@@ -46,10 +45,6 @@
     <p class="sheet-why">An account keeps your measurements across devices, so
       the lawn you mapped on your phone is there on your laptop. It is also how
       detection credits are held.</p>
-
-    <div id="signin-providers"></div>
-
-    <div class="sheet-or" id="signin-or" hidden><span>or</span></div>
 
     <form id="signin-email-form" autocomplete="on" hidden>
       <label class="sr-only" for="signin-email">Email address</label>

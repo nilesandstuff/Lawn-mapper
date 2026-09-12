@@ -54,13 +54,9 @@ html, body {
   display: flex; align-items: center; gap: 7px; cursor: pointer;
   font: inherit; font-size: 13px; font-weight: 550; color: var(--ink);
   background: #fff; border: 1px solid var(--line); border-radius: 999px;
-  padding: 4px 12px 4px 5px; max-width: 46vw;
+  padding: 5px 12px; max-width: 46vw;
 }
 .account:hover { border-color: var(--green); }
-/* No picture is the common case for a magic-link account, so the button has to
- * look deliberate without one rather than leaving a gap where a face goes. */
-.account:has(.account-face[hidden]) { padding-left: 12px; }
-.account-face { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; }
 .account span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /*
@@ -97,24 +93,6 @@ html, body {
 .sheet-note.warn { color: #a35b00; }
 .sheet-note.error { color: #b3261e; }
 .sheet-note.ok { color: var(--green-dark); font-weight: 550; }
-
-.sheet-or {
-  display: flex; align-items: center; gap: 10px;
-  color: var(--muted); font-size: 12px; margin: 2px 0;
-}
-.sheet-or::before, .sheet-or::after {
-  content: ''; flex: 1; height: 1px; background: var(--line);
-}
-
-/* A provider button carries its mark, because that is what people look for. */
-.provider {
-  display: flex; align-items: center; justify-content: center; gap: 9px;
-  width: 100%; padding: 11px 14px; cursor: pointer;
-  font: inherit; font-size: 14px; font-weight: 550; color: var(--ink);
-  background: #fff; border: 1px solid #cfd6d0; border-radius: 11px;
-}
-.provider:hover { background: var(--bg); border-color: #b6c0b8; }
-.provider svg { width: 18px; height: 18px; }
 
 #signin-email-form { display: grid; gap: 8px; }
 #signin-email {

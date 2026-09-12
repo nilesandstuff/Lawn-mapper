@@ -405,6 +405,17 @@ console.log('\n--- accounts are optional ---');
     await page.click('#account-btn');
     await page.waitForTimeout(250);
     check('pressing it offers a way in', await page.locator('#signin').isVisible());
+
+    /*
+     * ONE DOOR, so there is nothing to choose between: an address and a
+     * button. And no password field anywhere, which is the point -- there is
+     * nothing to forget, reuse, leak or reset, and receiving the link IS the
+     * verification that makes the address safe to use as the account.
+     */
+    check('with one way in and no password to invent',
+      (await page.locator('#signin input[type=password]').count()) === 0
+      && (await page.locator('#signin-email').count()) === 1);
+
     await page.click('#signin-close');
     await page.waitForTimeout(200);
     check('and closing it puts the map back',

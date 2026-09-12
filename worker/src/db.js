@@ -80,14 +80,18 @@ const plus = (ms) => new Date(Date.now() + ms).toISOString();
 /**
  * The account for this email, made if there is not one yet.
  *
- * THE EMAIL IS THE IDENTITY, and the provider is a door to it. Somebody who
- * signs in with Google and later uses a magic link to the same address is one
- * person with one set of saved maps, not two accounts wondering where their
- * measurements went. Which is only safe because no unverified address ever
- * reaches this function: a magic link proves the address receives mail, and
- * Google's claim is used only when it says the address is verified. An
- * unverified email here would let anyone claim anyone's account by typing
- * their address into a provider that does not check.
+ * THE EMAIL IS THE IDENTITY, and a provider is a door to it. Signing in twice
+ * lands on one account with one set of saved maps, rather than on two of them
+ * wondering where the measurements went -- and the same is true of a second
+ * door if one is ever added.
+ *
+ * Which is only safe because NO UNVERIFIED ADDRESS EVER REACHES THIS FUNCTION.
+ * Today there is one way in and receiving the emailed link is itself the proof,
+ * so the rule is the mechanism rather than something to remember. It becomes
+ * something to remember the moment a provider is added: one that hands over an
+ * address it has not checked would let anybody claim anybody's account by
+ * typing it in. That is the reason to be careful here, and the reason there is
+ * only one door today.
  */
 export async function findOrCreateUser(env, { email, name, picture, provider, subject }) {
   const address = String(email || '').trim().toLowerCase();
@@ -221,7 +225,11 @@ export async function endAllSessions(env, userId) {
 /* ------------------------------------------------------------ challenges */
 
 /**
- * Park a one-time secret for a few minutes: a magic link, or an OAuth trip.
+ * Park a one-time secret for a few minutes -- today, a sign-in link.
+ *
+ * `kind` is carried so that a second sort of short-lived token (an OAuth round
+ * trip, an email change confirmation) cannot be spent as a sign-in link by
+ * handing it to the wrong endpoint.
  *
  * Returns the token to hand out; only its hash is kept, so the row cannot be
  * turned back into a working link.

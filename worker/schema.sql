@@ -41,11 +41,14 @@ CREATE TABLE IF NOT EXISTS users (
 
 -- One row per way of signing in to the same account.
 --
--- Separate from users so that signing in with Google and then with a magic
--- link to the same address lands on ONE account rather than two. The email is
--- the identity; a provider is a door to it.
+-- There is one door today -- an emailed link -- so this table has one row per
+-- account and earns its keep on the day there are two. It is kept because the
+-- alternative is a migration at exactly the moment somebody wants a provider
+-- added, and because the shape is the thing that makes "one account, several
+-- ways in" true rather than hoped for: the email is the identity, a provider
+-- is a door to it.
 CREATE TABLE IF NOT EXISTS identities (
-  provider    TEXT NOT NULL,          -- 'google' | 'email' | ...
+  provider    TEXT NOT NULL,          -- 'email' today
   subject     TEXT NOT NULL,          -- the provider's own stable id
   user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   created_at  TEXT NOT NULL,
@@ -85,9 +88,11 @@ CREATE INDEX IF NOT EXISTS sessions_expiry ON sessions(expires_at);
 -- `id` is a hash of the token, for the same reason sessions are.
 CREATE TABLE IF NOT EXISTS challenges (
   id          TEXT PRIMARY KEY,
-  kind        TEXT NOT NULL,          -- 'magic' | 'oauth'
+  -- 'magic' today. Carried so a second sort of short-lived token cannot be
+  -- spent as a sign-in link by handing it to the wrong endpoint.
+  kind        TEXT NOT NULL,
   email       TEXT,
-  data        TEXT,                   -- JSON: provider, verifier, next
+  data        TEXT,                   -- JSON: where to land afterwards
   created_at  TEXT NOT NULL,
   expires_at  TEXT NOT NULL,
   used_at     TEXT

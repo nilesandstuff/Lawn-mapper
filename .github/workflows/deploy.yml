@@ -91,8 +91,6 @@ jobs:
           FEEDBACK: ${{ vars.FEEDBACK }}
           # Accounts. All optional: without them the site is what it was before
           # accounts existed, which is a working site and not a broken one.
-          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
-          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           MAIL_FROM: ${{ vars.MAIL_FROM }}
           ADMIN_EMAILS: ${{ vars.ADMIN_EMAILS }}
@@ -165,13 +163,11 @@ jobs:
           # Accounts.
           #
           # Every one of these is optional and the site works without it -- the
-          # Worker treats a missing piece as "that door is not offered" rather
-          # than as a failure. Which is the only sane arrangement when the
-          # alternative is a measuring tool that will not load because nobody
-          # has registered an OAuth client yet.
+          # Worker treats a missing piece as "signed out, always" rather than as
+          # a failure. Which is the only sane arrangement when the alternative
+          # is a measuring tool that will not load because nobody has set up a
+          # mail provider yet.
           for pair in \
-            "GOOGLE_CLIENT_ID:$GOOGLE_CLIENT_ID" \
-            "GOOGLE_CLIENT_SECRET:$GOOGLE_CLIENT_SECRET" \
             "RESEND_API_KEY:$RESEND_API_KEY" \
             "MAIL_FROM:$MAIL_FROM" \
             "ADMIN_EMAILS:$ADMIN_EMAILS" \
@@ -185,11 +181,14 @@ jobs:
             fi
           done
 
-          if [ -z "$GOOGLE_CLIENT_ID" ] && [ -z "$RESEND_API_KEY" ]; then
-            echo "No sign-in method configured, so the account button stays hidden."
-            echo "  Google : set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET secrets,"
-            echo "           with redirect URI https://<your site>/api/auth/google/callback"
-            echo "  Email  : set the RESEND_API_KEY secret (resend.com, free tier)"
+          if [ -z "$RESEND_API_KEY" ]; then
+            echo "No RESEND_API_KEY, so nobody can sign in -- the account panel"
+            echo "says so rather than showing a form that would fail on submit."
+            echo "Set it (resend.com, free tier) to switch sign-in on."
+          elif [ -z "$MAIL_FROM" ]; then
+            echo "No MAIL_FROM, so mail goes from Resend's shared onboarding"
+            echo "address, which ONLY delivers to your own Resend account."
+            echo "Verify a domain and set MAIL_FROM before friends try to sign in."
           fi
           if [ -z "$ADMIN_EMAILS" ]; then
             echo "No ADMIN_EMAILS variable, so no account will be an administrator."
