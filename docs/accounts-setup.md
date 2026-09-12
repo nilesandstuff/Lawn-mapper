@@ -113,6 +113,10 @@ in the console under **Daily limits**, and a change there takes effect in about
 fifteen seconds with no deploy. Change them there; the variables decide what a
 fresh deployment begins with.
 
+Once you have changed one in the console, that number is set from the console
+and these variables stop affecting it. The console's **Back to 5** button on
+that row hands it back.
+
 `0` is a valid answer everywhere and means exactly zero, not "use the default".
 
 If you already set `WELCOME_CREDITS`, it still works — it is read as the
@@ -182,8 +186,14 @@ and one field in the console excuses an account that does.
   the Replicate bill. Passes, not presses, because a four-box detection costs
   four predictions.
 - **Daily limits** — the three numbers above, editable in place. Each box saves
-  on its own and says whether the number in it is stored here or inherited from
-  the deployment, so you can tell a save landed. "Use 5" puts one back.
+  on its own and says whether anybody has changed it, so you can tell a save
+  landed.
+
+  A row reading **not changed yet** follows whatever the site was deployed
+  with, so editing the repository variable and deploying moves it. A row
+  reading **changed here** is set from this page instead and a deploy will
+  *not* move it — **Back to 5** undoes that and hands the number back to the
+  deploy settings.
 - **Every account**: today's allowance, passes spent, maps saved, last seen.
   Search it. Give somebody its own daily limit (which also exempts them from
   the shared-address ceiling), grant or take bought credits, make somebody

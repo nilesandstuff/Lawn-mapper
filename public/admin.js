@@ -125,10 +125,19 @@ function renderDays(daily) {
  * saves on its own; there is no form to submit, because a form implies the
  * five numbers are one decision and they are not.
  *
- * Each row says where its value came from. "80" beside a box you just typed 80
- * into tells you nothing about whether the save landed, and "from the
- * settings" versus "from the deployment" is the only question anybody has
- * after pressing save.
+ * Each row says whether anybody has changed it. "80" beside a box you just
+ * typed 80 into tells you nothing about whether the save landed, which is the
+ * only question anybody has after pressing save.
+ *
+ * SAID IN WORDS THAT MEAN SOMETHING TO THE READER. This label used to read
+ * "from the deployment", which is precise, accurate, and was asked about the
+ * first time somebody saw it -- it describes where the code looked rather than
+ * what the reader did, and the reader is the one standing there. "Not changed
+ * yet" is the same fact from their side of it.
+ *
+ * The distinction is worth showing at all for one reason: a row that has been
+ * changed here STOPS following the repository variable, so editing FREE_DAILY
+ * in GitHub and deploying will not move it. A row still on its default will.
  */
 async function renderSettings() {
   const box = $('#settings');
@@ -151,7 +160,7 @@ function settingRow(s) {
 
   const save = el('button', null, 'Save');
   const where = el('small', 'meta',
-    s.stored ? 'saved here' : 'from the deployment');
+    s.stored ? 'changed here' : 'not changed yet — using the default');
 
   const write = async (value) => {
     save.disabled = true;
@@ -177,7 +186,8 @@ function settingRow(s) {
    * exactly what somebody who has just mistyped a value does not have.
    */
   if (s.stored) {
-    const reset = el('button', null, `Use ${s.fallback}`);
+    const reset = el('button', null, `Back to ${s.fallback}`);
+    reset.title = 'Forget the number saved here and follow the deploy settings again.';
     reset.addEventListener('click', () => write(null));
     field.append(reset);
   }
