@@ -20,6 +20,25 @@ binding = "ASSETS"
 binding = "QUOTA"
 id = "REPLACE_WITH_KV_NAMESPACE_ID"
 
+# Accounts: people, sessions, saved maps and the credit ledger.
+#
+# SQL rather than another KV namespace because of one statement: "spend a
+# credit if there is one". Read-modify-write on a KV value is a race that
+# hands out free detections, and exclude mode fires several passes per press.
+# See worker/schema.sql.
+#
+# CI finds or creates this and fills in the id (tools/ci-prepare.js), then runs
+# the schema, which is idempotent. To do it by hand instead:
+#   npx wrangler d1 create lawn-mapper
+#   npx wrangler d1 execute lawn-mapper --remote --file=worker/schema.sql
+#
+# Leave the placeholder if you do not want accounts: the Worker treats a
+# missing binding as "signed out, always" and the site works as it did before.
+[[d1_databases]]
+binding = "DB"
+database_name = "lawn-mapper"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+
 # Secrets are NOT set here -- anything in this file goes into git.
 # Set them from the CLI instead:
 #   npx wrangler secret put MAPBOX_TOKEN

@@ -48,6 +48,87 @@ html, body {
   padding: 4px 10px; border-radius: 999px;
 }
 
+/* --------------------------------------------------------- the account */
+.topright { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.account {
+  display: flex; align-items: center; gap: 7px; cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 550; color: var(--ink);
+  background: #fff; border: 1px solid var(--line); border-radius: 999px;
+  padding: 4px 12px 4px 5px; max-width: 46vw;
+}
+.account:hover { border-color: var(--green); }
+/* No picture is the common case for a magic-link account, so the button has to
+ * look deliberate without one rather than leaving a gap where a face goes. */
+.account:has(.account-face[hidden]) { padding-left: 12px; }
+.account-face { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; }
+.account span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/*
+ * A sheet: a dialog over everything, anchored to the bottom on a phone and
+ * centred on a desktop. Bottom on a phone because that is where the thumb is
+ * and because a centred box under the keyboard is a box you cannot see while
+ * typing your address into it.
+ */
+.sheet {
+  position: fixed; inset: 0; z-index: 20;
+  display: flex; align-items: flex-end; justify-content: center;
+  background: rgba(22, 33, 26, .55);
+  padding: 0;
+}
+@media (min-width: 560px) {
+  .sheet { align-items: center; padding: 20px; }
+  .sheet-card { border-radius: 16px; max-width: 380px; }
+}
+.sheet-card {
+  position: relative; width: 100%; max-height: 92vh; overflow-y: auto;
+  background: #fff; border-radius: 18px 18px 0 0;
+  padding: 20px 20px 24px; display: grid; gap: 10px;
+}
+.sheet-x {
+  position: absolute; top: 10px; right: 10px;
+  width: 32px; height: 32px; cursor: pointer;
+  border: 0; border-radius: 50%; background: transparent;
+  font-size: 22px; line-height: 1; color: var(--muted);
+}
+.sheet-x:hover { background: var(--bg); color: var(--ink); }
+.sheet-title { margin: 0; padding-right: 34px; font-size: 17px; font-weight: 680; letter-spacing: -0.015em; }
+.sheet-why { margin: 0 0 4px; font-size: 13px; line-height: 1.5; color: var(--muted); }
+.sheet-note { margin: 2px 0 0; font-size: 12px; line-height: 1.45; color: var(--muted); }
+.sheet-note.warn { color: #a35b00; }
+.sheet-note.error { color: #b3261e; }
+.sheet-note.ok { color: var(--green-dark); font-weight: 550; }
+
+.sheet-or {
+  display: flex; align-items: center; gap: 10px;
+  color: var(--muted); font-size: 12px; margin: 2px 0;
+}
+.sheet-or::before, .sheet-or::after {
+  content: ''; flex: 1; height: 1px; background: var(--line);
+}
+
+/* A provider button carries its mark, because that is what people look for. */
+.provider {
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  width: 100%; padding: 11px 14px; cursor: pointer;
+  font: inherit; font-size: 14px; font-weight: 550; color: var(--ink);
+  background: #fff; border: 1px solid #cfd6d0; border-radius: 11px;
+}
+.provider:hover { background: var(--bg); border-color: #b6c0b8; }
+.provider svg { width: 18px; height: 18px; }
+
+#signin-email-form { display: grid; gap: 8px; }
+#signin-email {
+  width: 100%; padding: 11px 13px; font: inherit; font-size: 15px;
+  border: 1px solid var(--line); border-radius: 11px;
+}
+#signin-email-form .primary { width: 100%; margin: 0; }
+
+.creditline {
+  margin: 0; padding: 10px 13px; border-radius: 11px;
+  background: var(--bg); border: 1px solid var(--line);
+  font-size: 13.5px; font-weight: 550;
+}
+
 /* -------------------------------------------------------------- layout */
 .layout {
   display: flex;

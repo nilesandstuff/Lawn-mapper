@@ -89,6 +89,14 @@ jobs:
           # LOG_TOKEN as its reader -- one secret for one person is easier to
           # keep track of than two, and both hold the same kind of thing.
           FEEDBACK: ${{ vars.FEEDBACK }}
+          # Accounts. All optional: without them the site is what it was before
+          # accounts existed, which is a working site and not a broken one.
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          MAIL_FROM: ${{ vars.MAIL_FROM }}
+          ADMIN_EMAILS: ${{ vars.ADMIN_EMAILS }}
+          WELCOME_CREDITS: ${{ vars.WELCOME_CREDITS }}
         run: |
           printf '%s' "$MAPBOX_TOKEN"    | npx wrangler secret put MAPBOX_TOKEN
           printf '%s' "$REPLICATE_TOKEN" | npx wrangler secret put REPLICATE_TOKEN
@@ -152,6 +160,40 @@ jobs:
           else
             echo "No FEEDBACK variable; the app still asks, and the answer is"
             echo "discarded rather than stored. Set FEEDBACK=1 to keep them."
+          fi
+
+          # Accounts.
+          #
+          # Every one of these is optional and the site works without it -- the
+          # Worker treats a missing piece as "that door is not offered" rather
+          # than as a failure. Which is the only sane arrangement when the
+          # alternative is a measuring tool that will not load because nobody
+          # has registered an OAuth client yet.
+          for pair in \
+            "GOOGLE_CLIENT_ID:$GOOGLE_CLIENT_ID" \
+            "GOOGLE_CLIENT_SECRET:$GOOGLE_CLIENT_SECRET" \
+            "RESEND_API_KEY:$RESEND_API_KEY" \
+            "MAIL_FROM:$MAIL_FROM" \
+            "ADMIN_EMAILS:$ADMIN_EMAILS" \
+            "WELCOME_CREDITS:$WELCOME_CREDITS"
+          do
+            name="${pair%%:*}"
+            value="${pair#*:}"
+            if [ -n "$value" ]; then
+              printf '%s' "$value" | npx wrangler secret put "$name"
+              echo "Applied $name."
+            fi
+          done
+
+          if [ -z "$GOOGLE_CLIENT_ID" ] && [ -z "$RESEND_API_KEY" ]; then
+            echo "No sign-in method configured, so the account button stays hidden."
+            echo "  Google : set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET secrets,"
+            echo "           with redirect URI https://<your site>/api/auth/google/callback"
+            echo "  Email  : set the RESEND_API_KEY secret (resend.com, free tier)"
+          fi
+          if [ -z "$ADMIN_EMAILS" ]; then
+            echo "No ADMIN_EMAILS variable, so no account will be an administrator."
+            echo "Set it to your own address to get the console and unlimited detections."
           fi
 
           if [ -n "$LOG_TOKEN" ]; then

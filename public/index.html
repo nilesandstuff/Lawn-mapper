@@ -17,8 +17,65 @@
     <span class="brand-mark" aria-hidden="true"></span>
     <span>Lawn&nbsp;Mapper</span>
   </div>
-  <div id="quota-badge" class="quota" hidden></div>
+  <div class="topright">
+    <div id="quota-badge" class="quota" hidden></div>
+    <!--
+      One button with two jobs: "Sign in" when nobody is, and the account when
+      somebody is. Hidden entirely when the deployment has no account store,
+      because a button that cannot work is worse than one less button.
+    -->
+    <button class="account" id="account-btn" type="button" hidden>
+      <img class="account-face" id="account-face" alt="" hidden>
+      <span id="account-label">Sign in</span>
+    </button>
+  </div>
 </header>
+
+<!--
+  Signing in.
+
+  Over everything, because it is a decision that has to be finished before the
+  page underneath means anything different. Providers are listed from what the
+  Worker actually has keys for -- an offer to "continue with Google" that
+  cannot work is worse than no offer.
+-->
+<div class="sheet" id="signin" role="dialog" aria-modal="true" aria-labelledby="signin-title" hidden>
+  <div class="sheet-card">
+    <button class="sheet-x" id="signin-close" type="button" aria-label="Close">×</button>
+    <p class="sheet-title" id="signin-title">Keep your maps</p>
+    <p class="sheet-why">An account keeps your measurements across devices, so
+      the lawn you mapped on your phone is there on your laptop. It is also how
+      detection credits are held.</p>
+
+    <div id="signin-providers"></div>
+
+    <div class="sheet-or" id="signin-or" hidden><span>or</span></div>
+
+    <form id="signin-email-form" autocomplete="on" hidden>
+      <label class="sr-only" for="signin-email">Email address</label>
+      <input type="email" id="signin-email" name="email" required
+             autocomplete="email" inputmode="email" placeholder="you@example.com">
+      <button class="primary" type="submit" id="signin-send">Email me a link</button>
+    </form>
+
+    <p class="sheet-note" id="signin-note">No password. We send a link that
+      signs you in and expires in 20 minutes.</p>
+  </div>
+</div>
+
+<!-- The account menu, once there is one. -->
+<div class="sheet" id="account-sheet" role="dialog" aria-modal="true" hidden>
+  <div class="sheet-card">
+    <button class="sheet-x" id="account-close" type="button" aria-label="Close">×</button>
+    <p class="sheet-title" id="account-name">Your account</p>
+    <p class="sheet-why" id="account-email"></p>
+    <p class="creditline" id="account-credits"></p>
+    <div class="tools">
+      <button class="ghost" id="account-admin" type="button" hidden>Admin console</button>
+      <button class="ghost" id="account-signout" type="button">Sign out</button>
+    </div>
+  </div>
+</div>
 
 <div class="layout">
   <aside class="panel" id="panel">

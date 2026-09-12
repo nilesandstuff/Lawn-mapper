@@ -27,6 +27,8 @@ import { pathToFileURL } from 'node:url';
 
 const CONFIG = new URL('../wrangler.toml', import.meta.url);
 const PLACEHOLDER = 'REPLACE_WITH_KV_NAMESPACE_ID';
+const DB_PLACEHOLDER = 'REPLACE_WITH_D1_DATABASE_ID';
+const DB_NAME = 'lawn-mapper';
 
 /* ------------------------------------------------------- pure helpers */
 
@@ -64,11 +66,56 @@ export function parseCreatedId(stdout) {
   );
 }
 
-/** Substitute the KV id and, if asked, append a custom-domain route. */
-export function applyConfig(toml, { kvId, customDomain } = {}) {
+/**
+ * Pull the databases out of `wrangler d1 list --json`, tolerating the banners
+ * wrangler interleaves with them -- same reasoning as the namespace list.
+ */
+export function parseDatabaseList(stdout) {
+  const start = stdout.indexOf('[');
+  const end = stdout.lastIndexOf(']');
+  if (start < 0 || end <= start) return [];
+  try {
+    const parsed = JSON.parse(stdout.slice(start, end + 1));
+    return Array.isArray(parsed) ? parsed.filter((d) => d && (d.uuid || d.id)) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Ours, by name. Wrangler reports the id as `uuid` in some versions, `id` in others. */
+export function pickDatabase(list, name = DB_NAME) {
+  const found = list.find((d) => String(d.name || '').toLowerCase() === name);
+  return found ? { name: found.name, id: found.uuid || found.id } : null;
+}
+
+/** Read the id out of `wrangler d1 create` output, whatever shape it took. */
+export function parseCreatedDatabaseId(stdout) {
+  return (
+    stdout.match(/database_id\s*=\s*"([0-9a-f-]{36})"/i)?.[1] ||
+    stdout.match(/"uuid"\s*:\s*"([0-9a-f-]{36})"/i)?.[1] ||
+    stdout.match(/\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i)?.[1] ||
+    null
+  );
+}
+
+/** Substitute the ids and, if asked, append a custom-domain route. */
+export function applyConfig(toml, { kvId, dbId, customDomain } = {}) {
   let out = toml;
 
   if (kvId) out = out.split(PLACEHOLDER).join(kvId);
+
+  /*
+   * NO DATABASE MEANS NO BINDING, not a binding with a placeholder in it.
+   *
+   * Leaving "REPLACE_WITH_D1_DATABASE_ID" in the file does not deploy an app
+   * without accounts -- it fails the deploy with "database not found", which
+   * turns an optional feature nobody set up into a site that is down. Removing
+   * the block is what actually produces the app as it was before accounts
+   * existed, which is the behaviour the Worker is written for.
+   */
+  out = dbId
+    ? out.split(DB_PLACEHOLDER).join(dbId)
+    : out.replace(/\n\[\[d1_databases\]\][\s\S]*?(?=\n\[|\n#|$)/, '\n');
 
   if (customDomain) {
     // Only the commented example should be present; a real one means someone
@@ -123,19 +170,95 @@ function resolveKvId() {
   return id;
 }
 
+/**
+ * The accounts database, or null.
+ *
+ * NULL IS A REAL ANSWER. A deployment whose API token cannot create a D1
+ * database, or that simply does not want accounts, should still deploy -- the
+ * Worker reads a missing binding as "signed out, always" and the site is what
+ * it was before accounts existed. Failing the whole deploy over an optional
+ * feature would be the wrong trade, so every path here returns rather than
+ * throws, and says what it decided.
+ */
+function resolveDbId() {
+  if (process.env.D1_DATABASE_ID) {
+    console.log('Using D1 database id from the D1_DATABASE_ID variable.');
+    return process.env.D1_DATABASE_ID.trim();
+  }
+
+  console.log(`Looking for the "${DB_NAME}" D1 database…`);
+  let existing = null;
+  try {
+    existing = pickDatabase(parseDatabaseList(wrangler(['d1', 'list', '--json'])));
+  } catch (err) {
+    console.log(`  could not list databases (${firstLine(err)})`);
+  }
+  if (existing) {
+    console.log(`  found -> ${existing.id}`);
+    return existing.id;
+  }
+
+  console.log('  none found; creating one…');
+  try {
+    const id = parseCreatedDatabaseId(wrangler(['d1', 'create', DB_NAME]));
+    if (!id) {
+      console.log('  created, but could not read the id from wrangler output.');
+      return null;
+    }
+    console.log(`  created -> ${id}`);
+    return id;
+  } catch (err) {
+    console.log(`  could not create one (${firstLine(err)})`);
+    console.log('  accounts will be OFF; the site deploys and works without them.');
+    return null;
+  }
+}
+
+/**
+ * Apply the schema.
+ *
+ * Every statement in it is IF NOT EXISTS, so this runs on every deploy and new
+ * tables simply appear. A numbered-migration scheme buys ordering guarantees
+ * this does not need yet and costs a step that has to be got right from a
+ * phone.
+ */
+function migrate() {
+  try {
+    wrangler(['d1', 'execute', DB_NAME, '--remote', '--file=worker/schema.sql', '--yes']);
+    console.log('  schema applied.');
+    return true;
+  } catch (err) {
+    console.log(`  schema FAILED (${firstLine(err)})`);
+    return false;
+  }
+}
+
 const firstLine = (err) =>
   String(err.stderr || err.message || err).trim().split('\n')[0].slice(0, 160);
 
 function main() {
   try {
     const kvId = resolveKvId();
+    const dbId = resolveDbId();
     const customDomain = (process.env.CUSTOM_DOMAIN || '').trim() || null;
 
-    const updated = applyConfig(readFileSync(CONFIG, 'utf8'), { kvId, customDomain });
+    const updated = applyConfig(readFileSync(CONFIG, 'utf8'), { kvId, dbId, customDomain });
     writeFileSync(CONFIG, updated);
+
+    /*
+     * The schema runs AFTER the id is in the file, because wrangler resolves
+     * the database from the config it is pointed at. Running it first finds
+     * a placeholder and fails in a way that reads like a missing database.
+     */
+    let schema = false;
+    if (dbId) {
+      console.log('Applying the account schema…');
+      schema = migrate();
+    }
 
     console.log(`\nwrangler.toml prepared:`);
     console.log(`  KV namespace : ${kvId}`);
+    console.log(`  D1 database  : ${dbId ? `${dbId}${schema ? '' : ' (schema NOT applied)'}` : '(none -- accounts are off)'}`);
     console.log(`  custom domain: ${customDomain || '(none -- will deploy to *.workers.dev)'}`);
   } catch (err) {
     console.error(`\nFAIL  ${firstLine(err)}\n`);

@@ -41,6 +41,8 @@ import { checkQuota, consumeQuota, refundQuota } from './quota.js';
 import { upstreamReason } from './upstream.js';
 import { logMeasurement, readLog, loggingEnabled, recordLater } from './testlog.js';
 import { recordFeedback, readFeedback, feedbackEnabled } from './feedback.js';
+import { handleAuth, isAuthPath } from './routes-auth.js';
+import { accountsEnabled } from './db.js';
 // Constants and the version lookup live in their own module: a Workers
 // entrypoint may only export handlers, and exporting a plain constant from
 // here kills the isolate on startup.
@@ -71,6 +73,20 @@ const ALLOWED_ORIGINS = [
   'http://127.0.0.1:8787',
 ];
 
+/*
+ * NO Access-Control-Allow-Credentials, deliberately.
+ *
+ * The app and this API are served by the same Worker on the same origin, so
+ * the session cookie travels without CORS being involved at all. Allowing
+ * credentials cross-origin would buy nothing and would make the allowlist
+ * above load-bearing for account security rather than for convenience -- one
+ * wrong entry, or one wildcard added in a hurry, and another site could spend
+ * somebody's credits with their own cookie.
+ *
+ * It is also what lets SameSite=Lax stand in for a CSRF token: a cross-site
+ * request either carries no cookie (Lax) or is refused for want of credentials
+ * (here), and a form on another site can do neither.
+ */
 function cors(origin) {
   const allow = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
   return {
@@ -770,6 +786,19 @@ export default {
     }
 
     try {
+      /*
+       * Sign-in first, and outside the switch.
+       *
+       * These are the only routes that answer with a redirect and a cookie
+       * rather than JSON, and the only ones reached by following a link from
+       * somewhere else -- Google, or a mail client. Their paths are also
+       * patterned (`/api/auth/<provider>/callback`) rather than fixed, which a
+       * switch cannot express. See routes-auth.js.
+       */
+      if (isAuthPath(url.pathname)) {
+        return await handleAuth(request, env, url, origin, ctx, json);
+      }
+
       switch (url.pathname) {
         // The Mapbox token is a pk.* key -- public by design; Mapbox expects
         // it in client code and rate-limits it by URL referrer. Serving it
@@ -790,6 +819,11 @@ export default {
               // and the Worker runs the prompts, so one list, sent once.
               exclusions: exclusionCatalogue(),
               defaultExclusions: DEFAULT_EXCLUSIONS,
+              // Whether this deployment has an account store at all. Without
+              // one the app is what it was before accounts existed, and the
+              // browser needs to know that rather than offering a sign-in
+              // button that cannot work.
+              accounts: accountsEnabled(env),
             },
             200,
             origin

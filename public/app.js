@@ -83,6 +83,14 @@ const state = {
 
   tab: 'address',     // which step's tools are on screen -- see setTab
   handEdited: false,  // has the lawn been corrected by hand since it appeared?
+
+  // Accounts. `accountsOn` is what the deployment supports; `user` is who is
+  // signed in, which is null far more often than not and must never be a
+  // precondition for measuring a lawn.
+  accountsOn: false,
+  user: null,
+  providers: [],      // the sign-in doors this deployment has keys for
+  emailSignin: false, // ...and whether it can send a link
 };
 
 /**
@@ -694,8 +702,9 @@ async function initMap() {
   }
 
   const {
-    mapboxToken, imagery, models, exclusions, defaultExclusions,
+    mapboxToken, imagery, models, exclusions, defaultExclusions, accounts,
   } = await api('/api/config');
+  state.accountsOn = Boolean(accounts);
   state.imagery = Array.isArray(imagery) ? imagery : [];
   state.models = Array.isArray(models) ? models : [];
   state.exclusions = Array.isArray(exclusions) ? exclusions : [];
@@ -3379,6 +3388,150 @@ const PARCEL_ID = '__parcel__';
 
 /** Draw's mode when shapes must not be draggable. Registered in initMap. */
 const LOCKED_MODE = 'lm_locked';
+
+/* ------------------------------------------------------------- account */
+/*
+ * SIGNING IN IS OPTIONAL, AND STAYS OPTIONAL.
+ *
+ * The app worked before accounts existed and still does: measure, correct,
+ * keep it in this browser. An account adds one thing -- the maps follow the
+ * person rather than the device -- and later it is where detection credits
+ * live. Nothing here may become a wall in front of measuring a lawn, so every
+ * failure lands on "signed out" rather than on an error page, and a deployment
+ * with no account store simply does not show the button.
+ *
+ * The email address is the identity and a provider is a door to it, which is
+ * why a magic link and Google reach the same account. See worker/src/auth.js.
+ */
+const MARKS = {
+  /* Google's own mark, because a plain button is one people do not trust. */
+  google: `<svg viewBox="0 0 18 18" aria-hidden="true">
+    <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"/>
+    <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"/>
+    <path fill="#FBBC05" d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33z"/>
+    <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.46 3.44 1.35l2.58-2.58C13.46.89 11.42 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/>
+  </svg>`,
+};
+
+/** What went wrong at the provider, in words rather than in a code. */
+const SIGNIN_ERRORS = {
+  declined: 'You cancelled that sign-in. Nothing has changed.',
+  expired: 'That sign-in took too long, or the link had already been used. Try again.',
+  'unverified-email': 'That account has no verified email address, so we cannot '
+    + 'use it to sign you in — an unverified address would let somebody else '
+    + 'claim your maps. Use an email link instead.',
+  'exchange-failed': 'The provider would not complete the sign-in. Try again.',
+  'no-identity': 'The provider did not send an identity we could read.',
+  'provider-not-configured': 'That way of signing in is not set up on this site.',
+  incomplete: 'That sign-in came back incomplete. Try again.',
+  'unknown-provider': 'That way of signing in is not one this site offers.',
+};
+
+function openSheet(id) {
+  $(id).hidden = false;
+  // The first thing a keyboard lands on should be inside the dialog, not
+  // behind it -- otherwise tabbing walks the page underneath.
+  $(id).querySelector('input, button:not(.sheet-x)')?.focus({ preventScroll: true });
+}
+const closeSheet = (id) => { $(id).hidden = true; };
+
+function renderAccountButton() {
+  const btn = $('#account-btn');
+  if (!btn) return;
+  btn.hidden = !state.accountsOn;
+
+  const me = state.user;
+  const face = $('#account-face');
+  face.hidden = !me?.picture;
+  if (me?.picture) face.src = me.picture;
+
+  // The first part of the address rather than the whole of it: a topbar is not
+  // where a long email belongs, and the name is what people recognise anyway.
+  $('#account-label').textContent = me
+    ? (me.name || me.email.split('@')[0])
+    : 'Sign in';
+}
+
+function renderAccountSheet() {
+  const me = state.user;
+  if (!me) return;
+  $('#account-name').textContent = me.name || 'Your account';
+  $('#account-email').textContent = me.email;
+  $('#account-credits').textContent = me.unlimited
+    ? 'Unlimited detections'
+    : `${Number(me.credits || 0).toLocaleString()} detection credit`
+      + `${me.credits === 1 ? '' : 's'} left`;
+  $('#account-admin').hidden = !me.admin;
+}
+
+function renderSigninOptions() {
+  const box = $('#signin-providers');
+  box.innerHTML = '';
+
+  for (const p of state.providers) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'provider';
+    btn.innerHTML = MARKS[p.id] || '';
+    btn.append(document.createTextNode(`Continue with ${p.label}`));
+    /*
+     * A NAVIGATION, NOT A FETCH. The provider answers with a page of its own
+     * that the person has to see and interact with, so the browser has to go
+     * there. `next` brings them back to where they were rather than to the
+     * front page with their address search lost.
+     */
+    btn.addEventListener('click', () => {
+      location.href = `/api/auth/${p.id}?next=${encodeURIComponent(location.pathname)}`;
+    });
+    box.append(btn);
+  }
+
+  $('#signin-email-form').hidden = !state.emailSignin;
+  $('#signin-or').hidden = !(state.providers.length && state.emailSignin);
+
+  if (!state.providers.length && !state.emailSignin) {
+    $('#signin-note').textContent = 'This site has no way to sign in configured yet.';
+    $('#signin-note').className = 'sheet-note warn';
+  }
+}
+
+/** Ask who is signed in. Never throws: not knowing means signed out. */
+async function refreshAccount() {
+  if (!state.accountsOn) return;
+  try {
+    const me = await api('/api/auth/me');
+    state.user = me.user || null;
+    state.providers = Array.isArray(me.providers) ? me.providers : [];
+    state.emailSignin = Boolean(me.email);
+  } catch {
+    state.user = null;
+  }
+  renderAccountButton();
+}
+
+/**
+ * Read the outcome of a sign-in out of the URL, then take it back out.
+ *
+ * The Worker lands the browser on a fragment rather than a query string so
+ * that the outcome is not left in history, is never sent to the server, and
+ * cannot be bookmarked into a page that permanently claims you just signed in.
+ * Clearing it with replaceState means a refresh does not say it twice.
+ */
+function readSigninOutcome() {
+  const raw = location.hash.slice(1);
+  if (!raw) return;
+
+  const error = raw.startsWith('signin-error=') ? raw.slice('signin-error='.length) : null;
+  if (raw !== 'signed-in' && !error) return;
+
+  history.replaceState(null, '', location.pathname + location.search);
+
+  if (error) {
+    setStatus(SIGNIN_ERRORS[error] || 'That sign-in did not complete.', 'warn');
+    return;
+  }
+  setStatus('Signed in. Your saved maps now follow you between devices.');
+}
 
 /* --------------------------------------------------------------- saves */
 /*
@@ -6121,8 +6274,84 @@ window.addEventListener('hashchange', () => {
   }
 });
 
+/* ---------------------------------------------------- the account, wired */
+$('#account-btn').addEventListener('click', () => {
+  if (state.user) {
+    renderAccountSheet();
+    openSheet('#account-sheet');
+  } else {
+    $('#signin-note').textContent = 'No password. We send a link that signs you '
+      + 'in and expires in 20 minutes.';
+    $('#signin-note').className = 'sheet-note';
+    renderSigninOptions();
+    openSheet('#signin');
+  }
+});
+
+$('#signin-close').addEventListener('click', () => closeSheet('#signin'));
+$('#account-close').addEventListener('click', () => closeSheet('#account-sheet'));
+
+/* Tapping the darkened area behind a sheet closes it, which is what everyone
+ * tries first. The test is on the target itself, so a press inside the card
+ * does not count as a press outside it. */
+for (const id of ['#signin', '#account-sheet']) {
+  $(id).addEventListener('click', (e) => { if (e.target === $(id)) closeSheet(id); });
+}
+window.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  closeSheet('#signin');
+  closeSheet('#account-sheet');
+});
+
+$('#signin-email-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const note = $('#signin-note');
+  const button = $('#signin-send');
+  const email = $('#signin-email').value.trim();
+
+  button.disabled = true;
+  note.textContent = 'Sending…';
+  note.className = 'sheet-note';
+
+  try {
+    await api('/api/auth/email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, next: location.pathname }),
+    });
+    /*
+     * THE SAME ANSWER WHETHER OR NOT AN ACCOUNT EXISTED. The link makes one if
+     * it has to, so there is nothing to disclose -- and a form that said "no
+     * such account" would be a way to ask the site which of your friends have
+     * signed up, one address at a time.
+     */
+    note.textContent = `Check ${email}. The link works once and expires in 20 minutes.`;
+    note.className = 'sheet-note ok';
+  } catch (err) {
+    note.textContent = err.body?.message || 'That did not send. Try again in a moment.';
+    note.className = 'sheet-note error';
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$('#account-signout').addEventListener('click', async () => {
+  try { await api('/api/auth/signout', { method: 'POST' }); } catch { /* going anyway */ }
+  state.user = null;
+  renderAccountButton();
+  closeSheet('#account-sheet');
+  setStatus('Signed out. Maps you measure now stay in this browser.');
+});
+
+$('#account-admin').addEventListener('click', () => { location.href = '/admin.html'; });
+
 initMap()
   .then(refreshQuota)
+  // After the map, because /api/config is what says whether this deployment
+  // has accounts at all -- and before nothing, because a signed-out visitor is
+  // the normal case and must not wait on it.
+  .then(refreshAccount)
+  .then(readSigninOutcome)
   .catch((err) => {
     console.error(err);
     fatal(`${err.message}. Reloading the page usually clears this.`);
