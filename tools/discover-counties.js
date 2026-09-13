@@ -157,6 +157,25 @@ const CANDIDATE_ROOTS = {
    * SEMCOG is the regional planning agency for the seven-county Detroit area
    * and republishes member data, which is the same shape as NC OneMap: one
    * layer standing in for many assessors.
+   *
+   * WHAT THE SEARCH ACTUALLY FOUND, so the next person does not repeat it:
+   *
+   *   gis/services.waynecounty.com   HTTP 406 -- a server is there and it
+   *                                  refuses the request outright
+   *   maps/gisapps.waynecounty.com   does not resolve
+   *   gis/gisportal.detroitmi.gov    does not resolve
+   *   maps.semcog.org                answers, publishes ONE service, and it
+   *                                  is not parcels
+   *   gis.semcog.org                 HTTP 401 -- exists, requires a token
+   *
+   * The 406 and the 401 are the interesting ones: both are servers that are
+   * running and have decided not to talk to us, which is different from a
+   * county that has no GIS. Wayne's parcels exist; they are not published
+   * anonymously at any name worth guessing.
+   *
+   * The ArcGIS Online catalogue returns only private extracts for Wayne -- one
+   * person's flood study, somebody's "sample" of Livonia -- which is what
+   * hardened the match test rather than what got added.
    */
   wayne: [
     'https://gis.waynecounty.com/arcgis/rest/services',
