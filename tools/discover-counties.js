@@ -56,6 +56,7 @@ const PLAUSIBLE_ACRES = { min: 0.01, max: 160 };
 const STATES = {
   washoe: 'Nevada',
   vanderburgh: 'Indiana',
+  indiana: 'Indiana',
   northcarolina: 'North Carolina',
   champaign: 'Illinois',
   // Named although Michigan is the fallback, because a reader checking why
@@ -79,6 +80,26 @@ const CANDIDATE_ROOTS = {
     'https://services.nconemap.gov/secure/rest/services',
     'https://services.nconemap.gov/arcgis/rest/services',
     'https://nconemap.gov/arcgis/rest/services',
+  ],
+
+  /*
+   * Indiana, statewide, from IndianaMap.
+   *
+   * Not a guess. The catalogue search run for Vanderburgh County came back
+   * with "Parcel Boundaries of Indiana Current", published by IndianaMap on
+   * the state's own host, and it answered three of the five Evansville points
+   * with Evansville lots. The schema is the giveaway that it is not an
+   * Evansville layer at all: `county_fips`, `county_id`, `dlgf_prop_class_code`
+   * -- DLGF is the state's Department of Local Government Finance, which
+   * collects assessment records from all 92 counties.
+   *
+   * So this is listed as its own statewide key rather than filed under
+   * Vanderburgh, and it gets test points in six counties across the state,
+   * because "it works in Evansville" is not evidence for the other 91.
+   */
+  indiana: [
+    'https://gisdata.in.gov/server/rest/services',
+    'https://gisdata.in.gov/arcgis/rest/services',
   ],
 
   /*
@@ -325,13 +346,28 @@ async function resolveItem(ref) {
   if (meta.error) return { error: describe(meta.error) };
   if (!meta.url) return { error: `item "${meta.title || found.id}" publishes no service URL` };
 
-  return {
-    url: String(meta.url).replace(/\/$/, ''),
-    title: meta.title,
-    owner: meta.owner,
-    type: meta.type,
-    layer: found.layer,
-  };
+  /*
+   * AN ITEM'S URL IS SOMETIMES A LAYER, NOT A SERVICE.
+   *
+   * Evansville's item -- the one link this whole list was built to accept --
+   * publishes ".../PROPERTY_BOUNDARIES/MapServer/0". Everything downstream
+   * appends its own layer index, so that became ".../MapServer/0/0/query" and
+   * the server answered "Invalid or missing input parameters": a link a person
+   * handed over, resolved correctly, failing on a slash.
+   *
+   * The trailing number is the layer the item points at, which is better
+   * information than the layer scan that would otherwise run -- so it is kept
+   * as a hint rather than discarded.
+   */
+  let url = String(meta.url).replace(/\/+$/, '');
+  let layer = found.layer;
+  const asLayer = url.match(/^(.*\/(?:Map|Feature)Server)\/(\d+)$/i);
+  if (asLayer) {
+    url = asLayer[1];
+    if (layer === null) layer = Number(asLayer[2]);
+  }
+
+  return { url, title: meta.title, owner: meta.owner, type: meta.type, layer };
 }
 
 const PARCEL_NAME = /parcel|propert|cadastr|landbase|tax.?map|assessor/i;
@@ -386,8 +422,22 @@ function nameScore(fullName) {
  */
 const PIN_EXACT = /^(pin|parcelid|parcel_id|parcelno|parcel_no|parcelnum|parcelnumber|pnum|apn|pid|finalpin|mapping_?id|parno|altparno)$/i;
 const PIN_LOOSE = /(parcel.*(id|no|num)|^pin$|packedpin)/i;
-const ADDR_EXACT = /^(propertyaddress|property_address_combined|siteaddress|site_address|siteadd|fulladdress|full_address|address|situs_address)$/i;
-const ADDR_LOOSE = /(addr.*combined|full.?addr|site.?addr|situs)/i;
+/*
+ * `prop_add` and `dlgf_prop_address` are Indiana's, and they are here for the
+ * same reason `siteadd` and `parno` are: the tool found a layer carrying a
+ * perfectly good street address and reported "address field: (none found)",
+ * which reads as a layer with no addresses on it. Every state's parcel schema
+ * abbreviates differently, so this list grows one state at a time rather than
+ * by imagining what a name might be.
+ *
+ * The Indiana layer carries BOTH, plus `dlgf_prop_address_city`, `_state` and
+ * `_zip`. Two separate things keep those three out: the loose pattern is
+ * anchored at the end, so a name with a piece tacked on never matches it, and
+ * ADDR_FRAGMENT below rejects them again by that suffix. Checked against the
+ * layer's real field list, not assumed.
+ */
+const ADDR_EXACT = /^(propertyaddress|property_address_combined|siteaddress|site_address|siteadd|fulladdress|full_address|address|situs_address|prop_add|prop_address|propadd|dlgf_prop_address)$/i;
+const ADDR_LOOSE = /(addr.*combined|full.?addr|site.?addr|situs|prop.?addr?e?s?s?$)/i;
 
 /** Reject fields that are clearly a fragment rather than the whole value. */
 const ADDR_FRAGMENT = /(num|number|dir|direction|city|state|zip|country|unit|apt)$/i;
@@ -545,8 +595,15 @@ function summarise(attrs) {
   };
 }
 
-/** Test every plausible layer of one service. Returns true on a match. */
-async function tryService(key, serviceUrl, label, points) {
+/**
+ * Test every plausible layer of one service. Returns true on a match.
+ *
+ * `hint` is a layer index somebody's link already named. When it is given, that
+ * layer is tried first and on its own: a person pointing at a dataset has said
+ * which layer holds the parcels, and guessing past them would only find a
+ * different answer than the one they asked about.
+ */
+async function tryService(key, serviceUrl, label, points, hint = null) {
   const meta = await getJson(`${serviceUrl}?f=json`);
   if (meta.error) {
     console.log(`      x ${label} -- ${describe(meta.error)}`);
@@ -560,6 +617,12 @@ async function tryService(key, serviceUrl, label, points) {
     return false;
   }
 
+  const pointedAt = hint === null ? null : layers.find((l) => l.id === hint);
+  if (pointedAt) {
+    console.log(`      -> ${label}: layer ${hint} ("${pointedAt.name}"), named by the link`);
+    return probeLayer(key, serviceUrl, pointedAt, points);
+  }
+
   const usable = layers.filter((l) => !ARCHIVE_NAME.test(l.name));
   const named = usable.filter((l) => PARCEL_NAME.test(l.name));
   const tryThese = (named.length ? named : usable).slice(0, MAX_LAYERS_PER_SERVICE);
@@ -571,113 +634,124 @@ async function tryService(key, serviceUrl, label, points) {
   );
 
   for (const layer of tryThese) {
-    /*
-     * EVERY POINT, NOT THE FIRST ONE THAT ANSWERS.
-     *
-     * This used to return on the first hit and print a ready-to-paste block
-     * claiming `verified: 'live'`. Searching Wayne County it hit a layer named
-     * "Wayne_County_Parcels_Affected1" -- one private individual's flood study
-     * of the River Rouge, published to their personal ArcGIS Online account --
-     * matched a single point at 37 acres, found no pin or address field, and
-     * printed a config block with the literal string 'null' in it.
-     *
-     * Four of the five points had returned nothing. The evidence for that
-     * recommendation was one oversized polygon from a stranger's coursework,
-     * and the tool presented it in the same words it uses for Kent.
-     *
-     * So: all the points are tried, the hits are counted, and the verdict says
-     * how much of the county actually answered. A layer that names fields and
-     * answers in several towns is a county parcel layer. One that answers in a
-     * single spot with no identifiers is a subset of something, and the paste
-     * block says so instead of lying.
-     */
-    const hits = [];
-    let rejected = null;
-
-    for (const point of points) {
-      const result = await queryLayer(serviceUrl, layer.id, point);
-
-      if (result.error) {
-        console.log(`         [${layer.id}] ${layer.name} @${point.label}: ${describe(result.error)}`);
-        rejected = 'the layer refuses queries';
-        break; // a rejected query will be rejected for every point
-      }
-      if (!result.features?.length) {
-        console.log(`         [${layer.id}] ${layer.name} @${point.label}: 0 features`);
-        continue;
-      }
-
-      const feature = result.features[0];
-      const geometry = esriToGeoJSON(feature.geometry);
-      if (!geometry) {
-        console.log(`         [${layer.id}] ${layer.name} @${point.label}: no usable geometry`);
-        continue;
-      }
-
-      const area = measure(geometry);
-      if (area.acres < PLAUSIBLE_ACRES.min || area.acres > PLAUSIBLE_ACRES.max) {
-        console.log(`         [${layer.id}] ${layer.name} @${point.label}: ${area.acres} ac -- not parcel-sized`);
-        continue;
-      }
-
-      console.log(`         [${layer.id}] ${layer.name} @${point.label}: ${area.acres} ac`);
-      hits.push({ point, feature, area });
-    }
-
-    if (rejected || !hits.length) continue;
-
-    const f = summarise(hits[0].feature.attributes || {});
-
-    /*
-     * What would make this trustworthy, stated as the two things a county
-     * parcel layer has and a one-off extract does not.
-     */
-    const doubts = [];
-    if (!f.pin && !f.address) {
-      doubts.push('no parcel id or address field -- nothing to label a lot with');
-    }
-    if (points.length > 1 && hits.length < 2) {
-      doubts.push(`only ${hits.length} of ${points.length} test points returned a parcel`);
-    }
-    /*
-     * A residential point that comes back as tens of acres is not this lot. It
-     * passes PLAUSIBLE_ACRES because that bound has to allow real rural
-     * parcels, so the median is checked separately against a suburban size.
-     */
-    const median = [...hits].sort((a, b) => a.area.acres - b.area.acres)[Math.floor(hits.length / 2)];
-    if (median.area.acres > 25) {
-      doubts.push(`typical result is ${median.area.acres} ac, far too big for the residential points aimed at`);
-    }
-
-    console.log(`\n         ${doubts.length ? '--- CANDIDATE (not trusted) ---' : '*** MATCH ***'}`);
-    console.log(`         [${layer.id}] ${layer.name}`);
-    console.log(`         ${hits.length} of ${points.length} points answered; typical ${median.area.acres} ac`);
-    console.log(`         pin field:     ${f.pin || '(none found)'}`);
-    console.log(`         address field: ${f.address || '(none found)'}`);
-
-    if (doubts.length) {
-      console.log(`\n         NOT recommended, because:`);
-      for (const d of doubts) console.log(`           - ${d}`);
-      console.log(`         Service: ${serviceUrl} layer ${layer.id}`);
-      console.log(`         all fields: ${f.names.slice(0, 30).join(', ')}\n`);
-      continue;   // keep looking; something better may be further down the list
-    }
-
-    console.log(`\n         Paste into worker/src/counties.js:`);
-    console.log(`           ${key}: {`);
-    console.log(`             name: '${COUNTIES[key]?.name || key}',`);
-    console.log(`             fips: '${COUNTIES[key]?.fips || ''}',`);
-    console.log(`             service: '${serviceUrl}',`);
-    console.log(`             layer: ${layer.id},`);
-    const fieldBits = [f.pin ? `pin: '${f.pin}'` : null, f.address ? `address: '${f.address}'` : null]
-      .filter(Boolean).join(', ');
-    console.log(`             fields: { ${fieldBits} },`);
-    console.log(`             verified: 'live', // ${median.area.acres} ac at ${median.point.label}`);
-    console.log(`           },`);
-    console.log(`         all fields: ${f.names.slice(0, 30).join(', ')}\n`);
-    return true;
+    if (await probeLayer(key, serviceUrl, layer, points)) return true;
   }
   return false;
+}
+
+/**
+ * Query one layer at every test point and decide what it is.
+ *
+ * Split out of tryService so a layer somebody's link named can be tested
+ * directly, without the layer scan that exists for services nobody has
+ * pointed at.
+ */
+async function probeLayer(key, serviceUrl, layer, points) {
+  /*
+   * EVERY POINT, NOT THE FIRST ONE THAT ANSWERS.
+   *
+   * This used to return on the first hit and print a ready-to-paste block
+   * claiming `verified: 'live'`. Searching Wayne County it hit a layer named
+   * "Wayne_County_Parcels_Affected1" -- one private individual's flood study
+   * of the River Rouge, published to their personal ArcGIS Online account --
+   * matched a single point at 37 acres, found no pin or address field, and
+   * printed a config block with the literal string 'null' in it.
+   *
+   * Four of the five points had returned nothing. The evidence for that
+   * recommendation was one oversized polygon from a stranger's coursework,
+   * and the tool presented it in the same words it uses for Kent.
+   *
+   * So: all the points are tried, the hits are counted, and the verdict says
+   * how much of the county actually answered. A layer that names fields and
+   * answers in several towns is a county parcel layer. One that answers in a
+   * single spot with no identifiers is a subset of something, and the paste
+   * block says so instead of lying.
+   */
+  const hits = [];
+  let rejected = null;
+
+  for (const point of points) {
+    const result = await queryLayer(serviceUrl, layer.id, point);
+
+    if (result.error) {
+      console.log(`         [${layer.id}] ${layer.name} @${point.label}: ${describe(result.error)}`);
+      rejected = 'the layer refuses queries';
+      break; // a rejected query will be rejected for every point
+    }
+    if (!result.features?.length) {
+      console.log(`         [${layer.id}] ${layer.name} @${point.label}: 0 features`);
+      continue;
+    }
+
+    const feature = result.features[0];
+    const geometry = esriToGeoJSON(feature.geometry);
+    if (!geometry) {
+      console.log(`         [${layer.id}] ${layer.name} @${point.label}: no usable geometry`);
+      continue;
+    }
+
+    const area = measure(geometry);
+    if (area.acres < PLAUSIBLE_ACRES.min || area.acres > PLAUSIBLE_ACRES.max) {
+      console.log(`         [${layer.id}] ${layer.name} @${point.label}: ${area.acres} ac -- not parcel-sized`);
+      continue;
+    }
+
+    console.log(`         [${layer.id}] ${layer.name} @${point.label}: ${area.acres} ac`);
+    hits.push({ point, feature, area });
+  }
+
+  if (rejected || !hits.length) return false;
+
+  const f = summarise(hits[0].feature.attributes || {});
+
+  /*
+   * What would make this trustworthy, stated as the two things a county
+   * parcel layer has and a one-off extract does not.
+   */
+  const doubts = [];
+  if (!f.pin && !f.address) {
+    doubts.push('no parcel id or address field -- nothing to label a lot with');
+  }
+  if (points.length > 1 && hits.length < 2) {
+    doubts.push(`only ${hits.length} of ${points.length} test points returned a parcel`);
+  }
+  /*
+   * A residential point that comes back as tens of acres is not this lot. It
+   * passes PLAUSIBLE_ACRES because that bound has to allow real rural
+   * parcels, so the median is checked separately against a suburban size.
+   */
+  const median = [...hits].sort((a, b) => a.area.acres - b.area.acres)[Math.floor(hits.length / 2)];
+  if (median.area.acres > 25) {
+    doubts.push(`typical result is ${median.area.acres} ac, far too big for the residential points aimed at`);
+  }
+
+  console.log(`\n         ${doubts.length ? '--- CANDIDATE (not trusted) ---' : '*** MATCH ***'}`);
+  console.log(`         [${layer.id}] ${layer.name}`);
+  console.log(`         ${hits.length} of ${points.length} points answered; typical ${median.area.acres} ac`);
+  console.log(`         pin field:     ${f.pin || '(none found)'}`);
+  console.log(`         address field: ${f.address || '(none found)'}`);
+
+  if (doubts.length) {
+    console.log(`\n         NOT recommended, because:`);
+    for (const d of doubts) console.log(`           - ${d}`);
+    console.log(`         Service: ${serviceUrl} layer ${layer.id}`);
+    console.log(`         all fields: ${f.names.slice(0, 30).join(', ')}\n`);
+    return false;   // keep looking; something better may be further down the list
+  }
+
+  console.log(`\n         Paste into worker/src/counties.js:`);
+  console.log(`           ${key}: {`);
+  console.log(`             name: '${COUNTIES[key]?.name || key}',`);
+  console.log(`             fips: '${COUNTIES[key]?.fips || ''}',`);
+  console.log(`             service: '${serviceUrl}',`);
+  console.log(`             layer: ${layer.id},`);
+  const fieldBits = [f.pin ? `pin: '${f.pin}'` : null, f.address ? `address: '${f.address}'` : null]
+    .filter(Boolean).join(', ');
+  console.log(`             fields: { ${fieldBits} },`);
+  console.log(`             verified: 'live', // ${median.area.acres} ac at ${median.point.label}`);
+  console.log(`           },`);
+  console.log(`         all fields: ${f.names.slice(0, 30).join(', ')}\n`);
+  return true;
 }
 
 async function investigate(key) {
@@ -702,7 +776,7 @@ async function investigate(key) {
     }
     console.log(`  ✓ item "${item.title}" [${item.owner}] -- ${item.type}`);
     console.log(`      ${item.url}`);
-    if (await tryService(key, item.url, item.title, points)) return true;
+    if (await tryService(key, item.url, item.title, points, item.layer)) return true;
   }
 
   for (const root of CANDIDATE_ROOTS[key] || []) {

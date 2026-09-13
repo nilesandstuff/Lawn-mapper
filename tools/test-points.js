@@ -186,6 +186,32 @@ export const TEST_POINTS = {
    * rural end of the county, which is the part most likely to be thinner in a
    * layer built for the city.
    */
+  /*
+   * Indiana, statewide, in six counties.
+   *
+   * The state layer was found while hunting for Vanderburgh County, so
+   * Evansville is here as the place it is already known to answer -- and the
+   * west-side point specifically, because that is the one that returned a
+   * house-sized lot (0.111 ac) rather than a 301-acre something.
+   *
+   * The other five are the rest of the state: Indianapolis, the north-east,
+   * the north, a university town in the south, and the Wabash valley. They are
+   * aimed at ordinary residential streets from a map, not visited, so a point
+   * that returns nothing is a badly aimed coordinate until several in
+   * different counties agree. What would be a real finding is a whole region
+   * going quiet -- IndianaMap republishes what each of the 92 counties sends
+   * it, exactly like NC OneMap, and a county that has sent nothing looks from
+   * Indianapolis like a perfectly working service.
+   */
+  indiana: [
+    { lng: -87.6100, lat: 37.9750, label: 'Evansville (Vanderburgh, 0.111 ac when found)' },
+    { lng: -86.1420, lat: 39.8700, label: 'Indianapolis (Marion, Broad Ripple)' },
+    { lng: -85.1400, lat: 41.1200, label: 'Fort Wayne (Allen, north side)' },
+    { lng: -86.2400, lat: 41.6900, label: 'South Bend (St Joseph)' },
+    { lng: -86.5400, lat: 39.1600, label: 'Bloomington (Monroe)' },
+    { lng: -87.3800, lat: 39.4600, label: 'Terre Haute (Vigo)' },
+  ],
+
   vanderburgh: [
     { lng: -87.5100, lat: 37.9900, label: 'Evansville (east side)' },
     { lng: -87.5560, lat: 38.0300, label: 'Evansville (north)' },
