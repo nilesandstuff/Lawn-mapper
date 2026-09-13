@@ -138,10 +138,31 @@ export const TEST_POINTS = {
    * Detroit is deliberately a settled residential district rather than the
    * core, because the core is also where the vacant-lot record is messiest.
    */
+  /*
+   * FOUR OF THESE ARE DETROIT, deliberately and out of proportion to the rest.
+   *
+   * The county layer answered Livonia, Grosse Pointe Park and Canton with
+   * believable residential lots, and returned NOTHING at the one Detroit point
+   * first tried. Detroit is 640,000 of the county's 1.7 million people, so
+   * whether that was a badly aimed coordinate or a hole in the layer is the
+   * difference between covering Wayne County and covering the suburbs around
+   * Detroit -- and the app must not claim the first while doing the second.
+   *
+   * One point cannot tell those apart. Four in four different districts can:
+   * if all four return nothing, the layer excludes the city.
+   *
+   * The Dearborn point is also replaced. It returned 77 acres, which is a real
+   * parcel -- Dearborn has enormous industrial lots around the Rouge plant --
+   * but not a house, so it proved nothing about residential coverage. The new
+   * one is aimed at a residential street well north of the industry.
+   */
   wayne: [
     { lng: -83.3527, lat: 42.3684, label: 'Livonia (post-war subdivision)' },
-    { lng: -83.2330, lat: 42.3120, label: 'Dearborn' },
+    { lng: -83.2455, lat: 42.3380, label: 'Dearborn (residential, north of the Rouge)' },
     { lng: -83.2200, lat: 42.3900, label: 'Detroit (Rosedale Park)' },
+    { lng: -83.1450, lat: 42.4260, label: 'Detroit (Palmer Woods)' },
+    { lng: -82.9540, lat: 42.4110, label: 'Detroit (East English Village)' },
+    { lng: -83.1020, lat: 42.3600, label: 'Detroit (Islandview)' },
     { lng: -82.9300, lat: 42.3750, label: 'Grosse Pointe Park' },
     { lng: -83.4820, lat: 42.3090, label: 'Canton Township' },
   ],
