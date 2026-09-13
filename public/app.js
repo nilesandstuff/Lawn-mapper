@@ -3507,10 +3507,21 @@ function renderAccountButton() {
   if (!btn) return;
   btn.hidden = !state.accountsOn;
 
-  // The first part of the address rather than the whole of it: a topbar is not
-  // where a long email belongs, and it is the part people recognise as theirs.
+  /*
+   * Signed in: the first part of the address rather than the whole of it. A
+   * topbar is not where a long email belongs, and it is the part people
+   * recognise as theirs.
+   *
+   * Signed out: "1-click sign up" as well as "Sign in", because there being no
+   * separate sign-up is the part nobody expects. There is no form and no
+   * password -- type an address, press the link in the mail, and that single
+   * action both creates the account and signs you into it. A bare "Sign in"
+   * reads as a door for people who already have something.
+   */
   const me = state.user;
-  $('#account-label').textContent = me ? me.email.split('@')[0] : 'Sign in';
+  $('#account-label').textContent = me
+    ? me.email.split('@')[0]
+    : 'Sign in / 1-click sign up';
 }
 
 function renderAccountSheet() {
@@ -6708,7 +6719,49 @@ window.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
   closeSheet('#signin');
   closeSheet('#account-sheet');
+  closeTools();
 });
+
+/* ------------------------------------------------------- the tools menu */
+/*
+ * Two links to the rest of the toolbox, which lives on another site.
+ *
+ * A menu and not two more buttons in the header: they are a set, and the bar
+ * already carries the allowance badge and the account on a 390px screen.
+ *
+ * `aria-expanded` is set here rather than only in the markup because it is the
+ * thing a screen reader reads to say whether the menu is open, and a static
+ * "false" on a button that opens something is worse than no attribute -- it is
+ * an assertion, and it would be wrong half the time.
+ */
+function setTools(open) {
+  const menu = $('#tools-menu');
+  const btn = $('#tools-btn');
+  if (!menu || !btn) return;
+  menu.hidden = !open;
+  btn.setAttribute('aria-expanded', String(open));
+}
+const closeTools = () => setTools(false);
+
+$('#tools-btn').addEventListener('click', (e) => {
+  // Or the document listener below sees this same click and closes it again.
+  e.stopPropagation();
+  setTools($('#tools-menu').hidden);
+});
+
+/*
+ * Anywhere else closes it, which is what everybody tries first -- and a menu
+ * that can only be dismissed by pressing its own button is one people navigate
+ * away from instead. The links close it too: a target="_blank" leaves this page
+ * exactly as it was, so without this the menu is still hanging open on the tab
+ * they come back to.
+ */
+document.addEventListener('click', (e) => {
+  if (!$('#tools-menu').hidden && !e.target.closest('#tools-menu')) closeTools();
+});
+for (const link of document.querySelectorAll('#tools-menu a')) {
+  link.addEventListener('click', () => closeTools());
+}
 
 $('#signin-email-form').addEventListener('submit', async (e) => {
   e.preventDefault();

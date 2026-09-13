@@ -19,13 +19,47 @@
   </div>
   <div class="topright">
     <div id="quota-badge" class="quota" hidden></div>
+
     <!--
-      One button with two jobs: "Sign in" when nobody is, and the account when
-      somebody is. Hidden entirely when the deployment has no account store,
-      because a button that cannot work is worse than one less button.
+      The rest of the toolbox, which lives on another site.
+      A menu rather than two more buttons in the bar: they are a set, they are
+      somebody else's pages, and the header has to hold the allowance badge and
+      the account on a phone screen as well.
+    -->
+    <div class="menuwrap">
+      <button class="account" id="tools-btn" type="button"
+              aria-haspopup="true" aria-expanded="false" aria-controls="tools-menu">
+        <span>More lawn tools</span>
+      </button>
+      <!--
+        rel="noopener noreferrer" on both, which is not ceremony: without
+        noopener the opened page gets a handle on this one through
+        window.opener and can navigate it somewhere else.
+      -->
+      <div class="menu" id="tools-menu" role="menu" aria-labelledby="tools-btn" hidden>
+        <a role="menuitem" href="https://lawn-answers.com/?tool=SeedSelector"
+           target="_blank" rel="noopener noreferrer">
+          Seed Selector <small>advanced NTEP explorer</small>
+        </a>
+        <a role="menuitem" href="https://lawn-answers.com"
+           target="_blank" rel="noopener noreferrer">
+          Turf Tools <small>lawn-answers.com</small>
+        </a>
+      </div>
+    </div>
+
+    <!--
+      One button with two jobs: the invitation when nobody is signed in, and
+      the account when somebody is. Hidden entirely when the deployment has no
+      account store, because a button that cannot work is worse than one less
+      button.
+
+      It says "1-click sign up" because that is true and is the part people do
+      not expect: there is no form and no password, so signing up and signing
+      in are the same single action -- type an address, press the link.
     -->
     <button class="account" id="account-btn" type="button" hidden>
-      <span id="account-label">Sign in</span>
+      <span id="account-label">Sign in / 1-click sign up</span>
     </button>
   </div>
 </header>

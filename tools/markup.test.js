@@ -167,6 +167,33 @@ check('a tip whose control is on another tab waits for that tab',
   /pendingTip = stage/.test(js) && /function flushPendingTip/.test(js),
   'showTip must record the stage and setTab must flush it');
 
+/* --------------------------------------------------- links off-site */
+/*
+ * EVERY target="_blank" CARRIES rel="noopener".
+ *
+ * Not ceremony and not a lint preference: without it the page that opens gets
+ * a live handle on this one through `window.opener`, and can navigate the tab
+ * it came from somewhere else. The tab still says lawnmap.nilesandstuff.com in
+ * the history and still has the person's session in it.
+ *
+ * Checked rather than remembered because the first two were written carefully
+ * and the third one, added in a hurry next to them, is the one that will not
+ * be. "noreferrer" rides along: it is what actually stops window.opener in the
+ * older browsers where noopener alone did not.
+ */
+{
+  const blank = [...html.matchAll(/<a\b[^>]*>/g)]
+    .map((m) => m[0])
+    .filter((tag) => /target="_blank"/.test(tag));
+
+  check('the off-site links were found', blank.length >= 2, `${blank.length} found`);
+
+  const unsafe = blank.filter((tag) => !/rel="[^"]*\bnoopener\b[^"]*"/.test(tag));
+  check('and every one of them denies the opened page a handle on this one',
+    unsafe.length === 0,
+    unsafe.length ? unsafe.map((t) => t.slice(0, 70)).join(' | ') : 'all rel=noopener');
+}
+
 /* ----------------------------------------------- the free controls */
 /*
  * A LOCKED STEP MUST NOT DIM THE CONTROLS THAT COST NOTHING.
