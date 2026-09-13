@@ -177,6 +177,23 @@ export const TEST_POINTS = {
    * first four answer and Rantoul does not, that is a coverage fact worth
    * recording rather than a failure.
    */
+  /*
+   * Vanderburgh County, Indiana -- Evansville and the townships around it.
+   *
+   * Spread across the city rather than clustered downtown, for the reason at
+   * the top of this file: a downtown point lands on a street or the Ohio River
+   * and returns nothing from a working service. Darmstadt is included as the
+   * rural end of the county, which is the part most likely to be thinner in a
+   * layer built for the city.
+   */
+  vanderburgh: [
+    { lng: -87.5100, lat: 37.9900, label: 'Evansville (east side)' },
+    { lng: -87.5560, lat: 38.0300, label: 'Evansville (north)' },
+    { lng: -87.6100, lat: 37.9750, label: 'Evansville (west side)' },
+    { lng: -87.5400, lat: 37.9700, label: 'Evansville (university area)' },
+    { lng: -87.5780, lat: 38.1100, label: 'Darmstadt (rural north)' },
+  ],
+
   champaign: [
     { lng: -88.2700, lat: 40.1100, label: 'Champaign (residential)' },
     { lng: -88.2000, lat: 40.1150, label: 'Urbana (residential)' },

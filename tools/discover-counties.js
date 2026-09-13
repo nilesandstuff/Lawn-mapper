@@ -55,6 +55,7 @@ const PLAUSIBLE_ACRES = { min: 0.01, max: 160 };
  */
 const STATES = {
   washoe: 'Nevada',
+  vanderburgh: 'Indiana',
   northcarolina: 'North Carolina',
   champaign: 'Illinois',
   // Named although Michigan is the fallback, because a reader checking why
@@ -262,6 +263,76 @@ const CANDIDATE_ROOTS = {
     'https://maps.urbanaillinois.us/arcgis/rest/services',
   ],
 };
+
+/**
+ * A named dataset, rather than a host to go looking through.
+ *
+ * WHY THIS EXISTS. Guessing hostnames has now failed for four counties in a
+ * row -- Kent, Newaygo, Wayne, Champaign -- and three of those were solved by
+ * a person handing over a link they had found in a browser. That is the
+ * reliable path, and until now the tool could not take one: it accepted a
+ * services DIRECTORY to walk, and a person with a link has an ArcGIS Hub page
+ * or an item id, which is neither.
+ *
+ * So this takes what people actually have. Anything identifying an ArcGIS
+ * item works -- a Hub dataset page, an item.html link, or the bare 32-character
+ * id -- and the item's own metadata says where the service lives. No guessing
+ * at all: the id IS the answer, one lookup away.
+ */
+const CANDIDATE_ITEMS = {
+  /*
+   * Vanderburgh County, Indiana -- Evansville. Supplied as a Hub dataset page
+   * by the owner, which is the whole point of this list.
+   *
+   * `evvc-evvc` is the Hub subdomain for the city/county GIS; the "_0" on the
+   * dataset id is the layer within the service, and the 32 characters before
+   * it are the item.
+   */
+  vanderburgh: [
+    'https://evvc-evvc.opendata.arcgis.com/datasets/02762faf4df24829bced0cd54ccdb19c_0/api',
+  ],
+};
+
+/** The 32-character item id inside whatever form of link somebody has. */
+function itemIdFrom(ref) {
+  const s = String(ref);
+  // A Hub dataset path: /datasets/<32 hex>_<layer>, layer optional.
+  const hub = s.match(/\/datasets\/([0-9a-f]{32})(?:_(\d+))?/i);
+  if (hub) return { id: hub[1], layer: hub[2] === undefined ? null : Number(hub[2]) };
+  // An item.html link, or any URL carrying ?id=
+  const byParam = s.match(/[?&]id=([0-9a-f]{32})/i);
+  if (byParam) return { id: byParam[1], layer: null };
+  // A bare id.
+  const bare = s.match(/^([0-9a-f]{32})$/i);
+  if (bare) return { id: bare[1], layer: null };
+  return null;
+}
+
+/**
+ * Where an ArcGIS item's data actually lives.
+ *
+ * The item record carries the service URL in `url`. A Hub page is a view of
+ * exactly this, so resolving the id is the same thing a browser does when
+ * somebody clicks through to the API endpoint -- without the browser.
+ */
+async function resolveItem(ref) {
+  const found = itemIdFrom(ref);
+  if (!found) return { error: `not an ArcGIS item reference: ${ref}` };
+
+  const meta = await getJson(
+    `https://www.arcgis.com/sharing/rest/content/items/${found.id}?f=json`
+  );
+  if (meta.error) return { error: describe(meta.error) };
+  if (!meta.url) return { error: `item "${meta.title || found.id}" publishes no service URL` };
+
+  return {
+    url: String(meta.url).replace(/\/$/, ''),
+    title: meta.title,
+    owner: meta.owner,
+    type: meta.type,
+    layer: found.layer,
+  };
+}
 
 const PARCEL_NAME = /parcel|propert|cadastr|landbase|tax.?map|assessor/i;
 
@@ -614,6 +685,26 @@ async function investigate(key) {
   const labels = points.map((p) => p.label).join(', ');
   console.log(`\n${'='.repeat(66)}\n${COUNTIES[key]?.name || key}  (test points: ${labels})\n${'='.repeat(66)}`);
 
+  /*
+   * NAMED DATASETS FIRST, because they are not guesses.
+   *
+   * Everything below this is a search: a list of hostnames somebody thought
+   * plausible, walked for anything parcel-shaped. An item id is the opposite
+   * -- a person found the dataset and this resolves where it is served from.
+   * Trying it first means the answer somebody already has beats twenty
+   * hostnames that will not resolve.
+   */
+  for (const ref of CANDIDATE_ITEMS[key] || []) {
+    const item = await resolveItem(ref);
+    if (item.error) {
+      console.log(`  ✗ ${ref}\n      ${item.error}`);
+      continue;
+    }
+    console.log(`  ✓ item "${item.title}" [${item.owner}] -- ${item.type}`);
+    console.log(`      ${item.url}`);
+    if (await tryService(key, item.url, item.title, points)) return true;
+  }
+
   for (const root of CANDIDATE_ROOTS[key] || []) {
     const { services, error } = await listServices(root);
     if (error) {
@@ -686,7 +777,7 @@ const only = process.argv[2];
  * not the exceptional one. `none` is accepted as a way to run the workflow for
  * its statewide half alone.
  */
-const known = Object.keys(CANDIDATE_ROOTS);
+const known = [...new Set([...Object.keys(CANDIDATE_ROOTS), ...Object.keys(CANDIDATE_ITEMS)])];
 if (only && only !== 'none' && !known.includes(only)) {
   console.error(`No county called "${only}" is configured here.`);
   console.error(`Known: ${known.join(', ')}`);

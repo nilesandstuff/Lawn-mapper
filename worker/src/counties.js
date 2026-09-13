@@ -342,6 +342,12 @@ const COUNTY_BBOX = {
    * on the survey grid tend to be.
    */
   champaign: [-88.47, 39.86, -87.91, 40.33],
+  /*
+   * Vanderburgh County, Indiana -- Evansville, on the Ohio River. The southern
+   * edge is the river and the Kentucky line, so the box stops there: a point
+   * in Henderson County KY is not a lookup worth making.
+   */
+  vanderburgh: [-87.80, 37.89, -87.39, 38.19],
 };
 
 /*
