@@ -495,30 +495,46 @@ async function getJson(url) {
 const describe = (err) =>
   typeof err === 'string' ? err : err?.message || JSON.stringify(err).slice(0, 160);
 
-/** Every service under a root, following one level of folders. */
+/**
+ * Every service under a root, following one level of folders.
+ *
+ * REPORTS WHAT IT WALKED, not just what it found. Twice now a root has been
+ * reachable, published dozens of services, and produced no candidate worth
+ * testing -- Indiana's gisdata.in.gov and Champaign's gisportal -- and both
+ * times the output said "48 services published" and nothing else, which cannot
+ * be told apart from "the parcel layer is not here". The folder list and the
+ * names are the two facts that separate those, so they come back with the
+ * services and get printed.
+ */
 async function listServices(root) {
   const top = await getJson(`${root}?f=json`);
   if (top.error) return { error: top.error };
 
   const services = [...(top.services || [])];
+  const all = top.folders || [];
   /*
-   * Raised from 12. Indiana's parcel layer lives at
-   * Hosted/Parcel_Boundaries_of_Indiana_Current on gisdata.in.gov, and walking
-   * that exact root reported "no parcel-ish service names" -- the layer was
-   * found a moment later by the catalogue search instead. The folder cap is the
-   * obvious suspect and 12 was never a considered number, so it goes up. That
-   * is a suspicion rather than a diagnosis: the root's folder list was not
-   * captured, so this is not proof of what happened, just the cheap fix for the
-   * only arbitrary limit standing between the walk and the answer.
+   * Raised from 12, which was never a considered number. Kept as a bound on
+   * how long a hopeless walk runs; anything cut is now named below rather than
+   * silently dropped, because a folder that was never opened looks exactly
+   * like a folder with nothing in it.
    */
-  for (const folder of (top.folders || []).slice(0, 40)) {
+  const walked = all.slice(0, 40);
+  const failed = [];
+  for (const folder of walked) {
     const sub = await getJson(`${root}/${folder}?f=json`);
-    if (!sub.error) services.push(...(sub.services || []));
+    if (sub.error) {
+      failed.push(`${folder} (${describe(sub.error)})`);
+      continue;
+    }
+    services.push(...(sub.services || []));
   }
   // Names already carry their folder ("Hosted/Parcels"); de-duplicate, since
   // a service listed at the root can reappear in its folder listing.
   const seen = new Set();
   return {
+    folders: all,
+    uncounted: all.slice(40),
+    failed,
     services: services.filter((s) => {
       const key = `${s.name}/${s.type}`;
       if (seen.has(key)) return false;
@@ -810,13 +826,16 @@ async function investigate(key) {
   }
 
   for (const root of CANDIDATE_ROOTS[key] || []) {
-    const { services, error } = await listServices(root);
+    const { services, error, folders, uncounted, failed } = await listServices(root);
     if (error) {
       console.log(`  ✗ ${root}\n      ${describe(error)}`);
       continue;
     }
 
     console.log(`  ✓ ${root}\n      ${services.length} services published`);
+    if (folders.length) console.log(`      folders: ${folders.join(', ')}`);
+    if (failed.length) console.log(`      folders that would not list: ${failed.join(', ')}`);
+    if (uncounted.length) console.log(`      NOT WALKED (past the cap): ${uncounted.join(', ')}`);
 
     /*
      * RANKED, NOT THE FIRST EIGHT ALPHABETICALLY.
@@ -841,9 +860,20 @@ async function investigate(key) {
       .slice(0, MAX_SERVICES_PER_ROOT)
       .map((c) => c.svc);
 
+    /*
+     * PRINT THE NAMES EVEN WHEN THERE IS A CANDIDATE.
+     *
+     * This used to list services only when NOTHING matched. Champaign's portal
+     * matched exactly one -- NSD/Vacant_Parcels, a subset of the city's -- so
+     * the listing was suppressed and the run reported "48 services published"
+     * with no way to see what the other 47 were called. A weak match hides the
+     * evidence more effectively than no match does, which is backwards.
+     */
+    const sample = services.slice(0, 60).map((s) => s.name).join(', ');
+    console.log(`      names: ${sample}${services.length > 60 ? ', …' : ''}`);
+
     if (!candidates.length) {
-      const sample = services.slice(0, 12).map((s) => s.name).join(', ');
-      console.log(`      no parcel-ish service names. First few: ${sample}`);
+      console.log('      none of them look like parcels.');
       continue;
     }
 
