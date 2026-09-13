@@ -72,7 +72,7 @@ function esriToGeoJSON(esri) {
  * silently costing us real parcels. We ask for the good version first and fall
  * back, rather than sending the lowest common denominator to everyone.
  */
-function queryVariants(lng, lat) {
+function queryVariants(lng, lat, where) {
   const base = {
     f: 'json',
     geometry: JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } }),
@@ -82,6 +82,15 @@ function queryVariants(lng, lat) {
     spatialRel: 'esriSpatialRelIntersects',
     outFields: '*',
     returnGeometry: 'true',
+    /*
+     * Most counties publish only current parcels and need no filter. Champaign
+     * does not: its layer is a parcel fabric carrying RetiredByRecord and
+     * LegalEndDate, so a point sits inside the current lot AND every retired
+     * parent it was split from, and the first feature back is not reliably the
+     * live one. `where` lets an entry say which records count. Omitted, the
+     * query is exactly what it always was.
+     */
+    ...(where ? { where } : {}),
   };
   return [
     // Full precision. Esri's default generalization can shave real footage.
@@ -102,9 +111,19 @@ function queryVariants(lng, lat) {
  */
 function endpointsFor(cfg) {
   const list = [];
-  if (cfg.service) list.push({ service: cfg.service, layer: cfg.layer, fields: cfg.fields });
+  if (cfg.service) {
+    list.push({ service: cfg.service, layer: cfg.layer, fields: cfg.fields, where: cfg.where });
+  }
   for (const f of cfg.fallbacks || []) {
-    list.push({ service: f.service, layer: f.layer, fields: f.fields || cfg.fields });
+    list.push({
+      service: f.service,
+      layer: f.layer,
+      fields: f.fields || cfg.fields,
+      // A fallback states its own filter, and states it as null to mean none.
+      // Inheriting cfg.where would make "the same query without the filter"
+      // impossible to express, which is exactly what Champaign needs.
+      where: f.where === undefined ? cfg.where : f.where,
+    });
   }
   return list;
 }
@@ -122,7 +141,7 @@ async function queryCounty(countyKey, lng, lat) {
 
 async function queryEndpoint(cfg, countyKey, endpoint, lng, lat) {
   let data = null;
-  for (const params of queryVariants(lng, lat)) {
+  for (const params of queryVariants(lng, lat, endpoint.where)) {
     const url = `${endpoint.service}/${endpoint.layer}/query?${new URLSearchParams(params)}`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);

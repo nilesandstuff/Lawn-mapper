@@ -185,6 +185,63 @@ const COUNTIES = {
     fields: { pin: 'parcel_id', address: 'prop_add' },
     verified: 'live', // 4 of 6 points, 0.111-0.756 ac, four counties
   },
+  /*
+   * Champaign County, Illinois -- Champaign, Urbana, the university.
+   *
+   * FOUND IN THE SNOWPLOW MAP. The county's authoritative parcels belong to
+   * CCGISC, a seven-agency consortium, and that folder on the portal answers
+   * "Token Required" -- so the obvious door is locked and the first conclusion
+   * drawn here was that Champaign was simply unavailable. That was wrong.
+   * Public Works publishes its own copy in the clear, inside AVL_Reference,
+   * the service behind the vehicle-location and snow-route maps, as layer 7.
+   * Nothing in the service's name says parcels; it was found by opening a
+   * service chosen for carrying a catch-all name and reading its LAYER names.
+   *
+   * It is countywide, not just the city:
+   *
+   *   Champaign  0.175 ac
+   *   Savoy      0.814 ac
+   *   Rantoul    0.222 ac   -- twenty miles north, a separate town
+   *   Urbana     5.518 ac   -- see below
+   *   Mahomet    nothing
+   *
+   * THE FILTER IS NOT OPTIONAL, and Urbana is why it is suspected. This is an
+   * Esri parcel fabric: it keeps retired parcels alongside live ones, with
+   * RetiredByRecord and LegalEndDate marking them. A point therefore sits
+   * inside the current lot AND every parent it was ever split from, and the
+   * first feature back is not reliably the live one -- 5.518 acres at a
+   * residential Urbana address is what that looks like. So the query asks for
+   * records that have not been retired.
+   *
+   * The unfiltered query stays as a fallback beneath it. If the filter is
+   * wrong about this schema it returns nothing, and the fallback then answers
+   * exactly as the layer did before any of this -- so the filter can only
+   * improve on the old behaviour, never lose a property line to it.
+   *
+   * No address field on the layer at all: PIN, PIN_DASH and DeededAcreage,
+   * but nothing holding a street. The status line shows the parcel without
+   * one, which it already handles.
+   *
+   * Being a department's working copy rather than the system of record, this
+   * could be withdrawn or go stale without notice. probe-counties.js queries
+   * it on every preflight and fails the run if it stops answering.
+   */
+  champaign: {
+    name: 'Champaign County',
+    fips: '17019',
+    service: 'https://gisportal.champaignil.gov/ms/rest/services/PWD/AVL_Reference/MapServer',
+    layer: 7, // "Parcels"
+    fields: { pin: 'PIN' },
+    where: 'RetiredByRecord IS NULL',
+    fallbacks: [
+      {
+        service: 'https://gisportal.champaignil.gov/ms/rest/services/PWD/AVL_Reference/MapServer',
+        layer: 7,
+        where: null, // explicitly unfiltered -- the whole point of this entry
+      },
+    ],
+    verified: 'live', // 4 of 5 points, four towns; 0.175 ac at Champaign
+  },
   washoe: {
     name: 'Washoe County',
     fips: '32031', // Nevada -- Reno and Sparks

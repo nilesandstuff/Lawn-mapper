@@ -39,6 +39,7 @@ import { worldSize } from '../public/lib/mercator.js';
 import {
   COUNTIES, COUNTY_BBOX, candidateCounties, isCovered,
 } from '../worker/src/counties.js';
+import { queryCounty } from '../worker/src/parcel.js';
 import { readFile } from 'node:fs/promises';
 
 let failures = 0;
@@ -1109,6 +1110,64 @@ check('and a typed prompt is sent verbatim',
     .map(([name]) => name);
   check('all four verified Indiana points reach the statewide layer',
     missed.length === 0, missed.join(', ') || `${indianaPoints.length} points`);
+}
+
+/* ------------------------------------------------- the retired-parcel filter */
+/*
+ * Champaign's layer is an Esri parcel fabric: it keeps retired parcels beside
+ * live ones, so a point sits inside its current lot AND every parent that lot
+ * was split from, and the first feature back is not reliably the live one.
+ * The entry filters them out with `where`, and keeps an explicitly unfiltered
+ * copy as a fallback so a wrong guess about the schema cannot lose a property
+ * line that the old unfiltered query would have found.
+ *
+ * Both halves are asserted, because each fails silently on its own. A `where`
+ * that never reaches the URL gives back retired parcels and looks like it
+ * works. A fallback that INHERITS cfg.where instead of its own null is not a
+ * fallback at all -- it is the same filtered query run twice, which is the
+ * bug this arrangement exists to avoid and is invisible from the outside.
+ */
+{
+  const realFetch = globalThis.fetch;
+  const asked = [];
+  globalThis.fetch = async (url) => {
+    asked.push(String(url));
+    // Answer nothing, so every endpoint is tried and both URLs get recorded.
+    return { ok: true, json: async () => ({ features: [] }) };
+  };
+
+  try {
+    await queryCounty('champaign', -88.2700, 40.1100);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+
+  const filtered = asked.filter((u) => u.includes('where=RetiredByRecord+IS+NULL'));
+  const unfiltered = asked.filter((u) => !u.includes('where='));
+
+  check('the retired-parcel filter reaches the query string',
+    filtered.length > 0, `${filtered.length} of ${asked.length} requests carried it`);
+
+  check('and the unfiltered fallback is genuinely unfiltered',
+    unfiltered.length > 0, `${unfiltered.length} of ${asked.length} requests had no where`);
+
+  /*
+   * A county with no `where` must be untouched by any of this -- the filter is
+   * one county's problem and every other entry has to query exactly as before.
+   */
+  const plain = [];
+  globalThis.fetch = async (url) => {
+    plain.push(String(url));
+    return { ok: true, json: async () => ({ features: [] }) };
+  };
+  try {
+    await queryCounty('kent', -85.6681, 42.9634);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  check('a county without one sends no where at all',
+    plain.length > 0 && plain.every((u) => !u.includes('where=')),
+    `${plain.length} requests, none filtered`);
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);

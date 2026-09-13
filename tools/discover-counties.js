@@ -246,7 +246,7 @@ const CANDIDATE_ROOTS = {
    * the consortium's name than the county's. That is the same pattern as
    * Newaygo and Kent: the name on the server is not the name of the place.
    *
-   * FOUND, AND NOT PUBLIC. This is settled; stop hunting.
+   * FOUND. Two doors, and the locked one was not the only one.
    *
    * Nineteen guessed hostnames failed, almost all without resolving at all.
    * One web search then returned the host in a single query:
@@ -263,17 +263,24 @@ const CANDIDATE_ROOTS = {
    * layers are released to entities contracted to one of its seven member
    * agencies, and editing the parcel services needs Portal credentials.
    *
-   * So Champaign is not an endpoint nobody has found. It is an endpoint
-   * behind a login, which is a different problem with a different answer: ask
-   * the consortium for access, not the internet for a URL. Until somebody
-   * does, Champaign addresses fall through to drawing by hand -- which
-   * measures just as accurately.
+   * The conclusion drawn at that point was "Champaign is behind a login, ask
+   * the consortium" -- and it was wrong, by one run. The catch-all pass added
+   * immediately afterwards opened PWD/AVL_Reference, the service behind the
+   * city's vehicle-location and snow-route maps, and layer 7 of it is called
+   * Parcels. It answered in Champaign, Savoy and Rantoul, twenty miles apart,
+   * so it is countywide rather than the city's own. Public Works keeps a copy
+   * of the consortium's parcels in the clear for its own maps.
+   *
+   * Two lessons, both paid for here. A locked front door is not evidence that
+   * the building has no other entrance. And a service's NAME is not a table of
+   * contents -- nothing about "AVL_Reference" says parcels, and a walk that
+   * only reads service names could never have found it.
    *
    * The dead hostname guesses are deleted rather than kept. All nineteen were
    * proved wrong, the real host is known, and leaving them would send the next
    * reader down a road that has been walked to its end. The two portal roots
-   * stay: they list fine, and if CCGISC is ever opened up, or the city
-   * republishes county parcels in a public folder, this is where it appears.
+   * stay: they are where the layer actually lives, and where a public CCGISC
+   * folder would appear if the consortium ever opens one.
    */
   champaign: [
     'https://gisportal.champaignil.gov/ms/rest/services',
