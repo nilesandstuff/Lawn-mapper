@@ -152,6 +152,58 @@ const COUNTIES = {
     fields: { pin: 'APN', address: 'ADDRESS' },
     verified: 'live', // 0.629 ac at 1615 Belford Rd, Reno
   },
+  /*
+   * Wayne County, Michigan -- Detroit, Dearborn, Livonia. 1.7 million people,
+   * the largest population here by a wide margin.
+   *
+   * FOUND FROM A CATALOGUE EXPORT, not by guessing. Every host a county of
+   * this size might plausibly use was tried and none of them worked: its own
+   * gis/services.waynecounty.com answer HTTP 406, SEMCOG's answers 401, and
+   * the rest do not resolve. What actually serves the parcels is the county's
+   * ArcGIS Online organisation, `b6rkZNtCd6Mx2gvB`, and there is nothing about
+   * that string to guess. The owner exported the open data site's catalogue
+   * and the host was in it. Fourth county here where the name on the server is
+   * not the name of the place.
+   *
+   * AND THE OPEN DATA SITE ITSELF HAS NO PARCELS -- 16 feature services, all
+   * boundaries and census and roads, with parcels published only as
+   * per-municipality assessment CSVs and scanned tax maps. The organisation
+   * behind the site publishes 332 services, and this is one of them. A site
+   * catalogue lists what somebody curated onto the site; the organisation
+   * lists everything.
+   *
+   * WHAT THE POINTS ACTUALLY RETURNED, since this county has more caveats than
+   * the others and a rounder story would hide them:
+   *
+   *   Livonia            0.603 ac    a house
+   *   Dearborn           0.161 ac    a house
+   *   Detroit Islandview 0.470 ac    a house
+   *   Grosse Pointe Park 0.386 ac    a house
+   *   Canton Township    2.449 ac    a large township lot, plausible
+   *   Detroit Rosedale Park, Palmer Woods, East English Village -- nothing
+   *
+   * So five of eight, and three of the four Detroit points returned nothing.
+   * Detroit IS in the layer -- Islandview proves that much -- but coverage
+   * inside the city is patchy at the points aimed at. Whether that is the
+   * layer or three coordinates picked from memory landing on streets is not
+   * settled; Detroit carries tens of thousands of vacant and demolished lots
+   * and this layer has a `demolished` field, so gaps there have a real
+   * explanation either way.
+   *
+   * A gap returns no parcel, which the app already handles by offering to
+   * trace by hand. That is the same promise made for North Carolina and
+   * Vermont: the layer answers, and where it answers it answers correctly.
+   */
+  wayne: {
+    name: 'Wayne County',
+    fips: '26163',
+    service: 'https://services1.arcgis.com/b6rkZNtCd6Mx2gvB/arcgis/rest/services/Parcels/FeatureServer',
+    layer: 4,
+    // Joined to building footprints, so the attributes carry res_sqft,
+    // year_built and stories as well. Only these two are read.
+    fields: { pin: 'pnum', address: 'address' },
+    verified: 'live', // 0.47 ac at Detroit (Islandview); 5 of 8 points
+  },
   kent: {
     name: 'Kent County',
     fips: '26081',
