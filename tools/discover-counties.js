@@ -246,62 +246,38 @@ const CANDIDATE_ROOTS = {
    * the consortium's name than the county's. That is the same pattern as
    * Newaygo and Kent: the name on the server is not the name of the place.
    *
-   * NINETEEN HOSTS TRIED, ALL DEAD, AND NO CATALOGUE CANDIDATES. Almost all
-   * of them failed to resolve at all rather than refusing -- so unlike Wayne,
-   * where a server answered 406 and another 401, there is no evidence here
-   * that any of these names exists. The two ccgisc.org guesses that DID
-   * resolve returned 404 for the services directory, which means a web server
-   * on that name and no ArcGIS under it.
+   * FOUND, AND NOT PUBLIC. This is settled; stop hunting.
    *
-   * Which puts Champaign exactly where Kent and Newaygo were: the endpoint is
-   * findable, but not by guessing.
-   *
-   * AND IT WAS FOUND BY SEARCHING THE WEB FOR IT, in one query, after all
-   * nineteen of the guesses below had failed. The host is
+   * Nineteen guessed hostnames failed, almost all without resolving at all.
+   * One web search then returned the host in a single query:
    * gisportal.champaignil.gov -- the CITY of Champaign's portal, serving the
-   * COUNTY consortium's parcels out of a folder called CCGISC -- and the
-   * instance name is "ms", with hosted services under "hs". Three separate
-   * things none of the guesses had: the wrong level of government in the
-   * hostname, an instance name that is neither "arcgis" nor "server", and the
-   * layer a folder deep.
+   * COUNTY consortium out of a folder called CCGISC, under the instance name
+   * "ms" (with hosted services under "hs"). Three things at once that no
+   * guess had: the wrong level of government in the hostname, an instance
+   * name that is neither "arcgis" nor "server", and the data a folder deep.
    *
-   * That is the fourth county in a row where the name on the server is not the
-   * name of the place, and the first one where a search engine, rather than a
-   * person with a browser, was what closed the gap. Worth remembering the next
-   * time a list like the one below starts getting long: a hostname list is a
-   * guess at a fact that is written down somewhere public.
+   * Walking it settled the rest. The root lists 48 services across nineteen
+   * folders, and eight of those folders answer "Token Required" -- CCGISC
+   * among them. The parcel folder is exactly where the search said it was,
+   * and it is authenticated. That matches what CCGISC says publicly: its
+   * layers are released to entities contracted to one of its seven member
+   * agencies, and editing the parcel services needs Portal credentials.
+   *
+   * So Champaign is not an endpoint nobody has found. It is an endpoint
+   * behind a login, which is a different problem with a different answer: ask
+   * the consortium for access, not the internet for a URL. Until somebody
+   * does, Champaign addresses fall through to drawing by hand -- which
+   * measures just as accurately.
+   *
+   * The dead hostname guesses are deleted rather than kept. All nineteen were
+   * proved wrong, the real host is known, and leaving them would send the next
+   * reader down a road that has been walked to its end. The two portal roots
+   * stay: they list fine, and if CCGISC is ever opened up, or the city
+   * republishes county parcels in a public folder, this is where it appears.
    */
   champaign: [
-    // The two instance names on the portal that actually exists. Ordered
-    // first because these are read off a search result, not imagined.
     'https://gisportal.champaignil.gov/ms/rest/services',
     'https://gisportal.champaignil.gov/hs/rest/services',
-    // The consortium's own name, tried with the instance names that turned out
-    // to be right for the city -- the portal front end lives here.
-    'https://services.ccgisc.org/ms/rest/services',
-    'https://services.ccgisc.org/hs/rest/services',
-    'https://gis.ccgisc.org/arcgis/rest/services',
-    'https://maps.ccgisc.org/arcgis/rest/services',
-    'https://ccgisc.org/arcgis/rest/services',
-    'https://www.ccgisc.org/arcgis/rest/services',
-    'https://gisdata.ccgisc.org/arcgis/rest/services',
-    'https://services.ccgisc.org/arcgis/rest/services',
-    // The non-standard instance names that turned out to be the answer for
-    // Kent ("agisprod") and Newaygo ("hosting"). Cheap to try, and the only
-    // reason those two were ever found.
-    'https://gis.ccgisc.org/server/rest/services',
-    'https://gis.ccgisc.org/hosting/rest/services',
-    'https://gis.co.champaign.il.us/arcgis/rest/services',
-    'https://maps.co.champaign.il.us/arcgis/rest/services',
-    'https://gis.co.champaign.il.us/server/rest/services',
-    'https://gis.champaigncountyil.gov/arcgis/rest/services',
-    'https://maps.champaigncountyil.gov/arcgis/rest/services',
-    // The two cities, which co-fund the consortium and may republish it.
-    'https://gis.champaignil.gov/arcgis/rest/services',
-    'https://maps.champaignil.gov/arcgis/rest/services',
-    'https://gis.ci.champaign.il.us/arcgis/rest/services',
-    'https://gis.urbanaillinois.us/arcgis/rest/services',
-    'https://maps.urbanaillinois.us/arcgis/rest/services',
   ],
 };
 
@@ -649,7 +625,7 @@ function summarise(attrs) {
  * which layer holds the parcels, and guessing past them would only find a
  * different answer than the one they asked about.
  */
-async function tryService(key, serviceUrl, label, points, hint = null) {
+async function tryService(key, serviceUrl, label, points, hint = null, layersMustMatch = false) {
   const meta = await getJson(`${serviceUrl}?f=json`);
   if (meta.error) {
     console.log(`      x ${label} -- ${describe(meta.error)}`);
@@ -671,7 +647,19 @@ async function tryService(key, serviceUrl, label, points, hint = null) {
 
   const usable = layers.filter((l) => !ARCHIVE_NAME.test(l.name));
   const named = usable.filter((l) => PARCEL_NAME.test(l.name));
-  const tryThese = (named.length ? named : usable).slice(0, MAX_LAYERS_PER_SERVICE);
+  /*
+   * `layersMustMatch` is for a service that was NOT chosen for its name -- a
+   * catch-all "Open_Data" map service that happens to carry forty layers. The
+   * usual fallback of "no layer looks like parcels, so try them all" is right
+   * for a service called Parcels and wrong here: it would query forty layers
+   * of zoning, meters and snow routes at every test point.
+   */
+  const pool = named.length ? named : (layersMustMatch ? [] : usable);
+  const tryThese = pool.slice(0, MAX_LAYERS_PER_SERVICE);
+  if (!tryThese.length) {
+    console.log(`      -> ${label}: ${layers.length} layers, none named like parcels`);
+    return false;
+  }
 
   const skipped = layers.length - usable.length;
   console.log(
@@ -883,6 +871,32 @@ async function investigate(key) {
       // failed on the previous run.
       const serviceUrl = `${root}/${svc.name}/${svc.type}`;
       if (await tryService(key, serviceUrl, `${svc.name} (${svc.type})`, points)) return true;
+    }
+
+    /*
+     * A SERVICE NAMED FOR NOTHING IN PARTICULAR CAN STILL CARRY THE PARCELS.
+     *
+     * Champaign's portal publishes Open_Data/Open_Data, one MapServer holding
+     * the city's whole public catalogue -- zoning, parking meters, city-owned
+     * property, dozens of layers. The service-name filter never opens it,
+     * because "Open_Data" is not a parcel word, so a parcel layer inside it is
+     * invisible to a walk that only reads service names.
+     *
+     * Only tried once the named candidates have all failed, and only its
+     * layers that look like parcels are queried -- which is what
+     * layersMustMatch enforces. Otherwise this would fire forty point queries
+     * at snow routes.
+     */
+    const aggregates = services
+      .filter((s) => /open.?data|public|reference|general|master|composite/i.test(s.name))
+      .filter((s) => /MapServer|FeatureServer/.test(s.type))
+      .filter((s) => !candidates.includes(s))
+      .slice(0, 6);
+
+    for (const svc of aggregates) {
+      const serviceUrl = `${root}/${svc.name}/${svc.type}`;
+      const label = `${svc.name} (${svc.type}, catch-all)`;
+      if (await tryService(key, serviceUrl, label, points, null, true)) return true;
     }
   }
 
