@@ -197,26 +197,35 @@ const COUNTIES = {
    * Nothing in the service's name says parcels; it was found by opening a
    * service chosen for carrying a catch-all name and reading its LAYER names.
    *
-   * It is countywide, not just the city:
+   * It is countywide, not just the city. Through the worker's own lookup:
    *
-   *   Champaign  0.175 ac
-   *   Savoy      0.814 ac
-   *   Rantoul    0.222 ac   -- twenty miles north, a separate town
-   *   Urbana     5.518 ac   -- see below
+   *   Champaign  0.175 ac   pin 432014133001
+   *   Savoy      0.814 ac   pin 032036377010
+   *   Rantoul    0.222 ac   pin 200902210001  -- twenty miles north
+   *   Urbana     5.518 ac   pin 912109351021  -- see below
    *   Mahomet    nothing
    *
-   * THE FILTER IS NOT OPTIONAL, and Urbana is why it is suspected. This is an
-   * Esri parcel fabric: it keeps retired parcels alongside live ones, with
-   * RetiredByRecord and LegalEndDate marking them. A point therefore sits
-   * inside the current lot AND every parent it was ever split from, and the
-   * first feature back is not reliably the live one -- 5.518 acres at a
-   * residential Urbana address is what that looks like. So the query asks for
-   * records that have not been retired.
+   * THE `where` IS A PRECAUTION THAT HAS NOT YET PROVED ITSELF, and saying so
+   * is the point of this paragraph. The reasoning is sound: this is an Esri
+   * parcel fabric -- RetiredByRecord, LegalStartDate, LegalEndDate -- and such
+   * a layer keeps retired parcels beside live ones, so a point sits inside its
+   * current lot AND every parent that lot was split from, with no guarantee
+   * the first feature back is the live one. Urbana's 5.518 acres at a
+   * residential address is exactly what that failure looks like.
    *
-   * The unfiltered query stays as a fallback beneath it. If the filter is
-   * wrong about this schema it returns nothing, and the fallback then answers
-   * exactly as the layer did before any of this -- so the filter can only
-   * improve on the old behaviour, never lose a property line to it.
+   * But it is not what happened. Preflight ran the filtered query against all
+   * five points and returned the SAME four answers, Urbana's 5.518 included.
+   * So either there are no retired records under these points, or the filter
+   * matches nothing and is inert -- and the numbers cannot tell those apart.
+   * Urbana is therefore still unexplained, and may simply be an apartment or
+   * institutional lot near the campus rather than an error at all.
+   *
+   * It stays because it costs nothing and is right in principle, not because
+   * it fixed something. worker.test.js proves the clause reaches the query
+   * string, so it is at least being asked. The unfiltered query sits beneath
+   * it as an explicit fallback: if the filter is wrong about this schema it
+   * returns nothing and the fallback answers exactly as the layer did before
+   * any of this, so this can only match the old behaviour or beat it.
    *
    * No address field on the layer at all: PIN, PIN_DASH and DeededAcreage,
    * but nothing holding a street. The status line shows the parcel without
