@@ -21,7 +21,14 @@ import { measure } from '../public/lib/area.js';
 import { TEST_POINTS } from './test-points.js';
 
 const TIMEOUT_MS = 12000;
-const MAX_SERVICES_PER_ROOT = 8;
+/*
+ * Raised from 8 because Wayne County publishes 332 services in one ArcGIS
+ * Online organisation, and the first eight alphabetically were five different
+ * subsets of its parcels. Only names that already look like parcels get here,
+ * and they are ranked before being cut, so this is a bound on how long a
+ * hopeless search runs rather than a filter doing real work.
+ */
+const MAX_SERVICES_PER_ROOT = 30;
 const MAX_LAYERS_PER_SERVICE = 8;
 
 /** Archive and roll layers answer queries but are not the current parcel map. */
@@ -257,6 +264,45 @@ const CANDIDATE_ROOTS = {
 };
 
 const PARCEL_NAME = /parcel|propert|cadastr|landbase|tax.?map|assessor/i;
+
+/**
+ * Words that make a parcel layer a SUBSET of the parcel layer.
+ *
+ * Every one of these was found on a real service that answered real queries
+ * with real parcel-shaped polygons, and none of them is the county's parcel
+ * map: flood parcels, county-OWNED parcels, a DRAFT of the missing ones, a
+ * sample, one person's study of parcels AFFECTED by something.
+ *
+ * They are the reason ranking by name is worth doing at all. A subset answers
+ * a point query exactly as convincingly as the real thing -- it just answers
+ * for a fraction of the county, and nothing about the response says so.
+ */
+const QUALIFIED_NAME =
+  /flood|owned|draft|missing|cleanup|clean_?up|sample|affected|research|study|test|temp|backup|non_?park|proposed|pending|split|merge|delinq|forfeit|foreclos|vacant|demo|survey_?only/i;
+
+/**
+ * How likely a service name is to BE the county parcel layer, rather than a
+ * slice of it. Higher is better.
+ *
+ * The plainest name wins, because that is how these are actually named: the
+ * real one is "Parcels", and everything built from it gets a qualifier. A
+ * short name is preferred for the same reason -- "Parcels" over
+ * "Parcels_Public_View_2024_Final".
+ */
+function nameScore(fullName) {
+  const name = String(fullName).split('/').pop();
+  let score = 0;
+
+  if (PARCEL_NAME.test(name)) score += 10;
+  if (/^parcels?$/i.test(name)) score += 40;              // the ideal
+  if (/^[a-z_ ]*parcels?[a-z_ ]*$/i.test(name)) score += 10; // nothing but words
+  if (QUALIFIED_NAME.test(name)) score -= 50;             // a subset, not the map
+  if (ARCHIVE_NAME.test(name)) score -= 30;
+
+  // Shorter is likelier to be the canonical one; a mild tiebreak, not a rule.
+  score -= Math.min(10, Math.floor(name.length / 8));
+  return score;
+}
 
 /*
  * Field picking, in preference order.
@@ -577,9 +623,28 @@ async function investigate(key) {
 
     console.log(`  ✓ ${root}\n      ${services.length} services published`);
 
+    /*
+     * RANKED, NOT THE FIRST EIGHT ALPHABETICALLY.
+     *
+     * Wayne County's ArcGIS Online organisation publishes 332 services. The
+     * old `.slice(0, 8)` took whichever eight sorted first, which for Wayne
+     * meant A_E_PropertiesFinal_NonParkYet, CleanUpMissingParcels,
+     * CountyOwnedParcels, CountyParcelPoint and Flood_Parcels -- five working
+     * subsets of the county's parcels, none of them the parcel layer, and the
+     * search stopped at the first that answered. The actual layer was
+     * somewhere in the other 327 and was never asked.
+     *
+     * A county's real parcel layer is almost always the one with the PLAINEST
+     * name. Every qualifier -- flood, county-owned, draft, missing, non-park
+     * -- is a subset of it. So the qualified ones sink and the plain one
+     * floats, and far more get tried.
+     */
     const candidates = services
       .filter((s) => PARCEL_NAME.test(s.name) && /MapServer|FeatureServer/.test(s.type))
-      .slice(0, MAX_SERVICES_PER_ROOT);
+      .map((s) => ({ svc: s, score: nameScore(s.name) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, MAX_SERVICES_PER_ROOT)
+      .map((c) => c.svc);
 
     if (!candidates.length) {
       const sample = services.slice(0, 12).map((s) => s.name).join(', ');
