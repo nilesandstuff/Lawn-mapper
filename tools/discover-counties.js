@@ -254,12 +254,32 @@ const CANDIDATE_ROOTS = {
    * on that name and no ArcGIS under it.
    *
    * Which puts Champaign exactly where Kent and Newaygo were: the endpoint is
-   * findable, but not by guessing. Both of those were found by a person
-   * opening the county's own map viewer and reading the URL its tiles came
-   * from. That is the next step here, and it is a five-minute one -- see the
-   * note at the top of this list about the shortcut not being a substitute.
+   * findable, but not by guessing.
+   *
+   * AND IT WAS FOUND BY SEARCHING THE WEB FOR IT, in one query, after all
+   * nineteen of the guesses below had failed. The host is
+   * gisportal.champaignil.gov -- the CITY of Champaign's portal, serving the
+   * COUNTY consortium's parcels out of a folder called CCGISC -- and the
+   * instance name is "ms", with hosted services under "hs". Three separate
+   * things none of the guesses had: the wrong level of government in the
+   * hostname, an instance name that is neither "arcgis" nor "server", and the
+   * layer a folder deep.
+   *
+   * That is the fourth county in a row where the name on the server is not the
+   * name of the place, and the first one where a search engine, rather than a
+   * person with a browser, was what closed the gap. Worth remembering the next
+   * time a list like the one below starts getting long: a hostname list is a
+   * guess at a fact that is written down somewhere public.
    */
   champaign: [
+    // The two instance names on the portal that actually exists. Ordered
+    // first because these are read off a search result, not imagined.
+    'https://gisportal.champaignil.gov/ms/rest/services',
+    'https://gisportal.champaignil.gov/hs/rest/services',
+    // The consortium's own name, tried with the instance names that turned out
+    // to be right for the city -- the portal front end lives here.
+    'https://services.ccgisc.org/ms/rest/services',
+    'https://services.ccgisc.org/hs/rest/services',
     'https://gis.ccgisc.org/arcgis/rest/services',
     'https://maps.ccgisc.org/arcgis/rest/services',
     'https://ccgisc.org/arcgis/rest/services',
