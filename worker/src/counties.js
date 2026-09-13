@@ -152,12 +152,13 @@ const COUNTIES = {
    * assessment records from all 92 counties. Publishing it as "Vanderburgh"
    * would have hidden 91 counties' worth of coverage behind one bounding box.
    *
-   * WHAT THE SIX POINTS RETURNED, four counties apart:
+   * WHAT THE SIX POINTS RETURNED, four counties apart, through the worker's
+   * own lookupParcel rather than the discovery tool's copy of the query:
    *
-   *   Evansville (Vanderburgh)  0.111 ac
-   *   Indianapolis (Marion)     0.416 ac
-   *   Fort Wayne (Allen)        0.756 ac
-   *   South Bend (St Joseph)    0.524 ac
+   *   Evansville (Vanderburgh)  0.111 ac   231 S BARKER AVE
+   *   Indianapolis (Marion)     0.416 ac   910 BROAD RIPPLE AVE
+   *   Fort Wayne (Allen)        0.756 ac   E Coliseum Blvd
+   *   South Bend (St Joseph)    0.524 ac   1105 ST PETER ST
    *   Bloomington (Monroe)      nothing
    *   Terre Haute (Vigo)        nothing
    *
