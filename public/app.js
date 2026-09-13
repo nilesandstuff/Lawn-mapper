@@ -24,6 +24,10 @@ import {
 } from './lib/edges.js';
 import { restoreAway } from './lib/stitch.js';
 import {
+  movedEnoughToCancelHold as gestureMoved, gestureIsOurs, isTap,
+  HOLD_SLOP_PX, HOLD_MS,
+} from './lib/gesture.js';
+import {
   planSegments,
   MIN_SEGMENT_SQFT, MAX_SEGMENT_SQFT, SEGMENT_STEP_SQFT,
   MIN_WIDTH_FT, MAX_WIDTH_FT, DEFAULT_WIDTH_FT,
@@ -388,6 +392,16 @@ if (typeof window !== 'undefined') {
     touchZoom: Boolean(map?.touchZoomRotate?.isEnabled()),
     panning: panningHeld(),
     holdMs: PAN_HOLD_MS,
+    /*
+     * The two distances that decide who owns a one-finger gesture, reported
+     * because they were once one number and the bug that caused was invisible
+     * from the screen: a stroke that stayed inside the tap slop got discarded
+     * half a second in, and the map started moving instead.
+     */
+    holdSlopPx: HOLD_SLOP_PX,
+    touchAction: map ? map.getContainer().style.touchAction || '(default)' : null,
+    armed: diag.armed,
+    painting: Boolean(eraser?.painting),
   });
 
   /*
@@ -1887,6 +1901,21 @@ function updateUndoButton() {
 function armLawnPicker() {
   diag.armed = true;
   map.getCanvas().style.cursor = 'crosshair';
+  /*
+   * TELL THE BROWSER UP FRONT, as well as per event.
+   *
+   * preventDefault on touchmove stops a scroll only if the browser has not
+   * already committed to one, and it commits on the first move -- so a single
+   * unclaimed event loses the whole gesture. touch-action says "this element
+   * never scrolls" before any finger lands, which removes the race rather than
+   * winning it.
+   *
+   * It does not disable Mapbox's pan or pinch: those are driven in JavaScript
+   * from touch events, not by the browser's own scrolling. Only the page
+   * scrolling under the map goes away, which is what is wanted while a tool is
+   * armed and never wanted while one is.
+   */
+  map.getContainer().style.touchAction = 'none';
   map.on('click', onMapClick);
   const el = map.getContainer();
   el.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });
@@ -1905,6 +1934,10 @@ function disarmLawnPicker() {
   endPanHold();
   endDrag();
   map.getCanvas().style.cursor = '';
+  // Put the page's own scrolling back: with no tool armed, a drag on the map
+  // is the map's, and a flick that runs off it should scroll the panel as it
+  // would anywhere else.
+  map.getContainer().style.touchAction = '';
   map.off('click', onMapClick);
   const el = map.getContainer();
   el.removeEventListener('touchstart', onTouchStart, { capture: true });
@@ -1936,7 +1969,7 @@ function disarmLawnPicker() {
  * has no way to do; panBy from our own deltas is exact, works identically for
  * a finger and a mouse, and cannot leave the map in a half-started state.
  */
-const PAN_HOLD_MS = 500;
+const PAN_HOLD_MS = HOLD_MS;
 let panHold = null; // { x, y, timer, active }
 
 /**
@@ -2148,10 +2181,19 @@ function onMouseUp() {
   if (endDrag()) handled = { at: Date.now(), x: null, y: null };
 }
 
-/** Has the pointer travelled far enough that this is a stroke, not a hold? */
+/**
+ * Has the pointer travelled far enough that this is a stroke, not a hold?
+ *
+ * HOLD_SLOP_PX, not TAP_SLOP_PX. They were the same number, and they answer
+ * different questions -- see lib/gesture.js. Using the tap's generous 14px
+ * here meant a careful stroke stayed "still" for the whole half second, so the
+ * hold matured, discardStroke() threw away what was being painted, and the map
+ * began moving under the finger. Reported as "I can't draw without the map
+ * moving around on mobile".
+ */
 function movedEnoughToCancelHold(x, y) {
   return Boolean(panHold) && !panHold.active
-    && Math.hypot(x - panHold.x, y - panHold.y) > TAP_SLOP_PX;
+    && gestureMoved({ x: panHold.x, y: panHold.y }, { x, y });
 }
 
 /**
@@ -2189,7 +2231,26 @@ function onTouchMove(e) {
 
   const t = e.touches[0];
   if (movedEnoughToCancelHold(t.clientX, t.clientY)) cancelPanHold();
-  if (updateDrag(t.clientX, t.clientY)) claim(e);
+
+  /*
+   * CLAIMED BY WHAT IS UNDER THE FINGER, NOT BY WHAT HAS HAPPENED YET.
+   *
+   * This used to claim only when updateDrag reported a visible change, which
+   * meant the first events of a corner drag -- the ones before the 4px
+   * threshold -- went to the map, and it panned a little before the drag took
+   * hold. The visible jump was the smaller half of the problem: a browser
+   * decides whether a touch is a scroll on the FIRST move it sees, and once it
+   * has decided, every later preventDefault is ignored for the rest of that
+   * gesture. Letting the first event through does not cost a few pixels, it
+   * costs the whole stroke.
+   */
+  const ours = gestureIsOurs({
+    touches: 1,
+    painting: Boolean(eraser?.painting),
+    grabbed: Boolean(drag),
+  });
+  const changed = updateDrag(t.clientX, t.clientY);
+  if (ours || changed) claim(e);
 }
 
 /** This gesture is ours: no map pan, no page scroll, no Mapbox handlers. */
@@ -2215,8 +2276,8 @@ function claim(e) {
 let touchStart = null;
 let handled = { at: 0, x: null, y: null };
 
-const TAP_SLOP_PX = 14;    // a finger never lands perfectly still
-const TAP_MAX_MS = 700;    // longer than this is a press, or a slow pan
+// TAP_SLOP_PX and TAP_MAX_MS live in lib/gesture.js beside the hold slop they
+// were once confused with; isTap() is the only reader either needs.
 const ECHO_MS = 700;       // a synthetic click follows its touch closely
 const ECHO_SLOP_PX = 30;   // ...and lands on the same spot
 
@@ -2256,8 +2317,9 @@ function onTouchEnd(e) {
 
   const t = e.changedTouches && e.changedTouches[0];
   if (!t) return;
-  if (Math.hypot(t.clientX - start.x, t.clientY - start.y) > TAP_SLOP_PX) return;
-  if (Date.now() - start.at > TAP_MAX_MS) return;
+  // One definition of "that was a tap", shared with the rules it belongs
+  // beside -- the hold slop and the tap slop drifting apart is the bug.
+  if (!isTap(start, { x: t.clientX, y: t.clientY }, Date.now())) return;
 
   const rect = map.getCanvasContainer().getBoundingClientRect();
   const lngLat = map.unproject([t.clientX - rect.left, t.clientY - rect.top]);
