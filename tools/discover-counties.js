@@ -203,6 +203,19 @@ const CANDIDATE_ROOTS = {
    * cities and the university fund jointly -- so its host is likelier to carry
    * the consortium's name than the county's. That is the same pattern as
    * Newaygo and Kent: the name on the server is not the name of the place.
+   *
+   * NINETEEN HOSTS TRIED, ALL DEAD, AND NO CATALOGUE CANDIDATES. Almost all
+   * of them failed to resolve at all rather than refusing -- so unlike Wayne,
+   * where a server answered 406 and another 401, there is no evidence here
+   * that any of these names exists. The two ccgisc.org guesses that DID
+   * resolve returned 404 for the services directory, which means a web server
+   * on that name and no ArcGIS under it.
+   *
+   * Which puts Champaign exactly where Kent and Newaygo were: the endpoint is
+   * findable, but not by guessing. Both of those were found by a person
+   * opening the county's own map viewer and reading the URL its tiles came
+   * from. That is the next step here, and it is a five-minute one -- see the
+   * note at the top of this list about the shortcut not being a substitute.
    */
   champaign: [
     'https://gis.ccgisc.org/arcgis/rest/services',
