@@ -397,12 +397,35 @@ async function tryService(key, serviceUrl, label, points) {
   );
 
   for (const layer of tryThese) {
-    // Several points, because one can legitimately land on a road or a river.
+    /*
+     * EVERY POINT, NOT THE FIRST ONE THAT ANSWERS.
+     *
+     * This used to return on the first hit and print a ready-to-paste block
+     * claiming `verified: 'live'`. Searching Wayne County it hit a layer named
+     * "Wayne_County_Parcels_Affected1" -- one private individual's flood study
+     * of the River Rouge, published to their personal ArcGIS Online account --
+     * matched a single point at 37 acres, found no pin or address field, and
+     * printed a config block with the literal string 'null' in it.
+     *
+     * Four of the five points had returned nothing. The evidence for that
+     * recommendation was one oversized polygon from a stranger's coursework,
+     * and the tool presented it in the same words it uses for Kent.
+     *
+     * So: all the points are tried, the hits are counted, and the verdict says
+     * how much of the county actually answered. A layer that names fields and
+     * answers in several towns is a county parcel layer. One that answers in a
+     * single spot with no identifiers is a subset of something, and the paste
+     * block says so instead of lying.
+     */
+    const hits = [];
+    let rejected = null;
+
     for (const point of points) {
       const result = await queryLayer(serviceUrl, layer.id, point);
 
       if (result.error) {
         console.log(`         [${layer.id}] ${layer.name} @${point.label}: ${describe(result.error)}`);
+        rejected = 'the layer refuses queries';
         break; // a rejected query will be rejected for every point
       }
       if (!result.features?.length) {
@@ -423,24 +446,62 @@ async function tryService(key, serviceUrl, label, points) {
         continue;
       }
 
-      const f = summarise(feature.attributes || {});
-      console.log(`\n         *** MATCH ***  (${point.label})`);
-      console.log(`         [${layer.id}] ${layer.name}`);
-      console.log(`         area: ${area.acres} ac / ${area.squareFeet.toLocaleString()} sq ft`);
-      console.log(`         pin field:     ${f.pin} = ${feature.attributes[f.pin]}`);
-      console.log(`         address field: ${f.address} = ${feature.attributes[f.address]}`);
-      console.log(`\n         Paste into worker/src/counties.js:`);
-      console.log(`           ${key}: {`);
-      console.log(`             name: '${COUNTIES[key]?.name || key}',`);
-      console.log(`             fips: '${COUNTIES[key]?.fips || ''}',`);
-      console.log(`             service: '${serviceUrl}',`);
-      console.log(`             layer: ${layer.id},`);
-      console.log(`             fields: { pin: '${f.pin}', address: '${f.address}' },`);
-      console.log(`             verified: 'live',`);
-      console.log(`           },`);
-      console.log(`         all fields: ${f.names.slice(0, 30).join(', ')}\n`);
-      return true;
+      console.log(`         [${layer.id}] ${layer.name} @${point.label}: ${area.acres} ac`);
+      hits.push({ point, feature, area });
     }
+
+    if (rejected || !hits.length) continue;
+
+    const f = summarise(hits[0].feature.attributes || {});
+
+    /*
+     * What would make this trustworthy, stated as the two things a county
+     * parcel layer has and a one-off extract does not.
+     */
+    const doubts = [];
+    if (!f.pin && !f.address) {
+      doubts.push('no parcel id or address field -- nothing to label a lot with');
+    }
+    if (points.length > 1 && hits.length < 2) {
+      doubts.push(`only ${hits.length} of ${points.length} test points returned a parcel`);
+    }
+    /*
+     * A residential point that comes back as tens of acres is not this lot. It
+     * passes PLAUSIBLE_ACRES because that bound has to allow real rural
+     * parcels, so the median is checked separately against a suburban size.
+     */
+    const median = [...hits].sort((a, b) => a.area.acres - b.area.acres)[Math.floor(hits.length / 2)];
+    if (median.area.acres > 25) {
+      doubts.push(`typical result is ${median.area.acres} ac, far too big for the residential points aimed at`);
+    }
+
+    console.log(`\n         ${doubts.length ? '--- CANDIDATE (not trusted) ---' : '*** MATCH ***'}`);
+    console.log(`         [${layer.id}] ${layer.name}`);
+    console.log(`         ${hits.length} of ${points.length} points answered; typical ${median.area.acres} ac`);
+    console.log(`         pin field:     ${f.pin || '(none found)'}`);
+    console.log(`         address field: ${f.address || '(none found)'}`);
+
+    if (doubts.length) {
+      console.log(`\n         NOT recommended, because:`);
+      for (const d of doubts) console.log(`           - ${d}`);
+      console.log(`         Service: ${serviceUrl} layer ${layer.id}`);
+      console.log(`         all fields: ${f.names.slice(0, 30).join(', ')}\n`);
+      continue;   // keep looking; something better may be further down the list
+    }
+
+    console.log(`\n         Paste into worker/src/counties.js:`);
+    console.log(`           ${key}: {`);
+    console.log(`             name: '${COUNTIES[key]?.name || key}',`);
+    console.log(`             fips: '${COUNTIES[key]?.fips || ''}',`);
+    console.log(`             service: '${serviceUrl}',`);
+    console.log(`             layer: ${layer.id},`);
+    const fieldBits = [f.pin ? `pin: '${f.pin}'` : null, f.address ? `address: '${f.address}'` : null]
+      .filter(Boolean).join(', ');
+    console.log(`             fields: { ${fieldBits} },`);
+    console.log(`             verified: 'live', // ${median.area.acres} ac at ${median.point.label}`);
+    console.log(`           },`);
+    console.log(`         all fields: ${f.names.slice(0, 30).join(', ')}\n`);
+    return true;
   }
   return false;
 }

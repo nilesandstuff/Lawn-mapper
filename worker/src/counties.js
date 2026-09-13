@@ -277,13 +277,40 @@ const COUNTY_BBOX = {
   allegan:  [-86.22, 42.42, -85.54, 42.85],
   muskegon: [-86.55, 43.10, -85.77, 43.55],
   newaygo:  [-86.05, 43.29, -85.53, 43.82],
+  /*
+   * Wayne County, Michigan -- Detroit out to Livonia and Canton, down the
+   * Detroit River to Grosse Ile. The eastern edge is the international border,
+   * so the box stops at the river rather than running on into Ontario: a point
+   * in Windsor is not a lookup worth making.
+   */
+  wayne:    [-83.60, 42.02, -82.87, 42.46],
+  /*
+   * Champaign County, Illinois -- Champaign-Urbana in the middle, Rantoul at
+   * the north end, Savoy and Tolono south. Almost square, as Illinois counties
+   * on the survey grid tend to be.
+   */
+  champaign: [-88.47, 39.86, -87.91, 40.33],
 };
 
+/*
+ * A BOX MAY EXIST BEFORE ITS COUNTY DOES.
+ *
+ * `COUNTIES[key].service` threw for any point inside a box with no entry
+ * beside it -- and a box lands here first, because the bounds of a county are
+ * known long before anybody has found a server that answers for it. Adding
+ * Wayne's box crashed every address in Detroit, before a single parcel had
+ * been looked up.
+ *
+ * The optional chain makes an unfinished county what it should always have
+ * been: not covered yet, which the app already handles by offering to trace by
+ * hand. Asserted in worker.test.js, because the next county added will be
+ * added the same way round.
+ */
 function candidateCounties(lng, lat) {
   return Object.entries(COUNTY_BBOX)
     .filter(([, [w, s, e, n]]) => lng >= w && lng <= e && lat >= s && lat <= n)
     .map(([key]) => key)
-    .filter((key) => COUNTIES[key].service);
+    .filter((key) => COUNTIES[key]?.service);
 }
 
 function isCovered(lng, lat) {

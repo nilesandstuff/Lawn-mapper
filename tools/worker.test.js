@@ -36,6 +36,9 @@ import {
   providerCatalogue, providerFrame, detectionImageUrl,
 } from '../worker/src/imagery.js';
 import { worldSize } from '../public/lib/mercator.js';
+import {
+  COUNTIES, COUNTY_BBOX, candidateCounties, isCovered,
+} from '../worker/src/counties.js';
 import { readFile } from 'node:fs/promises';
 
 let failures = 0;
@@ -1021,6 +1024,72 @@ check('and a typed prompt is sent verbatim',
     modelCatalogue().filter((m) => m.id !== 'sam3_testing')
       .every((m) => m.devOnly === false),
     modelCatalogue().map((m) => `${m.id}:${m.devOnly}`).join(', '));
+}
+
+/* ------------------------------------------------------- county coverage */
+/*
+ * A BOX MAY EXIST BEFORE ITS COUNTY DOES, and must not crash when it does.
+ *
+ * The bounds of a county are known long before anybody has found a server
+ * that answers for it, so a bbox lands in the file first and the entry follows
+ * once the discovery workflow has proved an endpoint. candidateCounties read
+ * `COUNTIES[key].service` unguarded, so adding Wayne's box crashed every
+ * address in Detroit before a single parcel had been looked up -- an
+ * exception, from the geocoder's own path, for a county nobody had claimed to
+ * support yet.
+ *
+ * The next county will be added the same way round, which is why this is a
+ * test and not a fixed comment.
+ */
+{
+  const boxes = Object.keys(COUNTY_BBOX);
+  const unfinished = boxes.filter((key) => !COUNTIES[key]?.service);
+
+  /*
+   * Deliberately tolerant of BOTH states, because both are legitimate: a box
+   * with no county yet is work in progress, and none at all is the steady
+   * state. What is never legitimate is throwing.
+   */
+  let threw = null;
+  for (const [key, [w, s, e, n]] of Object.entries(COUNTY_BBOX)) {
+    try {
+      candidateCounties((w + e) / 2, (s + n) / 2);
+      isCovered((w + e) / 2, (s + n) / 2);
+    } catch (err) {
+      threw = `${key}: ${err.message}`;
+      break;
+    }
+  }
+  check('a point inside every box can be looked up without throwing',
+    threw === null, threw || `${boxes.length} boxes, ${unfinished.length} without a service yet`);
+
+  check('and a county with no endpoint yet reads as not covered, not as an error',
+    unfinished.every((key) => {
+      const [w, s, e, n] = COUNTY_BBOX[key];
+      return !candidateCounties((w + e) / 2, (s + n) / 2).includes(key);
+    }),
+    unfinished.join(', ') || 'none pending');
+
+  /*
+   * A TRANSPOSED BOX COVERS NOTHING AND LOOKS FINE. West must be west of east
+   * and south south of north -- get either backwards and the filter silently
+   * never matches, so the county is configured, verified, and unreachable.
+   */
+  const backwards = Object.entries(COUNTY_BBOX)
+    .filter(([, [w, s, e, n]]) => !(w < e && s < n))
+    .map(([key]) => key);
+  check('every box has its corners the right way round',
+    backwards.length === 0, backwards.join(', ') || `${boxes.length} boxes`);
+
+  /*
+   * And the reverse: a county with a working endpoint and no box can never be
+   * chosen, because the box is the only thing that nominates it.
+   */
+  const unreachable = Object.entries(COUNTIES)
+    .filter(([key, c]) => c.service && !COUNTY_BBOX[key])
+    .map(([key]) => key);
+  check('and every county with a server has a box to be found by',
+    unreachable.length === 0, unreachable.join(', ') || 'all reachable');
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
