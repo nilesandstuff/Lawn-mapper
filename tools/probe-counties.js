@@ -16,13 +16,37 @@ import { lookupParcel } from '../worker/src/parcel.js';
 import { measure } from '../public/lib/area.js';
 import { TEST_POINTS } from './test-points.js';
 
+/*
+ * EVERY REQUEST HERE NEEDS A DEADLINE.
+ *
+ * The two metadata steps below used bare fetch with no timeout. Node's default
+ * is no timeout at all, so one county server that accepts a connection and
+ * never answers hangs the step until the GitHub job limit -- six hours -- on
+ * the workflow that gates every deploy. That is not hypothetical: adding
+ * Champaign's portal did exactly this, and the run had to be cancelled by hand
+ * after 35 minutes sitting on step one.
+ *
+ * The end-to-end step never had the problem because it goes through the
+ * worker's lookupParcel, which carries its own 6-second abort. These two talk
+ * to the servers directly and had nothing.
+ *
+ * Twelve seconds, matching discover-counties.js. A county that cannot answer a
+ * metadata request in twelve seconds cannot serve a property line to somebody
+ * standing on a lawn either.
+ */
+const TIMEOUT_MS = 12000;
+
+async function getJson(url) {
+  const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
+  return res.json();
+}
+
 async function listLayers(key) {
   const cfg = COUNTIES[key];
   if (!cfg.service) return console.log(`  ${key}: no service configured`);
 
   try {
-    const res = await fetch(`${cfg.service}?f=json`);
-    const data = await res.json();
+    const data = await getJson(`${cfg.service}?f=json`);
     if (data.error) return console.log(`  ${key}: ERROR ${data.error.message}`);
 
     const parcelLayers = (data.layers || []).filter((l) =>
@@ -46,8 +70,7 @@ async function checkFields(key) {
   if (!cfg.service) return;
 
   try {
-    const res = await fetch(`${cfg.service}/${cfg.layer}?f=json`);
-    const data = await res.json();
+    const data = await getJson(`${cfg.service}/${cfg.layer}?f=json`);
     if (data.error) return console.log(`  ${key}: layer error`);
 
     const names = (data.fields || []).map((f) => f.name);

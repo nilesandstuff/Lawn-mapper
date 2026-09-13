@@ -1170,5 +1170,30 @@ check('and a typed prompt is sent verbatim',
     `${plain.length} requests, none filtered`);
 }
 
+/* ------------------------------------------- the preflight cannot hang open */
+/*
+ * probe-counties.js gates every deploy, and it talks to a dozen county servers
+ * that go down, move, and get republished without notice. Node's fetch has NO
+ * default timeout, so one server that accepts a connection and never answers
+ * hangs the whole workflow until GitHub's six-hour job limit.
+ *
+ * Adding Champaign's portal did exactly that: the run sat on step one for
+ * thirty-five minutes and had to be cancelled by hand. Every request in that
+ * file now goes through one helper carrying an abort signal, and this asserts
+ * it stays that way -- the next county added is the next chance to reintroduce
+ * a bare fetch, and nothing about the symptom points at the cause.
+ */
+{
+  const src = await readFile(new URL('./probe-counties.js', import.meta.url), 'utf8');
+  // Comments talk about fetch at length; only real calls matter.
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const calls = code.match(/\bfetch\s*\(/g) || [];
+  const timed = code.match(/\bfetch\s*\([^)]*AbortSignal\.timeout/g) || [];
+
+  check('every fetch in the preflight probe carries a deadline',
+    calls.length > 0 && calls.length === timed.length,
+    `${timed.length} of ${calls.length} calls timed`);
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);
