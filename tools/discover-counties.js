@@ -178,6 +178,19 @@ const CANDIDATE_ROOTS = {
    * hardened the match test rather than what got added.
    */
   wayne: [
+    /*
+     * THE COUNTY'S OWN ArcGIS ONLINE ORGANISATION, from the catalogue export
+     * of its open data site. This is the host every guess below missed,
+     * because there is nothing about "b6rkZNtCd6Mx2gvB" to guess.
+     *
+     * The site's own catalogue lists no parcel polygons -- 16 feature
+     * services, all boundaries, census, roads and districts, with parcels
+     * published only as per-municipality assessment CSVs and historical tax
+     * map PDFs. But a catalogue lists what somebody curated onto the site,
+     * and the organisation's REST directory lists everything public in it,
+     * which is a different and longer list. Worth asking directly.
+     */
+    'https://services1.arcgis.com/b6rkZNtCd6Mx2gvB/arcgis/rest/services',
     'https://gis.waynecounty.com/arcgis/rest/services',
     'https://gis.waynecounty.com/server/rest/services',
     'https://maps.waynecounty.com/arcgis/rest/services',
