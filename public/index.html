@@ -21,34 +21,6 @@
     <div id="quota-badge" class="quota" hidden></div>
 
     <!--
-      The rest of the toolbox, which lives on another site.
-      A menu rather than two more buttons in the bar: they are a set, they are
-      somebody else's pages, and the header has to hold the allowance badge and
-      the account on a phone screen as well.
-    -->
-    <div class="menuwrap">
-      <button class="account" id="tools-btn" type="button"
-              aria-haspopup="true" aria-expanded="false" aria-controls="tools-menu">
-        <span>More lawn tools</span>
-      </button>
-      <!--
-        rel="noopener noreferrer" on both, which is not ceremony: without
-        noopener the opened page gets a handle on this one through
-        window.opener and can navigate it somewhere else.
-      -->
-      <div class="menu" id="tools-menu" role="menu" aria-labelledby="tools-btn" hidden>
-        <a role="menuitem" href="https://lawn-answers.com/?tool=SeedSelector"
-           target="_blank" rel="noopener noreferrer">
-          Seed Selector <small>advanced NTEP explorer</small>
-        </a>
-        <a role="menuitem" href="https://lawn-answers.com"
-           target="_blank" rel="noopener noreferrer">
-          Turf Tools <small>lawn-answers.com</small>
-        </a>
-      </div>
-    </div>
-
-    <!--
       One button with two jobs: the invitation when nobody is signed in, and
       the account when somebody is. Hidden entirely when the deployment has no
       account store, because a button that cannot work is worse than one less
@@ -176,6 +148,13 @@
                autocomplete="street-address">
         <button class="primary" type="submit">Find my property</button>
       </form>
+
+      <!--
+        A way past the address for somebody who only came back to look at a map
+        they already made. Hidden when there is nothing saved, so the first
+        visit is one field and one button and not a choice.
+      -->
+      <button class="link" id="btn-open-saved" hidden>Open a saved map instead →</button>
       <p class="note">Property lines come from public records &mdash; all of
         <b>North Carolina</b>, <b>Maryland</b>, <b>Vermont</b> and most of
         <b>New Hampshire</b>, plus Kent, Ottawa, Allegan, Muskegon and Newaygo
@@ -222,6 +201,17 @@
         <div class="result-sub" id="result-sub"></div>
       </div>
 
+      <!--
+        The end of measuring and the start of doing something with it.
+
+        Under the figure rather than at the foot of a tab, because it is about
+        the number rather than about the tools that produced it -- and it is
+        the same button whether the shape came from the AI or from a finger,
+        so it is one element shown on both of those tabs rather than two that
+        can drift apart.
+      -->
+      <button class="primary" id="btn-finish" hidden>Finish, save, and see more options</button>
+
       <nav class="tabs" id="tabs" role="tablist" aria-label="Which step you are on">
         <button class="tab" type="button" id="tab-address" role="tab"
                 data-tab="address" aria-selected="false" aria-controls="pane-address">
@@ -238,6 +228,15 @@
         <button class="tab" type="button" id="tab-saved" role="tab"
                 data-tab="saved" aria-selected="false" aria-controls="pane-saved">
           Saved
+        </button>
+        <!--
+          No step number: this is not step five, it is what you do with a
+          finished measurement. Hidden until there is one, because a tab full
+          of tools that need a lawn is four taps of nothing.
+        -->
+        <button class="tab" type="button" id="tab-plan" role="tab"
+                data-tab="plan" aria-selected="false" aria-controls="pane-plan" hidden>
+          Plan
         </button>
       </nav>
 
@@ -490,12 +489,108 @@
         <button class="link" id="saved-signin" hidden>Sign in to keep them on every device</button>
       </div>
 
+      <!-- 4e. What to do with a finished map ------------------------------ -->
+      <!--
+        Tools that act on a measurement rather than produce one. The first is
+        below; there will be others, so this pane is a list of tools and not
+        one tool's controls.
+      -->
+      <div class="tabpane" id="pane-plan" role="tabpanel" aria-labelledby="tab-plan" hidden>
+        <p class="sub" id="plan-lead">Your lawn is measured. These tools work on
+          the finished map.</p>
+
+        <!--
+          MEASURED PIECES TO WALK.
+
+          The point is checking your rate against the bag part-way through
+          rather than after the whole lawn is done. So the pieces are a whole
+          number of spreader passes across, and each one spans the lawn so you
+          can see where it ends while standing on it.
+        -->
+        <div class="tool" id="tool-segments">
+          <h3>Split into measured pieces</h3>
+          <p class="sub">Divide the lawn into chunks of a known size, so you can
+            check your rate against the bag part-way through instead of finding
+            out at the end.</p>
+
+          <label for="seg-size">Piece size</label>
+          <div class="stepper">
+            <button type="button" class="stepbtn" id="seg-size-minus" aria-label="Smaller pieces">−</button>
+            <input type="text" id="seg-size" inputmode="numeric" value="5000"
+                   aria-label="Square feet per piece">
+            <span class="stepunit">sq ft</span>
+            <button type="button" class="stepbtn" id="seg-size-plus" aria-label="Bigger pieces">+</button>
+          </div>
+
+          <label for="seg-width">Application width</label>
+          <div class="stepper">
+            <button type="button" class="stepbtn" id="seg-width-minus" aria-label="Narrower">−</button>
+            <input type="text" id="seg-width" inputmode="decimal" value="5"
+                   aria-label="How wide one pass is, in feet">
+            <span class="stepunit">ft</span>
+            <button type="button" class="stepbtn" id="seg-width-plus" aria-label="Wider">+</button>
+          </div>
+          <p class="sub">How wide one pass of your spreader or sprayer covers.
+            Pieces are cut to a whole number of passes.</p>
+
+          <div class="tools">
+            <button class="primary" id="seg-run">Split the lawn</button>
+            <button class="ghost" id="seg-clear" hidden>Clear the pieces</button>
+          </div>
+
+          <!--
+            The export offer moves to the top of the result, where it is the
+            obvious next action: the picture is the deliverable here. You take
+            it outside on a phone, or print it and put it in a pocket.
+          -->
+          <div class="seg-done" id="seg-done" hidden>
+            <p class="seg-summary" id="seg-summary"></p>
+            <div class="tools">
+              <button class="primary" id="seg-png">Save the picture</button>
+              <button class="ghost" id="seg-pdf">Print / save as PDF</button>
+            </div>
+            <ol class="seg-list" id="seg-list"></ol>
+            <div class="seg-notes" id="seg-notes" hidden></div>
+          </div>
+        </div>
+      </div>
+
       <!-- Always available: the figure is the point, whichever tab is open. -->
       <div class="exports">
         <button class="ghost" id="btn-png">Save image</button>
         <button class="ghost" id="btn-print">Save as PDF</button>
       </div>
     </section>
+
+    <!--
+      The rest of the toolbox, which lives on another site.
+
+      At the foot of the panel rather than in the header: the header has to
+      hold the allowance badge and the account on a 390px screen, and these are
+      somebody's next stop rather than something they need mid-measurement.
+      A menu and not two links, because there will be more of them.
+    -->
+    <div class="menuwrap" id="tools-wrap">
+      <button class="ghost" id="tools-btn" type="button"
+              aria-haspopup="true" aria-expanded="false" aria-controls="tools-menu">
+        More lawn tools
+      </button>
+      <!--
+        rel="noopener noreferrer" on both, which is not ceremony: without
+        noopener the opened page gets a handle on this one through
+        window.opener and can navigate it somewhere else.
+      -->
+      <div class="menu" id="tools-menu" role="menu" aria-labelledby="tools-btn" hidden>
+        <a role="menuitem" href="https://lawn-answers.com/?tool=SeedSelector"
+           target="_blank" rel="noopener noreferrer">
+          Seed Selector <small>advanced NTEP explorer</small>
+        </a>
+        <a role="menuitem" href="https://lawn-answers.com"
+           target="_blank" rel="noopener noreferrer">
+          Turf Tools <small>lawn-answers.com</small>
+        </a>
+      </div>
+    </div>
 
     <p class="disclaimer">Measurements come from satellite imagery and public
       county records. Treat them as a close estimate, not a survey.</p>

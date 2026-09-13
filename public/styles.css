@@ -80,24 +80,56 @@ html, body {
 .menu a:hover, .menu a:focus-visible { background: var(--bg); outline: none; }
 
 /*
- * THE HEADER HAS THREE THINGS IN IT NOW AND A PHONE IS 390px WIDE.
- *
- * The allowance badge is a whole sentence, the account button grew a longer
- * label, and the tools menu is a third control. Something has to give, and the
- * brand wordmark is the only one of the four that does nothing: the mark stays
- * as the identity, the text goes, and the controls keep their room.
- *
- * The badge is allowed to shrink and ellipsis rather than push the buttons off
- * the edge -- it is the one item here whose value survives being cut short,
- * because the number is at the front of it.
+ * The badge shrinks rather than pushing the account button off the edge. It is
+ * the one thing in the bar whose value survives being cut short, because its
+ * number is at the front -- and with the tools menu moved down to the panel,
+ * this is all the header needs to stay on a phone.
  */
 .quota { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-@media (max-width: 560px) {
+@media (max-width: 400px) {
   .topbar { padding: 0 12px; }
-  .brand > span:not(.brand-mark) { display: none; }
-  .account { padding: 5px 10px; max-width: 40vw; }
-  .menu { min-width: 208px; }
+  .account { padding: 5px 10px; }
 }
+
+/* The menu opens UPWARD: it lives at the foot of a scrolling panel, and a
+ * menu dropping below the last element in the panel opens off the bottom. */
+#tools-wrap { margin-top: 18px; }
+#tools-wrap .menu { top: auto; bottom: calc(100% + 6px); left: 0; right: auto; }
+#tools-btn { width: 100%; }
+
+/* ------------------------------------------------------- the plan tools */
+/*
+ * A tool is a card, because this pane will hold several and they need to read
+ * as separate things rather than as one long form with headings in it.
+ */
+.tool {
+  border: 1px solid var(--line); border-radius: 12px;
+  padding: 14px; margin-bottom: 12px;
+}
+.tool h3 { margin: 0 0 6px; font-size: 15px; letter-spacing: -0.01em; }
+.tool label { display: block; margin: 12px 0 6px; font-size: 13px; font-weight: 600; }
+
+/*
+ * The finish button sits under the figure and above the tabs, so it wants to
+ * look like the end of something rather than one more control in a row.
+ */
+#btn-finish { width: 100%; margin-bottom: 12px; }
+
+.seg-done { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+.seg-summary { margin: 0 0 10px; font-weight: 600; }
+
+/* Numbered, because the number is what the label on the map says. Reading the
+ * list and reading the map have to be the same act of finding "piece 4". */
+.seg-list { margin: 12px 0 0; padding-left: 22px; display: grid; gap: 5px; }
+.seg-item b { font-size: 13.5px; }
+.seg-item small { display: block; color: var(--muted); font-size: 12px; }
+
+.seg-notes {
+  margin-top: 12px; padding: 10px 12px;
+  background: #fdf9ef; border: 1px solid #f0e2c4; border-radius: 10px;
+}
+.seg-notes p { margin: 0 0 7px; font-size: 12.5px; line-height: 1.45; color: #5f4b1d; }
+.seg-notes p:last-child { margin-bottom: 0; }
 
 /*
  * A sheet: a dialog over everything, anchored to the bottom on a phone and

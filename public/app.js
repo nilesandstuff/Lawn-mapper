@@ -23,6 +23,11 @@ import {
   feetToMetres, metresToFeet,
 } from './lib/edges.js';
 import {
+  planSegments,
+  MIN_SEGMENT_SQFT, MAX_SEGMENT_SQFT, SEGMENT_STEP_SQFT,
+  MIN_WIDTH_FT, MAX_WIDTH_FT, DEFAULT_WIDTH_FT,
+} from './lib/segments.js';
+import {
   framePxToLngLat,
   lngLatToFramePx,
   frameCorners,
@@ -92,6 +97,7 @@ const state = {
   emailSignin: false, // can this deployment send a sign-in link?
   saves: [],          // the account's maps, cached so the list is not a wait
   saveMax: 0,         // how many an account keeps, as the Worker reports it
+  plan: null,         // the last application split, or null for none drawn
 };
 
 /**
@@ -890,6 +896,58 @@ async function initMap() {
       'circle-stroke-width': ['case', ['==', ['get', 'phantom'], 1], 1.5, 2],
       'circle-stroke-opacity': ['case', ['==', ['get', 'phantom'], 1], 0.55, 1],
       'circle-stroke-color': ['case', ['==', ['get', 'selected'], 1], '#7a3500', '#2f7d32'],
+    },
+  });
+
+  /*
+   * The application plan: pieces to walk, and the pass count written on each.
+   *
+   * Added before `surveyed` so the survey dots stay on top of it, and drawn
+   * with a fill light enough to read the grass through -- the picture has to
+   * work as a thing you hold up and compare against what is in front of you,
+   * which means the lawn underneath must still be recognisable.
+   */
+  map.addSource('segments', { type: 'geojson', data: empty() });
+  map.addLayer({
+    id: 'segments-fill', type: 'fill', source: 'segments',
+    paint: {
+      // Alternating so two neighbouring pieces are never the same colour.
+      // Which piece is which matters more than what the colours mean, and
+      // stripes are the cheapest way to say "this one, not that one".
+      'fill-color': ['case', ['==', ['%', ['get', 'index'], 2], 0], '#ffffff', '#ffe082'],
+      'fill-opacity': 0.22,
+    },
+  });
+  map.addLayer({
+    id: 'segments-line', type: 'line', source: 'segments',
+    paint: { 'line-color': '#1b5e20', 'line-width': 2, 'line-opacity': 0.9 },
+  });
+  /*
+   * Labels on their OWN point source, not on the polygons.
+   *
+   * Mapbox places a polygon's label at its centroid, and the centroid of a
+   * band bent around a corner is in the neighbour's driveway. planSegments
+   * already works out a point that is guaranteed to be inside the piece, so
+   * the label is anchored to that instead of to a number Mapbox derives.
+   */
+  map.addSource('segment-labels', { type: 'geojson', data: empty() });
+  map.addLayer({
+    id: 'segments-label', type: 'symbol', source: 'segment-labels',
+    layout: {
+      'text-field': ['get', 'caption'],
+      'text-size': 12,
+      'text-line-height': 1.2,
+      // Overlapping labels are unreadable, but a piece with NO label is a
+      // piece somebody cannot follow -- so they are kept apart by padding
+      // rather than dropped.
+      'text-allow-overlap': false,
+      'text-padding': 2,
+      'text-font': ['DIN Pro Medium', 'Arial Unicode MS Regular'],
+    },
+    paint: {
+      'text-color': '#10281a',
+      'text-halo-color': '#ffffff',
+      'text-halo-width': 2,
     },
   });
 
@@ -4242,7 +4300,7 @@ async function sendFeedback(rating) {
  * a tab whose tools WOULD change one you have already corrected is greyed out
  * with the reason on it rather than silently allowed to undo your work.
  */
-const TABS = ['address', 'detect', 'draw', 'saved'];
+const TABS = ['address', 'detect', 'draw', 'saved', 'plan'];
 
 /**
  * Why a tab's tools are not available, or null when they are.
@@ -4324,6 +4382,7 @@ function setTab(name) {
   }
 
   if (next === 'saved') renderSaves();
+  if (next === 'plan') refreshPlanTab();
   refreshTabs();
   refreshRail();
   updatePromptHint();
@@ -4375,6 +4434,22 @@ function refreshTabs() {
   for (const t of TABS) {
     $(`#tab-${t}`)?.classList.toggle('is-locked', Boolean(tabLock(t)));
   }
+
+  /*
+   * The plan tab and the button that leads to it both wait for a lawn.
+   *
+   * A tab of tools that all need a measurement is four taps of nothing before
+   * there is one, and the button under the figure would be offering to finish
+   * something that has not started. `hasLawn()` is the same test the "correct
+   * it by hand" button uses, so the two appear together and mean the same
+   * thing by "there is something here now".
+   */
+  const ready = hasLawn();
+  const planTab = $('#tab-plan');
+  if (planTab) planTab.hidden = !ready;
+
+  const finish = $('#btn-finish');
+  if (finish) finish.hidden = !ready || (state.tab !== 'detect' && state.tab !== 'draw');
 
   /*
    * The map's half of this step has to follow the lock in the same breath.
@@ -6165,6 +6240,25 @@ function refreshMeasurement() {
   const fc = draw.getAll();
   const hasShapes = fc.features.length > 0;
   $('#result').hidden = !hasShapes;
+
+  /*
+   * A PLAN DRAWN OVER A LAWN THAT HAS SINCE CHANGED IS A WRONG PLAN.
+   *
+   * The pieces are cut from the shapes as they were, so any edit -- a brush
+   * stroke, a dragged corner, a re-detection -- leaves them describing ground
+   * that is no longer the lawn. Silently stale is the dangerous version here,
+   * because the numbers still look authoritative while being about a shape
+   * nobody can see any more. They go, and the tool says so when reopened.
+   *
+   * Cleared rather than recomputed: recomputing on every vertex drag would
+   * redraw a dozen bands per second, and the person moving a corner has not
+   * asked for a plan yet.
+   */
+  if (state.plan) clearSegments({ quiet: true });
+  // The plan tab and the finish button both appear with the first shape and
+  // leave with the last one, so they are refreshed wherever shapes change.
+  refreshTabs();
+
   if (!hasShapes) {
     // Clear the figure rather than just hiding it. A hidden panel keeps its
     // last text, which reads as a live measurement to anything looking at the
@@ -6220,6 +6314,166 @@ function updateSelectionButtons() {
   // Phones have no Delete key, so removing a patch you do not mow needs a
   // button; without one, a wrongly detected shape could not be removed at all.
   $('#btn-delete').disabled = selected === 0;
+}
+
+/* ------------------------------------------------------- the plan tab */
+
+/**
+ * What the plan tools have to work with.
+ *
+ * Everything here acts on a finished measurement, so the tab says how big it
+ * is rather than making somebody switch back to check. The figure is also the
+ * sanity check on the pieces: if the total here and the pieces below disagree,
+ * something is wrong and it is visible.
+ */
+function refreshPlanTab() {
+  const sqft = totalSquareFeet();
+  $('#plan-lead').textContent = sqft
+    ? `${Math.round(sqft).toLocaleString()} sq ft measured. These tools work on the finished map.`
+    : 'Measure a lawn first and these tools will work on it.';
+}
+
+/** The lawn as planSegments wants it: one ring list per polygon, lng/lat. */
+function lawnRings() {
+  return draw.getAll().features
+    .map((f) => f.geometry?.coordinates)
+    .filter((rings) => Array.isArray(rings) && rings[0]?.length >= 4);
+}
+
+const clampSize = (n) => Math.min(
+  MAX_SEGMENT_SQFT,
+  Math.max(MIN_SEGMENT_SQFT, Math.round(n / SEGMENT_STEP_SQFT) * SEGMENT_STEP_SQFT)
+);
+const clampWidth = (n) => Math.min(MAX_WIDTH_FT, Math.max(MIN_WIDTH_FT, n));
+
+const segSize = () => clampSize(parseFloat($('#seg-size').value) || 5000);
+const segWidth = () => clampWidth(parseFloat($('#seg-width').value) || DEFAULT_WIDTH_FT);
+
+function writeSegInputs() {
+  $('#seg-size').value = String(segSize());
+  $('#seg-width').value = String(segWidth());
+}
+
+/**
+ * Run the split and draw it.
+ *
+ * Synchronous and on the main thread, deliberately: the raster is a few
+ * hundred pixels a side and this takes single-digit milliseconds on a phone.
+ * A worker would be a second file, a message protocol and a loading state to
+ * make a fast thing feel slower.
+ */
+function runSegments() {
+  const rings = lawnRings();
+  if (!rings.length) {
+    setStatus('There is no lawn to split yet.', 'warn');
+    return;
+  }
+
+  writeSegInputs();
+  const plan = planSegments({ rings, targetSqFt: segSize(), widthFt: segWidth() });
+  state.plan = plan;
+
+  map.getSource('segments').setData({
+    type: 'FeatureCollection',
+    features: plan.segments.map((s, i) => ({
+      type: 'Feature',
+      properties: { index: i },
+      geometry: s.geometry,
+    })),
+  });
+  map.getSource('segment-labels').setData({
+    type: 'FeatureCollection',
+    features: plan.segments
+      .filter((s) => s.at)
+      .map((s, i) => ({
+        type: 'Feature',
+        // Two lines: the number you are on, and what to do with it. The order
+        // matters -- you find your place by the number and then read the
+        // instruction, not the other way round.
+        properties: {
+          caption: `${i + 1}\n${s.label}\n${s.squareFeet.toLocaleString()} sq ft`,
+        },
+        geometry: { type: 'Point', coordinates: s.at },
+      })),
+  });
+
+  renderSegmentList(plan);
+  $('#seg-done').hidden = !plan.segments.length;
+  $('#seg-clear').hidden = !plan.segments.length;
+
+  if (!plan.segments.length) {
+    setStatus(plan.notes[0] || 'That lawn could not be split.', 'warn');
+    return;
+  }
+  setStatus(
+    `${plan.segments.length} piece${plan.segments.length === 1 ? '' : 's'} of about `
+    + `${segSize().toLocaleString()} sq ft. Save the picture and take it outside.`
+  );
+}
+
+function renderSegmentList(plan) {
+  const list = $('#seg-list');
+  list.innerHTML = '';
+
+  for (const [i, s] of plan.segments.entries()) {
+    const li = document.createElement('li');
+    li.className = 'seg-item';
+    const head = document.createElement('b');
+    head.textContent = `${s.squareFeet.toLocaleString()} sq ft`;
+    const sub = document.createElement('small');
+    sub.textContent = s.label + (s.split ? ' · in two parts' : '');
+    li.append(head, sub);
+    list.append(li);
+  }
+
+  /*
+   * THE NOTES ARE PART OF THE ANSWER, not a footnote.
+   *
+   * A plan that quietly covers most of a lawn is worse than no plan, because
+   * the part it missed is invisible until somebody is standing on it. So the
+   * total covered is stated against the total measured whenever they differ,
+   * and every reason a piece is odd is printed rather than counted.
+   */
+  const box = $('#seg-notes');
+  box.innerHTML = '';
+  const short = plan.totalSqFt - plan.coveredSqFt;
+  const lines = [...plan.notes];
+  if (short > plan.totalSqFt * 0.02) {
+    lines.unshift(
+      `${short.toLocaleString()} sq ft is not in any piece — scraps too small to `
+      + 'be worth walking as their own section.'
+    );
+  }
+  for (const text of lines) {
+    const p = document.createElement('p');
+    p.textContent = text;
+    box.append(p);
+  }
+  box.hidden = !lines.length;
+
+  $('#seg-summary').textContent =
+    `${plan.coveredSqFt.toLocaleString()} sq ft in ${plan.segments.length} piece`
+    + `${plan.segments.length === 1 ? '' : 's'}`
+    + (plan.sections > 1 ? `, across ${plan.sections} sections` : '');
+}
+
+/**
+ * Take the pieces off the map.
+ *
+ * `quiet` when this is a consequence of something else -- editing the lawn
+ * drops a plan that no longer describes it, and announcing that over the top
+ * of "3 sections of lawn at this setting" would replace the message about what
+ * the person just did with one about the bookkeeping behind it.
+ */
+function clearSegments({ quiet = false } = {}) {
+  state.plan = null;
+  // Guarded because this runs from refreshMeasurement, which can fire before
+  // the map's sources exist -- restoring a save sets shapes up first.
+  map?.getSource?.('segments')?.setData(empty());
+  map?.getSource?.('segment-labels')?.setData(empty());
+  $('#seg-done').hidden = true;
+  $('#seg-clear').hidden = true;
+  if (!quiet) setStatus('Pieces cleared.');
 }
 
 /* ---------------------------------------------------------------- quota */
@@ -6624,6 +6878,61 @@ window.addEventListener('resize', placeTip);
 $('#btn-png').addEventListener('click', exportPng);
 $('#btn-print').addEventListener('click', () => window.print());
 
+/* ------------------------------------------------------ the plan, wired */
+
+/*
+ * "Finish" is a handover, not a save button.
+ *
+ * The map is already saved -- it has been since the measurement settled, and
+ * offering to do again something that has happened would be a button that
+ * teaches people the app does not save on its own. What this actually does is
+ * name the moment the measuring is over and show what comes next, which is
+ * the thing the tabs could not say on their own.
+ */
+$('#btn-finish').addEventListener('click', () => {
+  setTab('plan');
+  setStatus('Measuring done. These tools work on the finished map.');
+});
+
+for (const [id, delta] of [['#seg-size-minus', -SEGMENT_STEP_SQFT], ['#seg-size-plus', SEGMENT_STEP_SQFT]]) {
+  $(id).addEventListener('click', () => {
+    $('#seg-size').value = String(clampSize(segSize() + delta));
+    if (state.plan) runSegments();
+  });
+}
+for (const [id, delta] of [['#seg-width-minus', -1], ['#seg-width-plus', 1]]) {
+  $(id).addEventListener('click', () => {
+    $('#seg-width').value = String(clampWidth(segWidth() + delta));
+    if (state.plan) runSegments();
+  });
+}
+
+/*
+ * Typed values are clamped when the field is left, not as they are typed.
+ * Clamping on every keystroke makes "12000" impossible to type, because the
+ * "1" becomes 1000 before the "2" arrives.
+ */
+for (const id of ['#seg-size', '#seg-width']) {
+  $(id).addEventListener('change', () => { writeSegInputs(); if (state.plan) runSegments(); });
+}
+
+$('#seg-run').addEventListener('click', runSegments);
+$('#seg-clear').addEventListener('click', clearSegments);
+$('#seg-png').addEventListener('click', exportPng);
+$('#seg-pdf').addEventListener('click', () => window.print());
+
+/*
+ * A saved map is a reason to skip the address entirely.
+ *
+ * Somebody coming back to look at last week's measurement should not have to
+ * type an address they already measured to reach it. Offered only when there
+ * is something saved, so a first visit is one field and one button.
+ */
+$('#btn-open-saved').addEventListener('click', () => {
+  showStep('work');
+  setTab('saved');
+});
+
 /*
  * Ticking this used to do NOTHING until the next detection.
  *
@@ -6845,4 +7154,14 @@ initMap()
   .then(afterMap('the allowance badge', refreshQuota))
   .then(afterMap('the account lookup', refreshAccount))
   .then(afterMap('the sign-in notice', readSigninOutcome))
+  /*
+   * After the account, because whether there are saved maps depends on whether
+   * this is an account with maps in it -- asking before signing in is resolved
+   * would offer the shortcut to an empty list, or hide it from somebody whose
+   * maps are about to load.
+   */
+  .then(afterMap('the saved-map shortcut', async () => {
+    const saves = await loadSaves();
+    $('#btn-open-saved').hidden = !saves.length;
+  }))
   .catch(() => {});                  // already reported above
