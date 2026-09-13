@@ -22,6 +22,7 @@ import {
   nearestVertex, moveVertex, insertVertex, deleteVertex, tidyRing,
   feetToMetres, metresToFeet,
 } from './lib/edges.js';
+import { restoreAway } from './lib/stitch.js';
 import {
   planSegments,
   MIN_SEGMENT_SQFT, MAX_SEGMENT_SQFT, SEGMENT_STEP_SQFT,
@@ -1225,6 +1226,19 @@ const BRUSH_PX = { fine: 12, bulk: 40 };
 const ERASE_GRID = 1280;       // same resolution the detector traces at
 
 /*
+ * How hard to smooth a BRUSH EDIT, as against a detection.
+ *
+ * A detection arrives as a noisy mask and wants real smoothing. A brush edit
+ * arrives as a polygon somebody already corrected, and the only new boundary
+ * in it is the few metres under the stroke -- so smoothing is nearly all
+ * damage. About one pixel of the grid, and a cap high enough that corners are
+ * never dropped to fit it: what survives here is put back on its original
+ * line by restoreAway, and a corner deleted by the cap cannot be.
+ */
+const BRUSH_TRACE_PX = 1.2;
+const MAX_BRUSH_VERTICES = 400;
+
+/*
  * The same stroke, in both directions.
  *
  * Subtracting and adding are the identical operation with one bit flipped:
@@ -1562,21 +1576,58 @@ function applyErase() {
     data[p * 4 + 3] = 255;
   }
 
+  /*
+   * TRACED FOR AN EDIT, NOT FOR A DETECTION.
+   *
+   * TRACE_TOLERANCE_M and MAX_TRACE_VERTICES exist to turn a noisy model mask
+   * into a clean outline: two and a half feet of smoothing and a cap of thirty
+   * corners. Right for a mask, ruinous here. What goes into this round trip is
+   * a polygon somebody already corrected, and re-simplifying it moves every
+   * edge on the whole shape while the cap deletes corners metres from the
+   * brush that were placed on purpose. That is the "edges creep in across the
+   * whole shape" report, and it is why sparing untouched SHAPES did not fix
+   * it -- the damage was inside the shape the brush legitimately touched.
+   *
+   * So the edit path smooths by about a pixel and keeps as many corners as the
+   * result needs. There is no noise to remove: the staircase this leaves along
+   * the untouched edges is put back on its original line below.
+   */
+  const mPerPx = metresPerPixel(frame, ERASE_GRID);
   const polygons = maskToPolygons(
     { width: ERASE_GRID, height: ERASE_GRID, data },
     (x, y) => framePxToLngLat(frame, [x, y], ERASE_GRID, ERASE_GRID),
     {
-      tolerance: TRACE_TOLERANCE_M / metresPerPixel(frame, ERASE_GRID),
-      maxVertices: MAX_TRACE_VERTICES,
+      tolerance: BRUSH_TRACE_PX,
+      maxVertices: MAX_BRUSH_VERTICES,
     }
   );
+
+  /*
+   * ...and then the parts the brush could not have reached go back exactly
+   * onto the outline they came from. See lib/stitch.js. The reach is the brush
+   * radius plus a pixel of margin, so a vertex spared here is one the stroke
+   * provably did not touch.
+   */
+  const originals = candidates
+    .filter((f) => touched.includes(f))
+    .flatMap((f) => f.geometry.coordinates);
+  const reachM = brushMetres + mPerPx * 2;
+  const restored = polygons.map((geometry) => ({
+    ...geometry,
+    coordinates: restoreAway(geometry.coordinates, {
+      originals,
+      stroke,
+      reachM,
+      snapM: mPerPx * 2.5,
+    }),
+  }));
 
   pushHistory();
   draw.deleteAll();
   // The shapes the brush never reached go back exactly as they were, keeping
   // every corner the user placed by hand.
   for (const f of untouched) draw.add(f);
-  for (const geometry of polygons) draw.add({ type: 'Feature', properties: {}, geometry });
+  for (const geometry of restored) draw.add({ type: 'Feature', properties: {}, geometry });
 
   refreshMeasurement();
   refreshSurveyed();
@@ -6421,7 +6472,7 @@ function renderSegmentList(plan) {
     const head = document.createElement('b');
     head.textContent = `${s.squareFeet.toLocaleString()} sq ft`;
     const sub = document.createElement('small');
-    sub.textContent = s.label + (s.split ? ' · in two parts' : '');
+    sub.textContent = s.label;
     li.append(head, sub);
     list.append(li);
   }
@@ -6434,27 +6485,36 @@ function renderSegmentList(plan) {
    * total covered is stated against the total measured whenever they differ,
    * and every reason a piece is odd is printed rather than counted.
    */
+  /*
+   * THE NOTES COME FROM THE PLANNER, WHOLE.
+   *
+   * This used to compute an uncovered-ground note of its own and put it in
+   * front of the planner's. Two places writing about the same fact is how they
+   * end up disagreeing -- and the planner's version is the better one anyway,
+   * because it knows WHY the ground is uncovered (a drive, a building, a
+   * target nothing can reach) and this only knew that it was.
+   */
   const box = $('#seg-notes');
   box.innerHTML = '';
-  const short = plan.totalSqFt - plan.coveredSqFt;
-  const lines = [...plan.notes];
-  if (short > plan.totalSqFt * 0.02) {
-    lines.unshift(
-      `${short.toLocaleString()} sq ft is not in any piece — scraps too small to `
-      + 'be worth walking as their own section.'
-    );
-  }
-  for (const text of lines) {
+  for (const text of plan.notes) {
     const p = document.createElement('p');
     p.textContent = text;
     box.append(p);
   }
-  box.hidden = !lines.length;
+  box.hidden = !plan.notes.length;
 
+  /*
+   * Covered AND total, always, not just when they differ.
+   *
+   * Pieces are only drawn where one genuinely fits now, so a plan covering
+   * part of a lawn is the normal case rather than a failure -- and the two
+   * numbers side by side are what tell somebody at a glance how much of their
+   * lawn they are about to treat off-plan.
+   */
   $('#seg-summary').textContent =
-    `${plan.coveredSqFt.toLocaleString()} sq ft in ${plan.segments.length} piece`
-    + `${plan.segments.length === 1 ? '' : 's'}`
-    + (plan.sections > 1 ? `, across ${plan.sections} sections` : '');
+    `${plan.segments.length} piece${plan.segments.length === 1 ? '' : 's'}`
+    + ` · ${plan.coveredSqFt.toLocaleString()} of ${plan.totalSqFt.toLocaleString()} sq ft`
+    + (plan.sections > 1 ? ` · ${plan.sections} sections` : '');
 }
 
 /**

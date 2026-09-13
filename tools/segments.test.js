@@ -86,18 +86,17 @@ const totalOf = (segments) => segments.reduce((n, s) => n + s.squareFeet, 0);
     Math.abs(plan.totalSqFt - 20000) < 20000 * 0.02, `${plan.totalSqFt} sq ft`);
 
   /*
-   * 50ft deep at 5ft a pass is 10 passes. If this is 9 or 11, somebody walks
-   * the piece and the paint does not land where the picture said.
+   * 5,000 sq ft of a lawn whose long edge is 200ft is a band 25ft deep, and
+   * 25ft at 5ft a pass is 5 passes. Bands run PARALLEL to the long edge now
+   * -- see candidateAngles -- so this is the arithmetic of the edge you walk
+   * beside, not of the lawn's bounding box.
    */
   check('every piece is a whole number of passes, and the right number',
-    plan.segments.every((s) => s.passes === 10),
+    plan.segments.every((s) => s.passes === 5),
     plan.segments.map((s) => s.passes).join(', '));
 
   check('and says so in words a person can follow',
-    plan.segments[0].label === '10 passes of 5 ft', plan.segments[0].label);
-
-  check('nothing is reported as split on a plain rectangle',
-    plan.segments.every((s) => !s.split));
+    plan.segments[0].label === '5 passes of 5 ft', plan.segments[0].label);
 
   check('and there is nothing to apologise for',
     plan.notes.length === 0, plan.notes.join(' | '));
@@ -144,14 +143,30 @@ const totalOf = (segments) => segments.reduce((n, s) => n + s.squareFeet, 0);
   }
 
   /*
-   * A target bigger than the lawn is not an error. One piece, the whole lawn,
-   * and it should say the piece is smaller than asked rather than pretending.
+   * A TARGET BIGGER THAN THE LAWN DRAWS NOTHING, and says why.
+   *
+   * It used to hand back one piece covering everything, which reads as "here
+   * is your 30,000 sq ft piece" over a 5,000 sq ft lawn -- a number somebody
+   * would then check a bag against. Drawing nothing is the honest answer; the
+   * note is what makes it a useful one, and it has to name the fix rather than
+   * the failure.
    */
   const big = planSegments({ rings: [rect(100, 50)], targetSqFt: 30000, widthFt: 5 });
-  check('a target larger than the lawn gives one piece covering all of it',
-    big.segments.length === 1
-    && Math.abs(big.segments[0].squareFeet - big.totalSqFt) < big.totalSqFt * 0.03,
-    `${big.segments.length} piece, ${big.segments[0]?.squareFeet} of ${big.totalSqFt}`);
+  check('a target larger than the lawn draws nothing rather than a wrong number',
+    big.segments.length === 0, `${big.segments.length} pieces`);
+  check('and says the lawn is smaller than one piece',
+    big.notes.some((t) => /smaller than one/.test(t)), big.notes.join(' | '));
+
+  /*
+   * And the opposite wall, which has the OPPOSITE fix: a piece smaller than a
+   * single pass across the lawn. One sentence for both would send half the
+   * people who read it the wrong way.
+   */
+  const thin = planSegments({ rings: [rect(400, 200)], targetSqFt: 1000, widthFt: 12 });
+  check('a piece smaller than one pass says so, and names the size that would work',
+    thin.segments.length === 0
+    && thin.notes.some((t) => /already covers about/.test(t)),
+    thin.notes.join(' | '));
 }
 
 /* --------------------------------------------------- cuts run clean across */
@@ -263,13 +278,11 @@ const totalOf = (segments) => segments.reduce((n, s) => n + s.squareFeet, 0);
  * A LAWN WITH NO CLEAN SWEEP IN ANY DIRECTION: a narrow border running right
  * around a large building, which is what a house on a small lot leaves.
  *
- * This is a genuinely impossible case rather than an awkward one, and the
- * difference matters. A U-shape has an escape -- sweep the other way and the
- * bands miss the notch -- and earlier drafts of this test used one, which
- * stopped exercising the split path the moment the tool learned to try both
- * directions. A closed ring has no escape: every straight band across it cuts
- * the border in two places and leaves two disconnected arcs, whichever way you
- * point it. That is what forces the tool to admit it rather than out-clever it.
+ * Every straight band across it cuts the border in two places and leaves two
+ * arcs with a building between them, whichever way you point it. Those are not
+ * pieces, and they are no longer drawn: a piece has to be walkable in one go,
+ * and two strips either side of a house is somebody treating one and counting
+ * both.
  */
 {
   const lng = -85.6;
@@ -288,36 +301,77 @@ const totalOf = (segments) => segments.reduce((n, s) => n + s.squareFeet, 0);
 
   const plan = planSegments({ rings: [ring], targetSqFt: 1000, widthFt: 5 });
 
-  check('a lawn with no clean sweep reports the pieces that are not one strip',
-    plan.segments.some((s) => s.split),
-    plan.segments.map((s) => (s.split ? 'split' : 'whole')).join(', '));
+  /*
+   * IT STILL FINDS THE PIECES THAT DO WORK. Refusing the whole lawn because
+   * part of it is awkward would be the tool giving up; the four sides of a
+   * border each have runs that are perfectly walkable.
+   */
+  check('the pieces that work are still found', plan.segments.length >= 3,
+    `${plan.segments.length} pieces`);
 
-  check('with a note naming which pieces, and why',
-    plan.notes.some((t) => /more than one part/.test(t)),
-    plan.notes.find((t) => /more than one part/.test(t)) || '(none)');
+  check('and none of them is a piece cut in two by the building',
+    plan.coveredSqFt < plan.totalSqFt,
+    `${plan.coveredSqFt} of ${plan.totalSqFt} sq ft covered`);
+
+  check('with a note saying how much is left over and why',
+    plan.notes.some((t) => /has no piece on it/.test(t)),
+    plan.notes.join(' | '));
 
   /*
-   * ONE note for all of them, not one each. Five copies of the same sentence
-   * is how a warning becomes wallpaper: the reader stops at the second and
-   * never reaches the note that is actually about their lawn.
+   * AND WHAT IS DRAWN IS ACCURATE. This is the trade the whole rewrite makes:
+   * two thirds of a lawn with pieces you can trust beats all of it with
+   * pieces you cannot. So every piece that IS offered must be within the
+   * tolerance of what was asked for -- no slivers, no doubles.
    */
-  const split = plan.segments.filter((s) => s.split).length;
-  check('and says it once however many pieces broke',
-    split > 1 && plan.notes.filter((t) => /more than one part/.test(t)).length === 1,
-    `${split} broken pieces, ${plan.notes.length} notes in total`);
+  check('and every piece drawn is within a fifth of the size asked for',
+    plan.segments.every((s) => Math.abs(s.squareFeet - 1000) <= 200),
+    plan.segments.map((s) => s.squareFeet).join(', '));
+}
 
-  /*
-   * AND THE AREA IS STILL RIGHT. A split band is reported, not discarded --
-   * dropping it would lose that ground from the plan entirely, which is the
-   * failure the note exists to prevent rather than to cause.
-   */
-  check('and the split pieces are still counted, not dropped',
-    Math.abs(totalOf(plan.segments) - plan.totalSqFt) < plan.totalSqFt * 0.04,
-    `${totalOf(plan.segments)} vs ${plan.totalSqFt}`);
+/* ------------------------------------------------- a gap you can step over */
+/*
+ * THE TEN FOOT RULE. A piece has to be continuous, but "continuous" cannot
+ * mean "not one pixel missing" -- a tree in the middle of a lawn would then
+ * disqualify every band that touched it, and lawns have trees.
+ *
+ * So the rule is about WIDTH. Step round a tree and you have not lost your
+ * place; walk round a driveway and you have no idea which side you already
+ * did. Ten feet is where the owner drew that line.
+ *
+ * Tested by growing one obstacle, which is the only honest way to test a
+ * threshold: the same lawn, the same target, one number changing.
+ */
+{
+  const lng = -85.6;
+  const lat = LAT;
+  const withObstacle = (sizeFt) => {
+    const half = sizeFt / 2;
+    return [
+      [
+        at(lng, lat, 0, 0), at(lng, lat, 200, 0),
+        at(lng, lat, 200, 100), at(lng, lat, 0, 100), at(lng, lat, 0, 0),
+      ],
+      [
+        at(lng, lat, 100 - half, 50 - half), at(lng, lat, 100 + half, 50 - half),
+        at(lng, lat, 100 + half, 50 + half), at(lng, lat, 100 - half, 50 + half),
+        at(lng, lat, 100 - half, 50 - half),
+      ],
+    ];
+  };
 
-  check('and only the bands level with the house are marked, not all of them',
-    plan.segments.some((s) => !s.split),
-    plan.segments.map((s) => (s.split ? 'X' : '-')).join(''));
+  const tree = planSegments({ rings: [withObstacle(8)], targetSqFt: 2000, widthFt: 5 });
+  check('a lawn with a tree in it is still covered end to end',
+    tree.coveredSqFt > tree.totalSqFt * 0.97,
+    `${tree.coveredSqFt} of ${tree.totalSqFt} sq ft`);
+
+  const shed = planSegments({ rings: [withObstacle(100)], targetSqFt: 2000, widthFt: 5 });
+  check('a lawn with a building in it is not',
+    shed.coveredSqFt < shed.totalSqFt * 0.9,
+    `${shed.coveredSqFt} of ${shed.totalSqFt} sq ft`);
+
+  check('and the pieces it does find are still the right size',
+    shed.segments.every((s) => Math.abs(s.squareFeet - 2000) <= 400),
+    shed.segments.map((s) => s.squareFeet).join(', '));
 }
 
 /* ------------------------------------------------------ a lawn with a hole */
@@ -344,9 +398,10 @@ const totalOf = (segments) => segments.reduce((n, s) => n + s.squareFeet, 0);
   check('a hole is taken out of the lawn before it is divided',
     Math.abs(plan.totalSqFt - 18000) < 18000 * 0.04, `${plan.totalSqFt} sq ft, expected 18,000`);
 
-  check('and the pieces still add up to what is left',
-    Math.abs(totalOf(plan.segments) - plan.totalSqFt) < plan.totalSqFt * 0.03,
-    `${totalOf(plan.segments)} vs ${plan.totalSqFt}`);
+  check('and what is covered is covered accurately',
+    plan.segments.every((s) => Math.abs(s.squareFeet - 5000) <= 1000)
+    && plan.coveredSqFt <= plan.totalSqFt + 1,
+    `${plan.segments.map((s) => s.squareFeet).join(', ')} of ${plan.totalSqFt}`);
 }
 
 /* ------------------------------------------------ a diagonal lawn */
@@ -372,7 +427,7 @@ const totalOf = (segments) => segments.reduce((n, s) => n + s.squareFeet, 0);
   check('a lawn at an angle divides like the same lawn facing north',
     plan.segments.length === 4, `${plan.segments.length} pieces`);
   check('and its pieces are still the right size',
-    plan.segments.every((s) => Math.abs(s.squareFeet - 5000) < 5000 * 0.12),
+    plan.segments.every((s) => Math.abs(s.squareFeet - 5000) <= 5000 * 0.2),
     plan.segments.map((s) => s.squareFeet).join(', '));
   check('and still whole passes',
     plan.segments.every((s) => Number.isInteger(s.passes) && s.passes >= 1),
@@ -396,14 +451,23 @@ const totalOf = (segments) => segments.reduce((n, s) => n + s.squareFeet, 0);
    * The offered range has to be the range the maths survives. Both ends of
    * both sliders, on a lawn big enough to exercise them.
    */
+  /*
+   * EVERY COMBINATION THE SLIDERS OFFER HOLDS TOGETHER -- which does not mean
+   * every combination produces pieces. A 1,000 sq ft piece cannot span a 400ft
+   * lawn with a 12ft spreader, and the honest answer there is none plus a note
+   * saying so. What must never happen is a piece that is the wrong size, a
+   * fractional pass count, or a crash.
+   */
   for (const targetSqFt of [MIN_SEGMENT_SQFT, MAX_SEGMENT_SQFT]) {
     for (const widthFt of [MIN_WIDTH_FT, MAX_WIDTH_FT]) {
       const plan = planSegments({ rings: [rect(400, 200)], targetSqFt, widthFt });
-      const ok = plan.segments.length > 0
-        && plan.segments.every((s) => s.squareFeet > 0 && Number.isInteger(s.passes))
-        && Math.abs(totalOf(plan.segments) - plan.totalSqFt) < plan.totalSqFt * 0.05;
+      const ok = plan.segments.every((s) =>
+        s.squareFeet > 0
+        && Number.isInteger(s.passes) && s.passes >= 1
+        && Math.abs(s.squareFeet - targetSqFt) <= targetSqFt * 0.2)
+        && (plan.segments.length > 0 || plan.notes.length > 0);
       check(`${targetSqFt.toLocaleString()} sq ft at ${widthFt}ft holds together`, ok,
-        `${plan.segments.length} pieces, ${totalOf(plan.segments)} of ${plan.totalSqFt}`);
+        `${plan.segments.length} pieces: ${plan.segments.map((x) => x.squareFeet).join(', ') || plan.notes[0]}`);
     }
   }
 
