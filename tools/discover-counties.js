@@ -49,6 +49,11 @@ const PLAUSIBLE_ACRES = { min: 0.01, max: 160 };
 const STATES = {
   washoe: 'Nevada',
   northcarolina: 'North Carolina',
+  champaign: 'Illinois',
+  // Named although Michigan is the fallback, because a reader checking why
+  // Wayne searched Michigan should find the answer here rather than infer it
+  // from an absence.
+  wayne: 'Michigan',
 };
 
 const CANDIDATE_ROOTS = {
@@ -132,6 +137,65 @@ const CANDIDATE_ROOTS = {
     'https://gis.countyofnewaygo.com/arcgis/rest/services',
     'https://maps.countyofnewaygo.com/arcgis/rest/services',
     'https://services.arcgis.com/newaygo/arcgis/rest/services',
+  ],
+
+  /*
+   * Wayne County, Michigan -- Detroit, Dearborn, Livonia. By far the largest
+   * population this project has tried to cover: about 1.7 million people.
+   *
+   * EVERY URL BELOW IS A GUESS, in the same sense as every other list here:
+   * the convention, tried on the hosts a county of this size plausibly uses.
+   * Three of the seven counties already here turned out to use a host or an
+   * instance name nobody would have guessed, so the catalogue search at the
+   * end of investigate() is the likelier finder, not this list.
+   *
+   * Detroit is included as its own root because it runs a substantial open
+   * data GIS of its own and holds a third of the county's parcels. A city
+   * layer covering only Detroit would still be worth having -- it would just
+   * need saying so in the entry, rather than being filed as "Wayne County".
+   *
+   * SEMCOG is the regional planning agency for the seven-county Detroit area
+   * and republishes member data, which is the same shape as NC OneMap: one
+   * layer standing in for many assessors.
+   */
+  wayne: [
+    'https://gis.waynecounty.com/arcgis/rest/services',
+    'https://gis.waynecounty.com/server/rest/services',
+    'https://maps.waynecounty.com/arcgis/rest/services',
+    'https://gisapps.waynecounty.com/arcgis/rest/services',
+    'https://services.waynecounty.com/arcgis/rest/services',
+    // Detroit's own, which is open-data-first and unusually well published.
+    'https://gis.detroitmi.gov/arcgis/rest/services',
+    'https://gisportal.detroitmi.gov/arcgis/rest/services',
+    // The regional agency, in case the county publishes through it.
+    'https://maps.semcog.org/arcgis/rest/services',
+    'https://gis.semcog.org/arcgis/rest/services',
+  ],
+
+  /*
+   * Champaign County, Illinois -- Champaign, Urbana, the university.
+   *
+   * The first Illinois county, so nothing about it can be assumed from the
+   * Michigan ones. Illinois has no public statewide parcel layer to fall back
+   * on the way North Carolina and Vermont do, so this has to be the county's
+   * own or a member city's.
+   *
+   * The county's GIS is run by a consortium -- CCGISC, which the county, the
+   * cities and the university fund jointly -- so its host is likelier to carry
+   * the consortium's name than the county's. That is the same pattern as
+   * Newaygo and Kent: the name on the server is not the name of the place.
+   */
+  champaign: [
+    'https://gis.ccgisc.org/arcgis/rest/services',
+    'https://maps.ccgisc.org/arcgis/rest/services',
+    'https://ccgisc.org/arcgis/rest/services',
+    'https://gis.co.champaign.il.us/arcgis/rest/services',
+    'https://maps.co.champaign.il.us/arcgis/rest/services',
+    'https://gis.co.champaign.il.us/server/rest/services',
+    // The two cities, which co-fund the consortium and may republish it.
+    'https://gis.champaignil.gov/arcgis/rest/services',
+    'https://maps.champaignil.gov/arcgis/rest/services',
+    'https://gis.urbanaillinois.us/arcgis/rest/services',
   ],
 };
 
@@ -218,8 +282,23 @@ async function listServices(root) {
  * which is exactly what Kent's 404 looks like. This searches the public
  * catalogue instead.
  */
-async function searchArcGISOnline(countyName) {
-  const q = `${countyName} ${STATES[countyName] || 'Michigan'} parcels`;
+/*
+ * `key`, NOT the display name, and this was wrong from the day STATES was
+ * added to fix it.
+ *
+ * STATES is keyed by the county key -- `washoe` -- and this was called with
+ * the name minus " County" -- `Washoe`. So the lookup missed every time and
+ * fell through to Michigan, and the search Washoe actually ran was "Washoe
+ * Michigan parcels": precisely the confidently-wrong query the comment on
+ * STATES says it exists to prevent. It never fired, because Washoe was found
+ * by a host guess before the catalogue search was reached.
+ *
+ * It matters now because Champaign is in Illinois and has no obvious host, so
+ * the catalogue search is the likeliest thing to find it.
+ */
+async function searchArcGISOnline(key) {
+  const countyName = (COUNTIES[key]?.name || key).replace(/ County$/, '');
+  const q = `${countyName} ${STATES[key] || 'Michigan'} parcels`;
   const url =
     'https://www.arcgis.com/sharing/rest/search?' +
     new URLSearchParams({
@@ -401,7 +480,7 @@ async function investigate(key) {
 
   // Nothing county-hosted answered; try the public ArcGIS Online catalogue.
   console.log(`\n  Searching ArcGIS Online for "${COUNTIES[key]?.name || key}"…`);
-  const hosted = await searchArcGISOnline((COUNTIES[key]?.name || key).replace(/ County$/, ''));
+  const hosted = await searchArcGISOnline(key);
   if (!hosted.length) console.log('      no candidates found');
 
   for (const item of hosted) {

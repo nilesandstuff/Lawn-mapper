@@ -124,4 +124,43 @@ export const TEST_POINTS = {
     { lng: -85.8003, lat: 43.4197, label: 'Newaygo' },
     { lng: -85.7723, lat: 43.5503, label: 'White Cloud' },
   ],
+
+  /*
+   * Wayne County, Michigan. Five points because the county is not one thing:
+   * Detroit, the older inner suburbs, and the post-war townships are three
+   * different assessors' worth of record-keeping inside one county, and a
+   * layer that covers one may not cover the others.
+   *
+   * Aimed at ordinary residential streets rather than downtown, following the
+   * lesson at the top of this file: a downtown point lands on a street, a
+   * river or unplatted land and returns nothing from a perfectly good service.
+   *
+   * Detroit is deliberately a settled residential district rather than the
+   * core, because the core is also where the vacant-lot record is messiest.
+   */
+  wayne: [
+    { lng: -83.3527, lat: 42.3684, label: 'Livonia (post-war subdivision)' },
+    { lng: -83.2330, lat: 42.3120, label: 'Dearborn' },
+    { lng: -83.2200, lat: 42.3900, label: 'Detroit (Rosedale Park)' },
+    { lng: -82.9300, lat: 42.3750, label: 'Grosse Pointe Park' },
+    { lng: -83.4820, lat: 42.3090, label: 'Canton Township' },
+  ],
+
+  /*
+   * Champaign County, Illinois. The two cities, a village, and a town at the
+   * far end of the county.
+   *
+   * Rantoul is there on purpose: it is twenty miles north of the university
+   * and was a separate air force base town, so it is the point most likely to
+   * be missing from a layer that really only covers Champaign-Urbana. If the
+   * first four answer and Rantoul does not, that is a coverage fact worth
+   * recording rather than a failure.
+   */
+  champaign: [
+    { lng: -88.2700, lat: 40.1100, label: 'Champaign (residential)' },
+    { lng: -88.2000, lat: 40.1150, label: 'Urbana (residential)' },
+    { lng: -88.2520, lat: 40.0560, label: 'Savoy' },
+    { lng: -88.4030, lat: 40.1920, label: 'Mahomet' },
+    { lng: -88.1430, lat: 40.3090, label: 'Rantoul (far north of the county)' },
+  ],
 };
