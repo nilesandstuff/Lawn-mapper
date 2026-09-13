@@ -140,6 +140,50 @@ const COUNTIES = {
     fields: { pin: 'pid', address: 'streetaddress' },
     verified: 'live', // 3 of 4 points; Keene returns nothing
   },
+  /*
+   * Indiana, statewide, from IndianaMap's parcel layer on the state's host.
+   *
+   * ASKED FOR AS ONE COUNTY, AND IT IS NOT ONE COUNTY. The request was
+   * Vanderburgh -- Evansville -- and the Hub link supplied with it resolved to
+   * the city's own PROPERTY_BOUNDARIES service. That is not what ships. The
+   * catalogue search run alongside it turned up this, and the schema says
+   * plainly what it is: `county_fips`, `county_id`, `dlgf_prop_class_code`.
+   * DLGF is the Department of Local Government Finance, which collects
+   * assessment records from all 92 counties. Publishing it as "Vanderburgh"
+   * would have hidden 91 counties' worth of coverage behind one bounding box.
+   *
+   * WHAT THE SIX POINTS RETURNED, four counties apart:
+   *
+   *   Evansville (Vanderburgh)  0.111 ac
+   *   Indianapolis (Marion)     0.416 ac
+   *   Fort Wayne (Allen)        0.756 ac
+   *   South Bend (St Joseph)    0.524 ac
+   *   Bloomington (Monroe)      nothing
+   *   Terre Haute (Vigo)        nothing
+   *
+   * Four residential lots from the southwest corner to the northeast, which is
+   * what statewide coverage looks like. The two blanks are not dismissed as
+   * badly aimed points, because the Bloomington one demonstrably is not: the
+   * same run queried Monroe County's OWN survey layer at that exact coordinate
+   * and got a 3.6-acre parcel back. So there is a parcel there and the state
+   * layer does not have it.
+   *
+   * That makes this a mosaic with holes in it, like NC OneMap and GRANIT --
+   * the state republishing what each county sends, where a county that has
+   * sent nothing looks identical to a working service. A gap returns no
+   * parcel, which the app already handles by offering to trace by hand.
+   */
+  indiana: {
+    name: 'Indiana (IndianaMap)',
+    statewide: true,
+    service: 'https://gisdata.in.gov/server/rest/services/Hosted/Parcel_Boundaries_of_Indiana_Current/FeatureServer',
+    layer: 0,
+    // `prop_add` is the whole address. The layer also carries
+    // `dlgf_prop_address` plus separate _city/_state/_zip fields; picking one
+    // of those pieces would put "EVANSVILLE" where a street address belongs.
+    fields: { pin: 'parcel_id', address: 'prop_add' },
+    verified: 'live', // 4 of 6 points, 0.111-0.756 ac, four counties
+  },
   washoe: {
     name: 'Washoe County',
     fips: '32031', // Nevada -- Reno and Sparks
@@ -343,11 +387,15 @@ const COUNTY_BBOX = {
    */
   champaign: [-88.47, 39.86, -87.91, 40.33],
   /*
-   * Vanderburgh County, Indiana -- Evansville, on the Ohio River. The southern
-   * edge is the river and the Kentucky line, so the box stops there: a point
-   * in Henderson County KY is not a lookup worth making.
+   * Indiana, corner to corner: the Ohio River and the Kentucky line up to
+   * Michigan, and the Wabash across to the Ohio border.
+   *
+   * This replaces a Vanderburgh County box that sat here for one commit with
+   * no entry beside it. Evansville is inside this one, and a box for a single
+   * county inside a state that is covered whole would only ever send the same
+   * point to the same layer twice.
    */
-  vanderburgh: [-87.80, 37.89, -87.39, 38.19],
+  indiana: [-88.10, 37.77, -84.78, 41.77],
 };
 
 /*

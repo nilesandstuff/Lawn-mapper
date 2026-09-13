@@ -1090,6 +1090,25 @@ check('and a typed prompt is sent verbatim',
     .map(([key]) => key);
   check('and every county with a server has a box to be found by',
     unreachable.length === 0, unreachable.join(', ') || 'all reachable');
+
+  /*
+   * Indiana was asked for as one county and shipped as the state, so the thing
+   * worth asserting is that the other 91 actually reach it. Evansville is the
+   * county that was asked about; Indianapolis, Fort Wayne and South Bend are
+   * the three the discovery run proved, and all three sit outside any box a
+   * Vanderburgh entry would have had.
+   */
+  const indianaPoints = [
+    ['Evansville', -87.6100, 37.9750],
+    ['Indianapolis', -86.1420, 39.8700],
+    ['Fort Wayne', -85.1400, 41.1200],
+    ['South Bend', -86.2400, 41.6900],
+  ];
+  const missed = indianaPoints
+    .filter(([, lng, lat]) => !candidateCounties(lng, lat).includes('indiana'))
+    .map(([name]) => name);
+  check('all four verified Indiana points reach the statewide layer',
+    missed.length === 0, missed.join(', ') || `${indianaPoints.length} points`);
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);

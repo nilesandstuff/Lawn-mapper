@@ -481,7 +481,17 @@ async function listServices(root) {
   if (top.error) return { error: top.error };
 
   const services = [...(top.services || [])];
-  for (const folder of (top.folders || []).slice(0, 12)) {
+  /*
+   * Raised from 12. Indiana's parcel layer lives at
+   * Hosted/Parcel_Boundaries_of_Indiana_Current on gisdata.in.gov, and walking
+   * that exact root reported "no parcel-ish service names" -- the layer was
+   * found a moment later by the catalogue search instead. The folder cap is the
+   * obvious suspect and 12 was never a considered number, so it goes up. That
+   * is a suspicion rather than a diagnosis: the root's folder list was not
+   * captured, so this is not proof of what happened, just the cheap fix for the
+   * only arbitrary limit standing between the walk and the answer.
+   */
+  for (const folder of (top.folders || []).slice(0, 40)) {
     const sub = await getJson(`${root}/${folder}?f=json`);
     if (!sub.error) services.push(...(sub.services || []));
   }
