@@ -189,13 +189,25 @@ const CANDIDATE_ROOTS = {
     'https://gis.ccgisc.org/arcgis/rest/services',
     'https://maps.ccgisc.org/arcgis/rest/services',
     'https://ccgisc.org/arcgis/rest/services',
+    'https://www.ccgisc.org/arcgis/rest/services',
+    'https://gisdata.ccgisc.org/arcgis/rest/services',
+    'https://services.ccgisc.org/arcgis/rest/services',
+    // The non-standard instance names that turned out to be the answer for
+    // Kent ("agisprod") and Newaygo ("hosting"). Cheap to try, and the only
+    // reason those two were ever found.
+    'https://gis.ccgisc.org/server/rest/services',
+    'https://gis.ccgisc.org/hosting/rest/services',
     'https://gis.co.champaign.il.us/arcgis/rest/services',
     'https://maps.co.champaign.il.us/arcgis/rest/services',
     'https://gis.co.champaign.il.us/server/rest/services',
+    'https://gis.champaigncountyil.gov/arcgis/rest/services',
+    'https://maps.champaigncountyil.gov/arcgis/rest/services',
     // The two cities, which co-fund the consortium and may republish it.
     'https://gis.champaignil.gov/arcgis/rest/services',
     'https://maps.champaignil.gov/arcgis/rest/services',
+    'https://gis.ci.champaign.il.us/arcgis/rest/services',
     'https://gis.urbanaillinois.us/arcgis/rest/services',
+    'https://maps.urbanaillinois.us/arcgis/rest/services',
   ],
 };
 
