@@ -68,3 +68,10 @@ ALTER TABLE corpus ADD COLUMN review_note TEXT;
 -- picked BECAUSE it looked valuable cannot sit in the representative half of
 -- the eval, which has to look like ordinary use.
 ALTER TABLE corpus ADD COLUMN review_queue TEXT;
+
+-- Indexes over migrated columns belong HERE, after the ALTER, not in
+-- schema.sql. Putting this one there aborted the schema run on every database
+-- that already had a corpus table -- and the migrations it was blocking were
+-- the ones adding the column it indexes. CREATE INDEX IF NOT EXISTS is
+-- idempotent, so this is safe on a fresh database too.
+CREATE INDEX IF NOT EXISTS corpus_status ON corpus(status, at DESC);

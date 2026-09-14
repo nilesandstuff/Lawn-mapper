@@ -335,7 +335,12 @@ CREATE TABLE IF NOT EXISTS corpus (
   review_queue   TEXT,
   created_at     TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS corpus_status ON corpus(status, at DESC);
+-- The index over `status` lives in migrations.sql, NOT here, and the reason is
+-- an ordering deadlock that cost a deploy: on a database that already has a
+-- corpus table, CREATE TABLE IF NOT EXISTS adds no columns, so indexing
+-- `status` from this file fails -- which aborts the whole schema run, which
+-- skips the migrations that would have added the column. Anything indexing a
+-- migrated column has to sit after the ALTER that creates it.
 CREATE INDEX IF NOT EXISTS corpus_at ON corpus(at DESC);
 -- The export query: usable imagery, actually corrected, newest first.
 CREATE INDEX IF NOT EXISTS corpus_pick ON corpus(provider, hand_edited, at DESC);

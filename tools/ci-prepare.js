@@ -519,10 +519,19 @@ function main() {
        * as done -- which is why the order is safe either way round for a fresh
        * database, and only correct in this order for an old one.
        */
-      if (schema) {
-        console.log('Adding any columns older databases are missing…');
-        migrations = applyMigrations();
-      }
+      /*
+       * RUN EVEN IF THE SCHEMA REPORTED A FAILURE, which it did not used to,
+       * and that gate turned one bad statement into a dead feature.
+       *
+       * schema.sql is executed as one file, so a single failing statement
+       * aborts the rest of it. Gating the migrations on that meant a schema
+       * error ALSO skipped the ALTERs -- and the statement that failed was an
+       * index over a column those very ALTERs would have added. Each migration
+       * is run separately and reports its own outcome, so there is nothing to
+       * protect by skipping them, and plenty to lose.
+       */
+      console.log('Adding any columns older databases are missing…');
+      migrations = applyMigrations();
     }
 
     console.log(`\nwrangler.toml prepared:`);
