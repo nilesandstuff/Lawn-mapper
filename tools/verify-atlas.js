@@ -100,20 +100,86 @@ const describe = (e) => (typeof e === 'string' ? e : e?.message || JSON.stringif
  * whole class of silent error this app has avoided everywhere else by making
  * ArcGIS do it. outSR=4326 is the same trick parcel.js uses on every query.
  */
+const tidy = (e) => [
+  Math.round(e.xmin * 1000) / 1000, Math.round(e.ymin * 1000) / 1000,
+  Math.round(e.xmax * 1000) / 1000, Math.round(e.ymax * 1000) / 1000,
+];
+
+const sane = (e) =>
+  e
+  && [e.xmin, e.ymin, e.xmax, e.ymax].every(Number.isFinite)
+  && e.xmax > e.xmin && e.ymax > e.ymin
+  // A layer spanning half the planet is not a county; something is wrong with
+  // its coordinates and a box that wide would nominate it for everything.
+  && e.xmax - e.xmin <= 20 && e.ymax - e.ymin <= 20
+  && Math.abs(e.xmin) <= 180 && Math.abs(e.xmax) <= 180
+  && Math.abs(e.ymin) <= 90 && Math.abs(e.ymax) <= 90;
+
+/**
+ * Web Mercator to WGS84, for servers that ignore outSR on an extent query.
+ *
+ * The only projection converted by hand, and only because it is the one ArcGIS
+ * hands back when it decides to ignore the request -- the numbers arrive in
+ * metres from the equator with a wkid of 3857 or 102100. Everything else
+ * (State Plane feet and friends) is left to the server, which is the rule the
+ * rest of this app follows: reprojecting by hand is a silent-error factory,
+ * and two formulas is already one more than is comfortable.
+ */
+const MERCATOR = new Set([3857, 102100, 900913]);
+function fromMercator(e) {
+  const lng = (x) => (x / 20037508.34) * 180;
+  const lat = (y) => {
+    const d = (y / 20037508.34) * 180;
+    return (180 / Math.PI) * (2 * Math.atan(Math.exp((d * Math.PI) / 180)) - Math.PI / 2);
+  };
+  return { xmin: lng(e.xmin), xmax: lng(e.xmax), ymin: lat(e.ymin), ymax: lat(e.ymax) };
+}
+
+/**
+ * Where this layer actually holds data, in WGS84.
+ *
+ * THE FIRST FULL SWEEP LOST 46 COUNTIES HERE, including Los Angeles, Cook,
+ * Harris, San Diego and Broward -- which is not 46 broken counties, it is one
+ * broken assumption. The old version asked for the extent one way, returned
+ * null on anything unexpected, and threw the reason away, so every distinct
+ * fault arrived as the same four words.
+ *
+ * Three ways of asking now, because servers disagree about all of them, and
+ * whatever goes wrong is reported rather than swallowed.
+ */
 async function extentOf(service, layer) {
+  // 1. Ask for the extent in WGS84 and hope the server honours outSR.
   const q = new URLSearchParams({
     where: '1=1', returnExtentOnly: 'true', outSR: '4326', f: 'json',
   });
-  const data = await getJson(`${service}/${layer}/query?${q}`);
-  const e = data?.extent;
-  if (!e || ![e.xmin, e.ymin, e.xmax, e.ymax].every(Number.isFinite)) return null;
-  // A layer that spans half the planet is not a county; something is wrong
-  // with its coordinates and a box that wide would nominate it for everything.
-  if (e.xmax - e.xmin > 20 || e.ymax - e.ymin > 20) return null;
-  return [
-    Math.round(e.xmin * 1000) / 1000, Math.round(e.ymin * 1000) / 1000,
-    Math.round(e.xmax * 1000) / 1000, Math.round(e.ymax * 1000) / 1000,
-  ];
+  const first = await getJson(`${service}/${layer}/query?${q}`);
+  if (sane(first?.extent)) return { box: tidy(first.extent) };
+
+  /*
+   * 2. The layer's own metadata. Its extent comes in whatever the layer is
+   *    stored in, so it is only usable when that is already WGS84 or Web
+   *    Mercator -- but between them those cover most hosted services.
+   */
+  const meta = await getJson(`${service}/${layer}?f=json`);
+  await sleep(PAUSE_MS);
+  const raw = meta?.extent;
+  const wkid = raw?.spatialReference?.latestWkid || raw?.spatialReference?.wkid;
+  if (raw && Number.isFinite(wkid)) {
+    if (wkid === 4326 && sane(raw)) return { box: tidy(raw) };
+    if (MERCATOR.has(wkid)) {
+      const converted = fromMercator(raw);
+      if (sane(converted)) return { box: tidy(converted) };
+    }
+  }
+
+  const why = first?.error
+    ? `extent query: ${describe(first.error)}`
+    : meta?.error
+      ? `layer metadata: ${describe(meta.error)}`
+      : wkid
+        ? `extent is in wkid ${wkid}, which this does not convert`
+        : 'no extent in either the query or the layer metadata';
+  return { error: why };
 }
 
 /** A few real parcels, however this server likes to be asked. */
@@ -185,9 +251,10 @@ async function parcelAt(service, layer, [lng, lat]) {
 }
 
 async function verify(c) {
-  const box = await extentOf(c.service, c.layer);
+  const extent = await extentOf(c.service, c.layer);
   await sleep(PAUSE_MS);
-  if (!box) return { ok: false, why: 'no usable extent' };
+  if (extent.error) return { ok: false, why: extent.error };
+  const box = extent.box;
 
   const samples = await sampleParcels(c.service, c.layer);
   await sleep(PAUSE_MS);
@@ -204,11 +271,29 @@ async function verify(c) {
    */
   const tally = { nogeom: 0, missed: 0, tiny: 0, huge: 0 };
   let biggest = 0;
+  /*
+   * WHAT the unusable geometry actually was. Kent still failed all twelve
+   * samples after the MultiPolygon fix, which means the guess about condo
+   * rings was not the whole story -- and "no usable geometry" cannot tell a
+   * feature with no geometry key from one whose rings are empty from one this
+   * still cannot read. One example beats another round of guessing.
+   */
+  let firstBad = null;
 
   for (const f of samples) {
     const geometry = esriToGeoJSON(f.geometry);
     const point = geometry && insidePoint(geometry);
-    if (!point) { tally.nogeom++; continue; }
+    if (!point) {
+      tally.nogeom++;
+      if (!firstBad) {
+        firstBad = !f.geometry
+          ? 'the feature carried no geometry at all'
+          : !geometry
+            ? `esri geometry had keys [${Object.keys(f.geometry).join(', ')}]`
+            : `${geometry.type} with ${geometry.coordinates?.length ?? 0} part(s)`;
+      }
+      continue;
+    }
 
     const hit = await parcelAt(c.service, c.layer, point);
     await sleep(PAUSE_MS);
@@ -237,7 +322,7 @@ async function verify(c) {
     };
   }
   const parts = [
-    tally.nogeom ? `${tally.nogeom} with no usable geometry` : null,
+    tally.nogeom ? `${tally.nogeom} with no usable geometry [${firstBad}]` : null,
     tally.missed ? `${tally.missed} whose own point found nothing` : null,
     tally.tiny ? `${tally.tiny} under ${PLAUSIBLE_ACRES.min} ac` : null,
     tally.huge ? `${tally.huge} over ${PLAUSIBLE_ACRES.max} ac` : null,
