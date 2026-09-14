@@ -170,6 +170,86 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
     JSON.stringify(body.daily));
 }
 
+/* ------------------------------------------------------- the training corpus */
+/*
+ * THE COUNT THAT FORECASTS ANYTHING IS `corrected`, NOT `total`.
+ *
+ * A finished map whose outline is the detector's own output, accepted
+ * unchanged, is a recording of the detector. Training on a pile of those
+ * teaches a model to reproduce the thing it was meant to beat, so counting
+ * them towards "enough data to train on" would forecast a milestone that
+ * arrives and turns out to be worthless. The distinction is asserted here
+ * rather than left to the SQL reading plausibly.
+ */
+{
+  const { env, ownerToken } = await world();
+  const { recordFinished } = await import('../worker/src/corpus.js');
+
+  // A closed square. Rings shorter than four points are dropped as degenerate,
+  // so this is the smallest shape the store will actually accept.
+  const ring = (lng) => [
+    [lng, 42.9], [lng, 42.901], [lng + 0.001, 42.901], [lng + 0.001, 42.9], [lng, 42.9],
+  ];
+  const finish = (lng, over) => recordFinished(env, {
+    lng, lat: 42.9, model: 'sam-3', mode: 'subtractive',
+    shapes: [{ type: 'Polygon', coordinates: [ring(lng)] }],
+    ...over,
+  });
+
+  const empty = (await ask(env, ownerToken, 'overview')).body;
+  check('an empty corpus reports zero rather than going missing',
+    empty.corpus?.total === 0 && empty.corpus?.corrected === 0,
+    JSON.stringify(empty.corpus));
+
+  // Accepted as-is: the outline IS the detector's answer.
+  const accepted = await finish(-85.61, { detectedSqFt: 5000, squareFeet: 5000 });
+  check('a finished map is stored at all', accepted.ok === true,
+    accepted.reason || 'ok');
+  // A nudge -- two per cent. Somebody tidying an edge, not disagreeing.
+  await finish(-85.62, { detectedSqFt: 5000, squareFeet: 5100 });
+  // A real correction: a third of the lawn was wrong.
+  await finish(-85.63, { detectedSqFt: 6000, squareFeet: 4000 });
+  // Drawn from scratch, so there was never a detection to agree with.
+  await finish(-85.64, { detectedSqFt: null, squareFeet: 3000 });
+
+  const { body } = await ask(env, ownerToken, 'overview');
+  check('the console counts every finished map', body.corpus.total === 4,
+    JSON.stringify(body.corpus));
+  check('but counts only the ones a person actually disagreed with',
+    body.corpus.corrected === 2,
+    'the accepted one and the two-per-cent nudge teach a model to be the detector');
+  check('and a hand-drawn map counts, having no detection to agree with',
+    body.corpus.corrected === 2,
+    'detected_sq_ft IS NULL is a different kind of example, not a missing one');
+
+  /*
+   * A ROW SAVES WITHOUT ITS PHOTOGRAPH and that is on purpose -- storeImage
+   * runs separately so a bad afternoon at Mapbox costs a picture and not the
+   * outline. The console has to be able to show that gap, or a corpus of rows
+   * with no imagery would read as ready to train on.
+   */
+  check('and says how many actually have a photograph', body.corpus.withImage === 0,
+    'no bucket in this test, so every row is an outline with no picture yet');
+}
+
+/* -------------------------------------- when the corpus table is not there */
+/*
+ * The console is where you go when something is wrong, a half-applied schema
+ * included. A nice-to-have count must not be able to take accounts, credits
+ * and the AI spend down with it.
+ */
+{
+  const { env, ownerToken } = await world();
+  env.DB.prepare('DROP TABLE corpus').run();
+
+  const { status, body } = await ask(env, ownerToken, 'overview');
+  check('a missing corpus table does not break the overview', status === 200);
+  check('the rest of the numbers still arrive', body.users === 2, JSON.stringify(body.users));
+  check('and the corpus reports null, which the page words differently from zero',
+    body.corpus === null,
+    '"not recording" and "none yet" call for opposite reactions');
+}
+
 /* --------------------------------------------------------- the price list */
 /*
  * THE NUMBERS HAVE TO BE CHANGEABLE FROM A PHONE, which is the whole reason

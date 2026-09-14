@@ -54,6 +54,20 @@ function ago(iso) {
 
 /* ------------------------------------------------------------- overview */
 
+/**
+ * The line under the training-maps tile.
+ *
+ * `null` is a real answer and not zero: the server sends it when the corpus
+ * table could not be read at all, and printing "0 with a photo" there would
+ * report an empty corpus rather than an unreadable one. Those call for
+ * opposite reactions, so they get different words.
+ */
+function corpusNote(c) {
+  if (!c) return 'not recording';
+  if (!c.total) return 'finished maps, kept for training';
+  return `${n(c.withImage)} with a photo · ${n(c.corrected)} corrected`;
+}
+
 function renderTiles(o) {
   const tiles = $('#tiles');
   tiles.innerHTML = '';
@@ -72,6 +86,17 @@ function renderTiles(o) {
     ['Last 30 days', o.month?.passes, `${n(o.month?.presses)} presses`],
     ['Accounts', o.users, `${n(o.sessions)} signed in`],
     ['Saved maps', o.maps, ''],
+    /*
+     * The training corpus, with the number that actually matters underneath.
+     *
+     * "Corrected" counts the finished maps where a person disagreed with the
+     * detector -- drawn by hand, or moved by more than a tenth. Those are the
+     * ones a future model could learn something from; a map that accepted the
+     * AI's outline unchanged only teaches it to be the AI. So the big number
+     * says how fast the pile grows and the small one says how fast it gets
+     * USEFUL, and they are very different rates.
+     */
+    ['Training maps', o.corpus?.total, corpusNote(o.corpus)],
     // Bought credits only. Daily allowances expire nightly whether or not
     // anybody spends them, so counting them here would report the site as
     // owing thirty passes to everyone who ever signed in.

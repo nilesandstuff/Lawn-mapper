@@ -55,7 +55,7 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
      * this is the page that loads first. The shape is ugly and the alternative
      * is a console that takes a second and a half to say hello.
      */
-    const [people, maps, today, week, month, owed, live] = await Promise.all([
+    const [people, maps, today, week, month, owed, live, corpus] = await Promise.all([
       env.DB.prepare('SELECT COUNT(*) n FROM users').first(),
       env.DB.prepare('SELECT COUNT(*) n FROM maps').first(),
       env.DB.prepare(
@@ -73,6 +73,43 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
       env.DB.prepare('SELECT COALESCE(SUM(credits), 0) n FROM users WHERE unlimited = 0').first(),
       env.DB.prepare('SELECT COUNT(*) n FROM sessions WHERE expires_at > ?')
         .bind(new Date().toISOString()).first(),
+      /*
+       * The training corpus: how many finished maps are banked, and how many
+       * of them are worth anything.
+       *
+       * THREE NUMBERS BECAUSE THE FIRST ONE ALONE MISLEADS. A row whose
+       * outline is the detector's own output, accepted unchanged, teaches a
+       * future model to imitate the detector -- train on a corpus of those and
+       * the ceiling is the thing being replaced. The rows that carry
+       * information are the ones where a person DISAGREED: drawn from scratch
+       * (no detected_sq_ft at all), or corrected far enough to move the
+       * number. So `corrected` is the count that actually forecasts when there
+       * is enough to train on, and `total` is the one that grows fastest.
+       *
+       * Ten per cent is the line between a correction and a nudge. Dragging a
+       * vertex a few feet is somebody tidying an edge; a tenth of the lawn is
+       * somebody saying the detector was wrong.
+       *
+       * `with_image` is separate because a row can save while its photograph
+       * does not -- COUNT(column) skips NULLs, which is exactly that case.
+       *
+       * AND IT MUST NOT BE ABLE TO BREAK THIS PAGE, hence the catch. The
+       * console is where you go when something is wrong, including a
+       * half-applied schema; losing accounts, credits and the AI spend because
+       * a nice-to-have count referenced a missing table would be the worst
+       * possible trade. A null here renders as "not recording" and nothing
+       * else on the page notices.
+       */
+      env.DB.prepare(
+        `SELECT COUNT(*) total,
+                COUNT(image_key) with_image,
+                COALESCE(SUM(CASE
+                  WHEN detected_sq_ft IS NULL THEN 1
+                  WHEN detected_sq_ft > 0
+                   AND ABS(square_feet - detected_sq_ft) * 10 >= detected_sq_ft THEN 1
+                  ELSE 0 END), 0) corrected
+         FROM corpus`
+      ).first().catch(() => null),
     ]);
 
     /* Passes per day, which is the shape of the Replicate bill. */
@@ -87,6 +124,11 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
       maps: maps.n,
       sessions: live.n,
       creditsOutstanding: owed.n,
+      // Renamed out of SQL's snake_case here rather than in the page, so the
+      // console never has to know what the column was called.
+      corpus: corpus
+        ? { total: corpus.total, withImage: corpus.with_image, corrected: corpus.corrected }
+        : null,
       today, week, month, daily,
       logging: loggingEnabled(env),
       feedback: feedbackEnabled(env),
