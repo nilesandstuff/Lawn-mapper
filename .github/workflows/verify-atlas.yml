@@ -64,4 +64,21 @@ jobs:
           query inside one of its own parcels with a parcel-sized polygon.
 
           Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
-          git push
+
+          # THE BRANCH MOVES WHILE THIS RUNS. The sweep takes many minutes, and
+          # anyone pushing in that window leaves this checkout behind, so a
+          # plain push is rejected and half an hour of real queries against
+          # public county servers is thrown away for a reason that has nothing
+          # to do with the counties.
+          #
+          # Rebase rather than merge: this commit only ever touches one
+          # generated file, so it replays onto whatever arrived without
+          # conflicting unless somebody hand-edited the very file the header
+          # says not to hand-edit.
+          for attempt in 1 2 3; do
+            git pull --rebase origin "$GITHUB_REF_NAME" && git push && exit 0
+            echo "Push $attempt failed; the branch moved again. Retrying."
+            sleep 5
+          done
+          echo "::error::Could not push the regenerated atlas after three tries."
+          exit 1
