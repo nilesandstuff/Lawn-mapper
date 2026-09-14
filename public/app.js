@@ -15,7 +15,7 @@
 import { measure, fromSquareMeters, geometryAreaSqM } from './lib/area.js';
 import {
   maskToPolygons, rasterizePolygon, maskBinary, unionMasks, subtractMasks,
-  coverage, polygonsFromBinary, distinctFraction,
+  coverage, polygonsFromBinary, distinctFraction, overTrimmed,
 } from './lib/mask.js';
 import {
   offsetEdge, nearestEdge, edgeRun, edgeLength, edgeBearing, openRing,
@@ -3007,6 +3007,34 @@ async function detect() {
         + ' paint them in with Add if they are lawn.'
       : '';
 
+    /*
+     * Point at the edge stepper when the tree pass has eaten the lawn.
+     *
+     * The trees prompt reads about 25% wider than the trees are, and on a
+     * small lot the lawn is the strip left between that and the buildings --
+     * so the overshoot lands entirely on the answer. See overTrimmed() for the
+     * measurements this is built on.
+     *
+     * Worth a sentence because the remedy is already on screen and free: the
+     * stepper re-traces the mask that was already paid for, so pushing the
+     * outline out costs no detection. Nothing in the old wording connected a
+     * disappointing number to the control that fixes it.
+     */
+    const parcelSqFt = state.parcel ? measure(state.parcel.geometry).squareFeet : 0;
+    const lawnSqFt = totalSquareFeet();
+    const overTrim = overTrimmed({
+      subtractive,
+      trimmedTrees: layers.some((l) => l.exclusion === 'woods')
+        && !collapsed.includes(exclusionInfo('woods').label),
+      lawnSqFt,
+      parcelSqFt,
+    })
+      ? ` That is only ${Math.round((lawnSqFt / parcelSqFt) * 100)}% of the lot,`
+        + ' which usually means the tree remover read wider than the trees really are.'
+        + ' Use "Trim or extend the edge" below to push the outline back out a foot'
+        + ' or two — it costs no detections.'
+      : '';
+
     // Name the source only when it is not the one showing, i.e. when a
     // look-only choice was silently substituted. Saying "on Mapbox satellite"
     // after every ordinary detection is noise; saying it when the user picked
@@ -3022,7 +3050,7 @@ async function detect() {
           + `${layers.length} thing${layers.length > 1 ? 's' : ''}`
         : `Found ${polygons.length} section${polygons.length > 1 ? 's' : ''} of lawn`) +
       (parcelRing() ? ', trimmed to your property line' : '') + on + '.' + lost + gaps + scraps +
-      ' Correct anything it got wrong.'
+      overTrim + ' Correct anything it got wrong.'
     );
   } catch (err) {
     /*

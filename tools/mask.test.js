@@ -25,6 +25,7 @@ import {
   subtractMasks,
   coverage,
   polygonsFromBinary,
+  overTrimmed,
 } from '../public/lib/mask.js';
 import {
   framePxToLngLat,
@@ -732,6 +733,62 @@ function stripsPx(kept, label, mask) {
   check('a shape sitting in another shape\'s hole overlaps nothing',
     distinctFraction([ring, inHole], W, H, project) === 1,
     'the hole is not lawn, so nothing there is being counted twice');
+}
+
+/* ------------------------------------------------- the over-trimmed notice */
+/*
+ * The case this was built from, and the cases it must stay silent for.
+ *
+ * A notice that fires on every ordinary detection is worse than none: people
+ * stop reading the status line, and the messages that matter -- a collapsed
+ * pass, uncounted scraps -- go with it. So the quiet cases are tested as
+ * carefully as the loud one.
+ */
+{
+  const whiteTrellis = { subtractive: true, trimmedTrees: true, lawnSqFt: 2353, parcelSqFt: 12830 };
+
+  check('the lot this was built from trips the notice',
+    overTrimmed(whiteTrellis) === true,
+    '2,353 of 12,830 sq ft is 18% of the lot');
+
+  check('and the hand-drawn answer for the same lot does not',
+    overTrimmed({ ...whiteTrellis, lawnSqFt: 3700 }) === false,
+    '3,700 sq ft is 29%, inside what a small lawn can be');
+
+  /*
+   * The pass with the documented overshoot is the trees one. Buildings held to
+   * within 1% across the whole threshold range on the measured lot, so a small
+   * lawn behind them alone is not evidence of over-trimming.
+   */
+  check('buildings alone never trip it, however small the lawn',
+    overTrimmed({ ...whiteTrellis, trimmedTrees: false }) === false,
+    'only the trees pass reads wide');
+
+  check('find-grass mode never trips it',
+    overTrimmed({ ...whiteTrellis, subtractive: false }) === false,
+    'nothing was trimmed, so there is nothing to push back out');
+
+  /*
+   * Zero already says "everything inside your property line was excluded,
+   * untick a box". Adding a second sentence about the same emptiness, pointing
+   * at a control that cannot recover anything from nothing, is noise.
+   */
+  check('an empty result stays with its own message',
+    overTrimmed({ ...whiteTrellis, lawnSqFt: 0 }) === false,
+    'the zero case is already explained elsewhere');
+
+  check('and no property line means no fraction to judge',
+    overTrimmed({ ...whiteTrellis, parcelSqFt: 0 }) === false,
+    'dividing by a parcel nobody found is not a measurement');
+
+  /*
+   * A genuinely small lawn on a big wooded lot is a real answer. Guarded
+   * because the whole risk of this feature is telling people their correct
+   * result is wrong.
+   */
+  check('a big lot that really is mostly woods is left alone at 30%',
+    overTrimmed({ subtractive: true, trimmedTrees: true, lawnSqFt: 24000, parcelSqFt: 80000 }) === false,
+    '30% sits inside the believable band');
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);

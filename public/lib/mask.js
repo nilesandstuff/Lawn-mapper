@@ -532,6 +532,54 @@ export function coverage(mask, base) {
 }
 
 /**
+ * A lawn this small, with the tree pass applied, is probably over-trimmed.
+ *
+ * MEASURED, on 22004 White Trellis Lane -- a 12,830 sq ft lot the owner
+ * reported the tree box ruining. Four real predictions:
+ *
+ *   "woods"     @ 0.2   6,590 sq ft   51% of the parcel   3 pieces
+ *   "woods"     @ 0.5       0 sq ft    0%                 0
+ *   "man-made"  @ 0.2   3,887 sq ft   30%                 4 pieces
+ *   "man-made"  @ 0.5   3,853 sq ft   30%                 4 pieces
+ *
+ * The parcel minus both is about 2,350 sq ft, 18% of the lot, against 3,700
+ * the owner drew by hand. Nothing collapsed -- 51% is an ordinary-looking
+ * number and COLLAPSE_FRACTION is nowhere near it -- so no existing guard
+ * said anything, and the answer arrived looking confident and wrong.
+ *
+ * The cause is already written down beside the woods prompt: it reads about
+ * 25% wider than the trees really are. On a big lot that is a rounding error.
+ * Here the lawn IS the leftover strip between two masks that both read wide,
+ * so the same overshoot takes a third of it.
+ *
+ * WHAT THIS IS NOT. It does not correct anything and it does not drop a pass.
+ * It decides whether to say a sentence, because the fix already exists -- the
+ * edge stepper re-traces the mask already paid for -- and the only thing
+ * missing was anything on screen connecting a too-small number to it.
+ *
+ * 0.25 is a judgement, not a measurement. probe-sam3.js puts a believable
+ * residential lawn at 30-70% of the lot; this sits below that band so an
+ * ordinarily small lawn stays quiet. One lot is one lot: if this nags people
+ * whose lawn really is a quarter of their property, the number is wrong and
+ * not the idea.
+ *
+ * Gated on the tree pass having actually been applied, because that is the
+ * pass with the documented overshoot. A small lawn behind buildings alone is
+ * a different claim with no evidence behind it, and "man-made" was stable to
+ * within 1% across the whole threshold range on the lot above.
+ */
+export const TIGHT_REMAINDER_FRACTION = 0.25;
+
+export function overTrimmed({ subtractive, trimmedTrees, lawnSqFt, parcelSqFt }) {
+  if (!subtractive || !trimmedTrees) return false;
+  if (!(parcelSqFt > 0)) return false;
+  // Zero has its own message -- "everything was excluded, untick a box" -- and
+  // two sentences about the same emptiness is one too many.
+  if (!(lawnSqFt > 0)) return false;
+  return lawnSqFt / parcelSqFt < TIGHT_REMAINDER_FRACTION;
+}
+
+/**
  * A binary layer -> GeoJSON polygons. The tail half of maskToPolygons, reused
  * by exclude mode, which arrives with its pixels already decided.
  */
