@@ -25,7 +25,7 @@ import {
 import { limits, limitsForConsole, setLimit, LIMITS } from './limits.js';
 import { logEntries, loggingEnabled } from './testlog.js';
 import { feedbackEntries, feedbackEnabled } from './feedback.js';
-import { corpusGaps } from './corpus.js';
+import { corpusGaps, candidateScore } from './corpus.js';
 
 export const isAdminPath = (pathname) => pathname.startsWith('/api/admin/');
 
@@ -221,20 +221,20 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
                     WHEN detected_sq_ft > 0
                      AND ABS(square_feet - detected_sq_ft) * 10 >= detected_sq_ft THEN 1
                     ELSE 0 END), 0) corrected
-           FROM corpus`
+           FROM corpus WHERE status = 'approved'`
         ).first(),
         env.DB.prepare(
           `SELECT COALESCE(county, '(traced by hand)') name, COUNT(*) n,
                   COUNT(DISTINCT ${BLOCK}) blocks
-           FROM corpus GROUP BY county ORDER BY n DESC LIMIT 25`
+           FROM corpus WHERE status = 'approved' GROUP BY county ORDER BY n DESC LIMIT 25`
         ).all(),
         env.DB.prepare(
           `SELECT COALESCE(provider, '(unknown)') name, COUNT(*) n
-           FROM corpus GROUP BY provider ORDER BY n DESC LIMIT 10`
+           FROM corpus WHERE status = 'approved' GROUP BY provider ORDER BY n DESC LIMIT 10`
         ).all(),
         env.DB.prepare(
           `SELECT COALESCE(mode, '(unknown)') name, COUNT(*) n
-           FROM corpus GROUP BY mode ORDER BY n DESC LIMIT 10`
+           FROM corpus WHERE status = 'approved' GROUP BY mode ORDER BY n DESC LIMIT 10`
         ).all(),
       ]);
 
@@ -254,6 +254,20 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
         counties: totals.counties,
       };
 
+      /*
+       * WAITING IS NOT PROGRESS. The bars measure the APPROVED set, because
+       * that is the training set -- counting candidates would read 1,000 while
+       * 300 are verified, and the number somebody is working towards would be
+       * the one number on the page that is not true.
+       */
+      const queued = await env.DB.prepare(
+        `SELECT COUNT(*) n,
+                COALESCE(SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END), 0) rejected
+           FROM corpus WHERE status IN ('new', 'rejected')`
+      ).first();
+      stats.waiting = queued.n - queued.rejected;
+      stats.rejected = queued.rejected;
+
       return json({
         stats,
         gaps: corpusGaps(stats),
@@ -263,6 +277,213 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
       }, 200, origin);
     } catch (e) {
       return json({ unavailable: String(e?.message || e).slice(0, 200) }, 200, origin);
+    }
+  }
+
+  /* ------------------------------------------------- the review queue */
+  /*
+   * The next few candidates to look at, and everything needed to draw them.
+   *
+   * TWO QUEUES, and the difference is not cosmetic. `priority` orders by what
+   * the approved set is short of, which is the fast way to a trainable pile
+   * and is EXACTLY WRONG for the representative half of the eval -- a slice
+   * assembled from maps chosen for being interesting is not representative of
+   * anything. `random` draws blind, so those approvals carry no selection of
+   * their own and the representative slice is built from them.
+   *
+   * Which queue a row came from is stored with the verdict, so the export can
+   * tell them apart later. Getting that wrong is unrecoverable after the fact:
+   * nothing in an approved row would say why it was surfaced.
+   */
+  if (path === 'candidates') {
+    try {
+      const wanted = url.searchParams.get('queue') === 'random' ? 'random' : 'priority';
+      const BLOCK = `ROUND(lng, 2) || ',' || ROUND(lat, 2)`;
+
+      const [approved, rows] = await Promise.all([
+        env.DB.prepare(
+          `SELECT COUNT(*) total,
+                  COUNT(DISTINCT county) counties,
+                  COUNT(DISTINCT ${BLOCK}) blocks,
+                  COALESCE(SUM(CASE WHEN exclusions LIKE '%woods%' THEN 1 ELSE 0 END), 0) treeLine,
+                  COALESCE(SUM(CASE
+                    WHEN detected_sq_ft IS NULL THEN 1
+                    WHEN detected_sq_ft > 0
+                     AND ABS(square_feet - detected_sq_ft) * 10 >= detected_sq_ft THEN 1
+                    ELSE 0 END), 0) corrected
+           FROM corpus WHERE status = 'approved'`
+        ).first(),
+        /*
+         * `new_block` and `new_county` are computed in SQL rather than by
+         * pulling every approved row back: whether this candidate is somewhere
+         * nothing has been approved yet is the single most useful thing the
+         * score knows, and it is a NOT EXISTS, not a join in JavaScript.
+         *
+         * RANDOM() for the blind queue rather than shuffling a page of rows
+         * here -- shuffling what the ORDER BY already chose is not a blind
+         * draw, it is the same biased page in a different order.
+         */
+        env.DB.prepare(
+          `SELECT c.*,
+                  NOT EXISTS (
+                    SELECT 1 FROM corpus a WHERE a.status = 'approved'
+                      AND ROUND(a.lng,2) = ROUND(c.lng,2)
+                      AND ROUND(a.lat,2) = ROUND(c.lat,2)
+                  ) new_block,
+                  (c.county IS NOT NULL AND NOT EXISTS (
+                    SELECT 1 FROM corpus a
+                     WHERE a.status = 'approved' AND a.county = c.county
+                  )) new_county
+             FROM corpus c
+            WHERE c.status = 'new'
+            ORDER BY ${wanted === 'random' ? 'RANDOM()' : 'c.at DESC'}
+            LIMIT ${wanted === 'random' ? 1 : 40}`
+        ).all(),
+      ]);
+
+      const queue = (rows.results || [])
+        .map((r) => ({ row: r, ...candidateScore(r, approved) }))
+        /* Stable: equal scores keep the ORDER BY above rather than jittering. */
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 10)
+        .map(({ row: r, score, why }) => ({
+          id: r.id,
+          score,
+          why,
+          at: r.at,
+          county: r.county,
+          provider: r.provider,
+          imageProvider: r.image_provider,
+          mode: r.mode,
+          exclusions: r.exclusions,
+          parcelSource: r.parcel_source,
+          squareFeet: r.square_feet,
+          detectedSqFt: r.detected_sq_ft,
+          parcelSqFt: r.parcel_sq_ft,
+          hasImage: Boolean(r.image_key),
+          frame: r.frame ? JSON.parse(r.frame) : null,
+          parcel: r.parcel ? JSON.parse(r.parcel) : null,
+          shapes: JSON.parse(r.shapes || '[]'),
+          detectedShapes: r.detected_shapes ? JSON.parse(r.detected_shapes) : null,
+        }));
+
+      const waiting = await env.DB.prepare(
+        `SELECT COUNT(*) n FROM corpus WHERE status = 'new'`
+      ).first();
+
+      return json({ queue: wanted, waiting: waiting.n, candidates: queue }, 200, origin);
+    } catch (e) {
+      return json({ unavailable: String(e?.message || e).slice(0, 200) }, 200, origin);
+    }
+  }
+
+  /* ------------------------------------- one candidate, shaped for the map */
+  /*
+   * Read by the MAP app, not the console, when Edit sends somebody over to fix
+   * an outline. Shaped like one of its saves so it can be opened by the code
+   * that already reopens saves -- a second loader would be a second set of
+   * assumptions about what a restored map is.
+   *
+   * There is no address in the corpus and that is deliberate, so the county
+   * stands in as the label. It is what the app puts in its heading, not
+   * anything it navigates by: the frame and the parcel carry the position.
+   */
+  if (path === 'candidate') {
+    try {
+      const row = await env.DB.prepare(
+        'SELECT * FROM corpus WHERE id = ?1'
+      ).bind(url.searchParams.get('id') || '').first();
+      if (!row) return json({ error: 'Not found' }, 404, origin);
+
+      return json({
+        id: row.id,
+        address: row.county ? `Candidate in ${row.county}` : 'Candidate for review',
+        lng: row.lng,
+        lat: row.lat,
+        parcel: row.parcel
+          ? { type: 'Feature', properties: { county: row.county || 'traced by hand',
+              drawn: row.parcel_source === 'hand' }, geometry: JSON.parse(row.parcel) }
+          : null,
+        frame: row.frame ? JSON.parse(row.frame) : null,
+        provider: row.provider,
+        model: row.model,
+        exclude: row.exclusions ? row.exclusions.split(',') : [],
+        shapes: JSON.parse(row.shapes || '[]').map((geometry) => ({ geometry })),
+      }, 200, origin);
+    } catch (e) {
+      return json({ error: String(e?.message || e).slice(0, 200) }, 500, origin);
+    }
+  }
+
+  /* --------------------------------------------- one candidate's picture */
+  /*
+   * THE STORED PHOTOGRAPH, not a fresh one of the same place.
+   *
+   * For a lawn drawn on Google or Esri the banked image is a Mapbox tile of a
+   * possibly different year, and that banked image is what a model would train
+   * on. Reviewing a re-fetch would mean approving a picture the training run
+   * never sees, which is the one way this whole tool could be confidently
+   * wrong.
+   */
+  if (path === 'candidate-image') {
+    if (!env.CORPUS) return json({ error: 'No bucket' }, 404, origin);
+    const id = url.searchParams.get('id') || '';
+    try {
+      const row = await env.DB.prepare(
+        'SELECT image_key FROM corpus WHERE id = ?1'
+      ).bind(id).first();
+      if (!row?.image_key) return json({ error: 'No image' }, 404, origin);
+
+      const object = await env.CORPUS.get(row.image_key);
+      if (!object) return json({ error: 'No image' }, 404, origin);
+
+      return new Response(object.body, {
+        headers: {
+          'Content-Type': object.httpMetadata?.contentType || 'image/png',
+          // Private: this is somebody's garden, behind an admin session.
+          'Cache-Control': 'private, max-age=600',
+        },
+      });
+    } catch {
+      return json({ error: 'No image' }, 404, origin);
+    }
+  }
+
+  /* ------------------------------------------------------- the verdict */
+  if (path === 'review') {
+    if (request.method !== 'POST') return json({ error: 'POST only' }, 405, origin);
+    let body;
+    try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, 400, origin); }
+
+    const status = ['approved', 'rejected'].includes(body?.status) ? body.status : null;
+    const id = typeof body?.id === 'string' ? body.id : null;
+    if (!status || !id) return json({ error: 'Need an id and a verdict' }, 400, origin);
+    const queue = body?.queue === 'random' ? 'random' : 'priority';
+
+    try {
+      const res = await env.DB.prepare(
+        `UPDATE corpus
+            SET status = ?2, reviewed_at = ?3, reviewed_by = ?4,
+                review_note = ?5, review_queue = ?6
+          WHERE id = ?1 AND status = 'new'`
+      ).bind(
+        id, status, new Date().toISOString(), me.email,
+        typeof body?.note === 'string' ? body.note.slice(0, 300) : null,
+        queue
+      ).run();
+
+      /*
+       * `status = 'new'` in the WHERE, so a double tap on a slow connection
+       * cannot overwrite the first verdict with a second one -- and a row that
+       * was re-finished between loading and judging is not silently approved
+       * in a shape nobody looked at.
+       */
+      if (!res.meta?.changes) {
+        return json({ ok: false, reason: 'already-reviewed-or-changed' }, 409, origin);
+      }
+      return json({ ok: true }, 200, origin);
+    } catch (e) {
+      return json({ error: String(e?.message || e).slice(0, 200) }, 500, origin);
     }
   }
 

@@ -314,8 +314,6 @@ const png = () => new Response('x', { headers: { 'content-type': 'image/png' } }
     'so the caller can defer the fetch to waitUntil');
 }
 
-console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
-process.exit(failures === 0 ? 0 : 1);
 
 /* ------------------------------------------------- what is still needed */
 /*
@@ -457,3 +455,54 @@ process.exit(failures === 0 ? 0 : 1);
       return r.parcel_source;
     })()) === null);
 }
+
+/* ------------------------------------------------ the review queue's order */
+/*
+ * SCARCITY DECIDES, not the map's own merits. A tree-line lawn is worth a lot
+ * when there are nine and very little when there are four hundred, so each
+ * term switches off once its target is met -- otherwise the queue spends
+ * somebody's afternoon deepening a pile that is already deep enough.
+ */
+{
+  const { candidateScore } = await import('../worker/src/corpus.js');
+  const bare = { detected_sq_ft: 5000, square_feet: 5000, image_key: 'k' };
+  const score = (row, have) => candidateScore({ ...bare, ...row }, have).score;
+
+  const nothingYet = {};
+  check('a correction outranks an accepted map',
+    score({ detected_sq_ft: 6000, square_feet: 4000 }, nothingYet) > score({}, nothingYet));
+  check('a hand-drawn lawn counts as a correction',
+    score({ detected_sq_ft: null, square_feet: 4000 }, nothingYet) > score({}, nothingYet),
+    'there was no detection to agree with');
+  check('a tree line is worth surfacing',
+    score({ exclusions: 'woods' }, nothingYet) > score({}, nothingYet));
+  check('and a county with nothing approved in it outranks a tree line',
+    score({ new_county: 1 }, nothingYet) > score({ exclusions: 'woods' }, nothingYet));
+
+  /*
+   * THE PART THAT MAKES IT A QUEUE RATHER THAN A RANKING. Once 300 corrections
+   * are in, another correction stops being the most valuable thing in the
+   * world and a thin county takes over.
+   */
+  const plenty = { corrected: 400, treeLine: 400, blocks: 200, counties: 40 };
+  check('a met target stops pulling rows to the top',
+    score({ detected_sq_ft: 6000, square_feet: 4000 }, plenty) === score({}, plenty),
+    'another correction is worth nothing once there are four hundred');
+  check('and with everything met, nothing is prioritised over anything',
+    score({ exclusions: 'woods', new_county: 1, new_block: 1 }, plenty) === score({}, plenty));
+
+  check('a map with no photograph sinks',
+    score({ image_key: null }, nothingYet) < score({}, nothingYet),
+    'still reviewable, but nothing can be trained on it as it stands');
+  check('though a valuable one with no photograph still beats a dull one with',
+    score({ image_key: null, detected_sq_ft: null, new_county: 1 }, nothingYet)
+      > score({}, nothingYet));
+
+  const { why } = candidateScore(
+    { ...bare, detected_sq_ft: null, exclusions: 'woods', new_county: 1 }, nothingYet
+  );
+  check('and it says why it was surfaced', why.length === 3, why.join(' / '));
+}
+
+console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
+process.exit(failures === 0 ? 0 : 1);

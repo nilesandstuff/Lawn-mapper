@@ -571,8 +571,6 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
     && (await ask(quiet, ownerToken, 'feedback')).body.enabled === false);
 }
 
-console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
-process.exit(failures === 0 ? 0 : 1);
 
 /* ------------------------------------------------ the training-data panel */
 {
@@ -608,8 +606,18 @@ process.exit(failures === 0 ? 0 : 1);
     parcelSource: 'hand',
   });
 
+  /*
+   * APPROVED, because the panel measures the training set and a candidate is
+   * not in it yet. Counting unreviewed rows would read 1,000 while 300 are
+   * verified, which is the one number on that page that must not be hopeful.
+   */
+  const approveAll = () => env.DB.prepare(
+    "UPDATE corpus SET status = 'approved', review_queue = 'priority'"
+  ).run();
+  await approveAll();
+
   const { body } = await ask(env, ownerToken, 'corpus');
-  check('the panel counts the maps', body.stats.total === 2, JSON.stringify(body.stats));
+  check('the panel counts the approved maps', body.stats.total === 2, JSON.stringify(body.stats));
   check('and the tree-line ones separately', body.stats.treeLine === 1);
   check('and the hand-traced property lines', body.stats.handParcel === 1);
   check('and how many have the AI\'s own outline to compare against',
@@ -623,6 +631,7 @@ process.exit(failures === 0 ? 0 : 1);
    * would have held it out as though it were a region.
    */
   await finish(-86.20, { county: null, parcelSource: 'hand', squareFeet: 900 });
+  await approveAll();
   const withHand = (await ask(env, ownerToken, 'corpus')).body;
   check('a traced boundary does not invent a county',
     withHand.stats.counties === 2,
@@ -647,3 +656,120 @@ process.exit(failures === 0 ? 0 : 1);
   check('a missing corpus table says so instead of erroring', status === 200);
   check('and names the reason', /corpus/i.test(body.unavailable || ''), body.unavailable);
 }
+
+/* ------------------------------------------------------ reviewing candidates */
+{
+  const { env, ownerToken, guestToken } = await world();
+  const { recordFinished } = await import('../worker/src/corpus.js');
+
+  for (const p of ['candidates', 'candidate?id=x', 'candidate-image?id=x']) {
+    check(`${p.split('?')[0]} is refused to an ordinary account`,
+      (await ask(env, guestToken, p)).status === 404);
+  }
+  check('and a verdict cannot be cast by one either',
+    (await ask(env, guestToken, 'review',
+      { method: 'POST', body: { id: 'x', status: 'approved' } })).status === 404);
+
+  const ring = (lng) => [
+    [lng, 42.9], [lng, 42.901], [lng + 0.001, 42.901], [lng + 0.001, 42.9], [lng, 42.9],
+  ];
+  const finish = (lng, over) => recordFinished(env, {
+    lng, lat: 42.9, model: 'sam-3', mode: 'exclude',
+    shapes: [{ type: 'Polygon', coordinates: [ring(lng)] }],
+    ...over,
+  });
+
+  // A dull one and an interesting one, finished in that order.
+  await finish(-85.70, { county: 'mi-kent', detectedSqFt: 5000, squareFeet: 5000 });
+  await finish(-97.40, {
+    county: 'tx-travis', detectedSqFt: 6000, squareFeet: 4000, exclusions: ['woods'],
+  });
+
+  const q = (await ask(env, ownerToken, 'candidates')).body;
+  check('both finished maps arrive as candidates', q.waiting === 2, String(q.waiting));
+  check('and the more useful one is offered first',
+    q.candidates[0].county === 'tx-travis',
+    `${q.candidates[0].county} — ${q.candidates[0].why?.join(', ')}`);
+  check('with the reason it was chosen',
+    q.candidates[0].why.length > 0, q.candidates[0].why?.join(', '));
+  check('and everything needed to draw it',
+    q.candidates[0].frame === null || typeof q.candidates[0].frame === 'object',
+    'frame, parcel and shapes all parsed rather than left as text');
+  check('shapes arrive parsed, not as a string',
+    Array.isArray(q.candidates[0].shapes) && q.candidates[0].shapes[0].type === 'Polygon');
+
+  /* ------------------------------------------------ a verdict, and its effects */
+  const id = q.candidates[0].id;
+  check('approving works',
+    (await ask(env, ownerToken, 'review',
+      { method: 'POST', body: { id, status: 'approved' } })).body.ok === true);
+
+  const after = (await ask(env, ownerToken, 'candidates')).body;
+  check('an approved map leaves the queue', after.waiting === 1, String(after.waiting));
+
+  const panel = (await ask(env, ownerToken, 'corpus')).body;
+  check('and the targets count it', panel.stats.total === 1, JSON.stringify(panel.stats));
+  check('while the unreviewed one is reported separately, not as progress',
+    panel.stats.waiting === 1,
+    'counting candidates would read 1,000 while 300 are verified');
+
+  /*
+   * A DOUBLE TAP MUST NOT OVERWRITE THE FIRST VERDICT. The update is guarded
+   * on status = 'new', so a second press on a slow connection is refused
+   * rather than quietly replacing an approval with a rejection.
+   */
+  const again = await ask(env, ownerToken, 'review',
+    { method: 'POST', body: { id, status: 'rejected' } });
+  check('and judging the same map twice is refused rather than applied',
+    again.status === 409 && again.body.reason === 'already-reviewed-or-changed',
+    JSON.stringify(again.body));
+
+  check('a verdict that is neither approve nor reject is refused',
+    (await ask(env, ownerToken, 'review',
+      { method: 'POST', body: { id, status: 'maybe' } })).status === 400);
+
+  /* Which queue surfaced it is stored, because nothing else could say later. */
+  const stored = await env.DB.prepare(
+    'SELECT status, review_queue, reviewed_by FROM corpus WHERE id = ?1'
+  ).bind(id).first();
+  check('the verdict records which queue it came from',
+    stored.status === 'approved' && stored.review_queue === 'priority'
+      && stored.reviewed_by === 'owner@b.com',
+    JSON.stringify(stored),
+    );
+
+  /* ------------------------- re-finishing invalidates an approval, on purpose */
+  await finish(-97.40, {
+    county: 'tx-travis', detectedSqFt: 6000, squareFeet: 4444, exclusions: ['woods'],
+  });
+  const reset = await env.DB.prepare(
+    'SELECT status, reviewed_at, review_queue FROM corpus WHERE id = ?1'
+  ).bind(id).first();
+  check('editing an approved map sends it back to be reviewed again',
+    reset.status === 'new' && reset.reviewed_at === null && reset.review_queue === null,
+    'the approval was of the outline, and the outline just changed');
+
+  /* ----------------- and the trap: an edit must not eat the AI's own outline */
+  await finish(-86.50, {
+    county: 'mi-kent', detectedSqFt: 6000, squareFeet: 4000,
+    detectedShapes: [{ geometry: { type: 'Polygon', coordinates: [ring(-86.5001)] } }],
+  });
+  const before = await env.DB.prepare(
+    'SELECT detected_shapes FROM corpus WHERE lng = ?1'
+  ).bind(-86.5).first();
+  check('an AI outline is stored to begin with', before.detected_shapes !== null);
+
+  // Exactly what a review edit sends: the corrected shape, and no detection,
+  // because reopening a map deliberately clears it.
+  await finish(-86.50, { county: 'mi-kent', detectedSqFt: 6000, squareFeet: 4200 });
+  const kept = await env.DB.prepare(
+    'SELECT detected_shapes, square_feet FROM corpus WHERE lng = ?1'
+  ).bind(-86.5).first();
+  check('but a review edit does NOT erase it',
+    kept.detected_shapes === before.detected_shapes && kept.square_feet === 4200,
+    'a plain assignment here would have silently deleted the only record of '
+    + 'what the AI drew, which is what makes the overshoot measurable');
+}
+
+console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
+process.exit(failures === 0 ? 0 : 1);

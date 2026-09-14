@@ -3905,6 +3905,21 @@ async function refreshAccount() {
  * cannot be bookmarked into a page that permanently claims you just signed in.
  * Clearing it with replaceState means a refresh does not say it twice.
  */
+/*
+ * /#review=<id> -- the console's Edit button, arriving here.
+ *
+ * Read before the sign-in handler clears the fragment, and cleared the same
+ * way once used: a bookmarked URL that reopens somebody else's candidate every
+ * time the map loads is a confusing way to lose work.
+ */
+function readReviewRequest() {
+  const raw = location.hash.slice(1);
+  if (!raw.startsWith('review=')) return;
+  const id = decodeURIComponent(raw.slice('review='.length));
+  window.history.replaceState(null, '', location.pathname + location.search);
+  if (id) openCandidate(id);
+}
+
 function readSigninOutcome() {
   const raw = location.hash.slice(1);
   if (!raw) return;
@@ -4292,6 +4307,44 @@ async function renderSaves() {
 async function openSave(id) {
   const s = (await loadSaves()).find((x) => x.id === id);
   if (!s) return;
+  openMap(s);
+}
+
+/*
+ * A CANDIDATE FROM THE REVIEW QUEUE, opened for correction.
+ *
+ * Reached as /#review=<id> from the console's Edit button, because the editing
+ * tools are here and duplicating them over there would leave two copies to
+ * disagree with each other about what a lawn is.
+ *
+ * Shaped like a save by the server and opened by the same code, so a restored
+ * map means one thing in this file rather than two. Refused for anybody who is
+ * not an administrator, by the API rather than by this function.
+ */
+async function openCandidate(id) {
+  let s;
+  try {
+    const res = await fetch(`/api/admin/candidate?id=${encodeURIComponent(id)}`);
+    if (!res.ok) throw new Error(String(res.status));
+    s = await res.json();
+  } catch {
+    setStatus('That candidate could not be opened.', 'warn');
+    return;
+  }
+  openMap(s);
+  /*
+   * Remembered so finishing can hand the reviewer back to the queue. Finishing
+   * also resets the row to unreviewed -- the approval was of the old outline --
+   * so the corrected version returns to be judged on its own merits.
+   */
+  state.reviewingId = id;
+  setStatus(
+    'Reviewing a training candidate. Fix whatever is off, then press finish '
+    + 'to send it back to the queue.'
+  );
+}
+
+function openMap(s) {
 
   clearHistory();
   draw.deleteAll();
@@ -7166,6 +7219,20 @@ function keepFinished() {
 
 $('#btn-finish').addEventListener('click', () => {
   keepFinished();
+
+  /*
+   * Straight back to the queue when this was opened for review, because the
+   * reviewer's next action is judging the next candidate, not planning
+   * segments on this one. Finishing has already reset the row to unreviewed,
+   * so the corrected outline is waiting there to be approved.
+   */
+  if (state.reviewingId) {
+    state.reviewingId = null;
+    setStatus('Saved. Back to the review queue.');
+    window.location.href = '/admin.html';
+    return;
+  }
+
   setTab('plan');
   setStatus('Measuring done. These tools work on the finished map.');
 });
@@ -7430,6 +7497,12 @@ initMap()
   .then(afterMap('the allowance badge', refreshQuota))
   .then(afterMap('the account lookup', refreshAccount))
   .then(afterMap('the sign-in notice', readSigninOutcome))
+  /*
+   * After the account, because a candidate is only openable by an
+   * administrator and the API decides that -- asking before sign-in has
+   * resolved would ask as a stranger and be refused.
+   */
+  .then(afterMap('the review request', readReviewRequest))
   /*
    * After the account, because whether there are saved maps depends on whether
    * this is an account with maps in it -- asking before signing in is resolved

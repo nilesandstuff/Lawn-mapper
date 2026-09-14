@@ -14,6 +14,13 @@
  * runs a stranger's script while signed in as the owner.
  */
 
+/*
+ * The app's own projection, imported rather than reimplemented. If the review
+ * canvas put an outline anywhere but where the map drew it, every judgement
+ * made on this page would be about the wrong pixels.
+ */
+import { lngLatToFramePx } from '/lib/mercator.js';
+
 const $ = (s) => document.querySelector(s);
 const el = (tag, cls, text) => {
   const n = document.createElement(tag);
@@ -231,6 +238,193 @@ function settingRow(s) {
   return row;
 }
 
+/* ------------------------------------------------------------- reviewing */
+
+/*
+ * ONE CANDIDATE AT A TIME, drawn on a plain 2D canvas.
+ *
+ * Not a map. The feedback page once asked a phone for sixty WebGL maps on a
+ * page that can hold about sixteen, and the ones past the limit drew nothing
+ * at all, silently. Nothing here needs panning or zooming -- the frame is
+ * fixed, the geometry is fixed, and a canvas has no context ceiling.
+ *
+ * The projection is the app's own, imported rather than reimplemented: if the
+ * outline did not land exactly where the app drew it, every judgement made
+ * here would be about the wrong pixels.
+ */
+let queue = 'priority';
+let pending = [];
+let showAi = false;
+
+const REVIEW_COLOURS = {
+  parcel: '#f2c744',   // the property line: the thing never guessed
+  lawn: '#4ec26a',     // what was finished, and what is being judged
+  ai: '#e2725b',       // what the detector drew, when asked for
+};
+
+async function renderReview() {
+  const box = $('#review');
+  if (!pending.length) {
+    box.innerHTML = '';
+    box.append(el('p', 'empty', 'Loading…'));
+    const data = await get(`/api/admin/candidates?queue=${queue}`);
+    if (data.unavailable) {
+      box.innerHTML = '';
+      box.append(el('p', 'empty', `Cannot read the candidates: ${data.unavailable}`));
+      return;
+    }
+    pending = data.candidates || [];
+    if (!pending.length) {
+      box.innerHTML = '';
+      box.append(el('p', 'empty',
+        data.waiting
+          ? 'Nothing in this queue right now.'
+          : 'Every finished map has been reviewed. Go and make some more.'));
+      return;
+    }
+  }
+  drawCandidate(pending[0]);
+}
+
+function drawCandidate(c) {
+  const box = $('#review');
+  box.innerHTML = '';
+
+  const head = el('div', 'who');
+  head.append(el('b', null, c.county || 'somewhere with no county record'));
+  head.append(el('span', 'pill', `${n(c.squareFeet)} sq ft`));
+  if (c.parcelSource === 'hand') head.append(el('span', 'pill free', 'traced boundary'));
+  box.append(head);
+
+  if (c.why?.length) {
+    const why = el('div', 'why');
+    for (const w of c.why) why.append(el('span', 'pill free', w));
+    box.append(why);
+  }
+
+  const canvas = el('canvas');
+  canvas.width = 640;
+  canvas.height = 640;
+  box.append(canvas);
+  paint(canvas, c);
+
+  const legend = el('div', 'legend');
+  for (const [label, colour] of [
+    ['property line', REVIEW_COLOURS.parcel],
+    ['the lawn', REVIEW_COLOURS.lawn],
+    ...(c.detectedShapes && showAi ? [["what the AI drew", REVIEW_COLOURS.ai]] : []),
+  ]) {
+    const item = el('span');
+    const swatch = el('i');
+    swatch.style.background = colour;
+    item.append(swatch, document.createTextNode(label));
+    legend.append(item);
+  }
+  box.append(legend);
+
+  const verdict = el('div', 'verdict');
+  const approve = el('button', 'approve', 'Approve');
+  const reject = el('button', 'reject', 'Reject');
+  const edit = el('button', null, 'Edit');
+  verdict.append(approve, reject, edit);
+  box.append(verdict);
+
+  const extras = el('div', 'actions');
+  if (c.detectedShapes) {
+    /*
+     * OFF BY DEFAULT, on purpose. Seeing the detector's answer while judging
+     * -- and especially while EDITING -- pulls a correction towards it. Useful
+     * for deciding whether a map is interesting, quietly harmful as a default.
+     */
+    const toggle = el('button', null, showAi ? 'Hide the AI\'s version' : 'Show the AI\'s version');
+    toggle.addEventListener('click', () => { showAi = !showAi; drawCandidate(c); });
+    extras.append(toggle);
+  }
+  const skip = el('button', null, 'Skip for now');
+  skip.addEventListener('click', () => { pending.shift(); renderReview(); });
+  extras.append(skip);
+  box.append(extras);
+
+  if (!c.hasImage) {
+    box.append(el('p', 'meta',
+      'No photograph stored for this one, so the outline is drawn on its own. '
+      + 'Still reviewable, but nothing can be trained on it until the picture '
+      + 'is fetched.'));
+  }
+
+  const send = async (status) => {
+    for (const b of [approve, reject, edit]) b.disabled = true;
+    try {
+      const res = await post('/api/admin/review', { id: c.id, status, queue });
+      if (!res.ok) throw new Error(res.reason || 'refused');
+      pending.shift();
+      await renderReview();
+      renderCorpus().catch(() => {});
+    } catch (err) {
+      for (const b of [approve, reject, edit]) b.disabled = false;
+      box.append(el('p', 'meta', `That did not save: ${err.message}`));
+    }
+  };
+  approve.addEventListener('click', () => send('approved'));
+  reject.addEventListener('click', () => send('rejected'));
+
+  /*
+   * EDITING HAPPENS IN THE MAP APP, not here. The brush, erase, undo and draw
+   * tools are seven thousand lines of it; a second copy in the console would
+   * drift from the first within a month and the two would disagree about what
+   * a lawn is.
+   *
+   * Finishing over there rewrites the row and resets it to unreviewed, so the
+   * corrected version comes back to this queue to be approved on its merits.
+   */
+  edit.addEventListener('click', () => {
+    window.location.href = `/#review=${encodeURIComponent(c.id)}`;
+  });
+}
+
+function paint(canvas, c) {
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width;
+  const H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const overlay = () => {
+    if (!c.frame) {
+      ctx.fillStyle = '#7a8578';
+      ctx.font = '16px system-ui, sans-serif';
+      ctx.fillText('No frame stored, so this cannot be drawn to scale.', 18, 30);
+      return;
+    }
+    const ring = (geometry, colour, width, fill) => {
+      for (const coords of geometry?.coordinates || []) {
+        ctx.beginPath();
+        coords.forEach(([lng, lat], i) => {
+          const [x, y] = lngLatToFramePx(c.frame, [lng, lat], W, H);
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        });
+        ctx.closePath();
+        if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+        ctx.strokeStyle = colour;
+        ctx.lineWidth = width;
+        ctx.stroke();
+      }
+    };
+
+    if (c.parcel) ring(c.parcel, REVIEW_COLOURS.parcel, 2.5);
+    if (showAi) for (const g of c.detectedShapes || []) ring(g, REVIEW_COLOURS.ai, 2);
+    for (const g of c.shapes || []) ring(g, REVIEW_COLOURS.lawn, 2.5, 'rgba(78,194,106,.22)');
+  };
+
+  if (!c.hasImage) { overlay(); return; }
+
+  const img = new Image();
+  /* Drawn only once the picture is there, so the outline never briefly sits on
+     an empty square and reads as a mask over nothing. */
+  img.onload = () => { ctx.drawImage(img, 0, 0, W, H); overlay(); };
+  img.onerror = () => overlay();
+  img.src = `/api/admin/candidate-image?id=${encodeURIComponent(c.id)}`;
+}
+
 /* -------------------------------------------------------- training data */
 
 /*
@@ -253,10 +447,25 @@ async function renderCorpus() {
 
   const s = data.stats || {};
   if (!s.total) {
-    box.append(el('p', 'empty',
-      'No finished maps yet. Measure a lawn and press "finish, save and see '
-      + 'more options" — that is the moment one is kept.'));
+    box.append(el('p', 'empty', s.waiting
+      ? `${n(s.waiting)} finished map${s.waiting === 1 ? '' : 's'} waiting to be `
+        + 'reviewed, and nothing approved yet. Approve some above and the '
+        + 'targets below start filling in.'
+      : 'No finished maps yet. Measure a lawn and press "finish, save and see '
+        + 'more options" — that is the moment one is kept.'));
     return;
+  }
+
+  /*
+   * SAID BEFORE THE BARS, because the bars measure the approved set and a
+   * reader who does not know that will read them as measuring everything.
+   */
+  if (s.waiting || s.rejected) {
+    const queue = [];
+    if (s.waiting) queue.push(`${n(s.waiting)} waiting to be reviewed`);
+    if (s.rejected) queue.push(`${n(s.rejected)} rejected`);
+    box.append(el('p', 'meta',
+      `Counting ${n(s.total)} approved. Also ${queue.join(', ')}.`));
   }
 
   for (const g of data.gaps || []) box.append(gapRow(g));
@@ -574,7 +783,25 @@ async function renderLog() {
 
   /* Each section fails on its own. A broken log must not hide the people. */
   renderSettings().catch(() => { $('#settings').textContent = 'Could not load the limits.'; });
+  renderReview().catch(() => { $('#review').textContent = 'Could not load the candidates.'; });
   renderCorpus().catch(() => { $('#corpus').textContent = 'Could not load the training data.'; });
+
+  /*
+   * Switching queue throws away the loaded page rather than filtering it. The
+   * two queues are different DRAWS, not two views of one list -- keeping the
+   * priority page and relabelling it "random" would put maps chosen for being
+   * interesting into the one slice that must not contain them.
+   */
+  for (const [id, which] of [['#queue-priority', 'priority'], ['#queue-random', 'random']]) {
+    $(id).addEventListener('click', () => {
+      if (queue === which) return;
+      queue = which;
+      pending = [];
+      $('#queue-priority').classList.toggle('on', which === 'priority');
+      $('#queue-random').classList.toggle('on', which === 'random');
+      renderReview().catch(() => { $('#review').textContent = 'Could not load the candidates.'; });
+    });
+  }
   renderPeople().catch(() => { $('#people').textContent = 'Could not load accounts.'; });
   renderFeedback().catch(() => { $('#feedback').textContent = 'Could not load feedback.'; });
   renderLog().catch(() => { $('#log').textContent = 'Could not load the log.'; });

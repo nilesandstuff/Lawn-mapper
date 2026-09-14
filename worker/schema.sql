@@ -309,8 +309,33 @@ CREATE TABLE IF NOT EXISTS corpus (
   -- having: the frame re-fetches.
   image_key      TEXT,
   image_provider TEXT,
+  -- Has a person looked at this one and said it is good?
+  --
+  -- 'new' until reviewed, then 'approved' or 'rejected'. Only approved rows
+  -- are training data; the rest are candidates. A rejected row is KEPT rather
+  -- than deleted -- it cost a real measurement, the judgement may be revisited,
+  -- and "we looked and said no" is worth more than a gap where a row was.
+  --
+  -- Re-finishing a map resets this to 'new', because an approval is of the
+  -- OUTLINE and editing the outline invalidates it. That is also the review
+  -- edit flow working as intended: tweak, finish, approve the tweaked one.
+  status         TEXT NOT NULL DEFAULT 'new',
+  reviewed_at    TEXT,
+  reviewed_by    TEXT,
+  review_note    TEXT,
+  -- WHICH QUEUE SURFACED THIS, and it decides what the row may be used for.
+  --
+  -- 'priority' means it was picked BECAUSE it looked valuable -- a correction,
+  -- a tree line, a thin county. Exactly right for training and disqualifying
+  -- for the representative half of the eval, which has to look like ordinary
+  -- use and cannot be assembled from maps chosen for being interesting.
+  --
+  -- 'random' means it came up in a blind draw, so it carries no selection of
+  -- its own and the representative slice is built from these.
+  review_queue   TEXT,
   created_at     TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS corpus_status ON corpus(status, at DESC);
 CREATE INDEX IF NOT EXISTS corpus_at ON corpus(at DESC);
 -- The export query: usable imagery, actually corrected, newest first.
 CREATE INDEX IF NOT EXISTS corpus_pick ON corpus(provider, hand_edited, at DESC);

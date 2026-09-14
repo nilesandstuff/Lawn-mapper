@@ -271,7 +271,32 @@ export async function recordFinished(env, body) {
          at = ?2, county = ?5, provider = ?6, hand_edited = ?9,
          detected_sq_ft = ?10, square_feet = ?11, parcel_sq_ft = ?12,
          frame = ?13, parcel = ?14, shapes = ?15,
-         detected_shapes = ?16, parcel_source = ?17, exclusions = ?18`
+         /*
+          * COALESCE, NOT ASSIGNMENT, and this one is a trap worth naming.
+          *
+          * Reopening a saved map deliberately clears the detector's outline --
+          * carrying it over would pair one lawn's detection with another
+          * lawn's correction. But that means finishing after a review edit
+          * arrives here with nothing, and a plain assignment would write that
+          * nothing over the stored original, deleting the only record of what
+          * the AI actually drew. Silent, permanent, and precisely the thing
+          * that makes the overshoot measurable.
+          *
+          * So a fresh detection replaces it and an absent one leaves it alone.
+          */
+         detected_shapes = COALESCE(?16, corpus.detected_shapes),
+         parcel_source = ?17, exclusions = ?18,
+         /*
+          * EDITING AN OUTLINE INVALIDATES ITS APPROVAL. The approval was of
+          * the shape, and the shape just changed -- carrying it forward would
+          * mark work as verified that nobody has looked at.
+          *
+          * This is also the review-edit flow working as designed: tweak,
+          * finish, and the row comes back to the top of the queue to be
+          * approved in its corrected form.
+          */
+         status = 'new', reviewed_at = NULL, reviewed_by = NULL,
+         review_note = NULL, review_queue = NULL`
     ).bind(
       row.id, row.at, row.lng, row.lat, row.county, row.provider, row.model,
       row.mode, row.hand_edited, row.detected_sq_ft, row.square_feet,
@@ -423,4 +448,65 @@ export function corpusGaps(stats = {}, targets = TARGETS) {
    * that only ever shows bad news.
    */
   return gaps.sort((a, b) => (a.done === b.done ? a.share - b.share : a.done ? 1 : -1));
+}
+
+/* ------------------------------------------------------- the review queue */
+
+/**
+ * How much reviewing this candidate would be worth, given what the set lacks.
+ *
+ * SCARCITY DECIDES, not any property of the map on its own. A tree-line lawn
+ * is worth a lot when there are nine of them and very little when there are
+ * four hundred, so every term below is switched off once its target in
+ * `corpusGaps` is met. Otherwise the queue would spend somebody's afternoon
+ * deepening a pile that is already deep enough.
+ *
+ * Pure, and scored against a snapshot of what is already approved rather than
+ * against the row's own merits, so the ordering can be checked against
+ * made-up corpora -- including the lopsided ones it exists to fix.
+ */
+export function candidateScore(row = {}, have = {}, targets = TARGETS) {
+  const short = (key, target) => (Number(have[key]) || 0) < target;
+  let score = 0;
+  const why = [];
+
+  const detected = row.detected_sq_ft;
+  const final = row.square_feet;
+  const corrected = detected === null || detected === undefined
+    ? true
+    : Number(detected) > 0 && Math.abs(final - detected) * 10 >= Number(detected);
+
+  if (corrected && short('corrected', targets.corrected)) {
+    score += 50;
+    why.push(detected === null || detected === undefined
+      ? 'drawn by hand' : 'you disagreed with the AI');
+  }
+  if (/woods/.test(row.exclusions || '') && short('treeLine', targets.treeLine)) {
+    score += 30;
+    why.push('has a tree line');
+  }
+  /*
+   * A place nobody has approved anything in yet. Worth more than another map
+   * from a street already covered, because twenty maps from one street count
+   * for little more than one.
+   */
+  if (row.new_block && short('blocks', targets.blocks)) {
+    score += 25;
+    why.push('somewhere new');
+  }
+  if (row.new_county && short('counties', targets.counties)) {
+    score += 40;
+    why.push('a county with nothing approved yet');
+  }
+  /*
+   * NO PICTURE, NO TRAINING EXAMPLE. The outline is still fine and the frame
+   * can re-fetch, but nothing can be trained on it as it stands -- so it sinks
+   * rather than being hidden, because it is still reviewable and still counts.
+   */
+  if (!row.image_key) {
+    score -= 35;
+    why.push('no photograph stored yet');
+  }
+
+  return { score, why };
 }

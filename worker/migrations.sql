@@ -55,3 +55,16 @@ ALTER TABLE corpus ADD COLUMN parcel_source TEXT;
 -- Which exclusion prompts ran. The nearest thing to a "hard one" flag: a lawn
 -- that needed the woods prompt is a lawn with a tree line.
 ALTER TABLE corpus ADD COLUMN exclusions TEXT;
+
+-- Review state. Only approved rows are training data; the rest are candidates.
+-- Rejected rows are kept, not deleted: they cost a real measurement and "we
+-- looked and said no" is worth more than a gap where a row used to be.
+ALTER TABLE corpus ADD COLUMN status TEXT NOT NULL DEFAULT 'new';
+ALTER TABLE corpus ADD COLUMN reviewed_at TEXT;
+ALTER TABLE corpus ADD COLUMN reviewed_by TEXT;
+ALTER TABLE corpus ADD COLUMN review_note TEXT;
+
+-- Which queue surfaced the row, which decides what it may be used for. A row
+-- picked BECAUSE it looked valuable cannot sit in the representative half of
+-- the eval, which has to look like ordinary use.
+ALTER TABLE corpus ADD COLUMN review_queue TEXT;

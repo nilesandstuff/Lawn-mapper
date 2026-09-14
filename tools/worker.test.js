@@ -42,7 +42,7 @@ import {
 import { queryCounty } from '../worker/src/parcel.js';
 import { ATLAS_COUNTIES } from '../worker/src/counties-atlas.js';
 import { readFile } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 
 let failures = 0;
 const check = (name, ok, detail = '') => {
@@ -1264,6 +1264,40 @@ check('and a typed prompt is sent verbatim',
   check('every fetch in the preflight probe carries a deadline',
     calls.length > 0 && calls.length === timed.length,
     `${timed.length} of ${calls.length} calls timed`);
+}
+
+/* ------------------------------------------------- tests that never ran */
+/*
+ * EVERY TEST FILE MUST EXIT LAST, and this check exists because two of them
+ * did not.
+ *
+ * Appending a block to the end of a file that ends in `process.exit` puts the
+ * new tests AFTER the exit, where they never run -- and the suite still says
+ * "All checks passed", because as far as it knows they do not exist. Two
+ * rounds of corpus tests were written, reported as passing, and committed
+ * without ever having executed. One of them was guarding a silent data-loss
+ * bug.
+ *
+ * Nothing about that failure was visible: no error, no skipped count, a green
+ * suite and a rising PASS total from the files that did run. So it is checked
+ * structurally instead.
+ */
+{
+  const dir = new URL('.', import.meta.url);
+  const dead = [];
+  for (const name of readdirSync(dir).filter((f) => f.endsWith('.test.js'))) {
+    const text = readFileSync(new URL(name, dir), 'utf8');
+    const lines = text.split('\n');
+    /* Anchored to a real call at the start of a line: this check's own source
+       mentions the name, and a naive `includes` matched itself. */
+    const at = lines.findIndex((l) => /^\s*process\.exit\(/.test(l));
+    if (at === -1) continue;
+    /* Anything but blank lines after the exit is code that cannot run. */
+    const after = lines.slice(at + 1).filter((l) => l.trim());
+    if (after.length) dead.push(`${name}: ${after.length} line(s) after process.exit`);
+  }
+  check('no test file has tests after its own process.exit', dead.length === 0,
+    dead.join('; ') || 'every file exits last, so every test in it runs');
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);

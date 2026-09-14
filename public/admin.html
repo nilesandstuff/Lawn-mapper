@@ -92,6 +92,28 @@
   #corpus h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em;
                color: var(--muted); margin: 14px 0 2px; }
   #corpus .meta p { margin: 2px 0; font-size: 12px; color: var(--muted); }
+
+  /* The review card. One canvas, deliberately: the feedback page once asked
+     for sixty WebGL maps on a page that can hold about sixteen, and the ones
+     past the limit silently drew nothing. A 2D canvas has no such ceiling. */
+  #review canvas {
+    width: 100%; max-width: 560px; aspect-ratio: 1; display: block;
+    border: 1px solid var(--line); border-radius: 10px; background: #e9ecea;
+  }
+  #review .verdict { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  #review .verdict button {
+    font: inherit; font-size: 14px; font-weight: 600; padding: 10px 16px;
+    border: 1px solid var(--line); border-radius: 9px; background: #fff; cursor: pointer;
+    flex: 1 1 auto; min-width: 96px;
+  }
+  #review .approve { background: #e4f2e5; border-color: #9ec5a1; color: #1f5b22; }
+  #review .reject  { background: #f6eceb; border-color: #d3a9a4; color: #7d2d22; }
+  #review .why { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 2px; }
+  #queue-pick button.on { background: var(--ink, #23301f); color: #fff; border-color: transparent; }
+  .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11.5px;
+            color: var(--muted); margin-top: 7px; }
+  .legend i { width: 11px; height: 3px; display: inline-block; vertical-align: middle;
+              margin-right: 4px; border-radius: 2px; }
   .actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
   .actions button, .actions input {
     font: inherit; font-size: 12.5px; padding: 6px 10px;
@@ -163,6 +185,22 @@
         redeploying will not move it. <b>Back to&nbsp;5</b> undoes that.
       </p>
       <div id="settings"><p class="empty">Loading…</p></div>
+    </div>
+
+    <div class="card">
+      <h2>Review candidates</h2>
+      <p class="sub">
+        Approved maps are the training set; everything else is a candidate.
+        <b>Most useful first</b> works towards a trainable pile fastest.
+        <b>Random</b> draws blind — those approvals are the only ones that can
+        make an honest "how accurate is it really" number, because a slice
+        picked for being interesting is not representative of anything.
+      </p>
+      <div class="actions" id="queue-pick">
+        <button id="queue-priority" class="on">Most useful first</button>
+        <button id="queue-random">Random</button>
+      </div>
+      <div id="review"><p class="empty">Loading…</p></div>
     </div>
 
     <div class="card">
