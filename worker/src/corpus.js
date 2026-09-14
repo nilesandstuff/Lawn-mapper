@@ -232,6 +232,29 @@ export async function recordFinished(env, body) {
       return p ? JSON.stringify(p) : null;
     })(),
     shapes: JSON.stringify(shapes),
+    /*
+     * Cleaned exactly like `shapes`, and allowed to be empty.
+     *
+     * A detection that found nothing is a real and interesting example -- it
+     * is the detector being wrong in the most complete way available -- so an
+     * empty list is stored as an empty list, not turned into null. Null here
+     * means "there was never a detection", which is the hand-drawn case and a
+     * different thing entirely.
+     */
+    detected_shapes: Array.isArray(body?.detectedShapes)
+      ? JSON.stringify(cleanShapes(body.detectedShapes))
+      : null,
+    /*
+     * Only the two values this can mean. Anything else is somebody's typo
+     * arriving from a client we do not control, and storing it would put a
+     * third category into a column the export reads as a pair.
+     */
+    parcel_source: ['county', 'hand'].includes(body?.parcelSource)
+      ? body.parcelSource
+      : null,
+    exclusions: Array.isArray(body?.exclusions) && body.exclusions.length
+      ? text(body.exclusions.filter((e) => typeof e === 'string').join(','), 200)
+      : null,
   };
 
   const size = (row.shapes?.length || 0) + (row.parcel?.length || 0);
@@ -242,16 +265,18 @@ export async function recordFinished(env, body) {
       `INSERT INTO corpus (
          id, at, lng, lat, county, provider, model, mode, hand_edited,
          detected_sq_ft, square_feet, parcel_sq_ft, frame, parcel, shapes,
-         created_at
-       ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?2)
+         detected_shapes, parcel_source, exclusions, created_at
+       ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?2)
        ON CONFLICT(id) DO UPDATE SET
          at = ?2, county = ?5, provider = ?6, hand_edited = ?9,
          detected_sq_ft = ?10, square_feet = ?11, parcel_sq_ft = ?12,
-         frame = ?13, parcel = ?14, shapes = ?15`
+         frame = ?13, parcel = ?14, shapes = ?15,
+         detected_shapes = ?16, parcel_source = ?17, exclusions = ?18`
     ).bind(
       row.id, row.at, row.lng, row.lat, row.county, row.provider, row.model,
       row.mode, row.hand_edited, row.detected_sq_ft, row.square_feet,
-      row.parcel_sq_ft, row.frame, row.parcel, row.shapes
+      row.parcel_sq_ft, row.frame, row.parcel, row.shapes,
+      row.detected_shapes, row.parcel_source, row.exclusions
     ).run();
     /*
      * The row is handed back so the caller can pass it to storeImage under
@@ -297,4 +322,105 @@ export async function corpusSummary(env) {
   } catch {
     return null;
   }
+}
+
+/* ------------------------------------------------------ what is still needed */
+
+/*
+ * The targets a first useful fine-tune is aimed at, from docs/training-data.md.
+ *
+ * Every one of these is a considered guess rather than a measurement, and they
+ * are here rather than in the page so there is one place to change when the
+ * corpus starts answering the questions the doc leaves open. Changing a number
+ * here changes the advice everywhere.
+ */
+export const TARGETS = {
+  maps: 1000,       // enough to fine-tune at all
+  corrected: 300,   // the binding one -- see below
+  blocks: 60,       // independent places, roughly 1 km apart
+  counties: 5,      // enough for leave-one-county-out to mean anything
+  treeLine: 150,    // lawns with a tree line: the fault worth fixing
+};
+
+/**
+ * What to go and map next, most-needed first.
+ *
+ * A COUNT ALONE DOES NOT TELL SOMEBODY WHERE TO SPEND A SATURDAY. "412 maps"
+ * reads like progress whether those 412 are spread over four states or sitting
+ * in one cul-de-sac, and the second is worth a fraction of the first. Each
+ * target here is a different way the pile can be lopsided, and the ranking is
+ * simply which one is furthest behind.
+ *
+ * Pure, and separate from the SQL, so the advice can be checked against made-up
+ * corpora without a database -- including the lopsided ones that are the whole
+ * reason it exists.
+ */
+export function corpusGaps(stats = {}, targets = TARGETS) {
+  const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+
+  const gaps = [
+    {
+      key: 'corrected',
+      label: 'Maps where you disagreed with the AI',
+      have: n(stats.corrected),
+      need: targets.corrected,
+      why: 'The only evidence of what the detector gets wrong, and much rarer '
+        + 'than finished maps. This is the number that decides when there is '
+        + 'enough to train on.',
+      what: 'Map properties the AI is likely to struggle with, and fix what it '
+        + 'gets wrong rather than accepting a close-enough outline.',
+    },
+    {
+      key: 'treeLine',
+      label: 'Lawns with a tree line',
+      have: n(stats.treeLine),
+      need: targets.treeLine,
+      why: 'The known fault is a tree line overshooting by about a quarter. '
+        + 'Without these there is no way to tell whether a fix worked.',
+      what: 'Wooded lots, properties backing onto trees, anything where the '
+        + 'lawn runs under a canopy edge.',
+    },
+    {
+      key: 'blocks',
+      label: 'Separate places (about a kilometre apart)',
+      have: n(stats.blocks),
+      need: targets.blocks,
+      why: 'Houses on one street share grass, sun angle and the day the photo '
+        + 'was taken, so twenty maps from one street count for little more '
+        + 'than one.',
+      what: 'Spread out. A few maps in many neighbourhoods beat many maps in '
+        + 'one.',
+    },
+    {
+      key: 'counties',
+      label: 'Counties',
+      have: n(stats.counties),
+      need: targets.counties,
+      why: 'The only way to find out whether the model travels to a part of '
+        + 'the country it has never seen.',
+      what: 'Map a few properties somewhere genuinely far away, even a handful.',
+    },
+    {
+      key: 'maps',
+      label: 'Finished maps in total',
+      have: n(stats.total),
+      need: targets.maps,
+      why: 'Accepted maps are most of what a model will meet and are where its '
+        + 'sense of an ordinary lawn comes from.',
+      what: 'Anything at all. This one only needs volume.',
+    },
+  ];
+
+  for (const g of gaps) {
+    g.done = g.have >= g.need;
+    g.remaining = Math.max(0, g.need - g.have);
+    g.share = g.need > 0 ? Math.min(1, g.have / g.need) : 1;
+  }
+
+  /*
+   * Furthest behind first, and finished ones last rather than dropped -- a
+   * target that has been MET is information too, and hiding it makes a page
+   * that only ever shows bad news.
+   */
+  return gaps.sort((a, b) => (a.done === b.done ? a.share - b.share : a.done ? 1 : -1));
 }

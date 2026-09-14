@@ -40,3 +40,18 @@ ALTER TABLE ledger ADD COLUMN units INTEGER NOT NULL DEFAULT 1;
 -- is still worth having, because the frame re-fetches.
 ALTER TABLE corpus ADD COLUMN image_key TEXT;
 ALTER TABLE corpus ADD COLUMN image_provider TEXT;
+
+-- What the detector drew before anybody edited it, which was being thrown
+-- away: the outline is edited in place, so `detected_sq_ft` recorded how far
+-- the answer moved and nothing at all about WHERE it was wrong. Measuring the
+-- tree-line overshoot needs both outlines, not two totals.
+ALTER TABLE corpus ADD COLUMN detected_shapes TEXT;
+
+-- Whether the property line came from a county record or a person tracing it.
+-- The model is scored only inside that line, so the two are not equally good
+-- ground truth and the corpus has to be able to tell them apart.
+ALTER TABLE corpus ADD COLUMN parcel_source TEXT;
+
+-- Which exclusion prompts ran. The nearest thing to a "hard one" flag: a lawn
+-- that needed the woods prompt is a lawn with a tree line.
+ALTER TABLE corpus ADD COLUMN exclusions TEXT;

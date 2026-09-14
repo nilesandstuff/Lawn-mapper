@@ -2917,6 +2917,25 @@ async function detect() {
       draw.add({ type: 'Feature', properties: {}, geometry });
     }
 
+    /*
+     * THE AI'S OWN OUTLINE, COPIED BEFORE ANYBODY CAN TOUCH IT.
+     *
+     * Taken here for the same reason detectedSqFt is taken further down: the
+     * shapes are edited IN PLACE, so by the time somebody presses finish the
+     * detector's answer has been overwritten by the corrected one and is gone
+     * for good.
+     *
+     * A total was never enough. detectedSqFt says how far the answer MOVED;
+     * this says WHERE it was wrong, and those are different questions. The
+     * known fault is a tree line overshooting by about a quarter, and no pair
+     * of totals can show that one outline sits outside the other along the
+     * canopy edge -- only the two outlines can.
+     *
+     * Structured-cloned so later editing of the drawn features cannot reach
+     * back into this copy through a shared reference.
+     */
+    state.detectedShapes = polygons.map((geometry) => structuredClone(geometry));
+
     // Re-running with the same prompt point returns the same mask, so keep
     // the button from quietly charging for a duplicate. "Clear shapes" re-arms
     // the picker for a genuine second attempt somewhere else.
@@ -4303,6 +4322,15 @@ async function openSave(id) {
   state.detectedWith = s.provider || null;
   state.detectedExcluding = state.exclude.length ? state.exclude.slice().sort().join(',') : null;
   state.handEdited = true;
+  /*
+   * A reopened save has no detector outline and must not borrow the last one.
+   * What is on screen is the FINISHED shape from that save -- the AI's own
+   * answer was overwritten when it was first corrected and never stored. Left
+   * null, the row records "no detection to compare against", which is true;
+   * carried over, it would pair one lawn's corrected outline with a different
+   * lawn's detection and look entirely plausible.
+   */
+  state.detectedShapes = null;
 
   map.getSource('parcel').setData(state.parcel || empty());
   for (const f of (s.shapes || [])) {
@@ -6789,6 +6817,7 @@ function reset() {
   state.detectedWith = null;
   state.detectedBy = null;
   state.detectedExcluding = null;
+  state.detectedShapes = null;
   state.provider = 'mapbox';
   state.model = 'sam3';
   state.pins = [];
@@ -7090,7 +7119,27 @@ function keepFinished() {
     body: JSON.stringify({
       lng: state.chosen?.lng ?? state.frame?.lng ?? null,
       lat: state.chosen?.lat ?? state.frame?.lat ?? null,
-      county: state.parcel?.properties?.county || null,
+      /*
+       * A TRACED BOUNDARY HAS NO COUNTY, and used to get the word "traced by
+       * hand" in the county column.
+       *
+       * `properties.county` is what the print-out quotes as the source of the
+       * line, so for a hand-traced parcel it literally reads "traced by hand"
+       * -- correct on the page, nonsense in a column that groups by place.
+       * Every hand-traced row would have joined one enormous fake county, and
+       * the leave-one-county-out check would have held it out as if it were a
+       * region.
+       *
+       * Null instead, which is true, and costs nothing: `lng`/`lat` are always
+       * present, so the export can look the real county up from the
+       * coordinates when it wants one.
+       */
+      county: state.parcel?.properties?.drawn
+        ? null
+        : state.parcel?.properties?.county || null,
+      // Whether the line is a county record or a person's best guess. The
+      // model is scored only inside it, so the two are not equal ground truth.
+      parcelSource: state.parcel ? (state.parcel.properties?.drawn ? 'hand' : 'county') : null,
       provider: state.detectedWith || state.provider,
       model: state.detectedBy || null,
       mode: saveMode(),
@@ -7103,6 +7152,14 @@ function keepFinished() {
       frame: state.lastMask?.frame || state.frame || null,
       parcel: state.parcel || null,
       shapes: shapes.map((f) => ({ geometry: f.geometry })),
+      // Null, not empty, when nothing was detected: "no detection happened"
+      // and "the detector found nothing" are different examples.
+      detectedShapes: state.detectedShapes
+        ? state.detectedShapes.map((geometry) => ({ geometry }))
+        : null,
+      // Which exclusion prompts ran. A lawn that needed `woods` is a lawn with
+      // a tree line, which is what the hard half of the eval is made of.
+      exclusions: state.exclude?.length ? state.exclude.slice().sort() : null,
     }),
   }).catch(() => { /* Never the finisher's problem. */ });
 }

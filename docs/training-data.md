@@ -10,6 +10,52 @@ reads it does not exist. This file is what that workflow will be built to.
 
 ---
 
+## The plan, in order
+
+Four stages, and the first two do not involve training anything. Most of the
+value arrives before a model does, which is the least obvious thing in this
+file.
+
+**Now — collect, and watch the shape of what is collected.** The console's
+training-data panel ranks what the pile is short of. Follow the top item. Map
+count is the least important thing on that list and the one that grows on its
+own.
+
+**At 50–100 maps — measure the tree overshoot and trim it in post-processing.**
+The detector's own outline is now stored next to the corrected one, so the
+overshoot can be measured directly: how far outside the true edge it lands, per
+imagery source and per mode. Then shrink the mask by that much. Days of work,
+no training, and it targets the fault that produced the Boyds screenshot. This
+is the best return available and it needs a fiftieth of the data a model does.
+
+**At ~1,000 maps with ~300 corrections — the first fine-tune.** Crops at a
+fixed resolution, the parcel as a separate input, scoring stopped at the
+property line, split by ~1 km block. Ship only if the hard slice improves and
+the representative slice does not regress.
+
+**Before leaning on it anywhere new — leave-one-county-out.** Counties take
+turns as the test fold. This is the only estimate of what happens in a part of
+the country the model has never seen, and it is worth having before somebody
+there opens the site rather than after.
+
+### What is worth arguing about, and what is not
+
+Most of this file was settled by argument, and three of those arguments changed
+it substantially. The load-bearing conclusions, in the order they matter:
+
+1. **The property line does most of the work.** It is the one thing never
+   guessed, so the model is scored only inside it. That single decision makes
+   the neighbour problem small, the split light, and the task narrow enough
+   that a few hundred examples can beat a general-purpose detector.
+2. **Corrections are the scarce input.** Not the only valuable one — that was
+   wrong and is corrected in Rule 1 — but the one that runs out first and the
+   one that fixes a known fault.
+3. **Everything else is cheap insurance.** The block split, the buffer, the
+   resolution target: each is a guess that costs little if wrong and that the
+   corpus can settle later. None is worth delaying collection over.
+
+---
+
 ## What a row is
 
 One finished map — somebody pressed **finish, save, and see more options**, which
@@ -21,8 +67,27 @@ is the only moment the app treats an outline as done.
 | the label | `shapes`, the lawn outline as polygons |
 | the frame | centre, zoom and size — re-fetches the same photograph at will |
 | the parcel | the property boundary, when the county had one |
+| the AI's version | `detected_shapes`, the outline before anybody edited it |
 | the numbers | `detected_sq_ft` (before editing), `square_feet` (final), `parcel_sq_ft` |
-| the context | `county`, `provider`, `model`, `mode`, `hand_edited` |
+| the context | `county`, `provider`, `model`, `mode`, `hand_edited`, `parcel_source`, `exclusions` |
+
+`detected_shapes` is the one that had to be caught at detection time or lost
+forever — the outline is edited in place, so by the time anybody presses finish
+the detector's own answer has been overwritten. A total was never enough:
+`detected_sq_ft` says how far the answer moved, and only the two outlines
+together say WHERE it was wrong, which is what measuring the tree overshoot
+needs.
+
+`parcel_source` separates a county record from a line somebody traced, because
+the whole plan rests on the boundary being trustworthy and those two are not
+equally trustworthy. `exclusions` names the prompts that ran, which is the
+nearest thing to a "this one was hard" flag: a lawn that needed `woods` is a
+lawn with a tree line.
+
+A hand-traced boundary stores **no county**, rather than the words "traced by
+hand". It is not a place, and counting it as one would have put every such row
+into a single enormous fake county — which the leave-one-county-out check would
+then have held out as though it were a region.
 
 `frame` is what makes a row durable: even with no image stored, the photograph
 can be fetched again from the same rectangle of ground. A row with a null

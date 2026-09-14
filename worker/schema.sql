@@ -266,6 +266,35 @@ CREATE TABLE IF NOT EXISTS corpus (
   frame          TEXT,
   parcel         TEXT,
   shapes         TEXT NOT NULL,
+  -- WHAT THE DETECTOR ITSELF DREW, before anybody edited it.
+  --
+  -- `detected_sq_ft` above records how far the answer MOVED; this records
+  -- where it was wrong, which is a different and more useful question. The
+  -- known fault is a tree line overshooting by roughly a quarter, and you
+  -- cannot measure an overshoot from two totals -- you need both outlines to
+  -- see that one sits outside the other along the canopy edge.
+  --
+  -- It is also the only way to calibrate a fix without training anything: with
+  -- a few dozen of these, the overshoot can be measured per provider and per
+  -- mode and trimmed back in post-processing, which is days of work against
+  -- months for a model.
+  --
+  -- Unrecoverable if not caught here. The outline is edited IN PLACE, so by
+  -- the time somebody presses finish the detector's own answer is gone.
+  -- NULL when the lawn was drawn entirely by hand.
+  detected_shapes TEXT,
+  -- Did the property line come from a county record or a person tracing it?
+  --
+  -- The boundary is the one thing this app never guesses, and the whole
+  -- training plan leans on that: the model is scored only inside it. A traced
+  -- line is a person's best guess and a county line is a record, so the two
+  -- are not equally good ground truth and a corpus that could not tell them
+  -- apart would quietly mix them.
+  parcel_source  TEXT,
+  -- Which exclusion prompts ran, e.g. "woods,driveway". The nearest thing to a
+  -- "was this a hard one" flag the app knows: a lawn needing the woods prompt
+  -- is a lawn with a tree line, and the hard slice of the eval is mostly those.
+  exclusions     TEXT,
   -- Where the aerial photograph is in R2, and which source it came from.
   --
   -- TWO COLUMNS BECAUSE THEY DISAGREE. `provider` above is what the person was

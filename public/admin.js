@@ -231,6 +231,102 @@ function settingRow(s) {
   return row;
 }
 
+/* -------------------------------------------------------- training data */
+
+/*
+ * WHAT TO GO AND MAP NEXT, which is the only question this panel answers.
+ *
+ * A total tells somebody nothing about where to spend an afternoon: four
+ * hundred maps down one street and four hundred across four states read the
+ * same and are worth wildly different amounts. So the ranking is by how far
+ * behind each target is, and the server decides it -- the page only draws it.
+ */
+async function renderCorpus() {
+  const box = $('#corpus');
+  const data = await get('/api/admin/corpus');
+  box.innerHTML = '';
+
+  if (data.unavailable) {
+    box.append(el('p', 'empty', `Cannot read the training data: ${data.unavailable}`));
+    return;
+  }
+
+  const s = data.stats || {};
+  if (!s.total) {
+    box.append(el('p', 'empty',
+      'No finished maps yet. Measure a lawn and press "finish, save and see '
+      + 'more options" — that is the moment one is kept.'));
+    return;
+  }
+
+  for (const g of data.gaps || []) box.append(gapRow(g));
+
+  /*
+   * Facts that are not targets, so they go under the list rather than in it.
+   * Each is a thing that would be wrong to chase and useful to notice.
+   */
+  const notes = [];
+  if (s.withImage < s.total) {
+    notes.push(`${n(s.total - s.withImage)} of ${n(s.total)} have no photograph `
+      + 'stored — the outline is still fine, and the frame can re-fetch it.');
+  }
+  if (s.handParcel) {
+    notes.push(`${n(s.handParcel)} used a hand-traced property line rather than `
+      + 'a county record. Still usable, but a traced line is a guess and a '
+      + 'county line is a record.');
+  }
+  if (s.withDetection < s.total) {
+    notes.push(`${n(s.total - s.withDetection)} have no saved AI outline to `
+      + 'compare against — either drawn by hand, or finished before the app '
+      + 'started keeping it.');
+  }
+  if (notes.length) {
+    const box2 = el('div', 'meta');
+    for (const t of notes) box2.append(el('p', null, t));
+    box.append(box2);
+  }
+
+  for (const [title, rows] of [
+    ['Counties', data.counties],
+    ['Imagery', data.providers],
+    ['How it was measured', data.modes],
+  ]) {
+    if (!rows?.length) continue;
+    box.append(el('h3', null, title));
+    const list = el('div', 'meta');
+    for (const r of rows) {
+      list.append(el('p', null,
+        `${r.name} — ${n(r.n)}${r.blocks ? ` across ${n(r.blocks)} places` : ''}`));
+    }
+    box.append(list);
+  }
+}
+
+function gapRow(g) {
+  const row = el('div', 'person');
+
+  const who = el('div', 'who');
+  who.append(el('b', null, g.label));
+  who.append(el('span', 'pill', g.done ? 'enough' : `${n(g.have)} of ${n(g.need)}`));
+  row.append(who);
+
+  /*
+   * A bar rather than a number alone, because "48 of 300" and "280 of 300" are
+   * the same shape of sentence and a very different amount of work left.
+   * Written with a width style rather than <progress>, which cannot be styled
+   * consistently across the browsers this gets opened in.
+   */
+  const track = el('div', 'bar');
+  const fill = el('div', 'bar-fill');
+  fill.style.width = `${Math.round((g.share || 0) * 100)}%`;
+  if (g.done) fill.classList.add('bar-done');
+  track.append(fill);
+  row.append(track);
+
+  row.append(el('div', 'meta', g.done ? g.why : `${g.why} ${g.what}`));
+  return row;
+}
+
 /* --------------------------------------------------------------- people */
 
 let searchTimer = null;
@@ -478,6 +574,7 @@ async function renderLog() {
 
   /* Each section fails on its own. A broken log must not hide the people. */
   renderSettings().catch(() => { $('#settings').textContent = 'Could not load the limits.'; });
+  renderCorpus().catch(() => { $('#corpus').textContent = 'Could not load the training data.'; });
   renderPeople().catch(() => { $('#people').textContent = 'Could not load accounts.'; });
   renderFeedback().catch(() => { $('#feedback').textContent = 'Could not load feedback.'; });
   renderLog().catch(() => { $('#log').textContent = 'Could not load the log.'; });

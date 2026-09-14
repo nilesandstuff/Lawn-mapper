@@ -316,3 +316,144 @@ const png = () => new Response('x', { headers: { 'content-type': 'image/png' } }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);
+
+/* ------------------------------------------------- what is still needed */
+/*
+ * THE POINT OF THIS GROUP is the lopsided corpora, not the tidy one. A count
+ * that says "412 maps" reads like progress whether those are spread over four
+ * states or sitting in one cul-de-sac, and the whole reason the panel exists
+ * is to tell those two apart. So each case below is a pile that looks healthy
+ * by total and is not.
+ */
+{
+  const { corpusGaps, TARGETS } = await import('../worker/src/corpus.js');
+  const top = (stats) => corpusGaps(stats)[0].key;
+
+  check('an empty corpus asks for corrections first',
+    top({}) === 'corrected',
+    'the scarce kind, and the one that decides when there is enough');
+
+  check('a pile of accepted maps with no corrections still asks for corrections',
+    top({ total: 900, corrected: 4, blocks: 200, counties: 9, treeLine: 400 }) === 'corrected',
+    '900 maps and nothing that says what the detector gets wrong');
+
+  check('many maps down one street asks for spread',
+    top({ total: 900, corrected: 400, blocks: 3, counties: 4, treeLine: 300 }) === 'blocks',
+    'twenty maps from one street count for little more than one');
+
+  check('a corpus with no tree lines asks for tree lines',
+    top({ total: 900, corpus: 0, corrected: 400, blocks: 200, counties: 9, treeLine: 2 }) === 'treeLine',
+    'the known fault is a tree line, and this cannot tell whether it was fixed');
+
+  check('one county asks for another county',
+    top({ total: 900, corrected: 400, blocks: 200, counties: 1, treeLine: 400 }) === 'counties');
+
+  /*
+   * Met targets are kept and sorted last rather than dropped. A page that only
+   * ever shows what is missing cannot show progress, and "enough" is the thing
+   * somebody is working towards seeing.
+   */
+  const full = corpusGaps({
+    total: 2000, corrected: 900, blocks: 300, counties: 20, treeLine: 900,
+  });
+  check('everything met is reported as met rather than hidden',
+    full.length === 5 && full.every((g) => g.done),
+    JSON.stringify(full.map((g) => `${g.key}:${g.done}`)));
+
+  const mixed = corpusGaps({
+    total: 2000, corrected: 900, blocks: 300, counties: 1, treeLine: 900,
+  });
+  check('and a met target never outranks an unmet one',
+    mixed[0].key === 'counties' && mixed.slice(1).every((g) => g.done),
+    mixed.map((g) => g.key).join(', '));
+
+  check('progress never reads over 100%',
+    corpusGaps({ total: 99999 }).find((g) => g.key === 'maps').share === 1);
+  check('and nonsense counts do not produce a negative bar',
+    corpusGaps({ total: 'banana' }).find((g) => g.key === 'maps').share === 0);
+
+  check('the targets are the ones the doc argues for',
+    TARGETS.corrected === 300 && TARGETS.counties === 5 && TARGETS.blocks === 60,
+    JSON.stringify(TARGETS));
+}
+
+/* ------------------------------------ the three things that were not logged */
+{
+  const { testDb } = await import('./d1.js');
+  const { recordFinished } = await import('../worker/src/corpus.js');
+  const env = { DB: testDb() };
+
+  const ring = (lng) => [
+    [lng, 42.9], [lng, 42.901], [lng + 0.001, 42.901], [lng + 0.001, 42.9], [lng, 42.9],
+  ];
+  const poly = (lng) => ({ type: 'Polygon', coordinates: [ring(lng)] });
+
+  await recordFinished(env, {
+    lng: -85.7, lat: 42.9, model: 'sam-3', mode: 'exclude',
+    shapes: [{ type: 'Polygon', coordinates: [ring(-85.7)] }],
+    detectedShapes: [{ geometry: poly(-85.7001) }],
+    parcelSource: 'county',
+    exclusions: ['woods', 'driveway'],
+    detectedSqFt: 6000, squareFeet: 4000,
+  });
+  const row = await env.DB.prepare('SELECT * FROM corpus').first();
+
+  /*
+   * THE DETECTOR'S OWN OUTLINE, which was being thrown away. `detected_sq_ft`
+   * says how far the answer moved; only this says WHERE it was wrong, and the
+   * overshoot cannot be measured from two totals.
+   */
+  check('the AI\'s own outline is kept, not just its total',
+    JSON.parse(row.detected_shapes)[0].coordinates[0].length === 5,
+    row.detected_shapes?.slice(0, 40));
+  check('and it is a different shape from the finished one',
+    row.detected_shapes !== row.shapes,
+    'otherwise there is nothing to compare');
+
+  check('the property line records where it came from', row.parcel_source === 'county');
+  check('and which exclusions ran', row.exclusions === 'woods,driveway');
+
+  /* A hand-drawn lawn has no detection to compare against -- null, not empty. */
+  await recordFinished(env, {
+    lng: -85.8, lat: 42.9, mode: 'manual',
+    shapes: [{ type: 'Polygon', coordinates: [ring(-85.8)] }],
+    parcelSource: 'hand',
+    squareFeet: 3000,
+  });
+  const drawn = await env.DB.prepare(
+    'SELECT * FROM corpus WHERE parcel_source = ?1'
+  ).bind('hand').first();
+  check('a hand-drawn lawn stores no detected outline at all',
+    drawn.detected_shapes === null,
+    '"never detected" and "detected nothing" are different examples');
+
+  /*
+   * A DETECTION THAT FOUND NOTHING is the detector being wrong in the most
+   * complete way available, and is stored as an empty list rather than
+   * collapsed into the null above.
+   */
+  await recordFinished(env, {
+    lng: -85.9, lat: 42.9, model: 'sam-3', mode: 'find',
+    shapes: [{ type: 'Polygon', coordinates: [ring(-85.9)] }],
+    detectedShapes: [],
+    detectedSqFt: 0, squareFeet: 5000,
+  });
+  const nothing = await env.DB.prepare(
+    'SELECT detected_shapes FROM corpus WHERE lng = ?1'
+  ).bind(-85.9).first();
+  check('but a detection that found nothing is stored as nothing found',
+    nothing.detected_shapes === '[]',
+    'which is a real example, not a missing one');
+
+  check('a junk parcel source is dropped rather than stored as a third kind',
+    (await (async () => {
+      await recordFinished(env, {
+        lng: -86.1, lat: 42.9, mode: 'manual',
+        shapes: [{ type: 'Polygon', coordinates: [ring(-86.1)] }],
+        parcelSource: 'whatever', squareFeet: 100,
+      });
+      const r = await env.DB.prepare('SELECT parcel_source FROM corpus WHERE lng = ?1')
+        .bind(-86.1).first();
+      return r.parcel_source;
+    })()) === null);
+}

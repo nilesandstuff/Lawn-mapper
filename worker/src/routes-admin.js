@@ -25,6 +25,7 @@ import {
 import { limits, limitsForConsole, setLimit, LIMITS } from './limits.js';
 import { logEntries, loggingEnabled } from './testlog.js';
 import { feedbackEntries, feedbackEnabled } from './feedback.js';
+import { corpusGaps } from './corpus.js';
 
 export const isAdminPath = (pathname) => pathname.startsWith('/api/admin/');
 
@@ -179,6 +180,92 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
    * a phone, does not get made often enough to answer anything, so the numbers
    * stay at whatever was guessed first.
    */
+  /* ------------------------------------------------ the training corpus */
+  /*
+   * WHAT IS IN THE PILE, AND WHAT IT IS SHORT OF.
+   *
+   * Its own route rather than more fields on the overview, because it is read
+   * for a different reason and at a different moment: the overview answers "is
+   * the site healthy", this answers "where should I spend Saturday". Loading
+   * six GROUP BYs on every console open to serve a question nobody asked would
+   * be the wrong trade on a phone.
+   *
+   * The whole thing is wrapped, not just parts. Every statement here names the
+   * corpus table, so if it is missing they all fail together and the honest
+   * answer is one message rather than five broken panels.
+   */
+  if (path === 'corpus') {
+    try {
+      /*
+       * BLOCKS ARE APPROXIMATED WITH ROUNDED DEGREES, not real map tiles.
+       *
+       * Two decimal places is about 1.1 km north-south and, at US latitudes,
+       * 0.8-1.0 km east-west -- near enough to the ~1 km block the split will
+       * use. Proper tiles need trigonometry that D1 cannot be relied on to
+       * have, and this is a progress bar rather than the split itself: being a
+       * few hundred metres out changes a count nobody is making decisions to
+       * the unit on. The export does the real thing.
+       */
+      const BLOCK = `ROUND(lng, 2) || ',' || ROUND(lat, 2)`;
+      const [totals, counties, providers, modes] = await Promise.all([
+        env.DB.prepare(
+          `SELECT COUNT(*) total,
+                  COUNT(image_key) with_image,
+                  COUNT(detected_shapes) with_detection,
+                  COUNT(DISTINCT county) counties,
+                  COUNT(DISTINCT ${BLOCK}) blocks,
+                  COALESCE(SUM(CASE WHEN parcel_source = 'hand' THEN 1 ELSE 0 END), 0) hand_parcel,
+                  COALESCE(SUM(CASE WHEN exclusions LIKE '%woods%' THEN 1 ELSE 0 END), 0) tree_line,
+                  COALESCE(SUM(CASE
+                    WHEN detected_sq_ft IS NULL THEN 1
+                    WHEN detected_sq_ft > 0
+                     AND ABS(square_feet - detected_sq_ft) * 10 >= detected_sq_ft THEN 1
+                    ELSE 0 END), 0) corrected
+           FROM corpus`
+        ).first(),
+        env.DB.prepare(
+          `SELECT COALESCE(county, '(traced by hand)') name, COUNT(*) n,
+                  COUNT(DISTINCT ${BLOCK}) blocks
+           FROM corpus GROUP BY county ORDER BY n DESC LIMIT 25`
+        ).all(),
+        env.DB.prepare(
+          `SELECT COALESCE(provider, '(unknown)') name, COUNT(*) n
+           FROM corpus GROUP BY provider ORDER BY n DESC LIMIT 10`
+        ).all(),
+        env.DB.prepare(
+          `SELECT COALESCE(mode, '(unknown)') name, COUNT(*) n
+           FROM corpus GROUP BY mode ORDER BY n DESC LIMIT 10`
+        ).all(),
+      ]);
+
+      const stats = {
+        total: totals.total,
+        corrected: totals.corrected,
+        withImage: totals.with_image,
+        withDetection: totals.with_detection,
+        handParcel: totals.hand_parcel,
+        treeLine: totals.tree_line,
+        blocks: totals.blocks,
+        /*
+         * A hand-traced row stores county as NULL, and COUNT(DISTINCT) skips
+         * nulls -- which is the behaviour wanted here. "Traced by hand" is not
+         * a place and must not count towards the spread of places.
+         */
+        counties: totals.counties,
+      };
+
+      return json({
+        stats,
+        gaps: corpusGaps(stats),
+        counties: counties.results,
+        providers: providers.results,
+        modes: modes.results,
+      }, 200, origin);
+    } catch (e) {
+      return json({ unavailable: String(e?.message || e).slice(0, 200) }, 200, origin);
+    }
+  }
+
   if (path === 'settings') {
     if (request.method === 'POST') {
       let body;

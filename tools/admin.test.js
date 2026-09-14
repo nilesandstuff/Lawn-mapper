@@ -78,7 +78,7 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
 {
   const { env, guestToken } = await world();
   const routes = [
-    ['overview'], ['users'], ['log'], ['feedback'],
+    ['overview'], ['users'], ['log'], ['feedback'], ['corpus'],
     ['ledger?user=usr_x'], ['user', { method: 'POST', body: { id: 'usr_x', grant: 1000 } }],
     // The price list. Reading it is harmless; writing it is the whole site's
     // cost guardrail, so it is gated exactly like everything else.
@@ -573,3 +573,77 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);
+
+/* ------------------------------------------------ the training-data panel */
+{
+  const { env, ownerToken, guestToken } = await world();
+  const { recordFinished } = await import('../worker/src/corpus.js');
+
+  check('the corpus panel is refused to everybody who is not an administrator',
+    (await ask(env, guestToken, 'corpus')).status === 404);
+  check('and to a visitor with no session at all',
+    (await ask(env, null, 'corpus')).status === 404);
+
+  const ring = (lng) => [
+    [lng, 42.9], [lng, 42.901], [lng + 0.001, 42.901], [lng + 0.001, 42.9], [lng, 42.9],
+  ];
+  const finish = (lng, over) => recordFinished(env, {
+    lng, lat: 42.9, model: 'sam-3', mode: 'exclude',
+    shapes: [{ type: 'Polygon', coordinates: [ring(lng)] }],
+    ...over,
+  });
+
+  const empty = (await ask(env, ownerToken, 'corpus')).body;
+  check('an empty corpus reports zero rather than failing',
+    empty.stats.total === 0 && Array.isArray(empty.gaps),
+    JSON.stringify(empty.stats));
+
+  // Two lawns a long way apart, one with a tree line and a real correction.
+  await finish(-85.70, {
+    county: 'mi-kent', detectedSqFt: 6000, squareFeet: 4000,
+    exclusions: ['woods'], parcelSource: 'county',
+  });
+  await finish(-97.40, {
+    county: 'tx-travis', detectedSqFt: 5000, squareFeet: 5000,
+    parcelSource: 'hand',
+  });
+
+  const { body } = await ask(env, ownerToken, 'corpus');
+  check('the panel counts the maps', body.stats.total === 2, JSON.stringify(body.stats));
+  check('and the tree-line ones separately', body.stats.treeLine === 1);
+  check('and the hand-traced property lines', body.stats.handParcel === 1);
+  check('and how many have the AI\'s own outline to compare against',
+    body.stats.withDetection === 0,
+    'neither of these carried one, which the panel should say rather than assume');
+
+  /*
+   * A HAND-TRACED ROW HAS NO COUNTY and must not become one. Before this, the
+   * app sent the words "traced by hand" in the county column, so every such
+   * row joined one enormous fake county -- and the leave-one-county-out check
+   * would have held it out as though it were a region.
+   */
+  await finish(-86.20, { county: null, parcelSource: 'hand', squareFeet: 900 });
+  const withHand = (await ask(env, ownerToken, 'corpus')).body;
+  check('a traced boundary does not invent a county',
+    withHand.stats.counties === 2,
+    `${withHand.stats.counties} counties across 3 maps, two of which are real places`);
+  check('though it still shows up in the breakdown, named honestly',
+    withHand.counties.some((c) => c.name === '(traced by hand)'),
+    JSON.stringify(withHand.counties));
+
+  check('two lawns a long way apart count as two separate places',
+    withHand.stats.blocks === 3, String(withHand.stats.blocks));
+
+  check('and the advice leads with whatever is furthest behind',
+    Array.isArray(withHand.gaps) && withHand.gaps[0].have < withHand.gaps[0].need,
+    withHand.gaps[0]?.label);
+}
+
+/* ----------------------------- the corpus panel when the table is missing */
+{
+  const { env, ownerToken } = await world();
+  env.DB.prepare('DROP TABLE corpus').run();
+  const { status, body } = await ask(env, ownerToken, 'corpus');
+  check('a missing corpus table says so instead of erroring', status === 200);
+  check('and names the reason', /corpus/i.test(body.unavailable || ''), body.unavailable);
+}
