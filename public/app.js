@@ -3022,6 +3022,22 @@ async function detect() {
      */
     const parcelSqFt = state.parcel ? measure(state.parcel.geometry).squareFeet : 0;
     const lawnSqFt = totalSquareFeet();
+    /*
+     * WHAT THE AI SAID, BEFORE ANYBODY TOUCHED IT.
+     *
+     * The number that decides whether a finished map is worth keeping as a
+     * training example. `handEdited` only says somebody drew SOMETHING; this
+     * says how far the answer actually moved, which separates a real
+     * correction from nudging one corner -- and training on barely-touched
+     * output is training a model on its own predictions.
+     *
+     * Taken here rather than where the other detection state is set, because
+     * the shapes only reach the map a few lines above this and totalSquareFeet
+     * would have measured the PREVIOUS lawn. Unrecoverable later either way:
+     * the shapes are edited in place, so by the time anyone asks, the AI's own
+     * answer is gone.
+     */
+    state.detectedSqFt = Math.round(lawnSqFt);
     const overTrim = overTrimmed({
       subtractive,
       trimmedTrees: layers.some((l) => l.exclusion === 'woods')
@@ -4599,6 +4615,9 @@ function refreshTabs() {
 
   const finish = $('#btn-finish');
   if (finish) finish.hidden = !ready || (state.tab !== 'detect' && state.tab !== 'draw');
+  // The note travels with the button: it is about what pressing it does.
+  const finishNote = $('#finish-note');
+  if (finishNote && finish) finishNote.hidden = finish.hidden;
 
   /*
    * The map's half of this step has to follow the lock in the same breath.
@@ -7047,7 +7066,49 @@ $('#btn-print').addEventListener('click', () => window.print());
  * name the moment the measuring is over and show what comes next, which is
  * the thing the tabs could not say on their own.
  */
+/**
+ * Keep this finished map, to train a detector on one day.
+ *
+ * Finishing is the only moment anybody says "this is right" about a lawn, so
+ * it is the only moment worth recording. Everything before it is a work in
+ * progress and the AI's own answer is one of those.
+ *
+ * NO AWAIT AND NO ERROR, exactly like sendFeedback: the person has finished
+ * measuring their lawn, and a corpus for a model that does not exist yet must
+ * never be the reason that looks broken.
+ *
+ * What goes is the outline, the frame and how much the detector was out by.
+ * Not the address, not the account -- see the corpus table in schema.sql.
+ */
+function keepFinished() {
+  const shapes = draw.getAll().features.filter((f) => outerRing(f));
+  if (!shapes.length) return;
+  const m = measureLawn({ type: 'FeatureCollection', features: shapes });
+
+  api('/api/finished', {
+    method: 'POST',
+    body: JSON.stringify({
+      lng: state.chosen?.lng ?? state.frame?.lng ?? null,
+      lat: state.chosen?.lat ?? state.frame?.lat ?? null,
+      county: state.parcel?.properties?.county || null,
+      provider: state.detectedWith || state.provider,
+      model: state.detectedBy || null,
+      mode: saveMode(),
+      handEdited: state.handEdited,
+      // Null when nothing was detected: a lawn drawn entirely by hand is a
+      // good training example and a different kind from a correction.
+      detectedSqFt: state.detectedBy ? state.detectedSqFt ?? null : null,
+      squareFeet: Math.round(m.squareFeet),
+      parcelSqFt: state.parcel ? Math.round(measure(state.parcel.geometry).squareFeet) : null,
+      frame: state.lastMask?.frame || state.frame || null,
+      parcel: state.parcel || null,
+      shapes: shapes.map((f) => ({ geometry: f.geometry })),
+    }),
+  }).catch(() => { /* Never the finisher's problem. */ });
+}
+
 $('#btn-finish').addEventListener('click', () => {
+  keepFinished();
   setTab('plan');
   setStatus('Measuring done. These tools work on the finished map.');
 });

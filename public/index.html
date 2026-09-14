@@ -211,6 +211,21 @@
         can drift apart.
       -->
       <button class="primary" id="btn-finish" hidden>Finish, save, and see more options</button>
+      <!--
+        Said before the button is pressed, not after, because a note about what
+        is kept is only honest if it arrives while there is still a choice.
+        Hidden and shown with the button it belongs to -- a standing sentence
+        about finished maps, on a screen with no finish button, is a puzzle.
+
+        Deliberately specific about the part people would worry about. "We
+        keep some data" invites the worst guess; "the outline, not your
+        address" is both narrower and true -- see the corpus table in
+        schema.sql, which has no column for an address or an account.
+      -->
+      <p class="sub" id="finish-note" hidden>
+        Finished maps help train the lawn detector. We keep the outline and the
+        aerial view — not your address.
+      </p>
 
       <nav class="tabs" id="tabs" role="tablist" aria-label="Which step you are on">
         <button class="tab" type="button" id="tab-address" role="tab"

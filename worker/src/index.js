@@ -42,6 +42,7 @@ import { charge, refund, allowance } from './allowance.js';
 import { upstreamReason } from './upstream.js';
 import { logMeasurement, readLog, loggingEnabled, recordLater } from './testlog.js';
 import { recordFeedback, readFeedback, feedbackEnabled } from './feedback.js';
+import { recordFinished } from './corpus.js';
 import { handleAuth, isAuthPath } from './routes-auth.js';
 import { handleMaps } from './routes-maps.js';
 import { handleAdmin, isAdminPath } from './routes-admin.js';
@@ -949,6 +950,25 @@ export default {
           const found = await readFeedback(env, url.searchParams.get('token'));
           if (!found) return json({ error: 'Not found' }, 404, origin);
           return json({ ...found, enabled: feedbackEnabled(env) }, 200, origin);
+        }
+        /*
+         * A finished map, kept to train a segmentation model on later.
+         *
+         * Answers 200 whatever happens, like the feedback route and for the
+         * same reason: this is bookkeeping for a model that does not exist
+         * yet, and somebody who has just finished measuring their lawn must
+         * never see it fail. The reason rides along for the console.
+         */
+        case '/api/finished': {
+          if (request.method !== 'POST') return json({ error: 'POST required' }, 405, origin);
+          let body;
+          try {
+            body = await request.json();
+          } catch {
+            return json({ error: 'Invalid JSON' }, 400, origin);
+          }
+          const kept = await recordFinished(env, body);
+          return json({ ok: kept.ok, reason: kept.reason || null }, kept.ok ? 200 : 202, origin);
         }
         case '/api/quota': {
           const clientId = url.searchParams.get('clientId') || 'anon';

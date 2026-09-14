@@ -209,3 +209,65 @@ CREATE TABLE IF NOT EXISTS settings (
   updated_at  TEXT NOT NULL,
   updated_by  TEXT
 );
+
+-- -------------------------------------------------------------- the corpus
+-- Finished lawn maps, kept to train a segmentation model on later.
+--
+-- NO ADDRESS AND NO USER ID, deliberately. A model needs a photograph and the
+-- outline drawn on it; it does not need to know whose house it is. Storing the
+-- parts that identify a person, in a table whose whole purpose is to be
+-- exported and fed to something else later, would be collecting what cannot be
+-- used and would have to be stripped before it ever left here. Coordinates are
+-- unavoidable -- they ARE the training example -- but a lat/lng is a place and
+-- a name attached to it is a person.
+--
+-- NO IMAGE EITHER, and that is the load-bearing decision. Mapbox and Google
+-- both forbid storing their tiles, and Google's terms forbid training on their
+-- content outright -- so a corpus of saved satellite images is one that cannot
+-- legally be used for the thing it was collected for. What is stored instead
+-- is the frame and the outline, a few KB rather than a megabyte, and the
+-- picture is re-fetched from NAIP when a training set is actually built. NAIP
+-- is USDA aerial imagery: US federal work, public domain, free to store,
+-- train on and redistribute. It is already a provider in this app.
+--
+-- That also keeps the corpus flexible in a way stored pixels would not: the
+-- same rows render at 512px this year and 1024px next, at whatever resolution
+-- the model of the day wants, from rasterizePolygon.
+--
+-- WHAT MAKES A ROW WORTH TRAINING ON is not recorded as a verdict, because the
+-- answer changes as the idea of a good example changes. The SIGNALS are stored
+-- and the filtering happens at export: `provider` says whether the imagery can
+-- be re-fetched compatibly, `hand_edited` says a person touched it, and
+-- `detected_sq_ft` against `square_feet` says by how much. A map the AI drew
+-- and nobody corrected is the model's own output handed back to it, which
+-- teaches it nothing and launders its mistakes into ground truth.
+CREATE TABLE IF NOT EXISTS corpus (
+  -- Place plus method, so re-finishing the same lawn updates its row instead
+  -- of piling up near-duplicates that would all land in one training batch.
+  id             TEXT PRIMARY KEY,
+  at             TEXT NOT NULL,
+  lng            REAL,
+  lat            REAL,
+  county         TEXT,
+  -- Which imagery the person was looking at when they drew this. The export
+  -- filter, not a detail: see above.
+  provider       TEXT,
+  model          TEXT,
+  mode           TEXT,
+  hand_edited    INTEGER NOT NULL DEFAULT 0,
+  -- What the detector said before anyone edited it. NULL when the lawn was
+  -- drawn entirely by hand, which is a perfectly good training example and a
+  -- different kind from a correction.
+  detected_sq_ft INTEGER,
+  square_feet    INTEGER,
+  parcel_sq_ft   INTEGER,
+  -- The frame is what makes the row re-renderable: centre, zoom and size are
+  -- exactly what imagery.js needs to fetch the same photograph again.
+  frame          TEXT,
+  parcel         TEXT,
+  shapes         TEXT NOT NULL,
+  created_at     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS corpus_at ON corpus(at DESC);
+-- The export query: usable imagery, actually corrected, newest first.
+CREATE INDEX IF NOT EXISTS corpus_pick ON corpus(provider, hand_edited, at DESC);
