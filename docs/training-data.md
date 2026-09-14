@@ -108,25 +108,57 @@ rows in the set.
 
 ---
 
-## Rule 3 — an example is the frame, and the answer is never in it
+## Rule 3 — what an example is, and why the answer is never in it
 
 Two decisions about what a training example physically looks like, both easy to
 get wrong in ways that are invisible until the model is useless.
 
-**The input is the frame — the whole thing, not a crop around the lawn.**
-Whatever a model trains on has to match what it gets at inference, and at
-inference the app has a frame (centre, zoom, size) and nothing tighter. Train on
-tight crops, infer on frames, and the mismatch is built into the model.
+**Crop to the parcel plus a buffer, and hold the GROUND RESOLUTION fixed rather
+than the pixel size.**
 
-Cropping tight also deletes the evidence. Where a lawn stops is usually decided
-by what is beside it — a driveway, a sidewalk, the neighbour's differently-mown
-grass. Crop that away and the boundary becomes unknowable from the pixels that
-are left.
+An earlier draft said train on the whole frame, on the grounds that inference
+gets a frame and nothing tighter. That is true of renting SAM and false of a
+model of our own: whoever owns the model owns what inference looks like too, so
+the rule is that the two MATCH, not that either is the frame.
 
-The right way to say "only this property counts" is **the parcel polygon as a
-separate input** — an extra channel, or a box prompt to SAM. It is already
-stored on the row. That gives the model the context and the constraint, instead
-of trading one for the other.
+Cropping is worth doing because it puts more of the picture on the thing being
+judged, and it cuts what two neighbouring examples have in common — 82% of a
+whole frame, against 29% of a crop with a 5 m buffer. Keep a buffer of roughly
+5–10 m: where a lawn stops is usually decided by what is beside it, a driveway
+or a sidewalk or the neighbour's differently-mown grass, and a crop with no
+margin deletes the evidence.
+
+The resolution part matters more, and is easy to miss. `zoomToFit` picks the
+zoom so the parcel FILLS the frame, which means the corpus already varies about
+sixteenfold in how much ground a pixel covers:
+
+| zoom | ground per pixel | frame width |
+|---|---|---|
+| z16 | 0.89 m | 568 m |
+| z18 | 0.22 m | 142 m |
+| z20 | 0.055 m | 36 m |
+
+A small suburban lot is stored at 5.5 cm per pixel and a large rural one at
+89 cm. Grass at those two scales does not look alike — blades against a green
+smear — and a model trained across that mixture spends most of itself learning
+every texture at every size.
+
+So resample every example to one resolution and let the pixel dimensions vary
+with the lot. **Around 0.25 m per pixel** is the honest target: NAIP is 30 cm
+natively and Mapbox is typically 15–30 cm, so anything finer is a server
+enlarging pixels it does not have — which is exactly what a z20 frame at 5.5 cm
+is.
+
+Two consequences to plan for. Very large parcels become very large images at a
+fixed resolution, so cap the size and let those drop to a coarser resolution, or
+leave them out of the first model. And images of different sizes have to be
+padded or grouped by size before training, which is ordinary work but not free.
+
+**The parcel polygon still goes in as a separate input**, cropping or no
+cropping — an extra channel, or a box prompt to SAM. A crop is a rectangle and a
+lot is not, so the corners of every crop are somebody else's land. The crop
+narrows the picture; the boundary is what says where the answer stops. It is
+already on the row.
 
 **Outside the property line, the model gets no opinion — not a wrong one.**
 
@@ -185,10 +217,16 @@ The pixel overlap is real and large: a 640 px frame is 142 m across at z18 while
 a suburban lot is 18–30 m, so two houses 25 m apart share about 82% of their
 picture. From that this file concluded a 4 km block was needed.
 
-But under Rule 3 the score stops at the property line. The neighbour's lawn in
-the corner of the frame has no answer attached to it — no credit, no blame,
-nothing learned. Shared pixels are not shared labels, and most of that 82%
-teaches nothing at all.
+Two things in Rule 3 take most of that away. The score stops at the property
+line, so the neighbour's lawn in the corner has no answer attached — no credit,
+no blame, nothing learned; shared pixels are not shared labels. And the example
+is a CROP rather than a whole frame, which cuts the raw sharing as well:
+
+| what gets sent | shared with the neighbour |
+|---|---|
+| whole frame, 142 m | 82% |
+| crop, 5 m buffer | 29% |
+| crop, 10 m buffer | 44% |
 
 What genuinely survives is smaller:
 
@@ -199,8 +237,12 @@ What genuinely survives is smaller:
   recognising grass is the job. It only becomes cheating if a model memorises a
   specific picture, which is a second-order risk rather than the main event.
 
-So the block is **~1 km** (slippy z15): large enough that two frames of one
+So the block is **~1 km** (slippy z15): large enough that two crops from one
 street cannot land on opposite sides, small enough to cost nothing.
+
+Ranked honestly, **keeping one address together is the necessary part and the
+block is insurance** — cheap insurance against a model memorising a particular
+photograph, which is why it stays, but not the load-bearing rule it started as.
 
 | slippy zoom | ground size, lat 30° → 42° | |
 |---|---|---|
@@ -395,3 +437,10 @@ early rather than discovering at training time:
   block id are the defaults above; both get written into this file when fixed,
   before the first training run, and not revisited afterwards. z14 is the lever
   to reach for if edge effects ever look material.
+- **The crop buffer and the target resolution.** 5–10 m and ~0.25 m per pixel
+  are the defaults in Rule 3, and both are guesses that the corpus can settle:
+  the export can report the real spread of parcel sizes and native resolutions,
+  and those numbers should pick the values rather than these.
+- **What to do with parcels too large to crop at full resolution.** Cap and
+  coarsen, or leave out of the first model. Needs the size distribution to
+  decide, which is one query once there is a corpus worth querying.
