@@ -39,6 +39,27 @@ binding = "DB"
 database_name = "lawn-mapper"
 database_id = "REPLACE_WITH_D1_DATABASE_ID"
 
+# Finished lawn maps, kept as training material for a segmentation model.
+#
+# R2 rather than KV or D1 because these are aerial photographs -- a megabyte or
+# two each, where KV values are meant to be small and a D1 row holding a blob
+# would bloat every query that touches the table. R2 also has no egress fee,
+# which matters on the day somebody actually downloads the corpus to train on.
+#
+# The outline lives in D1 (see the `corpus` table) and points at the image by
+# key. Splitting them that way keeps "how many do we have, and how many are any
+# good" a fast SQL question rather than a bucket listing.
+#
+# Create it before the first deploy:
+#   npx wrangler r2 bucket create lawn-mapper-corpus
+#
+# OPTIONAL. A missing binding is not an error: the Worker keeps recording the
+# outlines and simply stores no picture, which is exactly what it did before
+# this bucket existed.
+[[r2_buckets]]
+binding = "CORPUS"
+bucket_name = "lawn-mapper-corpus"
+
 # Secrets are NOT set here -- anything in this file goes into git.
 # Set them from the CLI instead:
 #   npx wrangler secret put MAPBOX_TOKEN

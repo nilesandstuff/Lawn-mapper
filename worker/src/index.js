@@ -42,7 +42,7 @@ import { charge, refund, allowance } from './allowance.js';
 import { upstreamReason } from './upstream.js';
 import { logMeasurement, readLog, loggingEnabled, recordLater } from './testlog.js';
 import { recordFeedback, readFeedback, feedbackEnabled } from './feedback.js';
-import { recordFinished } from './corpus.js';
+import { recordFinished, storeImage } from './corpus.js';
 import { handleAuth, isAuthPath } from './routes-auth.js';
 import { handleMaps } from './routes-maps.js';
 import { handleAdmin, isAdminPath } from './routes-admin.js';
@@ -968,6 +968,20 @@ export default {
             return json({ error: 'Invalid JSON' }, 400, origin);
           }
           const kept = await recordFinished(env, body);
+          /*
+           * The picture comes after the row and outside the response.
+           *
+           * A megabyte or two fetched from somebody else's imagery server, for
+           * bookkeeping, while the person who just finished measuring waits --
+           * no. The row is already safe; this fills in image_key when it
+           * lands, and the row stays perfectly usable if it never does,
+           * because the frame re-fetches.
+           *
+           * waitUntil rather than a bare call: a Worker cancels any promise
+           * still pending when the handler returns, which is exactly how the
+           * detection log once reported itself enabled and stored nothing.
+           */
+          if (kept.ok && kept.row) ctx.waitUntil(storeImage(env, kept.row));
           return json({ ok: kept.ok, reason: kept.reason || null }, kept.ok ? 200 : 202, origin);
         }
         case '/api/quota': {

@@ -266,6 +266,20 @@ CREATE TABLE IF NOT EXISTS corpus (
   frame          TEXT,
   parcel         TEXT,
   shapes         TEXT NOT NULL,
+  -- Where the aerial photograph is in R2, and which source it came from.
+  --
+  -- TWO COLUMNS BECAUSE THEY DISAGREE. `provider` above is what the person was
+  -- LOOKING AT when they drew the outline; this is what was actually stored to
+  -- pair with it, and for Google they are not the same -- Google's terms are
+  -- the restrictive ones, so a lawn drawn on Google is banked against the
+  -- Mapbox tile for the same frame instead. A training set that assumed one
+  -- field meant both would silently mix a mask drawn on one photograph with a
+  -- different photograph of the same place and never say so.
+  --
+  -- NULL when no bucket is bound, or the fetch failed. The row is still worth
+  -- having: the frame re-fetches.
+  image_key      TEXT,
+  image_provider TEXT,
   created_at     TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS corpus_at ON corpus(at DESC);

@@ -11,6 +11,8 @@
  * a corpus write failed. Every path returns a reason instead.
  */
 
+import { imageryUrl } from './imagery.js';
+
 const round = (n) => Math.round(n * 1e6) / 1e6;
 /*
  * `Number(null)` IS ZERO, and that is not a missing value.
@@ -41,6 +43,90 @@ const MAX_BYTES = 96 * 1024;
 
 /** Off unless a database is bound. A missing binding is not an error here. */
 export const corpusEnabled = (env) => Boolean(env?.DB);
+
+/**
+ * Which imagery to BANK for a lawn drawn on a given source.
+ *
+ * Not always the source it was drawn on, and the difference is the owner's
+ * decision after reading Mapbox's and Google's terms rather than mine.
+ *
+ *   drawn on          banked         why
+ *   mapbox            mapbox         the same photograph; nothing to reconcile
+ *   naip, ndvi        naip           both are the USGS server, NDVI is a
+ *                                    rendering rule over the same pixels
+ *   google, esri      mapbox         Google's terms are the restrictive ones,
+ *                                    and Esri's are its own question -- so
+ *                                    neither is stored, and the Mapbox tile
+ *                                    for the identical frame is banked instead
+ *
+ * The last row is a deliberate mismatch: the outline was drawn on one
+ * photograph and paired with another of the same place, possibly a different
+ * season or year. Close enough to be useful and not close enough to hide, so
+ * `image_provider` records what was actually stored and the export can filter
+ * on it. Anything unknown lands on mapbox, which is the safe default because
+ * it is the one source this deployment is certain to have a key for.
+ */
+export function imageSourceFor(provider) {
+  return provider === 'naip' || provider === 'ndvi' ? 'naip' : 'mapbox';
+}
+
+/**
+ * Where one map's picture lives in the bucket.
+ *
+ * The row id carries commas and colons, which are legal in an R2 key and
+ * miserable in a URL and a shell, so they are flattened. Grouped by banked
+ * source because that is how a training run wants to pull them: everything
+ * NAIP, or everything Mapbox, not a mixed directory to be sorted afterwards.
+ */
+export const imageKeyFor = (id, source) =>
+  `maps/${source}/${String(id).replace(/[^A-Za-z0-9._-]+/g, '_')}.png`;
+
+/**
+ * Fetch the aerial photograph for one finished map and keep it.
+ *
+ * SEPARATE FROM THE ROW, and after it. The row is a few KB of D1 and lands in
+ * milliseconds; this is a megabyte or two over the network from somebody
+ * else's server. Making the person who just pressed Finish wait for it -- or
+ * lose the row entirely because the image 500s -- would be paying for the
+ * corpus with the thing the corpus is supposed to improve.
+ *
+ * Runs under waitUntil, which is not the same as fire-and-forget: a Worker
+ * cancels any promise still pending when the handler returns, so an unawaited
+ * call here would store nothing at all. The detection log learned that one the
+ * hard way; see index.js.
+ */
+export async function storeImage(env, row) {
+  if (!env?.CORPUS || !env?.DB || !row?.frame) return { ok: false, reason: 'no-bucket' };
+
+  const source = imageSourceFor(row.provider);
+  const token = env.MAPBOX_SERVER_TOKEN || env.MAPBOX_TOKEN;
+  if (source === 'mapbox' && !token) return { ok: false, reason: 'no-token' };
+
+  const url = imageryUrl(source, row.frame, token, env);
+  if (!url) return { ok: false, reason: 'no-url' };
+
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(20000) });
+    if (!res.ok) return { ok: false, reason: `http-${res.status}` };
+    const type = res.headers.get('content-type') || '';
+    /*
+     * Both sources answer a bad request with a JSON error and a 200, so the
+     * content type is the only thing that separates a photograph from an
+     * apology. Storing the apology would fill the bucket with 200-byte files
+     * that look like coverage.
+     */
+    if (!type.startsWith('image/')) return { ok: false, reason: 'not-an-image' };
+
+    const key = imageKeyFor(row.id, source);
+    await env.CORPUS.put(key, res.body, { httpMetadata: { contentType: type } });
+    await env.DB.prepare(
+      'UPDATE corpus SET image_key = ?2, image_provider = ?3 WHERE id = ?1'
+    ).bind(row.id, key, source).run();
+    return { ok: true, key, source };
+  } catch (e) {
+    return { ok: false, reason: e?.name === 'TimeoutError' ? 'timed-out' : 'fetch-failed' };
+  }
+}
 
 /**
  * One ring, cleaned to finite numbers at six decimal places.
@@ -167,7 +253,15 @@ export async function recordFinished(env, body) {
       row.mode, row.hand_edited, row.detected_sq_ft, row.square_feet,
       row.parcel_sq_ft, row.frame, row.parcel, row.shapes
     ).run();
-    return { ok: true };
+    /*
+     * The row is handed back so the caller can pass it to storeImage under
+     * waitUntil. Returning the id rather than having recordFinished fetch the
+     * picture itself keeps the two failures separate: a row that saved and an
+     * image that did not is a good outcome, and lumping them together would
+     * lose the row whenever somebody else's image server was having a bad
+     * afternoon.
+     */
+    return { ok: true, row: { id: row.id, provider: row.provider, frame } };
   } catch {
     return { ok: false, reason: 'store' };
   }

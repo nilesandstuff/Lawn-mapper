@@ -9,7 +9,10 @@
  * between that sentence and a lie is that nothing writes those columns.
  */
 
-import { recordFinished, corpusSummary, corpusEnabled } from '../worker/src/corpus.js';
+import {
+  recordFinished, corpusSummary, corpusEnabled,
+  imageSourceFor, imageKeyFor, storeImage,
+} from '../worker/src/corpus.js';
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -189,6 +192,126 @@ const body = (over = {}) => ({
   check('but the same lawn measured a different way is a different example',
     other.writes[0].args[0] !== other.writes[1].args[0],
     'find and exclude are two answers worth keeping');
+}
+
+/* ------------------------------------------------------ which tile is kept */
+/*
+ * The owner's rule, after reading Mapbox's and Google's terms: bank the
+ * Mapbox tile for anything drawn on Mapbox or Google, and the NAIP tile for
+ * anything drawn on the USGS sources. Written down as a test because it is a
+ * decision about licences, not a detail -- the next person to add a provider
+ * has to make the same call deliberately rather than inherit a default.
+ */
+{
+  check('a lawn drawn on Mapbox banks the Mapbox tile',
+    imageSourceFor('mapbox') === 'mapbox');
+  check('one drawn on NAIP banks the NAIP tile',
+    imageSourceFor('naip') === 'naip');
+  check('NDVI banks NAIP, being the same USGS pixels',
+    imageSourceFor('ndvi') === 'naip');
+  check('one drawn on Google banks Mapbox instead',
+    imageSourceFor('google') === 'mapbox',
+    "Google's terms are the restrictive ones");
+  check('and anything unrecognised lands on Mapbox',
+    imageSourceFor('esri') === 'mapbox' && imageSourceFor(undefined) === 'mapbox',
+    'the one source this deployment is sure to have a key for');
+
+  check('the bucket key is safe for a URL and a shell',
+    imageKeyFor('-85.66810,42.96340:sam3:find', 'mapbox')
+      === 'maps/mapbox/-85.66810_42.96340_sam3_find.png',
+    imageKeyFor('-85.66810,42.96340:sam3:find', 'mapbox'));
+}
+
+/* ------------------------------------------------------------- the picture */
+function fakeBucket() {
+  const puts = [];
+  return { puts, async put(key, body, opts) { puts.push({ key, opts }); } };
+}
+
+const frame = { lng: -85.6681, lat: 42.9634, zoom: 18.5, size: 1280 };
+const png = () => new Response('x', { headers: { 'content-type': 'image/png' } });
+
+{
+  const CORPUS = fakeBucket();
+  const DB = fakeDB();
+  const realFetch = globalThis.fetch;
+  let asked = null;
+  globalThis.fetch = async (u) => { asked = String(u); return png(); };
+
+  let r;
+  try {
+    r = await storeImage(
+      { CORPUS, DB, MAPBOX_SERVER_TOKEN: 'pk.test' },
+      { id: 'a,b:sam3:find', provider: 'google', frame }
+    );
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+
+  check('a Google-drawn map fetches the Mapbox tile',
+    r.ok && /api\.mapbox\.com/.test(asked), asked?.slice(0, 60));
+  check('and the tile is put in the bucket',
+    CORPUS.puts.length === 1 && CORPUS.puts[0].key === 'maps/mapbox/a_b_sam3_find.png',
+    CORPUS.puts[0]?.key);
+  check('and the row is pointed at it, with what was actually stored',
+    DB.writes.length === 1 && DB.writes[0].args.includes('mapbox')
+      && /UPDATE corpus SET image_key/.test(DB.writes[0].sql),
+    'image_provider records the banked source, not the drawn one');
+}
+
+/*
+ * An imagery server answering a bad request with a JSON apology and a 200 is
+ * the normal failure for both of these sources. Storing it would fill the
+ * bucket with 200-byte files that count as coverage and contain nothing.
+ */
+{
+  const CORPUS = fakeBucket();
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response('{"error":"nope"}', {
+    headers: { 'content-type': 'application/json' },
+  });
+  let r;
+  try {
+    r = await storeImage(
+      { CORPUS, DB: fakeDB(), MAPBOX_SERVER_TOKEN: 'pk.test' },
+      { id: 'x', provider: 'mapbox', frame }
+    );
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  check('an error page is not mistaken for a photograph',
+    r.ok === false && r.reason === 'not-an-image' && CORPUS.puts.length === 0);
+}
+
+/*
+ * No bucket is the normal state until somebody creates one, and it must not
+ * look like a fault. The row still holds the frame, so the picture is
+ * re-fetchable whenever the bucket turns up.
+ */
+{
+  const r = await storeImage({ DB: fakeDB() }, { id: 'x', provider: 'mapbox', frame });
+  check('no bucket bound is a reason, not an error',
+    r.ok === false && r.reason === 'no-bucket');
+
+  const noToken = await storeImage(
+    { CORPUS: fakeBucket(), DB: fakeDB() },
+    { id: 'x', provider: 'mapbox', frame }
+  );
+  check('and neither is a deployment with no Mapbox key',
+    noToken.ok === false && noToken.reason === 'no-token');
+}
+
+/*
+ * The row must survive the picture failing. These are two separate outcomes
+ * and collapsing them would lose a perfectly good outline to somebody else's
+ * image server having a bad afternoon.
+ */
+{
+  const DB = fakeDB();
+  const saved = await recordFinished({ DB }, body());
+  check('recording the row hands back what the image step needs',
+    saved.ok && saved.row?.id && saved.row.provider === 'naip' && saved.row.frame,
+    'so the caller can defer the fetch to waitUntil');
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
