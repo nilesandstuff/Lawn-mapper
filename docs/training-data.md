@@ -108,19 +108,43 @@ rows in the set.
 
 ---
 
-## Rule 3 — split by county, never at random
+## Rule 3 — split by place, never at random
 
 **What a split is.** Every row gets one label — train, tune or test — and the
 only question is how that label is decided. Deciding it per row, by coin flip,
-is a random split. Deciding it per *county*, so whole places move together, is
-what this rule asks for:
+is a random split. Deciding it per *place*, so everything nearby moves together,
+is what this rule asks for.
 
-```sql
--- test: whole counties, chosen once, never trained on
-SELECT * FROM corpus WHERE county IN ('mi-kent','md-montgomery', …);
-```
+The place is a **~4 km square block**, not a county. Counties were the first
+answer here and they are the wrong size for this corpus:
 
-The mechanism is that trivial. Choosing the counties is the part that matters.
+> Usage will cluster — a few hundred maps each in a handful of counties spread
+> across the country. Holding out one county then costs 20% of the data AND all
+> of that region's representation. The model never sees the region at all, so it
+> does badly there, and the test set ends up with a sample size of one or two
+> *regions* however many maps are in it. Swap which county was held out and the
+> number moves a long way. That is not a measurement.
+
+A block is small enough that a county contains roughly a hundred of them, so a
+15% holdout costs no region anything, and large enough to separate the things
+that actually correlate — a subdivision runs 0.5–2 km.
+
+| slippy zoom | ground size, lat 30° → 42° | |
+|---|---|---|
+| z12 | 8.5 → 7.3 km | bigger than it needs to be |
+| **z13** | **4.2 → 3.6 km** | **use this** |
+| z14 | 2.1 → 1.8 km | starts to touch subdivision scale |
+
+The block id comes from `lng`/`lat` with `lngLatToWorld` in
+`public/lib/mercator.js`, so like `county` it needs no new data and applies to
+maps collected long before the rule existed.
+
+**Assign by hashing the block id.** That makes the bucket a function of the
+data rather than a judgement call, so there is no "was the split chosen after
+seeing the results" question to answer — there was nothing to choose. The hard
+slice of Rule 4 is then built by FILTERING the test blocks for corrections and
+tree cover, never by picking which blocks are test. Split honest, slice
+deliberate.
 
 A random split leaks, in two separate ways:
 
@@ -130,10 +154,17 @@ A random split leaks, in two separate ways:
 2. **The same lawn twice.** A corpus row is keyed on place *plus method*
    (`idFor(lng, lat, model, mode)`), so re-finishing the same lawn in a
    different mode writes a second row of the same garden. A random split can
-   put one in train and the other in eval. A county split cannot.
+   put one in train and the other in test. A block split cannot — same
+   coordinates, same block.
 
-`county` is already on every row, so the assignment is deterministic and applies
-to maps collected long before the rule was fixed.
+Two leaks survive a block split, and neither earns much machinery:
+
+- **Block edges.** Two houses either side of one are metres apart. It affects a
+  handful of maps; buffer them out if it ever looks material.
+- **Imagery vintage.** A survey flight line covers far more than 4 km, so train
+  and test blocks in one county often share a capture date. Sharing a date is
+  not the same as memorising a lawn, and the county check below is exactly what
+  catches it if it matters.
 
 ### Three buckets, not two
 
@@ -143,34 +174,52 @@ something has to be checked against while picking a threshold or deciding when
 to stop training, and if the held-out set is the only candidate it will be used.
 It then stops being held out, quietly, and the final number is a fiction.
 
-| bucket | counties | looked at |
+| bucket | share of blocks | looked at |
 |---|---|---|
-| **train** | everything not below | constantly |
-| **tune** | a few, chosen for variety | as often as needed — thresholds, early stopping, "is this working" |
-| **test** | a few, chosen for variety | ONCE, when a model is otherwise finished |
+| **train** | ~70% | constantly |
+| **tune** | ~15% | as often as needed — thresholds, early stopping, "is this working" |
+| **test** | ~15% | ONCE, when a model is otherwise finished |
 
 Tune is the pressure valve. It exists so test can stay sealed, and it is
 expected to get worn out — a number you have optimised against twenty times is
 no longer an independent measurement, which is fine for tune and fatal for test.
 
 If test has been read more than once for a given model, it has become a tune
-set, and the next honest number needs counties that have never been looked at.
+set, and the next honest number needs blocks nobody has looked at.
 
-### Choosing the counties
+### Counties still have a job: leave-one-county-out
 
-Deliberately, not randomly, and then frozen. They need:
+The block split answers the everyday question — **a new property in an area we
+already know**, which is most of what the app does. It does not answer the other
+one: **a new area entirely**, which is what happens the first time somebody in a
+state with no maps in it opens the site.
 
-- enough maps between them to reach the sizes in Rule 4
-- a spread of regions and climates
-- at least two with heavy tree cover, or the hard slice has nothing in it
-- a mix of imagery providers
-- nothing with a handful of maps in it — three maps is noise, not a county
+Counties answer that, as a diagnostic rather than a permanent holdout. With five
+counties in the corpus, run five folds: train on four, test on the fifth,
+rotate. Every county takes a turn, all the data is used, nothing is sacrificed,
+and the result is a DISTRIBUTION of "how badly does a genuinely new region go"
+rather than one number from one unlucky county.
 
-Written into this file when chosen, and not revisited afterwards. A split
-adjusted after seeing results is not a split.
+Run it when the question is whether the model travels — before leaning on it in
+a new market — not as the thing to optimise against. Optimising against it would
+burn the only estimate of new-region performance there is.
 
-**The honest cost:** this produces a worse number than a random split would.
-That is the point — it is the true one. It also means the figure is not
+**Two numbers, two meanings:** the block test says how the model does for the
+people using it; leave-one-county-out says what to expect from the next place.
+Expect the second to be worse, and do not average them together.
+
+### When the split is decided
+
+At export, and frozen before the first training run. Export itself is just
+reading rows out and can be repeated harmlessly; what must never move is the
+assignment, and it must never move *after a score has been seen*.
+
+Hashing the block id (above) makes this nearly self-enforcing — the assignment
+is computed, not chosen, so re-deciding it is something you would have to do on
+purpose. Record the hash rule and the block zoom in this file when fixed.
+
+**The honest cost:** any place-based split produces a worse number than a random
+one. That is the point — it is the true one. It also means the figure is not
 comparable to published results that split at random, which most do.
 
 ---
@@ -198,10 +247,16 @@ Sizes **for the test bucket**, against the ~1,000–1,500 finished maps expected
 for a first useful fine-tune. Tune can be smaller, since a worn-out number is
 what it is for:
 
-| | total test maps | of which corrected | distinct counties |
+| | total test maps | of which corrected | distinct blocks |
 |---|---|---|---|
-| bare minimum | ~100 | ~40 | 5+ |
-| comfortable | 200–300 | ~100 | 10+ |
+| bare minimum | ~100 | ~40 | 30+ |
+| comfortable | 200–300 | ~100 | 60+ |
+
+Blocks rather than counties in that last column, because a hashed block split
+already spreads the test bucket across every county in the corpus — county
+coverage comes free, and is no longer the thing to check. What can still go
+wrong is *concentration*: 100 test maps sitting in five blocks is five
+independent places, not a hundred, whatever the row count says.
 
 Below about 50 the confidence interval is wide enough that a 10% improvement
 and a 10% regression look the same, and you are reading noise. The second
@@ -252,6 +307,7 @@ early rather than discovering at training time:
   Testable once there is enough data; guessing now buys nothing.
 - **Whether cross-capture rows** (`google`, `esri`) earn their place in training
   at all. Keep and flag them until there is enough data to measure it.
-- **Which counties are the tune counties and which are the test counties.**
-  Fixed before the first training run, written into this file when chosen, and
-  not revisited afterwards.
+- **The block zoom and the hash rule.** z13 and a plain hash of the block id are
+  the defaults above; both get written into this file when fixed, before the
+  first training run, and not revisited afterwards. A smaller zoom is the lever
+  to reach for if block-edge leakage ever looks material.
