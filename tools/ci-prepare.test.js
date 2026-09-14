@@ -17,6 +17,7 @@ import {
   parseCreatedId,
   applyConfig,
   bucketExists,
+  bucketFailureHelp,
 } from './ci-prepare.js';
 
 let failures = 0;
@@ -170,6 +171,51 @@ id = "REPLACE_WITH_KV_NAMESPACE_ID"
   check('and the default is to keep it',
     /\[\[r2_buckets\]\]/.test(applyConfig(toml, { kvId: 'k', dbId: 'd' })),
     'only an explicit false strips the block');
+}
+
+/*
+ * WHAT TO DO ABOUT A BUCKET THAT WOULD NOT BE CREATED.
+ *
+ * Checked against the message Cloudflare ACTUALLY sent, which is the point of
+ * this group: the old wording led with "usually the API token" on reasoning
+ * that sounded right, and the real blocker was an account-level switch. Anyone
+ * following it would have edited a token that was already correct.
+ */
+{
+  const enable = bucketFailureHelp(
+    'A request to the Cloudflare API (/accounts/xxx/r2/buckets) failed. '
+      + 'Please enable R2 through the Cloudflare Dashboard. [code: 10042]',
+    'lawn-mapper-corpus'
+  ).join('\n');
+
+  check('the real 10042 message is told to enable R2 on the account',
+    /account-level/.test(enable) && /R2 -> and accept the terms/.test(enable));
+  check('and is NOT sent to edit the API token',
+    !/Workers R2 Storage: Edit/.test(enable),
+    'that was the wrong first guess, and it cost a deploy');
+
+  const token = bucketFailureHelp(
+    'Authentication error [code: 10000]', 'lawn-mapper-corpus'
+  ).join('\n');
+  check('an authentication failure is sent to the token instead',
+    /Workers R2 Storage: Edit/.test(token));
+  check('and is not told to go and enable R2',
+    !/accept the terms/.test(token));
+
+  /* The code survives rewording; the prose may not. Both are matched. */
+  check('the code alone is enough, without the sentence',
+    /account-level/.test(bucketFailureHelp('failed [code: 10042]', 'b').join('\n')));
+
+  const unknown = bucketFailureHelp('something nobody predicted', 'b').join('\n');
+  check('an unrecognised error offers both rather than asserting one',
+    /account-level/.test(unknown) && /Workers R2 Storage: Edit/.test(unknown),
+    'guessing wrong is what this group exists to stop');
+
+  check('every case says training images are off and the site is fine',
+    [enable, token, unknown].every((t) => /TRAINING IMAGES ARE OFF/.test(t)
+      && /Everything else is/.test(t)));
+  check('and every case names the bucket for the by-hand route',
+    /"lawn-mapper-corpus"/.test(enable) && /"lawn-mapper-corpus"/.test(token));
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);

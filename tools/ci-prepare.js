@@ -22,7 +22,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 const CONFIG = new URL('../wrangler.toml', import.meta.url);
@@ -265,6 +265,75 @@ function resolveDbId() {
 }
 
 /**
+ * What to do about a bucket that could not be created.
+ *
+ * THE FIRST GUESS WAS THE WRONG ONE, and it cost a deploy. This used to lead
+ * with "usually the API token", reasoning that R2 is newer than the token. It
+ * reads plausibly and it was not what happened: the real first blocker was
+ *
+ *   code: 10042 -- Please enable R2 through the Cloudflare Dashboard
+ *
+ * an ACCOUNT-level switch, nothing to do with the token's permissions. Somebody
+ * following the old advice would have gone and edited a token that was already
+ * fine, found nothing to change, and had no next step.
+ *
+ * So the error is read rather than guessed at. Cloudflare says which of the two
+ * it is, in those words, and this repeats them -- and when it says neither, both
+ * are offered rather than one asserted.
+ *
+ * Separated out as a pure function so the wording can be checked against the
+ * real messages without a Cloudflare account.
+ */
+export function bucketFailureHelp(why, bucketName) {
+  const lines = [
+    '',
+    '  TRAINING IMAGES ARE OFF for this deploy. Everything else is',
+    '  fine, and finished maps still record their outline -- only the',
+    '  aerial photograph is skipped, and the frame re-fetches it.',
+    '',
+  ];
+
+  /*
+   * 10042 is the account-level "R2 has never been switched on here". The code
+   * is matched as well as the words because the prose has changed before and
+   * the code has not.
+   */
+  const notEnabled = /\b10042\b/.test(why) || /enable R2/i.test(why);
+  /* 10000 covers authentication/authorisation on the Cloudflare API. */
+  const notPermitted = /\b10000\b/.test(why)
+    || /authenticat|authoriz|authoris|permission|forbidden|not allowed/i.test(why);
+
+  const enableIt = [
+    '  R2 IS NOT ENABLED ON THE ACCOUNT. That is an account-level',
+    '  switch, not a token permission, and it is free to turn on:',
+    '  Cloudflare dashboard -> R2 -> and accept the terms. Then deploy',
+    '  again. (There is a free tier; a card may be asked for.)',
+  ];
+  const fixTheToken = [
+    '  THE API TOKEN HAS NO R2 PERMISSION. R2 is newer than this',
+    '  project, so a token made earlier carries Workers, KV and D1 and',
+    '  not R2. Edit it at https://dash.cloudflare.com/profile/api-tokens,',
+    '  add "Workers R2 Storage: Edit", and deploy again.',
+  ];
+
+  if (notEnabled) lines.push(...enableIt);
+  else if (notPermitted) lines.push(...fixTheToken);
+  else {
+    lines.push('  Two things cause this, and the message above does not say');
+    lines.push('  which. In the order they are worth checking:');
+    lines.push('');
+    lines.push(...enableIt);
+    lines.push('');
+    lines.push(...fixTheToken);
+  }
+
+  lines.push('');
+  lines.push('  Or make the bucket by hand: Cloudflare dashboard -> R2 ->');
+  lines.push(`  Create bucket, named "${bucketName}".`);
+  return lines;
+}
+
+/**
  * The corpus bucket, or false.
  *
  * FALSE IS A REAL ANSWER, like a missing database. Finished lawn maps are kept
@@ -299,18 +368,7 @@ function resolveBucket() {
       return true;
     }
     console.log(`  could not create one (${why})`);
-    console.log('');
-    console.log('  TRAINING IMAGES ARE OFF for this deploy. Everything else is');
-    console.log('  fine, and finished maps still record their outline -- only the');
-    console.log('  aerial photograph is skipped, and the frame re-fetches it.');
-    console.log('');
-    console.log('  Usually the API token: R2 is newer than this project, so a');
-    console.log('  token made earlier carries Workers, KV and D1 and not R2. Edit');
-    console.log('  it at https://dash.cloudflare.com/profile/api-tokens, add');
-    console.log('  "Workers R2 Storage: Edit", and deploy again.');
-    console.log('');
-    console.log('  Or make it by hand: Cloudflare dashboard -> R2 -> Create');
-    console.log(`  bucket, named "${BUCKET_NAME}".`);
+    for (const line of bucketFailureHelp(why, BUCKET_NAME)) console.log(line);
     return false;
   }
 }
@@ -384,6 +442,23 @@ function main() {
     console.log(`  D1 database  : ${dbId ? `${dbId}${schema ? '' : ' (schema NOT applied)'}` : '(none -- accounts are off)'}`);
     console.log(`  R2 bucket    : ${bucket ? BUCKET_NAME : '(none -- training images are off)'}`);
     console.log(`  custom domain: ${customDomain || '(none -- will deploy to *.workers.dev)'}`);
+
+    /*
+     * Hand the bucket verdict forward so the last step of the deploy can say
+     * it too.
+     *
+     * This summary is already printed, and it is still the wrong place to read
+     * it from: the deploy log is about eighteen hundred lines, the secrets
+     * step alone echoes hundreds, and this project is deployed and read on a
+     * PHONE. Scrolling back through that to find out whether training images
+     * are on is not a thing anybody will do, and "did the bucket attach?" then
+     * goes unanswered indefinitely -- which is exactly what happened.
+     *
+     * GITHUB_ENV is only set inside Actions; locally this does nothing.
+     */
+    if (process.env.GITHUB_ENV) {
+      appendFileSync(process.env.GITHUB_ENV, `CORPUS_BUCKET=${bucket ? BUCKET_NAME : ''}\n`);
+    }
   } catch (err) {
     console.error(`\nFAIL  ${firstLine(err)}\n`);
     console.error(

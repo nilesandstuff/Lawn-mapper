@@ -275,4 +275,16 @@ jobs:
             echo "To use your own domain, see DEPLOY.md step 6."
           fi
           echo
+          # Said HERE, at the end, because this is the part of an 1800-line log
+          # that anybody actually reads on a phone. ci-prepare decides it and
+          # passes it forward through GITHUB_ENV.
+          if [ -n "$CORPUS_BUCKET" ]; then
+            echo "Training images: ON, saved to the \"$CORPUS_BUCKET\" R2 bucket"
+            echo "when somebody finishes a map."
+          else
+            echo "Training images: OFF -- no R2 bucket. Finished maps still"
+            echo "record their outline; only the aerial photograph is skipped."
+            echo "The reason is in the \"Prepare wrangler.toml\" step above."
+          fi
+          echo
           echo "Open it on your phone and measure your own address."
