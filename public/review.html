@@ -161,6 +161,15 @@ async function load() {
 
 function render() {
   const list = $('#list');
+  /*
+   * Free every context before the rows holding them are destroyed.
+   *
+   * Clicking a filter re-renders, and innerHTML = '' removes the containers
+   * while leaving the maps alive in liveMaps -- WebGL contexts held against
+   * nodes that no longer exist. A few clicks would rebuild the very shortage
+   * this page was just fixed for, and nothing on screen would say why.
+   */
+  for (const id of [...liveMaps.keys()]) releaseMap(id);
   list.innerHTML = '';
   const shown = reports.filter((r) => filter === 'all' || r.rating === filter);
 
@@ -200,8 +209,69 @@ function render() {
     li.append(head, holder);
     list.append(li);
 
-    drawReport(holder.id, r);
+    /*
+     * The reasons a map cannot exist are settled now, not on scroll, so a
+     * report that will never draw one says why where the picture would be
+     * rather than staying blank until someone scrolls past it.
+     */
+    if (!mapboxToken) {
+      holder.append(el('p', 'why', 'No Mapbox token on this deployment, so no map.'));
+    } else if (!centreOf(r)) {
+      holder.append(el('p', 'why', 'This report carries no location — no frame, no parcel, no shapes.'));
+    } else {
+      watch(holder, r);
+    }
   }
+}
+
+/*
+ * A BROWSER WILL NOT GIVE YOU SIXTY WebGL CONTEXTS, and it does not refuse
+ * loudly -- it quietly throws the oldest ones away.
+ *
+ * REPORTED: pictures and traces missing on some reports. Measured in Chromium:
+ * ask for 60 contexts and 60 are "created", 44 are immediately lost, and 16
+ * remain usable. This page lists up to 60 reports and built a live Mapbox GL
+ * map for every one, so all but the last 16 went blank -- imagery and overlays
+ * together, since losing the context takes the whole map.
+ *
+ * That is why it hit "some of them" rather than all: it is a cap, not a fault
+ * in any report, and it began the day the log grew past sixteen entries. The
+ * ones that survive are the ones rendered LAST, so the blanks cluster at the
+ * top of the list.
+ *
+ * Maps are built when a report scrolls into view and destroyed when it leaves,
+ * with a hard cap well under what Chromium allows. On a phone two or three are
+ * ever visible, so this is far cheaper than what it replaces as well as
+ * correct.
+ */
+const MAX_LIVE_MAPS = 8;
+/* Insertion-ordered, so the first entry is the one built longest ago. */
+const liveMaps = new Map();
+
+function releaseMap(id) {
+  const map = liveMaps.get(id);
+  if (!map) return;
+  map.remove();
+  liveMaps.delete(id);
+}
+
+function watch(holder, r) {
+  const io = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (entry.isIntersecting) {
+        if (liveMaps.has(holder.id)) continue;
+        // Evict the longest-standing map first, so the cap is never reached by
+        // destroying something the reader is currently looking at.
+        while (liveMaps.size >= MAX_LIVE_MAPS) {
+          releaseMap(liveMaps.keys().next().value);
+        }
+        drawReport(holder.id, r);
+      } else {
+        releaseMap(holder.id);
+      }
+    }
+  }, { rootMargin: '200px' });
+  io.observe(holder);
 }
 
 /*
@@ -257,25 +327,14 @@ function centreOf(r) {
   return [(w + e) / 2, (s + n) / 2];
 }
 
+/*
+ * Build the map for one report. Only ever called from the observer, on a
+ * report already known to have a token and a location -- render() settles
+ * both, because a permanent "this cannot be drawn" belongs on screen straight
+ * away rather than waiting for a scroll that may never come.
+ */
 function drawReport(id, r) {
-  const holder = document.getElementById(id);
-  /*
-   * SAY WHY, rather than leaving an empty box.
-   *
-   * A blank space is indistinguishable from a map that has not loaded yet, an
-   * expired Mapbox token, and a report with no location in it -- which is
-   * exactly the confusion this bug arrived as. Three causes, three sentences.
-   */
-  if (!mapboxToken) {
-    holder.append(el('p', 'why', 'No Mapbox token on this deployment, so no map.'));
-    return;
-  }
   const centre = centreOf(r);
-  if (!centre) {
-    holder.append(el('p', 'why', 'This report carries no location — no frame, no parcel, no shapes.'));
-    return;
-  }
-
   mapboxgl.accessToken = mapboxToken;
 
   const map = new mapboxgl.Map({
@@ -286,6 +345,9 @@ function drawReport(id, r) {
     interactive: false,
     attributionControl: false,
   });
+  // Registered before load, so an eviction while the tiles are still arriving
+  // still finds the map and frees its context.
+  liveMaps.set(id, map);
 
   map.on('load', () => {
     if (r.parcel) {

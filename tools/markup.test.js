@@ -400,7 +400,6 @@ check('every class the code toggles is styled',
 {
   const review = readFileSync(join(root, 'public/review.html'), 'utf8');
 
-  const draw = review.slice(review.indexOf('function drawReport'));
   check('the review page does not refuse a report for a missing lng alone',
     !/if\s*\(!mapboxToken\s*\|\|\s*!Number\.isFinite\(r\.lng\)\)/.test(review),
     'the old guard is gone');
@@ -418,7 +417,33 @@ check('every class the code toggles is styled',
    * this arrived: "no picture attached" rather than "no location recorded".
    */
   check('and says why when it genuinely cannot draw one',
-    draw.includes("el('p', 'why'"), 'the reason is rendered into the holder');
+    review.includes("el('p', 'why'"), 'the reason is rendered into the holder');
+
+  /*
+   * MEASURED IN CHROMIUM: ask for 60 WebGL contexts and 16 survive; the other
+   * 44 are lost on the spot. This page lists up to 60 reports, so building a
+   * map per report blanked all but the last sixteen -- imagery and traces
+   * together, because losing the context takes the whole map.
+   *
+   * Three things hold that fix together and each fails silently on its own:
+   * maps must be built lazily, destroyed when they scroll away, and released
+   * before a re-render throws away the rows holding them.
+   */
+  check('maps are built only as reports scroll into view',
+    /new IntersectionObserver/.test(review) && /function watch\(/.test(review),
+    'an observer gates map creation');
+
+  check('and destroyed when they scroll away',
+    /function releaseMap[\s\S]*?map\.remove\(\)/.test(review),
+    'releaseMap tears the map down');
+
+  check('and capped well under what a browser will give',
+    /MAX_LIVE_MAPS\s*=\s*([0-9]|1[0-5])\b/.test(review),
+    'the cap is below the 16 Chromium allows');
+
+  check('and a filter change frees them before the rows go',
+    /releaseMap\(id\)[\s\S]{0,200}list\.innerHTML = ''/.test(review),
+    'render clears the live maps first');
 
   const reviewCss = review.slice(0, review.indexOf('</style>'));
   check('and that message is styled',
