@@ -16,7 +16,7 @@
  * directly will be overwritten; change the importer or the verifier instead.
  *
  * atlas 0.6.3, imported 2026-09-14
- * 135 verified of 165 tried, on 2026-09-14
+ * 139 verified of 165 tried, on 2026-09-14
  */
 
 const ATLAS_COUNTIES = {
@@ -26,7 +26,7 @@ const ATLAS_COUNTIES = {
     service: "https://maps.shelbyal.com/gisserver/rest/services/LegacyServices/Cadastral_2022/MapServer",
     layer: 91,
     fields: {"pin":"Parcel_Num","address":"PROP_ADR"},
-    box: [-87.027,33.018,-86.339,33.549],
+    box: [-87.028,33.017,-86.339,33.55],
   },
   'al-jefferson': {
     name: "Jefferson County, AL",
@@ -34,7 +34,7 @@ const ATLAS_COUNTIES = {
     service: "https://jccgis.jccal.org/server/rest/services/Basemap/Parcels/MapServer",
     layer: 0,
     fields: {"pin":"PARCELID","address":null},
-    box: [-87.342,33.243,-86.512,34.008],
+    box: [-87.342,33.243,-86.511,34.009],
   },
   'az-maricopa': {
     name: "Maricopa County, AZ",
@@ -42,7 +42,7 @@ const ATLAS_COUNTIES = {
     service: "https://gis.mcassessor.maricopa.gov/arcgis/rest/services/MaricopaDynamicQueryService/MapServer",
     layer: 3,
     fields: {"pin":"APN","address":"PHYSICAL_ADDRESS"},
-    box: [-113.335,32.695,-111.082,34.047],
+    box: [-113.335,32.695,-111.081,34.047],
   },
   'az-pima': {
     name: "Pima County, AZ",
@@ -50,7 +50,7 @@ const ATLAS_COUNTIES = {
     service: "https://mapdata.tucsonaz.gov/public/rest/services/PublicMaps/PropertyHousing/MapServer",
     layer: 17,
     fields: {"pin":"PARCEL","address":"SITE_ADDRESS"},
-    box: [-113.342,31.419,-110.44,32.522],
+    box: [-113.342,31.418,-110.439,32.523],
   },
   'az-pinal': {
     name: "Pinal County, AZ",
@@ -58,7 +58,31 @@ const ATLAS_COUNTIES = {
     service: "https://rogue.casagrandeaz.gov/arcgis/rest/services/Pinal_County/Pinal_County_Parcels/MapServer",
     layer: 0,
     fields: {"pin":"PARCELID","address":"SITEADDRESS"},
-    box: [-111.984,32.761,-111.561,33.014],
+    box: [-111.984,32.76,-111.56,33.015],
+  },
+  'ar-pulaski': {
+    name: "Pulaski County, AR",
+    fips: "05119",
+    service: "https://gis.arkansas.gov/arcgis/rest/services/FEATURESERVICES/Planning_Cadastre/FeatureServer",
+    layer: 6,
+    fields: {"pin":"parcelid","address":null},
+    box: [-94.618,33.004,-89.646,36.5],
+  },
+  'ar-benton': {
+    name: "Benton County, AR",
+    fips: "05007",
+    service: "https://gis.arkansas.gov/arcgis/rest/services/FEATURESERVICES/Planning_Cadastre/FeatureServer",
+    layer: 6,
+    fields: {"pin":"parcelid","address":null},
+    box: [-94.618,33.004,-89.646,36.5],
+  },
+  'ar-washington': {
+    name: "Washington County, AR",
+    fips: "05143",
+    service: "https://gis.arkansas.gov/arcgis/rest/services/FEATURESERVICES/Planning_Cadastre/FeatureServer",
+    layer: 6,
+    fields: {"pin":"parcelid","address":null},
+    box: [-94.618,33.004,-89.646,36.5],
   },
   'ca-los-angeles': {
     name: "Los Angeles County, CA",
@@ -74,7 +98,7 @@ const ATLAS_COUNTIES = {
     service: "https://services1.arcgis.com/5NARefyPVtAeuJPU/arcgis/rest/services/Parcels/FeatureServer",
     layer: 0,
     fields: {"pin":"APN","address":null},
-    box: [-121.858,38.017,-121.017,38.737],
+    box: [-121.859,38.016,-121.016,38.737],
   },
   'ca-sonoma': {
     name: "Sonoma County, CA",
@@ -82,7 +106,7 @@ const ATLAS_COUNTIES = {
     service: "https://socogis.sonomacounty.ca.gov/map/rest/services/OWTSPublic/Cities_GIS_Parcel_Base/FeatureServer",
     layer: 0,
     fields: {"pin":"APN","address":"SitusFormatted1"},
-    box: [-123.086,38.205,-122.416,38.838],
+    box: [-123.086,38.205,-122.416,38.839],
   },
   'ca-orange': {
     name: "Orange County, CA",
@@ -90,7 +114,7 @@ const ATLAS_COUNTIES = {
     service: "https://www.ocgis.com/arcpub/rest/services/Map_Layers/Parcels/MapServer",
     layer: 0,
     fields: {"pin":null,"address":"SITE_ADDRESS"},
-    box: [-118.124,33.38,-117.409,33.953],
+    box: [-118.125,33.38,-117.409,33.954],
   },
   'ca-san-bernardino': {
     name: "San Bernardino County, CA",
@@ -98,7 +122,7 @@ const ATLAS_COUNTIES = {
     service: "https://services.arcgis.com/aA3snZwJfFkVyDuP/arcgis/rest/services/Parcels_for_San_Bernardino_County/FeatureServer",
     layer: 0,
     fields: {"pin":"ParcelNumber","address":null},
-    box: [-117.803,33.871,-114.132,35.809],
+    box: [-117.803,33.87,-114.131,35.81],
   },
   'ca-santa-clara': {
     name: "Santa Clara County, CA",
@@ -114,7 +138,7 @@ const ATLAS_COUNTIES = {
     service: "https://services5.arcgis.com/ROBnTHSNjoZ2Wm1P/arcgis/rest/services/Parcels/FeatureServer",
     layer: 0,
     fields: {"pin":"APN","address":"SitusAddress"},
-    box: [-122.356,37.456,-121.557,37.902],
+    box: [-122.356,37.455,-121.557,37.903],
   },
   'ca-contra-costa': {
     name: "Contra Costa County, CA",
@@ -122,7 +146,7 @@ const ATLAS_COUNTIES = {
     service: "https://gis.cccounty.us/arcgis/rest/services/CCMAP/Assessment_Parcels_ArcPro/MapServer",
     layer: 0,
     fields: {"pin":"APN","address":"N_STR_NM"},
-    box: [-122.439,37.712,-121.533,38.102],
+    box: [-122.439,37.711,-121.532,38.102],
   },
   'ca-ventura': {
     name: "Ventura County, CA",
@@ -130,7 +154,7 @@ const ATLAS_COUNTIES = {
     service: "https://maps.ventura.org/arcgis/rest/services/SDs/Parcels/MapServer",
     layer: 0,
     fields: {"pin":"APN","address":"SITUS"},
-    box: [-119.611,33.213,-118.625,34.908],
+    box: [-119.611,33.213,-118.624,34.909],
   },
   'co-denver': {
     name: "Denver County, CO",
@@ -138,7 +162,7 @@ const ATLAS_COUNTIES = {
     service: "https://services1.arcgis.com/zdB7qR0BtYrg0Xpl/arcgis/rest/services/ODC_PROP_PARCELS_A/FeatureServer",
     layer: 245,
     fields: {"pin":"SCHEDNUM","address":"SITUS_ADDRESS_LINE1"},
-    box: [-105.222,39.61,-104.599,39.917],
+    box: [-105.223,39.61,-104.599,39.917],
   },
   'co-el-paso': {
     name: "El Paso County, CO",
@@ -146,7 +170,7 @@ const ATLAS_COUNTIES = {
     service: "https://gis.colorado.gov/public/rest/services/Address_and_Parcel/Colorado_Public_Parcels/FeatureServer",
     layer: 0,
     fields: {"pin":"parcel_id","address":"situsAdd"},
-    box: [-109.06,36.992,-102.047,41.003],
+    box: [-109.061,36.991,-102.046,41.004],
   },
   'co-jefferson': {
     name: "Jefferson County, CO",
@@ -154,7 +178,7 @@ const ATLAS_COUNTIES = {
     service: "https://gis.colorado.gov/public/rest/services/Address_and_Parcel/Colorado_Public_Parcels/FeatureServer",
     layer: 0,
     fields: {"pin":"parcel_id","address":"situsAdd"},
-    box: [-109.06,36.992,-102.047,41.003],
+    box: [-109.061,36.991,-102.046,41.004],
   },
   'ct-capitol': {
     name: "Capitol Planning Region County, CT",
@@ -162,7 +186,7 @@ const ATLAS_COUNTIES = {
     service: "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
     layer: 0,
     fields: {"pin":"Parcel_ID","address":"Location_1"},
-    box: [-73.742,40.98,-71.782,42.053],
+    box: [-73.743,40.979,-71.781,42.053],
   },
   'ct-greater-bridgeport': {
     name: "Greater Bridgeport Planning Region County, CT",
@@ -170,7 +194,7 @@ const ATLAS_COUNTIES = {
     service: "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
     layer: 0,
     fields: {"pin":"Parcel_ID","address":"Location_1"},
-    box: [-73.742,40.98,-71.782,42.053],
+    box: [-73.743,40.979,-71.781,42.053],
   },
   'ct-lower-connecticut-river-valley': {
     name: "Lower Connecticut River Valley Planning Region County, CT",
@@ -178,7 +202,7 @@ const ATLAS_COUNTIES = {
     service: "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
     layer: 0,
     fields: {"pin":"Parcel_ID","address":"Location_1"},
-    box: [-73.742,40.98,-71.782,42.053],
+    box: [-73.743,40.979,-71.781,42.053],
   },
   'ct-naugatuck-valley': {
     name: "Naugatuck Valley Planning Region County, CT",
@@ -186,7 +210,7 @@ const ATLAS_COUNTIES = {
     service: "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
     layer: 0,
     fields: {"pin":"Parcel_ID","address":"Location_1"},
-    box: [-73.742,40.98,-71.782,42.053],
+    box: [-73.743,40.979,-71.781,42.053],
   },
   'ct-northeastern-connecticut': {
     name: "Northeastern Connecticut Planning Region County, CT",
@@ -194,7 +218,7 @@ const ATLAS_COUNTIES = {
     service: "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
     layer: 0,
     fields: {"pin":"Parcel_ID","address":"Location_1"},
-    box: [-73.742,40.98,-71.782,42.053],
+    box: [-73.743,40.979,-71.781,42.053],
   },
   'ct-northwest-hills': {
     name: "Northwest Hills Planning Region County, CT",
@@ -202,7 +226,7 @@ const ATLAS_COUNTIES = {
     service: "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
     layer: 0,
     fields: {"pin":"Parcel_ID","address":"Location_1"},
-    box: [-73.742,40.98,-71.782,42.053],
+    box: [-73.743,40.979,-71.781,42.053],
   },
   'ct-south-central-connecticut': {
     name: "South Central Connecticut Planning Region County, CT",
@@ -210,7 +234,7 @@ const ATLAS_COUNTIES = {
     service: "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
     layer: 0,
     fields: {"pin":"Parcel_ID","address":"Location_1"},
-    box: [-73.742,40.98,-71.782,42.053],
+    box: [-73.743,40.979,-71.781,42.053],
   },
   'ct-southeastern-connecticut': {
     name: "Southeastern Connecticut Planning Region County, CT",
@@ -218,7 +242,7 @@ const ATLAS_COUNTIES = {
     service: "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
     layer: 0,
     fields: {"pin":"Parcel_ID","address":"Location_1"},
-    box: [-73.742,40.98,-71.782,42.053],
+    box: [-73.743,40.979,-71.781,42.053],
   },
   'ct-western-connecticut': {
     name: "Western Connecticut Planning Region County, CT",
@@ -226,7 +250,7 @@ const ATLAS_COUNTIES = {
     service: "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
     layer: 0,
     fields: {"pin":"Parcel_ID","address":"Location_1"},
-    box: [-73.742,40.98,-71.782,42.053],
+    box: [-73.743,40.979,-71.781,42.053],
   },
   'de-new-castle': {
     name: "New Castle County, DE",
@@ -242,7 +266,7 @@ const ATLAS_COUNTIES = {
     service: "https://gisweb.miamidade.gov/arcgis/rest/services/MD_LandInformation/MapServer",
     layer: 26,
     fields: {"pin":"FOLIO","address":"TRUE_SITE_ADDR"},
-    box: [-80.875,25.135,-80.118,25.979],
+    box: [-80.875,25.135,-80.118,25.98],
   },
   'fl-hillsborough': {
     name: "Hillsborough County, FL",
@@ -250,7 +274,15 @@ const ATLAS_COUNTIES = {
     service: "https://gis.hcpafl.org/arcgis/rest/services/Webmaps/HillsboroughFL_WebParcels/MapServer",
     layer: 0,
     fields: {"pin":"folio","address":"FullAddress"},
-    box: [-82.875,27.526,-82.054,28.173],
+    box: [-82.876,27.526,-82.054,28.174],
+  },
+  'fl-duval': {
+    name: "Duval County, FL",
+    fips: "12031",
+    service: "https://maps.coj.net/coj/rest/services/CityBiz/Parcels/MapServer",
+    layer: 0,
+    fields: {"pin":"RE","address":null},
+    box: [-82.05,30.103,-81.38,30.586],
   },
   'fl-manatee': {
     name: "Manatee County, FL",
@@ -258,7 +290,7 @@ const ATLAS_COUNTIES = {
     service: "https://gis.manateepao.com/arcgis/rest/services/Website/WebLayers/MapServer",
     layer: 0,
     fields: {"pin":"PARID","address":"SITUS_ADDRESS"},
-    box: [-82.747,27.206,-82.054,27.647],
+    box: [-82.748,27.205,-82.054,27.647],
   },
   'fl-sarasota': {
     name: "Sarasota County, FL",
@@ -266,7 +298,15 @@ const ATLAS_COUNTIES = {
     service: "https://services3.arcgis.com/icrWMv7eBkctFu1f/arcgis/rest/services/ParcelHosted/FeatureServer",
     layer: 0,
     fields: {"pin":"ACCOUNT","address":null},
-    box: [-82.643,26.944,-82.057,27.391],
+    box: [-82.643,26.944,-82.056,27.392],
+  },
+  'fl-pinellas': {
+    name: "Pinellas County, FL",
+    fips: "12103",
+    service: "https://egis.pinellas.gov/gis/rest/services/PublicWebGIS/Parcels/MapServer",
+    layer: 1,
+    fields: {"pin":"PARCELID","address":"SITE_ADDRESS"},
+    box: [-82.852,27.611,-82.535,28.174],
   },
   'fl-lee': {
     name: "Lee County, FL",
@@ -274,7 +314,7 @@ const ATLAS_COUNTIES = {
     service: "https://services2.arcgis.com/LvWGAAhHwbCJ2GMP/arcgis/rest/services/Lee_County_Parcels/FeatureServer",
     layer: 0,
     fields: {"pin":"STRAP","address":"SITEADDR"},
-    box: [-82.273,26.316,-81.561,26.79],
+    box: [-82.273,26.315,-81.56,26.79],
   },
   'fl-pasco': {
     name: "Pasco County, FL",
@@ -282,7 +322,7 @@ const ATLAS_COUNTIES = {
     service: "https://maps.pascopa.com/arcgis/rest/services/Parcels/MapServer",
     layer: 3,
     fields: {"pin":"ParcelID","address":null},
-    box: [-82.85,28.171,-82.055,28.479],
+    box: [-82.851,28.171,-82.054,28.479],
   },
   'ga-fulton': {
     name: "Fulton County, GA",
@@ -290,7 +330,7 @@ const ATLAS_COUNTIES = {
     service: "https://gismaps.fultoncountyga.gov/arcgispub2/rest/services/PropertyMapViewer/PropertyMapViewer/MapServer",
     layer: 11,
     fields: {"pin":"ParcelID","address":"Address"},
-    box: [-84.856,33.501,-84.098,34.187],
+    box: [-84.857,33.501,-84.097,34.187],
   },
   'ga-cobb': {
     name: "Cobb County, GA",
@@ -298,7 +338,7 @@ const ATLAS_COUNTIES = {
     service: "https://gis.cobbcounty.gov/gisserver/rest/services/tax/taxassessorsdaily/MapServer",
     layer: 0,
     fields: {"pin":"PIN","address":"SITUS_ADDR"},
-    box: [-84.741,33.743,-84.374,34.082],
+    box: [-84.741,33.743,-84.374,34.083],
   },
   'ga-dekalb': {
     name: "DeKalb County, GA",
@@ -306,7 +346,7 @@ const ATLAS_COUNTIES = {
     service: "https://dcgis.dekalbcountyga.gov/hosted/rest/services/Parcels/MapServer",
     layer: 0,
     fields: {"pin":"PARCELID","address":"SITEADDRESS"},
-    box: [-84.35,33.616,-84.024,33.971],
+    box: [-84.351,33.616,-84.023,33.971],
   },
   'ga-chatham': {
     name: "Chatham County, GA",
@@ -314,7 +354,7 @@ const ATLAS_COUNTIES = {
     service: "https://pub.sagis.org/arcgis/rest/services/OpenData/Parcels/FeatureServer",
     layer: 27,
     fields: {"pin":"PIN","address":"PropAddress_Full"},
-    box: [-81.391,31.728,-80.84,32.238],
+    box: [-81.392,31.727,-80.839,32.238],
   },
   'hi-kauai': {
     name: "Kauai County, HI",
@@ -322,7 +362,7 @@ const ATLAS_COUNTIES = {
     service: "https://geodata.hawaii.gov/arcgis/rest/services/ParcelsZoning/MapServer",
     layer: 9,
     fields: {"pin":null,"address":null},
-    box: [-160.55,21.649,-159.292,22.236],
+    box: [-160.551,21.648,-159.291,22.236],
   },
   'hi-maui': {
     name: "Maui County, HI",
@@ -330,7 +370,7 @@ const ATLAS_COUNTIES = {
     service: "https://services1.arcgis.com/x4h61KaW16vFs7PM/arcgis/rest/services/Parcels_2024_Owners/FeatureServer",
     layer: 196,
     fields: {"pin":null,"address":null},
-    box: [-157.311,20.501,-155.977,21.224],
+    box: [-157.311,20.5,-155.976,21.225],
   },
   'id-ada': {
     name: "Ada County, ID",
@@ -338,7 +378,7 @@ const ATLAS_COUNTIES = {
     service: "https://services2.arcgis.com/dgGjZc6xAH5m5JyP/arcgis/rest/services/Parcels/FeatureServer",
     layer: 5,
     fields: {"pin":"PARCEL","address":"ADDRESS"},
-    box: [-116.519,43.111,-115.974,43.81],
+    box: [-116.52,43.11,-115.973,43.81],
   },
   'il-kane': {
     name: "Kane County, IL",
@@ -346,7 +386,15 @@ const ATLAS_COUNTIES = {
     service: "https://gistech.countyofkane.org/arcgis/rest/services/KanePINList/MapServer",
     layer: 0,
     fields: {"pin":"PIN","address":"SiteAddress"},
-    box: [-88.602,41.72,-88.238,42.154],
+    box: [-88.603,41.719,-88.238,42.155],
+  },
+  'il-cook': {
+    name: "Cook County, IL",
+    fips: "17031",
+    service: "https://gis12.cookcountyil.gov/traditional/rest/services/CookViewer3Parcels/MapServer",
+    layer: 0,
+    fields: {"pin":null,"address":null},
+    box: [-88.265,41.468,-87.516,42.155],
   },
   'il-dupage': {
     name: "DuPage County, IL",
@@ -354,7 +402,7 @@ const ATLAS_COUNTIES = {
     service: "https://gis.dupageco.org/arcgis/rest/services/DuPage_County_IL/ParcelsWithRealEstateCC/MapServer",
     layer: 0,
     fields: {"pin":"PIN","address":null},
-    box: [-88.263,41.685,-87.912,41.995],
+    box: [-88.264,41.684,-87.912,41.995],
   },
   'il-dekalb': {
     name: "DeKalb County, IL",
@@ -362,7 +410,7 @@ const ATLAS_COUNTIES = {
     service: "https://services7.arcgis.com/hEXJrPwm89CLXBYe/arcgis/rest/services/DeKalbIL_Parcels/FeatureServer",
     layer: 0,
     fields: {"pin":"Parcel_Number","address":"SiteAddress"},
-    box: [-88.942,41.628,-88.588,42.154],
+    box: [-88.943,41.628,-88.588,42.154],
   },
   'il-will': {
     name: "Will County, IL",
@@ -370,7 +418,7 @@ const ATLAS_COUNTIES = {
     service: "https://gis.willcountyillinois.com/server/rest/services/Basemap/Parcels_20/MapServer",
     layer: 0,
     fields: {"pin":"PIN","address":null},
-    box: [-88.262,41.199,-87.522,41.729],
+    box: [-88.262,41.198,-87.521,41.73],
   },
   'il-mchenry': {
     name: "McHenry County, IL",
@@ -378,7 +426,7 @@ const ATLAS_COUNTIES = {
     service: "https://services1.arcgis.com/6iYC5AXXYapRVNzl/arcgis/rest/services/McHenry_County_TaxParcels/FeatureServer",
     layer: 0,
     fields: {"pin":"ParcelNumber","address":"SiteAddress"},
-    box: [-88.708,42.153,-88.198,42.495],
+    box: [-88.708,42.153,-88.197,42.496],
   },
   'il-lake': {
     name: "Lake County, IL",
@@ -386,7 +434,7 @@ const ATLAS_COUNTIES = {
     service: "https://maps.lakecountyil.gov/arcgis/rest/services/GISMapping/WABParcels/MapServer",
     layer: 12,
     fields: {"pin":"PIN","address":"situs_addr_line_1"},
-    box: [-88.2,42.152,-87.759,42.496],
+    box: [-88.2,42.152,-87.758,42.496],
   },
   'il-st-clair': {
     name: "St. Clair County, IL",
@@ -394,7 +442,7 @@ const ATLAS_COUNTIES = {
     service: "https://arcgispublicmap.co.st-clair.il.us/server/rest/services/SCC_parcel_map_data/MapServer",
     layer: 29,
     fields: {"pin":"parcel_number","address":"siteadr1"},
-    box: [-90.26,38.219,-89.7,38.66],
+    box: [-90.261,38.219,-89.7,38.661],
   },
   'in-hamilton': {
     name: "Hamilton County, IN",
@@ -412,21 +460,13 @@ const ATLAS_COUNTIES = {
     fields: {"pin":"PIN","address":"PropertyAddress1"},
     box: [-85.34,40.914,-84.798,41.274],
   },
-  'in-marion': {
-    name: "Marion County, IN",
-    fips: "18097",
-    service: "https://xmaps.indy.gov/arcgis/rest/services/Basemaps/IndyBase_Topographic/MapServer",
-    layer: 54,
-    fields: {"pin":"PARCEL_TAG","address":null},
-    box: [1.278,14.202,2.264,15.133],
-  },
   'ia-johnson': {
     name: "Johnson County, IA",
     fips: "19103",
     service: "https://gis.johnsoncountyiowa.gov/arcgis/rest/services/Parcels_AddressPoints_Roads_IC/FeatureServer",
     layer: 2,
     fields: {"pin":"PPN","address":null},
-    box: [-91.834,41.423,-91.366,41.862],
+    box: [-91.835,41.423,-91.365,41.862],
   },
   'ks-shawnee': {
     name: "Shawnee County, KS",
@@ -434,7 +474,7 @@ const ATLAS_COUNTIES = {
     service: "https://gis.sncoapps.us/arcgis2/rest/services/Appraiser/AppraisalDataPro/MapServer",
     layer: 4,
     fields: {"pin":"PARCELNUM","address":"PADDRESS"},
-    box: [-96.045,38.861,-95.489,39.225],
+    box: [-96.046,38.861,-95.488,39.225],
   },
   'ky-fayette': {
     name: "Fayette County, KY",
@@ -442,7 +482,7 @@ const ATLAS_COUNTIES = {
     service: "https://services.arcgis.com/f4rR7WnIfGBdVYFd/arcgis/rest/services/Tax_Parcels/FeatureServer",
     layer: 0,
     fields: {"pin":"PAN","address":null},
-    box: [-148.734,64.236,-143.854,65.438],
+    box: [-148.734,64.235,-143.854,65.439],
   },
   'me-cumberland': {
     name: "Cumberland County, ME",
@@ -451,7 +491,7 @@ const ATLAS_COUNTIES = {
     layer: 10,
     fields: {"pin":"MAP_BK_LOT","address":"PROP_LOC"},
     fallbacks: [{"service":"https://services1.arcgis.com/RbMX0mRVOFNTdLzd/arcgis/rest/services/Maine_Parcels_Organized_Towns/FeatureServer","layer":9,"fields":{"pin":null,"address":null}}],
-    box: [-71.131,42.971,-66.849,47.342],
+    box: [-71.131,42.97,-66.849,47.342],
   },
   'me-york': {
     name: "York County, ME",
@@ -460,7 +500,7 @@ const ATLAS_COUNTIES = {
     layer: 10,
     fields: {"pin":"MAP_BK_LOT","address":"PROP_LOC"},
     fallbacks: [{"service":"https://services1.arcgis.com/RbMX0mRVOFNTdLzd/arcgis/rest/services/Maine_Parcels_Organized_Towns/FeatureServer","layer":9,"fields":{"pin":null,"address":null}}],
-    box: [-71.131,42.971,-66.849,47.342],
+    box: [-71.131,42.97,-66.849,47.342],
   },
   'md-prince-georges': {
     name: "Prince George's County, MD",
@@ -468,7 +508,7 @@ const ATLAS_COUNTIES = {
     service: "https://gis.princegeorgescountymd.gov/arcgis/rest/services/Property/Property_Flattened/MapServer",
     layer: 0,
     fields: {"pin":null,"address":null},
-    box: [-77.077,38.539,-76.668,39.131],
+    box: [-77.078,38.539,-76.668,39.132],
   },
   'mi-oakland': {
     name: "Oakland County, MI",
@@ -476,7 +516,7 @@ const ATLAS_COUNTIES = {
     service: "https://gisservices.oakgov.com/arcgis/rest/services/Enterprise/EnterpriseOpenParcelDataMapService/MapServer",
     layer: 1,
     fields: {"pin":"PIN","address":"SITEADDRESS"},
-    box: [-83.694,42.426,-83.074,42.894],
+    box: [-83.695,42.426,-83.074,42.894],
   },
   'mi-wayne': {
     name: "Wayne County, MI",
@@ -484,7 +524,7 @@ const ATLAS_COUNTIES = {
     service: "https://services1.arcgis.com/b6rkZNtCd6Mx2gvB/arcgis/rest/services/Wayne_County_Parcel_Shape_File/FeatureServer",
     layer: 0,
     fields: {"pin":"packedParc","address":"propstreet"},
-    box: [-83.557,42.028,-82.869,42.458],
+    box: [-83.558,42.028,-82.869,42.459],
   },
   'mn-ramsey': {
     name: "Ramsey County, MN",
@@ -492,7 +532,7 @@ const ATLAS_COUNTIES = {
     service: "https://maps.co.ramsey.mn.us/arcgis/rest/services/ParcelData/AttributedData/MapServer",
     layer: 0,
     fields: {"pin":"ParcelID","address":"SiteAddress"},
-    box: [-93.222,44.898,-92.985,45.124],
+    box: [-93.222,44.898,-92.984,45.124],
   },
   'mn-hennepin': {
     name: "Hennepin County, MN",
@@ -500,15 +540,15 @@ const ATLAS_COUNTIES = {
     service: "https://gis.hennepin.us/arcgis/rest/services/HennepinData/LAND_PROPERTY/MapServer",
     layer: 1,
     fields: {"pin":"PID","address":null},
-    box: [-93.773,44.784,-93.177,45.247],
+    box: [-93.773,44.783,-93.177,45.247],
   },
-  'ms-desoto': {
-    name: "DeSoto County, MS",
-    fips: "28033",
-    service: "https://maps.desotocountyms.gov/arcgis/rest/services/CountyWebMap/Tax_Assessors_County_Web_Map/MapServer",
-    layer: 29,
-    fields: {"pin":"PIN","address":"FULL_ADDR"},
-    box: [-90.312,34.712,-89.722,34.996],
+  'ms-hinds': {
+    name: "Hinds County, MS",
+    fips: "28049",
+    service: "https://opcgis.deq.state.ms.us/opcgis/rest/services/Government/HINDS_PARCELS/MapServer",
+    layer: 0,
+    fields: {"pin":"PARNO","address":"SITEADD"},
+    box: [-90.729,32.048,-90.066,32.573],
   },
   'mo-jackson': {
     name: "Jackson County, MO",
@@ -516,7 +556,7 @@ const ATLAS_COUNTIES = {
     service: "https://gis.mijackson.org/countygis/rest/services/RealEstate/RealEstateParcels/FeatureServer",
     layer: 0,
     fields: {"pin":"PIN","address":null},
-    box: [-84.719,42.07,-84.131,42.425],
+    box: [-84.719,42.07,-84.13,42.425],
   },
   'mo-st-louis': {
     name: "St. Louis County, MO",
@@ -524,7 +564,7 @@ const ATLAS_COUNTIES = {
     service: "https://maps.stlouisco.com/hosting/rest/services/Maps/AGS_Parcels/MapServer",
     layer: 0,
     fields: {"pin":"LOCATOR","address":"PROP_ADD"},
-    box: [-90.741,38.39,-90.122,38.891],
+    box: [-90.742,38.39,-90.122,38.891],
   },
   'mt-yellowstone': {
     name: "Yellowstone County, MT",
@@ -532,7 +572,7 @@ const ATLAS_COUNTIES = {
     service: "https://gisservice.mt.gov/arcgis/rest/services/msdi_cadastral_map_v1/MapServer",
     layer: 1,
     fields: {"pin":"PARCELID","address":"AddressLine1"},
-    box: [-116.179,44.238,-103.611,49.181],
+    box: [-116.179,44.237,-103.611,49.181],
   },
   'mt-missoula': {
     name: "Missoula County, MT",
@@ -540,7 +580,7 @@ const ATLAS_COUNTIES = {
     service: "https://gisservice.mt.gov/arcgis/rest/services/msdi_cadastral_map_v1/MapServer",
     layer: 1,
     fields: {"pin":"PARCELID","address":"AddressLine1"},
-    box: [-116.179,44.238,-103.611,49.181],
+    box: [-116.179,44.237,-103.611,49.181],
   },
   'mt-cascade': {
     name: "Cascade County, MT",
@@ -548,7 +588,7 @@ const ATLAS_COUNTIES = {
     service: "https://gisservice.mt.gov/arcgis/rest/services/msdi_cadastral_map_v1/MapServer",
     layer: 1,
     fields: {"pin":"PARCELID","address":"AddressLine1"},
-    box: [-116.179,44.238,-103.611,49.181],
+    box: [-116.179,44.237,-103.611,49.181],
   },
   'mt-flathead': {
     name: "Flathead County, MT",
@@ -556,7 +596,7 @@ const ATLAS_COUNTIES = {
     service: "https://gisservice.mt.gov/arcgis/rest/services/msdi_cadastral_map_v1/MapServer",
     layer: 1,
     fields: {"pin":"PARCELID","address":"AddressLine1"},
-    box: [-116.179,44.238,-103.611,49.181],
+    box: [-116.179,44.237,-103.611,49.181],
   },
   'ne-douglas': {
     name: "Douglas County, NE",
@@ -564,7 +604,7 @@ const ATLAS_COUNTIES = {
     service: "https://dcgis.org/server/rest/services/vector/Parcels_public/FeatureServer",
     layer: 0,
     fields: {"pin":"PIN","address":"PROPERTY_A"},
-    box: [-96.474,41.19,-95.871,41.393],
+    box: [-96.475,41.19,-95.871,41.394],
   },
   'ne-lancaster': {
     name: "Lancaster County, NE",
@@ -572,7 +612,7 @@ const ATLAS_COUNTIES = {
     service: "https://gis.lincoln.ne.gov/integration/rest/services/Assessor/TaxParcels/MapServer",
     layer: 0,
     fields: {"pin":"PARCELID","address":"SITEADDRESS"},
-    box: [-96.915,40.523,-96.462,41.046],
+    box: [-96.916,40.522,-96.461,41.047],
   },
   'ne-sarpy': {
     name: "Sarpy County, NE",
@@ -580,7 +620,7 @@ const ATLAS_COUNTIES = {
     service: "https://geodata.sarpy.gov/arcgis/rest/services/Cadastral/LandRecordsSearch/FeatureServer",
     layer: 5,
     fields: {"pin":"PARCELID","address":"SITEADDRESS"},
-    box: [-96.343,40.984,-95.841,41.205],
+    box: [-96.343,40.983,-95.84,41.205],
   },
   'nv-clark': {
     name: "Clark County, NV",
@@ -588,7 +628,7 @@ const ATLAS_COUNTIES = {
     service: "https://maps.clarkcountynv.gov/arcgis/rest/services/GISMO/AssessorMapv2/MapServer",
     layer: 1,
     fields: {"pin":"APN","address":null},
-    box: [-115.898,34.996,-114.031,36.856],
+    box: [-115.899,34.996,-114.03,36.857],
   },
   'nv-washoe': {
     name: "Washoe County, NV",
@@ -596,7 +636,7 @@ const ATLAS_COUNTIES = {
     service: "https://wcgisweb.washoecounty.us/arcgis/rest/services/OpenData/OpenData/MapServer",
     layer: 0,
     fields: {"pin":"APN","address":"STREET"},
-    box: [-120.066,39.164,-119.166,42.003],
+    box: [-120.066,39.164,-119.165,42.004],
   },
   'nj-bergen': {
     name: "Bergen County, NJ",
@@ -604,7 +644,7 @@ const ATLAS_COUNTIES = {
     service: "https://services2.arcgis.com/XVOqAjTOJ5P6ngMu/arcgis/rest/services/Parcels_Composite_NJ_WM/FeatureServer",
     layer: 0,
     fields: {"pin":"PAMS_PIN","address":"PROP_LOC"},
-    box: [-75.56,38.925,-73.902,41.357],
+    box: [-75.56,38.924,-73.902,41.357],
   },
   'nj-monmouth': {
     name: "Monmouth County, NJ",
@@ -612,7 +652,7 @@ const ATLAS_COUNTIES = {
     service: "https://services9.arcgis.com/GCI7uwdn5grdMNX1/arcgis/rest/services/GEO_MC_Parcels/FeatureServer",
     layer: 9,
     fields: {"pin":"PAMS_PIN","address":"PropertyLocation"},
-    box: [-74.615,40.078,-73.97,40.478],
+    box: [-74.616,40.078,-73.97,40.478],
   },
   'nm-bernalillo': {
     name: "Bernalillo County, NM",
@@ -620,7 +660,7 @@ const ATLAS_COUNTIES = {
     service: "https://assessormap.bernco.gov/server/rest/services/Enterprise_Assessment_And_Tax/Public_Access_Parcel_Data_EAT/MapServer",
     layer: 0,
     fields: {"pin":null,"address":"SITUSADD"},
-    box: [-107.197,34.866,-106.149,35.223],
+    box: [-107.197,34.865,-106.149,35.224],
   },
   'ny-new-york': {
     name: "Bronx County, NY",
@@ -629,7 +669,7 @@ const ATLAS_COUNTIES = {
     layer: 0,
     fields: {"pin":"BBL","address":"Address"},
     fallbacks: [{"service":"https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer","layer":1,"fields":{"pin":"PRINT_KEY","address":"PARCEL_ADDR"}}],
-    box: [-74.257,40.496,-73.699,40.915],
+    box: [-74.258,40.495,-73.699,40.916],
   },
   'ny-erie': {
     name: "Erie County, NY",
@@ -637,7 +677,7 @@ const ATLAS_COUNTIES = {
     service: "https://services1.arcgis.com/CgOSc11uky3egK6O/arcgis/rest/services/Erie_County_Parcels/FeatureServer",
     layer: 0,
     fields: {"pin":"PIN","address":null},
-    box: [-79.141,42.437,-78.461,43.099],
+    box: [-79.142,42.437,-78.46,43.099],
   },
   'ny-new-york': {
     name: "Kings County, NY",
@@ -646,7 +686,7 @@ const ATLAS_COUNTIES = {
     layer: 0,
     fields: {"pin":"BBL","address":"Address"},
     fallbacks: [{"service":"https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer","layer":1,"fields":{"pin":"PRINT_KEY","address":"PARCEL_ADDR"}}],
-    box: [-74.257,40.496,-73.699,40.915],
+    box: [-74.258,40.495,-73.699,40.916],
   },
   'ny-monroe': {
     name: "Monroe County, NY",
@@ -654,7 +694,7 @@ const ATLAS_COUNTIES = {
     service: "https://services1.arcgis.com/yisUfwZZ4fyubK3R/arcgis/rest/services/Monroe_County_Parcels/FeatureServer",
     layer: 0,
     fields: {"pin":"COUNTYSBL","address":"PARCELADDRESS"},
-    box: [-78,42.937,-77.365,43.369],
+    box: [-78,42.937,-77.364,43.369],
   },
   'ny-new-york': {
     name: "New York County, NY",
@@ -663,7 +703,7 @@ const ATLAS_COUNTIES = {
     layer: 0,
     fields: {"pin":"BBL","address":"Address"},
     fallbacks: [{"service":"https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer","layer":1,"fields":{"pin":"PRINT_KEY","address":"PARCEL_ADDR"}}],
-    box: [-74.257,40.496,-73.699,40.915],
+    box: [-74.258,40.495,-73.699,40.916],
   },
   'ny-onondaga': {
     name: "Onondaga County, NY",
@@ -671,7 +711,7 @@ const ATLAS_COUNTIES = {
     service: "https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer",
     layer: 1,
     fields: {"pin":"PRINT_KEY","address":"PARCEL_ADDR"},
-    box: [-79.762,40.496,-71.801,45.016],
+    box: [-79.763,40.495,-71.8,45.016],
   },
   'ny-new-york': {
     name: "Queens County, NY",
@@ -680,7 +720,7 @@ const ATLAS_COUNTIES = {
     layer: 0,
     fields: {"pin":"BBL","address":"Address"},
     fallbacks: [{"service":"https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer","layer":1,"fields":{"pin":"PRINT_KEY","address":"PARCEL_ADDR"}}],
-    box: [-74.257,40.496,-73.699,40.915],
+    box: [-74.258,40.495,-73.699,40.916],
   },
   'ny-new-york': {
     name: "Richmond County, NY",
@@ -689,7 +729,7 @@ const ATLAS_COUNTIES = {
     layer: 0,
     fields: {"pin":"BBL","address":"Address"},
     fallbacks: [{"service":"https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer","layer":1,"fields":{"pin":"PRINT_KEY","address":"PARCEL_ADDR"}}],
-    box: [-74.257,40.496,-73.699,40.915],
+    box: [-74.258,40.495,-73.699,40.916],
   },
   'ny-suffolk': {
     name: "Suffolk County, NY",
@@ -697,7 +737,7 @@ const ATLAS_COUNTIES = {
     service: "https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer",
     layer: 1,
     fields: {"pin":"SWIS_SBL_ID","address":"PARCEL_ADDR"},
-    box: [-79.762,40.496,-71.801,45.016],
+    box: [-79.763,40.495,-71.8,45.016],
   },
   'ny-westchester': {
     name: "Westchester County, NY",
@@ -705,7 +745,7 @@ const ATLAS_COUNTIES = {
     service: "https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer",
     layer: 1,
     fields: {"pin":"SWIS_SBL_ID","address":"PARCEL_ADDR"},
-    box: [-79.762,40.496,-71.801,45.016],
+    box: [-79.763,40.495,-71.8,45.016],
   },
   'nc-wake': {
     name: "Wake County, NC",
@@ -713,7 +753,7 @@ const ATLAS_COUNTIES = {
     service: "https://maps.wake.gov/arcgis/rest/services/Property/Parcels/MapServer",
     layer: 0,
     fields: {"pin":"PIN_NUM","address":"SITE_ADDRESS"},
-    box: [-78.995,35.518,-78.251,36.077],
+    box: [-78.996,35.517,-78.251,36.077],
   },
   'nc-mecklenburg': {
     name: "Mecklenburg County, NC",
@@ -721,7 +761,7 @@ const ATLAS_COUNTIES = {
     service: "https://gis.charlottenc.gov/arcgis/rest/services/CountyData/Parcels/MapServer",
     layer: 0,
     fields: {"pin":"PID","address":null},
-    box: [-81.069,34.999,-80.546,35.52],
+    box: [-81.07,34.998,-80.546,35.52],
   },
   'nc-durham': {
     name: "Durham County, NC",
@@ -729,7 +769,7 @@ const ATLAS_COUNTIES = {
     service: "https://webgis.durhamnc.gov/server/rest/services/PublicServices/Property/MapServer",
     layer: 4,
     fields: {"pin":"PIN","address":"LOCATION_ADDR"},
-    box: [-79.016,35.863,-78.698,36.24],
+    box: [-79.017,35.862,-78.698,36.241],
   },
   'nc-buncombe': {
     name: "Buncombe County, NC",
@@ -737,7 +777,7 @@ const ATLAS_COUNTIES = {
     service: "https://gis.buncombecounty.org/arcgis/rest/services/property_bc_dis/MapServer",
     layer: 1,
     fields: {"pin":"pin","address":null},
-    box: [-82.895,35.406,-82.166,35.829],
+    box: [-82.895,35.406,-82.166,35.83],
   },
   'nd-cass': {
     name: "Cass County, ND",
@@ -745,7 +785,7 @@ const ATLAS_COUNTIES = {
     service: "https://gisweb.casscountynd.gov/arcgis/rest/services/Public/CountyParcels/MapServer",
     layer: 0,
     fields: {"pin":"PIN","address":"PropertyAddress"},
-    box: [-97.738,46.604,-96.731,47.262],
+    box: [-97.738,46.604,-96.731,47.263],
   },
   'oh-montgomery': {
     name: "Montgomery County, OH",
@@ -753,7 +793,7 @@ const ATLAS_COUNTIES = {
     service: "https://services6.arcgis.com/EbVsqZ18sv1kVJ3k/ArcGIS/rest/services/Montgomery_County_Parcels/FeatureServer",
     layer: 0,
     fields: {"pin":"PRINT_KEY","address":"PROP_ADDR"},
-    box: [-74.763,42.773,-74.084,43.048],
+    box: [-74.764,42.772,-74.083,43.048],
   },
   'oh-stark': {
     name: "Stark County, OH",
@@ -761,7 +801,7 @@ const ATLAS_COUNTIES = {
     service: "https://scgisa.starkcountyohio.gov/arcgis/rest/services/Auditor/StarkCountyParcels/MapServer",
     layer: 0,
     fields: {"pin":"PIN","address":"SITE_ADDRESS"},
-    box: [-81.651,40.629,-81.082,40.994],
+    box: [-81.652,40.628,-81.081,40.994],
   },
   'oh-franklin': {
     name: "Franklin County, OH",
@@ -769,7 +809,7 @@ const ATLAS_COUNTIES = {
     service: "https://gis.franklincountyohio.gov/hosting/rest/services/ParcelFeatures/Parcel_Features/MapServer",
     layer: 0,
     fields: {"pin":"PARCELID","address":"SITEADDRESS"},
-    box: [-83.262,39.793,-82.761,40.144],
+    box: [-83.263,39.792,-82.76,40.145],
   },
   'oh-cuyahoga': {
     name: "Cuyahoga County, OH",
@@ -777,7 +817,7 @@ const ATLAS_COUNTIES = {
     service: "https://gis.cuyahogacounty.gov/server/rest/services/CCFO/Parcel_Fabric_Taxparcels/FeatureServer",
     layer: 0,
     fields: {"pin":"parcel_id","address":null},
-    box: [-81.971,41.275,-81.375,41.631],
+    box: [-81.972,41.275,-81.374,41.632],
   },
   'oh-summit': {
     name: "Summit County, OH",
@@ -785,7 +825,7 @@ const ATLAS_COUNTIES = {
     service: "https://maps.summitcounty.org/arcgis/rest/services/Maps/ParcelQuery/MapServer",
     layer: 0,
     fields: {"pin":null,"address":null},
-    box: [-111.65,40.539,-109.994,41.253],
+    box: [-111.651,40.539,-109.993,41.253],
   },
   'oh-lucas': {
     name: "Lucas County, OH",
@@ -793,7 +833,7 @@ const ATLAS_COUNTIES = {
     service: "https://lcaudgis.co.lucas.oh.us/gisaudserver/rest/services/Hosted/OSE_ParcelsAddresses_AREIS/FeatureServer",
     layer: 0,
     fields: {"pin":"parid","address":"property_address"},
-    box: [-83.571,41.623,-83.539,41.642],
+    box: [-83.572,41.622,-83.539,41.643],
   },
   'ok-oklahoma': {
     name: "Oklahoma County, OK",
@@ -801,7 +841,7 @@ const ATLAS_COUNTIES = {
     service: "https://services8.arcgis.com/euhkr1dAJeQBIjV0/arcgis/rest/services/TaxParcelsPublics_view/FeatureServer",
     layer: 0,
     fields: {"pin":null,"address":"location"},
-    box: [-97.675,35.375,-97.138,35.727],
+    box: [-97.676,35.374,-97.138,35.728],
   },
   'or-multnomah': {
     name: "Multnomah County, OR",
@@ -809,7 +849,7 @@ const ATLAS_COUNTIES = {
     service: "https://services5.arcgis.com/x7DNZL1YqNQVNykA/arcgis/rest/services/Multnomah_County_Taxlot_Parcels/FeatureServer",
     layer: 0,
     fields: {"pin":null,"address":"SITUSADDR"},
-    box: [-122.929,45.433,-121.82,45.729],
+    box: [-122.93,45.432,-121.819,45.729],
   },
   'or-lane': {
     name: "Lane County, OR",
@@ -817,7 +857,7 @@ const ATLAS_COUNTIES = {
     service: "https://lcgispubags.lanecountyor.gov/arcgis/rest/services/LaneCountyMaps/AddressParcel/MapServer",
     layer: 2,
     fields: {"pin":null,"address":null},
-    box: [-124.184,43.394,-121.754,44.327],
+    box: [-124.185,43.394,-121.754,44.327],
   },
   'or-marion': {
     name: "Marion County, OR",
@@ -825,7 +865,7 @@ const ATLAS_COUNTIES = {
     service: "https://gis.co.marion.or.us/arcgis/rest/services/Public/Parcels/MapServer",
     layer: 0,
     fields: {"pin":null,"address":"SITUS"},
-    box: [-123.18,44.684,-121.733,45.284],
+    box: [-123.18,44.683,-121.733,45.285],
   },
   'or-umatilla': {
     name: "Umatilla County, OR",
@@ -833,7 +873,7 @@ const ATLAS_COUNTIES = {
     service: "https://services3.arcgis.com/tNPgIZWOB0Efvm0g/ArcGIS/rest/services/Tax_Lots/FeatureServer",
     layer: 0,
     fields: {"pin":null,"address":"SITUS_STRE"},
-    box: [-119.451,44.977,-117.965,46.023],
+    box: [-119.451,44.976,-117.964,46.024],
   },
   'pa-allegheny': {
     name: "Allegheny County, PA",
@@ -841,7 +881,7 @@ const ATLAS_COUNTIES = {
     service: "https://gisdata.alleghenycounty.us/arcgis/rest/services/EGIS/Web_Parcels/MapServer",
     layer: 0,
     fields: {"pin":"PIN","address":null},
-    box: [-80.367,40.186,-79.678,40.684],
+    box: [-80.368,40.185,-79.677,40.684],
   },
   'pa-philadelphia': {
     name: "Philadelphia County, PA",
@@ -849,7 +889,7 @@ const ATLAS_COUNTIES = {
     service: "https://services.arcgis.com/fLeGjb7u4uXqeF9q/arcgis/rest/services/PWD_PARCELS/FeatureServer",
     layer: 0,
     fields: {"pin":"parcelid","address":"address"},
-    box: [-75.284,39.866,-74.954,40.144],
+    box: [-75.284,39.865,-74.954,40.144],
   },
   'pa-montgomery': {
     name: "Montgomery County, PA",
@@ -857,7 +897,7 @@ const ATLAS_COUNTIES = {
     service: "https://services1.arcgis.com/kOChldNuKsox8qZD/arcgis/rest/services/Montgomery_County_Parcels/FeatureServer",
     layer: 6,
     fields: {"pin":"TAXPIN","address":"LOCATION1"},
-    box: [-75.705,39.971,-75.003,40.45],
+    box: [-75.706,39.971,-75.002,40.451],
   },
   'pa-bucks': {
     name: "Bucks County, PA",
@@ -865,7 +905,7 @@ const ATLAS_COUNTIES = {
     service: "https://services3.arcgis.com/SP47Tddf7RK32lBU/arcgis/rest/services/Bucks_County_Parcels/FeatureServer",
     layer: 0,
     fields: {"pin":"PARCEL_NUM","address":"ADDRESS"},
-    box: [-75.496,40.046,-74.704,40.614],
+    box: [-75.497,40.046,-74.703,40.615],
   },
   'tn-davidson': {
     name: "Davidson County, TN",
@@ -873,7 +913,7 @@ const ATLAS_COUNTIES = {
     service: "https://maps.nashville.gov/arcgis/rest/services/Cadastral/Parcels/MapServer",
     layer: 0,
     fields: {"pin":"ParID","address":"PropAddr"},
-    box: [-87.059,35.965,-86.511,36.407],
+    box: [-87.06,35.964,-86.51,36.407],
   },
   'tn-hamilton': {
     name: "Hamilton County, TN",
@@ -881,7 +921,7 @@ const ATLAS_COUNTIES = {
     service: "https://mapsdev.hamiltontn.gov/hcwa03/rest/services/Live_Parcels/MapServer",
     layer: 0,
     fields: {"pin":"PBA_NUM","address":"ADDRESS"},
-    box: [-85.476,34.983,-84.942,35.459],
+    box: [-85.476,34.983,-84.942,35.46],
   },
   'tx-travis': {
     name: "Travis County, TX",
@@ -897,7 +937,7 @@ const ATLAS_COUNTIES = {
     service: "https://mapit.tarrantcounty.com/arcgis/rest/services/Tax/TCProperty/MapServer",
     layer: 0,
     fields: {"pin":"TAXPIN","address":"SITUS_ADDR"},
-    box: [-97.539,32.556,-97.056,32.972],
+    box: [-97.54,32.555,-97.055,32.972],
   },
   'tx-dallas': {
     name: "Dallas County, TX",
@@ -905,7 +945,7 @@ const ATLAS_COUNTIES = {
     service: "https://services2.arcgis.com/rwnOSbfKSwyTBcwN/arcgis/rest/services/DallasTaxParcels/FeatureServer",
     layer: 0,
     fields: {"pin":null,"address":null},
-    box: [-97.038,32.572,-96.437,33.052],
+    box: [-97.039,32.572,-96.436,33.053],
   },
   'tx-bexar': {
     name: "Bexar County, TX",
@@ -913,7 +953,7 @@ const ATLAS_COUNTIES = {
     service: "https://maps.bexar.org/arcgis/rest/services/Parcels/MapServer",
     layer: 0,
     fields: {"pin":null,"address":"Situs"},
-    box: [-98.811,29.113,-98.114,29.761],
+    box: [-98.812,29.112,-98.114,29.762],
   },
   'tx-collin': {
     name: "Collin County, TX",
@@ -921,7 +961,7 @@ const ATLAS_COUNTIES = {
     service: "https://gismaps.cityofallen.org/arcgis/rest/services/ReferenceData/Collin_County_Appraisal_District_Parcels/MapServer",
     layer: 1,
     fields: {"pin":null,"address":"GIS_DBO_AD_Entity_situs_display"},
-    box: [-96.853,32.979,-96.287,33.408],
+    box: [-96.854,32.978,-96.286,33.409],
   },
   'tx-denton': {
     name: "Denton County, TX",
@@ -937,7 +977,7 @@ const ATLAS_COUNTIES = {
     service: "https://gis.elpasotexas.gov/arcgis/rest/services/EPParcels/FeatureServer",
     layer: 0,
     fields: {"pin":"PIDN","address":null},
-    box: [-106.646,31.388,-105.954,32.002],
+    box: [-106.647,31.387,-105.954,32.002],
   },
   'tx-fort-bend': {
     name: "Fort Bend County, TX",
@@ -945,7 +985,7 @@ const ATLAS_COUNTIES = {
     service: "https://gisportal.fortbendcountytx.gov/arcgis/rest/services/InteractiveMap/Parcels_Public/FeatureServer",
     layer: 1,
     fields: {"pin":null,"address":"Situs"},
-    box: [-96.083,29.263,-95.424,29.789],
+    box: [-96.084,29.262,-95.424,29.789],
   },
   'tx-williamson': {
     name: "Williamson County, TX",
@@ -953,7 +993,7 @@ const ATLAS_COUNTIES = {
     service: "https://gis.wilco.org/arcgis/rest/services/public/county_wcad_parcels/MapServer",
     layer: 0,
     fields: {"pin":"PARCELID","address":null},
-    box: [-98.055,30.399,-97.14,30.908],
+    box: [-98.055,30.398,-97.14,30.909],
   },
   'ut-salt-lake': {
     name: "Salt Lake County, UT",
@@ -969,7 +1009,7 @@ const ATLAS_COUNTIES = {
     service: "https://services1.arcgis.com/99lidPhWCzftIe9K/ArcGIS/rest/services/Parcels_Davis_LIR/FeatureServer",
     layer: 0,
     fields: {"pin":"PARCEL_ID","address":null},
-    box: [-112.179,40.82,-111.777,41.158],
+    box: [-112.18,40.819,-111.776,41.158],
   },
   'ut-utah': {
     name: "Utah County, UT",
@@ -977,7 +1017,7 @@ const ATLAS_COUNTIES = {
     service: "https://services1.arcgis.com/99lidPhWCzftIe9K/ArcGIS/rest/services/Parcels_Utah_LIR/FeatureServer",
     layer: 0,
     fields: {"pin":"PARCEL_ID","address":null},
-    box: [-112.13,39.812,-110.96,40.492],
+    box: [-112.131,39.812,-110.96,40.493],
   },
   'ut-weber': {
     name: "Weber County, UT",
@@ -985,7 +1025,15 @@ const ATLAS_COUNTIES = {
     service: "https://services1.arcgis.com/99lidPhWCzftIe9K/ArcGIS/rest/services/Parcels_Weber_LIR/FeatureServer",
     layer: 0,
     fields: {"pin":"PARCEL_ID","address":null},
-    box: [-112.493,41.077,-111.42,41.434],
+    box: [-112.494,41.076,-111.42,41.434],
+  },
+  'vt-chittenden': {
+    name: "Chittenden County, VT",
+    fips: "50007",
+    service: "https://services1.arcgis.com/BkFxaEFNwHqX3tAw/arcgis/rest/services/FS_VCGI_VTPARCELS_WM_NOCACHE_v2/FeatureServer",
+    layer: 1,
+    fields: {"pin":null,"address":"E911ADDR"},
+    box: [-73.438,42.726,-71.465,45.017],
   },
   'va-fairfax': {
     name: "Fairfax County, VA",
@@ -993,7 +1041,7 @@ const ATLAS_COUNTIES = {
     service: "https://www.fairfaxcounty.gov/mercator/rest/services/OpenData/OpenData_A9/MapServer",
     layer: 0,
     fields: {"pin":"PIN","address":null},
-    box: [-77.54,38.615,-77.035,39.06],
+    box: [-77.54,38.615,-77.034,39.06],
   },
   'va-prince-william': {
     name: "Prince William County, VA",
@@ -1001,7 +1049,7 @@ const ATLAS_COUNTIES = {
     service: "https://gisweb.pwcva.gov/arcgis/rest/services/OpenData/OpenData/MapServer",
     layer: 0,
     fields: {"pin":"GPIN","address":null},
-    box: [-77.72,38.5,-77.215,38.944],
+    box: [-77.72,38.499,-77.214,38.944],
   },
   'wa-king': {
     name: "King County, WA",
@@ -1009,7 +1057,7 @@ const ATLAS_COUNTIES = {
     service: "https://gismaps.kingcounty.gov/arcgis/rest/services/Property/KingCo_Parcels/MapServer",
     layer: 0,
     fields: {"pin":"PIN","address":null},
-    box: [-122.55,47.072,-121.084,47.788],
+    box: [-122.551,47.072,-121.084,47.789],
   },
   'wa-spokane': {
     name: "Spokane County, WA",
@@ -1017,7 +1065,7 @@ const ATLAS_COUNTIES = {
     service: "https://services1.arcgis.com/ozNll27nt9ZtPWOn/arcgis/rest/services/Parcels/FeatureServer",
     layer: 0,
     fields: {"pin":"PID_NUM","address":"site_address"},
-    box: [-117.853,47.237,-116.982,48.068],
+    box: [-117.854,47.236,-116.982,48.069],
   },
   'wa-snohomish': {
     name: "Snohomish County, WA",
@@ -1025,7 +1073,7 @@ const ATLAS_COUNTIES = {
     service: "https://services6.arcgis.com/z6WYi9VRHfgwgtyW/arcgis/rest/services/Parcels/FeatureServer",
     layer: 0,
     fields: {"pin":"PARCEL_ID","address":"SITUSLINE1"},
-    box: [-122.439,47.768,-120.951,48.308],
+    box: [-122.44,47.768,-120.951,48.308],
   },
   'wv-kanawha': {
     name: "Kanawha County, WV",
@@ -1033,7 +1081,7 @@ const ATLAS_COUNTIES = {
     service: "https://services.wvgis.wvu.edu/arcgis/rest/services/Planning_Cadastre/WV_Parcels/MapServer",
     layer: 0,
     fields: {"pin":"CleanParcelID","address":"FullPhysicalAddress"},
-    box: [-82.702,37.16,-77.659,40.636],
+    box: [-82.703,37.16,-77.658,40.636],
   },
   'wv-monongalia': {
     name: "Monongalia County, WV",
@@ -1041,7 +1089,7 @@ const ATLAS_COUNTIES = {
     service: "https://services.wvgis.wvu.edu/arcgis/rest/services/Planning_Cadastre/WV_Parcels/MapServer",
     layer: 0,
     fields: {"pin":"CleanParcelID","address":"FullPhysicalAddress"},
-    box: [-82.702,37.16,-77.659,40.636],
+    box: [-82.703,37.16,-77.658,40.636],
   },
   'wv-raleigh': {
     name: "Raleigh County, WV",
@@ -1049,7 +1097,7 @@ const ATLAS_COUNTIES = {
     service: "https://services.wvgis.wvu.edu/arcgis/rest/services/Planning_Cadastre/WV_Parcels/MapServer",
     layer: 0,
     fields: {"pin":"CleanParcelID","address":"FullPhysicalAddress"},
-    box: [-82.702,37.16,-77.659,40.636],
+    box: [-82.703,37.16,-77.658,40.636],
   },
   'wv-cabell': {
     name: "Cabell County, WV",
@@ -1057,7 +1105,7 @@ const ATLAS_COUNTIES = {
     service: "https://services.wvgis.wvu.edu/arcgis/rest/services/Planning_Cadastre/WV_Parcels/MapServer",
     layer: 0,
     fields: {"pin":"CleanParcelID","address":"FullPhysicalAddress"},
-    box: [-82.702,37.16,-77.659,40.636],
+    box: [-82.703,37.16,-77.658,40.636],
   },
   'wi-dane': {
     name: "Dane County, WI",
@@ -1065,7 +1113,7 @@ const ATLAS_COUNTIES = {
     service: "https://dcimapapps.danecounty.gov/arcgissrv/rest/services/TaxParcels/MapServer",
     layer: 0,
     fields: {"pin":"PARCELNO","address":"PropertyAddress"},
-    box: [-89.841,42.844,-89.008,43.294],
+    box: [-89.841,42.844,-89.008,43.295],
   },
   'wi-milwaukee': {
     name: "Milwaukee County, WI",
@@ -1073,15 +1121,7 @@ const ATLAS_COUNTIES = {
     service: "https://services2.arcgis.com/s1wgJQKbKJihhhaT/arcgis/rest/services/Milwaukee_County_Parcels_Property_Information_view/FeatureServer",
     layer: 58,
     fields: {"pin":"TAXKEY","address":null},
-    box: [-88.08,42.839,-87.813,43.195],
-  },
-  'wi-waukesha': {
-    name: "Waukesha County, WI",
-    fips: "55133",
-    service: "https://gis.waukeshacounty.gov/host/rest/services/Web_Tax_Parcel/FeatureServer",
-    layer: 2,
-    fields: {"pin":null,"address":"SITEADRESS"},
-    box: [-88.542,42.842,-88.063,43.196],
+    box: [-88.08,42.838,-87.812,43.196],
   },
   'wi-brown': {
     name: "Brown County, WI",
@@ -1097,7 +1137,7 @@ const ATLAS_COUNTIES = {
     service: "https://maps.laramiecounty.com/arcgis/rest/services/Planning/SmartGovParcels/MapServer",
     layer: 1,
     fields: {"pin":"statepidn","address":"site_address1"},
-    box: [-105.281,40.993,-104.042,41.657],
+    box: [-105.281,40.992,-104.042,41.657],
   },
 };
 
