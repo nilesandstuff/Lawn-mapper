@@ -382,5 +382,57 @@ check('every class the code toggles is styled',
   unstyled.length === 0,
   unstyled.length ? unstyled.map((c) => `.${c}`).join(', ') : [...toggled].join(', '));
 
+/* --------------------------------------------- the report review page */
+/*
+ * REPORTED: bad reports arriving with no picture, some of the time.
+ *
+ * There is no picture in a report -- the review page rebuilds the map from
+ * coordinates. It used to refuse unless `r.lng` was finite, and that field
+ * comes from the geocoded address, which a restored save or a shared link
+ * never has. The frame and the parcel in the same report both carry real
+ * coordinates and were being discarded.
+ *
+ * Both halves are pinned. The page must not key its refusal on that one field
+ * again, and the app must not send the report without a location when it has
+ * one. Neither failure is visible from the review page: a missing map looks
+ * the same as a map that has not loaded.
+ */
+{
+  const review = readFileSync(join(root, 'public/review.html'), 'utf8');
+
+  const draw = review.slice(review.indexOf('function drawReport'));
+  check('the review page does not refuse a report for a missing lng alone',
+    !/if\s*\(!mapboxToken\s*\|\|\s*!Number\.isFinite\(r\.lng\)\)/.test(review),
+    'the old guard is gone');
+
+  check('and it falls back to the frame the detection actually ran in',
+    /function centreOf[\s\S]*?r\.frame\?\.lng/.test(review),
+    'centreOf reads r.frame');
+
+  check('then to the shapes being reported on',
+    /function centreOf[\s\S]*?cornersOf\(r\)/.test(review),
+    'centreOf falls through to the corners');
+
+  /*
+   * An empty box is indistinguishable from a map still loading, which is how
+   * this arrived: "no picture attached" rather than "no location recorded".
+   */
+  check('and says why when it genuinely cannot draw one',
+    draw.includes("el('p', 'why'"), 'the reason is rendered into the holder');
+
+  const reviewCss = review.slice(0, review.indexOf('</style>'));
+  check('and that message is styled',
+    /\.map\s+\.why\s*\{/.test(reviewCss), '.map .why exists');
+
+  /*
+   * The app's half. `??` and not `||` on purpose: a longitude of 0 is a real
+   * place, and `||` would skip past it to the next fallback.
+   */
+  check('the app sends a location even with no geocoded address',
+    /lng: state\.chosen\?\.lng \?\? state\.frame\?\.lng/.test(js)
+    && /lat: state\.chosen\?\.lat \?\? state\.frame\?\.lat/.test(js),
+    'sendFeedback falls back to the frame');
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);

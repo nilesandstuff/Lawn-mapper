@@ -70,6 +70,14 @@
   /* Fixed height rather than an aspect ratio: these are stacked and scrolled
      past, and a map that resizes per report makes the list jump. */
   .map { height: 260px; background: #dfe5e0; }
+  /* The explanation shown instead of a map, when there cannot be one. Centred
+     in the same box so the row keeps its shape and the reason is where the
+     picture would have been. */
+  .map .why {
+    margin: 0; height: 100%; display: flex; align-items: center;
+    justify-content: center; text-align: center; padding: 0 16px;
+    color: #55605a; font-size: 13px; box-sizing: border-box;
+  }
   .tag {
     display: inline-block; padding: 1px 8px; border-radius: 999px;
     font-size: 11px; font-weight: 700; letter-spacing: .02em;
@@ -201,14 +209,79 @@ function render() {
  * taken from. Non-interactive: the question is "what shape did it produce",
  * and a list of twenty draggable maps on a phone is a list you cannot scroll.
  */
+/**
+ * Every corner of a report, for framing it.
+ *
+ * Pulled out because the map needs these twice -- once to centre on and once
+ * to fit -- and the fit is what actually decides the view.
+ */
+function cornersOf(r) {
+  return [
+    ...(r.parcel?.coordinates || []),
+    ...(r.shapes || []).flatMap((g) => g.coordinates || []),
+  ].flat().filter((p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]));
+}
+
+/**
+ * Where to point the map, from whichever part of the report knows.
+ *
+ * REPORTED: bad reports arriving with no picture, intermittently. The cause was
+ * the old guard here -- `!Number.isFinite(r.lng)` and nothing else -- which
+ * refused to draw a map the report had everything needed to draw.
+ *
+ * `lng`/`lat` come from state.chosen, the geocoded address, and that is empty
+ * on any session that never geocoded one: a restored save, a shared link,
+ * anything opened from the Saved tab. The frame and the parcel are still right
+ * there in the same report, both carrying real coordinates, and both were
+ * being thrown away because one other field was undefined.
+ *
+ * Order matters. The frame is where the DETECTION actually ran, which is the
+ * photograph the report is complaining about; the geocoded point is only where
+ * the address sits, and on a long lot those are not the same place. The
+ * corners are the last resort and the most reliable of the three, since they
+ * are the shapes being reported on.
+ */
+function centreOf(r) {
+  if (Number.isFinite(r.frame?.lng) && Number.isFinite(r.frame?.lat)) {
+    return [r.frame.lng, r.frame.lat];
+  }
+  if (Number.isFinite(r.lng) && Number.isFinite(r.lat)) return [r.lng, r.lat];
+
+  const pts = cornersOf(r);
+  if (!pts.length) return null;
+  let [w, s, e, n] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const [lng, lat] of pts) {
+    w = Math.min(w, lng); e = Math.max(e, lng);
+    s = Math.min(s, lat); n = Math.max(n, lat);
+  }
+  return [(w + e) / 2, (s + n) / 2];
+}
+
 function drawReport(id, r) {
-  if (!mapboxToken || !Number.isFinite(r.lng)) return;
+  const holder = document.getElementById(id);
+  /*
+   * SAY WHY, rather than leaving an empty box.
+   *
+   * A blank space is indistinguishable from a map that has not loaded yet, an
+   * expired Mapbox token, and a report with no location in it -- which is
+   * exactly the confusion this bug arrived as. Three causes, three sentences.
+   */
+  if (!mapboxToken) {
+    holder.append(el('p', 'why', 'No Mapbox token on this deployment, so no map.'));
+    return;
+  }
+  const centre = centreOf(r);
+  if (!centre) {
+    holder.append(el('p', 'why', 'This report carries no location — no frame, no parcel, no shapes.'));
+    return;
+  }
+
   mapboxgl.accessToken = mapboxToken;
 
   const map = new mapboxgl.Map({
     container: id,
     style: 'mapbox://styles/mapbox/satellite-streets-v12',
-    center: [r.lng, r.lat],
+    center: centre,
     zoom: r.frame?.zoom || 18,
     interactive: false,
     attributionControl: false,
@@ -237,11 +310,7 @@ function drawReport(id, r) {
 
     /* Frame the lot, not the point: a report about a long thin parcel is
      * useless centred on its middle at a guessed zoom. */
-    const rings = [
-      ...(r.parcel?.coordinates || []),
-      ...(r.shapes || []).flatMap((g) => g.coordinates || []),
-    ];
-    const pts = rings.flat();
+    const pts = cornersOf(r);
     if (pts.length) {
       let [w, s, e, n] = [Infinity, Infinity, -Infinity, -Infinity];
       for (const [lng, lat] of pts) {

@@ -4400,8 +4400,16 @@ async function sendFeedback(rating) {
         note,
         clientId: state.clientId,
         address: state.chosen?.label || null,
-        lng: state.chosen?.lng,
-        lat: state.chosen?.lat,
+        /*
+         * Fall back to the frame, because state.chosen is the GEOCODED address
+         * and a session that never typed one has none: a restored save, a
+         * shared link, anything opened from the Saved tab. Reports were
+         * arriving with no coordinates at all and the review page could not
+         * draw them, which read as "the image did not upload" -- there is no
+         * image, the page rebuilds the map from these numbers.
+         */
+        lng: state.chosen?.lng ?? state.frame?.lng ?? state.lastMask?.frame?.lng ?? null,
+        lat: state.chosen?.lat ?? state.frame?.lat ?? state.lastMask?.frame?.lat ?? null,
         county: state.parcel?.properties?.county || null,
         model: state.detectedBy,
         modelLabel: modelInfo(state.detectedBy).label || null,
