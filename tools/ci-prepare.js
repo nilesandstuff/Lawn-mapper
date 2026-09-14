@@ -29,6 +29,7 @@ const CONFIG = new URL('../wrangler.toml', import.meta.url);
 const PLACEHOLDER = 'REPLACE_WITH_KV_NAMESPACE_ID';
 const DB_PLACEHOLDER = 'REPLACE_WITH_D1_DATABASE_ID';
 const DB_NAME = 'lawn-mapper';
+const BUCKET_NAME = 'lawn-mapper-corpus';
 
 /* ------------------------------------------------------- pure helpers */
 
@@ -98,8 +99,32 @@ export function parseCreatedDatabaseId(stdout) {
   );
 }
 
+/**
+ * Which buckets already exist, out of `wrangler r2 bucket list`.
+ *
+ * Sliced between the outermost brackets like the other two lists, for the same
+ * reason: wrangler interleaves banners and update notices with the payload.
+ * Older wrangler prints a plain table instead of JSON, so a failure to parse
+ * falls back to searching the raw text for the name -- finding it there is
+ * weaker evidence than a parsed row, but it is the difference between reusing
+ * a bucket and trying to create one that is already there.
+ */
+export function bucketExists(stdout, name) {
+  const start = stdout.indexOf('[');
+  const end = stdout.lastIndexOf(']');
+  if (start >= 0 && end > start) {
+    try {
+      const parsed = JSON.parse(stdout.slice(start, end + 1));
+      if (Array.isArray(parsed)) {
+        return parsed.some((b) => String(b?.name || b?.bucket_name) === name);
+      }
+    } catch { /* fall through to the text scan */ }
+  }
+  return new RegExp(`(^|\\s)${name}(\\s|$)`, 'm').test(stdout);
+}
+
 /** Substitute the ids and, if asked, append a custom-domain route. */
-export function applyConfig(toml, { kvId, dbId, customDomain } = {}) {
+export function applyConfig(toml, { kvId, dbId, bucket = true, customDomain } = {}) {
   let out = toml;
 
   if (kvId) out = out.split(PLACEHOLDER).join(kvId);
@@ -116,6 +141,17 @@ export function applyConfig(toml, { kvId, dbId, customDomain } = {}) {
   out = dbId
     ? out.split(DB_PLACEHOLDER).join(dbId)
     : out.replace(/\n\[\[d1_databases\]\][\s\S]*?(?=\n\[|\n#|$)/, '\n');
+
+  /*
+   * NO BUCKET MEANS NO BINDING, the same rule the database follows above and
+   * for the same reason: wrangler refuses to deploy a Worker bound to a bucket
+   * that does not exist, so leaving the block in would take the whole site down
+   * over a corpus nobody has set up yet. Without it the Worker stores outlines
+   * and no pictures, which is exactly what it did before the bucket existed.
+   */
+  if (!bucket) {
+    out = out.replace(/\n\[\[r2_buckets\]\][\s\S]*?(?=\n\[|\n#|$)/, '\n');
+  }
 
   if (customDomain) {
     // Only the commented example should be present; a real one means someone
@@ -229,6 +265,57 @@ function resolveDbId() {
 }
 
 /**
+ * The corpus bucket, or false.
+ *
+ * FALSE IS A REAL ANSWER, like a missing database. Finished lawn maps are kept
+ * to train a detector on one day; that is worth having and it is not worth a
+ * failed deploy. A token without R2 permission, or an account that has never
+ * enabled R2, should still ship the site.
+ *
+ * Creating a bucket that already exists is an error rather than a no-op, so
+ * this looks first -- and treats "already exists" as success anyway, because
+ * two deploys racing is not a reason to fail either.
+ */
+function resolveBucket() {
+  console.log(`Looking for the "${BUCKET_NAME}" R2 bucket…`);
+  try {
+    if (bucketExists(wrangler(['r2', 'bucket', 'list']), BUCKET_NAME)) {
+      console.log('  found.');
+      return true;
+    }
+  } catch (err) {
+    console.log(`  could not list buckets (${firstLine(err)})`);
+  }
+
+  console.log('  none found; creating one…');
+  try {
+    wrangler(['r2', 'bucket', 'create', BUCKET_NAME]);
+    console.log('  created.');
+    return true;
+  } catch (err) {
+    const why = firstLine(err);
+    if (/already exists/i.test(why)) {
+      console.log('  already there (created by a parallel run).');
+      return true;
+    }
+    console.log(`  could not create one (${why})`);
+    console.log('');
+    console.log('  TRAINING IMAGES ARE OFF for this deploy. Everything else is');
+    console.log('  fine, and finished maps still record their outline -- only the');
+    console.log('  aerial photograph is skipped, and the frame re-fetches it.');
+    console.log('');
+    console.log('  Usually the API token: R2 is newer than this project, so a');
+    console.log('  token made earlier carries Workers, KV and D1 and not R2. Edit');
+    console.log('  it at https://dash.cloudflare.com/profile/api-tokens, add');
+    console.log('  "Workers R2 Storage: Edit", and deploy again.');
+    console.log('');
+    console.log('  Or make it by hand: Cloudflare dashboard -> R2 -> Create');
+    console.log(`  bucket, named "${BUCKET_NAME}".`);
+    return false;
+  }
+}
+
+/**
  * Apply the schema.
  *
  * Every statement in it is IF NOT EXISTS, so this runs on every deploy and new
@@ -273,9 +360,12 @@ function main() {
   try {
     const kvId = resolveKvId();
     const dbId = resolveDbId();
+    const bucket = resolveBucket();
     const customDomain = (process.env.CUSTOM_DOMAIN || '').trim() || null;
 
-    const updated = applyConfig(readFileSync(CONFIG, 'utf8'), { kvId, dbId, customDomain });
+    const updated = applyConfig(
+      readFileSync(CONFIG, 'utf8'), { kvId, dbId, bucket, customDomain }
+    );
     writeFileSync(CONFIG, updated);
 
     /*
@@ -292,6 +382,7 @@ function main() {
     console.log(`\nwrangler.toml prepared:`);
     console.log(`  KV namespace : ${kvId}`);
     console.log(`  D1 database  : ${dbId ? `${dbId}${schema ? '' : ' (schema NOT applied)'}` : '(none -- accounts are off)'}`);
+    console.log(`  R2 bucket    : ${bucket ? BUCKET_NAME : '(none -- training images are off)'}`);
     console.log(`  custom domain: ${customDomain || '(none -- will deploy to *.workers.dev)'}`);
   } catch (err) {
     console.error(`\nFAIL  ${firstLine(err)}\n`);

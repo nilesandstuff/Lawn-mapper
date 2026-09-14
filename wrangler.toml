@@ -50,8 +50,11 @@ database_id = "REPLACE_WITH_D1_DATABASE_ID"
 # key. Splitting them that way keeps "how many do we have, and how many are any
 # good" a fast SQL question rather than a bucket listing.
 #
-# Create it before the first deploy:
-#   npx wrangler r2 bucket create lawn-mapper-corpus
+# CI creates it -- tools/ci-prepare.js looks for it and makes one if it is
+# missing, the same way it handles the KV namespace and the D1 database. There
+# is nothing to run by hand, which is the point: this project is deployed from
+# a phone. If the API token has no R2 permission, ci-prepare strips this block
+# and says so, and the deploy goes ahead without training images.
 #
 # OPTIONAL. A missing binding is not an error: the Worker keeps recording the
 # outlines and simply stores no picture, which is exactly what it did before

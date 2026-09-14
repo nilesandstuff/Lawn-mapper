@@ -10,11 +10,13 @@
  *   node tools/ci-prepare.test.js
  */
 
+import { readFileSync } from 'node:fs';
 import {
   parseNamespaceList,
   pickQuota,
   parseCreatedId,
   applyConfig,
+  bucketExists,
 } from './ci-prepare.js';
 
 let failures = 0;
@@ -112,6 +114,62 @@ id = "REPLACE_WITH_KV_NAMESPACE_ID"
     threw = true;
   }
   check('refuses to add a duplicate route block', threw);
+}
+
+/* ------------------------------------------------------- the corpus bucket */
+/*
+ * R2 is the third resource this file conjures, and the only one where the
+ * binding names the thing rather than an id -- so nothing is substituted and
+ * the only question is whether the bucket exists.
+ */
+{
+  const json = 'Listing buckets...\n'
+    + '[{"name":"lawn-mapper-corpus","creation_date":"2026-09-14"},{"name":"other"}]\n';
+  check('finds a bucket in JSON output, banners and all',
+    bucketExists(json, 'lawn-mapper-corpus') === true);
+  check('and does not invent one that is absent',
+    bucketExists(json, 'nope') === false);
+
+  /*
+   * Older wrangler prints a table instead of JSON. Weaker evidence than a
+   * parsed row, and still the difference between reusing a bucket and trying
+   * to create one that is already there.
+   */
+  const table = 'name                    creation_date\nlawn-mapper-corpus      2026-09-14\n';
+  check('falls back to the text when the output is a table',
+    bucketExists(table, 'lawn-mapper-corpus') === true);
+  check('and a near-miss name does not count as a match',
+    bucketExists('lawn-mapper-corpus-old\n', 'lawn-mapper-corpus') === false);
+
+  /*
+   * THE ONE THAT MATTERS. Wrangler refuses to deploy a Worker bound to a
+   * bucket that does not exist, so leaving the block in when R2 is unavailable
+   * would take the whole site down over a corpus nobody set up. Same rule the
+   * database follows.
+   */
+  const toml = readFileSync(new URL('../wrangler.toml', import.meta.url), 'utf8');
+  const without = applyConfig(toml, { kvId: 'k', dbId: 'd', bucket: false });
+  check('no bucket means the binding is removed, not left dangling',
+    !/\[\[r2_buckets\]\]/.test(without),
+    'a binding to a missing bucket fails the deploy');
+  /*
+   * BOTH SIDES of the block, which the first version of this check missed.
+   * The R2 binding sits near the end of the file, so a strip that ran to EOF
+   * left every earlier block intact and passed -- while quietly deleting the
+   * secrets note and the routes comment that follow it, and with them the
+   * custom-domain machinery appended afterwards.
+   */
+  check('and the rest of the config survives its removal',
+    /\[assets\]/.test(without) && /\[\[kv_namespaces\]\]/.test(without)
+      && /\[\[d1_databases\]\]/.test(without)
+      && /Secrets are NOT set here/.test(without),
+    'the blocks after it go on existing too');
+
+  check('a bucket that exists keeps its binding',
+    /\[\[r2_buckets\]\]/.test(applyConfig(toml, { kvId: 'k', dbId: 'd', bucket: true })));
+  check('and the default is to keep it',
+    /\[\[r2_buckets\]\]/.test(applyConfig(toml, { kvId: 'k', dbId: 'd' })),
+    'only an explicit false strips the block');
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
