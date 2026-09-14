@@ -15,6 +15,8 @@
  * every endpoint in the first version of this file had already gone stale.
  */
 
+import { ATLAS_COUNTIES } from './counties-atlas.js';
+
 const COUNTIES = {
   /*
    * North Carolina, all of it, from one endpoint.
@@ -479,15 +481,59 @@ const COUNTY_BBOX = {
  * hand. Asserted in worker.test.js, because the next county added will be
  * added the same way round.
  */
+/*
+ * The verified atlas counties, merged in behind the hand-written ones.
+ *
+ * Two sources with two different kinds of evidence. The entries above were
+ * each found by hand, confirmed against coordinates aimed at real streets, and
+ * carry a paragraph about what the points actually returned. The generated
+ * ones passed a stricter mechanical test -- a point taken from inside a parcel
+ * the server itself handed over -- but nobody has looked at them.
+ *
+ * HAND-WRITTEN WINS ON A CLASH, and both stay. Object spread puts these keys
+ * first, and candidateCounties preserves that order, so parcel.js tries the
+ * examined endpoint before the generated one. Where both cover a place -- Kent
+ * and Wayne are in both, from different services -- the second is a free
+ * fallback for the day the first goes down, which is the failure this registry
+ * has seen more than any other.
+ *
+ * The atlas keys are namespaced (`mi-kent`) and these are not (`kent`), so a
+ * clash cannot happen silently: they cannot collide by accident, only overlap
+ * by geography, which is the case worth keeping.
+ */
+const ALL_COUNTIES = { ...COUNTIES, ...ATLAS_COUNTIES };
+
+const ALL_BBOX = {
+  ...COUNTY_BBOX,
+  ...Object.fromEntries(
+    Object.entries(ATLAS_COUNTIES)
+      .filter(([, c]) => c.box)
+      .map(([key, c]) => [key, c.box])
+  ),
+};
+
 function candidateCounties(lng, lat) {
-  return Object.entries(COUNTY_BBOX)
+  return Object.entries(ALL_BBOX)
     .filter(([, [w, s, e, n]]) => lng >= w && lng <= e && lat >= s && lat <= n)
     .map(([key]) => key)
-    .filter((key) => COUNTIES[key]?.service);
+    .filter((key) => ALL_COUNTIES[key]?.service);
 }
 
 function isCovered(lng, lat) {
   return candidateCounties(lng, lat).length > 0;
 }
 
-export { COUNTIES, COUNTY_BBOX, candidateCounties, isCovered };
+/*
+ * TWO EXPORTS ON PURPOSE, and which one to reach for depends on the question.
+ *
+ * ALL_COUNTIES is for LOOKING A COUNTY UP -- parcel.js resolves whatever key
+ * candidateCounties nominated, and that includes generated ones, so anything
+ * serving a real request has to use this.
+ *
+ * COUNTIES stays the hand-written set, because the tools that walk it are
+ * asking about the entries a person curated: probe-counties.js queries every
+ * one of them on every preflight, and pointing it at the union would fire
+ * several hundred requests at public county servers before each deploy to
+ * re-check endpoints a workflow already verifies on its own.
+ */
+export { COUNTIES, ALL_COUNTIES, COUNTY_BBOX, candidateCounties, isCovered };

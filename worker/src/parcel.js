@@ -13,7 +13,10 @@
  * (user draws their own bounds), not as an error state.
  */
 
-import { COUNTIES, candidateCounties } from './counties.js';
+// ALL_COUNTIES, not COUNTIES: candidateCounties nominates generated atlas keys
+// as well as hand-written ones, and a nomination this cannot resolve is a
+// silently missing property line.
+import { ALL_COUNTIES, candidateCounties } from './counties.js';
 
 const REQUEST_TIMEOUT_MS = 6000;
 
@@ -129,7 +132,7 @@ function endpointsFor(cfg) {
 }
 
 async function queryCounty(countyKey, lng, lat) {
-  const cfg = COUNTIES[countyKey];
+  const cfg = ALL_COUNTIES[countyKey];
   if (!cfg || !cfg.service) return null;
 
   for (const endpoint of endpointsFor(cfg)) {

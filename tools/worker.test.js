@@ -40,6 +40,7 @@ import {
   COUNTIES, COUNTY_BBOX, candidateCounties, isCovered,
 } from '../worker/src/counties.js';
 import { queryCounty } from '../worker/src/parcel.js';
+import { ATLAS_COUNTIES } from '../worker/src/counties-atlas.js';
 import { readFile } from 'node:fs/promises';
 
 let failures = 0;
@@ -1110,6 +1111,56 @@ check('and a typed prompt is sent verbatim',
     .map(([name]) => name);
   check('all four verified Indiana points reach the statewide layer',
     missed.length === 0, missed.join(', ') || `${indianaPoints.length} points`);
+}
+
+/* ------------------------------------------------- the generated atlas half */
+/*
+ * counties-atlas.js is written by a workflow, so nothing about it is under
+ * review the way the hand-written entries are. These are the invariants that
+ * hold whether it is empty, freshly generated, or stale.
+ */
+{
+  const generated = Object.entries(ATLAS_COUNTIES);
+
+  /*
+   * EVERY GENERATED ENTRY NEEDS ITS OWN BOX. The hand-written half keeps boxes
+   * in a separate table and tolerates a box with no county yet; the generated
+   * half carries them inline, so an entry without one is unreachable and an
+   * entry whose box is transposed silently covers nothing.
+   */
+  const boxless = generated.filter(([, c]) => !Array.isArray(c.box) || c.box.length !== 4);
+  check('every generated county carries a four-corner box',
+    boxless.length === 0, boxless.map(([k]) => k).join(', ') || `${generated.length} entries`);
+
+  const flipped = generated.filter(([, c]) => {
+    if (!Array.isArray(c.box) || c.box.length !== 4) return false;
+    const [w, s, e, n] = c.box;
+    return !(w < e && s < n);
+  });
+  check('and none of them is inside out',
+    flipped.length === 0, flipped.map(([k]) => k).join(', ') || 'corners in order');
+
+  /*
+   * THE HAND-WRITTEN ENTRY MUST WIN. Both halves are merged into one lookup,
+   * and the examined endpoint -- the one with a paragraph saying what its test
+   * points actually returned -- has to be the one tried first. A generated key
+   * that collided with a curated one would silently replace it.
+   */
+  const collisions = generated.filter(([key]) => Object.hasOwn(COUNTIES, key));
+  check('no generated key can overwrite a hand-written county',
+    collisions.length === 0,
+    collisions.map(([k]) => k).join(', ') || 'namespaced apart');
+
+  /*
+   * Grand Rapids is in both halves once the atlas is generated -- Kent is
+   * hand-written here and in the atlas from a different service. The curated
+   * one has to come first in the candidate list, because parcel.js tries them
+   * in order and stops at the first that answers.
+   */
+  const grandRapids = candidateCounties(-85.6681, 42.9634);
+  check('and where both cover a place, the examined one is asked first',
+    !grandRapids.includes('mi-kent') || grandRapids.indexOf('kent') < grandRapids.indexOf('mi-kent'),
+    grandRapids.join(', ') || 'no candidates');
 }
 
 /* ------------------------------------------------- the retired-parcel filter */

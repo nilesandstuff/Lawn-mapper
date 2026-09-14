@@ -1,0 +1,67 @@
+name: 6. Verify atlas counties
+
+# Proves the imported parcel endpoints before the app claims any of them, and
+# rewrites worker/src/counties-atlas.js with whatever passed.
+#
+# Free to run: it issues read-only GETs against public county map servers, at a
+# deliberately gentle rate. No AI, no Replicate, nothing to spend.
+#
+# Takes a while -- roughly three requests per county across 160 of them.
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: 'One county key (mi-kent) or a state prefix (mi) for a spot check. Blank = all, and only a full run writes the file.'
+        required: false
+        default: ''
+      commit:
+        description: 'Commit the regenerated file back to this branch'
+        required: false
+        default: 'true'
+        type: choice
+        options: ['true', 'false']
+
+jobs:
+  verify:
+    name: Query every candidate county
+    runs-on: ubuntu-latest
+    # A spot check is quick; the full sweep is 160 counties at three requests
+    # each with a pause between, and the default 360 would cut it off partway
+    # through and commit a half-empty file.
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Verify
+        env:
+          ONLY: ${{ inputs.only }}
+        run: node tools/verify-atlas.js
+
+      # Only on a full run: verify-atlas.js writes nothing when ONLY is set,
+      # so committing then would push an unchanged file and a confusing commit.
+      - name: Commit the result
+        if: inputs.commit == 'true' && inputs.only == ''
+        run: |
+          if git diff --quiet -- worker/src/counties-atlas.js; then
+            echo "No change to counties-atlas.js."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add worker/src/counties-atlas.js
+          git commit -m "Regenerate the verified atlas counties
+
+          Written by tools/verify-atlas.js: every county here answered a point
+          query inside one of its own parcels with a parcel-sized polygon.
+
+          Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+          git push
