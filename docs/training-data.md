@@ -128,6 +128,24 @@ separate input** — an extra channel, or a box prompt to SAM. It is already
 stored on the row. That gives the model the context and the constraint, instead
 of trading one for the other.
 
+**Outside the property line, the model gets no opinion — not a wrong one.**
+
+This is the most important line in the file and the easiest to build backwards.
+Inside the boundary, every pixel is lawn or not-lawn and the model is marked on
+it. Outside the boundary, the model is marked on NOTHING: no credit, no blame,
+no answer attached.
+
+The tempting shortcut is to call everything outside the line "not lawn", because
+it makes the target a simple rectangle. That teaches the model that the
+neighbour's perfectly good grass is not grass — and the neighbour's grass is
+usually pressed right up against the edge this is all trying to get right. It
+would make the model worse at precisely the boundary that matters most.
+
+Doing it properly is also what makes the light split in Rule 4 defensible. Once
+the score stops at the property line, a neighbour's lawn in the corner of the
+picture carries no answer, so two overlapping frames are far less alike than
+their pixels suggest. Build this wrong and Rule 4 has to get much stricter.
+
 **The outline is a separate mask channel and is NEVER painted into the RGB.**
 An image with the answer drawn on it teaches a model to find the drawing, and at
 inference there is no drawing. This is the single most expensive mistake
@@ -143,25 +161,53 @@ only question is how that label is decided. Deciding it per row, by coin flip,
 is a random split. Deciding it per *place*, so everything nearby moves together,
 is what this rule asks for.
 
-The place is a **~4 km square block**, not a county. Counties were the first
-answer here and they are the wrong size for this corpus:
+### There is no single right strictness — pick the question first
 
-> Usage will cluster — a few hundred maps each in a handful of counties spread
-> across the country. Holding out one county then costs 20% of the data AND all
-> of that region's representation. The model never sees the region at all, so it
-> does badly there, and the test set ends up with a sample size of one or two
-> *regions* however many maps are in it. Swap which county was held out and the
-> number moves a long way. That is not a measurement.
+Three splits, three different questions, all legitimate. The mistake is
+reporting one and believing it answered another.
 
-A block is small enough that a county contains roughly a hundred of them, so a
-15% holdout costs no region anything, and large enough to separate the things
-that actually correlate — a subdivision runs 0.5–2 km.
+| split | the question it answers |
+|---|---|
+| random | a new lawn on a street we already have maps for |
+| **~1 km blocks** | **a new street in a town we already have maps for** |
+| leave out a county | a new part of the country entirely |
+
+The middle one is the everyday number, because it is what the app does most.
+The county one matters the first time somebody in an unmapped state opens the
+site; it stays a rotating check rather than a permanent holdout, below.
+
+### How strict, and why it is lighter than it first looked
+
+Two earlier drafts of this rule were stricter, and both overstated the danger in
+the same way — by treating shared PIXELS as shared ANSWERS.
+
+The pixel overlap is real and large: a 640 px frame is 142 m across at z18 while
+a suburban lot is 18–30 m, so two houses 25 m apart share about 82% of their
+picture. From that this file concluded a 4 km block was needed.
+
+But under Rule 3 the score stops at the property line. The neighbour's lawn in
+the corner of the frame has no answer attached to it — no credit, no blame,
+nothing learned. Shared pixels are not shared labels, and most of that 82%
+teaches nothing at all.
+
+What genuinely survives is smaller:
+
+- **The same lawn saved twice**, which is the one unambiguous leak and needs
+  only "everything at one address stays together".
+- **Houses on one street looking alike** — same grass, same mowing week, same
+  photograph on the same day. Real, but mostly this is the model *working*:
+  recognising grass is the job. It only becomes cheating if a model memorises a
+  specific picture, which is a second-order risk rather than the main event.
+
+So the block is **~1 km** (slippy z15): large enough that two frames of one
+street cannot land on opposite sides, small enough to cost nothing.
 
 | slippy zoom | ground size, lat 30° → 42° | |
 |---|---|---|
-| z12 | 8.5 → 7.3 km | bigger than it needs to be |
-| **z13** | **4.2 → 3.6 km** | **use this** |
-| z14 | 2.1 → 1.8 km | starts to touch subdivision scale |
+| z13 | 4.2 → 3.6 km | what two earlier drafts said; stricter than needed |
+| z14 | 2.1 → 1.8 km | fine, and the lever if edges ever look material |
+| **z15** | **1.1 → 0.9 km** | **use this** |
+| z17 | 265 → 227 m | too close to one frame — neighbours would straddle |
 
 The block id comes from `lng`/`lat` with `lngLatToWorld` in
 `public/lib/mercator.js`, so like `county` it needs no new data and applies to
@@ -174,42 +220,35 @@ slice of Rule 5 is then built by FILTERING the test blocks for corrections and
 tree cover, never by picking which blocks are test. Split honest, slice
 deliberate.
 
-A random split leaks, in two separate ways:
+What a random split actually costs, in order of how much it matters:
 
-1. **Neighbours — and it is the pixels, not the labels.** The obvious worry is
-   that a model learns a neighbour's answer, and that one is unfounded: an
-   unlabelled lawn in the background of somebody else's frame teaches nothing
-   about its own outline.
+1. **The same lawn twice — the one unambiguous leak.** A corpus row is keyed on
+   place *plus method* (`idFor(lng, lat, model, mode)`), so re-finishing one
+   garden in a different mode writes a second row of the same place, same
+   outline. A random split can put one in train and the other in test, which is
+   simply testing on training data. Not 82% alike — 100%. Any grouping by place
+   kills it, including a much smaller one than a block.
 
-   The real leak is that an example is a FRAME, and a frame is far bigger than
-   a lot:
+2. **Neighbours — real, and milder than it looks.** Houses on one street share
+   grass species, mowing week, sun angle and capture date, so a model that does
+   well on one will do well on the next. Under Rule 3 that is mostly the model
+   WORKING: it has learned what grass looks like, which is the job. It only
+   becomes cheating if it has memorised a particular photograph — a genuine but
+   second-order risk, and what the ~1 km block is for.
 
-   | | ground width of one 640 px frame |
-   |---|---|
-   | z18 | 142 m (lat 42) → 165 m (lat 30) |
-   | z19 | 71 m → 83 m |
-
-   A suburban lot is 18–30 m wide. So at z18 **two houses 25 m apart share
-   about 82% of their pixels** — not similar pixels, the same ones, the same
-   trees and driveways from the same capture. Put one in train and the other
-   in test and 82% of the test image was in the training set. The model will
-   segment it beautifully and that tells you nothing about a street it has
-   never seen, which is the only thing a test score is for.
-2. **The same lawn twice.** A corpus row is keyed on place *plus method*
-   (`idFor(lng, lat, model, mode)`), so re-finishing the same lawn in a
-   different mode writes a second row of the same garden. A random split can
-   put one in train and the other in test. A block split cannot — same
-   coordinates, same block. Cropping does nothing for this one: those two
-   frames are not 82% the same, they are 100% the same.
+   What it is NOT is the neighbour's answer leaking. Their lawn appears in the
+   frame with no label attached and teaches nothing about its own outline.
 
 Two leaks survive a block split, and neither earns much machinery:
 
-- **Block edges.** Two houses either side of one are metres apart. It affects a
-  handful of maps; buffer them out if it ever looks material.
-- **Imagery vintage.** A survey flight line covers far more than 4 km, so train
-  and test blocks in one county often share a capture date. Sharing a date is
-  not the same as memorising a lawn, and the county check below is exactly what
-  catches it if it matters.
+- **Block edges.** Two houses either side of one are metres apart, and at ~1 km
+  a larger share of a block is near an edge than at 4 km. Drop to z14 or buffer
+  the edges if it ever looks material — but it is the same mild neighbour effect
+  as above, not a new one.
+- **Imagery vintage.** A survey flight line covers far more than a kilometre, so
+  train and test blocks in one county usually share a capture date. This one
+  cannot be blocked away at any size, which is part of why the county check
+  below exists.
 
 ### Three buckets, not two
 
@@ -352,7 +391,7 @@ early rather than discovering at training time:
   Testable once there is enough data; guessing now buys nothing.
 - **Whether cross-capture rows** (`google`, `esri`) earn their place in training
   at all. Keep and flag them until there is enough data to measure it.
-- **The block zoom and the hash rule.** z13 and a plain hash of the block id are
-  the defaults above; both get written into this file when fixed, before the
-  first training run, and not revisited afterwards. A smaller zoom is the lever
-  to reach for if block-edge leakage ever looks material.
+- **The block zoom and the hash rule.** z15 (~1 km) and a plain hash of the
+  block id are the defaults above; both get written into this file when fixed,
+  before the first training run, and not revisited afterwards. z14 is the lever
+  to reach for if edge effects ever look material.
