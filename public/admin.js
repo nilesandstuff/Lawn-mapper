@@ -87,14 +87,15 @@ function renderTiles(o) {
     ['Accounts', o.users, `${n(o.sessions)} signed in`],
     ['Saved maps', o.maps, ''],
     /*
-     * The training corpus, with the number that actually matters underneath.
+     * The training corpus: how much there is, and how much of the scarce kind.
      *
      * "Corrected" counts the finished maps where a person disagreed with the
-     * detector -- drawn by hand, or moved by more than a tenth. Those are the
-     * ones a future model could learn something from; a map that accepted the
-     * AI's outline unchanged only teaches it to be the AI. So the big number
-     * says how fast the pile grows and the small one says how fast it gets
-     * USEFUL, and they are very different rates.
+     * detector -- drawn by hand, or moved by more than a tenth. Both kinds are
+     * wanted. The accepted ones are most of what a real model would meet and
+     * are where its sense of an ordinary lawn comes from; the corrected ones
+     * are the only evidence of what the detector gets wrong, and they arrive
+     * far more slowly. Two rates, both worth watching, which is why the tile
+     * shows the pile and the scarce part of it rather than one number.
      */
     ['Training maps', o.corpus?.total, corpusNote(o.corpus)],
     // Bought credits only. Daily allowances expire nightly whether or not

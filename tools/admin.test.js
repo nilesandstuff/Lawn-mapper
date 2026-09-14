@@ -172,14 +172,17 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
 
 /* ------------------------------------------------------- the training corpus */
 /*
- * THE COUNT THAT FORECASTS ANYTHING IS `corrected`, NOT `total`.
+ * TWO RATES, COUNTED SEPARATELY.
  *
- * A finished map whose outline is the detector's own output, accepted
- * unchanged, is a recording of the detector. Training on a pile of those
- * teaches a model to reproduce the thing it was meant to beat, so counting
- * them towards "enough data to train on" would forecast a milestone that
- * arrives and turns out to be worthless. The distinction is asserted here
- * rather than left to the SQL reading plausibly.
+ * Finished maps arrive far faster than disagreements with the detector do,
+ * and a future training set wants both: the accepted ones are most of what a
+ * model would meet and are where its sense of an ordinary lawn comes from,
+ * while the corrected ones are the only evidence of what the detector gets
+ * wrong. One number cannot say how much of each there is, so the split is
+ * asserted here rather than left to the SQL reading plausibly.
+ *
+ * The ten-per-cent line is the interesting part and the easiest to get
+ * subtly wrong, so a nudge and a real correction are both fed in.
  */
 {
   const { env, ownerToken } = await world();
@@ -215,9 +218,9 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
   const { body } = await ask(env, ownerToken, 'overview');
   check('the console counts every finished map', body.corpus.total === 4,
     JSON.stringify(body.corpus));
-  check('but counts only the ones a person actually disagreed with',
+  check('and counts separately the ones a person disagreed with',
     body.corpus.corrected === 2,
-    'the accepted one and the two-per-cent nudge teach a model to be the detector');
+    'the accepted map and the two-per-cent nudge are kept, just not counted here');
   check('and a hand-drawn map counts, having no detection to agree with',
     body.corpus.corrected === 2,
     'detected_sq_ft IS NULL is a different kind of example, not a missing one');

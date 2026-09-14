@@ -77,14 +77,28 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
        * The training corpus: how many finished maps are banked, and how many
        * of them are worth anything.
        *
-       * THREE NUMBERS BECAUSE THE FIRST ONE ALONE MISLEADS. A row whose
-       * outline is the detector's own output, accepted unchanged, teaches a
-       * future model to imitate the detector -- train on a corpus of those and
-       * the ceiling is the thing being replaced. The rows that carry
-       * information are the ones where a person DISAGREED: drawn from scratch
-       * (no detected_sq_ft at all), or corrected far enough to move the
-       * number. So `corrected` is the count that actually forecasts when there
-       * is enough to train on, and `total` is the one that grows fastest.
+       * THREE NUMBERS BECAUSE THEY ARE SCARCE IN DIFFERENT WAYS -- not because
+       * one kind of row is worth having and the other is not. An earlier
+       * version of this comment claimed a map accepted unchanged only teaches
+       * a model to imitate the detector, and that is wrong twice over: a
+       * student trained on a teacher's own labels routinely beats the teacher
+       * once the task is narrow enough, and a training set made only of the
+       * detector's FAILURES teaches a model that every lawn is a hard case.
+       * Accepted maps are most of the distribution and the calibration comes
+       * from them.
+       *
+       * What is true is narrower. Scattered label error averages out, so more
+       * accepted rows are free. DIRECTIONAL error does not -- the detector's
+       * known habit of overshooting a tree line by about a quarter is wrong
+       * the same way every time, and no quantity of quietly accepted rows will
+       * cancel it. Only rows where somebody disagreed carry that signal, and
+       * acceptance is the weaker evidence anyway: it can mean the trace was
+       * right, or that nobody looked closely at it.
+       *
+       * So `total` is how much there is and `corrected` is how much of the
+       * scarce kind -- the hard cases that fix a known fault, and the clean
+       * measure of whether it was fixed. Both are wanted; they simply do not
+       * arrive at the same rate.
        *
        * Ten per cent is the line between a correction and a nudge. Dragging a
        * vertex a few feet is somebody tidying an edge; a tenth of the lawn is
