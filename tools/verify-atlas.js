@@ -55,8 +55,20 @@ const TIMEOUT_MS = 15000;
 const PAUSE_MS = 120;
 /** A residential or small rural parcel, matching discover-counties.js. */
 const PLAUSIBLE_ACRES = { min: 0.01, max: 160 };
-/** How many sample parcels to try before giving up on a county. */
-const SAMPLES = 5;
+/*
+ * How many sample parcels to try before giving up on a county.
+ *
+ * Raised from 5 by the first spot check, which failed Kent -- a county this
+ * app has served correctly for months. Its atlas endpoint is named
+ * ParcelsWithCondos, and `where=1=1` hands back records in whatever order the
+ * server keeps them, which is usually oldest object id first. A run of condo
+ * records at the front of the table is a run of stacked or degenerate
+ * footprints, and five of those in a row look exactly like a broken layer.
+ *
+ * Twelve samples costs twelve small requests on the counties that need them
+ * and nothing on the ones that pass first try.
+ */
+const SAMPLES = 12;
 
 const only = (process.env.ONLY || '').trim();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -159,17 +171,31 @@ async function verify(c) {
   await sleep(PAUSE_MS);
   if (!samples.length) return { ok: false, why: 'returned no parcels' };
 
+  /*
+   * SAY WHY EACH SAMPLE FAILED, not just that they all did.
+   *
+   * The first spot check reported "no sample point returned a parcel-sized
+   * polygon" for Kent and that sentence covers four different faults -- bad
+   * geometry, a point that missed, a polygon too small, one too big -- which
+   * need four different responses. The same blankness cost a run on Champaign
+   * and on Indiana. A tally is cheap and turns a re-run into a diagnosis.
+   */
+  const tally = { nogeom: 0, missed: 0, tiny: 0, huge: 0 };
+  let biggest = 0;
+
   for (const f of samples) {
     const geometry = esriToGeoJSON(f.geometry);
     const point = geometry && insidePoint(geometry);
-    if (!point) continue;
+    if (!point) { tally.nogeom++; continue; }
 
     const hit = await parcelAt(c.service, c.layer, point);
     await sleep(PAUSE_MS);
-    if (!hit) continue;
+    if (!hit) { tally.missed++; continue; }
 
     const { acres } = measure(hit.geometry);
-    if (acres < PLAUSIBLE_ACRES.min || acres > PLAUSIBLE_ACRES.max) continue;
+    biggest = Math.max(biggest, acres);
+    if (acres < PLAUSIBLE_ACRES.min) { tally.tiny++; continue; }
+    if (acres > PLAUSIBLE_ACRES.max) { tally.huge++; continue; }
 
     /*
      * Confirm the named fields exist on a record that really came back, rather
@@ -188,7 +214,17 @@ async function verify(c) {
       },
     };
   }
-  return { ok: false, why: 'no sample point returned a parcel-sized polygon' };
+  const parts = [
+    tally.nogeom ? `${tally.nogeom} with no usable geometry` : null,
+    tally.missed ? `${tally.missed} whose own point found nothing` : null,
+    tally.tiny ? `${tally.tiny} under ${PLAUSIBLE_ACRES.min} ac` : null,
+    tally.huge ? `${tally.huge} over ${PLAUSIBLE_ACRES.max} ac` : null,
+  ].filter(Boolean);
+  return {
+    ok: false,
+    why: `${samples.length} samples, none parcel-sized: ${parts.join(', ')}`
+      + (biggest ? ` (largest ${Math.round(biggest * 100) / 100} ac)` : ''),
+  };
 }
 
 const imported = JSON.parse(readFileSync(resolve(here, 'atlas-candidates.json'), 'utf8'));

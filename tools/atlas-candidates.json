@@ -557,6 +557,18 @@
       "fallbacks": []
     },
     {
+      "key": "ga-chatham",
+      "name": "Chatham County, GA",
+      "fips": "13051",
+      "service": "https://pub.sagis.org/arcgis/rest/services/OpenData/Parcels/FeatureServer",
+      "layer": 27,
+      "fields": {
+        "pin": "PIN",
+        "address": "PropAddress_Full"
+      },
+      "fallbacks": []
+    },
+    {
       "key": "hi-kauai",
       "name": "Kauai County, HI",
       "fips": "15007",
@@ -649,6 +661,18 @@
       "fields": {
         "pin": "PIN",
         "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "il-mchenry",
+      "name": "McHenry County, IL",
+      "fips": "17111",
+      "service": "https://services1.arcgis.com/6iYC5AXXYapRVNzl/arcgis/rest/services/McHenry_County_TaxParcels/FeatureServer",
+      "layer": 0,
+      "fields": {
+        "pin": "ParcelNumber",
+        "address": "SiteAddress"
       },
       "fallbacks": []
     },
@@ -880,6 +904,18 @@
       "fields": {
         "pin": "PIN",
         "address": "SITEADDRESS"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "mi-wayne",
+      "name": "Wayne County, MI",
+      "fips": "26163",
+      "service": "https://services1.arcgis.com/b6rkZNtCd6Mx2gvB/arcgis/rest/services/Wayne_County_Parcel_Shape_File/FeatureServer",
+      "layer": 0,
+      "fields": {
+        "pin": "packedParc",
+        "address": "propstreet"
       },
       "fallbacks": []
     },
@@ -1561,6 +1597,30 @@
       "fields": {
         "pin": "parcelid",
         "address": "address"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "pa-montgomery",
+      "name": "Montgomery County, PA",
+      "fips": "42091",
+      "service": "https://services1.arcgis.com/kOChldNuKsox8qZD/arcgis/rest/services/Montgomery_County_Parcels/FeatureServer",
+      "layer": 6,
+      "fields": {
+        "pin": "TAXPIN",
+        "address": "LOCATION1"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "pa-bucks",
+      "name": "Bucks County, PA",
+      "fips": "42017",
+      "service": "https://services3.arcgis.com/SP47Tddf7RK32lBU/arcgis/rest/services/Bucks_County_Parcels/FeatureServer",
+      "layer": 0,
+      "fields": {
+        "pin": "PARCEL_NUM",
+        "address": "ADDRESS"
       },
       "fallbacks": []
     },

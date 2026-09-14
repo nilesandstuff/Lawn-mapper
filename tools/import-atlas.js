@@ -70,10 +70,23 @@ try {
  * good for, and a non-public licence is not ours to redistribute in a config
  * file.
  */
+/*
+ * `public` and `open-data` both mean a county publishing its parcels for
+ * anyone to query, which is the only thing this app does with them. The first
+ * cut here took `public` alone and silently dropped Wayne County, Michigan --
+ * 1.7 million people, already shipped in counties.js from this very
+ * organisation -- because its licence string says open-data. Across the whole
+ * atlas the split is 168 public, 5 open-data, 1 unknown.
+ *
+ * `unknown` is left out. One endpoint is not worth guessing on somebody
+ * else's behalf about terms nobody has read.
+ */
+const OPEN = new Set(['public', 'open-data']);
+
 const usable = (e) =>
   e.url
   && e.supportsQuery !== false
-  && (e.license === undefined || e.license === 'public')
+  && (e.license === undefined || OPEN.has(e.license))
   && /\/(Map|Feature)Server\/\d+$/i.test(e.url);
 
 /*
