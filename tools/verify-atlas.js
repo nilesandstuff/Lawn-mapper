@@ -51,6 +51,12 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
 
 const TIMEOUT_MS = 15000;
+/*
+ * The one request that walks every record in the layer, so it gets its own
+ * budget. See extentOf: a county with a million parcels cannot answer
+ * "what is your extent" inside a timeout meant for reading metadata.
+ */
+const SCAN_TIMEOUT_MS = 60000;
 /** Between requests. These are small public assets, not something to hammer. */
 const PAUSE_MS = 120;
 /** A residential or small rural parcel, matching discover-counties.js. */
@@ -73,10 +79,10 @@ const SAMPLES = 12;
 const only = (process.env.ONLY || '').trim();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function getJson(url) {
+async function getJson(url, timeout = TIMEOUT_MS) {
   try {
     const res = await fetch(url, {
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeout),
       headers: { Accept: 'application/json' },
     });
     if (!res.ok) return { error: `HTTP ${res.status}` };
@@ -91,29 +97,59 @@ async function getJson(url) {
 
 const describe = (e) => (typeof e === 'string' ? e : e?.message || JSON.stringify(e).slice(0, 120));
 
-/**
- * Where this layer actually holds data, in WGS84.
+/*
+ * ROUNDED OUTWARD, never inward.
  *
- * Asked of the server rather than converted from the layer metadata's own
- * spatial reference, because that arrives in whatever projection the county
- * uses -- State Plane feet, Web Mercator -- and reprojecting by hand is a
- * whole class of silent error this app has avoided everywhere else by making
- * ArcGIS do it. outSR=4326 is the same trick parcel.js uses on every query.
+ * A bounding box decides which counties an address is offered to, so shrinking
+ * one drops real addresses along its edge -- silently, and only for the people
+ * who live there. Three decimals is about 110 m, so a box rounded the ordinary
+ * way loses up to that on every side. Floors and ceilings can only ever give
+ * the box away, which is the harmless direction: a slightly large box costs one
+ * query that returns nothing.
  */
 const tidy = (e) => [
-  Math.round(e.xmin * 1000) / 1000, Math.round(e.ymin * 1000) / 1000,
-  Math.round(e.xmax * 1000) / 1000, Math.round(e.ymax * 1000) / 1000,
+  Math.floor(e.xmin * 1000) / 1000, Math.floor(e.ymin * 1000) / 1000,
+  Math.ceil(e.xmax * 1000) / 1000, Math.ceil(e.ymax * 1000) / 1000,
 ];
 
-const sane = (e) =>
-  e
-  && [e.xmin, e.ymin, e.xmax, e.ymax].every(Number.isFinite)
-  && e.xmax > e.xmin && e.ymax > e.ymin
-  // A layer spanning half the planet is not a county; something is wrong with
-  // its coordinates and a box that wide would nominate it for everything.
-  && e.xmax - e.xmin <= 20 && e.ymax - e.ymin <= 20
-  && Math.abs(e.xmin) <= 180 && Math.abs(e.xmax) <= 180
-  && Math.abs(e.ymin) <= 90 && Math.abs(e.ymax) <= 90;
+/*
+ * The smallest a county's data can plausibly span, in degrees. About 550 m.
+ *
+ * Chittenden County, Vermont shipped with [-71.802, 44.786, -71.801, 44.786]:
+ * eighty metres wide and, after rounding, exactly zero tall. It passed because
+ * the old check ran on the RAW extent and the rounding collapsed it
+ * afterwards -- so the stored box was never the thing validated.
+ *
+ * Both halves are fixed. Validation now runs on the rounded box, because that
+ * is what ships; and a floor is imposed, because a degenerate extent is worse
+ * than a missing county. A county with a box nothing falls inside is verified,
+ * listed, and unreachable -- coverage on paper that never answers.
+ *
+ * 0.005 is far below any real county (the smallest in the US is several km
+ * across) and far above the collapsed boxes this is here to catch.
+ */
+const MIN_SPAN_DEG = 0.005;
+
+const sane = (box) => {
+  if (!Array.isArray(box) || box.length !== 4 || !box.every(Number.isFinite)) return false;
+  const [w, s, e, n] = box;
+  return w < e && s < n
+    // A layer spanning half the planet is not a county; something is wrong
+    // with its coordinates and a box that wide would nominate it for
+    // everything.
+    && e - w <= 20 && n - s <= 20
+    && e - w >= MIN_SPAN_DEG && n - s >= MIN_SPAN_DEG
+    && Math.abs(w) <= 180 && Math.abs(e) <= 180
+    && Math.abs(s) <= 90 && Math.abs(n) <= 90;
+};
+
+/** An Esri envelope, rounded and checked in the order they actually matter. */
+const boxFrom = (envelope) => {
+  if (!envelope || ![envelope.xmin, envelope.ymin, envelope.xmax, envelope.ymax]
+    .every(Number.isFinite)) return null;
+  const box = tidy(envelope);
+  return sane(box) ? box : null;
+};
 
 /**
  * Web Mercator to WGS84, for servers that ignore outSR on an extent query.
@@ -168,20 +204,42 @@ async function extentOf(service, layer) {
   const raw = meta?.extent;
   const wkid = raw?.spatialReference?.latestWkid || raw?.spatialReference?.wkid;
   if (raw && Number.isFinite(wkid)) {
-    if (wkid === 4326 && sane(raw)) return { box: tidy(raw) };
+    if (wkid === 4326) {
+      const box = boxFrom(raw);
+      if (box) return { box };
+    }
     if (MERCATOR.has(wkid)) {
-      const converted = fromMercator(raw);
-      if (sane(converted)) return { box: tidy(converted) };
+      const box = boxFrom(fromMercator(raw));
+      if (box) return { box };
     }
   }
   await sleep(PAUSE_MS);
 
-  // 2. Make the server do the projection, and the scan, only if it must.
+  /*
+   * 2. Make the server do the projection, and the scan, only if it must.
+   *
+   * GIVEN A MINUTE, because this is the one request here that is expensive by
+   * nature and the timeout was costing real counties. Reordering to try the
+   * metadata first recovered only one -- the failures still said "extent
+   * query: timed out", which means the metadata ANSWERED and its extent was
+   * simply in a projection this will not convert. State Plane, almost
+   * certainly, on Cook, Harris, three in New Jersey and three in North
+   * Carolina.
+   *
+   * So the scan is genuinely needed for these, and fifteen seconds is not
+   * enough to walk 1.8 million parcels. Converting State Plane by hand instead
+   * would mean dozens of projections and a class of silent error this app
+   * refuses everywhere else; waiting is the cheaper correctness.
+   *
+   * It only costs time on layers that get this far, and only on a workflow
+   * somebody runs by hand.
+   */
   const q = new URLSearchParams({
     where: '1=1', returnExtentOnly: 'true', outSR: '4326', f: 'json',
   });
-  const query = await getJson(`${service}/${layer}/query?${q}`);
-  if (sane(query?.extent)) return { box: tidy(query.extent) };
+  const query = await getJson(`${service}/${layer}/query?${q}`, SCAN_TIMEOUT_MS);
+  const scanned = boxFrom(query?.extent);
+  if (scanned) return { box: scanned };
 
   const why = meta?.error
     ? `layer metadata: ${describe(meta.error)}`

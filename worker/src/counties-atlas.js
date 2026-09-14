@@ -987,14 +987,6 @@ const ATLAS_COUNTIES = {
     fields: {"pin":"PARCEL_ID","address":null},
     box: [-112.493,41.077,-111.42,41.434],
   },
-  'vt-chittenden': {
-    name: "Chittenden County, VT",
-    fips: "50007",
-    service: "https://services1.arcgis.com/BkFxaEFNwHqX3tAw/arcgis/rest/services/FS_VCGI_VTPARCELS_WM_NOCACHE_v2/FeatureServer",
-    layer: 1,
-    fields: {"pin":null,"address":"E911ADDR"},
-    box: [-71.802,44.786,-71.801,44.786],
-  },
   'va-fairfax': {
     name: "Fairfax County, VA",
     fips: "51059",
