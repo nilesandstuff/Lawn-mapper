@@ -248,9 +248,74 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
   const { status, body } = await ask(env, ownerToken, 'overview');
   check('a missing corpus table does not break the overview', status === 200);
   check('the rest of the numbers still arrive', body.users === 2, JSON.stringify(body.users));
-  check('and the corpus reports null, which the page words differently from zero',
-    body.corpus === null,
-    '"not recording" and "none yet" call for opposite reactions');
+  check('and it says WHY rather than going quiet',
+    typeof body.corpus?.unavailable === 'string' && /corpus/i.test(body.corpus.unavailable),
+    body.corpus?.unavailable);
+}
+
+/* ------------------------------- the column that was missing for six deploys */
+/*
+ * THE EXACT SHAPE OF THE LIVE FAULT, reproduced.
+ *
+ * `corpus` shipped with sixteen columns. image_key was added to the CREATE
+ * four hours later, and CREATE TABLE IF NOT EXISTS does nothing whatever to a
+ * table that already exists -- so six deploys reported "schema applied" while
+ * the live table stayed at sixteen columns. Rows kept saving, because the
+ * INSERT names only the original columns. Reading broke, and said nothing:
+ * the count selected image_key, got "no such column", and the catch turned a
+ * complete diagnosis into the word "null".
+ *
+ * This asserts the console now hands back the database's own sentence, because
+ * that sentence is the entire difference between a five-minute fix and an
+ * afternoon of reading deploy logs.
+ */
+{
+  const { env, ownerToken } = await world();
+  env.DB.prepare('DROP TABLE corpus').run();
+  env.DB.prepare(`CREATE TABLE corpus (
+    id TEXT PRIMARY KEY, at TEXT NOT NULL, lng REAL, lat REAL, county TEXT,
+    provider TEXT, model TEXT, mode TEXT, hand_edited INTEGER NOT NULL DEFAULT 0,
+    detected_sq_ft INTEGER, square_feet INTEGER, parcel_sq_ft INTEGER,
+    frame TEXT, parcel TEXT, shapes TEXT NOT NULL, created_at TEXT NOT NULL
+  )`).run();
+
+  const { status, body } = await ask(env, ownerToken, 'overview');
+  check('the old sixteen-column table does not break the console', status === 200);
+  check('and the console names the missing column',
+    /no such column/i.test(body.corpus?.unavailable || '')
+      && /image_key/.test(body.corpus?.unavailable || ''),
+    body.corpus?.unavailable);
+
+  /*
+   * And the migration fixes it -- the same two statements ci-prepare runs,
+   * applied here to prove they turn the broken table into a readable one.
+   */
+  const { parseMigrations, alreadyApplied } = await import('./ci-prepare.js');
+  const { readFileSync } = await import('node:fs');
+  const sql = parseMigrations(
+    readFileSync(new URL('../worker/migrations.sql', import.meta.url), 'utf8')
+  );
+  check('migrations.sql carries an ALTER for every column added since creation',
+    sql.some((s) => /corpus ADD COLUMN image_key/i.test(s))
+      && sql.some((s) => /corpus ADD COLUMN image_provider/i.test(s))
+      && sql.some((s) => /ledger ADD COLUMN units/i.test(s)),
+    sql.join(' | '));
+
+  let already = 0;
+  for (const statement of sql) {
+    // AWAITED inside the try: run() is async, so without this the rejection
+    // sails straight past a synchronous catch and lands as an unhandled one.
+    try { await env.DB.prepare(statement).run(); } catch (e) {
+      if (alreadyApplied(e.message)) already++; else throw e;
+    }
+  }
+  check('and "duplicate column name" is read as already done, not as a failure',
+    already === 1, `ledger.units was already current; ${already} statement(s) skipped`);
+
+  const after = await ask(env, ownerToken, 'overview');
+  check('after the migration the count reads clean',
+    after.body.corpus?.total === 0 && after.body.corpus?.unavailable === undefined,
+    JSON.stringify(after.body.corpus));
 }
 
 /* --------------------------------------------------------- the price list */

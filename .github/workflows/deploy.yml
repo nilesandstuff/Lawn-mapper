@@ -286,5 +286,15 @@ jobs:
             echo "record their outline; only the aerial photograph is skipped."
             echo "The reason is in the \"Prepare wrangler.toml\" step above."
           fi
+          # A database change that did not land is the quietest failure this
+          # project has had: six deploys reported success while a column was
+          # missing and a feature reported itself switched off. It gets said
+          # here, where it cannot be scrolled past.
+          if [ -n "$DB_TROUBLE" ]; then
+            echo
+            echo "::warning::Database not fully up to date: $DB_TROUBLE"
+            echo "Some features will look switched off rather than broken."
+            echo "The detail is in the \"Prepare wrangler.toml\" step above."
+          fi
           echo
           echo "Open it on your phone and measure your own address."

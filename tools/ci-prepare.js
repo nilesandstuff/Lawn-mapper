@@ -30,6 +30,7 @@ const PLACEHOLDER = 'REPLACE_WITH_KV_NAMESPACE_ID';
 const DB_PLACEHOLDER = 'REPLACE_WITH_D1_DATABASE_ID';
 const DB_NAME = 'lawn-mapper';
 const BUCKET_NAME = 'lawn-mapper-corpus';
+const MIGRATIONS = new URL('../worker/migrations.sql', import.meta.url);
 
 /* ------------------------------------------------------- pure helpers */
 
@@ -393,6 +394,80 @@ function migrate() {
 }
 
 /**
+ * Split worker/migrations.sql into single statements.
+ *
+ * One at a time, because they are not collectively idempotent: SQLite has no
+ * ADD COLUMN IF NOT EXISTS, so the second run of any of them is an error, and
+ * a --file execution would abort at the first one and skip every ALTER after
+ * it. Run separately, each can fail harmlessly on its own.
+ *
+ * The parsing is deliberately dumb -- strip line comments, split on
+ * semicolons -- because the file is deliberately dumb: ALTER TABLE ADD COLUMN
+ * and nothing else, which cannot contain a semicolon in a string literal or
+ * any other thing that would need a real parser.
+ */
+export function parseMigrations(text) {
+  return String(text)
+    .split('\n')
+    .map((line) => line.replace(/--.*$/, ''))
+    .join('\n')
+    .split(';')
+    .map((s) => s.trim().replace(/\s+/g, ' '))
+    .filter(Boolean);
+}
+
+/**
+ * Did this statement fail because it had already been applied?
+ *
+ * The same rule as an R2 bucket that already exists: the state we wanted is
+ * the state we have, so the error is the success. SQLite says "duplicate
+ * column name: x" and that is the ONLY error treated this way -- a typo in a
+ * table name, a missing table, a syntax error all still count as failures,
+ * because a migration that never lands must not report that it did.
+ */
+export const alreadyApplied = (why) => /duplicate column name/i.test(String(why));
+
+/**
+ * Add columns to tables that already exist.
+ *
+ * Returns a short human summary, or null when there is nothing to do. A
+ * genuine failure is returned as text rather than thrown: a column that will
+ * not add should not take the whole site offline, but it must be SAID -- this
+ * bug class is invisible precisely because everything reports success.
+ */
+function applyMigrations() {
+  let statements;
+  try {
+    statements = parseMigrations(readFileSync(MIGRATIONS, 'utf8'));
+  } catch {
+    return null;                       // no migrations file is a fine state
+  }
+  if (!statements.length) return null;
+
+  let added = 0;
+  let already = 0;
+  const failed = [];
+
+  for (const sql of statements) {
+    try {
+      wrangler(['d1', 'execute', DB_NAME, '--remote', `--command=${sql}`, '--yes']);
+      added++;
+      console.log(`  + ${sql}`);
+    } catch (err) {
+      const why = firstLine(err);
+      if (alreadyApplied(why)) { already++; continue; }
+      failed.push(`${sql} (${why})`);
+    }
+  }
+
+  for (const f of failed) console.log(`  FAILED ${f}`);
+  const summary = `${added} added, ${already} already there`
+    + (failed.length ? `, ${failed.length} FAILED` : '');
+  console.log(`  ${summary}`);
+  return { ok: failed.length === 0, summary };
+}
+
+/**
  * What the tool actually said, not just its first line.
  *
  * Wrangler's own first line for a permissions failure is "A request to the
@@ -432,14 +507,28 @@ function main() {
      * a placeholder and fails in a way that reads like a missing database.
      */
     let schema = false;
+    let migrations = null;
     if (dbId) {
       console.log('Applying the account schema…');
       schema = migrate();
+      /*
+       * AFTER the schema, and only if it applied. schema.sql creates whatever
+       * is missing; migrations.sql adds columns to what was already there. A
+       * table created a moment ago by the line above is already current, so
+       * every ALTER against it reports "duplicate column name" and is counted
+       * as done -- which is why the order is safe either way round for a fresh
+       * database, and only correct in this order for an old one.
+       */
+      if (schema) {
+        console.log('Adding any columns older databases are missing…');
+        migrations = applyMigrations();
+      }
     }
 
     console.log(`\nwrangler.toml prepared:`);
     console.log(`  KV namespace : ${kvId}`);
     console.log(`  D1 database  : ${dbId ? `${dbId}${schema ? '' : ' (schema NOT applied)'}` : '(none -- accounts are off)'}`);
+    if (migrations) console.log(`  columns      : ${migrations.summary}`);
     console.log(`  R2 bucket    : ${bucket ? BUCKET_NAME : '(none -- training images are off)'}`);
     console.log(`  custom domain: ${customDomain || '(none -- will deploy to *.workers.dev)'}`);
 
@@ -458,6 +547,16 @@ function main() {
      */
     if (process.env.GITHUB_ENV) {
       appendFileSync(process.env.GITHUB_ENV, `CORPUS_BUCKET=${bucket ? BUCKET_NAME : ''}\n`);
+      /*
+       * Only when something went wrong, because the end of the log is scarce
+       * space and "3 already there" is not news. A failed column change is:
+       * it is the difference between a feature that works and one that reports
+       * itself switched off, and this whole file exists because that failure
+       * was silent for six deploys.
+       */
+      const trouble = !schema ? 'the schema did not apply'
+        : migrations && !migrations.ok ? migrations.summary : '';
+      appendFileSync(process.env.GITHUB_ENV, `DB_TROUBLE=${trouble}\n`);
     }
   } catch (err) {
     console.error(`\nFAIL  ${firstLine(err)}\n`);

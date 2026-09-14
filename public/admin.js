@@ -57,13 +57,20 @@ function ago(iso) {
 /**
  * The line under the training-maps tile.
  *
- * `null` is a real answer and not zero: the server sends it when the corpus
- * table could not be read at all, and printing "0 with a photo" there would
- * report an empty corpus rather than an unreadable one. Those call for
- * opposite reactions, so they get different words.
+ * THREE STATES, NOT TWO, and conflating any of them wastes somebody's
+ * afternoon. An empty corpus and an unreadable one look identical from here --
+ * both show no maps -- but one means "nobody has finished a map yet" and the
+ * other means "go and fix the database", which are opposite reactions.
+ *
+ * So the unreadable case carries the database's own words. "no such column:
+ * image_key" is a complete diagnosis; "not recording" is a mystery, and it was
+ * a mystery for six deploys while the corpus quietly filled up behind it.
+ *
+ * The bare `!c` is the third state: a server too old to send the field at all.
  */
 function corpusNote(c) {
   if (!c) return 'not recording';
+  if (c.unavailable) return `cannot read the corpus: ${c.unavailable}`;
   if (!c.total) return 'finished maps, kept for training';
   return `${n(c.withImage)} with a photo · ${n(c.corrected)} corrected`;
 }

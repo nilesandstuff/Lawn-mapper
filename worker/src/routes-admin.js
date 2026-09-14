@@ -111,8 +111,19 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
        * console is where you go when something is wrong, including a
        * half-applied schema; losing accounts, credits and the AI spend because
        * a nice-to-have count referenced a missing table would be the worst
-       * possible trade. A null here renders as "not recording" and nothing
-       * else on the page notices.
+       * possible trade.
+       *
+       * BUT THE CATCH CARRIES THE REASON OUT, which the first version did not,
+       * and that cost an afternoon. It returned null, the page said "not
+       * recording", and the actual message -- "no such column: image_key", a
+       * complete diagnosis in four words -- was thrown away at the point it
+       * was caught. Swallowing an error to protect a page is right; swallowing
+       * what it said is not, and this is the one page whose whole job is to
+       * tell its owner what is wrong.
+       *
+       * Safe to show here because there is nothing else on this route: it is
+       * administrator-only, and the reader is the person who deployed the
+       * database the message is about.
        */
       env.DB.prepare(
         `SELECT COUNT(*) total,
@@ -123,7 +134,9 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
                    AND ABS(square_feet - detected_sq_ft) * 10 >= detected_sq_ft THEN 1
                   ELSE 0 END), 0) corrected
          FROM corpus`
-      ).first().catch(() => null),
+      ).first()
+        .then((row) => ({ ok: true, row }))
+        .catch((e) => ({ ok: false, why: String(e?.message || e).slice(0, 200) })),
     ]);
 
     /* Passes per day, which is the shape of the Replicate bill. */
@@ -139,10 +152,16 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
       sessions: live.n,
       creditsOutstanding: owed.n,
       // Renamed out of SQL's snake_case here rather than in the page, so the
-      // console never has to know what the column was called.
-      corpus: corpus
-        ? { total: corpus.total, withImage: corpus.with_image, corrected: corpus.corrected }
-        : null,
+      // console never has to know what the column was called. `unavailable`
+      // carries the database's own words when the count could not be read --
+      // an answer, where the earlier null was only an absence.
+      corpus: corpus.ok
+        ? {
+          total: corpus.row?.total ?? 0,
+          withImage: corpus.row?.with_image ?? 0,
+          corrected: corpus.row?.corrected ?? 0,
+        }
+        : { unavailable: corpus.why },
       today, week, month, daily,
       logging: loggingEnabled(env),
       feedback: feedbackEnabled(env),
