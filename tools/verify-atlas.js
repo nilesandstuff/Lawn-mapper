@@ -148,20 +148,23 @@ function fromMercator(e) {
  * whatever goes wrong is reported rather than swallowed.
  */
 async function extentOf(service, layer) {
-  // 1. Ask for the extent in WGS84 and hope the server honours outSR.
-  const q = new URLSearchParams({
-    where: '1=1', returnExtentOnly: 'true', outSR: '4326', f: 'json',
-  });
-  const first = await getJson(`${service}/${layer}/query?${q}`);
-  if (sane(first?.extent)) return { box: tidy(first.extent) };
-
   /*
-   * 2. The layer's own metadata. Its extent comes in whatever the layer is
-   *    stored in, so it is only usable when that is already WGS84 or Web
-   *    Mercator -- but between them those cover most hosted services.
+   * 1. THE LAYER'S OWN METADATA, FIRST, because it is free.
+   *
+   * This used to ask the query below first and it cost eighteen counties --
+   * Cook, Harris, San Diego, Broward, three in New Jersey, three in North
+   * Carolina -- every one of them "extent query: timed out". They are not slow
+   * servers, they are BIG ones: `where=1=1&returnExtentOnly=true` makes the
+   * server walk every record, and Cook County has around 1.8 million parcels.
+   * The order punished exactly the counties most worth having.
+   *
+   * The metadata is a static document with the extent already in it and no
+   * scan behind it. Its only drawback is arriving in whatever the layer is
+   * stored in, which is why the query is still here as the fallback -- between
+   * WGS84 and Web Mercator this covers most services, and a projection this
+   * cannot convert is the one case worth paying for a scan.
    */
   const meta = await getJson(`${service}/${layer}?f=json`);
-  await sleep(PAUSE_MS);
   const raw = meta?.extent;
   const wkid = raw?.spatialReference?.latestWkid || raw?.spatialReference?.wkid;
   if (raw && Number.isFinite(wkid)) {
@@ -171,14 +174,22 @@ async function extentOf(service, layer) {
       if (sane(converted)) return { box: tidy(converted) };
     }
   }
+  await sleep(PAUSE_MS);
 
-  const why = first?.error
-    ? `extent query: ${describe(first.error)}`
-    : meta?.error
-      ? `layer metadata: ${describe(meta.error)}`
+  // 2. Make the server do the projection, and the scan, only if it must.
+  const q = new URLSearchParams({
+    where: '1=1', returnExtentOnly: 'true', outSR: '4326', f: 'json',
+  });
+  const query = await getJson(`${service}/${layer}/query?${q}`);
+  if (sane(query?.extent)) return { box: tidy(query.extent) };
+
+  const why = meta?.error
+    ? `layer metadata: ${describe(meta.error)}`
+    : query?.error
+      ? `extent query: ${describe(query.error)}`
       : wkid
-        ? `extent is in wkid ${wkid}, which this does not convert`
-        : 'no extent in either the query or the layer metadata';
+        ? `extent is in wkid ${wkid}, which this does not convert, and the extent query gave nothing`
+        : 'no extent in either the layer metadata or the query';
   return { error: why };
 }
 
