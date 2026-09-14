@@ -662,15 +662,6 @@ const ATLAS_COUNTIES = {
     fields: {"pin":null,"address":"SITUSADD"},
     box: [-107.197,34.865,-106.149,35.224],
   },
-  'ny-new-york': {
-    name: "Bronx County, NY",
-    fips: "36005",
-    service: "https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/MAPPLUTO/FeatureServer",
-    layer: 0,
-    fields: {"pin":"BBL","address":"Address"},
-    fallbacks: [{"service":"https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer","layer":1,"fields":{"pin":"PRINT_KEY","address":"PARCEL_ADDR"}}],
-    box: [-74.258,40.495,-73.699,40.916],
-  },
   'ny-erie': {
     name: "Erie County, NY",
     fips: "36029",
@@ -678,15 +669,6 @@ const ATLAS_COUNTIES = {
     layer: 0,
     fields: {"pin":"PIN","address":null},
     box: [-79.142,42.437,-78.46,43.099],
-  },
-  'ny-new-york': {
-    name: "Kings County, NY",
-    fips: "36047",
-    service: "https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/MAPPLUTO/FeatureServer",
-    layer: 0,
-    fields: {"pin":"BBL","address":"Address"},
-    fallbacks: [{"service":"https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer","layer":1,"fields":{"pin":"PRINT_KEY","address":"PARCEL_ADDR"}}],
-    box: [-74.258,40.495,-73.699,40.916],
   },
   'ny-monroe': {
     name: "Monroe County, NY",
@@ -696,15 +678,6 @@ const ATLAS_COUNTIES = {
     fields: {"pin":"COUNTYSBL","address":"PARCELADDRESS"},
     box: [-78,42.937,-77.364,43.369],
   },
-  'ny-new-york': {
-    name: "New York County, NY",
-    fips: "36061",
-    service: "https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/MAPPLUTO/FeatureServer",
-    layer: 0,
-    fields: {"pin":"BBL","address":"Address"},
-    fallbacks: [{"service":"https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer","layer":1,"fields":{"pin":"PRINT_KEY","address":"PARCEL_ADDR"}}],
-    box: [-74.258,40.495,-73.699,40.916],
-  },
   'ny-onondaga': {
     name: "Onondaga County, NY",
     fips: "36067",
@@ -713,16 +686,7 @@ const ATLAS_COUNTIES = {
     fields: {"pin":"PRINT_KEY","address":"PARCEL_ADDR"},
     box: [-79.763,40.495,-71.8,45.016],
   },
-  'ny-new-york': {
-    name: "Queens County, NY",
-    fips: "36081",
-    service: "https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/MAPPLUTO/FeatureServer",
-    layer: 0,
-    fields: {"pin":"BBL","address":"Address"},
-    fallbacks: [{"service":"https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer","layer":1,"fields":{"pin":"PRINT_KEY","address":"PARCEL_ADDR"}}],
-    box: [-74.258,40.495,-73.699,40.916],
-  },
-  'ny-new-york': {
+  'ny-richmond': {
     name: "Richmond County, NY",
     fips: "36085",
     service: "https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/MAPPLUTO/FeatureServer",
