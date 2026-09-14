@@ -108,7 +108,35 @@ rows in the set.
 
 ---
 
-## Rule 3 — split by place, never at random
+## Rule 3 — an example is the frame, and the answer is never in it
+
+Two decisions about what a training example physically looks like, both easy to
+get wrong in ways that are invisible until the model is useless.
+
+**The input is the frame — the whole thing, not a crop around the lawn.**
+Whatever a model trains on has to match what it gets at inference, and at
+inference the app has a frame (centre, zoom, size) and nothing tighter. Train on
+tight crops, infer on frames, and the mismatch is built into the model.
+
+Cropping tight also deletes the evidence. Where a lawn stops is usually decided
+by what is beside it — a driveway, a sidewalk, the neighbour's differently-mown
+grass. Crop that away and the boundary becomes unknowable from the pixels that
+are left.
+
+The right way to say "only this property counts" is **the parcel polygon as a
+separate input** — an extra channel, or a box prompt to SAM. It is already
+stored on the row. That gives the model the context and the constraint, instead
+of trading one for the other.
+
+**The outline is a separate mask channel and is NEVER painted into the RGB.**
+An image with the answer drawn on it teaches a model to find the drawing, and at
+inference there is no drawing. This is the single most expensive mistake
+available here and it fails silently: training loss looks wonderful, and the
+model is worth nothing.
+
+---
+
+## Rule 4 — split by place, never at random
 
 **What a split is.** Every row gets one label — train, tune or test — and the
 only question is how that label is decided. Deciding it per row, by coin flip,
@@ -142,20 +170,37 @@ maps collected long before the rule existed.
 **Assign by hashing the block id.** That makes the bucket a function of the
 data rather than a judgement call, so there is no "was the split chosen after
 seeing the results" question to answer — there was nothing to choose. The hard
-slice of Rule 4 is then built by FILTERING the test blocks for corrections and
+slice of Rule 5 is then built by FILTERING the test blocks for corrections and
 tree cover, never by picking which blocks are test. Split honest, slice
 deliberate.
 
 A random split leaks, in two separate ways:
 
-1. **Neighbours.** Houses on one street share an imagery tile, a construction
-   year, a builder's landscaping and a lawn species. Train on one and test on
-   its neighbour and you are testing memory.
+1. **Neighbours — and it is the pixels, not the labels.** The obvious worry is
+   that a model learns a neighbour's answer, and that one is unfounded: an
+   unlabelled lawn in the background of somebody else's frame teaches nothing
+   about its own outline.
+
+   The real leak is that an example is a FRAME, and a frame is far bigger than
+   a lot:
+
+   | | ground width of one 640 px frame |
+   |---|---|
+   | z18 | 142 m (lat 42) → 165 m (lat 30) |
+   | z19 | 71 m → 83 m |
+
+   A suburban lot is 18–30 m wide. So at z18 **two houses 25 m apart share
+   about 82% of their pixels** — not similar pixels, the same ones, the same
+   trees and driveways from the same capture. Put one in train and the other
+   in test and 82% of the test image was in the training set. The model will
+   segment it beautifully and that tells you nothing about a street it has
+   never seen, which is the only thing a test score is for.
 2. **The same lawn twice.** A corpus row is keyed on place *plus method*
    (`idFor(lng, lat, model, mode)`), so re-finishing the same lawn in a
    different mode writes a second row of the same garden. A random split can
    put one in train and the other in test. A block split cannot — same
-   coordinates, same block.
+   coordinates, same block. Cropping does nothing for this one: those two
+   frames are not 82% the same, they are 100% the same.
 
 Two leaks survive a block split, and neither earns much machinery:
 
@@ -224,9 +269,9 @@ comparable to published results that split at random, which most do.
 
 ---
 
-## Rule 4 — two slices, not one
+## Rule 5 — two slices, not one
 
-Cut across the held-out counties from Rule 3 — both tune and test get the same
+Cut across the held-out blocks from Rule 4 — both tune and test get the same
 two slices, because a fix that shows up in tune and not in test has not been
 demonstrated.
 
@@ -265,7 +310,7 @@ tell you whether the overshoot is fixed.
 
 ---
 
-## Rule 5 — score in square feet, not IoU
+## Rule 6 — score in square feet, not IoU
 
 The product outputs a number of square feet. So the metric is relative error
 against the human's final figure:
