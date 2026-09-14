@@ -42,6 +42,7 @@ import {
 import { queryCounty } from '../worker/src/parcel.js';
 import { ATLAS_COUNTIES } from '../worker/src/counties-atlas.js';
 import { readFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 
 let failures = 0;
 const check = (name, ok, detail = '') => {
@@ -1157,6 +1158,25 @@ check('and a typed prompt is sent verbatim',
    * one has to come first in the candidate list, because parcel.js tries them
    * in order and stops at the first that answers.
    */
+  /*
+   * DUPLICATE KEYS IN THE GENERATED FILE ARE SILENT AND LOSSY, so the source
+   * text is checked rather than the imported object -- by the time it is an
+   * object the duplicates are gone and the last one has won.
+   *
+   * This is not hypothetical. All five New York City boroughs carry the id
+   * `ny-new-york` in the upstream atlas, the importer trusted it, and four of
+   * them -- about seven million people -- were silently dropped. The only
+   * trace was a build warning in the deploy log.
+   */
+  const generatedText = readFileSync(
+    new URL('../worker/src/counties-atlas.js', import.meta.url), 'utf8'
+  );
+  const keys = [...generatedText.matchAll(/^ {2}'([a-z0-9-]+)':\s*\{/gm)].map((m) => m[1]);
+  const dupes = keys.filter((k, i) => keys.indexOf(k) !== i);
+  check('no county is written twice into the generated file',
+    dupes.length === 0,
+    dupes.length ? [...new Set(dupes)].join(', ') : `${keys.length} keys, all distinct`);
+
   const grandRapids = candidateCounties(-85.6681, 42.9634);
   check('and where both cover a place, the examined one is asked first',
     !grandRapids.includes('mi-kent') || grandRapids.indexOf('kent') < grandRapids.indexOf('mi-kent'),

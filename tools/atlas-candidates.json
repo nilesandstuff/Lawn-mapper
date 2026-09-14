@@ -269,7 +269,7 @@
       "fallbacks": []
     },
     {
-      "key": "ct-capitol",
+      "key": "ct-capitol-planning-region",
       "name": "Capitol Planning Region County, CT",
       "fips": "09110",
       "service": "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
@@ -281,7 +281,7 @@
       "fallbacks": []
     },
     {
-      "key": "ct-greater-bridgeport",
+      "key": "ct-greater-bridgeport-planning-region",
       "name": "Greater Bridgeport Planning Region County, CT",
       "fips": "09120",
       "service": "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
@@ -293,7 +293,7 @@
       "fallbacks": []
     },
     {
-      "key": "ct-lower-connecticut-river-valley",
+      "key": "ct-lower-connecticut-river-valley-planning-region",
       "name": "Lower Connecticut River Valley Planning Region County, CT",
       "fips": "09130",
       "service": "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
@@ -305,7 +305,7 @@
       "fallbacks": []
     },
     {
-      "key": "ct-naugatuck-valley",
+      "key": "ct-naugatuck-valley-planning-region",
       "name": "Naugatuck Valley Planning Region County, CT",
       "fips": "09140",
       "service": "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
@@ -317,7 +317,7 @@
       "fallbacks": []
     },
     {
-      "key": "ct-northeastern-connecticut",
+      "key": "ct-northeastern-connecticut-planning-region",
       "name": "Northeastern Connecticut Planning Region County, CT",
       "fips": "09150",
       "service": "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
@@ -329,7 +329,7 @@
       "fallbacks": []
     },
     {
-      "key": "ct-northwest-hills",
+      "key": "ct-northwest-hills-planning-region",
       "name": "Northwest Hills Planning Region County, CT",
       "fips": "09160",
       "service": "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
@@ -341,7 +341,7 @@
       "fallbacks": []
     },
     {
-      "key": "ct-south-central-connecticut",
+      "key": "ct-south-central-connecticut-planning-region",
       "name": "South Central Connecticut Planning Region County, CT",
       "fips": "09170",
       "service": "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
@@ -353,7 +353,7 @@
       "fallbacks": []
     },
     {
-      "key": "ct-southeastern-connecticut",
+      "key": "ct-southeastern-connecticut-planning-region",
       "name": "Southeastern Connecticut Planning Region County, CT",
       "fips": "09180",
       "service": "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
@@ -365,7 +365,7 @@
       "fallbacks": []
     },
     {
-      "key": "ct-western-connecticut",
+      "key": "ct-western-connecticut-planning-region",
       "name": "Western Connecticut Planning Region County, CT",
       "fips": "09190",
       "service": "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
@@ -851,7 +851,7 @@
       "fallbacks": []
     },
     {
-      "key": "md-prince-georges",
+      "key": "md-prince-george-s",
       "name": "Prince George's County, MD",
       "fips": "24033",
       "service": "https://gis.princegeorgescountymd.gov/arcgis/rest/services/Property/Property_Flattened/MapServer",
@@ -1172,7 +1172,7 @@
       "fallbacks": []
     },
     {
-      "key": "ny-new-york",
+      "key": "ny-bronx",
       "name": "Bronx County, NY",
       "fips": "36005",
       "service": "https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/MAPPLUTO/FeatureServer",
@@ -1205,7 +1205,7 @@
       "fallbacks": []
     },
     {
-      "key": "ny-new-york",
+      "key": "ny-kings",
       "name": "Kings County, NY",
       "fips": "36047",
       "service": "https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/MAPPLUTO/FeatureServer",
@@ -1271,7 +1271,7 @@
       "fallbacks": []
     },
     {
-      "key": "ny-new-york",
+      "key": "ny-queens",
       "name": "Queens County, NY",
       "fips": "36081",
       "service": "https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/MAPPLUTO/FeatureServer",
@@ -1292,7 +1292,7 @@
       ]
     },
     {
-      "key": "ny-new-york",
+      "key": "ny-richmond",
       "name": "Richmond County, NY",
       "fips": "36085",
       "service": "https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/MAPPLUTO/FeatureServer",

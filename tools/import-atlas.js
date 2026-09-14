@@ -138,7 +138,14 @@ function pick(fields, byName, byLabel, reject) {
     || null;
 }
 
+/** `Kings` in `NY` -> `ny-kings`. Lowercased, punctuation folded to a dash. */
+const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+const keyFor = (county) =>
+  `${String(county.state || '').toLowerCase()}-${slug(county.county)}`
+  || county.id;
+
 const candidates = [];
+const takenBy = new Map();
 let listed = 0;
 let dropped = 0;
 
@@ -163,12 +170,24 @@ for (const file of files.sort()) {
 
     candidates.push({
       /*
-       * `mi-kent` shape, from the atlas, because a key has to be unique across
-       * states and county names are not: there is a Champaign in Illinois and
-       * Ohio, a Wayne in a dozen states. The existing hand-written entries keep
-       * their bare names; these are namespaced from the start.
+       * `mi-kent` shape, because a key has to be unique across states and
+       * county names are not: there is a Champaign in Illinois and Ohio, a
+       * Wayne in a dozen states. The hand-written entries keep their bare
+       * names; these are namespaced from the start.
+       *
+       * BUILT HERE RATHER THAN TAKEN FROM THE ATLAS, because the atlas's own
+       * ids are not unique. All five New York City boroughs -- Bronx, Kings,
+       * New York, Queens and Richmond -- carry the id `ny-new-york`. Trusting
+       * it wrote five entries under one key into a JavaScript object literal,
+       * where the last silently wins: four boroughs and about seven million
+       * people vanished, and the only trace was a build warning nobody was
+       * reading. The FIPS codes were distinct and correct the whole time.
+       *
+       * State plus county name is unique by construction -- no state has two
+       * counties of the same name -- and stays readable, which the FIPS code
+       * would not.
        */
-      key: county.id,
+      key: keyFor(county),
       name: `${county.county} County, ${county.state}`,
       fips: county.countyFips || null,
       ...split(first),
@@ -176,6 +195,25 @@ for (const file of files.sort()) {
       fallbacks: rest.map((e) => ({ ...split(e), fields: fields(e) })),
     });
   }
+}
+
+/*
+ * A COLLISION HERE IS SILENT AND LOSSY, so it stops the import rather than
+ * being written out. The generated file is an object literal: two entries
+ * under one key is not an error anywhere, it is just the second one winning.
+ * That is how New York lost four boroughs, and the next collision should cost
+ * a failed run and not a year of missing coverage.
+ */
+for (const c of candidates) {
+  const already = takenBy.get(c.key);
+  if (already) {
+    console.error(`\nFAIL  two counties want the key "${c.key}":`);
+    console.error(`        ${already}`);
+    console.error(`        ${c.name}`);
+    console.error('\n      Keys are state + county name, which should be unique.');
+    process.exit(1);
+  }
+  takenBy.set(c.key, c.name);
 }
 
 const out = {
