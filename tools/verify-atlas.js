@@ -134,14 +134,36 @@ async function sampleParcels(service, layer) {
   return [];
 }
 
-/** A point inside a ring. Parcels are near-convex, so the mean of the ring works. */
+/**
+ * A point inside a ring. Parcels are near-convex, so the mean of the ring works.
+ *
+ * BOTH GEOMETRY TYPES, which the first version got wrong. esriToGeoJSON hands
+ * back a MultiPolygon whenever a record has more than one outer ring -- a split
+ * parcel, or a condo block stored as one row per building -- and there
+ * `coordinates[0]` is a POLYGON, an array of rings, not a ring. Averaging it
+ * destructures arrays as numbers and produces NaN.
+ *
+ * It failed closed rather than loudly: a one-ring polygon inside that array has
+ * length 1, which trips the `< 3` guard, so the county was reported as having
+ * no usable geometry. Kent -- which this app has measured correctly for months
+ * -- failed all twelve samples that way.
+ */
 function insidePoint(geometry) {
-  const ring = geometry?.coordinates?.[0];
+  if (!geometry) return null;
+  const ring = geometry.type === 'MultiPolygon'
+    ? geometry.coordinates?.[0]?.[0]
+    : geometry.coordinates?.[0];
   if (!Array.isArray(ring) || ring.length < 3) return null;
   let x = 0;
   let y = 0;
-  for (const [lng, lat] of ring) { x += lng; y += lat; }
-  return [x / ring.length, y / ring.length];
+  let n = 0;
+  for (const p of ring) {
+    if (!Array.isArray(p) || !Number.isFinite(p[0]) || !Number.isFinite(p[1])) continue;
+    x += p[0];
+    y += p[1];
+    n++;
+  }
+  return n >= 3 ? [x / n, y / n] : null;
 }
 
 /** The app's own point query, not a variant of it. */
