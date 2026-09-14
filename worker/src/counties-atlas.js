@@ -16,7 +16,7 @@
  * directly will be overwritten; change the importer or the verifier instead.
  *
  * atlas 0.6.3, imported 2026-09-14
- * 139 verified of 165 tried, on 2026-09-14
+ * 142 verified of 165 tried, on 2026-09-14
  */
 
 const ATLAS_COUNTIES = {
@@ -180,7 +180,7 @@ const ATLAS_COUNTIES = {
     fields: {"pin":"parcel_id","address":"situsAdd"},
     box: [-109.061,36.991,-102.046,41.004],
   },
-  'ct-capitol': {
+  'ct-capitol-planning-region': {
     name: "Capitol Planning Region County, CT",
     fips: "09110",
     service: "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
@@ -188,7 +188,7 @@ const ATLAS_COUNTIES = {
     fields: {"pin":"Parcel_ID","address":"Location_1"},
     box: [-73.743,40.979,-71.781,42.053],
   },
-  'ct-greater-bridgeport': {
+  'ct-greater-bridgeport-planning-region': {
     name: "Greater Bridgeport Planning Region County, CT",
     fips: "09120",
     service: "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
@@ -196,7 +196,7 @@ const ATLAS_COUNTIES = {
     fields: {"pin":"Parcel_ID","address":"Location_1"},
     box: [-73.743,40.979,-71.781,42.053],
   },
-  'ct-lower-connecticut-river-valley': {
+  'ct-lower-connecticut-river-valley-planning-region': {
     name: "Lower Connecticut River Valley Planning Region County, CT",
     fips: "09130",
     service: "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
@@ -204,7 +204,7 @@ const ATLAS_COUNTIES = {
     fields: {"pin":"Parcel_ID","address":"Location_1"},
     box: [-73.743,40.979,-71.781,42.053],
   },
-  'ct-naugatuck-valley': {
+  'ct-naugatuck-valley-planning-region': {
     name: "Naugatuck Valley Planning Region County, CT",
     fips: "09140",
     service: "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
@@ -212,7 +212,7 @@ const ATLAS_COUNTIES = {
     fields: {"pin":"Parcel_ID","address":"Location_1"},
     box: [-73.743,40.979,-71.781,42.053],
   },
-  'ct-northeastern-connecticut': {
+  'ct-northeastern-connecticut-planning-region': {
     name: "Northeastern Connecticut Planning Region County, CT",
     fips: "09150",
     service: "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
@@ -220,7 +220,7 @@ const ATLAS_COUNTIES = {
     fields: {"pin":"Parcel_ID","address":"Location_1"},
     box: [-73.743,40.979,-71.781,42.053],
   },
-  'ct-northwest-hills': {
+  'ct-northwest-hills-planning-region': {
     name: "Northwest Hills Planning Region County, CT",
     fips: "09160",
     service: "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
@@ -228,7 +228,7 @@ const ATLAS_COUNTIES = {
     fields: {"pin":"Parcel_ID","address":"Location_1"},
     box: [-73.743,40.979,-71.781,42.053],
   },
-  'ct-south-central-connecticut': {
+  'ct-south-central-connecticut-planning-region': {
     name: "South Central Connecticut Planning Region County, CT",
     fips: "09170",
     service: "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
@@ -236,7 +236,7 @@ const ATLAS_COUNTIES = {
     fields: {"pin":"Parcel_ID","address":"Location_1"},
     box: [-73.743,40.979,-71.781,42.053],
   },
-  'ct-southeastern-connecticut': {
+  'ct-southeastern-connecticut-planning-region': {
     name: "Southeastern Connecticut Planning Region County, CT",
     fips: "09180",
     service: "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
@@ -244,7 +244,7 @@ const ATLAS_COUNTIES = {
     fields: {"pin":"Parcel_ID","address":"Location_1"},
     box: [-73.743,40.979,-71.781,42.053],
   },
-  'ct-western-connecticut': {
+  'ct-western-connecticut-planning-region': {
     name: "Western Connecticut Planning Region County, CT",
     fips: "09190",
     service: "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
@@ -460,6 +460,14 @@ const ATLAS_COUNTIES = {
     fields: {"pin":"PIN","address":"PropertyAddress1"},
     box: [-85.34,40.914,-84.798,41.274],
   },
+  'in-marion': {
+    name: "Marion County, IN",
+    fips: "18097",
+    service: "https://xmaps.indy.gov/arcgis/rest/services/Basemaps/IndyBase_Topographic/MapServer",
+    layer: 54,
+    fields: {"pin":"PARCEL_TAG","address":null},
+    box: [1.278,14.202,2.264,15.133],
+  },
   'ia-johnson': {
     name: "Johnson County, IA",
     fips: "19103",
@@ -502,7 +510,7 @@ const ATLAS_COUNTIES = {
     fallbacks: [{"service":"https://services1.arcgis.com/RbMX0mRVOFNTdLzd/arcgis/rest/services/Maine_Parcels_Organized_Towns/FeatureServer","layer":9,"fields":{"pin":null,"address":null}}],
     box: [-71.131,42.97,-66.849,47.342],
   },
-  'md-prince-georges': {
+  'md-prince-george-s': {
     name: "Prince George's County, MD",
     fips: "24033",
     service: "https://gis.princegeorgescountymd.gov/arcgis/rest/services/Property/Property_Flattened/MapServer",
@@ -549,6 +557,14 @@ const ATLAS_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARNO","address":"SITEADD"},
     box: [-90.729,32.048,-90.066,32.573],
+  },
+  'ms-desoto': {
+    name: "DeSoto County, MS",
+    fips: "28033",
+    service: "https://maps.desotocountyms.gov/arcgis/rest/services/CountyWebMap/Tax_Assessors_County_Web_Map/MapServer",
+    layer: 29,
+    fields: {"pin":"PIN","address":"FULL_ADDR"},
+    box: [-90.313,34.711,-89.721,34.997],
   },
   'mo-jackson': {
     name: "Jackson County, MO",
@@ -614,14 +630,6 @@ const ATLAS_COUNTIES = {
     fields: {"pin":"PARCELID","address":"SITEADDRESS"},
     box: [-96.916,40.522,-96.461,41.047],
   },
-  'ne-sarpy': {
-    name: "Sarpy County, NE",
-    fips: "31153",
-    service: "https://geodata.sarpy.gov/arcgis/rest/services/Cadastral/LandRecordsSearch/FeatureServer",
-    layer: 5,
-    fields: {"pin":"PARCELID","address":"SITEADDRESS"},
-    box: [-96.343,40.983,-95.84,41.205],
-  },
   'nv-clark': {
     name: "Clark County, NV",
     fips: "32003",
@@ -662,6 +670,15 @@ const ATLAS_COUNTIES = {
     fields: {"pin":null,"address":"SITUSADD"},
     box: [-107.197,34.865,-106.149,35.224],
   },
+  'ny-bronx': {
+    name: "Bronx County, NY",
+    fips: "36005",
+    service: "https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/MAPPLUTO/FeatureServer",
+    layer: 0,
+    fields: {"pin":"BBL","address":"Address"},
+    fallbacks: [{"service":"https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer","layer":1,"fields":{"pin":"PRINT_KEY","address":"PARCEL_ADDR"}}],
+    box: [-74.258,40.495,-73.699,40.916],
+  },
   'ny-erie': {
     name: "Erie County, NY",
     fips: "36029",
@@ -669,6 +686,15 @@ const ATLAS_COUNTIES = {
     layer: 0,
     fields: {"pin":"PIN","address":null},
     box: [-79.142,42.437,-78.46,43.099],
+  },
+  'ny-kings': {
+    name: "Kings County, NY",
+    fips: "36047",
+    service: "https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/MAPPLUTO/FeatureServer",
+    layer: 0,
+    fields: {"pin":"BBL","address":"Address"},
+    fallbacks: [{"service":"https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer","layer":1,"fields":{"pin":"PRINT_KEY","address":"PARCEL_ADDR"}}],
+    box: [-74.258,40.495,-73.699,40.916],
   },
   'ny-monroe': {
     name: "Monroe County, NY",
@@ -678,6 +704,15 @@ const ATLAS_COUNTIES = {
     fields: {"pin":"COUNTYSBL","address":"PARCELADDRESS"},
     box: [-78,42.937,-77.364,43.369],
   },
+  'ny-new-york': {
+    name: "New York County, NY",
+    fips: "36061",
+    service: "https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/MAPPLUTO/FeatureServer",
+    layer: 0,
+    fields: {"pin":"BBL","address":"Address"},
+    fallbacks: [{"service":"https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer","layer":1,"fields":{"pin":"PRINT_KEY","address":"PARCEL_ADDR"}}],
+    box: [-74.258,40.495,-73.699,40.916],
+  },
   'ny-onondaga': {
     name: "Onondaga County, NY",
     fips: "36067",
@@ -685,6 +720,15 @@ const ATLAS_COUNTIES = {
     layer: 1,
     fields: {"pin":"PRINT_KEY","address":"PARCEL_ADDR"},
     box: [-79.763,40.495,-71.8,45.016],
+  },
+  'ny-queens': {
+    name: "Queens County, NY",
+    fips: "36081",
+    service: "https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/MAPPLUTO/FeatureServer",
+    layer: 0,
+    fields: {"pin":"BBL","address":"Address"},
+    fallbacks: [{"service":"https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer","layer":1,"fields":{"pin":"PRINT_KEY","address":"PARCEL_ADDR"}}],
+    box: [-74.258,40.495,-73.699,40.916],
   },
   'ny-richmond': {
     name: "Richmond County, NY",
@@ -870,6 +914,14 @@ const ATLAS_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCEL_NUM","address":"ADDRESS"},
     box: [-75.497,40.046,-74.703,40.615],
+  },
+  'sc-charleston': {
+    name: "Charleston County, SC",
+    fips: "45019",
+    service: "https://gisccapps.charlestoncounty.org/arcgis/rest/services/GIS_VIEWER/New_Parcel_Search/MapServer",
+    layer: 61,
+    fields: {"pin":"PID","address":null},
+    box: [-80.455,32.483,-79.266,33.224],
   },
   'tn-davidson': {
     name: "Davidson County, TN",
@@ -1086,6 +1138,14 @@ const ATLAS_COUNTIES = {
     layer: 58,
     fields: {"pin":"TAXKEY","address":null},
     box: [-88.08,42.838,-87.812,43.196],
+  },
+  'wi-waukesha': {
+    name: "Waukesha County, WI",
+    fips: "55133",
+    service: "https://gis.waukeshacounty.gov/host/rest/services/Web_Tax_Parcel/FeatureServer",
+    layer: 2,
+    fields: {"pin":null,"address":"SITEADRESS"},
+    box: [-88.543,42.841,-88.063,43.197],
   },
   'wi-brown': {
     name: "Brown County, WI",
