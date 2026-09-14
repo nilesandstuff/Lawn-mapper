@@ -110,6 +110,18 @@ rows in the set.
 
 ## Rule 3 — split by county, never at random
 
+**What a split is.** Every row gets one label — train, tune or test — and the
+only question is how that label is decided. Deciding it per row, by coin flip,
+is a random split. Deciding it per *county*, so whole places move together, is
+what this rule asks for:
+
+```sql
+-- test: whole counties, chosen once, never trained on
+SELECT * FROM corpus WHERE county IN ('mi-kent','md-montgomery', …);
+```
+
+The mechanism is that trivial. Choosing the counties is the part that matters.
+
 A random split leaks, in two separate ways:
 
 1. **Neighbours.** Houses on one street share an imagery tile, a construction
@@ -120,18 +132,54 @@ A random split leaks, in two separate ways:
    different mode writes a second row of the same garden. A random split can
    put one in train and the other in eval. A county split cannot.
 
-So the eval set is whole counties, chosen in advance and recorded here when
-chosen. `county` is already on every row, so the assignment is deterministic and
-can be applied to maps collected long before the rule was fixed.
+`county` is already on every row, so the assignment is deterministic and applies
+to maps collected long before the rule was fixed.
 
-**The eval counties are never trained on and never tuned on.** Not for early
-stopping, not for picking a threshold, not for "just checking". A number
-obtained by looking at the eval set repeatedly is a training number wearing a
-disguise.
+### Three buckets, not two
+
+An earlier draft of this rule said the eval set is "never tuned on" and gave
+nowhere else to tune, which is an instruction that gets broken out of necessity:
+something has to be checked against while picking a threshold or deciding when
+to stop training, and if the held-out set is the only candidate it will be used.
+It then stops being held out, quietly, and the final number is a fiction.
+
+| bucket | counties | looked at |
+|---|---|---|
+| **train** | everything not below | constantly |
+| **tune** | a few, chosen for variety | as often as needed — thresholds, early stopping, "is this working" |
+| **test** | a few, chosen for variety | ONCE, when a model is otherwise finished |
+
+Tune is the pressure valve. It exists so test can stay sealed, and it is
+expected to get worn out — a number you have optimised against twenty times is
+no longer an independent measurement, which is fine for tune and fatal for test.
+
+If test has been read more than once for a given model, it has become a tune
+set, and the next honest number needs counties that have never been looked at.
+
+### Choosing the counties
+
+Deliberately, not randomly, and then frozen. They need:
+
+- enough maps between them to reach the sizes in Rule 4
+- a spread of regions and climates
+- at least two with heavy tree cover, or the hard slice has nothing in it
+- a mix of imagery providers
+- nothing with a handful of maps in it — three maps is noise, not a county
+
+Written into this file when chosen, and not revisited afterwards. A split
+adjusted after seeing results is not a split.
+
+**The honest cost:** this produces a worse number than a random split would.
+That is the point — it is the true one. It also means the figure is not
+comparable to published results that split at random, which most do.
 
 ---
 
-## Rule 4 — two eval slices, not one
+## Rule 4 — two slices, not one
+
+Cut across the held-out counties from Rule 3 — both tune and test get the same
+two slices, because a fix that shows up in tune and not in test has not been
+demonstrated.
 
 | slice | what is in it | the question it answers |
 |---|---|---|
@@ -146,17 +194,18 @@ exists to fix is invisible in the score.
 **Ship a model only when the hard slice improves and the representative slice
 does not regress.**
 
-Sizes, against the ~1,000–1,500 finished maps expected for a first useful
-fine-tune:
+Sizes **for the test bucket**, against the ~1,000–1,500 finished maps expected
+for a first useful fine-tune. Tune can be smaller, since a worn-out number is
+what it is for:
 
-| | total eval maps | of which corrected | distinct counties |
+| | total test maps | of which corrected | distinct counties |
 |---|---|---|---|
 | bare minimum | ~100 | ~40 | 5+ |
 | comfortable | 200–300 | ~100 | 10+ |
 
 Below about 50 the confidence interval is wide enough that a 10% improvement
 and a 10% regression look the same, and you are reading noise. The second
-column is the one that binds: 300 eval maps with eight tree cases in them cannot
+column is the one that binds: 300 test maps with eight tree cases in them cannot
 tell you whether the overshoot is fixed.
 
 ---
@@ -203,5 +252,6 @@ early rather than discovering at training time:
   Testable once there is enough data; guessing now buys nothing.
 - **Whether cross-capture rows** (`google`, `esri`) earn their place in training
   at all. Keep and flag them until there is enough data to measure it.
-- **Which counties are the eval counties.** Fixed before the first training run,
-  written into this file when chosen, and not revisited afterwards.
+- **Which counties are the tune counties and which are the test counties.**
+  Fixed before the first training run, written into this file when chosen, and
+  not revisited afterwards.
