@@ -28,6 +28,7 @@ import {
   metresToFeet,
   ringContains,
   ringInsideRing,
+  nearestPointOnRing,
 } from '../public/lib/edges.js';
 import { measure, geometryAreaSqM } from '../public/lib/area.js';
 
@@ -444,6 +445,61 @@ const LOT = rect(30, 45); // 30 m of frontage, 45 m deep
   const shedSqFt = measure(poly(shed)).squareFeet;
   closeTo(whole - cut, shedSqFt, 1,
     'cutting the shed out takes exactly the shed off the total');
+}
+
+/* ------------------------------------- holding a corner at the line */
+/*
+ * "Measure outside the property line" gated the Add brush and nothing else, so
+ * a corner dragged past the boundary went past it and the total counted the
+ * ground beyond -- the option switched off and the line drawn on the map the
+ * whole time.
+ *
+ * A corner is HELD at the line rather than refused. One that stops dead under
+ * a moving finger reads as a bug and one that snaps back loses the drag, so
+ * the answer is the nearest point on the boundary: where the finger is, as
+ * near as the boundary allows, which lets the corner slide along the line.
+ */
+{
+  console.log('\n--- held at the property line ---');
+
+  /* Ten metres past the 30 m frontage, straight out from its middle. */
+  const out = frame.toLngLat([15, -10]);
+  const held = nearestPointOnRing(LOT, out);
+  const [hx, hy] = frame.toXY(held.at);
+
+  closeTo(hy, 0, 0.05, 'a corner dragged out the front is held on the frontage');
+  closeTo(hx, 15, 0.05, 'and stays level with the finger rather than snapping to a corner');
+  closeTo(held.distanceM, 10, 0.05, 'the hold is exactly as far as it went over');
+
+  /*
+   * NEAREST EDGE, NOT NEAREST CORNER. This is the difference that matters on a
+   * real lot: snapping to the nearest recorded corner would jump the point
+   * fifteen metres sideways from where the finger is.
+   */
+  const corner = nearestVertex(LOT, out);
+  const [cx] = frame.toXY(LOT[corner.index]);
+  check('which is not where the nearest corner is',
+    Math.abs(hx - cx) > 10,
+    `held at x=${hx.toFixed(1)} m, nearest corner at x=${cx.toFixed(1)} m`);
+
+  /* Past a corner diagonally, the nearest point on the ring IS that corner. */
+  const past = frame.toLngLat([-8, -8]);
+  const atCorner = nearestPointOnRing(LOT, past);
+  const [px, py] = frame.toXY(atCorner.at);
+  closeTo(px, 0, 0.05, 'dragged past a corner diagonally, it is held at the corner');
+  closeTo(py, 0, 0.05, 'in both directions');
+
+  /*
+   * And a point already inside is never moved -- the hold has to be invisible
+   * for every drag that stays where it belongs, which is nearly all of them.
+   */
+  const inside = frame.toLngLat([15, 20]);
+  check('a corner inside the line is what the caller checks first',
+    ringContains(LOT, inside),
+    'nothing is held unless it is actually outside');
+
+  check('a degenerate ring answers null rather than throwing',
+    nearestPointOnRing([[0, 0]], [1, 1]) === null);
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);

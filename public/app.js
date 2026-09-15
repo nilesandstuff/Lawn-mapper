@@ -12,7 +12,7 @@
  * own roof first is the cheapest correctness check available.
  */
 
-import { measure, fromSquareMeters, geometryAreaSqM } from './lib/area.js';
+import { measure, fromSquareMeters, geometryAreaSqM, SQM_PER_SQFT } from './lib/area.js';
 import {
   maskToPolygons, rasterizePolygon, maskBinary, unionMasks, subtractMasks,
   coverage, polygonsFromBinary, distinctFraction, overTrimmed,
@@ -21,7 +21,7 @@ import {
 import {
   offsetEdge, nearestEdge, edgeRun, edgeLength, edgeBearing, openRing,
   nearestVertex, moveVertex, insertVertex, deleteVertex, tidyRing,
-  feetToMetres, metresToFeet, ringInsideRing, ringContains,
+  feetToMetres, metresToFeet, ringInsideRing, ringContains, nearestPointOnRing,
 } from './lib/edges.js';
 import { restoreAway } from './lib/stitch.js';
 import {
@@ -101,6 +101,11 @@ const state = {
    */
   drawingParcel: false,
   drawingHole: false,   // trace a shed; it becomes a hole in the lawn under it
+
+  // The training candidate being corrected, when the console sent us here.
+  // Null far more often than not, and the way back out is shown only while it
+  // is set -- see leaveReview.
+  reviewingId: null,
 
   /*
    * "Count grass under trees", remembered per arithmetic rather than globally.
@@ -359,6 +364,54 @@ if (typeof window !== 'undefined') {
     armed: state.drawingHole,
     drawMode: (() => { try { return draw.getMode(); } catch { return null; } })(),
   });
+
+  /*
+   * How much of the lawn is OUTSIDE the property line, in square feet.
+   *
+   * The number the "measure outside" option is really about. Asserting on the
+   * panel total instead would pass a corner dragged twenty metres over the
+   * boundary as long as the total moved at all, which is the bug: the total
+   * did move, and that was the complaint.
+   *
+   * Rasterised rather than clipped with polygon boolean geometry, for the
+   * reason lib/mask.js gives at length -- it is exact for any shape, holes
+   * included, and needs no library.
+   */
+  window.__lmOutsideSqFt = () => {
+    const parcel = parcelRing();
+    const shapes = draw.getAll().features.filter((f) => outerRing(f));
+    if (!parcel || !shapes.length) return 0;
+
+    const G = 512;
+    let [w, s, e, n] = [Infinity, Infinity, -Infinity, -Infinity];
+    const see = ([lng, lat]) => {
+      w = Math.min(w, lng); e = Math.max(e, lng);
+      s = Math.min(s, lat); n = Math.max(n, lat);
+    };
+    parcel.forEach(see);
+    for (const f of shapes) for (const ring of f.geometry.coordinates) ring.forEach(see);
+
+    const pad = 0.0002;
+    const bbox = [w - pad, s - pad, e + pad, n + pad];
+    const frame = {
+      lng: (bbox[0] + bbox[2]) / 2,
+      lat: (bbox[1] + bbox[3]) / 2,
+      zoom: zoomToFit(bbox, G),
+      size: G,
+    };
+    const project = (ll) => lngLatToFramePx(frame, ll, G, G);
+
+    const inside = rasterizePolygon([parcel], G, G, project);
+    const lawn = unionMasks(shapes.map(
+      (f) => rasterizePolygon(f.geometry.coordinates, G, G, project)
+    ));
+
+    let out = 0;
+    for (let p = 0; p < lawn.length; p++) if (lawn[p] && !inside[p]) out++;
+
+    const mPerPx = metresPerPixel(frame, G);
+    return (out * mPerPx * mPerPx) / SQM_PER_SQFT;
+  };
 
   /* How many shapes the measurement is actually made of. */
   window.__lmShapeCount = () => (draw ? draw.getAll().features.length : 0);
@@ -4659,13 +4712,41 @@ async function openCandidate(id) {
    * so the corrected version returns to be judged on its own merits.
    */
   state.reviewingId = id;
-  setStatus(
-    'Reviewing a training candidate. Fix whatever is off, then press finish '
-    + 'to send it back to the queue.'
-  );
+  $('#review-bar').hidden = false;
+  setStatus('Reviewing a training candidate. Fix whatever is off, then use the buttons above to go back.');
+}
+
+/**
+ * Back to the console, with or without keeping the corrections.
+ *
+ * `save` runs the same finish the button at the foot of the panel does, which
+ * is what puts the corrected outline in the queue -- and resets the row to
+ * unreviewed, because the approval was of the old outline and the new one has
+ * to be judged on its own merits.
+ *
+ * Without it, nothing is written at all: a candidate that turned out to need
+ * no correction should go back exactly as it was, and saving an unchanged map
+ * would send it round the queue a second time for no reason.
+ */
+function leaveReview(save) {
+  if (!state.reviewingId) return;
+  if (save) keepFinished();
+  state.reviewingId = null;
+  $('#review-bar').hidden = true;
+  window.location.href = '/admin.html';
 }
 
 function openMap(s) {
+  /*
+   * Whatever visit was in progress is over. Opening a SAVED map from the
+   * history list while a review was open would otherwise leave the way-back
+   * bar on screen pointing at the candidate -- and "Save and return to the
+   * console" would put this other lawn into the queue under that candidate's
+   * id. openCandidate sets it again immediately afterwards, which is the only
+   * place it should ever be set.
+   */
+  state.reviewingId = null;
+  $('#review-bar').hidden = true;
 
   clearHistory();
   draw.deleteAll();
@@ -6596,6 +6677,36 @@ function dropRing(ringId) {
 }
 
 /** Move the selected corner. Called continuously during a drag. */
+/**
+ * THE PROPERTY LINE HOLDS A CORNER IN, and that is what the option says.
+ *
+ * "Measure outside the property line" gated the Add brush and nothing else, so
+ * a corner dragged past the boundary went past it and the square footage went
+ * up -- the option switched off, the line drawn on the map, and the total
+ * counting ground beyond it anyway. An option that governs one of the two ways
+ * to reach the same mistake is worse than none, because it reads as a promise.
+ *
+ * HELD AT THE LINE RATHER THAN REFUSED. A corner that stops dead under a
+ * moving finger reads as a bug, and one that snaps back loses the drag. The
+ * nearest point on the boundary is where the finger is, as near as the
+ * boundary allows, so the corner slides along the line -- which is also the
+ * shape somebody dragging out to the kerb is trying to draw.
+ *
+ * The boundary's OWN corners are never held: they are the thing that defines
+ * where outside is, and a boundary that could not be extended to the kerb is
+ * the problem the edge slider exists for.
+ */
+function heldInsideParcel(lngLat) {
+  if (state.measureOutside) return lngLat;
+  if (state.mode !== 'shape') return lngLat;
+
+  const parcel = parcelRing();
+  if (!parcel || ringContains(parcel, lngLat)) return lngLat;
+
+  const near = nearestPointOnRing(parcel, lngLat);
+  return near ? near.at : lngLat;
+}
+
 function moveSelectedVertex(lngLat) {
   const edit = state.edgeEdit;
   if (!edit || edit.vertexIndex == null) return;
@@ -6603,11 +6714,16 @@ function moveSelectedVertex(lngLat) {
   const ring = ringOf(edit.ringId);
   if (!ring) return;
 
+  const at = heldInsideParcel(lngLat);
+  if (at !== lngLat) {
+    setHint('Held at the property line — switch on “Measure outside the property line” to go past it.');
+  }
+
   // A corner of the LAWN is a hand correction; a corner of the property line
   // is not -- the lock exists to protect work the AI would overwrite, and the
   // AI does not draw boundaries.
   if (state.mode === 'shape') markHandEdited();
-  writeRing(edit.ringId, moveVertex(ring, edit.vertexIndex, lngLat));
+  writeRing(edit.ringId, moveVertex(ring, edit.vertexIndex, at));
   drawPoints();
   refreshMeasurement();
   refreshSurveyed();
@@ -7736,6 +7852,9 @@ function reset() {
   $('#pin-panel').hidden = true;
   state.edgeEdit = null;
   state.surveyed = [];
+  // Starting over is leaving the candidate, so the way back out goes with it.
+  state.reviewingId = null;
+  $('#review-bar').hidden = true;
   $('#result').hidden = true;
   $('#toggle-overlay').checked = false;
   setStatus('');
@@ -8120,6 +8239,17 @@ function keepFinished() {
   }).catch(() => { /* Never the finisher's problem. */ });
 }
 
+/*
+ * The two ways out of a review. Same destination, different promise -- and
+ * both of them named on screen rather than implied by a status line that the
+ * next status line replaces.
+ */
+$('#btn-review-save').addEventListener('click', () => leaveReview(true));
+$('#btn-review-back').addEventListener('click', () => {
+  if (!confirm('Go back to the console without saving? Any corrections you have made here are lost.')) return;
+  leaveReview(false);
+});
+
 $('#btn-finish').addEventListener('click', () => {
   keepFinished();
 
@@ -8131,6 +8261,7 @@ $('#btn-finish').addEventListener('click', () => {
    */
   if (state.reviewingId) {
     state.reviewingId = null;
+    $('#review-bar').hidden = true;
     setStatus('Saved. Back to the review queue.');
     window.location.href = '/admin.html';
     return;

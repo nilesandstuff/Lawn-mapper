@@ -227,6 +227,33 @@
       greys them out and offers the two honest ways forward instead.
     -->
     <section class="step" id="step-work" hidden>
+      <!--
+        REVIEWING A TRAINING CANDIDATE, and the way back out.
+
+        The console's Edit button sends the reviewer here because the editing
+        tools are here. Getting back was the Finish button, several steps away
+        on another tab, saying "Finish, save, and see more options" -- which is
+        true and says nothing about the console, so the only thing telling
+        anybody how to return was a status line that the next status line
+        replaced. Asked directly: "is there a save-and-return button I didn't
+        see?" There was not one to see.
+
+        Two ways out, because there are two things a reviewer decides. One
+        leaves the corrected outline back in the queue; the other is for the
+        candidate that turned out to need nothing, where saving would put an
+        unchanged map back to be judged a second time.
+
+        Above the tabs and outside them, like the corner panel, because it is
+        about the whole visit rather than about a step of it.
+      -->
+      <div class="reviewbar" id="review-bar" hidden>
+        <p class="sub">Reviewing a training candidate. Fix whatever is off, then come back.</p>
+        <div class="reviewbar-acts">
+          <button class="primary" type="button" id="btn-review-save">Save and return to the console</button>
+          <button class="ghost" type="button" id="btn-review-back">Back without saving</button>
+        </div>
+      </div>
+
       <div class="result" id="result" hidden>
         <div class="result-figure"><span id="result-sqft">—</span> <small>sq ft</small></div>
         <div class="result-sub" id="result-sub"></div>
@@ -477,8 +504,16 @@
         -->
         <label class="opt" id="outside-opt" hidden>
           <input type="checkbox" id="toggle-outside">
+          <!--
+            It used to say "lets the Add brush paint past your boundary", which
+            was the whole truth about what it did and not about what it meant:
+            a corner dragged past the line went past it regardless, and the
+            square footage counted it. The sentence now describes the rule, and
+            the code keeps it for every tool rather than one of them.
+          -->
           <span>Measure outside the property line
-            <small>Lets the Add brush paint past your boundary. Turning it back
+            <small>Lets the brush and the corner tools go past your boundary.
+              Off, a corner dragged past it is held at the line. Turning it back
               off trims everything to the line again — your detected lawn is kept,
               not re-run.</small>
           </span>

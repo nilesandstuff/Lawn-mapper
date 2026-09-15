@@ -1884,6 +1884,104 @@ console.log('\n--- cutting a shape out ---');
   }
 }
 
+/* ------------------------------------- held at the property line */
+/*
+ * THE REPORT: "moving points beyond the property line adds to the square
+ * footage, even with measure outside property line turned off."
+ *
+ * It did. The option gated the Add brush and nothing else, so one of the two
+ * ways to put lawn past the boundary respected it and the other did not --
+ * with the option switched off and the line drawn on the map the whole time.
+ *
+ * Asserted on the area OUTSIDE the line rather than on the panel total. The
+ * total moving is not the bug; where the ground it counts sits is.
+ */
+console.log('\n--- held at the property line ---');
+{
+  await goTab(page, 'draw');
+  await page.click('#tool-points');
+  await page.waitForTimeout(400);
+
+  /*
+   * The baseline is REPORTED, not asserted. Earlier sections have brushed and
+   * cut this lawn about, and how much of it happens to sit outside the line
+   * before this starts is not the claim -- the claim is that the drag does not
+   * add to it. Asserting the starting state would be a check that fails for
+   * something another section did.
+   */
+  const outsideBefore = await page.evaluate(() => window.__lmOutsideSqFt());
+  console.log(`      ${Math.round(outsideBefore)} sq ft outside the line to begin with`);
+
+  /*
+   * Drag a corner hard towards the edge of the map, which on a lot that fills
+   * the frame is well past the boundary in any direction.
+   */
+  const target = await page.evaluate(() => window.__lmPoints()[0] || null);
+  if (target) {
+    const dragged = await page.evaluate(async ([x, y]) => {
+      const el = document.querySelector('.mapboxgl-canvas-container');
+      const touch = (t, cx, cy) => el.dispatchEvent(new TouchEvent(t, {
+        bubbles: true, cancelable: true,
+        touches: t === 'touchend' ? [] : [new Touch({ identifier: 1, target: el, clientX: cx, clientY: cy })],
+        changedTouches: [new Touch({ identifier: 1, target: el, clientX: cx, clientY: cy })],
+      }));
+      touch('touchstart', x, y);
+      for (let i = 1; i <= 10; i++) {
+        touch('touchmove', x - i * 22, y - i * 16);
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      touch('touchend', x - 220, y - 160);
+      await new Promise((r) => setTimeout(r, 400));
+      return { outside: window.__lmOutsideSqFt(), hint: document.querySelector('#map-hint')?.textContent || '' };
+    }, [target.x, target.y]);
+
+    check('a corner dragged far past the boundary adds nothing outside it',
+      dragged.outside < outsideBefore + 60,
+      `${Math.round(outsideBefore)} -> ${Math.round(dragged.outside)} sq ft outside, ` +
+      'after a drag 270 px towards the edge of the map');
+    check('and the map says why the corner stopped following the finger',
+      /property line/i.test(dragged.hint), dragged.hint.trim() || '(no hint)');
+
+    /*
+     * AND THE OPTION STILL MEANS SOMETHING. A hold that cannot be lifted is
+     * not a setting, it is a wall -- and going out to the kerb is the case the
+     * option exists for.
+     */
+    await page.locator('#toggle-outside').setChecked(true);
+    await page.waitForTimeout(300);
+    const freed = await page.evaluate(async () => {
+      const el = document.querySelector('.mapboxgl-canvas-container');
+      const p = window.__lmPoints()[0];
+      const touch = (t, cx, cy) => el.dispatchEvent(new TouchEvent(t, {
+        bubbles: true, cancelable: true,
+        touches: t === 'touchend' ? [] : [new Touch({ identifier: 1, target: el, clientX: cx, clientY: cy })],
+        changedTouches: [new Touch({ identifier: 1, target: el, clientX: cx, clientY: cy })],
+      }));
+      touch('touchstart', p.x, p.y);
+      for (let i = 1; i <= 10; i++) {
+        touch('touchmove', p.x - i * 22, p.y - i * 16);
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      touch('touchend', p.x - 220, p.y - 160);
+      await new Promise((r) => setTimeout(r, 400));
+      return window.__lmOutsideSqFt();
+    });
+    check('switched on, the same drag goes past the line',
+      freed > dragged.outside + 50,
+      `${Math.round(dragged.outside)} -> ${Math.round(freed)} sq ft outside`);
+
+    /* Back inside, which also re-trims -- and is how the rest of the run expects it. */
+    await page.locator('#toggle-outside').setChecked(false);
+    await page.waitForTimeout(700);
+    const trimmed = await page.evaluate(() => window.__lmOutsideSqFt());
+    check('and switching it back off trims to the line again',
+      trimmed < outsideBefore + 60,
+      `${Math.round(freed)} -> ${Math.round(trimmed)} sq ft outside`);
+  } else {
+    check('there was a corner to drag', false, 'no editable ring to aim at');
+  }
+}
+
 /* ------------------------------------------------------- brush width */
 /*
  * The only brush anyone can see is the coloured line under their finger, so

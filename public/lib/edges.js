@@ -101,14 +101,19 @@ function slideCorner(corner, newLinePoint, newLineDir, neighbour, neighbourDir, 
   return Math.hypot(...sub(hit, corner)) > limit ? fallback : hit;
 }
 
-/** Perpendicular distance from p to segment ab, and the closest point on it. */
-function distanceToSegment(p, a, b) {
+/** The closest point on segment ab to p, clamped to the segment's ends. */
+function closestOnSegment(p, a, b) {
   const ab = sub(b, a);
   const len2 = ab[0] ** 2 + ab[1] ** 2;
-  if (len2 < 1e-12) return Math.hypot(...sub(p, a));
+  if (len2 < 1e-12) return a;
   let t = ((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1]) / len2;
   t = Math.max(0, Math.min(1, t));
-  return Math.hypot(...sub(p, add(a, scale(ab, t))));
+  return add(a, scale(ab, t));
+}
+
+/** Perpendicular distance from p to segment ab. */
+function distanceToSegment(p, a, b) {
+  return Math.hypot(...sub(p, closestOnSegment(p, a, b)));
 }
 
 /**
@@ -407,6 +412,34 @@ export function edgeBearing(ring, index) {
   const b = frame.toXY(verts[(index + 1) % n]);
   const [dx, dy] = sub(b, a);
   return (toDeg(Math.atan2(dx, dy)) + 360) % 360;
+}
+
+/**
+ * The point on a ring's boundary closest to somewhere else.
+ *
+ * What a corner dragged past the property line is held at. Snapping it to the
+ * nearest CORNER of the boundary would jump it metres away from the finger;
+ * the nearest point on the nearest EDGE is where the finger actually is, as
+ * near as the boundary allows, so the corner slides along the line instead of
+ * sticking or leaping.
+ *
+ * Returns { at, distanceM } in lng/lat, or null for a ring that is not one.
+ */
+export function nearestPointOnRing(ring, point) {
+  const verts = openRing(ring);
+  if (verts.length < 2) return null;
+
+  const frame = makeFrame(verts[0]);
+  const xy = verts.map(frame.toXY);
+  const p = frame.toXY(point);
+
+  let best = null;
+  for (let i = 0; i < xy.length; i++) {
+    const q = closestOnSegment(p, xy[i], xy[(i + 1) % xy.length]);
+    const d = Math.hypot(...sub(p, q));
+    if (!best || d < best.d) best = { d, q };
+  }
+  return { at: frame.toLngLat(best.q), distanceM: best.d };
 }
 
 /**

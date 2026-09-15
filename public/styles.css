@@ -519,6 +519,25 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .result-figure small { font-size: 15px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
 .result-sub { color: var(--muted); font-size: 13px; margin-top: 3px; }
 
+/*
+ * The way back to the console, while a training candidate is open.
+ *
+ * Amber rather than the green of the result card, because it is not part of
+ * measuring: it says "you are here on somebody else's errand" and the colour
+ * is what makes that readable before the words are.
+ *
+ * Its buttons wrap rather than shrink. At 400 px two of these side by side
+ * would be two narrow columns of wrapped words, and the destructive one would
+ * be the harder to read.
+ */
+.reviewbar {
+  border: 1px solid #e0c48a; border-radius: 12px; background: #fdf7ea;
+  padding: 12px 14px; margin-bottom: 14px;
+}
+.reviewbar p { margin: 0 0 10px; color: #7a5a1a; }
+.reviewbar-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.reviewbar-acts button { flex: 1 1 200px; margin: 0; }
+
 .statusline { font-size: 13.5px; color: var(--muted); min-height: 20px; margin-bottom: 10px; }
 .statusline.warn { color: #a35b00; }
 .statusline.error { color: #b3261e; }

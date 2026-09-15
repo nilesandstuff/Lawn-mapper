@@ -660,5 +660,76 @@ check('every class the code toggles is styled',
     'a hole filled separately reads as lawn, and gets approved as one');
 }
 
+/* ------------------------ the property line holds a corner in */
+/*
+ * "Measure outside the property line" gated the Add brush and nothing else, so
+ * a corner dragged past the boundary went past it and the square footage
+ * counted the ground beyond -- the option off, the line on the map, and the
+ * total wrong anyway. An option that governs one of the two ways to reach the
+ * same mistake reads as a promise it does not keep.
+ */
+{
+  const move = js.match(/function moveSelectedVertex\([\s\S]*?\n}/)?.[0] || '';
+  check('dragging a corner is held inside the line',
+    /heldInsideParcel\(/.test(move),
+    'moveVertex used the raw pointer position, whatever the option said');
+
+  const held = js.match(/function heldInsideParcel\([\s\S]*?\n}/)?.[0] || '';
+  check('and the option is what decides it',
+    /state\.measureOutside/.test(held));
+  check('held at the nearest point on the line, not refused',
+    /nearestPointOnRing\(/.test(held),
+    'a corner that stops dead under a moving finger reads as a bug');
+  check('the boundary\'s own corners are never held',
+    /state\.mode !== 'shape'/.test(held),
+    'the property line is the thing that defines where outside is');
+
+  /*
+   * And the sentence under the checkbox has to describe the rule rather than
+   * one tool that follows it. It used to say "lets the Add brush paint past
+   * your boundary", which was exactly true and exactly the wrong promise.
+   */
+  check('and the option says what it now governs',
+    /corner tools/.test(html) && /held at the line/.test(html),
+    'the old wording named only the brush');
+}
+
+/* ------------------------------- the way out of a review edit */
+/*
+ * ASKED DIRECTLY: "is there a save-and-return-to-console button escape path
+ * that I didn't see?" There was not one to see. The console's Edit button
+ * sends the reviewer into the editor, and getting back was the Finish button
+ * -- several steps away, on another tab, labelled "Finish, save, and see more
+ * options", which says nothing about the console. The only thing that
+ * mentioned it was a status line, which the next status line replaced.
+ */
+{
+  check('a review edit shows the way back on screen',
+    /id="review-bar"/.test(html)
+    && /id="btn-review-save"/.test(html)
+    && /id="btn-review-back"/.test(html),
+    'a status line is not a control');
+
+  const leave = js.match(/function leaveReview\([\s\S]*?\n}/)?.[0] || '';
+  check('saving on the way out is the same finish the panel button runs',
+    /keepFinished\(\)/.test(leave),
+    'a second way to save is a second thing to keep in step');
+  check('and going back without saving writes nothing',
+    /if \(save\) keepFinished/.test(leave),
+    'a candidate that needed no correction should not go round the queue again');
+  check('both land on the console',
+    /admin\.html/.test(leave));
+
+  /*
+   * The bar is shown when a candidate opens and hidden everywhere the visit
+   * ends -- including Start over, which is leaving the candidate. A bar
+   * offering to return to a review that is no longer open is a button that
+   * throws away the map you are on.
+   */
+  const shows = (js.match(/#review-bar'\)\.hidden = /g) || []).length;
+  check('and it appears and disappears with the review itself',
+    shows >= 4, `${shows} place(s) set its visibility`);
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);
