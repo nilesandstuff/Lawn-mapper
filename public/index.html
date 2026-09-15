@@ -81,6 +81,37 @@
   </div>
 </div>
 
+<!--
+  Shown once a visit, the first time somebody opens the AI tab.
+
+  It says the detection is bad before they watch it be bad, which is the only
+  moment that sentence is worth anything: read first it sets an expectation and
+  offers the fix, read afterwards it is an excuse. The ask that follows -- keep
+  going, correct it, press finish -- is the whole of how the training set gets
+  built, and it costs nothing to state plainly.
+-->
+<div class="sheet" id="ai-notice" role="dialog" aria-modal="true"
+     aria-labelledby="ai-notice-title" hidden>
+  <div class="sheet-card">
+    <button class="sheet-x" id="ai-notice-close" type="button" aria-label="Close">×</button>
+    <p class="sheet-title" id="ai-notice-title">The AI lawn detection is bad</p>
+    <p class="sheet-why">You can still use it to start a map of your lawn and
+      then tweak or correct it with the drawing or point tools.</p>
+    <p class="sheet-why">Corrected maps will be fed into the model to train a
+      model that actually works well. Be sure to hit <b>Finish, save, and see
+      more options</b> after you&rsquo;ve made the corrections.</p>
+    <p class="sheet-why">If you have time and want to help, measure other
+      addresses too. Preferably measure addresses at least 1&nbsp;km
+      (0.62&nbsp;miles) away from each other.</p>
+    <p class="sheet-note">Note: this project is not open source, but it is not
+      profit driven. Any future monetization will be non-invasive and strictly
+      to cover server and API costs.</p>
+    <div class="tools">
+      <button class="primary" id="ai-notice-ok" type="button">Got it</button>
+    </div>
+  </div>
+</div>
+
 <div class="layout">
   <aside class="panel" id="panel">
 

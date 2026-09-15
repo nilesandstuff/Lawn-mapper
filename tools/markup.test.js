@@ -459,5 +459,70 @@ check('every class the code toggles is styled',
     'sendFeedback falls back to the frame');
 }
 
+/* ------------------------------------------------- the AI notice sheet */
+/*
+ * Shown once a visit, before somebody watches the detector be bad.
+ *
+ * Checked here rather than left to the browser run because the words are a
+ * COMMITMENT, not decoration -- it tells a stranger the tool is poor, asks
+ * them to correct it anyway, explains where the corrections go, and makes a
+ * promise about money. Copy like that should not be able to drift out of the
+ * page unnoticed, and the ids it hangs on are already the sort this file
+ * exists to catch.
+ */
+{
+  const sheet = html.match(/<div class="sheet" id="ai-notice"[\s\S]*?\n<\/div>/);
+  check('the AI notice sheet is in the page', Boolean(sheet));
+  const text = (sheet?.[0] || '').replace(/\s+/g, ' ');
+
+  check('it is hidden until something opens it',
+    /id="ai-notice"[^>]*\bhidden\b/.test(html),
+    'otherwise it flashes on every load before the script runs');
+  check('and it is a labelled dialog like the other sheets',
+    /id="ai-notice"[^>]*role="dialog"/.test(html)
+      && /id="ai-notice"[^>]*aria-modal="true"/.test(html)
+      && /aria-labelledby="ai-notice-title"/.test(html));
+
+  /* The four things it has to say, each for a different reason. */
+  for (const [what, needle] of [
+    ['says the detection is bad, plainly', /The AI lawn detection is bad/],
+    ['says corrections can be made with the drawing or point tools',
+      /tweak or correct it with the drawing or point tools/],
+    ['names the button that actually keeps the map',
+      /Finish, save, and see\s*more options/],
+    ['asks for addresses about a kilometre apart',
+      /at least 1(&nbsp;| )km/],
+    ['gives the distance in miles too, for the people who think in them',
+      /0\.62(&nbsp;| )miles/],
+    ['is honest that the project is not open source',
+      /not open source/],
+    ['makes the promise about money',
+      /not\s*profit driven/],
+    ['names what monetization would be for',
+      /cover server and API costs/],
+  ]) {
+    check(`it ${what}`, needle.test(text), needle.source);
+  }
+
+  check('and it has a way out that is not just the small ×',
+    /id="ai-notice-ok"/.test(text) && /id="ai-notice-close"/.test(text));
+}
+
+/* ------------------------------------------- and that something opens it */
+{
+  check('the AI tab is what triggers the notice',
+    /if \(next === 'detect'\) showAiNotice\(\);/.test(js),
+    'shown before a detection is watched, not after -- read afterwards the '
+    + 'same sentence is an excuse rather than an expectation');
+
+  const fn = js.match(/function showAiNotice\(\)[\s\S]*?\n}/)?.[0] || '';
+  check('it is shown once a visit rather than once ever',
+    /sessionStorage/.test(fn) && !/localStorage/.test(fn),
+    'the ask inside it is a standing one, so a month-later visitor sees it again');
+  check('and a browser that refuses storage still loads the map',
+    /catch\s*\{/.test(fn),
+    'sessionStorage throws rather than returning null when it is locked down');
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);

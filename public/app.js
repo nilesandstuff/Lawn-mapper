@@ -3728,6 +3728,38 @@ const SIGNIN_ERRORS = {
     + '— they work once and last twenty minutes.',
 };
 
+/*
+ * What the AI actually is, said before it is watched being it.
+ *
+ * ONCE A VISIT, on first arrival at the AI tab. The timing is the whole point:
+ * read before a detection, "this is bad, correct it and the corrections train
+ * the replacement" sets an expectation and hands over a job. Read after one,
+ * the same words are an excuse for a result somebody has already judged.
+ *
+ * sessionStorage rather than a variable, so a reload does not repeat it, and
+ * rather than localStorage, so it comes back on the next visit -- the ask
+ * inside it is a standing one, and somebody who has been away for a month has
+ * forgotten that finishing is what keeps the map.
+ *
+ * Wrapped, because sessionStorage throws rather than returning null in a
+ * locked-down browser. The fallback is the in-memory flag, which still holds
+ * for the life of the page: worst case it reappears after a reload, which is
+ * a far better failure than a notice that never shows or a map that does not
+ * load.
+ */
+let aiNoticeShown = false;
+const AI_NOTICE_KEY = 'lawnmap.ai-notice.v1';
+
+function showAiNotice() {
+  if (aiNoticeShown) return;
+  aiNoticeShown = true;
+  try {
+    if (sessionStorage.getItem(AI_NOTICE_KEY)) return;
+    sessionStorage.setItem(AI_NOTICE_KEY, '1');
+  } catch { /* private mode: the flag above still stops a second one today */ }
+  openSheet('#ai-notice');
+}
+
 function openSheet(id) {
   $(id).hidden = false;
   // The first thing a keyboard lands on should be inside the dialog, not
@@ -4629,6 +4661,7 @@ function setTab(name) {
 
   if (next === 'saved') renderSaves();
   if (next === 'plan') refreshPlanTab();
+  if (next === 'detect') showAiNotice();
   refreshTabs();
   refreshRail();
   updatePromptHint();
@@ -7360,6 +7393,11 @@ $('#account-btn').addEventListener('click', () => {
 
 $('#signin-close').addEventListener('click', () => closeSheet('#signin'));
 $('#account-close').addEventListener('click', () => closeSheet('#account-sheet'));
+/* Two ways out, because the × is small on a phone and this one has nothing to
+   agree to -- "Got it" is an acknowledgement, not a decision. */
+for (const id of ['#ai-notice-close', '#ai-notice-ok']) {
+  $(id).addEventListener('click', () => closeSheet('#ai-notice'));
+}
 
 /* Tapping the darkened area behind a sheet closes it, which is what everyone
  * tries first. The test is on the target itself, so a press inside the card
