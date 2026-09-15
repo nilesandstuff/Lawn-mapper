@@ -507,6 +507,62 @@ check('with nothing locked before any work has been done',
     `${painted} -> ${after.shapes} shape(s), ${after.sqft.toLocaleString()} sq ft`);
 
   /*
+   * CORNER HANDLES, on the shape that was just painted.
+   *
+   * The geometry is unit tested and the placement rules with it; what cannot be
+   * tested offline is whether a tap on a stalk actually reaches the corner it
+   * points at. That is three separate pieces agreeing -- the planner, the
+   * projection, and the hit test that has to prefer a handle over everything
+   * else -- and any one of them being wrong looks identical from here: nothing
+   * moves.
+   */
+  await page.click('#tool-points');
+  await page.waitForTimeout(400);
+
+  const handles = await page.evaluate(() => window.__lmHandles());
+  const crowded = await page.evaluate(() => window.__lmHandlesCrowded());
+  check('corners get drag handles once the points tool is open',
+    handles.length > 0 || crowded,
+    crowded ? 'declined: too many corners on screen' : `${handles.length} handles`);
+
+  if (handles.length) {
+    check('and each sits out at arm\'s length from its corner',
+      handles.every((h) => h.reach > 20),
+      `reaches: ${[...new Set(handles.map((h) => h.reach))].join(', ')} px`);
+
+    /*
+     * No two within a thumb of each other -- the property the whole placement
+     * search exists to guarantee, checked here against real projected geometry
+     * rather than the made-up coordinates the unit tests use.
+     */
+    let closest = Infinity;
+    for (let i = 0; i < handles.length; i++) {
+      for (let j = i + 1; j < handles.length; j++) {
+        closest = Math.min(closest, Math.hypot(handles[i].x - handles[j].x, handles[i].y - handles[j].y));
+      }
+    }
+    check('and no two handles land on top of each other',
+      handles.length < 2 || closest >= 15, `closest pair ${Math.round(closest)} px apart`);
+
+    /* Drag one, and the lawn should change shape. */
+    const before = await page.evaluate(() => window.__lmSqft());
+    const target = handles[0];
+    const box = await page.locator('#map').boundingBox();
+    await page.mouse.move(box.x + target.x, box.y + target.y);
+    await page.mouse.down();
+    for (let i = 1; i <= 6; i++) {
+      await page.mouse.move(box.x + target.x + i * 5, box.y + target.y + i * 4);
+    }
+    await page.mouse.up();
+    await page.waitForTimeout(500);
+
+    const moved = await page.evaluate(() => window.__lmSqft());
+    check('and dragging a handle moves the corner it points at',
+      moved > 0 && Math.abs(moved - before) > 1,
+      `${Math.round(before)} -> ${Math.round(moved)} sq ft`);
+  }
+
+  /*
    * Painting by hand is a hand correction, so it locks the AI step -- which is
    * correct, and would break every check below that expects a live Detect
    * button. Clearing through the notice is how a person gets back, and it is

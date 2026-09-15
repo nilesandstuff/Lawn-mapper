@@ -24,6 +24,9 @@ import {
 } from './lib/edges.js';
 import { restoreAway } from './lib/stitch.js';
 import {
+  planHandles, HANDLE_DOT_PX, HANDLE_REACH_PX, HANDLE_MAX_CORNERS,
+} from './lib/handles.js';
+import {
   movedEnoughToCancelHold as gestureMoved, gestureIsOurs, isTap,
   HOLD_SLOP_PX, HOLD_MS,
 } from './lib/gesture.js';
@@ -203,10 +206,20 @@ if (typeof window !== 'undefined') {
   /*
    * Where the corner handles are, in viewport coordinates.
    *
-   * A browser test cannot aim at a corner it cannot locate, and reading them
-   * off a screenshot would be guesswork. One entry per editable outline, in
-   * the order a tap considers them.
+   * A browser test cannot aim at a handle it cannot locate, and reading one
+   * off a screenshot would be guesswork. One entry per placed handle, with the
+   * corner it drives, so a test can tap a stalk and then assert that the right
+   * corner is the one that moved.
    */
+  window.__lmHandles = () => handlePlan.map((h) => ({
+    x: Math.round(h.at.x),
+    y: Math.round(h.at.y),
+    index: h.index,
+    reach: Math.round(Math.hypot(h.dx, h.dy)),
+  }));
+  /** Whether the map declined to place any, because there is no room. */
+  window.__lmHandlesCrowded = () => handlesCrowded;
+
   /* How many shapes the measurement is actually made of. */
   window.__lmShapeCount = () => (draw ? draw.getAll().features.length : 0);
 
@@ -920,6 +933,41 @@ async function initMap() {
       'circle-opacity': ['case', ['==', ['get', 'phantom'], 1], 0.45, 1],
       'circle-stroke-width': ['case', ['==', ['get', 'phantom'], 1], 1.5, 2],
       'circle-stroke-opacity': ['case', ['==', ['get', 'phantom'], 1], 0.55, 1],
+      'circle-stroke-color': ['case', ['==', ['get', 'selected'], 1], '#7a3500', '#2f7d32'],
+    },
+  });
+
+  /*
+   * Drag handles: a dot on a stalk, one per corner, offset far enough that a
+   * fingertip on it is nowhere near the edges meeting at that corner.
+   *
+   * WHY THE STALK. A dot floating beside a corner does not say which corner it
+   * belongs to, and on a busy outline the nearest one is often not the right
+   * one. The leader makes the pairing unambiguous, which is the whole reason
+   * this is a handle rather than just a bigger circle.
+   *
+   * Leader first so the dot covers its end rather than the line crossing the
+   * dot, and both after `points` so a handle is never hidden by the corner it
+   * is there to reach.
+   */
+  map.addSource('point-handles', { type: 'geojson', data: empty() });
+  map.addLayer({
+    id: 'point-leaders', type: 'line', source: 'point-handles',
+    filter: ['==', ['geometry-type'], 'LineString'],
+    paint: {
+      'line-color': ['case', ['==', ['get', 'selected'], 1], '#ff6f00', '#2f7d32'],
+      'line-width': 1.6,
+      'line-opacity': 0.75,
+    },
+  });
+  map.addLayer({
+    id: 'point-handle-dots', type: 'circle', source: 'point-handles',
+    filter: ['==', ['geometry-type'], 'Point'],
+    paint: {
+      'circle-radius': HANDLE_DOT_PX,
+      'circle-color': ['case', ['==', ['get', 'selected'], 1], '#ff6f00', '#ffffff'],
+      'circle-opacity': 0.92,
+      'circle-stroke-width': 2,
       'circle-stroke-color': ['case', ['==', ['get', 'selected'], 1], '#7a3500', '#2f7d32'],
     },
   });
@@ -2082,6 +2130,24 @@ function vertexAt(clientX, clientY) {
   const rect = map.getCanvasContainer().getBoundingClientRect();
   const at = { x: clientX - rect.left, y: clientY - rect.top };
 
+  /*
+   * A HANDLE WINS, and before anything else is considered.
+   *
+   * It is the only thing on screen placed specifically so that nothing else is
+   * near it, so a tap inside one cannot reasonably have been meant for an edge
+   * or a neighbouring corner. Checking corners first would let a corner that
+   * happens to sit under somebody else's handle steal the tap.
+   */
+  const viaHandle = handleAt(at.x, at.y);
+  if (viaHandle) {
+    return {
+      featureId: viaHandle.featureId,
+      ring: ringOf(viaHandle.featureId) || viaHandle.ring,
+      index: viaHandle.index,
+      d: viaHandle.d,
+    };
+  }
+
   // Only corners that are actually drawn can be grabbed. Grabbing an invisible
   // one would be indistinguishable from the map moving on its own.
   let found = null;
@@ -2115,7 +2181,30 @@ function beginDrag(clientX, clientY) {
   }
   const hit = vertexAt(clientX, clientY);
   if (!hit) return false;
-  drag = { ...hit, startX: clientX, startY: clientY, moved: false };
+
+  /*
+   * THE CORNER KEEPS ITS DISTANCE FROM THE FINGER.
+   *
+   * Without this the corner jumps to wherever the touch landed, which is the
+   * whole point of a handle undone: the handle exists so the fingertip is
+   * somewhere other than the corner, and teleporting the corner under the
+   * finger puts it straight back where it cannot be seen.
+   *
+   * Recorded as a screen-space offset at grab time and held for the life of
+   * the drag. It also removes a small jump when a corner is grabbed directly:
+   * a tap fifteen pixels off used to snap the corner fifteen pixels before
+   * moving it anywhere.
+   */
+  const rect = map.getCanvasContainer().getBoundingClientRect();
+  const corner = map.project(openRing(hit.ring)[hit.index]);
+  drag = {
+    ...hit,
+    startX: clientX,
+    startY: clientY,
+    moved: false,
+    offsetX: corner.x - (clientX - rect.left),
+    offsetY: corner.y - (clientY - rect.top),
+  };
   diag.dragGrabbed++;
   return true;
 }
@@ -2140,7 +2229,10 @@ function updateDrag(clientX, clientY) {
   }
 
   const rect = map.getCanvasContainer().getBoundingClientRect();
-  const lngLat = map.unproject([clientX - rect.left, clientY - rect.top]);
+  const lngLat = map.unproject([
+    clientX - rect.left + (drag.offsetX || 0),
+    clientY - rect.top + (drag.offsetY || 0),
+  ]);
   moveSelectedVertex([lngLat.lng, lngLat.lat]);
   return true;
 }
@@ -3404,7 +3496,7 @@ const providerInfo = (id) =>
  * photograph, correctly placed, hiding the thing being measured.
  */
 function bottomOfOurLayers() {
-  const ours = /^(gl-draw|parcel-|edge-highlight|erase-stroke|points|surveyed|mask-overlay|lawn-pins)/;
+  const ours = /^(gl-draw|parcel-|edge-highlight|erase-stroke|points|point-|surveyed|mask-overlay|lawn-pins)/;
   for (const layer of map.getStyle().layers) {
     if (layer.id !== 'imagery-alt' && ours.test(layer.id)) return layer.id;
   }
@@ -5903,6 +5995,17 @@ const VERTEX_GRAB_PX = 20;
  */
 function selectNear(lngLat) {
   const tap = map.project(lngLat);
+
+  /* Same precedence as a drag: the handle is the unambiguous target. */
+  const viaHandle = handleAt(tap.x, tap.y);
+  if (viaHandle) {
+    return selectVertex({
+      featureId: viaHandle.featureId,
+      ring: ringOf(viaHandle.featureId) || viaHandle.ring,
+      index: viaHandle.index,
+    });
+  }
+
   let corner = null;
 
   for (const { featureId, ring } of handleRings()) {
@@ -6260,10 +6363,196 @@ function drawPoints() {
   }
 
   map.getSource('points').setData({ type: 'FeatureCollection', features });
+  drawHandles();
+}
+
+/*
+ * State for the handles, kept out of `state` because none of it is the user's
+ * work -- it is a cache of where dots currently are, rebuilt whenever the map
+ * moves, and restoring it would mean restoring pixel positions from a
+ * different screen.
+ */
+let handlePlan = [];
+let handlesCrowded = false;
+
+/**
+ * Work out where every corner's handle goes, and draw them.
+ *
+ * SCREEN SPACE, RECOMPUTED ON MOVE. Whether two handles collide depends on
+ * zoom, so this is not something that can be solved once and stored with the
+ * shape -- the same lawn at z17 and z20 needs entirely different answers.
+ *
+ * NOT ON EVERY FRAME. Mapbox fires `move` continuously through a pan, and
+ * re-planning a few hundred corners per frame is how a map starts to stutter
+ * on a phone. Handles are cleared when a gesture starts and re-planned when it
+ * settles; during the gesture the corners themselves are still there and still
+ * grabbable, so nothing is lost but the stalks.
+ */
+function drawHandles() {
+  const source = map.getSource('point-handles');
+  if (!source) return;
+
+  if (!state.edgeEdit) {
+    handlePlan = [];
+    handlesCrowded = false;
+    return source.setData(empty());
+  }
+
+  /*
+   * MID-DRAG, NOTHING IS RE-PLANNED.
+   *
+   * moveSelectedVertex redraws on every pointer frame, so planning here would
+   * solve a few hundred corners per frame -- and worse, the handle under the
+   * finger would jump to a new direction as the corner moved, which is the one
+   * thing a handle must never do.
+   *
+   * Each handle keeps the offset it was placed at, so carrying it is an
+   * addition. The corner being dragged takes its handle with it; the others
+   * are unchanged because their corners are. The map is held still during a
+   * drag, so the screen positions stay meaningful throughout.
+   */
+  if (drag?.moved && handlePlan.length) return redrawHandlePlan(source);
+
+  /*
+   * Only what is on screen, with a margin so a handle just outside the edge
+   * still counts as an obstacle for one just inside it. Off-screen corners
+   * cannot be tapped and cannot collide with anything visible.
+   */
+  const canvas = map.getCanvas();
+  const pad = HANDLE_REACH_PX * 2;
+  const onScreen = (q) => q.x >= -pad && q.y >= -pad
+    && q.x <= canvas.clientWidth + pad && q.y <= canvas.clientHeight + pad;
+
+  const meta = [];
+  const rings = [];
+  for (const { featureId, ring } of editableRings()) {
+    const open = openRing(ring);
+    const projected = open.map((p) => {
+      const q = map.project(p);
+      return { x: q.x, y: q.y };
+    });
+    if (!projected.some(onScreen)) continue;
+    meta.push({ featureId, ring, open });
+    rings.push(projected);
+  }
+
+  const { handles, crowded } = planHandles(rings);
+  handlesCrowded = crowded;
+
+  /*
+   * SILENT ABSENCE READS AS A BUG. At a zoom where hundreds of corners are on
+   * screen they are a few pixels apart and no handle can be placed clear of
+   * anything -- which is correct, and indistinguishable from the feature being
+   * broken unless it is said. The corners themselves are still there and still
+   * grabbable meanwhile, so this is a nudge rather than a blockage.
+   */
+  if (crowded) setHint('Zoom in for corner handles — too many corners to place them here.');
+  else if ($('#map-hint')?.textContent.startsWith('Zoom in for corner handles')) setHint('');
+
+  const edit = state.edgeEdit;
+  const features = [];
+  handlePlan = [];
+
+  for (const h of handles) {
+    const owner = meta[h.ring];
+    if (!owner) continue;
+    /* A handle for a corner scrolled off screen is arithmetic nobody can use. */
+    if (!onScreen(h.at)) continue;
+
+    const selected = owner.featureId === edit.featureId && h.index === edit.vertexIndex ? 1 : 0;
+    const at = map.unproject([h.at.x, h.at.y]);
+    const from = owner.open[h.index];
+
+    handlePlan.push({
+      featureId: owner.featureId,
+      ring: owner.ring,
+      index: h.index,
+      at: { x: h.at.x, y: h.at.y },
+      /* The offset, so a corner being dragged can carry its handle along
+         without any of this being solved again. See the drag branch below. */
+      dx: h.at.x - h.from.x,
+      dy: h.at.y - h.from.y,
+    });
+    features.push({
+      type: 'Feature',
+      properties: { selected },
+      geometry: { type: 'LineString', coordinates: [from, [at.lng, at.lat]] },
+    });
+    features.push({
+      type: 'Feature',
+      properties: { selected },
+      geometry: { type: 'Point', coordinates: [at.lng, at.lat] },
+    });
+  }
+
+  source.setData({ type: 'FeatureCollection', features });
+}
+
+/**
+ * Re-emit the handles already planned, following their corners.
+ *
+ * No geometry is solved: each handle sits at its corner plus the offset chosen
+ * when it was placed, so this is one projection and one addition per handle.
+ */
+function redrawHandlePlan(source) {
+  const edit = state.edgeEdit;
+  const features = [];
+
+  for (const h of handlePlan) {
+    /*
+     * LOOKED UP FRESH, never the ring captured when this was planned.
+     *
+     * moveVertex returns a NEW ring rather than editing one, so the array this
+     * plan was built from is stale the instant a corner moves -- and a stale
+     * ring here would anchor every leader to where its corner used to be while
+     * the corner slid away from it. Which is the exact frame this branch
+     * exists to draw.
+     */
+    const live = ringOf(h.featureId) || h.ring;
+    const from = openRing(live)[h.index];
+    if (!from) continue;
+    const q = map.project(from);
+    h.at = { x: q.x + h.dx, y: q.y + h.dy };
+    const at = map.unproject([h.at.x, h.at.y]);
+    const selected = h.featureId === edit?.featureId && h.index === edit?.vertexIndex ? 1 : 0;
+
+    features.push({
+      type: 'Feature',
+      properties: { selected },
+      geometry: { type: 'LineString', coordinates: [from, [at.lng, at.lat]] },
+    });
+    features.push({
+      type: 'Feature',
+      properties: { selected },
+      geometry: { type: 'Point', coordinates: [at.lng, at.lat] },
+    });
+  }
+
+  source.setData({ type: 'FeatureCollection', features });
+}
+
+/**
+ * Which corner a tap on a handle belongs to, or null.
+ *
+ * Generous, because a handle exists precisely so that a fingertip has
+ * somewhere unambiguous to land: nothing else is within the clearance by
+ * construction, so a wide catchment cannot steal a tap from anything.
+ */
+const HANDLE_GRAB_PX = 24;
+function handleAt(x, y) {
+  let found = null;
+  for (const h of handlePlan) {
+    const d = Math.hypot(h.at.x - x, h.at.y - y);
+    if (d <= HANDLE_GRAB_PX && (!found || d < found.d)) found = { ...h, d };
+  }
+  return found;
 }
 
 function clearPoints() {
   map.getSource('points')?.setData(empty());
+  map.getSource('point-handles')?.setData(empty());
+  handlePlan = [];
+  handlesCrowded = false;
 }
 
 function applyEdgeOffset(feet) {
