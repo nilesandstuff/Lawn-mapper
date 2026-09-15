@@ -21,6 +21,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { scoreMap, summarise, verdict, CANOPY_LABEL } from '../worker/src/score.js';
+import { parseDatabaseList, pickDatabase } from './ci-prepare.js';
 
 const DB_NAME = process.env.DB_NAME || 'lawn-mapper';
 
@@ -143,10 +144,37 @@ const geometries = (stored) => {
   return list.map((g) => (g?.geometry ? g.geometry : g)).filter(Boolean);
 };
 
+/**
+ * THE DATABASE BY ITS REAL ID, not by the name in wrangler.toml.
+ *
+ * The committed wrangler.toml carries `REPLACE_WITH_D1_DATABASE_ID`, which
+ * tools/ci-prepare.js fills in on the runner during a deploy. Asking for the
+ * database by NAME makes wrangler resolve it through that binding, so this
+ * cheerfully sent a query to a database called REPLACE_WITH_D1_DATABASE_ID --
+ * the first real run's actual failure. Looking the id up the way ci-prepare
+ * does needs no config file and no placeholder.
+ *
+ * The lookup is allowed to fail: falling back to the name still works for
+ * anybody whose wrangler.toml is real, and the error from that attempt says
+ * more than a guess from here would.
+ */
+function resolveDatabase() {
+  try {
+    const found = pickDatabase(parseDatabaseList(wrangler(['d1', 'list', '--json'])), DB_NAME);
+    if (found?.id) {
+      console.log(`Reading the "${found.name}" database.`);
+      return found.id;
+    }
+  } catch { /* fall through to the name */ }
+  return DB_NAME;
+}
+
 function main() {
   let out = '';
   try {
-    out = wrangler(['d1', 'execute', DB_NAME, '--remote', '--json', '--command', QUERY]);
+    out = wrangler([
+      'd1', 'execute', resolveDatabase(), '--remote', '--json', '--command', QUERY,
+    ]);
   } catch (err) {
     console.log('Could not read the corpus, so nothing was measured.');
     console.log(reasonFrom(err));
