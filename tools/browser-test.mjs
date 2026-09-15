@@ -72,6 +72,24 @@ const page = await browser.newPage({
 });
 
 /*
+ * The AI notice, marked as already seen before the app starts.
+ *
+ * It is a `position: fixed; inset: 0` sheet, so while it is open every panel
+ * button behind it resolves but cannot be clicked -- and Playwright reports
+ * that as "waiting for element to be visible, enabled and stable", which reads
+ * like a broken control rather than something on top of it.
+ *
+ * Suppressed rather than dismissed, because dismissing it would only work if
+ * this script happens to reach the AI tab before any other click, and a check
+ * added later in the wrong place would quietly re-introduce the problem. The
+ * notice itself is covered in markup.test.js, where its words can be asserted
+ * without needing a browser at all.
+ */
+await page.addInitScript(() => {
+  try { sessionStorage.setItem('lawnmap.ai-notice.v1', '1'); } catch { /* fine */ }
+});
+
+/*
  * FAIL FAST, AND SAY WHAT YOU HAD.
  *
  * Playwright's default is to retry an action for thirty seconds before giving
@@ -528,7 +546,7 @@ check('with nothing locked before any work has been done',
   if (handles.length) {
     check('and each sits out at arm\'s length from its corner',
       handles.every((h) => h.reach > 20),
-      `reaches: ${[...new Set(handles.map((h) => h.reach))].join(', ')} px`);
+      `reaches: ${[...new Set(handles.map((h) => Math.round(h.reach)))].join(', ')} px`);
 
     /*
      * No two within a thumb of each other -- the property the whole placement

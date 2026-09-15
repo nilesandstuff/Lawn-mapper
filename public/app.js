@@ -211,11 +211,18 @@ if (typeof window !== 'undefined') {
    * corner it drives, so a test can tap a stalk and then assert that the right
    * corner is the one that moved.
    */
+  /*
+   * UNROUNDED, which cost a false failure. Rounding each coordinate for
+   * readability moves a point by up to half a pixel in each axis, so a pair
+   * genuinely 15.2 px apart can measure 14.6 -- and the check asserting that
+   * no two handles come within the clearance then fails on arithmetic it did
+   * itself. A probe reports what it knows; the caller can round to print.
+   */
   window.__lmHandles = () => handlePlan.map((h) => ({
-    x: Math.round(h.at.x),
-    y: Math.round(h.at.y),
+    x: h.at.x,
+    y: h.at.y,
     index: h.index,
-    reach: Math.round(Math.hypot(h.dx, h.dy)),
+    reach: Math.hypot(h.dx, h.dy),
   }));
   /** Whether the map declined to place any, because there is no room. */
   window.__lmHandlesCrowded = () => handlesCrowded;
