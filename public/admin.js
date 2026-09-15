@@ -296,6 +296,34 @@ function drawCandidate(c) {
   head.append(el('b', null, c.county || 'somewhere with no county record'));
   head.append(el('span', 'pill', `${n(c.squareFeet)} sq ft`));
   if (c.parcelSource === 'hand') head.append(el('span', 'pill free', 'traced boundary'));
+
+  /*
+   * WHICH PHOTOGRAPH IS THIS, AND IS IT THE ONE THEY MEASURED ON?
+   *
+   * Often it is not, and that is deliberate rather than a fault: google and
+   * esri are licensed to look at and not to keep, so a map measured on either
+   * banks a MAPBOX picture of the same frame instead. The outlines are lng/lat
+   * so nothing moves, but the reviewer is then judging a trace against a
+   * different photograph from the one it was drawn on -- a different year,
+   * different season, different sun. Worth knowing before calling a trace
+   * wrong, and invisible until it is said.
+   *
+   * It also names the one case where a genuine mismatch is possible. NAIP is
+   * an ArcGIS image service, and those may answer with an extent snapped to
+   * their own grid rather than the one asked for -- which would draw this
+   * outline at the wrong scale while looking perfectly reasonable.
+   */
+  const shot = c.imageProvider || null;
+  if (shot && shot !== c.provider) {
+    const pill = el('span', 'pill free', `${c.provider} map · ${shot} photo`);
+    pill.title = `Measured on ${c.provider}, which is not kept. The picture is `
+      + `${shot} of the same frame, so the outline is right and the imagery `
+      + 'may be from another year.';
+    head.append(pill);
+  } else if (shot) {
+    head.append(el('span', 'pill free', `${shot} photo`));
+  }
+
   box.append(head);
 
   if (c.why?.length) {
