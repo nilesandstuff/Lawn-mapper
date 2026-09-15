@@ -474,6 +474,43 @@ async function post(payload) {
     one?.threshold === EXCLUSIONS.woods.threshold, String(one?.threshold));
 }
 
+/* ------------------------------------- how deep a tile source goes */
+/*
+ * THE REPORT: "esri world imagery hasn't been providing any imagery."
+ *
+ * Its cache stops at z19 and does not 404 past it -- it answers with a "map
+ * data not yet available" tile: HTTP 200, valid JPEG, the same 2,521 bytes
+ * every time. So nothing errors and the map shows that instead of the ground.
+ * A lot fits the frame at about z19.4 and correcting corners goes deeper, so
+ * every zoom anybody WORKS at was past the end of it.
+ *
+ * The ceiling has to reach the browser from here, because a valid JPEG of the
+ * words "not available" is not something a client-side check can tell from
+ * photography.
+ */
+{
+  console.log('\n--- how deep each tile source really goes ---');
+  const { PROVIDERS, providerCatalogue } = await import('../worker/src/imagery.js');
+
+  check('Esri declares where its photography stops',
+    PROVIDERS.esri.maxzoom === 19,
+    `maxzoom ${PROVIDERS.esri.maxzoom} — measured by workflow 8, not guessed`);
+
+  const sent = providerCatalogue({}).find((p) => p.id === 'esri');
+  check('and the browser is told, rather than left to find out',
+    sent?.maxzoom === 19,
+    'past the cache the answer is a 200, so nothing client-side can detect it');
+
+  check('a source with no ceiling sends null rather than a number it made up',
+    providerCatalogue({}).filter((p) => p.tiles && !Number.isFinite(p.maxzoom))
+      .every((p) => p.maxzoom === null),
+    'an invented ceiling is the bug this fixes, in the other direction');
+
+  check('and the note warns it softens rather than letting it look broken',
+    /zoom 19/.test(PROVIDERS.esri.note),
+    PROVIDERS.esri.note.slice(-70));
+}
+
 /* ------------------------------ the property line as a prompt */
 /*
  * The remote-sensing work on SAM 3 says text-only prompting is the worst

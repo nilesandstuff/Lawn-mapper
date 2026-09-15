@@ -23,6 +23,7 @@
  *   node tools/probe-imagery.js
  */
 
+import { createHash } from 'node:crypto';
 import { frameCorners, metresPerPixel } from '../public/lib/mercator.js';
 import { PROVIDERS, imagePixels } from '../worker/src/imagery.js';
 
@@ -340,36 +341,63 @@ for (const [id, p] of Object.entries(PROVIDERS)) {
   if (!p.tiles) continue;
   console.log(`\n    ${id} — ${p.tiles}`);
 
-  let deepest = null;
+  /*
+   * THE PLACEHOLDER IS A 200, AND IT IS A REAL JPEG.
+   *
+   * Past the end of its cache Esri does not 404. It answers with a "map data
+   * not yet available" tile: HTTP 200, image/jpeg, perfectly valid. So status
+   * cannot decide this, and neither can size -- the first version of this
+   * check called anything over 1500 bytes usable, the placeholder is 2521,
+   * and it confidently reported "deepest usable zoom: 23", which is precisely
+   * the value that causes the blank map it was written to diagnose.
+   *
+   * What gives it away is that the placeholder is the SAME IMAGE every time.
+   * Real imagery differs tile to tile; four identical payloads at four
+   * different zooms are one picture of the words "not available". So the test
+   * is payload identity, not payload size.
+   */
+  const seen = [];
   for (const z of [16, 17, 18, 19, 20, 21, 22, 23]) {
     const [x, y] = tileXY(FRAME.lng, FRAME.lat, z);
     /* ArcGIS orders the path z/row/col, which is z/y/x. */
     const url = p.tiles
       .replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y));
 
-    let line;
     try {
       const res = await fetch(url);
       const type = res.headers.get('content-type') || '';
-      const bytes = res.ok ? (await res.arrayBuffer()).byteLength : 0;
-      /*
-       * A 200 CARRYING NOTHING IS A FAILURE. Esri answers a missing tile with
-       * a tiny placeholder rather than a 404 in some configurations, and a
-       * checker that only reads the status calls that a working source.
-       */
-      const real = res.ok && /image/.test(type) && bytes > 1500;
-      if (real) deepest = z;
-      line = `${res.status} ${type.split(';')[0] || '—'} ${bytes} bytes` + (real ? '' : '   <- nothing usable');
+      const body = res.ok ? Buffer.from(await res.arrayBuffer()) : Buffer.alloc(0);
+      const hash = body.length ? createHash('sha1').update(body).digest('hex').slice(0, 12) : null;
+      seen.push({ z, ok: res.ok && /image/.test(type) && body.length > 0, bytes: body.length, hash });
+      console.log(`      z${String(z).padEnd(2)}  ${res.status} ${type.split(';')[0] || '—'}`
+        + ` ${String(body.length).padStart(6)} bytes  ${hash || ''}`);
     } catch (err) {
-      line = `FAILED — ${String(err.message).slice(0, 60)}`;
+      seen.push({ z, ok: false, bytes: 0, hash: null });
+      console.log(`      z${String(z).padEnd(2)}  FAILED — ${String(err.message).slice(0, 60)}`);
     }
-    console.log(`      z${String(z).padEnd(2)}  ${line}`);
+  }
+
+  /*
+   * A hash repeated at deeper and deeper zooms is the placeholder, so the real
+   * ceiling is the last zoom BEFORE the repeats begin.
+   */
+  const counts = new Map();
+  for (const t of seen) if (t.hash) counts.set(t.hash, (counts.get(t.hash) || 0) + 1);
+  const filler = [...counts.entries()].filter(([, n]) => n > 1).map(([h]) => h);
+
+  let deepest = null;
+  for (const t of seen) if (t.ok && !filler.includes(t.hash)) deepest = t.z;
+
+  if (filler.length) {
+    const from = seen.find((t) => filler.includes(t.hash));
+    console.log(`      (z${from.z} and deeper all return the same ${from.bytes}-byte image —`
+      + ' that is the "not available" placeholder, not photography)');
   }
 
   console.log(deepest === null
-    ? `    NOTHING at any zoom: ${id} is not serving this app at all.`
-    : `    deepest usable zoom: ${deepest}. The app should declare maxzoom ${deepest}`
-      + ` so Mapbox overzooms that tile rather than asking for one that is not there.`);
+    ? `    NOTHING usable at any zoom: ${id} is not serving this app at all.`
+    : `    deepest real zoom: ${deepest}. The app should declare maxzoom ${deepest}`
+      + ' so Mapbox overzooms that tile rather than asking for one that is not there.');
 }
 
 console.log('\nAn extent within half a pixel is fine -- the frame is what the app');

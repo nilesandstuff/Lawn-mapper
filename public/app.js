@@ -4034,13 +4034,16 @@ async function showImagery() {
      * That is how "Esri hasn't been providing any imagery" went unexplained --
      * the app had the answer and never mentioned it.
      *
-     * `maxzoom` is the likely cause and is declared here rather than guessed
-     * upward. Telling Mapbox that tiles exist to 23 makes it REQUEST z20, z21,
-     * z22 tiles; where the cache stops short those come back empty and the
-     * screen goes blank. Declaring the last level that really exists makes it
-     * overzoom the deepest tile it has instead -- softer, and visible, which
-     * beats sharp and absent. Correcting a lawn happens well past z19, which
-     * is exactly where this would have bitten and nowhere else.
+     * `maxzoom` WAS the cause, and it is now measured rather than assumed --
+     * see the table in worker/src/imagery.js. Telling Mapbox that tiles exist
+     * to 23 makes it REQUEST z20, z21, z22; past the end of Esri's cache those
+     * come back as a 200 carrying a "map data not yet available" placeholder,
+     * so nothing errors and the map shows that instead of the ground. The
+     * listener above would never have fired for it.
+     *
+     * Which is also why the ceiling has to be SENT by the Worker rather than
+     * discovered here: a valid JPEG of the words "not available" is not
+     * something the browser can tell from photography.
      */
     tileWatch = { provider: state.provider, label: info.label, reported: false };
     map.addSource('imagery-alt', {

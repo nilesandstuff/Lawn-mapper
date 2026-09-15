@@ -229,7 +229,32 @@ export const PROVIDERS = {
      */
     detect: false,
     tiles: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    note: 'Often a different year again — worth a look. Esri only serves fixed tiles, so detection falls back to Mapbox.',
+    /*
+     * THE CACHE STOPS AT z19, AND SAYS SO WITH A 200.
+     *
+     * Measured, not guessed -- workflow 8 asks for a tile at every zoom and
+     * prints what came back:
+     *
+     *   z16  19,200 bytes    z20  2,521 bytes
+     *   z17  17,252 bytes    z21  2,521 bytes
+     *   z18  14,279 bytes    z22  2,521 bytes
+     *   z19  10,264 bytes    z23  2,521 bytes
+     *
+     * Past z19 it does not 404. It returns a "map data not yet available"
+     * tile: HTTP 200, valid JPEG, the same 2,521 bytes every time. So nothing
+     * errors, nothing can be caught, and the map simply shows that instead of
+     * the ground.
+     *
+     * THIS IS THE WHOLE BUG BEHIND "Esri hasn't been providing any imagery".
+     * A lot fits the frame at about z19.4 and correcting corners goes deeper
+     * still, so every zoom anybody WORKS at is past the end of the cache and
+     * every zoom that would have looked fine is one nobody stays at.
+     *
+     * Declared here so Mapbox overzooms the z19 tile rather than requesting a
+     * z21 that does not exist. Softer, and it is the photograph.
+     */
+    maxzoom: 19,
+    note: 'Often a different year again — worth a look. Esri only serves fixed tiles, so detection falls back to Mapbox. Its photography stops at zoom 19, so it softens as you go in further.',
   },
 };
 
@@ -297,6 +322,14 @@ export const providerCatalogue = (env) =>
       note: p.note,
       detect: Boolean(p.detect),
       tiles: p.tiles || null,
+      /*
+       * How deep the tiles really go. Sent rather than assumed, because the
+       * browser cannot find out: past the end of an Esri cache the answer is
+       * a 200 carrying a placeholder, which no client-side check can tell
+       * from photography. Without this the map requests zooms that do not
+       * exist and shows "not available" instead of the ground.
+       */
+      maxzoom: Number.isFinite(p.maxzoom) ? p.maxzoom : null,
       // The frame this source will actually be served at, so the browser can
       // place a preview on the same ground the detector will measure.
       integerZoom: Boolean(p.frame),
