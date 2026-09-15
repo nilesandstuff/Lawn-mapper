@@ -75,22 +75,56 @@ export function parseRows(stdout) {
 }
 
 /**
- * The line of wrangler's output that actually says what went wrong.
+ * WRANGLER PUTS ITS ERROR ON STDOUT, AS JSON, AND SOMETIMES EXITS ZERO.
  *
- * NOT THE FIRST LINE. The first line of stderr here is a proxy warning that
- * every run prints, so reporting it turned "your token cannot read D1" into
- * "Proxy environment variables detected" -- a true sentence about something
- * else, which is the worst kind of diagnostic. The real complaint carries an
- * X, the word ERROR, or is simply the last thing said before it gave up.
+ * Under `--json` a failure comes back as {"error":{"text":"..."}} printed to
+ * stdout, while stderr carries nothing but the proxy warning every run emits.
+ * Two ways to be wrong about that, and the first run of this hit both:
+ *
+ *   Reading stderr for the reason found an empty string and reported "no
+ *   reason given" -- which is the same useless diagnostic the corpus counter
+ *   spent six deploys behind, and exactly what this function exists to stop.
+ *
+ *   Worse, when it exits ZERO the rows simply do not parse, and the run would
+ *   have announced "0 approved maps in the corpus" on a database that is full.
+ *   A wrong number reported confidently beats an error message for damage.
+ *
+ * So the payload is checked for an `error` key before it is read for rows, and
+ * the reason is hunted across stdout as well as stderr.
  */
+export function wranglerError(output) {
+  const lines = String(output || '').split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim()[0] !== '{') continue;
+    try {
+      const parsed = JSON.parse(lines.slice(i).join('\n'));
+      const text = parsed?.error?.text || parsed?.error?.message
+        || (typeof parsed?.error === 'string' ? parsed.error : null);
+      if (text) return String(text).split('\n')[0].trim();
+    } catch { /* not the payload */ }
+  }
+  return null;
+}
+
+/** The line of a failure that actually says what went wrong. */
 export function reasonFrom(err) {
-  const raw = err?.stderr ?? err?.message ?? err;
-  // `String({})` is "[object Object]", which is not a reason and reads like
-  // one. An error with nothing usable in it says so plainly instead.
-  const text = typeof raw === 'string' ? raw : '';
-  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
-  const named = lines.find((l) => /error|unauthorized|forbidden|not found|✘|✗/i.test(l));
-  return named || lines[lines.length - 1] || 'no reason given';
+  const parts = [err?.stdout, err?.stderr, err?.message]
+    .filter((v) => typeof v === 'string' && v.trim());
+
+  for (const part of parts) {
+    const named = wranglerError(part);
+    if (named) return named;
+  }
+
+  for (const part of parts) {
+    const lines = part.split('\n').map((l) => l.trim()).filter(Boolean)
+      // Every run prints this and it is never the reason.
+      .filter((l) => !/proxy environment variables/i.test(l));
+    const named = lines.find((l) => /error|unauthorized|forbidden|not found|✘|✗/i.test(l));
+    if (named) return named;
+    if (lines.length) return lines[lines.length - 1];
+  }
+  return 'no reason given';
 }
 
 /** A stored JSON column, tolerating the row that never had one. */
@@ -110,17 +144,30 @@ const geometries = (stored) => {
 };
 
 function main() {
-  let rows = [];
+  let out = '';
   try {
-    rows = parseRows(wrangler([
-      'd1', 'execute', DB_NAME, '--remote', '--json', '--command', QUERY,
-    ]));
+    out = wrangler(['d1', 'execute', DB_NAME, '--remote', '--json', '--command', QUERY]);
   } catch (err) {
     console.log('Could not read the corpus, so nothing was measured.');
     console.log(reasonFrom(err));
     process.exitCode = 1;
     return;
   }
+
+  /*
+   * A failure that exited zero is still a failure. Falling through here would
+   * find no rows and announce an empty corpus, which is a confident wrong
+   * answer rather than an error -- the more expensive of the two.
+   */
+  const refused = wranglerError(out);
+  if (refused) {
+    console.log('Could not read the corpus, so nothing was measured.');
+    console.log(refused);
+    process.exitCode = 1;
+    return;
+  }
+
+  const rows = parseRows(out);
 
   console.log(`${rows.length} approved map${rows.length === 1 ? '' : 's'} in the corpus.\n`);
 

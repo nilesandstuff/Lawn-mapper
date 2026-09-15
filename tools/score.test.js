@@ -260,7 +260,7 @@ const box = (x, y, w, h) => ({
 /* ------------------------------------------ reading what wrangler printed */
 {
   console.log('\n--- getting the rows out of wrangler ---');
-  const { parseRows, reasonFrom } = await import('./score-detector.js');
+  const { parseRows, reasonFrom, wranglerError } = await import('./score-detector.js');
 
   /*
    * Wrangler prints banners, proxy warnings and update notices before the
@@ -298,6 +298,37 @@ const box = (x, y, w, h) => ({
   check('and something unrecognised still says something',
     reasonFrom({ stderr: 'it broke' }) === 'it broke');
   check('rather than an empty line', reasonFrom({}) === 'no reason given');
+
+  /*
+   * WRANGLER PUTS ITS ERROR ON STDOUT, AS JSON, and stderr carries only the
+   * proxy warning. The first real run of this reported "no reason given" for
+   * exactly that reason -- the same empty diagnostic the corpus counter sat
+   * behind for six deploys, reproduced in the tool built to avoid it.
+   */
+  const jsonFailure = {
+    stdout: '\n{\n  "error": {\n    "text": "In a non-interactive environment, '
+      + "it's necessary to set a CLOUDFLARE_API_TOKEN environment variable"
+      + '"\n  }\n}\n',
+    stderr: '▲ [WARNING] Proxy environment variables detected.\n',
+  };
+  check('a failure printed as JSON on stdout is read, not ignored',
+    /CLOUDFLARE_API_TOKEN/.test(reasonFrom(jsonFailure)),
+    reasonFrom(jsonFailure).slice(0, 70));
+  check('and the proxy warning never wins',
+    !/proxy/i.test(reasonFrom(jsonFailure)));
+
+  /*
+   * AND IT IS DETECTED WHEN THE EXIT CODE IS ZERO, which is the dangerous
+   * shape: no throw, no rows, and a run that announces an empty corpus on a
+   * database that is full. A confident wrong number does more damage than an
+   * error message.
+   */
+  check('the same payload is recognised as a refusal rather than as no rows',
+    wranglerError(jsonFailure.stdout) !== null
+    && parseRows(jsonFailure.stdout).length === 0,
+    'exiting zero must not read as "nothing approved yet"');
+  check('and real output is not mistaken for a refusal',
+    wranglerError('[{"results":[{"id":"a"}]}]') === null);
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
