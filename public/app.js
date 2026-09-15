@@ -900,11 +900,21 @@ async function initMap() {
     paint: {
       // Phantoms are smaller and see-through: present enough to aim at,
       // faint enough that the real corners still read as the real corners.
+      /*
+       * Sized for a fingertip rather than for a mouse.
+       *
+       * Was 5 / 4 / 8, which reads well on a laptop and is genuinely hard to
+       * hit on a phone -- and the thing being aimed at is a corner of somebody's
+       * property line, so a near miss moves the wrong point rather than doing
+       * nothing. A real corner is now 7, which is 14 across and still smaller
+       * than the 16-pixel grab radius, so the dot never promises a target
+       * bigger than the one that actually responds.
+       */
       'circle-radius': [
         'case',
-        ['==', ['get', 'selected'], 1], 8,
-        ['==', ['get', 'phantom'], 1], 4,
-        5,
+        ['==', ['get', 'selected'], 1], 10,
+        ['==', ['get', 'phantom'], 1], 5.5,
+        7,
       ],
       'circle-color': ['case', ['==', ['get', 'selected'], 1], '#ff6f00', '#ffffff'],
       'circle-opacity': ['case', ['==', ['get', 'phantom'], 1], 0.45, 1],
@@ -5865,7 +5875,23 @@ function editableRings() {
  * ambiguous tap; grabbing a point is something you have to mean. Widening this
  * would quietly make the careful tool the harder one to reach.
  */
-const VERTEX_GRAB_PX = 16;
+const VERTEX_GRAB_PX = 20;
+/*
+ * RAISED FROM 16, and the paragraph above is the reason it stayed at 16 for so
+ * long: every pixel given to corners is taken from edges, because a tap near a
+ * corner is also a tap near the two edges meeting there.
+ *
+ * Twenty is a compromise and not a solution. Sixteen was measurably too tight
+ * on a phone -- a fingertip is about forty pixels across, so aiming at a
+ * thirty-two pixel target means missing, and missing here selects an edge you
+ * did not want. Twenty-eight or forty would fix the miss and would quietly
+ * make sliding an edge the hard thing, which is the operation that preserves
+ * a surveyed bearing and the one worth protecting.
+ *
+ * The real fix is a separate target that belongs to the corner alone, so
+ * corners and edges stop competing for the same pixels. Until that exists this
+ * number is the least-bad place to stand.
+ */
 
 /**
  * Route a tap to a corner or an edge.
