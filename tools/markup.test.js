@@ -731,6 +731,28 @@ check('every class the code toggles is styled',
     shows >= 4, `${shows} place(s) set its visibility`);
 }
 
+/* ------------------------------- the rail must not clip its own menu */
+/*
+ * THE REGRESSION: "I can't change the layers, there's no options."
+ *
+ * The Layers menu is an absolutely-positioned flyout INSIDE #maprail-left,
+ * which carries the .maprail class. An ancestor with any overflow other than
+ * visible clips absolutely-positioned descendants -- so a max-height plus
+ * overflow-y added to .maprail as a backstop against a tall rail took the
+ * whole menu out of view. The button still worked and opened something nobody
+ * could see, which is the worst shape a UI bug can have.
+ */
+{
+  const rail = css.match(/\.maprail\s*\{[^}]*\}/g) || [];
+  check('the map rail never clips, because its menu hangs outside it',
+    rail.every((rule) => !/overflow/.test(rule)),
+    rail.filter((r) => /overflow/.test(r)).join(' ') || `${rail.length} .maprail rule(s), none with overflow`);
+
+  check('and the flyout is still positioned out of the rail',
+    /\.layerlist\s*\{[^}]*position:\s*absolute/.test(css),
+    'if it ever stops being absolute this check stops meaning anything');
+}
+
 /* ------------------------------- the canopy question, asked not stated */
 /*
  * THE REPORT: "make sure the has-treeline check box shows up for all

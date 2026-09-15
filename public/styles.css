@@ -339,8 +339,20 @@ button:disabled { opacity: .45; cursor: not-allowed; }
   display: grid; grid-template-columns: repeat(2, 46px); gap: 5px;
   align-content: start;
 }
-.maprail { max-height: calc(100% - 120px); overflow-y: auto; scrollbar-width: none; }
-.maprail::-webkit-scrollbar { display: none; }
+/*
+ * NO `overflow` ON THE RAIL, EVER.
+ *
+ * A max-height with overflow-y was added here as a backstop against the rail
+ * growing past the bottom of a phone. It took the Layers menu out instead: the
+ * list is an absolutely-positioned flyout INSIDE #maprail-left, and an
+ * ancestor with any overflow other than visible clips absolutely-positioned
+ * descendants. The button still worked and opened a menu nobody could see, so
+ * it read as "I can't change the layers, there's no options".
+ *
+ * The height problem it was guarding against is already solved properly, by
+ * .railgrid above putting the corner tools in two columns. A backstop against
+ * a problem that no longer exists is not free.
+ */
 
 .railbtn.sub { width: 46px; font-size: 9.5px; }
 .railbtn.sub svg { width: 19px; height: 19px; }
