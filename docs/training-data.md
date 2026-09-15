@@ -80,9 +80,9 @@ needs.
 
 `parcel_source` separates a county record from a line somebody traced, because
 the whole plan rests on the boundary being trustworthy and those two are not
-equally trustworthy. `exclusions` names the prompts that ran, which is the
-nearest thing to a "this one was hard" flag: a lawn that needed `woods` is a
-lawn with a tree line.
+equally trustworthy. `exclusions` names the prompts that ran, which is a
+*hint* that a lawn was hard — see the canopy grade below, which is the
+measurement.
 
 A hand-traced boundary stores **no county**, rather than the words "traced by
 hand". It is not a place, and counting it as one would have put every such row
@@ -424,12 +424,50 @@ demonstrated.
 | slice | what is in it | the question it answers |
 |---|---|---|
 | **representative** | natural proportions, as collected | how accurate is this in practice? |
-| **hard** | corrections, and heavy tree cover | did we actually fix the overshoot? |
+| **hard** | corrections, and canopy that decided the edge | did we actually fix the overshoot? |
 
 One slice cannot do both. Weighting the hard cases up gives a headline accuracy
 that understates real-world performance; leaving them at natural proportions
 means a handful of tree cases decide nothing, and the fault the whole exercise
 exists to fix is invisible in the score.
+
+### What "canopy" means here, exactly
+
+This was asked directly, and the first answer given — a tick box labelled
+"has a tree line" — could not be answered: did it mean **a row of trees**, or
+**any trees that make the lawn cover ambiguous**?
+
+The second is what the hard slice is about. The fault being chased is the
+detector's idea of where grass stops under a canopy edge, and a single wide
+maple over the middle of a lawn produces exactly the same disagreement as a row
+of them along a fence. A row of trees is a shape, not a difficulty.
+
+But taken literally the second reading is true of **every lawn on a wooded
+street**, which is most of the corpus so far — and a flag that is true of
+everything selects nothing. It would have made the hard slice the whole test
+set and the target something you meet by approving anything.
+
+So it is a grade rather than a flag, and the reviewer answers it against the
+photograph:
+
+| grade | what it means | counts toward the target |
+|---|---|---|
+| **none** | the edge of the lawn is plainly visible | no |
+| **some** | canopy overhangs, but you could still see where the lawn stops | no |
+| **decided the edge** | you had to *judge* where the grass stops under the trees | **yes** |
+
+The test is about **you**, not about the trees: if drawing the outline meant
+making a decision that another careful person could reasonably have made
+differently, that is the top grade. If you could simply see it, it is not — no
+matter how many trees are in shot.
+
+A row left ungraded stays `null`, which is deliberately different from "none".
+"Nobody looked" and "looked, and there is none" are not the same evidence, and
+the second one is worth having.
+
+*Recorded as `corpus.tree_line`, which keeps its original name: the column is
+an integer and renaming it in SQLite would break the migration's re-runs for
+nothing. 0 / 1 / 2, null for ungraded.*
 
 **Ship a model only when the hard slice improves and the representative slice
 does not regress.**

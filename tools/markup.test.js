@@ -731,5 +731,64 @@ check('every class the code toggles is styled',
     shows >= 4, `${shows} place(s) set its visibility`);
 }
 
+/* ------------------------------- the canopy question, asked not stated */
+/*
+ * THE REPORT: "make sure the has-treeline check box shows up for all
+ * candidates, not just the ones that use exclude treeline as the model."
+ *
+ * It always did show. What it did not do was LOOK like a control. Unset it
+ * read "No tree line" in a plain button identical to "Skip for now" beside it,
+ * so on every candidate but an exclude-woods run -- the only case where it went
+ * green with a tick -- it read as a caption reporting a fact. It went
+ * unpressed, and every approved map came back unmarked, which is the other
+ * half of the same report.
+ *
+ * So: a heading that asks, and a row of graded answers where "not answered"
+ * looks not-answered.
+ */
+{
+  const adminJs = readFileSync(join(root, 'public/admin.js'), 'utf8');
+  const adminHtml = readFileSync(join(root, 'public/admin.html'), 'utf8');
+
+  check('the canopy question is asked out loud, above its answers',
+    /Canopy over this lawn/.test(adminJs),
+    'an unlabelled toggle reads as a statement, not a question');
+  check('and an ungraded candidate says so rather than showing a default',
+    /Not answered yet/.test(adminJs),
+    'starting on "No tree line" is how every approval came back unmarked');
+  check('the answers are styled as a chooser rather than as buttons in a row',
+    /#review \.choices/.test(adminHtml) && /#review \.ask h3/.test(adminHtml));
+
+  /*
+   * A GRADE, NOT A FLAG, and only the top one counts. "Any trees that make the
+   * cover ambiguous" is true of every lawn on a wooded street: as a yes/no it
+   * would have been yes everywhere, the hard slice would have been the whole
+   * corpus, and the target would be met by approving anything.
+   */
+  const routes = readFileSync(join(root, 'worker/src/routes-admin.js'), 'utf8');
+  check('the target counts only canopy that decided the edge',
+    /tree_line >= 2/.test(routes),
+    'a flag true of every lawn selects nothing');
+  check('and the middle grade is still recorded',
+    /tree_line >= 1/.test(routes),
+    '"some canopy" is worth knowing even though it is not a hard case');
+  check('an ungraded row stays apart from a graded "none"',
+    /tree_line IS NULL/.test(routes),
+    '"nobody looked" and "looked, there is none" are different evidence');
+
+  /*
+   * And the console that a reviewer already has open keeps working until they
+   * reload it, rather than silently filing its verdicts as ungraded.
+   */
+  check('a console still sending the old boolean is still understood',
+    /body\?\.treeLine === true/.test(routes),
+    'a stale tab should not quietly record nothing');
+
+  const doc = readFileSync(join(root, 'docs/training-data.md'), 'utf8');
+  check('and the rule the grade encodes is written down',
+    /decided the edge/.test(doc) && /a row of trees/.test(doc),
+    'the question that could not be answered was never written down anywhere');
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);

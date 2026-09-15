@@ -329,9 +329,23 @@ CREATE TABLE IF NOT EXISTS corpus (
   -- wooded lot traced by hand counted zero, so the number stayed near zero
   -- while the corpus filled with exactly the lawns it was supposed to find.
   --
-  -- A person looking at the photograph can see a tree line in a moment, and
-  -- review is already that moment. NULL until judged, so "no trees" and "not
-  -- looked at yet" stay different answers.
+  -- A person looking at the photograph can answer it in a moment, and review
+  -- is already that moment. NULL until judged, so "no canopy" and "not looked
+  -- at yet" stay different answers.
+  --
+  -- A GRADE, NOT A FLAG, and the name is older than the meaning:
+  --   0  none -- the edge of the lawn is plainly visible
+  --   1  some -- canopy overhangs, the edge was still readable
+  --   2  it decided the edge -- the boundary under there was a judgement
+  --
+  -- Only 2 counts toward the hard-slice target. "Has a tree line" could not be
+  -- answered: a row of trees, or any canopy that makes the cover ambiguous?
+  -- The second is what the slice is for, and on a wooded street it is true of
+  -- every lawn -- so as a yes/no it would have been yes everywhere and counted
+  -- nothing. See docs/training-data.md, Rule 5.
+  --
+  -- The COLUMN keeps its name. Renaming it would mean an ALTER that cannot run
+  -- twice, and migrations.sql has to survive being re-run on every deploy.
   tree_line      INTEGER,
   reviewed_at    TEXT,
   reviewed_by    TEXT,

@@ -109,6 +109,33 @@
   #review .approve { background: #e4f2e5; border-color: #9ec5a1; color: #1f5b22; }
   #review .reject  { background: #f6eceb; border-color: #d3a9a4; color: #7d2d22; }
   #review .why { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 2px; }
+
+  /*
+   * The canopy question, asked rather than stated.
+   *
+   * It was one plain button reading "No tree line" when unset, sitting in a
+   * row beside "Skip for now" and looking exactly like it — so on every
+   * candidate except an exclude-woods run (where it went green with a tick) it
+   * read as a caption reporting a fact, not a control asking something. It
+   * went unpressed, and every approved map came back unmarked.
+   *
+   * A heading and a row of three, so the question is visible before the
+   * answer is, and so the unanswered state looks unanswered.
+   */
+  #review .ask { margin-top: 12px; }
+  #review .ask h3 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--muted); margin: 0 0 6px;
+  }
+  #review .choices { display: flex; gap: 6px; flex-wrap: wrap; }
+  #review .choices button {
+    font: inherit; font-size: 13px; padding: 8px 12px; flex: 1 1 96px;
+    border: 1px solid var(--line); border-radius: 9px; background: #fff; cursor: pointer;
+  }
+  #review .choices button.on {
+    background: #e4f2e5; border-color: #9ec5a1; color: #1f5b22; font-weight: 600;
+  }
+  #review .ask .meta { font-size: 11.5px; color: var(--muted); margin: 6px 0 0; }
   #queue-pick button.on { background: var(--ink, #23301f); color: #fff; border-color: transparent; }
   #review .actions button.on { background: #e4f2e5; border-color: #9ec5a1; color: #1f5b22; font-weight: 600; }
   .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11.5px;
@@ -196,10 +223,13 @@
         <b>Random</b> draws blind — those approvals are the only ones that can
         make an honest "how accurate is it really" number, because a slice
         picked for being interesting is not representative of anything.
+        <b>Needs a canopy grade</b> is maps already approved that nobody was
+        asked the canopy question about, back round to answer it.
       </p>
       <div class="actions" id="queue-pick">
         <button id="queue-priority" class="on">Most useful first</button>
         <button id="queue-random">Random</button>
+        <button id="queue-ungraded">Needs a canopy grade</button>
       </div>
       <div id="review"><p class="empty">Loading…</p></div>
     </div>

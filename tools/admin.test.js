@@ -621,11 +621,11 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
   /*
    * ZERO, though one of these ticked Trees during its detection. That tick is
    * a hint for the review queue and no longer the measurement: until somebody
-   * looks at the photograph and says there is a tree line, there is no tree
-   * line in the count. See the section at the end of this file.
+   * looks at the photograph and grades the canopy, there is nothing in the
+   * count. See the section at the end of this file.
    */
-  check('ticking Trees during a detection does not by itself count as a tree line',
-    body.stats.treeLine === 0,
+  check('ticking Trees during a detection does not by itself count as heavy canopy',
+    body.stats.heavyCanopy === 0,
     'it records how the AI was run, not what is on the ground');
   check('and the hand-traced property lines', body.stats.handParcel === 1);
   check('and how many have the AI\'s own outline to compare against',
@@ -812,33 +812,110 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
   const wooded = queue.find((c) => c.id.startsWith('-85.11'));
   const ticked = queue.find((c) => c.id.startsWith('-85.22'));
 
-  check('a map with the Trees box ticked arrives with the toggle pre-set',
-    ticked?.treeLineHint === true, JSON.stringify(ticked?.treeLineHint));
+  check('a map with the Trees box ticked arrives with the grade pre-set',
+    ticked?.canopyHint === true, JSON.stringify(ticked?.canopyHint));
   check('and one measured in Find-grass mode does not, having no exclusions',
-    wooded?.treeLineHint === false,
+    wooded?.canopyHint === false,
     'which is the whole fault: the lot may be covered in trees and nothing in '
     + 'the row can know');
 
-  /* Approving with the toggle on is what makes it count. */
+  /* Grading it as "canopy decided the edge" is what makes it count. */
   await ask(env, ownerToken, 'review',
-    { method: 'POST', body: { id: wooded.id, status: 'approved', treeLine: true } });
+    { method: 'POST', body: { id: wooded.id, status: 'approved', canopy: 2 } });
   /* And the pre-set hint can be overruled: it is a suggestion, not the answer. */
   await ask(env, ownerToken, 'review',
-    { method: 'POST', body: { id: ticked.id, status: 'approved', treeLine: false } });
+    { method: 'POST', body: { id: ticked.id, status: 'approved', canopy: 0 } });
 
   const panel = (await ask(env, ownerToken, 'corpus')).body;
   check('the hand-judged wooded lot counts, though no exclusion ran on it',
-    panel.stats.treeLine === 1, JSON.stringify(panel.stats.treeLine));
-  check('and the ticked-Trees map does NOT, because the reviewer said no',
-    panel.stats.total === 2 && panel.stats.treeLine === 1,
+    panel.stats.heavyCanopy === 1, JSON.stringify(panel.stats.heavyCanopy));
+  check('and the ticked-Trees map does NOT, because the reviewer said none',
+    panel.stats.total === 2 && panel.stats.heavyCanopy === 1,
     'the tick was evidence; the eye is the measurement');
 
   const stored = await env.DB.prepare(
     'SELECT tree_line FROM corpus WHERE id = ?1'
   ).bind(ticked.id).first();
-  check('a "no" is stored as a no rather than as nothing',
+  check('a "none" is stored as a none rather than as nothing',
     stored.tree_line === 0,
-    '"looked, no trees" and "nobody looked" have to stay different answers');
+    '"looked, no canopy" and "nobody looked" have to stay different answers');
+
+  /*
+   * THE MIDDLE GRADE IS RECORDED AND DOES NOT COUNT.
+   *
+   * This is the whole reason the tick box became a grade. "Any trees that make
+   * the cover ambiguous" is true of every lawn on a wooded street, so a yes/no
+   * would be yes everywhere and the hard slice would be the whole corpus. Only
+   * "canopy decided the edge" counts toward it.
+   */
+  await finish(-85.44, {});
+  const some = (await ask(env, ownerToken, 'candidates')).body.candidates
+    .find((c) => c.id.startsWith('-85.44'));
+  await ask(env, ownerToken, 'review',
+    { method: 'POST', body: { id: some.id, status: 'approved', canopy: 1 } });
+
+  const graded = (await ask(env, ownerToken, 'corpus')).body;
+  check('a lawn with some canopy is recorded without counting as a hard case',
+    graded.stats.anyCanopy === 2 && graded.stats.heavyCanopy === 1,
+    `any=${graded.stats.anyCanopy} heavy=${graded.stats.heavyCanopy}`);
+
+  /*
+   * And the old boolean still lands somewhere sensible, because a console left
+   * open in a tab keeps sending one until it is reloaded.
+   */
+  await finish(-85.55, {});
+  const legacy = (await ask(env, ownerToken, 'candidates')).body.candidates
+    .find((c) => c.id.startsWith('-85.55'));
+  await ask(env, ownerToken, 'review',
+    { method: 'POST', body: { id: legacy.id, status: 'approved', treeLine: true } });
+  const after = (await ask(env, ownerToken, 'corpus')).body;
+  check('an old console still sending a tick is read as the strong grade',
+    after.stats.heavyCanopy === 2,
+    '"has a tree line" meant this lawn is a tree-line case');
+
+  /*
+   * MAPS APPROVED BEFORE THE QUESTION EXISTED CAN STILL ANSWER IT.
+   *
+   * Every row approved under the old tick box carries no grade, and the report
+   * that started this said as much: none of them are marked. Without a way
+   * back those rows could never count toward the hard slice however wooded
+   * they are -- the definition changed under them, which is the one case where
+   * re-opening a settled verdict is the honest thing to do.
+   */
+  await env.DB.prepare(
+    "UPDATE corpus SET status = 'approved', tree_line = NULL WHERE id = ?1"
+  ).bind(some.id).run();
+
+  const ungraded = (await ask(env, ownerToken, 'candidates?queue=ungraded')).body.candidates;
+  check('an approved map with no grade comes back round to be graded',
+    ungraded.some((c) => c.id === some.id),
+    ungraded.map((c) => c.id).join(', ') || '(the queue was empty)');
+  check('and rows that already have one do not',
+    !ungraded.some((c) => c.id === wooded.id),
+    'a queue that never empties is not a queue');
+
+  /*
+   * Grading it re-affirms the verdict rather than changing it, and keeps the
+   * draw that surfaced it: relabelling the row 'ungraded' would lose whether
+   * it may sit in the representative slice.
+   */
+  await ask(env, ownerToken, 'review',
+    { method: 'POST', body: { id: some.id, status: 'approved', queue: 'priority', canopy: 2 } });
+  const regraded = (await ask(env, ownerToken, 'corpus')).body;
+  check('grading an already-approved map counts it without re-approving it',
+    regraded.stats.heavyCanopy === 3 && regraded.stats.total === after.stats.total,
+    `heavy=${regraded.stats.heavyCanopy} total=${regraded.stats.total}`);
+
+  /*
+   * BUT A VERDICT STILL CANNOT BE CHANGED BY A STALE TAP. That is what the
+   * status guard was always for -- not "write once", but "do not let a second
+   * press change somebody's mind for them".
+   */
+  const flipped = await ask(env, ownerToken, 'review',
+    { method: 'POST', body: { id: some.id, status: 'rejected' } });
+  check('an approved map cannot be flipped to rejected by a later request',
+    flipped.body.ok === false,
+    JSON.stringify(flipped.body));
 
   /* A verdict with no opinion leaves it unjudged rather than guessing. */
   await finish(-85.33, {});

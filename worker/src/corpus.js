@@ -364,7 +364,15 @@ export const TARGETS = {
   corrected: 300,   // the binding one -- see below
   blocks: 60,       // independent places, roughly 1 km apart
   counties: 5,      // enough for leave-one-county-out to mean anything
-  treeLine: 150,    // lawns with a tree line: the fault worth fixing
+  /*
+   * Lawns where CANOPY DECIDED THE EDGE -- the hard slice, and the fault the
+   * whole exercise exists to fix.
+   *
+   * Not "lawns with trees on them", which in a wooded county is every lawn:
+   * a flag true of everything selects nothing, and a target you meet by
+   * approving anything is not a target. See the review route for the grade.
+   */
+  heavyCanopy: 150,
 };
 
 /**
@@ -396,15 +404,17 @@ export function corpusGaps(stats = {}, targets = TARGETS) {
         + 'gets wrong rather than accepting a close-enough outline.',
     },
     {
-      key: 'treeLine',
-      label: 'Lawns with a tree line',
-      have: n(stats.treeLine),
-      need: targets.treeLine,
+      key: 'heavyCanopy',
+      label: 'Lawns where canopy decided the edge',
+      have: n(stats.heavyCanopy),
+      need: targets.heavyCanopy,
       why: 'The known fault is a tree line overshooting by about a quarter. '
         + 'Without these there is no way to tell whether a fix worked.',
-      what: 'Wooded lots, properties backing onto trees, anything where the '
-        + 'lawn runs under a canopy edge — then tick "has a tree line" when '
-        + 'you review it, since that tick is what this counts.',
+      what: 'Lots where the lawn runs under a canopy edge and you had to '
+        + 'decide where the grass stops — then mark canopy as "decided the '
+        + 'edge" when you review it, since that is what this counts. Trees '
+        + 'merely being present is not it; on a wooded street that is every '
+        + 'lawn, and a number that counts every map is not a gap.',
     },
     {
       key: 'blocks',
@@ -456,7 +466,7 @@ export function corpusGaps(stats = {}, targets = TARGETS) {
 /**
  * How much reviewing this candidate would be worth, given what the set lacks.
  *
- * SCARCITY DECIDES, not any property of the map on its own. A tree-line lawn
+ * SCARCITY DECIDES, not any property of the map on its own. A heavy-canopy lawn
  * is worth a lot when there are nine of them and very little when there are
  * four hundred, so every term below is switched off once its target in
  * `corpusGaps` is met. Otherwise the queue would spend somebody's afternoon
@@ -490,9 +500,9 @@ export function candidateScore(row = {}, have = {}, targets = TARGETS) {
    * how many tree lines are actually in the set, and only an eye on the
    * photograph can answer that.
    */
-  if (/woods/.test(row.exclusions || '') && short('treeLine', targets.treeLine)) {
+  if (/woods/.test(row.exclusions || '') && short('heavyCanopy', targets.heavyCanopy)) {
     score += 30;
-    why.push('trees were excluded, so probably a tree line');
+    why.push('trees were excluded, so probably heavy canopy');
   }
   /*
    * A place nobody has approved anything in yet. Worth more than another map

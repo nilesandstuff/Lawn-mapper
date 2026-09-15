@@ -215,7 +215,16 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
                   COUNT(DISTINCT county) counties,
                   COUNT(DISTINCT ${BLOCK}) blocks,
                   COALESCE(SUM(CASE WHEN parcel_source = 'hand' THEN 1 ELSE 0 END), 0) hand_parcel,
-                  COALESCE(SUM(CASE WHEN tree_line = 1 THEN 1 ELSE 0 END), 0) tree_line,
+                  /*
+                   * The HARD-SLICE count: canopy that decided where the lawn
+                   * ended (2), not merely canopy present (1). See the review
+                   * route -- "any trees that make the cover ambiguous" is true
+                   * of every lawn in a wooded county, and a number that counts
+                   * every row is not a gap anybody can close.
+                   */
+                  COALESCE(SUM(CASE WHEN tree_line >= 2 THEN 1 ELSE 0 END), 0) heavy_canopy,
+                  COALESCE(SUM(CASE WHEN tree_line >= 1 THEN 1 ELSE 0 END), 0) any_canopy,
+                  COALESCE(SUM(CASE WHEN tree_line IS NULL THEN 1 ELSE 0 END), 0) canopy_unjudged,
                   COALESCE(SUM(CASE
                     WHEN detected_sq_ft IS NULL THEN 1
                     WHEN detected_sq_ft > 0
@@ -244,7 +253,9 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
         withImage: totals.with_image,
         withDetection: totals.with_detection,
         handParcel: totals.hand_parcel,
-        treeLine: totals.tree_line,
+        heavyCanopy: totals.heavy_canopy,
+        anyCanopy: totals.any_canopy,
+        canopyUnjudged: totals.canopy_unjudged,
         blocks: totals.blocks,
         /*
          * A hand-traced row stores county as NULL, and COUNT(DISTINCT) skips
@@ -297,7 +308,18 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
    */
   if (path === 'candidates') {
     try {
-      const wanted = url.searchParams.get('queue') === 'random' ? 'random' : 'priority';
+      /*
+       * A THIRD QUEUE: maps already approved that carry no canopy grade.
+       *
+       * Needed the moment the tick box became a grade. Everything approved
+       * before that is `null` -- nobody was asked the question in a form they
+       * could answer -- and without a way back those rows could never count
+       * toward the hard slice however wooded they are. The queue ends when
+       * they are graded, which is the point.
+       */
+      const asked = url.searchParams.get('queue');
+      const wanted = asked === 'random' ? 'random' : asked === 'ungraded' ? 'ungraded' : 'priority';
+      const status = wanted === 'ungraded' ? 'approved' : 'new';
       const BLOCK = `ROUND(lng, 2) || ',' || ROUND(lat, 2)`;
 
       const [approved, rows] = await Promise.all([
@@ -305,7 +327,12 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
           `SELECT COUNT(*) total,
                   COUNT(DISTINCT county) counties,
                   COUNT(DISTINCT ${BLOCK}) blocks,
-                  COALESCE(SUM(CASE WHEN exclusions LIKE '%woods%' THEN 1 ELSE 0 END), 0) treeLine,
+                  /*
+                   * The scoring's view of how short the hard slice is. Read
+                   * from the judged grade where there is one, because that is
+                   * the measurement; the woods prompt is only the prefill.
+                   */
+                  COALESCE(SUM(CASE WHEN tree_line >= 2 THEN 1 ELSE 0 END), 0) heavyCanopy,
                   COALESCE(SUM(CASE
                     WHEN detected_sq_ft IS NULL THEN 1
                     WHEN detected_sq_ft > 0
@@ -335,7 +362,8 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
                      WHERE a.status = 'approved' AND a.county = c.county
                   )) new_county
              FROM corpus c
-            WHERE c.status = 'new'
+            WHERE c.status = '${status}'
+              ${wanted === 'ungraded' ? 'AND c.tree_line IS NULL' : ''}
             ORDER BY ${wanted === 'random' ? 'RANDOM()' : 'c.at DESC'}
             LIMIT ${wanted === 'random' ? 1 : 40}`
         ).all(),
@@ -362,7 +390,14 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
            * it is just not available in Find-grass or hand-drawn mode, which
            * is exactly why it cannot be the measurement itself.
            */
-          treeLineHint: /woods/.test(r.exclusions || ''),
+          canopyHint: /woods/.test(r.exclusions || ''),
+          /*
+           * Which draw surfaced it, for the rows coming back round to be
+           * graded. Re-sending the grade must not overwrite this: it is what
+           * tells the export whether a row may sit in the representative
+           * slice, and a row relabelled 'ungraded' would have lost that.
+           */
+          reviewQueue: r.review_queue,
           parcelSource: r.parcel_source,
           squareFeet: r.square_feet,
           detectedSqFt: r.detected_sq_ft,
@@ -465,25 +500,47 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
     const status = ['approved', 'rejected'].includes(body?.status) ? body.status : null;
     const id = typeof body?.id === 'string' ? body.id : null;
     if (!status || !id) return json({ error: 'Need an id and a verdict' }, 400, origin);
-    const queue = body?.queue === 'random' ? 'random' : 'priority';
+    const queue = body?.queue === 'random' ? 'random'
+      : body?.queue === 'ungraded' ? 'ungraded' : 'priority';
     /*
-     * Three states, not two. `null` is "nobody said", which is what every row
-     * reviewed before this existed will stay -- distinct from "looked, and
-     * there are no trees". Conflating them would quietly count old approvals
-     * as treeless.
+     * HOW MUCH CANOPY, NOT WHETHER THERE ARE TREES.
+     *
+     *   null  nobody said -- every row reviewed before this existed, and
+     *         deliberately distinct from "looked, and there is none"
+     *   0     none: where the lawn ends is visible
+     *   1     some: canopy overhangs, the edge was still readable
+     *   2     it decided the edge: the boundary under there was a judgement
+     *
+     * A yes/no could not carry this. Asked what "has a tree line" meant --
+     * a row of trees, or any canopy that makes the cover ambiguous -- the
+     * honest answer was the second, and on a wooded region that is every lawn:
+     * a flag that is true of everything selects nothing, and the hard slice it
+     * exists to fill would have been the whole corpus. The grade is what puts
+     * the discrimination back, and 2 is what the target counts.
+     *
+     * The old boolean is still accepted, because a console left open in a tab
+     * will keep sending one until it is reloaded. True lands on 2 rather than
+     * 1: under the old wording it meant "this lawn is a tree-line case", which
+     * is the strong reading.
      */
-    const treeLine = body?.treeLine === true ? 1 : body?.treeLine === false ? 0 : null;
+    const canopy = (() => {
+      const v = body?.canopy;
+      if (v === 0 || v === 1 || v === 2) return v;
+      if (body?.treeLine === true) return 2;
+      if (body?.treeLine === false) return 0;
+      return null;
+    })();
 
     try {
       const res = await env.DB.prepare(
         `UPDATE corpus
             SET status = ?2, reviewed_at = ?3, reviewed_by = ?4,
                 review_note = ?5, review_queue = ?6, tree_line = ?7
-          WHERE id = ?1 AND status = 'new'`
+          WHERE id = ?1 AND (status = 'new' OR status = ?2)`
       ).bind(
         id, status, new Date().toISOString(), me.email,
         typeof body?.note === 'string' ? body.note.slice(0, 300) : null,
-        queue, treeLine
+        queue, canopy
       ).run();
 
       /*
@@ -491,6 +548,13 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
        * cannot overwrite the first verdict with a second one -- and a row that
        * was re-finished between loading and judging is not silently approved
        * in a shape nobody looked at.
+       *
+       * `OR status = ?2` lets a verdict be RE-AFFIRMED, which is what grading
+       * an already-approved row is: same status in, same status out, and only
+       * the grade moves. It does not let one verdict become another, because
+       * an approved row sent `rejected` matches neither branch. That is the
+       * distinction the guard was always about -- not "write once", but "do
+       * not let a stale tap change somebody's mind for them".
        */
       if (!res.meta?.changes) {
         return json({ ok: false, reason: 'already-reviewed-or-changed' }, 409, origin);

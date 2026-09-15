@@ -76,10 +76,15 @@ ALTER TABLE corpus ADD COLUMN review_queue TEXT;
 -- idempotent, so this is safe on a fresh database too.
 CREATE INDEX IF NOT EXISTS corpus_status ON corpus(status, at DESC);
 
--- Whether the property has a tree line, judged by eye during review.
+-- How much canopy is over the lawn, graded by eye during review.
 --
 -- Replaces inferring it from the exclusion list, which recorded a choice about
 -- how the AI was run rather than anything about the lawn: the Trees box is off
 -- by default and does not exist outside exclude mode, so a wooded lot traced by
 -- hand counted zero.
+--
+-- 0 none, 1 some, 2 it decided where the lawn ended; NULL until judged. Only 2
+-- counts toward the hard slice -- see schema.sql for why it is a grade rather
+-- than the yes/no this column was named for. The name stays: an ALTER that
+-- renames cannot run twice, and this file is re-run on every deploy.
 ALTER TABLE corpus ADD COLUMN tree_line INTEGER;

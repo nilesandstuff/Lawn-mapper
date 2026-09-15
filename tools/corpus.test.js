@@ -332,19 +332,25 @@ const png = () => new Response('x', { headers: { 'content-type': 'image/png' } }
     'the scarce kind, and the one that decides when there is enough');
 
   check('a pile of accepted maps with no corrections still asks for corrections',
-    top({ total: 900, corrected: 4, blocks: 200, counties: 9, treeLine: 400 }) === 'corrected',
+    top({ total: 900, corrected: 4, blocks: 200, counties: 9, heavyCanopy: 400 }) === 'corrected',
     '900 maps and nothing that says what the detector gets wrong');
 
   check('many maps down one street asks for spread',
-    top({ total: 900, corrected: 400, blocks: 3, counties: 4, treeLine: 300 }) === 'blocks',
+    top({ total: 900, corrected: 400, blocks: 3, counties: 4, heavyCanopy: 300 }) === 'blocks',
     'twenty maps from one street count for little more than one');
 
-  check('a corpus with no tree lines asks for tree lines',
-    top({ total: 900, corpus: 0, corrected: 400, blocks: 200, counties: 9, treeLine: 2 }) === 'treeLine',
-    'the known fault is a tree line, and this cannot tell whether it was fixed');
+  /*
+   * The hard slice: lawns where CANOPY DECIDED THE EDGE, not lawns with trees
+   * on them. Asked which it meant, the honest answer was the ambiguous-cover
+   * one -- and on a wooded street that is every lawn, so a flag for it would
+   * have been true everywhere and counted nothing. Only the top grade counts.
+   */
+  check('a corpus with no heavy canopy asks for heavy canopy',
+    top({ total: 900, corpus: 0, corrected: 400, blocks: 200, counties: 9, heavyCanopy: 2 }) === 'heavyCanopy',
+    'the known fault is a tree line overshooting, and this cannot tell whether it was fixed');
 
   check('one county asks for another county',
-    top({ total: 900, corrected: 400, blocks: 200, counties: 1, treeLine: 400 }) === 'counties');
+    top({ total: 900, corrected: 400, blocks: 200, counties: 1, heavyCanopy: 400 }) === 'counties');
 
   /*
    * Met targets are kept and sorted last rather than dropped. A page that only
@@ -352,14 +358,14 @@ const png = () => new Response('x', { headers: { 'content-type': 'image/png' } }
    * somebody is working towards seeing.
    */
   const full = corpusGaps({
-    total: 2000, corrected: 900, blocks: 300, counties: 20, treeLine: 900,
+    total: 2000, corrected: 900, blocks: 300, counties: 20, heavyCanopy: 900,
   });
   check('everything met is reported as met rather than hidden',
     full.length === 5 && full.every((g) => g.done),
     JSON.stringify(full.map((g) => `${g.key}:${g.done}`)));
 
   const mixed = corpusGaps({
-    total: 2000, corrected: 900, blocks: 300, counties: 1, treeLine: 900,
+    total: 2000, corrected: 900, blocks: 300, counties: 1, heavyCanopy: 900,
   });
   check('and a met target never outranks an unmet one',
     mixed[0].key === 'counties' && mixed.slice(1).every((g) => g.done),
@@ -484,7 +490,7 @@ const png = () => new Response('x', { headers: { 'content-type': 'image/png' } }
    * are in, another correction stops being the most valuable thing in the
    * world and a thin county takes over.
    */
-  const plenty = { corrected: 400, treeLine: 400, blocks: 200, counties: 40 };
+  const plenty = { corrected: 400, heavyCanopy: 400, blocks: 200, counties: 40 };
   check('a met target stops pulling rows to the top',
     score({ detected_sq_ft: 6000, square_feet: 4000 }, plenty) === score({}, plenty),
     'another correction is worth nothing once there are four hundred');

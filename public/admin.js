@@ -277,9 +277,11 @@ async function renderReview() {
     if (!pending.length) {
       box.innerHTML = '';
       box.append(el('p', 'empty',
-        data.waiting
-          ? 'Nothing in this queue right now.'
-          : 'Every finished map has been reviewed. Go and make some more.'));
+        queue === 'ungraded'
+          ? 'Every approved map has a canopy grade. Nothing to catch up on.'
+          : data.waiting
+            ? 'Nothing in this queue right now.'
+            : 'Every finished map has been reviewed. Go and make some more.'));
       return;
     }
   }
@@ -323,7 +325,7 @@ function drawCandidate(c) {
   box.append(legend);
 
   /*
-   * DOES THIS LAWN HAVE A TREE LINE? Asked here because this is the only
+   * HOW MUCH CANOPY IS OVER THIS LAWN? Asked here because this is the only
    * moment anybody looks at the photograph.
    *
    * It used to be inferred from the exclusion list -- whether the Trees box
@@ -331,30 +333,80 @@ function drawCandidate(c) {
    * how the AI was run rather than anything about the lawn. That box is off by
    * default and does not exist in Find-grass or hand-drawn mode, so a wooded
    * lot traced by hand scored zero and the counter sat at zero while the
-   * corpus filled with the very lawns it was meant to find.
+   * corpus filled with the very lawns it was meant to find. The old signal is
+   * kept as a STARTING POSITION: ticking Trees is decent evidence of trees,
+   * and a prefilled answer is not the answer.
    *
-   * The old signal is kept as a STARTING POSITION, because ticking Trees is
-   * decent evidence of trees. It is a prefilled answer, not the answer.
+   * THREE LEVELS, NOT A TICK BOX, and the question named above them.
+   *
+   * Two separate things were wrong with the tick box. It said "No tree line"
+   * when it was off, in a plain button identical to "Skip for now" beside it
+   * -- so on every candidate that was not an exclude-woods run it read as a
+   * label stating a fact rather than a control asking a question, and it went
+   * unpressed. Every approved map came back unmarked.
+   *
+   * And "has a tree line" could not be answered anyway. A row of trees, or any
+   * canopy that makes the cover ambiguous? The second is what the hard slice
+   * is for -- and on a wooded street it is every lawn, so the answer would
+   * have been yes everywhere and the counter would count nothing. The grade is
+   * what makes it answerable AND discriminating: only "decided the edge"
+   * counts toward the target.
    */
-  let treeLine = Boolean(c.treeLineHint);
-  const trees = el('button', null, '');
-  const paintTrees = () => {
-    trees.textContent = treeLine ? '✓ Has a tree line' : 'No tree line';
-    trees.className = treeLine ? 'on' : '';
+  const CANOPY = [
+    [0, 'None', 'The edge of the lawn is plainly visible.'],
+    [1, 'Some', 'Canopy overhangs, but you could still see where the lawn stops.'],
+    [2, 'Decided the edge', 'You had to judge where the grass stops under the trees.'],
+  ];
+  let canopy = c.canopyHint ? 2 : null;
+
+  const ask = el('div', 'ask');
+  ask.append(el('h3', null, 'Canopy over this lawn'));
+  const choices = el('div', 'choices');
+  const buttons = CANOPY.map(([value, label, note]) => {
+    const b = el('button', null, label);
+    b.title = note;
+    b.addEventListener('click', () => {
+      canopy = value;
+      paintCanopy();
+    });
+    return b;
+  });
+  const note = el('p', 'meta', '');
+  const paintCanopy = () => {
+    buttons.forEach((b, i) => { b.className = CANOPY[i][0] === canopy ? 'on' : ''; });
+    note.textContent = canopy === null
+      ? 'Not answered yet — say which, so the hard slice can be built from it.'
+      : CANOPY.find(([v]) => v === canopy)[2];
   };
-  paintTrees();
-  trees.addEventListener('click', () => { treeLine = !treeLine; paintTrees(); });
+  choices.append(...buttons);
+  ask.append(choices, note);
+  box.append(ask);
+  paintCanopy();
 
-  const asks = el('div', 'actions');
-  asks.append(trees);
-  box.append(asks);
-
+  /*
+   * THE GRADING QUEUE OFFERS NO VERDICT, because the verdict is already in.
+   *
+   * These rows were approved before the canopy question existed in a form
+   * anybody could answer. Showing Approve would re-state a decision that has
+   * been made, and Reject would try to change one -- which the API refuses,
+   * deliberately: a stale tap must not change somebody's mind for them. So
+   * here there is one button, and it does the only thing left to do.
+   */
+  const grading = queue === 'ungraded';
   const verdict = el('div', 'verdict');
-  const approve = el('button', 'approve', 'Approve');
+  const approve = el('button', 'approve', grading ? 'Save the grade' : 'Approve');
   const reject = el('button', 'reject', 'Reject');
   const edit = el('button', null, 'Edit');
-  verdict.append(approve, reject, edit);
+  verdict.append(approve);
+  if (!grading) verdict.append(reject);
+  verdict.append(edit);
   box.append(verdict);
+
+  if (grading) {
+    box.append(el('p', 'meta',
+      'Already approved — this is only the canopy question, which nobody was '
+      + 'asked when it went through.'));
+  }
 
   const extras = el('div', 'actions');
   if (c.detectedShapes) {
@@ -382,7 +434,18 @@ function drawCandidate(c) {
   const send = async (status) => {
     for (const b of [approve, reject, edit]) b.disabled = true;
     try {
-      const res = await post('/api/admin/review', { id: c.id, status, queue, treeLine });
+      /*
+       * Grading an approved row re-affirms its own status: the verdict does
+       * not move, only the grade. Its ORIGINAL queue is kept too -- overwriting
+       * it with 'ungraded' would lose which draw surfaced it, and that is what
+       * tells the export whether the row may sit in the representative slice.
+       */
+      const res = await post('/api/admin/review', {
+        id: c.id,
+        status: grading ? 'approved' : status,
+        queue: grading ? (c.reviewQueue || 'priority') : queue,
+        canopy,
+      });
       if (!res.ok) throw new Error(res.reason || 'refused');
       pending.shift();
       await renderReview();
@@ -831,13 +894,17 @@ async function renderLog() {
    * priority page and relabelling it "random" would put maps chosen for being
    * interesting into the one slice that must not contain them.
    */
-  for (const [id, which] of [['#queue-priority', 'priority'], ['#queue-random', 'random']]) {
+  const QUEUES = [
+    ['#queue-priority', 'priority'],
+    ['#queue-random', 'random'],
+    ['#queue-ungraded', 'ungraded'],
+  ];
+  for (const [id, which] of QUEUES) {
     $(id).addEventListener('click', () => {
       if (queue === which) return;
       queue = which;
       pending = [];
-      $('#queue-priority').classList.toggle('on', which === 'priority');
-      $('#queue-random').classList.toggle('on', which === 'random');
+      for (const [other, name] of QUEUES) $(other).classList.toggle('on', name === which);
       renderReview().catch(() => { $('#review').textContent = 'Could not load the candidates.'; });
     });
   }
