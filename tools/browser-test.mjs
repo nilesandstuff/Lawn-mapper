@@ -537,6 +537,18 @@ check('with nothing locked before any work has been done',
   await page.click('#tool-points');
   await page.waitForTimeout(400);
 
+  /*
+   * OFF UNTIL ASKED FOR. A detected outline can carry a corner every few
+   * pixels, so a stalk on each is unreadable -- the default is a clean map and
+   * the toggle is for the fiddly lot where reaching a corner is the problem.
+   */
+  check('corner handles are off until switched on',
+    (await page.evaluate(() => window.__lmHandles())).length === 0,
+    'a hundred stalks on a traced outline is not a legible map');
+
+  await page.click('#tool-handles');
+  await page.waitForTimeout(400);
+
   const handles = await page.evaluate(() => window.__lmHandles());
   const crowded = await page.evaluate(() => window.__lmHandlesCrowded());
   check('corners get drag handles once the points tool is open',
@@ -578,6 +590,35 @@ check('with nothing locked before any work has been done',
     check('and dragging a handle moves the corner it points at',
       moved > 0 && Math.abs(moved - before) > 1,
       `${Math.round(before)} -> ${Math.round(moved)} sq ft`);
+  }
+
+  /*
+   * THE POINT ERASER removes the corner that was tapped, without selecting it
+   * first. Checked by counting corners rather than by looking at the map: a
+   * delete that silently did nothing and a delete that worked look identical
+   * in a screenshot.
+   */
+  {
+    const before = await page.evaluate(() => window.__lmCornerCount());
+    await page.click('#tool-unpoint');
+    await page.waitForTimeout(250);
+
+    const target = (await page.evaluate(() => window.__lmCorners()))[0];
+    const box = await page.locator('#map').boundingBox();
+    await page.mouse.click(box.x + target.x, box.y + target.y);
+    await page.waitForTimeout(450);
+
+    const after = await page.evaluate(() => window.__lmCornerCount());
+    check('the point eraser removes the corner that was tapped',
+      after === before - 1, `${before} corners -> ${after}`);
+
+    /* And it is a mode, so it stays armed for the next one. */
+    const armed = await page.evaluate(() => document.querySelector('#tool-unpoint').getAttribute('aria-pressed'));
+    check('and stays armed, because removing strays is never one tap',
+      armed === 'true', `aria-pressed=${armed}`);
+
+    await page.click('#tool-unpoint');   // put the destructive tool away
+    await page.waitForTimeout(200);
   }
 
   /*

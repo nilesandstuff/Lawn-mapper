@@ -72,6 +72,22 @@ const state = {
   pins: [],           // [lng, lat] the point-prompted model is told to look at
   mode: null,         // 'parcel' | 'pins' | 'shape' | null -- what taps act on
   shapeTool: 'points',// within shape mode: 'points' | 'add' | 'erase'
+  /*
+   * Corner handles: off unless asked for.
+   *
+   * They are genuinely crowded on a detected outline, which can carry a
+   * corner every few pixels -- the placement rules stop them OVERLAPPING and
+   * cannot make a hundred stalks restful to look at. Off by default so the
+   * map is legible, on for the fiddly lot where reaching a corner is the
+   * whole problem.
+   */
+  handlesOn: false,
+  /*
+   * Within the corner tool: tapping removes the corner instead of selecting
+   * it. Never inherited -- see setMode, where entering lawn mode always puts
+   * a destructive tool away.
+   */
+  pointEraser: false,
   brushSize: 'bulk',  // 'fine' for trimming, 'bulk' for clearing
   measureOutside: false, // may the brush paint past the property line?
 
@@ -226,6 +242,21 @@ if (typeof window !== 'undefined') {
   }));
   /** Whether the map declined to place any, because there is no room. */
   window.__lmHandlesCrowded = () => handlesCrowded;
+
+  /*
+   * The corners themselves, for aiming at and for counting.
+   *
+   * A delete that silently did nothing and a delete that worked look identical
+   * on a map, so the eraser is checked by counting rather than by looking --
+   * and a test cannot tap a corner whose position it has to guess.
+   */
+  window.__lmCorners = () => editableRings().flatMap(({ ring }) =>
+    openRing(ring).map((p) => {
+      const q = map.project(p);
+      return { x: q.x, y: q.y };
+    }));
+  window.__lmCornerCount = () => editableRings()
+    .reduce((n, { ring }) => n + openRing(ring).length, 0);
 
   /* How many shapes the measurement is actually made of. */
   window.__lmShapeCount = () => (draw ? draw.getAll().features.length : 0);
@@ -2186,6 +2217,13 @@ function beginDrag(clientX, clientY) {
     holdMapStill();
     return true;
   }
+  /*
+   * No dragging with the eraser armed. Otherwise a tap that wandered a few
+   * pixels would move the corner it was pointed at instead of removing it,
+   * and the two outcomes are not recoverable from one another by eye.
+   */
+  if (state.pointEraser) return false;
+
   const hit = vertexAt(clientX, clientY);
   if (!hit) return false;
 
@@ -4940,6 +4978,12 @@ function setMode(mode, tool = null) {
    * inherited from something you did several steps ago.
    */
   if (next === 'shape') state.shapeTool = tool || 'points';
+  /*
+   * And the point eraser goes away on every mode change, for the reason the
+   * comment above gives about brushes: a destructive tool inherited from
+   * several steps ago deletes a corner somebody meant to select.
+   */
+  state.pointEraser = false;
 
   if (next === 'move') {
     // Our own listeners run first and decline everything here, which is what
@@ -5465,6 +5509,14 @@ function refreshRail() {
     $(id)?.setAttribute('aria-pressed',
       String(state.mode === 'shape' && state.shapeTool === tool));
   }
+
+  /* The corner tools appear with Points, and only with it. */
+  const pointTools = $('#point-tools');
+  if (pointTools) {
+    pointTools.hidden = !(state.mode === 'shape' && state.shapeTool === 'points');
+  }
+  $('#tool-handles')?.setAttribute('aria-pressed', String(Boolean(state.handlesOn)));
+  $('#tool-unpoint')?.setAttribute('aria-pressed', String(Boolean(state.pointEraser)));
 
   // Brush width belongs to the brushes, so it appears with them and not with
   // the corner tool, where it would do nothing.
@@ -6006,6 +6058,7 @@ function selectNear(lngLat) {
   /* Same precedence as a drag: the handle is the unambiguous target. */
   const viaHandle = handleAt(tap.x, tap.y);
   if (viaHandle) {
+    if (state.pointEraser) return removeVertexAt(viaHandle.featureId, viaHandle.index);
     return selectVertex({
       featureId: viaHandle.featureId,
       ring: ringOf(viaHandle.featureId) || viaHandle.ring,
@@ -6025,7 +6078,21 @@ function selectNear(lngLat) {
     }
   }
 
-  if (corner) return selectVertex(corner);
+  if (corner) {
+    /*
+     * CORNERS ONLY. The eraser deliberately does not fall through to the
+     * phantom midpoints or to edges below -- those two CREATE a corner and
+     * select an edge, so a miss with a delete tool armed would add geometry
+     * rather than remove it, which is the most surprising thing it could do.
+     * A miss does nothing and says so.
+     */
+    if (state.pointEraser) return removeVertexAt(corner.featureId, corner.index);
+    return selectVertex(corner);
+  }
+  if (state.pointEraser) {
+    setStatus('Nothing there to remove. Tap a corner dot itself.', 'warn');
+    return;
+  }
 
   /*
    * Then a phantom midpoint, which turns into a real corner where it stands.
@@ -6205,11 +6272,22 @@ function addPointOnEdge() {
 function deleteSelectedVertex() {
   const edit = state.edgeEdit;
   if (!edit || edit.vertexIndex == null) return;
+  removeVertexAt(edit.featureId, edit.vertexIndex);
+}
 
-  const ring = ringOf(edit.featureId);
-  if (!ring) return;
+/**
+ * Remove one corner, named rather than selected.
+ *
+ * Split out of deleteSelectedVertex so the point eraser can delete what was
+ * tapped without first selecting it -- selecting and then deleting would put
+ * a corner in the panel for the instant before it ceased to exist, and would
+ * leave the panel describing a corner that is gone if the delete is refused.
+ */
+function removeVertexAt(featureId, index) {
+  const ring = ringOf(featureId);
+  if (!ring || index == null) return;
 
-  const shrunk = deleteVertex(ring, edit.vertexIndex);
+  const shrunk = deleteVertex(ring, index);
   if (!shrunk) {
     setStatus('That shape is down to three corners — deleting another would leave no shape at all.', 'warn');
     return;
@@ -6217,10 +6295,12 @@ function deleteSelectedVertex() {
 
   pushHistory();
   if (state.mode === 'shape') markHandEdited();
-  writeRing(edit.featureId, shrunk);
+  writeRing(featureId, shrunk);
   state.edgeEdit = { featureId: null, vertexIndex: null, edgeIndex: null, baseRing: null };
   $('#point-controls').hidden = true;
-  $('#edge-info').textContent = 'Corner deleted. Tap another corner or edge.';
+  $('#edge-info').textContent = state.pointEraser
+    ? 'Corner removed. Tap another to remove it, or press Remove again to stop.'
+    : 'Corner deleted. Tap another corner or edge.';
   $('#edge-info').className = 'edge-info';
   drawPoints();
   refreshMeasurement();
@@ -6399,7 +6479,7 @@ function drawHandles() {
   const source = map.getSource('point-handles');
   if (!source) return;
 
-  if (!state.edgeEdit) {
+  if (!state.edgeEdit || !state.handlesOn) {
     handlePlan = [];
     handlesCrowded = false;
     return source.setData(empty());
@@ -7432,6 +7512,47 @@ for (const mode of MODES) {
 for (const size of ['fine', 'bulk']) {
   $(`#size-${size}`).addEventListener('click', () => setBrushSize(size));
 }
+
+/*
+ * Handles on or off, remembered.
+ *
+ * Off by default, because a detected outline can carry a corner every few
+ * pixels and a stalk on each is unreadable -- the placement rules stop them
+ * overlapping and cannot make a hundred of them restful. Remembered rather
+ * than reset each visit, because it is a preference about how somebody likes
+ * to work, and re-finding it every session is its own annoyance. A browser
+ * that refuses storage simply starts off every time, which is the default
+ * anyway.
+ */
+const HANDLES_KEY = 'lawnmap.handles.v1';
+try { state.handlesOn = localStorage.getItem(HANDLES_KEY) === '1'; } catch { /* off */ }
+
+$('#tool-handles').addEventListener('click', () => {
+  state.handlesOn = !state.handlesOn;
+  try { localStorage.setItem(HANDLES_KEY, state.handlesOn ? '1' : '0'); } catch { /* fine */ }
+  refreshRail();
+  drawHandles();
+  setHint(state.handlesOn
+    ? 'Drag the dot on a stalk to move its corner'
+    : 'Tap a corner to move it');
+});
+
+/*
+ * The point eraser. A MODE rather than a button that deletes the selection,
+ * because removing a run of stray corners from a traced outline is a dozen
+ * taps and picking each one first would double that.
+ */
+$('#tool-unpoint').addEventListener('click', () => {
+  state.pointEraser = !state.pointEraser;
+  refreshRail();
+  if (state.pointEraser) {
+    setHint('Tap a corner to remove it');
+    setStatus('Removing corners. Tap any corner dot to delete it — press Remove again to stop.');
+  } else {
+    setHint('Tap a corner to move it');
+    setStatus('Back to moving corners.');
+  }
+});
 
 for (const tool of ['points', 'add', 'erase']) {
   $(`#tool-${tool}`).addEventListener('click', () => {

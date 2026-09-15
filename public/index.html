@@ -718,6 +718,31 @@
           <span>Erase</span>
         </button>
 
+        <!-- Corner tools. Both belong to Points and appear only with it: a
+             handle toggle means nothing to a brush, and an eraser for corners
+             would be a second, differently-behaved Erase button beside the
+             one that rubs out lawn. -->
+        <div class="railsub" id="point-tools" hidden>
+          <button class="railbtn sub" id="tool-handles" aria-pressed="false"
+                  title="Show a drag handle on every corner">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="7" cy="17" r="2.2" fill="currentColor"/>
+              <line x1="8.6" y1="15.4" x2="15" y2="9" stroke="currentColor"
+                    stroke-width="1.6" stroke-linecap="round"/>
+              <circle cx="17" cy="7" r="4" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+            <span>Handles</span>
+          </button>
+          <button class="railbtn sub" id="tool-unpoint" aria-pressed="false"
+                  title="Tap a corner to delete it">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <circle cx="8" cy="10" r="2.6" fill="none" stroke="currentColor" stroke-width="1.9"/>
+              <line x1="13" y1="6" x2="20" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <line x1="20" y1="6" x2="13" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <span>Remove</span>
+          </button>
+        </div>
+
         <!-- Brush width. Only while a brush is live: it means nothing to the
              corner tool, and a control that does nothing is worse than absent.
              The dots are drawn at the real relative sizes. -->
