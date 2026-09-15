@@ -524,5 +524,83 @@ check('every class the code toggles is styled',
     'sessionStorage throws rather than returning null when it is locked down');
 }
 
+/* ------------------------------- nothing redraws over somebody's work */
+/*
+ * THE REPORT: "the count grass under trees thing should not override manually
+ * drawn shapes... when I toggled it off, I lost all of my work."
+ *
+ * Both of those controls re-trace the model's mask, which rebuilds every shape
+ * from scratch -- so a switch that reads as a display option throws away every
+ * corner moved and every shed rubbed out. It said so afterwards, in a status
+ * line, which is a receipt rather than a question.
+ *
+ * Checked in the source because the browser run cannot reach it: retracing
+ * needs a mask in hand, and a real detection is opt-in there and costs money.
+ * That is the exact gap this bug walked through, so the guard goes where it
+ * can actually stand.
+ */
+{
+  const retrace = js.match(/function retrace\([\s\S]*?\n}/)?.[0] || '';
+  check('re-tracing asks before it redraws over hand corrections',
+    /mayRedrawFromMask\(/.test(retrace),
+    'it used to rebuild first and mention it afterwards');
+
+  const guard = js.match(/function mayRedrawFromMask\([\s\S]*?\n}/)?.[0] || '';
+  check('and only asks when there is something to lose',
+    /state\.handEdited/.test(guard) && /return true/.test(guard),
+    'a confirm on an untouched AI trace is a dialog about nothing');
+
+  /*
+   * A CONTROL THAT WAS REFUSED HAS TO PUT ITSELF BACK. A checkbox still ticked
+   * after "no, keep my work" is claiming a measurement the map is not showing
+   * -- and the next thing that re-traces would then apply it without asking
+   * again.
+   */
+  const trees = js.match(/#toggle-trees'\)\.addEventListener\([\s\S]*?\n\}\);/)?.[0] || '';
+  check('the trees box puts itself back when the redraw is declined',
+    /if \(!retrace\(/.test(trees) && /e\.target\.checked = was/.test(trees),
+    trees ? 'the handler runs retrace and ignores the answer' : 'handler not found');
+
+  const edge = js.match(/function setEdgeFt\([\s\S]*?\n}/)?.[0] || '';
+  check('and so does the edge distance, for the same reason',
+    /!retrace\(/.test(edge) && /state\.edgeFt = was/.test(edge),
+    edge ? 'the setting moves whether or not the shapes did' : 'setEdgeFt not found');
+
+  /*
+   * And once the shapes really are the model's own work again, the flag that
+   * says "corrected by hand" has to stop saying it -- that flag is what marks
+   * a map in the training corpus, and a pure AI trace labelled as a correction
+   * is a worse lie than the silence this replaced, because it travels.
+   */
+  check('a completed redraw stops calling the result a hand correction',
+    /state\.handEdited = false;/.test(retrace),
+    'the flag decides what the training set believes about this map');
+}
+
+/* ------------------------------- edges are a property-line tool only */
+/*
+ * Sliding an edge keeps a surveyed bearing, which is worth having on a
+ * boundary a county recorded and worth nothing on a lawn. Meanwhile it took
+ * the corners' pixels: distance to a segment goes to zero at its endpoints, so
+ * a corner tap that missed by a few pixels grabbed the edge every time.
+ */
+{
+  const near = js.match(/function selectNear\([\s\S]*?\n}/)?.[0] || '';
+  check('a tap that misses a lawn corner does not fall through to an edge',
+    /state\.mode !== 'parcel'/.test(near) && near.indexOf('selectEdgeNear') > near.indexOf("state.mode !== 'parcel'"),
+    'the mode test has to come before the edge search, not after it');
+
+  /*
+   * And the corner hit test covers every outline that is DRAWN, not the one
+   * that happens to be selected. That gap is the point eraser bug: deleting a
+   * corner clears the selection, so every tap after the first was tested
+   * against an empty list while the dots were still on screen.
+   */
+  const rings = js.match(/function handleRings\(\)[\s\S]*?\n}/)?.[0] || '';
+  check('and corner tapping covers every outline whose corners are drawn',
+    /return editableRings\(\);/.test(rings),
+    'a dot you can see and cannot tap is indistinguishable from a dead tool');
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);

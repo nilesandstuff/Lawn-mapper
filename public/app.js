@@ -16,6 +16,7 @@ import { measure, fromSquareMeters, geometryAreaSqM } from './lib/area.js';
 import {
   maskToPolygons, rasterizePolygon, maskBinary, unionMasks, subtractMasks,
   coverage, polygonsFromBinary, distinctFraction, overTrimmed,
+  editTraceLimits, editHoleLimit,
 } from './lib/mask.js';
 import {
   offsetEdge, nearestEdge, edgeRun, edgeLength, edgeBearing, openRing,
@@ -1349,6 +1350,13 @@ const BRUSH_TRACE_PX = 1.2;
 const MAX_BRUSH_VERTICES = 400;
 
 /*
+ * What a hand edit is allowed to throw away: see editTraceLimits in lib/mask.js,
+ * which is where the reasoning and the arithmetic live. Short version: nearly
+ * nothing, because every pixel a brush changed was changed on purpose.
+ */
+const EDIT_TRACE_LIMITS = editTraceLimits(ERASE_GRID, ERASE_GRID);
+
+/*
  * The same stroke, in both directions.
  *
  * Subtracting and adding are the identical operation with one bit flipped:
@@ -1709,6 +1717,7 @@ function applyErase() {
     {
       tolerance: BRUSH_TRACE_PX,
       maxVertices: MAX_BRUSH_VERTICES,
+      ...EDIT_TRACE_LIMITS,
     }
   );
 
@@ -1829,6 +1838,17 @@ function clipShapesToParcel() {
     {
       tolerance: TRACE_TOLERANCE_M / metresPerPixel(frame, ERASE_GRID),
       maxVertices: MAX_TRACE_VERTICES,
+      /*
+       * Clipping must not also tidy: a hole somebody cut by hand inside the
+       * property line has nothing to do with the boundary and must survive
+       * being trimmed to it.
+       *
+       * The HOLE floor only. A clip cuts along the boundary, which is exactly
+       * where the grid leaves slivers, so the piece floor stays at the
+       * tracer's own default here -- those fragments are the artefact it is
+       * there for, and it reports what it dropped.
+       */
+      ...editHoleLimit(ERASE_GRID, ERASE_GRID),
     }
   );
 
@@ -5038,11 +5058,18 @@ function enterRingEditing(which) {
 
   state.edgeEdit = { featureId: null, edgeIndex: null, vertexIndex: null, baseRing: null };
   $('#edge-panel').hidden = false;
+  // The two outlines share one panel, so whatever the last one left open has
+  // to be shut -- the edge slider is a property-line control and must not be
+  // sitting there from a previous visit when a lawn is being edited.
+  $('#edge-controls').hidden = true;
+  $('#point-controls').hidden = true;
   $('#edge-info').textContent = which === 'parcel'
     ? 'Tap a line to extend that edge out to the road, or a corner to move it.'
-    : 'Tap a line to slide that edge, or a corner dot to move, add or delete it.';
+    : 'Tap a corner dot to move or delete it, or a hollow dot between two to add one.';
   $('#edge-info').className = 'edge-info';
-  setHint('Tap a line to extend it, or a corner to move it');
+  setHint(which === 'parcel'
+    ? 'Tap a line to extend it, or a corner to move it'
+    : 'Tap a corner to move it, or a hollow dot to add one');
   armLawnPicker(); // same tap plumbing; handleMapPoint routes the tap
   drawPoints();    // the corners have to be visible to be aimed at
 }
@@ -5117,9 +5144,16 @@ function setEdgeFt(ft) {
   const next = parseEdgeFt(ft);
   if (next === null) { refreshSensitivity(); return; }
   if (next === state.edgeFt) { refreshSensitivity(); return; }
+
+  // Same bargain as the trees box: the number only means anything once the
+  // shapes are redrawn, so it does not move unless they are.
+  const was = state.edgeFt;
   state.edgeFt = next;
+  if (state.lastMask?.layers?.length && !retrace('Changing how generous the edge is')) {
+    state.edgeFt = was;
+    setStatus('Left as it is — your hand corrections are untouched.');
+  }
   refreshSensitivity();
-  retrace();
 }
 
 /**
@@ -5337,10 +5371,39 @@ function describeEdgeShift() {
       : `Pushed out ${ft} ft all round, still trimmed to your property line.`;
 }
 
-/** Re-trace the masks already in hand at the current edge setting. */
-function retrace() {
+/**
+ * ASK BEFORE REDRAWING OVER SOMEBODY'S CORRECTIONS.
+ *
+ * Every control that re-traces the mask -- the edge setting, "count grass
+ * under trees" -- rebuilds all the shapes from the model's answer, which
+ * throws away every corner moved, every shed rubbed out, every bit of the
+ * work that is the whole reason a person is still on this screen. It was
+ * silent, and a warning printed AFTERWARDS is not consent: the report was an
+ * hour of editing gone to a switch that looked like a display option.
+ *
+ * Undo still puts it back. This exists so that nobody has to know that.
+ *
+ * Returns false when the caller must leave the map alone, so a checkbox can
+ * put itself back rather than sit there claiming a setting it did not apply.
+ */
+function mayRedrawFromMask(what) {
+  if (!state.handEdited) return true;
+  return confirm(
+    `${what} redraws the lawn from the AI's answer, and that would undo the `
+    + 'corrections you have made by hand. Carry on?'
+  );
+}
+
+/**
+ * Re-trace the masks already in hand at the current edge setting.
+ *
+ * Returns true if the shapes were rebuilt, false if there was nothing to
+ * rebuild from or the person declined to lose their corrections.
+ */
+function retrace(what = 'That') {
   const mask = state.lastMask;
-  if (!mask?.layers?.length) return;
+  if (!mask?.layers?.length) return false;
+  if (!mayRedrawFromMask(what)) return false;
 
   const { polygons } = traceDetection({
     layers: mask.layers,
@@ -5364,7 +5427,8 @@ function retrace() {
 
   if (!polygons.length) {
     setStatus('Nothing left at this setting — slide back to the right.', 'warn');
-    return;
+    state.handEdited = false;
+    return true;
   }
 
   /*
@@ -5378,11 +5442,20 @@ function retrace() {
    * is free, the corrections are not.
    */
   const lost = state.handEdited;
+  /*
+   * And the shapes really are the model's own work again now, so the flag says
+   * so. It is what "corrected by hand" means on a saved map and in the
+   * training corpus, and leaving it set would mark a pure AI trace as a
+   * correction -- a worse lie than the silence this replaced, because it would
+   * travel into the training set rather than just onto the screen.
+   */
+  state.handEdited = false;
   setStatus(
     `${polygons.length} section${polygons.length > 1 ? 's' : ''} of lawn at this setting.`
     + (lost ? ' Your hand corrections were redrawn from the AI mask — Undo puts them back.' : ''),
     lost ? 'warn' : ''
   );
+  return true;
 }
 
 /**
@@ -6110,6 +6183,24 @@ function selectNear(lngLat) {
   }
   if (phantom) return addPointAt(phantom.featureId, phantom.edgeIndex, phantom.at);
 
+  /*
+   * EDGES BELONG TO THE PROPERTY LINE ONLY.
+   *
+   * Sliding an edge keeps a surveyed bearing exactly, which is the whole
+   * reason it exists and is genuinely the right tool on a boundary the county
+   * recorded. A lawn edge has no bearing worth preserving -- where the mowing
+   * stops is not a surveyed line -- so on a lawn the tool did nothing useful
+   * and cost a great deal: every corner tap that missed by a few pixels
+   * grabbed the edge instead, and the two share the same pixels by geometry
+   * (distance to a segment goes to zero at its endpoints). Taking edges out of
+   * lawn editing hands those pixels back to the corners, which is the thing
+   * being aimed at here.
+   */
+  if (state.mode !== 'parcel') {
+    setStatus('Tap a corner dot to move it, or a hollow dot between two to add one.');
+    return;
+  }
+
   selectEdgeNear(lngLat);
 }
 
@@ -6184,6 +6275,12 @@ function selectVertex({ featureId, ring, index }) {
 
   $('#edge-controls').hidden = true;
   $('#point-controls').hidden = false;
+  const hint = $('#point-hint');
+  if (hint) {
+    hint.textContent = featureId === PARCEL_ID
+      ? 'Drag it to move it. To extend a whole edge instead, tap the line between two corners.'
+      : 'Drag it to move it. Tap a hollow dot to add a corner there.';
+  }
   $('#edge-info').textContent =
     `Corner ${index + 1} of ${openRing(ring).length} on your ` +
     (featureId === PARCEL_ID ? 'property line' : 'lawn outline') +
@@ -6300,7 +6397,9 @@ function removeVertexAt(featureId, index) {
   $('#point-controls').hidden = true;
   $('#edge-info').textContent = state.pointEraser
     ? 'Corner removed. Tap another to remove it, or press Remove again to stop.'
-    : 'Corner deleted. Tap another corner or edge.';
+    : state.mode === 'parcel'
+      ? 'Corner deleted. Tap another corner or edge.'
+      : 'Corner deleted. Tap another corner.';
   $('#edge-info').className = 'edge-info';
   drawPoints();
   refreshMeasurement();
@@ -6362,19 +6461,25 @@ function tidyShapes() {
  * corners are invisible and there is nothing to aim at.
  */
 /**
- * The outlines whose corners get handles.
+ * The outlines whose corners can be grabbed.
  *
- * Only the shape being worked on. Showing every corner of every shape at once
- * put over a thousand handles on the map, which is not an editing surface --
- * it is a wall of dots with the boundary somewhere underneath. A tap on a line
- * selects a shape and reveals its corners; until then there is nothing to aim
- * at but the lines themselves, which is the correct number of things to think
- * about.
+ * EVERY OUTLINE THIS MODE CAN EDIT, which must stay the same set drawPoints
+ * draws -- a dot you can see and cannot tap is indistinguishable from a dead
+ * tool.
+ *
+ * It used to be the selected shape alone, and that is the point eraser bug:
+ * deleting a corner clears the selection, so the tap after a successful delete
+ * was tested against an empty list and answered "nothing there to remove"
+ * while the dots were still on screen. The first delete worked, every one
+ * after it failed, and nothing on the map had changed to explain why.
+ *
+ * The wall-of-dots worry the old restriction answered is handled where it
+ * belongs: drawPoints decides what is drawn, and handles are planned only for
+ * corners on screen and suppressed entirely when they cannot be placed clear
+ * of each other.
  */
 function handleRings() {
-  const edit = state.edgeEdit;
-  if (!edit?.featureId) return [];
-  return editableRings().filter((r) => r.featureId === edit.featureId);
+  return editableRings();
 }
 
 /**
@@ -7761,8 +7866,28 @@ $('#btn-open-saved').addEventListener('click', () => {
  * one payment later is indistinguishable from a switch that does not work.
  */
 $('#toggle-trees').addEventListener('change', (e) => {
-  state.fillGaps[fillGapsMode()] = e.target.checked;
-  retrace();
+  const mode = fillGapsMode();
+  const was = Boolean(state.fillGaps[mode]);
+  state.fillGaps[mode] = e.target.checked;
+
+  /*
+   * With no mask in hand there is nothing to redraw and nothing to lose: the
+   * setting is simply remembered for the next detection.
+   */
+  if (!state.lastMask?.layers?.length) return;
+
+  /*
+   * PUT THE BOX BACK IF THE REDRAW DID NOT HAPPEN.
+   *
+   * A checkbox that stays ticked after the answer was "no, keep my work" is
+   * claiming a measurement the map is not showing, and the next thing that
+   * re-traces would then apply it without asking again.
+   */
+  if (!retrace('Counting grass under trees')) {
+    state.fillGaps[mode] = was;
+    e.target.checked = was;
+    setStatus('Left as it is — your hand corrections are untouched.');
+  }
 });
 /*
  * Going back inside the line must not cost a detection.

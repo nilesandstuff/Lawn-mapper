@@ -612,6 +612,26 @@ check('with nothing locked before any work has been done',
     check('the point eraser removes the corner that was tapped',
       after === before - 1, `${before} corners -> ${after}`);
 
+    /*
+     * AND AGAIN, WHICH IS THE WHOLE BUG.
+     *
+     * The first delete always worked. Deleting a corner clears the selection,
+     * and the tap test used to run over the SELECTED shape's corners only --
+     * so every tap after the first was measured against an empty list and
+     * answered "nothing there to remove" with the dots still on screen. One
+     * delete is not a test of a tool whose entire purpose is removing a run of
+     * strays, so this taps a second one.
+     */
+    const next = (await page.evaluate(() => window.__lmCorners()))[0];
+    await page.mouse.click(box.x + next.x, box.y + next.y);
+    await page.waitForTimeout(450);
+
+    const twice = await page.evaluate(() => window.__lmCornerCount());
+    check('and keeps removing them, tap after tap',
+      twice === after - 1,
+      `${after} corners -> ${twice}` +
+      (twice === after ? ' — the second tap did nothing' : ''));
+
     /* And it is a mode, so it stays armed for the next one. */
     const armed = await page.evaluate(() => document.querySelector('#tool-unpoint').getAttribute('aria-pressed'));
     check('and stays armed, because removing strays is never one tap',
@@ -1403,18 +1423,92 @@ const taps = await page.evaluate(() => ({
 check('a real touch reaches the map (not just a mouse click)', taps.viaTouch > 0,
   `viaTouch=${taps.viaTouch} viaClick=${taps.viaClick} handled=${taps.clicks}`);
 
-if (await page.locator('#edge-controls').isVisible()) {
-  const before = await page.locator('#result-sqft').textContent();
-  await page.locator('#edge-slider').fill('25');
-  await page.waitForTimeout(600);
-  const after = await page.locator('#result-sqft').textContent();
-  const bearing = await page.locator('#edge-bearing').textContent();
-  console.log(`      ${before} sq ft -> ${after} sq ft after +25 ft   (${bearing})`);
-  check('extending an edge increases the area',
-    Number(after.replace(/,/g, '')) > Number(before.replace(/,/g, '')),
-    `${before} -> ${after}`);
-} else {
-  console.log('      (no edge selected by that tap — not a failure, geometry dependent)');
+/*
+ * SLIDING AN EDGE IS A PROPERTY-LINE TOOL AND IS NOT OFFERED ON A LAWN.
+ *
+ * It keeps a surveyed bearing exactly, which is worth having on a boundary a
+ * county recorded and worth nothing on a lawn -- where the mowing stops is not
+ * a surveyed line. Meanwhile it cost the corners their pixels: distance to a
+ * segment goes to zero at its endpoints, so a corner tap that missed by a few
+ * pixels grabbed the edge every time, and there was no way to aim past it.
+ *
+ * Asserted as "the slider did not open", not as "nothing happened": the tap
+ * above still has to reach the map, which the touch check just proved.
+ */
+check('tapping a line in lawn mode does not open the edge slider',
+  !(await page.locator('#edge-controls').isVisible()),
+  'edges compete with corners for the same pixels, and only corners matter here');
+
+/*
+ * ...and it is still there on the property line, which is the half that has to
+ * keep working. Taken out of lawn mode is not taken out.
+ */
+{
+  // Property-line mode belongs to the address step, so open that step first:
+  // reaching for a control on another one is how a run stops dead partway
+  // through, which tools/testflow.test.js exists to catch before it does.
+  await goTab(page, 'address');
+  await page.click('#mode-parcel');
+  await page.waitForTimeout(450);
+
+  /*
+   * Aimed at the middle of the longest segment on screen, so the tap is as far
+   * from both its corners as the geometry allows. The old version tapped a
+   * fixed spot twelve pixels in from the left and reported "no edge selected
+   * by that tap -- not a failure, geometry dependent", which is a check that
+   * cannot fail and therefore was not one.
+   */
+  const mid = await page.evaluate(() => {
+    const pts = window.__lmCorners();
+    if (pts.length < 2) return null;
+    let best = null;
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i];
+      const b = pts[(i + 1) % pts.length];
+      const len = Math.hypot(b.x - a.x, b.y - a.y);
+      if (!best || len > best.len) best = { len, x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    }
+    return best;
+  });
+
+  if (mid && mid.len > 60) {
+    const mapBox = await page.locator('#map').boundingBox();
+    await page.touchscreen.tap(mapBox.x + mid.x, mapBox.y + mid.y);
+    await page.waitForTimeout(600);
+
+    check('but tapping a line on the property line still grabs that edge',
+      await page.locator('#edge-controls').isVisible(),
+      await page.locator('#edge-info').textContent());
+
+    if (await page.locator('#edge-controls').isVisible()) {
+      const area = () => page.evaluate(() => window.__lmPoints()[0]?.sqft ?? 0);
+      const before = await area();
+      await page.locator('#edge-slider').fill('25');
+      await page.waitForTimeout(600);
+      const after = await area();
+      const bearing = await page.locator('#edge-bearing').textContent();
+      console.log(`      ${before.toFixed(0)} -> ${after.toFixed(0)} sq ft after +25 ft   (${bearing})`);
+      check('and pushing it out grows the boundary', after > before,
+        `${before.toFixed(0)} -> ${after.toFixed(0)} sq ft`);
+
+      /*
+       * Put it back. The slider is absolute -- every offset is measured from
+       * the shape as it was when the edge was picked -- so zero restores the
+       * boundary exactly, and everything downstream measures the lot rather
+       * than the lot plus twenty-five feet of this test.
+       */
+      await page.locator('#edge-slider').fill('0');
+      await page.waitForTimeout(500);
+    }
+  } else {
+    console.log(`      (no segment long enough to aim at: ${mid ? Math.round(mid.len) : 0} px)`);
+  }
+
+  await page.click('#mode-parcel');  // out of property-line mode
+  await page.waitForTimeout(250);
+  await goTab(page, 'draw');
+  await page.click('#mode-shape');   // and back to the lawn, where the rest runs
+  await page.waitForTimeout(400);
 }
 
 /* ------------------------------------------------- moving corners around */

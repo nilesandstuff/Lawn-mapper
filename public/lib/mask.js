@@ -580,6 +580,61 @@ export function overTrimmed({ subtractive, trimmedTrees, lawnSqFt, parcelSqFt })
 }
 
 /**
+ * WHAT A HAND EDIT IS ALLOWED TO THROW AWAY: as close to nothing as is safe.
+ *
+ * The defaults below drop small pieces and small holes and keep only the six
+ * biggest shapes. That is right for a model's mask -- speckle is noise, and
+ * forty crumbs of lawn is not an editing surface. It is wrong for a brush
+ * stroke, where every pixel that changed changed because somebody deliberately
+ * painted it.
+ *
+ * THIS IS THE "the brush would not remove my shed" BUG. The limits are
+ * fractions of the whole frame, and the frame a brush edit traces in is padded
+ * by some forty metres on every side, so on a small lot a hole had to be
+ * around 250 sq ft to survive being traced. A shed is smaller than that, so
+ * the hole was filled in the instant it was made: the stroke landed, the shape
+ * came back whole, and the tool looked broken rather than opinionated. Nothing
+ * on screen named the threshold, so the nearest visible suspect -- "count
+ * grass under trees", the one option that is about filling gaps -- took the
+ * blame for it.
+ *
+ * Absolute pixel counts rather than fractions of the frame, so the answer does
+ * not depend on how much empty ground happens to be in shot.
+ *
+ * TWO FLOORS, NOT ONE, because the two things being measured are not alike.
+ *
+ * A hole is made on purpose. Rasterising a solid polygon does not produce one,
+ * so anything that is there is there because somebody cut it, and the floor
+ * only has to be above a stray pixel: twelve of them is well under a square
+ * foot at any grid this runs on.
+ *
+ * A separate PIECE can be an artefact. Where a stroke almost-but-not-quite
+ * severs a shape the grid leaves slivers a few pixels wide along the cut, and
+ * those are dust rather than lawn. So the floor for a piece is higher -- two
+ * hundred pixels, around twenty square feet on an ordinary lot -- which is
+ * still far below the tracer's own default of roughly 350 sq ft, and that
+ * default is large enough to silently drop a real strip of grass that a stroke
+ * across a lawn legitimately makes.
+ *
+ * `maxPolygons` is large rather than absent for the same reason it exists at
+ * all -- a runaway would be a wall of handles -- but rubbing a line across a
+ * lawn legitimately makes a dozen pieces, and six was never that number.
+ */
+export const EDIT_MIN_HOLE_PX = 12;
+export const EDIT_MIN_PIECE_PX = 200;
+
+/** The hole floor alone, for an operation that makes no new pieces. */
+export const editHoleLimit = (width, height) => ({
+  minHoleFraction: EDIT_MIN_HOLE_PX / (width * height),
+});
+
+export const editTraceLimits = (width, height) => ({
+  ...editHoleLimit(width, height),
+  minAreaFraction: EDIT_MIN_PIECE_PX / (width * height),
+  maxPolygons: 200,
+});
+
+/**
  * A binary layer -> GeoJSON polygons. The tail half of maskToPolygons, reused
  * by exclude mode, which arrives with its pixels already decided.
  */

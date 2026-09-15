@@ -26,6 +26,8 @@ import {
   coverage,
   polygonsFromBinary,
   overTrimmed,
+  editTraceLimits,
+  editHoleLimit,
 } from '../public/lib/mask.js';
 import {
   framePxToLngLat,
@@ -789,6 +791,90 @@ function stripsPx(kept, label, mask) {
   check('a big lot that really is mostly woods is left alone at 30%',
     overTrimmed({ subtractive: true, trimmedTrees: true, lawnSqFt: 24000, parcelSqFt: 80000 }) === false,
     '30% sits inside the believable band');
+}
+
+/* ------------------------------------------------- the brush's own limits */
+/*
+ * THE SHED THE BRUSH WOULD NOT REMOVE.
+ *
+ * A brush stroke goes through the same tracer as a detection, and the tracer's
+ * defaults are the ones checked above: a hole under about a tenth of a percent
+ * of the frame is not traced, which fills it back in. The frame a brush edit
+ * builds is the shapes plus roughly forty metres of padding on every side, so
+ * on an ordinary lot the floor lands somewhere around 250 sq ft -- larger than
+ * a shed. Rubbing one out looked exactly like the tool being broken.
+ *
+ * Built at the real grid the brush uses, against a hole the size of a real
+ * shed at a plausible scale, so the numbers are the ones that shipped rather
+ * than a convenient synthetic.
+ */
+{
+  console.log('\n--- what a hand edit may throw away ---');
+
+  const G = 1280;                    // ERASE_GRID, the grid a brush edit traces on
+  const unproject = (x, y) => [x, y];
+  const lawn = new Uint8Array(G * G);
+  // The lawn as a third of the frame, which is what forty metres of padding
+  // round a suburban lot comes to.
+  for (let y = 420; y < 860; y++) for (let x = 420; x < 860; x++) lawn[y * G + x] = 1;
+
+  // Ten metres of ground per hundred pixels here, so a 3 m x 4 m shed is
+  // 30 x 40 px: about 130 sq ft, an ordinary garden shed.
+  const shed = (bin) => {
+    for (let y = 600; y < 640; y++) for (let x = 600; x < 630; x++) bin[y * G + x] = 0;
+    return bin;
+  };
+
+  const holes = (polys) => (polys[0] ? polys[0].coordinates.length - 1 : 0);
+
+  const withDefaults = polygonsFromBinary(shed(lawn.slice()), G, G, unproject, {});
+  check('the tracer\'s own defaults fill a shed-sized hole straight back in',
+    holes(withDefaults) === 0,
+    'this is the bug, pinned: nothing about it is visible on screen');
+
+  const asEdited = polygonsFromBinary(shed(lawn.slice()), G, G, unproject,
+    editTraceLimits(G, G));
+  check('and the brush\'s limits keep it',
+    holes(asEdited) === 1, `${holes(asEdited)} hole(s) traced, wanted 1`);
+
+  /*
+   * A floor still exists. One stray pixel from the rasteriser is not a hole
+   * somebody made, and tracing it would put a draggable ring around nothing.
+   */
+  const speck = lawn.slice();
+  speck[700 * G + 700] = 0;
+  check('but a single stray pixel is still not a hole',
+    holes(polygonsFromBinary(speck, G, G, unproject, editTraceLimits(G, G))) === 0,
+    'the floor is against rasteriser dust, not against small sheds');
+
+  /*
+   * The clip to the property line gets the HOLE floor and nothing else. It
+   * cuts along the boundary, which is exactly where the grid leaves slivers,
+   * so the piece floor stays where the tracer put it.
+   */
+  const clipOnly = editHoleLimit(G, G);
+  check('clipping to the property line keeps a hand-cut hole too',
+    holes(polygonsFromBinary(shed(lawn.slice()), G, G, unproject, clipOnly)) === 1,
+    'trimming to the boundary is not an invitation to tidy the middle');
+  check('and leaves the sliver floor alone, because a clip is what makes slivers',
+    clipOnly.minAreaFraction === undefined && clipOnly.maxPolygons === undefined,
+    Object.keys(clipOnly).join(', '));
+
+  /*
+   * And the shape cap. Rubbing a line across a lawn legitimately makes more
+   * pieces than the six a detection is allowed, and pieces past the cap are
+   * lawn that silently stops being counted.
+   */
+  const striped = lawn.slice();
+  for (let i = 0; i < 9; i++) {
+    for (let y = 440 + i * 45; y < 452 + i * 45; y++) {
+      for (let x = 420; x < 860; x++) striped[y * G + x] = 0;
+    }
+  }
+  const pieces = polygonsFromBinary(striped.slice(), G, G, unproject, editTraceLimits(G, G));
+  check('and a stroke that cuts a lawn into ten keeps all ten',
+    pieces.length === 10 && pieces.droppedCount === 0,
+    `${pieces.length} kept, ${pieces.droppedCount} dropped`);
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);

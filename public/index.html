@@ -324,8 +324,13 @@
           <button class="ghost edge-secondary" id="btn-point-add">Add a corner here</button>
         </div>
         <div class="edge-controls" id="point-controls" hidden>
-          <p class="sub">Drag it to move it. To extend a whole edge instead,
-            tap the line between two corners.</p>
+          <!--
+            Rewritten per outline in selectVertex. Sliding an edge is a
+            property-line tool and is not offered on a lawn, so the sentence
+            that points at it must not be offered there either.
+          -->
+          <p class="sub" id="point-hint">Drag it to move it. To extend a whole edge
+            instead, tap the line between two corners.</p>
           <button class="ghost edge-secondary" id="btn-point-delete">Delete this corner</button>
         </div>
         <button class="ghost edge-secondary" id="btn-tidy">Tidy up this boundary</button>
