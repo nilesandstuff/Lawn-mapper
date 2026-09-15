@@ -602,5 +602,63 @@ check('every class the code toggles is styled',
     'a dot you can see and cannot tap is indistinguishable from a dead tool');
 }
 
+/* ------------------------------- what the editor selects is a ring */
+/*
+ * THE REPORT: "some of those interior shapes, like sheds, don't have points
+ * that can be touched."
+ *
+ * They had none to touch. Every part of the editor was keyed by a shape's id
+ * and read coordinates[0], so a hole was not hard to reach -- it did not exist
+ * as far as selection, hit testing or drawing were concerned, and a shed
+ * traced into a lawn could never be adjusted afterwards.
+ */
+{
+  const editable = js.match(/function editableRings\(\)[\s\S]*?\n}/)?.[0] || '';
+  check('the editor enumerates every ring of a shape, not just its outline',
+    /coordinates/.test(editable) && !/outerRing\(f\)/.test(editable),
+    'reading coordinates[0] is what made a cut-out unselectable');
+
+  /*
+   * ONE WRITER. A second place that assigns `[ring, ...slice(1)]` is a place
+   * that writes ring 0 whatever ring was selected -- which on a hole means
+   * dragging its corner silently reshapes the lawn's outline instead.
+   */
+  const writers = (js.match(/geometry\.coordinates = \[ring,/g) || []).length;
+  check('and exactly one place writes a ring back into a shape',
+    writers === 0,
+    `${writers} open-coded ring-0 write(s) outside writeRing`);
+
+  check('ring ids carry which ring they mean',
+    /function ringOwner\(/.test(js) && /const ringKey = /.test(js),
+    'a bare feature id cannot name the second ring of a shape');
+
+  /*
+   * And the cut is a HOLE rather than a new kind of feature. Everything
+   * downstream -- the geodesic area, the even-odd raster, the corner editor --
+   * already understands holes; a "negative shape" would be a second kind of
+   * thing for each of those to learn, and wrong wherever one was missed.
+   */
+  const cut = js.match(/function cutHoleFromDrawn\([\s\S]*?\n}/)?.[0] || '';
+  check('a cut-out is appended as an interior ring',
+    /coordinates = \[\.\.\.f\.geometry\.coordinates, ring/.test(cut),
+    'the measurement and the raster both already subtract holes');
+  check('and it refuses to land anywhere it was not drawn',
+    /ringInsideRing\(/.test(cut),
+    'punching it into a shape that does not contain it moves the shed');
+
+  /*
+   * AND THE REVIEW CANVAS HAS TO AGREE WITH THE MEASUREMENT.
+   *
+   * It filled each ring in its own path, which paints a hole GREEN on top of
+   * the lawn -- the shed shown as grass, in the one tool whose whole job is
+   * deciding whether a map is good enough to train on. Even-odd is the rule
+   * area.js and the raster already use.
+   */
+  const adminJs = readFileSync(join(root, 'public/admin.js'), 'utf8');
+  check('the review canvas fills a shape and its holes as one path',
+    /fill\('evenodd'\)/.test(adminJs),
+    'a hole filled separately reads as lawn, and gets approved as one');
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);

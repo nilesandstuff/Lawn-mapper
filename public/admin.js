@@ -422,19 +422,31 @@ function paint(canvas, c) {
       ctx.fillText('No frame stored, so this cannot be drawn to scale.', 18, 30);
       return;
     }
+    /*
+     * ONE PATH FOR ALL THE RINGS, FILLED EVEN-ODD.
+     *
+     * A polygon here is an outline plus its holes -- a shed or a pool cut out
+     * of the lawn. Filling each ring in its own path painted the hole GREEN on
+     * top of the lawn, which is precisely inverted: the reviewer saw the shed
+     * marked as grass and was being asked to approve it as a training example.
+     * Even-odd is the same rule the measurement and the raster already use, so
+     * what is drawn here is what was counted.
+     */
     const ring = (geometry, colour, width, fill) => {
-      for (const coords of geometry?.coordinates || []) {
-        ctx.beginPath();
+      const rings = geometry?.coordinates || [];
+      if (!rings.length) return;
+      ctx.beginPath();
+      for (const coords of rings) {
         coords.forEach(([lng, lat], i) => {
           const [x, y] = lngLatToFramePx(c.frame, [lng, lat], W, H);
           if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
         });
         ctx.closePath();
-        if (fill) { ctx.fillStyle = fill; ctx.fill(); }
-        ctx.strokeStyle = colour;
-        ctx.lineWidth = width;
-        ctx.stroke();
       }
+      if (fill) { ctx.fillStyle = fill; ctx.fill('evenodd'); }
+      ctx.strokeStyle = colour;
+      ctx.lineWidth = width;
+      ctx.stroke();
     };
 
     if (c.parcel) ring(c.parcel, REVIEW_COLOURS.parcel, 2.5);

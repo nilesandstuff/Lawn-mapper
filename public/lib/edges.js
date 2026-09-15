@@ -409,6 +409,46 @@ export function edgeBearing(ring, index) {
   return (toDeg(Math.atan2(dx, dy)) + 360) % 360;
 }
 
+/**
+ * Is this point inside this ring?
+ *
+ * Ray casting, counting how many edges a line drawn east from the point
+ * crosses: odd is inside. Done in lng/lat directly rather than in a local
+ * metre frame, because crossing counts are a topological question -- a
+ * projection can move where the edges are but not which side of them a point
+ * falls, as long as both go through the same one.
+ *
+ * A point exactly ON an edge is not defined either way and is not worth
+ * defining: nothing here asks about a corner of the ring itself.
+ */
+export function ringContains(ring, [lng, lat]) {
+  const verts = openRing(ring);
+  let inside = false;
+  for (let i = 0, j = verts.length - 1; i < verts.length; j = i++) {
+    const [xi, yi] = verts[i];
+    const [xj, yj] = verts[j];
+    const straddles = (yi > lat) !== (yj > lat);
+    if (straddles && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+/**
+ * Does `inner` lie wholly inside `outer`?
+ *
+ * Every corner inside is the test, which is not the same as the whole ring
+ * being inside -- two rings can interleave with all of one's corners inside
+ * the other and their edges still crossing. That case needs a segment
+ * intersection sweep, and the one caller here is a person tracing a shed
+ * inside a lawn: an outline that weaves in and out of the lawn's edge is not
+ * something they are trying to do, and the corner test refuses the ordinary
+ * mistake -- a cut drawn half off the lawn -- which is the one worth catching.
+ */
+export function ringInsideRing(inner, outer) {
+  const verts = openRing(inner);
+  return verts.length > 2 && verts.every((p) => ringContains(outer, p));
+}
+
 export const FEET_PER_METRE = 3.280839895;
 export const feetToMetres = (ft) => ft / FEET_PER_METRE;
 export const metresToFeet = (m) => m * FEET_PER_METRE;

@@ -1796,6 +1796,94 @@ console.log(`      ${added.said}`);
 check('painting with the add brush increases the area', added.after > added.before,
   `${added.before.toLocaleString()} -> ${added.after.toLocaleString()} sq ft`);
 
+/* --------------------------------------------------- cutting a shape out */
+/*
+ * THE REPORT: "it should be possible to make subtractive shapes with the point
+ * tool -- should be able to trim out a shed with points only."
+ *
+ * A shed has four straight sides and a fingertip does not, so rubbing one out
+ * with the brush is the loose way to do an exact job. Tracing its corners is
+ * the exact way, and what that produces is an ordinary hole -- which is also
+ * the second half of the same report: the corners of an interior shape could
+ * not be tapped at all, because the editor read coordinates[0] and holes were
+ * invisible to it.
+ *
+ * The gesture and its result are checked separately, deliberately. Driving
+ * Mapbox Draw's polygon mode from synthetic clicks fails for reasons that have
+ * nothing to do with this feature, so the button is checked for arming Draw
+ * and the outline it would produce is handed to the real code.
+ */
+console.log('\n--- cutting a shape out ---');
+{
+  await goTab(page, 'draw');
+  await page.click('#btn-cut');
+  await page.waitForTimeout(400);
+
+  const armed = await page.evaluate(() => window.__lmDrawingHole());
+  check('Cut out a shape arms Draw and marks what the outline is for',
+    armed.armed === true && /^draw_polygon/.test(String(armed.drawMode)),
+    `armed=${armed.armed} draw is in ${armed.drawMode}`);
+
+  const cut = await page.evaluate(() => window.__lmCutSquare());
+  check('a traced outline inside the lawn becomes a cut-out', cut.ok === true,
+    cut.ok ? '' : String(cut.why));
+
+  if (cut.ok) {
+    console.log(`      ${cut.said}`);
+    /*
+     * The area has to fall by the size of the cut, not merely fall. A hole
+     * that traced at some other size, or a shape quietly replaced by the
+     * square, would both show up as "the number went down".
+     */
+    const lost = cut.before - cut.after;
+    check('and it takes exactly its own area off the shape it was cut from',
+      Math.abs(lost - cut.cutSqFt) < Math.max(1, cut.cutSqFt * 0.001),
+      `lost ${Math.round(lost)} sq ft for a ${Math.round(cut.cutSqFt)} sq ft cut`);
+
+    await page.click('#tool-points');
+    await page.waitForTimeout(400);
+
+    const rings = await page.evaluate(() => window.__lmEditable());
+    check('the cut-out is an editable ring like any other', rings.holes === 1,
+      `${rings.rings} ring(s) across ${rings.ids.length} shape(s), ${rings.holes} hole(s)`);
+
+    /*
+     * AND ITS CORNERS ANSWER A TAP. This is the half that was missing: the
+     * dots could be drawn and the hit test still not know the ring existed,
+     * which from a phone is a corner that simply does not respond.
+     */
+    const corners = await page.evaluate(() => window.__lmCorners());
+    const onHole = corners.filter((c) => c.hole);
+    check('its corners are drawn', onHole.length >= 4, `${onHole.length} corner(s) on the cut-out`);
+
+    if (onHole.length) {
+      const mapBox = await page.locator('#map').boundingBox();
+      await page.touchscreen.tap(mapBox.x + onHole[0].x, mapBox.y + onHole[0].y);
+      await page.waitForTimeout(500);
+
+      const said = await page.locator('#edge-info').textContent();
+      check('and tapping one selects it, naming what it belongs to',
+        (await page.locator('#point-controls').isVisible()) && /cut-out/i.test(said),
+        said.trim());
+
+      /*
+       * The last corner of a cut-out REMOVES the cut rather than refusing.
+       * On an outline three corners is the floor and stopping is right; on a
+       * hole it means "I did not want this", and refusing left undo as the
+       * only way back out of a cut.
+       */
+      const label = await page.locator('#btn-point-delete').textContent();
+      console.log(`      delete button reads: "${label.trim()}"`);
+    }
+
+    /* Put the lawn back the way the rest of the run expects to find it. */
+    await page.click('#btn-undo');
+    await page.waitForTimeout(500);
+    check('and undo puts the cut back',
+      (await page.evaluate(() => window.__lmEditable().holes)) === 0);
+  }
+}
+
 /* ------------------------------------------------------- brush width */
 /*
  * The only brush anyone can see is the coloured line under their finger, so

@@ -26,6 +26,8 @@ import {
   makeFrame,
   feetToMetres,
   metresToFeet,
+  ringContains,
+  ringInsideRing,
 } from '../public/lib/edges.js';
 import { measure, geometryAreaSqM } from '../public/lib/area.js';
 
@@ -384,6 +386,64 @@ const LOT = rect(30, 45); // 30 m of frontage, 45 m deep
   const gained = measure(poly(moved)).squareFeet - measure(poly(LOT)).squareFeet;
   console.log(`\n      a 12 ft easement strip on 30 m of frontage = ${gained.toLocaleString()} sq ft`);
   check('the easement strip is a material amount of lawn', gained > 1000);
+}
+
+/* ------------------------------------------------ cutting a shed out */
+/*
+ * "Cut out a shape" turns a traced outline into a HOLE in the lawn under it,
+ * and the one thing it has to get right is which lawn that is. Punching a hole
+ * into a shape that does not contain it would move the cut somewhere nobody
+ * drew it, and would take square footage off a patch that never had that shed
+ * on it.
+ *
+ * The shed here is 4 m x 3 m, a real one, set well inside a 30 x 45 m lot.
+ */
+{
+  console.log('\n--- what a cut-out sits inside ---');
+
+  const at = (x, y, w, h) => [
+    frame.toLngLat([x, y]),
+    frame.toLngLat([x + w, y]),
+    frame.toLngLat([x + w, y + h]),
+    frame.toLngLat([x, y + h]),
+    frame.toLngLat([x, y]),
+  ];
+
+  const shed = at(12, 20, 4, 3);
+  check('a shed in the middle of the lot is inside it', ringInsideRing(shed, LOT));
+  check('and its middle reads as inside too',
+    ringContains(LOT, frame.toLngLat([14, 21.5])));
+
+  /* The ordinary mistake: a cut drawn half off the lawn. */
+  const straddling = at(28, 20, 6, 3);
+  check('a cut hanging over the edge is NOT inside',
+    ringInsideRing(straddling, LOT) === false,
+    'every corner has to be inside, not just one');
+
+  const elsewhere = at(80, 80, 4, 3);
+  check('and one drawn off the lawn entirely is not either',
+    ringInsideRing(elsewhere, LOT) === false);
+  check('nor is a point out there contained',
+    ringContains(LOT, frame.toLngLat([82, 81])) === false);
+
+  /*
+   * A CORNER OF THE LOT ITSELF is the case ray casting gets wrong when the ray
+   * runs exactly along an edge. Not asserted either way -- a point on the
+   * boundary is genuinely undefined and no caller asks -- but it must not
+   * throw or return something that is neither true nor false.
+   */
+  check('a point on the boundary answers with a boolean rather than failing',
+    typeof ringContains(LOT, LOT[0]) === 'boolean');
+
+  /*
+   * THE MEASUREMENT IS WHAT THIS IS FOR. A hole is subtracted by area.js, so
+   * the lot with the shed cut out has to be exactly the shed smaller.
+   */
+  const whole = measure(poly(LOT)).squareFeet;
+  const cut = measure({ type: 'Polygon', coordinates: [LOT, shed] }).squareFeet;
+  const shedSqFt = measure(poly(shed)).squareFeet;
+  closeTo(whole - cut, shedSqFt, 1,
+    'cutting the shed out takes exactly the shed off the total');
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);

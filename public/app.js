@@ -21,7 +21,7 @@ import {
 import {
   offsetEdge, nearestEdge, edgeRun, edgeLength, edgeBearing, openRing,
   nearestVertex, moveVertex, insertVertex, deleteVertex, tidyRing,
-  feetToMetres, metresToFeet,
+  feetToMetres, metresToFeet, ringInsideRing, ringContains,
 } from './lib/edges.js';
 import { restoreAway } from './lib/stitch.js';
 import {
@@ -93,7 +93,14 @@ const state = {
   measureOutside: false, // may the brush paint past the property line?
 
   edgeFt: 0,          // shrink (-) or grow (+) the detected outline, in feet
+
+  /*
+   * What the NEXT polygon drawn by hand is for. Both default to false, which
+   * means "a patch of lawn" -- the ordinary case, and the one a stale flag
+   * would silently steal.
+   */
   drawingParcel: false,
+  drawingHole: false,   // trace a shed; it becomes a hole in the lawn under it
 
   /*
    * "Count grass under trees", remembered per arithmetic rather than globally.
@@ -251,13 +258,107 @@ if (typeof window !== 'undefined') {
    * on a map, so the eraser is checked by counting rather than by looking --
    * and a test cannot tap a corner whose position it has to guess.
    */
-  window.__lmCorners = () => editableRings().flatMap(({ ring }) =>
+  window.__lmCorners = () => editableRings().flatMap(({ ringId, ring }) =>
     openRing(ring).map((p) => {
       const q = map.project(p);
-      return { x: q.x, y: q.y };
+      // `hole` so a check can aim at a cut-out's corner specifically: that
+      // those exist at all is the thing under test, and a tap at a corner
+      // that turns out to belong to the outline proves nothing about them.
+      return { x: q.x, y: q.y, hole: isHoleRing(ringId) };
     }));
   window.__lmCornerCount = () => editableRings()
     .reduce((n, { ring }) => n + openRing(ring).length, 0);
+
+  /*
+   * CUT A SQUARE OUT OF THE BIGGEST SHAPE, without drawing it by hand.
+   *
+   * Mapbox Draw's polygon mode is driven by a run of synthetic clicks and a
+   * closing tap on the first corner, which is exactly the kind of gesture that
+   * fails for reasons having nothing to do with what is under test. So the
+   * gesture is checked where it can be -- the button arms Draw and sets the
+   * flag -- and the thing the gesture PRODUCES is handed to the real
+   * cutHoleFromDrawn from here.
+   *
+   * The square is placed at the point furthest from the outline, with a
+   * half-width of half that distance. Every corner of it is then within
+   * r*sqrt(2) of a centre that is 2r from the nearest edge, so it is inside
+   * whatever shape this is -- rather than inside a bounding box, which on a
+   * concave parcel is not the same thing and is how this kind of helper
+   * usually starts failing on real geometry.
+   */
+  window.__lmCutSquare = () => {
+    const shapes = draw.getAll().features.filter((f) => outerRing(f));
+    if (!shapes.length) return { ok: false, why: 'no shapes' };
+
+    const host = shapes
+      .map((f) => ({ f, ring: outerRing(f) }))
+      .sort((a, b) => measure(b.f.geometry).squareFeetRaw - measure(a.f.geometry).squareFeetRaw)[0];
+
+    let [w, s, e, n] = [Infinity, Infinity, -Infinity, -Infinity];
+    for (const [lng, lat] of host.ring) {
+      w = Math.min(w, lng); e = Math.max(e, lng);
+      s = Math.min(s, lat); n = Math.max(n, lat);
+    }
+
+    let best = null;
+    const STEPS = 16;
+    for (let i = 1; i < STEPS; i++) {
+      for (let j = 1; j < STEPS; j++) {
+        const p = [w + ((e - w) * i) / STEPS, s + ((n - s) * j) / STEPS];
+        if (!ringContains(host.ring, p)) continue;
+        const clear = nearestEdge(host.ring, p)?.distanceM ?? 0;
+        if (!best || clear > best.clear) best = { p, clear };
+      }
+    }
+    if (!best || best.clear < 2) return { ok: false, why: 'nowhere clear enough inside' };
+
+    // Metres -> degrees at this latitude, so the square really is square.
+    const r = best.clear / 2;
+    const dLat = r / 111320;
+    const dLng = r / (111320 * Math.cos((best.p[1] * Math.PI) / 180));
+    const [x, y] = best.p;
+    const ring = [
+      [x - dLng, y - dLat], [x + dLng, y - dLat],
+      [x + dLng, y + dLat], [x - dLng, y + dLat], [x - dLng, y - dLat],
+    ];
+
+    /*
+     * Measured on the HOST SHAPE, not on the panel's total. The total is
+     * corrected for shapes that overlap, which is a raster estimate -- exact
+     * enough for a measurement and not exact enough to assert "the number fell
+     * by precisely the size of the cut" against. The host's own geodesic area
+     * already subtracts its holes, so it answers that question exactly.
+     */
+    const hostArea = () => {
+      const live = draw.get(host.f.id);
+      // squareFeetRaw, not squareFeet: the published figure is rounded to the
+      // nearest ten, which is right on screen and would swamp the difference
+      // a small cut makes when a check subtracts one from the other.
+      return live ? measure(live.geometry).squareFeetRaw : 0;
+    };
+    const before = hostArea();
+
+    // Stand in for the drawing finishing: Draw leaves polygon mode on its own
+    // when a real outline closes, and leaving it armed here would have the
+    // next tap in the check start tracing another one.
+    try { draw.changeMode('simple_select'); } catch { /* Draw not ready */ }
+    state.drawingHole = false;
+    cutHoleFromDrawn({ geometry: { type: 'Polygon', coordinates: [ring] } });
+    return {
+      ok: true,
+      before,
+      after: hostArea(),
+      total: totalSquareFeet(),
+      cutSqFt: measure({ type: 'Polygon', coordinates: [ring] }).squareFeetRaw,
+      said: document.querySelector('#status')?.textContent || '',
+    };
+  };
+
+  /* Is the next hand-drawn polygon armed to become a cut-out? */
+  window.__lmDrawingHole = () => ({
+    armed: state.drawingHole,
+    drawMode: (() => { try { return draw.getMode(); } catch { return null; } })(),
+  });
 
   /* How many shapes the measurement is actually made of. */
   window.__lmShapeCount = () => (draw ? draw.getAll().features.length : 0);
@@ -396,7 +497,16 @@ if (typeof window !== 'undefined') {
   window.__lmEditable = () => ({
     mode: state.mode,
     tool: state.shapeTool,
-    ids: editableRings().map((r) => r.featureId),
+    /*
+     * The SHAPES a tap can reach, deduped -- which is the question modes
+     * answer. What editableRings hands back is one entry per ring, and a lawn
+     * with two sheds cut out of it is three of those and still one shape; a
+     * check about isolation asking "how many rings" would start failing the
+     * day somebody cut a hole.
+     */
+    ids: [...new Set(editableRings().map((r) => ringOwner(r.ringId).featureId))],
+    rings: editableRings().length,
+    holes: editableRings().filter((r) => isHoleRing(r.ringId)).length,
     parcelId: PARCEL_ID,
     // Draw's own mode: 'static' means a finger cannot drag a whole shape.
     drawMode: (() => { try { return draw.getMode(); } catch { return null; } })(),
@@ -517,7 +627,7 @@ if (typeof window !== 'undefined') {
     const rect = map.getCanvasContainer().getBoundingClientRect();
     return midpointHandles().map((m) => {
       const at = map.project(m.at);
-      return { featureId: m.featureId, edgeIndex: m.edgeIndex,
+      return { ringId: m.ringId, edgeIndex: m.edgeIndex,
         x: rect.left + at.x, y: rect.top + at.y };
     });
   };
@@ -627,7 +737,7 @@ if (typeof window !== 'undefined') {
   window.__lmPoints = (want = null) => {
     if (!map || !state.edgeEdit) return [];
     const rect = map.getCanvasContainer().getBoundingClientRect();
-    return editableRings().map(({ featureId, ring }) => {
+    return editableRings().map(({ ringId, ring }) => {
       const verts = openRing(ring);
 
       /*
@@ -659,7 +769,7 @@ if (typeof window !== 'undefined') {
 
       const at = map.project(verts[index]);
       return {
-        featureId,
+        ringId,
         count: verts.length,
         index,
         x: at.x + rect.left,
@@ -875,14 +985,26 @@ async function initMap() {
   // A polygon drawn while "Draw the property line" is armed becomes the
   // boundary rather than a patch of lawn.
   map.on('draw.create', (e) => {
-    if (!state.drawingParcel) {
-      // A patch drawn by hand is a hand correction, whether it is the first
-      // shape on the map or the tenth on top of a detection.
-      markHandEdited();
+    /*
+     * A polygon drawn here is one of three things, and which one was decided
+     * before the drawing started: the property line, a cut-out, or a patch of
+     * lawn. The flags are cleared FIRST in both special cases -- an outline
+     * that fails to become a boundary or a hole must not leave the next
+     * drawing armed to become one.
+     */
+    if (state.drawingParcel) {
+      state.drawingParcel = false;
+      adoptDrawnParcel(e.features?.[0]);
       return;
     }
-    state.drawingParcel = false;
-    adoptDrawnParcel(e.features?.[0]);
+    if (state.drawingHole) {
+      state.drawingHole = false;
+      cutHoleFromDrawn(e.features?.[0]);
+      return;
+    }
+    // A patch drawn by hand is a hand correction, whether it is the first
+    // shape on the map or the tenth on top of a detection.
+    markHandEdited();
   });
 
   await new Promise((resolve) => map.on('load', resolve));
@@ -1940,7 +2062,7 @@ function undo() {
   }
 
   if (state.edgeEdit) {
-    state.edgeEdit = { featureId: null, edgeIndex: null, vertexIndex: null, baseRing: null };
+    state.edgeEdit = { ringId: null, edgeIndex: null, vertexIndex: null, baseRing: null };
     $('#edge-controls').hidden = true;
     $('#point-controls').hidden = true;
     clearEdgeHighlight();
@@ -2199,8 +2321,8 @@ function vertexAt(clientX, clientY) {
   const viaHandle = handleAt(at.x, at.y);
   if (viaHandle) {
     return {
-      featureId: viaHandle.featureId,
-      ring: ringOf(viaHandle.featureId) || viaHandle.ring,
+      ringId: viaHandle.ringId,
+      ring: ringOf(viaHandle.ringId) || viaHandle.ring,
       index: viaHandle.index,
       d: viaHandle.d,
     };
@@ -2209,12 +2331,12 @@ function vertexAt(clientX, clientY) {
   // Only corners that are actually drawn can be grabbed. Grabbing an invisible
   // one would be indistinguishable from the map moving on its own.
   let found = null;
-  for (const { featureId, ring } of handleRings()) {
+  for (const { ringId, ring } of handleRings()) {
     openRing(ring).forEach((p, i) => {
       const px = map.project(p);
       const d = Math.hypot(px.x - at.x, px.y - at.y);
       if (d <= VERTEX_GRAB_PX && (!found || d < found.d)) {
-        found = { featureId, ring, index: i, d };
+        found = { ringId, ring, index: i, d };
       }
     });
   }
@@ -2289,7 +2411,7 @@ function updateDrag(clientX, clientY) {
     diag.dragMoved++;
     pushHistory('drag');
     // Select it on the first real movement, so the panel shows what is moving.
-    selectVertex({ featureId: drag.featureId, ring: drag.ring, index: drag.index });
+    selectVertex({ ringId: drag.ringId, ring: drag.ring, index: drag.index });
     holdMapStill();
   }
 
@@ -5056,7 +5178,7 @@ function enterRingEditing(which) {
     return;
   }
 
-  state.edgeEdit = { featureId: null, edgeIndex: null, vertexIndex: null, baseRing: null };
+  state.edgeEdit = { ringId: null, edgeIndex: null, vertexIndex: null, baseRing: null };
   $('#edge-panel').hidden = false;
   // The two outlines share one panel, so whatever the last one left open has
   // to be shut -- the edge slider is a property-line control and must not be
@@ -5465,6 +5587,81 @@ function retrace(what = 'That') {
  * boundary and the lawn are measured against each other, and a boundary that
  * is also one of the shapes being measured would count its own area.
  */
+/**
+ * Turn a just-drawn polygon into a hole in the lawn underneath it.
+ *
+ * WHY A HOLE RATHER THAN A SHAPE THAT SUBTRACTS. The measurement already
+ * subtracts interior rings, the raster already fills them even-odd, and the
+ * editor now selects them -- so a cut expressed as a hole is a cut every part
+ * of this app already understands. A "negative shape" would be a second kind
+ * of feature that every one of those places would have to learn about, and
+ * would be wrong in whichever place got missed.
+ *
+ * WHY NOT THE BRUSH'S ROUND TRIP. The eraser rasterises, punches and re-traces,
+ * which is the right answer for a freehand stroke and the wrong one here: the
+ * corners of a shed are exactly where the person put them, and sending them
+ * through a pixel grid would move every one of them. Inserting the ring keeps
+ * them to the last decimal, which is also what makes the cut editable
+ * afterwards -- the corners you tap are the corners you drew.
+ *
+ * It is punched into EVERY shape that contains it. Two shapes over the same
+ * ground is something the add brush and "Use property line" can both produce,
+ * and cutting the hole out of one of them would leave the other still counting
+ * the shed -- with the total unchanged and nothing on screen to explain it.
+ */
+function cutHoleFromDrawn(feature) {
+  const ring = feature && outerRing(feature);
+  // Draw owns the outline until this point; taking it out first means a cut
+  // that lands and a cut that misses both leave the map with one fewer shape
+  // than the tracing did, rather than a stray square sitting on the lawn.
+  if (feature?.id) draw.delete(feature.id);
+
+  if (!ring || ring.length < 4) {
+    setStatus('That outline was not closed. Trace right around the thing you want taken out.', 'warn');
+    return;
+  }
+
+  const hosts = draw.getAll().features.filter((f) => {
+    const outer = outerRing(f);
+    return outer && ringInsideRing(ring, outer);
+  });
+
+  if (!hosts.length) {
+    /*
+     * SAY WHICH OF THE TWO WAYS IT MISSED, because they need different
+     * answers: a cut with no lawn under it is aimed at the wrong place, and a
+     * cut hanging over the edge is the right idea in the wrong tool.
+     */
+    const overlaps = draw.getAll().features.some((f) => {
+      const outer = outerRing(f);
+      return outer && openRing(ring).some((p) => ringContains(outer, p));
+    });
+    setStatus(overlaps
+      ? 'That cut hangs over the edge of the lawn. A cut-out has to sit inside one patch — '
+        + 'for something on the boundary, use the Erase brush.'
+      : 'There is no lawn under that. Trace around something inside a patch of lawn.', 'warn');
+    return;
+  }
+
+  pushHistory();
+  markHandEdited();
+  for (const f of hosts) {
+    f.geometry.coordinates = [...f.geometry.coordinates, ring.map((p) => [...p])];
+    draw.add(f); // same id: this updates in place
+  }
+
+  refreshMeasurement();
+  refreshSurveyed();
+  updateSelectionButtons();
+
+  const a = measure({ type: 'Polygon', coordinates: [ring] });
+  setStatus(
+    `Cut out ${Math.round(a.squareFeet).toLocaleString()} sq ft`
+    + (hosts.length > 1 ? ` from ${hosts.length} overlapping shapes` : '')
+    + '. Its corners are editable with Points, like any other.'
+  );
+}
+
 function adoptDrawnParcel(feature) {
   const ring = feature && outerRing(feature);
   if (!ring || ring.length < 4) {
@@ -6078,13 +6275,22 @@ const exitEdgeMode = () => setMode(null);
 function editableRings() {
   if (state.mode === 'parcel') {
     const parcel = parcelRing();
-    return parcel ? [{ featureId: PARCEL_ID, ring: parcel }] : [];
+    return parcel ? [{ ringId: ringKey(PARCEL_ID), ring: parcel }] : [];
   }
 
   if (state.mode === 'shape' && state.shapeTool === 'points') {
-    return draw.getAll().features
-      .map((f) => ({ featureId: f.id, ring: outerRing(f) }))
-      .filter((r) => r.ring);
+    /*
+     * EVERY RING, HOLES INCLUDED. A shed cut out of a lawn is a hole, and a
+     * hole whose corners cannot be tapped is a cut you can make once and never
+     * adjust -- which was the state of it: this read coordinates[0] and the
+     * inner rings were invisible to the whole editor.
+     */
+    return draw.getAll().features.flatMap((f) => {
+      const rings = f.geometry?.type === 'Polygon' ? f.geometry.coordinates : [];
+      return rings
+        .map((ring, i) => ({ ringId: ringKey(f.id, i), ring }))
+        .filter((r) => Array.isArray(r.ring) && r.ring.length >= 4);
+    });
   }
 
   return [];
@@ -6131,23 +6337,23 @@ function selectNear(lngLat) {
   /* Same precedence as a drag: the handle is the unambiguous target. */
   const viaHandle = handleAt(tap.x, tap.y);
   if (viaHandle) {
-    if (state.pointEraser) return removeVertexAt(viaHandle.featureId, viaHandle.index);
+    if (state.pointEraser) return removeVertexAt(viaHandle.ringId, viaHandle.index);
     return selectVertex({
-      featureId: viaHandle.featureId,
-      ring: ringOf(viaHandle.featureId) || viaHandle.ring,
+      ringId: viaHandle.ringId,
+      ring: ringOf(viaHandle.ringId) || viaHandle.ring,
       index: viaHandle.index,
     });
   }
 
   let corner = null;
 
-  for (const { featureId, ring } of handleRings()) {
+  for (const { ringId, ring } of handleRings()) {
     const hit = nearestVertex(ring, lngLat);
     if (!hit) continue;
     const at = map.project(openRing(ring)[hit.index]);
     const px = Math.hypot(at.x - tap.x, at.y - tap.y);
     if (px <= VERTEX_GRAB_PX && (!corner || px < corner.px)) {
-      corner = { featureId, ring, index: hit.index, px };
+      corner = { ringId, ring, index: hit.index, px };
     }
   }
 
@@ -6159,7 +6365,7 @@ function selectNear(lngLat) {
      * rather than remove it, which is the most surprising thing it could do.
      * A miss does nothing and says so.
      */
-    if (state.pointEraser) return removeVertexAt(corner.featureId, corner.index);
+    if (state.pointEraser) return removeVertexAt(corner.ringId, corner.index);
     return selectVertex(corner);
   }
   if (state.pointEraser) {
@@ -6181,7 +6387,7 @@ function selectNear(lngLat) {
     const px = Math.hypot(at.x - tap.x, at.y - tap.y);
     if (px <= VERTEX_GRAB_PX && (!phantom || px < phantom.px)) phantom = { ...m, px };
   }
-  if (phantom) return addPointAt(phantom.featureId, phantom.edgeIndex, phantom.at);
+  if (phantom) return addPointAt(phantom.ringId, phantom.edgeIndex, phantom.at);
 
   /*
    * EDGES BELONG TO THE PROPERTY LINE ONLY.
@@ -6208,15 +6414,15 @@ function selectNear(lngLat) {
 function selectEdgeNear(lngLat) {
   let best = null;
 
-  const consider = (ring, featureId) => {
+  const consider = (ring, ringId) => {
     if (!ring) return;
     const hit = nearestEdge(ring, lngLat);
     if (hit && (!best || hit.distanceM < best.distanceM)) {
-      best = { ...hit, featureId, ring };
+      best = { ...hit, ringId, ring };
     }
   };
 
-  for (const { featureId, ring } of editableRings()) consider(ring, featureId);
+  for (const { ringId, ring } of editableRings()) consider(ring, ringId);
 
   if (!best || best.distanceM > 40) {
     $('#edge-info').textContent = 'No edge near there — tap closer to a boundary line.';
@@ -6226,7 +6432,7 @@ function selectEdgeNear(lngLat) {
   state.edgeEdit = {
     // Where the tap landed, so "Add a point" knows where to put one.
     tapAt: [lngLat[0], lngLat[1]],
-    featureId: best.featureId,
+    ringId: best.ringId,
     edgeIndex: best.index,
     // The slider is absolute, so every offset is measured from the shape as
     // it was when the edge was picked rather than compounding.
@@ -6244,7 +6450,7 @@ function selectEdgeNear(lngLat) {
   slider.value = '0';
   $('#edge-controls').hidden = false;
   $('#edge-info').textContent =
-    (best.featureId === PARCEL_ID ? 'Property line' : 'Lawn edge') +
+    (isParcelRing(best.ringId) ? 'Property line' : 'Lawn edge') +
     ` selected — ${Math.round(runFeet)} ft long` +
     (run.count > 1 ? ` (${run.count} segments, moving together).` : '.');
   $('#edge-info').className = 'edge-info active';
@@ -6265,9 +6471,9 @@ function selectEdgeNear(lngLat) {
  * of three points a foot apart that make a boundary fiddly to work with --
  * hence moving, adding and deleting individual points.
  */
-function selectVertex({ featureId, ring, index }) {
+function selectVertex({ ringId, ring, index }) {
   state.edgeEdit = {
-    featureId,
+    ringId,
     vertexIndex: index,
     edgeIndex: null,
     baseRing: ring.map((p) => [...p]),
@@ -6277,42 +6483,115 @@ function selectVertex({ featureId, ring, index }) {
   $('#point-controls').hidden = false;
   const hint = $('#point-hint');
   if (hint) {
-    hint.textContent = featureId === PARCEL_ID
+    hint.textContent = isParcelRing(ringId)
       ? 'Drag it to move it. To extend a whole edge instead, tap the line between two corners.'
       : 'Drag it to move it. Tap a hollow dot to add a corner there.';
   }
   $('#edge-info').textContent =
     `Corner ${index + 1} of ${openRing(ring).length} on your ` +
-    (featureId === PARCEL_ID ? 'property line' : 'lawn outline') +
+    ringLabel(ringId) +
     ' — drag it to move it.';
   $('#edge-info').className = 'edge-info active';
 
-  // Three points are a polygon; two are nothing. Say so on the button rather
-  // than letting the press fail.
-  const canDelete = openRing(ring).length > 3;
-  $('#btn-point-delete').disabled = !canDelete;
+  /*
+   * Three points are a polygon; two are nothing. Say so on the button rather
+   * than letting the press fail -- except on a cut-out, where the press at
+   * three corners removes the cut instead of failing, so the button stays
+   * live and says what it is about to do.
+   */
+  const hole = isHoleRing(ringId);
+  const last = openRing(ring).length <= 3;
+  $('#btn-point-delete').disabled = last && !hole;
+  $('#btn-point-delete').textContent = (hole && last)
+    ? 'Remove this cut-out'
+    : 'Delete this corner';
 
   setHint('Drag this corner, or delete it');
   clearEdgeHighlight();
   drawPoints();
 }
 
-/** The ring of whatever shape is being edited, read fresh. */
-function ringOf(featureId) {
-  if (featureId === PARCEL_ID) return parcelRing();
-  return outerRing(draw.get(featureId));
+/* ------------------------------------------------------------ ring ids */
+/**
+ * WHAT THE EDITOR SELECTS IS A RING, NOT A SHAPE.
+ *
+ * A polygon is an outline plus any number of holes, and a shed cut out of a
+ * lawn is a hole. Everything here used to be keyed by the shape's id alone and
+ * read coordinates[0], so the corners of a hole were not merely hard to tap --
+ * they did not exist as far as the editor was concerned. They were drawn by
+ * nothing, hit-tested by nothing, and a shed traced into a lawn could never be
+ * adjusted afterwards.
+ *
+ * One opaque string rather than a pair of fields, because the identity is
+ * compared in a dozen places -- "is this the corner that is selected", "is
+ * this handle's ring still the one being dragged" -- and every one of those
+ * comparisons stays a single ===. A pair would be a dozen chances to compare
+ * half of it.
+ *
+ * The separator is a '#'. Draw's own ids are UUIDs and the property line's is
+ * `__parcel__`, so none of them contains one -- and the split takes the LAST
+ * separator anyway, so an id that did would still decode correctly.
+ */
+const RING_SEP = '#';
+const ringKey = (featureId, ringIndex = 0) => `${featureId}${RING_SEP}${ringIndex}`;
+
+/** The shape and the ring within it that a ring id names. */
+function ringOwner(ringId) {
+  const at = String(ringId).lastIndexOf(RING_SEP);
+  if (at < 0) return { featureId: String(ringId), ringIndex: 0 };
+  return {
+    featureId: String(ringId).slice(0, at),
+    ringIndex: Number(String(ringId).slice(at + RING_SEP.length)) || 0,
+  };
 }
 
-/** Write a ring back to whichever kind of shape it came from. */
-function writeRing(featureId, ring) {
+/** Whether a ring id names a hole rather than an outline. */
+const isHoleRing = (ringId) => ringOwner(ringId).ringIndex > 0;
+
+/** Whether a ring id names the property line. */
+const isParcelRing = (ringId) => ringOwner(ringId).featureId === PARCEL_ID;
+
+/** What to call this ring in a sentence aimed at the person editing it. */
+const ringLabel = (ringId) => (isParcelRing(ringId)
+  ? 'property line'
+  : isHoleRing(ringId) ? 'cut-out' : 'lawn outline');
+
+/** The ring a ring id names, read fresh. */
+function ringOf(ringId) {
+  const { featureId, ringIndex } = ringOwner(ringId);
+  if (featureId === PARCEL_ID) return ringIndex === 0 ? parcelRing() : null;
+  const rings = draw.get(featureId)?.geometry?.coordinates;
+  return Array.isArray(rings) ? rings[ringIndex] || null : null;
+}
+
+/** Write a ring back to whichever shape and ring it came from. */
+function writeRing(ringId, ring) {
+  const { featureId, ringIndex } = ringOwner(ringId);
   if (featureId === PARCEL_ID) {
+    if (ringIndex !== 0) return false;
     setParcelRing(ring);
     return true;
   }
   const feature = draw.get(featureId);
-  if (!feature) return false;
-  feature.geometry.coordinates = [ring, ...feature.geometry.coordinates.slice(1)];
+  const rings = feature?.geometry?.coordinates;
+  if (!Array.isArray(rings) || !rings[ringIndex]) return false;
+  feature.geometry.coordinates = rings.map((r, i) => (i === ringIndex ? ring : r));
   draw.add(feature); // same id: this updates in place
+  return true;
+}
+
+/**
+ * Drop a whole ring. Only ever a hole -- deleting an outline would delete the
+ * shape, which is what "Delete selected" is for and is a different decision.
+ */
+function dropRing(ringId) {
+  const { featureId, ringIndex } = ringOwner(ringId);
+  if (featureId === PARCEL_ID || ringIndex === 0) return false;
+  const feature = draw.get(featureId);
+  const rings = feature?.geometry?.coordinates;
+  if (!Array.isArray(rings) || !rings[ringIndex]) return false;
+  feature.geometry.coordinates = rings.filter((_, i) => i !== ringIndex);
+  draw.add(feature);
   return true;
 }
 
@@ -6321,14 +6600,14 @@ function moveSelectedVertex(lngLat) {
   const edit = state.edgeEdit;
   if (!edit || edit.vertexIndex == null) return;
 
-  const ring = ringOf(edit.featureId);
+  const ring = ringOf(edit.ringId);
   if (!ring) return;
 
   // A corner of the LAWN is a hand correction; a corner of the property line
   // is not -- the lock exists to protect work the AI would overwrite, and the
   // AI does not draw boundaries.
   if (state.mode === 'shape') markHandEdited();
-  writeRing(edit.featureId, moveVertex(ring, edit.vertexIndex, lngLat));
+  writeRing(edit.ringId, moveVertex(ring, edit.vertexIndex, lngLat));
   drawPoints();
   refreshMeasurement();
   refreshSurveyed();
@@ -6342,18 +6621,18 @@ function moveSelectedVertex(lngLat) {
  * the two cannot drift into behaving differently -- the button is now just a
  * second way to reach this.
  */
-function addPointAt(featureId, edgeIndex, at) {
-  const ring = ringOf(featureId);
+function addPointAt(ringId, edgeIndex, at) {
+  const ring = ringOf(ringId);
   if (!ring) return;
 
   pushHistory();
   if (state.mode === 'shape') markHandEdited();
   const grown = insertVertex(ring, edgeIndex, at);
-  if (!writeRing(featureId, grown)) return;
+  if (!writeRing(ringId, grown)) return;
 
   // Select it straight away: adding a point is nearly always the first half of
   // moving it somewhere.
-  selectVertex({ featureId, ring: grown, index: edgeIndex + 1 });
+  selectVertex({ ringId, ring: grown, index: edgeIndex + 1 });
   setStatus('Corner added. Drag it where you want it.');
   refreshMeasurement();
   refreshSurveyed();
@@ -6362,14 +6641,14 @@ function addPointAt(featureId, edgeIndex, at) {
 function addPointOnEdge() {
   const edit = state.edgeEdit;
   if (!edit || edit.edgeIndex == null || !edit.tapAt) return;
-  addPointAt(edit.featureId, edit.edgeIndex, edit.tapAt);
+  addPointAt(edit.ringId, edit.edgeIndex, edit.tapAt);
 }
 
 /** Remove the selected corner. */
 function deleteSelectedVertex() {
   const edit = state.edgeEdit;
   if (!edit || edit.vertexIndex == null) return;
-  removeVertexAt(edit.featureId, edit.vertexIndex);
+  removeVertexAt(edit.ringId, edit.vertexIndex);
 }
 
 /**
@@ -6380,20 +6659,44 @@ function deleteSelectedVertex() {
  * a corner in the panel for the instant before it ceased to exist, and would
  * leave the panel describing a corner that is gone if the delete is refused.
  */
-function removeVertexAt(featureId, index) {
-  const ring = ringOf(featureId);
+function removeVertexAt(ringId, index) {
+  const ring = ringOf(ringId);
   if (!ring || index == null) return;
 
   const shrunk = deleteVertex(ring, index);
+
+  /*
+   * A CUT-OUT AT THREE CORNERS IS REMOVED, NOT REFUSED.
+   *
+   * Three points is the floor for any ring, and for an outline the only
+   * sensible answer is to stop -- deleting the fourth would leave a shape with
+   * no shape, and throwing away somebody's lawn is what "Delete selected" is
+   * for. A hole is different: taking the last corner off it means "I did not
+   * want this cut", which is a thing to do rather than an error to report, and
+   * refusing left the only way to undo a cut being undo itself.
+   */
   if (!shrunk) {
+    if (isHoleRing(ringId)) {
+      pushHistory();
+      markHandEdited();
+      dropRing(ringId);
+      state.edgeEdit = { ringId: null, vertexIndex: null, edgeIndex: null, baseRing: null };
+      $('#point-controls').hidden = true;
+      $('#edge-info').textContent = 'Cut-out removed — that ground counts as lawn again.';
+      $('#edge-info').className = 'edge-info';
+      drawPoints();
+      refreshMeasurement();
+      refreshSurveyed();
+      return;
+    }
     setStatus('That shape is down to three corners — deleting another would leave no shape at all.', 'warn');
     return;
   }
 
   pushHistory();
   if (state.mode === 'shape') markHandEdited();
-  writeRing(featureId, shrunk);
-  state.edgeEdit = { featureId: null, vertexIndex: null, edgeIndex: null, baseRing: null };
+  writeRing(ringId, shrunk);
+  state.edgeEdit = { ringId: null, vertexIndex: null, edgeIndex: null, baseRing: null };
   $('#point-controls').hidden = true;
   $('#edge-info').textContent = state.pointEraser
     ? 'Corner removed. Tap another to remove it, or press Remove again to stop.'
@@ -6422,11 +6725,11 @@ function tidyShapes() {
   let before = 0;
 
   pushHistory();
-  for (const { featureId, ring } of editableRings()) {
+  for (const { ringId, ring } of editableRings()) {
     before += openRing(ring).length;
     const tidied = tidyRing(ring);
     if (tidied.removed) {
-      writeRing(featureId, tidied.ring);
+      writeRing(ringId, tidied.ring);
       removed += tidied.removed;
     }
   }
@@ -6438,7 +6741,7 @@ function tidyShapes() {
 
   // The selection indexes into a ring that just changed shape, so it no longer
   // means what it meant. Drop it rather than let it point at another corner.
-  state.edgeEdit = { featureId: null, edgeIndex: null, vertexIndex: null, baseRing: null };
+  state.edgeEdit = { ringId: null, edgeIndex: null, vertexIndex: null, baseRing: null };
   $('#edge-controls').hidden = true;
   $('#point-controls').hidden = true;
   $('#edge-info').textContent =
@@ -6502,7 +6805,7 @@ const MIDPOINT_MIN_PX = 30;
  */
 function midpointHandles() {
   const out = [];
-  for (const { featureId, ring } of editableRings()) {
+  for (const { ringId, ring } of editableRings()) {
     const verts = openRing(ring);
     for (let i = 0; i < verts.length; i++) {
       const a = verts[i];
@@ -6511,7 +6814,7 @@ function midpointHandles() {
       const pb = map.project(b);
       if (Math.hypot(pb.x - pa.x, pb.y - pa.y) < MIDPOINT_MIN_PX) continue;
       out.push({
-        featureId,
+        ringId,
         edgeIndex: i,
         at: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2],
       });
@@ -6533,13 +6836,13 @@ function drawPoints() {
    * all, and hiding them until after a successful tap meant the first tap was
    * always aimed at something invisible.
    */
-  for (const { featureId, ring } of editableRings()) {
+  for (const { ringId, ring } of editableRings()) {
     openRing(ring).forEach((p, i) => {
       features.push({
         type: 'Feature',
         properties: {
           phantom: 0,
-          selected: featureId === edit.featureId && i === edit.vertexIndex ? 1 : 0,
+          selected: ringId === edit.ringId && i === edit.vertexIndex ? 1 : 0,
         },
         geometry: { type: 'Point', coordinates: p },
       });
@@ -6617,14 +6920,14 @@ function drawHandles() {
 
   const meta = [];
   const rings = [];
-  for (const { featureId, ring } of editableRings()) {
+  for (const { ringId, ring } of editableRings()) {
     const open = openRing(ring);
     const projected = open.map((p) => {
       const q = map.project(p);
       return { x: q.x, y: q.y };
     });
     if (!projected.some(onScreen)) continue;
-    meta.push({ featureId, ring, open });
+    meta.push({ ringId, ring, open });
     rings.push(projected);
   }
 
@@ -6651,12 +6954,12 @@ function drawHandles() {
     /* A handle for a corner scrolled off screen is arithmetic nobody can use. */
     if (!onScreen(h.at)) continue;
 
-    const selected = owner.featureId === edit.featureId && h.index === edit.vertexIndex ? 1 : 0;
+    const selected = owner.ringId === edit.ringId && h.index === edit.vertexIndex ? 1 : 0;
     const at = map.unproject([h.at.x, h.at.y]);
     const from = owner.open[h.index];
 
     handlePlan.push({
-      featureId: owner.featureId,
+      ringId: owner.ringId,
       ring: owner.ring,
       index: h.index,
       at: { x: h.at.x, y: h.at.y },
@@ -6700,13 +7003,13 @@ function redrawHandlePlan(source) {
      * the corner slid away from it. Which is the exact frame this branch
      * exists to draw.
      */
-    const live = ringOf(h.featureId) || h.ring;
+    const live = ringOf(h.ringId) || h.ring;
     const from = openRing(live)[h.index];
     if (!from) continue;
     const q = map.project(from);
     h.at = { x: q.x + h.dx, y: q.y + h.dy };
     const at = map.unproject([h.at.x, h.at.y]);
-    const selected = h.featureId === edit?.featureId && h.index === edit?.vertexIndex ? 1 : 0;
+    const selected = h.ringId === edit?.ringId && h.index === edit?.vertexIndex ? 1 : 0;
 
     features.push({
       type: 'Feature',
@@ -6753,18 +7056,11 @@ function applyEdgeOffset(feet) {
 
   // The slider is absolute, so every event re-derives the shape from baseRing.
   // One entry for the whole drag, keyed on the edge being moved.
-  pushHistory(`offset:${edit.featureId}:${edit.edgeIndex}`);
+  pushHistory(`offset:${edit.ringId}:${edit.edgeIndex}`);
 
-  const ring = offsetEdge(edit.baseRing, edit.edgeIndex, feetToMetres(feet));
-
-  if (edit.featureId === PARCEL_ID) {
-    setParcelRing(ring);
-  } else {
-    const feature = draw.get(edit.featureId);
-    if (!feature) return;
-    feature.geometry.coordinates = [ring, ...feature.geometry.coordinates.slice(1)];
-    draw.add(feature); // same id: this updates in place
-  }
+  // One writer for every ring, so sliding an edge cannot disagree with
+  // dragging a corner about which ring it is writing to.
+  writeRing(edit.ringId, offsetEdge(edit.baseRing, edit.edgeIndex, feetToMetres(feet)));
 
   $('#edge-value').textContent = `${feet > 0 ? '+' : ''}${feet} ft`;
   drawEdgeHighlight();
@@ -6814,9 +7110,7 @@ function setParcelRing(ring) {
 
 function currentEdgeRing() {
   const edit = state.edgeEdit;
-  if (!edit?.featureId) return null;
-  if (edit.featureId === PARCEL_ID) return parcelRing();
-  return outerRing(draw.get(edit.featureId));
+  return edit?.ringId ? ringOf(edit.ringId) : null;
 }
 
 function drawEdgeHighlight() {
@@ -7425,6 +7719,7 @@ function reset() {
   state.handEdited = false;
   setTab('address');
   state.drawingParcel = false;
+  state.drawingHole = false;
   state.edgeFt = DEFAULT_EDGE_FT;
   $('#edge-ft').value = String(DEFAULT_EDGE_FT);
   $('#sens-panel').hidden = true;
@@ -7563,6 +7858,7 @@ $('#feedback-skip').addEventListener('click', () => {
  */
 $('#btn-draw-parcel').addEventListener('click', () => {
   setMode(null);
+  state.drawingHole = false;
   state.drawingParcel = true;
   draw.changeMode('draw_polygon');
   setHint('Tap each corner of your property. Tap the first one again to close it.');
@@ -7571,10 +7867,36 @@ $('#btn-draw-parcel').addEventListener('click', () => {
 
 $('#btn-draw').addEventListener('click', () => {
   setMode(null); // drawing owns the map while it is open
+  state.drawingHole = false;
   pushHistory();
   draw.changeMode('draw_polygon');
   setHint('Click around the edge of your lawn. Click the first point again to finish.');
   setStatus('Drawing by hand. Every shape you add counts toward the total.');
+});
+
+/*
+ * THE SAME GESTURE, SUBTRACTING.
+ *
+ * Rubbing a shed out with the brush works and is loose by nature: a shed has
+ * four straight sides and a fingertip does not. Tracing its corners is the
+ * accurate way to do it, and until now the point tool could only ever edit an
+ * outline that already existed -- there was no way to MAKE one that takes
+ * ground away. This is that, and what it produces is an ordinary hole whose
+ * corners the point tools can move, add to and delete afterwards.
+ *
+ * No pushHistory here: cutHoleFromDrawn takes the snapshot once it knows the
+ * cut lands somewhere, so an outline that misses costs no undo step.
+ */
+$('#btn-cut').addEventListener('click', () => {
+  if (!hasLawn()) {
+    setStatus('Nothing to cut out of yet — detect a lawn or draw a patch first.', 'warn');
+    return;
+  }
+  setMode(null);
+  state.drawingHole = true;
+  draw.changeMode('draw_polygon');
+  setHint('Tap each corner of the shed, pool or patio. Tap the first one again to close it.');
+  setStatus('Cutting out. Trace right around the thing, inside one patch of lawn.');
 });
 
 $('#btn-clear').addEventListener('click', () => {
