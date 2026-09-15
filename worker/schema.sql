@@ -320,6 +320,19 @@ CREATE TABLE IF NOT EXISTS corpus (
   -- OUTLINE and editing the outline invalidates it. That is also the review
   -- edit flow working as intended: tweak, finish, approve the tweaked one.
   status         TEXT NOT NULL DEFAULT 'new',
+  -- Does this property actually have a tree line? Judged by eye during review.
+  --
+  -- NOT INFERRED FROM THE EXCLUSION LIST, which is what it used to be and was
+  -- wrong. `exclusions LIKE '%woods%'` records that somebody ticked the Trees
+  -- box during an exclude-mode detection -- a choice about how the AI was run,
+  -- off by default, and unavailable at all in Find-grass or hand-drawn mode. A
+  -- wooded lot traced by hand counted zero, so the number stayed near zero
+  -- while the corpus filled with exactly the lawns it was supposed to find.
+  --
+  -- A person looking at the photograph can see a tree line in a moment, and
+  -- review is already that moment. NULL until judged, so "no trees" and "not
+  -- looked at yet" stay different answers.
+  tree_line      INTEGER,
   reviewed_at    TEXT,
   reviewed_by    TEXT,
   review_note    TEXT,

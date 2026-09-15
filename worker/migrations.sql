@@ -75,3 +75,11 @@ ALTER TABLE corpus ADD COLUMN review_queue TEXT;
 -- the ones adding the column it indexes. CREATE INDEX IF NOT EXISTS is
 -- idempotent, so this is safe on a fresh database too.
 CREATE INDEX IF NOT EXISTS corpus_status ON corpus(status, at DESC);
+
+-- Whether the property has a tree line, judged by eye during review.
+--
+-- Replaces inferring it from the exclusion list, which recorded a choice about
+-- how the AI was run rather than anything about the lawn: the Trees box is off
+-- by default and does not exist outside exclude mode, so a wooded lot traced by
+-- hand counted zero.
+ALTER TABLE corpus ADD COLUMN tree_line INTEGER;

@@ -618,7 +618,15 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
 
   const { body } = await ask(env, ownerToken, 'corpus');
   check('the panel counts the approved maps', body.stats.total === 2, JSON.stringify(body.stats));
-  check('and the tree-line ones separately', body.stats.treeLine === 1);
+  /*
+   * ZERO, though one of these ticked Trees during its detection. That tick is
+   * a hint for the review queue and no longer the measurement: until somebody
+   * looks at the photograph and says there is a tree line, there is no tree
+   * line in the count. See the section at the end of this file.
+   */
+  check('ticking Trees during a detection does not by itself count as a tree line',
+    body.stats.treeLine === 0,
+    'it records how the AI was run, not what is on the ground');
   check('and the hand-traced property lines', body.stats.handParcel === 1);
   check('and how many have the AI\'s own outline to compare against',
     body.stats.withDetection === 0,
@@ -769,6 +777,81 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
     kept.detected_shapes === before.detected_shapes && kept.square_feet === 4200,
     'a plain assignment here would have silently deleted the only record of '
     + 'what the AI drew, which is what makes the overshoot measurable');
+}
+
+/* ------------------------------------------------ what counts as a tree line */
+/*
+ * IT IS THE REVIEWER'S EYE, NOT THE EXCLUSION LIST.
+ *
+ * The count used to be `exclusions LIKE '%woods%'`, which records that
+ * somebody ticked the Trees box during an exclude-mode detection. That is a
+ * choice about how the AI was run: the box is off by default and does not
+ * exist at all in Find-grass or hand-drawn mode, so a wooded lot traced by
+ * hand counted zero -- and the counter sat near zero while the corpus filled
+ * with exactly the lawns it was meant to be finding.
+ */
+{
+  const { env, ownerToken } = await world();
+  const { recordFinished } = await import('../worker/src/corpus.js');
+
+  const ring = (lng) => [
+    [lng, 42.9], [lng, 42.901], [lng + 0.001, 42.901], [lng + 0.001, 42.9], [lng, 42.9],
+  ];
+  const finish = (lng, over) => recordFinished(env, {
+    lng, lat: 42.9, model: 'sam-3', mode: 'find', county: 'mi-kent',
+    shapes: [{ type: 'Polygon', coordinates: [ring(lng)] }],
+    squareFeet: 4000, ...over,
+  });
+
+  /* A wooded lot measured in Find-grass mode: no exclusions exist at all. */
+  await finish(-85.11, {});
+  /* And one where Trees WAS ticked, which is only a hint. */
+  await finish(-85.22, { mode: 'exclude', exclusions: ['woods'] });
+
+  const queue = (await ask(env, ownerToken, 'candidates')).body.candidates;
+  const wooded = queue.find((c) => c.id.startsWith('-85.11'));
+  const ticked = queue.find((c) => c.id.startsWith('-85.22'));
+
+  check('a map with the Trees box ticked arrives with the toggle pre-set',
+    ticked?.treeLineHint === true, JSON.stringify(ticked?.treeLineHint));
+  check('and one measured in Find-grass mode does not, having no exclusions',
+    wooded?.treeLineHint === false,
+    'which is the whole fault: the lot may be covered in trees and nothing in '
+    + 'the row can know');
+
+  /* Approving with the toggle on is what makes it count. */
+  await ask(env, ownerToken, 'review',
+    { method: 'POST', body: { id: wooded.id, status: 'approved', treeLine: true } });
+  /* And the pre-set hint can be overruled: it is a suggestion, not the answer. */
+  await ask(env, ownerToken, 'review',
+    { method: 'POST', body: { id: ticked.id, status: 'approved', treeLine: false } });
+
+  const panel = (await ask(env, ownerToken, 'corpus')).body;
+  check('the hand-judged wooded lot counts, though no exclusion ran on it',
+    panel.stats.treeLine === 1, JSON.stringify(panel.stats.treeLine));
+  check('and the ticked-Trees map does NOT, because the reviewer said no',
+    panel.stats.total === 2 && panel.stats.treeLine === 1,
+    'the tick was evidence; the eye is the measurement');
+
+  const stored = await env.DB.prepare(
+    'SELECT tree_line FROM corpus WHERE id = ?1'
+  ).bind(ticked.id).first();
+  check('a "no" is stored as a no rather than as nothing',
+    stored.tree_line === 0,
+    '"looked, no trees" and "nobody looked" have to stay different answers');
+
+  /* A verdict with no opinion leaves it unjudged rather than guessing. */
+  await finish(-85.33, {});
+  const third = (await ask(env, ownerToken, 'candidates')).body.candidates
+    .find((c) => c.id.startsWith('-85.33'));
+  await ask(env, ownerToken, 'review',
+    { method: 'POST', body: { id: third.id, status: 'approved' } });
+  const silent = await env.DB.prepare(
+    'SELECT tree_line FROM corpus WHERE id = ?1'
+  ).bind(third.id).first();
+  check('and saying nothing about trees leaves it unjudged, not "no"',
+    silent.tree_line === null,
+    'every approval made before this existed stays honestly unanswered');
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);

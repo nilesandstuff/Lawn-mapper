@@ -403,7 +403,8 @@ export function corpusGaps(stats = {}, targets = TARGETS) {
       why: 'The known fault is a tree line overshooting by about a quarter. '
         + 'Without these there is no way to tell whether a fix worked.',
       what: 'Wooded lots, properties backing onto trees, anything where the '
-        + 'lawn runs under a canopy edge.',
+        + 'lawn runs under a canopy edge — then tick "has a tree line" when '
+        + 'you review it, since that tick is what this counts.',
     },
     {
       key: 'blocks',
@@ -481,9 +482,17 @@ export function candidateScore(row = {}, have = {}, targets = TARGETS) {
     why.push(detected === null || detected === undefined
       ? 'drawn by hand' : 'you disagreed with the AI');
   }
+  /*
+   * STILL THE EXCLUSION LIST HERE, and deliberately, even though the COUNT no
+   * longer uses it. Ordering a queue is guessing which candidate is worth
+   * looking at next, and a guess is all this has to be -- somebody ticked
+   * Trees, so there are probably trees. The count is a different job: it says
+   * how many tree lines are actually in the set, and only an eye on the
+   * photograph can answer that.
+   */
   if (/woods/.test(row.exclusions || '') && short('treeLine', targets.treeLine)) {
     score += 30;
-    why.push('has a tree line');
+    why.push('trees were excluded, so probably a tree line');
   }
   /*
    * A place nobody has approved anything in yet. Worth more than another map

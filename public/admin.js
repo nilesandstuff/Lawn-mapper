@@ -322,6 +322,33 @@ function drawCandidate(c) {
   }
   box.append(legend);
 
+  /*
+   * DOES THIS LAWN HAVE A TREE LINE? Asked here because this is the only
+   * moment anybody looks at the photograph.
+   *
+   * It used to be inferred from the exclusion list -- whether the Trees box
+   * was ticked during an exclude-mode detection -- which counts a choice about
+   * how the AI was run rather than anything about the lawn. That box is off by
+   * default and does not exist in Find-grass or hand-drawn mode, so a wooded
+   * lot traced by hand scored zero and the counter sat at zero while the
+   * corpus filled with the very lawns it was meant to find.
+   *
+   * The old signal is kept as a STARTING POSITION, because ticking Trees is
+   * decent evidence of trees. It is a prefilled answer, not the answer.
+   */
+  let treeLine = Boolean(c.treeLineHint);
+  const trees = el('button', null, '');
+  const paintTrees = () => {
+    trees.textContent = treeLine ? '✓ Has a tree line' : 'No tree line';
+    trees.className = treeLine ? 'on' : '';
+  };
+  paintTrees();
+  trees.addEventListener('click', () => { treeLine = !treeLine; paintTrees(); });
+
+  const asks = el('div', 'actions');
+  asks.append(trees);
+  box.append(asks);
+
   const verdict = el('div', 'verdict');
   const approve = el('button', 'approve', 'Approve');
   const reject = el('button', 'reject', 'Reject');
@@ -355,7 +382,7 @@ function drawCandidate(c) {
   const send = async (status) => {
     for (const b of [approve, reject, edit]) b.disabled = true;
     try {
-      const res = await post('/api/admin/review', { id: c.id, status, queue });
+      const res = await post('/api/admin/review', { id: c.id, status, queue, treeLine });
       if (!res.ok) throw new Error(res.reason || 'refused');
       pending.shift();
       await renderReview();

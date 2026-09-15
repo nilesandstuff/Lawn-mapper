@@ -215,7 +215,7 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
                   COUNT(DISTINCT county) counties,
                   COUNT(DISTINCT ${BLOCK}) blocks,
                   COALESCE(SUM(CASE WHEN parcel_source = 'hand' THEN 1 ELSE 0 END), 0) hand_parcel,
-                  COALESCE(SUM(CASE WHEN exclusions LIKE '%woods%' THEN 1 ELSE 0 END), 0) tree_line,
+                  COALESCE(SUM(CASE WHEN tree_line = 1 THEN 1 ELSE 0 END), 0) tree_line,
                   COALESCE(SUM(CASE
                     WHEN detected_sq_ft IS NULL THEN 1
                     WHEN detected_sq_ft > 0
@@ -356,6 +356,13 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
           imageProvider: r.image_provider,
           mode: r.mode,
           exclusions: r.exclusions,
+          /*
+           * A SUGGESTION for the toggle, not an answer. Ticking Trees during
+           * an exclude-mode detection is decent evidence there are trees --
+           * it is just not available in Find-grass or hand-drawn mode, which
+           * is exactly why it cannot be the measurement itself.
+           */
+          treeLineHint: /woods/.test(r.exclusions || ''),
           parcelSource: r.parcel_source,
           squareFeet: r.square_feet,
           detectedSqFt: r.detected_sq_ft,
@@ -459,17 +466,24 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
     const id = typeof body?.id === 'string' ? body.id : null;
     if (!status || !id) return json({ error: 'Need an id and a verdict' }, 400, origin);
     const queue = body?.queue === 'random' ? 'random' : 'priority';
+    /*
+     * Three states, not two. `null` is "nobody said", which is what every row
+     * reviewed before this existed will stay -- distinct from "looked, and
+     * there are no trees". Conflating them would quietly count old approvals
+     * as treeless.
+     */
+    const treeLine = body?.treeLine === true ? 1 : body?.treeLine === false ? 0 : null;
 
     try {
       const res = await env.DB.prepare(
         `UPDATE corpus
             SET status = ?2, reviewed_at = ?3, reviewed_by = ?4,
-                review_note = ?5, review_queue = ?6
+                review_note = ?5, review_queue = ?6, tree_line = ?7
           WHERE id = ?1 AND status = 'new'`
       ).bind(
         id, status, new Date().toISOString(), me.email,
         typeof body?.note === 'string' ? body.note.slice(0, 300) : null,
-        queue
+        queue, treeLine
       ).run();
 
       /*
