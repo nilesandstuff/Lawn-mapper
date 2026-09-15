@@ -1047,6 +1047,9 @@ async function initMap() {
    * zooms, and the +/- control is in the corner.
    */
   map.doubleClickZoom.disable();
+
+  // One listener, for the life of the map: see watchTileErrors.
+  watchTileErrors();
   map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
 
   /*
@@ -3947,6 +3950,10 @@ async function setProvider(id) {
 }
 
 function hideImagery() {
+  // Nothing is watching once nothing is shown: a tile request already in
+  // flight for the source you just left must not report against the one you
+  // switched to.
+  tileWatch = null;
   if (map.getLayer('imagery-alt')) map.removeLayer('imagery-alt');
   if (map.getSource('imagery-alt')) map.removeSource('imagery-alt');
 }
@@ -3975,6 +3982,39 @@ function hideImagery() {
  */
 let imageryRun = 0;
 
+/*
+ * Which tile source is on screen, so a failure can be reported against the
+ * name the person chose rather than against a source id they have never seen.
+ * `reported` keeps one message per switch: a blank map is a hundred failed
+ * tiles, and a hundred status lines is not more informative than one.
+ */
+let tileWatch = null;
+
+/**
+ * Mapbox GL's own complaint about a tile it could not load.
+ *
+ * Registered once, at map setup. Registering it inside showImagery would add a
+ * listener per switch, and by the fourth look at Esri one dead tile would say
+ * so four times.
+ */
+function watchTileErrors() {
+  map.on('error', (e) => {
+    if (e?.sourceId !== 'imagery-alt' || !tileWatch || tileWatch.reported) return;
+    tileWatch.reported = true;
+
+    const status = e.error?.status;
+    const name = tileWatch.label || 'That source';
+    setStatus(
+      status === 404
+        ? `${name} has no photograph of this spot at this zoom. Zoom out a little, or switch back.`
+        : status === 401 || status === 403
+          ? `${name} refused the request (${status}) — it may now require an account. Switch back for now.`
+          : `${name} did not load${status ? ` (${status})` : ''}. The map underneath is Mapbox, not it.`,
+      'warn'
+    );
+  });
+}
+
 async function showImagery() {
   const run = ++imageryRun;
   hideImagery();
@@ -3984,9 +4024,31 @@ async function showImagery() {
   const before = bottomOfOurLayers();
 
   if (info.tiles) {
+    /*
+     * A TILE SOURCE THAT FAILS PAINTS NOTHING, AND SAYS NOTHING.
+     *
+     * The paragraph below says this about the image path and it is just as
+     * true here, where nothing was watching: a tile that 404s leaves the
+     * Mapbox basemap showing through, so switching to Esri and seeing Mapbox
+     * looks like a source that is identical rather than one that is absent.
+     * That is how "Esri hasn't been providing any imagery" went unexplained --
+     * the app had the answer and never mentioned it.
+     *
+     * `maxzoom` is the likely cause and is declared here rather than guessed
+     * upward. Telling Mapbox that tiles exist to 23 makes it REQUEST z20, z21,
+     * z22 tiles; where the cache stops short those come back empty and the
+     * screen goes blank. Declaring the last level that really exists makes it
+     * overzoom the deepest tile it has instead -- softer, and visible, which
+     * beats sharp and absent. Correcting a lawn happens well past z19, which
+     * is exactly where this would have bitten and nowhere else.
+     */
+    tileWatch = { provider: state.provider, label: info.label, reported: false };
     map.addSource('imagery-alt', {
-      type: 'raster', tiles: [info.tiles], tileSize: 256, maxzoom: 23,
-      attribution: 'Esri, Maxar, Earthstar Geographics',
+      type: 'raster',
+      tiles: [info.tiles],
+      tileSize: 256,
+      maxzoom: Number.isFinite(info.maxzoom) ? info.maxzoom : 19,
+      attribution: info.attribution || 'Esri, Maxar, Earthstar Geographics',
     });
     map.addLayer({ id: 'imagery-alt', type: 'raster', source: 'imagery-alt' }, before);
     return;

@@ -310,6 +310,68 @@ for (const [id, p] of Object.entries(PROVIDERS)) {
     : `        image FAILED: ${img.error || JSON.stringify(img.json).slice(0, 140)}`);
 }
 
+/* ------------------------------------------- the tile sources, per zoom */
+/*
+ * DOES THE TILE SOURCE ACTUALLY SERVE THE ZOOMS THIS APP USES?
+ *
+ * THE REPORT: "esri world imagery hasn't been providing any imagery." A tile
+ * that fails paints nothing and Mapbox shows through underneath, so an absent
+ * source and an identical-looking one are the same picture.
+ *
+ * Asked PER ZOOM rather than once, because the likeliest answer is a cache
+ * that stops short. The app declared tiles up to z23, which makes Mapbox
+ * request z20, z21, z22 -- and a lot fits the frame at about z19.4, so
+ * correcting corners happens deeper than that and nowhere shallower. A source
+ * that works at z18 and is blank at z21 looks broken only while you are
+ * working, which is exactly how this was reported.
+ */
+console.log('\n--- tile sources, at the zooms this app actually uses');
+
+/** The tile x/y containing a lng/lat at a zoom, in the usual slippy scheme. */
+function tileXY(lng, lat, z) {
+  const n = 2 ** z;
+  const x = Math.floor(((lng + 180) / 360) * n);
+  const rad = (lat * Math.PI) / 180;
+  const y = Math.floor(((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * n);
+  return [x, y];
+}
+
+for (const [id, p] of Object.entries(PROVIDERS)) {
+  if (!p.tiles) continue;
+  console.log(`\n    ${id} — ${p.tiles}`);
+
+  let deepest = null;
+  for (const z of [16, 17, 18, 19, 20, 21, 22, 23]) {
+    const [x, y] = tileXY(FRAME.lng, FRAME.lat, z);
+    /* ArcGIS orders the path z/row/col, which is z/y/x. */
+    const url = p.tiles
+      .replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y));
+
+    let line;
+    try {
+      const res = await fetch(url);
+      const type = res.headers.get('content-type') || '';
+      const bytes = res.ok ? (await res.arrayBuffer()).byteLength : 0;
+      /*
+       * A 200 CARRYING NOTHING IS A FAILURE. Esri answers a missing tile with
+       * a tiny placeholder rather than a 404 in some configurations, and a
+       * checker that only reads the status calls that a working source.
+       */
+      const real = res.ok && /image/.test(type) && bytes > 1500;
+      if (real) deepest = z;
+      line = `${res.status} ${type.split(';')[0] || '—'} ${bytes} bytes` + (real ? '' : '   <- nothing usable');
+    } catch (err) {
+      line = `FAILED — ${String(err.message).slice(0, 60)}`;
+    }
+    console.log(`      z${String(z).padEnd(2)}  ${line}`);
+  }
+
+  console.log(deepest === null
+    ? `    NOTHING at any zoom: ${id} is not serving this app at all.`
+    : `    deepest usable zoom: ${deepest}. The app should declare maxzoom ${deepest}`
+      + ` so Mapbox overzooms that tile rather than asking for one that is not there.`);
+}
+
 console.log('\nAn extent within half a pixel is fine -- the frame is what the app');
 console.log('measures against, and each source only has to fill that rectangle.');
 console.log('A service that will not render at our scale is not a bug in it: NAIP is');
