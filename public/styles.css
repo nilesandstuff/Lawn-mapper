@@ -326,6 +326,22 @@ button:disabled { opacity: .45; cursor: not-allowed; }
   display: flex; flex-direction: column; gap: 5px;
   margin-left: 10px; padding-left: 7px; border-left: 2px solid rgba(255, 255, 255, 0.85);
 }
+/*
+ * Two columns for the corner tools, and a ceiling on the whole rail.
+ *
+ * Five corner tools stacked under three mode buttons and a Points/Brushes pair
+ * is eleven rows of about forty-four pixels, which runs off the bottom of a
+ * phone — and the rail is drawn OVER the map it operates on, so what falls off
+ * is both the buttons and the lawn. Two columns halves it; the max-height is
+ * the backstop for whatever gets added next.
+ */
+.railgrid {
+  display: grid; grid-template-columns: repeat(2, 46px); gap: 5px;
+  align-content: start;
+}
+.maprail { max-height: calc(100% - 120px); overflow-y: auto; scrollbar-width: none; }
+.maprail::-webkit-scrollbar { display: none; }
+
 .railbtn.sub { width: 46px; font-size: 9.5px; }
 .railbtn.sub svg { width: 19px; height: 19px; }
 .railundo { margin-top: 4px; }

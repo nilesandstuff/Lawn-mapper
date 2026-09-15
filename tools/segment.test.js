@@ -15,7 +15,7 @@
  */
 
 import worker from '../worker/src/index.js';
-import { EXCLUSIONS } from '../worker/src/sam.js';
+import { EXCLUSIONS, parcelBox, parcelBoxWanted } from '../worker/src/sam.js';
 import { DAILY_LIMIT_PER_CLIENT } from '../worker/src/quota.js';
 
 let failures = 0;
@@ -472,6 +472,55 @@ async function post(payload) {
   const one = (await readLog(e4, 'sekret')).entries[0];
   check('a one-box press keeps the plain numeric threshold',
     one?.threshold === EXCLUSIONS.woods.threshold, String(one?.threshold));
+}
+
+/* ------------------------------ the property line as a prompt */
+/*
+ * The remote-sensing work on SAM 3 says text-only prompting is the worst
+ * strategy measured, "particularly for irregular targets", and that semantic
+ * plus geometric cues win. A lawn is maximally irregular, and the boundary --
+ * the one thing here nobody has to guess -- is currently used only to trim the
+ * answer afterwards.
+ *
+ * OFF until a real prediction says it helps, because an unknown field on the
+ * Replicate wrapper is either refused or silently ignored, and the silent case
+ * looks exactly like a change that did not work.
+ */
+{
+  console.log('\n--- the property line as a geometric prompt ---');
+
+  check('it is off unless the deployment turns it on',
+    parcelBoxWanted({}) === false && parcelBoxWanted({ SEND_PARCEL_BOX: 'false' }) === false,
+    'detection costs money per press and must not change on a guess');
+  check('and on when it does',
+    parcelBoxWanted({ SEND_PARCEL_BOX: 'true' }) === true);
+
+  const corners = [[100, 80], [400, 80], [400, 300], [100, 300]];
+  const box = parcelBox(corners, 640);
+  check('the box is the parcel in frame pixels, XYXY',
+    JSON.stringify(box) === JSON.stringify([100, 80, 400, 300]), JSON.stringify(box));
+
+  /*
+   * NOT THE WHOLE FRAME. zoomToFit leaves a margin round the lot, and that
+   * margin is exactly the neighbours' ground the box exists to exclude -- so a
+   * box that filled the image would be no cue at all while looking like one.
+   */
+  check('and is smaller than the frame it sits in',
+    box[2] - box[0] < 640 && box[3] - box[1] < 640);
+
+  const spilling = parcelBox([[-50, -50], [900, -50], [900, 900], [-50, 900]], 640);
+  check('a boundary running past the frame is clamped to it',
+    JSON.stringify(spilling) === JSON.stringify([0, 0, 640, 640]),
+    JSON.stringify(spilling));
+
+  check('no boundary means no box, rather than a box round everything',
+    parcelBox(null, 640) === null && parcelBox([], 640) === null,
+    'sending one would make "we tried the hybrid" true of runs that hinted nothing');
+  check('and a degenerate one is refused',
+    parcelBox([[5, 5], [5, 5], [5, 5]], 640) === null,
+    'a box naming a single pixel is a question about one blade of grass');
+  check('as is a boundary with nonsense in it',
+    parcelBox([[0, 0], [NaN, 10], [10, 10]], 640) === null);
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);

@@ -74,6 +74,21 @@ const state = {
   mode: null,         // 'parcel' | 'pins' | 'shape' | null -- what taps act on
   shapeTool: 'points',// within shape mode: 'points' | 'add' | 'erase'
   /*
+   * Which brush the one collapsed Brushes icon opens. The two are used in runs
+   * -- three sheds rubbed out, not one shed and then one missed patch -- so
+   * the useful default is whichever was last in hand rather than a fixed one.
+   */
+  lastBrush: 'erase',
+  /*
+   * Whether to come back to Points once a hand-drawn shape is finished.
+   *
+   * Drawing takes the map: Draw's polygon mode owns every tap while it is
+   * open, so the corner tools have to be put away and the way back cannot be
+   * inferred afterwards. Set only by the rail buttons, which are the ones
+   * pressed from inside Points.
+   */
+  returnToPoints: false,
+  /*
    * Corner handles: off unless asked for.
    *
    * They are genuinely crowded on a detected outline, which can carry a
@@ -605,6 +620,13 @@ if (typeof window !== 'undefined') {
     dragRotate: Boolean(map?.dragRotate?.isEnabled()),
     dragPan: Boolean(map?.dragPan?.isEnabled()),
     touchZoom: Boolean(map?.touchZoomRotate?.isEnabled()),
+    /*
+     * Double-tap zoom, which on touch is tap-drag zoom -- the gesture that
+     * collides head-on with tap, pan, tap. Reported because "the map zoomed
+     * when I meant to pan" is indistinguishable from a mis-aimed pinch by eye,
+     * and was reported as one for weeks.
+     */
+    doubleClickZoom: Boolean(map?.doubleClickZoom?.isEnabled()),
     panning: panningHeld(),
     holdMs: PAN_HOLD_MS,
     /*
@@ -1001,6 +1023,30 @@ async function initMap() {
   // The constructor flag covers the mouse; this is the two-finger twist, which
   // is a separate handler and the one that actually gets triggered by accident.
   map.touchZoomRotate.disableRotation();
+
+  /*
+   * DOUBLE-TAP ZOOM IS OFF, and it is the gesture, not a setting, that is
+   * wrong here.
+   *
+   * THE REPORT: "tap and drag shortly after and the view zooms -- very
+   * disruptive if your workflow is tap, pan, tap, repeat." That is Mapbox's
+   * tap-drag zoom: a second touch within the double-tap window, dragged, zooms
+   * instead of panning. Correcting a lawn IS tap, pan, tap, repeat -- select a
+   * corner, move the map, select the next -- so the app's main gesture and the
+   * zoom gesture are the same gesture, and the map was guessing which one was
+   * meant. It guessed wrong about as often as not.
+   *
+   * `doubleClickZoom` covers both halves: the mouse's dblclick and the touch
+   * tap-drag, which are two handlers behind one switch.
+   *
+   * OFF EVERYWHERE, rather than only while editing. Turning a handler on and
+   * off by mode is exactly the pattern that produced the dragPan bugs further
+   * down this file -- one handler serving two gestures, left in the wrong
+   * state by whichever path exited last. And it costs nothing: every tap on
+   * this map means something from the moment a lot is on screen, pinch still
+   * zooms, and the +/- control is in the corner.
+   */
+  map.doubleClickZoom.disable();
   map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
 
   /*
@@ -1045,19 +1091,34 @@ async function initMap() {
      * that fails to become a boundary or a hole must not leave the next
      * drawing armed to become one.
      */
+    /*
+     * Back to where the drawing was started from, when it was started from the
+     * corner tools. Without this the loop does not close: you press Patch from
+     * inside Points, trace it, and land in no mode at all with the rail
+     * collapsed -- having to find your own way back in to carry on correcting.
+     */
+    const back = () => {
+      if (!state.returnToPoints) return;
+      state.returnToPoints = false;
+      setMode('shape', 'points');
+    };
+
     if (state.drawingParcel) {
       state.drawingParcel = false;
       adoptDrawnParcel(e.features?.[0]);
+      back();
       return;
     }
     if (state.drawingHole) {
       state.drawingHole = false;
       cutHoleFromDrawn(e.features?.[0]);
+      back();
       return;
     }
     // A patch drawn by hand is a hand correction, whether it is the first
     // shape on the map or the tenth on top of a detection.
     markHandEdited();
+    back();
   });
 
   await new Promise((resolve) => map.on('load', resolve));
@@ -5201,6 +5262,10 @@ function setMode(mode, tool = null) {
    * inherited from something you did several steps ago.
    */
   if (next === 'shape') state.shapeTool = tool || 'points';
+  // Remembered for the collapsed Brushes icon, which opens the one last used.
+  if (state.shapeTool === 'add' || state.shapeTool === 'erase') {
+    state.lastBrush = state.shapeTool;
+  }
   /*
    * And the point eraser goes away on every mode change, for the reason the
    * comment above gives about brushes: a destructive tool inherited from
@@ -5861,11 +5926,36 @@ function refreshRail() {
       String(state.mode === 'shape' && state.shapeTool === tool));
   }
 
+  /*
+   * THE RAIL TRADES ONE SET FOR THE OTHER.
+   *
+   * Correcting corners and painting with a brush are two jobs, and the rail is
+   * drawn over the map rather than beside it -- so every button belonging to
+   * the job you are NOT doing is covering the lawn you are working on.
+   *
+   * With Points live, Add and Erase fold into a single Brushes icon: neither
+   * is reachable from a corner, and one way back is all that is needed. With a
+   * brush live the pair comes back, because THEN switching between them is
+   * exactly what you want, and the corner tools go away instead.
+   */
+  const onPoints = state.mode === 'shape' && state.shapeTool === 'points';
+  const brushLive = state.mode === 'shape' && state.shapeTool !== 'points';
+  const show = (id, on) => { const el = $(id); if (el) el.hidden = !on; };
+
+  show('#tool-brushes', onPoints);
+  show('#tool-add', brushLive);
+  show('#tool-erase', brushLive);
+
   /* The corner tools appear with Points, and only with it. */
   const pointTools = $('#point-tools');
-  if (pointTools) {
-    pointTools.hidden = !(state.mode === 'shape' && state.shapeTool === 'points');
-  }
+  if (pointTools) pointTools.hidden = !onPoints;
+
+  /*
+   * Delete-the-last-corner is dead until there IS one. A one-shot that does
+   * nothing when pressed is indistinguishable from a broken button, and this
+   * one sits next to a mode toggle that always works.
+   */
+  refreshDeletePoint();
   $('#tool-handles')?.setAttribute('aria-pressed', String(Boolean(state.handlesOn)));
   $('#tool-unpoint')?.setAttribute('aria-pressed', String(Boolean(state.pointEraser)));
 
@@ -6939,7 +7029,24 @@ function midpointHandles() {
   return out;
 }
 
+/**
+ * Delete-the-last-corner is dead until there IS one.
+ *
+ * A one-shot that does nothing when pressed is indistinguishable from a broken
+ * button, and this one sits beside a mode toggle that always works. Called
+ * from drawPoints rather than only from refreshRail, because what it depends
+ * on is the SELECTION -- which changes on every tap and every drag, neither of
+ * which touches the rail.
+ */
+function refreshDeletePoint() {
+  const del = $('#tool-delpoint');
+  if (!del) return;
+  const edit = state.edgeEdit;
+  del.disabled = !(edit?.ringId && edit.vertexIndex != null);
+}
+
 function drawPoints() {
+  refreshDeletePoint();
   if (!map.getSource('points')) return;
   const edit = state.edgeEdit;
   if (!edit) return map.getSource('points').setData(empty());
@@ -8106,6 +8213,53 @@ for (const tool of ['points', 'add', 'erase']) {
     setMode('shape', live ? 'points' : tool);
   });
 }
+
+/*
+ * The collapsed brushes: one icon, which opens whichever was last in hand.
+ *
+ * Remembered rather than always Erase, because the two are used in runs -- you
+ * rub out three sheds, not one shed and then one patch of missed lawn -- so
+ * the useful default is the one you were just using.
+ */
+$('#tool-brushes').addEventListener('click', () => setMode('shape', state.lastBrush || 'erase'));
+
+/*
+ * MAKING GEOMETRY FROM THE MAP, and coming back to where you were.
+ *
+ * Both of these are the panel's own buttons, reached without the trip to the
+ * panel: while correcting corners you notice a missed patch or a shed, and
+ * pressing them used to mean leaving the map, scrolling, pressing, drawing,
+ * and then finding your way back into Points by hand.
+ *
+ * `returnToPoints` is what closes that loop. Drawing takes the map -- Draw's
+ * polygon mode owns every tap while it is open, which is why setMode(null) is
+ * right -- so the way back has to be remembered rather than inferred.
+ */
+$('#tool-newpatch').addEventListener('click', () => {
+  state.returnToPoints = true;
+  $('#btn-draw').click();
+});
+$('#tool-cutout').addEventListener('click', () => {
+  state.returnToPoints = true;
+  $('#btn-cut').click();
+});
+
+/*
+ * Delete the corner last touched. A ONE-SHOT, where Remove is a mode.
+ *
+ * After dragging a corner it is still selected, so this is "that one was a
+ * mistake" without aiming at it a second time. It refuses rather than guessing
+ * when nothing is selected: deleting *some* corner because none was named is
+ * the kind of help nobody can undo by eye.
+ */
+$('#tool-delpoint').addEventListener('click', () => {
+  const edit = state.edgeEdit;
+  if (!edit?.ringId || edit.vertexIndex == null) {
+    setStatus('Tap a corner first — this deletes the one you last touched.', 'warn');
+    return;
+  }
+  deleteSelectedVertex();
+});
 
 $('#btn-edge-done').addEventListener('click', () => setMode(null));
 $('#btn-tidy').addEventListener('click', tidyShapes);

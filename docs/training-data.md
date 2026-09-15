@@ -511,6 +511,45 @@ says only *that* it is. It is not the thing being optimised.
 
 ---
 
+## What gets trained, and what does not
+
+**Decided: a segmentation head on a frozen pretrained backbone.** One class,
+lawn or not, with the loss masked to the property line.
+
+Not a fine-tune of SAM 3, and not a trim on top of it. The reasoning, since
+this will be re-argued:
+
+- **The task is narrower than SAM 3 is.** One class, a known region of
+  interest, and no prompt needed at inference. SAM 3's promptability is
+  machinery that would be paid for per prediction, forever, and not used at
+  detect time.
+- **The labels already are what it eats.** Dense masks inside a known boundary
+  is exactly a segmentation training set. Nothing about collection changes, and
+  nothing already collected is wasted.
+- **Frozen backbone, not from scratch.** At ~1,000 examples the features are
+  most of the value; the head is the cheap part. This is the option that gets
+  foundation-model features without foundation-model serving costs.
+- **A post-processing trim was considered and rejected.** The known tree
+  overshoot suggested fitting one number — shrink the mask by N feet — and the
+  owner's read is that the error is too varied for that: not only trees, and
+  not the same way about trees each time. A single parameter fitted to a
+  multi-modal error improves the median and widens the spread, and this app
+  quotes per lot rather than on average.
+
+**What it costs:** exclude mode is prompt-driven and does not come along. It
+either stays on SAM 3 alongside, or it retires.
+
+**What stays on SAM 3 meanwhile:** everything, plus the property line as a
+geometric prompt where the hosted model accepts one — text-only prompting
+measures worst for irregular targets, and the boundary is the one cue here
+nobody has to guess. Off until a real prediction says it helps.
+
+**When:** not until the corpus is there. The binding number is still corrected
+maps, and none of this changes what to do this month, which is measure and
+approve.
+
+---
+
 ## What to watch while the corpus fills
 
 These cannot be fixed retroactively, which is why they are worth watching from

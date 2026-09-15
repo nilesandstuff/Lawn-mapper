@@ -2036,6 +2036,25 @@ check('a held press is offered as the one-handed way out',
 check('and nothing is panning until somebody asks for it',
   withTool.panning === false);
 
+/*
+ * THE REPORT: "tap and drag shortly after and the view zooms -- very
+ * disruptive if your workflow is tap, pan, tap, repeat."
+ *
+ * Mapbox's tap-drag zoom: a second touch inside the double-tap window, then a
+ * drag, zooms instead of panning. Correcting a lawn IS tap, pan, tap, repeat,
+ * so the app's main gesture and the zoom gesture were the same gesture and the
+ * map had to guess which was meant.
+ *
+ * Asserted on the handler rather than by performing the gesture, because a
+ * synthetic double-tap-and-drag that fails to zoom proves nothing: it might
+ * have missed the timing window, which is how this would pass while broken.
+ */
+check('double-tap zoom is switched off, not merely unused',
+  withTool.doubleClickZoom === false,
+  'it is the same gesture as tap, pan, tap — the map cannot tell them apart');
+check('and pinch is left as the way to zoom', withTool.touchZoom === true,
+  'taking away the one that works is not a fix for the one that collides');
+
 /* ------------------------------------------------------------ north is up */
 /*
  * A two-finger twist is easy to trigger by accident while pinching, and there

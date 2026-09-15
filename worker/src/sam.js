@@ -20,6 +20,56 @@ export const SAM_INPUT_FIELDS = [
 ];
 
 /**
+ * THE PROPERTY LINE, AS A PROMPT RATHER THAN AS A CLIP AFTERWARDS.
+ *
+ * The remote-sensing work on SAM 3 is blunt about this: text-only prompting is
+ * the WORST strategy of the ones measured, "particularly for irregular
+ * targets", and semantic plus geometric cues together consistently win. A lawn
+ * is about as irregular as a target gets, and this app has the geometric cue
+ * sitting unused -- the boundary is the one thing here nobody has to guess,
+ * and it is currently used only to trim the answer after the fact.
+ *
+ * OFF UNTIL MEASURED, and that is the whole reason this is a flag.
+ *
+ * SAM 3 itself takes box prompts. Whether the Replicate wrapper in front of it
+ * exposes them is a different question, and an unknown field is either refused
+ * outright or silently ignored -- the second being the bad one, because it
+ * looks exactly like a change that did not help. Detection costs money per
+ * press and is the one thing in this app that must not be broken by a guess.
+ *
+ * So: probe "5. Test a real detection" with SEND_PARCEL_BOX=true measures the
+ * same lot both ways and prints both square footages. Turn the deployment
+ * variable on when the number says to.
+ */
+export const parcelBoxWanted = (env) => String(env?.SEND_PARCEL_BOX || '') === 'true';
+
+/**
+ * The property line as a box in the frame's own pixels, XYXY.
+ *
+ * The frame is built FROM the parcel, so this is not quite the whole image --
+ * zoomToFit leaves a margin, and that margin is exactly the neighbours' ground
+ * the box exists to exclude.
+ *
+ * Returns null rather than a full-frame box when there is no boundary. A box
+ * round everything is not a cue, and sending one would make "we tried the
+ * hybrid prompt" true of runs where nothing was hinted at all.
+ */
+export function parcelBox(corners, size) {
+  if (!Array.isArray(corners) || corners.length < 3 || !size) return null;
+  let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const [x, y] of corners) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    x0 = Math.min(x0, x); x1 = Math.max(x1, x);
+    y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+  }
+  const clamp = (v) => Math.max(0, Math.min(size, Math.round(v)));
+  const box = [clamp(x0), clamp(y0), clamp(x1), clamp(y1)];
+  // A degenerate box is worse than none: it names a point, and the model would
+  // be answering a question about one pixel of somebody's lawn.
+  return box[2] - box[0] > 1 && box[3] - box[1] > 1 ? box : null;
+}
+
+/**
  * The things a lawn is measured by NOT being, one concept at a time.
  *
  * ONE CONCEPT PER PREDICTION, and that is the whole finding. This started as a
