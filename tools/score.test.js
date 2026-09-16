@@ -260,7 +260,7 @@ const box = (x, y, w, h) => ({
 /* ------------------------------------------ reading what wrangler printed */
 {
   console.log('\n--- getting the rows out of wrangler ---');
-  const { parseRows, reasonFrom, wranglerError } = await import('./score-detector.js');
+  const { parseRows, reasonFrom, wranglerError } = await import('./corpus-db.js');
 
   /*
    * Wrangler prints banners, proxy warnings and update notices before the
@@ -329,6 +329,34 @@ const box = (x, y, w, h) => ({
     'exiting zero must not read as "nothing approved yet"');
   check('and real output is not mistaken for a refusal',
     wranglerError('[{"results":[{"id":"a"}]}]') === null);
+}
+
+/* ---------------------------------------- how much a lawn overlaps itself */
+{
+  console.log('\n--- a lawn drawn twice ---');
+  const { overlapSqFt } = await import('./inspect-map.js');
+
+  const lawn = box(0, 0, 30, 20);
+
+  const once = overlapSqFt([lawn]);
+  check('one shape overlaps nothing', Math.round(once.overlapSqFt) === 0);
+
+  /*
+   * THE CASE THAT STARTED THIS. A big shape covering the lawn with smaller
+   * ones inside it -- which is what "draw a patch over a detection" produces,
+   * and what a review card cannot explain on its own.
+   */
+  const doubled = overlapSqFt([lawn, box(5, 5, 10, 8)]);
+  closeTo(doubled.overlapSqFt, sqFt(80), sqFt(4),
+    'a small shape wholly inside a big one is counted twice when added up');
+  closeTo(doubled.unionSqFt, sqFt(600), sqFt(8),
+    'but the distinct ground is still just the big one');
+
+  const apart = overlapSqFt([box(0, 0, 10, 10), box(40, 40, 10, 10)]);
+  check('two shapes that do not touch overlap nothing',
+    apart.overlapSqFt < sqFt(1),
+    `${apart.overlapSqFt.toFixed(0)} sq ft`);
+  closeTo(apart.unionSqFt, sqFt(200), sqFt(6), 'and their areas simply add up');
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);

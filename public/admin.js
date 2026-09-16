@@ -449,7 +449,13 @@ function drawCandidate(c) {
   }
 
   const extras = el('div', 'actions');
-  if (c.detectedShapes) {
+  /*
+   * `length`, not truthiness. An empty list is truthy, so a row that stored
+   * "[]" -- a detection that produced nothing, or a map finished without one
+   * -- put the button on screen and then drew nothing when it was pressed.
+   * A button that does nothing reads as a broken feature, not an empty field.
+   */
+  if ((c.detectedShapes || []).length) {
     /*
      * OFF BY DEFAULT, on purpose. Seeing the detector's answer while judging
      * -- and especially while EDITING -- pulls a correction towards it. Useful

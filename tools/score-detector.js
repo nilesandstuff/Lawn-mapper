@@ -17,13 +17,10 @@
  * or, the way anybody actually runs it, workflow "7. Score the detector".
  */
 
-import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { scoreMap, summarise, verdict, CANOPY_LABEL } from '../worker/src/score.js';
-import { parseDatabaseList, pickDatabase } from './ci-prepare.js';
-
-const DB_NAME = process.env.DB_NAME || 'lawn-mapper';
+import { query } from './corpus-db.js';
 
 /*
  * Only what the scoring needs. `SELECT *` would drag every outline of every
@@ -35,98 +32,7 @@ const QUERY = `
    WHERE status = 'approved'
    ORDER BY at DESC
    LIMIT 500
-`.replace(/\s+/g, ' ').trim();
-
-function wrangler(args) {
-  return execFileSync('npx', ['--no-install', 'wrangler', ...args], {
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-    maxBuffer: 64 * 1024 * 1024,
-    env: process.env,
-  });
-}
-
-/**
- * Wrangler prints banners, update notices and occasionally a warning before
- * the JSON. Find the payload rather than trusting the whole of stdout to parse
- * -- which is the same lesson tools/ci-prepare.js learned about `d1 list`.
- */
-export function parseRows(stdout) {
-  const lines = String(stdout || '').split('\n');
-
-  /*
-   * FROM THE FIRST LINE THAT OPENS THE JSON, not from the first '[' in the
-   * output. Wrangler's proxy warning is printed as "▲ [WARNING] ..." -- so
-   * scanning for a bracket finds that one, parses the banner, fails, and
-   * reports an empty corpus on a database that is full. The quietest possible
-   * way for this to be wrong.
-   */
-  for (let i = 0; i < lines.length; i++) {
-    const head = lines[i].trim();
-    if (head[0] !== '[' && head[0] !== '{') continue;
-    try {
-      const parsed = JSON.parse(lines.slice(i).join('\n'));
-      const list = Array.isArray(parsed) ? parsed : [parsed];
-      return list.flatMap((r) => r?.results || []);
-    } catch {
-      /* Not the start of the payload after all; keep looking. */
-    }
-  }
-  return [];
-}
-
-/**
- * WRANGLER PUTS ITS ERROR ON STDOUT, AS JSON, AND SOMETIMES EXITS ZERO.
- *
- * Under `--json` a failure comes back as {"error":{"text":"..."}} printed to
- * stdout, while stderr carries nothing but the proxy warning every run emits.
- * Two ways to be wrong about that, and the first run of this hit both:
- *
- *   Reading stderr for the reason found an empty string and reported "no
- *   reason given" -- which is the same useless diagnostic the corpus counter
- *   spent six deploys behind, and exactly what this function exists to stop.
- *
- *   Worse, when it exits ZERO the rows simply do not parse, and the run would
- *   have announced "0 approved maps in the corpus" on a database that is full.
- *   A wrong number reported confidently beats an error message for damage.
- *
- * So the payload is checked for an `error` key before it is read for rows, and
- * the reason is hunted across stdout as well as stderr.
- */
-export function wranglerError(output) {
-  const lines = String(output || '').split('\n');
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].trim()[0] !== '{') continue;
-    try {
-      const parsed = JSON.parse(lines.slice(i).join('\n'));
-      const text = parsed?.error?.text || parsed?.error?.message
-        || (typeof parsed?.error === 'string' ? parsed.error : null);
-      if (text) return String(text).split('\n')[0].trim();
-    } catch { /* not the payload */ }
-  }
-  return null;
-}
-
-/** The line of a failure that actually says what went wrong. */
-export function reasonFrom(err) {
-  const parts = [err?.stdout, err?.stderr, err?.message]
-    .filter((v) => typeof v === 'string' && v.trim());
-
-  for (const part of parts) {
-    const named = wranglerError(part);
-    if (named) return named;
-  }
-
-  for (const part of parts) {
-    const lines = part.split('\n').map((l) => l.trim()).filter(Boolean)
-      // Every run prints this and it is never the reason.
-      .filter((l) => !/proxy environment variables/i.test(l));
-    const named = lines.find((l) => /error|unauthorized|forbidden|not found|✘|✗/i.test(l));
-    if (named) return named;
-    if (lines.length) return lines[lines.length - 1];
-  }
-  return 'no reason given';
-}
+`;
 
 /** A stored JSON column, tolerating the row that never had one. */
 const parse = (text) => {
@@ -144,58 +50,16 @@ const geometries = (stored) => {
   return list.map((g) => (g?.geometry ? g.geometry : g)).filter(Boolean);
 };
 
-/**
- * THE DATABASE BY ITS REAL ID, not by the name in wrangler.toml.
- *
- * The committed wrangler.toml carries `REPLACE_WITH_D1_DATABASE_ID`, which
- * tools/ci-prepare.js fills in on the runner during a deploy. Asking for the
- * database by NAME makes wrangler resolve it through that binding, so this
- * cheerfully sent a query to a database called REPLACE_WITH_D1_DATABASE_ID --
- * the first real run's actual failure. Looking the id up the way ci-prepare
- * does needs no config file and no placeholder.
- *
- * The lookup is allowed to fail: falling back to the name still works for
- * anybody whose wrangler.toml is real, and the error from that attempt says
- * more than a guess from here would.
- */
-function resolveDatabase() {
-  try {
-    const found = pickDatabase(parseDatabaseList(wrangler(['d1', 'list', '--json'])), DB_NAME);
-    if (found?.id) {
-      console.log(`Reading the "${found.name}" database.`);
-      return found.id;
-    }
-  } catch { /* fall through to the name */ }
-  return DB_NAME;
-}
-
 function main() {
-  let out = '';
+  let rows = [];
   try {
-    out = wrangler([
-      'd1', 'execute', resolveDatabase(), '--remote', '--json', '--command', QUERY,
-    ]);
+    rows = query(QUERY);
   } catch (err) {
     console.log('Could not read the corpus, so nothing was measured.');
-    console.log(reasonFrom(err));
+    console.log(err.message);
     process.exitCode = 1;
     return;
   }
-
-  /*
-   * A failure that exited zero is still a failure. Falling through here would
-   * find no rows and announce an empty corpus, which is a confident wrong
-   * answer rather than an error -- the more expensive of the two.
-   */
-  const refused = wranglerError(out);
-  if (refused) {
-    console.log('Could not read the corpus, so nothing was measured.');
-    console.log(refused);
-    process.exitCode = 1;
-    return;
-  }
-
-  const rows = parseRows(out);
 
   console.log(`${rows.length} approved map${rows.length === 1 ? '' : 's'} in the corpus.\n`);
 
@@ -248,8 +112,8 @@ function main() {
 }
 
 /*
- * Only when this file is what was RUN. score.test.js imports it for parseRows
- * and reasonFrom, and a basename comparison would have been one identically
- * named file away from shelling out to wrangler inside the test suite.
+ * Only when this file is what was RUN, so importing it in a test cannot shell
+ * out to wrangler. A basename comparison would have been one identically named
+ * file away from doing exactly that.
  */
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
