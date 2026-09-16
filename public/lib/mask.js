@@ -355,21 +355,148 @@ export function simplify(points, tolerance) {
 }
 
 /**
+ * How sharply the contour turns at each point, in degrees.
+ *
+ * Measured across a WINDOW rather than between neighbouring pixels, and that
+ * is the whole trick. A traced mask edge is a staircase: consecutive steps
+ * turn 90 degrees constantly, so point-to-point angles say every pixel is a
+ * corner and none of them are. Comparing the run of contour arriving at a
+ * point with the run leaving it steps over the staircase and leaves the shape.
+ */
+function turnAngles(points, window) {
+  const n = points.length;
+  const out = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const a = points[(i - window + n) % n];
+    const b = points[i];
+    const c = points[(i + window) % n];
+    const in$ = Math.atan2(b[1] - a[1], b[0] - a[0]);
+    const out$ = Math.atan2(c[1] - b[1], c[0] - b[0]);
+    let d = Math.abs(out$ - in$);
+    if (d > Math.PI) d = 2 * Math.PI - d;
+    out[i] = (d * 180) / Math.PI;
+  }
+  return out;
+}
+
+/**
+ * The corners of a traced ring: where it genuinely changes direction.
+ *
+ * WHY THIS HAD TO EXIST. Douglas-Peucker keeps whichever point lies furthest
+ * from the chord, which sounds like it keeps corners and does -- as long as
+ * the corner sticks out further than the tolerance. It does not care that a
+ * point is a corner, only how far it is, so a step in the lawn edge shallower
+ * than the tolerance is not moved slightly: it is deleted, and the outline
+ * cuts straight across. Measured at the 0.8 m tolerance this ran at, every
+ * step under about 1.2 m went that way -- which is most steps that matter,
+ * a garage apron or a path being a metre of nothing.
+ *
+ * Non-maximum suppression, because a rounded corner turns gradually and every
+ * point along it clears the threshold. Keeping all of them would spend the
+ * vertex budget decorating one corner.
+ */
+export function cornerIndices(points, { window = 8, minAngle = 32 } = {}) {
+  const n = points.length;
+  if (n < 3 * window) return [];
+  const turn = turnAngles(points, window);
+
+  const corners = [];
+  for (let i = 0; i < n; i++) {
+    if (turn[i] < minAngle) continue;
+    let best = true;
+    for (let k = 1; k <= window && best; k++) {
+      if (turn[(i + k) % n] > turn[i]) best = false;
+      /* `>=` one way only, so a plateau of equal angles keeps exactly one. */
+      if (turn[(i - k + n) % n] >= turn[i]) best = false;
+    }
+    if (best) corners.push(i);
+  }
+  return corners;
+}
+
+/**
+ * Douglas-Peucker that cannot remove the points it was told to keep.
+ *
+ * Implemented by running the ordinary algorithm on each SPAN between anchors
+ * rather than by adding a special case inside it: an anchor is exactly a point
+ * the recursion is not allowed to reach across, which is what a span boundary
+ * already is.
+ */
+export function simplifyKeeping(points, tolerance, keepIndices) {
+  const n = points.length;
+  if (n < 3) return points.slice();
+
+  const anchors = [...new Set([0, n - 1, ...keepIndices])]
+    .filter((i) => i >= 0 && i < n)
+    .sort((a, b) => a - b);
+
+  const keep = new Uint8Array(n);
+  for (const i of anchors) keep[i] = 1;
+
+  const stack = [];
+  for (let s = 0; s < anchors.length - 1; s++) stack.push([anchors[s], anchors[s + 1]]);
+
+  while (stack.length) {
+    const [a, b] = stack.pop();
+    let maxD = -1;
+    let idx = -1;
+    for (let i = a + 1; i < b; i++) {
+      const d = perpDistance(points[i], points[a], points[b]);
+      if (d > maxD) { maxD = d; idx = i; }
+    }
+    if (maxD > tolerance && idx > 0) {
+      keep[idx] = 1;
+      stack.push([a, idx], [idx, b]);
+    }
+  }
+
+  return points.filter((_, i) => keep[i]);
+}
+
+/**
  * Simplify a closed ring down to at most `maxVertices`.
  *
  * A raw trace of a 1280px mask runs to thousands of points. That is not more
  * accurate -- it is pixel staircase, and it makes every vertex handle in
- * Mapbox GL Draw unusable. Loosening the tolerance until the ring fits the
- * budget keeps the shape while leaving something a human can actually drag.
+ * Mapbox GL Draw unusable.
+ *
+ * THREE KINDS OF EDGE, TREATED AS THREE KINDS OF EDGE. A long straight run
+ * wants two points and looks wrong with twenty. A corner wants a point exactly
+ * on it and is ruined by one near it. A curve wants as many as it takes. One
+ * global tolerance cannot serve all three, and the one that was here served
+ * only the first: it was picked so straight runs came out clean, and it was
+ * deleting every shallow corner in the process.
+ *
+ * So corners are found first and anchored, and the tolerance then applies only
+ * to the spans between them -- where it does the job it was chosen for, on the
+ * runs and curves it was measured against.
+ *
+ * OVER BUDGET, THE CORNERS ARE THE LAST THING TO GO. Escalating the tolerance
+ * thins the runs and the curves while every corner stays exact; only when that
+ * is exhausted does the angle threshold rise, and then it drops the shallowest
+ * corners first, which are the ones least likely to be real.
  */
-function simplifyRing(contour, { tolerance, maxVertices }) {
+function simplifyRing(contour, { tolerance, maxVertices, cornerAngle = 32 }) {
   const closed = [...contour, contour[0]];
+
+  let angle = cornerAngle;
+  let corners = cornerIndices(contour, { minAngle: angle });
   let tol = tolerance;
-  let ring = simplify(closed, tol);
+  let ring = simplifyKeeping(closed, tol, corners);
 
   while (ring.length > maxVertices && tol < 256) {
     tol *= 1.6;
-    ring = simplify(closed, tol);
+    ring = simplifyKeeping(closed, tol, corners);
+  }
+  /*
+   * Still over only when the corners alone exceed the budget, which means the
+   * shape is genuinely intricate or the contour is noisy enough to be inventing
+   * them. Raising the bar for what counts as a corner answers both.
+   */
+  while (ring.length > maxVertices && angle < 90) {
+    angle += 12;
+    corners = cornerIndices(contour, { minAngle: angle });
+    ring = simplifyKeeping(closed, tol, corners);
   }
 
   if (ring.length < 4) return null; // degenerate -- not a polygon

@@ -213,7 +213,31 @@ const MIN_HOLE_SQFT = 40;
  * measured on a real lot, 0.8 m moved the total by 2% while removing seven
  * eighths of the handles.
  */
-const TRACE_TOLERANCE_M = 0.8;
+/*
+ * 0.8 -> 0.35, once corners stopped depending on it.
+ *
+ * The reasoning above is still right about straight runs: a person draws that
+ * lawn in ten corners and a coarse tolerance is what keeps it to ten. What it
+ * was also doing, invisibly, was deciding whether corners survived at all --
+ * Douglas-Peucker keeps the point furthest from the chord and does not care
+ * that it is a corner, so a step shallower than the tolerance was not nudged,
+ * it was deleted. At 0.8 m that was every step under about 1.2 m. Anchoring
+ * corners (see cornerIndices in mask.js) took that job away from this number
+ * and left it doing only the one it was measured for.
+ *
+ * Which frees it to be chosen on curves, where it is the only thing that
+ * matters. Measured on a curved bed, area wrong against the mask:
+ *
+ *   0.80 m   14 points   5.26%
+ *   0.50 m   17 points   3.86%
+ *   0.35 m   24 points   1.78%
+ *   0.20 m   27 points   1.57%
+ *
+ * 0.35 is the knee; below it the points keep coming and the error stops
+ * moving. Straight runs are unaffected -- two points is two points at any
+ * tolerance -- so this is paid for entirely by the shapes that need it.
+ */
+const TRACE_TOLERANCE_M = 0.35;
 
 /**
  * A ceiling on handles per shape.
@@ -222,7 +246,23 @@ const TRACE_TOLERANCE_M = 0.8;
  * wrapping a flower bed can still exceed it in total -- which is how a shape
  * came back with 89 points at a tolerance that should have given far fewer.
  */
-const MAX_TRACE_VERTICES = 30;
+/*
+ * 30 -> 80, because 30 was answering a question nobody was asking any more.
+ *
+ * It never actually bound in any shape measured -- a lawn with runs, a stoop
+ * and a bed came out at 12 points, a strongly curved bed at 24 -- so it was
+ * not what made outlines coarse; the tolerance was, and the note above blamed
+ * this number for a shape that reached 89 points before holes had their own
+ * limit. What it CAN do is bite on the one case a finer tolerance exists to
+ * serve, a bed that curves the whole way round, and silently coarsen exactly
+ * that. The editor's own ceiling is 120 handles (HANDLE_MAX_CORNERS), so this
+ * stays well inside what the corner tools can page through.
+ *
+ * Corners are anchored before this applies, and stay anchored while the
+ * tolerance escalates to fit -- so a shape over budget loses resolution along
+ * its runs and curves, never its corners.
+ */
+const MAX_TRACE_VERTICES = 80;
 
 let map;
 let draw;

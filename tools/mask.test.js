@@ -945,5 +945,130 @@ function stripsPx(kept, label, mask) {
     shared === 0, `${shared} pixels`);
 }
 
+/* ------------------------------------------ 15. corners survive simplifying */
+/*
+ * REPORTED AS "THE DOT IS NEAR THE CORNER, NOT ON IT", and it was worse than
+ * that: the corner was not moved, it was deleted, and the outline cut across.
+ *
+ * Douglas-Peucker keeps whichever point lies furthest from the chord. That
+ * sounds like it keeps corners and does -- as long as the corner sticks out
+ * further than the tolerance. It has no notion of a corner, only of distance,
+ * so a step in the lawn edge shallower than the tolerance vanished entirely.
+ * Measured at the 0.8 m this used to run at, every step under about 1.2 m went
+ * that way: a garage apron, a path, a stoop.
+ *
+ * These build a step of a known depth, trace it, and ask whether a vertex came
+ * back on the corner -- which is the only question that matters and the one
+ * an eye on a screenshot cannot answer.
+ */
+{
+  const project = (lngLat) => lngLatToFramePx(FRAME, lngLat, IMG, IMG);
+
+  /* Rotated off the pixel grid, because every real lawn is. An axis-aligned
+     test shape would have corners that land exactly on pixel boundaries and
+     would pass while the real thing failed. */
+  const deg = (7 * Math.PI) / 180;
+  const rot = ([x, y]) => [
+    640 + (x - 640) * Math.cos(deg) - (y - 640) * Math.sin(deg),
+    640 + (x - 640) * Math.sin(deg) + (y - 640) * Math.cos(deg),
+  ];
+
+  const stepShape = (depthPx) => [
+    [300, 300], [900, 300], [900, 500],
+    [900 - depthPx, 500], [900 - depthPx, 560], [900, 560],
+    [900, 800], [300, 800],
+  ].map(rot);
+
+  const traceOf = (corners, tolerancePx, maxVertices = 80) => {
+    const ring = [...corners, corners[0]].map((p) => unproject(p[0], p[1]));
+    const mask = rasterizePolygon([ring], IMG, IMG, project);
+    return polygonsFromBinary(Uint8Array.from(mask), IMG, IMG, unproject, {
+      tolerance: tolerancePx, maxVertices,
+    })[0].coordinates[0];
+  };
+
+  /* How far the nearest traced vertex is from a corner, in metres. */
+  const missAt = (traced, cornerPx) => {
+    const [cx, cy] = cornerPx;
+    return Math.min(...traced.map((ll) => {
+      const [x, y] = project(ll);
+      return Math.hypot(x - cx, y - cy);
+    })) * MPP;
+  };
+
+  const TOL_M = 0.35;
+  for (const depthM of [0.5, 0.85, 1.25]) {
+    const depthPx = depthM / MPP;
+    const corners = stepShape(depthPx);
+    const traced = traceOf(corners, TOL_M / MPP);
+    const miss = missAt(traced, corners[3]);
+    check(`a ${depthM} m step in the lawn edge keeps its corner`,
+      miss < 0.15,
+      `nearest vertex is ${miss.toFixed(2)} m away -- at the old 0.8 m this `
+      + 'step was deleted outright and the outline cut across it');
+  }
+
+  /*
+   * AND THE COARSE TOLERANCE NO LONGER DECIDES. This is the point of anchoring
+   * rather than of the smaller number: even run at the old 0.8 m, the corner
+   * survives, so the tolerance is back to doing only the job it was chosen for.
+   */
+  const deep = stepShape(0.85 / MPP);
+  check('and it survives even at the old coarse tolerance',
+    missAt(traceOf(deep, 0.8 / MPP), deep[3]) < 0.15,
+    'anchoring is what fixed this, not the smaller tolerance');
+
+  /*
+   * A STRAIGHT RUN IS STILL TWO POINTS. The whole reason the tolerance is
+   * coarse is that a long edge with twenty handles on it is unusable, and a
+   * corner-detector that fires on staircase noise would put them all back.
+   */
+  const plainBox = [[300, 300], [900, 300], [900, 800], [300, 800]].map(rot);
+  const boxRing = traceOf(plainBox, TOL_M / MPP);
+  check('a plain rectangle still comes back as a handful of points',
+    boxRing.length <= 8,
+    `${boxRing.length} points -- staircase noise read as corners would show here`);
+
+  /*
+   * AND A CURVE GETS THE POINTS IT NEEDS. The other half of the report: coarse
+   * is right for runs and wrong for beds, and one tolerance was serving both.
+   */
+  const blob = [];
+  for (let a = 0; a < 360; a += 2) {
+    const r = 260 + 70 * Math.sin((3 * a * Math.PI) / 180);
+    blob.push([640 + r * Math.cos((a * Math.PI) / 180), 640 + r * Math.sin((a * Math.PI) / 180)]);
+  }
+  const curvy = traceOf(blob, TOL_M / MPP);
+  check('a curved bed is given more points than a straight-sided lawn',
+    curvy.length > boxRing.length * 2,
+    `${curvy.length} points for the bed against ${boxRing.length} for the box`);
+
+  /*
+   * THE BUDGET MUST THIN RUNS AND CURVES, NEVER CORNERS.
+   *
+   * Squeezed onto a shape that is mostly curve with one sharp notch in it: the
+   * arc has points to give up and the notch does not. A budget below the
+   * corner count is not tested because it cannot be honoured -- eight corners
+   * need nine ring points, and something has to go.
+   */
+  const notched = [];
+  for (let a = 0; a < 360; a += 3) {
+    const r = 280;
+    notched.push([640 + r * Math.cos((a * Math.PI) / 180), 640 + r * Math.sin((a * Math.PI) / 180)]);
+  }
+  notched.splice(8, 0, [640 + 140, 640 + 40], [640 + 150, 640 + 90]);
+  const notch = notched[8];
+
+  const roomy = traceOf(notched, TOL_M / MPP, 80);
+  const tight = traceOf(notched, TOL_M / MPP, 20);
+  check('a squeezed shape gives up points from its curve',
+    tight.length < roomy.length && tight.length <= 21,
+    `${roomy.length} points at a roomy budget, ${tight.length} when squeezed`);
+  check('and still keeps the one sharp corner it has',
+    missAt(tight, notch) < 0.25,
+    `${missAt(tight, notch).toFixed(2)} m off -- the tolerance rises first, `
+    + 'and corners go last');
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);
