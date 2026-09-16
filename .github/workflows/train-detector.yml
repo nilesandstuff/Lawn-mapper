@@ -1,0 +1,52 @@
+name: 12. Train a lawn detector
+
+# Trains a small model on the approved maps and says whether it beats the
+# detector we pay for, measured on lawns it was never shown.
+#
+# FREE. No Replicate, no predictions, no imagery fetched from anybody --
+# the photographs are already in the R2 bucket and the corrected outlines are
+# already in D1. This is arithmetic over things that have been sitting there.
+#
+# Run it whenever a batch of maps has been approved. The answer it gives is
+# not "is the model good" but "is it better than what we have, yet" -- which
+# is the only question that decides anything.
+on:
+  workflow_dispatch:
+
+jobs:
+  train:
+    name: Train and leave one out
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      # Not in package.json: nothing the Worker or the site ships needs to
+      # decode a PNG, and a dependency that exists only for one workflow does
+      # not belong in the thing that gets deployed.
+      - name: Install the image decoders
+        run: npm install pngjs jpeg-js --no-save
+
+      - name: Train, and test on lawns it has not seen
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CORPUS_BUCKET: lawn-mapper-corpus
+        run: node tools/train-detector.js
+
+      - name: If that failed
+        if: failure()
+        run: |
+          echo "Nothing was trained, and nothing was spent finding that out."
+          echo
+          echo "The usual reasons, in order of likelihood:"
+          echo "  * no approved maps have a stored photograph yet -- the console's"
+          echo "    Training data card shows how many do"
+          echo "  * the R2 bucket is not reachable with this API token"
+          echo "  * the corpus table is not there, which the deploy would also say"
