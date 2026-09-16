@@ -48,6 +48,7 @@ import { handleMaps } from './routes-maps.js';
 import { handleAdmin, isAdminPath } from './routes-admin.js';
 import { accountsEnabled, publicUser } from './db.js';
 import { currentUser } from './auth.js';
+import { recordParcelGap } from './gaps.js';
 // Constants and the version lookup live in their own module: a Workers
 // entrypoint may only export handlers, and exporting a plain constant from
 // here kills the isolate on startup.
@@ -158,6 +159,22 @@ async function handleGeocode(url, env, origin) {
         // road, which puts the SAM prompt point on asphalt.
         accuracy: p.match_code?.confidence || 'unknown',
         inCoverage: isCovered(lng, lat),
+        /*
+         * WHERE THIS IS, IN THE GEOCODER'S OWN WORDS, so a failed parcel
+         * lookup can be filed under a place name.
+         *
+         * Taken from here rather than reverse-geocoded later, for two
+         * reasons. It is free -- the answer is already in this response and
+         * was being thrown away -- and it is the county of the address the
+         * person actually picked, which a second lookup from a rounded
+         * coordinate could disagree with.
+         *
+         * Mapbox calls a US county a "district". The region carries a code
+         * (MI) and a name (Michigan); the code is what fits a narrow column
+         * on a phone.
+         */
+        county: p.context?.district?.name || null,
+        state: p.context?.region?.region_code || p.context?.region?.name || null,
       };
     })
     .filter((r) => r.label);
@@ -166,7 +183,7 @@ async function handleGeocode(url, env, origin) {
 }
 
 /* ----------------------------------------------------------------- parcel */
-async function handleParcel(url, origin) {
+async function handleParcel(request, url, env, origin, ctx) {
   const lng = parseFloat(url.searchParams.get('lng'));
   const lat = parseFloat(url.searchParams.get('lat'));
   if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
@@ -177,7 +194,35 @@ async function handleParcel(url, origin) {
   if (!parcel) {
     // Not an error. Most of the country, and plenty of covered addresses,
     // land here. The UI drops straight to manual boundary drawing.
-    return json({ parcel: null, covered: isCovered(lng, lat) }, 200, origin);
+    const covered = isCovered(lng, lat);
+
+    /*
+     * BANK THE MISS. Which counties people actually ask for is the only
+     * evidence that says which one to add next, and it exists for a moment
+     * and then is gone -- the visitor traces by hand and nothing remembers
+     * they were ever turned away.
+     *
+     * waitUntil, so the bookkeeping never sits between somebody and the
+     * answer. recordParcelGap swallows its own failures too: this route's job
+     * is to say whether there is a boundary, and it must go on doing that
+     * with a missing table, a locked one, or a full one.
+     *
+     * Signed-in accounts count as themselves, everyone else as the browser id
+     * the app already sends for its allowance. Nothing here stores an address
+     * or an IP -- the question is how many people, not who.
+     */
+    const record = (async () => {
+      const me = await currentUser(request, env, ctx).catch(() => null);
+      await recordParcelGap(env, {
+        county: url.searchParams.get('county'),
+        state: url.searchParams.get('state'),
+        who: me?.id || url.searchParams.get('clientId'),
+        covered,
+      });
+    })();
+    if (ctx?.waitUntil) ctx.waitUntil(record); else await record.catch(() => {});
+
+    return json({ parcel: null, covered }, 200, origin);
   }
 
   return json(
@@ -906,7 +951,7 @@ export default {
         case '/api/prediction':
           return await handlePrediction(url, env, origin);
         case '/api/parcel':
-          return await handleParcel(url, origin);
+          return await handleParcel(request, url, env, origin, ctx);
         case '/api/imagery':
           return await handleImagery(url, env, origin);
         case '/api/segment':

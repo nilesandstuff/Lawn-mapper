@@ -139,7 +139,8 @@
     background: #e4f2e5; border-color: #9ec5a1; color: #1f5b22; font-weight: 600;
   }
   #review .ask .meta { font-size: 11.5px; color: var(--muted); margin: 6px 0 0; }
-  #queue-pick button.on { background: var(--ink, #23301f); color: #fff; border-color: transparent; }
+  #queue-pick button.on,
+  #gap-sort button.on { background: var(--ink, #23301f); color: #fff; border-color: transparent; }
   #review .actions button.on { background: #e4f2e5; border-color: #9ec5a1; color: #1f5b22; font-weight: 600; }
   .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11.5px;
             color: var(--muted); margin-top: 7px; }
@@ -249,6 +250,22 @@
         than a hundred of the thing at the bottom.
       </p>
       <div id="corpus"><p class="empty">Loading…</p></div>
+    </div>
+
+    <div class="card">
+      <h2>Counties people asked for and did not get</h2>
+      <p class="sub">
+        Every address typed into the bar that came back with no property line,
+        grouped by the county it was in. <b>Times asked</b> and <b>people</b>
+        say different things: fifty lookups is one person stuck or fifty people
+        interested, and only the second is a reason to add a county.
+      </p>
+      <div class="actions" id="gap-sort">
+        <button id="gap-hits" class="on">Most asked</button>
+        <button id="gap-people">Most people</button>
+        <button id="gap-recent">Most recent</button>
+      </div>
+      <div id="gaps"><p class="empty">Loading…</p></div>
     </div>
 
     <div class="card">

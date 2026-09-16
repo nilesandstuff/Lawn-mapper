@@ -26,6 +26,7 @@ import { limits, limitsForConsole, setLimit, LIMITS } from './limits.js';
 import { logEntries, loggingEnabled } from './testlog.js';
 import { feedbackEntries, feedbackEnabled } from './feedback.js';
 import { corpusGaps, candidateScore } from './corpus.js';
+import { parcelGaps } from './gaps.js';
 
 export const isAdminPath = (pathname) => pathname.startsWith('/api/admin/');
 
@@ -791,6 +792,26 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
      */
     if (!loggingEnabled(env)) return json({ entries: [], logging: false }, 200, origin);
     return json({ ...(await logEntries(env, 200)), logging: true }, 200, origin);
+  }
+
+  /* -------------------------------------- counties people asked for in vain */
+  /*
+   * WHICH COUNTY TO ADD NEXT, answered with evidence instead of a hunch.
+   *
+   * Counties get added because somebody noticed a server existed, which
+   * selects for the ones that are easy rather than the ones anybody wants.
+   * This is the other half: every address typed into the bar that came back
+   * with no boundary, ranked.
+   *
+   * Sorted in SQL rather than in the console because the list is cut to a
+   * limit -- re-sorting a truncated page in the browser gives the top fifty by
+   * one measure arranged by the other, which looks right and is not.
+   */
+  if (path === 'parcel-gaps') {
+    return json(await parcelGaps(env, {
+      sort: url.searchParams.get('sort') || 'hits',
+      limit: url.searchParams.get('limit') || 50,
+    }), 200, origin);
   }
 
   if (path === 'feedback') {

@@ -698,6 +698,70 @@ function paint(canvas, c) {
 
 /* -------------------------------------------------------- training data */
 
+/* --------------------------------------- counties asked for and not served */
+
+/*
+ * WHICH COUNTY TO ADD NEXT, from what people actually typed.
+ *
+ * The counties list grew by somebody noticing a server existed, which selects
+ * for counties that are easy to add rather than counties anybody wants. This
+ * is the evidence for the other question, and it only exists because somebody
+ * wrote the misses down: a visitor who gets no property line traces by hand
+ * and nothing about that moment survives it.
+ *
+ * SORTED BY THE SERVER, not here. The list is cut to a limit, so re-ordering
+ * the loaded page in the browser would give the top fifty by one measure
+ * arranged by the other -- indistinguishable on screen from the right answer.
+ * Switching the sort re-asks.
+ */
+let gapSort = 'hits';
+
+async function renderGaps() {
+  const box = $('#gaps');
+  const data = await get(`/api/admin/parcel-gaps?sort=${gapSort}`);
+  box.innerHTML = '';
+
+  if (data.unavailable) {
+    box.append(el('p', 'empty', `Cannot read the list: ${data.unavailable}`));
+    return;
+  }
+  if (!data.places?.length) {
+    box.append(el('p', 'empty',
+      'Nobody has been turned away yet — or nothing has been recorded since '
+      + 'this started counting.'));
+    return;
+  }
+
+  for (const p of data.places) {
+    const row = el('div', 'entry');
+    const top = el('div', 'top');
+    top.append(el('b', null, `${p.county}, ${p.state}`));
+    top.append(el('span', 'pill', `${n(p.hits)} asked`));
+    top.append(el('span', 'pill free',
+      `${n(p.people)} ${p.people === 1 ? 'person' : 'people'}`));
+
+    /*
+     * The two cases need opposite work, so they are never one row type. A
+     * county with no entry at all is one to ADD -- that is workflow 3. One
+     * that IS configured and still answered nothing is a server, a layer or a
+     * field name to look at, or simply a run of right-of-way points, which is
+     * why this is shown rather than warned about.
+     */
+    if (p.configured) {
+      const pill = el('span', 'pill warn', 'configured, still nothing');
+      pill.title = 'This county is in the list and the lookup came back empty '
+        + 'anyway. Could be its server, or could be points landing on roads.';
+      top.append(pill);
+    }
+    row.append(top);
+
+    row.append(el('div', 'meta', p.lastAt
+      ? `last asked ${new Date(p.lastAt).toLocaleDateString()}`
+      : ''));
+    box.append(row);
+  }
+}
+
 /*
  * WHAT TO GO AND MAP NEXT, which is the only question this panel answers.
  *
@@ -1056,6 +1120,23 @@ async function renderLog() {
   renderSettings().catch(() => { $('#settings').textContent = 'Could not load the limits.'; });
   renderReview().catch(() => { $('#review').textContent = 'Could not load the candidates.'; });
   renderCorpus().catch(() => { $('#corpus').textContent = 'Could not load the training data.'; });
+  renderGaps().catch(() => { $('#gaps').textContent = 'Could not load the county list.'; });
+
+  /* Each sort is a fresh question to the server, for the reason in renderGaps. */
+  const GAP_SORTS = [
+    ['#gap-hits', 'hits'],
+    ['#gap-people', 'people'],
+    ['#gap-recent', 'recent'],
+  ];
+  for (const [id, which] of GAP_SORTS) {
+    $(id).addEventListener('click', () => {
+      if (gapSort === which) return;
+      gapSort = which;
+      for (const [other, name] of GAP_SORTS) $(other).classList.toggle('on', name === which);
+      $('#gaps').innerHTML = '';
+      renderGaps().catch(() => { $('#gaps').textContent = 'Could not load the county list.'; });
+    });
+  }
 
   /*
    * Switching queue throws away the loaded page rather than filtering it. The

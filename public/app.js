@@ -1495,7 +1495,22 @@ async function confirmLocation() {
 
   try {
     const { lng, lat } = state.chosen;
-    const data = await api(`/api/parcel?lng=${lng}&lat=${lat}`);
+    /*
+     * The county and state come back from the geocoder and go straight back
+     * out again, so a lookup that finds no boundary can be filed under a place
+     * name. Without them the console's list of unserved counties would be one
+     * enormous "unknown" row -- the coordinates alone cannot be read as a
+     * place by anybody deciding which county to add next.
+     *
+     * The client id is the one the allowance already uses, and it is here to
+     * separate "fifty people asked" from "one person asked fifty times" --
+     * opposite findings that a hit count alone cannot tell apart.
+     */
+    const where = new URLSearchParams({ lng, lat });
+    if (state.chosen.county) where.set('county', state.chosen.county);
+    if (state.chosen.state) where.set('state', state.chosen.state);
+    if (state.clientId) where.set('clientId', state.clientId);
+    const data = await api(`/api/parcel?${where}`);
     state.parcel = data.parcel || null;
 
     if (state.parcel) {

@@ -1027,5 +1027,103 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
     kept.review_queue);
 }
 
+/*
+ * WHERE PEOPLE ASKED AND GOT NOTHING.
+ *
+ * The counties list grew by somebody noticing a server existed, which selects
+ * for counties that are easy to add rather than ones anybody wants. This is
+ * the evidence for the other question, and it is only evidence if the two
+ * numbers mean what they say.
+ */
+{
+  const { env, ownerToken } = await world();
+  const { recordParcelGap } = await import('../worker/src/gaps.js');
+
+  /* One county, one person, asked four times. */
+  for (let i = 0; i < 4; i++) {
+    await recordParcelGap(env, { county: 'Kalamazoo County', state: 'MI', who: 'alice' });
+  }
+  /* Another, three different people, once each. */
+  for (const who of ['bob', 'carol', 'dave']) {
+    await recordParcelGap(env, { county: 'Barry County', state: 'MI', who });
+  }
+
+  const byHits = (await ask(env, ownerToken, 'parcel-gaps?sort=hits')).body;
+  const byPeople = (await ask(env, ownerToken, 'parcel-gaps?sort=people')).body;
+
+  const kzoo = byHits.places.find((p) => p.county === 'Kalamazoo County');
+  const barry = byHits.places.find((p) => p.county === 'Barry County');
+
+  /*
+   * THE DISTINCTION THE WHOLE THING RESTS ON. Four lookups from one person and
+   * three from three people: whichever number you read alone, you get the
+   * counties the wrong way round. One is somebody stuck -- quite possibly the
+   * owner testing -- and the other is demand.
+   */
+  check('repeat lookups by one person count as one person',
+    kzoo?.hits === 4 && kzoo?.people === 1,
+    JSON.stringify(kzoo));
+  check('and separate people are counted separately',
+    barry?.hits === 3 && barry?.people === 3,
+    JSON.stringify(barry));
+
+  check('sorting by times asked puts the busiest county first',
+    byHits.places[0].county === 'Kalamazoo County',
+    byHits.places.map((p) => `${p.county}:${p.hits}`).join(', '));
+  check('and sorting by people puts the most wanted county first',
+    byPeople.places[0].county === 'Barry County',
+    byPeople.places.map((p) => `${p.county}:${p.people}`).join(', '));
+
+  /*
+   * A county that IS configured and still answered nothing is a different job
+   * from one that is missing -- a server to look at rather than a county to
+   * add -- so the two are never one row type.
+   */
+  await recordParcelGap(env, { county: 'Kent County', state: 'MI', who: 'erin', covered: true });
+  const withKent = (await ask(env, ownerToken, 'parcel-gaps?sort=hits')).body;
+  check('a configured county that answered nothing is marked as such',
+    withKent.places.find((p) => p.county === 'Kent County')?.configured === true,
+    'adding a county that is already in the list would be the wrong fix');
+  check('and one that was never configured is not',
+    withKent.places.find((p) => p.county === 'Barry County')?.configured === false);
+
+  /*
+   * A MISS WITH NO COUNTY NAME IS NOT RECORDED. Most of those are the sea, or
+   * a point the geocoder placed outside any county it names. Filing them under
+   * "unknown" would build the biggest row in the table out of precisely the
+   * cases nobody can act on, and put it at the top of the ranking.
+   */
+  const before = (await ask(env, ownerToken, 'parcel-gaps')).body.places.length;
+  check('a lookup with no county name is dropped rather than filed as unknown',
+    (await recordParcelGap(env, { county: null, state: 'MI', who: 'frank' })) === false
+    && (await recordParcelGap(env, { county: '   ', state: '', who: 'frank' })) === false,
+    'an "unknown" row would outgrow every real one and rank above them');
+  check('and nothing was added to the list by trying',
+    (await ask(env, ownerToken, 'parcel-gaps')).body.places.length === before);
+
+  /*
+   * An unknown sort must not reach the database. ORDER BY cannot be a bound
+   * parameter, so the only safe shape is a fixed map with a fallback.
+   */
+  const odd = (await ask(env, ownerToken, 'parcel-gaps?sort=hits;DROP TABLE users--')).body;
+  check('an unrecognised sort falls back rather than being interpolated',
+    odd.sort === 'hits' && Array.isArray(odd.places),
+    JSON.stringify(odd.sort));
+
+  /*
+   * And it must never be able to break the lookup it rides along with. The
+   * parcel route's job is to say whether there is a boundary; a bookkeeping
+   * table that is missing must not turn that into a failed request.
+   */
+  await env.DB.prepare('DROP TABLE parcel_gaps').run();
+  let threw = null;
+  try {
+    await recordParcelGap(env, { county: 'Ottawa County', state: 'MI', who: 'gail' });
+  } catch (e) { threw = e.message; }
+  check('recording a miss with no table to write to fails quietly',
+    threw === null,
+    threw || 'a visitor being turned away must not also get an error');
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);

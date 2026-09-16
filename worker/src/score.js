@@ -357,9 +357,17 @@ export function verdict(summary, { label = 'the detector' } = {}) {
       + `where there is none (${easy.maps}), ${pct(easy.medianErrorPct)}. `
       + (worse > 5
         ? (usingSome
+          /*
+           * Says what was measured and stops. It used to end "those should be
+           * worse still", which is the report predicting a result from data it
+           * does not have -- the same fault as the trim line it replaced, in a
+           * smaller place. Whether the hard cases are worse is the question
+           * the grade exists to answer, and answering it in advance is how a
+           * measurement turns back into a premise.
+           */
           ? 'That is the EASIER canopy case and it is already the worse half, so '
             + 'trees are doing real damage. Nothing is graded "decided the edge" '
-            + 'yet — those should be worse still.'
+            + 'yet, so the hard cases are still unmeasured.'
           : 'The canopy cases really are the hard ones, which is what the grade was for.')
         : 'The two are close, so the fault is NOT mostly about trees — worth knowing '
           + 'before any more effort goes into collecting tree cases.')

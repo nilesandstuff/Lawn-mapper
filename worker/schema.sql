@@ -371,3 +371,41 @@ CREATE TABLE IF NOT EXISTS corpus (
 CREATE INDEX IF NOT EXISTS corpus_at ON corpus(at DESC);
 -- The export query: usable imagery, actually corrected, newest first.
 CREATE INDEX IF NOT EXISTS corpus_pick ON corpus(provider, hand_edited, at DESC);
+
+-- ---------------------------------------------------------------------------
+-- WHERE PEOPLE ASKED FOR A PROPERTY LINE AND THERE WAS NONE.
+--
+-- The counties list is a guess about where the customers are. This is the
+-- measurement: every address somebody actually typed that came back with no
+-- boundary, grouped by the county it was in. A county at the top of this table
+-- with real people behind it is worth a morning in workflow 3; one nobody has
+-- ever asked for is not, however easy its server would be to add.
+--
+-- ONE ROW PER (county, state, person), NOT ONE PER LOOKUP.
+--
+-- Two numbers were asked for and they need different things. Hits is a sum, so
+-- a counter serves it. Unique people cannot be recovered from a counter at
+-- all -- it needs the identities kept apart -- and keeping one row per lookup
+-- to get it would grow without limit for a table that is only ever read as an
+-- aggregate. Keying on the person gives both exactly: SUM(hits) is the first,
+-- COUNT(*) within a county is the second, and the row count is bounded by
+-- counties times people rather than by traffic.
+--
+-- `covered` is whether a county was CONFIGURED and still gave nothing, which
+-- is a different job from one that is missing entirely: the first is a server
+-- to look at, the second is a county to add. Stored as a max over the group,
+-- because a county that has ever answered is configured.
+CREATE TABLE IF NOT EXISTS parcel_gaps (
+  county    TEXT NOT NULL,
+  state     TEXT NOT NULL,
+  -- The account id when signed in, the browser's own client id otherwise.
+  -- Never an address and never an IP: this answers "how many people", and the
+  -- rest of the row is already the only part anybody needs.
+  who       TEXT NOT NULL,
+  hits      INTEGER NOT NULL DEFAULT 0,
+  covered   INTEGER NOT NULL DEFAULT 0,
+  first_at  TEXT NOT NULL,
+  last_at   TEXT NOT NULL,
+  PRIMARY KEY (county, state, who)
+);
+CREATE INDEX IF NOT EXISTS parcel_gaps_place ON parcel_gaps(state, county);
