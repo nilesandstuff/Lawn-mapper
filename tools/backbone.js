@@ -61,17 +61,21 @@ export async function loadBackbone({ model = BACKBONE_MODEL, dtype = 'fp32' } = 
  *
  * `rgb` is RGBA or RGB bytes at `w` x `h`; it is box-averaged to `size`.
  */
-export function imageTensor(lib, rgb, w, h, size, { channels = 4 } = {}) {
+export function imageTensor(lib, rgb, w, h, size, {
+  channels = 4, rect = null,
+} = {}) {
   const data = new Float32Array(3 * size * size);
-  const sx = w / size;
-  const sy = h / size;
+  /* A window of the source, for tiling; the whole thing by default. */
+  const [rx, ry, rw, rh] = rect || [0, 0, w, h];
+  const sx = rw / size;
+  const sy = rh / size;
 
   for (let y = 0; y < size; y++) {
-    const y0 = Math.floor(y * sy);
-    const y1 = Math.max(y0 + 1, Math.floor((y + 1) * sy));
+    const y0 = ry + Math.floor(y * sy);
+    const y1 = Math.max(y0 + 1, ry + Math.floor((y + 1) * sy));
     for (let x = 0; x < size; x++) {
-      const x0 = Math.floor(x * sx);
-      const x1 = Math.max(x0 + 1, Math.floor((x + 1) * sx));
+      const x0 = rx + Math.floor(x * sx);
+      const x1 = Math.max(x0 + 1, rx + Math.floor((x + 1) * sx));
       let r = 0, g = 0, b = 0, n = 0;
       for (let yy = y0; yy < y1 && yy < h; yy++) {
         for (let xx = x0; xx < x1 && xx < w; xx++) {
@@ -96,8 +100,8 @@ export function imageTensor(lib, rgb, w, h, size, { channels = 4 } = {}) {
  * row-major. The leading classification token is dropped: it describes the
  * whole picture, and every patch would carry the same copy of it.
  */
-export async function patchFeatures({ lib, net }, rgb, w, h, size) {
-  const pixel_values = imageTensor(lib, rgb, w, h, size, { channels: 4 });
+export async function patchFeatures({ lib, net }, rgb, w, h, size, { rect = null } = {}) {
+  const pixel_values = imageTensor(lib, rgb, w, h, size, { channels: 4, rect });
   const out = await net({ pixel_values });
   const hidden = out.last_hidden_state;
   if (!hidden) throw new Error(`no last_hidden_state; got ${Object.keys(out).join(', ')}`);
@@ -120,6 +124,74 @@ export async function patchFeatures({ lib, net }, rgb, w, h, size) {
     for (let d = 0; d < dim; d++) data[p * dim + d] = src[(p + 1) * dim + d];
   }
   return { data, gridW: side, gridH: side, dim };
+}
+
+/**
+ * The export is frozen at this input size. Measured, not assumed.
+ *
+ * DINOv2 itself takes any multiple of the patch size -- it interpolates its
+ * position embeddings -- but the ONNX conversion baked the table in at 257
+ * tokens, which is one class token plus a 16x16 grid. Anything larger is
+ * refused outright by the graph:
+ *
+ *   Attempting to broadcast an axis by a dimension other than 1. 257 by 2705
+ *
+ * where 2705 is the 52x52 grid a 728px input would need. Workflow 13 checks
+ * this, and re-checks it, because a future export may lift the restriction and
+ * this whole tiling arrangement exists only because of it.
+ */
+export const NATIVE_SIZE = 224;
+
+/**
+ * Features over a frame, by running the model on TILES of it.
+ *
+ * WHY. One pass over a whole property gives a 16x16 grid -- one patch every
+ * 3.3 m on a typical lot, which is coarser than the hand-written features this
+ * is meant to improve on and useless for an edge. The size cannot be raised,
+ * so the ground covered per pass comes down instead: sixteen tiles of a lot
+ * are sixteen patches each across a quarter of its width, which is about 0.8 m
+ * a patch.
+ *
+ * AND IT IS RUN AT TWO SCALES, which costs one extra pass and buys the thing
+ * tiling otherwise loses. A tile only sees itself, so a patch in the middle of
+ * one has no idea it is in a garden surrounded by trees -- and that context is
+ * the entire reason for using a pretrained model rather than more colour
+ * statistics. So the whole frame is also run coarsely, and every pixel carries
+ * both: what is here at 0.8 m, and what kind of place this is at 3.3 m.
+ *
+ * Cheap enough not to think about: a pass is about 0.1s, so seventeen of them
+ * is under two seconds a lawn.
+ */
+export async function tiledFeatures(bag, rgb, w, h, { tiles = 4, size = NATIVE_SIZE } = {}) {
+  const side = size / PATCH;
+  const gridW = tiles * side;
+  const gridH = tiles * side;
+  let dim = 0;
+  let data = null;
+
+  for (let ty = 0; ty < tiles; ty++) {
+    for (let tx = 0; tx < tiles; tx++) {
+      const rect = [
+        Math.floor((tx * w) / tiles), Math.floor((ty * h) / tiles),
+        Math.ceil(w / tiles), Math.ceil(h / tiles),
+      ];
+      const f = await patchFeatures(bag, rgb, w, h, size, { rect });
+      if (!data) {
+        dim = f.dim;
+        data = new Float32Array(gridW * gridH * dim);
+      }
+      /* Each tile's own 16x16 block, placed where that tile sits. */
+      for (let py = 0; py < side; py++) {
+        for (let px = 0; px < side; px++) {
+          const from = (py * side + px) * dim;
+          const to = ((ty * side + py) * gridW + (tx * side + px)) * dim;
+          for (let d = 0; d < dim; d++) data[to + d] = f.data[from + d];
+        }
+      }
+    }
+  }
+
+  return { data, gridW, gridH, dim };
 }
 
 /**
