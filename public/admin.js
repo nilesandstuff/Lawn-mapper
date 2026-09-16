@@ -295,6 +295,19 @@ function drawCandidate(c) {
   const head = el('div', 'who');
   head.append(el('b', null, c.county || 'somewhere with no county record'));
   head.append(el('span', 'pill', `${n(c.squareFeet)} sq ft`));
+
+  /*
+   * How many separate pieces the lawn is. Shown because a map made of eight
+   * overlapping pieces looks like a mess on the canvas and there was no way to
+   * tell whether that was the data or the drawing of it.
+   *
+   * Pieces are normal and overlap is harmless: the training target is a filled
+   * mask, so two shapes over the same ground paint the same pixels, and the
+   * square footage already has overlap taken out of it. This is here to be
+   * read, not to be acted on.
+   */
+  const pieces = (c.shapes || []).length;
+  if (pieces > 1) head.append(el('span', 'pill free', `${pieces} pieces`));
   if (c.parcelSource === 'hand') head.append(el('span', 'pill free', 'traced boundary'));
 
   /*
@@ -540,8 +553,27 @@ function paint(canvas, c) {
     };
 
     if (c.parcel) ring(c.parcel, REVIEW_COLOURS.parcel, 2.5);
-    if (showAi) for (const g of c.detectedShapes || []) ring(g, REVIEW_COLOURS.ai, 2);
-    for (const g of c.shapes || []) ring(g, REVIEW_COLOURS.lawn, 2.5, 'rgba(78,194,106,.22)');
+
+    /*
+     * ORDER MATTERS, and it was wrong.
+     *
+     * The AI outline was drawn first and the lawn painted over it with a
+     * translucent green fill, which washed it out. Pressing "show the AI's
+     * version" changed almost nothing on screen, so the one way to tell which
+     * pieces a person drew and which the detector did was unusable.
+     *
+     * With the AI shown the lawn drops its fill and the AI goes on top, dashed.
+     * Two outlines, both readable, which is the whole point of the comparison.
+     */
+    const showing = showAi && (c.detectedShapes || []).length;
+    for (const g of c.shapes || []) {
+      ring(g, REVIEW_COLOURS.lawn, 2.5, showing ? null : 'rgba(78,194,106,.22)');
+    }
+    if (showing) {
+      ctx.setLineDash([6, 4]);
+      for (const g of c.detectedShapes) ring(g, REVIEW_COLOURS.ai, 2);
+      ctx.setLineDash([]);
+    }
   };
 
   if (!c.hasImage) { overlay(); return; }
