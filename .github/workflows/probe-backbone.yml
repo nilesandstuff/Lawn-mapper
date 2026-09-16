@@ -1,0 +1,49 @@
+name: 13. Check the pretrained eye
+
+# Runs one synthetic image through DINOv2 and reports what came back.
+#
+# FREE, and deliberately separate from training. Three things have to be true
+# before the backbone is worth building on, and none can be checked from a
+# machine that cannot reach huggingface.co: that it loads on a CPU runner at
+# all, that it accepts an input larger than the 224 it was exported at, and
+# that its output is shaped the way the reader assumes.
+#
+# The middle one is the reason this is not just folded into workflow 12. An
+# export with that axis frozen does not fail -- it quietly runs at 224, which
+# over a 40 m frame is one patch every 2.5 m, and the result would read as
+# "the backbone did not help" rather than as "it never ran at the size asked".
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    name: Load it and look at what comes out
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      # Not in package.json: the Worker and the site ship nothing that needs a
+      # neural network, and this is ~200 MB of it.
+      - name: Install the model runner
+        run: npm install @huggingface/transformers --no-save
+
+      - name: Run one picture through it
+        run: node tools/probe-backbone.js
+
+      - name: If that failed
+        if: failure()
+        run: |
+          echo "Nothing was spent finding this out."
+          echo
+          echo "The likely reasons, in order:"
+          echo "  * the runner could not reach huggingface.co to fetch weights"
+          echo "  * onnxruntime's native binary did not install"
+          echo "  * the export refuses every input size, so this model cannot"
+          echo "    be used at a useful resolution and another one is needed"
