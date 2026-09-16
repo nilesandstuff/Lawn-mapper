@@ -27,7 +27,8 @@ import { query } from './corpus-db.js';
  * rejected map through a CI log, and the shapes are the big column.
  */
 const QUERY = `
-  SELECT id, county, tree_line, square_feet, shapes, detected_shapes, parcel
+  SELECT id, county, tree_line, square_feet, shapes, detected_shapes, parcel,
+         model, mode
     FROM corpus
    WHERE status = 'approved'
    ORDER BY at DESC
@@ -77,6 +78,13 @@ function main() {
     score.canopy = row.tree_line === null || row.tree_line === undefined
       ? 'ungraded' : Number(row.tree_line);
     score.county = row.county;
+    /*
+     * Which detector actually produced this outline. Model AND mode, because
+     * Find-grass and Exclude-objects ask opposite questions of the same model
+     * and score differently for it -- naming only the model would put them in
+     * one bucket and call the average a baseline.
+     */
+    score.run = `${row.model || 'no model'} / ${row.mode || 'no mode'}`;
     scored.push(score);
 
     const sign = score.signedSqFt >= 0 ? '+' : '';
@@ -96,6 +104,17 @@ function main() {
     for (const [key, b] of Object.entries(summary.byCanopy)) {
       console.log(
         `  ${CANOPY_LABEL[key].padEnd(24)} ${String(b.maps).padStart(3)} maps  `
+        + `${b.medianErrorPct.toFixed(1).padStart(5)}% wrong  `
+        + `${b.medianSignedPct >= 0 ? '+' : ''}${b.medianSignedPct.toFixed(1)}% signed`
+      );
+    }
+
+    /* And by which detector drew it, so two settings are never one average. */
+    console.log('\nBy how it was detected:');
+    for (const [key, b] of Object.entries(summary.byRun)) {
+      if (!b) continue;
+      console.log(
+        `  ${key.padEnd(24).slice(0, 24)} ${String(b.maps).padStart(3)} maps  `
         + `${b.medianErrorPct.toFixed(1).padStart(5)}% wrong  `
         + `${b.medianSignedPct >= 0 ? '+' : ''}${b.medianSignedPct.toFixed(1)}% signed`
       );

@@ -241,6 +241,55 @@ const box = (x, y, w, h) => ({
     { errorPct: 19, signedPct: 19, signedSqFt: 1, extraSqFt: 1, missedSqFt: 0, canopy: 0 },
     { errorPct: 20, signedPct: 20, signedSqFt: 1, extraSqFt: 1, missedSqFt: 0, canopy: 0 },
   ]);
+  /*
+   * THE FIRST REAL RUN WENT QUIET ON A RESULT IT HAD ALREADY MEASURED.
+   *
+   * It looked only for grade 2 against grade 0, and no map was graded 2, so it
+   * printed "not enough graded maps" -- while holding four maps at 17.9% and
+   * four at 37.4%. More than double, measured, and unmentioned. Grade 1 is now
+   * the fallback, labelled as itself.
+   */
+  const noHardCases = summarise([
+    { errorPct: 37, signedPct: -3, signedSqFt: -1, extraSqFt: 0, missedSqFt: 1, canopy: 1 },
+    { errorPct: 38, signedPct: -3, signedSqFt: -1, extraSqFt: 0, missedSqFt: 1, canopy: 1 },
+    { errorPct: 17, signedPct: -10, signedSqFt: -1, extraSqFt: 0, missedSqFt: 1, canopy: 0 },
+    { errorPct: 18, signedPct: -10, signedSqFt: -1, extraSqFt: 0, missedSqFt: 1, canopy: 0 },
+  ]);
+  const fellBack = verdict(noHardCases).join(' ');
+  check('with nothing graded "decided the edge" it still compares what it has',
+    !/Not enough graded maps/.test(fellBack) && /17\.5%|17\.0%|18\.0%/.test(fellBack),
+    fellBack);
+  check('and says it is the EASIER canopy case, not the hard one',
+    /EASIER canopy case/.test(fellBack),
+    'reporting grade 1 as though it were grade 2 would overstate the measurement');
+
+  /*
+   * A POOLED FIGURE ACROSS TWO CONFIGURATIONS IS NOT A BASELINE, and the
+   * report has to say so or a later run cannot be read as better or worse.
+   */
+  const twoConfigs = summarise([
+    { errorPct: 10, signedPct: 5, signedSqFt: 1, extraSqFt: 1, missedSqFt: 0, canopy: 0, run: 'sam3 / find' },
+    { errorPct: 11, signedPct: 5, signedSqFt: 1, extraSqFt: 1, missedSqFt: 0, canopy: 0, run: 'sam3 / find' },
+    { errorPct: 40, signedPct: 5, signedSqFt: 1, extraSqFt: 1, missedSqFt: 0, canopy: 0, run: 'sam3 / exclude' },
+    { errorPct: 41, signedPct: 5, signedSqFt: 1, extraSqFt: 1, missedSqFt: 0, canopy: 0, run: 'sam3 / exclude' },
+  ]);
+  check('two detection settings are kept apart rather than averaged',
+    twoConfigs.byRun['sam3 / find']?.maps === 2 && twoConfigs.byRun['sam3 / exclude']?.maps === 2,
+    JSON.stringify(Object.keys(twoConfigs.byRun)));
+  const warned = verdict(twoConfigs).join(' ');
+  check('and the report warns that the headline is a mixture',
+    /not a baseline/.test(warned) && /sam3 \/ exclude is the worse one/.test(warned),
+    warned);
+
+  /* One configuration needs no such caveat, and a caveat there would be noise. */
+  const single = summarise([
+    { errorPct: 10, signedPct: 5, signedSqFt: 1, extraSqFt: 1, missedSqFt: 0, canopy: 0, run: 'sam3 / find' },
+    { errorPct: 11, signedPct: 5, signedSqFt: 1, extraSqFt: 1, missedSqFt: 0, canopy: 0, run: 'sam3 / find' },
+  ]);
+  check('but a single-setting corpus is not warned about',
+    !/not a baseline/.test(verdict(single).join(' ')),
+    'the headline IS the baseline when there is only one way it was made');
+
   check('it reports when the canopy cases are NOT the hard ones',
     /NOT mostly about trees/.test(verdict(flat).join(' ')),
     'a report that can only confirm the premise is not a measurement');

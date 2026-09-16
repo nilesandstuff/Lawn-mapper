@@ -258,7 +258,33 @@ export function summarise(scored = []) {
     if (bucket) byCanopy[key] = bucket;
   }
 
-  return { overall: group(rows), byCanopy, skipped: scored.length - rows.length };
+  /*
+   * AND BY HOW THE DETECTION WAS RUN, which the pooled number hides.
+   *
+   * "The detector is 18.9% out" is one sentence about what may be several
+   * different detectors: Find-grass and Exclude-objects ask opposite questions
+   * of the same model, and a row carries whichever was used. Pooling them
+   * gives a figure that describes no configuration anybody can actually pick,
+   * and -- worse -- changing the prompt or the mode would move it for a reason
+   * nothing in the report explains.
+   *
+   * This is what makes the score usable as a BASELINE rather than a fact about
+   * the past: a later run can be compared like for like, or the difference is
+   * visible as a config change rather than an improvement.
+   */
+  const byRun = {};
+  for (const r of rows) {
+    const key = r.run || 'not recorded';
+    (byRun[key] ||= []).push(r);
+  }
+  for (const key of Object.keys(byRun)) byRun[key] = group(byRun[key]);
+
+  return {
+    overall: group(rows),
+    byCanopy,
+    byRun,
+    skipped: scored.length - rows.length,
+  };
 }
 
 /**
@@ -302,15 +328,39 @@ export function verdict(summary, { label = 'the detector' } = {}) {
     );
   }
 
-  const hard = summary.byCanopy[2];
+  /*
+   * FALL BACK TO "SOME CANOPY" RATHER THAN SAYING NOTHING.
+   *
+   * This used to look only for grade 2 against grade 0, and went quiet the
+   * moment no map was graded 2 -- which is what happened on the first real
+   * run. It reported "not enough graded maps" while holding four maps at 17.9%
+   * and four at 37.4%, a difference of more than double that it had measured
+   * and declined to mention. A report that can only speak when the data
+   * arrives in one exact shape is a report that stays silent when it matters.
+   *
+   * And the weaker grade is the STRONGER evidence when it separates. Grade 1
+   * is canopy you could still see the edge under -- the easier of the two
+   * canopy cases -- so if even that doubles the error, the effect is not
+   * subtle. Said explicitly, because comparing 1 against 0 and reporting it as
+   * though it were 2 against 0 would overstate what was measured.
+   */
   const easy = summary.byCanopy[0];
+  const hard = summary.byCanopy[2] || summary.byCanopy[1];
+  const usingSome = !summary.byCanopy[2] && Boolean(summary.byCanopy[1]);
   if (hard && easy) {
     const worse = hard.medianErrorPct - easy.medianErrorPct;
+    const what = usingSome
+      ? `Where canopy overhangs but the edge was still readable (${hard.maps})`
+      : `Where canopy decided the edge (${hard.maps})`;
     lines.push(
-      `Where canopy decided the edge (${hard.maps}) it is ${pct(hard.medianErrorPct)} out; `
+      `${what} it is ${pct(hard.medianErrorPct)} out; `
       + `where there is none (${easy.maps}), ${pct(easy.medianErrorPct)}. `
       + (worse > 5
-        ? 'The canopy cases really are the hard ones, which is what the grade was for.'
+        ? (usingSome
+          ? 'That is the EASIER canopy case and it is already the worse half, so '
+            + 'trees are doing real damage. Nothing is graded "decided the edge" '
+            + 'yet — those should be worse still.'
+          : 'The canopy cases really are the hard ones, which is what the grade was for.')
         : 'The two are close, so the fault is NOT mostly about trees — worth knowing '
           + 'before any more effort goes into collecting tree cases.')
     );
@@ -318,6 +368,25 @@ export function verdict(summary, { label = 'the detector' } = {}) {
     lines.push(
       'Not enough graded maps to say whether the canopy cases are the hard ones. '
       + 'Grade some in the console — "Needs a canopy grade" — and run this again.'
+    );
+  }
+
+  /*
+   * A POOLED NUMBER ACROSS TWO CONFIGURATIONS IS NOT A BASELINE.
+   *
+   * Said only when there is more than one, because on a single-config corpus
+   * the headline figure IS the baseline and a caveat would be noise. The
+   * moment there are two, the headline describes a mixture nobody can select,
+   * and a later run that shifts it cannot be read as better or worse.
+   */
+  const runs = Object.entries(summary.byRun || {}).filter(([, b]) => b);
+  if (runs.length > 1) {
+    const worst = runs.slice().sort((a, b) => b[1].medianErrorPct - a[1].medianErrorPct);
+    lines.push(
+      `These ${o.maps} maps were not all detected the same way — `
+      + runs.map(([k, b]) => `${k}: ${b.maps} at ${pct(b.medianErrorPct)}`).join(', ')
+      + `. The headline above is a mixture of those, so it is not a baseline any `
+      + `single setting can be measured against. ${worst[0][0]} is the worse one.`
     );
   }
 

@@ -1,4 +1,4 @@
-name: 7. Check the Mapbox token restriction
+name: 11. Check the Mapbox token restriction
 
 # Run after restricting the Mapbox token to a domain, and any time address
 # search or detection starts failing while the map still draws -- that exact

@@ -1,4 +1,4 @@
-name: 6. Verify atlas counties
+name: 10. Verify atlas counties
 
 # Proves the imported parcel endpoints before the app claims any of them, and
 # rewrites worker/src/counties-atlas.js with whatever passed.
