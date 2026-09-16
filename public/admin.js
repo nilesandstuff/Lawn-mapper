@@ -298,30 +298,29 @@ function drawCandidate(c) {
   if (c.parcelSource === 'hand') head.append(el('span', 'pill free', 'traced boundary'));
 
   /*
-   * WHICH PHOTOGRAPH IS THIS, AND IS IT THE ONE THEY MEASURED ON?
+   * Which imagery did they draw on, and is it the one we kept?
    *
-   * Often it is not, and that is deliberate rather than a fault: google and
-   * esri are licensed to look at and not to keep, so a map measured on either
-   * banks a MAPBOX picture of the same frame instead. The outlines are lng/lat
-   * so nothing moves, but the reviewer is then judging a trace against a
-   * different photograph from the one it was drawn on -- a different year,
-   * different season, different sun. Worth knowing before calling a trace
-   * wrong, and invisible until it is said.
+   * Google and Esri can be looked at but not saved, so a map drawn on either
+   * gets a Mapbox photo of the same spot saved instead. The outlines are in
+   * lng/lat so nothing shifts, but the reviewer is then judging a drawing
+   * against a different photo from the one it was drawn on. Those can be years
+   * apart. Worth knowing before calling a drawing wrong.
    *
-   * It also names the one case where a genuine mismatch is possible. NAIP is
-   * an ArcGIS image service, and those may answer with an extent snapped to
-   * their own grid rather than the one asked for -- which would draw this
-   * outline at the wrong scale while looking perfectly reasonable.
+   * Said in full words rather than "esri map · mapbox photo", which was short
+   * and needed explaining.
    */
+  const NAME = { mapbox: 'Mapbox', google: 'Google', esri: 'Esri', naip: 'NAIP', ndvi: 'NDVI' };
+  const name = (id) => NAME[id] || id;
+
   const shot = c.imageProvider || null;
-  if (shot && shot !== c.provider) {
-    const pill = el('span', 'pill free', `${c.provider} map · ${shot} photo`);
-    pill.title = `Measured on ${c.provider}, which is not kept. The picture is `
-      + `${shot} of the same frame, so the outline is right and the imagery `
-      + 'may be from another year.';
+  if (shot && c.provider && shot !== c.provider) {
+    const pill = el('span', 'pill warn', `drawn on ${name(c.provider)}, photo is ${name(shot)}`);
+    pill.title = `${name(c.provider)} imagery cannot be saved, so we kept a `
+      + `${name(shot)} photo of the same spot. The photos may be from different `
+      + 'years, so the drawing may not line up with what you are looking at.';
     head.append(pill);
   } else if (shot) {
-    head.append(el('span', 'pill free', `${shot} photo`));
+    head.append(el('span', 'pill free', `${name(shot)} photo`));
   }
 
   box.append(head);
