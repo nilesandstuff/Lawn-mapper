@@ -806,6 +806,34 @@ check('every class the code toggles is styled',
     /body\?\.treeLine === true/.test(routes),
     'a stale tab should not quietly record nothing');
 
+  /*
+   * A SETTLED MAP CAN BE LOOKED AT AGAIN.
+   *
+   * Approving was one-way, and the question that broke that was not "is this
+   * good enough" but "did the app save what the person actually drew" -- which
+   * has no answer from outside the row. The two browsing queues are the way
+   * back in, and the force flag is what separates a deliberate change of mind
+   * from the stale tap the guard exists to stop.
+   */
+  check('settled maps can be browsed again',
+    /'approved', 'rejected'/.test(routes) && /queue-approved/.test(adminHtml)
+      && /queue-rejected/.test(adminHtml),
+    'a verdict with no way back is a verdict nobody can check');
+  check('and changing one has to be said, not merely sent',
+    /body\?\.force === true/.test(routes) && /\?8 = 1 OR status = 'new'/.test(routes),
+    'loosening the guard instead would let a double tap flip a verdict');
+  check('the buttons say what they would do to the row in front of you',
+    /Keep it approved/.test(adminJs) && /Reject it after all/.test(adminJs),
+    '"Reject" over an already-rejected map is a button that does nothing');
+
+  /*
+   * And the thing the browsing was built to find: shapes stacked on top of
+   * each other, which look like one lawn with extra lines on it.
+   */
+  check('overlapping pieces are counted rather than left to the eye',
+    /distinctFraction/.test(adminJs) && /overlap by/.test(adminJs),
+    'the difference between a corrected outline and a new one drawn over it');
+
   const doc = readFileSync(join(root, 'docs/training-data.md'), 'utf8');
   check('and the rule the grade encodes is written down',
     /decided the edge/.test(doc) && /a row of trees/.test(doc),

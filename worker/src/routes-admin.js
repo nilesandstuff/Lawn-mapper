@@ -317,9 +317,22 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
        * toward the hard slice however wooded they are. The queue ends when
        * they are graded, which is the point.
        */
+      /*
+       * And two more for LOOKING BACK at settled maps.
+       *
+       * Approving used to be one-way: a verdict went in and the map left the
+       * console for good. Fine while the only question was "is this good
+       * enough", and not fine once the question became "did the app save what
+       * I actually drew" -- which can only be answered by opening one again.
+       */
+      const QUEUES = new Set(['priority', 'random', 'ungraded', 'approved', 'rejected']);
       const asked = url.searchParams.get('queue');
-      const wanted = asked === 'random' ? 'random' : asked === 'ungraded' ? 'ungraded' : 'priority';
-      const status = wanted === 'ungraded' ? 'approved' : 'new';
+      const wanted = QUEUES.has(asked) ? asked : 'priority';
+      const status = wanted === 'rejected' ? 'rejected'
+        : (wanted === 'ungraded' || wanted === 'approved') ? 'approved'
+          : 'new';
+      /* Browsing is chronological; the queues are ranked. Different jobs. */
+      const browsing = wanted === 'approved' || wanted === 'rejected';
       const BLOCK = `ROUND(lng, 2) || ',' || ROUND(lat, 2)`;
 
       const [approved, rows] = await Promise.all([
@@ -364,7 +377,8 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
              FROM corpus c
             WHERE c.status = '${status}'
               ${wanted === 'ungraded' ? 'AND c.tree_line IS NULL' : ''}
-            ORDER BY ${wanted === 'random' ? 'RANDOM()' : 'c.at DESC'}
+            ORDER BY ${wanted === 'random' ? 'RANDOM()'
+              : browsing ? 'COALESCE(c.reviewed_at, c.at) DESC' : 'c.at DESC'}
             LIMIT ${wanted === 'random' ? 1 : 40}`
         ).all(),
       ]);
@@ -398,6 +412,23 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
            * slice, and a row relabelled 'ungraded' would have lost that.
            */
           reviewQueue: r.review_queue,
+          /*
+           * The verdict already on the row, for the browsing queues.
+           *
+           * The card has to say what it is looking at before it can offer to
+           * change it -- "Reject" on a rejected map is a button that does
+           * nothing, and "Approve" on an approved one is worse, because it
+           * looks like it worked.
+           *
+           * `canopy` is the stored grade, so browsing back to a graded map
+           * shows the grade that is on it rather than the woods-box guess.
+           * Sending the guess back would quietly overwrite a real answer with
+           * an inferred one every time somebody looked at a map twice.
+           */
+          status: r.status,
+          reviewedAt: r.reviewed_at,
+          reviewedBy: r.reviewed_by,
+          canopy: r.tree_line === null || r.tree_line === undefined ? null : Number(r.tree_line),
           parcelSource: r.parcel_source,
           squareFeet: r.square_feet,
           detectedSqFt: r.detected_sq_ft,
@@ -531,16 +562,28 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
       return null;
     })();
 
+    /*
+     * CHANGING A MIND ON PURPOSE.
+     *
+     * The guard below exists to stop a stale tap flipping a verdict. It cannot
+     * tell the difference between that and somebody deliberately going back to
+     * a map they rejected last week -- both arrive as "rejected row, approved
+     * in" -- so the console says which it is. `force` is only ever set by the
+     * browsing queues, where the card has already shown the current verdict on
+     * screen before offering to change it.
+     */
+    const force = body?.force === true;
+
     try {
       const res = await env.DB.prepare(
         `UPDATE corpus
             SET status = ?2, reviewed_at = ?3, reviewed_by = ?4,
                 review_note = ?5, review_queue = ?6, tree_line = ?7
-          WHERE id = ?1 AND (status = 'new' OR status = ?2)`
+          WHERE id = ?1 AND (?8 = 1 OR status = 'new' OR status = ?2)`
       ).bind(
         id, status, new Date().toISOString(), me.email,
         typeof body?.note === 'string' ? body.note.slice(0, 300) : null,
-        queue, canopy
+        queue, canopy, force ? 1 : 0
       ).run();
 
       /*
@@ -555,6 +598,10 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
        * an approved row sent `rejected` matches neither branch. That is the
        * distinction the guard was always about -- not "write once", but "do
        * not let a stale tap change somebody's mind for them".
+       *
+       * `force` is the deliberate version of exactly that, and it is a
+       * separate flag rather than a loosened guard so the default stays safe:
+       * every existing caller keeps the old behaviour without changing a line.
        */
       if (!res.meta?.changes) {
         return json({ ok: false, reason: 'already-reviewed-or-changed' }, 409, origin);

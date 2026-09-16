@@ -20,6 +20,13 @@
  * made on this page would be about the wrong pixels.
  */
 import { lngLatToFramePx } from '/lib/mercator.js';
+/*
+ * The measurement's own overlap test, for the same reason. It answers "how
+ * much of this lawn is covered by more than one shape", which is the question
+ * a pile of pieces on the canvas raises and which no amount of squinting at
+ * green outlines will settle.
+ */
+import { distinctFraction } from '/lib/mask.js';
 
 const $ = (s) => document.querySelector(s);
 const el = (tag, cls, text) => {
@@ -279,9 +286,13 @@ async function renderReview() {
       box.append(el('p', 'empty',
         queue === 'ungraded'
           ? 'Every approved map has a canopy grade. Nothing to catch up on.'
-          : data.waiting
-            ? 'Nothing in this queue right now.'
-            : 'Every finished map has been reviewed. Go and make some more.'));
+          : queue === 'approved'
+            ? 'Nothing approved yet.'
+            : queue === 'rejected'
+              ? 'Nothing rejected yet.'
+              : data.waiting
+                ? 'Nothing in this queue right now.'
+                : 'Every finished map has been reviewed. Go and make some more.'));
       return;
     }
   }
@@ -309,6 +320,39 @@ function drawCandidate(c) {
   const pieces = (c.shapes || []).length;
   if (pieces > 1) head.append(el('span', 'pill free', `${pieces} pieces`));
   if (c.parcelSource === 'hand') head.append(el('span', 'pill free', 'traced boundary'));
+
+  /*
+   * HOW MUCH OF THE LAWN IS UNDER MORE THAN ONE SHAPE.
+   *
+   * Said as a number because it cannot be seen. Overlapping green outlines on
+   * a green fill look like one lawn with some extra lines on it, and the
+   * question they raise -- did this person edit the AI's shapes, or draw new
+   * ones on top and leave the AI's underneath -- is the difference between a
+   * good training example and one that teaches the model that a driveway is
+   * grass.
+   *
+   * The stored square footage already has the overlap taken out of it, so this
+   * is not an error in the measurement. It is a fact about the outlines, and
+   * the outlines are what gets trained on.
+   */
+  const doubled = overlapFraction(c);
+  if (doubled > 0.01) {
+    const pill = el('span', 'pill warn',
+      `pieces overlap by ${n(Math.round(c.squareFeet * doubled))} sq ft`);
+    pill.title = 'Some ground here is inside more than one shape. Worth a look: '
+      + 'it can mean a new patch was drawn on top of the AI\'s outline rather '
+      + 'than the AI\'s outline being corrected.';
+    head.append(pill);
+  }
+
+  /*
+   * WHAT THE VERDICT ALREADY IS, when looking back at a settled map. Shown
+   * before any button offering to change it, so "Reject" is never pressed on
+   * something already rejected in the belief it is doing something.
+   */
+  if (c.status === 'approved' || c.status === 'rejected') {
+    head.append(el('span', c.status === 'rejected' ? 'pill warn' : 'pill', c.status));
+  }
 
   /*
    * Which imagery did they draw on, and is it the one we kept?
@@ -397,7 +441,12 @@ function drawCandidate(c) {
     [1, 'Some', 'Canopy overhangs, but you could still see where the lawn stops.'],
     [2, 'Decided the edge', 'You had to judge where the grass stops under the trees.'],
   ];
-  let canopy = c.canopyHint ? 2 : null;
+  /*
+   * The grade already on the row wins over the woods-box guess. Without that,
+   * opening an approved map a second time would show the guess, and saving
+   * anything else on the card would write the guess over a real answer.
+   */
+  let canopy = [0, 1, 2].includes(c.canopy) ? c.canopy : (c.canopyHint ? 2 : null);
 
   const ask = el('div', 'ask');
   ask.append(el('h3', null, 'Canopy over this lawn'));
@@ -432,10 +481,27 @@ function drawCandidate(c) {
    * deliberately: a stale tap must not change somebody's mind for them. So
    * here there is one button, and it does the only thing left to do.
    */
+  /*
+   * BROWSING A SETTLED MAP IS A THIRD SHAPE OF THIS CARD.
+   *
+   * Reviewing offers a verdict. Grading offers only the grade, because the
+   * verdict is in. Browsing offers both buttons, labelled by what pressing
+   * them would actually do to THIS row -- "Keep it approved" and "Reject it
+   * after all" say different things, and a pair of buttons both reading
+   * "Approve"/"Reject" over an already-approved map says nothing at all.
+   */
   const grading = queue === 'ungraded';
+  const browsing = queue === 'approved' || queue === 'rejected';
+  const settled = c.status === 'approved' || c.status === 'rejected' ? c.status : null;
+
   const verdict = el('div', 'verdict');
-  const approve = el('button', 'approve', grading ? 'Save the grade' : 'Approve');
-  const reject = el('button', 'reject', 'Reject');
+  const approve = el('button', 'approve',
+    grading ? 'Save the grade'
+      : !browsing ? 'Approve'
+        : settled === 'approved' ? 'Keep it approved' : 'Approve it after all');
+  const reject = el('button', 'reject',
+    !browsing ? 'Reject'
+      : settled === 'rejected' ? 'Keep it rejected' : 'Reject it after all');
   const edit = el('button', null, 'Edit');
   verdict.append(approve);
   if (!grading) verdict.append(reject);
@@ -446,6 +512,14 @@ function drawCandidate(c) {
     box.append(el('p', 'meta',
       'Already approved — this is only the canopy question, which nobody was '
       + 'asked when it went through.'));
+  } else if (browsing) {
+    const when = c.reviewedAt ? new Date(c.reviewedAt).toLocaleDateString() : null;
+    box.append(el('p', 'meta',
+      `${settled === 'rejected' ? 'Rejected' : 'Approved'}`
+      + `${when ? ` on ${when}` : ''}${c.reviewedBy ? ` by ${c.reviewedBy}` : ''}. `
+      + 'Either button writes a new verdict and saves the canopy grade with it. '
+      + 'Edit opens it in the map; finishing there sends it back to be reviewed '
+      + 'again.'));
   }
 
   const extras = el('div', 'actions');
@@ -489,8 +563,15 @@ function drawCandidate(c) {
       const res = await post('/api/admin/review', {
         id: c.id,
         status: grading ? 'approved' : status,
-        queue: grading ? (c.reviewQueue || 'priority') : queue,
+        queue: grading || browsing ? (c.reviewQueue || 'priority') : queue,
         canopy,
+        /*
+         * Only from the browsing queues, where the current verdict was on
+         * screen before the button was pressed. Everywhere else the server's
+         * guard stays on, so a double tap on a slow connection still cannot
+         * change a verdict by accident.
+         */
+        ...(browsing ? { force: true } : {}),
       });
       if (!res.ok) throw new Error(res.reason || 'refused');
       pending.shift();
@@ -516,6 +597,29 @@ function drawCandidate(c) {
   edit.addEventListener('click', () => {
     window.location.href = `/#review=${encodeURIComponent(c.id)}`;
   });
+}
+
+/**
+ * How much of a candidate's lawn is covered by more than one of its shapes,
+ * as a fraction of the lawn's actual area. 0 means the pieces sit side by side.
+ *
+ * Borrowed whole from the measurement rather than written again here: it is
+ * the same question, and a second implementation would eventually disagree
+ * with the number the app reported at the time the map was saved.
+ *
+ * 256 pixels, not the canvas's 640. This is a "does this need looking at"
+ * number, and the difference between the two grids is under a per cent on
+ * anything big enough to matter.
+ */
+function overlapFraction(c) {
+  const shapes = (c.shapes || [])
+    .map((g) => g?.coordinates)
+    .filter((r) => Array.isArray(r) && r.length);
+  if (!c.frame || shapes.length < 2) return 0;
+  const G = 256;
+  const project = (ll) => lngLatToFramePx(c.frame, ll, G, G);
+  const distinct = distinctFraction(shapes, G, G, project);
+  return distinct > 0 ? (1 / distinct) - 1 : 0;
 }
 
 function paint(canvas, c) {
@@ -963,6 +1067,8 @@ async function renderLog() {
     ['#queue-priority', 'priority'],
     ['#queue-random', 'random'],
     ['#queue-ungraded', 'ungraded'],
+    ['#queue-approved', 'approved'],
+    ['#queue-rejected', 'rejected'],
   ];
   for (const [id, which] of QUEUES) {
     $(id).addEventListener('click', () => {

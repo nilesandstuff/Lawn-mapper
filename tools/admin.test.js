@@ -931,5 +931,101 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
     'every approval made before this existed stays honestly unanswered');
 }
 
+/*
+ * LOOKING BACK AT MAPS THAT WERE ALREADY JUDGED.
+ *
+ * Approving used to be one-way. That was fine while the only question was "is
+ * this good enough to train on", and stopped being fine once the question
+ * became "did the app save what the person actually drew" -- which cannot be
+ * answered from the outside of a settled row. So there are two more queues,
+ * and a deliberate way to change a verdict that is still not the same thing as
+ * a stale tap changing one by accident.
+ */
+{
+  const { env, ownerToken } = await world();
+  const { recordFinished } = await import('../worker/src/corpus.js');
+
+  const ring = (lng) => [
+    [lng, 41.5], [lng, 41.501], [lng + 0.001, 41.501], [lng + 0.001, 41.5], [lng, 41.5],
+  ];
+  const finish = (lng) => recordFinished(env, {
+    lng, lat: 41.5, model: 'sam-3', mode: 'find', county: 'oh-lucas',
+    shapes: [{ type: 'Polygon', coordinates: [ring(lng)] }],
+    squareFeet: 4000,
+  });
+
+  await finish(-83.11);
+  await finish(-83.22);
+
+  const fresh = (await ask(env, ownerToken, 'candidates')).body.candidates;
+  const good = fresh.find((c) => c.id.startsWith('-83.11'));
+  const bad = fresh.find((c) => c.id.startsWith('-83.22'));
+
+  await ask(env, ownerToken, 'review',
+    { method: 'POST', body: { id: good.id, status: 'approved', queue: 'random', canopy: 1 } });
+  await ask(env, ownerToken, 'review',
+    { method: 'POST', body: { id: bad.id, status: 'rejected', queue: 'priority' } });
+
+  const approvedQ = (await ask(env, ownerToken, 'candidates?queue=approved')).body.candidates;
+  const rejectedQ = (await ask(env, ownerToken, 'candidates?queue=rejected')).body.candidates;
+
+  check('an approved map can be found again',
+    approvedQ.some((c) => c.id === good.id),
+    approvedQ.map((c) => c.id).join(', ') || '(empty)');
+  check('and a rejected one, which had nowhere to be looked at before',
+    rejectedQ.some((c) => c.id === bad.id),
+    rejectedQ.map((c) => c.id).join(', ') || '(empty)');
+  check('the two queues do not leak into each other',
+    !approvedQ.some((c) => c.id === bad.id) && !rejectedQ.some((c) => c.id === good.id));
+
+  /*
+   * The card has to be able to SAY what it is looking at before it offers to
+   * change it. A button reading "Reject" over an already-rejected map is a
+   * button that does nothing, and the reviewer cannot tell.
+   */
+  const back = approvedQ.find((c) => c.id === good.id);
+  check('the row arrives carrying its verdict',
+    back.status === 'approved' && Boolean(back.reviewedAt),
+    JSON.stringify({ status: back.status, at: back.reviewedAt }));
+  check('and the grade already on it, not the woods-box guess',
+    back.canopy === 1,
+    'showing the guess would overwrite a real answer on the next save');
+
+  /* Unchanged: a request with no say in the matter still cannot flip one. */
+  const stale = await ask(env, ownerToken, 'review',
+    { method: 'POST', body: { id: bad.id, status: 'approved' } });
+  check('a bare request still cannot change a settled verdict',
+    stale.body.ok === false,
+    JSON.stringify(stale.body));
+
+  /* Saying so plainly can. */
+  const deliberate = await ask(env, ownerToken, 'review',
+    { method: 'POST', body: { id: bad.id, status: 'approved', queue: 'priority', canopy: 0, force: true } });
+  check('but a deliberate change of mind goes through',
+    deliberate.body.ok === true,
+    JSON.stringify(deliberate.body));
+
+  const moved = await env.DB.prepare(
+    'SELECT status, tree_line FROM corpus WHERE id = ?1'
+  ).bind(bad.id).first();
+  check('and the row really moves',
+    moved.status === 'approved' && moved.tree_line === 0,
+    JSON.stringify(moved));
+
+  /*
+   * The draw that surfaced a row must survive being looked at again: it is
+   * what tells the export whether the row may sit in the representative slice,
+   * and browsing is not a draw.
+   */
+  await ask(env, ownerToken, 'review',
+    { method: 'POST', body: { id: good.id, status: 'approved', queue: 'random', canopy: 2, force: true } });
+  const kept = await env.DB.prepare(
+    'SELECT review_queue FROM corpus WHERE id = ?1'
+  ).bind(good.id).first();
+  check('and re-judging keeps which queue originally surfaced it',
+    kept.review_queue === 'random',
+    kept.review_queue);
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);
