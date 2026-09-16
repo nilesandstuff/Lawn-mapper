@@ -29,17 +29,32 @@ export const SAM_INPUT_FIELDS = [
  * sitting unused -- the boundary is the one thing here nobody has to guess,
  * and it is currently used only to trim the answer after the fact.
  *
- * OFF UNTIL MEASURED, and that is the whole reason this is a flag.
+ * ANSWERED, AND THE ANSWER IS NO -- for this wrapper.
  *
- * SAM 3 itself takes box prompts. Whether the Replicate wrapper in front of it
- * exposes them is a different question, and an unknown field is either refused
- * outright or silently ignored -- the second being the bad one, because it
- * looks exactly like a change that did not help. Detection costs money per
- * press and is the one thing in this app that must not be broken by a guess.
+ * SAM 3 itself takes box prompts. Whether mattsays/sam3-image exposes them was
+ * the open question, and it is free to settle: workflow "1. Preflight checks"
+ * already prints the model's published input schema. It reads, in full:
  *
- * So: probe "5. Test a real detection" with SEND_PARCEL_BOX=true measures the
- * same lot both ways and prints both square footages. Turn the deployment
- * variable on when the number says to.
+ *   image, prompt, mask_only, threshold, mask_color, return_zip,
+ *   mask_opacity, save_overlay
+ *
+ * Eight fields. No box, no points, no coordinates of anything. The two we do
+ * not already send are mask_color and mask_opacity, which colour an overlay we
+ * ask it not to draw. All three MODELS entries run this same slug, so this is
+ * the answer for every mode, not just one.
+ *
+ * WHAT IS LEFT, since the finding it came from still stands. The only door
+ * this wrapper has for a geometric cue is the IMAGE: send a photograph the
+ * boundary has already been applied to -- framed tighter, or with the
+ * neighbours' ground painted out -- rather than a wide one clipped afterwards.
+ * That is a different change with a different risk (a hard painted edge is not
+ * something the model has seen much of), and it is worth measuring on its own
+ * terms. It is not this flag.
+ *
+ * KEPT, NOT DELETED, and only for that reason: parcelBox below is correct and
+ * tested, and is what any wrapper that does publish a box field would need.
+ * Nothing calls it today. If a model is ever auditioned that takes one --
+ * workflow 6 is where that happens -- this is the half that already works.
  */
 export const parcelBoxWanted = (env) => String(env?.SEND_PARCEL_BOX || '') === 'true';
 
