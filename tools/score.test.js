@@ -203,9 +203,31 @@ const box = (x, y, w, h) => ({
   const said = verdict(summary).join(' ');
   check('the verdict says which way it is wrong, in words',
     /overshoots/.test(said), said.slice(0, 90));
-  check('and says a trim can fix a fault with a direction',
-    /trim/.test(said),
-    'that is the finding: days of work rather than months of training');
+  /*
+   * AND IT MUST NOT PRESCRIBE A TRIM, which is what it used to do: "a fault
+   * with a direction is one a trim can fix without training anything."
+   *
+   * Ruled out, and not on taste. Shaving a fixed percentage off every answer
+   * assumes the overshoot is the same lot to lot, and it is not -- that is
+   * the same wall the tree-overhang work hit. A figure that suits the middle
+   * lot is a fresh error at both ends, and unlike the model's own error it
+   * would be one the app introduced on purpose, after the fact.
+   *
+   * Asserted as an absence because that is how it would come back: somebody
+   * reads a lean in the numbers, reaches for the obvious fix, and the report
+   * agrees with them.
+   */
+  /*
+   * The word "subtract" is not what is banned -- the corrective sentence uses
+   * it, saying the lean is NOT a number to subtract. What is banned is the
+   * recommendation, so this looks for a trim being offered as a fix.
+   */
+  check('but it does not prescribe shaving a percentage off every answer',
+    !/\btrim\b/i.test(said) && !/can fix/i.test(said),
+    said);
+  check('and says plainly that the lean is not a number to subtract',
+    /not a number to subtract/.test(said),
+    'the lean is a diagnosis; nothing here knows what one lawn should change by');
 
   /*
    * AND IT MUST BE ABLE TO SAY THE UNWELCOME THING. The premise of the hard

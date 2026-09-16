@@ -226,10 +226,25 @@ export function summarise(scored = []) {
       medianErrorPct: median(list.map((r) => r.errorPct)),
       medianSignedPct: median(list.map((r) => r.signedPct)),
       /*
-       * Which direction the fault runs, which is the whole reason this was
-       * built: a detector that is 20% out at random needs more data, and one
-       * that is 20% out in the SAME direction every time needs a trim -- days
-       * of work rather than months.
+       * Which direction the fault runs.
+       *
+       * This is DIAGNOSIS, NOT A CORRECTION FACTOR, and the distinction was
+       * settled the hard way. A detector 20% out at random and one 20% out in
+       * the same direction every time are different problems, and knowing
+       * which you have decides where the effort goes -- more data, or a
+       * different prompt, or a different model.
+       *
+       * What it must NOT become is a multiplier. An earlier version of this
+       * comment said a one-directional fault "needs a trim", and shaving a
+       * fixed percentage off every answer is wrong for the reason the tree
+       * work already ran into: the overshoot is not consistent between
+       * properties. A wooded lot and an open one are out by different amounts
+       * for different reasons, so a number that fits the middle lot is a new
+       * error on both ends -- and unlike the original it would be an error the
+       * app introduced on purpose, after the model had done its best.
+       *
+       * The median tells you the model is biased. It does not tell you what
+       * any single lawn should be adjusted by, because nothing here can.
        */
       overshootShare: list.length ? over / list.length : null,
       extraSqFt: list.reduce((n, r) => n + r.extraSqFt, 0),
@@ -272,10 +287,18 @@ export function verdict(summary, { label = 'the detector' } = {}) {
   );
 
   if (o.overshootShare >= 0.65 || o.overshootShare <= 0.35) {
+    /*
+     * Says which way it leans and stops there. It used to end "a fault with a
+     * direction is one a trim can fix without training anything", which is a
+     * recommendation to shave a fixed percentage off every answer -- ruled
+     * out, because the overshoot is not consistent between properties and a
+     * figure that suits the middle lot is a fresh error at both ends.
+     */
     lines.push(
       `It claims too much on ${Math.round(o.overshootShare * 100)}% of them, `
-      + `by ${pct(o.medianSignedPct)} on the middle lot — a fault with a `
-      + 'direction is one a trim can fix without training anything.'
+      + `by ${pct(o.medianSignedPct)} on the middle lot. That is a lean, not a `
+      + 'number to subtract: it varies too much lot to lot to correct for. '
+      + 'It says the training set needs lawns it is getting wrong.'
     );
   }
 
