@@ -1135,6 +1135,21 @@ async function initMap() {
     // A patch drawn by hand is a hand correction, whether it is the first
     // shape on the map or the tenth on top of a detection.
     markHandEdited();
+    /*
+     * And if it landed on lawn that was already there, the two become one
+     * shape. This is the only tool on the map that adds without removing, so
+     * it was the only way to end up with two outlines over the same ground --
+     * see mergeDrawnPatch, including what merging does NOT fix.
+     */
+    const joined = mergeDrawnPatch(e.features?.[0]);
+    if (joined) {
+      refreshMeasurement();
+      refreshSurveyed();
+      updateSelectionButtons();
+      setStatus(`Joined into the ${joined === 1 ? 'patch' : `${joined} patches`} `
+        + 'underneath, so the same ground is not outlined twice. The total is '
+        + 'unchanged — this tidies the outlines, it does not take anything away.');
+    }
     back();
   });
 
@@ -5885,6 +5900,125 @@ function cutHoleFromDrawn(feature) {
     + (hosts.length > 1 ? ` from ${hosts.length} overlapping shapes` : '')
     + '. Its corners are editable with Points, like any other.'
   );
+}
+
+/**
+ * A patch drawn over lawn that is already there becomes ONE shape with it.
+ *
+ * WHY THIS HAD TO EXIST. Drawing a patch was the only edit on the whole map
+ * that ADDED a shape without taking one away -- everything else (the brush,
+ * the clip, undo, a re-trace) empties the map and puts back what it worked
+ * out. So a patch drawn on top of the detector's outline left both, and what
+ * got saved was the two of them stacked. Which reads, in the corpus, as a lawn
+ * with a piece of itself drawn twice, and reads on the review card as a mess
+ * nobody can pick apart.
+ *
+ * WHAT IT DOES NOT FIX, and this matters more than what it does. If the
+ * detector painted a driveway as grass and somebody drew a patch over the real
+ * lawn beside it, merging the two makes one shape that STILL COVERS THE
+ * DRIVEWAY. The union is the same ground either way; all that changes is how
+ * many outlines it is written in. The only thing that takes the detector's
+ * mistake off the map is erasing it -- the brush, a cut-out, or moving its
+ * corners. This is tidying, not correcting, and it should not be mistaken for
+ * the second.
+ *
+ * NOTHING HAPPENS WHEN NOTHING OVERLAPS, which is the common case: a patch for
+ * the strip by the garage sits beside the lawn, not on it. Then the corners
+ * are left exactly where they were put, to the last decimal. The round trip
+ * through a pixel grid is only paid by the shapes that actually touch -- and
+ * at the same resolution the detector's own outline was traced at, so a merge
+ * with a detected shape costs it nothing it had not already lost.
+ *
+ * Returns how many existing shapes were swallowed. 0 means it stood alone.
+ */
+function mergeDrawnPatch(feature) {
+  const ring = feature && outerRing(feature);
+  if (!ring || ring.length < 4) return 0;
+
+  const mine = geometryBounds(feature.geometry);
+  const others = draw.getAll().features
+    .filter((f) => f.id !== feature.id && outerRing(f));
+  if (!mine || !others.length) return 0;
+
+  /*
+   * BOXES FIRST. Two shapes whose bounding boxes miss cannot overlap, and on a
+   * map with several patches that is most pairs. Rasterising to find that out
+   * would be a megabyte of work per shape to learn what four comparisons say.
+   */
+  const near = [];
+  let [w, s, e, n] = mine;
+  for (const f of others) {
+    const b = geometryBounds(f.geometry);
+    if (!b || b[2] < mine[0] || b[0] > mine[2] || b[3] < mine[1] || b[1] > mine[3]) continue;
+    near.push(f);
+    w = Math.min(w, b[0]); s = Math.min(s, b[1]);
+    e = Math.max(e, b[2]); n = Math.max(n, b[3]);
+  }
+  if (!near.length) return 0;
+
+  /*
+   * A frame around ONLY the shapes in question. Spanning the whole map would
+   * coarsen every pixel in it for the sake of one patch in a corner -- the
+   * same fault the clip had, which cost about 3% of a lot that had nothing to
+   * do with what was being changed.
+   */
+  const pad = 0.0002;
+  const bbox = [w - pad, s - pad, e + pad, n + pad];
+  const frame = {
+    lng: (bbox[0] + bbox[2]) / 2,
+    lat: (bbox[1] + bbox[3]) / 2,
+    zoom: zoomToFit(bbox, ERASE_GRID / 2),
+    size: ERASE_GRID / 2,
+  };
+  const project = (ll) => lngLatToFramePx(frame, ll, ERASE_GRID, ERASE_GRID);
+
+  const patch = rasterizePolygon(feature.geometry.coordinates, ERASE_GRID, ERASE_GRID, project);
+  const touching = [];
+  const masks = [patch];
+  for (const f of near) {
+    const m = rasterizePolygon(f.geometry.coordinates, ERASE_GRID, ERASE_GRID, project);
+    let hit = false;
+    for (let i = 0; i < m.length; i++) if (m[i] && patch[i]) { hit = true; break; }
+    if (!hit) continue;
+    touching.push(f);
+    masks.push(m);
+  }
+  /* Boxes that cross but shapes that do not. An L-shaped lawn does this. */
+  if (!touching.length) return 0;
+
+  const union = unionMasks(masks);
+  const data = new Uint8ClampedArray(ERASE_GRID * ERASE_GRID * 4);
+  for (let p = 0; p < union.length; p++) {
+    const v = union[p] ? 255 : 0;
+    data[p * 4] = data[p * 4 + 1] = data[p * 4 + 2] = v;
+    data[p * 4 + 3] = 255;
+  }
+
+  const polygons = maskToPolygons(
+    { width: ERASE_GRID, height: ERASE_GRID, data },
+    (x, y) => framePxToLngLat(frame, [x, y], ERASE_GRID, ERASE_GRID),
+    {
+      tolerance: TRACE_TOLERANCE_M / metresPerPixel(frame, ERASE_GRID),
+      maxVertices: MAX_TRACE_VERTICES,
+      /*
+       * Absolute floors, not fractions of the frame. A shed cut out of the
+       * lawn has to survive this: the frame here is small, so a fraction-based
+       * floor would be a few square feet and would swallow it.
+       */
+      ...editTraceLimits(ERASE_GRID, ERASE_GRID),
+    }
+  );
+  /*
+   * If the trace came back with nothing, leave the map alone. Two stacked
+   * shapes are untidy; silently deleting the lawn is not a trade worth making
+   * for tidiness.
+   */
+  if (!polygons.length) return 0;
+
+  draw.delete(feature.id);
+  for (const f of touching) draw.delete(f.id);
+  for (const geometry of polygons) draw.add({ type: 'Feature', properties: {}, geometry });
+  return touching.length;
 }
 
 function adoptDrawnParcel(feature) {

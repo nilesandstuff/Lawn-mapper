@@ -840,5 +840,49 @@ check('every class the code toggles is styled',
     'the question that could not be answered was never written down anywhere');
 }
 
+/* ------------------------------------------- one piece of ground, one outline */
+/*
+ * EVERY EDIT EMPTIES THE MAP AND PUTS BACK WHAT IT WORKED OUT -- the brush,
+ * the clip, undo, a re-trace. Drawing a patch was the single exception: it
+ * added a shape and left everything under it alone, which is the only way this
+ * app could ever produce two outlines over the same ground. They were then
+ * saved that way, and on the review card they read as a mess with no way to
+ * tell what a person drew from what the detector did.
+ *
+ * So the drawn patch merges with whatever it lands on. This checks the wiring,
+ * not the arithmetic -- mask.test.js owns the round trip itself.
+ */
+{
+  const create = js.slice(js.indexOf("map.on('draw.create'"));
+  const handler = create.slice(0, create.indexOf('\n  });'));
+  check('a drawn patch is merged into the lawn it lands on',
+    /mergeDrawnPatch\(/.test(handler),
+    'the one tool that adds without removing is the one that makes overlaps');
+
+  /* From the doc comment, not the `function` line: half of what is checked
+     below is the reasoning written above it. */
+  const body = js.slice(
+    js.indexOf('A patch drawn over lawn that is already there'),
+    js.indexOf('function adoptDrawnParcel')
+  );
+  check('and a patch that overlaps nothing is left exactly as drawn',
+    /if \(!near\.length\) return 0;/.test(body) && /if \(!touching\.length\) return 0;/.test(body),
+    'a round trip through a pixel grid moves every corner, so it is only paid '
+    + 'by shapes that actually touch');
+  check('a trace that comes back empty changes nothing',
+    /if \(!polygons\.length\) return 0;/.test(body),
+    'two stacked shapes are untidy; deleting the lawn is not the better outcome');
+
+  /*
+   * And it must say what it did not do. Merging a patch onto an outline the
+   * detector got wrong makes one shape that still covers the wrong ground --
+   * the union is identical. Only erasing takes a mistake off the map.
+   */
+  check('and the comment says merging is tidying, not correcting',
+    /WHAT IT DOES NOT FIX/.test(body) && /driveway/i.test(body)
+      && /tidying, not correcting/.test(body),
+    'someone will otherwise read this as the fix for a bad detection');
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);

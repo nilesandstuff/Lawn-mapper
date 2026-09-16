@@ -877,5 +877,73 @@ function stripsPx(kept, label, mask) {
     `${pieces.length} kept, ${pieces.droppedCount} dropped`);
 }
 
+/* ------------------------------------ 14. joining a patch to the lawn under it */
+/*
+ * Drawing a patch was the one tool on the map that ADDED a shape without
+ * taking one away, so a patch drawn over the detector's outline left both --
+ * the same ground written twice, saved that way, and unreadable on the review
+ * card. The app now merges the two, and this is the round trip it uses:
+ * rasterise, union, trace back.
+ *
+ * Checked here rather than in the app, because what could go wrong is
+ * arithmetic. A merge that quietly loses a shed, or comes back measurably
+ * smaller than what went in, would look completely normal on screen.
+ */
+{
+  const project = (lngLat) => lngLatToFramePx(FRAME, lngLat, IMG, IMG);
+  const rect = (x0, y0, x1, y1) => [
+    unproject(x0, y0), unproject(x1, y0), unproject(x1, y1), unproject(x0, y1), unproject(x0, y0),
+  ];
+
+  /* The lawn, with a shed cut out of it, and a patch overlapping its corner. */
+  const lawn = [rect(300, 300, 800, 800), rect(400, 400, 460, 460)];
+  const patch = [rect(700, 700, 1000, 1000)];
+
+  const masks = [lawn, patch].map((rings) => rasterizePolygon(rings, IMG, IMG, project));
+  const union = unionMasks(masks);
+
+  const data = new Uint8ClampedArray(IMG * IMG * 4);
+  for (let p = 0; p < union.length; p++) {
+    const v = union[p] ? 255 : 0;
+    data[p * 4] = data[p * 4 + 1] = data[p * 4 + 2] = v;
+    data[p * 4 + 3] = 255;
+  }
+  const merged = maskToPolygons({ width: IMG, height: IMG, data }, unproject, {
+    tolerance: 0.5,
+    maxVertices: 30,
+    ...editTraceLimits(IMG, IMG),
+  });
+
+  check('two shapes over the same ground come back as one',
+    merged.length === 1, `${merged.length} pieces`);
+
+  /*
+   * 500x500 of lawn plus 300x300 of patch, less the 100x100 they share and the
+   * 60x60 shed. The point is that the merge is a UNION: the overlap is counted
+   * once, which is what the total was already reporting, so joining the shapes
+   * must not change the number on the screen.
+   */
+  const expected = ((500 * 500) + (300 * 300) - (100 * 100) - (60 * 60)) * MPP * MPP;
+  closeTo(geometryAreaSqM(merged[0]), expected, expected * 0.02,
+    'and measure the same as the two of them did');
+
+  check('the shed inside the lawn survives being merged around',
+    (merged[0].coordinates || []).length === 2,
+    `${(merged[0].coordinates || []).length} rings -- a cut-out lost to a merge `
+    + 'is lawn silently gaining a shed back');
+
+  /*
+   * AND THE CASE THAT MUST NOT MERGE. Boxes that cross while the shapes do not
+   * is what an L-shaped lawn does, and joining those would be the app deciding
+   * two separate patches are one.
+   */
+  const apart = [rect(300, 300, 400, 400), rect(500, 500, 600, 600)]
+    .map((r) => rasterizePolygon([r], IMG, IMG, project));
+  let shared = 0;
+  for (let i = 0; i < apart[0].length; i++) if (apart[0][i] && apart[1][i]) shared++;
+  check('shapes that only share a bounding box share no pixels',
+    shared === 0, `${shared} pixels`);
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);
