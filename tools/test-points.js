@@ -115,7 +115,16 @@ export const TEST_POINTS = {
      * These two are here to be south of that old edge.
      */
     { lng: -86.0192, lat: 42.8125, label: 'Zeeland' },
-    { lng: -86.1089, lat: 42.7875, label: 'Holland (north side, Ottawa)' },
+    /*
+     * Holland Township, not downtown Holland. The first attempt used the
+     * middle of the city at 42.7875 and came back with nothing -- Lake
+     * Macatawa is right there and the point was most likely on water or on a
+     * street. It proved nothing either way, and a probe point that reports
+     * "no parcel" on every run is how a person learns to skip reading the
+     * probe. This one is inland, residential, and still below the 42.83 edge
+     * that caused the bug, which is the only thing it is here to guard.
+     */
+    { lng: -86.0800, lat: 42.8200, label: 'Holland Township' },
   ],
   allegan: [
     { lng: -85.6447, lat: 42.6742, label: 'Wayland' },

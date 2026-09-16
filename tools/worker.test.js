@@ -1199,7 +1199,7 @@ check('and a typed prompt is sent verbatim',
    */
   const SOUTHERN_OTTAWA = [
     ['Zeeland', -86.0192, 42.8125],
-    ['Holland, north side', -86.1089, 42.7875],
+    ['Holland Township', -86.0800, 42.8200],
   ];
   for (const [town, lng, lat] of SOUTHERN_OTTAWA) {
     const tried = candidateCounties(lng, lat);
