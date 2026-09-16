@@ -1181,6 +1181,40 @@ check('and a typed prompt is sent verbatim',
   check('and where both cover a place, the examined one is asked first',
     !grandRapids.includes('mi-kent') || grandRapids.indexOf('kent') < grandRapids.indexOf('mi-kent'),
     grandRapids.join(', ') || 'no candidates');
+
+  /*
+   * A BOX THAT STOPS SHORT OF ITS OWN COUNTY.
+   *
+   * Reported as "no property line in Zeeland". Nothing had failed: Ottawa's
+   * box stopped at 42.83, Zeeland is at 42.81, and the county was simply never
+   * asked. The point still fell inside ALLEGAN's box, so the app asked the
+   * wrong county, got nothing, and reported nothing -- which is the worst
+   * shape this bug can take, because it looks exactly like a county whose
+   * server is down.
+   *
+   * Named towns rather than the middle of the box, and that is the point: the
+   * middle of a box is inside it by construction, so a check built from box
+   * arithmetic can only ever agree with itself. Every existing Ottawa point
+   * was 42.87 or north and the probe went green throughout.
+   */
+  const SOUTHERN_OTTAWA = [
+    ['Zeeland', -86.0192, 42.8125],
+    ['Holland, north side', -86.1089, 42.7875],
+  ];
+  for (const [town, lng, lat] of SOUTHERN_OTTAWA) {
+    const tried = candidateCounties(lng, lat);
+    check(`${town} is looked up in Ottawa County`,
+      tried.includes('ottawa'),
+      tried.join(', ') || 'no county would be asked at all');
+    /*
+     * And asked FIRST. Allegan's box reaches north over the line on purpose,
+     * so both are candidates here; lookupParcel takes the first that answers,
+     * and a wasted query is only cheap if it is the second one.
+     */
+    check(`  and Ottawa is asked before Allegan there`,
+      !tried.includes('allegan') || tried.indexOf('ottawa') < tried.indexOf('allegan'),
+      tried.join(', '));
+  }
 }
 
 /* ------------------------------------------------- the retired-parcel filter */

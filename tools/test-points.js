@@ -108,6 +108,14 @@ export const TEST_POINTS = {
     { lng: -85.8637, lat: 42.8703, label: 'Hudsonville' },
     { lng: -85.7975, lat: 42.9075, label: 'Jenison' },
     { lng: -86.2100, lat: 43.0631, label: 'Grand Haven' },
+    /*
+     * THE SOUTHERN THIRD, which had no point at all and was cut off by a
+     * bounding box that stopped at 42.83. Every point above is 42.87 or
+     * north, so the probe went green while Zeeland got no property line.
+     * These two are here to be south of that old edge.
+     */
+    { lng: -86.0192, lat: 42.8125, label: 'Zeeland' },
+    { lng: -86.1089, lat: 42.7875, label: 'Holland (north side, Ottawa)' },
   ],
   allegan: [
     { lng: -85.6447, lat: 42.6742, label: 'Wayland' },

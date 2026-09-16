@@ -433,12 +433,33 @@ const COUNTY_BBOX = {
   // Almost all of it is empty; the population is the southern tip around Reno.
   washoe:   [-120.10, 38.98, -119.00, 42.01],
   kent:     [-85.80, 42.76, -85.31, 43.29],
-  // The Ottawa/Allegan line runs at roughly 42.84, through Holland. The old
-  // values put Ottawa's southern edge below it and Allegan's northern edge
-  // above nothing at all, so Holland addresses were attributed to the wrong
-  // county. They overlap slightly on purpose: a point in the overlap simply
-  // tries both, and the first county to return a parcel wins.
-  ottawa:   [-86.24, 42.83, -85.78, 43.20],
+  /*
+   * OTTAWA'S SOUTHERN EDGE WAS ABOVE ITS SOUTHERN EDGE.
+   *
+   * It sat at 42.83, and the comment here asserted the Ottawa/Allegan line
+   * "runs at roughly 42.84, through Holland". That is too far north. Zeeland
+   * is at 42.81 and is several miles INSIDE Ottawa County, and the box
+   * excluded it -- so 6836 Groveside Dr got no property line, and not because
+   * anything failed: Ottawa was never asked. Worse, the point still landed in
+   * Allegan's box, so the app confidently asked the wrong county, got nothing,
+   * and had nothing to report. The whole southern third of the county went the
+   * same way, Holland included.
+   *
+   * Nothing caught it because all three Ottawa test points -- Hudsonville,
+   * Jenison, Grand Haven -- are 42.87 and north. Zeeland and Holland are in
+   * the list now.
+   *
+   * KENT WAS THE TELL, and it is worth naming: Kent's southern boundary is the
+   * SAME east-west township line as Ottawa's, and its box has always said
+   * 42.76. Two boxes disagreeing by seven hundredths of a degree about a line
+   * they both sit on is the kind of thing that is obvious once seen.
+   *
+   * 42.74 rather than a precise figure, deliberately. Every box in this file
+   * is generous on purpose, and a point in the overlap with Allegan costs one
+   * query that returns nothing before the right county is tried. Being a mile
+   * too far south costs that; being a mile too far north loses a town.
+   */
+  ottawa:   [-86.24, 42.74, -85.78, 43.20],
   allegan:  [-86.22, 42.42, -85.54, 42.85],
   muskegon: [-86.55, 43.10, -85.77, 43.55],
   newaygo:  [-86.05, 43.29, -85.53, 43.82],
