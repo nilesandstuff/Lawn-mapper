@@ -194,7 +194,19 @@ html, body {
   display: flex; flex-direction: column;
 }
 .mapwrap { position: relative; flex: 1; min-width: 0; }
-#map { position: absolute; inset: 0; }
+/*
+ * THE BROWSER'S OWN DOUBLE-TAP ZOOM, TURNED OFF TOO.
+ *
+ * Mapbox's tap-drag zoom was switched off and the gesture was still reported,
+ * so the other thing that zooms on a double tap gets ruled out as well: the
+ * browser itself. Nothing here says user-scalable=no, so a double tap over the
+ * page zooms the PAGE, which from the outside looks exactly the same.
+ *
+ * `none` sends every touch to JavaScript instead. Mapbox does its own panning
+ * and pinching, so nothing is lost -- and this is only on the map, so the
+ * panel underneath still scrolls normally.
+ */
+#map { position: absolute; inset: 0; touch-action: none; }
 
 @media (max-width: 820px) {
   .layout { flex-direction: column-reverse; }

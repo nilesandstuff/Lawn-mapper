@@ -1016,6 +1016,19 @@ async function initMap() {
     dragRotate: false,
     pitchWithRotate: false,
     touchPitch: false,
+    /*
+     * SET AT CONSTRUCTION, not disabled afterwards.
+     *
+     * Disabling it after the map was built did not stop the gesture, reported
+     * twice. The constructor option is the documented way and means the
+     * handler is never turned on in the first place, so there is no window and
+     * nothing to re-enable it.
+     *
+     * The gesture is Mapbox's tap-drag zoom: a second touch inside the
+     * double-tap window, dragged. Correcting a lawn is tap, pan, tap -- the
+     * same gesture -- so the map had to guess which was meant.
+     */
+    doubleClickZoom: false,
     // Required so the map canvas can still be read after the browser has
     // composited it -- without this, "Save image" produces a blank PNG.
     preserveDrawingBuffer: true,
@@ -1046,6 +1059,7 @@ async function initMap() {
    * this map means something from the moment a lot is on screen, pinch still
    * zooms, and the +/- control is in the corner.
    */
+  // Belt and braces with the constructor option above. Harmless if already off.
   map.doubleClickZoom.disable();
 
   // One listener, for the life of the map: see watchTileErrors.
