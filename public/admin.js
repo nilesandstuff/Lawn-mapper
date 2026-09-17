@@ -267,6 +267,9 @@ const REVIEW_COLOURS = {
   parcel: '#f2c744',   // the property line: the thing never guessed
   lawn: '#4ec26a',     // what was finished, and what is being judged
   ai: '#e2725b',       // what the detector drew, when asked for
+  // Lawn the reviewer knows is there and cannot see. Deliberately not a shade
+  // of the lawn green: this is a different kind of claim, not a weaker one.
+  inferred: '#b388ff',
 };
 
 async function renderReview() {
@@ -286,6 +289,8 @@ async function renderReview() {
       box.append(el('p', 'empty',
         queue === 'ungraded'
           ? 'Every approved map has a canopy grade. Nothing to catch up on.'
+          : queue === 'unflagged'
+            ? 'Every approved map has been checked for inferred areas.'
           : queue === 'approved'
             ? 'Nothing approved yet.'
             : queue === 'rejected'
@@ -491,12 +496,19 @@ function drawCandidate(c) {
    * "Approve"/"Reject" over an already-approved map says nothing at all.
    */
   const grading = queue === 'ungraded';
+  /*
+   * The inferred check is its own pass over a map that is already approved,
+   * so the button says what it does -- saving the check, not re-approving
+   * something nobody was asked to re-approve.
+   */
+  const checking = queue === 'unflagged';
   const browsing = queue === 'approved' || queue === 'rejected';
   const settled = c.status === 'approved' || c.status === 'rejected' ? c.status : null;
 
   const verdict = el('div', 'verdict');
   const approve = el('button', 'approve',
     grading ? 'Save the grade'
+      : checking ? 'Save the check'
       : !browsing ? 'Approve'
         : settled === 'approved' ? 'Keep it approved' : 'Approve it after all');
   const reject = el('button', 'reject',
@@ -562,9 +574,19 @@ function drawCandidate(c) {
        */
       const res = await post('/api/admin/review', {
         id: c.id,
-        status: grading ? 'approved' : status,
-        queue: grading || browsing ? (c.reviewQueue || 'priority') : queue,
+        status: grading || checking ? 'approved' : status,
+        queue: grading || checking || browsing ? (c.reviewQueue || 'priority') : queue,
         canopy,
+        /*
+         * "Somebody has now looked at this map for inferred areas", which is
+         * NOT "this map has inferred areas". The shapes say the second; only
+         * this can say the first, and without it an unmarked map and an
+         * unexamined one are the same row and the queue never empties.
+         *
+         * Sent from the editing queues too: reopening a map and saving it is
+         * exactly the act of having looked.
+         */
+        ...(checking || browsing ? { inferredChecked: true } : {}),
         /*
          * Only from the browsing queues, where the current verdict was on
          * screen before the button was pressed. Everywhere else the server's
@@ -611,9 +633,22 @@ function drawCandidate(c) {
  * number, and the difference between the two grids is under a per cent on
  * anything big enough to matter.
  */
+/*
+ * BOTH STORED FORMS, in one place.
+ *
+ * Maps traced before shapes could be marked "inferred, not seen" hold bare
+ * geometries; maps traced since hold Features. Everything that draws a
+ * candidate goes through here, so neither form has to be remembered anywhere
+ * else -- and an old map keeps drawing exactly as it did.
+ */
+const shapeParts = (c) => (c.shapes || []).map((f) => ({
+  geometry: f?.geometry || f,
+  inferred: Boolean(f?.properties?.inferred),
+}));
+
 function overlapFraction(c) {
-  const shapes = (c.shapes || [])
-    .map((g) => g?.coordinates)
+  const shapes = shapeParts(c)
+    .map((p) => p.geometry?.coordinates)
     .filter((r) => Array.isArray(r) && r.length);
   if (!c.frame || shapes.length < 2) return 0;
   const G = 256;
@@ -676,8 +711,20 @@ function paint(canvas, c) {
      * Two outlines, both readable, which is the whole point of the comparison.
      */
     const showing = showAi && (c.detectedShapes || []).length;
-    for (const g of c.shapes || []) {
-      ring(g, REVIEW_COLOURS.lawn, 2.5, showing ? null : 'rgba(78,194,106,.22)');
+    for (const part of shapeParts(c)) {
+      /*
+       * Inferred areas are drawn dashed and in their own colour, because the
+       * point of this queue is deciding whether the mark is right -- and a
+       * mark you cannot see on the picture is one nobody can check.
+       */
+      if (part.inferred) ctx.setLineDash([5, 4]);
+      ring(
+        part.geometry,
+        part.inferred ? REVIEW_COLOURS.inferred : REVIEW_COLOURS.lawn,
+        2.5,
+        showing ? null : (part.inferred ? 'rgba(179,136,255,.25)' : 'rgba(78,194,106,.22)')
+      );
+      if (part.inferred) ctx.setLineDash([]);
     }
     if (showing) {
       ctx.setLineDash([6, 4]);
@@ -1148,6 +1195,7 @@ async function renderLog() {
     ['#queue-priority', 'priority'],
     ['#queue-random', 'random'],
     ['#queue-ungraded', 'ungraded'],
+    ['#queue-unflagged', 'unflagged'],
     ['#queue-approved', 'approved'],
     ['#queue-rejected', 'rejected'],
   ];

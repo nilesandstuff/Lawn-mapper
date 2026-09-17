@@ -495,6 +495,22 @@
           <button class="ghost" id="btn-parcel-shape" hidden>Use property line</button>
           <button class="ghost" id="btn-undo" disabled>Undo</button>
           <button class="ghost" id="btn-delete" disabled>Delete selected</button>
+          <!--
+            MARKING A SHAPE AS INFERRED RATHER THAN SEEN.
+
+            Some lawn is genuinely not in the photograph: grass under a tree
+            canopy, with lawn either side of it. A person who knows what lawns
+            look like can say it is there, and that judgement is worth keeping
+            -- but it is a judgement about shape, not a reading of the pixels,
+            and the training has to be able to tell the two apart.
+
+            Mixed in undifferentiated it teaches "canopy means lawn", which on
+            a genuinely wooded lot claims the woods. Kept apart, the detector's
+            error on inferred ground and on visible ground become two separate
+            numbers, which is the only way to notice a model that has started
+            guessing instead of looking.
+          -->
+          <button class="ghost" id="btn-inferred" disabled>Mark as inferred</button>
           <button class="ghost" id="btn-clear">Clear all</button>
         </div>
 

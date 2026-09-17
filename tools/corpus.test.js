@@ -510,5 +510,67 @@ const png = () => new Response('x', { headers: { 'content-type': 'image/png' } }
   check('and it says why it was surfaced', why.length === 3, why.join(' / '));
 }
 
+/* ------------------------------------------- inferred, not seen */
+/*
+ * THE FLAG HAS TO SURVIVE THE ONE LINE THAT NEARLY ATE IT.
+ *
+ * cleanShapes reduced every feature to a bare geometry, which was harmless
+ * while there was nothing on a feature worth keeping. The moment a shape could
+ * be marked "I know this is lawn, I cannot see it", that line became a place
+ * where the mark left the browser, crossed the wire, and disappeared one step
+ * before the database -- set by the reviewer, absent from the training, with
+ * nothing anywhere saying so.
+ *
+ * The training cannot tell a detector that bridges what cannot be seen from
+ * one that has stopped looking at what can, unless this arrives.
+ */
+{
+  const DB = fakeDB();
+  await recordFinished({ DB }, body({
+    shapes: [
+      { geometry: square(-85.6681, 42.9634) },
+      { properties: { inferred: true }, geometry: square(-85.6691, 42.9634) },
+    ],
+  }));
+  const args = DB.writes[0].args;
+  /* The parcel is a Polygon too, so match the shapes array by its shape: a
+     JSON list, which the parcel never is. */
+  const stored = JSON.parse(args.find(
+    (a) => typeof a === 'string' && a.startsWith('[') && a.includes('Feature')
+  ));
+
+  check('the inferred mark reaches the database',
+    stored.some((f) => f.properties?.inferred === true),
+    `stored ${JSON.stringify(stored).slice(0, 120)} -- a mark that does not `
+    + 'arrive is a mark the reviewer set for nothing');
+  check('and an unmarked shape is not quietly marked with it',
+    stored.filter((f) => f.properties?.inferred === true).length === 1,
+    'marking visible ground as inferred is what teaches a detector to stop '
+    + 'looking, so the flag must never spread');
+  check('every shape is stored as a Feature so there is somewhere to put it',
+    stored.every((f) => f.type === 'Feature' && f.geometry?.type === 'Polygon'),
+    'bare geometries have no properties, which is how the flag was lost');
+
+  check('one marked shape settles that somebody looked at this map',
+    args.some((a) => typeof a === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(a)),
+    'without a checked-at the map sits in the catch-up queue for ever, '
+    + 'however many areas were marked on it');
+}
+
+{
+  /*
+   * And the reverse does NOT hold. A map with nothing marked is either one
+   * with nothing to mark or one nobody has been asked about, and only a person
+   * can tell those apart -- so it stays unchecked and stays in the queue.
+   */
+  const DB = fakeDB();
+  await recordFinished({ DB }, body());
+  const args = DB.writes[0].args;
+  check('but no marks does not count as having looked',
+    args.filter((a) => typeof a === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(a)).length === 1,
+    'nothing marked would then mean checked, the queue would start empty, and '
+    + 'no existing map would ever be examined');
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);

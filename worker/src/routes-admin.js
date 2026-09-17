@@ -326,11 +326,24 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
        * enough", and not fine once the question became "did the app save what
        * I actually drew" -- which can only be answered by opening one again.
        */
-      const QUEUES = new Set(['priority', 'random', 'ungraded', 'approved', 'rejected']);
+      /*
+       * A SIXTH QUEUE: approved maps nobody has looked over for inferred areas.
+       *
+       * Exactly the shape of `ungraded`, and for the same reason. Shapes can
+       * now be marked "I know this is lawn, I cannot see it", and everything
+       * approved before that existed carries no such mark -- not because there
+       * was nothing to mark, but because nobody was asked. Without a way back
+       * those maps could never contribute the one thing the ring is measured
+       * against.
+       */
+      const QUEUES = new Set([
+        'priority', 'random', 'ungraded', 'unflagged', 'approved', 'rejected',
+      ]);
       const asked = url.searchParams.get('queue');
       const wanted = QUEUES.has(asked) ? asked : 'priority';
       const status = wanted === 'rejected' ? 'rejected'
-        : (wanted === 'ungraded' || wanted === 'approved') ? 'approved'
+        : (wanted === 'ungraded' || wanted === 'unflagged' || wanted === 'approved')
+          ? 'approved'
           : 'new';
       /* Browsing is chronological; the queues are ranked. Different jobs. */
       const browsing = wanted === 'approved' || wanted === 'rejected';
@@ -378,6 +391,7 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
              FROM corpus c
             WHERE c.status = '${status}'
               ${wanted === 'ungraded' ? 'AND c.tree_line IS NULL' : ''}
+              ${wanted === 'unflagged' ? 'AND c.inferred_checked_at IS NULL' : ''}
             ORDER BY ${wanted === 'random' ? 'RANDOM()'
               : browsing ? 'COALESCE(c.reviewed_at, c.at) DESC' : 'c.at DESC'}
             LIMIT ${wanted === 'random' ? 1 : 40}`
@@ -482,7 +496,16 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
         provider: row.provider,
         model: row.model,
         exclude: row.exclusions ? row.exclusions.split(',') : [],
-        shapes: JSON.parse(row.shapes || '[]').map((geometry) => ({ geometry })),
+        /*
+         * BOTH STORED FORMS. Rows written before the inferred flag hold bare
+         * geometries; rows written since hold Features. Reading only one of
+         * them would either wrap a Feature inside a geometry slot -- an
+         * outline that silently draws nothing -- or drop the flag on every
+         * older map that gets reopened.
+         */
+        shapes: JSON.parse(row.shapes || '[]').map((f) => (f?.geometry
+          ? { geometry: f.geometry, properties: f.properties || {} }
+          : { geometry: f, properties: {} })),
       }, 200, origin);
     } catch (e) {
       return json({ error: String(e?.message || e).slice(0, 200) }, 500, origin);
@@ -579,12 +602,21 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
       const res = await env.DB.prepare(
         `UPDATE corpus
             SET status = ?2, reviewed_at = ?3, reviewed_by = ?4,
-                review_note = ?5, review_queue = ?6, tree_line = ?7
+                review_note = ?5, review_queue = ?6, tree_line = ?7,
+                /*
+                 * COALESCE so a later review cannot un-check a map: the
+                 * question "has anybody looked for inferred areas here" is
+                 * answered once and stays answered. Sending nothing leaves
+                 * whatever was there, which is what every existing caller
+                 * does without changing a line.
+                 */
+                inferred_checked_at = COALESCE(?9, inferred_checked_at)
           WHERE id = ?1 AND (?8 = 1 OR status = 'new' OR status = ?2)`
       ).bind(
         id, status, new Date().toISOString(), me.email,
         typeof body?.note === 'string' ? body.note.slice(0, 300) : null,
-        queue, canopy, force ? 1 : 0
+        queue, canopy, force ? 1 : 0,
+        body?.inferredChecked === true ? new Date().toISOString() : null
       ).run();
 
       /*

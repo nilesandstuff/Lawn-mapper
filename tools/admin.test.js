@@ -703,8 +703,15 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
   check('and everything needed to draw it',
     q.candidates[0].frame === null || typeof q.candidates[0].frame === 'object',
     'frame, parcel and shapes all parsed rather than left as text');
+  /*
+   * Features now, because a shape needs somewhere to carry "inferred, not
+   * seen". Bare geometries from before that change still read -- the console
+   * accepts either -- but anything written today has the richer form.
+   */
   check('shapes arrive parsed, not as a string',
-    Array.isArray(q.candidates[0].shapes) && q.candidates[0].shapes[0].type === 'Polygon');
+    Array.isArray(q.candidates[0].shapes)
+    && q.candidates[0].shapes[0].geometry?.type === 'Polygon',
+    JSON.stringify(q.candidates[0].shapes?.[0])?.slice(0, 90));
 
   /* ------------------------------------------------ a verdict, and its effects */
   const id = q.candidates[0].id;

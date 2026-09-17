@@ -347,6 +347,21 @@ CREATE TABLE IF NOT EXISTS corpus (
   -- The COLUMN keeps its name. Renaming it would mean an ALTER that cannot run
   -- twice, and migrations.sql has to survive being re-run on every deploy.
   tree_line      INTEGER,
+  -- WHEN SOMEBODY LAST LOOKED FOR INFERRED AREAS, which is not the same thing
+  -- as whether any were found.
+  --
+  -- Shapes can now be marked "I know this is lawn, I cannot see it" -- grass
+  -- under a canopy with lawn either side, a boundary that carries on through
+  -- shadow. That distinction only earns its keep if the training can tell an
+  -- unmarked map from an unexamined one, and the shapes themselves cannot say:
+  -- no marks means either "nothing to mark" or "nobody has been asked".
+  --
+  -- This is the same lesson as tree_line, which was inferred from the
+  -- exclusion list until that turned out to record how the AI was run rather
+  -- than anything about the lawn. A judgement wants a column of its own.
+  --
+  -- NULL means never checked, which is what the review queue looks for.
+  inferred_checked_at TEXT,
   reviewed_at    TEXT,
   reviewed_by    TEXT,
   review_note    TEXT,

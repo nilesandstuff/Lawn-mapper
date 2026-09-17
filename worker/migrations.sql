@@ -88,3 +88,16 @@ CREATE INDEX IF NOT EXISTS corpus_status ON corpus(status, at DESC);
 -- than the yes/no this column was named for. The name stays: an ALTER that
 -- renames cannot run twice, and this file is re-run on every deploy.
 ALTER TABLE corpus ADD COLUMN tree_line INTEGER;
+
+-- When somebody last looked this map over for inferred areas.
+--
+-- The CREATE in schema.sql does nothing to a table that already exists, so
+-- every deployed database needs this ALTER as well -- see the commit "CREATE
+-- TABLE IF NOT EXISTS cannot add a column", which cost six deploys and looked
+-- like a feature that had been switched off.
+--
+-- NULL means never checked, and that is deliberately different from "checked
+-- and nothing was inferred". The shapes cannot tell those apart: no marks
+-- means either nothing to mark or nobody asked. Without the distinction the
+-- review queue would either never empty or never fill.
+ALTER TABLE corpus ADD COLUMN inferred_checked_at TEXT;

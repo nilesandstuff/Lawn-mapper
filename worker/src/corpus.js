@@ -161,9 +161,53 @@ function cleanGeometry(g, maxRings = 60, maxPoints = 6000) {
   return out.length ? { type: 'Polygon', coordinates: out } : null;
 }
 
-const cleanShapes = (list) => (Array.isArray(list) ? list : [])
+/**
+ * The outlines, as GeoJSON Features rather than bare geometries.
+ *
+ * THIS USED TO DROP PROPERTIES, and that was invisible until there was a
+ * property worth keeping. Shapes can now be marked "I know this is lawn, I
+ * cannot see it" -- grass under a canopy with lawn either side -- and that
+ * mark is the only thing separating a detector that bridges what cannot be
+ * seen from one that has stopped looking at what can. Stripped here, the flag
+ * left the browser, survived the wire, and vanished one line before the
+ * database: set in the app, gone from the training, with nothing anywhere
+ * saying so.
+ *
+ * WRITTEN AS FEATURES, READ AS EITHER. Every row stored before today holds
+ * bare geometries, and they stay perfectly readable -- `geometries()` in the
+ * training tools already accepts both, and the console now does too. Writing
+ * the richer form from here means the corpus converges on it as maps are
+ * re-finished, without a migration over a TEXT column full of JSON.
+ *
+ * Unmarked shapes carry an empty properties object rather than the flag set
+ * false. "Not marked" and "marked as seen" are the same thing, and a false
+ * that has to be written everywhere is a false that will be missed somewhere.
+ */
+/**
+ * The detector's own outlines, as bare geometries.
+ *
+ * Separate from cleanShapes, and it must stay separate. Both cleaned the same
+ * way until the traced shapes needed somewhere to carry the inferred flag, and
+ * sharing the richer form here would have changed a column nothing asked to
+ * change -- for no gain, because the detector has no opinion about what it
+ * could not see. It draws what is in the picture. That is the whole of it.
+ */
+const cleanGeometries = (list) => (Array.isArray(list) ? list : [])
   .slice(0, 40)
   .map((f) => cleanGeometry(f?.geometry || f))
+  .filter(Boolean);
+
+const cleanShapes = (list) => (Array.isArray(list) ? list : [])
+  .slice(0, 40)
+  .map((f) => {
+    const geometry = cleanGeometry(f?.geometry || f);
+    if (!geometry) return null;
+    return {
+      type: 'Feature',
+      properties: f?.properties?.inferred === true ? { inferred: true } : {},
+      geometry,
+    };
+  })
   .filter(Boolean);
 
 /**
@@ -232,6 +276,9 @@ export async function recordFinished(env, body) {
       return p ? JSON.stringify(p) : null;
     })(),
     shapes: JSON.stringify(shapes),
+    /* See the upsert below: one marked shape settles the question for the
+       whole map, and nothing marked settles nothing. */
+    inferred_checked_at: shapes.some((f) => f.properties?.inferred) ? now : null,
     /*
      * Cleaned exactly like `shapes`, and allowed to be empty.
      *
@@ -242,7 +289,7 @@ export async function recordFinished(env, body) {
      * different thing entirely.
      */
     detected_shapes: Array.isArray(body?.detectedShapes)
-      ? JSON.stringify(cleanShapes(body.detectedShapes))
+      ? JSON.stringify(cleanGeometries(body.detectedShapes))
       : null,
     /*
      * Only the two values this can mean. Anything else is somebody's typo
@@ -265,8 +312,9 @@ export async function recordFinished(env, body) {
       `INSERT INTO corpus (
          id, at, lng, lat, county, provider, model, mode, hand_edited,
          detected_sq_ft, square_feet, parcel_sq_ft, frame, parcel, shapes,
-         detected_shapes, parcel_source, exclusions, created_at
-       ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?2)
+         detected_shapes, parcel_source, exclusions, created_at,
+         inferred_checked_at
+       ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?2,?19)
        ON CONFLICT(id) DO UPDATE SET
          at = ?2, county = ?5, provider = ?6, hand_edited = ?9,
          detected_sq_ft = ?10, square_feet = ?11, parcel_sq_ft = ?12,
@@ -296,12 +344,25 @@ export async function recordFinished(env, body) {
           * approved in its corrected form.
           */
          status = 'new', reviewed_at = NULL, reviewed_by = NULL,
-         review_note = NULL, review_queue = NULL`
+         review_note = NULL, review_queue = NULL,
+         /*
+          * MARKING A SHAPE IS PROOF SOMEBODY LOOKED, so a map that arrives
+          * carrying one is checked by definition and never needs to appear in
+          * the catch-up queue.
+          *
+          * The reverse does not hold, which is why this is COALESCE and why
+          * the console has its own button: a map with NO marks is either one
+          * with nothing to mark or one nobody has been asked about, and only
+          * a person can say which. Assignment here would also un-check a map
+          * every time its outline was edited afterwards.
+          */
+         inferred_checked_at = COALESCE(?19, corpus.inferred_checked_at)`
     ).bind(
       row.id, row.at, row.lng, row.lat, row.county, row.provider, row.model,
       row.mode, row.hand_edited, row.detected_sq_ft, row.square_feet,
       row.parcel_sq_ft, row.frame, row.parcel, row.shapes,
-      row.detected_shapes, row.parcel_source, row.exclusions
+      row.detected_shapes, row.parcel_source, row.exclusions,
+      row.inferred_checked_at
     ).run();
     /*
      * The row is handed back so the caller can pass it to storeImage under

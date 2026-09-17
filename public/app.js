@@ -1375,6 +1375,35 @@ async function initMap() {
 
   // Corners still backed by the county record. Drawn above everything so the
   // user can see at a glance which parts of the outline are authoritative.
+  /*
+   * SHAPES MARKED "INFERRED, NOT SEEN", drawn as their own layer.
+   *
+   * Mapbox Draw owns how it paints its own features, and replacing its whole
+   * style array to key one colour off one property is a lot of surface to
+   * disturb for a hatch. This sits underneath instead: the same outlines, in a
+   * colour that says "this one is a judgement", refreshed whenever the shapes
+   * change.
+   *
+   * It matters that this is visible while editing rather than only in the
+   * saved record. A mark nobody can see is a mark nobody checks, and the whole
+   * value of separating inferred from seen is that the separation is right.
+   */
+  map.addSource('inferred', { type: 'geojson', data: empty() });
+  map.addLayer({
+    id: 'inferred-fill', type: 'fill', source: 'inferred',
+    paint: { 'fill-color': '#b388ff', 'fill-opacity': 0.35 },
+  });
+  map.addLayer({
+    id: 'inferred-line', type: 'line', source: 'inferred',
+    paint: {
+      'line-color': '#7c4dff',
+      'line-width': 2,
+      /* Dashed, because "I could not see this" is exactly what a dashed
+         boundary means to anybody who has read a map. */
+      'line-dasharray': [2, 2],
+    },
+  });
+
   map.addSource('surveyed', { type: 'geojson', data: empty() });
   map.addLayer({
     id: 'surveyed', type: 'circle', source: 'surveyed',
@@ -2071,7 +2100,21 @@ function applyErase() {
   // The shapes the brush never reached go back exactly as they were, keeping
   // every corner the user placed by hand.
   for (const f of untouched) draw.add(f);
-  for (const geometry of restored) draw.add({ type: 'Feature', properties: {}, geometry });
+  /*
+   * A brushed shape keeps the flag only if EVERY shape the stroke touched had
+   * it. One stroke can merge several outlines into one polygon, so there is no
+   * faithful answer when they disagree -- and "seen" is the safe wrong one:
+   * marking visible ground as inferred is what teaches a detector to stop
+   * looking, while the reverse just loses a note you can put back.
+   */
+  const brushedInferred = touched.length > 0 && touched.every(isInferred);
+  for (const geometry of restored) {
+    draw.add({
+      type: 'Feature',
+      properties: brushedInferred ? { inferred: true } : {},
+      geometry,
+    });
+  }
 
   refreshMeasurement();
   refreshSurveyed();
@@ -4881,7 +4924,16 @@ function snapshotForSave() {
     parcel: state.parcel || null,
     // Ids are Draw's own and mean nothing after a reload, so they are dropped
     // rather than restored into a Draw instance that has its own idea of them.
-    shapes: lawn.map((f) => ({ type: 'Feature', properties: {}, geometry: f.geometry })),
+    /*
+     * Properties are carried, not blanked. The only one that matters is the
+     * inferred flag, and dropping it here would lose the distinction between
+     * "I saw this grass" and "I know it is there" on every reload.
+     */
+    shapes: lawn.map((f) => ({
+      type: 'Feature',
+      properties: f.properties?.inferred ? { inferred: true } : {},
+      geometry: f.geometry,
+    })),
   };
 }
 
@@ -5112,7 +5164,14 @@ function openMap(s) {
 
   map.getSource('parcel').setData(state.parcel || empty());
   for (const f of (s.shapes || [])) {
-    draw.add({ type: 'Feature', properties: {}, geometry: f.geometry });
+    /* The saved record carries the inferred flag, so restoring must too --
+       otherwise reopening a map silently downgrades every inferred area to
+       ordinary lawn and the distinction survives only until the next reload. */
+    draw.add({
+      type: 'Feature',
+      properties: f.properties?.inferred ? { inferred: true } : {},
+      geometry: f.geometry,
+    });
   }
 
   showStep('work');
@@ -5244,7 +5303,17 @@ async function sendFeedback(rating) {
         parcelSqFt: state.parcel ? Math.round(measure(state.parcel.geometry).squareFeet) : null,
         frame: state.lastMask?.frame || state.frame || null,
         parcel: state.parcel || null,
-        shapes: shapes.map((f) => ({ geometry: f.geometry })),
+        /*
+       * The inferred flag travels with the shape. Geometry alone cannot say
+       * which lawn was seen and which was worked out, and this is the path
+       * that feeds training -- so it is the one where the distinction is
+       * worth anything at all.
+       */
+      shapes: shapes.map((f) => ({
+        type: 'Feature',
+        properties: f.properties?.inferred ? { inferred: true } : {},
+        geometry: f.geometry,
+      })),
       }),
     });
   } catch {
@@ -7928,6 +7997,10 @@ function refreshMeasurement() {
   const hasShapes = fc.features.length > 0;
   $('#result').hidden = !hasShapes;
 
+  /* Every path that changes the shapes ends up here, which makes it the one
+     place the inferred overlay can be repainted without hunting for callers. */
+  refreshInferred();
+
   /*
    * A PLAN DRAWN OVER A LAWN THAT HAS SINCE CHANGED IS A WRONG PLAN.
    *
@@ -7991,16 +8064,60 @@ function refreshMeasurement() {
   scheduleSave();
 }
 
-function updateSelectionButtons() {
-  let selected = 0;
+/** Is this drawn feature marked as inferred rather than seen? */
+/*
+ * A declaration rather than a const, so it is available to callers that run
+ * before this line is reached. `user_inferred` is the same flag seen through
+ * Mapbox Draw, which prefixes properties it is given; both spellings mean one
+ * thing and a reader should not have to know which path a feature arrived by.
+ */
+function isInferred(f) {
+  return Boolean(f?.properties?.inferred || f?.properties?.user_inferred);
+}
+
+/**
+ * Repaint the inferred overlay from whatever Draw currently holds.
+ *
+ * Read from Draw rather than kept in a parallel list, because a second copy of
+ * which-shapes-are-inferred is a second thing to keep in step, and the one
+ * that drifts is always the one nobody is looking at.
+ */
+function refreshInferred() {
+  if (!map || !map.getSource('inferred')) return;
+  let features = [];
   try {
-    selected = draw.getSelected().features.length;
+    features = draw.getAll().features.filter(isInferred);
   } catch {
-    selected = 0;
+    features = [];
   }
+  map.getSource('inferred').setData({ type: 'FeatureCollection', features });
+}
+
+function updateSelectionButtons() {
+  let chosen = [];
+  try {
+    chosen = draw.getSelected().features;
+  } catch {
+    chosen = [];
+  }
+  const selected = chosen.length;
   // Phones have no Delete key, so removing a patch you do not mow needs a
   // button; without one, a wrongly detected shape could not be removed at all.
   $('#btn-delete').disabled = selected === 0;
+
+  /*
+   * The label says what pressing it will DO, not what the shape currently is.
+   * A button reading "Inferred" on an already-inferred shape is ambiguous
+   * about which way it goes, and this is a flag people will set dozens of
+   * times in a review session.
+   *
+   * A mixed selection unmarks: turning a mark off is the recoverable
+   * direction, and marking ground as inferred when it was plainly visible is
+   * the error that quietly teaches the detector to stop looking.
+   */
+  const btn = $('#btn-inferred');
+  btn.disabled = selected === 0;
+  btn.textContent = selected && chosen.every(isInferred) ? 'Mark as seen' : 'Mark as inferred';
 }
 
 /* ------------------------------------------------------- the plan tab */
@@ -8655,6 +8772,30 @@ $('#btn-point-add').addEventListener('click', addPointOnEdge);
 $('#btn-point-delete').addEventListener('click', deleteSelectedVertex);
 $('#edge-slider').addEventListener('input', (e) => applyEdgeOffset(Number(e.target.value)));
 
+$('#btn-inferred').addEventListener('click', () => {
+  const chosen = draw.getSelected().features;
+  if (!chosen.length) return;
+  /* All-or-nothing on a mixed selection, and the direction is "unmark", which
+     is what the label already promised. */
+  const marking = !chosen.every(isInferred);
+  pushHistory();
+  markHandEdited();
+  for (const f of chosen) {
+    /*
+     * setFeatureProperty rather than editing f.properties: the object handed
+     * back by getSelected is a copy, so writing to it changes nothing Draw
+     * will ever save, silently, which is the worst kind of nothing.
+     */
+    draw.setFeatureProperty(f.id, 'inferred', marking ? true : undefined);
+  }
+  refreshInferred();
+  updateSelectionButtons();
+  setStatus(marking
+    ? 'Marked as inferred. The total still counts it; the training now knows '
+      + 'you worked it out rather than saw it.'
+    : 'Marked as seen. It counts as ordinary visible lawn again.');
+});
+
 $('#btn-delete').addEventListener('click', () => {
   const ids = draw.getSelected().features.map((f) => f.id);
   if (!ids.length) return;
@@ -8768,7 +8909,17 @@ function keepFinished() {
       parcelSqFt: state.parcel ? Math.round(measure(state.parcel.geometry).squareFeet) : null,
       frame: state.lastMask?.frame || state.frame || null,
       parcel: state.parcel || null,
-      shapes: shapes.map((f) => ({ geometry: f.geometry })),
+      /*
+       * The inferred flag travels with the shape. Geometry alone cannot say
+       * which lawn was seen and which was worked out, and this is the path
+       * that feeds training -- so it is the one where the distinction is
+       * worth anything at all.
+       */
+      shapes: shapes.map((f) => ({
+        type: 'Feature',
+        properties: f.properties?.inferred ? { inferred: true } : {},
+        geometry: f.geometry,
+      })),
       // Null, not empty, when nothing was detected: "no detection happened"
       // and "the detector found nothing" are different examples.
       detectedShapes: state.detectedShapes
