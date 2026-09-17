@@ -779,7 +779,34 @@ async function main() {
      * not the features. Twenty lawns is what makes it that wide.
      */
     const NOISE = 3;
-    if (colour && eyeOnly && eyeOnly.med > colour.med + NOISE) {
+
+    /*
+     * THE SHADE COLUMN IS THE ONE TO READ FIRST.
+     *
+     * It is the difference between a model that has learnt what grass looks
+     * like and one that has learnt what green looks like, and the overall
+     * figure hides it completely -- a model can be mediocre everywhere or good
+     * in the sun and hopeless in the shade, and those score the same.
+     */
+    for (const t of table) {
+      if (t.dark === null || t.bright === null) continue;
+      const penalty = t.dark - t.bright;
+      if (penalty > NOISE) {
+        console.log(`"${t.cfg.name}" is ${penalty.toFixed(1)} points worse in shade`);
+        console.log('than in sun, which is what reading colour gets you: grass in');
+        console.log('shadow is dark with the green washed out of it.\n');
+      } else if (penalty < -NOISE) {
+        console.log(`"${t.cfg.name}" is actually ${(-penalty).toFixed(1)} points BETTER in`);
+        console.log('shade than in sun -- so whatever it is reading, it is not');
+        console.log('brightness. That is the thing colour alone can never do.\n');
+      }
+    }
+
+    if (colour && eyeOnly && colour.med > eyeOnly.med + NOISE) {
+      console.log(`The pretrained eye ALONE (${eyeOnly.med.toFixed(1)}%) beats colour alone`);
+      console.log(`(${colour.med.toFixed(1)}%), so it is reading things colour cannot. Worth`);
+      console.log('a bigger model, or a higher resolution, before anything else.');
+    } else if (colour && eyeOnly && eyeOnly.med > colour.med + NOISE) {
       console.log(`The pretrained eye ALONE (${eyeOnly.med.toFixed(1)}%) is clearly worse than`);
       console.log(`colour alone (${colour.med.toFixed(1)}%), so it is not reading this kind of`);
       console.log('picture well. These models learn from photographs taken from the');
