@@ -549,7 +549,7 @@
       "name": "Gwinnett County, GA",
       "fips": "13135",
       "service": "https://services3.arcgis.com/RfpmnkSAQleRbndX/arcgis/rest/services/Property_and_Tax/FeatureServer",
-      "layer": 3,
+      "layer": 0,
       "fields": {
         "pin": "PIN",
         "address": null
