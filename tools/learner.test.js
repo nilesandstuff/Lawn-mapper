@@ -219,6 +219,46 @@ const paint = (px, w, x0, y0, pw, ph, [r, g, b]) => {
     `${foundRare}/${rare} of the rare class -- unweighted, "always no" scores `
     + '90% and finds none of them');
 
+  /*
+   * A WIDE FEATURE SET MUST STILL TRAIN.
+   *
+   * One step moves the sum feeding each unit by about the rate times the
+   * squared length of the input row, and with standardised features that grows
+   * with the width. A rate that settles on eleven numbers a pixel overshoots
+   * on two hundred -- and overshooting does not look like a worse score, it
+   * looks like a model that has stopped answering: sixteen of twenty folds
+   * replied "no lawn" over the whole property and it printed as 100% wrong.
+   *
+   * Same separable problem at two widths. The wide one is padded with noise,
+   * so it is no harder -- if it scores far worse, the rate did not survive the
+   * width.
+   */
+  for (const wide of [2, 200]) {
+    const Nw = 3000;
+    const xw = new Float32Array(Nw * wide);
+    const yw = new Float32Array(Nw);
+    for (let i = 0; i < Nw; i++) {
+      const a = rand() * 4 - 2;
+      const b = rand() * 4 - 2;
+      xw[i * wide] = a;
+      xw[i * wide + 1] = b;
+      for (let f = 2; f < wide; f++) xw[i * wide + f] = rand() * 2 - 1;
+      yw[i] = a + b > 0 ? 1 : 0;
+    }
+    const m = train(xw, yw, null, { inputs: wide, hidden: 12, seed: 11 });
+    const pw = predict(m, xw);
+    let ok = 0, lit = 0;
+    for (let i = 0; i < Nw; i++) {
+      if (pw[i] > 0.5) lit++;
+      if ((pw[i] > 0.5 ? 1 : 0) === yw[i]) ok++;
+    }
+    check(`${wide} inputs: it still answers both ways`,
+      lit > Nw * 0.1 && lit < Nw * 0.9,
+      `${lit} of ${Nw} called positive -- all or none means it diverged`);
+    check(`  and still learns the boundary`,
+      ok / Nw > 0.9, `${((100 * ok) / Nw).toFixed(1)}% right`);
+  }
+
   check('weights make the two answers count equally',
     Math.abs(w.reduce((a, b, i) => a + (yi[i] ? b : 0), 0)
       - w.reduce((a, b, i) => a + (yi[i] ? 0 : b), 0)) < 1e-3,

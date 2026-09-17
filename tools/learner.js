@@ -20,6 +20,16 @@ import { FEATURE_COUNT } from './features.js';
 const sigmoid = (z) => 1 / (1 + Math.exp(-Math.max(-30, Math.min(30, z))));
 
 /**
+ * The width the default learning rate was chosen at.
+ *
+ * Every rate is quoted relative to this, so a wider feature set trains at the
+ * same effective step rather than at one several times too large. See the
+ * scaling in train() for what too large looks like -- it is not a worse score,
+ * it is a model that has stopped answering.
+ */
+const RATE_REFERENCE_INPUTS = 11;
+
+/**
  * Train on pixels.
  *
  * `x` is rows of features laid end to end, `y` is 1 for lawn and 0 for not,
@@ -30,7 +40,7 @@ const sigmoid = (z) => 1 / (1 + Math.exp(-Math.max(-30, Math.min(30, z))));
  */
 export function train(x, y, weight, {
   hidden = 16,
-  epochs = 12,
+  epochs = 16,
   rate = 0.08,
   l2 = 1e-4,
   seed = 1,
@@ -71,9 +81,27 @@ export function train(x, y, weight, {
       const j = Math.floor(rand() * (i + 1));
       const t = order[i]; order[i] = order[j]; order[j] = t;
     }
-    /* The step shrinks as it goes: big early to get somewhere, small late so
-       the last few thousand pixels do not undo the shape of the answer. */
-    const lr = rate * (1 - epoch / (epochs + 1));
+    /*
+     * The step shrinks as it goes: big early to get somewhere, small late so
+     * the last few thousand pixels do not undo the shape of the answer.
+     *
+     * AND IT IS DIVIDED BY THE NUMBER OF INPUTS, which is not a detail. One
+     * step changes the sum feeding each unit by roughly the rate times the
+     * squared length of the input row -- and with standardised features that
+     * length grows with the width. A rate that settles nicely on eleven
+     * numbers a pixel therefore overshoots wildly on two hundred, and what
+     * overshooting looks like from outside is a model that answers "no lawn"
+     * over the whole property: sixteen of twenty folds did exactly that, and
+     * it printed as 100% wrong, which reads as a bad model rather than a
+     * diverged one.
+     *
+     * So the rate is quoted per input and scaled by the reference width it was
+     * chosen at. Wider feature sets then train at the same effective step, and
+     * the comparison between them is about the features rather than about
+     * which of them happened to suit one hard-coded number.
+     */
+    const scale = RATE_REFERENCE_INPUTS / inputs;
+    const lr = rate * scale * (1 - epoch / (epochs + 1));
 
     for (let k = 0; k < n; k++) {
       const i = order[k];
