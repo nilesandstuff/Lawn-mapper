@@ -29,7 +29,9 @@
 
 import { fileURLToPath } from 'node:url';
 import { resolve, join } from 'node:path';
-import { mkdtempSync, readFileSync, rmSync, existsSync, writeFileSync } from 'node:fs';
+import {
+  mkdtempSync, readFileSync, rmSync, existsSync, writeFileSync, mkdirSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 
@@ -196,6 +198,37 @@ function compare(got, want, within) {
 }
 
 /**
+ * Features from the Python extractor, if it was run.
+ *
+ * ONE PASS OVER THE WHOLE PROPERTY, which is the point of going to Python at
+ * all. The ONNX export Node can load is frozen at 224 pixels, so it had to be
+ * run on sixteen tiles -- and a patch in the middle of a tile cannot see the
+ * garden it sits in, which is exactly the context a pretrained model is for.
+ * In PyTorch the same architecture interpolates its position embeddings and
+ * takes any size, so every patch attends to every other one. Grass in shadow
+ * can then be read as grass because the model can see the lawn around it.
+ *
+ * So when these are present there is no coarse pass: the single grid already
+ * carries both the detail and the whole-frame context.
+ */
+function readPythonFeatures(dir) {
+  const manifestPath = join(dir, 'manifest.json');
+  if (!existsSync(manifestPath)) return null;
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  const grids = new Map();
+  for (const [stem, shape] of Object.entries(manifest.images || {})) {
+    const file = join(dir, `${stem}.f32`);
+    if (!existsSync(file)) continue;
+    const buf = readFileSync(file);
+    grids.set(stem, {
+      data: new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4),
+      gridW: shape.gridW, gridH: shape.gridH, dim: shape.dim,
+    });
+  }
+  return { manifest, grids };
+}
+
+/**
  * One pixel's full feature vector: colour and texture, then the backbone at
  * both scales.
  *
@@ -221,15 +254,18 @@ export function buildRow(lawn, p, out, offset, grid = GRID, cfg = null) {
     const py = (p / grid) | 0;
     sampleAt(fine, px, py, grid, out, at);
     at += dims;
+    /* The Python path has no coarse grid: its single pass already saw the
+       whole frame, so a second, blurrier copy of the same thing would only
+       spend width. */
     if (coarse) sampleAt(coarse, px, py, grid, out, at);
   }
   return out;
 }
 
 /** How wide a row is under one configuration, and whether it is runnable. */
-export function rowWidth(cfg, hasEye) {
+export function rowWidth(cfg, hasEye, scales = 2) {
   const colour = cfg.colour ? FEATURE_COUNT : 0;
-  const eye = cfg.backbone && hasEye ? 2 * cfg.dims : 0;
+  const eye = cfg.backbone && hasEye ? scales * cfg.dims : 0;
   return colour + eye;
 }
 
@@ -378,6 +414,39 @@ export function runFold(lawns, held, opts = {}) {
   }
 
   /*
+   * HOW WRONG IS IT IN THE DARK?
+   *
+   * Reported because shadow is the objection this whole approach has to answer,
+   * and a single percentage cannot. A model reading mostly colour should fall
+   * apart on grass in shade -- dark, and with the green washed out of it -- so
+   * splitting the error by how bright the ground is turns "I think shadows
+   * break it" into something the run either confirms or refutes.
+   *
+   * The cut is the frame's own median brightness rather than a fixed value: a
+   * photograph taken in flat light has no dark half in absolute terms, and a
+   * threshold picked in advance would call every pixel of it bright and report
+   * nothing.
+   */
+  let darkWrong = 0, darkTruth = 0, brightWrong = 0, brightTruth = 0;
+  {
+    const lumaOf = (i) => test.cheap[i * FEATURE_COUNT + 5];
+    const sample = [];
+    for (let i = 0; i < got.length; i += 7) {
+      if (test.within && !test.within[i]) continue;
+      sample.push(lumaOf(i));
+    }
+    sample.sort((a, b) => a - b);
+    const cut = sample.length ? sample[sample.length >> 1] : 0.5;
+    for (let i = 0; i < got.length; i++) {
+      if (test.within && !test.within[i]) continue;
+      const dark = lumaOf(i) < cut;
+      const wrong = (got[i] ? 1 : 0) !== (test.truth[i] ? 1 : 0);
+      if (dark) { darkTruth += test.truth[i] ? 1 : 0; darkWrong += wrong ? 1 : 0; }
+      else { brightTruth += test.truth[i] ? 1 : 0; brightWrong += wrong ? 1 : 0; }
+    }
+  }
+
+  /*
    * DID IT ANSWER THE SAME THING EVERYWHERE? A head that has collapsed to "no
    * lawn anywhere" scores exactly 100% wrong, which prints as a number and
    * reads as a bad model rather than as a broken one. Counted here so the
@@ -395,6 +464,8 @@ export function runFold(lawns, held, opts = {}) {
     theirs: test.detected ? compare(test.detected, test.truth, test.within) : null,
     trainedOn,
     collapsed: judged > 0 && (lit === 0 || lit === judged),
+    darkPct: darkTruth ? (100 * darkWrong) / darkTruth : null,
+    brightPct: brightTruth ? (100 * brightWrong) / brightTruth : null,
     predicted: got,
   };
 }
@@ -433,8 +504,30 @@ async function main() {
    * number is unattributable. So the mode is printed, and it is printed again
    * at the end beside the result.
    */
+  /*
+   * THE PYTHON PATH, when it has been run.
+   *
+   * A directory of patch grids, one per lawn, keyed by the same id the
+   * photographs were saved under. Read before the lawns are gathered so a
+   * missing extractor is reported once rather than twenty times.
+   */
+  const pyDir = process.env.FEATURES_DIR || '';
+  const py = pyDir ? readPythonFeatures(pyDir) : null;
+  if (pyDir && !py) {
+    console.log(`No features found in ${pyDir}. Run the extractor first, or`);
+    console.log('unset FEATURES_DIR to fall back to the in-browser backbone.');
+    process.exitCode = 1;
+    return;
+  }
+  if (py) {
+    const any = [...py.grids.values()][0];
+    console.log(`Features from ${py.manifest.model} at ${py.manifest.size}px:`);
+    console.log(`${py.grids.size} lawns, ${any?.gridW}x${any?.gridH} patches of ${any?.dim},`);
+    console.log('one pass over the whole property -- every patch saw all of it.\n');
+  }
+
   let eye = null;
-  if (process.env.NO_BACKBONE !== 'true') {
+  if (!py && process.env.NO_BACKBONE !== 'true') {
     const t = Date.now();
     try {
       eye = await loadBackbone();
@@ -443,10 +536,13 @@ async function main() {
       console.log('The pretrained eye would not load, so this is colour and');
       console.log(`texture only: ${String(e?.message || e).replace(/\s+/g, ' ').slice(0, 90)}`);
     }
-  } else {
+  } else if (!py) {
     console.log('NO_BACKBONE is set, so this is colour and texture only.');
   }
-  const using = eye ? 'colour, texture and a pretrained eye' : 'colour and texture only';
+  const using = py
+    ? `colour, texture and ${py.manifest.model} at ${py.manifest.size}px`
+    : eye ? 'colour, texture and a pretrained eye (tiled, 224px)'
+      : 'colour and texture only';
   console.log('');
 
   /* The projection is made once, on first use, and reused for every lawn and
@@ -489,6 +585,8 @@ async function main() {
       lawns.push({
         id: row.id,
         county: row.county,
+        /* Kept only for DUMP_FRAMES; the features are built from it above. */
+        rgb: process.env.DUMP_FRAMES ? rgb : null,
         canopy: row.tree_line === null || row.tree_line === undefined ? null : Number(row.tree_line),
         /* Held raw: each fold standardises against its own training lawns. */
         cheap: imageFeatures(rgb, GRID, GRID),
@@ -497,10 +595,15 @@ async function main() {
          * squeeze at one size, and how much the squeeze costs is one of the
          * things the configurations below are there to find out.
          */
-        fineFull: eye
-          ? await tiledFeatures(eye, rgb, GRID, GRID, { tiles: FINE_TILES }) : null,
-        coarseFull: eye
-          ? await tiledFeatures(eye, rgb, GRID, GRID, { tiles: COARSE_TILES }) : null,
+        /*
+         * One grid from Python, or two from the tiled ONNX path. Never both:
+         * the Python pass already saw the whole frame, so a coarse copy would
+         * be a blurrier version of what it is sitting next to.
+         */
+        fineFull: py ? (py.grids.get(row.id) || null)
+          : eye ? await tiledFeatures(eye, rgb, GRID, GRID, { tiles: FINE_TILES }) : null,
+        coarseFull: py ? null
+          : eye ? await tiledFeatures(eye, rgb, GRID, GRID, { tiles: COARSE_TILES }) : null,
         truth,
         within,
         truthPx,
@@ -516,6 +619,30 @@ async function main() {
   }
 
   console.log(`\n${lawns.length} usable.\n`);
+
+  /*
+   * WRITE THE FRAMES OUT AND STOP, when asked.
+   *
+   * The Python extractor reads pictures from a directory. This is the step
+   * that puts them there, at exactly the grid everything else is measured on,
+   * so the patch grid it returns lines up with the outlines without anybody
+   * having to reconcile two resizes.
+   *
+   * Named by the row id, which is what the reader keys on later.
+   */
+  if (process.env.DUMP_FRAMES) {
+    const dest = process.env.DUMP_FRAMES;
+    mkdirSync(dest, { recursive: true });
+    for (const L of lawns) {
+      const png = new decoders.png.PNG({ width: GRID, height: GRID });
+      png.data = Buffer.from(L.rgb.buffer, L.rgb.byteOffset, L.rgb.byteLength);
+      writeFileSync(join(dest, `${L.id}.png`), decoders.png.PNG.sync.write(png));
+    }
+    console.log(`Wrote ${lawns.length} frames to ${dest} at ${GRID}x${GRID}.`);
+    console.log('Run the extractor over them, then run this again with');
+    console.log('FEATURES_DIR pointing at what it produced.');
+    return;
+  }
 
   /*
    * THREE IS THE FLOOR, and it is a floor about honesty rather than about
@@ -544,31 +671,38 @@ async function main() {
   const samMed = median(samScores.filter(Boolean).map((s) => s.errorPct));
   const samCount = samScores.filter(Boolean).length;
 
-  const runnable = CONFIGS.filter((c) => rowWidth(c, Boolean(eye)) > 0
-    && (!c.backbone || eye));
+  const hasEye = Boolean(eye) || Boolean(py);
+  const scales = py ? 1 : 2;
+  const runnable = CONFIGS.filter((c) => rowWidth(c, hasEye, scales) > 0
+    && (!c.backbone || hasEye));
   const table = [];
 
   for (const cfg of runnable) {
     /* Squeeze the patches to this configuration's width, once for all lawns. */
-    if (cfg.backbone && eye) {
+    if (cfg.backbone && hasEye) {
       for (const L of lawns) {
-        L.fine = shrink(L.fineFull, cfg.dims);
-        L.coarse = shrink(L.coarseFull, cfg.dims);
+        L.fine = L.fineFull ? shrink(L.fineFull, cfg.dims) : null;
+        L.coarse = L.coarseFull ? shrink(L.coarseFull, cfg.dims) : null;
       }
     }
-    const width = rowWidth(cfg, Boolean(eye));
+    const width = rowWidth(cfg, hasEye, scales);
     console.log(`Scoring "${cfg.name}" (${width} numbers a pixel)…`);
 
     const rows = [];
     for (let held = 0; held < lawns.length; held++) {
-      const { mine, collapsed } = runFold(lawns, held, { cfg, width });
-      rows.push({ lawn: lawns[held], mine, theirs: samScores[held], collapsed });
+      const f = runFold(lawns, held, { cfg, width });
+      rows.push({
+        lawn: lawns[held], mine: f.mine, theirs: samScores[held],
+        collapsed: f.collapsed, darkPct: f.darkPct, brightPct: f.brightPct,
+      });
     }
     const med = median(rows.map((r) => r.mine.errorPct));
     const paired = rows.filter((r) => r.theirs);
     const wins = paired.filter((r) => r.mine.errorPct < r.theirs.errorPct).length;
     const collapsed = rows.filter((r) => r.collapsed).length;
-    table.push({ cfg, med, wins, of: paired.length, rows, width, collapsed });
+    const dark = median(rows.map((r) => r.darkPct).filter((v) => v !== null));
+    const bright = median(rows.map((r) => r.brightPct).filter((v) => v !== null));
+    table.push({ cfg, med, wins, of: paired.length, rows, width, collapsed, dark, bright });
     console.log(`   ${med.toFixed(1)}% out on the middle lawn, better than SAM on ${wins} of ${paired.length}.\n`);
   }
 
@@ -594,10 +728,12 @@ async function main() {
   console.log(`\nTrained on ${lawns.length - 1} lawns, tested on the one left out, ${lawns.length} times.`);
   console.log(`Features available: ${using}.\n`);
 
-  console.log('  what it looked at                  wrong   beat SAM on');
+  console.log('  what it looked at                  wrong   in shade  in sun   beat SAM on');
   for (const t of table) {
     console.log(
       `  ${t.cfg.name.padEnd(32).slice(0, 32)} ${t.med.toFixed(1).padStart(5)}%   `
+      + `${(t.dark === null ? '  --' : t.dark.toFixed(1)).padStart(6)}%  `
+      + `${(t.bright === null ? '  --' : t.bright.toFixed(1)).padStart(6)}%   `
       + `${t.wins} of ${t.of}`
       + (t.collapsed
         ? `   (${t.collapsed} of ${t.rows.length} folds answered the same thing everywhere -- not a score)`

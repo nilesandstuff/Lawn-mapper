@@ -1,0 +1,118 @@
+name: 14. Train with a real backbone (Python)
+
+# The same leave-one-out measurement as workflow 12, but the features come from
+# a proper vision model run in PyTorch instead of the crippled ONNX export.
+#
+# WHY THIS IS A SECOND WORKFLOW. The ONNX build of DINOv2 that Node can load is
+# frozen at 224 pixels -- its position-embedding table was baked in at one size
+# -- so over a 40 m property it gives a patch every 3.3 m, and the only way to
+# do better was to run it on sixteen separate tiles. Tiling destroys the one
+# thing a pretrained model is for: a patch in the middle of a tile cannot see
+# the garden it sits in, so grass in shadow has nothing around it to be read
+# against.
+#
+# In PyTorch the same architecture interpolates its position embeddings and
+# takes any input size. One pass over the whole property, every patch attending
+# to every other. That is what makes shadow legible -- and shadow is the thing
+# colour alone will never survive.
+#
+# FREE. Python, torch and the weights are downloads; nothing here is billed.
+# It is slower than workflow 12 -- a bigger model at a higher resolution on a
+# CPU -- which is the price of asking a better question.
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: 'Which backbone to try'
+        type: choice
+        default: facebook/dinov2-base
+        options:
+          - facebook/dinov2-base
+          - facebook/dinov2-small
+          - facebook/dinov2-large
+          - facebook/dinov2-with-registers-base
+      size:
+        description: 'Input size in pixels. Must divide by 14. Bigger is finer and slower.'
+        type: choice
+        default: '672'
+        options:
+          - '448'
+          - '672'
+          - '896'
+      publish:
+        description: 'Publish the result if it wins'
+        type: boolean
+        default: false
+
+jobs:
+  train:
+    name: Extract with PyTorch, then leave one out
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - run: npm ci
+
+      - name: Install the image decoders
+        run: npm install pngjs jpeg-js --no-save
+
+      # The CPU wheel, explicitly. The default index pulls the CUDA build --
+      # about two gigabytes of driver support for a machine with no GPU, which
+      # turns a three minute install into fifteen and then never uses it.
+      - name: Install PyTorch and the model loader
+        run: |
+          pip install --index-url https://download.pytorch.org/whl/cpu torch
+          pip install transformers pillow numpy
+
+      # Step one: the photographs, at the same grid everything is measured on,
+      # so the patch grid lines up with the outlines without reconciling two
+      # separate resizes.
+      - name: Fetch the lawns and write the frames out
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CORPUS_BUCKET: lawn-mapper-corpus
+          DUMP_FRAMES: frames
+          NO_BACKBONE: 'true'
+        run: node tools/train-detector.js
+
+      - name: Run the backbone over them
+        env:
+          IMAGES: frames
+          OUT: feats
+          MODEL: ${{ inputs.model }}
+          SIZE: ${{ inputs.size }}
+        run: python3 tools/extract_features.py
+
+      # Step two: the same folds, the same scoring, the same comparison against
+      # SAM. Only where the numbers came from has changed, which is what makes
+      # this answerable against workflow 12's table.
+      - name: Score it the same way as before
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CORPUS_BUCKET: lawn-mapper-corpus
+          FEATURES_DIR: feats
+          EXPORT_MODEL: ${{ inputs.publish }}
+        run: node tools/train-detector.js
+
+      - name: If that failed
+        if: failure()
+        run: |
+          echo "Nothing was spent finding this out."
+          echo
+          echo "The usual reasons, in order:"
+          echo "  * the runner could not reach huggingface.co for the weights"
+          echo "  * the input size is not a whole number of 14px patches"
+          echo "  * a larger model ran out of memory at that size -- try 448,"
+          echo "    or a smaller model, before concluding anything"
