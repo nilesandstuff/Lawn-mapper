@@ -32,17 +32,18 @@ jobs:
 
       - run: npm ci
 
-      # Not in package.json: nothing the Worker or the site ships needs to
-      # decode a PNG, and a dependency that exists only for one workflow does
-      # not belong in the thing that gets deployed.
-      - name: Install the image decoders
-        run: npm install pngjs jpeg-js --no-save
-
-      # The pretrained eye. Not in package.json for the same reason: the Worker
-      # and the site ship nothing that needs a neural network, and this is
-      # ~200 MB of one. Workflow 13 checks it in isolation.
-      - name: Install the model runner
-        run: npm install @huggingface/transformers --no-save
+      # ONE COMMAND, NOT TWO, and that is not tidiness. --no-save keeps these
+      # out of package.json, which means the NEXT npm install sees them as
+      # strays and prunes them: installing the model runner separately removed
+      # the decoders, and the run failed with "the image decoders are missing"
+      # a step after they were installed. "removed 2 packages" was the only
+      # sign, in the middle of an otherwise ordinary install log.
+      #
+      # They stay out of package.json for a good reason -- nothing the Worker
+      # or the site ships decodes a PNG or runs a neural network, and this is
+      # ~200 MB of dependency that would otherwise sit in the deploy.
+      - name: Install the decoders and the model runner
+        run: npm install pngjs jpeg-js @huggingface/transformers --no-save
 
       - name: Train, and test on lawns it has not seen
         env:
