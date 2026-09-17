@@ -574,5 +574,39 @@ const paint = (px, w, x0, y0, pw, ph, [r, g, b]) => {
   if (was === undefined) delete process.env.DUMP_SIZE; else process.env.DUMP_SIZE = was;
 }
 
+/* ------------------------------------------------ which lawns, not how many */
+{
+  /*
+   * THE SET IS THE BIGGEST TERM IN EVERY NUMBER THIS TOOL PRINTS.
+   *
+   * Two transient R2 failures took a run from 20 lawns to 18, and the fixed
+   * colour-only configuration -- same code, same features, same seed -- moved
+   * 38.7% to 48.2% and reversed the sign of its shade-versus-sun gap. Nine and
+   * a half points and a flipped conclusion, from nothing but which gardens
+   * were in the room.
+   *
+   * Two tables can therefore look comparable and not be. The fingerprint is
+   * what makes that visible without reading the lawn-by-lawn list.
+   */
+  const { setPrint, FETCH_TRIES } = await import('./train-detector.js');
+
+  const set = [{ id: 'aaa' }, { id: 'bbb' }, { id: 'ccc' }];
+  check('the same lawns fingerprint the same whatever order they arrive in',
+    setPrint(set) === setPrint([set[2], set[0], set[1]]),
+    'row order is a property of the query, not of the experiment, and a '
+    + 'fingerprint that moved with it would cry wolf on every run');
+  check('and losing one changes it',
+    setPrint(set) !== setPrint(set.slice(0, 2)),
+    'the whole point is that 18 lawns and 20 lawns are different experiments');
+  check('it is short enough to read on a phone',
+    setPrint(set).length === 7,
+    `got ${setPrint(set).length} characters -- this is a label, not a hash`);
+
+  check('a lawn is not abandoned on one bad fetch',
+    FETCH_TRIES >= 3,
+    'one wrangler hiccup silently rewrites the set, and a rewritten set is '
+    + 'a different measurement wearing the same headings');
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);

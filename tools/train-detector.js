@@ -119,6 +119,26 @@ const dumpSize = () => {
  * per-pixel depends on what size the picture was saved at and this does not.
  * The extractor divides by whatever width it ends up using.
  */
+/*
+ * A SHORT NAME FOR "THESE EXACT LAWNS".
+ *
+ * Not security, not collision-proof -- a label. Two runs printing the same
+ * fingerprint scored the same properties, so the difference between their
+ * tables is the thing under test. Two printing different ones are not
+ * comparable at all, however similar the headings look, and that is worth
+ * being able to see without reading twenty lines of lawn-by-lawn output.
+ */
+export const setPrint = (lawns) => {
+  let h = 2166136261;
+  for (const id of lawns.map((L) => L.id).sort()) {
+    for (let i = 0; i < id.length; i++) {
+      h ^= id.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+  }
+  return (h >>> 0).toString(36).padStart(7, '0').slice(0, 7);
+};
+
 export const frameSpans = (lawns, grid = GRID) => {
   const out = {};
   for (const L of lawns) out[L.id] = L.mpp * grid;
@@ -152,16 +172,40 @@ const geometries = (stored) => {
  * decodes a JPEG with a PNG reader and throws on a file that is perfectly
  * fine. The magic number is the only honest answer.
  */
+/*
+ * THREE TRIES, because one failure silently rewrites the experiment.
+ *
+ * A lawn that will not fetch is skipped, and a skipped lawn is not a slightly
+ * smaller run -- it is a DIFFERENT SET, and the numbers move far more with the
+ * set than with anything being compared. Two transient wrangler failures took
+ * one run from 20 lawns to 18, and the fixed colour-only configuration moved
+ * 38.7% -> 48.2% on identical code. Nine and a half points, from nothing but
+ * which gardens were in the room.
+ *
+ * So a network blip must not be allowed to look like a result. Retrying is the
+ * cheap half of the fix; saying so loudly at the end is the other half.
+ */
+const FETCH_TRIES = 3;
+
 function fetchImage(bucket, key, dir, decoders) {
   const file = join(dir, 'image.bin');
-  try {
-    execFileSync('npx', [
-      'wrangler', 'r2', 'object', 'get', `${bucket}/${key}`,
-      '--file', file, '--remote',
-    ], { stdio: ['ignore', 'pipe', 'pipe'] });
-  } catch (e) {
-    return { ok: false, reason: `could not fetch (${String(e.message || e).slice(0, 80)})` };
+  let last = '';
+  for (let attempt = 1; attempt <= FETCH_TRIES; attempt++) {
+    try {
+      execFileSync('npx', [
+        'wrangler', 'r2', 'object', 'get', `${bucket}/${key}`,
+        '--file', file, '--remote',
+      ], { stdio: ['ignore', 'pipe', 'pipe'] });
+      last = '';
+      break;
+    } catch (e) {
+      last = String(e.message || e).slice(0, 80);
+      /* A short wait, doubling. Whatever rate limit or hiccup this was, going
+         straight back at it is the way to meet it again. */
+      if (attempt < FETCH_TRIES) execFileSync('sleep', [String(attempt * 2)]);
+    }
   }
+  if (last) return { ok: false, reason: `could not fetch after ${FETCH_TRIES} tries (${last})` };
   if (!existsSync(file)) return { ok: false, reason: 'nothing was written' };
 
   const bytes = readFileSync(file);
@@ -594,6 +638,9 @@ async function main() {
   /* ---------------------------------------------------- gather the lawns */
   const dir = mkdtempSync(join(tmpdir(), 'lawn-'));
   const lawns = [];
+  /* Lawns the run wanted and did not get. See FETCH_TRIES: this is the
+     difference between two tables that otherwise look comparable. */
+  const missing = [];
   try {
     for (const row of rows) {
       const frame = parse(row.frame);
@@ -603,6 +650,7 @@ async function main() {
       const img = fetchImage(bucket, row.image_key, dir, decoders);
       if (!img.ok) {
         console.log(`  skipped ${row.id.slice(0, 28)} -- ${img.reason}`);
+        missing.push(row.id.slice(0, 28));
         continue;
       }
 
@@ -788,7 +836,16 @@ async function main() {
   /* ------------------------------------------------------------- verdict */
   console.log(`\n${'='.repeat(64)}`);
   console.log(`\nTrained on ${lawns.length - 1} lawns, tested on the one left out, ${lawns.length} times.`);
-  console.log(`Features available: ${using}.\n`);
+  console.log(`Features available: ${using}.`);
+  /*
+   * WHICH LAWNS, not just how many.
+   *
+   * Two tables from two runs look comparable and are not, if the sets differ.
+   * The fingerprint is here so that can be checked at a glance instead of
+   * being assumed -- same number, same table means the only thing that changed
+   * is the thing under test.
+   */
+  console.log(`Lawn set: ${lawns.length} of ${rows.length}, fingerprint ${setPrint(lawns)}.\n`);
 
   console.log('  what it looked at                  wrong   in shade  in sun   beat SAM on');
   for (const t of table) {
@@ -894,6 +951,33 @@ async function main() {
     console.log('the top row goes under the SAM line it is worth building on.');
   }
 
+  /*
+   * THE WARNING THAT OUTRANKS THE TABLE, last because last is what gets read.
+   *
+   * A run that lost lawns did not produce a slightly noisier version of the
+   * same measurement. It measured a different set, and the set is the biggest
+   * term in every number above -- 20 lawns to 18 moved the fixed colour-only
+   * configuration by nine and a half points and flipped the sign of its
+   * shade-versus-sun gap. Against that, the difference between two backbones
+   * is not visible.
+   *
+   * So this does not say "note that two were skipped". It says the table
+   * cannot be set beside the last one, because that is the decision it
+   * changes.
+   */
+  if (missing.length) {
+    console.log(`\n${'!'.repeat(64)}`);
+    console.log(`\n${missing.length} lawn(s) could not be read, so this ran on `
+      + `${lawns.length} of ${rows.length}.`);
+    console.log('\nDO NOT COMPARE THIS TABLE WITH ANOTHER RUN. Which properties are');
+    console.log('in the set moves these numbers more than anything being tested:');
+    console.log('one run that lost two of twenty moved the fixed colour-only row');
+    console.log('by 9.5 points and reversed its shade-versus-sun gap.');
+    console.log('\nRun it again. The fetch retries three times now, so a second');
+    console.log('failure on the same lawn is the photograph, not the network.');
+    console.log(`\n${'!'.repeat(64)}`);
+  }
+
   /* --------------------------------------------- ship it for dev mode */
   /*
    * COLOUR AND TEXTURE ONLY, whatever scored best above.
@@ -988,4 +1072,4 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   });
 }
 
-export { compare, resize, maskOf, GRID, dumpSize };
+export { compare, resize, maskOf, GRID, dumpSize, FETCH_TRIES };
