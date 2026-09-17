@@ -23,7 +23,7 @@ import {
   nearestVertex, moveVertex, insertVertex, deleteVertex, tidyRing,
   feetToMetres, metresToFeet, ringInsideRing, ringContains, nearestPointOnRing,
 } from './lib/edges.js';
-import { restoreAway } from './lib/stitch.js';
+import { afterStroke, restoreAway } from './lib/stitch.js';
 import {
   planHandles, HANDLE_DOT_PX, HANDLE_REACH_PX, HANDLE_MAX_CORNERS,
 } from './lib/handles.js';
@@ -1895,8 +1895,22 @@ function applyErase() {
    * the lawn underneath, and an erase stroke takes back inferred ground
    * without touching what is visible beneath it.
    */
-  const features = draw.getAll().features
+  const everything = draw.getAll().features;
+  const features = everything
     .filter((f) => outerRing(f) && isInferred(f) === state.inferredMode);
+  /*
+   * AND EVERYTHING THIS STROKE IS NOT ALLOWED TO TOUCH, held so it can be put
+   * back. This ends in draw.deleteAll(), which does exactly what it says: the
+   * shapes that go back afterwards are the ones named here and in `untouched`,
+   * and anything left out of both is simply gone.
+   *
+   * That is how the first inferred stroke on a finished map deleted the map.
+   * The filter above was added so a stroke works on one layer; the rebuild
+   * below was written when there was only one layer to rebuild. Each was right
+   * and together they threw the lawn away and left the total reading only the
+   * patch that had just been drawn.
+   */
+  const spared = everything.filter((f) => !features.includes(f));
   // Erasing nothing is a no-op; adding to nothing is how you start.
   if (stroke.length < 2 || (!features.length && mode.paint === 0)) return;
   markHandEdited();
@@ -2134,26 +2148,14 @@ function applyErase() {
 
   pushHistory();
   draw.deleteAll();
-  // The shapes the brush never reached go back exactly as they were, keeping
-  // every corner the user placed by hand.
-  for (const f of untouched) draw.add(f);
   /*
-   * A brushed shape keeps the flag only if EVERY shape the stroke touched had
-   * it. One stroke can merge several outlines into one polygon, so there is no
-   * faithful answer when they disagree -- and "seen" is the safe wrong one:
-   * marking visible ground as inferred is what teaches a detector to stop
-   * looking, while the reverse just loses a note you can put back.
+   * Everything that should exist afterwards, assembled in one place. See
+   * afterStroke in lib/stitch.js: the list it builds is the whole of what
+   * survives, and the bug it is named for was a shape left out of it.
    */
-  /* Everything the brush makes belongs to the layer it was drawn on. The
-     brush only ever sees one layer now, so there is nothing to reconcile. */
-  const brushedInferred = state.inferredMode;
-  for (const geometry of restored) {
-    draw.add({
-      type: 'Feature',
-      properties: brushedInferred ? { inferred: true } : {},
-      geometry,
-    });
-  }
+  for (const f of afterStroke(spared, untouched, restored, {
+    inferred: state.inferredMode,
+  })) draw.add(f);
 
   refreshMeasurement();
   refreshSurveyed();
@@ -6097,7 +6099,19 @@ function retrace(what = 'That') {
   // A snapshot per change would bury the detection under a hundred steps of
   // slider, so the whole drag collapses into one undoable move.
   pushHistory('sensitivity');
+  /*
+   * The inferred layer survives this, because the slider re-traces the
+   * DETECTOR'S mask and an inferred patch was never part of it. Somebody who
+   * has marked the ground under a canopy and then nudges the edge should not
+   * lose that work to a control that has nothing to do with it.
+   *
+   * A fresh detection is different and still replaces everything: that is an
+   * explicit request for the AI's answer from scratch, and leaving purple
+   * marks floating over a new outline would be worse than losing them.
+   */
+  const keptInferred = draw.getAll().features.filter(isInferred);
   draw.deleteAll();
+  for (const f of keptInferred) draw.add(f);
   for (const geometry of polygons) draw.add({ type: 'Feature', properties: {}, geometry });
 
   refreshMeasurement();

@@ -223,3 +223,33 @@ export function restoreAway(rings, {
     return dropCollinear(moved, frame, collinearM);
   });
 }
+
+/**
+ * What should be on the map after a brush stroke.
+ *
+ * A SEPARATE FUNCTION BECAUSE FORGETTING SOMETHING HERE DELETES A LAWN.
+ *
+ * The stroke ends with draw.deleteAll(), so what exists afterwards is exactly
+ * what this returns and nothing else. That is fine while the brush works on
+ * every shape on the map. It stopped being fine the moment the brush was
+ * taught to work on ONE LAYER: the filter that narrowed what a stroke may
+ * touch also narrowed what got put back, and the first inferred stroke on a
+ * finished map deleted the map, leaving the total reading only the patch that
+ * had just been drawn.
+ *
+ * Both halves were individually right, which is why neither looked wrong. The
+ * invariant they broke between them is the one thing this asserts: a shape the
+ * stroke was never allowed to see must come back untouched.
+ *
+ *   spared    -- the other layer, which this stroke may not touch
+ *   untouched -- shapes on this layer the stroke did not reach
+ *   made      -- geometries traced back out of the stroke
+ */
+export function afterStroke(spared, untouched, made, { inferred = false } = {}) {
+  const props = () => (inferred ? { inferred: true } : {});
+  return [
+    ...spared,
+    ...untouched,
+    ...made.map((geometry) => ({ type: 'Feature', properties: props(), geometry })),
+  ];
+}

@@ -248,5 +248,50 @@ function perturb(ring, metres) {
     nearestOnRings(at(0, 0), [], frame) === null);
 }
 
+/* ------------------------------------- nothing vanishes in a brush stroke */
+{
+  /*
+   * THE LAWN-DELETING BUG, as a test.
+   *
+   * A stroke ends with draw.deleteAll(), so what exists afterwards is exactly
+   * what afterStroke returns. That was safe while the brush worked on every
+   * shape on the map. Teaching it to work on ONE LAYER narrowed what a stroke
+   * may touch -- and, by the same filter, narrowed what got put back. The first
+   * inferred stroke on a finished map deleted the map and left the total
+   * reading only the patch just drawn.
+   *
+   * Both halves were individually correct, which is why neither looked wrong.
+   * The invariant between them is what this holds.
+   */
+  const { afterStroke } = await import('../public/lib/stitch.js');
+
+  const lawn = { type: 'Feature', properties: {}, geometry: { type: 'Polygon', tag: 'lawn' } };
+  const spared = [lawn, { type: 'Feature', properties: {}, geometry: { tag: 'drive' } }];
+  const untouched = [{ type: 'Feature', properties: { inferred: true }, geometry: { tag: 'old-guess' } }];
+  const made = [{ type: 'Polygon', tag: 'new' }];
+
+  const out = afterStroke(spared, untouched, made, { inferred: true });
+
+  check('a shape the stroke was never allowed to touch survives it',
+    out.includes(lawn),
+    'this is the whole bug: the finished lawn was on the other layer, the '
+    + 'stroke could not see it, and it was deleted anyway');
+  check('every spared and untouched shape comes back, by identity',
+    spared.every((f) => out.includes(f)) && untouched.every((f) => out.includes(f)),
+    `${out.length} back from ${spared.length + untouched.length} + ${made.length}`);
+  check('and the shapes come back as they were, not rebuilt',
+    out.find((f) => f.geometry?.tag === 'old-guess') === untouched[0],
+    'a shape re-traced when the brush never reached it is the outline-creep '
+    + 'bug this whole file exists for');
+
+  const fresh = out.filter((f) => f.geometry?.tag === 'new');
+  check('what the stroke made belongs to the layer it was drawn on',
+    fresh.length === 1 && fresh[0].properties.inferred === true,
+    JSON.stringify(fresh[0]?.properties));
+  check('and on the ordinary layer it carries no mark at all',
+    afterStroke([], [], made).every((f) => !f.properties.inferred),
+    'an unmarked shape must not pick up a flag it was never given');
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);
