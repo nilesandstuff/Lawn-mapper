@@ -319,10 +319,37 @@ async function parcelAt(service, layer, [lng, lat]) {
   return geometry ? { geometry, attributes: data.features[0].attributes || {} } : null;
 }
 
+/**
+ * What layers this service actually publishes, for a candidate that failed.
+ *
+ * A REASON WITHOUT A REMEDY IS HALF AN ANSWER. "extent query: 400" says the
+ * layer index is wrong at least as often as it says the server is broken --
+ * point at a table rather than the parcel polygons and the metadata comes back
+ * perfectly happy with no extent in it, because a table has no geometry to
+ * have an extent of. Gwinnett County, Georgia failed exactly that way on
+ * layer 3 of a service called Property_and_Tax.
+ *
+ * So when one fails, print what else is in there. The service root lists every
+ * layer with its name and index, and the right answer is usually sitting in
+ * that list with the word "Parcel" in it -- which turns a dead candidate into
+ * a one-character edit rather than an afternoon.
+ */
+async function layersOf(service) {
+  const root = await getJson(`${service}?f=json`);
+  const all = [...(root?.layers || []), ...(root?.tables || [])];
+  return all
+    .filter((l) => Number.isFinite(l?.id))
+    .map((l) => `${l.id}: ${l.name}${l.type ? ` (${l.type})` : ''}`);
+}
+
 async function verify(c) {
   const extent = await extentOf(c.service, c.layer);
   await sleep(PAUSE_MS);
-  if (extent.error) return { ok: false, why: extent.error };
+  if (extent.error) {
+    const layers = await layersOf(c.service).catch(() => []);
+    await sleep(PAUSE_MS);
+    return { ok: false, why: extent.error, layers };
+  }
   const box = extent.box;
 
   const samples = await sampleParcels(c.service, c.layer);
@@ -432,6 +459,11 @@ for (const c of list) {
   } else {
     failed.push({ key: c.key, why: r.why });
     console.log(`  --   ${c.key.padEnd(22)} ${r.why}`);
+    /* What else is in that service, so a wrong layer index is a one-character
+       fix rather than an afternoon. See layersOf. */
+    for (const line of (r.layers || []).slice(0, 12)) {
+      console.log(`         ${line}`);
+    }
   }
 }
 
