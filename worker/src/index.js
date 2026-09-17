@@ -952,6 +952,29 @@ export default {
           return await handlePrediction(url, env, origin);
         case '/api/parcel':
           return await handleParcel(request, url, env, origin, ctx);
+        /*
+         * THE TRAINED MODEL'S WEIGHTS, a few hundred numbers.
+         *
+         * Served from the bucket rather than shipped with the site, so a
+         * retrained model is live the moment workflow 12 writes it and a
+         * deploy is not in the loop. Developer mode is the only thing that
+         * asks for it, but it is not gated: these are weights, not a secret,
+         * and a 404 is the honest answer before the first training run.
+         */
+        case '/api/model': {
+          if (!env.CORPUS) return json({ error: 'No bucket' }, 404, origin);
+          const object = await env.CORPUS.get('model/lawn-head.json');
+          if (!object) return json({ error: 'No model published yet' }, 404, origin);
+          return new Response(object.body, {
+            headers: {
+              'Content-Type': 'application/json',
+              /* Short: the whole point is that a new one appears without a
+                 deploy, and an hour of staleness would hide that. */
+              'Cache-Control': 'public, max-age=60',
+              ...cors(origin),
+            },
+          });
+        }
         case '/api/imagery':
           return await handleImagery(url, env, origin);
         case '/api/segment':

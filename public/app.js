@@ -4248,7 +4248,7 @@ let trainedHead = null;
 async function loadTrainedHead() {
   if (trainedHead !== null) return trainedHead;
   try {
-    const res = await fetch('/model/lawn-head.json');
+    const res = await fetch('/api/model');
     if (!res.ok) throw new Error(String(res.status));
     trainedHead = reviveModel(await res.json());
   } catch {
@@ -4263,7 +4263,7 @@ async function showTrainedModel() {
   const model = await loadTrainedHead();
   if (!model) {
     setStatus('No trained model has been published yet. Run workflow 12 with '
-      + '"Commit the trained model" ticked, then deploy.', 'warn');
+      + '"Publish the trained model" ticked — no deploy needed after it.', 'warn');
     return;
   }
 

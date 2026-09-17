@@ -18,7 +18,7 @@ on:
         type: boolean
         default: false
       publish:
-        description: 'Commit the trained model so dev mode can draw it'
+        description: 'Publish the trained model so dev mode can draw it'
         type: boolean
         default: false
 
@@ -60,34 +60,6 @@ jobs:
           NO_BACKBONE: ${{ inputs.no_backbone }}
           EXPORT_MODEL: ${{ inputs.publish }}
         run: node tools/train-detector.js
-
-      # The weights are a few hundred numbers of JSON, committed rather than
-      # stashed somewhere, so the model dev mode draws is the one in the branch
-      # and `git log` says which run produced it. Deploying is still separate
-      # and still deliberate.
-      - name: Commit the model
-        if: inputs.publish
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # STAGE FIRST, THEN ASK. `git diff` does not see untracked files, so
-          # the very first run -- the one creating the model -- reported "the
-          # model is unchanged" about a file that had just come into
-          # existence, and committed nothing. Staging turns a new file into a
-          # difference that can be asked about.
-          git add public/model
-          if git diff --cached --quiet -- public/model; then
-            echo "The model is byte-for-byte what is already committed."
-            exit 0
-          fi
-          git commit -m "Trained lawn head, from workflow 12
-
-          Weights only. The error recorded in the file comes from leaving one
-          lawn out at a time, not from this fit -- this one has seen them all."
-          git push origin HEAD:${{ github.ref_name }}
-          echo
-          echo "Committed. Run workflow 2 to deploy it, then turn on developer"
-          echo "mode in the app and press \"Show the trained model\"."
 
       - name: If that failed
         if: failure()

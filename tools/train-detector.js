@@ -29,7 +29,7 @@
 
 import { fileURLToPath } from 'node:url';
 import { resolve, join } from 'node:path';
-import { mkdtempSync, readFileSync, rmSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, existsSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 
@@ -709,8 +709,22 @@ async function main() {
     standardise(x, stats, width);
     const model = train(x, y, balanceWeights(y), { seed: 99, inputs: width });
 
-    mkdirSync('public/model', { recursive: true });
-    writeFileSync('public/model/lawn-head.json', `${JSON.stringify({
+    /*
+     * INTO R2, NOT INTO THE REPOSITORY.
+     *
+     * Committing the weights needed write access the workflow token does not
+     * have, and getting it would mean a repository setting changed by hand --
+     * which is the one thing this project does not do. The bucket is already
+     * here, already holds every photograph these weights were learnt from, and
+     * is already reachable with the token this workflow carries.
+     *
+     * It is also the better arrangement: a retrained model is live the moment
+     * it is written, with no deploy. The flywheel is meant to turn quickly,
+     * and a deploy between every turn is a brake nobody chose.
+     */
+    const dir2 = mkdtempSync(join(tmpdir(), 'model-'));
+    const file = join(dir2, 'lawn-head.json');
+    writeFileSync(file, `${JSON.stringify({
       note: 'Trained by workflow 12. The error below is from leaving one lawn '
         + 'out at a time, NOT from this fit -- this one has seen every lawn.',
       W1: [...model.W1], b1: [...model.b1], W2: [...model.W2], b2: model.b2,
@@ -722,8 +736,21 @@ async function main() {
       samErrorPct: samMed === null ? null : Number(samMed.toFixed(1)),
       scoredAt: new Date().toISOString(),
     }, null, 1)}\n`);
-    console.log(`\nWrote public/model/lawn-head.json -- ${lawns.length} lawns, `
-      + `${shipped.med.toFixed(1)}% out when tested honestly.`);
+
+    try {
+      execFileSync('npx', [
+        'wrangler', 'r2', 'object', 'put', `${bucket}/model/lawn-head.json`,
+        '--file', file, '--content-type', 'application/json', '--remote',
+      ], { stdio: ['ignore', 'pipe', 'pipe'] });
+      console.log(`\nPublished the model: ${lawns.length} lawns, `
+        + `${shipped.med.toFixed(1)}% out when tested honestly.`);
+      console.log('Developer mode will draw it now -- no deploy needed.');
+    } catch (e) {
+      console.log(`\nTrained it but could not publish it: `
+        + `${String(e?.message || e).replace(/\s+/g, ' ').slice(0, 120)}`);
+      process.exitCode = 1;
+    }
+    rmSync(dir2, { recursive: true, force: true });
   }
 
   console.log(`\n${'='.repeat(64)}`);
