@@ -36,10 +36,41 @@ import { execFileSync } from 'node:child_process';
 import { query } from './corpus-db.js';
 import { imageFeatures, featureStats, standardise, FEATURE_COUNT } from './features.js';
 import { train, predict, balanceWeights } from './learner.js';
+import {
+  loadBackbone, tiledFeatures, sampleAt, projection, project,
+} from './backbone.js';
 import { rasterizePolygon } from '../public/lib/mask.js';
 import { lngLatToFramePx, metresPerPixel } from '../public/lib/mercator.js';
 
 const SQM_PER_SQFT = 0.09290304;
+
+/*
+ * HOW MANY NUMBERS OF THE BACKBONE'S 384 EACH PIXEL CARRIES.
+ *
+ * All of them, twice over, would be 768 floats a pixel -- three quarters of a
+ * gigabyte for one lawn at 512 square, before anything is trained. A random
+ * projection squeezes each patch down to this many while keeping the distances
+ * between patches roughly intact, which is all the head reads them for.
+ *
+ * 32 is a guess that can be checked later rather than a measured optimum, and
+ * it is written down as a guess for that reason.
+ */
+const PROJ_DIMS = 32;
+
+/*
+ * TWO SCALES, because tiling costs context and the context is the point.
+ *
+ * FINE is the frame in sixteen tiles: 64x64 patches, about 0.83 m each, which
+ * is what says where an edge runs. COARSE is one pass over the whole frame:
+ * 16x16 patches at 3.3 m, each of which has seen the entire property -- which
+ * is what says whether this green is a lawn or a forest floor. Neither answers
+ * the other's question.
+ */
+const FINE_TILES = 4;
+const COARSE_TILES = 1;
+
+/** Cheap colour and texture, then the backbone at two scales. */
+const TOTAL_FEATURES = FEATURE_COUNT + 2 * PROJ_DIMS;
 
 /*
  * EVERYTHING HAPPENS AT ONE GRID, and that is what makes the comparison fair.
@@ -163,6 +194,51 @@ function compare(got, want, within) {
 }
 
 /**
+ * One pixel's full feature vector: colour and texture, then the backbone at
+ * both scales.
+ *
+ * BUILT ON DEMAND RATHER THAN STORED. Seventy-five numbers for every pixel of
+ * every lawn is three hundred megabytes before training starts, and almost all
+ * of it is never read -- a fold samples a few thousand pixels per lawn. What
+ * IS stored is the cheap layer, which is small, and the two patch grids, which
+ * are tiny; this assembles a row from them when one is asked for.
+ */
+export function buildRow(lawn, p, out, offset, grid = GRID) {
+  const { cheap, fine, coarse } = lawn;
+  for (let f = 0; f < FEATURE_COUNT; f++) out[offset + f] = cheap[p * FEATURE_COUNT + f];
+
+  const px = p % grid;
+  const py = (p / grid) | 0;
+  if (fine) sampleAt(fine, px, py, grid, out, offset + FEATURE_COUNT);
+  if (coarse) sampleAt(coarse, px, py, grid, out, offset + FEATURE_COUNT + PROJ_DIMS);
+  return out;
+}
+
+/**
+ * A patch grid with every patch squeezed to PROJ_DIMS numbers.
+ *
+ * The projection is made on first use, from the width the model ACTUALLY
+ * returned rather than from the 384 this one happens to have. Sizing it from
+ * an assumption would read past the end of every patch the day a different
+ * backbone is tried, and typed arrays answer that with zeroes rather than an
+ * error -- a model trained on padding, scoring badly, blaming the data.
+ */
+const lens = { M: null, dim: 0 };
+function shrink(grid) {
+  const { data, gridW, gridH, dim } = grid;
+  if (lens.dim !== dim) {
+    lens.M = projection(dim, PROJ_DIMS);
+    lens.dim = dim;
+  }
+  const M = lens.M;
+  const out = new Float32Array(gridW * gridH * PROJ_DIMS);
+  for (let p = 0; p < gridW * gridH; p++) {
+    project(M, dim, PROJ_DIMS, data, p * dim, out, p * PROJ_DIMS);
+  }
+  return { data: out, gridW, gridH, dim: PROJ_DIMS };
+}
+
+/**
  * One fold: train on every lawn but `held`, then answer `held`.
  *
  * ITS OWN FUNCTION SO THAT THE EXCLUSION CAN BE TESTED. Everything about this
@@ -180,7 +256,8 @@ export function runFold(lawns, held, { perLawn = 6000, grid = GRID } = {}) {
    * same fact. A few thousand per lawn carries the same information and keeps
    * a fold to a couple of seconds, which is what makes twenty folds possible.
    */
-  const xs = [];
+  const width = lawns[0].width || TOTAL_FEATURES;
+  const picked = [];
   const ys = [];
   let seed = 12345 + held;
   const rand = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
@@ -194,13 +271,15 @@ export function runFold(lawns, held, { perLawn = 6000, grid = GRID } = {}) {
     for (let k = 0; k < perLawn; k++) {
       const p = Math.floor(rand() * n);
       if (L.within && !L.within[p]) continue;
-      xs.push(L.features.subarray(p * FEATURE_COUNT, (p + 1) * FEATURE_COUNT));
+      picked.push([L, p]);
       ys.push(L.truth[p]);
     }
   }
 
-  const x = new Float32Array(xs.length * FEATURE_COUNT);
-  for (let i = 0; i < xs.length; i++) x.set(xs[i], i * FEATURE_COUNT);
+  const x = new Float32Array(picked.length * width);
+  for (let i = 0; i < picked.length; i++) {
+    buildRow(picked[i][0], picked[i][1], x, i * width, grid);
+  }
   const y = Float32Array.from(ys);
 
   /*
@@ -208,18 +287,32 @@ export function runFold(lawns, held, { perLawn = 6000, grid = GRID } = {}) {
    * held-out lawn included would let it influence its own normalisation, which
    * is testing on what you trained on by a quiet back door.
    */
-  const stats = featureStats(x);
-  standardise(x, stats);
+  const stats = featureStats(x, width);
+  standardise(x, stats, width);
 
-  const model = train(x, y, balanceWeights(y), { seed: 99 });
+  const model = train(x, y, balanceWeights(y), { seed: 99, inputs: width });
 
+  /*
+   * ANSWERED IN STRIPS, not all at once. A quarter of a million pixels times
+   * seventy-five numbers is a large allocation to hold beside everything else
+   * already in memory, and there is no reason to: the head reads each row once
+   * and never looks back.
+   */
   const test = lawns[held];
-  const tx = Float32Array.from(test.features);
-  standardise(tx, stats);
-  const p = predict(model, tx);
-
   const got = new Uint8Array(grid * grid);
-  for (let i = 0; i < p.length; i++) got[i] = p[i] > 0.5 ? 1 : 0;
+  const ROWS = 32;
+  const chunk = new Float32Array(ROWS * grid * width);
+  for (let y0 = 0; y0 < grid; y0 += ROWS) {
+    const rows = Math.min(ROWS, grid - y0);
+    const count = rows * grid;
+    for (let i = 0; i < count; i++) {
+      buildRow(test, y0 * grid + i, chunk, i * width, grid);
+    }
+    const slice = chunk.subarray(0, count * width);
+    standardise(slice, stats, width);
+    const p = predict({ ...model, inputs: width }, slice);
+    for (let i = 0; i < count; i++) got[y0 * grid + i] = p[i] > 0.5 ? 1 : 0;
+  }
 
   return {
     mine: compare(got, test.truth, test.within),
@@ -252,6 +345,37 @@ async function main() {
   }
 
   console.log(`${rows.length} approved map${rows.length === 1 ? '' : 's'} with a stored photograph.\n`);
+
+  /*
+   * THE BACKBONE IS OPTIONAL, and the run says which it used.
+   *
+   * Without it this falls back to colour and texture alone -- which is a real
+   * configuration, not a broken one: it is what the first run measured, and
+   * having it reachable is how the two can be compared on the same lawns. What
+   * must never happen is a silent fallback, because then a disappointing
+   * number is unattributable. So the mode is printed, and it is printed again
+   * at the end beside the result.
+   */
+  let eye = null;
+  if (process.env.NO_BACKBONE !== 'true') {
+    const t = Date.now();
+    try {
+      eye = await loadBackbone();
+      console.log(`Pretrained eye loaded in ${((Date.now() - t) / 1000).toFixed(1)}s.`);
+    } catch (e) {
+      console.log('The pretrained eye would not load, so this is colour and');
+      console.log(`texture only: ${String(e?.message || e).replace(/\s+/g, ' ').slice(0, 90)}`);
+    }
+  } else {
+    console.log('NO_BACKBONE is set, so this is colour and texture only.');
+  }
+  const using = eye ? 'colour, texture and a pretrained eye' : 'colour and texture only';
+  console.log('');
+
+  /* The projection is made once, on first use, and reused for every lawn and
+     both scales. Fitting a different one per lawn would put each lawn's
+     features in its own coordinate system, and the head would be learning
+     nineteen languages at once. */
 
   /* ---------------------------------------------------- gather the lawns */
   const dir = mkdtempSync(join(tmpdir(), 'lawn-'));
@@ -290,7 +414,14 @@ async function main() {
         county: row.county,
         canopy: row.tree_line === null || row.tree_line === undefined ? null : Number(row.tree_line),
         /* Held raw: each fold standardises against its own training lawns. */
-        features: imageFeatures(rgb, GRID, GRID),
+        cheap: imageFeatures(rgb, GRID, GRID),
+        fine: eye
+          ? shrink(await tiledFeatures(eye, rgb, GRID, GRID, { tiles: FINE_TILES }))
+          : null,
+        coarse: eye
+          ? shrink(await tiledFeatures(eye, rgb, GRID, GRID, { tiles: COARSE_TILES }))
+          : null,
+        width: eye ? TOTAL_FEATURES : FEATURE_COUNT,
         truth,
         within,
         truthPx,
@@ -350,6 +481,13 @@ async function main() {
 
   console.log(`\n${'='.repeat(64)}`);
   console.log(`\nTrained on ${lawns.length - 1} lawns, tested on the one left out, ${lawns.length} times.`);
+  /*
+   * WHICH FEATURES, ON THE SAME LINE AS THE NUMBER. Two configurations produce
+   * this report and they are several points apart; a figure quoted later
+   * without its source is a figure that will be compared against the wrong
+   * thing.
+   */
+  console.log(`Features: ${using}.`);
   console.log(`\nThe trained head is ${mineMed.toFixed(1)}% out on the middle lawn.`);
 
   if (theirsMed !== null) {

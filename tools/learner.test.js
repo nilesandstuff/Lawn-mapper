@@ -333,7 +333,12 @@ const paint = (px, w, x0, y0, pw, ph, [r, g, b]) => {
         px[i * 4] = r; px[i * 4 + 1] = g; px[i * 4 + 2] = b; px[i * 4 + 3] = 255;
       }
     }
-    return { features: imageFeatures(px, G, G), truth, within: null, detected: null };
+    /* `cheap` is the colour-and-texture layer; with no backbone loaded the
+       row width is just that, which is what these folds exercise. */
+    return {
+      cheap: imageFeatures(px, G, G), width: FEATURE_COUNT,
+      truth, within: null, detected: null,
+    };
   };
 
   const lawns = [
