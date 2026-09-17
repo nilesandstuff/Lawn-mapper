@@ -43,7 +43,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { esriToGeoJSON } from '../worker/src/parcel.js';
 import { measure } from '../public/lib/area.js';
 
@@ -517,8 +517,44 @@ export { ATLAS_COUNTIES };
 `;
 
 const target = resolve(root, 'worker/src/counties-atlas.js');
+
+/*
+ * WHAT THIS RUN IS ABOUT TO CHANGE, before it changes it.
+ *
+ * This file IS the coverage. A county that passed last time and whose server
+ * happens to be down this morning is simply absent from the new one, and the
+ * only symptom is addresses in that county quietly losing their property line
+ * -- for everybody, until somebody notices and runs this again on a better
+ * day. Nothing in "142 verified of 165" says which 142.
+ *
+ * There is no vote here about whether to write: a re-verification that refused
+ * to record a genuine loss would be worse. What there is, is a sentence naming
+ * the counties going out, at the end of the log, where it gets read.
+ */
+let before = [];
+try {
+  const old = await import(pathToFileURL(target).href);
+  before = Object.keys(old.ATLAS_COUNTIES || {});
+} catch { /* First run, or a file too broken to import. Either way: no report. */ }
+
 writeFileSync(target, file);
 console.log(`\nwrote ${target}`);
+
+if (before.length) {
+  const now = new Set(passed.map((p) => p.key));
+  const lost = before.filter((k) => !now.has(k));
+  const gained = passed.map((p) => p.key).filter((k) => !before.includes(k));
+  if (gained.length) console.log(`\nNEWLY COVERED: ${gained.join(', ')}`);
+  if (lost.length) {
+    console.log(`\n${'!'.repeat(64)}`);
+    console.log(`\n${lost.length} COUNTY(IES) JUST LOST COVERAGE: ${lost.join(', ')}`);
+    console.log('\nThey verified before and did not today. If their servers were');
+    console.log('merely having a bad morning, run this again before deploying --');
+    console.log('what ships now is a map with those counties missing.');
+    console.log(`\n${'!'.repeat(64)}`);
+  }
+  if (!gained.length && !lost.length) console.log('\nCoverage unchanged.');
+}
 
 if (failed.length) {
   console.log('\nNot verified:');
