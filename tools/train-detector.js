@@ -620,14 +620,51 @@ async function main() {
     console.log('with this few lawns that can turn over on one more map. Worth');
     console.log('another run once there are ten more.');
   } else {
-    console.log('STILL NOT BETTER. The comparison above is the useful part: if the');
-    console.log('pretrained eye alone scores near the colour-only row, the two are');
-    console.log('saying the same thing and a different backbone is the lever. If it');
-    console.log('scores far worse alone, it is not reading this kind of picture well');
-    console.log('-- these models are trained on photographs taken from the ground,');
-    console.log('and a view straight down is not what they know. And if the wider');
-    console.log('squeeze beats the narrow one, the projection was the bottleneck');
-    console.log('rather than the features.');
+    /*
+     * THE TABLE READS ITSELF, because the next person to run this will be
+     * looking at it on a phone months from now and the four rows only mean
+     * something in relation to each other. Stating which comparison decided
+     * the sentence also makes the sentence checkable.
+     */
+    console.log('STILL NOT BETTER than the detector we pay for.\n');
+
+    const row = (name) => table.find((t) => t.cfg.name === name);
+    const colour = row('colour and texture only');
+    const eyeOnly = row('the pretrained eye only');
+    const narrow = row('both');
+    const wide = row('both, 96 numbers a patch');
+
+    /*
+     * NOTHING UNDER ABOUT THREE POINTS IS REAL. The same configuration has
+     * come back 38.7, 40.5 and 43.2 across runs that differed only in how the
+     * head was trained, so a gap smaller than that is the measurement moving,
+     * not the features. Twenty lawns is what makes it that wide.
+     */
+    const NOISE = 3;
+    if (colour && eyeOnly && eyeOnly.med > colour.med + NOISE) {
+      console.log(`The pretrained eye ALONE (${eyeOnly.med.toFixed(1)}%) is clearly worse than`);
+      console.log(`colour alone (${colour.med.toFixed(1)}%), so it is not reading this kind of`);
+      console.log('picture well. These models learn from photographs taken from the');
+      console.log('ground; a view straight down is not what they know. A backbone');
+      console.log('trained on aerial imagery is the lever, not more of this one.');
+    } else if (colour && eyeOnly) {
+      console.log(`The pretrained eye alone (${eyeOnly.med.toFixed(1)}%) scores near colour alone`);
+      console.log(`(${colour.med.toFixed(1)}%), so the two are largely saying the same thing and`);
+      console.log('neither adds much to the other.');
+    }
+
+    if (narrow && wide && narrow.med > wide.med + NOISE) {
+      console.log(`\nThe wider squeeze helps (${wide.med.toFixed(1)}% against ${narrow.med.toFixed(1)}%), so some`);
+      console.log('of what the eye sees was being thrown away on the way down to 32');
+      console.log('numbers. Worth widening further before concluding much about it.');
+    }
+
+    const bestMed = Math.min(...table.map((t) => t.med));
+    console.log(`\nThe best of them is ${bestMed.toFixed(1)}% against SAM's ${samMed.toFixed(1)}% -- a factor of`);
+    console.log(`${(bestMed / samMed).toFixed(1)}, which is not a gap that settings close. With ${lawns.length} lawns`);
+    console.log('the honest reading is that there is not enough to learn from yet.');
+    console.log('Approve more maps and run this again; it is free, and the moment');
+    console.log('the top row goes under the SAM line it is worth building on.');
   }
 
   console.log(`\n${'='.repeat(64)}`);
