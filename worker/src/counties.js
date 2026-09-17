@@ -40,6 +40,10 @@ const COUNTIES = {
    */
   northcarolina: {
     name: 'North Carolina (NC OneMap)',
+    // The postcode abbreviation, matched against what the geocoder
+    // reports, so a statewide layer is credited for its own state and not
+    // for a neighbour its bounding rectangle happens to reach into.
+    state: 'NC',
     statewide: true,
     service: 'https://services.nconemap.gov/secure/rest/services/NC1Map_Parcels/FeatureServer',
     layer: 1, // Parcels (polys)
@@ -83,6 +87,10 @@ const COUNTIES = {
    */
   vermont: {
     name: 'Vermont (VCGI)',
+    // The postcode abbreviation, matched against what the geocoder
+    // reports, so a statewide layer is credited for its own state and not
+    // for a neighbour its bounding rectangle happens to reach into.
+    state: 'VT',
     statewide: true,
     service: 'https://services1.arcgis.com/BkFxaEFNwHqX3tAw/arcgis/rest/services/FS_VCGI_OPENDATA_Cadastral_VTPARCELS_poly_standardized_parcels_SP_v1/FeatureServer',
     layer: 0,
@@ -106,6 +114,10 @@ const COUNTIES = {
    */
   maryland: {
     name: 'Maryland (MD iMAP)',
+    // The postcode abbreviation, matched against what the geocoder
+    // reports, so a statewide layer is credited for its own state and not
+    // for a neighbour its bounding rectangle happens to reach into.
+    state: 'MD',
     statewide: true,
     // The layer index is its OWN field, not part of the URL: parcel.js builds
     // `${service}/${layer}/query`, so folding the 0 into the service produced
@@ -136,6 +148,10 @@ const COUNTIES = {
    */
   newhampshire: {
     name: 'New Hampshire (GRANIT)',
+    // The postcode abbreviation, matched against what the geocoder
+    // reports, so a statewide layer is credited for its own state and not
+    // for a neighbour its bounding rectangle happens to reach into.
+    state: 'NH',
     statewide: true,
     service: 'https://nhgeodata.unh.edu/hosting/rest/services/Hosted/CAD_ParcelMosaic/FeatureServer',
     layer: 1,
@@ -178,6 +194,10 @@ const COUNTIES = {
    */
   indiana: {
     name: 'Indiana (IndianaMap)',
+    // The postcode abbreviation, matched against what the geocoder
+    // reports, so a statewide layer is credited for its own state and not
+    // for a neighbour its bounding rectangle happens to reach into.
+    state: 'IN',
     statewide: true,
     service: 'https://gisdata.in.gov/server/rest/services/Hosted/Parcel_Boundaries_of_Indiana_Current/FeatureServer',
     layer: 0,
@@ -544,6 +564,61 @@ function isCovered(lng, lat) {
   return candidateCounties(lng, lat).length > 0;
 }
 
+/**
+ * A county name reduced to the letters of its name.
+ *
+ * "Gwinnett County" from a geocoder and "Gwinnett County, GA" from the atlas
+ * are the same place, and so are "DeKalb", "De Kalb" and "St. Louis" against
+ * "St Louis". Dropping everything but the letters settles all of those without
+ * a table of special cases.
+ */
+const countyName = (value) => String(value || '')
+  .toLowerCase()
+  .split(',')[0]
+  .split('(')[0]
+  .replace(/\b(county|parish|borough|municipality)\b/g, '')
+  .replace(/[^a-z]+/g, '');
+
+/**
+ * Is THIS county served, rather than "does some county's box reach here"?
+ *
+ * THE DIFFERENCE IS NOT ACADEMIC, and it produced a wrong answer on a real
+ * address. A box is a rectangle and a county is not, so the box of a long
+ * county reaches well into its neighbours: Fulton's runs east to -84.097,
+ * which is inside western Gwinnett. An address there found a candidate, was
+ * called covered, and was told "your county has records, but not for this
+ * parcel" -- while the console filed Gwinnett under "configured, still
+ * nothing", pointing at a server to debug. Gwinnett is not configured at all.
+ * Both messages sent somebody looking in the wrong place.
+ *
+ * So the name has to agree too. Without a name from the geocoder this falls
+ * back to the old question, which is the best that can be asked.
+ */
+function servesCounty(lng, lat, county, state) {
+  const keys = candidateCounties(lng, lat);
+  if (!keys.length) return false;
+
+  const wantCounty = countyName(county);
+  const wantState = String(state || '').trim().toUpperCase();
+  /* Nothing to check against: the box match is the best question available. */
+  if (!wantCounty && !wantState) return true;
+
+  return keys.some((key) => {
+    const entry = ALL_COUNTIES[key];
+    if (!entry) return false;
+    /*
+     * A STATEWIDE LAYER IS CREDITED FOR ITS STATE, not for a county name it
+     * has never heard of. NC OneMap serves every county in North Carolina, so
+     * asking whether it is "Wake County" would say no to an address it covers
+     * perfectly -- and its rectangle reaches down into Georgia, so asking only
+     * whether the box matched would say yes to one it does not.
+     */
+    if (entry.statewide) return Boolean(entry.state) && entry.state === wantState;
+    if (!wantCounty) return false;
+    return countyName(entry.name) === wantCounty;
+  });
+}
+
 /*
  * TWO EXPORTS ON PURPOSE, and which one to reach for depends on the question.
  *
@@ -557,4 +632,7 @@ function isCovered(lng, lat) {
  * several hundred requests at public county servers before each deploy to
  * re-check endpoints a workflow already verifies on its own.
  */
-export { COUNTIES, ALL_COUNTIES, COUNTY_BBOX, candidateCounties, isCovered };
+export {
+  COUNTIES, ALL_COUNTIES, COUNTY_BBOX, candidateCounties, isCovered,
+  servesCounty, countyName,
+};

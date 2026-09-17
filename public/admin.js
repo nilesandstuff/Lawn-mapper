@@ -796,8 +796,16 @@ async function renderGaps() {
      */
     if (p.configured) {
       const pill = el('span', 'pill warn', 'configured, still nothing');
-      pill.title = 'This county is in the list and the lookup came back empty '
-        + 'anyway. Could be its server, or could be points landing on roads.';
+      /*
+       * This used to fire for counties that were not configured at all.
+       * `covered` meant "some county's bounding box reaches this point", and a
+       * box is a rectangle where a county is not -- Fulton's runs into western
+       * Gwinnett, so Gwinnett addresses were labelled as a server to debug
+       * when the answer was to add Gwinnett. It now means the county named
+       * here is the one that was tried.
+       */
+      pill.title = 'A layer for this county answered nothing. Could be its '
+        + 'server, or could be points landing on roads and right-of-way.';
       top.append(pill);
     }
     row.append(top);

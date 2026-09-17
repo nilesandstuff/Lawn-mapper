@@ -33,7 +33,7 @@
  */
 
 import { lookupParcel } from './parcel.js';
-import { isCovered } from './counties.js';
+import { isCovered, servesCounty } from './counties.js';
 import { checkQuota, consumeQuota, refundQuota } from './quota.js';
 import { charge, refund, allowance } from './allowance.js';
 // Why an upstream refused us, redacted. In its own module because a Workers
@@ -194,7 +194,15 @@ async function handleParcel(request, url, env, origin, ctx) {
   if (!parcel) {
     // Not an error. Most of the country, and plenty of covered addresses,
     // land here. The UI drops straight to manual boundary drawing.
-    const covered = isCovered(lng, lat);
+    /*
+     * The county the geocoder named, not just "some county's box reaches
+     * here" -- see servesCounty. A box is a rectangle and a county is not, so
+     * the old question said yes on an address in a neighbour of a configured
+     * county and sent everybody looking in the wrong place.
+     */
+    const covered = servesCounty(
+      lng, lat, url.searchParams.get('county'), url.searchParams.get('state'),
+    );
 
     /*
      * BANK THE MISS. Which counties people actually ask for is the only

@@ -1334,5 +1334,55 @@ check('and a typed prompt is sent verbatim',
     dead.join('; ') || 'every file exits last, so every test in it runs');
 }
 
+/* -------------------------------- is THIS county served, or just nearby? */
+{
+  /*
+   * A BOX IS A RECTANGLE AND A COUNTY IS NOT, and the difference produced a
+   * wrong answer on a real address.
+   *
+   * Fulton County's extent runs east to -84.097, which is inside western
+   * Gwinnett. An address there found a candidate and was called covered -- so
+   * the app said "your county has records, but not for this parcel" and the
+   * console filed Gwinnett under "configured, still nothing", pointing at a
+   * server to debug. Gwinnett is not configured at all. Both messages sent
+   * somebody looking in the wrong place.
+   *
+   * North Carolina's statewide rectangle is worse: its south-west corner sits
+   * in Georgia, so NC OneMap is a candidate for addresses in metro Atlanta.
+   */
+  const { servesCounty, countyName } = await import('../worker/src/counties.js');
+
+  check('a county whose neighbour reaches it is not "configured"',
+    servesCounty(-84.15, 33.95, 'Gwinnett County', 'GA') === false,
+    'Fulton and DeKalb both reach this point and neither serves Gwinnett');
+  check('while the county that does reach it still is',
+    servesCounty(-84.39, 33.75, 'Fulton County', 'GA') === true,
+    'Atlanta is in Fulton and Fulton is configured');
+
+  /*
+   * A STATEWIDE LAYER IS CREDITED FOR ITS STATE. Asking whether NC OneMap is
+   * "Wake County" would say no to an address it covers perfectly; asking only
+   * whether its box matched would say yes to one in Georgia.
+   */
+  check('a statewide layer covers a county it has never been named for',
+    servesCounty(-78.64, 35.78, 'Wake County', 'NC') === true,
+    'NC OneMap serves every county in the state, Wake included');
+  check('but not a neighbouring state its rectangle reaches into',
+    servesCounty(-84.15, 33.95, 'Gwinnett County', 'NC') === false
+    || servesCounty(-84.15, 33.95, 'Gwinnett County', 'GA') === false,
+    'the NC rectangle has its south-west corner in Georgia');
+
+  check('with no place name at all, a box match is the best question there is',
+    servesCounty(-84.39, 33.75, null, null) === true
+    && servesCounty(-120.5, 44.2, null, null) === false,
+    'a geocoder that returned no county must not make everything unserved');
+
+  /* Spelling is not the question being asked. */
+  check('names match through punctuation and the word "county"',
+    countyName('DeKalb County') === countyName('De Kalb')
+    && countyName('St. Louis County, MO') === countyName('St Louis'),
+    `${countyName('DeKalb County')} / ${countyName('De Kalb')}`);
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);
