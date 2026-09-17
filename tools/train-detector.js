@@ -203,40 +203,74 @@ function compare(got, want, within) {
  * IS stored is the cheap layer, which is small, and the two patch grids, which
  * are tiny; this assembles a row from them when one is asked for.
  */
-export function buildRow(lawn, p, out, offset, grid = GRID) {
+export function buildRow(lawn, p, out, offset, grid = GRID, cfg = null) {
   const { cheap, fine, coarse } = lawn;
-  for (let f = 0; f < FEATURE_COUNT; f++) out[offset + f] = cheap[p * FEATURE_COUNT + f];
+  const useColour = cfg ? cfg.colour : true;
+  const useEye = cfg ? cfg.backbone : true;
+  const dims = cfg ? cfg.dims : PROJ_DIMS;
 
-  const px = p % grid;
-  const py = (p / grid) | 0;
-  if (fine) sampleAt(fine, px, py, grid, out, offset + FEATURE_COUNT);
-  if (coarse) sampleAt(coarse, px, py, grid, out, offset + FEATURE_COUNT + PROJ_DIMS);
+  let at = offset;
+  if (useColour) {
+    for (let f = 0; f < FEATURE_COUNT; f++) out[at + f] = cheap[p * FEATURE_COUNT + f];
+    at += FEATURE_COUNT;
+  }
+  if (useEye && fine) {
+    const px = p % grid;
+    const py = (p / grid) | 0;
+    sampleAt(fine, px, py, grid, out, at);
+    at += dims;
+    if (coarse) sampleAt(coarse, px, py, grid, out, at);
+  }
   return out;
 }
 
-/**
- * A patch grid with every patch squeezed to PROJ_DIMS numbers.
- *
- * The projection is made on first use, from the width the model ACTUALLY
- * returned rather than from the 384 this one happens to have. Sizing it from
- * an assumption would read past the end of every patch the day a different
- * backbone is tried, and typed arrays answer that with zeroes rather than an
- * error -- a model trained on padding, scoring badly, blaming the data.
- */
-const lens = { M: null, dim: 0 };
-function shrink(grid) {
-  const { data, gridW, gridH, dim } = grid;
-  if (lens.dim !== dim) {
-    lens.M = projection(dim, PROJ_DIMS);
-    lens.dim = dim;
-  }
-  const M = lens.M;
-  const out = new Float32Array(gridW * gridH * PROJ_DIMS);
-  for (let p = 0; p < gridW * gridH; p++) {
-    project(M, dim, PROJ_DIMS, data, p * dim, out, p * PROJ_DIMS);
-  }
-  return { data: out, gridW, gridH, dim: PROJ_DIMS };
+/** How wide a row is under one configuration, and whether it is runnable. */
+export function rowWidth(cfg, hasEye) {
+  const colour = cfg.colour ? FEATURE_COUNT : 0;
+  const eye = cfg.backbone && hasEye ? 2 * cfg.dims : 0;
+  return colour + eye;
 }
+
+/**
+ * A patch grid with every patch squeezed to `dims` numbers.
+ *
+ * The projection is made from the width the model ACTUALLY returned rather
+ * than from the 384 this one happens to have. Sizing it from an assumption
+ * would read past the end of every patch the day a different backbone is
+ * tried, and typed arrays answer that with zeroes rather than an error -- a
+ * model trained on padding, scoring badly, blaming the data.
+ */
+function shrink(grid, dims) {
+  const { data, gridW, gridH, dim } = grid;
+  const M = projection(dim, dims);
+  const out = new Float32Array(gridW * gridH * dims);
+  for (let p = 0; p < gridW * gridH; p++) {
+    project(M, dim, dims, data, p * dim, out, p * dims);
+  }
+  return { data: out, gridW, gridH, dim: dims };
+}
+
+/**
+ * ONE RUN, SEVERAL FEATURE SETS.
+ *
+ * Adding the backbone moved the score from 43.2% to 42.8%, which is no change,
+ * and one number cannot say why. Colour and the backbone may be saying the
+ * same thing; the backbone may be saying nothing useful about a photograph
+ * taken straight down, which is not what it was trained on; the projection may
+ * be throwing the signal away on its way to 32 numbers. Those want different
+ * answers and they are indistinguishable from a single figure.
+ *
+ * Running the model over twenty lawns is three minutes; scoring a feature set
+ * once the patches are in hand is seconds. So the patches are extracted once,
+ * at full width, and every configuration below is scored against the same
+ * lawns -- which also makes them comparable to each other, not just to SAM.
+ */
+const CONFIGS = [
+  { name: 'colour and texture only', colour: true, backbone: false, dims: 0 },
+  { name: 'the pretrained eye only', colour: false, backbone: true, dims: 32 },
+  { name: 'both', colour: true, backbone: true, dims: 32 },
+  { name: 'both, 96 numbers a patch', colour: true, backbone: true, dims: 96 },
+];
 
 /**
  * One fold: train on every lawn but `held`, then answer `held`.
@@ -249,14 +283,16 @@ function shrink(grid) {
  * count of lawns actually trained on comes back with the result, and a test
  * holds it to `lawns.length - 1`.
  */
-export function runFold(lawns, held, { perLawn = 6000, grid = GRID } = {}) {
+export function runFold(lawns, held, opts = {}) {
+  const { perLawn = 6000, grid = GRID } = opts;
   /*
    * SAMPLED, NOT EVERY PIXEL. Nineteen lawns is five million pixels and they
    * are enormously redundant -- neighbouring pixels of the same lawn are the
    * same fact. A few thousand per lawn carries the same information and keeps
    * a fold to a couple of seconds, which is what makes twenty folds possible.
    */
-  const width = lawns[0].width || TOTAL_FEATURES;
+  const cfg = opts.cfg || { colour: true, backbone: true, dims: PROJ_DIMS };
+  const width = opts.width || lawns[0].width || TOTAL_FEATURES;
   const picked = [];
   const ys = [];
   let seed = 12345 + held;
@@ -278,7 +314,7 @@ export function runFold(lawns, held, { perLawn = 6000, grid = GRID } = {}) {
 
   const x = new Float32Array(picked.length * width);
   for (let i = 0; i < picked.length; i++) {
-    buildRow(picked[i][0], picked[i][1], x, i * width, grid);
+    buildRow(picked[i][0], picked[i][1], x, i * width, grid, cfg);
   }
   const y = Float32Array.from(ys);
 
@@ -306,7 +342,7 @@ export function runFold(lawns, held, { perLawn = 6000, grid = GRID } = {}) {
     const rows = Math.min(ROWS, grid - y0);
     const count = rows * grid;
     for (let i = 0; i < count; i++) {
-      buildRow(test, y0 * grid + i, chunk, i * width, grid);
+      buildRow(test, y0 * grid + i, chunk, i * width, grid, cfg);
     }
     const slice = chunk.subarray(0, count * width);
     standardise(slice, stats, width);
@@ -415,13 +451,15 @@ async function main() {
         canopy: row.tree_line === null || row.tree_line === undefined ? null : Number(row.tree_line),
         /* Held raw: each fold standardises against its own training lawns. */
         cheap: imageFeatures(rgb, GRID, GRID),
-        fine: eye
-          ? shrink(await tiledFeatures(eye, rgb, GRID, GRID, { tiles: FINE_TILES }))
-          : null,
-        coarse: eye
-          ? shrink(await tiledFeatures(eye, rgb, GRID, GRID, { tiles: COARSE_TILES }))
-          : null,
-        width: eye ? TOTAL_FEATURES : FEATURE_COUNT,
+        /*
+         * Kept at the model's full width. Projecting here would fix the
+         * squeeze at one size, and how much the squeeze costs is one of the
+         * things the configurations below are there to find out.
+         */
+        fineFull: eye
+          ? await tiledFeatures(eye, rgb, GRID, GRID, { tiles: FINE_TILES }) : null,
+        coarseFull: eye
+          ? await tiledFeatures(eye, rgb, GRID, GRID, { tiles: COARSE_TILES }) : null,
         truth,
         within,
         truthPx,
@@ -449,76 +487,104 @@ async function main() {
   }
 
   /* ------------------------------------------------- leave one out */
-  console.log('Training once per lawn, each time on all the others.\n');
-  const results = [];
+  const median = (list) => {
+    const t = list.slice().sort((a, b) => a - b);
+    if (!t.length) return null;
+    const m = t.length >> 1;
+    return t.length % 2 ? t[m] : (t[m - 1] + t[m]) / 2;
+  };
 
-  for (let held = 0; held < lawns.length; held++) {
-    const test = lawns[held];
-    const { mine, theirs, trainedOn } = runFold(lawns, held);
-    results.push({ lawn: test, mine, theirs, trainedOn });
+  /*
+   * SAM'S SCORE IS THE SAME WHATEVER WE DO, so it is worked out once and sits
+   * beside every configuration as the line to beat.
+   */
+  const samScores = lawns
+    .map((L) => (L.detected ? compare(L.detected, L.truth, L.within) : null));
+  const samMed = median(samScores.filter(Boolean).map((s) => s.errorPct));
+  const samCount = samScores.filter(Boolean).length;
 
-    const sqft = (px) => (px * test.mpp * test.mpp) / SQM_PER_SQFT;
-    console.log(
-      `  ${String(test.county || 'traced by hand').padEnd(20).slice(0, 20)} `
-      + `${Math.round(sqft(test.truthPx)).toLocaleString().padStart(8)} sq ft true   `
-      + `trained ${mine.errorPct.toFixed(1).padStart(5)}% wrong   `
-      + (theirs ? `SAM ${theirs.errorPct.toFixed(1).padStart(5)}% wrong` : 'SAM not stored')
-    );
+  const runnable = CONFIGS.filter((c) => rowWidth(c, Boolean(eye)) > 0
+    && (!c.backbone || eye));
+  const table = [];
+
+  for (const cfg of runnable) {
+    /* Squeeze the patches to this configuration's width, once for all lawns. */
+    if (cfg.backbone && eye) {
+      for (const L of lawns) {
+        L.fine = shrink(L.fineFull, cfg.dims);
+        L.coarse = shrink(L.coarseFull, cfg.dims);
+      }
+    }
+    const width = rowWidth(cfg, Boolean(eye));
+    console.log(`Scoring "${cfg.name}" (${width} numbers a pixel)…`);
+
+    const rows = [];
+    for (let held = 0; held < lawns.length; held++) {
+      const { mine } = runFold(lawns, held, { cfg, width });
+      rows.push({ lawn: lawns[held], mine, theirs: samScores[held] });
+    }
+    const med = median(rows.map((r) => r.mine.errorPct));
+    const paired = rows.filter((r) => r.theirs);
+    const wins = paired.filter((r) => r.mine.errorPct < r.theirs.errorPct).length;
+    table.push({ cfg, med, wins, of: paired.length, rows, width });
+    console.log(`   ${med.toFixed(1)}% out on the middle lawn, better than SAM on ${wins} of ${paired.length}.\n`);
+  }
+
+  /* The per-lawn detail, for the best configuration only -- twenty lines per
+     configuration would bury the comparison the run exists to make. */
+  const best = table.slice().sort((a, b) => a.med - b.med)[0];
+  if (best) {
+    console.log(`Lawn by lawn, under "${best.cfg.name}":\n`);
+    for (const r of best.rows) {
+      const L = r.lawn;
+      const sqft = (px) => (px * L.mpp * L.mpp) / SQM_PER_SQFT;
+      console.log(
+        `  ${String(L.county || 'traced by hand').padEnd(20).slice(0, 20)} `
+        + `${Math.round(sqft(L.truthPx)).toLocaleString().padStart(8)} sq ft true   `
+        + `trained ${r.mine.errorPct.toFixed(1).padStart(5)}% wrong   `
+        + (r.theirs ? `SAM ${r.theirs.errorPct.toFixed(1).padStart(5)}% wrong` : 'SAM not stored')
+      );
+    }
   }
 
   /* ------------------------------------------------------------- verdict */
-  const median = (list) => {
-    const s = list.slice().sort((a, b) => a - b);
-    if (!s.length) return null;
-    const m = s.length >> 1;
-    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-  };
-
-  const both = results.filter((r) => r.theirs);
-  const mineMed = median(results.map((r) => r.mine.errorPct));
-  const theirsMed = both.length ? median(both.map((r) => r.theirs.errorPct)) : null;
-  const wins = both.filter((r) => r.mine.errorPct < r.theirs.errorPct).length;
-
   console.log(`\n${'='.repeat(64)}`);
   console.log(`\nTrained on ${lawns.length - 1} lawns, tested on the one left out, ${lawns.length} times.`);
-  /*
-   * WHICH FEATURES, ON THE SAME LINE AS THE NUMBER. Two configurations produce
-   * this report and they are several points apart; a figure quoted later
-   * without its source is a figure that will be compared against the wrong
-   * thing.
-   */
-  console.log(`Features: ${using}.`);
-  console.log(`\nThe trained head is ${mineMed.toFixed(1)}% out on the middle lawn.`);
+  console.log(`Features available: ${using}.\n`);
 
-  if (theirsMed !== null) {
-    console.log(`SAM, on the same ${both.length} lawns, is ${theirsMed.toFixed(1)}%.`);
-    console.log(`\nIt is better on ${wins} of ${both.length}.`);
+  console.log('  what it looked at                  wrong   beat SAM on');
+  for (const t of table) {
+    console.log(
+      `  ${t.cfg.name.padEnd(32).slice(0, 32)} ${t.med.toFixed(1).padStart(5)}%   `
+      + `${t.wins} of ${t.of}`
+    );
+  }
+  if (samMed !== null) {
+    console.log(`\n  SAM, on the same ${samCount} lawns             ${samMed.toFixed(1)}%`);
+  }
 
-    /*
-     * COUNTING THE LAWNS IT WINS, NOT JUST THE MEDIAN, because at this size
-     * one disastrous lawn moves a median and a majority is harder to get by
-     * luck. Neither is proof at twenty; together they are an indication.
-     */
-    const better = mineMed < theirsMed;
-    const clear = Math.abs(mineMed - theirsMed) > 3 && (wins > both.length * 0.6 || wins < both.length * 0.4);
-    console.log('');
-    if (better && clear) {
-      console.log('WORTH BUILDING ON. It beats the detector it was trained to replace,');
-      console.log('on lawns it had never seen, by enough to not be noise. The next');
-      console.log('move is more maps: every one makes the next model better and this');
-      console.log('measurement steadier.');
-    } else if (better) {
-      console.log('AHEAD, BUT NOT BY ENOUGH TO TRUST. It is better on the middle lawn,');
-      console.log('and with this few lawns that can turn over on one more map. Worth');
-      console.log('another run once there are ten more, before anything is built on it.');
-    } else {
-      console.log('NOT BETTER YET. Which is a real answer and cost nothing: the pipeline');
-      console.log('works, the measurement is honest, and the features are the part to');
-      console.log('change. More lawns would help; a stronger backbone would help more.');
-    }
+  console.log('');
+  if (samMed === null || !best) {
+    console.log('No stored SAM outline to compare against, so there is only the');
+    console.log('trained number, which alone says little.');
+  } else if (best.med < samMed && Math.abs(best.med - samMed) > 3 && best.wins > best.of * 0.6) {
+    console.log(`WORTH BUILDING ON. "${best.cfg.name}" beats the detector it was`);
+    console.log('trained to replace, on lawns it had never seen, by enough not to be');
+    console.log('noise. The next move is more maps: every one makes the next model');
+    console.log('better and this measurement steadier.');
+  } else if (best.med < samMed) {
+    console.log('AHEAD, BUT NOT BY ENOUGH TO TRUST. Better on the middle lawn, and');
+    console.log('with this few lawns that can turn over on one more map. Worth');
+    console.log('another run once there are ten more.');
   } else {
-    console.log('\nNo stored SAM outline on any of these, so there is nothing to');
-    console.log('compare against -- only the trained number, which alone says little.');
+    console.log('STILL NOT BETTER. The comparison above is the useful part: if the');
+    console.log('pretrained eye alone scores near the colour-only row, the two are');
+    console.log('saying the same thing and a different backbone is the lever. If it');
+    console.log('scores far worse alone, it is not reading this kind of picture well');
+    console.log('-- these models are trained on photographs taken from the ground,');
+    console.log('and a view straight down is not what they know. And if the wider');
+    console.log('squeeze beats the narrow one, the projection was the bottleneck');
+    console.log('rather than the features.');
   }
 
   console.log(`\n${'='.repeat(64)}`);

@@ -391,5 +391,78 @@ const paint = (px, w, x0, y0, pw, ph, [r, g, b]) => {
     + 'the same number for both would mean the held-out lawn is not being read');
 }
 
+/* ------------------------------------- can the backbone reach the head? */
+/*
+ * THE CHECK THAT TELLS A BUG FROM A FINDING.
+ *
+ * Adding a pretrained backbone moved the score from 43.2% to 42.8% -- which is
+ * no change at all. That is suspicious rather than disappointing: a frozen
+ * DINOv2 carries far more about a picture than eleven colour and variance
+ * numbers do, so getting the same answer back suggests its features are not
+ * reaching the head, not that they are useless.
+ *
+ * Those are opposite problems with opposite responses -- fix the plumbing, or
+ * abandon the approach -- and nothing in the report can tell them apart. So
+ * this builds lawns where the answer is ONLY in the backbone channel: the
+ * colour layer is identical everywhere, and a fold that scores well can only
+ * have done it by reading the patch grids.
+ */
+{
+  console.log('\n--- can the backbone channel be learnt from at all? ---');
+  const { runFold, buildRow } = await import('./train-detector.js');
+  const PROJ = 32;
+  const G = 64;
+  const GRIDW = 8;                         // a coarse patch grid over the lawn
+  const width = FEATURE_COUNT + 2 * PROJ;
+
+  const madeLawn = (flip) => {
+    /* Colour says nothing: every pixel identical. */
+    const cheap = new Float32Array(G * G * FEATURE_COUNT).fill(0.5);
+    const truth = new Uint8Array(G * G);
+
+    /* The backbone grid says everything: top half one value, bottom another. */
+    const fineData = new Float32Array(GRIDW * GRIDW * PROJ);
+    for (let gy = 0; gy < GRIDW; gy++) {
+      for (let gx = 0; gx < GRIDW; gx++) {
+        const lawn = gy < GRIDW / 2;
+        for (let d = 0; d < PROJ; d++) {
+          fineData[(gy * GRIDW + gx) * PROJ + d] = lawn ? 1 + flip * 0.05 : -1 - flip * 0.05;
+        }
+      }
+    }
+    for (let y = 0; y < G; y++) {
+      for (let x = 0; x < G; x++) truth[y * G + x] = y < G / 2 ? 1 : 0;
+    }
+    const fine = { data: fineData, gridW: GRIDW, gridH: GRIDW, dim: PROJ };
+    return { cheap, fine, coarse: fine, truth, within: null, detected: null, width };
+  };
+
+  const lawns = [madeLawn(0), madeLawn(1), madeLawn(-1), madeLawn(2), madeLawn(-2)];
+
+  /* First: a row really does carry the patch values, in the right columns. */
+  const row = new Float32Array(width);
+  buildRow(lawns[0], 2 * G + 2, row, 0, G);          // a pixel in the top half
+  check('a feature row carries the backbone values after the colour ones',
+    row.slice(FEATURE_COUNT, FEATURE_COUNT + PROJ).every((v) => v > 0.5),
+    `columns ${FEATURE_COUNT}..${FEATURE_COUNT + PROJ} read `
+    + `${row[FEATURE_COUNT].toFixed(2)} -- zeroes here would mean the grid is `
+    + 'never sampled, and the head would be training on colour alone');
+
+  const low = new Float32Array(width);
+  buildRow(lawns[0], (G - 2) * G + 2, low, 0, G);    // a pixel in the bottom half
+  check('and a pixel elsewhere reads a different patch',
+    low[FEATURE_COUNT] < -0.5,
+    `${low[FEATURE_COUNT].toFixed(2)} against ${row[FEATURE_COUNT].toFixed(2)} `
+    + '-- the same value at both ends would mean every pixel samples one patch');
+
+  /* Then: the head can actually learn from that channel alone. */
+  const fold = runFold(lawns, 2, { perLawn: 900, grid: G });
+  check('a lawn whose answer is only in the backbone channel is learnable',
+    fold.mine.errorPct < 20,
+    `${fold.mine.errorPct.toFixed(1)}% wrong with colour saying nothing -- if `
+    + 'this is near 100% the backbone features never reach the head, and the '
+    + 'training report is measuring colour twice');
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);
