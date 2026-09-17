@@ -233,6 +233,42 @@ const inferredGeometries = (stored) => {
 };
 
 /**
+ * The inferred pixels that are not also covered by visible lawn.
+ *
+ * WHERE THE TWO LAYERS OVERLAP, THE PIXEL IS SEEN.
+ *
+ * Inferred patches are drawn on their own layer and are meant to sit on top of
+ * lawn already outlined -- that is the ordinary way to mark ground under a
+ * canopy running through the middle of a traced lawn, so an inferred shape
+ * covers visible grass at its edges nearly always.
+ *
+ * Counting those as inferred would quietly move visible ground out of the
+ * column that watches for degradation, which is the one thing this split
+ * exists to catch: a head that had stopped reading faint evidence could hide
+ * the damage by being marked over generously. Seen wins, so the guard can only
+ * ever be harder on the model, never softer.
+ *
+ * Null when nothing is left, because an inferred layer lying entirely under
+ * visible lawn says nothing at all -- and an empty column prints as a
+ * confident 0.0% wrong rather than as a blank.
+ */
+export function inferredOnly(inferred, seen) {
+  let left = 0;
+  for (let i = 0; i < inferred.length; i++) {
+    if (seen && seen[i]) inferred[i] = 0;
+    else if (inferred[i]) left++;
+  }
+  return left ? inferred : null;
+}
+
+/** The other half: everything NOT marked inferred, which is most of it. */
+const seenGeometries = (stored) => {
+  const list = Array.isArray(stored) ? stored : stored?.features || [];
+  return list.filter((g) => !g?.properties?.inferred)
+    .map((g) => (g?.geometry ? g.geometry : g)).filter(Boolean);
+};
+
+/**
  * Pull one stored photograph out of R2 and decode it to RGBA.
  *
  * THE KEY ENDS .png AND THE BYTES MIGHT NOT BE. storeImage names every object
@@ -808,8 +844,28 @@ async function main() {
 
       const rgb = resize(img.data, img.width, img.height, img.channels, GRID);
       const truth = maskOf(truthGeoms, frame, GRID);
+      /*
+       * WHERE THE TWO LAYERS OVERLAP, THE PIXEL IS SEEN.
+       *
+       * Inferred patches are drawn on their own layer and are meant to sit on
+       * top of lawn already outlined -- that is the ordinary way to mark the
+       * ground under a canopy that runs through the middle of a traced lawn.
+       * So an inferred shape covers visible grass at its edges almost always.
+       *
+       * Counting those pixels as inferred would quietly move visible ground
+       * out of the column that is watching for degradation, which is the one
+       * thing the split exists to catch: a ring that had stopped reading faint
+       * evidence could hide the damage simply by being marked over generously.
+       * Seen wins, so the guard can only ever be harder on the model, never
+       * softer.
+       */
       const inferredGeoms = inferredGeometries(parse(row.shapes));
-      const inferred = inferredGeoms.length ? maskOf(inferredGeoms, frame, GRID) : null;
+      const inferred = inferredGeoms.length
+        ? inferredOnly(
+          maskOf(inferredGeoms, frame, GRID),
+          maskOf(seenGeometries(parse(row.shapes)), frame, GRID),
+        )
+        : null;
       const parcelGeom = parse(row.parcel);
       /*
        * No property line means the whole frame is fair game. Rare, and the
@@ -1309,4 +1365,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   });
 }
 
-export { compare, resize, maskOf, GRID, dumpSize, FETCH_TRIES };
+export {
+  compare, resize, maskOf, GRID, dumpSize, FETCH_TRIES,
+  inferredGeometries, seenGeometries,
+};

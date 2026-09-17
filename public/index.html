@@ -496,20 +496,28 @@
           <button class="ghost" id="btn-undo" disabled>Undo</button>
           <button class="ghost" id="btn-delete" disabled>Delete selected</button>
           <!--
-            MARKING A SHAPE AS INFERRED RATHER THAN SEEN.
+            A SECOND LAYER FOR LAWN YOU KNOW IS THERE AND CANNOT SEE.
 
-            Some lawn is genuinely not in the photograph: grass under a tree
-            canopy, with lawn either side of it. A person who knows what lawns
-            look like can say it is there, and that judgement is worth keeping
-            -- but it is a judgement about shape, not a reading of the pixels,
-            and the training has to be able to tell the two apart.
+            Grass under a tree canopy with lawn either side; an edge that
+            carries on through shadow. A person who knows what lawns look like
+            can say it is there, and that judgement is worth keeping -- but it
+            is a judgement about shape, not a reading of the pixels, and the
+            training has to tell the two apart. Mixed in undifferentiated it
+            teaches "canopy means lawn", which on a wooded lot claims the woods.
 
-            Mixed in undifferentiated it teaches "canopy means lawn", which on
-            a genuinely wooded lot claims the woods. Kept apart, the detector's
-            error on inferred ground and on visible ground become two separate
-            numbers, which is the only way to notice a model that has started
-            guessing instead of looking.
+            A MODE RATHER THAN A MARK ON A SHAPE, because a traced lawn is
+            usually one big outline holding both kinds of ground: grass, then
+            canopy, then grass again. Marking the whole shape would claim the
+            visible parts were guessed at too.
+
+            While it is on, the polygon tool and both brushes work exactly as
+            they always do -- only on this layer. It is the one place on the
+            map where shapes may overlap: an inferred patch normally sits on
+            lawn already outlined, and the total counts ground once however
+            many shapes cover it.
           -->
+          <button class="ghost" id="btn-inferred-mode">Draw inferred lawn</button>
+          <!-- For fixing one after the fact, without redrawing it. -->
           <button class="ghost" id="btn-inferred" disabled>Mark as inferred</button>
           <button class="ghost" id="btn-clear">Clear all</button>
         </div>

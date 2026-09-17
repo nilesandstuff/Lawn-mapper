@@ -119,6 +119,25 @@ const state = {
   drawingParcel: false,
   drawingHole: false,   // trace a shed; it becomes a hole in the lawn under it
 
+  /*
+   * DRAWING THE INFERRED LAYER RATHER THAN THE LAWN.
+   *
+   * Not a different tool -- the same polygon and the same brushes -- but
+   * everything drawn while it is on lands on its own layer and is marked
+   * "I know this is lawn, I cannot see it".
+   *
+   * It has to be a layer rather than a flag on a shape because a traced lawn
+   * is usually one big outline containing both kinds of ground: grass you can
+   * see, then a canopy, then grass again. Marking the whole shape would say
+   * the visible parts were guessed at, which is worse than saying nothing.
+   *
+   * The two layers are allowed to overlap, and this is the ONLY place on the
+   * map where that is true -- an inferred patch normally sits on top of lawn
+   * already outlined. The measurement counts ground once however many shapes
+   * cover it, so overlapping adds nothing to the total and a patch reaching
+   * past the edge of the lawn adds exactly the part that reaches past.
+   */
+  inferredMode: false,
   // The training candidate being corrected, when the console sent us here.
   // Null far more often than not, and the way back out is shown only while it
   // is set -- see leaveReview.
@@ -1183,7 +1202,18 @@ async function initMap() {
      * it was the only way to end up with two outlines over the same ground --
      * see mergeDrawnPatch, including what merging does NOT fix.
      */
-    const joined = mergeDrawnPatch(e.features?.[0]);
+    /*
+     * Marked BEFORE the merge, because the merge decides what a shape may
+     * join by asking which layer it is on. Setting the flag afterwards would
+     * let a fresh inferred patch fuse into the lawn it was drawn over, which
+     * is the normal way somebody would use this.
+     */
+    const made = e.features?.[0];
+    if (state.inferredMode && made) {
+      draw.setFeatureProperty(made.id, 'inferred', true);
+      made.properties = { ...(made.properties || {}), inferred: true };
+    }
+    const joined = mergeDrawnPatch(made);
     if (joined) {
       refreshMeasurement();
       refreshSurveyed();
@@ -1859,7 +1889,14 @@ const boxesOverlap = (a, b) =>
 function applyErase() {
   const stroke = eraser?.stroke || [];
   const mode = BRUSH[eraser?.mode] || BRUSH.erase;
-  const features = draw.getAll().features.filter((f) => outerRing(f));
+  /*
+   * The brush sees only the layer being drawn on. In inferred mode an add
+   * stroke over existing lawn makes a new inferred patch rather than growing
+   * the lawn underneath, and an erase stroke takes back inferred ground
+   * without touching what is visible beneath it.
+   */
+  const features = draw.getAll().features
+    .filter((f) => outerRing(f) && isInferred(f) === state.inferredMode);
   // Erasing nothing is a no-op; adding to nothing is how you start.
   if (stroke.length < 2 || (!features.length && mode.paint === 0)) return;
   markHandEdited();
@@ -2107,7 +2144,9 @@ function applyErase() {
    * marking visible ground as inferred is what teaches a detector to stop
    * looking, while the reverse just loses a note you can put back.
    */
-  const brushedInferred = touched.length > 0 && touched.every(isInferred);
+  /* Everything the brush makes belongs to the layer it was drawn on. The
+     brush only ever sees one layer now, so there is nothing to reconcile. */
+  const brushedInferred = state.inferredMode;
   for (const geometry of restored) {
     draw.add({
       type: 'Feature',
@@ -2145,9 +2184,56 @@ function applyErase() {
  * line cuts through it.
  */
 function clipShapesToParcel() {
-  const features = draw.getAll().features.filter((f) => outerRing(f));
-  if (!features.length || !parcelRing()) return { trimmed: 0, before: 0, after: 0 };
+  const all = draw.getAll().features.filter((f) => outerRing(f));
+  if (!all.length || !parcelRing()) return { trimmed: 0, before: 0, after: 0 };
 
+  /*
+   * ONE LAYER AT A TIME, and that is not tidiness.
+   *
+   * The clip works by rasterising every shape into one grid and tracing back
+   * what survives. Run over both kinds at once it would hand back a single
+   * merged outline -- so an inferred patch lying over visible lawn, which is
+   * the ordinary case, would come out of a boundary trim as one shape that is
+   * either wholly inferred or wholly seen. Either answer is a lie, and it
+   * would be told silently by a tool nobody suspects of touching the marks.
+   */
+  const before = totalSquareFeet();
+  const groups = [
+    all.filter((f) => !isInferred(f)),
+    all.filter((f) => isInferred(f)),
+  ];
+
+  const rebuilt = [];
+  let clipped = false;
+  for (const [i, features] of groups.entries()) {
+    if (!features.length) continue;
+    const out = clipGroupToParcel(features, i === 1);
+    if (!out) { rebuilt.push(...features); continue; }
+    clipped = true;
+    rebuilt.push(...out);
+  }
+  if (!clipped) return { trimmed: 0, before, after: before };
+
+  pushHistory();
+  draw.deleteAll();
+  for (const f of rebuilt) draw.add(f);
+
+  refreshMeasurement();
+  refreshSurveyed();
+  updateSelectionButtons();
+
+  const after = totalSquareFeet();
+  return { trimmed: Math.max(0, before - after), before, after };
+}
+
+/**
+ * One kind of shape, trimmed to the property line.
+ *
+ * Returns the replacement features, or null when this group has nothing
+ * crossing the line and should be left exactly as it is -- which is not an
+ * optimisation but the point: see the round-trip warning below.
+ */
+function clipGroupToParcel(features, inferred) {
   let [w, s, e, n] = [Infinity, Infinity, -Infinity, -Infinity];
   const see = ([lng, lat]) => {
     w = Math.min(w, lng); e = Math.max(e, lng);
@@ -2165,7 +2251,7 @@ function clipShapesToParcel() {
   };
   const project = (ll) => lngLatToFramePx(frame, ll, ERASE_GRID, ERASE_GRID);
   const inside = parcelRaster(ERASE_GRID, ERASE_GRID, project);
-  if (!inside) return { trimmed: 0, before: 0, after: 0 };
+  if (!inside) return null;
 
   /*
    * Only round-trip the shapes that actually cross the line.
@@ -2185,13 +2271,16 @@ function clipShapesToParcel() {
    */
   const keep = new Uint8Array(ERASE_GRID * ERASE_GRID);
   const untouched = [];
+  let crossing = 0;
   for (const f of features) {
     const m = rasterizePolygon(f.geometry.coordinates, ERASE_GRID, ERASE_GRID, project);
     let outside = 0;
     for (let i = 0; i < m.length; i++) if (m[i] && !inside[i]) { outside = 1; break; }
     if (!outside) { untouched.push(f); continue; }
+    crossing++;
     for (let i = 0; i < keep.length; i++) if (m[i] && inside[i]) keep[i] = 1;
   }
+  if (!crossing) return null;
 
   const data = new Uint8ClampedArray(ERASE_GRID * ERASE_GRID * 4);
   for (let p = 0; p < keep.length; p++) {
@@ -2220,19 +2309,11 @@ function clipShapesToParcel() {
     }
   );
 
-  const before = totalSquareFeet();
-  pushHistory();
-  draw.deleteAll();
-  // The shapes that were already inside go back exactly as they were.
-  for (const f of untouched) draw.add(f);
-  for (const geometry of polygons) draw.add({ type: 'Feature', properties: {}, geometry });
-
-  refreshMeasurement();
-  refreshSurveyed();
-  updateSelectionButtons();
-
-  const after = totalSquareFeet();
-  return { trimmed: Math.max(0, before - after), before, after };
+  const props = () => (inferred ? { inferred: true } : {});
+  return [
+    ...untouched,
+    ...polygons.map((geometry) => ({ type: 'Feature', properties: props(), geometry })),
+  ];
 }
 
 /* ------------------------------------------------------------------ undo */
@@ -6173,8 +6254,15 @@ function mergeDrawnPatch(feature) {
   if (!ring || ring.length < 4) return 0;
 
   const mine = geometryBounds(feature.geometry);
+  /*
+   * ONLY SHAPES OF THE SAME KIND. Merging an inferred patch into the lawn
+   * underneath would either mark visible ground as guessed at or lose the
+   * mark entirely, depending which shape won -- and it would happen the
+   * instant somebody drew one, which is the normal way to use the tool.
+   */
+  const sameKind = isInferred(feature);
   const others = draw.getAll().features
-    .filter((f) => f.id !== feature.id && outerRing(f));
+    .filter((f) => f.id !== feature.id && outerRing(f) && isInferred(f) === sameKind);
   if (!mine || !others.length) return 0;
 
   /*
@@ -8771,6 +8859,34 @@ $('#btn-tidy').addEventListener('click', tidyShapes);
 $('#btn-point-add').addEventListener('click', addPointOnEdge);
 $('#btn-point-delete').addEventListener('click', deleteSelectedVertex);
 $('#edge-slider').addEventListener('input', (e) => applyEdgeOffset(Number(e.target.value)));
+
+/**
+ * Turn the inferred layer on or off for drawing.
+ *
+ * Everything else about the map stays exactly as it was -- same polygon tool,
+ * same brushes, same selection. The only difference is which layer the next
+ * shape lands on, so there is no mode to get stuck in and nothing to undo if
+ * it is left switched on by accident.
+ */
+function setInferredMode(on) {
+  state.inferredMode = Boolean(on);
+  const btn = $('#btn-inferred-mode');
+  btn.classList.toggle('on', state.inferredMode);
+  btn.textContent = state.inferredMode ? 'Drawing inferred lawn' : 'Draw inferred lawn';
+  /*
+   * The panel says which layer is live, because the tools look identical in
+   * both and the difference only shows once something has been drawn. A mode
+   * you cannot tell you are in is a mode that quietly mislabels a lawn.
+   */
+  document.body.classList.toggle('inferred-mode', state.inferredMode);
+  setStatus(state.inferredMode
+    ? 'Drawing inferred lawn. Outline or brush the ground you know is there '
+      + 'but cannot see — under a canopy, or through a shadow. It may sit on '
+      + 'top of lawn you have already drawn; the total counts ground once.'
+    : 'Back to ordinary lawn.');
+}
+
+$('#btn-inferred-mode').addEventListener('click', () => setInferredMode(!state.inferredMode));
 
 $('#btn-inferred').addEventListener('click', () => {
   const chosen = draw.getSelected().features;

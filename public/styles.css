@@ -243,6 +243,26 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 }
 .ghost:hover { border-color: #b9c4bc; }
 
+/*
+ * THE INFERRED LAYER, switched on.
+ *
+ * Purple rather than a deeper green, deliberately. Inferred lawn is not
+ * weaker lawn -- it is a different kind of claim about the same ground -- and
+ * a shade of the lawn colour would read as "lawn, a bit less sure", which is
+ * the wrong idea to plant.
+ */
+.ghost.on {
+  background: #f3edff; border-color: #7c4dff; color: #4527a0; font-weight: 600;
+}
+
+/*
+ * While the mode is on, the whole panel carries a band of it. The drawing
+ * tools look identical in both layers and the difference only shows once
+ * something has been drawn, so a mode you cannot tell you are in is a mode
+ * that quietly mislabels a lawn as guessed at.
+ */
+body.inferred-mode .panel { box-shadow: inset 4px 0 0 #7c4dff; }
+
 .link {
   background: none; border: 0; color: var(--muted);
   text-decoration: underline; padding: 6px 0; font-size: 13px; text-align: left;

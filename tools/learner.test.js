@@ -529,6 +529,60 @@ const paint = (px, w, x0, y0, pw, ph, [r, g, b]) => {
     + 'training report is measuring colour twice');
 }
 
+/* ------------------------------------- two layers, and which wins where they meet */
+{
+  console.log('\n--- the inferred layer ---');
+  const {
+    inferredOnly, inferredGeometries, seenGeometries,
+  } = await import('./train-detector.js');
+
+  const poly = (tag) => ({ type: 'Polygon', coordinates: [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]], tag });
+
+  /*
+   * A traced lawn is usually ONE outline holding both kinds of ground -- grass,
+   * then canopy, then grass again -- so inferred areas are drawn as their own
+   * shapes on their own layer, overlapping the lawn beneath. Splitting the
+   * stored list has to put every shape on exactly one side.
+   */
+  const stored = [
+    { type: 'Feature', properties: {}, geometry: poly('lawn') },
+    { type: 'Feature', properties: { inferred: true }, geometry: poly('guess') },
+    /* Written before the flag existed: a bare geometry, and always seen. */
+    poly('old'),
+  ];
+  check('every shape lands on exactly one layer',
+    seenGeometries(stored).length === 2 && inferredGeometries(stored).length === 1,
+    `${seenGeometries(stored).length} seen, ${inferredGeometries(stored).length} inferred`);
+  check('and a shape from before the flag counts as seen',
+    seenGeometries(stored).some((g) => g.tag === 'old'),
+    'bare geometries are older maps, and nobody guessed at anything on them');
+
+  /*
+   * THE TIE RULE, which is the whole guard.
+   *
+   * An inferred patch drawn over lawn already outlined -- the ordinary case --
+   * must not pull those visible pixels into the inferred column. If it could,
+   * a head that had stopped reading faint evidence could hide the damage by
+   * being marked over generously, and the split would flatter exactly the
+   * failure it was built to catch.
+   */
+  const guess = new Uint8Array([1, 1, 1, 0]);
+  const seen = new Uint8Array([1, 0, 0, 0]);
+  const left = inferredOnly(guess, seen);
+  check('ground covered by both layers counts as seen',
+    left && left[0] === 0 && left[1] === 1,
+    `${[...left]} -- seen has to win, so the guard can only be harder on the `
+    + 'model and never softer');
+
+  check('an inferred patch entirely under visible lawn is nothing at all',
+    inferredOnly(new Uint8Array([1, 1]), new Uint8Array([1, 1])) === null,
+    'an empty column prints as a confident 0.0% wrong rather than as blank');
+
+  check('and with no visible lawn under it, all of it counts',
+    [...inferredOnly(new Uint8Array([1, 0, 1]), null)].join('') === '101',
+    'a map with nothing but inferred shapes still has an inferred column');
+}
+
 /* ------------------------------------------ what is AROUND a spot, in metres */
 {
   console.log('\n--- the ring ---');
