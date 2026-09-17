@@ -513,7 +513,33 @@ const passed = [];
 const failed = [];
 
 for (const c of list) {
-  const r = await verify(c);
+  /*
+   * ONE SECOND CHANCE, because these counties flicker.
+   *
+   * Two full sweeps a few minutes apart, on the same candidates: the first
+   * lost sc-charleston, tx-denton and vt-chittenden; the second gave back
+   * tx-denton and vt-chittenden and lost in-allen and oh-summit instead. Four
+   * different counties in two runs, none of them broken -- public county
+   * servers time out, rate-limit and hiccup, and a sweep that asks each one
+   * exactly once records whichever ones were busy as though they did not
+   * exist.
+   *
+   * This file IS the coverage, so that flicker is real addresses losing their
+   * property line for however long it is until somebody runs this again.
+   *
+   * Only on failure, so it costs nothing on the ~140 that answer first time,
+   * and after a longer pause than the ordinary one: whatever the server was
+   * doing, going straight back at it is the way to meet it again.
+   */
+  let r = await verify(c);
+  if (!r.ok) {
+    await sleep(PAUSE_MS * 6);
+    const again = await verify(c);
+    if (again.ok) {
+      console.log(`  (${c.key} answered on the second ask)`);
+      r = again;
+    }
+  }
   if (r.ok) {
     /* The layer that actually answered, which is not always the one the
        catalogue named. See parcelLayerIn. */
