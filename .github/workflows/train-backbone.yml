@@ -60,6 +60,9 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
+          # Without this, setup-python looks for a requirements.txt in the root,
+          # finds none, and fails the job before anything has run.
+          cache-dependency-path: tools/requirements.txt
 
       - run: npm ci
 
@@ -70,9 +73,7 @@ jobs:
       # about two gigabytes of driver support for a machine with no GPU, which
       # turns a three minute install into fifteen and then never uses it.
       - name: Install PyTorch and the model loader
-        run: |
-          pip install --index-url https://download.pytorch.org/whl/cpu torch
-          pip install transformers pillow numpy
+        run: pip install -r tools/requirements.txt
 
       # Step one: the photographs, at the same grid everything is measured on,
       # so the patch grid lines up with the outlines without reconciling two

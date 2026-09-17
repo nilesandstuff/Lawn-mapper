@@ -1,0 +1,16 @@
+# Python for one job: photographs in, patch features out. See extract_features.py.
+#
+# THE CPU INDEX FIRST, AND IT MATTERS. The default PyPI wheel for torch carries
+# CUDA support -- about two gigabytes of driver for a runner with no GPU, which
+# turns a three minute install into fifteen and then goes unused. The CPU index
+# serves a build a tenth the size.
+#
+# The second index is for everything else, which PyTorch's own index does not
+# carry. Order matters: pip prefers the first index that has a package.
+--index-url https://download.pytorch.org/whl/cpu
+--extra-index-url https://pypi.org/simple
+
+torch
+transformers
+pillow
+numpy
