@@ -73,6 +73,50 @@ const PROJ_DIMS = 32;
 const FINE_TILES = 4;
 const COARSE_TILES = 1;
 
+/*
+ * THE RING: what is around this spot, laid out separately from what is at it.
+ *
+ * The head decides one pixel at a time from one patch's description, with no
+ * knowledge of what it decided next door. So a pixel under a tree is asked
+ * "dark and leafy -- grass?" and answers no, correctly, about the only
+ * evidence it was given. The lawn three metres either side is never mentioned.
+ *
+ * The backbone's own description of that patch does carry some of its
+ * surroundings, because every patch attends to every other. But it carries it
+ * BLENDED -- one smear where what-is-here and what-is-near are stirred
+ * together. Laid out in order, as separate entries at known distances, the
+ * same information is something a small head can find a rule in.
+ *
+ * IN METRES, NOT PIXELS, and that is not tidiness. These twenty properties
+ * span 0.055 to 0.475 metres a pixel -- a factor of nine. A ring measured in
+ * pixels would reach three metres on one lot and twenty-six on the next, so
+ * the head would be learning a different question per lawn. Metres is the only
+ * unit under which "what is six metres away" means one thing.
+ *
+ * THE REACH HAS TO BEAT THE THING IT IS BRIDGING. A canopy is often six to ten
+ * metres across, so a ring of immediate neighbours is still entirely under the
+ * tree and has learnt nothing. 3 m and 6 m are chosen to straddle a typical
+ * one; the far ring is what touches grass on the other side.
+ *
+ * NARROW ON PURPOSE. Sixteen ring points at the centre's own width would be
+ * 688 numbers of surroundings against 43 of evidence, and drowning the centre
+ * is precisely the failure this is supposed to avoid. Each ring point gets two
+ * colour numbers and a six-number squeeze of the backbone: enough to say "that
+ * over there looks like lawn", not enough to out-shout what is actually
+ * visible here.
+ */
+const RING_METRES = [3, 6];
+const RING_DIRS = 8;
+const RING_DIMS = 6;
+const RING_POINTS = RING_METRES.length * RING_DIRS;
+
+/*
+ * Excess green and green share: the two cheap numbers that most directly say
+ * "that is vegetation". The ring is asked one question -- is there lawn out
+ * there -- and does not need brightness, saturation or roughness to answer it.
+ */
+const RING_COLOUR = [3, 4];
+
 /** Cheap colour and texture, then the backbone at two scales. */
 const TOTAL_FEATURES = FEATURE_COUNT + 2 * PROJ_DIMS;
 
@@ -162,6 +206,30 @@ const parse = (text) => {
 const geometries = (stored) => {
   const list = Array.isArray(stored) ? stored : stored?.features || [];
   return list.map((g) => (g?.geometry ? g.geometry : g)).filter(Boolean);
+};
+
+/**
+ * Only the shapes the reviewer marked as inferred rather than seen.
+ *
+ * WHY THIS IS SEPARATE FROM THE TRUTH. Under a tree canopy there is no grass
+ * in the photograph -- there is a tree. A person who knows what lawns look
+ * like can say with confidence that grass continues under it, and that
+ * judgement is worth recording, but it is a judgement about SHAPE and not a
+ * reading of the pixels. Mixed in undifferentiated it teaches "canopy means
+ * lawn", which on a genuinely wooded lot claims the woods; the record already
+ * has one of those, at 34,500 sq ft.
+ *
+ * Kept apart, it becomes the opposite of a hazard: the error on these pixels
+ * and the error everywhere else can be reported separately, so "the model now
+ * bridges canopies" and "the model has stopped looking" are two different
+ * numbers instead of one ambiguous one.
+ *
+ * Nothing marked means this returns nothing, and every pixel counts as seen --
+ * which is exactly right for a corpus traced before the flag existed.
+ */
+const inferredGeometries = (stored) => {
+  const list = Array.isArray(stored) ? stored : stored?.features || [];
+  return list.filter((g) => g?.properties?.inferred).map((g) => g.geometry).filter(Boolean);
 };
 
 /**
@@ -324,10 +392,13 @@ function readPythonFeatures(dir) {
  * are tiny; this assembles a row from them when one is asked for.
  */
 export function buildRow(lawn, p, out, offset, grid = GRID, cfg = null) {
-  const { cheap, fine, coarse } = lawn;
+  const { cheap, fine, coarse, ring } = lawn;
   const useColour = cfg ? cfg.colour : true;
   const useEye = cfg ? cfg.backbone : true;
   const dims = cfg ? cfg.dims : PROJ_DIMS;
+
+  const px = p % grid;
+  const py = (p / grid) | 0;
 
   let at = offset;
   if (useColour) {
@@ -335,14 +406,41 @@ export function buildRow(lawn, p, out, offset, grid = GRID, cfg = null) {
     at += FEATURE_COUNT;
   }
   if (useEye && fine) {
-    const px = p % grid;
-    const py = (p / grid) | 0;
     sampleAt(fine, px, py, grid, out, at);
     at += dims;
     /* The Python path has no coarse grid: its single pass already saw the
        whole frame, so a second, blurrier copy of the same thing would only
        spend width. */
-    if (coarse) sampleAt(coarse, px, py, grid, out, at);
+    if (coarse) { sampleAt(coarse, px, py, grid, out, at); at += dims; }
+  }
+
+  /*
+   * THE SURROUNDINGS, AFTER the evidence and never instead of it.
+   *
+   * Order matters only for readability -- the head sees a flat row either way
+   * -- but reading a row and finding what is actually here before what is
+   * merely near is worth the zero it costs.
+   */
+  if (cfg && cfg.ring) {
+    /* Pixels per metre, from this lawn's own scale. The fallback is only for
+       synthetic lawns in the tests; a real one always carries mpp. */
+    const perMetre = 1 / (lawn.mpp || 0.1);
+    for (const metres of RING_METRES) {
+      const reach = metres * perMetre;
+      for (let d = 0; d < RING_DIRS; d++) {
+        const angle = (2 * Math.PI * d) / RING_DIRS;
+        /*
+         * Clamped to the frame. A ring point off the edge repeats the edge
+         * rather than reading zeroes: zero is a colour, and a lawn at the
+         * frame's edge would get a ring of confident black.
+         */
+        const qx = Math.min(grid - 1, Math.max(0, px + Math.cos(angle) * reach));
+        const qy = Math.min(grid - 1, Math.max(0, py + Math.sin(angle) * reach));
+        const q = ((qy | 0) * grid + (qx | 0)) * FEATURE_COUNT;
+        for (const f of RING_COLOUR) out[at++] = cheap[q + f];
+        if (ring) { sampleAt(ring, qx, qy, grid, out, at); at += RING_DIMS; }
+      }
+    }
   }
   return out;
 }
@@ -351,7 +449,10 @@ export function buildRow(lawn, p, out, offset, grid = GRID, cfg = null) {
 export function rowWidth(cfg, hasEye, scales = 2) {
   const colour = cfg.colour ? FEATURE_COUNT : 0;
   const eye = cfg.backbone && hasEye ? scales * cfg.dims : 0;
-  return colour + eye;
+  const ring = cfg.ring
+    ? RING_POINTS * (RING_COLOUR.length + (hasEye ? RING_DIMS : 0))
+    : 0;
+  return colour + eye + ring;
 }
 
 /**
@@ -418,6 +519,20 @@ const CONFIGS = [
   { name: 'the pretrained eye only', colour: false, backbone: true, dims: 32 },
   { name: 'both', colour: true, backbone: true, dims: 32 },
   { name: 'both, 96 numbers a patch', colour: true, backbone: true, dims: 96 },
+  /*
+   * THE SAME EVIDENCE, PLUS WHAT IS AROUND IT.
+   *
+   * Deliberately identical to "both" except for the ring, so the difference
+   * between those two rows is the surroundings and nothing else. A ring
+   * configuration that also changed the squeeze would answer two questions at
+   * once and settle neither.
+   *
+   * The colour-only ring is here for the same reason: it says whether the gain
+   * (if any) needs the backbone at all, or whether "is it green over there" is
+   * the whole of it. Cheap to know and cheaper than assuming.
+   */
+  { name: 'colour, with surroundings', colour: true, backbone: false, dims: 0, ring: true },
+  { name: 'both, with surroundings', colour: true, backbone: true, dims: 32, ring: true },
 ];
 
 /**
@@ -512,6 +627,41 @@ export function runFold(lawns, held, opts = {}) {
    * threshold picked in advance would call every pixel of it bright and report
    * nothing.
    */
+  /*
+   * SEEN VERSUS INFERRED, which is the guard on the ring.
+   *
+   * The worry about giving the head its surroundings is specific and correct:
+   * context is a cleaner, louder signal than a faint edge in shadow, so a head
+   * offered both might learn to lean on the neighbours and stop reading the
+   * evidence. That would trade the thing that is hard to see for the thing
+   * that is impossible to see, and come out ahead on the total while being
+   * worse at the job.
+   *
+   * There is no way to forbid that in the architecture -- the head uses what
+   * predicts, and that is what training means. What there is, is a way to SEE
+   * it: score the pixels the reviewer could actually see apart from the ones
+   * they inferred. A ring that is working lifts the inferred column and leaves
+   * the seen column alone. A ring that has started guessing lifts the inferred
+   * column and drops the seen one, and that shows up here as two numbers
+   * moving in opposite directions rather than as one number quietly improving.
+   *
+   * Both are null until something is marked, which is honest: before the flag
+   * exists there is no such thing as an inferred pixel, and every pixel is
+   * seen.
+   */
+  let seenWrong = 0, seenTruth = 0, guessWrong = 0, guessTruth = 0;
+  for (let i = 0; i < got.length; i++) {
+    if (test.within && !test.within[i]) continue;
+    const wrong = (got[i] ? 1 : 0) !== (test.truth[i] ? 1 : 0);
+    if (test.inferred && test.inferred[i]) {
+      guessTruth += test.truth[i] ? 1 : 0;
+      guessWrong += wrong ? 1 : 0;
+    } else {
+      seenTruth += test.truth[i] ? 1 : 0;
+      seenWrong += wrong ? 1 : 0;
+    }
+  }
+
   let darkWrong = 0, darkTruth = 0, brightWrong = 0, brightTruth = 0;
   {
     const lumaOf = (i) => test.cheap[i * FEATURE_COUNT + 5];
@@ -551,6 +701,8 @@ export function runFold(lawns, held, opts = {}) {
     collapsed: judged > 0 && (lit === 0 || lit === judged),
     darkPct: darkTruth ? (100 * darkWrong) / darkTruth : null,
     brightPct: brightTruth ? (100 * brightWrong) / brightTruth : null,
+    seenPct: seenTruth ? (100 * seenWrong) / seenTruth : null,
+    guessPct: guessTruth ? (100 * guessWrong) / guessTruth : null,
     predicted: got,
   };
 }
@@ -656,6 +808,8 @@ async function main() {
 
       const rgb = resize(img.data, img.width, img.height, img.channels, GRID);
       const truth = maskOf(truthGeoms, frame, GRID);
+      const inferredGeoms = inferredGeometries(parse(row.shapes));
+      const inferred = inferredGeoms.length ? maskOf(inferredGeoms, frame, GRID) : null;
       const parcelGeom = parse(row.parcel);
       /*
        * No property line means the whole frame is fair game. Rare, and the
@@ -702,6 +856,9 @@ async function main() {
           : eye ? await tiledFeatures(eye, rgb, GRID, GRID, { tiles: COARSE_TILES }) : null,
         truth,
         within,
+        /* Where the reviewer said "I know, I cannot see it". Null until some
+           map has been marked, and null means every pixel counts as seen. */
+        inferred,
         truthPx,
         mpp: metresPerPixel(frame, GRID),
         detected: row.detected_shapes
@@ -787,6 +944,15 @@ async function main() {
     && (!c.backbone || hasEye));
   const table = [];
 
+  /*
+   * The ring's squeeze is the same width whatever the centre's is, so it is
+   * made once here rather than rebuilt per configuration. Sixteen ring points
+   * per pixel means this one gets read a lot.
+   */
+  if (hasEye && runnable.some((c) => c.ring && c.backbone)) {
+    for (const L of lawns) L.ring = L.fineFull ? shrink(L.fineFull, RING_DIMS) : null;
+  }
+
   for (const cfg of runnable) {
     /* Squeeze the patches to this configuration's width, once for all lawns. */
     if (cfg.backbone && hasEye) {
@@ -804,6 +970,7 @@ async function main() {
       rows.push({
         lawn: lawns[held], mine: f.mine, theirs: samScores[held],
         collapsed: f.collapsed, darkPct: f.darkPct, brightPct: f.brightPct,
+        seenPct: f.seenPct, guessPct: f.guessPct,
       });
     }
     const med = median(rows.map((r) => r.mine.errorPct));
@@ -812,7 +979,11 @@ async function main() {
     const collapsed = rows.filter((r) => r.collapsed).length;
     const dark = median(rows.map((r) => r.darkPct).filter((v) => v !== null));
     const bright = median(rows.map((r) => r.brightPct).filter((v) => v !== null));
-    table.push({ cfg, med, wins, of: paired.length, rows, width, collapsed, dark, bright });
+    const seen = median(rows.map((r) => r.seenPct).filter((v) => v !== null));
+    const guess = median(rows.map((r) => r.guessPct).filter((v) => v !== null));
+    table.push({
+      cfg, med, wins, of: paired.length, rows, width, collapsed, dark, bright, seen, guess,
+    });
     console.log(`   ${med.toFixed(1)}% out on the middle lawn, better than SAM on ${wins} of ${paired.length}.\n`);
   }
 
@@ -858,6 +1029,31 @@ async function main() {
         ? `   (${t.collapsed} of ${t.rows.length} folds answered the same thing everywhere -- not a score)`
         : '')
     );
+  }
+
+  /*
+   * SEEN AND INFERRED, IN ITS OWN TABLE.
+   *
+   * Two more columns on the table above would push it past the width of a
+   * phone, and this only exists once something has been marked. Printed
+   * separately it also reads as what it is: a different question, about
+   * whether the surroundings are helping or taking over.
+   */
+  const marked = lawns.filter((L) => L.inferred).length;
+  if (marked) {
+    console.log(`\n  ${marked} of ${lawns.length} maps have areas marked "inferred, not seen".`);
+    console.log('  Error on those, against error everywhere else:\n');
+    console.log('  what it looked at                  seen   inferred');
+    for (const t of table) {
+      console.log(
+        `  ${t.cfg.name.padEnd(32).slice(0, 32)} `
+        + `${(t.seen === null ? '  --' : t.seen.toFixed(1)).padStart(5)}%  `
+        + `${(t.guess === null ? '  --' : t.guess.toFixed(1)).padStart(6)}%`
+      );
+    }
+  } else {
+    console.log('\n  Nothing is marked "inferred, not seen" yet, so every pixel');
+    console.log('  counts as seen and there is no second column to show.');
   }
   if (samMed !== null) {
     console.log(`\n  SAM, on the same ${samCount} lawns             ${samMed.toFixed(1)}%`);
@@ -941,6 +1137,47 @@ async function main() {
       console.log(`\nThe wider squeeze helps (${wide.med.toFixed(1)}% against ${narrow.med.toFixed(1)}%), so some`);
       console.log('of what the eye sees was being thrown away on the way down to 32');
       console.log('numbers. Worth widening further before concluding much about it.');
+    }
+
+    /*
+     * DID THE SURROUNDINGS HELP, OR TAKE OVER?
+     *
+     * The whole reason the ring is a separate configuration rather than just
+     * switched on: "both" and "both, with surroundings" differ by the ring and
+     * by nothing else, so the difference between their two columns is
+     * attributable. Three outcomes and they want different words.
+     *
+     * The bad one is not "it got worse" -- that is easy to see. The bad one is
+     * inferred improving WHILE seen degrades, because the total can still go
+     * down and look like progress while the detector has quietly stopped
+     * reading faint evidence in favour of guessing from the neighbours.
+     */
+    const plain = row('both');
+    const ringed = row('both, with surroundings');
+    if (plain && ringed && marked && plain.seen !== null && ringed.seen !== null) {
+      const seenMoved = ringed.seen - plain.seen;
+      const guessMoved = (ringed.guess ?? 0) - (plain.guess ?? 0);
+      console.log('\nWHAT THE SURROUNDINGS DID:');
+      if (guessMoved < -NOISE && seenMoved > NOISE) {
+        console.log(`  inferred areas ${(-guessMoved).toFixed(1)} points BETTER,`);
+        console.log(`  but everything visible ${seenMoved.toFixed(1)} points WORSE.`);
+        console.log('\n  That is the trade nobody asked for. It is bridging canopies by');
+        console.log('  guessing from the neighbours and has stopped reading the faint');
+        console.log('  evidence it used to. Narrow the ring or drop it -- the total');
+        console.log('  may look better and the detector is not.');
+      } else if (guessMoved < -NOISE) {
+        console.log(`  inferred areas ${(-guessMoved).toFixed(1)} points better, everything`);
+        console.log(`  visible ${Math.abs(seenMoved).toFixed(1)} points ${seenMoved > 0 ? 'worse' : 'better'} -- within noise.`);
+        console.log('\n  This is the result the ring was built for: it bridges what');
+        console.log('  cannot be seen without giving up what can.');
+      } else if (seenMoved > NOISE) {
+        console.log(`  everything visible ${seenMoved.toFixed(1)} points worse, and inferred`);
+        console.log('  areas no better. The ring is costing and not paying.');
+      } else {
+        console.log('  neither column moved beyond noise. The surroundings are not');
+        console.log('  yet doing anything either way -- more marked areas would say');
+        console.log('  more than more argument will.');
+      }
     }
 
     const bestMed = Math.min(...table.map((t) => t.med));

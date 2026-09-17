@@ -529,6 +529,136 @@ const paint = (px, w, x0, y0, pw, ph, [r, g, b]) => {
     + 'training report is measuring colour twice');
 }
 
+/* ------------------------------------------ what is AROUND a spot, in metres */
+{
+  console.log('\n--- the ring ---');
+  const { buildRow, rowWidth } = await import('./train-detector.js');
+
+  const G = 64;
+  const plain = { colour: true, backbone: false, dims: 0 };
+  const ringed = { colour: true, backbone: false, dims: 0, ring: true };
+
+  /*
+   * A lawn that is plain grey everywhere except for one bright column far off
+   * to the east. The centre pixel sees nothing of it; a ring that reaches far
+   * enough does. That is the whole mechanism, so it is the whole test.
+   */
+  const lawnAt = (mpp) => {
+    const cheap = new Float32Array(G * G * FEATURE_COUNT).fill(0.2);
+    for (let y = 0; y < G; y++) {
+      for (let x = 40; x < 48; x++) {
+        for (let f = 0; f < FEATURE_COUNT; f++) cheap[(y * G + x) * FEATURE_COUNT + f] = 0.9;
+      }
+    }
+    return { cheap, truth: new Uint8Array(G * G), within: null, mpp };
+  };
+
+  const centre = 32 * G + 20;              // twenty pixels west of the bright band
+
+  const narrow = rowWidth(plain, false);
+  const wide = rowWidth(ringed, false);
+  check('the ring adds width and the centre keeps its own',
+    wide > narrow && narrow === FEATURE_COUNT,
+    `${narrow} -> ${wide}: the surroundings are meant to be extra evidence, `
+    + 'not a replacement for what is actually at the spot');
+
+  /*
+   * ONE METRE PER PIXEL AGAINST FOUR. At 1 m a pixel the 6 m ring reaches six
+   * pixels east and finds more grey; at 0.25 m a pixel the same 6 m reaches
+   * twenty-four pixels and lands in the bright band.
+   *
+   * THIS IS THE POINT OF MEASURING IN METRES. These twenty properties span a
+   * factor of nine in metres per pixel, so a ring counted in pixels would ask
+   * a different question of every lawn and the head would be learning them all
+   * at once.
+   */
+  const near = buildRow(lawnAt(1), centre, new Float32Array(wide), 0, G, ringed);
+  const far = buildRow(lawnAt(0.25), centre, new Float32Array(wide), 0, G, ringed);
+
+  const ringOf = (row) => [...row.slice(FEATURE_COUNT)];
+  check('the ring reads further out on a wider-zoomed lawn',
+    Math.max(...ringOf(far)) > Math.max(...ringOf(near)) + 0.3,
+    `nearest ${Math.max(...ringOf(near)).toFixed(2)} against `
+    + `${Math.max(...ringOf(far)).toFixed(2)} -- if these match, the ring is `
+    + 'counting pixels and every lawn is being asked a different question');
+
+  check('and what is at the spot is unchanged by switching the ring on',
+    ringOf(near).length === wide - FEATURE_COUNT
+    && near.slice(0, FEATURE_COUNT).every(
+      (v, i) => v === buildRow(lawnAt(1), centre, new Float32Array(narrow), 0, G, plain)[i]),
+    'the first eleven numbers are the evidence at this spot and must not move '
+    + 'when surroundings are added, or the two rows are not comparable');
+
+  /* The frame edge: a ring point off the picture must repeat the edge rather
+     than read zero, because zero is a colour and a lawn at the edge of its
+     frame would get a confident black neighbour that is not there. */
+  const edge = buildRow(lawnAt(1), 32 * G + 1, new Float32Array(wide), 0, G, ringed);
+  check('a ring point off the edge repeats the edge instead of reading black',
+    ringOf(edge).every((v) => v > 0),
+    'zeroes here are an invented dark neighbour, and every lawn has four edges');
+}
+
+/* ---------------------------------------- seen apart from inferred */
+{
+  console.log('\n--- seen against inferred ---');
+  const { runFold } = await import('./train-detector.js');
+  const { imageFeatures } = await import('../public/lib/features.js');
+
+  /*
+   * THE GUARD ON THE RING, and the reason the flag exists at all.
+   *
+   * Giving the head its surroundings risks it leaning on the neighbours and
+   * giving up on faint evidence -- trading the hard-to-see for the
+   * impossible-to-see and coming out ahead on the total while being worse at
+   * the job. Nothing in the architecture forbids that; the head uses whatever
+   * predicts. What stops it going unnoticed is scoring the pixels a person
+   * could actually SEE apart from the ones they inferred, so the two move
+   * separately and a trade is visible as a trade.
+   */
+  const G = 64;
+  const make = (tint, withInferred) => {
+    const px = new Uint8Array(G * G * 4);
+    const truth = new Uint8Array(G * G);
+    for (let y = 0; y < G; y++) {
+      for (let x = 0; x < G; x++) {
+        const i = y * G + x;
+        truth[i] = y < 32 ? 1 : 0;
+        const [r, g, b] = truth[i] ? [60, 130 + tint, 55] : [140, 138, 135];
+        px[i * 4] = r; px[i * 4 + 1] = g; px[i * 4 + 2] = b; px[i * 4 + 3] = 255;
+      }
+    }
+    /* A band of the lawn declared "I know it is there, I cannot see it". */
+    let inferred = null;
+    if (withInferred) {
+      inferred = new Uint8Array(G * G);
+      for (let y = 8; y < 16; y++) for (let x = 0; x < G; x++) inferred[y * G + x] = 1;
+    }
+    return {
+      cheap: imageFeatures(px, G, G), width: FEATURE_COUNT,
+      truth, within: null, detected: null, inferred, mpp: 0.1,
+    };
+  };
+
+  const cfg = { colour: true, backbone: false, dims: 0 };
+  const lawns = [make(0, true), make(6, true), make(-6, false), make(3, true)];
+
+  const held = runFold(lawns, 0, { cfg, width: FEATURE_COUNT, perLawn: 900, grid: G });
+  check('a map with marked areas reports both columns',
+    held.seenPct !== null && held.guessPct !== null,
+    `seen ${held.seenPct}, inferred ${held.guessPct} -- a null here means the `
+    + 'mask never reached the fold and the guard is not guarding anything');
+
+  const none = runFold(lawns, 2, { cfg, width: FEATURE_COUNT, perLawn: 900, grid: G });
+  check('a map with nothing marked has no inferred column',
+    none.guessPct === null,
+    'an inferred score on a map where nothing was inferred is a number '
+    + 'invented out of an empty set');
+  check('and its seen column is just its ordinary error',
+    Math.abs(none.seenPct - none.mine.errorPct) < 1e-9,
+    `${none.seenPct} against ${none.mine.errorPct} -- with nothing marked, `
+    + '"seen" and "everything" are the same pixels and must agree');
+}
+
 /* ------------------------------------------------ what the frames are worth */
 {
   /*
