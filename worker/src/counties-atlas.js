@@ -460,14 +460,6 @@ const ATLAS_COUNTIES = {
     fields: {"pin":"FMTPRCLNO","address":"LOCADDRESS"},
     box: [-86.243,39.926,-85.862,40.219],
   },
-  'in-allen': {
-    name: "Allen County, IN",
-    fips: "18003",
-    service: "https://gis.acimap.us/services/rest/services/parcels/MapServer",
-    layer: 0,
-    fields: {"pin":"PIN","address":"PropertyAddress1"},
-    box: [-85.34,40.914,-84.798,41.274],
-  },
   'in-marion': {
     name: "Marion County, IN",
     fips: "18097",
@@ -843,14 +835,6 @@ const ATLAS_COUNTIES = {
     fields: {"pin":"parcel_id","address":null},
     box: [-81.972,41.275,-81.374,41.632],
   },
-  'oh-summit': {
-    name: "Summit County, OH",
-    fips: "39153",
-    service: "https://maps.summitcounty.org/arcgis/rest/services/Maps/ParcelQuery/MapServer",
-    layer: 0,
-    fields: {"pin":null,"address":null},
-    box: [-111.651,40.539,-109.993,41.253],
-  },
   'oh-lucas': {
     name: "Lucas County, OH",
     fips: "39095",
@@ -987,6 +971,14 @@ const ATLAS_COUNTIES = {
     fields: {"pin":null,"address":"GIS_DBO_AD_Entity_situs_display"},
     box: [-96.854,32.978,-96.286,33.409],
   },
+  'tx-denton': {
+    name: "Denton County, TX",
+    fips: "48121",
+    service: "https://gis.dentoncounty.gov/arcgis/rest/services/Parcels/MapServer",
+    layer: 0,
+    fields: {"pin":null,"address":"SITUS"},
+    box: [-97.399,32.985,-96.831,33.431],
+  },
   'tx-el-paso': {
     name: "El Paso County, TX",
     fips: "48141",
@@ -1042,6 +1034,14 @@ const ATLAS_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCEL_ID","address":null},
     box: [-112.494,41.076,-111.42,41.434],
+  },
+  'vt-chittenden': {
+    name: "Chittenden County, VT",
+    fips: "50007",
+    service: "https://services1.arcgis.com/BkFxaEFNwHqX3tAw/arcgis/rest/services/FS_VCGI_VTPARCELS_WM_NOCACHE_v2/FeatureServer",
+    layer: 1,
+    fields: {"pin":null,"address":"E911ADDR"},
+    box: [-73.438,42.726,-71.465,45.017],
   },
   'va-fairfax': {
     name: "Fairfax County, VA",
