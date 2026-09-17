@@ -839,6 +839,82 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
    * limit -- re-sorting a truncated page in the browser gives the top fifty by
    * one measure arranged by the other, which looks right and is not.
    */
+  /* ------------------------------------------ every map, in one list */
+  /*
+   * WHAT IS ACTUALLY IN THE CORPUS, which the review queues cannot show.
+   *
+   * The queues are for deciding one map at a time and are right to be. They
+   * cannot answer "is this lawn in here twice", and that question turned out
+   * to matter: a re-save whose id no longer matched its own coordinates wrote
+   * a SECOND row for the same garden, one copy carrying the reviewer's
+   * inferred marks and one not. Leave-one-out then trains on one copy and
+   * tests on its twin and reports a number the model has not earned.
+   *
+   * That bug is fixed. This exists because the next one of its kind should be
+   * visible without a workflow run and a log -- the owner of this site has a
+   * phone, not a database client.
+   *
+   * NEIGHBOURS GROUPED, NOT MERGED. Rows within about eleven metres of each
+   * other are listed together and left for a person to judge. A frame centre
+   * is the middle of a property, so two houses are rarely that close -- but
+   * "rarely" is not "never", and deciding automatically that two rows are one
+   * lawn is exactly the kind of silent correctness this file avoids.
+   */
+  if (path === 'maps') {
+    try {
+      const { results = [] } = await env.DB.prepare(
+        `SELECT id, county, status, square_feet, at, reviewed_at,
+                inferred_checked_at, image_key, lng, lat, model, mode, shapes
+           FROM corpus ORDER BY at DESC LIMIT 500`
+      ).all();
+
+      const maps = results.map((r) => {
+        /* Counted here rather than shipped: shapes can be ninety kilobytes a
+           row, and this page wants two numbers from them. */
+        let pieces = 0;
+        let marked = 0;
+        try {
+          for (const f of JSON.parse(r.shapes || '[]')) {
+            pieces++;
+            if (f?.properties?.inferred) marked++;
+          }
+        } catch { /* A row that will not parse still belongs in the list. */ }
+        return {
+          id: r.id,
+          county: r.county,
+          status: r.status,
+          squareFeet: r.square_feet,
+          at: r.at,
+          reviewedAt: r.reviewed_at,
+          checked: Boolean(r.inferred_checked_at),
+          hasImage: Boolean(r.image_key),
+          lng: r.lng,
+          lat: r.lat,
+          method: `${r.model || 'by hand'} / ${r.mode || '-'}`,
+          pieces,
+          marked,
+        };
+      });
+
+      /*
+       * Four decimal places is about eleven metres. Two rows in the same cell
+       * are near-certainly the same lawn; the page shows them together and a
+       * person decides.
+       */
+      const cells = new Map();
+      for (const m of maps) {
+        const key = `${Number(m.lng).toFixed(4)},${Number(m.lat).toFixed(4)}`;
+        if (!cells.has(key)) cells.set(key, []);
+        cells.get(key).push(m.id);
+      }
+      const duplicates = [...cells.values()].filter((ids) => ids.length > 1);
+
+      return json({ maps, duplicates }, 200, origin);
+    } catch (e) {
+      return json({ error: String(e?.message || e).slice(0, 200) }, 500, origin);
+    }
+  }
+
   if (path === 'parcel-gaps') {
     return json(await parcelGaps(env, {
       sort: url.searchParams.get('sort') || 'hits',

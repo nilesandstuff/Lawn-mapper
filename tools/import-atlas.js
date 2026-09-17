@@ -228,6 +228,16 @@ const out = {
   ).version,
   importedAt: new Date().toISOString().slice(0, 10),
   note: 'Candidates only. Nothing here is claimed as working until verify-atlas.js says so.',
+  /*
+   * THE FUNNEL, WRITTEN DOWN.
+   *
+   * "142 verified of 165" invites the obvious question -- the atlas lists more
+   * than 165, so where did the rest go -- and the answer was only ever in the
+   * console output of whoever last ran the import. Two numbers here make the
+   * whole chain readable from the file: listed, then usable, then verified.
+   */
+  listed,
+  dropped,
   candidates,
 };
 

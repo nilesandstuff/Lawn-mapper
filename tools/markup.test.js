@@ -884,5 +884,44 @@ check('every class the code toggles is styled',
     'someone will otherwise read this as the fix for a bad detection');
 }
 
+/* -------------------------------- the every-map page addresses its own markup */
+{
+  /*
+   * A THIRD PAGE, CHECKED LIKE THE OTHER TWO.
+   *
+   * maps.js reaches for its elements by id exactly as the console does, and a
+   * missing one is the same silent nothing: $('#thing') returns null, the
+   * optional chaining swallows it, and a filter button simply never works.
+   * This page is the one somebody opens to find out whether the corpus is
+   * sound, so it failing quietly would be the worst of the three.
+   */
+  const mapsHtml = readFileSync(join(root, 'public/maps.html'), 'utf8');
+  const mapsJs = readFileSync(join(root, 'public/maps.js'), 'utf8');
+
+  const has = new Set([...mapsHtml.matchAll(/\bid="([A-Za-z0-9_-]+)"/g)].map((m) => m[1]));
+  const asks = new Set(
+    [...mapsJs.matchAll(/\$\('#([A-Za-z0-9_-]+)'\)/g)].map((m) => m[1])
+  );
+  /* The filter buttons are built from a key, so their ids never appear as a
+     literal. Derived the same way the page derives them. */
+  for (const m of mapsJs.matchAll(/FILTERS = \{([\s\S]*?)\}/g)) {
+    for (const k of m[1].matchAll(/^\s*([a-z]+):/gm)) asks.add(`filter-${k[1]}`);
+  }
+
+  const gone = [...asks].filter((id) => !has.has(id));
+  check('every element the every-map page reaches for is on it',
+    gone.length === 0,
+    gone.length ? gone.join(', ') : `${asks.size} referenced, all present`);
+
+  /* Its two new classes are styled, or a duplicate group is an ordinary list
+     with no border round it and the page stops saying what it exists to say. */
+  const css = readFileSync(join(root, 'public/styles.css'), 'utf8');
+  for (const cls of ['dupe-group', 'mono']) {
+    check(`.${cls} is styled`,
+      new RegExp(`\\.${cls}\\b`).test(css),
+      'a class nothing styles is an unstyled row rather than a missing one');
+  }
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);

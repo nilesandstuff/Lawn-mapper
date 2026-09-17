@@ -342,12 +342,51 @@ async function layersOf(service) {
     .map((l) => `${l.id}: ${l.name}${l.type ? ` (${l.type})` : ''}`);
 }
 
+/**
+ * A layer in this service that looks like it holds parcels.
+ *
+ * THE CATALOGUE CAN NAME A TABLE. Gwinnett County, Georgia arrived pointing at
+ * layer 3 of a service called Property_and_Tax -- the Tax Master Table. A table
+ * has no geometry, so it has no extent and cannot compute one, which is a 400
+ * on the extent query and looked exactly like a broken county. The parcels
+ * were at layer 0, one index away, and the county was counted as a failure.
+ *
+ * A HAND-EDIT TO THE CANDIDATES FILE DOES NOT SURVIVE, because the importer
+ * regenerates it from the catalogue and the catalogue still says 3. So the
+ * correction belongs here, where it is applied every run and costs nothing on
+ * the counties that never needed it.
+ *
+ * Named "parcel" and a feature layer, both. "Property" alone matches
+ * "Property Improvements Table", and a type check alone would pick Zoning.
+ */
+function parcelLayerIn(layers) {
+  for (const line of layers) {
+    const m = String(line).match(/^(\d+):\s*(.+?)\s*\((Feature Layer)\)$/);
+    if (m && /parcel/i.test(m[2])) return Number(m[1]);
+  }
+  return null;
+}
+
 async function verify(c) {
   const extent = await extentOf(c.service, c.layer);
   await sleep(PAUSE_MS);
   if (extent.error) {
     const layers = await layersOf(c.service).catch(() => []);
     await sleep(PAUSE_MS);
+
+    /*
+     * One retry, and only at a layer that names itself parcels. Not a sweep of
+     * every index: this runs against public county servers and guessing its
+     * way through a service is exactly the sort of traffic that gets a tool
+     * blocked.
+     */
+    const better = parcelLayerIn(layers);
+    if (better !== null && better !== c.layer) {
+      const second = await verify({ ...c, layer: better });
+      await sleep(PAUSE_MS);
+      if (second.ok) return { ...second, correctedLayer: better, wasLayer: c.layer };
+      return { ok: false, why: `${extent.error} (layer ${better} was no better)`, layers };
+    }
     return { ok: false, why: extent.error, layers };
   }
   const box = extent.box;
@@ -449,12 +488,17 @@ const failed = [];
 for (const c of list) {
   const r = await verify(c);
   if (r.ok) {
-    passed.push({ ...c, box: r.box, fields: r.fields });
+    /* The layer that actually answered, which is not always the one the
+       catalogue named. See parcelLayerIn. */
+    passed.push({ ...c, layer: r.correctedLayer ?? c.layer, box: r.box, fields: r.fields });
     const lost = [
       c.fields.pin && !r.fields.pin ? `pin ${c.fields.pin}` : null,
       c.fields.address && !r.fields.address ? `address ${c.fields.address}` : null,
     ].filter(Boolean);
     console.log(`  ok   ${c.key.padEnd(22)} ${r.acres} ac`
+      + (r.correctedLayer !== undefined
+        ? `  (the catalogue said layer ${r.wasLayer}; parcels are at ${r.correctedLayer})`
+        : '')
       + (lost.length ? `  (${lost.join(', ')} not on the record)` : ''));
   } else {
     failed.push({ key: c.key, why: r.why });

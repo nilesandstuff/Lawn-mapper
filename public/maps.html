@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lawn Mapper — every map</title>
+<!--
+  EVERY MAP IN THE CORPUS, IN ONE LIST.
+
+  The review queues are for deciding one map at a time and are right to be.
+  They cannot answer "is this lawn in here twice", and that question turned out
+  to matter: a re-save whose id no longer matched its own coordinates wrote a
+  second row for the same garden, one copy carrying the inferred marks and one
+  not. Leave-one-out then trains on one copy and tests on its twin.
+
+  That bug is fixed. This page exists because the next one of its kind should
+  be visible without a workflow run and a log to scroll.
+
+  A SEPARATE PAGE rather than another card in the console, for the same reason
+  the console is separate from the app: it is a different job. Nothing here
+  judges a map; it is for standing back and looking at the pile.
+
+  Nothing is gated in this markup. The gate is the API, which answers 404 to
+  anybody who is not an administrator -- a page that only hides its own
+  buttons is a permission system's screenshot, not a permission system.
+-->
+<link href="/styles.css" rel="stylesheet">
+</head>
+<body>
+
+<div class="console">
+  <div class="conhead">
+    <h1>Every map</h1>
+    <a href="/admin.html">← back to the console</a>
+  </div>
+
+  <div class="locked-out" id="locked" hidden>
+    <p>This page is for the site owner.</p>
+    <p><a href="/">Go and measure a lawn instead →</a></p>
+  </div>
+
+  <div id="page" hidden>
+    <!--
+      DUPLICATES FIRST, because they are the reason to open this page and
+      because they are invisible from anywhere else. Rows within about eleven
+      metres of each other are grouped and left for a person to judge -- two
+      houses are rarely that close, and "rarely" is not "never".
+    -->
+    <div class="card" id="dupes-card" hidden>
+      <h2>Possible duplicates</h2>
+      <p class="sub">
+        Maps within about 11 metres of each other — near-certainly the same
+        lawn recorded twice. Open each one and reject whichever copy you want
+        to lose; the one with marked areas is usually the keeper.
+      </p>
+      <div id="dupes"></div>
+    </div>
+
+    <div class="card">
+      <h2>All of them</h2>
+      <p class="sub" id="counts">Loading…</p>
+      <div class="actions" id="filters">
+        <button id="filter-all" class="on">Everything</button>
+        <button id="filter-approved">Approved</button>
+        <button id="filter-new">Waiting</button>
+        <button id="filter-rejected">Rejected</button>
+        <button id="filter-marked">Has inferred areas</button>
+        <button id="filter-unchecked">Not checked yet</button>
+      </div>
+      <div id="list"><p class="empty">Loading…</p></div>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="/maps.js"></script>
+</body>
+</html>
