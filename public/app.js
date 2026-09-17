@@ -22,6 +22,7 @@ import {
   offsetEdge, nearestEdge, edgeRun, edgeLength, edgeBearing, openRing,
   nearestVertex, moveVertex, insertVertex, deleteVertex, tidyRing,
   feetToMetres, metresToFeet, ringInsideRing, ringContains, nearestPointOnRing,
+  heldInsideRings,
 } from './lib/edges.js';
 import { afterStroke, restoreAway } from './lib/stitch.js';
 import {
@@ -138,6 +139,21 @@ const state = {
    * past the edge of the lawn adds exactly the part that reaches past.
    */
   inferredMode: false,
+  /*
+   * Should an inferred patch be held inside the lawn?
+   *
+   * The same rule the property line applies to an ordinary corner, one level
+   * down: usually right, because the ground under a canopy running through a
+   * traced lawn is lawn on both sides. Sometimes wrong, because a lawn that
+   * carries on past where anybody could see it stops at a boundary the tracer
+   * guessed, and the inferred patch is the correction to that guess.
+   *
+   * SO IT ONLY GOVERNS WHAT MOVES WHILE IT IS ON. Switching it either way
+   * changes nothing already on the map. A setting that reshapes work done
+   * under a different setting is one nobody can trust, and this one would be
+   * reshaping the careful layer using the sloppy one as its boundary.
+   */
+  inferredInside: false,
   // The training candidate being corrected, when the console sent us here.
   // Null far more often than not, and the way back out is shown only while it
   // is set -- see leaveReview.
@@ -1212,6 +1228,12 @@ async function initMap() {
     if (state.inferredMode && made) {
       draw.setFeatureProperty(made.id, 'inferred', true);
       made.properties = { ...(made.properties || {}), inferred: true };
+      /*
+       * A freshly traced outline has no hand-placed corners to lose, so this
+       * one is safe to clip whole -- unlike a shape being edited, where the
+       * round trip would move every vertex on it. See lib/stitch.js.
+       */
+      if (state.inferredInside) holdShapeInsideLawn(made);
     }
     const joined = mergeDrawnPatch(made);
     if (joined) {
@@ -1998,9 +2020,33 @@ function applyErase() {
    * keeps the boundary meaningful -- but the choice belongs to the person who
    * knows the property.
    */
-  const limit = (mode.paint && !state.measureOutside)
+  let limit = (mode.paint && !state.measureOutside)
     ? parcelRaster(ERASE_GRID, ERASE_GRID, project)
     : null;
+
+  /*
+   * AND, ON THE INFERRED LAYER, THE LAWN ITSELF.
+   *
+   * Narrowed rather than replaced: an inferred patch held inside a lawn that
+   * itself runs past the property line would still be past the property line.
+   * Both limits or neither, and the tighter one wins pixel by pixel.
+   *
+   * Only while painting. An erase stroke that could not reach past the lawn
+   * would be unable to take back a patch drawn before the toggle was on, and
+   * this setting is not supposed to reach backwards.
+   */
+  if (mode.paint && state.inferredMode && state.inferredInside) {
+    const rings = seenLawnRings();
+    if (rings.length) {
+      const lawn = new Uint8Array(ERASE_GRID * ERASE_GRID);
+      for (const ring of rings) {
+        const m = rasterizePolygon([ring], ERASE_GRID, ERASE_GRID, project);
+        for (let i = 0; i < m.length; i++) if (m[i]) lawn[i] = 1;
+      }
+      if (limit) for (let i = 0; i < lawn.length; i++) lawn[i] = lawn[i] && limit[i] ? 1 : 0;
+      limit = lawn;
+    }
+  }
 
   /*
    * Paint the stroke into a mask of its OWN, rather than straight into the
@@ -7338,6 +7384,133 @@ function dropRing(ringId) {
  * where outside is, and a boundary that could not be extended to the kerb is
  * the problem the edge slider exists for.
  */
+/**
+ * The outlines of the ordinary lawn -- what an inferred patch is held inside.
+ *
+ * The rings of every shape NOT marked inferred, which is the closest thing to
+ * "the lawn" that exists on the map. Empty when there is no ordinary lawn yet,
+ * and an empty list holds nothing: being unable to draw an inferred patch on a
+ * blank map would be a worse rule than letting one go where it likes.
+ */
+function seenLawnRings() {
+  const out = [];
+  for (const f of draw.getAll().features) {
+    if (isInferred(f)) continue;
+    const rings = f.geometry?.type === 'Polygon' ? f.geometry.coordinates : null;
+    if (rings?.length) out.push(rings[0]);
+  }
+  return out;
+}
+
+/**
+ * Hold a corner of an inferred patch inside the lawn.
+ *
+ * Deliberately the same shape as heldInsideParcel below, including the part
+ * that matters most: held AT the edge rather than refused. A corner that stops
+ * dead under a moving finger reads as a bug and one that snaps back loses the
+ * drag, so it slides along the lawn's edge instead -- which is the shape
+ * somebody tracing the boundary of a canopy is trying to draw anyway.
+ *
+ * Inside ANY ordinary shape counts as inside. A lawn is often several
+ * disconnected pieces, and requiring one particular piece would hold a corner
+ * at the edge of a shape it has nothing to do with.
+ */
+/**
+ * Is the corner tool currently working on an inferred patch?
+ *
+ * Asked of the SHAPE rather than of the mode. Somebody who turned inferred
+ * drawing on and then reached over to fix a corner of the ordinary lawn is
+ * editing the lawn, and a rule about keeping patches inside it would be
+ * holding that lawn inside itself.
+ */
+function editingInferred() {
+  const id = state.edgeEdit?.ringId;
+  if (!id || isParcelRing(id)) return false;
+  const { featureId } = ringOwner(id);
+  return isInferred(draw.getAll().features.find((f) => String(f.id) === featureId));
+}
+
+function heldInsideLawn(lngLat) {
+  if (!state.inferredInside) return lngLat;
+  return heldInsideRings(seenLawnRings(), lngLat);
+}
+
+/**
+ * Trim a freshly drawn inferred patch to the lawn under it.
+ *
+ * ONLY FOR A SHAPE JUST CREATED. The round trip through a pixel grid moves
+ * every vertex a little, which is ruinous on an outline somebody has already
+ * corrected -- that is the whole subject of lib/stitch.js. A brand new trace
+ * has no hand-placed corners to lose, so here it costs nothing.
+ *
+ * Replaces the drawn feature with its clipped pieces, because a patch drawn
+ * across two separate lawn shapes really is two patches and pretending
+ * otherwise would put ground between them into the total.
+ */
+function holdShapeInsideLawn(feature) {
+  const rings = seenLawnRings();
+  const own = feature?.geometry?.coordinates;
+  if (!rings.length || !own?.length) return;
+
+  let [w, s, e, n] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const [lng, lat] of own[0]) {
+    w = Math.min(w, lng); e = Math.max(e, lng);
+    s = Math.min(s, lat); n = Math.max(n, lat);
+  }
+  const pad = 0.0002;
+  const bbox = [w - pad, s - pad, e + pad, n + pad];
+  const frame = {
+    lng: (bbox[0] + bbox[2]) / 2,
+    lat: (bbox[1] + bbox[3]) / 2,
+    zoom: zoomToFit(bbox, ERASE_GRID / 2),
+    size: ERASE_GRID / 2,
+  };
+  const project = (ll) => lngLatToFramePx(frame, ll, ERASE_GRID, ERASE_GRID);
+
+  const mine = rasterizePolygon(own, ERASE_GRID, ERASE_GRID, project);
+  const lawn = new Uint8Array(ERASE_GRID * ERASE_GRID);
+  for (const ring of rings) {
+    const m = rasterizePolygon([ring], ERASE_GRID, ERASE_GRID, project);
+    for (let i = 0; i < m.length; i++) if (m[i]) lawn[i] = 1;
+  }
+
+  let kept = 0;
+  const data = new Uint8ClampedArray(ERASE_GRID * ERASE_GRID * 4);
+  for (let i = 0; i < mine.length; i++) {
+    const on = mine[i] && lawn[i];
+    if (on) kept++;
+    const v = on ? 255 : 0;
+    data[i * 4] = data[i * 4 + 1] = data[i * 4 + 2] = v;
+    data[i * 4 + 3] = 255;
+  }
+
+  /* Entirely outside: the patch goes, and says so. Silently deleting what
+     somebody just drew would read as the tool having failed to register it. */
+  if (!kept) {
+    draw.delete(feature.id);
+    setStatus('That patch was entirely outside the lawn, so nothing was added. '
+      + 'Untick "Keep inferred patches inside the lawn" to draw past it.', 'warn');
+    return;
+  }
+
+  const polygons = maskToPolygons(
+    { width: ERASE_GRID, height: ERASE_GRID, data },
+    (x, y) => framePxToLngLat(frame, [x, y], ERASE_GRID, ERASE_GRID),
+    {
+      tolerance: TRACE_TOLERANCE_M / metresPerPixel(frame, ERASE_GRID),
+      maxVertices: MAX_TRACE_VERTICES,
+      ...editHoleLimit(ERASE_GRID, ERASE_GRID),
+    }
+  );
+  if (!polygons.length) return;
+
+  draw.delete(feature.id);
+  for (const geometry of polygons) {
+    draw.add({ type: 'Feature', properties: { inferred: true }, geometry });
+  }
+  setStatus('Trimmed to the lawn underneath.');
+}
+
 function heldInsideParcel(lngLat) {
   if (state.measureOutside) return lngLat;
   if (state.mode !== 'shape') return lngLat;
@@ -7356,9 +7529,27 @@ function moveSelectedVertex(lngLat) {
   const ring = ringOf(edit.ringId);
   if (!ring) return;
 
-  const at = heldInsideParcel(lngLat);
-  if (at !== lngLat) {
+  /*
+   * TWO HOLDS, OUTER FIRST. The property line binds every corner on the map;
+   * the lawn binds a corner of an inferred patch and only while the sub-toggle
+   * is on. Applying the parcel's first means a patch can never be held onto a
+   * lawn edge that is itself outside the boundary.
+   *
+   * Which shape is being dragged decides whether the second applies at all --
+   * not which mode the map happens to be in. Somebody who switched the mode on
+   * and then dragged a corner of the ORDINARY lawn is editing the lawn, and
+   * holding that inside itself is meaningless.
+   */
+  let at = heldInsideParcel(lngLat);
+  let heldBy = at !== lngLat ? 'parcel' : null;
+  if (!heldBy && editingInferred()) {
+    const held = heldInsideLawn(at);
+    if (held !== at) { at = held; heldBy = 'lawn'; }
+  }
+  if (heldBy === 'parcel') {
     setHint('Held at the property line — switch on “Measure outside the property line” to go past it.');
+  } else if (heldBy === 'lawn') {
+    setHint('Held at the edge of the lawn — untick “Keep inferred patches inside the lawn” to go past it.');
   }
 
   // A corner of the LAWN is a hand correction; a corner of the property line
@@ -8537,6 +8728,11 @@ function reset() {
   state.measureOutside = false;
   $('#toggle-outside').checked = false;
   $('#outside-opt').hidden = true;
+  /* A new map starts on the ordinary layer. Leaving inferred drawing armed
+     from the last property is how somebody marks a lawn they never meant to. */
+  setInferredMode(false);
+  state.inferredInside = false;
+  $('#toggle-inside-lawn').checked = false;
   // Back to Find grass, and to both defaults for the gap option.
   state.fillGaps = { find: true, exclude: false };
   state.handEdited = false;
@@ -8893,6 +9089,10 @@ function setInferredMode(on) {
    * you cannot tell you are in is a mode that quietly mislabels a lawn.
    */
   document.body.classList.toggle('inferred-mode', state.inferredMode);
+  /* The sub-toggle only exists inside this mode, so it appears and disappears
+     with it. Its setting is remembered across a trip out and back, because
+     somebody who turned it on meant it. */
+  $('#inside-lawn-opt').hidden = !state.inferredMode;
   setStatus(state.inferredMode
     ? 'Drawing inferred lawn. Outline or brush the ground you know is there '
       + 'but cannot see — under a canopy, or through a shadow. It may sit on '
@@ -8901,6 +9101,22 @@ function setInferredMode(on) {
 }
 
 $('#btn-inferred-mode').addEventListener('click', () => setInferredMode(!state.inferredMode));
+
+$('#toggle-inside-lawn').addEventListener('change', (e) => {
+  state.inferredInside = e.target.checked;
+  /*
+   * NOTHING ALREADY ON THE MAP MOVES, either way. That is the difference
+   * between this and the property-line toggle, which trims everything when it
+   * is switched off -- and the difference is deliberate. The boundary is a
+   * recorded fact that either applies or does not; the lawn's edge is one
+   * person's tracing, and reshaping the careful layer to fit the sloppy one,
+   * retroactively, is not a thing anybody asked for.
+   */
+  setStatus(state.inferredInside
+    ? 'Inferred patches will be kept inside the lawn from now on. Nothing '
+      + 'already drawn has moved.'
+    : 'Inferred patches can go past the lawn again.');
+});
 
 $('#btn-inferred').addEventListener('click', () => {
   const chosen = draw.getSelected().features;

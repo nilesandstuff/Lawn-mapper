@@ -485,3 +485,36 @@ export function ringInsideRing(inner, outer) {
 export const FEET_PER_METRE = 3.280839895;
 export const feetToMetres = (ft) => ft / FEET_PER_METRE;
 export const metresToFeet = (m) => m * FEET_PER_METRE;
+
+/**
+ * Hold a point inside a set of rings, or leave it where it is.
+ *
+ * The rule behind "keep inferred patches inside the lawn", and behind the
+ * property line holding an ordinary corner. Two things make it what it is:
+ *
+ * HELD AT THE EDGE, NOT REFUSED. A corner that stops dead under a moving
+ * finger reads as a bug, and one that snaps back loses the drag. The nearest
+ * point on the boundary is where the finger is, as near as the boundary
+ * allows, so the corner slides along the edge -- which is the shape somebody
+ * tracing the boundary of a canopy is trying to draw anyway.
+ *
+ * INSIDE ANY RING COUNTS. A lawn is often several disconnected pieces, and
+ * requiring one particular piece would hold a corner at the edge of a shape it
+ * has nothing to do with.
+ *
+ * An empty list holds nothing. Being unable to draw an inferred patch on a map
+ * with no ordinary lawn yet would be a worse rule than letting one go where it
+ * likes.
+ */
+export function heldInsideRings(rings, point) {
+  const list = (rings || []).filter((r) => Array.isArray(r) && r.length >= 4);
+  if (!list.length) return point;
+  if (list.some((ring) => ringContains(ring, point))) return point;
+
+  let best = null;
+  for (const ring of list) {
+    const near = nearestPointOnRing(ring, point);
+    if (near && (!best || near.distanceM < best.distanceM)) best = near;
+  }
+  return best ? best.at : point;
+}

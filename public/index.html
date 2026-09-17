@@ -517,6 +517,29 @@
             many shapes cover it.
           -->
           <button class="ghost" id="btn-inferred-mode">Draw inferred lawn</button>
+          <!--
+            KEEPING AN INFERRED PATCH INSIDE THE LAWN, the same way the property
+            line holds an ordinary corner.
+
+            Usually right: the ground under a canopy that runs through the
+            middle of a traced lawn is lawn on both sides, so the patch belongs
+            inside the outline. Sometimes wrong: a lawn that carries on past
+            where anybody could see it stops at a boundary the tracer guessed,
+            and the inferred patch is the correction.
+
+            So it is a choice, and it only governs what is drawn or dragged
+            WHILE IT IS ON. Nothing already on the map moves when it is
+            switched either way -- a setting that reshapes work done under a
+            different setting is a setting nobody can trust.
+          -->
+          <label class="opt" id="inside-lawn-opt" hidden>
+            <input type="checkbox" id="toggle-inside-lawn">
+            <span>Keep inferred patches inside the lawn
+              <small>A corner dragged past the lawn is held at its edge, and the
+                brush will not paint beyond it. Only affects what you draw or
+                move while this is on.</small>
+            </span>
+          </label>
           <!-- For fixing one after the fact, without redrawing it. -->
           <button class="ghost" id="btn-inferred" disabled>Mark as inferred</button>
           <button class="ghost" id="btn-clear">Clear all</button>

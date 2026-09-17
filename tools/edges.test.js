@@ -502,5 +502,54 @@ const LOT = rect(30, 45); // 30 m of frontage, 45 m deep
     nearestPointOnRing([[0, 0]], [1, 1]) === null);
 }
 
+/* ------------------------------------------ held inside the lawn */
+{
+  /*
+   * The rule behind "keep inferred patches inside the lawn", and the same one
+   * the property line applies to an ordinary corner.
+   */
+  const { heldInsideRings } = await import('../public/lib/edges.js');
+
+  const box = (x0, y0, x1, y1) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]];
+  const west = box(0, 0, 1, 1);
+  const east = box(3, 0, 4, 1);
+
+  check('a point already inside is left exactly where it is',
+    heldInsideRings([west], [0.5, 0.5]).join() === '0.5,0.5',
+    'nudging a corner that was never out of bounds would move work nobody '
+    + 'asked to move');
+
+  /*
+   * INSIDE ANY RING COUNTS. A lawn is often several disconnected pieces, and
+   * requiring one particular piece would hold a corner at the edge of a shape
+   * it has nothing to do with.
+   */
+  check('and inside any one of several pieces counts as inside',
+    heldInsideRings([west, east], [3.5, 0.5]).join() === '3.5,0.5',
+    'a lawn in two halves is still a lawn');
+
+  /*
+   * HELD AT THE EDGE RATHER THAN REFUSED. A corner that stops dead under a
+   * moving finger reads as a bug; one that snaps back loses the drag.
+   */
+  const held = heldInsideRings([west], [2, 0.5]);
+  check('a point outside is brought to the nearest edge, not rejected',
+    Math.abs(held[0] - 1) < 1e-6 && Math.abs(held[1] - 0.5) < 1e-6,
+    `${held.join()} -- it should slide along the boundary under the finger`);
+
+  check('and it goes to the nearest piece, not the first one',
+    Math.abs(heldInsideRings([west, east], [2.9, 0.5])[0] - 3) < 1e-6,
+    'a corner dragged toward the far half must not fly back to the near one');
+
+  /*
+   * An empty list holds nothing: being unable to draw an inferred patch on a
+   * map with no ordinary lawn yet is a worse rule than letting one go free.
+   */
+  check('with no lawn at all, nothing is held',
+    heldInsideRings([], [9, 9]).join() === '9,9'
+    && heldInsideRings(null, [9, 9]).join() === '9,9',
+    'the first patch on an empty map would otherwise be undraggable');
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);
