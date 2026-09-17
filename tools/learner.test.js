@@ -533,7 +533,7 @@ const paint = (px, w, x0, y0, pw, ph, [r, g, b]) => {
 {
   console.log('\n--- the inferred layer ---');
   const {
-    inferredOnly, inferredGeometries, seenGeometries,
+    inferredShare, inferredGeometries, seenGeometries,
   } = await import('./train-detector.js');
 
   const poly = (tag) => ({ type: 'Polygon', coordinates: [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]], tag });
@@ -558,29 +558,48 @@ const paint = (px, w, x0, y0, pw, ph, [r, g, b]) => {
     'bare geometries are older maps, and nobody guessed at anything on them');
 
   /*
-   * THE TIE RULE, which is the whole guard.
+   * THE TIE RULE: where both layers cover a pixel, it counts as INFERRED.
    *
-   * An inferred patch drawn over lawn already outlined -- the ordinary case --
-   * must not pull those visible pixels into the inferred column. If it could,
-   * a head that had stopped reading faint evidence could hide the damage by
-   * being marked over generously, and the split would flatter exactly the
-   * failure it was built to catch.
+   * This was the other way round for one commit, and it was wrong for a
+   * concrete reason rather than a philosophical one: every map in this corpus
+   * was traced before the inferred layer existed, so the blue already covers
+   * the canopies. Subtracting it would leave every new purple mark lying
+   * entirely inside blue, zeroed, and no amount of marking would ever have
+   * filled the column. The feature would have done nothing at all.
+   *
+   * It is also the wrong way round on the merits. The blue was drawn in one
+   * sweep to answer "how much lawn is here", across ground visible and not.
+   * The purple is drawn deliberately, small, by somebody who stopped and
+   * thought about that particular canopy. Precision lives with the narrower
+   * mark, so the narrower mark wins.
    */
-  const guess = new Uint8Array([1, 1, 1, 0]);
-  const seen = new Uint8Array([1, 0, 0, 0]);
-  const left = inferredOnly(guess, seen);
-  check('ground covered by both layers counts as seen',
-    left && left[0] === 0 && left[1] === 1,
-    `${[...left]} -- seen has to win, so the guard can only be harder on the `
-    + 'model and never softer');
+  const truth = new Uint8Array([1, 1, 1, 1, 0]);
+  const marked = new Uint8Array([1, 1, 0, 0, 1]);
 
-  check('an inferred patch entirely under visible lawn is nothing at all',
-    inferredOnly(new Uint8Array([1, 1]), new Uint8Array([1, 1])) === null,
-    'an empty column prints as a confident 0.0% wrong rather than as blank');
+  check('ground covered by both layers counts as inferred',
+    Math.abs(inferredShare(truth, marked, null) - 0.5) < 1e-9,
+    `${inferredShare(truth, marked, null)} -- the blue was drawn over the `
+    + 'canopies before the purple existed, so subtracting it would zero every '
+    + 'mark and the column would never fill');
 
-  check('and with no visible lawn under it, all of it counts',
-    [...inferredOnly(new Uint8Array([1, 0, 1]), null)].join('') === '101',
-    'a map with nothing but inferred shapes still has an inferred column');
+  check('and ground outside the lawn is not counted either way',
+    inferredShare(new Uint8Array([1, 0]), new Uint8Array([0, 1]), null) === 0,
+    'a mark that reaches past the lawn is not lawn, inferred or otherwise');
+
+  check('nothing marked is a share of nothing, not a share of everything',
+    inferredShare(truth, null, null) === 0,
+    'null has to read as zero, because most maps will carry no marks at all');
+
+  /*
+   * The share is what replaced the tie rule as the guard. It cannot correct a
+   * map marked over generously -- it makes one visible, beside the score it is
+   * affecting, which is the better of the two.
+   */
+  const within = new Uint8Array([1, 1, 0, 0, 0]);
+  check('and only ground inside the property line is in the reckoning',
+    inferredShare(truth, marked, within) === 1,
+    'every other number in this report is counted inside the line, and a '
+    + 'share counted over a different set is not comparable to them');
 }
 
 /* ------------------------------------------ what is AROUND a spot, in metres */

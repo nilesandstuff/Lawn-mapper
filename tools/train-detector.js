@@ -233,32 +233,52 @@ const inferredGeometries = (stored) => {
 };
 
 /**
- * The inferred pixels that are not also covered by visible lawn.
+ * WHERE BOTH LAYERS COVER A PIXEL, IT COUNTS AS INFERRED.
  *
- * WHERE THE TWO LAYERS OVERLAP, THE PIXEL IS SEEN.
+ * This was the other way round for one commit, on the reasoning that a
+ * generously drawn inferred patch could pull visible ground out of the column
+ * that watches for the model going blind. That reasoning describes a corpus
+ * traced by strangers. This one is traced by its owner and a few friends, and
+ * it gets the precision backwards.
  *
- * Inferred patches are drawn on their own layer and are meant to sit on top of
- * lawn already outlined -- that is the ordinary way to mark ground under a
- * canopy running through the middle of a traced lawn, so an inferred shape
- * covers visible grass at its edges nearly always.
+ * The blue layer is the generous one. It was drawn to answer "how much lawn is
+ * here", in one sweep, across ground that was visible and ground that was not
+ * -- most of it before the inferred layer existed at all. The purple is the
+ * careful one: drawn deliberately, small, by somebody who stopped and thought
+ * about that particular canopy. Precision lives with the later, narrower mark.
  *
- * Counting those as inferred would quietly move visible ground out of the
- * column that watches for degradation, which is the one thing this split
- * exists to catch: a head that had stopped reading faint evidence could hide
- * the damage by being marked over generously. Seen wins, so the guard can only
- * ever be harder on the model, never softer.
+ * And seen-wins made the whole exercise a no-op. Every existing map already
+ * has blue over its canopies, so marking them purple would have left purple
+ * lying entirely inside blue -- subtracted to nothing, an empty column, and no
+ * amount of marking would ever have filled it.
  *
- * Null when nothing is left, because an inferred layer lying entirely under
- * visible lawn says nothing at all -- and an empty column prints as a
- * confident 0.0% wrong rather than as a blank.
+ * WHAT REPLACES THE GUARD: the share of each map that is marked, reported
+ * beside the score. A map marked over generously cannot hide -- it shows up as
+ * a large inferred share, next to the number it is affecting, where it can be
+ * looked at and argued with. That is a better guard than a silent rule,
+ * because it is visible.
  */
-export function inferredOnly(inferred, seen) {
-  let left = 0;
-  for (let i = 0; i < inferred.length; i++) {
-    if (seen && seen[i]) inferred[i] = 0;
-    else if (inferred[i]) left++;
+
+/**
+ * How much of a lawn's truth is marked inferred, 0 to 1.
+ *
+ * The guard, now that the tie rule no longer is one. A map marked over
+ * generously cannot distort the numbers quietly -- it appears beside them as a
+ * large share, on the lawn it belongs to, where it can be looked at.
+ *
+ * Counted over truth pixels inside the property line, because that is the set
+ * every other number here is counted over.
+ */
+export function inferredShare(truth, inferred, within) {
+  if (!inferred) return 0;
+  let marked = 0, total = 0;
+  for (let i = 0; i < truth.length; i++) {
+    if (within && !within[i]) continue;
+    if (!truth[i]) continue;
+    total++;
+    if (inferred[i]) marked++;
   }
-  return left ? inferred : null;
+  return total ? marked / total : 0;
 }
 
 /** The other half: everything NOT marked inferred, which is most of it. */
@@ -844,28 +864,11 @@ async function main() {
 
       const rgb = resize(img.data, img.width, img.height, img.channels, GRID);
       const truth = maskOf(truthGeoms, frame, GRID);
-      /*
-       * WHERE THE TWO LAYERS OVERLAP, THE PIXEL IS SEEN.
-       *
-       * Inferred patches are drawn on their own layer and are meant to sit on
-       * top of lawn already outlined -- that is the ordinary way to mark the
-       * ground under a canopy that runs through the middle of a traced lawn.
-       * So an inferred shape covers visible grass at its edges almost always.
-       *
-       * Counting those pixels as inferred would quietly move visible ground
-       * out of the column that is watching for degradation, which is the one
-       * thing the split exists to catch: a ring that had stopped reading faint
-       * evidence could hide the damage simply by being marked over generously.
-       * Seen wins, so the guard can only ever be harder on the model, never
-       * softer.
-       */
+      /* Where both layers cover a pixel it counts as INFERRED -- the narrower,
+         later mark is the more careful one. See inferredShare above for why,
+         and for what stands in for the guard that rule used to be. */
       const inferredGeoms = inferredGeometries(parse(row.shapes));
-      const inferred = inferredGeoms.length
-        ? inferredOnly(
-          maskOf(inferredGeoms, frame, GRID),
-          maskOf(seenGeometries(parse(row.shapes)), frame, GRID),
-        )
-        : null;
+      const inferred = inferredGeoms.length ? maskOf(inferredGeoms, frame, GRID) : null;
       const parcelGeom = parse(row.parcel);
       /*
        * No property line means the whole frame is fair game. Rare, and the
@@ -915,6 +918,7 @@ async function main() {
         /* Where the reviewer said "I know, I cannot see it". Null until some
            map has been marked, and null means every pixel counts as seen. */
         inferred,
+        inferredPct: 100 * inferredShare(truth, inferred, within),
         truthPx,
         mpp: metresPerPixel(frame, GRID),
         detected: row.detected_shapes
@@ -1097,8 +1101,26 @@ async function main() {
    */
   const marked = lawns.filter((L) => L.inferred).length;
   if (marked) {
+    const shares = lawns.filter((L) => L.inferred).map((L) => L.inferredPct);
+    const most = Math.max(...shares);
+    const typical = shares.slice().sort((a, b) => a - b)[shares.length >> 1];
     console.log(`\n  ${marked} of ${lawns.length} maps have areas marked "inferred, not seen".`);
-    console.log('  Error on those, against error everywhere else:\n');
+    /*
+     * THE SHARE IS THE GUARD. Where the two layers overlap the pixel counts as
+     * inferred -- the later, narrower mark is the more careful statement, and
+     * the blue below it was drawn in one sweep over everything. That rule can
+     * only be trusted while the marks stay deliberate, so the proportion is
+     * printed beside the score rather than policed silently: a map marked over
+     * generously shows up here as a large share, on the lawn it belongs to.
+     */
+    console.log(`  Marked ground is ${typical.toFixed(0)}% of a typical one, `
+      + `${most.toFixed(0)}% of the most-marked.`);
+    if (most > 60) {
+      console.log('\n  THAT TOP FIGURE IS HIGH. An inferred layer covering most of a');
+      console.log('  lawn moves that lawn out of the column watching for the model');
+      console.log('  going blind. Worth opening and checking the marks are meant.');
+    }
+    console.log('\n  Error on those, against error everywhere else:\n');
     console.log('  what it looked at                  seen   inferred');
     for (const t of table) {
       console.log(
