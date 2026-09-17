@@ -90,6 +90,32 @@ const usable = (e) =>
   && /\/(Map|Feature)Server\/\d+$/i.test(e.url);
 
 /*
+ * THE ATLAS SAYS WHAT EACH LAYER IS, AND THIS USED TO IGNORE IT.
+ *
+ * Every endpoint carries a `layerName`. Gwinnett County, Georgia's reads "Tax
+ * Master Table" -- the catalogue was telling us plainly that this is a table,
+ * with owner and PIN columns and no geometry at all, and the importer took it
+ * as a parcel layer because it was first in the list and passed every other
+ * check. The verification then failed on an extent query, which is what a
+ * table does, and the county was written off as broken.
+ *
+ * So rank rather than reject. A county whose ONLY endpoint is a table is still
+ * worth keeping -- Gwinnett's parcels turned out to be layer 0 of the very
+ * same service -- and the verifier can find them from here. What must not
+ * happen is a county with a real parcel layer in its list losing to a table
+ * that happened to be listed first.
+ *
+ * Bigger is better: a named parcel layer, then anything unnamed or unfamiliar,
+ * then a table last.
+ */
+const layerRank = (e) => {
+  const name = String(e.layerName || '');
+  if (/\btable\b/i.test(name)) return 0;
+  if (/parcel/i.test(name)) return 2;
+  return 1;
+};
+
+/*
  * Which field holds the parcel id, and which the street address.
  *
  * The atlas labels its fields, which is more than the raw service does, so
@@ -153,7 +179,13 @@ for (const file of files.sort()) {
   const state = JSON.parse(readFileSync(join(DATA, file), 'utf8'));
   for (const county of state.counties || []) {
     listed++;
-    const endpoints = (county.endpoints || []).filter(usable);
+    /*
+     * Sorted, not just filtered. `sort` is stable in Node, so endpoints of
+     * equal rank keep the catalogue's own order -- which is the right
+     * tie-break, since the catalogue put them in that order on purpose.
+     */
+    const endpoints = (county.endpoints || []).filter(usable)
+      .sort((x, y) => layerRank(y) - layerRank(x));
     if (!endpoints.length) { dropped++; continue; }
 
     // The first usable endpoint is the candidate; any others ride along as
@@ -191,6 +223,15 @@ for (const file of files.sort()) {
       name: `${county.county} County, ${county.state}`,
       fips: county.countyFips || null,
       ...split(first),
+      /*
+       * WHAT THE CATALOGUE CALLS THIS LAYER, carried through rather than
+       * discarded. "Tax Master Table" is the whole explanation for Gwinnett
+       * County failing verification, and it was in the source data the entire
+       * time. The verifier reads it to know it should look for the parcels
+       * elsewhere in the same service instead of spending a request finding
+       * out that a table has no extent.
+       */
+      layerName: first.layerName || null,
       fields: fields(first),
       fallbacks: rest.map((e) => ({ ...split(e), fields: fields(e) })),
     });

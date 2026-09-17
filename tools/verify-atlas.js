@@ -368,6 +368,33 @@ function parcelLayerIn(layers) {
 }
 
 async function verify(c) {
+  /*
+   * THE CATALOGUE ALREADY SAID SO, so do not spend a request finding out.
+   *
+   * An endpoint whose layerName reads "Tax Master Table" is a table: no
+   * geometry, no extent, and a 400 on any attempt to compute one. Gwinnett
+   * County, Georgia was written off as a broken county on exactly that 400,
+   * with the explanation sitting in the source data the whole time.
+   *
+   * layerName is null on anything imported before it was carried through, and
+   * null falls straight past this into the ordinary path -- so an old
+   * candidates file behaves as it always did.
+   */
+  if (/\btable\b/i.test(String(c.layerName || ''))) {
+    const layers = await layersOf(c.service).catch(() => []);
+    await sleep(PAUSE_MS);
+    const better = parcelLayerIn(layers);
+    if (better === null) {
+      return { ok: false, why: `the catalogue names layer ${c.layer} a table `
+        + 'and no parcel layer was found beside it', layers };
+    }
+    /* layerName cleared, or this would look at itself again for ever. */
+    const out = await verify({ ...c, layer: better, layerName: null });
+    await sleep(PAUSE_MS);
+    if (out.ok) return { ...out, correctedLayer: better, wasLayer: c.layer };
+    return { ok: false, why: `named a table; layer ${better} was no better`, layers };
+  }
+
   const extent = await extentOf(c.service, c.layer);
   await sleep(PAUSE_MS);
   if (extent.error) {
