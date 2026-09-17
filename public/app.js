@@ -9221,6 +9221,25 @@ function keepFinished() {
   api('/api/finished', {
     method: 'POST',
     body: JSON.stringify({
+      /*
+       * THE ROW THIS IS, when we already know -- rather than one worked out
+       * again from where it is.
+       *
+       * The id is built from the frame's centre at five decimal places, about
+       * a metre. The frame is also UPDATED IN PLACE by the upsert while the id
+       * is not, so any map whose frame has ever moved since it was created
+       * carries an id that no longer matches its own coordinates. Re-saving it
+       * then derived a different id and minted a second row: the same lawn
+       * twice, one with the inferred marks and one without, both approved.
+       *
+       * That is worse than untidy. Leave-one-out trains on one copy and tests
+       * on its twin, and reports a number far better than the model deserves.
+       *
+       * Reviewing is the one path that knows which row it opened, so it says
+       * so. Everything else still derives an id, which is right: a fresh
+       * measurement has no row yet.
+       */
+      ...(state.reviewingId ? { id: state.reviewingId } : {}),
       lng: state.chosen?.lng ?? state.frame?.lng ?? null,
       lat: state.chosen?.lat ?? state.frame?.lat ?? null,
       /*

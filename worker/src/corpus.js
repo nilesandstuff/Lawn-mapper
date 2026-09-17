@@ -257,8 +257,30 @@ export async function recordFinished(env, body) {
   const mode = text(body?.mode, 20);
   const now = new Date().toISOString();
 
+  /*
+   * AN ID THE CALLER ALREADY KNOWS BEATS ONE DERIVED AGAIN.
+   *
+   * idFor builds a key out of the frame centre at five decimal places -- about
+   * a metre -- and the upsert below UPDATES the frame while leaving the id
+   * alone. So a map whose frame has moved since it was created has an id that
+   * no longer matches its own coordinates, and re-saving it derived a
+   * different key and wrote a SECOND row: the same lawn twice, one with the
+   * reviewer's inferred marks and one without, both approved.
+   *
+   * Leave-one-out then trains on one copy and tests on its twin, which reports
+   * a number far better than the model has earned. Duplicates are not untidy
+   * here, they are a lie in the measurement.
+   *
+   * Shape-checked rather than trusted: this endpoint takes whatever a browser
+   * posts, and an id is no more sensitive than the coordinates it would
+   * otherwise be built from -- but a value that is not id-shaped is a bug
+   * somewhere, and writing it would scatter rows nothing can find again.
+   */
+  const given = text(body?.id, 120);
+  const known = given && /^-?\d+\.\d+,-?\d+\.\d+:[^:]*:[^:]*$/.test(given) ? given : null;
+
   const row = {
-    id: idFor(lng, lat, model, mode),
+    id: known || idFor(lng, lat, model, mode),
     at: now,
     lng: round(lng),
     lat: round(lat),

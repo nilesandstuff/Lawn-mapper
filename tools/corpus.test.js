@@ -572,5 +572,50 @@ const png = () => new Response('x', { headers: { 'content-type': 'image/png' } }
     + 'no existing map would ever be examined');
 }
 
+/* ------------------------------------------ re-saving the row you opened */
+{
+  /*
+   * THE DUPLICATE-LAWN BUG, as a test.
+   *
+   * The id is built from the frame centre at five decimal places -- about a
+   * metre -- and the upsert UPDATES the frame while leaving the id alone. So a
+   * map whose frame moved since it was created carries an id that no longer
+   * matches its own coordinates, and re-saving it derived a different key and
+   * wrote a SECOND row. Two rows seen in the database, same lawn, same model,
+   * same mode, longitudes -85.64033 and -85.64029: three metres apart, one
+   * carrying the reviewer's inferred marks and one not, both approved.
+   *
+   * Leave-one-out then trains on one copy and tests on its twin, and reports a
+   * number far better than the model has earned. This is not untidiness, it is
+   * a lie in the measurement.
+   */
+  const DB = fakeDB();
+  const opened = '-85.64033,43.07105:sam3:find';
+  await recordFinished({ DB }, body({
+    id: opened,
+    /* The frame has drifted since the row was made, exactly as it does on the
+       round trip through a review. */
+    frame: { lng: -85.64029, lat: 43.07105, zoom: 18.5, size: 1280 },
+  }));
+
+  check('a re-save lands on the row it opened, not a new one three metres away',
+    DB.writes[0].args.includes(opened),
+    `wrote ${DB.writes[0].args[0]} -- deriving the key again is what made the `
+    + 'same lawn exist twice');
+
+  const fresh = fakeDB();
+  await recordFinished({ DB: fresh }, body());
+  check('and a fresh measurement still derives its own',
+    typeof fresh.writes[0].args[0] === 'string'
+    && fresh.writes[0].args[0].includes(':sam3:find'),
+    `${fresh.writes[0].args[0]} -- a new map has no row yet to be told about`);
+
+  const junk = fakeDB();
+  await recordFinished({ DB: junk }, body({ id: 'DROP TABLE corpus' }));
+  check('an id that is not id-shaped is ignored rather than written',
+    junk.writes[0].args[0] !== 'DROP TABLE corpus',
+    'a key nothing can find again scatters rows worse than a duplicate does');
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);
