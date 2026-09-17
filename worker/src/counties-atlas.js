@@ -16,7 +16,7 @@
  * directly will be overwritten; change the importer or the verifier instead.
  *
  * atlas 0.6.3, imported 2026-09-14
- * 142 verified of 165 tried, on 2026-09-14
+ * 142 verified of 165 tried, on 2026-09-17
  */
 
 const ATLAS_COUNTIES = {
@@ -348,6 +348,14 @@ const ATLAS_COUNTIES = {
     fields: {"pin":"PARCELID","address":"SITEADDRESS"},
     box: [-84.351,33.616,-84.023,33.971],
   },
+  'ga-gwinnett': {
+    name: "Gwinnett County, GA",
+    fips: "13135",
+    service: "https://services3.arcgis.com/RfpmnkSAQleRbndX/arcgis/rest/services/Property_and_Tax/FeatureServer",
+    layer: 0,
+    fields: {"pin":"PIN","address":null},
+    box: [-84.278,33.752,-83.798,34.17],
+  },
   'ga-chatham': {
     name: "Chatham County, GA",
     fips: "13051",
@@ -630,6 +638,14 @@ const ATLAS_COUNTIES = {
     fields: {"pin":"PARCELID","address":"SITEADDRESS"},
     box: [-96.916,40.522,-96.461,41.047],
   },
+  'ne-sarpy': {
+    name: "Sarpy County, NE",
+    fips: "31153",
+    service: "https://geodata.sarpy.gov/arcgis/rest/services/Cadastral/LandRecordsSearch/FeatureServer",
+    layer: 5,
+    fields: {"pin":"PARCELID","address":"SITEADDRESS"},
+    box: [-96.343,40.983,-95.84,41.205],
+  },
   'nv-clark': {
     name: "Clark County, NV",
     fips: "32003",
@@ -761,7 +777,7 @@ const ATLAS_COUNTIES = {
     service: "https://maps.wake.gov/arcgis/rest/services/Property/Parcels/MapServer",
     layer: 0,
     fields: {"pin":"PIN_NUM","address":"SITE_ADDRESS"},
-    box: [-78.996,35.517,-78.251,36.077],
+    box: [-78.996,35.518,-78.251,36.077],
   },
   'nc-mecklenburg': {
     name: "Mecklenburg County, NC",
@@ -915,14 +931,6 @@ const ATLAS_COUNTIES = {
     fields: {"pin":"PARCEL_NUM","address":"ADDRESS"},
     box: [-75.497,40.046,-74.703,40.615],
   },
-  'sc-charleston': {
-    name: "Charleston County, SC",
-    fips: "45019",
-    service: "https://gisccapps.charlestoncounty.org/arcgis/rest/services/GIS_VIEWER/New_Parcel_Search/MapServer",
-    layer: 61,
-    fields: {"pin":"PID","address":null},
-    box: [-80.455,32.483,-79.266,33.224],
-  },
   'tn-davidson': {
     name: "Davidson County, TN",
     fips: "47037",
@@ -978,14 +986,6 @@ const ATLAS_COUNTIES = {
     layer: 1,
     fields: {"pin":null,"address":"GIS_DBO_AD_Entity_situs_display"},
     box: [-96.854,32.978,-96.286,33.409],
-  },
-  'tx-denton': {
-    name: "Denton County, TX",
-    fips: "48121",
-    service: "https://gis.dentoncounty.gov/arcgis/rest/services/Parcels/MapServer",
-    layer: 0,
-    fields: {"pin":null,"address":"SITUS"},
-    box: [-97.399,32.985,-96.831,33.431],
   },
   'tx-el-paso': {
     name: "El Paso County, TX",
@@ -1043,14 +1043,6 @@ const ATLAS_COUNTIES = {
     fields: {"pin":"PARCEL_ID","address":null},
     box: [-112.494,41.076,-111.42,41.434],
   },
-  'vt-chittenden': {
-    name: "Chittenden County, VT",
-    fips: "50007",
-    service: "https://services1.arcgis.com/BkFxaEFNwHqX3tAw/arcgis/rest/services/FS_VCGI_VTPARCELS_WM_NOCACHE_v2/FeatureServer",
-    layer: 1,
-    fields: {"pin":null,"address":"E911ADDR"},
-    box: [-73.438,42.726,-71.465,45.017],
-  },
   'va-fairfax': {
     name: "Fairfax County, VA",
     fips: "51059",
@@ -1090,6 +1082,14 @@ const ATLAS_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCEL_ID","address":"SITUSLINE1"},
     box: [-122.44,47.768,-120.951,48.308],
+  },
+  'wa-thurston': {
+    name: "Thurston County, WA",
+    fips: "53067",
+    service: "https://map.co.thurston.wa.us/arcgis/rest/services/Thurston/Thurston_Parcels/FeatureServer",
+    layer: 0,
+    fields: {"pin":"PARCEL_NO","address":"SITUS_STRE"},
+    box: [-123.204,46.762,-122.201,47.187],
   },
   'wv-kanawha': {
     name: "Kanawha County, WV",
