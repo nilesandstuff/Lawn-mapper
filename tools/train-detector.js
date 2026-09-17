@@ -240,9 +240,34 @@ export function rowWidth(cfg, hasEye) {
  * tried, and typed arrays answer that with zeroes rather than an error -- a
  * model trained on padding, scoring badly, blaming the data.
  */
+const lenses = new Map();
+export function lensFor(dim, dims) {
+  const key = `${dim}:${dims}`;
+  if (!lenses.has(key)) lenses.set(key, projection(dim, dims));
+  return lenses.get(key);
+}
+
 function shrink(grid, dims) {
   const { data, gridW, gridH, dim } = grid;
-  const M = projection(dim, dims);
+  /*
+   * ONE PROJECTION FOR EVERY LAWN AND BOTH SCALES, cached by the pair of
+   * widths it maps between.
+   *
+   * This was a fresh matrix per call for one run, and the run is worth keeping
+   * on record: the backbone rows read 63.9% alone and 100% at the wider
+   * squeeze, against 40.5% for colour, and the obvious reading was that a
+   * model trained on ground-level photographs cannot see a garden from above.
+   *
+   * It was nothing of the kind. A random projection is a change of coordinates,
+   * and a different one per lawn puts every lawn's features in a private
+   * language -- so a patch of grass in one garden and a patch of grass in the
+   * next had no numerical relationship at all. The head was being handed noise
+   * and asked to generalise across it, which is exactly what it failed to do.
+   *
+   * The comment warning against this was here and was deleted in the refactor
+   * that made the width configurable. It is a test now instead.
+   */
+  const M = lensFor(dim, dims);
   const out = new Float32Array(gridW * gridH * dims);
   for (let p = 0; p < gridW * gridH; p++) {
     project(M, dim, dims, data, p * dim, out, p * dims);
@@ -350,10 +375,24 @@ export function runFold(lawns, held, opts = {}) {
     for (let i = 0; i < count; i++) got[y0 * grid + i] = p[i] > 0.5 ? 1 : 0;
   }
 
+  /*
+   * DID IT ANSWER THE SAME THING EVERYWHERE? A head that has collapsed to "no
+   * lawn anywhere" scores exactly 100% wrong, which prints as a number and
+   * reads as a bad model rather than as a broken one. Counted here so the
+   * report can say which it was.
+   */
+  let lit = 0, judged = 0;
+  for (let i = 0; i < got.length; i++) {
+    if (test.within && !test.within[i]) continue;
+    judged++;
+    if (got[i]) lit++;
+  }
+
   return {
     mine: compare(got, test.truth, test.within),
     theirs: test.detected ? compare(test.detected, test.truth, test.within) : null,
     trainedOn,
+    collapsed: judged > 0 && (lit === 0 || lit === judged),
     predicted: got,
   };
 }
@@ -520,13 +559,14 @@ async function main() {
 
     const rows = [];
     for (let held = 0; held < lawns.length; held++) {
-      const { mine } = runFold(lawns, held, { cfg, width });
-      rows.push({ lawn: lawns[held], mine, theirs: samScores[held] });
+      const { mine, collapsed } = runFold(lawns, held, { cfg, width });
+      rows.push({ lawn: lawns[held], mine, theirs: samScores[held], collapsed });
     }
     const med = median(rows.map((r) => r.mine.errorPct));
     const paired = rows.filter((r) => r.theirs);
     const wins = paired.filter((r) => r.mine.errorPct < r.theirs.errorPct).length;
-    table.push({ cfg, med, wins, of: paired.length, rows, width });
+    const collapsed = rows.filter((r) => r.collapsed).length;
+    table.push({ cfg, med, wins, of: paired.length, rows, width, collapsed });
     console.log(`   ${med.toFixed(1)}% out on the middle lawn, better than SAM on ${wins} of ${paired.length}.\n`);
   }
 
@@ -557,6 +597,9 @@ async function main() {
     console.log(
       `  ${t.cfg.name.padEnd(32).slice(0, 32)} ${t.med.toFixed(1).padStart(5)}%   `
       + `${t.wins} of ${t.of}`
+      + (t.collapsed
+        ? `   (${t.collapsed} of ${t.rows.length} folds answered the same thing everywhere -- not a score)`
+        : '')
     );
   }
   if (samMed !== null) {

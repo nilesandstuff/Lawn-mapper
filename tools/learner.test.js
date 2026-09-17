@@ -455,6 +455,31 @@ const paint = (px, w, x0, y0, pw, ph, [r, g, b]) => {
     `${low[FEATURE_COUNT].toFixed(2)} against ${row[FEATURE_COUNT].toFixed(2)} `
     + '-- the same value at both ends would mean every pixel samples one patch');
 
+  /*
+   * EVERY LAWN MUST BE SQUEEZED THROUGH THE SAME PROJECTION.
+   *
+   * This was wrong for one run and the result was completely convincing: the
+   * backbone rows read 63.9% alone and 100% at the wider squeeze against 40.5%
+   * for colour, and the obvious conclusion was that a model trained on
+   * ground-level photographs cannot read a garden from above.
+   *
+   * It was not that. A random projection is a change of coordinates, and a
+   * fresh one per lawn puts each lawn's features in a private language -- so
+   * grass here and grass next door had no numerical relationship, and the head
+   * was asked to generalise across noise. Nothing about it looks wrong from
+   * the outside; the numbers are simply bad in a plausible direction.
+   */
+  const { lensFor } = await import('./train-detector.js');
+  const a = lensFor(384, 32);
+  const b = lensFor(384, 32);
+  check('the same squeeze is reused rather than drawn again',
+    a === b,
+    'a fresh projection per lawn is a private coordinate system per lawn, and '
+    + 'the head cannot learn anything that crosses lawns');
+  check('and a different width gets its own',
+    lensFor(384, 96) !== a && lensFor(384, 96).length === 384 * 96,
+    'one matrix cannot serve two widths');
+
   /* Then: the head can actually learn from that channel alone. */
   const fold = runFold(lawns, 2, { perLawn: 900, grid: G });
   check('a lawn whose answer is only in the backbone channel is learnable',
