@@ -529,5 +529,50 @@ const paint = (px, w, x0, y0, pw, ph, [r, g, b]) => {
     + 'training report is measuring colour twice');
 }
 
+/* ------------------------------------------------ what the frames are worth */
+{
+  /*
+   * THE GROUND SIZE THAT TRAVELS WITH THE PICTURES.
+   *
+   * Scale-MAE is the first backbone here that has to be TOLD how much ground a
+   * pixel covers, and the failure mode is the one this project keeps meeting:
+   * a wrong number does not error, it produces a confident wrong answer. So
+   * the number is written as metres ACROSS THE FRAME, which does not depend on
+   * what size the photograph was saved at, and divided by the read size at the
+   * far end.
+   *
+   * Writing metres-per-pixel instead would be correct on the day and silently
+   * wrong the moment DUMP_SIZE changed -- which is a thing a workflow input
+   * now does on every run.
+   */
+  const { frameSpans, dumpSize } = await import('./train-detector.js');
+
+  const spans = frameSpans([
+    { id: 'a', mpp: 0.1 },
+    { id: 'b', mpp: 0.25 },
+  ], 512);
+  check('the frame is measured in metres of ground, not pixels',
+    Math.abs(spans.a - 51.2) < 1e-9 && Math.abs(spans.b - 128) < 1e-9,
+    `got ${JSON.stringify(spans)} -- a scale-aware model reads this as the `
+    + 'size of the world in the picture');
+  check('and two lawns photographed at different zooms keep different sizes',
+    spans.a !== spans.b,
+    'one span for every property would tell the model every garden is the '
+    + 'same size, which is exactly the information it was chosen for');
+
+  const was = process.env.DUMP_SIZE;
+  delete process.env.DUMP_SIZE;
+  check('unset, the dump stays at the scoring grid',
+    dumpSize() === 512,
+    'a run with nothing set must behave as it did before the input existed');
+  process.env.DUMP_SIZE = '896';
+  check('set, it follows', dumpSize() === 896, 'the input is ignored');
+  process.env.DUMP_SIZE = 'nonsense';
+  check('and nonsense falls back rather than writing a 0x0 png',
+    dumpSize() === 512,
+    'NaN through to mkdir is a failure three steps from its cause');
+  if (was === undefined) delete process.env.DUMP_SIZE; else process.env.DUMP_SIZE = was;
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);

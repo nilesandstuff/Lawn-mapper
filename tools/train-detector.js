@@ -84,6 +84,47 @@ const TOTAL_FEATURES = FEATURE_COUNT + 2 * PROJ_DIMS;
  */
 const GRID = 512;
 
+/*
+ * WHAT SIZE THE PHOTOGRAPHS ARE WRITTEN OUT AT, which is not the same question
+ * as what grid they are scored on.
+ *
+ * The scoring grid is 512 and stays 512 -- that is what makes one run
+ * comparable to the last. But the frames handed to the extractor were being
+ * written at 512 too, and then resized UP to 672 or 896 on the way into the
+ * model. Upscaling invents no detail. Asking for a finer patch grid over a
+ * blurrier picture buys a sharper-looking edge drawn from the same
+ * information, which is the sort of improvement that shows up in a number and
+ * nowhere else.
+ *
+ * The stored photograph is bigger than 512. So write the frames at whatever
+ * size the extractor is going to read them at, and the box-average runs once,
+ * downward, from the real pixels.
+ *
+ * Defaults to GRID so a run with nothing set behaves as it did.
+ */
+const dumpSize = () => {
+  const raw = Number(process.env.DUMP_SIZE);
+  return Number.isFinite(raw) && raw >= 64 ? Math.round(raw) : GRID;
+};
+
+/*
+ * HOW WIDE THE FRAME IS IN METRES, one number per lawn.
+ *
+ * Scale-MAE is not a model you hand a picture to. Its position encoding is
+ * built from the ground distance a patch covers, so it has to be TOLD what it
+ * is looking at, and a wrong answer there is not an error -- it is a model
+ * quietly reading a lawn as though it were a car park seen from orbit.
+ *
+ * Written as metres across the frame rather than metres per pixel, because
+ * per-pixel depends on what size the picture was saved at and this does not.
+ * The extractor divides by whatever width it ends up using.
+ */
+export const frameSpans = (lawns, grid = GRID) => {
+  const out = {};
+  for (const L of lawns) out[L.id] = L.mpp * grid;
+  return out;
+};
+
 const QUERY = `
   SELECT id, county, tree_line, frame, shapes, detected_shapes, parcel,
          image_key, image_provider, mode, model
@@ -585,8 +626,15 @@ async function main() {
       lawns.push({
         id: row.id,
         county: row.county,
-        /* Kept only for DUMP_FRAMES; the features are built from it above. */
-        rgb: process.env.DUMP_FRAMES ? rgb : null,
+        /*
+         * Kept only for DUMP_FRAMES, and resized from the ORIGINAL pixels
+         * rather than from the 512 grid beside it. Going 512 -> 896 would be
+         * an upscale of something already thrown away; this is one
+         * box-average, downward, from what R2 actually holds.
+         */
+        dump: process.env.DUMP_FRAMES
+          ? resize(img.data, img.width, img.height, img.channels, dumpSize())
+          : null,
         canopy: row.tree_line === null || row.tree_line === undefined ? null : Number(row.tree_line),
         /* Held raw: each fold standardises against its own training lawns. */
         cheap: imageFeatures(rgb, GRID, GRID),
@@ -632,13 +680,27 @@ async function main() {
    */
   if (process.env.DUMP_FRAMES) {
     const dest = process.env.DUMP_FRAMES;
+    const size = dumpSize();
     mkdirSync(dest, { recursive: true });
     for (const L of lawns) {
-      const png = new decoders.png.PNG({ width: GRID, height: GRID });
-      png.data = Buffer.from(L.rgb.buffer, L.rgb.byteOffset, L.rgb.byteLength);
+      const png = new decoders.png.PNG({ width: size, height: size });
+      png.data = Buffer.from(L.dump.buffer, L.dump.byteOffset, L.dump.byteLength);
       writeFileSync(join(dest, `${L.id}.png`), decoders.png.PNG.sync.write(png));
     }
-    console.log(`Wrote ${lawns.length} frames to ${dest} at ${GRID}x${GRID}.`);
+    /*
+     * The ground truth of the pictures, for any model that asks what scale it
+     * is looking at. Written next to them rather than inside them because a
+     * PNG has nowhere honest to put it.
+     */
+    writeFileSync(
+      join(dest, 'scale.json'),
+      JSON.stringify({ frames: frameSpans(lawns) }, null, 1),
+    );
+    const spans = lawns.map((L) => L.mpp * GRID);
+    const lo = Math.min(...spans), hi = Math.max(...spans);
+    console.log(`Wrote ${lawns.length} frames to ${dest} at ${size}x${size},`);
+    console.log(`covering ${lo.toFixed(0)}-${hi.toFixed(0)} m of ground`);
+    console.log(`(${(lo / size).toFixed(3)}-${(hi / size).toFixed(3)} m a pixel), and scale.json beside them.`);
     console.log('Run the extractor over them, then run this again with');
     console.log('FEATURES_DIR pointing at what it produced.');
     return;
@@ -926,4 +988,4 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   });
 }
 
-export { compare, resize, maskOf, GRID };
+export { compare, resize, maskOf, GRID, dumpSize };

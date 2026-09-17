@@ -11,6 +11,24 @@
 --extra-index-url https://pypi.org/simple
 
 torch
+# Named explicitly for the same reason as torch: torchgeo asks for it, and left
+# to resolve on its own pip takes the CUDA build from PyPI.
+torchvision
 transformers
 pillow
 numpy
+
+# For Scale-MAE, the first backbone here that was trained on satellite imagery.
+#
+# THE WHOLE LIBRARY, not a copied file. torchgeo carries the loader, the
+# published fMoW-RGB weights and the resolution-aware position encoding, all
+# tested. The alternative was transcribing two hundred lines of research code,
+# and the history of this project is that a subtly wrong reimplementation does
+# not fail -- it returns a confident wrong answer. The random projection that
+# was redrawn per lawn "proved" DINOv2 could not read overhead imagery for a
+# whole afternoon.
+#
+# It is a heavy install (rasterio, lightning and the rest) and none of that is
+# used here. It is also what makes DOFA, CROMA and the Satlas backbones one
+# dropdown entry each if Scale-MAE disappoints.
+torchgeo>=0.7

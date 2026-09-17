@@ -16,23 +16,42 @@ name: 14. Train with a real backbone (Python)
 # to every other. That is what makes shadow legible -- and shadow is the thing
 # colour alone will never survive.
 #
+# AND NOW A SECOND EYE, which is the reason to run this again.
+#
+# DINOv2 learned from ordinary photographs. It has seen grass and tarmac, but
+# never from above, and it has no idea how big anything in a picture is.
+# Scale-MAE learned from satellite imagery and learned scale on purpose -- it
+# is handed the ground distance a pixel covers and builds its position encoding
+# from it. It is the first backbone tried here that has seen a lawn from above
+# before today.
+#
+# That also makes the scale a required input. The frame dump writes scale.json
+# beside the photographs; without it the run stops rather than guessing, because
+# a wrong ground size does not error, it just quietly reads a garden as a
+# landscape.
+#
 # FREE. Python, torch and the weights are downloads; nothing here is billed.
 # It is slower than workflow 12 -- a bigger model at a higher resolution on a
-# CPU -- which is the price of asking a better question.
+# CPU -- which is the price of asking a better question. Scale-MAE is a
+# ViT-Large, so it is the slowest of the lot; budget twenty minutes.
 on:
   workflow_dispatch:
     inputs:
       model:
         description: 'Which backbone to try'
         type: choice
-        default: facebook/dinov2-base
+        default: scalemae-large
         options:
+          # Trained on satellite imagery, and told the scale of what it is
+          # looking at. The only entry here that has ever seen a lawn from
+          # above before today.
+          - scalemae-large
           - facebook/dinov2-base
           - facebook/dinov2-small
           - facebook/dinov2-large
           - facebook/dinov2-with-registers-base
       size:
-        description: 'Input size in pixels. Must divide by 14. Bigger is finer and slower.'
+        description: 'Input size in pixels. All three work for every model. Bigger is finer and slower.'
         type: choice
         default: '672'
         options:
@@ -84,6 +103,11 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CORPUS_BUCKET: lawn-mapper-corpus
           DUMP_FRAMES: frames
+          # Written at the size the model reads them at, so the one resize is a
+          # box-average DOWN from the stored photograph. Dumping at 512 and
+          # letting the extractor blow it up to 896 gives a finer patch grid
+          # over a blurrier picture -- a sharper-looking edge drawn from less.
+          DUMP_SIZE: ${{ inputs.size }}
           NO_BACKBONE: 'true'
         run: node tools/train-detector.js
 
@@ -113,7 +137,12 @@ jobs:
           echo "Nothing was spent finding this out."
           echo
           echo "The usual reasons, in order:"
-          echo "  * the runner could not reach huggingface.co for the weights"
-          echo "  * the input size is not a whole number of 14px patches"
+          echo "  * the runner could not reach the weights (huggingface.co)"
           echo "  * a larger model ran out of memory at that size -- try 448,"
           echo "    or a smaller model, before concluding anything"
+          echo "  * Scale-MAE only: scale.json missing from the frames. It is"
+          echo "    written by the dump step, so the dump step failed first."
+          echo
+          echo "Scale-MAE refuses to run scale-blind on purpose. A model told"
+          echo "the wrong ground size does not error, it just reads a garden"
+          echo "as a landscape -- so a missing number stops the run instead."
