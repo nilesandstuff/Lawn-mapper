@@ -29,12 +29,14 @@
 
 import { fileURLToPath } from 'node:url';
 import { resolve, join } from 'node:path';
-import { mkdtempSync, readFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 
 import { query } from './corpus-db.js';
-import { imageFeatures, featureStats, standardise, FEATURE_COUNT } from './features.js';
+import {
+  imageFeatures, featureStats, standardise, FEATURE_COUNT, FEATURE_NAMES,
+} from '../public/lib/features.js';
 import { train, predict, balanceWeights } from './learner.js';
 import {
   loadBackbone, tiledFeatures, sampleAt, projection, project,
@@ -665,6 +667,63 @@ async function main() {
     console.log('the honest reading is that there is not enough to learn from yet.');
     console.log('Approve more maps and run this again; it is free, and the moment');
     console.log('the top row goes under the SAM line it is worth building on.');
+  }
+
+  /* --------------------------------------------- ship it for dev mode */
+  /*
+   * COLOUR AND TEXTURE ONLY, whatever scored best above.
+   *
+   * The browser has no backbone and is not getting one -- that is two hundred
+   * megabytes to look at one garden. So what dev mode can actually run is the
+   * colour-and-texture head, which is also the best of the four, and this
+   * writes exactly that.
+   *
+   * TRAINED ON EVERY LAWN, unlike the folds. The folds exist to produce an
+   * honest number by never testing on what they learnt from; this exists to be
+   * used, so it takes all the evidence there is. Which means the score
+   * travelling with it comes from the folds, not from this fit -- a model
+   * asked about a lawn it was trained on flatters itself, and the file says so
+   * in its own fields.
+   */
+  const shipped = table.find((t) => t.cfg.name === 'colour and texture only');
+  if (process.env.EXPORT_MODEL === 'true' && shipped) {
+    const picked = [];
+    const ys = [];
+    let seed = 4242;
+    const rand = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+    for (const L of lawns) {
+      for (let k = 0; k < 6000; k++) {
+        const p = Math.floor(rand() * GRID * GRID);
+        if (L.within && !L.within[p]) continue;
+        picked.push([L, p]);
+        ys.push(L.truth[p]);
+      }
+    }
+    const width = FEATURE_COUNT;
+    const x = new Float32Array(picked.length * width);
+    for (let i = 0; i < picked.length; i++) {
+      buildRow(picked[i][0], picked[i][1], x, i * width, GRID, shipped.cfg);
+    }
+    const y = Float32Array.from(ys);
+    const stats = featureStats(x, width);
+    standardise(x, stats, width);
+    const model = train(x, y, balanceWeights(y), { seed: 99, inputs: width });
+
+    mkdirSync('public/model', { recursive: true });
+    writeFileSync('public/model/lawn-head.json', `${JSON.stringify({
+      note: 'Trained by workflow 12. The error below is from leaving one lawn '
+        + 'out at a time, NOT from this fit -- this one has seen every lawn.',
+      W1: [...model.W1], b1: [...model.b1], W2: [...model.W2], b2: model.b2,
+      hidden: model.hidden, inputs: model.inputs,
+      mean: [...stats.mean], sd: [...stats.sd],
+      features: FEATURE_NAMES,
+      trainedOn: lawns.length,
+      errorPct: Number(shipped.med.toFixed(1)),
+      samErrorPct: samMed === null ? null : Number(samMed.toFixed(1)),
+      scoredAt: new Date().toISOString(),
+    }, null, 1)}\n`);
+    console.log(`\nWrote public/model/lawn-head.json -- ${lawns.length} lawns, `
+      + `${shipped.med.toFixed(1)}% out when tested honestly.`);
   }
 
   console.log(`\n${'='.repeat(64)}`);

@@ -17,6 +17,10 @@ on:
         description: 'Colour and texture only, ignoring the pretrained eye'
         type: boolean
         default: false
+      publish:
+        description: 'Commit the trained model so dev mode can draw it'
+        type: boolean
+        default: false
 
 jobs:
   train:
@@ -54,7 +58,31 @@ jobs:
           # scored 43%. A fallback must never be silent, so the tool prints
           # which features it used whichever way this lands.
           NO_BACKBONE: ${{ inputs.no_backbone }}
+          EXPORT_MODEL: ${{ inputs.publish }}
         run: node tools/train-detector.js
+
+      # The weights are a few hundred numbers of JSON, committed rather than
+      # stashed somewhere, so the model dev mode draws is the one in the branch
+      # and `git log` says which run produced it. Deploying is still separate
+      # and still deliberate.
+      - name: Commit the model
+        if: inputs.publish
+        run: |
+          if git diff --quiet -- public/model; then
+            echo "The model is unchanged, so there is nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/model
+          git commit -m "Trained lawn head, from workflow 12
+
+          Weights only. The error recorded in the file comes from leaving one
+          lawn out at a time, not from this fit -- this one has seen them all."
+          git push
+          echo
+          echo "Committed. Run workflow 2 to deploy it, then turn on developer"
+          echo "mode in the app and press \"Show the trained model\"."
 
       - name: If that failed
         if: failure()

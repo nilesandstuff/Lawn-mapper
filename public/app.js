@@ -36,6 +36,8 @@ import {
   MIN_SEGMENT_SQFT, MAX_SEGMENT_SQFT, SEGMENT_STEP_SQFT,
   MIN_WIDTH_FT, MAX_WIDTH_FT, DEFAULT_WIDTH_FT,
 } from './lib/segments.js';
+import { imageFeatures, standardise } from './lib/features.js';
+import { predict, reviveModel } from './lib/head.js';
 import {
   framePxToLngLat,
   lngLatToFramePx,
@@ -4226,6 +4228,117 @@ function imageryUrlFor(provider, frame) {
   });
 }
 
+/* ------------------------------------------------- the trained model */
+/**
+ * Draw what the trained head thinks, over the photograph, in developer mode.
+ *
+ * TO BE LOOKED AT, NOT USED. It does not become shapes, it cannot be edited,
+ * and nothing it says reaches a measurement. The point is to see HOW it is
+ * wrong -- a number saying 38% tells you the size of the mistake and nothing
+ * about its shape, and "it loses dormant grass" and "it claims the driveway"
+ * are the same 38% and want opposite fixes.
+ *
+ * It runs entirely here: eleven numbers a pixel and a sixteen-unit head is
+ * arithmetic a phone does in a moment. The version that also reads a
+ * pretrained backbone cannot run in a browser -- that is a two-hundred-megabyte
+ * download to look at one garden -- and it scored worse anyway.
+ */
+let trainedHead = null;
+
+async function loadTrainedHead() {
+  if (trainedHead !== null) return trainedHead;
+  try {
+    const res = await fetch('/model/lawn-head.json');
+    if (!res.ok) throw new Error(String(res.status));
+    trainedHead = reviveModel(await res.json());
+  } catch {
+    trainedHead = false;       // asked once, absent; do not ask again
+  }
+  return trainedHead;
+}
+
+async function showTrainedModel() {
+  if (!state.frame) { setStatus('Measure a frame first.', 'warn'); return; }
+
+  const model = await loadTrainedHead();
+  if (!model) {
+    setStatus('No trained model has been published yet. Run workflow 12 with '
+      + '"Commit the trained model" ticked, then deploy.', 'warn');
+    return;
+  }
+
+  busy('Running the trained model over this frame…');
+  try {
+    const img = await new Promise((ok, fail) => {
+      const el = new Image();
+      el.crossOrigin = 'anonymous';
+      el.onload = () => ok(el);
+      el.onerror = () => fail(new Error('the photograph would not load'));
+      el.src = imageryUrlFor('mapbox', state.frame);
+    });
+
+    /*
+     * At the grid the model was TRAINED at. Its idea of "rough at five pixels"
+     * is a fact about that resolution, so reading features at another one asks
+     * it a question in a unit it has never seen.
+     */
+    const G = 512;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = G;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(img, 0, 0, G, G);
+    const { data } = ctx.getImageData(0, 0, G, G);
+
+    const rows = imageFeatures(data, G, G);
+    standardise(rows, { mean: model.mean, sd: model.sd }, model.inputs);
+    const p = predict(model, rows);
+
+    /* Painted as a translucent wash rather than traced into an outline: an
+       outline would invite dragging it, and this is not editable. */
+    const out = ctx.createImageData(G, G);
+    let lit = 0;
+    for (let i = 0; i < p.length; i++) {
+      const on = p[i] > 0.5;
+      if (on) lit++;
+      out.data[i * 4] = 255;
+      out.data[i * 4 + 1] = 90;
+      out.data[i * 4 + 2] = 200;
+      out.data[i * 4 + 3] = on ? 110 : 0;
+    }
+    ctx.putImageData(out, 0, 0);
+
+    const corners = frameCorners(state.frame);
+    if (map.getLayer('trained-model')) map.removeLayer('trained-model');
+    if (map.getSource('trained-model')) map.removeSource('trained-model');
+    map.addSource('trained-model', {
+      type: 'image', url: canvas.toDataURL('image/png'), coordinates: corners,
+    });
+    map.addLayer({
+      id: 'trained-model', type: 'raster', source: 'trained-model',
+      paint: { 'raster-opacity': 0.75 },
+    });
+
+    idle();
+    const share = ((100 * lit) / p.length).toFixed(0);
+    setStatus(
+      `The trained model in pink, over ${share}% of the frame. It was `
+      + `${model.errorPct}% wrong on lawns it had never seen`
+      + (model.samErrorPct ? `, against ${model.samErrorPct}% for the AI` : '')
+      + '. Look at WHERE it is wrong — that is what the number cannot say.'
+    );
+  } catch (err) {
+    idle();
+    setStatus(`Could not run it: ${err.message}`, 'warn');
+  }
+}
+
+/** Take it off again, so the photograph can be seen. */
+function hideTrainedModel() {
+  if (map.getLayer('trained-model')) map.removeLayer('trained-model');
+  if (map.getSource('trained-model')) map.removeSource('trained-model');
+  setStatus('Trained model hidden.');
+}
+
 /* ------------------------------------------------------------ edge tools */
 
 /**
@@ -8358,6 +8471,13 @@ $('#btn-draw-parcel').addEventListener('click', () => {
   setHint('Tap each corner of your property. Tap the first one again to close it.');
   setStatus('Tracing the property line. Follow the kerb, the fences and the neighbours’ edges.');
 });
+
+/*
+ * The trained model, in developer mode only. It draws over the photograph and
+ * touches nothing else -- see showTrainedModel for why it is not editable.
+ */
+$('#dev-model')?.addEventListener('click', () => { showTrainedModel(); });
+$('#dev-model-off')?.addEventListener('click', hideTrainedModel);
 
 $('#btn-draw').addEventListener('click', () => {
   setMode(null); // drawing owns the map while it is open

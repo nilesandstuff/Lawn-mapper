@@ -15,7 +15,10 @@
  * exercise.
  */
 
-import { FEATURE_COUNT } from './features.js';
+import { FEATURE_COUNT } from '../public/lib/features.js';
+/* The forward pass lives with the browser's copy: dev mode draws the same
+   model this tool scores, and two implementations would drift apart. */
+export { predict } from '../public/lib/head.js';
 
 const sigmoid = (z) => 1 / (1 + Math.exp(-Math.max(-30, Math.min(30, z))));
 
@@ -133,24 +136,6 @@ export function train(x, y, weight, {
   }
 
   return { W1, b1, W2, b2, hidden, inputs };
-}
-
-/** Probability of lawn for every row in `x`. */
-export function predict(model, x) {
-  const { W1, b1, W2, b2, hidden, inputs } = model;
-  const n = x.length / inputs;
-  const out = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    const off = i * inputs;
-    let z2 = b2;
-    for (let u = 0; u < hidden; u++) {
-      let z = b1[u];
-      for (let f = 0; f < inputs; f++) z += W1[u * inputs + f] * x[off + f];
-      if (z > 0) z2 += W2[u] * z;
-    }
-    out[i] = sigmoid(z2);
-  }
-  return out;
 }
 
 /**

@@ -17,7 +17,7 @@
 
 import {
   imageFeatures, featureStats, standardise, FEATURE_COUNT, FEATURE_NAMES,
-} from './features.js';
+} from '../public/lib/features.js';
 import { train, predict, balanceWeights } from './learner.js';
 
 let failures = 0;
@@ -351,7 +351,7 @@ const paint = (px, w, x0, y0, pw, ph, [r, g, b]) => {
 {
   console.log('\n--- leaving one out ---');
   const { runFold, GRID } = await import('./train-detector.js');
-  const { imageFeatures } = await import('./features.js');
+  const { imageFeatures } = await import('../public/lib/features.js');
 
   /*
    * Lawns whose answer is decidable from colour, so a working fold must score
