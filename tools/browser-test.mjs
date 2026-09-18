@@ -191,6 +191,64 @@ if (onCandidates) {
 check('reached the confirm step', await page.locator('#step-confirm').isVisible());
 console.log(`      confirming: ${await page.locator('#chosen-label').textContent()}`);
 
+/* ------------------------------------------- zooming by tapping, and not */
+/*
+ * THE THIRD HANDLER, asserted against the real library because that is the
+ * only place it exists.
+ *
+ * Mapbox GL v3 has three zoom-by-tapping handlers and `map.doubleClickZoom`
+ * wraps only two of them. tapDragZoom -- tap, then touch and drag -- is added
+ * separately, owned by touchZoomRotate, and survived both the constructor
+ * flag and `.disable()`. The gesture was reported three times and "fixed"
+ * twice against switches that were never connected to it.
+ *
+ * It cannot be caught by reading the app: every switch it sets is real and
+ * does what it says. Only the running map knows which handlers are live.
+ */
+{
+  const gz = await page.evaluate(() => {
+    const h = window.__lmGestures ? window.__lmGestures() : {};
+    return {
+      doubleClickZoom: h.doubleClickZoom,
+      tapDragZoom: h.tapDragZoom,
+      pinch: h.touchZoom,
+    };
+  });
+  check('double-tap zoom is off', gz.doubleClickZoom === false, String(gz.doubleClickZoom));
+  check('and so is tap-then-drag zoom, which is a different handler',
+    gz.tapDragZoom === false,
+    'doubleClickZoom does not cover it; it read "off" for weeks while being on');
+  /* The blunt fix for the above -- touchZoomRotate.disable() -- would take
+     pinch with it, so the narrow one has to leave pinch alone. */
+  check('and pinch-to-zoom still works', gz.pinch === true, String(gz.pinch));
+}
+
+/*
+ * A TAP REACHES THE APP WITH NO TOOL ARMED.
+ *
+ * `map.on('click')` used to be registered by armLawnPicker and removed by
+ * disarmLawnPicker, so taps only worked while a DRAWING tool was armed. The
+ * confirm step arms nothing, so the branch that moves the property pin could
+ * not run however correct it was -- and the pin moved only by dragging.
+ *
+ * Asserted by tapping the middle of the map and watching the pin follow,
+ * because a listener that is present and a listener that is reached are
+ * different claims and only the second one matters.
+ */
+{
+  const box = await page.locator('#map').boundingBox();
+  const armed = await page.evaluate(() => window.__lmPlacingPin?.());
+  check('the confirm step expects taps', armed === true, `placingPin=${armed}`);
+  const before = await page.evaluate(() => window.__lmChosen?.());
+  /* Off-centre, so the pin has somewhere to move to. */
+  await page.touchscreen.tap(box.x + box.width * 0.35, box.y + box.height * 0.4);
+  await page.waitForTimeout(900);
+  const after = await page.evaluate(() => window.__lmChosen?.());
+  check('tapping the map moves the property pin',
+    Boolean(before && after) && (before.lng !== after.lng || before.lat !== after.lat),
+    `${before?.lng},${before?.lat} -> ${after?.lng},${after?.lat}`);
+}
+
 await page.click('[data-action=confirm]');
 /*
  * Wait for the app to be READY, not for a guess at how long that takes.

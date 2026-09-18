@@ -638,6 +638,20 @@ if (typeof window !== 'undefined') {
   window.__lmPins = () => state.pins.map((p) => [...p]);
 
   /*
+   * The property pin, and whether a tap would move it.
+   *
+   * Here because "the pin only moves by dragging" is not visible from the
+   * screen: the tap listener was registered by armLawnPicker, so it existed
+   * on every screen with a drawing tool and on none without one -- and the
+   * confirm step has no tool. A listener that is present and a listener that
+   * is reached are different claims, and only the second one matters.
+   */
+  window.__lmChosen = () => (state.chosen
+    ? { lng: state.chosen.lng, lat: state.chosen.lat, label: state.chosen.label || '' }
+    : null);
+  window.__lmPlacingPin = () => state.placingPin === true;
+
+  /*
    * What the current mode will actually let a tap reach.
    *
    * This IS the mode mechanism -- editableRings() is what handleMapPoint
@@ -707,12 +721,17 @@ if (typeof window !== 'undefined') {
     dragPan: Boolean(map?.dragPan?.isEnabled()),
     touchZoom: Boolean(map?.touchZoomRotate?.isEnabled()),
     /*
-     * Double-tap zoom, which on touch is tap-drag zoom -- the gesture that
-     * collides head-on with tap, pan, tap. Reported because "the map zoomed
-     * when I meant to pan" is indistinguishable from a mis-aimed pinch by eye,
-     * and was reported as one for weeks.
+     * THE TWO ZOOM-BY-TAPPING SWITCHES, separately, because reading one of
+     * them as though it covered both is what kept this bug alive.
+     *
+     * `doubleClickZoom` wraps the mouse double-click and the touch double-tap.
+     * It does NOT wrap tapDragZoom -- tap, then touch and drag -- which is the
+     * gesture that collides head-on with tap, pan, tap, and which read as
+     * "off" here for weeks while being on. They are reported apart now so the
+     * panel cannot say the thing is disabled when only its neighbour is.
      */
     doubleClickZoom: Boolean(map?.doubleClickZoom?.isEnabled()),
+    tapDragZoom: Boolean(map?.handlers?._handlersById?.tapDragZoom?.isEnabled()),
     panning: panningHeld(),
     holdMs: PAN_HOLD_MS,
     /*
@@ -1166,6 +1185,69 @@ async function initMap() {
    */
   // Belt and braces with the constructor option above. Harmless if already off.
   map.doubleClickZoom.disable();
+
+  /*
+   * AND THE THIRD HANDLER, which is the one that was actually doing it.
+   *
+   * Reported three times, and twice "fixed" against the wrong switch. Mapbox
+   * GL v3 registers THREE zoom-by-tapping handlers, not two, and the names do
+   * not divide the way they read:
+   *
+   *   clickZoom     a mouse double-click          } both wrapped by
+   *   tapZoom       a touch double-tap            } map.doubleClickZoom
+   *   tapDragZoom   tap, then touch and drag      } NOT wrapped by anything
+   *
+   * `doubleClickZoom` is constructed as `new DoubleClickZoomHandler(clickZoom,
+   * tapZoom)` -- tapDragZoom is added to the handler list separately and is
+   * owned by `touchZoomRotate` instead. So the constructor flag and
+   * `.disable()` both turn off the two that were never the problem, and
+   * `touchZoomRotate.disableRotation()` disables the rotate handler only. The
+   * gesture in the report -- tap, then tap and drag -- is tapDragZoom, and
+   * nothing here had ever touched it. Read out of the running map rather than
+   * guessed at: with both of the above applied, tapDragZoom.isEnabled() is
+   * still true.
+   *
+   * It is not exposed on the map object (map.tapDragZoom is undefined), so
+   * this reaches into the handler registry -- which is why it is wrapped. The
+   * alternative, touchZoomRotate.disable(), would take pinch-to-zoom with it.
+   *
+   * Confirmed in a browser that this leaves touchZoom enabled, so pinch still
+   * works, which is the whole point of not using the blunt switch.
+   */
+  try {
+    const tapDrag = map.handlers?._handlersById?.tapDragZoom;
+    if (tapDrag?.disable) tapDrag.disable();
+    diag.tapDragZoomOff = tapDrag ? !tapDrag.isEnabled() : 'no handler';
+  } catch (err) {
+    /* A private field that moved in a Mapbox upgrade is a gesture coming
+       back, not a broken map. Record it and carry on -- and the developer
+       panel reports it, so it is visible rather than silently undone. */
+    diag.tapDragZoomOff = `failed: ${err.message}`;
+  }
+
+  /*
+   * TAPS ARE LISTENED FOR ALWAYS, and this is the second half of "the pin
+   * only moves by dragging".
+   *
+   * This listener used to be added by armLawnPicker and removed by
+   * disarmLawnPicker, so a tap only reached handleMapPoint while a DRAWING
+   * TOOL was armed. That was invisible for as long as every tap-driven feature
+   * was a drawing tool. The confirm step is not: nothing is armed there, so
+   * `map.on('click')` was never registered, and the branch that moves the
+   * property pin could not run however correct it was.
+   *
+   * Registering it for the life of the map instead. handleMapPoint already
+   * decides for itself what a tap means -- it returns early mid-draw, and
+   * otherwise does nothing at all unless the pin, an edge or the detection
+   * pins are expecting one. A listener whose handler is a no-op costs nothing;
+   * a listener that is absent costs a feature, silently, and only on the
+   * screens nobody thought to arm.
+   *
+   * The touch path still calls handleMapPoint directly while a tool is armed,
+   * and still records the tap in `handled`, so the synthetic click that
+   * follows a touch is suppressed exactly as before.
+   */
+  map.on('click', onMapClick);
 
   // One listener, for the life of the map: see watchTileErrors.
   watchTileErrors();
@@ -2756,7 +2838,6 @@ function armLawnPicker() {
    * armed and never wanted while one is.
    */
   map.getContainer().style.touchAction = 'none';
-  map.on('click', onMapClick);
   const el = map.getContainer();
   el.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });
   // Not passive: a gesture we claim has to stop the page scrolling under it,
@@ -2778,7 +2859,6 @@ function disarmLawnPicker() {
   // is the map's, and a flick that runs off it should scroll the panel as it
   // would anywhere else.
   map.getContainer().style.touchAction = '';
-  map.off('click', onMapClick);
   const el = map.getContainer();
   el.removeEventListener('touchstart', onTouchStart, { capture: true });
   el.removeEventListener('touchmove', onTouchMove, { capture: true });

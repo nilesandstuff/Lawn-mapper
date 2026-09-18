@@ -1005,6 +1005,66 @@ check('every class the code toggles is styled',
   check('and the pin stays where it was put',
     /lng,\n\s+lat,\n\s+label: found\?\.label/.test(move),
     'the coordinates are theirs; only the name comes from the geocoder');
+
+  /*
+   * THE TAP LISTENER IS NOT TIED TO A DRAWING TOOL, which is what made the
+   * branch above unreachable.
+   *
+   * `map.on('click', onMapClick)` was added by armLawnPicker and removed by
+   * disarmLawnPicker, so taps only arrived while a DRAWING tool was armed.
+   * That was invisible for as long as every tap-driven feature was a drawing
+   * tool; the confirm step is not one, arms nothing, and so the pin moved
+   * only by dragging however correct the handler was.
+   */
+  const arm = js.slice(js.indexOf('function armLawnPicker'),
+    js.indexOf('/* ------------------------------------------------- panning with a tool on */'));
+  check('the map tap listener is not armed and disarmed with the tools',
+    !/map\.on\('click', onMapClick\)/.test(arm)
+    && !/map\.off\('click', onMapClick\)/.test(arm),
+    'a screen with no tool is still a screen that can be tapped');
+  check('and is registered for the life of the map instead',
+    /map\.on\('click', onMapClick\);/.test(js.slice(0, js.indexOf('function armLawnPicker'))),
+    'handleMapPoint already decides what a tap means, so it can always listen');
+}
+
+/* ------------------------------------- the three zoom-by-tapping handlers */
+{
+  const js = readFileSync(join(root, 'public/app.js'), 'utf8');
+
+  /*
+   * MAPBOX HAS THREE, AND `doubleClickZoom` WRAPS TWO OF THEM.
+   *
+   *   clickZoom     mouse double-click   } wrapped by map.doubleClickZoom
+   *   tapZoom       touch double-tap     }
+   *   tapDragZoom   tap, then drag       -- registered separately, owned by
+   *                                         touchZoomRotate, wrapped by nothing
+   *
+   * The gesture in the report is the third one. It survived the constructor
+   * flag, `.disable()` and `disableRotation()` -- three switches that are all
+   * real and none of which reach it -- and the app's own diagnostics said
+   * "off" the whole time because they only read the wrapper.
+   *
+   * There is no public switch for it, so the fix reaches into the handler
+   * registry. That is exactly the kind of thing a Mapbox upgrade removes
+   * silently, which is why it is asserted here AND in the browser test: this
+   * one catches the line going away, that one catches it stopping working.
+   */
+  check('tap-then-drag zoom is disabled by name',
+    /_handlersById\?\.tapDragZoom/.test(js),
+    'doubleClickZoom.disable() does not reach it, and never did');
+  /* Looked for as a CALL, not as a string. The comment beside the fix names
+     this switch in order to explain why it is not the one used, and a check
+     that cannot tell code from the prose about it fails on its own
+     explanation. */
+  const calls = js.split('\n')
+    .filter((l) => !/^\s*(\*|\/\/)/.test(l))
+    .filter((l) => /touchZoomRotate\.disable\(\)/.test(l));
+  check('and the blunt switch that would take pinch with it is not used',
+    calls.length === 0,
+    calls.join(' | ') || 'touchZoomRotate.disable() would kill pinch-to-zoom as well');
+  check('and the diagnostics report it separately from its wrapper',
+    /tapDragZoom: Boolean\(map\?\.handlers/.test(js),
+    'reading one as though it covered both is what kept this alive');
 }
 
 /* ------------------------------------ the coverage dialog is wired end to end */
