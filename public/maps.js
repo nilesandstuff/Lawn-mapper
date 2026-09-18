@@ -10,6 +10,14 @@
  * on this page runs a stranger's script while signed in as the owner.
  */
 
+/*
+ * The console's own drawing, not a second one. Two pages putting the same
+ * outline in slightly different places is the fault this shares a module to
+ * avoid -- and on this page, telling two copies of a lawn apart is the entire
+ * job, so a drawing that cannot be trusted would make the page pointless.
+ */
+import { paint } from '/lib/review-draw.js';
+
 const $ = (s) => document.querySelector(s);
 const el = (tag, cls, text) => {
   const n = document.createElement(tag);
@@ -42,7 +50,7 @@ let duplicates = [];
 let filter = 'all';
 
 /** One row. Deliberately dense: this page is for scanning, not for reading. */
-function row(m, { dim = false } = {}) {
+function row(m, { dim = false, open = false } = {}) {
   const box = el('div', `entry${dim ? ' dim' : ''}`);
 
   const top = el('div', 'top');
@@ -68,6 +76,38 @@ function row(m, { dim = false } = {}) {
    * the same lawn twice, and nothing but reading them side by side showed it.
    */
   box.append(el('div', 'mono', m.id));
+
+  /*
+   * AND THE MAP ITSELF, which a list of square footages cannot stand in for.
+   * Two rows for one garden are told apart by looking at them: same lawn or
+   * next door, marks on one and not the other, an outline somebody improved.
+   *
+   * Fetched per map rather than shipped with the list. Five hundred rows of
+   * outlines is a megabyte of coordinates to answer a question about two of
+   * them, so a duplicate group draws itself and everything else waits to be
+   * asked.
+   */
+  const canvas = el('canvas', 'shot');
+  canvas.width = 320;
+  canvas.height = 320;
+  const show = el('button', 'ghost small', 'Look at it');
+  let drawn = false;
+  const draw = async () => {
+    if (drawn) return;
+    drawn = true;
+    show.remove();
+    box.append(canvas);
+    try {
+      const res = await fetch(`/api/admin/candidate?id=${encodeURIComponent(m.id)}`);
+      if (!res.ok) throw new Error(String(res.status));
+      const full = await res.json();
+      paint(canvas, { ...full, hasImage: m.hasImage });
+    } catch {
+      box.append(el('p', 'empty', 'That map could not be drawn.'));
+    }
+  };
+  show.addEventListener('click', draw);
+  if (open) draw(); else box.append(show);
   return box;
 }
 
@@ -106,7 +146,10 @@ function renderDupes() {
      */
     const rows = ids.map((id) => byId.get(id)).filter(Boolean)
       .sort((a, b) => (b.marked - a.marked) || (b.at || '').localeCompare(a.at || ''));
-    for (const [i, m] of rows.entries()) group.append(row(m, { dim: i > 0 }));
+    /* A duplicate group draws itself. Comparing two lawns is why somebody
+       scrolled to this card, and making them tap twice first is a page that
+       has not understood its own purpose. */
+    for (const [i, m] of rows.entries()) group.append(row(m, { dim: i > 0, open: true }));
     box.append(group);
   }
 }

@@ -823,3 +823,10 @@ kbd {
 /* The copy that is probably not the keeper. Dimmed, never hidden: "probably"
    is doing real work in that sentence. */
 .entry.dim { opacity: 0.62; }
+
+/* The stored photograph with its outlines on it, on the every-map page. */
+.shot {
+  display: block; width: 100%; max-width: 320px; height: auto;
+  margin-top: 8px; border-radius: 6px; background: #e7ebe7;
+}
+.ghost.small { padding: 5px 10px; font-size: 13px; margin-top: 6px; }

@@ -654,9 +654,14 @@ check('every class the code toggles is styled',
    * deciding whether a map is good enough to train on. Even-odd is the rule
    * area.js and the raster already use.
    */
-  const adminJs = readFileSync(join(root, 'public/admin.js'), 'utf8');
+  /*
+   * The drawing moved to lib/review-draw.js when the every-map page needed it
+   * too -- two pages showing the same lawn slightly differently would reopen
+   * exactly the hole this check exists to hold shut.
+   */
+  const drawJs = readFileSync(join(root, 'public/lib/review-draw.js'), 'utf8');
   check('the review canvas fills a shape and its holes as one path',
-    /fill\('evenodd'\)/.test(adminJs),
+    /fill\('evenodd'\)/.test(drawJs),
     'a hole filled separately reads as lawn, and gets approved as one');
 }
 
@@ -831,7 +836,8 @@ check('every class the code toggles is styled',
    * each other, which look like one lawn with extra lines on it.
    */
   check('overlapping pieces are counted rather than left to the eye',
-    /distinctFraction/.test(adminJs) && /overlap by/.test(adminJs),
+    /distinctFraction/.test(readFileSync(join(root, 'public/lib/review-draw.js'), 'utf8'))
+    && /overlap by/.test(adminJs),
     'the difference between a corrected outline and a new one drawn over it');
 
   const doc = readFileSync(join(root, 'docs/training-data.md'), 'utf8');
