@@ -2542,5 +2542,905 @@
     "at": "2026-09-18",
     "ok": true,
     "acres": 0.022
+  },
+  "md-frederick": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.151
+  },
+  "md-garrett": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.019
+  },
+  "md-harford": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: Invalid URL"
+  },
+  "md-montgomery": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "12 samples, none parcel-sized: 12 with no usable geometry [esri geometry had keys [x, y]]"
+  },
+  "md-queen-anne-s": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.558
+  },
+  "md-st-mary-s": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: json"
+  },
+  "md-talbot": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: fetch failed"
+  },
+  "md-washington": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: Service not found"
+  },
+  "md-wicomico": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.22
+  },
+  "md-worcester": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: Layer not found"
+  },
+  "mi-alcona": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 5.05
+  },
+  "mi-allegan": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 5.05
+  },
+  "mi-antrim": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.274
+  },
+  "mi-arenac": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 39.948
+  },
+  "mi-barry": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "extent is in wkid 6499, which this does not convert, and the extent query gave nothing"
+  },
+  "mi-branch": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 3.067
+  },
+  "mi-eaton": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.07
+  },
+  "mi-emmet": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 2.521
+  },
+  "mi-hillsdale": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.235
+  },
+  "mi-ingham": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.222
+  },
+  "mi-jackson": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 1.239
+  },
+  "mi-kalamazoo": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 2.195
+  },
+  "mi-kent": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "12 samples, none parcel-sized: 12 with no usable geometry [the feature carried no geometry at all]"
+  },
+  "mi-macomb": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 9.182
+  },
+  "mi-marquette": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.122
+  },
+  "mi-midland": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.877
+  },
+  "mi-monroe": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.999
+  },
+  "mi-muskegon": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 37.924
+  },
+  "mn-aitkin": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 2.615
+  },
+  "mn-anoka": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 26.703
+  },
+  "mn-beltrami": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 85.077
+  },
+  "mn-benton": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 9.966
+  },
+  "mn-big-stone": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 70.158
+  },
+  "mn-blue-earth": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.231
+  },
+  "mn-carlton": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.471
+  },
+  "mn-carver": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 38.03
+  },
+  "mn-chippewa": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 40.387
+  },
+  "mn-chisago": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.1
+  },
+  "mn-clay": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: Layer not found"
+  },
+  "mn-clearwater": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 1.51
+  },
+  "mn-cook": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 2.57
+  },
+  "mn-crow-wing": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.224
+  },
+  "mn-dakota": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.12
+  },
+  "mn-dodge": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: Service not found"
+  },
+  "mn-douglas": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: fetch failed"
+  },
+  "mn-faribault": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.611
+  },
+  "mn-freeborn": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 5.259
+  },
+  "mn-goodhue": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 134.726
+  },
+  "mn-grant": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 2.572
+  },
+  "mn-hubbard": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 66.551
+  },
+  "mn-itasca": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 32.693
+  },
+  "mn-kanabec": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 1.234
+  },
+  "mn-kandiyohi": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 8.263
+  },
+  "mn-koochiching": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 40.328
+  },
+  "mn-le-sueur": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.204
+  },
+  "mn-mahnomen": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 38.636
+  },
+  "mn-mille-lacs": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 75.639
+  },
+  "mn-norman": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 4.737
+  },
+  "mn-olmsted": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.173
+  },
+  "mn-pennington": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.515
+  },
+  "mn-polk": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.109
+  },
+  "mn-red-lake": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 157.57
+  },
+  "mn-roseau": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 23.118
+  },
+  "mn-scott": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 1.091
+  },
+  "mn-sherburne": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.662
+  },
+  "mn-st-louis": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 5.647
+  },
+  "mn-stevens": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: Layer not found"
+  },
+  "mn-todd": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 128.708
+  },
+  "mn-traverse": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 159.424
+  },
+  "mn-wadena": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 61.611
+  },
+  "mn-washington": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 5.98
+  },
+  "mn-wilkin": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 1.955
+  },
+  "mn-yellow-medicine": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 1.441
+  },
+  "mo-iron": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: fetch failed"
+  },
+  "mo-jasper": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 3.328
+  },
+  "mo-perry": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: fetch failed"
+  },
+  "mo-st-francois": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: Service StFrancois_CO/StFrancoisCo_Assessment/MapServer not started "
+  },
+  "ms-adams": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 1.509
+  },
+  "ms-alcorn": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 5.533
+  },
+  "ms-amite": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 137.328
+  },
+  "ms-attala": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 42.651
+  },
+  "ms-benton": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 157.396
+  },
+  "ms-bolivar": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 77.889
+  },
+  "ms-calhoun": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 32.429
+  },
+  "ms-chickasaw": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 69.865
+  },
+  "ms-clarke": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.128
+  },
+  "ms-clay": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 76.492
+  },
+  "ms-coahoma": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.156
+  },
+  "ms-copiah": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: fetch failed"
+  },
+  "ms-covington": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 7.878
+  },
+  "ms-madison": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: fetch failed"
+  },
+  "ms-rankin": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: fetch failed"
+  },
+  "ms-simpson": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: fetch failed"
+  },
+  "ms-warren": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: fetch failed"
+  },
+  "ms-yazoo": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: fetch failed"
+  },
+  "nc-avery": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: Service NC/Avery/MapServer not found "
+  },
+  "nc-caswell": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 2.917
+  },
+  "nc-cumberland": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "extent query: timed out (layer 0 was no better)"
+  },
+  "nc-davidson": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: Service MobileMap/MapServer not found "
+  },
+  "nc-forsyth": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "extent query: timed out (layer 0 was no better)"
+  },
+  "nc-guilford": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "extent query: timed out (layer 0 was no better)"
+  },
+  "nc-montgomery": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 35.735
+  },
+  "nc-perquimans": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.677
+  },
+  "nc-rockingham": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 3.339
+  },
+  "nc-rutherford": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: HTTP 404"
+  },
+  "nc-yancey": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: HTTP 404"
+  },
+  "nd-barnes": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: Invalid URL"
+  },
+  "nd-bottineau": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 8.532
+  },
+  "nd-burke": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: Invalid URL"
+  },
+  "nd-burleigh": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.505
+  },
+  "nd-cavalier": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: Invalid URL"
+  },
+  "nd-divide": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 60.629
+  },
+  "nd-hettinger": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 40.242
+  },
+  "nd-mckenzie": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: Service not found"
+  },
+  "nd-mclean": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 1.57
+  },
+  "nd-morton": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 13.14
+  },
+  "nd-mountrail": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 80.058
+  },
+  "nd-richland": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: Service not found"
+  },
+  "nd-rolette": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 150.677
+  },
+  "nd-sargent": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 39.698
+  },
+  "nd-sioux": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 39.893
+  },
+  "nd-stark": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 159.773
+  },
+  "nd-traill": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: Invalid URL"
+  },
+  "nd-ward": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.054
+  },
+  "nd-williams": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 78.522
+  },
+  "ne-thurston": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 156.938
+  },
+  "ne-valley": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: Service Valley_County_NE_Assessor/MapServer not found "
+  },
+  "ne-webster": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: Service Webster_County_NE_Assessor/MapServer not found "
+  },
+  "nj-camden": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "extent query: timed out"
+  },
+  "nj-morris": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "extent query: timed out"
+  },
+  "nj-ocean": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "extent query: timed out"
+  },
+  "nj-sussex": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.628
+  },
+  "nm-eddy": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 107.496
+  },
+  "nm-lea": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: HTTP 404"
+  },
+  "nm-san-juan": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: Service Maps/ClerksExternal/MapServer not found "
+  },
+  "nm-santa-fe": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 1.701
+  },
+  "nm-valencia": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: HTTP 404"
+  },
+  "nv-carson": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 4.377
+  },
+  "nv-churchill": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.168
+  },
+  "nv-douglas": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 41.587
+  },
+  "nv-eureka": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: Invalid URL"
+  },
+  "nv-humboldt": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.141
+  },
+  "nv-lincoln": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: fetch failed"
+  },
+  "nv-lyon": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: Error handling service request :Server object extension 'featureserver' not found."
+  },
+  "nv-nye": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 39.117
+  },
+  "nv-storey": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 62.947
+  },
+  "nv-white-pine": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 60.514
+  },
+  "ny-sullivan": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: fetch failed"
+  },
+  "oh-belmont": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: Invalid URL"
+  },
+  "oh-delaware": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 3.853
+  },
+  "oh-hamilton": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "extent query: timed out"
+  },
+  "oh-licking": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: fetch failed"
+  },
+  "oh-lorain": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: timed out"
+  },
+  "oh-union": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.477
+  },
+  "ok-creek": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 19.371
+  },
+  "ok-osage": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 98.666
+  },
+  "ok-rogers": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 11.166
+  },
+  "ok-tulsa": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 1.149
+  },
+  "ok-wagoner": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.765
+  },
+  "or-clackamas": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 30.915
+  },
+  "or-clatsop": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 96.75
+  },
+  "or-columbia": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.038
+  },
+  "or-coos": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: Invalid URL"
+  },
+  "or-crook": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: HTTP 404"
+  },
+  "or-curry": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 56.612
+  },
+  "or-deschutes": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 1.091
+  },
+  "or-douglas": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 121.758
+  },
+  "or-gilliam": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 141.961
+  },
+  "or-grant": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.161
+  },
+  "or-harney": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.132
+  },
+  "or-hood-river": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: Invalid URL"
+  },
+  "or-jackson": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.477
+  },
+  "or-klamath": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.284
+  },
+  "or-lake": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 72.39
+  },
+  "or-linn": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 121.738
+  },
+  "or-malheur": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 66.673
+  },
+  "or-morrow": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: Invalid URL"
+  },
+  "or-polk": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "extent is in wkid 2913, which this does not convert, and the extent query gave nothing"
+  },
+  "or-tillamook": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.124
+  },
+  "or-wasco": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 40.367
   }
 }
