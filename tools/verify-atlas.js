@@ -57,24 +57,6 @@ const TIMEOUT_MS = 15000;
  * "what is your extent" inside a timeout meant for reading metadata.
  */
 const SCAN_TIMEOUT_MS = 60000;
-/*
- * AND A BUDGET FOR ALL OF THEM TOGETHER, which the per-request timeout is not.
- *
- * Sixty seconds each is the right allowance for one enormous county. It is the
- * wrong allowance for twenty-three failures in a row, which is twenty-three
- * minutes of a forty-five minute workflow spent finding out that counties
- * which were never going to answer still do not. Two runs in a row went to
- * forty minutes; the second was cancelled at thirty-eight.
- *
- * So the scan is a shared pot. The first few counties that genuinely need it
- * get it -- Cook, Harris and San Diego are the reason it exists and they are
- * near the front of an alphabetical sweep -- and once the pot is empty the
- * rest read metadata and move on. A sweep that finishes and names what it
- * skipped beats one that is killed at the ceiling with nothing written.
- */
-const SCAN_BUDGET_MS = 6 * 60 * 1000;
-let scanSpent = 0;
-let scanSkipped = 0;
 /** Between requests. These are small public assets, not something to hammer. */
 const PAUSE_MS = 120;
 /** A residential or small rural parcel, matching discover-counties.js. */
@@ -253,33 +235,28 @@ async function extentOf(service, layer) {
    * somebody runs by hand.
    */
   /*
-   * THIS WAS SKIPPED ON RETRIES FOR ONE RUN, AND IT COST EIGHT NEW YORK
-   * COUNTIES -- all five boroughs, plus Onondaga, Suffolk and Westchester --
-   * along with Duval, Hamilton and Wake. 142 down to 135.
+   * DO NOT TRY TO MAKE THIS CHEAPER. Two attempts in one night, both of which
+   * shipped a worse map than doing nothing:
    *
-   * The reasoning was that a retry is for a hiccup and a county needing its
-   * whole table walked will not be rescued by walking it twice. Both clauses
-   * are true and the conclusion was still wrong, because for these counties
-   * the scan is the ONLY path to an extent: their metadata reports it in State
-   * Plane, which this deliberately does not convert. Skip the scan on the
-   * second ask and the second ask cannot possibly succeed -- so the retry was
-   * guaranteed useless on exactly the largest counties in the set.
+   *   skipped on a retry     142 -> 135, taking all five New York City
+   *                          boroughs, Onondaga, Suffolk, Westchester, Duval,
+   *                          Hamilton and Wake
+   *   a six-minute pot       142 -> 77
    *
-   * The cost is real either way, so it is bounded by a shared pot instead. See
-   * SCAN_BUDGET_MS.
+   * Both failed the same way. For the largest counties this scan is the ONLY
+   * path to an extent -- their metadata reports it in State Plane, which this
+   * deliberately does not convert -- so anything that rations it does not slow
+   * those counties down, it deletes them. And rationing first-come across an
+   * alphabetical sweep is not "whoever needs it most", it is Alabama and
+   * Arizona spending the pot before Cook County is reached.
+   *
+   * A full sweep takes about twenty-five minutes and the ceiling is
+   * forty-five. There is no problem here to solve.
    */
   const q = new URLSearchParams({
     where: '1=1', returnExtentOnly: 'true', outSR: '4326', f: 'json',
   });
-  let query;
-  if (scanSpent >= SCAN_BUDGET_MS) {
-    scanSkipped++;
-    query = { error: 'the run\'s scan budget was already spent -- see SCAN_BUDGET_MS' };
-  } else {
-    const began = Date.now();
-    query = await getJson(`${service}/${layer}/query?${q}`, SCAN_TIMEOUT_MS);
-    scanSpent += Date.now() - began;
-  }
+  const query = await getJson(`${service}/${layer}/query?${q}`, SCAN_TIMEOUT_MS);
   const scanned = boxFrom(query?.extent);
   if (scanned) return { box: scanned };
 
@@ -555,33 +532,7 @@ const passed = [];
 const failed = [];
 
 for (const c of list) {
-  /*
-   * ONE SECOND CHANCE, because these counties flicker.
-   *
-   * Two full sweeps a few minutes apart, on the same candidates: the first
-   * lost sc-charleston, tx-denton and vt-chittenden; the second gave back
-   * tx-denton and vt-chittenden and lost in-allen and oh-summit instead. Four
-   * different counties in two runs, none of them broken -- public county
-   * servers time out, rate-limit and hiccup, and a sweep that asks each one
-   * exactly once records whichever ones were busy as though they did not
-   * exist.
-   *
-   * This file IS the coverage, so that flicker is real addresses losing their
-   * property line for however long it is until somebody runs this again.
-   *
-   * Only on failure, so it costs nothing on the ~140 that answer first time,
-   * and after a longer pause than the ordinary one: whatever the server was
-   * doing, going straight back at it is the way to meet it again.
-   */
-  let r = await verify(c);
-  if (!r.ok) {
-    await sleep(PAUSE_MS * 6);
-    const again = await verify(c);
-    if (again.ok) {
-      console.log(`  (${c.key} answered on the second ask)`);
-      r = again;
-    }
-  }
+  const r = await verify(c);
   if (r.ok) {
     /* The layer that actually answered, which is not always the one the
        catalogue named. See parcelLayerIn. */
@@ -608,16 +559,6 @@ for (const c of list) {
 
 console.log(`\n${passed.length} verified, ${failed.length} not.`);
 
-/*
- * Said out loud, because a county skipped for want of budget is not the same
- * finding as one that answered and was wrong, and next time the pot may need
- * to be bigger or the sweep split in two.
- */
-if (scanSpent) {
-  console.log(`\nSpent ${(scanSpent / 1000).toFixed(0)}s of the `
-    + `${SCAN_BUDGET_MS / 1000}s extent-scan budget`
-    + (scanSkipped ? `, and skipped the scan for ${scanSkipped} more.` : '.'));
-}
 
 if (only) {
   console.log('\nONLY was set, so nothing was written -- this was a spot check.');
