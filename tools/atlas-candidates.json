@@ -1,8 +1,8 @@
 {
   "importedFrom": "@urbankitstudio/atlas",
   "atlasVersion": "0.6.3",
-  "importedAt": "2026-09-17",
-  "note": "Candidates only. Nothing here is claimed as working until verify-atlas.js says so.",
+  "importedAt": "2026-09-18",
+  "note": "Candidates only. Nothing here is claimed as working until verify-counties.js says so.",
   "listed": 171,
   "dropped": 6,
   "candidates": [

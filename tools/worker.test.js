@@ -40,7 +40,7 @@ import {
   COUNTIES, COUNTY_BBOX, candidateCounties, isCovered,
 } from '../worker/src/counties.js';
 import { queryCounty } from '../worker/src/parcel.js';
-import { ATLAS_COUNTIES } from '../worker/src/counties-atlas.js';
+import { VERIFIED_COUNTIES } from '../worker/src/counties-verified.js';
 import { readFile } from 'node:fs/promises';
 import { readdirSync, readFileSync } from 'node:fs';
 
@@ -1116,12 +1116,12 @@ check('and a typed prompt is sent verbatim',
 
 /* ------------------------------------------------- the generated atlas half */
 /*
- * counties-atlas.js is written by a workflow, so nothing about it is under
+ * counties-verified.js is written by a workflow, so nothing about it is under
  * review the way the hand-written entries are. These are the invariants that
  * hold whether it is empty, freshly generated, or stale.
  */
 {
-  const generated = Object.entries(ATLAS_COUNTIES);
+  const generated = Object.entries(VERIFIED_COUNTIES);
 
   /*
    * EVERY GENERATED ENTRY NEEDS ITS OWN BOX. The hand-written half keeps boxes
@@ -1169,7 +1169,7 @@ check('and a typed prompt is sent verbatim',
    * trace was a build warning in the deploy log.
    */
   const generatedText = readFileSync(
-    new URL('../worker/src/counties-atlas.js', import.meta.url), 'utf8'
+    new URL('../worker/src/counties-verified.js', import.meta.url), 'utf8'
   );
   const keys = [...generatedText.matchAll(/^ {2}'([a-z0-9-]+)':\s*\{/gm)].map((m) => m[1]);
   const dupes = keys.filter((k, i) => keys.indexOf(k) !== i);

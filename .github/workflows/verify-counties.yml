@@ -1,0 +1,173 @@
+name: 10. Verify county parcel servers
+
+# Proves imported parcel endpoints before the app claims any of them, and
+# merges whatever passed into worker/src/counties-verified.js.
+#
+# IT RUNS IN SLICES, and that is the important thing to know about it. The
+# candidate pool is about a thousand counties across two catalogues, which is
+# some hours of gentle querying -- far past any runner's ceiling. So each run
+# takes the LEAST RECENTLY CHECKED slice and leaves everything else exactly as
+# it is. Run it again and it takes the next slice.
+#
+# The log at the end says how many are still untried. When that reaches zero,
+# running it again re-proves the oldest results, which is the periodic
+# re-verification this never had: these are other people's servers and they
+# move without telling anybody.
+#
+# Free to run: read-only GETs against public county map servers, at a
+# deliberately gentle rate. No AI, no Replicate, nothing to spend.
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'How many to check this run. 200 is about half an hour.'
+        required: false
+        default: '200'
+      only:
+        description: 'One key (mi-kent, tx-statewide) or a state prefix (mi) for a spot check. A spot check writes nothing.'
+        required: false
+        default: ''
+      commit:
+        description: 'Commit the result back to this branch'
+        required: false
+        default: 'true'
+        type: choice
+        options: ['true', 'false']
+
+jobs:
+  verify:
+    name: Query a slice of the candidate pool
+    runs-on: ubuntu-latest
+    # A slice of 200 is about half an hour at three requests a county with a
+    # pause between. The ceiling is generous rather than tight because a run
+    # that gets cut off partway commits whatever it had reached.
+    timeout-minutes: 50
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      # THE CANDIDATES ARE COMMITTED, so this normally has nothing to do. It
+      # re-imports anyway because OpenAddresses is maintained continuously and
+      # a county added there last week should not wait for somebody to
+      # remember to re-run an importer from a phone.
+      #
+      # `continue-on-error`: a failed import leaves the committed candidates
+      # in place, which is a slightly stale pool rather than no run at all.
+      # The verification is the expensive part and it is worth having either
+      # way.
+      - name: Refresh the candidate lists
+        continue-on-error: true
+        run: |
+          node tools/import-atlas.js
+          node tools/import-openaddresses.js
+
+      - name: Verify
+        env:
+          ONLY: ${{ inputs.only }}
+          LIMIT: ${{ inputs.limit }}
+        run: node tools/verify-counties.js
+
+      # KEEP THE RESULT EVEN IF THE PUSH FAILS. The sweep is half an hour of
+      # real queries against hundreds of public county servers, and it has been
+      # thrown away twice by git problems that have nothing to do with the
+      # counties. An artifact costs nothing and means the worst case is
+      # downloading a file rather than re-running the sweep.
+      #
+      # `always()` on purpose: the run this exists for is the one that failed.
+      - name: Keep the generated files whatever happens
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: counties-verified
+          path: |
+            worker/src/counties-verified.js
+            tools/verify-log.json
+          if-no-files-found: warn
+
+      # Only on a real run: the verifier writes nothing when ONLY is set, so
+      # committing then would push an unchanged file and a confusing commit.
+      - name: Commit the result
+        if: inputs.commit == 'true' && inputs.only == ''
+        run: |
+          FILES="worker/src/counties-verified.js tools/verify-log.json
+                 tools/atlas-candidates.json tools/openaddresses-candidates.json"
+
+          if git diff --quiet -- $FILES; then
+            echo "Nothing changed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # THE BRANCH MOVES WHILE THIS RUNS, and the previous answer to that
+          # was a rebase, which was wrong twice over.
+          #
+          # Wrong on the merge: a rebase asks git to reconcile two versions of
+          # these files, and git has no basis for doing that. They are
+          # GENERATED -- the run that just finished is the only authority on
+          # what belongs in them, and anything else on the branch is either an
+          # older run or a hand edit the headers ask nobody to make. There is
+          # nothing to reconcile; the fresh ones win outright.
+          #
+          # Wrong on the retry: a conflicted rebase stays conflicted. Attempts
+          # two and three could not even begin -- "Pulling is not possible
+          # because you have unmerged files" -- so a loop that looked like
+          # three chances was one chance and two echoes.
+          #
+          # So: copy the results somewhere git cannot reach, reset hard onto
+          # whatever the branch is NOW, put them back, commit that. No merge
+          # happens, so no merge can fail, and each retry re-reads the branch
+          # rather than retrying a broken state.
+          #
+          # SAFE HERE EVEN THOUGH THIS RUN ONLY SAW A SLICE, because the
+          # verifier merges: it read the previous file at the start and wrote
+          # every entry it did not re-check back out unchanged. What lands is
+          # the whole registry, not this run's fragment. What it cannot see is
+          # a DIFFERENT slice committed by a concurrent run -- so do not start
+          # two of these at once.
+          mkdir -p "$RUNNER_TEMP/out"
+          for f in $FILES; do cp "$f" "$RUNNER_TEMP/out/$(basename "$f")"; done
+
+          for attempt in 1 2 3; do
+            # `if !` rather than a bare call: this step runs under `bash -e`,
+            # where a plain failing command ends the script -- so a fetch that
+            # lost the network would take the two remaining attempts with it.
+            if ! git fetch origin "$GITHUB_REF_NAME"; then
+              echo "Attempt $attempt: could not reach origin. Retrying."
+              sleep 5
+              continue
+            fi
+            # FETCH_HEAD, not origin/<branch>: it is what the fetch just wrote,
+            # with no dependence on remote-tracking refs being updated.
+            git reset --hard FETCH_HEAD
+            for f in $FILES; do cp "$RUNNER_TEMP/out/$(basename "$f")" "$f"; done
+
+            if git diff --quiet -- $FILES; then
+              echo "The branch already carries these exact files."
+              exit 0
+            fi
+
+            git add $FILES
+            git commit -m "Verify another slice of the county parcel servers
+
+          Written by tools/verify-counties.js: every entry here answered a
+          point query inside one of its own parcels with a parcel-sized
+          polygon, and every statewide entry answered across its own state.
+
+          Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+            git push && exit 0
+
+            echo "Push $attempt failed; the branch moved again. Retrying."
+            sleep 5
+          done
+          echo "::error::Could not push the verified counties after three tries."
+          echo "::error::They are on this run as the 'counties-verified' artifact."
+          exit 1

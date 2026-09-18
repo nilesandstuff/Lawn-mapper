@@ -28,11 +28,16 @@
  * WHAT IT IS NOT is verified. Their "verified" means somebody checked the
  * endpoint answers; counties.js means a point query returned a parcel-sized
  * polygon, measured. Nothing here goes into counties.js on this file's word --
- * verify-atlas.js has to agree first, and it is deliberately a separate step
+ * verify-counties.js has to agree first, and it is deliberately a separate step
  * that needs a network the sandbox does not have.
  *
  * Also not a superset: Champaign, Vanderburgh, Ottawa, Allegan, Muskegon and
  * Newaygo are all absent from it and all present here.
+ *
+ * AND IT IS NO LONGER THE ONLY CATALOGUE. tools/import-openaddresses.js reads
+ * a second one, five times the size, and tools/candidates.js joins the two on
+ * their FIPS codes. Neither contains the other -- 72 counties are here and not
+ * there -- so this import is not superseded, it is one of two.
  */
 
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
@@ -268,7 +273,7 @@ const out = {
     readFileSync(resolve(root, 'node_modules/@urbankitstudio/atlas/package.json'), 'utf8')
   ).version,
   importedAt: new Date().toISOString().slice(0, 10),
-  note: 'Candidates only. Nothing here is claimed as working until verify-atlas.js says so.',
+  note: 'Candidates only. Nothing here is claimed as working until verify-counties.js says so.',
   /*
    * THE FUNNEL, WRITTEN DOWN.
    *
@@ -292,4 +297,4 @@ console.log(`  ${candidates.filter((c) => c.fallbacks.length).length} carry a se
 console.log(`  ${candidates.filter((c) => !c.fields.pin).length} have no parcel-id field this recognises`);
 console.log(`  ${candidates.filter((c) => !c.fields.address).length} have no address field this recognises`);
 console.log(`\nwrote ${target}`);
-console.log('Next: run the "6. Verify atlas counties" workflow, which needs a network.');
+console.log('Next: run the "10. Verify county parcel servers" workflow, which needs a network.');

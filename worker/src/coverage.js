@@ -109,8 +109,23 @@ export function coverage() {
   for (const [ab, { wide, fips }] of found) {
     const state = states[ab];
     const all = Object.entries(state.counties); // [fp, name]
-    const everyOne = !wide && fips.size === all.length;
-    const kind = wide ? (wide.complete ? 'whole' : 'most') : everyOne ? 'whole' : 'some';
+    /*
+     * EVERY COUNTY COVERED BEATS A STATEWIDE MOSAIC, and the first version of
+     * this had it the other way round.
+     *
+     * Connecticut had all nine of its planning regions verified one at a time
+     * -- nine separate servers, each proved with a point query -- and read
+     * "all of Connecticut". Then a statewide Connecticut layer was imported,
+     * the statewide branch won because it was checked first, and the state
+     * dropped to "most of": a weaker claim, caused by GAINING a second source
+     * for ground already covered.
+     *
+     * A mosaic is only the best thing known about a state when nothing better
+     * is. Counting the counties first means an extra endpoint can never make
+     * the page promise less.
+     */
+    const everyOne = fips.size === all.length;
+    const kind = everyOne || wide?.complete ? 'whole' : wide ? 'most' : 'some';
 
     out.push({
       ab,

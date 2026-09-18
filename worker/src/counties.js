@@ -1,5 +1,14 @@
 /**
- * County parcel GIS registry -- West Michigan coverage area.
+ * County parcel GIS registry.
+ *
+ * WHAT THIS FILE IS NOW. It began as five counties in West Michigan, each
+ * found by hand. Those are still below, with their paragraphs about which test
+ * points returned what, because they are the ones a person examined. Behind
+ * them sits counties-verified.js, generated from two public catalogues and
+ * proved endpoint by endpoint, which is where the bulk of the coverage lives.
+ *
+ * HAND-WRITTEN WINS ON A CLASH and both are kept. See ALL_COUNTIES at the
+ * bottom.
  *
  * Every county runs its own ArcGIS server with its own service path, layer
  * index, field names, and native spatial reference. Muskegon publishes in
@@ -15,7 +24,7 @@
  * every endpoint in the first version of this file had already gone stale.
  */
 
-import { ATLAS_COUNTIES } from './counties-atlas.js';
+import { VERIFIED_COUNTIES } from './counties-verified.js';
 
 const COUNTIES = {
   /*
@@ -552,12 +561,12 @@ const COUNTY_BBOX = {
  * clash cannot happen silently: they cannot collide by accident, only overlap
  * by geography, which is the case worth keeping.
  */
-const ALL_COUNTIES = { ...COUNTIES, ...ATLAS_COUNTIES };
+const ALL_COUNTIES = { ...COUNTIES, ...VERIFIED_COUNTIES };
 
 const ALL_BBOX = {
   ...COUNTY_BBOX,
   ...Object.fromEntries(
-    Object.entries(ATLAS_COUNTIES)
+    Object.entries(VERIFIED_COUNTIES)
       .filter(([, c]) => c.box)
       .map(([key, c]) => [key, c.box])
   ),

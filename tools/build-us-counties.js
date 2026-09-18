@@ -105,6 +105,23 @@ const at = (name) => {
   return i;
 };
 const [iState, iGeoid, iName] = [at('USPS'), at('GEOID'), at('NAME')];
+/*
+ * THE COUNTY CENTROIDS, which are here to bound the STATE.
+ *
+ * A layer claiming to serve a whole state has to be checked against something,
+ * and the check that matters is "is this actually state-sized". OpenAddresses
+ * lists an Ohio statewide source whose URL is one county's own server -- real
+ * data, wrongly labelled, and if the app took it at its word it would claim
+ * most of Ohio on the strength of Trumbull County.
+ *
+ * A box drawn through the county centroids is deliberately SMALLER than the
+ * state -- it stops half a county short on every side -- which is the right
+ * direction to be wrong in: it makes the test easier to pass, so a real
+ * statewide layer never fails it, while a layer covering one county out of
+ * eighty-eight is nowhere near.
+ */
+const iLat = at('INTPTLAT');
+const iLng = at('INTPTLONG');
 
 /* { '01': { ab: 'AL', name: 'Alabama', counties: { '001': 'Autauga County' } } } */
 const states = {};
@@ -118,9 +135,35 @@ for (const line of lines) {
   const geoid = f[iGeoid];
   if (!/^\d{5}$/.test(geoid)) throw new Error(`Not a county FIPS code: ${geoid}`);
   const fp = geoid.slice(0, 2);
-  states[fp] ||= { ab, name: STATE_NAMES[ab], counties: {} };
+  states[fp] ||= { ab, name: STATE_NAMES[ab], counties: {}, box: null };
   states[fp].counties[geoid.slice(2)] = f[iName];
+
+  const lat = Number(f[iLat]);
+  const lng = Number(f[iLng]);
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    const b = states[fp].box;
+    states[fp].box = b
+      ? [Math.min(b[0], lng), Math.min(b[1], lat), Math.max(b[2], lng), Math.max(b[3], lat)]
+      : [lng, lat, lng, lat];
+  }
   counted++;
+}
+
+/*
+ * A SINGLE-COUNTY STATE HAS A ZERO-WIDTH BOX, because one centroid is a point.
+ * The District of Columbia is exactly that. Given a floor rather than left to
+ * collapse: a zero span makes any percentage-of-the-state test either divide
+ * by zero or pass trivially, and the second is worse.
+ */
+const MIN_STATE_SPAN = 0.05;
+for (const s of Object.values(states)) {
+  if (!s.box) continue;
+  const [w, so, e, n] = s.box;
+  s.box = [
+    w, so,
+    Math.max(e, w + MIN_STATE_SPAN),
+    Math.max(n, so + MIN_STATE_SPAN),
+  ].map((v) => Math.round(v * 1000) / 1000);
 }
 
 const missing = Object.keys(STATE_NAMES).filter(
@@ -137,6 +180,7 @@ const body = Object.keys(states).sort().map((fp) => {
   return `  ${JSON.stringify(fp)}: {\n`
     + `    ab: ${JSON.stringify(s.ab)},\n`
     + `    name: ${JSON.stringify(s.name)},\n`
+    + `    box: ${JSON.stringify(s.box)},\n`
     + `    counties: {\n${rows.replace(/^ {4}/gm, '      ')}\n    },\n`
     + '  },';
 }).join('\n');
@@ -152,6 +196,12 @@ const out = `/**
  *
  * The territories are not here. The app cannot measure a lawn in one, so
  * counting their districts as absent coverage would overstate the work left.
+ *
+ * Each state also carries a "box", drawn through its own county CENTROIDS. It
+ * is deliberately smaller than the state, which is the safe direction: it is
+ * used to ask whether a layer claiming to serve a whole state is actually
+ * state-sized, and being generous there would let one county's server pass as
+ * Ohio.
  *
  * Source: the Census Bureau county gazetteer.
  * ${counted} counties across ${Object.keys(states).length} states, built ${new Date().toISOString().slice(0, 10)}.

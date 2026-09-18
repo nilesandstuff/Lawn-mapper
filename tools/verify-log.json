@@ -1,0 +1,152 @@
+{
+  "ar-statewide": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 3.941
+  },
+  "az-statewide": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 5.006
+  },
+  "ct-statewide": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.242
+  },
+  "dc-statewide": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.037
+  },
+  "de-statewide": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.195
+  },
+  "id-statewide": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 1.93
+  },
+  "in-statewide": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 1.66
+  },
+  "md-statewide": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "0 of 25 points across MD returned a parcel (25 nothing, 0 under 0.01 ac, 0 over 100000 ac)"
+  },
+  "mn-statewide": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 1.406
+  },
+  "nh-statewide": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.413
+  },
+  "ny-statewide": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 6.602
+  },
+  "oh-statewide": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "0 of 25 points across OH returned a parcel (25 nothing, 0 under 0.01 ac, 0 over 100000 ac)"
+  },
+  "or-statewide": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "0 of 25 points across OR returned a parcel (25 nothing, 0 under 0.01 ac, 0 over 100000 ac)"
+  },
+  "tx-statewide": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "0 of 25 points across TX returned a parcel (25 nothing, 0 under 0.01 ac, 0 over 100000 ac)"
+  },
+  "ut-statewide": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 25.768
+  },
+  "va-statewide": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "0 of 25 points across VA returned a parcel (25 nothing, 0 under 0.01 ac, 0 over 100000 ac)"
+  },
+  "vt-statewide": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.997
+  },
+  "wa-statewide": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 12.226
+  },
+  "wv-statewide": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.229
+  },
+  "ak-anchorage": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "extent is in wkid 3857, which this does not convert, and the extent query gave nothing"
+  },
+  "ak-bristol-bay": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 43.39
+  },
+  "ak-fairbanks-north-star": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 5.371
+  },
+  "ak-haines": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "layer metadata: {\"code\":400,\"message\":\"\",\"details\":[\"The requested layer (layerId: 6) was not found.\"]}"
+  },
+  "ak-ketchikan-gateway": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "extent query: {\"code\":400,\"message\":\"\",\"details\":[\"Unable to perform query. Please check your parameters.\"]}"
+  },
+  "ak-kodiak-island": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 79.779
+  },
+  "ak-matanuska-susitna": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 1.334
+  },
+  "ak-north-slope": {
+    "at": "2026-09-18",
+    "ok": false,
+    "why": "extent is in wkid 3338, which this does not convert, and the extent query gave nothing"
+  },
+  "ak-yakutat": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 39.857
+  },
+  "al-autauga": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 1.509
+  },
+  "al-baldwin": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.22
+  }
+}

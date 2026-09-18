@@ -238,6 +238,116 @@ const by = (ab) => states.find((s) => s.ab === ab);
     String(summary.someCounties));
 }
 
+/* ------------------------------------------- two catalogues, joined and sliced */
+{
+  const { candidatePool } = await import('./candidates.js');
+  const pool = candidatePool();
+
+  /*
+   * NEITHER CATALOGUE IS A SUPERSET, which is the entire argument for carrying
+   * both and the thing most likely to be quietly undone by someone tidying up.
+   * If one ever does contain the other, this check says so rather than letting
+   * the merge silently become a no-op.
+   */
+  check('both catalogues contribute candidates',
+    pool.sources.atlas > 0 && pool.sources.openaddresses > 0,
+    JSON.stringify(pool.sources));
+  check('and each holds counties the other does not',
+    pool.sources.fresh > 0
+    && pool.sources.atlas > pool.sources.joined,
+    `${pool.sources.fresh} only in OpenAddresses, `
+      + `${pool.sources.atlas - pool.sources.joined} only in the atlas`);
+
+  /*
+   * ONE ENTRY PER COUNTY. Two candidates for one place means two bounding
+   * boxes nominating the same address, and the generated registry is an object
+   * literal where a duplicate key is not an error -- it is the second one
+   * silently winning. That is how New York once lost four boroughs.
+   */
+  const seen = new Map();
+  const dupeKey = [];
+  const dupeFips = [];
+  for (const c of pool.candidates) {
+    if (seen.has(c.key)) dupeKey.push(c.key);
+    seen.set(c.key, c);
+  }
+  const byFips = new Map();
+  for (const c of pool.candidates) {
+    if (!c.fips) continue;
+    if (byFips.has(c.fips)) dupeFips.push(`${c.fips} (${byFips.get(c.fips)} / ${c.key})`);
+    byFips.set(c.fips, c.key);
+  }
+  check('no county appears twice under two keys',
+    dupeKey.length === 0, dupeKey.join(', ') || `${seen.size} distinct keys`);
+  check('and no FIPS code is claimed by two candidates',
+    dupeFips.length === 0, dupeFips.join(', ') || `${byFips.size} distinct counties`);
+
+  /*
+   * A COUNTY IN BOTH KEEPS THE SECOND ENDPOINT. Falling through to it costs
+   * one timeout and saves the property line, which is the failure this
+   * registry has seen more than any other -- so the merge must not be throwing
+   * the loser away.
+   */
+  check('a county listed by both carries the other endpoint as a fallback',
+    pool.candidates.filter((c) => c.fallbacks.length).length >= pool.sources.joined * 0.5,
+    `${pool.candidates.filter((c) => c.fallbacks.length).length} carry a fallback, `
+      + `${pool.sources.joined} are in both`);
+
+  /* Every candidate has to be usable: the app builds `${service}/${layer}/query`
+     and nothing else. */
+  const broken = pool.candidates.concat(pool.statewide).filter((c) =>
+    !/^https:\/\/.+\/(Map|Feature)Server$/i.test(String(c.service))
+    || !Number.isInteger(c.layer));
+  check('every candidate splits into a service and a layer index',
+    broken.length === 0,
+    broken.slice(0, 5).map((c) => `${c.key}: ${c.service}/${c.layer}`).join(', ')
+      || `${pool.candidates.length + pool.statewide.length} usable`);
+
+  /* The statewide ones are a different claim and must say so. */
+  check('every statewide candidate names its state',
+    pool.statewide.length > 0
+    && pool.statewide.every((c) => c.statewide === true && /^[A-Z]{2}$/.test(c.state)),
+    pool.statewide.map((c) => c.state).join(' '));
+  /*
+   * AND NONE OF THEM IS `complete`. A state republishing what its counties
+   * send it has holes that look exactly like a working service from here, so
+   * nothing imported may promise a whole state -- that flag is for Maryland,
+   * which answered at four points and is set by hand.
+   */
+  check('and none of them promises a whole state',
+    pool.statewide.every((c) => !c.complete),
+    'an imported statewide layer is a mosaic until somebody proves otherwise');
+}
+
+/* ------------------------------------------ what the verifier actually shipped */
+{
+  const { VERIFIED_COUNTIES } = await import('../worker/src/counties-verified.js');
+  const entries = Object.entries(VERIFIED_COUNTIES);
+
+  /*
+   * EVERY ENTRY CARRIES ITS OWN DATE, which is what makes the slicing safe.
+   * A run checks two hundred of a thousand and leaves the rest alone, so
+   * "when was this file written" says nothing about any particular county --
+   * only `checked` does.
+   */
+  const undated = entries.filter(([, e]) => !/^\d{4}-\d{2}-\d{2}$/.test(String(e.checked)));
+  check('every verified entry records when it was last proved',
+    undated.length === 0,
+    undated.slice(0, 5).map(([k]) => k).join(', ') || `${entries.length} dated`);
+
+  /* A statewide entry is a state; a county entry is a county. Mixing the two
+     shapes would put a state-sized box under a county's name. */
+  const wrong = entries.filter(([, e]) => (e.statewide
+    ? !/^[A-Z]{2}$/.test(String(e.state)) || e.fips
+    : !/^\d{5}$/.test(String(e.fips)) || e.state));
+  check('and is either a county with a FIPS code or a state with a postcode',
+    wrong.length === 0, wrong.slice(0, 5).map(([k]) => k).join(', '));
+
+  check('nothing generated promises a whole state',
+    entries.every(([, e]) => !e.complete),
+    'only Maryland carries that, and it is written by hand');
+}
+
 /* ------------------------------------------------- the routes that carry it */
 {
   /*

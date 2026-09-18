@@ -1,17 +1,35 @@
 /**
- * Proves each imported atlas county before this app claims it.
+ * Proves each imported county before this app claims it.
  *
  * Needs internet, so it runs on a GitHub Actions runner:
- *   Actions -> "6. Verify atlas counties" -> Run workflow
+ *   Actions -> "10. Verify county parcel servers" -> Run workflow
  *
- * Writes worker/src/counties-atlas.js, which is GENERATED and committed.
+ * Writes worker/src/counties-verified.js, which is GENERATED and committed.
  *
  * WHY A SEPARATE STEP. counties.js says at the top that everything marked
  * `live` was confirmed by a point query returning a parcel-sized polygon.
- * Importing 160 endpoints on another project's say-so would retire that rule
- * across the whole file in one commit, and the rule is the only reason any
- * number in this app can be trusted. So the atlas supplies candidates and this
- * supplies the evidence.
+ * Importing a thousand endpoints on another project's say-so would retire that
+ * rule across the whole file in one commit, and the rule is the only reason any
+ * number in this app can be trusted. So the catalogues supply candidates and
+ * this supplies the evidence.
+ *
+ * IT RUNS IN SLICES, because the pool outgrew a single run. 165 candidates took
+ * about twenty-five minutes against a forty-five minute ceiling; adding
+ * OpenAddresses took the pool to 960, which is something like two and a half
+ * hours. A run that cannot finish is a run that commits a half-empty registry,
+ * and this file IS the coverage -- a county missing from it is a county the app
+ * stops serving.
+ *
+ * So each run takes the LEAST RECENTLY CHECKED slice, verifies it, and merges
+ * the result into what is already there. Counties outside the slice are left
+ * exactly as they were. Run it enough times and it works through everything;
+ * keep running it and the oldest results are the ones refreshed, which is the
+ * re-verification this never had.
+ *
+ * tools/verify-log.json remembers when each candidate was last tried and what
+ * happened. Without it a county that FAILS has no record at all -- it is simply
+ * absent from the registry -- so it would be picked first every single run, and
+ * the eight hundred behind it would never be reached.
  *
  * HOW IT VERIFIES, and why this is stronger than the hand-aimed points the
  * existing entries use.
@@ -41,11 +59,13 @@
  * the service for its own extent answers the question actually being asked.
  */
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { esriToGeoJSON } from '../worker/src/parcel.js';
 import { measure } from '../public/lib/area.js';
+import { candidatePool } from './candidates.js';
+import { US_COUNTIES } from '../worker/src/us-counties.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
@@ -77,7 +97,65 @@ const PLAUSIBLE_ACRES = { min: 0.01, max: 160 };
 const SAMPLES = 12;
 
 const only = (process.env.ONLY || '').trim();
+/*
+ * HOW MANY TO CHECK THIS RUN. 200 is about half an hour at the rate above,
+ * inside a forty-five minute ceiling with room for the slow ones. Raise it if
+ * the runner's limit ever does; do not raise it to finish the pool in one go,
+ * because a run that gets cut off partway commits whatever it had.
+ */
+const LIMIT = Math.max(1, Number(process.env.LIMIT) || 200);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/*
+ * A STATEWIDE CLAIM IS TESTED ACROSS THE STATE, not read off an extent.
+ *
+ * OpenAddresses lists an Ohio statewide source whose URL is one county's own
+ * server. Real data, wrongly labelled -- and taken at its word the app would
+ * claim most of Ohio on the strength of Trumbull County, then tell everybody
+ * else in the state their parcel is simply missing. So the claim has to be
+ * checked, and the honest way to check "serves the whole state" is to ask it
+ * in several places that are nowhere near each other.
+ *
+ * WHY NOT THE LAYER'S EXTENT, which is how counties are done. Five of the
+ * nineteen report theirs in UTM or State Plane -- Arizona in wkid 26912,
+ * Washington in 2927 -- which this deliberately does not convert, because
+ * reprojecting by hand is the silent-error factory this app refuses
+ * everywhere. Reading the extent would fail all five, and they are real
+ * statewide layers. Meanwhile the alternative is better anyway: an extent is
+ * the server's claim about itself, and a point query is a measurement.
+ *
+ * It is also how every hand-written statewide entry in counties.js was
+ * proved: four to six coordinates, far apart, and a paragraph about what came
+ * back. This is that, with the coordinates derived from the state instead of
+ * picked from memory -- which is the half those entries got wrong, repeatedly.
+ */
+const GRID = 5;               // 5x5 points across the state
+const GRID_INSET = 0.12;      // kept off the border, where a point is in the sea
+const STATEWIDE_HITS = 5;     // how many must come back with a real parcel
+/*
+ * A HIT IS ANY REAL PARCEL, not a residential-sized one, and getting this
+ * wrong failed three states that work.
+ *
+ * The 0.01-160 acre range is the right test for a COUNTY, where the sample
+ * point comes from inside a lot the server just handed over and anything
+ * enormous means the layer is returning outlines instead of parcels. Here the
+ * points are a grid over a whole state, so most of them land in countryside:
+ * eight of sixteen in Arizona and nine of sixteen in Idaho came back as
+ * ranches and range land, which is not a broken layer, it is Arizona.
+ *
+ * So the only thing worth rejecting is a polygon the size of the state -- a
+ * layer handing back a county or state boundary rather than a parcel. A
+ * hundred thousand acres is 156 square miles, larger than any real parcel and
+ * far smaller than any state.
+ */
+const MAX_PROBE_ACRES = 100000;
+/*
+ * And they must be SPREAD. Four hits in one corner is a county server; the
+ * span is measured against the state's own box, so it means the same thing in
+ * Texas as in Delaware. 0.5 is comfortably clear for anything genuinely
+ * statewide and unreachable for one county out of eighty-eight.
+ */
+const STATEWIDE_SPAN = 0.5;
 
 async function getJson(url, timeout = TIMEOUT_MS) {
   try {
@@ -386,7 +464,96 @@ function parcelLayerIn(layers) {
   return null;
 }
 
+/**
+ * Does this layer really serve the whole state?
+ *
+ * See GRID above for why this is a probe rather than an extent read. It asks
+ * at sixteen points spread across the state, and passes only if enough of them
+ * come back with a parcel-sized polygon AND those hits are far enough apart to
+ * rule out one county answering for all of them.
+ *
+ * THE BOX IT STORES IS THE STATE'S, grown a little, which is what every
+ * hand-written statewide entry already uses. The layer's own extent is the
+ * right answer for a county -- where the data is, rather than where the county
+ * legally ends -- but for a state the two are the same question, and the one
+ * measured here is the one that has been checked.
+ */
+async function verifyStatewide(c) {
+  const state = Object.values(US_COUNTIES).find((s) => s.ab === c.state);
+  if (!state?.box) return { ok: false, why: `no such state as ${c.state}` };
+
+  const [w, s, e, n] = state.box;
+  const at = (i, span, lo) => lo + span * (GRID_INSET + (i * (1 - 2 * GRID_INSET)) / (GRID - 1));
+  const points = [];
+  for (let ix = 0; ix < GRID; ix++) {
+    for (let iy = 0; iy < GRID; iy++) {
+      points.push([at(ix, e - w, w), at(iy, n - s, s)]);
+    }
+  }
+
+  const hits = [];
+  let attributes = null;
+  let acres = Infinity;
+  const tally = { nothing: 0, tiny: 0, huge: 0 };
+
+  for (const p of points) {
+    const hit = await parcelAt(c.service, c.layer, p);
+    await sleep(PAUSE_MS);
+    if (!hit) { tally.nothing++; continue; }
+    const m = measure(hit.geometry);
+    if (m.acres < PLAUSIBLE_ACRES.min) { tally.tiny++; continue; }
+    if (m.acres > MAX_PROBE_ACRES) { tally.huge++; continue; }
+    hits.push(p);
+    /* The SMALLEST hit is the one worth reporting: it is the evidence that
+       this layer holds house-sized lots and not just range land. */
+    if (!attributes || m.acres < acres) { attributes = hit.attributes; acres = m.acres; }
+  }
+
+  if (hits.length < STATEWIDE_HITS) {
+    return {
+      ok: false,
+      why: `${hits.length} of ${points.length} points across ${c.state} returned a `
+        + `parcel (${tally.nothing} nothing, ${tally.tiny} under `
+        + `${PLAUSIBLE_ACRES.min} ac, ${tally.huge} over ${MAX_PROBE_ACRES} ac)`,
+    };
+  }
+
+  const xs = hits.map((p) => p[0]);
+  const ys = hits.map((p) => p[1]);
+  const dx = (Math.max(...xs) - Math.min(...xs)) / (e - w);
+  const dy = (Math.max(...ys) - Math.min(...ys)) / (n - s);
+  if (dx < STATEWIDE_SPAN || dy < STATEWIDE_SPAN) {
+    return {
+      ok: false,
+      why: `${hits.length} hits but all within ${Math.round(dx * 100)}% x `
+        + `${Math.round(dy * 100)}% of ${c.state} -- a local layer wearing a `
+        + 'statewide name',
+    };
+  }
+
+  /* Grown by a tenth of a degree, because the grid is inset and the state's
+     own box is drawn through county centroids: both stop short of the border,
+     and a box that stops short of the border loses the people living on it. */
+  const box = [
+    Math.floor((w - 0.1) * 1000) / 1000, Math.floor((s - 0.1) * 1000) / 1000,
+    Math.ceil((e + 0.1) * 1000) / 1000, Math.ceil((n + 0.1) * 1000) / 1000,
+  ];
+  const has = (name) => name && Object.prototype.hasOwnProperty.call(attributes, name);
+  return {
+    ok: true,
+    box,
+    acres,
+    hits: hits.length,
+    of: points.length,
+    fields: {
+      pin: has(c.fields.pin) ? c.fields.pin : null,
+      address: has(c.fields.address) ? c.fields.address : null,
+    },
+  };
+}
+
 async function verify(c) {
+  if (c.statewide) return verifyStatewide(c);
   /*
    * THE CATALOGUE ALREADY SAID SO, so do not spend a request finding out.
    *
@@ -515,24 +682,103 @@ async function verify(c) {
   };
 }
 
-const imported = JSON.parse(readFileSync(resolve(here, 'atlas-candidates.json'), 'utf8'));
-const list = only
-  ? imported.candidates.filter((c) => c.key === only || c.key.startsWith(`${only}-`))
-  : imported.candidates;
+const pool = candidatePool();
+/*
+ * Statewide first, always, and never rationed. Nineteen of them and each is
+ * worth more than any county in the pool -- Texas alone is 254 counties -- so
+ * spending twenty of the run's two hundred slots on them every time is the
+ * best trade available. They are also the entries whose breakage is loudest,
+ * which is a reason to re-check them often rather than occasionally.
+ */
+const everything = [...pool.statewide, ...pool.candidates];
 
-if (!list.length) {
+const LOG = resolve(here, 'verify-log.json');
+/*
+ * WHEN EACH CANDIDATE WAS LAST TRIED, and what happened.
+ *
+ * Load-bearing for the slicing, not a nicety. A county that FAILS leaves no
+ * trace in the registry -- it is simply not there -- so without this it looks
+ * unchecked for ever, gets picked first every run, and the pool behind it is
+ * never reached. The eight hundred newest candidates would sit behind a
+ * handful of broken servers indefinitely.
+ */
+let log = {};
+if (existsSync(LOG)) {
+  try { log = JSON.parse(readFileSync(LOG, 'utf8')); } catch { log = {}; }
+}
+
+/*
+ * THE REGISTRY IS ITS OWN BACKUP. Every verified entry carries the date it was
+ * proved, so a log that is lost, corrupted or has simply never seen a county
+ * can be seeded from the file the log exists to describe.
+ *
+ * Without this, deleting verify-log.json would make nine hundred proven
+ * counties look untried and send the next several runs re-checking work that
+ * was already done, while the genuinely unproven ones waited behind them.
+ */
+try {
+  const existing = await import(
+    pathToFileURL(resolve(root, 'worker/src/counties-verified.js')).href
+  );
+  for (const [key, e] of Object.entries(existing.VERIFIED_COUNTIES || {})) {
+    if (!log[key]?.at && e.checked) log[key] = { at: e.checked, ok: true };
+  }
+} catch { /* First run, or a file too broken to import. Nothing to seed from. */ }
+
+const matches = (c) => c.key === only || c.key.startsWith(`${only}-`);
+const chosen = only ? everything.filter(matches) : everything;
+
+if (!chosen.length) {
   console.error(`Nothing matches ONLY="${only}".`);
   process.exit(1);
 }
 
-console.log(`Verifying ${list.length} of ${imported.candidates.length} candidates`
-  + ` from atlas ${imported.atlasVersion}\n`);
+/*
+ * OLDEST FIRST, with anything never tried at the very front. `''` sorts before
+ * any date, so a new import is worked through before anything is re-checked --
+ * which is the right order: an unproven county is coverage the app does not
+ * have yet, and a re-check is coverage it already has.
+ *
+ * The key breaks ties, so a run is reproducible rather than depending on which
+ * order two catalogues happened to merge in.
+ */
+const when = (c) => log[c.key]?.at || '';
+/*
+ * STATEWIDE ENTRIES JUMP THE QUEUE, every run, and the sort is where that
+ * actually happens -- putting them first in the array does nothing once
+ * everything is sorted by date, because on a fresh log every candidate has the
+ * same empty date and the tie-break is alphabetical. New York would have sat
+ * behind four hundred counties beginning with "a".
+ *
+ * They earn it twice over: each is worth more than any county in the pool --
+ * Texas alone is 254 of them -- and each is the entry whose breakage is
+ * loudest, so re-checking nineteen of them on every run is the cheapest
+ * insurance here.
+ */
+const list = only
+  ? chosen
+  : [...chosen]
+    .sort((a, b) => (b.statewide ? 1 : 0) - (a.statewide ? 1 : 0)
+      || when(a).localeCompare(when(b))
+      || a.key.localeCompare(b.key))
+    .slice(0, LIMIT);
+
+const never = chosen.filter((c) => !when(c)).length;
+console.log(`${everything.length} candidates: ${pool.sources.atlas} from the atlas, `
+  + `${pool.sources.openaddresses} from OpenAddresses `
+  + `(${pool.sources.joined} in both), ${pool.statewide.length} statewide`);
+console.log(`${never} have never been tried; ${chosen.length - never} have.`);
+console.log(`\nVerifying ${list.length} this run${only ? ` (ONLY="${only}")` : ''}:\n`);
 
 const passed = [];
 const failed = [];
+const today = new Date().toISOString().slice(0, 10);
 
 for (const c of list) {
   const r = await verify(c);
+  log[c.key] = r.ok
+    ? { at: today, ok: true, acres: r.acres }
+    : { at: today, ok: false, why: String(r.why).slice(0, 200) };
   if (r.ok) {
     /* The layer that actually answered, which is not always the one the
        catalogue named. See parcelLayerIn. */
@@ -565,49 +811,7 @@ if (only) {
   process.exit(0);
 }
 
-const body = passed.map((c) => {
-  const fb = c.fallbacks?.length
-    ? `\n    fallbacks: ${JSON.stringify(c.fallbacks)},`
-    : '';
-  return `  '${c.key}': {
-    name: ${JSON.stringify(c.name)},
-    fips: ${JSON.stringify(c.fips)},
-    service: ${JSON.stringify(c.service)},
-    layer: ${c.layer},
-    fields: ${JSON.stringify(c.fields)},${fb}
-    box: ${JSON.stringify(c.box)},
-  },`;
-}).join('\n');
-
-const file = `/**
- * GENERATED by tools/verify-atlas.js. Do not edit by hand.
- *
- * Every county here passed the same test: the layer handed over real parcels,
- * a point inside one of them was queried back through the app's own
- * point-in-polygon lookup, and what returned measured between ${PLAUSIBLE_ACRES.min}
- * and ${PLAUSIBLE_ACRES.max} acres. Field names were confirmed present on a record
- * that actually came back, not taken from a catalogue.
- *
- * Each box is the LAYER's own extent in WGS84, asked of the server -- where the
- * data is, which is the question the app is really asking, rather than where
- * the county legally ends.
- *
- * Candidates come from @urbankitstudio/atlas (MIT), imported by
- * tools/import-atlas.js into tools/atlas-candidates.json. Editing this file
- * directly will be overwritten; change the importer or the verifier instead.
- *
- * atlas ${imported.atlasVersion}, imported ${imported.importedAt}
- * ${passed.length} verified of ${list.length} tried, on ${new Date().toISOString().slice(0, 10)}
- */
-
-const ATLAS_COUNTIES = {
-${body}
-};
-
-export { ATLAS_COUNTIES };
-`;
-
-const target = resolve(root, 'worker/src/counties-atlas.js');
+const target = resolve(root, 'worker/src/counties-verified.js');
 
 /*
  * WHAT THIS RUN IS ABOUT TO CHANGE, before it changes it.
@@ -622,33 +826,147 @@ const target = resolve(root, 'worker/src/counties-atlas.js');
  * to record a genuine loss would be worse. What there is, is a sentence naming
  * the counties going out, at the end of the log, where it gets read.
  */
-let before = [];
+let before = {};
 try {
   const old = await import(pathToFileURL(target).href);
-  before = Object.keys(old.ATLAS_COUNTIES || {});
+  before = old.VERIFIED_COUNTIES || {};
 } catch { /* First run, or a file too broken to import. Either way: no report. */ }
 
-writeFileSync(target, file);
-console.log(`\nwrote ${target}`);
+/*
+ * MERGED, NOT REPLACED, and this is the whole point of running in slices.
+ *
+ * A run sees two hundred of nine hundred and seventy-nine candidates. Writing
+ * only what it proved would delete the other seven hundred and seventy-nine --
+ * every one of them a county that verified perfectly last week and would lose
+ * its property line tonight. So the previous entries stand, and this run
+ * changes only the keys it actually tried.
+ */
+const kept = {};
+const triedNow = new Set(list.map((c) => c.key));
+const stillOffered = new Set(everything.map((c) => c.key));
+const dropped = [];
 
-if (before.length) {
-  const now = new Set(passed.map((p) => p.key));
-  const lost = before.filter((k) => !now.has(k));
-  const gained = passed.map((p) => p.key).filter((k) => !before.includes(k));
-  if (gained.length) console.log(`\nNEWLY COVERED: ${gained.join(', ')}`);
-  if (lost.length) {
-    console.log(`\n${'!'.repeat(64)}`);
-    console.log(`\n${lost.length} COUNTY(IES) JUST LOST COVERAGE: ${lost.join(', ')}`);
-    console.log('\nThey verified before and did not today. If their servers were');
-    console.log('merely having a bad morning, run this again before deploying --');
-    console.log('what ships now is a map with those counties missing.');
-    console.log(`\n${'!'.repeat(64)}`);
-  }
-  if (!gained.length && !lost.length) console.log('\nCoverage unchanged.');
+for (const [key, entry] of Object.entries(before)) {
+  if (triedNow.has(key)) continue; // this run has the last word on these
+  /*
+   * A county both catalogues have stopped listing cannot be re-verified ever
+   * again, so keeping it would be shipping an endpoint nothing can re-check.
+   * Rare, and worth a line rather than a silent removal.
+   */
+  if (!stillOffered.has(key)) { dropped.push(key); continue; }
+  kept[key] = entry;
+}
+for (const c of passed) {
+  kept[c.key] = {
+    name: c.name,
+    ...(c.statewide ? { state: c.state, statewide: true } : { fips: c.fips }),
+    service: c.service,
+    layer: c.layer,
+    fields: c.fields,
+    ...(c.fallbacks?.length ? { fallbacks: c.fallbacks } : {}),
+    box: c.box,
+    checked: today,
+  };
+}
+
+/* Sorted by key, so a run that changes two counties produces a diff of two
+   counties rather than a reshuffle nobody can read. */
+const body = Object.keys(kept).sort().map((key) => {
+  const e = kept[key];
+  const line = (k) => (e[k] === undefined ? '' : `\n    ${k}: ${JSON.stringify(e[k])},`);
+  return `  '${key}': {`
+    + line('name')
+    + line('fips')
+    + line('state')
+    + line('statewide')
+    + line('service')
+    + `\n    layer: ${e.layer},`
+    + line('fields')
+    + line('fallbacks')
+    + line('box')
+    + line('checked')
+    + '\n  },';
+}).join('\n');
+
+const statewideCount = Object.values(kept).filter((e) => e.statewide).length;
+
+const file = `/**
+ * GENERATED by tools/verify-counties.js. Do not edit by hand.
+ *
+ * Every entry here passed the same test: the layer handed over real parcels, a
+ * point inside one of them was queried back through the app's own
+ * point-in-polygon lookup, and what returned measured between ${PLAUSIBLE_ACRES.min}
+ * and ${PLAUSIBLE_ACRES.max} acres. Field names were confirmed present on a record
+ * that actually came back, not taken from a catalogue.
+ *
+ * Each box is the LAYER's own extent in WGS84, asked of the server -- where the
+ * data is, which is the question the app is really asking, rather than where
+ * the county legally ends.
+ *
+ * WRITTEN IN SLICES. The pool is too big for one run, so each run re-checks the
+ * least recently verified part of it and leaves the rest exactly as it was.
+ * \`checked\` is when THAT entry was last proved, not when this file was written,
+ * and the two are rarely the same day.
+ *
+ * A STATEWIDE ENTRY IS A MOSAIC, never a promise of the whole state: these are
+ * states republishing what each county sends them, and a county that has sent
+ * nothing looks identical to a working service from here. Nothing generated
+ * carries \`complete\`.
+ *
+ * Candidates come from @urbankitstudio/atlas (MIT) and from
+ * openaddresses/openaddresses (CC0/BSD), imported by tools/import-atlas.js and
+ * tools/import-openaddresses.js. Editing this file directly will be
+ * overwritten; change an importer or the verifier instead.
+ *
+ * ${Object.keys(kept).length} entries (${statewideCount} statewide), of ${everything.length} candidates.
+ * Last run ${today}: ${passed.length} verified of ${list.length} tried.
+ */
+
+const VERIFIED_COUNTIES = {
+${body}
+};
+
+export { VERIFIED_COUNTIES };
+`;
+
+writeFileSync(target, file);
+writeFileSync(LOG, `${JSON.stringify(log, null, 2)}\n`);
+console.log(`\nwrote ${target}`);
+console.log(`wrote ${LOG}`);
+
+const now = new Set(Object.keys(kept));
+const had = new Set(Object.keys(before));
+const gained = [...now].filter((k) => !had.has(k));
+/*
+ * ONLY THE ONES THIS RUN TRIED can have been lost by it. A county outside the
+ * slice is still in `kept` and cannot appear here, which is the difference
+ * between "your server failed today" and "we did not get to you".
+ */
+const lost = [...had].filter((k) => !now.has(k) && triedNow.has(k));
+
+if (gained.length) console.log(`\nNEWLY COVERED (${gained.length}): ${gained.join(', ')}`);
+if (dropped.length) {
+  console.log(`\nNO LONGER IN ANY CATALOGUE (${dropped.length}): ${dropped.join(', ')}`);
+  console.log('Removed, because nothing can re-verify an endpoint nobody lists.');
+}
+if (lost.length) {
+  console.log(`\n${'!'.repeat(64)}`);
+  console.log(`\n${lost.length} JUST LOST COVERAGE: ${lost.join(', ')}`);
+  console.log('\nThey verified before and did not today. If their servers were');
+  console.log('merely having a bad morning, run this again before deploying --');
+  console.log('what ships now is a map with those counties missing.');
+  console.log(`\n${'!'.repeat(64)}`);
+}
+if (!gained.length && !lost.length && !dropped.length) console.log('\nCoverage unchanged.');
+
+const untried = everything.filter((c) => !log[c.key]?.at).length;
+console.log(`\n${Object.keys(kept).length} covered. ${untried} candidates still never tried.`);
+if (untried) {
+  console.log(`Run this again to take the next ${Math.min(untried, LIMIT)}.`);
 }
 
 if (failed.length) {
-  console.log('\nNot verified:');
+  console.log('\nNot verified this run:');
   for (const f of failed) console.log(`  ${f.key.padEnd(22)} ${f.why}`);
   console.log('\nThese are left out rather than shipped unproven.');
 }

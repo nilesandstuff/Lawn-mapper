@@ -10,6 +10,12 @@
  * The territories are not here. The app cannot measure a lawn in one, so
  * counting their districts as absent coverage would overstate the work left.
  *
+ * Each state also carries a "box", drawn through its own county CENTROIDS. It
+ * is deliberately smaller than the state, which is the safe direction: it is
+ * used to ask whether a layer claiming to serve a whole state is actually
+ * state-sized, and being generous there would let one county's server pass as
+ * Ohio.
+ *
  * Source: the Census Bureau county gazetteer.
  * 3144 counties across 51 states, built 2026-09-18.
  */
@@ -18,6 +24,7 @@ export const US_COUNTIES = {
   "01": {
     ab: "AL",
     name: "Alabama",
+    box: [-88.243,30.659,-85.187,34.904],
     counties: {
       "001": "Autauga County",
       "003": "Baldwin County",
@@ -91,6 +98,7 @@ export const US_COUNTIES = {
   "02": {
     ab: "AK",
     name: "Alaska",
+    box: [-164.189,51.949,179.621,69.449],
     counties: {
       "013": "Aleutians East Borough",
       "016": "Aleutians West Census Area",
@@ -127,6 +135,7 @@ export const US_COUNTIES = {
   "04": {
     ab: "AZ",
     name: "Arizona",
+    box: [-114.039,31.526,-109.242,35.83],
     counties: {
       "001": "Apache County",
       "003": "Cochise County",
@@ -148,6 +157,7 @@ export const US_COUNTIES = {
   "05": {
     ab: "AR",
     name: "Arkansas",
+    box: [-94.275,33.168,-90.052,36.381],
     counties: {
       "001": "Arkansas County",
       "003": "Ashley County",
@@ -229,6 +239,7 @@ export const US_COUNTIES = {
   "06": {
     ab: "CA",
     name: "California",
+    box: [-123.953,33.019,-115.355,41.747],
     counties: {
       "001": "Alameda County",
       "003": "Alpine County",
@@ -293,6 +304,7 @@ export const US_COUNTIES = {
   "08": {
     ab: "CO",
     name: "Colorado",
+    box: [-108.596,37.202,-102.345,40.872],
     counties: {
       "001": "Adams County",
       "003": "Alamosa County",
@@ -363,6 +375,7 @@ export const US_COUNTIES = {
   "09": {
     ab: "CT",
     name: "Connecticut",
+    box: [-73.447,41.185,-71.973,41.855],
     counties: {
       "110": "Capitol Planning Region",
       "120": "Greater Bridgeport Planning Region",
@@ -378,6 +391,7 @@ export const US_COUNTIES = {
   "10": {
     ab: "DE",
     name: "Delaware",
+    box: [-75.644,38.673,-75.337,39.576],
     counties: {
       "001": "Kent County",
       "003": "New Castle County",
@@ -387,6 +401,7 @@ export const US_COUNTIES = {
   "11": {
     ab: "DC",
     name: "District of Columbia",
+    box: [-77.017,38.904,-76.967,38.954],
     counties: {
       "001": "District of Columbia",
     },
@@ -394,6 +409,7 @@ export const US_COUNTIES = {
   "12": {
     ab: "FL",
     name: "Florida",
+    box: [-87.32,25.586,-80.398,30.862],
     counties: {
       "001": "Alachua County",
       "003": "Baker County",
@@ -467,6 +483,7 @@ export const US_COUNTIES = {
   "13": {
     ab: "GA",
     name: "Georgia",
+    box: [-85.506,30.712,-81.09,34.903],
     counties: {
       "001": "Appling County",
       "003": "Atkinson County",
@@ -632,6 +649,7 @@ export const US_COUNTIES = {
   "15": {
     ab: "HI",
     name: "Hawaii",
+    box: [-159.706,19.598,-155.502,22.012],
     counties: {
       "001": "Hawaii County",
       "003": "Honolulu County",
@@ -643,6 +661,7 @@ export const US_COUNTIES = {
   "16": {
     ab: "ID",
     name: "Idaho",
+    box: [-116.798,42.174,-111.212,48.739],
     counties: {
       "001": "Ada County",
       "003": "Adams County",
@@ -693,6 +712,7 @@ export const US_COUNTIES = {
   "17": {
     ab: "IL",
     name: "Illinois",
+    box: [-91.195,37.184,-87.645,42.362],
     counties: {
       "001": "Adams County",
       "003": "Alexander County",
@@ -801,6 +821,7 @@ export const US_COUNTIES = {
   "18": {
     ab: "IN",
     name: "Indiana",
+    box: [-87.869,38.01,-84.928,41.643],
     counties: {
       "001": "Adams County",
       "003": "Allen County",
@@ -899,6 +920,7 @@ export const US_COUNTIES = {
   "19": {
     ab: "IA",
     name: "Iowa",
+    box: [-96.216,40.648,-90.534,43.39],
     counties: {
       "001": "Adair County",
       "003": "Adams County",
@@ -1004,6 +1026,7 @@ export const US_COUNTIES = {
   "20": {
     ab: "KS",
     name: "Kansas",
+    box: [-101.81,37.154,-94.763,39.829],
     counties: {
       "001": "Allen County",
       "003": "Anderson County",
@@ -1115,6 +1138,7 @@ export const US_COUNTIES = {
   "21": {
     ab: "KY",
     name: "Kentucky",
+    box: [-89.188,36.552,-82.411,38.959],
     counties: {
       "001": "Adair County",
       "003": "Allen County",
@@ -1241,6 +1265,7 @@ export const US_COUNTIES = {
   "22": {
     ab: "LA",
     name: "Louisiana",
+    box: [-93.885,29.282,-89.263,32.829],
     counties: {
       "001": "Acadia Parish",
       "003": "Allen Parish",
@@ -1311,6 +1336,7 @@ export const US_COUNTIES = {
   "23": {
     ab: "ME",
     name: "Maine",
+    box: [-70.734,43.429,-67.609,46.709],
     counties: {
       "001": "Androscoggin County",
       "003": "Aroostook County",
@@ -1333,6 +1359,7 @@ export const US_COUNTIES = {
   "24": {
     ab: "MD",
     name: "Maryland",
+    box: [-79.275,38.074,-75.31,39.612],
     counties: {
       "001": "Allegany County",
       "003": "Anne Arundel County",
@@ -1363,6 +1390,7 @@ export const US_COUNTIES = {
   "25": {
     ab: "MA",
     name: "Massachusetts",
+    box: [-73.218,41.293,-70.101,42.643],
     counties: {
       "001": "Barnstable County",
       "003": "Berkshire County",
@@ -1383,6 +1411,7 @@ export const US_COUNTIES = {
   "26": {
     ab: "MI",
     name: "Michigan",
+    box: [-89.788,41.791,-82.643,47.367],
     counties: {
       "001": "Alcona County",
       "003": "Alger County",
@@ -1472,6 +1501,7 @@ export const US_COUNTIES = {
   "27": {
     ab: "MN",
     name: "Minnesota",
+    box: [-96.78,43.666,-90.344,48.776],
     counties: {
       "001": "Aitkin County",
       "003": "Anoka County",
@@ -1565,6 +1595,7 @@ export const US_COUNTIES = {
   "28": {
     ab: "MS",
     name: "Mississippi",
+    box: [-91.352,30.392,-88.235,34.887],
     counties: {
       "001": "Adams County",
       "003": "Alcorn County",
@@ -1653,6 +1684,7 @@ export const US_COUNTIES = {
   "29": {
     ab: "MO",
     name: "Missouri",
+    box: [-95.438,36.153,-89.296,40.48],
     counties: {
       "001": "Adair County",
       "003": "Andrew County",
@@ -1774,6 +1806,7 @@ export const US_COUNTIES = {
   "30": {
     ab: "MT",
     name: "Montana",
+    box: [-115.463,45.134,-104.275,48.794],
     counties: {
       "001": "Beaverhead County",
       "003": "Big Horn County",
@@ -1836,6 +1869,7 @@ export const US_COUNTIES = {
   "31": {
     ab: "NE",
     name: "Nebraska",
+    box: [-103.732,40.124,-95.719,42.894],
     counties: {
       "001": "Adams County",
       "003": "Antelope County",
@@ -1935,6 +1969,7 @@ export const US_COUNTIES = {
   "32": {
     ab: "NV",
     name: "Nevada",
+    box: [-119.747,36.212,-114.863,41.408],
     counties: {
       "001": "Churchill County",
       "003": "Clark County",
@@ -1958,6 +1993,7 @@ export const US_COUNTIES = {
   "33": {
     ab: "NH",
     name: "New Hampshire",
+    box: [-72.249,42.912,-71.036,44.653],
     counties: {
       "001": "Belknap County",
       "003": "Carroll County",
@@ -1974,6 +2010,7 @@ export const US_COUNTIES = {
   "34": {
     ab: "NJ",
     name: "New Jersey",
+    box: [-75.357,39.086,-74.075,41.135],
     counties: {
       "001": "Atlantic County",
       "003": "Bergen County",
@@ -2001,6 +2038,7 @@ export const US_COUNTIES = {
   "35": {
     ab: "NM",
     name: "New Mexico",
+    box: [-108.752,31.899,-103.346,36.613],
     counties: {
       "001": "Bernalillo County",
       "003": "Catron County",
@@ -2040,6 +2078,7 @@ export const US_COUNTIES = {
   "36": {
     ab: "NY",
     name: "New York",
+    box: [-79.408,40.561,-72.692,44.753],
     counties: {
       "001": "Albany County",
       "003": "Allegany County",
@@ -2108,6 +2147,7 @@ export const US_COUNTIES = {
   "37": {
     ab: "NC",
     name: "North Carolina",
+    box: [-84.061,34.041,-75.768,36.489],
     counties: {
       "001": "Alamance County",
       "003": "Alexander County",
@@ -2214,6 +2254,7 @@ export const US_COUNTIES = {
   "38": {
     ab: "ND",
     name: "North Dakota",
+    box: [-103.845,46.096,-96.938,48.815],
     counties: {
       "001": "Adams County",
       "003": "Barnes County",
@@ -2273,6 +2314,7 @@ export const US_COUNTIES = {
   "39": {
     ab: "OH",
     name: "Ohio",
+    box: [-84.645,38.604,-80.745,41.907],
     counties: {
       "001": "Adams County",
       "003": "Allen County",
@@ -2367,6 +2409,7 @@ export const US_COUNTIES = {
   "40": {
     ab: "OK",
     name: "Oklahoma",
+    box: [-102.522,33.958,-94.651,36.836],
     counties: {
       "001": "Adair County",
       "003": "Alfalfa County",
@@ -2450,6 +2493,7 @@ export const US_COUNTIES = {
   "41": {
     ab: "OR",
     name: "Oregon",
+    box: [-124.211,42.389,-117.186,46.025],
     counties: {
       "001": "Baker County",
       "003": "Benton County",
@@ -2492,6 +2536,7 @@ export const US_COUNTIES = {
   "42": {
     ab: "PA",
     name: "Pennsylvania",
+    box: [-80.351,39.848,-75.032,42.118],
     counties: {
       "001": "Adams County",
       "003": "Allegheny County",
@@ -2565,6 +2610,7 @@ export const US_COUNTIES = {
   "44": {
     ab: "RI",
     name: "Rhode Island",
+    box: [-71.62,41.397,-71.283,41.869],
     counties: {
       "001": "Bristol County",
       "003": "Kent County",
@@ -2576,6 +2622,7 @@ export const US_COUNTIES = {
   "45": {
     ab: "SC",
     name: "South Carolina",
+    box: [-83.062,32.355,-78.977,35.05],
     counties: {
       "001": "Abbeville County",
       "003": "Aiken County",
@@ -2628,6 +2675,7 @@ export const US_COUNTIES = {
   "46": {
     ab: "SD",
     name: "South Dakota",
+    box: [-103.806,42.831,-96.651,45.832],
     counties: {
       "003": "Aurora County",
       "005": "Beadle County",
@@ -2700,6 +2748,7 @@ export const US_COUNTIES = {
   "47": {
     ab: "TN",
     name: "Tennessee",
+    box: [-89.895,35.109,-81.861,36.559],
     counties: {
       "001": "Anderson County",
       "003": "Bedford County",
@@ -2801,6 +2850,7 @@ export const US_COUNTIES = {
   "48": {
     ab: "TX",
     name: "Texas",
+    box: [-106.241,26.103,-93.739,36.286],
     counties: {
       "001": "Anderson County",
       "003": "Andrews County",
@@ -3061,6 +3111,7 @@ export const US_COUNTIES = {
   "49": {
     ab: "UT",
     name: "Utah",
+    box: [-113.488,37.263,-109.506,41.734],
     counties: {
       "001": "Beaver County",
       "003": "Box Elder County",
@@ -3096,6 +3147,7 @@ export const US_COUNTIES = {
   "50": {
     ab: "VT",
     name: "Vermont",
+    box: [-73.301,42.995,-71.733,44.859],
     counties: {
       "001": "Addison County",
       "003": "Bennington County",
@@ -3116,6 +3168,7 @@ export const US_COUNTIES = {
   "51": {
     ab: "VA",
     name: "Virginia",
+    box: [-83.13,36.582,-75.755,39.2],
     counties: {
       "001": "Accomack County",
       "003": "Albemarle County",
@@ -3255,6 +3308,7 @@ export const US_COUNTIES = {
   "53": {
     ab: "WA",
     name: "Washington",
+    box: [-123.888,45.772,-117.228,48.843],
     counties: {
       "001": "Adams County",
       "003": "Asotin County",
@@ -3300,6 +3354,7 @@ export const US_COUNTIES = {
   "54": {
     ab: "WV",
     name: "West Virginia",
+    box: [-82.423,37.383,-77.863,40.517],
     counties: {
       "001": "Barbour County",
       "003": "Berkeley County",
@@ -3361,6 +3416,7 @@ export const US_COUNTIES = {
   "55": {
     ab: "WI",
     name: "Wisconsin",
+    box: [-92.454,42.588,-87.049,46.634],
     counties: {
       "001": "Adams County",
       "003": "Ashland County",
@@ -3439,6 +3495,7 @@ export const US_COUNTIES = {
   "56": {
     ab: "WY",
     name: "Wyoming",
+    box: [-110.683,41.285,-104.354,44.781],
     counties: {
       "001": "Albany County",
       "003": "Big Horn County",
