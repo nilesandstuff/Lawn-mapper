@@ -15,8 +15,8 @@
  * tools/import-atlas.js into tools/atlas-candidates.json. Editing this file
  * directly will be overwritten; change the importer or the verifier instead.
  *
- * atlas 0.6.3, imported 2026-09-14
- * 142 verified of 165 tried, on 2026-09-17
+ * atlas 0.6.3, imported 2026-09-17
+ * 146 verified of 165 tried, on 2026-09-18
  */
 
 const ATLAS_COUNTIES = {
@@ -460,6 +460,14 @@ const ATLAS_COUNTIES = {
     fields: {"pin":"FMTPRCLNO","address":"LOCADDRESS"},
     box: [-86.243,39.926,-85.862,40.219],
   },
+  'in-allen': {
+    name: "Allen County, IN",
+    fips: "18003",
+    service: "https://gis.acimap.us/services/rest/services/parcels/MapServer",
+    layer: 0,
+    fields: {"pin":"PIN","address":"PropertyAddress1"},
+    box: [-85.34,40.914,-84.798,41.274],
+  },
   'in-marion': {
     name: "Marion County, IN",
     fips: "18097",
@@ -681,11 +689,11 @@ const ATLAS_COUNTIES = {
   'ny-bronx': {
     name: "Bronx County, NY",
     fips: "36005",
-    service: "https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/MAPPLUTO/FeatureServer",
-    layer: 0,
-    fields: {"pin":"BBL","address":"Address"},
-    fallbacks: [{"service":"https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer","layer":1,"fields":{"pin":"PRINT_KEY","address":"PARCEL_ADDR"}}],
-    box: [-74.258,40.495,-73.699,40.916],
+    service: "https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer",
+    layer: 1,
+    fields: {"pin":"PRINT_KEY","address":"PARCEL_ADDR"},
+    fallbacks: [{"service":"https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/MAPPLUTO/FeatureServer","layer":0,"fields":{"pin":"BBL","address":"Address"}}],
+    box: [-79.763,40.495,-71.8,45.016],
   },
   'ny-erie': {
     name: "Erie County, NY",
@@ -698,11 +706,11 @@ const ATLAS_COUNTIES = {
   'ny-kings': {
     name: "Kings County, NY",
     fips: "36047",
-    service: "https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/MAPPLUTO/FeatureServer",
-    layer: 0,
-    fields: {"pin":"BBL","address":"Address"},
-    fallbacks: [{"service":"https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer","layer":1,"fields":{"pin":"PRINT_KEY","address":"PARCEL_ADDR"}}],
-    box: [-74.258,40.495,-73.699,40.916],
+    service: "https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer",
+    layer: 1,
+    fields: {"pin":"PRINT_KEY","address":"PARCEL_ADDR"},
+    fallbacks: [{"service":"https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/MAPPLUTO/FeatureServer","layer":0,"fields":{"pin":"BBL","address":"Address"}}],
+    box: [-79.763,40.495,-71.8,45.016],
   },
   'ny-monroe': {
     name: "Monroe County, NY",
@@ -715,11 +723,11 @@ const ATLAS_COUNTIES = {
   'ny-new-york': {
     name: "New York County, NY",
     fips: "36061",
-    service: "https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/MAPPLUTO/FeatureServer",
-    layer: 0,
-    fields: {"pin":"BBL","address":"Address"},
-    fallbacks: [{"service":"https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer","layer":1,"fields":{"pin":"PRINT_KEY","address":"PARCEL_ADDR"}}],
-    box: [-74.258,40.495,-73.699,40.916],
+    service: "https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer",
+    layer: 1,
+    fields: {"pin":"PRINT_KEY","address":"PARCEL_ADDR"},
+    fallbacks: [{"service":"https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/MAPPLUTO/FeatureServer","layer":0,"fields":{"pin":"BBL","address":"Address"}}],
+    box: [-79.763,40.495,-71.8,45.016],
   },
   'ny-onondaga': {
     name: "Onondaga County, NY",
@@ -732,20 +740,20 @@ const ATLAS_COUNTIES = {
   'ny-queens': {
     name: "Queens County, NY",
     fips: "36081",
-    service: "https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/MAPPLUTO/FeatureServer",
-    layer: 0,
-    fields: {"pin":"BBL","address":"Address"},
-    fallbacks: [{"service":"https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer","layer":1,"fields":{"pin":"PRINT_KEY","address":"PARCEL_ADDR"}}],
-    box: [-74.258,40.495,-73.699,40.916],
+    service: "https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer",
+    layer: 1,
+    fields: {"pin":"PRINT_KEY","address":"PARCEL_ADDR"},
+    fallbacks: [{"service":"https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/MAPPLUTO/FeatureServer","layer":0,"fields":{"pin":"BBL","address":"Address"}}],
+    box: [-79.763,40.495,-71.8,45.016],
   },
   'ny-richmond': {
     name: "Richmond County, NY",
     fips: "36085",
-    service: "https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/MAPPLUTO/FeatureServer",
-    layer: 0,
-    fields: {"pin":"BBL","address":"Address"},
-    fallbacks: [{"service":"https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer","layer":1,"fields":{"pin":"PRINT_KEY","address":"PARCEL_ADDR"}}],
-    box: [-74.258,40.495,-73.699,40.916],
+    service: "https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer",
+    layer: 1,
+    fields: {"pin":"PRINT_KEY","address":"PARCEL_ADDR"},
+    fallbacks: [{"service":"https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/MAPPLUTO/FeatureServer","layer":0,"fields":{"pin":"BBL","address":"Address"}}],
+    box: [-79.763,40.495,-71.8,45.016],
   },
   'ny-suffolk': {
     name: "Suffolk County, NY",
@@ -835,6 +843,14 @@ const ATLAS_COUNTIES = {
     fields: {"pin":"parcel_id","address":null},
     box: [-81.972,41.275,-81.374,41.632],
   },
+  'oh-summit': {
+    name: "Summit County, OH",
+    fips: "39153",
+    service: "https://maps.summitcounty.org/arcgis/rest/services/Maps/ParcelQuery/MapServer",
+    layer: 0,
+    fields: {"pin":null,"address":null},
+    box: [-111.651,40.539,-109.993,41.253],
+  },
   'oh-lucas': {
     name: "Lucas County, OH",
     fips: "39095",
@@ -915,6 +931,14 @@ const ATLAS_COUNTIES = {
     fields: {"pin":"PARCEL_NUM","address":"ADDRESS"},
     box: [-75.497,40.046,-74.703,40.615],
   },
+  'sc-charleston': {
+    name: "Charleston County, SC",
+    fips: "45019",
+    service: "https://gisccapps.charlestoncounty.org/arcgis/rest/services/GIS_VIEWER/New_Parcel_Search/MapServer",
+    layer: 4,
+    fields: {"pin":"PID","address":null},
+    box: [-80.455,32.483,-79.266,33.224],
+  },
   'tn-davidson': {
     name: "Davidson County, TN",
     fips: "47037",
@@ -930,6 +954,14 @@ const ATLAS_COUNTIES = {
     layer: 0,
     fields: {"pin":"PBA_NUM","address":"ADDRESS"},
     box: [-85.476,34.983,-84.942,35.46],
+  },
+  'tx-harris': {
+    name: "Harris County, TX",
+    fips: "48201",
+    service: "https://www.gis.hctx.net/arcgis/rest/services/HCAD/Parcels/MapServer",
+    layer: 0,
+    fields: {"pin":"HCAD_NUM","address":null},
+    box: [-95.961,29.497,-94.907,30.171],
   },
   'tx-travis': {
     name: "Travis County, TX",
