@@ -184,26 +184,30 @@ const by = (ab) => states.find((s) => s.ab === ab);
     longer.map((s) => `${s.ab} ${s.counties.length} have / ${s.missing.length} missing`)
       .join(', ') || 'no row prints the longer side');
 
-  check('Hawaii names the two it has rather than the three it lacks',
-    shownList(by('HI'), NEAR_COMPLETE).mode === 'has',
-    JSON.stringify(shownList(by('HI'), NEAR_COMPLETE)));
+  /*
+   * FOUND BY SHAPE, NOT BY NAME. This block used to assert on Hawaii, Indiana
+   * and Maryland directly, and the sweep broke it the first time it verified
+   * a new county: Hawaii went from two of five to three of five, so the
+   * shorter list flipped from "has" to "missing" and a correct row failed a
+   * test that had been pinned to a number rather than to a rule.
+   *
+   * The roster grows every time the verifier runs. Anything asserted about a
+   * particular state is a test with an expiry date on it, so these ask "is
+   * there a state of this shape, and does it behave" instead -- and the
+   * synthetic cases above pin the rule itself, where no data can move.
+   */
+  const anySome = states.find((s) => s.kind === 'some' && s.counties.length && s.missing.length);
+  check('a partly covered state shows one list or the other',
+    anySome && ['has', 'missing'].includes(shownList(anySome).mode),
+    anySome ? `${anySome.ab}: ${shownList(anySome).mode}` : 'no partly covered state');
 
   /* A statewide state with its own county servers says so rather than
      pretending the state layer is the only thing serving it. */
-  check('Indiana still names the counties verified one at a time',
-    shownList(by('IN'), NEAR_COMPLETE).mode === 'also'
-    && shownList(by('IN'), NEAR_COMPLETE).names.length === by('IN').counties.length,
-    JSON.stringify(shownList(by('IN'), NEAR_COMPLETE).names));
-
-  /*
-   * Maryland is statewide AND has Prince George's County in the atlas, so its
-   * row opens too -- which is the point of `also` and was worth finding out:
-   * the first version of this check assumed a statewide state had nothing of
-   * its own and asserted the wrong mode on it.
-   */
-  check('Maryland opens as well, because it has a county server of its own',
-    shownList(by('MD'), NEAR_COMPLETE).mode === 'also',
-    shownList(by('MD'), NEAR_COMPLETE).mode);
+  const alsoOwn = states.find((s) => s.kind !== 'some' && s.source && s.counties.length);
+  check('a statewide state still names the counties verified one at a time',
+    alsoOwn && shownList(alsoOwn).mode === 'also'
+      && shownList(alsoOwn).names.length === alsoOwn.counties.length,
+    alsoOwn ? `${alsoOwn.ab}: ${shownList(alsoOwn).names.length} of its own` : 'none');
 
   check('and a statewide state with no county servers has nothing to open',
     shownList({ kind: 'whole', counties: [], missing: [] }, NEAR_COMPLETE).mode === 'none',

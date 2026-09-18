@@ -1383,9 +1383,24 @@ check('and a typed prompt is sent verbatim',
     servesCounty(-84.39, 33.75, 'Nowhere County', 'GA') === false,
     'northcarolina is a candidate at this point and must not answer for it');
 
+  /*
+   * ASKED AS A PROPERTY, because the coordinate version expired.
+   *
+   * This used to name a point in central Oregon as the place nothing serves.
+   * Then a verification sweep added Deschutes County and the check failed --
+   * on correct behaviour, because the fact it was pinned to had changed. Every
+   * "nowhere we cover" coordinate has an expiry date now that the registry
+   * grows by hundreds of counties at a time.
+   *
+   * The claim has no coordinate in it anyway: with no names to check, this
+   * question IS the box question, wherever it is asked. So ask both and
+   * compare, at a point inside coverage, a point in the middle of the Pacific,
+   * and one in the sea off Georgia -- none of which any sweep can change.
+   */
+  const boxFallback = [[-84.39, 33.75], [-150, 30], [-79.0, 31.0]]
+    .every(([lng, lat]) => servesCounty(lng, lat, null, null) === isCovered(lng, lat));
   check('with no place name at all, a box match is the best question there is',
-    servesCounty(-84.39, 33.75, null, null) === true
-    && servesCounty(-120.5, 44.2, null, null) === false,
+    boxFallback && servesCounty(-150, 30, null, null) === false,
     'a geocoder that returned no county must not make everything unserved');
 
   /* Spelling is not the question being asked. */
