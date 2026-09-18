@@ -1575,6 +1575,120 @@ async function search(query) {
   }
 }
 
+/*
+ * FIND ME WHERE I AM STANDING.
+ *
+ * The coordinates go to the Worker to be reverse-geocoded rather than
+ * straight into the parcel lookup, and that is not a detour. The lookup needs
+ * the county NAME to tell "your county is not configured" from "your county
+ * is configured and has no record of this parcel" -- getting that wrong is
+ * the Gwinnett bug, where a bounding box reaching into the next county sent
+ * somebody debugging a server that was never involved. It also means the pin
+ * lands on the matched address rather than on the fix, which is the
+ * difference between a rooftop and wherever in the garden you happen to be.
+ *
+ * AND IT ENDS AT THE SAME CONFIRM STEP as a typed address, deliberately. A
+ * phone's fix is good to five or ten metres on a good day and much worse
+ * indoors, and a suburban lot is about twenty metres wide -- so standing in
+ * your own kitchen can put you on the neighbour's parcel. The step that asks
+ * "does this look like your property?" is the answer to that, and it already
+ * exists.
+ */
+const LOCATE_TIMEOUT_MS = 12000;
+/*
+ * Past this, the fix is not about a house. A hundred metres covers a whole
+ * street and several parcels, which is what a laptop on wifi typically
+ * returns -- worth proceeding with, worth being told about.
+ */
+const VAGUE_FIX_M = 100;
+
+function locateNote(text) {
+  const note = $('#locate-note');
+  note.textContent = text;
+  note.hidden = !text;
+}
+
+async function useMyLocation() {
+  const btn = $('#btn-locate');
+  if (!navigator.geolocation || !window.isSecureContext) {
+    locateNote('This browser will not give out a location. Type the address instead.');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.classList.add('working');
+  locateNote('Asking your browser where you are…');
+
+  try {
+    const pos = await new Promise((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, reject, {
+        enableHighAccuracy: true,
+        timeout: LOCATE_TIMEOUT_MS,
+        /*
+         * A fix from the last minute is fine and saves waiting for the radio.
+         * Anything older risks measuring the last place you stood still,
+         * which on a phone is often the last house you were in.
+         */
+        maximumAge: 60000,
+      });
+    });
+
+    const { longitude, latitude, accuracy } = pos.coords;
+    locateNote('Looking up that spot…');
+
+    const { results } = await api(
+      `/api/geocode?lng=${encodeURIComponent(longitude)}&lat=${encodeURIComponent(latitude)}`
+    );
+    if (!results.length) {
+      locateNote('Nothing is mapped at that spot. Try typing the address.');
+      return;
+    }
+    /* One result, always, from a reverse lookup -- so straight to confirm,
+       which is where a single forward match goes too. */
+    locateNote('');
+    choose(results[0]);
+
+    /*
+     * THE WARNING BELONGS ON THE SCREEN THAT ACTS ON IT.
+     *
+     * It was written into the note beside the address field, one line before
+     * moving to the confirm step -- which hides that field. The caution was
+     * technically displayed and could not be read, which is worse than not
+     * showing it: the code looked like it had handled the case.
+     *
+     * So it sharpens the confirm step's own question instead. That step
+     * already asks whether this is your property; a vague fix is precisely
+     * the situation where the honest answer might be no.
+     */
+    if (accuracy > VAGUE_FIX_M) {
+      setHint(`Your device placed you to within about ${Math.round(accuracy)} m, `
+        + 'which covers several properties — is this the right one?');
+    }
+  } catch (err) {
+    /*
+     * SAY WHICH REFUSAL IT WAS. "Location unavailable" covers a denied
+     * permission, a phone with the radio off and a browser that timed out,
+     * and those need three different things done about them -- only one of
+     * which the app can even hint at.
+     */
+    const code = err?.code;
+    locateNote(
+      code === 1
+        ? 'Your browser is set to refuse this site your location. You can change '
+          + 'that in its site settings, or just type the address.'
+        : code === 3
+          ? 'Your device took too long to find a position. Try again outdoors, '
+            + 'or type the address.'
+          : code === 2
+            ? 'Your device could not work out where it is. Type the address instead.'
+            : `That did not work: ${err?.message || 'unknown error'}`
+    );
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('working');
+  }
+}
+
 function renderCandidates(results) {
   const list = $('#candidate-list');
   list.replaceChildren();
@@ -8772,13 +8886,16 @@ function reset() {
   $('#toggle-overlay').checked = false;
   setStatus('');
   setHint('');
+  locateNote('');
   showStep('address');
 }
 
 $('#address-form').addEventListener('submit', (e) => {
   e.preventDefault();
+  locateNote('');
   search($('#address').value.trim());
 });
+$('#btn-locate').addEventListener('click', useMyLocation);
 
 document.addEventListener('click', (e) => {
   const action = e.target.closest('[data-action]')?.dataset.action;

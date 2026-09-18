@@ -172,15 +172,48 @@
     <!-- 1. Address ------------------------------------------------------ -->
     <section class="step" id="step-address">
       <h1>How big is your lawn?</h1>
-      <p class="sub">Type your address. We'll pull your property line and measure
-        the grass inside it.</p>
+      <!--
+        The button is named here as well as on itself. A crosshair is a
+        well-worn icon and still not a word, and the one place somebody is
+        deciding whether to type a whole address is the place worth telling
+        them they need not.
+      -->
+      <p class="sub">Type your address, or tap the crosshair to use where you
+        are now. We'll pull your property line and measure the grass inside
+        it.</p>
       <form id="address-form" autocomplete="off">
         <label class="sr-only" for="address">Street address</label>
-        <input id="address" name="address" type="text" required minlength="4"
-               placeholder="1234 Maple Ave, Grand Rapids, MI"
-               autocomplete="street-address">
+        <!--
+          THE FIELD AND THE LOCATION BUTTON ON ONE LINE, because they are two
+          ways of answering one question and a button under the field would
+          read as a second step.
+
+          type="button" is load-bearing: a bare <button> inside a form submits
+          it, so without this, asking for your location would also fire the
+          address search with an empty field.
+        -->
+        <div class="findrow">
+          <input id="address" name="address" type="text" required minlength="4"
+                 placeholder="1234 Maple Ave, Grand Rapids, MI"
+                 autocomplete="street-address">
+          <button class="ghost locate" id="btn-locate" type="button"
+                  title="Use my current location" aria-label="Use my current location">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <circle cx="12" cy="12" r="3.2"></circle>
+              <circle cx="12" cy="12" r="7.2" fill="none"></circle>
+              <path d="M12 1.6v3.2M12 19.2v3.2M1.6 12h3.2M19.2 12h3.2"></path>
+            </svg>
+          </button>
+        </div>
         <button class="primary" type="submit">Find my property</button>
       </form>
+      <!--
+        Said here rather than in an alert, because it is the answer to "why is
+        it asking" and an alert arrives after the asking. Hidden until the
+        button is pressed: a line about location permissions on a page nobody
+        has pressed anything on is noise.
+      -->
+      <p class="note" id="locate-note" hidden></p>
 
       <!--
         A way past the address for somebody who only came back to look at a map

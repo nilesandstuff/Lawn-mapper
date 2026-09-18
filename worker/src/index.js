@@ -131,18 +131,50 @@ const json = (data, status, origin) =>
  * the candidates. That is what the confirm step is for.
  */
 async function handleGeocode(url, env, origin) {
-  const q = (url.searchParams.get('q') || '').trim();
-  if (q.length < 4) return json({ error: 'Address too short' }, 400, origin);
+  /*
+   * TWO WAYS IN, ONE WAY OUT.
+   *
+   * Typing an address and pressing "Use my location" are the same question
+   * asked from different ends, and everything downstream -- the candidate
+   * list, the confirm step, the parcel lookup, the gap log -- wants the same
+   * answer shape. Mapbox has a separate reverse endpoint, so the branch is
+   * here and nothing past this function knows which way somebody arrived.
+   *
+   * THE COUNTY NAME IS THE REASON THIS IS A SERVER ROUND TRIP at all. The
+   * browser has the coordinates already, and the parcel lookup would take
+   * them. But `servesCounty` needs the county and state to tell "your county
+   * is not configured" from "your county is configured and has no record of
+   * this parcel" -- and getting that wrong is exactly the Gwinnett bug, where
+   * a bounding box that reached into the next county sent somebody debugging
+   * a server that was never involved.
+   */
+  const lng = parseFloat(url.searchParams.get('lng'));
+  const lat = parseFloat(url.searchParams.get('lat'));
+  const reverse = Number.isFinite(lng) && Number.isFinite(lat);
 
-  const endpoint =
-    'https://api.mapbox.com/search/geocode/v6/forward?' +
-    new URLSearchParams({
-      q,
-      access_token: serverToken(env),
-      country: 'us',
-      types: 'address',
-      limit: '5',
-    });
+  const q = (url.searchParams.get('q') || '').trim();
+  if (!reverse && q.length < 4) return json({ error: 'Address too short' }, 400, origin);
+  if (reverse && (Math.abs(lng) > 180 || Math.abs(lat) > 90)) {
+    return json({ error: 'Not a point on Earth' }, 400, origin);
+  }
+
+  const endpoint = reverse
+    ? 'https://api.mapbox.com/search/geocode/v6/reverse?' +
+      new URLSearchParams({
+        longitude: String(lng),
+        latitude: String(lat),
+        access_token: serverToken(env),
+        types: 'address',
+        limit: '1',
+      })
+    : 'https://api.mapbox.com/search/geocode/v6/forward?' +
+      new URLSearchParams({
+        q,
+        access_token: serverToken(env),
+        country: 'us',
+        types: 'address',
+        limit: '5',
+      });
 
   const res = await fetch(endpoint);
   if (!res.ok) return json({ error: 'Geocoding unavailable' }, 502, origin);
@@ -180,6 +212,33 @@ async function handleGeocode(url, env, origin) {
       };
     })
     .filter((r) => r.label);
+
+  /*
+   * A COORDINATE IS STILL AN ANSWER when the geocoder has no address for it.
+   *
+   * Typing an address that matches nothing is a typo and should say so. A GPS
+   * fix that matches nothing is somebody standing on a new-build street or a
+   * long rural drive, where the coordinate is exactly right and only the
+   * address is missing -- and the app's whole fallback is tracing by hand,
+   * which needs nothing but a point. Refusing here would turn "we have no
+   * street name for you" into "we cannot help you".
+   *
+   * The county still comes from the geocoder where it can: a reverse lookup
+   * with no address usually still resolves the place it is in, and without it
+   * the gap log files a real request under nothing.
+   */
+  if (reverse && !results.length) {
+    const p = (data.features || [])[0]?.properties || {};
+    results.push({
+      label: p.full_address || p.name || 'Your current location',
+      lng,
+      lat,
+      accuracy: 'unknown',
+      inCoverage: isCovered(lng, lat),
+      county: p.context?.district?.name || null,
+      state: p.context?.region?.region_code || p.context?.region?.name || null,
+    });
+  }
 
   return json({ results }, 200, origin);
 }

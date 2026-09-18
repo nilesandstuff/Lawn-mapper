@@ -900,6 +900,54 @@ check('every class the code toggles is styled',
     'someone will otherwise read this as the fix for a bad detection');
 }
 
+/* --------------------------------------------- the locate button, end to end */
+{
+  const html = readFileSync(join(root, 'public/index.html'), 'utf8');
+  const js = readFileSync(join(root, 'public/app.js'), 'utf8');
+
+  /*
+   * TYPE="BUTTON" IS LOAD-BEARING AND EASY TO LOSE.
+   *
+   * A bare <button> inside a form submits it. Without this attribute, asking
+   * for your location would ALSO fire the address search -- with an empty
+   * field, so the form's own `required` fights the click and nothing happens
+   * at all. It would look like a dead button rather than a wiring mistake.
+   */
+  const locate = html.match(/<button[^>]*id="btn-locate"[^>]*>/)?.[0] || '';
+  check('the locate button is in the address form',
+    /id="address-form"[\s\S]*?id="btn-locate"[\s\S]*?<\/form>/.test(html),
+    'next to the field it is an alternative to');
+  check('and does not submit the form it sits in',
+    /type="button"/.test(locate), locate || 'not found');
+
+  /* Both ways in have to reach the same handler, or one of them is a button
+     that does nothing. */
+  check('and something listens to it',
+    /\$\('#btn-locate'\)\.addEventListener/.test(js),
+    'a button with no listener is a button that looks broken');
+
+  /*
+   * THE REFUSALS ARE TOLD APART. A denied permission, a radio that is off and
+   * a timeout need three different things done about them, and only one of
+   * them is something the app can even hint at. Collapsing them into
+   * "location unavailable" sends somebody to the wrong setting.
+   */
+  for (const code of ['code === 1', 'code === 3', 'code === 2']) {
+    check(`a geolocation failure with ${code} says something of its own`,
+      js.includes(code),
+      'PERMISSION_DENIED, POSITION_UNAVAILABLE and TIMEOUT are different problems');
+  }
+
+  /* The accuracy warning has to land on the screen that acts on it. It was
+     written to the note beside the address field one line before moving away
+     from that field, which displayed it where it could not be read. */
+  const locateBody = js.slice(js.indexOf('async function useMyLocation'),
+    js.indexOf('function renderCandidates'));
+  check('a vague fix warns on the confirm step, not on the screen it leaves',
+    /VAGUE_FIX_M[\s\S]*?setHint\(/.test(locateBody),
+    'the confirm step is the one that asks whether this is your property');
+}
+
 /* ------------------------------------ the coverage dialog is wired end to end */
 {
   /*

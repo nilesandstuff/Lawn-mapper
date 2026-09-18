@@ -1395,5 +1395,89 @@ check('and a typed prompt is sent verbatim',
     `${countyName('DeKalb County')} / ${countyName('De Kalb')}`);
 }
 
+/* ------------------------------------------- finding a place from a position */
+/*
+ * "USE MY LOCATION" GOES THROUGH THE GEOCODER, and the reason is not
+ * cosmetic. The browser already has the coordinates and the parcel lookup
+ * would take them -- but the lookup needs the county NAME to tell "your
+ * county is not configured" from "your county is configured and has no record
+ * of this parcel", and getting that wrong is the Gwinnett bug, where a
+ * bounding box reaching into the next county sent somebody debugging a server
+ * that was never involved.
+ *
+ * So the reverse path has to come back in the same shape as the forward one.
+ * A missing county here is silent: it degrades to the old, wrong question.
+ */
+{
+  const realFetch = globalThis.fetch;
+  const asked = [];
+  const env = { MAPBOX_TOKEN: 'pk.test' };
+  const ctx = { waitUntil() {} };
+  const feature = {
+    geometry: { coordinates: [-85.6681, 42.9634] },
+    properties: {
+      full_address: '123 Maple Ave, Grand Rapids, Michigan',
+      match_code: { confidence: 'exact' },
+      context: { district: { name: 'Kent' }, region: { region_code: 'MI' } },
+    },
+  };
+
+  const get = async (query, features) => {
+    globalThis.fetch = async (url) => {
+      asked.push(String(url));
+      return { ok: true, json: async () => ({ features }) };
+    };
+    try {
+      const url = new URL(`https://site.test/api/geocode?${query}`);
+      const res = await entrypoint.default.fetch(new Request(url), env, ctx);
+      return { status: res.status, body: await res.json() };
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  };
+
+  const rev = await get('lng=-85.67&lat=43.0', [feature]);
+  check('a position is answered with a place',
+    rev.status === 200 && rev.body.results?.length === 1,
+    JSON.stringify(rev.body).slice(0, 120));
+  check('and it reaches the reverse endpoint, not the forward one',
+    asked.at(-1).includes('/reverse?') && asked.at(-1).includes('longitude=-85.67'),
+    asked.at(-1).split('?')[0]);
+  check('carrying the county and state the parcel lookup needs',
+    rev.body.results[0].county === 'Kent' && rev.body.results[0].state === 'MI',
+    JSON.stringify(rev.body.results[0]));
+  /*
+   * THE PIN IS THE MATCHED ADDRESS, not the fix. A phone reports where the
+   * phone is, which is somewhere in the garden or on the sofa; the geocoder
+   * answers with the address it belongs to. Measuring from the second is the
+   * whole reason this is not a straight pass-through.
+   */
+  check('and the coordinates of the address rather than of the phone',
+    rev.body.results[0].lng === -85.6681 && rev.body.results[0].lat === 42.9634,
+    `${rev.body.results[0].lng}, ${rev.body.results[0].lat}`);
+
+  /*
+   * A COORDINATE IS STILL AN ANSWER with no address on it. That is a new-build
+   * street or a long rural drive, where the point is exactly right and only
+   * the name is missing -- and tracing by hand, which is the whole fallback,
+   * needs nothing but a point. A typed address matching nothing is a typo and
+   * still says so.
+   */
+  const bare = await get('lng=-85.67&lat=43.0', []);
+  check('a position with no address still comes back usable',
+    bare.body.results?.length === 1
+    && bare.body.results[0].lng === -85.67
+    && bare.body.results[0].label,
+    JSON.stringify(bare.body.results?.[0]));
+
+  const typo = await get('q=asdfghjkl+nowhere', []);
+  check('but a typed address that matches nothing comes back empty',
+    typo.body.results?.length === 0, JSON.stringify(typo.body));
+
+  const nonsense = await get('lng=999&lat=999', [feature]);
+  check('and a position off the planet is refused before it is spent on a lookup',
+    nonsense.status === 400, JSON.stringify(nonsense.body));
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);
