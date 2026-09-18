@@ -88,14 +88,25 @@ const countOf = (s) => (s.kind === 'some' ? `${s.covered} of ${s.total}`
  *   has      the counties we do have
  *   also     a statewide layer that ALSO has county servers of its own
  *
- * SUBTRACTING IS ONLY WORTH IT WHEN IT IS SHORTER, which the threshold alone
- * does not guarantee. Hawaii has two of its five counties: listing the three
- * it is missing is a longer list than naming the two it has, and tells a
- * reader in Honolulu less. Delaware is the same, one of three. So the rule is
- * "few enough to be a sentence AND fewer than the alternative", not just the
- * first half.
+ * THE RULE IS JUST "SHOW THE SHORTER LIST", and it took two corrections to
+ * get there. It began as "missing five or fewer", which is the useful case
+ * and not the rule: Hawaii has two of its five counties, so listing the three
+ * it lacks is longer than naming the two it has and tells a reader in
+ * Honolulu less. Adding "and fewer than the alternative" fixed that end and
+ * left the other end broken -- California reached 44 of 58 and printed all
+ * forty-four rather than the fourteen it was missing, because fourteen is
+ * over the threshold.
+ *
+ * Both failures were the threshold pretending to be the principle. Drop it
+ * and the principle covers every case, including the one it was written for:
+ * a state missing five of a hundred and fifty names the five, because five is
+ * shorter. Nothing else was ever being asked.
+ *
+ * `nearComplete` is still taken, and ignored. It is on the wire from the API
+ * and an argument quietly vanishing from a signature is worse than one that
+ * is honestly unused.
  */
-export function shownList(s, nearComplete) {
+export function shownList(s) {
   if (s.kind !== 'some') {
     if (!s.counties.length) return { mode: 'none', names: [] };
     /*
@@ -107,9 +118,7 @@ export function shownList(s, nearComplete) {
      */
     return { mode: s.source ? 'also' : 'has', names: s.counties };
   }
-  const subtract = s.missing.length
-    && s.missing.length <= nearComplete
-    && s.missing.length < s.counties.length;
+  const subtract = s.missing.length && s.missing.length < s.counties.length;
   return subtract
     ? { mode: 'missing', names: s.missing }
     : { mode: 'has', names: s.counties };

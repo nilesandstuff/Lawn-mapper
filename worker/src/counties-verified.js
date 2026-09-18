@@ -26,8 +26,8 @@
  * tools/import-openaddresses.js. Editing this file directly will be
  * overwritten; change an importer or the verifier instead.
  *
- * 287 entries (14 statewide), of 979 candidates.
- * Last run 2026-09-18: 134 verified of 200 tried.
+ * 287 entries (15 statewide), of 978 candidates.
+ * Last run 2026-09-18: 1 verified of 1 tried.
  */
 
 const VERIFIED_COUNTIES = {
@@ -1032,15 +1032,6 @@ const VERIFIED_COUNTIES = {
     box: [-73.743,40.979,-71.781,42.053],
     checked: "2026-09-18",
   },
-  'ct-fairfield': {
-    name: "Fairfield County, CT",
-    fips: "09001",
-    service: "https://maps.ctmetro.org/server/rest/services/Bridgeport/Bridgeport_Parcels_NAD83/MapServer",
-    layer: 7,
-    fields: {"pin":"Parcel_ID","address":null},
-    box: [-73.245,41.141,-73.153,41.23],
-    checked: "2026-09-18",
-  },
   'ct-greater-bridgeport-planning-region': {
     name: "Greater Bridgeport Planning Region County, CT",
     fips: "09120",
@@ -1782,6 +1773,17 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PAN","address":null},
     box: [-148.734,64.235,-143.854,65.439],
+    checked: "2026-09-18",
+  },
+  'ma-statewide': {
+    name: "Massachusetts (atlas)",
+    state: "MA",
+    statewide: true,
+    service: "https://arcgisserver.digital.mass.gov/arcgisserver/rest/services/AGOL/MassachusettsPropertyTaxParcels/FeatureServer",
+    layer: 1,
+    fields: {"pin":"MAP_PAR_ID","address":null},
+    fallbacks: [{"service":"https://arcgisserver.digital.mass.gov/arcgisserver/rest/services/AGOL/MassachusettsPropertyTaxParcels/FeatureServer","layer":4,"fields":{"pin":null,"address":"SITE_ADDR"}}],
+    box: [-73.318,41.193,-70.001,42.743],
     checked: "2026-09-18",
   },
   'md-prince-george-s': {

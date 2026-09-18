@@ -157,9 +157,11 @@ const by = (ab) => states.find((s) => s.ab === ab);
 /* -------------------------------------------------- the near-complete rule */
 {
   /*
-   * The threshold is what decides which side of the subtraction a reader is
-   * shown. It is only useful if it is small: a state missing five is a
-   * sentence, a state missing two hundred is a number pretending to be one.
+   * The threshold is still sent to the page, so it still has to be sane --
+   * but it no longer decides which list is shown. See shownList: two
+   * different states broke that rule from opposite ends, and the principle
+   * underneath it ("show the shorter list") covers both and the threshold's
+   * own case too.
    */
   check('the near-complete threshold is a handful, not a hundred',
     NEAR_COMPLETE > 0 && NEAR_COMPLETE <= 10, String(NEAR_COMPLETE));
@@ -207,18 +209,30 @@ const by = (ab) => states.find((s) => s.ab === ab);
     shownList({ kind: 'whole', counties: [], missing: [] }, NEAR_COMPLETE).mode === 'none',
     'a triangle that discloses nothing is a promise the row cannot keep');
 
-  /* The rule at the threshold itself, which no real state may currently sit
-     on -- so it is asserted directly rather than left to the roster. */
+  /*
+   * THE RULE IS JUST "THE SHORTER LIST", asserted directly rather than left
+   * to whatever the roster happens to contain today.
+   *
+   * It was "missing five or fewer" and that was the useful case pretending to
+   * be the rule. It broke at both ends: Hawaii, two of five, printed the
+   * three it lacked; and California reached 44 of 58 and printed all
+   * forty-four rather than the fourteen missing, because fourteen is over the
+   * threshold. Both of those are this check.
+   */
   const made = (have, miss) => ({
     kind: 'some', counties: have, missing: miss, covered: have.length,
     total: have.length + miss.length,
   });
-  check(`missing exactly ${NEAR_COMPLETE} still subtracts`,
-    shownList(made(Array(40).fill('x'), Array(NEAR_COMPLETE).fill('y')), NEAR_COMPLETE)
-      .mode === 'missing');
-  check('and one more than that does not',
-    shownList(made(Array(40).fill('x'), Array(NEAR_COMPLETE + 1).fill('y')), NEAR_COMPLETE)
-      .mode === 'has');
+  const n = (k) => Array.from({ length: k }, (_, i) => `c${i}`);
+  check('a state missing a handful of many names the handful',
+    shownList(made(n(150), n(5))).mode === 'missing');
+  check('and one missing fourteen of fifty-eight names the fourteen',
+    shownList(made(n(44), n(14))).mode === 'missing',
+    'the threshold said "has" here, which is forty-four names instead of fourteen');
+  check('and one missing more than it has names what it has',
+    shownList(made(n(2), n(3))).mode === 'has');
+  check('and one missing nothing names what it has',
+    shownList(made(n(9), [])).mode === 'has');
 }
 
 /* ---------------------------------------------- the summary matches the list */

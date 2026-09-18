@@ -1637,5 +1637,10 @@
     "at": "2026-09-18",
     "ok": false,
     "why": "layer metadata: fetch failed"
+  },
+  "ma-statewide": {
+    "at": "2026-09-18",
+    "ok": true,
+    "acres": 0.169
   }
 }
