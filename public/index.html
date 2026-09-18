@@ -188,11 +188,25 @@
         visit is one field and one button and not a choice.
       -->
       <button class="link" id="btn-open-saved" hidden>Open a saved map instead →</button>
-      <p class="note">Property lines come from public records &mdash; all of
-        <b>North Carolina</b>, <b>Maryland</b>, <b>Vermont</b> and most of
-        <b>New Hampshire</b>, plus Kent, Ottawa, Allegan, Muskegon and Newaygo
-        counties in Michigan and Washoe County in Nevada. Anywhere else you
-        trace the lawn yourself, which measures just as accurately.</p>
+      <!--
+        WHERE PROPERTY LINES COME FROM, and the sentence is written by the
+        Worker, not by hand. The one that used to sit here named five Michigan
+        counties and one in Nevada. It was true the week it was typed; by the
+        time anybody read it the registry held a hundred and fifty-nine entries
+        across forty-five states, and this paragraph was telling every visitor
+        outside West Michigan that the site had nothing for them.
+
+        A list of a growing thing, written down, is a promise to keep editing
+        it. That promise is always broken quietly, so the fallback below says
+        only what stays true while the numbers load.
+      -->
+      <p class="note" id="coverage-note"><span id="coverage-text">Property
+        lines come from public records in much of the United States.</span>
+        Anywhere else you trace the lawn yourself, which measures just as
+        accurately.
+        <button class="link" data-coverage-open type="button">See the full
+          list</button>
+      </p>
     </section>
 
     <!-- 2. Which address? ----------------------------------------------- -->
@@ -376,6 +390,19 @@
 
         <p class="sub">Press <b>Line</b> on the map to move the boundary, or a
           corner of it. Everything measured is trimmed to this line.</p>
+
+        <!--
+          THE SAME QUESTION, ASKED WHERE IT ACTUALLY COMES UP. The sentence on
+          the address step is read before anybody has typed anything; this is
+          the tab somebody is looking at when the boundary came back empty and
+          they want to know whether that is their county or a bug. Same dialog,
+          same computed list, no second copy of the answer.
+        -->
+        <p class="sub" id="coverage-tab-text">Where a county publishes its
+          records, this line is drawn for you.
+          <button class="link" data-coverage-open type="button">See which
+            counties</button>
+        </p>
 
         <!--
           The same handover as "Correct it by hand" on the next tab, and for
@@ -1010,6 +1037,33 @@
     </div>
   </main>
 </div>
+
+<!--
+  EVERY STATE AND COUNTY WITH PROPERTY LINES.
+
+  A <dialog> rather than another overlay div. Escape closes it, the backdrop
+  is the browser's, focus stays inside it and returns to the button that
+  opened it -- all of which the feedback overlay had to be given by hand, and
+  none of which is worth writing twice.
+
+  Empty markup on purpose: everything inside is built from /api/coverage, which
+  is computed from the parcel registry on every request. A list of counties
+  typed into this file would be wrong by the next deploy, which is the exact
+  fault this whole feature exists to fix.
+
+  It is outside .app on purpose too. A dialog nested in a flex column that the
+  map overflows is a dialog that inherits a stacking context it should have
+  nothing to do with.
+-->
+<dialog id="coverage-dialog" class="sheet-dialog" aria-labelledby="coverage-title">
+  <button class="sheet-x" id="coverage-close" type="button" aria-label="Close">&times;</button>
+  <h2 class="sheet-title" id="coverage-title">Where we have property lines</h2>
+  <p class="sheet-why" id="coverage-lead">Loading…</p>
+  <div id="coverage-list"></div>
+  <p class="sheet-note">Everywhere else, you trace the property line yourself.
+    The measurement is exactly as accurate &mdash; a recorded parcel only saves
+    you the tracing.</p>
+</dialog>
 
 <!-- Rendered only when printing, so the PDF carries the numbers as text. -->
 <div class="printblock" id="printblock" aria-hidden="true">

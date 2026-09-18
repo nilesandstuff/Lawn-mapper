@@ -111,9 +111,19 @@ const COUNTIES = {
    * Four counties, the Eastern Shore to the western panhandle, all
    * residential-sized, from the state's own host with proper account and
    * address fields. Nothing here needed a caveat about badly aimed points.
+   *
+   * SO THIS IS THE ONE THAT CARRIES `complete`, and the only one. Every other
+   * statewide entry here is a mosaic of what its counties or towns have sent
+   * in -- NC OneMap, GRANIT and IndianaMap all say so in their own comments,
+   * and Bloomington proves it: Monroe County's own layer has a parcel at a
+   * coordinate where IndianaMap has nothing. The flag is what lets the
+   * coverage page say "all of Maryland" and "most of Indiana" from the data
+   * rather than from a sentence somebody has to remember to update. Absent
+   * means "most of", which is the safer thing to promise a stranger.
    */
   maryland: {
     name: 'Maryland (MD iMAP)',
+    complete: true,
     // The postcode abbreviation, matched against what the geocoder
     // reports, so a statewide layer is credited for its own state and not
     // for a neighbour its bounding rectangle happens to reach into.

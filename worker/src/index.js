@@ -9,6 +9,7 @@
  *
  * Endpoints:
  *   GET  /api/config                   -> public Mapbox token + imagery sources
+ *   GET  /api/coverage                 -> every state and county with parcels
  *   GET  /api/geocode?q=<address>      -> candidate addresses (no quota)
  *   GET  /api/parcel?lng=&lat=         -> parcel boundary or null (no quota)
  *   GET  /api/imagery?...              -> satellite PNG (no quota)
@@ -34,6 +35,7 @@
 
 import { lookupParcel } from './parcel.js';
 import { isCovered, servesCounty } from './counties.js';
+import { coverage, coverageSummary, NEAR_COMPLETE } from './coverage.js';
 import { checkQuota, consumeQuota, refundQuota } from './quota.js';
 import { charge, refund, allowance } from './allowance.js';
 // Why an upstream refused us, redacted. In its own module because a Workers
@@ -948,10 +950,29 @@ export default {
               // browser needs to know that rather than offering a sign-in
               // button that cannot work.
               accounts: accountsEnabled(env),
+              /*
+               * WHERE PROPERTY LINES COME FROM, counted rather than written
+               * down. The address step says this out loud before anybody
+               * types anything, and the sentence that used to be there named
+               * six counties and was three years out of date within a month.
+               *
+               * The summary only: four numbers and two short lists of state
+               * names. The full roster is thousands of counties and lives
+               * behind /api/coverage, fetched when somebody asks to see it.
+               */
+              coverage: coverageSummary(),
             },
             200,
             origin
           );
+        /*
+         * The full list, for the dialog behind the link. Public, like the
+         * summary and for the same reason: it is a list of public records
+         * offices, and a visitor deciding whether this site can help them
+         * should not need an account to find out.
+         */
+        case '/api/coverage':
+          return json({ states: coverage(), nearComplete: NEAR_COMPLETE }, 200, origin);
         case '/api/geocode':
           return await handleGeocode(url, env, origin);
         case '/api/mask':

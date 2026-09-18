@@ -1,0 +1,116 @@
+name: 15. Refresh the US county list
+
+# Rewrites worker/src/us-counties.js from the Census Bureau's county gazetteer.
+#
+# THIS IS NOT THE COVERAGE LIST. What the site says it covers is computed from
+# the parcel registry on every request, so verifying a new county changes the
+# page on the next deploy with nothing to run here.
+#
+# This file is the DENOMINATOR: every county in the country, so the page can
+# say "all of Maryland" instead of naming twenty-four, and "missing two"
+# instead of naming a hundred and fifty. County lines almost never move, so
+# this is expected to sit unused for years at a time.
+#
+# RUN IT WHEN a state redraws its counties. Connecticut did, in 2022, replacing
+# eight counties with nine planning regions -- and that is exactly the change
+# that breaks things quietly: the atlas carried the new FIPS codes, an old
+# roster carried the old ones, nothing matched, and a state served completely
+# vanished from the coverage page without an error anywhere.
+#
+# Free to run: one GET against the Census Bureau.
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: 'Commit the regenerated file back to this branch'
+        required: false
+        default: 'true'
+        type: choice
+        options: ['true', 'false']
+
+jobs:
+  refresh:
+    name: Rebuild from the Census gazetteer
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Rebuild
+        run: node tools/build-us-counties.js
+
+      # THE TESTS DECIDE WHETHER THIS IS AN IMPROVEMENT. tools/coverage.test.js
+      # checks that every county entry in the registry still joins a real
+      # county by its FIPS code -- so a roster that drops a code we rely on
+      # fails here rather than silently deleting a state from the page.
+      - name: The registry must still join it
+        run: npm test
+
+      - name: Say what changed
+        run: |
+          echo "### US county list" >> "$GITHUB_STEP_SUMMARY"
+          if git diff --quiet -- worker/src/us-counties.js; then
+            echo "No change. The county map of the United States is the same as it was." >> "$GITHUB_STEP_SUMMARY"
+          else
+            # Names only: a diff of a generated file is mostly punctuation, and
+            # the question worth answering on a phone is which places moved.
+            git diff -U0 -- worker/src/us-counties.js \
+              | grep -E '^[+-]\s+"[0-9]{3}":' \
+              | sed -E 's/^([+-])\s+"[0-9]{3}": "(.*)",?$/\1 \2/' \
+              | sort -u >> "$GITHUB_STEP_SUMMARY" || true
+          fi
+
+      - name: Commit the result
+        if: inputs.commit == 'true'
+        run: |
+          if git diff --quiet -- worker/src/us-counties.js; then
+            echo "Nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Same reasoning as the atlas workflow: the file is GENERATED, so the
+          # run that just produced it is the only authority on its contents and
+          # there is nothing for a merge to reconcile. Copy it out of reach,
+          # reset onto whatever the branch is now, put it back.
+          cp worker/src/us-counties.js "$RUNNER_TEMP/us-counties.js"
+
+          for attempt in 1 2 3; do
+            if ! git fetch origin "$GITHUB_REF_NAME"; then
+              echo "Attempt $attempt: could not reach origin. Retrying."
+              sleep 5
+              continue
+            fi
+            git reset --hard FETCH_HEAD
+            cp "$RUNNER_TEMP/us-counties.js" worker/src/us-counties.js
+
+            if git diff --quiet -- worker/src/us-counties.js; then
+              echo "The branch already carries this exact file."
+              exit 0
+            fi
+
+            git add worker/src/us-counties.js
+            git commit -m "Refresh the US county list
+
+          Written by tools/build-us-counties.js from the Census Bureau's county
+          gazetteer. This is the denominator the coverage page counts against,
+          not the list of what the app covers.
+
+          Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+            git push && exit 0
+
+            echo "Push $attempt failed; the branch moved again. Retrying."
+            sleep 5
+          done
+          echo "::error::Could not push the refreshed county list after three tries."
+          exit 1

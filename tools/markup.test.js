@@ -900,6 +900,69 @@ check('every class the code toggles is styled',
     'someone will otherwise read this as the fix for a bad detection');
 }
 
+/* ------------------------------------ the coverage dialog is wired end to end */
+{
+  /*
+   * FOUR IDS AND AN ATTRIBUTE, every one of which fails silently.
+   *
+   * getElementById returns null, mountCoverage's guard returns early, and the
+   * address step keeps the placeholder sentence -- which is a real sentence,
+   * so the page looks finished while saying nothing about forty-five states.
+   * That is the same shape of fault as the every-map page's missing
+   * stylesheet: correct code, correct names, and no symptom.
+   */
+  const indexHtml = readFileSync(join(root, 'public/index.html'), 'utf8');
+  const covJs = readFileSync(join(root, 'public/lib/coverage-ui.js'), 'utf8');
+  const ids = new Set([...indexHtml.matchAll(/\bid="([A-Za-z0-9_-]+)"/g)].map((m) => m[1]));
+
+  const wants = [...covJs.matchAll(/getElementById\('([A-Za-z0-9_-]+)'\)/g)].map((m) => m[1]);
+  const gone = wants.filter((id) => !ids.has(id));
+  check('every element the coverage dialog reaches for is in the page',
+    gone.length === 0,
+    gone.length ? gone.join(', ') : `${wants.length} referenced, all present`);
+
+  /* The openers are found by attribute so a third one costs nothing -- which
+     only works while at least one carries it. */
+  const openers = (indexHtml.match(/data-coverage-open/g) || []).length;
+  check('and at least one button opens it',
+    openers >= 1, `${openers} found`);
+  check('with the tab that prompted this among them',
+    /id="pane-address"[\s\S]*?data-coverage-open/.test(indexHtml),
+    'the Property line tab is where somebody asks whether their county is in');
+
+  /*
+   * A <dialog>, not a div dressed as one. showModal is what dims the page,
+   * traps focus and answers Escape; a div would need all three by hand and
+   * the two older sheets in this file are the evidence of what that costs.
+   */
+  check('the dialog is a real <dialog>',
+    /<dialog[^>]*id="coverage-dialog"/.test(indexHtml)
+    && /showModal/.test(covJs),
+    'and it is opened with showModal');
+
+  /* Its classes are styled, or the list is a wall of county names with no
+     rows, no indentation and nothing to tap. */
+  for (const cls of ['sheet-dialog', 'cov-state', 'cov-flat', 'cov-head',
+    'cov-name', 'cov-count', 'cov-names', 'cov-source']) {
+    check(`.${cls} is styled`,
+      new RegExp(`\\.${cls}(?![A-Za-z0-9_-])`).test(css),
+      'a class nothing styles is an unstyled row rather than a missing one');
+  }
+
+  /*
+   * AND NOTHING IS WRITTEN DOWN. A state or county name typed into the markup
+   * is the bug this whole feature exists to fix: it was true the week it was
+   * typed and wrong by the next deploy.
+   */
+  const note = indexHtml.match(/id="coverage-note"[\s\S]*?<\/p>/)?.[0] || '';
+  const named = ['North Carolina', 'Maryland', 'Vermont', 'New Hampshire',
+    'Indiana', 'Connecticut', 'Michigan', 'Nevada', 'Kent', 'Ottawa']
+    .filter((n) => note.includes(n));
+  check('and the coverage note names no state or county of its own',
+    named.length === 0,
+    named.length ? `hard-coded: ${named.join(', ')}` : 'every name comes from the API');
+}
+
 /* -------------------------------- the every-map page addresses its own markup */
 {
   /*

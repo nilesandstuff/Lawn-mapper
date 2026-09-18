@@ -166,6 +166,74 @@ html, body {
 .sheet-note.error { color: #b3261e; }
 .sheet-note.ok { color: var(--green-dark); font-weight: 550; }
 
+/*
+ * A SHEET THAT IS A REAL <dialog>, which the two above are not.
+ *
+ * Those are a fixed div and a card inside it, and each one had to be given
+ * Escape, a backdrop, a focus trap and somewhere for focus to go on close.
+ * The element does all four. The card styling is the same on purpose -- a
+ * visitor should not be able to tell which of these is which -- so this rule
+ * is .sheet-card's box applied to the dialog itself rather than to a child.
+ *
+ * Bottom of the screen on a phone, for the same reason as the others: that is
+ * where the thumb is.
+ */
+.sheet-dialog {
+  position: fixed; inset: 0; margin: auto auto 0;
+  width: 100%; max-width: 100%; max-height: 86vh; overflow-y: auto;
+  border: 0; border-radius: 18px 18px 0 0;
+  background: #fff; color: var(--ink);
+  padding: 20px 20px 24px;
+}
+.sheet-dialog::backdrop { background: rgba(22, 33, 26, .55); }
+.sheet-dialog[open] { display: grid; gap: 10px; align-content: start; }
+@media (min-width: 560px) {
+  .sheet-dialog { margin: auto; max-width: 440px; border-radius: 16px; }
+}
+
+/*
+ * ONE ROW PER STATE, and the whole row is the control.
+ *
+ * <details> rather than a button and a panel: the open state belongs to the
+ * row, several can be open at once without anything coordinating them, and
+ * the browser already knows how to do all of it. A state with nothing to
+ * expand into -- one served whole by a single layer -- renders as a plain row
+ * instead, because a disclosure triangle that discloses nothing is a promise
+ * the row cannot keep.
+ */
+.cov-state, .cov-flat {
+  border-top: 1px solid var(--line);
+  padding: 9px 0 8px;
+  font-size: 13.5px;
+}
+#coverage-list > :first-child { border-top: 0; }
+.cov-head { display: flex; align-items: baseline; gap: 8px; }
+.cov-state > summary { cursor: pointer; list-style: none; }
+.cov-state > summary::-webkit-details-marker { display: none; }
+/* The triangle, drawn rather than inherited, so it points the same way in
+   every browser and turns rather than swapping glyph. */
+.cov-state > summary::before {
+  content: ''; flex: none;
+  width: 0; height: 0; margin-top: 1px;
+  border: 5px solid transparent; border-left-color: var(--muted);
+  transition: transform .12s ease;
+}
+.cov-state[open] > summary::before { transform: rotate(90deg) translateX(2px); }
+/* Indented to where a row with a triangle starts its name, so the column of
+   state names is straight whether or not a row can be opened. */
+.cov-flat > .cov-head { padding-left: 18px; }
+
+.cov-name { font-weight: 600; }
+.cov-count { color: var(--muted); font-size: 12px; margin-left: auto; white-space: nowrap; }
+/* The list itself: several short names to a line, because a county name is
+   three words and a column of them is four screens of scrolling. */
+.cov-names {
+  margin: 6px 0 2px; padding-left: 18px;
+  font-size: 12.5px; line-height: 1.5; color: var(--muted);
+}
+.cov-names b { color: var(--ink); font-weight: 600; }
+.cov-source { padding-left: 18px; font-size: 11.5px; color: var(--muted); margin: 3px 0 0; }
+
 #signin-email-form { display: grid; gap: 8px; }
 #signin-email {
   width: 100%; padding: 11px 13px; font: inherit; font-size: 15px;

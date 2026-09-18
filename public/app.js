@@ -38,6 +38,7 @@ import {
   MIN_WIDTH_FT, MAX_WIDTH_FT, DEFAULT_WIDTH_FT,
 } from './lib/segments.js';
 import { imageFeatures, standardise } from './lib/features.js';
+import { mountCoverage } from './lib/coverage-ui.js';
 import { predict, reviveModel } from './lib/head.js';
 import {
   framePxToLngLat,
@@ -1052,8 +1053,17 @@ async function initMap() {
 
   const {
     mapboxToken, imagery, models, exclusions, defaultExclusions, accounts,
+    coverage,
   } = await api('/api/config');
   state.accountsOn = Boolean(accounts);
+  /*
+   * Before the map, deliberately. This writes the "where property lines come
+   * from" sentence on the very first screen, and that screen is already on
+   * show -- a visitor reading it while Mapbox loads should be reading the
+   * real numbers, not the placeholder that has to be there in case this
+   * request fails.
+   */
+  mountCoverage({ summary: coverage, fetchList: () => api('/api/coverage') });
   state.imagery = Array.isArray(imagery) ? imagery : [];
   state.models = Array.isArray(models) ? models : [];
   state.exclusions = Array.isArray(exclusions) ? exclusions : [];
