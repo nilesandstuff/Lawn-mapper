@@ -183,7 +183,7 @@ function fromMercator(e) {
  * Three ways of asking now, because servers disagree about all of them, and
  * whatever goes wrong is reported rather than swallowed.
  */
-async function extentOf(service, layer) {
+async function extentOf(service, layer, { scan = true } = {}) {
   /*
    * 1. THE LAYER'S OWN METADATA, FIRST, because it is free.
    *
@@ -234,10 +234,24 @@ async function extentOf(service, layer) {
    * It only costs time on layers that get this far, and only on a workflow
    * somebody runs by hand.
    */
+  /*
+   * NOT ON A SECOND ASK. This is the one request here that is expensive by
+   * nature -- a minute of a server walking every record -- and the retry below
+   * multiplies it by every county that failed. Twenty-three failures times two
+   * scans of up to a minute is most of the workflow's budget, and the first
+   * run with the retry in place spent forty minutes against a forty-five
+   * minute ceiling for exactly that reason.
+   *
+   * A retry is for a hiccup. A county that genuinely needs its whole table
+   * walked to report an extent is not going to be rescued by walking it
+   * twice, so the second ask reads metadata and stops.
+   */
   const q = new URLSearchParams({
     where: '1=1', returnExtentOnly: 'true', outSR: '4326', f: 'json',
   });
-  const query = await getJson(`${service}/${layer}/query?${q}`, SCAN_TIMEOUT_MS);
+  const query = scan
+    ? await getJson(`${service}/${layer}/query?${q}`, SCAN_TIMEOUT_MS)
+    : { error: 'skipped on the retry -- see extentOf' };
   const scanned = boxFrom(query?.extent);
   if (scanned) return { box: scanned };
 
@@ -367,7 +381,7 @@ function parcelLayerIn(layers) {
   return null;
 }
 
-async function verify(c) {
+async function verify(c, opts = {}) {
   /*
    * THE CATALOGUE ALREADY SAID SO, so do not spend a request finding out.
    *
@@ -389,13 +403,13 @@ async function verify(c) {
         + 'and no parcel layer was found beside it', layers };
     }
     /* layerName cleared, or this would look at itself again for ever. */
-    const out = await verify({ ...c, layer: better, layerName: null });
+    const out = await verify({ ...c, layer: better, layerName: null }, opts);
     await sleep(PAUSE_MS);
     if (out.ok) return { ...out, correctedLayer: better, wasLayer: c.layer };
     return { ok: false, why: `named a table; layer ${better} was no better`, layers };
   }
 
-  const extent = await extentOf(c.service, c.layer);
+  const extent = await extentOf(c.service, c.layer, opts);
   await sleep(PAUSE_MS);
   if (extent.error) {
     const layers = await layersOf(c.service).catch(() => []);
@@ -409,7 +423,7 @@ async function verify(c) {
      */
     const better = parcelLayerIn(layers);
     if (better !== null && better !== c.layer) {
-      const second = await verify({ ...c, layer: better });
+      const second = await verify({ ...c, layer: better }, opts);
       await sleep(PAUSE_MS);
       if (second.ok) return { ...second, correctedLayer: better, wasLayer: c.layer };
       return { ok: false, why: `${extent.error} (layer ${better} was no better)`, layers };
@@ -534,7 +548,7 @@ for (const c of list) {
   let r = await verify(c);
   if (!r.ok) {
     await sleep(PAUSE_MS * 6);
-    const again = await verify(c);
+    const again = await verify(c, { scan: false });
     if (again.ok) {
       console.log(`  (${c.key} answered on the second ask)`);
       r = again;
