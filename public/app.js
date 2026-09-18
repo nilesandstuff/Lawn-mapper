@@ -58,6 +58,14 @@ const IMAGERY_ZOOM_FALLBACK = 19; // used when we have no parcel to fit
 const state = {
   clientId: clientId(),
   chosen: null,       // { label, lng, lat }
+  /*
+   * Whether a tap on the map moves the property pin. True only on the confirm
+   * step, and set by showStep rather than by the code that enters it -- there
+   * are several ways out of that step and a flag cleared by hand in each of
+   * them is one the next exit will forget.
+   */
+  placingPin: false,
+  pinMove: null,      // the latest move, so a slow lookup cannot label a new pin
   parcel: null,       // GeoJSON Feature or null
   frame: null,        // { lng, lat, zoom, size } used for the last/next SAM call
   quota: null,
@@ -1001,6 +1009,16 @@ function showStep(name) {
   for (const el of document.querySelectorAll('.step')) {
     el.hidden = el.id !== `step-${name}`;
   }
+  /*
+   * Taps on the map move the pin ONLY while the confirm step is up.
+   *
+   * Cleared here rather than at each place that leaves the step, because
+   * there are several ways out -- confirming, going back, starting over -- and
+   * a flag that has to be cleared in every one of them is a flag that will be
+   * left set by the next one somebody adds. A stray tap on the measuring
+   * screen relocating the property would be a very bad way to find that out.
+   */
+  state.placingPin = name === 'confirm';
 }
 
 function setStatus(text, kind = '') {
@@ -1662,7 +1680,7 @@ async function useMyLocation() {
      */
     if (accuracy > VAGUE_FIX_M) {
       setHint(`Your device placed you to within about ${Math.round(accuracy)} m, `
-        + 'which covers several properties — is this the right one?');
+        + 'which covers several properties — drag the pin onto yours.');
     }
   } catch (err) {
     /*
@@ -1720,14 +1738,99 @@ function choose(result) {
   state.chosen = result;
   $('#chosen-label').textContent = result.label;
   showStep('confirm');
-  setHint('Does this look like your property?');
+  setHint('Wrong house? Drag the pin, or tap the roof that is yours.');
 
   map.flyTo({ center: [result.lng, result.lat], zoom: 18.5, duration: 900 });
 
   if (state.marker) state.marker.remove();
-  state.marker = new mapboxgl.Marker({ color: '#2f7d32' })
+  /*
+   * DRAGGABLE, because the pin is a guess and sometimes it is wrong.
+   *
+   * A phone's fix is good to five or ten metres outdoors and much worse
+   * indoors, against a suburban lot about twenty metres wide -- so "use my
+   * location" from inside your own kitchen can land on the neighbour's roof.
+   * A geocoder makes the same class of mistake on a rural route or a new
+   * street, where the number it knows about is two doors down.
+   *
+   * Both used to mean going back and typing something different, which does
+   * not help when the address itself is what the geocoder has wrong. Moving
+   * the pin does, and it is the one correction that always works: you can see
+   * your own roof.
+   */
+  state.marker = new mapboxgl.Marker({ color: '#2f7d32', draggable: true })
     .setLngLat([result.lng, result.lat])
     .addTo(map);
+  state.marker.on('dragend', () => movePin(state.marker.getLngLat()));
+}
+
+/*
+ * The pin has been put somewhere on purpose. Find out where that is.
+ *
+ * THE COORDINATES STAY WHERE THEY WERE PUT, and only the name is looked up --
+ * which is the opposite of what "use my location" does, on purpose. There the
+ * fix is noisy and the geocoder's rooftop is the better guess, so the pin
+ * snaps to it. Here somebody has looked at a photograph of their own house
+ * and pointed at it, which beats any guess, and a pin that jumped after being
+ * placed would be the app arguing with the person using it.
+ *
+ * The name is still worth asking for. It is what the status line quotes, what
+ * a saved map is called, and -- through the county -- what tells a missing
+ * property line from an unconfigured county.
+ */
+async function movePin(lngLat) {
+  const lng = Number(lngLat.lng ?? lngLat[0]);
+  const lat = Number(lngLat.lat ?? lngLat[1]);
+  if (!Number.isFinite(lng) || !Number.isFinite(lat)) return;
+
+  state.marker?.setLngLat([lng, lat]);
+  /*
+   * Answer immediately with the coordinates, then improve it -- a label that
+   * goes blank while a request is in flight reads as something breaking.
+   *
+   * THE OLD SPOT'S COUNTY IS DROPPED, NOT CARRIED. Spreading the previous
+   * `chosen` kept `county` and `state` from wherever the pin used to be, and
+   * a pin dragged three streets over would file its parcel request under the
+   * old county's name. That is the Gwinnett bug with the two sides swapped:
+   * the lookup answers "that county has no record of this parcel" when the
+   * truth is that the wrong county was asked. Nothing is the honest value
+   * here -- servesCounty already falls back to the box when it has no name.
+   */
+  state.chosen = { lng, lat, label: state.chosen?.label || '' };
+  $('#chosen-label').textContent = 'Looking up that spot…';
+
+  /* Each move is its own request, and they can come back out of order -- a
+     slow one landing after a fast one would label the new pin with the old
+     spot. Only the latest move gets to write. */
+  const token = Symbol('move');
+  state.pinMove = token;
+
+  try {
+    const { results } = await api(
+      `/api/geocode?lng=${encodeURIComponent(lng)}&lat=${encodeURIComponent(lat)}`
+    );
+    if (state.pinMove !== token) return;
+    const found = results[0];
+    state.chosen = {
+      ...(found || {}),
+      /* Theirs, not the geocoder's. See above. */
+      lng,
+      lat,
+      label: found?.label || 'The spot you picked',
+    };
+  } catch {
+    if (state.pinMove !== token) return;
+    /*
+     * A failed lookup is not a failed placement. The point is the thing the
+     * measurement needs; the address is a caption. Saying so beats an error
+     * over a pin that is sitting exactly where it should be.
+     *
+     * With no county name, for the reason above: a lookup that failed knows
+     * nothing about where this is, and inheriting the last answer would be
+     * the app making one up.
+     */
+    state.chosen = { lng, lat, label: 'The spot you picked' };
+  }
+  $('#chosen-label').textContent = state.chosen.label;
 }
 
 /* ----------------------------------------------------------------- parcel */
@@ -3159,6 +3262,12 @@ function handleMapPoint(lngLat, x = null, y = null) {
     return;
   }
 
+  /*
+   * Moving the property pin comes first, because on the confirm step there is
+   * nothing else a tap could mean: no shapes exist yet, no edge is being
+   * edited, and the detection pins belong to a screen two steps later.
+   */
+  if (state.placingPin) return movePin(lngLat);
   if (state.edgeEdit) return selectNear([lngLat.lng, lngLat.lat]);
   if (placingPins()) addPin([lngLat.lng, lngLat.lat]);
 }

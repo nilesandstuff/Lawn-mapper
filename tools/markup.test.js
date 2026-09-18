@@ -948,6 +948,65 @@ check('every class the code toggles is styled',
     'the confirm step is the one that asks whether this is your property');
 }
 
+/* --------------------------------------------- moving the pin by hand */
+{
+  const html = readFileSync(join(root, 'public/index.html'), 'utf8');
+  const js = readFileSync(join(root, 'public/app.js'), 'utf8');
+
+  check('the pin can be dragged',
+    /new mapboxgl\.Marker\(\{[^}]*draggable: true/.test(js),
+    'a pin that cannot be moved leaves a wrong guess with no correction');
+  check('and a tap on the map moves it while the confirm step is up',
+    /state\.placingPin\) return movePin/.test(js),
+    'dragging a pin on a phone is fiddly; tapping the right roof is not');
+
+  /*
+   * THE FLAG IS CLEARED CENTRALLY. There are several ways out of the confirm
+   * step -- confirming, going back, starting over -- and a flag cleared by
+   * hand in each is one the next exit added will forget. A stray tap on the
+   * measuring screen relocating the property would be a bad way to find out.
+   */
+  check('and only while it is up',
+    /function showStep[\s\S]{0,700}?state\.placingPin = name === 'confirm'/.test(js),
+    'set by showStep, so every exit clears it without being told to');
+
+  check('the step says the pin can be moved',
+    /id="step-confirm"[\s\S]*?drag it or tap[\s\S]*?<\/section>/.test(html),
+    '"No, go back" does not help when the address itself is what is wrong');
+
+  const move = js.slice(js.indexOf('async function movePin'),
+    js.indexOf('async function confirmLocation'));
+
+  /*
+   * THE OLD SPOT'S COUNTY MUST NOT SURVIVE THE MOVE.
+   *
+   * Spreading the previous `chosen` kept `county` and `state` from wherever
+   * the pin used to be, so a pin dragged three streets over filed its parcel
+   * request under the old county's name. That is the Gwinnett bug with the
+   * sides swapped: the lookup answers "that county has no record of this
+   * parcel" when the truth is that the wrong county was asked. Caught by
+   * driving it in a browser, not by reading it.
+   */
+  check('a moved pin does not inherit the last spot\'s county',
+    !/state\.chosen = \{ \.\.\.\(state\.chosen/.test(move),
+    'no name at all is honest; the last one is invented');
+
+  /*
+   * Two moves in flight, the first slower than the second: without a guard
+   * the stale answer lands last and labels the new pin with the old spot.
+   */
+  check('and a slow lookup cannot label a pin that has already moved on',
+    /state\.pinMove !== token/.test(move),
+    'only the latest move gets to write');
+
+  /* The point is the thing the measurement needs; the address is a caption.
+     A pin that jumped after being placed would be the app arguing with the
+     person who placed it. */
+  check('and the pin stays where it was put',
+    /lng,\n\s+lat,\n\s+label: found\?\.label/.test(move),
+    'the coordinates are theirs; only the name comes from the geocoder');
+}
+
 /* ------------------------------------ the coverage dialog is wired end to end */
 {
   /*

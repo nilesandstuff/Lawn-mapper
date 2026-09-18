@@ -253,7 +253,19 @@
     <section class="step" id="step-confirm" hidden>
       <h2>Is this the right place?</h2>
       <p class="chosen" id="chosen-label"></p>
-      <p class="sub">Check the roof and driveway on the map before we measure.</p>
+      <!--
+        THE PIN CAN BE MOVED, and saying so here is the point.
+
+        This step used to be a yes/no over somebody else's guess, and "No, go
+        back" only helps when the guess came from something you typed. It does
+        not help when your phone put you on the neighbour's roof, or when the
+        geocoder has the house number two doors down -- in both cases the
+        address is exactly what is wrong, so typing it again returns the same
+        answer. Dragging the pin is the correction that always works: you can
+        see your own roof in the photograph.
+      -->
+      <p class="sub">Check the roof and driveway on the map. If the pin is on
+        the wrong house, drag it or tap the right one.</p>
       <div class="row">
         <button class="primary" data-action="confirm">Yes, that's it</button>
         <button class="ghost" data-action="restart">No, go back</button>
