@@ -555,8 +555,19 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
     const status = ['approved', 'rejected'].includes(body?.status) ? body.status : null;
     const id = typeof body?.id === 'string' ? body.id : null;
     if (!status || !id) return json({ error: 'Need an id and a verdict' }, 400, origin);
+    /*
+     * WHICH DRAW SURFACED THIS MAP, which is not decoration: `random` is the
+     * only value that means "chosen blind", and the representative slice of
+     * the eval is built from exactly those rows. So an unknown value must not
+     * quietly become one of the real ones.
+     *
+     * `list` is the every-map page, where a verdict is cast over the whole
+     * pile rather than over a map a queue handed you. It is not `priority`
+     * and pretending otherwise would credit a deliberate choice to a draw.
+     */
     const queue = body?.queue === 'random' ? 'random'
-      : body?.queue === 'ungraded' ? 'ungraded' : 'priority';
+      : body?.queue === 'ungraded' ? 'ungraded'
+        : body?.queue === 'list' ? 'list' : 'priority';
     /*
      * HOW MUCH CANOPY, NOT WHETHER THERE ARE TREES.
      *
@@ -863,8 +874,16 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
   if (path === 'maps') {
     try {
       const { results = [] } = await env.DB.prepare(
+        /*
+         * `review_queue` and `tree_line` are here to be SENT BACK, not shown.
+         * A verdict from this page goes through the same review route as one
+         * from the console, and that route writes both columns outright -- so
+         * a page that does not know them rejects a map and silently erases
+         * which draw surfaced it and how much canopy somebody graded it at.
+         */
         `SELECT id, county, status, square_feet, at, reviewed_at,
-                inferred_checked_at, image_key, lng, lat, model, mode, shapes
+                inferred_checked_at, image_key, lng, lat, model, mode, shapes,
+                review_queue, tree_line
            FROM corpus ORDER BY at DESC LIMIT 500`
       ).all();
 
@@ -893,6 +912,8 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
           method: `${r.model || 'by hand'} / ${r.mode || '-'}`,
           pieces,
           marked,
+          reviewQueue: r.review_queue,
+          canopy: r.tree_line,
         };
       });
 

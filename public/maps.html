@@ -25,6 +25,13 @@
   buttons is a permission system's screenshot, not a permission system.
 -->
 <link href="/styles.css" rel="stylesheet">
+<!--
+  The console's furniture, shared rather than copied. Without this line the
+  page asked for .card and .entry and got nothing, because those rules lived
+  inside the console's own <style> block -- so the list rendered as a wall of
+  unstyled text while every class name on it was correct.
+-->
+<link href="/console.css" rel="stylesheet">
 </head>
 <body>
 
@@ -50,8 +57,9 @@
       <h2>Possible duplicates</h2>
       <p class="sub">
         Maps within about 11 metres of each other — near-certainly the same
-        lawn recorded twice. Open each one and reject whichever copy you want
-        to lose; the one with marked areas is usually the keeper.
+        lawn recorded twice. Both are drawn below: compare them and reject
+        whichever copy you want to lose. The one with marked areas is usually
+        the keeper.
       </p>
       <div id="dupes"></div>
     </div>

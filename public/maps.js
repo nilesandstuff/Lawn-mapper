@@ -29,6 +29,19 @@ const el = (tag, cls, text) => {
 const n = (v) => Number(v || 0).toLocaleString();
 const day = (iso) => (iso ? new Date(iso).toLocaleDateString() : '');
 
+const post = async (url, body) => {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.ok === false) {
+    throw new Error(data.reason || data.error || `refused (${res.status})`);
+  }
+  return data;
+};
+
 /*
  * WHAT EACH FILTER IS FOR, rather than a list of statuses for its own sake.
  *
@@ -53,17 +66,34 @@ let filter = 'all';
 function row(m, { dim = false, open = false } = {}) {
   const box = el('div', `entry${dim ? ' dim' : ''}`);
 
-  const top = el('div', 'top');
-  top.append(el('b', null, m.county || 'traced by hand'));
-  top.append(el('span', `pill ${m.status === 'approved' ? 'free' : m.status === 'rejected' ? 'grey' : ''}`, m.status));
-  if (m.marked) top.append(el('span', 'pill', `${m.marked} inferred`));
   /*
-   * "Not checked" rather than a tick for checked. The absence is the
-   * actionable state and the presence is the resting one, so only the absence
-   * is worth a pill -- a page where every row carries a badge has no badges.
+   * Redrawn rather than rebuilt, because a verdict changes the pills and
+   * nothing else. Rebuilding the row would throw away a canvas somebody has
+   * already waited for and looked at -- and looking at it is how they decided.
    */
-  if (m.status === 'approved' && !m.checked) top.append(el('span', 'pill warn', 'not checked'));
-  if (!m.hasImage) top.append(el('span', 'pill warn', 'no photo'));
+  const top = el('div', 'top');
+  const pills = () => {
+    top.replaceChildren();
+    top.append(el('b', null, m.county || 'traced by hand'));
+    /*
+     * Green for approved, grey for rejected, amber for one still waiting.
+     * Approved and rejected were both grey, which on a page whose job is
+     * scanning meant the two verdicts looked identical and only the word
+     * told them apart -- so the colour was carrying nothing and the eye had
+     * to read every row.
+     */
+    top.append(el('span', `pill ${m.status === 'rejected' ? 'grey' : m.status === 'new' ? 'warn' : ''}`, m.status));
+    if (m.marked) top.append(el('span', 'pill', `${m.marked} inferred`));
+    /*
+     * "Not checked" rather than a tick for checked. The absence is the
+     * actionable state and the presence is the resting one, so only the
+     * absence is worth a pill -- a page where every row carries a badge has
+     * no badges.
+     */
+    if (m.status === 'approved' && !m.checked) top.append(el('span', 'pill warn', 'not checked'));
+    if (!m.hasImage) top.append(el('span', 'pill warn', 'no photo'));
+  };
+  pills();
   box.append(top);
 
   box.append(el('div', 'meta',
@@ -108,19 +138,125 @@ function row(m, { dim = false, open = false } = {}) {
   };
   show.addEventListener('click', draw);
   if (open) draw(); else box.append(show);
+
+  box.append(verdictRow(m, pills));
   return box;
+}
+
+/*
+ * THE VERDICT, FROM THE LIST.
+ *
+ * Seeing two copies of a lawn and not being able to drop one is most of a
+ * feature: the page's whole reason to exist is deciding which duplicate to
+ * lose, and a page that can only point at the problem sends you to the
+ * console to find the same map again by eye.
+ *
+ * It goes through the same /api/admin/review route the console uses. Not a
+ * new one: a second way to write a verdict is a second set of rules about
+ * what a verdict means, and they drift.
+ */
+function verdictRow(m, pills) {
+  const wrap = el('div', 'actions verdict-row');
+  const note = el('small', null, '');
+
+  /*
+   * ONE BUTTON, LABELLED BY WHAT IT WILL DO TO THIS ROW. A pair reading
+   * "Approve / Reject" over a map that is already approved says nothing; the
+   * only move worth offering is the one that changes something.
+   */
+  const flipTo = () => (m.status === 'rejected' ? 'approved' : 'rejected');
+  const btn = el('button', null, '');
+  const relabel = () => {
+    btn.className = m.status === 'rejected' ? 'yes' : 'no';
+    btn.textContent = m.status === 'rejected' ? 'Put it back' : 'Reject it';
+  };
+  relabel();
+
+  /*
+   * TWO TAPS TO REJECT, ONE TO RESTORE.
+   *
+   * Not symmetry for its own sake: this is a long list on a phone, and a
+   * stray thumb while scrolling should not be able to drop a map out of the
+   * training set. Putting one back is the undo, so guarding it would only
+   * make the recovery harder than the mistake.
+   */
+  let armed = 0;
+  const disarm = () => { armed = 0; relabel(); };
+
+  const send = async () => {
+    btn.disabled = true;
+    note.textContent = 'Saving…';
+    const want = flipTo();
+    try {
+      await post('/api/admin/review', {
+        id: m.id,
+        status: want,
+        /*
+         * Sent back exactly as it came, because the route writes both
+         * columns outright. Omitting the grade would erase it, and this page
+         * never asked the canopy question so it has no answer of its own.
+         */
+        queue: m.reviewQueue || 'list',
+        canopy: m.canopy,
+        /*
+         * The current verdict was on the screen, in a pill, above the button
+         * that was pressed. That is the condition the server's guard exists
+         * to check for, so this is the honest place to say so.
+         */
+        force: true,
+      });
+      m.status = want;
+      pills();
+      relabel();
+      note.textContent = '';
+      refreshCounts();
+    } catch (err) {
+      note.textContent = `Did not save: ${err.message}`;
+    } finally {
+      btn.disabled = false;
+    }
+  };
+
+  btn.addEventListener('click', () => {
+    if (m.status === 'rejected') { send(); return; }
+    if (armed) { clearTimeout(armed); armed = 0; send(); return; }
+    btn.className = 'no armed';
+    btn.textContent = 'Really reject it?';
+    /* It disarms itself, so a question left unanswered goes back to being a
+       button rather than sitting there armed until a later scroll finds it. */
+    armed = setTimeout(disarm, 5000);
+  });
+
+  wrap.append(btn, note);
+  return wrap;
+}
+
+/*
+ * The tallies, separately from the list, because a verdict changes them and
+ * must not redraw the rows. Re-rendering would take back every canvas
+ * somebody had opened -- including, on a duplicate, the two they were in the
+ * middle of comparing.
+ *
+ * Which also means a rejected row STAYS PUT under the "Approved" filter until
+ * the next load. It says "rejected" on it, so the list is not lying; making
+ * rows vanish under the finger that judged them would be worse.
+ */
+function refreshCounts() {
+  const shown = maps.filter(FILTERS[filter] || FILTERS.all);
+  $('#counts').textContent =
+    `${maps.length} map${maps.length === 1 ? '' : 's'} in the corpus · `
+    + `${maps.filter(FILTERS.approved).length} approved · `
+    + `${maps.filter(FILTERS.rejected).length} rejected · `
+    + `${maps.filter(FILTERS.unchecked).length} still to check for inferred areas · `
+    + `showing ${shown.length}`;
+  return shown;
 }
 
 function render() {
   const list = $('#list');
   list.innerHTML = '';
 
-  const shown = maps.filter(FILTERS[filter] || FILTERS.all);
-  $('#counts').textContent =
-    `${maps.length} map${maps.length === 1 ? '' : 's'} in the corpus · `
-    + `${maps.filter(FILTERS.approved).length} approved · `
-    + `${maps.filter(FILTERS.unchecked).length} still to check for inferred areas · `
-    + `showing ${shown.length}`;
+  const shown = refreshCounts();
 
   if (!shown.length) {
     list.append(el('p', 'empty', 'Nothing matches that filter.'));

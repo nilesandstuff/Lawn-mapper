@@ -22,22 +22,14 @@
   is not a permission system; it is a permission system's screenshot.
 -->
 <link href="/styles.css" rel="stylesheet">
+<!--
+  The column, the cards, the rows and the pills, shared with /maps.html. What
+  stays in the block below is the console's own: tiles, the day bars, the
+  review card, the people list. Anything two owner pages both want belongs in
+  console.css, not copied into a second <style>.
+-->
+<link href="/console.css" rel="stylesheet">
 <style>
-  body { background: var(--bg); }
-  .console { max-width: 760px; margin: 0 auto; padding: 16px 16px 40px; }
-
-  .conhead {
-    display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    margin-bottom: 14px;
-  }
-  .conhead h1 { font-size: 19px; margin: 0; }
-  .conhead a { font-size: 13px; color: var(--green-dark); }
-
-  .locked-out {
-    background: #fff; border: 1px solid var(--line); border-radius: 14px;
-    padding: 20px; text-align: center;
-  }
-
   /* Numbers first: on a phone this is what the page is for. */
   .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
   .tile {
@@ -46,12 +38,6 @@
   .tile b { display: block; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
   .tile span { font-size: 12px; color: var(--muted); }
   .tile small { display: block; font-size: 11.5px; color: var(--muted); margin-top: 2px; }
-
-  .card {
-    background: #fff; border: 1px solid var(--line); border-radius: 14px;
-    padding: 14px; margin-top: 12px;
-  }
-  .card h2 { font-size: 14px; margin: 0 0 10px; }
 
   /*
    * A bar per day rather than a line chart. The question is "was yesterday
@@ -77,14 +63,6 @@
   .person .who { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; }
   .person .who b { font-size: 13.5px; }
   .person .meta { font-size: 12px; color: var(--muted); }
-  .pill {
-    font-size: 10.5px; font-weight: 700; letter-spacing: .02em;
-    padding: 1px 7px; border-radius: 999px; background: #e4f2e5; color: #1f5b22;
-  }
-  .pill.free { background: #eef0ee; color: var(--muted); }
-  /* Amber, so "the photo is not the one they drew on" is spottable while
-     flipping through candidates rather than something you have to read. */
-  .pill.warn { background: #fdf3e0; color: #8a5a00; }
 
   /* How far behind one training-data target is. A bar rather than a bare
      count, because "48 of 300" and "280 of 300" are the same shape of
@@ -146,16 +124,6 @@
             color: var(--muted); margin-top: 7px; }
   .legend i { width: 11px; height: 3px; display: inline-block; vertical-align: middle;
               margin-right: 4px; border-radius: 2px; }
-  .actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
-  .actions button, .actions input {
-    font: inherit; font-size: 12.5px; padding: 6px 10px;
-    border: 1px solid var(--line); border-radius: 8px; background: #fff; cursor: pointer;
-  }
-  .actions input { width: 76px; cursor: text; }
-  .actions button:hover { border-color: var(--green); }
-  /* A note beside the buttons rather than under them: "saved here" belongs to
-     the field it describes, and a row of its own reads as a separate fact. */
-  .actions small { align-self: center; color: var(--muted); font-size: 11.5px; }
 
   .setting {
     border-top: 1px solid var(--line); padding: 11px 0;
@@ -166,19 +134,10 @@
   .setting .meta { font-size: 11.5px; color: var(--muted); }
   .setting .actions input { width: 92px; }
 
-  .entry { border-top: 1px solid var(--line); padding: 9px 0; font-size: 12.5px; }
-  .entry:first-of-type { border-top: 0; }
-  .entry .top { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
-  .entry b { font-size: 13px; }
-  .entry .meta { color: var(--muted); font-size: 11.5px; }
-  .entry .note { margin: 4px 0 0; padding: 6px 9px; background: var(--bg); border-radius: 7px; }
-
   .rate { font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px; }
   .rate.great { background: #e4f2e5; color: #1f5b22; }
   .rate.close { background: #fdf3e0; color: #8a5a00; }
   .rate.bad   { background: #fdeceb; color: #b3261e; }
-
-  .empty { color: var(--muted); font-size: 13px; }
 </style>
 </head>
 <body>

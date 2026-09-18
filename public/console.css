@@ -1,0 +1,117 @@
+/*
+ * THE SHELL THE OWNER'S PAGES SHARE.
+ *
+ * The console and the every-map list are the same furniture: a narrow column,
+ * a heading with a way back, cards, rows, pills, and the locked-out notice for
+ * anybody who is not the owner. They are a different job from the measuring
+ * app, which is why they are separate pages -- but they are the same job as
+ * each other, which is why they are not separate stylesheets.
+ *
+ * This file exists because they were. The console kept all of this inside its
+ * own <style> block, so the every-map page linked styles.css, asked for
+ * .card and .entry, and got nothing -- a list of maps rendered as a wall of
+ * unstyled text. The classes were right and the rules were somewhere else.
+ *
+ * Load order: after styles.css, before a page's own <style>. The app's
+ * stylesheet defines .pill and .sub for the measuring app and these override
+ * them here; a page's own block overrides both, which is where anything that
+ * belongs to one page only should live.
+ */
+
+body { background: var(--bg); }
+
+.console { max-width: 760px; margin: 0 auto; padding: 16px 16px 40px; }
+
+.conhead {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-bottom: 14px;
+}
+.conhead h1 { font-size: 19px; margin: 0; }
+.conhead a { font-size: 13px; color: var(--green-dark); }
+
+.locked-out {
+  background: #fff; border: 1px solid var(--line); border-radius: 14px;
+  padding: 20px; text-align: center;
+}
+
+.card {
+  background: #fff; border: 1px solid var(--line); border-radius: 14px;
+  padding: 14px; margin-top: 12px;
+}
+.card h2 { font-size: 14px; margin: 0 0 10px; }
+
+.pill {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .02em;
+  padding: 1px 7px; border-radius: 999px; background: #e4f2e5; color: #1f5b22;
+}
+.pill.free { background: #eef0ee; color: var(--muted); }
+/* Amber, so "the photo is not the one they drew on" is spottable while
+   flipping through candidates rather than something you have to read. */
+.pill.warn { background: #fdf3e0; color: #8a5a00; }
+
+.actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.actions button, .actions input {
+  font: inherit; font-size: 12.5px; padding: 6px 10px;
+  border: 1px solid var(--line); border-radius: 8px; background: #fff; cursor: pointer;
+}
+.actions input { width: 76px; cursor: text; }
+.actions button:hover { border-color: var(--green); }
+/* A note beside the buttons rather than under them: "saved here" belongs to
+   the field it describes, and a row of its own reads as a separate fact. */
+.actions small { align-self: center; color: var(--muted); font-size: 11.5px; }
+
+.entry { border-top: 1px solid var(--line); padding: 9px 0; font-size: 12.5px; }
+.entry:first-of-type { border-top: 0; }
+.entry .top { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.entry b { font-size: 13px; }
+.entry .meta { color: var(--muted); font-size: 11.5px; }
+.entry .note { margin: 4px 0 0; padding: 6px 9px; background: var(--bg); border-radius: 7px; }
+
+.empty { color: var(--muted); font-size: 13px; }
+
+/*
+ * ------------------------------------------------- the every-map list only
+ *
+ * Dense on purpose: that page is for scanning a pile, not for reading one
+ * entry.
+ */
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px; color: var(--muted); word-break: break-all; margin-top: 2px;
+}
+/* A duplicate group is one thing with several rows in it, so it gets one
+   border rather than each row getting its own. */
+.dupe-group {
+  border: 1px solid #e0a4a4; border-radius: 8px; padding: 6px 8px; margin-bottom: 10px;
+  background: #fff8f8;
+}
+/* The copy that is probably not the keeper. Dimmed, never hidden: "probably"
+   is doing real work in that sentence. */
+.entry.dim { opacity: 0.62; }
+
+/* The stored photograph with its outlines on it. */
+.shot {
+  display: block; width: 100%; max-width: 320px; height: auto;
+  margin-top: 8px; border-radius: 6px; background: #e7ebe7;
+}
+.ghost.small { padding: 5px 10px; font-size: 13px; margin-top: 6px; }
+
+/*
+ * A VERDICT FROM THE LIST, in the colours the console's review card uses for
+ * the same two decisions. The same act should not look like a different one
+ * because it was reached from a different page.
+ */
+.verdict-row button.no { background: #f6eceb; border-color: #d3a9a4; color: #7d2d22; }
+.verdict-row button.yes { background: #e4f2e5; border-color: #9ec5a1; color: #1f5b22; }
+/*
+ * ARMED: the first tap on Reject, waiting for the second.
+ *
+ * Two taps rather than one, because this is a long scrolling list on a
+ * touchscreen and a stray thumb should not be able to drop a map out of the
+ * training set. It changes colour as well as wording -- a button that only
+ * changed its label would be read as having done something already.
+ */
+.verdict-row button.armed {
+  background: #b3261e; border-color: #b3261e; color: #fff; font-weight: 650;
+}
+.verdict-row { align-items: center; }

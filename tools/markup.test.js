@@ -362,8 +362,18 @@ const DOM_GLOBALS = {
    * Proved by renaming it and watching this stay green before the boundary
    * went in.
    */
+  /*
+   * EVERY STYLESHEET THE PAGE LINKS, read from the page rather than listed
+   * here. The console's shared furniture moved out to console.css and this
+   * check went red on .entry and .empty -- correct rules, correctly loaded,
+   * in a file the test did not know about. A check with a hard-coded list of
+   * stylesheets fails every time one is added, which teaches the next person
+   * to edit the test rather than believe it.
+   */
+  const adminCss = css + [...adminHtml.matchAll(/href="\/([A-Za-z0-9_.-]+\.css)"/g)]
+    .map((m) => readFileSync(join(root, 'public', m[1]), 'utf8')).join('\n');
   const styled = (c) => new RegExp(`\\.${c}(?![A-Za-z0-9_-])`).test(adminHtml)
-    || new RegExp(`\\.${c}(?![A-Za-z0-9_-])`).test(css);
+    || new RegExp(`\\.${c}(?![A-Za-z0-9_-])`).test(adminCss);
   const bare = [...built].filter((c) => c && !styled(c));
   check('and every class it builds has a rule',
     bare.length === 0,
@@ -919,13 +929,45 @@ check('every class the code toggles is styled',
     gone.length === 0,
     gone.length ? gone.join(', ') : `${asks.size} referenced, all present`);
 
-  /* Its two new classes are styled, or a duplicate group is an ordinary list
-     with no border round it and the page stops saying what it exists to say. */
-  const css = readFileSync(join(root, 'public/styles.css'), 'utf8');
-  for (const cls of ['dupe-group', 'mono']) {
-    check(`.${cls} is styled`,
-      new RegExp(`\\.${cls}\\b`).test(css),
-      'a class nothing styles is an unstyled row rather than a missing one');
+  /*
+   * AND THE STYLESHEETS IT ACTUALLY LOADS.
+   *
+   * This is the second half of the same fault, and the half that shipped: the
+   * class names were all correct and every rule for them lived inside the
+   * console's own <style> block, which this page does not load. Nothing
+   * failed. The list simply rendered as a wall of unstyled text, and the ids
+   * check above passed the whole time, because a page can address its markup
+   * perfectly and still look like a 1994 error message.
+   *
+   * So the question is not "is this styled somewhere" -- it was -- but "is it
+   * styled in a file THIS page links".
+   */
+  const linkedCss = (html) => [...html.matchAll(/href="\/([A-Za-z0-9_.-]+\.css)"/g)]
+    .map((m) => readFileSync(join(root, 'public', m[1]), 'utf8')).join('\n');
+
+  const mapsCss = linkedCss(mapsHtml);
+  /* The console's own <style> block counts for the console, because it loads
+     it. It does nothing for the page next door, which is the whole point. */
+  const consoleHtml = readFileSync(join(root, 'public/admin.html'), 'utf8');
+  const consoleCss = linkedCss(consoleHtml) + consoleHtml;
+
+  /* The shell the two owner pages share. Each one is furniture -- a column, a
+     card, a row -- and a page missing any of them is not subtly off, it is
+     visibly broken. */
+  for (const cls of ['console', 'conhead', 'locked-out', 'card', 'entry',
+    'actions', 'pill', 'grey', 'warn', 'empty', 'dupe-group', 'mono', 'shot',
+    'verdict-row', 'armed']) {
+    check(`the every-map page loads a stylesheet defining .${cls}`,
+      new RegExp(`\\.${cls}[\\s,{:.]`).test(mapsCss),
+      'styled somewhere else is styled nowhere, from this page');
+  }
+  /* The same rules moved out from under the console. Its own block still
+     overrides where it needs to, but it must not have LOST any of them. */
+  for (const cls of ['console', 'conhead', 'locked-out', 'card', 'entry',
+    'actions', 'pill', 'empty']) {
+    check(`the console still gets .${cls} after the move`,
+      new RegExp(`\\.${cls}[\\s,{:.]`).test(consoleCss),
+      'extracting shared rules must not take them away from the page they came from');
   }
 }
 

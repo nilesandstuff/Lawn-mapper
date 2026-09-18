@@ -1132,5 +1132,127 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
     threw || 'a visitor being turned away must not also get an error');
 }
 
+/*
+ * ------------------------------------------------------ every map, and a
+ * verdict cast from the list rather than from a queue.
+ *
+ * The list is where duplicates are visible, so it is where one of them gets
+ * rejected. That verdict goes through the same route the console uses, and
+ * the risk is entirely in what ELSE that route writes: it sets the queue and
+ * the canopy grade outright, so a caller that does not send them back erases
+ * them while doing something that looks unrelated.
+ */
+{
+  const { env, ownerToken, guestToken } = await world();
+  const { recordFinished } = await import('../worker/src/corpus.js');
+
+  check('the every-map list is refused to everybody who is not an administrator',
+    (await ask(env, guestToken, 'maps')).status === 404);
+  check('and to a visitor with no session at all',
+    (await ask(env, null, 'maps')).status === 404);
+
+  const ring = (lng) => [
+    [lng, 42.9], [lng, 42.901], [lng + 0.001, 42.901], [lng + 0.001, 42.9], [lng, 42.9],
+  ];
+  /* Two maps eleven metres apart -- the duplicate this page exists for -- and
+     one a long way off that must not be dragged into the pair. */
+  await recordFinished(env, {
+    lng: -85.70, lat: 42.9, model: 'sam-3', mode: 'exclude', county: 'mi-kent',
+    squareFeet: 4000,
+    shapes: [
+      { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [ring(-85.70)] } },
+      { type: 'Feature', properties: { inferred: true }, geometry: { type: 'Polygon', coordinates: [ring(-85.702)] } },
+    ],
+  });
+  await recordFinished(env, {
+    lng: -85.70001, lat: 42.9, model: 'sam-3', mode: 'include', county: 'mi-kent',
+    squareFeet: 3900,
+    shapes: [{ type: 'Polygon', coordinates: [ring(-85.70001)] }],
+  });
+  await recordFinished(env, {
+    lng: -97.40, lat: 42.9, model: 'sam-3', mode: 'exclude', county: 'tx-travis',
+    squareFeet: 5000,
+    shapes: [{ type: 'Polygon', coordinates: [ring(-97.40)] }],
+  });
+
+  /* Approved out of the RANDOM draw and graded, which is the state that has
+     something to lose: both facts are about to travel through a page whose
+     job has nothing to do with either. */
+  await env.DB.prepare(
+    "UPDATE corpus SET status = 'approved', review_queue = 'random', tree_line = 2"
+  ).run();
+
+  const list = (await ask(env, ownerToken, 'maps')).body;
+  check('the list carries every map', list.maps.length === 3, String(list.maps.length));
+  check('and groups the two that are the same lawn',
+    list.duplicates.length === 1 && list.duplicates[0].length === 2,
+    JSON.stringify(list.duplicates));
+
+  const twin = list.maps.find((m) => m.marked > 0);
+  check('and says which copy has the inferred marks on it',
+    twin && twin.marked === 1 && twin.pieces === 2,
+    JSON.stringify(twin && { pieces: twin.pieces, marked: twin.marked }));
+  check('and hands back the queue and grade the page will have to return',
+    twin.reviewQueue === 'random' && twin.canopy === 2,
+    JSON.stringify({ queue: twin.reviewQueue, canopy: twin.canopy }));
+
+  /* The whole point of the page: drop one copy. */
+  const loser = list.maps.find((m) => m.id !== twin.id && m.county === 'mi-kent');
+  const verdict = await ask(env, ownerToken, 'review', {
+    method: 'POST',
+    body: {
+      id: loser.id, status: 'rejected', force: true,
+      queue: loser.reviewQueue || 'list', canopy: loser.canopy,
+    },
+  });
+  check('a duplicate can be rejected from the list', verdict.body.ok === true,
+    JSON.stringify(verdict.body));
+
+  const after = await env.DB.prepare(
+    'SELECT status, review_queue, tree_line FROM corpus WHERE id = ?1'
+  ).bind(loser.id).first();
+  check('and it really is rejected', after.status === 'rejected', JSON.stringify(after));
+  /*
+   * THE TWO COLUMNS THAT ARE NOT THE POINT. `random` is the only value meaning
+   * "drawn blind", and it is what lets a row sit in the representative slice
+   * of the eval; the grade is somebody's reading of a photograph. Rejecting a
+   * duplicate is not a reason to lose either, and if this page ever forgets to
+   * send them back, the loss is silent.
+   */
+  check('without losing which draw surfaced it',
+    after.review_queue === 'random', after.review_queue);
+  check('or the canopy grade somebody gave it',
+    after.tree_line === 2, String(after.tree_line));
+
+  /* Putting one back is the undo, and must not need a different route. */
+  const undo = await ask(env, ownerToken, 'review', {
+    method: 'POST',
+    body: {
+      id: loser.id, status: 'approved', force: true,
+      queue: loser.reviewQueue || 'list', canopy: loser.canopy,
+    },
+  });
+  const back = await env.DB.prepare('SELECT status FROM corpus WHERE id = ?1')
+    .bind(loser.id).first();
+  check('and a rejected map can be put back', undo.body.ok === true && back.status === 'approved',
+    JSON.stringify(back));
+
+  /*
+   * A row nobody ever queued is judged from the list, so 'list' is what
+   * surfaced it. It must be stored as itself: falling through to 'priority'
+   * would credit a deliberate choice to a draw that never happened, and
+   * becoming 'random' would put it in the representative slice on a lie.
+   */
+  const stranger = list.maps.find((m) => m.county === 'tx-travis');
+  await env.DB.prepare("UPDATE corpus SET status = 'new', review_queue = NULL WHERE id = ?1")
+    .bind(stranger.id).run();
+  await ask(env, ownerToken, 'review',
+    { method: 'POST', body: { id: stranger.id, status: 'rejected', queue: 'list' } });
+  const fresh = await env.DB.prepare('SELECT review_queue FROM corpus WHERE id = ?1')
+    .bind(stranger.id).first();
+  check('a verdict from the list records the list, not a queue it never came from',
+    fresh.review_queue === 'list', fresh.review_queue);
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);
