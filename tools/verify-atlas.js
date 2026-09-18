@@ -57,6 +57,24 @@ const TIMEOUT_MS = 15000;
  * "what is your extent" inside a timeout meant for reading metadata.
  */
 const SCAN_TIMEOUT_MS = 60000;
+/*
+ * AND A BUDGET FOR ALL OF THEM TOGETHER, which the per-request timeout is not.
+ *
+ * Sixty seconds each is the right allowance for one enormous county. It is the
+ * wrong allowance for twenty-three failures in a row, which is twenty-three
+ * minutes of a forty-five minute workflow spent finding out that counties
+ * which were never going to answer still do not. Two runs in a row went to
+ * forty minutes; the second was cancelled at thirty-eight.
+ *
+ * So the scan is a shared pot. The first few counties that genuinely need it
+ * get it -- Cook, Harris and San Diego are the reason it exists and they are
+ * near the front of an alphabetical sweep -- and once the pot is empty the
+ * rest read metadata and move on. A sweep that finishes and names what it
+ * skipped beats one that is killed at the ceiling with nothing written.
+ */
+const SCAN_BUDGET_MS = 6 * 60 * 1000;
+let scanSpent = 0;
+let scanSkipped = 0;
 /** Between requests. These are small public assets, not something to hammer. */
 const PAUSE_MS = 120;
 /** A residential or small rural parcel, matching discover-counties.js. */
@@ -183,7 +201,7 @@ function fromMercator(e) {
  * Three ways of asking now, because servers disagree about all of them, and
  * whatever goes wrong is reported rather than swallowed.
  */
-async function extentOf(service, layer, { scan = true } = {}) {
+async function extentOf(service, layer) {
   /*
    * 1. THE LAYER'S OWN METADATA, FIRST, because it is free.
    *
@@ -235,23 +253,33 @@ async function extentOf(service, layer, { scan = true } = {}) {
    * somebody runs by hand.
    */
   /*
-   * NOT ON A SECOND ASK. This is the one request here that is expensive by
-   * nature -- a minute of a server walking every record -- and the retry below
-   * multiplies it by every county that failed. Twenty-three failures times two
-   * scans of up to a minute is most of the workflow's budget, and the first
-   * run with the retry in place spent forty minutes against a forty-five
-   * minute ceiling for exactly that reason.
+   * THIS WAS SKIPPED ON RETRIES FOR ONE RUN, AND IT COST EIGHT NEW YORK
+   * COUNTIES -- all five boroughs, plus Onondaga, Suffolk and Westchester --
+   * along with Duval, Hamilton and Wake. 142 down to 135.
    *
-   * A retry is for a hiccup. A county that genuinely needs its whole table
-   * walked to report an extent is not going to be rescued by walking it
-   * twice, so the second ask reads metadata and stops.
+   * The reasoning was that a retry is for a hiccup and a county needing its
+   * whole table walked will not be rescued by walking it twice. Both clauses
+   * are true and the conclusion was still wrong, because for these counties
+   * the scan is the ONLY path to an extent: their metadata reports it in State
+   * Plane, which this deliberately does not convert. Skip the scan on the
+   * second ask and the second ask cannot possibly succeed -- so the retry was
+   * guaranteed useless on exactly the largest counties in the set.
+   *
+   * The cost is real either way, so it is bounded by a shared pot instead. See
+   * SCAN_BUDGET_MS.
    */
   const q = new URLSearchParams({
     where: '1=1', returnExtentOnly: 'true', outSR: '4326', f: 'json',
   });
-  const query = scan
-    ? await getJson(`${service}/${layer}/query?${q}`, SCAN_TIMEOUT_MS)
-    : { error: 'skipped on the retry -- see extentOf' };
+  let query;
+  if (scanSpent >= SCAN_BUDGET_MS) {
+    scanSkipped++;
+    query = { error: 'the run\'s scan budget was already spent -- see SCAN_BUDGET_MS' };
+  } else {
+    const began = Date.now();
+    query = await getJson(`${service}/${layer}/query?${q}`, SCAN_TIMEOUT_MS);
+    scanSpent += Date.now() - began;
+  }
   const scanned = boxFrom(query?.extent);
   if (scanned) return { box: scanned };
 
@@ -381,7 +409,7 @@ function parcelLayerIn(layers) {
   return null;
 }
 
-async function verify(c, opts = {}) {
+async function verify(c) {
   /*
    * THE CATALOGUE ALREADY SAID SO, so do not spend a request finding out.
    *
@@ -403,13 +431,13 @@ async function verify(c, opts = {}) {
         + 'and no parcel layer was found beside it', layers };
     }
     /* layerName cleared, or this would look at itself again for ever. */
-    const out = await verify({ ...c, layer: better, layerName: null }, opts);
+    const out = await verify({ ...c, layer: better, layerName: null });
     await sleep(PAUSE_MS);
     if (out.ok) return { ...out, correctedLayer: better, wasLayer: c.layer };
     return { ok: false, why: `named a table; layer ${better} was no better`, layers };
   }
 
-  const extent = await extentOf(c.service, c.layer, opts);
+  const extent = await extentOf(c.service, c.layer);
   await sleep(PAUSE_MS);
   if (extent.error) {
     const layers = await layersOf(c.service).catch(() => []);
@@ -423,7 +451,7 @@ async function verify(c, opts = {}) {
      */
     const better = parcelLayerIn(layers);
     if (better !== null && better !== c.layer) {
-      const second = await verify({ ...c, layer: better }, opts);
+      const second = await verify({ ...c, layer: better });
       await sleep(PAUSE_MS);
       if (second.ok) return { ...second, correctedLayer: better, wasLayer: c.layer };
       return { ok: false, why: `${extent.error} (layer ${better} was no better)`, layers };
@@ -548,7 +576,7 @@ for (const c of list) {
   let r = await verify(c);
   if (!r.ok) {
     await sleep(PAUSE_MS * 6);
-    const again = await verify(c, { scan: false });
+    const again = await verify(c);
     if (again.ok) {
       console.log(`  (${c.key} answered on the second ask)`);
       r = again;
@@ -579,6 +607,17 @@ for (const c of list) {
 }
 
 console.log(`\n${passed.length} verified, ${failed.length} not.`);
+
+/*
+ * Said out loud, because a county skipped for want of budget is not the same
+ * finding as one that answered and was wrong, and next time the pot may need
+ * to be bigger or the sweep split in two.
+ */
+if (scanSpent) {
+  console.log(`\nSpent ${(scanSpent / 1000).toFixed(0)}s of the `
+    + `${SCAN_BUDGET_MS / 1000}s extent-scan budget`
+    + (scanSkipped ? `, and skipped the scan for ${scanSkipped} more.` : '.'));
+}
 
 if (only) {
   console.log('\nONLY was set, so nothing was written -- this was a spot check.');
