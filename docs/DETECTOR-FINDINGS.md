@@ -30,9 +30,9 @@ changes and results from different corpora are not comparable.
 | | error | notes |
 |---|---|---|
 | SAM (what we pay for) | **20.3%** | the line to beat, 19 lawns with a stored SAM answer |
-| best of ours | **30.9%** | Scale-MAE 672px, "both, 96 numbers a patch" |
+| best of ours | **28.2%** | Scale-MAE 896px, **the pretrained eye ALONE** |
 
-Gap: **1.5×**. It was 1.6× the run before.
+Gap: **1.4×**. It was 1.5× at 672px and 1.6× under DINOv2.
 
 ---
 
@@ -69,18 +69,31 @@ It is still *worse* than colour alone on its own — but combining now helps for
 the first time: "both" 31.2% beats colour alone 32.9%. Under DINOv2 it never
 did.
 
-### H4. The ring (neighbourhood sampling) costs and does not pay
-Measured twice, on two different backbones, and negative both times:
+### H4. The ring (neighbourhood sampling) has no consistent effect
+Measured three times. **Negative twice, mildly positive once, and the tool
+called the positive one "within noise" itself.**
 
-- *DINOv2 run, 24 lawns:* colour+ring **43.7%** vs colour **34.5%** — 9.2 worse.
-- *Scale-MAE run, 23 lawns:* the tool's own verdict — "everything visible 3.8
-  points worse, and inferred areas no better. The ring is costing and not
-  paying."
+| run | ring result |
+|---|---|
+| DINOv2 224px, 24 lawns | colour+ring **43.7%** vs colour **34.5%** — 9.2 WORSE |
+| Scale-MAE 672px, 23 lawns | "everything visible 3.8 points worse, and inferred areas no better. The ring is costing and not paying." |
+| Scale-MAE 896px, 23 lawns | both+ring **32.1%** vs both **34.6%** — 2.5 BETTER; tool: "inferred areas 3.5 points better, everything visible 3.1 points better — within noise." |
 
-The inferred column moved in **opposite directions** for the two ring configs
-in the same run, which is the signature of noise rather than effect.
+**Do not read the 896 run as vindication.** The tool prints an encouraging
+sentence next to that row ("this is the result the ring was built for"), and
+the same paragraph says the movement is within noise. Given H7's floor, a
+2.5-point swing is not a result.
 
-See also E3 — the published result on the same class of problem.
+The honest summary: across three runs the ring has no stable sign. It is not
+established as harmful and it is not established as useful.
+
+See also E3 — the published result saying receptive field alone is not the
+lever for occlusion.
+
+**SPECULATION (S6):** the ring may only be able to help once the centre
+features are good enough to be worth contextualising, which would explain why
+its best showing is on the run with the best backbone. Untested, and exactly
+the kind of story that sounds right and has twice measured as nothing.
 
 ### H5. A wider squeeze of the backbone's output helps
 - *DINOv2:* 96 numbers a patch **34.0%** vs 32 numbers **37.1%**.
@@ -120,6 +133,38 @@ Consequences, and these are rules rather than observations:
 2. Differences under ~10 points between configurations are not conclusive at
    this corpus size.
 3. The lawn-set fingerprint printed by the tool exists for exactly this. Use it.
+
+### H9. RESOLUTION IS A REAL LEVER — 896px beat 672px, cleanly
+*Runs 35409315409 and 35411040880, 2026-09-19, same 23 lawns, same fingerprint
+`14a2t7k`, Scale-MAE large at 672px then 896px.*
+
+**This is the cleanest experiment this project has run**, because the
+backbone-free control came back byte-identical:
+
+```
+                            672px   896px
+colour and texture only     32.9%   32.9%   +0.0   <- CONTROL, unchanged
+the pretrained eye only     36.4%   28.2%   -8.2
+both                        31.2%   34.6%   +3.4
+both, 96 numbers a patch    30.9%   32.4%   +1.5
+colour, with surroundings   33.2%   35.7%   +2.5
+both, with surroundings     33.8%   32.1%   -1.7
+```
+
+The control moving 0.0 points means the corpus, the split and the seed are all
+identical. Every other difference **is** the resolution.
+
+Two findings, and the second is as interesting as the first:
+
+1. **The eye alone improved 8.2 points, from 36.4% to 28.2%** — far outside
+   the noise floor, and for the first time it **beats colour alone** (32.9%).
+   The tool's verdict flipped branches accordingly: *"it is reading things
+   colour cannot."* This confirms S1: we were starving a scale-aware backbone
+   of the resolution we actually have.
+
+2. **Every combined row got WORSE.** "both" went 31.2% → 34.6%; "both, 96
+   numbers" went 30.9% → 32.4%. Adding colour to a better eye made things
+   worse. **This is unexplained.** See S7.
 
 ### H8. Two maps dominated the error, and one was rejected for it
 *DINOv2 run, 24 lawns.* An NC map measured **309.1% wrong** (SAM: 164.2%) — both
@@ -200,10 +245,29 @@ constrains any later change of mind.
 
 Marked so they are not later quoted as findings.
 
-### S1. Resolution mismatch is what now caps Scale-MAE
-Scale-MAE trained around 0.3 m/px; our frames are nearer 0.1 m (H1). H5 shows
-detail is still being discarded in the squeeze. **Untested.** The 896px run is
-the test.
+### ~~S1. Resolution mismatch is what caps Scale-MAE~~ — CONFIRMED, now H9
+Tested 2026-09-19 and **supported**: 672px → 896px improved the eye-only row by
+8.2 points against an unchanged control. Promoted to H9.
+
+The open part: **896 is the largest size the workflow offers.** Whether the
+gain continues past it is untested, and the frames themselves are 1280px, so
+there is headroom in the source before anything has to be re-fetched.
+
+### S7. Why does colour HURT once the eye is good?
+H9's second finding, unexplained. At 672px "both" beat the eye alone; at 896px
+the eye alone beats every combination.
+
+Candidates, none tested:
+- **Dimensionality.** More features against 23 lawns, so the extra columns fit
+  noise. Would predict that the gap narrows as the corpus grows.
+- **The squeeze.** Colour is 11 raw numbers; the eye is projected down to 32 or
+  96. Mixing raw and projected features may be scaling them badly against each
+  other.
+- **Redundancy.** A backbone reading this well may already encode what colour
+  says, so colour adds only its failure mode — shadow.
+
+Worth resolving, because it decides whether the published model should carry
+colour at all.
 
 ### S2. A tree mask would help more than another backbone
 E5 gives a tree/no-tree probability per pixel at our resolution. Our biggest
@@ -223,8 +287,13 @@ marking is enough.
 
 ### S5. The shade/sun split may currently be noise
 Under DINOv2 every configuration was *better* in shade, which is implausible.
-Under Scale-MAE the signs are mixed. At 23 lawns this split may be reporting
-nothing. **Not investigated.**
+Under Scale-MAE at 672px the signs were mixed. At 896px **four of six
+configurations are again "better in shade"**, including colour-only, which
+cannot be reading anything but brightness.
+
+Three runs, no stable story, and one reading that is close to impossible.
+**Treat the shade/sun columns as unreliable until investigated.** Not
+investigated.
 
 ---
 
@@ -249,4 +318,4 @@ nothing. **Not investigated.**
 |---|---|---|---|---|---|---|
 | 2026-09-18 | 35404198905 | 24 | DINOv2 tiled 224px | 34.0% | 21.6% | ring first measured, negative |
 | 2026-09-19 | 35409315409 | 23 | Scale-MAE large 672px | 30.9% | 20.3% | eye-vs-colour gap 14.0 -> 3.5 |
-| 2026-09-19 | 35411040880 | 23 | Scale-MAE large 896px | *pending* | | testing S1 |
+| 2026-09-19 | 35411040880 | 23 | Scale-MAE large 896px | **28.2%** | 20.3% | S1 confirmed; control identical, eye-only -8.2; combined rows worse (S7) |
