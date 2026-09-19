@@ -83,6 +83,17 @@ called the positive one "within noise" itself.**
 | Scale-MAE 672px, 23 lawns | "everything visible 3.8 points worse, and inferred areas no better. The ring is costing and not paying." |
 | Scale-MAE 896px, 23 lawns | both+ring **32.1%** vs both **34.6%** — 2.5 BETTER; tool: "inferred areas 3.5 points better, everything visible 3.1 points better — within noise." |
 | Scale-MAE 1280px, 23 lawns | both+ring **26.1%** vs both **33.2%** — **7.1 BETTER**, and the best number this project has measured |
+| Scale-MAE 1280px, repeat | both+ring **26.4%** vs both **35.9%** — **9.5 BETTER**; survives H13's drift |
+
+**A CONFOUND IN EVERY RING ROW BEFORE 2026-09-19.** The row named "colour, with
+surroundings" declares `backbone: false` and existed to answer one question:
+does the ring's gain need the backbone, or is "is it green over there" the
+whole of it. It could never answer that, because the ring sampled backbone
+features whenever the LAWN had them rather than whenever the CONFIGURATION
+asked — so that row carried six backbone numbers per ring point throughout.
+Fixed, with a test. Every "colour, with surroundings" figure above it in this
+file is really "colour, with a backbone-carrying ring", and the question that
+row was added to settle is still open.
 
 **Do not read the 896 run as vindication.** The tool prints an encouraging
 sentence next to that row ("this is the result the ring was built for"), and
@@ -251,10 +262,47 @@ That would also explain why building shadow is harder than tree shade: a
 building shadow has a hard edge, a tree's does not. Untested, and it is the
 kind of story that has measured as nothing twice in this file.
 
-**The measurement now exists** (`tools/boundary.js`, added 2026-09-19). Every
-run prints "where the error lives": the sharp half of each lawn's boundary
-against the soft half, and hard-rimmed shade against soft-rimmed, each split at
-that lawn's own median. Read it with three things in mind.
+**MEASURED, 2026-09-19, run 35422422911. The pattern is real and large. The
+explanation above is NOT supported.** Those are two separate results and the
+second is the one that gets misremembered.
+
+```
+what it looked at            sharp    soft   hard shade  soft shade  middle
+colour and texture only      50.3%   37.3%      41.8%      14.8%     28.3%
+the pretrained eye only      64.5%   46.3%      48.9%      11.1%     26.6%
+both                         61.7%   43.5%      48.8%      14.4%     28.2%
+both, 96 numbers a patch     61.4%   43.2%      50.5%      14.4%     24.3%
+colour, with surroundings    58.9%   48.4%      52.1%      23.9%     29.4%
+both, with surroundings      60.7%   43.5%      59.4%      18.7%     19.3%
+```
+
+**H12 is confirmed, in both halves, in every configuration.**
+
+- **Sharp boundaries are 10.5–18.2 points worse than soft ones.** Six rows out
+  of six, same direction.
+- **Hard-rimmed shade is 27–41 points worse than soft-rimmed shade** — a bigger
+  gap than the boundary one, and the one nobody was looking at. Building shadow
+  really is the expensive case and tree shade really is not.
+- The interior control sits at 19–29%, well below either sharp column, so this
+  is not merely "edges are hard".
+
+**But S8 blames the backbone, and the backbone is not to blame.** S8's story —
+a sidewalk is sub-pixel at the resolutions Scale-MAE was pretrained on, so it
+smooths the edge away — predicts the gap should be much wider with the eye than
+without it. **Colour and texture alone, with no backbone at any resolution,
+shows the same pattern at 13.0 points.** The eye widens it to 18.2, which is
+5 points and inside the noise this corpus carries (H7, H13).
+
+So: sharp boundaries and hard-rimmed shade are hard for **this whole approach**
+— a per-pixel head reading local features — and not for a satellite model
+specifically. Anything proposed on the strength of "Scale-MAE can't see
+sidewalks" is proposed on a premise this run does not support.
+
+The run now prints that comparison itself, because the first version of the
+verdict said "supports S8" from the best row alone and would have promoted the
+guess on evidence that a model with no satellite in it reproduces.
+
+Read it with three more things in mind.
 
 - **The interior column is the control and is not decoration.** Error
   concentrates at boundaries in every segmentation model ever built, so "the
@@ -276,14 +324,56 @@ like a confirmation of the theory it was built to test. Sharpness is now taken
 as the peak within reach, so it is a property of a stretch of boundary rather
 than of a cell.
 
+### H13. ONLY THE CONTROL IS REPRODUCIBLE. Backbone rows drift ±2.7 points
+*Runs 35417355609 and 35422422911, 2026-09-19 — the same corpus, the same
+fingerprint `14a2t7k`, the same model at the same size, run twice.*
+
+```
+                            run 1   run 2   drift
+colour and texture only     32.9%   32.9%    0.0   <- CONTROL
+the pretrained eye only     32.5%   35.0%   +2.5
+both                        33.2%   35.9%   +2.7
+both, 96 numbers a patch    31.5%   32.2%   +0.7
+colour, with surroundings   34.4%   34.8%   +0.4   <- was not backbone-free; see below
+both, with surroundings     26.1%   26.4%   +0.3
+```
+
+**Every row that touches the backbone moved. The one that does not is exact.**
+The JavaScript is deterministic — the random projection is seeded, the fold
+sampling is seeded, the head is seeded — so the drift arrives with the features
+from the Python extraction. The two runs also took 21 and 39 minutes for the
+same work, which fits a CPU-threading explanation: a different number of
+threads sums a reduction in a different order, the low bits differ, and a
+23-lawn leave-one-out amplifies that into points.
+
+**PROBABLE CAUSE, NOT ESTABLISHED.** Nobody has pinned it to torch. What IS
+established is the drift itself, and that is enough to act on:
+
+1. **A backbone difference under about 3 points is noise**, on top of H7's ±10
+   for a corpus change. H9's 672→896 gain of 8.2 points survives this
+   comfortably. **H9's 896→1280 regression of 4.3 points does not survive it
+   comfortably** — read "896 is the peak" as weak.
+2. **The ring's 7.1-point gap survives**, and reproduced at 9.5 points on the
+   second run.
+3. **Quote backbone numbers to whole points**, not decimals. The decimals in
+   this file are the arithmetic of one run, not a property of the model.
+4. Re-running an identical configuration is now a *useful* thing to do, and
+   this is how the colour-only-ring bug below was found.
+
 ### H10. The backbone-free control is reproducible to the decimal
 *Runs 35409315409 (672px), 35411040880 (896px), 35416318719 (workflow 12,
 DINOv2 tiled 224px) and 35417355609 (1280px), all 23 lawns, fingerprint
 `14a2t7k`.*
 
-"Colour and texture only" came back at **32.9%** in all four — across two
-workflows, two languages and four backbone settings, because none of them
-touch that row. The corpus, the split and the seed are deterministic.
+"Colour and texture only" came back at **32.9%** in all four — and a fifth time
+in run 35422422911 — across two workflows, two languages and four backbone
+settings, because none of them touch that row. The corpus, the split and the
+seed are deterministic.
+
+**This applies to the control ALONE.** H13 is the other half of it: every row
+that touches the backbone drifts between identical runs. When this entry was
+written it said "the corpus, the split and the seed are deterministic", which
+is true, and it was easy to read as "the table is reproducible", which is not.
 
 That is what makes H9's comparison valid, and it is the check to run first on
 any future result: **if the control has moved, the corpus moved, and nothing
@@ -445,7 +535,9 @@ investigated.
 1. **Check the fingerprint and lawn count first.** Two tables from two corpora
    are not comparable (H7).
 2. **Use a backbone-free row as the control** when the corpus has changed.
-3. **Do not trust a difference under about 10 points** at this corpus size.
+3. **Do not trust a difference under about 10 points** at this corpus size —
+   and for any row using the backbone, re-run the identical configuration
+   before believing a gap under 3 points at all (H13).
 4. **Keep the Kent benchmark** (H8). It is the hard case on purpose.
 5. **What /predictions.html shows is the TRACE, and it answers a different
    question from the table.** The table asks how accurate the model is. The
@@ -492,3 +584,4 @@ investigated.
 | 2026-09-19 | 35411040880 | 23 | Scale-MAE large 896px | **28.2%** | 20.3% | S1 confirmed; control identical, eye-only -8.2; combined rows worse (S7) |
 | 2026-09-19 | 35416318719 | 23 | DINOv2 tiled 224px | 32.9% | 20.3% | control reproduced a third time (H10); first outline rendering, drawn from the **colour-only** row since that won here |
 | 2026-09-19 | 35417355609 | 23 | Scale-MAE large 1280px | **26.1%** | 20.3% | best ever; ring +7.1 (H4); eye alone REGRESSED 28.2 -> 32.5, so 896 is the peak for it (H9); beat SAM on 8 of 19 |
+| 2026-09-19 | 35422422911 | 23 | Scale-MAE large 1280px | 26.4% | 20.3% | repeat of the above: control exact, every backbone row moved (H13). First "where the error lives" table — H12 confirmed, S8's blame on the backbone not supported |

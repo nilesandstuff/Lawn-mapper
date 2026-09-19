@@ -636,6 +636,44 @@ const paint = (px, w, x0, y0, pw, ph, [r, g, b]) => {
     + 'not a replacement for what is actually at the spot');
 
   /*
+   * A COLOUR-ONLY RING IS COLOUR-ONLY, and for six weeks it was not.
+   *
+   * The row named "colour, with surroundings" exists to answer exactly one
+   * question: does the ring's gain need the backbone, or is "is it green over
+   * there" the whole of it. It declares `backbone: false`. But the ring
+   * sampled the backbone whenever the LAWN had one, rather than whenever the
+   * CONFIGURATION asked for one, so that row silently carried six backbone
+   * numbers per ring point and could never have answered its question.
+   *
+   * It was caught by a reproducibility check, not by reading: it was the one
+   * supposedly backbone-free row that drifted between two identical runs,
+   * which it could not do without backbone features in it. H4's ring readings
+   * before 2026-09-19 are confounded by this.
+   */
+  check('a colour-only ring carries no backbone numbers, eye present or not',
+    rowWidth(ringed, true) === rowWidth(ringed, false),
+    `${rowWidth(ringed, true)} with an eye available vs ${rowWidth(ringed, false)} without`);
+  check('and a ring that DID ask for the backbone still gets it',
+    rowWidth({ ...ringed, backbone: true, dims: 4 }, true)
+      > rowWidth({ ...ringed, backbone: true, dims: 4 }, false),
+    'otherwise the fix above would have turned the ring off for everyone');
+
+  /* And the row itself, not just its declared width: handing a lawn a backbone
+     grid must not change what a colour-only configuration reads. */
+  {
+    const eyeGrid = {
+      data: new Float32Array(8 * 8 * 6).fill(0.75), gridW: 8, gridH: 8, dim: 6,
+    };
+    const bare = lawnAt(1);
+    const withEye = { ...lawnAt(1), ring: eyeGrid };
+    const a = buildRow(bare, centre, new Float32Array(wide), 0, G, ringed);
+    const b = buildRow(withEye, centre, new Float32Array(wide), 0, G, ringed);
+    check('and the row reads the same whether or not the lawn has an eye',
+      a.every((v, i) => v === b[i]),
+      'a configuration that says backbone:false must not read the backbone');
+  }
+
+  /*
    * ONE METRE PER PIXEL AGAINST FOUR. At 1 m a pixel the 6 m ring reaches six
    * pixels east and finds more grey; at 0.25 m a pixel the same 6 m reaches
    * twenty-four pixels and lands in the bright band.

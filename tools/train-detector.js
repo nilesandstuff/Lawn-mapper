@@ -510,7 +510,23 @@ export function buildRow(lawn, p, out, offset, grid = GRID, cfg = null) {
         const qy = Math.min(grid - 1, Math.max(0, py + Math.sin(angle) * reach));
         const q = ((qy | 0) * grid + (qx | 0)) * FEATURE_COUNT;
         for (const f of RING_COLOUR) out[at++] = cheap[q + f];
-        if (ring) { sampleAt(ring, qx, qy, grid, out, at); at += RING_DIMS; }
+        /*
+         * THE RING OBEYS cfg.backbone TOO, and it did not until 2026-09-19.
+         *
+         * The gate here was `if (ring)` -- meaning "if this lawn has backbone
+         * features at all" -- so the row named "colour, with surroundings",
+         * declared `backbone: false`, carried six backbone numbers per ring
+         * point anyway. That row exists to answer one question, stated in the
+         * comment beside its definition: does the ring's gain need the
+         * backbone, or is "is it green over there" the whole of it. It could
+         * not answer that question, because it was never colour-only.
+         *
+         * Caught by a reproducibility check rather than by reading the code:
+         * it was the one supposedly backbone-free row that drifted between two
+         * identical runs (H13), which it could not have done without backbone
+         * features in it.
+         */
+        if (ring && useEye) { sampleAt(ring, qx, qy, grid, out, at); at += RING_DIMS; }
       }
     }
   }
@@ -521,8 +537,10 @@ export function buildRow(lawn, p, out, offset, grid = GRID, cfg = null) {
 export function rowWidth(cfg, hasEye, scales = 2) {
   const colour = cfg.colour ? FEATURE_COUNT : 0;
   const eye = cfg.backbone && hasEye ? scales * cfg.dims : 0;
+  /* Matches buildRow: a ring only carries backbone numbers when THIS
+     configuration asked for the backbone, not merely when one exists. */
   const ring = cfg.ring
-    ? RING_POINTS * (RING_COLOUR.length + (hasEye ? RING_DIMS : 0))
+    ? RING_POINTS * (RING_COLOUR.length + (cfg.backbone && hasEye ? RING_DIMS : 0))
     : 0;
   return colour + eye + ring;
 }
@@ -1466,15 +1484,47 @@ async function main() {
         console.log(`  SHARP BOUNDARIES ARE ${gap.toFixed(1)} POINTS WORSE than soft ones under`);
         console.log(`  "${b.cfg.name}". That is the opposite of where the work has`);
         console.log('  gone -- a driveway edge is unambiguous and a tree line is not.');
-        console.log('  Supports S8 in docs/DETECTOR-FINDINGS.md. It is evidence and not');
-        console.log('  proof: this finds sharp edges, not driveways.');
       } else if (gap < -10) {
         console.log(`  Sharp boundaries are ${(-gap).toFixed(1)} points BETTER than soft ones, which`);
-        console.log('  is what you would expect and what S8 predicts against. Read S8 as');
-        console.log('  refuted unless the pictures say otherwise.');
+        console.log('  is what you would expect. Read H12 as refuted here.');
       } else {
         console.log(`  The two halves are within ${Math.abs(gap).toFixed(1)} points, which at 23 lawns`);
-        console.log('  is nothing (H7). S8 is neither supported nor refuted here.');
+        console.log('  is nothing (H7). Neither supported nor refuted here.');
+      }
+
+      /*
+       * AND THE ONE COMPARISON THAT SAYS WHOSE FAULT IT IS.
+       *
+       * S8 blames the backbone: a sidewalk is sub-pixel at the resolutions a
+       * satellite model was pretrained on, so it smooths the edge away. That
+       * story predicts the gap should be WIDER with the eye than without it.
+       *
+       * The backbone-free row is the test, and the first run of this table
+       * failed it -- colour and texture alone showed the same pattern. A
+       * verdict that said "supports S8" without looking at that row would
+       * have promoted a guess about a satellite model into a finding, on
+       * evidence that a model with no satellite in it reproduces. Which is
+       * precisely the kind of quiet promotion docs/DETECTOR-FINDINGS.md
+       * exists to stop.
+       */
+      const control = table.find((t) => !t.cfg.backbone && !t.cfg.ring);
+      if (control && control.crispEdge !== null && control.softEdge !== null) {
+        const plain = control.crispEdge - control.softEdge;
+        const extra = gap - plain;
+        console.log('');
+        console.log(`  Without any backbone the same gap is ${plain.toFixed(1)} points.`);
+        if (plain > 10 && Math.abs(extra) < 10) {
+          console.log('  SO THIS IS NOT THE BACKBONE\'S DOING. Colour and texture alone show');
+          console.log('  the same pattern, so sharp boundaries are hard for this whole');
+          console.log('  approach rather than for a satellite model specifically. S8 blames');
+          console.log('  the backbone and this does not support that half of it.');
+        } else if (extra > 10) {
+          console.log(`  The eye widens it by ${extra.toFixed(1)} points, which is what S8 predicts:`);
+          console.log('  the backbone is making sharp edges worse, not just failing to help.');
+        } else if (extra < -10) {
+          console.log(`  The eye NARROWS it by ${(-extra).toFixed(1)} points, so the backbone is helping`);
+          console.log('  here. S8 predicts the opposite and is refuted on this run.');
+        }
       }
     }
   }
