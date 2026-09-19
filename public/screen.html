@@ -33,8 +33,23 @@
   /* The picture is the page. Everything else is a caption on it. */
   .shot.lawn {
     width: 100%; max-width: 560px; aspect-ratio: 1; display: block;
-    border-radius: 12px; background: #e7ebe7; object-fit: cover;
+    border-radius: 12px; background: #e7ebe7;
   }
+  /* Wider / closer, beside the picture rather than under the verdict: this is
+     a question about the view, not about the lawn. */
+  .zoomrow {
+    display: flex; gap: 8px; align-items: center; justify-content: center;
+    width: 100%; max-width: 560px;
+  }
+  .zoomrow button {
+    font: inherit; font-size: 13px; padding: 7px 14px;
+    border: 1px solid var(--line); border-radius: 9px; background: #fff; cursor: pointer;
+  }
+  .zoomrow small { color: var(--muted); font-size: 11.5px; flex: 1; text-align: center; }
+  .legend-line { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap;
+                 font-size: 11.5px; color: var(--muted); }
+  .legend-line i { width: 11px; height: 11px; border-radius: 3px; display: inline-block;
+                   vertical-align: -1px; margin-right: 5px; }
   .ask { display: grid; gap: 10px; justify-items: center; }
   .ask h2 { font-size: 15px; margin: 0; text-align: center; }
   .verdict-big { display: flex; gap: 10px; width: 100%; max-width: 560px; }
@@ -76,7 +91,23 @@
   <div id="page" hidden>
     <div class="card ask">
       <h2 id="question">Is there a grass lawn here, of any size, that is mostly visible?</h2>
-      <img class="shot lawn" id="shot" alt="Satellite view of the property being screened">
+      <!--
+        A canvas rather than an img, because the property line has to go ON the
+        photograph. The first screening session stalled on exactly this: a
+        square of imagery does not say which plot is being asked about, and at
+        house scale it does not show enough ground to tell a garden from the
+        edge of a wood.
+      -->
+      <canvas class="shot lawn" id="shot" width="640" height="640"></canvas>
+      <div class="legend-line">
+        <span><i style="background:#f2c744"></i>the property line</span>
+        <span><i style="background:#e2725b;border-radius:50%"></i>the spot we sampled</span>
+      </div>
+      <div class="zoomrow">
+        <button id="out">− wider</button>
+        <small id="zoom-note"></small>
+        <button id="in">closer +</button>
+      </div>
       <p class="tally" id="where"></p>
       <div class="verdict-big">
         <button class="no" id="no">No</button>
