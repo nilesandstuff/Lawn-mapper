@@ -836,6 +836,25 @@ async function main() {
     ? `colour, texture and ${py.manifest.model} at ${py.manifest.size}px`
     : eye ? 'colour, texture and a pretrained eye (tiled, 224px)'
       : 'colour and texture only';
+
+  /*
+   * HAS THIS EYE EVER SEEN THE GROUND FROM ABOVE?
+   *
+   * The advice at the bottom of this file used to answer that with a
+   * hard-coded "no". It was written when DINOv2 was the only option and it
+   * said, of any backbone that lost to colour, that "these models learn from
+   * photographs taken from the ground; a view straight down is not what they
+   * know." True of DINOv2. Flatly false of Scale-MAE, which was pretrained on
+   * satellite imagery and is handed the ground distance of a pixel -- and it
+   * printed that sentence anyway, about a run that had just proved the
+   * opposite by closing most of the gap it was explaining away.
+   *
+   * A diagnosis that cannot see what it is diagnosing is worse than none: it
+   * reads as a finding and it is a leftover.
+   */
+  const aerialEye = /scalemae|satlas|prithvi|satmae|croma|dofa/i.test(
+    String(py?.manifest?.model || '')
+  );
   console.log('');
 
   /* The projection is made once, on first use, and reused for every lawn and
@@ -1201,10 +1220,24 @@ async function main() {
       console.log('a bigger model, or a higher resolution, before anything else.');
     } else if (colour && eyeOnly && eyeOnly.med > colour.med + NOISE) {
       console.log(`The pretrained eye ALONE (${eyeOnly.med.toFixed(1)}%) is clearly worse than`);
-      console.log(`colour alone (${colour.med.toFixed(1)}%), so it is not reading this kind of`);
-      console.log('picture well. These models learn from photographs taken from the');
-      console.log('ground; a view straight down is not what they know. A backbone');
-      console.log('trained on aerial imagery is the lever, not more of this one.');
+      console.log(`colour alone (${colour.med.toFixed(1)}%), so it is not carrying this on its own.`);
+      if (aerialEye) {
+        /*
+         * A satellite-pretrained backbone losing to colour is a different
+         * finding from a ground-pretrained one losing to colour, and pointing
+         * it at "try aerial imagery" would be advice it has already taken.
+         */
+        console.log('This one HAS seen the ground from above, so the ceiling is not');
+        console.log('what it was trained on. What is left is resolution -- these were');
+        console.log('trained around a third of a metre a pixel and these frames are');
+        console.log('nearer ten centimetres -- and the number of lawns. Note the');
+        console.log('combined rows above before writing the eye off: it can be worth');
+        console.log('a lot alongside colour while losing to it alone.');
+      } else {
+        console.log('These models learn from photographs taken from the ground; a view');
+        console.log('straight down is not what they know. A backbone trained on aerial');
+        console.log('imagery is the lever, not more of this one.');
+      }
     } else if (colour && eyeOnly) {
       console.log(`The pretrained eye alone (${eyeOnly.med.toFixed(1)}%) scores near colour alone`);
       console.log(`(${colour.med.toFixed(1)}%), so the two are largely saying the same thing and`);
