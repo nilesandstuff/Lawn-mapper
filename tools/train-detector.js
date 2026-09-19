@@ -43,6 +43,7 @@ import { train, predict, balanceWeights } from './learner.js';
 import {
   drawPrediction, tracePrediction, traceMask, traceDrift, mistakeCounts,
 } from './render-prediction.js';
+import { classesFor, errorByClass, interiorError } from './boundary.js';
 import {
   loadBackbone, tiledFeatures, sampleAt, projection, project,
 } from './backbone.js';
@@ -765,11 +766,43 @@ export function runFold(lawns, held, opts = {}) {
     if (got[i]) lit++;
   }
 
+  /*
+   * WHERE THE ERROR LIVES: the sharp half of the boundary against the soft
+   * half, and hard-rimmed shade against soft-rimmed shade.
+   *
+   * Both are here to test H12 -- the reading that this model handles the
+   * ground we assumed was hard and fails on the ground we assumed was easy.
+   * The interior figure is the control, and it is not optional: error
+   * concentrates at boundaries in every segmentation model there has ever
+   * been, so "the edge is worse than the middle" is a definition rather than
+   * a finding. Crisp against soft is the comparison with an answer in it.
+   */
+  const edge = test.classes
+    ? errorByClass({
+      classes: test.classes.edge, predicted: got, truth: test.truth, within: test.within,
+    })
+    : null;
+  const shade = test.classes
+    ? errorByClass({
+      classes: test.classes.shade, predicted: got, truth: test.truth, within: test.within,
+    })
+    : null;
+  const inner = test.classes
+    ? interiorError({
+      band: test.classes.band, predicted: got, truth: test.truth, within: test.within,
+    })
+    : null;
+
   return {
     mine: compare(got, test.truth, test.within),
     theirs: test.detected ? compare(test.detected, test.truth, test.within) : null,
     trainedOn,
     collapsed: judged > 0 && (lit === 0 || lit === judged),
+    crispEdgePct: edge?.crispPct ?? null,
+    softEdgePct: edge?.softPct ?? null,
+    hardShadePct: shade?.crispPct ?? null,
+    softShadePct: shade?.softPct ?? null,
+    interiorPct: inner,
     darkPct: darkTruth ? (100 * darkWrong) / darkTruth : null,
     brightPct: brightTruth ? (100 * brightWrong) / brightTruth : null,
     seenPct: seenTruth ? (100 * seenWrong) / seenTruth : null,
@@ -1119,6 +1152,13 @@ async function main() {
           : eye ? await tiledFeatures(eye, rgb, GRID, GRID, { tiles: COARSE_TILES }) : null,
         truth,
         within,
+        /*
+         * Where the sharp boundaries and the hard-rimmed shade are. A property
+         * of the photograph and the hand-traced outline, so it is computed
+         * once here rather than six times per lawn inside the scoring loop.
+         * Filled in below, once `within` and `cheap` both exist.
+         */
+        classes: null,
         /* Where the reviewer said "I know, I cannot see it". Null until some
            map has been marked, and null means every pixel counts as seen. */
         inferred,
@@ -1129,6 +1169,19 @@ async function main() {
           ? maskOf(geometries(parse(row.detected_shapes)), frame, GRID) : null,
         run: `${row.model || 'no model'} / ${row.mode || 'no mode'}`,
       });
+      /*
+       * The sharp-boundary and hard-shade classes, once, now that the lawn is
+       * built. See tools/boundary.js for what they are and what they are not:
+       * this finds sharp edges, of which driveways and paths are the common
+       * case, and it does not find driveways.
+       */
+      {
+        const L = lawns[lawns.length - 1];
+        L.classes = classesFor({
+          cheap: L.cheap, truth: L.truth, within: L.within, grid: GRID,
+        });
+      }
+
       process.stdout.write(`  read ${lawns.length}/${rows.length}\r`);
     }
   } finally {
@@ -1235,6 +1288,9 @@ async function main() {
         lawn: lawns[held], mine: f.mine, theirs: samScores[held],
         collapsed: f.collapsed, darkPct: f.darkPct, brightPct: f.brightPct,
         seenPct: f.seenPct, guessPct: f.guessPct,
+        crispEdgePct: f.crispEdgePct, softEdgePct: f.softEdgePct,
+        hardShadePct: f.hardShadePct, softShadePct: f.softShadePct,
+        interiorPct: f.interiorPct,
         /* The held-out answer itself, for RENDER_PREDICTIONS. Kept only when
            asked: twenty-three masks per configuration is memory spent on
            something most runs never look at. */
@@ -1249,8 +1305,17 @@ async function main() {
     const bright = median(rows.map((r) => r.brightPct).filter((v) => v !== null));
     const seen = median(rows.map((r) => r.seenPct).filter((v) => v !== null));
     const guess = median(rows.map((r) => r.guessPct).filter((v) => v !== null));
+    const mid = (key) => {
+      const vs = rows.map((r) => r[key]).filter((v) => v !== null && v !== undefined);
+      return vs.length ? median(vs) : null;
+    };
     table.push({
       cfg, med, wins, of: paired.length, rows, width, collapsed, dark, bright, seen, guess,
+      crispEdge: mid('crispEdgePct'),
+      softEdge: mid('softEdgePct'),
+      hardShade: mid('hardShadePct'),
+      softShade: mid('softShadePct'),
+      interior: mid('interiorPct'),
     });
     console.log(`   ${med.toFixed(1)}% out on the middle lawn, better than SAM on ${wins} of ${paired.length}.\n`);
   }
@@ -1359,6 +1424,61 @@ async function main() {
     console.log('\n  Nothing is marked "inferred, not seen" yet, so every pixel');
     console.log('  counts as seen and there is no second column to show.');
   }
+  /*
+   * WHERE THE ERROR LIVES.
+   *
+   * The reading this answers (H12): the model handles the ground we assumed
+   * was hard -- tree lines, dappled shade -- and fails on the ground we
+   * assumed was easy, driveway and path edges and dense shade off a building.
+   * If that is right the work has been aimed at the wrong half of the problem;
+   * if it is wrong it is an impression formed from two dozen pictures.
+   *
+   * THE INTERIOR COLUMN IS THE CONTROL AND IS NOT DECORATION. Error
+   * concentrates at boundaries in every segmentation model ever built, so
+   * "the edge is worse than the middle" is a definition. The comparison with
+   * an answer in it is SHARP against SOFT, each being half of the same
+   * boundary, split at that lawn's own median sharpness.
+   */
+  if (table.some((t) => t.crispEdge !== null)) {
+    console.log('\n  Where the error lives -- the sharp half of a boundary against');
+    console.log('  the soft half, and hard-rimmed shade against soft-rimmed:\n');
+    console.log('  what it looked at                 sharp    soft   hard shade  soft shade  middle');
+    const cell = (v, w) => (v === null ? '  --' : v.toFixed(1)).padStart(w);
+    for (const t of table) {
+      console.log(
+        `  ${t.cfg.name.padEnd(32).slice(0, 32)} `
+        + `${cell(t.crispEdge, 5)}%  ${cell(t.softEdge, 5)}%  `
+        + `${cell(t.hardShade, 8)}%  ${cell(t.softShade, 8)}%  ${cell(t.interior, 5)}%`
+      );
+    }
+
+    /*
+     * The verdict, stated only where the numbers support one. Both halves of
+     * each pair are the same kind of ground measured the same way, so the
+     * difference is readable -- but it is still 23 lawns, so a small gap is
+     * not a result. Ten points is the bar H7 sets for this corpus.
+     */
+    const b = table.slice().sort((a, c) => a.med - c.med)[0];
+    if (b && b.crispEdge !== null && b.softEdge !== null) {
+      const gap = b.crispEdge - b.softEdge;
+      console.log('');
+      if (gap > 10) {
+        console.log(`  SHARP BOUNDARIES ARE ${gap.toFixed(1)} POINTS WORSE than soft ones under`);
+        console.log(`  "${b.cfg.name}". That is the opposite of where the work has`);
+        console.log('  gone -- a driveway edge is unambiguous and a tree line is not.');
+        console.log('  Supports S8 in docs/DETECTOR-FINDINGS.md. It is evidence and not');
+        console.log('  proof: this finds sharp edges, not driveways.');
+      } else if (gap < -10) {
+        console.log(`  Sharp boundaries are ${(-gap).toFixed(1)} points BETTER than soft ones, which`);
+        console.log('  is what you would expect and what S8 predicts against. Read S8 as');
+        console.log('  refuted unless the pictures say otherwise.');
+      } else {
+        console.log(`  The two halves are within ${Math.abs(gap).toFixed(1)} points, which at 23 lawns`);
+        console.log('  is nothing (H7). S8 is neither supported nor refuted here.');
+      }
+    }
+  }
+
   if (samMed !== null) {
     console.log(`\n  SAM, on the same ${samCount} lawns             ${samMed.toFixed(1)}%`);
   }

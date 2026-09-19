@@ -249,8 +249,32 @@ concrete — may be exactly what a scale-conditioned satellite backbone smooths
 over, since at the resolutions it was pretrained on a sidewalk is sub-pixel.
 That would also explain why building shadow is harder than tree shade: a
 building shadow has a hard edge, a tree's does not. Untested, and it is the
-kind of story that has measured as nothing twice in this file. The way to test
-it is per-class error against a sidewalk/driveway mask, not more argument.
+kind of story that has measured as nothing twice in this file.
+
+**The measurement now exists** (`tools/boundary.js`, added 2026-09-19). Every
+run prints "where the error lives": the sharp half of each lawn's boundary
+against the soft half, and hard-rimmed shade against soft-rimmed, each split at
+that lawn's own median. Read it with three things in mind.
+
+- **The interior column is the control and is not decoration.** Error
+  concentrates at boundaries in every segmentation model ever built, so "the
+  edge is worse than the middle" is a definition. Sharp against soft is the
+  comparison with an answer in it.
+- **It finds sharp edges, not driveways**, and hard-rimmed shade, not
+  buildings. A result here is evidence for S8, never proof of it. The
+  unambiguous version needs a real surface mask.
+- **Ten points is still the bar** (H7). A small gap at 23 lawns is nothing.
+
+Two faults were found and fixed while building it, both of which would have
+produced a confident wrong table rather than an obvious bug — see the tests in
+`tools/boundary.test.js`. The one worth knowing about: splitting cells by their
+own gradient makes the median land in the flat ground either side of an edge,
+so every real transition comes out "above median" and the sharp column quietly
+means *is this a boundary at all*. That would have reported sharp boundaries as
+carrying the error **on any lawn whatsoever**, and it would have looked exactly
+like a confirmation of the theory it was built to test. Sharpness is now taken
+as the peak within reach, so it is a property of a stretch of boundary rather
+than of a cell.
 
 ### H10. The backbone-free control is reproducible to the decimal
 *Runs 35409315409 (672px), 35411040880 (896px), 35416318719 (workflow 12,
