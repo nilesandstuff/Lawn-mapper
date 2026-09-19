@@ -43,7 +43,9 @@ import { train, predict, balanceWeights } from './learner.js';
 import {
   drawPrediction, tracePrediction, traceMask, traceDrift, mistakeCounts,
 } from './render-prediction.js';
-import { classesFor, errorByClass, interiorError } from './boundary.js';
+import {
+  classesFor, errorByClass, interiorError, classOverlap,
+} from './boundary.js';
 import {
   loadBackbone, tiledFeatures, sampleAt, projection, project,
 } from './backbone.js';
@@ -1153,7 +1155,9 @@ async function main() {
          */
         photo: renderWanted ? rgb : null,
         /* Held raw: each fold standardises against its own training lawns. */
-        cheap: imageFeatures(rgb, GRID, GRID),
+        /* The windows are distances on the ground, so this frame's scale goes
+           in with the pixels -- see FINE_M in lib/features.js. */
+        cheap: imageFeatures(rgb, GRID, GRID, { mpp: metresPerPixel(frame, GRID) }),
         /*
          * Kept at the model's full width. Projecting here would fix the
          * squeeze at one size, and how much the squeeze costs is one of the
@@ -1479,6 +1483,25 @@ async function main() {
     const b = table.slice().sort((a, c) => a.med - c.med)[0];
     if (b && b.crispEdge !== null && b.softEdge !== null) {
       const gap = b.crispEdge - b.softEdge;
+      /*
+       * ARE THE TWO COLUMNS THE SAME PIXELS? Both splits key off one gradient
+       * map, so a dark strip beside a driveway is hard-rimmed shade AND a
+       * sharp boundary. Without this the table can report one finding twice
+       * and look like two independent confirmations of it.
+       */
+      const sample = lawns.find((L) => L.classes);
+      if (sample) {
+        const share = classOverlap({
+          edge: sample.classes.edge, shade: sample.classes.shade, within: sample.within,
+        });
+        if (share !== null) {
+          console.log(`\n  Of the hard-rimmed shade, ${(100 * share).toFixed(0)}% is also on a sharp`);
+          console.log(`  boundary (first lawn). ${share > 0.6
+            ? 'Mostly the same ground, so read the two columns as ONE result.'
+            : 'Mostly separate ground, so they are two findings.'}`);
+        }
+      }
+
       console.log('');
       if (gap > 10) {
         console.log(`  SHARP BOUNDARIES ARE ${gap.toFixed(1)} POINTS WORSE than soft ones under`);

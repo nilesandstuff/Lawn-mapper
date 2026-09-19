@@ -14,7 +14,7 @@
 
 import {
   sharpness, boundaryBand, splitBySharpness, classesFor,
-  errorByClass, interiorError, medianWhere,
+  errorByClass, interiorError, medianWhere, classOverlap,
   EDGE_REACH, SOFT, CRISP, NOWHERE,
 } from './boundary.js';
 import { FEATURE_COUNT } from '../public/lib/features.js';
@@ -241,6 +241,40 @@ const ones = () => new Uint8Array(N).fill(1);
   const innerBad = interiorError({ band, predicted: flipped, truth, within });
   check('and a model wrong only in the middle is not hidden by a clean edge',
     innerBad === 100, `${innerBad}%`);
+}
+
+/* --------------------------------- are the two columns the same pixels? */
+{
+  /*
+   * BOTH SPLITS KEY OFF ONE GRADIENT MAP, so "hard-rimmed shade" and "a sharp
+   * boundary" can be the same ground seen twice -- a dark strip beside a
+   * driveway is both. A table that reported one finding in two columns would
+   * read as two independent confirmations of it, which is worse than reporting
+   * neither.
+   */
+  const within = ones();
+
+  /* Shade sitting exactly on the sharp boundary: the columns should agree. */
+  const edge = zeros();
+  const shade = zeros();
+  for (let i = 0; i < 100; i++) { edge[i] = CRISP; shade[i] = CRISP; }
+  check('overlapping classes are reported as overlapping',
+    classOverlap({ edge, shade, within }) === 1,
+    'all of this hard shade is also a sharp boundary');
+
+  /* And shade nowhere near a boundary: two genuinely separate failures. */
+  const apartEdge = zeros();
+  const apartShade = zeros();
+  for (let i = 0; i < 100; i++) apartEdge[i] = CRISP;
+  for (let i = 500; i < 600; i++) apartShade[i] = CRISP;
+  check('and separate classes as separate',
+    classOverlap({ edge: apartEdge, shade: apartShade, within }) === 0,
+    'none of this hard shade is on a boundary, so the columns are two findings');
+
+  check('with nothing in shade at all it reports nothing, not zero',
+    classOverlap({ edge, shade: zeros(), within }) === null,
+    'zero would read as "none of it overlaps", which is a claim about ground '
+    + 'that does not exist');
 }
 
 /* ------------------------------------------- outside the property line */

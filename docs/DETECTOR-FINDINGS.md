@@ -34,14 +34,16 @@ changes and results from different corpora are not comparable.
 
 Gap: **1.3×**. It was 1.4× at 896px, 1.5× at 672px and 1.6× under DINOv2.
 
-**1280 is the working size, on 2.1 points against 896's best (28.2%) for about
-five extra minutes of extraction.** That was argued the other way for an hour
-on 2026-09-19, on the strength of a reproducibility claim that did not survive
-a third run (H13) and a suspicion that the 26.1% came from the ring bug, which
-it could not have (H4). The row-by-row picture is odd and stands: the two sizes
-swap which configuration wins — the eye ALONE is much better at 896 (28.2%
-against 32.5%), and the ring row is much better at 1280 (26.1% against 32.1%).
-Nobody knows why.
+**1280 against 896 is UNSETTLED, by the owner's decision on 2026-09-19, pending
+more corpus.** 1280 holds the better number — 26.1% against 28.2% — but 2.1
+points at 23 lawns decides nothing, and the case swung twice in an hour on
+readings that did not survive the next run. **Work at 896 in the meantime, for
+the run times**; revisit when the corpus is big enough for 2 points to mean
+something.
+
+The row-by-row oddity stands and is unexplained: the two sizes swap which
+configuration wins. The eye ALONE is much better at 896 (28.2% against 32.5%);
+the ring row is much better at 1280 (26.1% against 32.1%).
 
 Best-of-six is a *selected* number: six configurations were scored and the
 lowest is quoted. At a fixed corpus that selection is reproducible (H10), which
@@ -293,6 +295,26 @@ it is the one it fails hardest on.
 has gone into shade, occlusion and the ring (H4, E3, S2) on the premise that
 ambiguity is the hard part. By eye, ambiguity is handled and the *unambiguous*
 boundaries are not.
+
+**Second reading of the outlines, 1280 run 35449091188, owner, 2026-09-19.**
+Viewed on their own rather than against the earlier set:
+
+- **Dense shadow is still under-called, visibly unchanged.**
+- **Clear edges are ODDLY INCONSISTENT** — and this is the new observation.
+  Not uniformly bad: *"sometimes the edge is cleanly cut, sometimes it goes
+  nowhere near the edge and misses large sections of grass, other times it
+  counts plenty of a house or driveway as being lawn."* A model that were
+  simply blind to sharp edges would fail the same way every time. This one
+  fails three different ways on the same kind of boundary, which is a
+  different complaint from H12's average and is not explained by it.
+- **Some obvious trees are fully marked as lawn.** Not ambiguous canopy —
+  *"this is obviously a tree, shouldn't be inferred as lawn"*.
+- **Inferred areas are good, possibly better than the training data should
+  allow.** The owner's own caution: that may be because the model is generous
+  about trees, and generosity happens to be right where the reviewer marked
+  ground they could not see. If so the inferred column is flattering for a
+  reason that is a fault elsewhere, and H6 already says that column is too
+  small to read.
 
 **SPECULATION (S8):** a crisp albedo edge — dry dormant grass against pale
 concrete — may be exactly what a scale-conditioned satellite backbone smooths

@@ -34,6 +34,15 @@ function image(w, h, [r, g, b]) {
   }
   return px;
 }
+/*
+ * The scale every synthetic frame here is pretended to be at.
+ *
+ * It has to be given, because the feature windows are distances on the ground
+ * rather than pixel counts -- 12 cm a cell is what a typical lawn in the corpus
+ * comes out at (H1), so these tests see roughly the windows a real frame does.
+ */
+const MPP = { mpp: 0.12 };
+
 const paint = (px, w, x0, y0, pw, ph, [r, g, b]) => {
   for (let y = y0; y < y0 + ph; y++) {
     for (let x = x0; x < x0 + pw; x++) {
@@ -53,8 +62,8 @@ const paint = (px, w, x0, y0, pw, ph, [r, g, b]) => {
     + 'that labels the wrong column is worse than one with no labels');
 
   const W = 32, H = 32;
-  const grass = imageFeatures(image(W, H, [70, 120, 60]), W, H);
-  const road = imageFeatures(image(W, H, [130, 130, 128]), W, H);
+  const grass = imageFeatures(image(W, H, [70, 120, 60]), W, H, MPP);
+  const road = imageFeatures(image(W, H, [130, 130, 128]), W, H, MPP);
   const mid = (16 * W + 16) * FEATURE_COUNT;
 
   /*
@@ -82,8 +91,8 @@ const paint = (px, w, x0, y0, pw, ph, [r, g, b]) => {
       speckled[i] = speckled[i + 1] = speckled[i + 2] = 160;
     }
   }
-  const fF = imageFeatures(flat, W, H);
-  const sF = imageFeatures(speckled, W, H);
+  const fF = imageFeatures(flat, W, H, MPP);
+  const sF = imageFeatures(speckled, W, H, MPP);
   /*
    * Compared against the speckled patch rather than against zero. Colours are
    * held as Float32, so a "flat" patch carries a little rounding and its
@@ -106,7 +115,7 @@ const paint = (px, w, x0, y0, pw, ph, [r, g, b]) => {
    * smooth border -- a fake feature around every image, learnt as if real.
    */
   const corner = 0;
-  const cornerFeat = imageFeatures(image(W, H, [70, 120, 60]), W, H);
+  const cornerFeat = imageFeatures(image(W, H, [70, 120, 60]), W, H, MPP);
   check('a corner pixel is averaged over what exists, not over zeroes',
     Math.abs(cornerFeat[corner + 7] - cornerFeat[mid + 7]) < 1e-6,
     'on a uniform image every pixel must report the same local mean, corners '
@@ -118,10 +127,122 @@ const paint = (px, w, x0, y0, pw, ph, [r, g, b]) => {
    */
   const shadow = image(W, H, [70, 120, 60]);
   paint(shadow, W, 14, 14, 4, 4, [30, 45, 28]);
-  const sh = imageFeatures(shadow, W, H);
+  const sh = imageFeatures(shadow, W, H, MPP);
   check('a shadowed pixel still sees green around it',
     sh[mid + 9] > 0.1,
     `neighbourhood green ${sh[mid + 9].toFixed(3)} while the pixel itself is dark`);
+
+  /*
+   * ---------------------------------------------------------------------
+   * THE THREE COLUMNS AIMED AT THE BIGGEST NUMBER IN THE ERROR TABLE.
+   *
+   * Hard-rimmed shade -- a building's shadow -- scores 27 to 41 points worse
+   * than soft-rimmed shade thrown by a tree (H12 in docs/DETECTOR-FINDINGS.md).
+   * These check that each new column does the job it was added for, on data
+   * whose right answer is known by construction. An untested feature column is
+   * a number the model will happily learn noise from.
+   * ---------------------------------------------------------------------
+   */
+
+  /*
+   * NORMALISED EXCESS GREEN SURVIVES THE SHADOW AND THE RAW ONE DOES NOT.
+   *
+   * The same grass at a quarter of the light: in shade r, g and b all shrink
+   * together, so 2G-R-B shrinks with them while (2G-R-B)/(R+G+B) does not.
+   * That is the whole argument for the column, so it is the test.
+   */
+  const litGrass = imageFeatures(image(W, H, [80, 140, 64]), W, H, MPP);
+  const darkGrass = imageFeatures(image(W, H, [20, 35, 16]), W, H, MPP);
+  const rawDrop = Math.abs(darkGrass[mid + 3] - litGrass[mid + 3]);
+  const normDrop = Math.abs(darkGrass[mid + 11] - litGrass[mid + 11]);
+  check('raw excess green collapses when the light goes',
+    rawDrop > 0.2,
+    `${litGrass[mid + 3].toFixed(3)} in sun against ${darkGrass[mid + 3].toFixed(3)} in shade`);
+  check('and the normalised one holds, which is why it was added',
+    normDrop < rawDrop / 4,
+    `${litGrass[mid + 11].toFixed(3)} against ${darkGrass[mid + 11].toFixed(3)} `
+    + `-- a drop of ${normDrop.toFixed(3)} where the raw column drops ${rawDrop.toFixed(3)}`);
+
+  /*
+   * DARK BECAUSE OF A SHADOW, OR DARK BECAUSE IT IS A DARK THING?
+   *
+   * Nothing in the old vector could tell those apart, and it is exactly the
+   * question a building's shadow asks. Two frames, both with a dark patch of
+   * identical colour: in one the patch is most of the frame (a shadow), in the
+   * other it is a lone dark object on bright ground (a wet drive, a flat roof).
+   * The pixel is identical in both; only the region differs.
+   */
+  const bigShadow = image(W, H, [200, 200, 195]);
+  paint(bigShadow, W, 0, 0, W, 24, [40, 44, 38]);       // most of the frame, dark
+  const loneObject = image(W, H, [200, 200, 195]);
+  paint(loneObject, W, 14, 14, 4, 4, [40, 44, 38]);     // one small dark thing
+
+  const inShadow = imageFeatures(bigShadow, W, H, MPP);
+  const onObject = imageFeatures(loneObject, W, H, MPP);
+  const probe = (16 * W + 16) * FEATURE_COUNT;
+
+  check('the pixel itself is identical in both, so the old columns cannot help',
+    Math.abs(inShadow[probe + 5] - onObject[probe + 5]) < 1e-6,
+    `brightness ${inShadow[probe + 5].toFixed(4)} either way`);
+  check('but regional brightness tells a shadow from a dark object',
+    inShadow[probe + 12] < onObject[probe + 12] / 2,
+    `${inShadow[probe + 12].toFixed(3)} inside a shadow against `
+    + `${onObject[probe + 12].toFixed(3)} for a lone dark thing`);
+  check('and the ratio says the shadowed one is not unusually dark for where it is',
+    inShadow[probe + 13] > 2 * onObject[probe + 13],
+    `${inShadow[probe + 13].toFixed(3)} against ${onObject[probe + 13].toFixed(3)}`);
+}
+
+/* ------------------------------------------- the windows are distances */
+{
+  console.log('\n--- the windows are metres, not pixels ---');
+
+  /*
+   * THE BUG THIS PINS. The windows were fixed pixel counts, so a 15x15 window
+   * was 75 cm on a small lot and 5.7 m on a large one (H1: 5-38 cm a cell).
+   * "Is this ground rough" was therefore a different question per lawn, and the
+   * model was asked to learn one answer to all of them.
+   *
+   * Two frames of the SAME GROUND at different scales: a stripe pattern whose
+   * period is fixed in metres. Read with metric windows, the texture column
+   * should agree between them; read with pixel windows it cannot.
+   */
+  const W = 64, H = 64;
+  const striped = (periodPx) => {
+    const px = image(W, H, [110, 110, 110]);
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        if (Math.floor(x / periodPx) % 2 === 0) continue;
+        const i = (y * W + x) * 4;
+        px[i] = px[i + 1] = px[i + 2] = 150;
+      }
+    }
+    return px;
+  };
+
+  /* 0.5 m stripes, seen at two resolutions: 4 px at 12.5 cm, 8 px at 6.25 cm. */
+  const coarseView = imageFeatures(striped(4), W, H, { mpp: 0.125 });
+  const fineView = imageFeatures(striped(8), W, H, { mpp: 0.0625 });
+  const at = (f, x, y, col) => f[(y * W + x) * FEATURE_COUNT + col];
+
+  /* Sampled at the same place on the pattern in both: the middle of a stripe. */
+  const rough1 = at(coarseView, 34, 32, 8);
+  const rough2 = at(fineView, 36, 32, 8);
+  check('the same ground at two scales reads about the same roughness',
+    Math.abs(rough1 - rough2) < 0.3 * Math.max(rough1, rough2),
+    `${rough1.toFixed(4)} at 12.5 cm a pixel against ${rough2.toFixed(4)} at 6.25 `
+    + '-- with windows counted in pixels these could not agree');
+
+  /*
+   * AND THE SCALE IS NOT OPTIONAL. Leaving it out used to be silently possible
+   * and would have meant the model reading one set of windows in training and
+   * another in the app -- no error, no wrong-looking output, just a worse
+   * model that looks like a harder problem.
+   */
+  let threw = false;
+  try { imageFeatures(striped(4), W, H); } catch { threw = true; }
+  check('and a caller that forgets the scale is told, not quietly served',
+    threw, 'a default here would be a different feature vector in each caller');
 }
 
 /* --------------------------------------------------------- standardising */
@@ -376,7 +497,7 @@ const paint = (px, w, x0, y0, pw, ph, [r, g, b]) => {
     /* `cheap` is the colour-and-texture layer; with no backbone loaded the
        row width is just that, which is what these folds exercise. */
     return {
-      cheap: imageFeatures(px, G, G), width: FEATURE_COUNT,
+      cheap: imageFeatures(px, G, G, MPP), width: FEATURE_COUNT,
       truth, within: null, detected: null,
     };
   };
@@ -745,7 +866,7 @@ const paint = (px, w, x0, y0, pw, ph, [r, g, b]) => {
       for (let y = 8; y < 16; y++) for (let x = 0; x < G; x++) inferred[y * G + x] = 1;
     }
     return {
-      cheap: imageFeatures(px, G, G), width: FEATURE_COUNT,
+      cheap: imageFeatures(px, G, G, MPP), width: FEATURE_COUNT,
       truth, within: null, detected: null, inferred, mpp: 0.1,
     };
   };

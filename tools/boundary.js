@@ -287,6 +287,32 @@ export function errorByClass({ classes, predicted, truth, within }) {
 }
 
 /**
+ * How much of the hard-rimmed shade is ALSO on a sharp boundary.
+ *
+ * ASKED BECAUSE THE TWO COLUMNS MAY BE ONE COLUMN. Both splits key off the
+ * same gradient map: "hard-rimmed shade" is dark ground with something sharp
+ * within reach, and a driveway edge is something sharp. So a dark strip beside
+ * a drive lands in both, and the table would report one finding twice while
+ * looking like two independent confirmations.
+ *
+ * Returns the share of hard-shade cells that also sit in the sharp half of the
+ * boundary band. Near 1 means the columns are the same pixels and the table
+ * should be read as one result; near 0 means they are genuinely separate
+ * failures and the shade column is telling us something the boundary column is
+ * not.
+ */
+export function classOverlap({ edge, shade, within }) {
+  let hard = 0, both = 0;
+  for (let i = 0; i < shade.length; i++) {
+    if (within && !within[i]) continue;
+    if (shade[i] !== CRISP) continue;
+    hard++;
+    if (edge[i] === CRISP) both++;
+  }
+  return hard ? both / hard : null;
+}
+
+/**
  * The lawn away from any boundary: the control for both splits above.
  *
  * WITHOUT THIS THE MEASUREMENT PROVES NOTHING. Error concentrates at

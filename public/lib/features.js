@@ -21,14 +21,41 @@
  */
 
 /** How many numbers describe one pixel. Asserted in the tests. */
-export const FEATURE_COUNT = 11;
+export const FEATURE_COUNT = 14;
 
 export const FEATURE_NAMES = [
   'red', 'green', 'blue',
   'excess green', 'green share', 'brightness', 'saturation',
   'local brightness', 'local roughness',
   'neighbourhood green', 'neighbourhood green spread',
+  'excess green, normalised', 'regional brightness', 'relative brightness',
 ];
+
+/**
+ * THE WINDOWS ARE MEASURED IN METRES, and they were not until 2026-09-19.
+ *
+ * They were fixed pixel counts — 5x5 and 15x15 — which sounds neutral and is
+ * not, because these frames run from 5 to 38 cm a cell (H1). A 15x15 window
+ * was therefore **75 cm on one lawn and 5.7 metres on another**, so "is this
+ * ground rough" and "is the neighbourhood green" were different questions
+ * depending on the lot size, and the model was asked to learn one answer to
+ * all of them. The ring was deliberately built in metres for exactly this
+ * reason; these were simply missed.
+ *
+ * The values below are what the old pixel counts came to on a typical frame at
+ * 12 cm a cell, so a typical lawn sees roughly what it always saw and the
+ * extremes stop disagreeing with it.
+ */
+export const FINE_M = 0.25;    // was 2 px: the texture of mown grass
+export const COARSE_M = 0.9;   // was 7 px: is the neighbourhood green
+/**
+ * And a new one, for the failure the error table put top of the list: shade
+ * thrown by a BUILDING, which is 27 to 41 points worse than shade thrown by a
+ * tree (H12). Six metres is wide enough to sit inside a house's shadow and
+ * still be told that the whole region is dark, which is the fact that
+ * separates shadowed grass from a dark roof.
+ */
+export const WIDE_M = 6;
 
 /**
  * Integral image, so a window average costs four lookups instead of w*h.
@@ -66,7 +93,22 @@ function windowMean(sum, w, h, x, y, r) {
  *
  * `rgb` is Uint8 RGB or RGBA. Returns a Float32Array of w*h*FEATURE_COUNT.
  */
-export function imageFeatures(rgb, w, h, { channels = 4 } = {}) {
+export function imageFeatures(rgb, w, h, { channels = 4, mpp } = {}) {
+  /*
+   * mpp IS REQUIRED, LOUDLY.
+   *
+   * The windows below are distances on the ground, so a caller that forgets
+   * the scale would silently get windows of a different size from the ones
+   * the model was trained with — which does not throw, does not look wrong,
+   * and produces a model of nothing in particular. That is the exact shape of
+   * every bug this file's header warns about, so it is an error rather than a
+   * default.
+   */
+  if (!(mpp > 0)) {
+    throw new Error('imageFeatures needs mpp (metres per pixel): the windows '
+      + 'are distances on the ground, and guessing one silently changes what '
+      + 'every texture column means');
+  }
   const n = w * h;
   const R = new Float32Array(n);
   const G = new Float32Array(n);
@@ -84,6 +126,14 @@ export function imageFeatures(rgb, w, h, { channels = 4 } = {}) {
      * Excess green: 2G - R - B. The standard cheap vegetation index for
      * ordinary colour imagery, and the one thing here that separates grass
      * from a grey driveway regardless of how bright the day was.
+     *
+     * "Regardless of how bright the day was" is true across DAYS and false
+     * across a SHADOW EDGE, which is the distinction that matters here. In
+     * shade r, g and b all shrink together, so this shrinks with them: the
+     * project's main vegetation signal fades out exactly where the error table
+     * says the error is (H12). The normalised version below is the fix, and
+     * both are kept because the raw one still carries absolute brightness,
+     * which a driveway in full sun does not have.
      */
     exg[i] = 2 * g - r - b;
   }
@@ -94,8 +144,10 @@ export function imageFeatures(rgb, w, h, { channels = 4 } = {}) {
    * pixels, asphalt does not. The large one asks what the neighbourhood is,
    * which is what rescues grass in shadow: dark, but surrounded by lawn.
    */
-  const FINE = 2;    // 5x5
-  const COARSE = 7;  // 15x15
+  const radius = (metres) => Math.max(1, Math.round(metres / mpp));
+  const FINE = radius(FINE_M);
+  const COARSE = radius(COARSE_M);
+  const WIDE = radius(WIDE_M);
 
   const sumL = integral(luma, w, h);
   const sumL2 = integral(luma.map((v) => v * v), w, h);
@@ -134,6 +186,31 @@ export function imageFeatures(rgb, w, h, { channels = 4 } = {}) {
       out[o + 8] = Math.sqrt(Math.max(0, mL2 - mL * mL));
       out[o + 9] = mE;
       out[o + 10] = Math.sqrt(Math.max(0, mE2 - mE * mE));
+
+      /*
+       * EXCESS GREEN WITHOUT THE BRIGHTNESS. Dividing by the total removes the
+       * illumination and leaves the colour, so grass in a building's shadow
+       * reads as green rather than as dark. This is the one column here aimed
+       * squarely at the biggest number in the error table.
+       */
+      out[o + 11] = exg[i] / total;
+
+      /*
+       * HOW BRIGHT THE WHOLE REGION IS, and how this pixel compares to it.
+       *
+       * Together these say whether a dark pixel is dark because it sits in a
+       * large dark area — a shadow — or dark because it is a dark thing, which
+       * is the distinction nothing in this vector could previously make. A
+       * shadowed lawn is dark with a dark neighbourhood and a ratio near one;
+       * a wet asphalt drive in full sun is dark with a BRIGHT neighbourhood
+       * and a ratio well under one.
+       *
+       * The ratio is the useful half and the absolute is kept beside it,
+       * because a ratio alone cannot tell an overcast frame from a sunlit one.
+       */
+      const mW = windowMean(sumL, w, h, x, y, WIDE);
+      out[o + 12] = mW;
+      out[o + 13] = luma[i] / (mW + 1e-6);
     }
   }
   return out;

@@ -37,7 +37,7 @@ import {
   MIN_SEGMENT_SQFT, MAX_SEGMENT_SQFT, SEGMENT_STEP_SQFT,
   MIN_WIDTH_FT, MAX_WIDTH_FT, DEFAULT_WIDTH_FT,
 } from './lib/segments.js';
-import { imageFeatures, standardise } from './lib/features.js';
+import { imageFeatures, standardise, FEATURE_COUNT } from './lib/features.js';
 import { mountCoverage } from './lib/coverage-ui.js';
 import { predict, reviveModel } from './lib/head.js';
 import {
@@ -4696,6 +4696,24 @@ async function showTrainedModel() {
     return;
   }
 
+  /*
+   * A MODEL TRAINED ON A DIFFERENT FEATURE VECTOR CANNOT BE USED, and saying
+   * so is not optional.
+   *
+   * The published weights carry the width they were fitted at. When the
+   * feature vector grows -- as it did on 2026-09-19, from 11 columns to 14 --
+   * an older model is still perfectly loadable and every number handed to it
+   * is a different quantity from the one it learnt. standardise() would slice
+   * the rows at the old width, so the columns would silently shear and the
+   * page would draw a confident, meaningless wash. Nothing would throw.
+   */
+  if (model.inputs !== FEATURE_COUNT) {
+    setStatus(`That model was trained on ${model.inputs} numbers a pixel and this `
+      + `build reads ${FEATURE_COUNT}. Re-run workflow 12 with "Publish" ticked to `
+      + 'replace it — drawing it as it is would be meaningless, not merely stale.', 'warn');
+    return;
+  }
+
   busy('Running the trained model over this frame…');
   try {
     const img = await new Promise((ok, fail) => {
@@ -4718,7 +4736,9 @@ async function showTrainedModel() {
     ctx.drawImage(img, 0, 0, G, G);
     const { data } = ctx.getImageData(0, 0, G, G);
 
-    const rows = imageFeatures(data, G, G);
+    /* The same scale the training run measured its windows at, or the texture
+       columns mean something different here from what they meant there. */
+    const rows = imageFeatures(data, G, G, { mpp: metresPerPixel(state.frame, G) });
     standardise(rows, { mean: model.mean, sd: model.sd }, model.inputs);
     const p = predict(model, rows);
 
