@@ -166,6 +166,21 @@ Two findings, and the second is as interesting as the first:
    numbers" went 30.9% → 32.4%. Adding colour to a better eye made things
    worse. **This is unexplained.** See S7.
 
+### H10. The backbone-free control is reproducible to the decimal
+*Runs 35409315409 (672px), 35411040880 (896px) and 35416318719 (workflow 12,
+DINOv2 tiled 224px), all 23 lawns, fingerprint `14a2t7k`.*
+
+"Colour and texture only" came back at **32.9%** in all three — across two
+workflows, two languages and three backbone settings, because none of them
+touch that row. The corpus, the split and the seed are deterministic.
+
+That is what makes H9's comparison valid, and it is the check to run first on
+any future result: **if the control has moved, the corpus moved, and nothing
+else in the table is comparable to anything before it** (H7).
+
+It also bounds the noise claim usefully. H7's ±10 points is the cost of
+CHANGING THE CORPUS, not run-to-run variance. At a fixed corpus this is exact.
+
 ### H8. Two maps dominated the error, and one was rejected for it
 *DINOv2 run, 24 lawns.* An NC map measured **309.1% wrong** (SAM: 164.2%) — both
 wildly over-predicting, which points at the map rather than the model. Rejected
@@ -335,3 +350,4 @@ investigated.
 | 2026-09-18 | 35404198905 | 24 | DINOv2 tiled 224px | 34.0% | 21.6% | ring first measured, negative |
 | 2026-09-19 | 35409315409 | 23 | Scale-MAE large 672px | 30.9% | 20.3% | eye-vs-colour gap 14.0 -> 3.5 |
 | 2026-09-19 | 35411040880 | 23 | Scale-MAE large 896px | **28.2%** | 20.3% | S1 confirmed; control identical, eye-only -8.2; combined rows worse (S7) |
+| 2026-09-19 | 35416318719 | 23 | DINOv2 tiled 224px | 32.9% | 20.3% | control reproduced a third time (H10); first outline rendering, drawn from the **colour-only** row since that won here |
