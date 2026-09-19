@@ -17,7 +17,7 @@
  * Ohio.
  *
  * Source: the Census Bureau county gazetteer.
- * 3144 counties across 51 states, built 2026-09-18.
+ * 3144 counties across 51 states, built 2026-09-19.
  */
 
 export const US_COUNTIES = {
