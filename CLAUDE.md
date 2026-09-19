@@ -1,5 +1,21 @@
 # Working on Lawn Mapper
 
+## The detector's memory lives in a file, not in a conversation
+
+READ docs/DETECTOR-FINDINGS.md BEFORE configuring a training run, choosing a
+backbone, or interpreting a result. WRITE TO IT after every run.
+
+It is the record of what has actually been measured here, and it exists because
+these experiments are noisy enough to be misremembered in good faith: one
+rejected map moved some configurations by ten points, which is the same size as
+the entire gap we are trying to close. A result recalled without its corpus is
+not a result.
+
+It separates HARD FINDINGS from SPECULATION on purpose, and that separation is
+the point of the file. Do not repeat a theory from it as though it were
+established, and do not quietly promote one by restating it confidently. Two
+ideas have already been argued for at length and then measured as nothing.
+
 ## Deploying is yours to do
 
 Push, then run the deploy yourself when the work is ready. Do not ask first
