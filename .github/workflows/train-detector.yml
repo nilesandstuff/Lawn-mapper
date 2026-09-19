@@ -21,6 +21,10 @@ on:
         description: 'Publish the trained model so dev mode can draw it'
         type: boolean
         default: false
+      render:
+        description: 'Draw what it got wrong, and put the pictures on /predictions.html'
+        type: boolean
+        default: true
 
 jobs:
   train:
@@ -59,6 +63,7 @@ jobs:
           # which features it used whichever way this lands.
           NO_BACKBONE: ${{ inputs.no_backbone }}
           EXPORT_MODEL: ${{ inputs.publish }}
+          RENDER_PREDICTIONS: ${{ inputs.render }}
         run: node tools/train-detector.js
 
       - name: If that failed

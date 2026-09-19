@@ -115,3 +115,36 @@ body { background: var(--bg); }
   background: #b3261e; border-color: #b3261e; color: #fff; font-weight: 650;
 }
 .verdict-row { align-items: center; }
+
+/*
+ * ------------------------------------------ what the detector got wrong
+ *
+ * The rendering fills its row rather than sitting at thumbnail size. The
+ * page's whole purpose is noticing what the mistakes have in common, and a
+ * 320px square of a lawn is too small to tell a gravel drive from a patio.
+ */
+.shot.pred { max-width: 100%; border-radius: 8px; }
+
+/*
+ * THE LEGEND IS LOAD-BEARING. Two colours carry the entire meaning of every
+ * picture below, and a reader who guesses them backwards takes away the
+ * opposite conclusion. Swatches rather than words alone, so the mapping is
+ * checked by eye against the image rather than remembered.
+ */
+.legend {
+  display: grid; gap: 5px; margin: 10px 0 4px;
+  font-size: 12.5px; color: var(--muted);
+}
+.legend span { display: flex; align-items: center; gap: 7px; }
+.sw {
+  flex: none; width: 15px; height: 15px; border-radius: 3px;
+  border: 1px solid rgba(0, 0, 0, .15);
+}
+/* The same values tools/render-prediction.js paints with. If one moves, the
+   other has to: a legend that disagrees with the picture is worse than none. */
+.sw-missed { background: rgb(214, 45, 45); }
+.sw-over { background: rgb(255, 150, 20); }
+.sw-inf { background: transparent; border: 2px solid rgb(179, 136, 255); }
+.sw-out { background: #6b736b; }
+
+.empty-state { margin-top: 12px; }

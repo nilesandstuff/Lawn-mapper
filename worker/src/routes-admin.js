@@ -522,6 +522,57 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
    * never sees, which is the one way this whole tool could be confidently
    * wrong.
    */
+  /* ------------------------------------------- what the detector got wrong */
+  /*
+   * The index written by a training run, and the pictures it points at.
+   *
+   * Two routes rather than one because they are different things: the index is
+   * small JSON the page needs immediately, and the pictures are a quarter of a
+   * megabyte each that should arrive only when something is scrolled to.
+   */
+  if (path === 'predictions') {
+    if (!env.CORPUS) return json({ error: 'No bucket' }, 404, origin);
+    try {
+      const object = await env.CORPUS.get('predictions/index.json');
+      if (!object) return json({ error: 'Nothing drawn yet' }, 404, origin);
+      return json(await object.json(), 200, origin);
+    } catch {
+      return json({ error: 'Nothing drawn yet' }, 404, origin);
+    }
+  }
+
+  if (path === 'prediction-image') {
+    if (!env.CORPUS) return json({ error: 'No bucket' }, 404, origin);
+    /*
+     * THE KEY IS CHECKED, NOT TRUSTED. It arrives in a query string, and a
+     * bucket holding the training photographs is not somewhere to let a
+     * caller name an arbitrary object -- "predictions/../corpus/..." is the
+     * shape of that mistake. A strict pattern is cheaper than a sanitiser and
+     * cannot be got round.
+     */
+    const key = url.searchParams.get('key') || '';
+    if (!/^predictions\/\d+\.png$/.test(key)) {
+      return json({ error: 'Not a prediction' }, 400, origin);
+    }
+    try {
+      const object = await env.CORPUS.get(key);
+      if (!object) return json({ error: 'No image' }, 404, origin);
+      return new Response(object.body, {
+        headers: {
+          'Content-Type': 'image/png',
+          /*
+           * Private, like the photographs it is drawn on: these are people's
+           * gardens. Short, because a run overwrites the same keys and a long
+           * cache would show yesterday's model under today's numbers.
+           */
+          'Cache-Control': 'private, max-age=60',
+        },
+      });
+    } catch {
+      return json({ error: 'No image' }, 404, origin);
+    }
+  }
+
   if (path === 'candidate-image') {
     if (!env.CORPUS) return json({ error: 'No bucket' }, 404, origin);
     const id = url.searchParams.get('id') || '';

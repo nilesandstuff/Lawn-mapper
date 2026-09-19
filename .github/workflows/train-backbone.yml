@@ -58,15 +58,31 @@ on:
           - '448'
           - '672'
           - '896'
+          # THE FRAMES THEMSELVES ARE 1280px, so this is the last size that
+          # asks the backbone a question about pixels that exist rather than
+          # about an upscale. It is also the slowest by a long way: attention
+          # is quadratic in the number of patches, and 672 -> 896 already cost
+          # 5 minutes -> 16. Expect roughly 70 minutes of extraction and
+          # something over an hour and a half in total.
+          - '1280'
       publish:
         description: 'Publish the result if it wins'
         type: boolean
         default: false
+      render:
+        description: 'Draw what it got wrong, and put the pictures on /predictions.html'
+        type: boolean
+        default: true
 
 jobs:
   train:
     name: Extract with PyTorch, then leave one out
     runs-on: ubuntu-latest
+    # Generous rather than tight. 1280px is roughly 70 minutes of extraction on
+    # a CPU plus the scoring, and a cap that cut that off would waste the whole
+    # run at the last step. Three hours is still far short of the six-hour
+    # default, so a hung run does not sit there all afternoon.
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v5
 
@@ -129,6 +145,7 @@ jobs:
           CORPUS_BUCKET: lawn-mapper-corpus
           FEATURES_DIR: feats
           EXPORT_MODEL: ${{ inputs.publish }}
+          RENDER_PREDICTIONS: ${{ inputs.render }}
         run: node tools/train-detector.js
 
       - name: If that failed

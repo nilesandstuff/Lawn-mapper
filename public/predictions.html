@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lawn Mapper — what it got wrong</title>
+<!--
+  WHAT THE DETECTOR GOT WRONG, DRAWN.
+
+  The training table says 28.2%. It cannot say whether that 28.2% is a gravel
+  drive read as grass, a shaded strip along a fence given up on, or the
+  neighbour's lawn taken in over the property line -- and those three findings
+  each send the work somewhere different. A percentage is a summary of an
+  answer nobody has looked at.
+
+  The pictures come from a training run, which writes them to the same R2
+  bucket the photographs live in. Nothing is computed here; this page reads an
+  index and shows what it names.
+
+  A SEPARATE PAGE rather than a card in the console, for the same reason
+  /maps.html is: it is a different job. Nothing here judges a map or changes
+  anything. It is for standing in front of the failures and noticing what they
+  have in common.
+
+  Nothing is gated in this markup. The gate is the API, which answers 404 to
+  anybody who is not an administrator.
+-->
+<link href="/styles.css" rel="stylesheet">
+<link href="/console.css" rel="stylesheet">
+</head>
+<body>
+
+<div class="console">
+  <div class="conhead">
+    <h1>What it got wrong</h1>
+    <a href="/admin.html">← back to the console</a>
+  </div>
+
+  <div class="locked-out" id="locked" hidden>
+    <p>This page is for the site owner.</p>
+    <p><a href="/">Go and measure a lawn instead →</a></p>
+  </div>
+
+  <div class="empty-state" id="none" hidden>
+    <div class="card">
+      <h2>Nothing has been drawn yet</h2>
+      <p class="sub">Run workflow <b>12</b> or <b>14</b> with <b>render</b> switched
+        on. The run writes one picture per lawn and this page reads them.</p>
+    </div>
+  </div>
+
+  <div id="page" hidden>
+    <div class="card">
+      <h2 id="head">Loading…</h2>
+      <p class="sub" id="sub"></p>
+
+      <!--
+        THE LEGEND IS NOT DECORATION. The whole page is two colours and a
+        dimmed border, and a reader who guesses their meaning backwards will
+        take away the opposite conclusion.
+      -->
+      <div class="legend">
+        <span><i class="sw sw-missed"></i>missed — real lawn it did not call</span>
+        <span><i class="sw sw-over"></i>over-called — called lawn, is not</span>
+        <span><i class="sw sw-inf"></i>outlined: marked "inferred, not seen"</span>
+        <span><i class="sw sw-out"></i>dimmed — outside the property line, not scored</span>
+      </div>
+
+      <!--
+        THE CAVEAT THAT HAS TO STAY ATTACHED. These are leave-one-out answers:
+        each lawn was drawn by a model that had never seen it. That is what
+        makes the measurement honest and it is NOT what a published model
+        would draw for a new address. Said here rather than in a footnote,
+        because somebody will screenshot this page.
+      -->
+      <p class="sheet-note warn" id="caveat"></p>
+    </div>
+
+    <div id="list"></div>
+  </div>
+</div>
+
+<script type="module" src="/predictions.js"></script>
+</body>
+</html>

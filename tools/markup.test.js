@@ -1130,6 +1130,53 @@ check('every class the code toggles is styled',
     named.length ? `hard-coded: ${named.join(', ')}` : 'every name comes from the API');
 }
 
+/* ------------------------------ the predictions page addresses its own markup */
+{
+  const html = readFileSync(join(root, 'public/predictions.html'), 'utf8');
+  const js = readFileSync(join(root, 'public/predictions.js'), 'utf8');
+
+  const has = new Set([...html.matchAll(/\bid="([A-Za-z0-9_-]+)"/g)].map((m) => m[1]));
+  const asks = [...js.matchAll(/\$\('#([A-Za-z0-9_-]+)'\)/g)].map((m) => m[1]);
+  const gone = asks.filter((id) => !has.has(id));
+  check('every element the predictions page reaches for is on it',
+    gone.length === 0, gone.join(', ') || `${new Set(asks).size} referenced, all present`);
+
+  const css = readFileSync(join(root, 'public/console.css'), 'utf8');
+  check('and it loads the stylesheet its classes are in',
+    /href="\/console\.css"/.test(html),
+    'the every-map page shipped once without this and rendered as plain text');
+
+  /*
+   * THE LEGEND IS LOAD-BEARING, so its colours must be the ones actually
+   * painted. Two colours carry the entire meaning of every picture on the
+   * page; a legend that disagrees with the renderer does not mislabel a
+   * detail, it inverts the conclusion -- and it would do so to somebody who
+   * had just LOOKED at the evidence.
+   */
+  const render = readFileSync(join(root, 'tools/render-prediction.js'), 'utf8');
+  const rgbOf = (name) => {
+    const m = render.match(new RegExp(`${name} = \\[(\\d+), ?(\\d+), ?(\\d+)\\]`));
+    return m ? `rgb(${m[1]}, ${m[2]}, ${m[3]})` : null;
+  };
+  for (const [constant, cls] of [['MISSED', 'sw-missed'], ['OVERCALLED', 'sw-over'],
+    ['INFERRED_EDGE', 'sw-inf']]) {
+    const want = rgbOf(constant);
+    check(`the legend's ${cls} swatch is the colour ${constant} paints`,
+      Boolean(want) && css.includes(want),
+      want ? `${want} not found in console.css` : `could not read ${constant}`);
+  }
+
+  /*
+   * THE LEAVE-ONE-OUT CAVEAT HAS TO BE ON THE PAGE. Every answer shown was
+   * drawn by a model that had never seen that lawn, which is what makes it an
+   * honest measurement and is NOT what a published model would draw for a new
+   * address. Somebody will screenshot this page.
+   */
+  check('and the page carries the leave-one-out caveat',
+    /id="caveat"/.test(html) && /data\.note/.test(js),
+    'a picture without it reads as "this is what the app would draw"');
+}
+
 /* -------------------------------- the every-map page addresses its own markup */
 {
   /*

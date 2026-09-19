@@ -40,6 +40,7 @@ import {
   imageFeatures, featureStats, standardise, FEATURE_COUNT, FEATURE_NAMES,
 } from '../public/lib/features.js';
 import { train, predict, balanceWeights } from './learner.js';
+import { drawPrediction, mistakeCounts } from './render-prediction.js';
 import {
   loadBackbone, tiledFeatures, sampleAt, projection, project,
 } from './backbone.js';
@@ -150,6 +151,18 @@ const dumpSize = () => {
   const raw = Number(process.env.DUMP_SIZE);
   return Number.isFinite(raw) && raw >= 64 ? Math.round(raw) : GRID;
 };
+
+/*
+ * DRAW WHAT IT GOT WRONG, on the photograph it got it wrong on.
+ *
+ * Off unless asked, because it costs memory in the reading loop -- the
+ * photograph and one mask per lawn have to be kept alive rather than turned
+ * into features and dropped. Cheap when wanted and pointless when not.
+ *
+ * See tools/render-prediction.js for what is drawn and why that rather than
+ * "here is the lawn it found".
+ */
+const renderWanted = /^(1|true|yes)$/i.test(String(process.env.RENDER_PREDICTIONS || ''));
 
 /*
  * HOW WIDE THE FRAME IS IN METRES, one number per lawn.
@@ -763,6 +776,124 @@ export function runFold(lawns, held, opts = {}) {
   };
 }
 
+/**
+ * Draw every lawn's mistakes and put them in the bucket.
+ *
+ * ONE RUN OVERWRITES THE LAST, deliberately. These are a diagnosis of the
+ * model as it is now, not a history of it: a dated folder would grow without
+ * limit in a bucket that also holds the training photographs, and nobody is
+ * going to go back and compare the pictures from three runs ago -- the numbers
+ * in docs/DETECTOR-FINDINGS.md are the history.
+ *
+ * The index is written LAST, on purpose. The page reads the index to know what
+ * exists, so writing it first would advertise pictures that are still
+ * uploading, and a run that dies halfway would leave the page pointing at
+ * things that never arrived. Written last, a half-finished run leaves the
+ * previous set intact and completely readable.
+ */
+async function publishRenderings(bucket, best, lawns, using) {
+  const { PNG } = await import('pngjs');
+  const dir = mkdtempSync(join(tmpdir(), 'lawn-render-'));
+  const entries = [];
+  let put = 0;
+
+  try {
+    for (const [n, r] of best.rows.entries()) {
+      const L = r.lawn;
+      if (!L.photo || !r.predicted) continue;
+
+      const pixels = drawPrediction({
+        photo: L.photo,
+        truth: L.truth,
+        predicted: r.predicted,
+        within: L.within,
+        inferred: L.inferred,
+        grid: GRID,
+      });
+
+      const png = new PNG({ width: GRID, height: GRID });
+      png.data = Buffer.from(pixels.buffer, pixels.byteOffset, pixels.length);
+      const file = join(dir, `${n}.png`);
+      writeFileSync(file, PNG.sync.write(png));
+
+      /* Named by position, not by map id. The id contains the coordinates of
+         somebody's house, and a bucket key is not the place for those. */
+      const key = `predictions/${n}.png`;
+      try {
+        execFileSync('npx', [
+          'wrangler', 'r2', 'object', 'put', `${bucket}/${key}`,
+          '--file', file, '--content-type', 'image/png', '--remote',
+        ], { stdio: ['ignore', 'pipe', 'pipe'] });
+        put++;
+      } catch (e) {
+        console.log(`  could not upload ${key}: `
+          + `${String(e?.message || e).replace(/\s+/g, ' ').slice(0, 90)}`);
+        continue;
+      }
+
+      const counts = mistakeCounts({
+        truth: L.truth, predicted: r.predicted, within: L.within, inferred: L.inferred,
+      });
+      const sqft = (px) => (px * L.mpp * L.mpp) / SQM_PER_SQFT;
+      entries.push({
+        key,
+        county: L.county || null,
+        squareFeet: Math.round(sqft(L.truthPx)),
+        errorPct: Number(r.mine.errorPct.toFixed(1)),
+        samErrorPct: r.theirs ? Number(r.theirs.errorPct.toFixed(1)) : null,
+        foundPct: counts.foundPct === null ? null : Number(counts.foundPct.toFixed(1)),
+        overPct: counts.overPct === null ? null : Number(counts.overPct.toFixed(1)),
+        missedInferredPct: counts.missedInferredPct === null
+          ? null : Number(counts.missedInferredPct.toFixed(1)),
+        inferredPct: Number(L.inferredPct.toFixed(1)),
+        mpp: Number(L.mpp.toFixed(3)),
+      });
+    }
+
+    if (!entries.length) {
+      console.log('\nNothing could be drawn -- no lawn kept both a photograph and an answer.');
+      return;
+    }
+
+    /* Worst first. The top of the page should be the failures; a gallery
+       sorted by id buries them among the ones that worked. */
+    entries.sort((a, b) => b.errorPct - a.errorPct);
+
+    const indexFile = join(dir, 'index.json');
+    writeFileSync(indexFile, `${JSON.stringify({
+      drawnAt: new Date().toISOString(),
+      config: best.cfg.name,
+      features: using,
+      lawns: lawns.length,
+      medianErrorPct: Number(best.med.toFixed(1)),
+      /*
+       * THE ONE CAVEAT THAT MUST TRAVEL WITH THE PICTURES. Every answer here
+       * is from a model that had never seen the lawn it was drawing -- that
+       * is what makes it an honest measurement and it is NOT what a published
+       * model would draw for a new address. Carried in the file rather than
+       * only on the page, so it cannot be separated from the thing it
+       * qualifies.
+       */
+      note: 'Leave-one-out: each lawn was drawn by a model trained on the other '
+        + `${lawns.length - 1} and never shown this one.`,
+      entries,
+    }, null, 1)}\n`);
+
+    execFileSync('npx', [
+      'wrangler', 'r2', 'object', 'put', `${bucket}/predictions/index.json`,
+      '--file', indexFile, '--content-type', 'application/json', '--remote',
+    ], { stdio: ['ignore', 'pipe', 'pipe'] });
+
+    console.log(`\nDrew ${put} of ${best.rows.length} lawns under "${best.cfg.name}".`);
+    console.log('Open /predictions.html to see what it got wrong, worst first.');
+  } catch (e) {
+    console.log(`\nCould not publish the renderings: `
+      + `${String(e?.message || e).replace(/\s+/g, ' ').slice(0, 120)}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 async function main() {
   const bucket = process.env.CORPUS_BUCKET || 'lawn-mapper-corpus';
   let decoders;
@@ -916,6 +1047,13 @@ async function main() {
           ? resize(img.data, img.width, img.height, img.channels, dumpSize())
           : null,
         canopy: row.tree_line === null || row.tree_line === undefined ? null : Number(row.tree_line),
+        /*
+         * The photograph itself, at the grid everything is measured on, kept
+         * only when the run is going to draw on it. It is the same pixels the
+         * features came from, so a rendering shows what the model actually
+         * saw rather than a prettier copy of it.
+         */
+        photo: renderWanted ? rgb : null,
         /* Held raw: each fold standardises against its own training lawns. */
         cheap: imageFeatures(rgb, GRID, GRID),
         /*
@@ -1050,6 +1188,10 @@ async function main() {
         lawn: lawns[held], mine: f.mine, theirs: samScores[held],
         collapsed: f.collapsed, darkPct: f.darkPct, brightPct: f.brightPct,
         seenPct: f.seenPct, guessPct: f.guessPct,
+        /* The held-out answer itself, for RENDER_PREDICTIONS. Kept only when
+           asked: twenty-three masks per configuration is memory spent on
+           something most runs never look at. */
+        predicted: renderWanted ? f.predicted : null,
       });
     }
     const med = median(rows.map((r) => r.mine.errorPct));
@@ -1081,6 +1223,24 @@ async function main() {
         + (r.theirs ? `SAM ${r.theirs.errorPct.toFixed(1).padStart(5)}% wrong` : 'SAM not stored')
       );
     }
+  }
+
+  /* ------------------------------------------------- draw the mistakes */
+  /*
+   * INTO R2, AND ONLY FOR THE BEST CONFIGURATION.
+   *
+   * Six configurations times twenty-three lawns is a hundred and thirty-eight
+   * pictures, which is a wall rather than a diagnosis. The winner is the one
+   * whose failures are worth understanding; the losers are already explained
+   * by the table.
+   *
+   * To the bucket rather than to a workflow artifact, for the reason
+   * everything else here goes to the bucket: this project is read from a
+   * phone, and a zip file is not something a phone opens. The page at
+   * /predictions.html reads them straight out of the same place.
+   */
+  if (renderWanted && best) {
+    await publishRenderings(bucket, best, lawns, using);
   }
 
   /* ------------------------------------------------------------- verdict */
