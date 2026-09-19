@@ -198,6 +198,27 @@ identical. Every other difference **is** the resolution.
    672 (S7); at 1280 they are back in line — "both" 33.2%, "both, 96" 31.5%.
    Whatever S7 is about, it is not monotone in resolution either.
 
+### H11. The 26.1% model's outlines are NOT usable for building the corpus
+*Owner's judgement, 2026-09-19, looking at the renderings from run 35417355609
+on /predictions.html — the best model this project has produced.*
+
+The plan was: once the detector is good enough, let it draw first and correct
+its outline by hand, so the corpus grows faster. The outlines were built and
+looked at. **The verdict was no.** Not "nearly"; not usable.
+
+**Why the bar was always higher than it looked, and this is the part to
+remember before proposing the idea again:** the app already hands you a
+starting outline. `worker/src/sam.js` runs SAM on every detection and the
+result is stored as `detected_shapes` — so a person tracing a map is not
+starting from an empty screen, they are correcting SAM. Our model therefore
+has to be **easier to correct than SAM**, not merely better than nothing. SAM
+is at 20.3% and our best is 26.1%, so it is not there, and nothing about the
+pictures suggests it is close in a way the error figure was hiding.
+
+Consequence: **there is no shortcut to the corpus through the model yet.** Any
+plan that depends on one is blocked on beating SAM first — which is the same
+line every other row in this file is measured against.
+
 ### H10. The backbone-free control is reproducible to the decimal
 *Runs 35409315409 (672px), 35411040880 (896px), 35416318719 (workflow 12,
 DINOv2 tiled 224px) and 35417355609 (1280px), all 23 lawns, fingerprint
@@ -337,9 +358,14 @@ but *learned and at the right scale* rather than raw colour samples.
 **Untested, and the ring's failure is a reason for caution, not confidence.**
 
 ### S3. The corpus, not the features, is the binding constraint
-H7 says one map is worth up to 10 points; the gap to SAM is about 10 points.
+H7 says one map is worth up to 10 points; the gap to SAM is about 6 points.
 That is suspicious. **Untested** — the crossover point is unknown, and "more
 data will fix it" is the most over-claimed sentence in machine learning.
+
+If it is true, it is now also **the only route open**, because H11 closed the
+other one: the model cannot help build the corpus until it beats SAM, and it
+needs the corpus to beat SAM. So the corpus grows by hand or not at all, and
+anything that makes hand-tracing faster is worth as much as a backbone.
 
 ### S4. The inferred column needs far more marked ground to be readable
 H6 puts it at 3% of a typical map. **Untested.** It is not known how much
