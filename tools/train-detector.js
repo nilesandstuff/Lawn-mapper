@@ -40,7 +40,7 @@ import {
   imageFeatures, featureStats, standardise, FEATURE_COUNT, FEATURE_NAMES,
 } from '../public/lib/features.js';
 import { train, predict, balanceWeights } from './learner.js';
-import { drawPrediction, mistakeCounts } from './render-prediction.js';
+import { drawPrediction, tracePrediction, mistakeCounts } from './render-prediction.js';
 import {
   loadBackbone, tiledFeatures, sampleAt, projection, project,
 } from './backbone.js';
@@ -777,7 +777,8 @@ export function runFold(lawns, held, opts = {}) {
 }
 
 /**
- * Draw every lawn's mistakes and put them in the bucket.
+ * Draw the outline the detector would have handed the drawing tools, per lawn,
+ * and put the pictures in the bucket.
  *
  * ONE RUN OVERWRITES THE LAST, deliberately. These are a diagnosis of the
  * model as it is now, not a history of it: a dated folder would grow without
@@ -802,12 +803,22 @@ async function publishRenderings(bucket, best, lawns, using) {
       const L = r.lawn;
       if (!L.photo || !r.predicted) continue;
 
+      /*
+       * Traced first, with the app's own tolerance and vertex cap, because the
+       * picture is meant to answer "how long would this take to correct by
+       * hand" -- and that is a question about the shape the drawing tools would
+       * receive, not about the mask behind it.
+       */
+      const trace = tracePrediction({
+        predicted: r.predicted, within: L.within, grid: GRID, mpp: L.mpp,
+      });
+
       const pixels = drawPrediction({
         photo: L.photo,
         truth: L.truth,
-        predicted: r.predicted,
         within: L.within,
         inferred: L.inferred,
+        rings: trace.rings,
         grid: GRID,
       });
 
@@ -847,6 +858,16 @@ async function publishRenderings(bucket, best, lawns, using) {
           ? null : Number(counts.missedInferredPct.toFixed(1)),
         inferredPct: Number(L.inferredPct.toFixed(1)),
         mpp: Number(L.mpp.toFixed(3)),
+        /*
+         * THE EDITING COST, which is what this page is really for. Pieces and
+         * handles are what a person would be dragging; the dropped count is
+         * what the tracer binned before they ever saw it, and a model whose
+         * answer is mostly speckle looks deceptively tidy without it.
+         */
+        pieces: trace.pieces,
+        vertices: trace.vertices,
+        droppedPieces: trace.droppedPieces,
+        droppedSqFt: Math.round(sqft(trace.droppedPx)),
       });
     }
 
@@ -875,7 +896,8 @@ async function publishRenderings(bucket, best, lawns, using) {
        * qualifies.
        */
       note: 'Leave-one-out: each lawn was drawn by a model trained on the other '
-        + `${lawns.length - 1} and never shown this one.`,
+        + `${lawns.length - 1} and never shown this one. The outline is the `
+        + 'traced polygon the drawing tools would receive, not the raw mask.',
       entries,
     }, null, 1)}\n`);
 
@@ -885,7 +907,7 @@ async function publishRenderings(bucket, best, lawns, using) {
     ], { stdio: ['ignore', 'pipe', 'pipe'] });
 
     console.log(`\nDrew ${put} of ${best.rows.length} lawns under "${best.cfg.name}".`);
-    console.log('Open /predictions.html to see what it got wrong, worst first.');
+    console.log('Open /predictions.html to see the outlines it drew, worst first.');
   } catch (e) {
     console.log(`\nCould not publish the renderings: `
       + `${String(e?.message || e).replace(/\s+/g, ' ').slice(0, 120)}`);

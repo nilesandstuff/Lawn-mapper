@@ -16,7 +16,7 @@ import { measure, fromSquareMeters, geometryAreaSqM, SQM_PER_SQFT } from './lib/
 import {
   maskToPolygons, rasterizePolygon, maskBinary, unionMasks, subtractMasks,
   coverage, polygonsFromBinary, distinctFraction, overTrimmed,
-  editTraceLimits, editHoleLimit,
+  editTraceLimits, editHoleLimit, TRACE_TOLERANCE_M, MAX_TRACE_VERTICES,
 } from './lib/mask.js';
 import {
   offsetEdge, nearestEdge, edgeRun, edgeLength, edgeBearing, openRing,
@@ -245,70 +245,14 @@ const DROPPED_NOTE_SQFT = 200;
  */
 const MIN_HOLE_SQFT = 40;
 
-/**
- * How closely the traced outline follows the mask, in metres on the ground.
- *
- * 0.3 m was chosen as the point where the measurement stopped changing, which
- * was the wrong thing to optimise. Drawing the same lawn by hand takes about
- * twenty corners in total and looks right, so the outline does not need to be
- * faithful to the mask -- it needs to be faithful to the lawn, and a person
- * with ten corners beats a tracer with ninety.
- *
- * Coarser also loses less than it appears to. Douglas-Peucker cuts inside one
- * bend and outside the next, so the errors are signed and largely cancel:
- * measured on a real lot, 0.8 m moved the total by 2% while removing seven
- * eighths of the handles.
- */
 /*
- * 0.8 -> 0.35, once corners stopped depending on it.
- *
- * The reasoning above is still right about straight runs: a person draws that
- * lawn in ten corners and a coarse tolerance is what keeps it to ten. What it
- * was also doing, invisibly, was deciding whether corners survived at all --
- * Douglas-Peucker keeps the point furthest from the chord and does not care
- * that it is a corner, so a step shallower than the tolerance was not nudged,
- * it was deleted. At 0.8 m that was every step under about 1.2 m. Anchoring
- * corners (see cornerIndices in mask.js) took that job away from this number
- * and left it doing only the one it was measured for.
- *
- * Which frees it to be chosen on curves, where it is the only thing that
- * matters. Measured on a curved bed, area wrong against the mask:
- *
- *   0.80 m   14 points   5.26%
- *   0.50 m   17 points   3.86%
- *   0.35 m   24 points   1.78%
- *   0.20 m   27 points   1.57%
- *
- * 0.35 is the knee; below it the points keep coming and the error stops
- * moving. Straight runs are unaffected -- two points is two points at any
- * tolerance -- so this is paid for entirely by the shapes that need it.
+ * The two numbers that decide what a traced outline looks like --
+ * TRACE_TOLERANCE_M and MAX_TRACE_VERTICES -- live in lib/mask.js beside the
+ * tracer, and are imported above. They moved there when the training tool
+ * started drawing the outline a model would hand the drawing tools: the
+ * picture is only worth looking at if it is traced the way this app traces,
+ * and two copies of a number are two numbers eventually.
  */
-const TRACE_TOLERANCE_M = 0.35;
-
-/**
- * A ceiling on handles per shape.
- *
- * Also a real limiter now, not just a backstop. Holes get half this, so a lawn
- * wrapping a flower bed can still exceed it in total -- which is how a shape
- * came back with 89 points at a tolerance that should have given far fewer.
- */
-/*
- * 30 -> 80, because 30 was answering a question nobody was asking any more.
- *
- * It never actually bound in any shape measured -- a lawn with runs, a stoop
- * and a bed came out at 12 points, a strongly curved bed at 24 -- so it was
- * not what made outlines coarse; the tolerance was, and the note above blamed
- * this number for a shape that reached 89 points before holes had their own
- * limit. What it CAN do is bite on the one case a finer tolerance exists to
- * serve, a bed that curves the whole way round, and silently coarsen exactly
- * that. The editor's own ceiling is 120 handles (HANDLE_MAX_CORNERS), so this
- * stays well inside what the corner tools can page through.
- *
- * Corners are anchored before this applies, and stay anchored while the
- * tolerance escalates to fit -- so a shape over budget loses resolution along
- * its runs and curves, never its corners.
- */
-const MAX_TRACE_VERTICES = 80;
 
 let map;
 let draw;

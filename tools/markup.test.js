@@ -1154,16 +1154,44 @@ check('every class the code toggles is styled',
    * had just LOOKED at the evidence.
    */
   const render = readFileSync(join(root, 'tools/render-prediction.js'), 'utf8');
-  const rgbOf = (name) => {
+  const bytesOf = (name) => {
     const m = render.match(new RegExp(`${name} = \\[(\\d+), ?(\\d+), ?(\\d+)\\]`));
-    return m ? `rgb(${m[1]}, ${m[2]}, ${m[3]})` : null;
+    return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
   };
-  for (const [constant, cls] of [['MISSED', 'sw-missed'], ['OVERCALLED', 'sw-over'],
+  for (const [constant, cls] of [['TRACE', 'sw-trace'], ['TRUTH_FILL', 'sw-truth'],
     ['INFERRED_EDGE', 'sw-inf']]) {
-    const want = rgbOf(constant);
+    const bytes = bytesOf(constant);
+    const want = bytes ? `rgb(${bytes.join(', ')})` : null;
     check(`the legend's ${cls} swatch is the colour ${constant} paints`,
       Boolean(want) && css.includes(want),
       want ? `${want} not found in console.css` : `could not read ${constant}`);
+  }
+
+  /*
+   * AND THE RENDERER AGREES WITH THE CONSOLE'S OWN PALETTE.
+   *
+   * The rendering is the same three things the review card draws -- the lawn
+   * somebody traced, the detector's attempt at it, and ground marked "inferred,
+   * not seen". Somebody arrives here straight from that card, and green
+   * meaning the detector on one page and the person on the other is a way to
+   * reach the exact opposite conclusion about a shape while feeling certain.
+   *
+   * The renderer keeps its own bytes rather than importing them, because it
+   * runs in Node and review-draw.js is a browser module; this is the check
+   * that makes the copy safe.
+   */
+  const drawJsSrc = readFileSync(join(root, 'public/lib/review-draw.js'), 'utf8');
+  const hexOf = (key) => {
+    const m = drawJsSrc.match(new RegExp(`${key}: '#([0-9a-f]{6})'`, 'i'));
+    return m ? [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16)) : null;
+  };
+  for (const [constant, key] of [['TRACE', 'ai'], ['TRUTH_FILL', 'lawn'],
+    ['INFERRED_EDGE', 'inferred']]) {
+    const mine = bytesOf(constant);
+    const theirs = hexOf(key);
+    check(`${constant} is the same colour the console draws "${key}" in`,
+      Boolean(mine && theirs) && String(mine) === String(theirs),
+      `${JSON.stringify(mine)} vs REVIEW_COLOURS.${key} ${JSON.stringify(theirs)}`);
   }
 
   /*

@@ -304,7 +304,23 @@ investigated.
 2. **Use a backbone-free row as the control** when the corpus has changed.
 3. **Do not trust a difference under about 10 points** at this corpus size.
 4. **Keep the Kent benchmark** (H8). It is the hard case on purpose.
-5. **The advice printed at the end of the run is code, and code can be stale.**
+5. **What /predictions.html shows is the TRACE, and it answers a different
+   question from the table.** The table asks how accurate the model is. The
+   pictures ask whether a person could fix its outline faster than drawing one
+   — which is the question that decides whether a not-yet-good model can start
+   doing the tracing and make the corpus grow faster (S3). Those two can
+   disagree completely: 30% wrong in one clean sweep is two brush strokes,
+   while 15% wrong as a hundred crumbs along every boundary is worse than an
+   empty map. So read the **piece and handle counts** beside each picture, not
+   only the error figure. The outline is drawn with the app's own tracer
+   settings (`TRACE_TOLERANCE_M`, `MAX_TRACE_VERTICES` in `public/lib/mask.js`)
+   so it is the shape the drawing tools would actually receive, and the scraps
+   the tracer binned are reported because they are invisible by definition.
+
+   Before 2026-09-19 these pictures were a disagreement map — red for missed,
+   orange for over-called. That answered the accuracy question the table
+   already answers, and could not answer the editing one at all.
+6. **The advice printed at the end of the run is code, and code can be stale.**
    It once explained a Scale-MAE result with a sentence about models trained on
    ground-level photographs — true of DINOv2, false of what had run, and it
    recommended as the next step the thing the run had just done. Fixed on

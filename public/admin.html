@@ -198,13 +198,15 @@
       -->
       <p class="sub"><a href="/maps.html">Browse every map, and spot duplicates →</a></p>
       <!--
-        The pictures, not the percentages. A training run writes one rendering
-        per lawn showing what it missed and what it over-called; this is the
-        way in. Always linked, because the page says for itself when nothing
-        has been drawn yet -- a link that appears and disappears is one nobody
-        learns is there.
+        The shapes, not the percentages. A training run draws the outline the
+        detector would have handed the drawing tools, per lawn; this is the way
+        in. The question over there is not "how wrong is it" but "could I fix
+        this faster than drawing it" -- which is what would let a half-finished
+        model start doing the tracing here. Always linked, because the page
+        says for itself when nothing has been drawn yet, and a link that
+        appears and disappears is one nobody learns is there.
       -->
-      <p class="sub"><a href="/predictions.html">See what the detector got wrong →</a></p>
+      <p class="sub"><a href="/predictions.html">See the outlines the detector drew →</a></p>
       <div class="actions" id="queue-pick">
         <button id="queue-priority" class="on">Most useful first</button>
         <button id="queue-random">Random</button>

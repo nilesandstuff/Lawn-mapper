@@ -1,50 +1,187 @@
 /**
- * Draw what the detector got wrong, on top of the photograph it got it wrong on.
+ * Draw the outline the detector would have handed you, on the photograph it
+ * drew it from.
  *
- * WHY A PICTURE. The table says 28.2%. It cannot say that the 28.2% is a gravel
- * drive read as grass, or a shaded strip along a fence line given up on, or the
- * neighbour's lawn taken in over the property line -- and those three findings
- * would each send the work somewhere different. A percentage is a summary of an
- * answer nobody has looked at.
+ * WHAT THIS IS FOR, and it is not accuracy.
  *
- * WHAT IS DRAWN, and the choice matters more than the colours.
+ * The table says 28.2% and the earlier version of this file painted where that
+ * 28.2% was -- red for missed, orange for over-called. That answers "how wrong
+ * is it". It does not answer the question that decides whether the detector is
+ * useful NOW, which is:
  *
- * Not "here is what it thinks is lawn". That picture hides half the story: a
- * shape that looks plausible on its own is indistinguishable from one that is
- * plausible and wrong. What is drawn is the DISAGREEMENT, four ways:
+ *   if this outline appeared on the map, how long would it take to fix by hand?
  *
- *   true lawn, called lawn        the photograph, untouched -- it got this right
- *   true lawn, called NOT         RED        what it missed
- *   not lawn, called lawn         ORANGE     what it over-called
- *   not lawn, called not          the photograph, untouched
+ * Those are different questions and they can disagree completely. An outline
+ * that is 30% wrong in one clean sweep -- the whole back lawn missed, edges
+ * crisp everywhere else -- is two brush strokes and a minute. An outline that
+ * is 15% wrong as a hundred crumbs along every boundary is worse than starting
+ * from nothing, because now you are deleting as well as drawing. A mistake map
+ * cannot tell those apart; a picture of the actual shape can, instantly.
  *
- * So the eye goes straight to the mistakes and the correct ground stays legible
- * underneath, which is the whole point: you are looking to find out WHAT KIND
- * of ground it fails on, and that means seeing the ground.
+ * That matters because the corpus is the bottleneck. Hand-tracing lawns is the
+ * slow step in everything here, and a detector that is not accurate enough to
+ * ship can still be accurate enough to START from -- which would make every
+ * subsequent map faster to add. This page is how that moment gets noticed.
  *
- * Everything outside the property line is dimmed rather than cropped. It is not
- * scored, so it must not be mistaken for a mistake -- but it is the context that
- * explains half of them, because an over-call at the boundary usually means the
- * neighbour's lawn is continuous with this one.
+ * SO IT IS THE TRACE, NOT THE MASK. The model answers per grid cell; what the
+ * app puts on the map is that answer run through the tracer -- smoothed to
+ * TRACE_TOLERANCE_M, capped at MAX_TRACE_VERTICES, speckle below the area floor
+ * dropped, only the biggest few pieces kept. Drawing the raw mask would show a
+ * shape nobody would ever be handed. Drawing the trace shows the handles you
+ * would actually be dragging, at the count you would actually be dragging them.
  *
- * Inferred areas get a purple outline. That is the only way to see whether the
- * failures cluster where the reviewer said "I know it is lawn, I cannot see it"
- * -- a question the inferred column cannot currently answer, because it is
- * three percent of a typical map (see docs/DETECTOR-FINDINGS.md, H6).
+ * What is drawn, in order:
+ *
+ *   outside the property line   dimmed -- not scored, but it is the context
+ *                               that explains an over-call at the boundary
+ *   the true lawn               a pale green wash, the same green the console
+ *                               draws a finished map in
+ *   inferred areas              purple outline: "known to be lawn, not visible"
+ *   THE MODEL'S TRACE           the detector's own colour, with a dot at every
+ *                               vertex, drawn last so it sits on top of
+ *                               everything
+ *
+ * Read it as: wash with no outline over it is lawn it gave up on; outline over
+ * bare ground is lawn it invented. Both still legible -- but now they are
+ * legible as SHAPES, which is the thing being judged.
  */
 
-/* Drawn over the photograph, so they have to survive being blended with grass,
-   tarmac and shadow. Both are chosen to be unmistakable on all three. */
-export const MISSED = [214, 45, 45];      // true lawn the model did not call
-export const OVERCALLED = [255, 150, 20]; // called lawn that is not lawn
-export const INFERRED_EDGE = [179, 136, 255];
+import {
+  polygonsFromBinary, TRACE_TOLERANCE_M, MAX_TRACE_VERTICES,
+} from '../public/lib/mask.js';
 
-/** How strongly a mistake is painted over the photograph beneath it. */
-const MISTAKE_ALPHA = 0.55;
+/*
+ * The console's colours, as bytes.
+ *
+ * Deliberately the same three that public/lib/review-draw.js paints a stored
+ * map in -- lawn green, detector red, inferred purple -- because the person
+ * looking at these has just come from the review card and should not have to
+ * learn a second vocabulary for the same three things. tools/markup.test.js
+ * checks these against REVIEW_COLOURS, and the legend in console.css against
+ * these.
+ */
+export const TRACE = [226, 114, 91];          // REVIEW_COLOURS.ai, #e2725b
+export const TRUTH_FILL = [78, 194, 106];     // REVIEW_COLOURS.lawn, #4ec26a
+export const INFERRED_EDGE = [179, 136, 255]; // REVIEW_COLOURS.inferred, #b388ff
+
+/**
+ * How strongly the true lawn is washed over the photograph.
+ *
+ * Low on purpose. The question is what KIND of ground it got wrong -- gravel,
+ * shade, a flat roof -- and that means the ground has to stay readable through
+ * the wash. This is the same weight the review card fills a lawn with.
+ */
+const TRUTH_ALPHA = 0.28;
 /** Outside the property line: visible, obviously not part of the judgement. */
 const OUTSIDE_DIM = 0.45;
 
 const mix = (under, over, a) => Math.round(under * (1 - a) + over * a);
+
+/**
+ * The model's answer, as the polygons the app would put on the map.
+ *
+ * Every option here is the app's own, because a rendering traced any other way
+ * is a picture of something that will never happen. `mpp` is metres per grid
+ * cell, so the tolerance converts to pixels exactly as it does in a detection.
+ *
+ * `within` goes in as the clip mask rather than being applied first, matching
+ * the detect path: the property line is the last word on what counts.
+ */
+export function tracePrediction({ predicted, within, grid, mpp }) {
+  const bin = new Uint8Array(grid * grid);
+  for (let i = 0; i < bin.length; i++) bin[i] = predicted[i] ? 1 : 0;
+
+  const polygons = polygonsFromBinary(bin, grid, grid, (x, y) => [x, y], {
+    tolerance: mpp ? TRACE_TOLERANCE_M / mpp : 1.5,
+    maxVertices: MAX_TRACE_VERTICES,
+    clipMask: within || null,
+  });
+
+  const rings = [];
+  let vertices = 0;
+  for (const poly of polygons) {
+    for (const ring of poly.coordinates) {
+      rings.push(ring);
+      /* A ring repeats its first point to close; that is one point on screen
+         and one handle in the editor, not two. */
+      vertices += Math.max(0, ring.length - 1);
+    }
+  }
+
+  return {
+    rings,
+    pieces: polygons.length,
+    vertices,
+    /*
+     * What the tracer threw away: pieces under the area floor, and anything
+     * past the sixth. Worth reporting because it is invisible in the picture
+     * BY DEFINITION -- and a model whose answer is mostly speckle looks
+     * deceptively tidy once the speckle has been dropped.
+     */
+    droppedPieces: polygons.droppedCount || 0,
+    droppedPx: polygons.droppedPx || 0,
+  };
+}
+
+/* ----------------------------------------------------------- the painting */
+
+const put = (out, grid, x, y, colour) => {
+  if (x < 0 || y < 0 || x >= grid || y >= grid) return;
+  const p = (y * grid + x) * 4;
+  out[p] = colour[0];
+  out[p + 1] = colour[1];
+  out[p + 2] = colour[2];
+};
+
+/** A filled square, used for line thickness and for vertex dots. */
+const blob = (out, grid, cx, cy, half, colour) => {
+  for (let dy = -half; dy <= half; dy++) {
+    for (let dx = -half; dx <= half; dx++) put(out, grid, cx + dx, cy + dy, colour);
+  }
+};
+
+/**
+ * The boundary of a mask, stamped at the same weight as everything else.
+ *
+ * An edge cell is one with a neighbour outside the mask. Used for the true
+ * lawn and for the inferred areas, neither of which exists as a polygon by the
+ * time it reaches here -- both arrive rasterised, on the grid the model was
+ * scored on, which is the grid the comparison has to happen on anyway.
+ */
+function outline(out, grid, mask, colour, half) {
+  for (let y = 0; y < grid; y++) {
+    for (let x = 0; x < grid; x++) {
+      const i = y * grid + x;
+      if (!mask[i]) continue;
+      const edge = x === 0 || y === 0 || x === grid - 1 || y === grid - 1
+        || !mask[i - 1] || !mask[i + 1] || !mask[i - grid] || !mask[i + grid];
+      if (edge) blob(out, grid, x, y, half, colour);
+    }
+  }
+}
+
+/** Bresenham, thickened by stamping a square at each step. */
+function segment(out, grid, [x0, y0], [x1, y1], half, colour) {
+  let x = Math.round(x0);
+  let y = Math.round(y0);
+  const ex = Math.round(x1);
+  const ey = Math.round(y1);
+  const dx = Math.abs(ex - x);
+  const dy = -Math.abs(ey - y);
+  const sx = x < ex ? 1 : -1;
+  const sy = y < ey ? 1 : -1;
+  let err = dx + dy;
+
+  /* A guard, not a limit: a ring is at most a few hundred cells around, and a
+     runaway here would be an infinite loop inside CI. */
+  for (let step = 0; step <= 4 * grid; step++) {
+    blob(out, grid, x, y, half, colour);
+    if (x === ex && y === ey) return;
+    const e2 = 2 * err;
+    if (e2 >= dy) { err += dy; x += sx; }
+    if (e2 <= dx) { err += dx; y += sy; }
+  }
+}
 
 /**
  * One frame, as RGBA bytes ready for a PNG.
@@ -52,8 +189,10 @@ const mix = (under, over, a) => Math.round(under * (1 - a) + over * a);
  * `photo` is the RGBA the rest of the tool already works from, at grid
  * resolution -- the same pixels the features were computed from, so what is
  * drawn is what the model actually saw, not a prettier copy of it.
+ *
+ * `rings` comes from tracePrediction, in grid coordinates.
  */
-export function drawPrediction({ photo, truth, predicted, within, inferred, grid }) {
+export function drawPrediction({ photo, truth, within, inferred, rings, grid }) {
   const out = new Uint8Array(grid * grid * 4);
 
   for (let i = 0; i < grid * grid; i++) {
@@ -62,27 +201,16 @@ export function drawPrediction({ photo, truth, predicted, within, inferred, grid
     let g = photo[p + 1];
     let b = photo[p + 2];
 
-    const scored = !within || within[i];
-    if (!scored) {
-      /* Dimmed, not hidden. See the header: the ground outside the line is
-         what explains an over-call at the edge of it. */
+    if (within && !within[i]) {
+      /* Dimmed, not hidden. The ground outside the line is what explains an
+         over-call at the edge of it. */
       r = Math.round(r * OUTSIDE_DIM);
       g = Math.round(g * OUTSIDE_DIM);
       b = Math.round(b * OUTSIDE_DIM);
-    } else {
-      const isLawn = Boolean(truth[i]);
-      const saidLawn = Boolean(predicted[i]);
-      if (isLawn && !saidLawn) {
-        r = mix(r, MISSED[0], MISTAKE_ALPHA);
-        g = mix(g, MISSED[1], MISTAKE_ALPHA);
-        b = mix(b, MISSED[2], MISTAKE_ALPHA);
-      } else if (!isLawn && saidLawn) {
-        r = mix(r, OVERCALLED[0], MISTAKE_ALPHA);
-        g = mix(g, OVERCALLED[1], MISTAKE_ALPHA);
-        b = mix(b, OVERCALLED[2], MISTAKE_ALPHA);
-      }
-      /* Agreement of either kind is left alone. A picture where every pixel
-         is painted is a picture of nothing. */
+    } else if (truth[i]) {
+      r = mix(r, TRUTH_FILL[0], TRUTH_ALPHA);
+      g = mix(g, TRUTH_FILL[1], TRUTH_ALPHA);
+      b = mix(b, TRUTH_FILL[2], TRUTH_ALPHA);
     }
 
     out[p] = r;
@@ -92,28 +220,67 @@ export function drawPrediction({ photo, truth, predicted, within, inferred, grid
   }
 
   /*
-   * THE INFERRED OUTLINE LAST, so it sits on top of the mistakes rather than
-   * being painted over by them -- the question it answers is "did it fail
-   * INSIDE the guessed-at ground", which needs both visible at once.
-   *
-   * An outline rather than a fill, because a fill would hide exactly the
-   * pixels being asked about.
+   * Thickness scales with the grid rather than being a fixed pixel count: this
+   * is viewed on a phone, where a 512-wide picture is drawn into about 360
+   * points and a one-pixel line disappears.
    */
-  if (inferred) {
-    for (let y = 0; y < grid; y++) {
-      for (let x = 0; x < grid; x++) {
-        const i = y * grid + x;
-        if (!inferred[i]) continue;
-        /* An edge pixel is one with a neighbour outside the marked area. */
-        const edge = x === 0 || y === 0 || x === grid - 1 || y === grid - 1
-          || !inferred[i - 1] || !inferred[i + 1]
-          || !inferred[i - grid] || !inferred[i + grid];
-        if (!edge) continue;
-        const p = i * 4;
-        out[p] = INFERRED_EDGE[0];
-        out[p + 1] = INFERRED_EDGE[1];
-        out[p + 2] = INFERRED_EDGE[2];
-      }
+  const half = Math.max(1, Math.round(grid / 512));
+  const dot = half + 2;
+
+  /*
+   * THE TRUE LAWN GETS AN EDGE AS WELL AS A WASH.
+   *
+   * The wash alone is a weak signal on a photograph that is already mostly
+   * grass -- it says "greener here", which needs something to compare against.
+   * An edge gives the comparison directly, and it is the comparison the whole
+   * page is about: two outlines side by side, one drawn by a person and one by
+   * the model. Green line with no red line near it is lawn it gave up on; red
+   * line over bare ground is lawn it invented. That is the same reading the
+   * console's review card offers, in the same two colours.
+   */
+  /*
+   * Both outlines are clipped to the property line, exactly as the trace is.
+   * A green line running out through the dimmed ground would read as scored
+   * lawn, which is the one thing the dimming exists to prevent -- and where a
+   * lawn genuinely runs to the boundary, the boundary IS its edge.
+   */
+  const scored = (mask) => {
+    if (!within) return mask;
+    const m = new Uint8Array(mask.length);
+    for (let i = 0; i < mask.length; i++) m[i] = mask[i] && within[i] ? 1 : 0;
+    return m;
+  };
+
+  outline(out, grid, scored(truth), TRUTH_FILL, half);
+
+  /*
+   * The inferred outline next, over the lawn edge and under the trace. An
+   * outline rather than a fill because a fill would hide the ground being
+   * asked about -- the question is whether the model gives up exactly where
+   * the reviewer said "I know it is lawn, I cannot see it".
+   */
+  if (inferred) outline(out, grid, scored(inferred), INFERRED_EDGE, half);
+
+  /* THE TRACE LAST, so nothing paints over the thing the picture is of. */
+  for (const ring of rings || []) {
+    for (let i = 1; i < ring.length; i++) {
+      segment(out, grid, ring[i - 1], ring[i], half, TRACE);
+    }
+    /*
+     * A DOT AT EVERY VERTEX, because the handle count IS the answer to "how
+     * long would this take to fix". Twenty handles round a lawn is a shape
+     * somebody can nudge; two hundred is a shape they would delete and redraw.
+     * A pale core so a dot stays visible where the outline doubles back on
+     * itself and the dots would otherwise merge into a stripe.
+     */
+    const last = ring.length > 1
+      && ring[0][0] === ring[ring.length - 1][0]
+      && ring[0][1] === ring[ring.length - 1][1]
+      ? ring.length - 1 : ring.length;
+    for (let i = 0; i < last; i++) {
+      const [x, y] = ring[i];
+      blob(out, grid, Math.round(x), Math.round(y), dot, TRACE);
+      blob(out, grid, Math.round(x), Math.round(y), Math.max(0, dot - 2), [255, 245, 240]);
     }
   }
 
@@ -127,6 +294,11 @@ export function drawPrediction({ photo, truth, predicted, within, inferred, grid
  * they mean opposite things and the summary error hides which one is
  * happening. A model that misses half the lawn and a model that claims the
  * whole property can score the same and need different work.
+ *
+ * Measured on the MASK, not on the trace: these are the run's own numbers, the
+ * ones in the table and in docs/DETECTOR-FINDINGS.md, and a second set that
+ * differed by a percent because of smoothing would be impossible to compare
+ * against anything. The trace's own numbers are its piece and handle counts.
  */
 export function mistakeCounts({ truth, predicted, within, inferred }) {
   let missed = 0, overcalled = 0, right = 0, lawnPx = 0;

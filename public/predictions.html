@@ -3,15 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lawn Mapper — what it got wrong</title>
+<title>Lawn Mapper — the outlines it drew</title>
 <!--
-  WHAT THE DETECTOR GOT WRONG, DRAWN.
+  THE OUTLINE THE DETECTOR WOULD HAVE HANDED YOU.
 
-  The training table says 28.2%. It cannot say whether that 28.2% is a gravel
-  drive read as grass, a shaded strip along a fence given up on, or the
-  neighbour's lawn taken in over the property line -- and those three findings
-  each send the work somewhere different. A percentage is a summary of an
-  answer nobody has looked at.
+  Not a picture of how wrong it is -- the table already says 28.2% -- but of
+  the SHAPE, because the question this page exists to answer is a different
+  one: if this outline landed on the map, how long would it take to fix?
+
+  Those two questions can disagree completely. Thirty per cent wrong in one
+  clean sweep is two brush strokes. Fifteen per cent wrong as a hundred crumbs
+  along every boundary is worse than an empty map, because now there is
+  deleting to do as well as drawing. Only the shape tells you which you have.
+
+  And that is worth knowing early, because hand-tracing lawns is the slow step
+  in this whole project. A detector nowhere near good enough to ship can still
+  be good enough to START from, and this is where that moment gets noticed.
 
   The pictures come from a training run, which writes them to the same R2
   bucket the photographs live in. Nothing is computed here; this page reads an
@@ -19,8 +26,8 @@
 
   A SEPARATE PAGE rather than a card in the console, for the same reason
   /maps.html is: it is a different job. Nothing here judges a map or changes
-  anything. It is for standing in front of the failures and noticing what they
-  have in common.
+  anything. It is for standing in front of the outlines and deciding whether
+  they are worth correcting.
 
   Nothing is gated in this markup. The gate is the API, which answers 404 to
   anybody who is not an administrator.
@@ -32,7 +39,7 @@
 
 <div class="console">
   <div class="conhead">
-    <h1>What it got wrong</h1>
+    <h1>The outlines it drew</h1>
     <a href="/admin.html">← back to the console</a>
   </div>
 
@@ -60,11 +67,19 @@
         take away the opposite conclusion.
       -->
       <div class="legend">
-        <span><i class="sw sw-missed"></i>missed — real lawn it did not call</span>
-        <span><i class="sw sw-over"></i>over-called — called lawn, is not</span>
+        <span><i class="sw sw-trace"></i>the detector's outline, with a dot at every handle</span>
+        <span><i class="sw sw-truth"></i>the real lawn, as it was traced by hand</span>
         <span><i class="sw sw-inf"></i>outlined: marked "inferred, not seen"</span>
         <span><i class="sw sw-out"></i>dimmed — outside the property line, not scored</span>
       </div>
+      <!--
+        HOW TO READ IT, in one line, because the two mistakes are now absences
+        rather than colours and that is less obvious than a red patch.
+      -->
+      <p class="sub">Green with no outline over it is lawn it gave up on;
+        outline over bare ground is lawn it invented. The handle count is the
+        one to watch: twenty round a lawn is a shape you can nudge, two hundred
+        is a shape you would delete and redraw.</p>
 
       <!--
         THE CAVEAT THAT HAS TO STAY ATTACHED. These are leave-one-out answers:

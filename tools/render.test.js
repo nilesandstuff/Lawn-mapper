@@ -1,21 +1,33 @@
 /**
- * The picture of what the detector got wrong.
+ * The picture of the outline the detector drew.
  *
  * WHY THIS IS TESTED AT ALL, when it only draws a diagnostic: because a
- * diagnostic that is wrong is worse than no diagnostic. The whole point of
- * these pictures is to decide where the work goes next, and a rendering with
- * missed and over-called the wrong way round would send that decision in
- * precisely the opposite direction -- confidently, because you would have
- * LOOKED at it.
+ * diagnostic that is wrong is worse than no diagnostic. This picture decides
+ * whether a model is good enough to start hand-corrections from -- which is
+ * the thing that would make building the corpus faster -- and a rendering that
+ * flattered the shape would have that decision made confidently, by somebody
+ * who had LOOKED at the evidence.
  *
- * So the checks below are about meaning rather than pixels: is the red where
- * the lawn was missed, is the orange where it was over-called, and does the
- * ground outside the property line stay out of the judgement.
+ * So the checks below are about meaning rather than pixels:
+ *
+ *   is the thing drawn the TRACE the drawing tools would receive, rather than
+ *     the raw mask behind it -- same tolerance, same vertex cap, same floors;
+ *   is it an OUTLINE rather than a fill, so the ground underneath stays
+ *     readable and the two kinds of mistake stay visible as absences;
+ *   is every handle marked, since the handle count is most of the answer to
+ *     "how long would this take to fix";
+ *   and does the ground outside the property line stay out of the judgement.
  *
  *   node tools/render.test.js
  */
 
-import { drawPrediction, mistakeCounts, MISSED, OVERCALLED, INFERRED_EDGE } from './render-prediction.js';
+import {
+  drawPrediction, tracePrediction, mistakeCounts,
+  TRACE, TRUTH_FILL, INFERRED_EDGE,
+} from './render-prediction.js';
+import {
+  polygonsFromBinary, TRACE_TOLERANCE_M, MAX_TRACE_VERTICES,
+} from '../public/lib/mask.js';
 
 let failures = 0;
 const check = (name, ok, detail = '') => {
@@ -23,8 +35,10 @@ const check = (name, ok, detail = '') => {
   if (!ok) failures++;
 };
 
-const GRID = 4;
+const GRID = 128;
 const N = GRID * GRID;
+const zeros = () => new Uint8Array(N);
+const ones = () => new Uint8Array(N).fill(1);
 /* A flat mid-grey photograph, so anything painted on it is unambiguous. */
 const photo = () => {
   const p = new Uint8Array(N * 4);
@@ -33,107 +47,252 @@ const photo = () => {
   }
   return p;
 };
-const zeros = () => new Uint8Array(N);
-const at = (out, i) => [out[i * 4], out[i * 4 + 1], out[i * 4 + 2]];
-/* Painted towards a colour: the channel that colour is highest in has moved
-   that way from the grey underneath. */
-const leaning = (rgb, towards) => {
-  const k = towards.indexOf(Math.max(...towards));
-  return rgb[k] > 100;
+const at = (out, x, y) => {
+  const p = (y * GRID + x) * 4;
+  return [out[p], out[p + 1], out[p + 2]];
+};
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+/** Fill an axis-aligned block of a mask. */
+const block = (mask, x0, y0, x1, y1) => {
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) mask[y * GRID + x] = 1;
+  return mask;
 };
 
-/* --------------------------------------------- the two mistakes, apart */
+/* ------------------------------------------- the trace, not the mask */
 {
-  const truth = zeros();
-  const predicted = zeros();
-  truth[0] = 1;                 // lawn, not called -> MISSED
-  predicted[1] = 1;             // called, not lawn -> OVER-CALLED
-  truth[2] = 1; predicted[2] = 1; // agreed lawn -> untouched
-                                  // 3 is agreed not-lawn -> untouched
+  /*
+   * THE WHOLE POINT OF THE REWRITE. What the app puts on the map is the model's
+   * answer run through the tracer: smoothed, capped, speckle dropped. A picture
+   * of the mask would be a picture of a shape nobody is ever handed, and the
+   * question being asked -- could I fix this by hand -- would be answered about
+   * the wrong object.
+   */
+  const predicted = block(zeros(), 30, 30, 90, 90);
+  const t = tracePrediction({ predicted, within: null, grid: GRID, mpp: 0.5 });
 
-  const out = drawPrediction({ photo: photo(), truth, predicted, within: null, inferred: null, grid: GRID });
-
-  check('lawn it missed is painted towards red',
-    leaning(at(out, 0), MISSED) && at(out, 0)[0] > at(out, 0)[2],
-    JSON.stringify(at(out, 0)));
-  check('ground it wrongly called lawn is painted towards orange',
-    leaning(at(out, 1), OVERCALLED) && at(out, 1)[1] > at(out, 1)[2],
-    JSON.stringify(at(out, 1)));
+  check('a solid square comes back as one piece',
+    t.pieces === 1, `${t.pieces} pieces`);
+  check('and as a handful of handles, not a hundred',
+    t.vertices >= 4 && t.vertices <= 12, `${t.vertices} handles`);
+  check('the rings are closed, so a ring can be drawn as drawn',
+    t.rings.length === 1 && same(t.rings[0][0], t.rings[0][t.rings[0].length - 1]),
+    JSON.stringify(t.rings[0]?.slice(0, 2)));
 
   /*
-   * THE TWO MISTAKES MUST NOT LOOK ALIKE. They mean opposite things -- one is
-   * a model giving up, the other is a model reaching -- and a picture that
-   * cannot separate them is a picture that cannot be acted on.
+   * TRACED WITH THE APP'S OWN NUMBERS, and this is the check that says so.
+   *
+   * The tracer's own defaults are a different tolerance and a far looser
+   * vertex budget. Drawn with those, a ragged edge comes back finer and busier
+   * than anything the drawing tools would ever hand a person -- so the picture
+   * would answer "could I fix this" about a shape that does not exist. A
+   * ragged edge is used because that is the only place the two settings part
+   * company: a clean square traces the same either way.
    */
-  check('and the two are clearly different colours',
-    Math.abs(at(out, 0)[1] - at(out, 1)[1]) > 40,
-    `${JSON.stringify(at(out, 0))} vs ${JSON.stringify(at(out, 1))}`);
+  const noisy = block(zeros(), 20, 20, 100, 100);
+  for (let y = 20; y <= 100; y += 2) {
+    for (let j = 1; j <= 6; j++) noisy[y * GRID + 100 + j] = 1;
+  }
+  const mpp = 0.15; // a typical frame: see docs/DETECTOR-FINDINGS.md, H1
+  const mine = tracePrediction({ predicted: noisy, within: null, grid: GRID, mpp });
+
+  const asApp = polygonsFromBinary(
+    Uint8Array.from(noisy), GRID, GRID, (x, y) => [x, y],
+    { tolerance: TRACE_TOLERANCE_M / mpp, maxVertices: MAX_TRACE_VERTICES }
+  );
+  const asDefault = polygonsFromBinary(
+    Uint8Array.from(noisy), GRID, GRID, (x, y) => [x, y], {}
+  );
+  const rings = (polys) => JSON.stringify(polys.flatMap((p) => p.coordinates));
+
+  check('a ragged edge is traced exactly as the drawing tools would get it',
+    JSON.stringify(mine.rings) === rings(asApp), `${mine.vertices} handles`);
+  check('and not with the tracer\'s own looser defaults',
+    rings(asApp) !== rings(asDefault),
+    'if these ever agree, this check has stopped testing anything');
+}
+
+/* --------------------------------------------- what the tracer throws away */
+{
+  /*
+   * SPECKLE IS DROPPED AND SAID SO. It has to be dropped -- the app drops it,
+   * and a wall of crumbs is not an editing surface -- but a model whose answer
+   * is mostly crumbs looks TIDY once they are gone, which is the one way this
+   * picture could mislead in the flattering direction.
+   */
+  const predicted = block(zeros(), 40, 40, 80, 80);
+  for (const [x, y] of [[10, 10], [12, 100], [110, 20]]) block(predicted, x, y, x + 1, y + 1);
+
+  const t = tracePrediction({ predicted, within: null, grid: GRID, mpp: 0.5 });
+  check('specks too small to trace are dropped',
+    t.pieces === 1, `${t.pieces} pieces`);
+  check('and counted, so the picture cannot quietly flatter the model',
+    t.droppedPieces === 3 && t.droppedPx === 12,
+    `${t.droppedPieces} dropped, ${t.droppedPx}px`);
+}
+
+/* ----------------------------------------- the property line clips the trace */
+{
+  /*
+   * Same rule as the measurement: the parcel is the last word on what counts.
+   * An outline that ran over the boundary would be a picture of work the app
+   * would never hand anybody.
+   */
+  const predicted = block(zeros(), 20, 20, 100, 100);
+  const within = block(zeros(), 50, 50, 110, 110);
+  const t = tracePrediction({ predicted, within, grid: GRID, mpp: 0.5 });
+  const xs = t.rings.flat().map((p) => p[0]);
+  const ys = t.rings.flat().map((p) => p[1]);
+  check('nothing is drawn outside the property line',
+    Math.min(...xs) >= 49 && Math.min(...ys) >= 49,
+    `starts at ${Math.min(...xs)}, ${Math.min(...ys)}`);
+}
+
+/* -------------------------------------------------- an outline, not a fill */
+{
+  const truth = block(zeros(), 30, 30, 90, 90);
+  /* A square ring, drawn by hand so the test does not depend on the tracer. */
+  const ring = [[40, 40], [80, 40], [80, 80], [40, 80], [40, 40]];
+  const out = drawPrediction({
+    photo: photo(), truth, within: null, inferred: null, rings: [ring], grid: GRID,
+  });
+
+  check('the outline is painted in the detector\'s colour',
+    same(at(out, 60, 40), TRACE), JSON.stringify(at(out, 60, 40)));
 
   /*
-   * AGREEMENT IS LEFT ALONE, both kinds. A picture where every pixel is
-   * painted is a picture of nothing, and the question being asked is what
-   * KIND of ground it fails on -- which needs the ground visible.
+   * THE INSIDE IS NOT FILLED. A filled shape hides the ground it is sitting
+   * on, and the ground is what the failures have to be read against -- gravel,
+   * shade, a flat roof. It would also make the two mistakes unreadable, since
+   * both are now absences rather than colours.
    */
-  check('ground it got right is left as the photograph',
-    JSON.stringify(at(out, 2)) === JSON.stringify([100, 100, 100])
-    && JSON.stringify(at(out, 3)) === JSON.stringify([100, 100, 100]),
-    `${JSON.stringify(at(out, 2))} / ${JSON.stringify(at(out, 3))}`);
+  const inside = at(out, 60, 60);
+  check('and the ground inside it stays visible',
+    !same(inside, TRACE) && inside[1] > inside[0],
+    `${JSON.stringify(inside)} -- should be the green wash, not the outline`);
+
+  /*
+   * EVERY VERTEX IS MARKED, because the handle count is most of the answer to
+   * "how long would this take to fix". Twenty handles round a lawn is a shape
+   * somebody nudges; two hundred is one they delete and redraw.
+   */
+  const corner = at(out, 40, 40);
+  check('every handle is marked where it would be dragged',
+    !same(corner, TRACE) && corner[0] > 240 && corner[2] > 200,
+    `${JSON.stringify(corner)} -- the pale core of a vertex dot`);
+
+  /*
+   * AND THE HAND-TRACED LAWN IS OUTLINED, NOT ONLY WASHED.
+   *
+   * The wash alone says "greener here", which on a photograph that is already
+   * mostly grass needs something to compare against. The comparison IS the
+   * page: two outlines, one a person's and one the model's, close together or
+   * not. A green line alone is lawn it gave up on.
+   */
+  check('the hand-traced lawn is outlined too, so the two can be compared',
+    same(at(out, 30, 60), TRUTH_FILL), JSON.stringify(at(out, 30, 60)));
+
+  /* Inside that outline it is a wash, so a missed area reads as green ground
+     rather than as bare photograph. */
+  const washed = at(out, 35, 60);
+  check('the real lawn is washed green, and left readable underneath',
+    washed[1] > washed[0] && washed[1] > washed[2] && washed[1] < 160,
+    JSON.stringify(washed));
+  check('and ground that is neither is left as the photograph',
+    same(at(out, 100, 100), [100, 100, 100]), JSON.stringify(at(out, 100, 100)));
 }
 
 /* ----------------------------------------- outside the property line */
 {
   /*
    * Dimmed, not painted and not cropped. It is not scored, so it must not read
-   * as a mistake -- but it is the context that explains half of them, because
-   * an over-call at the boundary usually means the neighbour's lawn runs on.
+   * as part of the judgement -- but it is the context that explains half of
+   * the over-calls, because a boundary over-call usually means the neighbour's
+   * lawn runs on.
    */
-  const truth = zeros();
-  const predicted = zeros();
-  const within = zeros();
-  within[0] = 1;              // inside the line
-  truth[1] = 1;               // outside, and lawn, and not called
-  predicted[2] = 1;           // outside, and called
+  const truth = ones();
+  const within = block(zeros(), 0, 0, GRID - 1, 63);
+  const out = drawPrediction({
+    photo: photo(), truth, within, inferred: null, rings: [], grid: GRID,
+  });
 
-  const out = drawPrediction({ photo: photo(), truth, predicted, within, inferred: null, grid: GRID });
-
+  const outside = at(out, 60, 100);
   check('ground outside the property line is dimmed',
-    at(out, 1)[0] < 100 && at(out, 1)[0] === at(out, 1)[1],
-    JSON.stringify(at(out, 1)));
-  check('and is never painted as a mistake, however wrong it is there',
-    !leaning(at(out, 1), MISSED) && !leaning(at(out, 2), OVERCALLED),
-    `${JSON.stringify(at(out, 1))} / ${JSON.stringify(at(out, 2))}`);
+    outside[0] < 100 && outside[0] === outside[1] && outside[1] === outside[2],
+    JSON.stringify(outside));
+  check('and not washed as lawn, however much lawn is out there',
+    !(outside[1] > outside[0]), JSON.stringify(outside));
+  /*
+   * The lawn's own outline stops at the line as well. A green edge running out
+   * through the dimmed ground would read as scored lawn, which is the one
+   * thing the dimming exists to prevent.
+   */
+  check('and the hand-traced outline stops at the line too',
+    same(at(out, 60, 70), outside) && same(at(out, 60, GRID - 1), outside),
+    `${JSON.stringify(at(out, 60, 70))} / ${JSON.stringify(at(out, 60, GRID - 1))}`);
   check('and it stays visible rather than being blacked out',
-    at(out, 1)[0] > 20, String(at(out, 1)[0]));
+    outside[0] > 20, String(outside[0]));
 }
 
 /* -------------------------------------------------- the inferred outline */
 {
   /*
-   * An outline rather than a fill, and drawn LAST. The question it answers is
-   * "did it fail INSIDE the guessed-at ground", which needs the failure and
-   * the marking visible at the same time -- a fill would hide exactly the
-   * pixels being asked about.
+   * An outline rather than a fill, drawn under the trace and over the wash.
+   * The question it answers is "does it give up exactly where the reviewer
+   * said I know it is lawn and cannot see it", which needs the trace and the
+   * marking visible at the same time.
    */
   const truth = zeros();
-  const predicted = zeros();
-  const inferred = zeros();
-  for (const i of [5, 6, 9, 10]) { inferred[i] = 1; truth[i] = 1; } // a 2x2 block, all missed
-
-  const out = drawPrediction({ photo: photo(), truth, predicted, within: null, inferred, grid: GRID });
+  const inferred = block(zeros(), 40, 40, 60, 60);
+  const out = drawPrediction({
+    photo: photo(), truth, within: null, inferred, rings: [], grid: GRID,
+  });
 
   check('marked ground is outlined in purple',
-    JSON.stringify(at(out, 5)) === JSON.stringify(INFERRED_EDGE),
-    JSON.stringify(at(out, 5)));
-  check('and the outline survives the mistake painted underneath it',
-    [5, 6, 9, 10].every((i) => JSON.stringify(at(out, i)) === JSON.stringify(INFERRED_EDGE)),
-    'every cell of a 2x2 block is an edge cell');
+    same(at(out, 40, 50), INFERRED_EDGE), JSON.stringify(at(out, 40, 50)));
+  check('and outlined rather than filled, so the ground in it can be judged',
+    same(at(out, 50, 50), [100, 100, 100]), JSON.stringify(at(out, 50, 50)));
+
+  /* The trace goes on top of it: the marking is context, the outline is the
+     subject. */
+  const over = drawPrediction({
+    photo: photo(),
+    truth,
+    within: null,
+    inferred,
+    rings: [[[40, 40], [60, 40], [60, 60], [40, 60], [40, 40]]],
+    grid: GRID,
+  });
+  check('and the detector\'s outline is drawn on top of it',
+    same(at(over, 50, 40), TRACE), JSON.stringify(at(over, 50, 40)));
+}
+
+/* --------------------------------------- the colours mean the same as before */
+{
+  /*
+   * These are the console's own three, so that somebody arriving from the
+   * review card reads one vocabulary rather than two. tools/markup.test.js
+   * checks them against REVIEW_COLOURS and against the page's legend; here
+   * they only have to be distinguishable from each other on a photograph.
+   */
+  const apart = (a, b) => Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]);
+  check('the outline, the lawn and the inferred mark are told apart at a glance',
+    apart(TRACE, TRUTH_FILL) > 150 && apart(TRACE, INFERRED_EDGE) > 150
+    && apart(TRUTH_FILL, INFERRED_EDGE) > 150,
+    `${apart(TRACE, TRUTH_FILL)} / ${apart(TRACE, INFERRED_EDGE)} / `
+    + `${apart(TRUTH_FILL, INFERRED_EDGE)}`);
 }
 
 /* ------------------------------------------------------- the counts */
 {
+  /*
+   * Still measured on the mask, not on the trace. These are the run's own
+   * numbers -- the ones in the table and in docs/DETECTOR-FINDINGS.md -- and a
+   * second set that differed by a percent because of smoothing would be
+   * impossible to compare against anything.
+   */
   const truth = zeros();
   const predicted = zeros();
-  const within = new Uint8Array(N).fill(1);
+  const within = ones();
   const inferred = zeros();
 
   truth[0] = 1; predicted[0] = 1;   // found
@@ -162,7 +321,7 @@ const leaning = (rgb, towards) => {
     none.missedInferredPct === null, String(none.missedInferredPct));
 
   /* Outside the line is outside the judgement, here as well as in the drawing. */
-  const half = new Uint8Array(N);
+  const half = zeros();
   half[0] = 1;
   const clipped = mistakeCounts({ truth, predicted, within: half, inferred: null });
   check('and ground outside the property line is not counted',

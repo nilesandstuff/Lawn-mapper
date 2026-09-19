@@ -22,7 +22,7 @@ on:
         type: boolean
         default: false
       render:
-        description: 'Draw what it got wrong, and put the pictures on /predictions.html'
+        description: 'Draw the outlines it would hand the drawing tools, on /predictions.html'
         type: boolean
         default: true
 

@@ -117,11 +117,11 @@ body { background: var(--bg); }
 .verdict-row { align-items: center; }
 
 /*
- * ------------------------------------------ what the detector got wrong
+ * -------------------------------------- the outline the detector drew
  *
  * The rendering fills its row rather than sitting at thumbnail size. The
- * page's whole purpose is noticing what the mistakes have in common, and a
- * 320px square of a lawn is too small to tell a gravel drive from a patio.
+ * page's whole purpose is judging whether a shape could be fixed by hand, and
+ * a 320px square is too small to see whether an edge is crisp or crumbly.
  */
 .shot.pred { max-width: 100%; border-radius: 8px; }
 
@@ -140,11 +140,18 @@ body { background: var(--bg); }
   flex: none; width: 15px; height: 15px; border-radius: 3px;
   border: 1px solid rgba(0, 0, 0, .15);
 }
-/* The same values tools/render-prediction.js paints with. If one moves, the
-   other has to: a legend that disagrees with the picture is worse than none. */
-.sw-missed { background: rgb(214, 45, 45); }
-.sw-over { background: rgb(255, 150, 20); }
+/* The same values tools/render-prediction.js paints with, which are in turn
+   the console's own REVIEW_COLOURS. If one moves, the others have to: a legend
+   that disagrees with the picture is worse than none. */
+.sw-trace { background: rgb(226, 114, 91); }
+/* The wash, so the swatch is the weight it is drawn at rather than the flat
+   colour -- a solid green square would read as "this is filled in". */
+.sw-truth { background: rgb(78, 194, 106); opacity: .45; }
 .sw-inf { background: transparent; border: 2px solid rgb(179, 136, 255); }
 .sw-out { background: #6b736b; }
+
+/* The editing cost, in the row's second line: pieces and handles. Monospaced
+   digits so a column of them can be compared by eye while scrolling. */
+.cost { font-variant-numeric: tabular-nums; }
 
 .empty-state { margin-top: 12px; }
