@@ -1,6 +1,6 @@
 {
   "importedFrom": "openaddresses/openaddresses",
-  "importedAt": "2026-09-18",
+  "importedAt": "2026-09-19",
   "note": "Candidates only. Nothing here is claimed as working until verify-counties.js says so.",
   "listed": 1969,
   "noParcels": 831,
@@ -1660,11 +1660,11 @@
       "key": "co-moffat",
       "name": "Moffat County, CO",
       "fips": "08081",
-      "service": "https://services.arcgis.com/4YineAQdtmx0tv46/ArcGIS/rest/services/MoffatCOFeatures/FeatureServer",
-      "layer": 4,
+      "service": "https://services.arcgis.com/nG7uHX1mi3PRD2sK/ArcGIS/rest/services/MC_Parcels/FeatureServer",
+      "layer": 0,
       "layerName": null,
       "fields": {
-        "pin": "GIS_Parcel_Number",
+        "pin": "Pin_",
         "address": null
       },
       "fallbacks": []
