@@ -101,3 +101,15 @@ ALTER TABLE corpus ADD COLUMN tree_line INTEGER;
 -- means either nothing to mark or nobody asked. Without the distinction the
 -- review queue would either never empty or never fill.
 ALTER TABLE corpus ADD COLUMN inferred_checked_at TEXT;
+
+-- The audition set: hand-traced lawns held back as an answer key, so a paid
+-- stranger's first attempts can be SCORED rather than judged by eye.
+--
+-- The matching CREATE is in schema.sql and does nothing to a database that
+-- already has the corpus table, which every deployed one does -- see the
+-- commit "CREATE TABLE IF NOT EXISTS cannot add a column", which cost six
+-- deploys and looked like a feature that had been switched off.
+--
+-- Zero rather than NULL, because "not an audition map" is the answer for
+-- every row that existed before this, and there is no third state to keep.
+ALTER TABLE corpus ADD COLUMN audition INTEGER NOT NULL DEFAULT 0;

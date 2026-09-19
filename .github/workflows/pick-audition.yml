@@ -1,0 +1,46 @@
+name: 16. Hold back an audition set
+
+# Marks a few hand-traced lawns as the answer key a paid stranger's first
+# attempts get scored against.
+#
+# WHY AN ANSWER KEY. An audition with an ambiguous answer does not merely fail
+# to measure anybody -- it fails the CAREFUL people, who are the ones with an
+# opinion about where a tree line ends. Rejecting exactly the workers worth
+# keeping is the worst outcome available, and from the outside it looks like
+# nobody good applied.
+#
+# Nothing is deleted or moved. An audition lawn stays in the corpus and stays
+# in training; the flag only says an audition may ask for it.
+#
+# FREE, and it changes nothing until APPLY is ticked -- run it once to see
+# what it would choose, then again to make it so.
+on:
+  workflow_dispatch:
+    inputs:
+      want:
+        description: 'How many lawns to hold back'
+        type: string
+        default: '4'
+      apply:
+        description: 'Actually mark them (leave off to just see the list)'
+        type: boolean
+        default: false
+
+jobs:
+  pick:
+    name: Choose the easiest lawns
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Pick them
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WANT: ${{ inputs.want }}
+          APPLY: ${{ inputs.apply }}
+        run: node tools/pick-audition.js

@@ -375,6 +375,18 @@ CREATE TABLE IF NOT EXISTS corpus (
   -- 'random' means it came up in a blind draw, so it carries no selection of
   -- its own and the representative slice is built from these.
   review_queue   TEXT,
+  -- Held back as an answer key: a lawn traced by hand whose outline a paid
+  -- stranger's attempt can be SCORED against, rather than judged by eye.
+  --
+  -- An audition needs a known answer or it is not an audition, it is a second
+  -- opinion. These stay in the corpus and stay in training -- nothing is lost
+  -- by using them twice -- and the flag exists only so the audition always
+  -- asks for a lawn somebody has already answered.
+  --
+  -- THIS COLUMN ALSO EXISTS AS AN ALTER IN migrations.sql. The CREATE above
+  -- does nothing to a database that already has this table, so a column added
+  -- here alone reaches new databases and no deployed one.
+  audition       INTEGER NOT NULL DEFAULT 0,
   created_at     TEXT NOT NULL
 );
 -- The index over `status` lives in migrations.sql, NOT here, and the reason is
