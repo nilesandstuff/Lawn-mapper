@@ -59,10 +59,61 @@ export const MAX_LOT_SQFT = 60000;
 const NEIGHBOUR_SPREAD = 0.004;
 /** How many follow-ups one hit earns. */
 const NEIGHBOURS_PER_HIT = 8;
-/** How close two candidates may be before they are probably the same lot. */
-const TOO_CLOSE = 0.00035; // ~35 m
+/**
+ * How close two candidates may be before they are the same lot.
+ *
+ * SMALL, BECAUSE THE POINT IS THE PARCEL'S CENTRE rather than the dart that
+ * found it -- see centreOf. Two darts inside one property produce the SAME
+ * centre, so duplicates collapse exactly and this only has to separate
+ * genuinely different parcels. The smallest lot kept here is about twelve
+ * metres across, so ten is under the width of the narrowest neighbour.
+ *
+ * It was 35 m and keyed off the dart, which was wrong in the expensive
+ * direction: a kept lot can be 75 m across, so several darts in ONE parcel
+ * landed 40 m apart, passed the check, and became several candidates showing
+ * the identical property. Randolph County, Illinois screened as the same
+ * photograph over and over.
+ */
+const TOO_CLOSE = 0.0001; // ~11 m
 
 export const lotLooksResidential = (sqft) => sqft >= MIN_LOT_SQFT && sqft <= MAX_LOT_SQFT;
+
+/**
+ * The middle of a parcel, which is what a candidate actually is.
+ *
+ * A DART IS NOT A PROPERTY. The point that found a lot lands wherever chance
+ * put it -- in a corner, on the roof, in the hedge -- and two darts in one
+ * garden are two points and one property. Keying a candidate off the dart
+ * therefore let a single parcel become several queue rows, each screening as
+ * the same photograph; the screening page centres its frame on the parcel, so
+ * they were not merely similar but identical.
+ *
+ * Taking the centre fixes both halves at once: duplicates become the same
+ * point and collapse, and the pin lands in the middle of the property instead
+ * of at the edge of it.
+ *
+ * The bounding box's centre rather than a true centroid. For an L-shaped lot
+ * those differ by a few metres, which matters to neither job -- and a real
+ * centroid can fall OUTSIDE an L, which would put the pin on the neighbour.
+ */
+export function centreOf(geometry) {
+  let w = Infinity, s = Infinity, e = -Infinity, n = -Infinity;
+  const walk = (coords) => {
+    if (typeof coords[0] === 'number') {
+      const [lng, lat] = coords;
+      if (lng < w) w = lng;
+      if (lng > e) e = lng;
+      if (lat < s) s = lat;
+      if (lat > n) n = lat;
+      return;
+    }
+    for (const part of coords) walk(part);
+  };
+  if (!geometry?.coordinates) return null;
+  walk(geometry.coordinates);
+  if (!Number.isFinite(w) || !Number.isFinite(s)) return null;
+  return [(w + e) / 2, (s + n) / 2];
+}
 
 /** Deterministic randomness, so a run can be repeated exactly. */
 export function makeRandom(seed) {
@@ -126,13 +177,21 @@ export async function sampleCounty(key, county, { want, tries, rand, lookup, onH
     }
 
     if (!lotLooksResidential(sqft)) continue;
-    if (!farEnough(at, taken)) continue;
 
-    taken.push(at);
+    /*
+     * THE CANDIDATE IS THE PARCEL, NOT THE DART. Two darts in one garden give
+     * the same centre here and the check below collapses them; keyed off the
+     * darts they were 40 m apart, passed, and became two queue rows showing
+     * the identical property.
+     */
+    const centre = centreOf(parcel.geometry) || at;
+    if (!farEnough(centre, taken)) continue;
+
+    taken.push(centre);
     found.push({
       id: randomUUID(),
-      lng: Number(at[0].toFixed(6)),
-      lat: Number(at[1].toFixed(6)),
+      lng: Number(centre[0].toFixed(6)),
+      lat: Number(centre[1].toFixed(6)),
       county: county.name || key,
       fips: county.fips || null,
       parcelSqFt: Math.round(sqft),

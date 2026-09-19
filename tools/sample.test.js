@@ -15,7 +15,7 @@
  */
 
 import {
-  sampleCounty, farEnough, lotLooksResidential, makeRandom,
+  sampleCounty, farEnough, lotLooksResidential, makeRandom, centreOf,
   MIN_LOT_SQFT, MAX_LOT_SQFT,
 } from './sample-lawns.js';
 
@@ -60,12 +60,19 @@ const county = { name: 'Testshire', fips: '99999', box: [-80, 40, -79.9, 40.1] }
 /* --------------------------------------------- the same lot, twice */
 {
   const taken = [[-80, 40]];
-  check('a point on top of one already found is refused',
-    !farEnough([-80.0001, 40.0001], taken),
-    'thirty metres apart is the same garden seen twice');
-  check('and one a street away is not',
-    farEnough([-80.005, 40.005], taken),
-    'about five hundred metres');
+  /*
+   * The threshold is deliberately tight now -- about eleven metres -- because
+   * a candidate is a parcel's CENTRE rather than the dart that found it, so
+   * the same property gives the same point and collapses exactly. This only
+   * has to separate genuinely different parcels, and the narrowest lot kept
+   * is about twelve metres across.
+   */
+  check('the same property, arrived at twice, is refused',
+    !farEnough([-80.00002, 40.00002], taken),
+    'two metres apart is rounding, not a second garden');
+  check('but the lot next door is not',
+    farEnough([-80.0005, 40.0005], taken),
+    'about fifty metres, which is several small lots away');
 }
 
 /* ------------------------------------- a hit earns its neighbours */
@@ -141,6 +148,70 @@ const county = { name: 'Testshire', fips: '99999', box: [-80, 40, -79.9, 40.1] }
     found.length > 0 && found.every((f) => f.id && f.county === 'Testshire'
       && f.parcelSqFt > 0 && Number.isFinite(f.lng) && Number.isFinite(f.lat)),
     JSON.stringify(found[0]));
+}
+
+/* --------------------------- one parcel is one candidate, however many darts */
+{
+  /*
+   * THE BUG THIS PINS SHIPPED, and it was found by somebody screening: every
+   * candidate in Randolph County, Illinois showed the same photograph.
+   *
+   * A candidate used to be the DART that found a lot. A kept lot can be 75 m
+   * across and the dedupe threshold was 39 m, so several darts inside ONE
+   * property sat far enough apart to pass, and each became a queue row. The
+   * screening page centres its frame on the parcel, so those rows were not
+   * merely similar -- they were byte for byte the same card, asked four times.
+   *
+   * Here the whole county is a single large property. However many darts land
+   * on it, it is one lawn and must produce one candidate.
+   */
+  const big = parcelOf(-79.95, 40.05, 55000);   // ~72 m across, near the ceiling
+  /*
+   * A generous catchment that always answers with THE SAME parcel. That is
+   * the situation being tested -- many darts, one property -- and making the
+   * catchment findable is what stops this passing for the boring reason that
+   * nothing was ever hit.
+   */
+  const lookup = async (key, lng, lat) => {
+    const inside = Math.abs(lng + 79.95) < 0.004 && Math.abs(lat - 40.05) < 0.004;
+    return inside ? big : null;
+  };
+
+  const found = await sampleCounty('test', county, {
+    want: 6, tries: 500, rand: makeRandom(1), lookup,
+  });
+
+  check('and the darts really did land on it',
+    found.length > 0,
+    'otherwise the check below passes because nothing was found at all');
+
+  check('one property gives one candidate however many darts hit it',
+    found.length <= 1,
+    `${found.length} candidates from a single parcel -- anything above one is `
+    + 'the same photograph in the screening queue more than once');
+
+  /*
+   * AND IT IS PINNED IN THE MIDDLE. A dart lands wherever chance put it --
+   * in a corner, on the roof, in the hedge -- and the pin is what tells a
+   * screener which plot is being asked about.
+   */
+  if (found.length === 1) {
+    const centre = centreOf(big.geometry);
+    check('and it is pinned at the middle of the property, not where the dart fell',
+      Math.abs(found[0].lng - centre[0]) < 1e-5
+      && Math.abs(found[0].lat - centre[1]) < 1e-5,
+      `${found[0].lng}, ${found[0].lat} against a centre of ${centre[0]}, ${centre[1]}`);
+  }
+
+  /* An L-shaped lot: the centre must still be a number, and taking the box's
+     middle rather than a true centroid is what keeps it inside the shape. */
+  const ell = { coordinates: [[[0, 0], [2, 0], [2, 1], [1, 1], [1, 2], [0, 2], [0, 0]]] };
+  check('and an awkward shape still has a centre',
+    JSON.stringify(centreOf(ell)) === JSON.stringify([1, 1]),
+    JSON.stringify(centreOf(ell)));
+  check('and a geometry with no coordinates gives nothing rather than NaN',
+    centreOf({}) === null && centreOf(null) === null,
+    'a parcel that came back malformed must not put a pin at NaN, NaN');
 }
 
 /* ----------------------------------------- farmland is not kept */
