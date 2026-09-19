@@ -1205,6 +1205,42 @@ check('every class the code toggles is styled',
     'a picture without it reads as "this is what the app would draw"');
 }
 
+/* ------------------------------- the screening page addresses its own markup */
+{
+  const html = readFileSync(join(root, 'public/screen.html'), 'utf8');
+  const js = readFileSync(join(root, 'public/screen.js'), 'utf8');
+
+  const has = new Set([...html.matchAll(/\bid="([A-Za-z0-9_-]+)"/g)].map((m) => m[1]));
+  const asks = [...js.matchAll(/\$\('#([A-Za-z0-9_-]+)'\)/g)].map((m) => m[1]);
+  const gone = asks.filter((id) => !has.has(id));
+  check('every element the screening page reaches for is on it',
+    gone.length === 0, gone.join(', ') || `${new Set(asks).size} referenced, all present`);
+
+  check('and it loads the stylesheet its classes are in',
+    /href="\/console\.css"/.test(html),
+    'the every-map page shipped once without this and rendered as plain text');
+
+  /*
+   * THE STANDARD IS ON THE PAGE, not in somebody's head. Screening drifts over
+   * a session -- the fortieth answer is looser than the first unless the rule
+   * is written where it is being applied -- and a queue screened to a sliding
+   * standard is a corpus with a sliding standard, which H7 says is worth up to
+   * ten points of error per map.
+   */
+  check('and the screening rule is written on the page itself',
+    /class="rule"/.test(html) && /<b>Yes<\/b>/.test(html) && /<b>No<\/b>/.test(html),
+    'both halves of the standard have to be visible while deciding');
+
+  /*
+   * NO ADDRESS ANYWHERE. The queue is shown to the owner here and handed to
+   * strangers later, and the whole design avoids holding a house number: a
+   * point plus the county's own parcel record is all it takes to trace a lawn.
+   */
+  check('and it shows a place rather than an address',
+    !/address/i.test(js.replace(/\/\*[\s\S]*?\*\//g, '')),
+    'the sampler stores no address and this page must not invent one');
+}
+
 /* -------------------------------- the every-map page addresses its own markup */
 {
   /*

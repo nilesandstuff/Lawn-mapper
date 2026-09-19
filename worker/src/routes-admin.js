@@ -524,6 +524,62 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
    */
   /* ------------------------------------------- what the detector got wrong */
   /*
+   * THE SCREENING QUEUE: lawns sampled from county parcel services, waiting
+   * for somebody to say whether they are worth paying to have traced.
+   *
+   * Candidates only, oldest first. Oldest rather than newest because this is a
+   * queue to be emptied, not a feed to be browsed, and a queue that reorders
+   * itself while you work it shows you the same lot twice.
+   */
+  if (path === 'lawn-jobs') {
+    const limit = Math.min(60, Math.max(1, Number(url.searchParams.get('limit')) || 24));
+    const rows = await env.DB.prepare(
+      `SELECT id, lng, lat, county, parcel_sqft, state
+         FROM lawn_jobs WHERE state = 'candidate'
+        ORDER BY created_at ASC LIMIT ?1`
+    ).bind(limit).all();
+
+    const counts = await env.DB.prepare(
+      'SELECT state, COUNT(*) n FROM lawn_jobs GROUP BY state'
+    ).all();
+
+    return json({
+      jobs: (rows.results || []).map((r) => ({
+        id: r.id,
+        lng: Number(r.lng),
+        lat: Number(r.lat),
+        county: r.county,
+        parcelSqFt: r.parcel_sqft === null ? null : Number(r.parcel_sqft),
+      })),
+      counts: Object.fromEntries((counts.results || []).map((r) => [r.state, Number(r.n)])),
+    }, 200, origin);
+  }
+
+  /*
+   * A verdict on one candidate.
+   *
+   * Only ever from 'candidate', so a second tap on a stale page cannot move a
+   * lawn that has already been handed to somebody. The WHERE does that work
+   * rather than a read-then-write, which would have a gap between the two.
+   */
+  if (path === 'screen-lawn' && request.method === 'POST') {
+    const body = await request.json().catch(() => ({}));
+    const id = String(body?.id || '');
+    const verdict = String(body?.verdict || '');
+    if (!id || !['approved', 'rejected'].includes(verdict)) {
+      return json({ error: 'Need an id and a verdict' }, 400, origin);
+    }
+
+    const done = await env.DB.prepare(
+      `UPDATE lawn_jobs SET state = ?2, screened_at = ?3, note = ?4
+        WHERE id = ?1 AND state = 'candidate'`
+    ).bind(id, verdict, new Date().toISOString(), body?.note ? String(body.note).slice(0, 200) : null)
+      .run();
+
+    return json({ ok: true, changed: done?.meta?.changes ?? 0 }, 200, origin);
+  }
+
+  /*
    * The index written by a training run, and the pictures it points at.
    *
    * Two routes rather than one because they are different things: the index is

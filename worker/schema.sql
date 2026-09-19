@@ -424,3 +424,66 @@ CREATE TABLE IF NOT EXISTS parcel_gaps (
   PRIMARY KEY (county, state, who)
 );
 CREATE INDEX IF NOT EXISTS parcel_gaps_place ON parcel_gaps(state, county);
+
+-- ----------------------------------------------------------------------
+-- LAWNS PUT OUT TO BE TRACED BY SOMEBODY ELSE.
+--
+-- The corpus is the constraint on everything (S3 in docs/DETECTOR-FINDINGS.md)
+-- and the detector cannot help build it until it beats SAM, which it does not
+-- (H11). So the corpus grows by paying people, and this is the queue that
+-- makes that possible: one lawn, one worker, one submitted map.
+--
+-- THE WHOLE SHAPE IS DEFINED HERE ON THE FIRST DAY, including the columns
+-- nothing reads yet. CREATE TABLE IF NOT EXISTS does nothing to a table that
+-- already exists, so a column added later needs an ALTER in migrations.sql as
+-- well -- see the commit "CREATE TABLE IF NOT EXISTS cannot add a column",
+-- which cost six deploys and looked like a feature that had been switched off.
+-- A table that is about to grow three times is exactly where that goes wrong,
+-- so it grows here instead, before it has shipped.
+--
+-- state, and it only ever moves forwards:
+--
+--   candidate  sampled from a county's parcel service, nobody has looked
+--   approved   the owner saw a lawn worth tracing here
+--   rejected   the owner did not -- no grass, no imagery, a car park
+--   claimed    handed to a worker, and not offered to anybody else
+--   submitted  they sent a map back
+--   accepted   the owner kept it: this one gets paid for
+--   refused    the owner would not keep it, and says why in `note`
+--
+-- WHY A REJECTED CANDIDATE IS KEPT rather than deleted: the sampler picks
+-- random points in a county and would otherwise offer the same car park again
+-- every time it runs.
+CREATE TABLE IF NOT EXISTS lawn_jobs (
+  id            TEXT PRIMARY KEY,
+  -- Where. No address: the worker is handed a place on a map, and the parcel
+  -- lookup the app already does turns a point into a property line. Keeping
+  -- addresses out of this table also keeps somebody's house out of a queue
+  -- that is, by design, shown to strangers.
+  lng           REAL NOT NULL,
+  lat           REAL NOT NULL,
+  county        TEXT,
+  fips          TEXT,
+  -- What the county's own parcel says it is, in square feet. The sampler uses
+  -- it to throw away farmland and slivers before a person ever looks.
+  parcel_sqft   INTEGER,
+
+  state         TEXT NOT NULL DEFAULT 'candidate',
+  note          TEXT,
+
+  screened_at   TEXT,
+  -- The worker, as the platform names them. Not an account here: these people
+  -- never sign in, they arrive with a token in a link.
+  worker        TEXT,
+  claimed_at    TEXT,
+  submitted_at  TEXT,
+  decided_at    TEXT,
+  -- The corpus row they produced, once there is one.
+  map_id        TEXT,
+
+  created_at    TEXT NOT NULL
+);
+-- The two questions actually asked of this table: "what should I screen next"
+-- and "what can I hand out", both of which are a state scan.
+CREATE INDEX IF NOT EXISTS lawn_jobs_state ON lawn_jobs(state, created_at);
+CREATE INDEX IF NOT EXISTS lawn_jobs_worker ON lawn_jobs(worker, state);
