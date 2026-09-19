@@ -80,6 +80,21 @@
         outline over bare ground is lawn it invented. The handle count is the
         one to watch: twenty round a lawn is a shape you can nudge, two hundred
         is a shape you would delete and redraw.</p>
+      <!--
+        WHICH OBJECT EACH NUMBER IS ABOUT, said once here rather than argued
+        about later. A caption once read "it missed 17.8% of the inferred
+        ground" under a picture whose outline covered that ground completely.
+        Both were true: the number was the raw mask, the picture is the trace,
+        and the tracer fills any hole under about 60 sq ft. Everything per-lawn
+        below now describes the outline; only the headline error still
+        describes the mask, because that is the figure the training table and
+        docs/DETECTOR-FINDINGS.md quote.
+      -->
+      <p class="sub">Every number under a picture describes <b>the outline</b>,
+        not the model's raw answer — tracing fills holes under about 60 sq ft
+        and smooths every edge, and each row says how much that was worth. The
+        <b>% out</b> pill is the exception: that is the run's own figure, from
+        the mask, so it still matches the training table.</p>
 
       <!--
         THE CAVEAT THAT HAS TO STAY ATTACHED. These are leave-one-out answers:

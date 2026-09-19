@@ -48,9 +48,14 @@ function row(e, i) {
   if (e.inferredPct >= 1) top.append(el('span', 'pill', `${pct(e.inferredPct)} inferred`));
   box.append(top);
 
+  /*
+   * "the outline" is load-bearing wording. These are measured on the traced
+   * polygon, not on the mask behind it, because that is what the picture shows
+   * -- see traceMask() for the caption bug that made the distinction matter.
+   */
   box.append(el('div', 'meta',
     `${n(e.squareFeet)} sq ft of lawn · ${Math.round(e.mpp * 100)} cm a pixel · `
-    + `found ${pct(e.foundPct)} of it · over-called ${pct(e.overPct)}`));
+    + `the outline found ${pct(e.foundPct)} of it · over-called ${pct(e.overPct)}`));
 
   /*
    * What correcting it would cost. Written as a sentence rather than as two
@@ -70,6 +75,21 @@ function row(e, i) {
       cost += ` · ${n(e.droppedPieces)} scraps dropped (${n(e.droppedSqFt)} sq ft)`;
     }
     box.append(el('div', 'meta cost', cost));
+
+    /*
+     * WHAT TIDYING THE OUTLINE WAS WORTH, both ways.
+     *
+     * The tracer fills any hole under about 60 sq ft and smooths every edge,
+     * which is wanted -- a shape full of pinholes is not an editing surface --
+     * and it also makes the picture tidier than the model's actual answer.
+     * Saying by how much is the difference between a helpful rendering and a
+     * flattering one.
+     */
+    if (e.filledSqFt || e.trimmedSqFt) {
+      box.append(el('div', 'meta cost',
+        `tracing it filled ${n(e.filledSqFt)} sq ft of holes `
+        + `and shaved ${n(e.trimmedSqFt)} sq ft off the edges`));
+    }
   }
 
   /*
@@ -92,7 +112,8 @@ function row(e, i) {
      the maps with none would make the interesting ones harder to spot. */
   if (e.missedInferredPct !== null && e.missedInferredPct !== undefined) {
     box.append(el('div', 'meta',
-      `Of the ground marked "inferred, not seen", it missed ${pct(e.missedInferredPct)}.`));
+      `Of the ground marked "inferred, not seen", the outline misses `
+      + `${pct(e.missedInferredPct)}.`));
   }
 
   return box;

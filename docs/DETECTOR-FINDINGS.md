@@ -219,6 +219,39 @@ Consequence: **there is no shortcut to the corpus through the model yet.** Any
 plan that depends on one is blocked on beating SAM first — which is the same
 line every other row in this file is measured against.
 
+### H12. What the 1280 model is good and bad at, by eye
+*Owner's reading of the same renderings, 2026-09-19. Observations, not theory —
+the explanations are S8 below and are not established.*
+
+**Better than expected, and better than SAM:**
+- **Ambiguous ground around trees, and thin shadows.** The hard-looking case is
+  not the one costing time.
+- **Inferred areas** — "vastly better than SAM was", on this little training
+  data.
+
+**Worse, and this is where the labour actually goes:**
+- **Dense shade from BUILDING shadows.** Not tree shade, which it handles.
+- **Crisp edges — driveways and sidewalks — are performing very poorly.** Big
+  effect on both square footage and the cost of correcting.
+
+The worked example: the **10,553 sq ft North Carolina lawn**, 47.6% wrong on
+the best row. The lawn is dormant but the edges are unambiguous — "nearly zero
+ambiguity". A clear-edged lot is exactly where a detector should be safe, and
+it is the one it fails hardest on.
+
+**This inverts the assumption the work has been organised around.** The effort
+has gone into shade, occlusion and the ring (H4, E3, S2) on the premise that
+ambiguity is the hard part. By eye, ambiguity is handled and the *unambiguous*
+boundaries are not.
+
+**SPECULATION (S8):** a crisp albedo edge — dry dormant grass against pale
+concrete — may be exactly what a scale-conditioned satellite backbone smooths
+over, since at the resolutions it was pretrained on a sidewalk is sub-pixel.
+That would also explain why building shadow is harder than tree shade: a
+building shadow has a hard edge, a tree's does not. Untested, and it is the
+kind of story that has measured as nothing twice in this file. The way to test
+it is per-class error against a sidewalk/driveway mask, not more argument.
+
 ### H10. The backbone-free control is reproducible to the decimal
 *Runs 35409315409 (672px), 35411040880 (896px), 35416318719 (workflow 12,
 DINOv2 tiled 224px) and 35417355609 (1280px), all 23 lawns, fingerprint
@@ -406,6 +439,18 @@ investigated.
    Before 2026-09-19 these pictures were a disagreement map — red for missed,
    orange for over-called. That answered the accuracy question the table
    already answers, and could not answer the editing one at all.
+
+   **Which object each number describes, because they are not the same
+   object.** The per-lawn figures under a picture are measured on the TRACED
+   OUTLINE; the `% out` pill is the run's own figure, from the raw mask, so it
+   still matches the training table. They can differ a lot: the tracer fills
+   any hole below 0.15% of the frame — **about 60 sq ft on a typical lot** —
+   so a scatter of pinholes in the mask is simply absent from the polygon.
+   This was found by a reader comparing a caption that said "it missed 17.8%
+   of the inferred ground" with a picture whose outline covered that ground
+   completely. Both were right. Each row now also says how much the tracer
+   filled in and shaved off, so a tidied outline cannot flatter the model
+   silently.
 6. **The advice printed at the end of the run is code, and code can be stale.**
    It once explained a Scale-MAE result with a sentence about models trained on
    ground-level photographs — true of DINOv2, false of what had run, and it

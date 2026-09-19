@@ -47,7 +47,7 @@
  */
 
 import {
-  polygonsFromBinary, TRACE_TOLERANCE_M, MAX_TRACE_VERTICES,
+  polygonsFromBinary, rasterizePolygon, TRACE_TOLERANCE_M, MAX_TRACE_VERTICES,
 } from '../public/lib/mask.js';
 
 /*
@@ -109,6 +109,13 @@ export function tracePrediction({ predicted, within, grid, mpp }) {
   }
 
   return {
+    /*
+     * Grouped, as well as flat. Drawing wants every ring and does not care
+     * which shape owns it; rasterising back does care, because a polygon's
+     * second ring is a HOLE and filling it solid would be the opposite of
+     * what the shape says.
+     */
+    shapes: polygons.map((p) => p.coordinates),
     rings,
     pieces: polygons.length,
     vertices,
@@ -121,6 +128,62 @@ export function tracePrediction({ predicted, within, grid, mpp }) {
     droppedPieces: polygons.droppedCount || 0,
     droppedPx: polygons.droppedPx || 0,
   };
+}
+
+/**
+ * The traced outline, back as a mask, so the same questions can be asked of it.
+ *
+ * WHY THIS EXISTS, and it is a caption bug found by looking at a picture.
+ *
+ * A reader saw "of the ground marked inferred, it missed 17.8%" under a
+ * rendering whose outline covered that ground completely. Both were right. The
+ * number was measured on the model's raw mask; the picture is the trace, and
+ * the tracer does not trace a hole below `minHoleFraction` — 0.15% of the
+ * frame, which is about 60 sq ft on a typical lot. So a scatter of small gaps
+ * inside a patch is real in the mask and simply absent from the polygon.
+ *
+ * That behaviour is wanted: lawns are not polka dots, and a shape full of
+ * pinholes is not an editing surface. What is not wanted is a caption
+ * describing a different object from the picture it sits under. So the page's
+ * per-lawn numbers are asked of THIS mask, the one the outline would actually
+ * deliver, and the run's own error figure stays on the raw mask where it
+ * remains comparable to the table and to docs/DETECTOR-FINDINGS.md.
+ *
+ * Rasterised per shape rather than all at once: even-odd across two separate
+ * polygons that happened to overlap would cancel them both.
+ */
+export function traceMask({ shapes, within, grid }) {
+  const out = new Uint8Array(grid * grid);
+  for (const rings of shapes || []) {
+    if (!rings?.length) continue;
+    const m = rasterizePolygon(rings, grid, grid, ([x, y]) => [x, y]);
+    for (let i = 0; i < out.length; i++) if (m[i]) out[i] = 1;
+  }
+  /* The property line has the last word here as everywhere else. A traced
+     vertex can land a hair outside the parcel where the mask was clipped to
+     it, and that hair must not count as lawn. */
+  if (within) for (let i = 0; i < out.length; i++) out[i] &= within[i] ? 1 : 0;
+  return out;
+}
+
+/**
+ * What the tracer added and what it took away, against the mask it traced.
+ *
+ * The honest companion to the pictures. Hole-filling and smoothing make an
+ * outline tidier than the answer underneath it, which is the point — and it
+ * also means a picture can look better than the model is. This says by how
+ * much, in square feet, in both directions.
+ */
+export function traceDrift({ predicted, traced, within }) {
+  let added = 0, removed = 0;
+  for (let i = 0; i < traced.length; i++) {
+    if (within && !within[i]) continue;
+    const mask = Boolean(predicted[i]);
+    const poly = Boolean(traced[i]);
+    if (poly && !mask) added++;
+    else if (mask && !poly) removed++;
+  }
+  return { added, removed };
 }
 
 /* ----------------------------------------------------------- the painting */

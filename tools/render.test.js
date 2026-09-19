@@ -22,7 +22,7 @@
  */
 
 import {
-  drawPrediction, tracePrediction, mistakeCounts,
+  drawPrediction, tracePrediction, traceMask, traceDrift, mistakeCounts,
   TRACE, TRUTH_FILL, INFERRED_EDGE,
 } from './render-prediction.js';
 import {
@@ -128,6 +128,68 @@ const block = (mask, x0, y0, x1, y1) => {
   check('and counted, so the picture cannot quietly flatter the model',
     t.droppedPieces === 3 && t.droppedPx === 12,
     `${t.droppedPieces} dropped, ${t.droppedPx}px`);
+}
+
+/* ------------------------------- the caption describes the picture */
+{
+  /*
+   * THE BUG THIS PINS, because it was found by eye and could only be found by
+   * eye. A caption read "of the ground marked inferred, it missed 17.8%" under
+   * a rendering whose outline covered that ground completely. Neither was
+   * wrong: the number came from the model's raw mask, the picture is the
+   * trace, and the tracer does not trace a hole below 0.15% of the frame --
+   * about 60 sq ft on a typical lot.
+   *
+   * The filling is wanted. Lawns are not polka dots and a shape full of
+   * pinholes is not an editing surface. What is not wanted is a number
+   * describing a different object from the picture it sits under, so the
+   * page's per-lawn figures are asked of the traced outline.
+   */
+  const truth = block(zeros(), 30, 30, 100, 100);
+  const inferred = block(zeros(), 50, 50, 80, 80);
+  const predicted = block(zeros(), 30, 30, 100, 100);
+  const within = ones();
+
+  /* A scatter of pinholes through the inferred patch, each far too small to
+     survive tracing. */
+  let punched = 0;
+  for (let y = 52; y < 79; y += 3) {
+    for (let x = 52; x < 79; x += 3) { predicted[y * GRID + x] = 0; punched++; }
+  }
+
+  const onMask = mistakeCounts({ truth, predicted, within, inferred });
+  check('the raw mask really does miss ground inside the inferred patch',
+    onMask.missedInferredPct > 5, `${onMask.missedInferredPct.toFixed(1)}% (${punched} cells)`);
+
+  const t = tracePrediction({ predicted, within, grid: GRID, mpp: 0.12 });
+  const traced = traceMask({ shapes: t.shapes, within, grid: GRID });
+  const onTrace = mistakeCounts({ truth, predicted: traced, within, inferred });
+
+  check('but the outline drawn from it does not, because the holes are filled',
+    onTrace.missedInferredPct === 0,
+    `${onTrace.missedInferredPct.toFixed(1)}% -- this is the number the page must print`);
+
+  /*
+   * AND THE TIDYING IS REPORTED RATHER THAN SILENT. Filling holes makes the
+   * picture tidier than the model's answer, which is exactly how a rendering
+   * could flatter a model without anybody lying.
+   */
+  const drift = traceDrift({ predicted, traced, within });
+  check('and the square footage the tracer filled in is counted',
+    drift.added >= punched, `${drift.added} cells filled, ${punched} punched`);
+
+  /*
+   * A HOLE BIG ENOUGH TO MEAN SOMETHING STILL SURVIVES. If filling were
+   * unconditional, a shed or a pool would be swallowed and the outline would
+   * be confidently wrong about a thing anybody can see.
+   */
+  const withShed = block(zeros(), 30, 30, 100, 100);
+  for (let y = 55; y < 80; y++) for (let x = 55; x < 80; x++) withShed[y * GRID + x] = 0;
+  const shedTrace = tracePrediction({ predicted: withShed, within, grid: GRID, mpp: 0.12 });
+  const shedMask = traceMask({ shapes: shedTrace.shapes, within, grid: GRID });
+  check('a hole big enough to be an object is kept, not filled',
+    shedMask[67 * GRID + 67] === 0 && shedMask[35 * GRID + 35] === 1,
+    `${shedTrace.rings.length} rings -- the outer ring plus the hole`);
 }
 
 /* ----------------------------------------- the property line clips the trace */

@@ -40,7 +40,9 @@ import {
   imageFeatures, featureStats, standardise, FEATURE_COUNT, FEATURE_NAMES,
 } from '../public/lib/features.js';
 import { train, predict, balanceWeights } from './learner.js';
-import { drawPrediction, tracePrediction, mistakeCounts } from './render-prediction.js';
+import {
+  drawPrediction, tracePrediction, traceMask, traceDrift, mistakeCounts,
+} from './render-prediction.js';
 import {
   loadBackbone, tiledFeatures, sampleAt, projection, project,
 } from './backbone.js';
@@ -842,9 +844,23 @@ async function publishRenderings(bucket, best, lawns, using) {
         continue;
       }
 
+      /*
+       * THE NUMBERS ARE ASKED OF THE OUTLINE, not of the mask behind it.
+       *
+       * A reader spotted the difference: a caption said 17.8% of the inferred
+       * ground was missed under a picture whose outline covered that ground
+       * completely. Both were right -- the tracer fills any hole under about
+       * 60 sq ft, which is wanted, and the caption was describing the other
+       * object. So these come from the traced polygon rasterised back.
+       *
+       * r.mine.errorPct stays on the raw mask: it is the run's own figure,
+       * the one the table sorts by and the findings file quotes.
+       */
+      const traced = traceMask({ shapes: trace.shapes, within: L.within, grid: GRID });
       const counts = mistakeCounts({
-        truth: L.truth, predicted: r.predicted, within: L.within, inferred: L.inferred,
+        truth: L.truth, predicted: traced, within: L.within, inferred: L.inferred,
       });
+      const drift = traceDrift({ predicted: r.predicted, traced, within: L.within });
       const sqft = (px) => (px * L.mpp * L.mpp) / SQM_PER_SQFT;
       entries.push({
         key,
@@ -868,6 +884,15 @@ async function publishRenderings(bucket, best, lawns, using) {
         vertices: trace.vertices,
         droppedPieces: trace.droppedPieces,
         droppedSqFt: Math.round(sqft(trace.droppedPx)),
+        /*
+         * How far the outline drifted from the mask it was traced from, both
+         * ways. Tidying is the tracer's job and mostly an improvement, but it
+         * makes a picture look better than the model is -- so the amount is
+         * reported rather than left to be discovered by someone comparing a
+         * caption with a shape.
+         */
+        filledSqFt: Math.round(sqft(drift.added)),
+        trimmedSqFt: Math.round(sqft(drift.removed)),
       });
     }
 
