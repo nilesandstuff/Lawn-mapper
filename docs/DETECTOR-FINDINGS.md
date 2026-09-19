@@ -34,6 +34,15 @@ changes and results from different corpora are not comparable.
 
 Gap: **1.3×**. It was 1.4× at 896px, 1.5× at 672px and 1.6× under DINOv2.
 
+**1280 is the working size, on 2.1 points against 896's best (28.2%) for about
+five extra minutes of extraction.** That was argued the other way for an hour
+on 2026-09-19, on the strength of a reproducibility claim that did not survive
+a third run (H13) and a suspicion that the 26.1% came from the ring bug, which
+it could not have (H4). The row-by-row picture is odd and stands: the two sizes
+swap which configuration wins — the eye ALONE is much better at 896 (28.2%
+against 32.5%), and the ring row is much better at 1280 (26.1% against 32.1%).
+Nobody knows why.
+
 Best-of-six is a *selected* number: six configurations were scored and the
 lowest is quoted. At a fixed corpus that selection is reproducible (H10), which
 is not the same as saying it would hold on the next twenty lawns.
@@ -104,14 +113,26 @@ touches exactly one configuration. So:
 - **A colour-only ring beats colour alone: 31.2% against 32.9%.** So the ring's
   gain does not need the backbone, which is the question that row was built to
   answer. But 1.7 points is small — supportive, not conclusive.
-- **`both, with surroundings` is unchanged at 32.1%**, because it declares
-  `backbone: true` and legitimately keeps its eye-carrying ring. Comparing it
-  against `both` (34.6%) still gives the ring 2.5 points.
+- **`both, with surroundings` is unchanged**, at 32.1% (896) and 26.1% (1280),
+  because it declares `backbone: true` and legitimately keeps its eye-carrying
+  ring. The fix could never have touched it.
+
+**So the 26.1% best result is NOT an artefact of the bug**, which is what it
+was suspected of being. The suspicion was careless: the fix only affects a
+configuration that asks for `backbone: false`, and the winning row asks for
+`backbone: true`. It was never in scope.
 
 Taken with H4's history — negative, negative, mildly positive, strongly
-positive, and now two mild positives — the ring looks like a **small, real,
-colour-driven help of roughly 2 points**, not the 7–9 points the buggy 1280
-rows suggested.
+positive, and now the colour-only version at +1.7 points at both sizes — the
+ring is doing two separable things:
+
+- **as colour alone, a small real help:** 31.2% against 32.9%, reproduced
+  exactly at 896 and 1280;
+- **carrying backbone features, it depends entirely on the size:** it costs
+  4.5 points at 896 and gains 7.1 at 1280.
+
+That second line is the open question now, and it is a sharper one than "does
+the ring work".
 
 **Do not read the 896 run as vindication.** The tool prints an encouraging
 sentence next to that row ("this is the result the ring was built for"), and
@@ -342,63 +363,51 @@ like a confirmation of the theory it was built to test. Sharpness is now taken
 as the peak within reach, so it is a property of a stretch of boundary rather
 than of a cell.
 
-### H13. 1280px does not reproduce. 896px reproduces exactly.
-*Runs 35417355609 and 35422422911 (1280px, twice) against 35411040880 and
-35449083419 (896px, twice), 2026-09-19, all on corpus fingerprint `14a2t7k`.*
+### H13. Extraction usually reproduces exactly. One run in five did not.
+*Five runs on corpus `14a2t7k`, 2026-09-19: 35411040880 and 35449083419 at
+896px; 35417355609, 35422422911 and 35449091188 at 1280px.*
 
-**This entry was written after the 1280 pair and said "backbone rows drift ±2.7
-points". The 896 pair then contradicted it, and the correction matters more
-than the original claim.** At 896 every backbone row came back byte-identical
-across ELEVEN COMMITS of unrelated change:
+**THIS ENTRY HAS BEEN WRONG TWICE, and the way it was wrong is the useful
+part.** It first said "backbone rows drift ±2.7 points", generalised from one
+pair. Then it said "1280 does not reproduce, 896 does", generalised from two
+more. A third 1280 run agreed with the first 1280 run *exactly* and killed that
+story too. Two confident readings off small samples, both wrong, in one day —
+which is H7's lesson arriving from a different direction.
 
-```
-                            896 run 1   896 run 2
-colour and texture only       32.9%       32.9%
-the pretrained eye only       28.2%       28.2%
-both                          34.6%       34.6%
-both, 96 numbers a patch      32.4%       32.4%
-both, with surroundings       32.1%       32.1%
-colour, with surroundings     35.7%       31.2%  <- the only row the ring fix touches
-```
-
-The one row that moved is the one the ring fix was supposed to move, and
-nothing else moved at all. That is as clean as a natural experiment gets here.
-
-So the drift is **specific to 1280px**, not to backbones. The two 1280 runs
-also took 21 and 39 minutes for identical work — a factor of two in speed,
-which points at runner variation (core count changing thread count, changing
-the order of a float reduction) rather than at anything in this repository.
-
-**PROBABLE CAUSE, NOT ESTABLISHED.** What is established:
-
-1. **896 is trustworthy to the decimal. 1280 is not.** Any 1280 comparison
-   needs the identical configuration run twice before it means anything.
-2. That is now a second reason to prefer 896, on top of it being faster (16.5
-   minutes of extraction against 21–39) and better on the eye-only row.
-3. H9's "896 → 1280 regressed the eye by 4.3 points" is unsafe in both
-   directions: the 1280 end of it is the unreproducible one.
-4. **Quote 1280 numbers to whole points**, not decimals, and never build an
-   argument on a 1280 gap under 3 points.
-
-The 1280 pair, for the record:
+What five runs actually show:
 
 ```
-                            run 1   run 2   drift
-colour and texture only     32.9%   32.9%    0.0   <- CONTROL, exact even here
-the pretrained eye only     32.5%   35.0%   +2.5
-both                        33.2%   35.9%   +2.7
-both, 96 numbers a patch    31.5%   32.2%   +0.7
-colour, with surroundings   34.4%   34.8%   +0.4   <- was not backbone-free; see H4
-both, with surroundings     26.1%   26.4%   +0.3
+                          896 r1  896 r2 | 1280 r1  1280 r2  1280 r3
+colour and texture only    32.9    32.9  |  32.9     32.9     32.9
+the pretrained eye only    28.2    28.2  |  32.5     35.0     32.5
+both                       34.6    34.6  |  33.2     35.9     33.2
+both, 96 numbers a patch   32.4    32.4  |  31.5     32.2     31.5
+both, with surroundings    32.1    32.1  |  26.1     26.4     26.1
+colour, with surroundings  35.7  → 31.2  |  34.4     34.8   → 31.2
 ```
 
-The JavaScript is deterministic in both cases — the random projection is
-seeded, the fold sampling is seeded, the head is seeded — so whatever moves
-arrives with the features from the Python extraction.
+- **Four runs out of five reproduce their pair exactly**, to the decimal, on
+  every row.
+- **One run — 35422422911 — differed on every backbone row.** It is also the
+  slow one: 39 minutes of extraction against 21, 22 and 16.5 for the others.
+- The control is 32.9% in all five.
+- `colour, with surroundings` moved only where the ring fix moved it, and now
+  reads **31.2% at both sizes**, identical down to its whole class table. It is
+  genuinely backbone-free at last, so size cannot touch it — which is the
+  cleanest confirmation available that the fix does what it says.
 
-One good thing came of the wrong version of this entry: re-running an identical
-configuration became a routine worth doing, and it is how the colour-only-ring
-bug was found.
+**PROBABLE CAUSE, NOT ESTABLISHED:** a differently-provisioned runner. A
+different core count changes the thread count, which changes the order of a
+float reduction, which changes low bits that a 23-lawn leave-one-out amplifies.
+The one anomalous run being the one that took twice as long fits that and
+proves nothing. It is not size-specific — two 1280 runs agree perfectly.
+
+**The rule that survives all three versions of this entry:** the control and
+any genuinely backbone-free row are exact, so use them to confirm two tables
+are comparable. For a backbone row, **a gap under about 3 points needs the
+identical configuration run again before it means anything** — occasionally it
+will come back different, and you cannot tell which kind of run you have
+without a second one.
 
 ### H10. The backbone-free control is reproducible to the decimal
 *Runs 35409315409 (672px), 35411040880 (896px), 35416318719 (workflow 12,
@@ -625,4 +634,5 @@ investigated.
 | 2026-09-19 | 35416318719 | 23 | DINOv2 tiled 224px | 32.9% | 20.3% | control reproduced a third time (H10); first outline rendering, drawn from the **colour-only** row since that won here |
 | 2026-09-19 | 35417355609 | 23 | Scale-MAE large 1280px | **26.1%** | 20.3% | best ever; ring +7.1 (H4); eye alone REGRESSED 28.2 -> 32.5, so 896 is the peak for it (H9); beat SAM on 8 of 19 |
 | 2026-09-19 | 35422422911 | 23 | Scale-MAE large 1280px | 26.4% | 20.3% | repeat of the above: control exact, every backbone row moved (H13). First "where the error lives" table — H12 confirmed, S8's blame on the backbone not supported |
-| 2026-09-19 | 35449083419 | 23 | Scale-MAE large 896px | 28.2% | 20.3% | ring fix. Every row identical to the earlier 896 run except the one the fix touches (35.7 → **31.2**), so 896 reproduces exactly and H13 is about 1280, not about backbones |
+| 2026-09-19 | 35449083419 | 23 | Scale-MAE large 896px | 28.2% | 20.3% | ring fix. Every row identical to the earlier 896 run except the one the fix touches (35.7 → **31.2**) |
+| 2026-09-19 | 35449091188 | 23 | Scale-MAE large 1280px | **26.1%** | 20.3% | ring fix. Matches 1280 run 1 exactly on every backbone row, so run 35422422911 was the anomaly, not 1280 (H13 revised again). Colour-only ring now 31.2% at BOTH sizes |
