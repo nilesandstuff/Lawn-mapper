@@ -34,6 +34,17 @@ changes and results from different corpora are not comparable.
 
 Gap: **1.3×**. It was 1.4× at 896px, 1.5× at 672px and 1.6× under DINOv2.
 
+> **WORK ON THE MODEL IS PAUSED, by the owner's decision on 2026-09-19.** The
+> reasoning is in H11: the model cannot help build the corpus until it beats
+> SAM, and it is not close. Four backbones, four resolutions, a ring, a feature
+> vector rebuild and two real bugs later, the gap has gone from 1.6× to 1.3×
+> and every run still ends "STILL NOT BETTER than the detector we pay for".
+> The corpus is the constraint (S3), so the effort moved to growing it.
+>
+> Nothing here is abandoned and nothing needs redoing. Pick it up by running
+> workflow 14 at 896 when the corpus is meaningfully larger, and read H13 and
+> H14 before comparing that table to anything above.
+
 **1280 against 896 is UNSETTLED, by the owner's decision on 2026-09-19, pending
 more corpus.** 1280 holds the better number — 26.1% against 28.2% — but 2.1
 points at 23 lawns decides nothing, and the case swung twice in an hour on
@@ -385,6 +396,52 @@ like a confirmation of the theory it was built to test. Sharpness is now taken
 as the peak within reach, so it is a property of a stretch of boundary rather
 than of a cell.
 
+### H14. The shade features helped the colour row 4.3 points — and not where aimed
+*Run 35452491362, 2026-09-19, 896px, corpus `14a2t7k`. FEATURE_COUNT 11 → 14:
+normalised excess green, regional brightness, relative brightness, and the
+texture windows converted from pixels to metres.*
+
+```
+                            before   after
+colour and texture only      32.9%   28.6%   -4.3   <- the target of all four changes
+the pretrained eye only      28.2%   28.2%    0.0   <- reads no colour, cannot move
+both                         34.6%   34.9%   +0.3
+both, 96 numbers a patch     32.4%   31.9%   -0.5
+colour, with surroundings    31.2%   37.0%   +5.8   <- WORSE, and unexplained
+both, with surroundings      32.1%   33.6%   +1.5
+```
+
+**4.3 points is the largest single improvement the colour row has ever had
+here.** It is also the row that matters least: the best of six is unchanged at
+28.2%, because the winner reads no colour at all, and the gap to SAM is still
+1.4×.
+
+**The improvement is not where it was aimed**, which is the part to remember:
+
+```
+colour and texture only     before   after
+sharp boundary               50.3%   48.0%   -2.3
+soft boundary                37.3%   35.6%   -1.7
+hard-rimmed shade            41.8%   38.2%   -3.6   <- the target
+soft-rimmed shade            14.8%   19.6%   +4.8   <- worse
+the middle of the lawn       28.3%   23.4%   -4.9   <- biggest gain, not a target
+```
+
+Hard shade did improve, by 3.6 points. But open lawn improved more, and soft
+shade got worse. So these read as **better general colour features that happen
+to help in shade**, not as the shadow fix they were designed as. Do not repeat
+"the shadow features fixed shadows"; the table does not say that.
+
+**NEW BASELINE: the control is 28.6%, not 32.9%.** Every run before
+2026-09-19 used an 11-column vector. A table with a 32.9% control is from the
+old features and is not comparable to one with 28.6%.
+
+**And the two error columns are NOT the same pixels: the overlap is 7%.** That
+was a real worry — both splits read one gradient map, so hard-rimmed shade
+beside a driveway would be counted in both, and the table would report one
+finding as two confirmations. Measured, they are separate ground. H12's two
+halves stand as two findings.
+
 ### H13. Extraction usually reproduces exactly. One run in five did not.
 *Five runs on corpus `14a2t7k`, 2026-09-19: 35411040880 and 35449083419 at
 896px; 35417355609, 35422422911 and 35449091188 at 1280px.*
@@ -658,3 +715,4 @@ investigated.
 | 2026-09-19 | 35422422911 | 23 | Scale-MAE large 1280px | 26.4% | 20.3% | repeat of the above: control exact, every backbone row moved (H13). First "where the error lives" table — H12 confirmed, S8's blame on the backbone not supported |
 | 2026-09-19 | 35449083419 | 23 | Scale-MAE large 896px | 28.2% | 20.3% | ring fix. Every row identical to the earlier 896 run except the one the fix touches (35.7 → **31.2**) |
 | 2026-09-19 | 35449091188 | 23 | Scale-MAE large 1280px | **26.1%** | 20.3% | ring fix. Matches 1280 run 1 exactly on every backbone row, so run 35422422911 was the anomaly, not 1280 (H13 revised again). Colour-only ring now 31.2% at BOTH sizes |
+| 2026-09-19 | 35452491362 | 23 | Scale-MAE large 896px | 28.2% | 20.3% | **14-column features** (H14). Colour row 32.9 → 28.6, its biggest gain ever, but the best of six does not move and the gap stays 1.4×. Control baseline is now 28.6%. Last run before the pause |
