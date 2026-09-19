@@ -30,9 +30,13 @@ changes and results from different corpora are not comparable.
 | | error | notes |
 |---|---|---|
 | SAM (what we pay for) | **20.3%** | the line to beat, 19 lawns with a stored SAM answer |
-| best of ours | **28.2%** | Scale-MAE 896px, **the pretrained eye ALONE** |
+| best of ours | **26.1%** | Scale-MAE 1280px, **both, with surroundings**, beat SAM on 8 of 19 |
 
-Gap: **1.4×**. It was 1.5× at 672px and 1.6× under DINOv2.
+Gap: **1.3×**. It was 1.4× at 896px, 1.5× at 672px and 1.6× under DINOv2.
+
+Best-of-six is a *selected* number: six configurations were scored and the
+lowest is quoted. At a fixed corpus that selection is reproducible (H10), which
+is not the same as saying it would hold on the next twenty lawns.
 
 ---
 
@@ -78,22 +82,39 @@ called the positive one "within noise" itself.**
 | DINOv2 224px, 24 lawns | colour+ring **43.7%** vs colour **34.5%** — 9.2 WORSE |
 | Scale-MAE 672px, 23 lawns | "everything visible 3.8 points worse, and inferred areas no better. The ring is costing and not paying." |
 | Scale-MAE 896px, 23 lawns | both+ring **32.1%** vs both **34.6%** — 2.5 BETTER; tool: "inferred areas 3.5 points better, everything visible 3.1 points better — within noise." |
+| Scale-MAE 1280px, 23 lawns | both+ring **26.1%** vs both **33.2%** — **7.1 BETTER**, and the best number this project has measured |
 
 **Do not read the 896 run as vindication.** The tool prints an encouraging
 sentence next to that row ("this is the result the ring was built for"), and
 the same paragraph says the movement is within noise. Given H7's floor, a
 2.5-point swing is not a result.
 
-The honest summary: across three runs the ring has no stable sign. It is not
-established as harmful and it is not established as useful.
+**The 1280 run is the first ring result large enough to be worth arguing
+about**, at 7.1 points — and the tool still printed "neither column moved
+beyond noise" beside it, because the seen/inferred split it reads did not move.
+Two things are true at once: the ring's own diagnostic says nothing happened,
+and the headline error dropped further than any other single change here.
+
+The honest summary: across four runs the ring is **negative, negative, mildly
+positive, strongly positive**, in that order — and that order is also the order
+of backbone quality. It is not established as harmful and it is not established
+as useful. It is the most interesting open question in this file (S6).
 
 See also E3 — the published result saying receptive field alone is not the
 lever for occlusion.
 
 **SPECULATION (S6):** the ring may only be able to help once the centre
 features are good enough to be worth contextualising, which would explain why
-its best showing is on the run with the best backbone. Untested, and exactly
-the kind of story that sounds right and has twice measured as nothing.
+its two best showings are the two best backbone settings, in order. Still
+SPECULATION — four points on a curve that was *drawn after* the numbers came
+in, and exactly the kind of story that sounds right and has twice measured as
+nothing here.
+
+**How to actually test it, since the story is now cheap to break:** run 1280
+again with the ring on the *worse* eye settings, or 448px with the ring on. If
+the ring's benefit tracks backbone quality it should shrink or reverse there.
+Nothing in this file currently distinguishes S6 from "1280 happens to suit the
+ring".
 
 ### H5. A wider squeeze of the backbone's output helps
 - *DINOv2:* 96 numbers a patch **34.0%** vs 32 numbers **37.1%**.
@@ -141,37 +162,49 @@ Consequences, and these are rules rather than observations:
 **This is the cleanest experiment this project has run**, because the
 backbone-free control came back byte-identical:
 
+*Run 35417355609, 2026-09-19, added 1280px — the frames' own size.*
+
+**This is the cleanest experiment this project has run**, because the
+backbone-free control came back byte-identical at every size:
+
 ```
-                            672px   896px
-colour and texture only     32.9%   32.9%   +0.0   <- CONTROL, unchanged
-the pretrained eye only     36.4%   28.2%   -8.2
-both                        31.2%   34.6%   +3.4
-both, 96 numbers a patch    30.9%   32.4%   +1.5
-colour, with surroundings   33.2%   35.7%   +2.5
-both, with surroundings     33.8%   32.1%   -1.7
+                            672px   896px  1280px
+colour and texture only     32.9%   32.9%   32.9%   <- CONTROL, never moves
+the pretrained eye only     36.4%   28.2%   32.5%
+both                        31.2%   34.6%   33.2%
+both, 96 numbers a patch    30.9%   32.4%   31.5%
+colour, with surroundings   33.2%   35.7%   34.4%
+both, with surroundings     33.8%   32.1%   26.1%   <- best measured here, ever
 ```
 
 The control moving 0.0 points means the corpus, the split and the seed are all
 identical. Every other difference **is** the resolution.
 
-Two findings, and the second is as interesting as the first:
+1. **672 → 896 moved the eye alone 8.2 points better, 36.4% → 28.2%** — far
+   outside anything else measured, and the first time it beat colour alone.
+   This confirmed S1: we were starving a scale-aware backbone of the resolution
+   we actually have.
 
-1. **The eye alone improved 8.2 points, from 36.4% to 28.2%** — far outside
-   the noise floor, and for the first time it **beats colour alone** (32.9%).
-   The tool's verdict flipped branches accordingly: *"it is reading things
-   colour cannot."* This confirms S1: we were starving a scale-aware backbone
-   of the resolution we actually have.
+2. **896 → 1280 moved it 4.3 points BACK, to 32.5%.** So resolution is a lever
+   with a top to it, and among the three sizes measured **the eye alone peaks
+   at 896**. Native size is not automatically the best size. Do not state
+   "bigger is better" as a finding of this project; state that 896 won.
 
-2. **Every combined row got WORSE.** "both" went 31.2% → 34.6%; "both, 96
-   numbers" went 30.9% → 32.4%. Adding colour to a better eye made things
-   worse. **This is unexplained.** See S7.
+3. **1280 produced the best single number this project has: 26.1%**, "both,
+   with surroundings", beating SAM on 8 of 19 — more lawns than any row before
+   it. It is 5.4 points clear of the next row in its own table.
+
+4. **The combined rows recovered.** At 896 every combination was worse than at
+   672 (S7); at 1280 they are back in line — "both" 33.2%, "both, 96" 31.5%.
+   Whatever S7 is about, it is not monotone in resolution either.
 
 ### H10. The backbone-free control is reproducible to the decimal
-*Runs 35409315409 (672px), 35411040880 (896px) and 35416318719 (workflow 12,
-DINOv2 tiled 224px), all 23 lawns, fingerprint `14a2t7k`.*
+*Runs 35409315409 (672px), 35411040880 (896px), 35416318719 (workflow 12,
+DINOv2 tiled 224px) and 35417355609 (1280px), all 23 lawns, fingerprint
+`14a2t7k`.*
 
-"Colour and texture only" came back at **32.9%** in all three — across two
-workflows, two languages and three backbone settings, because none of them
+"Colour and texture only" came back at **32.9%** in all four — across two
+workflows, two languages and four backbone settings, because none of them
 touch that row. The corpus, the split and the seed are deterministic.
 
 That is what makes H9's comparison valid, and it is the check to run first on
@@ -264,9 +297,14 @@ Marked so they are not later quoted as findings.
 Tested 2026-09-19 and **supported**: 672px → 896px improved the eye-only row by
 8.2 points against an unchanged control. Promoted to H9.
 
-The open part: **896 is the largest size the workflow offers.** Whether the
-gain continues past it is untested, and the frames themselves are 1280px, so
-there is headroom in the source before anything has to be re-fetched.
+The open part is now closed too, and the answer is no: **1280px, the frames'
+own size, moved the eye-only row 4.3 points back to 32.5%** (run 35417355609).
+The gain does not continue past 896. Whatever resolution mismatch was being
+relieved at 896 is over-corrected at native size — so this was a mismatch to
+tune, not a ceiling to remove.
+
+Worth noticing before repeating the original reasoning anywhere: that reasoning
+predicted native size would be best, and it was not.
 
 ### S7. Why does colour HURT once the eye is good?
 H9's second finding, unexplained. At 672px "both" beat the eye alone; at 896px
@@ -283,6 +321,13 @@ Candidates, none tested:
 
 Worth resolving, because it decides whether the published model should carry
 colour at all.
+
+**Update, 1280px run 35417355609: the effect did not survive the next size.**
+There the combinations are back in line with the eye alone (eye 32.5%, both
+33.2%, both+96 31.5%) and the best row of all is a combination *with* the ring
+at 26.1%. So "colour hurts a good eye" was a description of one column of one
+run, not a property of good eyes. Keep the question — the 896 numbers are real
+— but do not carry the sentence forward as a finding.
 
 ### S2. A tree mask would help more than another backbone
 E5 gives a tree/no-tree probability per pixel at our resolution. Our biggest
@@ -351,3 +396,4 @@ investigated.
 | 2026-09-19 | 35409315409 | 23 | Scale-MAE large 672px | 30.9% | 20.3% | eye-vs-colour gap 14.0 -> 3.5 |
 | 2026-09-19 | 35411040880 | 23 | Scale-MAE large 896px | **28.2%** | 20.3% | S1 confirmed; control identical, eye-only -8.2; combined rows worse (S7) |
 | 2026-09-19 | 35416318719 | 23 | DINOv2 tiled 224px | 32.9% | 20.3% | control reproduced a third time (H10); first outline rendering, drawn from the **colour-only** row since that won here |
+| 2026-09-19 | 35417355609 | 23 | Scale-MAE large 1280px | **26.1%** | 20.3% | best ever; ring +7.1 (H4); eye alone REGRESSED 28.2 -> 32.5, so 896 is the peak for it (H9); beat SAM on 8 of 19 |

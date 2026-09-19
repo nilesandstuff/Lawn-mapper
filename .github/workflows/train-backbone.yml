@@ -60,10 +60,16 @@ on:
           - '896'
           # THE FRAMES THEMSELVES ARE 1280px, so this is the last size that
           # asks the backbone a question about pixels that exist rather than
-          # about an upscale. It is also the slowest by a long way: attention
-          # is quadratic in the number of patches, and 672 -> 896 already cost
-          # 5 minutes -> 16. Expect roughly 70 minutes of extraction and
-          # something over an hour and a half in total.
+          # about an upscale.
+          #
+          # MEASURED, run 35417355609: 21 minutes of extraction, 10 of scoring,
+          # 33 for the whole job. The estimate here used to say "roughly 70
+          # minutes of extraction and something over an hour and a half in
+          # total", extrapolated from 672 -> 896 costing 5 minutes -> 16.
+          # That extrapolation was wrong by more than double, and it was wrong
+          # in the direction that discourages running it -- which it did, for
+          # a day. The three-hour cap below stays as it is; a generous cap
+          # costs nothing and a tight one wastes a run at its last step.
           - '1280'
       publish:
         description: 'Publish the result if it wins'
