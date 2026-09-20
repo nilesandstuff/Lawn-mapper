@@ -75,7 +75,40 @@ async function goTab(page, name) {
  * onwards -- every check below that point went unrun for weeks, including the
  * two gesture ones this run was supposed to be about.
  */
+/**
+ * The lawn tools on screen, before anything reaches for one.
+ *
+ * FOUR SEPARATE STOPPAGES IN THIS SUITE WERE THIS ONE FACT. Every button on
+ * the rail lives inside #shape-tools, which is hidden unless lawn mode is
+ * live -- so a click aimed at one while the app sits in Move, Draw or the
+ * property line waits ten seconds for something that was never going to
+ * appear, throws, and takes every section below it unrun.
+ *
+ * Checked rather than pressed, because #mode-shape TOGGLES: pressing it when
+ * lawn mode is already live closes it, which is how this suite kept turning a
+ * precondition into the opposite of one.
+ */
+async function inLawnMode(page) {
+  if (await page.locator('#shape-tools').isVisible()) return;
+  await page.click('#mode-shape');
+  await page.locator('#shape-tools').waitFor({ state: 'visible', timeout: 5000 });
+}
+
+/** Corner editing, armed. Points is never folded away, so this is the mode
+    plus one press -- but the press still has to be a press that arms. */
+async function armPoints(page) {
+  await inLawnMode(page);
+  await page.click('#tool-points');
+  await page.waitForFunction(
+    () => document.querySelector('#tool-points')?.getAttribute('aria-pressed') === 'true',
+    null,
+    { timeout: 5000 },
+  );
+}
+
 async function armBrush(page, which) {
+  await inLawnMode(page);
+
   /*
    * WAITED ON, NOT SLEPT THROUGH. The first version used fixed 200ms pauses
    * and lost the race about one run in two: the rail had not re-rendered, the
@@ -787,7 +820,7 @@ check('with nothing locked before any work has been done',
    * else -- and any one of them being wrong looks identical from here: nothing
    * moves.
    */
-  await page.click('#tool-points');
+  await armPoints(page);
   await page.waitForTimeout(400);
 
   /*
@@ -2161,24 +2194,12 @@ console.log('\n--- cutting a shape out ---');
       `lost ${Math.round(lost)} sq ft for a ${Math.round(cut.cutSqFt)} sq ft cut`);
 
     /*
-     * INTO THE CORNER TOOLS THE WAY A PERSON WOULD GET THERE.
-     *
-     * This clicked #tool-points directly. That button is on the rail, and the
-     * rail's shape tools are hidden unless lawn mode is live -- which it is
-     * not here, because the cut was started from the Draw tab. The app is
-     * right about that: back() returns you to Points only when the drawing
-     * STARTED from Points, which is the loop it exists to close. Pressing "cut
-     * out a shape" on the Draw tab and staying on the Draw tab is not a bug.
-     *
-     * So the click waited ten seconds for a button that was never going to
-     * appear, threw, and stopped the run -- taking the whole of the plan
-     * split, saving, and everything after it.
+     * Into the corner tools the way a person would get there -- lawn mode
+     * first. The cut was started from the Draw tab and the app leaves you
+     * there, correctly: back() returns you to Points only when the drawing
+     * STARTED from Points. armPoints knows to open lawn mode.
      */
-    if (!(await page.locator('#tool-points').isVisible())) {
-      await page.click('#mode-shape');
-      await page.locator('#tool-points').waitFor({ state: 'visible', timeout: 5000 });
-    }
-    await page.click('#tool-points');
+    await armPoints(page);
     await page.waitForTimeout(400);
 
     const rings = await page.evaluate(() => window.__lmEditable());
@@ -2237,7 +2258,7 @@ console.log('\n--- cutting a shape out ---');
 console.log('\n--- held at the property line ---');
 {
   await goTab(page, 'draw');
-  await page.click('#tool-points');
+  await armPoints(page);
   await page.waitForTimeout(400);
 
   /*
@@ -2600,7 +2621,7 @@ if (outsideVisible) {
 console.log('\n--- phantom midpoints ---');
 await page.click('#mode-shape');
 await page.waitForTimeout(300);
-await page.click('#tool-points');
+await armPoints(page);
 await page.waitForTimeout(500);
 
 const mids = await page.evaluate(() => window.__lmMidpoints());
@@ -2649,13 +2670,12 @@ console.log('\n--- mode isolation ---');
  */
 const reachableIn = async (mode, tool) => {
   if (tool) {
-    const inShape = await page.evaluate(() =>
-      document.querySelector('#mode-shape').getAttribute('aria-pressed') === 'true');
-    if (!inShape) {
-      await page.click('#mode-shape');
-      await page.waitForTimeout(350);
-    }
-    await page.click(`#tool-${tool}`);
+    /*
+     * Through armBrush, which knows the two things this got wrong on its own:
+     * that Add and Erase fold away behind one icon while Points is live, and
+     * that unfolding them arms whichever was last in hand.
+     */
+    await armBrush(page, tool);
   } else {
     await page.click(`#mode-${mode}`);
   }
@@ -2726,7 +2746,7 @@ check('no corner is grabbable while a brush is live',
   inBrush.ids.length === 0, JSON.stringify(inBrush.ids));
 check('and shapes stay locked under the brush too',
   inBrush.drawMode === 'lm_locked', `draw is in ${inBrush.drawMode}`);
-await page.click('#tool-points');
+await armPoints(page);
 await page.waitForTimeout(300);
 
 /*
