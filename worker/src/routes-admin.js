@@ -598,7 +598,7 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
 
     const rows = await env.DB.prepare(
       `SELECT j.id, j.worker, j.county, j.parcel_sqft, j.submitted_at, j.note,
-              j.map_id, j.lng, j.lat,
+              j.map_id, j.lng, j.lat, j.seconds,
               c.square_feet, c.frame, c.shapes, c.parcel, c.image_key
          FROM lawn_jobs j
          LEFT JOIN corpus c ON c.id = j.map_id
@@ -634,10 +634,41 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
       'SELECT state, COUNT(*) n FROM lawn_jobs GROUP BY state'
     ).all();
 
+    /*
+     * HOW LONG A MAP REALLY TAKES, as a median.
+     *
+     * The reward has to be defensible: every crowd platform left after MTurk
+     * decides whether a task underpays by dividing the reward by the MEDIAN
+     * OBSERVED time, not by the estimate typed into the listing. Guessing five
+     * minutes on a job that really takes eight turns a compliant reward into a
+     * flagged one without anybody doing anything wrong.
+     *
+     * The median rather than the mean, because one worker who wandered off
+     * with a claim open for fifty minutes would drag a mean past the point of
+     * being useful -- and that is the shape of outlier this queue produces.
+     *
+     * Read in SQL rather than over the page of rows above: that page is twelve
+     * cards, and the number has to be over everything submitted.
+     */
+    const timings = await env.DB.prepare(
+      `SELECT seconds FROM lawn_jobs
+        WHERE seconds IS NOT NULL AND seconds > 0
+        ORDER BY seconds ASC`
+    ).all();
+    const times = (timings.results || []).map((r) => Number(r.seconds));
+    const medianSeconds = times.length
+      ? (times.length % 2
+        ? times[(times.length - 1) / 2]
+        : Math.round((times[times.length / 2 - 1] + times[times.length / 2]) / 2))
+      : null;
+
     return json({
+      medianSeconds,
+      timed: times.length,
       jobs: (rows.results || []).map((r) => ({
         id: r.id,
         worker: r.worker,
+        seconds: r.seconds === null ? null : Number(r.seconds),
         county: r.county,
         parcelSqFt: r.parcel_sqft === null ? null : Number(r.parcel_sqft),
         submittedAt: r.submitted_at,

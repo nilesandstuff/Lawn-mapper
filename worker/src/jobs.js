@@ -300,3 +300,36 @@ export const cleanWorker = (raw) => String(raw || '')
   .trim()
   .replace(/[^A-Za-z0-9._:-]/g, '')
   .slice(0, 64);
+
+/**
+ * Is this a link template that was never filled in?
+ *
+ * EVERY CROWD PLATFORM HANDS OUT ONE LINK AND SUBSTITUTES THE WORKER'S ID INTO
+ * IT, and each spells the placeholder differently -- `${workerId}`,
+ * `{{%PROLIFIC_PID%}}`, `%%pid%%`. Pasting the link into the wrong field, or
+ * into a platform that does not do substitution, sends the placeholder itself
+ * to every worker.
+ *
+ * WHICH WOULD NOT LOOK LIKE A FAILURE. cleanWorker strips punctuation, so
+ * `{{%PROLIFIC_PID%}}` arrives here as the perfectly plausible id
+ * `PROLIFIC_PID` -- and then every worker in the batch IS that one person.
+ * They share a claim, so a second worker is told somebody else's lawn is
+ * already open; they share the daily cap, so the batch stops after forty
+ * between all of them; and they share the gates, so one careless person ends
+ * the work for everybody. Every one of those reads as the task being broken,
+ * and none of them says why.
+ *
+ * Tested on the RAW value, before cleaning, because the punctuation is the
+ * evidence. A real id from any of these platforms is letters and digits: no
+ * brace, dollar, percent or bracket appears in one. The bare names are here
+ * for the person who copies the template without its wrapper, which is the
+ * same mistake with the evidence already rubbed off.
+ */
+const PLACEHOLDER_NAMES = /^(worker_?id|participant_?id|prolific_?pid|assignment_?id|pid|rid|id)$/i;
+
+export const looksUnsubstituted = (raw) => {
+  const value = String(raw || '').trim();
+  if (!value) return false;                     // absent is a different fault
+  if (/[{}$%[\]<>()]/.test(value)) return true;
+  return PLACEHOLDER_NAMES.test(value);
+};

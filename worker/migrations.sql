@@ -127,3 +127,16 @@ ALTER TABLE corpus ADD COLUMN audition INTEGER NOT NULL DEFAULT 0;
 -- NOT EXISTS cannot add a column", which cost six deploys and looked like a
 -- feature that had been switched off.
 ALTER TABLE lawn_jobs ADD COLUMN detections INTEGER NOT NULL DEFAULT 0;
+
+-- How long one paid map actually took, claim to submission.
+--
+-- A compliance number rather than a curiosity: every crowd platform left after
+-- MTurk decides whether a task underpays from the MEDIAN OBSERVED time, not
+-- from the estimate the requester typed in. The submission already measures it
+-- to enforce the ninety-second floor, so keeping it costs nothing -- and there
+-- is nowhere else to get it, since the platform's own timing includes reading
+-- the instructions and is a different number.
+--
+-- The CREATE in schema.sql does nothing to a database that already has this
+-- table, and this one has been deployed.
+ALTER TABLE lawn_jobs ADD COLUMN seconds INTEGER;

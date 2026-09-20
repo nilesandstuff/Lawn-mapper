@@ -67,6 +67,27 @@ const read = async (res) => ({ status: res.status, body: await res.json() });
     none.status === 400 && /platform/i.test(none.body.reason),
     none.body.reason);
 
+  /*
+   * AND A LINK NOBODY FILLED IN, which is a different fault with different
+   * words. Cleaning `{{%PROLIFIC_PID%}}` leaves the plausible id
+   * `PROLIFIC_PID`, so without this the whole batch quietly becomes one
+   * worker: one claim between all of them, one daily cap, one set of gates.
+   */
+  const raw = await read(await ask('/api/job', { search: '?w=%7B%7B%25PROLIFIC_PID%25%7D%7D' }));
+  check('and a link still carrying the platform\'s placeholder is refused too',
+    raw.status === 400 && /placeholder/i.test(raw.body.reason || ''),
+    raw.body.reason);
+  check('and the worker is told it is not their mistake',
+    /not anything you did/i.test(raw.body.reason || ''),
+    'there is nothing they can do about it, so the wording aims past them');
+
+  const held = await env.DB.prepare(
+    "SELECT COUNT(*) n FROM lawn_jobs WHERE state = 'claimed'"
+  ).first();
+  check('and no lawn was handed to the placeholder',
+    Number(held.n) === 0,
+    'one shared identity would hold one lawn for the whole batch');
+
   const first = await read(await ask('/api/job', { search: '?w=WORKER1' }));
   check('a worker gets a lawn',
     first.status === 200 && first.body.job?.id === idFor(0),

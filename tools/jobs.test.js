@@ -15,7 +15,7 @@
  */
 
 import {
-  claimVerdict, submissionVerdict, cleanWorker, staleBefore, dayStart,
+  claimVerdict, submissionVerdict, cleanWorker, looksUnsubstituted, staleBefore, dayStart,
   countsAsPass, MIN_SECONDS, MAX_HELD, DAILY_CAP, GATES, PASS_RATE,
   REVIEW_OUTCOMES,
 } from '../worker/src/jobs.js';
@@ -271,6 +271,49 @@ const NOW = Date.parse('2026-09-19T12:00:00Z');
   check('and nothing at all comes back empty, not anonymous',
     cleanWorker('') === '' && cleanWorker(null) === '',
     'an unnamed worker cannot be rate limited and cannot be paid either');
+
+  /*
+   * AND A LINK TEMPLATE THAT WAS NEVER FILLED IN.
+   *
+   * Every platform hands out one link and substitutes the worker's id into it,
+   * each spelling the placeholder differently. Paste it into the wrong field
+   * and the placeholder itself reaches every worker -- and it does NOT look
+   * like a failure, because cleanWorker strips the punctuation and leaves a
+   * perfectly plausible id behind. Then every worker in the batch IS that one
+   * person: they share the single claim, the daily cap and the gates, so the
+   * second worker is told somebody else's lawn is open, the batch stops after
+   * forty between all of them, and one careless person ends the work for
+   * everybody. Each of those reads as the task being broken.
+   */
+  const templates = [
+    '${workerId}',                 // MTurk
+    '{{%PROLIFIC_PID%}}',          // Prolific
+    '%%participant_id%%',
+    '[worker_id]',
+    '{{participantId}}',
+    'workerId',                    // the wrapper copied off by hand
+    'PROLIFIC_PID',
+  ];
+  check('an unfilled link template is spotted, however it is spelled',
+    templates.every(looksUnsubstituted),
+    templates.filter((t) => !looksUnsubstituted(t)).join(', ') || 'all of them');
+
+  check('and cleaning one would have left a plausible id behind',
+    cleanWorker('{{%PROLIFIC_PID%}}') === 'PROLIFIC_PID',
+    'which is exactly why this is checked on the raw value, before cleaning');
+
+  /*
+   * AND A REAL ID IS NOT MISTAKEN FOR ONE, which is the half that costs money
+   * if it is wrong: refusing a genuine worker is work they cannot submit.
+   */
+  const real = ['A2X9QJ3KLM0ZZ1', '5f8a2c1e9b3d4a6f7c0e1234', 'w-7781', 'nilesjac3.helper'];
+  check('while a real worker id is left alone',
+    real.every((r) => !looksUnsubstituted(r)),
+    real.filter(looksUnsubstituted).join(', ') || 'none refused');
+
+  check('and an absent id is a different fault, not this one',
+    !looksUnsubstituted('') && !looksUnsubstituted(null),
+    'a missing id and a link nobody filled in need different things said');
 }
 
 /* ------------------------------------------------------- the clocks */

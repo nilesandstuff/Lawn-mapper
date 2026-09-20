@@ -517,6 +517,22 @@ CREATE TABLE IF NOT EXISTS lawn_jobs (
   -- and detected against all afternoon.
   detections    INTEGER NOT NULL DEFAULT 0,
 
+  -- HOW LONG THIS MAP ACTUALLY TOOK, in seconds, claim to submission.
+  --
+  -- Not a curiosity: it is a compliance number. Every crowd platform left
+  -- after MTurk judges whether a task underpays by taking the MEDIAN OBSERVED
+  -- time and dividing the reward by it -- not by the estimate the requester
+  -- typed in. Guess five minutes, have it really take eight, and a reward that
+  -- was above the floor when it was set is below it by the platform's own
+  -- arithmetic, with the listing flagged and the requester's rating along with
+  -- it.
+  --
+  -- The submission already measures this to enforce the ninety-second floor,
+  -- so it costs nothing to keep and there is nowhere else to get it: the
+  -- platform reports its own timing, which includes reading the instructions
+  -- and is not the same number.
+  seconds       INTEGER,
+
   created_at    TEXT NOT NULL
 );
 -- The two questions actually asked of this table: "what should I screen next"

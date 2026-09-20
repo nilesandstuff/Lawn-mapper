@@ -1307,24 +1307,30 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
 
   const job = async (id, state, over = {}) => env.DB.prepare(
     `INSERT INTO lawn_jobs (id, lng, lat, county, parcel_sqft, state, worker,
-                            submitted_at, note, map_id, created_at)
-     VALUES (?1, -80, 40, 'Testshire', 9000, ?2, ?3, ?4, ?5, ?6, ?4)`
+                            submitted_at, note, map_id, seconds, created_at)
+     VALUES (?1, -80, 40, 'Testshire', 9000, ?2, ?3, ?4, ?5, ?6, ?7, ?4)`
   ).bind(
     id, state, over.worker || 'W1',
     over.at || '2026-09-18T10:00:00Z',
-    over.note ?? null, over.map || null,
+    over.note ?? null, over.map || null, over.seconds ?? null,
   ).run();
 
-  await job(jobId, 'submitted', { map: mapId, at: '2026-09-18T12:00:00Z' });
+  await job(jobId, 'submitted', { map: mapId, at: '2026-09-18T12:00:00Z', seconds: 300 });
   /* Older, but unflagged -- so it must come SECOND. */
-  await job('job-0002-aaaa-4bbb-8ccc-dddddddddddd', 'submitted', { at: '2026-09-18T09:00:00Z' });
+  await job('job-0002-aaaa-4bbb-8ccc-dddddddddddd', 'submitted',
+    { at: '2026-09-18T09:00:00Z', seconds: 200 });
   /* Newest, and flagged, which is what puts it in front of both. */
   await job('job-0003-aaaa-4bbb-8ccc-dddddddddddd', 'submitted',
-    { at: '2026-09-18T20:00:00Z', note: 'flag: unchanged' });
+    { at: '2026-09-18T20:00:00Z', note: 'flag: unchanged', seconds: 480 });
   /* Already graded, plus history for the tally. */
-  await job('job-0004-aaaa-4bbb-8ccc-dddddddddddd', 'kept');
-  await job('job-0005-aaaa-4bbb-8ccc-dddddddddddd', 'excused');
-  await job('job-0006-aaaa-4bbb-8ccc-dddddddddddd', 'refused');
+  await job('job-0004-aaaa-4bbb-8ccc-dddddddddddd', 'kept', { seconds: 420 });
+  await job('job-0005-aaaa-4bbb-8ccc-dddddddddddd', 'excused', { seconds: 260 });
+  /*
+   * ONE ENORMOUS OUTLIER, on purpose: somebody who opened a claim and wandered
+   * off for the better part of an hour. It is the shape of outlier this queue
+   * actually produces, and it is why the reported figure has to be a median.
+   */
+  await job('job-0006-aaaa-4bbb-8ccc-dddddddddddd', 'refused', { seconds: 3000 });
 
   const queue = (await ask(env, ownerToken, 'lawn-reviews')).body;
   check('the grading queue shows only maps that have come back',
@@ -1367,6 +1373,27 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
     mine.tally.kept === 1 && mine.tally.excused === 1 && mine.tally.refused === 1
     && mine.tally.pending === 3,
     JSON.stringify(mine.tally));
+
+  /*
+   * HOW LONG A MAP REALLY TAKES, which is a compliance number rather than a
+   * curiosity: every crowd platform left after MTurk decides whether a task
+   * underpays by dividing the reward by the MEDIAN OBSERVED time, not by the
+   * estimate in the listing. Guess five minutes on a job that takes eight and
+   * a reward that was above the floor when it was set is below it.
+   *
+   * THE MEDIAN, NOT THE MEAN, and the seeded outlier is why: six times here
+   * are 200, 260, 300, 420, 480 and 3000 seconds. The median is 360 -- six
+   * minutes, which is what a map costs. The mean is 777, thirteen minutes,
+   * which is what one person wandering off with a claim open costs. Setting a
+   * reward from the second number would more than double the bill for nothing.
+   */
+  check('and what a map actually costs in time, as a median',
+    queue.medianSeconds === 360 && queue.timed === 6,
+    `${queue.medianSeconds}s over ${queue.timed} maps -- the mean of the same `
+    + 'six is 777s, dragged there by one abandoned claim');
+
+  check('and this map\'s own time, for judging one that looks rushed',
+    mine.seconds === 300, String(mine.seconds));
 
   /* Keeping it moves the corpus row with it -- the whole point of the step. */
   const kept = await ask(env, ownerToken, 'review-lawn',

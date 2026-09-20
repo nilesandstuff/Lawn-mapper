@@ -18,8 +18,8 @@
 
 import { recordFinished, storeImage } from './corpus.js';
 import {
-  claimVerdict, submissionVerdict, cleanWorker, staleBefore, dayStart,
-  GATES, FREE_DETECTS_PER_JOB,
+  claimVerdict, submissionVerdict, cleanWorker, looksUnsubstituted, staleBefore,
+  dayStart, GATES, FREE_DETECTS_PER_JOB,
 } from './jobs.js';
 
 /**
@@ -134,7 +134,28 @@ export async function handleJobs(request, url, env, origin, ctx, json) {
 
   /* ------------------------------------------------ give me a lawn */
   if (path === '' || path === 'next') {
-    const worker = cleanWorker(url.searchParams.get('w'));
+    const raw = url.searchParams.get('w');
+    /*
+     * THE TEMPLATE, UNFILLED, IS ITS OWN FAULT AND HAS ITS OWN MESSAGE.
+     *
+     * It is not the worker's mistake and there is nothing they can do about
+     * it, so the wording is aimed past them at whoever set the task up -- a
+     * worker who reads "ask the requester to check the link" can report it,
+     * and a worker who reads "this link is missing its id" tries their
+     * bookmark again and gives up. See looksUnsubstituted for what it costs to
+     * let one of these through.
+     */
+    if (looksUnsubstituted(raw)) {
+      return json({
+        error: 'Unfilled link',
+        reason: 'This link still has the platform\'s own placeholder in it '
+          + 'instead of your worker id, so it cannot hand out a lawn. That is '
+          + 'a mistake in how the task was set up, not anything you did — '
+          + 'please return the task and let the requester know.',
+      }, 400, origin);
+    }
+
+    const worker = cleanWorker(raw);
     if (!worker) {
       return json({
         error: 'No worker id',
@@ -352,11 +373,18 @@ export async function handleJobs(request, url, env, origin, ctx, json) {
 
     await env.DB.prepare(
       `UPDATE lawn_jobs
-          SET state = 'submitted', submitted_at = ?2, map_id = ?3, note = ?4
+          SET state = 'submitted', submitted_at = ?2, map_id = ?3, note = ?4,
+              seconds = ?5
         WHERE id = ?1`
     ).bind(
       id, new Date(now).toISOString(), kept.row?.id || null,
       verdict.flag ? `flag: ${verdict.flag}` : null,
+      /*
+       * Kept because the reward has to be defensible: the platforms judge
+       * underpayment on the MEDIAN observed time, not on the estimate. See the
+       * column comment in schema.sql.
+       */
+      verdict.seconds,
     ).run();
 
     return json({

@@ -27,7 +27,22 @@ const n = (v) => Number(v || 0).toLocaleString();
 let queue = [];
 let at = 0;
 let done = 0;
+let median = '';
 const counts = {};
+
+/**
+ * A duration, in the words somebody setting a reward would use.
+ *
+ * Minutes and seconds rather than a raw count, because the number is read
+ * against "how much is five minutes of somebody's time worth" and 412 does
+ * not answer that question without arithmetic.
+ */
+const asTime = (secs) => {
+  if (!Number.isFinite(secs) || secs <= 0) return '';
+  const m = Math.floor(secs / 60);
+  const s = Math.round(secs % 60);
+  return m ? `${m}m ${String(s).padStart(2, '0')}s` : `${s}s`;
+};
 
 /** How a worker has been doing so far, in the fewest words that are true. */
 function standing(tally) {
@@ -59,7 +74,15 @@ function show() {
   who.textContent = '';
   const name = document.createElement('b');
   name.textContent = job.worker || 'an unnamed worker';
-  who.append(name, ` · ${standing(job.tally)}`);
+  /*
+   * And how long THIS one took, beside how they have been doing. It is the
+   * nearest thing to context for a map that looks rushed -- though it settles
+   * nothing on its own, which is why it sits next to the tally rather than
+   * anywhere near the buttons: a careless map made slowly still passes here,
+   * and that judgement is the point of this page.
+   */
+  who.append(name, ` · ${standing(job.tally)}`,
+    job.seconds ? ` · took ${asTime(job.seconds)}` : '');
 
   /*
    * THE FLAG, WHEN THERE IS ONE. A submission that went through as "I checked
@@ -75,10 +98,18 @@ function show() {
     : '';
 
   const left = queue.length - at;
-  $('#count').textContent = done
-    ? `${n(done)} graded just now · ${n(left)} loaded, `
-      + `${n(counts.submitted || 0)} waiting in all`
-    : `${n(left)} loaded · ${n(counts.submitted || 0)} waiting`;
+  $('#count').textContent = [
+    done ? `${n(done)} graded just now` : null,
+    `${n(left)} loaded · ${n(counts.submitted || 0)} waiting`,
+    /*
+     * WHAT A MAP ACTUALLY COSTS IN TIME, on the screen the owner is already
+     * looking at. The reward has to be defensible -- the platforms judge
+     * underpayment on the median observed time rather than on the estimate in
+     * the listing -- and there is no other moment when somebody is thinking
+     * about this queue with a phone in their hand.
+     */
+    median ? `typically ${median}` : null,
+  ].filter(Boolean).join(' · ');
 
   /*
    * TIDYING HAPPENS IN THE MAP APP, not here -- the same rule the console
@@ -161,6 +192,7 @@ async function load() {
   Object.assign(counts, data.counts || {});
   queue = data.jobs || [];
   at = 0;
+  median = data.timed ? `${asTime(data.medianSeconds)} a map over ${n(data.timed)}` : '';
 
   if (!queue.length) {
     $('#page').hidden = true;
