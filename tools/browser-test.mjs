@@ -53,6 +53,28 @@ async function goTab(page, name) {
  * first, exactly as a user would. Pressing the notice's own button rather than
  * reaching past it keeps this honest: if the button stops working, this fails.
  */
+/**
+ * Reach a brush, whatever the rail is currently showing.
+ *
+ * THREE PRESSES, NOT TWO, since the rail redesign. Shape mode opens on Points
+ * -- corner editing -- and while that is live the rail folds Add and Erase
+ * away behind one Brushes icon, because the rail is drawn over the map and the
+ * tools for the job you are not doing are covering the lawn being worked on.
+ *
+ * This file was written before that and kept clicking straight at a hidden
+ * button, which is what stopped the whole run at #tool-add from 11 September
+ * onwards -- every check below that point went unrun for weeks, including the
+ * two gesture ones this run was supposed to be about.
+ */
+async function armBrush(page, which) {
+  if (await page.locator('#tool-brushes').isVisible()) {
+    await page.click('#tool-brushes');
+    await page.waitForTimeout(200);
+  }
+  await page.click(`#tool-${which}`);
+  await page.waitForTimeout(200);
+}
+
 async function unlockDetect(page) {
   await goTab(page, 'detect');
   if (await page.locator('#lock-notice').isVisible()) {
@@ -593,7 +615,7 @@ check('with nothing locked before any work has been done',
   const painted = await page.evaluate(() => window.__lmShapeCount());
   await page.click('#mode-shape');
   await page.waitForTimeout(250);
-  await page.click('#tool-add');
+  await armBrush(page, 'add');
   await page.waitForTimeout(250);
   const mb = await page.locator('#map').boundingBox();
   const x = mb.x + mb.width / 2;
@@ -1806,7 +1828,7 @@ await page.waitForTimeout(300);
 check('the lawn tools appear inside lawn mode',
   await page.locator('#shape-tools').isVisible());
 
-await page.click('#tool-erase');
+await armBrush(page, 'erase');
 await page.waitForTimeout(300);
 check('the eraser opens', await page.evaluate(() =>
   document.querySelector('#tool-erase').getAttribute('aria-pressed') === 'true'));
@@ -1837,7 +1859,7 @@ check('erasing removes area', erased.after < erased.before,
 check('and does not remove everything', erased.after > 0,
   `${erased.after} sq ft left`);
 
-await page.click('#tool-erase');
+await armBrush(page, 'erase');
 await page.waitForTimeout(200);
 check('pressing the live brush drops back to Points', await page.evaluate(() =>
   document.querySelector('#tool-erase').getAttribute('aria-pressed') === 'false' &&
@@ -1854,7 +1876,7 @@ check('and the other brushes stay reachable',
  * changed" would pass on a mislabelled button that erased twice.
  */
 console.log('\n--- add (the inverse brush) ---');
-await page.click('#tool-add');
+await armBrush(page, 'add');
 await page.waitForTimeout(300);
 check('the add brush opens', await page.evaluate(() =>
   document.querySelector('#tool-add').getAttribute('aria-pressed') === 'true'));
@@ -2078,7 +2100,7 @@ console.log('\n--- held at the property line ---');
  * constant, and this asserts they still agree rather than trusting that.
  */
 console.log('\n--- brush width ---');
-await page.click('#tool-erase');
+await armBrush(page, 'erase');
 await page.waitForTimeout(300);
 
 const bulk = await page.evaluate(() => window.__lmBrush());
@@ -2172,7 +2194,7 @@ const ringsBefore = await page.evaluate(() => window.__lmRings());
 
 if (ringsBefore.length) {
   // Paint a small new blob in a far corner, well away from the existing lawn.
-  await page.click('#tool-add');
+  await armBrush(page, 'add');
   await page.waitForTimeout(250);
   const mb = await page.locator('#map').boundingBox();
   const fx = mb.x + mb.width * 0.10;
@@ -2231,7 +2253,7 @@ console.log('\n--- an idle stroke changes nothing at all ---');
 
     if (at) {
       const mb = await page.locator('#map').boundingBox();
-      await page.click('#tool-add');
+      await armBrush(page, 'add');
       await page.waitForTimeout(250);
       // A short swipe entirely inside ground already counted as lawn.
       await page.mouse.move(mb.x + at.x, mb.y + at.y);
@@ -2289,7 +2311,7 @@ if (outsideVisible) {
 
   await page.click('#mode-shape');
   await page.waitForTimeout(250);
-  await page.click('#tool-add');
+  await armBrush(page, 'add');
   await page.waitForTimeout(250);
 
   const mapBox = await page.locator('#map').boundingBox();
