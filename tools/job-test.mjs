@@ -377,15 +377,26 @@ const mine = await settled(one.page);
 
   page.on('dialog', (d) => d.accept());
   await page.click('#btn-job-skip');
+  /*
+   * WAITED OUT TO THE SETTLED STATE, not just to the id changing. Skipping
+   * clears the job and then goes looking for another, so there is a moment in
+   * between with no lawn and no message -- and an assertion that fired on the
+   * id alone caught the app mid-stride and called it stranded.
+   */
   await page.waitForFunction(
-    (was) => window.__lmJob().jobId !== was,
+    (was) => {
+      const j = window.__lmJob();
+      return j.jobId !== was && (j.barVisible || j.sheet !== null);
+    },
     theirs.jobId,
     { timeout: 60000 }
   );
   const next = await job(page);
   check('and skipping hands them a different one rather than stranding them',
-    next.jobId !== theirs.jobId && (next.barVisible || next.sheet !== null),
-    next.jobId ? `${theirs.jobId} -> ${next.jobId}` : `a sheet: ${next.sheet}`);
+    next.jobId !== theirs.jobId && next.barVisible,
+    next.jobId
+      ? `${theirs.jobId.slice(0, 8)} -> ${next.jobId.slice(0, 8)}`
+      : `a sheet instead: ${next.sheet}`);
 }
 
 for (const context of open) await context.close().catch(() => {});

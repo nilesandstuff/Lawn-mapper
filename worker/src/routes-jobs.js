@@ -265,14 +265,29 @@ export async function handleJobs(request, url, env, origin, ctx, json) {
      *
      * The note is kept because several skips on one lawn is a signal the owner
      * should see, even though no single skip is.
+     *
+     * AND IT GOES TO THE BACK OF THE QUEUE, which was a bug found by the
+     * browser test. The queue hands out the OLDEST approved lawn, so a skip
+     * that only cleared the claim handed the very same lawn straight back to
+     * the person who had just said they could not do it -- a loop with no way
+     * out of it, on the one screen where somebody is being paid by the minute.
+     *
+     * Moving created_at is enough and costs nothing: it is only ever read as
+     * the handout order (the screening queue reads it too, but that is over
+     * 'candidate' rows and a skip can only happen to an approved one). It also
+     * does something useful on its own -- a lawn several people have skipped
+     * sinks, which is exactly where an awkward one belongs.
      */
     await env.DB.prepare(
       `UPDATE lawn_jobs
           SET state = 'approved', worker = NULL, claimed_at = NULL,
-              note = ?3
+              note = ?3, created_at = ?4
         WHERE id = ?1 AND worker = ?2 AND state = 'claimed'`
-    ).bind(id, worker, `skipped by ${worker}: ${String(body?.why || '').slice(0, 120)}`)
-      .run();
+    ).bind(
+      id, worker,
+      `skipped by ${worker}: ${String(body?.why || '').slice(0, 120)}`,
+      new Date(now).toISOString(),
+    ).run();
 
     return json({ ok: true }, 200, origin);
   }

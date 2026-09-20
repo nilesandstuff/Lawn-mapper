@@ -126,6 +126,25 @@ const read = async (res) => ({ status: res.status, body: await res.json() });
     'one person being unable to trace a lawn says nothing about the lawn');
   check('and the reason is kept, because several skips on one lawn is a signal',
     /cannot see the boundary/.test(freed.note || ''), freed.note);
+
+  /*
+   * AND IT GOES TO THE BACK, which a browser run caught and this pins.
+   *
+   * The queue hands out the oldest approved lawn. A skip that only cleared the
+   * claim handed the very same lawn straight back to the person who had just
+   * said they could not do it -- a loop with no way out, on the one screen
+   * where somebody is being paid by the minute.
+   */
+  const after = await read(await ask('/api/job', { search: '?w=WORKER2' }));
+  check('and the worker who skipped is not handed it straight back',
+    after.body.job?.id === idFor(2),
+    `${after.body.job?.id} -- getting the same lawn again is a loop with no `
+    + 'way out of it');
+
+  /* Put it back, so the blocks below start where they expect to. */
+  await ask('/api/job/skip', {
+    method: 'POST', body: { worker: 'WORKER2', id: idFor(2) },
+  });
 }
 
 /* ------------------------------------------- who pays for the AI passes */
