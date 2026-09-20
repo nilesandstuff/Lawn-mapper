@@ -48,6 +48,7 @@ import { recordFinished, storeImage } from './corpus.js';
 import { handleAuth, isAuthPath } from './routes-auth.js';
 import { handleMaps } from './routes-maps.js';
 import { handleAdmin, isAdminPath } from './routes-admin.js';
+import { handleJobs } from './routes-jobs.js';
 import { accountsEnabled, publicUser } from './db.js';
 import { currentUser } from './auth.js';
 import { recordParcelGap } from './gaps.js';
@@ -982,6 +983,16 @@ export default {
        */
       if (isAdminPath(url.pathname)) {
         return await handleAdmin(request, env, url, origin, ctx, json);
+      }
+
+      /*
+       * The paid queue: give me a lawn, I could not do this one, here is my
+       * map. Open to anybody with a worker id, because that is what a crowd
+       * platform puts in the link -- see routes-jobs.js for why there is
+       * nothing here worth forging.
+       */
+      if (url.pathname === '/api/job' || url.pathname.startsWith('/api/job/')) {
+        return await handleJobs(request, url, env, origin, ctx, json);
       }
 
       switch (url.pathname) {
