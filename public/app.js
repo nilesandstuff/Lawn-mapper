@@ -723,6 +723,36 @@ if (typeof window !== 'undefined') {
   });
 
   /*
+   * The paid queue, as a browser test can see it.
+   *
+   * Everything here is readable from the DOM except the first three, and those
+   * three are the ones worth asserting: whether a lawn was actually CLAIMED is
+   * the difference between a preview that browsed and a preview that took a
+   * lawn out of the queue for an hour. `sheet` is the title only -- the whole
+   * refusal wording is the server's and is checked where it is written.
+   */
+  window.__lmJob = () => ({
+    worker: state.worker,
+    jobId: state.job?.id || null,
+    handEdited: state.handEdited,
+    barVisible: document.querySelector('#job-bar')?.hidden === false,
+    prompts: document.querySelectorAll('#job-prompts .job-ask').length,
+    sheet: document.querySelector('#job-sheet')?.hidden === false
+      ? document.querySelector('#job-sheet-title')?.textContent || ''
+      : null,
+    code: document.querySelector('#job-code')?.hidden === false
+      ? document.querySelector('#job-code')?.textContent || ''
+      : null,
+    /* What a paid worker must not be offered: the steps that do not exist for
+       somebody who never typed an address and has no account. */
+    offered: ['tab-detect', 'tab-saved', 'tab-plan', 'btn-finish', 'account-btn']
+      .filter((id) => {
+        const el = document.querySelector(`#${id}`);
+        return el && !el.hidden && getComputedStyle(el).display !== 'none';
+      }),
+  });
+
+  /*
    * The feedback question: whether it is up, and whether it should be.
    *
    * `detected` travels with it because the rule worth checking is not "does
@@ -5620,6 +5650,12 @@ async function enterJobMode({ worker, preview }) {
      * Previewing. Nothing is claimed, and the sheet says what the task is so
      * somebody can decide whether to accept it -- which is the entire purpose
      * of a preview, and a preview that shows an error is a task nobody takes.
+     *
+     * ANSWERED BEFORE THE MAP IS CHECKED, deliberately. A preview needs no map
+     * -- it is a paragraph of text and it claims nothing either way -- and a
+     * platform may well show the preview inside a frame the real task does not
+     * use. Reporting a map failure here would turn somebody else's iframe
+     * policy into a reason not to accept a task that would have worked.
      */
     jobSheet({
       title: 'Trace one lawn',
@@ -5628,6 +5664,37 @@ async function enterJobMode({ worker, preview }) {
         + 'mostly along the drive and the hard edges — and send it back. About '
         + 'five minutes. Accept the task to start.',
       note: 'Nothing has been assigned to you yet. This is the preview.',
+    });
+    return;
+  }
+
+  /*
+   * NO MAP, NO CLAIM -- and this was a bug, found by the browser test.
+   *
+   * initMap RETURNS NORMALLY when the Mapbox CDN is unreachable: it says so on
+   * screen and stops, which is right for a visitor who can try again. But the
+   * boot chain carries on, so job mode went ahead and claimed a lawn for
+   * somebody whose page had no map and no drawing tools on it. That lawn was
+   * then out of the queue for an hour, the worker saw a crash, and the whole
+   * thing read as the task being broken -- which, for them, it was.
+   *
+   * An ad blocker, a corporate filter or a CDN outage is exactly the case the
+   * message in initMap exists for, and somebody arriving from a crowd platform
+   * is more likely to be behind one of those than the average visitor, not
+   * less.
+   *
+   * So: say what happened, claim nothing, and let them return the task without
+   * having cost anybody a lawn.
+   */
+  if (!map || !draw) {
+    jobSheet({
+      title: 'The map would not load',
+      why: 'The mapping library could not be reached from this browser, so '
+        + 'there is nothing to trace on. An ad blocker or a network filter '
+        + 'blocking api.mapbox.com is the usual cause. Nothing has been '
+        + 'assigned to you and you have not lost anything — try again in '
+        + 'another browser, or return the task.',
+      go: { label: 'Try again', onClick: () => window.location.reload() },
     });
     return;
   }

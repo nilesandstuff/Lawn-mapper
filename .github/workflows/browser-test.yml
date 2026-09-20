@@ -41,6 +41,19 @@ jobs:
           npm install playwright --no-save
           npx playwright install --with-deps chromium
 
+      # BEFORE the app starts, not after: wrangler dev holds the local SQLite
+      # file open, and writing to it from a second process while it is running
+      # is a way to lose the writes quietly.
+      #
+      # LOCAL ONLY, and the --local flag is the whole safety of it. The paid
+      # queue test claims, submits and skips these rows; doing that to the
+      # deployed database would burn real lawns and put test maps in the
+      # corpus.
+      - name: Give the local database a queue to hand out
+        run: |
+          npx wrangler d1 execute lawn-mapper --local --file=worker/schema.sql --yes
+          npx wrangler d1 execute lawn-mapper --local --file=tools/test-jobs.sql --yes
+
       - name: Start the app
         env:
           MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
@@ -69,6 +82,21 @@ jobs:
           RUN_DETECT: ${{ inputs.detect }}
           TEST_ADDRESS: ${{ inputs.address }}
         run: node tools/browser-test.mjs http://127.0.0.1:8787
+
+      # The paid queue, driven the way a stranger on a crowd platform will.
+      #
+      # `if: always()` so a failure in the ordinary app does not hide this one.
+      # They are separate journeys with separate consequences: the app failing
+      # is a visitor who can come back tomorrow, and this failing is somebody
+      # who has done four minutes of unpaid work with nobody to tell.
+      #
+      # It spends nothing on Replicate -- detection is stubbed at the network,
+      # which also makes it check the case that matters most: a worker whose
+      # automatic outline never arrived must still be able to trace the lawn by
+      # hand and send it.
+      - name: Drive the paid queue
+        if: always()
+        run: node tools/job-test.mjs http://127.0.0.1:8787
 
       - name: Screenshot
         if: always()
