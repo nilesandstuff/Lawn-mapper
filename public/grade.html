@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lawn Mapper — paid maps</title>
+<!--
+  THE STEP BETWEEN A PAID MAP AND THE CORPUS.
+
+  A map drawn by a stranger being paid fifty cents does not go straight into
+  training data. H7 measured one bad map as worth up to ten points, which is
+  most of the gap this whole project is trying to close, so the cheapest
+  possible insurance is one person looking at each one.
+
+  THREE BUTTONS, NOT TWO, and the middle one is the reason the worker-side bar
+  can be as high as four in five. The queue hands lawns out in the order they
+  were sampled, so who draws the awkward ones is pure luck: "no, but it was a
+  hard lawn" says the map is not going in the corpus AND that it is not held
+  against the person who drew it. Without it, a run of bad luck would end a
+  good worker's run and there would be nothing to do about it.
+
+  Built for a phone held in one hand, like the screening page, because that is
+  where it will actually be used. The picture is the page; everything else is a
+  caption on it.
+
+  Nothing is gated in this markup. The gate is the API, which answers 404 to
+  anybody who is not an administrator.
+-->
+<link href="/styles.css" rel="stylesheet">
+<link href="/console.css" rel="stylesheet">
+<style>
+  .shot.lawn {
+    width: 100%; max-width: 560px; aspect-ratio: 1; display: block;
+    border-radius: 12px; background: #e7ebe7;
+  }
+  .ask { display: grid; gap: 10px; justify-items: center; }
+  .ask h2 { font-size: 15px; margin: 0; text-align: center; }
+  .legend-line { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap;
+                 font-size: 11.5px; color: var(--muted); }
+  .legend-line i { width: 11px; height: 11px; border-radius: 3px; display: inline-block;
+                   vertical-align: -1px; margin-right: 5px; }
+  .tally { font-size: 12px; color: var(--muted); text-align: center; }
+
+  /*
+    THE KEEP BUTTON IS THE WIDE ONE, on its own row, because it is the answer
+    most of the time -- the addresses were screened before anybody traced them
+    and the owner intends to tidy every map anyway. The two refusals sit below
+    it, side by side and smaller, so the common answer is the easy thumb reach
+    and the uncommon ones take a deliberate move.
+  */
+  .verdicts { display: grid; gap: 8px; width: 100%; max-width: 560px; }
+  .verdicts button {
+    font: inherit; font-weight: 650; padding: 14px 10px; cursor: pointer;
+    border: 1px solid var(--line); border-radius: 11px; background: #fff;
+  }
+  .verdicts button:disabled { opacity: .5; }
+  .verdicts .keep { font-size: 16px; background: #e4f2e5; border-color: #9ec5a1; color: #1f5b22; }
+  .pair { display: flex; gap: 8px; }
+  .pair button { flex: 1 1 0; font-size: 13.5px; font-weight: 600; padding: 12px 8px; }
+  .pair .excuse { background: #fdf6e6; border-color: #dcc48a; color: #7a5a10; }
+  .pair .refuse { background: #f6eceb; border-color: #d3a9a4; color: #7d2d22; }
+  .pair small { display: block; font-weight: 400; font-size: 11px; opacity: .8; margin-top: 2px; }
+
+  .tidy {
+    font-size: 12.5px; color: var(--muted); text-align: center;
+    width: 100%; max-width: 560px;
+  }
+  .flagged {
+    width: 100%; max-width: 560px; font-size: 12.5px; padding: 9px 11px;
+    background: #fdf6e6; border: 1px solid #dcc48a; border-radius: 9px; color: #7a5a10;
+  }
+  .who { font-size: 12.5px; color: var(--muted); text-align: center; }
+  .who b { color: var(--ink, #23301f); }
+  .rule { font-size: 12.5px; color: var(--muted); max-width: 560px; }
+  .rule b { color: var(--ink, #23301f); }
+</style>
+</head>
+<body>
+
+<div class="console">
+  <div class="conhead">
+    <h1>Paid maps</h1>
+    <a href="/admin.html">← back to the console</a>
+  </div>
+
+  <div class="locked-out" id="locked" hidden>
+    <p>This page is for the site owner.</p>
+    <p><a href="/">Go and measure a lawn instead →</a></p>
+  </div>
+
+  <div class="empty-state" id="none" hidden>
+    <div class="card">
+      <h2>Nothing waiting</h2>
+      <p class="sub">Every map that has come back has been looked at. Workers
+        held at a gate are waiting on this page, so an empty queue means
+        nobody is stuck.</p>
+      <p class="sub" id="none-counts"></p>
+    </div>
+  </div>
+
+  <div id="page" hidden>
+    <div class="card ask">
+      <h2 id="question">Is this map good enough to train on?</h2>
+      <p class="flagged" id="flag" hidden></p>
+      <!--
+        A canvas, on the BANKED photograph rather than a fresh one. The stored
+        image is the frame the worker actually drew on; re-fetching imagery for
+        the same point can return a different year, which would put a correct
+        outline in the wrong place and read as a bad map.
+      -->
+      <canvas class="shot lawn" id="shot" width="640" height="640"></canvas>
+      <div class="legend-line">
+        <span><i style="background:#4ec26a"></i>what they drew</span>
+        <span><i style="background:#b388ff"></i>marked as inferred</span>
+        <span><i style="background:#f2c744"></i>the property line</span>
+      </div>
+      <p class="tally" id="where"></p>
+      <p class="who" id="who"></p>
+
+      <div class="verdicts">
+        <button class="keep" id="keep">Keep it</button>
+        <div class="pair">
+          <button class="excuse" id="excuse">Not good enough
+            <small>but a hard lawn — not their fault</small></button>
+          <button class="refuse" id="refuse">Bad map
+            <small>counts against them</small></button>
+        </div>
+      </div>
+      <p class="tidy" id="tidy"></p>
+      <p class="tally" id="count"></p>
+    </div>
+
+    <div class="card">
+      <!--
+        THE STANDARD, written down where it is applied. Grading drifts over a
+        session, and here the drift costs money: too strict and good workers
+        are stopped for nothing, too loose and bad maps reach the training set.
+      -->
+      <p class="rule">
+        <b>Keep it</b> if you would rather tidy this than draw it again. That is
+        the bar — not whether it is right. The edges get corrected anyway.
+      </p>
+      <p class="rule">
+        <b>Not good enough, hard lawn</b> when the outline is not worth keeping
+        but you can see why: dense canopy, a boundary that genuinely is not
+        readable, imagery that turned out worse than it looked when screened.
+        This counts as a pass for them.
+      </p>
+      <p class="rule">
+        <b>Bad map</b> when the outline is not an attempt at this lawn — the
+        automatic shape waved through, a rectangle over the whole plot, grass
+        and drive and roof all together. This is the only one that counts
+        against somebody, and four of these in five stops them.
+      </p>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="/grade.js"></script>
+</body>
+</html>

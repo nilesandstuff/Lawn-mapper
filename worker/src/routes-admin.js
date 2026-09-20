@@ -580,6 +580,153 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
   }
 
   /*
+   * THE PAID MAPS, WAITING TO BE LOOKED AT.
+   *
+   * A crowdsourced map does NOT go straight into the corpus. It lands as an
+   * ordinary 'new' corpus row by the same road every other finished map takes,
+   * and this queue is the step between that and training data -- which matters
+   * more here than anywhere else, because H7 measured one bad map as worth up
+   * to ten points and these are drawn by strangers being paid by the piece.
+   *
+   * FLAGGED ONES FIRST. A submission that went through as "I checked it and
+   * the automatic outline was already right" is the one case where the machine
+   * has a suspicion and cannot act on it, so it goes at the top rather than
+   * waiting its turn in date order.
+   */
+  if (path === 'lawn-reviews') {
+    const limit = Math.min(40, Math.max(1, Number(url.searchParams.get('limit')) || 12));
+
+    const rows = await env.DB.prepare(
+      `SELECT j.id, j.worker, j.county, j.parcel_sqft, j.submitted_at, j.note,
+              j.map_id, j.lng, j.lat,
+              c.square_feet, c.frame, c.shapes, c.parcel, c.image_key
+         FROM lawn_jobs j
+         LEFT JOIN corpus c ON c.id = j.map_id
+        WHERE j.state = 'submitted'
+        ORDER BY CASE WHEN j.note LIKE 'flag:%' THEN 0 ELSE 1 END,
+                 j.submitted_at ASC
+        LIMIT ?1`
+    ).bind(limit).all();
+
+    /*
+     * HOW THIS WORKER HAS BEEN DOING, on the card, because the two buttons
+     * that are not "keep" are a judgement about a PERSON as much as about a
+     * map. Refusing somebody's fourth map reads differently when their first
+     * three were kept, and going back to look it up is not something that
+     * happens on a phone.
+     */
+    const tallies = await env.DB.prepare(
+      `SELECT worker,
+              SUM(CASE WHEN state = 'kept' THEN 1 ELSE 0 END) AS kept,
+              SUM(CASE WHEN state = 'excused' THEN 1 ELSE 0 END) AS excused,
+              SUM(CASE WHEN state = 'refused' THEN 1 ELSE 0 END) AS refused,
+              SUM(CASE WHEN state = 'submitted' THEN 1 ELSE 0 END) AS pending
+         FROM lawn_jobs WHERE worker IS NOT NULL GROUP BY worker`
+    ).all();
+    const byWorker = Object.fromEntries((tallies.results || []).map((t) => [t.worker, {
+      kept: Number(t.kept || 0),
+      excused: Number(t.excused || 0),
+      refused: Number(t.refused || 0),
+      pending: Number(t.pending || 0),
+    }]));
+
+    const counts = await env.DB.prepare(
+      'SELECT state, COUNT(*) n FROM lawn_jobs GROUP BY state'
+    ).all();
+
+    return json({
+      jobs: (rows.results || []).map((r) => ({
+        id: r.id,
+        worker: r.worker,
+        county: r.county,
+        parcelSqFt: r.parcel_sqft === null ? null : Number(r.parcel_sqft),
+        submittedAt: r.submitted_at,
+        /* Only a flag is worth surfacing; a skip note cannot reach this state. */
+        flag: /^flag:/.test(r.note || '') ? String(r.note).slice(6).trim() : null,
+        mapId: r.map_id,
+        lng: Number(r.lng),
+        lat: Number(r.lat),
+        squareFeet: r.square_feet === null ? null : Number(r.square_feet),
+        /*
+         * The frame the worker actually drew on, so the picture and the
+         * outline are the same photograph. Re-fetching imagery for the same
+         * point would show a possibly different year and quietly put the
+         * outline in the wrong place.
+         */
+        frame: r.frame ? JSON.parse(r.frame) : null,
+        parcel: r.parcel ? JSON.parse(r.parcel) : null,
+        /* Both stored forms, same as the candidate route: older rows hold bare
+           geometries, newer ones hold Features carrying the inferred flag. */
+        shapes: JSON.parse(r.shapes || '[]').map((f) => (f?.geometry
+          ? { geometry: f.geometry, properties: f.properties || {} }
+          : { geometry: f, properties: {} })),
+        hasImage: Boolean(r.image_key),
+        tally: byWorker[r.worker] || null,
+      })),
+      counts: Object.fromEntries((counts.results || []).map((r) => [r.state, Number(r.n)])),
+    }, 200, origin);
+  }
+
+  /*
+   * A verdict on one paid map. Three outcomes, and the middle one is the
+   * reason the worker-side bar can be as high as four in five:
+   *
+   *   kept     into the corpus, and it counts for the worker
+   *   excused  NOT into the corpus, and it still counts for the worker. The
+   *            lawn was hard and the attempt was reasonable. The queue hands
+   *            lawns out in order, so who draws the awkward ones is luck.
+   *   refused  genuinely bad. The only one that counts against them.
+   *
+   * All three are paid; payment is the crowd platform's business.
+   */
+  if (path === 'review-lawn' && request.method === 'POST') {
+    const body = await request.json().catch(() => ({}));
+    const id = String(body?.id || '');
+    const verdict = String(body?.verdict || '');
+    if (!id || !['kept', 'excused', 'refused'].includes(verdict)) {
+      return json({ error: 'Need an id and a verdict' }, 400, origin);
+    }
+    const note = body?.note ? String(body.note).slice(0, 200) : null;
+
+    /*
+     * `state = 'submitted'` in the WHERE, so a second tap on a page left open
+     * cannot overturn a verdict already cast -- the same guard the corpus
+     * review uses, and for the same reason.
+     */
+    const done = await env.DB.prepare(
+      `UPDATE lawn_jobs SET state = ?2, decided_at = ?3, note = ?4
+        WHERE id = ?1 AND state = 'submitted'
+      RETURNING map_id`
+    ).bind(id, verdict, new Date().toISOString(), note).first();
+
+    if (!done) return json({ ok: false, reason: 'already-reviewed' }, 409, origin);
+
+    /*
+     * AND THE CORPUS ROW MOVES WITH IT, which is the whole point of there
+     * being a step here at all. The map arrived as 'new' -- a candidate, not
+     * training data -- and stays out of every training run until this.
+     *
+     * Excused and refused both land on 'rejected'. They differ in what they
+     * mean for the WORKER, not in what they mean for the corpus: a map too
+     * rough to keep is too rough to train on however forgivable the lawn was.
+     */
+    if (done.map_id) {
+      await env.DB.prepare(
+        `UPDATE corpus
+            SET status = ?2, reviewed_at = ?3, reviewed_by = ?4,
+                review_note = ?5, review_queue = 'paid'
+          WHERE id = ?1`
+      ).bind(
+        done.map_id, verdict === 'kept' ? 'approved' : 'rejected',
+        new Date().toISOString(), me.email,
+        verdict === 'excused' ? `excused: ${note || 'hard lawn'}` : note,
+      ).run();
+    }
+
+    return json({ ok: true }, 200, origin);
+  }
+
+  /*
    * The index written by a training run, and the pictures it points at.
    *
    * Two routes rather than one because they are different things: the index is

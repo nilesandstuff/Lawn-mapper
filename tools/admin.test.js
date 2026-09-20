@@ -83,6 +83,17 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
     // The price list. Reading it is harmless; writing it is the whole site's
     // cost guardrail, so it is gated exactly like everything else.
     ['settings'], ['settings', { method: 'POST', body: { anon_daily: 100000 } }],
+    /*
+     * The two ends of the paid pipe. The screening queue is a list of
+     * strangers' addresses, and the grading queue decides both what reaches
+     * the training set and whether somebody keeps being given paid work --
+     * which is a stranger on a crowd platform deciding either of those if the
+     * gate has a hole in it.
+     */
+    ['lawn-jobs'],
+    ['screen-lawn', { method: 'POST', body: { id: 'x', verdict: 'approved' } }],
+    ['lawn-reviews'],
+    ['review-lawn', { method: 'POST', body: { id: 'x', verdict: 'kept' } }],
   ];
 
   const asStranger = [];
@@ -1252,6 +1263,147 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
     .bind(stranger.id).first();
   check('a verdict from the list records the list, not a queue it never came from',
     fresh.review_queue === 'list', fresh.review_queue);
+}
+
+/* ------------------------------------------------- grading the paid maps */
+{
+  /*
+   * THIS QUEUE DECIDES TWO THINGS AT ONCE, which is why it is worth its own
+   * block: whether a map becomes training data, and whether the person who
+   * drew it keeps being given work. Getting the second one wrong is invisible
+   * from here -- a worker held at a gate cannot see the queue, cannot ask, and
+   * simply stops coming back.
+   */
+  const { env, ownerToken, owner } = await world();
+
+  const mapId = 'map-kept-0001';
+  const jobId = 'job-0001-aaaa-4bbb-8ccc-dddddddddddd';
+  await env.DB.prepare(
+    `INSERT INTO corpus (id, at, created_at, lng, lat, county, shapes, frame,
+                         square_feet, status)
+     VALUES (?1, ?2, ?2, -80, 40, 'Testshire', ?3, ?4, 5200, 'new')`
+  ).bind(
+    mapId, new Date().toISOString(),
+    JSON.stringify([{ type: 'Feature', properties: {}, geometry: {
+      type: 'Polygon', coordinates: [[[-80, 40], [-79.999, 40], [-79.999, 40.001], [-80, 40]]],
+    } }]),
+    JSON.stringify({ lng: -80, lat: 40, zoom: 19, size: 640 }),
+  ).run();
+
+  const job = async (id, state, over = {}) => env.DB.prepare(
+    `INSERT INTO lawn_jobs (id, lng, lat, county, parcel_sqft, state, worker,
+                            submitted_at, note, map_id, created_at)
+     VALUES (?1, -80, 40, 'Testshire', 9000, ?2, ?3, ?4, ?5, ?6, ?4)`
+  ).bind(
+    id, state, over.worker || 'W1',
+    over.at || '2026-09-18T10:00:00Z',
+    over.note ?? null, over.map || null,
+  ).run();
+
+  await job(jobId, 'submitted', { map: mapId, at: '2026-09-18T12:00:00Z' });
+  /* Older, but unflagged -- so it must come SECOND. */
+  await job('job-0002-aaaa-4bbb-8ccc-dddddddddddd', 'submitted', { at: '2026-09-18T09:00:00Z' });
+  /* Newest, and flagged, which is what puts it in front of both. */
+  await job('job-0003-aaaa-4bbb-8ccc-dddddddddddd', 'submitted',
+    { at: '2026-09-18T20:00:00Z', note: 'flag: unchanged' });
+  /* Already graded, plus history for the tally. */
+  await job('job-0004-aaaa-4bbb-8ccc-dddddddddddd', 'kept');
+  await job('job-0005-aaaa-4bbb-8ccc-dddddddddddd', 'excused');
+  await job('job-0006-aaaa-4bbb-8ccc-dddddddddddd', 'refused');
+
+  const queue = (await ask(env, ownerToken, 'lawn-reviews')).body;
+  check('the grading queue shows only maps that have come back',
+    queue.jobs.length === 3 && queue.jobs.every((j) => j.id.startsWith('job-000')),
+    `${queue.jobs.length} waiting, out of six rows`);
+
+  /*
+   * FLAGGED FIRST, AND OLDEST AFTER. A submission that went through as "I
+   * checked it and the automatic outline was already right" is the one case
+   * where the machine has a suspicion it cannot act on, so it does not wait
+   * its turn in date order.
+   */
+  check('and puts the flagged one first, then the oldest',
+    queue.jobs[0].flag === 'unchanged'
+    && queue.jobs[1].id === 'job-0002-aaaa-4bbb-8ccc-dddddddddddd',
+    queue.jobs.map((j) => `${j.id.slice(4, 8)}${j.flag ? '!' : ''}`).join(' '));
+
+  /*
+   * AND A SKIP NOTE IS NOT A FLAG. `note` carries both, and reading it too
+   * loosely would put a warning on a card that has nothing wrong with it --
+   * which is worse than no warning, because a badge that cries wolf is one
+   * the grader stops reading.
+   */
+  check('and a note that is not a flag is not shown as one',
+    queue.jobs.every((j) => j.flag === null || j.flag === 'unchanged'),
+    JSON.stringify(queue.jobs.map((j) => j.flag)));
+
+  const mine = queue.jobs.find((j) => j.mapId === mapId);
+  check('and the card carries the map, to scale, with its picture',
+    mine.frame?.zoom === 19 && mine.shapes.length === 1
+    && mine.shapes[0].geometry.type === 'Polygon' && mine.squareFeet === 5200,
+    'a verdict on an outline drawn at the wrong scale is a verdict on the wrong pixels');
+
+  /*
+   * HOW THIS WORKER HAS BEEN DOING, on the card. The two buttons that are not
+   * "keep" are a judgement about a person as much as about a map, and looking
+   * it up is not something that happens on a phone.
+   */
+  check('and how the worker has been doing so far',
+    mine.tally.kept === 1 && mine.tally.excused === 1 && mine.tally.refused === 1
+    && mine.tally.pending === 3,
+    JSON.stringify(mine.tally));
+
+  /* Keeping it moves the corpus row with it -- the whole point of the step. */
+  const kept = await ask(env, ownerToken, 'review-lawn',
+    { method: 'POST', body: { id: jobId, verdict: 'kept' } });
+  const after = await env.DB.prepare(
+    `SELECT j.state, c.status, c.review_queue, c.reviewed_by
+       FROM lawn_jobs j JOIN corpus c ON c.id = j.map_id WHERE j.id = ?1`
+  ).bind(jobId).first();
+  check('keeping a paid map approves the corpus row it produced',
+    kept.body.ok && after.state === 'kept' && after.status === 'approved'
+    && after.review_queue === 'paid' && after.reviewed_by === owner.email,
+    JSON.stringify(after));
+
+  /*
+   * A SECOND TAP ON A PAGE LEFT OPEN MUST NOT OVERTURN A VERDICT. The same
+   * guard the corpus review uses, and for the same reason -- except that here
+   * the second verdict would also silently change whether somebody is allowed
+   * more paid work.
+   */
+  const twice = await ask(env, ownerToken, 'review-lawn',
+    { method: 'POST', body: { id: jobId, verdict: 'refused' } });
+  const held = await env.DB.prepare('SELECT state FROM lawn_jobs WHERE id = ?1')
+    .bind(jobId).first();
+  check('and a second tap cannot overturn it',
+    twice.status === 409 && held.state === 'kept', JSON.stringify(held));
+
+  /*
+   * EXCUSED IS NOT KEPT, IN THE CORPUS. The two differ in what they mean for
+   * the WORKER, not in what they mean for training: a map too rough to keep is
+   * too rough to train on however forgivable the lawn was. Landing an excused
+   * map on 'approved' would quietly put exactly the maps the owner rejected
+   * into the training set.
+   */
+  const soft = 'job-0002-aaaa-4bbb-8ccc-dddddddddddd';
+  await env.DB.prepare('UPDATE lawn_jobs SET map_id = ?2 WHERE id = ?1')
+    .bind(soft, mapId).run();
+  await ask(env, ownerToken, 'review-lawn',
+    { method: 'POST', body: { id: soft, verdict: 'excused' } });
+  const excused = await env.DB.prepare(
+    `SELECT j.state, c.status, c.review_note
+       FROM lawn_jobs j JOIN corpus c ON c.id = j.map_id WHERE j.id = ?1`
+  ).bind(soft).first();
+  check('an excused map counts for the worker and still stays out of the corpus',
+    excused.state === 'excused' && excused.status === 'rejected'
+    && /excused/.test(excused.review_note || ''),
+    JSON.stringify(excused));
+
+  check('and a verdict that is not one of the three is refused',
+    (await ask(env, ownerToken, 'review-lawn',
+      { method: 'POST', body: { id: 'job-0003-aaaa-4bbb-8ccc-dddddddddddd', verdict: 'approved' } }
+    )).status === 400,
+    'the screening page sends "approved" and must not be able to grade a paid map with it');
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
