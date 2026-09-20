@@ -524,6 +524,39 @@ const mine = await settled(one.page);
     await page.textContent('#job-sheet-go'));
 
   /*
+   * AND THE BUTTON IS PRESSED, which is the check this section was missing.
+   *
+   * It confirmed the door had a handle and never turned it. Behind that
+   * handle, the sign-in sheet was opening UNDERNEATH the job sheet -- both are
+   * `.sheet`, both z-index 20, and the job sheet sits later in index.html, so
+   * source order decided which one was on top. The address field was covered
+   * and every tap landed on the job sheet, which has no close button by
+   * design. The one route where signing in is not optional was the one route
+   * where it could not be done.
+   *
+   * TYPED INTO, not just looked at. `isVisible` is true of an element with
+   * something else painted over it, which is precisely the failure here.
+   */
+  await page.click('#job-sheet-go');
+  await page.waitForTimeout(400);
+
+  check('and pressing it actually reaches the sign-in panel',
+    await page.locator('#signin').isVisible(),
+    'the button opened nothing at all');
+
+  let typed = null;
+  try {
+    await page.click('#signin-email', { timeout: 4000 });
+    await page.type('#signin-email', 'tracer@example.com');
+    typed = await page.inputValue('#signin-email');
+  } catch (err) {
+    typed = `blocked: ${String(err).split('\n')[0]}`;
+  }
+  check('and the address field can be tapped and typed into',
+    typed === 'tracer@example.com',
+    `${typed} -- a field with another sheet painted over it is still "visible"`);
+
+  /*
    * AND A HANDLE TYPED INTO THE LINK IS NOT AN IDENTITY. The whole point of
    * moving the payment address out of the URL is that a query string is typed
    * by whoever is typing.

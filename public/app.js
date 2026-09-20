@@ -5042,13 +5042,45 @@ function showAiNotice() {
   openSheet('#ai-notice');
 }
 
+/*
+ * SOURCE ORDER IS NOT A STACKING POLICY.
+ *
+ * Every .sheet is `position: fixed; inset: 0; z-index: 20`, so when two are
+ * open the one painted on top is whichever sits later in index.html. That was
+ * invisible for as long as only one could be open at a time, and stopped being
+ * invisible the moment one sheet learned to open another.
+ *
+ * The paid route does exactly that. Signed out, `?via=paid` shows the job
+ * sheet -- "Sign in to be paid", with a Sign in button -- and that button
+ * opens the sign-in sheet, which is declared EIGHTY LINES EARLIER in the
+ * markup. So it opened underneath. The address field was covered, taps landed
+ * on the job sheet instead, and the job sheet has no close button by design,
+ * so there was no way out of it at all: the one route where signing in is not
+ * optional was the one route where it was impossible.
+ *
+ * A counter rather than a fixed z-index for the sign-in sheet, because that
+ * would only fix the pair that happens to be known about today.
+ */
+let sheetsOpen = 0;
+
 function openSheet(id) {
-  $(id).hidden = false;
+  const el = $(id);
+  if (el.hidden) sheetsOpen += 1;
+  el.style.zIndex = String(20 + sheetsOpen);
+  el.hidden = false;
   // The first thing a keyboard lands on should be inside the dialog, not
   // behind it -- otherwise tabbing walks the page underneath.
-  $(id).querySelector('input, button:not(.sheet-x)')?.focus({ preventScroll: true });
+  el.querySelector('input, button:not(.sheet-x)')?.focus({ preventScroll: true });
 }
-const closeSheet = (id) => { $(id).hidden = true; };
+
+function closeSheet(id) {
+  const el = $(id);
+  if (!el.hidden) sheetsOpen = Math.max(0, sheetsOpen - 1);
+  el.hidden = true;
+  /* Back to the stylesheet's own z-index, so nothing accumulates a number
+     across a long session. */
+  el.style.zIndex = '';
+}
 
 function renderAccountButton() {
   const btn = $('#account-btn');
@@ -5784,10 +5816,13 @@ function jobSheet({ title, why, code = null, note = null, go = null, link = null
   away.textContent = link?.label || '';
   if (link) away.href = link.href;
 
-  $('#job-sheet').hidden = false;
+  /* Through openSheet like every other sheet, so the stacking counter knows
+     this one is up. It is the sheet most likely to have another opened on top
+     of it -- "Sign in to be paid" does exactly that. */
+  openSheet('#job-sheet');
 }
 
-const hideJobSheet = () => { $('#job-sheet').hidden = true; };
+const hideJobSheet = () => closeSheet('#job-sheet');
 
 /**
  * /?w=<worker id> -- somebody arriving from the platform.
