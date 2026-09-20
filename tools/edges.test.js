@@ -378,6 +378,73 @@ const LOT = rect(30, 45); // 30 m of frontage, 45 m deep
   check('a whole run of strung-out points collapses to its ends',
     openRing(collapsed.ring).length === 4,
     `${openRing(line).length} -> ${openRing(collapsed.ring).length} corners`);
+
+  /*
+   * AND WHY THIS NOW RUNS WITHOUT BEING ASKED.
+   *
+   * Corners and edges compete for the same pixels, and the corner wins -- which
+   * is right, since a corner is a smaller target. On a county boundary studded
+   * with redundant points there is no pixel left that belongs to the edge: the
+   * middle of the longest run, as far from a real corner as the geometry
+   * allows, still has a stray point sitting on it. So dragging an edge out to
+   * the kerb -- the main thing property-line mode exists for -- is unreachable
+   * on exactly the boundaries that need it.
+   *
+   * Tidying is what gives the edge its pixels back, and this measures that
+   * rather than asserting a corner count: the gap between the midpoint of the
+   * longest edge and the nearest corner is the thing a fingertip has to fit in.
+   */
+  const gap = (ring) => {
+    const v = openRing(ring).map((p) => frame.toXY(p));
+    let best = null;
+    for (let i = 0; i < v.length; i++) {
+      const a = v[i];
+      const b = v[(i + 1) % v.length];
+      const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (!best || len > best.len) best = { len, mid: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] };
+    }
+    let near = Infinity;
+    for (const q of v) near = Math.min(near, Math.hypot(q[0] - best.mid[0], q[1] - best.mid[1]));
+    return { longest: best.len, near };
+  };
+
+  /*
+   * A 40 x 30 lot with a digitiser's points every 2 m around the WHOLE
+   * perimeter, which is what a county outline actually looks like -- not one
+   * tidy side and one messy one. Every edge is studded, so before tidying
+   * there is no long run anywhere.
+   */
+  const corners2 = [[0, 0], [40, 0], [40, 30], [0, 30]];
+  const studded = [];
+  for (let c = 0; c < 4; c++) {
+    const a = corners2[c];
+    const b = corners2[(c + 1) % 4];
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const steps = Math.round(len / 2);
+    for (let i = 0; i < steps; i++) {
+      studded.push(frame.toLngLat([
+        a[0] + ((b[0] - a[0]) * i) / steps,
+        a[1] + ((b[1] - a[1]) * i) / steps,
+      ]));
+    }
+  }
+  studded.push(studded[0]);
+
+  const before2 = gap(studded);
+  const after2 = gap(tidyRing(studded).ring);
+
+  /* Within one stud of the line everywhere, so nowhere on it is "edge". The
+     bound is the stud spacing rather than the exact half of it, which is a
+     record of this fixture rather than a fact about studded boundaries. */
+  check('a studded boundary leaves no pixel that belongs to an edge',
+    before2.near <= 2,
+    `nearest corner is ${before2.near.toFixed(2)} m from the middle of the `
+    + 'longest edge -- a fingertip cannot miss it');
+
+  check('and tidying gives the edge its own pixels back',
+    after2.near > 15 && after2.longest >= 40,
+    `${before2.near.toFixed(2)} m -> ${after2.near.toFixed(2)} m of clear edge `
+    + 'either side of the midpoint');
 }
 
 /* ------------------------------------------- what it means in sq ft */

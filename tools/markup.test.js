@@ -1340,6 +1340,42 @@ check('every class the code toggles is styled',
   }
 }
 
+/* --------------------------- the property line is tidied when it arrives */
+/*
+ * A COUNTY BOUNDARY ARRIVES STUDDED, and the app tidies it without being asked.
+ *
+ * "Tidy up this boundary" has always been able to drop the redundant points; it
+ * was a button somebody had to know to press, and nobody pressing it is the
+ * ordinary case. Leaving them is not cosmetic -- corners and edges compete for
+ * the same pixels, the corner always wins, and at that density there is no
+ * pixel left that belongs to an edge. Dragging an edge out to the kerb is the
+ * main thing property-line mode is for.
+ *
+ * The geometry of it is tested in edges.test.js. What this holds is the wiring:
+ * that the parcel is tidied on the way in, and before the record of which
+ * corners came from the county is taken -- otherwise that record describes
+ * corners that no longer exist.
+ */
+{
+  const app = readFileSync(join(root, 'public/app.js'), 'utf8');
+  const arrival = app.slice(app.indexOf('const data = await api(`/api/parcel'));
+  const upToSurveyed = arrival.slice(0, arrival.indexOf('state.surveyed ='));
+
+  check('the parcel is tidied when it arrives, not only when asked',
+    /tidyRing\(/.test(upToSurveyed),
+    'a boundary nobody tidied is a boundary whose edges cannot be tapped');
+
+  check('and before the note of which corners came from the county',
+    upToSurveyed.length > 0 && arrival.includes('state.surveyed ='),
+    'surveyed corners that were just removed would describe a line nobody has');
+
+  /* Said out loud, per the rule the tidy button set for itself: changing
+     somebody's boundary quietly is worse than saying nothing changed. */
+  check('and it says so rather than changing the boundary quietly',
+    /duplicate corner/.test(upToSurveyed) || /duplicate corner/.test(arrival.slice(0, 4000)),
+    'doing it unasked is the reason to keep saying it, not to stop');
+}
+
 /* ------------------------- not knowing is not the same as knowing it is off */
 /*
  * THE SIGN-IN PANEL MUST NOT CLOSE THE DOOR ON A GUESS.

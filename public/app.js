@@ -1992,6 +1992,41 @@ async function confirmLocation() {
     state.parcel = data.parcel || null;
 
     if (state.parcel) {
+      /*
+       * TIDIED ON ARRIVAL, NOT ON REQUEST.
+       *
+       * A county boundary is digitised rather than drawn and arrives with runs
+       * of points centimetres apart -- 62 corners on the parcel this was built
+       * against, one pair 10 cm from each other. "Tidy up this boundary" has
+       * always been able to drop them; it was a button somebody had to know to
+       * press, and nobody pressing it is the ordinary case.
+       *
+       * The cost of leaving them is not cosmetic. Corners and edges compete for
+       * the same pixels, and at that density the corner always wins -- so
+       * tapping the middle of the longest edge on the parcel, as far from both
+       * its corners as the geometry allows, still selects a corner. Dragging an
+       * edge out to the kerb is the main thing property-line mode is FOR, and
+       * it was unreachable on exactly the boundaries that need it most.
+       *
+       * Safe to do unasked because tidyRing is not shape-simplification: it
+       * only ever removes a point lying within 10 cm of the straight line
+       * between its neighbours, so every corner carrying any shape survives and
+       * the area moves by a fraction of a percent -- comfortably inside the
+       * accuracy of the survey it came from. See tidyRing in lib/edges.js.
+       *
+       * Before state.surveyed is taken, so the record of which corners came
+       * from the county describes the ones that are actually still there.
+       */
+      let tidiedAway = 0;
+      const raw = parcelRing();
+      if (raw) {
+        const tidied = tidyRing(raw);
+        if (tidied.removed) {
+          setParcelRingQuietly(tidied.ring);
+          tidiedAway = tidied.removed;
+        }
+      }
+
       map.getSource('parcel').setData(state.parcel);
       const bbox = geometryBounds(state.parcel);
       map.fitBounds([[bbox[0], bbox[1]], [bbox[2], bbox[3]]], { padding: 60, duration: 800 });
@@ -2011,10 +2046,20 @@ async function confirmLocation() {
       // Names the next STEP rather than the next button, because the button is
       // on a tab you are not looking at -- "press Detect" with no Detect on
       // screen reads as the app having lost it.
+      /*
+       * Said, not done quietly. Changing somebody's boundary without telling
+       * them is the thing the tidy button was careful not to do, and doing it
+       * automatically is not a licence to stop saying so -- it is the reason
+       * to keep saying it, since now nobody asked.
+       */
+      const tidyNote = tidiedAway
+        ? ` Dropped ${tidiedAway} duplicate corner${tidiedAway === 1 ? '' : 's'} ` +
+          'the county had stacked on top of each other — the line is unchanged.'
+        : '';
       setStatus(
         `Found your property line — ${a.acres} acres total ` +
-        `(${state.parcel.properties.county}). Check it, then open AI to detect ` +
-        'your lawn — or Draw to trace it yourself.'
+        `(${state.parcel.properties.county}).${tidyNote} Check it, then open AI ` +
+        'to detect your lawn — or Draw to trace it yourself.'
       );
     } else {
       map.getSource('parcel').setData(empty());
@@ -9226,10 +9271,23 @@ function parcelRing() {
  * the boundary has to widen the picture too, or the new strip is invisible to
  * the detector and any pin dropped on it is discarded.
  */
-function setParcelRing(ring) {
+/**
+ * Put a ring into the parcel's geometry and do nothing else about it.
+ *
+ * Split out for the moment the parcel arrives, which tidies it before anything
+ * has been drawn or framed. Everything setParcelRing does afterwards -- redraw,
+ * re-frame, refetch the photograph -- that path is about to do for itself, and
+ * doing it twice means fetching an aerial photograph of a frame that is
+ * replaced a millisecond later.
+ */
+function setParcelRingQuietly(ring) {
   const g = state.parcel.geometry;
   if (g.type === 'Polygon') g.coordinates = [ring, ...g.coordinates.slice(1)];
   else if (g.type === 'MultiPolygon') g.coordinates[0] = [ring, ...g.coordinates[0].slice(1)];
+}
+
+function setParcelRing(ring) {
+  setParcelRingQuietly(ring);
 
   map.getSource('parcel').setData(state.parcel);
 
