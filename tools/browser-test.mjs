@@ -67,12 +67,27 @@ async function goTab(page, name) {
  * two gesture ones this run was supposed to be about.
  */
 async function armBrush(page, which) {
+  /*
+   * WAITED ON, NOT SLEPT THROUGH. The first version used fixed 200ms pauses
+   * and lost the race about one run in two: the rail had not re-rendered, the
+   * brush was never armed, and the stroke that followed painted nothing --
+   * reported as "0 -> 0 shape(s), 0 sq ft", which reads like a broken brush
+   * rather than a test that clicked too early.
+   */
   if (await page.locator('#tool-brushes').isVisible()) {
     await page.click('#tool-brushes');
-    await page.waitForTimeout(200);
+    await page.locator(`#tool-${which}`).waitFor({ state: 'visible', timeout: 5000 });
   }
   await page.click(`#tool-${which}`);
-  await page.waitForTimeout(200);
+
+  /* And confirm it actually took. The tool buttons TOGGLE -- pressing the one
+     already live drops back to Points -- so "clicked" and "armed" are two
+     different claims and only the second one matters to what follows. */
+  await page.waitForFunction(
+    (tool) => document.querySelector(`#tool-${tool}`)?.getAttribute('aria-pressed') === 'true',
+    which,
+    { timeout: 5000 }
+  );
 }
 
 async function unlockDetect(page) {
