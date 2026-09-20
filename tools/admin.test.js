@@ -1698,8 +1698,66 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
     JSON.stringify({ passRate: fresh.passRate, waiting: fresh.waiting }));
 
   check('and a worker with no row of their own reads as an ungated stranger',
-    fresh.kind === 'crowd' && fresh.trusted === false,
-    `${fresh.kind}, trusted=${fresh.trusted}`);
+    fresh.trusted === false,
+    `trusted=${fresh.trusted}`);
+
+  /*
+   * AND IS NOT GIVEN A ROUTE NOBODY RECORDED.
+   *
+   * This asserted 'crowd', which is what the query used to COALESCE to -- so
+   * the test agreed with the page that everybody arrived from a crowd
+   * platform, including seven volunteers on a batch where no crowd link had
+   * ever been handed out. A default that is indistinguishable from a fact is
+   * the bug; a test that spells the default is how it survived.
+   */
+  check('and is not handed a route nobody recorded',
+    fresh.kind === null && fresh.decided === null && fresh.arrived === null,
+    `kind=${fresh.kind} -- "unknown" is the true answer and the page says so`);
+
+  /*
+   * THE ROUTE COMES OFF THE JOB WHEN THE OWNER HAS NOT SAID OTHERWISE. It is
+   * written when the lawn is claimed, which is the only moment anybody knows
+   * it, and the whole reason the column exists.
+   */
+  await env.DB.prepare(
+    `INSERT INTO lawn_jobs (id, lng, lat, state, worker, route, submitted_at, created_at)
+     VALUES ('vol-1', -80, 40, 'submitted', 'HELPER-X', 'volunteer',
+             '2026-09-19T10:00:00Z', '2026-09-19T09:00:00Z')`
+  ).run();
+  const helper = (await ask(env, ownerToken, 'workers')).body
+    .workers.find((w) => w.worker === 'HELPER-X');
+  check('somebody who came in on the volunteer link reads as a volunteer',
+    helper.kind === 'volunteer' && helper.arrived === 'volunteer'
+    && helper.decided === null,
+    `${helper.kind} -- from the link they used, not from a default`);
+
+  /*
+   * AND TRUSTING THEM MUST NOT QUIETLY MAKE THEM A CROWD WORKER.
+   *
+   * The column is NOT NULL, so an insert with no route has to write
+   * something, and 'crowd' was it. routeFor prefers this row over the link,
+   * so one press of Save on a volunteer would have started gating them at
+   * five maps -- for a person doing the work for nothing.
+   */
+  await ask(env, ownerToken, 'trust-worker',
+    { method: 'POST', body: { worker: 'HELPER-X', trusted: true } });
+  const stamped = await env.DB.prepare(
+    'SELECT kind FROM lawn_workers WHERE worker = ?1'
+  ).bind('HELPER-X').first();
+  check('and trusting them keeps that route instead of stamping crowd on it',
+    stamped.kind === 'volunteer',
+    `${stamped.kind} -- a route the owner never chose must come from the link`);
+
+  /* With nothing recorded at all there is still a NOT NULL column to fill, and
+     'crowd' is what routeFor would conclude anyway. */
+  await ask(env, ownerToken, 'trust-worker',
+    { method: 'POST', body: { worker: 'NEWCOMER', trusted: true } });
+  const blank = await env.DB.prepare(
+    'SELECT kind FROM lawn_workers WHERE worker = ?1'
+  ).bind('NEWCOMER').first();
+  check('and somebody with no recorded route still falls back to crowd',
+    blank.kind === 'crowd',
+    'which is exactly what routeFor concludes from a link with no via');
 
   /*
    * WHAT SETTLING UP NEEDS, on the page where somebody would settle up.

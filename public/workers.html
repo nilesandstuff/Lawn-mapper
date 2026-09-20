@@ -53,6 +53,12 @@
   .pill.hired     { background: #e4f2e5; color: #1f5b22; }
   .pill.volunteer { background: #f3ecfb; color: #573a80; }
   /*
+    Not a route. It means the route was never recorded -- which is the honest
+    answer for anybody who traced before lawn_jobs.route existed, and a much
+    better one than the "crowd" this column used to print for everybody.
+  */
+  .pill.unknown   { background: #f1f1ef; color: #6b6b63; }
+  /*
     A pass rate is only meaningful once somebody has been reviewed, and the
     colour is the fastest read on the page: below the bar is the one state
     that stops somebody getting more work.
@@ -199,6 +205,11 @@
         trusted workers and volunteers are not gated at all.</p>
       <p class="sub"><b>Typical</b> is the median time per map, which is the
         number a paid platform judges your reward against.</p>
+      <p class="sub"><b>unknown</b> under a name means nobody recorded which
+        link they arrived on. Every claim now writes it down; rows traced
+        before that cannot be recovered, and this page will not guess. It said
+        <b>crowd</b> for all of them until now, which was a default wearing a
+        fact's clothes.</p>
       <p class="sub"><b>Owed</b> counts approved maps only — a lawn marked as a
         hard one is not held against anybody and does not pay. Green means it
         is over the minimum payout and can actually be sent; grey means it is

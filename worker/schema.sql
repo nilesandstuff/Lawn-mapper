@@ -513,6 +513,23 @@ CREATE TABLE IF NOT EXISTS lawn_jobs (
   -- The worker, as the platform names them. Not an account here: these people
   -- never sign in, they arrive with a token in a link.
   worker        TEXT,
+  -- WHICH LINK THEY ARRIVED ON, written when the lawn is claimed.
+  --
+  -- The route was worked out on every claim already -- it decides the gates,
+  -- the daily cap and what somebody sees when they finish -- and then thrown
+  -- away. So "who is tracing" had nothing to read and fell back to 'crowd' for
+  -- everybody, which is a page about people asserting something it did not
+  -- know: seven volunteers listed as crowd workers on a batch where no crowd
+  -- link had been handed out.
+  --
+  -- Worse than cosmetic, because the row is also an editor. Opening one to
+  -- add a note showed "Crowd" already selected, and saving it made that the
+  -- stored truth -- which routeFor prefers over the link, so a volunteer
+  -- would start hitting crowd gates at five maps.
+  --
+  -- NULL on every row claimed before this existed, and shown as "unknown"
+  -- rather than guessed at.
+  route         TEXT,
   claimed_at    TEXT,
   submitted_at  TEXT,
   decided_at    TEXT,

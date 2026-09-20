@@ -85,7 +85,16 @@ function render() {
     const name = el('button', 'namebtn', w.worker);
     name.type = 'button';
     name.addEventListener('click', () => pick(w.worker));
-    who.append(name, ' ', el('span', `pill ${w.kind}`, w.kind));
+    /*
+     * "UNKNOWN" IS A REAL ANSWER AND IT USED TO SAY "CROWD" INSTEAD.
+     *
+     * The route was computed on every claim and thrown away, so this column
+     * had nothing to read and defaulted. Seven volunteers read as crowd
+     * workers on a batch where no crowd link existed. A row claimed before the
+     * route was recorded still cannot be known, and says so.
+     */
+    who.append(name, ' ', el('span', `pill ${w.kind || 'unknown'}`, w.kind || 'unknown'));
+    if (w.mixed) who.append(' ', el('span', 'pill unknown', 'two links'));
     if (w.trusted) who.append(' ', el('span', 'pill hired', 'trusted'));
     if (w.note) who.append(el('span', 'said', w.note));
     /*
@@ -208,7 +217,7 @@ async function load() {
  * statement about their pay arrangement, not a reference.
  */
 let picked = null;
-let pickKind = 'crowd';
+let pickKind = null;
 let pickTrusted = false;
 
 function paintPick() {
@@ -219,8 +228,17 @@ function paintPick() {
   $('#pick-name').textContent = w.worker;
   $('#pick-note').value = w.note || '';
 
+  /*
+   * NOTHING IS PRE-SELECTED FOR SOMEBODY WHOSE ROUTE IS UNKNOWN.
+   *
+   * This editor used to open with "Crowd" already lit for everybody, because
+   * the list behind it defaulted that way -- and saving a note would then
+   * store 'crowd' as the decision. routeFor prefers this row over the link, so
+   * that one press would have started gating a volunteer at five maps.
+   * Leaving it blank asks the question instead of answering it wrongly.
+   */
   for (const b of document.querySelectorAll('#pick-kind button')) {
-    b.classList.toggle('on', b.dataset.kind === pickKind);
+    b.classList.toggle('on', pickKind !== null && b.dataset.kind === pickKind);
   }
   const trust = $('#pick-trust');
   trust.classList.toggle('on', pickTrusted);
@@ -232,17 +250,33 @@ function paintPick() {
    * Said out loud, because the combination people will reach for -- hired, not
    * yet trusted -- looks like it ought to mean "let them work" and does not.
    */
-  $('#pick-said').textContent = pickTrusted
+  const gates = pickTrusted
     ? 'They go straight past the five and fifteen map gates and the daily cap.'
     : `They do ${5} maps, then wait for you, then ${10} more, then wait again. `
       + 'Marking somebody hired does not change that — trust does.';
+
+  /*
+   * And where the route came from, when it is worth saying. The owner's own
+   * decision needs no explanation; the other two do, because one of them is
+   * a guess this page refuses to make.
+   */
+  let about = '';
+  if (!w.decided && w.arrived) {
+    about = ` Not set by you — ${w.arrived} is the link they actually used.`;
+  } else if (!w.decided && !w.arrived) {
+    about = ' Nobody knows which link this one used: they traced before the '
+      + 'route was being recorded. Leave it blank unless you know.';
+  }
+
+  $('#pick-said').textContent = gates + about;
 }
 
 function pick(worker) {
   const w = workers.find((x) => x.worker === worker);
   if (!w) return;
   picked = worker;
-  pickKind = w.kind || 'crowd';
+  /* Null, not 'crowd'. See paintPick. */
+  pickKind = w.kind || null;
   pickTrusted = Boolean(w.trusted);
   paintPick();
   $('#picked').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -267,7 +301,9 @@ $('#pick-save').addEventListener('click', async () => {
       body: JSON.stringify({
         worker: picked,
         trusted: pickTrusted,
-        kind: pickKind,
+        /* Left out entirely when nothing is chosen, so the route keeps what it
+           has rather than being told 'crowd' by a page that does not know. */
+        ...(pickKind ? { kind: pickKind } : {}),
         /* Null rather than '' so the route's COALESCE leaves an existing note
            alone instead of blanking it when the field was never touched. */
         ...(note ? { note } : {}),
@@ -282,7 +318,7 @@ $('#pick-save').addEventListener('click', async () => {
 
   const w = workers.find((x) => x.worker === picked);
   if (w) {
-    w.kind = pickKind;
+    if (pickKind) { w.kind = pickKind; w.decided = pickKind; }
     w.trusted = pickTrusted;
     if (note) w.note = note;
   }

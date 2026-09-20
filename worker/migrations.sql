@@ -168,3 +168,21 @@ ALTER TABLE lawn_workers ADD COLUMN kind TEXT NOT NULL DEFAULT 'crowd';
 ALTER TABLE users ADD COLUMN payout_kind TEXT;
 ALTER TABLE users ADD COLUMN payout_handle TEXT;
 ALTER TABLE users ADD COLUMN payout_at TEXT;
+
+-- WHICH LINK A WORKER ARRIVED ON, recorded on the job itself.
+--
+-- The route was computed on every claim -- it decides the gates, the daily cap
+-- and what somebody sees when they finish -- and then discarded. So the "who
+-- is tracing" page had nothing to read, and COALESCEd to 'crowd' for everybody
+-- the owner had not hand-edited: seven volunteers listed as crowd workers on a
+-- batch where no crowd link had ever been handed out.
+--
+-- Not cosmetic, because that row is also the editor. It opened with "Crowd"
+-- already selected, and saving it wrote that as the stored truth -- which
+-- routeFor prefers over the link, so a volunteer would start hitting crowd
+-- gates at five maps.
+--
+-- NULL on every row claimed before this, and the page says "unknown" rather
+-- than guessing. lawn_jobs shipped long ago, so the CREATE in schema.sql
+-- reaches new databases only.
+ALTER TABLE lawn_jobs ADD COLUMN route TEXT;

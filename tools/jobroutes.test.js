@@ -487,6 +487,23 @@ const read = async (res) => ({ status: res.status, body: await res.json() });
     JSON.stringify({ route: helper.body.route, job: Boolean(helper.body.job) }));
 
   /*
+   * AND THE ROUTE IS WRITTEN ON THE JOB, not merely acted on and discarded.
+   *
+   * It was computed on every claim -- it decides the gates, the cap and what
+   * somebody sees at the end -- and then thrown away, so the page that shows
+   * the owner who is tracing had nothing to read and called everybody a crowd
+   * worker. Seven volunteers listed as crowd workers on a batch where no
+   * crowd link had ever been handed out.
+   */
+  const written = await env.DB.prepare(
+    'SELECT route, worker FROM lawn_jobs WHERE id = ?1'
+  ).bind(helper.body.job.id).first();
+  check('and the link they used is recorded on the lawn they were given',
+    written.route === 'volunteer' && written.worker === 'helper-abc123',
+    `route=${written.route} -- computed and discarded is how a page ends up `
+    + 'asserting a route nobody used');
+
+  /*
    * AND IS NOT HELD TO THE TIME FLOOR. A timer on donated work can only ever
    * turn it away -- there is no money to protect by refusing it.
    */

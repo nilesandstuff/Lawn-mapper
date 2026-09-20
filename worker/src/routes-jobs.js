@@ -200,7 +200,7 @@ async function identify(request, url, env, ctx, given) {
 async function releaseStale(env, now) {
   await env.DB.prepare(
     `UPDATE lawn_jobs
-        SET state = 'approved', worker = NULL, claimed_at = NULL
+        SET state = 'approved', worker = NULL, claimed_at = NULL, route = NULL
       WHERE state = 'claimed' AND claimed_at < ?1`
   ).bind(staleBefore(now)).run();
 }
@@ -322,13 +322,21 @@ async function claimFor(worker, route, env, now, json, origin) {
    * and the gap is exactly where a crowd platform puts forty people.
    */
   const claimedAt = new Date(now).toISOString();
+  /*
+   * AND THE ROUTE IS WRITTEN DOWN, not just acted on.
+   *
+   * It was already known here -- it decides the gates, the daily cap and what
+   * somebody sees when they finish -- and it was thrown away every time. The
+   * page that shows the owner who is tracing then had nothing to read, so it
+   * called everybody a crowd worker by default. See lawn_jobs.route.
+   */
   const taken = await env.DB.prepare(
     `UPDATE lawn_jobs
-        SET state = 'claimed', worker = ?1, claimed_at = ?2
+        SET state = 'claimed', worker = ?1, claimed_at = ?2, route = ?3
       WHERE id = (SELECT id FROM lawn_jobs WHERE state = 'approved'
                    ORDER BY created_at ASC LIMIT 1)
     RETURNING *`
-  ).bind(worker, claimedAt).first();
+  ).bind(worker, claimedAt, route).first();
 
   if (!taken) {
     return json({
@@ -444,7 +452,7 @@ export async function handleJobs(request, url, env, origin, ctx, json) {
      */
     await env.DB.prepare(
       `UPDATE lawn_jobs
-          SET state = 'approved', worker = NULL, claimed_at = NULL,
+          SET state = 'approved', worker = NULL, claimed_at = NULL, route = NULL,
               note = ?3, created_at = ?4
         WHERE id = ?1 AND worker = ?2 AND state = 'claimed'`
     ).bind(

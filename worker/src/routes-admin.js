@@ -856,7 +856,30 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
               SUM(COALESCE(j.seconds, 0))                                 AS total_seconds,
               MAX(COALESCE(w.trusted, 0))                                 AS trusted,
               MAX(w.note)                                                 AS note,
-              MAX(COALESCE(w.kind, 'crowd'))                              AS kind,
+              /*
+               * TWO DIFFERENT FACTS, KEPT APART.
+               *
+               *   decided  what the OWNER said this person is. Null until
+               *            somebody opened the editor and saved.
+               *   arrived  which link they actually came in on, recorded when
+               *            the lawn was claimed. Null on rows claimed before
+               *            that column existed.
+               *
+               * This used to be one column, COALESCEd to 'crowd', and the
+               * default was indistinguishable from a decision. Seven
+               * volunteers read as crowd workers on a batch where no crowd
+               * link had been handed out -- and opening one of those rows to
+               * add a note offered "Crowd" pre-selected, which saving would
+               * have made true.
+               *
+               * MAX() over the routes rather than the newest one on purpose:
+               * they are all the same value for anybody who has used one
+               * link, and somebody who has used two is worth noticing rather
+               * than smoothing over.
+               */
+              MAX(w.kind)                                                 AS decided,
+              MAX(j.route)                                                AS arrived,
+              COUNT(DISTINCT j.route)                                     AS routes_used,
               /*
                * A PAID TRACER'S WORKER ID IS THEIR ACCOUNT ID, because that
                * route reads identity from the session rather than from a link.
@@ -923,7 +946,18 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
         const reviewed = kept + excused + refused;
         return {
           worker: r.worker,
-          kind: r.kind || 'crowd',
+          /*
+           * WHAT TO CALL THEM: the owner's decision if there is one, else the
+           * link they actually arrived on, else nothing at all. Null travels
+           * to the page as "unknown", which is the honest answer for a row
+           * claimed before the route was recorded -- and a far better one than
+           * naming a route nobody used.
+           */
+          kind: r.decided || r.arrived || null,
+          decided: r.decided || null,
+          arrived: r.arrived || null,
+          /* Somebody who has used more than one link. Rare and worth seeing. */
+          mixed: Number(r.routes_used || 0) > 1,
           trusted: Number(r.trusted || 0) === 1,
           note: r.note || null,
           handed: Number(r.handed || 0),
@@ -1107,7 +1141,24 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
     await env.DB.prepare(
       `INSERT INTO lawn_workers
          (worker, trusted, note, kind, decided_at, decided_by, created_at)
-       VALUES (?1, ?2, ?3, COALESCE(?6, 'crowd'), ?4, ?5, ?4)
+       VALUES (?1, ?2, ?3,
+         /*
+          * A ROUTE NOBODY CHOSE FALLS BACK TO THE ONE THEY ACTUALLY USED.
+          *
+          * The column is NOT NULL, so trusting somebody without naming a route
+          * has to write something -- and writing 'crowd' is how a volunteer
+          * ends up gated at five maps, because routeFor prefers this row over
+          * the link. Their own recorded route is the truthful thing to put
+          * here, and 'crowd' stays only for a row with nothing recorded at
+          * all, which is exactly what routeFor would have concluded anyway.
+          */
+         COALESCE(?6,
+           (SELECT route FROM lawn_jobs
+             WHERE worker = ?1 AND route IS NOT NULL
+             ORDER BY COALESCE(submitted_at, claimed_at, created_at) DESC
+             LIMIT 1),
+           'crowd'),
+         ?4, ?5, ?4)
        ON CONFLICT(worker) DO UPDATE SET
          trusted = ?2, note = COALESCE(?3, lawn_workers.note),
          kind = COALESCE(?6, lawn_workers.kind),
