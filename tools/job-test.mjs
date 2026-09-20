@@ -110,10 +110,22 @@ async function settled(page) {
   return job(page);
 }
 
-/** Paint a lawn, the way somebody with no outline to fix would. */
+/**
+ * Paint a lawn, the way somebody with no outline to fix would.
+ *
+ * THREE PRESSES, NOT TWO, and the third is the whole reason this is a helper.
+ * Shape mode opens on Points -- corner editing -- and the rail folds Add and
+ * Erase away behind one Brushes icon while it is live, because the rail sits
+ * over the map and the tools for the job you are not doing are covering the
+ * lawn. So a brush is: shape, brushes, add.
+ */
 async function traceALawn(page) {
   await page.click('#mode-shape');
   await page.waitForTimeout(250);
+  if (await page.locator('#tool-brushes').isVisible()) {
+    await page.click('#tool-brushes');
+    await page.waitForTimeout(250);
+  }
   await page.click('#tool-add');
   await page.waitForTimeout(250);
   const mb = await page.locator('#map').boundingBox();
