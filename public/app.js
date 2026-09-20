@@ -10745,7 +10745,19 @@ $('#signin-email-form').addEventListener('submit', async (e) => {
     await api('/api/auth/email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, next: location.pathname }),
+      /*
+       * THE QUERY STRING IS THE LINK, and sending only the path threw it away.
+       *
+       * Everything that makes this page anything other than the front page
+       * lives in the search: `?via=paid` is the paid route, `?w=<id>` is a
+       * crowd worker's assignment. Signing in from the paid link therefore
+       * landed people back on the ordinary site with no lawn, no job mode and
+       * nothing to say what had happened -- on the one route where signing in
+       * is compulsory, so it was the whole of that journey.
+       *
+       * safeNext on the Worker keeps this to a path on this site.
+       */
+      body: JSON.stringify({ email, next: location.pathname + location.search }),
     });
     /*
      * THE SAME ANSWER WHETHER OR NOT AN ACCOUNT EXISTED. The link makes one if

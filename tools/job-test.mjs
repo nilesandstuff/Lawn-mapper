@@ -58,7 +58,7 @@ const open = [];
  * quietly treated two workers as one, which is exactly the bug that hands two
  * people the same lawn and pays twice for one map.
  */
-async function arrive(query, { stubDetect = true, blockMapbox = false } = {}) {
+async function arrive(query, { stubDetect = true, blockMapbox = false, withMail = false } = {}) {
   const context = await browser.newContext({ viewport: { width: 420, height: 900 } });
   open.push(context);
   const page = await context.newPage();
@@ -68,6 +68,25 @@ async function arrive(query, { stubDetect = true, blockMapbox = false } = {}) {
 
   /* Stand in for an ad blocker, a corporate filter or a CDN outage. */
   if (blockMapbox) await page.route('**/api.mapbox.com/mapbox-gl-js/**', (r) => r.abort());
+
+  /*
+   * SAY THIS DEPLOYMENT CAN SEND MAIL.
+   *
+   * The local worker these tests drive has no RESEND_API_KEY -- the workflow
+   * writes a .dev.vars with map and model tokens and nothing else -- so
+   * /api/auth/me honestly answers `email: false` and the sign-in panel
+   * correctly shows an explanation instead of a form.
+   *
+   * Which is right, and makes it impossible to test anything ABOUT the form
+   * without saying otherwise. Stubbed rather than configured, because the
+   * alternative is a mail provider's key in CI for a form nobody submits.
+   */
+  if (withMail) {
+    await page.route('**/api/auth/me', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ user: null, email: true }),
+    }));
+  }
 
   const detects = [];
   if (stubDetect) {
@@ -502,7 +521,7 @@ const mine = await settled(one.page);
    * which starts no job mode at all -- `via` is read for a route name and the
    * app decides nobody asked for a lawn.
    */
-  const { page } = await arrive('?via=paid');
+  const { page } = await arrive('?via=paid', { withMail: true });
   const stopped = await settled(page);
 
   check('the paid link stops somebody who is not signed in',

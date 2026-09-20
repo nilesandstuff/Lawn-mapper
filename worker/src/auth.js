@@ -105,7 +105,16 @@ export function safeNext(next) {
   // leading-slash test. An open redirect on a sign-in endpoint is how a
   // phishing link gets to wear your domain in the address bar.
   if (!raw.startsWith('/') || raw.startsWith('//')) return '/';
-  return raw;
+  /*
+   * A QUERY STRING IS KEPT -- it is what makes ?via=paid a paid link rather
+   * than the front page -- and A FRAGMENT IS NOT.
+   *
+   * The redirect appends its own `#signed-in`, which is how the app knows to
+   * say so. A fragment already in here would leave two, and the outcome the
+   * page reads would be the wrong half of them. Capped as well, because this
+   * is stored against the challenge and there is no legitimate long one.
+   */
+  return raw.split('#')[0].slice(0, 512) || '/';
 }
 
 /**

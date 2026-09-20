@@ -581,6 +581,28 @@ const rows = async (e, sql, ...args) => (await e.DB.prepare(sql).bind(...args).a
     && safeNext('') === '/');
   check('but a path on the site is kept', safeNext('/saved') === '/saved');
 
+  /*
+   * AND THE QUERY STRING WITH IT, which is the whole of what makes a link a
+   * paid link. The browser was sending location.pathname alone, so signing in
+   * from ?via=paid landed people back on the ordinary front page -- on the one
+   * route where signing in is not optional.
+   */
+  check('and the query string, which is what the link actually is',
+    safeNext('/?via=paid') === '/?via=paid'
+    && safeNext('/?w=WORKER1&assignmentId=A2') === '/?w=WORKER1&assignmentId=A2',
+    'without it ?via=paid comes back as the front page and the journey ends');
+
+  /*
+   * A fragment is dropped: the redirect appends its own `#signed-in`, and two
+   * of them would leave the page reading the wrong half.
+   */
+  check('but not a fragment, which the redirect adds itself',
+    safeNext('/?via=paid#already') === '/?via=paid'
+    && safeNext('/#') === '/');
+
+  check('and nothing absurdly long, since this is stored against the challenge',
+    safeNext(`/?via=${'x'.repeat(900)}`).length === 512);
+
   check('a plausible address is accepted', looksLikeEmail('a.b+c@example.co.uk'));
   check('and an implausible one is not',
     !looksLikeEmail('no-at-sign') && !looksLikeEmail('a@b') && !looksLikeEmail(''));
