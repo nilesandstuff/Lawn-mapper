@@ -135,7 +135,7 @@ export const FREE_DETECTS_PER_JOB = 6;
  */
 export function claimVerdict({
   held = 0, submittedToday = 0, lastSubmitAt = null, now = Date.now(),
-  submittedEver = 0, passed = 0, refused = 0,
+  submittedEver = 0, passed = 0, refused = 0, trusted = false,
 }) {
   if (held >= MAX_HELD) {
     return {
@@ -143,6 +143,25 @@ export function claimVerdict({
       reason: 'You already have a lawn open. Finish or skip that one first.',
     };
   }
+
+  /*
+   * SOMEBODY THE OWNER HAS ALREADY DECIDED ABOUT.
+   *
+   * The queue is fed from two directions now: a crowd platform, where workers
+   * are anonymous and unknown, and one or two people hired directly and paid
+   * by the hour. Everything below this line exists to find out whether a
+   * stranger can do this -- and for the second group that question has already
+   * been answered, expensively, by a person looking at their maps.
+   *
+   * Applied AFTER the one-at-a-time rule and BEFORE the gates and the cap,
+   * which is the whole of what trust means here. Holding two lawns is how one
+   * lawn gets paid for twice, and that is not a question about character. The
+   * ninety-second floor below is skipped too, for the same reason it exists:
+   * it catches somebody clicking submit on an untouched outline, and the
+   * person it would actually inconvenience is a fast worker on a small garden
+   * -- which, by this point, is who this is.
+   */
+  if (trusted) return { ok: true, trusted: true };
 
   /*
    * THE GATES. Written as a loop over GATES rather than as two branches, so
@@ -232,9 +251,18 @@ export function claimVerdict({
  */
 export function submissionVerdict({
   claimedAt, now = Date.now(), edited = false, confirmedUnchanged = false,
+  trusted = false,
 }) {
   const seconds = claimedAt ? (now - new Date(claimedAt).getTime()) / 1000 : 0;
-  if (seconds < MIN_SECONDS) {
+  /*
+   * The floor is skipped for somebody the owner has decided about, and only
+   * the floor. It exists to catch a stranger waving an untouched outline
+   * through; the person it would otherwise inconvenience is a fast worker on a
+   * small garden, which by this point is who this is. The unchanged-outline
+   * question below still applies to everybody -- it costs one press, it is
+   * occasionally right, and a map that went through it is flagged either way.
+   */
+  if (!trusted && seconds < MIN_SECONDS) {
     return {
       ok: false,
       reason: `That took ${Math.round(seconds)} seconds. Have another look — `

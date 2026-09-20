@@ -539,3 +539,45 @@ CREATE TABLE IF NOT EXISTS lawn_jobs (
 -- and "what can I hand out", both of which are a state scan.
 CREATE INDEX IF NOT EXISTS lawn_jobs_state ON lawn_jobs(state, created_at);
 CREATE INDEX IF NOT EXISTS lawn_jobs_worker ON lawn_jobs(worker, state);
+
+-- ----------------------------------------------------------------------
+-- PEOPLE THE OWNER HAS DECIDED ABOUT.
+--
+-- Still not accounts. A row appears here only when the owner says something
+-- about somebody; every other worker is a stranger with an id and no row, and
+-- the gates in jobs.js are written for exactly that person.
+--
+-- WHY THIS EXISTS AT ALL. The queue is now fed from two directions: a crowd
+-- platform, where workers are anonymous, numerous and unknown, and one or two
+-- people hired directly and paid by the hour. The rules that protect the batch
+-- from the first group actively cost money with the second -- a hired person
+-- held at a five-map gate is being paid to wait for a review, and a daily cap
+-- of forty is a ceiling on somebody who was engaged to do more than that.
+--
+-- So `trusted` lifts the gates and the cap, and NOTHING ELSE. One lawn at a
+-- time still holds, because that is what stops one lawn being paid for twice,
+-- and the ninety-second floor still holds, because it has never bound anybody
+-- doing the work honestly and it is the only automatic check there is.
+--
+-- It is granted from the grading queue, on a card, which is the moment the
+-- opinion actually forms: the owner has just looked at this person's fourth
+-- good map. That also means it is not restricted to hired people -- a crowd
+-- worker who turns out to be excellent is exactly who should be let off the
+-- leash, and there is no reason for the mechanism to care where they came
+-- from.
+CREATE TABLE IF NOT EXISTS lawn_workers (
+  -- As the platform names them, or as the owner named them when handing a
+  -- hired person their link. Cleaned by cleanWorker before it gets here.
+  worker      TEXT PRIMARY KEY,
+  -- 0 or 1. No middle setting: the honest question is "do I want to keep
+  -- checking this person's work before giving them more", and a scale would
+  -- invite an answer that means nothing when it is read back.
+  trusted     INTEGER NOT NULL DEFAULT 0,
+  -- Who they are, in the owner's own words -- "Jane, hired on Upwork, £8/hr".
+  -- A worker id is a string of characters and says nothing on a small screen
+  -- three weeks later.
+  note        TEXT,
+  decided_at  TEXT,
+  decided_by  TEXT,
+  created_at  TEXT NOT NULL
+);

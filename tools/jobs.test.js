@@ -159,6 +159,36 @@ const NOW = Date.parse('2026-09-19T12:00:00Z');
       submittedEver: 99, passed: 99, refused: 0, submittedToday: DAILY_CAP, now: NOW,
     }).ok,
     'proving yourself does not remove the ceiling');
+
+  /*
+   * EXCEPT FOR SOMEBODY THE OWNER HAS ALREADY DECIDED ABOUT.
+   *
+   * The queue is fed from two directions: a crowd platform, where workers are
+   * anonymous and unknown, and one or two people hired directly and paid by
+   * the hour. Everything above this line exists to find out whether a stranger
+   * can do this -- and for the second group it has already been answered, by a
+   * person looking at their maps. Left in place, the gates bill the owner for
+   * a hired worker sitting at a five-map wall waiting on a review.
+   */
+  const hired = { submittedEver: FIRST, passed: 0, refused: FIRST, trusted: true, now: NOW };
+  check('somebody the owner trusts is not held at a gate',
+    claimVerdict(hired).ok,
+    'a hired worker waiting on a review is being paid to wait');
+  check('nor stopped by a bad record from before they were trusted',
+    claimVerdict({ ...hired, submittedEver: 40, passed: 1, refused: 39 }).ok,
+    'the owner looked and decided anyway, which outranks the arithmetic');
+  check('nor capped at forty a day',
+    claimVerdict({ ...hired, submittedToday: DAILY_CAP * 3 }).ok,
+    `${DAILY_CAP} is a ceiling on a stranger, not on somebody engaged to do more`);
+
+  /*
+   * BUT ONE LAWN AT A TIME STILL HOLDS, and that is the line worth drawing:
+   * holding two is how one lawn gets paid for twice, which is not a question
+   * about anybody's character.
+   */
+  check('and still may not hold two lawns at once',
+    !claimVerdict({ ...hired, held: MAX_HELD }).ok,
+    'stockpiling is an arithmetic problem, not a trust one');
 }
 
 /* ------------------------------------------------------- the daily cap */
@@ -257,6 +287,25 @@ const NOW = Date.parse('2026-09-19T12:00:00Z');
   check('a slow but careless map still passes, which is the owner\'s call',
     submissionVerdict({ claimedAt: claimed(600), now: NOW, edited: true }).ok,
     'no number can judge this, and a number that pretended to would be trusted');
+
+  /*
+   * THE FLOOR IS SKIPPED FOR A TRUSTED WORKER, AND ONLY THE FLOOR.
+   *
+   * It catches a stranger waving an untouched outline through; the person it
+   * would otherwise inconvenience is a fast worker on a small garden, which by
+   * this point is exactly who this is. The unchanged-outline question still
+   * applies to everybody -- it costs one press, it is occasionally right, and
+   * the map is flagged for review either way.
+   */
+  check('a trusted worker is not held to the ninety-second floor',
+    submissionVerdict({ claimedAt: claimed(40), now: NOW, edited: true, trusted: true }).ok,
+    'a small garden traced quickly by somebody known is not the pattern being caught');
+  const trustedBlank = submissionVerdict({
+    claimedAt: claimed(40), now: NOW, edited: false, trusted: true,
+  });
+  check('but is still asked about an outline they did not touch',
+    !trustedBlank.ok && trustedBlank.unchanged,
+    'one press, occasionally right, and flagged either way');
 }
 
 /* ------------------------------------------------------- the worker id */

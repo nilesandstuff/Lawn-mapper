@@ -201,6 +201,19 @@ export async function handleJobs(request, url, env, origin, ctx, json) {
       WHERE worker = ?1 AND submitted_at IS NOT NULL`
     ).bind(worker, dayStart(now)).first();
 
+    /*
+     * HAS THE OWNER ALREADY DECIDED ABOUT THIS PERSON?
+     *
+     * A row exists only for somebody the owner has said something about --
+     * usually one or two people hired directly and paid by the hour, for whom
+     * the gates below are a ceiling on work that has already been bought. No
+     * row is the ordinary case and means "a stranger", which is what
+     * everything else here is written for.
+     */
+    const known = await env.DB.prepare(
+      'SELECT trusted FROM lawn_workers WHERE worker = ?1'
+    ).bind(worker).first().catch(() => null);
+
     const ever = Number(stats?.ever || 0);
     const passed = Number(stats?.passed || 0);
     const kept = Number(stats?.kept || 0);
@@ -211,6 +224,7 @@ export async function handleJobs(request, url, env, origin, ctx, json) {
       passed,
       refused: Number(stats?.refused || 0),
       lastSubmitAt: stats?.last || null,
+      trusted: Number(known?.trusted || 0) === 1,
       now,
     });
     if (!verdict.ok) {
@@ -337,11 +351,16 @@ export async function handleJobs(request, url, env, origin, ctx, json) {
       }, 409, origin);
     }
 
+    const known = await env.DB.prepare(
+      'SELECT trusted FROM lawn_workers WHERE worker = ?1'
+    ).bind(worker).first().catch(() => null);
+
     const verdict = submissionVerdict({
       claimedAt: row.claimed_at,
       now,
       edited: Boolean(body?.edited),
       confirmedUnchanged: Boolean(body?.confirmedUnchanged),
+      trusted: Number(known?.trusted || 0) === 1,
     });
     if (!verdict.ok) {
       return json({

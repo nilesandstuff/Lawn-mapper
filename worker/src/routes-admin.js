@@ -616,18 +616,26 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
      * happens on a phone.
      */
     const tallies = await env.DB.prepare(
-      `SELECT worker,
-              SUM(CASE WHEN state = 'kept' THEN 1 ELSE 0 END) AS kept,
-              SUM(CASE WHEN state = 'excused' THEN 1 ELSE 0 END) AS excused,
-              SUM(CASE WHEN state = 'refused' THEN 1 ELSE 0 END) AS refused,
-              SUM(CASE WHEN state = 'submitted' THEN 1 ELSE 0 END) AS pending
-         FROM lawn_jobs WHERE worker IS NOT NULL GROUP BY worker`
+      `SELECT j.worker,
+              SUM(CASE WHEN j.state = 'kept' THEN 1 ELSE 0 END) AS kept,
+              SUM(CASE WHEN j.state = 'excused' THEN 1 ELSE 0 END) AS excused,
+              SUM(CASE WHEN j.state = 'refused' THEN 1 ELSE 0 END) AS refused,
+              SUM(CASE WHEN j.state = 'submitted' THEN 1 ELSE 0 END) AS pending,
+              MAX(COALESCE(w.trusted, 0)) AS trusted,
+              MAX(w.note) AS note
+         FROM lawn_jobs j
+         LEFT JOIN lawn_workers w ON w.worker = j.worker
+        WHERE j.worker IS NOT NULL GROUP BY j.worker`
     ).all();
     const byWorker = Object.fromEntries((tallies.results || []).map((t) => [t.worker, {
       kept: Number(t.kept || 0),
       excused: Number(t.excused || 0),
       refused: Number(t.refused || 0),
       pending: Number(t.pending || 0),
+      /* So the card can show the switch in the state it is actually in,
+         rather than offering to grant something already granted. */
+      trusted: Number(t.trusted || 0) === 1,
+      note: t.note || null,
     }]));
 
     const counts = await env.DB.prepare(
@@ -755,6 +763,47 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
     }
 
     return json({ ok: true }, 200, origin);
+  }
+
+  /*
+   * TRUSTING SOMEBODY, OR TAKING IT BACK.
+   *
+   * The gates and the daily cap exist to find out whether an anonymous
+   * stranger can do this. For one or two people hired directly and paid by the
+   * hour, that question has already been answered -- expensively, by the owner
+   * looking at their maps -- and the gates become a ceiling on work that has
+   * been bought. Trust lifts them, and lifts nothing else: one lawn at a time
+   * still holds, because that is what stops a lawn being paid for twice.
+   *
+   * Granted from the grading card, which is where the opinion actually forms.
+   * It deliberately does not care whether somebody was hired or came off a
+   * crowd platform: a stranger who turns out to be excellent is exactly who
+   * should be let off the leash.
+   */
+  if (path === 'trust-worker' && request.method === 'POST') {
+    const body = await request.json().catch(() => ({}));
+    const worker = String(body?.worker || '').trim().slice(0, 64);
+    if (!worker) return json({ error: 'Need a worker' }, 400, origin);
+    const trusted = body?.trusted === true;
+    const note = body?.note ? String(body.note).slice(0, 200) : null;
+    const when = new Date().toISOString();
+
+    /*
+     * Upsert, because the owner will change their mind and the row is the
+     * decision rather than the person -- there is no sign-up here to hang one
+     * off. COALESCE on the note so revoking trust does not silently wipe
+     * "Jane, hired on Upwork", which is the only thing that makes a worker id
+     * readable three weeks later.
+     */
+    await env.DB.prepare(
+      `INSERT INTO lawn_workers (worker, trusted, note, decided_at, decided_by, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?4)
+       ON CONFLICT(worker) DO UPDATE SET
+         trusted = ?2, note = COALESCE(?3, lawn_workers.note),
+         decided_at = ?4, decided_by = ?5`
+    ).bind(worker, trusted ? 1 : 0, note, when, me.email).run();
+
+    return json({ ok: true, worker, trusted }, 200, origin);
   }
 
   /*

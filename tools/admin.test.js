@@ -94,6 +94,9 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
     ['screen-lawn', { method: 'POST', body: { id: 'x', verdict: 'approved' } }],
     ['lawn-reviews'],
     ['review-lawn', { method: 'POST', body: { id: 'x', verdict: 'kept' } }],
+    /* Trust lifts the gates and the daily cap, so a stranger who could reach
+       it could grant themselves the run of the batch. */
+    ['trust-worker', { method: 'POST', body: { worker: 'x', trusted: true } }],
   ];
 
   const asStranger = [];
@@ -1440,6 +1443,38 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
     excused.state === 'excused' && excused.status === 'rejected'
     && /excused/.test(excused.review_note || ''),
     JSON.stringify(excused));
+
+  /*
+   * TRUSTING SOMEBODY, FROM THE CARD WHERE THE OPINION FORMS. The state comes
+   * back on the tally so the switch can show what it is rather than always
+   * offering to grant -- a control reading "trust" beside somebody already
+   * trusted is one that gets pressed twice by a person checking it worked.
+   */
+  check('a worker starts out as a stranger, with no row and no trust',
+    queue.jobs.every((j) => j.tally?.trusted === false),
+    'no row is the ordinary case, and it is what the gates are written for');
+
+  const granted = await ask(env, ownerToken, 'trust-worker',
+    { method: 'POST', body: { worker: 'W1', trusted: true, note: 'hired on Upwork' } });
+  const trusted = await ask(env, ownerToken, 'lawn-reviews');
+  check('and the owner can trust them from the grading card',
+    granted.body.ok && trusted.body.jobs[0].tally.trusted === true
+    && trusted.body.jobs[0].tally.note === 'hired on Upwork',
+    JSON.stringify(trusted.body.jobs[0].tally));
+
+  /*
+   * AND TAKE IT BACK WITHOUT LOSING WHO THEY ARE. A worker id is a string of
+   * characters and says nothing on a small screen three weeks later; the note
+   * is the only thing that makes the row readable, and revoking is exactly
+   * when somebody is least likely to retype it.
+   */
+  await ask(env, ownerToken, 'trust-worker',
+    { method: 'POST', body: { worker: 'W1', trusted: false } });
+  const revoked = await ask(env, ownerToken, 'lawn-reviews');
+  check('and take it back without wiping what they wrote about them',
+    revoked.body.jobs[0].tally.trusted === false
+    && revoked.body.jobs[0].tally.note === 'hired on Upwork',
+    JSON.stringify(revoked.body.jobs[0].tally));
 
   check('and a verdict that is not one of the three is refused',
     (await ask(env, ownerToken, 'review-lawn',

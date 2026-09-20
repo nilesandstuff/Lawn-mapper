@@ -83,6 +83,22 @@ function show() {
    */
   who.append(name, ` · ${standing(job.tally)}`,
     job.seconds ? ` · took ${asTime(job.seconds)}` : '');
+  if (job.tally?.note) who.append(` · ${job.tally.note}`);
+
+  /*
+   * THE TRUST SWITCH, showing the state it is actually in rather than always
+   * offering to grant. Somebody already trusted needs the way back more than
+   * they need the offer again -- and a control that says "trust" beside a
+   * worker who is already trusted is a control that has been pressed twice by
+   * somebody checking whether it worked.
+   */
+  const trust = $('#trust');
+  trust.hidden = !job.worker;
+  trust.disabled = false;
+  trust.classList.toggle('on', Boolean(job.tally?.trusted));
+  trust.textContent = job.tally?.trusted
+    ? 'Trusted — no gates, no daily cap. Undo?'
+    : 'Trust this worker (lifts the gates and the daily cap)';
 
   /*
    * THE FLAG, WHEN THERE IS ONE. A submission that went through as "I checked
@@ -208,6 +224,46 @@ async function load() {
   $('#page').hidden = false;
   show();
 }
+
+/*
+ * Trusting somebody, or taking it back.
+ *
+ * Sent and waited for, like a verdict and unlike a screening decision: the
+ * consequence is somebody being let off the gates, and silently failing to
+ * record that leaves a hired worker stuck at a five-map wall wondering why
+ * nothing happened. The card stays where it is either way -- this is not a
+ * judgement on the map in front of it, and moving on would imply it was.
+ */
+$('#trust').addEventListener('click', async () => {
+  const job = queue[at];
+  if (!job?.worker) return;
+  const next = !job.tally?.trusted;
+  const trust = $('#trust');
+  trust.disabled = true;
+
+  try {
+    const res = await fetch('/api/admin/trust-worker', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ worker: job.worker, trusted: next }),
+    });
+    if (!res.ok) throw new Error(String(res.status));
+  } catch {
+    trust.disabled = false;
+    $('#count').textContent = 'That did not save — nothing was changed.';
+    return;
+  }
+
+  /*
+   * Every card of theirs in this batch, not just this one. The owner will very
+   * often be looking at a run of maps from the same person, and a switch that
+   * reverted on the next card reads as not having worked.
+   */
+  for (const row of queue) {
+    if (row.worker === job.worker && row.tally) row.tally.trusted = next;
+  }
+  show();
+});
 
 $('#keep').addEventListener('click', () => verdict('kept'));
 $('#excuse').addEventListener('click', () => verdict('excused'));

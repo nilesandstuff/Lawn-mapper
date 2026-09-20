@@ -71,6 +71,17 @@
   }
   .who { font-size: 12.5px; color: var(--muted); text-align: center; }
   .who b { color: var(--ink, #23301f); }
+  /*
+    Quiet on purpose. It is not a verdict on the map, and anything with weight
+    here would read as a fourth option beside the three that are.
+  */
+  .trustline {
+    font: inherit; font-size: 12px; color: var(--muted); cursor: pointer;
+    background: none; border: 0; border-bottom: 1px dashed var(--line);
+    padding: 2px 0; margin: -4px 0 2px;
+  }
+  .trustline.on { color: #1f5b22; border-bottom-color: #9ec5a1; }
+  .trustline:disabled { opacity: .5; cursor: default; }
   .rule { font-size: 12.5px; color: var(--muted); max-width: 560px; }
   .rule b { color: var(--ink, #23301f); }
 </style>
@@ -116,6 +127,20 @@
       </div>
       <p class="tally" id="where"></p>
       <p class="who" id="who"></p>
+      <!--
+        TRUSTING SOMEBODY, on the card, because this is the moment the opinion
+        forms: you have just looked at their fourth good map.
+
+        It lifts the gates and the daily cap and nothing else. Those exist to
+        find out whether an anonymous stranger can do this, and for somebody
+        hired directly and paid by the hour that question has already been
+        answered -- at which point the gates are a ceiling on work that has
+        been bought and paid for.
+
+        Deliberately understated. It is not a verdict on this map and must not
+        look like a fourth button beside the three that are.
+      -->
+      <button class="trustline" id="trust" type="button" hidden></button>
 
       <div class="verdicts">
         <button class="keep" id="keep">Keep it</button>

@@ -1,12 +1,12 @@
-# Paying strangers to trace lawns
+# Paying people to trace lawns
 
 The corpus is the constraint on everything (S3 in DETECTOR-FINDINGS.md), and
 the detector cannot help build it until it beats SAM, which it does not (H11).
 So the corpus grows by paying people.
 
-This is the whole arrangement in one place: what a worker sees, what you see,
-and what you have to type into Amazon Mechanical Turk to start it. Nothing here
-needs a terminal.
+**Mechanical Turk is gone.** Amazon closed it to new requester accounts on
+30 July 2026 and the service shuts down on 30 September. This file is written
+for what replaced it.
 
 ## The shape of it
 
@@ -16,112 +16,121 @@ needs a terminal.
 2. **Screen.** `/screen.html` on your phone. One property line on one
    photograph, Yes or No. A lawn rejected here costs a glance; the same lawn
    rejected after somebody has traced it costs fifty cents and a review.
-   Yes makes it `approved`, which is what the queue hands out.
-3. **Trace.** A worker opens the task link, is handed one `approved` lawn,
+3. **Trace.** A worker opens their link, is handed one `approved` lawn,
    corrects the automatic outline, and sends it. The row becomes `submitted`
    and a corpus row is written as `new` — a candidate, not training data.
 4. **Grade.** `/grade.html` on your phone. Keep it, excuse it, or refuse it.
    Keeping approves the corpus row; the other two reject it.
 
-A crowdsourced map never reaches a training run without step 4.
+A paid map never reaches a training run without step 4.
 
-## What a worker gets
+## Two kinds of worker, one queue
 
-**One link for the whole batch.** Not one per lawn — four hundred links pasted
-into four hundred tasks is not a workflow, it is an afternoon. The platform
-appends the worker's own id and the SERVER decides which lawn each person gets.
+**A crowd platform** gives you many anonymous strangers. The gates exist for
+them: five maps, then a wait; four in five must pass; then ten more and the
+same bar; then a cap of forty a day.
 
-They never sign in. The id in the link is the whole of their identity, which is
-right for a five-minute task: an account would be a password to forget and a
-sign-up step between somebody and fifty cents.
+**Somebody hired directly** is one known person, usually paid by the hour. For
+them the gates are a bill — a worker sitting at a five-map wall is being paid
+to wait for a review. So the grading card has a **Trust this worker** switch
+that lifts the gates and the daily cap.
 
-They get the ordinary map app with the address step, the AI tab, Saved and Plan
-removed, and a green bar carrying the four things the job is asking for. The
-starting outline is detected for them on arrival, paid for by the job rather
-than by their browser's signed-out allowance.
+Trust lifts those two things and nothing else. One lawn at a time still holds,
+because that is what stops a lawn being paid for twice, and no judgement about
+a person changes that arithmetic.
 
-## What stops somebody farming it
+It does not care where somebody came from. A crowd worker who turns out to be
+excellent is exactly who should be let off the leash.
 
-Nothing here can tell a careless worker from a careful one — that is your eye,
-in step 4. What it can do is make volume impossible to fake:
+## What it costs
 
-- one lawn at a time, so nobody holds twenty and submits rubbish for all;
-- ninety seconds minimum, because a lawn traced in forty seconds was not;
-- an untouched automatic outline is refused once, with a way through for the
-  honest case where it really was already right (flagged for you afterwards);
-- forty a day, once somebody is through both gates;
-- six AI passes per LAWN, across every claim it ever has.
+Both surviving platforms take a cut **on top of** what you pay, and both judge
+whether a task underpays by dividing the reward by the **median time workers
+actually take** — not by the estimate you type into the listing. `/grade.html`
+reports that median once maps start coming back. Set the reward from it.
 
-## The gates
+| Route | Floor | Cut | Per map | $200 buys |
+| ----- | ----- | --- | ------- | --------- |
+| CloudResearch Connect | $6/hr | 40%, **0% for the first ~10 days** | $0.50 | ~285, or ~400 inside the free window |
+| Hired directly | your call | none | ~$0.67 at $8/hr | ~250–300 |
+| Prolific (for reference) | $8/hr | 42.8% | $0.95 | ~210 |
 
-A new worker does **five** maps and then waits while they are looked at. Four
-in five must pass. Then **ten more**, and the same bar again. After that, the
-daily cap is all that is left.
+Check the current numbers before committing — these move.
 
-A **pass** is *kept* or *excused*. Excused is the button that says "I would not
-keep this, but the lawn was hard and I do not fault them" — the queue hands
-lawns out in order, so who draws the awkward ones is pure luck, and without it
-a run of bad luck would end a good worker's run.
+**The app has no idea what anything costs** and will hand out every approved
+lawn in the queue until it runs out. The batch size on the platform, or the
+hours you agree with a freelancer, is the only thing that stops it.
 
-**All three outcomes are paid.** Payment is Amazon's business, not this app's.
-The gates only decide whether somebody gets more work.
-
-**A worker at a gate is waiting on you.** They cannot see the grading queue,
-cannot ask, and the message they get promises review "usually inside a day".
-An empty `/grade.html` means nobody is stuck.
-
-## Setting up the Mechanical Turk task
-
-Create a project with the **Survey Link** template. Fill it in like this.
-
-**Title**
-> Trace the lawn on one satellite photo (about 5 minutes)
-
-**Description**
-> You are shown one house from above with a rough outline of its lawn already
-> drawn. Fix the outline — mostly along the driveway and the hard edges — and
-> send it back for a code. No sign-up, no software.
-
-**Keywords** — `map, image, tracing, outline, satellite, annotation`
-
-**Reward per assignment** — `$0.50`
-
-**Number of assignments** — however many lawns you want traced. Each assignment
-is one lawn.
-
-**Time allotted** — `30 minutes`. Generous on purpose: the app releases an
-abandoned claim after an hour anyway, and a tight timer makes people rush the
-edges, which is the one thing being paid for.
-
-**Auto-approve** — `3 days`, so you have time to grade before Amazon pays
-automatically. Approve by hand where you can.
-
-**Worker requirements** — HIT approval rate ≥ 95%, at least 100 approved HITs.
-Nothing stricter: the gates in this app do the rest, and a narrow qualification
-on a small batch means nobody takes it.
-
-**The link itself**
+## The link
 
 ```
-https://lawnmap.nilesandstuff.com/?w=${workerId}&assignmentId=${assignmentId}
+https://lawnmap.nilesandstuff.com/?w=<the worker's id>
 ```
 
-Both substitutions are MTurk's own. `workerId` is what the app uses to hand out
-lawns and apply the limits; `assignmentId` is only read to notice the preview —
-MTurk sends `ASSIGNMENT_ID_NOT_AVAILABLE` to people who are only looking, and
-the app shows them what the task is without taking a lawn out of the queue.
+Every platform substitutes its own placeholder into one link, and each spells
+it differently — `${workerId}`, `{{%PROLIFIC_PID%}}`, `%%participant_id%%`.
+Whatever the platform calls it goes in place of `<the worker's id>`.
+
+**If the substitution does not happen, the app now refuses and says so.** That
+used to be the worst failure available here: the placeholder reaches every
+worker, the punctuation gets stripped, and the whole batch becomes one person
+sharing one claim, one daily cap and one set of gates. Nothing about it looked
+like a fault.
+
+For somebody hired directly there is no platform and no substitution — give
+them a link with their name in it:
+
+```
+https://lawnmap.nilesandstuff.com/?w=jane
+```
 
 **The completion code** is the job's own short id. It is not a secret and does
 not need to be: you do not have to trust it, you look it up. Was that lawn
 actually submitted, by that worker, with a map attached — the database already
 knows.
 
+## Setting up a crowd batch
+
+Post it as a study or task with an external link. Fill in:
+
+**Title** — Trace the lawn on one satellite photo (about 5 minutes)
+
+**Description** — You are shown one house from above with a rough outline of
+its lawn already drawn. Fix the outline — mostly along the driveway and the
+hard edges — and send it back for a code. No sign-up, no software.
+
+**Reward** — from the median in `/grade.html`, against the platform's floor.
+For the first batch, before there is a median, five minutes is the estimate
+this was designed around.
+
+**Time allowed** — 30 minutes. Generous on purpose: the app releases an
+abandoned claim after an hour anyway, and a tight timer makes people rush the
+edges, which is the one thing being paid for.
+
+**Approval window** — as long as the platform allows, so you have time to grade
+before it auto-approves. Approve by hand where you can.
+
+**Requirements** — approval rate ≥ 95%, at least 100 previous tasks. Nothing
+stricter: the gates do the rest, and a narrow qualification on a small batch
+means nobody takes it.
+
+## Hiring somebody directly
+
+Post for an image-annotation job, hourly. Ask for a short trial — five maps
+through the ordinary gates tells you as much as an interview would, and they
+are paid for it either way.
+
+When you are happy with them, open `/grade.html`, find one of their cards and
+press **Trust this worker**. Write who they are in the note while you are there
+— a worker id says nothing on a small screen three weeks later.
+
+The rest is the same page you were already using.
+
 ## Paying, and not getting a reputation
 
 Approve almost everything. The addresses are screened before anybody sees them
 and you intend to tidy every map anyway, so a map that is merely imperfect is a
-map you keep. Reject an assignment only for something that is not an attempt at
-the lawn at all.
+map you keep. Reject only for something that is not an attempt at the lawn.
 
 Control quality by **assignment**, not by rejection: somebody who cannot do this
 stops getting work at a gate, having been paid for everything they sent. That
@@ -130,19 +139,12 @@ is the whole reason the gates exist.
 Work that was done and cannot be paid for is the fastest way for a requester to
 be written up on a worker forum — and in this app it would usually be our bug
 producing it, not their behaviour. That is why an untouched outline asks a
-question instead of slamming the door.
+question instead of slamming the door, and why a browser that cannot reach
+Mapbox is told so before a lawn is claimed rather than after.
 
-## The $200 ceiling
+## Sources
 
-MTurk charges a commission **on top of** the reward, and the rate goes up for
-batches of ten or more assignments. Check the current numbers on Amazon's
-pricing page before committing — but the arithmetic is:
-
-| commission | what $200 buys at $0.50 a map |
-| ---------- | ----------------------------- |
-| 20%        | about 330 maps                |
-| 40%        | about 285 maps                |
-
-Set the assignment count to match what you intend to spend. **The app has no
-idea what anything costs** and will hand out every approved lawn in the queue
-until it runs out; the batch size on MTurk is the only thing that stops it.
+- [Amazon is shutting down Mechanical Turk](https://www.techspot.com/news/113643-amazon-shutting-down-mechanical-turk-after-more-than.html)
+- [CloudResearch Connect pricing and FAQs](https://www.cloudresearch.com/cloudresearch-connect-faqs/)
+- [Prolific pricing](https://www.prolific.com/pricing)
+- [How much should I pay participants? — Prolific](https://researcher-help.prolific.com/en/articles/445266-how-much-should-i-pay-participants)

@@ -413,6 +413,34 @@ const read = async (res) => ({ status: res.status, body: await res.json() });
   check('and the second gate holds them again after ten more',
     again.status === 429 && again.body.waiting,
     `15 submitted, 5 reviewed -- ${again.body.reason}`);
+
+  /*
+   * AND THE OWNER CAN LIFT IT, which is what makes hiring somebody directly
+   * workable at all. Paid by the hour, a person held at a five-map wall is
+   * being paid to wait for a review -- so the gates, which exist to find out
+   * whether an anonymous stranger can do this, become a bill.
+   *
+   * Written against the same worker who was just refused, because the pair is
+   * the claim: nothing about them changed except the owner's decision.
+   */
+  await env.DB.prepare(
+    `INSERT INTO lawn_workers (worker, trusted, note, created_at)
+     VALUES ('GATED', 1, 'hired directly, paid hourly', '2026-09-19T00:00:00Z')`
+  ).run();
+  const lifted = await read(await ask('/api/job', { search: '?w=GATED' }));
+  check('and a worker the owner trusts walks through the gate that just refused them',
+    lifted.status === 200 && Boolean(lifted.body.job),
+    `${held.body.reason ? 'was held' : '?'} -> ${lifted.body.job?.id || lifted.body.reason}`);
+
+  /*
+   * BUT NOT THROUGH ONE LAWN AT A TIME. Trust is a judgement about somebody's
+   * work; holding two lawns is how one lawn gets paid for twice, and no
+   * judgement about a person changes that arithmetic.
+   */
+  const twice = await read(await ask('/api/job', { search: '?w=GATED' }));
+  check('while still being handed the one they already hold, not a second',
+    twice.body.job?.id === lifted.body.job?.id && twice.body.resumed,
+    JSON.stringify({ first: lifted.body.job?.id, again: twice.body.job?.id }));
 }
 
 /* ------------------------------------------------ an empty queue */
