@@ -262,11 +262,22 @@ const mine = await settled(one.page);
    * not understood that the yellow line is draggable reads the prompt, cannot
    * reach the verge, and quietly leaves it out.
    */
-  check('and lands on the property line with the tool already on',
-    await page.evaluate(() => window.__lmTabs().on) === 'address'
-    && await page.evaluate(() =>
-      document.querySelector('#mode-parcel')?.getAttribute('aria-pressed')) === 'true',
-    await page.evaluate(() => window.__lmTabs().on));
+  /*
+   * WAITED FOR, NOT ASSUMED. `settled` returns as soon as the job bar is up,
+   * and the bar goes up early -- before the parcel lookup, the detection and
+   * the landing tab. Read straight after, this said "address, tool off" and
+   * looked like the arming had failed, when it had simply not happened yet.
+   */
+  const landed = await page.waitForFunction(
+    () => (window.__lmTabs().on === 'address'
+      && document.querySelector('#mode-parcel')?.getAttribute('aria-pressed') === 'true'),
+    null,
+    { timeout: 45000 }
+  ).then(() => true).catch(() => false);
+
+  check('and lands on the property line with the tool already on', landed,
+    landed ? '' : `tab=${await page.evaluate(() => window.__lmTabs().on)}, `
+      + `parcel=${await page.evaluate(() => document.querySelector('#mode-parcel')?.getAttribute('aria-pressed'))}`);
 
   check('and is told to drag the boundary out to the kerb',
     await page.locator('#coach').isVisible()
