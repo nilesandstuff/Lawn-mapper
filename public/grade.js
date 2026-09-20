@@ -239,13 +239,44 @@ $('#trust').addEventListener('click', async () => {
   if (!job?.worker) return;
   const next = !job.tally?.trusted;
   const trust = $('#trust');
+
+  /*
+   * WHO IS THIS, ASKED WHILE IT IS STILL KNOWN.
+   *
+   * A worker id is a string like A2X9QJ3KLM0ZZ1, and in three weeks it says
+   * nothing at all. The moment somebody is worth trusting is the only moment
+   * the answer is in anybody's head, so the note is asked for here rather than
+   * left to a screen that does not exist.
+   *
+   * Only when granting. Revoking keeps whatever was written -- see the
+   * COALESCE in the route -- and asking again on the way out would be asking
+   * somebody to retype a description of a person they have just finished with.
+   *
+   * A cancelled prompt still trusts them. They pressed the button; the note is
+   * a convenience and must not be able to swallow the action it decorates.
+   */
+  let note = null;
+  if (next) {
+    note = window.prompt(
+      'Who is this? (optional — it is the only thing that makes the id '
+      + 'readable later)',
+      job.tally?.note || ''
+    );
+  }
+
   trust.disabled = true;
 
   try {
     const res = await fetch('/api/admin/trust-worker', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ worker: job.worker, trusted: next }),
+      body: JSON.stringify({
+        worker: job.worker,
+        trusted: next,
+        /* null rather than '' on cancel, so the route's COALESCE leaves an
+           existing note alone instead of blanking it. */
+        ...(note ? { note } : {}),
+      }),
     });
     if (!res.ok) throw new Error(String(res.status));
   } catch {
@@ -260,7 +291,9 @@ $('#trust').addEventListener('click', async () => {
    * reverted on the next card reads as not having worked.
    */
   for (const row of queue) {
-    if (row.worker === job.worker && row.tally) row.tally.trusted = next;
+    if (row.worker !== job.worker || !row.tally) continue;
+    row.tally.trusted = next;
+    if (note) row.tally.note = note;
   }
   show();
 });

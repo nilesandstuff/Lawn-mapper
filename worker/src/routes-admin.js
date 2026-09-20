@@ -27,6 +27,9 @@ import { logEntries, loggingEnabled } from './testlog.js';
 import { feedbackEntries, feedbackEnabled } from './feedback.js';
 import { corpusGaps, candidateScore } from './corpus.js';
 import { parcelGaps } from './gaps.js';
+// The same cleaner the paid queue puts a worker id through on the way in. Two
+// spellings of one id is a row the claim lookup never finds.
+import { cleanWorker } from './jobs.js';
 
 export const isAdminPath = (pathname) => pathname.startsWith('/api/admin/');
 
@@ -782,7 +785,13 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
    */
   if (path === 'trust-worker' && request.method === 'POST') {
     const body = await request.json().catch(() => ({}));
-    const worker = String(body?.worker || '').trim().slice(0, 64);
+    /*
+     * Through the SAME cleaner the queue puts a worker id through on the way
+     * in, so the two spellings cannot drift. A row keyed on anything else is a
+     * row the claim lookup never finds -- the switch would appear to work, the
+     * card would show it on, and the gates would quietly stay shut.
+     */
+    const worker = cleanWorker(body?.worker);
     if (!worker) return json({ error: 'Need a worker' }, 400, origin);
     const trusted = body?.trusted === true;
     const note = body?.note ? String(body.note).slice(0, 200) : null;

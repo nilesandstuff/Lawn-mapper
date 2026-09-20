@@ -5735,7 +5735,17 @@ async function claimNextJob() {
       title: data?.stopped ? 'Thank you for the maps you sent'
         : data?.waiting ? 'Your maps are being checked'
           : data?.error === 'Nothing left' ? 'That is the lot'
-            : 'No lawn just now',
+            /*
+             * A LINK FAULT IS NOT "no lawn just now", and this is the one
+             * refusal most likely to be seen on the day a batch goes out.
+             * "No lawn just now" invites somebody to wait and try again,
+             * which will never work and wastes their time; the title has to
+             * say the link itself is wrong so they return the task and say
+             * so. The reason underneath, from the server, explains it.
+             */
+            : (data?.error === 'Unfilled link' || data?.error === 'No worker id')
+                ? 'Something is wrong with this link'
+                : 'No lawn just now',
       why: data?.reason || 'There is nothing to hand out at the moment.',
       /* Waiting is the one refusal that a later visit actually resolves. */
       go: data?.waiting || data?.wait

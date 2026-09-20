@@ -1476,6 +1476,23 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
     && revoked.body.jobs[0].tally.note === 'hired on Upwork',
     JSON.stringify(revoked.body.jobs[0].tally));
 
+  /*
+   * AND IT IS KEYED THE SAME WAY THE QUEUE KEYS IT.
+   *
+   * The claim looks a worker up by the id cleanWorker produced on the way in.
+   * A trust row stored under any other spelling is a row that lookup never
+   * finds -- and the failure is silent in the worst way: the switch saves, the
+   * card shows it on, and the gates stay shut anyway.
+   */
+  await ask(env, ownerToken, 'trust-worker',
+    { method: 'POST', body: { worker: ' W1<script> ', trusted: true } });
+  const keyed = await env.DB.prepare(
+    'SELECT worker, trusted FROM lawn_workers WHERE trusted = 1'
+  ).all();
+  check('and the row is keyed the way the queue spells it, not the way it arrived',
+    (keyed.results || []).every((r) => !/[<>\s]/.test(r.worker)),
+    (keyed.results || []).map((r) => JSON.stringify(r.worker)).join(', '));
+
   check('and a verdict that is not one of the three is refused',
     (await ask(env, ownerToken, 'review-lawn',
       { method: 'POST', body: { id: 'job-0003-aaaa-4bbb-8ccc-dddddddddddd', verdict: 'approved' } }
