@@ -43,8 +43,23 @@ export const MIN_SECONDS = 90;
 /** How many a worker may hold at once. One, so nothing can be stockpiled. */
 export const MAX_HELD = 1;
 
-/** How many a worker may submit in a day, before anybody has reviewed them. */
+/** How many a worker may submit in a day, once they have proved themselves. */
 export const DAILY_CAP = 40;
+
+/**
+ * How many a NEW worker may submit before one of their maps has been kept.
+ *
+ * THIS IS THE WHOLE QUALITY CONTROL, and it replaced an audition. An audition
+ * pays somebody to trace a lawn that is already traced, which buys a signal
+ * and no map. Probation buys the same signal out of real work: the first few
+ * maps are ordinary lawns that count, and if they turn out to be bad the whole
+ * cost of finding out is five maps rather than forty.
+ *
+ * Five rather than one, because one map says almost nothing -- an awkward lot
+ * or a bad afternoon looks identical to somebody who cannot do this. Five is
+ * enough to see a pattern and cheap enough to be wrong about.
+ */
+export const PROBATION_CAP = 5;
 
 /** How long a claim survives without a submission. */
 export const CLAIM_EXPIRY = HOUR;
@@ -58,13 +73,42 @@ export const CLAIM_EXPIRY = HOUR;
  *
  * `now` is passed in for the same reason.
  */
-export function claimVerdict({ held = 0, submittedToday = 0, lastSubmitAt = null, now = Date.now() }) {
+export function claimVerdict({
+  held = 0, submittedToday = 0, lastSubmitAt = null, now = Date.now(),
+  submittedEver = 0, accepted = 0,
+}) {
   if (held >= MAX_HELD) {
     return {
       ok: false,
       reason: 'You already have a lawn open. Finish or skip that one first.',
     };
   }
+
+  /*
+   * PROBATION, and the wording is as much of the feature as the number.
+   *
+   * Somebody who hits this has done five maps, been paid for five maps, and
+   * done nothing wrong. If the message reads like a punishment they will not
+   * come back -- and the workers who read carefully enough to be worth keeping
+   * are exactly the ones who read this. So it says what is happening, how long
+   * it takes, and that more work follows.
+   *
+   * No promise is made about the OUTCOME, only about the wait. Telling
+   * somebody their maps will be accepted before anybody has looked is a
+   * promise this cannot keep.
+   */
+  if (accepted === 0 && submittedEver >= PROBATION_CAP) {
+    return {
+      ok: false,
+      probation: true,
+      reason: `That is your first ${PROBATION_CAP}, and they are with the `
+        + 'reviewer now. New workers do a few maps before the rest of the batch '
+        + 'opens up — it is how quality is checked here, not a mark against '
+        + 'you, and you are paid for these either way. Review is usually done '
+        + 'inside a day. Open this link again then and there will be more.',
+    };
+  }
+
   if (submittedToday >= DAILY_CAP) {
     return {
       ok: false,

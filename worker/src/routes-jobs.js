@@ -19,6 +19,7 @@
 import { recordFinished, storeImage } from './corpus.js';
 import {
   claimVerdict, submissionVerdict, cleanWorker, staleBefore, dayStart,
+  PROBATION_CAP,
 } from './jobs.js';
 
 /** What the worker is asked to do, in the order it matters. */
@@ -119,22 +120,55 @@ export async function handleJobs(request, url, env, origin, ctx, json) {
       return json({ job: jobForWorker(open), prompts: PROMPTS, resumed: true }, 200, origin);
     }
 
+    /*
+     * Everything the limits need, in one pass: today's count for the daily
+     * cap, the whole history for probation, and how many have been kept --
+     * which is what ends probation.
+     */
     const stats = await env.DB.prepare(
-      `SELECT COUNT(*) AS done, MAX(submitted_at) AS last
-         FROM lawn_jobs
-        WHERE worker = ?1 AND submitted_at >= ?2`
+      `SELECT
+         COUNT(*) AS ever,
+         SUM(CASE WHEN submitted_at >= ?2 THEN 1 ELSE 0 END) AS today,
+         SUM(CASE WHEN state = 'accepted' THEN 1 ELSE 0 END) AS accepted,
+         MAX(submitted_at) AS last
+       FROM lawn_jobs
+      WHERE worker = ?1 AND submitted_at IS NOT NULL`
     ).bind(worker, dayStart(now)).first();
 
+    const accepted = Number(stats?.accepted || 0);
     const verdict = claimVerdict({
       held: 0,
-      submittedToday: Number(stats?.done || 0),
+      submittedToday: Number(stats?.today || 0),
+      submittedEver: Number(stats?.ever || 0),
+      accepted,
       lastSubmitAt: stats?.last || null,
       now,
     });
     if (!verdict.ok) {
-      return json({ error: 'Not yet', reason: verdict.reason, wait: verdict.wait || 0 },
-        429, origin);
+      return json({
+        error: 'Not yet',
+        reason: verdict.reason,
+        wait: verdict.wait || 0,
+        probation: Boolean(verdict.probation),
+      }, 429, origin);
     }
+
+    /*
+     * THE GOOD NEWS, WHEN THERE IS ANY.
+     *
+     * Nothing here can push a message to somebody -- there is no address and
+     * there should not be one. What it can do is tell them the moment they
+     * come back, which is when they are looking anyway. A worker who was held
+     * at probation yesterday and returns to "your maps were kept, carry on" is
+     * a worker who keeps coming back.
+     *
+     * The platform does the other half: approving an assignment notifies them
+     * that they have been paid.
+     */
+    const cleared = accepted > 0 && Number(stats?.ever || 0) >= PROBATION_CAP
+      ? `${accepted} of your maps have been kept — thank you. The rest of the `
+        + 'batch is open to you now.'
+      : null;
 
     /*
      * Claimed in ONE statement, so two workers arriving together cannot be
@@ -158,7 +192,7 @@ export async function handleJobs(request, url, env, origin, ctx, json) {
       }, 404, origin);
     }
 
-    return json({ job: jobForWorker(taken), prompts: PROMPTS }, 200, origin);
+    return json({ job: jobForWorker(taken), prompts: PROMPTS, cleared }, 200, origin);
   }
 
   /* --------------------------------------- I could not do this one */

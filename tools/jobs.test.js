@@ -16,7 +16,7 @@
 
 import {
   claimVerdict, submissionVerdict, cleanWorker, staleBefore, dayStart,
-  MIN_SECONDS, MAX_HELD, DAILY_CAP,
+  MIN_SECONDS, MAX_HELD, DAILY_CAP, PROBATION_CAP,
 } from '../worker/src/jobs.js';
 
 let failures = 0;
@@ -39,6 +39,55 @@ const NOW = Date.parse('2026-09-19T12:00:00Z');
   check('and is told what to do about it',
     /finish or skip/i.test(refused.reason),
     refused.reason);
+}
+
+/* ---------------------------------------------------------- probation */
+{
+  /*
+   * PROBATION REPLACED AN AUDITION, and the reason is worth keeping: an
+   * audition pays somebody to trace a lawn that is already traced, which buys
+   * a signal and no map. Probation buys the same signal out of real work.
+   */
+  check('a new worker may do their first few',
+    claimVerdict({ submittedEver: PROBATION_CAP - 1, accepted: 0, now: NOW }).ok,
+    `${PROBATION_CAP} before anything has been reviewed`);
+
+  const held = claimVerdict({ submittedEver: PROBATION_CAP, accepted: 0, now: NOW });
+  check('and is held after them until something has been kept',
+    !held.ok && held.probation,
+    'five maps is the whole cost of finding out somebody cannot do this');
+
+  /*
+   * THE WORDING IS AS MUCH OF THE FEATURE AS THE NUMBER. Somebody here has
+   * done five maps, been paid for five maps and done nothing wrong -- and the
+   * workers who read carefully enough to be worth keeping are exactly the ones
+   * who will read this. It has to say what is happening, how long, and that
+   * more follows.
+   */
+  check('and told this is not a mark against them',
+    /not a mark against you/i.test(held.reason), held.reason);
+  check('and that they are paid either way',
+    /paid/i.test(held.reason), held.reason);
+  check('and roughly how long the wait is',
+    /inside a day/i.test(held.reason), held.reason);
+  check('and that there is more work after it',
+    /there will be more/i.test(held.reason), held.reason);
+
+  /*
+   * AND NO PROMISE ABOUT THE OUTCOME. Telling somebody their maps will be
+   * accepted before anybody has looked is a promise this cannot keep, and a
+   * broken one costs more than the wait it was meant to soften.
+   */
+  check('while promising nothing about whether they will be kept',
+    !/will be (accepted|kept|approved)/i.test(held.reason), held.reason);
+
+  /* One kept map ends it, and the ordinary daily cap takes over. */
+  check('one kept map opens the rest of the batch',
+    claimVerdict({ submittedEver: PROBATION_CAP + 3, accepted: 1, now: NOW }).ok,
+    'probation is a gate, not a quota');
+  check('and the daily cap still applies once they are through it',
+    !claimVerdict({ submittedEver: 99, accepted: 5, submittedToday: DAILY_CAP, now: NOW }).ok,
+    'proving yourself does not remove the ceiling');
 }
 
 /* ------------------------------------------------------- the daily cap */
