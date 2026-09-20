@@ -501,6 +501,22 @@ CREATE TABLE IF NOT EXISTS lawn_jobs (
   -- The corpus row they produced, once there is one.
   map_id        TEXT,
 
+  -- HOW MANY AI PASSES THIS LAWN HAS BEEN GIVEN FOR FREE.
+  --
+  -- The starting outline is the thing a worker is paid to CORRECT, so they
+  -- have to be able to get one -- and they arrive signed out, on a crowd
+  -- platform, where the signed-out allowance is five passes a day for a whole
+  -- browser. A worker doing fifteen maps would run out on the sixth and the
+  -- task would look broken.
+  --
+  -- Raising the public allowance instead would hand every visitor on the
+  -- internet the same number, which is real money. So a claimed job pays for
+  -- its own detections and this counts them: the claim is the rate limit
+  -- (one lawn at a time, a daily ceiling, and a job nobody claimed cannot
+  -- spend anything), and the count is what stops one claim being held open
+  -- and detected against all afternoon.
+  detections    INTEGER NOT NULL DEFAULT 0,
+
   created_at    TEXT NOT NULL
 );
 -- The two questions actually asked of this table: "what should I screen next"

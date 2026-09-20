@@ -48,7 +48,7 @@ import { recordFinished, storeImage } from './corpus.js';
 import { handleAuth, isAuthPath } from './routes-auth.js';
 import { handleMaps } from './routes-maps.js';
 import { handleAdmin, isAdminPath } from './routes-admin.js';
-import { handleJobs } from './routes-jobs.js';
+import { handleJobs, spendJobDetection } from './routes-jobs.js';
 import { accountsEnabled, publicUser } from './db.js';
 import { currentUser } from './auth.js';
 import { recordParcelGap } from './gaps.js';
@@ -667,11 +667,46 @@ async function handleSegment(request, env, origin, ctx) {
    * money moves. See allowance.js, which owns that decision -- including why
    * making extra accounts is not a way round it -- so this handler does not.
    */
-  const quota = await charge(request, env, {
-    user, clientId, n: passes.length, dev,
-    detail: `${passes.length} pass${passes.length > 1 ? 'es' : ''}`
-      + `${body.address ? ` at ${String(body.address).slice(0, 60)}` : ''}`,
-  });
+  /*
+   * EXCEPT ON A LAWN SOMEBODY IS BEING PAID TO TRACE.
+   *
+   * A paid worker arrives signed out, from a crowd platform, and the automatic
+   * outline is the thing they are paid to correct -- so they have to be able
+   * to get one. The signed-out allowance is five passes a day for a whole
+   * browser, which fifteen maps exhausts on the sixth, and raising it would
+   * hand the same number to every visitor on the internet.
+   *
+   * So the JOB pays, and the claim is what makes that safe: the row has to
+   * exist, be claimed, and be held by the worker whose id was sent -- and a
+   * worker holds one lawn at a time. See spendJobDetection.
+   *
+   * Tried before `charge` rather than after a refusal, so a worker never
+   * spends their own browser's allowance on work that has already been paid
+   * for -- and the refund path below never has to know about any of this.
+   */
+  const onTheClock = body.job && body.worker
+    ? await spendJobDetection(env, body.job, body.worker, passes.length)
+    : false;
+
+  const quota = onTheClock
+    ? { allowed: true, free: true }
+    : await charge(request, env, {
+      user, clientId, n: passes.length, dev,
+      detail: `${passes.length} pass${passes.length > 1 ? 'es' : ''}`
+        + `${body.address ? ` at ${String(body.address).slice(0, 60)}` : ''}`,
+    });
+
+  /*
+   * HANDING PASSES BACK WHEN THE DETECTOR REFUSES US, whichever purse paid.
+   *
+   * One helper rather than a branch at each of the two failure sites, because
+   * those two sites are exactly where a forgotten case costs somebody their
+   * allowance for a fault that was never theirs -- and a paid worker with no
+   * starting outlines left cannot do the task at all.
+   */
+  const handBack = () => (onTheClock
+    ? spendJobDetection(env, body.job, body.worker, -passes.length)
+    : refund(request, env, { user, clientId, n: passes.length, fromDaily: quota.fromDaily }));
 
   if (!quota.allowed) {
     /*
@@ -753,7 +788,7 @@ async function handleSegment(request, env, origin, ctx) {
   try {
     version = await samVersion(env, modelId);
   } catch (err) {
-    await refund(request, env, { user, clientId, n: passes.length, fromDaily: quota.fromDaily });
+    await handBack();
     note('no_version', err.message);
     return json({ error: 'Segmentation unavailable', detail: err.message }, 502, origin);
   }
@@ -840,7 +875,7 @@ async function handleSegment(request, env, origin, ctx) {
    */
   const failed = results.find((r) => r.http);
   if (failed) {
-    await refund(request, env, { user, clientId, n: passes.length, fromDaily: quota.fromDaily });
+    await handBack();
     note(failed.http === 429 ? 'rate_limited' : 'upstream_error',
       `HTTP ${failed.http}: ${failed.detail || 'no message'}`);
 

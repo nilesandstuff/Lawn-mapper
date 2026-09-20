@@ -113,3 +113,17 @@ ALTER TABLE corpus ADD COLUMN inferred_checked_at TEXT;
 -- Zero rather than NULL, because "not an audition map" is the answer for
 -- every row that existed before this, and there is no third state to keep.
 ALTER TABLE corpus ADD COLUMN audition INTEGER NOT NULL DEFAULT 0;
+
+-- How many AI passes one claimed lawn has been given for free.
+--
+-- A paid worker arrives signed out, from a crowd platform, where the
+-- signed-out allowance is five passes a day for a whole browser -- and the
+-- starting outline is the thing they are paid to CORRECT, so they have to be
+-- able to get one. Raising the public allowance instead would hand the same
+-- number to every visitor on the internet, which is real money.
+--
+-- The CREATE in schema.sql does nothing to a database that already has this
+-- table, and this branch has been deployed -- see the commit "CREATE TABLE IF
+-- NOT EXISTS cannot add a column", which cost six deploys and looked like a
+-- feature that had been switched off.
+ALTER TABLE lawn_jobs ADD COLUMN detections INTEGER NOT NULL DEFAULT 0;

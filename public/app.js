@@ -196,6 +196,19 @@ const state = {
   saves: [],          // the account's maps, cached so the list is not a wait
   saveMax: 0,         // how many an account keeps, as the Worker reports it
   plan: null,         // the last application split, or null for none drawn
+
+  /*
+   * The paid queue. All three are null for everybody who did not arrive from a
+   * crowd platform, which is everybody -- see the job-mode section.
+   *
+   *   worker         their id as the platform names them, out of the link
+   *   job            the one lawn they are holding, or null between lawns
+   *   askedUnchanged they have been told once that the outline is untouched,
+   *                  so sending it again goes through and is flagged
+   */
+  worker: null,
+  job: null,
+  askedUnchanged: false,
 };
 
 /**
@@ -3706,6 +3719,17 @@ function detectionRequest(frame, provider, model, points) {
      * already plain text in this file.
      */
     ...(state.dev ? { dev: true } : {}),
+    /*
+     * WHOSE ALLOWANCE THIS COMES OUT OF.
+     *
+     * A paid worker arrives signed out, where the allowance is five passes a
+     * day for a whole browser -- and the automatic outline is the thing they
+     * are paid to correct, so fifteen maps would break on the sixth. Sending
+     * the claim lets the JOB pay instead. Not a credential: the server checks
+     * that the row exists, is claimed, and is held by this worker, and a
+     * worker holds one lawn at a time. See spendJobDetection.
+     */
+    ...(state.job && state.worker ? { job: state.job.id, worker: state.worker } : {}),
     ...devOverrides(),
     /*
      * The address and the lot size ride along for the test log. Neither changes
@@ -5517,6 +5541,318 @@ function leaveReview(save) {
   window.location.href = '/admin.html';
 }
 
+/* ====================================================== the paid queue ==== */
+/*
+ * SOMEBODY BEING PAID FIFTY CENTS TO TRACE ONE LAWN.
+ *
+ * They arrive from a crowd platform at /?w=<their id>, are handed one lawn by
+ * the server, correct the automatic outline and send it back for a code they
+ * paste into the platform. No account, no address, no sign-up: the id in the
+ * link is the whole of their identity here, which is right for a five-minute
+ * task -- see worker/src/jobs.js.
+ *
+ * THE SAME DRAWING TOOLS, NOT A COPY OF THEM. This is a handful of removals
+ * on top of the app (see body.job-mode in styles.css) rather than a stripped
+ * second page, because the tools people are PAID to use are the last ones that
+ * should drift from the ones everybody else gets.
+ */
+
+/*
+ * What a crowd platform sends before anybody has accepted the task.
+ *
+ * MTurk shows the task to workers who are only looking, and it says so by
+ * putting this literal string in the assignment id. Claiming a lawn for a
+ * browser in preview would take a lawn out of the queue for somebody who never
+ * agreed to do it, hold it for an hour, and -- worse -- an id-less preview
+ * would do it once per curious visitor. So preview shows the instructions and
+ * claims nothing.
+ */
+const MTURK_PREVIEW = 'ASSIGNMENT_ID_NOT_AVAILABLE';
+
+/**
+ * A message where the map would be, for every state that has no lawn in it.
+ *
+ * Deliberately not dismissable. The other sheets sit on top of a working app;
+ * for somebody with no lawn open this IS the app, and an × revealing an empty
+ * address form behind it is a worker filing a support ticket.
+ */
+function jobSheet({ title, why, code = null, note = null, go = null }) {
+  $('#job-sheet-title').textContent = title;
+  $('#job-sheet-why').textContent = why;
+  $('#job-code').hidden = !code;
+  $('#job-code').textContent = code || '';
+  $('#job-sheet-note').hidden = !note;
+  $('#job-sheet-note').textContent = note || '';
+  const btn = $('#job-sheet-go');
+  btn.hidden = !go;
+  btn.textContent = go?.label || '';
+  btn.onclick = go?.onClick || null;
+  $('#job-sheet').hidden = false;
+}
+
+const hideJobSheet = () => { $('#job-sheet').hidden = true; };
+
+/**
+ * /?w=<worker id> -- somebody arriving from the platform.
+ *
+ * A query string rather than a fragment, because the platform builds this URL
+ * by substituting into a template it controls and the worker id has to survive
+ * that. It is not a secret: it decides which rate limits apply and who the
+ * platform pays, and inventing one gets you a fresh set of limits and no way
+ * to prove to the platform that you did the work.
+ */
+function readJobRequest() {
+  const params = new URLSearchParams(location.search);
+  const worker = (params.get('w') || params.get('workerId') || '').trim();
+  if (!worker) return null;
+  return {
+    worker: worker.slice(0, 64),
+    preview: params.get('assignmentId') === MTURK_PREVIEW,
+  };
+}
+
+async function enterJobMode({ worker, preview }) {
+  state.worker = worker;
+  document.body.classList.add('job-mode');
+
+  if (preview) {
+    /*
+     * Previewing. Nothing is claimed, and the sheet says what the task is so
+     * somebody can decide whether to accept it -- which is the entire purpose
+     * of a preview, and a preview that shows an error is a task nobody takes.
+     */
+    jobSheet({
+      title: 'Trace one lawn',
+      why: 'You will be shown one property on a satellite photograph with a '
+        + 'rough outline of its lawn already drawn. Correct that outline — '
+        + 'mostly along the drive and the hard edges — and send it back. About '
+        + 'five minutes. Accept the task to start.',
+      note: 'Nothing has been assigned to you yet. This is the preview.',
+    });
+    return;
+  }
+
+  await claimNextJob();
+}
+
+/** Ask for a lawn, and put whatever comes back on the screen. */
+async function claimNextJob() {
+  let data;
+  let status = 0;
+  try {
+    const res = await fetch(`/api/job?w=${encodeURIComponent(state.worker)}`);
+    status = res.status;
+    data = await res.json();
+  } catch {
+    jobSheet({
+      title: 'That did not load',
+      why: 'The server could not be reached. Your connection may have dropped '
+        + '— reload this page and it will try again.',
+      go: { label: 'Try again', onClick: () => claimNextJob() },
+    });
+    return;
+  }
+
+  if (status !== 200 || !data?.job) {
+    /*
+     * EVERY REFUSAL IS A SENTENCE THE SERVER WROTE, not one composed here.
+     *
+     * The wording of "you are waiting on a review" and "there is no more of
+     * this work for you" is the difference between a worker who comes back
+     * tomorrow and a worker who writes about the requester on a forum, and it
+     * is decided in one place -- claimVerdict in jobs.js -- so that the two
+     * gates cannot drift apart and a change to either does not need a deploy
+     * of this file to take effect.
+     */
+    jobSheet({
+      title: data?.stopped ? 'Thank you for the maps you sent'
+        : data?.waiting ? 'Your maps are being checked'
+          : data?.error === 'Nothing left' ? 'That is the lot'
+            : 'No lawn just now',
+      why: data?.reason || 'There is nothing to hand out at the moment.',
+      /* Waiting is the one refusal that a later visit actually resolves. */
+      go: data?.waiting || data?.wait
+        ? { label: 'Check again', onClick: () => claimNextJob() }
+        : null,
+    });
+    return;
+  }
+
+  hideJobSheet();
+  await openJob(data.job, data.prompts || [], data.cleared || null);
+}
+
+/**
+ * Put one claimed lawn on the map, ready to correct.
+ *
+ * It goes through confirmLocation, which is the ordinary path a chosen address
+ * takes: county parcel lookup, frame fitted to the property line, surveyed
+ * corners remembered. A separate path would be a second place for the frame
+ * arithmetic to be wrong, and the frame is what every square foot is measured
+ * against.
+ */
+async function openJob(job, prompts, cleared) {
+  state.job = job;
+  clearHistory();
+  draw.deleteAll();
+  hideOverlay();
+  state.lastMask = null;
+  state.pins = [];
+  state.handEdited = false;
+  state.askedUnchanged = false;
+
+  /*
+   * NO ADDRESS, ON PURPOSE. The queue stores a point and a county and nothing
+   * else -- see the lawn_jobs table -- so a stranger being handed a stream of
+   * properties is never handed a list of where people live. The county is
+   * enough for them to know the picture loaded correctly.
+   */
+  state.chosen = { lng: job.lng, lat: job.lat, label: job.county || 'This property' };
+
+  $('#job-bar').hidden = false;
+  $('#job-where').textContent = [
+    'One lawn to trace',
+    job.county || null,
+    job.parcelSqFt ? `${Number(job.parcelSqFt).toLocaleString()} sq ft plot` : null,
+  ].filter(Boolean).join(' · ');
+
+  const box = $('#job-prompts');
+  box.textContent = '';
+  for (const p of prompts) {
+    const para = document.createElement('p');
+    para.className = `job-ask${p.optional ? ' optional' : ''}`;
+    const title = document.createElement('b');
+    title.textContent = p.title;
+    para.append(title, p.body);
+    box.append(para);
+  }
+
+  await confirmLocation();
+
+  /*
+   * AND THE STARTING OUTLINE, RUN FOR THEM.
+   *
+   * The task is to CORRECT an outline, so arriving at an empty map with an AI
+   * tab they have never been told about is arriving at a task they cannot
+   * start. It is run once, automatically, and paid for by the job rather than
+   * by their browser's signed-out allowance -- see spendJobDetection.
+   */
+  await detect();
+  /*
+   * Detection counts as the map appearing rather than as somebody editing it,
+   * and `edited` is the one machine-checkable thing about a submission. detect
+   * clears the flag itself; this is here so a failed detection cannot leave a
+   * stale true behind from the previous lawn.
+   */
+  state.handEdited = false;
+  setTab('draw');
+
+  if (cleared) setStatus(cleared);
+}
+
+/**
+ * Send it, and hand back the code.
+ *
+ * The map goes into the corpus by exactly the same road every other finished
+ * map takes -- same body, same cleaning, same id -- because the corpus cannot
+ * tell which maps came from where and should not: they are judged the same.
+ */
+async function submitJob() {
+  if (!state.job) return;
+  const body = finishedBody();
+  if (!body) {
+    setStatus('There is no outline on the map yet. Draw the lawn before sending it.', 'warn');
+    return;
+  }
+
+  $('#btn-job-submit').disabled = true;
+  busy('Sending your map…');
+  let data;
+  let status = 0;
+  try {
+    const res = await fetch('/api/job/submit', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        ...body,
+        worker: state.worker,
+        id: state.job.id,
+        edited: state.handEdited,
+        /* Set only after they have been asked once and said yes. See below. */
+        confirmedUnchanged: state.askedUnchanged === true,
+      }),
+    });
+    status = res.status;
+    data = await res.json();
+  } catch {
+    idle();
+    $('#btn-job-submit').disabled = false;
+    setStatus('That did not send. Check your connection and try again.', 'error');
+    return;
+  }
+  idle();
+  $('#btn-job-submit').disabled = false;
+
+  if (status !== 200) {
+    /*
+     * AN UNCHANGED OUTLINE ASKS A QUESTION RATHER THAN SLAMMING THE DOOR.
+     *
+     * Now and then the automatic outline really is right, and a hard refusal
+     * would leave an honest worker who checked it carefully with four minutes
+     * of work they cannot submit. Work done that cannot be paid for is the
+     * fastest way for a requester to be written up on a worker forum -- and
+     * here it would be our bug producing it, not their behaviour. So: refused
+     * once with the reason, and sending again goes through, flagged for the
+     * owner. See submissionVerdict.
+     */
+    if (data?.unchanged) state.askedUnchanged = true;
+    setStatus(data?.reason || 'That did not go through. Have another look.', 'warn');
+    return;
+  }
+
+  $('#job-bar').hidden = true;
+  state.job = null;
+  jobSheet({
+    title: 'Sent — thank you',
+    why: 'Paste this code into the task to be paid for it.',
+    code: data.code,
+    note: 'Maps are checked by a person, usually within a day. New workers do '
+      + 'a few at a time while that happens; you are paid either way.',
+    go: { label: 'Trace another lawn', onClick: () => claimNextJob() },
+  });
+}
+
+/**
+ * A skip is not a rejection, and must not cost the worker anything.
+ *
+ * One person being unable to see a boundary says nothing about the lawn, so it
+ * goes back in the queue for somebody else. What it must NOT do is leave them
+ * holding it: a worker blocked for an hour by a lawn they cannot trace is a
+ * worker who leaves.
+ */
+async function skipJob() {
+  if (!state.job) return;
+  if (!confirm('Put this lawn back for somebody else? Nothing you have drawn '
+    + 'on it is kept, and it does not count against you.')) return;
+
+  const id = state.job.id;
+  state.job = null;
+  $('#job-bar').hidden = true;
+  busy('Finding you another one…');
+  try {
+    await fetch('/api/job/skip', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ worker: state.worker, id, why: 'skipped from the map' }),
+    });
+  } catch {
+    /* The claim expires by itself within the hour, so a skip that did not
+       reach the server costs the queue an hour and the worker nothing. */
+  }
+  idle();
+  await claimNextJob();
+}
+
 function openMap(s) {
   /*
    * Whatever visit was in progress is over. Opening a SAVED map from the
@@ -5640,6 +5976,13 @@ const asked = new Set();
  */
 function askFeedback() {
   if (!state.detected || !state.lastMask || !state.chosen) return false;
+  /*
+   * NEVER OF A PAID WORKER. They did not choose this lawn, they are on the
+   * clock, and answering uploads the map and the address -- which for them is
+   * a stranger's property they were handed, not their own. It is also a modal
+   * question standing between somebody and the work they are being paid for.
+   */
+  if (state.job) return false;
   const key = `${state.chosen.label}|${state.detectedBy}|${state.detectedExcluding || ''}`;
   if (asked.has(key)) return false;
   asked.add(key);
@@ -9493,14 +9836,25 @@ $('#btn-print').addEventListener('click', () => window.print());
  * What goes is the outline, the frame and how much the detector was out by.
  * Not the address, not the account -- see the corpus table in schema.sql.
  */
-function keepFinished() {
+/*
+ * THE RECORD ITSELF, SEPARATED FROM SENDING IT.
+ *
+ * Two things post one of these now: finishing an ordinary map, and a paid
+ * worker submitting the lawn they were handed. The submission goes to a
+ * different route -- it carries a worker id and a claim, and the reply is a
+ * completion code rather than nothing -- but the ROW has to be identical, and
+ * the corpus deliberately cannot tell which maps came from where, because they
+ * are judged the same. Two builders would be two chances for the id
+ * derivation, the shape cleaning or the inferred flag to drift.
+ *
+ * Null when there is nothing to record, which both callers check.
+ */
+function finishedBody() {
   const shapes = draw.getAll().features.filter((f) => outerRing(f));
-  if (!shapes.length) return;
+  if (!shapes.length) return null;
   const m = measureLawn({ type: 'FeatureCollection', features: shapes });
 
-  api('/api/finished', {
-    method: 'POST',
-    body: JSON.stringify({
+  return {
       /*
        * THE ROW THIS IS, when we already know -- rather than one worked out
        * again from where it is.
@@ -9573,8 +9927,14 @@ function keepFinished() {
       // Which exclusion prompts ran. A lawn that needed `woods` is a lawn with
       // a tree line, which is what the hard half of the eval is made of.
       exclusions: state.exclude?.length ? state.exclude.slice().sort() : null,
-    }),
-  }).catch(() => { /* Never the finisher's problem. */ });
+  };
+}
+
+function keepFinished() {
+  const body = finishedBody();
+  if (!body) return;
+  api('/api/finished', { method: 'POST', body: JSON.stringify(body) })
+    .catch(() => { /* Never the finisher's problem. */ });
 }
 
 /*
@@ -9582,6 +9942,9 @@ function keepFinished() {
  * both of them named on screen rather than implied by a status line that the
  * next status line replaces.
  */
+$('#btn-job-submit').addEventListener('click', submitJob);
+$('#btn-job-skip').addEventListener('click', skipJob);
+
 $('#btn-review-save').addEventListener('click', () => leaveReview(true));
 $('#btn-review-back').addEventListener('click', () => {
   if (!confirm('Go back to the console without saving? Any corrections you have made here are lost.')) return;
@@ -9901,12 +10264,24 @@ initMap()
    */
   .then(afterMap('the review request', readReviewRequest))
   /*
+   * Somebody arriving from a crowd platform to trace one lawn for money.
+   *
+   * After the map, because it puts a lawn on it; before the saved-map
+   * shortcut, because a paid worker has no account and no saves, and offering
+   * them a list of somebody else's maps would be both confusing and wrong.
+   */
+  .then(afterMap('the paid queue', async () => {
+    const asked = readJobRequest();
+    if (asked) await enterJobMode(asked);
+  }))
+  /*
    * After the account, because whether there are saved maps depends on whether
    * this is an account with maps in it -- asking before signing in is resolved
    * would offer the shortcut to an empty list, or hide it from somebody whose
    * maps are about to load.
    */
   .then(afterMap('the saved-map shortcut', async () => {
+    if (state.worker) return;      // no account, so nothing to shortcut to
     const saves = await loadSaves();
     $('#btn-open-saved').hidden = !saves.length;
   }))

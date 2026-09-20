@@ -19,8 +19,47 @@
 import { recordFinished, storeImage } from './corpus.js';
 import {
   claimVerdict, submissionVerdict, cleanWorker, staleBefore, dayStart,
-  GATES,
+  GATES, FREE_DETECTS_PER_JOB,
 } from './jobs.js';
+
+/**
+ * Is this detection on somebody's own claimed lawn, and is it still free?
+ *
+ * WHY THE ALLOWANCE HAS A HOLE IN IT AT ALL. The automatic outline is the
+ * thing a paid worker is paid to correct, and they arrive signed out from a
+ * crowd platform -- where the public allowance is five passes a day for a
+ * whole browser. Fifteen maps would run out on the sixth and the task would
+ * look broken through no fault of theirs.
+ *
+ * WHY IT IS NOT A HOLE. Nothing here is taken on trust: the row must exist, be
+ * in state 'claimed', and be held by the worker whose id was sent. A worker
+ * holds ONE lawn at a time and may claim only so many a day, so the queue is
+ * the rate limit; the count is only what stops one claim being held open and
+ * detected against all afternoon.
+ *
+ * Counted with the guard inside the UPDATE rather than read and then written,
+ * because two requests arriving together would both read the old number.
+ *
+ * A NEGATIVE `n` HANDS PASSES BACK, which is what a detection that failed
+ * upstream has to do. The ordinary allowance refunds itself the same way, and
+ * a worker who was charged for a prediction the detector refused would run out
+ * of starting outlines because of somebody else's bad afternoon. The floor is
+ * in the same statement as the ceiling, so neither can be walked past.
+ */
+export async function spendJobDetection(env, jobId, workerId, n = 1) {
+  const worker = cleanWorker(workerId);
+  const id = String(jobId || '');
+  if (!worker || !id || !env?.DB) return false;
+
+  const spent = await env.DB.prepare(
+    `UPDATE lawn_jobs SET detections = detections + ?3
+      WHERE id = ?1 AND worker = ?2 AND state = 'claimed'
+        AND detections + ?3 <= ?4 AND detections + ?3 >= 0
+    RETURNING detections`
+  ).bind(id, worker, n, FREE_DETECTS_PER_JOB).first().catch(() => null);
+
+  return Boolean(spent);
+}
 
 /** What the worker is asked to do, in the order it matters. */
 export const PROMPTS = [

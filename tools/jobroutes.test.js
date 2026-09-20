@@ -12,8 +12,8 @@
  */
 
 import { testDb } from './d1.js';
-import { handleJobs, PROMPTS } from '../worker/src/routes-jobs.js';
-import { MIN_SECONDS, DAILY_CAP } from '../worker/src/jobs.js';
+import { handleJobs, PROMPTS, spendJobDetection } from '../worker/src/routes-jobs.js';
+import { MIN_SECONDS, DAILY_CAP, FREE_DETECTS_PER_JOB } from '../worker/src/jobs.js';
 
 let failures = 0;
 const check = (name, ok, detail = '') => {
@@ -126,6 +126,98 @@ const read = async (res) => ({ status: res.status, body: await res.json() });
     'one person being unable to trace a lawn says nothing about the lawn');
   check('and the reason is kept, because several skips on one lawn is a signal',
     /cannot see the boundary/.test(freed.note || ''), freed.note);
+}
+
+/* ------------------------------------------- who pays for the AI passes */
+{
+  /*
+   * A HOLE IN THE ALLOWANCE, AND WHY IT IS NOT ONE.
+   *
+   * A paid worker arrives signed out, from a crowd platform, and the automatic
+   * outline is the thing they are paid to CORRECT -- so they have to be able
+   * to get one. The signed-out allowance is five passes a day for a whole
+   * browser, which fifteen maps exhausts on the sixth, and raising it would
+   * hand the same number to every visitor on the internet.
+   *
+   * So the job pays. Everything that makes that safe is a condition on one
+   * UPDATE, and each of them is the difference between a queue and a way for
+   * a stranger to spend somebody else's Replicate bill.
+   */
+  check('a worker may detect on the lawn they are holding',
+    await spendJobDetection(env, idFor(0), 'WORKER1'),
+    'the outline is what they are paid to correct, so they must be able to get one');
+
+  check('but not on somebody else\'s',
+    !(await spendJobDetection(env, idFor(0), 'WORKER9')),
+    'a job id is not a secret -- the claim is what makes this safe');
+
+  check('and not on a lawn nobody is holding',
+    !(await spendJobDetection(env, idFor(2), 'WORKER1')),
+    'an unclaimed row would be free predictions for anybody who guessed an id');
+
+  check('and not without an id at all',
+    !(await spendJobDetection(env, idFor(0), ''))
+    && !(await spendJobDetection(env, '', 'WORKER1')),
+    'an unnamed worker cannot be rate limited and cannot be paid either');
+
+  /*
+   * AND IT RUNS OUT -- PER LAWN, NOT PER CLAIM, which is the condition that
+   * actually bounds the bill. A skip puts the lawn back in the queue and is
+   * deliberately free, so a count that reset with each claim would make
+   * "claim, detect, skip, repeat" an unbounded way to spend somebody else's
+   * Replicate account. Kept on the row, the whole batch costs at most this
+   * many passes per lawn however many times it goes round.
+   */
+  const spent = [];
+  for (let i = 0; i < FREE_DETECTS_PER_JOB + 2; i++) {
+    spent.push(await spendJobDetection(env, idFor(0), 'WORKER1'));
+  }
+  check(`and gets ${FREE_DETECTS_PER_JOB} of them before the job runs out`,
+    spent.filter(Boolean).length === FREE_DETECTS_PER_JOB - 1
+    && spent[spent.length - 1] === false,
+    `${spent.filter(Boolean).length + 1} allowed in total`);
+
+  /*
+   * A FAILED DETECTION HANDS ITS PASS BACK. The ordinary allowance refunds
+   * itself the same way, and a worker charged for a prediction the detector
+   * refused would run out of starting outlines because of somebody else's bad
+   * afternoon -- for which they would be blamed, since all anybody sees is a
+   * task that stopped working.
+   */
+  check('a pass handed back after a failed detection can be spent again',
+    (await spendJobDetection(env, idFor(0), 'WORKER1', -1))
+    && (await spendJobDetection(env, idFor(0), 'WORKER1')),
+    'the detector refusing us is not the worker\'s mistake');
+
+  const row = await env.DB.prepare('SELECT detections FROM lawn_jobs WHERE id = ?1')
+    .bind(idFor(0)).first();
+  check('and the count never goes below nothing',
+    !(await spendJobDetection(env, idFor(0), 'WORKER1', -99))
+    && Number(row.detections) === FREE_DETECTS_PER_JOB,
+    `${row.detections} spent -- a negative count would be free passes for ever`);
+
+  /*
+   * AND A SKIP DOES NOT WIPE IT. This is the check the whole design rests on:
+   * skips are free by design, so if the count came back with the lawn, then
+   * claim-detect-skip-repeat would be a loop with no ceiling on it at all.
+   */
+  await seed(1, 50);
+  const spun = idFor(50);
+  /* Put it in their hands directly rather than through the queue: what is
+     being tested is the release, not which lawn comes next. */
+  await env.DB.prepare(
+    `UPDATE lawn_jobs SET state = 'claimed', worker = 'SPINNER', claimed_at = ?2
+      WHERE id = ?1`
+  ).bind(spun, new Date().toISOString()).run();
+  await spendJobDetection(env, spun, 'SPINNER', 2);
+  await ask('/api/job/skip', { method: 'POST', body: { worker: 'SPINNER', id: spun } });
+
+  const after = await env.DB.prepare('SELECT state, detections FROM lawn_jobs WHERE id = ?1')
+    .bind(spun).first();
+  check('and a skip hands the lawn back without handing the passes back',
+    after.state === 'approved' && Number(after.detections) === 2,
+    `${after.detections} still spent -- a count that reset per claim would make `
+    + 'claim, detect, skip, repeat a loop with no ceiling on it');
 }
 
 /* ---------------------------------------------------------- submitting */

@@ -694,6 +694,70 @@ body.inferred-mode .panel { box-shadow: inset 4px 0 0 #7c4dff; }
 .reviewbar-acts { display: flex; flex-wrap: wrap; gap: 8px; }
 .reviewbar-acts button { flex: 1 1 200px; margin: 0; }
 
+/* ------------------------------------------------------- the paid queue */
+/*
+ * What somebody being paid to trace one lawn sees instead of the app.
+ *
+ * A green bar rather than the reviewer's amber, because these are two
+ * different people reading two different instructions and a worker who has
+ * seen a screenshot of the review bar should not confuse the two.
+ */
+.jobbar {
+  border: 1px solid #9ec5a1; border-radius: 12px; background: #eef6ee;
+  padding: 12px 14px; margin-bottom: 14px;
+}
+.job-where { margin: 0 0 8px; font-weight: 650; font-size: 14px; color: #1f5b22; }
+.job-asks { margin: 0 0 10px; font-size: 13px; color: #2c4a2e; }
+.job-asks summary { cursor: pointer; font-weight: 600; margin-bottom: 6px; }
+.job-ask { margin: 0 0 8px; }
+.job-ask b { display: block; }
+.job-ask.optional { color: #4d6350; }
+.jobbar-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.jobbar-acts button { flex: 1 1 200px; margin: 0; }
+
+/*
+ * The completion code. Big, monospaced and selectable on purpose: it is typed
+ * into another site by somebody holding a phone, and a code that is awkward to
+ * copy is a task abandoned after the work was already done.
+ */
+.jobcode {
+  font: 700 26px/1.3 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: .12em; text-align: center; margin: 14px 0;
+  padding: 14px 10px; border-radius: 10px; background: #eef6ee;
+  border: 1px solid #9ec5a1; color: #1f5b22;
+  user-select: all; -webkit-user-select: all;
+}
+
+/*
+ * WHAT A PAID WORKER IS NOT SHOWN, and it is a list of removals rather than a
+ * second page, because the whole point is that they get the SAME drawing tools
+ * the app has. A stripped copy would be a second copy, and the one that people
+ * are paid to use is the last one that should drift.
+ *
+ * Gone: the account button and the allowance badge (they have no account and
+ * the job pays for its own detections), the address step (their lawn is chosen
+ * for them), the AI step (it is run for them, once, on arrival), Saved and
+ * Plan (neither exists for somebody who never signs in), and the Finish button
+ * (sending the map is what ends the task, and two buttons that both look like
+ * the end is how a map gets saved without being submitted).
+ */
+body.job-mode #account-btn,
+body.job-mode #quota-badge,
+body.job-mode #tab-detect,
+body.job-mode #tab-saved,
+body.job-mode #tab-plan,
+body.job-mode #btn-finish,
+body.job-mode #finish-note,
+body.job-mode #btn-open-saved,
+/*
+ * And every way back to a step that no longer exists for them. "Start over
+ * with a new address" on a lawn somebody was assigned would abandon a claim
+ * and land them on a search box, which is a dead end with an hour's wait
+ * attached; "Find the lawn →" points at a tab that has been removed.
+ */
+body.job-mode [data-action="restart"],
+body.job-mode #btn-to-detect { display: none !important; }
+
 .statusline { font-size: 13.5px; color: var(--muted); min-height: 20px; margin-bottom: 10px; }
 .statusline.warn { color: #a35b00; }
 .statusline.error { color: #b3261e; }

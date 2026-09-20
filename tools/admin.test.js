@@ -309,7 +309,10 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
   check('migrations.sql carries an ALTER for every column added since creation',
     sql.some((s) => /corpus ADD COLUMN image_key/i.test(s))
       && sql.some((s) => /corpus ADD COLUMN image_provider/i.test(s))
-      && sql.some((s) => /ledger ADD COLUMN units/i.test(s)),
+      && sql.some((s) => /ledger ADD COLUMN units/i.test(s))
+      /* And the paid queue's own, for the same reason: lawn_jobs has shipped,
+         so a column added to its CREATE reaches new databases only. */
+      && sql.some((s) => /lawn_jobs ADD COLUMN detections/i.test(s)),
     sql.join(' | '));
 
   let already = 0;
@@ -320,8 +323,20 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
       if (alreadyApplied(e.message)) already++; else throw e;
     }
   }
+  /*
+   * COUNTED RATHER THAN HARD-CODED. Every table here was just built from the
+   * current schema.sql, so every ALTER is a duplicate -- except the corpus
+   * ones, which the block above dropped back to their sixteen-column shape on
+   * purpose. Written as a literal, this check failed the next time a column
+   * was added to any other table, which reads as a broken migration rather
+   * than as a stale number in a test.
+   */
+  const current = sql.filter(
+    (s) => /^ALTER/i.test(s) && !/corpus ADD COLUMN/i.test(s)
+  ).length;
   check('and "duplicate column name" is read as already done, not as a failure',
-    already === 1, `ledger.units was already current; ${already} statement(s) skipped`);
+    already === current,
+    `${already} of ${current} already-current statements skipped`);
 
   const after = await ask(env, ownerToken, 'overview');
   check('after the migration the count reads clean',

@@ -98,6 +98,33 @@ export const countsAsPass = (outcome) => outcome === 'kept' || outcome === 'excu
 export const CLAIM_EXPIRY = HOUR;
 
 /**
+ * How many AI passes one LAWN gets for free, across every claim it ever has.
+ *
+ * A worker arrives signed out, from a crowd platform, where the public
+ * allowance is five passes a day for a whole browser -- and the automatic
+ * outline is the thing they are paid to CORRECT, so they have to be able to
+ * get one. Somebody doing fifteen maps would run out on the sixth and the task
+ * would simply look broken. Raising the public allowance instead would hand
+ * the same number to every visitor on the internet, which is real money.
+ *
+ * PER LAWN RATHER THAN PER CLAIM, and that is the part worth being careful
+ * about. A skip puts the lawn back in the queue, so a count that reset with
+ * each claim would make "claim, detect, skip, repeat" an unbounded way to
+ * spend somebody else's Replicate bill -- skips are deliberately free, because
+ * a worker blocked by a lawn they cannot trace is a worker who leaves. Kept on
+ * the row, the whole batch can cost at most this many passes per lawn however
+ * many times it goes round.
+ *
+ * Six because the ordinary course is one -- run once on arrival -- and the
+ * rest is slack for the things that legitimately need another: reloading a
+ * closed tab, and extending the property line out to the kerb, which the road
+ * prompt asks for. It degrades rather than blocking: a lawn that has used its
+ * six falls back to the browser's own signed-out allowance, so the worst case
+ * for the second worker on a much-skipped lawn is the app behaving normally.
+ */
+export const FREE_DETECTS_PER_JOB = 6;
+
+/**
  * Is this worker allowed another lawn right now, and if not, why not?
  *
  * Pure, and separated from the database on purpose: these rules are the whole

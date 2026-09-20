@@ -112,6 +112,35 @@
   </div>
 </div>
 
+<!--
+  EVERYTHING THE PAID QUEUE HAS TO SAY WHEN THERE IS NO MAP TO SHOW.
+
+  One sheet for all of it -- the preview of a task nobody has accepted yet, a
+  worker waiting on a review, a worker who has been stopped, an empty batch,
+  and the completion code at the end -- because every one of those is the same
+  shape: a sentence, sometimes a code, and nothing to do on a map.
+
+  It is not dismissable. The other sheets sit on top of a working app; this one
+  IS the app for somebody who has no lawn open, and an × that revealed an empty
+  address form behind it would be a worker filing a support ticket.
+
+  THE CODE IS SELECTABLE AND LARGE, because it is typed into another site by
+  somebody on a phone, and a code that is hard to copy is a task that gets
+  abandoned after the work was already done.
+-->
+<div class="sheet" id="job-sheet" role="dialog" aria-modal="true"
+     aria-labelledby="job-sheet-title" hidden>
+  <div class="sheet-card">
+    <p class="sheet-title" id="job-sheet-title"></p>
+    <p class="sheet-why" id="job-sheet-why"></p>
+    <p class="jobcode" id="job-code" hidden></p>
+    <p class="sheet-note" id="job-sheet-note" hidden></p>
+    <div class="tools">
+      <button class="primary" id="job-sheet-go" type="button" hidden></button>
+    </div>
+  </div>
+</div>
+
 <div class="layout">
   <aside class="panel" id="panel">
 
@@ -312,6 +341,32 @@
         <div class="reviewbar-acts">
           <button class="primary" type="button" id="btn-review-save">Save and return to the console</button>
           <button class="ghost" type="button" id="btn-review-back">Back without saving</button>
+        </div>
+      </div>
+
+      <!--
+        WORKING THROUGH THE PAID QUEUE.
+
+        Somebody arrives here from a crowd platform with a worker id in the
+        link, is handed one lawn, corrects the outline and sends it back. They
+        have no account, never typed an address, and are not going to read a
+        manual -- so what they are being paid to do is ON THE SCREEN, next to
+        the button that ends the task, rather than in the platform's task
+        description where it scrolls away the moment they click through.
+
+        Open by default and closable, in that order. The instructions are the
+        job on the first lawn and in the way on the fifteenth, and guessing
+        which one somebody is on is worse than letting them say.
+      -->
+      <div class="jobbar" id="job-bar" hidden>
+        <p class="job-where" id="job-where"></p>
+        <details class="job-asks" id="job-asks" open>
+          <summary>What this job is asking for</summary>
+          <div id="job-prompts"></div>
+        </details>
+        <div class="jobbar-acts">
+          <button class="primary" type="button" id="btn-job-submit">Send this map</button>
+          <button class="ghost" type="button" id="btn-job-skip">I cannot do this one</button>
         </div>
       </div>
 
