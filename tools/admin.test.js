@@ -1440,25 +1440,66 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
     twice.status === 409 && held.state === 'kept', JSON.stringify(held));
 
   /*
-   * EXCUSED IS NOT KEPT, IN THE CORPUS. The two differ in what they mean for
-   * the WORKER, not in what they mean for training: a map too rough to keep is
-   * too rough to train on however forgivable the lawn was. Landing an excused
-   * map on 'approved' would quietly put exactly the maps the owner rejected
-   * into the training set.
+   * EXCUSED KEEPS THE MAP AS A CANDIDATE, which is a change of mind worth
+   * recording. It used to reject it, on the reasoning that an outline not
+   * worth keeping has nothing for a second look to do -- and that was wrong
+   * about what the button means. "Not good enough, but a hard lawn" is a
+   * judgement about how much to ask of a STRANGER, not a verdict on the
+   * pixels: the owner may well have half an hour later and finish it. A
+   * rejected row is one nothing ever offers them again, so rejecting it threw
+   * away a traced outline on a hard property.
    */
   const soft = 'job-0002-aaaa-4bbb-8ccc-dddddddddddd';
   await env.DB.prepare('UPDATE lawn_jobs SET map_id = ?2 WHERE id = ?1')
     .bind(soft, mapId).run();
-  await ask(env, ownerToken, 'review-lawn',
+  const soften = await ask(env, ownerToken, 'review-lawn',
     { method: 'POST', body: { id: soft, verdict: 'excused' } });
   const excused = await env.DB.prepare(
-    `SELECT j.state, c.status, c.review_note
-       FROM lawn_jobs j JOIN corpus c ON c.id = j.map_id WHERE j.id = ?1`
+    `SELECT j.state, c.status FROM lawn_jobs j JOIN corpus c ON c.id = j.map_id
+      WHERE j.id = ?1`
   ).bind(soft).first();
-  check('an excused map counts for the worker and still stays out of the corpus',
-    excused.state === 'excused' && excused.status === 'rejected'
-    && /excused/.test(excused.review_note || ''),
-    JSON.stringify(excused));
+  check('an excused map counts for the worker and is kept as a candidate',
+    excused.state === 'excused' && excused.status === 'new'
+    && soften.body.stillToReview === true,
+    `${JSON.stringify(excused)} -- a traced outline on a hard lawn is the most `
+    + 'expensive kind to throw away');
+
+  /*
+   * AND AN OUTRIGHT REFUSAL PUTS THE PROPERTY BACK, as a NEW row.
+   *
+   * The property was screened -- somebody looked and said it was worth tracing
+   * -- and one person failing does not un-say that. But the refused row is the
+   * WORKER'S record, which the gates count, so flipping it back to 'approved'
+   * would hand the lawn out again and erase the refusal in the same statement.
+   * Two rows: one attempt that went badly, one lawn waiting for somebody else.
+   */
+  const bad = 'job-0003-aaaa-4bbb-8ccc-dddddddddddd';
+  const before = await env.DB.prepare(
+    "SELECT COUNT(*) n FROM lawn_jobs WHERE state = 'approved'"
+  ).first();
+  const refusal = await ask(env, ownerToken, 'review-lawn',
+    { method: 'POST', body: { id: bad, verdict: 'refused' } });
+  const after2 = await env.DB.prepare(
+    "SELECT COUNT(*) n FROM lawn_jobs WHERE state = 'approved'"
+  ).first();
+  const kept2 = await env.DB.prepare('SELECT state, worker FROM lawn_jobs WHERE id = ?1')
+    .bind(bad).first();
+
+  check('a refusal puts the property back in the queue for somebody else',
+    refusal.body.requeued === true && Number(after2.n) === Number(before.n) + 1,
+    `${before.n} -> ${after2.n} approved`);
+  check('and the refusal itself survives, because the gates count it',
+    kept2.state === 'refused' && kept2.worker === 'W1',
+    `${JSON.stringify(kept2)} -- recycling the row would hand the lawn out `
+    + 'again AND erase the refusal that made it available');
+
+  const fresh2 = await env.DB.prepare(
+    `SELECT lng, lat, worker, map_id, screened_at FROM lawn_jobs
+      WHERE state = 'approved' ORDER BY created_at DESC LIMIT 1`
+  ).first();
+  check('and the new row is the same place with nobody attached to it',
+    Number(fresh2.lng) === -80 && !fresh2.worker && !fresh2.map_id && fresh2.screened_at,
+    JSON.stringify(fresh2));
 
   /*
    * TRUSTING SOMEBODY, FROM THE CARD WHERE THE OPINION FORMS. The state comes
@@ -1469,6 +1510,14 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
   check('a worker starts out as a stranger, with no row and no trust',
     queue.jobs.every((j) => j.tally?.trusted === false),
     'no row is the ordinary case, and it is what the gates are written for');
+
+  /*
+   * A CARD OF ITS OWN FOR THE CHECKS BELOW. They read jobs[0] of the live
+   * queue, and the blocks above have now graded every card that was in it --
+   * which left this section reading an empty list and failing on something
+   * that had nothing to do with trust.
+   */
+  await job('job-0010-aaaa-4bbb-8ccc-dddddddddddd', 'submitted', { seconds: 240 });
 
   const granted = await ask(env, ownerToken, 'trust-worker',
     { method: 'POST', body: { worker: 'W1', trusted: true, note: 'hired on Upwork' } });
@@ -1491,6 +1540,40 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
     revoked.body.jobs[0].tally.trusted === false
     && revoked.body.jobs[0].tally.note === 'hired on Upwork',
     JSON.stringify(revoked.body.jobs[0].tally));
+
+  /*
+   * WHERE SOMEBODY CAME FROM IS NOT WHETHER THEY ARE ANY GOOD, and the two are
+   * stored apart so that marking somebody "hired" cannot quietly let them past
+   * the gates. The gates are what replaced an audition; a pay arrangement is
+   * not a reference.
+   */
+  await ask(env, ownerToken, 'trust-worker',
+    { method: 'POST', body: { worker: 'W1', kind: 'hired', trusted: false } });
+  const routed = await env.DB.prepare(
+    'SELECT kind, trusted, note FROM lawn_workers WHERE worker = ?1'
+  ).bind('W1').first();
+  check('marking somebody hired does not let them past the gates',
+    routed.kind === 'hired' && Number(routed.trusted) === 0,
+    `${routed.kind}, trusted=${routed.trusted} -- hired is a pay arrangement, `
+    + 'not a reference');
+  check('and does not wipe what the owner wrote either',
+    routed.note === 'hired on Upwork', String(routed.note));
+
+  /*
+   * And the trust switch on the grading card sends no route at all, so it must
+   * not reset one. A worker marked hired who is then trusted from a card would
+   * otherwise silently become a crowd worker and be handed a completion code
+   * with nowhere to paste it.
+   */
+  await ask(env, ownerToken, 'trust-worker',
+    { method: 'POST', body: { worker: 'W1', trusted: true } });
+  const stillHired = await env.DB.prepare(
+    'SELECT kind, trusted FROM lawn_workers WHERE worker = ?1'
+  ).bind('W1').first();
+  check('and trusting them later does not reset the route to crowd',
+    stillHired.kind === 'hired' && Number(stillHired.trusted) === 1,
+    `${stillHired.kind} -- otherwise they get a completion code with nowhere `
+    + 'to paste it');
 
   /*
    * AND IT IS KEYED THE SAME WAY THE QUEUE KEYS IT.
@@ -1520,33 +1603,51 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
     crew.workers.length >= 1 && w1,
     crew.workers.map((w) => w.worker).join(', '));
   /*
-   * Six lawns, and the blocks above this one have already graded four of
-   * them: 0001 kept and 0002 excused by the verdicts under test there, on top
-   * of the 0004/0005/0006 seeded as kept, excused and refused. 0003 is the
-   * flagged one nobody has judged.
+   * ASSERTED AS INVARIANTS RATHER THAN AS LITERALS, and that is a lesson from
+   * this file rather than a style preference: these were written as exact
+   * counts and broke twice on unrelated blocks above grading one more card.
+   * A test that has to be re-derived every time its neighbours change is a
+   * test nobody trusts the next time it goes red.
    */
-  check('with what they sent and what became of it',
-    w1.handed === 6 && w1.waiting === 1 && w1.kept === 2
-    && w1.excused === 2 && w1.refused === 1,
-    JSON.stringify({
-      handed: w1.handed, waiting: w1.waiting, kept: w1.kept,
-      excused: w1.excused, refused: w1.refused,
-    }));
+  const bucketed = w1.kept + w1.excused + w1.refused + w1.waiting + w1.open;
+  check('every lawn handed to somebody is in exactly one bucket',
+    w1.handed === bucketed,
+    `${w1.handed} handed against ${bucketed} accounted for`);
 
   /*
    * THE PASS RATE IS WHAT THE GATES READ, so it is what the page shows: kept
-   * and excused over everything reviewed. Four of five here -- and it matters
-   * that the two excused ones count, because on kept-only this worker would
-   * read 40% and look like somebody to stop.
+   * AND excused over everything reviewed. It matters that the excused ones
+   * count -- on kept alone this worker reads far worse and looks like somebody
+   * to stop, which is exactly the misreading the excuse button exists to
+   * prevent.
    */
-  check('and the pass rate the gates actually use, not just the kept ones',
-    w1.reviewed === 5 && Math.round(w1.passRate * 100) === 80,
+  check('and the pass rate is the one the gates use, counting excused as a pass',
+    w1.reviewed === w1.kept + w1.excused + w1.refused
+    && Math.abs(w1.passRate - (w1.kept + w1.excused) / w1.reviewed) < 1e-9
+    && w1.passRate > w1.kept / w1.reviewed,
     `${Math.round(w1.passRate * 100)}% from ${w1.kept} kept + ${w1.excused} excused `
     + `over ${w1.reviewed} reviewed -- on kept alone it would read `
     + `${Math.round((w1.kept / w1.reviewed) * 100)}%`);
 
+  /*
+   * THE MEDIAN, CHECKED AGAINST THE ROWS IT CAME FROM. The point is not the
+   * number, it is that it is a median: a mean here is dragged past usefulness
+   * by one worker who wandered off with a claim open, and the seeded data has
+   * exactly that outlier in it.
+   */
+  const secs = (await env.DB.prepare(
+    `SELECT seconds FROM lawn_jobs
+      WHERE worker = 'W1' AND seconds IS NOT NULL AND seconds > 0
+      ORDER BY seconds ASC`
+  ).all()).results.map((r) => Number(r.seconds));
+  const want = secs.length % 2
+    ? secs[(secs.length - 1) / 2]
+    : Math.round((secs[secs.length / 2 - 1] + secs[secs.length / 2]) / 2);
+  const mean = Math.round(secs.reduce((a, b) => a + b, 0) / secs.length);
   check('and a median time, which is the number a platform judges pay against',
-    w1.medianSeconds === 360, `${w1.medianSeconds}s`);
+    w1.medianSeconds === want && w1.medianSeconds < mean,
+    `${w1.medianSeconds}s over ${secs.length} maps -- the mean of the same set `
+    + `is ${mean}s, dragged there by one abandoned claim`);
 
   /*
    * NOTHING REVIEWED IS NOT A PASS RATE OF ZERO. "None of their maps passed"

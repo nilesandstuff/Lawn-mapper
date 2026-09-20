@@ -678,7 +678,27 @@ if (typeof window !== 'undefined') {
     pitch: map ? map.getPitch() : null,
     dragRotate: Boolean(map?.dragRotate?.isEnabled()),
     dragPan: Boolean(map?.dragPan?.isEnabled()),
-    touchZoom: Boolean(map?.touchZoomRotate?.isEnabled()),
+    /*
+     * PINCH, READ FROM THE PINCH HANDLER RATHER THAN FROM THE WRAPPER -- which
+     * is the same mistake the tapDragZoom fix was written to correct, one
+     * field over, and it reported a working map as broken for a week.
+     *
+     * map.touchZoomRotate is a wrapper around THREE handlers, and its
+     * isEnabled is an AND over all of them:
+     *
+     *   isEnabled() { return this._touchZoom.isEnabled()
+     *                     && (this._rotationDisabled || this._touchRotate.isEnabled())
+     *                     && this._tapDragZoom.isEnabled() }
+     *
+     * We deliberately disable tapDragZoom -- it is the tap-then-drag gesture
+     * that collided head-on with tap, pan, tap -- so the wrapper reads false
+     * for ever afterwards while pinch-to-zoom is perfectly alive. Read
+     * verbatim out of mapbox-gl-js v3.9.0; not deduced.
+     */
+    touchZoom: Boolean(map?.handlers?._handlersById?.touchZoom?.isEnabled()),
+    /* The wrapper's own answer, kept because it is what a reader would reach
+       for first and it needs to be visibly NOT the pinch answer. */
+    touchZoomRotateWrapper: Boolean(map?.touchZoomRotate?.isEnabled()),
     /*
      * THE TWO ZOOM-BY-TAPPING SWITCHES, separately, because reading one of
      * them as though it covered both is what kept this bug alive.
@@ -5654,15 +5674,64 @@ const hideJobSheet = () => { $('#job-sheet').hidden = true; };
  */
 const HELPER_KEY = 'lm.helper';
 
-function helperName() {
-  try {
-    const kept = localStorage.getItem(HELPER_KEY);
-    if (kept) return kept;
-  } catch { /* private window, or storage switched off */ }
+/** Whatever they typed, reduced to something safe to key a queue on. */
+const helperSlug = (raw) => `helper-${String(raw || '')
+  .trim()
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, '-')
+  .replace(/^-+|-+$/g, '')
+  .slice(0, 40)}`;
 
-  const minted = `helper-${Math.random().toString(36).slice(2, 10)}`;
-  try { localStorage.setItem(HELPER_KEY, minted); } catch { /* as above */ }
-  return minted;
+const storedHelper = () => {
+  try { return localStorage.getItem(HELPER_KEY) || null; } catch { return null; }
+};
+
+const rememberHelper = (name) => {
+  try { localStorage.setItem(HELPER_KEY, name); } catch { /* private window */ }
+};
+
+/**
+ * ASKED FOR ONCE, AND THE ONLY REASON IT IS ASKED AT ALL.
+ *
+ * A minted random name kept claims apart, which was the point, and got one
+ * thing wrong that only showed up afterwards: it lives in localStorage, so the
+ * same person on a phone and a laptop was two people. Eleven maps from one
+ * helper read as two strangers with five and six, which is the opposite of
+ * what a page about people is for.
+ *
+ * Nothing carried in a browser can fix that. Identity across devices needs
+ * something the PERSON carries, and for somebody who followed a link off a
+ * forum to do an unpaid favour, the only acceptable version of that is a name
+ * they type. So they are asked, once, and told why.
+ *
+ * TWO PEOPLE WHO PICK THE SAME NAME BECOME ONE ROW. That is what a name-based
+ * identity means and there is no way around it without an account. It is an
+ * acceptable trade here and would not be if money moved: a merged volunteer
+ * tally is a slightly wrong number on the owner's screen, where a merged paid
+ * identity would be somebody's wages.
+ *
+ * Cancelling or leaving it blank still lets them in, under a random name. The
+ * work is the point; the name is bookkeeping, and bookkeeping must never be
+ * the thing that turns a volunteer away.
+ */
+function askHelperName() {
+  const kept = storedHelper();
+  if (kept) return kept;
+
+  const typed = window.prompt(
+    'What should I call you? Use the same name on your phone and your computer '
+    + 'and your maps will add up. (Optional — leave it blank to stay anonymous.)',
+    ''
+  );
+
+  const slug = typed ? helperSlug(typed) : '';
+  /* `helper-` on its own means they typed only punctuation. Treat as blank. */
+  const name = slug.length > 'helper-'.length
+    ? slug
+    : `helper-${Math.random().toString(36).slice(2, 10)}`;
+
+  rememberHelper(name);
+  return name;
 }
 
 function readJobRequest() {
@@ -5678,7 +5747,7 @@ function readJobRequest() {
 
   if (!worker && !volunteer) return null;
   return {
-    worker: worker ? worker.slice(0, 64) : helperName(),
+    worker: worker ? worker.slice(0, 64) : askHelperName(),
     volunteer,
     preview: params.get('assignmentId') === MTURK_PREVIEW,
   };

@@ -212,6 +212,7 @@ console.log(`      confirming: ${await page.locator('#chosen-label').textContent
       doubleClickZoom: h.doubleClickZoom,
       tapDragZoom: h.tapDragZoom,
       pinch: h.touchZoom,
+      wrapper: h.touchZoomRotateWrapper,
     };
   });
   check('double-tap zoom is off', gz.doubleClickZoom === false, String(gz.doubleClickZoom));
@@ -220,7 +221,19 @@ console.log(`      confirming: ${await page.locator('#chosen-label').textContent
     'doubleClickZoom does not cover it; it read "off" for weeks while being on');
   /* The blunt fix for the above -- touchZoomRotate.disable() -- would take
      pinch with it, so the narrow one has to leave pinch alone. */
-  check('and pinch-to-zoom still works', gz.pinch === true, String(gz.pinch));
+  /*
+   * READ FROM THE PINCH HANDLER, NOT FROM THE WRAPPER, and that distinction is
+   * the whole check rather than a detail of it.
+   *
+   * map.touchZoomRotate wraps THREE handlers and its isEnabled is an AND over
+   * all of them, tapDragZoom included -- which we deliberately disable. So the
+   * wrapper reads false for ever afterwards while pinch is perfectly alive,
+   * and reading it here reported a working map as broken. That is the same
+   * mistake the tapDragZoom fix was written to correct, one field over.
+   */
+  check('and pinch-to-zoom still works', gz.pinch === true,
+    `pinch handler ${gz.pinch}, wrapper ${gz.wrapper} -- the wrapper ANDs in `
+    + 'tapDragZoom, which is off on purpose, so it is not the pinch answer');
 }
 
 /*
@@ -240,13 +253,29 @@ console.log(`      confirming: ${await page.locator('#chosen-label').textContent
   const armed = await page.evaluate(() => window.__lmPlacingPin?.());
   check('the confirm step expects taps', armed === true, `placingPin=${armed}`);
   const before = await page.evaluate(() => window.__lmChosen?.());
+  const dial = () => page.evaluate(() => ({ ...window.__lm }));
+  const was = await dial();
+
   /* Off-centre, so the pin has somewhere to move to. */
   await page.touchscreen.tap(box.x + box.width * 0.35, box.y + box.height * 0.4);
   await page.waitForTimeout(900);
   const after = await page.evaluate(() => window.__lmChosen?.());
+  const now = await dial();
+
+  /*
+   * THE COUNTERS, IN THE FAILURE MESSAGE. "The pin did not move" has three
+   * causes that look identical from outside -- the tap never reached the
+   * handler at all, it reached it and was rejected mid-draw, or it ran and
+   * movePin did nothing -- and the app already counts all three. Printing
+   * only the coordinates threw that away and left the next person to
+   * re-derive it, which is exactly what happened here.
+   */
   check('tapping the map moves the property pin',
     Boolean(before && after) && (before.lng !== after.lng || before.lat !== after.lat),
-    `${before?.lng},${before?.lat} -> ${after?.lng},${after?.lat}`);
+    `${before?.lng},${before?.lat} -> ${after?.lng},${after?.lat}`
+    + ` · reached handler ${now.clicks - was.clicks}x`
+    + ` (touch ${now.viaTouch - was.viaTouch}, click ${now.viaClick - was.viaClick})`
+    + `, rejected ${now.rejected - was.rejected}x, draw mode ${now.lastMode}`);
 }
 
 await page.click('[data-action=confirm]');

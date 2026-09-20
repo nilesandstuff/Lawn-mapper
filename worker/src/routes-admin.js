@@ -29,7 +29,7 @@ import { corpusGaps, candidateScore } from './corpus.js';
 import { parcelGaps } from './gaps.js';
 // The same cleaner the paid queue puts a worker id through on the way in. Two
 // spellings of one id is a row the claim lookup never finds.
-import { cleanWorker } from './jobs.js';
+import { cleanWorker, ROUTES } from './jobs.js';
 
 export const isAdminPath = (pathname) => pathname.startsWith('/api/admin/');
 
@@ -755,29 +755,75 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
      * tidy-up the owner intends to do on every one of these, and skipping the
      * inferred check, which nothing else would ever come back and do.
      *
-     * So keeping now says something about the PERSON and leaves the map where
-     * it was: 'new', a candidate, in the same queue every other finished map
-     * waits in. The owner tidies it there, answers the canopy and inferred
-     * questions there, and approves it there. Two cheap looks instead of one
-     * look doing two jobs badly.
+     * KEPT AND EXCUSED BOTH LEAVE THE MAP ALONE, at 'new', in the same queue
+     * every other finished map waits in.
      *
-     * Excused and refused DO settle the corpus row, and that is not an
-     * inconsistency: both mean the outline is not worth keeping, so there is
-     * nothing for a second look to do. Only 'kept' has a map worth tidying.
+     * Excused used to reject it, on the reasoning that an outline not worth
+     * keeping has nothing for a second look to do. That was wrong about what
+     * the button means: "not good enough, but a hard lawn" is a judgement
+     * about how much to ASK OF A STRANGER, not a verdict on the pixels. The
+     * owner may well have half an hour later and finish it themselves -- and a
+     * rejected row is one nothing ever offers them again. Rejecting it threw
+     * away a traced outline on a hard property, which is the most expensive
+     * kind there is.
+     *
+     * Only an outright refusal settles the corpus row, because only that one
+     * means the outline is not an attempt at this lawn.
      */
-    if (done.map_id && verdict !== 'kept') {
+    if (done.map_id && verdict === 'refused') {
       await env.DB.prepare(
         `UPDATE corpus
             SET status = 'rejected', reviewed_at = ?2, reviewed_by = ?3,
                 review_note = ?4, review_queue = 'paid'
           WHERE id = ?1`
-      ).bind(
-        done.map_id, new Date().toISOString(), me.email,
-        verdict === 'excused' ? `excused: ${note || 'hard lawn'}` : note,
-      ).run();
+      ).bind(done.map_id, new Date().toISOString(), me.email, note).run();
     }
 
-    return json({ ok: true, stillToReview: verdict === 'kept' }, 200, origin);
+    /*
+     * AND A REFUSAL PUTS THE LAWN BACK IN THE QUEUE.
+     *
+     * The property was screened -- somebody looked at the photograph and said
+     * it was worth tracing -- and one person failing to trace it does not
+     * un-say that. Left as it was, an outright refusal quietly retired a good
+     * lawn: the screening that earned it was spent, and nothing would ever
+     * offer it again.
+     *
+     * A NEW ROW RATHER THAN RECYCLING THIS ONE, and that is the important
+     * part. The refused row IS the worker's record -- the gates count refusals
+     * per person -- so flipping it back to 'approved' would hand the lawn out
+     * again AND erase the refusal that made it available, which is exactly
+     * backwards. Two rows: one attempt that went badly, one lawn waiting for
+     * somebody else.
+     *
+     * Created at `now`, so it goes to the back of the queue rather than
+     * straight back to the front. Same reasoning as a skip.
+     */
+    let requeued = false;
+    if (verdict === 'refused') {
+      const lawn = await env.DB.prepare(
+        'SELECT lng, lat, county, fips, parcel_sqft FROM lawn_jobs WHERE id = ?1'
+      ).bind(id).first();
+      if (lawn) {
+        await env.DB.prepare(
+          `INSERT INTO lawn_jobs (id, lng, lat, county, fips, parcel_sqft,
+                                  state, note, screened_at, created_at)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'approved', ?7, ?8, ?8)`
+        ).bind(
+          crypto.randomUUID(), lawn.lng, lawn.lat, lawn.county, lawn.fips,
+          lawn.parcel_sqft,
+          'back in the queue after a refused attempt',
+          new Date().toISOString(),
+        ).run();
+        requeued = true;
+      }
+    }
+
+    return json({
+      ok: true,
+      /* Kept and excused both leave a map for the ordinary review queue. */
+      stillToReview: verdict !== 'refused',
+      requeued,
+    }, 200, origin);
   }
 
   /*
@@ -904,6 +950,22 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
     const when = new Date().toISOString();
 
     /*
+     * WHICH ROUTE, SET SEPARATELY FROM TRUST, because they are different
+     * facts and conflating them would undo the thing the gates are for.
+     *
+     * "Hired" says where somebody came from and what they see at the end: no
+     * platform, so a running count instead of a completion code. It says
+     * NOTHING about whether they are any good, and a hired person goes through
+     * the same five-map and fifteen-map gates as a stranger -- which is the
+     * point, because that is what replaced an audition. Trust is the separate,
+     * later, deliberate decision that they have earned their way past them.
+     *
+     * Omitted leaves whatever is there, so the trust switch on the grading
+     * card cannot silently reset somebody's route to 'crowd'.
+     */
+    const kind = ROUTES.includes(String(body?.kind || '')) ? String(body.kind) : null;
+
+    /*
      * Upsert, because the owner will change their mind and the row is the
      * decision rather than the person -- there is no sign-up here to hang one
      * off. COALESCE on the note so revoking trust does not silently wipe
@@ -911,14 +973,16 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
      * readable three weeks later.
      */
     await env.DB.prepare(
-      `INSERT INTO lawn_workers (worker, trusted, note, decided_at, decided_by, created_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?4)
+      `INSERT INTO lawn_workers
+         (worker, trusted, note, kind, decided_at, decided_by, created_at)
+       VALUES (?1, ?2, ?3, COALESCE(?6, 'crowd'), ?4, ?5, ?4)
        ON CONFLICT(worker) DO UPDATE SET
          trusted = ?2, note = COALESCE(?3, lawn_workers.note),
+         kind = COALESCE(?6, lawn_workers.kind),
          decided_at = ?4, decided_by = ?5`
-    ).bind(worker, trusted ? 1 : 0, note, when, me.email).run();
+    ).bind(worker, trusted ? 1 : 0, note, when, me.email, kind).run();
 
-    return json({ ok: true, worker, trusted }, 200, origin);
+    return json({ ok: true, worker, trusted, kind }, 200, origin);
   }
 
   /*

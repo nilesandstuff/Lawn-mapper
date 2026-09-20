@@ -79,7 +79,9 @@ function render() {
 
     /* Name, what the owner called them, and which route they came in on. */
     const who = el('td');
-    const name = el('span', 'name', w.worker);
+    const name = el('button', 'namebtn', w.worker);
+    name.type = 'button';
+    name.addEventListener('click', () => pick(w.worker));
     who.append(name, ' ', el('span', `pill ${w.kind}`, w.kind));
     if (w.trusted) who.append(' ', el('span', 'pill hired', 'trusted'));
     if (w.note) who.append(el('span', 'said', w.note));
@@ -149,6 +151,105 @@ async function load() {
   $('#page').hidden = false;
   render();
 }
+
+/* ------------------------------------------ what the owner knows about one */
+/*
+ * TWO SEPARATE FACTS, EDITED TOGETHER AND STORED APART.
+ *
+ *   the route  where somebody came from, which decides what they see at the
+ *              end: a completion code for a platform, a running count for
+ *              somebody hired or helping out. It says nothing about quality.
+ *
+ *   trust      the later, deliberate decision that they have earned their way
+ *              past the gates.
+ *
+ * A hired person is gated exactly like a stranger until trust is granted. The
+ * gates are what replaced an audition, so marking somebody "hired" is a
+ * statement about their pay arrangement, not a reference.
+ */
+let picked = null;
+let pickKind = 'crowd';
+let pickTrusted = false;
+
+function paintPick() {
+  const w = workers.find((x) => x.worker === picked);
+  if (!w) { $('#picked').hidden = true; return; }
+
+  $('#picked').hidden = false;
+  $('#pick-name').textContent = w.worker;
+  $('#pick-note').value = w.note || '';
+
+  for (const b of document.querySelectorAll('#pick-kind button')) {
+    b.classList.toggle('on', b.dataset.kind === pickKind);
+  }
+  const trust = $('#pick-trust');
+  trust.classList.toggle('on', pickTrusted);
+  trust.textContent = pickTrusted
+    ? 'Trusted — no gates, no daily cap'
+    : 'Gated like a stranger';
+
+  /*
+   * Said out loud, because the combination people will reach for -- hired, not
+   * yet trusted -- looks like it ought to mean "let them work" and does not.
+   */
+  $('#pick-said').textContent = pickTrusted
+    ? 'They go straight past the five and fifteen map gates and the daily cap.'
+    : `They do ${5} maps, then wait for you, then ${10} more, then wait again. `
+      + 'Marking somebody hired does not change that — trust does.';
+}
+
+function pick(worker) {
+  const w = workers.find((x) => x.worker === worker);
+  if (!w) return;
+  picked = worker;
+  pickKind = w.kind || 'crowd';
+  pickTrusted = Boolean(w.trusted);
+  paintPick();
+  $('#picked').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+for (const b of document.querySelectorAll('#pick-kind button')) {
+  b.addEventListener('click', () => { pickKind = b.dataset.kind; paintPick(); });
+}
+$('#pick-trust').addEventListener('click', () => { pickTrusted = !pickTrusted; paintPick(); });
+$('#pick-close').addEventListener('click', () => { picked = null; $('#picked').hidden = true; });
+
+$('#pick-save').addEventListener('click', async () => {
+  if (!picked) return;
+  const save = $('#pick-save');
+  save.disabled = true;
+  const note = $('#pick-note').value.trim();
+
+  try {
+    const res = await fetch('/api/admin/trust-worker', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        worker: picked,
+        trusted: pickTrusted,
+        kind: pickKind,
+        /* Null rather than '' so the route's COALESCE leaves an existing note
+           alone instead of blanking it when the field was never touched. */
+        ...(note ? { note } : {}),
+      }),
+    });
+    if (!res.ok) throw new Error(String(res.status));
+  } catch {
+    save.disabled = false;
+    $('#pick-said').textContent = 'That did not save — nothing was changed.';
+    return;
+  }
+
+  const w = workers.find((x) => x.worker === picked);
+  if (w) {
+    w.kind = pickKind;
+    w.trusted = pickTrusted;
+    if (note) w.note = note;
+  }
+  save.disabled = false;
+  render();
+  paintPick();
+});
 
 for (const b of document.querySelectorAll('#routes button')) {
   b.addEventListener('click', () => {

@@ -61,6 +61,32 @@
   .rate.none { color: var(--muted); }
   .waiting   { color: #8a5a00; font-weight: 650; }
   .totals { font-size: 12.5px; color: var(--muted); margin: 0 0 12px; }
+
+  /* The name is the way in to editing, so it has to look like one. */
+  button.namebtn {
+    font: inherit; font-weight: 650; font-size: 13px; text-align: left;
+    background: none; border: 0; padding: 0; cursor: pointer; color: inherit;
+    border-bottom: 1px dashed var(--line);
+  }
+
+  .picked { display: grid; gap: 10px; }
+  .pickname { margin: 0; font-weight: 700; font-size: 15px; }
+  .pickrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .picklabel { font-size: 12px; color: var(--muted); min-width: 74px; }
+  .routes.tight { margin: 0; }
+  .picknote {
+    font: inherit; font-size: 13px; padding: 9px 11px; width: 100%;
+    border: 1px solid var(--line); border-radius: 9px;
+  }
+  .pickacts { display: flex; gap: 8px; }
+  .pickacts button { margin: 0; flex: 1 1 0; }
+  .picknote-said { margin: 0; font-size: 12px; color: var(--muted); }
+  .trustline {
+    font: inherit; font-size: 12.5px; color: var(--muted); cursor: pointer;
+    background: none; border: 1px solid var(--line); border-radius: 999px;
+    padding: 5px 11px;
+  }
+  .trustline.on { color: #1f5b22; border-color: #9ec5a1; background: #eaf2ea; font-weight: 600; }
 </style>
 </head>
 <body>
@@ -85,6 +111,48 @@
   </div>
 
   <div id="page" hidden>
+    <!--
+      WHAT THE OWNER KNOWS ABOUT ONE PERSON, edited here rather than on the
+      grading card, because the card is about a map and this is about a human.
+
+      TWO SEPARATE FACTS, and keeping them apart is the whole point:
+
+        the route  where they came from, which decides what they see when they
+                   finish -- a completion code for a platform, a running count
+                   for somebody hired or helping out. It says NOTHING about
+                   whether they are any good.
+
+        trust      the later, deliberate decision that they have earned their
+                   way past the gates.
+
+      A hired person is gated exactly like a stranger until trust is granted,
+      and that is deliberate: the gates are what replaced an audition, and
+      marking somebody "hired" is a statement about their pay arrangement, not
+      a reference.
+    -->
+    <div class="card picked" id="picked" hidden>
+      <p class="pickname" id="pick-name"></p>
+      <div class="pickrow">
+        <span class="picklabel">Came from</span>
+        <div class="routes tight" id="pick-kind">
+          <button type="button" data-kind="crowd">Crowd</button>
+          <button type="button" data-kind="hired">Hired</button>
+          <button type="button" data-kind="volunteer">Volunteer</button>
+        </div>
+      </div>
+      <div class="pickrow">
+        <span class="picklabel">Gates</span>
+        <button class="trustline" id="pick-trust" type="button"></button>
+      </div>
+      <input class="picknote" id="pick-note" type="text" maxlength="200"
+             placeholder="Who is this? e.g. Jane, hired on Upwork, $8/hr">
+      <div class="pickacts">
+        <button class="primary" id="pick-save" type="button">Save</button>
+        <button class="ghost" id="pick-close" type="button">Close</button>
+      </div>
+      <p class="picknote-said" id="pick-said"></p>
+    </div>
+
     <div class="card">
       <p class="totals" id="totals"></p>
       <div class="routes" id="routes">
