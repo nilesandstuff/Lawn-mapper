@@ -8927,7 +8927,20 @@ function tidyShapes() {
   }
 
   if (!removed) {
-    setStatus('Nothing to tidy — every corner on this boundary is doing something.');
+    /*
+     * SAID WHERE THE BUTTON IS, not only in the status line.
+     *
+     * Success writes to #edge-info, which is the panel the button sits in and
+     * the thing somebody who just pressed it is looking at; "nothing to do"
+     * went to the status line alone. That was survivable while nothing-to-do
+     * was the rare outcome. Now the boundary arrives tidy, so it is the
+     * ORDINARY outcome -- and the ordinary outcome was landing where nobody
+     * was looking, under whatever the last edit happened to say.
+     */
+    const nothing = 'Nothing to tidy — every corner on this boundary is doing something.';
+    setStatus(nothing);
+    $('#edge-info').textContent = nothing;
+    $('#edge-info').className = 'edge-info';
     return;
   }
 
