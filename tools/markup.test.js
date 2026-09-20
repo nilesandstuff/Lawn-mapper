@@ -1025,6 +1025,34 @@ check('every class the code toggles is styled',
   check('and is registered for the life of the map instead',
     /map\.on\('click', onMapClick\);/.test(js.slice(0, js.indexOf('function armLawnPicker'))),
     'handleMapPoint already decides what a tap means, so it can always listen');
+
+  /*
+   * AND SO IS THE TOUCH HALF, which the first attempt left behind and which
+   * is the half that matters here.
+   *
+   * Moving `map.on('click')` fixed a tap on a MOUSE. The touch listeners
+   * stayed inside armLawnPicker, so on a phone -- the only device this app is
+   * really used on -- a tap on the confirm step still reached nothing, and the
+   * pin still moved only by dragging. It cannot fall back to the click path
+   * either: Mapbox GL Draw calls preventDefault on touchend and the browser
+   * then synthesises no click, which is the whole reason there are two paths
+   * into handleMapPoint.
+   *
+   * The browser run found it, saying "reached handler 0x (touch 0, click 0)",
+   * and only because the counters were printed. This is the offline half of
+   * that check, so the next person moving these around fails in one second
+   * rather than in a CI run with a Mapbox token.
+   */
+  const boot = js.slice(0, js.indexOf('function armLawnPicker'));
+  check('and a bare tap listener rides along for the life of the map too',
+    /addEventListener\('touchstart', onBareTouchStart/.test(boot)
+    && /addEventListener\('touchend', onBareTouchEnd/.test(boot),
+    'Draw preventDefaults touchend, so a phone never gets the click fallback');
+
+  check('and it stands down while a tool is armed, so a tap is not handled twice',
+    /function onBareTouchEnd[\s\S]{0,400}?if \(diag\.armed/.test(js)
+    && /function onBareTouchStart[\s\S]{0,300}?if \(diag\.armed/.test(js),
+    'the armed listeners capture the same gesture; two handlers move the pin twice');
 }
 
 /* ------------------------------------- the three zoom-by-tapping handlers */

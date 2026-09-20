@@ -1258,6 +1258,29 @@ async function initMap() {
    */
   map.on('click', onMapClick);
 
+  /*
+   * AND THE TOUCH HALF OF THE SAME FIX, which was left behind.
+   *
+   * Moving `map.on('click')` to the life of the map fixed a tap on a MOUSE.
+   * The touch listeners stayed inside armLawnPicker, so on a phone -- the only
+   * device this app is really used on -- a tap on the confirm step still
+   * reached nothing at all, and the pin still moved only by dragging. The
+   * browser check caught it saying "reached handler 0x (touch 0, click 0)".
+   *
+   * It has to be a touch listener rather than the click one, because Mapbox GL
+   * Draw calls preventDefault on touchend and the browser then synthesises no
+   * click. That is the whole reason there are two paths into handleMapPoint.
+   *
+   * ONLY THE TAP, and only while nothing is armed. The armed path owns the
+   * hold-to-pan timer, the corner drag and touch-action, and running two
+   * touchend handlers over one gesture would double-fire the tap. This is the
+   * narrow case the armed path cannot cover: a screen with no tool on it that
+   * still means something by a tap.
+   */
+  const el = map.getContainer();
+  el.addEventListener('touchstart', onBareTouchStart, { capture: true, passive: true });
+  el.addEventListener('touchend', onBareTouchEnd, { capture: true, passive: true });
+
   // One listener, for the life of the map: see watchTileErrors.
   watchTileErrors();
   map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
@@ -3260,6 +3283,44 @@ let handled = { at: 0, x: null, y: null };
 // were once confused with; isTap() is the only reader either needs.
 const ECHO_MS = 700;       // a synthetic click follows its touch closely
 const ECHO_SLOP_PX = 30;   // ...and lands on the same spot
+
+/*
+ * A TAP ON A SCREEN WITH NO TOOL ARMED.
+ *
+ * The armed path (onTouchStart/onTouchEnd) owns the hold-to-pan timer, the
+ * corner drag and touch-action, all of which belong to a drawing tool. This
+ * pair owns nothing: it watches for a tap and hands it to handleMapPoint,
+ * which decides for itself whether anything wanted one.
+ *
+ * It stands down entirely while the picker is armed, because the armed
+ * listeners are capturing the same gesture and two handlers over one touchend
+ * would move the pin twice.
+ */
+let bareTouch = null;
+
+function onBareTouchStart(e) {
+  if (diag.armed || e.touches.length !== 1) { bareTouch = null; return; }
+  bareTouch = { x: e.touches[0].clientX, y: e.touches[0].clientY, at: Date.now() };
+}
+
+function onBareTouchEnd(e) {
+  const start = bareTouch;
+  bareTouch = null;
+  if (diag.armed || !start) return;
+
+  const t = e.changedTouches && e.changedTouches[0];
+  if (!t) return;
+  /* The same definition of "that was a tap" the armed path uses, from
+     lib/gesture.js -- two answers to that question is one too many. */
+  if (!isTap(start, { x: t.clientX, y: t.clientY }, Date.now())) return;
+
+  const point = map.unproject([
+    t.clientX - map.getContainer().getBoundingClientRect().left,
+    t.clientY - map.getContainer().getBoundingClientRect().top,
+  ]);
+  diag.viaTouch++;
+  handleMapPoint(point, t.clientX, t.clientY);
+}
 
 function onTouchStart(e) {
   /*
