@@ -27,8 +27,17 @@ const BASE = process.argv[2] || 'http://127.0.0.1:8787';
 const ADDRESS = process.env.TEST_ADDRESS || '3300 Van Buren St, Hudsonville, MI';
 
 let failures = 0;
+/*
+ * The last check to have run, so an error caught by the page listeners can say
+ * WHERE it happened. Collected errors are printed in a block at the end, which
+ * is the right place to read them and a useless place to locate them from: a
+ * suite of two hundred checks reporting ".for is not iterable" with no
+ * position is a fact nobody can act on.
+ */
+let lastCheck = 'before the first check';
 const check = (name, ok, detail = '') => {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? `\n      ${detail}` : ''}`);
+  lastCheck = name;
   if (!ok) failures++;
 };
 
@@ -158,9 +167,18 @@ await page.addInitScript(() => {
 page.setDefaultTimeout(10000);
 
 const errors = [];
-page.on('pageerror', (e) => errors.push(`PAGEERROR: ${e.message}`));
+const errorSeen = new Set();
+/* Deduplicated: a broken tile handler fires once per tile and would otherwise
+   bury the one error that is actually about the app under forty copies. */
+const note = (line) => {
+  const key = `${line}@@${lastCheck}`;
+  if (errorSeen.has(key)) return;
+  errorSeen.add(key);
+  errors.push(`${line}\n        (after: ${lastCheck})`);
+};
+page.on('pageerror', (e) => note(`PAGEERROR: ${e.message}`));
 page.on('console', (m) => {
-  if (m.type() === 'error') errors.push(`CONSOLE: ${m.text().slice(0, 200)}`);
+  if (m.type() === 'error') note(`CONSOLE: ${m.text().slice(0, 200)}`);
 });
 
 /**
@@ -2128,6 +2146,24 @@ console.log('\n--- cutting a shape out ---');
       Math.abs(lost - cut.cutSqFt) < Math.max(1, cut.cutSqFt * 0.001),
       `lost ${Math.round(lost)} sq ft for a ${Math.round(cut.cutSqFt)} sq ft cut`);
 
+    /*
+     * INTO THE CORNER TOOLS THE WAY A PERSON WOULD GET THERE.
+     *
+     * This clicked #tool-points directly. That button is on the rail, and the
+     * rail's shape tools are hidden unless lawn mode is live -- which it is
+     * not here, because the cut was started from the Draw tab. The app is
+     * right about that: back() returns you to Points only when the drawing
+     * STARTED from Points, which is the loop it exists to close. Pressing "cut
+     * out a shape" on the Draw tab and staying on the Draw tab is not a bug.
+     *
+     * So the click waited ten seconds for a button that was never going to
+     * appear, threw, and stopped the run -- taking the whole of the plan
+     * split, saving, and everything after it.
+     */
+    if (!(await page.locator('#tool-points').isVisible())) {
+      await page.click('#mode-shape');
+      await page.locator('#tool-points').waitFor({ state: 'visible', timeout: 5000 });
+    }
     await page.click('#tool-points');
     await page.waitForTimeout(400);
 
