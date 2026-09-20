@@ -197,9 +197,16 @@ const mine = await settled(one.page);
    * running this. Said once, loudly, beats twenty misleading failures and no
    * summary at the end.
    */
-  const haveMapbox = await page.evaluate(() => typeof mapboxgl) === 'function';
+  const libs = await page.evaluate(() => ({
+    /* An object, not a function: Mapbox GL v3 exports a namespace. Getting
+       that wrong is how this check first failed against a working map. */
+    gl: typeof mapboxgl,
+    draw: typeof MapboxDraw,
+  }));
+  const haveMapbox = libs.gl !== 'undefined' && libs.draw !== 'undefined';
   check('the map library is there to trace on', haveMapbox,
-    haveMapbox ? '' : 'no mapboxgl -- check MAPBOX_TOKEN on whatever is serving this');
+    haveMapbox ? `mapboxgl: ${libs.gl}, MapboxDraw: ${libs.draw}`
+      : 'no mapping library -- check MAPBOX_TOKEN on whatever is serving this');
   if (!haveMapbox) {
     console.log('\nStopping: the rest of this file needs a working map.\n');
     for (const c of open) await c.close().catch(() => {});
