@@ -502,6 +502,29 @@ export const cleanWorker = (raw) => String(raw || '')
  */
 const PLACEHOLDER_NAMES = /^(worker_?id|participant_?id|prolific_?pid|assignment_?id|pid|rid|id)$/i;
 
+/**
+ * Is this a ROUTE NAME that has been typed into the worker-id slot?
+ *
+ * `?via=volunteer` says which route; `?w=jane` says who. They are one letter
+ * apart in a URL and a mile apart in meaning, and getting them the wrong way
+ * round is the easiest mistake available here -- it was very nearly made
+ * before the first Reddit post went up.
+ *
+ * AND IT WOULD NOT HAVE LOOKED LIKE A MISTAKE. `?w=volunteer` is a perfectly
+ * well-formed request: it hands out lawns, to a worker whose id is the word
+ * "volunteer". Everyone who clicked the link would be that one person -- one
+ * claim between the whole thread, so the second reader is told a lawn is
+ * already open that they cannot see; one daily cap of forty between everybody;
+ * and the gates apply, because with no `via` the route falls back to crowd, so
+ * the link stops for all of them after five maps in total.
+ *
+ * A separate check from looksUnsubstituted because it deserves a separate
+ * sentence: that one is aimed at a platform template nobody filled in, and the
+ * only useful thing to say is "ask the requester". This one has an exact fix,
+ * and the message gives it.
+ */
+export const routeInWrongParam = (raw) => ROUTES.includes(String(raw || '').trim().toLowerCase());
+
 export const looksUnsubstituted = (raw) => {
   const value = String(raw || '').trim();
   if (!value) return false;                     // absent is a different fault

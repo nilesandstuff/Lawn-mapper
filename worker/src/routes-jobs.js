@@ -20,7 +20,8 @@ import { recordFinished, storeImage } from './corpus.js';
 import { currentUser } from './auth.js';
 import {
   claimVerdict, submissionVerdict, cleanWorker, looksUnsubstituted, staleBefore,
-  dayStart, cleanRoute, routeFromLink, needsCode, GATES, FREE_DETECTS_PER_JOB,
+  dayStart, cleanRoute, routeFromLink, routeInWrongParam, needsCode, GATES,
+  FREE_DETECTS_PER_JOB,
   PAID_RATE_CENTS,
 } from './jobs.js';
 
@@ -372,6 +373,22 @@ export async function handleJobs(request, url, env, origin, ctx, json) {
      * bookmark again and gives up. See looksUnsubstituted for what it costs to
      * let one of these through.
      */
+    /*
+     * THE ROUTE NAME IN THE WORKER-ID SLOT, which has its own message because
+     * it has an exact fix. `?w=volunteer` is well-formed and would hand out
+     * lawns -- to one worker called "volunteer" shared by everybody who
+     * clicked. See routeInWrongParam for what that costs.
+     */
+    if (routeInWrongParam(raw)) {
+      return json({
+        error: 'Wrong link',
+        reason: `This link says "w=${cleanWorker(raw)}" where it should say `
+          + `"via=${cleanWorker(raw)}". As it stands everybody who opens it `
+          + 'becomes the same person and shares one lawn between them. Ask '
+          + 'whoever posted it to change the w to via.',
+      }, 400, origin);
+    }
+
     if (looksUnsubstituted(raw)) {
       return json({
         error: 'Unfilled link',

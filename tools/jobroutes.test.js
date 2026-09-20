@@ -88,6 +88,34 @@ const read = async (res) => ({ status: res.status, body: await res.json() });
     Number(held.n) === 0,
     'one shared identity would hold one lawn for the whole batch');
 
+  /*
+   * AND THE ROUTE NAME IN THE WORKER-ID SLOT, which is one letter's difference
+   * in a URL and was very nearly the link that went to Reddit.
+   *
+   * `?w=volunteer` is well-formed and would hand out lawns -- to one worker
+   * called "volunteer" shared by everybody who clicked it. One claim between
+   * the whole thread, one daily cap, and the gates applying to all of them
+   * together, because with no `via` the route falls back to crowd.
+   */
+  for (const route of ['volunteer', 'paid', 'hired', 'crowd']) {
+    const wrong = await read(await ask('/api/job', { search: `?w=${route}` }));
+    check(`a route name in the worker slot is refused: ?w=${route}`,
+      wrong.status === 400 && /via=/.test(wrong.body.reason || ''),
+      wrong.body.reason);
+  }
+
+  const swapped = await read(await ask('/api/job', { search: '?w=volunteer' }));
+  check('and the message names the exact fix rather than describing the fault',
+    /should say "via=volunteer"/.test(swapped.body.reason || ''),
+    'somebody reading this has to be able to correct the link from it');
+
+  const shared = await env.DB.prepare(
+    "SELECT COUNT(*) n FROM lawn_jobs WHERE worker IN ('volunteer','paid','hired','crowd')"
+  ).first();
+  check('and no lawn is handed to the shared name',
+    Number(shared.n) === 0,
+    'everybody who clicked would otherwise be one person with one claim');
+
   const first = await read(await ask('/api/job', { search: '?w=WORKER1' }));
   check('a worker gets a lawn',
     first.status === 200 && first.body.job?.id === idFor(0),
