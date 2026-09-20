@@ -99,6 +99,38 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
     ['trust-worker', { method: 'POST', body: { worker: 'x', trusted: true } }],
   ];
 
+  /*
+   * AND EVERY OTHER ROUTE IN THE FILE, READ OUT OF THE FILE.
+   *
+   * The list above is hand-kept, and a hand-kept list of routes is a list that
+   * is missing the newest one -- which is exactly the route nobody has thought
+   * about yet. `workers`, `payouts` and `settle-payout` were all added after
+   * it and none of them were on it.
+   *
+   * So the names are taken from the source: every `path === '...'` in
+   * routes-admin.js, tried both ways round. The gate is one check above the
+   * dispatch and cannot single a route out, but "it checked at the top" is a
+   * property that survives exactly until somebody moves a route above it, and
+   * this is what notices when they do.
+   */
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(
+    new URL('../worker/src/routes-admin.js', import.meta.url), 'utf8'
+  );
+  const named = new Set(routes.map(([p]) => p.split('?')[0]));
+  const fromSource = [...new Set(
+    [...source.matchAll(/path === '([a-z-]+)'/g)].map((m) => m[1])
+  )].filter((p) => !named.has(p));
+
+  check('the routes are being read out of the file, not imagined',
+    fromSource.length + named.size >= 20,
+    `${named.size} named by hand, ${fromSource.length} more found in the source`);
+
+  for (const path of fromSource) {
+    routes.push([path]);
+    routes.push([path, { method: 'POST', body: { id: 'x' } }]);
+  }
+
   const asStranger = [];
   const asGuest = [];
   for (const [path, opts] of routes) {
