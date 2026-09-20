@@ -801,7 +801,19 @@ check('with nothing locked before any work has been done',
   await page.mouse.down();
   for (let i = 1; i <= 8; i++) await page.mouse.move(x - 30 + i * 7, y - 20 + i * 5);
   await page.mouse.up();
-  await page.waitForTimeout(700);
+  /*
+   * WAITED FOR, WITH A FLOOR UNDER IT. A fixed sleep says "this always takes
+   * less than 700ms" and is wrong on a slow runner -- and the failure it
+   * produces, "0 -> 0 shape(s)", reads as a brush that does not work rather
+   * than a stroke that had not finished. Resolves the moment the shape lands;
+   * gives up after three seconds so a stroke that really did nothing still
+   * reports as one rather than hanging.
+   */
+  await page.waitForFunction(
+    (was) => (window.__lmShapeCount?.() ?? 0) > was,
+    painted,
+    { timeout: 3000 },
+  ).catch(() => {});
 
   const after = await page.evaluate(() => ({
     shapes: window.__lmShapeCount(), sqft: window.__lmSqft(),
@@ -891,40 +903,60 @@ check('with nothing locked before any work has been done',
 
     const target = (await page.evaluate(() => window.__lmCorners()))[0];
     const box = await page.locator('#map').boundingBox();
-    await page.mouse.click(box.x + target.x, box.y + target.y);
-    await page.waitForTimeout(450);
-
-    const after = await page.evaluate(() => window.__lmCornerCount());
-    check('the point eraser removes the corner that was tapped',
-      after === before - 1, `${before} corners -> ${after}`);
-
     /*
-     * AND AGAIN, WHICH IS THE WHOLE BUG.
+     * A MISSING PRECONDITION IS A FAILED CHECK, NOT A DEAD RUN.
      *
-     * The first delete always worked. Deleting a corner clears the selection,
-     * and the tap test used to run over the SELECTED shape's corners only --
-     * so every tap after the first was measured against an empty list and
-     * answered "nothing there to remove" with the dots still on screen. One
-     * delete is not a test of a tool whose entire purpose is removing a run of
-     * strays, so this taps a second one.
+     * With no shape on the map this list is empty, target is undefined, and
+     * `target.x` throws "Cannot read properties of undefined (reading 'x')" --
+     * which ends the process and takes a hundred and sixty later checks with
+     * it. That is what one flaky paint stroke upstream actually costs, and it
+     * is the reason the section above this one guards the same way.
      */
-    const next = (await page.evaluate(() => window.__lmCorners()))[0];
-    await page.mouse.click(box.x + next.x, box.y + next.y);
-    await page.waitForTimeout(450);
+    if (!target) {
+      check('there was a corner to erase', false,
+        'nothing painted upstream, so this section could not run');
+    } else {
+      await page.mouse.click(box.x + target.x, box.y + target.y);
+      await page.waitForTimeout(450);
 
-    const twice = await page.evaluate(() => window.__lmCornerCount());
-    check('and keeps removing them, tap after tap',
-      twice === after - 1,
-      `${after} corners -> ${twice}` +
-      (twice === after ? ' — the second tap did nothing' : ''));
+      const after = await page.evaluate(() => window.__lmCornerCount());
+      check('the point eraser removes the corner that was tapped',
+        after === before - 1, `${before} corners -> ${after}`);
 
-    /* And it is a mode, so it stays armed for the next one. */
-    const armed = await page.evaluate(() => document.querySelector('#tool-unpoint').getAttribute('aria-pressed'));
-    check('and stays armed, because removing strays is never one tap',
-      armed === 'true', `aria-pressed=${armed}`);
+      /*
+       * AND AGAIN, WHICH IS THE WHOLE BUG.
+       *
+       * The first delete always worked. Deleting a corner clears the
+       * selection, and the tap test used to run over the SELECTED shape's
+       * corners only -- so every tap after the first was measured against an
+       * empty list and answered "nothing there to remove" with the dots still
+       * on screen. One delete is not a test of a tool whose entire purpose is
+       * removing a run of strays, so this taps a second one.
+       */
+      const next = (await page.evaluate(() => window.__lmCorners()))[0];
+      if (next) {
+        await page.mouse.click(box.x + next.x, box.y + next.y);
+        await page.waitForTimeout(450);
 
-    await page.click('#tool-unpoint');   // put the destructive tool away
-    await page.waitForTimeout(200);
+        const twice = await page.evaluate(() => window.__lmCornerCount());
+        check('and keeps removing them, tap after tap',
+          twice === after - 1,
+          `${after} corners -> ${twice}` +
+          (twice === after ? ' — the second tap did nothing' : ''));
+      } else {
+        check('and keeps removing them, tap after tap', false,
+          'no second corner left to tap');
+      }
+
+      /* And it is a mode, so it stays armed for the next one. */
+      const armed = await page.evaluate(
+        () => document.querySelector('#tool-unpoint').getAttribute('aria-pressed'));
+      check('and stays armed, because removing strays is never one tap',
+        armed === 'true', `aria-pressed=${armed}`);
+
+      await page.click('#tool-unpoint');   // put the destructive tool away
+      await page.waitForTimeout(200);
+    }
   }
 
   /*
