@@ -93,15 +93,29 @@ async function armBrush(page, which) {
    * That is precisely what happened, and everything after the eraser section
    * went unrun for it. A helper whose name is a promise has to keep it.
    */
-  const already = await page.evaluate(
+  const armed = () => page.evaluate(
     (tool) => document.querySelector(`#tool-${tool}`)?.getAttribute('aria-pressed') === 'true',
     which,
   );
-  if (already) return;
+  if (await armed()) return;
 
   if (await page.locator('#tool-brushes').isVisible()) {
     await page.click('#tool-brushes');
     await page.locator(`#tool-${which}`).waitFor({ state: 'visible', timeout: 5000 });
+    /*
+     * ASKED AGAIN, BECAUSE THAT PRESS MAY HAVE DONE THE JOB.
+     *
+     * The collapsed Brushes icon opens whichever brush was last in hand --
+     * deliberately, since the two are used in runs -- and after the add-brush
+     * section that is Add. So unfolding the rail to reach Add can arm Add, and
+     * the press below would then turn it straight back off.
+     *
+     * The same fault as pressing a brush that was already live, one level
+     * down: a state checked once, then changed by our own action, then relied
+     * on. Any step that can change the thing being waited for has to be
+     * followed by asking again.
+     */
+    if (await armed()) return;
   }
   await page.click(`#tool-${which}`);
 
