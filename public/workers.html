@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lawn Mapper — who is tracing</title>
+<!--
+  EVERYBODY WHO HAS EVER BEEN HANDED A LAWN.
+
+  The grading queue answers "is this map any good", one card at a time, which
+  is the right shape for grading and the wrong shape for every question about
+  PEOPLE: who is worth trusting, who is stalled at a gate waiting on you,
+  whether the volunteer link is being used at all, and which of the three
+  routes is actually producing the corpus.
+
+  A table rather than cards, because the whole value is comparing rows -- and
+  on a phone that means a narrow table you scroll, not a grid that reflows into
+  something unreadable.
+
+  Nothing is gated in this markup. The gate is the API, which answers 404 to
+  anybody who is not an administrator.
+-->
+<link href="/styles.css" rel="stylesheet">
+<link href="/console.css" rel="stylesheet">
+<style>
+  .routes { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+  .routes button {
+    font: inherit; font-size: 12.5px; padding: 6px 11px; cursor: pointer;
+    border: 1px solid var(--line); border-radius: 999px;
+    background: #fff; color: var(--muted);
+  }
+  .routes button.on {
+    background: #eaf2ea; border-color: #9ec5a1; color: #1f5b22; font-weight: 600;
+  }
+
+  .sheetwrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.who { border-collapse: collapse; width: 100%; font-size: 13px; }
+  table.who th, table.who td {
+    text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  table.who th { font-size: 11.5px; color: var(--muted); font-weight: 600; }
+  table.who td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  table.who tr.trusted td:first-child { border-left: 3px solid #4ec26a; }
+
+  .name { font-weight: 650; }
+  .said { display: block; font-weight: 400; font-size: 11.5px; color: var(--muted); }
+  .pill {
+    display: inline-block; padding: 1px 7px; border-radius: 999px;
+    font-size: 10.5px; font-weight: 700; letter-spacing: .02em;
+  }
+  .pill.crowd     { background: #eef1f6; color: #3d4a63; }
+  .pill.hired     { background: #e4f2e5; color: #1f5b22; }
+  .pill.volunteer { background: #f3ecfb; color: #573a80; }
+  /*
+    A pass rate is only meaningful once somebody has been reviewed, and the
+    colour is the fastest read on the page: below the bar is the one state
+    that stops somebody getting more work.
+  */
+  .rate.low  { color: #b3261e; font-weight: 650; }
+  .rate.none { color: var(--muted); }
+  .waiting   { color: #8a5a00; font-weight: 650; }
+  .totals { font-size: 12.5px; color: var(--muted); margin: 0 0 12px; }
+</style>
+</head>
+<body>
+
+<div class="console">
+  <div class="conhead">
+    <h1>Who is tracing</h1>
+    <a href="/admin.html">← back to the console</a>
+  </div>
+
+  <div class="locked-out" id="locked" hidden>
+    <p>This page is for the site owner.</p>
+    <p><a href="/">Go and measure a lawn instead →</a></p>
+  </div>
+
+  <div class="empty-state" id="none" hidden>
+    <div class="card">
+      <h2>Nobody yet</h2>
+      <p class="sub">No lawn has been handed to anybody. Rows appear here the
+        moment somebody opens a worker link.</p>
+    </div>
+  </div>
+
+  <div id="page" hidden>
+    <div class="card">
+      <p class="totals" id="totals"></p>
+      <div class="routes" id="routes">
+        <button type="button" data-route="all" class="on">Everyone</button>
+        <button type="button" data-route="crowd">Crowd</button>
+        <button type="button" data-route="hired">Hired</button>
+        <button type="button" data-route="volunteer">Volunteers</button>
+        <button type="button" data-route="waiting">Waiting on me</button>
+      </div>
+      <div class="sheetwrap">
+        <table class="who">
+          <thead>
+            <tr>
+              <th>Worker</th>
+              <th class="num">Sent</th>
+              <th class="num">Waiting</th>
+              <th class="num">Kept</th>
+              <th class="num">Excused</th>
+              <th class="num">Refused</th>
+              <th class="num">Passing</th>
+              <th class="num">Typical</th>
+              <th class="num">Last seen</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <p class="sub"><b>Waiting</b> is maps you have not graded. A new crowd
+        worker is held after five of them and cannot do more until you look, so
+        a number here is somebody stopped rather than somebody idle.</p>
+      <p class="sub"><b>Passing</b> counts kept and excused over everything
+        reviewed. Below 80% at a gate is what ends a crowd worker's run;
+        trusted workers and volunteers are not gated at all.</p>
+      <p class="sub"><b>Typical</b> is the median time per map, which is the
+        number a paid platform judges your reward against.</p>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="/workers.js"></script>
+</body>
+</html>

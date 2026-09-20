@@ -744,28 +744,134 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
     if (!done) return json({ ok: false, reason: 'already-reviewed' }, 409, origin);
 
     /*
-     * AND THE CORPUS ROW MOVES WITH IT, which is the whole point of there
-     * being a step here at all. The map arrived as 'new' -- a candidate, not
-     * training data -- and stays out of every training run until this.
+     * TWO QUESTIONS, TWO ANSWERS, AND THIS PAGE ONLY ANSWERS THE FIRST.
      *
-     * Excused and refused both land on 'rejected'. They differ in what they
-     * mean for the WORKER, not in what they mean for the corpus: a map too
-     * rough to keep is too rough to train on however forgivable the lawn was.
+     *   "Did this worker do adequate work?"   <- here
+     *   "Is this map ready for the corpus?"   <- the ordinary review queue
+     *
+     * These used to be one. Keeping a map set the corpus row straight to
+     * 'approved', which meant a stranger's outline entered training the moment
+     * somebody said the stranger had earned their fifty cents -- skipping the
+     * tidy-up the owner intends to do on every one of these, and skipping the
+     * inferred check, which nothing else would ever come back and do.
+     *
+     * So keeping now says something about the PERSON and leaves the map where
+     * it was: 'new', a candidate, in the same queue every other finished map
+     * waits in. The owner tidies it there, answers the canopy and inferred
+     * questions there, and approves it there. Two cheap looks instead of one
+     * look doing two jobs badly.
+     *
+     * Excused and refused DO settle the corpus row, and that is not an
+     * inconsistency: both mean the outline is not worth keeping, so there is
+     * nothing for a second look to do. Only 'kept' has a map worth tidying.
      */
-    if (done.map_id) {
+    if (done.map_id && verdict !== 'kept') {
       await env.DB.prepare(
         `UPDATE corpus
-            SET status = ?2, reviewed_at = ?3, reviewed_by = ?4,
-                review_note = ?5, review_queue = 'paid'
+            SET status = 'rejected', reviewed_at = ?2, reviewed_by = ?3,
+                review_note = ?4, review_queue = 'paid'
           WHERE id = ?1`
       ).bind(
-        done.map_id, verdict === 'kept' ? 'approved' : 'rejected',
-        new Date().toISOString(), me.email,
+        done.map_id, new Date().toISOString(), me.email,
         verdict === 'excused' ? `excused: ${note || 'hard lawn'}` : note,
       ).run();
     }
 
-    return json({ ok: true }, 200, origin);
+    return json({ ok: true, stillToReview: verdict === 'kept' }, 200, origin);
+  }
+
+  /*
+   * EVERYBODY WHO HAS EVER BEEN HANDED A LAWN, and how it went.
+   *
+   * The grading queue answers "is this map any good" one card at a time, which
+   * is the right shape for grading and the wrong shape for every question
+   * about PEOPLE: who is worth trusting, who has stalled at a gate, whether
+   * the volunteer link is being used at all, and which of the three routes is
+   * actually producing the corpus.
+   *
+   * One row per worker, read straight out of lawn_jobs rather than kept in a
+   * counter somewhere -- a tally that is maintained is a tally that drifts,
+   * and there is no volume here that makes the scan worth avoiding.
+   */
+  if (path === 'workers') {
+    const rows = await env.DB.prepare(
+      `SELECT j.worker,
+              COUNT(*)                                                    AS handed,
+              SUM(CASE WHEN j.state = 'submitted' THEN 1 ELSE 0 END)      AS waiting,
+              SUM(CASE WHEN j.state = 'kept'      THEN 1 ELSE 0 END)      AS kept,
+              SUM(CASE WHEN j.state = 'excused'   THEN 1 ELSE 0 END)      AS excused,
+              SUM(CASE WHEN j.state = 'refused'   THEN 1 ELSE 0 END)      AS refused,
+              SUM(CASE WHEN j.state = 'claimed'   THEN 1 ELSE 0 END)      AS open,
+              MIN(j.submitted_at)                                         AS first_at,
+              MAX(j.submitted_at)                                         AS last_at,
+              COUNT(j.seconds)                                            AS timed,
+              SUM(COALESCE(j.seconds, 0))                                 AS total_seconds,
+              MAX(COALESCE(w.trusted, 0))                                 AS trusted,
+              MAX(w.note)                                                 AS note,
+              MAX(COALESCE(w.kind, 'crowd'))                              AS kind
+         FROM lawn_jobs j
+         LEFT JOIN lawn_workers w ON w.worker = j.worker
+        WHERE j.worker IS NOT NULL
+        GROUP BY j.worker
+        ORDER BY MAX(COALESCE(j.submitted_at, j.claimed_at, j.created_at)) DESC`
+    ).all();
+
+    /*
+     * A SEPARATE PASS FOR THE MEDIANS, because SQLite has no median and the
+     * mean is the wrong number here: one worker who wandered off with a claim
+     * open for an hour would read as somebody painstaking. Small enough to do
+     * in memory -- this is a few hundred rows at the very most.
+     */
+    const times = await env.DB.prepare(
+      `SELECT worker, seconds FROM lawn_jobs
+        WHERE worker IS NOT NULL AND seconds IS NOT NULL AND seconds > 0
+        ORDER BY worker, seconds ASC`
+    ).all();
+    const byWorker = new Map();
+    for (const t of times.results || []) {
+      if (!byWorker.has(t.worker)) byWorker.set(t.worker, []);
+      byWorker.get(t.worker).push(Number(t.seconds));
+    }
+    const medianOf = (list) => {
+      if (!list?.length) return null;
+      return list.length % 2
+        ? list[(list.length - 1) / 2]
+        : Math.round((list[list.length / 2 - 1] + list[list.length / 2]) / 2);
+    };
+
+    return json({
+      workers: (rows.results || []).map((r) => {
+        const kept = Number(r.kept || 0);
+        const excused = Number(r.excused || 0);
+        const refused = Number(r.refused || 0);
+        const reviewed = kept + excused + refused;
+        return {
+          worker: r.worker,
+          kind: r.kind || 'crowd',
+          trusted: Number(r.trusted || 0) === 1,
+          note: r.note || null,
+          handed: Number(r.handed || 0),
+          open: Number(r.open || 0),
+          waiting: Number(r.waiting || 0),
+          kept,
+          excused,
+          refused,
+          reviewed,
+          /*
+           * The pass rate is what the gates actually read, so it is what the
+           * page shows -- kept AND excused over everything reviewed. Null
+           * rather than 0 when nothing has been looked at, because "no maps
+           * passed" and "nobody has looked" are opposite facts that would
+           * otherwise print the same.
+           */
+          passRate: reviewed ? (kept + excused) / reviewed : null,
+          medianSeconds: medianOf(byWorker.get(r.worker)),
+          totalSeconds: Number(r.total_seconds || 0),
+          firstAt: r.first_at || null,
+          lastAt: r.last_at || null,
+        };
+      }),
+    }, 200, origin);
   }
 
   /*

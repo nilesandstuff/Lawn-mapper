@@ -1398,17 +1398,33 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
   check('and this map\'s own time, for judging one that looks rushed',
     mine.seconds === 300, String(mine.seconds));
 
-  /* Keeping it moves the corpus row with it -- the whole point of the step. */
+  /*
+   * TWO QUESTIONS, TWO ANSWERS, AND THIS PAGE ONLY ANSWERS THE FIRST.
+   *
+   *   "Did this worker do adequate work?"   <- here
+   *   "Is this map ready for the corpus?"   <- the ordinary review queue
+   *
+   * These used to be one, and that was wrong in a way that cost something
+   * unrecoverable: keeping a map set the corpus row straight to 'approved', so
+   * a stranger's outline entered training the moment somebody said the
+   * stranger had earned their fifty cents. It skipped the tidy-up the owner
+   * intends to do on every one of these, and it skipped the inferred check,
+   * which nothing else would ever come back and do.
+   */
   const kept = await ask(env, ownerToken, 'review-lawn',
     { method: 'POST', body: { id: jobId, verdict: 'kept' } });
   const after = await env.DB.prepare(
     `SELECT j.state, c.status, c.review_queue, c.reviewed_by
        FROM lawn_jobs j JOIN corpus c ON c.id = j.map_id WHERE j.id = ?1`
   ).bind(jobId).first();
-  check('keeping a paid map approves the corpus row it produced',
-    kept.body.ok && after.state === 'kept' && after.status === 'approved'
-    && after.review_queue === 'paid' && after.reviewed_by === owner.email,
-    JSON.stringify(after));
+  check('keeping a paid map credits the worker',
+    kept.body.ok && after.state === 'kept', JSON.stringify(after));
+  check('and leaves the map itself unreviewed, for the ordinary queue',
+    after.status === 'new' && after.review_queue === null && after.reviewed_by === null,
+    `${after.status} -- approving here would put an untidied outline into `
+    + 'training and skip the inferred check, which nothing else comes back to do');
+  check('and says so, so the page can tell somebody there is a second step',
+    kept.body.stillToReview === true, JSON.stringify(kept.body));
 
   /*
    * A SECOND TAP ON A PAGE LEFT OPEN MUST NOT OVERTURN A VERDICT. The same
@@ -1492,6 +1508,65 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
   check('and the row is keyed the way the queue spells it, not the way it arrived',
     (keyed.results || []).every((r) => !/[<>\s]/.test(r.worker)),
     (keyed.results || []).map((r) => JSON.stringify(r.worker)).join(', '));
+
+  /* --------------------------------------------------- who is tracing */
+  /*
+   * The grading queue answers "is this map any good" one card at a time, which
+   * is the wrong shape for every question about PEOPLE. This is that page.
+   */
+  const crew = (await ask(env, ownerToken, 'workers')).body;
+  const w1 = crew.workers.find((w) => w.worker === 'W1');
+  check('every worker who has been handed a lawn appears',
+    crew.workers.length >= 1 && w1,
+    crew.workers.map((w) => w.worker).join(', '));
+  /*
+   * Six lawns, and the blocks above this one have already graded four of
+   * them: 0001 kept and 0002 excused by the verdicts under test there, on top
+   * of the 0004/0005/0006 seeded as kept, excused and refused. 0003 is the
+   * flagged one nobody has judged.
+   */
+  check('with what they sent and what became of it',
+    w1.handed === 6 && w1.waiting === 1 && w1.kept === 2
+    && w1.excused === 2 && w1.refused === 1,
+    JSON.stringify({
+      handed: w1.handed, waiting: w1.waiting, kept: w1.kept,
+      excused: w1.excused, refused: w1.refused,
+    }));
+
+  /*
+   * THE PASS RATE IS WHAT THE GATES READ, so it is what the page shows: kept
+   * and excused over everything reviewed. Four of five here -- and it matters
+   * that the two excused ones count, because on kept-only this worker would
+   * read 40% and look like somebody to stop.
+   */
+  check('and the pass rate the gates actually use, not just the kept ones',
+    w1.reviewed === 5 && Math.round(w1.passRate * 100) === 80,
+    `${Math.round(w1.passRate * 100)}% from ${w1.kept} kept + ${w1.excused} excused `
+    + `over ${w1.reviewed} reviewed -- on kept alone it would read `
+    + `${Math.round((w1.kept / w1.reviewed) * 100)}%`);
+
+  check('and a median time, which is the number a platform judges pay against',
+    w1.medianSeconds === 360, `${w1.medianSeconds}s`);
+
+  /*
+   * NOTHING REVIEWED IS NOT A PASS RATE OF ZERO. "None of their maps passed"
+   * and "nobody has looked yet" are opposite facts, and a page whose whole job
+   * is judging people must not print them the same.
+   */
+  await env.DB.prepare(
+    `INSERT INTO lawn_jobs (id, lng, lat, state, worker, submitted_at, created_at)
+     VALUES ('job-0009-aaaa-4bbb-8ccc-dddddddddddd', -80, 40, 'submitted',
+             'NEWCOMER', '2026-09-19T10:00:00Z', '2026-09-19T10:00:00Z')`
+  ).run();
+  const fresh = (await ask(env, ownerToken, 'workers')).body
+    .workers.find((w) => w.worker === 'NEWCOMER');
+  check('and somebody nobody has graded yet has no pass rate rather than a bad one',
+    fresh.passRate === null && fresh.waiting === 1,
+    JSON.stringify({ passRate: fresh.passRate, waiting: fresh.waiting }));
+
+  check('and a worker with no row of their own reads as an ungated stranger',
+    fresh.kind === 'crowd' && fresh.trusted === false,
+    `${fresh.kind}, trusted=${fresh.trusted}`);
 
   check('and a verdict that is not one of the three is refused',
     (await ask(env, ownerToken, 'review-lawn',

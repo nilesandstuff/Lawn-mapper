@@ -32,13 +32,17 @@ const HOUR = 60 * MINUTE;
 /**
  * The floor on a map, in seconds.
  *
- * Ninety seconds against a five-minute task. Deliberately well under the real
- * time rather than near it: this is here to catch somebody clicking submit on
- * an untouched SAM outline, not to punish somebody fast on an easy lawn. A
- * floor set near the average would reject good work on small gardens, and the
- * whole point of paying people is that the owner's eye is the expensive part.
+ * SIXTY, LOWERED FROM NINETY BECAUSE IT FIRED ON A REAL MAP. The owner traced
+ * an easy lawn on the first live run and was refused. That is the exact
+ * failure this number is supposed to avoid: it exists to catch somebody
+ * clicking submit on an untouched outline, not to punish somebody quick on a
+ * small garden -- and a floor that rejects good work is worse than no floor,
+ * because the person it rejects has already done the work.
+ *
+ * Still well under the real task rather than near it. A floor set near the
+ * average would reject half of everything by construction.
  */
-export const MIN_SECONDS = 90;
+export const MIN_SECONDS = 60;
 
 /** How many a worker may hold at once. One, so nothing can be stockpiled. */
 export const MAX_HELD = 1;
@@ -98,6 +102,48 @@ export const countsAsPass = (outcome) => outcome === 'kept' || outcome === 'excu
 export const CLAIM_EXPIRY = HOUR;
 
 /**
+ * THE THREE WAYS SOMEBODY ARRIVES HERE, and what each of them is owed.
+ *
+ *   crowd      A paid stranger from a platform. Everything in this file was
+ *              written for them: they are unknown, numerous, and being paid by
+ *              the piece, so they get the gates, the cap, the floor and a
+ *              completion code to paste back as proof of work.
+ *
+ *   hired      Somebody engaged directly and paid by the hour. There is no
+ *              platform, so a completion code is a puzzle rather than a
+ *              receipt -- nowhere to paste it and nothing that reads it. They
+ *              get a running count instead, which is the thing that actually
+ *              answers "how am I doing".
+ *
+ *   volunteer  Somebody who followed a public link to help for nothing. No
+ *              code, no gates, no floor. Probation on a person doing you a
+ *              favour is an insult, and a timer on unpaid work is worse: the
+ *              only thing it can achieve is turning a good deed into a
+ *              refusal. The daily cap stays, and it is the only thing that
+ *              does -- not against them, but because one shared public link is
+ *              the one place a single bad actor could flood the queue.
+ */
+export const ROUTES = ['crowd', 'hired', 'volunteer'];
+export const cleanRoute = (raw) => (ROUTES.includes(String(raw || '')) ? String(raw) : 'crowd');
+
+/** Does this route paste a code into something? Only a platform does. */
+export const needsCode = (route) => cleanRoute(route) === 'crowd';
+
+/**
+ * What the LINK is allowed to say about where somebody came from.
+ *
+ * A link is forgeable, and two of the three routes lift real protections -- so
+ * a paid stranger who added `&via=volunteer` would walk through the gates that
+ * exist to stop exactly that. The stored row is what actually decides.
+ *
+ * The one thing a link may do on its own is claim to be a VOLUNTEER, and that
+ * is safe because it buys nothing worth forging: a volunteer is not paid, so
+ * the gates they skip were only ever protecting money that is not there. What
+ * a forger would gain is the right to work for free.
+ */
+export const routeFromLink = (raw) => (String(raw || '') === 'volunteer' ? 'volunteer' : null);
+
+/**
  * How many AI passes one LAWN gets for free, across every claim it ever has.
  *
  * A worker arrives signed out, from a crowd platform, where the public
@@ -135,7 +181,7 @@ export const FREE_DETECTS_PER_JOB = 6;
  */
 export function claimVerdict({
   held = 0, submittedToday = 0, lastSubmitAt = null, now = Date.now(),
-  submittedEver = 0, passed = 0, refused = 0, trusted = false,
+  submittedEver = 0, passed = 0, refused = 0, trusted = false, route = 'crowd',
 }) {
   if (held >= MAX_HELD) {
     return {
@@ -162,6 +208,24 @@ export function claimVerdict({
    * -- which, by this point, is who this is.
    */
   if (trusted) return { ok: true, trusted: true };
+
+  /*
+   * AND SOMEBODY WHO IS NOT BEING PAID AT ALL.
+   *
+   * The gates exist to decide whether to keep spending money on a stranger.
+   * There is no money here: a volunteer followed a public link to do the owner
+   * a favour, and holding one at a five-map wall to wait for a review is a way
+   * of turning a good deed into a chore. The same goes for the time floor,
+   * which at worst refuses somebody's donated work outright.
+   *
+   * The daily cap below still applies, and it is the only thing that does --
+   * not as a judgement on anybody, but because one shared public link is the
+   * one place a single bad actor could empty the queue into the review pile in
+   * an afternoon. Everything they send is looked at by a person anyway.
+   */
+  if (route === 'volunteer' && submittedToday < DAILY_CAP) {
+    return { ok: true, volunteer: true };
+  }
 
   /*
    * THE GATES. Written as a loop over GATES rather than as two branches, so
@@ -251,18 +315,24 @@ export function claimVerdict({
  */
 export function submissionVerdict({
   claimedAt, now = Date.now(), edited = false, confirmedUnchanged = false,
-  trusted = false,
+  trusted = false, route = 'crowd',
 }) {
   const seconds = claimedAt ? (now - new Date(claimedAt).getTime()) / 1000 : 0;
   /*
-   * The floor is skipped for somebody the owner has decided about, and only
-   * the floor. It exists to catch a stranger waving an untouched outline
-   * through; the person it would otherwise inconvenience is a fast worker on a
-   * small garden, which by this point is who this is. The unchanged-outline
-   * question below still applies to everybody -- it costs one press, it is
-   * occasionally right, and a map that went through it is flagged either way.
+   * The floor is skipped for somebody the owner has decided about, and for
+   * anybody who is not being paid -- and only the floor.
+   *
+   * It exists to catch a paid stranger waving an untouched outline through.
+   * The person it actually inconveniences is somebody quick on a small garden,
+   * which is who both of these are. On a volunteer it is worse than useless:
+   * it refuses donated work, which is the one thing that could not possibly be
+   * worth doing.
+   *
+   * The unchanged-outline question below still applies to everybody. It costs
+   * one press, it is occasionally right, and the map is flagged either way.
    */
-  if (!trusted && seconds < MIN_SECONDS) {
+  const floorApplies = !trusted && route !== 'volunteer';
+  if (floorApplies && seconds < MIN_SECONDS) {
     return {
       ok: false,
       reason: `That took ${Math.round(seconds)} seconds. Have another look — `

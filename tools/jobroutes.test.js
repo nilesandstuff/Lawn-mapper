@@ -443,6 +443,76 @@ const read = async (res) => ({ status: res.status, body: await res.json() });
     JSON.stringify({ first: lifted.body.job?.id, again: twice.body.job?.id }));
 }
 
+/* --------------------------------------- the three ways somebody arrives */
+{
+  await seed(4, 300);
+
+  /*
+   * A VOLUNTEER ARRIVES THROUGH ONE SHARED PUBLIC LINK with no id in it, so
+   * the browser mints a name and the link says which route it is. That is the
+   * only route a link may assert, and it is safe because what a forger gains
+   * by faking it is the right to work for nothing.
+   */
+  const helper = await read(await ask('/api/job', { search: '?w=helper-abc123&via=volunteer' }));
+  check('a volunteer with no history at all is handed a lawn',
+    helper.status === 200 && helper.body.route === 'volunteer',
+    JSON.stringify({ route: helper.body.route, job: Boolean(helper.body.job) }));
+
+  /*
+   * AND IS NOT HELD TO THE TIME FLOOR. A timer on donated work can only ever
+   * turn it away -- there is no money to protect by refusing it.
+   */
+  const map = {
+    worker: 'helper-abc123',
+    id: helper.body.job.id,
+    edited: true,
+    frame: { lng: -80, lat: 40, zoom: 19, size: 640 },
+    shapes: [{
+      type: 'Feature',
+      properties: {},
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[[-80, 40], [-79.999, 40], [-79.999, 40.001], [-80, 40]]],
+      },
+    }],
+  };
+  const quick = await read(await ask('/api/job/submit', {
+    method: 'POST', body: map, search: '?via=volunteer',
+  }));
+  check('and may send it straight away, with no floor to clear',
+    quick.status === 200 && quick.body.ok,
+    quick.body.reason || 'sent within seconds of claiming');
+
+  /*
+   * AND GETS A COUNT RATHER THAN A CODE. There is no platform and no
+   * transaction, so eight characters with nowhere to paste them is a puzzle
+   * rather than a receipt.
+   */
+  check('and is thanked with a count rather than a completion code',
+    !quick.body.code && /thank you/i.test(quick.body.thanks || '')
+    && /1 lawn/.test(quick.body.thanks || ''),
+    quick.body.thanks);
+
+  /*
+   * A HIRED WORKER IS NOT SOMETHING A LINK CAN CLAIM TO BE. That route lifts
+   * the completion code, and more importantly the row it is stored in is what
+   * the owner uses to lift the gates -- a query string must not reach it.
+   */
+  await env.DB.prepare(
+    `INSERT INTO lawn_workers (worker, trusted, kind, created_at)
+     VALUES ('JANE', 1, 'hired', '2026-09-19T00:00:00Z')`
+  ).run();
+  const jane = await read(await ask('/api/job', { search: '?w=JANE' }));
+  check('somebody the owner marked as hired is recognised from the row, not the link',
+    jane.status === 200 && jane.body.route === 'hired',
+    jane.body.route);
+
+  const faker = await read(await ask('/api/job', { search: '?w=CHANCER&via=hired' }));
+  check('while a link claiming to be hired is ignored',
+    faker.body.route === 'crowd',
+    `${faker.body.route} -- otherwise the gates are a suggestion in a URL`);
+}
+
 /* ------------------------------------------------ an empty queue */
 {
   await env.DB.prepare("UPDATE lawn_jobs SET state = 'submitted' WHERE state != 'submitted'").run();

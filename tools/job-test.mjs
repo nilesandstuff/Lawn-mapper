@@ -30,7 +30,7 @@ const BASE = process.argv[2] || 'http://127.0.0.1:8787';
 const MTURK_PREVIEW = 'ASSIGNMENT_ID_NOT_AVAILABLE';
 
 /* Kept in step with MIN_SECONDS in worker/src/jobs.js. See the wait below. */
-const MIN_SECONDS = 90;
+const MIN_SECONDS = 60;
 
 let failures = 0;
 const check = (name, ok, detail = '') => {
@@ -255,6 +255,25 @@ const mine = await settled(one.page);
    * The drawing tools are the whole reason this is the app rather than a
    * stripped page. Without them there is no task to do.
    */
+  /*
+   * THEY LAND ON THE PROPERTY LINE, WITH IT ARMED. The detection is clipped to
+   * that boundary, so grass outside it cannot be drawn until the line is
+   * moved -- and the road prompt asks for exactly that grass. Somebody who has
+   * not understood that the yellow line is draggable reads the prompt, cannot
+   * reach the verge, and quietly leaves it out.
+   */
+  check('and lands on the property line with the tool already on',
+    await page.evaluate(() => window.__lmTabs().on) === 'address'
+    && await page.evaluate(() =>
+      document.querySelector('#mode-parcel')?.getAttribute('aria-pressed')) === 'true',
+    await page.evaluate(() => window.__lmTabs().on));
+
+  check('and is told to drag the boundary out to the kerb',
+    await page.locator('#coach').isVisible()
+    && /kerb|boundary/i.test(await page.textContent('#coach-text')),
+    (await page.textContent('#coach-title')) || '(no tip shown)');
+
+  await page.click('#coach-ok');
   await page.click('#tab-draw');
   await page.waitForTimeout(250);
   check('and has the drawing tools, which are the entire job',
@@ -397,6 +416,68 @@ const mine = await settled(one.page);
     next.jobId
       ? `${theirs.jobId.slice(0, 8)} -> ${next.jobId.slice(0, 8)}`
       : `a sheet instead: ${next.sheet}`);
+}
+
+/* ------------------------------------------------------------- volunteers */
+{
+  /*
+   * ONE SHARED PUBLIC LINK, WITH NO ID IN IT. That is the whole point of the
+   * volunteer route -- it gets posted somewhere -- which means the browser has
+   * to mint a name, or everybody would share one identity and fight over a
+   * single claim.
+   *
+   * No gates, no time floor, and no completion code: there is no platform to
+   * paste one into and no transaction to prove. A timer on donated work can
+   * only ever turn it away.
+   */
+  const { page } = await arrive('?via=volunteer');
+  const got = await settled(page);
+
+  check('a volunteer with no id in the link is still handed a lawn',
+    got.barVisible && got.jobId && got.worker?.startsWith('helper-'),
+    got.worker || `a sheet instead: ${got.sheet}`);
+
+  await page.click('#coach-ok').catch(() => {});
+  await page.click('#tab-draw');
+  await page.waitForTimeout(250);
+  const drawn = await traceALawn(page);
+  check('and can trace it',
+    drawn.shapes > 0 && drawn.sqft > 0,
+    `${drawn.shapes} shape(s)`);
+
+  /*
+   * SENT IMMEDIATELY. This is the check that matters: the same submission from
+   * a paid stranger would be refused for being inside the floor, and refusing
+   * somebody's donated work is the one outcome with nothing to recommend it.
+   */
+  await page.click('#btn-job-submit');
+  await page.waitForFunction(
+    () => window.__lmJob().sheet !== null || /look/i.test(
+      document.querySelector('#status')?.textContent || ''
+    ),
+    { timeout: 30000 }
+  );
+  const sent = await job(page);
+  check('and send it straight away, with no floor to clear',
+    sent.sheet !== null && sent.jobId === null,
+    sent.sheet || await page.textContent('#status'));
+
+  check('and is thanked with a count rather than a completion code',
+    sent.code === null && /thank you/i.test(await page.textContent('#job-sheet-why')),
+    await page.textContent('#job-sheet-why'));
+
+  /*
+   * AND THE NAME STICKS. A reload that minted a new one would lose their claim
+   * every time a tab was closed, and would report eleven maps from one person
+   * as eleven people.
+   */
+  const first = sent.worker;
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => window.__lmJob !== undefined, { timeout: 30000 });
+  await settled(page);
+  check('and keeps the same name across a reload',
+    (await job(page)).worker === first,
+    `${first} -> ${(await job(page)).worker}`);
 }
 
 for (const context of open) await context.close().catch(() => {});

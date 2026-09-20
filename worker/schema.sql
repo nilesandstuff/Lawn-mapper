@@ -565,6 +565,20 @@ CREATE INDEX IF NOT EXISTS lawn_jobs_worker ON lawn_jobs(worker, state);
 -- worker who turns out to be excellent is exactly who should be let off the
 -- leash, and there is no reason for the mechanism to care where they came
 -- from.
+-- WHERE SOMEBODY CAME FROM, which decides what they see at the end.
+--
+--   crowd      a paid stranger from a platform. Needs a completion code to
+--              paste back as proof of work, and is gated.
+--   hired      somebody engaged directly and paid by the hour. There is no
+--              platform to paste a code into, so a code is a puzzle rather
+--              than a receipt -- they get a running count instead.
+--   volunteer  somebody who followed a public link to help for nothing. No
+--              code, no gates, no time floor. They are doing a favour and
+--              every hurdle is an insult.
+--
+-- Stored per worker rather than read from the link, because the link is
+-- forgeable and two of these lift real protections. The link only ever
+-- PROPOSES a route; see routeFromLink.
 CREATE TABLE IF NOT EXISTS lawn_workers (
   -- As the platform names them, or as the owner named them when handing a
   -- hired person their link. Cleaned by cleanWorker before it gets here.
@@ -577,6 +591,8 @@ CREATE TABLE IF NOT EXISTS lawn_workers (
   -- A worker id is a string of characters and says nothing on a small screen
   -- three weeks later.
   note        TEXT,
+  -- 'crowd', 'hired' or 'volunteer'. See the note above the table.
+  kind        TEXT NOT NULL DEFAULT 'crowd',
   decided_at  TEXT,
   decided_by  TEXT,
   created_at  TEXT NOT NULL

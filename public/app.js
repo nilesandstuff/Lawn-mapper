@@ -209,6 +209,8 @@ const state = {
   worker: null,
   job: null,
   askedUnchanged: false,
+  /* 'crowd', 'hired' or 'volunteer' -- the server decides, see routeFor. */
+  jobRoute: 'crowd',
 };
 
 /**
@@ -5631,18 +5633,60 @@ const hideJobSheet = () => { $('#job-sheet').hidden = true; };
  * platform pays, and inventing one gets you a fresh set of limits and no way
  * to prove to the platform that you did the work.
  */
+/**
+ * A name for somebody who arrived through a link that has no name in it.
+ *
+ * ONE PUBLIC LINK, POSTED SOMEWHERE, IS THE WHOLE POINT OF THE VOLUNTEER
+ * ROUTE -- which means it cannot carry an id, and everybody would otherwise
+ * share one. That is not a small problem: a worker holds ONE lawn at a time,
+ * so two volunteers on one identity would fight over the same claim, and the
+ * second would be told a lawn was already open that they could not see.
+ *
+ * So the browser mints one and remembers it. Not an account and not a
+ * credential -- it buys nothing except the right to do unpaid work -- but it
+ * keeps claims apart, it survives a reload so a closed tab comes back to the
+ * same lawn, and it lets the owner see that eleven maps came from one person
+ * rather than from eleven.
+ *
+ * A browser that refuses storage gets a fresh name each visit, which costs
+ * that person their claim on a reload and nothing else. Better than refusing
+ * to let them help at all.
+ */
+const HELPER_KEY = 'lm.helper';
+
+function helperName() {
+  try {
+    const kept = localStorage.getItem(HELPER_KEY);
+    if (kept) return kept;
+  } catch { /* private window, or storage switched off */ }
+
+  const minted = `helper-${Math.random().toString(36).slice(2, 10)}`;
+  try { localStorage.setItem(HELPER_KEY, minted); } catch { /* as above */ }
+  return minted;
+}
+
 function readJobRequest() {
   const params = new URLSearchParams(location.search);
   const worker = (params.get('w') || params.get('workerId') || '').trim();
-  if (!worker) return null;
+  /*
+   * `via=volunteer` is the only route a LINK may assert, and it is safe
+   * because it buys nothing worth forging: what somebody gains by faking it is
+   * the right to work for free. Everything else is decided by a row the owner
+   * wrote. See routeFor in routes-jobs.js.
+   */
+  const volunteer = params.get('via') === 'volunteer';
+
+  if (!worker && !volunteer) return null;
   return {
-    worker: worker.slice(0, 64),
+    worker: worker ? worker.slice(0, 64) : helperName(),
+    volunteer,
     preview: params.get('assignmentId') === MTURK_PREVIEW,
   };
 }
 
-async function enterJobMode({ worker, preview }) {
+async function enterJobMode({ worker, preview, volunteer }) {
   state.worker = worker;
+  state.jobVia = volunteer ? 'volunteer' : null;
   document.body.classList.add('job-mode');
 
   if (preview) {
@@ -5707,7 +5751,12 @@ async function claimNextJob() {
   let data;
   let status = 0;
   try {
-    const res = await fetch(`/api/job?w=${encodeURIComponent(state.worker)}`);
+    /* `via` rides along so a volunteer's FIRST claim knows what it is: there
+       is no stored row for them until they have done something. */
+    const res = await fetch(`/api/job?${new URLSearchParams({
+      w: state.worker,
+      ...(state.jobVia ? { via: state.jobVia } : {}),
+    })}`);
     status = res.status;
     data = await res.json();
   } catch {
@@ -5756,6 +5805,7 @@ async function claimNextJob() {
   }
 
   hideJobSheet();
+  state.jobRoute = data.route || 'crowd';
   await openJob(data.job, data.prompts || [], data.cleared || null);
 }
 
@@ -5822,9 +5872,65 @@ async function openJob(job, prompts, cleared) {
    * stale true behind from the previous lawn.
    */
   state.handEdited = false;
-  setTab('draw');
+
+  /*
+   * AND THEY LAND ON THE PROPERTY LINE, WITH IT ALREADY ARMED.
+   *
+   * The boundary is the first thing that has to be right, and not because it
+   * is tidy: the detection is CLIPPED to it, so grass outside the line cannot
+   * be drawn at all until the line is moved. The road prompt asks for exactly
+   * that grass -- the verge between a boundary and the kerb -- and somebody
+   * who has not understood that the yellow line is draggable will read the
+   * prompt, look for the verge, fail to reach it, and quietly leave it out.
+   *
+   * So the tool is on when they arrive rather than waiting to be found. They
+   * move to Draw themselves, which is one press and is the press that teaches
+   * what the two tabs are.
+   */
+  setTab('address');
+  setMode('parcel');
+  roadTip();
 
   if (cleared) setStatus(cleared);
+}
+
+/**
+ * "Drag the yellow line out to the road."
+ *
+ * THE ONE THING SOMEBODY CAN GET WRONG WITHOUT NOTICING. Detection is clipped
+ * to the property line, so grass outside it cannot be drawn until the line is
+ * moved -- and the boundary very often stops short of the kerb while the lawn
+ * does not. Somebody who has not understood that the yellow line is draggable
+ * reads the road prompt, looks for the verge, cannot reach it, and leaves it
+ * out. Nothing on screen tells them why, and the map they send looks finished.
+ *
+ * ONCE A SESSION, NOT ONCE A LAWN. It is aimed at somebody meeting the tool
+ * for the first time, and on the fortieth lawn it is furniture. The prompt in
+ * the job bar is the standing reminder and never goes away.
+ *
+ * It borrows the coaching box but not the tips MACHINERY: showTip is gated on
+ * a preference and on a seen-set, both of which are right for optional advice
+ * about a tool you will find anyway, and wrong for the one instruction this
+ * job cannot be done correctly without.
+ */
+let roadTipShown = false;
+
+function roadTip() {
+  if (roadTipShown) return;
+  const target = $('#mode-parcel');
+  if (!target || target.offsetParent === null) return;
+  roadTipShown = true;
+
+  tips.stage = 'job-road';
+  tips.target = target;
+  $('#coach-title').textContent = 'Check the boundary first';
+  $('#coach-text').textContent =
+    'The yellow line is the property boundary, and it can be dragged. If this '
+    + 'property fronts a road and there is grass between the line and the '
+    + 'kerb, pull the line out to the kerb now — the lawn cannot be drawn '
+    + 'outside it.';
+  $('#coach').hidden = false;
+  placeTip();
 }
 
 /**
@@ -5847,7 +5953,14 @@ async function submitJob() {
   let data;
   let status = 0;
   try {
-    const res = await fetch('/api/job/submit', {
+    /*
+     * `via` on the submission too, and not only on the claim. The server works
+     * the route out from the query string when there is no stored row yet --
+     * which is exactly a volunteer's first map. Left off, their first
+     * submission would be judged as a paid stranger's: held to the time floor
+     * and handed a completion code with nowhere to paste it.
+     */
+    const res = await fetch(`/api/job/submit${state.jobVia ? `?via=${state.jobVia}` : ''}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -5889,12 +6002,24 @@ async function submitJob() {
 
   $('#job-bar').hidden = true;
   state.job = null;
+
+  /*
+   * A CODE ONLY WHERE THERE IS SOMEWHERE TO PASTE ONE.
+   *
+   * The completion code is proof of work for a crowd platform. Somebody hired
+   * directly has no platform and a volunteer has no transaction, so for both
+   * of them a code is a puzzle rather than a receipt -- eight characters, no
+   * field to put them in, and a nagging sense of having missed a step. The
+   * server decides which of the three this is; the page only lays it out.
+   */
   jobSheet({
-    title: 'Sent — thank you',
-    why: 'Paste this code into the task to be paid for it.',
-    code: data.code,
-    note: 'Maps are checked by a person, usually within a day. New workers do '
-      + 'a few at a time while that happens; you are paid either way.',
+    title: data.route === 'volunteer' ? 'Sent — thank you' : 'Sent',
+    why: data.thanks || 'That one is in.',
+    code: data.code || null,
+    note: data.code
+      ? 'Maps are checked by a person, usually within a day. New workers do '
+        + 'a few at a time while that happens; you are paid either way.'
+      : null,
     go: { label: 'Trace another lawn', onClick: () => claimNextJob() },
   });
 }

@@ -22,4 +22,8 @@ VALUES
   ('11110001-aaaa-4bbb-8ccc-dddddddddddd', -85.86480, 42.86695, 'Ottawa', '26139',  9500, 'approved', '2026-09-01T00:00:02Z'),
   ('11110002-aaaa-4bbb-8ccc-dddddddddddd', -85.86350, 42.86810, 'Ottawa', '26139', 14500, 'approved', '2026-09-01T00:00:03Z'),
   ('11110003-aaaa-4bbb-8ccc-dddddddddddd', -85.86720, 42.86620, 'Ottawa', '26139',  8200, 'approved', '2026-09-01T00:00:04Z'),
-  ('11110004-aaaa-4bbb-8ccc-dddddddddddd', -85.86230, 42.86905, 'Ottawa', '26139', 11000, 'approved', '2026-09-01T00:00:05Z');
+  ('11110004-aaaa-4bbb-8ccc-dddddddddddd', -85.86230, 42.86905, 'Ottawa', '26139', 11000, 'approved', '2026-09-01T00:00:05Z'),
+  -- Two more since the volunteer route was added: one for the helper to trace
+  -- and send, one for the lawn they are handed after it.
+  ('11110005-aaaa-4bbb-8ccc-dddddddddddd', -85.86150, 42.86580, 'Ottawa', '26139',  9800, 'approved', '2026-09-01T00:00:06Z'),
+  ('11110006-aaaa-4bbb-8ccc-dddddddddddd', -85.86840, 42.86960, 'Ottawa', '26139', 13200, 'approved', '2026-09-01T00:00:07Z');

@@ -19,7 +19,7 @@
 import { recordFinished, storeImage } from './corpus.js';
 import {
   claimVerdict, submissionVerdict, cleanWorker, looksUnsubstituted, staleBefore,
-  dayStart, GATES, FREE_DETECTS_PER_JOB,
+  dayStart, cleanRoute, routeFromLink, needsCode, GATES, FREE_DETECTS_PER_JOB,
 } from './jobs.js';
 
 /**
@@ -89,10 +89,17 @@ export const PROMPTS = [
   },
   {
     key: 'inferred',
-    title: 'The purple tool is optional',
+    /*
+     * CALLED WHAT THE BUTTONS CALL IT. This said "the purple tool", which is
+     * what it looks like and not what anything on screen is labelled -- so
+     * somebody looking for it found "Draw inferred lawn" and "Mark as
+     * inferred" and had to work out those were the same thing.
+     */
+    title: 'Inferred areas are optional',
     body: 'There is a tool for marking ground you believe is lawn but cannot '
-      + 'actually see. You are welcome to leave it alone — it takes a careful '
-      + 'hand and it is not what you are being paid for.',
+      + 'actually see — it is called inferred lawn, and it draws in purple. '
+      + 'You are welcome to leave it alone: it takes a careful hand and it is '
+      + 'not what this job is asking for.',
     optional: true,
   },
 ];
@@ -110,6 +117,29 @@ const jobForWorker = (row) => ({
     ? null : Number(row.parcel_sqft),
   claimedAt: row.claimed_at,
 });
+
+/**
+ * Which of the three routes is this person on?
+ *
+ * THE STORED ROW WINS, AND THE LINK MAY ONLY PROPOSE. A link is forgeable and
+ * two of the three routes lift real protections, so a paid stranger appending
+ * `&via=hired` must not walk through the gates that exist to stop exactly
+ * that. The single exception is claiming to be a VOLUNTEER, which is safe
+ * because it buys nothing worth forging: what a forger gains is the right to
+ * work for nothing.
+ *
+ * One function rather than the same three lines in three places, because the
+ * three places are a claim, a resume and a submission -- and a route that
+ * disagreed between them would show somebody a completion code on one path and
+ * not the other.
+ */
+async function routeFor(env, url, worker) {
+  const known = await env.DB.prepare(
+    'SELECT kind FROM lawn_workers WHERE worker = ?1'
+  ).bind(worker).first().catch(() => null);
+  if (known?.kind) return cleanRoute(known.kind);
+  return routeFromLink(url.searchParams.get('via')) || 'crowd';
+}
 
 /**
  * Put abandoned claims back.
@@ -177,7 +207,16 @@ export async function handleJobs(request, url, env, origin, ctx, json) {
         ORDER BY claimed_at ASC LIMIT 1`
     ).bind(worker).first();
     if (open) {
-      return json({ job: jobForWorker(open), prompts: PROMPTS, resumed: true }, 200, origin);
+      /*
+       * A RESUME HAPPENS BEFORE THE ROUTE IS WORKED OUT, so it is worked out
+       * here too. Handing back a lawn without saying which route somebody is
+       * on would show a crowd worker no completion code on the one path they
+       * are most likely to take -- reopening a link after closing the tab.
+       */
+      const resumedRoute = await routeFor(env, url, worker);
+      return json({
+        job: jobForWorker(open), prompts: PROMPTS, resumed: true, route: resumedRoute,
+      }, 200, origin);
     }
 
     /*
@@ -213,6 +252,7 @@ export async function handleJobs(request, url, env, origin, ctx, json) {
     const known = await env.DB.prepare(
       'SELECT trusted FROM lawn_workers WHERE worker = ?1'
     ).bind(worker).first().catch(() => null);
+    const route = await routeFor(env, url, worker);
 
     const ever = Number(stats?.ever || 0);
     const passed = Number(stats?.passed || 0);
@@ -225,6 +265,7 @@ export async function handleJobs(request, url, env, origin, ctx, json) {
       refused: Number(stats?.refused || 0),
       lastSubmitAt: stats?.last || null,
       trusted: Number(known?.trusted || 0) === 1,
+      route,
       now,
     });
     if (!verdict.ok) {
@@ -282,7 +323,7 @@ export async function handleJobs(request, url, env, origin, ctx, json) {
       }, 404, origin);
     }
 
-    return json({ job: jobForWorker(taken), prompts: PROMPTS, cleared }, 200, origin);
+    return json({ job: jobForWorker(taken), prompts: PROMPTS, cleared, route }, 200, origin);
   }
 
   /* --------------------------------------- I could not do this one */
@@ -354,6 +395,7 @@ export async function handleJobs(request, url, env, origin, ctx, json) {
     const known = await env.DB.prepare(
       'SELECT trusted FROM lawn_workers WHERE worker = ?1'
     ).bind(worker).first().catch(() => null);
+    const route = await routeFor(env, url, worker);
 
     const verdict = submissionVerdict({
       claimedAt: row.claimed_at,
@@ -361,6 +403,7 @@ export async function handleJobs(request, url, env, origin, ctx, json) {
       edited: Boolean(body?.edited),
       confirmedUnchanged: Boolean(body?.confirmedUnchanged),
       trusted: Number(known?.trusted || 0) === 1,
+      route,
     });
     if (!verdict.ok) {
       return json({
@@ -406,11 +449,42 @@ export async function handleJobs(request, url, env, origin, ctx, json) {
       verdict.seconds,
     ).run();
 
+    /*
+     * A COUNT, AND A CODE ONLY WHERE THERE IS SOMEWHERE TO PASTE ONE.
+     *
+     * The completion code exists so a crowd platform can be shown proof of
+     * work. Somebody hired directly has no platform, and a volunteer has no
+     * transaction at all -- for both of them a code is a puzzle rather than a
+     * receipt: eight characters, no field to put them in, and a nagging sense
+     * of having missed a step.
+     *
+     * What those two actually want is the count. "That is your ninth today" is
+     * the thing that answers how it is going, and for a volunteer it is the
+     * only thanks the screen can offer.
+     */
+    const doneToday = await env.DB.prepare(
+      `SELECT COUNT(*) n FROM lawn_jobs
+        WHERE worker = ?1 AND submitted_at >= ?2`
+    ).bind(worker, dayStart(now)).first().catch(() => null);
+    const today = Number(doneToday?.n || 1);
+
     return json({
       ok: true,
-      code: shortId(id),
+      route,
+      today,
       seconds: verdict.seconds,
-      thanks: 'Sent. Paste the code above into the task to be paid for it.',
+      ...(needsCode(route)
+        ? {
+          code: shortId(id),
+          thanks: 'Sent. Paste the code above into the task to be paid for it.',
+        }
+        : {
+          thanks: route === 'volunteer'
+            ? `Sent — thank you. That is ${today} ${today === 1 ? 'lawn' : 'lawns'} `
+              + 'you have mapped, and every one of them goes into training a '
+              + 'detector that is currently not good enough.'
+            : `Sent. That is ${today} today.`,
+        }),
     }, 200, origin);
   }
 

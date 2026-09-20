@@ -140,3 +140,15 @@ ALTER TABLE lawn_jobs ADD COLUMN detections INTEGER NOT NULL DEFAULT 0;
 -- The CREATE in schema.sql does nothing to a database that already has this
 -- table, and this one has been deployed.
 ALTER TABLE lawn_jobs ADD COLUMN seconds INTEGER;
+
+-- Where a worker came from, which decides what they see when they finish.
+--
+--   crowd      a paid stranger from a platform: needs a completion code
+--   hired      engaged directly and paid hourly: no platform, so a code is a
+--              puzzle rather than a receipt -- a running count instead
+--   volunteer  followed a public link to help for nothing: no code, no gates,
+--              no time floor
+--
+-- lawn_workers shipped one deploy before this column existed, so the CREATE in
+-- schema.sql reaches new databases only.
+ALTER TABLE lawn_workers ADD COLUMN kind TEXT NOT NULL DEFAULT 'crowd';

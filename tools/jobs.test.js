@@ -17,7 +17,7 @@
 import {
   claimVerdict, submissionVerdict, cleanWorker, looksUnsubstituted, staleBefore, dayStart,
   countsAsPass, MIN_SECONDS, MAX_HELD, DAILY_CAP, GATES, PASS_RATE,
-  REVIEW_OUTCOMES,
+  REVIEW_OUTCOMES, ROUTES, cleanRoute, needsCode, routeFromLink,
 } from '../worker/src/jobs.js';
 
 let failures = 0;
@@ -189,6 +189,70 @@ const NOW = Date.parse('2026-09-19T12:00:00Z');
   check('and still may not hold two lawns at once',
     !claimVerdict({ ...hired, held: MAX_HELD }).ok,
     'stockpiling is an arithmetic problem, not a trust one');
+
+  /*
+   * AND SOMEBODY WHO IS NOT BEING PAID AT ALL.
+   *
+   * The gates decide whether to keep spending money on a stranger. There is no
+   * money here -- a volunteer followed a public link to do the owner a favour
+   * -- so holding one at a five-map wall to wait for a review turns a good
+   * deed into a chore, and the pass rate is a judgement nobody asked them to
+   * submit to.
+   */
+  const helper = { route: 'volunteer', now: NOW };
+  check('a volunteer is never held at a gate',
+    claimVerdict({ ...helper, submittedEver: FIRST }).ok
+    && claimVerdict({ ...helper, submittedEver: SECOND }).ok,
+    'probation on somebody doing you a favour is an insult');
+  check('nor stopped by a pass rate',
+    claimVerdict({ ...helper, submittedEver: 20, passed: 1, refused: 19 }).ok,
+    'they are not being paid, so there is nothing to protect by refusing them');
+  check('nor made to wait between maps',
+    claimVerdict({ ...helper, lastSubmitAt: new Date(NOW - 5000).toISOString() }).ok,
+    'a timer on donated work can only ever turn it away');
+
+  /*
+   * BUT THE DAILY CAP STAYS, and it is the only thing that does. Not as a
+   * judgement on anybody: one shared public link is the single place where one
+   * bad actor could empty the queue into the review pile in an afternoon.
+   */
+  check('while the daily cap still holds, because the link is public',
+    !claimVerdict({ ...helper, submittedToday: DAILY_CAP }).ok,
+    'the one thing a shared link makes possible is one person flooding it');
+  check('and they still hold one lawn at a time',
+    !claimVerdict({ ...helper, held: MAX_HELD }).ok,
+    'two volunteers on one claim would fight over a lawn neither can see');
+}
+
+/* --------------------------------------------- what each route is owed */
+{
+  /*
+   * A COMPLETION CODE IS PROOF OF WORK FOR A PLATFORM. Somebody hired directly
+   * has no platform and a volunteer has no transaction, so for both of them a
+   * code is a puzzle rather than a receipt: eight characters, no field to put
+   * them in, and a nagging sense of having missed a step.
+   */
+  check('only a crowd worker needs a completion code',
+    needsCode('crowd') && !needsCode('hired') && !needsCode('volunteer'),
+    ROUTES.join(' / '));
+
+  check('and an unknown route is treated as the guarded one',
+    cleanRoute('nonsense') === 'crowd' && cleanRoute(null) === 'crowd',
+    'guessing wrong has to fail towards the rules, not away from them');
+
+  /*
+   * A LINK MAY ONLY EVER PROPOSE "VOLUNTEER", and this is the check that keeps
+   * the whole arrangement honest: two of the three routes lift real
+   * protections, so a paid stranger appending `&via=hired` must not walk
+   * through the gates that exist to stop exactly that. Volunteer is safe to
+   * assert because what a forger gains by it is the right to work for free.
+   */
+  check('a link can offer to be a volunteer',
+    routeFromLink('volunteer') === 'volunteer', 'nothing worth forging');
+  check('and cannot claim anything that lifts a protection',
+    routeFromLink('hired') === null && routeFromLink('crowd') === null
+    && routeFromLink('trusted') === null,
+    'otherwise the gates are a suggestion in a query string');
 }
 
 /* ------------------------------------------------------- the daily cap */
