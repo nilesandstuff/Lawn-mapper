@@ -491,6 +491,50 @@ const mine = await settled(one.page);
     `${first} -> ${(await job(page)).worker}`);
 }
 
+/* ------------------------------------------------------- the paid link */
+{
+  /*
+   * THE ONE ROUTE THAT REFUSES TO START WITHOUT AN ACCOUNT, because it is the
+   * only one where an id in a URL would be a claim on somebody's earnings.
+   *
+   * This is also the check that would have caught the original plan: the draft
+   * post asked people to replace the word "volunteer" with their Venmo handle,
+   * which starts no job mode at all -- `via` is read for a route name and the
+   * app decides nobody asked for a lawn.
+   */
+  const { page } = await arrive('?via=paid');
+  const stopped = await settled(page);
+
+  check('the paid link stops somebody who is not signed in',
+    stopped.sheet !== null && /sign in/i.test(stopped.sheet),
+    stopped.sheet || '(no sheet at all)');
+  check('and claims no lawn for them',
+    stopped.jobId === null && !stopped.barVisible,
+    'an unpaid claim held for an hour helps nobody');
+
+  const why = await page.textContent('#job-sheet-why');
+  check('and says what the account is for, in terms of what it buys them',
+    /pay|bounce/i.test(why),
+    'an account demanded with no reason reads as a data grab');
+  check('and points at the unpaid version rather than ending there',
+    /volunteer/i.test(why),
+    'somebody who will not sign in should still be able to help');
+  check('and offers the way in rather than describing it',
+    await page.locator('#job-sheet-go').isVisible(),
+    await page.textContent('#job-sheet-go'));
+
+  /*
+   * AND A HANDLE TYPED INTO THE LINK IS NOT AN IDENTITY. The whole point of
+   * moving the payment address out of the URL is that a query string is typed
+   * by whoever is typing.
+   */
+  const { page: forged } = await arrive('?via=paid&w=%40dave-smith');
+  const alsoStopped = await settled(forged);
+  check('and a payment handle in the link is ignored entirely',
+    alsoStopped.jobId === null && /sign in/i.test(alsoStopped.sheet || ''),
+    alsoStopped.sheet || '(no sheet)');
+}
+
 for (const context of open) await context.close().catch(() => {});
 await browser.close();
 
