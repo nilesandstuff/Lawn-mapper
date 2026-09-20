@@ -216,9 +216,16 @@ export async function handleJobs(request, url, env, origin, ctx, json) {
       claimedAt: row.claimed_at,
       now,
       edited: Boolean(body?.edited),
+      confirmedUnchanged: Boolean(body?.confirmedUnchanged),
     });
     if (!verdict.ok) {
-      return json({ error: 'Have another look', reason: verdict.reason }, 400, origin);
+      return json({
+        error: 'Have another look',
+        reason: verdict.reason,
+        /* So the page can offer "I checked, it was already right" rather than
+           leaving somebody stuck with work they cannot send. */
+        unchanged: Boolean(verdict.unchanged),
+      }, 400, origin);
     }
 
     /*
@@ -241,9 +248,12 @@ export async function handleJobs(request, url, env, origin, ctx, json) {
 
     await env.DB.prepare(
       `UPDATE lawn_jobs
-          SET state = 'submitted', submitted_at = ?2, map_id = ?3
+          SET state = 'submitted', submitted_at = ?2, map_id = ?3, note = ?4
         WHERE id = ?1`
-    ).bind(id, new Date(now).toISOString(), kept.row?.id || null).run();
+    ).bind(
+      id, new Date(now).toISOString(), kept.row?.id || null,
+      verdict.flag ? `flag: ${verdict.flag}` : null,
+    ).run();
 
     return json({
       ok: true,

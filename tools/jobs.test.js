@@ -101,8 +101,29 @@ const NOW = Date.parse('2026-09-19T12:00:00Z');
    * long they sat on it -- and this is the one thing a machine can check.
    */
   const untouched = submissionVerdict({ claimedAt: claimed(300), now: NOW, edited: false });
-  check('an untouched automatic outline is refused however long it was held',
-    !untouched.ok, untouched.reason);
+  check('an untouched automatic outline is refused the first time',
+    !untouched.ok && untouched.unchanged, untouched.reason);
+
+  /*
+   * BUT IT IS A QUESTION, NOT A LOCKED DOOR, and that is the whole reputation
+   * of the task. Now and then the automatic outline really is right, and a
+   * hard refusal would leave an honest worker who checked it carefully with
+   * four minutes of work they cannot submit. Work done that cannot be paid for
+   * is the fastest way for a requester to be written up on a worker forum --
+   * and here it would be OUR bug producing it, not their behaviour.
+   *
+   * Sending it again goes through, flagged, so somebody waving work through
+   * still does it twice and still lands in a review queue.
+   */
+  const confirmed = submissionVerdict({
+    claimedAt: claimed(300), now: NOW, edited: false, confirmedUnchanged: true,
+  });
+  check('and goes through on a second send, flagged for the owner',
+    confirmed.ok && confirmed.flag === 'unchanged',
+    JSON.stringify(confirmed));
+  check('while an ordinary corrected map carries no flag',
+    submissionVerdict({ claimedAt: claimed(300), now: NOW, edited: true }).flag === null,
+    'only the unusual ones should surface first in a review queue');
   check('and the refusal says what correcting means',
     /drive|edges/i.test(submissionVerdict({ claimedAt: claimed(10), now: NOW }).reason),
     'a refusal that does not teach gets the same map back');

@@ -100,7 +100,9 @@ export function claimVerdict({ held = 0, submittedToday = 0, lastSubmitAt = null
  * judgement is the owner's, and pretending a number can make it would put bad
  * maps into the corpus with a tick beside them.
  */
-export function submissionVerdict({ claimedAt, now = Date.now(), edited = false }) {
+export function submissionVerdict({
+  claimedAt, now = Date.now(), edited = false, confirmedUnchanged = false,
+}) {
   const seconds = claimedAt ? (now - new Date(claimedAt).getTime()) / 1000 : 0;
   if (seconds < MIN_SECONDS) {
     return {
@@ -110,15 +112,40 @@ export function submissionVerdict({ claimedAt, now = Date.now(), edited = false 
         + 'edges, and a map that has not been corrected is not worth paying for.',
     };
   }
-  if (!edited) {
+  /*
+   * AN UNCHANGED OUTLINE ASKS A QUESTION RATHER THAN SLAMMING THE DOOR, and
+   * the difference is the whole reputation of the task.
+   *
+   * This started as a hard refusal. That is a trap: now and then the automatic
+   * outline really is right, and an honest worker who checked it carefully
+   * would have done four minutes of real work and be unable to submit it. Work
+   * done that cannot be paid for is the single fastest way for a requester to
+   * be written up on a worker forum -- and it would be OUR bug producing it,
+   * not their behaviour.
+   *
+   * So: the first attempt is refused with an explanation, and if they come
+   * back saying they looked and it was already correct, that goes through and
+   * is flagged for the owner instead. Somebody waving work through still has
+   * to do it twice and still ends up in a review queue; somebody honest gets
+   * paid.
+   */
+  if (!edited && !confirmedUnchanged) {
     return {
       ok: false,
+      unchanged: true,
       reason: 'Nothing was changed from the automatic outline. That outline is '
         + 'the starting point, not the answer — it is what you are being paid '
-        + 'to correct.',
+        + 'to correct. If you have checked it and it really is already right, '
+        + 'send it again and it will go through.',
     };
   }
-  return { ok: true, seconds: Math.round(seconds) };
+
+  return {
+    ok: true,
+    seconds: Math.round(seconds),
+    /* Carried so the owner's review queue can show these first. */
+    flag: !edited ? 'unchanged' : null,
+  };
 }
 
 /** Claims older than the expiry, so they can go back in the queue. */
