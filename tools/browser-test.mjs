@@ -74,6 +74,22 @@ async function armBrush(page, which) {
    * reported as "0 -> 0 shape(s), 0 sq ft", which reads like a broken brush
    * rather than a test that clicked too early.
    */
+  /*
+   * ALREADY ARMED IS DONE, NOT A REASON TO PRESS.
+   *
+   * These buttons TOGGLE: pressing the live one drops back to Points. So a
+   * helper called "arm" that presses unconditionally DISARMS whenever it is
+   * handed a brush that is already live -- then waits below for an
+   * aria-pressed it just switched off, times out, and stops the whole run.
+   * That is precisely what happened, and everything after the eraser section
+   * went unrun for it. A helper whose name is a promise has to keep it.
+   */
+  const already = await page.evaluate(
+    (tool) => document.querySelector(`#tool-${tool}`)?.getAttribute('aria-pressed') === 'true',
+    which,
+  );
+  if (already) return;
+
   if (await page.locator('#tool-brushes').isVisible()) {
     await page.click('#tool-brushes');
     await page.locator(`#tool-${which}`).waitFor({ state: 'visible', timeout: 5000 });
@@ -2008,8 +2024,22 @@ check('erasing removes area', erased.after < erased.before,
 check('and does not remove everything', erased.after > 0,
   `${erased.after} sq ft left`);
 
-await armBrush(page, 'erase');
-await page.waitForTimeout(200);
+/*
+ * PRESSED, NOT ARMED -- and the distinction is the check.
+ *
+ * The eraser is live here, so this press turns it OFF and drops back to
+ * Points, which is the behaviour being asserted two lines down. It went
+ * through armBrush, which cannot express that: it clicks and then waits for
+ * the button to read armed. Five seconds later it threw, and every section
+ * below this one -- add, plan, saving, the lot -- never ran, for a brush
+ * behaviour that was working perfectly.
+ */
+await page.click('#tool-erase');
+await page.waitForFunction(
+  () => document.querySelector('#tool-erase')?.getAttribute('aria-pressed') === 'false',
+  null,
+  { timeout: 5000 },
+);
 check('pressing the live brush drops back to Points', await page.evaluate(() =>
   document.querySelector('#tool-erase').getAttribute('aria-pressed') === 'false' &&
   document.querySelector('#tool-points').getAttribute('aria-pressed') === 'true'));
