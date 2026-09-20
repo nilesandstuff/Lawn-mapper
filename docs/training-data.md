@@ -565,6 +565,15 @@ early rather than discovering at training time:
   finish easy properties, the hard slice cannot be built at any corpus size.
 - **Imagery mix.** A corpus that is entirely `mapbox` is fine for training and
   leaves nothing to check generalisation against.
+- **Who drew it.** Maps now arrive from two places: people measuring their own
+  lawn, and strangers being paid fifty cents to trace one they were handed.
+  The corpus deliberately cannot tell them apart — same row, same cleaning,
+  same id — because they are judged the same. But H7 measured one bad map as
+  worth up to ten points, and a paid stranger has no reason to care about a
+  garden they will never see, so a paid map reaches `approved` only through
+  `/grade.html`. See [paying-for-maps.md](paying-for-maps.md). If the corpus
+  starts growing faster than that queue is emptied, the thing being watched
+  is no longer volume.
 
 ---
 
