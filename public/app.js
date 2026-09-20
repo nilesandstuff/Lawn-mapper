@@ -3277,7 +3277,7 @@ function claim(e) {
  * a touch we just handled -- position as well as time.
  */
 let touchStart = null;
-let handled = { at: 0, x: null, y: null };
+let handled = { at: 0, x: null, y: null, touch: false };
 
 // TAP_SLOP_PX and TAP_MAX_MS live in lib/gesture.js beside the hold slop they
 // were once confused with; isTap() is the only reader either needs.
@@ -3319,7 +3319,7 @@ function onBareTouchEnd(e) {
     t.clientY - map.getContainer().getBoundingClientRect().top,
   ]);
   diag.viaTouch++;
-  handleMapPoint(point, t.clientX, t.clientY);
+  handleMapPoint(point, t.clientX, t.clientY, true);
 }
 
 function onTouchStart(e) {
@@ -3365,7 +3365,7 @@ function onTouchEnd(e) {
   const rect = map.getCanvasContainer().getBoundingClientRect();
   const lngLat = map.unproject([t.clientX - rect.left, t.clientY - rect.top]);
   diag.viaTouch++;
-  handleMapPoint(lngLat, t.clientX, t.clientY);
+  handleMapPoint(lngLat, t.clientX, t.clientY, true);
 }
 
 function onMapClick(e) {
@@ -3373,11 +3373,25 @@ function onMapClick(e) {
   const x = Number.isFinite(src.clientX) ? src.clientX : null;
   const y = Number.isFinite(src.clientY) ? src.clientY : null;
 
-  // The echo of a touch we already handled: same place, moments later. Only
-  // suppress when both positions are known -- treating "position unknown" as
-  // "same position" would swallow legitimate taps.
+  /*
+   * The echo of a TOUCH we already handled: same place, moments later.
+   *
+   * `handled.touch` is the word that was missing, and leaving it out cost a
+   * whole tool. `handled` used to be stamped by every tap from either path, so
+   * two MOUSE clicks close together in quick succession looked exactly like a
+   * touch and its synthetic echo -- and the second one was dropped in silence.
+   *
+   * That is not a rare shape. It is precisely what the point eraser is for:
+   * clearing a run of strays off a traced outline, where the corners sit well
+   * inside thirty pixels of each other and nobody waits seven hundred
+   * milliseconds between them. The browser run found it as "31 corners -> 31,
+   * the second tap did nothing".
+   *
+   * Only positions that are both known are compared: treating "position
+   * unknown" as "same position" would swallow legitimate taps.
+   */
   const known = x !== null && handled.x !== null;
-  if (known &&
+  if (known && handled.touch &&
       Date.now() - handled.at < ECHO_MS &&
       Math.hypot(x - handled.x, y - handled.y) < ECHO_SLOP_PX) {
     return;
@@ -3387,9 +3401,12 @@ function onMapClick(e) {
   handleMapPoint(e.lngLat, x, y);
 }
 
-function handleMapPoint(lngLat, x = null, y = null) {
+function handleMapPoint(lngLat, x = null, y = null, fromTouch = false) {
   diag.clicks++;
-  handled = { at: Date.now(), x, y };
+  /* `fromTouch` is what lets onMapClick tell a synthetic echo from a second
+     deliberate click. Without it, two quick mouse clicks in the same place are
+     indistinguishable from one touch -- see the note there. */
+  handled = { at: Date.now(), x, y, touch: fromTouch };
 
   let mode;
   try {
