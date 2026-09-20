@@ -1340,6 +1340,43 @@ check('every class the code toggles is styled',
   }
 }
 
+/* ------------------------- not knowing is not the same as knowing it is off */
+/*
+ * THE SIGN-IN PANEL MUST NOT CLOSE THE DOOR ON A GUESS.
+ *
+ * Whether this deployment can send mail is learned once, at boot, from
+ * /api/auth/me. The flag holding that answer started as `false`, so one
+ * dropped request -- an ordinary event on a phone -- left the default standing
+ * and the panel then told people the site cannot send email at all. The field
+ * was gone for the rest of the visit.
+ *
+ * The browser suite covers this properly by dropping the request, but it runs
+ * in its own workflow. This runs on every deploy, costs nothing, and holds the
+ * two things that made the bug possible.
+ */
+{
+  const app = readFileSync(join(root, 'public/app.js'), 'utf8');
+
+  check('not knowing whether mail works has its own value, apart from "no"',
+    /emailSignin: null/.test(app),
+    'a flag that starts false cannot tell a failed lookup from a real answer');
+
+  check('and the sign-in field is withheld only on a definite no',
+    /hidden = state\.emailSignin === false/.test(app),
+    'anything looser hides the only way in whenever the answer is unknown');
+
+  /*
+   * And the boot-time failure must leave it unknown rather than writing the
+   * guess down -- otherwise the panel has nothing to re-ask about.
+   */
+  const caught = app.slice(app.indexOf('async function refreshAccount'));
+  const body = caught.slice(0, caught.indexOf('\n}'));
+  const failure = body.slice(body.indexOf('} catch {'));
+  check('and a failed lookup does not record an answer it never got',
+    !/emailSignin/.test(failure),
+    'the catch concludes "signed out", which is true, and nothing about mail');
+}
+
 /* ------------------------- the pages about people and money address theirs */
 {
   /*

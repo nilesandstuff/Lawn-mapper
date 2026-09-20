@@ -554,9 +554,15 @@ console.log('\n--- accounts are optional ---');
      * nothing to forget, reuse, leak or reset, and receiving the link IS the
      * verification that makes the address safe to use as the account.
      */
+    /*
+     * VISIBLE, not merely present. This counted the element, which is in the
+     * markup whether or not anything can be typed into it -- so it passed
+     * happily through a bug where the field was hidden and the panel said the
+     * site could not send email at all. A door you cannot press is not a door.
+     */
     check('with one way in and no password to invent',
       (await page.locator('#signin input[type=password]').count()) === 0
-      && (await page.locator('#signin-email').count()) === 1);
+      && (await page.locator('#signin-email').isVisible()));
 
     await page.click('#signin-close');
     await page.waitForTimeout(200);
@@ -2819,6 +2825,58 @@ console.log('\n--- developer mode ---');
   const left = await page.evaluate(() => window.__lmDev());
   check('leaving developer mode is remembered too',
     left.on === false && left.panelVisible === false, JSON.stringify(left));
+}
+
+/* ------------------------------- sign-in survives a phone's connection */
+/*
+ * ONE DROPPED REQUEST AT PAGE LOAD MUST NOT CLOSE THE DOOR FOR THE VISIT.
+ *
+ * Whether the deployment can send mail is learned once, at boot, from
+ * /api/auth/me. That answer used to be stored in a flag that started false --
+ * so a single dropped request, which is an ordinary event on a phone, left the
+ * default standing and the sign-in panel then TOLD people the site cannot send
+ * email. The field was gone, and nothing but a reload brought it back.
+ *
+ * A separate page from the one every other section shares, because this one
+ * has to be reloaded with the network interfered with and a suite that
+ * disturbs the page the next check reads is worse than no suite.
+ */
+{
+  console.log('\n--- sign-in survives a dropped lookup ---');
+  const fresh = await browser.newPage({
+    viewport: { width: 390, height: 844 }, deviceScaleFactor: 3,
+    isMobile: true, hasTouch: true,
+  });
+  await fresh.addInitScript(() => {
+    try { sessionStorage.setItem('lawnmap.ai-notice.v1', '1'); } catch { /* fine */ }
+  });
+
+  let dropped = false;
+  await fresh.route('**/api/auth/me', async (route) => {
+    if (!dropped) { dropped = true; await route.abort('connectionfailed'); return; }
+    await route.continue();
+  });
+
+  await fresh.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await fresh.waitForFunction(() => window.__lmAccount !== undefined, { timeout: 30000 });
+
+  const on = await fresh.evaluate(() => window.__lmAccount().accountsOn);
+  if (on) {
+    /* The button appears from the account lookup's own failure path, so it
+       arrives even though the request did not. Waited for rather than slept
+       on: the map has to finish first and CI is slower than this machine. */
+    await fresh.waitForSelector('#account-btn', { state: 'visible', timeout: 30000 });
+    await fresh.click('#account-btn');
+    await fresh.waitForTimeout(600);
+    /* Asserted here rather than before the click: the account lookup happens
+       after the map, so checking any earlier only proves the request had not
+       been made yet. */
+    check('the lookup was actually interfered with', dropped);
+    check('the way in is still there after a dropped account lookup',
+      await fresh.locator('#signin-email').isVisible(),
+      'not knowing whether mail works is not the same as knowing it does not');
+  }
+  await fresh.close();
 }
 
 if (errors.some((e) => e.includes('403'))) {

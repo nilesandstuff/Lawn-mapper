@@ -192,7 +192,21 @@ const state = {
   // precondition for measuring a lawn.
   accountsOn: false,
   user: null,
-  emailSignin: false, // can this deployment send a sign-in link?
+  /*
+   * CAN THIS DEPLOYMENT SEND A SIGN-IN LINK? THREE ANSWERS, NOT TWO.
+   *
+   *   null   nobody has managed to ask yet
+   *   true   yes
+   *   false  no, and the panel says so
+   *
+   * It was a plain false to start with, so a single dropped /api/auth/me on a
+   * phone -- the ordinary event this app is used inside of -- left the default
+   * standing, and the sign-in panel then TOLD people the site cannot send
+   * email. One field missing, no way back except a reload nobody knows to do.
+   *
+   * Not knowing is its own answer and has to be stored as one.
+   */
+  emailSignin: null,
   saves: [],          // the account's maps, cached so the list is not a wait
   saveMax: 0,         // how many an account keeps, as the Worker reports it
   plan: null,         // the last application split, or null for none drawn
@@ -5093,7 +5107,11 @@ function renderAccountSheet() {
  * `force` path in promptSignin. Somebody who taps "sign in" and gets nothing
  * at all has found a broken button; they should get the explanation.
  */
-const canOfferAccount = () => state.accountsOn && state.emailSignin && !signedIn();
+/* `=== true` on purpose: an offer nobody asked for stays quiet while the
+   answer is still unknown. Volunteering is the one case where guessing wrong
+   costs something -- a deliberate press is answered either way. */
+const canOfferAccount = () =>
+  state.accountsOn && state.emailSignin === true && !signedIn();
 
 /*
  * ASKED ONCE A SESSION, NOT ONCE A REFUSAL.
@@ -5165,13 +5183,50 @@ function offerMoreDetections(limit) {
  * fail on submit.
  */
 function renderSigninOptions() {
-  $('#signin-email-form').hidden = !state.emailSignin;
-  if (state.emailSignin) return;
+  /*
+   * UNKNOWN SHOWS THE FORM. The two ways of being wrong here are not equal:
+   * offering a form that turns out to have no mail behind it costs one tap and
+   * ends in the server's own sentence, while withholding it from somebody who
+   * could have signed in perfectly well is a dead end with nothing to press.
+   *
+   * Only a definite no closes the door.
+   */
+  $('#signin-email-form').hidden = state.emailSignin === false;
+  if (state.emailSignin !== false) {
+    /* Still guessing? Go and find out, and correct this panel if it was
+       optimistic. The tap that opened it is the moment this matters. */
+    if (state.emailSignin === null) confirmSigninAvailable();
+    return;
+  }
 
   $('#signin-note').textContent =
     'This site cannot send email yet, so there is no way to sign in. '
     + 'Measuring and saving to this browser still work.';
   $('#signin-note').className = 'sheet-note warn';
+}
+
+/**
+ * Ask again, because the answer was never obtained.
+ *
+ * The boot-time lookup gets one try. On a phone that is one try on the worst
+ * connection of the day, and its failure used to be indistinguishable from a
+ * deployment with no mail provider -- for the rest of the visit.
+ *
+ * Silent when it fails again: the form is already up, and the submit will
+ * carry a real answer from the server rather than a guess from here.
+ */
+async function confirmSigninAvailable() {
+  if (state.emailSignin !== null) return;
+  try {
+    const me = await api('/api/auth/me', { timeoutMs: 8000 });
+    state.emailSignin = Boolean(me.email);
+    state.user = me.user || null;
+  } catch {
+    return;
+  }
+  /* Repaint only on a definite no, and only while the panel is still up --
+     anything else would wipe a "check your email" the person is reading. */
+  if (state.emailSignin === false && !$('#signin').hidden) renderSigninOptions();
 }
 
 /** Ask who is signed in. Never throws: not knowing means signed out. */
@@ -5182,6 +5237,12 @@ async function refreshAccount() {
     state.user = me.user || null;
     state.emailSignin = Boolean(me.email);
   } catch {
+    /*
+     * Signed out is the right conclusion from a failed lookup. WHETHER THE
+     * SITE CAN SEND MAIL IS NOT -- that is a fact about the deployment, this
+     * request learned nothing about it, and leaving it unknown is what lets
+     * the sign-in panel ask again instead of announcing a false answer.
+     */
     state.user = null;
   }
   renderAccountButton();
