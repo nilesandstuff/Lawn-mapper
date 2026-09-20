@@ -559,6 +559,65 @@ CREATE INDEX IF NOT EXISTS lawn_jobs_state ON lawn_jobs(state, created_at);
 CREATE INDEX IF NOT EXISTS lawn_jobs_worker ON lawn_jobs(worker, state);
 
 -- ----------------------------------------------------------------------
+-- MONEY SOMEBODY HAS ASKED FOR.
+--
+-- NOT A PAYMENT SYSTEM, and deliberately not. The money moves in Venmo or
+-- PayPal, by hand, outside this app. All this does is keep the books: what was
+-- asked for, what it covered, and whether it has actually been sent -- so that
+-- neither side has to remember, and so the worker can see the answer without
+-- asking.
+--
+-- THE BALANCE IS NOT STORED ANYWHERE, which is the important decision here. It
+-- is computed, every time, as
+--
+--     approved maps x 75c  -  everything requested or already paid
+--
+-- A stored balance would be a second copy of a number the maps already imply,
+-- and the two would drift the first time a review was changed or a request was
+-- created twice. Nothing here can drift, because there is nothing to keep in
+-- step: a payout row that is `returned` stops subtracting and the balance comes
+-- back on its own.
+--
+-- state:
+--   requested  the worker pressed the button. Subtracts from their balance
+--              immediately, so they cannot ask twice for the same money.
+--   paid       the owner sent it and said so.
+--   returned   the owner could not send it -- a handle that bounced, usually.
+--              Stops subtracting, so the balance comes back and they can fix
+--              their details and ask again.
+CREATE TABLE IF NOT EXISTS lawn_payouts (
+  id           TEXT PRIMARY KEY,
+  -- The account id, which on the paid route is also the worker id: that route
+  -- reads identity from the session rather than from a link.
+  worker       TEXT NOT NULL,
+  cents        INTEGER NOT NULL,
+  -- How many approved maps this covers. Kept because it is what makes a figure
+  -- checkable months later, when the rate may have moved.
+  maps         INTEGER NOT NULL,
+  -- WHERE IT WAS MEANT TO GO, AS IT STOOD WHEN THEY ASKED. A snapshot rather
+  -- than a join, because the account's handle can change afterwards and the
+  -- record of a payment already sent has to say where it actually went. The
+  -- console compares it against the live one and says so when they differ,
+  -- which is the case that would otherwise send money to a closed account.
+  kind         TEXT,
+  handle       TEXT,
+  state        TEXT NOT NULL DEFAULT 'requested',
+  -- The owner's own note, and whatever Venmo or PayPal called the transfer.
+  note         TEXT,
+  reference    TEXT,
+  requested_at TEXT NOT NULL,
+  decided_at   TEXT,
+  decided_by   TEXT
+);
+CREATE INDEX IF NOT EXISTS lawn_payouts_worker ON lawn_payouts(worker, requested_at DESC);
+CREATE INDEX IF NOT EXISTS lawn_payouts_state ON lawn_payouts(state, requested_at);
+-- ONE OPEN REQUEST AT A TIME, enforced by the database rather than by a check
+-- in front of an insert. Two taps on a slow connection both pass a read-then-
+-- write, and the second one asks for money the first already claimed.
+CREATE UNIQUE INDEX IF NOT EXISTS lawn_payouts_one_open
+  ON lawn_payouts(worker) WHERE state = 'requested';
+
+-- ----------------------------------------------------------------------
 -- PEOPLE THE OWNER HAS DECIDED ABOUT.
 --
 -- Still not accounts. A row appears here only when the owner says something

@@ -19,7 +19,10 @@ import { mailConfigured } from './mail.js';
 import { limits } from './limits.js';
 // The paid route's rate and the shape of a payout destination. Shared with the
 // queue so the browser cannot be told one number and the owner another.
-import { PAYOUT_KINDS, cleanPayoutHandle, PAID_RATE_CENTS, MIN_PAYOUT_CENTS } from './jobs.js';
+import {
+  PAYOUT_KINDS, cleanPayoutHandle, PAID_RATE_CENTS, MIN_PAYOUT_CENTS,
+  PAYOUT_SETTLES, owedCents,
+} from './jobs.js';
 
 export const isAuthPath = (pathname) => pathname.startsWith('/api/auth/');
 
@@ -147,6 +150,104 @@ export async function handleAuth(request, env, url, origin, ctx, json) {
     }, 200, origin);
   }
 
+  /* ------------------------------------------------ "time to get my money" */
+  /*
+   * NOT A PAYMENT. The money moves in Venmo or PayPal, by hand, outside this
+   * app. This is the bookkeeping either side would otherwise have to do in
+   * their head: what was asked for, what it covered, and whether it has been
+   * sent.
+   *
+   * THE WHOLE BALANCE, NEVER A PART OF IT. "How much would you like?" is a
+   * question with a wrong answer, and the right one is always "all of it".
+   * Anything left behind is a number somebody has to remember.
+   */
+  if (path === 'payout/request') {
+    if (request.method !== 'POST') return json({ error: 'POST required' }, 405, origin);
+    const user = await currentUser(request, env, ctx);
+    if (!user) return json({ error: 'Sign in first' }, 401, origin);
+
+    if (!user.payout_handle) {
+      return json({
+        error: 'No destination',
+        reason: 'Add a Venmo username or a PayPal email first — otherwise '
+          + 'there is nowhere to send it.',
+      }, 400, origin);
+    }
+
+    /*
+     * ASKED ALREADY IS ITS OWN ANSWER, and it has to be given before the
+     * balance is looked at. An open request has already subtracted itself, so
+     * the balance behind it is usually zero -- and "you are at $0.00" told to
+     * somebody who asked for five dollars yesterday reads as money that
+     * vanished rather than money that is on its way.
+     *
+     * This is not the guard against a double tap. That is the unique index
+     * below, which cannot be raced.
+     */
+    const open = await env.DB.prepare(
+      "SELECT cents FROM lawn_payouts WHERE worker = ?1 AND state = 'requested'"
+    ).bind(user.id).first();
+    if (open) {
+      return json({
+        error: 'Already asked',
+        reason: `You have $${(Number(open.cents) / 100).toFixed(2)} waiting to `
+          + 'be sent already. Anything you earn meanwhile goes onto the next one.',
+      }, 409, origin);
+    }
+
+    const totals = await env.DB.prepare(
+      `SELECT SUM(CASE WHEN state = 'kept' THEN 1 ELSE 0 END) AS approved
+         FROM lawn_jobs WHERE worker = ?1`
+    ).bind(user.id).first();
+    const settled = await env.DB.prepare(
+      `SELECT COALESCE(SUM(cents), 0) AS cents FROM lawn_payouts
+        WHERE worker = ?1 AND state IN ('requested', 'paid')`
+    ).bind(user.id).first();
+
+    const approved = Number(totals?.approved || 0);
+    const settledCents = Number(settled?.cents || 0);
+    const cents = owedCents({ approved, settledCents });
+
+    if (cents < MIN_PAYOUT_CENTS) {
+      return json({
+        error: 'Not yet',
+        reason: `Payouts start at $${(MIN_PAYOUT_CENTS / 100).toFixed(2)}. `
+          + `You are at $${(cents / 100).toFixed(2)} — a few more approved `
+          + 'maps and it will be ready.',
+      }, 400, origin);
+    }
+
+    /*
+     * ONE OPEN REQUEST AT A TIME, and the DATABASE decides that rather than a
+     * check in front of this insert. Two taps on a slow connection both pass a
+     * read-then-write, and the second asks for money the first already
+     * claimed. A partial unique index makes the second one impossible rather
+     * than unlikely -- see lawn_payouts_one_open in schema.sql.
+     */
+    try {
+      await env.DB.prepare(
+        `INSERT INTO lawn_payouts
+           (id, worker, cents, maps, kind, handle, state, requested_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'requested', ?7)`
+      ).bind(
+        crypto.randomUUID(), user.id, cents,
+        /* How many maps this covers -- what makes the figure checkable later,
+           when the rate may have moved. */
+        Math.round(cents / PAID_RATE_CENTS),
+        user.payout_kind || null, user.payout_handle,
+        new Date().toISOString(),
+      ).run();
+    } catch {
+      return json({
+        error: 'Already asked',
+        reason: 'You have a payout waiting already. It will be sent, and '
+          + 'anything you earn meanwhile goes onto the next one.',
+      }, 409, origin);
+    }
+
+    return json({ ok: true, cents }, 200, origin);
+  }
+
   /* --------------------------------------------- how my own tracing is going */
   /*
    * SCOPED TO THE SIGNED-IN ACCOUNT AND NOTHING ELSE. Every row here is read
@@ -187,6 +288,28 @@ export async function handleAuth(request, env, url, origin, ctx, json) {
      * -- is explicitly not an approval and pays nothing.
      */
     const approved = Number(totals?.approved || 0);
+
+    /*
+     * AND WHAT HAS ALREADY BEEN CLAIMED. A request subtracts the moment it is
+     * made, so the same money cannot be asked for twice; a returned one stops
+     * subtracting, so the balance comes back on its own without anybody having
+     * to adjust a stored number. See owedCents.
+     */
+    const settled = await env.DB.prepare(
+      `SELECT COALESCE(SUM(cents), 0) AS cents FROM lawn_payouts
+        WHERE worker = ?1 AND state IN ('requested', 'paid')`
+    ).bind(user.id).first();
+
+    const history = await env.DB.prepare(
+      `SELECT id, cents, maps, kind, handle, state, note, reference,
+              requested_at, decided_at
+         FROM lawn_payouts WHERE worker = ?1
+        ORDER BY requested_at DESC LIMIT 30`
+    ).bind(user.id).all();
+
+    const settledCents = Number(settled?.cents || 0);
+    const owed = owedCents({ approved, settledCents });
+
     return json({
       sent: Number(totals?.sent || 0),
       waiting: Number(totals?.waiting || 0),
@@ -194,9 +317,25 @@ export async function handleAuth(request, env, url, origin, ctx, json) {
       excused: Number(totals?.excused || 0),
       refused: Number(totals?.refused || 0),
       rateCents: PAID_RATE_CENTS,
+      /* What the maps have earned in total, ever -- and what is left after
+         everything already requested or sent. Two numbers because a worker
+         wants both: one is the record of their work, one is their balance. */
       earnedCents: approved * PAID_RATE_CENTS,
+      owedCents: owed,
+      canRequest: owed >= MIN_PAYOUT_CENTS,
       minPayoutCents: MIN_PAYOUT_CENTS,
       payout: { kind: user.payout_kind || null, handle: user.payout_handle || null },
+      payouts: (history.results || []).map((r) => ({
+        cents: Number(r.cents),
+        maps: Number(r.maps),
+        kind: r.kind || null,
+        handle: r.handle || null,
+        state: r.state,
+        note: r.note || null,
+        reference: r.reference || null,
+        requestedAt: r.requested_at,
+        decidedAt: r.decided_at || null,
+      })),
       maps: (recent.results || []).map((r) => ({
         county: r.county || null,
         state: r.state,

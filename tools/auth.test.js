@@ -708,6 +708,103 @@ const rows = async (e, sql, ...args) => (await e.DB.prepare(sql).bind(...args).a
   check('and the payout destination travels with it',
     mine.payout.kind === 'venmo' && mine.payout.handle === '@dave',
     JSON.stringify(mine.payout));
+
+  /* ------------------------------------------- asking for the money */
+  /*
+   * THE BALANCE IS NEVER STORED. It is approved maps minus everything already
+   * asked for or sent, worked out fresh on every read -- which is what makes
+   * a returned request come back on its own instead of needing a number
+   * adjusted by hand somewhere.
+   */
+  check('two approved maps is under the minimum, so there is nothing to ask for',
+    mine.owedCents === 150 && mine.canRequest === false,
+    `${mine.owedCents}c against a ${mine.minPayoutCents}c minimum`);
+
+  check('and asking anyway is refused rather than quietly allowed',
+    (await ask('payout/request', { method: 'POST' })).status === 400,
+    'the button is disabled, but the page in front of somebody may be an hour old');
+
+  for (const id of ['p6', 'p7', 'p8', 'p9', 'p10']) await lawn(id, 'kept');
+
+  const rich = (await ask('mywork')).body;
+  check('seven approved maps clears it',
+    rich.owedCents === 7 * 75 && rich.canRequest === true,
+    `${rich.owedCents}c`);
+
+  const asked = await ask('payout/request', { method: 'POST' });
+  check('and the request takes the whole balance, not part of it',
+    asked.body.ok && asked.body.cents === 525,
+    '"how much would you like" is a question with a wrong answer');
+
+  const after = (await ask('mywork')).body;
+  check('which empties the balance without touching the lifetime total',
+    after.owedCents === 0 && after.earnedCents === 525,
+    `${after.owedCents}c owed, ${after.earnedCents}c earned -- one is a `
+    + 'balance and one is the record of the work');
+
+  check('and shows up in their own history with a status they can read',
+    after.payouts.length === 1 && after.payouts[0].state === 'requested'
+    && after.payouts[0].maps === 7,
+    JSON.stringify(after.payouts[0] || {}).slice(0, 120));
+
+  /*
+   * ONE OPEN REQUEST AT A TIME, decided by a partial unique index rather than
+   * by a check in front of the insert. Two taps on a slow connection both pass
+   * a read-then-write and the second asks for money the first already claimed.
+   */
+  check('a second request is impossible while one is open',
+    (await ask('payout/request', { method: 'POST' })).status === 409,
+    'the database refuses it, so a double tap cannot claim the same money twice');
+
+  await lawn('p11', 'kept');
+  const meanwhile = (await ask('mywork')).body;
+  check('and what is earned meanwhile starts the next balance',
+    meanwhile.owedCents === 75 && meanwhile.canRequest === false,
+    `${meanwhile.owedCents}c -- the open request does not freeze the account`);
+
+  /* Returned: the row stops subtracting, so the money reappears by itself. */
+  await env.DB.prepare(
+    "UPDATE lawn_payouts SET state = 'returned', note = 'that handle bounced' "
+    + "WHERE worker = ?1 AND state = 'requested'"
+  ).bind(me.id).run();
+
+  const back = (await ask('mywork')).body;
+  check('a returned payout gives the balance back with nothing adjusted by hand',
+    back.owedCents === 8 * 75 && back.canRequest === true,
+    `${back.owedCents}c`);
+
+  check('and the reason it came back is visible to the person it happened to',
+    back.payouts[0].state === 'returned'
+    && back.payouts[0].note === 'that handle bounced',
+    'money reappearing with no explanation looks like a bug');
+
+  check('and they can ask again, because nothing is blocking them now',
+    (await ask('payout/request', { method: 'POST' })).body.ok === true);
+
+  /*
+   * NOWHERE TO SEND IT IS A DIFFERENT PROBLEM FROM NOT ENOUGH TO SEND, and it
+   * is the one the owner cannot fix from their side.
+   */
+  const poor = await findOrCreateUser(env, {
+    email: 'nodest@example.com', provider: 'email', subject: 't3',
+  });
+  const poorToken = (await createSession(env, poor.id)).token;
+  for (const id of ['q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7']) {
+    await env.DB.prepare(
+      `INSERT INTO lawn_jobs (id, lng, lat, state, worker, submitted_at, created_at)
+       VALUES (?1, -80, 40, 'kept', ?2, '2026-09-19T10:00:00Z', '2026-09-19T09:00:00Z')`
+    ).bind(id, poor.id).run();
+  }
+  const poorAsk = await handleAuth(
+    new Request('https://site.test/api/auth/payout/request', {
+      method: 'POST', headers: { Cookie: `${SESSION_COOKIE}=${poorToken}` },
+    }), env, new URL('https://site.test/api/auth/payout/request'), '',
+    { waitUntil() {} },
+    (data, status) => new Response(JSON.stringify(data), { status }),
+  );
+  check('somebody over the minimum with no destination is told what to do about it',
+    poorAsk.status === 400,
+    'a request with nowhere to send it is a row the owner cannot clear');
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);

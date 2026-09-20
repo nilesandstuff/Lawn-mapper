@@ -173,6 +173,35 @@ export const MIN_PAYOUT_CENTS = 500;
 export const PAYOUT_KINDS = ['venmo', 'paypal'];
 
 /**
+ * What can have happened to a request for money.
+ *
+ *   requested  they pressed the button. Subtracts from the balance at once, so
+ *              the same money cannot be asked for twice.
+ *   paid       the owner sent it and said so.
+ *   returned   the owner could not send it. Stops subtracting, so the balance
+ *              comes back and they can fix their details and ask again.
+ */
+export const PAYOUT_STATES = ['requested', 'paid', 'returned'];
+/** The two that still lay claim to money. `returned` releases it. */
+export const PAYOUT_SETTLES = ['requested', 'paid'];
+
+/**
+ * What somebody is owed right now.
+ *
+ * ONE FUNCTION BECAUSE THERE ARE TWO SCREENS. The worker sees this on their
+ * own page and the owner sees it on theirs, and a version of this arithmetic
+ * written twice is a version that eventually disagrees -- at which point one
+ * of them is telling somebody they are owed money they are not, or the
+ * reverse. Neither is a bug anyone wants to find out about from a stranger.
+ *
+ * DERIVED, NEVER STORED. A balance column would be a second copy of a number
+ * the maps already imply, and it would drift the first time a review changed
+ * or a request was created twice.
+ */
+export const owedCents = ({ approved = 0, settledCents = 0 }) =>
+  Math.max(0, approved * PAID_RATE_CENTS - settledCents);
+
+/**
  * A payment address, kept as typed.
  *
  * DELIBERATELY NOT cleanWorker, and the difference is the whole point of this

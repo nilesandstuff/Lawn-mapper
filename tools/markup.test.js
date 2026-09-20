@@ -1340,5 +1340,56 @@ check('every class the code toggles is styled',
   }
 }
 
+/* ------------------------- the pages about people and money address theirs */
+{
+  /*
+   * THE SAME CHECK AGAIN FOR THE FOUR PAGES THE PAID ROUTE ADDED, because the
+   * silent-nothing failure is the same one and the stakes on two of them are
+   * higher than a filter that does not filter.
+   *
+   * /mywork.html is the only page in this project written for somebody other
+   * than the owner, and the button it would lose is the one that asks to be
+   * paid. /payouts.html is where the owner answers that. A null element on
+   * either is a person who cannot get their money and no error anywhere.
+   */
+  for (const page of ['grade', 'workers', 'mywork', 'payouts']) {
+    const pageHtml = readFileSync(join(root, `public/${page}.html`), 'utf8');
+    const pageJs = readFileSync(join(root, `public/${page}.js`), 'utf8');
+
+    const has = new Set([...pageHtml.matchAll(/\bid="([A-Za-z0-9_-]+)"/g)].map((m) => m[1]));
+    const asks = new Set([
+      ...[...pageJs.matchAll(/\$\('#([A-Za-z0-9_-]+)'\)/g)].map((m) => m[1]),
+      ...[...pageJs.matchAll(/querySelector(?:All)?\('#([A-Za-z0-9_-]+)/g)].map((m) => m[1]),
+    ]);
+
+    const gone = [...asks].filter((id) => !has.has(id));
+    check(`every element /${page}.html reaches for is on it`,
+      gone.length === 0,
+      gone.length ? gone.join(', ') : `${asks.size} referenced, all present`);
+
+    check(`and /${page}.html loads the stylesheet its classes are in`,
+      /href="\/console\.css"/.test(pageHtml),
+      'the every-map page shipped once without this and rendered as plain text');
+  }
+
+  /*
+   * AND THE TWO ENDS OF THE PAYOUT AGREE ABOUT ITS STATES. The worker's page
+   * translates them into something readable and the owner's page into
+   * something actionable, and a state neither recognises prints as the raw
+   * database word to whichever one missed it.
+   */
+  const jobs = readFileSync(join(root, 'worker/src/jobs.js'), 'utf8');
+  const states = [...jobs.matchAll(/PAYOUT_STATES = \[([^\]]*)\]/g)]
+    .flatMap((m) => [...m[1].matchAll(/'([a-z]+)'/g)].map((s) => s[1]));
+  check('there are payout states to check at all', states.length === 3, states.join(', '));
+  for (const file of ['mywork', 'payouts']) {
+    const js = readFileSync(join(root, `public/${file}.js`), 'utf8');
+    const missing = states.filter((s) => !new RegExp(`^\\s{2}${s}:`, 'm').test(js));
+    check(`/${file}.html has words of its own for every payout state`,
+      missing.length === 0,
+      missing.length ? missing.join(', ') : states.join(', '));
+  }
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);

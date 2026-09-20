@@ -1711,6 +1711,116 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
       { method: 'POST', body: { id: 'job-0003-aaaa-4bbb-8ccc-dddddddddddd', verdict: 'approved' } }
     )).status === 400,
     'the screening page sends "approved" and must not be able to grade a paid map with it');
+
+  /* ------------------------------------------ money somebody asked for */
+  /*
+   * NOT A PAYMENT SYSTEM. The money moves in Venmo or PayPal, by hand, outside
+   * this app. What is tested here is the bookkeeping either side would
+   * otherwise be doing from memory.
+   */
+  await env.DB.prepare(
+    `INSERT INTO lawn_payouts
+       (id, worker, cents, maps, kind, handle, state, requested_at)
+     VALUES ('po-1', ?1, 525, 7, 'venmo', '@tracer', 'requested',
+             '2026-09-19T12:00:00Z')`
+  ).bind(payee.id).run();
+
+  const payQueue = (await ask(env, ownerToken, 'payouts')).body;
+  const row = payQueue.payouts.find((p) => p.id === 'po-1');
+  check('an open request arrives with a verified email to fall back on',
+    row.state === 'requested' && row.email === 'tracer@b.com'
+    && row.cents === 525,
+    'a payment that bounces needs a second way to reach somebody');
+
+  /*
+   * THE OWNER'S OWED COLUMN AND THE WORKER'S BALANCE ARE THE SAME NUMBER, and
+   * the moment they disagree the argument is unwinnable. Asking for money
+   * subtracts it on BOTH screens or the owner pays it twice.
+   */
+  const during = (await ask(env, ownerToken, 'workers')).body
+    .workers.find((w) => w.worker === payee.id);
+  check('and it stops counting as owed the moment it is asked for',
+    during.owedCents === 0,
+    `${during.owedCents}c -- the same arithmetic the worker's own page does, `
+    + 'and a column still reading $6.00 the day after paying it is how money '
+    + 'goes out twice');
+
+  /*
+   * WHERE IT WAS MEANT TO GO, AND WHERE IT WOULD GO NOW. Paying the snapshot
+   * after somebody has corrected their handle sends it to an address they have
+   * just told us they stopped using.
+   */
+  await env.DB.prepare(
+    "UPDATE users SET payout_handle = '@tracer-new' WHERE id = ?1"
+  ).bind(payee.id).run();
+  const moved = (await ask(env, ownerToken, 'payouts')).body
+    .payouts.find((p) => p.id === 'po-1');
+  check('a destination changed after asking is flagged rather than quietly used',
+    moved.changed === true && moved.handle === '@tracer'
+    && moved.nowHandle === '@tracer-new',
+    'the snapshot is the record of where it went; the account is where it goes');
+
+  check('marking it sent needs a state that means something',
+    (await ask(env, ownerToken, 'settle-payout',
+      { method: 'POST', body: { id: 'po-1', state: 'maybe' } })).status === 400);
+
+  check('and it can be marked sent with a reference to match up later',
+    (await ask(env, ownerToken, 'settle-payout',
+      { method: 'POST', body: { id: 'po-1', state: 'paid', reference: 'venmo 8891' } }
+    )).body.ok === true);
+
+  /*
+   * A SECOND TAP ON A PAGE LEFT OPEN MUST NOT RE-SETTLE IT -- and, much worse,
+   * must not flip money that has actually been sent back into a balance.
+   */
+  check('but not twice, so a stale page cannot un-send a payment',
+    (await ask(env, ownerToken, 'settle-payout',
+      { method: 'POST', body: { id: 'po-1', state: 'returned' } })).status === 409,
+    'the state is in the WHERE clause, not in a check in front of it');
+
+  const settled = (await ask(env, ownerToken, 'payouts')).body
+    .payouts.find((p) => p.id === 'po-1');
+  check('and a settled row says who decided it and when',
+    settled.state === 'paid' && settled.reference === 'venmo 8891'
+    && Boolean(settled.decidedAt),
+    JSON.stringify({ state: settled.state, at: settled.decidedAt }));
+
+  const afterPaid = (await ask(env, ownerToken, 'workers')).body
+    .workers.find((w) => w.worker === payee.id);
+  check('and money that has gone stays gone from the owed column',
+    afterPaid.owedCents === 0,
+    'paid and requested subtract alike -- only a returned one comes back');
+
+  /*
+   * AND A RETURNED ONE STOPS SUBTRACTING, so the balance reappears by itself.
+   * Somebody else's ledger, because the tracer above has been paid out to zero
+   * and a test that cannot tell 0 from 0 proves nothing.
+   */
+  const bounced = await findOrCreateUser(env, {
+    email: 'bounced@b.com', provider: 'email', subject: 'bo',
+  });
+  await env.DB.prepare(
+    "UPDATE users SET payout_kind = 'paypal', payout_handle = 'b@b.com' WHERE id = ?1"
+  ).bind(bounced.id).run();
+  for (let i = 0; i < 8; i += 1) {
+    await env.DB.prepare(
+      `INSERT INTO lawn_jobs (id, lng, lat, state, worker, submitted_at, created_at)
+       VALUES (?1, -80, 40, 'kept', ?2, '2026-09-19T10:00:00Z', '2026-09-19T09:00:00Z')`
+    ).bind(`bnc-${i}`, bounced.id).run();
+  }
+  await env.DB.prepare(
+    `INSERT INTO lawn_payouts
+       (id, worker, cents, maps, kind, handle, state, requested_at, note)
+     VALUES ('po-2', ?1, 525, 7, 'paypal', 'b@b.com', 'returned',
+             '2026-09-19T13:00:00Z', 'that address bounced')`
+  ).bind(bounced.id).run();
+
+  const afterBack = (await ask(env, ownerToken, 'workers')).body
+    .workers.find((w) => w.worker === bounced.id);
+  check('a returned request does not subtract, so the balance comes back on its own',
+    afterBack.owedCents === 8 * 75,
+    `${afterBack.owedCents}c against 8 approved maps -- nothing is stored, so `
+    + 'nothing has to be undone by hand');
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);

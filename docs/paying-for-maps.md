@@ -66,6 +66,31 @@ record.
 `/mywork.html` is their page: approved, waiting, not accepted, what they have
 earned, and where it goes.
 
+### Getting the money out
+
+Nothing in this app moves a cent, and it does not try to. The payment happens
+in Venmo or PayPal, by hand, in another app. What the app does is the
+bookkeeping neither side should be doing from memory.
+
+The tracer presses **Request payout** on `/mywork.html` once they are over the
+$5 minimum. That asks for the **whole balance** — "how much would you like" is
+a question with a wrong answer — and the request shows up on `/payouts.html`,
+oldest first, with the handle to copy and a verified email to fall back on.
+Mark it **sent** once it has gone, with an optional reference to match against
+a payment history later. **Could not send** puts the money straight back into
+their balance so they can correct their details and ask again; say why, because
+that note is the only explanation they get.
+
+**The balance is never stored anywhere.** It is approved maps times the rate,
+minus everything already requested or sent. That is why a returned request
+gives the money back on its own with nothing to adjust by hand, and why the
+Owed column on `/workers.html` and the balance on `/mywork.html` cannot drift
+apart — both read the same function.
+
+One open request at a time, enforced by a unique index rather than by a check
+in front of the insert. Two taps on a slow connection both pass a
+read-then-write, and the second would ask for money the first already claimed.
+
 ### What to put in the post
 
 > Replace `volunteer` with `paid` in the link and I will pay 75 cents for every

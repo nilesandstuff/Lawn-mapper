@@ -41,6 +41,8 @@
   }
   .earned b { font-size: 26px; color: #1f5b22; font-variant-numeric: tabular-nums; }
   .earned span { font-size: 12.5px; color: #2c4a2e; }
+  .cashout { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+  .cashout button { margin: 0; }
 
   .payout { display: grid; gap: 8px; }
   .payout input {
@@ -69,6 +71,9 @@
   .tag.submitted { background: #fdf6e6; color: #7a5a10; }
   .tag.excused   { background: #f3ecfb; color: #573a80; }
   .tag.refused   { background: #fdeceb; color: #b3261e; }
+  .tag.requested { background: #fdf6e6; color: #7a5a10; }
+  .tag.paid      { background: #e4f2e5; color: #1f5b22; }
+  .tag.returned  { background: #fdeceb; color: #b3261e; }
 </style>
 </head>
 <body>
@@ -100,6 +105,16 @@
         <span id="earned-note"></span>
       </div>
       <!--
+        THE BUTTON THAT ASKS FOR THE MONEY. It moves nothing by itself: the
+        payment happens in Venmo or PayPal, by hand, elsewhere. What it does is
+        put a dated, itemised request in front of the owner so neither side has
+        to remember what was owed and whether it went out.
+      -->
+      <div class="cashout">
+        <button class="primary" id="cashout" type="button" disabled>Request payout</button>
+        <span class="sub" id="cashout-said" style="margin:0"></span>
+      </div>
+      <!--
         Said here and not only at the moment of submitting. "Approved" is doing
         real work in that sentence: a hard lawn that was excused counts for
         nothing, and somebody who finds that out after twenty maps has a fair
@@ -120,6 +135,22 @@
         <button class="primary" id="save" type="button">Save</button>
       </div>
       <p class="sub" id="pay-said"></p>
+    </div>
+
+    <!--
+      EVERY REQUEST EVER MADE, INCLUDING THE ONES THAT CAME BACK. A returned
+      request is the awkward one and it is the reason this table exists: the
+      money reappears in the balance on its own, which looks like a mistake
+      unless somebody can see the row that explains it.
+    -->
+    <div class="card" id="pay-history" hidden>
+      <h2 style="font-size:15px;margin:0 0 8px">Payouts</h2>
+      <table class="maps">
+        <thead>
+          <tr><th>Asked</th><th>Amount</th><th>Where</th><th>Status</th></tr>
+        </thead>
+        <tbody id="payrows"></tbody>
+      </table>
     </div>
 
     <div class="card">

@@ -29,7 +29,9 @@ import { corpusGaps, candidateScore } from './corpus.js';
 import { parcelGaps } from './gaps.js';
 // The same cleaner the paid queue puts a worker id through on the way in. Two
 // spellings of one id is a row the claim lookup never finds.
-import { cleanWorker, ROUTES, PAID_RATE_CENTS, MIN_PAYOUT_CENTS } from './jobs.js';
+import {
+  cleanWorker, ROUTES, PAID_RATE_CENTS, MIN_PAYOUT_CENTS, owedCents,
+} from './jobs.js';
 
 export const isAdminPath = (pathname) => pathname.startsWith('/api/admin/');
 
@@ -889,6 +891,21 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
       if (!byWorker.has(t.worker)) byWorker.set(t.worker, []);
       byWorker.get(t.worker).push(Number(t.seconds));
     }
+    /*
+     * WHAT HAS ALREADY BEEN ASKED FOR OR SENT, subtracted here for the same
+     * reason it is subtracted on the worker's own page: the two screens have to
+     * agree about money. Without this the Owed column would still read $6.00
+     * the day after the six dollars went out, and the first thing the owner
+     * would do about it is pay it twice.
+     */
+    const settled = await env.DB.prepare(
+      `SELECT worker, COALESCE(SUM(cents), 0) AS cents FROM lawn_payouts
+        WHERE state IN ('requested', 'paid') GROUP BY worker`
+    ).all();
+    const settledBy = new Map(
+      (settled.results || []).map((r) => [r.worker, Number(r.cents || 0)])
+    );
+
     const medianOf = (list) => {
       if (!list?.length) return null;
       return list.length % 2
@@ -930,7 +947,12 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
            * owner's screen has to agree with the worker's, which computes the
            * same way in routes-auth.js.
            */
-          owedCents: r.payout_handle ? kept * PAID_RATE_CENTS : 0,
+          owedCents: r.payout_handle
+            ? owedCents({
+              approved: kept,
+              settledCents: settledBy.get(r.worker) || 0,
+            })
+            : 0,
           email: r.email || null,
           payout: r.payout_handle
             ? { kind: r.payout_kind || null, handle: r.payout_handle }
@@ -942,6 +964,92 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
         };
       }),
     }, 200, origin);
+  }
+
+  /* ------------------------------------------------ money somebody asked for */
+  /*
+   * NOT A PAYMENT SYSTEM. The money moves in Venmo or PayPal, by hand, outside
+   * this app. This is the list of what is owed and what has been sent, so that
+   * neither side has to remember.
+   *
+   * Open requests first and oldest first, because this is a queue to be
+   * emptied: somebody is waiting on every row at the top of it.
+   */
+  if (path === 'payouts') {
+    const rows = await env.DB.prepare(
+      `SELECT p.*, u.email, u.payout_kind AS now_kind, u.payout_handle AS now_handle
+         FROM lawn_payouts p
+         LEFT JOIN users u ON u.id = p.worker
+        ORDER BY CASE WHEN p.state = 'requested' THEN 0 ELSE 1 END,
+                 p.requested_at ASC
+        LIMIT 200`
+    ).all();
+
+    return json({
+      payouts: (rows.results || []).map((r) => ({
+        id: r.id,
+        worker: r.worker,
+        email: r.email || null,
+        cents: Number(r.cents),
+        maps: Number(r.maps),
+        /*
+         * WHERE IT WAS MEANT TO GO, AND WHERE IT WOULD GO NOW. Snapshotted at
+         * request time so a record of money already sent says where it
+         * actually went -- but the account's handle can change afterwards, and
+         * paying the old one would send it to an address somebody has just
+         * told us they no longer use. The console shows both when they differ;
+         * that is the whole reason for keeping two.
+         */
+        kind: r.kind || null,
+        handle: r.handle || null,
+        nowKind: r.now_kind || null,
+        nowHandle: r.now_handle || null,
+        changed: Boolean(r.now_handle && r.handle && r.now_handle !== r.handle),
+        state: r.state,
+        note: r.note || null,
+        reference: r.reference || null,
+        requestedAt: r.requested_at,
+        decidedAt: r.decided_at || null,
+      })),
+    }, 200, origin);
+  }
+
+  /*
+   * MARKING ONE SENT, OR HANDING IT BACK.
+   *
+   *   paid      the money went. The claim stands and the balance stays spent.
+   *   returned  it could not be sent -- a handle that bounced, usually. The
+   *             row stops subtracting, so the worker's balance comes back on
+   *             its own and they can fix their details and ask again. Nothing
+   *             is adjusted by hand anywhere, because nothing is stored.
+   */
+  if (path === 'settle-payout' && request.method === 'POST') {
+    const body = await request.json().catch(() => ({}));
+    const id = String(body?.id || '');
+    const state = ['paid', 'returned'].includes(String(body?.state || ''))
+      ? String(body.state) : null;
+    if (!id || !state) return json({ error: 'Need an id and a state' }, 400, origin);
+
+    /*
+     * `state = 'requested'` in the WHERE, so a second tap on a page left open
+     * cannot re-settle something already decided -- and, more to the point,
+     * cannot flip a payment that has actually been sent back into a balance.
+     */
+    const done = await env.DB.prepare(
+      `UPDATE lawn_payouts
+          SET state = ?2, decided_at = ?3, decided_by = ?4,
+              note = ?5, reference = ?6
+        WHERE id = ?1 AND state = 'requested'`
+    ).bind(
+      id, state, new Date().toISOString(), me.email,
+      body?.note ? String(body.note).slice(0, 200) : null,
+      body?.reference ? String(body.reference).slice(0, 120) : null,
+    ).run();
+
+    if (!done.meta?.changes) {
+      return json({ ok: false, reason: 'already-settled' }, 409, origin);
+    }
+    return json({ ok: true }, 200, origin);
   }
 
   /*
