@@ -29,7 +29,7 @@ import { corpusGaps, candidateScore } from './corpus.js';
 import { parcelGaps } from './gaps.js';
 // The same cleaner the paid queue puts a worker id through on the way in. Two
 // spellings of one id is a row the claim lookup never finds.
-import { cleanWorker, ROUTES } from './jobs.js';
+import { cleanWorker, ROUTES, PAID_RATE_CENTS, MIN_PAYOUT_CENTS } from './jobs.js';
 
 export const isAdminPath = (pathname) => pathname.startsWith('/api/admin/');
 
@@ -854,9 +854,20 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
               SUM(COALESCE(j.seconds, 0))                                 AS total_seconds,
               MAX(COALESCE(w.trusted, 0))                                 AS trusted,
               MAX(w.note)                                                 AS note,
-              MAX(COALESCE(w.kind, 'crowd'))                              AS kind
+              MAX(COALESCE(w.kind, 'crowd'))                              AS kind,
+              /*
+               * A PAID TRACER'S WORKER ID IS THEIR ACCOUNT ID, because that
+               * route reads identity from the session rather than from a link.
+               * So the account is joinable, and it carries the two things the
+               * owner actually needs to settle up: where to send the money and
+               * a verified address to use when it bounces.
+               */
+              MAX(u.email)                                                AS email,
+              MAX(u.payout_kind)                                          AS payout_kind,
+              MAX(u.payout_handle)                                        AS payout_handle
          FROM lawn_jobs j
          LEFT JOIN lawn_workers w ON w.worker = j.worker
+         LEFT JOIN users u        ON u.id     = j.worker
         WHERE j.worker IS NOT NULL
         GROUP BY j.worker
         ORDER BY MAX(COALESCE(j.submitted_at, j.claimed_at, j.created_at)) DESC`
@@ -886,6 +897,8 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
     };
 
     return json({
+      rateCents: PAID_RATE_CENTS,
+      minPayoutCents: MIN_PAYOUT_CENTS,
       workers: (rows.results || []).map((r) => {
         const kept = Number(r.kept || 0);
         const excused = Number(r.excused || 0);
@@ -911,6 +924,17 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
            * otherwise print the same.
            */
           passRate: reviewed ? (kept + excused) / reviewed : null,
+          /*
+           * Only APPROVED maps earn. An excused one counts as a pass at a gate
+           * and is explicitly not an approval, so it owes nothing -- and the
+           * owner's screen has to agree with the worker's, which computes the
+           * same way in routes-auth.js.
+           */
+          owedCents: r.payout_handle ? kept * PAID_RATE_CENTS : 0,
+          email: r.email || null,
+          payout: r.payout_handle
+            ? { kind: r.payout_kind || null, handle: r.payout_handle }
+            : null,
           medianSeconds: medianOf(byWorker.get(r.worker)),
           totalSeconds: Number(r.total_seconds || 0),
           firstAt: r.first_at || null,

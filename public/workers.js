@@ -28,6 +28,9 @@ const el = (tag, cls, text) => {
 
 let workers = [];
 let filter = 'all';
+let rates = { rateCents: 75, minPayoutCents: 500 };
+
+const money = (cents) => `$${(Number(cents || 0) / 100).toFixed(2)}`;
 
 /** A duration in the words somebody setting a reward would use. */
 const asTime = (secs) => {
@@ -85,6 +88,19 @@ function render() {
     who.append(name, ' ', el('span', `pill ${w.kind}`, w.kind));
     if (w.trusted) who.append(' ', el('span', 'pill hired', 'trusted'));
     if (w.note) who.append(el('span', 'said', w.note));
+    /*
+     * WHERE THE MONEY GOES, under the name, because on the paid route settling
+     * up is the reason to look somebody up at all. Shown only when there is
+     * one: "no destination yet" is a different state from "$0 owed", and a
+     * worker who has not told us where to send it is the one case the owner
+     * has to do something about.
+     */
+    if (w.payout) {
+      who.append(el('span', 'said', `${w.payout.kind}: ${w.payout.handle}`));
+    } else if (w.kind === 'paid') {
+      who.append(el('span', 'said nodest', 'no payout destination yet'));
+    }
+    if (w.email) who.append(el('span', 'said', w.email));
     row.append(who);
 
     row.append(el('td', 'num', n(w.handed)));
@@ -115,16 +131,36 @@ function render() {
     row.append(rate);
 
     row.append(el('td', 'num', asTime(w.medianSeconds)));
+
+    /*
+     * OWED, and the minimum said where it is decided rather than in a footnote.
+     * Below it nothing is sent, so a row showing $3.00 is not a row to act on
+     * and must not read like one.
+     */
+    const owed = el('td', 'num');
+    if (w.owedCents) {
+      owed.textContent = money(w.owedCents);
+      owed.classList.add(w.owedCents >= rates.minPayoutCents ? 'due' : 'under');
+    } else {
+      owed.textContent = '—';
+    }
+    row.append(owed);
+
     row.append(el('td', 'num', ago(w.lastAt)));
     body.append(row);
   }
 
   const sent = list.reduce((a, w) => a + w.handed, 0);
-  const owed = list.reduce((a, w) => a + w.waiting, 0);
+  const ungraded = list.reduce((a, w) => a + w.waiting, 0);
+  /* Only what is actually payable: below the minimum nothing is sent. */
+  const due = list
+    .filter((w) => w.owedCents >= rates.minPayoutCents)
+    .reduce((a, w) => a + w.owedCents, 0);
   $('#totals').textContent = list.length
     ? `${n(list.length)} ${list.length === 1 ? 'person' : 'people'} · `
       + `${n(sent)} lawns handed out`
-      + (owed ? ` · ${n(owed)} maps waiting on you` : ' · nothing waiting on you')
+      + (ungraded ? ` · ${n(ungraded)} maps waiting on you` : ' · nothing waiting on you')
+      + (due ? ` · ${money(due)} due to be paid` : '')
     : 'Nobody on this filter.';
 }
 
@@ -141,6 +177,10 @@ async function load() {
   }
 
   workers = data.workers || [];
+  rates = {
+    rateCents: data.rateCents || 75,
+    minPayoutCents: data.minPayoutCents || 500,
+  };
   if (!workers.length) {
     $('#page').hidden = true;
     $('#none').hidden = false;

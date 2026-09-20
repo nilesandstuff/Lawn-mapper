@@ -513,6 +513,45 @@ const read = async (res) => ({ status: res.status, body: await res.json() });
     `${faker.body.route} -- otherwise the gates are a suggestion in a URL`);
 }
 
+/* ------------------------------------------ the paid public link */
+{
+  /*
+   * THE ONE ROUTE WHERE THE ID IS NOT TAKEN FROM THE REQUEST.
+   *
+   * Every other worker id arrives in a URL, because there is nothing there
+   * worth forging: a crowd id is issued by a platform that will not pay a
+   * stranger for it, and a volunteer id buys the right to work for nothing.
+   *
+   * Money changes that. An id in a query string is typed by whoever is typing,
+   * so trusting one here would be a claim on somebody else's earnings -- and,
+   * far likelier than theft, a way to hang rubbish on a real person's record.
+   */
+  await seed(3, 400);
+
+  const anon = await read(await ask('/api/job', { search: '?via=paid' }));
+  check('the paid link refuses somebody who is not signed in',
+    anon.status === 401 && anon.body.needsAccount === true,
+    anon.body.reason);
+  check('and says why the account is needed, in terms of what it buys them',
+    /pay|bounce/i.test(anon.body.reason || ''),
+    'an account demanded without a reason reads as a data grab');
+  check('and points at the unpaid version rather than ending there',
+    /volunteer/i.test(anon.body.reason || ''),
+    'somebody who will not sign in should still be able to help');
+
+  /* And a forged id in the link buys nothing, because it is never read. */
+  const forged = await read(await ask('/api/job', { search: '?via=paid&w=NOTTHEIRNAME' }));
+  check('and an id typed into the paid link is ignored entirely',
+    forged.status === 401,
+    'otherwise the link is a claim on another person\'s earnings');
+
+  const touched = await env.DB.prepare(
+    "SELECT COUNT(*) n FROM lawn_jobs WHERE worker = 'NOTTHEIRNAME'"
+  ).first();
+  check('and no lawn is attached to the name it tried to use',
+    Number(touched.n) === 0, 'a refused claim must not leave a trace on somebody');
+}
+
 /* ------------------------------------------------ an empty queue */
 {
   await env.DB.prepare("UPDATE lawn_jobs SET state = 'submitted' WHERE state != 'submitted'").run();

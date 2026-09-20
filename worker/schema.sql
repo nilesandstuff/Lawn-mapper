@@ -38,6 +38,24 @@ CREATE TABLE IF NOT EXISTS users (
   -- The owner's account. Kept as a flag rather than a huge balance so the
   -- ledger below stays honest about what was actually spent.
   unlimited     INTEGER NOT NULL DEFAULT 0,
+  -- WHERE TO SEND 75c A MAP, for somebody who came in through the paid public
+  -- link and traced lawns that were then approved.
+  --
+  -- 'venmo' or 'paypal', and the handle as they typed it. Deliberately NOT
+  -- squeezed through cleanWorker: that strips '@', which turns
+  -- dave@example.com into daveexample.com and leaves the owner guessing where
+  -- the at sign went. A payment address is not an identifier and must survive
+  -- verbatim.
+  --
+  -- ON THE ACCOUNT RATHER THAN IN THE LINK, which was the whole reason this
+  -- went through sign-in. In a URL it would be typed once per device with no
+  -- way to correct a typo, it would sit in every access log the request
+  -- touches, and there would be no second way to reach somebody when a
+  -- payment bounced. Here it is entered once, changeable, and backed by a
+  -- verified email.
+  payout_kind   TEXT,
+  payout_handle TEXT,
+  payout_at     TEXT,
   created_at    TEXT NOT NULL,
   last_seen_at  TEXT
 );

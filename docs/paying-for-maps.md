@@ -24,6 +24,59 @@ for what replaced it.
 
 A paid map never reaches a training run without step 4.
 
+## Four ways in
+
+| Route | Link | Gates | At the end | Paid |
+| --- | --- | --- | --- | --- |
+| crowd | platform appends an id | yes | completion code | by the platform |
+| hired | `?w=jane` | yes, until trusted | running count | by you, hourly |
+| volunteer | `?via=volunteer` | no | running count | nothing |
+| paid link | `?via=paid` | no | running count | 75c per **approved** map |
+
+## The paid public link
+
+`https://lawnmap.nilesandstuff.com/?via=paid`
+
+Same rules as the volunteer link in every respect but one: it needs a sign-in,
+and it pays 75c for each map you approve. **Nothing is promised in advance** —
+that is what makes it safe to leave ungated. A map that is not approved cost
+nobody anything, so there is no committed money for a gate to protect.
+
+**Why it needs an account at all**, which is the question somebody on Reddit
+will reasonably ask:
+
+- the payment address is entered once and follows them to every device
+- they can correct a typo themselves, rather than filing a support request
+  with nobody to file it to
+- there is a verified email to fall back on when a payment bounces
+- they can see which of their maps were approved, instead of taking your word
+  for what they are owed
+
+**The payment address is never in the URL.** It is asked for in the app after
+their first map and stored on the account. In a link it would be re-typed per
+device, uncorrectable, sitting in every access log the request touched — and
+the worker-id cleaner strips `@`, so `dave@example.com` would have arrived as
+`daveexample.com`.
+
+**The worker id comes from the session, not the link.** On every other route
+an id in a URL buys nothing worth forging. Here it would be a claim on somebody
+else's earnings, and — far likelier — a way to hang rubbish on a real person's
+record.
+
+`/mywork.html` is their page: approved, waiting, not accepted, what they have
+earned, and where it goes.
+
+### What to put in the post
+
+> Replace `volunteer` with `paid` in the link and I will pay 75 cents for every
+> map I approve, $5 minimum payout. You will be asked to sign in — one emailed
+> link, no password — so the money has somewhere to go and you can see which of
+> your maps were approved.
+
+Say **approved**, not "accepted" or "submitted". A lawn marked as a hard one is
+not held against anybody and does not pay; somebody who finds that out after
+twenty maps has a fair complaint, and somebody told it up front does not.
+
 ## Two kinds of worker, one queue
 
 **A crowd platform** gives you many anonymous strangers. The gates exist for

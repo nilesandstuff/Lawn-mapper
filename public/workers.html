@@ -60,6 +60,11 @@
   .rate.low  { color: #b3261e; font-weight: 650; }
   .rate.none { color: var(--muted); }
   .waiting   { color: #8a5a00; font-weight: 650; }
+  /* Over the minimum, so actually sendable. Under it, nothing goes. */
+  .due   { color: #1f5b22; font-weight: 650; }
+  .under { color: var(--muted); }
+  .nodest { color: #b3261e; }
+  .pill.paid { background: #e8f0fb; color: #23456e; }
   .totals { font-size: 12.5px; color: var(--muted); margin: 0 0 12px; }
 
   /* The name is the way in to editing, so it has to look like one. */
@@ -138,6 +143,7 @@
           <button type="button" data-kind="crowd">Crowd</button>
           <button type="button" data-kind="hired">Hired</button>
           <button type="button" data-kind="volunteer">Volunteer</button>
+          <button type="button" data-kind="paid">Paid link</button>
         </div>
       </div>
       <div class="pickrow">
@@ -160,6 +166,7 @@
         <button type="button" data-route="crowd">Crowd</button>
         <button type="button" data-route="hired">Hired</button>
         <button type="button" data-route="volunteer">Volunteers</button>
+        <button type="button" data-route="paid">Paid link</button>
         <button type="button" data-route="waiting">Waiting on me</button>
       </div>
       <div class="sheetwrap">
@@ -174,6 +181,7 @@
               <th class="num">Refused</th>
               <th class="num">Passing</th>
               <th class="num">Typical</th>
+              <th class="num">Owed</th>
               <th class="num">Last seen</th>
             </tr>
           </thead>
@@ -191,6 +199,11 @@
         trusted workers and volunteers are not gated at all.</p>
       <p class="sub"><b>Typical</b> is the median time per map, which is the
         number a paid platform judges your reward against.</p>
+      <p class="sub"><b>Owed</b> counts approved maps only — a lawn marked as a
+        hard one is not held against anybody and does not pay. Green means it
+        is over the minimum payout and can actually be sent; grey means it is
+        not there yet. A red note under a name means they have not said where
+        to send it.</p>
     </div>
   </div>
 </div>

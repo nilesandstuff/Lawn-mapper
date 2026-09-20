@@ -5706,7 +5706,7 @@ const MTURK_PREVIEW = 'ASSIGNMENT_ID_NOT_AVAILABLE';
  * for somebody with no lawn open this IS the app, and an × revealing an empty
  * address form behind it is a worker filing a support ticket.
  */
-function jobSheet({ title, why, code = null, note = null, go = null }) {
+function jobSheet({ title, why, code = null, note = null, go = null, link = null }) {
   $('#job-sheet-title').textContent = title;
   $('#job-sheet-why').textContent = why;
   $('#job-code').hidden = !code;
@@ -5717,6 +5717,12 @@ function jobSheet({ title, why, code = null, note = null, go = null }) {
   btn.hidden = !go;
   btn.textContent = go?.label || '';
   btn.onclick = go?.onClick || null;
+
+  const away = $('#job-sheet-link');
+  away.hidden = !link;
+  away.textContent = link?.label || '';
+  if (link) away.href = link.href;
+
   $('#job-sheet').hidden = false;
 }
 
@@ -5821,19 +5827,28 @@ function readJobRequest() {
    * the right to work for free. Everything else is decided by a row the owner
    * wrote. See routeFor in routes-jobs.js.
    */
-  const volunteer = params.get('via') === 'volunteer';
+  const via = params.get('via');
+  const volunteer = via === 'volunteer';
+  /*
+   * The paid link carries no id either, and unlike the volunteer one it must
+   * not invent a name: the id is the account, read from the session by the
+   * server, because it decides who gets paid. See identify() in
+   * routes-jobs.js.
+   */
+  const paid = via === 'paid';
 
-  if (!worker && !volunteer) return null;
+  if (!worker && !volunteer && !paid) return null;
   return {
-    worker: worker ? worker.slice(0, 64) : askHelperName(),
+    worker: worker ? worker.slice(0, 64) : (paid ? null : askHelperName()),
     volunteer,
+    paid,
     preview: params.get('assignmentId') === MTURK_PREVIEW,
   };
 }
 
-async function enterJobMode({ worker, preview, volunteer }) {
+async function enterJobMode({ worker, preview, volunteer, paid }) {
   state.worker = worker;
-  state.jobVia = volunteer ? 'volunteer' : null;
+  state.jobVia = paid ? 'paid' : (volunteer ? 'volunteer' : null);
   document.body.classList.add('job-mode');
 
   if (preview) {
@@ -5900,8 +5915,13 @@ async function claimNextJob() {
   try {
     /* `via` rides along so a volunteer's FIRST claim knows what it is: there
        is no stored row for them until they have done something. */
+    /*
+     * No `w` on the paid route. The server reads that identity from the
+     * session, because it decides who gets paid and a query string is typed
+     * by whoever is typing.
+     */
     const res = await fetch(`/api/job?${new URLSearchParams({
-      w: state.worker,
+      ...(state.worker ? { w: state.worker } : {}),
       ...(state.jobVia ? { via: state.jobVia } : {}),
     })}`);
     status = res.status;
@@ -5939,14 +5959,31 @@ async function claimNextJob() {
              * say the link itself is wrong so they return the task and say
              * so. The reason underneath, from the server, explains it.
              */
-            : (data?.error === 'Unfilled link' || data?.error === 'No worker id')
-                ? 'Something is wrong with this link'
-                : 'No lawn just now',
+            : data?.needsAccount ? 'Sign in to be paid'
+              : (data?.error === 'Unfilled link' || data?.error === 'No worker id')
+                  ? 'Something is wrong with this link'
+                  : 'No lawn just now',
       why: data?.reason || 'There is nothing to hand out at the moment.',
-      /* Waiting is the one refusal that a later visit actually resolves. */
-      go: data?.waiting || data?.wait
-        ? { label: 'Check again', onClick: () => claimNextJob() }
-        : null,
+      /*
+       * Waiting is the one refusal that a later visit actually resolves -- and
+       * the sign-in one is the other, since it is resolved by the button
+       * rather than by time.
+       */
+      go: data?.needsAccount
+        ? {
+          label: 'Sign in',
+          onClick: () => promptSignin({
+            force: true,
+            title: 'Sign in to be paid',
+            why: 'One emailed link, no password. It is how the money reaches '
+              + 'you, how you can change where it goes, and how I can tell you '
+              + 'if a payment bounces. Come back to this link afterwards and '
+              + 'there will be a lawn waiting.',
+          }),
+        }
+        : data?.waiting || data?.wait
+          ? { label: 'Check again', onClick: () => claimNextJob() }
+          : null,
     });
     return;
   }
@@ -6081,6 +6118,63 @@ function roadTip() {
 }
 
 /**
+ * "Where should the money go?" -- asked once, and only once.
+ *
+ * ASKED AFTER A MAP RATHER THAN BEFORE ONE. Before, it is a form standing
+ * between somebody and the thing they came to do, for money they have not
+ * earned and may decide not to bother earning. After their first map they know
+ * what the work is and the question is about something real.
+ *
+ * ONCE, because it is stored on the account. That is the whole reason this
+ * route goes through sign-in: typed in a URL it would be re-entered on every
+ * device, uncorrectable after a typo, and sitting in every access log the
+ * request touched. Here it follows them, and they can change it.
+ *
+ * Skipping costs them nothing today. The maps are recorded against the account
+ * either way, so a destination added next week still gets paid for work done
+ * this one -- which is what makes it safe to let somebody say "not now".
+ */
+async function askPayout() {
+  let already = null;
+  try {
+    const res = await fetch('/api/auth/payout');
+    if (res.ok) already = await res.json();
+  } catch { /* offline: ask again next time rather than blocking the queue */ }
+  if (already?.handle) return;
+
+  const typed = window.prompt(
+    'Where should payments go? Enter your Venmo username or your PayPal email '
+    + '— you can change it later, and maps already sent still count.',
+    ''
+  );
+  const handle = (typed || '').trim();
+  if (!handle) return;
+
+  /*
+   * VENMO OR PAYPAL, GUESSED FROM THE SHAPE and never silently. An address
+   * with an @ and a dot after it is an email, which Venmo usernames are not.
+   * The guess is shown back to them, because getting this wrong means the
+   * money goes nowhere and the only person who can catch it is the one
+   * reading the confirmation.
+   */
+  const kind = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(handle) ? 'paypal' : 'venmo';
+
+  try {
+    const res = await fetch('/api/auth/payout', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ kind, handle }),
+    });
+    if (!res.ok) throw new Error(String(res.status));
+    setStatus(`Saved — ${kind === 'paypal' ? 'PayPal' : 'Venmo'}: ${handle}. `
+      + 'Change it any time on your work page.');
+  } catch {
+    setStatus('That did not save. You can add it later from your work page — '
+      + 'the maps still count.', 'warn');
+  }
+}
+
+/**
  * Send it, and hand back the code.
  *
  * The map goes into the corpus by exactly the same road every other finished
@@ -6168,7 +6262,24 @@ async function submitJob() {
         + 'a few at a time while that happens; you are paid either way.'
       : null,
     go: { label: 'Trace another lawn', onClick: () => claimNextJob() },
+    /* A paid tracer needs somewhere to check what was approved and change
+       where the money goes. Nobody else has a page to be sent to. */
+    link: data.route === 'paid' ? { href: '/mywork.html', label: 'Your maps and payments →' } : null,
   });
+
+  /*
+   * AND ASKED WHERE THE MONEY GOES, ONCE, after the first map rather than
+   * before it.
+   *
+   * Before it would be a form between somebody and the thing they came to do,
+   * for money they have not earned yet and may decide not to bother earning.
+   * After the first map they know what the work is, and the question is about
+   * something real.
+   *
+   * Never for the other routes: a volunteer is not owed anything, and crowd
+   * and hired are paid somewhere else entirely.
+   */
+  if (data.route === 'paid') await askPayout();
 }
 
 /**

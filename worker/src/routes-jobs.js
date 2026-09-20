@@ -17,9 +17,11 @@
  */
 
 import { recordFinished, storeImage } from './corpus.js';
+import { currentUser } from './auth.js';
 import {
   claimVerdict, submissionVerdict, cleanWorker, looksUnsubstituted, staleBefore,
   dayStart, cleanRoute, routeFromLink, needsCode, GATES, FREE_DETECTS_PER_JOB,
+  PAID_RATE_CENTS,
 } from './jobs.js';
 
 /**
@@ -142,6 +144,52 @@ async function routeFor(env, url, worker) {
 }
 
 /**
+ * WHO IS THIS, and on the paid route the answer comes from the SESSION.
+ *
+ * Every other route takes the worker id out of the request, because there is
+ * nothing there worth forging: a crowd id is issued by a platform that will
+ * not pay a stranger for it, and a volunteer id buys the right to work for
+ * nothing.
+ *
+ * Money changes that. An id in a query string can be typed by anybody, so a
+ * worker id would be a claim on somebody else's earnings -- and, more likely
+ * than theft, a way to attach rubbish to a real person's record. The session
+ * cookie is the one thing here that was actually proved, by a link sent to an
+ * address that received it.
+ *
+ * It is also what makes the rest of the promise keepable: a stable identity
+ * across devices, a payout destination that can be corrected, and a verified
+ * address to fall back on when a payment bounces.
+ */
+async function identify(request, url, env, ctx, given) {
+  const asked = routeFromLink(url.searchParams.get('via'));
+
+  if (asked === 'paid') {
+    const me = await currentUser(request, env, ctx);
+    if (!me) {
+      return {
+        refusal: {
+          error: 'Sign in first',
+          needsAccount: true,
+          reason: 'Paid tracing needs an account. It is one emailed link and no '
+            + 'password — it is how the 75c a map reaches you, how you can '
+            + 'change where it goes, and how I can tell you if a payment '
+            + 'bounces. If you would rather not, the same work is open '
+            + 'unpaid: change "paid" to "volunteer" in the link.',
+        },
+      };
+    }
+    /* The account's own id. Stable across every device they sign in on, which
+       is the whole reason this route goes through sign-in at all. */
+    return { worker: me.id, route: 'paid', account: me };
+  }
+
+  const worker = cleanWorker(given);
+  if (!worker) return { refusal: null };
+  return { worker, route: await routeFor(env, url, worker) };
+}
+
+/**
  * Put abandoned claims back.
  *
  * Run before every claim rather than on a timer, because a Worker has no
@@ -156,6 +204,142 @@ async function releaseStale(env, now) {
   ).bind(staleBefore(now)).run();
 }
 
+/**
+ * Hand out a lawn to somebody already identified.
+ *
+ * Split out because there are two ways to BE identified -- an id in the link,
+ * or a session on the paid route -- and exactly one way to be given a lawn.
+ * Two copies of the gate arithmetic would be two chances for the rules to
+ * disagree about the same person.
+ */
+async function claimFor(worker, route, env, now, json, origin) {
+  await releaseStale(env, now);
+
+  /*
+   * ALREADY HOLDING ONE? HAND IT BACK, rather than refusing. Somebody who
+   * closed the tab and reopened the link is the common case by far, and
+   * telling them "you already have a lawn open" while not showing them the
+   * lawn is a dead end that ends in an abandoned claim.
+   */
+  const open = await env.DB.prepare(
+    `SELECT * FROM lawn_jobs WHERE worker = ?1 AND state = 'claimed'
+      ORDER BY claimed_at ASC LIMIT 1`
+  ).bind(worker).first();
+  if (open) {
+    /* The route travels with the resume too: without it a crowd worker
+       sees no completion code on the path they take most often, which is
+       reopening the link after closing the tab. */
+    return json({
+      job: jobForWorker(open), prompts: PROMPTS, resumed: true, route,
+    }, 200, origin);
+  }
+
+  /*
+   * Everything the limits need, in one pass: today's count for the daily
+   * cap, the whole history for the gates, and how the reviewed ones went.
+   *
+   * A PASS IS 'kept' OR 'excused', and the sum has to say so here as well as
+   * in jobs.js. An excused map is one the owner would not keep from a lawn
+   * that was genuinely hard -- it is thrown away and it still counts for the
+   * worker, because who draws the awkward lawns is pure luck.
+   */
+  const stats = await env.DB.prepare(
+    `SELECT
+       COUNT(*) AS ever,
+       SUM(CASE WHEN submitted_at >= ?2 THEN 1 ELSE 0 END) AS today,
+       SUM(CASE WHEN state IN ('kept', 'excused') THEN 1 ELSE 0 END) AS passed,
+       SUM(CASE WHEN state = 'refused' THEN 1 ELSE 0 END) AS refused,
+       SUM(CASE WHEN state = 'kept' THEN 1 ELSE 0 END) AS kept,
+       MAX(submitted_at) AS last
+     FROM lawn_jobs
+    WHERE worker = ?1 AND submitted_at IS NOT NULL`
+  ).bind(worker, dayStart(now)).first();
+
+  /*
+   * HAS THE OWNER ALREADY DECIDED ABOUT THIS PERSON?
+   *
+   * A row exists only for somebody the owner has said something about --
+   * usually one or two people hired directly and paid by the hour, for whom
+   * the gates below are a ceiling on work that has already been bought. No
+   * row is the ordinary case and means "a stranger", which is what
+   * everything else here is written for.
+   */
+  const known = await env.DB.prepare(
+    'SELECT trusted FROM lawn_workers WHERE worker = ?1'
+  ).bind(worker).first().catch(() => null);
+
+  const ever = Number(stats?.ever || 0);
+  const passed = Number(stats?.passed || 0);
+  const kept = Number(stats?.kept || 0);
+  const verdict = claimVerdict({
+    held: 0,
+    submittedToday: Number(stats?.today || 0),
+    submittedEver: ever,
+    passed,
+    refused: Number(stats?.refused || 0),
+    lastSubmitAt: stats?.last || null,
+    trusted: Number(known?.trusted || 0) === 1,
+    route,
+    now,
+  });
+  if (!verdict.ok) {
+    return json({
+      error: 'Not yet',
+      reason: verdict.reason,
+      wait: verdict.wait || 0,
+      /* Two different shapes of "no", and the page says different things
+         about them: one is a wait, the other is the end of the road. */
+      waiting: Boolean(verdict.waiting),
+      stopped: Boolean(verdict.stopped),
+    }, 429, origin);
+  }
+
+  /*
+   * THE GOOD NEWS, WHEN THERE IS ANY.
+   *
+   * Nothing here can push a message to somebody -- there is no address and
+   * there should not be one. What it can do is tell them the moment they
+   * come back, which is when they are looking anyway. A worker who was held
+   * at a gate yesterday and returns to "your maps were kept, carry on" is a
+   * worker who keeps coming back.
+   *
+   * It counts KEPT maps rather than passes, because "3 of your maps have
+   * been kept" has to be true. Telling somebody an excused map was kept
+   * would be a small lie that the owner's review queue contradicts.
+   *
+   * The platform does the other half: approving an assignment notifies them
+   * that they have been paid.
+   */
+  const cleared = kept > 0 && ever >= GATES[0]
+    ? `${kept} of your maps have been kept — thank you. There is more of the `
+      + 'batch open to you now.'
+    : null;
+
+  /*
+   * Claimed in ONE statement, so two workers arriving together cannot be
+   * handed the same lawn. A read-then-write would have a gap between them,
+   * and the gap is exactly where a crowd platform puts forty people.
+   */
+  const claimedAt = new Date(now).toISOString();
+  const taken = await env.DB.prepare(
+    `UPDATE lawn_jobs
+        SET state = 'claimed', worker = ?1, claimed_at = ?2
+      WHERE id = (SELECT id FROM lawn_jobs WHERE state = 'approved'
+                   ORDER BY created_at ASC LIMIT 1)
+    RETURNING *`
+  ).bind(worker, claimedAt).first();
+
+  if (!taken) {
+    return json({
+      error: 'Nothing left',
+      reason: 'Every lawn in this batch has been taken. Thank you — there '
+        + 'is nothing more to do here today.',
+    }, 404, origin);
+  }
+
+  return json({ job: jobForWorker(taken), prompts: PROMPTS, cleared, route }, 200, origin);
+}
+
 export async function handleJobs(request, url, env, origin, ctx, json) {
   if (!env.DB) return json({ error: 'No database' }, 503, origin);
 
@@ -164,6 +348,19 @@ export async function handleJobs(request, url, env, origin, ctx, json) {
 
   /* ------------------------------------------------ give me a lawn */
   if (path === '' || path === 'next') {
+    /*
+     * THE PAID ROUTE IS IDENTIFIED BEFORE ANYTHING ELSE, because on that one
+     * the worker id comes from the session rather than from the link -- see
+     * identify(). Everything below this block is about an id that arrived in
+     * a URL, which a paid worker does not have.
+     */
+    const asPaid = routeFromLink(url.searchParams.get('via')) === 'paid';
+    if (asPaid) {
+      const who = await identify(request, url, env, ctx);
+      if (who.refusal) return json(who.refusal, 401, origin);
+      return claimFor(who.worker, who.route, env, now, json, origin);
+    }
+
     const raw = url.searchParams.get('w');
     /*
      * THE TEMPLATE, UNFILLED, IS ITS OWN FAULT AND HAS ITS OWN MESSAGE.
@@ -194,142 +391,16 @@ export async function handleJobs(request, url, env, origin, ctx, json) {
       }, 400, origin);
     }
 
-    await releaseStale(env, now);
-
-    /*
-     * ALREADY HOLDING ONE? HAND IT BACK, rather than refusing. Somebody who
-     * closed the tab and reopened the link is the common case by far, and
-     * telling them "you already have a lawn open" while not showing them the
-     * lawn is a dead end that ends in an abandoned claim.
-     */
-    const open = await env.DB.prepare(
-      `SELECT * FROM lawn_jobs WHERE worker = ?1 AND state = 'claimed'
-        ORDER BY claimed_at ASC LIMIT 1`
-    ).bind(worker).first();
-    if (open) {
-      /*
-       * A RESUME HAPPENS BEFORE THE ROUTE IS WORKED OUT, so it is worked out
-       * here too. Handing back a lawn without saying which route somebody is
-       * on would show a crowd worker no completion code on the one path they
-       * are most likely to take -- reopening a link after closing the tab.
-       */
-      const resumedRoute = await routeFor(env, url, worker);
-      return json({
-        job: jobForWorker(open), prompts: PROMPTS, resumed: true, route: resumedRoute,
-      }, 200, origin);
-    }
-
-    /*
-     * Everything the limits need, in one pass: today's count for the daily
-     * cap, the whole history for the gates, and how the reviewed ones went.
-     *
-     * A PASS IS 'kept' OR 'excused', and the sum has to say so here as well as
-     * in jobs.js. An excused map is one the owner would not keep from a lawn
-     * that was genuinely hard -- it is thrown away and it still counts for the
-     * worker, because who draws the awkward lawns is pure luck.
-     */
-    const stats = await env.DB.prepare(
-      `SELECT
-         COUNT(*) AS ever,
-         SUM(CASE WHEN submitted_at >= ?2 THEN 1 ELSE 0 END) AS today,
-         SUM(CASE WHEN state IN ('kept', 'excused') THEN 1 ELSE 0 END) AS passed,
-         SUM(CASE WHEN state = 'refused' THEN 1 ELSE 0 END) AS refused,
-         SUM(CASE WHEN state = 'kept' THEN 1 ELSE 0 END) AS kept,
-         MAX(submitted_at) AS last
-       FROM lawn_jobs
-      WHERE worker = ?1 AND submitted_at IS NOT NULL`
-    ).bind(worker, dayStart(now)).first();
-
-    /*
-     * HAS THE OWNER ALREADY DECIDED ABOUT THIS PERSON?
-     *
-     * A row exists only for somebody the owner has said something about --
-     * usually one or two people hired directly and paid by the hour, for whom
-     * the gates below are a ceiling on work that has already been bought. No
-     * row is the ordinary case and means "a stranger", which is what
-     * everything else here is written for.
-     */
-    const known = await env.DB.prepare(
-      'SELECT trusted FROM lawn_workers WHERE worker = ?1'
-    ).bind(worker).first().catch(() => null);
     const route = await routeFor(env, url, worker);
-
-    const ever = Number(stats?.ever || 0);
-    const passed = Number(stats?.passed || 0);
-    const kept = Number(stats?.kept || 0);
-    const verdict = claimVerdict({
-      held: 0,
-      submittedToday: Number(stats?.today || 0),
-      submittedEver: ever,
-      passed,
-      refused: Number(stats?.refused || 0),
-      lastSubmitAt: stats?.last || null,
-      trusted: Number(known?.trusted || 0) === 1,
-      route,
-      now,
-    });
-    if (!verdict.ok) {
-      return json({
-        error: 'Not yet',
-        reason: verdict.reason,
-        wait: verdict.wait || 0,
-        /* Two different shapes of "no", and the page says different things
-           about them: one is a wait, the other is the end of the road. */
-        waiting: Boolean(verdict.waiting),
-        stopped: Boolean(verdict.stopped),
-      }, 429, origin);
-    }
-
-    /*
-     * THE GOOD NEWS, WHEN THERE IS ANY.
-     *
-     * Nothing here can push a message to somebody -- there is no address and
-     * there should not be one. What it can do is tell them the moment they
-     * come back, which is when they are looking anyway. A worker who was held
-     * at a gate yesterday and returns to "your maps were kept, carry on" is a
-     * worker who keeps coming back.
-     *
-     * It counts KEPT maps rather than passes, because "3 of your maps have
-     * been kept" has to be true. Telling somebody an excused map was kept
-     * would be a small lie that the owner's review queue contradicts.
-     *
-     * The platform does the other half: approving an assignment notifies them
-     * that they have been paid.
-     */
-    const cleared = kept > 0 && ever >= GATES[0]
-      ? `${kept} of your maps have been kept — thank you. There is more of the `
-        + 'batch open to you now.'
-      : null;
-
-    /*
-     * Claimed in ONE statement, so two workers arriving together cannot be
-     * handed the same lawn. A read-then-write would have a gap between them,
-     * and the gap is exactly where a crowd platform puts forty people.
-     */
-    const claimedAt = new Date(now).toISOString();
-    const taken = await env.DB.prepare(
-      `UPDATE lawn_jobs
-          SET state = 'claimed', worker = ?1, claimed_at = ?2
-        WHERE id = (SELECT id FROM lawn_jobs WHERE state = 'approved'
-                     ORDER BY created_at ASC LIMIT 1)
-      RETURNING *`
-    ).bind(worker, claimedAt).first();
-
-    if (!taken) {
-      return json({
-        error: 'Nothing left',
-        reason: 'Every lawn in this batch has been taken. Thank you — there '
-          + 'is nothing more to do here today.',
-      }, 404, origin);
-    }
-
-    return json({ job: jobForWorker(taken), prompts: PROMPTS, cleared, route }, 200, origin);
+    return claimFor(worker, route, env, now, json, origin);
   }
 
   /* --------------------------------------- I could not do this one */
   if (path === 'skip' && request.method === 'POST') {
     const body = await request.json().catch(() => ({}));
-    const worker = cleanWorker(body?.worker);
+    const who = await identify(request, url, env, ctx, body?.worker);
+    if (who.refusal) return json(who.refusal, 401, origin);
+    const worker = who.worker;
     const id = String(body?.id || '');
     if (!worker || !id) return json({ error: 'Need a worker and a job' }, 400, origin);
 
@@ -377,7 +448,9 @@ export async function handleJobs(request, url, env, origin, ctx, json) {
       return json({ error: 'Invalid JSON' }, 400, origin);
     }
 
-    const worker = cleanWorker(body?.worker);
+    const who = await identify(request, url, env, ctx, body?.worker);
+    if (who.refusal) return json(who.refusal, 401, origin);
+    const worker = who.worker;
     const id = String(body?.id || '');
     if (!worker || !id) return json({ error: 'Need a worker and a job' }, 400, origin);
 
@@ -395,7 +468,7 @@ export async function handleJobs(request, url, env, origin, ctx, json) {
     const known = await env.DB.prepare(
       'SELECT trusted FROM lawn_workers WHERE worker = ?1'
     ).bind(worker).first().catch(() => null);
-    const route = await routeFor(env, url, worker);
+    const route = who.route;
 
     const verdict = submissionVerdict({
       claimedAt: row.claimed_at,
@@ -483,7 +556,19 @@ export async function handleJobs(request, url, env, origin, ctx, json) {
             ? `Sent — thank you. That is ${today} ${today === 1 ? 'lawn' : 'lawns'} `
               + 'you have mapped, and every one of them goes into training a '
               + 'detector that is currently not good enough.'
-            : `Sent. That is ${today} today.`,
+            : route === 'paid'
+              /*
+               * SAID PLAINLY, EVERY TIME. Nothing was promised in advance on
+               * this route -- 75c is owed for an APPROVED map and nothing at
+               * all for one that is not -- so "sent" must not be allowed to
+               * read as "earned". Somebody who discovers that distinction
+               * after twenty maps has a fair complaint; somebody told it on
+               * every single one cannot.
+               */
+              ? `Sent. That is ${today} today. Each one that is approved earns `
+                + `${PAID_RATE_CENTS}c — they are checked by hand, usually `
+                + 'within a day.'
+              : `Sent. That is ${today} today.`,
         }),
     }, 200, origin);
   }

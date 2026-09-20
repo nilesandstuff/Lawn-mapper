@@ -17,6 +17,9 @@ import {
 } from './db.js';
 import { mailConfigured } from './mail.js';
 import { limits } from './limits.js';
+// The paid route's rate and the shape of a payout destination. Shared with the
+// queue so the browser cannot be told one number and the owner another.
+import { PAYOUT_KINDS, cleanPayoutHandle, PAID_RATE_CENTS, MIN_PAYOUT_CENTS } from './jobs.js';
 
 export const isAuthPath = (pathname) => pathname.startsWith('/api/auth/');
 
@@ -97,6 +100,110 @@ export async function handleAuth(request, env, url, origin, ctx, json) {
         'Cache-Control': 'no-store',
       },
     });
+  }
+
+  /* ------------------------------------------- where to send what is owed */
+  /*
+   * A PAYMENT ADDRESS IS NOT AN IDENTIFIER, and everything about this route
+   * follows from that.
+   *
+   * It lives on the account rather than in the link, which is the whole reason
+   * the paid route goes through sign-in. In a URL it would be typed once per
+   * device with no way to correct a typo, it would sit in every access log the
+   * request touches, and there would be no second way to reach somebody when a
+   * payment bounced.
+   *
+   * It is kept EXACTLY as typed -- see cleanPayoutHandle, which removes
+   * control characters and nothing else. The cleaner that guards a worker id
+   * strips '@', which would turn dave@example.com into daveexample.com and
+   * leave the owner guessing where the at sign went.
+   */
+  if (path === 'payout') {
+    const user = await currentUser(request, env, ctx);
+    if (!user) return json({ error: 'Sign in first' }, 401, origin);
+
+    if (request.method === 'POST') {
+      const body = await request.json().catch(() => ({}));
+      const kind = PAYOUT_KINDS.includes(String(body?.kind || '')) ? String(body.kind) : null;
+      const handle = cleanPayoutHandle(body?.handle);
+      if (!kind || !handle) {
+        return json({
+          error: 'Need a destination',
+          reason: 'Pick Venmo or PayPal and give the username or email that '
+            + 'goes with it.',
+        }, 400, origin);
+      }
+
+      await env.DB.prepare(
+        'UPDATE users SET payout_kind = ?2, payout_handle = ?3, payout_at = ?4 WHERE id = ?1'
+      ).bind(user.id, kind, handle, new Date().toISOString()).run();
+
+      return json({ ok: true, kind, handle }, 200, origin);
+    }
+
+    return json({
+      kind: user.payout_kind || null,
+      handle: user.payout_handle || null,
+    }, 200, origin);
+  }
+
+  /* --------------------------------------------- how my own tracing is going */
+  /*
+   * SCOPED TO THE SIGNED-IN ACCOUNT AND NOTHING ELSE. Every row here is read
+   * by `worker = user.id`, which is the id the paid route takes from the
+   * session rather than from the request -- so there is no parameter to
+   * tamper with and no way to ask about somebody else.
+   *
+   * It exists because "did my map get approved" is otherwise unanswerable from
+   * the worker's side, and a person who cannot see that has to take the
+   * owner's word for what they are owed.
+   */
+  if (path === 'mywork') {
+    const user = await currentUser(request, env, ctx);
+    if (!user) return json({ error: 'Sign in first' }, 401, origin);
+
+    const totals = await env.DB.prepare(
+      `SELECT
+         COUNT(*)                                                AS sent,
+         SUM(CASE WHEN state = 'submitted' THEN 1 ELSE 0 END)    AS waiting,
+         SUM(CASE WHEN state = 'kept'      THEN 1 ELSE 0 END)    AS approved,
+         SUM(CASE WHEN state = 'excused'   THEN 1 ELSE 0 END)    AS excused,
+         SUM(CASE WHEN state = 'refused'   THEN 1 ELSE 0 END)    AS refused
+       FROM lawn_jobs
+      WHERE worker = ?1 AND submitted_at IS NOT NULL`
+    ).bind(user.id).first();
+
+    const recent = await env.DB.prepare(
+      `SELECT id, county, state, submitted_at, decided_at
+         FROM lawn_jobs
+        WHERE worker = ?1 AND submitted_at IS NOT NULL
+        ORDER BY submitted_at DESC LIMIT 40`
+    ).bind(user.id).all();
+
+    /*
+     * ONLY APPROVED MAPS EARN, and the arithmetic is done here rather than in
+     * the browser so there is one answer to "what am I owed" rather than two
+     * that can disagree. An excused map -- "not good enough, but a hard lawn"
+     * -- is explicitly not an approval and pays nothing.
+     */
+    const approved = Number(totals?.approved || 0);
+    return json({
+      sent: Number(totals?.sent || 0),
+      waiting: Number(totals?.waiting || 0),
+      approved,
+      excused: Number(totals?.excused || 0),
+      refused: Number(totals?.refused || 0),
+      rateCents: PAID_RATE_CENTS,
+      earnedCents: approved * PAID_RATE_CENTS,
+      minPayoutCents: MIN_PAYOUT_CENTS,
+      payout: { kind: user.payout_kind || null, handle: user.payout_handle || null },
+      maps: (recent.results || []).map((r) => ({
+        county: r.county || null,
+        state: r.state,
+        submittedAt: r.submitted_at,
+        decidedAt: r.decided_at || null,
+      })),
+    }, 200, origin);
   }
 
   /* ------------------------------------------------- email: ask for a link */

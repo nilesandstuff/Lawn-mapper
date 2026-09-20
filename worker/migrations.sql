@@ -152,3 +152,19 @@ ALTER TABLE lawn_jobs ADD COLUMN seconds INTEGER;
 -- lawn_workers shipped one deploy before this column existed, so the CREATE in
 -- schema.sql reaches new databases only.
 ALTER TABLE lawn_workers ADD COLUMN kind TEXT NOT NULL DEFAULT 'crowd';
+
+-- Where to send 75c a map, for somebody who came in through the paid public
+-- link and traced lawns that were then approved.
+--
+-- On the account rather than in the link, which is the whole reason the paid
+-- route goes through sign-in: in a URL a payment address is typed once per
+-- device with no way to correct a typo, it sits in every access log the
+-- request touches, and there is no second way to reach somebody when a
+-- payment bounces.
+--
+-- NOT cleaned the way a worker id is. cleanWorker strips '@', which turns
+-- dave@example.com into daveexample.com; a payment address has to survive
+-- verbatim. `users` shipped long ago, so the CREATE reaches new databases only.
+ALTER TABLE users ADD COLUMN payout_kind TEXT;
+ALTER TABLE users ADD COLUMN payout_handle TEXT;
+ALTER TABLE users ADD COLUMN payout_at TEXT;

@@ -1669,6 +1669,43 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
     fresh.kind === 'crowd' && fresh.trusted === false,
     `${fresh.kind}, trusted=${fresh.trusted}`);
 
+  /*
+   * WHAT SETTLING UP NEEDS, on the page where somebody would settle up.
+   *
+   * A paid tracer's worker id IS their account id -- that route reads identity
+   * from the session rather than from a link -- so the account is joinable and
+   * carries the two things the owner actually needs: where to send the money,
+   * and a verified address to use when it bounces.
+   */
+  const payee = await findOrCreateUser(env, {
+    email: 'tracer@b.com', provider: 'email', subject: 'tr',
+  });
+  await env.DB.prepare(
+    "UPDATE users SET payout_kind = 'venmo', payout_handle = '@tracer' WHERE id = ?1"
+  ).bind(payee.id).run();
+  for (const [i, state] of ['kept', 'kept', 'excused', 'submitted'].entries()) {
+    await env.DB.prepare(
+      `INSERT INTO lawn_jobs (id, lng, lat, state, worker, submitted_at, created_at)
+       VALUES (?1, -80, 40, ?2, ?3, '2026-09-19T10:00:00Z', '2026-09-19T09:00:00Z')`
+    ).bind(`pay-${i}`, state, payee.id).run();
+  }
+
+  const paid = (await ask(env, ownerToken, 'workers')).body
+    .workers.find((w) => w.worker === payee.id);
+  check('a paid tracer brings their payout destination and email with them',
+    paid.payout?.handle === '@tracer' && paid.email === 'tracer@b.com',
+    JSON.stringify({ payout: paid.payout, email: paid.email }));
+
+  /*
+   * AND ONLY APPROVED MAPS ARE OWED FOR. An excused one counts as a pass at a
+   * gate and is explicitly not an approval -- the owner's screen has to agree
+   * with the worker's, which computes the same way in routes-auth.js.
+   */
+  check('and is owed for approved maps only',
+    paid.owedCents === paid.kept * 75 && paid.excused === 1,
+    `${paid.owedCents}c for ${paid.kept} kept, with ${paid.excused} excused `
+    + 'paying nothing');
+
   check('and a verdict that is not one of the three is refused',
     (await ask(env, ownerToken, 'review-lawn',
       { method: 'POST', body: { id: 'job-0003-aaaa-4bbb-8ccc-dddddddddddd', verdict: 'approved' } }

@@ -25,7 +25,9 @@ import {
   publicUser, isAdminEmail, welcomeCredits, hash, newSecret, timingSafeEqual,
   accountsEnabled, sweepExpired, dailyState, setDailyLimit,
 } from '../worker/src/db.js';
+import { handleAuth } from '../worker/src/routes-auth.js';
 import {
+  SESSION_COOKIE,
   safeNext, looksLikeEmail, readCookie, sessionCookie, beginMagicLink,
   finishMagicLink,
 } from '../worker/src/auth.js';
@@ -606,6 +608,106 @@ const rows = async (e, sql, ...args) => (await e.DB.prepare(sql).bind(...args).a
   check('comparing secrets does not leak how much was right',
     timingSafeEqual('abc', 'abc') && !timingSafeEqual('abc', 'abd')
     && !timingSafeEqual('abc', 'abcd'));
+}
+
+
+/* ---------------------------------------- what a paid tracer is owed */
+{
+  /*
+   * THE PAID ROUTE'S TWO PROMISES, both of which need an account behind them:
+   * somewhere to send money that can be CORRECTED, and an answer to "did my
+   * map get approved" that does not require taking somebody's word for it.
+   */
+  const env = { DB: testDb(), ADMIN_EMAILS: '' };
+  const me = await findOrCreateUser(env, {
+    email: 'tracer@example.com', provider: 'email', subject: 't1',
+  });
+  const token = (await createSession(env, me.id)).token;
+
+  const ask = async (path, { method = 'GET', body = null, auth = true } = {}) => {
+    const url = new URL(`https://site.test/api/auth/${path}`);
+    const res = await handleAuth(new Request(url, {
+      method,
+      headers: {
+        Cookie: auth ? `${SESSION_COOKIE}=${token}` : '',
+        ...(body ? { 'Content-Type': 'application/json' } : {}),
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    }), env, url, '', { waitUntil() {} },
+    (data, status) => new Response(JSON.stringify(data), { status }));
+    return { status: res.status, body: await res.json() };
+  };
+
+  check('neither page is readable signed out',
+    (await ask('mywork', { auth: false })).status === 401
+    && (await ask('payout', { auth: false })).status === 401,
+    'both are about one person and their money');
+
+  /*
+   * A PAYMENT ADDRESS IS KEPT EXACTLY AS TYPED. The cleaner that guards a
+   * worker id strips '@', which would turn this into daveexample.com and leave
+   * the owner guessing where the at sign went.
+   */
+  const saved = await ask('payout', {
+    method: 'POST', body: { kind: 'paypal', handle: 'Dave.Smith@example.com' },
+  });
+  check('a payout address survives the round trip unmangled',
+    saved.body.ok && (await ask('payout')).body.handle === 'Dave.Smith@example.com',
+    (await ask('payout')).body.handle);
+
+  check('and can be changed, which is half the reason for the account',
+    (await ask('payout', { method: 'POST', body: { kind: 'venmo', handle: '@dave' } })).body.ok
+    && (await ask('payout')).body.kind === 'venmo',
+    'a typo somebody cannot fix is a support request with no support');
+
+  check('and a destination that is neither is refused',
+    (await ask('payout', { method: 'POST', body: { kind: 'cash', handle: 'x' } })).status === 400,
+    'money sent nowhere is worse than money not sent');
+
+  /*
+   * AND THE EARNINGS. Only APPROVED maps pay: an excused one -- "not good
+   * enough, but a hard lawn" -- is explicitly not an approval, so it counts
+   * for nothing here even though it counts as a pass at a gate.
+   */
+  const lawn = async (id, state) => env.DB.prepare(
+    `INSERT INTO lawn_jobs (id, lng, lat, county, state, worker, submitted_at, created_at)
+     VALUES (?1, -80, 40, 'Testshire', ?2, ?3, '2026-09-19T10:00:00Z', '2026-09-19T09:00:00Z')`
+  ).bind(id, state, me.id).run();
+
+  await lawn('p1', 'kept');
+  await lawn('p2', 'kept');
+  await lawn('p3', 'excused');
+  await lawn('p4', 'refused');
+  await lawn('p5', 'submitted');
+
+  /* Somebody else's work, to prove the scoping. */
+  const them = await findOrCreateUser(env, {
+    email: 'other@example.com', provider: 'email', subject: 't2',
+  });
+  await env.DB.prepare(
+    `INSERT INTO lawn_jobs (id, lng, lat, state, worker, submitted_at, created_at)
+     VALUES ('x1', -80, 40, 'kept', ?1, '2026-09-19T10:00:00Z', '2026-09-19T09:00:00Z')`
+  ).bind(them.id).run();
+
+  const mine = (await ask('mywork')).body;
+  check('the tally counts every outcome apart',
+    mine.sent === 5 && mine.approved === 2 && mine.excused === 1
+    && mine.refused === 1 && mine.waiting === 1,
+    JSON.stringify(mine).slice(0, 140));
+
+  check('and only approved maps earn',
+    mine.earnedCents === 2 * mine.rateCents,
+    `${mine.earnedCents}c from ${mine.approved} approved -- an excused map is `
+    + 'not an approval, and somebody who learns that after twenty maps has a '
+    + 'fair complaint');
+
+  check('and it is scoped to the signed-in account and nothing else',
+    mine.sent === 5 && !JSON.stringify(mine).includes('x1'),
+    "somebody else's kept map is in the same table and must not be counted");
+
+  check('and the payout destination travels with it',
+    mine.payout.kind === 'venmo' && mine.payout.handle === '@dave',
+    JSON.stringify(mine.payout));
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);

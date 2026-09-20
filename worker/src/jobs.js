@@ -102,7 +102,7 @@ export const countsAsPass = (outcome) => outcome === 'kept' || outcome === 'excu
 export const CLAIM_EXPIRY = HOUR;
 
 /**
- * THE THREE WAYS SOMEBODY ARRIVES HERE, and what each of them is owed.
+ * THE FOUR WAYS SOMEBODY ARRIVES HERE, and what each of them is owed.
  *
  *   crowd      A paid stranger from a platform. Everything in this file was
  *              written for them: they are unknown, numerous, and being paid by
@@ -119,15 +119,78 @@ export const CLAIM_EXPIRY = HOUR;
  *              code, no gates, no floor. Probation on a person doing you a
  *              favour is an insult, and a timer on unpaid work is worse: the
  *              only thing it can achieve is turning a good deed into a
- *              refusal. The daily cap stays, and it is the only thing that
- *              does -- not against them, but because one shared public link is
- *              the one place a single bad actor could flood the queue.
+ *              refusal.
+ *
+ *   paid       The same public link, with 75c an APPROVED map attached. The
+ *              rules are the volunteer's rules exactly, and that is the point:
+ *              nothing was promised in advance, so an unapproved map costs
+ *              nobody anything and there is no committed money for a gate to
+ *              protect. What it adds is a sign-in, because money needs a
+ *              stable identity, somewhere to send it that can be corrected,
+ *              and a verified address to fall back on when a payment bounces.
+ *
+ * The daily cap stays on the last two, and it is the only thing that does --
+ * not against anybody, but because a link posted in public is the one place a
+ * single bad actor could flood the queue.
  */
-export const ROUTES = ['crowd', 'hired', 'volunteer'];
+export const ROUTES = ['crowd', 'hired', 'volunteer', 'paid'];
+
+/**
+ * THE TWO ROUTES THAT CAME IN THROUGH A PUBLIC LINK, and what they have in
+ * common that matters more than what separates them.
+ *
+ * Nobody was promised anything up front on either. A volunteer is doing a
+ * favour; somebody on the paid link is owed 75c for each map that is APPROVED
+ * and nothing at all for one that is not. That is the opposite of a crowd
+ * platform, where accepting the task is the promise and refusing to pay
+ * afterwards is the thing that gets a requester written about.
+ *
+ * So neither gets the gates, and neither gets the time floor. The gates exist
+ * to decide whether to keep spending money on a stranger, and there is no
+ * committed money here to protect: an unapproved map costs nothing. The daily
+ * cap stays on both, and it is the only thing that does -- not against anybody,
+ * but because a link posted in public is the one place a single bad actor
+ * could empty the queue into the review pile in an afternoon.
+ */
+export const isOpenLink = (route) => route === 'volunteer' || route === 'paid';
 export const cleanRoute = (raw) => (ROUTES.includes(String(raw || '')) ? String(raw) : 'crowd');
 
 /** Does this route paste a code into something? Only a platform does. */
 export const needsCode = (route) => cleanRoute(route) === 'crowd';
+
+/**
+ * What an approved map is worth, and the smallest payment worth sending.
+ *
+ * Only APPROVED maps earn. An excused one -- "not good enough, but a hard
+ * lawn" -- counts as a pass at a gate and is explicitly not an approval, so it
+ * pays nothing. That has to be said on screen before anybody starts rather
+ * than discovered afterwards.
+ */
+export const PAID_RATE_CENTS = 75;
+export const MIN_PAYOUT_CENTS = 500;
+
+/** Where money can be sent. */
+export const PAYOUT_KINDS = ['venmo', 'paypal'];
+
+/**
+ * A payment address, kept as typed.
+ *
+ * DELIBERATELY NOT cleanWorker, and the difference is the whole point of this
+ * function existing. cleanWorker strips everything that is not a letter, a
+ * digit or ._:- because a worker id goes into a queue and onto a screen --
+ * which turns dave@example.com into daveexample.com and leaves the owner
+ * guessing where the at sign went.
+ *
+ * A payment address is not an identifier. It has to survive verbatim or it is
+ * useless, so this trims, bounds the length, and removes only control
+ * characters -- the things that could break a log line or a screen, and
+ * nothing a real Venmo handle or PayPal email contains.
+ */
+export const cleanPayoutHandle = (raw) => String(raw || '')
+  .trim()
+  // eslint-disable-next-line no-control-regex
+  .replace(/[\u0000-\u001f\u007f]/g, '')
+  .slice(0, 120);
 
 /**
  * What the LINK is allowed to say about where somebody came from.
@@ -141,7 +204,21 @@ export const needsCode = (route) => cleanRoute(route) === 'crowd';
  * the gates they skip were only ever protecting money that is not there. What
  * a forger would gain is the right to work for free.
  */
-export const routeFromLink = (raw) => (String(raw || '') === 'volunteer' ? 'volunteer' : null);
+export const routeFromLink = (raw) => {
+  const asked = String(raw || '');
+  /*
+   * Both public routes may be asserted by a link, and neither buys anything
+   * worth forging. Volunteer gains the right to work for nothing. Paid gains
+   * nothing either: it lifts no rule the volunteer route does not already
+   * lift, it requires a signed-in account the server reads from the session
+   * rather than from the URL, and it promises money only for maps the owner
+   * approves by hand afterwards.
+   *
+   * `hired` and `crowd` are still refused here, because those two are decided
+   * by a row the owner wrote and one of them skips the completion code.
+   */
+  return asked === 'volunteer' || asked === 'paid' ? asked : null;
+};
 
 /**
  * How many AI passes one LAWN gets for free, across every claim it ever has.
@@ -223,8 +300,8 @@ export function claimVerdict({
    * one place a single bad actor could empty the queue into the review pile in
    * an afternoon. Everything they send is looked at by a person anyway.
    */
-  if (route === 'volunteer' && submittedToday < DAILY_CAP) {
-    return { ok: true, volunteer: true };
+  if (isOpenLink(route) && submittedToday < DAILY_CAP) {
+    return { ok: true, openLink: true };
   }
 
   /*
@@ -331,7 +408,7 @@ export function submissionVerdict({
    * The unchanged-outline question below still applies to everybody. It costs
    * one press, it is occasionally right, and the map is flagged either way.
    */
-  const floorApplies = !trusted && route !== 'volunteer';
+  const floorApplies = !trusted && !isOpenLink(route);
   if (floorApplies && seconds < MIN_SECONDS) {
     return {
       ok: false,

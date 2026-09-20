@@ -17,7 +17,7 @@
 import {
   claimVerdict, submissionVerdict, cleanWorker, looksUnsubstituted, staleBefore, dayStart,
   countsAsPass, MIN_SECONDS, MAX_HELD, DAILY_CAP, GATES, PASS_RATE,
-  REVIEW_OUTCOMES, ROUTES, cleanRoute, needsCode, routeFromLink,
+  REVIEW_OUTCOMES, ROUTES, cleanRoute, needsCode, routeFromLink, cleanPayoutHandle,
 } from '../worker/src/jobs.js';
 
 let failures = 0;
@@ -249,10 +249,61 @@ const NOW = Date.parse('2026-09-19T12:00:00Z');
    */
   check('a link can offer to be a volunteer',
     routeFromLink('volunteer') === 'volunteer', 'nothing worth forging');
+  check('and to be the paid public link',
+    routeFromLink('paid') === 'paid',
+    'it lifts no rule the volunteer route does not, and the identity behind it '
+    + 'is read from a session rather than from the URL');
   check('and cannot claim anything that lifts a protection',
     routeFromLink('hired') === null && routeFromLink('crowd') === null
     && routeFromLink('trusted') === null,
     'otherwise the gates are a suggestion in a query string');
+}
+
+/* ------------------------------------------- the paid public link */
+{
+  /*
+   * THE SAME RULES AS A VOLUNTEER, deliberately and exactly.
+   *
+   * Nothing is promised in advance on either: a volunteer is doing a favour,
+   * and somebody on the paid link is owed 75c for an APPROVED map and nothing
+   * for one that is not. There is no committed money for a gate to protect, so
+   * gating them would be a hurdle in front of work that costs nothing when it
+   * turns out badly.
+   */
+  const paid = { route: 'paid', now: NOW };
+  check('the paid link is gated exactly as lightly as the volunteer one',
+    claimVerdict({ ...paid, submittedEver: 20, passed: 0, refused: 20 }).ok
+    && claimVerdict({ ...paid, lastSubmitAt: new Date(NOW - 2000).toISOString() }).ok,
+    'nothing was promised up front, so an unapproved map costs nobody anything');
+  check('and keeps the same daily cap, for the same reason',
+    !claimVerdict({ ...paid, submittedToday: DAILY_CAP }).ok,
+    'a link posted in public is where one person could flood the queue');
+  check('and clears the time floor too',
+    submissionVerdict({
+      claimedAt: new Date(NOW - 5000).toISOString(), now: NOW, edited: true, route: 'paid',
+    }).ok,
+    'the floor guards committed money, and there is none here');
+
+  check('and neither open route pastes a code anywhere',
+    !needsCode('paid') && !needsCode('volunteer') && needsCode('crowd'),
+    'there is no platform waiting for proof of work');
+
+  /*
+   * A PAYMENT ADDRESS IS NOT AN IDENTIFIER, and this is the check that keeps
+   * the two apart. cleanWorker strips '@' -- it has to, because a worker id
+   * goes into a queue and onto a screen -- which would turn an email into
+   * nonsense and leave the owner guessing where the at sign went.
+   */
+  const handles = ['dave@example.com', '@dave-smith', 'Dave.Smith@gmail.com'];
+  check('a payout handle survives exactly as typed',
+    handles.every((h) => cleanPayoutHandle(h) === h),
+    handles.map((h) => `${h} -> ${cleanPayoutHandle(h)}`).join(' | '));
+  check('where the worker-id cleaner would have mangled it',
+    cleanWorker('dave@example.com') === 'daveexample.com',
+    'which is why these are two functions and not one');
+  check('and control characters are still taken out',
+    cleanPayoutHandle('dave\u0000@ex\u001fample.com') === 'dave@example.com',
+    'the one thing that could break a log line or a screen');
 }
 
 /* ------------------------------------------------------- the daily cap */
