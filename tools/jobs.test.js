@@ -16,7 +16,8 @@
 
 import {
   claimVerdict, submissionVerdict, cleanWorker, staleBefore, dayStart,
-  MIN_SECONDS, MAX_HELD, DAILY_CAP, PROBATION_CAP,
+  countsAsPass, MIN_SECONDS, MAX_HELD, DAILY_CAP, GATES, PASS_RATE,
+  REVIEW_OUTCOMES,
 } from '../worker/src/jobs.js';
 
 let failures = 0;
@@ -41,21 +42,31 @@ const NOW = Date.parse('2026-09-19T12:00:00Z');
     refused.reason);
 }
 
-/* ---------------------------------------------------------- probation */
+/* ------------------------------------------------------------- the gates */
 {
+  const [FIRST, SECOND] = GATES;
+
   /*
-   * PROBATION REPLACED AN AUDITION, and the reason is worth keeping: an
-   * audition pays somebody to trace a lawn that is already traced, which buys
-   * a signal and no map. Probation buys the same signal out of real work.
+   * THE GATES REPLACED AN AUDITION, and then replaced a one-map version of
+   * themselves. Both changes are worth keeping in view:
+   *
+   * An audition pays somebody to trace a lawn that is already traced, which
+   * buys a signal and no map. A gate buys the same signal out of real work.
+   *
+   * The one-map version let somebody through on ONE kept map out of five,
+   * which is the wrong way round. The addresses are already vetted and the
+   * owner intends to tidy every map anyway, so a refusal here means the map
+   * was truly bad rather than imperfect -- and four bad out of five is not
+   * somebody having an off day.
    */
   check('a new worker may do their first few',
-    claimVerdict({ submittedEver: PROBATION_CAP - 1, accepted: 0, now: NOW }).ok,
-    `${PROBATION_CAP} before anything has been reviewed`);
+    claimVerdict({ submittedEver: FIRST - 1, now: NOW }).ok,
+    `${FIRST} before anything has been reviewed`);
 
-  const held = claimVerdict({ submittedEver: PROBATION_CAP, accepted: 0, now: NOW });
-  check('and is held after them until something has been kept',
-    !held.ok && held.probation,
-    'five maps is the whole cost of finding out somebody cannot do this');
+  const held = claimVerdict({ submittedEver: FIRST, now: NOW });
+  check('and is held at the first gate until they have been looked at',
+    !held.ok && held.waiting,
+    `${FIRST} maps is the whole cost of finding out somebody cannot do this`);
 
   /*
    * THE WORDING IS AS MUCH OF THE FEATURE AS THE NUMBER. Somebody here has
@@ -75,18 +86,78 @@ const NOW = Date.parse('2026-09-19T12:00:00Z');
 
   /*
    * AND NO PROMISE ABOUT THE OUTCOME. Telling somebody their maps will be
-   * accepted before anybody has looked is a promise this cannot keep, and a
-   * broken one costs more than the wait it was meant to soften.
+   * kept before anybody has looked is a promise this cannot keep, and a broken
+   * one costs more than the wait it was meant to soften.
    */
   check('while promising nothing about whether they will be kept',
     !/will be (accepted|kept|approved)/i.test(held.reason), held.reason);
 
-  /* One kept map ends it, and the ordinary daily cap takes over. */
-  check('one kept map opens the rest of the batch',
-    claimVerdict({ submittedEver: PROBATION_CAP + 3, accepted: 1, now: NOW }).ok,
-    'probation is a gate, not a quota');
-  check('and the daily cap still applies once they are through it',
-    !claimVerdict({ submittedEver: 99, accepted: 5, submittedToday: DAILY_CAP, now: NOW }).ok,
+  /* Four out of five clears it; three out of five does not. */
+  const pass = Math.ceil(FIRST * PASS_RATE);
+  check(`${pass} of ${FIRST} clears the first gate`,
+    claimVerdict({ submittedEver: FIRST, passed: pass, refused: FIRST - pass, now: NOW }).ok,
+    'the owner tidies every map, so a refusal means the map was truly bad');
+
+  const stopped = claimVerdict({
+    submittedEver: FIRST, passed: pass - 1, refused: FIRST - pass + 1, now: NOW,
+  });
+  check('and one below it does not',
+    !stopped.ok && stopped.stopped,
+    `${pass - 1} of ${FIRST} against a bar of ${PASS_RATE}`);
+
+  /*
+   * THE ONE REFUSAL A WORKER CANNOT FIX BY WAITING, read by somebody who has
+   * just been told there is no more work. A person who feels insulted writes
+   * about it, and the next batch is harder to fill.
+   */
+  check('and is thanked and confirmed paid rather than lectured',
+    /paid/i.test(stopped.reason) && /thank you/i.test(stopped.reason)
+    && !/ban|abuse|poor|bad work/i.test(stopped.reason),
+    stopped.reason);
+
+  /*
+   * A HARD LAWN IS NOT A BLACK MARK. The queue hands lawns out in order, so
+   * who gets the awkward ones is pure luck -- and without the excuse button a
+   * run of them would end a good worker's run. An excused map is not kept, and
+   * still counts for them.
+   */
+  check('an excused map counts as a pass, though it is not kept',
+    countsAsPass('excused') && countsAsPass('kept') && !countsAsPass('refused'),
+    REVIEW_OUTCOMES.join(' / '));
+  check('so a worker excused through the gate carries on',
+    claimVerdict({ submittedEver: FIRST, passed: FIRST, refused: 0, now: NOW }).ok,
+    'whoever draws the awkward lawns must not be punished for the draw');
+
+  /*
+   * THE SECOND GATE, which is the point of there being two. The first is
+   * cheap and catches somebody who cannot do this at all; the second tells a
+   * careful worker from a lucky one, and costs at most ten more maps to find
+   * out.
+   */
+  check('past the first gate they are let out to a larger batch, not the whole queue',
+    claimVerdict({ submittedEver: SECOND - 1, passed: FIRST, refused: 0, now: NOW }).ok
+    && !claimVerdict({ submittedEver: SECOND, passed: FIRST, refused: 0, now: NOW }).ok,
+    `${FIRST}, then ${SECOND}, then the daily cap`);
+
+  const second = claimVerdict({ submittedEver: SECOND, passed: FIRST, refused: 0, now: NOW });
+  check('and held at the second gate the same way, with the same wording',
+    second.waiting && /not a mark against you/i.test(second.reason),
+    'two gates that drift apart in their wording are two features to explain');
+
+  const bar = Math.ceil(SECOND * PASS_RATE);
+  check(`${bar} of ${SECOND} clears the second gate`,
+    claimVerdict({ submittedEver: SECOND, passed: bar, refused: SECOND - bar, now: NOW }).ok,
+    `${(bar / SECOND).toFixed(2)} against a bar of ${PASS_RATE}`);
+  check('and one below it stops there',
+    !claimVerdict({
+      submittedEver: SECOND, passed: bar - 1, refused: SECOND - bar + 1, now: NOW,
+    }).ok,
+    'a worker can be lucky over five maps and not over fifteen');
+
+  check('and the daily cap still applies once they are through both',
+    !claimVerdict({
+      submittedEver: 99, passed: 99, refused: 0, submittedToday: DAILY_CAP, now: NOW,
+    }).ok,
     'proving yourself does not remove the ceiling');
 }
 

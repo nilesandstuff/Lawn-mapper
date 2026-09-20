@@ -214,6 +214,75 @@ const read = async (res) => ({ status: res.status, body: await res.json() });
     'people close tabs, and a lawn nobody can reach is a lawn nobody gets paid for');
 }
 
+/* ------------------------------------------------ the gates, over real rows */
+{
+  /*
+   * THE ARITHMETIC OF THE GATES LIVES IN TWO PLACES and they have to agree: a
+   * pure function that decides, and a SUM over the table that feeds it. The
+   * pure half is tested in jobs.test.js and cannot have this bug -- a CASE
+   * WHEN that forgets 'excused' does not throw, it silently counts an excused
+   * map as neither a pass nor a refusal, which quietly holds a good worker at
+   * a gate for ever while the owner sees nothing wrong.
+   *
+   * So these go in against real rows, in the states the review queue writes.
+   */
+  const history = async (who, states, at = '2026-09-10T00:00:00Z') => {
+    for (let i = 0; i < states.length; i++) {
+      await env.DB.prepare(
+        `INSERT INTO lawn_jobs
+           (id, lng, lat, state, worker, submitted_at, created_at)
+         VALUES (?1, -80, 40, ?2, ?3, ?4, ?4)`
+      ).bind(`${who}-${i}-aaaa-4bbb-8ccc-dddddddddddd`, states[i], who, at).run();
+    }
+  };
+
+  await seed(4, 200);
+
+  /* Five sent, nothing reviewed: held, and told why. */
+  await history('GATED', ['submitted', 'submitted', 'submitted', 'submitted', 'submitted']);
+  const held = await read(await ask('/api/job', { search: '?w=GATED' }));
+  check('a worker whose first five are still with the reviewer is held',
+    held.status === 429 && held.body.waiting,
+    held.body.reason);
+  check('and the hold reads as a wait, not as the end of the road',
+    /not a mark against you/i.test(held.body.reason) && !held.body.stopped,
+    'a worker who thinks they have been cut off does not come back tomorrow');
+
+  /*
+   * FOUR KEPT AND ONE EXCUSED IS FIVE PASSES. The excused one is the check
+   * that matters: it is not in the corpus, and it must still count.
+   */
+  await history('EXCUSED', ['kept', 'kept', 'kept', 'kept', 'excused']);
+  const through = await read(await ask('/api/job', { search: '?w=EXCUSED' }));
+  check('and an excused map counts towards the gate, though it was not kept',
+    through.status === 200 && Boolean(through.body.job),
+    JSON.stringify(through.body).slice(0, 160));
+  check('and the good news counts KEPT maps rather than passes',
+    /^4 of your maps have been kept/.test(through.body.cleared || ''),
+    `${through.body.cleared} -- calling an excused map "kept" is a small lie `
+    + 'the owner\'s own review queue contradicts');
+
+  /* Three kept, two refused: below four in five, so this is the end. */
+  await history('SLOPPY', ['kept', 'kept', 'kept', 'refused', 'refused']);
+  const stopped = await read(await ask('/api/job', { search: '?w=SLOPPY' }));
+  check('and a worker below the bar is stopped rather than held',
+    stopped.status === 429 && stopped.body.stopped && !stopped.body.waiting,
+    stopped.body.reason);
+  check('and is thanked and told they were paid',
+    /thank you/i.test(stopped.body.reason) && /paid/i.test(stopped.body.reason),
+    'this is the one refusal that cannot be fixed by waiting');
+
+  /* Through the first gate, working the second: ten more, then held again. */
+  await history('SECOND', [
+    ...Array(5).fill('kept'),
+    ...Array(10).fill('submitted'),
+  ]);
+  const again = await read(await ask('/api/job', { search: '?w=SECOND' }));
+  check('and the second gate holds them again after ten more',
+    again.status === 429 && again.body.waiting,
+    `15 submitted, 5 reviewed -- ${again.body.reason}`);
+}
+
 /* ------------------------------------------------ an empty queue */
 {
   await env.DB.prepare("UPDATE lawn_jobs SET state = 'submitted' WHERE state != 'submitted'").run();

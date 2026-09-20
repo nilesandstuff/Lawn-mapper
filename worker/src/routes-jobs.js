@@ -19,7 +19,7 @@
 import { recordFinished, storeImage } from './corpus.js';
 import {
   claimVerdict, submissionVerdict, cleanWorker, staleBefore, dayStart,
-  PROBATION_CAP,
+  GATES,
 } from './jobs.js';
 
 /** What the worker is asked to do, in the order it matters. */
@@ -122,25 +122,34 @@ export async function handleJobs(request, url, env, origin, ctx, json) {
 
     /*
      * Everything the limits need, in one pass: today's count for the daily
-     * cap, the whole history for probation, and how many have been kept --
-     * which is what ends probation.
+     * cap, the whole history for the gates, and how the reviewed ones went.
+     *
+     * A PASS IS 'kept' OR 'excused', and the sum has to say so here as well as
+     * in jobs.js. An excused map is one the owner would not keep from a lawn
+     * that was genuinely hard -- it is thrown away and it still counts for the
+     * worker, because who draws the awkward lawns is pure luck.
      */
     const stats = await env.DB.prepare(
       `SELECT
          COUNT(*) AS ever,
          SUM(CASE WHEN submitted_at >= ?2 THEN 1 ELSE 0 END) AS today,
-         SUM(CASE WHEN state = 'accepted' THEN 1 ELSE 0 END) AS accepted,
+         SUM(CASE WHEN state IN ('kept', 'excused') THEN 1 ELSE 0 END) AS passed,
+         SUM(CASE WHEN state = 'refused' THEN 1 ELSE 0 END) AS refused,
+         SUM(CASE WHEN state = 'kept' THEN 1 ELSE 0 END) AS kept,
          MAX(submitted_at) AS last
        FROM lawn_jobs
       WHERE worker = ?1 AND submitted_at IS NOT NULL`
     ).bind(worker, dayStart(now)).first();
 
-    const accepted = Number(stats?.accepted || 0);
+    const ever = Number(stats?.ever || 0);
+    const passed = Number(stats?.passed || 0);
+    const kept = Number(stats?.kept || 0);
     const verdict = claimVerdict({
       held: 0,
       submittedToday: Number(stats?.today || 0),
-      submittedEver: Number(stats?.ever || 0),
-      accepted,
+      submittedEver: ever,
+      passed,
+      refused: Number(stats?.refused || 0),
       lastSubmitAt: stats?.last || null,
       now,
     });
@@ -149,7 +158,10 @@ export async function handleJobs(request, url, env, origin, ctx, json) {
         error: 'Not yet',
         reason: verdict.reason,
         wait: verdict.wait || 0,
-        probation: Boolean(verdict.probation),
+        /* Two different shapes of "no", and the page says different things
+           about them: one is a wait, the other is the end of the road. */
+        waiting: Boolean(verdict.waiting),
+        stopped: Boolean(verdict.stopped),
       }, 429, origin);
     }
 
@@ -159,15 +171,19 @@ export async function handleJobs(request, url, env, origin, ctx, json) {
      * Nothing here can push a message to somebody -- there is no address and
      * there should not be one. What it can do is tell them the moment they
      * come back, which is when they are looking anyway. A worker who was held
-     * at probation yesterday and returns to "your maps were kept, carry on" is
-     * a worker who keeps coming back.
+     * at a gate yesterday and returns to "your maps were kept, carry on" is a
+     * worker who keeps coming back.
+     *
+     * It counts KEPT maps rather than passes, because "3 of your maps have
+     * been kept" has to be true. Telling somebody an excused map was kept
+     * would be a small lie that the owner's review queue contradicts.
      *
      * The platform does the other half: approving an assignment notifies them
      * that they have been paid.
      */
-    const cleared = accepted > 0 && Number(stats?.ever || 0) >= PROBATION_CAP
-      ? `${accepted} of your maps have been kept — thank you. The rest of the `
-        + 'batch is open to you now.'
+    const cleared = kept > 0 && ever >= GATES[0]
+      ? `${kept} of your maps have been kept — thank you. There is more of the `
+        + 'batch open to you now.'
       : null;
 
     /*

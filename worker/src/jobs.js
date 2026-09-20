@@ -43,23 +43,56 @@ export const MIN_SECONDS = 90;
 /** How many a worker may hold at once. One, so nothing can be stockpiled. */
 export const MAX_HELD = 1;
 
-/** How many a worker may submit in a day, once they have proved themselves. */
+/** How many a worker may submit in a day, once they are through both gates. */
 export const DAILY_CAP = 40;
 
 /**
- * How many a NEW worker may submit before one of their maps has been kept.
+ * THE GATES, and why there are two of them.
  *
- * THIS IS THE WHOLE QUALITY CONTROL, and it replaced an audition. An audition
- * pays somebody to trace a lawn that is already traced, which buys a signal
- * and no map. Probation buys the same signal out of real work: the first few
- * maps are ordinary lawns that count, and if they turn out to be bad the whole
- * cost of finding out is five maps rather than forty.
+ * A worker does five maps, then waits while they are looked at. Pass, and they
+ * do ten more, then wait again. Pass again and the ordinary daily cap is all
+ * that is left.
  *
- * Five rather than one, because one map says almost nothing -- an awkward lot
- * or a bad afternoon looks identical to somebody who cannot do this. Five is
- * enough to see a pattern and cheap enough to be wrong about.
+ * This replaced an audition, and then replaced a one-map version of itself.
+ * The one-map version let somebody through on one good map out of five, which
+ * is the wrong way round: the addresses are already vetted and the owner
+ * intends to tidy every map anyway, so a REFUSAL here means the map was truly
+ * bad rather than imperfect. Four out of five bad is not somebody having an
+ * off day.
+ *
+ * Two gates rather than one because the first is cheap and the second is
+ * informative: five maps is enough to spot somebody who cannot do this at all,
+ * and fifteen is enough to tell a careful worker from a lucky one -- while
+ * costing at most ten more maps to find out.
  */
-export const PROBATION_CAP = 5;
+export const GATES = [5, 15];
+
+/**
+ * The share that must pass at each gate.
+ *
+ * Four out of five, which is the same number at both gates and is deliberately
+ * forgiving. A map only fails if it is genuinely bad; a hard lawn somebody made
+ * a reasonable attempt at is EXCUSED, which counts as a pass here even though
+ * the map itself is not kept. See reviewOutcome.
+ */
+export const PASS_RATE = 0.8;
+
+/**
+ * What a review can conclude, and what each means for the worker.
+ *
+ *   kept     the map goes into the corpus. Counts for them.
+ *   excused  the map is not kept, but the lawn was hard and the attempt was
+ *            reasonable. STILL COUNTS FOR THEM -- this is the whole reason the
+ *            button exists. Without it a run of awkward lawns would end a good
+ *            worker's run, and the queue hands lawns out in order, so who gets
+ *            the awkward ones is pure luck.
+ *   refused  genuinely bad. The only thing that counts against them.
+ *
+ * All three are paid. Payment is the platform's business and is not decided
+ * here; this decides only whether somebody gets more work.
+ */
+export const REVIEW_OUTCOMES = ['kept', 'excused', 'refused'];
+export const countsAsPass = (outcome) => outcome === 'kept' || outcome === 'excused';
 
 /** How long a claim survives without a submission. */
 export const CLAIM_EXPIRY = HOUR;
@@ -75,7 +108,7 @@ export const CLAIM_EXPIRY = HOUR;
  */
 export function claimVerdict({
   held = 0, submittedToday = 0, lastSubmitAt = null, now = Date.now(),
-  submittedEver = 0, accepted = 0,
+  submittedEver = 0, passed = 0, refused = 0,
 }) {
   if (held >= MAX_HELD) {
     return {
@@ -85,28 +118,54 @@ export function claimVerdict({
   }
 
   /*
-   * PROBATION, and the wording is as much of the feature as the number.
-   *
-   * Somebody who hits this has done five maps, been paid for five maps, and
-   * done nothing wrong. If the message reads like a punishment they will not
-   * come back -- and the workers who read carefully enough to be worth keeping
-   * are exactly the ones who read this. So it says what is happening, how long
-   * it takes, and that more work follows.
-   *
-   * No promise is made about the OUTCOME, only about the wait. Telling
-   * somebody their maps will be accepted before anybody has looked is a
-   * promise this cannot keep.
+   * THE GATES. Written as a loop over GATES rather than as two branches, so
+   * adding a third stage is a number rather than a new code path -- and so the
+   * two existing stages cannot drift apart in their wording or their arithmetic.
    */
-  if (accepted === 0 && submittedEver >= PROBATION_CAP) {
-    return {
-      ok: false,
-      probation: true,
-      reason: `That is your first ${PROBATION_CAP}, and they are with the `
-        + 'reviewer now. New workers do a few maps before the rest of the batch '
-        + 'opens up — it is how quality is checked here, not a mark against '
-        + 'you, and you are paid for these either way. Review is usually done '
-        + 'inside a day. Open this link again then and there will be more.',
-    };
+  const reviewed = passed + refused;
+  for (const gate of GATES) {
+    if (submittedEver < gate) break;          // still working within this stage
+
+    if (reviewed < gate) {
+      /*
+       * AT THE GATE, WAITING. Somebody here has done the work, been paid for
+       * the work, and done nothing wrong -- and the workers who read carefully
+       * enough to be worth keeping are exactly the ones who read this. It says
+       * what is happening, that it is not a mark against them, that they are
+       * paid either way, roughly how long, and that more follows.
+       *
+       * It promises nothing about the OUTCOME. Telling somebody their maps
+       * will be kept before anybody has looked is a promise this cannot keep,
+       * and a broken one costs more than the wait it was meant to soften.
+       */
+      return {
+        ok: false,
+        waiting: true,
+        reason: `That is ${submittedEver} maps, and they are with the reviewer `
+          + 'now. New workers do a few at a time while the work is checked — it '
+          + 'is how quality is kept up here, not a mark against you, and you are '
+          + 'paid for these either way. Review is usually done inside a day. '
+          + 'Open this link again then and there will be more.',
+      };
+    }
+
+    if (reviewed > 0 && passed / reviewed < PASS_RATE) {
+      /*
+       * STOPPED, and the wording matters more here than anywhere else. This is
+       * the one refusal a worker cannot fix by waiting, and it is going to be
+       * read by somebody who has just been told there is no more work. It
+       * confirms they were paid, thanks them, and does not lecture -- a person
+       * who feels insulted writes about it, and the next batch is harder to
+       * fill.
+       */
+      return {
+        ok: false,
+        stopped: true,
+        reason: 'Thank you for the maps you sent — they have all been paid for. '
+          + 'This batch needs outlines closer to what it is asking for than we '
+          + 'managed between us, so there is no more of this work for you today.',
+      };
+    }
   }
 
   if (submittedToday >= DAILY_CAP) {

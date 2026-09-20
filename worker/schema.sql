@@ -459,9 +459,17 @@ CREATE INDEX IF NOT EXISTS parcel_gaps_place ON parcel_gaps(state, county);
 --   approved   the owner saw a lawn worth tracing here
 --   rejected   the owner did not -- no grass, no imagery, a car park
 --   claimed    handed to a worker, and not offered to anybody else
---   submitted  they sent a map back
---   accepted   the owner kept it: this one gets paid for
---   refused    the owner would not keep it, and says why in `note`
+--   submitted  they sent a map back, and nobody has reviewed it
+--   kept       the owner kept the map: it goes into the corpus
+--   excused    the owner would not keep it, but the lawn was hard and the
+--              attempt was reasonable. COUNTS AS A PASS for the worker even
+--              though the map is thrown away -- the queue hands lawns out in
+--              order, so who draws the awkward ones is pure luck, and without
+--              this a run of them would end a good worker's run.
+--   refused    genuinely bad. The only outcome that counts against a worker.
+--
+-- All three review outcomes are PAID. Payment is the crowd platform's business
+-- and is not decided here; these decide only whether somebody gets more work.
 --
 -- WHY A REJECTED CANDIDATE IS KEPT rather than deleted: the sampler picks
 -- random points in a county and would otherwise offer the same car park again
