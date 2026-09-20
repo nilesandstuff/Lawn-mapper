@@ -1663,6 +1663,20 @@ check('tapping a line in lawn mode does not open the edge slider',
    * by that tap -- not a failure, geometry dependent", which is a check that
    * cannot fail and therefore was not one.
    */
+  /*
+   * A THIRD OF THE WAY ALONG, NOT THE MIDDLE.
+   *
+   * The middle is the one point on an edge that does NOT belong to the edge:
+   * a hollow "add a point" handle is drawn at the midpoint of every segment
+   * longer than 30 px, and it is checked before edges on purpose -- it is
+   * visible and small, so hitting one is a deliberate act. Aiming at the exact
+   * midpoint therefore tested the phantom handle and reported its success as
+   * an edge-selection failure. The tell was in the message: "Corner 2 of 7" on
+   * a boundary that had six corners a moment earlier. The tap ADDED one.
+   *
+   * A third along is clear of the midpoint handle and, on any edge long enough
+   * to matter, well clear of both corners' 20 px grab radius.
+   */
   const mid = await page.evaluate(() => {
     const pts = window.__lmCorners();
     if (pts.length < 2) return null;
@@ -1671,8 +1685,19 @@ check('tapping a line in lawn mode does not open the edge slider',
       const a = pts[i];
       const b = pts[(i + 1) % pts.length];
       const len = Math.hypot(b.x - a.x, b.y - a.y);
-      if (!best || len > best.len) best = { len, x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      if (!best || len > best.len) {
+        best = { len, x: a.x + (b.x - a.x) / 3, y: a.y + (b.y - a.y) / 3, a, b };
+      }
     }
+    /* How much room the aim actually has, so a failure says whether the tap
+       was ever going to reach an edge rather than just that it did not. */
+    best.toCorner = Math.min(
+      Math.hypot(best.a.x - best.x, best.a.y - best.y),
+      Math.hypot(best.b.x - best.x, best.b.y - best.y),
+    );
+    best.toMidpoint = Math.hypot(
+      (best.a.x + best.b.x) / 2 - best.x, (best.a.y + best.b.y) / 2 - best.y,
+    );
     return best;
   });
 
@@ -1683,7 +1708,9 @@ check('tapping a line in lawn mode does not open the edge slider',
 
     check('but tapping a line on the property line still grabs that edge',
       await page.locator('#edge-controls').isVisible(),
-      await page.locator('#edge-info').textContent());
+      `${await page.locator('#edge-info').textContent()} `
+      + `[aimed ${mid.toCorner.toFixed(0)}px from the nearest corner, `
+      + `${mid.toMidpoint.toFixed(0)}px from the add-a-point handle]`);
 
     if (await page.locator('#edge-controls').isVisible()) {
       const area = () => page.evaluate(() => window.__lmPoints()[0]?.sqft ?? 0);
@@ -1804,12 +1831,22 @@ if (corner) {
 
 /* ------------------------------------------------- tidying the boundary */
 /*
- * The real Ottawa parcel has 61 vertices with a pair 10 cm apart, so this runs
- * against exactly the mess it exists for rather than a synthetic one.
+ * THE BOUNDARY ARRIVES TIDY NOW, so this is no longer a check that the button
+ * removes corners. It is a check that there is nothing left for it to remove.
+ *
+ * The county digitised this parcel with 61 vertices and a pair 10 cm apart.
+ * The app is editing a handful of them, which is the automatic tidy having
+ * already run on the way in -- the corner counts printed by every check above
+ * are the evidence, and they are single digits.
+ *
+ * What is worth asserting here is the press that finds nothing, because that
+ * is now the ordinary one: it must say so, change nothing, and -- the part
+ * that was actually broken -- leave no dead entry on the undo stack.
  */
 const tidied = await page.evaluate(async () => {
   const before = window.__lmPoints()[0].count;
   const area = window.__lmPoints()[0].sqft;
+  const undoDepthBefore = window.__lmHistory();
   document.querySelector('#btn-tidy').click();
   await new Promise((r) => setTimeout(r, 500));
   return {
@@ -1818,15 +1855,31 @@ const tidied = await page.evaluate(async () => {
     area,
     areaAfter: window.__lmPoints()[0].sqft,
     said: document.querySelector('#edge-info').textContent,
+    undoDepthBefore,
+    undoDepthAfter: window.__lmHistory(),
   };
 });
 console.log(`      ${tidied.said}`);
-check('tidying drops redundant corners from a real county boundary',
-  tidied.after < tidied.before, `${tidied.before} -> ${tidied.after} corners`);
-check('and leaves the measurement essentially unchanged',
+check('a county boundary has its redundant corners gone before anybody asks',
+  tidied.before < 20,
+  `${tidied.before} corners in hand, on a parcel the county digitised with 61`);
+check('so pressing tidy finds nothing left to do, and says so',
+  tidied.after === tidied.before && /nothing to tidy/i.test(tidied.said),
+  `${tidied.before} -> ${tidied.after} corners: ${tidied.said}`);
+check('and leaves the measurement alone',
   Math.abs(tidied.areaAfter - tidied.area) / tidied.area < 0.005,
   `${tidied.area.toFixed(0)} -> ${tidied.areaAfter.toFixed(0)} sq ft ` +
   `(${((100 * Math.abs(tidied.areaAfter - tidied.area)) / tidied.area).toFixed(3)}%)`);
+
+/*
+ * AND LEAVES NO DEAD UNDO STEP. A press that changed nothing used to push a
+ * history entry anyway, so the next undo silently did nothing -- which is the
+ * exact failure the section below this one exists to catch, sitting one press
+ * above it.
+ */
+check('and a press that changed nothing leaves nothing to undo',
+  tidied.undoDepthAfter === tidied.undoDepthBefore,
+  `undo stack ${tidied.undoDepthBefore} -> ${tidied.undoDepthAfter}`);
 
 /* -------------------------------------------------------------- undo */
 /*

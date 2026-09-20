@@ -494,6 +494,16 @@ if (typeof window !== 'undefined') {
   window.__lmSqft = () => (draw ? totalSquareFeet() : 0);
 
   /*
+   * How deep the undo stack is.
+   *
+   * The button's disabled state answers "is there anything at all", which is
+   * not the question when the worry is a step that undoes NOTHING -- an action
+   * that pushed history and then changed its mind leaves the button looking
+   * exactly right and does nothing when pressed. Only the depth catches that.
+   */
+  window.__lmHistory = () => history.length;
+
+  /*
    * Duplicate the largest shape exactly on top of itself.
    *
    * There is no gesture that reliably produces two shapes on the same ground,
@@ -8894,12 +8904,24 @@ function tidyShapes() {
   let removed = 0;
   let before = 0;
 
-  pushHistory();
+  /*
+   * WORKED OUT FIRST, WRITTEN SECOND, so that a press which changes nothing
+   * leaves no undo step behind.
+   *
+   * This used to push history before knowing whether it had anything to do.
+   * Harmless while the boundary always arrived untidy -- and now it arrives
+   * tidy, so the ordinary press is the one that finds nothing, and every one
+   * of those left a dead entry on the stack. Pressing undo afterwards did
+   * nothing at all, which is precisely the failure this file warns about a
+   * few hundred lines down: "undo that quietly does nothing is the classic
+   * way this feature ships broken".
+   */
+  const plan = [];
   for (const { ringId, ring } of editableRings()) {
     before += openRing(ring).length;
     const tidied = tidyRing(ring);
     if (tidied.removed) {
-      writeRing(ringId, tidied.ring);
+      plan.push({ ringId, ring: tidied.ring });
       removed += tidied.removed;
     }
   }
@@ -8908,6 +8930,9 @@ function tidyShapes() {
     setStatus('Nothing to tidy — every corner on this boundary is doing something.');
     return;
   }
+
+  pushHistory();
+  for (const { ringId, ring } of plan) writeRing(ringId, ring);
 
   // The selection indexes into a ring that just changed shape, so it no longer
   // means what it meant. Drop it rather than let it point at another corner.
