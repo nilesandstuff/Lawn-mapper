@@ -26,8 +26,8 @@
  * tools/import-openaddresses.js. Editing this file directly will be
  * overwritten; change an importer or the verifier instead.
  *
- * 719 entries (16 statewide), of 978 candidates.
- * Last run 2026-09-21: 127 verified of 200 tried.
+ * 718 entries (15 statewide), of 978 candidates.
+ * Last run 2026-09-21: 19 verified of 30 tried.
  */
 
 const VERIFIED_COUNTIES = {
@@ -1830,7 +1830,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"OBJECTID","address":null},
     box: [-83.803,31.565,-83.451,31.855],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-ware': {
     name: "Ware County, GA",
@@ -1839,7 +1839,7 @@ const VERIFIED_COUNTIES = {
     layer: 38,
     fields: {"pin":"PARCEL_NO","address":null},
     box: [-82.703,30.562,-82.131,31.472],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-whitfield': {
     name: "Whitfield County, GA",
@@ -1848,7 +1848,7 @@ const VERIFIED_COUNTIES = {
     layer: 12,
     fields: {"pin":"PARCEL_FUL","address":null},
     box: [-85.175,34.613,-84.807,34.989],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-worth': {
     name: "Worth County, GA",
@@ -1856,8 +1856,8 @@ const VERIFIED_COUNTIES = {
     service: "https://services2.arcgis.com/PYn6bWCjT6bhw1z3/arcgis/rest/services/Worth_Heirs_Concentration_Census_Block_WFL1/FeatureServer",
     layer: 4,
     fields: {"pin":"Parcel_No","address":null},
-    box: [-84.033,31.318,-83.649,31.849],
-    checked: "2026-09-18",
+    box: [-84.034,31.318,-83.647,31.849],
+    checked: "2026-09-21",
   },
   'hi-city-and-county-of-honolulu': {
     name: "City and County of Honolulu, HI",
@@ -5420,16 +5420,6 @@ const VERIFIED_COUNTIES = {
     fields: {"pin":"PRCLID","address":null},
     box: [-77.638,38.242,-77.283,38.594],
     checked: "2026-09-18",
-  },
-  'va-statewide': {
-    name: "VA (OpenAddresses)",
-    state: "VA",
-    statewide: true,
-    service: "https://gismaps.vdem.virginia.gov/arcgis/rest/services/VA_Base_Layers/VA_Parcels/FeatureServer",
-    layer: 0,
-    fields: {"pin":"PARCELID","address":null},
-    box: [-83.23,36.482,-75.655,39.301],
-    checked: "2026-09-21",
   },
   'vt-chittenden': {
     name: "Chittenden County, VT",

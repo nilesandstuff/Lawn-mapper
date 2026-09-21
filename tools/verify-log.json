@@ -76,8 +76,8 @@
   },
   "va-statewide": {
     "at": "2026-09-21",
-    "ok": true,
-    "acres": 0.408
+    "ok": false,
+    "why": "0 of 25 points across VA returned a parcel (25 nothing, 0 under 0.01 ac, 0 over 100000 ac)"
   },
   "vt-statewide": {
     "at": "2026-09-21",
@@ -1912,52 +1912,52 @@
     "acres": 89.763
   },
   "ga-turner": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": true,
     "acres": 14.781
   },
   "ga-twiggs": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": false,
     "why": "layer metadata: Invalid URL"
   },
   "ga-union": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": false,
     "why": "layer metadata: Invalid URL"
   },
   "ga-walker": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": false,
     "why": "12 samples, none parcel-sized: 12 with no usable geometry [esri geometry had keys [x, y]]"
   },
   "ga-ware": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": true,
     "acres": 74.085
   },
   "ga-washington": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": false,
     "why": "layer metadata: Invalid URL"
   },
   "ga-whitfield": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": true,
     "acres": 0.42
   },
   "ga-wilcox": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": false,
     "why": "layer metadata: Invalid URL"
   },
   "ga-wilkinson": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": false,
     "why": "layer metadata: Invalid URL"
   },
   "ga-worth": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": true,
     "acres": 2.129
   },
