@@ -411,7 +411,16 @@ async function parcelAt(service, layer, [lng, lat]) {
     returnGeometry: 'true',
   });
   const data = await getJson(`${service}/${layer}/query?${q}`);
-  if (data.error || !data.features?.length) return null;
+  /*
+   * "NOTHING IS THERE" AND "NOBODY ANSWERED" ARE NOT THE SAME ANSWER, and
+   * folding them together cost a day on Virginia. Its host had genuinely
+   * moved, the move was followed, and the repaired endpoint then went slow
+   * enough to miss a fifteen-second deadline -- which printed as "25 points,
+   * 25 nothing", the identical line a dead host prints. The repair looked
+   * like it had failed when what had happened was the opposite.
+   */
+  if (data.error) return { error: describe(data.error) };
+  if (!data.features?.length) return null;
   const geometry = esriToGeoJSON(data.features[0].geometry);
   return geometry ? { geometry, attributes: data.features[0].attributes || {} } : null;
 }
@@ -494,11 +503,38 @@ async function verifyStatewide(c) {
   const hits = [];
   let attributes = null;
   let acres = Infinity;
-  const tally = { nothing: 0, tiny: 0, huge: 0 };
+  const tally = { nothing: 0, tiny: 0, huge: 0, down: 0 };
+  let firstError = null;
 
   for (const p of points) {
     const hit = await parcelAt(c.service, c.layer, p);
     await sleep(PAUSE_MS);
+    if (hit?.error) {
+      tally.down++;
+      if (!firstError) firstError = hit.error;
+      /*
+       * GIVE UP ON A SERVER THAT IS NOT ANSWERING, after five.
+       *
+       * Not a shortcut for the sake of speed: five refusals in a row is the
+       * answer, and the remaining twenty are twenty more fifteen-second
+       * deadlines against a machine that has already said it cannot do this.
+       * Four dead statewide candidates at twenty-five timeouts each is most
+       * of an hour, which is the difference between a run that finishes and
+       * a run the workflow kills.
+       *
+       * Only on a clean sweep of failures. One error among real answers is a
+       * blip and the probe carries on, because a state where four points in
+       * five come back is still a state.
+       */
+      if (tally.down >= 5 && hits.length === 0 && tally.tiny + tally.huge + tally.nothing === 0) {
+        return {
+          ok: false,
+          why: `${c.state}'s server did not answer ${tally.down} times running `
+            + `(${firstError}) -- the endpoint is there, the service is not`,
+        };
+      }
+      continue;
+    }
     if (!hit) { tally.nothing++; continue; }
     const m = measure(hit.geometry);
     if (m.acres < PLAUSIBLE_ACRES.min) { tally.tiny++; continue; }
@@ -514,7 +550,8 @@ async function verifyStatewide(c) {
       ok: false,
       why: `${hits.length} of ${points.length} points across ${c.state} returned a `
         + `parcel (${tally.nothing} nothing, ${tally.tiny} under `
-        + `${PLAUSIBLE_ACRES.min} ac, ${tally.huge} over ${MAX_PROBE_ACRES} ac)`,
+        + `${PLAUSIBLE_ACRES.min} ac, ${tally.huge} over ${MAX_PROBE_ACRES} ac`
+        + (tally.down ? `, ${tally.down} no answer [${firstError}]` : '') + ')',
     };
   }
 
@@ -568,6 +605,16 @@ async function verifyStatewide(c) {
  * A HOST ONLY, never a path. Rewriting more than the name of the machine
  * would be inventing an endpoint rather than following one that moved, and the
  * verifier's whole job is to be the thing that does not take a URL on trust.
+ *
+ * THE RENAME IS RIGHT AND VIRGINIA STILL COMES AND GOES. Verified at 14:49 on
+ * 2026-09-21 with a 0.4 acre parcel, and by 15:14 the same endpoint answered
+ * nothing at all: metadata in 0.4 seconds, every point query dead at
+ * forty-five. Five points, five timeouts. So it left the registry the same
+ * afternoon it entered it, which is the verifier working -- an endpoint that
+ * cannot answer in fifteen seconds cannot serve a property line either.
+ *
+ * Do not read a future "VA returned nothing" as the rename being wrong. The
+ * failure line now says which of the two it was: see parcelAt.
  */
 const MOVED_HOSTS = new Map([
   ['gismaps.vdem.virginia.gov', 'vginmaps.vdem.virginia.gov'],
@@ -689,7 +736,8 @@ async function verify(c) {
    * need four different responses. The same blankness cost a run on Champaign
    * and on Indiana. A tally is cheap and turns a re-run into a diagnosis.
    */
-  const tally = { nogeom: 0, missed: 0, tiny: 0, huge: 0 };
+  const tally = { nogeom: 0, missed: 0, tiny: 0, huge: 0, down: 0 };
+  let firstDown = null;
   let biggest = 0;
   /*
    * WHAT the unusable geometry actually was. Kent still failed all twelve
@@ -717,6 +765,10 @@ async function verify(c) {
 
     const hit = await parcelAt(c.service, c.layer, point);
     await sleep(PAUSE_MS);
+    /* A server that did not answer is counted apart from a point that found
+       nothing -- see parcelAt. The county path has only twelve samples, so
+       there is nothing to bail out of; it just needs to say which it was. */
+    if (hit?.error) { tally.down++; if (!firstDown) firstDown = hit.error; continue; }
     if (!hit) { tally.missed++; continue; }
 
     const { acres } = measure(hit.geometry);
@@ -744,6 +796,7 @@ async function verify(c) {
   const parts = [
     tally.nogeom ? `${tally.nogeom} with no usable geometry [${firstBad}]` : null,
     tally.missed ? `${tally.missed} whose own point found nothing` : null,
+    tally.down ? `${tally.down} the server did not answer [${firstDown}]` : null,
     tally.tiny ? `${tally.tiny} under ${PLAUSIBLE_ACRES.min} ac` : null,
     tally.huge ? `${tally.huge} over ${PLAUSIBLE_ACRES.max} ac` : null,
   ].filter(Boolean);
@@ -838,7 +891,8 @@ const list = only
 const never = chosen.filter((c) => !when(c)).length;
 console.log(`${everything.length} candidates: ${pool.sources.atlas} from the atlas, `
   + `${pool.sources.openaddresses} from OpenAddresses `
-  + `(${pool.sources.joined} in both), ${pool.statewide.length} statewide`);
+  + `(${pool.sources.joined} in both), ${pool.statewide.length} statewide `
+  + `(${pool.sources.foundStatewide} of those found by hand)`);
 console.log(`${never} have never been tried; ${chosen.length - never} have.`);
 console.log(`\nVerifying ${list.length} this run${only ? ` (ONLY="${only}")` : ''}:\n`);
 

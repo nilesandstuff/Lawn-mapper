@@ -117,6 +117,74 @@ const sameEndpoint = (a, b) =>
     === String(b.service).replace(/\/+$/, '').toLowerCase();
 
 /**
+ * STATEWIDE LAYERS NEITHER CATALOGUE LISTS, found by asking ArcGIS Online.
+ *
+ * OpenAddresses carries nineteen statewide parcel services and the atlas
+ * carries none, so thirty-one states were being covered county by county or
+ * not at all -- while their state governments publish one endpoint for the
+ * whole state. A statewide layer is worth more than any county in the pool
+ * and there is no catalogue that collects them, so they are collected here.
+ *
+ * FOUND, NOT INVENTED. Each of these came back from a search of ArcGIS
+ * Online for that state's parcels, was filtered down to services whose own
+ * published extent spans the state, and then had its layer index and field
+ * names read off the service itself. What is written below is what the
+ * service said about itself -- not a guess at a URL, which is the failure
+ * mode the whole verifier exists to catch.
+ *
+ * AND NOT YET PROVEN. Listing one here only enters it in the pool: it still
+ * has to answer twenty-five spread points inside its own state before it
+ * reaches the registry, exactly like everything else. Expect some of these
+ * to fail -- they are in the pool because they are worth asking about, not
+ * because they work.
+ *
+ * Here rather than in a candidates file for the same reason MOVED_HOSTS is
+ * in the verifier: the importers regenerate those files from the catalogues,
+ * so anything hand-added to one is gone by the next run.
+ *
+ * TWO THAT ARE NOT HERE, so nobody spends the search again:
+ *   OK  maps.owrb.ok.gov/.../Hazard/Parcels answers with a connection
+ *       timeout, twice. The service may be real; nothing here has seen it.
+ *   IL  no statewide parcel service exists that a search can find. Illinois
+ *       publishes by county.
+ * Regrid's nationwide parcel layer covers every state and is deliberately
+ * ignored: it is a cached tile service with no query, and commercial.
+ */
+const FOUND_STATEWIDE = [
+  ['FL', 'https://services9.arcgis.com/Gh9awoU677aKree0/arcgis/rest/services/Florida_Statewide_Cadastral/FeatureServer', 0, 'PARCEL_ID', 'PHY_ADDR1'],
+  /* Layer 25, "Statewide TMKs", inside a service that is mostly zoning. */
+  ['HI', 'https://geodata.hawaii.gov/arcgis/rest/services/ParcelsZoning/MapServer', 25, 'tmk_txt', null],
+  /* 2017 vintage and labelled as such by its publisher. Parcel lines move
+     slowly, but this is the oldest thing in the pool by years. */
+  ['IA', 'https://services3.arcgis.com/kd9gaiUExYqUbnoq/arcgis/rest/services/Iowa_Parcels_2017/FeatureServer', 0, 'PARCELNUMB', null],
+  /* Organized towns only: Maine's unorganized territory is not in it. */
+  ['ME', 'https://services1.arcgis.com/RbMX0mRVOFNTdLzd/arcgis/rest/services/Maine_Parcels_Organized_Towns/FeatureServer', 10, 'MAP_BK_LOT', 'PROP_LOC'],
+  ['MT', 'https://services.arcgis.com/qnjIrwR8z5Izc0ij/arcgis/rest/services/Montana_Cadastral_Framework/FeatureServer', 1, 'PARCELID', 'AddressLine1'],
+  /* Layer 1 is the polygons; layer 0 is the same parcels as points and would
+     fail every area check in the verifier. */
+  ['NC', 'https://services.nconemap.gov/secure/rest/services/NC1Map_Parcels/MapServer', 1, 'parno', 'siteadd'],
+  ['NJ', 'https://services2.arcgis.com/XVOqAjTOJ5P6ngMu/arcgis/rest/services/Parcels_Composite_NJ_WM/FeatureServer', 0, 'PAMS_PIN', 'PROP_LOC'],
+  ['NV', 'https://arcgis.water.nv.gov/arcgis/rest/services/BaseLayers/County_Parcels_in_Nevada/MapServer', 0, 'APN', null],
+  ['RI', 'https://risegis.ri.gov/hosting/rest/services/RIDEM/Tax_Parcels/MapServer', 0, 'PlatLot', 'E911'],
+  ['TN', 'https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer', 0, 'PARCELID', 'ADDRESS'],
+  ['WI', 'https://services3.arcgis.com/n6uYoouQZW75n5WI/arcgis/rest/services/Wisconsin_Statewide_Parcels_DB/FeatureServer', 0, 'PARCELID', 'SITEADRESS'],
+  ['WY', 'https://services3.arcgis.com/r0iJ85SKZ4zAzz3P/arcgis/rest/services/Wyoming_Parcels_for_2026/FeatureServer', 0, 'parcelnb', 'locationad'],
+];
+
+/** The found list in the shape the statewide pool already uses. */
+const foundStatewide = () => FOUND_STATEWIDE.map(([ab, service, layer, pin, address]) => ({
+  key: `${ab.toLowerCase()}-statewide`,
+  name: `${stateOf(ab)?.name || ab} (found)`,
+  state: ab,
+  statewide: true,
+  service,
+  layer,
+  layerName: null,
+  fields: { pin, address },
+  fallbacks: [],
+}));
+
+/**
  * The merged pool.
  *
  * Returns { candidates, statewide, sources }, where `sources` says what each
@@ -131,7 +199,10 @@ export function candidatePool() {
   }
 
   const merged = [];
-  const wide = [...(oa?.statewide || [])];
+  /* The catalogue's statewide entries first, so one that is in both lists
+     keeps the catalogue's fields and the found endpoint rides along as a
+     fallback -- the same rule a county in both catalogues gets. */
+  const wide = [...(oa?.statewide || []), ...foundStatewide()];
   const byFips = new Map();
   const byKey = new Map();
   const repaired = [];
@@ -234,6 +305,7 @@ export function candidatePool() {
     sources: {
       atlas: atlas?.candidates?.length || 0,
       openaddresses: oa?.candidates?.length || 0,
+      foundStatewide: FOUND_STATEWIDE.length,
       joined,
       fresh,
       atlasVersion: atlas?.atlasVersion || null,
