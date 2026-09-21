@@ -1,0 +1,100 @@
+name: 11. Import traced lawns
+
+# Takes a GeoJSON file of lawn polygons traced in somebody else's GIS and
+# writes them into the corpus as maps awaiting review.
+#
+# HOW TO USE IT FROM A PHONE. Commit the .geojson anywhere in the repo --
+# GitHub's web editor will upload one -- then run this with the path and a
+# name for the batch. Nothing else is needed and nothing is installed.
+#
+# ALWAYS DRY RUN FIRST. The default is a dry run for that reason: it reads the
+# file, says how many lawns it found, how they were grouped and what it
+# refused, and posts nothing. The two faults that matter are both invisible
+# afterwards -- a projected file imports lawns into the ocean, and an ungrouped
+# file turns one property into three -- so the check costs a minute and the
+# mistake costs a review queue.
+#
+# NOTHING IMPORTED IS APPROVED. Every row lands at status 'new', which is the
+# grading queue, and every ring says inferred: false -- which is a CLAIM that
+# the ground was visible, not a measurement. They are not corpus until somebody
+# has been through them.
+#
+# Free to run: reads a file, posts JSON to our own Worker. No AI, nothing to
+# spend. The Worker fetches one photograph per map afterwards, on its own time.
+on:
+  workflow_dispatch:
+    inputs:
+      file:
+        description: 'Path to the .geojson in this repo, e.g. imports/jane.geojson'
+        required: true
+      source:
+        description: 'A name for this batch, e.g. jane-q3. Goes on every row so it can be found or removed later.'
+        required: true
+      dry_run:
+        description: 'Read and report, post nothing'
+        required: true
+        default: 'true'
+        type: choice
+        options: ['true', 'false']
+      group_by:
+        description: 'Attribute naming which lawn a polygon belongs to. Blank tries the usual names.'
+        required: false
+        default: ''
+      limit:
+        description: 'Stop after this many lawns. Blank means all of them.'
+        required: false
+        default: ''
+
+jobs:
+  import:
+    name: Read the file and write the maps
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      # Fail here rather than three hundred lines into a run, with the two
+      # things a person can actually check from a phone.
+      - name: Is the file there
+        run: |
+          if [ ! -f "${{ inputs.file }}" ]; then
+            echo "::error::No file at ${{ inputs.file }}"
+            echo "Files that look like traces in this repo:"
+            find . -name '*.geojson' -not -path './node_modules/*' | head -20
+            exit 1
+          fi
+          echo "$(wc -c < "${{ inputs.file }}") bytes"
+
+      - name: Import
+        env:
+          SOURCE: ${{ inputs.source }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          GROUP_BY: ${{ inputs.group_by }}
+          LIMIT: ${{ inputs.limit }}
+        run: node tools/import-traces.js "${{ inputs.file }}"
+
+      # The end of the log is the part worth reading, because nobody is
+      # scrolling this on a phone either.
+      - name: What happens next
+        if: always()
+        run: |
+          echo
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "That was a DRY RUN. Nothing was written."
+            echo "Read the grouping line above before running it for real:"
+            echo "if it says no grouping attribute was found, every piece of"
+            echo "every lawn just counted as a separate property."
+          else
+            echo "Imported as \"${{ inputs.source }}\"."
+            echo
+            echo "They are at status 'new' -- the grading queue -- and every ring"
+            echo "says inferred: false, which is a claim nobody has checked."
+            echo "Grade them in the admin console before they count as corpus."
+          fi
