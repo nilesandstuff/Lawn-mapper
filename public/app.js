@@ -4249,12 +4249,33 @@ async function detect() {
       : ` on ${providerInfo(state.detectedWith).label}` +
         ` (${providerInfo(state.provider).label} cannot be measured from)`;
 
+    /*
+     * WHICH OF THE TWO ANSWERED, always said out loud.
+     *
+     * The land cover method and the AI are being shipped side by side to find
+     * out which is better, and an outline with no label makes that impossible
+     * to judge -- somebody reporting "it was blocky today" or "it missed the
+     * side yard" has told us nothing unless we know what produced it.
+     *
+     * It also has to be said because the two cost different things. A free
+     * press that looked identical to a paid one would train people to avoid
+     * the free one, and a fallback to the AI that said nothing would spend a
+     * detection somebody thought was free.
+     */
+    const source = data.free
+      ? ' Read from the 1 m land cover map rather than the AI, so it cost no detections'
+        + ' — expect straighter, blockier edges.'
+      : data.fellBack === 'landcover'
+        ? ' The land cover map has no data at this address, so the AI answered instead'
+          + ' and this press used a detection.'
+        : '';
+
     setStatus(
       (subtractive
         ? `${polygons.length} section${polygons.length > 1 ? 's' : ''} of lawn left after removing `
           + `${layers.length} thing${layers.length > 1 ? 's' : ''}`
         : `Found ${polygons.length} section${polygons.length > 1 ? 's' : ''} of lawn`) +
-      (parcelRing() ? ', trimmed to your property line' : '') + on + '.' + lost + gaps + scraps +
+      (parcelRing() ? ', trimmed to your property line' : '') + on + '.' + source + lost + gaps + scraps +
       overTrim + ' Correct anything it got wrong.'
     );
   } catch (err) {
@@ -4270,9 +4291,23 @@ async function detect() {
     if (err.status === 402) {
       const b = err.body || {};
       const left = Math.max(0, (b.limit || 0) - (b.used || 0));
+      /*
+       * The free method, named exactly when it matters.
+       *
+       * Somebody out of passes is the one person who most needs to know there
+       * is a method that does not use them, and this sentence used to offer
+       * only "draw it by hand" -- which is true, unlimited, and much more work
+       * than picking the other option in a menu they may not have opened.
+       *
+       * Read off `local` in the catalogue rather than by naming the method
+       * here, so that a second free method, or the removal of this one, needs
+       * no edit in this file.
+       */
+      const free = offeredModels().find((m) => m.local);
       setStatus(
         `${left} of your ${b.limit || 0} AI passes left today and this press `
         + `needs ${b.wanted || 1}. They come back in the morning. `
+        + (free ? `"${free.label}" uses no passes and may have your address — try that first. ` : '')
         + 'Drawing by hand is unlimited and costs nothing — open the Draw step.'
         // Only reachable signed out on a deployment where 402 can happen
         // without an account; harmless either way, and it means the invitation

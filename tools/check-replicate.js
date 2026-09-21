@@ -41,6 +41,21 @@ const auth = { Authorization: `Bearer ${token}` };
 let failures = 0;
 
 for (const [id, model] of Object.entries(MODELS)) {
+  /*
+   * A method that is not a prediction has nothing here to check.
+   *
+   * The land cover method answers from a published raster, so Replicate has
+   * never heard of it and asking would 404 -- which this file reports as "the
+   * model has been renamed or withdrawn", a frightening and entirely false
+   * sentence about something that is working. Named in the log rather than
+   * skipped in silence, so the count of methods still adds up for whoever is
+   * reading the preflight to find out what is live.
+   */
+  if (model.local) {
+    console.log(`\n=== ${id}: not a prediction, nothing to preflight`);
+    continue;
+  }
+
   const slug = model.slug;
   console.log(`\n=== ${id}: ${slug}`);
 

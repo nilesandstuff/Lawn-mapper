@@ -58,8 +58,9 @@ import { recordParcelGap } from './gaps.js';
 import {
   MODELS, samVersion, samThreshold, samPrompt, normaliseModel, modelCatalogue,
   promptProblem, normaliseExclusions, exclusionPass, exclusionCatalogue,
-  DEFAULT_EXCLUSIONS,
+  DEFAULT_EXCLUSIONS, DEFAULT_MODEL,
 } from './sam.js';
+import { covers, lawnMaskUrl, LANDCOVER_HOST } from './landcover.js';
 // Which satellite picture to use, and how to ask each source for exactly our
 // frame. Also lives outside the entrypoint, for the same reason as sam.js.
 import {
@@ -395,7 +396,20 @@ async function handleImagery(url, env, origin) {
  * getImageData() throws. Serving it from here keeps the canvas clean whatever
  * CORS headers Replicate's CDN happens to send.
  */
-const MASK_HOST = 'replicate.delivery';
+/*
+ * The hosts this endpoint will fetch from, and nothing else.
+ *
+ * A LIST because masks now come from two places: Replicate's CDN, and the land
+ * cover service, whose exportImage answer is a mask in every sense that
+ * matters here. Both are read off a canvas by the same tracer and both need
+ * the same treatment.
+ *
+ * This list is the whole of the open-proxy guard, so it is a list of hosts and
+ * never of patterns. Anything looser and the Worker fetches arbitrary URLs for
+ * anyone who asks, including addresses only reachable from inside Cloudflare's
+ * network.
+ */
+const MASK_HOSTS = ['replicate.delivery', LANDCOVER_HOST];
 
 async function handleMask(url, origin) {
   const raw = url.searchParams.get('url');
@@ -414,7 +428,7 @@ async function handleMask(url, origin) {
   const host = target.hostname;
   const allowed =
     target.protocol === 'https:' &&
-    (host === MASK_HOST || host.endsWith(`.${MASK_HOST}`));
+    MASK_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
   if (!allowed) return json({ error: 'Host not allowed' }, 403, origin);
 
   const res = await fetch(target.toString());
@@ -491,8 +505,14 @@ async function handleSegment(request, env, origin, ctx) {
   const zoom = clampZoom(Number(body.zoom) || 19);
   const size = clampSize(Number(body.size) || 640);
   const provider = detectionProvider(body.provider);
-  const modelId = normaliseModel(body.model);
-  const model = MODELS[modelId];
+  /*
+   * Not const, because the land cover method can hand the request back to the
+   * AI when its raster does not reach the address. See the fallback below --
+   * everything downstream reads these two, so the substitution has to happen
+   * in them rather than beside them.
+   */
+  let modelId = normaliseModel(body.model);
+  let model = MODELS[modelId];
 
   /*
    * Pins, in the pixel space of the image the model will be shown.
@@ -518,6 +538,42 @@ async function handleSegment(request, env, origin, ctx) {
       400,
       origin
     );
+  }
+
+  /*
+   * THE LAND COVER METHOD, answered here and never reaching Replicate.
+   *
+   * Before the allowance on purpose, and not as an optimisation: this method
+   * costs nothing, so taking a slot and handing it back would leave a visible
+   * flicker in somebody's remaining count for a press that was always free.
+   *
+   * Coverage is asked rather than assumed. The raster is the Chesapeake
+   * watershed plus adjacent counties, which is not a rectangle and has holes
+   * inside states it otherwise covers -- Roanoke has data and Bristol, in the
+   * same state, does not. One identify call settles it, and a wrong box would
+   * either offer the method where it cannot work or withhold it where it can.
+   *
+   * WHEN IT CANNOT WORK, FALL BACK rather than refuse. Dropping through to the
+   * ordinary path gives the person the AI answer they would have got anyway,
+   * and `fellBack` lets the browser say which one it used -- an outline with no
+   * label is the one thing that must not happen here, because the whole point
+   * of shipping both is finding out which is better.
+   */
+  let fellBack = null;
+  if (model.local) {
+    const served = providerFrame(provider, { lng, lat, zoom, size });
+    if (await covers(lng, lat, env)) {
+      return json({
+        frame: served,
+        model: modelId,
+        subtractive: false,
+        free: true,
+        passes: [{ status: 'succeeded', exclusion: null, mask: lawnMaskUrl(served, env) }],
+      }, 200, origin);
+    }
+    fellBack = 'landcover';
+    modelId = DEFAULT_MODEL;
+    model = MODELS[modelId];
   }
 
   /*

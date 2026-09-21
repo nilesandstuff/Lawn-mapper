@@ -31,6 +31,7 @@ import {
   consumeQuota, refundQuota, checkQuota, personalLimit, addressLimit,
 } from '../worker/src/quota.js';
 import { upstreamReason, redactSecrets } from '../worker/src/upstream.js';
+import { LANDCOVER_HOST } from '../worker/src/landcover.js';
 import { logMeasurement, readLog, loggingEnabled, recordLater } from '../worker/src/testlog.js';
 import {
   providerCatalogue, providerFrame, detectionImageUrl,
@@ -65,6 +66,25 @@ check('the default export has a fetch handler',
  * easy to get wrong is the one nobody runs by accident.
  */
 for (const [id, model] of Object.entries(MODELS)) {
+  check(`${id}: is offered to the user`, !!model.label && !!model.note);
+
+  /*
+   * NOT EVERY METHOD IS A PREDICTION ANY MORE. The land cover method answers
+   * from a published raster: no slug, no version, no input schema and no bill.
+   *
+   * So the Replicate checks are asked of the Replicate models, and the local
+   * one is asked the opposite question -- that it carries NONE of that
+   * machinery. A local model that quietly grew a slug would be charged for by
+   * the preflight and billed for by Replicate while the picker still called it
+   * free, which is the failure worth a test.
+   */
+  if (model.local) {
+    check(`${id}: carries no prediction machinery`,
+      !model.slug && !model.input && !model.fields,
+      `slug=${model.slug} input=${typeof model.input} fields=${model.fields}`);
+    continue;
+  }
+
   const sent = Object.keys(model.input('https://example.com/x.png', {
     prompt: DEFAULT_PROMPT, threshold: 0.1, points: [[10, 20]],
   }));
@@ -74,7 +94,6 @@ for (const [id, model] of Object.entries(MODELS)) {
 
   check(`${id}: is named`,
     typeof model.slug === 'string' && model.slug.includes('/'), model.slug);
-  check(`${id}: is offered to the user`, !!model.label && !!model.note);
 }
 
 check('the default model exists', !!MODELS[DEFAULT_MODEL], DEFAULT_MODEL);
@@ -1524,6 +1543,56 @@ check('and a typed prompt is sent verbatim',
   const nonsense = await get('lng=999&lat=999', [feature]);
   check('and a position off the planet is refused before it is spent on a lookup',
     nonsense.status === 400, JSON.stringify(nonsense.body));
+}
+
+/* ------------------------------------------------- the mask proxy's guard */
+/*
+ * /api/mask fetches a URL on the caller's behalf, so its host list is the only
+ * thing between this Worker and being an open proxy -- one that sits inside
+ * Cloudflare's network and can therefore reach addresses the public internet
+ * cannot. It grew a second entry when the land cover method arrived, which is
+ * exactly the kind of edit that loosens a guard by accident.
+ */
+{
+  const env = { MAPBOX_TOKEN: 'pk.test' };
+  const ctx = { waitUntil() {} };
+  const realFetch = globalThis.fetch;
+
+  const ask = async (target) => {
+    globalThis.fetch = async () => new Response(new Uint8Array([1, 2, 3]), {
+      status: 200, headers: { 'Content-Type': 'image/png' },
+    });
+    try {
+      const url = `https://site.test/api/mask?url=${encodeURIComponent(target)}`;
+      const res = await entrypoint.default.fetch(new Request(url), env, ctx);
+      return res.status;
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  };
+
+  check('the SAM mask host is still allowed',
+    await ask('https://replicate.delivery/x/mask.png') === 200);
+  check('and its subdomains',
+    await ask('https://pbxt.replicate.delivery/x/mask.png') === 200);
+  check('the land cover service is allowed too',
+    await ask(`https://${LANDCOVER_HOST}/arcgis/rest/services/LULC/bay_lu_tif/ImageServer/exportImage?f=image`) === 200);
+
+  /*
+   * The two ways a host list gets loosened by accident. A suffix match that
+   * forgets the dot lets "evilcicgis.org" through; one that matches anywhere
+   * in the string lets "cicgis.org.evil.test" through. Both are one character
+   * away from the real thing and neither would be caught by eye.
+   */
+  check('a host that merely ends in the allowed name is refused',
+    await ask('https://evilcicgis.org/x.png') === 403);
+  check('a host that merely starts with it is refused',
+    await ask('https://cicgis.org.evil.test/x.png') === 403);
+  check('an unrelated host is refused',
+    await ask('https://example.com/x.png') === 403);
+  check('and so is plain http on an allowed host',
+    await ask('http://cicgis.org/x.png') === 403,
+    'https only, or the proxy can be pointed at something that is not them');
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);

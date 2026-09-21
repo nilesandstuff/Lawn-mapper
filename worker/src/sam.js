@@ -581,6 +581,33 @@ export const MODELS = {
       threshold,
     }),
   },
+
+  /*
+   * NOT AN AI AT ALL, and the only entry in this table that is not.
+   *
+   * `local: true` is the whole difference and the Worker branches on it before
+   * the allowance is touched: there is no slug, no version, no prediction and
+   * no bill, because the answer already exists in a published land cover
+   * raster. See worker/src/landcover.js for what that raster is, what its
+   * "tree canopy over turf grass" class actually means, and why it is a metre.
+   *
+   * It lives in MODELS rather than beside them so that the picker, the
+   * catalogue, the tracer and the corpus all keep working unchanged -- what
+   * reaches the browser is a mask URL and a frame, exactly as SAM's does.
+   *
+   * WHERE THERE IS NO DATA THE WORKER FALLS BACK TO `sam3` and says so. The
+   * raster covers the Chesapeake watershed and the counties beside it, which
+   * is most of Virginia and Maryland, all of DC and Delaware, and parts of
+   * four more states -- so for most of the country this method is an offer the
+   * Worker cannot keep, and silently returning an empty mask would read as "no
+   * grass here" rather than "not available here".
+   */
+  landcover: {
+    local: true,
+    label: 'Use the land cover map',
+    note: 'No AI and no wait. Reads a published 1 m land cover map that already names turf grass, where it has data. Blockier than the AI, and free.',
+    needsPoints: false,
+  },
 };
 
 /**
@@ -635,6 +662,13 @@ export const modelCatalogue = () =>
     note: m.note,
     needsPoints: Boolean(m.needsPoints),
     invert: Boolean(m.invert),
+    /*
+     * Answered without an AI, so without a prediction and without a slot of
+     * the daily allowance. The browser needs to know because the button says
+     * what a press will cost, and "1 of 20 left" next to a method that costs
+     * nothing is a lie that stops people using the free one.
+     */
+    local: Boolean(m.local),
     // Start from the property line and take the mask away, rather than tracing
     // the mask. See the sam3_exclude entry for why the distinction only
     // matters once there is more than one mask.
