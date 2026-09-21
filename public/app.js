@@ -1149,7 +1149,7 @@ async function initMap() {
 
   const {
     mapboxToken, imagery, models, exclusions, defaultExclusions, accounts,
-    coverage,
+    coverage, overlays,
   } = await api('/api/config');
   state.accountsOn = Boolean(accounts);
   /*
@@ -1161,6 +1161,10 @@ async function initMap() {
    */
   mountCoverage({ summary: coverage, fetchList: () => api('/api/coverage') });
   state.imagery = Array.isArray(imagery) ? imagery : [];
+  /* Things drawn ON the photograph rather than instead of it. A deployment
+     without them simply has none, and the picker shows no second section. */
+  state.overlays = Array.isArray(overlays) ? overlays : [];
+  state.overlaysOn = new Set();
   state.models = Array.isArray(models) ? models : [];
   state.exclusions = Array.isArray(exclusions) ? exclusions : [];
   state.exclude = Array.isArray(defaultExclusions)
@@ -4063,6 +4067,15 @@ async function detect() {
     const subtractive = Boolean(data.subtractive);
     const traced = traceDetection({
       layers, subtractive, rendered,
+      /*
+       * A source whose outline is genuinely blockier gets a bigger handle
+       * budget, from the catalogue rather than from a list kept here. See the
+       * landcover entry in sam.js for the measurements: a 1 m class raster
+       * steps where a model mask curves, and spending a budget chosen for
+       * curves on a staircase leaves the tracer cutting chords across the real
+       * edge -- which is what "the shapes are diverging from the mask" was.
+       */
+      maxVertices: modelInfo(model).maxVertices || MAX_TRACE_VERTICES,
       // Whatever produced these pixels decides the polarity, not the picker,
       // which the user may change before the next re-trace.
       invert: modelInverts(model),
@@ -4143,6 +4156,13 @@ async function detect() {
       layers,
       subtractive,
       invert: modelInverts(model),
+      /*
+       * Carried with the mask, not looked up again at re-trace time. The edge
+       * slider re-traces THIS mask, and by then the picker may say something
+       * else -- so a budget read from the picker would quietly re-coarsen a
+       * land cover outline the moment somebody nudged the edge.
+       */
+      maxVertices: modelInfo(model).maxVertices || MAX_TRACE_VERTICES,
     };
     refreshOverlayLabel();
     if ($('#toggle-overlay').checked) showOverlay();
@@ -4599,7 +4619,12 @@ const providerInfo = (id) =>
  * photograph, correctly placed, hiding the thing being measured.
  */
 function bottomOfOurLayers() {
-  const ours = /^(gl-draw|parcel-|edge-highlight|erase-stroke|points|point-|surveyed|mask-overlay|lawn-pins)/;
+  /* `lulc-` is in here for a reason worth keeping: without it the alternative
+     aerial is inserted ABOVE the land cover overlay and hides it, which breaks
+     the one thing that overlay exists to do -- be compared against the
+     photograph. A comparison layer under the thing it is compared with is not
+     a cosmetic fault. */
+  const ours = /^(gl-draw|parcel-|edge-highlight|erase-stroke|points|point-|surveyed|mask-overlay|lawn-pins|lulc-)/;
   for (const layer of map.getStyle().layers) {
     if (layer.id !== 'imagery-alt' && ours.test(layer.id)) return layer.id;
   }
@@ -4694,13 +4719,113 @@ function buildLayerList() {
     });
     list.append(b);
   }
+
+  /*
+   * OVERLAYS, under a rule, and as checkboxes rather than radios.
+   *
+   * They are a different kind of thing from the photographs above them:
+   * choosing an aerial replaces what you are looking at, switching one of
+   * these on adds to it, and several can be on at once. A radio group cannot
+   * say that, and putting them in the same group would make picking the land
+   * cover silently drop you off Mapbox.
+   *
+   * The list does NOT close on a toggle. Comparing three things means flicking
+   * them on and off against each other, and a menu that shut after every tap
+   * would turn that into nine taps.
+   */
+  if (!state.overlays.length) return;
+
+  const rule = document.createElement('div');
+  rule.className = 'layerrule';
+  rule.textContent = 'Compare against';
+  list.append(rule);
+
+  for (const o of state.overlays) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('role', 'menuitemcheckbox');
+    b.setAttribute('aria-checked', String(state.overlaysOn.has(o.id)));
+    b.dataset.overlay = o.id;
+    if (o.note) b.title = o.note;
+
+    const label = document.createElement('span');
+    label.textContent = o.label;
+    b.append(label);
+
+    b.addEventListener('click', () => toggleOverlay(o.id));
+    list.append(b);
+  }
 }
 
 /** Repaint the ticks without rebuilding, so the open list does not flicker. */
 function refreshLayerList() {
   for (const b of $('#layer-list').querySelectorAll('button')) {
-    b.setAttribute('aria-checked', String(b.dataset.provider === state.provider));
+    b.setAttribute('aria-checked', String(b.dataset.overlay
+      ? state.overlaysOn.has(b.dataset.overlay)
+      : b.dataset.provider === state.provider));
   }
+}
+
+/* ------------------------------------------------- land cover overlays */
+/**
+ * Put the land cover raster on the map, or take it off.
+ *
+ * WHAT THIS IS FOR. The first real test of the land cover method produced
+ * outlines that did not follow the mask they were traced from, and from the
+ * screen there was no way to tell whether the raster, the mask or the tracer
+ * was at fault. With these on, the raster is visible underneath the mask
+ * overlay and the drawn shapes, so the three can be compared where they
+ * disagree instead of argued about.
+ *
+ * UNDER THE PROPERTY LINE, like the mask overlay, so the shapes and the
+ * boundary stay on top. An overlay that hid the thing it is being compared
+ * against would be worse than not having it.
+ */
+function overlayInfo(id) {
+  return state.overlays.find((o) => o.id === id) || null;
+}
+
+function showOverlayLayer(id) {
+  const info = overlayInfo(id);
+  if (!info?.tiles || map.getSource(id)) return;
+  map.addSource(id, {
+    type: 'raster',
+    tiles: [info.tiles],
+    /*
+     * 256 because that is what the tile template asks the service for. A
+     * mismatch here is not an error -- it is a raster quietly drawn at the
+     * wrong scale, which on a comparison layer is the worst possible fault.
+     */
+    tileSize: 256,
+    /*
+     * The raster is 1 m and the map is routinely past z20, where there is no
+     * more detail to be had. Stopping the request at 19 and letting Mapbox
+     * upscale shows the real pixels as real pixels, rather than asking the
+     * service to invent a smooth version of them -- which would hide exactly
+     * the blockiness being investigated.
+     */
+    maxzoom: 19,
+  });
+  map.addLayer({
+    id, type: 'raster', source: id,
+    paint: { 'raster-opacity': 0.6, 'raster-resampling': 'nearest' },
+  }, map.getLayer('parcel-fill') ? 'parcel-fill' : undefined);
+}
+
+function hideOverlayLayer(id) {
+  if (map.getLayer(id)) map.removeLayer(id);
+  if (map.getSource(id)) map.removeSource(id);
+}
+
+function toggleOverlay(id) {
+  if (state.overlaysOn.has(id)) {
+    state.overlaysOn.delete(id);
+    hideOverlayLayer(id);
+  } else {
+    state.overlaysOn.add(id);
+    showOverlayLayer(id);
+  }
+  refreshLayerList();
 }
 
 function closeLayerList() {
@@ -7211,7 +7336,7 @@ const COLLAPSE_FRACTION = 0.98;
  *   and not-a-building, and two independently noisy masks intersect to
  *   slivers. Same pixels for one concept, incompatible for two.
  */
-function traceDetection({ layers, subtractive, invert, rendered, edgeFt = 0 }) {
+function traceDetection({ layers, subtractive, invert, rendered, edgeFt = 0, maxVertices = MAX_TRACE_VERTICES }) {
   const { width: w, height: h } = layers[0].image;
 
   // All passes are the same model on the same image, so this should never
@@ -7317,7 +7442,7 @@ function traceDetection({ layers, subtractive, invert, rendered, edgeFt = 0 }) {
      * and +0.03%, 0.3 m gave 78 and -0.77%, 0.5 m gave 55 and -1.54%.
      */
     tolerance: TRACE_TOLERANCE_M / mPerPx,
-    maxVertices: MAX_TRACE_VERTICES,
+    maxVertices,
     growPx: Math.round((edgeFt * 0.3048) / mPerPx),
   };
 
@@ -7430,6 +7555,7 @@ function retrace(what = 'That') {
     subtractive: mask.subtractive,
     invert: mask.invert,
     rendered: mask.frame,
+    maxVertices: mask.maxVertices || MAX_TRACE_VERTICES,
     // Feet on the ground -> pixels of this particular mask.
     edgeFt: state.edgeFt,
   });

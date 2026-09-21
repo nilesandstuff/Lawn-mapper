@@ -514,6 +514,23 @@ body.inferred-mode .panel { box-shadow: inset 4px 0 0 #7c4dff; }
 /* "View only" is said in the list, not after choosing: picking a source and
  * then being told it cannot be measured from is a wasted step. */
 .layerlist .viewonly { font-size: 11px; opacity: .72; margin-left: auto; white-space: nowrap; }
+/* The overlays are a second kind of thing in one menu -- pictures to replace
+ * the photograph above, layers to draw on it below -- so the two groups are
+ * separated by a rule with a word on it rather than by spacing alone. */
+.layerlist .layerrule {
+  margin: 6px 4px 2px; padding-top: 6px; font-size: 11px; letter-spacing: .04em;
+  text-transform: uppercase; opacity: .6; border-top: 1px solid rgba(0, 0, 0, .13);
+}
+/* Checked overlays get an outline rather than the solid green the radios use:
+ * "one of these is selected" and "any of these may be on" should not look
+ * identical in a list that contains both. */
+.layerlist button[role="menuitemcheckbox"][aria-checked="true"] {
+  background: #eef2ee; color: var(--ink); font-weight: 600;
+  box-shadow: inset 0 0 0 2px #1b5e20;
+}
+.layerlist button[role="menuitemcheckbox"][aria-checked="true"]::after {
+  content: '\2713'; margin-left: auto; color: #1b5e20; font-weight: 700;
+}
 
 @media (max-width: 700px) {
   .maprail { top: 88px; right: 8px; }

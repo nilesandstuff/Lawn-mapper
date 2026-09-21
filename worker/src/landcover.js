@@ -33,6 +33,7 @@
  */
 
 import { frameBbox3857, imagePixels } from './imagery.js';
+import { metresPerPixel } from '../../public/lib/mercator.js';
 
 /**
  * The makers' own service, not the state's copy of it.
@@ -81,8 +82,48 @@ const service = (env) => String(env?.LANDCOVER_SERVICE || LANDCOVER_SERVICE).rep
  * reprojection between what is asked for and what arrives, so the mask lands
  * exactly on the frame the browser will unproject it against.
  */
+/**
+ * HOW MANY PIXELS TO ASK FOR, and why it is not the photograph's answer.
+ *
+ * THE FAULT THIS FIXES. The first version asked for the mask at the same size
+ * as the aerial -- 1280 px for a 640 frame, about 6 cm a pixel. The data is one
+ * metre, so every class cell arrived as a 17 px block with hard stair-steps,
+ * and the tracer's corner detector looks at an 8 px window. An 8 px window
+ * inside a 17 px step sees a perfect 90 degree corner, so EVERY STEP became an
+ * anchored corner -- hundreds of them, all artefacts of asking for seventeen
+ * times more pixels than the data has. Corners are the last thing simplifyRing
+ * gives up, so the vertex budget was spent entirely on staircase and the runs
+ * between them were cut as straight chords across the real edge.
+ *
+ * Measured against the mask the outline was traced from, same lot, same code:
+ *
+ *     1280 px   IoU 83.0%    41 vertices on the biggest ring
+ *      640 px   IoU 84.0%    48
+ *      320 px   IoU 89.4%    76
+ *      160 px   IoU 90.9%    65
+ *
+ * 17% of the answer disagreeing with its own mask is what "the shapes are
+ * diverging from the mask" looked like from the screen.
+ *
+ * FOUR PIXELS PER GROUND METRE. Enough oversampling that a cell boundary lands
+ * where it should, coarse enough that the corner window spans two cells rather
+ * than sitting inside one. Asking for more than this is not more detail -- the
+ * data has none to give -- it is more staircase.
+ *
+ * Never more than the photograph's own size, so this can only ever ask for
+ * fewer pixels than before, and floored at 64 so a tiny frame still has
+ * something to trace.
+ */
+const PX_PER_GROUND_M = 4;
+
+export function maskPixels(frame) {
+  const full = imagePixels(frame);
+  const widthM = metresPerPixel(frame, full) * full;
+  return Math.max(64, Math.min(full, Math.round(widthM * PX_PER_GROUND_M)));
+}
+
 export function lawnMaskUrl(frame, env) {
-  const px = imagePixels(frame);
+  const px = maskPixels(frame);
   const params = new URLSearchParams({
     bbox: frameBbox3857(frame).join(','),
     bboxSR: '3857',
@@ -155,3 +196,73 @@ export async function classAt(lng, lat, env, timeoutMs = 8000) {
  * the ordinary case, not a miss.
  */
 export const covers = async (lng, lat, env) => (await classAt(lng, lat, env)) !== null;
+
+/**
+ * The same raster as something to LOOK at, for the layer picker.
+ *
+ * WHY THIS EXISTS. The first real test of the land cover method produced
+ * outlines that did not match the mask they came from, and there was no way to
+ * see which of the three things was wrong -- the raster, the mask cut out of
+ * it, or the polygons traced from the mask. Three suspects and one visible
+ * symptom is not a debuggable position. These put the first two on the map
+ * underneath the third.
+ *
+ * `{bbox-epsg-3857}` is Mapbox GL's own placeholder for a raster source's tile
+ * extent, and exportImage takes a bbox, so a plain ArcGIS image service is a
+ * tile source with no tiling server in front of it.
+ *
+ * These are for DISPLAY ONLY and deliberately do not go through /api/mask:
+ * nothing reads their pixels off a canvas, so there is no tainting to avoid
+ * and no reason to put the Worker in the path of a picture.
+ */
+export const OVERLAYS = [
+  {
+    id: 'lulc-all',
+    label: 'Land cover, all classes',
+    note: 'Every one of the 54 classes in their published colours. Turf grass is pale green; tree canopy over turf is a darker green.',
+  },
+  {
+    id: 'lulc-lawn',
+    label: 'Land cover, lawn only',
+    note: 'Just the two classes the free method measures — turf grass and tree canopy over turf grass. This is the mask, before anything traces it.',
+    /* The same remap the mask uses, so what is drawn here and what is
+       measured cannot drift apart. */
+    lawnOnly: true,
+  },
+];
+
+/** A Mapbox raster-source tile template for one of the overlays above. */
+export function overlayTiles(id, env) {
+  const overlay = OVERLAYS.find((o) => o.id === id);
+  if (!overlay) return null;
+  const params = new URLSearchParams({
+    bboxSR: '3857',
+    imageSR: '3857',
+    size: '256,256',
+    format: 'png32',
+    transparent: 'true',
+    f: 'image',
+  });
+  if (overlay.lawnOnly) {
+    params.set('renderingRule', JSON.stringify({
+      rasterFunction: 'Remap',
+      rasterFunctionArguments: {
+        InputRanges: REMAP_RANGE, OutputValues: [255], AllowUnmatched: false,
+      },
+    }));
+  }
+  /*
+   * The placeholder is substituted by Mapbox, so it must survive
+   * URLSearchParams -- which would percent-encode the braces. Appended after
+   * the encoding rather than passed through it.
+   */
+  return `${service(env)}/exportImage?bbox={bbox-epsg-3857}&${params}`;
+}
+
+/** What the browser needs to offer these, without a second copy of the list. */
+export const overlayCatalogue = (env) => OVERLAYS.map((o) => ({
+  id: o.id,
+  label: o.label,
+  note: o.note,
+  tiles: overlayTiles(o.id, env),
+}));

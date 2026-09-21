@@ -11,9 +11,11 @@
  */
 
 import {
-  lawnMaskUrl, classAt, covers, LAWN_CLASSES, LANDCOVER_HOST, LANDCOVER_SERVICE,
+  lawnMaskUrl, maskPixels, classAt, covers, LAWN_CLASSES, LANDCOVER_HOST,
+  LANDCOVER_SERVICE, overlayCatalogue,
 } from '../worker/src/landcover.js';
 import { frameBbox3857, imagePixels } from '../worker/src/imagery.js';
+import { metresPerPixel } from '../public/lib/mercator.js';
 
 let failures = 0;
 const check = (name, ok, detail = '') => {
@@ -71,10 +73,38 @@ const params = url.searchParams;
     && params.get('bboxSR') === '3857' && params.get('imageSR') === '3857',
     `${params.get('bbox')} @ ${params.get('bboxSR')} -> ${params.get('imageSR')}`);
 
-  const px = imagePixels(frame);
-  check('and it is asked for at the same pixel size as the photograph',
-    params.get('size') === `${px},${px}`,
-    `${params.get('size')} (a different size traces the same lawn at another detail)`);
+  /*
+   * SIZED TO THE DATA, NOT TO THE PHOTOGRAPH -- the fault this whole module
+   * shipped with. Asking for the aerial's 1280 px gave 17 px blocks of a 1 m
+   * raster, every step of which the tracer's 8 px corner window read as a real
+   * corner; the outline then disagreed with its own mask by 17% of its area.
+   * See maskPixels for the measurements.
+   */
+  const px = maskPixels(frame);
+  check('it is sized to the data rather than to the photograph',
+    params.get('size') === `${px},${px}` && px < imagePixels(frame),
+    `${params.get('size')} against the photograph's ${imagePixels(frame)}`);
+
+  const widthM = metresPerPixel(frame, imagePixels(frame)) * imagePixels(frame);
+  const perMetre = px / widthM;
+  check('at about four pixels per ground metre',
+    perMetre > 3.5 && perMetre < 4.5,
+    `${perMetre.toFixed(2)} px/m over ${widthM.toFixed(0)} m of ground`);
+
+  /*
+   * A frame can be small enough that four pixels a metre is a postage stamp,
+   * and large enough that it would exceed the photograph. Both ends are
+   * clamped, and a mask bigger than the aerial would be asking the service to
+   * invent the detail this change exists to stop asking for.
+   */
+  for (const f of [
+    { lng: -77.585, lat: 37.437, zoom: 21, size: 256 },
+    { lng: -77.585, lat: 37.437, zoom: 14, size: 640 },
+  ]) {
+    const n = maskPixels(f);
+    check(`a z${f.zoom} frame stays within the clamps`,
+      n >= 64 && n <= imagePixels(f), `${n} px, photograph is ${imagePixels(f)}`);
+  }
 
   check('it asks for an image, as a PNG',
     params.get('f') === 'image' && params.get('format') === 'png',
@@ -104,6 +134,48 @@ const params = url.searchParams;
   check('the service can be moved without a deploy',
     moved.hostname === 'elsewhere.test' && moved.pathname === '/svc/ImageServer/exportImage',
     `${moved.origin}${moved.pathname} (trailing slash trimmed, so no // in the path)`);
+}
+
+/* ------------------------------------------------------------- overlays */
+/*
+ * The layer-picker overlays. They exist to be compared against the mask and
+ * the drawn shapes, so the thing that must hold is that the "lawn only" one
+ * shows EXACTLY what the mask measures -- a comparison layer that disagreed
+ * with the thing it is compared against would send somebody hunting a bug in
+ * the tracer that was really in the picture.
+ */
+{
+  const list = overlayCatalogue({});
+  check('both overlays are offered', list.length === 2, list.map((o) => o.id).join(', '));
+
+  for (const o of list) {
+    check(`${o.id}: carries a tile template`,
+      typeof o.tiles === 'string' && o.tiles.includes('/exportImage?'), String(o.tiles).slice(0, 60));
+    /*
+     * Mapbox substitutes this placeholder itself, so it has to survive
+     * URLSearchParams -- which percent-encodes braces and would leave the
+     * literal text in every request.
+     */
+    check(`${o.id}: the bbox placeholder is left for Mapbox to fill`,
+      o.tiles.includes('bbox={bbox-epsg-3857}'),
+      o.tiles.includes('%7Bbbox') ? 'the braces got percent-encoded' : 'ok');
+    check(`${o.id}: is on the allowed host`,
+      new URL(o.tiles.replace('{bbox-epsg-3857}', '0,0,1,1')).hostname === LANDCOVER_HOST);
+    check(`${o.id}: says what it is`, Boolean(o.label && o.note));
+  }
+
+  const lawnOverlay = list.find((o) => o.id === 'lulc-lawn');
+  const overlayRule = new URL(lawnOverlay.tiles.replace('{bbox-epsg-3857}', '0,0,1,1'))
+    .searchParams.get('renderingRule');
+  check('the lawn overlay draws exactly what the mask measures',
+    JSON.parse(overlayRule).rasterFunctionArguments.InputRanges.join(',')
+      === JSON.parse(params.get('renderingRule')).rasterFunctionArguments.InputRanges.join(','),
+    overlayRule);
+
+  const allOverlay = list.find((o) => o.id === 'lulc-all');
+  check('and the all-classes overlay remaps nothing',
+    !new URL(allOverlay.tiles.replace('{bbox-epsg-3857}', '0,0,1,1')).searchParams.get('renderingRule'),
+    'it is there to show the classes the other two are derived from');
 }
 
 /* ------------------------------------------------------------- coverage */

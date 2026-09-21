@@ -607,6 +607,19 @@ export const MODELS = {
     label: 'Use the land cover map',
     note: 'No AI and no wait. Reads a published 1 m land cover map that already names turf grass, where it has data. Blockier than the AI, and free.',
     needsPoints: false,
+    /*
+     * MORE HANDLES THAN THE AI GETS, because this outline genuinely has more
+     * corners in it. A 1 m class raster steps; a model mask curves. The
+     * default 80 was chosen against curves, and spending it on a staircase
+     * leaves the tracer cutting straight chords across the real edge.
+     *
+     * Measured on five Virginia and Maryland lots, outline against the mask it
+     * was traced from: 80 gives a mean IoU of 85.6%, 120 gives 88.0%, and 160
+     * gives 88.2% for rings the editor cannot page through. 120 is where it
+     * stops paying, and it is also HANDLE_MAX_CORNERS -- so every shape this
+     * produces is still one somebody can correct by hand.
+     */
+    maxVertices: 120,
   },
 };
 
@@ -669,6 +682,9 @@ export const modelCatalogue = () =>
      * nothing is a lie that stops people using the free one.
      */
     local: Boolean(m.local),
+    /* A source whose outline needs a different handle budget says so here
+       rather than the browser keeping a list of which ones are blocky. */
+    ...(m.maxVertices ? { maxVertices: m.maxVertices } : {}),
     // Start from the property line and take the mask away, rather than tracing
     // the mask. See the sam3_exclude entry for why the distinction only
     // matters once there is more than one mask.

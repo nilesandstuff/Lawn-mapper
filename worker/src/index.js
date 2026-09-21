@@ -60,7 +60,7 @@ import {
   promptProblem, normaliseExclusions, exclusionPass, exclusionCatalogue,
   DEFAULT_EXCLUSIONS, DEFAULT_MODEL,
 } from './sam.js';
-import { covers, lawnMaskUrl, LANDCOVER_HOST } from './landcover.js';
+import { covers, lawnMaskUrl, LANDCOVER_HOST, overlayCatalogue } from './landcover.js';
 // Which satellite picture to use, and how to ask each source for exactly our
 // frame. Also lives outside the entrypoint, for the same reason as sam.js.
 import {
@@ -1116,6 +1116,14 @@ export default {
             {
               mapboxToken: env.MAPBOX_TOKEN || null,
               imagery: providerCatalogue(env),
+              /*
+               * Things to draw ON TOP of the photograph, as opposed to
+               * photographs to choose between -- so a separate list, not more
+               * entries in `imagery`. Picking a different aerial replaces what
+               * you are looking at; switching one of these on adds to it, and a
+               * radio group cannot express that.
+               */
+              overlays: overlayCatalogue(env),
               models: modelCatalogue(),
               // The things exclude mode can remove, and which start ticked.
               // Same reasoning as the imagery list: the browser draws the boxes
