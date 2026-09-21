@@ -8,26 +8,52 @@ Anything fixed comes out of this file in the same commit as the fix.
 
 ---
 
-## Browser run: reaches the end; the last failure has a fix, unconfirmed
+## Browser run: green
 
-`4. Browser test` now runs to completion: **246 checks**, no early stop.
+`4. Browser test` passes: **246 checks, 0 failures**, and the paid-queue suite
+alongside it. First clean run.
 
-The last failing check is `the page threw no uncaught errors`. Selecting on
-geometry type (`polygonRings` in lib/area.js) was necessary and **not
-sufficient**: the run after it threw in the same place. The shape getting
-through is a feature typed `Polygon` whose coordinates are nested one level
-too shallow, so `coordinates[0]` is a pair of NUMBERS -- a non-empty array,
-which passes every weaker test, and numbers do not destructure as
-`[lng, lat]`.
+It had been stopping partway for a long time, and the count is worth reading
+as a ratchet rather than a score -- 155, 162, 189, 203, 246 -- each number a
+further stoppage removed. Everything below each stop had been going unrun
+while the summary said `0 check(s) FAILED`, which is true and useless: a check
+that never executes cannot fail.
 
-Narrowed by where it threw rather than by guessing: `measure()` runs first and
-survived, and of the malformed shapes only the shallow one leaves
-`geometryAreaSqM` returning 0 instead of throwing.
+**All five stoppages were the suite's own bugs, not the app's.** Four were one
+fact -- every rail button lives inside `#shape-tools`, hidden unless lawn mode
+is live, so a click aimed at one from Move, Draw or the property line waits ten
+seconds for something that will never appear and throws. `inLawnMode`,
+`armPoints` and `armBrush` hold that precondition now. The fifth was a flaky
+paint stroke upstream leaving `corners[0].x` undefined in a section that did
+not guard its preconditions.
 
-`polygonRings` now checks to the depth its callers read -- ring 0, its points,
-and that each is a pair of finite numbers -- and `console.error`s what it
-drops, so whoever is building the bad polygon is named in the next run's log
-rather than silently tolerated. **Unconfirmed**: the run is pending.
+---
+
+## Something builds a polygon out of `[[null]]`
+
+Not fatal any more, and not fixed. `polygonRings` drops it and says so:
+
+```
+CONSOLE: polygonRings: dropped a malformed polygon, [[null]]
+      (after: painting with the add brush increases the area)
+```
+
+One ring, holding one `null`. Destructuring that as `[lng, lat]` is what threw
+`.for is not iterable` for the whole evening before the selector was tightened.
+
+**Worth finding.** A polygon with no usable points contributes nothing to a
+measurement, so nothing visible is wrong -- but whatever builds it is building
+garbage, and the next caller to trust its contents will crash the way this one
+did. It appears during add-brush painting, which points at the trace-back in
+`maskToPolygons` or one of its callers.
+
+Note for whoever picks it up: my own narrowing of this said the culprit had to
+be a polygon "nested one level too shallow", reasoned from `measure()` having
+survived it. That reasoning was sound and the conclusion was wrong --
+`geometryAreaSqM` returns 0 for `[[null]]` too, so surviving `measure()` ruled
+out less than I claimed.
+
+---
 
 ### Latent: an area function that throws on bad data
 
