@@ -35,8 +35,18 @@ const calls = [];
 let nextStatus = 'succeeded';
 let httpStatus = 200;
 
+/*
+ * What the land cover service says when it is asked whether it reaches an
+ * address. A class number means yes; the literal string "NoData" is what it
+ * really returns outside its footprint, and is what sends a press to the AI.
+ */
+let landcoverValue = '28';
+
 globalThis.fetch = async (url, init) => {
   const u = String(url);
+  if (u.includes('cicgis.org') || u.includes('/ImageServer/identify')) {
+    return new Response(JSON.stringify({ value: landcoverValue }), { status: 200 });
+  }
   if (u.includes('/v1/models/')) {
     return new Response(JSON.stringify({ latest_version: { id: 'v1' } }), { status: 200 });
   }
@@ -93,6 +103,63 @@ async function post(payload) {
     body: JSON.stringify({ lng: -85.5, lat: 43.1, zoom: 19, size: 640, clientId: 'c1', ...payload }),
   }), env, ctx);
   return { status: res.status, body: await res.json(), sent: calls.slice() };
+}
+
+/* ------------------------------------------------------- the land cover map */
+/*
+ * The free method, and the substitution it makes when its raster stops.
+ *
+ * THE BUG THIS EXISTS FOR was found by curling the deployed endpoint, not
+ * here: the Worker worked out that it had fallen back to the AI and then did
+ * not put that in the response, so the browser's sentence about it could never
+ * fire. A press somebody chose for being free silently cost a detection. Every
+ * assertion below is about what the browser is TOLD, because that was the half
+ * that was missing while everything else worked.
+ */
+{
+  landcoverValue = '28';
+  const r = await post({ model: 'landcover' });
+
+  check('the land cover method runs no predictions at all',
+    r.sent.length === 0, `${r.sent.length} prediction(s) — it should cost nothing`);
+  check('and says so, so the browser can stop claiming a cost',
+    r.body.free === true, JSON.stringify(r.body).slice(0, 100));
+  check('it answers with a ready mask rather than something to poll',
+    r.body.passes?.length === 1 && r.body.passes[0].status === 'succeeded',
+    JSON.stringify(r.body.passes));
+  check('from the land cover service',
+    String(r.body.passes?.[0]?.mask || '').includes('cicgis.org'),
+    String(r.body.passes?.[0]?.mask || '').slice(0, 60));
+  check('it is traced, not subtracted', r.body.subtractive === false);
+  check('and nothing claims a substitution happened',
+    r.body.fellBack === undefined, JSON.stringify(r.body.fellBack));
+
+  /*
+   * A frame is not optional: the browser unprojects the mask against whatever
+   * comes back here, so a missing one puts a lawn-shaped outline over the
+   * wrong ground rather than failing.
+   */
+  check('the frame the mask was cut to comes back with it',
+    Number.isFinite(r.body.frame?.lng) && Number.isFinite(r.body.frame?.lat),
+    JSON.stringify(r.body.frame));
+}
+
+{
+  landcoverValue = 'NoData';
+  const r = await post({ model: 'landcover' });
+
+  check('outside the raster the press falls through to the AI',
+    r.sent.length === 1 && r.sent[0].prompt === 'grass',
+    JSON.stringify(r.sent).slice(0, 80));
+  check('AND SAYS SO — the whole point of the fallback',
+    r.body.fellBack === 'landcover', JSON.stringify(r.body.fellBack));
+  check('it is no longer claiming to be free, because it is not',
+    !r.body.free, JSON.stringify(r.body.free));
+  check('and the mask really is the AI\'s',
+    String(r.body.passes?.[0]?.mask || '').includes('replicate.delivery'),
+    String(r.body.passes?.[0]?.mask || '').slice(0, 60));
+
+  landcoverValue = '28';
 }
 
 /* --------------------------------------------------------- find grass */

@@ -996,6 +996,22 @@ async function handleSegment(request, env, origin, ctx) {
     passes: answered,
     subtractive: Boolean(model.subtractive),
     /*
+     * WHICH METHOD ACTUALLY ANSWERED, when it was not the one asked for.
+     *
+     * Omitted on an ordinary press so nothing downstream has to distinguish
+     * false from absent, and present only on the substitution -- which is the
+     * case the browser has to speak up about. A person who chose the free
+     * method and silently got the paid one has been charged a detection
+     * without being told, and the comparison these two are shipped for cannot
+     * be made from outlines nobody can attribute.
+     *
+     * This was missing from the first version of the fallback: the Worker
+     * worked out the substitution and then did not mention it, so the
+     * sentence in the browser could never fire. Caught by smoke-testing the
+     * deployed endpoint at an address outside the raster, not by a test.
+     */
+    ...(fellBack ? { fellBack } : {}),
+    /*
      * What is left after this press. `null` for an unlimited account, because
      * there is no number -- and a `0` there would be a wrong one rather than
      * an absent one, which is the sort of field that is fine until the day
