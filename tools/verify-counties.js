@@ -175,6 +175,29 @@ async function getJson(url, timeout = TIMEOUT_MS) {
 
 const describe = (e) => (typeof e === 'string' ? e : e?.message || JSON.stringify(e).slice(0, 120));
 
+/**
+ * Is this failure about TODAY, or about the endpoint?
+ *
+ * The difference decides whether a proven county survives a bad morning or is
+ * deleted -- see wasDown. Only the first kind may hold an entry over, and the
+ * list is deliberately short, because holding an entry over on the wrong
+ * verdict is worse than dropping it: it ships a URL nothing can re-check and
+ * the registry stops being a record of what was proved.
+ *
+ * "Token Required" and "Service not found" are the two that made this
+ * necessary. Both arrive as ordinary error strings alongside the timeouts, and
+ * both are permanent facts -- Oregon's layer is not public and Texas's was
+ * renamed out from under its catalogue entry. Neither had ever reached the
+ * registry, so nothing was actually held over wrongly; the next one might.
+ */
+const TRANSIENT = [
+  /^timed out$/i,
+  /^HTTP 5\d\d$/,
+  /fetch failed/i,
+  /ECONNRESET|ECONNREFUSED|socket hang up|network|terminated/i,
+];
+const isTransient = (why) => TRANSIENT.some((re) => re.test(String(why || '')));
+
 /*
  * ROUNDED OUTWARD, never inward.
  *
@@ -529,9 +552,12 @@ async function verifyStatewide(c) {
       if (tally.down >= 5 && hits.length === 0 && tally.tiny + tally.huge + tally.nothing === 0) {
         return {
           ok: false,
-          down: true,
-          why: `${c.state}'s server did not answer ${tally.down} times running `
-            + `(${firstError}) -- the endpoint is there, the service is not`,
+          down: isTransient(firstError),
+          why: isTransient(firstError)
+            ? `${c.state}'s server did not answer ${tally.down} times running `
+              + `(${firstError}) -- the endpoint is there, the service is not`
+            : `${c.state}'s server refused ${tally.down} times running `
+              + `(${firstError}) -- an answer, and a permanent one`,
         };
       }
       continue;
@@ -552,7 +578,7 @@ async function verifyStatewide(c) {
       /* Not enough parcels AND most of the asking went unanswered is a
          server having a bad morning, not a layer that is wrong. See the
          keep rule below. */
-      down: tally.down > tally.nothing + tally.tiny + tally.huge,
+      down: tally.down > tally.nothing + tally.tiny + tally.huge && isTransient(firstError),
       why: `${hits.length} of ${points.length} points across ${c.state} returned a `
         + `parcel (${tally.nothing} nothing, ${tally.tiny} under `
         + `${PLAUSIBLE_ACRES.min} ac, ${tally.huge} over ${MAX_PROBE_ACRES} ac`
@@ -807,7 +833,7 @@ async function verify(c) {
   ].filter(Boolean);
   return {
     ok: false,
-    down: tally.down > tally.nogeom + tally.missed + tally.tiny + tally.huge,
+    down: tally.down > tally.nogeom + tally.missed + tally.tiny + tally.huge && isTransient(firstDown),
     why: `${samples.length} samples, none parcel-sized: ${parts.join(', ')}`
       + (biggest ? ` (largest ${Math.round(biggest * 100) / 100} ac)` : ''),
   };
