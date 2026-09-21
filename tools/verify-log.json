@@ -16,8 +16,8 @@
   },
   "dc-statewide": {
     "at": "2026-09-21",
-    "ok": false,
-    "why": "DC's server did not answer 5 times running (HTTP 503) -- the endpoint is there, the service is not"
+    "ok": true,
+    "acres": 0.037
   },
   "de-statewide": {
     "at": "2026-09-21",
@@ -37,6 +37,7 @@
   "md-statewide": {
     "at": "2026-09-21",
     "ok": false,
+    "down": true,
     "why": "MD's server did not answer 5 times running (HTTP 503) -- the endpoint is there, the service is not"
   },
   "mn-statewide": {
@@ -57,16 +58,19 @@
   "oh-statewide": {
     "at": "2026-09-21",
     "ok": false,
+    "down": true,
     "why": "OH's server did not answer 5 times running (fetch failed) -- the endpoint is there, the service is not"
   },
   "or-statewide": {
     "at": "2026-09-21",
     "ok": false,
+    "down": true,
     "why": "OR's server did not answer 5 times running (Token Required) -- the endpoint is there, the service is not"
   },
   "tx-statewide": {
     "at": "2026-09-21",
     "ok": false,
+    "down": true,
     "why": "TX's server did not answer 5 times running (Service not found) -- the endpoint is there, the service is not"
   },
   "ut-statewide": {
@@ -76,8 +80,8 @@
   },
   "va-statewide": {
     "at": "2026-09-21",
-    "ok": false,
-    "why": "VA's server did not answer 5 times running (timed out) -- the endpoint is there, the service is not"
+    "ok": true,
+    "acres": 0.408
   },
   "vt-statewide": {
     "at": "2026-09-21",
@@ -2086,42 +2090,42 @@
     "acres": 2.002
   },
   "id-teton": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": false,
     "why": "layer metadata: timed out"
   },
   "id-valley": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": true,
     "acres": 5.022
   },
   "il-adams": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": true,
     "acres": 12.305
   },
   "il-bond": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": true,
     "acres": 1.981
   },
   "il-boone": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": true,
     "acres": 0.993
   },
   "il-brown": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": true,
     "acres": 0.513
   },
   "il-bureau": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": true,
     "acres": 0.327
   },
   "il-carroll": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": false,
     "why": "layer metadata: Token Required"
   },

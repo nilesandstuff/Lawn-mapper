@@ -26,8 +26,8 @@
  * tools/import-openaddresses.js. Editing this file directly will be
  * overwritten; change an importer or the verifier instead.
  *
- * 727 entries (24 statewide), of 990 candidates.
- * Last run 2026-09-21: 45 verified of 60 tried.
+ * 729 entries (26 statewide), of 990 candidates.
+ * Last run 2026-09-21: 32 verified of 40 tried.
  */
 
 const VERIFIED_COUNTIES = {
@@ -1152,6 +1152,16 @@ const VERIFIED_COUNTIES = {
     box: [-73.743,40.979,-71.781,42.053],
     checked: "2026-09-21",
   },
+  'dc-statewide': {
+    name: "DC (OpenAddresses)",
+    state: "DC",
+    statewide: true,
+    service: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer",
+    layer: 40,
+    fields: {"pin":"SSL","address":null},
+    box: [-77.117,38.804,-76.867,39.054],
+    checked: "2026-09-21",
+  },
   'de-kent': {
     name: "Kent County, DE",
     fips: "10001",
@@ -2078,7 +2088,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCELNO","address":null},
     box: [-116.222,44.143,-114.693,45.219],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'il-adams': {
     name: "Adams County, IL",
@@ -2087,7 +2097,7 @@ const VERIFIED_COUNTIES = {
     layer: 13,
     fields: {"pin":"PIN","address":null},
     box: [-91.513,39.756,-90.911,40.2],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'il-bond': {
     name: "Bond County, IL",
@@ -2096,7 +2106,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"Name","address":null},
     box: [-89.642,38.738,-89.249,39.031],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'il-boone': {
     name: "Boone County, IL",
@@ -2105,7 +2115,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"pin","address":null},
     box: [-88.942,42.152,-88.705,42.496],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'il-brown': {
     name: "Brown County, IL",
@@ -2114,7 +2124,7 @@ const VERIFIED_COUNTIES = {
     layer: 2,
     fields: {"pin":"PIN","address":null},
     box: [-90.917,39.839,-90.533,40.106],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'il-bureau': {
     name: "Bureau County, IL",
@@ -2123,7 +2133,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PIN","address":null},
     box: [-89.865,41.145,-89.159,41.59],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'il-christian': {
     name: "Christian County, IL",
@@ -5493,6 +5503,16 @@ const VERIFIED_COUNTIES = {
     fields: {"pin":"PRCLID","address":null},
     box: [-77.638,38.242,-77.283,38.594],
     checked: "2026-09-18",
+  },
+  'va-statewide': {
+    name: "VA (OpenAddresses)",
+    state: "VA",
+    statewide: true,
+    service: "https://vginmaps.vdem.virginia.gov/arcgis/rest/services/VA_Base_Layers/VA_Parcels/FeatureServer",
+    layer: 0,
+    fields: {"pin":"PARCELID","address":null},
+    box: [-83.23,36.482,-75.655,39.301],
+    checked: "2026-09-21",
   },
   'vt-chittenden': {
     name: "Chittenden County, VT",
