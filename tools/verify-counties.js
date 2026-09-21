@@ -608,9 +608,22 @@ function followMove(service) {
   }
 }
 
+/*
+ * THE URL THAT PASSED IS THE URL THAT SHIPS.
+ *
+ * The first version of this followed the move on the way into verify and then
+ * let the caller write the entry from the original candidate, so Virginia was
+ * proved against the live host and recorded against the dead one -- a registry
+ * claiming coverage it had just disproved, which is worse than no entry at
+ * all. So a move is reported back on the result, and the caller records
+ * r.service rather than c.service.
+ */
 async function verify(c) {
   const moved = followMove(c.service);
-  if (moved !== c.service) return verify({ ...c, service: moved, movedFrom: c.service });
+  if (moved !== c.service) {
+    const out = await verify({ ...c, service: moved });
+    return out.ok ? { ...out, service: moved, movedFrom: c.service } : out;
+  }
 
   if (c.statewide) return verifyStatewide(c);
   /*
@@ -841,7 +854,15 @@ for (const c of list) {
   if (r.ok) {
     /* The layer that actually answered, which is not always the one the
        catalogue named. See parcelLayerIn. */
-    passed.push({ ...c, layer: r.correctedLayer ?? c.layer, box: r.box, fields: r.fields });
+    passed.push({
+      ...c,
+      /* The host that answered, not the one the catalogue named. See verify. */
+      service: r.service ?? c.service,
+      fallbacks: (c.fallbacks || []).map(followMove),
+      layer: r.correctedLayer ?? c.layer,
+      box: r.box,
+      fields: r.fields,
+    });
     const lost = [
       c.fields.pin && !r.fields.pin ? `pin ${c.fields.pin}` : null,
       c.fields.address && !r.fields.address ? `address ${c.fields.address}` : null,
@@ -850,6 +871,7 @@ for (const c of list) {
       + (r.correctedLayer !== undefined
         ? `  (the catalogue said layer ${r.wasLayer}; parcels are at ${r.correctedLayer})`
         : '')
+      + (r.movedFrom ? `  (moved: ${new URL(r.movedFrom).hostname} -> ${new URL(r.service).hostname})` : '')
       + (lost.length ? `  (${lost.join(', ')} not on the record)` : ''));
   } else {
     failed.push({ key: c.key, why: r.why });

@@ -1177,6 +1177,38 @@ check('and a typed prompt is sent verbatim',
     dupes.length === 0,
     dupes.length ? [...new Set(dupes)].join(', ') : `${keys.length} keys, all distinct`);
 
+  /*
+   * A HOST THE VERIFIER ALREADY KNOWS IS DEAD.
+   *
+   * Virginia went in against gismaps.vdem.virginia.gov -- a host that does not
+   * resolve -- on the very run that proved the parcels at its replacement.
+   * The verifier followed the move on the way into the check and then wrote
+   * the entry from the original candidate, so the registry claimed statewide
+   * coverage it had itself just disproved.
+   *
+   * The dead names are read out of the verifier's own MOVED_HOSTS rather than
+   * copied here, because a second list is a second thing to forget. Text, not
+   * an import: that file is a script that starts verifying on load.
+   */
+  const verifierText = readFileSync(
+    new URL('verify-counties.js', import.meta.url), 'utf8'
+  );
+  const movedBlock = verifierText.match(/const MOVED_HOSTS = new Map\(\[([\s\S]*?)\]\)/);
+  const deadHosts = [...(movedBlock?.[1] ?? '').matchAll(/\['([^']+)',\s*'([^']+)'\]/g)]
+    .map((m) => m[1]);
+  check('the verifier still lists the hosts that moved',
+    deadHosts.length > 0, deadHosts.join(', ') || 'MOVED_HOSTS could not be read');
+
+  const onDeadHost = generated.filter(([, c]) => {
+    const all = [c.service, ...(c.fallbacks || [])];
+    return all.some((s) => {
+      try { return deadHosts.includes(new URL(String(s)).hostname); } catch { return false; }
+    });
+  });
+  check('and no generated entry points at one of them',
+    onDeadHost.length === 0,
+    onDeadHost.map(([k]) => k).join(', ') || `${generated.length} entries on live hosts`);
+
   const grandRapids = candidateCounties(-85.6681, 42.9634);
   check('and where both cover a place, the examined one is asked first',
     !grandRapids.includes('mi-kent') || grandRapids.indexOf('kent') < grandRapids.indexOf('mi-kent'),
