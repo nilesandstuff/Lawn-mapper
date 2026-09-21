@@ -618,6 +618,29 @@ the grass/driveway edge better than about a metre, and H7 warns that
 Nothing has been measured against it. It is not in the corpus and should not
 go in one without the resolution mismatch being handled deliberately.
 
+**It is a picture, not a database.** *Checked 2026-09-21 against the service
+itself.* The layer is at
+
+    .../VA_Base_Layers/VA_Land_Cover_Land_Use_2021/MapServer
+
+(2014 and 2016 editions sit beside it under the same folder), and it is a
+`singleFusedMapCache` whose capabilities are `Map` and nothing else. `identify`
+answers "Requested operation is not supported by this service"; there is no
+query, no FeatureServer, and the `legend` endpoint returns an HTML page rather
+than JSON. So nothing can ask it what class a point is.
+
+What it will do is serve tiles, down to a nominal 1.9 cm a pixel — oversampled
+from 1 m source, so that is display resolution and not information. Reading a
+class out of it therefore means fetching a rendered tile and decoding the
+colours, with a palette that has to be reconstructed by hand because the
+service does not publish one. That is a real piece of work and it is a
+different piece of work from "query a layer", which is what an earlier reading
+of this entry would have assumed.
+
+The other route is VGIN's download application, which hands out the raster by
+locality. That suits building a training batch in CI. It does not suit asking
+a question about one address while somebody waits.
+
 ---
 
 ## SPECULATION — theories not yet tested
@@ -690,6 +713,37 @@ cannot be reading anything but brightness.
 Three runs, no stable story, and one reading that is close to impossible.
 **Treat the shade/sun columns as unreliable until investigated.** Not
 investigated.
+
+### S8. Split the job by what the camera can see
+*The owner's proposal, 2026-09-21. Written down as a proposal.*
+
+High resolution RGB and hand-traced maps handle the ground that is visible;
+a coarse multispectral source handles the ground that is not. Do not ask one
+model to do both, because the two halves fail for different reasons: the
+visible half is a boundary problem where H9 says resolution decides, and the
+hidden half is an inference problem where E3 says architecture does not.
+
+What makes it worth testing rather than just plausible: E7's layer names
+"Tree Canopy over Turf Grass" as its own class, so somebody has already
+produced the hidden half at scale, and its 1 m resolution costs far less on
+ground nobody can see the edges of anyway.
+
+Three things to settle before any of it is a finding, none of them settled:
+
+1. Whether "Tree Canopy over Turf Grass" means what this project means by
+   inferred lawn. E7 is a land cover class; ours is *ground a tracer could
+   not see*. They will overlap and they are not the same question, and a
+   handful of Virginia lots compared by eye would answer it in an afternoon.
+2. What it would be worth. H6 puts marked inferred ground at 3% of a typical
+   map and H7 puts the noise floor at up to 10 points, so on the headline
+   number this cannot show up. If it pays, it pays as a tracing aid — and
+   S3 argues that is worth as much as a backbone — or as a Virginia-sized
+   batch of training labels. Not as a better inferred column.
+3. How to read the layer at all. E7: it is tiles, not a queryable layer.
+
+**Untested.** Nothing here has been measured, and the two ideas this file has
+argued at length and then measured as nothing (H4's ring, E3's receptive
+fields) were both more obviously right than this one.
 
 ---
 
