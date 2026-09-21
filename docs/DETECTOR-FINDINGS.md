@@ -738,6 +738,25 @@ small, developed parcels (<= 5 acre and contains >= 55 m2 of impervious
 surface)"*, plus named land uses -- golf courses, cemeteries, sports complexes,
 shopping centres, airports, hospitals.
 
+**TCTG IS THE RESIDUAL, WHICH IS WHY THE MULCH BED IS THE PROBLEM.** It is not
+"everything under a tree is turf". Canopy over roads, structures and other
+impervious gets its own three classes (24, 25, 26), and all three are
+*"directly mapped in the land cover data"* -- so where something underneath was
+independently known, from LiDAR or from a road or footprint layer, the canopy
+is labelled by it. Class 27 is what is left: canopy near the house with nothing
+known underneath. "Assumed to be turf grass" is the document's own word for
+that residual.
+
+So the things it gets wrong are the things no ancillary layer names. A mulch
+ring round a tree, a foundation bed under overhanging branches, ivy, gravel,
+bare dirt -- all class 27, all counted by us as lawn. And that is not a rare
+corner: a mulch bed under a canopy near the house is where mulch actually
+goes, so the error sits exactly on top of its own worst case.
+
+Plain Turf Grass (28) does not have this problem in the same way -- it is low
+vegetation, so an OPEN mulch bed is barren rather than turf. The fault is
+specific to mulch under canopy.
+
 **WHICH EDITION THIS DESCRIBES.** The document is the 2017/18 classification
 methods. The raster this app reads is the 2021/22 edition, and whether these
 distances were retuned for it has not been checked. Treat 10/20 m as the
