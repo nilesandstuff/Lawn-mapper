@@ -571,8 +571,11 @@ weights: `restor/tcd-unet-r34`, `restor/tcd-unet-r50`. Loads with
 [pipeline](https://github.com/Restor-Foundation/tcd)
 
 ### E6. Licensing of the candidates
-The owner has said non-commercial is acceptable. Recorded anyway because it
-constrains any later change of mind.
+**DECIDED 2026-09-21: this tool is free to use and non-commercial.** The owner
+had previously said non-commercial was *acceptable*; it is now the stated
+position, which turns the rows below from a constraint into a settled fact.
+Recorded because it is the sort of decision a later change of mind would have
+to unpick deliberately rather than by accident.
 
 | | licence | commercial? |
 |---|---|---|
@@ -580,8 +583,40 @@ constrains any later change of mind.
 | Restor TCD U-Nets | CC-BY-NC (CC-BY planned) | not yet |
 | SatlasPretrain / NAIP | ODC-BY | yes |
 | Chesapeake U-Net (torchgeo) | MIT | yes |
+| **VGIN / CBP 1 m LULC (Virginia)** | **no re-distribution for profit** | **no** |
 
 [TorchGeo weights](https://docs.torchgeo.org/en/stable/api/models.html)
+
+### E7. Virginia publishes a 1 m land cover layer that names turf grass
+*Looked up 2026-09-21, from VGIN's own dataset descriptions.*
+
+Produced by the **Chesapeake Conservancy** with the **University of Vermont
+Spatial Analysis Laboratory** and **USGS**, under a six-year EPA cooperative
+agreement for the Chesapeake Bay Program; extended to the 33 Virginia
+localities outside the Bay watershed by Virginia DEQ. One metre, **56 classes**,
+all 133 counties and independent cities, for 2014 and 2021.
+
+The input is **NAIP imagery** for the 2014 and 2021 editions, and VBMP
+orthophotography for 2016.
+
+Two of its classes are the thing this project is trying to measure:
+
+    Turf Grass
+    Tree Canopy over Turf Grass
+
+The second is our inferred-areas question, answered at scale by somebody else:
+what is underneath a canopy you cannot see through. H6 puts marked inferred
+ground at 3% of a typical map here, and E3 is the published finding that wider
+receptive fields do not solve occlusion.
+
+**Resolution is the catch and it is not small.** H1 puts our imagery at 5-38 cm,
+typically 10-15 cm. This is 1 m: seven to ten times coarser, on a boundary
+problem where H9 showed resolution is a real lever. A 1 m label cannot place
+the grass/driveway edge better than about a metre, and H7 warns that
+*directional* error does not average out the way scattered error does.
+
+Nothing has been measured against it. It is not in the corpus and should not
+go in one without the resolution mismatch being handled deliberately.
 
 ---
 

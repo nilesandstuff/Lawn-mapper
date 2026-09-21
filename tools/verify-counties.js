@@ -552,7 +552,43 @@ async function verifyStatewide(c) {
   };
 }
 
+/**
+ * Endpoints that MOVED, corrected on the way past.
+ *
+ * Same reasoning as parcelLayerIn below: the importer regenerates the
+ * candidates file from the catalogue, so a hand-edit there does not survive,
+ * and the correction has to live where it is applied every run.
+ *
+ * Virginia is the case this was written for. VGIN renamed the host --
+ * gismaps.vdem.virginia.gov no longer resolves at all, vginmaps.vdem.
+ * virginia.gov serves the same service at the same path -- and the catalogue
+ * still carries the old name. Proved by hand first: eight points from Bristol
+ * to Virginia Beach, seven parcels back, across seven different localities.
+ *
+ * A HOST ONLY, never a path. Rewriting more than the name of the machine
+ * would be inventing an endpoint rather than following one that moved, and the
+ * verifier's whole job is to be the thing that does not take a URL on trust.
+ */
+const MOVED_HOSTS = new Map([
+  ['gismaps.vdem.virginia.gov', 'vginmaps.vdem.virginia.gov'],
+]);
+
+function followMove(service) {
+  try {
+    const url = new URL(String(service));
+    const to = MOVED_HOSTS.get(url.hostname);
+    if (!to) return service;
+    url.hostname = to;
+    return url.toString().replace(/\/+$/, '');
+  } catch {
+    return service;
+  }
+}
+
 async function verify(c) {
+  const moved = followMove(c.service);
+  if (moved !== c.service) return verify({ ...c, service: moved, movedFrom: c.service });
+
   if (c.statewide) return verifyStatewide(c);
   /*
    * THE CATALOGUE ALREADY SAID SO, so do not spend a request finding out.
