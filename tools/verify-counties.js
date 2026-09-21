@@ -573,6 +573,29 @@ const MOVED_HOSTS = new Map([
   ['gismaps.vdem.virginia.gov', 'vginmaps.vdem.virginia.gov'],
 ]);
 
+/*
+ * THE OTHER FOUR STATEWIDE CANDIDATES ARE NOT RECOVERABLE, checked 2026-09-21.
+ *
+ * All five failed on the same day with the same line -- "0 of 25 points, 25
+ * nothing" -- which is what a dead endpoint looks like rather than a bad
+ * dataset, so it was worth asking whether any had simply moved. Only Virginia
+ * had. Written down so the next person reading that identical failure does
+ * not spend the afternoon finding out again:
+ *
+ *   MD  geodata.md.gov answers 503, twice, hours apart
+ *   OH  webgis.co.trumbull.oh.us does not resolve -- and it is a Trumbull
+ *       COUNTY service that the key promoted to statewide, so even alive it
+ *       should fail the spread test
+ *   OR  the service is there and answers "Token Required": not public
+ *   TX  stratmap24_land_parcels_48 is gone and the folder now offers
+ *       stratmap_land_parcels_48_most_recent, but that one answers
+ *       "Requested operation is not supported by this service" -- a cached
+ *       tile service with query disabled, so the rename leads nowhere
+ *
+ * No replacements were invented for any of them. A URL nobody has proved is
+ * the thing this whole file exists to refuse.
+ */
+
 function followMove(service) {
   try {
     const url = new URL(String(service));
