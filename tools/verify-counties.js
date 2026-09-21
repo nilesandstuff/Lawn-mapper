@@ -529,6 +529,7 @@ async function verifyStatewide(c) {
       if (tally.down >= 5 && hits.length === 0 && tally.tiny + tally.huge + tally.nothing === 0) {
         return {
           ok: false,
+          down: true,
           why: `${c.state}'s server did not answer ${tally.down} times running `
             + `(${firstError}) -- the endpoint is there, the service is not`,
         };
@@ -548,6 +549,10 @@ async function verifyStatewide(c) {
   if (hits.length < STATEWIDE_HITS) {
     return {
       ok: false,
+      /* Not enough parcels AND most of the asking went unanswered is a
+         server having a bad morning, not a layer that is wrong. See the
+         keep rule below. */
+      down: tally.down > tally.nothing + tally.tiny + tally.huge,
       why: `${hits.length} of ${points.length} points across ${c.state} returned a `
         + `parcel (${tally.nothing} nothing, ${tally.tiny} under `
         + `${PLAUSIBLE_ACRES.min} ac, ${tally.huge} over ${MAX_PROBE_ACRES} ac`
@@ -802,6 +807,7 @@ async function verify(c) {
   ].filter(Boolean);
   return {
     ok: false,
+    down: tally.down > tally.nogeom + tally.missed + tally.tiny + tally.huge,
     why: `${samples.length} samples, none parcel-sized: ${parts.join(', ')}`
       + (biggest ? ` (largest ${Math.round(biggest * 100) / 100} ac)` : ''),
   };
@@ -898,13 +904,29 @@ console.log(`\nVerifying ${list.length} this run${only ? ` (ONLY="${only}")` : '
 
 const passed = [];
 const failed = [];
+/*
+ * The keys whose SERVER was down, as opposed to whose layer was wrong.
+ *
+ * This file's own header already says why the distinction has to exist: "a
+ * county that passed last time and whose server happens to be down this
+ * morning is simply absent from the new one, and the only symptom is
+ * addresses in that county quietly losing their property line tonight." That
+ * rule protected counties this run did not try, and did nothing for the ones
+ * it did.
+ *
+ * It cost DC. Verified at 15:14, five HTTP 503s in a row at 15:29, gone from
+ * the registry -- for a service that was fine a quarter of an hour earlier
+ * and is fine again now. A wrong layer is a fact about the endpoint and
+ * should drop it; a 503 is a fact about this morning and should not.
+ */
+const wasDown = new Set();
 const today = new Date().toISOString().slice(0, 10);
 
 for (const c of list) {
   const r = await verify(c);
   log[c.key] = r.ok
     ? { at: today, ok: true, acres: r.acres }
-    : { at: today, ok: false, why: String(r.why).slice(0, 200) };
+    : { at: today, ok: false, ...(r.down ? { down: true } : {}), why: String(r.why).slice(0, 200) };
   if (r.ok) {
     /* The layer that actually answered, which is not always the one the
        catalogue named. See parcelLayerIn. */
@@ -928,7 +950,8 @@ for (const c of list) {
       + (r.movedFrom ? `  (moved: ${new URL(r.movedFrom).hostname} -> ${new URL(r.service).hostname})` : '')
       + (lost.length ? `  (${lost.join(', ')} not on the record)` : ''));
   } else {
-    failed.push({ key: c.key, why: r.why });
+    failed.push({ key: c.key, why: r.why, down: Boolean(r.down) });
+    if (r.down) wasDown.add(c.key);
     console.log(`  --   ${c.key.padEnd(22)} ${r.why}`);
     /* What else is in that service, so a wrong layer index is a one-character
        fix rather than an afternoon. See layersOf. */
@@ -980,9 +1003,18 @@ const kept = {};
 const triedNow = new Set(list.map((c) => c.key));
 const stillOffered = new Set(everything.map((c) => c.key));
 const dropped = [];
+const heldOver = [];
 
 for (const [key, entry] of Object.entries(before)) {
-  if (triedNow.has(key)) continue; // this run has the last word on these
+  /*
+   * This run has the last word on what it tried -- unless what it learned was
+   * that nobody was home. See wasDown: a 503 or a timeout is a fact about
+   * this morning, and deleting a proven endpoint over it takes the property
+   * line away from everyone in that county until the next run happens to
+   * pick it up again.
+   */
+  if (triedNow.has(key) && wasDown.has(key)) { heldOver.push(key); kept[key] = entry; continue; }
+  if (triedNow.has(key)) continue;
   /*
    * A county both catalogues have stopped listing cannot be re-verified ever
    * again, so keeping it would be shipping an endpoint nothing can re-check.
@@ -1080,6 +1112,11 @@ const gained = [...now].filter((k) => !had.has(k));
 const lost = [...had].filter((k) => !now.has(k) && triedNow.has(k));
 
 if (gained.length) console.log(`\nNEWLY COVERED (${gained.length}): ${gained.join(', ')}`);
+if (heldOver.length) {
+  console.log(`\nKEPT THOUGH THEY FAILED TODAY (${heldOver.length}): ${heldOver.join(', ')}`);
+  console.log('Their servers did not answer, which is not the same as their');
+  console.log('endpoint being wrong. The previous entry stands. See wasDown.');
+}
 if (dropped.length) {
   console.log(`\nNO LONGER IN ANY CATALOGUE (${dropped.length}): ${dropped.join(', ')}`);
   console.log('Removed, because nothing can re-verify an endpoint nobody lists.');
