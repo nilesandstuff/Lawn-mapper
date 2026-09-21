@@ -12,13 +12,29 @@ Anything fixed comes out of this file in the same commit as the fix.
 
 `4. Browser test` now runs to completion: **246 checks**, no early stop.
 
-The last failing check was `the page threw no uncaught errors`, and its cause
-is found and fixed -- a LineString reaching the overlap correction in
-`measureLawn`, which duck-typed `coordinates` where `geometryAreaSqM` selects
-on type. `polygonRings` in lib/area.js is the shared answer now, unit-tested
-in area.test.js. **The run that confirms it has not finished yet**, so this
-entry stays until it does rather than being deleted on the strength of a
-local test.
+The last failing check is `the page threw no uncaught errors`. Selecting on
+geometry type (`polygonRings` in lib/area.js) was necessary and **not
+sufficient**: the run after it threw in the same place. The shape getting
+through is a feature typed `Polygon` whose coordinates are nested one level
+too shallow, so `coordinates[0]` is a pair of NUMBERS -- a non-empty array,
+which passes every weaker test, and numbers do not destructure as
+`[lng, lat]`.
+
+Narrowed by where it threw rather than by guessing: `measure()` runs first and
+survived, and of the malformed shapes only the shallow one leaves
+`geometryAreaSqM` returning 0 instead of throwing.
+
+`polygonRings` now checks to the depth its callers read -- ring 0, its points,
+and that each is a pair of finite numbers -- and `console.error`s what it
+drops, so whoever is building the bad polygon is named in the next run's log
+rather than silently tolerated. **Unconfirmed**: the run is pending.
+
+### Latent: an area function that throws on bad data
+
+`ringAreaSqM` throws on a ring containing `undefined`, where every other
+branch of `geometryAreaSqM` answers 0 for input it cannot use. No evidence it
+happens -- found while narrowing the above, by trying it. Left alone
+deliberately rather than guarded on spec.
 
 It had been stopping partway for a long time, and the count is worth reading
 as a ratchet rather than a score -- 155, 162, 189, 203, 246 over one evening,

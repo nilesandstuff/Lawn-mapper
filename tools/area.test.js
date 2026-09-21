@@ -165,6 +165,39 @@ console.log('\nmeasure() output:', JSON.stringify(m, null, 2));
      two real shapes survive, so an overlap check still has both. */
   pass('a line among real shapes is skipped, not fatal',
     polygonRings(fc(poly([ring]), geom('LineString', [[0, 0], [1, 1]]), poly([ring]))).length === 2);
+
+  /*
+   * AND THE ONE THAT WAS STILL CRASHING AFTER THE FIRST FIX.
+   *
+   * A feature typed Polygon whose coordinates are nested one level too
+   * shallow -- a bare ring where an array of rings belongs. `coordinates[0]`
+   * is then a PAIR OF NUMBERS, which is a non-empty array, so a
+   * "is it an array with length" test waves it through and the first caller
+   * to destructure it as [lng, lat] throws. Selecting on geometry type was
+   * necessary and not sufficient.
+   */
+  const shallow = geom('Polygon', ring);          // ring, not [ring]
+  pass('a polygon nested one level too shallow is not a shape',
+    polygonRings(fc(shallow)).length === 0,
+    'coordinates[0] is a pair of numbers, which passes every weaker test');
+
+  pass('nor is a ring with a hole in the data',
+    polygonRings(fc(poly([[[0, 0], undefined, [1, 1]]]))).length === 0
+    && polygonRings(fc(poly([[[0, 0], [Number.NaN, 1], [1, 1]]]))).length === 0,
+    'undefined and NaN both destructure or arithmetic into nonsense');
+
+  /*
+   * And the crash itself, which is the only assertion here that reproduces
+   * the reported failure rather than describing it.
+   */
+  let threw = null;
+  try {
+    for (const rings of polygonRings(fc(shallow, poly([ring])))) {
+      for (const [lng, lat] of rings[0]) void (lng + lat);
+    }
+  } catch (err) { threw = err.message; }
+  pass('so the bbox loop that used to throw no longer can',
+    threw === null, threw || 'no throw');
 }
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) FAILED.`);

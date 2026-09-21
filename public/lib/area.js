@@ -152,9 +152,42 @@ function polygonRings(thing) {
     else if (g.type === 'FeatureCollection') (g.features || []).forEach(walk);
   };
   walk(thing);
-  /* A ring-array whose outer ring is missing or empty describes nothing, and
-     every caller here is about to read ring 0. */
-  return out.filter((rings) => Array.isArray(rings?.[0]) && rings[0].length);
+
+  /*
+   * AND THE OUTER RING HAS TO BE A RING.
+   *
+   * "Is it a non-empty array" is not enough, and the difference is a crash. A
+   * Polygon whose coordinates are nested one level too shallow -- a bare ring
+   * where an array of rings belongs -- passes that test with ring 0 holding
+   * NUMBERS, and the first caller to destructure one as [lng, lat] throws. So
+   * does a ring with undefined in it.
+   *
+   * Checked to the depth the callers actually read: ring 0, its first point,
+   * and that the point is a pair of numbers.
+   */
+  const wellFormed = (rings) => {
+    const ring = rings?.[0];
+    if (!Array.isArray(ring) || ring.length < 3) return false;
+    return ring.every((p) => Array.isArray(p) && p.length >= 2
+      && Number.isFinite(p[0]) && Number.isFinite(p[1]));
+  };
+
+  const good = [];
+  for (const rings of out) {
+    if (wellFormed(rings)) { good.push(rings); continue; }
+    /*
+     * SAID OUT LOUD. A malformed polygon reaching here is somebody upstream
+     * building one wrongly, and silently dropping it would hide that -- the
+     * crash it used to cause is how this was found at all. console.error
+     * rather than a throw: the measurement must survive a bad shape, and the
+     * browser suite collects these with the check they happened after.
+     */
+    try {
+      console.error('polygonRings: dropped a malformed polygon,',
+        JSON.stringify(rings)?.slice(0, 200));
+    } catch { /* circular or huge: the message matters more than the detail */ }
+  }
+  return good;
 }
 
 export {
