@@ -487,6 +487,32 @@ if (typeof window !== 'undefined') {
     return (out * mPerPx * mPerPx) / SQM_PER_SQFT;
   };
 
+  /*
+   * WHAT THE TRIM CAN PROMISE, which is not what it looks like it promises.
+   *
+   * Trimming to the property line rasterises, keeps the pixels inside, and
+   * then TRACES THE MASK BACK to a polygon at TRACE_TOLERANCE_M. That last
+   * step is a deliberate trade -- the table in lib/mask.js measures it -- and
+   * it means the traced outline may sit up to a tolerance either side of the
+   * pixel boundary, including outside the line.
+   *
+   * So the guarantee is "no PIXEL of the kept mask is outside the parcel, on
+   * the trim's own grid", not "no POINT of the resulting polygon is outside
+   * the parcel". A residue is expected, and its ceiling is the tolerance
+   * times the length of line it could wander along.
+   *
+   * Exposed as the two facts rather than as the bound, so a test does the
+   * arithmetic in front of the reader instead of trusting a number from here.
+   */
+  window.__lmParcelEdge = () => {
+    const ring = parcelRing();
+    if (!ring) return null;
+    const verts = openRing(ring);
+    let perimetreM = 0;
+    for (let i = 0; i < verts.length; i++) perimetreM += edgeLength(ring, i);
+    return { perimetreM, traceToleranceM: TRACE_TOLERANCE_M, corners: verts.length };
+  };
+
   /* How many shapes the measurement is actually made of. */
   window.__lmShapeCount = () => (draw ? draw.getAll().features.length : 0);
 

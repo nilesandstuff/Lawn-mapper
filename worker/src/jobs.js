@@ -96,6 +96,25 @@ export const PASS_RATE = 0.8;
  * here; this decides only whether somebody gets more work.
  */
 export const REVIEW_OUTCOMES = ['kept', 'excused', 'refused'];
+
+/*
+ * WHICH STATES BELONG TO WHICH QUESTION.
+ *
+ * lawn_jobs.state carries the whole life of a lawn, and two different pages
+ * report a tally of it: screening decides which addresses are worth paying to
+ * have traced, grading decides whether the map that came back is any good.
+ *
+ * Both were counting EVERY state, so each showed the other's work. The
+ * grading page read "104 approved · 171 rejected" -- which are screening
+ * decisions about addresses, not verdicts on anybody's map -- next to the two
+ * maps actually kept. A page that answers "how is the grading going" must not
+ * put a number in front of somebody that is about something else entirely.
+ *
+ * `claimed` is in neither on purpose: a lawn out with a worker is not a
+ * decision anybody has made, and "So far:" is a list of decisions.
+ */
+export const SCREEN_STATES = ['candidate', 'approved', 'rejected'];
+export const GRADE_STATES = ['submitted', ...REVIEW_OUTCOMES];
 export const countsAsPass = (outcome) => outcome === 'kept' || outcome === 'excused';
 
 /** How long a claim survives without a submission. */

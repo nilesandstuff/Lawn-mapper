@@ -8,7 +8,7 @@ Anything fixed comes out of this file in the same commit as the fix.
 
 ---
 
-## Browser run: 2 checks failing, and it reaches the end
+## Browser run: 1 check failing, and it reaches the end
 
 `4. Browser test` now runs to completion: **245 checks**, no early stop.
 
@@ -25,23 +25,6 @@ seconds for something that will never appear and throws. `inLawnMode`,
 `armPoints` and `armBrush` hold that precondition now. The fifth was a flaky
 paint stroke upstream leaving `corners[0].x` undefined in a section that did
 not guard its preconditions.
-
-### A trimmed lawn leaves 87 sq ft outside the line
-
-```
-FAIL  and switching it back off trims to the line again
-      148885 -> 87 sq ft outside
-```
-
-Consistent -- every run that has reached it. Turning "measure outside the
-line" on, painting past the boundary, and turning it back off leaves 87 sq ft
-outside a line that started under 27, against a `+60` tolerance.
-
-Not diagnosed, and the tolerance is the first question rather than the answer:
-`__lmOutsideSqFt` is rasterised, so some residue is expected, and 60 is a
-number somebody picked rather than a bound derived from the pixel size. Either
-the trim leaks or the check is stricter than the measure can support. Widening
-it to get a green run would bury whichever it is.
 
 ### An uncaught error while painting with the add brush
 

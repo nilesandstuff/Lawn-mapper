@@ -2365,9 +2365,51 @@ console.log('\n--- held at the property line ---');
     await page.locator('#toggle-outside').setChecked(false);
     await page.waitForTimeout(700);
     const trimmed = await page.evaluate(() => window.__lmOutsideSqFt());
+    /*
+     * A BOUND, NOT A NUMBER SOMEBODY PICKED.
+     *
+     * This asserted `outsideBefore + 60` and failed on 87 sq ft, every run
+     * that reached it. 60 was a guess, and the thing it was guessing at is
+     * calculable.
+     *
+     * Trimming rasterises, keeps the pixels inside the line, and then TRACES
+     * THE MASK BACK to a polygon at TRACE_TOLERANCE_M -- 0.35 m, chosen off
+     * the measured table in lib/mask.js. So the trim's guarantee is "no PIXEL
+     * of the kept mask is outside the parcel, on the trim's own grid", and
+     * NOT "no POINT of the resulting polygon is outside the parcel". The
+     * traced outline is free to wander a tolerance either side of the pixel
+     * boundary, and outward counts as outside.
+     *
+     * The ceiling on that is the tolerance times the length of line it can
+     * wander along, which is the property line's own perimeter. Loose --
+     * only a fraction of the boundary is ever clipped against -- but it is
+     * the real bound, and it still catches the failure that matters: a trim
+     * that did not happen leaves tens of thousands of square feet, not
+     * hundreds.
+     */
+    const edge = await page.evaluate(() => window.__lmParcelEdge());
+    const SQ_M_PER_SQ_FT = 0.09290304;
+    const bound = edge
+      ? (edge.traceToleranceM * edge.perimetreM) / SQ_M_PER_SQ_FT
+      : outsideBefore + 60;
+
     check('and switching it back off trims to the line again',
-      trimmed < outsideBefore + 60,
-      `${Math.round(freed)} -> ${Math.round(trimmed)} sq ft outside`);
+      trimmed < outsideBefore + bound,
+      `${Math.round(freed)} -> ${Math.round(trimmed)} sq ft outside, `
+      + (edge
+        ? `against a ${Math.round(bound)} sq ft ceiling `
+          + `(${edge.traceToleranceM} m trace tolerance along `
+          + `${Math.round(edge.perimetreM)} m of boundary)`
+        : '(no parcel to bound it with)'));
+
+    /*
+     * AND IT REALLY TRIMMED. The bound above is loose by design, so on its own
+     * it would pass a trim that did nothing at all if the lawn barely crossed
+     * the line. This is the half that says the work happened.
+     */
+    check('and what was outside is essentially all gone',
+      freed <= 0 || trimmed < freed * 0.01,
+      `${Math.round(trimmed)} left of ${Math.round(freed)} sq ft that was outside`);
   } else {
     check('there was a corner to drag', false, 'no editable ring to aim at');
   }

@@ -31,6 +31,7 @@ import { parcelGaps } from './gaps.js';
 // spellings of one id is a row the claim lookup never finds.
 import {
   cleanWorker, ROUTES, PAID_RATE_CENTS, MIN_PAYOUT_CENTS, owedCents,
+  SCREEN_STATES, GRADE_STATES,
 } from './jobs.js';
 
 export const isAdminPath = (pathname) => pathname.startsWith('/api/admin/');
@@ -544,9 +545,13 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
         ORDER BY created_at ASC LIMIT ?1`
     ).bind(limit).all();
 
+    /* Screening's own states only -- see SCREEN_STATES. This counted every
+       state in the table, so the screening page reported graded maps too. */
     const counts = await env.DB.prepare(
-      'SELECT state, COUNT(*) n FROM lawn_jobs GROUP BY state'
-    ).all();
+      `SELECT state, COUNT(*) n FROM lawn_jobs
+        WHERE state IN (${SCREEN_STATES.map((_, i) => `?${i + 1}`).join(', ')})
+        GROUP BY state`
+    ).bind(...SCREEN_STATES).all();
 
     return json({
       jobs: (rows.results || []).map((r) => ({
@@ -643,9 +648,20 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
       note: t.note || null,
     }]));
 
+    /*
+     * GRADING'S OWN STATES ONLY -- see GRADE_STATES.
+     *
+     * This counted every state in the table, so "So far:" on the grading page
+     * read "104 approved · 3 claimed · 2 kept · 171 rejected". Approved and
+     * rejected are SCREENING decisions about addresses; only the 2 was about
+     * anybody's map. A tally under the words "how the grading is going" that
+     * is mostly about something else is worse than no tally.
+     */
     const counts = await env.DB.prepare(
-      'SELECT state, COUNT(*) n FROM lawn_jobs GROUP BY state'
-    ).all();
+      `SELECT state, COUNT(*) n FROM lawn_jobs
+        WHERE state IN (${GRADE_STATES.map((_, i) => `?${i + 1}`).join(', ')})
+        GROUP BY state`
+    ).bind(...GRADE_STATES).all();
 
     /*
      * HOW LONG A MAP REALLY TAKES, as a median.

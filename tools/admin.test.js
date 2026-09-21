@@ -1367,7 +1367,57 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
    */
   await job('job-0006-aaaa-4bbb-8ccc-dddddddddddd', 'refused', { seconds: 3000 });
 
+  /*
+   * A SCREENING DECISION AND A GRADED MAP IN THE SAME TABLE, which is the
+   * whole reason the two tallies have to be told apart.
+   */
+  /* With NO worker, which is what a screened address actually is: nobody has
+     been handed it. Through the helper it would carry W1 and break the
+     "every lawn handed to somebody is in exactly one bucket" check below,
+     which is right to complain -- a screened address was never handed out. */
+  for (const [id, state] of [
+    ['scrn-001-aaaa-4bbb-8ccc-dddddddddddd', 'approved'],
+    ['scrn-002-aaaa-4bbb-8ccc-dddddddddddd', 'rejected'],
+    ['scrn-003-aaaa-4bbb-8ccc-dddddddddddd', 'candidate'],
+  ]) {
+    await env.DB.prepare(
+      `INSERT INTO lawn_jobs (id, lng, lat, county, state, created_at)
+       VALUES (?1, -80, 40, 'Testshire', ?2, '2026-09-18T08:00:00Z')`
+    ).bind(id, state).run();
+  }
+
   const queue = (await ask(env, ownerToken, 'lawn-reviews')).body;
+
+  /*
+   * THE GRADING TALLY IS ABOUT MAPS, NOT ADDRESSES.
+   *
+   * Both queues ran the same COUNT over every state, so each printed the
+   * other's work: the grading page read "104 approved · 171 rejected" beside
+   * the two maps actually kept. Approved and rejected are decisions about
+   * whether an address was worth paying to have traced -- nothing to do with
+   * whether anybody's map was any good.
+   */
+  check('the grading tally counts maps, not screening decisions',
+    queue.counts.approved === undefined && queue.counts.rejected === undefined
+    && queue.counts.candidate === undefined,
+    JSON.stringify(queue.counts));
+  check('and does count every verdict, and the ones still waiting',
+    queue.counts.submitted === 3 && queue.counts.kept === 1
+    && queue.counts.excused === 1 && queue.counts.refused === 1,
+    JSON.stringify(queue.counts));
+
+  /* And the other way round, which was wrong in the same way. */
+  const screening = (await ask(env, ownerToken, 'lawn-jobs')).body;
+  check('the screening tally counts addresses, not verdicts',
+    screening.counts.kept === undefined && screening.counts.excused === undefined
+    && screening.counts.refused === undefined
+    && screening.counts.submitted === undefined,
+    JSON.stringify(screening.counts));
+  check('and does count what screening decided',
+    screening.counts.approved === 1 && screening.counts.rejected === 1
+    && screening.counts.candidate === 1,
+    JSON.stringify(screening.counts));
+
   check('the grading queue shows only maps that have come back',
     queue.jobs.length === 3 && queue.jobs.every((j) => j.id.startsWith('job-000')),
     `${queue.jobs.length} waiting, out of six rows`);
