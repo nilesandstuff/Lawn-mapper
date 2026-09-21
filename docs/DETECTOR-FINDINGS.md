@@ -701,20 +701,51 @@ And TCTG is parcel-scoped, not a free-floating distance from any building:
 > Census Urban Areas and Clusters. Less-densely developed parcels are
 > represented by all remaining parcels **with a structure**.
 
-So a parcel with no structure on it is not eligible for TCTG at all, and the
-buffer runs from structures *and* from adjoining turf and impervious, not from
-structures alone. (The per-parcel-type distances in that numbered list sit in
-table cells that did not survive text extraction; the 30 ft / 60 ft figures
-above are from the class definitions, which state them outright.)
+So a parcel with no structure on it is not eligible for TCTG at all.
+
+**AND HERE IS WHERE IT ACTUALLY COMES FROM.** The numbered steps were missing
+from three earlier readings of this document because twenty of its text runs
+are in a subset CID font -- hex strings whose codes are ASCII minus 29 -- and
+every plain-text extractor silently drops them, leaving sentences like "Buffer
+and and sharing boundary of". Decoded, in full:
+
+> **2. For agricultural parcels:** Buffer "Structures" and "Other Impervious"
+> and "Turf Grass" sharing boundary of "Structure" parcel segments by **10
+> meters**. Reclassify "Tree Canopy" *that is not surrounded by agriculture*
+> within the buffer as "Tree Canopy over Turf Grass".
+>
+> **3. For densely developed parcels:** Buffer "Structures" and "Other
+> Impervious" and "Turf Grass" sharing boundary of "Structure" parcel segments
+> by **20 meters**. Classify any "Tree Canopy" within the buffer as "Tree
+> Canopy over Turf Grass".
+>
+> **4. For less densely developed parcels:** ... by **10 meters**. Classify any
+> "Tree Canopy" within the buffer as "Tree Canopy over Turf Grass".
+
+So: 20 m inside Census urban areas, 10 m outside. Those are the 60 ft and 30 ft
+of the definitions table, rounded.
+
+**THE SEED IS NOT THE HOUSE.** It is structures AND other impervious AND turf
+grass -- the already-classified lawn is itself a seed. So the collar is 20 m
+from the nearest lawn, paving or building edge, not 20 m from the building.
+Every earlier summary in this file said or implied the latter, and on a lot
+with a deep lawn that is a materially different and much larger region. It is
+a single pass, so it does not chain outwards for ever; it does mean the reach
+past the house is roughly the lawn's own extent plus 20 m.
 
 Turf grass itself is parcel-scoped the same way: *"all low vegetation within
 small, developed parcels (<= 5 acre and contains >= 55 m2 of impervious
 surface)"*, plus named land uses -- golf courses, cemeteries, sports complexes,
 shopping centres, airports, hospitals.
 
+**WHICH EDITION THIS DESCRIBES.** The document is the 2017/18 classification
+methods. The raster this app reads is the 2021/22 edition, and whether these
+distances were retuned for it has not been checked. Treat 10/20 m as the
+mechanism, confirmed, and as the current numbers, unconfirmed.
+
 **WHAT THIS PREDICTS FOR US, and it is testable.** On a wooded lot inside a
-Census urban area, a **60 ft collar around the house is cut out of the woods
-and called lawn** -- whatever is actually growing under it. That is a
+Census urban area, a **20 m collar around the lawn and buildings is cut out of
+the woods and called lawn** -- whatever is actually growing under it. That is a
 one-directional over-call, on exactly the lots where H8's Kent benchmark says
 this project is already weakest, and H7 warns that directional error does not
 average out. It is the first thing to look for when comparing this source
