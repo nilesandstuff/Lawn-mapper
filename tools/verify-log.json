@@ -16,8 +16,8 @@
   },
   "dc-statewide": {
     "at": "2026-09-21",
-    "ok": true,
-    "acres": 0.037
+    "ok": false,
+    "why": "DC's server did not answer 5 times running (HTTP 503) -- the endpoint is there, the service is not"
   },
   "de-statewide": {
     "at": "2026-09-21",
@@ -37,7 +37,7 @@
   "md-statewide": {
     "at": "2026-09-21",
     "ok": false,
-    "why": "0 of 25 points across MD returned a parcel (25 nothing, 0 under 0.01 ac, 0 over 100000 ac)"
+    "why": "MD's server did not answer 5 times running (HTTP 503) -- the endpoint is there, the service is not"
   },
   "mn-statewide": {
     "at": "2026-09-21",
@@ -57,17 +57,17 @@
   "oh-statewide": {
     "at": "2026-09-21",
     "ok": false,
-    "why": "0 of 25 points across OH returned a parcel (25 nothing, 0 under 0.01 ac, 0 over 100000 ac)"
+    "why": "OH's server did not answer 5 times running (fetch failed) -- the endpoint is there, the service is not"
   },
   "or-statewide": {
     "at": "2026-09-21",
     "ok": false,
-    "why": "0 of 25 points across OR returned a parcel (25 nothing, 0 under 0.01 ac, 0 over 100000 ac)"
+    "why": "OR's server did not answer 5 times running (Token Required) -- the endpoint is there, the service is not"
   },
   "tx-statewide": {
     "at": "2026-09-21",
     "ok": false,
-    "why": "0 of 25 points across TX returned a parcel (25 nothing, 0 under 0.01 ac, 0 over 100000 ac)"
+    "why": "TX's server did not answer 5 times running (Service not found) -- the endpoint is there, the service is not"
   },
   "ut-statewide": {
     "at": "2026-09-21",
@@ -77,7 +77,7 @@
   "va-statewide": {
     "at": "2026-09-21",
     "ok": false,
-    "why": "0 of 25 points across VA returned a parcel (25 nothing, 0 under 0.01 ac, 0 over 100000 ac)"
+    "why": "VA's server did not answer 5 times running (timed out) -- the endpoint is there, the service is not"
   },
   "vt-statewide": {
     "at": "2026-09-21",
@@ -365,20 +365,24 @@
     "acres": 0.592
   },
   "hi-kauai": {
-    "at": "2026-09-18",
-    "ok": true
+    "at": "2026-09-21",
+    "ok": true,
+    "acres": 0.983
   },
   "hi-maui": {
-    "at": "2026-09-18",
-    "ok": true
+    "at": "2026-09-21",
+    "ok": true,
+    "acres": 54.994
   },
   "ia-johnson": {
-    "at": "2026-09-18",
-    "ok": true
+    "at": "2026-09-21",
+    "ok": true,
+    "acres": 40.58
   },
   "id-ada": {
-    "at": "2026-09-18",
-    "ok": true
+    "at": "2026-09-21",
+    "ok": true,
+    "acres": 0.011
   },
   "il-cook": {
     "at": "2026-09-18",
@@ -1962,122 +1966,122 @@
     "acres": 2.129
   },
   "hi-city-and-county-of-honolulu": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": true,
     "acres": 0.153
   },
   "hi-hawaii": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": false,
     "why": "layer metadata: Service not found"
   },
   "ia-cerro-gordo": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": false,
     "why": "layer metadata: fetch failed"
   },
   "ia-delaware": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": true,
     "acres": 2.14
   },
   "ia-hardin": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": true,
     "acres": 3.921
   },
   "ia-lyon": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": true,
     "acres": 79.731
   },
   "ia-story": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": true,
     "acres": 36.935
   },
   "ia-wapello": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": true,
     "acres": 2.068
   },
   "ia-winnebago": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": true,
     "acres": 39.96
   },
   "ia-wright": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": true,
     "acres": 57.764
   },
   "id-adams": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": true,
     "acres": 7.348
   },
   "id-bannock": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": true,
     "acres": 0.149
   },
   "id-bingham": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": false,
     "why": "12 samples, none parcel-sized: 12 over 160 ac (largest 841.12 ac)"
   },
   "id-blaine": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": true,
     "acres": 1
   },
   "id-bonner": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": true,
     "acres": 68.215
   },
   "id-bonneville": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": false,
     "why": "layer metadata: HTTP 503"
   },
   "id-clearwater": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": false,
     "why": "layer metadata: fetch failed"
   },
   "id-franklin": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": true,
     "acres": 0.417
   },
   "id-idaho": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": true,
     "acres": 80.576
   },
   "id-jefferson": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": false,
     "why": "layer metadata: fetch failed"
   },
   "id-jerome": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": true,
     "acres": 77.421
   },
   "id-kootenai": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": false,
     "why": "no extent in either the layer metadata or the query"
   },
   "id-latah": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": true,
     "acres": 6.2
   },
   "id-madison": {
-    "at": "2026-09-18",
+    "at": "2026-09-21",
     "ok": true,
     "acres": 2.002
   },
@@ -4790,5 +4794,65 @@
     "at": "2026-09-19",
     "ok": true,
     "acres": 61.002
+  },
+  "fl-statewide": {
+    "at": "2026-09-21",
+    "ok": true,
+    "acres": 5.346
+  },
+  "hi-statewide": {
+    "at": "2026-09-21",
+    "ok": false,
+    "why": "0 of 25 points across HI returned a parcel (25 nothing, 0 under 0.01 ac, 0 over 100000 ac)"
+  },
+  "ia-statewide": {
+    "at": "2026-09-21",
+    "ok": true,
+    "acres": 9.885
+  },
+  "me-statewide": {
+    "at": "2026-09-21",
+    "ok": false,
+    "why": "7 hits but all within 76% x 38% of ME -- a local layer wearing a statewide name"
+  },
+  "mt-statewide": {
+    "at": "2026-09-21",
+    "ok": true,
+    "acres": 4.969
+  },
+  "nc-statewide": {
+    "at": "2026-09-21",
+    "ok": true,
+    "acres": 4.51
+  },
+  "nj-statewide": {
+    "at": "2026-09-21",
+    "ok": true,
+    "acres": 0.164
+  },
+  "nv-statewide": {
+    "at": "2026-09-21",
+    "ok": true,
+    "acres": 240.92
+  },
+  "ri-statewide": {
+    "at": "2026-09-21",
+    "ok": true,
+    "acres": 0.116
+  },
+  "tn-statewide": {
+    "at": "2026-09-21",
+    "ok": true,
+    "acres": 2.03
+  },
+  "wi-statewide": {
+    "at": "2026-09-21",
+    "ok": true,
+    "acres": 4.437
+  },
+  "wy-statewide": {
+    "at": "2026-09-21",
+    "ok": true,
+    "acres": 40.626
   }
 }

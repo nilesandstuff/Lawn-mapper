@@ -26,8 +26,8 @@
  * tools/import-openaddresses.js. Editing this file directly will be
  * overwritten; change an importer or the verifier instead.
  *
- * 718 entries (15 statewide), of 978 candidates.
- * Last run 2026-09-21: 19 verified of 30 tried.
+ * 727 entries (24 statewide), of 990 candidates.
+ * Last run 2026-09-21: 45 verified of 60 tried.
  */
 
 const VERIFIED_COUNTIES = {
@@ -1152,16 +1152,6 @@ const VERIFIED_COUNTIES = {
     box: [-73.743,40.979,-71.781,42.053],
     checked: "2026-09-21",
   },
-  'dc-statewide': {
-    name: "DC (OpenAddresses)",
-    state: "DC",
-    statewide: true,
-    service: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer",
-    layer: 40,
-    fields: {"pin":"SSL","address":null},
-    box: [-77.117,38.804,-76.867,39.054],
-    checked: "2026-09-21",
-  },
   'de-kent': {
     name: "Kent County, DE",
     fips: "10001",
@@ -1447,6 +1437,16 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"ParcelID","address":null},
     box: [-80.681,27.204,-80.197,27.561],
+    checked: "2026-09-21",
+  },
+  'fl-statewide': {
+    name: "Florida (found)",
+    state: "FL",
+    statewide: true,
+    service: "https://services9.arcgis.com/Gh9awoU677aKree0/arcgis/rest/services/Florida_Statewide_Cadastral/FeatureServer",
+    layer: 0,
+    fields: {"pin":"PARCEL_ID","address":"PHY_ADDR1"},
+    box: [-87.42,25.485,-80.298,30.962],
     checked: "2026-09-21",
   },
   'fl-walton': {
@@ -1866,7 +1866,7 @@ const VERIFIED_COUNTIES = {
     layer: 1,
     fields: {"pin":"parcel_uid","address":null},
     box: [-158.281,21.254,-157.647,21.712],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'hi-kauai': {
     name: "Kauai County, HI",
@@ -1874,8 +1874,9 @@ const VERIFIED_COUNTIES = {
     service: "https://geodata.hawaii.gov/arcgis/rest/services/ParcelsZoning/MapServer",
     layer: 9,
     fields: {"pin":null,"address":null},
+    fallbacks: [{"service":"https://services1.arcgis.com/0DaVqrPt2eyXUS9g/arcgis/rest/services/ALL_PARCELS_CPRS/FeatureServer","layer":0,"fields":{"pin":"PARID","address":null}}],
     box: [-160.551,21.648,-159.291,22.236],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'hi-maui': {
     name: "Maui County, HI",
@@ -1883,8 +1884,9 @@ const VERIFIED_COUNTIES = {
     service: "https://services1.arcgis.com/x4h61KaW16vFs7PM/arcgis/rest/services/Parcels_2024_Owners/FeatureServer",
     layer: 196,
     fields: {"pin":null,"address":null},
+    fallbacks: [{"service":"https://services3.arcgis.com/fsrDo0QMPlK9CkZD/ArcGIS/rest/services/Site_Address_Point/FeatureServer","layer":1,"fields":{"pin":"TMK","address":null}}],
     box: [-157.311,20.5,-155.976,21.225],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ia-delaware': {
     name: "Delaware County, IA",
@@ -1893,7 +1895,7 @@ const VERIFIED_COUNTIES = {
     layer: 2,
     fields: {"pin":"PIN","address":null},
     box: [-91.618,42.287,-91.116,42.655],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ia-hardin': {
     name: "Hardin County, IA",
@@ -1902,7 +1904,7 @@ const VERIFIED_COUNTIES = {
     layer: 37,
     fields: {"pin":"PIN","address":null},
     box: [-93.5,42.208,-92.999,42.558],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ia-johnson': {
     name: "Johnson County, IA",
@@ -1911,7 +1913,7 @@ const VERIFIED_COUNTIES = {
     layer: 2,
     fields: {"pin":"PPN","address":null},
     box: [-91.835,41.423,-91.365,41.862],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ia-lyon': {
     name: "Lyon County, IA",
@@ -1920,7 +1922,17 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":null,"address":null},
     box: [-96.565,43.249,-95.863,43.486],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
+  },
+  'ia-statewide': {
+    name: "Iowa (found)",
+    state: "IA",
+    statewide: true,
+    service: "https://services3.arcgis.com/kd9gaiUExYqUbnoq/arcgis/rest/services/Iowa_Parcels_2017/FeatureServer",
+    layer: 0,
+    fields: {"pin":"PARCELNUMB","address":null},
+    box: [-96.316,40.548,-90.434,43.49],
+    checked: "2026-09-21",
   },
   'ia-story': {
     name: "Story County, IA",
@@ -1929,7 +1941,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCELID","address":null},
     box: [-93.7,41.862,-93.23,42.21],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ia-wapello': {
     name: "Wapello County, IA",
@@ -1938,7 +1950,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PIN","address":null},
     box: [-92.644,40.894,-92.173,41.167],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ia-winnebago': {
     name: "Winnebago County, IA",
@@ -1947,7 +1959,7 @@ const VERIFIED_COUNTIES = {
     layer: 12,
     fields: {"pin":"Parcelid","address":null},
     box: [-93.973,43.254,-93.497,43.501],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ia-wright': {
     name: "Wright County, IA",
@@ -1956,7 +1968,7 @@ const VERIFIED_COUNTIES = {
     layer: 2,
     fields: {"pin":"PIN","address":null},
     box: [-93.975,42.556,-93.498,42.91],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'id-ada': {
     name: "Ada County, ID",
@@ -1964,8 +1976,9 @@ const VERIFIED_COUNTIES = {
     service: "https://services2.arcgis.com/dgGjZc6xAH5m5JyP/arcgis/rest/services/Parcels/FeatureServer",
     layer: 5,
     fields: {"pin":"PARCEL","address":"ADDRESS"},
+    fallbacks: [{"service":"https://www.adacountyassessor.org/arcgis/rest/services/External/ExternalMap/MapServer","layer":24,"fields":{"pin":"PARCEL","address":null}}],
     box: [-116.52,43.11,-115.973,43.81],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'id-adams': {
     name: "Adams County, ID",
@@ -1974,7 +1987,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PM_PAR_NUM","address":null},
     box: [-116.907,44.44,-116.085,45.272],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'id-bannock': {
     name: "Bannock County, ID",
@@ -1983,7 +1996,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCEL_NO","address":null},
     box: [-112.655,42.255,-111.872,43.023],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'id-blaine': {
     name: "Blaine County, ID",
@@ -1992,7 +2005,7 @@ const VERIFIED_COUNTIES = {
     layer: 5,
     fields: {"pin":"parcel_num","address":null},
     box: [-114.998,42.615,-112.993,43.997],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'id-bonner': {
     name: "Bonner County, ID",
@@ -2001,7 +2014,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"pin","address":null},
     box: [-117.043,47.89,-116.048,48.848],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'id-franklin': {
     name: "Franklin County, ID",
@@ -2010,7 +2023,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PIN","address":null},
     box: [-112.13,41.995,-111.501,42.432],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'id-idaho': {
     name: "Idaho County, ID",
@@ -2019,7 +2032,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":null,"address":null},
     box: [-116.799,45.101,-114.32,46.679],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'id-jerome': {
     name: "Jerome County, ID",
@@ -2028,7 +2041,7 @@ const VERIFIED_COUNTIES = {
     layer: 11,
     fields: {"pin":"PIN","address":null},
     box: [-114.619,42.494,-113.931,42.853],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'id-latah': {
     name: "Latah County, ID",
@@ -2037,7 +2050,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCEL_ID","address":null},
     box: [-117.041,46.541,-116.324,47.131],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'id-madison': {
     name: "Madison County, ID",
@@ -2046,7 +2059,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCEL_ID","address":null},
     box: [-111.984,43.621,-111.395,43.929],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'id-statewide': {
     name: "ID (OpenAddresses)",
@@ -3702,6 +3715,16 @@ const VERIFIED_COUNTIES = {
     box: [-116.179,44.237,-103.611,49.181],
     checked: "2026-09-18",
   },
+  'mt-statewide': {
+    name: "Montana (found)",
+    state: "MT",
+    statewide: true,
+    service: "https://services.arcgis.com/qnjIrwR8z5Izc0ij/arcgis/rest/services/Montana_Cadastral_Framework/FeatureServer",
+    layer: 1,
+    fields: {"pin":"PARCELID","address":"AddressLine1"},
+    box: [-115.563,45.034,-104.175,48.894],
+    checked: "2026-09-21",
+  },
   'mt-yellowstone': {
     name: "Yellowstone County, MT",
     fips: "30111",
@@ -3773,6 +3796,16 @@ const VERIFIED_COUNTIES = {
     fields: {"pin":"PIN","address":null},
     box: [-80.036,36.238,-79.51,36.544],
     checked: "2026-09-18",
+  },
+  'nc-statewide': {
+    name: "North Carolina (found)",
+    state: "NC",
+    statewide: true,
+    service: "https://services.nconemap.gov/secure/rest/services/NC1Map_Parcels/MapServer",
+    layer: 1,
+    fields: {"pin":"parno","address":"siteadd"},
+    box: [-84.161,33.94,-75.668,36.589],
+    checked: "2026-09-21",
   },
   'nc-wake': {
     name: "Wake County, NC",
@@ -3973,6 +4006,16 @@ const VERIFIED_COUNTIES = {
     box: [-74.616,40.078,-73.97,40.478],
     checked: "2026-09-18",
   },
+  'nj-statewide': {
+    name: "New Jersey (found)",
+    state: "NJ",
+    statewide: true,
+    service: "https://services2.arcgis.com/XVOqAjTOJ5P6ngMu/arcgis/rest/services/Parcels_Composite_NJ_WM/FeatureServer",
+    layer: 0,
+    fields: {"pin":"PAMS_PIN","address":"PROP_LOC"},
+    box: [-75.457,38.986,-73.975,41.235],
+    checked: "2026-09-21",
+  },
   'nj-sussex': {
     name: "Sussex County, NJ",
     fips: "34037",
@@ -4062,6 +4105,16 @@ const VERIFIED_COUNTIES = {
     fields: {"pin":"GIS_Parcel_Number","address":null},
     box: [-118.207,35.958,-114.975,39.167],
     checked: "2026-09-18",
+  },
+  'nv-statewide': {
+    name: "Nevada (found)",
+    state: "NV",
+    statewide: true,
+    service: "https://arcgis.water.nv.gov/arcgis/rest/services/BaseLayers/County_Parcels_in_Nevada/MapServer",
+    layer: 0,
+    fields: {"pin":"APN","address":null},
+    box: [-119.847,36.112,-114.763,41.508],
+    checked: "2026-09-21",
   },
   'nv-storey': {
     name: "Storey County, NV",
@@ -4663,6 +4716,16 @@ const VERIFIED_COUNTIES = {
     box: [-79.629,41.614,-78.91,42.008],
     checked: "2026-09-18",
   },
+  'ri-statewide': {
+    name: "Rhode Island (found)",
+    state: "RI",
+    statewide: true,
+    service: "https://risegis.ri.gov/hosting/rest/services/RIDEM/Tax_Parcels/MapServer",
+    layer: 0,
+    fields: {"pin":"PlatLot","address":"E911"},
+    box: [-71.72,41.297,-71.183,41.969],
+    checked: "2026-09-21",
+  },
   'sc-berkeley': {
     name: "Berkeley County, SC",
     fips: "45015",
@@ -5131,6 +5194,16 @@ const VERIFIED_COUNTIES = {
     fields: {"pin":"PARCELID","address":null},
     box: [-87.359,35.405,-86.781,35.854],
     checked: "2026-09-18",
+  },
+  'tn-statewide': {
+    name: "Tennessee (found)",
+    state: "TN",
+    statewide: true,
+    service: "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer",
+    layer: 0,
+    fields: {"pin":"PARCELID","address":"ADDRESS"},
+    box: [-89.995,35.009,-81.761,36.659],
+    checked: "2026-09-21",
   },
   'tx-bexar': {
     name: "Bexar County, TX",
@@ -6018,6 +6091,16 @@ const VERIFIED_COUNTIES = {
     box: [-88.165,43.541,-87.694,43.894],
     checked: "2026-09-19",
   },
+  'wi-statewide': {
+    name: "Wisconsin (found)",
+    state: "WI",
+    statewide: true,
+    service: "https://services3.arcgis.com/n6uYoouQZW75n5WI/arcgis/rest/services/Wisconsin_Statewide_Parcels_DB/FeatureServer",
+    layer: 0,
+    fields: {"pin":"PARCELID","address":"SITEADRESS"},
+    box: [-92.554,42.488,-86.949,46.734],
+    checked: "2026-09-21",
+  },
   'wi-trempealeau': {
     name: "Trempealeau County, WI",
     fips: "55121",
@@ -6531,6 +6614,16 @@ const VERIFIED_COUNTIES = {
     fields: {"pin":"PIDN","address":null},
     box: [-104.901,42.609,-104.052,43.504],
     checked: "2026-09-19",
+  },
+  'wy-statewide': {
+    name: "Wyoming (found)",
+    state: "WY",
+    statewide: true,
+    service: "https://services3.arcgis.com/r0iJ85SKZ4zAzz3P/arcgis/rest/services/Wyoming_Parcels_for_2026/FeatureServer",
+    layer: 0,
+    fields: {"pin":"parcelnb","address":"locationad"},
+    box: [-110.783,41.184,-104.254,44.881],
+    checked: "2026-09-21",
   },
   'wy-weston': {
     name: "Weston County, WY",
