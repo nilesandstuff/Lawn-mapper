@@ -34,10 +34,17 @@ FAIL  the page threw no uncaught errors
         (after: painting with the add brush increases the area)
 ```
 
-Nothing in `public/app.js` or `public/lib/` contains a `.for`, so by
-elimination it is inside minified Mapbox -- but it throws during our brush
-stroke, so it is our call into it. The stroke itself works: the check directly
-before it passes and the area goes up.
+**Where it comes from is unknown, and the obvious guesses are all wrong.**
+`.for` appears nowhere in `public/`, nor in mapbox-gl v3.9.0, nor in
+mapbox-gl-draw v1.4.3 -- all three checked by grep against the served files.
+An earlier version of this entry said "by elimination it is inside minified
+Mapbox", which was a guess dressed as deduction.
+
+The stroke itself works: the check directly before it passes and the area goes
+up, so whatever throws is not on the path that paints.
+
+The browser suite now prints the stack's first frames alongside the message,
+which should name the file on the next run.
 
 ---
 

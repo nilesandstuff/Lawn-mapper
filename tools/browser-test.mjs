@@ -223,7 +223,18 @@ const note = (line) => {
   errorSeen.add(key);
   errors.push(`${line}\n        (after: ${lastCheck})`);
 };
-page.on('pageerror', (e) => note(`PAGEERROR: ${e.message}`));
+/*
+ * WITH THE STACK, because the message alone sent me looking in the wrong
+ * place twice. ".for is not iterable" appears nowhere in public/, nor in
+ * mapbox-gl v3.9.0, nor in mapbox-gl-draw v1.4.3 -- all three checked by
+ * grep. An uncaught error that cannot be located is a fact nobody can act
+ * on, and the error object has been carrying the answer the whole time.
+ */
+page.on('pageerror', (e) => {
+  const where = String(e.stack || '').split('\n').slice(1, 4)
+    .map((l) => l.trim()).filter(Boolean).join(' <- ');
+  note(`PAGEERROR: ${e.message}${where ? `\n        at ${where}` : ''}`);
+});
 page.on('console', (m) => {
   if (m.type() === 'error') note(`CONSOLE: ${m.text().slice(0, 200)}`);
 });
