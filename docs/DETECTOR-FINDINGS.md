@@ -629,13 +629,24 @@ answers "Requested operation is not supported by this service"; there is no
 query, no FeatureServer, and the `legend` endpoint returns an HTML page rather
 than JSON. So nothing can ask it what class a point is.
 
-What it will do is serve tiles, down to a nominal 1.9 cm a pixel — oversampled
-from 1 m source, so that is display resolution and not information. Reading a
-class out of it therefore means fetching a rendered tile and decoding the
-colours, with a palette that has to be reconstructed by hand because the
-service does not publish one. That is a real piece of work and it is a
-different piece of work from "query a layer", which is what an earlier reading
-of this entry would have assumed.
+What it will do is serve tiles. The cache is standard Web Mercator, 256 px,
+and it is built to **level 17 and no further** — 1.19 m a pixel, which is the
+source resolution. Level 18 answers HTTP 500. (The service advertises LODs to
+level 23 at 1.9 cm; those are scheme entries, not tiles that exist.)
+
+**And the tiles are JPEG.** *Measured 2026-09-21: 200, `image/jpeg`, at levels
+12 through 17.* That is close to the worst format this could have been in. A
+land cover raster is categorical — the colour IS the class — and JPEG is lossy
+in exactly the place it hurts: every boundary between two classes comes back as
+a run of invented intermediate colours that belong to neither. The edge between
+turf and canopy is not incidental detail here, it is the measurement. So
+"decode the colours" is not a matter of reconstructing the unpublished palette
+and looking up pixels; it is that plus deciding what to do with every pixel
+that sits between two palette entries, at 1.19 m, on a question H9 says
+resolution decides.
+
+None of that makes it unusable. It does mean the tile route should be costed
+as image processing with a lossy source, not as a lookup.
 
 The other route is VGIN's download application, which hands out the raster by
 locality. That suits building a training batch in CI. It does not suit asking
