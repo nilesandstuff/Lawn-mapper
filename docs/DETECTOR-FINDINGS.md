@@ -618,35 +618,62 @@ the grass/driveway edge better than about a metre, and H7 warns that
 Nothing has been measured against it. It is not in the corpus and should not
 go in one without the resolution mismatch being handled deliberately.
 
-**It is a picture, not a database.** *Checked 2026-09-21 against the service
-itself.* The layer is at
+**VGIN's copy is a picture. The Conservancy's copy is a database.**
+*Checked 2026-09-21 against both services.* This entry said "nothing can ask
+it what class a point is", and that was a fact about one service stated as a
+fact about the data. VGIN serves it at
 
     .../VA_Base_Layers/VA_Land_Cover_Land_Use_2021/MapServer
 
-(2014 and 2016 editions sit beside it under the same folder), and it is a
-`singleFusedMapCache` whose capabilities are `Map` and nothing else. `identify`
-answers "Requested operation is not supported by this service"; there is no
-query, no FeatureServer, and the `legend` endpoint returns an HTML page rather
-than JSON. So nothing can ask it what class a point is.
+as a `singleFusedMapCache` with capabilities `Map` and nothing else: no
+identify, no query, JPEG tiles to level 17 and HTTP 500 above that, and a
+`legend` endpoint that answers HTML. All true, and all beside the point,
+because the people who made the data publish it themselves as an ImageServer:
 
-What it will do is serve tiles. The cache is standard Web Mercator, 256 px,
-and it is built to **level 17 and no further** — 1.19 m a pixel, which is the
-source resolution. Level 18 answers HTTP 500. (The service advertises LODs to
-level 23 at 1.9 cm; those are scheme entries, not tiles that exist.)
+    https://cicgis.org/arcgis/rest/services/LULC/bay_lu_tif/ImageServer
 
-**And the tiles are JPEG.** *Measured 2026-09-21: 200, `image/jpeg`, at levels
-12 through 17.* That is close to the worst format this could have been in. A
-land cover raster is categorical — the colour IS the class — and JPEG is lossy
-in exactly the place it hurts: every boundary between two classes comes back as
-a run of invented intermediate colours that belong to neither. The edge between
-turf and canopy is not incidental detail here, it is the measurement. So
-"decode the colours" is not a matter of reconstructing the unpublished palette
-and looking up pixels; it is that plus deciding what to do with every pixel
-that sits between two palette entries, at 1.19 m, on a question H9 says
-resolution decides.
+`identify` returns the raw class number at 1 m. `rasterAttributeTable` returns
+all **54 classes** with their codes, names and palette. The two that matter:
 
-None of that makes it unusable. It does mean the tile route should be costed
-as image processing with a lossy source, not as a lookup.
+    28   code 2210   Turf Grass
+    27   code 2240   Tree Canopy over Turf Grass
+
+*Measured on a 7x7 grid over a Midlothian, VA suburb:* turf, canopy-over-turf,
+structures, roads and driveways all separate cleanly on a single house lot.
+
+**And it will render the mask server-side.** `exportImage` accepts a `Remap`
+rendering rule, so one request returns a PNG in which turf and canopy-over-turf
+are white and everything else is nothing:
+
+    renderingRule={"rasterFunction":"Remap","rasterFunctionArguments":
+      {"InputRanges":[27,29],"OutputValues":[255],"AllowUnmatched":false}}
+
+*Measured:* 256x256 over that same suburb comes back 8-bit, 27% white. That is
+the same shape of thing SAM returns, which is the whole reason this matters --
+`maskToPolygons` in public/lib/mask.js already turns exactly this into
+polygons.
+
+**Coverage is wider than Virginia and narrower than the country.** Probed
+point by point: Virginia Beach, Roanoke, Washington DC, Baltimore, Harrisburg,
+Binghamton NY and Wilmington DE all return data; Bristol in far south-west
+Virginia and Charleston WV return NoData. So it is the Bay watershed plus
+adjacent counties, across six states and DC. The gaps in VA, WV and PA are
+filled by a separate EPA Region 3 dataset built to the same classification --
+not checked, and not the same endpoint.
+
+**How they decided what is under a canopy, which is the interesting part.**
+The published method is object-based image analysis over LiDAR, multispectral
+imagery (NAIP: red, green, blue, near infrared at 1 m) and *thematic layers --
+roads and building footprints*. The class list is built around what is
+underneath: there is Tree Canopy over Impervious split three ways, over roads,
+over structures and over other. So "Tree Canopy over Turf Grass" is not the
+result of seeing through a tree. It is canopy on developed land that is known
+not to be over a road or a building, and turf is what is left.
+
+That is worth being plain about, because it is the same inference our tracers
+make, done systematically. It is not a measurement of what is under the tree.
+It should be more consistent than a person, and it cannot notice the mulch bed
+or the patio under the canopy that a person looking at 10 cm imagery might.
 
 The other route is VGIN's download application, which hands out the raster by
 locality. That suits building a training batch in CI. It does not suit asking
@@ -742,15 +769,20 @@ ground nobody can see the edges of anyway.
 Three things to settle before any of it is a finding, none of them settled:
 
 1. Whether "Tree Canopy over Turf Grass" means what this project means by
-   inferred lawn. E7 is a land cover class; ours is *ground a tracer could
-   not see*. They will overlap and they are not the same question, and a
-   handful of Virginia lots compared by eye would answer it in an afternoon.
+   inferred lawn. E7 now answers most of this from the published method, and
+   the answer is that they are closer than this entry first assumed: both are
+   inferences about ground nobody can see, and neither sees through the tree.
+   Theirs is systematic and ours is by eye, so expect theirs to be steadier
+   and ours to catch the mulch bed under the canopy. What is left to settle
+   is the disagreement RATE, which a handful of Virginia lots would give.
 2. What it would be worth. H6 puts marked inferred ground at 3% of a typical
    map and H7 puts the noise floor at up to 10 points, so on the headline
    number this cannot show up. If it pays, it pays as a tracing aid — and
    S3 argues that is worth as much as a backbone — or as a Virginia-sized
    batch of training labels. Not as a better inferred column.
-3. How to read the layer at all. E7: it is tiles, not a queryable layer.
+3. ~~How to read the layer at all.~~ **Settled.** The Conservancy's own
+   ImageServer answers identify per pixel and will render the two-class mask
+   server-side. See E7.
 
 **Untested.** Nothing here has been measured, and the two ideas this file has
 argued at length and then measured as nothing (H4's ring, E3's receptive
