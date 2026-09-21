@@ -6,7 +6,7 @@
  * actually runs in production, so this test needs to exercise that file,
  * not a separate copy that could drift out of sync with it.
  */
-import { measure, geometryAreaSqM, SQM_PER_SQFT } from '../public/lib/area.js';
+import { measure, geometryAreaSqM, polygonRings, SQM_PER_SQFT } from '../public/lib/area.js';
 
 let failures = 0;
 function check(label, actual, expected, tolerancePct) {
@@ -102,6 +102,70 @@ check('reversed winding order', geometryAreaSqM(reversed), expectedSqM, 0.25);
 // --- Test 6: measure() output shape
 const m = measure(rect);
 console.log('\nmeasure() output:', JSON.stringify(m, null, 2));
+
+/* ------------------------------------------ which features are polygons */
+/*
+ * THE BUG THIS EXISTS FOR, in the words the browser suite used:
+ *
+ *   PAGEERROR: .for is not iterable
+ *     at app.js:9538 <- Array.map <- measureLawn
+ *
+ * The overlap correction duck-typed `coordinates` -- any non-empty array was
+ * a polygon -- and a LineString's coordinates are a non-empty array of
+ * NUMBERS. Destructuring one as [lng, lat] throws, and V8 names the failed
+ * PATTERN rather than the thing being iterated, which is why the message said
+ * ".for" and pointed at no file anybody could find.
+ *
+ * geometryAreaSqM had always answered 0 for the same feature. The two halves
+ * of one function disagreed about what a shape is; this is the shared answer.
+ */
+{
+  const ring = [[0, 0], [0, 1], [1, 1], [0, 0]];
+  const poly = (coords) => ({ type: 'Feature', geometry: { type: 'Polygon', coordinates: coords } });
+  const geom = (type, coordinates) => ({ type: 'Feature', geometry: { type, coordinates } });
+  const fc = (...features) => ({ type: 'FeatureCollection', features });
+
+  const pass = (label, ok, detail = '') => {
+    if (!ok) failures++;
+    console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}${detail ? `\n      ${detail}` : ''}`);
+  };
+
+  pass('a polygon is one shape', polygonRings(fc(poly([ring]))).length === 1);
+
+  pass('a line is none of them, exactly as it contributes no area',
+    polygonRings(fc(geom('LineString', [[0, 0], [1, 1]]))).length === 0
+    && geometryAreaSqM(fc(geom('LineString', [[0, 0], [1, 1]]))) === 0,
+    'its coordinates are a non-empty array of numbers, which is the trap');
+
+  pass('nor is a point',
+    polygonRings(fc(geom('Point', [0, 0]))).length === 0);
+
+  /*
+   * AND A MULTIPOLYGON IS ITS PARTS. Passed through whole, its ring 0 is a
+   * whole polygon where every caller here wants an outer ring -- no throw,
+   * just a bounding box quietly computed from the wrong thing.
+   */
+  const parts = polygonRings(fc(geom('MultiPolygon', [[ring], [ring]])));
+  /*
+   * Asserted on what ring 0 CONTAINS, because the count alone does not
+   * discriminate and neither does "is it an array": passed through whole,
+   * rings[0] is a polygon, rings[0][0] is a ring, and both are arrays. The
+   * difference only shows one level further down, where a correctly split
+   * part has a NUMBER -- the first coordinate of the first pair.
+   */
+  const depth = (rings) => typeof rings?.[0]?.[0]?.[0];
+  pass('a multipolygon arrives as its parts, not as one nest deeper',
+    parts.length === 2 && parts.every((rings) => depth(rings) === 'number'),
+    `${parts.length} part(s), ring 0 bottoms out in a ${depth(parts[0])}`);
+
+  pass('and a polygon with no outer ring describes nothing',
+    polygonRings(fc(poly([]), poly([[]]))).length === 0);
+
+  /* Mixed, which is the real feature collection: the line is skipped and the
+     two real shapes survive, so an overlap check still has both. */
+  pass('a line among real shapes is skipped, not fatal',
+    polygonRings(fc(poly([ring]), geom('LineString', [[0, 0], [1, 1]]), poly([ring]))).length === 2);
+}
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) FAILED.`);
 process.exit(failures === 0 ? 0 : 1);

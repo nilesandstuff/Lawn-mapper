@@ -8,12 +8,20 @@ Anything fixed comes out of this file in the same commit as the fix.
 
 ---
 
-## Browser run: 1 check failing, and it reaches the end
+## Browser run: reaches the end; the last failure has a fix, unconfirmed
 
-`4. Browser test` now runs to completion: **245 checks**, no early stop.
+`4. Browser test` now runs to completion: **246 checks**, no early stop.
+
+The last failing check was `the page threw no uncaught errors`, and its cause
+is found and fixed -- a LineString reaching the overlap correction in
+`measureLawn`, which duck-typed `coordinates` where `geometryAreaSqM` selects
+on type. `polygonRings` in lib/area.js is the shared answer now, unit-tested
+in area.test.js. **The run that confirms it has not finished yet**, so this
+entry stays until it does rather than being deleted on the strength of a
+local test.
 
 It had been stopping partway for a long time, and the count is worth reading
-as a ratchet rather than a score -- 155, 162, 189, 203, 245 over one evening,
+as a ratchet rather than a score -- 155, 162, 189, 203, 246 over one evening,
 each number a further stoppage removed. Everything below each stop had been
 going unrun while the summary said `0 check(s) FAILED`, which is true and
 useless: a check that never executes cannot fail.
@@ -25,26 +33,6 @@ seconds for something that will never appear and throws. `inLawnMode`,
 `armPoints` and `armBrush` hold that precondition now. The fifth was a flaky
 paint stroke upstream leaving `corners[0].x` undefined in a section that did
 not guard its preconditions.
-
-### An uncaught error while painting with the add brush
-
-```
-FAIL  the page threw no uncaught errors
-      PAGEERROR: .for is not iterable
-        (after: painting with the add brush increases the area)
-```
-
-**Where it comes from is unknown, and the obvious guesses are all wrong.**
-`.for` appears nowhere in `public/`, nor in mapbox-gl v3.9.0, nor in
-mapbox-gl-draw v1.4.3 -- all three checked by grep against the served files.
-An earlier version of this entry said "by elimination it is inside minified
-Mapbox", which was a guess dressed as deduction.
-
-The stroke itself works: the check directly before it passes and the area goes
-up, so whatever throws is not on the path that paints.
-
-The browser suite now prints the stack's first frames alongside the message,
-which should name the file on the next run.
 
 ---
 

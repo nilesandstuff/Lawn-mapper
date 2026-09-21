@@ -126,4 +126,38 @@ function measure(geometry) {
   return fromSquareMeters(geometryAreaSqM(geometry));
 }
 
-export { measure, fromSquareMeters, geometryAreaSqM, ringAreaSqM, SQM_PER_SQFT };
+/**
+ * Every polygon in a thing, as a list of ring-arrays.
+ *
+ * THE COMPANION TO geometryAreaSqM, and it lives here so the two cannot
+ * disagree about what counts as a shape. They did: the overlap correction in
+ * app.js duck-typed `coordinates` -- any non-empty array was a polygon -- so a
+ * LineString went through it, whose coordinates ARE a non-empty array of
+ * numbers rather than of [lng, lat] pairs. Destructuring one threw, and the
+ * area function beside it had been quietly answering 0 for the same feature
+ * all along.
+ *
+ * MultiPolygon is split into its parts. Its coordinates nest one level
+ * deeper, so a caller expecting "ring 0 is the outer ring" gets a whole
+ * polygon instead -- which does not throw, and is worse for it: a bounding box
+ * computed from it is silently wrong.
+ */
+function polygonRings(thing) {
+  const out = [];
+  const walk = (g) => {
+    if (!g || !g.type) return;
+    if (g.type === 'Polygon') out.push(g.coordinates);
+    else if (g.type === 'MultiPolygon') out.push(...g.coordinates);
+    else if (g.type === 'Feature') walk(g.geometry);
+    else if (g.type === 'FeatureCollection') (g.features || []).forEach(walk);
+  };
+  walk(thing);
+  /* A ring-array whose outer ring is missing or empty describes nothing, and
+     every caller here is about to read ring 0. */
+  return out.filter((rings) => Array.isArray(rings?.[0]) && rings[0].length);
+}
+
+export {
+  measure, fromSquareMeters, geometryAreaSqM, ringAreaSqM, polygonRings,
+  SQM_PER_SQFT,
+};

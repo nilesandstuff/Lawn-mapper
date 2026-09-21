@@ -12,7 +12,7 @@
  * own roof first is the cheapest correctness check available.
  */
 
-import { measure, fromSquareMeters, geometryAreaSqM, SQM_PER_SQFT } from './lib/area.js';
+import { measure, fromSquareMeters, geometryAreaSqM, polygonRings, SQM_PER_SQFT } from './lib/area.js';
 import {
   maskToPolygons, rasterizePolygon, maskBinary, unionMasks, subtractMasks,
   coverage, polygonsFromBinary, distinctFraction, overTrimmed,
@@ -9522,18 +9522,36 @@ const OVERLAP_GRID = 320;
  */
 function measureLawn(fc) {
   const plain = measure(fc);
-  const shapes = (fc?.features || [])
-    .map((f) => f.geometry?.coordinates)
-    .filter((rings) => Array.isArray(rings) && rings.length);
-
-  if (shapes.length < 2) return { ...plain, overlapSqFt: 0 };
+  /*
+   * SELECTED BY GEOMETRY TYPE, the way geometryAreaSqM selects.
+   *
+   * This duck-typed `coordinates` instead -- any non-empty array counted as a
+   * polygon -- and a LineString's coordinates are a non-empty array whose
+   * members are NUMBERS, not [lng, lat] pairs. The bbox loop below then
+   * destructures a number and throws. The browser suite reported it as
+   * "PAGEERROR: .for is not iterable", which is V8's way of naming a failed
+   * destructuring pattern rather than the expression being iterated -- an
+   * uncatchable-looking message that named no file until the suite started
+   * printing stacks.
+   *
+   * measure() never had this problem: geometryAreaSqM answers 0 for anything
+   * that is not a Polygon or a MultiPolygon, so the two halves of this
+   * function disagreed about what counts as a shape. They agree now.
+   *
+   * MultiPolygon is SPLIT into its parts rather than passed through whole. Its
+   * coordinates nest one level deeper, so `rings[0]` was a whole polygon where
+   * the loop below wants an outer ring -- no throw, just a silently wrong
+   * bounding box, which is the worse of the two failures.
+   */
+  const usable = polygonRings(fc);
+  if (usable.length < 2) return { ...plain, overlapSqFt: 0 };
 
   /*
    * Bounding boxes first, because they are nearly free and almost always
    * settle it. Detection hands back disconnected components and most lawns are
    * one or two of them, so the raster below usually never runs at all.
    */
-  const boxes = shapes.map((rings) => {
+  const boxes = usable.map((rings) => {
     let [w, s, e, n] = [Infinity, Infinity, -Infinity, -Infinity];
     for (const [lng, lat] of rings[0]) {
       w = Math.min(w, lng); e = Math.max(e, lng);
@@ -9568,7 +9586,7 @@ function measureLawn(fc) {
   };
 
   const fraction = distinctFraction(
-    shapes, OVERLAP_GRID, OVERLAP_GRID,
+    usable, OVERLAP_GRID, OVERLAP_GRID,
     (ll) => lngLatToFramePx(frame, ll, OVERLAP_GRID, OVERLAP_GRID)
   );
 
