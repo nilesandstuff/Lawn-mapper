@@ -26,8 +26,8 @@
  * tools/import-openaddresses.js. Editing this file directly will be
  * overwritten; change an importer or the verifier instead.
  *
- * 716 entries (15 statewide), of 978 candidates.
- * Last run 2026-09-19: 171 verified of 200 tried.
+ * 719 entries (16 statewide), of 978 candidates.
+ * Last run 2026-09-21: 127 verified of 200 tried.
  */
 
 const VERIFIED_COUNTIES = {
@@ -329,7 +329,7 @@ const VERIFIED_COUNTIES = {
     layer: 6,
     fields: {"pin":"parcelid","address":null},
     box: [-94.375,33.068,-89.952,36.481],
-    checked: "2026-09-19",
+    checked: "2026-09-21",
   },
   'ar-washington': {
     name: "Washington County, AR",
@@ -405,7 +405,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"AZ_APN","address":null},
     box: [-114.139,31.426,-109.142,35.93],
-    checked: "2026-09-19",
+    checked: "2026-09-21",
   },
   'az-yavapai': {
     name: "Yavapai County, AZ",
@@ -787,7 +787,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCEL","address":null},
     box: [-123.635,39.97,-122.438,41.37],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ca-tulare': {
     name: "Tulare County, CA",
@@ -796,7 +796,7 @@ const VERIFIED_COUNTIES = {
     layer: 2,
     fields: {"pin":"PARCELID","address":null},
     box: [-119.575,35.785,-117.97,36.754],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ca-tuolumne': {
     name: "Tuolumne County, CA",
@@ -805,7 +805,7 @@ const VERIFIED_COUNTIES = {
     layer: 2,
     fields: {"pin":"APN","address":null},
     box: [-120.656,37.628,-119.172,38.443],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ca-ventura': {
     name: "Ventura County, CA",
@@ -813,8 +813,9 @@ const VERIFIED_COUNTIES = {
     service: "https://maps.ventura.org/arcgis/rest/services/SDs/Parcels/MapServer",
     layer: 0,
     fields: {"pin":"APN","address":"SITUS"},
+    fallbacks: [{"service":"https://maps.ventura.org/arcgis/rest/services/DataDownloads/CommonData/FeatureServer","layer":2,"fields":{"pin":"apn","address":null}}],
     box: [-119.611,33.213,-118.624,34.909],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ca-yuba': {
     name: "Yuba County, CA",
@@ -823,7 +824,7 @@ const VERIFIED_COUNTIES = {
     layer: 52,
     fields: {"pin":"APN","address":null},
     box: [-121.636,38.915,-121.009,39.64],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'co-adams': {
     name: "Adams County, CO",
@@ -831,8 +832,8 @@ const VERIFIED_COUNTIES = {
     service: "https://services3.arcgis.com/4PNQOtAivErR7nbT/ArcGIS/rest/services/Parcels/FeatureServer",
     layer: 0,
     fields: {"pin":"PARCELNB","address":null},
-    box: [-105.054,39.728,-103.699,40.015],
-    checked: "2026-09-18",
+    box: [-105.054,39.738,-103.705,40.002],
+    checked: "2026-09-21",
   },
   'co-archuleta': {
     name: "Archuleta County, CO",
@@ -841,7 +842,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"pid","address":null},
     box: [-107.453,37.002,-106.678,37.391],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'co-boulder': {
     name: "Boulder County, CO",
@@ -850,7 +851,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCEL_NO","address":null},
     box: [-105.696,39.912,-105.05,40.265],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'co-broomfield': {
     name: "Broomfield County, CO",
@@ -859,7 +860,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCELNUMBER","address":null},
     box: [-105.166,39.888,-104.961,40.045],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'co-delta': {
     name: "Delta County, CO",
@@ -868,7 +869,7 @@ const VERIFIED_COUNTIES = {
     layer: 209,
     fields: {"pin":"TaxPIN_GIS","address":null},
     box: [-108.38,38.663,-107.499,39.218],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'co-denver': {
     name: "Denver County, CO",
@@ -877,7 +878,7 @@ const VERIFIED_COUNTIES = {
     layer: 245,
     fields: {"pin":"SCHEDNUM","address":"SITUS_ADDRESS_LINE1"},
     box: [-105.223,39.61,-104.599,39.917],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'co-eagle': {
     name: "Eagle County, CO",
@@ -886,7 +887,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCEL_NUM","address":null},
     box: [-107.114,39.349,-106.176,39.926],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'co-el-paso': {
     name: "El Paso County, CO",
@@ -895,7 +896,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"parcel_id","address":"situsAdd"},
     box: [-109.061,36.991,-102.046,41.004],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'co-fremont': {
     name: "Fremont County, CO",
@@ -904,7 +905,7 @@ const VERIFIED_COUNTIES = {
     layer: 1082516613,
     fields: {"pin":"PARCELNUMBER","address":null},
     box: [-106.013,38.257,-104.94,38.698],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'co-garfield': {
     name: "Garfield County, CO",
@@ -913,7 +914,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCELNB","address":null},
     box: [-109.091,39.314,-107.013,40.097],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'co-jefferson': {
     name: "Jefferson County, CO",
@@ -921,8 +922,9 @@ const VERIFIED_COUNTIES = {
     service: "https://gis.colorado.gov/public/rest/services/Address_and_Parcel/Colorado_Public_Parcels/FeatureServer",
     layer: 0,
     fields: {"pin":"parcel_id","address":"situsAdd"},
+    fallbacks: [{"service":"https://gisportal.jeffco.us/server/rest/services/Parcel/MapServer","layer":20,"fields":{"pin":"PIN","address":null}}],
     box: [-109.061,36.991,-102.046,41.004],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'co-la-plata': {
     name: "La Plata County, CO",
@@ -931,7 +933,7 @@ const VERIFIED_COUNTIES = {
     layer: 4,
     fields: {"pin":"APN","address":null},
     box: [-108.406,36.981,-107.465,37.649],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'co-larimer': {
     name: "Larimer County, CO",
@@ -940,7 +942,7 @@ const VERIFIED_COUNTIES = {
     layer: 3,
     fields: {"pin":"PARCELNUM","address":null},
     box: [-106.196,40.257,-104.942,40.999],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'co-logan': {
     name: "Logan County, CO",
@@ -949,7 +951,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"parcelid","address":null},
     box: [-103.591,40.419,-102.638,41.022],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'co-mesa': {
     name: "Mesa County, CO",
@@ -958,7 +960,16 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCEL_NUM","address":null},
     box: [-109.075,38.461,-107.374,39.405],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
+  },
+  'co-moffat': {
+    name: "Moffat County, CO",
+    fips: "08081",
+    service: "https://services.arcgis.com/nG7uHX1mi3PRD2sK/ArcGIS/rest/services/MC_Parcels/FeatureServer",
+    layer: 0,
+    fields: {"pin":"Pin_","address":null},
+    box: [-109.092,40.182,-107.296,41.041],
+    checked: "2026-09-21",
   },
   'co-montezuma': {
     name: "Montezuma County, CO",
@@ -967,7 +978,7 @@ const VERIFIED_COUNTIES = {
     layer: 24,
     fields: {"pin":"PID","address":null},
     box: [-109.046,37.13,-108.056,37.638],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'co-montrose': {
     name: "Montrose County, CO",
@@ -976,7 +987,7 @@ const VERIFIED_COUNTIES = {
     layer: 47,
     fields: {"pin":"ASSESSORSI","address":null},
     box: [-109.061,38.152,-107.499,38.669],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'co-morgan': {
     name: "Morgan County, CO",
@@ -985,7 +996,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"FID","address":null},
     box: [-104.166,39.901,-103.434,40.525],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'co-ouray': {
     name: "Ouray County, CO",
@@ -994,7 +1005,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCELNB","address":null},
     box: [-108.132,37.883,-107.506,38.346],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'co-park': {
     name: "Park County, CO",
@@ -1003,7 +1014,7 @@ const VERIFIED_COUNTIES = {
     layer: 52,
     fields: {"pin":"ScheduleNu","address":null},
     box: [-106.215,38.691,-105.307,39.568],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'co-pitkin': {
     name: "Pitkin County, CO",
@@ -1012,7 +1023,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"pin","address":null},
     box: [-107.379,38.992,-106.497,39.368],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'co-pueblo': {
     name: "Pueblo County, CO",
@@ -1021,7 +1032,7 @@ const VERIFIED_COUNTIES = {
     layer: 1,
     fields: {"pin":"PAR_NUM","address":null},
     box: [-105.053,37.734,-104.043,38.531],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'co-san-miguel': {
     name: "San Miguel County, CO",
@@ -1030,7 +1041,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PIN","address":null},
     box: [-109.043,37.773,-107.733,38.155],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'co-sedgwick': {
     name: "Sedgwick County, CO",
@@ -1039,7 +1050,7 @@ const VERIFIED_COUNTIES = {
     layer: 3,
     fields: {"pin":"PARCELNO","address":null},
     box: [-102.665,40.733,-102.038,41.019],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'co-weld': {
     name: "Weld County, CO",
@@ -1048,7 +1059,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCEL","address":null},
     box: [-105.059,39.985,-103.565,41.017],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ct-capitol-planning-region': {
     name: "Capitol Planning Region County, CT",
@@ -1057,7 +1068,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"Parcel_ID","address":"Location_1"},
     box: [-73.743,40.979,-71.781,42.053],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ct-greater-bridgeport-planning-region': {
     name: "Greater Bridgeport Planning Region County, CT",
@@ -1066,7 +1077,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"Parcel_ID","address":"Location_1"},
     box: [-73.743,40.979,-71.781,42.053],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ct-lower-connecticut-river-valley-planning-region': {
     name: "Lower Connecticut River Valley Planning Region County, CT",
@@ -1075,7 +1086,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"Parcel_ID","address":"Location_1"},
     box: [-73.743,40.979,-71.781,42.053],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ct-naugatuck-valley-planning-region': {
     name: "Naugatuck Valley Planning Region County, CT",
@@ -1084,7 +1095,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"Parcel_ID","address":"Location_1"},
     box: [-73.743,40.979,-71.781,42.053],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ct-northeastern-connecticut-planning-region': {
     name: "Northeastern Connecticut Planning Region County, CT",
@@ -1093,7 +1104,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"Parcel_ID","address":"Location_1"},
     box: [-73.743,40.979,-71.781,42.053],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ct-northwest-hills-planning-region': {
     name: "Northwest Hills Planning Region County, CT",
@@ -1102,7 +1113,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"Parcel_ID","address":"Location_1"},
     box: [-73.743,40.979,-71.781,42.053],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ct-south-central-connecticut-planning-region': {
     name: "South Central Connecticut Planning Region County, CT",
@@ -1111,7 +1122,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"Parcel_ID","address":"Location_1"},
     box: [-73.743,40.979,-71.781,42.053],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ct-southeastern-connecticut-planning-region': {
     name: "Southeastern Connecticut Planning Region County, CT",
@@ -1120,7 +1131,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"Parcel_ID","address":"Location_1"},
     box: [-73.743,40.979,-71.781,42.053],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ct-statewide': {
     name: "CT (OpenAddresses)",
@@ -1130,7 +1141,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"Link","address":null},
     box: [-73.547,41.085,-71.873,41.955],
-    checked: "2026-09-19",
+    checked: "2026-09-21",
   },
   'ct-western-connecticut-planning-region': {
     name: "Western Connecticut Planning Region County, CT",
@@ -1139,7 +1150,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"Parcel_ID","address":"Location_1"},
     box: [-73.743,40.979,-71.781,42.053],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'dc-statewide': {
     name: "DC (OpenAddresses)",
@@ -1149,7 +1160,7 @@ const VERIFIED_COUNTIES = {
     layer: 40,
     fields: {"pin":"SSL","address":null},
     box: [-77.117,38.804,-76.867,39.054],
-    checked: "2026-09-19",
+    checked: "2026-09-21",
   },
   'de-kent': {
     name: "Kent County, DE",
@@ -1158,7 +1169,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":null,"address":null},
     box: [-75.797,38.788,-75.311,39.367],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'de-new-castle': {
     name: "New Castle County, DE",
@@ -1167,7 +1178,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PRCLID","address":"ADDRESS"},
     box: [-75.79,39.29,-75.421,39.84],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'de-statewide': {
     name: "DE (OpenAddresses)",
@@ -1177,7 +1188,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PIN","address":null},
     box: [-75.744,38.573,-75.237,39.676],
-    checked: "2026-09-19",
+    checked: "2026-09-21",
   },
   'de-sussex': {
     name: "Sussex County, DE",
@@ -1186,7 +1197,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"Name","address":null},
     box: [-75.724,38.45,-75.046,38.962],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'fl-bay': {
     name: "Bay County, FL",
@@ -1195,7 +1206,7 @@ const VERIFIED_COUNTIES = {
     layer: 2,
     fields: {"pin":"A1RENUM","address":null},
     box: [-85.996,29.924,-85.384,30.568],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'fl-brevard': {
     name: "Brevard County, FL",
@@ -1204,7 +1215,7 @@ const VERIFIED_COUNTIES = {
     layer: 4,
     fields: {"pin":null,"address":null},
     box: [-80.967,27.821,-80.455,28.792],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'fl-citrus': {
     name: "Citrus County, FL",
@@ -1213,7 +1224,7 @@ const VERIFIED_COUNTIES = {
     layer: 43,
     fields: {"pin":"LOTID","address":null},
     box: [-82.756,28.664,-82.169,29.054],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'fl-clay': {
     name: "Clay County, FL",
@@ -1222,7 +1233,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PIN","address":null},
     box: [-82.05,29.718,-81.604,30.195],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'fl-collier': {
     name: "Collier County, FL",
@@ -1231,7 +1242,7 @@ const VERIFIED_COUNTIES = {
     layer: 42,
     fields: {"pin":null,"address":null},
     box: [-81.848,25.8,-80.872,26.517],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'fl-columbia': {
     name: "Columbia County, FL",
@@ -1240,7 +1251,7 @@ const VERIFIED_COUNTIES = {
     layer: 1,
     fields: {"pin":null,"address":null},
     box: [-82.804,29.822,-82.442,30.6],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'fl-duval': {
     name: "Duval County, FL",
@@ -1248,8 +1259,9 @@ const VERIFIED_COUNTIES = {
     service: "https://maps.coj.net/coj/rest/services/CityBiz/Parcels/MapServer",
     layer: 0,
     fields: {"pin":"RE","address":null},
+    fallbacks: [{"service":"https://maps.coj.net/coj/rest/services/ERAT/EratDashboard_3000/MapServer","layer":42,"fields":{"pin":"RE","address":null}}],
     box: [-82.05,30.103,-81.38,30.586],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'fl-flagler': {
     name: "Flagler County, FL",
@@ -1258,7 +1270,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCELNO","address":null},
     box: [-81.524,29.26,-81.102,29.671],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'fl-hardee': {
     name: "Hardee County, FL",
@@ -1267,7 +1279,7 @@ const VERIFIED_COUNTIES = {
     layer: 10,
     fields: {"pin":"PIN_DELIM","address":null},
     box: [-82.056,27.336,-81.563,27.647],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'fl-hendry': {
     name: "Hendry County, FL",
@@ -1276,7 +1288,16 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCELNO","address":null},
     box: [-81.568,26.252,-80.878,26.957],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
+  },
+  'fl-hernando': {
+    name: "Hernando County, FL",
+    fips: "12053",
+    service: "https://services2.arcgis.com/x5zvhhxfUuRDntRe/arcgis/rest/services/Basemap_PublicMapGallery/FeatureServer",
+    layer: 10061,
+    fields: {"pin":"PARCEL_KEY","address":null},
+    box: [-82.685,28.432,-82.054,28.696],
+    checked: "2026-09-21",
   },
   'fl-hillsborough': {
     name: "Hillsborough County, FL",
@@ -1284,8 +1305,9 @@ const VERIFIED_COUNTIES = {
     service: "https://gis.hcpafl.org/arcgis/rest/services/Webmaps/HillsboroughFL_WebParcels/MapServer",
     layer: 0,
     fields: {"pin":"folio","address":"FullAddress"},
+    fallbacks: [{"service":"https://arcgis.tampagov.net/arcgis/rest/services/Parcels/TaxParcel/FeatureServer","layer":0,"fields":{"pin":"PIN","address":null}}],
     box: [-82.876,27.526,-82.054,28.174],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'fl-indian-river': {
     name: "Indian River County, FL",
@@ -1294,7 +1316,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PP_PIN","address":null},
     box: [-80.882,27.556,-80.321,27.861],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'fl-lake': {
     name: "Lake County, FL",
@@ -1303,7 +1325,7 @@ const VERIFIED_COUNTIES = {
     layer: 20,
     fields: {"pin":"ParcelNumber","address":null},
     box: [-81.966,28.344,-81.347,29.279],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'fl-lee': {
     name: "Lee County, FL",
@@ -1311,8 +1333,9 @@ const VERIFIED_COUNTIES = {
     service: "https://services2.arcgis.com/LvWGAAhHwbCJ2GMP/arcgis/rest/services/Lee_County_Parcels/FeatureServer",
     layer: 0,
     fields: {"pin":"STRAP","address":"SITEADDR"},
+    fallbacks: [{"service":"https://gismapserver.leegov.com/gisserver910/rest/services/Layers/ParcelAddress/MapServer","layer":0,"fields":{"pin":"STRAP","address":null}}],
     box: [-82.273,26.315,-81.56,26.79],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'fl-leon': {
     name: "Leon County, FL",
@@ -1321,7 +1344,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"TAXID","address":null},
     box: [-84.716,30.273,-83.978,30.686],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'fl-manatee': {
     name: "Manatee County, FL",
@@ -1329,8 +1352,9 @@ const VERIFIED_COUNTIES = {
     service: "https://gis.manateepao.com/arcgis/rest/services/Website/WebLayers/MapServer",
     layer: 0,
     fields: {"pin":"PARID","address":"SITUS_ADDRESS"},
+    fallbacks: [{"service":"https://www.mymanatee.org/gisits/rest/services/opendata/General/MapServer","layer":0,"fields":{"pin":"PARCEL_ID","address":null}}],
     box: [-82.748,27.205,-82.054,27.647],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'fl-martin': {
     name: "Martin County, FL",
@@ -1339,7 +1363,7 @@ const VERIFIED_COUNTIES = {
     layer: 10,
     fields: {"pin":"PCN","address":null},
     box: [-80.679,26.955,-80.077,27.266],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'fl-miami-dade': {
     name: "Miami-Dade County, FL",
@@ -1347,8 +1371,9 @@ const VERIFIED_COUNTIES = {
     service: "https://gisweb.miamidade.gov/arcgis/rest/services/MD_LandInformation/MapServer",
     layer: 26,
     fields: {"pin":"FOLIO","address":"TRUE_SITE_ADDR"},
+    fallbacks: [{"service":"https://services.arcgis.com/8Pc9XBTAsYuxx9Ny/arcgis/rest/services/Parcelpoly_gdb/FeatureServer","layer":0,"fields":{"pin":"PID","address":null}}],
     box: [-80.875,25.135,-80.118,25.98],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'fl-nassau': {
     name: "Nassau County, FL",
@@ -1357,7 +1382,7 @@ const VERIFIED_COUNTIES = {
     layer: 144,
     fields: {"pin":"PIN","address":null},
     box: [-82.056,30.273,-81.424,30.833],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'fl-orange': {
     name: "Orange County, FL",
@@ -1366,7 +1391,7 @@ const VERIFIED_COUNTIES = {
     layer: 56,
     fields: {"pin":"PARCEL","address":null},
     box: [-81.659,28.346,-80.87,28.787],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'fl-pasco': {
     name: "Pasco County, FL",
@@ -1374,8 +1399,9 @@ const VERIFIED_COUNTIES = {
     service: "https://maps.pascopa.com/arcgis/rest/services/Parcels/MapServer",
     layer: 3,
     fields: {"pin":"ParcelID","address":null},
+    fallbacks: [{"service":"https://pascogis.pascocountyfl.net/gisweb/rest/services/Accela/PascoAccela/MapServer","layer":5,"fields":{"pin":"HPARCEL","address":null}}],
     box: [-82.851,28.171,-82.054,28.479],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'fl-pinellas': {
     name: "Pinellas County, FL",
@@ -1383,8 +1409,9 @@ const VERIFIED_COUNTIES = {
     service: "https://egis.pinellas.gov/gis/rest/services/PublicWebGIS/Parcels/MapServer",
     layer: 1,
     fields: {"pin":"PARCELID","address":"SITE_ADDRESS"},
+    fallbacks: [{"service":"https://egis.pinellas.gov/gis/rest/services/AGO/Parcels/MapServer","layer":0,"fields":{"pin":"STRAP","address":null}}],
     box: [-82.852,27.611,-82.535,28.174],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'fl-polk': {
     name: "Polk County, FL",
@@ -1393,7 +1420,7 @@ const VERIFIED_COUNTIES = {
     layer: 7,
     fields: {"pin":"PARCELID","address":null},
     box: [-82.107,27.643,-81.127,28.363],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'fl-santa-rosa': {
     name: "Santa Rosa County, FL",
@@ -1402,7 +1429,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PAR_NUM","address":null},
     box: [-87.321,30.34,-86.77,31.007],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'fl-sarasota': {
     name: "Sarasota County, FL",
@@ -1411,7 +1438,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"ACCOUNT","address":null},
     box: [-82.643,26.944,-82.056,27.392],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'fl-st-lucie': {
     name: "St. Lucie County, FL",
@@ -1420,7 +1447,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"ParcelID","address":null},
     box: [-80.681,27.204,-80.197,27.561],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'fl-walton': {
     name: "Walton County, FL",
@@ -1429,7 +1456,7 @@ const VERIFIED_COUNTIES = {
     layer: 2,
     fields: {"pin":"PARCELNO","address":null},
     box: [-86.41,30.263,-85.838,31.002],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-atkinson': {
     name: "Atkinson County, GA",
@@ -1438,7 +1465,7 @@ const VERIFIED_COUNTIES = {
     layer: 1,
     fields: {"pin":"PARCEL","address":null},
     box: [-83.144,31.182,-82.625,31.421],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-baldwin': {
     name: "Baldwin County, GA",
@@ -1447,7 +1474,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARID","address":null},
     box: [-83.433,32.923,-83.043,33.193],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-barrow': {
     name: "Barrow County, GA",
@@ -1456,7 +1483,7 @@ const VERIFIED_COUNTIES = {
     layer: 142,
     fields: {"pin":"Parcel_no","address":null},
     box: [-83.869,33.894,-83.535,34.128],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-bartow': {
     name: "Bartow County, GA",
@@ -1465,7 +1492,7 @@ const VERIFIED_COUNTIES = {
     layer: 6,
     fields: {"pin":"PARCEL_NO","address":null},
     box: [-85.051,34.075,-84.642,34.414],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-ben-hill': {
     name: "Ben Hill County, GA",
@@ -1474,7 +1501,7 @@ const VERIFIED_COUNTIES = {
     layer: 4,
     fields: {"pin":"SKEY","address":null},
     box: [-83.487,31.651,-82.995,31.851],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-berrien': {
     name: "Berrien County, GA",
@@ -1483,7 +1510,7 @@ const VERIFIED_COUNTIES = {
     layer: 2,
     fields: {"pin":"PARCEL_NO","address":null},
     box: [-83.44,31.025,-83.033,31.477],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-bibb': {
     name: "Bibb County, GA",
@@ -1492,7 +1519,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCEL_NO","address":null},
     box: [-83.893,32.66,-83.488,32.954],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-brooks': {
     name: "Brooks County, GA",
@@ -1501,7 +1528,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"REALKEY","address":null},
     box: [-83.743,30.634,-83.309,31.077],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-bulloch': {
     name: "Bulloch County, GA",
@@ -1510,7 +1537,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PROP_PIN","address":null},
     box: [-82.031,32.149,-81.429,32.654],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-charlton': {
     name: "Charlton County, GA",
@@ -1519,7 +1546,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCEL_ID","address":null},
     box: [-82.421,30.355,-81.891,31.076],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-chatham': {
     name: "Chatham County, GA",
@@ -1527,8 +1554,9 @@ const VERIFIED_COUNTIES = {
     service: "https://pub.sagis.org/arcgis/rest/services/OpenData/Parcels/FeatureServer",
     layer: 27,
     fields: {"pin":"PIN","address":"PropAddress_Full"},
+    fallbacks: [{"service":"https://cloud.sagis.org/arcgis/rest/services/SagisOrg2020/SAGISOrg/MapServer","layer":124,"fields":{"pin":"PIN","address":null}}],
     box: [-81.392,31.727,-80.839,32.238],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-chattahoochee': {
     name: "Chattahoochee County, GA",
@@ -1537,7 +1565,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"Parcel_num","address":null},
     box: [-84.919,32.22,-84.657,32.35],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-clarke': {
     name: "Clarke County, GA",
@@ -1546,7 +1574,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCEL_NO","address":null},
     box: [-83.537,33.847,-83.24,34.04],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-cobb': {
     name: "Cobb County, GA",
@@ -1554,8 +1582,9 @@ const VERIFIED_COUNTIES = {
     service: "https://gis.cobbcounty.gov/gisserver/rest/services/tax/taxassessorsdaily/MapServer",
     layer: 0,
     fields: {"pin":"PIN","address":"SITUS_ADDR"},
+    fallbacks: [{"service":"https://gis.cobbcounty.org/gisserver/rest/services/accela/ACCGIS_COBB/MapServer","layer":28,"fields":{"pin":"PIN","address":null}}],
     box: [-84.741,33.743,-84.374,34.083],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-coffee': {
     name: "Coffee County, GA",
@@ -1564,7 +1593,7 @@ const VERIFIED_COUNTIES = {
     layer: 2,
     fields: {"pin":"Parcel_No","address":null},
     box: [-83.152,31.363,-82.596,31.813],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-cook': {
     name: "Cook County, GA",
@@ -1573,7 +1602,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"Parcel_No","address":null},
     box: [-83.578,31.027,-83.279,31.351],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-dawson': {
     name: "Dawson County, GA",
@@ -1582,7 +1611,7 @@ const VERIFIED_COUNTIES = {
     layer: 3,
     fields: {"pin":"PARCELID","address":null},
     box: [-84.347,34.333,-83.965,34.618],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-dekalb': {
     name: "DeKalb County, GA",
@@ -1590,8 +1619,9 @@ const VERIFIED_COUNTIES = {
     service: "https://dcgis.dekalbcountyga.gov/hosted/rest/services/Parcels/MapServer",
     layer: 0,
     fields: {"pin":"PARCELID","address":"SITEADDRESS"},
+    fallbacks: [{"service":"https://services2.arcgis.com/IxVN2oUE9EYLSnPE/ArcGIS/rest/services/Parcels/FeatureServer","layer":0,"fields":{"pin":"PARCELID","address":null}}],
     box: [-84.351,33.616,-84.023,33.971],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-evans': {
     name: "Evans County, GA",
@@ -1600,7 +1630,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCELNUM","address":null},
     box: [-82.026,32.048,-81.76,32.281],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-fayette': {
     name: "Fayette County, GA",
@@ -1609,7 +1639,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCEL_NO","address":null},
     box: [-84.628,33.256,-84.38,33.551],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-forsyth': {
     name: "Forsyth County, GA",
@@ -1618,7 +1648,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCELID","address":null},
     box: [-84.26,34.05,-83.925,34.336],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-fulton': {
     name: "Fulton County, GA",
@@ -1626,8 +1656,9 @@ const VERIFIED_COUNTIES = {
     service: "https://gismaps.fultoncountyga.gov/arcgispub2/rest/services/PropertyMapViewer/PropertyMapViewer/MapServer",
     layer: 11,
     fields: {"pin":"ParcelID","address":"Address"},
+    fallbacks: [{"service":"https://services1.arcgis.com/AQDHTHDrZzfsFsB5/arcgis/rest/services/Tax_Parcels/FeatureServer","layer":0,"fields":{"pin":"ParcelID","address":null}}],
     box: [-84.857,33.501,-84.097,34.187],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-gordon': {
     name: "Gordon County, GA",
@@ -1636,7 +1667,7 @@ const VERIFIED_COUNTIES = {
     layer: 5,
     fields: {"pin":"CNTY_PIN","address":null},
     box: [-85.113,34.384,-84.645,34.631],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-grady': {
     name: "Grady County, GA",
@@ -1645,7 +1676,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCELNO","address":null},
     box: [-84.382,30.674,-84.072,31.079],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-gwinnett': {
     name: "Gwinnett County, GA",
@@ -1653,8 +1684,9 @@ const VERIFIED_COUNTIES = {
     service: "https://services3.arcgis.com/RfpmnkSAQleRbndX/arcgis/rest/services/Property_and_Tax/FeatureServer",
     layer: 0,
     fields: {"pin":"PIN","address":null},
+    fallbacks: [{"service":"https://gis3.gwinnettcounty.com/dataserver/rest/services/Hosted/Property_and_Tax/FeatureServer","layer":0,"fields":{"pin":"pin","address":null}}],
     box: [-84.278,33.752,-83.798,34.17],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-irwin': {
     name: "Irwin County, GA",
@@ -1663,7 +1695,7 @@ const VERIFIED_COUNTIES = {
     layer: 5,
     fields: {"pin":"PARCEL_NO","address":null},
     box: [-83.502,31.471,-82.998,31.771],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-long': {
     name: "Long County, GA",
@@ -1672,7 +1704,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCEL_NO","address":null},
     box: [-81.983,31.537,-81.49,31.924],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-lowndes': {
     name: "Lowndes County, GA",
@@ -1681,7 +1713,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCEL_NO","address":null},
     box: [-83.486,30.623,-83.018,31.032],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-mcduffie': {
     name: "McDuffie County, GA",
@@ -1690,7 +1722,7 @@ const VERIFIED_COUNTIES = {
     layer: 9,
     fields: {"pin":"ParcelNo","address":null},
     box: [-82.649,33.31,-82.294,33.66],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-meriwether': {
     name: "Meriwether County, GA",
@@ -1699,7 +1731,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"Parcel_No","address":null},
     box: [-84.868,32.842,-84.489,33.233],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-montgomery': {
     name: "Montgomery County, GA",
@@ -1708,7 +1740,7 @@ const VERIFIED_COUNTIES = {
     layer: 15,
     fields: {"pin":"Parcel_No","address":null},
     box: [-82.658,31.947,-82.407,32.355],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-morgan': {
     name: "Morgan County, GA",
@@ -1717,7 +1749,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"Parcel_No","address":null},
     box: [-83.693,33.434,-83.279,33.818],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-muscogee': {
     name: "Muscogee County, GA",
@@ -1726,7 +1758,7 @@ const VERIFIED_COUNTIES = {
     layer: 20,
     fields: {"pin":"TaxPIN","address":null},
     box: [-85.078,32.373,-84.667,32.611],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-peach': {
     name: "Peach County, GA",
@@ -1735,7 +1767,7 @@ const VERIFIED_COUNTIES = {
     layer: 5,
     fields: {"pin":null,"address":null},
     box: [-84.019,32.438,-83.7,32.695],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-rockdale': {
     name: "Rockdale County, GA",
@@ -1744,7 +1776,7 @@ const VERIFIED_COUNTIES = {
     layer: 38,
     fields: {"pin":"PARCEL_NO","address":null},
     box: [-84.185,33.525,-83.911,33.789],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-stewart': {
     name: "Stewart County, GA",
@@ -1753,7 +1785,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"Parcel_No","address":null},
     box: [-85.07,31.918,-84.637,32.236],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-thomas': {
     name: "Thomas County, GA",
@@ -1762,7 +1794,7 @@ const VERIFIED_COUNTIES = {
     layer: 4,
     fields: {"pin":"PARCEL_NO","address":null},
     box: [-84.12,30.657,-83.736,31.078],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-tift': {
     name: "Tift County, GA",
@@ -1771,7 +1803,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"ParcelNum","address":null},
     box: [-83.667,31.326,-83.338,31.598],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-toombs': {
     name: "Toombs County, GA",
@@ -1780,7 +1812,7 @@ const VERIFIED_COUNTIES = {
     layer: 16,
     fields: {"pin":"Parcel_No","address":null},
     box: [-82.49,31.908,-82.178,32.357],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-troup': {
     name: "Troup County, GA",
@@ -1789,7 +1821,7 @@ const VERIFIED_COUNTIES = {
     layer: 1,
     fields: {"pin":"Tax_Number","address":null},
     box: [-85.238,32.864,-84.858,33.226],
-    checked: "2026-09-18",
+    checked: "2026-09-21",
   },
   'ga-turner': {
     name: "Turner County, GA",
@@ -2024,7 +2056,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PIN","address":null},
     box: [-116.898,42.074,-111.112,48.839],
-    checked: "2026-09-19",
+    checked: "2026-09-21",
   },
   'id-valley': {
     name: "Valley County, ID",
@@ -2655,7 +2687,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":null,"address":null},
     box: [-87.969,37.91,-84.828,41.743],
-    checked: "2026-09-19",
+    checked: "2026-09-21",
   },
   'ks-shawnee': {
     name: "Shawnee County, KS",
@@ -2810,7 +2842,7 @@ const VERIFIED_COUNTIES = {
     fields: {"pin":"MAP_PAR_ID","address":null},
     fallbacks: [{"service":"https://arcgisserver.digital.mass.gov/arcgisserver/rest/services/AGOL/MassachusettsPropertyTaxParcels/FeatureServer","layer":4,"fields":{"pin":null,"address":"SITE_ADDR"}}],
     box: [-73.318,41.193,-70.001,42.743],
-    checked: "2026-09-19",
+    checked: "2026-09-21",
   },
   'md-allegany': {
     name: "Allegany, MD",
@@ -3434,7 +3466,7 @@ const VERIFIED_COUNTIES = {
     layer: 1,
     fields: {"pin":"state_pin","address":null},
     box: [-96.88,43.565,-90.244,48.877],
-    checked: "2026-09-19",
+    checked: "2026-09-21",
   },
   'mn-todd': {
     name: "Todd County, MN",
@@ -3921,7 +3953,7 @@ const VERIFIED_COUNTIES = {
     layer: 1,
     fields: {"pin":"ParcelOID","address":null},
     box: [-72.349,42.812,-70.936,44.753],
-    checked: "2026-09-19",
+    checked: "2026-09-21",
   },
   'nj-bergen': {
     name: "Bergen County, NJ",
@@ -4143,7 +4175,7 @@ const VERIFIED_COUNTIES = {
     layer: 1,
     fields: {"pin":"OBJECTID","address":null},
     box: [-79.508,40.461,-72.592,44.853],
-    checked: "2026-09-19",
+    checked: "2026-09-21",
   },
   'ny-suffolk': {
     name: "Suffolk County, NY",
@@ -5243,7 +5275,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCEL_ID","address":null},
     box: [-113.588,37.163,-109.406,41.834],
-    checked: "2026-09-19",
+    checked: "2026-09-21",
   },
   'ut-utah': {
     name: "Utah County, UT",
@@ -5389,6 +5421,16 @@ const VERIFIED_COUNTIES = {
     box: [-77.638,38.242,-77.283,38.594],
     checked: "2026-09-18",
   },
+  'va-statewide': {
+    name: "VA (OpenAddresses)",
+    state: "VA",
+    statewide: true,
+    service: "https://gismaps.vdem.virginia.gov/arcgis/rest/services/VA_Base_Layers/VA_Parcels/FeatureServer",
+    layer: 0,
+    fields: {"pin":"PARCELID","address":null},
+    box: [-83.23,36.482,-75.655,39.301],
+    checked: "2026-09-21",
+  },
   'vt-chittenden': {
     name: "Chittenden County, VT",
     fips: "50007",
@@ -5406,7 +5448,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"SPAN","address":null},
     box: [-73.401,42.894,-71.633,44.959],
-    checked: "2026-09-19",
+    checked: "2026-09-21",
   },
   'wa-asotin': {
     name: "Asotin County, WA",
@@ -5578,7 +5620,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCEL_ID_NR","address":null},
     box: [-123.988,45.672,-117.128,48.944],
-    checked: "2026-09-19",
+    checked: "2026-09-21",
   },
   'wa-stevens': {
     name: "Stevens County, WA",
@@ -6354,7 +6396,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"ROOTID","address":null},
     box: [-82.523,37.283,-77.763,40.618],
-    checked: "2026-09-19",
+    checked: "2026-09-21",
   },
   'wv-summers': {
     name: "Summers County, WV",

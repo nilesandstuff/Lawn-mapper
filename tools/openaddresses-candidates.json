@@ -1,12 +1,12 @@
 {
   "importedFrom": "openaddresses/openaddresses",
-  "importedAt": "2026-09-19",
+  "importedAt": "2026-09-21",
   "note": "Candidates only. Nothing here is claimed as working until verify-counties.js says so.",
   "listed": 1969,
-  "noParcels": 831,
+  "noParcels": 829,
   "notEsri": 114,
   "unusableUrl": 1,
-  "noFips": 116,
+  "noFips": 118,
   "skipped": 1,
   "candidates": [
     {
