@@ -662,18 +662,46 @@ filled by a separate EPA Region 3 dataset built to the same classification --
 not checked, and not the same endpoint.
 
 **How they decided what is under a canopy, which is the interesting part.**
-The published method is object-based image analysis over LiDAR, multispectral
-imagery (NAIP: red, green, blue, near infrared at 1 m) and *thematic layers --
-roads and building footprints*. The class list is built around what is
-underneath: there is Tree Canopy over Impervious split three ways, over roads,
-over structures and over other. So "Tree Canopy over Turf Grass" is not the
-result of seeing through a tree. It is canopy on developed land that is known
-not to be over a road or a building, and turf is what is left.
+*From the Bay Program's own classification methods document, 2026-09-21.* I
+guessed at this twice and was wrong twice — first "canopy on developed land
+not over a road or a building", then the same thing again. The owner pointed
+out that there is a separate Forest class, so something else must be deciding
+which trees have grass under them. There is, and it is a distance rule:
 
-That is worth being plain about, because it is the same inference our tracers
-make, done systematically. It is not a measurement of what is under the tree.
-It should be more consistent than a person, and it cannot notice the mulch bed
-or the patio under the canopy that a person looking at 10 cm imagery might.
+> **Tree Canopy over Turf Grass (TCTG)** = Tree cover within **30 ft** of
+> structures or adjacent turf grass and other impervious **in rural wooded
+> areas**, and within **60 ft** of structures or adjacent turf grass and other
+> impervious **in developed areas**.
+>
+> The understory in all TCTG areas is **assumed** to be turf grass or otherwise
+> altered through compaction, removal of surface organic material, and/or
+> fertilization.
+
+And the plain class it sits beside:
+
+> **Turf Grass (TURF)** = Low vegetation associated with residential,
+> commercial, industrial and recreational areas that is assumed to be altered
+> through compaction, removal of organic material and/or fertilization.
+
+Their own summary of the idea: *"Tree canopy with a compacted or managed
+understory was assumed to exist adjacent to lawns and buildings."*
+
+So nothing sees under the tree, and the document says so in the word
+**assumed**. What the class really means is *canopy near a building*. That
+makes the failure modes predictable and worth stating before any comparison:
+
+- a tree 50 ft from a suburban house is TCTG whether or not there is grass
+  under it — woodchips, ivy, bare dirt and a shed all read as turf;
+- a tree 80 ft from the house on a large lawn is NOT TCTG, even though there
+  plainly is grass under it — it falls to Forest or Other Tree Canopy;
+- 60 ft is generous for an ordinary suburban lot, which is most of what this
+  tool measures, and stops short on an acre.
+
+Against our own inferred marks: ours is a person's judgement from 10-15 cm
+imagery, theirs is a buffer distance. Neither sees through the canopy. Expect
+theirs to be steadier and ours to notice the mulch bed; expect them to part
+company on big lots, in one direction, which H7 warns is the kind of error
+that does not average out.
 
 The other route is VGIN's download application, which hands out the raster by
 locality. That suits building a training batch in CI. It does not suit asking
