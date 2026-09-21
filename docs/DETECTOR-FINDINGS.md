@@ -662,46 +662,69 @@ filled by a separate EPA Region 3 dataset built to the same classification --
 not checked, and not the same endpoint.
 
 **How they decided what is under a canopy, which is the interesting part.**
-*From the Bay Program's own classification methods document, 2026-09-21.* I
-guessed at this twice and was wrong twice — first "canopy on developed land
-not over a road or a building", then the same thing again. The owner pointed
-out that there is a separate Forest class, so something else must be deciding
-which trees have grass under them. There is, and it is a distance rule:
+*From the Bay Program's own classification methods document, read properly on
+2026-09-21 after two wrong summaries of it.* The first guess was "canopy on
+developed land not over a road or a building". The second repeated it. The
+third said "a 60 ft distance rule", which is a real number from the document
+and still not how the classification works. The owner pushed back both times,
+correctly. The actual scheme, quoted:
 
-> **Tree Canopy over Turf Grass (TCTG)** = Tree cover within **30 ft** of
+> **Tree Canopy over Turf Grass (TCTG)** = Tree cover within **30-ft** of
 > structures or adjacent turf grass and other impervious **in rural wooded
-> areas**, and within **60 ft** of structures or adjacent turf grass and other
-> impervious **in developed areas**.
->
-> The understory in all TCTG areas is **assumed** to be turf grass or otherwise
-> altered through compaction, removal of surface organic material, and/or
-> fertilization.
+> areas** and within **60-ft** of structures or adjacent turf grass and other
+> impervious **in developed areas. Developed areas include U.S. Census Bureau
+> defined urban areas and clusters. Rural areas include all lands outside
+> Census urban areas and clusters.** The understory in all TCTG areas is
+> assumed to be turf grass or otherwise altered through compaction, removal of
+> surface organic material, and/or fertilization.
 
-And the plain class it sits beside:
+> **41 Forest (>= 1 acre, 240-ft width)** ... 2. If the patch is at least an
+> acre in area and has a width of at least 72 meters, it is forest.
+> **3. Remove areas that are Tree Canopy over Turf Grass.**
 
-> **Turf Grass (TURF)** = Low vegetation associated with residential,
-> commercial, industrial and recreational areas that is assumed to be altered
-> through compaction, removal of organic material and/or fertilization.
+> **42 Other Tree Canopy** ... All tree canopy that does not meet the forest
+> metrics. For patches of tree canopy surrounded by agriculture, this class
+> takes priority over [tree cano]py over turf grass.
 
-Their own summary of the idea: *"Tree canopy with a compacted or managed
-understory was assumed to exist adjacent to lawns and buildings."*
+**THE ORDER IS THE PART THAT MATTERS, AND IT IS THE OPPOSITE OF WHAT THIS
+ENTRY SAID.** Forest is not a category that wins and leaves the leftovers to
+TCTG. Forest is computed as a size-and-girth test on the whole canopy layer --
+one acre and 240 ft wide somewhere in the patch -- and then **TCTG is
+subtracted from it**. Canopy near a house is taken OUT of the forest it is
+part of.
 
-So nothing sees under the tree, and the document says so in the word
-**assumed**. What the class really means is *canopy near a building*. That
-makes the failure modes predictable and worth stating before any comparison:
+And TCTG is parcel-scoped, not a free-floating distance from any building:
 
-- a tree 50 ft from a suburban house is TCTG whether or not there is grass
-  under it — woodchips, ivy, bare dirt and a shed all read as turf;
-- a tree 80 ft from the house on a large lawn is NOT TCTG, even though there
-  plainly is grass under it — it falls to Forest or Other Tree Canopy;
-- 60 ft is generous for an ordinary suburban lot, which is most of what this
-  tool measures, and stops short on an acre.
+> Decision rules were created and applied to three unique and mutually
+> exclusive parcel types: agricultural, densely developed, and less densely
+> developed. ... Densely developed parcels contain a structure and are within
+> Census Urban Areas and Clusters. Less-densely developed parcels are
+> represented by all remaining parcels **with a structure**.
 
-Against our own inferred marks: ours is a person's judgement from 10-15 cm
-imagery, theirs is a buffer distance. Neither sees through the canopy. Expect
-theirs to be steadier and ours to notice the mulch bed; expect them to part
-company on big lots, in one direction, which H7 warns is the kind of error
-that does not average out.
+So a parcel with no structure on it is not eligible for TCTG at all, and the
+buffer runs from structures *and* from adjoining turf and impervious, not from
+structures alone. (The per-parcel-type distances in that numbered list sit in
+table cells that did not survive text extraction; the 30 ft / 60 ft figures
+above are from the class definitions, which state them outright.)
+
+Turf grass itself is parcel-scoped the same way: *"all low vegetation within
+small, developed parcels (<= 5 acre and contains >= 55 m2 of impervious
+surface)"*, plus named land uses -- golf courses, cemeteries, sports complexes,
+shopping centres, airports, hospitals.
+
+**WHAT THIS PREDICTS FOR US, and it is testable.** On a wooded lot inside a
+Census urban area, a **60 ft collar around the house is cut out of the woods
+and called lawn** -- whatever is actually growing under it. That is a
+one-directional over-call, on exactly the lots where H8's Kent benchmark says
+this project is already weakest, and H7 warns that directional error does not
+average out. It is the first thing to look for when comparing this source
+against a traced map, and nothing here has measured it yet.
+
+The honest summary of the whole scheme: nothing sees under the tree. Size
+decides forest, a structure on the parcel decides eligibility, and a buffer
+decides the rest. It is the same inference our tracers make, done
+systematically -- and its mistakes will be systematic too, which is worse than
+scattered ones for the same average error.
 
 The other route is VGIN's download application, which hands out the raster by
 locality. That suits building a training batch in CI. It does not suit asking
