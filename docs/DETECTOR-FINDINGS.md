@@ -27,23 +27,27 @@ changes and results from different corpora are not comparable.
 
 ## The numbers that matter right now
 
+**CORPUS `1wxlejo`, 31 lawns, 2026-09-22 — the current state.**
+
 | | error | notes |
 |---|---|---|
-| SAM (what we pay for) | **20.3%** | the line to beat, 19 lawns with a stored SAM answer |
-| best of ours | **26.1%** | Scale-MAE 1280px, **both, with surroundings**, beat SAM on 8 of 19 |
+| SAM (what we pay for) | **23.8%** | the line to beat, 25 lawns with a stored answer, all drawn by `sam3` |
+| best of ours | **34.4%** | Scale-MAE 896px, **both**, beat SAM on 10 of 25 |
 
-Gap: **1.3×**. It was 1.4× at 896px, 1.5× at 672px and 1.6× under DINOv2.
+Gap: **1.45×**. It was 1.39× at 23 lawns.
 
-> **WORK ON THE MODEL IS PAUSED, by the owner's decision on 2026-09-19.** The
-> reasoning is in H11: the model cannot help build the corpus until it beats
-> SAM, and it is not close. Four backbones, four resolutions, a ring, a feature
-> vector rebuild and two real bugs later, the gap has gone from 1.6× to 1.3×
-> and every run still ends "STILL NOT BETTER than the detector we pay for".
-> The corpus is the constraint (S3), so the effort moved to growing it.
+**Everything below the corpus `14a2t7k` line is from a different 23-lawn set and
+is NOT comparable to the table above.** The backbone-free control moved from
+28.6% to 37.8% between them, which by H10 means the corpus moved and by H7
+means nothing else in either table can be set beside the other. The old numbers
+are kept because the *comparisons within* each run still hold.
+
+> **WORK RESTARTED on 2026-09-22 at the owner's request**, after the pause on
+> 2026-09-19. Eight more approved maps, 23 → 31. See H15 for what they changed,
+> which is: nothing that helps.
 >
-> Nothing here is abandoned and nothing needs redoing. Pick it up by running
-> workflow 14 at 896 when the corpus is meaningfully larger, and read H13 and
-> H14 before comparing that table to anything above.
+> The earlier pause reasoning stands and is now better supported. H11: the
+> model cannot help build the corpus until it beats SAM. It is no closer.
 
 **1280 against 896 is UNSETTLED, by the owner's decision on 2026-09-19, pending
 more corpus.** 1280 holds the better number — 26.1% against 28.2% — but 2.1
@@ -63,6 +67,61 @@ is not the same as saying it would hold on the next twenty lawns.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H15. Eight more maps moved nothing. The gap is 1.45×, it was 1.39×
+*Run 35683684006, 2026-09-22, 31 lawns, fingerprint `1wxlejo`, Scale-MAE large
+at 896px. The previous 896 run was 35452491362, 23 lawns, `14a2t7k`.*
+
+```
+                            23 lawns   31 lawns
+colour and texture only       28.6%      37.8%    <- CONTROL, backbone-free
+the pretrained eye only       28.2%      35.6%
+both                          34.9%      34.4%    <- best here
+both, 96 numbers a patch      31.9%      37.0%
+colour, with surroundings     37.0%      39.8%
+both, with surroundings       33.6%      34.9%
+SAM                           20.3%      23.8%
+best / SAM                     1.39×      1.45×
+beat SAM on                   (n/a)    10 of 25
+```
+
+**THE CONTROL MOVED 9.2 POINTS WORSE, so this is not the same measurement.**
+That row reads no backbone at all, so its entire change is the corpus: the
+eight new maps are harder than the twenty-three. SAM moved 3.5 points worse
+too, on its own 25, which says the same thing from outside.
+
+**So "did more data help" CANNOT be answered from this run, and that is the
+finding.** Corpus size and corpus difficulty both changed, in opposite
+directions for what we want to know, and they are not separable here. What can
+be said:
+
+- **The ratio did not improve.** 1.39× → 1.45×. Whatever the extra maps bought,
+  it was not closing on SAM.
+- **The win count did not improve.** 10 of 25 (40%) against 8 of 19 (42%) on
+  the best 1280 run. Flat.
+- **S3 is not confirmed and not refuted.** "The corpus is the binding
+  constraint" predicts improvement from 23 → 31; none arrived. But 8 maps is a
+  35% increase against a noise floor of up to 10 points (H7), and the new maps
+  are demonstrably harder, so this is consistent with S3 being true and the
+  signal being buried. Do not quote this run as evidence either way.
+
+**The winner changed identity and the top three are 0.5 points apart.** "both"
+34.4%, "both, with surroundings" 34.9%, "the pretrained eye only" 35.6%. At 23
+lawns the 896 winner was the eye alone. By rule 3 none of that is a result:
+which configuration wins is not stable at this corpus size, and a run that
+picks a different winner has not discovered anything.
+
+**One map is grotesque and should be looked at.** Prince William County, 3,425
+sq ft, **234.8% wrong** against SAM's 45.2%. H8 is the precedent: a 309% map
+was rejected on the owner's judgement because wild over-prediction by both
+points at the map rather than at the model. Two more to eye: Prince William
+8,836 sq ft at 73.6% (no stored SAM), and North Carolina 7,948 sq ft at 77.1%
+against SAM's 32.2%. The median is the reported figure so these do not drag the
+table, but H7 says one map is worth up to 10 points.
+
+**Six of the 31 have no stored SAM outline**, so the comparison runs on 25. The
+baseline is confirmed clean: the run now prints who drew it, and it is `sam3`
+for all 25 — no land-cover answers have leaked into the line to beat.
 
 ### H1. Our imagery is 5–38 cm per grid cell, typically 10–15 cm
 *Computed 2026-09-19 from the frame-fitting arithmetic, not measured from a
@@ -158,10 +217,24 @@ beyond noise" beside it, because the seen/inferred split it reads did not move.
 Two things are true at once: the ring's own diagnostic says nothing happened,
 and the headline error dropped further than any other single change here.
 
-The honest summary: across four runs the ring is **negative, negative, mildly
-positive, strongly positive**, in that order — and that order is also the order
-of backbone quality. It is not established as harmful and it is not established
-as useful. It is the most interesting open question in this file (S6).
+**Fifth run, 896px on the new 31-lawn corpus `1wxlejo`, run 35683684006:
+0.5 points WORSE.** both 34.4% against both+ring 34.9%. Colour-only ring is
+39.8% against colour alone 37.8%, so 2.0 worse there too — which reverses the
++1.7 that had reproduced at both sizes on the old corpus. Different corpus, so
+by H7 this is not a contradiction of that number; it is the ring failing to
+reproduce its one consistent result the first time the lawns changed.
+
+**And the run's own advice printed "This is the result the ring was built for"
+directly beneath its own sentence saying the movement was within noise** —
+inferred 6.2 better, everything visible 1.7 worse. That is rule 6 happening
+again, on the same row it happened on before. The encouraging sentence fires on
+the inferred column alone, and H6 says that column is 5% of a map.
+
+The honest summary: across five runs the ring is **negative, negative, mildly
+positive, strongly positive, negative**, and the tidy story that order told has
+now been broken by the fifth point. It is not established as harmful and it is
+not established as useful. It is the most interesting open question in this
+file (S6).
 
 See also E3 — the published result saying receptive field alone is not the
 lever for occlusion.
@@ -172,6 +245,13 @@ its two best showings are the two best backbone settings, in order. Still
 SPECULATION — four points on a curve that was *drawn after* the numbers came
 in, and exactly the kind of story that sounds right and has twice measured as
 nothing here.
+
+**The fifth point does not fit it.** 896 on the new corpus is the same backbone
+setting as the fourth-best point and the ring came out negative again, while
+the colour-only ring — which S6 says nothing about — reversed from +1.7 to
+−2.0. S6 is a story about backbone quality and the thing that changed was the
+lawns. Treat it as weakened, not refuted: the corpus changed underneath it, so
+it was never tested.
 
 **How to actually test it, since the story is now cheap to break:** run 1280
 again with the ring on the *worse* eye settings, or 448px with the ring on. If
@@ -187,9 +267,16 @@ Consistent in direction across both backbones. The effect is much smaller under
 Scale-MAE, which may mean the 32-number squeeze was mostly discarding DINOv2's
 noise rather than signal.
 
-### H6. Marked "inferred" ground is only about 3% of a typical map
+### H6. Marked "inferred" ground is only about 3–5% of a typical map
 *23 lawns, 2026-09-19.* 17 of 23 maps carry inferred marks. Marked ground is
 **3% of a typical map, 44% of the most-marked**.
+
+*31 lawns, 2026-09-22, corpus `1wxlejo`.* **21 of 31 carry marks, and it is 5%
+of a typical map** — the most-marked is still 44%. So the share is creeping up
+as more maps are traced by people who use the tool, and it is still small
+enough that S4 stands: at 5% the inferred column is a few thousand pixels per
+lawn, and this run's swings across configurations (17.6% to 40.2%) are again
+too wide to read as anything.
 
 At 3% the inferred error column is measuring a few thousand pixels per lawn.
 Its swings between configurations (17.8% to 53.5% in one run) are not currently
@@ -375,6 +462,30 @@ verdict said "supports S8" from the best row alone and would have promoted the
 guess on evidence that a model with no satellite in it reproduces.
 
 Read it with three more things in mind.
+
+**REPRODUCED ON A DIFFERENT CORPUS, 2026-09-22, run 35683684006, 31 lawns.**
+This is the strongest thing about H12 now: the pattern survived a corpus change
+that moved every headline number by 9 points.
+
+```
+what it looked at            sharp    soft   hard shade  soft shade  middle
+colour and texture only      47.8%   39.6%      50.4%      18.7%     38.0%
+the pretrained eye only      71.5%   53.4%      54.5%      13.9%     24.9%
+both                         61.4%   44.8%      58.7%      23.1%     29.5%
+both, 96 numbers a patch     61.5%   47.0%      50.5%      20.3%     32.1%
+colour, with surroundings    58.2%   42.9%      45.3%      27.5%     36.4%
+both, with surroundings      62.2%   48.0%      55.6%      22.0%     27.3%
+```
+
+Six rows of six, same direction again: sharp worse than soft by 8.2–18.1
+points, hard-rimmed shade worse than soft-rimmed by 18–41. **H12 is the only
+finding in this file that has held across two corpora**, which makes it the
+one to act on if anything is.
+
+S8's premise is no better supported than before. Without any backbone the
+sharp/soft gap is 8.2 points and with the eye it is 16.6, so the eye widens it
+by 8.4 — larger than the 5 points seen at 23 lawns, and still on the wrong side
+of H7's floor to call it the backbone's fault.
 
 - **The interior column is the control and is not decoration.** Error
   concentrates at boundaries in every segmentation model ever built, so "the
@@ -853,6 +964,20 @@ Three runs, no stable story, and one reading that is close to impossible.
 **Treat the shade/sun columns as unreliable until investigated.** Not
 investigated.
 
+**Fourth run, 31 lawns, 2026-09-22: FIVE of six configurations are "better in
+shade", and colour-only by 17.6 points.** That row reads eleven colour and
+three texture numbers and nothing else; a model that were reading brightness
+cannot be 17.6 points better where it is dark. The run prints "so whatever it
+is reading, it is not brightness" five times, which is the advice being
+confidently wrong five times (rule 6).
+
+This is now the most likely-broken thing in the toolchain. The split is almost
+certainly not measuring shade — a candidate worth one hour: `darkPct` and
+`brightPct` are medians over lawns, and if the threshold lands such that "in
+shade" is mostly a few tiny well-lit lawns, the column is measuring lot size.
+**Still not investigated**, and four runs of an impossible reading is enough to
+stop printing a conclusion beside it.
+
 ### S8. Split the job by what the camera can see
 *The owner's proposal, 2026-09-21. Written down as a proposal.*
 
@@ -949,3 +1074,4 @@ fields) were both more obviously right than this one.
 | 2026-09-19 | 35449083419 | 23 | Scale-MAE large 896px | 28.2% | 20.3% | ring fix. Every row identical to the earlier 896 run except the one the fix touches (35.7 → **31.2**) |
 | 2026-09-19 | 35449091188 | 23 | Scale-MAE large 1280px | **26.1%** | 20.3% | ring fix. Matches 1280 run 1 exactly on every backbone row, so run 35422422911 was the anomaly, not 1280 (H13 revised again). Colour-only ring now 31.2% at BOTH sizes |
 | 2026-09-19 | 35452491362 | 23 | Scale-MAE large 896px | 28.2% | 20.3% | **14-column features** (H14). Colour row 32.9 → 28.6, its biggest gain ever, but the best of six does not move and the gap stays 1.4×. Control baseline is now 28.6%. Last run before the pause |
+| 2026-09-22 | 35683684006 | **31** | Scale-MAE large 896px | 34.4% | 23.8% | **NEW CORPUS `1wxlejo`** — work restarted. Control 28.6 → 37.8, so nothing compares to the rows above (H15). Gap 1.39× → 1.45×, wins flat at 10 of 25. Winner changed to "both"; top three within 0.5 points. H12 reproduced on a second corpus, ring negative again, S5 worse than ever. Baseline confirmed all `sam3`. 31 of 31 outlines drawn to /predictions.html |
