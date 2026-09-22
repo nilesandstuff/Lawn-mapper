@@ -68,6 +68,59 @@ is not the same as saying it would hold on the next twenty lawns.
 
 ## HARD FINDINGS — our own measurements
 
+### H17. Dropping unseen ground from training improves the visible half by 2–3.5 points
+*Run 35719107798, 2026-09-22, 31 lawns, `1wxlejo`, Scale-MAE 896px, twelve rows:
+every configuration and a twin of it trained with the pixels marked "inferred,
+not seen" dropped from the sample.*
+
+**The question, and why it was open by omission.** `truth` is every shape the
+tracer drew, inferred patches included, so the head has always been told to
+answer 1 on ground whose appearance is indistinguishable from woods — the same
+dark canopy labelled 1 on a lawn with one tree and 0 on a wooded lot. The marks
+have been SCORED separately since that column existed and were never separated
+in TRAINING. Nobody decided that; it was never asked.
+
+```
+what it looked at                 as-is  seen-only   change
+colour and texture only           37.8%      34.3%      -3.5
+the pretrained eye only           35.4%      33.3%      -2.1
+both                              33.5%      31.3%      -2.2   <- best seen error here
+both, 96 numbers a patch          37.7%      39.6%      +1.9
+colour, with surroundings         39.6%      37.5%      -2.1
+both, with surroundings           35.1%      35.8%      +0.6
+```
+
+**Four of six better, consistent in direction, 2.1 to 3.5 points.**
+
+**AND THE TOP ROW'S −3.5 IS NOT RE-RUN NOISE.** `colour and texture only` is
+backbone-free, and H10 says that row is exact; both halves of the pair sit in
+ONE run on one corpus with one set of folds and one seed, so the only
+difference between them is which pixels were sampled. Re-running would produce
+−3.5 again. H13's "under 3 points needs a repeat" applies to backbone rows
+across runs and does not apply here.
+
+**What it does NOT establish.** H7 still stands: the lawn set is the biggest
+term in every number, and a different 31 lawns could move this. The effect is
+real and reproducible *on this corpus*; it is not established as a property of
+the problem.
+
+**The two rows that got worse are the two widest** — 110 and 174 numbers a
+pixel. A twin trains on about 5% fewer rows (H6's typical marked share), so the
+widest configurations lose the most sample per parameter. That is a plausible
+account and it is not tested.
+
+**Hard-rimmed shade moved a long way on the best row: 58.7% → 50.1%.**
+Building shadow is not canopy, so this was not the target. Offered as an
+observation only; see S5 on how unreliable the shade columns have been.
+
+**The inferred column got much worse, exactly as designed** — colour-only went
+24.7% → 55.8%. Nothing taught the twins what is under a tree. Predicted in
+advance and in the code comments before the run, so it is the arrangement
+working rather than a regression, and it is the reason a seen-only model is
+**stage one of two rather than a drop-in**: SAM's 23.8% is measured against all
+ground including inferred, so a model that answers only the visible half is not
+comparable to it on total square footage and cannot replace it alone.
+
 ### H16. 29 of our 31 lawns have free LiDAR over them, flown 2011–2020
 *Run 35716717308, 2026-09-22, workflow 17, corpus `1wxlejo`. Phase one of the
 E8 idea, built to be able to abandon it cheaply.*
@@ -1209,5 +1262,6 @@ fields) were both more obviously right than this one.
 | 2026-09-19 | 35449083419 | 23 | Scale-MAE large 896px | 28.2% | 20.3% | ring fix. Every row identical to the earlier 896 run except the one the fix touches (35.7 → **31.2**) |
 | 2026-09-19 | 35449091188 | 23 | Scale-MAE large 1280px | **26.1%** | 20.3% | ring fix. Matches 1280 run 1 exactly on every backbone row, so run 35422422911 was the anomaly, not 1280 (H13 revised again). Colour-only ring now 31.2% at BOTH sizes |
 | 2026-09-19 | 35452491362 | 23 | Scale-MAE large 896px | 28.2% | 20.3% | **14-column features** (H14). Colour row 32.9 → 28.6, its biggest gain ever, but the best of six does not move and the gap stays 1.4×. Control baseline is now 28.6%. Last run before the pause |
+| 2026-09-22 | 35719107798 | 31 | Scale-MAE large 896px | 34.4% | 23.8% | **Seen-only twins** (H17). Dropping unseen ground from TRAINING improves the visible half by 2.1-3.5 points on 4 of 6 rows; best seen error 33.5 -> 31.3. The backbone-free row's -3.5 is deterministic within the run, so not re-run noise. Headline unchanged: a seen-only model answers half the question |
 | 2026-09-22 | 35716717308 | 31 | — (workflow 17, no training) | — | — | **Lidar coverage, phase one of E8.** 29 of 31 lawns over a 3DEP project, flown 2011-2020, middle year 2016, none below QL2. The 2 misses are a real gap in Maryland, checked against an 88%-covered state grid. Verdict: build phase two. The unmeasurable risk is the 10-year gap to the photographs (H16) |
 | 2026-09-22 | 35683684006 | **31** | Scale-MAE large 896px | 34.4% | 23.8% | **NEW CORPUS `1wxlejo`** — work restarted. Control 28.6 → 37.8, so nothing compares to the rows above (H15). Gap 1.39× → 1.45×, wins flat at 10 of 25. Winner changed to "both"; top three within 0.5 points. H12 reproduced on a second corpus, ring negative again, S5 worse than ever. Baseline confirmed all `sam3`. 31 of 31 outlines drawn to /predictions.html |
