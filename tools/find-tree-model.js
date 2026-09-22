@@ -68,6 +68,19 @@ const CANDIDATES = [
 const INSTANCE_WORDS = /instance|mask.?r.?cnn|crown|individual|delineat|detect/i;
 const TREE_WORDS = /tree|canopy|crown|forest|vegetation/i;
 
+/**
+ * THE MODEL'S OWN NAME AND BLURB, NOT ITS OWNER'S.
+ *
+ * The first run of this matched on the whole slug and reported "20 tree-ish
+ * models". Nineteen of them were `black-forest-labs/flux-*` -- image
+ * generators, matched on the word FOREST in the company name. The verdict
+ * happened to be right anyway, and it was right for no reason: a filter that
+ * loose would have buried a real hit in a page of nonsense just as easily as
+ * it padded an empty result.
+ */
+const treeish = (slug, description) =>
+  TREE_WORDS.test(`${String(slug).split('/').pop()} ${description}`);
+
 async function getModel(slug) {
   try {
     const res = await fetch(`https://api.replicate.com/v1/models/${slug}`, { headers: auth });
@@ -125,12 +138,12 @@ if (!searchWorked) {
 }
 
 /* The interesting ones first: anything whose name or blurb mentions trees. */
-const treeish = [...seen.entries()].filter(([slug, d]) => TREE_WORDS.test(`${slug} ${d}`));
-console.log(`\n${seen.size} distinct models returned, ${treeish.length} of them about trees.\n`);
+const matches = [...seen.entries()].filter(([slug, d]) => treeish(slug, d));
+console.log(`\n${seen.size} distinct models returned, ${matches.length} of them about trees.\n`);
 
 const checked = [];
 for (const [slug, description] of [
-  ...treeish,
+  ...matches,
   ...CANDIDATES.filter((c) => !seen.has(c)).map((c) => [c, '']),
 ]) {
   const { model, error } = await getModel(slug);
@@ -141,7 +154,7 @@ for (const [slug, description] of [
   const blurb = String(model.description || description || '');
   const version = model.latest_version;
   const fields = Object.keys(version?.openapi_schema?.components?.schemas?.Input?.properties || {});
-  const instance = INSTANCE_WORDS.test(`${slug} ${blurb}`);
+  const instance = INSTANCE_WORDS.test(`${slug.split('/').pop()} ${blurb}`);
   console.log(`  ${instance ? '★' : '·'} ${slug.padEnd(40)} ${blurb.slice(0, 60)}`);
   console.log(`      inputs: ${fields.join(', ') || '(no readable schema)'}`);
   checked.push({ slug, blurb, fields, instance, runnable: Boolean(version?.id) });
