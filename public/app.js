@@ -6246,7 +6246,7 @@ async function enterJobMode({ worker, preview, volunteer, paid }) {
 }
 
 /** Ask for a lawn, and put whatever comes back on the screen. */
-async function claimNextJob() {
+async function claimNextJob(skipped = '') {
   let data;
   let status = 0;
   try {
@@ -6260,6 +6260,13 @@ async function claimNextJob() {
     const res = await fetch(`/api/job?${new URLSearchParams({
       ...(state.worker ? { w: state.worker } : {}),
       ...(state.jobVia ? { via: state.jobVia } : {}),
+      /*
+       * THE ONE THEY JUST PUT BACK, so the queue does not hand it straight
+       * back. Sending the id is what makes "can't do this one" mean
+       * something on a batch with one lawn left in it -- moving the row to
+       * the back of a queue of one moves it nowhere.
+       */
+      ...(skipped ? { not: skipped } : {}),
     })}`);
     status = res.status;
     data = await res.json();
@@ -6327,7 +6334,21 @@ async function claimNextJob() {
 
   hideJobSheet();
   state.jobRoute = data.route || 'crowd';
-  await openJob(data.job, data.prompts || [], data.cleared || null);
+  /*
+   * THE SAME LAWN BACK, SAID OUT LOUD.
+   *
+   * When the batch has nothing else approved, the server hands the skipped
+   * lawn back rather than leaving somebody with an empty screen -- and the
+   * one thing it must not do then is stay quiet. "Can't do this one" followed
+   * by the same lawn and no explanation reads as a broken button, and the
+   * report that started this was exactly that.
+   */
+  await openJob(data.job, data.prompts || [], data.only
+    ? 'That is the only lawn left open in this batch right now, so it is back '
+      + 'on your screen. Nothing is wrong with the button — there is simply '
+      + 'nothing else to hand you. Leave it and come back later if you cannot '
+      + 'do it.'
+    : (data.cleared || null));
 }
 
 /**
@@ -6647,7 +6668,14 @@ async function skipJob() {
        reach the server costs the queue an hour and the worker nothing. */
   }
   idle();
-  await claimNextJob();
+  /*
+   * The id goes with the request whether or not the skip above succeeded --
+   * INCLUDING when it threw. A skip that never reached the server is exactly
+   * the case where the queue still has this lawn at the front, and asking for
+   * "anything but this one" is the only thing standing between the worker and
+   * the lawn they just refused.
+   */
+  await claimNextJob(id);
 }
 
 function openMap(s) {

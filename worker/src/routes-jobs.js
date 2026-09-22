@@ -213,7 +213,7 @@ async function releaseStale(env, now) {
  * Two copies of the gate arithmetic would be two chances for the rules to
  * disagree about the same person.
  */
-async function claimFor(worker, route, env, now, json, origin) {
+async function claimFor(worker, route, env, now, json, origin, avoid = '') {
   await releaseStale(env, now);
 
   /*
@@ -330,13 +330,36 @@ async function claimFor(worker, route, env, now, json, origin) {
    * page that shows the owner who is tracing then had nothing to read, so it
    * called everybody a crowd worker by default. See lawn_jobs.route.
    */
-  const taken = await env.DB.prepare(
+  /*
+   * THE ONE THEY JUST SKIPPED IS TRIED LAST, not merely sent to the back.
+   *
+   * Moving created_at was supposed to be enough and is not, for two reasons
+   * that both end with the same lawn coming straight back at somebody who has
+   * just said they cannot do it. A batch with ONE approved lawn in it has a
+   * back of the queue that is also the front. And a claim that had already
+   * gone stale leaves the skip with nothing to update at all -- see the skip
+   * handler, which now says so instead of reporting success.
+   *
+   * So the id is excluded outright, and only if that finds nothing is it
+   * offered again with `only` set, which the browser turns into a sentence.
+   * Handing it back silently is the one thing that must not happen: it reads
+   * as the button being broken, and the person stops pressing it.
+   */
+  const pick = async (exclude) => env.DB.prepare(
     `UPDATE lawn_jobs
         SET state = 'claimed', worker = ?1, claimed_at = ?2, route = ?3
       WHERE id = (SELECT id FROM lawn_jobs WHERE state = 'approved'
+                    AND (?4 = '' OR id != ?4)
                    ORDER BY created_at ASC LIMIT 1)
     RETURNING *`
-  ).bind(worker, claimedAt, route).first();
+  ).bind(worker, claimedAt, route, exclude).first();
+
+  let onlyOneLeft = false;
+  let taken = await pick(String(avoid || ''));
+  if (!taken && avoid) {
+    taken = await pick('');
+    onlyOneLeft = Boolean(taken);
+  }
 
   if (!taken) {
     return json({
@@ -346,7 +369,12 @@ async function claimFor(worker, route, env, now, json, origin) {
     }, 404, origin);
   }
 
-  return json({ job: jobForWorker(taken), prompts: PROMPTS, cleared, route }, 200, origin);
+  return json({
+    job: jobForWorker(taken), prompts: PROMPTS, cleared, route,
+    /* Present ONLY when the queue had nothing else, so the browser never has
+       to tell false from absent. */
+    ...(onlyOneLeft ? { only: true } : {}),
+  }, 200, origin);
 }
 
 export async function handleJobs(request, url, env, origin, ctx, json) {
@@ -367,7 +395,8 @@ export async function handleJobs(request, url, env, origin, ctx, json) {
     if (asPaid) {
       const who = await identify(request, url, env, ctx);
       if (who.refusal) return json(who.refusal, 401, origin);
-      return claimFor(who.worker, who.route, env, now, json, origin);
+      return claimFor(who.worker, who.route, env, now, json, origin,
+        url.searchParams.get('not') || '');
     }
 
     const raw = url.searchParams.get('w');
@@ -417,7 +446,8 @@ export async function handleJobs(request, url, env, origin, ctx, json) {
     }
 
     const route = await routeFor(env, url, worker);
-    return claimFor(worker, route, env, now, json, origin);
+    return claimFor(worker, route, env, now, json, origin,
+      url.searchParams.get('not') || '');
   }
 
   /* --------------------------------------- I could not do this one */
@@ -450,18 +480,47 @@ export async function handleJobs(request, url, env, origin, ctx, json) {
      * does something useful on its own -- a lawn several people have skipped
      * sinks, which is exactly where an awkward one belongs.
      */
-    await env.DB.prepare(
+    const note = `skipped by ${worker}: ${String(body?.why || '').slice(0, 120)}`;
+    const at = new Date(now).toISOString();
+
+    const released = await env.DB.prepare(
       `UPDATE lawn_jobs
           SET state = 'approved', worker = NULL, claimed_at = NULL, route = NULL,
               note = ?3, created_at = ?4
         WHERE id = ?1 AND worker = ?2 AND state = 'claimed'`
-    ).bind(
-      id, worker,
-      `skipped by ${worker}: ${String(body?.why || '').slice(0, 120)}`,
-      new Date(now).toISOString(),
-    ).run();
+    ).bind(id, worker, note, at).run();
 
-    return json({ ok: true }, 200, origin);
+    let moved = Number(released?.meta?.changes || 0) > 0;
+
+    /*
+     * THE CLAIM MAY ALREADY BE GONE, and this used to report success anyway.
+     *
+     * releaseStale puts a claim back after an hour, and an hour is exactly how
+     * long somebody spends on a lawn they cannot do before pressing this
+     * button. By then the row is already 'approved' with no worker on it, the
+     * UPDATE above matches nothing, and the old code returned { ok: true } to
+     * a browser that then asked for the next lawn -- which was this one,
+     * because nothing had moved its place in the queue. The skip looked
+     * broken because for that person it WAS.
+     *
+     * So an unclaimed row is still sent to the back. Safe because it is
+     * unclaimed: the worst anybody can do with it is reorder a queue, and
+     * the row somebody else is holding is untouched by the WHERE below.
+     */
+    if (!moved) {
+      const freed = await env.DB.prepare(
+        `UPDATE lawn_jobs
+            SET note = ?2, created_at = ?3
+          WHERE id = ?1 AND state = 'approved' AND worker IS NULL`
+      ).bind(id, note, at).run();
+      moved = Number(freed?.meta?.changes || 0) > 0;
+    }
+
+    /* `moved` is reported rather than assumed. The browser does not act on it
+       today -- it excludes the id from the next claim either way -- but a skip
+       that changed nothing is the kind of thing that should be visible from
+       outside rather than only in a report weeks later. */
+    return json({ ok: true, moved }, 200, origin);
   }
 
   /* ------------------------------------------------ here is my map */

@@ -606,5 +606,103 @@ const read = async (res) => ({ status: res.status, body: await res.json() });
     empty.body.reason);
 }
 
+/* ----------------------------------- the skip that came back anyway */
+/*
+ * REPORTED BY A VOLUNTEER: "when they click they can't do this one, they get
+ * the same one back". Moving created_at to the back of the queue -- the fix
+ * the block above pins -- turns out not to be enough, in two ways.
+ */
+{
+  /*
+   * ONE: A QUEUE OF ONE HAS NO BACK. With a single approved lawn left,
+   * "oldest approved" is the lawn that was just refused however its
+   * created_at is rearranged. Reordering cannot solve this; excluding it can.
+   */
+  await env.DB.prepare("UPDATE lawn_jobs SET state = 'done'").run();
+  await seed(1, 500);
+  const first = await read(await ask('/api/job', { search: '?w=SOLO' }));
+  check('with one lawn in the batch, that is the one handed out',
+    first.body.job?.id === idFor(500), first.body.job?.id);
+
+  await ask('/api/job/skip', { method: 'POST', body: { worker: 'SOLO', id: idFor(500) } });
+  const again = await read(await ask('/api/job', {
+    search: `?w=SOLO&not=${idFor(500)}`,
+  }));
+  check('skipping the only one hands it back rather than an empty screen',
+    again.body.job?.id === idFor(500), again.body.job?.id);
+  check('AND SAYS SO, which is the whole difference between this and a bug',
+    again.body.only === true,
+    'silence here reads as a broken button, which is how it was reported');
+
+  /* With something else available, the skipped one must not come back. */
+  await ask('/api/job/skip', { method: 'POST', body: { worker: 'SOLO', id: idFor(500) } });
+  await seed(1, 501);
+  const other = await read(await ask('/api/job', {
+    search: `?w=SOLO&not=${idFor(500)}`,
+  }));
+  check('but with anything else open, the skipped one is not offered',
+    other.body.job?.id === idFor(501), other.body.job?.id);
+  check('and nothing claims it was the only one',
+    other.body.only === undefined, JSON.stringify(other.body.only));
+}
+
+{
+  /*
+   * TWO: THE CLAIM HAD ALREADY EXPIRED, and the skip silently did nothing.
+   *
+   * releaseStale puts a claim back after an hour, and an hour is roughly how
+   * long somebody spends on a lawn they cannot do before giving up on it. By
+   * then the row is 'approved' with no worker, the skip's WHERE matches
+   * nothing, and the old code returned { ok: true } to a browser that asked
+   * for the next lawn -- which was this one, because its place in the queue
+   * had never moved. The skip looked broken because for that person it was.
+   */
+  await env.DB.prepare("UPDATE lawn_jobs SET state = 'done'").run();
+  await seed(2, 600);
+  await read(await ask('/api/job', { search: '?w=SLOW' }));
+
+  /* Exactly what releaseStale does to an abandoned claim. */
+  await env.DB.prepare(
+    `UPDATE lawn_jobs SET state = 'approved', worker = NULL, claimed_at = NULL
+      WHERE id = ?1`
+  ).bind(idFor(600)).run();
+
+  const r = await read(await ask('/api/job/skip', {
+    method: 'POST', body: { worker: 'SLOW', id: idFor(600), why: 'gave up' },
+  }));
+  check('skipping a claim that already expired still moves the lawn',
+    r.body.moved === true,
+    'it used to answer ok:true having changed nothing at all');
+
+  const row = await env.DB.prepare('SELECT created_at, note FROM lawn_jobs WHERE id = ?1')
+    .bind(idFor(600)).first();
+  const rival = await env.DB.prepare('SELECT created_at FROM lawn_jobs WHERE id = ?1')
+    .bind(idFor(601)).first();
+  check('to the back of the queue, behind the ones it was ahead of',
+    row.created_at > rival.created_at, `${row.created_at} vs ${rival.created_at}`);
+  check('and the reason is still recorded', /gave up/.test(row.note || ''), row.note);
+}
+
+{
+  /*
+   * AND IT STILL MAY NOT TOUCH SOMEBODY ELSE'S. The new fallback updates an
+   * unclaimed row, so the check that a worker cannot reach a lawn another
+   * person is holding has to be made again against it.
+   */
+  await env.DB.prepare("UPDATE lawn_jobs SET state = 'done'").run();
+  await seed(1, 700);
+  await read(await ask('/api/job', { search: '?w=HOLDER' }));
+
+  const r = await read(await ask('/api/job/skip', {
+    method: 'POST', body: { worker: 'INTRUDER', id: idFor(700) },
+  }));
+  check('a stranger skipping a held lawn changes nothing',
+    r.body.moved === false, JSON.stringify(r.body));
+  const held = await env.DB.prepare('SELECT state, worker FROM lawn_jobs WHERE id = ?1')
+    .bind(idFor(700)).first();
+  check('and it stays with the worker holding it',
+    held.state === 'claimed' && held.worker === 'HOLDER', JSON.stringify(held));
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);
