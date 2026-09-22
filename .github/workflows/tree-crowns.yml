@@ -94,6 +94,18 @@ jobs:
           MIN_CROWN_M2: ${{ inputs.min_crown }}
         run: python3 tools/tree-crowns.py
 
+      # KEPT EVEN IF THE DRAWING FAILS, because the segmentation is seventeen
+      # minutes and the drawing is eight seconds. The first time the second
+      # step broke it threw away the first step's work, which is a bad trade to
+      # make twice.
+      - name: Keep the crowns whatever happens next
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crowns
+          path: crowns/
+          if-no-files-found: warn
+
       - name: Draw them over the traced lawns
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

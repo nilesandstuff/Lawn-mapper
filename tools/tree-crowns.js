@@ -82,10 +82,19 @@ const toGrid = (polygon, framePx) => polygon.map(([x, y]) => [
   (x * GRID) / framePx, (y * GRID) / framePx,
 ]);
 
-/** How much of a crown lands on ground the tracer called lawn. */
+/**
+ * How much of a crown lands on ground the tracer called lawn.
+ *
+ * `rasterizePolygon(rings, width, height, project)` -- the projection is
+ * IDENTITY here because a crown arrives already in the grid's own pixels,
+ * where every other caller hands it lng/lat and a frame to project through.
+ * Getting that argument list wrong is what killed the first run of this, and
+ * it did not throw where the mistake was: the mask went in as `width`, so the
+ * error surfaced four frames later as "undefined is not a function" from a
+ * missing projector.
+ */
 function overlap(ring, truth, within) {
-  const mask = new Uint8Array(GRID * GRID);
-  rasterizePolygon([ring], mask, GRID);
+  const mask = rasterizePolygon([ring], GRID, GRID, (p) => p);
   let area = 0;
   let onLawn = 0;
   let inside = 0;
@@ -105,9 +114,13 @@ async function main() {
     return;
   }
 
+  /* `.default` on jpeg-js and not on pngjs, which is how train-detector.js
+     builds the same pair -- jpeg-js is CommonJS, so the namespace object has
+     the decoder under `default` and `decoders.jpeg.decode` would be undefined
+     on the first JPEG rather than at startup. */
   const decoders = {
     png: await import('pngjs'),
-    jpeg: await import('jpeg-js'),
+    jpeg: (await import('jpeg-js')).default,
   };
 
   const rows = query(QUERY);
