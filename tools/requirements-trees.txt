@@ -7,6 +7,13 @@
 --extra-index-url https://pypi.org/simple
 
 torch
+# NAMED EXPLICITLY, and leaving it out is what failed the first run of workflow
+# 19. SegformerImageProcessor is built on torchvision's transforms, so the
+# model loads fine and then the PROCESSOR raises ImportError -- after the
+# weights have downloaded, which reads as a model problem rather than a missing
+# package. It is also why it is named here rather than left to resolve: without
+# the line, pip takes the CUDA build from PyPI.
+torchvision
 transformers
 pillow
 numpy
