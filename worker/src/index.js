@@ -736,12 +736,22 @@ async function handleSegment(request, env, origin, ctx) {
    * exist, be claimed, and be held by the worker whose id was sent -- and a
    * worker holds one lawn at a time. See spendJobDetection.
    *
+   * ON THE PAID ROUTE THE WORKER IS THE ACCOUNT, and it is filled in here
+   * rather than trusted from the request. That route has no worker id to send
+   * -- the identity comes from the session, because it decides who gets paid --
+   * so requiring one meant a paid tracer's passes came out of their own daily
+   * allowance rather than the lawn's. Nothing is loosened by the fallback:
+   * spendJobDetection still requires that this exact worker be holding that
+   * exact row, and `user` was proved by a link sent to an address that received
+   * it, which is stronger than anything a query string could say.
+   *
    * Tried before `charge` rather than after a refusal, so a worker never
    * spends their own browser's allowance on work that has already been paid
    * for -- and the refund path below never has to know about any of this.
    */
-  const onTheClock = body.job && body.worker
-    ? await spendJobDetection(env, body.job, body.worker, passes.length)
+  const claimant = body.worker || user?.id || '';
+  const onTheClock = body.job && claimant
+    ? await spendJobDetection(env, body.job, claimant, passes.length)
     : false;
 
   const quota = onTheClock
@@ -761,7 +771,7 @@ async function handleSegment(request, env, origin, ctx) {
    * starting outlines left cannot do the task at all.
    */
   const handBack = () => (onTheClock
-    ? spendJobDetection(env, body.job, body.worker, -passes.length)
+    ? spendJobDetection(env, body.job, claimant, -passes.length)
     : refund(request, env, { user, clientId, n: passes.length, fromDaily: quota.fromDaily }));
 
   if (!quota.allowed) {

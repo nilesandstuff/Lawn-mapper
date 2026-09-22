@@ -460,12 +460,35 @@ const mine = await settled(one.page);
    * paste one into and no transaction to prove. A timer on donated work can
    * only ever turn it away.
    */
-  const { page } = await arrive('?via=volunteer');
+  const { page, detects } = await arrive('?via=volunteer');
   const got = await settled(page);
 
   check('a volunteer with no id in the link is still handed a lawn',
     got.barVisible && got.jobId && got.worker?.startsWith('helper-'),
     got.worker || `a sheet instead: ${got.sheet}`);
+
+  /*
+   * AND NOTHING IS TRACED FOR THEM, which is only observable from here.
+   *
+   * Volunteers and paid tracers said the drawn-on outline made the work MORE
+   * annoying, and they were right about the arithmetic: a wrong outline has to
+   * be dismantled corner by corner before the lawn can be traced, which is
+   * slower than tracing an empty map. The AI tab is theirs to press instead.
+   *
+   * Given a moment first, because "no request was made" and "the request has
+   * not been made yet" look identical the instant the bar appears -- and the
+   * detection on the crowd route above was fired right after the parcel came
+   * back, which is what this is waiting past.
+   */
+  await page.waitForTimeout(3000);
+  check('and nothing was traced for them on arrival',
+    detects.length === 0,
+    detects.length
+      ? `${detects.length} detection(s) fired anyway`
+      : 'an empty map, and a prompt saying where the AI lives');
+  check('and the job bar says where to get an outline if they want one',
+    /AI tab/.test(await page.textContent('#job-prompts')),
+    'opt-in is fine; opt-in with nothing on screen saying so is a missing step');
 
   await page.click('#coach-ok').catch(() => {});
   await page.click('#tab-draw');

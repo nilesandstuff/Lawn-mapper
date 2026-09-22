@@ -21,7 +21,7 @@ import { currentUser } from './auth.js';
 import {
   claimVerdict, submissionVerdict, cleanWorker, looksUnsubstituted, staleBefore,
   dayStart, cleanRoute, routeFromLink, routeInWrongParam, needsCode, GATES,
-  FREE_DETECTS_PER_JOB,
+  FREE_DETECTS_PER_JOB, isOpenLink,
   PAID_RATE_CENTS,
 } from './jobs.js';
 
@@ -106,6 +106,52 @@ export const PROMPTS = [
     optional: true,
   },
 ];
+
+/**
+ * THE SAME JOB, DESCRIBED HONESTLY FOR THE ROUTE SOMEBODY IS ON.
+ *
+ * A crowd worker gets an outline drawn for them on arrival and is paid to
+ * correct it. A volunteer or a paid tracer no longer does: they said the
+ * drawn-on outline made the work more annoying rather than less, and they were
+ * right about the arithmetic -- a wrong outline has to be dismantled corner by
+ * corner before the lawn can be traced, which is slower than tracing it on an
+ * empty map. See openJob in app.js.
+ *
+ * SO THE PROMPTS CANNOT SAY "the automatic outline" TO THEM, and that is not a
+ * cosmetic point. Two of these prompts describe where that outline goes wrong,
+ * which for somebody looking at an empty map is an instruction about a thing
+ * that is not on their screen -- the surest way to make a person think they
+ * have missed a step and go looking for it.
+ *
+ * Rewritten here rather than in the browser because the route is decided here,
+ * and a second copy of this wording in app.js would be a second copy to
+ * forget.
+ */
+const OPEN_LINK_PROMPTS = {
+  edges: 'Where the grass meets a driveway, path, patio or building, follow '
+    + 'that line closely. These edges are sharp in the photograph and they are '
+    + 'what makes a map worth keeping — a lawn that runs a foot into the drive '
+    + 'all the way round is the commonest thing wrong with one. This is most '
+    + 'of the job.',
+  shade: 'Grass in the shadow of a house or a tree is dark and easy to leave '
+    + 'out. If you can tell it is lawn, include it. If a tree canopy hides the '
+    + 'ground so completely that you are guessing, leave it out.',
+  ai: 'Nothing is traced for you on this one. Draw the lawn yourself — or open '
+    + 'the AI tab and press "Detect my lawn" for a rough first attempt to '
+    + 'correct, if you would rather start from one. It is free either way, and '
+    + 'you can clear it and start again from the Draw tab.',
+};
+
+export function promptsFor(route) {
+  if (!isOpenLink(route)) return PROMPTS;
+  return [
+    /* First, because it is the thing that has changed about their screen. */
+    { key: 'ai', title: 'The AI is yours to ask for', body: OPEN_LINK_PROMPTS.ai },
+    ...PROMPTS.map((p) => (OPEN_LINK_PROMPTS[p.key]
+      ? { ...p, body: OPEN_LINK_PROMPTS[p.key] }
+      : p)),
+  ];
+}
 
 const shortId = (id) => String(id || '').replace(/-/g, '').slice(0, 8).toUpperCase();
 
@@ -280,7 +326,7 @@ async function claimFor(worker, route, env, now, json, origin, avoid = '') {
        sees no completion code on the path they take most often, which is
        reopening the link after closing the tab. */
     return json({
-      job: jobForWorker(open), prompts: PROMPTS, resumed: true, route,
+      job: jobForWorker(open), prompts: promptsFor(route), resumed: true, route,
     }, 200, origin);
   }
 
@@ -445,7 +491,7 @@ async function claimFor(worker, route, env, now, json, origin, avoid = '') {
   }
 
   return json({
-    job: jobForWorker(taken), prompts: PROMPTS, cleared, route,
+    job: jobForWorker(taken), prompts: promptsFor(route), cleared, route,
     /* Present ONLY when the queue had nothing else, so the browser never has
        to tell false from absent. */
     ...(onlyOneLeft ? { only: true } : {}),

@@ -3957,8 +3957,18 @@ function detectionRequest(frame, provider, model, points) {
      * the claim lets the JOB pay instead. Not a credential: the server checks
      * that the row exists, is claimed, and is held by this worker, and a
      * worker holds one lawn at a time. See spendJobDetection.
+     *
+     * THE ID IS SENT WHEN THERE IS ONE, AND THE JOB EITHER WAY. On the paid
+     * route there is no worker id to send: it is the account, read from the
+     * session, because it decides who gets paid. Requiring both here meant a
+     * paid tracer's passes came out of their own daily allowance instead of the
+     * lawn's -- invisible while the outline was run for them once on arrival,
+     * and no longer invisible now that pressing Detect is the only way they get
+     * one at all. The server fills in the account for them.
      */
-    ...(state.job && state.worker ? { job: state.job.id, worker: state.worker } : {}),
+    ...(state.job
+      ? { job: state.job.id, ...(state.worker ? { worker: state.worker } : {}) }
+      : {}),
     ...devOverrides(),
     /*
      * The address and the lot size ride along for the test log. Neither changes
@@ -6376,6 +6386,20 @@ async function claimNextJob(skipped = '') {
 }
 
 /**
+ * Did this person arrive through one of the two PUBLIC links?
+ *
+ * The same question isOpenLink answers on the server, and the same two routes:
+ * a volunteer doing a favour, and somebody on the paid link owed 75c for each
+ * map that is approved. What they have in common here is that nothing is
+ * traced for them until they ask -- see openJob.
+ *
+ * Read from the route the SERVER sent back with the lawn rather than from the
+ * link, because the link may only propose and a stored row wins. `state.jobVia`
+ * is what was asked for; `state.jobRoute` is what was granted.
+ */
+const openLinkJob = () => state.jobRoute === 'volunteer' || state.jobRoute === 'paid';
+
+/**
  * Put one claimed lawn on the map, ready to correct.
  *
  * It goes through confirmLocation, which is the ordinary path a chosen address
@@ -6423,14 +6447,22 @@ async function openJob(job, prompts, cleared) {
   await confirmLocation();
 
   /*
-   * AND THE STARTING OUTLINE, RUN FOR THEM.
+   * THE STARTING OUTLINE, RUN FOR THEM -- ON THE PAID PLATFORMS ONLY.
    *
-   * The task is to CORRECT an outline, so arriving at an empty map with an AI
-   * tab they have never been told about is arriving at a task they cannot
-   * start. It is run once, automatically, and paid for by the job rather than
-   * by their browser's signed-out allowance -- see spendJobDetection.
+   * A crowd worker is paid to CORRECT an outline, and arriving at an empty map
+   * with an AI tab nobody has mentioned is arriving at a task they cannot
+   * start. So for them it is still run once, automatically, and paid for by the
+   * job rather than by their browser's own allowance -- see spendJobDetection.
+   *
+   * NOT ON THE TWO PUBLIC ROUTES. Volunteers and paid tracers said the drawn-on
+   * outline was making the work MORE annoying rather than less, and that is a
+   * report about arithmetic rather than taste: a wrong outline has to be
+   * dismantled corner by corner before the lawn can be traced, which is slower
+   * than tracing it on an empty map. The AI tab is theirs to press if they want
+   * it -- which is the whole reason that tab came back for them -- and the
+   * prompt in the job bar says so. See promptsFor in routes-jobs.js.
    */
-  await detect();
+  if (!openLinkJob()) await detect();
   /*
    * Detection counts as the map appearing rather than as somebody editing it,
    * and `edited` is the one machine-checkable thing about a submission. detect
@@ -6457,7 +6489,23 @@ async function openJob(job, prompts, cleared) {
   setMode('parcel');
   roadTip();
 
-  if (cleared) setStatus(cleared);
+  /*
+   * AND, WHERE NOTHING WAS TRACED, SAY SO RATHER THAN SHOWING AN EMPTY MAP.
+   *
+   * An empty map on a screen that has just said "one lawn to trace" is
+   * ambiguous: it looks equally like "draw it" and like "the picture failed to
+   * load". One sentence removes that, and names the tab -- the AI is opt-in
+   * here, not absent, and somebody who wanted a first attempt should not have
+   * to go looking for where it went.
+   */
+  setStatus([
+    cleared,
+    openLinkJob()
+      ? 'Nothing is traced for you here. Check the yellow property line first, '
+        + 'then draw the lawn — or open the AI tab for a rough first attempt to '
+        + 'correct, if you would rather start from one.'
+      : null,
+  ].filter(Boolean).join(' '));
 }
 
 /**

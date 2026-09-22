@@ -510,7 +510,8 @@ const read = async (res) => ({ status: res.status, body: await res.json() });
 
 /* --------------------------------------- the three ways somebody arrives */
 {
-  await seed(4, 300);
+  /* Five, because five workers claim one each in this block. */
+  await seed(5, 300);
 
   /*
    * A VOLUNTEER ARRIVES THROUGH ONE SHARED PUBLIC LINK with no id in it, so
@@ -522,6 +523,29 @@ const read = async (res) => ({ status: res.status, body: await res.json() });
   check('a volunteer with no history at all is handed a lawn',
     helper.status === 200 && helper.body.route === 'volunteer',
     JSON.stringify({ route: helper.body.route, job: Boolean(helper.body.job) }));
+
+  /*
+   * AND IS NOT TOLD ABOUT AN OUTLINE THAT IS NOT ON THEIR SCREEN.
+   *
+   * Nothing is traced for the two public routes until somebody asks -- they
+   * said the drawn-on outline made the work more annoying, and dismantling a
+   * wrong one corner by corner really is slower than tracing an empty map. Two
+   * of the prompts described where that outline goes wrong, which for somebody
+   * looking at an empty map is an instruction about a thing that is not there.
+   */
+  const words = (list) => list.map((p) => `${p.title} ${p.body}`).join(' ');
+  check('and the prompts do not promise them an automatic outline',
+    !/automatic outline/i.test(words(helper.body.prompts)),
+    words(helper.body.prompts).match(/[^.]*automatic outline[^.]*/i)?.[0] || 'none mentioned');
+  check('but do say where to get one if they want it',
+    helper.body.prompts.some((p) => p.key === 'ai' && /AI tab/.test(p.body)),
+    'the AI is opt-in here, not absent, and nothing else on the screen says so');
+
+  const crowdPrompts = await read(await ask('/api/job', { search: '?w=CROWDPROMPTS' }));
+  check('while a crowd worker, who gets one run for them, is still told to correct it',
+    /automatic outline/i.test(words(crowdPrompts.body.prompts))
+    && !crowdPrompts.body.prompts.some((p) => p.key === 'ai'),
+    'they are paid to correct an outline that is drawn before they arrive');
 
   /*
    * AND THE ROUTE IS WRITTEN ON THE JOB, not merely acted on and discarded.
