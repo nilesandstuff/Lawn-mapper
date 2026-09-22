@@ -68,6 +68,51 @@ is not the same as saying it would hold on the next twenty lawns.
 
 ## HARD FINDINGS — our own measurements
 
+### H16. 29 of our 31 lawns have free LiDAR over them, flown 2011–2020
+*Run 35716717308, 2026-09-22, workflow 17, corpus `1wxlejo`. Phase one of the
+E8 idea, built to be able to abandon it cheaply.*
+
+**94% covered.** Every approved map's point was matched against the 2,279
+project footprints of the public Entwine copy of 3DEP.
+
+```
+covered                29 of 31
+nothing flown           2  (both Maryland (MD iMAP))
+flown                   2011 to 2020, middle year 2016
+no year in the name     3 projects
+8 pts/m² or better      8
+below 2 pts/m²          0   <- 3DEP's own floor; none of ours is under it
+```
+
+**The two Maryland misses are a real local gap, not a hole in the index.** That
+was worth checking before reporting, because "the index is missing projects"
+and "the ground was never flown" look identical from one lawn. The index holds
+19 Maryland projects, and a 377-point grid across the state comes back **88%
+covered**, with every miss in the lower Chesapeake — water and the bottom of
+the Eastern Shore. So Maryland is flown; those two properties sit in a gap in
+it.
+
+**THE PROBLEM IS THE DATE, NOT THE COVERAGE.** The middle flight year is 2016
+and the maps were traced in 2026. Ten years is two or three trees' worth of
+growth and several felled ones, and **the gap cannot even be measured**,
+because the corpus stores when somebody traced a map and not when the aerial
+was taken. That is the single most likely way a canopy height feature comes out
+disagreeing with a photograph for a reason that has nothing to do with the
+model.
+
+Three more limits, all in the tool's own output so they cannot travel without
+it: a footprint is a collection boundary rather than a promise of returns; the
+year is parsed from the project's name, which is a convention and not a field
+(`KY_FullState` carries none); and the density is the point count over the
+footprint area, in POINTS where 3DEP's quality levels are in PULSES — so it
+reads high, which makes "below QL2" strong evidence and "QL1" weak.
+
+**Verdict, printed by the run: worth building phase two.** Not because the
+canopy answer is expected to help — E8 is explicit that height is not species,
+and this separates a shrub from bare ground while leaving grass and mulch
+identical — but because the one blocking question, "do we even have the data",
+is answered yes at 94%.
+
 ### H15. Eight more maps moved nothing. The gap is 1.45×, it was 1.39×
 *Run 35683684006, 2026-09-22, 31 lawns, fingerprint `1wxlejo`, Scale-MAE large
 at 896px. The previous 896 run was 35452491362, 23 lawns, `14a2t7k`.*
@@ -1164,4 +1209,5 @@ fields) were both more obviously right than this one.
 | 2026-09-19 | 35449083419 | 23 | Scale-MAE large 896px | 28.2% | 20.3% | ring fix. Every row identical to the earlier 896 run except the one the fix touches (35.7 → **31.2**) |
 | 2026-09-19 | 35449091188 | 23 | Scale-MAE large 1280px | **26.1%** | 20.3% | ring fix. Matches 1280 run 1 exactly on every backbone row, so run 35422422911 was the anomaly, not 1280 (H13 revised again). Colour-only ring now 31.2% at BOTH sizes |
 | 2026-09-19 | 35452491362 | 23 | Scale-MAE large 896px | 28.2% | 20.3% | **14-column features** (H14). Colour row 32.9 → 28.6, its biggest gain ever, but the best of six does not move and the gap stays 1.4×. Control baseline is now 28.6%. Last run before the pause |
+| 2026-09-22 | 35716717308 | 31 | — (workflow 17, no training) | — | — | **Lidar coverage, phase one of E8.** 29 of 31 lawns over a 3DEP project, flown 2011-2020, middle year 2016, none below QL2. The 2 misses are a real gap in Maryland, checked against an 88%-covered state grid. Verdict: build phase two. The unmeasurable risk is the 10-year gap to the photographs (H16) |
 | 2026-09-22 | 35683684006 | **31** | Scale-MAE large 896px | 34.4% | 23.8% | **NEW CORPUS `1wxlejo`** — work restarted. Control 28.6 → 37.8, so nothing compares to the rows above (H15). Gap 1.39× → 1.45×, wins flat at 10 of 25. Winner changed to "both"; top three within 0.5 points. H12 reproduced on a second corpus, ring negative again, S5 worse than ever. Baseline confirmed all `sam3`. 31 of 31 outlines drawn to /predictions.html |
