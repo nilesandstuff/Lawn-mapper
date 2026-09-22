@@ -65,6 +65,22 @@ function row(e, i) {
     if (e.onLawnPct !== null && e.onLawnPct !== undefined) {
       top.append(el('span', 'pill warn', `${pct(e.onLawnPct)} on the traced lawn`));
     }
+    /*
+     * AND HOW MUCH IS ON THE PROPERTY AT ALL, which is the pill that makes the
+     * one before it readable.
+     *
+     * "4% on the traced lawn" has two completely different meanings and the
+     * first pill cannot tell them apart: the tracer looked at these trees and
+     * decided there is no grass under them -- a toggle correctly starting OFF,
+     * which is the idea working -- or the crowns belong to next door and were
+     * never a candidate either way. This one separates them. A lawn reading 4%
+     * on the lawn and 90% inside the line is a judgement; 4% and 10% is a
+     * neighbour's tree.
+     */
+    if (e.insidePct !== null && e.insidePct !== undefined) {
+      top.append(el('span', e.insidePct >= 50 ? 'pill' : 'pill grey',
+        `${pct(e.insidePct)} inside the line`));
+    }
     box.append(top);
     box.append(el('div', 'meta',
       `${n(e.crownSqFt)} sq ft of crown · ${n(e.canopySqFt)} sq ft of canopy found · `
@@ -72,7 +88,8 @@ function row(e, i) {
       + (e.readAtPx ? ` · read at ${n(e.readAtPx)} px` : '')));
     box.append(el('div', 'meta cost',
       'A crown inside the green is a tree somebody decided has grass under it — '
-      + 'a toggle that should start ON. One outside it is a no.'));
+      + 'a toggle that should start ON. One outside the green but inside the '
+      + 'property line is a no. One outside the line is not theirs to answer.'));
     return withPicture(box, e, i,
       `Lawn ${i + 1}: every tree crown found, over the photograph, with the `
       + 'hand-traced lawn washed in green');

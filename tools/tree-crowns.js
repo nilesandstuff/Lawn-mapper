@@ -270,6 +270,35 @@ async function main() {
       console.log('sit at the ends of that range the two groups separate and the');
       console.log('toggles have something to be right about. If every lawn sits in');
       console.log('the middle, the crowns do not line up with anybody\'s judgement.');
+
+      /*
+       * AND THE NUMBER THAT MAKES THAT ONE READABLE, which the first run of
+       * this left in index.json where nobody would find it.
+       *
+       * A low share on the traced lawn has two meanings and the line above
+       * cannot tell them apart: the tracer decided there is no grass under
+       * those trees, or the trees belong to next door and were never anybody's
+       * to decide. Only the second is a reason to ignore the result.
+       */
+      const inside = entries.map((e) => e.insidePct).filter((v) => v !== null);
+      if (inside.length) {
+        console.log(`\nOf that crown area, ${mid(inside).toFixed(0)}% is inside the property `
+          + `line at all (${Math.min(...inside).toFixed(0)}% to `
+          + `${Math.max(...inside).toFixed(0)}%).`);
+        console.log('\nREAD THE TWO TOGETHER. Low on the lawn and HIGH inside the line');
+        console.log('means somebody looked at those trees and said no, which is the');
+        console.log('idea working. Low on both means the crowns are a neighbour\'s and');
+        console.log('the first number was never about anybody\'s judgement.');
+
+        /* The lawns where the two disagree most are the ones worth opening
+           first, so they are named rather than left to be hunted for. */
+        const judged = entries
+          .filter((e) => e.insidePct >= 50 && e.onLawnPct !== null && e.onLawnPct < 10).length;
+        const elsewhere = entries.filter((e) => e.insidePct !== null && e.insidePct < 25).length;
+        console.log(`\n${judged} lawns are mostly on the property and mostly NOT on the lawn: `
+          + 'trees somebody declined.');
+        console.log(`${elsewhere} lawns are mostly off the property: not theirs to answer.`);
+      }
     }
     console.log('\nThe pictures decide it. A model that finds the canopy as one');
     console.log('enormous blob is accurate and useless; nine clean crowns out of');

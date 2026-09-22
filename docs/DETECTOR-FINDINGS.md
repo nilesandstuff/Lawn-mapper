@@ -68,6 +68,72 @@ is not the same as saying it would hold on the next twenty lawns.
 
 ## HARD FINDINGS — our own measurements
 
+### H18. The tree model finds tappable crowns, and most of them land off the traced lawn
+*Run 35764574338, 2026-09-22, 33 approved maps, `1wxlejo`,
+`restor/tcd-segformer-mit-b5` at 0.1 m/px. Pictures at
+`/predictions.html?set=crowns`. No predictions bought — 18 minutes of CPU.*
+
+The idea being tested is a tracer's interface, not a detector: hand somebody
+each tree crown as a toggle — on for grass underneath, off to ignore — and the
+slowest part of tracing a wooded lot becomes a row of taps. This run asked the
+only question that decides whether that is worth building: are the crowns clean
+enough to BE toggles.
+
+**What was measured.**
+
+| | |
+|---|---|
+| Maps drawn | 33 of 33 |
+| Crowns per lawn | 0 to 63, middle **9** |
+| Big enough to tap (≥ 1/12 of the frame across) | middle **6** of 9 |
+| Crown area sitting on the traced lawn | 0% to 51%, middle **7%** |
+
+**Crowns exist and are mostly tappable.** Six of nine on the middle lawn clear
+a thumb-sized target, which is the number that makes a toggle list an interface
+rather than a fiddle. That is the encouraging half and it is a real measurement.
+
+**The tappability collapses exactly where the list would be longest.** Two
+lawns: 28 crowns of which **1** is tappable, and 39 crowns of which **2** are.
+The 63-crown lawn yields 13. So the lawns with the most trees — the ones the
+whole idea exists to speed up — are also where the model shatters the canopy
+into pieces too small to hit. A 63-item list of which 13 can be tapped is not
+the interface that was proposed.
+
+**Five of 33 lawns returned zero crowns** (three adjacent Bullitt County KY
+addresses, one Utah, one North Carolina), all at 0.0% canopy. Whether those
+lots are genuinely treeless or the model failed on that imagery is not settled
+by any number here; the pictures are the place to check.
+
+**The 7% is not yet evidence either way, and this is the important caveat.**
+The run reports what share of crown area sits on ground somebody traced as
+lawn. A low number has two explanations this run cannot separate:
+
+1. the tracer looked at the tree and decided there is no grass under it — a
+   toggle that should correctly start OFF, which is the idea working; or
+2. the crown was never a candidate, because it belongs to a neighbour's tree
+   or a street tree outside the property line.
+
+`insidePct` is recorded per lawn in `crowns/index.json` and is the number that
+would separate those two, and the end of the log does not summarise it. **Until
+it does, no conclusion about the toggles should be drawn from the 7%.**
+
+What the spread does rule out is the flattest failure: the values are not all
+bunched in the middle. Of 28 lawns with any canopy, 16 sit below 10% and 9 sit
+above 25%. That is a cluster near zero with a long tail, not two clean groups —
+so "the crowns line up with the tracer's judgement" is not supported, and
+neither is its opposite.
+
+**Same county, opposite answers.** Kent County appears nine times with values
+from 0.4% to 39%, so whatever drives the number is not the imagery source.
+
+**Not measured, and worth being explicit about:** whether a crown corresponds
+to one tree. The watershed splits a tree/no-tree raster; nothing here checks
+its pieces against actual trunks, and `CROWN_GAP_M` (3 m) was chosen on the
+argument that over-splitting costs more taps than under-splitting, not on a
+measurement.
+
+---
+
 ### H17. Dropping unseen ground from training improves the visible half by 2–3.5 points
 *Run 35719107798, 2026-09-22, 31 lawns, `1wxlejo`, Scale-MAE 896px, twelve rows:
 every configuration and a twin of it trained with the pixels marked "inferred,
@@ -1265,3 +1331,4 @@ fields) were both more obviously right than this one.
 | 2026-09-22 | 35719107798 | 31 | Scale-MAE large 896px | 34.4% | 23.8% | **Seen-only twins** (H17). Dropping unseen ground from TRAINING improves the visible half by 2.1-3.5 points on 4 of 6 rows; best seen error 33.5 -> 31.3. The backbone-free row's -3.5 is deterministic within the run, so not re-run noise. Headline unchanged: a seen-only model answers half the question |
 | 2026-09-22 | 35716717308 | 31 | — (workflow 17, no training) | — | — | **Lidar coverage, phase one of E8.** 29 of 31 lawns over a 3DEP project, flown 2011-2020, middle year 2016, none below QL2. The 2 misses are a real gap in Maryland, checked against an 88%-covered state grid. Verdict: build phase two. The unmeasurable risk is the 10-year gap to the photographs (H16) |
 | 2026-09-22 | 35683684006 | **31** | Scale-MAE large 896px | 34.4% | 23.8% | **NEW CORPUS `1wxlejo`** — work restarted. Control 28.6 → 37.8, so nothing compares to the rows above (H15). Gap 1.39× → 1.45×, wins flat at 10 of 25. Winner changed to "both"; top three within 0.5 points. H12 reproduced on a second corpus, ring negative again, S5 worse than ever. Baseline confirmed all `sam3`. 31 of 31 outlines drawn to /predictions.html |
+| 2026-09-22 | 35764574338 | **33** | — (workflow 19, no training) | — | — | **Tree crowns (H18).** `restor/tcd-segformer-mit-b5` at 0.1 m/px over 33 approved maps, 18 min CPU, nothing bought. Crowns per lawn 0-63, middle 9; middle 6 of them big enough to tap. Crown area on traced lawn 0-51%, middle 7% — **not interpretable yet**, because `insidePct` (crown inside the property line at all) is not summarised, so "the tracer said no" and "it is a neighbour's tree" are not separated. Tappability collapses on the busiest lawns: 1 of 28, 2 of 39. Pictures at /predictions.html?set=crowns |
