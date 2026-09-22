@@ -891,6 +891,77 @@ The other route is VGIN's download application, which hands out the raster by
 locality. That suits building a training batch in CI. It does not suit asking
 a question about one address while somebody waits.
 
+### E8. Hyperspectral + LiDAR gets 99% on urban grass — and never looks under a tree
+*[Man, Dong, Yang, Wu & Han, "Automatic Extraction of Grasses and Individual
+Trees in Urban Areas Based on Airborne Hyperspectral and LiDAR Data", Remote
+Sensing 12(17):2725, 2020](https://doi.org/10.3390/rs12172725). Read in full
+2026-09-22, brought by the owner as a possible answer to grass under canopy.*
+
+**It is not about grass under canopy, and the word that makes it look as though
+it is means something else.** The abstract's selling point is that point-cloud
+segmentation "can preserve the understory trees" where a canopy-height-model
+watershed loses them — **understory TREES**, small trees beneath larger ones.
+Occluded ground is not discussed anywhere in the paper. Its grass class is
+grass visible from above.
+
+What it actually is: 144 hyperspectral bands (380–1050 nm, 4.8 nm) at **2.5 m**
+ground resolution, plus airborne LiDAR, random-forest and object-based
+classification for the 2D map, then watershed-on-CHM against point-cloud
+clustering for individual trees.
+
+**Do not quote its 99%.** It is validation-sample accuracy for visible classes
+on one controlled site. And 2.5 m is twenty times coarser than our 10–15 cm
+(H1), on a problem where H9 says resolution is a real lever and H12 says the
+error is concentrated at boundaries.
+
+**The one transferable idea, and it is the paper's ingredient rather than its
+method: LiDAR is the only instrument here that receives anything from beneath
+a canopy.** Pulses find gaps and return from the ground. Everything this file
+has considered so far INFERS what is under a tree — E3 says receptive fields
+cannot, E7's Chesapeake class is a 20 m buffer rule whose own document says the
+understory "is assumed to be turf grass", and our tracers use their judgement.
+A ground return is the first thing that would MEASURE it.
+
+**What that would and would not buy, stated before anybody gets excited.**
+LiDAR gives height, not species. It separates bare ground and mulch (~0 cm)
+from shrubs and small trees (0.5–2 m). **It does not separate grass from
+mulch, gravel or bare dirt** — which is precisely the failure mode E7 records
+for the Chesapeake layer. So on its own it answers the owner's second reading
+of H12 ("some obvious trees are fully marked as lawn — this is obviously a
+tree") and does not answer "is the ground under this canopy lawn".
+
+**WHAT IS AVAILABLE TO US, probed against the live services on 2026-09-22 —
+these are our own checks, not the paper's claims:**
+
+- **USGS 3DEP publishes exactly one dynamic service, and it is BARE EARTH.**
+  `https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer`
+  — F32, single band, `identify` and `exportImage` both work, the same shape of
+  endpoint as E7's land cover service. Ground elevation answered at all four
+  corpus regions tested: Kent MI 253.6 m, Prince William VA 85.9 m, NC 109.5 m,
+  Bullitt KY 142.2 m. The service directory holds `3DEPElevation` and nothing
+  else, so **there is no DSM and no canopy height model behind a URL.** Bare
+  earth alone says nothing about trees.
+- **So a canopy height model needs the point cloud.** The public Entwine copy
+  is live: `usgs-lidar-public` on S3, 1,000+ projects, and the per-project
+  footprints are published as
+  [`resources.geojson`](https://raw.githubusercontent.com/hobuinc/usgs-lidar/master/boundaries/resources.geojson)
+  (8.7 MB, fetched). EPT is an octree, so a reader can pull just the nodes over
+  one 60 m frame rather than a county.
+- **Specification facts, cited:** 3DEP's minimum is QL2 — [≥2 pulses/m² and ≥3
+  returns per pulse](https://www.usgs.gov/ngp-standards-and-specifications/lidar-base-specification-collection-requirements),
+  with [QL1/QL0 at 8 pulses/m²](https://www.usgs.gov/3d-elevation-program/topographic-data-quality-levels-qls)
+  — and **leaf-off is the collection standard**, which is also the honest
+  answer to the leaf-off question asked on 2026-09-21: there is no leaf-off
+  *imagery* source, but the structure is flown leaf-off as a rule.
+- **The cost is the tooling.** `pip install pdal` is a source distribution
+  needing libpdal, so a CI job would install PDAL from apt first. Not verified
+  on a runner. Nothing else here needs a new dependency.
+
+**Two mismatches to settle before any of it is worth a feature column:** the
+LiDAR year against the photograph's year — trees grow and get felled — and the
+1 m posting against our 10–15 cm. Neither is fatal and neither has been
+measured.
+
 ---
 
 ## SPECULATION — theories not yet tested
@@ -939,6 +1010,25 @@ confusion is woods vs lawn — H8's Kent benchmark is mostly woods. Feeding tree
 probability as a feature might do what the ring failed to do: supply context,
 but *learned and at the right scale* rather than raw colour samples.
 **Untested, and the ring's failure is a reason for caution, not confidence.**
+
+**A SECOND WAY TO GET THE SAME COLUMN, from E8: height above ground, from
+3DEP's point cloud.** Restor's model INFERS tree from pixels; a LiDAR canopy
+height model MEASURES it, and is not fooled by the dark green that catches a
+colour feature. On the owner's own reading of the outlines — "some obvious
+trees are fully marked as lawn" — that is the complaint both would address.
+
+**And the sharper version of it, which is the part actually worth testing:**
+the interesting number under a canopy may not be the canopy height at all, but
+**how many pulses reached the ground there, and how high the lowest returns
+sit**. Ground-return density is literally "how much of the ground the laser
+saw"; a lowest-return height near zero is bare ground, mulch or grass, and half
+a metre up is a shrub. That would put a *measurement* where this project
+currently has an inference — but it still cannot tell grass from mulch (E8), so
+it prunes the wrong answers rather than producing the right one.
+
+**Untested, and everything above the last paragraph is a mechanism rather than
+a result.** Two ideas in this file have been argued at length and then measured
+as nothing.
 
 ### S3. The corpus, not the features, is the binding constraint
 H7 says one map is worth up to 10 points; the gap to SAM is about 6 points.
