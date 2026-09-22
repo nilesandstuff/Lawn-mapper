@@ -78,7 +78,7 @@ const parse = (t) => { try { return JSON.parse(t); } catch { return null; } };
  * Python, which does not know what the renderer wants, or in the renderer,
  * which would then need to know where the numbers came from.
  */
-const toGrid = (polygon, framePx) => polygon.map(([x, y]) => [
+export const toGrid = (polygon, framePx) => polygon.map(([x, y]) => [
   (x * GRID) / framePx, (y * GRID) / framePx,
 ]);
 
@@ -93,7 +93,7 @@ const toGrid = (polygon, framePx) => polygon.map(([x, y]) => [
  * error surfaced four frames later as "undefined is not a function" from a
  * missing projector.
  */
-function overlap(ring, truth, within) {
+export function overlap(ring, truth, within) {
   const mask = rasterizePolygon([ring], GRID, GRID, (p) => p);
   let area = 0;
   let onLawn = 0;

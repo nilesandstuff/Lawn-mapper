@@ -98,12 +98,26 @@ jobs:
       # minutes and the drawing is eight seconds. The first time the second
       # step broke it threw away the first step's work, which is a bad trade to
       # make twice.
+      #
+      # AS ONE TARBALL, because a lawn's id is its coordinates and its method --
+      # "-77.6,38.7:sam3:find" -- and upload-artifact rejects a colon in a file
+      # name outright. Uploading the directory took the whole run down with it
+      # on the attempt after the one it was written to protect. A tar keeps the
+      # names it was given.
+      - name: Pack the crowns up
+        if: always()
+        continue-on-error: true
+        run: tar -czf crowns.tar.gz crowns/ || true
+
       - name: Keep the crowns whatever happens next
         if: always()
+        # AND NEVER FAIL THE RUN FOR IT. This step exists to save somebody
+        # else's work; it has no business ending the job.
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: crowns
-          path: crowns/
+          path: crowns.tar.gz
           if-no-files-found: warn
 
       - name: Draw them over the traced lawns
