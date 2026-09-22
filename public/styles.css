@@ -752,15 +752,29 @@ body.inferred-mode .panel { box-shadow: inset 4px 0 0 #7c4dff; }
  * are paid to use is the last one that should drift.
  *
  * Gone: the account button and the allowance badge (they have no account and
- * the job pays for its own detections), the address step (their lawn is chosen
- * for them), the AI step (it is run for them, once, on arrival), Saved and
- * Plan (neither exists for somebody who never signs in), and the Finish button
- * (sending the map is what ends the task, and two buttons that both look like
- * the end is how a map gets saved without being submitted).
+ * the job pays for its own detections), Saved and Plan (neither exists for
+ * somebody who never signs in), and the Finish button (sending the map is what
+ * ends the task, and two buttons that both look like the end is how a map gets
+ * saved without being submitted).
+ *
+ * THE AI STEP IS BACK, and taking it away was a mistake of exactly the kind
+ * this comment warns about -- a removal that read as tidy and left somebody
+ * without the way out of a problem we had given them.
+ *
+ * The reasoning was that the outline is run for them once on arrival, so the
+ * tab is a step they never have to take. What that missed is that the outline
+ * is sometimes WORSE than an empty map -- a shape sprayed across the drive and
+ * half the neighbour's grass -- and a tracer who thinks it is wrong had no
+ * control over it at all: no way to try another method, another photograph, or
+ * trim the whole edge in a foot. Only corner-by-corner repair of somebody
+ * else's guess, which several people said was slower than drawing it
+ * themselves. That tab is where all four of those controls live, and none of
+ * them spends money the job has not already paid for -- FREE_DETECTS_PER_JOB
+ * is six per lawn, and trimming the edge re-reads a mask already downloaded.
+ * "Clear all" on the Draw tab throws the AI shape away entirely.
  */
 body.job-mode #account-btn,
 body.job-mode #quota-badge,
-body.job-mode #tab-detect,
 body.job-mode #tab-saved,
 body.job-mode #tab-plan,
 body.job-mode #btn-finish,
@@ -770,10 +784,9 @@ body.job-mode #btn-open-saved,
  * And every way back to a step that no longer exists for them. "Start over
  * with a new address" on a lawn somebody was assigned would abandon a claim
  * and land them on a search box, which is a dead end with an hour's wait
- * attached; "Find the lawn →" points at a tab that has been removed.
+ * attached.
  */
-body.job-mode [data-action="restart"],
-body.job-mode #btn-to-detect { display: none !important; }
+body.job-mode [data-action="restart"] { display: none !important; }
 
 .statusline { font-size: 13.5px; color: var(--muted); min-height: 20px; margin-bottom: 10px; }
 .statusline.warn { color: #a35b00; }

@@ -5275,6 +5275,22 @@ const AI_NOTICE_KEY = 'lawnmap.ai-notice.v1';
 
 function showAiNotice() {
   if (aiNoticeShown) return;
+  /*
+   * NOT ON THE PAID QUEUE, because it would give them an instruction that is
+   * false on their screen.
+   *
+   * It ends "be sure to hit Finish, save, and see more options after you've
+   * made the corrections" -- and job mode has no Finish button: sending the
+   * map is what ends the task. A sheet telling somebody to press a button that
+   * is not there is how a worker concludes the page is broken and abandons
+   * work already done. What the notice exists to say, they are told better
+   * anyway: the job bar carries what the job is asking for, and the sheet at
+   * the start says what the corrections are for.
+   *
+   * It matters now because the AI tab is back for them (see body.job-mode in
+   * styles.css), and this fires on first arrival at that tab.
+   */
+  if (document.body.classList.contains('job-mode')) return;
   aiNoticeShown = true;
   try {
     if (sessionStorage.getItem(AI_NOTICE_KEY)) return;
@@ -6294,19 +6310,27 @@ async function claimNextJob(skipped = '') {
     jobSheet({
       title: data?.stopped ? 'Thank you for the maps you sent'
         : data?.waiting ? 'Your maps are being checked'
-          : data?.error === 'Nothing left' ? 'That is the lot'
-            /*
-             * A LINK FAULT IS NOT "no lawn just now", and this is the one
-             * refusal most likely to be seen on the day a batch goes out.
-             * "No lawn just now" invites somebody to wait and try again,
-             * which will never work and wastes their time; the title has to
-             * say the link itself is wrong so they return the task and say
-             * so. The reason underneath, from the server, explains it.
-             */
-            : data?.needsAccount ? 'Sign in to be paid'
-              : (data?.error === 'Unfilled link' || data?.error === 'No worker id')
-                  ? 'Something is wrong with this link'
-                  : 'No lawn just now',
+          /*
+           * THE DAY'S CEILING IS NOT A REVIEW, and it used to be titled as
+           * one. A worker at the cap read "your maps are being checked" over
+           * a sentence about a daily limit, which invites exactly the wrong
+           * conclusion: that somebody is deciding something about them. It
+           * lifts at midnight and nobody has to do anything.
+           */
+          : data?.capped ? 'That is the day’s lot'
+            : data?.error === 'Nothing left' ? 'That is the lot'
+              /*
+               * A LINK FAULT IS NOT "no lawn just now", and this is the one
+               * refusal most likely to be seen on the day a batch goes out.
+               * "No lawn just now" invites somebody to wait and try again,
+               * which will never work and wastes their time; the title has to
+               * say the link itself is wrong so they return the task and say
+               * so. The reason underneath, from the server, explains it.
+               */
+              : data?.needsAccount ? 'Sign in to be paid'
+                : (data?.error === 'Unfilled link' || data?.error === 'No worker id')
+                    ? 'Something is wrong with this link'
+                    : 'No lawn just now',
       why: data?.reason || 'There is nothing to hand out at the moment.',
       /*
        * Waiting is the one refusal that a later visit actually resolves -- and
@@ -6658,7 +6682,19 @@ async function skipJob() {
   $('#job-bar').hidden = true;
   busy('Finding you another one…');
   try {
-    await fetch('/api/job/skip', {
+    /*
+     * `via` ON THE SKIP TOO, and leaving it off broke this button outright for
+     * every paid tracer.
+     *
+     * On the paid route there is no worker id in the request to send: the
+     * server reads the identity from the session, because it decides who gets
+     * paid. Without `via` it does not know to look there, falls back to the id
+     * in the body -- which is null on that route -- and refuses the whole
+     * request with "need a worker and a job". Nothing here reads the response,
+     * so the press looked like it worked, the claim stayed standing, and the
+     * next claim resumed the same lawn. See identify() in routes-jobs.js.
+     */
+    await fetch(`/api/job/skip${state.jobVia ? `?via=${state.jobVia}` : ''}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ worker: state.worker, id, why: 'skipped from the map' }),

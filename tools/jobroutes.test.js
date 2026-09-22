@@ -14,6 +14,8 @@
 import { testDb } from './d1.js';
 import { handleJobs, PROMPTS, spendJobDetection } from '../worker/src/routes-jobs.js';
 import { MIN_SECONDS, DAILY_CAP, FREE_DETECTS_PER_JOB } from '../worker/src/jobs.js';
+import { SESSION_COOKIE, createSession } from '../worker/src/auth.js';
+import { findOrCreateUser } from '../worker/src/db.js';
 
 let failures = 0;
 const check = (name, ok, detail = '') => {
@@ -35,6 +37,24 @@ const env = { DB: testDb() };
  */
 const idFor = (k) => `0000${String(k).padStart(4, '0')}-aaaa-4bbb-8ccc-dddddddddddd`;
 
+/*
+ * WHICH LAWN EACH WORKER WAS ACTUALLY HANDED.
+ *
+ * The queue is SHUFFLED now -- lawns arrive a county at a time, so handing out
+ * the oldest walked one county to exhaustion and gave a tracer twenty maps from
+ * the same few streets. So a check can no longer name the row it expects; it
+ * has to remember what it was given. Held out here rather than inside the
+ * blocks because the blocks below build on each other: one claims, the next
+ * detects against that claim, the next submits it.
+ */
+let w1 = null;
+let w2 = null;
+
+/** Any lawn nobody is holding, for the checks that need an unclaimed id. */
+const anyApproved = async () => (await env.DB.prepare(
+  "SELECT id FROM lawn_jobs WHERE state = 'approved' LIMIT 1"
+).first())?.id;
+
 /** Put `many` approved lawns in the queue, oldest first. */
 async function seed(many, from = 0) {
   for (let i = 0; i < many; i++) {
@@ -48,10 +68,16 @@ async function seed(many, from = 0) {
   }
 }
 
-const ask = (path, { method = 'GET', body, search = '' } = {}) => handleJobs(
+const ask = (path, { method = 'GET', body, search = '', cookie = '' } = {}) => handleJobs(
   new Request(`https://x${path}${search}`, {
     method,
-    ...(body ? { body: JSON.stringify(body), headers: { 'content-type': 'application/json' } } : {}),
+    headers: {
+      ...(body ? { 'content-type': 'application/json' } : {}),
+      /* The paid route reads who somebody is from the session and never from
+         the request, so a test of it has to arrive with a real cookie. */
+      ...(cookie ? { cookie } : {}),
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
   }),
   new URL(`https://x${path}${search}`),
   env, null, ctx, json,
@@ -117,11 +143,10 @@ const read = async (res) => ({ status: res.status, body: await res.json() });
     'everybody who clicked would otherwise be one person with one claim');
 
   const first = await read(await ask('/api/job', { search: '?w=WORKER1' }));
+  w1 = first.body.job?.id;
   check('a worker gets a lawn',
-    first.status === 200 && first.body.job?.id === idFor(0),
+    first.status === 200 && [idFor(0), idFor(1), idFor(2)].includes(w1),
     JSON.stringify(first.body.job));
-  check('and the oldest one, so the queue drains rather than churns',
-    first.body.job.id === idFor(0), first.body.job.id);
   check('and is told what the job actually is',
     Array.isArray(first.body.prompts) && first.body.prompts.length === PROMPTS.length
     && first.body.prompts.some((p) => /driveway|drive/i.test(p.body)),
@@ -137,20 +162,21 @@ const read = async (res) => ({ status: res.status, body: await res.json() });
    */
   const again = await read(await ask('/api/job', { search: '?w=WORKER1' }));
   check('reopening the link resumes the same lawn rather than refusing',
-    again.status === 200 && again.body.job.id === idFor(0) && again.body.resumed,
+    again.status === 200 && again.body.job.id === w1 && again.body.resumed,
     JSON.stringify({ id: again.body.job?.id, resumed: again.body.resumed }));
 
   /* And a different worker gets a DIFFERENT lawn, which is the whole race. */
   const other = await read(await ask('/api/job', { search: '?w=WORKER2' }));
+  w2 = other.body.job?.id;
   check('a second worker is never handed the first worker\'s lawn',
-    other.body.job.id === idFor(1),
-    `${other.body.job.id} -- handing two people one lawn is paying twice for one map`);
+    w2 && w2 !== w1,
+    `${w2} -- handing two people one lawn is paying twice for one map`);
 }
 
 /* ------------------------------------------------------------ skipping */
 {
   const before = await env.DB.prepare('SELECT state, worker FROM lawn_jobs WHERE id = ?1')
-    .bind(idFor(1)).first();
+    .bind(w2).first();
   check('a claimed lawn is held by the worker who claimed it',
     before.state === 'claimed' && before.worker === 'WORKER2', JSON.stringify(before));
 
@@ -159,17 +185,17 @@ const read = async (res) => ({ status: res.status, body: await res.json() });
    * free any other worker's lawn, which on a busy batch would be indisponible
    * chaos that looks like the queue misbehaving.
    */
-  await ask('/api/job/skip', { method: 'POST', body: { worker: 'WORKER1', id: idFor(1) } });
+  await ask('/api/job/skip', { method: 'POST', body: { worker: 'WORKER1', id: w2 } });
   const stolen = await env.DB.prepare('SELECT state, worker FROM lawn_jobs WHERE id = ?1')
-    .bind(idFor(1)).first();
+    .bind(w2).first();
   check('one worker cannot skip another worker\'s lawn',
     stolen.state === 'claimed' && stolen.worker === 'WORKER2', JSON.stringify(stolen));
 
   await ask('/api/job/skip', {
-    method: 'POST', body: { worker: 'WORKER2', id: idFor(1), why: 'cannot see the boundary' },
+    method: 'POST', body: { worker: 'WORKER2', id: w2, why: 'cannot see the boundary' },
   });
   const freed = await env.DB.prepare('SELECT state, worker, note FROM lawn_jobs WHERE id = ?1')
-    .bind(idFor(1)).first();
+    .bind(w2).first();
   check('and a worker skipping their own puts it back for somebody else',
     freed.state === 'approved' && !freed.worker,
     'one person being unable to trace a lawn says nothing about the lawn');
@@ -177,22 +203,23 @@ const read = async (res) => ({ status: res.status, body: await res.json() });
     /cannot see the boundary/.test(freed.note || ''), freed.note);
 
   /*
-   * AND IT GOES TO THE BACK, which a browser run caught and this pins.
+   * AND IT SINKS BELOW THE REST, which a browser run caught and this pins.
    *
-   * The queue hands out the oldest approved lawn. A skip that only cleared the
-   * claim handed the very same lawn straight back to the person who had just
-   * said they could not do it -- a loop with no way out, on the one screen
-   * where somebody is being paid by the minute.
+   * A skip that only cleared the claim handed the very same lawn straight back
+   * to the person who had just said they could not do it -- a loop with no way
+   * out, on the one screen where somebody is being paid by the minute. The
+   * order is shuffled now, so what keeps the skipped one out of their hands is
+   * that every lawn nobody has put back is offered ahead of it.
    */
   const after = await read(await ask('/api/job', { search: '?w=WORKER2' }));
   check('and the worker who skipped is not handed it straight back',
-    after.body.job?.id === idFor(2),
+    after.body.job?.id && after.body.job.id !== w2,
     `${after.body.job?.id} -- getting the same lawn again is a loop with no `
     + 'way out of it');
 
   /* Put it back, so the blocks below start where they expect to. */
   await ask('/api/job/skip', {
-    method: 'POST', body: { worker: 'WORKER2', id: idFor(2) },
+    method: 'POST', body: { worker: 'WORKER2', id: after.body.job?.id },
   });
 }
 
@@ -212,19 +239,19 @@ const read = async (res) => ({ status: res.status, body: await res.json() });
    * a stranger to spend somebody else's Replicate bill.
    */
   check('a worker may detect on the lawn they are holding',
-    await spendJobDetection(env, idFor(0), 'WORKER1'),
+    await spendJobDetection(env, w1, 'WORKER1'),
     'the outline is what they are paid to correct, so they must be able to get one');
 
   check('but not on somebody else\'s',
-    !(await spendJobDetection(env, idFor(0), 'WORKER9')),
+    !(await spendJobDetection(env, w1, 'WORKER9')),
     'a job id is not a secret -- the claim is what makes this safe');
 
   check('and not on a lawn nobody is holding',
-    !(await spendJobDetection(env, idFor(2), 'WORKER1')),
+    !(await spendJobDetection(env, await anyApproved(), 'WORKER1')),
     'an unclaimed row would be free predictions for anybody who guessed an id');
 
   check('and not without an id at all',
-    !(await spendJobDetection(env, idFor(0), ''))
+    !(await spendJobDetection(env, w1, ''))
     && !(await spendJobDetection(env, '', 'WORKER1')),
     'an unnamed worker cannot be rate limited and cannot be paid either');
 
@@ -238,7 +265,7 @@ const read = async (res) => ({ status: res.status, body: await res.json() });
    */
   const spent = [];
   for (let i = 0; i < FREE_DETECTS_PER_JOB + 2; i++) {
-    spent.push(await spendJobDetection(env, idFor(0), 'WORKER1'));
+    spent.push(await spendJobDetection(env, w1, 'WORKER1'));
   }
   check(`and gets ${FREE_DETECTS_PER_JOB} of them before the job runs out`,
     spent.filter(Boolean).length === FREE_DETECTS_PER_JOB - 1
@@ -253,14 +280,14 @@ const read = async (res) => ({ status: res.status, body: await res.json() });
    * task that stopped working.
    */
   check('a pass handed back after a failed detection can be spent again',
-    (await spendJobDetection(env, idFor(0), 'WORKER1', -1))
-    && (await spendJobDetection(env, idFor(0), 'WORKER1')),
+    (await spendJobDetection(env, w1, 'WORKER1', -1))
+    && (await spendJobDetection(env, w1, 'WORKER1')),
     'the detector refusing us is not the worker\'s mistake');
 
   const row = await env.DB.prepare('SELECT detections FROM lawn_jobs WHERE id = ?1')
-    .bind(idFor(0)).first();
+    .bind(w1).first();
   check('and the count never goes below nothing',
-    !(await spendJobDetection(env, idFor(0), 'WORKER1', -99))
+    !(await spendJobDetection(env, w1, 'WORKER1', -99))
     && Number(row.detections) === FREE_DETECTS_PER_JOB,
     `${row.detections} spent -- a negative count would be free passes for ever`);
 
@@ -292,7 +319,7 @@ const read = async (res) => ({ status: res.status, body: await res.json() });
 {
   const mapBody = (over = {}) => ({
     worker: 'WORKER1',
-    id: idFor(0),
+    id: w1,
     edited: true,
     frame: { lng: -80, lat: 40, zoom: 19, size: 640 },
     shapes: [{
@@ -314,7 +341,7 @@ const read = async (res) => ({ status: res.status, body: await res.json() });
 
   /* Wind the claim back so it looks like real work happened. */
   await env.DB.prepare('UPDATE lawn_jobs SET claimed_at = ?2 WHERE id = ?1')
-    .bind(idFor(0), new Date(Date.now() - 300_000).toISOString()).run();
+    .bind(w1, new Date(Date.now() - 300_000).toISOString()).run();
 
   const untouched = await read(await ask('/api/job/submit', {
     method: 'POST', body: mapBody({ edited: false }),
@@ -341,7 +368,7 @@ const read = async (res) => ({ status: res.status, body: await res.json() });
     typeof good.body.code === 'string' && good.body.code.length >= 6,
     good.body.code);
 
-  const row = await env.DB.prepare('SELECT * FROM lawn_jobs WHERE id = ?1').bind(idFor(0)).first();
+  const row = await env.DB.prepare('SELECT * FROM lawn_jobs WHERE id = ?1').bind(w1).first();
   check('the lawn is marked submitted and tied to the map it produced',
     row.state === 'submitted' && row.map_id && row.submitted_at,
     JSON.stringify({ state: row.state, map: Boolean(row.map_id) }));
@@ -369,8 +396,18 @@ const read = async (res) => ({ status: res.status, body: await res.json() });
     .bind(mine.body.job.id, new Date(Date.now() - 2 * 3600_000).toISOString()).run();
 
   const rescued = await read(await ask('/api/job', { search: '?w=SOMEBODYELSE' }));
-  check('and a claim nobody came back to is given to the next person',
-    rescued.status === 200 && rescued.body.job.id === mine.body.job.id,
+  check('somebody else is handed a lawn', rescued.status === 200, rescued.body.reason);
+  /*
+   * CHECKED ON THE ROW RATHER THAN ON WHICH LAWN CAME BACK. The order is
+   * shuffled, so the released lawn is one of several the next person might be
+   * given -- what releaseStale guarantees is that it is no longer held by
+   * somebody who never came back, which is the thing that was broken.
+   */
+  const abandoned = await env.DB.prepare('SELECT state, worker FROM lawn_jobs WHERE id = ?1')
+    .bind(mine.body.job.id).first();
+  check('and a claim nobody came back to is out of that person\'s hands',
+    abandoned.worker !== 'SLOWPOKE'
+    && (abandoned.state === 'approved' || abandoned.state === 'claimed'),
     'people close tabs, and a lawn nobody can reach is a lawn nobody gets paid for');
 }
 
@@ -606,6 +643,66 @@ const read = async (res) => ({ status: res.status, body: await res.json() });
     empty.body.reason);
 }
 
+/* -------------------------------------------------- a shuffled queue */
+{
+  /*
+   * NOT IN THE ORDER THEY WERE SCREENED, and this is the check that pins why.
+   *
+   * Addresses are imported a county at a time, from one county's parcel server
+   * in one run, so created_at is sorted by county almost perfectly. Handing out
+   * the oldest approved lawn therefore emptied one county before starting the
+   * next, and somebody doing twenty maps in an evening got twenty maps from the
+   * same few streets. Several said so. It is worse than dull: the variety is
+   * exactly what the detector is bad at, and a volunteer who is bored stops.
+   *
+   * Tested by claiming the same position in the queue many times over and
+   * seeing more than one row come back. A shuffle that happened to be
+   * chronological would pass an "is it different from oldest" check on a lucky
+   * run, which is why this counts distinct answers instead.
+   */
+  await env.DB.prepare("UPDATE lawn_jobs SET state = 'done' WHERE state = 'approved'").run();
+  await seed(12, 800);
+
+  const seenIds = new Set();
+  for (let i = 0; i < 12; i++) {
+    const got = await read(await ask('/api/job', { search: `?w=SHUFFLE${i}` }));
+    if (got.body.job?.id) seenIds.add(got.body.job.id);
+    /* Hand it straight back, so every one of these is the same draw from the
+       same twelve rows rather than twelve draws from a shrinking queue. */
+    await ask('/api/job/skip', {
+      method: 'POST', body: { worker: `SHUFFLE${i}`, id: got.body.job?.id },
+    });
+  }
+  check('twelve workers drawing from twelve lawns do not all get the same one',
+    seenIds.size > 1,
+    `${seenIds.size} distinct lawns in 12 draws -- oldest-first would give 1`);
+
+  /*
+   * AND A LAWN PEOPLE KEEP PUTTING BACK STILL SINKS. Moving created_at used to
+   * do this and stopped meaning anything the moment the order became random, so
+   * the skip note carries it instead -- which is a thing that can silently stop
+   * working, because nothing about it throws. See SKIP_NOTE.
+   */
+  await env.DB.prepare("UPDATE lawn_jobs SET state = 'done' WHERE state = 'approved'").run();
+  await seed(2, 850);
+  await env.DB.prepare(
+    "UPDATE lawn_jobs SET note = 'skipped by SOMEBODY: too wooded' WHERE id = ?1"
+  ).bind(idFor(850)).run();
+
+  const draws = new Set();
+  for (let i = 0; i < 10; i++) {
+    const got = await read(await ask('/api/job', { search: `?w=SINK${i}` }));
+    draws.add(got.body.job?.id);
+    await env.DB.prepare(
+      "UPDATE lawn_jobs SET state = 'approved', worker = NULL, claimed_at = NULL WHERE id = ?1"
+    ).bind(got.body.job?.id).run();
+  }
+  check('a lawn somebody has already put back is offered last',
+    draws.size === 1 && draws.has(idFor(851)),
+    `${[...draws].join(', ')} -- an awkward lawn belongs at the bottom, not in `
+    + 'rotation at the top');
+}
+
 /* ----------------------------------- the skip that came back anyway */
 /*
  * REPORTED BY A VOLUNTEER: "when they click they can't do this one, they get
@@ -659,28 +756,39 @@ const read = async (res) => ({ status: res.status, body: await res.json() });
    */
   await env.DB.prepare("UPDATE lawn_jobs SET state = 'done'").run();
   await seed(2, 600);
-  await read(await ask('/api/job', { search: '?w=SLOW' }));
+  const mine = await read(await ask('/api/job', { search: '?w=SLOW' }));
+  const theirs = mine.body.job.id;
+  const rivalId = theirs === idFor(600) ? idFor(601) : idFor(600);
 
   /* Exactly what releaseStale does to an abandoned claim. */
   await env.DB.prepare(
     `UPDATE lawn_jobs SET state = 'approved', worker = NULL, claimed_at = NULL
       WHERE id = ?1`
-  ).bind(idFor(600)).run();
+  ).bind(theirs).run();
 
   const r = await read(await ask('/api/job/skip', {
-    method: 'POST', body: { worker: 'SLOW', id: idFor(600), why: 'gave up' },
+    method: 'POST', body: { worker: 'SLOW', id: theirs, why: 'gave up' },
   }));
   check('skipping a claim that already expired still moves the lawn',
     r.body.moved === true,
     'it used to answer ok:true having changed nothing at all');
 
   const row = await env.DB.prepare('SELECT created_at, note FROM lawn_jobs WHERE id = ?1')
-    .bind(idFor(600)).first();
+    .bind(theirs).first();
   const rival = await env.DB.prepare('SELECT created_at FROM lawn_jobs WHERE id = ?1')
-    .bind(idFor(601)).first();
-  check('to the back of the queue, behind the ones it was ahead of',
+    .bind(rivalId).first();
+  check('and the note that sinks it in the queue is written',
+    /^skipped by /.test(row.note || ''),
+    `${row.note} -- the handout order reads this prefix, so a note in another `
+    + 'shape stops sinking anything and nothing throws');
+  check('and it is still marked as touched just now',
     row.created_at > rival.created_at, `${row.created_at} vs ${rival.created_at}`);
   check('and the reason is still recorded', /gave up/.test(row.note || ''), row.note);
+
+  const next = await read(await ask('/api/job', { search: '?w=SLOW' }));
+  check('so the lawn they gave up on is not the one handed back',
+    next.body.job?.id === rivalId,
+    `${next.body.job?.id} -- this is the loop the whole block exists for`);
 }
 
 {
@@ -702,6 +810,92 @@ const read = async (res) => ({ status: res.status, body: await res.json() });
     .bind(idFor(700)).first();
   check('and it stays with the worker holding it',
     held.state === 'claimed' && held.worker === 'HOLDER', JSON.stringify(held));
+}
+
+/* ------------------------- "I cannot do this one", on the paid route */
+/*
+ * REPORTED TWICE, AND THE SECOND REPORT WAS THE USEFUL ONE: "when they click
+ * they can't do this one, they get the same one back". The first round of this
+ * was fixed for a volunteer. The person was on the PAID route, where the button
+ * was not merely unreliable -- it could not work at all.
+ *
+ * The paid route is the one route where the worker id is not in the request:
+ * it comes from the session, because it decides who gets paid. The browser
+ * posted the skip with no `via`, so the server looked in the body instead,
+ * found nothing there, and refused the whole request. Nothing reads that
+ * response, so the press looked as though it had worked, the claim stayed
+ * standing, and the next claim RESUMED it -- before the exclusion, the sink or
+ * the "that is the only one left" sentence were ever reached.
+ */
+{
+  await env.DB.prepare("UPDATE lawn_jobs SET state = 'done'").run();
+  await seed(2, 900);
+
+  const me = await findOrCreateUser(env, {
+    email: 'tracer@example.com', name: 'A Tracer', provider: 'email',
+  });
+  const { token } = await createSession(env, me.id);
+  const signedIn = { cookie: `${SESSION_COOKIE}=${token}` };
+
+  const got = await read(await ask('/api/job', { search: '?via=paid', ...signedIn }));
+  check('a signed-in paid tracer is handed a lawn',
+    got.status === 200 && got.body.route === 'paid', JSON.stringify(got.body).slice(0, 140));
+  const theirs = got.body.job.id;
+  check('and it is recorded against the ACCOUNT, not against anything they typed',
+    (await env.DB.prepare('SELECT worker FROM lawn_jobs WHERE id = ?1')
+      .bind(theirs).first()).worker === me.id,
+    'this is why the skip has to read the session too');
+
+  /*
+   * THE OLD CLIENT'S SKIP, KEPT AS THE WITNESS. With no `via` there is no
+   * identity to be had on this route, and the honest answer is a refusal --
+   * which is what the server gave, and what the browser threw away.
+   */
+  const blind = await read(await ask('/api/job/skip', {
+    method: 'POST', body: { worker: null, id: theirs }, ...signedIn,
+  }));
+  check('a skip that does not say which route it is on cannot name the worker',
+    blind.status === 400,
+    `${blind.status} -- and the page never looked at this, which is why the `
+    + 'button seemed to work while doing nothing');
+  check('and the lawn is still in their hands, as the report described',
+    (await env.DB.prepare('SELECT state FROM lawn_jobs WHERE id = ?1')
+      .bind(theirs).first()).state === 'claimed',
+    'the claim standing is what made the next request resume it');
+
+  /*
+   * BUT THE NEXT CLAIM STILL GETS THEM OUT OF IT. The browser sends `not`, and
+   * a claim that names the lawn the worker is holding releases it rather than
+   * resuming it -- so a skip that fails for ANY reason, offline or 500 or this
+   * one, cannot put somebody back in the loop.
+   */
+  const away = await read(await ask('/api/job', {
+    search: `?via=paid&not=${theirs}`, ...signedIn,
+  }));
+  check('a claim that says "anything but this one" is not handed that one back',
+    away.status === 200 && away.body.job?.id && away.body.job.id !== theirs,
+    `${away.body.job?.id} vs ${theirs}`);
+  const released = await env.DB.prepare('SELECT state, worker, note FROM lawn_jobs WHERE id = ?1')
+    .bind(theirs).first();
+  check('and the lawn they could not do is back in the queue for somebody else',
+    released.state === 'approved' && !released.worker, JSON.stringify(released));
+  check('marked so that it sinks rather than coming round again',
+    /^skipped by /.test(released.note || ''), released.note);
+
+  /* And with `via` on it, the button does its own job properly. */
+  const proper = await read(await ask('/api/job/skip', {
+    method: 'POST',
+    search: '?via=paid',
+    body: { id: away.body.job.id, why: 'all under canopy' },
+    ...signedIn,
+  }));
+  check('and a paid skip that carries its route moves the lawn itself',
+    proper.status === 200 && proper.body.moved === true, JSON.stringify(proper.body));
+  const back = await env.DB.prepare('SELECT state, worker, note FROM lawn_jobs WHERE id = ?1')
+    .bind(away.body.job.id).first();
+  check('putting it back with the reason on it',
+    back.state === 'approved' && !back.worker && /all under canopy/.test(back.note || ''),
+    JSON.stringify(back));
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);

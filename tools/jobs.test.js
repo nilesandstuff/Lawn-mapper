@@ -278,6 +278,48 @@ const NOW = Date.parse('2026-09-19T12:00:00Z');
   check('and keeps the same daily cap, for the same reason',
     !claimVerdict({ ...paid, submittedToday: DAILY_CAP }).ok,
     'a link posted in public is where one person could flood the queue');
+
+  /*
+   * THE CAP MUST NOT TURN INTO THE GATES, and it did.
+   *
+   * The open-link exemption used to read `isOpenLink(route) && submittedToday <
+   * DAILY_CAP`, so a worker who reached the cap fell straight past it into the
+   * gate loop -- where forty submitted maps with fewer than forty reviewed is
+   * "waiting", and the sentence they were handed was the probation one: your
+   * maps are with the reviewer, new workers do a few at a time, it is not a
+   * mark against you. Every clause of that is wrong for them. Nothing is being
+   * decided about them, and no review will lift it; it lifts at midnight.
+   *
+   * Reported by a paid tracer whose maps had all been approved, which is
+   * exactly the person the gates are not for. Checked on the WORDING as well
+   * as on the flags, because the flags are what a page titles the sheet with
+   * and the wording is what somebody actually reads.
+   */
+  for (const route of ['paid', 'volunteer']) {
+    const capped = claimVerdict({
+      route, now: NOW, submittedToday: DAILY_CAP,
+      /* Enough history to be past both gates, with nothing reviewed yet --
+         which is the state the gates would have called probation. */
+      submittedEver: DAILY_CAP, passed: 0, refused: 0,
+    });
+    check(`${route}: the cap is the cap and not a gate`,
+      !capped.ok && capped.capped === true && !capped.waiting && !capped.stopped,
+      JSON.stringify(capped));
+    check(`${route}: and it says nothing about being reviewed`,
+      !/review/i.test(capped.reason) && /daily limit/i.test(capped.reason),
+      capped.reason);
+  }
+
+  /*
+   * And a bad pass rate still cannot stop them, at the cap or under it. This is
+   * the same claim as the gate check above, made at the boundary where the old
+   * code changed its mind.
+   */
+  check('a refused history never stops an open-link worker',
+    !claimVerdict({
+      ...paid, submittedEver: 20, passed: 0, refused: 20, submittedToday: DAILY_CAP,
+    }).stopped,
+    'the batch cannot end for somebody it was never spending money on');
   check('and clears the time floor too',
     submissionVerdict({
       claimedAt: new Date(NOW - 5000).toISOString(), now: NOW, edited: true, route: 'paid',

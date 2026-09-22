@@ -296,6 +296,32 @@ export const routeFromLink = (raw) => {
 export const FREE_DETECTS_PER_JOB = 6;
 
 /**
+ * "That is the day's limit" -- written once, because it is reached from two
+ * different places and must not read like the gates from either.
+ *
+ * The cap and the gates are different in kind and a worker cannot tell them
+ * apart from the wording alone: one lifts at midnight whatever anybody does,
+ * the other lifts when a person has looked at their maps. So this says the
+ * number, says when it lifts, and says nothing at all about review -- which is
+ * the part that was wrong when an open-link worker at the cap was handed the
+ * probation sentence instead of this one.
+ *
+ * `capped` is carried so a page can title it "that is the day's lot" rather
+ * than "no lawn just now", and it is deliberately not the same flag as
+ * `waiting`: that one offers a Check again button, and checking again before
+ * tomorrow cannot help here.
+ */
+const capRefusal = (route) => ({
+  ok: false,
+  capped: true,
+  reason: `That is ${DAILY_CAP} today, which is the daily limit. `
+    + (isOpenLink(route)
+      ? 'It is a ceiling on the link rather than anything about your maps — '
+        + 'come back tomorrow and there will be more of the batch.'
+      : 'Come back tomorrow — the rest of the batch will still be here.'),
+});
+
+/**
  * Is this worker allowed another lawn right now, and if not, why not?
  *
  * Pure, and separated from the database on purpose: these rules are the whole
@@ -335,20 +361,36 @@ export function claimVerdict({
   if (trusted) return { ok: true, trusted: true };
 
   /*
-   * AND SOMEBODY WHO IS NOT BEING PAID AT ALL.
+   * AND SOMEBODY WHO CAME IN THROUGH A PUBLIC LINK.
    *
    * The gates exist to decide whether to keep spending money on a stranger.
-   * There is no money here: a volunteer followed a public link to do the owner
-   * a favour, and holding one at a five-map wall to wait for a review is a way
-   * of turning a good deed into a chore. The same goes for the time floor,
-   * which at worst refuses somebody's donated work outright.
+   * There is no committed money on either open route: a volunteer followed a
+   * public link to do the owner a favour, and somebody on the paid link is
+   * owed 75c for each map the owner APPROVES and nothing at all for one they
+   * do not. Holding either at a five-map wall to wait for a review is a way of
+   * turning a good deed into a chore. The same goes for the time floor, which
+   * at worst refuses donated work outright.
    *
-   * The daily cap below still applies, and it is the only thing that does --
-   * not as a judgement on anybody, but because one shared public link is the
-   * one place a single bad actor could empty the queue into the review pile in
-   * an afternoon. Everything they send is looked at by a person anyway.
+   * THE DAILY CAP IS THE ONLY THING THAT STILL APPLIES, and it returns from
+   * here rather than falling through -- which is the bug this shape fixes.
+   *
+   * It used to read `isOpenLink(route) && submittedToday < DAILY_CAP`, so an
+   * open-link worker who reached the cap fell past this line and into the
+   * gates, and was handed the probation wording: "that is 40 maps, and they
+   * are with the reviewer now... new workers do a few at a time". Every clause
+   * of that is wrong for them. They are not on probation, nothing is being
+   * decided about them, and waiting for a review would not help -- what they
+   * have hit is a ceiling that lifts at midnight. It was reported by a paid
+   * tracer whose maps had all been approved, which is exactly the person the
+   * gates are not for.
+   *
+   * The cap itself stays, and not as a judgement on anybody: a link posted in
+   * public is the one place a single bad actor could empty the queue into the
+   * review pile in an afternoon. Everything they send is looked at by a person
+   * anyway.
    */
-  if (isOpenLink(route) && submittedToday < DAILY_CAP) {
+  if (isOpenLink(route)) {
+    if (submittedToday >= DAILY_CAP) return capRefusal(route);
     return { ok: true, openLink: true };
   }
 
@@ -403,13 +445,7 @@ export function claimVerdict({
     }
   }
 
-  if (submittedToday >= DAILY_CAP) {
-    return {
-      ok: false,
-      reason: `That is ${DAILY_CAP} today, which is the daily limit. `
-        + 'Come back tomorrow — the rest of the batch will still be here.',
-    };
-  }
+  if (submittedToday >= DAILY_CAP) return capRefusal(route);
   /*
    * The floor is checked on the CLAIM as well as the submission, because a
    * worker who submits instantly and immediately takes another is the pattern

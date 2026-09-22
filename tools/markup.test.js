@@ -1464,5 +1464,61 @@ check('every class the code toggles is styled',
   }
 }
 
+/* --------------------------------------------- what job mode takes away */
+/*
+ * A REMOVAL IS A DECISION, AND IT IS INVISIBLE IN THE MARKUP.
+ *
+ * Job mode is the same app with a list of things hidden by CSS, which is the
+ * right shape -- a stripped copy would be a second copy, and the one people are
+ * paid to use is the last one that should drift. The cost is that the list is a
+ * selector in a stylesheet, and taking a control away from the people who use
+ * the app most is a one-line edit with nothing on screen to notice.
+ *
+ * Both of these have already gone wrong. The AI step was hidden on the
+ * reasoning that the outline is run for them once on arrival, which left a
+ * tracer who thought the outline was wrong with no way to try another method,
+ * another photograph, or trim the edge -- only corner-by-corner repair of
+ * somebody else's guess, which several said was slower than drawing it
+ * themselves. And the tips switch was reported as missing from the paid
+ * workflow when it was never hidden at all, which is its own argument for
+ * pinning the list: "is this control there" should be answerable by a test
+ * rather than by reading a stylesheet.
+ */
+{
+  const rules = [...css.matchAll(/body\.job-mode\s+([#.[][A-Za-z0-9_="\]-]+)/g)]
+    .map((m) => m[1]);
+  check('job mode is still a list of removals rather than a second page',
+    rules.length >= 4, rules.join(', '));
+
+  /* The tips switch, and the AI step with everything on it. */
+  for (const id of ['#toggle-tutorials', '#tab-detect', '#btn-detect', '#btn-to-detect',
+    '#imagery-source', '#model-choice', '#edge-ft', '#toggle-trees', '#btn-clear']) {
+    check(`a paid tracer still has ${id}`,
+      !rules.includes(id),
+      'taken away, and every one of these is a control somebody needs when the '
+      + 'automatic outline is worse than an empty map');
+  }
+
+  /* And the ones that genuinely do not exist for somebody with no account. */
+  for (const id of ['#account-btn', '#quota-badge', '#tab-saved', '#btn-finish']) {
+    check(`and is not shown ${id}`,
+      rules.includes(id),
+      'they have no account, and sending the map is what ends the task');
+  }
+
+  /*
+   * AND THE AI NOTICE DOES NOT FOLLOW THE AI TAB INTO JOB MODE. It ends "be
+   * sure to hit Finish, save, and see more options", and job mode has no Finish
+   * button -- a sheet telling somebody to press a button that is not there is
+   * how a worker decides the page is broken and abandons work already done.
+   */
+  check('the AI notice names the Finish button, which job mode removes',
+    /Finish, save, and see more options/.test(html) && rules.includes('#btn-finish'),
+    'if this stops being true the guard below is guarding nothing');
+  const notice = js.slice(js.indexOf('function showAiNotice'), js.indexOf('let sheetsOpen'));
+  check('so it is not shown on the paid queue',
+    /job-mode/.test(notice), notice.slice(0, 120));
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);

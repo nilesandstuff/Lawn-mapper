@@ -109,6 +109,22 @@ export const PROMPTS = [
 
 const shortId = (id) => String(id || '').replace(/-/g, '').slice(0, 8).toUpperCase();
 
+/**
+ * How a note says "somebody put this lawn back", and why it is a constant.
+ *
+ * The handout order READS this now. Lawns are handed out shuffled so nobody
+ * gets twenty maps from one county, and a random order cannot also sink a lawn
+ * people keep refusing -- which moving created_at used to do. So the note is
+ * the signal, and a prefix typed out in three places would be a prefix that
+ * eventually disagrees with the LIKE pattern in the query and quietly stops
+ * sinking anything.
+ *
+ * A screener's own note on an approved row never starts with this: theirs is
+ * typed into the admin console about an address, and this is written by the
+ * skip handler about a claim.
+ */
+export const SKIP_NOTE = 'skipped by ';
+
 /** The fields a worker's browser needs, and nothing else about the row. */
 const jobForWorker = (row) => ({
   id: row.id,
@@ -226,7 +242,40 @@ async function claimFor(worker, route, env, now, json, origin, avoid = '') {
     `SELECT * FROM lawn_jobs WHERE worker = ?1 AND state = 'claimed'
       ORDER BY claimed_at ASC LIMIT 1`
   ).bind(worker).first();
-  if (open) {
+
+  /*
+   * UNLESS IT IS THE ONE THEY HAVE JUST SAID THEY CANNOT DO.
+   *
+   * This is the last hole in "can't do this one", and it swallowed the whole
+   * fix: if the skip did not land, the claim is still standing, and the resume
+   * above hands the very same lawn back -- before the queue, the exclusion and
+   * the `only` sentence are ever reached. The worker presses the button, waits,
+   * and gets their lawn back with nothing said. That is precisely the report.
+   *
+   * And the skip not landing was the ordinary case on the paid route, not a
+   * rare one: the browser posted it with no `via`, so the server read the id
+   * out of the request body -- which on that route is empty, because the
+   * identity comes from the session. Every paid skip was refused with "need a
+   * worker and a job", a 400 the page does not look at. The browser now sends
+   * `via`; this releases the claim anyway, so a skip that fails for any other
+   * reason -- offline, a dropped request, a 500 -- cannot put somebody back in
+   * the loop either.
+   *
+   * Only ever their own claim, and only the id they nominated.
+   */
+  if (open && avoid && open.id === String(avoid)) {
+    await env.DB.prepare(
+      `UPDATE lawn_jobs
+          SET state = 'approved', worker = NULL, claimed_at = NULL, route = NULL,
+              created_at = ?3, note = ?4
+        WHERE id = ?1 AND worker = ?2 AND state = 'claimed'`
+    ).bind(
+      open.id, worker, new Date(now).toISOString(),
+      /* The same prefix the skip handler writes, because the handout order
+         reads it to sink a lawn people keep putting back. */
+      `${SKIP_NOTE}${worker}: the skip did not reach the server`,
+    ).run();
+  } else if (open) {
     /* The route travels with the resume too: without it a crowd worker
        sees no completion code on the path they take most often, which is
        reopening the link after closing the tab. */
@@ -288,9 +337,11 @@ async function claimFor(worker, route, env, now, json, origin, avoid = '') {
       error: 'Not yet',
       reason: verdict.reason,
       wait: verdict.wait || 0,
-      /* Two different shapes of "no", and the page says different things
-         about them: one is a wait, the other is the end of the road. */
+      /* Three different shapes of "no", and the page says different things
+         about them: one is a wait on a person, one is a ceiling that lifts by
+         itself at midnight, and one is the end of the road. */
       waiting: Boolean(verdict.waiting),
+      capped: Boolean(verdict.capped),
       stopped: Boolean(verdict.stopped),
     }, 429, origin);
   }
@@ -331,28 +382,52 @@ async function claimFor(worker, route, env, now, json, origin, avoid = '') {
    * called everybody a crowd worker by default. See lawn_jobs.route.
    */
   /*
-   * THE ONE THEY JUST SKIPPED IS TRIED LAST, not merely sent to the back.
+   * THE ONE THEY JUST SKIPPED IS TRIED LAST, not merely sunk.
    *
-   * Moving created_at was supposed to be enough and is not, for two reasons
-   * that both end with the same lawn coming straight back at somebody who has
-   * just said they cannot do it. A batch with ONE approved lawn in it has a
-   * back of the queue that is also the front. And a claim that had already
-   * gone stale leaves the skip with nothing to update at all -- see the skip
-   * handler, which now says so instead of reporting success.
+   * Sinking it was supposed to be enough and is not, for two reasons that both
+   * end with the same lawn coming straight back at somebody who has just said
+   * they cannot do it. A batch with ONE approved lawn in it has a bottom of the
+   * queue that is also the top. And a claim that had already gone stale leaves
+   * the skip with nothing to update at all -- see the skip handler, which now
+   * says so instead of reporting success.
    *
    * So the id is excluded outright, and only if that finds nothing is it
    * offered again with `only` set, which the browser turns into a sentence.
    * Handing it back silently is the one thing that must not happen: it reads
    * as the button being broken, and the person stops pressing it.
    */
+  /*
+   * SHUFFLED, NOT OLDEST FIRST -- and the reason is the shape of the queue
+   * rather than fairness.
+   *
+   * Addresses arrive a county at a time, from one county's parcel server in
+   * one import, so created_at is sorted by county almost perfectly. Handing
+   * out the oldest approved lawn therefore walked one county to exhaustion
+   * before starting the next, and a tracer doing twenty maps in an evening got
+   * twenty maps from the same few streets. Several said so. It is worse than
+   * dull: the same suburb over and over is the least informative thing the
+   * corpus can be fed, because what the detector is bad at is the variety --
+   * and a volunteer who is bored stops.
+   *
+   * RANDOM() over the approved rows, which needs no column and no ordering to
+   * maintain. It costs a scan of the approved rows, and there are hundreds of
+   * them, not millions.
+   *
+   * ONE THING IS STILL ORDERED: a lawn somebody has put back sinks below the
+   * rest, which is where an awkward one belongs. It used to be done by moving
+   * created_at, and that stopped meaning anything the moment the order became
+   * random -- so the skip note is read instead. See SKIP_NOTE, which both
+   * places that release a claim write.
+   */
   const pick = async (exclude) => env.DB.prepare(
     `UPDATE lawn_jobs
         SET state = 'claimed', worker = ?1, claimed_at = ?2, route = ?3
       WHERE id = (SELECT id FROM lawn_jobs WHERE state = 'approved'
                     AND (?4 = '' OR id != ?4)
-                   ORDER BY created_at ASC LIMIT 1)
+                   ORDER BY (CASE WHEN note LIKE ?5 THEN 1 ELSE 0 END), RANDOM()
+                   LIMIT 1)
     RETURNING *`
-  ).bind(worker, claimedAt, route, exclude).first();
+  ).bind(worker, claimedAt, route, exclude, `${SKIP_NOTE}%`).first();
 
   let onlyOneLeft = false;
   let taken = await pick(String(avoid || ''));
@@ -468,19 +543,20 @@ export async function handleJobs(request, url, env, origin, ctx, json) {
      * The note is kept because several skips on one lawn is a signal the owner
      * should see, even though no single skip is.
      *
-     * AND IT GOES TO THE BACK OF THE QUEUE, which was a bug found by the
-     * browser test. The queue hands out the OLDEST approved lawn, so a skip
-     * that only cleared the claim handed the very same lawn straight back to
-     * the person who had just said they could not do it -- a loop with no way
-     * out of it, on the one screen where somebody is being paid by the minute.
+     * AND IT SINKS BELOW THE REST OF THE QUEUE, which was a bug found by the
+     * browser test. The queue used to hand out the OLDEST approved lawn, so a
+     * skip that only cleared the claim handed the very same lawn straight back
+     * to the person who had just said they could not do it -- a loop with no
+     * way out of it, on the one screen where somebody is being paid by the
+     * minute.
      *
-     * Moving created_at is enough and costs nothing: it is only ever read as
-     * the handout order (the screening queue reads it too, but that is over
-     * 'candidate' rows and a skip can only happen to an approved one). It also
-     * does something useful on its own -- a lawn several people have skipped
-     * sinks, which is exactly where an awkward one belongs.
+     * THE NOTE IS WHAT SINKS IT, not created_at. Moving created_at was the
+     * first fix and it worked only while the order was chronological; lawns
+     * are handed out shuffled now, so the note carries the signal instead --
+     * see SKIP_NOTE and the pick query. created_at is still moved, because the
+     * admin screens read it as when this lawn was last touched.
      */
-    const note = `skipped by ${worker}: ${String(body?.why || '').slice(0, 120)}`;
+    const note = `${SKIP_NOTE}${worker}: ${String(body?.why || '').slice(0, 120)}`;
     const at = new Date(now).toISOString();
 
     const released = await env.DB.prepare(
