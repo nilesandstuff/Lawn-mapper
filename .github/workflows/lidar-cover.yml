@@ -1,0 +1,62 @@
+name: 17. Is there lidar under our lawns
+
+# PHASE ONE OF THE LIDAR IDEA, and it exists to be able to abandon the idea in
+# a minute instead of a day.
+#
+# E8 in docs/DETECTOR-FINDINGS.md is the reasoning: a laser pulse gets returns
+# from UNDER a tree canopy, which would put a measurement where this project
+# currently has an inference. Phase two is the expensive half -- PDAL over the
+# public point clouds, a canopy height model per frame, new feature columns,
+# another training run -- and all of it is wasted if the lawns we already have
+# were never flown.
+#
+# So this asks the one question that decides it: for every approved map, is
+# there a 3DEP project over that point, from when, and how dense. One 8.7 MB
+# download and a read of the corpus.
+#
+# FREE, and nothing is written. It reads the corpus and a public file. No point
+# clouds are fetched, nothing is trained, nothing is published, and the run
+# leaves no trace but its log.
+#
+# THE ANSWER IS AT THE BOTTOM OF THE LOG, including the verdict, because this
+# project is read from a phone.
+on:
+  workflow_dispatch:
+
+jobs:
+  cover:
+    name: Match the corpus against the 3DEP footprints
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      # The pure half first, offline, because the ways this tool can be wrong
+      # are all quiet ones: a transposed point-in-polygon reports "no lidar
+      # anywhere" on a corpus that is entirely flown, and that reads as a fact
+      # about the country rather than as a bug.
+      - name: Check the arithmetic before trusting the answer
+        run: node tools/lidar-cover.test.js
+
+      - name: Look up every approved lawn
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node tools/lidar-cover.js
+
+      - name: If that failed
+        if: always()
+        run: |
+          echo
+          echo "Nothing was spent, written or changed by this run either way."
+          echo
+          echo "If it stopped early, the two reasons are the footprint file"
+          echo "moving (it is fetched from hobuinc/usgs-lidar on GitHub) and"
+          echo "the database being unreachable."
