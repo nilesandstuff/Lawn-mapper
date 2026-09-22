@@ -51,9 +51,16 @@ on:
           - facebook/dinov2-large
           - facebook/dinov2-with-registers-base
       size:
-        description: 'Input size in pixels. All three work for every model. Bigger is finer and slower.'
+        description: 'Input size in pixels. All of them work for every model. Bigger is finer and slower.'
         type: choice
-        default: '672'
+        # 896, NOT 672, and the difference is a recorded decision rather than a
+        # preference. H9: 672 -> 896 moved the eye-only row 8.2 points better
+        # against a byte-identical control, which is the cleanest result this
+        # project has. 1280 holds the single best number (26.1%) but 896 against
+        # 1280 was left UNSETTLED on 2026-09-19 pending more corpus, with
+        # "work at 896 in the meantime, for the run times". A default of 672 is
+        # a size that measurement has already retired.
+        default: '896'
         options:
           - '448'
           - '672'
@@ -72,7 +79,14 @@ on:
           # costs nothing and a tight one wastes a run at its last step.
           - '1280'
       publish:
-        description: 'Publish the result if it wins'
+        # IT DOES NOT CHECK WHETHER IT WON. This said "publish the result if it
+        # wins", and the code has no such condition: EXPORT_MODEL=true always
+        # writes model/lawn-head.json, and it writes the COLOUR-AND-TEXTURE row
+        # rather than the winner, because that is the only one a browser can
+        # run. Leave it off unless the table says the head is worth having --
+        # the description was the only thing standing between a losing run and
+        # a published model.
+        description: 'Write the colour-and-texture head to R2 for developer mode (does NOT check whether it beat SAM)'
         type: boolean
         default: false
       render:

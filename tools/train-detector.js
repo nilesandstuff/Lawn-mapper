@@ -1189,6 +1189,21 @@ async function main() {
         mpp: metresPerPixel(frame, GRID),
         detected: row.detected_shapes
           ? maskOf(geometries(parse(row.detected_shapes)), frame, GRID) : null,
+        /*
+         * WHICH DETECTOR DREW THE OUTLINE THIS LAWN IS SCORED AGAINST.
+         *
+         * "SAM, on the same N lawns" is the line every number in
+         * docs/DETECTOR-FINDINGS.md is measured against, and it was an
+         * assumption rather than a reading: the baseline is whatever sits in
+         * `detected_shapes`, and that is whatever method the tracer happened to
+         * press. There is a free land-cover method now, so a corpus can carry a
+         * mix -- and a mixed baseline quietly relabels the line to beat while
+         * every table above it still says SAM.
+         *
+         * Kept per lawn and reported in one line below. It changes no
+         * arithmetic; it stops the arithmetic being read as something it is not.
+         */
+        drawnBy: row.model || null,
         run: `${row.model || 'no model'} / ${row.mode || 'no mode'}`,
       });
       /*
@@ -1554,6 +1569,36 @@ async function main() {
 
   if (samMed !== null) {
     console.log(`\n  SAM, on the same ${samCount} lawns             ${samMed.toFixed(1)}%`);
+
+    /*
+     * AND WHO ACTUALLY DREW THAT LINE.
+     *
+     * The baseline is whatever is stored in `detected_shapes`, which is
+     * whatever method the tracer pressed -- and there is a free land-cover
+     * method now, so a corpus can carry a mix. One line when it is all one
+     * method, a breakdown when it is not, because a mixed baseline is not the
+     * "SAM" that every table in docs/DETECTOR-FINDINGS.md is compared against
+     * and the difference is invisible from the number alone.
+     */
+    const drew = new Map();
+    for (let i = 0; i < lawns.length; i++) {
+      if (!samScores[i]) continue;
+      const by = lawns[i].drawnBy || 'not recorded';
+      if (!drew.has(by)) drew.set(by, []);
+      drew.get(by).push(samScores[i].errorPct);
+    }
+    const kinds = [...drew.entries()].sort((a, b) => b[1].length - a[1].length);
+    if (kinds.length === 1) {
+      console.log(`  (all ${samCount} drawn by ${kinds[0][0]})`);
+    } else {
+      console.log('\n  THAT LINE IS A MIX, so it is not the SAM baseline the findings');
+      console.log('  file quotes. Which method drew each stored outline:');
+      for (const [by, list] of kinds) {
+        console.log(`    ${String(by).padEnd(16).slice(0, 16)} ${String(list.length).padStart(3)} lawns  `
+          + `${median(list).toFixed(1)}% out on the middle one`);
+      }
+      console.log('  Compare like with like before quoting the gap anywhere.');
+    }
   }
 
   console.log('');
