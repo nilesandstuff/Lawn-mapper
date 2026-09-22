@@ -628,6 +628,47 @@ const CONFIGS = [
 ];
 
 /**
+ * THE SAME SIX, TRAINED ONLY ON GROUND SOMEBODY COULD ACTUALLY SEE.
+ *
+ * THE QUESTION. `truth` is every shape the tracer drew, and that INCLUDES the
+ * patches they marked "inferred, not seen" -- ground under a canopy that they
+ * judged to be lawn without being able to look at it. The head is therefore
+ * told to answer 1 on pixels whose appearance is indistinguishable from woods,
+ * and the same dark canopy is labelled 1 on a lawn with one tree in it and 0 on
+ * a wooded lot. From the model's side that is not a hard case, it is a
+ * contradiction: the label is not a function of anything it can see.
+ *
+ * So does carrying that contradiction cost the visible half anything? Nobody
+ * knows. The inferred marks have been scored separately since the column was
+ * added and have never been separated in TRAINING, so the question has been
+ * open by omission rather than by decision.
+ *
+ * DON'T-CARE, NOT ZERO, and the difference is the whole design. Labelling the
+ * inferred pixels 0 would teach "canopy means not lawn", which is a different
+ * wrong answer and would wreck the thing a second stage would be built on.
+ * Dropping them from the sample says only "do not grade me on this".
+ *
+ * PAIRED IN ONE RUN rather than compared across two, because H13 says a
+ * backbone row occasionally comes back different on an identical re-run, and a
+ * two-run comparison could not tell that apart from a result. Every twin here
+ * shares the corpus, the folds, the seed and the feature extraction with its
+ * original; the only difference is which pixels were sampled.
+ *
+ * WHAT TO READ, and reading the wrong column would invert the conclusion: the
+ * SEEN column is the experiment. The inferred column is expected to get much
+ * worse -- nothing taught these rows what to say there -- and that is the
+ * arrangement working, not a regression.
+ */
+const seenOnlyTwin = (cfg) => ({
+  ...cfg,
+  name: `${cfg.name} (seen only)`,
+  seenOnly: true,
+  /* Which row it is the twin OF, so the comparison can be printed rather than
+     eyeballed off two names that differ by a suffix. */
+  twinOf: cfg.name,
+});
+
+/**
  * One fold: train on every lawn but `held`, then answer `held`.
  *
  * ITS OWN FUNCTION SO THAT THE EXCLUSION CAN BE TESTED. Everything about this
@@ -662,6 +703,20 @@ export function runFold(lawns, held, opts = {}) {
     for (let k = 0; k < perLawn; k++) {
       const p = Math.floor(rand() * n);
       if (L.within && !L.within[p]) continue;
+      /*
+       * GROUND NOBODY COULD SEE IS NOT EVIDENCE, when the configuration says
+       * so. See seenOnlyTwin: the pixel is dropped rather than labelled 0,
+       * because 0 would teach "canopy means not lawn" and that is a different
+       * wrong answer.
+       *
+       * Dropped rather than resampled, which is the same thing the property-line
+       * test above does one line earlier: a lawn with a lot of marked ground
+       * contributes fewer rows, and having less visible evidence to offer is
+       * exactly what is true of it. H6 puts marked ground at 5% of a typical
+       * map, so the sample loss is small -- but it is a real difference between
+       * a row and its twin and is not the effect being measured.
+       */
+      if (cfg.seenOnly && L.inferred && L.inferred[p]) continue;
       picked.push([L, p]);
       ys.push(L.truth[p]);
     }
@@ -817,6 +872,12 @@ export function runFold(lawns, held, opts = {}) {
     mine: compare(got, test.truth, test.within),
     theirs: test.detected ? compare(test.detected, test.truth, test.within) : null,
     trainedOn,
+    /* How many pixels the head actually learnt from. Returned because a
+       configuration can now DROP samples -- see seenOnly -- and a flag that
+       silently failed to reach the sampling would produce a twin identical to
+       its original, which is also a legitimate result of the experiment. The
+       two are indistinguishable from the report and not from this number. */
+    sampled: picked.length,
     collapsed: judged > 0 && (lit === 0 || lit === judged),
     crispEdgePct: edge?.crispPct ?? null,
     softEdgePct: edge?.softPct ?? null,
@@ -1296,6 +1357,25 @@ async function main() {
   const scales = py ? 1 : 2;
   const runnable = CONFIGS.filter((c) => rowWidth(c, hasEye, scales) > 0
     && (!c.backbone || hasEye));
+
+  /*
+   * AND THE SEEN-ONLY TWINS, when asked for and when there is anything to
+   * separate.
+   *
+   * Off by default because it doubles the run, and pointless when no map has
+   * been marked -- with nothing inferred, a twin is a byte-identical copy of
+   * its original and half the run would be spent proving that.
+   */
+  const twinsWanted = /^(1|true|yes)$/i.test(String(process.env.SEEN_ONLY_TWINS || ''));
+  const anyMarked = lawns.some((L) => L.inferred);
+  if (twinsWanted && anyMarked) {
+    runnable.push(...runnable.slice().map(seenOnlyTwin));
+    console.log(`Also training ${runnable.length / 2} seen-only twins: the same rows `
+      + 'with ground nobody could see dropped from the sample.\n');
+  } else if (twinsWanted) {
+    console.log('No map has any inferred marks, so a seen-only twin would be an '
+      + 'identical copy. Skipped.\n');
+  }
   const table = [];
 
   /*
@@ -1358,8 +1438,16 @@ async function main() {
   }
 
   /* The per-lawn detail, for the best configuration only -- twenty lines per
-     configuration would bury the comparison the run exists to make. */
-  const best = table.slice().sort((a, b) => a.med - b.med)[0];
+     configuration would bury the comparison the run exists to make.
+     *
+     * TWINS ARE EXCLUDED FROM "BEST". A seen-only row is an experiment about
+     * training labels, not a candidate model: its headline error includes the
+     * inferred ground it was deliberately never taught, so letting it win would
+     * draw the pictures and set the verdict for a configuration that is losing
+     * on purpose. Its own comparison is printed below, on the column that
+     * means something for it. */
+  const contenders = table.filter((t) => !t.cfg.twinOf);
+  const best = contenders.slice().sort((a, b) => a.med - b.med)[0];
   if (best) {
     console.log(`Lawn by lawn, under "${best.cfg.name}":\n`);
     for (const r of best.rows) {
@@ -1456,6 +1544,64 @@ async function main() {
         + `${(t.seen === null ? '  --' : t.seen.toFixed(1)).padStart(5)}%  `
         + `${(t.guess === null ? '  --' : t.guess.toFixed(1)).padStart(6)}%`
       );
+    }
+
+    /* ------------------------------------------------ the seen-only twins */
+    /*
+     * THE EXPERIMENT, PRINTED AS THE ONE COMPARISON IT IS.
+     *
+     * Twelve rows in the tables above and only six numbers in them matter:
+     * each twin's SEEN error against its original's. Left to be read off the
+     * big table, the eye goes to the headline column instead -- which is the
+     * wrong one, because the headline includes the inferred ground the twins
+     * were deliberately never taught. See seenOnlyTwin.
+     */
+    const twins = table.filter((t) => t.cfg.twinOf);
+    if (twins.length) {
+      console.log('\n  DOES TRAINING ON GROUND NOBODY COULD SEE COST THE VISIBLE HALF?');
+      console.log('  Each row against its twin, on SEEN ground only. Lower is better;');
+      console.log('  a minus in the last column means dropping the guesses helped.\n');
+      console.log('  what it looked at                 as-is  seen-only   change');
+      let best = null;
+      for (const t of twins) {
+        const base = table.find((o) => o.cfg.name === t.cfg.twinOf);
+        if (!base || base.seen === null || t.seen === null) continue;
+        const delta = t.seen - base.seen;
+        if (best === null || delta < best) best = delta;
+        console.log(
+          `  ${t.cfg.twinOf.padEnd(32).slice(0, 32)} `
+          + `${base.seen.toFixed(1).padStart(5)}%  `
+          + `${t.seen.toFixed(1).padStart(8)}%  `
+          + `${(delta >= 0 ? '+' : '') + delta.toFixed(1)}`.padStart(8)
+        );
+      }
+      /*
+       * AND THE BAR IT HAS TO CLEAR, said next to the numbers rather than left
+       * in a document nobody has open. H7: one map is worth up to 10 points at
+       * this corpus size, and H13: a backbone row can move ~3 on an identical
+       * re-run. A 2-point improvement here is not a result.
+       */
+      console.log('\n  Read against H7 and H13 in docs/DETECTOR-FINDINGS.md before');
+      console.log('  concluding anything: under about 3 points is re-run noise on a');
+      console.log('  backbone row, and the corpus itself is worth up to 10.');
+      if (best !== null && best <= -3) {
+        console.log(`\n  The best twin is ${(-best).toFixed(1)} points better on visible ground.`);
+        console.log('  Worth a repeat run of the same pair before it is believed.');
+      } else if (best !== null && best >= 3) {
+        console.log(`\n  Every twin is worse, the best by ${best.toFixed(1)} points. So the`);
+        console.log('  inferred labels were HELPING the visible half, which is the');
+        console.log('  opposite of what this was built to test. Do not explain it away.');
+      } else {
+        console.log('\n  Nothing moved beyond the noise either way, so the inferred');
+        console.log('  labels are neither the problem nor the help they might have been.');
+      }
+      /*
+       * The other half of the pair, stated so nobody reports it as a loss. The
+       * twins were never taught what to say under a canopy and the inferred
+       * column measures exactly that ground.
+       */
+      console.log('\n  The twins\' INFERRED column is expected to be much worse. Nothing');
+      console.log('  taught them what is under a tree; that is the arrangement, not a fault.');
     }
   } else {
     console.log('\n  Nothing is marked "inferred, not seen" yet, so every pixel');
@@ -1736,7 +1882,7 @@ async function main() {
       }
     }
 
-    const bestMed = Math.min(...table.map((t) => t.med));
+    const bestMed = Math.min(...contenders.map((t) => t.med));
     console.log(`\nThe best of them is ${bestMed.toFixed(1)}% against SAM's ${samMed.toFixed(1)}% -- a factor of`);
     console.log(`${(bestMed / samMed).toFixed(1)}, which is not a gap that settings close. With ${lawns.length} lawns`);
     console.log('the honest reading is that there is not enough to learn from yet.');

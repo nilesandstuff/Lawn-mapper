@@ -552,6 +552,132 @@ const paint = (px, w, x0, y0, pw, ph, [r, g, b]) => {
     + 'the same number for both would mean the held-out lawn is not being read');
 }
 
+/* ---------------------------------- ground nobody could see, left out */
+/*
+ * THE SEEN-ONLY TWIN, AND THE ONE WAY IT COULD BE A LIE.
+ *
+ * `truth` includes the patches a tracer marked "inferred, not seen", so the
+ * head is normally taught to answer 1 on ground whose appearance is
+ * indistinguishable from woods. The twin rows drop those pixels from the
+ * sample to find out whether carrying that contradiction costs the visible
+ * half anything.
+ *
+ * IF THE FLAG DOES NOT REACH THE SAMPLING, the twin trains on exactly the same
+ * pixels as its original and comes back with the same number -- and "no
+ * difference" is precisely the result the experiment might legitimately
+ * produce. A silent no-op and a real null result are indistinguishable in the
+ * report, which is the whole reason this is a test and not an eye.
+ *
+ * So: a lawn whose inferred half is labelled lawn and looks like the
+ * NOT-lawn, with the flag on and off. Trained on it, the head must learn to
+ * call that colour lawn; trained without it, it must not.
+ */
+{
+  console.log('\n--- leaving out what nobody could see ---');
+  const { runFold } = await import('./train-detector.js');
+  const { imageFeatures } = await import('../public/lib/features.js');
+
+  const G = 64;
+  /*
+   * Three bands, and the middle one is the whole point. The top is plainly
+   * grass and the bottom plainly pavement; the middle is PAVEMENT-COLOURED and
+   * labelled lawn, because the tracer marked it as ground they could not see.
+   *
+   * That is the pathology in miniature: the label is not a function of anything
+   * in the feature row, so a head trained on it has nothing to learn and can
+   * only split the difference. Which is exactly what it does -- the first
+   * version of this test asserted the as-is head would CALL that band lawn, and
+   * it came back at 512 of 1024, a coin flip, every time.
+   */
+  const makeLawn = (seedColour) => {
+    const px = new Uint8Array(G * G * 4);
+    const truth = new Uint8Array(G * G);
+    const inferred = new Uint8Array(G * G);
+    for (let y = 0; y < G; y++) {
+      for (let x = 0; x < G; x++) {
+        const i = y * G + x;
+        const visible = y < 24;
+        const guessed = y >= 24 && y < 40;
+        truth[i] = visible || guessed ? 1 : 0;
+        inferred[i] = guessed ? 1 : 0;
+        const [r, g, b] = visible ? [60, 130 + seedColour, 55] : [140, 138, 135];
+        px[i * 4] = r; px[i * 4 + 1] = g; px[i * 4 + 2] = b; px[i * 4 + 3] = 255;
+      }
+    }
+    return {
+      cheap: imageFeatures(px, G, G, MPP), width: FEATURE_COUNT,
+      truth, inferred, within: null, detected: null,
+    };
+  };
+
+  const lawns = [makeLawn(0), makeLawn(6), makeLawn(-6), makeLawn(3), makeLawn(-3)];
+  const opts = { perLawn: 1200, grid: G, width: FEATURE_COUNT };
+  const asIs = runFold(lawns, 2, { ...opts, cfg: { colour: true, backbone: false, dims: 0 } });
+  const seen = runFold(lawns, 2, {
+    ...opts, cfg: { colour: true, backbone: false, dims: 0, seenOnly: true },
+  });
+
+  /*
+   * Counted on the dark band only. The two rows agree everywhere else by
+   * construction, so a whole-frame number would dilute the one difference
+   * under test.
+   */
+  const darkCalledLawn = (got) => {
+    let n = 0;
+    for (let y = 24; y < 40; y++) for (let x = 0; x < G; x++) if (got[y * G + x]) n++;
+    return n;
+  };
+  const band = 16 * G;
+
+  /*
+   * FIRST, THE MECHANISM, because everything below is about what the head
+   * DECIDED and a flag that never reached the sampling would leave the twin an
+   * exact copy -- which is also a legitimate outcome of the real experiment.
+   * The two are indistinguishable in the report and not from this count.
+   */
+  check('seen-only actually drops the marked pixels from the sample',
+    seen.sampled < asIs.sampled && seen.sampled > asIs.sampled * 0.5,
+    `${seen.sampled} rows against ${asIs.sampled} -- a quarter of each lawn is `
+    + 'marked here, so an equal count would mean the flag reached nothing');
+
+  check('trained as-is, the head can only flip a coin on the unseen ground',
+    darkCalledLawn(asIs.predicted) > band * 0.25 && darkCalledLawn(asIs.predicted) < band * 0.75,
+    `${darkCalledLawn(asIs.predicted)} of ${band} -- told to answer 1 on a colour it `
+    + 'is elsewhere told to answer 0 on, it has nothing to learn and lands in between');
+
+  check('and trained seen-only it is decisive instead',
+    darkCalledLawn(seen.predicted) < band * 0.1,
+    `${darkCalledLawn(seen.predicted)} of ${band} -- not the right answer for a real `
+    + 'lawn, and the point: the contradiction is gone from the visible half, and what '
+    + 'is under a tree becomes a separate question rather than a corrupted label');
+
+  /*
+   * AND THE VISIBLE HALF IS STILL ANSWERED. A twin that fixed the dark band by
+   * forgetting what grass looks like would pass the check above and be useless.
+   */
+  const brightCalledLawn = (got) => {
+    let n = 0;
+    for (let y = 0; y < 24; y++) for (let x = 0; x < G; x++) if (got[y * G + x]) n++;
+    return n;
+  };
+  check('while still finding the grass it can see',
+    brightCalledLawn(seen.predicted) > 24 * G * 0.8,
+    `${brightCalledLawn(seen.predicted)} of ${24 * G}`);
+
+  /*
+   * A LAWN WITH NOTHING MARKED IS UNTOUCHED by the flag, which is what makes
+   * the twin safe to run over a corpus where most maps carry no marks at all.
+   */
+  const plain = lawns.map((L) => ({ ...L, inferred: null }));
+  const a = runFold(plain, 1, { ...opts, cfg: { colour: true, backbone: false, dims: 0 } });
+  const b = runFold(plain, 1, {
+    ...opts, cfg: { colour: true, backbone: false, dims: 0, seenOnly: true },
+  });
+  check('with nothing marked, seen-only changes nothing at all',
+    a.mine.wrong === b.mine.wrong && a.sampled === b.sampled,
+    `${a.mine.wrong} against ${b.mine.wrong} wrong, ${a.sampled} against ${b.sampled} rows`);
+}
+
 /* ------------------------------------- can the backbone reach the head? */
 /*
  * THE CHECK THAT TELLS A BUG FROM A FINDING.

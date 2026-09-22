@@ -93,6 +93,20 @@ on:
         description: 'Draw the outlines it would hand the drawing tools, on /predictions.html'
         type: boolean
         default: true
+      seen_only:
+        # DOUBLES THE TABLE AND ROUGHLY THE RUN. Every configuration gets a twin
+        # trained with the "inferred, not seen" pixels dropped from the sample,
+        # so the two sit in ONE run and share the corpus, the folds and the
+        # seed -- which matters because H13 says a backbone row occasionally
+        # comes back different on an identical re-run, and a two-run comparison
+        # could not tell that apart from a result.
+        #
+        # READ THE SEEN COLUMN. The twins' headline and inferred figures include
+        # ground they were deliberately never taught; the run prints the paired
+        # comparison itself for that reason.
+        description: 'Also train a twin of each row with unseen ground dropped (doubles the run)'
+        type: boolean
+        default: false
 
 jobs:
   train:
@@ -166,6 +180,7 @@ jobs:
           FEATURES_DIR: feats
           EXPORT_MODEL: ${{ inputs.publish }}
           RENDER_PREDICTIONS: ${{ inputs.render }}
+          SEEN_ONLY_TWINS: ${{ inputs.seen_only }}
         run: node tools/train-detector.js
 
       - name: If that failed
