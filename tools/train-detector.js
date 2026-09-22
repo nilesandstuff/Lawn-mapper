@@ -46,6 +46,7 @@ import {
 import {
   classesFor, errorByClass, interiorError, classOverlap,
 } from './boundary.js';
+import { runSlug, runKeys, runRow, publishRunList } from './run-folder.js';
 import {
   loadBackbone, tiledFeatures, sampleAt, projection, project,
 } from './backbone.js';
@@ -168,6 +169,20 @@ const dumpSize = () => {
  * "here is the lawn it found".
  */
 const renderWanted = /^(1|true|yes)$/i.test(String(process.env.RENDER_PREDICTIONS || ''));
+
+/**
+ * WHAT THIS RUN IS TESTING, typed by whoever started it.
+ *
+ * The settings beside the pictures say what was different; they cannot say
+ * what the difference was meant to prove, and that is the part nobody can
+ * reconstruct later. "Does dropping unseen ground help the visible half" is a
+ * sentence; `seenOnly: true` is a flag that reads, six weeks on, as somebody
+ * having fiddled with something.
+ *
+ * Optional, and empty is honest. A required field would be filled in with
+ * "test" by the third run and then the field would be lying instead of blank.
+ */
+const RUN_ABOUT = String(process.env.RUN_ABOUT || '').trim().slice(0, 600);
 
 /*
  * HOW WIDE THE FRAME IS IN METRES, one number per lawn.
@@ -896,23 +911,42 @@ export function runFold(lawns, held, opts = {}) {
  * Draw the outline the detector would have handed the drawing tools, per lawn,
  * and put the pictures in the bucket.
  *
- * ONE RUN OVERWRITES THE LAST, deliberately. These are a diagnosis of the
- * model as it is now, not a history of it: a dated folder would grow without
- * limit in a bucket that also holds the training photographs, and nobody is
- * going to go back and compare the pictures from three runs ago -- the numbers
- * in docs/DETECTOR-FINDINGS.md are the history.
+ * EVERY RUN KEEPS ITS OWN FOLDER, and this used to be the other way round.
+ *
+ * The old comment here argued that one run should overwrite the last, on the
+ * grounds that docs/DETECTOR-FINDINGS.md is the history and these pictures are
+ * only a diagnosis of the model as it stands. That was wrong in the way that
+ * matters: the findings file records what a run SCORED, and it has no way to
+ * record what the shapes looked like. "Is this outline worth correcting by
+ * hand" is the question this page exists for and only the picture answers it,
+ * so two runs a point apart can be a completely different answer and the
+ * earlier one was already gone.
+ *
+ * BOTH PICTURES, EVERY LAWN. The shapes are what the drawing tools would
+ * receive; the raw mask is what the model actually said. The tracer smooths,
+ * fills holes under about 60 sq ft and bins the speckle -- all wanted, all
+ * flattering -- and the toggle between the two is where that shows.
  *
  * The index is written LAST, on purpose. The page reads the index to know what
  * exists, so writing it first would advertise pictures that are still
  * uploading, and a run that dies halfway would leave the page pointing at
- * things that never arrived. Written last, a half-finished run leaves the
- * previous set intact and completely readable.
+ * things that never arrived. The RUN LIST is written after that, for the same
+ * reason one step further out: a run appears in the picker only once there is
+ * something behind it.
  */
-async function publishRenderings(bucket, best, lawns, using) {
+async function publishRenderings(bucket, best, lawns, using, meta = {}) {
   const { PNG } = await import('pngjs');
   const dir = mkdtempSync(join(tmpdir(), 'lawn-render-'));
   const entries = [];
   let put = 0;
+
+  const startedAt = new Date();
+  const slug = runSlug({
+    at: startedAt,
+    models: [meta.model || 'detector'],
+    suffix: meta.size ? `${meta.size}px` : '',
+  });
+  const keys = runKeys(slug);
 
   try {
     for (const [n, r] of best.rows.entries()) {
@@ -938,19 +972,43 @@ async function publishRenderings(bucket, best, lawns, using) {
         grid: GRID,
       });
 
-      const png = new PNG({ width: GRID, height: GRID });
-      png.data = Buffer.from(pixels.buffer, pixels.byteOffset, pixels.length);
-      const file = join(dir, `${n}.png`);
-      writeFileSync(file, PNG.sync.write(png));
+      /*
+       * AND THE SAME ANSWER BEFORE THE TRACER TOUCHED IT, which is the other
+       * half of the toggle on the page. Drawn from the same photograph with
+       * the same green wash so the two flip cleanly between each other -- only
+       * the model's own layer differs.
+       */
+      const rawPixels = drawPrediction({
+        photo: L.photo,
+        truth: L.truth,
+        within: L.within,
+        inferred: L.inferred,
+        mask: r.predicted,
+        grid: GRID,
+      });
 
       /* Named by position, not by map id. The id contains the coordinates of
          somebody's house, and a bucket key is not the place for those. */
-      const key = `predictions/${n}.png`;
+      const key = keys.shapes(n);
+      const maskKey = keys.mask(n);
+      const write = (pix, name) => {
+        const png = new PNG({ width: GRID, height: GRID });
+        png.data = Buffer.from(pix.buffer, pix.byteOffset, pix.length);
+        const file = join(dir, name);
+        writeFileSync(file, PNG.sync.write(png));
+        return file;
+      };
+
       try {
-        execFileSync('npx', [
-          'wrangler', 'r2', 'object', 'put', `${bucket}/${key}`,
-          '--file', file, '--content-type', 'image/png', '--remote',
-        ], { stdio: ['ignore', 'pipe', 'pipe'] });
+        for (const [k, pix, name] of [
+          [key, pixels, `${n}.png`],
+          [maskKey, rawPixels, `${n}-mask.png`],
+        ]) {
+          execFileSync('npx', [
+            'wrangler', 'r2', 'object', 'put', `${bucket}/${k}`,
+            '--file', write(pix, name), '--content-type', 'image/png', '--remote',
+          ], { stdio: ['ignore', 'pipe', 'pipe'] });
+        }
         put++;
       } catch (e) {
         console.log(`  could not upload ${key}: `
@@ -978,6 +1036,9 @@ async function publishRenderings(bucket, best, lawns, using) {
       const sqft = (px) => (px * L.mpp * L.mpp) / SQM_PER_SQFT;
       entries.push({
         key,
+        /* The same lawn, as the model actually answered it. The page flips
+           every picture between the two at once. */
+        maskKey,
         county: L.county || null,
         squareFeet: Math.round(sqft(L.truthPx)),
         errorPct: Number(r.mine.errorPct.toFixed(1)),
@@ -1019,11 +1080,36 @@ async function publishRenderings(bucket, best, lawns, using) {
        sorted by id buries them among the ones that worked. */
     entries.sort((a, b) => b.errorPct - a.errorPct);
 
+    /*
+     * EVERY KNOB THAT WAS TURNED, recorded beside the pictures rather than
+     * left in a workflow log that expires. A picture without its settings is
+     * the exact failure docs/DETECTOR-FINDINGS.md exists to prevent -- a
+     * result recalled without its corpus is not a result -- and these outlive
+     * the run that made them by design now.
+     */
+    const settings = {
+      model: meta.model || null,
+      sizePx: meta.size || null,
+      config: best.cfg.name,
+      features: using,
+      lawns: lawns.length,
+      gridPx: GRID,
+      aerialEye: Boolean(meta.aerialEye),
+      noBackbone: Boolean(meta.noBackbone),
+      medianErrorPct: Number(best.med.toFixed(1)),
+    };
+
     const indexFile = join(dir, 'index.json');
     writeFileSync(indexFile, `${JSON.stringify({
       drawnAt: new Date().toISOString(),
+      slug,
       config: best.cfg.name,
       features: using,
+      /* WHAT THIS RUN WAS FOR, in the words of whoever started it. The
+         settings say what was different; only this says what the difference
+         was meant to prove. */
+      about: RUN_ABOUT,
+      settings,
       lawns: lawns.length,
       medianErrorPct: Number(best.med.toFixed(1)),
       /*
@@ -1035,18 +1121,34 @@ async function publishRenderings(bucket, best, lawns, using) {
        * qualifies.
        */
       note: 'Leave-one-out: each lawn was drawn by a model trained on the other '
-        + `${lawns.length - 1} and never shown this one. The outline is the `
-        + 'traced polygon the drawing tools would receive, not the raw mask.',
+        + `${lawns.length - 1} and never shown this one. "Shapes" is the traced `
+        + 'polygon the drawing tools would receive; "raw mask" is what the model '
+        + 'actually answered, before smoothing, hole-filling and speckle removal.',
       entries,
     }, null, 1)}\n`);
 
     execFileSync('npx', [
-      'wrangler', 'r2', 'object', 'put', `${bucket}/predictions/index.json`,
+      'wrangler', 'r2', 'object', 'put', `${bucket}/${keys.index}`,
       '--file', indexFile, '--content-type', 'application/json', '--remote',
     ], { stdio: ['ignore', 'pipe', 'pipe'] });
 
+    /* THE PICKER LAST. A run appears in the list only once everything it
+       points at is already in the bucket. */
+    const list = publishRunList(bucket, dir, runRow({
+      slug,
+      at: startedAt,
+      title: `${meta.model || 'detector'}${meta.size ? ` ${meta.size}px` : ''}`,
+      about: RUN_ABOUT,
+      settings,
+      lawns: entries.length,
+      headline: Number(best.med.toFixed(1)),
+    }));
+
     console.log(`\nDrew ${put} of ${best.rows.length} lawns under "${best.cfg.name}".`);
-    console.log('Open /predictions.html to see the outlines it drew, worst first.');
+    console.log(`Folder: ${keys.index.replace('/index.json', '')}`);
+    console.log(`The page now lists ${list.runs} run${list.runs === 1 ? '' : 's'}.`);
+    console.log('Open /predictions.html to see the outlines it drew, worst first,');
+    console.log('and the button at the top to flip every picture to the raw mask.');
   } catch (e) {
     console.log(`\nCould not publish the renderings: `
       + `${String(e?.message || e).replace(/\s+/g, ' ').slice(0, 120)}`);
@@ -1477,7 +1579,18 @@ async function main() {
    * /predictions.html reads them straight out of the same place.
    */
   if (renderWanted && best) {
-    await publishRenderings(bucket, best, lawns, using);
+    /*
+     * THE RUN'S OWN IDENTITY, assembled here where the facts are rather than
+     * re-derived inside the renderer from the one sentence it used to be
+     * handed. The folder name and the picker label both come out of this, and
+     * a run labelled from a guess is a run nobody can find again.
+     */
+    await publishRenderings(bucket, best, lawns, using, {
+      model: py ? py.manifest.model : (eye ? 'dinov2-tiled-224' : 'no-backbone'),
+      size: py ? py.manifest.size : (eye ? 224 : null),
+      noBackbone: process.env.NO_BACKBONE === 'true',
+      aerialEye,
+    });
   }
 
   /* ------------------------------------------------------------- verdict */

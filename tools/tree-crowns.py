@@ -208,6 +208,22 @@ def main():
                 ],
             })
 
+        # THE RAW TREE/NO-TREE ANSWER, before the watershed cut it into crowns.
+        #
+        # The other half of the toggle on /predictions.html. The crowns are an
+        # INTERPRETATION of this raster -- a distance transform, a peak finder
+        # and a watershed, each of which can be wrong in its own way -- and
+        # when a lawn comes back with sixty crowns the question is always
+        # whether the model saw sixty trees or the splitter invented fifty of
+        # them. Only these two pictures side by side answer that.
+        #
+        # Written at the frame's own size so the drawing step does not have to
+        # know what scale it was read at, and as 1-bit PNG, which for a mask
+        # this size is a few kilobytes.
+        Image.fromarray((mask * 255).astype(np.uint8)).resize(
+            (frame_px, frame_px), Image.NEAREST
+        ).convert("1").save(OUT / f"{lawn_id}-mask.png")
+
         crowns.sort(key=lambda c: -c["areaSqM"])
         (OUT / f"{lawn_id}.json").write_text(json.dumps({
             "id": lawn_id,

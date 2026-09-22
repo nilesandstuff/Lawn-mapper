@@ -131,6 +131,35 @@ body { background: var(--bg); }
  * opposite conclusion. Swatches rather than words alone, so the mapping is
  * checked by eye against the image rather than remembered.
  */
+/*
+ * WHICH RUN, AND WHICH OF ITS TWO PICTURES.
+ *
+ * Wraps rather than scrolls, because on a phone the picker holds a date, a
+ * model name and a score and there is no width where all three and a button
+ * fit on one line. The button drops under the picker and both stay full-sized
+ * targets instead of being squeezed into a row nobody can hit.
+ */
+.runbar {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end;
+  margin: 12px 0 8px;
+}
+.runpick { display: flex; flex-direction: column; gap: 4px; flex: 1 1 220px; }
+.runpick span { font-size: 12.5px; color: var(--muted); }
+.runpick select {
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
+  background: #fff; color: var(--ink); font: inherit; font-size: 14px;
+  max-width: 100%;
+}
+.runbar .ghost { border-radius: 8px; white-space: nowrap; }
+/* Pressed reads as "the mask is what you are looking at", so it has to be
+   unmistakable at a glance -- the two pictures are similar enough that the
+   button is the only thing saying which one is on screen. */
+.runbar .ghost[aria-pressed="true"] {
+  background: #fdeee9; border-color: var(--ai, #e2725b); color: #9c3b22;
+  font-weight: 600;
+}
+.runbar .ghost:disabled { opacity: .55; }
+
 .legend {
   display: grid; gap: 5px; margin: 10px 0 4px;
   font-size: 12.5px; color: var(--muted);

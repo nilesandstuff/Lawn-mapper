@@ -18,10 +18,14 @@ name: 19. Find the tree crowns
 #
 # FREE. Python and the weights are downloads. No predictions are bought.
 #
-# THE ANSWER IS THE PICTURES, at /predictions.html?set=crowns. The numbers at
-# the end of the log say how many crowns and how big, and one number says how
-# much of the crown area landed on ground somebody traced as lawn -- which is
-# the closest thing here to "would the toggles start in the right position".
+# THE ANSWER IS THE PICTURES, at /predictions.html -- this run appears in the
+# picker at the top, named for the minute it ran and the model it used, and the
+# button beside it flips every picture between the crowns and the tree/no-tree
+# raster they were cut out of. The numbers at the end of the log say how many
+# crowns and how big, and two numbers together say how much of the crown area
+# landed on ground somebody traced as lawn AND how much was on the property at
+# all -- which is the closest thing here to "would the toggles start in the
+# right position". Neither is readable without the other.
 on:
   workflow_dispatch:
     inputs:
@@ -45,6 +49,12 @@ on:
         description: 'Smallest crown to keep, in square metres'
         required: false
         default: '4'
+      about:
+        # Kept with the pictures for ever. The settings above say what was
+        # different; only this says what the difference was meant to prove.
+        description: 'What is this run testing? (kept with the pictures)'
+        required: false
+        default: ''
 
 jobs:
   crowns:
@@ -127,6 +137,9 @@ jobs:
           CORPUS_BUCKET: lawn-mapper-corpus
           CROWNS: crowns
           MODEL: ${{ inputs.model }}
+          CROWN_GAP_M: ${{ inputs.gap }}
+          MIN_CROWN_M2: ${{ inputs.min_crown }}
+          RUN_ABOUT: ${{ inputs.about }}
         run: node tools/tree-crowns.js
 
       - name: If that failed

@@ -19,7 +19,34 @@ const $ = (s) => document.querySelector(s);
  * renderings, which is what every existing link points at. The server keeps its
  * own allowlist -- this is a convenience, not the guard.
  */
-const SET = new URLSearchParams(location.search).get('set') === 'crowns' ? 'crowns' : '';
+const QS = new URLSearchParams(location.search);
+const SET = QS.get('set') === 'crowns' ? 'crowns' : '';
+
+/*
+ * WHICH RUN, from the address bar, so a run is a link somebody can send.
+ *
+ * Empty means "the newest one there is", which is what an unadorned
+ * /predictions.html should show -- the alternative is a bookmark that silently
+ * stops tracking the work as soon as one more run happens.
+ *
+ * Checked here only to keep a malformed one out of a fetch. The server has the
+ * real pattern and refuses anything outside it.
+ */
+const RUN = /^[a-z0-9][a-z0-9-]{0,95}$/.test(QS.get('run') || '') ? QS.get('run') : '';
+
+/**
+ * Which of the two pictures is showing, for every lawn at once.
+ *
+ * The shapes are what the drawing tools would receive; the raw mask is what
+ * the model actually answered. The tracer between them smooths every edge,
+ * fills any hole under about 60 sq ft and bins the speckle, and the flip is
+ * the only way to see WHERE that happened -- the per-lawn numbers say how many
+ * square feet it was worth, which is a different and much weaker fact.
+ */
+let showMask = false;
+
+/* Every picture on the page, so the button can flip all of them together. */
+const pictures = [];
 
 const el = (tag, cls, text) => {
   const n = document.createElement(tag);
@@ -171,7 +198,30 @@ function withPicture(box, e, i, alt) {
   img.loading = 'lazy';
   img.decoding = 'async';
   img.alt = alt;
-  img.src = `/api/admin/prediction-image?key=${encodeURIComponent(e.key)}`;
+
+  /*
+   * THE TWO PICTURES OF THE SAME LAWN, swapped in place.
+   *
+   * Swapping `src` rather than holding both in the DOM: these are a quarter of
+   * a megabyte each and a page of thirty lawns would be fifteen megabytes to
+   * load two of everything, most of it never looked at. The run folders are
+   * immutable and served with a day's cache, so the second flip is instant
+   * anyway and the first is the only one that costs anything.
+   *
+   * A run from before the mask was drawn has no second picture. Those entries
+   * stay on the shapes rather than breaking, and the button says why.
+   */
+  const shown = () => (showMask && e.maskKey ? e.maskKey : e.key);
+  const paint = () => {
+    img.src = `/api/admin/prediction-image?key=${encodeURIComponent(shown())}`;
+    img.alt = showMask && e.maskKey
+      ? `Lawn ${i + 1}: every pixel the model called lawn, before tracing, `
+        + 'over the photograph with the hand-traced lawn washed in green'
+      : alt;
+  };
+  paint();
+  pictures.push(paint);
+
   img.addEventListener('error', () => {
     img.replaceWith(el('p', 'empty', 'That picture could not be loaded.'));
   });
@@ -188,10 +238,84 @@ function withPicture(box, e, i, alt) {
   return box;
 }
 
+/**
+ * The run list, for the picker.
+ *
+ * NEVER FATAL. A missing or empty list means nothing has been drawn since runs
+ * got folders of their own, and there are renderings in the old flat place
+ * that should still open. Losing the picker is a smaller loss than losing the
+ * page.
+ */
+async function loadRuns() {
+  try {
+    const res = await fetch('/api/admin/prediction-runs');
+    if (!res.ok) return [];
+    const body = await res.json();
+    return Array.isArray(body?.runs) ? body.runs : [];
+  } catch {
+    return [];
+  }
+}
+
+/** A run's own line in the picker: when it ran, what it was, how it scored. */
+function runLabel(r) {
+  const when = r.at ? new Date(r.at).toLocaleString() : r.slug;
+  const score = Number.isFinite(r.headline) ? ` · ${r.headline.toFixed(1)}%` : '';
+  return `${when} · ${r.title || r.slug}${score}`;
+}
+
+function fillPicker(runs, current) {
+  const sel = $('#run');
+  if (!runs.length) {
+    /* One option saying so, rather than an empty box that reads as broken. */
+    sel.append(el('option', null, 'the latest drawing'));
+    sel.disabled = true;
+    return;
+  }
+  for (const r of runs) {
+    const o = el('option', null, runLabel(r));
+    o.value = r.slug;
+    if (r.slug === current) o.selected = true;
+    sel.append(o);
+  }
+  sel.addEventListener('change', () => {
+    /* A whole page load rather than a re-render. Every picture, every number
+       and the caveat all belong to the run, and swapping them piecemeal is how
+       a page ends up showing one run's outlines under another's error figure. */
+    const next = new URLSearchParams(location.search);
+    next.set('run', sel.value);
+    next.delete('set');
+    location.search = next.toString();
+  });
+}
+
+/**
+ * The settings the run was given, as one line.
+ *
+ * Free-form on purpose -- the training runs and the tree crowns have almost
+ * nothing in common -- so this prints whatever it is handed rather than
+ * knowing the names. A key it has never seen is the case that matters: this
+ * page should not need editing before a new knob can be recorded.
+ */
+function settingsLine(settings) {
+  const pretty = (k) => k.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
+  return Object.entries(settings || {})
+    .filter(([, v]) => v !== null && v !== undefined && v !== '' && v !== false)
+    .map(([k, v]) => `${pretty(k)}: ${v === true ? 'yes' : v}`)
+    .join(' · ');
+}
+
 (async () => {
+  const runs = await loadRuns();
+  /* No run named in the address bar means the newest one, so a bare link keeps
+     tracking the work instead of freezing on whatever was current the day it
+     was bookmarked. */
+  const want = RUN || (!SET && runs.length ? runs[0].slug : '');
+
   let data;
   try {
-    const res = await fetch(`/api/admin/predictions${SET ? `?set=${SET}` : ''}`);
+    const q = want ? `?run=${encodeURIComponent(want)}` : (SET ? `?set=${SET}` : '');
+    const res = await fetch(`/api/admin/predictions${q}`);
     if (res.status === 404) { $('#none').hidden = false; return; }
     if (!res.ok) throw new Error(String(res.status));
     data = await res.json();
@@ -204,6 +328,36 @@ function withPicture(box, e, i, alt) {
   if (!entries.length) { $('#none').hidden = false; return; }
 
   $('#page').hidden = false;
+  fillPicker(runs, want);
+
+  if (data.about) {
+    $('#about').hidden = false;
+    $('#about').textContent = `What this run was testing: ${data.about}`;
+  }
+  const line = settingsLine(data.settings);
+  if (line) {
+    $('#settings').hidden = false;
+    $('#settings').textContent = line;
+  }
+
+  /*
+   * THE FLIP. Off unless this run drew both pictures -- and it says which,
+   * because a button that simply does nothing reads as a broken button rather
+   * than as a run that predates the second rendering.
+   */
+  const flip = $('#flip');
+  const hasMasks = entries.some((e) => e.maskKey);
+  if (!hasMasks) {
+    flip.disabled = true;
+    flip.textContent = 'No raw mask in this run';
+  } else {
+    flip.addEventListener('click', () => {
+      showMask = !showMask;
+      flip.setAttribute('aria-pressed', String(showMask));
+      flip.textContent = showMask ? 'Show the shapes' : 'Show the raw mask';
+      for (const paint of pictures) paint();
+    });
+  }
   /*
    * THE HEADING IS ABOUT WHATEVER SET IS OPEN. The detector's renderings carry
    * an error figure and the tree crowns do not -- they are not a measurement,

@@ -107,6 +107,16 @@ on:
         description: 'Also train a twin of each row with unseen ground dropped (doubles the run)'
         type: boolean
         default: false
+      about:
+        # WHAT THIS RUN IS FOR, kept with the pictures for ever.
+        #
+        # This workflow is the one where it matters most: the model, the size
+        # and the twins are all recorded automatically, and none of them says
+        # whether 1280 was being tried against 896 or the seen-only column was
+        # the whole point. Six weeks on, that is the part nobody can rebuild.
+        description: 'What is this run testing? (kept with the pictures)'
+        required: false
+        default: ''
 
 jobs:
   train:
@@ -181,6 +191,7 @@ jobs:
           EXPORT_MODEL: ${{ inputs.publish }}
           RENDER_PREDICTIONS: ${{ inputs.render }}
           SEEN_ONLY_TWINS: ${{ inputs.seen_only }}
+          RUN_ABOUT: ${{ inputs.about }}
         run: node tools/train-detector.js
 
       - name: If that failed

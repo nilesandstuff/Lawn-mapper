@@ -24,6 +24,19 @@
   bucket the photographs live in. Nothing is computed here; this page reads an
   index and shows what it names.
 
+  EVERY RUN KEEPS ITS OWN FOLDER, so this is a history rather than a snapshot
+  of whatever ran last. The picker at the top is the only way back to a run
+  once a newer one exists, and beside each run is the sentence somebody typed
+  when they started it saying what it was meant to find out -- which the
+  settings cannot say and nobody can reconstruct afterwards.
+
+  AND TWO PICTURES PER LAWN. The shapes are what the drawing tools would
+  receive; the raw mask is what the model actually answered. The tracer
+  between them smooths every edge, fills any hole under about 60 sq ft and
+  bins the speckle -- all of it wanted, all of it making the model look
+  tidier than it is. The per-lawn numbers say how many square feet that was
+  worth; only the flip says where.
+
   A SEPARATE PAGE rather than a card in the console, for the same reason
   /maps.html is: it is a different job. Nothing here judges a map or changes
   anything. It is for standing in front of the outlines and deciding whether
@@ -52,7 +65,9 @@
     <div class="card">
       <h2>Nothing has been drawn yet</h2>
       <p class="sub">Run workflow <b>12</b> or <b>14</b> with <b>render</b> switched
-        on. The run writes one picture per lawn and this page reads them.</p>
+        on, or workflow <b>19</b> for the tree crowns. Each run writes two pictures
+        per lawn — the shapes and the raw mask — into a folder of its own, and
+        this page reads them.</p>
     </div>
   </div>
 
@@ -62,12 +77,37 @@
       <p class="sub" id="sub"></p>
 
       <!--
+        WHICH RUN, and WHICH OF THE TWO PICTURES.
+
+        Runs keep their own folder now, so this page is a history rather than
+        a snapshot of whatever ran last. The picker is the only way back to a
+        run once a newer one exists, and the description beside it is the only
+        record of what that run was trying to find out.
+
+        The mask button flips every picture at once rather than one at a time.
+        Comparing two stages of the same answer means looking at the same lawn
+        twice, and a per-picture control turns that into hunting for the button
+        you pressed last.
+      -->
+      <div class="runbar">
+        <label class="runpick">
+          <span>Run</span>
+          <select id="run"></select>
+        </label>
+        <button type="button" id="flip" class="ghost" aria-pressed="false">
+          Show the raw mask
+        </button>
+      </div>
+      <p class="sub" id="about" hidden></p>
+      <p class="sub" id="settings" hidden></p>
+
+      <!--
         THE LEGEND IS NOT DECORATION. The whole page is two colours and a
         dimmed border, and a reader who guesses their meaning backwards will
         take away the opposite conclusion.
       -->
       <div class="legend">
-        <span><i class="sw sw-trace"></i>the detector's outline, with a dot at every handle</span>
+        <span><i class="sw sw-trace"></i>the detector's outline, with a dot at every handle — or, on the raw mask, every pixel it called lawn</span>
         <span><i class="sw sw-truth"></i>the real lawn, as it was traced by hand</span>
         <span><i class="sw sw-inf"></i>outlined: marked "inferred, not seen"</span>
         <span><i class="sw sw-out"></i>dimmed — outside the property line, not scored</span>

@@ -1203,10 +1203,55 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
    */
   const renderSet = (u) => (u.searchParams.get('set') === 'crowns' ? 'crowns' : 'predictions');
 
-  if (path === 'predictions') {
+  /*
+   * A RUN FOLDER'S NAME, and this one is a pattern rather than a pair of
+   * literals because the names are generated and there is an unbounded supply
+   * of them. The same rule still applies: the bucket holds the training
+   * photographs, so what comes back from here must be incapable of naming
+   * anything outside `runs/`.
+   *
+   * No dot and no slash, so "..", "./" and a bare key elsewhere are all
+   * unspellable. tools/run-folder.js builds these out of the same alphabet
+   * from the other end.
+   */
+  const RUN_SLUG = /^[a-z0-9][a-z0-9-]{0,95}$/;
+  const runOf = (u) => {
+    const slug = u.searchParams.get('run') || '';
+    return RUN_SLUG.test(slug) ? slug : '';
+  };
+
+  /*
+   * EVERY RUN THAT HAS DRAWN PICTURES, newest first, for the picker.
+   *
+   * Separate from the pictures themselves because it is read on every load of
+   * the page and the run behind it may be two hundred renderings. A missing
+   * list is not an error: it means nothing has been drawn since runs got
+   * folders, and the page falls back to the older flat set rather than showing
+   * somebody an empty screen.
+   */
+  if (path === 'prediction-runs') {
     if (!env.CORPUS) return json({ error: 'No bucket' }, 404, origin);
     try {
-      const object = await env.CORPUS.get(`${renderSet(url)}/index.json`);
+      const object = await env.CORPUS.get('runs/index.json');
+      if (!object) return json({ runs: [] }, 200, origin);
+      return json(await object.json(), 200, origin);
+    } catch {
+      return json({ runs: [] }, 200, origin);
+    }
+  }
+
+  if (path === 'predictions') {
+    if (!env.CORPUS) return json({ error: 'No bucket' }, 404, origin);
+    /*
+     * A named run, or the flat set that predates them. Both are served from
+     * here so the page has one route to ask and old links keep working --
+     * there are renderings in `predictions/` and `crowns/` that nobody is
+     * going to re-run to get a folder.
+     */
+    const run = runOf(url);
+    const key = run ? `runs/${run}/index.json` : `${renderSet(url)}/index.json`;
+    try {
+      const object = await env.CORPUS.get(key);
       if (!object) return json({ error: 'Nothing drawn yet' }, 404, origin);
       return json(await object.json(), 200, origin);
     } catch {
@@ -1224,9 +1269,15 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
      * cannot be got round.
      */
     const key = url.searchParams.get('key') || '';
-    if (!/^(predictions|crowns)\/\d+\.png$/.test(key)) {
-      return json({ error: 'Not a prediction' }, 400, origin);
-    }
+    /*
+     * Three shapes, all closed: the two flat sets that predate run folders,
+     * and a picture inside one run folder -- either the interpreted shapes or
+     * the raw mask behind them. No dot outside the extension and no slash
+     * inside a name, so nothing here can address the photographs.
+     */
+    const ok = /^(predictions|crowns)\/\d+\.png$/.test(key)
+      || /^runs\/[a-z0-9][a-z0-9-]{0,95}\/\d+(-mask)?\.png$/.test(key);
+    if (!ok) return json({ error: 'Not a prediction' }, 400, origin);
     try {
       const object = await env.CORPUS.get(key);
       if (!object) return json({ error: 'No image' }, 404, origin);
@@ -1234,11 +1285,18 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
         headers: {
           'Content-Type': 'image/png',
           /*
-           * Private, like the photographs it is drawn on: these are people's
-           * gardens. Short, because a run overwrites the same keys and a long
-           * cache would show yesterday's model under today's numbers.
+           * Private, always: these are drawn on people's gardens.
+           *
+           * A picture in a run folder is immutable -- the folder is named for
+           * the minute it was made and nothing writes to it twice -- so it can
+           * be held, which is what makes flipping between the shapes and the
+           * raw mask instant on the second look. The two flat sets ARE
+           * overwritten by the next run, and a long cache there would show
+           * yesterday's model under today's numbers.
            */
-          'Cache-Control': 'private, max-age=60',
+          'Cache-Control': key.startsWith('runs/')
+            ? 'private, max-age=86400, immutable'
+            : 'private, max-age=60',
         },
       });
     } catch {

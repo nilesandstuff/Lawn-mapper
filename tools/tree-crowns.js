@@ -41,6 +41,7 @@ import {
   fetchImage, resize, maskOf, geometries, inferredGeometries, GRID,
 } from './train-detector.js';
 import { drawPrediction } from './render-prediction.js';
+import { runSlug, runKeys, runRow, publishRunList } from './run-folder.js';
 import { rasterizePolygon } from '../public/lib/mask.js';
 import { metresPerPixel } from '../public/lib/mercator.js';
 
@@ -48,6 +49,10 @@ const SQM_PER_SQFT = 0.09290304;
 
 const CROWNS = process.env.CROWNS || 'crowns';
 const BUCKET = process.env.CORPUS_BUCKET || 'lawn-mapper-corpus';
+
+/** What this run was for, in the words of whoever started it. See RUN_ABOUT
+    in tools/train-detector.js for why it is a sentence and not a flag dump. */
+const RUN_ABOUT = String(process.env.RUN_ABOUT || '').trim().slice(0, 600);
 
 /**
  * A crown too small to tap is a crown that costs more than it saves.
@@ -93,6 +98,37 @@ export const toGrid = (polygon, framePx) => polygon.map(([x, y]) => [
  * error surfaced four frames later as "undefined is not a function" from a
  * missing projector.
  */
+/**
+ * The model's own tree/no-tree answer, from the PNG the Python wrote, onto the
+ * grid everything is drawn on.
+ *
+ * NEAREST NEIGHBOUR, NOT AVERAGED, and that matters here more than it usually
+ * does. This is a yes/no raster; averaging it would put a grey halo round
+ * every crown and the halo would then be thresholded back into canopy that the
+ * model never claimed -- a thin one around sixty crowns is a lot of invented
+ * tree. Sampling asks the same question of the same pixel and cannot invent
+ * anything.
+ *
+ * Missing is not an error. The masks arrived with a later version of the
+ * Python than some crowns folders were written by, and a run without them
+ * should still draw its shapes.
+ */
+function maskFromPng(file, decoders) {
+  if (!existsSync(file)) return null;
+  const png = decoders.png.PNG.sync.read(readFileSync(file));
+  const out = new Uint8Array(GRID * GRID);
+  for (let y = 0; y < GRID; y++) {
+    const sy = Math.min(png.height - 1, Math.floor((y * png.height) / GRID));
+    for (let x = 0; x < GRID; x++) {
+      const sx = Math.min(png.width - 1, Math.floor((x * png.width) / GRID));
+      /* Red alone: the Python writes 1-bit, which decodes to white or black,
+         so the three channels agree and one read is enough. */
+      out[y * GRID + x] = png.data[(sy * png.width + sx) * 4] > 127 ? 1 : 0;
+    }
+  }
+  return out;
+}
+
 export function overlap(ring, truth, within) {
   const mask = rasterizePolygon([ring], GRID, GRID, (p) => p);
   let area = 0;
@@ -129,6 +165,13 @@ async function main() {
   const dir = mkdtempSync(join(tmpdir(), 'crowns-'));
   const entries = [];
   let put = 0;
+
+  /* A folder of this run's own, named for the minute and the model, so a
+     later run never overwrites these and they stay comparable. */
+  const startedAt = new Date();
+  const model = process.env.MODEL || 'restor/tcd-segformer';
+  const slug = runSlug({ at: startedAt, models: [model] });
+  const keys = runKeys(slug);
 
   try {
     for (const row of rows) {
@@ -175,29 +218,52 @@ async function main() {
         if (side >= minSide) thumbable++;
       }
 
-      const pixels = drawPrediction({
-        photo, truth, within, inferred, rings, grid: GRID,
-      });
-      const png = new decoders.png.PNG({ width: GRID, height: GRID });
-      png.data = Buffer.from(pixels.buffer, pixels.byteOffset, pixels.length);
-      const out = join(dir, `${entries.length}.png`);
-      writeFileSync(out, decoders.png.PNG.sync.write(png));
+      const n = entries.length;
+      const write = (pix, name) => {
+        const png = new decoders.png.PNG({ width: GRID, height: GRID });
+        png.data = Buffer.from(pix.buffer, pix.byteOffset, pix.length);
+        const out = join(dir, name);
+        writeFileSync(out, decoders.png.PNG.sync.write(png));
+        return out;
+      };
 
-      const key = `crowns/${entries.length}.png`;
+      const shots = [[keys.shapes(n), drawPrediction({
+        photo, truth, within, inferred, rings, grid: GRID,
+      }), `${n}.png`]];
+
+      /*
+       * AND THE RASTER THE CROWNS WERE CUT OUT OF, where the Python left one.
+       *
+       * The crowns are an interpretation of it -- distance transform, peak
+       * finder, watershed -- and when a lawn comes back with sixty of them the
+       * question is whether the model saw sixty trees or the splitter invented
+       * fifty. That is not answerable from either picture alone.
+       */
+      const canopy = maskFromPng(join(CROWNS, `${row.id}-mask.png`), decoders);
+      const maskKey = canopy ? keys.mask(n) : null;
+      if (canopy) {
+        shots.push([maskKey, drawPrediction({
+          photo, truth, within, inferred, mask: canopy, grid: GRID,
+        }), `${n}-mask.png`]);
+      }
+
       try {
-        execFileSync('npx', [
-          'wrangler', 'r2', 'object', 'put', `${BUCKET}/${key}`,
-          '--file', out, '--content-type', 'image/png', '--remote',
-        ], { stdio: ['ignore', 'pipe', 'pipe'] });
+        for (const [k, pix, name] of shots) {
+          execFileSync('npx', [
+            'wrangler', 'r2', 'object', 'put', `${BUCKET}/${k}`,
+            '--file', write(pix, name), '--content-type', 'image/png', '--remote',
+          ], { stdio: ['ignore', 'pipe', 'pipe'] });
+        }
         put++;
       } catch (e) {
-        console.log(`  could not upload ${key}: `
+        console.log(`  could not upload ${keys.shapes(n)}: `
           + `${String(e?.message || e).replace(/\s+/g, ' ').slice(0, 80)}`);
         continue;
       }
 
       entries.push({
-        key,
+        key: keys.shapes(n),
+        maskKey,
         county: row.county || null,
         crowns: rings.length,
         thumbable,
@@ -233,22 +299,49 @@ async function main() {
        saves real time or becomes a wall of switches. */
     entries.sort((a, b) => b.crowns - a.crowns);
 
+    const settings = {
+      model,
+      crownGapM: Number(process.env.CROWN_GAP_M || 3),
+      minCrownM2: Number(process.env.MIN_CROWN_M2 || 4),
+      targetMpp: Number(process.env.TARGET_MPP || 0.1),
+      gridPx: GRID,
+      lawns: entries.length,
+    };
+
     const indexFile = join(dir, 'index.json');
     writeFileSync(indexFile, `${JSON.stringify({
       drawnAt: new Date().toISOString(),
+      slug,
       config: 'tree crowns',
-      features: process.env.MODEL || 'restor/tcd-segformer',
+      features: model,
+      about: RUN_ABOUT,
+      settings,
       lawns: entries.length,
       note: 'Each outline is one tree crown the model found, drawn over the lawn '
-        + 'somebody traced by hand (green). The question is whether these would '
-        + 'work as one-tap toggles, not how accurate they are.',
+        + 'somebody traced by hand (green). "Raw mask" is the tree/no-tree raster '
+        + 'those crowns were cut out of, before the watershed split it. The '
+        + 'question is whether these would work as one-tap toggles, not how '
+        + 'accurate they are.',
       entries,
     }, null, 1)}\n`);
 
     execFileSync('npx', [
-      'wrangler', 'r2', 'object', 'put', `${BUCKET}/crowns/index.json`,
+      'wrangler', 'r2', 'object', 'put', `${BUCKET}/${keys.index}`,
       '--file', indexFile, '--content-type', 'application/json', '--remote',
     ], { stdio: ['ignore', 'pipe', 'pipe'] });
+
+    /* The picker last, once everything it points at is in the bucket. */
+    const list = publishRunList(BUCKET, dir, runRow({
+      slug,
+      at: startedAt,
+      title: `tree crowns · ${model.split('/').pop()}`,
+      about: RUN_ABOUT,
+      settings,
+      lawns: entries.length,
+      /* No headline. These are not a measurement and a number in the picker
+         would be read as one. */
+      headline: null,
+    }));
 
     /* ------------------------------------------------- the end of the log */
     const counts = entries.map((e) => e.crowns);
@@ -257,7 +350,11 @@ async function main() {
     const mid = (a) => a.slice().sort((x, y) => x - y)[a.length >> 1];
 
     console.log(`\n${'='.repeat(64)}\n`);
-    console.log(`Drew ${put} lawns. Open /predictions.html?set=crowns to look at them.`);
+    console.log(`Drew ${put} lawns. Open /predictions.html and pick this run:`);
+    console.log(`  ${slug}`);
+    console.log(`The page now lists ${list.runs} run${list.runs === 1 ? '' : 's'}. `
+      + 'The button at the top flips every');
+    console.log('picture between the crowns and the raster they were cut from.');
     console.log(`\nCrowns per lawn: ${Math.min(...counts)} to ${Math.max(...counts)}, `
       + `middle ${mid(counts)}.`);
     console.log(`Big enough to tap: middle ${mid(taps)} of ${mid(counts)}.`);

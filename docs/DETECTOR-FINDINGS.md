@@ -1296,6 +1296,17 @@ fields) were both more obviously right than this one.
    orange for over-called. That answered the accuracy question the table
    already answers, and could not answer the editing one at all.
 
+   **Since 2026-09-22 the page shows BOTH, and every run keeps its own
+   folder.** The button at the top flips every picture between the traced
+   shapes and the model's raw per-pixel answer, which is where the tracer's
+   smoothing, hole-filling and speckle removal actually show — `filledSqFt`
+   and `trimmedSqFt` say how much that was worth, and only the flip says
+   where. Runs no longer overwrite each other: each writes to
+   `runs/<date>-<time>-<zone>-<model>/` and appears in the picker with the
+   sentence whoever started it typed about what it was testing. The old flat
+   `predictions/` and `crowns/` sets are still served, so the links in the
+   run log above keep working.
+
    **Which object each number describes, because they are not the same
    object.** The per-lawn figures under a picture are measured on the TRACED
    OUTLINE; the `% out` pill is the run's own figure, from the raw mask, so it

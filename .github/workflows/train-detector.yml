@@ -25,6 +25,17 @@ on:
         description: 'Draw the outlines it would hand the drawing tools, on /predictions.html'
         type: boolean
         default: true
+      about:
+        # WHAT THIS RUN IS FOR, kept with the pictures for ever.
+        #
+        # The settings are recorded automatically and they say what was
+        # different; they cannot say what the difference was meant to prove,
+        # and that is the part that is gone in six weeks. "Does dropping unseen
+        # ground help the visible half" is a sentence somebody can act on;
+        # `seenOnly: true` reads later as somebody having fiddled with a knob.
+        description: 'What is this run testing? (kept with the pictures)'
+        required: false
+        default: ''
 
 jobs:
   train:
@@ -64,6 +75,7 @@ jobs:
           NO_BACKBONE: ${{ inputs.no_backbone }}
           EXPORT_MODEL: ${{ inputs.publish }}
           RENDER_PREDICTIONS: ${{ inputs.render }}
+          RUN_ABOUT: ${{ inputs.about }}
         run: node tools/train-detector.js
 
       - name: If that failed

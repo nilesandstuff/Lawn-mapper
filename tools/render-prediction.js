@@ -254,8 +254,13 @@ function segment(out, grid, [x0, y0], [x1, y1], half, colour) {
  * drawn is what the model actually saw, not a prettier copy of it.
  *
  * `rings` comes from tracePrediction, in grid coordinates.
+ *
+ * `mask` draws the model's RAW per-pixel answer instead of the trace, for the
+ * other half of the toggle on /predictions.html. Pass one or the other: the
+ * pair is meant to be flipped between, and a picture carrying both would be a
+ * picture of neither.
  */
-export function drawPrediction({ photo, truth, within, inferred, rings, grid }) {
+export function drawPrediction({ photo, truth, within, inferred, rings, grid, mask }) {
   const out = new Uint8Array(grid * grid * 4);
 
   for (let i = 0; i < grid * grid; i++) {
@@ -323,6 +328,45 @@ export function drawPrediction({ photo, truth, within, inferred, rings, grid }) 
    * the reviewer said "I know it is lawn, I cannot see it".
    */
   if (inferred) outline(out, grid, scored(inferred), INFERRED_EDGE, half);
+
+  /*
+   * THE RAW MASK, WHERE ONE WAS ASKED FOR, and it replaces the trace rather
+   * than joining it.
+   *
+   * These are the same answer at two stages and the whole point of having both
+   * pictures is to see what happens between them. The tracer smooths every
+   * edge, fills any hole under about 60 sq ft, drops speckle below the area
+   * floor and keeps only the biggest few pieces -- all of it wanted, all of it
+   * making the model look tidier than it is. traceDrift() says how much in
+   * square feet; this says WHERE, which is the part a number cannot carry.
+   *
+   * Drawn as a stippled wash rather than a solid fill. A solid one would hide
+   * the ground underneath, and "what did it call lawn" is only answerable
+   * against what is actually there -- gravel, a flat roof, shade. Every other
+   * pixel keeps the photograph, so the texture reads through the colour, and
+   * the two-pixel checker survives the resize a phone does to this frame
+   * where a one-pixel one would dither into mush.
+   */
+  if (mask) {
+    for (let y = 0; y < grid; y++) {
+      for (let x = 0; x < grid; x++) {
+        const i = y * grid + x;
+        if (!mask[i]) continue;
+        /* Clipped to the property line exactly as the trace is, so the two
+           pictures disagree only where the tracer changed something. */
+        if (within && !within[i]) continue;
+        if (((x >> 1) + (y >> 1)) % 2) continue;
+        const p = i * 4;
+        out[p] = mix(out[p], TRACE[0], 0.85);
+        out[p + 1] = mix(out[p + 1], TRACE[1], 0.85);
+        out[p + 2] = mix(out[p + 2], TRACE[2], 0.85);
+      }
+    }
+    /* Its own boundary, solid, so the shape has an edge to read. Without it a
+       stipple has no outline and a thin strip of lawn disappears. */
+    outline(out, grid, scored(mask), TRACE, half);
+    return out;
+  }
 
   /* THE TRACE LAST, so nothing paints over the thing the picture is of. */
   for (const ring of rings || []) {
