@@ -1191,10 +1191,22 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
    * small JSON the page needs immediately, and the pictures are a quarter of a
    * megabyte each that should arrive only when something is scrolled to.
    */
+  /*
+   * WHICH SET OF PICTURES, and it is an allowlist rather than a sanitiser.
+   *
+   * The bucket also holds the training photographs -- people's gardens -- so a
+   * caller naming a folder is not something to clean up and pass on.
+   * "predictions/../corpus/..." is the shape of that mistake, and two literal
+   * names cannot be got round. Anything else falls back to the detector's own
+   * renderings rather than erroring, because a stale bookmark should show
+   * something rather than break.
+   */
+  const renderSet = (u) => (u.searchParams.get('set') === 'crowns' ? 'crowns' : 'predictions');
+
   if (path === 'predictions') {
     if (!env.CORPUS) return json({ error: 'No bucket' }, 404, origin);
     try {
-      const object = await env.CORPUS.get('predictions/index.json');
+      const object = await env.CORPUS.get(`${renderSet(url)}/index.json`);
       if (!object) return json({ error: 'Nothing drawn yet' }, 404, origin);
       return json(await object.json(), 200, origin);
     } catch {
@@ -1212,7 +1224,7 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
      * cannot be got round.
      */
     const key = url.searchParams.get('key') || '';
-    if (!/^predictions\/\d+\.png$/.test(key)) {
+    if (!/^(predictions|crowns)\/\d+\.png$/.test(key)) {
       return json({ error: 'Not a prediction' }, 400, origin);
     }
     try {

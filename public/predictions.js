@@ -11,6 +11,16 @@
  */
 
 const $ = (s) => document.querySelector(s);
+
+/*
+ * WHICH SET OF PICTURES TO SHOW, from the address bar.
+ *
+ * `?set=crowns` is the tree crowns; anything else is the detector's own
+ * renderings, which is what every existing link points at. The server keeps its
+ * own allowlist -- this is a convenience, not the guard.
+ */
+const SET = new URLSearchParams(location.search).get('set') === 'crowns' ? 'crowns' : '';
+
 const el = (tag, cls, text) => {
   const n = document.createElement(tag);
   if (cls) n.className = cls;
@@ -38,6 +48,36 @@ function row(e, i) {
 
   const top = el('div', 'top');
   top.append(el('b', null, e.county || 'traced by hand'));
+
+  /*
+   * THE TREE CROWNS ARE A DIFFERENT KIND OF ENTRY and get a different caption.
+   *
+   * They carry no error figure because they are not a measurement -- they are
+   * a question about whether each crown would work as a one-tap toggle. Reusing
+   * this page rather than building a second one is right (same frames, same
+   * green wash, same lazy loading), and reusing its NUMBERS would not be:
+   * "undefined% out" over a picture of trees is worse than no pill at all.
+   */
+  if (e.crowns !== undefined) {
+    top.append(el('span', 'pill', `${n(e.crowns)} crowns`));
+    top.append(el('span', e.thumbable ? 'pill' : 'pill grey',
+      `${n(e.thumbable)} big enough to tap`));
+    if (e.onLawnPct !== null && e.onLawnPct !== undefined) {
+      top.append(el('span', 'pill warn', `${pct(e.onLawnPct)} on the traced lawn`));
+    }
+    box.append(top);
+    box.append(el('div', 'meta',
+      `${n(e.crownSqFt)} sq ft of crown · ${n(e.canopySqFt)} sq ft of canopy found · `
+      + `${Math.round(e.mpp * 100)} cm a pixel in the frame`
+      + (e.readAtPx ? ` · read at ${n(e.readAtPx)} px` : '')));
+    box.append(el('div', 'meta cost',
+      'A crown inside the green is a tree somebody decided has grass under it — '
+      + 'a toggle that should start ON. One outside it is a no.'));
+    return withPicture(box, e, i,
+      `Lawn ${i + 1}: every tree crown found, over the photograph, with the `
+      + 'hand-traced lawn washed in green');
+  }
+
   top.append(el('span', 'pill warn', `${pct(e.errorPct)} out`));
   if (e.samErrorPct !== null && e.samErrorPct !== undefined) {
     /* SAM beside it, because "28% wrong" only means something against the
@@ -97,11 +137,23 @@ function row(e, i) {
    * about five megabytes, and on a phone that is the difference between a
    * page and a wait.
    */
+  return withPicture(box, e, i,
+    `Lawn ${i + 1}: the outline the detector drew, over the photograph, `
+    + 'with the hand-traced lawn washed in green');
+}
+
+/**
+ * The picture, loaded only when it is scrolled to.
+ *
+ * Twenty-three of these is about five megabytes, and on a phone that is the
+ * difference between a page and a wait. Shared by both kinds of entry so the
+ * lazy loading and the failure message cannot drift apart between them.
+ */
+function withPicture(box, e, i, alt) {
   const img = el('img', 'shot pred');
   img.loading = 'lazy';
   img.decoding = 'async';
-  img.alt = `Lawn ${i + 1}: the outline the detector drew, over the photograph, `
-    + 'with the hand-traced lawn washed in green';
+  img.alt = alt;
   img.src = `/api/admin/prediction-image?key=${encodeURIComponent(e.key)}`;
   img.addEventListener('error', () => {
     img.replaceWith(el('p', 'empty', 'That picture could not be loaded.'));
@@ -122,7 +174,7 @@ function row(e, i) {
 (async () => {
   let data;
   try {
-    const res = await fetch('/api/admin/predictions');
+    const res = await fetch(`/api/admin/predictions${SET ? `?set=${SET}` : ''}`);
     if (res.status === 404) { $('#none').hidden = false; return; }
     if (!res.ok) throw new Error(String(res.status));
     data = await res.json();
@@ -135,7 +187,16 @@ function row(e, i) {
   if (!entries.length) { $('#none').hidden = false; return; }
 
   $('#page').hidden = false;
-  $('#head').textContent = `"${data.config}" — ${pct(data.medianErrorPct)} on the middle lawn`;
+  /*
+   * THE HEADING IS ABOUT WHATEVER SET IS OPEN. The detector's renderings carry
+   * an error figure and the tree crowns do not -- they are not a measurement,
+   * they are a question about whether something would work as a tap target --
+   * so printing "undefined% on the middle lawn" over them would be inventing a
+   * number the run never produced.
+   */
+  $('#head').textContent = Number.isFinite(data.medianErrorPct)
+    ? `"${data.config}" — ${pct(data.medianErrorPct)} on the middle lawn`
+    : `"${data.config}" — ${entries.length} lawns`;
   $('#sub').textContent = `${entries.length} lawns · ${data.features} · drawn `
     + `${new Date(data.drawnAt).toLocaleString()}`;
   $('#caveat').textContent = data.note || '';

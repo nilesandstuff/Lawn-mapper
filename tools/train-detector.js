@@ -2014,4 +2014,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
 export {
   compare, resize, maskOf, GRID, dumpSize, FETCH_TRIES,
   inferredGeometries, seenGeometries,
+  /* For tools/tree-crowns.js, which draws over the same photographs and must
+     build the same masks from the same rows. A second copy of the fetch, the
+     resize or the rasteriser would be a second thing to drift. */
+  fetchImage, geometries,
 };
