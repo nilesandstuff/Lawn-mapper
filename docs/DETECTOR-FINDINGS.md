@@ -104,18 +104,36 @@ addresses, one Utah, one North Carolina), all at 0.0% canopy. Whether those
 lots are genuinely treeless or the model failed on that imagery is not settled
 by any number here; the pictures are the place to check.
 
-**The 7% is not yet evidence either way, and this is the important caveat.**
-The run reports what share of crown area sits on ground somebody traced as
-lawn. A low number has two explanations this run cannot separate:
+**The 7% turned out to be mostly about somebody else's trees.** *(Settled by
+run 35781727027, same settings, same 33 maps, which added the second number.)*
 
-1. the tracer looked at the tree and decided there is no grass under it — a
-   toggle that should correctly start OFF, which is the idea working; or
-2. the crown was never a candidate, because it belongs to a neighbour's tree
-   or a street tree outside the property line.
+A low share on the traced lawn had two explanations the first run could not
+separate: the tracer looked at the tree and said no grass — a toggle correctly
+starting OFF, the idea working — or the crown belongs to a neighbour and was
+never a candidate. The second number settles it:
 
-`insidePct` is recorded per lawn in `crowns/index.json` and is the number that
-would separate those two, and the end of the log does not summarise it. **Until
-it does, no conclusion about the toggles should be drawn from the 7%.**
+| | |
+|---|---|
+| Crown area inside the property line at all | 0% to 69%, middle **32%** |
+| Lawns mostly on the property and mostly *not* on the lawn | **2** of 33 |
+| Lawns mostly *off* the property | **9** of 33 |
+
+So on the middle lawn **two thirds of the crown area was never anybody's to
+decide**, and the "tracer declined these trees" reading — the one that would
+support the toggles — is clean on 2 lawns out of 33. The 7% was a measurement
+taken mostly over trees that are not on the property.
+
+**This does not say the toggles fail. It says they have not been measured
+yet.** The question was always about crowns a tracer would be offered, and a
+crown outside the property line would never be offered. The measurement has to
+be redone over parcel-clipped crowns before the headline means anything, and
+that needs no re-segmentation — the clipping is in `tools/tree-crowns.js` and
+the mask is already in the run folder.
+
+*The two counts use cut points chosen here, not derived: "mostly on the
+property" is `insidePct >= 50` and "not on the lawn" is `onLawnPct < 10`. They
+are there to make the shape of the distribution legible in a log, and a lawn
+sitting near either line will move between the groups if the cut moves.*
 
 What the spread does rule out is the flattest failure: the values are not all
 bunched in the middle. Of 28 lawns with any canopy, 16 sit below 10% and 9 sit
@@ -1343,3 +1361,4 @@ fields) were both more obviously right than this one.
 | 2026-09-22 | 35716717308 | 31 | — (workflow 17, no training) | — | — | **Lidar coverage, phase one of E8.** 29 of 31 lawns over a 3DEP project, flown 2011-2020, middle year 2016, none below QL2. The 2 misses are a real gap in Maryland, checked against an 88%-covered state grid. Verdict: build phase two. The unmeasurable risk is the 10-year gap to the photographs (H16) |
 | 2026-09-22 | 35683684006 | **31** | Scale-MAE large 896px | 34.4% | 23.8% | **NEW CORPUS `1wxlejo`** — work restarted. Control 28.6 → 37.8, so nothing compares to the rows above (H15). Gap 1.39× → 1.45×, wins flat at 10 of 25. Winner changed to "both"; top three within 0.5 points. H12 reproduced on a second corpus, ring negative again, S5 worse than ever. Baseline confirmed all `sam3`. 31 of 31 outlines drawn to /predictions.html |
 | 2026-09-22 | 35764574338 | **33** | — (workflow 19, no training) | — | — | **Tree crowns (H18).** `restor/tcd-segformer-mit-b5` at 0.1 m/px over 33 approved maps, 18 min CPU, nothing bought. Crowns per lawn 0-63, middle 9; middle 6 of them big enough to tap. Crown area on traced lawn 0-51%, middle 7% — **not interpretable yet**, because `insidePct` (crown inside the property line at all) is not summarised, so "the tracer said no" and "it is a neighbour's tree" are not separated. Tappability collapses on the busiest lawns: 1 of 28, 2 of 39. Pictures at /predictions.html?set=crowns |
+| 2026-09-22 | 35781727027 | 33 | — (workflow 19, no training) | — | — | **Crowns again, into the first dated run folder** (`2026-09-22-1659-edt-restor-tcd-segformer-mit-b5`). Same model and settings as 35764574338, so the crown numbers are identical — the point was the two things the last run could not do. **Settles the H18 caveat:** only 32% of crown area is inside the property line (0-69%), 9 of 33 lawns are mostly OFF the property and just 2 are in the "tracer declined these trees" quadrant. The 7% on-lawn figure was measured mostly over neighbours' trees. Also the first run with a raw-mask picture per lawn, so a 63-crown lawn can be checked against the raster it was split from |
