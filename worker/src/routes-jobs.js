@@ -21,7 +21,7 @@ import { currentUser } from './auth.js';
 import {
   claimVerdict, submissionVerdict, cleanWorker, looksUnsubstituted, staleBefore,
   dayStart, cleanRoute, routeFromLink, routeInWrongParam, needsCode, GATES,
-  FREE_DETECTS_PER_JOB, isOpenLink,
+  FREE_DETECTS_PER_JOB, FREE_DETECTS_PER_OPEN_JOB, isOpenLink,
   PAID_RATE_CENTS,
 } from './jobs.js';
 
@@ -49,19 +49,65 @@ import {
  * of starting outlines because of somebody else's bad afternoon. The floor is
  * in the same statement as the ceiling, so neither can be walked past.
  */
-export async function spendJobDetection(env, jobId, workerId, n = 1) {
+export async function spendJobDetection(
+  env, jobId, workerId, n = 1, ceiling = FREE_DETECTS_PER_JOB
+) {
   const worker = cleanWorker(workerId);
   const id = String(jobId || '');
   if (!worker || !id || !env?.DB) return false;
 
   const spent = await env.DB.prepare(
+    /*
+     * THE CEILING APPLIES TO SPENDING AND THE FLOOR TO BOTH, which reads like
+     * pedantry and is not: the ceiling differs by route now, and a hand-back
+     * that had to satisfy it would silently fail on any lawn already above the
+     * caller's idea of the limit -- costing a worker a pass for a detection the
+     * detector itself refused, and doing it invisibly.
+     */
     `UPDATE lawn_jobs SET detections = detections + ?3
       WHERE id = ?1 AND worker = ?2 AND state = 'claimed'
-        AND detections + ?3 <= ?4 AND detections + ?3 >= 0
+        AND (?3 <= 0 OR detections + ?3 <= ?4) AND detections + ?3 >= 0
     RETURNING detections`
-  ).bind(id, worker, n, FREE_DETECTS_PER_JOB).first().catch(() => null);
+  ).bind(id, worker, n, ceiling).first().catch(() => null);
 
   return Boolean(spent);
+}
+
+/**
+ * The same spend, with the LAWN'S OWN ROUTE deciding the ceiling.
+ *
+ * Two questions in one round trip, because /api/segment needs both answers and
+ * they have to be about the same row: did this pass come out of the lawn, and
+ * -- if it could not -- is this a route where the person's own allowance may be
+ * charged instead. On the two public links the answer to the second is no. A
+ * volunteer is doing the owner a favour and somebody on the paid link is owed
+ * 75c for a map that is approved; billing either of them for the tool is the
+ * wrong way round, and a detection refused for want of THEIR passes is a
+ * refusal on a screen where the work is being donated.
+ *
+ * Returns null when this is not a detection on somebody's own claimed lawn at
+ * all, which is the ordinary case for every visitor to the site and means "the
+ * usual rules apply".
+ */
+export async function jobDetection(env, jobId, workerId, n = 1) {
+  const worker = cleanWorker(workerId);
+  const id = String(jobId || '');
+  if (!worker || !id || !env?.DB) return null;
+
+  const row = await env.DB.prepare(
+    `SELECT route, detections FROM lawn_jobs
+      WHERE id = ?1 AND worker = ?2 AND state = 'claimed'`
+  ).bind(id, worker).first().catch(() => null);
+  if (!row) return null;
+
+  const free = isOpenLink(cleanRoute(row.route));
+  const ceiling = free ? FREE_DETECTS_PER_OPEN_JOB : FREE_DETECTS_PER_JOB;
+  return {
+    free,
+    ceiling,
+    used: Number(row.detections || 0),
+    spent: await spendJobDetection(env, id, worker, n, ceiling),
+  };
 }
 
 /** What the worker is asked to do, in the order it matters. */

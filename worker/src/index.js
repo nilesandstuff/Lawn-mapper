@@ -48,7 +48,7 @@ import { recordFinished, storeImage } from './corpus.js';
 import { handleAuth, isAuthPath } from './routes-auth.js';
 import { handleMaps } from './routes-maps.js';
 import { handleAdmin, isAdminPath } from './routes-admin.js';
-import { handleJobs, spendJobDetection } from './routes-jobs.js';
+import { handleJobs, spendJobDetection, jobDetection } from './routes-jobs.js';
 import { accountsEnabled, publicUser } from './db.js';
 import { currentUser } from './auth.js';
 import { recordParcelGap } from './gaps.js';
@@ -750,17 +750,42 @@ async function handleSegment(request, env, origin, ctx) {
    * for -- and the refund path below never has to know about any of this.
    */
   const claimant = body.worker || user?.id || '';
-  const onTheClock = body.job && claimant
-    ? await spendJobDetection(env, body.job, claimant, passes.length)
-    : false;
+  const onLawn = body.job && claimant
+    ? await jobDetection(env, body.job, claimant, passes.length)
+    : null;
+  const onTheClock = Boolean(onLawn?.spent);
 
+  /*
+   * AND ON THE TWO PUBLIC ROUTES IT NEVER FALLS THROUGH TO THEIR OWN.
+   *
+   * A volunteer is doing the owner a favour; somebody on the paid link is owed
+   * 75c for each map that is approved and nothing for one that is not. Charging
+   * either of them for the tool is the wrong way round -- and the AI is opt-in
+   * on those routes now, so the one person who would meet the wall is the one
+   * using it deliberately: land cover first, then SAM, then again after
+   * dragging the boundary out to the kerb.
+   *
+   * The lawn's ceiling is twenty there rather than six, and when it is gone the
+   * press is refused with a sentence saying so. It does NOT quietly become a
+   * charge against their day, which is what "free in these workflows" has to
+   * mean. See FREE_DETECTS_PER_OPEN_JOB for why there is a ceiling at all --
+   * every pass is a Replicate prediction and these links are public.
+   */
   const quota = onTheClock
     ? { allowed: true, free: true }
-    : await charge(request, env, {
-      user, clientId, n: passes.length, dev,
-      detail: `${passes.length} pass${passes.length > 1 ? 'es' : ''}`
-        + `${body.address ? ` at ${String(body.address).slice(0, 60)}` : ''}`,
-    });
+    : onLawn?.free
+      ? {
+        allowed: false,
+        reason: 'job-passes',
+        used: onLawn.used,
+        limit: onLawn.ceiling,
+        wanted: passes.length,
+      }
+      : await charge(request, env, {
+        user, clientId, n: passes.length, dev,
+        detail: `${passes.length} pass${passes.length > 1 ? 'es' : ''}`
+          + `${body.address ? ` at ${String(body.address).slice(0, 60)}` : ''}`,
+      });
 
   /*
    * HANDING PASSES BACK WHEN THE DETECTOR REFUSES US, whichever purse paid.
@@ -771,10 +796,42 @@ async function handleSegment(request, env, origin, ctx) {
    * starting outlines left cannot do the task at all.
    */
   const handBack = () => (onTheClock
-    ? spendJobDetection(env, body.job, claimant, -passes.length)
+    ? spendJobDetection(env, body.job, claimant, -passes.length, onLawn.ceiling)
     : refund(request, env, { user, clientId, n: passes.length, fromDaily: quota.fromDaily }));
 
   if (!quota.allowed) {
+    /*
+     * THE LAWN'S OWN PASSES, AND NOT A WORD ABOUT ANYBODY'S ALLOWANCE.
+     *
+     * This one is answered first because it carries `used` and `limit` like the
+     * two below it, and the browser's generic handler would otherwise read
+     * those as the daily counter and say "you've used today's detections" to
+     * somebody whose day is untouched -- on a screen with no counter on it,
+     * since job mode hides the badge. Nothing was charged to them and nothing
+     * will be: the way on from here is to draw it, or to skip the lawn.
+     */
+    if (quota.reason === 'job-passes') {
+      note('job_passes_spent',
+        `${quota.used} of ${quota.limit} on the lawn, wanted ${quota.wanted}`);
+      return json(
+        {
+          error: 'job_passes_spent',
+          /* Read before `used` and `limit` are, so this cannot be mistaken for
+             the daily allowance refusal. */
+          jobSpent: true,
+          reason: `This lawn has had its ${quota.limit} goes at the AI, which is `
+            + 'as far as that goes on one property. Nothing has been charged to '
+            + 'you — draw the lawn by hand from here, or put it back with "I '
+            + 'cannot do this one" and take another.',
+          used: quota.used,
+          limit: quota.limit,
+          wanted: quota.wanted,
+        },
+        429,
+        origin
+      );
+    }
+
     /*
      * An account that has spent today's allowance is refused differently from
      * a browser that has, because the account can be told about the bought

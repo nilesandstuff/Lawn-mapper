@@ -12,8 +12,12 @@
  */
 
 import { testDb } from './d1.js';
-import { handleJobs, PROMPTS, spendJobDetection } from '../worker/src/routes-jobs.js';
-import { MIN_SECONDS, DAILY_CAP, FREE_DETECTS_PER_JOB } from '../worker/src/jobs.js';
+import {
+  handleJobs, PROMPTS, spendJobDetection, jobDetection,
+} from '../worker/src/routes-jobs.js';
+import {
+  MIN_SECONDS, DAILY_CAP, FREE_DETECTS_PER_JOB, FREE_DETECTS_PER_OPEN_JOB,
+} from '../worker/src/jobs.js';
 import { SESSION_COOKIE, createSession } from '../worker/src/auth.js';
 import { findOrCreateUser } from '../worker/src/db.js';
 
@@ -313,6 +317,48 @@ const read = async (res) => ({ status: res.status, body: await res.json() });
     after.state === 'approved' && Number(after.detections) === 2,
     `${after.detections} still spent -- a count that reset per claim would make `
     + 'claim, detect, skip, repeat a loop with no ceiling on it');
+
+  /*
+   * AND THE CEILING COMES FROM THE LAWN'S OWN ROUTE.
+   *
+   * The AI is free on the two public links -- a volunteer is doing a favour and
+   * a paid tracer is owed for approved maps, so billing either for the tool is
+   * the wrong way round -- and it is opt-in there, so asking is the whole
+   * interaction: land cover, then SAM, then again after dragging the boundary
+   * to the kerb. Six was sized for one automatic pass and five of slack.
+   *
+   * Read from the ROW rather than from the request, because the request is
+   * where a forger would put it.
+   */
+  await seed(2, 60);
+  const [crowdLawn, openLawn] = [idFor(60), idFor(61)];
+  await env.DB.prepare(
+    `UPDATE lawn_jobs SET state = 'claimed', worker = 'MIXED', route = 'crowd',
+       claimed_at = ?2 WHERE id = ?1`
+  ).bind(crowdLawn, new Date().toISOString()).run();
+  await env.DB.prepare(
+    `UPDATE lawn_jobs SET state = 'claimed', worker = 'MIXEDVOL', route = 'volunteer',
+       claimed_at = ?2 WHERE id = ?1`
+  ).bind(openLawn, new Date().toISOString()).run();
+
+  const crowdSide = await jobDetection(env, crowdLawn, 'MIXED', 1);
+  const openSide = await jobDetection(env, openLawn, 'MIXEDVOL', 1);
+  check('a crowd lawn keeps the six it always had',
+    crowdSide.ceiling === FREE_DETECTS_PER_JOB && crowdSide.free === false,
+    JSON.stringify(crowdSide));
+  check('and a public-link lawn gets the larger, free ceiling',
+    openSide.ceiling === FREE_DETECTS_PER_OPEN_JOB && openSide.free === true,
+    JSON.stringify(openSide));
+  check('which is roomier than the crowd one, or the change did nothing',
+    FREE_DETECTS_PER_OPEN_JOB > FREE_DETECTS_PER_JOB,
+    `${FREE_DETECTS_PER_OPEN_JOB} vs ${FREE_DETECTS_PER_JOB}`);
+  check('but still a ceiling, because these links are posted in public',
+    Number.isFinite(FREE_DETECTS_PER_OPEN_JOB) && FREE_DETECTS_PER_OPEN_JOB < 100,
+    'every pass is a Replicate prediction, and skips are free by design');
+
+  check('and a detection on a lawn nobody holds is nobody\'s job detection',
+    (await jobDetection(env, openLawn, 'STRANGER', 1)) === null,
+    'null means "the ordinary rules apply", which is right for every visitor');
 }
 
 /* ---------------------------------------------------------- submitting */

@@ -4353,6 +4353,24 @@ async function detect() {
       const b = err.body || {};
 
       /*
+       * THE LAWN'S OWN PASSES, WHICH ARE NOT ANYBODY'S ALLOWANCE.
+       *
+       * On the two public routes the AI is free and the ceiling belongs to the
+       * property rather than to the person: twenty goes at one lawn, nothing
+       * charged to them either way. This branch is FIRST because the refusal
+       * carries `used` and `limit` like the daily one does, and the handler
+       * below would read those as the day's counter -- telling a volunteer they
+       * had used up an allowance they have not touched, on a screen with no
+       * counter on it. The server's sentence says what actually happened and
+       * what to do next.
+       */
+      if (b.jobSpent) {
+        setStatus(b.reason || 'That lawn has had its goes at the AI. '
+          + 'Draw it by hand from here.', 'warn');
+        return;
+      }
+
+      /*
        * NOT EVERY 429 IS OUR ALLOWANCE.
        *
        * Replicate answers 429 when it throttles the account, and this branch

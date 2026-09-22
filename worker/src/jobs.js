@@ -296,6 +296,35 @@ export const routeFromLink = (raw) => {
 export const FREE_DETECTS_PER_JOB = 6;
 
 /**
+ * And how many on a lawn from one of the two PUBLIC links, where the answer is
+ * "as many as anybody sensibly needs, and nothing comes out of their own".
+ *
+ * WHY IT IS NOT SIX. Six was sized for a screen where the outline was run once,
+ * automatically, on arrival -- one pass in the ordinary course and five of
+ * slack. On the volunteer and paid routes nothing is traced until somebody asks
+ * for it, so asking is now the whole interaction with the AI, and the useful
+ * things to do with it are all repeats: try the free land cover method, try
+ * SAM, drag the property line out to the kerb and run it again, switch to a
+ * different year's photograph because this one is in shadow. Exclude mode
+ * counts one pass PER TICKED BOX, so a single press there can spend three.
+ * Six is a wall somebody meets while doing the work properly, and meeting it
+ * would mean a refusal on a screen where the work is a favour.
+ *
+ * WHY THERE IS A CEILING AT ALL. Every pass is a Replicate prediction and
+ * these two links are posted in public. Skips are free by design and the count
+ * lives on the LAWN rather than on the claim (see FREE_DETECTS_PER_JOB), so
+ * without a ceiling "claim, detect, detect, detect" is an unbounded way to
+ * spend the owner's money, from a link anybody can open. Twenty is chosen to
+ * sit well past deliberate use and well short of a bill worth noticing.
+ *
+ * NOTHING SPILLS ONTO THE PERSON. When this is spent the detection is refused
+ * outright, with a sentence saying so -- it does not fall through to their own
+ * daily allowance, which is what "free in these workflows" has to mean if it
+ * is to mean anything. See /api/segment.
+ */
+export const FREE_DETECTS_PER_OPEN_JOB = 20;
+
+/**
  * "That is the day's limit" -- written once, because it is reached from two
  * different places and must not read like the gates from either.
  *

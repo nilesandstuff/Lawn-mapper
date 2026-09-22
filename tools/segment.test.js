@@ -627,5 +627,160 @@ async function post(payload) {
     parcelBox([[0, 0], [NaN, 10], [10, 10]], 640) === null);
 }
 
+/* ---------------------------- the AI is free on the two public routes */
+/*
+ * "FREE" HAS TO MEAN THE PERSON'S OWN ALLOWANCE IS NEVER TOUCHED, and that is
+ * not something any single layer can show. The lawn has a ceiling of its own,
+ * the browser has a daily allowance, and the whole question is which purse a
+ * press comes out of -- so it is asked here, where both exist, by pressing the
+ * real endpoint and then reading the browser's counter back to see whether it
+ * moved.
+ *
+ * The failure this is aimed at is silent in the worst way. If an open-link
+ * detection falls through to `charge`, everything still works: the outline
+ * arrives, nobody is told anything, and the cost lands on a volunteer's own
+ * five-a-day -- who then meets a wall halfway through a favour, on a screen
+ * where job mode has hidden the counter that would have explained it.
+ */
+{
+  const { testDb } = await import('./d1.js');
+  const { FREE_DETECTS_PER_JOB, FREE_DETECTS_PER_OPEN_JOB } =
+    await import('../worker/src/jobs.js');
+
+  const jobEnv = () => ({ ...loggingEnv(), DB: testDb() });
+
+  const claimed = (e, { id, route, worker, detections = 0 }) => e.DB.prepare(
+    `INSERT INTO lawn_jobs (id, lng, lat, state, worker, route, detections, claimed_at, created_at)
+     VALUES (?1, -85.5, 43.1, 'claimed', ?2, ?3, ?4, ?5, ?5)`
+  ).bind(id, worker, route, detections, new Date().toISOString()).run();
+
+  const press = async (e, over = {}) => {
+    const res = await worker.fetch(new Request('https://example.test/api/segment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        lng: -85.5, lat: 43.1, zoom: 19, size: 640, clientId: 'c-open',
+        model: 'sam3', ...over,
+      }),
+    }), e, ctx);
+    return { status: res.status, body: await res.json() };
+  };
+
+  /* What the badge in the corner would say -- the same question the charge
+     asks, which is the point: if this moved, somebody was billed. */
+  const theirOwn = async (e) => {
+    const res = await worker.fetch(
+      new Request('https://example.test/api/quota?clientId=c-open'), e, ctx
+    );
+    return res.json();
+  };
+
+  const spentOn = async (e, id) => Number((await e.DB.prepare(
+    'SELECT detections FROM lawn_jobs WHERE id = ?1'
+  ).bind(id).first())?.detections);
+
+  const JOB = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+
+  /* ---- a volunteer pressing Detect */
+  {
+    const e = jobEnv();
+    await claimed(e, { id: JOB, route: 'volunteer', worker: 'helper-abc' });
+    const r = await press(e, { job: JOB, worker: 'helper-abc' });
+
+    check('a volunteer\'s detection goes through', r.status === 200,
+      JSON.stringify(r.body).slice(0, 120));
+    check('and comes out of the lawn', (await spentOn(e, JOB)) === 1,
+      `${await spentOn(e, JOB)} spent on the lawn`);
+
+    const mine = await theirOwn(e);
+    check('and not out of their own day, which is the whole of "free"',
+      Number(mine.used) === 0,
+      `${mine.used} of ${mine.limit} charged to them -- job mode hides the badge, `
+      + 'so a charge here is a wall with no explanation attached to it');
+  }
+
+  /* ---- and twenty of them, not six */
+  {
+    const e = jobEnv();
+    await claimed(e, {
+      id: JOB, route: 'volunteer', worker: 'helper-abc',
+      detections: FREE_DETECTS_PER_JOB,
+    });
+    const r = await press(e, { job: JOB, worker: 'helper-abc' });
+    check(`a ${FREE_DETECTS_PER_JOB + 1}th press on one lawn is fine here`,
+      r.status === 200,
+      `the crowd ceiling is ${FREE_DETECTS_PER_JOB}; this route's is `
+      + `${FREE_DETECTS_PER_OPEN_JOB}, because asking IS the interaction now`);
+  }
+
+  /* ---- and when the lawn's own are gone, it is still not their bill */
+  {
+    const e = jobEnv();
+    await claimed(e, {
+      id: JOB, route: 'volunteer', worker: 'helper-abc',
+      detections: FREE_DETECTS_PER_OPEN_JOB,
+    });
+    const r = await press(e, { job: JOB, worker: 'helper-abc' });
+
+    check('a lawn with no passes left refuses the press', r.status === 429,
+      `${r.status}: ${JSON.stringify(r.body).slice(0, 120)}`);
+    check('saying it is the lawn rather than their allowance',
+      r.body.jobSpent === true && r.body.error === 'job_passes_spent',
+      JSON.stringify(r.body).slice(0, 160));
+    check('in a sentence that says nothing was charged and what to do next',
+      /charged to you/i.test(r.body.reason || '')
+      && /by hand|cannot do this one/i.test(r.body.reason || ''),
+      r.body.reason);
+
+    const mine = await theirOwn(e);
+    check('and it did NOT quietly become a charge against their day',
+      Number(mine.used) === 0,
+      `${mine.used} of ${mine.limit} -- falling through to charge is the bug `
+      + 'this whole block exists to catch, and it is invisible from the screen');
+  }
+
+  /* ---- while a crowd worker is unchanged: six, then the ordinary rules */
+  {
+    const e = jobEnv();
+    await claimed(e, {
+      id: JOB, route: 'crowd', worker: 'CROWD1', detections: FREE_DETECTS_PER_JOB,
+    });
+    const r = await press(e, { job: JOB, worker: 'CROWD1' });
+    check('a crowd lawn past its six falls back to the ordinary allowance',
+      r.status === 200, JSON.stringify(r.body).slice(0, 120));
+    const mine = await theirOwn(e);
+    check('and that press is charged, the way it always was',
+      Number(mine.used) > 0,
+      `${mine.used} of ${mine.limit} -- these two routes are paid platforms with `
+      + 'their outline run for them, and nothing about them has changed');
+  }
+
+  /* ---- a pass handed back above the crowd ceiling really comes back */
+  {
+    /*
+     * THE BUG THE SPLIT CEILING WOULD HAVE INTRODUCED. The hand-back is the
+     * same UPDATE with a negative n, and while it had to satisfy the ceiling it
+     * would have failed silently on any lawn sitting above six -- which is
+     * every busy open-link lawn. The worker would be charged for a detection
+     * the detector itself refused, and nothing anywhere would say so.
+     */
+    const e = jobEnv();
+    const at = 12;
+    await claimed(e, {
+      id: JOB, route: 'volunteer', worker: 'helper-abc', detections: at,
+    });
+
+    httpStatus = 429;
+    const r = await press(e, { job: JOB, worker: 'helper-abc' });
+    httpStatus = 200;
+
+    check('a detection the detector refuses is 429', r.status === 429,
+      JSON.stringify(r.body).slice(0, 120));
+    check('and the lawn gets its pass back even well above the crowd ceiling',
+      (await spentOn(e, JOB)) === at,
+      `${await spentOn(e, JOB)} against ${at} before the press`);
+  }
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);
