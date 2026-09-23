@@ -172,12 +172,24 @@ pixels with a bilinear resize and handing them to a model that was trained on
 Bullitt County lawns that returned 0.0% canopy were all read at 107–112 m
 across, inside the upsampled group — suggestive at n=5, and not more than that.
 
+> **CONFIRMED and partly REFUTED by run 35809715707, 2026-09-23**, the first
+> run with `DUMP_SIZE=1280`.
+>
+> **The arithmetic held.** Upsampled lawns went **11 of 32 → 6 of 33**, and the
+> worst case **2.3× → 1.6×**. The prediction above was that five lawns would
+> come off the list; five did.
+>
+> **The Bullitt County guess was wrong, and it is worth saying so plainly.**
+> Those three lawns are now comfortably below the crossover and were not
+> upsampled in this run — and they still return **0 clumps and 0.0% canopy**.
+> Whatever is happening there, resolution is not it. The n=5 correlation was a
+> coincidence, which is why it was written down as one.
+
 **Two separate losses, and the first is free to fix.**
 
-1. **The dump discards pixels it was given.** The stored photograph is 1280 and
-   `DUMP_SIZE=1024` resizes it down before the model sees anything. Pure waste.
-   Removing it moves the crossover from 102 m to 128 m and recovers 5 of those
-   11 lawns at no cost.
+1. ~~**The dump discards pixels it was given.**~~ **FIXED**, run 35809715707.
+   `DUMP_SIZE` is 1280, the crossover moved to 128 m, and five lawns came off
+   the upsampled list exactly as the arithmetic said they would.
 2. **Above 128 m, 1280 px is genuinely not enough.** `imagePixels` in
    `worker/src/imagery.js` caps at 2560, so Mapbox *can* be asked for more —
    but whether more pixels means more detail, or just Mapbox doing the
@@ -188,6 +200,13 @@ across, inside the upsampled group — suggestive at n=5, and not more than that
 Every run now records `sourceMpp` and `upsampled` per lawn and prints the split
 at the end of the log, so this is answerable from the output instead of being
 re-derived.
+
+**And the figure is computed from what R2 holds, not from the frame file.**
+`resize` upscales as readily as it downscales, so a frame dumped larger than
+its own photograph carries no extra detail — and a resolution figure taken from
+the file would then claim resolution that does not exist, in the one number
+whose entire job is to report exactly that. `scale.json` carries `storedPx`
+and the Python says in the log when it has had to fall back.
 
 ---
 
@@ -220,7 +239,13 @@ cannot separate touching crowns either.
 It also means **H18's crown counts should not be read as tree counts.** A lawn
 reported at 63 crowns may be one canopy split 63 ways.
 
-**A candidate mechanism for (2), NOT TESTED.** Frames are dumped at a fixed
+**Update, run 35809715707:** mechanism (2) below was tested and **does not
+explain the Bullitt County failures** — see the box in H20. It did move the
+resolution of every big lot, and the canopy figures moved a long way with it
+(see the run log), but two things changed in that run at once, so nothing there
+is attributable yet.
+
+**A candidate mechanism for (2), PARTLY TESTED — see H20.** Frames are dumped at a fixed
 1024 px whatever the lot, so a 25 m lot arrives at ~2.4 cm/px and a 194 m lot
 at ~19 cm/px. `tree-crowns.py` then resamples every frame to the model's own
 0.1 m/px — which for the big lot is an UPSAMPLE from coarser imagery, adding
@@ -1550,3 +1575,4 @@ fields) were both more obviously right than this one.
 | 2026-09-22 | 35764574338 | **33** | — (workflow 19, no training) | — | — | **Tree crowns (H18).** `restor/tcd-segformer-mit-b5` at 0.1 m/px over 33 approved maps, 18 min CPU, nothing bought. Crowns per lawn 0-63, middle 9; middle 6 of them big enough to tap. Crown area on traced lawn 0-51%, middle 7% — **not interpretable yet**, because `insidePct` (crown inside the property line at all) is not summarised, so "the tracer said no" and "it is a neighbour's tree" are not separated. Tappability collapses on the busiest lawns: 1 of 28, 2 of 39. Pictures at /predictions.html?set=crowns |
 | 2026-09-22 | 35781727027 | 33 | — (workflow 19, no training) | — | — | **Crowns again, into the first dated run folder** (`2026-09-22-1659-edt-restor-tcd-segformer-mit-b5`). Same model and settings as 35764574338, so the crown numbers are identical — the point was the two things the last run could not do. **Settles the H18 caveat:** only 32% of crown area is inside the property line (0-69%), 9 of 33 lawns are mostly OFF the property and just 2 are in the "tracer declined these trees" quadrant. The 7% on-lawn figure was measured mostly over neighbours' trees. Also the first run with a raw-mask picture per lawn, so a 63-crown lawn can be checked against the raster it was split from |
 | 2026-09-23 | — | 33 | — (no run; arithmetic over the code) | — | — | **H20, and H18 half retracted.** The crown counts were measurements of our own watershed's gap parameter, not of trees — `tcd-segformer` is semantic and has no notion of where one tree ends. `onLawnPct`/`insidePct` survive and the 32%-inside result stands. The watershed is removed; the tool reports canopy plus contiguous patches, which are not trees. Separately: `FRAME_SIZE=640` @2x means every stored photograph is 1280px whatever the lot, so **above 102 m across the canopy model is fed upsampled pixels** — 11 of 32 lawns in the last run. The `DUMP_SIZE=1024` resize is free waste on top of that |
+| 2026-09-23 | 35809715707 | 33 | — (workflow 19, no training) | — | — | **First canopy run, no watershed, `DUMP_SIZE=1280`.** Folder `2026-09-22-2236-edt-restor-tcd-segformer-mit-b5`. **H20 confirmed:** upsampled lawns 11 of 32 → **6 of 33**, worst 2.3× → **1.6×**, exactly the five lawns the arithmetic predicted. **H20's Bullitt County guess refuted:** those three are no longer upsampled and still return 0 canopy, so resolution is not what ails them. Patches per lawn 0–47, middle 6. Canopy on traced lawn 0–51% **middle 20%** (was 7%); inside the property line 0–73% **middle 44%** (was 32%). **Those two shifts are NOT attributable** — the watershed was removed and the resolution changed in the same run, so this is exactly the two-variables-at-once the rules forbid reading. A decomposition run (this code at `DUMP_SIZE=1024`) would separate them for ~20 min of free CI |
