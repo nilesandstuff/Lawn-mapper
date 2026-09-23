@@ -244,6 +244,16 @@ async function main() {
       if (canopy) {
         shots.push([maskKey, drawPrediction({
           photo, truth, within, inferred, mask: canopy, grid: GRID,
+          /*
+           * UNCLIPPED, because the crowns beside it are. A crown ring comes
+           * straight from the watershed and is never cut at the property line,
+           * so clipping the canopy under it made the canopy appear to stop at
+           * a boundary the crowns sailed past -- which reads as the mask being
+           * truncated, and was. Beyond the line it draws weaker, matching the
+           * dimmed photograph: a neighbour's tree is a fact about the picture,
+           * not a claim about the property.
+           */
+          clipMask: false,
         }), `${n}-mask.png`]);
       }
 

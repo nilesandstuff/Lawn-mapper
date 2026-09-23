@@ -259,8 +259,15 @@ function segment(out, grid, [x0, y0], [x1, y1], half, colour) {
  * other half of the toggle on /predictions.html. Pass one or the other: the
  * pair is meant to be flipped between, and a picture carrying both would be a
  * picture of neither.
+ *
+ * `clipMask: false` says the SHAPES beside this mask are not clipped to the
+ * property line either, so the mask must not be. Default is to clip, which is
+ * right for the detector because tracePrediction clips its rings. It is wrong
+ * for anything drawing unclipped polygons -- see the note at the clip itself.
  */
-export function drawPrediction({ photo, truth, within, inferred, rings, grid, mask }) {
+export function drawPrediction({
+  photo, truth, within, inferred, rings, grid, mask, clipMask,
+}) {
   const out = new Uint8Array(grid * grid * 4);
 
   for (let i = 0; i < grid * grid; i++) {
@@ -348,23 +355,47 @@ export function drawPrediction({ photo, truth, within, inferred, rings, grid, ma
    * where a one-pixel one would dither into mush.
    */
   if (mask) {
+    /*
+     * CLIPPED EXACTLY WHEN THE SHAPES ARE, and not otherwise. This is the one
+     * thing the two pictures must agree on, and the first version got it wrong
+     * in a way that read as a result.
+     *
+     * The detector's rings come out of tracePrediction, which clips them to
+     * the property line, so its mask is clipped too and the pair differ only
+     * where the TRACER changed something -- which is the whole point of the
+     * flip. Crown rings come straight from the watershed and are never
+     * clipped, so clipping the canopy under them made the canopy look like it
+     * stopped at the boundary while crown outlines carried on past it. The
+     * reader's conclusion was "the mask is being cut off", and they were
+     * right.
+     *
+     * `clipMask: false` says the shapes beside this one are unclipped too.
+     */
+    const clip = clipMask === false ? null : within;
     for (let y = 0; y < grid; y++) {
       for (let x = 0; x < grid; x++) {
         const i = y * grid + x;
         if (!mask[i]) continue;
-        /* Clipped to the property line exactly as the trace is, so the two
-           pictures disagree only where the tracer changed something. */
-        if (within && !within[i]) continue;
+        if (clip && !clip[i]) continue;
         if (((x >> 1) + (y >> 1)) % 2) continue;
+        /*
+         * WEAKER OUTSIDE THE LINE where it is shown at all, matching the
+         * dimming under it. Beyond the boundary this is a fact about the
+         * photograph rather than a claim about the property -- a neighbour's
+         * tree is still a tree -- and painting it at full strength would put
+         * ground nobody is measuring at the same weight as ground somebody is.
+         */
+        const own = !within || within[i];
         const p = i * 4;
-        out[p] = mix(out[p], TRACE[0], 0.85);
-        out[p + 1] = mix(out[p + 1], TRACE[1], 0.85);
-        out[p + 2] = mix(out[p + 2], TRACE[2], 0.85);
+        const a = own ? 0.85 : 0.5;
+        out[p] = mix(out[p], TRACE[0], a);
+        out[p + 1] = mix(out[p + 1], TRACE[1], a);
+        out[p + 2] = mix(out[p + 2], TRACE[2], a);
       }
     }
     /* Its own boundary, solid, so the shape has an edge to read. Without it a
        stipple has no outline and a thin strip of lawn disappears. */
-    outline(out, grid, scored(mask), TRACE, half);
+    outline(out, grid, clip ? scored(mask) : mask, TRACE, half);
     return out;
   }
 
