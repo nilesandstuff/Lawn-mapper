@@ -58,7 +58,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-from windows import window_plan, windowed
+from windows import padded_side_metres, window_plan, windowed
 
 # The ground a pixel may cover, at most, when the model reads it. The canopy
 # model was trained at this and the live detector is fed it; the rule is that
@@ -323,9 +323,11 @@ def main():
             # Metres per pixel of what the model is about to see, which depends
             # on the size it is read at and so cannot be stored with the picture.
             tensor, cover = as_tensor(os.path.join(images, name), size)
-            # Metres per pixel of what the model sees: the LONGER side of the
-            # photograph (the padded square's side) over `size`.
-            long_m = (span * max(cover)) if span else 0.0
+            # Metres per pixel of what the model sees: the padded square's
+            # side over `size`. See padded_side_metres for why it is cover[0]
+            # and not max(cover) -- the first rectangular run got that wrong
+            # and told the model a 319 m lot was 878 m across.
+            long_m = padded_side_metres(span, cover) if span else 0.0
             mpp = (long_m / size) if (eye.wants_scale and span) else 0.0
             hidden = eye.look(tensor, mpp)
             flat, dim, extra = patches_of(hidden, eye.side)

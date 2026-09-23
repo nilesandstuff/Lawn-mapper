@@ -46,6 +46,12 @@ Gap: **1.30×**. It was 1.45× on `1wxlejo` (31 lawns) and 1.39× at 23. One map
 left and one arrived between `1wxlejo` and this, so by H7 the two tables are
 not the same measurement; the ratio is the only number worth carrying across.
 
+**Rectangular frames, later on 2026-09-23 (H24): SAM 27.1% on 31 lawns (was
+33.8% on the squares that morning); the canopy medians unchanged; the first
+backbone run VOID from a scale bug in the extractor, fixed and not yet re-run.
+Until it is, the table above is the last valid backbone number and it was
+measured on square frames.**
+
 **Three things were tried on 2026-09-23 to get every detector 10 cm a pixel.
 Two were measured worse and are off:** cutting SAM's lot into pieces (H21)
 and reading the backbone in windows (H22). **The third, the 15 cm scoring
@@ -294,6 +300,49 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H24. The first runs on rectangular frames, 2026-09-23 — SAM better, canopy unchanged, the backbone rows VOID
+
+Three runs on the re-banked photographs (parcel box plus 10 m, cropped both
+ways, ≤ 10 cm/px; run 35926500588), same 32 lawns, fingerprint `1rijjz2`.
+
+**SAM (workflow 22, run 35927233073), one picture per lawn as the app asks:
+median 27.1% over 31 lawns, against 33.8% on the square frames that morning
+(35891200799, same model, prompt and threshold).** Six points better with the
+neighbours cropped out. Read with care: different frames, and 31 lawns rather
+than 32 — the 300 m Ottawa lot was skipped with Mapbox HTTP 422, because with
+pieces switched off `detectionPlan` still asked for one piece at the target,
+1500 logical px, which Mapbox refuses. That was a live bug: the biggest lots
+could not be detected in the app either. Fixed the same evening (pieces off
+now means the display frame, as H21 measured). The Kent 183 m lot is still
+419% over-called: cropping the neighbours did not cure over-calling.
+
+**Canopy (workflow 19, run 35927223633): canopy on traced lawn 0–68%, middle
+19% (was 19%); inside the property line 0–87%, middle 35% (was 38%); patches
+0–26, middle 6 (was 7); 9 lawns still mostly off the property (was 9).** The
+box-plus-margin still holds neighbours' trees where a parcel is not
+rectangular, so the crop did not change the medians. Pictures in
+`2026-09-23-1825-edt-restor-tcd-segformer-mit-b5`. No canopy truth, so the
+pictures are the measurement.
+
+**Training (workflow 14, run 35927228827): the colour control read 33.3%
+(35.0% on the squares at the same grid — within H13), and every backbone row
+is VOID.** The eye alone read 81.6%, 2 of 26 over SAM, 80.6% wrong in the
+middle of lawns — not a bad model, a broken input. The cause is in the
+extraction log: wide lots were read at "0.980 m/px", "0.483", "0.275" when
+no lot in the corpus is coarser than 0.36. The extractor pads a rectangle to
+a square and tells Scale-MAE the scale from the metres ACROSS; it multiplied
+by `max(cover)`, which on a wide lot is the height ratio, so a 319 m lot was
+told it was 932 m across. Every wide lot went in at the wrong scale, every
+tall one at the right scale, and a head trained across both had no consistent
+eye to read. Fixed in `padded_side_metres` (tools/windows.py, tested). **So
+there is still no valid backbone number on rectangular frames**; the next
+workflow 14 run is the first. The decoder run queued on the broken features
+was cancelled (35932533679) rather than measured.
+
+What this run does say: the colour row moved 1.7 points between square and
+rectangular frames at the same grid, which is inside noise — the crop did not
+change what colour can do.
 
 ### H23. The 15 cm scoring grid moved nothing outside noise, 2026-09-23
 
@@ -2039,3 +2088,6 @@ fields) were both more obviously right than this one.
 | 2026-09-23 | 35900680556 | 32 | Scale-MAE large 896px, windowed, **15 cm grid** (512–1024 cells) | 34.1% | 23.3% | **H23, windows-on column.** Against the windowed run at 512: every row within 3 points (colour 33.7→35.0, eye 47.4→44.4, both+ring 38.0→39.3). The grid moved nothing; the windows' cost is the same at either grid. Extraction 73 minutes on a slower runner, scoring 22 |
 | 2026-09-23 | 35914319694 | 32 | Scale-MAE large 896px, squeezed whole, **15 cm grid** | **30.2%** | 23.3% | **H23, windows-off column: the 2×2 is complete.** Against the control at 512: colour 33.7→35.0, eye 31.4→34.1, both 34.7→33.1, both-96 33.5→33.0, colour+ring 35.5→34.1, both+ring 31.6→**30.2**. All within H13's 3-point drift, both directions. Best number of the day, 12 of 26 over SAM, gap 1.30× — a selected best-of-six 1.2 points from the control. Grid kept at 15 cm for the rule's sake |
 | 2026-09-23 | 35926500588 | 56 rows (all Mapbox rows, approved or not) | — (workflow 21, the rectangular re-bank) | — | — | **Every photograph is the parcel's box plus 10 m, cropped both ways, at 10 cm or finer.** 56 re-banked, 0 failed, 2 stitched (3004×1028 and 2592×2572). Shapes run from 544×1520 to 1996×1614; the widest lot is 1714×678. Small lots are slightly coarser than the square used to give them (middle 0.9×, e.g. 4.7 → 5.9 cm) because the 10 m margin is wider than the old 12% on a small lot and the longer side still fits 640 logical px; every one is under 10 cm. **Every number in this file before this row was measured on square frames with the neighbours in them**; the runs that follow are a new baseline, whatever the fingerprint says |
+| 2026-09-23 | 35927233073 | 32 | — (workflow 22, 31 predictions) | — | **27.1%** raw mask, one picture per lawn | **H24: SAM on the rectangular frames.** 33.8% → 27.1% median against the square frames that morning, same model and prompt. 31 of 32: the 300 m Ottawa lot got Mapbox HTTP 422 because pieces-off still planned one 1500 px piece at the target — a live bug on the biggest lots, fixed that evening. Kent 183 m still 419% over |
+| 2026-09-23 | 35927223633 | 32 | — (workflow 19, no training) | — | — | **H24: canopy on the rectangular frames.** On traced lawn middle 19% (was 19%), inside the line middle 35% (was 38%), patches middle 6 (was 7), 9 lawns mostly off the property (was 9). The crop did not move the medians; the parcel's box still holds neighbours' trees. No lawn upsampled. Folder `2026-09-23-1825-edt-restor-tcd-segformer-mit-b5` |
+| 2026-09-23 | 35927228827 | 32 | Scale-MAE large 896px, squeezed whole, 15 cm grid, **rectangular frames** | 33.3% (colour) | 24.7% | **H24: backbone rows VOID.** Eye alone 81.6%, both 36.8, both-96 39.3, both+ring 43.0 — the extractor told Scale-MAE the wrong scale on every wide lot (`max(cover)` instead of the across ratio: a 319 m lot read at 98 cm/px). Colour 33.3 vs 35.0 on squares at the same grid, inside noise. The SAM column reads 24.7 rather than 23.3 because the stored outlines are now rasterised on rectangular grids. Fixed; not yet re-run. The decoder run on these features (35932533679) was cancelled |

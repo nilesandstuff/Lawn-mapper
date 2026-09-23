@@ -189,6 +189,22 @@ for (const lat of [25.8, 42.9, 61.2]) {
   assert.ok(Math.abs(wide.frame.height / wide.frame.size - 223 / 640) < 0.01, 'the stitch lost its shape');
   assert.ok(Math.abs(wide.groundM - TARGET_GROUND_M) < 0.0015);
 
+  /* PIECES OFF MEANS THE PICTURE AS ASKED. With maxAcross 1 a 300 m lot used
+     to come back as one "piece" of 1500 logical px at the target -- which
+     Mapbox refuses -- rather than the display frame the app asked for. */
+  const off = detectionPlan('mapbox', display(300), { inputPx: INPUT, maxAcross: 1 });
+  assert.equal(off.tiles.length, 1);
+  assert.equal(off.capped, false);
+  assert.equal(off.frame.size, 640, `pieces off: asked Mapbox for ${off.frame.size} logical px`);
+  assert.deepEqual(off.frame, display(300), 'pieces off must be the display frame itself');
+  /* And with pieces on, no piece is ever bigger than Mapbox serves. */
+  const huge = detectionPlan('mapbox', display(700), { inputPx: INPUT, maxAcross: 2 });
+  assert.equal(huge.capped, true);
+  for (const t of huge.tiles) {
+    assert.ok(t.frame.size <= 1280 && t.frame.height <= 1280,
+      `a piece of ${t.frame.size}x${t.frame.height} logical px is more than Mapbox serves`);
+  }
+
   /* Other sources are never cut. NAIP has no 10 cm to give and Google serves
      one fixed picture; both come back as a plan of one in the same shape. */
   for (const provider of ['naip', 'google']) {
