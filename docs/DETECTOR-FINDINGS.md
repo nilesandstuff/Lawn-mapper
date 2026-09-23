@@ -216,12 +216,26 @@ this file's own earlier objection to tiling (workflow 12's 224 px tiles, "a
 patch in the middle of a tile cannot see the garden it sits in"): every kept
 patch here had 11 m of real picture on every side when it was read.
 
-**What is NOT at 10 cm, still.** The head's colour-and-texture features and
-its 512-cell answer grid: `GRID = 512` over the frame is 20 cm a cell on a
-100 m lot and 62 cm on a 319 m one, and the cheap features are computed from
-the photograph resampled to that grid. That is the resolution of the ANSWER
-and of the hand-written features, not of what the backbone saw, and it should
-follow metres (a fixed cm per cell) rather than a fixed count. Not built.
+**The head's grid follows metres too, built the same day, UNMEASURED.**
+`GRID = 512` over the frame was 20 cm a cell on a 100 m lot and 62 cm on a
+319 m one — the cheap colour-and-texture features are computed from the
+photograph resampled to that grid, the texture window (`FINE_M`) is 0.25 m so
+on any lot over about 128 m a cell was wider than the window and the feature
+measured nothing, and the outline is quantised to the cell. `gridFor` in
+`tools/train-detector.js` now gives each lawn ceil(across / 0.15 m) cells,
+floored at 512 and capped at 1024; the browser's developer-mode head uses the
+same rule. Under about 77 m nothing moves, cell for cell. The cap is memory
+(14 floats per cell per lawn, held for the whole corpus), so a 319 m lot is
+31 cm a cell — half what it was, not the target, and the run's settings say
+how many lawns hit the cap. **Every number in this file before this date was
+measured at 512**, so the first run at the new grid is not comparable to the
+table above it on the big lots; a control at 512 on the same corpus is what
+makes it readable, and the windowed-backbone run of 2026-09-23 (grid still
+512) is that control.
+
+Not at 10 cm anywhere: the canopy tool's overlap statistics (`onLawnPct`,
+`insidePct`) are counted on its own 512 grid, which is a statistic's
+resolution and not a detector's; the canopy model itself reads 10 cm.
 
 **Crowns are out of scope** until everything above works. The measured crown
 area per lawn is small enough that it is not where the square footage is, and
