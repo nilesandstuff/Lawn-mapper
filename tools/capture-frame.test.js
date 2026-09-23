@@ -139,23 +139,21 @@ for (const lat of [25.8, 42.9, 61.2]) {
     assert.equal(plan.capped, false);
   }
 
-  /* Past the target it is cut, and every piece is the model's input size at
-     10 cm a pixel or finer -- the lot fills the grid, so a lot that only just
-     needed cutting comes out at 5 cm -- abutting in world pixels like the
-     banked tiles. */
+  /* Past the target it is cut, and every piece is at most the model's input
+     size at EXACTLY 10 cm a pixel -- a lot that only just needed cutting is
+     two pieces of 430 px, not two of 1008 at 5 cm (H21: finer pieces over-
+     called) -- abutting in world pixels like the banked tiles. */
   for (const across of [101, 130, 172, 197]) {
     for (const lat of [25.8, 42.9, 61.2]) {
       const plan = detectionPlan('mapbox', display(across, lat), { inputPx: INPUT, maxAcross: 2 });
       assert.equal(plan.cols, 2, `${across} m at lat ${lat}: should be 2 across`);
       assert.equal(plan.tiles.length, 4);
       assert.equal(plan.capped, false, `${across} m: should fit the piece budget`);
-      assert.ok(plan.groundM <= TARGET_GROUND_M + 1e-6,
-        `${across} m at lat ${lat}: pieces are ${plan.groundM} m/px, coarser than the target`);
-      assert.ok(plan.groundM >= TARGET_GROUND_M / 2 - 1e-6,
-        `${across} m at lat ${lat}: ${plan.groundM} m/px is finer than a 2 x 2 should ever be`);
+      assert.ok(Math.abs(plan.groundM - TARGET_GROUND_M) < 0.0015,
+        `${across} m at lat ${lat}: pieces are ${plan.groundM} m/px, want the target`);
       assert.ok(groundAcross(plan.frame) >= across - 1, `${across} m: the pieces do not cover the lot`);
       for (const t of plan.tiles) {
-        assert.equal(t.frame.size * 2, INPUT, 'a piece is not the model\'s input size');
+        assert.ok(t.frame.size * 2 <= INPUT, 'a piece is bigger than the model\'s input');
         assert.equal(t.frame.zoom, plan.frame.zoom);
       }
       const at = (c, r) => plan.tiles.find((t) => t.col === c && t.row === r);
@@ -163,7 +161,7 @@ for (const lat of [25.8, 42.9, 61.2]) {
       const b = lngLatToWorld([at(1, 0).frame.lng, at(1, 0).frame.lat], plan.frame.zoom);
       const c = lngLatToWorld([at(0, 1).frame.lng, at(0, 1).frame.lat], plan.frame.zoom);
       assert.ok(Math.abs((b[0] - a[0]) - plan.tileSize) < 0.01, `${across} m: columns do not abut`);
-      assert.ok(Math.abs((c[1] - a[1]) - plan.tileSize) < 0.01, `${across} m: rows do not abut`);
+      assert.ok(Math.abs((c[1] - a[1]) - plan.tileHeight) < 0.01, `${across} m: rows do not abut`);
     }
   }
 
@@ -180,7 +178,16 @@ for (const lat of [25.8, 42.9, 61.2]) {
   const raised = detectionPlan('mapbox', display(319), { inputPx: INPUT, maxAcross: 4 });
   assert.equal(raised.cols, 4);
   assert.equal(raised.capped, false);
-  assert.ok(raised.groundM <= TARGET_GROUND_M + 1e-6, `raised budget: ${raised.groundM}`);
+  assert.ok(Math.abs(raised.groundM - TARGET_GROUND_M) < 0.0015, `raised budget: ${raised.groundM}`);
+
+  /* A RECTANGULAR frame is cut per side. A lot 172 m across and 60 m deep
+     is two pieces across and one down, and the stitched frame keeps the
+     shape. */
+  const wide = detectionPlan('mapbox', { ...display(172), height: 223 }, { inputPx: INPUT, maxAcross: 4 });
+  assert.equal(wide.cols, 2, `wide lot: ${wide.cols} across`);
+  assert.equal(wide.rows, 1, `wide lot: ${wide.rows} down`);
+  assert.ok(Math.abs(wide.frame.height / wide.frame.size - 223 / 640) < 0.01, 'the stitch lost its shape');
+  assert.ok(Math.abs(wide.groundM - TARGET_GROUND_M) < 0.0015);
 
   /* Other sources are never cut. NAIP has no 10 cm to give and Google serves
      one fixed picture; both come back as a plan of one in the same shape. */
@@ -191,6 +198,34 @@ for (const lat of [25.8, 42.9, 61.2]) {
   }
   /* A look-only source detects on the default, which IS cut. */
   assert.equal(detectionPlan('esri', display(197), { inputPx: INPUT }).tiles.length, 4);
+}
+
+/* --------------------------------------------- rectangular frames */
+/*
+ * A frame cropped to a long thin parcel stays long and thin through the
+ * capture and the tiling, at the same resolution on both axes. Growing it
+ * back into a square would put the neighbours back in.
+ */
+{
+  const thin = { ...display(300), height: 200 };   // 300 m across, ~94 m down
+  const c = captureFrame(thin);
+  assert.ok(Math.abs(c.frame.height / c.frame.size - 200 / 640) < 0.01, 'captureFrame lost the shape');
+  assert.ok(c.groundM <= TARGET_GROUND_M + 1e-6, `thin lot: ${c.groundM}`);
+  assert.ok(Math.abs(groundAcross(c.frame) - 300) < 3, 'thin lot: width drifted');
+
+  const plan = capturePlan(thin);
+  /* 300 m at 10 cm is 1500 logical px, two requests of Mapbox's 1280. */
+  assert.equal(plan.cols, 2, `thin lot: ${plan.cols} across`);
+  assert.equal(plan.rows, 1, `thin lot: ${plan.rows} down`);
+  assert.equal(plan.frame.size, plan.tileSize * plan.cols);
+  assert.equal(plan.frame.height, plan.tileHeight * plan.rows);
+  for (const t of plan.tiles) {
+    assert.ok(t.frame.size <= MAX_LOGICAL && t.frame.height <= MAX_LOGICAL, 'a tile is over the cap');
+  }
+  const at = (col) => plan.tiles.find((t) => t.col === col && t.row === 0);
+  const a = lngLatToWorld([at(0).frame.lng, at(0).frame.lat], plan.frame.zoom);
+  const b = lngLatToWorld([at(1).frame.lng, at(1).frame.lat], plan.frame.zoom);
+  assert.ok(Math.abs((b[0] - a[0]) - plan.tileSize) < 0.01, 'thin lot: columns do not abut');
 }
 
 console.log('capture frame: ok');

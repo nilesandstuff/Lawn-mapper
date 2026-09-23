@@ -192,7 +192,7 @@ export async function recordFeedback(env, body, request) {
     // same photograph back on screen rather than a guess at it.
     frame: body?.frame && typeof body.frame === 'object' ? {
       lng: num(body.frame.lng), lat: num(body.frame.lat),
-      zoom: num(body.frame.zoom), size: num(body.frame.size),
+      zoom: num(body.frame.zoom), size: num(body.frame.size), height: num(body.frame.height) || num(body.frame.size),
     } : null,
     parcel: cleanGeometry(body?.parcel?.geometry || body?.parcel),
     shapes: cleanShapes(body?.shapes),

@@ -381,8 +381,10 @@ async function post(payload) {
   const urls = new Set(r.sent.map((s) => s.image));
   check('and every piece is a different picture',
     urls.size === 4, [...urls].map((u) => u.slice(50, 90)).join('\n      '));
-  check('each piece is the model\'s input size at @2x',
-    r.sent.every((s) => /\/504x504@2x/.test(s.image)), r.sent[0]?.image);
+  /* At exactly 10 cm a 172 m lot is 860 logical px, cut in two: 430 a
+     piece, under the model's 504. */
+  check('each piece is no bigger than the model\'s input, at exactly the target',
+    r.sent.every((s) => /\/430x430@2x/.test(s.image)), r.sent[0]?.image);
   check('all four ask the same question',
     r.sent.every((s) => s.prompt === r.sent[0].prompt && s.threshold === r.sent[0].threshold));
 
@@ -393,11 +395,11 @@ async function post(payload) {
     JSON.stringify(pass?.tiles).slice(0, 160));
   check('and the browser is told the grid',
     r.body.tiling?.cols === 2 && r.body.tiling?.rows === 2, JSON.stringify(r.body.tiling));
-  check('and the resolution the model read, which is the target or finer',
-    r.body.tiling?.groundCm <= 10 && r.body.tiling?.groundCm > 5 && r.body.tiling?.capped === false,
+  check('and the resolution the model read, which is exactly the target',
+    Math.abs(r.body.tiling?.groundCm - 10) < 0.15 && r.body.tiling?.capped === false,
     JSON.stringify(r.body.tiling));
   check('the frame echoed back is the stitched one, not the display frame',
-    r.body.frame?.size === 1008 && r.body.frame.zoom > 17.7,
+    r.body.frame?.size === 860 && r.body.frame?.height === 860 && r.body.frame.zoom > 17.7,
     `${JSON.stringify(r.body.frame)} — more pixels over the same ground is a HIGHER zoom`);
   check('a many-piece pass carries no single mask an old tab could misplace',
     pass?.mask === undefined && r.body.mask === null,

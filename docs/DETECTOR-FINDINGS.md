@@ -346,25 +346,38 @@ meant to help: read whole, a 319 m lot reached the model at 36 cm a pixel and
 the eye still scored 31.4 over the corpus; read at 10 cm in 25 windows it
 scored 47.4.
 
-**Why, as far as it can be said.** Two things changed for the 11 windowed
-lots and neither can be separated here: (1) each window saw an eighth of a
-lot, with 11 m of margin, instead of the whole property — the context
-argument this workflow's own header made against tiling in 2026-09-19, now
-measured; (2) Scale-MAE was told 0.10 m a pixel instead of 0.12–0.36, and
-its published pretraining is nearer a third of a metre — the squeezed lots
-were closer to what it was trained on, not further. The 21 unwindowed lots
-were byte-identical inputs in both runs, so the 16-point swing in the
-median comes from 11 lawns' features changing what the head learned and how
-it answered them. H21 found the same shape for SAM the same afternoon:
-**for these pretrained models, the whole lot in view is worth more than
-10 cm a pixel.**
+**CORRECTED THE SAME EVENING, after the owner asked what was actually
+trained: this was NOT a clean test of 10 cm a pixel, and the first reading
+above overclaimed.** Two setup facts decide what the numbers can mean:
 
-**Done about it.** Workflow 14's `windows` input defaults to `off`; the
-windowed extractor stays behind it for a fairer next attempt (bigger cores,
-or windows told the squeezed lot's scale). The resolution rule stands as
-stated by the owner — 10 cm unless a coarser feed is shown not to hurt — and
-for the backbone the demonstration went the other way: coarser did not hurt,
-finer did.
+1. **What is trained is a 16-unit, one-hidden-layer head on 6,000 sampled
+   cells a lawn, reading each cell alone.** Scale-MAE is frozen, and its
+   1,024 numbers per patch are cut to 32 (or 96) by a FIXED RANDOM matrix
+   (`projection()` in tools/backbone.js) before the head sees them. There is
+   no learned projection and no spatial decoder. That pipeline is a feature
+   probe: whatever the backbone resolves at 10 cm is squashed through a
+   random 32-number straw and read one cell at a time. It has a ceiling
+   resolution cannot move, and every table in this file sits under it.
+2. **The windowed run mixed two feature dialects in one training set.** 11
+   lawns' features came from windows (told 0.10 m/px, each window seeing an
+   eighth of a lot); 21 came from whole squeezes (told 0.12–0.36). Each fold
+   trained on the mix and standardised over the mix, so all 32 answers moved,
+   not just the 11 — which is why the eye alone fell from 31.4 to 47.4 across
+   the whole corpus. The fair test is windows on EVERY lawn or on none, and
+   it was not run.
+
+So the honest statement of H22 is: **mixing windowed and squeezed features
+under a random-projection head made every backbone row worse.** Whether
+10 cm a pixel helps Scale-MAE is still unmeasured. H21 (SAM) does not
+share this flaw — no training, each lawn independent — and stands.
+
+**Done about it.** Workflow 14's `windows` input defaults to `off`. The next
+resolution test waits for a head that can use the resolution: a
+convolutional decoder over the full 1,024-number patch grid, trained per
+fold in PyTorch with flips and rotations, no random projection — and then
+windows on every lawn against squeeze on every lawn. Colour rows leave the
+candidate table at the same time (the owner: "colour will never be the
+answer"); one backbone-free row stays as the corpus-drift control only.
 
 ### H21. Cutting a big lot into 10 cm pieces made SAM WORSE, 2026-09-23
 

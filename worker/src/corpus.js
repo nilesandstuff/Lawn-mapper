@@ -252,7 +252,7 @@ export async function recordFinished(env, body) {
 
   const frame = body?.frame && typeof body.frame === 'object' ? {
     lng: num(body.frame.lng), lat: num(body.frame.lat),
-    zoom: num(body.frame.zoom), size: num(body.frame.size),
+    zoom: num(body.frame.zoom), size: num(body.frame.size), height: num(body.frame.height) || num(body.frame.size),
   } : null;
 
   /*
