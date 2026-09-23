@@ -183,12 +183,9 @@ pixels with a bilinear resize and handing them to a model that was trained on
 > in every canopy run are **optimistic** for it. The single-number framing
 > above is the convenient case, not the general one.
 >
-> **MEASURED, run 35813325014, the 12 biggest lots.** Two of them are stored
-> frames Mapbox had **already stretched** before we received them — the
-> Bullitt County pair, where detail collapses from 0.047 at 640 px to 0.019 at
-> 1280. For those two the crossover is genuinely lower than 128 m and every
-> `sourceMpp` figure is optimistic, exactly as this box warned. The owner's
-> point holds.
+> **STILL NOT MEASURED. Runs 35812991329 and 35813325014 are VOID** — see the
+> retraction under item 2 below. The reasoning in this box stands; nothing has
+> yet tested it.
 
 **11 of the 32 lawns in run 35762129844 were above the crossover.** The three
 Bullitt County lawns that returned 0.0% canopy were all read at 107–112 m
@@ -218,8 +215,7 @@ across, inside the upsampled group — suggestive at n=5, and not more than that
 1. ~~**The dump discards pixels it was given.**~~ **FIXED**, run 35809715707.
    `DUMP_SIZE` is 1280, the crossover moved to 128 m, and five lawns came off
    the upsampled list exactly as the arithmetic said they would.
-2. **ANSWERED, run 35813325014: there IS more to ask for, on most lots but not
-   all.** Above 128 m, 1280 px is genuinely not enough. `imagePixels` in
+2. **STILL OPEN.** Above 128 m, 1280 px is genuinely not enough. `imagePixels` in
    `worker/src/imagery.js` caps at 2560, so Mapbox *can* be asked for more —
    but whether more pixels means more detail, or just Mapbox doing the
    upsampling instead of us, depends on what imagery it holds at that zoom.
@@ -227,28 +223,33 @@ across, inside the upsampled group — suggestive at n=5, and not more than that
    newly captured photographs; the 33 already in the bucket are 1280 px and
    would need refetching.
 
-   **What workflow 20 found, over the 12 biggest lots:**
-
-   | | |
-   |---|---|
-   | Real detail up to 2560 px — we could ask for more | **8** |
-   | 1280 is the ceiling — we already ask for all of it | 0 |
-   | **Already stretched at 1280** — the stored frame is interpolated | **2** |
-   | Flat ground, nothing to gain at any size | 2 |
-
-   Bytes per pixel at 2560 against 1280 came back **1.01×**, which agrees
-   independently: a pure upscale compresses far better per pixel.
-
-   **So the fix is per lawn, not global.** Asking for 2560 everywhere would pay
-   four times the bytes in R2 on the four lots where it buys nothing. It only
-   helps newly captured photographs; the 33 already banked are 1280 px and
-   would need refetching.
-
-   **Two cautions on that table.** Four of the eight "real detail" verdicts sit
-   just above the 0.03 floor (0.036–0.047 across all three sizes), so they are
-   the weakest calls in the set and a re-run could move them. And the whole
-   measure is a proxy: it asks whether a size carries detail its half could
-   not, which is the right question but not a ground-truth comparison.
+   > ### RETRACTED, 2026-09-23: workflow 20 runs 35812991329 and 35813325014
+   >
+   > Both measured nothing about resolution, and every number they produced is
+   > void — including "8 of 12 have detail we are not asking for" and "2 are
+   > already stretched at 1280", both of which were written into this file as
+   > results.
+   >
+   > **The error.** In the Mapbox static API the ground a frame covers is
+   > `size × EQUATOR_M × cos(lat) / (512 × 2^zoom)`, so ground per returned
+   > pixel is `EQUATOR_M × cos(lat) / (512 × 2^zoom × 2)` — **a function of the
+   > zoom alone.** The probe fetched at sizes 320, 640 and 1280 at a FIXED
+   > zoom. Measured: at z19 all three come back at **5.47 cm a pixel**, covering
+   > 35 m, 70 m and 140 m of ground.
+   >
+   > So it compared three different-sized CROPS at one resolution and read the
+   > differences as detail. A wider crop contains more varied scenery than a
+   > narrow one; that is what those numbers were.
+   >
+   > **Why nothing caught it.** The tests cover the arithmetic — the residual
+   > measure and the labelling — and both are correct. Neither knows what the
+   > images handed to them are, so a probe fetching the wrong images passes
+   > every test and prints a confident verdict. The three bugs found before
+   > this one were all *inside* the tested part, which made the tested part
+   > feel like the whole of it.
+   >
+   > **The fix.** Zoom and size move together: one zoom step up with twice the
+   > size is the same lot at twice the linear resolution. Not yet re-run.
 
    **Why a bigger request was not obviously a fix.** Past a place's real
    coverage the Mapbox static API upscales its own tiles and returns them
@@ -1641,3 +1642,4 @@ fields) were both more obviously right than this one.
 | 2026-09-23 | — | 33 | — (no run; arithmetic over the code) | — | — | **H20, and H18 half retracted.** The crown counts were measurements of our own watershed's gap parameter, not of trees — `tcd-segformer` is semantic and has no notion of where one tree ends. `onLawnPct`/`insidePct` survive and the 32%-inside result stands. The watershed is removed; the tool reports canopy plus contiguous patches, which are not trees. Separately: `FRAME_SIZE=640` @2x means every stored photograph is 1280px whatever the lot, so **above 102 m across the canopy model is fed upsampled pixels** — 11 of 32 lawns in the last run. The `DUMP_SIZE=1024` resize is free waste on top of that |
 | 2026-09-23 | 35809715707 | 33 | — (workflow 19, no training) | — | — | **First canopy run, no watershed, `DUMP_SIZE=1280`.** Folder `2026-09-22-2236-edt-restor-tcd-segformer-mit-b5`. **H20 confirmed:** upsampled lawns 11 of 32 → **6 of 33**, worst 2.3× → **1.6×**, exactly the five lawns the arithmetic predicted. **H20's Bullitt County guess refuted:** those three are no longer upsampled and still return 0 canopy, so resolution is not what ails them. Patches per lawn 0–47, middle 6. Canopy on traced lawn 0–51% **middle 20%** (was 7%); inside the property line 0–73% **middle 44%** (was 32%). **Those two shifts are NOT attributable** — the watershed was removed and the resolution changed in the same run, so this is exactly the two-variables-at-once the rules forbid reading. A decomposition run (this code at `DUMP_SIZE=1024`) would separate them for ~20 min of free CI |
 | 2026-09-23 | 35813325014 | 12 | — (workflow 20, no training) | — | — | **The other half of H20, answered.** Each of the 12 biggest lots fetched at 640/1280/2560 px and asked where its detail stops being real. **8 have real imagery at 2560 we are not requesting**, 0 top out at 1280, **2 are already stretched at 1280** (the Bullitt pair, 0.047 → 0.019), 2 are flat ground. Bytes per pixel 1.01× agrees independently. So: raise the stored frame **per lawn**, not globally — four times the R2 bytes buys nothing on 4 of 12. Confirms the owner's point that resolution is a fact about the address, so H20's 128 m crossover is a best case rather than a rule. Weakest calls: 4 of the 8 sit just above the noise floor |
+| 2026-09-23 | 35812991329, 35813325014 | 12 | — (workflow 20) | — | — | **BOTH VOID, retracted same day.** The probe varied the static API's `size` at a FIXED zoom, but ground per returned pixel depends on the zoom alone — at z19, sizes 320/640/1280 all return 5.47 cm/px covering 35/70/140 m. So it compared three different-sized crops at one resolution and read the differences as detail. Every figure is withdrawn, including "8 of 12 have detail we are not asking for" and "2 are already stretched at 1280". The tests passed throughout: they cover the residual measure and the labelling, and both were right — neither knows what images it is handed. Fixed by moving zoom and size together; not yet re-run |

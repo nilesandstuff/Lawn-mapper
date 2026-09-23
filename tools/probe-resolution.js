@@ -67,21 +67,36 @@ const TOKEN = process.env.MAPBOX_SERVER_TOKEN || process.env.MAPBOX_TOKEN || '';
 const HOW_MANY = Number(process.env.HOW_MANY || 6);
 
 /*
- * THREE SIZES, NOT TWO, and the third is what makes the answer readable.
+ * THE ZOOM HAS TO MOVE WITH THE SIZE, and the first two runs of this file did
+ * not do that. They are void because of it.
  *
- * 1280 is what we store and 2560 is the most one request returns. Asking those
- * two alone leaves a gap: a lawn that is nearly featureless at BOTH is either
- * genuinely smooth ground or imagery Mapbox was ALREADY stretching at 1280,
- * and those are opposite answers with the same numbers. Half the first real
- * run landed in that gap.
+ * In the Mapbox static API the ground a frame covers is
  *
- * 640 settles it. If 1280 carries real detail over 640, then 1280 is near what
- * the place actually holds and a flat reading is flat ground. If it does not,
- * the stored frame has been interpolated all along -- which is the case the
- * owner named, and the one that makes H20's crossover a fact about the address
- * rather than a number.
+ *     size * EQUATOR_M * cos(lat) / (512 * 2^zoom)
+ *
+ * so ground per RETURNED pixel is EQUATOR_M * cos(lat) / (512 * 2^zoom * 2) --
+ * a function of the ZOOM ALONE. Asking for a bigger `size` at a fixed zoom
+ * does not sharpen anything; it widens the frame. Measured: at z19, sizes 320,
+ * 640 and 1280 all come back at 5.47 cm a pixel, covering 35 m, 70 m and 140 m
+ * of ground.
+ *
+ * So the first two runs compared three DIFFERENT AREAS at one resolution and
+ * read the differences as detail. A wider crop simply contains more varied
+ * scenery than a narrow one, which is what those numbers were.
+ *
+ * Holding the ground fixed while changing the resolution means moving both
+ * together: one zoom step up and twice the size is the same lot at twice the
+ * linear resolution. 1280 logical is Mapbox's ceiling for one request, so with
+ * a 640-logical frame these three are the whole available range.
  */
-const SIZES = [320, 640, 1280];
+const STEPS = [
+  { dz: -1, scale: 0.5 },  // the same lot, half the resolution
+  { dz: 0, scale: 1 },     // the same lot, as we store it today
+  { dz: 1, scale: 2 },     // the same lot, twice the resolution -- the question
+];
+
+/** Mapbox will not serve a static image wider than this many logical pixels. */
+const MAX_LOGICAL = 1280;
 
 /*
  * WHERE THE LINES SIT, AND WHY THEY ARE RATIOS RATHER THAN ABSOLUTE VALUES.
@@ -122,9 +137,23 @@ const metresAcross = (frame) =>
   (EQUATOR_M * Math.cos((frame.lat * Math.PI) / 180) / (512 * 2 ** frame.zoom))
   * frame.size;
 
-const url = (frame, size) =>
+/**
+ * The same ground as `frame`, at a different resolution.
+ *
+ * Both the zoom and the size move, which is the whole correction: one zoom
+ * step doubles the pixels per metre, and doubling the size keeps the frame
+ * over the same lot rather than widening it.
+ */
+const stepFrame = (frame, { dz, scale }) => ({
+  lng: frame.lng,
+  lat: frame.lat,
+  zoom: frame.zoom + dz,
+  size: Math.round(frame.size * scale),
+});
+
+const url = (f) =>
   'https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/'
-  + `${frame.lng},${frame.lat},${frame.zoom},0/${size}x${size}@2x`
+  + `${f.lng},${f.lat},${f.zoom},0/${f.size}x${f.size}@2x`
   + `?access_token=${TOKEN}&attribution=false&logo=false`;
 
 /**
@@ -248,8 +277,8 @@ export function verdictFor(extras) {
   return { ceiling: 1280, toMid, toTop, verdict: '1280 is the ceiling' };
 }
 
-async function fetchOne(frame, size, decoders) {
-  const res = await fetch(url(frame, size));
+async function fetchOne(f, decoders) {
+  const res = await fetch(url(f));
   if (!res.ok) return { ok: false, reason: `http-${res.status}` };
   const buf = Buffer.from(await res.arrayBuffer());
   /* Mapbox answers PNG for this style; decode whichever arrives rather than
@@ -303,41 +332,47 @@ async function main() {
 
   for (const row of rows) {
     const label = String(row.county || 'traced by hand').padEnd(20).slice(0, 20);
-    const got = {};
-    let failed = '';
-    for (const size of SIZES) {
-      const r = await fetchOne(row.f, size, decoders);
-      if (!r.ok) { failed = r.reason; continue; }
-      got[size] = r;
+    const frames = STEPS.map((step) => stepFrame(row.f, step));
+
+    /* Past Mapbox's own ceiling there is nothing to ask for, and a refused
+       request is not evidence about the imagery. Said, not skipped silently. */
+    if (frames.some((f) => f.size > MAX_LOGICAL)) {
+      console.log(`  ${label} ${row.across.toFixed(0).padStart(4)} m  `
+        + `  the top step needs ${frames[2].size} logical px, past Mapbox's ${MAX_LOGICAL}`);
+      continue;
     }
-    if (failed || SIZES.some((z) => !got[z])) {
+
+    const got = [];
+    let failed = '';
+    for (const f of frames) {
+      const r = await fetchOne(f, decoders);
+      if (!r.ok) { failed = r.reason; break; }
+      got.push(r);
+    }
+    if (failed || got.length !== STEPS.length) {
       console.log(`  ${label} ${row.across.toFixed(0).padStart(4)} m   ${failed || 'incomplete'}`);
       continue;
     }
 
     /*
-     * A VERDICT PER LAWN, not just a number, because this varies BY PLACE.
-     * Mapbox stitches its satellite layer out of many sources and the real
-     * resolution differs from one address to the next, so a single median over
-     * the corpus would average a sharp city lot together with a coarse rural
-     * one and describe neither.
+     * A VERDICT PER LAWN, because this varies BY PLACE. Mapbox stitches its
+     * satellite layer out of many sources and the real resolution differs from
+     * one address to the next, so a single median over the corpus would
+     * average a sharp suburban lot together with a coarse rural one and
+     * describe neither.
      */
-    const extras = SIZES.map((z) => got[z].extra);
+    const extras = got.map((g) => g.extra);
     const { ceiling, verdict } = verdictFor(extras);
     results.push({ across: row.across, got, ceiling, verdict });
+
+    /* Ground per pixel at the middle step, which is what we store today. */
+    const cm = (100 * row.across) / got[1].width;
     console.log(
-      `  ${label} ${row.across.toFixed(0).padStart(4)} m  `
-      + `  640:${extras[0].toFixed(3)}`
-      + ` 1280:${extras[1].toFixed(3)}`
-      + ` 2560:${extras[2].toFixed(3)}`
+      `  ${label} ${row.across.toFixed(0).padStart(4)} m`
+      + ` ${cm.toFixed(1).padStart(5)} cm/px  `
+      + `${got.map((g, i) => `${g.width}:${extras[i].toFixed(3)}`).join(' ')}`
       + `   ${verdict}`
     );
-  }
-
-  if (!results.length) {
-    console.log('\nNothing came back to compare.');
-    process.exitCode = 1;
-    return;
   }
 
   /* ---------------------------------------------------- the end of the log */
@@ -346,8 +381,8 @@ async function main() {
   const cap1280 = tally(1280);
   const stretched = tally(640);
   const flat = results.filter((r) => r.ceiling === null).length;
-  const bytes = results.map((r) => (r.got[1280].bytes / r.got[1280].width ** 2)
-    / (r.got[640].bytes / r.got[640].width ** 2));
+  const bytes = results.map((r) => (r.got[2].bytes / r.got[2].width ** 2)
+    / (r.got[1].bytes / r.got[1].width ** 2));
   const mid = (a) => a.slice().sort((x, y) => x - y)[a.length >> 1];
 
   console.log(`\n${'='.repeat(64)}\n`);
@@ -356,7 +391,7 @@ async function main() {
   console.log(`  1280 is the ceiling         ${String(cap1280).padStart(2)} lawns  <- we already ask for all of it`);
   console.log(`  ALREADY STRETCHED at 1280   ${String(stretched).padStart(2)} lawns  <- the stored frame is interpolated`);
   console.log(`  flat ground, nothing to gain ${String(flat).padStart(1)} lawns  <- no request buys anything`);
-  console.log(`\nBytes per pixel, 2560 against 1280: ${mid(bytes).toFixed(2)}x`);
+  console.log(`\nBytes per pixel, one zoom step up against what we store: ${mid(bytes).toFixed(2)}x`);
 
   console.log('\nTHIS IS A FACT ABOUT THE ADDRESS, not about Mapbox. Their');
   console.log('satellite layer is stitched from many sources -- one place has a');
