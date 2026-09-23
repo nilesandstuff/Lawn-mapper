@@ -93,21 +93,18 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CORPUS_BUCKET: lawn-mapper-corpus
           DUMP_FRAMES: frames
-          # 1280, NOT 1024, AND THAT IS THE WHOLE OF THE FREE HALF OF H20.
+          # "native" MEANS WHATEVER R2 HOLDS, AND A NUMBER HERE IS A TRAP.
           #
-          # FRAME_SIZE is 640 logical and Mapbox is asked at @2x, so every
-          # stored photograph is 1280x1280 whatever the lot. Dumping at 1024
-          # threw a fifth of the linear resolution away before the model saw
-          # anything -- which costs nothing on a small lot, where the frame is
-          # far finer than the model's 10 cm anyway, and is the difference
-          # between real pixels and interpolation on a big one.
+          # This was 1024 while the stored photographs were 1280, giving away a
+          # fifth of the linear resolution for nothing. Raising it to 1280
+          # fixed that -- and then workflow 21 re-banked the big lots at 10 cm
+          # a pixel, up to 3192 px, and the fixed 1280 threw the entire gain
+          # away again: a 319 m lot came straight back down to 24.9 cm a pixel,
+          # which is exactly the state H20 describes.
           #
-          # It moves the upsampling crossover from 102 m across to 128 m, which
-          # in the last run is five lawns that stop being fed invented detail.
-          # Above 128 m the frame is genuinely too coarse and no dump size
-          # fixes it; that is the other half of H20 and it needs more pixels
-          # out of Mapbox, which has not been measured.
-          DUMP_SIZE: '1280'
+          # The same bug twice, because a CONSTANT was standing where a
+          # reference to the source belonged. It follows the photograph now.
+          DUMP_SIZE: native
           NO_BACKBONE: 'true'
         run: node tools/train-detector.js
 

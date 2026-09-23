@@ -1050,15 +1050,35 @@ const paint = (px, w, x0, y0, pw, ph, [r, g, b]) => {
 
   const was = process.env.DUMP_SIZE;
   delete process.env.DUMP_SIZE;
-  check('unset, the dump stays at the scoring grid',
-    dumpSize() === 512,
-    'a run with nothing set must behave as it did before the input existed');
+  /*
+   * ZERO MEANS "AS STORED", AND IT IS THE DEFAULT ON PURPOSE.
+   *
+   * This used to fall back to the 512 scoring grid, on the reasoning that a
+   * run with nothing set should behave as it did before the input existed.
+   * That reasoning aged badly twice. The dump was 1024 while the photographs
+   * were 1280; raising it to 1280 fixed that, and then workflow 21 re-banked
+   * the big lots at up to 3192 px and the fixed number threw the whole gain
+   * away -- a 319 m lot straight back to 24.9 cm a pixel, which is exactly the
+   * state H20 describes. A constant kept being left behind by changes to what
+   * R2 holds.
+   */
+  check('unset, the dump follows the photograph',
+    dumpSize() === 0,
+    'a constant here has twice been left behind by a change to what R2 holds');
   process.env.DUMP_SIZE = '896';
   check('set, it follows', dumpSize() === 896, 'the input is ignored');
+  process.env.DUMP_SIZE = 'native';
+  check('and "native" says it out loud', dumpSize() === 0,
+    'the workflow sets this word, so it has to mean something');
   process.env.DUMP_SIZE = 'nonsense';
-  check('and nonsense falls back rather than writing a 0x0 png',
-    dumpSize() === 512,
-    'NaN through to mkdir is a failure three steps from its cause');
+  /*
+   * A TYPO COSTS DISK, NOT DETAIL. Falling back to 512 would have written
+   * every frame at a sixth of its resolution with nothing saying so, which is
+   * the quietest kind of wrong this project keeps finding.
+   */
+  check('and nonsense falls back to the source, not to a small number',
+    dumpSize() === 0,
+    'a mistyped size silently shrinking every frame is the bug this file exists for');
   if (was === undefined) delete process.env.DUMP_SIZE; else process.env.DUMP_SIZE = was;
 }
 

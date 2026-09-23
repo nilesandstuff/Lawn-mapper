@@ -154,8 +154,34 @@ const GRID = 512;
  * Defaults to GRID so a run with nothing set behaves as it did.
  */
 const dumpSize = () => {
-  const raw = Number(process.env.DUMP_SIZE);
-  return Number.isFinite(raw) && raw >= 64 ? Math.round(raw) : GRID;
+  /*
+   * "native" MEANS WHATEVER R2 HOLDS, and it is the right answer now that the
+   * stored photographs are not all one size.
+   *
+   * THIS BUG HAS BEEN FIXED TWICE. First the dump was 1024 while the stored
+   * photograph was 1280, giving away a fifth of the linear resolution for
+   * nothing. Raising it to 1280 fixed that -- and then workflow 21 re-banked
+   * the big lots at 10 cm a pixel, up to 3192 px and 5120 px, and a fixed 1280
+   * threw the whole gain away again: a 319 m lot came back down to 24.9 cm a
+   * pixel, which is precisely the state H20 describes. The fix was undone by
+   * the next improvement because it was a CONSTANT where it should have been a
+   * reference to the source.
+   *
+   * So a number is still honoured -- tests and old runs pass one -- but the
+   * default follows the photograph, and cannot be left behind again.
+   */
+  const raw = String(process.env.DUMP_SIZE || '').trim();
+  const n = Number(raw);
+  /*
+   * ANYTHING THAT IS NOT A USABLE NUMBER MEANS NATIVE, including a typo.
+   *
+   * The old rule fell back to the 512 scoring grid, which is the quietest
+   * possible wrong answer: a mistyped DUMP_SIZE would have written every frame
+   * at a sixth of its resolution and nothing would have said so. Falling back
+   * to the source instead makes a typo cost disk rather than detail, and the
+   * dump step prints the sizes it wrote either way.
+   */
+  return Number.isFinite(n) && n >= 64 ? Math.round(n) : 0;
 };
 
 /*
@@ -1335,8 +1361,14 @@ async function main() {
          * an upscale of something already thrown away; this is one
          * box-average, downward, from what R2 actually holds.
          */
+        /*
+         * Zero means "as stored", which skips the resize entirely rather than
+         * asking for the size it already is -- one fewer pass over a 5,000
+         * pixel image, and no rounding at all.
+         */
         dump: process.env.DUMP_FRAMES
-          ? resize(img.data, img.width, img.height, img.channels, dumpSize())
+          ? resize(img.data, img.width, img.height, img.channels,
+            dumpSize() || Math.min(img.width, img.height))
           : null,
         /* What R2 actually holds, before any resize. See framePixels(). */
         storedPx: Math.min(img.width, img.height),
@@ -1433,10 +1465,23 @@ async function main() {
    */
   if (process.env.DUMP_FRAMES) {
     const dest = process.env.DUMP_FRAMES;
-    const size = dumpSize();
+    const asked = dumpSize();
     mkdirSync(dest, { recursive: true });
+
+    /*
+     * EACH FRAME AT ITS OWN SIZE, because since workflow 21 the stored
+     * photographs are not all one size -- a small garden is 1280 px and a
+     * re-banked 319 m lot is 3192. Writing them all at one width was what
+     * threw the re-banking away the first time it was tried.
+     *
+     * The side comes from the buffer rather than from a variable, so it cannot
+     * disagree with the pixels it describes.
+     */
+    const sides = [];
     for (const L of lawns) {
-      const png = new decoders.png.PNG({ width: size, height: size });
+      const side = Math.round(Math.sqrt(L.dump.length / 4));
+      sides.push(side);
+      const png = new decoders.png.PNG({ width: side, height: side });
       png.data = Buffer.from(L.dump.buffer, L.dump.byteOffset, L.dump.byteLength);
       writeFileSync(join(dest, `${L.id}.png`), decoders.png.PNG.sync.write(png));
     }
@@ -1449,28 +1494,38 @@ async function main() {
       join(dest, 'scale.json'),
       JSON.stringify({ frames: frameSpans(lawns), storedPx: framePixels(lawns) }, null, 1),
     );
+
     const spans = lawns.map((L) => L.mpp * GRID);
-    const lo = Math.min(...spans), hi = Math.max(...spans);
-    console.log(`Wrote ${lawns.length} frames to ${dest} at ${size}x${size},`);
-    console.log(`covering ${lo.toFixed(0)}-${hi.toFixed(0)} m of ground`);
-    console.log(`(${(lo / size).toFixed(3)}-${(hi / size).toFixed(3)} m a pixel), and scale.json beside them.`);
+    const cm = lawns.map((L, i) => (100 * L.mpp * GRID) / sides[i]);
+    console.log(`Wrote ${lawns.length} frames to ${dest}, `
+      + `${Math.min(...sides)}-${Math.max(...sides)} px each`
+      + `${asked ? ` (DUMP_SIZE=${asked})` : ' (as stored)'},`);
+    console.log(`covering ${Math.min(...spans).toFixed(0)}-${Math.max(...spans).toFixed(0)} m of ground`);
+    console.log(`at ${Math.min(...cm).toFixed(1)}-${Math.max(...cm).toFixed(1)} cm a pixel, `
+      + 'and scale.json beside them.');
+
     /*
-     * AND WHETHER THE FILE SIZE IS HONEST. A frame dumped larger than the
-     * photograph R2 holds carries no more detail than the photograph did, and
-     * every ground-resolution figure downstream would be computed from the
-     * bigger number. Said here because this is where the inflation happens.
+     * AND WHETHER ANY FRAME WAS BLOWN UP PAST ITS OWN PHOTOGRAPH, which adds
+     * pixels and no detail and would make every resolution figure downstream
+     * optimistic. Said here because this is where the inflation happens, and
+     * because a fixed DUMP_SIZE has now twice been left behind by a change to
+     * what R2 holds.
      */
-    const stored = lawns.map((L) => L.storedPx).filter(Boolean);
-    if (stored.length) {
-      const small = stored.filter((px) => px < size).length;
-      console.log(`\nR2 holds ${Math.min(...stored)}-${Math.max(...stored)} px per lawn.`);
-      if (small) {
-        console.log(`${small} of ${stored.length} are SMALLER than the ${size} px dump, so those`);
-        console.log('frames were blown up and carry no more detail than they arrived with.');
-        console.log('scale.json records the real size so nothing downstream is fooled.');
-      } else {
-        console.log(`Every one is at least the ${size} px dump, so no frame was inflated.`);
-      }
+    const inflated = lawns.filter((L, i) => L.storedPx && sides[i] > L.storedPx).length;
+    const shrunk = lawns.filter((L, i) => L.storedPx && sides[i] < L.storedPx).length;
+    if (inflated) {
+      console.log(`\n${inflated} frames were written BIGGER than the photograph R2 holds,`);
+      console.log('so they carry no more detail than they arrived with. scale.json');
+      console.log('records the real size so nothing downstream is fooled.');
+    }
+    if (shrunk) {
+      console.log(`\n${shrunk} frames were written SMALLER than R2 holds, which throws`);
+      console.log('away resolution before the model sees it. That is H20 all over');
+      console.log('again -- unset DUMP_SIZE to write them as stored.');
+    }
+    if (!inflated && !shrunk) {
+      console.log('\nEvery frame was written at exactly what R2 holds: nothing');
+      console.log('inflated, nothing thrown away.');
     }
     console.log('Run the extractor over them, then run this again with');
     console.log('FEATURES_DIR pointing at what it produced.');
