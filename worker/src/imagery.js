@@ -19,7 +19,7 @@
  * therefore not a source, only a basemap (see probe-imagery.js).
  */
 
-import { frameCorners } from '../../public/lib/mercator.js';
+import { frameCorners, frameHeight } from '../../public/lib/mercator.js';
 
 /* ------------------------------------------------------------ projection */
 /**
@@ -50,6 +50,8 @@ export function frameBbox3857(frame) {
  * image's own width -- but the sources should be compared like for like.)
  */
 export const imagePixels = (frame) => Math.min(frame.size * 2, 2560);
+/** And down, for a frame that is not square. */
+export const imageHeightPixels = (frame) => Math.min(frameHeight(frame) * 2, 2560);
 
 /**
  * How many metres of ground one RETURNED pixel covers, for a frame.
@@ -62,8 +64,9 @@ export const groundPerPixel = (frame) =>
   (40075016.686 * Math.cos((frame.lat * Math.PI) / 180))
   / (512 * 2 ** frame.zoom) / 2;
 
-/** Metres of ground across a whole frame. */
+/** Metres of ground across a whole frame, and down it. */
 export const groundAcross = (frame) => groundPerPixel(frame) * frame.size * 2;
+export const groundDown = (frame) => groundPerPixel(frame) * frameHeight(frame) * 2;
 
 /**
  * What the DETECTOR wants a pixel to be worth, in metres.
@@ -112,6 +115,8 @@ export const MAX_TILES_ACROSS = 2;
  */
 export function captureFrame(frame, target = TARGET_GROUND_M) {
   const across = groundAcross(frame);
+  const down = groundDown(frame);
+  const height0 = frameHeight(frame);
 
   /*
    * NEVER COARSER THAN THE DISPLAY FRAME ALREADY MANAGES, which is why the
@@ -126,10 +131,20 @@ export function captureFrame(frame, target = TARGET_GROUND_M) {
    *
    * So the rule is only ever upward. Raise the size until a pixel is worth
    * 10 cm or better, and leave alone anything that already clears it.
+   *
+   * RECTANGLES KEEP THEIR SHAPE. The rule is applied to the longer side and
+   * the shorter one follows at the same scale, so a frame cropped to a long
+   * thin parcel stays a long thin picture rather than growing back into the
+   * square it was cropped out of.
    */
-  const wanted = Math.ceil(across / target / 2);
+  const longM = Math.max(across, down);
+  const long0 = Math.max(frame.size, height0);
+  const wanted = Math.ceil(longM / target / 2);
   const ceiling = MAX_LOGICAL * MAX_TILES_ACROSS;
-  const size = Math.min(ceiling, Math.max(frame.size, wanted));
+  const long = Math.min(ceiling, Math.max(long0, wanted));
+  const factor = long / long0;
+  const size = Math.round(frame.size * factor);
+  const height = Math.round(height0 * factor);
 
   /*
    * The zoom then follows from the size: whatever puts `across` metres into
@@ -140,7 +155,7 @@ export function captureFrame(frame, target = TARGET_GROUND_M) {
   const zoom = Math.log2(
     (40075016.686 * Math.cos((frame.lat * Math.PI) / 180) * size) / (512 * across)
   );
-  const out = { lng: frame.lng, lat: frame.lat, zoom, size };
+  const out = { lng: frame.lng, lat: frame.lat, zoom, size, height };
   const groundM = groundPerPixel(out);
 
   return {
@@ -150,8 +165,9 @@ export function captureFrame(frame, target = TARGET_GROUND_M) {
        is wider than about 512 m at 10 cm. The photograph is still far better
        than the display frame would have given, and the caller is told rather
        than left to assume it got what it asked for. */
-    capped: size >= ceiling && groundM > target * 1.001,
+    capped: long >= ceiling && groundM > target * 1.001,
     across,
+    down,
   };
 }
 
@@ -175,42 +191,46 @@ export function captureFrame(frame, target = TARGET_GROUND_M) {
  */
 export function capturePlan(frame, target = TARGET_GROUND_M) {
   const shot = captureFrame(frame, target);
-  const { zoom, size } = shot.frame;
-  const across = Math.ceil(size / MAX_LOGICAL);
+  const { zoom, size, height } = shot.frame;
+  const cols = Math.ceil(size / MAX_LOGICAL);
+  const rows = Math.ceil(height / MAX_LOGICAL);
 
-  if (across <= 1) {
-    return { ...shot, cols: 1, rows: 1, tileSize: size, tiles: [{ frame: shot.frame, col: 0, row: 0 }] };
+  if (cols <= 1 && rows <= 1) {
+    return {
+      ...shot, cols: 1, rows: 1, tileSize: size, tileHeight: height,
+      tiles: [{ frame: shot.frame, col: 0, row: 0 }],
+    };
   }
 
   /* Equal tiles, so every piece is the same pixel size and the stitch is a
      plain paste. A remainder tile would be a second size to keep track of for
      no gain -- the total is rounded up instead. */
-  const tileSize = Math.ceil(size / across);
-  return { ...shot, ...tileGrid(frame, zoom, tileSize, across) };
+  return { ...shot, ...tileGrid(frame, zoom, Math.ceil(size / cols), Math.ceil(height / rows), cols, rows) };
 }
 
 /**
- * An `across` x `across` grid of frames, each `tileSize` logical pixels,
+ * A `cols` x `rows` grid of frames, each `tileW` x `tileH` logical pixels,
  * centred as a whole on `frame` at `zoom`, plus the frame of the stitched
  * result. Shared by the banking plan and the live detection plan, because the
  * seam arithmetic is the part that must not be written twice.
  *
- * The stitched photograph covers `tileSize * across` logical pixels, so the
- * frame recorded against it has to be the stitched one, or every mask built
- * from it would be a fraction of a lawn out.
+ * The stitched photograph covers `tileW * cols` by `tileH * rows` logical
+ * pixels, so the frame recorded against it has to be the stitched one, or
+ * every mask built from it would be a fraction of a lawn out.
  */
-function tileGrid(frame, zoom, tileSize, across) {
-  const full = tileSize * across;
+function tileGrid(frame, zoom, tileW, tileH, cols, rows) {
+  const fullW = tileW * cols;
+  const fullH = tileH * rows;
   const ws = 512 * 2 ** zoom;
   const cx = ((frame.lng + 180) / 360) * ws;
   const s = Math.sin((Math.max(-85.05112878, Math.min(85.05112878, frame.lat)) * Math.PI) / 180);
   const cy = (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * ws;
 
   const tiles = [];
-  for (let row = 0; row < across; row++) {
-    for (let col = 0; col < across; col++) {
-      const x = cx - full / 2 + (col + 0.5) * tileSize;
-      const y = cy - full / 2 + (row + 0.5) * tileSize;
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const x = cx - fullW / 2 + (col + 0.5) * tileW;
+      const y = cy - fullH / 2 + (row + 0.5) * tileH;
       const n = Math.PI * (1 - (2 * y) / ws);
       tiles.push({
         col,
@@ -219,17 +239,19 @@ function tileGrid(frame, zoom, tileSize, across) {
           lng: (x / ws) * 360 - 180,
           lat: (Math.atan(Math.sinh(n)) * 180) / Math.PI,
           zoom,
-          size: tileSize,
+          size: tileW,
+          height: tileH,
         },
       });
     }
   }
 
   return {
-    frame: { lng: frame.lng, lat: frame.lat, zoom, size: full },
-    cols: across,
-    rows: across,
-    tileSize,
+    frame: { lng: frame.lng, lat: frame.lat, zoom, size: fullW, height: fullH },
+    cols,
+    rows,
+    tileSize: tileW,
+    tileHeight: tileH,
     tiles,
   };
 }
@@ -271,33 +293,46 @@ export function detectionPlan(provider, frame, {
   const id = detectionProvider(provider);
   const served = providerFrame(id, frame);
   const across = groundAcross(served);
+  const down = groundDown(served);
+  const longM = Math.max(across, down);
+  const longPx = Math.max(served.size, frameHeight(served)) * 2;
   const one = {
-    frame: served, cols: 1, rows: 1, tileSize: served.size,
+    frame: served, cols: 1, rows: 1, tileSize: served.size, tileHeight: frameHeight(served),
     tiles: [{ frame: served, col: 0, row: 0 }],
-    /* What the model actually resolves: the picture is `size * 2` px and is
-       read at `inputPx`, whichever is smaller. */
-    groundM: across / Math.min(inputPx, served.size * 2),
-    across, capped: false, wanted: 1,
+    /* What the model actually resolves: the picture's longer side is read at
+       `inputPx`, or as it is if it is already smaller. */
+    groundM: longM / Math.min(inputPx, longPx),
+    across, down, capped: false, wanted: 1,
   };
   if (id !== 'mapbox') return one;
 
-  const wanted = Math.ceil(across / (inputPx * target));
+  const wanted = Math.ceil(longM / (inputPx * target));
   if (wanted <= 1) return one;
 
-  const n = Math.max(1, Math.min(maxAcross, wanted));
-  const tileSize = inputPx / 2; // logical; Mapbox renders @2x
-  const full = tileSize * n;
-  /* The zoom that puts the whole lot into `full` logical pixels: exactly the
-     target when the cap is not hit, coarser when it is. */
+  /* At exactly the target, each side cut into as many pieces of at most
+     `inputPx` as it needs, each side capped separately. */
+  const wantW = Math.ceil(across / target / 2);
+  const wantH = Math.ceil(down / target / 2);
+  const tile = inputPx / 2; // logical; Mapbox renders @2x
+  const cols = Math.max(1, Math.min(maxAcross, Math.ceil(wantW / tile)));
+  const rows = Math.max(1, Math.min(maxAcross, Math.ceil(wantH / tile)));
+  const tileW = Math.ceil(wantW / cols);
+  const tileH = Math.ceil(wantH / rows);
+  /* The zoom that puts the lot's width into the stitched width: exactly the
+     target when no side is capped, coarser when one is. */
   const zoom = Math.log2(
-    (40075016.686 * Math.cos((frame.lat * Math.PI) / 180) * full) / (512 * across)
+    (40075016.686 * Math.cos((frame.lat * Math.PI) / 180) * tileW * cols) / (512 * across)
   );
-  const grid = tileGrid(frame, zoom, tileSize, n);
+  const grid = tileGrid(frame, zoom, tileW, tileH, cols, rows);
+  /* What the model resolves: a capped piece is bigger than its input and is
+     read shrunk, so the ground a pixel covers grows with it. */
+  const read = Math.max(tileW, tileH) * 2;
   return {
     ...grid,
-    groundM: groundPerPixel(grid.frame),
+    groundM: (groundPerPixel(grid.frame) * read) / Math.min(inputPx, read),
     across,
-    capped: n < wanted,
+    down,
+    capped: tileW > tile || tileH > tile,
     wanted,
   };
 }
@@ -339,11 +374,12 @@ const USGS_NAIP = 'https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIP
  */
 function arcgisImage(root, frame, renderingRule) {
   const px = imagePixels(frame);
+  const py = imageHeightPixels(frame);
   const params = new URLSearchParams({
     bbox: frameBbox3857(frame).join(','),
     bboxSR: '3857',
     imageSR: '3857',
-    size: `${px},${px}`,
+    size: `${px},${py}`,
     format: 'png',
     f: 'image',
   });
@@ -369,7 +405,7 @@ export const PROVIDERS = {
     promptVar: 'SAM_PROMPT',
     url: (frame, token) =>
       `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/` +
-      `${frame.lng},${frame.lat},${frame.zoom},0/${frame.size}x${frame.size}@2x` +
+      `${frame.lng},${frame.lat},${frame.zoom},0/${frame.size}x${frameHeight(frame)}@2x` +
       `?access_token=${token}&attribution=false&logo=false`,
   },
 
@@ -446,8 +482,10 @@ export const PROVIDERS = {
     prompt: 'grass',
     promptVar: 'SAM_PROMPT',
     keyVar: 'GOOGLE_MAPS_KEY',
-    // Google floors fractional zoom, so meet it at an integer one.
-    frame: (frame) => ({ ...frame, zoom: Math.floor(frame.zoom) }),
+    // Google floors fractional zoom, so meet it at an integer one -- and it
+    // serves one fixed 640x640 picture, so the frame says so rather than
+    // claiming a rectangle the picture does not have.
+    frame: (frame) => ({ ...frame, zoom: Math.floor(frame.zoom), size: 640, height: 640 }),
     url: (frame, _token, env) =>
       'https://maps.googleapis.com/maps/api/staticmap?' + new URLSearchParams({
         center: `${frame.lat},${frame.lng}`,

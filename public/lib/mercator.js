@@ -48,12 +48,27 @@ export function worldToLngLat([x, y], zoom) {
 }
 
 /*
- * A "frame" is one Mapbox Static Images request: { lng, lat, zoom, size }.
- * `size` is the logical width/height we asked for; because we request @2x,
- * the PNG that comes back is 2*size on each side. Every function below takes
- * the actual image dimensions rather than assuming, so a server-side cap
- * (Mapbox maxes out at 1280) cannot silently desynchronise the two.
+ * A "frame" is one Mapbox Static Images request: { lng, lat, zoom, size }
+ * and, since 2026-09-23, an optional `height`.
+ *
+ * `size` is the logical WIDTH we asked for and `height` the logical height;
+ * a frame without `height` is the square it always was. Because we request
+ * @2x, the picture that comes back is twice each on a side. Every function
+ * below takes the actual image dimensions rather than assuming, so a
+ * server-side cap (Mapbox maxes out at 1280) cannot silently desynchronise
+ * the two.
+ *
+ * WHY RECTANGLES. The frame used to be the square around the parcel's
+ * longer side, so a long thin lot was photographed with the neighbours on
+ * both sides of its short one -- and every detector read all of that, paid
+ * for all of that, and drew canopy on all of that. A frame is the parcel's
+ * box plus a margin now, cropped both ways. See frameFor in app.js.
  */
+
+/** The logical height of a frame, which for a square is its width. */
+export const frameHeight = (frame) => (
+  Number.isFinite(frame.height) && frame.height > 0 ? frame.height : frame.size
+);
 
 /** Pixel in the returned image -> [lng, lat]. */
 export function framePxToLngLat(frame, [px, py], imgW, imgH) {
@@ -61,7 +76,7 @@ export function framePxToLngLat(frame, [px, py], imgW, imgH) {
   return worldToLngLat(
     [
       cx + (px / imgW - 0.5) * frame.size,
-      cy + (py / imgH - 0.5) * frame.size,
+      cy + (py / imgH - 0.5) * frameHeight(frame),
     ],
     frame.zoom
   );
@@ -73,7 +88,7 @@ export function lngLatToFramePx(frame, lngLat, imgW, imgH) {
   const [x, y] = lngLatToWorld(lngLat, frame.zoom);
   return [
     ((x - cx) / frame.size + 0.5) * imgW,
-    ((y - cy) / frame.size + 0.5) * imgH,
+    ((y - cy) / frameHeight(frame) + 0.5) * imgH,
   ];
 }
 
@@ -85,9 +100,54 @@ export function lngLatToFramePx(frame, lngLat, imgW, imgH) {
  */
 export function frameCorners(frame) {
   const [cx, cy] = lngLatToWorld([frame.lng, frame.lat], frame.zoom);
-  const h = frame.size / 2;
+  const hw = frame.size / 2;
+  const hh = frameHeight(frame) / 2;
   const at = (dx, dy) => worldToLngLat([cx + dx, cy + dy], frame.zoom);
-  return [at(-h, -h), at(h, -h), at(h, h), at(-h, h)];
+  return [at(-hw, -hh), at(hw, -hh), at(hw, hh), at(-hw, hh)];
+}
+
+/**
+ * The frame for a parcel: its bounding box plus `marginM` metres on every
+ * side, at the highest zoom that keeps the LONGER side within `size`
+ * logical pixels, cropped both ways.
+ *
+ * This replaces "zoomToFit into a square": the square fitted the longer
+ * side and let the shorter one fill with whatever was next door. The margin
+ * is in metres rather than a fraction, because context is worth about the
+ * same on every lot -- the house, the drive, the road -- and 12% of a 319 m
+ * lot was 38 m of somebody else's garden.
+ *
+ * The result may be smaller than `size` on both sides: a 25 m garden with a
+ * 10 m margin is 45 m across and does not need 640 logical pixels at zoom 20
+ * to hold it. Height and width are whole logical pixels, never below
+ * `minSide`, so a very thin parcel still gets a picture a model can read.
+ */
+export function frameFor(bbox, size, {
+  marginM = 10, minSide = 160, minZoom = 14, maxZoom = 20,
+} = {}) {
+  const [w, s, e, n] = bbox;
+  const lng = (w + e) / 2;
+  const lat = (s + n) / 2;
+  const EQUATOR_M = 40075016.686;
+
+  /* The box in zoom-0 world pixels, plus the margin converted at this
+     latitude: metres per zoom-0 pixel is the equator over the world size,
+     scaled by cos(lat). */
+  const [x1, y1] = lngLatToWorld([w, n], 0);
+  const [x2, y2] = lngLatToWorld([e, s], 0);
+  const mPerPx0 = (EQUATOR_M * Math.cos((lat * Math.PI) / 180)) / worldSize(0);
+  const spanX = Math.abs(x2 - x1) + (2 * marginM) / mPerPx0;
+  const spanY = Math.abs(y2 - y1) + (2 * marginM) / mPerPx0;
+
+  /* The zoom that puts the longer side into `size`. */
+  const longest = Math.max(spanX, spanY);
+  const fit = longest > 0 ? Math.log2(size / longest) : maxZoom;
+  const zoom = Math.max(minZoom, Math.min(maxZoom, Math.floor(fit * 100) / 100));
+
+  const scale = Math.pow(2, zoom);
+  const width = Math.max(minSide, Math.min(size, Math.ceil(spanX * scale)));
+  const height = Math.max(minSide, Math.min(size, Math.ceil(spanY * scale)));
+  return { lng, lat, zoom, size: width, height };
 }
 
 /**
@@ -111,6 +171,9 @@ export function metresPerPixel(frame, imgW) {
  * deep lot is how you lose the back yard.
  *
  * bbox is [west, south, east, north].
+ *
+ * STILL USED FOR THE APP'S OWN SQUARE RASTERS (the brush grid, the export).
+ * The detection frame is frameFor now, which crops both ways.
  */
 export function zoomToFit(bbox, size, { minZoom = 14, maxZoom = 20, padding = 0.12 } = {}) {
   const [w, s, e, n] = bbox;

@@ -342,6 +342,10 @@ function frameFromQuery(params) {
       lat,
       zoom: clampZoom(parseFloat(params.get('zoom')) || 19),
       size: clampSize(parseInt(params.get('size'), 10) || 640),
+      /* The frame is a rectangle since 2026-09-23: the parcel's box plus a
+         margin, cropped both ways. A request without a height is the square
+         it always was. */
+      height: clampSize(parseInt(params.get('height'), 10) || parseInt(params.get('size'), 10) || 640),
     },
     // Viewing, not measuring: whatever was asked for.
     provider: normaliseProvider(params.get('provider')),
@@ -506,6 +510,7 @@ async function handleSegment(request, env, origin, ctx) {
 
   const zoom = clampZoom(Number(body.zoom) || 19);
   const size = clampSize(Number(body.size) || 640);
+  const height = clampSize(Number(body.height) || size);
   const provider = detectionProvider(body.provider);
   /*
    * Not const, because the land cover method can hand the request back to the
@@ -563,7 +568,7 @@ async function handleSegment(request, env, origin, ctx) {
    */
   let fellBack = null;
   if (model.local) {
-    const served = providerFrame(provider, { lng, lat, zoom, size });
+    const served = providerFrame(provider, { lng, lat, zoom, size, height });
     if (await covers(lng, lat, env)) {
       return json({
         frame: served,
@@ -675,7 +680,7 @@ async function handleSegment(request, env, origin, ctx) {
    * Decided BEFORE the allowance is touched, because every piece is a
    * prediction and the charge has to be for all of them.
    */
-  const plan = detectionPlan(provider, { lng, lat, zoom, size }, {
+  const plan = detectionPlan(provider, { lng, lat, zoom, size, height }, {
     inputPx: SAM_INPUT_PX,
     maxAcross: samMaxTilesAcross(env),
   });

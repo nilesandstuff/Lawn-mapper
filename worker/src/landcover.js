@@ -124,11 +124,14 @@ export function maskPixels(frame) {
 
 export function lawnMaskUrl(frame, env) {
   const px = maskPixels(frame);
+  /* The same pixels per metre down the frame as across it, so a rectangular
+     frame gets a rectangular mask rather than a squashed one. */
+  const py = Math.max(64, Math.round((px * (frame.height || frame.size)) / frame.size));
   const params = new URLSearchParams({
     bbox: frameBbox3857(frame).join(','),
     bboxSR: '3857',
     imageSR: '3857',
-    size: `${px},${px}`,
+    size: `${px},${py}`,
     format: 'png',
     f: 'image',
     renderingRule: JSON.stringify({
