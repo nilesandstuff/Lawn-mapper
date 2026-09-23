@@ -57,6 +57,7 @@ import { recordParcelGap } from './gaps.js';
 // here kills the isolate on startup.
 import {
   MODELS, samVersion, samThreshold, samPrompt, normaliseModel, modelCatalogue,
+  SAM_INPUT_PX, samMaxTilesAcross,
   promptProblem, normaliseExclusions, exclusionPass, exclusionCatalogue,
   DEFAULT_EXCLUSIONS, DEFAULT_MODEL,
 } from './sam.js';
@@ -66,6 +67,7 @@ import { covers, lawnMaskUrl, LANDCOVER_HOST, overlayCatalogue } from './landcov
 import {
   imageryUrl, detectionImageUrl, imageryPrompt, normaliseProvider,
   detectionProvider, providerCatalogue, providerFrame, providerAvailable,
+  detectionPlan,
 } from './imagery.js';
 // Shared with the browser, which loads the same file over HTTP. See the note
 // at the top of that file for why it lives outside worker/.
@@ -660,9 +662,31 @@ async function handleSegment(request, env, origin, ctx) {
     }];
   }
 
+  /*
+   * HOW MANY PICTURES, so that the model reads 10 cm a pixel.
+   *
+   * The frame the browser sent is the one on its screen -- the parcel fitted
+   * into 640 logical pixels -- and SAM reads its input at a fixed size, so
+   * on a big lot that picture reached the model coarser than it was built
+   * for and nothing said so. The plan cuts such a lot into pieces at the
+   * target and the model is asked once per piece; a lot that already fits is
+   * a plan of one and goes exactly as it always did. See detectionPlan.
+   *
+   * Decided BEFORE the allowance is touched, because every piece is a
+   * prediction and the charge has to be for all of them.
+   */
+  const plan = detectionPlan(provider, { lng, lat, zoom, size }, {
+    inputPx: SAM_INPUT_PX,
+    maxAcross: samMaxTilesAcross(env),
+  });
+  const starts = passes.length * plan.tiles.length;
+  const pieces = plan.tiles.length > 1
+    ? ` in ${plan.tiles.length} pieces` : '';
+
   // Every pass is a separate prediction and a separate bill, so the allowance
   // is charged for all of them at once -- all or nothing, because a detection
-  // missing one exclusion is a wrong answer rather than a smaller one.
+  // missing one exclusion is a wrong answer rather than a smaller one. And
+  // every PIECE of a pass is a prediction too, for the same reason.
   /*
    * Developer mode asks for the larger allowance by sending a flag.
    *
@@ -705,7 +729,9 @@ async function handleSegment(request, env, origin, ctx) {
     // Only meaningful when there is one; the pairs above are the answer for
     // several. See testlog.js.
     threshold: passes.length === 1 ? passes[0]?.threshold : null,
-    passes: passes.length,
+    // Predictions started, not concepts asked: a two-box press on a lot cut
+    // into four pieces is eight, and eight is what the bill says.
+    passes: starts,
     parcelSqFt: body.parcelSqFt,
     county: body.county,
     clientId,
@@ -751,7 +777,7 @@ async function handleSegment(request, env, origin, ctx) {
    */
   const claimant = body.worker || user?.id || '';
   const onLawn = body.job && claimant
-    ? await jobDetection(env, body.job, claimant, passes.length)
+    ? await jobDetection(env, body.job, claimant, starts)
     : null;
   const onTheClock = Boolean(onLawn?.spent);
 
@@ -779,11 +805,11 @@ async function handleSegment(request, env, origin, ctx) {
         reason: 'job-passes',
         used: onLawn.used,
         limit: onLawn.ceiling,
-        wanted: passes.length,
+        wanted: starts,
       }
       : await charge(request, env, {
-        user, clientId, n: passes.length, dev,
-        detail: `${passes.length} pass${passes.length > 1 ? 'es' : ''}`
+        user, clientId, n: starts, dev,
+        detail: `${starts} pass${starts > 1 ? 'es' : ''}${pieces}`
           + `${body.address ? ` at ${String(body.address).slice(0, 60)}` : ''}`,
       });
 
@@ -796,8 +822,8 @@ async function handleSegment(request, env, origin, ctx) {
    * starting outlines left cannot do the task at all.
    */
   const handBack = () => (onTheClock
-    ? spendJobDetection(env, body.job, claimant, -passes.length, onLawn.ceiling)
-    : refund(request, env, { user, clientId, n: passes.length, fromDaily: quota.fromDaily }));
+    ? spendJobDetection(env, body.job, claimant, -starts, onLawn.ceiling)
+    : refund(request, env, { user, clientId, n: starts, fromDaily: quota.fromDaily }));
 
   if (!quota.allowed) {
     /*
@@ -860,7 +886,7 @@ async function handleSegment(request, env, origin, ctx) {
     }
 
     note('quota_exceeded',
-      `${quota.used} of ${quota.limit} used, wanted ${quota.wanted || passes.length}`
+      `${quota.used} of ${quota.limit} used, wanted ${quota.wanted || starts}`
       + `, ${quota.reason || 'client'}${dev ? ', dev' : ''}`);
     return json(
       {
@@ -870,7 +896,9 @@ async function handleSegment(request, env, origin, ctx) {
         // How many this press needed, so the browser can say "this one needs
         // three and you have two left" rather than a flat refusal that reads
         // as broken when the counter plainly shows some remaining.
-        wanted: quota.wanted || passes.length,
+        wanted: quota.wanted || starts,
+        // And WHY it needed so many, when a big lot is the reason.
+        ...(plan.tiles.length > 1 ? { pieces: plan.tiles.length } : {}),
         // Distinguishes "you used yours" from "your network used theirs",
         // which matters when a whole apartment building shares an address.
         reason: quota.reason || 'client',
@@ -891,8 +919,18 @@ async function handleSegment(request, env, origin, ctx) {
    * what the mask must be unprojected against, so it is this that gets echoed
    * to the browser below, not the requested one.
    */
-  const served = providerFrame(provider, { lng, lat, zoom, size });
-  const imageUrl = detectionImageUrl(provider, served, serverToken(env), env);
+  /*
+   * One URL per piece. The plan's frames are already the ones the source can
+   * serve (detectionPlan runs them through providerFrame), so what is echoed
+   * to the browser below is exactly what each mask must be unprojected
+   * against.
+   */
+  const served = plan.frame;
+  const pictures = plan.tiles.map((tile) => ({
+    col: tile.col,
+    row: tile.row,
+    url: detectionImageUrl(provider, tile.frame, serverToken(env), env),
+  }));
 
   // A text prompt finds every patch of grass in the frame at once, including
   // the disconnected ones a person would have to remember to point at. What
@@ -962,7 +1000,7 @@ async function handleSegment(request, env, origin, ctx) {
    * credit, so the real lever is the account balance rather than anything in
    * this file. Which is why the sentence travels to the browser intact.
    */
-  const startPass = (pass) => fetch('https://api.replicate.com/v1/predictions', {
+  const startPass = (pass, picture) => fetch('https://api.replicate.com/v1/predictions', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${env.REPLICATE_TOKEN}`,
@@ -971,21 +1009,33 @@ async function handleSegment(request, env, origin, ctx) {
     },
     body: JSON.stringify({
       version,
-      input: model.input(imageUrl, { prompt: pass.prompt, threshold: pass.threshold, points }),
+      input: model.input(picture.url, { prompt: pass.prompt, threshold: pass.threshold, points }),
     }),
   });
 
+  /*
+   * Piece by piece within each pass, for the same budget reason as pass by
+   * pass: a refusal stops everything not yet sent. A warm prediction on this
+   * model returns in well under a second, so four pieces is a few seconds,
+   * not four minutes.
+   */
   const results = [];
+  let failed = null;
   for (const pass of passes) {
-    const res = await startPass(pass);
-    if (!res.ok) {
-      // The upstream's OWN words. Discarding the sentence that names which
-      // limit was hit is what made a rate limit and a concurrency limit
-      // indistinguishable, and cost two rounds of guessing.
-      results.push({ pass, http: res.status, detail: await upstreamReason(res) });
-      break; // spending another start to be told the same thing helps nobody
+    const tiles = [];
+    for (const picture of pictures) {
+      const res = await startPass(pass, picture);
+      if (!res.ok) {
+        // The upstream's OWN words. Discarding the sentence that names which
+        // limit was hit is what made a rate limit and a concurrency limit
+        // indistinguishable, and cost two rounds of guessing.
+        failed = { pass, http: res.status, detail: await upstreamReason(res) };
+        break; // spending another start to be told the same thing helps nobody
+      }
+      tiles.push({ col: picture.col, row: picture.row, prediction: await res.json() });
     }
-    results.push({ pass, prediction: await res.json() });
+    if (failed) break;
+    results.push({ pass, tiles });
   }
 
   /*
@@ -996,22 +1046,25 @@ async function handleSegment(request, env, origin, ctx) {
    * one: the trees stay counted as lawn and nothing on screen says so. Better
    * to hand back the allowance and say what happened.
    */
-  const failed = results.find((r) => r.http);
   if (failed) {
     await handBack();
     note(failed.http === 429 ? 'rate_limited' : 'upstream_error',
-      `HTTP ${failed.http}: ${failed.detail || 'no message'}`);
+      `HTTP ${failed.http}: ${failed.detail || 'no message'}${pieces}`);
 
     // Replicate throttles low-credit accounts to a handful of predictions a
     // minute. That is an account problem, not a bug, and saying so beats a
     // generic failure that sends the owner hunting through code. It is also
-    // the likeliest thing to go wrong now that one press can fire four at once.
+    // the likeliest thing to go wrong now that one press can fire four at
+    // once -- or, on a big lot, four per box.
     if (failed.http === 429) {
       return json(
         {
-          error: passes.length > 1
-            ? 'The detector is rate limited. Untick a box or two, or wait a minute.'
-            : 'The detector is rate limited right now. Wait a minute and try again.',
+          error: plan.tiles.length > 1
+            ? `This lot is big enough to need ${plan.tiles.length} pictures per box, and the `
+              + 'detector is rate limited. Untick a box or two, or wait a minute.'
+            : passes.length > 1
+              ? 'The detector is rate limited. Untick a box or two, or wait a minute.'
+              : 'The detector is rate limited right now. Wait a minute and try again.',
           // Verbatim, because it names the account-level cause -- "reduced to 6
           // requests per minute" is a fact about the Replicate account that no
           // amount of care in this file can work around, and the owner is the
@@ -1027,13 +1080,33 @@ async function handleSegment(request, env, origin, ctx) {
     return json({ error: 'Segmentation failed', detail: failed.detail }, 502, origin);
   }
 
-  const answered = results.map(({ pass, prediction }) => ({
+  /*
+   * One entry per pass, still, with its pieces inside it.
+   *
+   * A pass of one piece also carries that piece's status, id and mask at the
+   * top level, which is the shape every browser before tiling read -- and the
+   * shape the current one reads too when there is nothing to stitch. A pass
+   * of several pieces deliberately does NOT: an old tab tracing the first
+   * quarter of a lot against the whole lot's frame would draw the lawn in
+   * the wrong place and say nothing, and "no mask" is the better failure.
+   */
+  const answered = results.map(({ pass, tiles }) => ({
     exclusion: pass.id,
     prompt: pass.prompt,
     threshold: pass.threshold,
-    status: prediction.status,
-    id: prediction.id,
-    mask: prediction.output ?? null,
+    tiles: tiles.map(({ col, row, prediction }) => ({
+      col, row,
+      status: prediction.status,
+      id: prediction.id,
+      mask: prediction.output ?? null,
+    })),
+    ...(tiles.length === 1
+      ? {
+        status: tiles[0].prediction.status,
+        id: tiles[0].prediction.id,
+        mask: tiles[0].prediction.output ?? null,
+      }
+      : { status: tiles.every((t) => t.prediction.status === 'succeeded') ? 'succeeded' : 'processing' }),
   }));
 
   /*
@@ -1055,9 +1128,14 @@ async function handleSegment(request, env, origin, ctx) {
    * happened at one address, and splitting them across four rows would make
    * the log harder to read for no gain.
    */
-  const pending = answered.filter((a) => a.status !== 'succeeded');
+  const pending = answered.flatMap((a) => a.tiles).filter((t) => t.status !== 'succeeded');
   note(pending.length ? pending[0].status : 'succeeded',
-    pending.length ? `${pending.length} of ${answered.length} not ready yet` : null);
+    pending.length
+      ? `${pending.length} of ${starts} not ready yet${pieces}`
+      : (plan.tiles.length > 1
+        ? `${plan.cols}x${plan.rows} pieces at ${(plan.groundM * 100).toFixed(1)} cm/px`
+          + (plan.capped ? ' (capped)' : '')
+        : null));
 
   const shape = {
     passes: answered,
@@ -1089,8 +1167,22 @@ async function handleSegment(request, env, origin, ctx) {
         ? quota.remaining
         : Math.max(0, (quota.limit || 0) - (quota.used || 0))),
     // Frame parameters must round-trip to the client: converting mask
-    // pixels back to lng/lat requires the exact centre, zoom, and size.
+    // pixels back to lng/lat requires the exact centre, zoom, and size. On a
+    // tiled detection this is the frame of the STITCHED picture, which is
+    // what the pasted-together mask is a picture of.
     frame: { ...served, provider }, model: modelId,
+    /*
+     * How the lot was photographed, so the browser can paste the pieces on
+     * the right grid and say what resolution the model actually read. Always
+     * present, so nothing downstream has to distinguish "one piece" from
+     * "an older Worker that did not say".
+     */
+    tiling: {
+      cols: plan.cols,
+      rows: plan.rows,
+      groundCm: Math.round(plan.groundM * 1000) / 10,
+      capped: Boolean(plan.capped),
+    },
   };
 
   if (pending.length) {
@@ -1105,7 +1197,7 @@ async function handleSegment(request, env, origin, ctx) {
         // `passes` existed. Sending only the new field would leave such a tab
         // polling `undefined` forever rather than failing visibly.
         status: answered[0].status,
-        id: answered[0].id,
+        id: answered[0].id ?? null,
       },
       202,
       origin
@@ -1117,7 +1209,7 @@ async function handleSegment(request, env, origin, ctx) {
       ...shape,
       // Likewise: the first mask under the old name, so an old tab measuring
       // with "Find grass" keeps working through the deploy.
-      mask: answered[0].mask,
+      mask: answered[0].mask ?? null,
       // What was actually asked, so a developer-mode run is attributable to
       // its own settings rather than to whatever the panel says now.
       used: { prompt: answered[0].prompt, threshold: answered[0].threshold },

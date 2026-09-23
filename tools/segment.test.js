@@ -359,6 +359,98 @@ async function post(payload) {
     JSON.stringify(plain.body));
 }
 
+/* ------------------------------------------------------- a big lot */
+/*
+ * EVERY DETECTOR GETS 10 CM A PIXEL, the live one included. The display
+ * frame is the parcel in 1280 px, and SAM reads 1008, so a lot over about
+ * 100 m across reached the model coarser than it was built for. Such a lot
+ * is now photographed in pieces, one prediction each -- and what is checked
+ * here is the WIRING: that the pieces are really different pictures, that
+ * every one is paid for, and that the browser is told how to put them back.
+ *
+ * The test frame at zoom 19 covers about 70 m, so every other test in this
+ * file is a one-piece lot and unchanged. Zoom 17.7 at this latitude is about
+ * 172 m.
+ */
+{
+  const r = await post({ zoom: 17.7 });
+  check('a big lot is photographed in four pieces',
+    r.sent.length === 4, `${r.sent.length} prediction(s) for a 172 m lot`);
+  const urls = new Set(r.sent.map((s) => s.image));
+  check('and every piece is a different picture',
+    urls.size === 4, [...urls].map((u) => u.slice(50, 90)).join('\n      '));
+  check('each piece is the model\'s input size at @2x',
+    r.sent.every((s) => /\/504x504@2x/.test(s.image)), r.sent[0]?.image);
+  check('all four ask the same question',
+    r.sent.every((s) => s.prompt === r.sent[0].prompt && s.threshold === r.sent[0].threshold));
+
+  const pass = r.body.passes?.[0];
+  check('the pass carries its pieces with their grid position',
+    pass?.tiles?.length === 4
+    && pass.tiles.every((t) => Number.isInteger(t.col) && Number.isInteger(t.row) && t.mask),
+    JSON.stringify(pass?.tiles).slice(0, 160));
+  check('and the browser is told the grid',
+    r.body.tiling?.cols === 2 && r.body.tiling?.rows === 2, JSON.stringify(r.body.tiling));
+  check('and the resolution the model read, which is the target or finer',
+    r.body.tiling?.groundCm <= 10 && r.body.tiling?.groundCm > 5 && r.body.tiling?.capped === false,
+    JSON.stringify(r.body.tiling));
+  check('the frame echoed back is the stitched one, not the display frame',
+    r.body.frame?.size === 1008 && r.body.frame.zoom > 17.7,
+    `${JSON.stringify(r.body.frame)} — more pixels over the same ground is a HIGHER zoom`);
+  check('a many-piece pass carries no single mask an old tab could misplace',
+    pass?.mask === undefined && r.body.mask === null,
+    `pass.mask=${pass?.mask} body.mask=${r.body.mask}`);
+
+  /* A one-piece lot is the shape it always was. */
+  const small = await post({});
+  check('a small lot is still one picture of the display frame',
+    small.sent.length === 1 && small.body.frame.size === 640 && small.body.tiling?.cols === 1,
+    JSON.stringify(small.body.tiling));
+  check('with the mask where old browsers look for it',
+    typeof small.body.passes[0].mask === 'string' && small.body.mask === small.body.passes[0].mask);
+}
+
+/* ------------------------------------------- a big lot is paid for in full */
+{
+  const store = new Map();
+  const kvEnv = {
+    ...env,
+    QUOTA: {
+      async put(k, v) { store.set(k, v); },
+      async get(k) { return store.get(k) ?? null; },
+    },
+  };
+  const press = async (clientId, dev) => {
+    const res = await worker.fetch(new Request('https://example.test/api/segment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        lng: -85.5, lat: 43.1, zoom: 17.7, size: 640, clientId,
+        model: 'sam3_exclude', exclude: ['built', 'trees'], ...(dev ? { dev: true } : {}),
+      }),
+    }), kvEnv, ctx);
+    return { status: res.status, body: await res.json() };
+  };
+
+  /* Under the developer allowance of 80, so the charge itself is visible. */
+  const paid = await press('big-lot-dev', true);
+  check('two boxes on a four-piece lot is eight passes off the allowance',
+    paid.status === 200 && paid.body.remaining === 80 - 8,
+    `${paid.status}: remaining ${paid.body.remaining} of 80`);
+
+  /*
+   * AND A SIGNED-OUT VISITOR CANNOT AFFORD IT. Five a day for a whole browser,
+   * eight wanted: refused before anything is spent, and the refusal says how
+   * many it wanted and WHY, because "needs 8" with two boxes ticked reads as
+   * broken unless the pieces are named.
+   */
+  const refused = await press('big-lot-plain', false);
+  check('a refusal on a big lot says how many it wanted and why',
+    refused.status === 429 && refused.body.wanted === 8 && refused.body.pieces === 4
+    && refused.body.used === 0,
+    `${refused.status}: ${JSON.stringify(refused.body)}`);
+}
+
 /* ------------------------------------------------------- unknown concepts */
 {
   const r = await post({ model: 'sam3_exclude', exclude: ['built', 'unicorns'] });

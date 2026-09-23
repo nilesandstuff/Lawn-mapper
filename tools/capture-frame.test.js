@@ -25,7 +25,7 @@
 
 import assert from 'node:assert/strict';
 import {
-  captureFrame, capturePlan, groundPerPixel, groundAcross,
+  captureFrame, capturePlan, detectionPlan, groundPerPixel, groundAcross,
   TARGET_GROUND_M, MAX_LOGICAL, MAX_TILES_ACROSS,
 } from '../worker/src/imagery.js';
 import { lngLatToWorld } from '../public/lib/mercator.js';
@@ -115,6 +115,82 @@ for (const lat of [25.8, 42.9, 61.2]) {
   const small = capturePlan(display(100));
   assert.equal(small.tiles.length, 1);
   assert.equal(small.tiles[0].frame.size, small.frame.size);
+}
+
+/* ------------------------------------------------- the live detection */
+/*
+ * THE SAME RULE ON THE PATH THAT MEASURES REAL LAWNS. SAM reads its input at
+ * a fixed 1008 px, so the display frame -- the parcel in 1280 px -- reaches
+ * it at (metres across / 1008) a pixel: 6 cm on a 60 m lot, 17 cm on a 172 m
+ * one. detectionPlan cuts anything past 10 cm into pieces at the target.
+ */
+{
+  const INPUT = 1008;
+
+  /* A lot the model already reads at 10 cm or better is sent untouched:
+     one picture, the display frame, byte for byte what was sent before. */
+  for (const across of [25, 60, 100]) {
+    const d = display(across);
+    const plan = detectionPlan('mapbox', d, { inputPx: INPUT });
+    assert.equal(plan.tiles.length, 1, `${across} m should be one picture`);
+    assert.deepEqual(plan.frame, d, `${across} m: the display frame was altered`);
+    assert.ok(plan.groundM <= TARGET_GROUND_M + 1e-6,
+      `${across} m: one picture, yet coarser than the target (${plan.groundM})`);
+    assert.equal(plan.capped, false);
+  }
+
+  /* Past the target it is cut, and every piece is the model's input size at
+     10 cm a pixel or finer -- the lot fills the grid, so a lot that only just
+     needed cutting comes out at 5 cm -- abutting in world pixels like the
+     banked tiles. */
+  for (const across of [101, 130, 172, 197]) {
+    for (const lat of [25.8, 42.9, 61.2]) {
+      const plan = detectionPlan('mapbox', display(across, lat), { inputPx: INPUT, maxAcross: 2 });
+      assert.equal(plan.cols, 2, `${across} m at lat ${lat}: should be 2 across`);
+      assert.equal(plan.tiles.length, 4);
+      assert.equal(plan.capped, false, `${across} m: should fit the piece budget`);
+      assert.ok(plan.groundM <= TARGET_GROUND_M + 1e-6,
+        `${across} m at lat ${lat}: pieces are ${plan.groundM} m/px, coarser than the target`);
+      assert.ok(plan.groundM >= TARGET_GROUND_M / 2 - 1e-6,
+        `${across} m at lat ${lat}: ${plan.groundM} m/px is finer than a 2 x 2 should ever be`);
+      assert.ok(groundAcross(plan.frame) >= across - 1, `${across} m: the pieces do not cover the lot`);
+      for (const t of plan.tiles) {
+        assert.equal(t.frame.size * 2, INPUT, 'a piece is not the model\'s input size');
+        assert.equal(t.frame.zoom, plan.frame.zoom);
+      }
+      const at = (c, r) => plan.tiles.find((t) => t.col === c && t.row === r);
+      const a = lngLatToWorld([at(0, 0).frame.lng, at(0, 0).frame.lat], plan.frame.zoom);
+      const b = lngLatToWorld([at(1, 0).frame.lng, at(1, 0).frame.lat], plan.frame.zoom);
+      const c = lngLatToWorld([at(0, 1).frame.lng, at(0, 1).frame.lat], plan.frame.zoom);
+      assert.ok(Math.abs((b[0] - a[0]) - plan.tileSize) < 0.01, `${across} m: columns do not abut`);
+      assert.ok(Math.abs((c[1] - a[1]) - plan.tileSize) < 0.01, `${across} m: rows do not abut`);
+    }
+  }
+
+  /* Past the piece budget the pieces get coarser, and the plan says so
+     rather than pretending: a 319 m lot in a 2 x 2 is about 16 cm. */
+  const big = detectionPlan('mapbox', display(319), { inputPx: INPUT, maxAcross: 2 });
+  assert.equal(big.tiles.length, 4);
+  assert.equal(big.capped, true, 'a lot past the budget must say it was capped');
+  assert.equal(big.wanted, 4, 'and say what it would have taken');
+  assert.ok(big.groundM > TARGET_GROUND_M && big.groundM < 0.17, `capped resolution ${big.groundM}`);
+  assert.ok(groundAcross(big.frame) >= 318, 'capped, but still covering the lot');
+
+  /* With the budget raised, the same lot reaches the target. */
+  const raised = detectionPlan('mapbox', display(319), { inputPx: INPUT, maxAcross: 4 });
+  assert.equal(raised.cols, 4);
+  assert.equal(raised.capped, false);
+  assert.ok(raised.groundM <= TARGET_GROUND_M + 1e-6, `raised budget: ${raised.groundM}`);
+
+  /* Other sources are never cut. NAIP has no 10 cm to give and Google serves
+     one fixed picture; both come back as a plan of one in the same shape. */
+  for (const provider of ['naip', 'google']) {
+    const plan = detectionPlan(provider, display(197), { inputPx: INPUT });
+    assert.equal(plan.tiles.length, 1, `${provider} should never be tiled`);
+    assert.equal(plan.cols, 1);
+  }
+  /* A look-only source detects on the default, which IS cut. */
+  assert.equal(detectionPlan('esri', display(197), { inputPx: INPUT }).tiles.length, 4);
 }
 
 console.log('capture frame: ok');

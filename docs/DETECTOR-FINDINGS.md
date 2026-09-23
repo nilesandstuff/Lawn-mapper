@@ -159,8 +159,8 @@ to 319 m across; 11 of 32 are over about 120 m.
 | lawn backbone, Scale-MAE at `size=896` (wf 14) | whole frame squeezed to 896 px | 6.7 | 11.2 | **19** | **36** | only under ~90 m |
 | lawn backbone at `size=1280` | whole frame squeezed to 1280 px | 4.7 | 7.8 | **13.4** | **25** | only under ~128 m |
 | lawn head, `GRID=512` | scores one cell per 1/512 of the frame | 12 | 20 | 34 | 62 | cells, not pixels — see below |
-| SAM 3, live (`/api/segment`) | the DISPLAY frame: 640 logical @2x = 1280 px over the parcel | 4.7 | 7.8 | **13.4** | **25** | only under ~128 m |
-| SAM 3, after its own resize | SAM 3 resizes its input to about 1008 px (its published input size; not measured here) | 6 | 10 | **17** | **32** | only under ~100 m |
+| SAM 3, live (`/api/segment`), BEFORE 2026-09-23 | the DISPLAY frame: 640 logical @2x = 1280 px, resized by SAM to about 1008 px (its published input size; not measured here) | 6 | 10 | **17** | **32** | only under ~100 m |
+| SAM 3, live, NOW | one picture under ~100 m; past that a 2×2 of 1008 px pieces at 10 cm or finer (`detectionPlan`) | 6 | 10 | 8.5 | **16** (capped at 2×2) | **yes to ~200 m**; past that the piece budget, not the picture, is the limit |
 
 Numbers are cm per pixel; bold is coarser than 15 cm. The `512` and `896`
 and `1280` that keep coming up are three different things: **512** is the grid
@@ -169,16 +169,33 @@ the lawn head SCORES on (one number per cell, and the tracer's input), **896 or
 the published rendering. None of them is a resolution until you divide the
 lot size by it.
 
-**So as of this audit only the canopy detector honours the rule.** The lawn
-detector and SAM both inherit H20 unfixed: they read a whole-lot picture at a
-fixed pixel count, so a big lot is a blurry lot. The fix in both cases is the
+**As of the audit only the canopy detector honoured the rule.** The lawn
+detector and SAM both inherited H20 unfixed: they read a whole-lot picture at a
+fixed pixel count, so a big lot was a blurry lot. The fix in both cases is the
 one the canopy path already has — capture at 10 cm and TILE, so a big lot is
-more pictures rather than a coarser one. For the backbone that means the frame
-is cut into 896 px tiles (about 90 m each) and the feature maps stitched; for
-SAM it means one Replicate prediction per tile, which is a cost per press.
-Neither is built yet. The head's 512-cell grid is a separate question — it is
-the resolution of the ANSWER, not of what the model saw, and it should follow
-metres (a fixed cm per cell) rather than a fixed count once the backbone does.
+more pictures rather than a coarser one.
+
+**SAM is fixed, same day.** `detectionPlan` in `worker/src/imagery.js` cuts a
+lot over about 100 m across into an n×n grid of 1008 px pieces (SAM's input
+size) at 10 cm or finer, the Worker asks once per piece, and the browser
+pastes the masks back together (`public/lib/tiles.js`) before tracing. Under
+100 m nothing changed. What it costs, said plainly: **every piece of every box
+is an AI pass.** A 172 m lot is 4 passes for "find grass" and 8 for two boxes,
+against a signed-out allowance of 5 a day, and Replicate throttles a low-credit
+account at 6 requests a minute — so the grid is capped at 2×2 (~200 m at 10 cm;
+`SAM_MAX_TILES_ACROSS` raises it to 4 once the account can take it), and past
+the cap the pieces get coarser and the response says so. Unmeasured: whether
+the outlines are better for it. The pieces abut exactly in world pixels (same
+arithmetic as the banked tiles) but a mask edge at a seam is still two
+separate answers meeting, and nothing has yet been scored across one.
+
+**The lawn backbone is not built yet.** That means the banked photo (already
+stitched, already 10 cm) is read in 896 px windows that OVERLAP, keeping only
+the middle of each window's feature map so every feature had context on all
+sides, then stitched into one feature map for the head. The head's 512-cell
+grid is a separate question — it is the resolution of the ANSWER, not of what
+the model saw, and it should follow metres (a fixed cm per cell) rather than a
+fixed count once the backbone does.
 
 **Crowns are out of scope** until everything above works. The measured crown
 area per lawn is small enough that it is not where the square footage is, and
