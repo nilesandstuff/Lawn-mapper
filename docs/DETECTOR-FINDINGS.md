@@ -147,10 +147,37 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
-### H20. Above about 102 m across, the canopy model is fed upsampled pixels
+### H20. Resolution was a side effect of lot size. FIXED at capture, 2026-09-23
 *Arithmetic over the frame sizes in the code and the per-lawn read sizes logged
 by runs 35762129844 and 35781727027, 2026-09-23. The chain is measured; that it
 is WHY the canopy reads worse on big lots is not.*
+
+**THE FIX, and it makes most of what follows history.** `zoomToFit` chooses a
+zoom that fits the parcel inside a fixed 640 logical pixels, so the RESOLUTION
+of a banked photograph fell out of how big the lot was. The detector's needs
+never entered into it. `captureFrame` in `worker/src/imagery.js` now pins the
+resolution and lets the SIZE vary instead — 10 cm a pixel or better wherever
+one Mapbox request reaches it, and **never coarser than the display frame
+already managed**:
+
+| lot across | was banked at | now banked at |
+|---|---|---|
+| 25 m | 2.0 cm/px | 2.0 cm/px — already finer, left alone |
+| 122 m | 9.5 cm/px | 9.5 cm/px — already clears it |
+| 172 m | 13.4 cm/px | **10.0 cm/px** |
+| 197 m | 15.4 cm/px | **10.0 cm/px** |
+| 231 m | 18.0 cm/px | **10.0 cm/px** |
+| 319 m | 24.9 cm/px | **12.5 cm/px** (capped: needs tiling for 10) |
+
+Small lots keep the extra resolution they were already getting free — the
+photograph is the archive, and imagery gets reflown, so throwing it away to hit
+a number would be permanent. Lots past about 256 m cannot reach 10 cm in one
+request (Mapbox caps a static image at 1280 logical) and are flagged `capped`
+rather than quietly returned as if they had. The frame the picture was taken on
+is stored in `corpus.image_frame`, so nothing downstream has to infer the
+ground size — it is exact Web Mercator from zoom and latitude, never a guess.
+
+**The rest of this entry describes the problem as it stood before that.**
 
 `public/app.js` sets `FRAME_SIZE = 640` logical pixels and Mapbox is asked at
 `@2x`, so **every stored photograph is 1280×1280 whatever the lot**. Ground
@@ -1678,3 +1705,4 @@ fields) were both more obviously right than this one.
 | 2026-09-23 | 35813325014 | 12 | — (workflow 20, no training) | — | — | **The other half of H20, answered.** Each of the 12 biggest lots fetched at 640/1280/2560 px and asked where its detail stops being real. **8 have real imagery at 2560 we are not requesting**, 0 top out at 1280, **2 are already stretched at 1280** (the Bullitt pair, 0.047 → 0.019), 2 are flat ground. Bytes per pixel 1.01× agrees independently. So: raise the stored frame **per lawn**, not globally — four times the R2 bytes buys nothing on 4 of 12. Confirms the owner's point that resolution is a fact about the address, so H20's 128 m crossover is a best case rather than a rule. Weakest calls: 4 of the 8 sit just above the noise floor |
 | 2026-09-23 | 35812991329, 35813325014 | 12 | — (workflow 20) | — | — | **BOTH VOID, retracted same day.** The probe varied the static API's `size` at a FIXED zoom, but ground per returned pixel depends on the zoom alone — at z19, sizes 320/640/1280 all return 5.47 cm/px covering 35/70/140 m. So it compared three different-sized crops at one resolution and read the differences as detail. Every figure is withdrawn, including "8 of 12 have detail we are not asking for" and "2 are already stretched at 1280". The tests passed throughout: they cover the residual measure and the labelling, and both were right — neither knows what images it is handed. Fixed by moving zoom and size together; not yet re-run |
 | 2026-09-23 | 35848980523 | 12 | — (workflow 20, corrected) | — | — | **The other half of H20: a bigger request will NOT fix it.** Zoom and size moved together this time, so each step really is the same lot at twice the resolution. Detail falls at every step up on every lawn (Kent 197 m: 0.246 → 0.164 → 0.062), which is what running out of native imagery looks like; bytes per pixel one step up is 0.65×, agreeing independently. **8 of 12 are already at Mapbox's ceiling, 2 have a little more, 1 is already stretched, 1 is flat.** So closing H20 needs different imagery — NAIP or a county orthophoto service — and the 33 banked photographs are probably not worth refetching. **Caveat:** no control for what a genuinely native zoom step scores under this measure, so the ordering is solid and the absolute counts are provisional |
+| 2026-09-23 | — | — | — (no run; a capture fix) | — | — | **H20 fixed at the source.** The banked photograph's resolution was a side effect of lot size, because `zoomToFit` fits the parcel into a fixed 640 logical px. `captureFrame` now pins resolution and varies size: 10 cm/px or better wherever one request reaches it, never coarser than before, `capped` flagged past ~256 m where Mapbox's 1280-logical limit bites. 172 m lot 13.4 → 10.0 cm/px; 319 m lot 24.9 → 12.5. Small lots keep the finer imagery they already got free. `corpus.image_frame` stores the frame the picture was taken on, so ground size is exact arithmetic rather than inference. **Applies to newly banked photographs only** — the 33 existing rows keep their old frames and the readers fall back to `frame` for them |

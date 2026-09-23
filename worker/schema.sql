@@ -327,6 +327,24 @@ CREATE TABLE IF NOT EXISTS corpus (
   -- having: the frame re-fetches.
   image_key      TEXT,
   image_provider TEXT,
+  -- THE FRAME THE PHOTOGRAPH WAS ACTUALLY TAKEN ON, which is no longer the
+  -- frame above.
+  --
+  -- `frame` is what the phone displayed: zoomToFit puts the parcel inside a
+  -- fixed 640 logical pixels, so the RESOLUTION of a photograph fell out of
+  -- how big the lot was -- 2 cm a pixel on a small garden, 25 cm on a big one
+  -- (H20). The detector wants 10 cm, so the big lots were being upsampled into
+  -- it and handed interpolation dressed as imagery.
+  --
+  -- The banked photograph is now captured at 10 cm or better wherever one
+  -- request can reach it, which means a different zoom and size from the
+  -- display. Stored as JSON so anything reading the picture can work out its
+  -- exact ground size from Web Mercator rather than guessing -- and so a mask
+  -- rasterised for that picture uses the frame the picture was taken on.
+  --
+  -- NULL on rows banked before this existed. Those were taken on `frame`, and
+  -- the readers fall back to it.
+  image_frame    TEXT,
   -- Has a person looked at this one and said it is good?
   --
   -- 'new' until reviewed, then 'approved' or 'rejected'. Only approved rows

@@ -242,7 +242,7 @@ export const framePixels = (lawns) => {
 
 const QUERY = `
   SELECT id, county, tree_line, frame, shapes, detected_shapes, parcel,
-         image_key, image_provider, mode, model
+         image_key, image_provider, image_frame, mode, model
     FROM corpus
    WHERE status = 'approved' AND image_key IS NOT NULL AND frame IS NOT NULL
    ORDER BY at DESC
@@ -1282,7 +1282,18 @@ async function main() {
   const missing = [];
   try {
     for (const row of rows) {
-      const frame = parse(row.frame);
+/*
+       * THE FRAME THE PHOTOGRAPH WAS TAKEN ON, which since H20 is not the one
+       * the phone displayed. The banked picture is captured at 10 cm a pixel
+       * or better, so its zoom and size differ from the display's -- and a
+       * mask rasterised against the wrong one would not line up with the
+       * pixels it is supposed to describe.
+       *
+       * Rows banked before that column existed have no `image_frame`, and
+       * those really were taken on `frame`, so the fallback is correct rather
+       * than a guess.
+       */
+      const frame = parse(row.image_frame) || parse(row.frame);
       const truthGeoms = geometries(parse(row.shapes));
       if (!frame || !truthGeoms.length) continue;
 

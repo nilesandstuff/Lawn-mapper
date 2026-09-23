@@ -51,6 +51,98 @@ export function frameBbox3857(frame) {
  */
 export const imagePixels = (frame) => Math.min(frame.size * 2, 2560);
 
+/**
+ * How many metres of ground one RETURNED pixel covers, for a frame.
+ *
+ * Exact Web Mercator, not an estimate: a tile scheme is 512 logical pixels
+ * across the world at zoom 0, doubling each zoom, and `@2x` returns two pixels
+ * per logical one. There is nothing to infer and nothing to probe.
+ */
+export const groundPerPixel = (frame) =>
+  (40075016.686 * Math.cos((frame.lat * Math.PI) / 180))
+  / (512 * 2 ** frame.zoom) / 2;
+
+/** Metres of ground across a whole frame. */
+export const groundAcross = (frame) => groundPerPixel(frame) * frame.size * 2;
+
+/**
+ * What the DETECTOR wants a pixel to be worth, in metres.
+ *
+ * The canopy model was trained at 10 cm and the lawn detector is scored at the
+ * same scale. This is the number the stored photograph should be captured at.
+ */
+export const TARGET_GROUND_M = 0.10;
+
+/** Mapbox will not serve a static image wider than this many logical pixels. */
+export const MAX_LOGICAL = 1280;
+
+/**
+ * The frame to BANK a training photograph at, which is not the frame the phone
+ * is showing.
+ *
+ * THE BUG THIS FIXES, and it is the whole of H20. `zoomToFit` picks a zoom that
+ * fits the parcel inside a fixed 640 logical pixels, so the RESOLUTION of a
+ * stored photograph falls out of how big the lot is: a 25 m garden is banked at
+ * 2 cm a pixel and a 319 m lot at 25 cm. The detector's needs never entered
+ * into it. Then the training tools resample every frame to 10 cm -- averaging
+ * real detail away on the small lots, and INVENTING pixels on the big ones.
+ * That is why the canopy model reads worse on big lawns: it was being handed
+ * interpolation and told it was imagery.
+ *
+ * So the zoom is pinned to the target ground size and the SIZE varies to cover
+ * the lot, which is the other way round from the display frame. At 10 cm a
+ * pixel that fits a lot up to about 256 m across in one request.
+ *
+ * PAST THAT, THE RESULT IS COARSER AND SAYS SO. Mapbox caps one static image at
+ * 1280 logical pixels, so a bigger lot cannot be had at 10 cm from a single
+ * call -- it would need tiling. Rather than silently returning something
+ * different from what was asked, the frame is clamped and the caller is handed
+ * the ground size it actually achieved, so nothing downstream has to guess.
+ */
+export function captureFrame(frame, target = TARGET_GROUND_M) {
+  const across = groundAcross(frame);
+
+  /*
+   * NEVER COARSER THAN THE DISPLAY FRAME ALREADY MANAGES, which is why the
+   * floor is `frame.size` rather than whatever the target needs.
+   *
+   * A small lot is already banked far finer than 10 cm -- a 25 m garden comes
+   * back at 2 cm -- and it costs exactly the same request to keep it, because
+   * the frame is 640 logical either way. Pinning everything to 10 cm would
+   * have thrown that away to hit a number, and thrown it away permanently:
+   * the photograph is the archive, and a future model that wants 5 cm cannot
+   * ask this one again in two years' time when the imagery has been reflown.
+   *
+   * So the rule is only ever upward. Raise the size until a pixel is worth
+   * 10 cm or better, and leave alone anything that already clears it.
+   */
+  const wanted = Math.ceil(across / target / 2);
+  const size = Math.min(MAX_LOGICAL, Math.max(frame.size, wanted));
+
+  /*
+   * The zoom then follows from the size: whatever puts `across` metres into
+   * `size` logical pixels. Fractional zooms are fine -- the static API takes
+   * them, and rounding to an integer would cost up to 40% of the resolution
+   * for nothing.
+   */
+  const zoom = Math.log2(
+    (40075016.686 * Math.cos((frame.lat * Math.PI) / 180) * size) / (512 * across)
+  );
+  const out = { lng: frame.lng, lat: frame.lat, zoom, size };
+  const groundM = groundPerPixel(out);
+
+  return {
+    frame: out,
+    groundM,
+    /* True when one request could not reach the target: the lot is wider than
+       about 256 m at 10 cm. The photograph is still better than the display
+       frame would have given, and the caller is told so rather than left to
+       assume it got what it asked for. */
+    capped: size >= MAX_LOGICAL && groundM > target * 1.001,
+    across,
+  };
+}
+
 /* ------------------------------------------------------------ the frame */
 /**
  * Some sources cannot serve an arbitrary frame, so the frame moves to them.

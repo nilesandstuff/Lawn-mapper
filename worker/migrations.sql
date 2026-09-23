@@ -40,6 +40,11 @@ ALTER TABLE ledger ADD COLUMN units INTEGER NOT NULL DEFAULT 1;
 -- is still worth having, because the frame re-fetches.
 ALTER TABLE corpus ADD COLUMN image_key TEXT;
 ALTER TABLE corpus ADD COLUMN image_provider TEXT;
+-- The frame the photograph was actually taken on, which since H20 is not the
+-- frame the phone displayed: the banked picture is captured at 10 cm a pixel
+-- or better, so its zoom and size differ from the display's. NULL on every row
+-- banked before that, and those were taken on `frame`.
+ALTER TABLE corpus ADD COLUMN image_frame TEXT;
 
 -- What the detector drew before anybody edited it, which was being thrown
 -- away: the outline is edited in place, so `detected_sq_ft` recorded how far

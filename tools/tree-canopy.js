@@ -59,7 +59,7 @@ const BUCKET = process.env.CORPUS_BUCKET || 'lawn-mapper-corpus';
 const RUN_ABOUT = String(process.env.RUN_ABOUT || '').trim().slice(0, 600);
 
 const QUERY = `
-  SELECT id, county, frame, shapes, parcel, image_key
+  SELECT id, county, frame, image_frame, shapes, parcel, image_key
     FROM corpus
    WHERE status = 'approved' AND image_key IS NOT NULL AND frame IS NOT NULL
    ORDER BY at DESC
@@ -172,7 +172,18 @@ async function main() {
       const file = join(CANOPY, `${row.id}.json`);
       if (!existsSync(file)) continue;
       const found = parse(readFileSync(file, 'utf8'));
-      const frame = parse(row.frame);
+/*
+       * THE FRAME THE PHOTOGRAPH WAS TAKEN ON, which since H20 is not the one
+       * the phone displayed. The banked picture is captured at 10 cm a pixel
+       * or better, so its zoom and size differ from the display's -- and a
+       * mask rasterised against the wrong one would not line up with the
+       * pixels it is supposed to describe.
+       *
+       * Rows banked before that column existed have no `image_frame`, and
+       * those really were taken on `frame`, so the fallback is correct rather
+       * than a guess.
+       */
+      const frame = parse(row.image_frame) || parse(row.frame);
       const truthGeoms = geometries(parse(row.shapes));
       if (!found || !frame || !truthGeoms.length) continue;
 

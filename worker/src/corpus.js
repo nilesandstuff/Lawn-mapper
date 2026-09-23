@@ -11,7 +11,7 @@
  * a corpus write failed. Every path returns a reason instead.
  */
 
-import { imageryUrl } from './imagery.js';
+import { captureFrame, imageryUrl } from './imagery.js';
 
 const round = (n) => Math.round(n * 1e6) / 1e6;
 /*
@@ -102,7 +102,17 @@ export async function storeImage(env, row) {
   const token = env.MAPBOX_SERVER_TOKEN || env.MAPBOX_TOKEN;
   if (source === 'mapbox' && !token) return { ok: false, reason: 'no-token' };
 
-  const url = imageryUrl(source, row.frame, token, env);
+  /*
+   * CAPTURED AT THE DETECTOR'S SCALE, not at the phone's.
+   *
+   * The display frame fits the parcel into a fixed 640 logical pixels, so its
+   * resolution is a side effect of lot size -- which is H20, and is why the
+   * canopy model read worse on big lawns. This asks for 10 cm a pixel or
+   * better wherever one request can reach it, and never for less than the
+   * display frame already managed.
+   */
+  const shot = captureFrame(row.frame);
+  const url = imageryUrl(source, shot.frame, token, env);
   if (!url) return { ok: false, reason: 'no-url' };
 
   try {
@@ -119,10 +129,17 @@ export async function storeImage(env, row) {
 
     const key = imageKeyFor(row.id, source);
     await env.CORPUS.put(key, res.body, { httpMetadata: { contentType: type } });
+    /* The frame the picture was taken on travels with it. A mask rasterised
+       against the display frame would not line up with a photograph taken at a
+       different zoom, and nothing downstream should have to infer which. */
     await env.DB.prepare(
-      'UPDATE corpus SET image_key = ?2, image_provider = ?3 WHERE id = ?1'
-    ).bind(row.id, key, source).run();
-    return { ok: true, key, source };
+      'UPDATE corpus SET image_key = ?2, image_provider = ?3, image_frame = ?4 WHERE id = ?1'
+    ).bind(row.id, key, source, JSON.stringify(shot.frame)).run();
+    return {
+      ok: true, key, source,
+      groundCm: Math.round(shot.groundM * 1000) / 10,
+      capped: shot.capped,
+    };
   } catch (e) {
     return { ok: false, reason: e?.name === 'TimeoutError' ? 'timed-out' : 'fetch-failed' };
   }
