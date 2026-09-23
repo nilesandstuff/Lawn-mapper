@@ -16,13 +16,15 @@ name: 14. Train with a real backbone (Python)
 # to every other. That is what makes shadow legible -- and shadow is the thing
 # colour alone will never survive.
 #
-# ONE PASS IS NOW ONLY FOR LOTS IT CAN READ AT 10 CM A PIXEL. The photographs
-# are banked at 10 cm or finer whatever the lot, and one pass at 896 px over a
-# 172 m lot is 19 cm a pixel -- the model's rule is 10. Past that the
-# extractor reads the photograph at its own resolution in overlapping windows
-# and keeps only the middle of each, so every patch still had about 11 m of
-# real picture on every side when it was read. That is the difference from
-# the tiling above: overlap, and a margin thrown away. See tools/windows.py.
+# THE WINDOWS WERE TRIED AND MEASURED WORSE. On 2026-09-23 the extractor
+# gained a mode that reads a lot too big for 10 cm a pixel in one pass in
+# overlapping 896 px windows at the photograph's own resolution, keeping only
+# the middle of each so every patch had about 11 m of real picture around it
+# -- overlap and a margin thrown away, which is the difference from the
+# tiling above. Same corpus, both ways (H22): every backbone row was worse in
+# windows, the eye alone by 16 points. The whole lot in view was worth more
+# than the resolution, which is what the paragraph above argued. The mode
+# stays behind the `windows` input, off by default. See tools/windows.py.
 #
 # AND NOW A SECOND EYE, which is the reason to run this again.
 #
@@ -121,9 +123,14 @@ on:
         # overlapping windows; "off" squeezes every lot whole into the input
         # size, which is what every run before 2026-09-23 did. Same corpus,
         # both settings, is the only way to say what windows were worth.
-        description: 'Read big lots in overlapping windows at 10 cm (on), or squeeze every lot whole (off, the old way)'
+        #
+        # OFF BY DEFAULT, BECAUSE IT WAS MEASURED (H22, 2026-09-23): on the
+        # same 32 lawns, every row that reads the backbone was worse in
+        # windows, the eye alone by 16 points (31.4% squeezed whole, 47.4%
+        # in windows). The whole lot in view was worth more than 10 cm.
+        description: 'Read big lots in overlapping windows at 10 cm (on), or squeeze every lot whole (off, the old way, measured better)'
         type: choice
-        default: 'on'
+        default: 'off'
         options: ['on', 'off']
       grid:
         # THE CONTROL SWITCH for the scoring grid. "15 cm" gives each lawn

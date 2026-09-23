@@ -35,7 +35,25 @@ changes and results from different corpora are not comparable.
 
 ## The numbers that matter right now
 
-**CORPUS `1wxlejo`, 31 lawns, 2026-09-22 — the current state.**
+**CORPUS `1rijjz2`, 32 lawns, 2026-09-23 — the current state.**
+
+| | error | notes |
+|---|---|---|
+| SAM (what we pay for) | **23.3%** | the line to beat, 26 lawns with a stored answer, all drawn by `sam3` |
+| best of ours | **31.4%** | Scale-MAE 896px squeezed whole, **the eye only**, beat SAM on 13 of 26 (run 35900673594, the H22 control) |
+
+Gap: **1.35×**. It was 1.45× on `1wxlejo` (31 lawns) and 1.39× at 23. One map
+left and one arrived between `1wxlejo` and this, so by H7 the two tables are
+not the same measurement; the ratio is the only number worth carrying across.
+
+**Three things were tried on 2026-09-23 to get every detector 10 cm a pixel,
+and two of the three were measured worse:** cutting SAM's lot into pieces
+(H21) and reading the backbone in windows (H22). Both are off. The third,
+the 15 cm scoring grid, is being measured.
+
+*(The paragraph below is the 2026-09-22 state, kept for the history.)*
+
+**CORPUS `1wxlejo`, 31 lawns, 2026-09-22.**
 
 | | error | notes |
 |---|---|---|
@@ -158,7 +176,8 @@ to 319 m across; 11 of 32 are over about 120 m.
 | canopy, `tcd-segformer` (wf 19) | the banked photo, resampled to 0.10 m/px, tiled | 10 | 10 | 10 | 10 | **yes** — since the 10 cm re-bank |
 | lawn backbone, Scale-MAE at `size=896` (wf 14), BEFORE 2026-09-23 | whole frame squeezed to 896 px | 6.7 | 11.2 | **19** | **36** | only under ~90 m |
 | lawn backbone at `size=1280`, BEFORE | whole frame squeezed to 1280 px | 4.7 | 7.8 | **13.4** | **25** | only under ~128 m |
-| lawn backbone, NOW (`tools/windows.py`) | one pass under ~90 m at 896; past that, overlapping 896 px windows at the photo's own resolution | 6.7 | 7.8 | 10 | 10 | **yes**, unmeasured whether it helps |
+| lawn backbone, windowed (`tools/windows.py`), one run | one pass under ~90 m at 896; past that, overlapping 896 px windows at the photo's own resolution | 6.7 | 7.8 | 10 | 10 | yes — and **measured worse on every backbone row** (H22), so off by default |
+| lawn backbone, NOW | whole frame squeezed to 896 px, as before; `windows: on` in workflow 14 turns the windows back on | 6.7 | 11.2 | **19** | **36** | **no**, on purpose: H22 |
 | lawn head, `GRID=512` | scores one cell per 1/512 of the frame | 12 | 20 | 34 | 62 | cells, not pixels — see below |
 | SAM 3, live (`/api/segment`), BEFORE 2026-09-23 | the DISPLAY frame: 640 logical @2x = 1280 px, resized by SAM to about 1008 px (its published input size; not measured here) | 6 | 10 | **17** | **32** | only under ~100 m |
 | SAM 3, live, for a few hours on 2026-09-23 | one picture under ~100 m; past that an n×n of 1008 px pieces at 10 cm or finer (`detectionPlan`) | 6 | 10 | 8.5 | 10 | yes — and **measured worse** (H21), so switched back off |
@@ -193,7 +212,10 @@ the outlines are better for it. The pieces abut exactly in world pixels (same
 arithmetic as the banked tiles) but a mask edge at a seam is still two
 separate answers meeting, and nothing has yet been scored across one.
 
-**The lawn backbone is built, same day, and UNMEASURED.** `tools/windows.py`:
+**The lawn backbone is built, same day, and MEASURED WORSE (H22): every
+backbone row lost 2 to 16 points against the same corpus squeezed whole, so
+the windows are off by default.** What was built, for the record —
+`tools/windows.py`:
 a lot the eye can read at 10 cm in one pass (under about 90 m at 896) is
 resized and read exactly as before, so nothing already at the target moves. A
 bigger one is read at the photograph's own resolution in overlapping 896 px
@@ -246,6 +268,55 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H22. Reading the backbone in 10 cm windows made EVERY backbone row worse, 2026-09-23
+
+*Runs 35900673594 (control: every lot squeezed whole into 896 px, the
+pre-2026-09-23 way) and 35886436057 (windowed: 11 of 32 lots read in
+overlapping 896 px windows at the photograph's own resolution), both on corpus
+`1rijjz2`, 32 lawns, Scale-MAE large at 896, fixed 512 grid, same folds, same
+seed. The two backbone-free rows are BYTE-IDENTICAL between the runs (33.7 and
+35.5), which is what says the comparison is clean.*
+
+```
+                               squeezed whole   in windows
+                               (coarsest 36 cm)  (coarsest 10 cm)
+colour and texture only            33.7%          33.7%    <- control row, identical
+the pretrained eye only            31.4%          47.4%    <- 16 points worse
+both                               34.7%          40.3%
+both, 96 numbers a patch           33.5%          35.6%
+colour, with surroundings          35.5%          35.5%    <- control row, identical
+both, with surroundings            31.6%          38.0%
+SAM, same 26 lawns                 23.3%          23.3%
+best / SAM                          1.35×          1.45×
+```
+
+**Every row that reads the backbone is worse in windows, by 2 to 16 points,
+and the eye alone — the row that says what the backbone sees — is worse by
+16.** The finer picture cost more than it bought, on exactly the lots it was
+meant to help: read whole, a 319 m lot reached the model at 36 cm a pixel and
+the eye still scored 31.4 over the corpus; read at 10 cm in 25 windows it
+scored 47.4.
+
+**Why, as far as it can be said.** Two things changed for the 11 windowed
+lots and neither can be separated here: (1) each window saw an eighth of a
+lot, with 11 m of margin, instead of the whole property — the context
+argument this workflow's own header made against tiling in 2026-09-19, now
+measured; (2) Scale-MAE was told 0.10 m a pixel instead of 0.12–0.36, and
+its published pretraining is nearer a third of a metre — the squeezed lots
+were closer to what it was trained on, not further. The 21 unwindowed lots
+were byte-identical inputs in both runs, so the 16-point swing in the
+median comes from 11 lawns' features changing what the head learned and how
+it answered them. H21 found the same shape for SAM the same afternoon:
+**for these pretrained models, the whole lot in view is worth more than
+10 cm a pixel.**
+
+**Done about it.** Workflow 14's `windows` input defaults to `off`; the
+windowed extractor stays behind it for a fairer next attempt (bigger cores,
+or windows told the squeezed lot's scale). The resolution rule stands as
+stated by the owner — 10 cm unless a coarser feed is shown not to hurt — and
+for the backbone the demonstration went the other way: coarser did not hurt,
+finer did.
 
 ### H21. Cutting a big lot into 10 cm pieces made SAM WORSE, 2026-09-23
 
@@ -1881,3 +1952,4 @@ fields) were both more obviously right than this one.
 | 2026-09-23 | 35892399654 | 32 | — (workflow 22, diagnostic re-run, 93 predictions) | — | 33.8% raw mask | **H21 confirmed and explained.** Scores byte-identical to the run before. The polarity flip fired on none of the 22 masks. In pieces, over-calling rose on 11 of 11 lots and misses fell on 10 of 11: SAM's "grass" at 0.05 claims far more of a piece that has less of the non-grass world in it. Context beat resolution on every lot under 200 m |
 | 2026-09-23 | 35890608444 | 32 | — (workflow 19, no training) | — | — | **The canopy at 10 cm, drawn at 1280 px.** Same inputs as 35866737322 (native frames, every lawn at or finer than 10 cm, "No lawn was upsampled"), so the canopy itself is unchanged; this run exists for the pictures, which open full size on /predictions.html now. Patches per lawn 0–46, middle 7; canopy on traced lawn 0–53%, middle 19%; inside the line 0–69%, middle 38%; 9 lawns mostly off the property. Still no canopy truth to score against — the pictures are the measurement |
 | 2026-09-23 | 35886436057 | 32 | Scale-MAE large 896px, **windowed** (11 lawns in overlapping windows, coarsest 10.0 cm/px), grid 512 | 33.7% | 23.3% | **NEW CORPUS `1rijjz2`** (32 lawns; one map was rejected and one arrived since `1wxlejo`), so nothing above compares (H7). Colour-only 33.7 is the best row; the eye ALONE 47.4, both 40.3, both-96 35.6. The backbone rows sit far behind colour here, which they did not at 896 before — but the corpus moved too, and there is no control on this fingerprint yet. **Not a finding until the same corpus is run with windows off.** 118 passes of 896 px, 41 minutes of extraction |
+| 2026-09-23 | 35900673594 | 32 | Scale-MAE large 896px, squeezed whole (**the control**, coarsest 35.6 cm/px), grid 512 | **31.4%** | 23.3% | **H22: the control for the windowed run, same corpus `1rijjz2`.** Backbone-free rows byte-identical to 35886436057 (33.7, 35.5); every backbone row better squeezed whole — eye alone 31.4 vs 47.4 in windows, both 34.7 vs 40.3, both-96 33.5 vs 35.6, both+ring 31.6 vs 38.0. Best row is the eye ALONE, 13 of 26 over SAM, gap 1.35×. Windows off by default from here |
