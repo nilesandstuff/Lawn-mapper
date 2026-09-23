@@ -31,20 +31,28 @@ export const SAM_MODEL = 'mattsays/sam3-image';
 export const SAM_INPUT_PX = 1008;
 
 /**
- * How many pieces across a live detection may be cut into. Each piece is a
- * prediction and an allowance slot, so this is a budget rather than a
- * capability. Four covers a lot up to about 400 m across at 10 cm, which is
- * past anything the corpus holds; past it the pieces get coarser and the
- * response says so. SAM_MAX_TILES_ACROSS moves it, up to eight.
+ * How many pieces across a live detection may be cut into.
  *
- * It was two while the Replicate account was throttled to six requests a
- * minute. The owner fixed that on 2026-09-23 (the standard six hundred), so
- * the rate limit no longer decides this; the daily allowance does, and that
- * is a per-person choice the refusal explains rather than a ceiling here.
+ * ONE, BY DEFAULT, WHICH MEANS NO CUTTING -- because it was measured.
+ * Workflow 22 on 2026-09-23 asked SAM about the same eleven big lots twice
+ * in the same minute, once as one picture of the display frame and once cut
+ * into pieces at 10 cm a pixel or finer, and the pieces were WORSE on nine
+ * of the eleven (median 30% wrong as one picture, 49% in pieces). Only the
+ * two largest lots gained, where one picture had been 23 to 32 cm a pixel.
+ * SAM with a text prompt appears to need the whole property in view more
+ * than it needs 10 cm; a piece that is a quarter of a lot has lost the
+ * house, the drive and the road it was reading the grass against. See
+ * H21 in docs/DETECTOR-FINDINGS.md, and the caveat there about the
+ * polarity flip that the re-run is checking.
+ *
+ * The machinery stays: SAM_MAX_TILES_ACROSS turns it back on, up to eight,
+ * for the next experiment (overlapping pieces that each keep most of the
+ * lot in view). It is not a budget any more -- the Replicate account is at
+ * the standard rate limit -- it is a result.
  */
 export const samMaxTilesAcross = (env) => {
   const n = parseInt(env?.SAM_MAX_TILES_ACROSS, 10);
-  return Number.isFinite(n) && n >= 1 ? Math.min(n, 8) : 4;
+  return Number.isFinite(n) && n >= 1 ? Math.min(n, 8) : 1;
 };
 
 /** Exactly the input fields the Worker sends, for preflight to validate. */
