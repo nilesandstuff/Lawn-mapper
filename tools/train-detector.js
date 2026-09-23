@@ -222,6 +222,24 @@ export const frameSpans = (lawns, grid = GRID) => {
   return out;
 };
 
+/**
+ * How many pixels R2 actually holds for each lawn, which is NOT the size the
+ * frames were dumped at.
+ *
+ * WHY THIS HAS TO TRAVEL WITH THE FRAMES. `resize` upscales as happily as it
+ * downscales, so dumping a 640 px photograph at 1280 produces a 1280 px file
+ * carrying 640 px of detail. Anything downstream that works out ground
+ * resolution from the FILE then claims twice the resolution that exists -- and
+ * the number it would corrupt (H20's `upsampled`) is the one whose entire job
+ * is to say when the model is being shown interpolation. A measurement that
+ * flatters itself in exactly its own subject is worse than no measurement.
+ */
+export const framePixels = (lawns) => {
+  const out = {};
+  for (const L of lawns) if (L.storedPx) out[L.id] = L.storedPx;
+  return out;
+};
+
 const QUERY = `
   SELECT id, county, tree_line, frame, shapes, detected_shapes, parcel,
          image_key, image_provider, mode, model
@@ -1309,6 +1327,8 @@ async function main() {
         dump: process.env.DUMP_FRAMES
           ? resize(img.data, img.width, img.height, img.channels, dumpSize())
           : null,
+        /* What R2 actually holds, before any resize. See framePixels(). */
+        storedPx: Math.min(img.width, img.height),
         canopy: row.tree_line === null || row.tree_line === undefined ? null : Number(row.tree_line),
         /*
          * The photograph itself, at the grid everything is measured on, kept
@@ -1416,13 +1436,31 @@ async function main() {
      */
     writeFileSync(
       join(dest, 'scale.json'),
-      JSON.stringify({ frames: frameSpans(lawns) }, null, 1),
+      JSON.stringify({ frames: frameSpans(lawns), storedPx: framePixels(lawns) }, null, 1),
     );
     const spans = lawns.map((L) => L.mpp * GRID);
     const lo = Math.min(...spans), hi = Math.max(...spans);
     console.log(`Wrote ${lawns.length} frames to ${dest} at ${size}x${size},`);
     console.log(`covering ${lo.toFixed(0)}-${hi.toFixed(0)} m of ground`);
     console.log(`(${(lo / size).toFixed(3)}-${(hi / size).toFixed(3)} m a pixel), and scale.json beside them.`);
+    /*
+     * AND WHETHER THE FILE SIZE IS HONEST. A frame dumped larger than the
+     * photograph R2 holds carries no more detail than the photograph did, and
+     * every ground-resolution figure downstream would be computed from the
+     * bigger number. Said here because this is where the inflation happens.
+     */
+    const stored = lawns.map((L) => L.storedPx).filter(Boolean);
+    if (stored.length) {
+      const small = stored.filter((px) => px < size).length;
+      console.log(`\nR2 holds ${Math.min(...stored)}-${Math.max(...stored)} px per lawn.`);
+      if (small) {
+        console.log(`${small} of ${stored.length} are SMALLER than the ${size} px dump, so those`);
+        console.log('frames were blown up and carry no more detail than they arrived with.');
+        console.log('scale.json records the real size so nothing downstream is fooled.');
+      } else {
+        console.log(`Every one is at least the ${size} px dump, so no frame was inflated.`);
+      }
+    }
     console.log('Run the extractor over them, then run this again with');
     console.log('FEATURES_DIR pointing at what it produced.');
     return;

@@ -120,7 +120,18 @@ def main():
         print("No scale.json beside the frames, so the ground size is unknown.")
         print("Every crown would be found at the wrong scale and nothing would say so.")
         sys.exit(1)
-    spans = json.loads(scale_file.read_text())["frames"]
+    scale = json.loads(scale_file.read_text())
+    spans = scale["frames"]
+    # HOW MANY PIXELS R2 ACTUALLY HOLDS, which is not the size of the file on
+    # disk. The dump resizes, and it resizes UP as happily as down, so a frame
+    # can be 1280 px wide carrying 640 px of detail. Ground resolution worked
+    # out from the file would then claim twice what exists -- in the one number
+    # whose job is to say when the model is being shown interpolation.
+    #
+    # Older frame dumps have no such record. Those fall back to the file size,
+    # which is what was assumed before, and the fallback is visible in the
+    # output rather than silent.
+    stored_px = scale.get("storedPx") or {}
 
     print(f"Loading {MODEL}…")
     model = SegformerForSemanticSegmentation.from_pretrained(MODEL)
@@ -141,6 +152,8 @@ def main():
 
         img = Image.open(path).convert("RGB")
         frame_px = img.width
+        # The real one, for every resolution figure below.
+        real_px = int(stored_px.get(lawn_id) or frame_px)
 
         # To the model's own scale, within the clamps.
         target = int(round(across / TARGET_MPP))
@@ -224,19 +237,26 @@ def main():
             # reason the canopy reads worse on bigger lots. Recorded per lawn
             # so the question is answerable from the output instead of being
             # re-derived from the log every time.
-            "sourceMpp": round(across / frame_px, 3),
-            "upsampled": round(max(1.0, (across / frame_px) / mpp), 2),
+            "sourceMpp": round(across / real_px, 3),
+            "storedPx": real_px,
+            "upsampled": round(max(1.0, (across / real_px) / mpp), 2),
             "clumps": clumps,
         }, indent=1))
 
         canopy_pct = 100.0 * mask.mean()
-        source_mpp = across / frame_px
+        source_mpp = across / real_px
         up = source_mpp / mpp
         totals.append((lawn_id, len(clumps), canopy_pct, across, up))
         flag = f"  UPSAMPLED {up:.1f}x" if up > 1.05 else ""
         print(f"  {lawn_id[:28]:30} {len(clumps):3} clumps  "
               f"{canopy_pct:5.1f}% canopy  {across:5.0f} m across  "
               f"read at {target}px ({mpp:.3f} m/px){flag}")
+
+    if not stored_px:
+        print("\nNOTE: scale.json carries no stored-pixel record, so the resolution")
+        print("figures below assume the frame files are the full photograph. If the")
+        print("dump was larger than what R2 holds, every 'upsampled' figure is a")
+        print("LOWER BOUND. Re-dump with a current train-detector.js to fix it.")
 
     if not totals:
         print("\nNothing was read.")
