@@ -156,8 +156,9 @@ to 319 m across; 11 of 32 are over about 120 m.
 | detector | what it reads | 60 m lot | 100 m | 172 m | 319 m | meets the rule? |
 |---|---|---|---|---|---|---|
 | canopy, `tcd-segformer` (wf 19) | the banked photo, resampled to 0.10 m/px, tiled | 10 | 10 | 10 | 10 | **yes** — since the 10 cm re-bank |
-| lawn backbone, Scale-MAE at `size=896` (wf 14) | whole frame squeezed to 896 px | 6.7 | 11.2 | **19** | **36** | only under ~90 m |
-| lawn backbone at `size=1280` | whole frame squeezed to 1280 px | 4.7 | 7.8 | **13.4** | **25** | only under ~128 m |
+| lawn backbone, Scale-MAE at `size=896` (wf 14), BEFORE 2026-09-23 | whole frame squeezed to 896 px | 6.7 | 11.2 | **19** | **36** | only under ~90 m |
+| lawn backbone at `size=1280`, BEFORE | whole frame squeezed to 1280 px | 4.7 | 7.8 | **13.4** | **25** | only under ~128 m |
+| lawn backbone, NOW (`tools/windows.py`) | one pass under ~90 m at 896; past that, overlapping 896 px windows at the photo's own resolution | 6.7 | 7.8 | 10 | 10 | **yes**, unmeasured whether it helps |
 | lawn head, `GRID=512` | scores one cell per 1/512 of the frame | 12 | 20 | 34 | 62 | cells, not pixels — see below |
 | SAM 3, live (`/api/segment`), BEFORE 2026-09-23 | the DISPLAY frame: 640 logical @2x = 1280 px, resized by SAM to about 1008 px (its published input size; not measured here) | 6 | 10 | **17** | **32** | only under ~100 m |
 | SAM 3, live, NOW | one picture under ~100 m; past that a 2×2 of 1008 px pieces at 10 cm or finer (`detectionPlan`) | 6 | 10 | 8.5 | **16** (capped at 2×2) | **yes to ~200 m**; past that the piece budget, not the picture, is the limit |
@@ -189,13 +190,36 @@ the outlines are better for it. The pieces abut exactly in world pixels (same
 arithmetic as the banked tiles) but a mask edge at a seam is still two
 separate answers meeting, and nothing has yet been scored across one.
 
-**The lawn backbone is not built yet.** That means the banked photo (already
-stitched, already 10 cm) is read in 896 px windows that OVERLAP, keeping only
-the middle of each window's feature map so every feature had context on all
-sides, then stitched into one feature map for the head. The head's 512-cell
-grid is a separate question — it is the resolution of the ANSWER, not of what
-the model saw, and it should follow metres (a fixed cm per cell) rather than a
-fixed count once the backbone does.
+**The lawn backbone is built, same day, and UNMEASURED.** `tools/windows.py`:
+a lot the eye can read at 10 cm in one pass (under about 90 m at 896) is
+resized and read exactly as before, so nothing already at the target moves. A
+bigger one is read at the photograph's own resolution in overlapping 896 px
+windows — a 112 px margin (about 11 m) on every side is read and thrown away,
+only the middle 672 px of each window is kept, and the cores are stitched into
+one feature grid the head samples as before (`cover` in the manifest keeps a
+photograph pixel on its own patch; `tools/windows_test.py` proves the
+registration with a picture that is its own coordinates). Workflow 14 dumps
+frames `native` now rather than at the model's size, which is where the
+squeeze used to happen. Cost: a 319 m lot is a 5×5 of windows, 25 passes
+where there was one; over this corpus roughly 80 extra passes, about 40
+minutes at 896.
+
+*(Owner, 2026-09-23, on tiling the backbone: "can we stitch it BEFORE sending
+it the lawn detector so it's not losing context of features that cut off on
+the edge of one grid?")* — the photograph already is stitched; it is the
+model's WINDOW that cannot be, because attention cost is quadratic in tokens
+(a whole 3192 px photograph is about 40,000 patches, 160× the work of 896).
+Overlap is the answer to the context concern, and it is also the answer to
+this file's own earlier objection to tiling (workflow 12's 224 px tiles, "a
+patch in the middle of a tile cannot see the garden it sits in"): every kept
+patch here had 11 m of real picture on every side when it was read.
+
+**What is NOT at 10 cm, still.** The head's colour-and-texture features and
+its 512-cell answer grid: `GRID = 512` over the frame is 20 cm a cell on a
+100 m lot and 62 cm on a 319 m one, and the cheap features are computed from
+the photograph resampled to that grid. That is the resolution of the ANSWER
+and of the hand-written features, not of what the backbone saw, and it should
+follow metres (a fixed cm per cell) rather than a fixed count. Not built.
 
 **Crowns are out of scope** until everything above works. The measured crown
 area per lawn is small enough that it is not where the square footage is, and
