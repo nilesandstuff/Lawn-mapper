@@ -67,11 +67,11 @@ export const lumaOf = (cheap, i) => cheap[i * FEATURE_COUNT + 5];
  * DIRECTION of an edge says which way the driveway runs, which nothing here
  * asks.
  */
-export function sharpness(cheap, grid) {
-  const out = new Float32Array(grid * grid);
+export function sharpness(cheap, grid, gridH = grid) {
+  const out = new Float32Array(grid * gridH);
   const at = (x, y) => lumaOf(cheap, y * grid + x);
 
-  for (let y = 1; y < grid - 1; y++) {
+  for (let y = 1; y < gridH - 1; y++) {
     for (let x = 1; x < grid - 1; x++) {
       const gx = (at(x + 1, y - 1) + 2 * at(x + 1, y) + at(x + 1, y + 1))
         - (at(x - 1, y - 1) + 2 * at(x - 1, y) + at(x - 1, y + 1));
@@ -92,22 +92,22 @@ export function sharpness(cheap, grid) {
  * boundary are the same failure seen from either side, and a band that held
  * only the lawn side would count one and not the other.
  */
-export function boundaryBand(truth, grid, reach = EDGE_REACH) {
-  const line = new Uint8Array(grid * grid);
-  for (let y = 0; y < grid; y++) {
+export function boundaryBand(truth, grid, reach = EDGE_REACH, gridH = grid) {
+  const line = new Uint8Array(grid * gridH);
+  for (let y = 0; y < gridH; y++) {
     for (let x = 0; x < grid; x++) {
       const i = y * grid + x;
       const here = truth[i] ? 1 : 0;
       const edge = (x > 0 && (truth[i - 1] ? 1 : 0) !== here)
         || (x < grid - 1 && (truth[i + 1] ? 1 : 0) !== here)
         || (y > 0 && (truth[i - grid] ? 1 : 0) !== here)
-        || (y < grid - 1 && (truth[i + grid] ? 1 : 0) !== here);
+        || (y < gridH - 1 && (truth[i + grid] ? 1 : 0) !== here);
       if (edge) line[i] = 1;
     }
   }
   /* One chamfer sweep rather than `reach` rounds of dilation -- the same
      function the detector uses to grow a mask by a distance. */
-  return reach > 0 ? growMask(line, grid, grid, reach) : line;
+  return reach > 0 ? growMask(line, grid, gridH, reach) : line;
 }
 
 /**
@@ -131,9 +131,9 @@ export function boundaryBand(truth, grid, reach = EDGE_REACH) {
  * Separable: a horizontal pass then a vertical one, so the cost is 2(2r+1)
  * comparisons a cell rather than (2r+1)^2.
  */
-export function peakWithin(values, grid, radius = EDGE_REACH) {
+export function peakWithin(values, grid, radius = EDGE_REACH, gridH = grid) {
   const mid = new Float32Array(values.length);
-  for (let y = 0; y < grid; y++) {
+  for (let y = 0; y < gridH; y++) {
     for (let x = 0; x < grid; x++) {
       let best = 0;
       const from = Math.max(0, x - radius);
@@ -147,9 +147,9 @@ export function peakWithin(values, grid, radius = EDGE_REACH) {
   }
 
   const out = new Float32Array(values.length);
-  for (let y = 0; y < grid; y++) {
+  for (let y = 0; y < gridH; y++) {
     const from = Math.max(0, y - radius);
-    const to = Math.min(grid - 1, y + radius);
+    const to = Math.min(gridH - 1, y + radius);
     for (let x = 0; x < grid; x++) {
       let best = 0;
       for (let k = from; k <= to; k++) {
@@ -193,8 +193,8 @@ export const CRISP = 2;
  * Returns NOWHERE for everything outside the region, so one array can be
  * walked alongside the prediction without a second lookup.
  */
-export function splitBySharpness(region, sharp, within, grid) {
-  const out = new Uint8Array(grid * grid);
+export function splitBySharpness(region, sharp, within, grid, gridH = grid) {
+  const out = new Uint8Array(grid * gridH);
   const cut = medianWhere(sharp, region, within);
   if (cut === null) return out;
 
@@ -231,21 +231,21 @@ export function splitBySharpness(region, sharp, within, grid) {
  * outline -- so computing it in the scoring loop would redo identical work
  * six times per lawn per run for no reason.
  */
-export function classesFor({ cheap, truth, within, grid }) {
+export function classesFor({ cheap, truth, within, grid, gridH = grid }) {
   /* The peak within reach, not the cell's own gradient -- see peakWithin for
      why the raw value splits the wrong thing. */
-  const sharp = peakWithin(sharpness(cheap, grid), grid);
+  const sharp = peakWithin(sharpness(cheap, grid, gridH), grid, EDGE_REACH, gridH);
 
-  const band = boundaryBand(truth, grid);
-  const edge = splitBySharpness(band, sharp, within, grid);
+  const band = boundaryBand(truth, grid, EDGE_REACH, gridH);
+  const edge = splitBySharpness(band, sharp, within, grid, gridH);
 
   /*
    * The dark half of the frame, by the same median rule the shade columns
    * already use -- then split by how hard its rim is. A building's shadow has
    * a rim you could cut yourself on; a tree's does not.
    */
-  const dark = new Uint8Array(grid * grid);
-  const lumaAll = new Float32Array(grid * grid);
+  const dark = new Uint8Array(grid * gridH);
+  const lumaAll = new Float32Array(grid * gridH);
   for (let i = 0; i < lumaAll.length; i++) lumaAll[i] = lumaOf(cheap, i);
   const lumaCut = medianWhere(lumaAll, null, within);
   if (lumaCut !== null) {
@@ -254,7 +254,7 @@ export function classesFor({ cheap, truth, within, grid }) {
       if (lumaAll[i] < lumaCut) dark[i] = 1;
     }
   }
-  const shade = splitBySharpness(dark, sharp, within, grid);
+  const shade = splitBySharpness(dark, sharp, within, grid, gridH);
 
   return { edge, shade, band };
 }

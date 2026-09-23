@@ -122,6 +122,10 @@ def main():
         sys.exit(1)
     scale = json.loads(scale_file.read_text())
     spans = scale["frames"]
+    # Metres DOWN each frame. The frames are rectangles since 2026-09-23 (the
+    # parcel plus a margin, cropped both ways); an older dump has no `downs`
+    # and its frames are square, so across is down.
+    downs = scale.get("downs") or {}
     # HOW MANY PIXELS R2 ACTUALLY HOLDS, which is not the size of the file on
     # disk. The dump resizes, and it resizes UP as happily as down, so a frame
     # can be 1280 px wide carrying 640 px of detail. Ground resolution worked
@@ -152,21 +156,27 @@ def main():
 
         img = Image.open(path).convert("RGB")
         frame_px = img.width
+        frame_py = img.height
+        down = downs.get(lawn_id) or across * frame_py / frame_px
         # The real one, for every resolution figure below.
         real_px = int(stored_px.get(lawn_id) or frame_px)
 
-        # To the model's own scale, within the clamps.
-        target = int(round(across / TARGET_MPP))
+        # To the model's own scale, within the clamps -- on the LONGER side,
+        # the shorter following, so the picture keeps its shape.
+        long_m = max(across, down)
+        target = int(round(long_m / TARGET_MPP))
         target = max(MIN_PX, min(MAX_PX, target))
-        mpp = across / target
-        small = img.resize((target, target), Image.BILINEAR)
+        mpp = long_m / target
+        target_w = max(8, int(round(across / mpp)))
+        target_h = max(8, int(round(down / mpp)))
+        small = img.resize((target_w, target_h), Image.BILINEAR)
 
         inputs = processor(images=small, return_tensors="pt")
         with torch.no_grad():
             logits = model(**inputs).logits
         # SegFormer answers at a quarter of the input; put it back.
         logits = torch.nn.functional.interpolate(
-            logits, size=(target, target), mode="bilinear", align_corners=False
+            logits, size=(target_h, target_w), mode="bilinear", align_corners=False
         )
         mask = (logits.argmax(dim=1)[0].numpy() == want)
 
@@ -177,7 +187,8 @@ def main():
         tolerance = max(1.0, SIMPLIFY_M / mpp)
         # Back to the frame's own pixels, which is what the browser and the
         # renderer both work in.
-        to_frame = frame_px / target
+        to_frame = frame_px / target_w
+        to_frame_y = frame_py / target_h
 
         clumps = []
         for k in range(1, count + 1):
@@ -199,10 +210,10 @@ def main():
                 # downstream uses. find_contours answers [row, col].
                 "centre": [
                     round(float(xs.mean()) * to_frame, 1),
-                    round(float(ys.mean()) * to_frame, 1),
+                    round(float(ys.mean()) * to_frame_y, 1),
                 ],
                 "polygon": [
-                    [round(float(x) * to_frame, 1), round(float(y) * to_frame, 1)]
+                    [round(float(x) * to_frame, 1), round(float(y) * to_frame_y, 1)]
                     for y, x in outline
                 ],
             })
@@ -217,7 +228,7 @@ def main():
         # know what scale it was read at, and as 1-bit PNG, which for a mask
         # this size is a few kilobytes.
         Image.fromarray((mask * 255).astype(np.uint8)).resize(
-            (frame_px, frame_px), Image.NEAREST
+            (frame_px, frame_py), Image.NEAREST
         ).convert("1").save(OUT / f"{lawn_id}-mask.png")
 
         clumps.sort(key=lambda c: -c["areaSqM"])
@@ -225,6 +236,7 @@ def main():
             "id": lawn_id,
             "model": MODEL,
             "framePx": frame_px,
+            "framePy": frame_py,
             "metresAcross": round(across, 1),
             "readAt": {"px": target, "mpp": round(mpp, 3)},
             "canopySqM": round(float(mask.sum()) * per_px_m2, 1),

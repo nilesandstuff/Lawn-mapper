@@ -107,11 +107,11 @@ const mix = (under, over, a) => Math.round(under * (1 - a) + over * a);
  * `within` goes in as the clip mask rather than being applied first, matching
  * the detect path: the property line is the last word on what counts.
  */
-export function tracePrediction({ predicted, within, grid, mpp }) {
-  const bin = new Uint8Array(grid * grid);
+export function tracePrediction({ predicted, within, grid, mpp, gridH = grid }) {
+  const bin = new Uint8Array(grid * gridH);
   for (let i = 0; i < bin.length; i++) bin[i] = predicted[i] ? 1 : 0;
 
-  const polygons = polygonsFromBinary(bin, grid, grid, (x, y) => [x, y], {
+  const polygons = polygonsFromBinary(bin, grid, gridH, (x, y) => [x, y], {
     tolerance: mpp ? TRACE_TOLERANCE_M / mpp : 1.5,
     maxVertices: MAX_TRACE_VERTICES,
     clipMask: within || null,
@@ -172,11 +172,11 @@ export function tracePrediction({ predicted, within, grid, mpp }) {
  * Rasterised per shape rather than all at once: even-odd across two separate
  * polygons that happened to overlap would cancel them both.
  */
-export function traceMask({ shapes, within, grid }) {
-  const out = new Uint8Array(grid * grid);
+export function traceMask({ shapes, within, grid, gridH = grid }) {
+  const out = new Uint8Array(grid * gridH);
   for (const rings of shapes || []) {
     if (!rings?.length) continue;
-    const m = rasterizePolygon(rings, grid, grid, ([x, y]) => [x, y]);
+    const m = rasterizePolygon(rings, grid, gridH, ([x, y]) => [x, y]);
     for (let i = 0; i < out.length; i++) if (m[i]) out[i] = 1;
   }
   /* The property line has the last word here as everywhere else. A traced
@@ -208,8 +208,10 @@ export function traceDrift({ predicted, traced, within }) {
 
 /* ----------------------------------------------------------- the painting */
 
-const put = (out, grid, x, y, colour) => {
-  if (x < 0 || y < 0 || x >= grid || y >= grid) return;
+/* Every painter takes the picture's width and height: a grid is a rectangle
+   since the frames were cropped to the parcel (2026-09-23). */
+const put = (out, grid, gridH, x, y, colour) => {
+  if (x < 0 || y < 0 || x >= grid || y >= gridH) return;
   const p = (y * grid + x) * 4;
   out[p] = colour[0];
   out[p + 1] = colour[1];
@@ -217,9 +219,9 @@ const put = (out, grid, x, y, colour) => {
 };
 
 /** A filled square, used for line thickness and for vertex dots. */
-const blob = (out, grid, cx, cy, half, colour) => {
+const blob = (out, grid, gridH, cx, cy, half, colour) => {
   for (let dy = -half; dy <= half; dy++) {
-    for (let dx = -half; dx <= half; dx++) put(out, grid, cx + dx, cy + dy, colour);
+    for (let dx = -half; dx <= half; dx++) put(out, grid, gridH, cx + dx, cy + dy, colour);
   }
 };
 
@@ -231,20 +233,20 @@ const blob = (out, grid, cx, cy, half, colour) => {
  * time it reaches here -- both arrive rasterised, on the grid the model was
  * scored on, which is the grid the comparison has to happen on anyway.
  */
-function outline(out, grid, mask, colour, half) {
-  for (let y = 0; y < grid; y++) {
+function outline(out, grid, gridH, mask, colour, half) {
+  for (let y = 0; y < gridH; y++) {
     for (let x = 0; x < grid; x++) {
       const i = y * grid + x;
       if (!mask[i]) continue;
-      const edge = x === 0 || y === 0 || x === grid - 1 || y === grid - 1
+      const edge = x === 0 || y === 0 || x === grid - 1 || y === gridH - 1
         || !mask[i - 1] || !mask[i + 1] || !mask[i - grid] || !mask[i + grid];
-      if (edge) blob(out, grid, x, y, half, colour);
+      if (edge) blob(out, grid, gridH, x, y, half, colour);
     }
   }
 }
 
 /** Bresenham, thickened by stamping a square at each step. */
-function segment(out, grid, [x0, y0], [x1, y1], half, colour) {
+function segment(out, grid, gridH, [x0, y0], [x1, y1], half, colour) {
   let x = Math.round(x0);
   let y = Math.round(y0);
   const ex = Math.round(x1);
@@ -257,8 +259,8 @@ function segment(out, grid, [x0, y0], [x1, y1], half, colour) {
 
   /* A guard, not a limit: a ring is at most a few hundred cells around, and a
      runaway here would be an infinite loop inside CI. */
-  for (let step = 0; step <= 4 * grid; step++) {
-    blob(out, grid, x, y, half, colour);
+  for (let step = 0; step <= 4 * (grid + gridH); step++) {
+    blob(out, grid, gridH, x, y, half, colour);
     if (x === ex && y === ey) return;
     const e2 = 2 * err;
     if (e2 >= dy) { err += dy; x += sx; }
@@ -286,11 +288,11 @@ function segment(out, grid, [x0, y0], [x1, y1], half, colour) {
  * for anything drawing unclipped polygons -- see the note at the clip itself.
  */
 export function drawPrediction({
-  photo, truth, within, inferred, rings, grid, mask, clipMask,
+  photo, truth, within, inferred, rings, grid, mask, clipMask, gridH = grid,
 }) {
-  const out = new Uint8Array(grid * grid * 4);
+  const out = new Uint8Array(grid * gridH * 4);
 
-  for (let i = 0; i < grid * grid; i++) {
+  for (let i = 0; i < grid * gridH; i++) {
     const p = i * 4;
     let r = photo[p];
     let g = photo[p + 1];
@@ -351,9 +353,9 @@ export function drawPrediction({
    * dimming already says "not scored"; this says where that starts, which is
    * the question every inside/outside number on the page depends on.
    */
-  if (within) outline(out, grid, within, PARCEL_EDGE, Math.max(1, half - 1));
+  if (within) outline(out, grid, gridH, within, PARCEL_EDGE, Math.max(1, half - 1));
 
-  outline(out, grid, scored(truth), TRUTH_FILL, half);
+  outline(out, grid, gridH, scored(truth), TRUTH_FILL, half);
 
   /*
    * The inferred outline next, over the lawn edge and under the trace. An
@@ -361,7 +363,7 @@ export function drawPrediction({
    * asked about -- the question is whether the model gives up exactly where
    * the reviewer said "I know it is lawn, I cannot see it".
    */
-  if (inferred) outline(out, grid, scored(inferred), INFERRED_EDGE, half);
+  if (inferred) outline(out, grid, gridH, scored(inferred), INFERRED_EDGE, half);
 
   /*
    * THE RAW MASK, WHERE ONE WAS ASKED FOR, and it replaces the trace rather
@@ -399,7 +401,7 @@ export function drawPrediction({
      * `clipMask: false` says the shapes beside this one are unclipped too.
      */
     const clip = clipMask === false ? null : within;
-    for (let y = 0; y < grid; y++) {
+    for (let y = 0; y < gridH; y++) {
       for (let x = 0; x < grid; x++) {
         const i = y * grid + x;
         if (!mask[i]) continue;
@@ -422,14 +424,14 @@ export function drawPrediction({
     }
     /* Its own boundary, solid, so the shape has an edge to read. Without it a
        stipple has no outline and a thin strip of lawn disappears. */
-    outline(out, grid, clip ? scored(mask) : mask, TRACE, half);
+    outline(out, grid, gridH, clip ? scored(mask) : mask, TRACE, half);
     return out;
   }
 
   /* THE TRACE LAST, so nothing paints over the thing the picture is of. */
   for (const ring of rings || []) {
     for (let i = 1; i < ring.length; i++) {
-      segment(out, grid, ring[i - 1], ring[i], half, TRACE);
+      segment(out, grid, gridH, ring[i - 1], ring[i], half, TRACE);
     }
     /*
      * A DOT AT EVERY VERTEX, because the handle count IS the answer to "how
@@ -444,8 +446,8 @@ export function drawPrediction({
       ? ring.length - 1 : ring.length;
     for (let i = 0; i < last; i++) {
       const [x, y] = ring[i];
-      blob(out, grid, Math.round(x), Math.round(y), dot, TRACE);
-      blob(out, grid, Math.round(x), Math.round(y), Math.max(0, dot - 2), [255, 245, 240]);
+      blob(out, grid, gridH, Math.round(x), Math.round(y), dot, TRACE);
+      blob(out, grid, gridH, Math.round(x), Math.round(y), Math.max(0, dot - 2), [255, 245, 240]);
     }
   }
 

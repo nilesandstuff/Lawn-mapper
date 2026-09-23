@@ -170,13 +170,47 @@ export const cellMetres = () => {
   return Number.isFinite(v) && v > 0 ? v : 0;
 };
 
+/**
+ * The size a frame is written at for the Python tools: as stored when
+ * DUMP_SIZE is unset or "native", otherwise the LONGER side at DUMP_SIZE with
+ * the shorter one following, so a rectangle stays a rectangle.
+ */
+export const dumpDims = (w, h) => {
+  const want = dumpSize();
+  if (!want) return [w, h];
+  const f = want / Math.max(w, h);
+  return [Math.max(1, Math.round(w * f)), Math.max(1, Math.round(h * f))];
+};
+
 /** How many cells across this frame gets: 15 cm a cell, between the floor and the cap. */
-export const gridFor = (frame, cell = cellMetres()) => {
-  if (!cell) return GRID;
+export const gridFor = (frame, cell = cellMetres()) => gridDims(frame, cell).w;
+
+/**
+ * The grid for a frame, as width and height in cells.
+ *
+ * FRAMES ARE RECTANGLES since 2026-09-23 -- the parcel's box plus a margin,
+ * cropped both ways -- so the grid is too. The rule (CELL_M a cell between
+ * the floor and the cap) is applied to the LONGER side and the shorter one
+ * follows at the same cells per metre, which is what keeps a texture window
+ * the same size in both directions. A square frame gets the square it
+ * always got.
+ */
+export const gridDims = (frame, cell = cellMetres()) => {
   const across = metresPerPixel(frame, 1);
-  if (!Number.isFinite(across) || across <= 0) return GRID;
-  /* The nudge keeps 150 / 0.15 from rounding up to 1001 cells. */
-  return Math.min(GRID_MAX, Math.max(GRID, Math.ceil(across / cell - 1e-9)));
+  const height = Number.isFinite(frame?.height) && frame.height > 0 ? frame.height : frame?.size;
+  const aspect = Number.isFinite(height) && Number.isFinite(frame?.size) && frame.size > 0
+    ? height / frame.size : 1;
+  const long = Math.max(1, aspect);            // the longer side, as a multiple of the width
+  let cellsLong;
+  if (!cell || !Number.isFinite(across) || across <= 0) {
+    cellsLong = GRID;
+  } else {
+    /* The nudge keeps 150 / 0.15 from rounding up to 1001 cells. */
+    cellsLong = Math.min(GRID_MAX, Math.max(GRID, Math.ceil((across * long) / cell - 1e-9)));
+  }
+  const w = Math.max(1, Math.round(cellsLong / long));
+  const h = Math.max(1, Math.round((cellsLong * aspect) / long));
+  return { w, h };
 };
 
 /**
@@ -491,11 +525,11 @@ function fetchImage(bucket, key, dir, decoders) {
 }
 
 /** Box-average down to GRID, which is both a resize and a mild denoise. */
-function resize(src, w, h, channels, size) {
-  const out = new Uint8Array(size * size * 4);
+function resize(src, w, h, channels, size, sizeH = size) {
+  const out = new Uint8Array(size * sizeH * 4);
   const sx = w / size;
-  const sy = h / size;
-  for (let y = 0; y < size; y++) {
+  const sy = h / sizeH;
+  for (let y = 0; y < sizeH; y++) {
     const y0 = Math.floor(y * sy);
     const y1 = Math.max(y0 + 1, Math.floor((y + 1) * sy));
     for (let x = 0; x < size; x++) {
@@ -516,12 +550,12 @@ function resize(src, w, h, channels, size) {
 }
 
 /** Geometries -> a filled mask on the GRID, using the row's own frame. */
-function maskOf(geoms, frame, size) {
-  const project = (ll) => lngLatToFramePx(frame, ll, size, size);
-  const out = new Uint8Array(size * size);
+function maskOf(geoms, frame, size, sizeH = size) {
+  const project = (ll) => lngLatToFramePx(frame, ll, size, sizeH);
+  const out = new Uint8Array(size * sizeH);
   for (const g of geoms) {
     if (g?.type !== 'Polygon' || !Array.isArray(g.coordinates)) continue;
-    const m = rasterizePolygon(g.coordinates, size, size, project);
+    const m = rasterizePolygon(g.coordinates, size, sizeH, project);
     for (let i = 0; i < m.length; i++) if (m[i]) out[i] = 1;
   }
   return out;
@@ -592,7 +626,7 @@ function readPythonFeatures(dir) {
  * IS stored is the cheap layer, which is small, and the two patch grids, which
  * are tiny; this assembles a row from them when one is asked for.
  */
-export function buildRow(lawn, p, out, offset, grid = GRID, cfg = null) {
+export function buildRow(lawn, p, out, offset, grid = GRID, cfg = null, gridH = grid) {
   const { cheap, fine, coarse, ring } = lawn;
   const useColour = cfg ? cfg.colour : true;
   const useEye = cfg ? cfg.backbone : true;
@@ -607,12 +641,12 @@ export function buildRow(lawn, p, out, offset, grid = GRID, cfg = null) {
     at += FEATURE_COUNT;
   }
   if (useEye && fine) {
-    sampleAt(fine, px, py, grid, out, at);
+    sampleAt(fine, px, py, grid, out, at, gridH);
     at += dims;
     /* The Python path has no coarse grid: its single pass already saw the
        whole frame, so a second, blurrier copy of the same thing would only
        spend width. */
-    if (coarse) { sampleAt(coarse, px, py, grid, out, at); at += dims; }
+    if (coarse) { sampleAt(coarse, px, py, grid, out, at, gridH); at += dims; }
   }
 
   /*
@@ -636,7 +670,7 @@ export function buildRow(lawn, p, out, offset, grid = GRID, cfg = null) {
          * frame's edge would get a ring of confident black.
          */
         const qx = Math.min(grid - 1, Math.max(0, px + Math.cos(angle) * reach));
-        const qy = Math.min(grid - 1, Math.max(0, py + Math.sin(angle) * reach));
+        const qy = Math.min(gridH - 1, Math.max(0, py + Math.sin(angle) * reach));
         const q = ((qy | 0) * grid + (qx | 0)) * FEATURE_COUNT;
         for (const f of RING_COLOUR) out[at++] = cheap[q + f];
         /*
@@ -655,7 +689,7 @@ export function buildRow(lawn, p, out, offset, grid = GRID, cfg = null) {
          * identical runs (H13), which it could not have done without backbone
          * features in it.
          */
-        if (ring && useEye) { sampleAt(ring, qx, qy, grid, out, at); at += RING_DIMS; }
+        if (ring && useEye) { sampleAt(ring, qx, qy, grid, out, at, gridH); at += RING_DIMS; }
       }
     }
   }
@@ -824,13 +858,14 @@ export function runFold(lawns, held, opts = {}) {
   /* Each lawn on its own grid -- see gridFor. `opts.grid` is the fallback for
      the synthetic lawns in the tests, which carry none. */
   const gridOf = (L) => L.grid || grid;
+  const gridHOf = (L) => L.gridH || L.grid || grid;
 
   let trainedOn = 0;
   for (let i = 0; i < lawns.length; i++) {
     if (i === held) continue;               // the whole point
     trainedOn++;
     const L = lawns[i];
-    const n = gridOf(L) * gridOf(L);
+    const n = gridOf(L) * gridHOf(L);
     for (let k = 0; k < perLawn; k++) {
       const p = Math.floor(rand() * n);
       if (L.within && !L.within[p]) continue;
@@ -855,7 +890,7 @@ export function runFold(lawns, held, opts = {}) {
 
   const x = new Float32Array(picked.length * width);
   for (let i = 0; i < picked.length; i++) {
-    buildRow(picked[i][0], picked[i][1], x, i * width, gridOf(picked[i][0]), cfg);
+    buildRow(picked[i][0], picked[i][1], x, i * width, gridOf(picked[i][0]), cfg, gridHOf(picked[i][0]));
   }
   const y = Float32Array.from(ys);
 
@@ -877,14 +912,15 @@ export function runFold(lawns, held, opts = {}) {
    */
   const test = lawns[held];
   const tg = gridOf(test);
-  const got = new Uint8Array(tg * tg);
+  const tgH = gridHOf(test);
+  const got = new Uint8Array(tg * tgH);
   const ROWS = 32;
   const chunk = new Float32Array(ROWS * tg * width);
-  for (let y0 = 0; y0 < tg; y0 += ROWS) {
-    const rows = Math.min(ROWS, tg - y0);
+  for (let y0 = 0; y0 < tgH; y0 += ROWS) {
+    const rows = Math.min(ROWS, tgH - y0);
     const count = rows * tg;
     for (let i = 0; i < count; i++) {
-      buildRow(test, y0 * tg + i, chunk, i * width, tg, cfg);
+      buildRow(test, y0 * tg + i, chunk, i * width, tg, cfg, tgH);
     }
     const slice = chunk.subarray(0, count * width);
     standardise(slice, stats, width);
@@ -1095,18 +1131,20 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
        * The rings are scaled up afterwards purely for drawing.
        */
       const G = L.grid || GRID;
+      const GH = L.gridH || G;
       const trace = tracePrediction({
-        predicted: r.predicted, within: L.within, grid: G, mpp: L.mpp,
+        predicted: r.predicted, within: L.within, grid: G, gridH: GH, mpp: L.mpp,
       });
       const PX = renderPx();
+      const PY = Math.max(1, Math.round((PX * GH) / G));
       const scale = PX / G;
       const bigRings = trace.rings.map((ring) => ring.map(([x, y]) => [x * scale, y * scale]));
       const bigPhoto = L.photoBig || L.photo;
       const big = (m) => {
-        if (!m || PX === G) return m;
-        const out = new Uint8Array(PX * PX);
-        for (let y = 0; y < PX; y++) {
-          const sy = Math.min(G - 1, Math.floor(y / scale));
+        if (!m || (PX === G && PY === GH)) return m;
+        const out = new Uint8Array(PX * PY);
+        for (let y = 0; y < PY; y++) {
+          const sy = Math.min(GH - 1, Math.floor(y / scale));
           for (let x = 0; x < PX; x++) {
             out[y * PX + x] = m[sy * G + Math.min(G - 1, Math.floor(x / scale))];
           }
@@ -1121,6 +1159,7 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
         inferred: big(L.inferred),
         rings: bigRings,
         grid: PX,
+        gridH: PY,
       });
 
       /*
@@ -1136,6 +1175,7 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
         inferred: big(L.inferred),
         mask: big(r.predicted),
         grid: PX,
+        gridH: PY,
       });
 
       /* Named by position, not by map id. The id contains the coordinates of
@@ -1143,7 +1183,7 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
       const key = keys.shapes(n);
       const maskKey = keys.mask(n);
       const write = (pix, name) => {
-        const png = new PNG({ width: PX, height: PX });
+        const png = new PNG({ width: PX, height: PY });
         png.data = Buffer.from(pix.buffer, pix.byteOffset, pix.length);
         const file = join(dir, name);
         writeFileSync(file, PNG.sync.write(png));
@@ -1179,7 +1219,7 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
        * r.mine.errorPct stays on the raw mask: it is the run's own figure,
        * the one the table sorts by and the findings file quotes.
        */
-      const traced = traceMask({ shapes: trace.shapes, within: L.within, grid: G });
+      const traced = traceMask({ shapes: trace.shapes, within: L.within, grid: G, gridH: GH });
       const counts = mistakeCounts({
         truth: L.truth, predicted: traced, within: L.within, inferred: L.inferred,
       });
@@ -1204,6 +1244,8 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
            so the cm figure above is the cell, and this says whether the cap
            was what decided it. */
         gridPx: G,
+        gridPy: GH,
+        renderPy: PY,
         /* How big the published picture is, so the page knows whether opening
            it full size gains anything. */
         renderPx: PX,
@@ -1477,21 +1519,21 @@ async function main() {
       }
 
       /* This lawn's own grid: 15 cm a cell, between the floor and the cap. */
-      const G = gridFor(frame);
-      const rgb = resize(img.data, img.width, img.height, img.channels, G);
-      const truth = maskOf(truthGeoms, frame, G);
+      const { w: G, h: GH } = gridDims(frame);
+      const rgb = resize(img.data, img.width, img.height, img.channels, G, GH);
+      const truth = maskOf(truthGeoms, frame, G, GH);
       /* Where both layers cover a pixel it counts as INFERRED -- the narrower,
          later mark is the more careful one. See inferredShare above for why,
          and for what stands in for the guard that rule used to be. */
       const inferredGeoms = inferredGeometries(parse(row.shapes));
-      const inferred = inferredGeoms.length ? maskOf(inferredGeoms, frame, G) : null;
+      const inferred = inferredGeoms.length ? maskOf(inferredGeoms, frame, G, GH) : null;
       const parcelGeom = parse(row.parcel);
       /*
        * No property line means the whole frame is fair game. Rare, and the
        * alternative -- dropping the row -- would throw away a hand-traced lawn
        * for the sake of tidiness.
        */
-      const within = parcelGeom ? maskOf([parcelGeom], frame, G) : null;
+      const within = parcelGeom ? maskOf([parcelGeom], frame, G, GH) : null;
 
       let truthPx = 0;
       for (let i = 0; i < truth.length; i++) if (truth[i] && (!within || within[i])) truthPx++;
@@ -1503,8 +1545,9 @@ async function main() {
       lawns.push({
         id: row.id,
         county: row.county,
-        /* Cells across. Everything below for this lawn is on this grid. */
+        /* Cells across and down. Everything below for this lawn is on this grid. */
         grid: G,
+        gridH: GH,
         /*
          * Kept only for DUMP_FRAMES, and resized from the ORIGINAL pixels
          * rather than from the 512 grid beside it. Going 512 -> 896 would be
@@ -1517,11 +1560,13 @@ async function main() {
          * pixel image, and no rounding at all.
          */
         dump: process.env.DUMP_FRAMES
-          ? resize(img.data, img.width, img.height, img.channels,
-            dumpSize() || Math.min(img.width, img.height))
+          ? resize(img.data, img.width, img.height, img.channels, ...dumpDims(img.width, img.height))
           : null,
+        dumpW: process.env.DUMP_FRAMES ? dumpDims(img.width, img.height)[0] : 0,
+        dumpH: process.env.DUMP_FRAMES ? dumpDims(img.width, img.height)[1] : 0,
         /* What R2 actually holds, before any resize. See framePixels(). */
-        storedPx: Math.min(img.width, img.height),
+        storedPx: img.width,
+        storedPy: img.height,
         canopy: row.tree_line === null || row.tree_line === undefined ? null : Number(row.tree_line),
         /*
          * The photograph itself, at the grid everything is measured on, kept
@@ -1534,12 +1579,13 @@ async function main() {
            is where every number comes from; this is what gets drawn, so a
            reader zooming in sees the photograph rather than 512 soft pixels. */
         photoBig: renderWanted && renderPx() !== G
-          ? resize(img.data, img.width, img.height, img.channels, renderPx())
+          ? resize(img.data, img.width, img.height, img.channels,
+            renderPx(), Math.max(1, Math.round((renderPx() * GH) / G)))
           : null,
         /* Held raw: each fold standardises against its own training lawns. */
         /* The windows are distances on the ground, so this frame's scale goes
            in with the pixels -- see FINE_M in lib/features.js. */
-        cheap: imageFeatures(rgb, G, G, { mpp: metresPerPixel(frame, G) }),
+        cheap: imageFeatures(rgb, G, GH, { mpp: metresPerPixel(frame, G) }),
         /*
          * Kept at the model's full width. Projecting here would fix the
          * squeeze at one size, and how much the squeeze costs is one of the
@@ -1551,9 +1597,9 @@ async function main() {
          * be a blurrier version of what it is sitting next to.
          */
         fineFull: py ? (py.grids.get(row.id) || null)
-          : eye ? await tiledFeatures(eye, rgb, G, G, { tiles: FINE_TILES }) : null,
+          : eye ? await tiledFeatures(eye, rgb, G, GH, { tiles: FINE_TILES }) : null,
         coarseFull: py ? null
-          : eye ? await tiledFeatures(eye, rgb, G, G, { tiles: COARSE_TILES }) : null,
+          : eye ? await tiledFeatures(eye, rgb, G, GH, { tiles: COARSE_TILES }) : null,
         truth,
         within,
         /*
@@ -1570,7 +1616,7 @@ async function main() {
         truthPx,
         mpp: metresPerPixel(frame, G),
         detected: row.detected_shapes
-          ? maskOf(geometries(parse(row.detected_shapes)), frame, G) : null,
+          ? maskOf(geometries(parse(row.detected_shapes)), frame, G, GH) : null,
         /*
          * WHICH DETECTOR DREW THE OUTLINE THIS LAWN IS SCORED AGAINST.
          *
@@ -1597,7 +1643,7 @@ async function main() {
       {
         const L = lawns[lawns.length - 1];
         L.classes = classesFor({
-          cheap: L.cheap, truth: L.truth, within: L.within, grid: L.grid,
+          cheap: L.cheap, truth: L.truth, within: L.within, grid: L.grid, gridH: L.gridH,
         });
       }
 
@@ -1635,9 +1681,9 @@ async function main() {
      */
     const sides = [];
     for (const L of lawns) {
-      const side = Math.round(Math.sqrt(L.dump.length / 4));
+      const side = Math.max(L.dumpW, L.dumpH);
       sides.push(side);
-      const png = new decoders.png.PNG({ width: side, height: side });
+      const png = new decoders.png.PNG({ width: L.dumpW, height: L.dumpH });
       png.data = Buffer.from(L.dump.buffer, L.dump.byteOffset, L.dump.byteLength);
       writeFileSync(join(dest, `${L.id}.png`), decoders.png.PNG.sync.write(png));
     }
@@ -1648,11 +1694,18 @@ async function main() {
      */
     writeFileSync(
       join(dest, 'scale.json'),
-      JSON.stringify({ frames: frameSpans(lawns), storedPx: framePixels(lawns) }, null, 1),
+      JSON.stringify({
+        frames: frameSpans(lawns),
+        /* Metres DOWN each frame, which since the crop is not the same as
+           across it. */
+        downs: Object.fromEntries(lawns.map((L) => [L.id, L.mpp * (L.gridH || L.grid || GRID)])),
+        storedPx: framePixels(lawns),
+        storedPy: Object.fromEntries(lawns.filter((L) => L.storedPy).map((L) => [L.id, L.storedPy])),
+      }, null, 1),
     );
 
-    const spans = lawns.map((L) => L.mpp * (L.grid || GRID));
-    const cm = lawns.map((L, i) => (100 * L.mpp * (L.grid || GRID)) / sides[i]);
+    const spans = lawns.map((L) => L.mpp * Math.max(L.grid || GRID, L.gridH || 0));
+    const cm = lawns.map((L, i) => (100 * L.mpp * Math.max(L.grid || GRID, L.gridH || 0)) / sides[i]);
     console.log(`Wrote ${lawns.length} frames to ${dest}, `
       + `${Math.min(...sides)}-${Math.max(...sides)} px each`
       + `${asked ? ` (DUMP_SIZE=${asked})` : ' (as stored)'},`);
@@ -1667,8 +1720,9 @@ async function main() {
      * because a fixed DUMP_SIZE has now twice been left behind by a change to
      * what R2 holds.
      */
-    const inflated = lawns.filter((L, i) => L.storedPx && sides[i] > L.storedPx).length;
-    const shrunk = lawns.filter((L, i) => L.storedPx && sides[i] < L.storedPx).length;
+    const storedLong = (L) => Math.max(L.storedPx || 0, L.storedPy || 0);
+    const inflated = lawns.filter((L, i) => storedLong(L) && sides[i] > storedLong(L)).length;
+    const shrunk = lawns.filter((L, i) => storedLong(L) && sides[i] < storedLong(L)).length;
     if (inflated) {
       console.log(`\n${inflated} frames were written BIGGER than the photograph R2 holds,`);
       console.log('so they carry no more detail than they arrived with. scale.json');
@@ -2315,8 +2369,9 @@ async function main() {
     const rand = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
     for (const L of lawns) {
       const g = L.grid || GRID;
+      const gh = L.gridH || g;
       for (let k = 0; k < 6000; k++) {
-        const p = Math.floor(rand() * g * g);
+        const p = Math.floor(rand() * g * gh);
         if (L.within && !L.within[p]) continue;
         picked.push([L, p]);
         ys.push(L.truth[p]);
@@ -2325,7 +2380,7 @@ async function main() {
     const width = FEATURE_COUNT;
     const x = new Float32Array(picked.length * width);
     for (let i = 0; i < picked.length; i++) {
-      buildRow(picked[i][0], picked[i][1], x, i * width, picked[i][0].grid || GRID, shipped.cfg);
+      buildRow(picked[i][0], picked[i][1], x, i * width, picked[i][0].grid || GRID, shipped.cfg, picked[i][0].gridH || picked[i][0].grid || GRID);
     }
     const y = Float32Array.from(ys);
     const stats = featureStats(x, width);

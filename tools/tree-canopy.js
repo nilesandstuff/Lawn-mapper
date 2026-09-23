@@ -77,8 +77,8 @@ const parse = (t) => { try { return JSON.parse(t); } catch { return null; } };
  * Python, which does not know what the renderer wants, or in the renderer,
  * which would then need to know where the numbers came from.
  */
-export const toGrid = (polygon, framePx, px = GRID) => polygon.map(([x, y]) => [
-  (x * px) / framePx, (y * px) / framePx,
+export const toGrid = (polygon, framePx, px = GRID, framePy = framePx, py = px) => polygon.map(([x, y]) => [
+  (x * px) / framePx, (y * py) / framePy,
 ]);
 
 /**
@@ -107,12 +107,12 @@ export const toGrid = (polygon, framePx, px = GRID) => polygon.map(([x, y]) => [
  * Python than some canopy folders were written by, and a run without them
  * should still draw its shapes.
  */
-function maskFromPng(file, decoders, px = GRID) {
+function maskFromPng(file, decoders, px = GRID, py = px) {
   if (!existsSync(file)) return null;
   const png = decoders.png.PNG.sync.read(readFileSync(file));
-  const out = new Uint8Array(px * px);
-  for (let y = 0; y < px; y++) {
-    const sy = Math.min(png.height - 1, Math.floor((y * png.height) / px));
+  const out = new Uint8Array(px * py);
+  for (let y = 0; y < py; y++) {
+    const sy = Math.min(png.height - 1, Math.floor((y * png.height) / py));
     for (let x = 0; x < px; x++) {
       const sx = Math.min(png.width - 1, Math.floor((x * png.width) / px));
       /* Red alone: the Python writes 1-bit, which decodes to white or black,
@@ -123,8 +123,8 @@ function maskFromPng(file, decoders, px = GRID) {
   return out;
 }
 
-export function overlap(ring, truth, within, px = GRID) {
-  const mask = rasterizePolygon([ring], px, px, (p) => p);
+export function overlap(ring, truth, within, px = GRID, py = px) {
+  const mask = rasterizePolygon([ring], px, py, (p) => p);
   let area = 0;
   let onLawn = 0;
   let inside = 0;
@@ -200,12 +200,14 @@ async function main() {
        * at 512 would throw away everything somebody would zoom in to see.
        */
       const PX = renderPx();
-      const photo = resize(img.data, img.width, img.height, img.channels, PX);
-      const truth = maskOf(truthGeoms, frame, PX);
+      /* The frame is a rectangle now; the picture keeps its shape. */
+      const PY = Math.max(1, Math.round((PX * (frame.height || frame.size)) / frame.size));
+      const photo = resize(img.data, img.width, img.height, img.channels, PX, PY);
+      const truth = maskOf(truthGeoms, frame, PX, PY);
       const inferredGeoms = inferredGeometries(parse(row.shapes));
-      const inferred = inferredGeoms.length ? maskOf(inferredGeoms, frame, PX) : null;
+      const inferred = inferredGeoms.length ? maskOf(inferredGeoms, frame, PX, PY) : null;
       const parcelGeom = parse(row.parcel);
-      const within = parcelGeom ? maskOf([parcelGeom], frame, PX) : null;
+      const within = parcelGeom ? maskOf([parcelGeom], frame, PX, PY) : null;
       const mpp = metresPerPixel(frame, PX);
       const sqft = (px) => (px * mpp * mpp) / SQM_PER_SQFT;
 
@@ -215,9 +217,9 @@ async function main() {
       let insidePx = 0;
 
       for (const clump of found.clumps || found.crowns || []) {
-        const ring = toGrid(clump.polygon, found.framePx || PX, PX);
+        const ring = toGrid(clump.polygon, found.framePx || PX, PX, found.framePy || found.framePx || PY, PY);
         rings.push(ring);
-        const o = overlap(ring, truth, within, PX);
+        const o = overlap(ring, truth, within, PX, PY);
         clumpPx += o.area;
         onLawnPx += o.onLawn;
         insidePx += o.inside;
@@ -225,7 +227,7 @@ async function main() {
 
       const n = entries.length;
       const write = (pix, name) => {
-        const png = new decoders.png.PNG({ width: PX, height: PX });
+        const png = new decoders.png.PNG({ width: PX, height: PY });
         png.data = Buffer.from(pix.buffer, pix.byteOffset, pix.length);
         const out = join(dir, name);
         writeFileSync(out, decoders.png.PNG.sync.write(png));
@@ -233,7 +235,7 @@ async function main() {
       };
 
       const shots = [[keys.shapes(n), drawPrediction({
-        photo, truth, within, inferred, rings, grid: PX,
+        photo, truth, within, inferred, rings, grid: PX, gridH: PY,
       }), `${n}.png`]];
 
       /*
@@ -244,11 +246,11 @@ async function main() {
        * between patches actually live, and stage 3 will work on the raster
        * rather than on the outlines.
        */
-      const canopy = maskFromPng(join(CANOPY, `${row.id}-mask.png`), decoders, PX);
+      const canopy = maskFromPng(join(CANOPY, `${row.id}-mask.png`), decoders, PX, PY);
       const maskKey = canopy ? keys.mask(n) : null;
       if (canopy) {
         shots.push([maskKey, drawPrediction({
-          photo, truth, within, inferred, mask: canopy, grid: PX,
+          photo, truth, within, inferred, mask: canopy, grid: PX, gridH: PY,
           /*
            * UNCLIPPED, because the clump outlines beside it are. A clump ring
            * covers whatever canopy the model found, and is never cut at the
@@ -295,6 +297,7 @@ async function main() {
         /* How big the published picture is, so the page knows whether there
            is anything to gain from opening it full size. */
         renderPx: PX,
+        renderPy: PY,
         readAtPx: found.readAt?.px ?? null,
         mpp: Number(mpp.toFixed(3)),
         /* Whether this frame had to be UPSAMPLED to reach the model's 10 cm.
