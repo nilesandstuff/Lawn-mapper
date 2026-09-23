@@ -161,7 +161,7 @@ to 319 m across; 11 of 32 are over about 120 m.
 | lawn backbone, NOW (`tools/windows.py`) | one pass under ~90 m at 896; past that, overlapping 896 px windows at the photo's own resolution | 6.7 | 7.8 | 10 | 10 | **yes**, unmeasured whether it helps |
 | lawn head, `GRID=512` | scores one cell per 1/512 of the frame | 12 | 20 | 34 | 62 | cells, not pixels — see below |
 | SAM 3, live (`/api/segment`), BEFORE 2026-09-23 | the DISPLAY frame: 640 logical @2x = 1280 px, resized by SAM to about 1008 px (its published input size; not measured here) | 6 | 10 | **17** | **32** | only under ~100 m |
-| SAM 3, live, NOW | one picture under ~100 m; past that a 2×2 of 1008 px pieces at 10 cm or finer (`detectionPlan`) | 6 | 10 | 8.5 | **16** (capped at 2×2) | **yes to ~200 m**; past that the piece budget, not the picture, is the limit |
+| SAM 3, live, NOW | one picture under ~100 m; past that an n×n of 1008 px pieces at 10 cm or finer, up to 4×4 (`detectionPlan`) | 6 | 10 | 8.5 | 10 | **yes to ~400 m** |
 
 Numbers are cm per pixel; bold is coarser than 15 cm. The `512` and `896`
 and `1280` that keep coming up are three different things: **512** is the grid
@@ -182,10 +182,12 @@ size) at 10 cm or finer, the Worker asks once per piece, and the browser
 pastes the masks back together (`public/lib/tiles.js`) before tracing. Under
 100 m nothing changed. What it costs, said plainly: **every piece of every box
 is an AI pass.** A 172 m lot is 4 passes for "find grass" and 8 for two boxes,
-against a signed-out allowance of 5 a day, and Replicate throttles a low-credit
-account at 6 requests a minute — so the grid is capped at 2×2 (~200 m at 10 cm;
-`SAM_MAX_TILES_ACROSS` raises it to 4 once the account can take it), and past
-the cap the pieces get coarser and the response says so. Unmeasured: whether
+against a signed-out allowance of 5 a day. The grid was capped at 2×2 for a
+few hours because Replicate throttled the account at 6 requests a minute; the
+owner raised the account to the standard 600 the same day, so the cap is 4×4
+(~400 m at 10 cm, past anything the corpus holds; `SAM_MAX_TILES_ACROSS`
+moves it) and the pieces are started in parallel. Past the cap the pieces get
+coarser and the response says so. Unmeasured: whether
 the outlines are better for it. The pieces abut exactly in world pixels (same
 arithmetic as the banked tiles) but a mask edge at a seam is still two
 separate answers meeting, and nothing has yet been scored across one.

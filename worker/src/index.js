@@ -964,41 +964,24 @@ async function handleSegment(request, env, origin, ctx) {
    * one-concept detection has always had.
    */
   /*
-   * ONE AT A TIME, AND NO RETRY. Both for the same reason: the budget is tiny.
+   * AND NO RETRY. A refused request still counts against the rate limit, so
+   * asking again inside the same window cannot succeed and makes the next
+   * press likelier to fail -- the amplification the owner spotted when the
+   * account was throttled to six a minute. It is gone and it stays gone.
    *
-   * Replicate's own sentence, once the log carried it:
+   * THE STARTS WENT ONE AT A TIME while that six-a-minute limit held, so a
+   * refusal could stop the ones not yet sent: a throttled four-box press cost
+   * one start instead of four. The account is at the standard limit now
+   * (2026-09-23, six hundred a minute), and the arithmetic reversed the day
+   * big lots were cut into pieces: a sixteen-piece lot on a cold model is
+   * sixteen minute-long waits in a row, which no timeout between here and
+   * the browser survives. In parallel the wait is the slowest single start,
+   * which is the wait a one-picture press has always had.
    *
-   *   Request was throttled. Your rate limit for creating predictions is
-   *   reduced to 6 requests per minute
-   *
-   * SIX A MINUTE. That is the whole constraint, and it makes every request a
-   * thing worth counting rather than a thing to be clever about. Two earlier
-   * diagnoses -- a burst, then a concurrency ceiling -- were both wrong, and
-   * both produced fixes that spent MORE requests to work around a limit on the
-   * number of requests.
-   *
-   * The retry was the worst of it. It waited two seconds and asked again,
-   * against a window measured in minutes: it could not succeed, and a refused
-   * request still counts, so every throttled press quietly cost two starts
-   * instead of one and made the next press likelier to fail. That is the
-   * amplification the owner spotted. It is gone.
-   *
-   * Sequential earns its place here on budget, NOT on the concurrency theory it
-   * was first written for: going one at a time is what lets a refusal stop the
-   * passes that have not been sent yet. A throttled four-box press now costs a
-   * single start instead of four. In time it costs almost nothing -- a warm
-   * prediction on this model returns in about 0.6s.
-   *
-   * The per-minute budget, spent by a press:
-   *
-   *   1 box   1 start    6 presses a minute
-   *   2 boxes 2 starts   3
-   *   3 boxes 3 starts   2
-   *   throttled          1, whatever was ticked
-   *
-   * Replicate reduces this limit for accounts holding less than a threshold of
-   * credit, so the real lever is the account balance rather than anything in
-   * this file. Which is why the sentence travels to the browser intact.
+   * The upstream's OWN words still travel to the browser on a refusal.
+   * Discarding the sentence that names which limit was hit is what made a
+   * rate limit and a concurrency limit indistinguishable, and cost two
+   * rounds of guessing.
    */
   const startPass = (pass, picture) => fetch('https://api.replicate.com/v1/predictions', {
     method: 'POST',
@@ -1013,30 +996,19 @@ async function handleSegment(request, env, origin, ctx) {
     }),
   });
 
-  /*
-   * Piece by piece within each pass, for the same budget reason as pass by
-   * pass: a refusal stops everything not yet sent. A warm prediction on this
-   * model returns in well under a second, so four pieces is a few seconds,
-   * not four minutes.
-   */
-  const results = [];
-  let failed = null;
-  for (const pass of passes) {
-    const tiles = [];
-    for (const picture of pictures) {
-      const res = await startPass(pass, picture);
-      if (!res.ok) {
-        // The upstream's OWN words. Discarding the sentence that names which
-        // limit was hit is what made a rate limit and a concurrency limit
-        // indistinguishable, and cost two rounds of guessing.
-        failed = { pass, http: res.status, detail: await upstreamReason(res) };
-        break; // spending another start to be told the same thing helps nobody
-      }
-      tiles.push({ col: picture.col, row: picture.row, prediction: await res.json() });
-    }
-    if (failed) break;
-    results.push({ pass, tiles });
-  }
+  /* Every piece of every pass, started together. */
+  const started = await Promise.all(passes.flatMap((pass) => pictures.map(async (picture) => {
+    const res = await startPass(pass, picture);
+    if (!res.ok) return { pass, picture, http: res.status, detail: await upstreamReason(res) };
+    return { pass, picture, prediction: await res.json() };
+  })));
+  const failed = started.find((s) => s.http) || null;
+  const results = passes.map((pass) => ({
+    pass,
+    tiles: started
+      .filter((s) => s.pass === pass && s.prediction)
+      .map((s) => ({ col: s.picture.col, row: s.picture.row, prediction: s.prediction })),
+  }));
 
   /*
    * One refused pass fails the whole detection.

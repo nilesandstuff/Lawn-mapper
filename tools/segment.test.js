@@ -508,19 +508,20 @@ async function post(payload) {
   httpStatus = 200;
 }
 
-/* ------------------------------------------ a refusal costs exactly one start */
+/* ------------------------------------------ a refusal is never retried */
 /*
- * THE BUDGET IS SIX STARTS A MINUTE, so every request is worth counting.
+ * A REFUSED REQUEST STILL COUNTS against the rate limit, so a retry inside
+ * the same window cannot succeed and makes the next press likelier to fail.
+ * When the account was throttled to six a minute, a two-second retry quietly
+ * cost every throttled press two starts instead of one -- the amplification
+ * the owner spotted.
  *
- * Two earlier diagnoses -- a burst, then a concurrency ceiling -- both produced
- * fixes that spent MORE requests to work around a limit on the number of
- * requests. The retry was the worst: it waited two seconds and asked again
- * against a window measured in minutes, so it could not succeed, and a refused
- * request still counts. Every throttled press quietly cost two starts instead
- * of one and made the next press likelier to fail.
- *
- * So the property to hold is arithmetic, not timing: a throttled press spends
- * ONE start no matter how many boxes are ticked.
+ * The starts went one at a time while that limit held, so a throttled
+ * three-box press cost one start. The account is at the standard limit now
+ * and the starts go in parallel (a sixteen-piece lot on a cold model cannot
+ * wait through sixteen minute-long holds in a row), so the property left to
+ * hold is arithmetic: exactly one start per box per piece, and not one more
+ * when they are refused.
  */
 {
   let starts = 0;
@@ -535,11 +536,12 @@ async function post(payload) {
     );
   };
 
+  const boxes = Object.keys(EXCLUSIONS).length;
   const r = await post({ model: 'sam3_exclude', exclude: Object.keys(EXCLUSIONS) });
-  check('a throttled press spends one start, not one per box',
-    starts === 1, `${starts} starts for ${Object.keys(EXCLUSIONS).length} boxes`);
+  check('a throttled press spends one start per box and per piece',
+    starts === boxes, `${starts} starts for ${boxes} boxes on a one-piece lot`);
   check('and is not retried, because a retry cannot beat a per-minute window',
-    starts === 1, 'a refused request still counts against the limit');
+    starts === boxes, 'a refused request still counts against the limit');
 
   /*
    * AND THE SENTENCE SURVIVES, unwrapped from Replicate's JSON envelope. It
