@@ -65,7 +65,7 @@
     <div class="card">
       <h2>Nothing has been drawn yet</h2>
       <p class="sub">Run workflow <b>12</b> or <b>14</b> with <b>render</b> switched
-        on, or workflow <b>19</b> for the tree crowns. Each run writes two pictures
+        on, or workflow <b>19</b> for the tree canopy. Each run writes two pictures
         per lawn — the shapes and the raw mask — into a folder of its own, and
         this page reads them.</p>
     </div>
@@ -110,6 +110,7 @@
         <span><i class="sw sw-trace"></i>the detector's outline, with a dot at every handle — or, on the raw mask, every pixel it called lawn</span>
         <span><i class="sw sw-truth"></i>the real lawn, as it was traced by hand</span>
         <span><i class="sw sw-inf"></i>outlined: marked "inferred, not seen"</span>
+        <span><i class="sw sw-parcel"></i>the property line — thin white; everything outside it is dimmed and not scored</span>
         <span><i class="sw sw-out"></i>dimmed — outside the property line, not scored</span>
       </div>
       <!--

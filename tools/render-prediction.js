@@ -32,8 +32,11 @@
  *
  * What is drawn, in order:
  *
- *   outside the property line   dimmed -- not scored, but it is the context
- *                               that explains an over-call at the boundary
+ *   the property line           a thin white outline, and outside it dimmed --
+ *                               not scored, but it is the context that explains
+ *                               an over-call at the boundary. The line is drawn
+ *                               because every "inside/outside" number under
+ *                               these pictures is unreadable without it
  *   the true lawn               a pale green wash, the same green the console
  *                               draws a finished map in
  *   inferred areas              purple outline: "known to be lawn, not visible"
@@ -63,6 +66,23 @@ import {
 export const TRACE = [226, 114, 91];          // REVIEW_COLOURS.ai, #e2725b
 export const TRUTH_FILL = [78, 194, 106];     // REVIEW_COLOURS.lawn, #4ec26a
 export const INFERRED_EDGE = [179, 136, 255]; // REVIEW_COLOURS.inferred, #b388ff
+
+/**
+ * The property line itself.
+ *
+ * WHY IT IS DRAWN AT ALL. Everything outside the parcel was dimmed and nothing
+ * marked where the parcel ended, so a reader could see that SOME ground was
+ * being discounted but not where the boundary ran. That matters more than it
+ * sounds: half the numbers under these pictures are "inside the line" versus
+ * "outside it", and a picture that cannot show the line cannot be checked
+ * against them. Reported by somebody reading the canopy renderings and finding
+ * they could not tell which trees were on the property.
+ *
+ * White, because the other three colours are taken and each already means
+ * something specific. A boundary is not a claim about the ground; it is the
+ * edge of what anybody is claiming.
+ */
+export const PARCEL_EDGE = [255, 255, 255];
 
 /**
  * How strongly the true lawn is washed over the photograph.
@@ -325,6 +345,13 @@ export function drawPrediction({
     for (let i = 0; i < mask.length; i++) m[i] = mask[i] && within[i] ? 1 : 0;
     return m;
   };
+
+  /*
+   * THE PROPERTY LINE FIRST, so everything meaningful draws on top of it. The
+   * dimming already says "not scored"; this says where that starts, which is
+   * the question every inside/outside number on the page depends on.
+   */
+  if (within) outline(out, grid, within, PARCEL_EDGE, Math.max(1, half - 1));
 
   outline(out, grid, scored(truth), TRUTH_FILL, half);
 

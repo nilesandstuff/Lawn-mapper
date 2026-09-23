@@ -1,0 +1,69 @@
+name: 20. Is more resolution available
+
+# Does asking Mapbox for more pixels get more DETAIL, or just a bigger blur?
+#
+# WHY IT EXISTS. Every stored photograph is 1280x1280, because FRAME_SIZE is
+# 640 logical and Mapbox is asked at @2x. One static request can return 2560,
+# so we are using half of what a single call already offers -- and H20 says
+# that costs real resolution on big lots, where the frame is coarser than the
+# canopy model's 10 cm and reaching 10 cm means inventing pixels.
+#
+# The obvious fix is to ask for 2560. It is only a fix if Mapbox HAS that
+# imagery there. Past a place's real coverage the static API upscales its own
+# tiles and returns them without comment, so doubling the request would move
+# the interpolation from our side to theirs, cost four times the bytes in R2,
+# and change nothing. This project has twice argued at length for an
+# improvement that then measured as nothing, so this one gets measured first.
+#
+# FREE. The static API is the same free tier the app already uses and this
+# fetches a dozen frames.
+#
+# THE ANSWER IS THE LAST FIVE LINES OF THE LOG, which state a verdict rather
+# than leaving it to be inferred from two decimals.
+on:
+  workflow_dispatch:
+    inputs:
+      how_many:
+        # The biggest lots, because those are the ones H20 bites. A small lot
+        # is already finer than the model wants and has nothing to prove here.
+        description: 'How many of the biggest lots to probe'
+        required: false
+        default: '6'
+
+jobs:
+  probe:
+    name: Ask Mapbox for the same frame twice
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install the image decoders
+        run: npm install pngjs jpeg-js --no-save
+
+      - name: Fetch each frame at both sizes and compare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
+          MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN }}
+          HOW_MANY: ${{ inputs.how_many }}
+        run: node tools/probe-resolution.js
+
+      - name: If that failed
+        if: failure()
+        run: |
+          echo "Nothing was spent finding this out."
+          echo
+          echo "The usual reasons, in order:"
+          echo "  * MAPBOX_TOKEN is not set, or is a restricted token that"
+          echo "    refuses a request with no Referer -- the Worker uses"
+          echo "    MAPBOX_SERVER_TOKEN for exactly this reason"
+          echo "  * the corpus table is not reachable, which the deploy would"
+          echo "    also have said"

@@ -184,6 +184,12 @@ across, inside the upsampled group — suggestive at n=5, and not more than that
 > upsampled in this run — and they still return **0 clumps and 0.0% canopy**.
 > Whatever is happening there, resolution is not it. The n=5 correlation was a
 > coincidence, which is why it was written down as one.
+>
+> **And it is not a failure at all.** The owner checked the lots: they have no
+> trees on the property. 0.0% canopy is the model being right. The whole thread
+> — three lawns, a resolution hypothesis, a refutation — was chasing a correct
+> answer, which is the cost of reading a number without looking at the ground
+> behind it.
 
 **Two separate losses, and the first is free to fix.**
 
@@ -194,8 +200,20 @@ across, inside the upsampled group — suggestive at n=5, and not more than that
    `worker/src/imagery.js` caps at 2560, so Mapbox *can* be asked for more —
    but whether more pixels means more detail, or just Mapbox doing the
    upsampling instead of us, depends on what imagery it holds at that zoom.
-   **Not measured.** It also only helps newly captured photographs; the 33
-   already in the bucket are 1280 px and would need refetching.
+   **Still not measured; workflow 20 exists to settle it.** It also only helps
+   newly captured photographs; the 33 already in the bucket are 1280 px and
+   would need refetching.
+
+   **Why a bigger request is not obviously a fix.** Past a place's real
+   coverage the Mapbox static API upscales its own tiles and returns them
+   without comment, so doubling the request would move the interpolation from
+   our side to theirs, cost four times the bytes in R2, and change nothing.
+   Workflow 20 fetches the same frame at both sizes and measures whether the
+   bigger one carries detail the smaller one could not hold. The measure is
+   itself tested against images with known answers
+   (`tools/probe-resolution.test.js`) — the first version of it ranked flat
+   grass as more suspicious than invented pixels, which is backwards, and only
+   running it on made-up cases caught that.
 
 Every run now records `sourceMpp` and `upsampled` per lawn and prints the split
 at the end of the log, so this is answerable from the output instead of being
