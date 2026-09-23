@@ -40,16 +40,18 @@ changes and results from different corpora are not comparable.
 | | error | notes |
 |---|---|---|
 | SAM (what we pay for) | **23.3%** | the line to beat, 26 lawns with a stored answer, all drawn by `sam3` |
-| best of ours | **31.4%** | Scale-MAE 896px squeezed whole, **the eye only**, beat SAM on 13 of 26 (run 35900673594, the H22 control) |
+| best of ours | **30.2%** | Scale-MAE 896px squeezed whole, 15 cm grid, **both, with surroundings**, beat SAM on 12 of 26 (run 35914319694). The control at 512 read 31.4% with the eye alone; 1.2 points is inside H13's drift |
 
-Gap: **1.35×**. It was 1.45× on `1wxlejo` (31 lawns) and 1.39× at 23. One map
+Gap: **1.30×**. It was 1.45× on `1wxlejo` (31 lawns) and 1.39× at 23. One map
 left and one arrived between `1wxlejo` and this, so by H7 the two tables are
 not the same measurement; the ratio is the only number worth carrying across.
 
-**Three things were tried on 2026-09-23 to get every detector 10 cm a pixel,
-and two of the three were measured worse:** cutting SAM's lot into pieces
-(H21) and reading the backbone in windows (H22). Both are off. The third,
-the 15 cm scoring grid, is being measured.
+**Three things were tried on 2026-09-23 to get every detector 10 cm a pixel.
+Two were measured worse and are off:** cutting SAM's lot into pieces (H21)
+and reading the backbone in windows (H22). **The third, the 15 cm scoring
+grid, was measured as nothing (H23) and is kept.** The canopy model already
+read 10 cm and was unchanged. The day's lesson, twice over: for the
+pretrained models, the whole lot in view is worth more than the resolution.
 
 *(The paragraph below is the 2026-09-22 state, kept for the history.)*
 
@@ -239,7 +241,9 @@ this file's own earlier objection to tiling (workflow 12's 224 px tiles, "a
 patch in the middle of a tile cannot see the garden it sits in"): every kept
 patch here had 11 m of real picture on every side when it was read.
 
-**The head's grid follows metres too, built the same day, UNMEASURED.**
+**The head's grid follows metres too, built the same day, and MEASURED AS
+NOTHING (H23): every row within 3 points either way on the same corpus, so it
+is kept for the rule's sake and costs a few minutes.** What was built:
 `GRID = 512` over the frame was 20 cm a cell on a 100 m lot and 62 cm on a
 319 m one — the cheap colour-and-texture features are computed from the
 photograph resampled to that grid, the texture window (`FINE_M`) is 0.25 m so
@@ -268,6 +272,50 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H23. The 15 cm scoring grid moved nothing outside noise, 2026-09-23
+
+*Four runs on corpus `1rijjz2`, 32 lawns, Scale-MAE large at 896, a 2×2 of
+the two switches: windows off/on × grid 512/15 cm. Runs 35900673594 (off,
+512), 35886436057 (on, 512), 35900680556 (on, 15 cm), 35914319694 (off,
+15 cm).*
+
+```
+                              windows OFF            windows ON
+                              512      15 cm         512      15 cm
+colour and texture only      33.7%    35.0%         33.7%    35.0%    <- backbone-free
+the pretrained eye only      31.4%    34.1%         47.4%    44.4%
+both                         34.7%    33.1%         40.3%    39.9%
+both, 96 numbers a patch     33.5%    33.0%         35.6%    35.8%
+colour, with surroundings    35.5%    34.1%         35.5%    34.1%    <- backbone-free
+both, with surroundings      31.6%    30.2%         38.0%    39.3%
+SAM, same 26 lawns           23.3%    23.3%         23.3%    23.3%
+best                         31.4%    30.2%         33.7%    34.1%
+```
+
+**The grid column moves every row by 0.5 to 2.7 points, in both directions,
+and none of it clears the 3-point line H13 draws for this corpus.** The two
+backbone-free rows, which are deterministic, went 1.3 worse (colour) and 1.4
+better (colour with surroundings). The best number in the table is 30.2% —
+"both, with surroundings" at 15 cm, windows off — against 31.4% at 512, and
+1.2 points is not a result. Windows, by contrast, cost 3 to 16 points in
+both grid columns, so H22 stands at either grid.
+
+**Read as: the grid is not where the error is.** The cell went from 20 cm to
+15 on a 100 m lot and from 62 cm to 31 on the biggest, the texture window
+became meaningful on the lots where it had been wider than a cell, the
+outline is quantised finer — and the leave-one-out error did not care. That
+is consistent with the rest of this file: the error lives at sharp
+boundaries and in what 32 lawns can teach, not in the cell size.
+
+**Kept, because it did not hurt and the rule asks for it.** 15 cm a cell is
+the default; `grid: 512` in workflow 14 is the control. The cost is a few
+extra minutes of scoring. The developer-mode head in the browser reads at the
+same rule, so a published head and the frame it is asked about agree.
+
+**Headline moves to 30.2%, with the caveat printed beside it:** it is a
+selected best-of-six on one run, 1.2 points from the control's 31.4, and H13
+says a backbone row can drift that much between identical runs.
 
 ### H22. Reading the backbone in 10 cm windows made EVERY backbone row worse, 2026-09-23
 
@@ -1953,3 +2001,5 @@ fields) were both more obviously right than this one.
 | 2026-09-23 | 35890608444 | 32 | — (workflow 19, no training) | — | — | **The canopy at 10 cm, drawn at 1280 px.** Same inputs as 35866737322 (native frames, every lawn at or finer than 10 cm, "No lawn was upsampled"), so the canopy itself is unchanged; this run exists for the pictures, which open full size on /predictions.html now. Patches per lawn 0–46, middle 7; canopy on traced lawn 0–53%, middle 19%; inside the line 0–69%, middle 38%; 9 lawns mostly off the property. Still no canopy truth to score against — the pictures are the measurement |
 | 2026-09-23 | 35886436057 | 32 | Scale-MAE large 896px, **windowed** (11 lawns in overlapping windows, coarsest 10.0 cm/px), grid 512 | 33.7% | 23.3% | **NEW CORPUS `1rijjz2`** (32 lawns; one map was rejected and one arrived since `1wxlejo`), so nothing above compares (H7). Colour-only 33.7 is the best row; the eye ALONE 47.4, both 40.3, both-96 35.6. The backbone rows sit far behind colour here, which they did not at 896 before — but the corpus moved too, and there is no control on this fingerprint yet. **Not a finding until the same corpus is run with windows off.** 118 passes of 896 px, 41 minutes of extraction |
 | 2026-09-23 | 35900673594 | 32 | Scale-MAE large 896px, squeezed whole (**the control**, coarsest 35.6 cm/px), grid 512 | **31.4%** | 23.3% | **H22: the control for the windowed run, same corpus `1rijjz2`.** Backbone-free rows byte-identical to 35886436057 (33.7, 35.5); every backbone row better squeezed whole — eye alone 31.4 vs 47.4 in windows, both 34.7 vs 40.3, both-96 33.5 vs 35.6, both+ring 31.6 vs 38.0. Best row is the eye ALONE, 13 of 26 over SAM, gap 1.35×. Windows off by default from here |
+| 2026-09-23 | 35900680556 | 32 | Scale-MAE large 896px, windowed, **15 cm grid** (512–1024 cells) | 34.1% | 23.3% | **H23, windows-on column.** Against the windowed run at 512: every row within 3 points (colour 33.7→35.0, eye 47.4→44.4, both+ring 38.0→39.3). The grid moved nothing; the windows' cost is the same at either grid. Extraction 73 minutes on a slower runner, scoring 22 |
+| 2026-09-23 | 35914319694 | 32 | Scale-MAE large 896px, squeezed whole, **15 cm grid** | **30.2%** | 23.3% | **H23, windows-off column: the 2×2 is complete.** Against the control at 512: colour 33.7→35.0, eye 31.4→34.1, both 34.7→33.1, both-96 33.5→33.0, colour+ring 35.5→34.1, both+ring 31.6→**30.2**. All within H13's 3-point drift, both directions. Best number of the day, 12 of 26 over SAM, gap 1.30× — a selected best-of-six 1.2 points from the control. Grid kept at 15 cm for the rule's sake |
