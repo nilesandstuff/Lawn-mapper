@@ -1,0 +1,45 @@
+name: 7. Score the detector
+
+# How wrong is the detector, in square feet, against the maps you approved?
+#
+# FREE. This spends nothing: the corpus already stores both outlines for every
+# approved map -- what the AI drew and what you corrected it into -- so the
+# comparison is a subtraction, not a prediction. No Replicate, no imagery, no
+# token beyond the Cloudflare one that reads the database.
+#
+# Run it before changing anything about detection, and again after. That is the
+# whole point of it: "a different model might be better" and "the trim worked"
+# are opinions until there is a number that moved, and an impression of a
+# screenshot cannot be compared with last week's impression of a screenshot.
+#
+# The last few lines of the log are the report. Everything above is the working.
+on:
+  workflow_dispatch:
+
+jobs:
+  score:
+    name: Score against approved maps
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+
+      - name: Compare the AI's outlines with the approved ones
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node tools/score-detector.js
+
+      # Said again at the very end, because a failure here reads as "the
+      # detector is fine" to anybody skimming, and it is not that at all.
+      - name: If that failed
+        if: failure()
+        run: |
+          echo
+          echo "The score did not run. Nothing about the detector was measured."
+          echo "Almost always the Cloudflare token: it needs D1 read access to"
+          echo "the lawn-mapper database, the same one the deploy uses."

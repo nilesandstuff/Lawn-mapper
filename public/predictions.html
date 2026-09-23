@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lawn Mapper — the outlines it drew</title>
+<!--
+  THE OUTLINE THE DETECTOR WOULD HAVE HANDED YOU.
+
+  Not a picture of how wrong it is -- the table already says 28.2% -- but of
+  the SHAPE, because the question this page exists to answer is a different
+  one: if this outline landed on the map, how long would it take to fix?
+
+  Those two questions can disagree completely. Thirty per cent wrong in one
+  clean sweep is two brush strokes. Fifteen per cent wrong as a hundred crumbs
+  along every boundary is worse than an empty map, because now there is
+  deleting to do as well as drawing. Only the shape tells you which you have.
+
+  And that is worth knowing early, because hand-tracing lawns is the slow step
+  in this whole project. A detector nowhere near good enough to ship can still
+  be good enough to START from, and this is where that moment gets noticed.
+
+  The pictures come from a training run, which writes them to the same R2
+  bucket the photographs live in. Nothing is computed here; this page reads an
+  index and shows what it names.
+
+  EVERY RUN KEEPS ITS OWN FOLDER, so this is a history rather than a snapshot
+  of whatever ran last. The picker at the top is the only way back to a run
+  once a newer one exists, and beside each run is the sentence somebody typed
+  when they started it saying what it was meant to find out -- which the
+  settings cannot say and nobody can reconstruct afterwards.
+
+  AND TWO PICTURES PER LAWN. The shapes are what the drawing tools would
+  receive; the raw mask is what the model actually answered. The tracer
+  between them smooths every edge, fills any hole under about 60 sq ft and
+  bins the speckle -- all of it wanted, all of it making the model look
+  tidier than it is. The per-lawn numbers say how many square feet that was
+  worth; only the flip says where.
+
+  A SEPARATE PAGE rather than a card in the console, for the same reason
+  /maps.html is: it is a different job. Nothing here judges a map or changes
+  anything. It is for standing in front of the outlines and deciding whether
+  they are worth correcting.
+
+  Nothing is gated in this markup. The gate is the API, which answers 404 to
+  anybody who is not an administrator.
+-->
+<link href="/styles.css" rel="stylesheet">
+<link href="/console.css" rel="stylesheet">
+</head>
+<body>
+
+<div class="console">
+  <div class="conhead">
+    <h1>The outlines it drew</h1>
+    <a href="/admin.html">← back to the console</a>
+  </div>
+
+  <div class="locked-out" id="locked" hidden>
+    <p>This page is for the site owner.</p>
+    <p><a href="/">Go and measure a lawn instead →</a></p>
+  </div>
+
+  <div class="empty-state" id="none" hidden>
+    <div class="card">
+      <h2>Nothing has been drawn yet</h2>
+      <p class="sub">Run workflow <b>12</b> or <b>14</b> with <b>render</b> switched
+        on, or workflow <b>19</b> for the tree canopy. Each run writes two pictures
+        per lawn — the shapes and the raw mask — into a folder of its own, and
+        this page reads them.</p>
+    </div>
+  </div>
+
+  <div id="page" hidden>
+    <div class="card">
+      <h2 id="head">Loading…</h2>
+      <p class="sub" id="sub"></p>
+
+      <!--
+        WHICH RUN, and WHICH OF THE TWO PICTURES.
+
+        Runs keep their own folder now, so this page is a history rather than
+        a snapshot of whatever ran last. The picker is the only way back to a
+        run once a newer one exists, and the description beside it is the only
+        record of what that run was trying to find out.
+
+        The mask button flips every picture at once rather than one at a time.
+        Comparing two stages of the same answer means looking at the same lawn
+        twice, and a per-picture control turns that into hunting for the button
+        you pressed last.
+      -->
+      <div class="runbar">
+        <label class="runpick">
+          <span>Run</span>
+          <select id="run"></select>
+        </label>
+        <button type="button" id="flip" class="ghost" aria-pressed="false">
+          Show the raw mask
+        </button>
+      </div>
+      <p class="sub" id="about" hidden></p>
+      <p class="sub" id="settings" hidden></p>
+
+      <!--
+        THE LEGEND IS NOT DECORATION. The whole page is two colours and a
+        dimmed border, and a reader who guesses their meaning backwards will
+        take away the opposite conclusion.
+      -->
+      <div class="legend">
+        <span><i class="sw sw-trace"></i>the detector's outline, with a dot at every handle — or, on the raw mask, every pixel it called lawn</span>
+        <span><i class="sw sw-truth"></i>the real lawn, as it was traced by hand</span>
+        <span><i class="sw sw-inf"></i>outlined: marked "inferred, not seen"</span>
+        <span><i class="sw sw-parcel"></i>the property line — thin white; everything outside it is dimmed and not scored</span>
+        <span><i class="sw sw-out"></i>dimmed — outside the property line, not scored</span>
+      </div>
+      <!--
+        HOW TO READ IT, in one line, because the two mistakes are now absences
+        rather than colours and that is less obvious than a red patch.
+      -->
+      <p class="sub">Green with no outline over it is lawn it gave up on;
+        outline over bare ground is lawn it invented. The handle count is the
+        one to watch: twenty round a lawn is a shape you can nudge, two hundred
+        is a shape you would delete and redraw.</p>
+      <!--
+        WHICH OBJECT EACH NUMBER IS ABOUT, said once here rather than argued
+        about later. A caption once read "it missed 17.8% of the inferred
+        ground" under a picture whose outline covered that ground completely.
+        Both were true: the number was the raw mask, the picture is the trace,
+        and the tracer fills any hole under about 60 sq ft. Everything per-lawn
+        below now describes the outline; only the headline error still
+        describes the mask, because that is the figure the training table and
+        docs/DETECTOR-FINDINGS.md quote.
+      -->
+      <p class="sub">Every number under a picture describes <b>the outline</b>,
+        not the model's raw answer — tracing fills holes under about 60 sq ft
+        and smooths every edge, and each row says how much that was worth. The
+        <b>% out</b> pill is the exception: that is the run's own figure, from
+        the mask, so it still matches the training table.</p>
+
+      <!--
+        THE CAVEAT THAT HAS TO STAY ATTACHED. These are leave-one-out answers:
+        each lawn was drawn by a model that had never seen it. That is what
+        makes the measurement honest and it is NOT what a published model
+        would draw for a new address. Said here rather than in a footnote,
+        because somebody will screenshot this page.
+      -->
+      <p class="sheet-note warn" id="caveat"></p>
+    </div>
+
+    <div id="list"></div>
+  </div>
+</div>
+
+<script type="module" src="/predictions.js"></script>
+</body>
+</html>

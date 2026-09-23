@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lawn Mapper — feedback</title>
+<!--
+  WHERE BAD MAPS GET LOOKED AT.
+
+  Feedback is worth collecting only if somebody can act on it, and "somebody"
+  here means one person holding a phone. A list of JSON would technically
+  contain the information and practically never be read: the question a report
+  raises is "what did it get wrong", and the only answer is the shape, on the
+  photograph, at the address.
+
+  So this puts each report back on a real map. It is a separate page rather
+  than a screen inside the app because it is a different job for a different
+  person, and because the app should not carry the code for it at all.
+
+  It is not linked from anywhere and it is useless without the token, which is
+  the same protection the test log has: /api/feedback/list answers 404 unless
+  LOG_TOKEN is set and matches. Open it as /review.html#token=...
+  -- the fragment, deliberately, so the token is never sent to the server as
+  part of a URL that could end up in a log.
+-->
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.css" rel="stylesheet">
+<style>
+  :root {
+    --green: #2f7d32; --ink: #16211a; --muted: #5d6b62;
+    --line: #dfe5e0; --bg: #f6f8f6;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body {
+    margin: 0; height: 100%;
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    color: var(--ink); background: var(--bg);
+  }
+  header {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 12px 16px; background: #fff; border-bottom: 1px solid var(--line);
+  }
+  h1 { margin: 0; font-size: 16px; letter-spacing: -0.01em; }
+  .count { font-size: 12.5px; color: var(--muted); }
+
+  .gate { padding: 22px 16px; max-width: 460px; }
+  .gate input {
+    width: 100%; padding: 10px 12px; font: inherit;
+    border: 1px solid var(--line); border-radius: 10px; margin: 10px 0;
+  }
+  .gate button {
+    padding: 10px 16px; font: inherit; font-weight: 600; cursor: pointer;
+    border: 0; border-radius: 10px; background: var(--green); color: #fff;
+  }
+  .gate p { color: var(--muted); font-size: 13.5px; }
+
+  .filters { display: flex; gap: 6px; padding: 10px 16px; flex-wrap: wrap; }
+  .filters button {
+    padding: 6px 11px; font: inherit; font-size: 12.5px; cursor: pointer;
+    border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--muted);
+  }
+  .filters button.on { background: #eaf2ea; border-color: var(--green); color: #1f5b22; font-weight: 600; }
+
+  ul { list-style: none; margin: 0; padding: 0 16px 28px; display: grid; gap: 12px; }
+  li { background: #fff; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  .head { padding: 12px 14px; display: grid; gap: 3px; }
+  .addr { font-weight: 650; font-size: 14px; }
+  .meta { font-size: 12px; color: var(--muted); }
+  .note { font-size: 13px; margin: 6px 0 0; padding: 8px 10px; background: var(--bg); border-radius: 8px; }
+  /* Fixed height rather than an aspect ratio: these are stacked and scrolled
+     past, and a map that resizes per report makes the list jump. */
+  .map { height: 260px; background: #dfe5e0; }
+  /* The explanation shown instead of a map, when there cannot be one. Centred
+     in the same box so the row keeps its shape and the reason is where the
+     picture would have been. */
+  .map .why {
+    margin: 0; height: 100%; display: flex; align-items: center;
+    justify-content: center; text-align: center; padding: 0 16px;
+    color: #55605a; font-size: 13px; box-sizing: border-box;
+  }
+  .tag {
+    display: inline-block; padding: 1px 8px; border-radius: 999px;
+    font-size: 11px; font-weight: 700; letter-spacing: .02em;
+  }
+  .tag.great { background: #e4f2e5; color: #1f5b22; }
+  .tag.close { background: #fdf3e0; color: #8a5a00; }
+  .tag.bad   { background: #fdeceb; color: #b3261e; }
+  .empty { padding: 22px 16px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Detection feedback</h1>
+  <span class="count" id="count"></span>
+</header>
+
+<div class="gate" id="gate" hidden>
+  <p id="gate-note">Paste the reading token to see the reports.</p>
+  <input type="password" id="token" placeholder="LOG_TOKEN" autocomplete="off">
+  <button type="button" id="go">Show them</button>
+</div>
+
+<div class="filters" id="filters" hidden>
+  <button type="button" data-filter="all" class="on">All</button>
+  <button type="button" data-filter="bad">Bad</button>
+  <button type="button" data-filter="close">Close enough</button>
+  <button type="button" data-filter="great">Great</button>
+</div>
+
+<ul id="list"></ul>
+<p class="empty" id="empty" hidden></p>
+
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.js"></script>
+<script type="module">
+const $ = (s) => document.querySelector(s);
+
+/*
+ * The token lives in the fragment, which browsers do not send to the server.
+ * Putting it in a query string would mean the one secret protecting a list of
+ * home addresses travelled in every request line, through every proxy, into
+ * every access log -- including the ones nobody owns.
+ */
+const fromHash = () => new URLSearchParams(location.hash.slice(1)).get('token');
+
+let token = fromHash();
+let reports = [];
+let filter = 'all';
+let mapboxToken = null;
+
+/* A report is data written by the app, but it arrives here as text and lands
+ * in the DOM, so every field goes in as textContent and nothing is built by
+ * concatenating HTML. The geometry is already stripped to finite numbers on
+ * the way in (see feedback.js) and is only ever handed to Mapbox as GeoJSON. */
+const el = (tag, cls, text) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text != null) n.textContent = text;
+  return n;
+};
+
+async function load() {
+  const res = await fetch(`/api/feedback/list?token=${encodeURIComponent(token)}`);
+  if (!res.ok) {
+    $('#gate').hidden = false;
+    $('#gate-note').textContent = token
+      ? 'That token was not accepted, or feedback has no reader configured.'
+      : 'Paste the reading token to see the reports.';
+    return;
+  }
+  const data = await res.json();
+  reports = Array.isArray(data.entries) ? data.entries : [];
+
+  const cfg = await fetch('/api/config').then((r) => r.json()).catch(() => ({}));
+  mapboxToken = cfg.mapboxToken || null;
+
+  $('#gate').hidden = true;
+  $('#filters').hidden = false;
+  render();
+}
+
+function render() {
+  const list = $('#list');
+  /*
+   * Free every context before the rows holding them are destroyed.
+   *
+   * Clicking a filter re-renders, and innerHTML = '' removes the containers
+   * while leaving the maps alive in liveMaps -- WebGL contexts held against
+   * nodes that no longer exist. A few clicks would rebuild the very shortage
+   * this page was just fixed for, and nothing on screen would say why.
+   */
+  for (const id of [...liveMaps.keys()]) releaseMap(id);
+  list.innerHTML = '';
+  const shown = reports.filter((r) => filter === 'all' || r.rating === filter);
+
+  const bad = reports.filter((r) => r.rating === 'bad').length;
+  $('#count').textContent = `${reports.length} report${reports.length === 1 ? '' : 's'}`
+    + (bad ? ` · ${bad} bad` : '');
+
+  $('#empty').hidden = shown.length > 0;
+  $('#empty').textContent = reports.length
+    ? 'Nothing in that category.'
+    : 'No reports yet. They arrive when somebody answers the question after a detection.';
+
+  for (const [i, r] of shown.entries()) {
+    const li = el('li');
+    const head = el('div', 'head');
+
+    const tag = el('span', `tag ${r.rating}`, r.rating);
+    const addr = el('div', 'addr', r.address || '(no address recorded)');
+    addr.prepend(tag, ' ');
+
+    const parts = [
+      r.modelLabel || r.model,
+      r.mode,
+      r.exclude?.length ? r.exclude.join(' + ') : null,
+      r.provider,
+      r.squareFeet ? `${Number(r.squareFeet).toLocaleString()} sq ft` : null,
+      r.parcelSqFt ? `lot ${Number(r.parcelSqFt).toLocaleString()}` : null,
+      r.edgeFt ? `edge ${r.edgeFt > 0 ? '+' : ''}${r.edgeFt} ft` : null,
+      new Date(r.at).toLocaleString(),
+    ].filter(Boolean);
+
+    head.append(addr, el('div', 'meta', parts.join(' · ')));
+    if (r.note) head.append(el('p', 'note', r.note));
+
+    const holder = el('div', 'map');
+    holder.id = `map-${i}`;
+    li.append(head, holder);
+    list.append(li);
+
+    /*
+     * The reasons a map cannot exist are settled now, not on scroll, so a
+     * report that will never draw one says why where the picture would be
+     * rather than staying blank until someone scrolls past it.
+     */
+    if (!mapboxToken) {
+      holder.append(el('p', 'why', 'No Mapbox token on this deployment, so no map.'));
+    } else if (!centreOf(r)) {
+      holder.append(el('p', 'why', 'This report carries no location — no frame, no parcel, no shapes.'));
+    } else {
+      watch(holder, r);
+    }
+  }
+}
+
+/*
+ * A BROWSER WILL NOT GIVE YOU SIXTY WebGL CONTEXTS, and it does not refuse
+ * loudly -- it quietly throws the oldest ones away.
+ *
+ * REPORTED: pictures and traces missing on some reports. Measured in Chromium:
+ * ask for 60 contexts and 60 are "created", 44 are immediately lost, and 16
+ * remain usable. This page lists up to 60 reports and built a live Mapbox GL
+ * map for every one, so all but the last 16 went blank -- imagery and overlays
+ * together, since losing the context takes the whole map.
+ *
+ * That is why it hit "some of them" rather than all: it is a cap, not a fault
+ * in any report, and it began the day the log grew past sixteen entries. The
+ * ones that survive are the ones rendered LAST, so the blanks cluster at the
+ * top of the list.
+ *
+ * Maps are built when a report scrolls into view and destroyed when it leaves,
+ * with a hard cap well under what Chromium allows. On a phone two or three are
+ * ever visible, so this is far cheaper than what it replaces as well as
+ * correct.
+ */
+const MAX_LIVE_MAPS = 8;
+/* Insertion-ordered, so the first entry is the one built longest ago. */
+const liveMaps = new Map();
+
+function releaseMap(id) {
+  const map = liveMaps.get(id);
+  if (!map) return;
+  map.remove();
+  liveMaps.delete(id);
+}
+
+function watch(holder, r) {
+  const io = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (entry.isIntersecting) {
+        if (liveMaps.has(holder.id)) continue;
+        // Evict the longest-standing map first, so the cap is never reached by
+        // destroying something the reader is currently looking at.
+        while (liveMaps.size >= MAX_LIVE_MAPS) {
+          releaseMap(liveMaps.keys().next().value);
+        }
+        drawReport(holder.id, r);
+      } else {
+        releaseMap(holder.id);
+      }
+    }
+  }, { rootMargin: '200px' });
+  io.observe(holder);
+}
+
+/*
+ * One small map per report, on the same satellite imagery the measurement was
+ * taken from. Non-interactive: the question is "what shape did it produce",
+ * and a list of twenty draggable maps on a phone is a list you cannot scroll.
+ */
+/**
+ * Every corner of a report, for framing it.
+ *
+ * Pulled out because the map needs these twice -- once to centre on and once
+ * to fit -- and the fit is what actually decides the view.
+ */
+function cornersOf(r) {
+  return [
+    ...(r.parcel?.coordinates || []),
+    ...(r.shapes || []).flatMap((g) => g.coordinates || []),
+  ].flat().filter((p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]));
+}
+
+/**
+ * Where to point the map, from whichever part of the report knows.
+ *
+ * REPORTED: bad reports arriving with no picture, intermittently. The cause was
+ * the old guard here -- `!Number.isFinite(r.lng)` and nothing else -- which
+ * refused to draw a map the report had everything needed to draw.
+ *
+ * `lng`/`lat` come from state.chosen, the geocoded address, and that is empty
+ * on any session that never geocoded one: a restored save, a shared link,
+ * anything opened from the Saved tab. The frame and the parcel are still right
+ * there in the same report, both carrying real coordinates, and both were
+ * being thrown away because one other field was undefined.
+ *
+ * Order matters. The frame is where the DETECTION actually ran, which is the
+ * photograph the report is complaining about; the geocoded point is only where
+ * the address sits, and on a long lot those are not the same place. The
+ * corners are the last resort and the most reliable of the three, since they
+ * are the shapes being reported on.
+ */
+function centreOf(r) {
+  if (Number.isFinite(r.frame?.lng) && Number.isFinite(r.frame?.lat)) {
+    return [r.frame.lng, r.frame.lat];
+  }
+  if (Number.isFinite(r.lng) && Number.isFinite(r.lat)) return [r.lng, r.lat];
+
+  const pts = cornersOf(r);
+  if (!pts.length) return null;
+  let [w, s, e, n] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const [lng, lat] of pts) {
+    w = Math.min(w, lng); e = Math.max(e, lng);
+    s = Math.min(s, lat); n = Math.max(n, lat);
+  }
+  return [(w + e) / 2, (s + n) / 2];
+}
+
+/*
+ * Build the map for one report. Only ever called from the observer, on a
+ * report already known to have a token and a location -- render() settles
+ * both, because a permanent "this cannot be drawn" belongs on screen straight
+ * away rather than waiting for a scroll that may never come.
+ */
+function drawReport(id, r) {
+  const centre = centreOf(r);
+  mapboxgl.accessToken = mapboxToken;
+
+  const map = new mapboxgl.Map({
+    container: id,
+    style: 'mapbox://styles/mapbox/satellite-streets-v12',
+    center: centre,
+    zoom: r.frame?.zoom || 18,
+    interactive: false,
+    attributionControl: false,
+  });
+  // Registered before load, so an eviction while the tiles are still arriving
+  // still finds the map and frees its context.
+  liveMaps.set(id, map);
+
+  map.on('load', () => {
+    if (r.parcel) {
+      map.addSource('parcel', { type: 'geojson', data: { type: 'Feature', geometry: r.parcel } });
+      map.addLayer({
+        id: 'parcel', type: 'line', source: 'parcel',
+        paint: { 'line-color': '#ffd54f', 'line-width': 2, 'line-dasharray': [2, 1.5] },
+      });
+    }
+    const shapes = (r.shapes || []).map((g) => ({ type: 'Feature', properties: {}, geometry: g }));
+    if (shapes.length) {
+      map.addSource('lawn', { type: 'geojson', data: { type: 'FeatureCollection', features: shapes } });
+      map.addLayer({
+        id: 'lawn-fill', type: 'fill', source: 'lawn',
+        paint: { 'fill-color': '#43a047', 'fill-opacity': 0.34 },
+      });
+      map.addLayer({
+        id: 'lawn-line', type: 'line', source: 'lawn',
+        paint: { 'line-color': '#43a047', 'line-width': 2 },
+      });
+    }
+
+    /* Frame the lot, not the point: a report about a long thin parcel is
+     * useless centred on its middle at a guessed zoom. */
+    const pts = cornersOf(r);
+    if (pts.length) {
+      let [w, s, e, n] = [Infinity, Infinity, -Infinity, -Infinity];
+      for (const [lng, lat] of pts) {
+        w = Math.min(w, lng); e = Math.max(e, lng);
+        s = Math.min(s, lat); n = Math.max(n, lat);
+      }
+      map.fitBounds([[w, s], [e, n]], { padding: 24, duration: 0 });
+    }
+  });
+}
+
+for (const b of document.querySelectorAll('#filters button')) {
+  b.addEventListener('click', () => {
+    filter = b.dataset.filter;
+    for (const o of document.querySelectorAll('#filters button')) o.classList.toggle('on', o === b);
+    render();
+  });
+}
+
+$('#go').addEventListener('click', () => {
+  token = $('#token').value.trim();
+  if (!token) return;
+  // Put it in the fragment so a reload keeps working and the page can be
+  // bookmarked on a phone -- which is the whole point of this existing.
+  location.hash = `token=${encodeURIComponent(token)}`;
+  load();
+});
+
+if (token) load();
+else $('#gate').hidden = false;
+</script>
+</body>
+</html>

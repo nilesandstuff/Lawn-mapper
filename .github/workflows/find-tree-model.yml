@@ -1,0 +1,44 @@
+name: 18. Find a tree crown model
+
+# Can we get every tree crown on a lot as its own shape, per address?
+#
+# The plan it serves: hand a tracer each crown as a toggle -- on means grass
+# underneath, off means ignore it -- which turns the slowest part of tracing a
+# wooded lawn into a row of taps. The model exists on Hugging Face
+# (restor/tcd-mask-rcnn-r50, instance segmentation, trained at 10 cm, which is
+# our own resolution). See E5 and E8 in docs/DETECTOR-FINDINGS.md.
+#
+# WHAT IS ACTUALLY IN QUESTION IS WHERE IT RUNS. The Worker is a V8 isolate and
+# cannot host a PyTorch model. So either it is on Replicate and can be fetched
+# per address like SAM is -- costing money per prediction, for ever -- or it
+# runs in CI over the queue in advance, which is free and instant for tracers
+# and does nothing for the public "measure my own address" flow.
+#
+# This settles which. It is a two minute question and building the wrong one is
+# a day.
+#
+# FREE. Reads model metadata only. No predictions are started and nothing is
+# billed, whatever it finds.
+#
+# THE ANSWER IS AT THE BOTTOM OF THE LOG, and both branches of it end in
+# something to do: "nothing published" does not end the idea, it only picks
+# which of the two ways to run it.
+on:
+  workflow_dispatch:
+
+jobs:
+  find:
+    name: Ask Replicate what it has
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Search
+        env:
+          REPLICATE_TOKEN: ${{ secrets.REPLICATE_TOKEN }}
+        run: node tools/find-tree-model.js

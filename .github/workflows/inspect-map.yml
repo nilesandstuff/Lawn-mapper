@@ -1,0 +1,43 @@
+name: 9. Look at a saved map
+
+# What is actually stored for one finished map: how many pieces the lawn is,
+# how much of it overlaps itself, and whether the AI's own version was kept.
+#
+# FREE. One read-only query, no imagery, no Replicate.
+#
+# Use it when a candidate looks wrong in the review card and you cannot tell
+# whether the card is drawing it badly or the data really is like that. The
+# card can only show what it was given; this shows what it was given.
+on:
+  workflow_dispatch:
+    inputs:
+      id:
+        description: 'A map id. Leave blank to look at the most recent ones by status.'
+        required: false
+        default: ''
+      status:
+        description: 'Which ones, when no id is given'
+        required: false
+        default: 'rejected'
+        type: choice
+        options: [rejected, approved, new]
+
+jobs:
+  inspect:
+    name: Read one map out of the database
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+
+      - name: Read it
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ID: ${{ inputs.id }}
+          STATUS: ${{ inputs.status }}
+        run: node tools/inspect-map.js

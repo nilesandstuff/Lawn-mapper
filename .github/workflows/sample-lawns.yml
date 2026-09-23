@@ -1,0 +1,70 @@
+name: 15. Find lawns to put in the queue
+
+# Samples lawns from the counties whose parcel services are known to work, and
+# puts them in the screening queue for /screen.html.
+#
+# WHY THIS EXISTS. The corpus is the constraint on everything, and the detector
+# cannot help build it until it beats SAM, which it does not. So the corpus
+# grows by paying people -- and before anybody can be paid there has to be a
+# queue of places worth tracing.
+#
+# FREE. It reads county parcel services, which are public, and writes rows to
+# a database that is already here. Nothing is billed and no imagery is fetched:
+# the pictures are loaded by the screening page, one at a time, as they are
+# looked at.
+#
+# SLOW BY NATURE. A random point in a county is usually farmland or road, so
+# this throws a lot of darts. Twenty minutes for sixty lawns is normal.
+on:
+  workflow_dispatch:
+    inputs:
+      want:
+        description: 'How many lawns to find'
+        type: string
+        default: '60'
+      per_county:
+        description: 'Most from any one county, so the corpus stays mixed'
+        type: string
+        default: '12'
+      tries:
+        description: 'Darts per county before moving on'
+        type: string
+        default: '90'
+
+jobs:
+  sample:
+    name: Sample parcels and queue them
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Find them
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WANT: ${{ inputs.want }}
+          PER_COUNTY: ${{ inputs.per_county }}
+          TRIES_PER_COUNTY: ${{ inputs.tries }}
+        run: node tools/sample-lawns.js
+
+      - name: If that failed
+        if: failure()
+        run: |
+          echo "Nothing was queued."
+          echo
+          echo "The usual reasons, in order of likelihood:"
+          echo "  * the county servers were slow or down -- they are other"
+          echo "    people's, and they have bad afternoons. Try again."
+          echo "  * TRIES_PER_COUNTY is too low for how rural the counties"
+          echo "    drawn this time were. Raise it and run it again."
+          echo "  * the database has no lawn_jobs table yet, which means the"
+          echo "    site has not been deployed since that table was added."
+          echo "    Run workflow 2 first."

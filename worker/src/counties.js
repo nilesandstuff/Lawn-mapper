@@ -1,0 +1,657 @@
+/**
+ * County parcel GIS registry.
+ *
+ * WHAT THIS FILE IS NOW. It began as five counties in West Michigan, each
+ * found by hand. Those are still below, with their paragraphs about which test
+ * points returned what, because they are the ones a person examined. Behind
+ * them sits counties-verified.js, generated from two public catalogues and
+ * proved endpoint by endpoint, which is where the bulk of the coverage lives.
+ *
+ * HAND-WRITTEN WINS ON A CLASH and both are kept. See ALL_COUNTIES at the
+ * bottom.
+ *
+ * Every county runs its own ArcGIS server with its own service path, layer
+ * index, field names, and native spatial reference. Muskegon publishes in
+ * EPSG:2253 (Michigan South State Plane, feet); Allegan in EPSG:3857. We
+ * never deal with that: every query sends outSR=4326 so ArcGIS reprojects
+ * server-side and we always get back WGS84 lng/lat, which is what area.js
+ * requires.
+ *
+ * VERIFICATION STATUS: everything below marked `live` was found by
+ * tools/discover-counties.js and confirmed by an actual point query that
+ * returned a parcel-sized polygon. Re-run the "Find county servers" workflow
+ * if lookups start failing -- counties republish these without notice, and
+ * every endpoint in the first version of this file had already gone stale.
+ */
+
+import { VERIFIED_COUNTIES } from './counties-verified.js';
+
+const COUNTIES = {
+  /*
+   * North Carolina, all of it, from one endpoint.
+   *
+   * This entry used to be "Johnston County" with a bbox around Smithfield,
+   * because that is the county that was being chased when it was found. But
+   * the service was never Johnston's -- the county runs no reachable public
+   * server, and NC OneMap is the state republishing EVERY county's parcels on
+   * one layer with one schema. The bbox was the only thing holding it to one
+   * county, so the bbox is now the state.
+   *
+   * That makes this the first entry here that is not a county at all, which is
+   * why `name` reads as a state: it is what the status line quotes as the
+   * source of a measurement, and calling it a county would be a lie about
+   * where the number came from.
+   *
+   * Not every one of the hundred counties is promised. NC OneMap's coverage
+   * depends on what each county has submitted to the state, and a gap returns
+   * no parcel, which the app already handles by offering to trace by hand.
+   * Verified at Benson; the rest is the state's claim, not a measurement.
+   */
+  northcarolina: {
+    name: 'North Carolina (NC OneMap)',
+    // The postcode abbreviation, matched against what the geocoder
+    // reports, so a statewide layer is credited for its own state and not
+    // for a neighbour its bounding rectangle happens to reach into.
+    state: 'NC',
+    statewide: true,
+    service: 'https://services.nconemap.gov/secure/rest/services/NC1Map_Parcels/FeatureServer',
+    layer: 1, // Parcels (polys)
+    // North Carolina's standard parcel schema. The discovery tool could not
+    // name these -- "parno" and "siteadd" match none of its patterns -- so
+    // they are set by hand and the patterns have been taught them.
+    fields: { pin: 'parno', address: 'siteadd' },
+    verified: 'live', // 0.259 ac at Benson
+  },
+  /*
+   * Vermont, statewide, from VCGI's standardised parcel layer.
+   *
+   * Found by tools/probe-statewide.js, which tried twelve states and got one.
+   * The other eleven guesses were wrong in every way a guess can be: invalid
+   * URLs, services that have moved, and two that answered "Token Required" --
+   * a statewide programme can exist and still not be public, which no amount
+   * of reading about it would have settled.
+   *
+   * "Standardised" is the load-bearing word. Vermont, like North Carolina,
+   * republishes what its towns send to one schema, so this is one entry for
+   * 250-odd municipalities rather than 250 servers.
+   *
+   * What the four preflight points actually returned, since a rounder story
+   * was written here before they were run:
+   *
+   *   Montpelier      0.244 ac   73 Main St        a real lot
+   *   St Johnsbury    0.268 ac   58 Edwards St     a real lot
+   *   South Burlington 49.1 ac   109 S Prospect St UVM land, badly aimed point
+   *   Rutland         1843 ac    pin "ROW 1"       a right-of-way
+   *
+   * So two of four are houses. The other two are not the service failing --
+   * every point returned SOMETHING, in four separate municipalities, with the
+   * field names confirmed -- they are two coordinates I picked from memory
+   * that happened to land on a university and a road corridor. Vermont towns
+   * carry right-of-way parcels the way Allegan does, and a point in one gets
+   * the whole corridor.
+   *
+   * That is enough to call this live: the layer answers statewide, and where a
+   * point lands on a house it returns that house. It is not enough to claim
+   * every town is in there, which is the same caveat North Carolina carries.
+   */
+  vermont: {
+    name: 'Vermont (VCGI)',
+    // The postcode abbreviation, matched against what the geocoder
+    // reports, so a statewide layer is credited for its own state and not
+    // for a neighbour its bounding rectangle happens to reach into.
+    state: 'VT',
+    statewide: true,
+    service: 'https://services1.arcgis.com/BkFxaEFNwHqX3tAw/arcgis/rest/services/FS_VCGI_OPENDATA_Cadastral_VTPARCELS_poly_standardized_parcels_SP_v1/FeatureServer',
+    layer: 0,
+    fields: { pin: 'MAPID', address: 'ADDRGL1' },
+    verified: 'live', // 0.244 ac at 73 Main St, Montpelier
+  },
+  /*
+   * Maryland, statewide, from MD iMAP's parcel boundaries.
+   *
+   * The cleanest result the statewide hunt produced, and the only entry added
+   * in this project that answered at EVERY test point with a street address:
+   *
+   *   Baltimore   0.109 ac   4227 Newport Ave
+   *   Annapolis   0.038 ac   64 Maryland Ave
+   *   Salisbury   0.111 ac   210 W Vine St
+   *   Oakland     2.249 ac   (no address on the record)
+   *
+   * Four counties, the Eastern Shore to the western panhandle, all
+   * residential-sized, from the state's own host with proper account and
+   * address fields. Nothing here needed a caveat about badly aimed points.
+   *
+   * SO THIS IS THE ONE THAT CARRIES `complete`, and the only one. Every other
+   * statewide entry here is a mosaic of what its counties or towns have sent
+   * in -- NC OneMap, GRANIT and IndianaMap all say so in their own comments,
+   * and Bloomington proves it: Monroe County's own layer has a parcel at a
+   * coordinate where IndianaMap has nothing. The flag is what lets the
+   * coverage page say "all of Maryland" and "most of Indiana" from the data
+   * rather than from a sentence somebody has to remember to update. Absent
+   * means "most of", which is the safer thing to promise a stranger.
+   */
+  maryland: {
+    name: 'Maryland (MD iMAP)',
+    complete: true,
+    // The postcode abbreviation, matched against what the geocoder
+    // reports, so a statewide layer is credited for its own state and not
+    // for a neighbour its bounding rectangle happens to reach into.
+    state: 'MD',
+    statewide: true,
+    // The layer index is its OWN field, not part of the URL: parcel.js builds
+    // `${service}/${layer}/query`, so folding the 0 into the service produced
+    // ".../MapServer/0/undefined/query" and every Maryland address silently
+    // lost its property line. The preflight caught it; nothing else would have.
+    service: 'https://mdgeodata.md.gov/imap/rest/services/PlanningCadastre/MD_ParcelBoundaries/MapServer',
+    layer: 0,
+    fields: { pin: 'ACCTID', address: 'ADDRESS' },
+    verified: 'live', // 4 of 4 points, 0.038-2.249 ac, all with addresses
+  },
+  /*
+   * New Hampshire, statewide, from GRANIT's parcel mosaic hosted at UNH.
+   *
+   * "Mosaic" is the honest word for it and the reason for the caveat: it is
+   * assembled from what each town supplies, so coverage follows the towns
+   * rather than the state line.
+   *
+   *   Concord   0.122 ac   62 N State St
+   *   Nashua    2.446 ac   100 Factory St
+   *   Berlin    62.3 ac    1 Community Street -- a north-country lot
+   *   Keene     nothing
+   *
+   * Three of four, with real addresses. Keene is either a hand-aimed
+   * coordinate in a road or a town that has not submitted, and from here those
+   * look identical -- which is exactly the shape of gap a mosaic has and a
+   * genuinely statewide layer does not. Worth knowing before promising anyone
+   * blanket New Hampshire coverage.
+   */
+  newhampshire: {
+    name: 'New Hampshire (GRANIT)',
+    // The postcode abbreviation, matched against what the geocoder
+    // reports, so a statewide layer is credited for its own state and not
+    // for a neighbour its bounding rectangle happens to reach into.
+    state: 'NH',
+    statewide: true,
+    service: 'https://nhgeodata.unh.edu/hosting/rest/services/Hosted/CAD_ParcelMosaic/FeatureServer',
+    layer: 1,
+    fields: { pin: 'pid', address: 'streetaddress' },
+    verified: 'live', // 3 of 4 points; Keene returns nothing
+  },
+  /*
+   * Indiana, statewide, from IndianaMap's parcel layer on the state's host.
+   *
+   * ASKED FOR AS ONE COUNTY, AND IT IS NOT ONE COUNTY. The request was
+   * Vanderburgh -- Evansville -- and the Hub link supplied with it resolved to
+   * the city's own PROPERTY_BOUNDARIES service. That is not what ships. The
+   * catalogue search run alongside it turned up this, and the schema says
+   * plainly what it is: `county_fips`, `county_id`, `dlgf_prop_class_code`.
+   * DLGF is the Department of Local Government Finance, which collects
+   * assessment records from all 92 counties. Publishing it as "Vanderburgh"
+   * would have hidden 91 counties' worth of coverage behind one bounding box.
+   *
+   * WHAT THE SIX POINTS RETURNED, four counties apart, through the worker's
+   * own lookupParcel rather than the discovery tool's copy of the query:
+   *
+   *   Evansville (Vanderburgh)  0.111 ac   231 S BARKER AVE
+   *   Indianapolis (Marion)     0.416 ac   910 BROAD RIPPLE AVE
+   *   Fort Wayne (Allen)        0.756 ac   E Coliseum Blvd
+   *   South Bend (St Joseph)    0.524 ac   1105 ST PETER ST
+   *   Bloomington (Monroe)      nothing
+   *   Terre Haute (Vigo)        nothing
+   *
+   * Four residential lots from the southwest corner to the northeast, which is
+   * what statewide coverage looks like. The two blanks are not dismissed as
+   * badly aimed points, because the Bloomington one demonstrably is not: the
+   * same run queried Monroe County's OWN survey layer at that exact coordinate
+   * and got a 3.6-acre parcel back. So there is a parcel there and the state
+   * layer does not have it.
+   *
+   * That makes this a mosaic with holes in it, like NC OneMap and GRANIT --
+   * the state republishing what each county sends, where a county that has
+   * sent nothing looks identical to a working service. A gap returns no
+   * parcel, which the app already handles by offering to trace by hand.
+   */
+  indiana: {
+    name: 'Indiana (IndianaMap)',
+    // The postcode abbreviation, matched against what the geocoder
+    // reports, so a statewide layer is credited for its own state and not
+    // for a neighbour its bounding rectangle happens to reach into.
+    state: 'IN',
+    statewide: true,
+    service: 'https://gisdata.in.gov/server/rest/services/Hosted/Parcel_Boundaries_of_Indiana_Current/FeatureServer',
+    layer: 0,
+    // `prop_add` is the whole address. The layer also carries
+    // `dlgf_prop_address` plus separate _city/_state/_zip fields; picking one
+    // of those pieces would put "EVANSVILLE" where a street address belongs.
+    fields: { pin: 'parcel_id', address: 'prop_add' },
+    verified: 'live', // 4 of 6 points, 0.111-0.756 ac, four counties
+  },
+  /*
+   * Champaign County, Illinois -- Champaign, Urbana, the university.
+   *
+   * FOUND IN THE SNOWPLOW MAP. The county's authoritative parcels belong to
+   * CCGISC, a seven-agency consortium, and that folder on the portal answers
+   * "Token Required" -- so the obvious door is locked and the first conclusion
+   * drawn here was that Champaign was simply unavailable. That was wrong.
+   * Public Works publishes its own copy in the clear, inside AVL_Reference,
+   * the service behind the vehicle-location and snow-route maps, as layer 7.
+   * Nothing in the service's name says parcels; it was found by opening a
+   * service chosen for carrying a catch-all name and reading its LAYER names.
+   *
+   * It is countywide, not just the city. Through the worker's own lookup:
+   *
+   *   Champaign  0.175 ac   pin 432014133001
+   *   Savoy      0.814 ac   pin 032036377010
+   *   Rantoul    0.222 ac   pin 200902210001  -- twenty miles north
+   *   Urbana     5.518 ac   pin 912109351021  -- see below
+   *   Mahomet    nothing
+   *
+   * THE `where` IS A PRECAUTION THAT HAS NOT YET PROVED ITSELF, and saying so
+   * is the point of this paragraph. The reasoning is sound: this is an Esri
+   * parcel fabric -- RetiredByRecord, LegalStartDate, LegalEndDate -- and such
+   * a layer keeps retired parcels beside live ones, so a point sits inside its
+   * current lot AND every parent that lot was split from, with no guarantee
+   * the first feature back is the live one. Urbana's 5.518 acres at a
+   * residential address is exactly what that failure looks like.
+   *
+   * But it is not what happened. Preflight ran the filtered query against all
+   * five points and returned the SAME four answers, Urbana's 5.518 included.
+   * So either there are no retired records under these points, or the filter
+   * matches nothing and is inert -- and the numbers cannot tell those apart.
+   * Urbana is therefore still unexplained, and may simply be an apartment or
+   * institutional lot near the campus rather than an error at all.
+   *
+   * It stays because it costs nothing and is right in principle, not because
+   * it fixed something. worker.test.js proves the clause reaches the query
+   * string, so it is at least being asked. The unfiltered query sits beneath
+   * it as an explicit fallback: if the filter is wrong about this schema it
+   * returns nothing and the fallback answers exactly as the layer did before
+   * any of this, so this can only match the old behaviour or beat it.
+   *
+   * No address field on the layer at all: PIN, PIN_DASH and DeededAcreage,
+   * but nothing holding a street. The status line shows the parcel without
+   * one, which it already handles.
+   *
+   * Being a department's working copy rather than the system of record, this
+   * could be withdrawn or go stale without notice. probe-counties.js queries
+   * it on every preflight and fails the run if it stops answering.
+   */
+  champaign: {
+    name: 'Champaign County',
+    fips: '17019',
+    service: 'https://gisportal.champaignil.gov/ms/rest/services/PWD/AVL_Reference/MapServer',
+    layer: 7, // "Parcels"
+    fields: { pin: 'PIN' },
+    where: 'RetiredByRecord IS NULL',
+    fallbacks: [
+      {
+        service: 'https://gisportal.champaignil.gov/ms/rest/services/PWD/AVL_Reference/MapServer',
+        layer: 7,
+        where: null, // explicitly unfiltered -- the whole point of this entry
+      },
+    ],
+    verified: 'live', // 4 of 5 points, four towns; 0.175 ac at Champaign
+  },
+  washoe: {
+    name: 'Washoe County',
+    fips: '32031', // Nevada -- Reno and Sparks
+    // The assessor's CAMA service, not a standalone parcel one. Layer 0 is
+    // called "Parcel Lines" and returns polygons regardless: a point query
+    // inside a lot comes back with the lot, which a polyline layer could not
+    // do. The name is the county's, not a description of the geometry.
+    service: 'https://gisweb.washoecounty.gov/arcgis/rest/services/Assessor/Assessor_GSACAMA/MapServer',
+    layer: 0,
+    fields: { pin: 'APN', address: 'ADDRESS' },
+    verified: 'live', // 0.629 ac at 1615 Belford Rd, Reno
+  },
+  /*
+   * Wayne County, Michigan -- Detroit, Dearborn, Livonia. 1.7 million people,
+   * the largest population here by a wide margin.
+   *
+   * FOUND FROM A CATALOGUE EXPORT, not by guessing. Every host a county of
+   * this size might plausibly use was tried and none of them worked: its own
+   * gis/services.waynecounty.com answer HTTP 406, SEMCOG's answers 401, and
+   * the rest do not resolve. What actually serves the parcels is the county's
+   * ArcGIS Online organisation, `b6rkZNtCd6Mx2gvB`, and there is nothing about
+   * that string to guess. The owner exported the open data site's catalogue
+   * and the host was in it. Fourth county here where the name on the server is
+   * not the name of the place.
+   *
+   * AND THE OPEN DATA SITE ITSELF HAS NO PARCELS -- 16 feature services, all
+   * boundaries and census and roads, with parcels published only as
+   * per-municipality assessment CSVs and scanned tax maps. The organisation
+   * behind the site publishes 332 services, and this is one of them. A site
+   * catalogue lists what somebody curated onto the site; the organisation
+   * lists everything.
+   *
+   * WHAT THE POINTS ACTUALLY RETURNED, since this county has more caveats than
+   * the others and a rounder story would hide them:
+   *
+   *   Livonia            0.603 ac    a house
+   *   Dearborn           0.161 ac    a house
+   *   Detroit Islandview 0.470 ac    a house
+   *   Grosse Pointe Park 0.386 ac    a house
+   *   Canton Township    2.449 ac    a large township lot, plausible
+   *   Detroit Rosedale Park, Palmer Woods, East English Village -- nothing
+   *
+   * So five of eight, and three of the four Detroit points returned nothing.
+   * Detroit IS in the layer -- Islandview proves that much -- but coverage
+   * inside the city is patchy at the points aimed at. Whether that is the
+   * layer or three coordinates picked from memory landing on streets is not
+   * settled; Detroit carries tens of thousands of vacant and demolished lots
+   * and this layer has a `demolished` field, so gaps there have a real
+   * explanation either way.
+   *
+   * A gap returns no parcel, which the app already handles by offering to
+   * trace by hand. That is the same promise made for North Carolina and
+   * Vermont: the layer answers, and where it answers it answers correctly.
+   */
+  wayne: {
+    name: 'Wayne County',
+    fips: '26163',
+    service: 'https://services1.arcgis.com/b6rkZNtCd6Mx2gvB/arcgis/rest/services/Parcels/FeatureServer',
+    layer: 4,
+    // Joined to building footprints, so the attributes carry res_sqft,
+    // year_built and stories as well. Only these two are read.
+    fields: { pin: 'pnum', address: 'address' },
+    verified: 'live', // 0.47 ac at Detroit (Islandview); 5 of 8 points
+  },
+  kent: {
+    name: 'Kent County',
+    fips: '26081',
+    // Kent was written off as having no public endpoint. It has one -- the
+    // server just runs under the instance name "agisprod" rather than the
+    // conventional "arcgis" or "server", so every path the discovery tool
+    // could invent 404'd. This is Grand Rapids, the largest population in the
+    // coverage area, and it was never actually missing.
+    // Was FGDBParcels/MapServer, which worked and then began timing out on
+    // every point within hours -- the field metadata still answered, so it
+    // looked configured correctly while returning no parcels at all. This
+    // FeatureServer on the same host returns the same parcels immediately, and
+    // serves queries directly rather than through MapServer's identify path,
+    // which is the likelier reason it holds up.
+    service: 'https://gis.kentcountymi.gov/agisprod/rest/services/ParcelsWithCondos/FeatureServer',
+    layer: 0, // Parcels With Condos
+    fields: { pin: 'PNUM', address: 'PROPERTYADDRESS' },
+    // Kept rather than deleted: it worked this morning and timed out by
+    // evening, which reads as load rather than removal. If the FeatureServer
+    // has its own bad afternoon, one timeout gets the property line from here
+    // instead of losing it.
+    fallbacks: [{
+      service: 'https://gis.kentcountymi.gov/agisprod/rest/services/FGDBParcels/MapServer',
+      layer: 0,
+    }],
+    verified: 'live',
+  },
+  ottawa: {
+    name: 'Ottawa County',
+    fips: '26139',
+    service: 'https://gis.miottawa.org/arcgis/rest/services/Hosted/AR_ParcelSearch_gdb/FeatureServer',
+    layer: 6, // Ottawa_County_Parcels
+    // `finalpin` is the parcel identifier; the discovery tool's first guess
+    // was `propertyzip`, which merely happened to sort earlier.
+    fields: { pin: 'finalpin', address: 'propertyaddress' },
+    verified: 'live', // 3.3 ac at 3300 Van Buren St, Hudsonville
+  },
+  allegan: {
+    name: 'Allegan County',
+    fips: '26005',
+    service: 'https://gis.allegancounty.org/server/rest/services/Parcel_Drafter_MIL1/MapServer',
+    layer: 0, // Parcels
+    // This layer has no single full-address column, so the address is composed
+    // from its parts. MAPPING_ID is the parcel identifier.
+    fields: {
+      pin: 'MAPPING_ID',
+      streetNum: 'propaddrnu',
+      // propStreet came back blank on every parcel sampled; propstre_1 is the
+      // street name in this BS&A-style export. Worst case the address renders
+      // as the house number alone, which is what it already did.
+      streetName: 'propstre_1',
+    },
+    verified: 'live',
+  },
+  muskegon: {
+    name: 'Muskegon County',
+    fips: '26121',
+    service: 'https://maps.muskegoncountygis.com/arcgis/rest/services/PropertyViewer/MapServer',
+    // Layer 20 ("Parcels") rejects point queries outright; 23 answers them.
+    layer: 23, // Parcels - SS
+    // Property_Address_Combined is the whole address; Property_Address_Num is
+    // just the house number, which is what a naive field match picks first.
+    fields: { pin: 'PIN', address: 'Property_Address_Combined' },
+    verified: 'live', // 0.633 ac, PIN 61-27-118-300-0001-00, Norton Shores
+  },
+  newaygo: {
+    name: 'Newaygo County',
+    fips: '26123',
+    /*
+     * Found from a root a person opened in a browser. The instance is
+     * "hosting" -- a third convention after Kent's "agisprod" and Washoe's
+     * "gisweb" host -- and the service is called DrainsParcelsNewaygoCounty,
+     * which no search for "parcels" alone would rank highly.
+     */
+    service: 'https://arcgisweb.countyofnewaygo.com/hosting/rest/services/WebApps/DrainsParcelsNewaygoCounty/MapServer',
+    layer: 0,
+    // P_ADDRESS is the whole address where it is filled in; the parts are kept
+    // as a fallback, since the discovery run found it empty on the test parcel
+    // and an address that is sometimes blank is worth composing rather than
+    // dropping.
+    fields: {
+      pin: 'PIN',
+      address: 'P_ADDRESS',
+      streetNum: 'P_NUMB',
+      streetName: 'P_STREET',
+    },
+    verified: 'live', // 0.19 ac, PIN 62-17-02-205-005
+  },
+};
+
+/**
+ * Rough bounding boxes, used to pick which county to query from a geocoded
+ * point without making five network calls. Deliberately generous: a wrong
+ * guess costs one failed query and we fall through to the next candidate.
+ * [minLng, minLat, maxLng, maxLat]
+ */
+const COUNTY_BBOX = {
+  /*
+   * The whole state, corner to corner: the Atlantic at Cape Hatteras out to
+   * the Tennessee line, and the Virginia line down to South Carolina and
+   * Georgia. Generous on purpose, like every box here -- a point that falls in
+   * the sea or over the border costs one query that returns nothing, and the
+   * app then offers to trace by hand, which is what it would have done anyway.
+   */
+  northcarolina: [-84.40, 33.75, -75.35, 36.62],
+  /*
+   * Vermont, corner to corner: the Quebec line down to the Massachusetts
+   * border, and Lake Champlain across to the Connecticut River.
+   */
+  vermont:  [-73.45, 42.72, -71.46, 45.02],
+  maryland: [-79.50, 37.88, -75.04, 39.73],
+  newhampshire: [-72.57, 42.69, -70.70, 45.31],
+  // Washoe runs the full height of Nevada, from Lake Tahoe to the Oregon line.
+  // Almost all of it is empty; the population is the southern tip around Reno.
+  washoe:   [-120.10, 38.98, -119.00, 42.01],
+  kent:     [-85.80, 42.76, -85.31, 43.29],
+  /*
+   * OTTAWA'S SOUTHERN EDGE WAS ABOVE ITS SOUTHERN EDGE.
+   *
+   * It sat at 42.83, and the comment here asserted the Ottawa/Allegan line
+   * "runs at roughly 42.84, through Holland". That is too far north. Zeeland
+   * is at 42.81 and is several miles INSIDE Ottawa County, and the box
+   * excluded it -- so 6836 Groveside Dr got no property line, and not because
+   * anything failed: Ottawa was never asked. Worse, the point still landed in
+   * Allegan's box, so the app confidently asked the wrong county, got nothing,
+   * and had nothing to report. The whole southern third of the county went the
+   * same way, Holland included.
+   *
+   * Nothing caught it because all three Ottawa test points -- Hudsonville,
+   * Jenison, Grand Haven -- are 42.87 and north. Zeeland and Holland are in
+   * the list now.
+   *
+   * KENT WAS THE TELL, and it is worth naming: Kent's southern boundary is the
+   * SAME east-west township line as Ottawa's, and its box has always said
+   * 42.76. Two boxes disagreeing by seven hundredths of a degree about a line
+   * they both sit on is the kind of thing that is obvious once seen.
+   *
+   * 42.74 rather than a precise figure, deliberately. Every box in this file
+   * is generous on purpose, and a point in the overlap with Allegan costs one
+   * query that returns nothing before the right county is tried. Being a mile
+   * too far south costs that; being a mile too far north loses a town.
+   */
+  ottawa:   [-86.24, 42.74, -85.78, 43.20],
+  allegan:  [-86.22, 42.42, -85.54, 42.85],
+  muskegon: [-86.55, 43.10, -85.77, 43.55],
+  newaygo:  [-86.05, 43.29, -85.53, 43.82],
+  /*
+   * Wayne County, Michigan -- Detroit out to Livonia and Canton, down the
+   * Detroit River to Grosse Ile. The eastern edge is the international border,
+   * so the box stops at the river rather than running on into Ontario: a point
+   * in Windsor is not a lookup worth making.
+   */
+  wayne:    [-83.60, 42.02, -82.87, 42.46],
+  /*
+   * Champaign County, Illinois -- Champaign-Urbana in the middle, Rantoul at
+   * the north end, Savoy and Tolono south. Almost square, as Illinois counties
+   * on the survey grid tend to be.
+   */
+  champaign: [-88.47, 39.86, -87.91, 40.33],
+  /*
+   * Indiana, corner to corner: the Ohio River and the Kentucky line up to
+   * Michigan, and the Wabash across to the Ohio border.
+   *
+   * This replaces a Vanderburgh County box that sat here for one commit with
+   * no entry beside it. Evansville is inside this one, and a box for a single
+   * county inside a state that is covered whole would only ever send the same
+   * point to the same layer twice.
+   */
+  indiana: [-88.10, 37.77, -84.78, 41.77],
+};
+
+/*
+ * A BOX MAY EXIST BEFORE ITS COUNTY DOES.
+ *
+ * `COUNTIES[key].service` threw for any point inside a box with no entry
+ * beside it -- and a box lands here first, because the bounds of a county are
+ * known long before anybody has found a server that answers for it. Adding
+ * Wayne's box crashed every address in Detroit, before a single parcel had
+ * been looked up.
+ *
+ * The optional chain makes an unfinished county what it should always have
+ * been: not covered yet, which the app already handles by offering to trace by
+ * hand. Asserted in worker.test.js, because the next county added will be
+ * added the same way round.
+ */
+/*
+ * The verified atlas counties, merged in behind the hand-written ones.
+ *
+ * Two sources with two different kinds of evidence. The entries above were
+ * each found by hand, confirmed against coordinates aimed at real streets, and
+ * carry a paragraph about what the points actually returned. The generated
+ * ones passed a stricter mechanical test -- a point taken from inside a parcel
+ * the server itself handed over -- but nobody has looked at them.
+ *
+ * HAND-WRITTEN WINS ON A CLASH, and both stay. Object spread puts these keys
+ * first, and candidateCounties preserves that order, so parcel.js tries the
+ * examined endpoint before the generated one. Where both cover a place -- Kent
+ * and Wayne are in both, from different services -- the second is a free
+ * fallback for the day the first goes down, which is the failure this registry
+ * has seen more than any other.
+ *
+ * The atlas keys are namespaced (`mi-kent`) and these are not (`kent`), so a
+ * clash cannot happen silently: they cannot collide by accident, only overlap
+ * by geography, which is the case worth keeping.
+ */
+const ALL_COUNTIES = { ...COUNTIES, ...VERIFIED_COUNTIES };
+
+const ALL_BBOX = {
+  ...COUNTY_BBOX,
+  ...Object.fromEntries(
+    Object.entries(VERIFIED_COUNTIES)
+      .filter(([, c]) => c.box)
+      .map(([key, c]) => [key, c.box])
+  ),
+};
+
+function candidateCounties(lng, lat) {
+  return Object.entries(ALL_BBOX)
+    .filter(([, [w, s, e, n]]) => lng >= w && lng <= e && lat >= s && lat <= n)
+    .map(([key]) => key)
+    .filter((key) => ALL_COUNTIES[key]?.service);
+}
+
+function isCovered(lng, lat) {
+  return candidateCounties(lng, lat).length > 0;
+}
+
+/**
+ * A county name reduced to the letters of its name.
+ *
+ * "Gwinnett County" from a geocoder and "Gwinnett County, GA" from the atlas
+ * are the same place, and so are "DeKalb", "De Kalb" and "St. Louis" against
+ * "St Louis". Dropping everything but the letters settles all of those without
+ * a table of special cases.
+ */
+const countyName = (value) => String(value || '')
+  .toLowerCase()
+  .split(',')[0]
+  .split('(')[0]
+  .replace(/\b(county|parish|borough|municipality)\b/g, '')
+  .replace(/[^a-z]+/g, '');
+
+/**
+ * Is THIS county served, rather than "does some county's box reach here"?
+ *
+ * THE DIFFERENCE IS NOT ACADEMIC, and it produced a wrong answer on a real
+ * address. A box is a rectangle and a county is not, so the box of a long
+ * county reaches well into its neighbours: Fulton's runs east to -84.097,
+ * which is inside western Gwinnett. An address there found a candidate, was
+ * called covered, and was told "your county has records, but not for this
+ * parcel" -- while the console filed Gwinnett under "configured, still
+ * nothing", pointing at a server to debug. Gwinnett is not configured at all.
+ * Both messages sent somebody looking in the wrong place.
+ *
+ * So the name has to agree too. Without a name from the geocoder this falls
+ * back to the old question, which is the best that can be asked.
+ */
+function servesCounty(lng, lat, county, state) {
+  const keys = candidateCounties(lng, lat);
+  if (!keys.length) return false;
+
+  const wantCounty = countyName(county);
+  const wantState = String(state || '').trim().toUpperCase();
+  /* Nothing to check against: the box match is the best question available. */
+  if (!wantCounty && !wantState) return true;
+
+  return keys.some((key) => {
+    const entry = ALL_COUNTIES[key];
+    if (!entry) return false;
+    /*
+     * A STATEWIDE LAYER IS CREDITED FOR ITS STATE, not for a county name it
+     * has never heard of. NC OneMap serves every county in North Carolina, so
+     * asking whether it is "Wake County" would say no to an address it covers
+     * perfectly -- and its rectangle reaches down into Georgia, so asking only
+     * whether the box matched would say yes to one it does not.
+     */
+    if (entry.statewide) return Boolean(entry.state) && entry.state === wantState;
+    if (!wantCounty) return false;
+    return countyName(entry.name) === wantCounty;
+  });
+}
+
+/*
+ * TWO EXPORTS ON PURPOSE, and which one to reach for depends on the question.
+ *
+ * ALL_COUNTIES is for LOOKING A COUNTY UP -- parcel.js resolves whatever key
+ * candidateCounties nominated, and that includes generated ones, so anything
+ * serving a real request has to use this.
+ *
+ * COUNTIES stays the hand-written set, because the tools that walk it are
+ * asking about the entries a person curated: probe-counties.js queries every
+ * one of them on every preflight, and pointing it at the union would fire
+ * several hundred requests at public county servers before each deploy to
+ * re-check endpoints a workflow already verifies on its own.
+ */
+export {
+  COUNTIES, ALL_COUNTIES, COUNTY_BBOX, candidateCounties, isCovered,
+  servesCounty, countyName,
+};

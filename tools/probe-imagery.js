@@ -1,0 +1,406 @@
+/**
+ * What the free imagery sources actually give us, and whether they line up.
+ *
+ * Adding a second satellite source is not just a URL swap. Every measurement
+ * this app makes comes from the FRAME -- a centre, a zoom and a pixel size --
+ * and the pixel-to-lng/lat maths assumes the picture covers exactly the
+ * rectangle that frame describes. Mapbox's static endpoint is defined that way.
+ * Esri and USGS are not: they take a bounding box and a pixel size, and are
+ * free to return something slightly different -- snapped to their own tile
+ * grid, or letterboxed to preserve an aspect ratio.
+ *
+ * If the returned extent is not the requested extent, every lawn traced from
+ * that image is measured against the wrong ground, and the number will look
+ * entirely plausible. So this asks each service, in f=json mode, what extent it
+ * actually returned, and compares it to what was asked for.
+ *
+ * It also lists the raster functions the NAIP service publishes, which is how
+ * to find out whether NDVI is available rather than assuming a name.
+ *
+ * Free: these are public services and this fetches metadata plus a couple of
+ * small images.
+ *
+ *   node tools/probe-imagery.js
+ */
+
+import { createHash } from 'node:crypto';
+import { frameCorners, metresPerPixel } from '../public/lib/mercator.js';
+import { PROVIDERS, imagePixels } from '../worker/src/imagery.js';
+
+/* A real frame, the size the app really uses. */
+const FRAME = { lng: -85.8637, lat: 42.8703, zoom: 19.66, size: 640 };
+const IMG = 1280;
+
+/** lng/lat -> EPSG:3857 metres. The frame is axis-aligned in this projection. */
+const R = 20037508.342789244;
+const toMercator = ([lng, lat]) => [
+  (lng * R) / 180,
+  (Math.log(Math.tan(((90 + lat) * Math.PI) / 360)) / (Math.PI / 180)) * (R / 180),
+];
+
+const corners = frameCorners(FRAME);          // NW, NE, SE, SW
+const [west, north] = toMercator(corners[0]);
+const [east, south] = toMercator(corners[2]);
+const bbox = [west, south, east, north];
+
+console.log('The frame every measurement is made against:');
+console.log(`  centre ${FRAME.lng}, ${FRAME.lat}  zoom ${FRAME.zoom}  ${IMG}px`);
+console.log(`  ${(metresPerPixel(FRAME, IMG) * 100).toFixed(2)} cm per pixel`);
+console.log(`  bbox 3857: ${bbox.map((n) => n.toFixed(2)).join(', ')}`);
+console.log(`  ${(east - west).toFixed(1)} m across, ${(north - south).toFixed(1)} m down\n`);
+
+const SERVICES = {
+  'Esri World Imagery': {
+    root: 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer',
+    op: 'export',
+  },
+  'USGS NAIP Plus': {
+    root: 'https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer',
+    op: 'exportImage',
+  },
+  'USGS NAIP (imagery only)': {
+    root: 'https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPImagery/ImageServer',
+    op: 'exportImage',
+  },
+};
+
+const get = async (url) => {
+  const c = new AbortController();
+  const t = setTimeout(() => c.abort(), 20000);
+  try {
+    const res = await fetch(url, { signal: c.signal });
+    const type = res.headers.get('content-type') || '';
+    if (!res.ok) return { error: `HTTP ${res.status}` };
+    if (type.includes('json')) return { json: await res.json() };
+    const buf = await res.arrayBuffer();
+    return { bytes: buf.byteLength, type };
+  } catch (e) {
+    return { error: e.message };
+  } finally {
+    clearTimeout(t);
+  }
+};
+
+for (const [name, svc] of Object.entries(SERVICES)) {
+  console.log(`--- ${name}`);
+
+  /* 1. Does it exist, and what is it? */
+  const meta = await get(`${svc.root}?f=json`);
+  if (meta.error || meta.json?.error) {
+    console.log(`    UNREACHABLE: ${meta.error || meta.json.error.message}\n`);
+    continue;
+  }
+  const m = meta.json;
+  console.log(`    ok: ${(m.serviceDescription || m.description || m.name || '').slice(0, 90).replace(/\s+/g, ' ')}`);
+  if (m.pixelSizeX) console.log(`    native resolution: ${m.pixelSizeX} m`);
+
+  /*
+   * 2. The raster functions it publishes.
+   *
+   * This is the question behind "feed it NDVI instead": NDVI needs the
+   * near-infrared band, which plain aerial photography does not carry. If the
+   * service offers an NDVI function it can compute one server-side; if it does
+   * not, the idea needs a different source, not a different parameter.
+   */
+  const fns = (m.rasterFunctionInfos || []).map((f) => f.name);
+  if (fns.length) {
+    console.log(`    raster functions (${fns.length}): ${fns.join(', ').slice(0, 300)}`);
+    const ndvi = fns.filter((f) => /ndvi|vegetation|nir|infrared/i.test(f));
+    console.log(`    vegetation-related: ${ndvi.length ? ndvi.join(', ') : 'NONE'}`);
+  } else if (svc.op === 'exportImage') {
+    console.log('    raster functions: none published');
+  }
+
+  /*
+   * 3. The check that matters: ask for our exact frame and see what comes back.
+   *
+   * f=json makes the service report the extent it served rather than just
+   * handing over pixels, which is the only way to catch a snap or a letterbox.
+   */
+  const params = new URLSearchParams({
+    bbox: bbox.join(','),
+    bboxSR: '3857',
+    imageSR: '3857',
+    size: `${IMG},${IMG}`,
+    format: 'png',
+    f: 'json',
+  });
+  const shot = await get(`${svc.root}/${svc.op}?${params}`);
+  if (shot.error || shot.json?.error) {
+    console.log(`    export failed: ${shot.error || JSON.stringify(shot.json.error).slice(0, 160)}\n`);
+    continue;
+  }
+
+  const ext = shot.json.extent;
+  if (!ext) {
+    console.log(`    export returned no extent: ${JSON.stringify(shot.json).slice(0, 200)}\n`);
+    continue;
+  }
+
+  const off = {
+    west: ext.xmin - bbox[0],
+    south: ext.ymin - bbox[1],
+    east: ext.xmax - bbox[2],
+    north: ext.ymax - bbox[3],
+  };
+  const worst = Math.max(...Object.values(off).map(Math.abs));
+  const mpp = metresPerPixel(FRAME, IMG);
+
+  /*
+   * Both halves, or the verdict is worthless. Esri answered with a correct
+   * extent and an image 0 pixels wide, and an extent-only check called that
+   * ALIGNED -- a picture containing nothing covers any rectangle you like.
+   */
+  const sized = shot.json.width === IMG && shot.json.height === IMG;
+  const placed = worst / mpp < 0.5;
+
+  console.log(`    served ${shot.json.width}x${shot.json.height} px (asked for ${IMG}x${IMG})`);
+  console.log(`    extent off by ${worst.toFixed(3)} m = ${(worst / mpp).toFixed(2)} px`);
+  console.log(
+    sized && placed
+      ? '    USABLE: right size, right place'
+      : !sized
+        ? '    UNUSABLE: the service did not render at this size'
+        : '    MISALIGNED: every lawn traced from this would be measured against the wrong ground'
+  );
+
+  const png = await get(`${svc.root}/${svc.op}?${params.toString().replace('f=json', 'f=image')}`);
+  console.log(png.bytes
+    ? `    image: ${(png.bytes / 1024).toFixed(0)} KB ${png.type}\n`
+    : `    image failed: ${png.error || 'unknown'}\n`);
+}
+
+/*
+ * If a service would not render, ask whether it is the scale rather than the
+ * service. Our frame is about 3.5 cm per pixel, which is far finer than any of
+ * these hold natively -- NAIP is 30 cm -- and an ArcGIS service is entitled to
+ * refuse beyond its maximum scale rather than invent detail.
+ */
+console.log('--- retry at coarser scales, to separate "cannot" from "will not"');
+for (const [name, svc] of Object.entries(SERVICES)) {
+  for (const px of [512, 256]) {
+    const p = new URLSearchParams({
+      bbox: bbox.join(','), bboxSR: '3857', imageSR: '3857',
+      size: `${px},${px}`, format: 'png', f: 'json',
+    });
+    const r = await get(`${svc.root}/${svc.op}?${p}`);
+    const w = r.json?.width ?? 0;
+    console.log(`    ${name} @ ${px}px -> ${w ? `${w}x${r.json.height}` : (r.error || JSON.stringify(r.json?.error || r.json).slice(0, 90))}`);
+    if (w) break;
+  }
+}
+
+/*
+ * Esri, specifically.
+ *
+ * `export` handed back a 0x0 image at every size, with the extent we asked for
+ * and no error -- which is what a *cached* map service does when it is not
+ * allowed to draw arbitrary extents on demand. That is a statement about the
+ * operation, not the imagery: the same pixels are served happily as pre-baked
+ * tiles. Since a tile is a fixed Web Mercator square and our frame is defined
+ * in exactly those coordinates, tiles are usable for the map view -- what they
+ * cannot do is hand back one image of our exact frame, which is what the
+ * detector needs. This section establishes which half is true.
+ */
+console.log('\n--- Esri: what it will serve, given export will not');
+const esri = 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer';
+const emeta = (await get(`${esri}?f=json`)).json || {};
+console.log(`    cached (singleFusedMapCache): ${emeta.singleFusedMapCache}`);
+console.log(`    exportTilesAllowed: ${emeta.exportTilesAllowed}`);
+console.log(`    capabilities: ${emeta.capabilities}`);
+const lods = emeta.tileInfo?.lods || [];
+if (lods.length) {
+  const top = lods[lods.length - 1];
+  console.log(`    tile levels: 0..${top.level}  finest ${top.resolution.toFixed(4)} m/px`);
+}
+
+/* The XYZ tile for our centre, at the zoom the app uses. */
+const z = 19;
+const n = 2 ** z;
+const tx = Math.floor(((FRAME.lng + 180) / 360) * n);
+const latRad = (FRAME.lat * Math.PI) / 180;
+const ty = Math.floor(((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n);
+for (const host of ['services', 'server']) {
+  const t = await get(`https://${host}.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${ty}/${tx}`);
+  console.log(`    tile z${z}/${ty}/${tx} via ${host}. -> ${t.bytes ? `${(t.bytes / 1024).toFixed(0)} KB ${t.type}` : t.error}`);
+}
+
+/*
+ * How old is what we are looking at?
+ *
+ * "Find the clearest or newest image" is the whole point of offering a choice,
+ * and a source is only worth switching to if you can see its date. Both of
+ * these publish the acquisition date of the individual photo under a point --
+ * Esri through a metadata layer, NAIP through its own image catalogue.
+ */
+console.log('\n--- how old is the imagery under our test point?');
+const pointQ = new URLSearchParams({
+  geometry: `${FRAME.lng},${FRAME.lat}`,
+  geometryType: 'esriGeometryPoint',
+  inSR: '4326',
+  spatialRel: 'esriSpatialRelIntersects',
+  outFields: '*',
+  returnGeometry: 'false',
+  f: 'json',
+});
+const esriMeta = await get(
+  `https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Imagery_Metadata/MapServer/8/query?${pointQ}`
+);
+const ef = esriMeta.json?.features?.[0]?.attributes;
+console.log(ef
+  ? `    Esri: ${ef.SRC_DATE2 || ef.SRC_DATE || '?'} from ${ef.NICE_NAME || ef.SRC_DESC || '?'} at ${ef.SRC_RES ?? '?'} m`
+  : `    Esri metadata: ${esriMeta.error || JSON.stringify(esriMeta.json).slice(0, 120)}`);
+
+for (const [name, svc] of Object.entries(SERVICES)) {
+  if (svc.op !== 'exportImage') continue;
+  const q = await get(`${svc.root}/query?${pointQ}`);
+  const feats = q.json?.features || [];
+  if (!feats.length) {
+    console.log(`    ${name}: no catalogue answer (${q.error || JSON.stringify(q.json).slice(0, 90)})`);
+    continue;
+  }
+  const dates = feats
+    .map((f) => f.attributes)
+    .map((a) => a.SRC_DATE || a.AcquisitionDate || a.acquisitionDate || a.Year || a.SRC_DATE2)
+    .filter(Boolean);
+  console.log(`    ${name}: ${feats.length} photo(s), dates ${[...new Set(dates)].join(', ') || 'not published'}`);
+}
+
+/*
+ * The URLs the Worker will actually build.
+ *
+ * Everything above tests services. This tests the shipped code: it imports the
+ * Worker's own provider table and asks for each source exactly as production
+ * will. It matters most for NDVI, which is not a different service but the same
+ * one with a renderingRule -- and a rendering rule that a service rejects
+ * fails on its own, however healthy the endpoint underneath it is.
+ */
+console.log('\n--- the URLs the Worker will actually build');
+const PROBE_FRAME = { ...FRAME, size: IMG / 2 }; // imagePixels() doubles it
+for (const [id, p] of Object.entries(PROVIDERS)) {
+  if (!p.detect) {
+    console.log(`    ${id}: look-only (${p.tiles ? 'tiles' : 'no source'}) — not asked`);
+    continue;
+  }
+
+  const built = p.url(PROBE_FRAME, process.env.MAPBOX_SERVER_TOKEN || process.env.MAPBOX_TOKEN || 'NO_TOKEN');
+
+  // Mapbox has no f=json mode; for the ArcGIS ones, asking the same URL in
+  // json mode is what reports the extent actually served.
+  if (built.includes('f=image')) {
+    const meta = await get(built.replace('f=image', 'f=json'));
+    if (meta.error || meta.json?.error) {
+      console.log(`    ${id}: REJECTED — ${meta.error || JSON.stringify(meta.json.error).slice(0, 140)}`);
+      continue;
+    }
+    const e = meta.json.extent || {};
+    const worstOff = Math.max(
+      Math.abs(e.xmin - bbox[0]), Math.abs(e.ymin - bbox[1]),
+      Math.abs(e.xmax - bbox[2]), Math.abs(e.ymax - bbox[3])
+    );
+    const want = imagePixels(PROBE_FRAME);
+    const sizeOk = meta.json.width === want && meta.json.height === want;
+    console.log(`    ${id}: ${meta.json.width}x${meta.json.height} px ` +
+      `(wanted ${want}), extent off by ${worstOff.toFixed(3)} m — ` +
+      (sizeOk && worstOff < 0.5 ? 'GOOD' : 'PROBLEM'));
+  }
+
+  const img = await get(built);
+  console.log(img.bytes
+    ? `        image: ${(img.bytes / 1024).toFixed(0)} KB ${img.type}`
+    : `        image FAILED: ${img.error || JSON.stringify(img.json).slice(0, 140)}`);
+}
+
+/* ------------------------------------------- the tile sources, per zoom */
+/*
+ * DOES THE TILE SOURCE ACTUALLY SERVE THE ZOOMS THIS APP USES?
+ *
+ * THE REPORT: "esri world imagery hasn't been providing any imagery." A tile
+ * that fails paints nothing and Mapbox shows through underneath, so an absent
+ * source and an identical-looking one are the same picture.
+ *
+ * Asked PER ZOOM rather than once, because the likeliest answer is a cache
+ * that stops short. The app declared tiles up to z23, which makes Mapbox
+ * request z20, z21, z22 -- and a lot fits the frame at about z19.4, so
+ * correcting corners happens deeper than that and nowhere shallower. A source
+ * that works at z18 and is blank at z21 looks broken only while you are
+ * working, which is exactly how this was reported.
+ */
+console.log('\n--- tile sources, at the zooms this app actually uses');
+
+/** The tile x/y containing a lng/lat at a zoom, in the usual slippy scheme. */
+function tileXY(lng, lat, z) {
+  const n = 2 ** z;
+  const x = Math.floor(((lng + 180) / 360) * n);
+  const rad = (lat * Math.PI) / 180;
+  const y = Math.floor(((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * n);
+  return [x, y];
+}
+
+for (const [id, p] of Object.entries(PROVIDERS)) {
+  if (!p.tiles) continue;
+  console.log(`\n    ${id} — ${p.tiles}`);
+
+  /*
+   * THE PLACEHOLDER IS A 200, AND IT IS A REAL JPEG.
+   *
+   * Past the end of its cache Esri does not 404. It answers with a "map data
+   * not yet available" tile: HTTP 200, image/jpeg, perfectly valid. So status
+   * cannot decide this, and neither can size -- the first version of this
+   * check called anything over 1500 bytes usable, the placeholder is 2521,
+   * and it confidently reported "deepest usable zoom: 23", which is precisely
+   * the value that causes the blank map it was written to diagnose.
+   *
+   * What gives it away is that the placeholder is the SAME IMAGE every time.
+   * Real imagery differs tile to tile; four identical payloads at four
+   * different zooms are one picture of the words "not available". So the test
+   * is payload identity, not payload size.
+   */
+  const seen = [];
+  for (const z of [16, 17, 18, 19, 20, 21, 22, 23]) {
+    const [x, y] = tileXY(FRAME.lng, FRAME.lat, z);
+    /* ArcGIS orders the path z/row/col, which is z/y/x. */
+    const url = p.tiles
+      .replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y));
+
+    try {
+      const res = await fetch(url);
+      const type = res.headers.get('content-type') || '';
+      const body = res.ok ? Buffer.from(await res.arrayBuffer()) : Buffer.alloc(0);
+      const hash = body.length ? createHash('sha1').update(body).digest('hex').slice(0, 12) : null;
+      seen.push({ z, ok: res.ok && /image/.test(type) && body.length > 0, bytes: body.length, hash });
+      console.log(`      z${String(z).padEnd(2)}  ${res.status} ${type.split(';')[0] || '—'}`
+        + ` ${String(body.length).padStart(6)} bytes  ${hash || ''}`);
+    } catch (err) {
+      seen.push({ z, ok: false, bytes: 0, hash: null });
+      console.log(`      z${String(z).padEnd(2)}  FAILED — ${String(err.message).slice(0, 60)}`);
+    }
+  }
+
+  /*
+   * A hash repeated at deeper and deeper zooms is the placeholder, so the real
+   * ceiling is the last zoom BEFORE the repeats begin.
+   */
+  const counts = new Map();
+  for (const t of seen) if (t.hash) counts.set(t.hash, (counts.get(t.hash) || 0) + 1);
+  const filler = [...counts.entries()].filter(([, n]) => n > 1).map(([h]) => h);
+
+  let deepest = null;
+  for (const t of seen) if (t.ok && !filler.includes(t.hash)) deepest = t.z;
+
+  if (filler.length) {
+    const from = seen.find((t) => filler.includes(t.hash));
+    console.log(`      (z${from.z} and deeper all return the same ${from.bytes}-byte image —`
+      + ' that is the "not available" placeholder, not photography)');
+  }
+
+  console.log(deepest === null
+    ? `    NOTHING usable at any zoom: ${id} is not serving this app at all.`
+    : `    deepest real zoom: ${deepest}. The app should declare maxzoom ${deepest}`
+      + ' so Mapbox overzooms that tile rather than asking for one that is not there.');
+}
+
+console.log('\nAn extent within half a pixel is fine -- the frame is what the app');
+console.log('measures against, and each source only has to fill that rectangle.');
+console.log('A service that will not render at our scale is not a bug in it: NAIP is');
+console.log('30 cm native and our frame asks for about 3.5 cm.');

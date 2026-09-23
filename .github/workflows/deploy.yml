@@ -1,0 +1,300 @@
+name: 2. Deploy
+
+# Manual only. Deploying should be something you decide to do, not something
+# that happens because a file changed.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "deploy" to confirm'
+        required: true
+        default: ''
+
+# Two deploys at once would race to write the same Worker.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Cloudflare
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Check the confirmation
+        if: inputs.confirm != 'deploy'
+        run: |
+          echo "::error::Type 'deploy' in the confirmation box to run this workflow."
+          exit 1
+
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      # A deploy that ships broken maths is worse than no deploy.
+      - name: Tests must pass first
+        run: npm test
+
+      # Read through env, never interpolated into the script: a secret pasted
+      # straight into shell would break on any quote it happens to contain.
+      - name: Check required secrets are present
+        env:
+          CF: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          MB: ${{ secrets.MAPBOX_TOKEN }}
+          RP: ${{ secrets.REPLICATE_TOKEN }}
+        run: |
+          missing=""
+          if [ -z "$CF" ]; then missing="$missing CLOUDFLARE_API_TOKEN"; fi
+          if [ -z "$MB" ]; then missing="$missing MAPBOX_TOKEN"; fi
+          if [ -z "$RP" ]; then missing="$missing REPLICATE_TOKEN"; fi
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing"
+            echo "Add them under Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+          echo "All three secrets are set."
+
+      # Fills in the KV namespace id, and the custom domain if CUSTOM_DOMAIN is
+      # set. Only touches the runner's copy of wrangler.toml, never git.
+      - name: Prepare wrangler.toml
+        env:
+          KV_NAMESPACE_ID: ${{ vars.KV_NAMESPACE_ID }}
+          CUSTOM_DOMAIN: ${{ vars.CUSTOM_DOMAIN }}
+        run: node tools/ci-prepare.js
+
+      - name: Deploy the Worker and the site
+        run: npx wrangler deploy
+
+      # After the deploy, so the Worker exists to attach them to. Secrets
+      # persist across deploys, so this is only load-bearing the first time --
+      # but re-applying them makes rotating a key a matter of editing the
+      # repository secret and pressing this button again.
+      - name: Apply the API keys
+        env:
+          MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
+          MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN }}
+          REPLICATE_TOKEN: ${{ secrets.REPLICATE_TOKEN }}
+          GOOGLE_MAPS_KEY: ${{ secrets.GOOGLE_MAPS_KEY }}
+          # The address log: a variable to switch it on, a secret to read it.
+          LOG_TESTS: ${{ vars.LOG_TESTS }}
+          LOG_TOKEN: ${{ secrets.LOG_TOKEN }}
+          # Detection feedback. Same arrangement, same reasoning, and it shares
+          # LOG_TOKEN as its reader -- one secret for one person is easier to
+          # keep track of than two, and both hold the same kind of thing.
+          FEEDBACK: ${{ vars.FEEDBACK }}
+          # Accounts. All optional: without them the site is what it was before
+          # accounts existed, which is a working site and not a broken one.
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          MAIL_FROM: ${{ vars.MAIL_FROM }}
+          # Optional, and only a Worker secret because that is how a value gets
+          # to the runtime. Replies to a sign-in link are the first thing a
+          # confused person sends, and a From address that eats them is both a
+          # deliverability signal and a dead end for them.
+          MAIL_REPLY_TO: ${{ vars.MAIL_REPLY_TO }}
+          # Read here only to check it against MAIL_FROM's domain below.
+          CUSTOM_DOMAIN: ${{ vars.CUSTOM_DOMAIN }}
+          ADMIN_EMAILS: ${{ vars.ADMIN_EMAILS }}
+          # The daily allowances. These are DEFAULTS: once the site is up they
+          # are editable from the console, which writes them to the database,
+          # and a stored value beats the variable. Setting one here decides
+          # what a fresh deployment starts with and what applies if the
+          # settings table cannot be read.
+          #
+          # WELCOME_CREDITS is still read, as the fallback for FREE_DAILY. It
+          # named a one-off grant that is now a daily allowance, and honouring
+          # it means the number already chosen keeps applying rather than
+          # silently reverting.
+          ANON_DAILY: ${{ vars.ANON_DAILY }}
+          FREE_DAILY: ${{ vars.FREE_DAILY }}
+          IP_DAILY: ${{ vars.IP_DAILY }}
+          WELCOME_CREDITS: ${{ vars.WELCOME_CREDITS }}
+        run: |
+          printf '%s' "$MAPBOX_TOKEN"    | npx wrangler secret put MAPBOX_TOKEN
+          printf '%s' "$REPLICATE_TOKEN" | npx wrangler secret put REPLICATE_TOKEN
+
+          # Optional. Google's aerial photography is often a different year and
+          # a different sun angle from Mapbox's, which is exactly the second
+          # opinion a shaded lawn needs. Without this secret the source is not
+          # offered at all, rather than appearing and failing.
+          if [ -n "$GOOGLE_MAPS_KEY" ]; then
+            printf '%s' "$GOOGLE_MAPS_KEY" | npx wrangler secret put GOOGLE_MAPS_KEY
+            echo "Applied GOOGLE_MAPS_KEY; Google satellite will appear in Layers."
+          else
+            echo "No GOOGLE_MAPS_KEY secret; Google satellite is hidden."
+            echo "Add one (Google Cloud console -> Maps Static API) to offer it."
+          fi
+
+          # Optional. Without it the Worker uses MAPBOX_TOKEN for its own calls,
+          # which is fine until that token is URL-restricted -- a Worker sends no
+          # Referer, so it cannot satisfy one.
+          if [ -n "$MAPBOX_SERVER_TOKEN" ]; then
+            printf '%s' "$MAPBOX_SERVER_TOKEN" | npx wrangler secret put MAPBOX_SERVER_TOKEN
+            echo "Applied MAPBOX_SERVER_TOKEN for the Worker's own Mapbox calls."
+          else
+            echo "No MAPBOX_SERVER_TOKEN secret; the Worker will use MAPBOX_TOKEN."
+            echo "Do not URL-restrict MAPBOX_TOKEN until you add one, or address"
+            echo "search and detection will fail while the map still draws."
+          fi
+
+          # The test log. Both are applied as Worker secrets because that is
+          # how a value reaches the runtime here; LOG_TESTS is not secret, it
+          # just travels the same road.
+          #
+          # There is no way to UNSET one of these from a blank box -- a blank
+          # box is indistinguishable from never having set it -- so switching
+          # the log off means setting LOG_TESTS to 0, which the Worker reads as
+          # off. Deleting the variable leaves the last value in place, and a
+          # log you believe is off is worse than one you know is on.
+          if [ -n "$LOG_TESTS" ]; then
+            printf '%s' "$LOG_TESTS" | npx wrangler secret put LOG_TESTS
+            case "$LOG_TESTS" in
+              1|true|yes|on|TRUE|YES|ON)
+                echo "Address logging is ON. Every detection records the address." ;;
+              *)
+                echo "Address logging is OFF (LOG_TESTS=$LOG_TESTS)." ;;
+            esac
+          else
+            echo "No LOG_TESTS variable; address logging stays off."
+          fi
+
+          # Detection feedback. Off unless switched on, for the same reason the
+          # log is: a report is an address and a picture of somebody's garden,
+          # and collecting that should be a decision somebody made and can see.
+          if [ -n "$FEEDBACK" ]; then
+            printf '%s' "$FEEDBACK" | npx wrangler secret put FEEDBACK
+            case "$FEEDBACK" in
+              1|true|yes|on|TRUE|YES|ON)
+                echo "Detection feedback is ON. The app asks once per detection." ;;
+              *)
+                echo "Detection feedback is OFF (FEEDBACK=$FEEDBACK)." ;;
+            esac
+          else
+            echo "No FEEDBACK variable; the app still asks, and the answer is"
+            echo "discarded rather than stored. Set FEEDBACK=1 to keep them."
+          fi
+
+          # Accounts.
+          #
+          # Every one of these is optional and the site works without it -- the
+          # Worker treats a missing piece as "signed out, always" rather than as
+          # a failure. Which is the only sane arrangement when the alternative
+          # is a measuring tool that will not load because nobody has set up a
+          # mail provider yet.
+          for pair in \
+            "RESEND_API_KEY:$RESEND_API_KEY" \
+            "MAIL_FROM:$MAIL_FROM" \
+            "MAIL_REPLY_TO:$MAIL_REPLY_TO" \
+            "ADMIN_EMAILS:$ADMIN_EMAILS" \
+            "ANON_DAILY:$ANON_DAILY" \
+            "FREE_DAILY:$FREE_DAILY" \
+            "IP_DAILY:$IP_DAILY" \
+            "WELCOME_CREDITS:$WELCOME_CREDITS"
+          do
+            name="${pair%%:*}"
+            value="${pair#*:}"
+            if [ -n "$value" ]; then
+              printf '%s' "$value" | npx wrangler secret put "$name"
+              echo "Applied $name."
+            fi
+          done
+
+          if [ -z "$RESEND_API_KEY" ]; then
+            echo "No RESEND_API_KEY, so nobody can sign in -- the account panel"
+            echo "says so rather than showing a form that would fail on submit."
+            echo "Set it (resend.com, free tier) to switch sign-in on."
+          elif [ -z "$MAIL_FROM" ]; then
+            echo "No MAIL_FROM, so mail goes from Resend's shared onboarding"
+            echo "address, which ONLY delivers to your own Resend account."
+            echo "Verify a domain and set MAIL_FROM before friends try to sign in."
+          else
+            # DOES THE SENDER MATCH THE SITE?
+            #
+            # A sign-in link points at the site, so a From address on some
+            # other domain makes every message a cross-domain link -- which is
+            # the shape of a phishing email and is scored as one. Cheap to
+            # check here, invisible otherwise until somebody reports that the
+            # mail went to spam.
+            from_domain=$(printf '%s' "$MAIL_FROM" | sed -n 's/.*@\([^ >]*\).*/\1/p')
+            site_domain="${CUSTOM_DOMAIN}"
+            # Compare the registrable part, so lawnmap.example.com and
+            # hello@example.com count as the same organisation (they are, to
+            # DMARC's relaxed alignment as well).
+            base() { printf '%s' "$1" | awk -F. '{ if (NF>=2) print $(NF-1)"."$NF; else print $0 }'; }
+            if [ -n "$from_domain" ] && [ -n "$site_domain" ] \
+               && [ "$(base "$from_domain")" != "$(base "$site_domain")" ]; then
+              echo "::warning::MAIL_FROM is @$from_domain but the site is $site_domain."
+              echo "Sign-in links will point at a different domain from the sender,"
+              echo "which mail providers treat as a phishing signal. Send from the"
+              echo "site's own domain if you can."
+            else
+              echo "Sign-in mail comes from @$from_domain, matching the site."
+            fi
+
+            echo
+            echo "If sign-in mail lands in spam, the fixes are DNS-side and are"
+            echo "listed in docs/accounts-setup.md under \"When the link goes to"
+            echo "spam\" -- a DMARC record, and checking that click tracking is"
+            echo "not rewriting links onto a domain that is not yours."
+          fi
+          if [ -z "$ADMIN_EMAILS" ]; then
+            echo "No ADMIN_EMAILS variable, so no account will be an administrator."
+            echo "Set it to your own address to get the console and unlimited detections."
+          fi
+
+          echo "Daily AI passes: signed out ${ANON_DAILY:-5}, account ${FREE_DAILY:-${WELCOME_CREDITS:-30}},"
+          echo "any one address ${IP_DAILY:-80}. These are the starting numbers;"
+          echo "change them in the console under Daily limits, with no deploy."
+
+          if [ -n "$LOG_TOKEN" ]; then
+            printf '%s' "$LOG_TOKEN" | npx wrangler secret put LOG_TOKEN
+            echo "Applied LOG_TOKEN. Read the log at /api/log?token=..."
+            echo "Read the feedback on your phone at /review.html#token=..."
+          else
+            echo "No LOG_TOKEN secret, so /api/log and the feedback list answer"
+            echo "404 and nothing can read either back. That is the safe state,"
+            echo "not a broken one."
+          fi
+
+      - name: Where it went
+        run: |
+          echo "Deployed."
+          echo
+          if [ -n "${{ vars.CUSTOM_DOMAIN }}" ]; then
+            echo "Your site: https://${{ vars.CUSTOM_DOMAIN }}"
+            echo "(If it does not load yet, the domain may still be activating"
+            echo " in Cloudflare, or the certificate may need a few minutes.)"
+          else
+            echo "Your site is on the workers.dev URL printed in the deploy step above."
+            echo "To use your own domain, see DEPLOY.md step 6."
+          fi
+          echo
+          # Said HERE, at the end, because this is the part of an 1800-line log
+          # that anybody actually reads on a phone. ci-prepare decides it and
+          # passes it forward through GITHUB_ENV.
+          if [ -n "$CORPUS_BUCKET" ]; then
+            echo "Training images: ON, saved to the \"$CORPUS_BUCKET\" R2 bucket"
+            echo "when somebody finishes a map."
+          else
+            echo "Training images: OFF -- no R2 bucket. Finished maps still"
+            echo "record their outline; only the aerial photograph is skipped."
+            echo "The reason is in the \"Prepare wrangler.toml\" step above."
+          fi
+          # A database change that did not land is the quietest failure this
+          # project has had: six deploys reported success while a column was
+          # missing and a feature reported itself switched off. It gets said
+          # here, where it cannot be scrolled past.
+          if [ -n "$DB_TROUBLE" ]; then
+            echo
+            echo "::warning::Database not fully up to date: $DB_TROUBLE"
+            echo "Some features will look switched off rather than broken."
+            echo "The detail is in the \"Prepare wrangler.toml\" step above."
+          fi
+          echo
+          echo "Open it on your phone and measure your own address."

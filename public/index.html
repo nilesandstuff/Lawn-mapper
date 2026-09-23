@@ -1,0 +1,1211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lawn Mapper — measure your lawn from your address</title>
+<meta name="description" content="Find your lawn's square footage from your address. Uses county property lines and satellite imagery, then lets you correct the shape by hand.">
+
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.css" rel="stylesheet">
+<link href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.css" rel="stylesheet">
+<link href="/styles.css" rel="stylesheet">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <span>Lawn&nbsp;Mapper</span>
+  </div>
+  <div class="topright">
+    <div id="quota-badge" class="quota" hidden></div>
+
+    <!--
+      One button with two jobs: the invitation when nobody is signed in, and
+      the account when somebody is. Hidden entirely when the deployment has no
+      account store, because a button that cannot work is worse than one less
+      button.
+
+      It says "1-click sign up" because that is true and is the part people do
+      not expect: there is no form and no password, so signing up and signing
+      in are the same single action -- type an address, press the link.
+    -->
+    <button class="account" id="account-btn" type="button" hidden>
+      <span id="account-label">Sign in / 1-click sign up</span>
+    </button>
+  </div>
+</header>
+
+<!--
+  Signing in. One field, because there is one door.
+
+  Over everything, because it is a decision that has to be finished before the
+  page underneath means anything different. No password: there is nothing to
+  forget, to reuse from another site, to leak, or to reset. Receiving the link
+  is the verification, which is also why the address can safely BE the account.
+-->
+<div class="sheet" id="signin" role="dialog" aria-modal="true" aria-labelledby="signin-title" hidden>
+  <div class="sheet-card">
+    <button class="sheet-x" id="signin-close" type="button" aria-label="Close">×</button>
+    <p class="sheet-title" id="signin-title">Keep your maps</p>
+    <!-- Both rewritten when the sheet is opened for a particular reason --
+         "you have run out of AI passes" wants a different first sentence from
+         "you tapped the account button". See promptSignin. -->
+    <p class="sheet-why" id="signin-why">An account keeps your measurements
+      across devices, so the lawn you mapped on your phone is there on your
+      laptop. It also raises how many AI detections you get each day.</p>
+
+    <form id="signin-email-form" autocomplete="on" hidden>
+      <label class="sr-only" for="signin-email">Email address</label>
+      <input type="email" id="signin-email" name="email" required
+             autocomplete="email" inputmode="email" placeholder="you@example.com">
+      <button class="primary" type="submit" id="signin-send">Email me a link</button>
+    </form>
+
+    <p class="sheet-note" id="signin-note">No password. We send a link that
+      signs you in and expires in 20 minutes.</p>
+  </div>
+</div>
+
+<!-- The account menu, once there is one. -->
+<div class="sheet" id="account-sheet" role="dialog" aria-modal="true" hidden>
+  <div class="sheet-card">
+    <button class="sheet-x" id="account-close" type="button" aria-label="Close">×</button>
+    <p class="sheet-title" id="account-name">Your account</p>
+    <p class="sheet-why" id="account-email"></p>
+    <p class="creditline" id="account-credits"></p>
+    <div class="tools">
+      <button class="ghost" id="account-admin" type="button" hidden>Admin console</button>
+      <button class="ghost" id="account-signout" type="button">Sign out</button>
+    </div>
+  </div>
+</div>
+
+<!--
+  Shown once a visit, the first time somebody opens the AI tab.
+
+  It says the detection is bad before they watch it be bad, which is the only
+  moment that sentence is worth anything: read first it sets an expectation and
+  offers the fix, read afterwards it is an excuse. The ask that follows -- keep
+  going, correct it, press finish -- is the whole of how the training set gets
+  built, and it costs nothing to state plainly.
+-->
+<div class="sheet" id="ai-notice" role="dialog" aria-modal="true"
+     aria-labelledby="ai-notice-title" hidden>
+  <div class="sheet-card">
+    <button class="sheet-x" id="ai-notice-close" type="button" aria-label="Close">×</button>
+    <p class="sheet-title" id="ai-notice-title">The AI lawn detection is bad</p>
+    <p class="sheet-why">You can still use it to start a map of your lawn and
+      then tweak or correct it with the drawing or point tools.</p>
+    <p class="sheet-why">Corrected maps will be fed into the model to train a
+      model that actually works well. Be sure to hit <b>Finish, save, and see
+      more options</b> after you&rsquo;ve made the corrections.</p>
+    <p class="sheet-why">If you have time and want to help, measure other
+      addresses too. Preferably measure addresses at least 1&nbsp;km
+      (0.62&nbsp;miles) away from each other.</p>
+    <p class="sheet-note">Note: this project is not open source, but it is not
+      profit driven. Any future monetization will be non-invasive and strictly
+      to cover server and API costs.</p>
+    <div class="tools">
+      <button class="primary" id="ai-notice-ok" type="button">Got it</button>
+    </div>
+  </div>
+</div>
+
+<!--
+  EVERYTHING THE PAID QUEUE HAS TO SAY WHEN THERE IS NO MAP TO SHOW.
+
+  One sheet for all of it -- the preview of a task nobody has accepted yet, a
+  worker waiting on a review, a worker who has been stopped, an empty batch,
+  and the completion code at the end -- because every one of those is the same
+  shape: a sentence, sometimes a code, and nothing to do on a map.
+
+  It is not dismissable. The other sheets sit on top of a working app; this one
+  IS the app for somebody who has no lawn open, and an × that revealed an empty
+  address form behind it would be a worker filing a support ticket.
+
+  THE CODE IS SELECTABLE AND LARGE, because it is typed into another site by
+  somebody on a phone, and a code that is hard to copy is a task that gets
+  abandoned after the work was already done.
+-->
+<div class="sheet" id="job-sheet" role="dialog" aria-modal="true"
+     aria-labelledby="job-sheet-title" hidden>
+  <div class="sheet-card">
+    <p class="sheet-title" id="job-sheet-title"></p>
+    <p class="sheet-why" id="job-sheet-why"></p>
+    <p class="jobcode" id="job-code" hidden></p>
+    <p class="sheet-note" id="job-sheet-note" hidden></p>
+    <div class="tools">
+      <button class="primary" id="job-sheet-go" type="button" hidden></button>
+    </div>
+    <!-- Somewhere to check what was approved and change where money goes.
+         Only a paid tracer has a page to be sent to. -->
+    <p class="sheet-note"><a id="job-sheet-link" href="/mywork.html" hidden></a></p>
+  </div>
+</div>
+
+<div class="layout">
+  <aside class="panel" id="panel">
+
+    <!--
+      Tips, and the switch that turns them off.
+
+      At the very top of the panel because that is where someone goes looking
+      when a box keeps appearing over their map. On by default: the tools on
+      the map are unlabelled icons, and a first-timer has no way to know that
+      only two of the satellite sources can be measured from.
+    -->
+    <label class="tiptoggle">
+      <input type="checkbox" id="toggle-tutorials" checked>
+      <span>Show me tips as I go</span>
+    </label>
+
+    <!--
+      Developer mode. Hidden unless unlocked, and unlocked by a string in
+      the URL rather than by anything on screen -- see DEV_KEY in app.js.
+      Obscured, not secured: the Worker accepts these fields from anyone,
+      which is fine because an arbitrary prompt costs exactly one prediction
+      and the daily allowance already caps that.
+
+      Deliberately OUTSIDE the measure step, so it appears the moment the key
+      is entered rather than after an address has been confirmed. A panel that
+      shows up only once you have done something else reads as the key not
+      having worked -- which is the same way this failed once already.
+    -->
+    <div class="devpanel" id="dev-panel" hidden>
+      <label for="dev-prompt">Prompt <span class="sub" id="dev-tokens"></span></label>
+      <input type="text" id="dev-prompt" autocomplete="off" autocapitalize="none"
+             autocorrect="off" spellcheck="false"
+             placeholder="grass">
+      <label class="devcheck" for="dev-invert">
+        <input type="checkbox" id="dev-invert">
+        <span>Invert the selection (measure what is NOT matched)</span>
+      </label>
+      <label for="dev-threshold">Confidence cut <b id="dev-threshold-value">0.05</b></label>
+      <input type="range" id="dev-threshold" min="0" max="1" step="0.01" value="0.05"
+             aria-label="Confidence threshold sent to the model">
+      <p class="sub" id="dev-note"></p>
+      <div class="tools">
+        <button class="ghost" id="dev-model" type="button">Show the trained model</button>
+        <button class="ghost" id="dev-model-off" type="button">Hide it</button>
+        <button class="ghost" id="dev-reset" type="button">Back to defaults</button>
+        <button class="link" id="dev-exit" type="button">Leave developer mode</button>
+      </div>
+    </div>
+
+
+    <!-- 0. Hard failure -------------------------------------------------- -->
+    <section class="step fatal" id="step-fatal" hidden>
+      <h2>The map didn't load</h2>
+      <p class="sub" id="fatal-text"></p>
+      <button class="primary" onclick="location.reload()">Try again</button>
+    </section>
+
+    <!-- 1. Address ------------------------------------------------------ -->
+    <section class="step" id="step-address">
+      <h1>How big is your lawn?</h1>
+      <!--
+        The button is named here as well as on itself. A crosshair is a
+        well-worn icon and still not a word, and the one place somebody is
+        deciding whether to type a whole address is the place worth telling
+        them they need not.
+      -->
+      <p class="sub">Type your address, or tap the crosshair to use where you
+        are now. We'll pull your property line and measure the grass inside
+        it.</p>
+      <form id="address-form" autocomplete="off">
+        <label class="sr-only" for="address">Street address</label>
+        <!--
+          THE FIELD AND THE LOCATION BUTTON ON ONE LINE, because they are two
+          ways of answering one question and a button under the field would
+          read as a second step.
+
+          type="button" is load-bearing: a bare <button> inside a form submits
+          it, so without this, asking for your location would also fire the
+          address search with an empty field.
+        -->
+        <div class="findrow">
+          <input id="address" name="address" type="text" required minlength="4"
+                 placeholder="1234 Maple Ave, Grand Rapids, MI"
+                 autocomplete="street-address">
+          <button class="ghost locate" id="btn-locate" type="button"
+                  title="Use my current location" aria-label="Use my current location">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <circle cx="12" cy="12" r="3.2"></circle>
+              <circle cx="12" cy="12" r="7.2" fill="none"></circle>
+              <path d="M12 1.6v3.2M12 19.2v3.2M1.6 12h3.2M19.2 12h3.2"></path>
+            </svg>
+          </button>
+        </div>
+        <button class="primary" type="submit">Find my property</button>
+      </form>
+      <!--
+        Said here rather than in an alert, because it is the answer to "why is
+        it asking" and an alert arrives after the asking. Hidden until the
+        button is pressed: a line about location permissions on a page nobody
+        has pressed anything on is noise.
+      -->
+      <p class="note" id="locate-note" hidden></p>
+
+      <!--
+        A way past the address for somebody who only came back to look at a map
+        they already made. Hidden when there is nothing saved, so the first
+        visit is one field and one button and not a choice.
+      -->
+      <button class="link" id="btn-open-saved" hidden>Open a saved map instead →</button>
+      <!--
+        WHERE PROPERTY LINES COME FROM, and the sentence is written by the
+        Worker, not by hand. The one that used to sit here named five Michigan
+        counties and one in Nevada. It was true the week it was typed; by the
+        time anybody read it the registry held a hundred and fifty-nine entries
+        across forty-five states, and this paragraph was telling every visitor
+        outside West Michigan that the site had nothing for them.
+
+        A list of a growing thing, written down, is a promise to keep editing
+        it. That promise is always broken quietly, so the fallback below says
+        only what stays true while the numbers load.
+      -->
+      <p class="note" id="coverage-note"><span id="coverage-text">Property
+        lines come from public records in much of the United States.</span>
+        Anywhere else you trace the lawn yourself, which measures just as
+        accurately.
+        <button class="link" data-coverage-open type="button">See the full
+          list</button>
+      </p>
+    </section>
+
+    <!-- 2. Which address? ----------------------------------------------- -->
+    <section class="step" id="step-candidates" hidden>
+      <h2>Which one is yours?</h2>
+      <ul class="candidates" id="candidate-list"></ul>
+      <button class="link" data-action="restart">Search a different address</button>
+    </section>
+
+    <!-- 3. Confirm ------------------------------------------------------- -->
+    <section class="step" id="step-confirm" hidden>
+      <h2>Is this the right place?</h2>
+      <p class="chosen" id="chosen-label"></p>
+      <!--
+        THE PIN CAN BE MOVED, and saying so here is the point.
+
+        This step used to be a yes/no over somebody else's guess, and "No, go
+        back" only helps when the guess came from something you typed. It does
+        not help when your phone put you on the neighbour's roof, or when the
+        geocoder has the house number two doors down -- in both cases the
+        address is exactly what is wrong, so typing it again returns the same
+        answer. Dragging the pin is the correction that always works: you can
+        see your own roof in the photograph.
+      -->
+      <p class="sub">Check the roof and driveway on the map. If the pin is on
+        the wrong house, drag it or tap the right one.</p>
+      <div class="row">
+        <button class="primary" data-action="confirm">Yes, that's it</button>
+        <button class="ghost" data-action="restart">No, go back</button>
+      </div>
+    </section>
+
+    <!-- 4. Measure ------------------------------------------------------- -->
+    <!--
+      THREE JOBS, THREE TABS.
+
+      Everything below used to be one long column: the address, the AI, the
+      drawing tools and the boundary editor all stacked together, all live at
+      once. Which made it impossible to tell which step you were on, and that
+      matters more now that a measurement can be saved and come back -- a save
+      is of a particular moment in a particular job.
+
+      So each tab shows only its own tools, and the map's own buttons follow
+      the tab (see refreshRail). Nothing is hidden that is in use; a tab whose
+      tools would now change a measurement you have already corrected by hand
+      greys them out and offers the two honest ways forward instead.
+    -->
+    <section class="step" id="step-work" hidden>
+      <!--
+        REVIEWING A TRAINING CANDIDATE, and the way back out.
+
+        The console's Edit button sends the reviewer here because the editing
+        tools are here. Getting back was the Finish button, several steps away
+        on another tab, saying "Finish, save, and see more options" -- which is
+        true and says nothing about the console, so the only thing telling
+        anybody how to return was a status line that the next status line
+        replaced. Asked directly: "is there a save-and-return button I didn't
+        see?" There was not one to see.
+
+        Two ways out, because there are two things a reviewer decides. One
+        leaves the corrected outline back in the queue; the other is for the
+        candidate that turned out to need nothing, where saving would put an
+        unchanged map back to be judged a second time.
+
+        Above the tabs and outside them, like the corner panel, because it is
+        about the whole visit rather than about a step of it.
+      -->
+      <div class="reviewbar" id="review-bar" hidden>
+        <p class="sub">Reviewing a training candidate. Fix whatever is off, then come back.</p>
+        <div class="reviewbar-acts">
+          <button class="primary" type="button" id="btn-review-save">Save and return to the console</button>
+          <button class="ghost" type="button" id="btn-review-back">Back without saving</button>
+        </div>
+      </div>
+
+      <!--
+        WORKING THROUGH THE PAID QUEUE.
+
+        Somebody arrives here from a crowd platform with a worker id in the
+        link, is handed one lawn, corrects the outline and sends it back. They
+        have no account, never typed an address, and are not going to read a
+        manual -- so what they are being paid to do is ON THE SCREEN, next to
+        the button that ends the task, rather than in the platform's task
+        description where it scrolls away the moment they click through.
+
+        Open by default and closable, in that order. The instructions are the
+        job on the first lawn and in the way on the fifteenth, and guessing
+        which one somebody is on is worse than letting them say.
+      -->
+      <div class="jobbar" id="job-bar" hidden>
+        <p class="job-where" id="job-where"></p>
+        <details class="job-asks" id="job-asks" open>
+          <summary>What this job is asking for</summary>
+          <div id="job-prompts"></div>
+        </details>
+        <div class="jobbar-acts">
+          <button class="primary" type="button" id="btn-job-submit">Send this map</button>
+          <button class="ghost" type="button" id="btn-job-skip">I cannot do this one</button>
+        </div>
+      </div>
+
+      <div class="result" id="result" hidden>
+        <div class="result-figure"><span id="result-sqft">—</span> <small>sq ft</small></div>
+        <div class="result-sub" id="result-sub"></div>
+      </div>
+
+      <!--
+        The end of measuring and the start of doing something with it.
+
+        Under the figure rather than at the foot of a tab, because it is about
+        the number rather than about the tools that produced it -- and it is
+        the same button whether the shape came from the AI or from a finger,
+        so it is one element shown on both of those tabs rather than two that
+        can drift apart.
+      -->
+      <button class="primary" id="btn-finish" hidden>Finish, save, and see more options</button>
+      <!--
+        Said before the button is pressed, not after, because a note about what
+        is kept is only honest if it arrives while there is still a choice.
+        Hidden and shown with the button it belongs to -- a standing sentence
+        about finished maps, on a screen with no finish button, is a puzzle.
+
+        Deliberately specific about the part people would worry about. "We
+        keep some data" invites the worst guess; "the outline, not your
+        address" is both narrower and true -- see the corpus table in
+        schema.sql, which has no column for an address or an account.
+      -->
+      <p class="sub" id="finish-note" hidden>
+        Finished maps help train the lawn detector. We keep the outline and the
+        aerial view — not your address.
+      </p>
+
+      <nav class="tabs" id="tabs" role="tablist" aria-label="Which step you are on">
+        <button class="tab" type="button" id="tab-address" role="tab"
+                data-tab="address" aria-selected="false" aria-controls="pane-address">
+          <span class="tab-step">1</span>Property line
+        </button>
+        <button class="tab" type="button" id="tab-detect" role="tab"
+                data-tab="detect" aria-selected="false" aria-controls="pane-detect">
+          <span class="tab-step">2</span>AI
+        </button>
+        <button class="tab" type="button" id="tab-draw" role="tab"
+                data-tab="draw" aria-selected="false" aria-controls="pane-draw">
+          <span class="tab-step">3</span>Draw
+        </button>
+        <button class="tab" type="button" id="tab-saved" role="tab"
+                data-tab="saved" aria-selected="false" aria-controls="pane-saved">
+          Saved
+        </button>
+        <!--
+          No step number: this is not step five, it is what you do with a
+          finished measurement. Hidden until there is one, because a tab full
+          of tools that need a lawn is four taps of nothing.
+        -->
+        <button class="tab" type="button" id="tab-plan" role="tab"
+                data-tab="plan" aria-selected="false" aria-controls="pane-plan" hidden>
+          Plan
+        </button>
+      </nav>
+
+      <div class="statusline" id="status"></div>
+
+      <!--
+        Shown at the top of a tab whose tools would undo work already done by
+        hand. Greying the controls out without saying why is how an app reads
+        as broken, so the reason and both ways forward live here together.
+      -->
+      <div class="locked" id="lock-notice" hidden>
+        <p class="lock-text" id="lock-text"></p>
+        <div class="tools">
+          <button class="ghost" type="button" id="btn-lock-clear">Clear the lawn and start again</button>
+          <button class="ghost" type="button" id="btn-lock-redetect">Run a new detection</button>
+        </div>
+      </div>
+
+      <!--
+        Corner and edge editing, for whichever outline is being edited.
+
+        OUTSIDE the tabs on purpose: the same panel serves the property line on
+        the Property line tab and the lawn's own corners on the Draw tab -- one
+        set of controls, two things they can be pointed at, and the wording is
+        rewritten to say which (see enterRingEditing). Two copies in two tabs
+        would be two chances for them to drift apart.
+      -->
+      <div class="edgepanel" id="edge-panel" hidden>
+        <p class="edge-info" id="edge-info">Tap the edge of your lawn nearest the road.</p>
+        <div class="edge-controls" id="edge-controls" hidden>
+          <div class="edge-readout">
+            <span id="edge-value">0 ft</span>
+            <small id="edge-bearing"></small>
+          </div>
+          <input type="range" id="edge-slider" min="-20" max="80" step="1" value="0"
+                 aria-label="Extend this edge, in feet">
+          <p class="sub">The edge stays parallel to the surveyed line — only its
+            distance changes, so the direction the county recorded is kept.</p>
+          <button class="ghost edge-secondary" id="btn-point-add">Add a corner here</button>
+        </div>
+        <div class="edge-controls" id="point-controls" hidden>
+          <!--
+            Rewritten per outline in selectVertex. Sliding an edge is a
+            property-line tool and is not offered on a lawn, so the sentence
+            that points at it must not be offered there either.
+          -->
+          <p class="sub" id="point-hint">Drag it to move it. To extend a whole edge
+            instead, tap the line between two corners.</p>
+          <button class="ghost edge-secondary" id="btn-point-delete">Delete this corner</button>
+        </div>
+        <button class="ghost edge-secondary" id="btn-tidy">Tidy up this boundary</button>
+        <button class="ghost" id="btn-edge-done">Done adjusting</button>
+      </div>
+
+      <!-- 4a. Address and property line ---------------------------------- -->
+      <div class="tabpane" id="pane-address" role="tabpanel" aria-labelledby="tab-address" hidden>
+        <p class="chosen" id="work-address"></p>
+
+        <div class="tools">
+          <button class="ghost" id="btn-draw-parcel" hidden>Draw the property line</button>
+        </div>
+
+        <p class="sub">Press <b>Line</b> on the map to move the boundary, or a
+          corner of it. Everything measured is trimmed to this line.</p>
+
+        <!--
+          THE SAME QUESTION, ASKED WHERE IT ACTUALLY COMES UP. The sentence on
+          the address step is read before anybody has typed anything; this is
+          the tab somebody is looking at when the boundary came back empty and
+          they want to know whether that is their county or a bug. Same dialog,
+          same computed list, no second copy of the answer.
+        -->
+        <p class="sub" id="coverage-tab-text">Where a county publishes its
+          records, this line is drawn for you.
+          <button class="link" data-coverage-open type="button">See which
+            counties</button>
+        </p>
+
+        <!--
+          The same handover as "Correct it by hand" on the next tab, and for
+          the same reason: the tabs say what the steps ARE and nothing says
+          which one comes next. Somebody who has just set a property line has
+          finished step one, and a button naming step two is the difference
+          between a workflow and four things to choose between.
+        -->
+        <button class="ghost" id="btn-to-detect" hidden>Find the lawn →</button>
+
+        <button class="link" data-action="restart">Start over with a new address</button>
+      </div>
+
+      <!-- 4b. AI detection ------------------------------------------------ -->
+      <div class="tabpane" id="pane-detect" role="tabpanel" aria-labelledby="tab-detect" hidden>
+        <!-- How to ask. Populated from /api/config, like the imagery list. -->
+        <div class="models" id="model-panel" hidden>
+          <label for="model-choice">AI method</label>
+          <select id="model-choice"></select>
+          <p class="sub" id="model-note"></p>
+
+          <!-- Exclude mode only. Each ticked box is a separate AI pass, which is
+               separate money and a separate wait, so the cost line is not an
+               extra: it is the thing that makes the choice an informed one. -->
+          <div class="excludes" id="exclude-panel" hidden>
+            <p class="excl-lead">Take these off the property:</p>
+            <div id="exclude-list"></div>
+            <p class="sub" id="exclude-cost"></p>
+          </div>
+        </div>
+
+        <!-- Only for the point-prompted model, which cannot run without pins. -->
+        <div class="pins" id="pin-panel" hidden>
+          <p class="pin-count" id="pin-count">Tap each part of your lawn</p>
+          <button class="ghost edge-secondary" id="btn-pins-clear">Remove all pins</button>
+        </div>
+
+        <!-- Which photograph. Populated from /api/config so the browser and the
+             Worker cannot disagree about what each source is. -->
+        <div class="imagery" id="imagery-panel" hidden>
+          <label for="imagery-source">Satellite image</label>
+          <select id="imagery-source"></select>
+          <p class="sub" id="imagery-note"></p>
+        </div>
+
+        <div class="tools">
+          <button class="primary" id="btn-detect" disabled>Detect my lawn</button>
+        </div>
+
+        <!-- Pull the detected outline in or push it out, in feet on the ground.
+             Free to move: it re-reads a mask already downloaded and runs no
+             new detection. -->
+        <div class="imagery" id="sens-panel" hidden>
+          <label for="edge-ft">Trim or extend the edge</label>
+          <!-- Buttons for nudging, a real field for typing. A slider could not
+               reach far enough to correct a treeline the AI puts several feet
+               too wide, and widening one only makes every step coarser. -->
+          <div class="stepper">
+            <button type="button" class="stepbtn" id="edge-minus" aria-label="Pull the outline in one foot">−</button>
+            <input type="text" id="edge-ft" inputmode="decimal" value="0"
+                   aria-label="How far to move the lawn outline, in feet">
+            <span class="stepunit">ft</span>
+            <button type="button" class="stepbtn" id="edge-plus" aria-label="Push the outline out one foot">+</button>
+          </div>
+          <p class="sub" id="sens-note"></p>
+        </div>
+
+        <!--
+          Offered in both modes, but it means opposite things in them, so the
+          answer is remembered per mode and the wording below is rewritten to
+          match -- see refreshTreesOption. On for "find grass" (a gap is canopy
+          over real grass), off for "exclude" (a gap is something a ticked box
+          removed).
+        -->
+        <!--
+          THESE TWO STAY LIVE WHEN THE STEP IS LOCKED (class "stays-free").
+          Neither spends a detection: one re-reads a mask already downloaded,
+          the other just draws it on top. The lock exists to stop a PAID
+          re-detection throwing hand corrections away, and greying out the
+          free controls with it was the lock overreaching -- see tabLock.
+        -->
+        <label class="opt stays-free" id="trees-opt">
+          <input type="checkbox" id="toggle-trees" checked>
+          <span>Count grass under trees
+            <small id="trees-note">Canopy hides lawn that is really there. Small
+              gaps inside your lawn are counted as grass; big ones (a pool, a
+              shed) are not.</small>
+          </span>
+        </label>
+
+        <label class="debug stays-free">
+          <input type="checkbox" id="toggle-overlay">
+          <span id="overlay-label">Show the raw AI mask (alignment check)</span>
+        </label>
+
+        <button class="ghost" id="btn-to-draw">Correct it by hand →</button>
+      </div>
+
+      <!-- 4c. Drawing by hand --------------------------------------------- -->
+      <div class="tabpane" id="pane-draw" role="tabpanel" aria-labelledby="tab-draw" hidden>
+        <!--
+          "Use property line" makes a LAWN the size of the lot, which is a
+          starting point to carve down rather than a boundary edit -- so it
+          belongs here with the drawing tools and not on the Property line tab,
+          where it would sit among the tools for a step it is not part of.
+        -->
+        <div class="tools">
+          <button class="ghost" id="btn-draw">Draw a patch</button>
+          <!--
+            The same gesture, subtracting. Next to "Draw a patch" because it
+            is the same act with the opposite sign, and a person looking for
+            "how do I take that shed out accurately" looks where the drawing
+            is. What it makes is an ordinary hole, so the point tools edit its
+            corners afterwards like any other outline.
+          -->
+          <button class="ghost" id="btn-cut">Cut out a shape</button>
+          <button class="ghost" id="btn-parcel-shape" hidden>Use property line</button>
+          <button class="ghost" id="btn-undo" disabled>Undo</button>
+          <button class="ghost" id="btn-delete" disabled>Delete selected</button>
+          <!--
+            A SECOND LAYER FOR LAWN YOU KNOW IS THERE AND CANNOT SEE.
+
+            Grass under a tree canopy with lawn either side; an edge that
+            carries on through shadow. A person who knows what lawns look like
+            can say it is there, and that judgement is worth keeping -- but it
+            is a judgement about shape, not a reading of the pixels, and the
+            training has to tell the two apart. Mixed in undifferentiated it
+            teaches "canopy means lawn", which on a wooded lot claims the woods.
+
+            A MODE RATHER THAN A MARK ON A SHAPE, because a traced lawn is
+            usually one big outline holding both kinds of ground: grass, then
+            canopy, then grass again. Marking the whole shape would claim the
+            visible parts were guessed at too.
+
+            While it is on, the polygon tool and both brushes work exactly as
+            they always do -- only on this layer. It is the one place on the
+            map where shapes may overlap: an inferred patch normally sits on
+            lawn already outlined, and the total counts ground once however
+            many shapes cover it.
+          -->
+          <button class="ghost" id="btn-inferred-mode">Draw inferred lawn</button>
+          <!--
+            KEEPING AN INFERRED PATCH INSIDE THE LAWN, the same way the property
+            line holds an ordinary corner.
+
+            Usually right: the ground under a canopy that runs through the
+            middle of a traced lawn is lawn on both sides, so the patch belongs
+            inside the outline. Sometimes wrong: a lawn that carries on past
+            where anybody could see it stops at a boundary the tracer guessed,
+            and the inferred patch is the correction.
+
+            So it is a choice, and it only governs what is drawn or dragged
+            WHILE IT IS ON. Nothing already on the map moves when it is
+            switched either way -- a setting that reshapes work done under a
+            different setting is a setting nobody can trust.
+          -->
+          <label class="opt" id="inside-lawn-opt" hidden>
+            <input type="checkbox" id="toggle-inside-lawn">
+            <span>Keep inferred patches inside the lawn
+              <small>A corner dragged past the lawn is held at its edge, and the
+                brush will not paint beyond it. Only affects what you draw or
+                move while this is on.</small>
+            </span>
+          </label>
+          <!-- For fixing one after the fact, without redrawing it. -->
+          <button class="ghost" id="btn-inferred" disabled>Mark as inferred</button>
+          <button class="ghost" id="btn-clear">Clear all</button>
+        </div>
+
+        <!--
+          The boundary is usually where the measurement should stop, but not
+          always: a recorded parcel often ends at the easement while the owner
+          mows to the kerb. Off by default, because counting the neighbour's
+          grass is the more expensive mistake.
+        -->
+        <label class="opt" id="outside-opt" hidden>
+          <input type="checkbox" id="toggle-outside">
+          <!--
+            It used to say "lets the Add brush paint past your boundary", which
+            was the whole truth about what it did and not about what it meant:
+            a corner dragged past the line went past it regardless, and the
+            square footage counted it. The sentence now describes the rule, and
+            the code keeps it for every tool rather than one of them.
+          -->
+          <span>Measure outside the property line
+            <small>Lets the brush and the corner tools go past your boundary.
+              Off, a corner dragged past it is held at the line. Turning it back
+              off trims everything to the line again — your detected lawn is kept,
+              not re-run.</small>
+          </span>
+        </label>
+
+      <details class="help">
+        <summary>How to correct the shape</summary>
+        <ul>
+          <li>The buttons down the right of the map choose <b>what you are
+            editing</b>. Only that thing responds to a touch, so correcting a
+            lawn outline can no longer move the property line by accident.</li>
+          <li><b>Line</b> edits the property boundary: tap a line to slide that
+            whole edge out to the road, or a corner to move, add or delete it.</li>
+          <li><b>Layers</b>, on the left of the map, switches between
+            photographs of the same ground taken in different years and
+            different light. Only the sources marked as measurable can be sent
+            to the AI; the rest are there to look at, and detection quietly
+            falls back to Mapbox for those. If shadows or leaf cover are hiding
+            your lawn, try another picture and detect again.</li>
+          <li><b>Lawn</b> edits the measured shape, with three tools:
+            <b>Points</b> to drag corners, <b>Add</b> to paint lawn in, and
+            <b>Erase</b> to rub out anything that is not lawn — a driveway the
+            AI grabbed, a flower bed, a neighbour's grass. The outline redraws
+            itself around what is left.</li>
+          <li><b>Add</b> works on an empty map too, so you can paint a lawn from
+            scratch instead of placing corners.</li>
+          <li>Tapping a line wins over tapping a corner, so extending stays the
+            easy gesture — aim right at a dot when you want the point itself.</li>
+          <li><b>Move</b> is the only mode where a whole shape can be dragged.
+            Everywhere else shapes are locked, so a stray touch with a brush
+            cannot slide your lawn across the map.</li>
+          <li><b>Trim or extend the edge</b> pulls the detected outline in or
+            pushes it out by up to three feet, all the way round. It re-reads
+            the detection you already paid for, so it costs nothing and runs no
+            new detection. Pulling in is the quickest way to shed thin slivers
+            the AI ran along a driveway or a fence.</li>
+          <li><b>Undo</b> is on the map as well as below it, since that is
+            where you are looking when something goes wrong.</li>
+          <li><b>Delete selected</b> removes a shape you don't mow.</li>
+          <li><b>Draw it myself</b> adds another patch — areas add up.</li>
+          <li>Yellow dots are corners taken straight from the county map.</li>
+          <li>The AI finds grass inside your property line only — the
+            neighbours' lawn is trimmed off automatically.</li>
+        </ul>
+        </details>
+      </div>
+
+      <!-- 4d. Saved maps --------------------------------------------------- -->
+      <!--
+        Kept in this browser only, for now. The list is built by app.js from
+        localStorage; the empty state is here so the tab says something useful
+        before anything has been saved.
+      -->
+      <div class="tabpane" id="pane-saved" role="tabpanel" aria-labelledby="tab-saved" hidden>
+        <p class="sub" id="saved-lead">Maps you have measured are kept on this
+          device so you can come back to them.</p>
+        <ul class="saves" id="saved-list"></ul>
+        <!--
+          Rewritten by renderSaves, because the true sentence depends on
+          whether there is an account: these live in this browser or they live
+          with you, and which one it is decides whether clearing browser data
+          loses them. The text here is the signed-out case, so the tab reads
+          correctly before any script has run.
+        -->
+        <p class="note" id="saved-note">Saved in this browser only — clearing
+          your browser data clears these.</p>
+        <button class="link" id="saved-signin" hidden>Sign in to keep them on every device</button>
+      </div>
+
+      <!-- 4e. What to do with a finished map ------------------------------ -->
+      <!--
+        Tools that act on a measurement rather than produce one. The first is
+        below; there will be others, so this pane is a list of tools and not
+        one tool's controls.
+      -->
+      <div class="tabpane" id="pane-plan" role="tabpanel" aria-labelledby="tab-plan" hidden>
+        <p class="sub" id="plan-lead">Your lawn is measured. These tools work on
+          the finished map.</p>
+
+        <!--
+          MEASURED PIECES TO WALK.
+
+          The point is checking your rate against the bag part-way through
+          rather than after the whole lawn is done. So the pieces are a whole
+          number of spreader passes across, and each one spans the lawn so you
+          can see where it ends while standing on it.
+        -->
+        <div class="tool" id="tool-segments">
+          <h3>Split into measured pieces</h3>
+          <p class="sub">Divide the lawn into chunks of a known size, so you can
+            check your rate against the bag part-way through instead of finding
+            out at the end.</p>
+
+          <label for="seg-size">Piece size</label>
+          <div class="stepper">
+            <button type="button" class="stepbtn" id="seg-size-minus" aria-label="Smaller pieces">−</button>
+            <input type="text" id="seg-size" inputmode="numeric" value="5000"
+                   aria-label="Square feet per piece">
+            <span class="stepunit">sq ft</span>
+            <button type="button" class="stepbtn" id="seg-size-plus" aria-label="Bigger pieces">+</button>
+          </div>
+
+          <label for="seg-width">Application width</label>
+          <div class="stepper">
+            <button type="button" class="stepbtn" id="seg-width-minus" aria-label="Narrower">−</button>
+            <input type="text" id="seg-width" inputmode="decimal" value="5"
+                   aria-label="How wide one pass is, in feet">
+            <span class="stepunit">ft</span>
+            <button type="button" class="stepbtn" id="seg-width-plus" aria-label="Wider">+</button>
+          </div>
+          <p class="sub">How wide one pass of your spreader or sprayer covers.
+            Pieces are cut to a whole number of passes, running along your
+            lawn's straightest edge.</p>
+
+          <p class="note">Only pieces that are close to the size you asked for
+            and walkable in one go are drawn — nothing wider than 10&nbsp;ft cuts
+            through a piece, so a tree is fine and a driveway is not. Ground
+            where no such piece fits is left clear and counted underneath.</p>
+
+          <div class="tools">
+            <button class="primary" id="seg-run">Split the lawn</button>
+            <button class="ghost" id="seg-clear" hidden>Clear the pieces</button>
+          </div>
+
+          <!--
+            The export offer moves to the top of the result, where it is the
+            obvious next action: the picture is the deliverable here. You take
+            it outside on a phone, or print it and put it in a pocket.
+          -->
+          <div class="seg-done" id="seg-done" hidden>
+            <p class="seg-summary" id="seg-summary"></p>
+            <div class="tools">
+              <button class="primary" id="seg-png">Save the picture</button>
+              <button class="ghost" id="seg-pdf">Print / save as PDF</button>
+            </div>
+            <ol class="seg-list" id="seg-list"></ol>
+            <div class="seg-notes" id="seg-notes" hidden></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Always available: the figure is the point, whichever tab is open. -->
+      <div class="exports">
+        <button class="ghost" id="btn-png">Save image</button>
+        <button class="ghost" id="btn-print">Save as PDF</button>
+      </div>
+    </section>
+
+    <!--
+      The rest of the toolbox, which lives on another site.
+
+      At the foot of the panel rather than in the header: the header has to
+      hold the allowance badge and the account on a 390px screen, and these are
+      somebody's next stop rather than something they need mid-measurement.
+      A menu and not two links, because there will be more of them.
+    -->
+    <div class="menuwrap" id="tools-wrap">
+      <button class="ghost" id="tools-btn" type="button"
+              aria-haspopup="true" aria-expanded="false" aria-controls="tools-menu">
+        More lawn tools
+      </button>
+      <!--
+        rel="noopener noreferrer" on both, which is not ceremony: without
+        noopener the opened page gets a handle on this one through
+        window.opener and can navigate it somewhere else.
+      -->
+      <div class="menu" id="tools-menu" role="menu" aria-labelledby="tools-btn" hidden>
+        <a role="menuitem" href="https://lawn-answers.com/?tool=SeedSelector"
+           target="_blank" rel="noopener noreferrer">
+          Seed Selector <small>advanced NTEP explorer</small>
+        </a>
+        <a role="menuitem" href="https://lawn-answers.com"
+           target="_blank" rel="noopener noreferrer">
+          Turf Tools <small>lawn-answers.com</small>
+        </a>
+      </div>
+    </div>
+
+    <p class="disclaimer">Measurements come from satellite imagery and public
+      county records. Treat them as a close estimate, not a survey.</p>
+  </aside>
+
+  <main class="mapwrap">
+    <div id="map"></div>
+
+    <!--
+      What you are editing, on the map rather than in the panel.
+
+      One mode at a time, and only the things that mode owns respond to a
+      touch. Before this, a tap near the property line while correcting a lawn
+      outline moved the property line, and the numbered detection pins sat on
+      top of everything whether or not they were relevant.
+    -->
+    <div class="maprail" id="maprail" role="toolbar" aria-label="Editing mode" hidden>
+      <button class="railbtn" id="mode-parcel" aria-pressed="false" title="Property line">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="1"
+          fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3.4 2.6"/></svg>
+        <span>Line</span>
+      </button>
+
+      <button class="railbtn" id="mode-pins" aria-pressed="false" title="Detection pins" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path
+          d="M12 2.6c-3.5 0-6.3 2.8-6.3 6.3 0 4.7 6.3 12.5 6.3 12.5s6.3-7.8 6.3-12.5c0-3.5-2.8-6.3-6.3-6.3z"
+          fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="9" r="2.3" fill="currentColor"/></svg>
+        <span>Pins</span>
+      </button>
+
+      <button class="railbtn" id="mode-move" aria-pressed="false" title="Move a whole shape">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path
+          d="M12 2.5v19M2.5 12h19M12 2.5l-3 3M12 2.5l3 3M12 21.5l-3-3M12 21.5l3-3M2.5 12l3-3M2.5 12l3 3M21.5 12l-3-3M21.5 12l3 3"
+          fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>Move</span>
+      </button>
+
+      <button class="railbtn" id="mode-shape" aria-pressed="false" title="Lawn shape">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8l6-4 10 5-3 9-9 1z"
+          fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+        <span>Lawn</span>
+      </button>
+
+      <button class="railbtn railundo" id="rail-undo" disabled title="Undo the last change">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path
+          d="M4 9h10.5a4.5 4.5 0 0 1 0 9H8M4 9l4-4M4 9l4 4"
+          fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>Undo</span>
+      </button>
+
+      <!-- Sub-tools, only while the lawn shape is being edited. -->
+      <div class="railsub" id="shape-tools" hidden>
+        <button class="railbtn sub" id="tool-points" aria-pressed="false" title="Move corners">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 17l5-9 4 5 5-7"
+            fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <circle cx="5" cy="17" r="2.4" fill="currentColor"/><circle cx="10" cy="8" r="2.4" fill="currentColor"/>
+            <circle cx="14" cy="13" r="2.4" fill="currentColor"/><circle cx="19" cy="6" r="2.4" fill="currentColor"/></svg>
+          <span>Points</span>
+        </button>
+        <!--
+          THE BRUSHES, COLLAPSED TO ONE ICON WHILE CORRECTING CORNERS.
+
+          Add and Erase are two halves of one tool and neither is reachable
+          from a corner: while Points is live they are a pair of buttons taking
+          up the room the corner tools need. This is the way back to them, and
+          it opens whichever of the two was last in hand — the pair appears
+          again once one of them is live, because THEN switching between them
+          is the thing you want.
+        -->
+        <!--
+          A PAINT BRUSH, AND IT USED TO BE A MAGNIFYING GLASS.
+
+          All three of these were a circle with a diagonal handle on it, which
+          is the universal icon for zoom -- and the two with a + and a - inside
+          the circle were the universal icons for zoom IN and zoom OUT,
+          sitting in a vertical strip down the right of a map, which is exactly
+          where every other map in the world puts its zoom buttons. They do not
+          zoom. They paint lawn in and rub it out, and they are the two tools
+          the whole job turns on.
+
+          The handle points down-right and the head sits up-left in all three,
+          so the weight of the icon has not moved from where the eye had learnt
+          to find it. The + and the - are badges in the corner now rather than
+          marks inside a lens: a sign inside a round outline is the thing being
+          got away from.
+        -->
+        <button class="railbtn sub" id="tool-brushes" aria-pressed="false" title="Back to the brushes">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <g transform="rotate(135 12 12)">
+              <line x1="12" y1="1.9" x2="12" y2="10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <rect x="9.6" y="9.5" width="4.8" height="2.9" rx="0.6" fill="currentColor"/>
+              <path d="M9 12.9H15L16 17.6Q16 18.6 15 18.6H9Q8 18.6 8 17.6Z" fill="currentColor"/>
+            </g></svg>
+          <span>Brushes</span>
+        </button>
+        <button class="railbtn sub" id="tool-add" aria-pressed="false" title="Paint lawn in">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <g transform="rotate(135 12 12)">
+              <line x1="12" y1="1.9" x2="12" y2="10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <rect x="9.6" y="9.5" width="4.8" height="2.9" rx="0.6" fill="currentColor"/>
+              <path d="M9 12.9H15L16 17.6Q16 18.6 15 18.6H9Q8 18.6 8 17.6Z" fill="currentColor"/>
+            </g>
+            <line x1="16.4" y1="4.6" x2="22" y2="4.6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <line x1="19.2" y1="1.8" x2="19.2" y2="7.4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <span>Add</span>
+        </button>
+        <button class="railbtn sub" id="tool-erase" aria-pressed="false" title="Rub lawn out">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <g transform="rotate(135 12 12)">
+              <line x1="12" y1="1.9" x2="12" y2="10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <rect x="9.6" y="9.5" width="4.8" height="2.9" rx="0.6" fill="currentColor"/>
+              <path d="M9 12.9H15L16 17.6Q16 18.6 15 18.6H9Q8 18.6 8 17.6Z" fill="currentColor"/>
+            </g>
+            <line x1="16.4" y1="4.6" x2="22" y2="4.6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <span>Erase</span>
+        </button>
+
+        <!--
+          THE CORNER TOOLS, which appear only with Points.
+
+          A handle toggle means nothing to a brush, and an eraser for corners
+          beside the one that rubs out lawn would be two Erase buttons behaving
+          differently. So the rail trades: while a brush is live these are
+          gone, and while Points is live the brushes fold into one icon above.
+
+          Two columns rather than one. Five of these in a single stack, under
+          three mode buttons, runs off the bottom of a phone screen -- and the
+          rail is drawn over the map it is for.
+        -->
+        <div class="railsub railgrid" id="point-tools" hidden>
+          <button class="railbtn sub" id="tool-handles" aria-pressed="false"
+                  title="Show a drag handle on every corner">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="7" cy="17" r="2.2" fill="currentColor"/>
+              <line x1="8.6" y1="15.4" x2="15" y2="9" stroke="currentColor"
+                    stroke-width="1.6" stroke-linecap="round"/>
+              <circle cx="17" cy="7" r="4" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+            <span>Handles</span>
+          </button>
+          <button class="railbtn sub" id="tool-unpoint" aria-pressed="false"
+                  title="Tap a corner to delete it">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <circle cx="8" cy="10" r="2.6" fill="none" stroke="currentColor" stroke-width="1.9"/>
+              <line x1="13" y1="6" x2="20" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <line x1="20" y1="6" x2="13" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <span>Remove</span>
+          </button>
+
+          <!--
+            Making geometry, from the map rather than from the panel. Both of
+            these already exist as panel buttons and both are things you reach
+            for WHILE correcting corners -- a missed patch, a shed to cut out
+            -- so reaching them meant leaving the map, scrolling, pressing, and
+            coming back. Same handlers, so the two cannot drift apart.
+          -->
+          <button class="railbtn sub" id="tool-newpatch" title="Draw another patch of lawn">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 8l6-4 10 5-3 9-9 1z" fill="none" stroke="currentColor"
+                    stroke-width="1.8" stroke-linejoin="round"/>
+              <line x1="12" y1="8" x2="12" y2="14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <line x1="9" y1="11" x2="15" y2="11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <span>Patch</span>
+          </button>
+          <button class="railbtn sub" id="tool-cutout" title="Trace something to take out of the lawn">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 8l6-4 10 5-3 9-9 1z" fill="none" stroke="currentColor"
+                    stroke-width="1.8" stroke-linejoin="round"/>
+              <rect x="9" y="8" width="6" height="5" fill="none" stroke="currentColor"
+                    stroke-width="1.8" stroke-dasharray="2 1.6"/></svg>
+            <span>Cut out</span>
+          </button>
+
+          <!--
+            One-shot, where Remove is a mode. After dragging a corner it is
+            still selected, so this is "that one was a mistake" without having
+            to aim at it a second time -- and without the trip to the panel,
+            where the same button has been sitting out of sight.
+          -->
+          <button class="railbtn sub" id="tool-delpoint" title="Delete the corner you last touched">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="9" cy="12" r="3.2" fill="currentColor"/>
+              <line x1="14" y1="12" x2="20" y2="12" stroke="currentColor"
+                    stroke-width="2.4" stroke-linecap="round"/></svg>
+            <span>Delete</span>
+          </button>
+        </div>
+
+        <!-- Brush width. Only while a brush is live: it means nothing to the
+             corner tool, and a control that does nothing is worse than absent.
+             The dots are drawn at the real relative sizes. -->
+        <div class="railsize" id="brush-sizes" hidden>
+          <button class="railbtn sub" id="size-fine" aria-pressed="false" title="Narrow brush, for trimming">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>
+            <span>Fine</span>
+          </button>
+          <button class="railbtn sub" id="size-bulk" aria-pressed="true" title="Wide brush, for clearing">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="currentColor"/></svg>
+            <span>Bulk</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Layers, on the left. The classic stack-of-sheets, because that is what
+         everyone already reaches for to change what the map is showing. -->
+    <div class="maprail maprail-left" id="maprail-left" hidden>
+      <button class="railbtn" id="btn-layers" aria-pressed="false" title="Choose the satellite image">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 3 2.5 8 12 13l9.5-5L12 3z" fill="none" stroke="currentColor"
+                stroke-width="1.9" stroke-linejoin="round"/>
+          <path d="M2.5 12.2 12 17.2l9.5-5" fill="none" stroke="currentColor"
+                stroke-width="1.9" stroke-linejoin="round"/>
+          <path d="M2.5 16.4 12 21.4l9.5-5" fill="none" stroke="currentColor"
+                stroke-width="1.9" stroke-linejoin="round"/>
+        </svg>
+        <span>Layers</span>
+      </button>
+
+      <!-- The sources themselves, on the map rather than down in the panel:
+           you are comparing photographs, so the choice belongs next to the
+           photograph. Populated from /api/config. -->
+      <div class="layerlist" id="layer-list" role="menu" aria-label="Satellite image" hidden></div>
+    </div>
+
+    <!--
+      One tip at a time, pointed at the thing it is talking about.
+
+      Placed by app.js from the target button's own position, so it keeps
+      pointing at the right control on any screen width.
+    -->
+    <div class="coach" id="coach" role="dialog" aria-live="polite" hidden>
+      <div class="coach-arrow" id="coach-arrow" hidden></div>
+      <p class="coach-title" id="coach-title"></p>
+      <p class="coach-text" id="coach-text"></p>
+      <button class="coach-ok" id="coach-ok">Got it</button>
+    </div>
+
+    <!--
+      Shown while a held press has taken the gesture away from the tool. A
+      cursor change says this on a desktop; on a phone there is no cursor, and
+      "why is the map moving instead of painting" needs an answer on screen.
+    -->
+    <div class="panbadge" id="pan-badge" hidden aria-hidden="true">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M9 11V5.4a1.4 1.4 0 0 1 2.8 0V11m0-1.2V4.3a1.4 1.4 0 0 1 2.8 0v5.5m0-.7a1.4 1.4 0 0 1 2.8 0V15m-8.4-4a1.4 1.4 0 0 0-2.8 0v3.2c0 3.6 2.4 6.6 6 6.6h1.4c3 0 5.4-2.4 5.4-5.4V11"
+              fill="none" stroke="currentColor" stroke-width="1.7"
+              stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span>Panning</span>
+    </div>
+
+    <!--
+      Asked once, at the handover from the AI's answer to your corrections.
+
+      That is the only moment anyone can answer it: before, there is nothing to
+      judge; after, you are busy and the original answer is gone. Four buttons
+      because "how much correcting did it take" has three useful answers and
+      one honest refusal, and the disclosure sits above them rather than in
+      small print below -- what is being sent is a picture of somebody's garden
+      and the address it belongs to, and that has to be readable before the
+      press, not after.
+    -->
+    <div class="feedback" id="feedback" role="dialog" aria-modal="true"
+         aria-labelledby="feedback-title" hidden>
+      <div class="feedback-card">
+        <p class="feedback-title" id="feedback-title">How did the AI do?</p>
+        <p class="feedback-why" id="feedback-why">This is the only way the detection gets better.
+          Answering sends <b>this map and its address</b> so a bad one can be
+          looked at and fixed. Skipping sends nothing.</p>
+
+        <button class="fb-opt" type="button" data-rating="great">
+          <b>Great</b><small>Little or no editing. Much faster than by hand.</small>
+        </button>
+        <button class="fb-opt" type="button" data-rating="close">
+          <b>Close enough</b><small>Some editing needed. Somewhat faster than by hand.</small>
+        </button>
+        <button class="fb-opt" type="button" data-rating="bad">
+          <b>Bad</b><small>A lot of editing. As slow as drawing it myself, or slower.</small>
+        </button>
+
+        <label class="sr-only" for="feedback-note">Anything else worth knowing</label>
+        <input type="text" id="feedback-note" maxlength="240"
+               placeholder="Optional: what did it get wrong?">
+
+        <button class="link" type="button" id="feedback-skip">Skip — send nothing</button>
+      </div>
+    </div>
+
+    <div class="hint" id="map-hint" hidden></div>
+    <div class="overlay" id="busy" hidden>
+      <div class="spinner" aria-hidden="true"></div>
+      <p id="busy-text">Working…</p>
+    </div>
+  </main>
+</div>
+
+<!--
+  EVERY STATE AND COUNTY WITH PROPERTY LINES.
+
+  A <dialog> rather than another overlay div. Escape closes it, the backdrop
+  is the browser's, focus stays inside it and returns to the button that
+  opened it -- all of which the feedback overlay had to be given by hand, and
+  none of which is worth writing twice.
+
+  Empty markup on purpose: everything inside is built from /api/coverage, which
+  is computed from the parcel registry on every request. A list of counties
+  typed into this file would be wrong by the next deploy, which is the exact
+  fault this whole feature exists to fix.
+
+  It is outside .app on purpose too. A dialog nested in a flex column that the
+  map overflows is a dialog that inherits a stacking context it should have
+  nothing to do with.
+-->
+<dialog id="coverage-dialog" class="sheet-dialog" aria-labelledby="coverage-title">
+  <button class="sheet-x" id="coverage-close" type="button" aria-label="Close">&times;</button>
+  <h2 class="sheet-title" id="coverage-title">Where we have property lines</h2>
+  <p class="sheet-why" id="coverage-lead">Loading…</p>
+  <div id="coverage-list"></div>
+  <p class="sheet-note">Everywhere else, you trace the property line yourself.
+    The measurement is exactly as accurate &mdash; a recorded parcel only saves
+    you the tracing.</p>
+</dialog>
+
+<!-- Rendered only when printing, so the PDF carries the numbers as text. -->
+<div class="printblock" id="printblock" aria-hidden="true">
+  <h1>Lawn measurement</h1>
+  <p id="print-address"></p>
+  <p class="print-figure"><span id="print-sqft"></span> sq ft</p>
+  <p id="print-detail"></p>
+  <p class="print-foot">Measured with Lawn Mapper · estimate from satellite
+    imagery and county parcel data, not a survey.</p>
+</div>
+
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.js"></script>
+<script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.js"></script>
+<script type="module" src="/app.js"></script>
+</body>
+</html>

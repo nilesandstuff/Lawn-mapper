@@ -1,0 +1,196 @@
+/**
+ * Geodesic area calculation for lawn polygons.
+ *
+ * Lives under public/lib/ because both sides need it: the browser imports it
+ * over HTTP to show a live figure while the user drags vertices, and the
+ * Worker imports it at build time to measure parcels server-side. One copy,
+ * so the number the user watches and the number the API returns cannot drift.
+ *
+ * CRITICAL: All input coordinates are [lng, lat] in WGS84 (EPSG:4326).
+ * Never pass projected (Web Mercator / EPSG:3857) coordinates to these
+ * functions. At Michigan's latitude (~43N), computing area in Web Mercator
+ * inflates the result by roughly 87% because of the projection's scale
+ * distortion. That error is invisible without a ground-truth check, which
+ * is exactly how a measurement tool ships quietly wrong.
+ *
+ * Implementation uses the spherical-excess method (Chamberlain & Duquette,
+ * NASA JPL) -- the same approach Turf.js uses. Accurate to well under 0.1%
+ * for parcel-sized polygons, which is far tighter than the underlying
+ * imagery and hand-drawn boundaries.
+ */
+
+const EARTH_RADIUS_M = 6378137; // WGS84 semi-major axis
+const SQM_PER_SQFT = 0.09290304;
+const SQM_PER_ACRE = 4046.8564224;
+
+const toRad = (deg) => (deg * Math.PI) / 180;
+
+/**
+ * Signed area of a single closed ring, in square meters.
+ * Sign indicates winding order; callers use the absolute value.
+ */
+function ringAreaSqM(ring) {
+  if (!Array.isArray(ring) || ring.length < 3) return 0;
+
+  // Tolerate rings that are not explicitly closed.
+  const pts = ring.slice();
+  const [fx, fy] = pts[0];
+  const [lx, ly] = pts[pts.length - 1];
+  if (fx !== lx || fy !== ly) pts.push([fx, fy]);
+
+  let total = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [lng1, lat1] = pts[i];
+    const [lng2, lat2] = pts[i + 1];
+    total +=
+      (toRad(lng2) - toRad(lng1)) *
+      (2 + Math.sin(toRad(lat1)) + Math.sin(toRad(lat2)));
+  }
+
+  return (total * EARTH_RADIUS_M * EARTH_RADIUS_M) / 2;
+}
+
+/**
+ * Area of a GeoJSON Polygon or MultiPolygon, in square meters.
+ * Interior rings (holes) are subtracted -- this is what makes a tree
+ * canopy cutout or a driveway exclusion actually reduce the total.
+ */
+function geometryAreaSqM(geometry) {
+  if (!geometry || !geometry.type) return 0;
+
+  if (geometry.type === 'Polygon') {
+    const [outer, ...holes] = geometry.coordinates;
+    let area = Math.abs(ringAreaSqM(outer));
+    for (const hole of holes) area -= Math.abs(ringAreaSqM(hole));
+    return Math.max(0, area);
+  }
+
+  if (geometry.type === 'MultiPolygon') {
+    return geometry.coordinates.reduce(
+      (sum, poly) => sum + geometryAreaSqM({ type: 'Polygon', coordinates: poly }),
+      0
+    );
+  }
+
+  if (geometry.type === 'Feature') return geometryAreaSqM(geometry.geometry);
+
+  if (geometry.type === 'FeatureCollection') {
+    return (geometry.features || []).reduce(
+      (sum, f) => sum + geometryAreaSqM(f),
+      0
+    );
+  }
+
+  return 0;
+}
+
+/**
+ * Square metres -> the measurement in every unit the UI needs.
+ *
+ * Split out from measure() so a caller that has adjusted the area can present
+ * it through the SAME rounding rules rather than reimplementing them. The
+ * overlap correction in the browser is exactly that caller: it scales the area
+ * down for ground counted twice, and a second copy of these five roundings
+ * would be a second chance for the printed figure to disagree with the one on
+ * screen.
+ *
+ * `precision` mirrors what we can honestly claim: satellite imagery is
+ * roughly 0.5-1 ft/px and users trace by hand, so square footage is
+ * rounded to the nearest 10 sq ft. Reporting 4,127 sq ft implies accuracy
+ * the input data does not have.
+ */
+function fromSquareMeters(sqm) {
+  const sqft = sqm / SQM_PER_SQFT;
+
+  return {
+    squareMeters: Math.round(sqm * 10) / 10,
+    squareFeet: Math.round(sqft / 10) * 10,
+    squareFeetRaw: sqft,
+    acres: Math.round((sqm / SQM_PER_ACRE) * 1000) / 1000,
+    // Turf application units -- Jake's audience thinks in these.
+    thousandSqFt: Math.round((sqft / 1000) * 100) / 100,
+  };
+}
+
+/**
+ * Primary entry point.
+ *
+ * NOTE FOR A FEATURECOLLECTION: this SUMS its features. Two shapes lying on
+ * top of each other are counted twice, because plain geodesic maths has no way
+ * to know they cover the same ground -- working that out means intersecting
+ * polygons, which this module deliberately does not do. The browser corrects
+ * for it before showing a total; see distinctFraction in mask.js. Anything
+ * else calling this on overlapping shapes will get the sum.
+ */
+function measure(geometry) {
+  return fromSquareMeters(geometryAreaSqM(geometry));
+}
+
+/**
+ * Every polygon in a thing, as a list of ring-arrays.
+ *
+ * THE COMPANION TO geometryAreaSqM, and it lives here so the two cannot
+ * disagree about what counts as a shape. They did: the overlap correction in
+ * app.js duck-typed `coordinates` -- any non-empty array was a polygon -- so a
+ * LineString went through it, whose coordinates ARE a non-empty array of
+ * numbers rather than of [lng, lat] pairs. Destructuring one threw, and the
+ * area function beside it had been quietly answering 0 for the same feature
+ * all along.
+ *
+ * MultiPolygon is split into its parts. Its coordinates nest one level
+ * deeper, so a caller expecting "ring 0 is the outer ring" gets a whole
+ * polygon instead -- which does not throw, and is worse for it: a bounding box
+ * computed from it is silently wrong.
+ */
+function polygonRings(thing) {
+  const out = [];
+  const walk = (g) => {
+    if (!g || !g.type) return;
+    if (g.type === 'Polygon') out.push(g.coordinates);
+    else if (g.type === 'MultiPolygon') out.push(...g.coordinates);
+    else if (g.type === 'Feature') walk(g.geometry);
+    else if (g.type === 'FeatureCollection') (g.features || []).forEach(walk);
+  };
+  walk(thing);
+
+  /*
+   * AND THE OUTER RING HAS TO BE A RING.
+   *
+   * "Is it a non-empty array" is not enough, and the difference is a crash. A
+   * Polygon whose coordinates are nested one level too shallow -- a bare ring
+   * where an array of rings belongs -- passes that test with ring 0 holding
+   * NUMBERS, and the first caller to destructure one as [lng, lat] throws. So
+   * does a ring with undefined in it.
+   *
+   * Checked to the depth the callers actually read: ring 0, its first point,
+   * and that the point is a pair of numbers.
+   */
+  const wellFormed = (rings) => {
+    const ring = rings?.[0];
+    if (!Array.isArray(ring) || ring.length < 3) return false;
+    return ring.every((p) => Array.isArray(p) && p.length >= 2
+      && Number.isFinite(p[0]) && Number.isFinite(p[1]));
+  };
+
+  const good = [];
+  for (const rings of out) {
+    if (wellFormed(rings)) { good.push(rings); continue; }
+    /*
+     * SAID OUT LOUD. A malformed polygon reaching here is somebody upstream
+     * building one wrongly, and silently dropping it would hide that -- the
+     * crash it used to cause is how this was found at all. console.error
+     * rather than a throw: the measurement must survive a bad shape, and the
+     * browser suite collects these with the check they happened after.
+     */
+    try {
+      console.error('polygonRings: dropped a malformed polygon,',
+        JSON.stringify(rings)?.slice(0, 200));
+    } catch { /* circular or huge: the message matters more than the detail */ }
+  }
+  return good;
+}
+
+export {
+  measure, fromSquareMeters, geometryAreaSqM, ringAreaSqM, polygonRings,
+  SQM_PER_SQFT,
+};

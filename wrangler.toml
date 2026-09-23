@@ -1,0 +1,81 @@
+name = "lawn-mapper"
+main = "worker/src/index.js"
+compatibility_date = "2025-09-01"
+
+# The site in public/ ships with the Worker as static assets. Assets are
+# matched first, so /, /app.js and friends are served straight from the edge;
+# anything with no matching file (i.e. /api/*) falls through to the Worker.
+#
+# Do NOT set not_found_handling = "single-page-application" here: that would
+# answer every unmatched path with index.html, and /api/* would never reach
+# the Worker at all.
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# Measurement quota counter. Create it before the first deploy:
+#   npx wrangler kv namespace create QUOTA
+# then paste the returned id below, replacing the placeholder.
+[[kv_namespaces]]
+binding = "QUOTA"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+# Accounts: people, sessions, saved maps and the credit ledger.
+#
+# SQL rather than another KV namespace because of one statement: "spend a
+# credit if there is one". Read-modify-write on a KV value is a race that
+# hands out free detections, and exclude mode fires several passes per press.
+# See worker/schema.sql.
+#
+# CI finds or creates this and fills in the id (tools/ci-prepare.js), then runs
+# the schema, which is idempotent. To do it by hand instead:
+#   npx wrangler d1 create lawn-mapper
+#   npx wrangler d1 execute lawn-mapper --remote --file=worker/schema.sql
+#
+# Leave the placeholder if you do not want accounts: the Worker treats a
+# missing binding as "signed out, always" and the site works as it did before.
+[[d1_databases]]
+binding = "DB"
+database_name = "lawn-mapper"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+
+# Finished lawn maps, kept as training material for a segmentation model.
+#
+# R2 rather than KV or D1 because these are aerial photographs -- a megabyte or
+# two each, where KV values are meant to be small and a D1 row holding a blob
+# would bloat every query that touches the table. R2 also has no egress fee,
+# which matters on the day somebody actually downloads the corpus to train on.
+#
+# The outline lives in D1 (see the `corpus` table) and points at the image by
+# key. Splitting them that way keeps "how many do we have, and how many are any
+# good" a fast SQL question rather than a bucket listing.
+#
+# CI creates it -- tools/ci-prepare.js looks for it and makes one if it is
+# missing, the same way it handles the KV namespace and the D1 database. There
+# is nothing to run by hand, which is the point: this project is deployed from
+# a phone. If the API token has no R2 permission, ci-prepare strips this block
+# and says so, and the deploy goes ahead without training images.
+#
+# OPTIONAL. A missing binding is not an error: the Worker keeps recording the
+# outlines and simply stores no picture, which is exactly what it did before
+# this bucket existed.
+[[r2_buckets]]
+binding = "CORPUS"
+bucket_name = "lawn-mapper-corpus"
+
+# Secrets are NOT set here -- anything in this file goes into git.
+# Set them from the CLI instead:
+#   npx wrangler secret put MAPBOX_TOKEN
+#   npx wrangler secret put REPLICATE_TOKEN
+
+# Normally you do NOT edit this block. CI appends it from the CUSTOM_DOMAIN
+# repository variable (tools/ci-prepare.js), which is why moving the site to a
+# new hostname is a one-field change and not a commit -- and why ci-prepare
+# refuses to run if a [[routes]] block is already here, rather than attaching
+# the Worker to two hostnames nobody asked for.
+#
+# Uncomment only to deploy from a laptop with `npx wrangler deploy`, where
+# there is no CI to fill it in.
+# [[routes]]
+# pattern = "lawnmap.nilesandstuff.com"
+# custom_domain = true

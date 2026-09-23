@@ -1,0 +1,122 @@
+name: 5. Test a real detection (COSTS MONEY)
+
+# Runs one real SAM 3 prediction and prints exactly what Replicate returns:
+# timing, status, and the shape of the output. Everything else in this repo is
+# free to run; this is not -- it is roughly the cost of one "Detect my lawn".
+#
+# Use it when detection misbehaves in a way the free checks cannot explain.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "spend" to confirm this costs a few cents'
+        required: true
+        default: ''
+      probe:
+        description: 'Which probe to run'
+        required: true
+        default: 'sam3-prompts'
+        type: choice
+        options:
+          - sam3-prompts
+          - candidates
+          - one-prediction
+      sources:
+        description: 'Imagery to compare, separated by | — mapbox, google, naip, ndvi'
+        required: false
+        default: 'mapbox'
+      negative:
+        description: 'For "candidates": what to rule OUT (models that accept a negative prompt)'
+        required: false
+        default: 'trees, forest, woods, bushes, shrubs'
+      models:
+        description: 'For "candidates": which to run — sam3,grounded_sam,langsam,fastsam'
+        required: false
+        default: 'sam3,grounded_sam,langsam,fastsam'
+      # Named "prompts" (plural) and sitting below "negative", which is a
+      # different box for a different probe. A run that quietly used the
+      # default list looks identical to one that ignored what you typed, so
+      # the probe now echoes the prompt it resolved before it spends anything.
+      prompts:
+        description: 'For "sam3-prompts": what to look for, separated by |. Blank = the default for the mode.'
+        required: false
+        default: ''
+      thresholds:
+        description: 'Confidence thresholds to compare, comma separated. Blank = model default.'
+        required: false
+        default: ''
+      address:
+        description: 'Address to test. Blank = a known Ottawa County house.'
+        required: false
+        default: ''
+      subtract:
+        description: 'Subtract mode: ask for buildings/trees/beds and measure what is left (for dormant grass)'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  probe:
+    name: One real prediction
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the confirmation
+        if: inputs.confirm != 'spend'
+        run: |
+          echo "::error::Type 'spend' to run this — it costs a few cents."
+          exit 1
+
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+
+      # Only this probe needs it, so it is not a project dependency.
+      - name: Install a PNG decoder
+        if: inputs.probe == 'sam3-prompts' || inputs.probe == 'candidates'
+        run: npm install pngjs jpeg-js --no-save
+
+      # Auditions replacements for the detector on a real lot: one prediction
+      # each, every one clipped to the same property line so the square
+      # footages are directly comparable.
+      - name: Audition replacement models
+        if: inputs.probe == 'candidates'
+        env:
+          MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
+          MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN }}
+          REPLICATE_TOKEN: ${{ secrets.REPLICATE_TOKEN }}
+          MODELS: ${{ inputs.models }}
+          PROMPT: ${{ inputs.prompts }}
+          NEGATIVE: ${{ inputs.negative }}
+          ADDRESS: ${{ inputs.address }}
+        run: node tools/probe-candidates.js
+
+      - name: Compare prompts and thresholds
+        if: inputs.probe == 'sam3-prompts'
+        env:
+          MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
+          MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN }}
+          REPLICATE_TOKEN: ${{ secrets.REPLICATE_TOKEN }}
+          # Needed to compare 'google' as a source; without it that row 403s.
+          GOOGLE_MAPS_KEY: ${{ secrets.GOOGLE_MAPS_KEY }}
+          SOURCES: ${{ inputs.sources }}
+          PROMPTS: ${{ inputs.prompts }}
+          THRESHOLDS: ${{ inputs.thresholds }}
+          ADDRESS: ${{ inputs.address }}
+          # Leave "prompts" and "thresholds" blank with this on: subtract mode
+          # supplies its own not-lawn prompt and its own sweep, and anything
+          # typed in those boxes overrides them.
+          SUBTRACT: ${{ inputs.subtract }}
+        run: node tools/probe-sam3.js
+
+      # One bare prediction against the default model, for when the question is
+      # "is Replicate answering at all" rather than "which prompt is better".
+      - name: Run one prediction
+        if: inputs.probe == 'one-prediction'
+        env:
+          MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
+          MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN }}
+          REPLICATE_TOKEN: ${{ secrets.REPLICATE_TOKEN }}
+        run: node tools/probe-replicate.js

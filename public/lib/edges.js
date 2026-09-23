@@ -1,0 +1,520 @@
+/**
+ * Pushing a boundary edge outward without losing its bearing.
+ *
+ * Recorded parcel lines often stop short of the road: the right-of-way
+ * easement belongs to the road authority, but the homeowner mows right up to
+ * the kerb. So the lawn is genuinely bigger than the parcel, along one edge.
+ *
+ * Dragging those two corners by hand loses the one thing the county record is
+ * actually good for -- the direction of the line. A frontage that is truly
+ * parallel to the street ends up slightly skewed, and every later
+ * measurement inherits that. So instead of moving corners, this moves the
+ * *edge*: it slides out along its own normal, staying exactly parallel, and
+ * the two corners slide along the neighbouring edges to meet it. Every edge
+ * in the polygon keeps the bearing the survey gave it; only the two adjacent
+ * edges change length.
+ *
+ * All geometry happens in a local metres frame and returns to WGS84 lng/lat,
+ * because that is the only thing area.js will accept.
+ */
+
+const R = 6378137; // WGS84 semi-major axis
+const toRad = (d) => (d * Math.PI) / 180;
+const toDeg = (r) => (r * 180) / Math.PI;
+
+/**
+ * A local flat frame centred on `origin`.
+ *
+ * Equirectangular about the origin: at parcel scale (a few hundred metres)
+ * the error is millimetres, and unlike Web Mercator it does not distort
+ * distance with latitude -- which matters, because the whole point here is
+ * moving an edge by a stated number of feet.
+ */
+export function makeFrame([lng0, lat0]) {
+  const k = Math.cos(toRad(lat0));
+  return {
+    toXY: ([lng, lat]) => [toRad(lng - lng0) * R * k, toRad(lat - lat0) * R],
+    toLngLat: ([x, y]) => [lng0 + toDeg(x / (R * k)), lat0 + toDeg(y / R)],
+  };
+}
+
+/** Drop a ring's repeated closing vertex, if present. */
+export function openRing(ring) {
+  if (ring.length < 2) return ring.slice();
+  const [fx, fy] = ring[0];
+  const [lx, ly] = ring[ring.length - 1];
+  return fx === lx && fy === ly ? ring.slice(0, -1) : ring.slice();
+}
+
+const closeRing = (pts) => [...pts, pts[0]];
+
+export function signedArea(pts) {
+  let a = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const [x1, y1] = pts[i];
+    const [x2, y2] = pts[(i + 1) % pts.length];
+    a += x1 * y2 - x2 * y1;
+  }
+  return a / 2;
+}
+
+const sub = (p, q) => [p[0] - q[0], p[1] - q[1]];
+const add = (p, q) => [p[0] + q[0], p[1] + q[1]];
+const scale = (p, s) => [p[0] * s, p[1] * s];
+const cross = (p, q) => p[0] * q[1] - p[1] * q[0];
+
+function normalise(v) {
+  const len = Math.hypot(v[0], v[1]);
+  return len < 1e-12 ? null : [v[0] / len, v[1] / len];
+}
+
+/**
+ * How far a corner may travel, as a multiple of the distance the edge moved.
+ *
+ * A corner slides along its neighbour, so it legitimately travels further
+ * than the edge itself: d/sin(angle). At 45 degrees that is 1.41x, at 15
+ * degrees 3.9x. Below that the neighbour is nearly parallel to the edge and
+ * the meeting point races away -- on a real digitised parcel, whose outlines
+ * are full of nearly-collinear vertices, that turned a 25 ft nudge on a 100
+ * ft edge into an extra 294,000 sq ft of "lawn".
+ *
+ * Past this limit, translating the corner with the edge is the sane answer:
+ * it bends one neighbour slightly instead of producing a spike.
+ */
+const MAX_CORNER_TRAVEL = 4;
+
+/** Where two infinite lines meet, or null if they are (near) parallel. */
+function intersect(p1, d1, p2, d2) {
+  const denom = cross(d1, d2);
+  // sin of the angle between two unit vectors. Below this they are parallel
+  // enough that no useful intersection exists.
+  if (Math.abs(denom) < 0.02) return null;
+  const t = cross(sub(p2, p1), d2) / denom;
+  return add(p1, scale(d1, t));
+}
+
+/** The intersection, unless it flings the corner implausibly far. */
+function slideCorner(corner, newLinePoint, newLineDir, neighbour, neighbourDir, fallback, limit) {
+  if (!neighbourDir) return fallback;
+  const hit = intersect(newLinePoint, newLineDir, neighbour, neighbourDir);
+  if (!hit) return fallback;
+  return Math.hypot(...sub(hit, corner)) > limit ? fallback : hit;
+}
+
+/** The closest point on segment ab to p, clamped to the segment's ends. */
+function closestOnSegment(p, a, b) {
+  const ab = sub(b, a);
+  const len2 = ab[0] ** 2 + ab[1] ** 2;
+  if (len2 < 1e-12) return a;
+  let t = ((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1]) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return add(a, scale(ab, t));
+}
+
+/** Perpendicular distance from p to segment ab. */
+function distanceToSegment(p, a, b) {
+  return Math.hypot(...sub(p, closestOnSegment(p, a, b)));
+}
+
+/**
+ * Which edge of a ring a point is nearest to.
+ * Returns { index, distanceM } — the index is the edge from vertex i to i+1.
+ */
+export function nearestEdge(ring, point) {
+  const verts = openRing(ring);
+  if (verts.length < 2) return null;
+
+  const frame = makeFrame(verts[0]);
+  const xy = verts.map(frame.toXY);
+  const p = frame.toXY(point);
+
+  let best = { index: 0, distanceM: Infinity };
+  for (let i = 0; i < xy.length; i++) {
+    const d = distanceToSegment(p, xy[i], xy[(i + 1) % xy.length]);
+    if (d < best.distanceM) best = { index: i, distanceM: d };
+  }
+  return best;
+}
+
+/** Length of one edge, in metres. */
+export function edgeLength(ring, index) {
+  const verts = openRing(ring);
+  if (verts.length < 2) return 0;
+  const frame = makeFrame(verts[0]);
+  const a = frame.toXY(verts[index % verts.length]);
+  const b = frame.toXY(verts[(index + 1) % verts.length]);
+  return Math.hypot(...sub(b, a));
+}
+
+/** The midpoint of one edge, in lng/lat — where to hang a UI handle. */
+export function edgeMidpoint(ring, index) {
+  const verts = openRing(ring);
+  const a = verts[index % verts.length];
+  const b = verts[(index + 1) % verts.length];
+  return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+}
+
+/**
+ * How close two consecutive edges must be in direction to count as one line.
+ *
+ * A surveyed frontage is rarely one segment in the county's data: it is
+ * digitised as a run of two or three that differ by a fraction of a degree.
+ * Treating them separately is both wrong for the user -- they think of it as
+ * "the edge along the road" -- and numerically hostile, because each segment
+ * is then its own near-parallel neighbour.
+ */
+const COLLINEAR_COS = Math.cos((3 * Math.PI) / 180);
+
+const dot = (p, q) => p[0] * q[0] + p[1] * q[1];
+
+function edgeDir(xy, i) {
+  const n = xy.length;
+  return normalise(sub(xy[(i + 1) % n], xy[i % n]));
+}
+
+/**
+ * The maximal run of consecutive edges pointing the same way as edge `index`.
+ * Returns { start, end } as edge indices, inclusive, possibly wrapping.
+ */
+export function edgeRun(ring, index) {
+  const verts = openRing(ring);
+  const n = verts.length;
+  if (n < 3) return { start: 0, end: 0, count: 1 };
+
+  const frame = makeFrame(verts[0]);
+  const xy = verts.map(frame.toXY);
+  const i = ((index % n) + n) % n;
+  const dir = edgeDir(xy, i);
+  if (!dir) return { start: i, end: i, count: 1 };
+
+  const aligned = (j) => {
+    const d = edgeDir(xy, ((j % n) + n) % n);
+    return d && dot(d, dir) > COLLINEAR_COS;
+  };
+
+  let start = i;
+  let end = i;
+  let count = 1;
+  // Never swallow the whole ring: a circle-ish polygon would otherwise become
+  // one "edge" and the operation would lose all meaning.
+  while (count < n - 2 && aligned(start - 1)) { start -= 1; count += 1; }
+  while (count < n - 2 && aligned(end + 1)) { end += 1; count += 1; }
+
+  return { start: ((start % n) + n) % n, end: ((end % n) + n) % n, count };
+}
+
+/**
+ * Slide the edge at `index` outward by `metres`, keeping it parallel.
+ *
+ * Negative distances pull it inward, which is how the user backs off an
+ * overshoot.
+ *
+ * The whole near-collinear run containing that edge moves together: every
+ * vertex in the run is translated by the same vector, so all the bearings
+ * inside the run are preserved exactly, and only the two vertices at the ends
+ * of the run slide along their outside neighbours. Every other vertex, and
+ * every other edge's bearing, is untouched.
+ */
+export function offsetEdge(ring, index, metres) {
+  const verts = openRing(ring);
+  const n = verts.length;
+  if (n < 3 || !Number.isFinite(metres)) return closeRing(verts);
+
+  const frame = makeFrame(verts[0]);
+  const xy = verts.map(frame.toXY);
+
+  const run = edgeRun(ring, index);
+  const dir = edgeDir(xy, run.start);
+  if (!dir) return closeRing(verts); // degenerate edge
+
+  // Outward normal. For a counter-clockwise ring the outward side of an edge
+  // running a->b is (dy, -dx); clockwise rings flip it.
+  const ccw = signedArea(xy) > 0;
+  const normal = ccw ? [dir[1], -dir[0]] : [-dir[1], dir[0]];
+  const shift = scale(normal, metres);
+
+  // Vertices of the run: run.start .. run.end + 1, inclusive, wrapping.
+  const idx = [];
+  for (let k = 0; k <= run.count; k++) idx.push((run.start + k) % n);
+
+  const out = xy.slice();
+  for (const j of idx) out[j] = add(xy[j], shift);
+
+  // The two ends slide along the edges just outside the run, which is what
+  // keeps those neighbours' bearings intact.
+  const firstV = idx[0];
+  const lastV = idx[idx.length - 1];
+  const beforeRun = xy[(run.start - 1 + n) % n];
+  const afterRun = xy[(run.end + 2) % n];
+  const prevDir = normalise(sub(xy[firstV], beforeRun));
+  const nextDir = normalise(sub(afterRun, xy[lastV]));
+  const limit = Math.max(Math.abs(metres) * MAX_CORNER_TRAVEL, 0.5);
+
+  const startDir = edgeDir(xy, run.start);
+  const endDir = edgeDir(xy, run.end);
+
+  out[firstV] = slideCorner(out[firstV], out[firstV], startDir, beforeRun, prevDir, out[firstV], limit);
+  out[lastV] = slideCorner(out[lastV], out[lastV], endDir, afterRun, nextDir, out[lastV], limit);
+
+  return closeRing(out.map(frame.toLngLat));
+}
+
+/* ------------------------------------------------------- editing vertices */
+/*
+ * Sliding a whole edge keeps the survey's bearings, which is right for a
+ * frontage that runs to the road. It is the wrong tool for a corner the county
+ * digitised badly, or a run of three points a foot apart where one would do.
+ * Those need the vertices themselves, so: move one, add one, remove one.
+ *
+ * All three take and return closed rings, so they compose with offsetEdge and
+ * with everything downstream that expects a ring it can measure.
+ */
+
+/** Move one vertex to a new position. */
+export function moveVertex(ring, index, lngLat) {
+  const verts = openRing(ring);
+  const n = verts.length;
+  if (n < 3) return closeRing(verts);
+  verts[((index % n) + n) % n] = [lngLat[0], lngLat[1]];
+  return closeRing(verts);
+}
+
+/**
+ * Insert a vertex on the edge at `index`.
+ *
+ * `at` is where the user tapped, which is never exactly on the line, so it is
+ * projected onto the segment first. Dropping the point where they touched
+ * instead would put a kink in a boundary they only meant to subdivide.
+ */
+export function insertVertex(ring, index, at) {
+  const verts = openRing(ring);
+  const n = verts.length;
+  if (n < 2) return closeRing(verts);
+
+  const i = ((index % n) + n) % n;
+  const frame = makeFrame(verts[0]);
+  const a = frame.toXY(verts[i]);
+  const b = frame.toXY(verts[(i + 1) % n]);
+  const p = frame.toXY(at);
+
+  const ab = sub(b, a);
+  const len2 = ab[0] ** 2 + ab[1] ** 2;
+  let t = len2 < 1e-12 ? 0 : ((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1]) / len2;
+  t = Math.max(0, Math.min(1, t));
+
+  verts.splice(i + 1, 0, frame.toLngLat(add(a, scale(ab, t))));
+  return closeRing(verts);
+}
+
+/**
+ * Remove one vertex.
+ *
+ * A polygon needs three, so the third-to-last removal is refused: returning
+ * the ring unchanged lets the caller say so rather than producing a degenerate
+ * shape whose area is zero and whose failure appears somewhere else entirely.
+ */
+export function deleteVertex(ring, index) {
+  const verts = openRing(ring);
+  const n = verts.length;
+  if (n <= 3) return null;
+  verts.splice(((index % n) + n) % n, 1);
+  return closeRing(verts);
+}
+
+/**
+ * How far a point may sit from the line between its neighbours and still be
+ * considered redundant, in metres.
+ *
+ * A county boundary is digitised, not drawn: the Ottawa parcel this was built
+ * against has 61 vertices, one pair of which sits 10 cm apart. Those points
+ * carry no information -- they are below the accuracy of the survey and far
+ * below the resolution of the photograph -- but they are what makes the
+ * boundary fiddly to grab, and moving one changes the area by nothing.
+ *
+ * A tenth of a metre is well under a hand's width, so nothing a person could
+ * have placed deliberately at this scale is at risk.
+ */
+export const TIDY_TOLERANCE_M = 0.1;
+
+/**
+ * Drop points that lie (almost exactly) on the line between their neighbours.
+ *
+ * Douglas-Peucker would be the reflex, but it is the wrong tool: it is
+ * shape-simplification, and it will happily cut a real corner to meet a
+ * budget. This only ever removes a point whose own deviation is under the
+ * tolerance, so every corner that carries any shape at all survives.
+ *
+ * The area is not preserved exactly. Removing a point that sits `d` from the
+ * chord between its neighbours changes the area by at most d x chord / 2, so
+ * the total is bounded by tolerance x perimeter / 2 -- for a quarter-acre lot
+ * at 0.1 m that is under 8 m^2, or a fraction of a percent, and it is
+ * comfortably inside the accuracy of the survey it came from. Where two points
+ * sit 10 cm apart it is genuinely arbitrary which one survives, and the corner
+ * moves by that 10 cm either way.
+ *
+ * Iterates, because removing one point can leave its neighbour redundant in
+ * turn -- a run of five collinear points needs more than one pass to become
+ * two. Returns { ring, removed }.
+ */
+export function tidyRing(ring, toleranceM = TIDY_TOLERANCE_M) {
+  let verts = openRing(ring);
+  if (verts.length < 4) return { ring: closeRing(verts), removed: 0 };
+
+  const frame = makeFrame(verts[0]);
+  let removed = 0;
+  let changed = true;
+
+  while (changed && verts.length > 3) {
+    changed = false;
+    for (let i = 0; i < verts.length && verts.length > 3; i++) {
+      const n = verts.length;
+      const prev = frame.toXY(verts[(i - 1 + n) % n]);
+      const here = frame.toXY(verts[i]);
+      const next = frame.toXY(verts[(i + 1) % n]);
+
+      if (distanceToSegment(here, prev, next) <= toleranceM) {
+        verts.splice(i, 1);
+        removed++;
+        changed = true;
+        i--; // the next point shifted into this slot; judge it too
+      }
+    }
+  }
+
+  return { ring: closeRing(verts), removed };
+}
+
+/**
+ * Which vertex of a ring a point is nearest to.
+ * Returns { index, distanceM }.
+ */
+export function nearestVertex(ring, point) {
+  const verts = openRing(ring);
+  if (!verts.length) return null;
+
+  const frame = makeFrame(verts[0]);
+  const p = frame.toXY(point);
+
+  let best = { index: 0, distanceM: Infinity };
+  for (let i = 0; i < verts.length; i++) {
+    const d = Math.hypot(...sub(frame.toXY(verts[i]), p));
+    if (d < best.distanceM) best = { index: i, distanceM: d };
+  }
+  return best;
+}
+
+/** Compass bearing of an edge, in degrees from north. For display and tests. */
+export function edgeBearing(ring, index) {
+  const verts = openRing(ring);
+  const n = verts.length;
+  const frame = makeFrame(verts[0]);
+  const a = frame.toXY(verts[index % n]);
+  const b = frame.toXY(verts[(index + 1) % n]);
+  const [dx, dy] = sub(b, a);
+  return (toDeg(Math.atan2(dx, dy)) + 360) % 360;
+}
+
+/**
+ * The point on a ring's boundary closest to somewhere else.
+ *
+ * What a corner dragged past the property line is held at. Snapping it to the
+ * nearest CORNER of the boundary would jump it metres away from the finger;
+ * the nearest point on the nearest EDGE is where the finger actually is, as
+ * near as the boundary allows, so the corner slides along the line instead of
+ * sticking or leaping.
+ *
+ * Returns { at, distanceM } in lng/lat, or null for a ring that is not one.
+ */
+export function nearestPointOnRing(ring, point) {
+  const verts = openRing(ring);
+  if (verts.length < 2) return null;
+
+  const frame = makeFrame(verts[0]);
+  const xy = verts.map(frame.toXY);
+  const p = frame.toXY(point);
+
+  let best = null;
+  for (let i = 0; i < xy.length; i++) {
+    const q = closestOnSegment(p, xy[i], xy[(i + 1) % xy.length]);
+    const d = Math.hypot(...sub(p, q));
+    if (!best || d < best.d) best = { d, q };
+  }
+  return { at: frame.toLngLat(best.q), distanceM: best.d };
+}
+
+/**
+ * Is this point inside this ring?
+ *
+ * Ray casting, counting how many edges a line drawn east from the point
+ * crosses: odd is inside. Done in lng/lat directly rather than in a local
+ * metre frame, because crossing counts are a topological question -- a
+ * projection can move where the edges are but not which side of them a point
+ * falls, as long as both go through the same one.
+ *
+ * A point exactly ON an edge is not defined either way and is not worth
+ * defining: nothing here asks about a corner of the ring itself.
+ */
+export function ringContains(ring, [lng, lat]) {
+  const verts = openRing(ring);
+  let inside = false;
+  for (let i = 0, j = verts.length - 1; i < verts.length; j = i++) {
+    const [xi, yi] = verts[i];
+    const [xj, yj] = verts[j];
+    const straddles = (yi > lat) !== (yj > lat);
+    if (straddles && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+/**
+ * Does `inner` lie wholly inside `outer`?
+ *
+ * Every corner inside is the test, which is not the same as the whole ring
+ * being inside -- two rings can interleave with all of one's corners inside
+ * the other and their edges still crossing. That case needs a segment
+ * intersection sweep, and the one caller here is a person tracing a shed
+ * inside a lawn: an outline that weaves in and out of the lawn's edge is not
+ * something they are trying to do, and the corner test refuses the ordinary
+ * mistake -- a cut drawn half off the lawn -- which is the one worth catching.
+ */
+export function ringInsideRing(inner, outer) {
+  const verts = openRing(inner);
+  return verts.length > 2 && verts.every((p) => ringContains(outer, p));
+}
+
+export const FEET_PER_METRE = 3.280839895;
+export const feetToMetres = (ft) => ft / FEET_PER_METRE;
+export const metresToFeet = (m) => m * FEET_PER_METRE;
+
+/**
+ * Hold a point inside a set of rings, or leave it where it is.
+ *
+ * The rule behind "keep inferred patches inside the lawn", and behind the
+ * property line holding an ordinary corner. Two things make it what it is:
+ *
+ * HELD AT THE EDGE, NOT REFUSED. A corner that stops dead under a moving
+ * finger reads as a bug, and one that snaps back loses the drag. The nearest
+ * point on the boundary is where the finger is, as near as the boundary
+ * allows, so the corner slides along the edge -- which is the shape somebody
+ * tracing the boundary of a canopy is trying to draw anyway.
+ *
+ * INSIDE ANY RING COUNTS. A lawn is often several disconnected pieces, and
+ * requiring one particular piece would hold a corner at the edge of a shape it
+ * has nothing to do with.
+ *
+ * An empty list holds nothing. Being unable to draw an inferred patch on a map
+ * with no ordinary lawn yet would be a worse rule than letting one go where it
+ * likes.
+ */
+export function heldInsideRings(rings, point) {
+  const list = (rings || []).filter((r) => Array.isArray(r) && r.length >= 4);
+  if (!list.length) return point;
+  if (list.some((ring) => ringContains(ring, point))) return point;
+
+  let best = null;
+  for (const ring of list) {
+    const near = nearestPointOnRing(ring, point);
+    if (near && (!best || near.distanceM < best.distanceM)) best = near;
+  }
+  return best ? best.at : point;
+}

@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lawn Mapper — your maps</title>
+<!--
+  WHAT A PAID TRACER CAN SEE ABOUT THEIR OWN WORK.
+
+  Everything else in this project is built for the owner. This one page is
+  built for the person doing the tracing, and it exists because "did my map get
+  approved" is otherwise unanswerable from their side -- which would leave them
+  taking somebody's word for what they are owed. Nobody should have to do that
+  for 75 cents a map.
+
+  It is also where the payout destination is changed, so a typo is a thing
+  somebody can fix themselves rather than a support request with no support.
+
+  NOT AN ADMIN PAGE. Every number here is read from the signed-in account and
+  there is no parameter that names a worker, so there is nothing to tamper with
+  and nothing to see about anybody else.
+-->
+<link href="/styles.css" rel="stylesheet">
+<link href="/console.css" rel="stylesheet">
+<style>
+  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  @media (min-width: 520px) { .stats { grid-template-columns: repeat(4, 1fr); } }
+  .stat {
+    border: 1px solid var(--line); border-radius: 12px; padding: 11px 12px;
+    background: #fff;
+  }
+  .stat b { display: block; font-size: 22px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .stat span { font-size: 11.5px; color: var(--muted); }
+  .stat.good b { color: #1f5b22; }
+  .stat.waiting b { color: #8a5a00; }
+
+  .earned {
+    display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+    padding: 14px; border-radius: 12px; background: #eef6ee;
+    border: 1px solid #9ec5a1;
+  }
+  .earned b { font-size: 26px; color: #1f5b22; font-variant-numeric: tabular-nums; }
+  .earned span { font-size: 12.5px; color: #2c4a2e; }
+  .cashout { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+  .cashout button { margin: 0; }
+
+  .payout { display: grid; gap: 8px; }
+  .payout input {
+    font: inherit; font-size: 14px; padding: 10px 12px;
+    border: 1px solid var(--line); border-radius: 10px; width: 100%;
+  }
+  .payrow { display: flex; gap: 8px; flex-wrap: wrap; }
+  .payrow button { margin: 0; }
+  .kinds { display: flex; gap: 6px; }
+  .kinds button {
+    font: inherit; font-size: 12.5px; padding: 6px 12px; cursor: pointer;
+    border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--muted);
+  }
+  .kinds button.on { background: #eaf2ea; border-color: #9ec5a1; color: #1f5b22; font-weight: 600; }
+
+  table.maps { border-collapse: collapse; width: 100%; font-size: 13px; }
+  table.maps th, table.maps td {
+    text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line);
+  }
+  table.maps th { font-size: 11.5px; color: var(--muted); font-weight: 600; }
+  .tag {
+    display: inline-block; padding: 1px 8px; border-radius: 999px;
+    font-size: 11px; font-weight: 700;
+  }
+  .tag.kept      { background: #e4f2e5; color: #1f5b22; }
+  .tag.submitted { background: #fdf6e6; color: #7a5a10; }
+  .tag.excused   { background: #f3ecfb; color: #573a80; }
+  .tag.refused   { background: #fdeceb; color: #b3261e; }
+  .tag.requested { background: #fdf6e6; color: #7a5a10; }
+  .tag.paid      { background: #e4f2e5; color: #1f5b22; }
+  .tag.returned  { background: #fdeceb; color: #b3261e; }
+</style>
+</head>
+<body>
+
+<div class="console">
+  <div class="conhead">
+    <h1>Your maps</h1>
+    <a href="/?via=paid">← back to tracing</a>
+  </div>
+
+  <div class="locked-out" id="locked" hidden>
+    <p>Sign in to see your maps and where payments go.</p>
+    <p><a href="/?via=paid">Open the tracing link →</a></p>
+  </div>
+
+  <div id="page" hidden>
+    <div class="card">
+      <div class="stats">
+        <div class="stat good"><b id="s-approved">—</b><span>approved</span></div>
+        <div class="stat waiting"><b id="s-waiting">—</b><span>waiting on review</span></div>
+        <div class="stat"><b id="s-excused">—</b><span>hard lawns</span></div>
+        <div class="stat"><b id="s-refused">—</b><span>not accepted</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="earned">
+        <b id="earned">—</b>
+        <span id="earned-note"></span>
+      </div>
+      <!--
+        THE BUTTON THAT ASKS FOR THE MONEY. It moves nothing by itself: the
+        payment happens in Venmo or PayPal, by hand, elsewhere. What it does is
+        put a dated, itemised request in front of the owner so neither side has
+        to remember what was owed and whether it went out.
+      -->
+      <div class="cashout">
+        <button class="primary" id="cashout" type="button" disabled>Request payout</button>
+        <span class="sub" id="cashout-said" style="margin:0"></span>
+      </div>
+      <!--
+        Said here and not only at the moment of submitting. "Approved" is doing
+        real work in that sentence: a hard lawn that was excused counts for
+        nothing, and somebody who finds that out after twenty maps has a fair
+        complaint about it.
+      -->
+      <p class="sub" id="rate-note"></p>
+    </div>
+
+    <div class="card payout">
+      <h2 style="font-size:15px;margin:0">Where payments go</h2>
+      <div class="kinds" id="kinds">
+        <button type="button" data-kind="venmo">Venmo</button>
+        <button type="button" data-kind="paypal">PayPal</button>
+      </div>
+      <input id="handle" type="text" maxlength="120" autocomplete="off"
+             placeholder="Venmo username, or PayPal email">
+      <div class="payrow">
+        <button class="primary" id="save" type="button">Save</button>
+      </div>
+      <p class="sub" id="pay-said"></p>
+    </div>
+
+    <!--
+      EVERY REQUEST EVER MADE, INCLUDING THE ONES THAT CAME BACK. A returned
+      request is the awkward one and it is the reason this table exists: the
+      money reappears in the balance on its own, which looks like a mistake
+      unless somebody can see the row that explains it.
+    -->
+    <div class="card" id="pay-history" hidden>
+      <h2 style="font-size:15px;margin:0 0 8px">Payouts</h2>
+      <table class="maps">
+        <thead>
+          <tr><th>Asked</th><th>Amount</th><th>Where</th><th>Status</th></tr>
+        </thead>
+        <tbody id="payrows"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2 style="font-size:15px;margin:0 0 8px">Recent maps</h2>
+      <table class="maps">
+        <thead>
+          <tr><th>Where</th><th>Sent</th><th>How it went</th></tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <p class="sub" id="none" hidden>Nothing sent yet.</p>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="/mywork.js"></script>
+</body>
+</html>

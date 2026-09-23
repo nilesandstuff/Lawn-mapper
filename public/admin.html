@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lawn Mapper — console</title>
+<!--
+  THE CONSOLE.
+
+  A separate page rather than a tab inside the app, because it is a different
+  job for a different person: nothing here helps measure a lawn, and everything
+  here would be noise in a panel that is already three steps deep. It is also
+  the only page that should be reachable by exactly one person, and keeping
+  that boundary at the file level means the measuring app never carries the
+  code for it.
+
+  Built for a phone first, because that is the device the person who owns this
+  site actually has when a friend says the detection got their driveway.
+
+  Nothing is gated here in the markup -- the gate is on the API, which answers
+  404 to anybody who is not an administrator. A page that hides its own buttons
+  is not a permission system; it is a permission system's screenshot.
+-->
+<link href="/styles.css" rel="stylesheet">
+<!--
+  The column, the cards, the rows and the pills, shared with /maps.html. What
+  stays in the block below is the console's own: tiles, the day bars, the
+  review card, the people list. Anything two owner pages both want belongs in
+  console.css, not copied into a second <style>.
+-->
+<link href="/console.css" rel="stylesheet">
+<style>
+  /* Numbers first: on a phone this is what the page is for. */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+  .tile {
+    background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
+  }
+  .tile b { display: block; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+  .tile span { font-size: 12px; color: var(--muted); }
+  .tile small { display: block; font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+
+  /*
+   * A bar per day rather than a line chart. The question is "was yesterday
+   * unusual", which a reader answers by comparing heights -- and a bar that is
+   * a div needs no library, no canvas and no second network request.
+   */
+  .days { display: flex; align-items: flex-end; gap: 3px; height: 92px; }
+  .day { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; }
+  .day i {
+    display: block; background: var(--green); border-radius: 3px 3px 0 0; min-height: 2px;
+  }
+  .day u { display: block; font-size: 9px; color: var(--muted); text-align: center;
+           text-decoration: none; margin-top: 3px; overflow: hidden; }
+
+  .search { width: 100%; padding: 10px 12px; font: inherit; font-size: 15px;
+            border: 1px solid var(--line); border-radius: 10px; margin-bottom: 10px; }
+
+  .person {
+    border-top: 1px solid var(--line); padding: 11px 0;
+    display: grid; gap: 3px;
+  }
+  .person:first-of-type { border-top: 0; }
+  .person .who { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; }
+  .person .who b { font-size: 13.5px; }
+  .person .meta { font-size: 12px; color: var(--muted); }
+
+  /* How far behind one training-data target is. A bar rather than a bare
+     count, because "48 of 300" and "280 of 300" are the same shape of
+     sentence and very different amounts of work left. */
+  .bar { height: 5px; border-radius: 999px; background: #eef0ee; overflow: hidden; margin: 3px 0; }
+  .bar-fill { height: 100%; background: #b06a2c; border-radius: 999px; }
+  .bar-fill.bar-done { background: #4a8b4f; }
+  #corpus h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em;
+               color: var(--muted); margin: 14px 0 2px; }
+  #corpus .meta p { margin: 2px 0; font-size: 12px; color: var(--muted); }
+
+  /* The review card. One canvas, deliberately: the feedback page once asked
+     for sixty WebGL maps on a page that can hold about sixteen, and the ones
+     past the limit silently drew nothing. A 2D canvas has no such ceiling. */
+  #review canvas {
+    width: 100%; max-width: 560px; aspect-ratio: 1; display: block;
+    border: 1px solid var(--line); border-radius: 10px; background: #e9ecea;
+  }
+  #review .verdict { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  #review .verdict button {
+    font: inherit; font-size: 14px; font-weight: 600; padding: 10px 16px;
+    border: 1px solid var(--line); border-radius: 9px; background: #fff; cursor: pointer;
+    flex: 1 1 auto; min-width: 96px;
+  }
+  #review .approve { background: #e4f2e5; border-color: #9ec5a1; color: #1f5b22; }
+  #review .reject  { background: #f6eceb; border-color: #d3a9a4; color: #7d2d22; }
+  #review .why { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 2px; }
+
+  /*
+   * The canopy question, asked rather than stated.
+   *
+   * It was one plain button reading "No tree line" when unset, sitting in a
+   * row beside "Skip for now" and looking exactly like it — so on every
+   * candidate except an exclude-woods run (where it went green with a tick) it
+   * read as a caption reporting a fact, not a control asking something. It
+   * went unpressed, and every approved map came back unmarked.
+   *
+   * A heading and a row of three, so the question is visible before the
+   * answer is, and so the unanswered state looks unanswered.
+   */
+  #review .ask { margin-top: 12px; }
+  #review .ask h3 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--muted); margin: 0 0 6px;
+  }
+  #review .choices { display: flex; gap: 6px; flex-wrap: wrap; }
+  #review .choices button {
+    font: inherit; font-size: 13px; padding: 8px 12px; flex: 1 1 96px;
+    border: 1px solid var(--line); border-radius: 9px; background: #fff; cursor: pointer;
+  }
+  #review .choices button.on {
+    background: #e4f2e5; border-color: #9ec5a1; color: #1f5b22; font-weight: 600;
+  }
+  #review .ask .meta { font-size: 11.5px; color: var(--muted); margin: 6px 0 0; }
+  #queue-pick button.on,
+  #gap-sort button.on { background: var(--ink, #23301f); color: #fff; border-color: transparent; }
+  #review .actions button.on { background: #e4f2e5; border-color: #9ec5a1; color: #1f5b22; font-weight: 600; }
+  .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11.5px;
+            color: var(--muted); margin-top: 7px; }
+  .legend i { width: 11px; height: 3px; display: inline-block; vertical-align: middle;
+              margin-right: 4px; border-radius: 2px; }
+
+  .setting {
+    border-top: 1px solid var(--line); padding: 11px 0;
+    display: grid; gap: 3px;
+  }
+  .setting:first-of-type { border-top: 0; }
+  .setting b { font-size: 13.5px; }
+  .setting .meta { font-size: 11.5px; color: var(--muted); }
+  .setting .actions input { width: 92px; }
+
+  .rate { font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px; }
+  .rate.great { background: #e4f2e5; color: #1f5b22; }
+  .rate.close { background: #fdf3e0; color: #8a5a00; }
+  .rate.bad   { background: #fdeceb; color: #b3261e; }
+</style>
+</head>
+<body>
+
+<div class="console">
+  <div class="conhead">
+    <h1>Console</h1>
+    <a href="/">← back to the map</a>
+  </div>
+
+  <div class="locked-out" id="locked" hidden>
+    <p class="sub" id="locked-text">Checking…</p>
+    <a class="link" href="/">Go to the map</a>
+  </div>
+
+  <div id="body" hidden>
+    <div class="tiles" id="tiles"></div>
+
+    <div class="card">
+      <h2>AI passes, last 30 days</h2>
+      <div class="days" id="days"></div>
+      <p class="empty" id="days-empty" hidden>Nothing detected yet.</p>
+    </div>
+
+    <div class="card">
+      <h2>Daily limits</h2>
+      <p class="sub">
+        AI passes a day. Everyone gets an allowance that comes back in the
+        morning; signing in makes it bigger. Changes take effect within about
+        fifteen seconds, with no deploy.
+      </p>
+      <p class="sub">
+        A number you have never touched says <b>not changed yet</b> and follows
+        whatever the site was deployed with. Save one and it says
+        <b>changed here</b> — from then on it is set from this page and
+        redeploying will not move it. <b>Back to&nbsp;5</b> undoes that.
+      </p>
+      <div id="settings"><p class="empty">Loading…</p></div>
+    </div>
+
+    <div class="card">
+      <h2>Review candidates</h2>
+      <p class="sub">
+        Approved maps are the training set; everything else is a candidate.
+        <b>Most useful first</b> works towards a trainable pile fastest.
+        <b>Random</b> draws blind — those approvals are the only ones that can
+        make an honest "how accurate is it really" number, because a slice
+        picked for being interesting is not representative of anything.
+        <b>Needs a canopy grade</b> is maps already approved that nobody was
+        asked the canopy question about, back round to answer it.
+        <b>Approved</b> and <b>Rejected</b> are the maps already judged, newest
+        first — for looking again, fixing an outline, or changing your mind.
+      </p>
+      <!--
+        Standing back from the queue. The queues decide one map at a time,
+        which is right and is also why they cannot show that the same lawn is
+        in here twice -- the fault that made a re-save mint a second row.
+      -->
+      <p class="sub"><a href="/maps.html">Browse every map, and spot duplicates →</a></p>
+      <!--
+        The shapes, not the percentages. A training run draws the outline the
+        detector would have handed the drawing tools, per lawn; this is the way
+        in. The question over there is not "how wrong is it" but "could I fix
+        this faster than drawing it" -- which is what would let a half-finished
+        model start doing the tracing here. Always linked, because the page
+        says for itself when nothing has been drawn yet, and a link that
+        appears and disappears is one nobody learns is there.
+      -->
+      <p class="sub"><a href="/predictions.html">See the outlines the detector drew →</a></p>
+      <!--
+        The queue of lawns waiting to be paid for. Linked from here because
+        screening is the step before all of it: a lawn rejected on that page
+        costs a glance, and the same lawn rejected after somebody has traced it
+        costs fifty cents and a review.
+      -->
+      <p class="sub"><a href="/screen.html">Screen lawns worth paying to have traced →</a></p>
+      <!--
+        And the other end of the same pipe. A paid map lands as an ordinary
+        unreviewed corpus row, so it would eventually surface in the queue
+        below on its own -- but the WORKER is waiting on it: new workers are
+        held after five maps until somebody has looked, and that page is the
+        only thing that releases them.
+      -->
+      <p class="sub"><a href="/grade.html">Grade the maps that came back →</a></p>
+      <p class="sub"><a href="/workers.html">Who is tracing, and how it is going →</a></p>
+      <!--
+        And the end of the pipe that somebody is actually waiting on. Nothing
+        here moves money -- the payment happens in Venmo or PayPal, by hand --
+        but a request sits unanswered until it is marked sent, and the person
+        who asked for it can see that it is.
+      -->
+      <p class="sub"><a href="/payouts.html">Payouts people have asked for →</a></p>
+      <div class="actions" id="queue-pick">
+        <button id="queue-priority" class="on">Most useful first</button>
+        <button id="queue-random">Random</button>
+        <button id="queue-ungraded">Needs a canopy grade</button>
+        <!--
+          Approved maps nobody has looked over for areas that were inferred
+          rather than seen. The same shape of catch-up as the canopy grade, and
+          for the same reason: the question did not exist when they were
+          traced, so no map carries an answer until somebody goes back.
+        -->
+        <button id="queue-unflagged">Needs an inferred check</button>
+        <button id="queue-approved">Approved</button>
+        <button id="queue-rejected">Rejected</button>
+      </div>
+      <div id="review"><p class="empty">Loading…</p></div>
+    </div>
+
+    <div class="card">
+      <h2>Training data</h2>
+      <p class="sub">
+        Finished maps kept to train a lawn detector on one day. What is short
+        is listed first — mapping ten of the thing at the top is worth more
+        than a hundred of the thing at the bottom.
+      </p>
+      <div id="corpus"><p class="empty">Loading…</p></div>
+    </div>
+
+    <div class="card">
+      <h2>Counties people asked for and did not get</h2>
+      <p class="sub">
+        Every address typed into the bar that came back with no property line,
+        grouped by the county it was in. <b>Times asked</b> and <b>people</b>
+        say different things: fifty lookups is one person stuck or fifty people
+        interested, and only the second is a reason to add a county.
+      </p>
+      <div class="actions" id="gap-sort">
+        <button id="gap-hits" class="on">Most asked</button>
+        <button id="gap-people">Most people</button>
+        <button id="gap-recent">Most recent</button>
+      </div>
+      <div id="gaps"><p class="empty">Loading…</p></div>
+    </div>
+
+    <div class="card">
+      <h2>People</h2>
+      <input class="search" id="search" type="search" placeholder="Search by email or name">
+      <div id="people"></div>
+    </div>
+
+    <div class="card">
+      <h2>Detection feedback</h2>
+      <div id="feedback"><p class="empty">Loading…</p></div>
+    </div>
+
+    <div class="card">
+      <h2>Measurement log</h2>
+      <div id="log"><p class="empty">Loading…</p></div>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="/admin.js"></script>
+</body>
+</html>

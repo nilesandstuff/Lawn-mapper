@@ -1,0 +1,1003 @@
+:root {
+  --green: #2f7d32;
+  --green-dark: #245f27;
+  --ink: #16211a;
+  --muted: #5d6b62;
+  --line: #dfe5e0;
+  --bg: #f6f8f6;
+  --panel-w: 380px;
+}
+
+* { box-sizing: border-box; }
+
+/* A `display` rule on an element beats the user-agent's `[hidden]` style, so
+ * anything given `display: flex` below would ignore its hidden attribute --
+ * which left the loading spinner permanently on screen. Settle it globally. */
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        "Helvetica Neue", Arial, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+}
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+/* ------------------------------------------------------------- top bar */
+.topbar {
+  height: 56px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 18px;
+  background: #fff;
+  border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: 9px; font-weight: 650; letter-spacing: -0.01em; }
+.brand-mark {
+  width: 18px; height: 18px; border-radius: 5px;
+  background: linear-gradient(140deg, #4caf50, var(--green-dark));
+}
+.quota {
+  font-size: 13px; color: var(--muted);
+  background: var(--bg); border: 1px solid var(--line);
+  padding: 4px 10px; border-radius: 999px;
+}
+
+/* --------------------------------------------------------- the account */
+.topright { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.account {
+  display: flex; align-items: center; gap: 7px; cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 550; color: var(--ink);
+  background: #fff; border: 1px solid var(--line); border-radius: 999px;
+  padding: 5px 12px; max-width: 46vw;
+}
+.account:hover { border-color: var(--green); }
+.account span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ----------------------------------------------------- the tools menu */
+/*
+ * Anchored to its button rather than dropped into the page, so it cannot end
+ * up somewhere else when the header reflows.
+ */
+.menuwrap { position: relative; flex: 0 0 auto; }
+.menu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 40;
+  min-width: 232px; padding: 6px;
+  background: #fff; border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(16, 33, 22, .14);
+  display: grid; gap: 2px;
+}
+.menu a {
+  display: grid; gap: 1px; padding: 9px 11px; border-radius: 8px;
+  color: var(--ink); text-decoration: none; font-size: 13.5px; font-weight: 550;
+}
+.menu a small { color: var(--muted); font-size: 11.5px; font-weight: 400; }
+.menu a:hover, .menu a:focus-visible { background: var(--bg); outline: none; }
+
+/*
+ * The badge shrinks rather than pushing the account button off the edge. It is
+ * the one thing in the bar whose value survives being cut short, because its
+ * number is at the front -- and with the tools menu moved down to the panel,
+ * this is all the header needs to stay on a phone.
+ */
+.quota { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 400px) {
+  .topbar { padding: 0 12px; }
+  .account { padding: 5px 10px; }
+}
+
+/* The menu opens UPWARD: it lives at the foot of a scrolling panel, and a
+ * menu dropping below the last element in the panel opens off the bottom. */
+#tools-wrap { margin-top: 18px; }
+#tools-wrap .menu { top: auto; bottom: calc(100% + 6px); left: 0; right: auto; }
+#tools-btn { width: 100%; }
+
+/* ------------------------------------------------------- the plan tools */
+/*
+ * A tool is a card, because this pane will hold several and they need to read
+ * as separate things rather than as one long form with headings in it.
+ */
+.tool {
+  border: 1px solid var(--line); border-radius: 12px;
+  padding: 14px; margin-bottom: 12px;
+}
+.tool h3 { margin: 0 0 6px; font-size: 15px; letter-spacing: -0.01em; }
+.tool label { display: block; margin: 12px 0 6px; font-size: 13px; font-weight: 600; }
+
+/*
+ * The finish button sits under the figure and above the tabs, so it wants to
+ * look like the end of something rather than one more control in a row.
+ */
+#btn-finish { width: 100%; margin-bottom: 12px; }
+
+.seg-done { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+.seg-summary { margin: 0 0 10px; font-weight: 600; }
+
+/* Numbered, because the number is what the label on the map says. Reading the
+ * list and reading the map have to be the same act of finding "piece 4". */
+.seg-list { margin: 12px 0 0; padding-left: 22px; display: grid; gap: 5px; }
+.seg-item b { font-size: 13.5px; }
+.seg-item small { display: block; color: var(--muted); font-size: 12px; }
+
+.seg-notes {
+  margin-top: 12px; padding: 10px 12px;
+  background: #fdf9ef; border: 1px solid #f0e2c4; border-radius: 10px;
+}
+.seg-notes p { margin: 0 0 7px; font-size: 12.5px; line-height: 1.45; color: #5f4b1d; }
+.seg-notes p:last-child { margin-bottom: 0; }
+
+/*
+ * A sheet: a dialog over everything, anchored to the bottom on a phone and
+ * centred on a desktop. Bottom on a phone because that is where the thumb is
+ * and because a centred box under the keyboard is a box you cannot see while
+ * typing your address into it.
+ */
+.sheet {
+  position: fixed; inset: 0; z-index: 20;
+  display: flex; align-items: flex-end; justify-content: center;
+  background: rgba(22, 33, 26, .55);
+  padding: 0;
+}
+@media (min-width: 560px) {
+  .sheet { align-items: center; padding: 20px; }
+  .sheet-card { border-radius: 16px; max-width: 380px; }
+}
+.sheet-card {
+  position: relative; width: 100%; max-height: 92vh; overflow-y: auto;
+  background: #fff; border-radius: 18px 18px 0 0;
+  padding: 20px 20px 24px; display: grid; gap: 10px;
+}
+.sheet-x {
+  position: absolute; top: 10px; right: 10px;
+  width: 32px; height: 32px; cursor: pointer;
+  border: 0; border-radius: 50%; background: transparent;
+  font-size: 22px; line-height: 1; color: var(--muted);
+}
+.sheet-x:hover { background: var(--bg); color: var(--ink); }
+.sheet-title { margin: 0; padding-right: 34px; font-size: 17px; font-weight: 680; letter-spacing: -0.015em; }
+.sheet-why { margin: 0 0 4px; font-size: 13px; line-height: 1.5; color: var(--muted); }
+.sheet-note { margin: 2px 0 0; font-size: 12px; line-height: 1.45; color: var(--muted); }
+.sheet-note.warn { color: #a35b00; }
+.sheet-note.error { color: #b3261e; }
+.sheet-note.ok { color: var(--green-dark); font-weight: 550; }
+
+/*
+ * A SHEET THAT IS A REAL <dialog>, which the two above are not.
+ *
+ * Those are a fixed div and a card inside it, and each one had to be given
+ * Escape, a backdrop, a focus trap and somewhere for focus to go on close.
+ * The element does all four. The card styling is the same on purpose -- a
+ * visitor should not be able to tell which of these is which -- so this rule
+ * is .sheet-card's box applied to the dialog itself rather than to a child.
+ *
+ * Bottom of the screen on a phone, for the same reason as the others: that is
+ * where the thumb is.
+ */
+.sheet-dialog {
+  position: fixed; inset: 0; margin: auto auto 0;
+  width: 100%; max-width: 100%; max-height: 86vh; overflow-y: auto;
+  border: 0; border-radius: 18px 18px 0 0;
+  background: #fff; color: var(--ink);
+  padding: 20px 20px 24px;
+}
+.sheet-dialog::backdrop { background: rgba(22, 33, 26, .55); }
+.sheet-dialog[open] { display: grid; gap: 10px; align-content: start; }
+@media (min-width: 560px) {
+  .sheet-dialog { margin: auto; max-width: 440px; border-radius: 16px; }
+}
+
+/*
+ * ONE ROW PER STATE, and the whole row is the control.
+ *
+ * <details> rather than a button and a panel: the open state belongs to the
+ * row, several can be open at once without anything coordinating them, and
+ * the browser already knows how to do all of it. A state with nothing to
+ * expand into -- one served whole by a single layer -- renders as a plain row
+ * instead, because a disclosure triangle that discloses nothing is a promise
+ * the row cannot keep.
+ */
+.cov-state, .cov-flat {
+  border-top: 1px solid var(--line);
+  padding: 9px 0 8px;
+  font-size: 13.5px;
+}
+#coverage-list > :first-child { border-top: 0; }
+.cov-head { display: flex; align-items: baseline; gap: 8px; }
+.cov-state > summary { cursor: pointer; list-style: none; }
+.cov-state > summary::-webkit-details-marker { display: none; }
+/* The triangle, drawn rather than inherited, so it points the same way in
+   every browser and turns rather than swapping glyph. */
+.cov-state > summary::before {
+  content: ''; flex: none;
+  width: 0; height: 0; margin-top: 1px;
+  border: 5px solid transparent; border-left-color: var(--muted);
+  transition: transform .12s ease;
+}
+.cov-state[open] > summary::before { transform: rotate(90deg) translateX(2px); }
+/* Indented to where a row with a triangle starts its name, so the column of
+   state names is straight whether or not a row can be opened. */
+.cov-flat > .cov-head { padding-left: 18px; }
+
+.cov-name { font-weight: 600; }
+.cov-count { color: var(--muted); font-size: 12px; margin-left: auto; white-space: nowrap; }
+/* The list itself: several short names to a line, because a county name is
+   three words and a column of them is four screens of scrolling. */
+.cov-names {
+  margin: 6px 0 2px; padding-left: 18px;
+  font-size: 12.5px; line-height: 1.5; color: var(--muted);
+}
+.cov-names b { color: var(--ink); font-weight: 600; }
+.cov-source { padding-left: 18px; font-size: 11.5px; color: var(--muted); margin: 3px 0 0; }
+
+#signin-email-form { display: grid; gap: 8px; }
+#signin-email {
+  width: 100%; padding: 11px 13px; font: inherit; font-size: 15px;
+  border: 1px solid var(--line); border-radius: 11px;
+}
+#signin-email-form .primary { width: 100%; margin: 0; }
+
+.creditline {
+  margin: 0; padding: 10px 13px; border-radius: 11px;
+  background: var(--bg); border: 1px solid var(--line);
+  font-size: 13.5px; font-weight: 550;
+}
+
+/* -------------------------------------------------------------- layout */
+.layout {
+  display: flex;
+  height: calc(100% - 56px);
+}
+.panel {
+  width: var(--panel-w);
+  flex: 0 0 var(--panel-w);
+  padding: 22px 20px;
+  overflow-y: auto;
+  background: #fff;
+  border-right: 1px solid var(--line);
+  display: flex; flex-direction: column;
+}
+.mapwrap { position: relative; flex: 1; min-width: 0; }
+/*
+ * THE BROWSER'S OWN DOUBLE-TAP ZOOM, TURNED OFF TOO.
+ *
+ * Mapbox's tap-drag zoom was switched off and the gesture was still reported,
+ * so the other thing that zooms on a double tap gets ruled out as well: the
+ * browser itself. Nothing here says user-scalable=no, so a double tap over the
+ * page zooms the PAGE, which from the outside looks exactly the same.
+ *
+ * `none` sends every touch to JavaScript instead. Mapbox does its own panning
+ * and pinching, so nothing is lost -- and this is only on the map, so the
+ * panel underneath still scrolls normally.
+ */
+#map { position: absolute; inset: 0; touch-action: none; }
+
+@media (max-width: 820px) {
+  .layout { flex-direction: column-reverse; }
+  .panel { width: 100%; flex: 1 1 auto; border-right: 0; border-top: 1px solid var(--line); }
+  .mapwrap { flex: 0 0 46vh; }
+}
+
+/* --------------------------------------------------------------- steps */
+h1 { font-size: 24px; line-height: 1.25; margin: 0 0 8px; letter-spacing: -0.02em; }
+h2 { font-size: 18px; margin: 0 0 10px; letter-spacing: -0.01em; }
+.sub { color: var(--muted); margin: 0 0 16px; }
+.note { color: var(--muted); font-size: 13px; margin-top: 16px; }
+.chosen { font-weight: 600; margin: 0 0 4px; }
+
+input[type=text] {
+  width: 100%; padding: 11px 12px;
+  border: 1px solid var(--line); border-radius: 9px;
+  font: inherit; background: #fff;
+}
+input[type=text]:focus { outline: 2px solid var(--green); outline-offset: 1px; border-color: transparent; }
+
+/*
+ * The address field and the locate button, side by side. Two ways of
+ * answering one question, so one line -- a button underneath would read as a
+ * second step to do rather than an alternative to the first.
+ */
+.findrow { display: flex; gap: 8px; align-items: stretch; }
+.findrow input[type=text] { flex: 1; min-width: 0; }
+.locate {
+  flex: none; width: 46px; display: grid; place-items: center; padding: 0;
+  border-radius: 9px;
+}
+/* A crosshair, drawn rather than set in type: an emoji pin renders as a
+   different thing on every platform and as a box on some of them. */
+.locate svg { width: 21px; height: 21px; }
+.locate svg circle, .locate svg path {
+  fill: currentColor; stroke: currentColor; stroke-width: 1.7;
+  stroke-linecap: round;
+}
+.locate svg circle[fill="none"] { fill: none; }
+/* While the fix is being taken. The ring pulses rather than spins, because a
+   spinner promises progress and a GPS fix has none to report. */
+.locate.working { color: var(--green-dark); border-color: var(--green); }
+.locate.working svg { animation: locpulse 1.1s ease-in-out infinite; }
+@keyframes locpulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) {
+  .locate.working svg { animation-duration: 3s; }
+}
+
+button { font: inherit; cursor: pointer; border-radius: 9px; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+
+.primary {
+  width: 100%; margin-top: 10px; padding: 11px 14px;
+  background: var(--green); color: #fff; border: 0; font-weight: 600;
+}
+.primary:hover:not(:disabled) { background: var(--green-dark); }
+
+.ghost {
+  padding: 9px 13px; background: #fff; color: var(--ink);
+  border: 1px solid var(--line); font-weight: 500;
+}
+.ghost:hover { border-color: #b9c4bc; }
+
+/*
+ * THE INFERRED LAYER, switched on.
+ *
+ * Purple rather than a deeper green, deliberately. Inferred lawn is not
+ * weaker lawn -- it is a different kind of claim about the same ground -- and
+ * a shade of the lawn colour would read as "lawn, a bit less sure", which is
+ * the wrong idea to plant.
+ */
+.ghost.on {
+  background: #f3edff; border-color: #7c4dff; color: #4527a0; font-weight: 600;
+}
+
+/*
+ * While the mode is on, the whole panel carries a band of it. The drawing
+ * tools look identical in both layers and the difference only shows once
+ * something has been drawn, so a mode you cannot tell you are in is a mode
+ * that quietly mislabels a lawn as guessed at.
+ */
+body.inferred-mode .panel { box-shadow: inset 4px 0 0 #7c4dff; }
+
+.link {
+  background: none; border: 0; color: var(--muted);
+  text-decoration: underline; padding: 6px 0; font-size: 13px; text-align: left;
+}
+
+.row { display: flex; gap: 8px; align-items: center; }
+.row .primary { margin-top: 0; }
+
+.opt {
+  display: flex; gap: 9px; align-items: flex-start;
+  margin-top: 14px; font-size: 13.5px; cursor: pointer;
+}
+.opt input { margin-top: 3px; flex: none; }
+
+/* The tips switch, at the very top of the panel. Small, because it is a
+ * preference and not a step. */
+.tiptoggle {
+  display: flex; align-items: center; gap: 8px;
+  margin: -4px 0 14px; padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px; color: var(--muted); cursor: pointer;
+}
+.tiptoggle input { flex: none; accent-color: var(--green); }
+.opt small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+
+/* ------------------------------------------------------ model + pins */
+.models {
+  margin-top: 12px; padding: 11px 13px 12px;
+  border: 1px solid var(--line); border-radius: 11px; background: #fbfcfb;
+}
+.models label {
+  display: block; font-size: 12.5px; font-weight: 600;
+  color: var(--muted); margin-bottom: 5px;
+}
+.models select {
+  width: 100%; padding: 9px 10px; font: inherit; font-size: 14px;
+  color: var(--ink); background: #fff;
+  border: 1px solid var(--line); border-radius: 9px;
+}
+.models .sub { margin: 7px 0 0; font-size: 12.5px; }
+
+/* --------------------------------------------------- exclusion tick boxes */
+/*
+ * Each box is one AI pass: one prediction, one wait, one item of the daily
+ * allowance. The cost line under them is the load-bearing part -- ticking a
+ * fourth box is not a preference, it is four times the bill of one -- so it
+ * gets the emphasis rather than being tucked away as fine print.
+ */
+.excludes { margin-top: 11px; padding-top: 10px; border-top: 1px solid var(--line); }
+.excl-lead {
+  margin: 0 0 7px; font-size: 12.5px; font-weight: 600; color: var(--muted);
+}
+.excl-item {
+  display: flex; gap: 9px; align-items: flex-start;
+  padding: 6px 0; cursor: pointer;
+}
+.excl-item input { margin: 2px 0 0; flex: none; accent-color: var(--green); }
+.excl-item span { font-size: 13.5px; font-weight: 550; }
+.excl-item small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
+#exclude-cost { font-weight: 600; }
+
+.pins {
+  margin-top: 12px; padding: 11px 13px 2px;
+  border: 1px solid #ffd54f; border-radius: 11px; background: #fffdf5;
+}
+.pin-count { margin: 0 0 10px; font-size: 13.5px; font-weight: 550; }
+
+/* ------------------------------------------------------------- map rail */
+/*
+ * The editing modes live on the map, not in the panel below it. They are used
+ * while looking at the lawn, and the panel had grown long enough that reaching
+ * them meant scrolling away from the thing being edited.
+ */
+.maprail {
+  position: absolute; top: 96px; right: 10px; z-index: 3;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.railbtn {
+  width: 54px; padding: 7px 2px 5px;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  font: inherit; font-size: 10.5px; font-weight: 600; line-height: 1;
+  color: #1f2d24; background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(0, 0, 0, 0.16); border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.22);
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.railbtn svg { width: 22px; height: 22px; }
+.railbtn:active { background: #eef2ee; }
+.railbtn[aria-pressed="true"] { background: #1b5e20; border-color: #14401a; color: #fff; }
+
+/* The sub-tools sit indented, so it reads as "inside lawn mode". */
+.railsub {
+  display: flex; flex-direction: column; gap: 5px;
+  margin-left: 10px; padding-left: 7px; border-left: 2px solid rgba(255, 255, 255, 0.85);
+}
+/*
+ * Two columns for the corner tools, and a ceiling on the whole rail.
+ *
+ * Five corner tools stacked under three mode buttons and a Points/Brushes pair
+ * is eleven rows of about forty-four pixels, which runs off the bottom of a
+ * phone — and the rail is drawn OVER the map it operates on, so what falls off
+ * is both the buttons and the lawn. Two columns halves it; the max-height is
+ * the backstop for whatever gets added next.
+ */
+.railgrid {
+  display: grid; grid-template-columns: repeat(2, 46px); gap: 5px;
+  align-content: start;
+}
+/*
+ * NO `overflow` ON THE RAIL, EVER.
+ *
+ * A max-height with overflow-y was added here as a backstop against the rail
+ * growing past the bottom of a phone. It took the Layers menu out instead: the
+ * list is an absolutely-positioned flyout INSIDE #maprail-left, and an
+ * ancestor with any overflow other than visible clips absolutely-positioned
+ * descendants. The button still worked and opened a menu nobody could see, so
+ * it read as "I can't change the layers, there's no options".
+ *
+ * The height problem it was guarding against is already solved properly, by
+ * .railgrid above putting the corner tools in two columns. A backstop against
+ * a problem that no longer exists is not free.
+ */
+
+.railbtn.sub { width: 46px; font-size: 9.5px; }
+.railbtn.sub svg { width: 19px; height: 19px; }
+.railundo { margin-top: 4px; }
+.railundo:disabled { opacity: .4; cursor: not-allowed; }
+#mode-move[aria-pressed="true"] { background: #1565c0; border-color: #0d47a1; }
+#tool-add[aria-pressed="true"]   { background: #2e7d32; border-color: #1b5e20; }
+#tool-erase[aria-pressed="true"] { background: #c62828; border-color: #8e0000; }
+
+/* Layers sits opposite the editing tools: what you are LOOKING at on one
+ * side, what you are CHANGING on the other. */
+.maprail-left { right: auto; left: 10px; }
+
+/* The source list hangs off the Layers button rather than sitting in the
+ * rail's flex column, which would stretch the rail to the width of the
+ * longest source name. */
+.layerlist {
+  position: absolute; top: 58px; left: 0; width: 212px; max-width: 60vw;
+  display: flex; flex-direction: column; gap: 2px; padding: 5px;
+  background: rgba(255, 255, 255, .97);
+  border: 1px solid rgba(0, 0, 0, .16); border-radius: 11px;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, .26);
+}
+.layerlist button {
+  text-align: left; padding: 8px 10px; font: inherit; font-size: 13px;
+  background: none; border: 0; border-radius: 8px; color: var(--ink);
+  display: flex; align-items: baseline; gap: 6px;
+}
+.layerlist button:hover { background: #eef2ee; }
+.layerlist button[aria-checked="true"] { background: #1b5e20; color: #fff; font-weight: 600; }
+/* "View only" is said in the list, not after choosing: picking a source and
+ * then being told it cannot be measured from is a wasted step. */
+.layerlist .viewonly { font-size: 11px; opacity: .72; margin-left: auto; white-space: nowrap; }
+/* The overlays are a second kind of thing in one menu -- pictures to replace
+ * the photograph above, layers to draw on it below -- so the two groups are
+ * separated by a rule with a word on it rather than by spacing alone. */
+.layerlist .layerrule {
+  margin: 6px 4px 2px; padding-top: 6px; font-size: 11px; letter-spacing: .04em;
+  text-transform: uppercase; opacity: .6; border-top: 1px solid rgba(0, 0, 0, .13);
+}
+/* Checked overlays get an outline rather than the solid green the radios use:
+ * "one of these is selected" and "any of these may be on" should not look
+ * identical in a list that contains both. */
+.layerlist button[role="menuitemcheckbox"][aria-checked="true"] {
+  background: #eef2ee; color: var(--ink); font-weight: 600;
+  box-shadow: inset 0 0 0 2px #1b5e20;
+}
+.layerlist button[role="menuitemcheckbox"][aria-checked="true"]::after {
+  content: '\2713'; margin-left: auto; color: #1b5e20; font-weight: 700;
+}
+
+@media (max-width: 700px) {
+  .maprail { top: 88px; right: 8px; }
+  .maprail-left { right: auto; left: 8px; }
+}
+
+/* ---------------------------------------------------------- coach marks */
+/*
+ * A tip, pointed at the control it is about.
+ *
+ * Every button on this map is an unlabelled icon on a photograph, and two of
+ * the decisions here (which picture the AI is shown, that only some pictures
+ * can be sent to it at all) are invisible in the interface. The arrow is the
+ * part that matters: "press Layers" is useless if Layers is one of nine icons.
+ */
+/*
+ * Absolute inside the map, and it stays that way.
+ *
+ * Briefly made fixed to the viewport so a tip could point at a tab, which put
+ * the box on top of the tab strip and made the tabs unclickable -- far worse
+ * than the missing tip it was meant to fix. Tips now wait for the tab their
+ * control lives on (see pendingTip), so every target is a button on the map
+ * again and the box never needs to leave it.
+ */
+.coach {
+  position: absolute; z-index: 6; width: 268px; max-width: min(78vw, 268px);
+  padding: 13px 14px 11px;
+  background: #fff; color: var(--ink);
+  border: 1px solid rgba(0, 0, 0, .14); border-radius: 13px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, .28);
+}
+.coach-title { margin: 0 0 5px; font-size: 13.5px; font-weight: 680; letter-spacing: -0.01em; }
+.coach-text { margin: 0 0 11px; font-size: 13px; line-height: 1.45; color: #33413a; }
+.coach-ok {
+  width: 100%; padding: 8px 12px; font-weight: 600; font-size: 13.5px;
+  background: var(--green); color: #fff; border: 0;
+}
+.coach-ok:hover { background: var(--green-dark); }
+
+/* Drawn as a rotated square so the border and shadow carry round the point. */
+.coach-arrow {
+  position: absolute; width: 13px; height: 13px;
+  background: #fff; border: 1px solid rgba(0, 0, 0, .14);
+  transform: rotate(45deg);
+}
+.coach-arrow.at-left  { left: -7px;  border-right: 0; border-top: 0; }
+.coach-arrow.at-right { right: -7px; border-left: 0;  border-bottom: 0; }
+
+/* ------------------------------------------------------- imagery source */
+.imagery {
+  margin-top: 12px; padding: 11px 13px 12px;
+  border: 1px solid var(--line); border-radius: 11px; background: #fbfcfb;
+}
+.imagery label {
+  display: block; font-size: 12.5px; font-weight: 600;
+  color: var(--muted); margin-bottom: 5px;
+}
+.imagery select {
+  width: 100%; padding: 9px 10px; font: inherit; font-size: 14px;
+  color: var(--ink); background: #fff;
+  border: 1px solid var(--line); border-radius: 9px;
+}
+.imagery .sub { margin: 7px 0 0; font-size: 12.5px; }
+.imagery input[type=range] { width: 100%; margin: 2px 0 0; accent-color: var(--green); }
+
+/* ------------------------------------------------------------- the stepper */
+/*
+ * Buttons for nudging, a field for typing. The touch targets are 44px because
+ * this is used one-handed on a phone while looking at a map, and a control you
+ * have to aim at is a control that interrupts what you are looking at.
+ */
+.stepper { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.stepbtn {
+  flex: none; width: 44px; height: 44px; font-size: 22px; line-height: 1;
+  color: var(--ink); background: #fff;
+  border: 1px solid var(--line); border-radius: 10px; cursor: pointer;
+}
+.stepbtn:active { background: #eef3ee; }
+.stepper input[type=text] {
+  flex: 1; min-width: 0; height: 44px; padding: 0 10px;
+  font: inherit; font-size: 16px; /* 16px or iOS zooms the page on focus */
+  text-align: center; color: var(--ink); background: #fff;
+  border: 1px solid var(--line); border-radius: 10px;
+}
+.stepunit { flex: none; font-size: 13px; color: var(--muted); }
+
+/* ------------------------------------------------------- developer mode */
+/*
+ * Deliberately unlike the rest of the panel. Everything else here is trying
+ * to look calm and finished; this is a set of raw knobs that change what the
+ * detector is asked, and it should be obvious at a glance that the app is in
+ * a state an ordinary visitor never sees.
+ */
+.devpanel {
+  margin: 10px 0 0; padding: 11px 13px 12px;
+  border: 1px dashed #b08900; border-radius: 11px; background: #fffdf3;
+}
+.devpanel label {
+  display: block; font-size: 12.5px; font-weight: 600;
+  color: var(--muted); margin: 8px 0 5px;
+}
+.devpanel label:first-child { margin-top: 0; }
+.devpanel input[type=text] {
+  width: 100%; padding: 9px 10px; font: inherit; font-size: 14px;
+  color: var(--ink); background: #fff;
+  border: 1px solid var(--line); border-radius: 9px;
+}
+.devpanel input[type=range] { width: 100%; margin: 2px 0 0; accent-color: #b08900; }
+.devpanel .sub { margin: 7px 0 0; font-size: 12.5px; }
+.devpanel .tools { margin-top: 10px; }
+.devcheck {
+  display: flex !important; align-items: flex-start; gap: 8px;
+  font-weight: 400 !important; color: var(--ink) !important; cursor: pointer;
+}
+.devcheck input { margin: 2px 0 0; accent-color: #b08900; }
+/* The token count sits on the label line, so it must not take a line of its
+ * own the way .sub otherwise would. */
+.devpanel label .sub { display: inline; margin: 0 0 0 4px; font-weight: 400; }
+
+/* --------------------------------------------------------- edge editing */
+.edgepanel {
+  margin-top: 12px; padding: 12px 13px;
+  border: 1px solid var(--line); border-radius: 11px; background: #fbfcfb;
+}
+.edge-info { margin: 0 0 10px; font-size: 13.5px; color: var(--muted); }
+.edge-info.active { color: var(--ink); font-weight: 550; }
+.edge-readout { display: flex; align-items: baseline; gap: 9px; margin-bottom: 4px; }
+.edge-readout span { font-size: 22px; font-weight: 650; letter-spacing: -0.02em; }
+.edge-readout small { color: var(--muted); font-size: 12px; }
+.edgepanel input[type=range] { width: 100%; margin: 4px 0 2px; accent-color: var(--green); }
+.edgepanel .sub { font-size: 12.5px; margin: 6px 0 12px; }
+/* Corner editing sits below the slider: available, but not competing with the
+ * extend control for the eye. Extending is the operation that keeps the
+ * surveyed bearings, so it stays the obvious one. */
+.edge-secondary { width: 100%; margin-bottom: 10px; font-size: 13.5px; }
+
+/* ---------------------------------------------------------- candidates */
+.candidates { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 7px; }
+.candidates button {
+  width: 100%; text-align: left; padding: 11px 12px;
+  background: #fff; border: 1px solid var(--line);
+}
+.candidates button:hover { border-color: var(--green); background: #f4faf4; }
+.candidates .addr { display: block; font-weight: 550; }
+.candidates .meta { display: block; font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.pill {
+  display: inline-block; font-size: 11px; font-weight: 600;
+  padding: 1px 7px; border-radius: 999px; margin-right: 6px;
+  background: #e8f3e9; color: var(--green-dark);
+}
+.pill.grey { background: #eef0ee; color: var(--muted); }
+
+/* -------------------------------------------------------------- result */
+.result {
+  border: 1px solid var(--line); border-radius: 12px;
+  padding: 14px 16px; margin-bottom: 14px; background: #f4faf4;
+}
+.result-figure { font-size: 34px; font-weight: 680; letter-spacing: -0.03em; line-height: 1.1; }
+.result-figure small { font-size: 15px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
+.result-sub { color: var(--muted); font-size: 13px; margin-top: 3px; }
+
+/*
+ * The way back to the console, while a training candidate is open.
+ *
+ * Amber rather than the green of the result card, because it is not part of
+ * measuring: it says "you are here on somebody else's errand" and the colour
+ * is what makes that readable before the words are.
+ *
+ * Its buttons wrap rather than shrink. At 400 px two of these side by side
+ * would be two narrow columns of wrapped words, and the destructive one would
+ * be the harder to read.
+ */
+.reviewbar {
+  border: 1px solid #e0c48a; border-radius: 12px; background: #fdf7ea;
+  padding: 12px 14px; margin-bottom: 14px;
+}
+.reviewbar p { margin: 0 0 10px; color: #7a5a1a; }
+.reviewbar-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.reviewbar-acts button { flex: 1 1 200px; margin: 0; }
+
+/* ------------------------------------------------------- the paid queue */
+/*
+ * What somebody being paid to trace one lawn sees instead of the app.
+ *
+ * A green bar rather than the reviewer's amber, because these are two
+ * different people reading two different instructions and a worker who has
+ * seen a screenshot of the review bar should not confuse the two.
+ */
+.jobbar {
+  border: 1px solid #9ec5a1; border-radius: 12px; background: #eef6ee;
+  padding: 12px 14px; margin-bottom: 14px;
+}
+.job-where { margin: 0 0 8px; font-weight: 650; font-size: 14px; color: #1f5b22; }
+.job-asks { margin: 0 0 10px; font-size: 13px; color: #2c4a2e; }
+.job-asks summary { cursor: pointer; font-weight: 600; margin-bottom: 6px; }
+.job-ask { margin: 0 0 8px; }
+.job-ask b { display: block; }
+.job-ask.optional { color: #4d6350; }
+.jobbar-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.jobbar-acts button { flex: 1 1 200px; margin: 0; }
+
+/*
+ * The completion code. Big, monospaced and selectable on purpose: it is typed
+ * into another site by somebody holding a phone, and a code that is awkward to
+ * copy is a task abandoned after the work was already done.
+ */
+.jobcode {
+  font: 700 26px/1.3 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: .12em; text-align: center; margin: 14px 0;
+  padding: 14px 10px; border-radius: 10px; background: #eef6ee;
+  border: 1px solid #9ec5a1; color: #1f5b22;
+  user-select: all; -webkit-user-select: all;
+}
+
+/*
+ * WHAT A PAID WORKER IS NOT SHOWN, and it is a list of removals rather than a
+ * second page, because the whole point is that they get the SAME drawing tools
+ * the app has. A stripped copy would be a second copy, and the one that people
+ * are paid to use is the last one that should drift.
+ *
+ * Gone: the account button and the allowance badge (they have no account and
+ * the job pays for its own detections), Saved and Plan (neither exists for
+ * somebody who never signs in), and the Finish button (sending the map is what
+ * ends the task, and two buttons that both look like the end is how a map gets
+ * saved without being submitted).
+ *
+ * THE AI STEP IS BACK, and taking it away was a mistake of exactly the kind
+ * this comment warns about -- a removal that read as tidy and left somebody
+ * without the way out of a problem we had given them.
+ *
+ * The reasoning was that the outline is run for them once on arrival, so the
+ * tab is a step they never have to take. What that missed is that the outline
+ * is sometimes WORSE than an empty map -- a shape sprayed across the drive and
+ * half the neighbour's grass -- and a tracer who thinks it is wrong had no
+ * control over it at all: no way to try another method, another photograph, or
+ * trim the whole edge in a foot. Only corner-by-corner repair of somebody
+ * else's guess, which several people said was slower than drawing it
+ * themselves. That tab is where all four of those controls live, and none of
+ * them spends money the job has not already paid for -- FREE_DETECTS_PER_JOB
+ * is six per lawn, and trimming the edge re-reads a mask already downloaded.
+ * "Clear all" on the Draw tab throws the AI shape away entirely.
+ */
+body.job-mode #account-btn,
+body.job-mode #quota-badge,
+body.job-mode #tab-saved,
+body.job-mode #tab-plan,
+body.job-mode #btn-finish,
+body.job-mode #finish-note,
+body.job-mode #btn-open-saved,
+/*
+ * And every way back to a step that no longer exists for them. "Start over
+ * with a new address" on a lawn somebody was assigned would abandon a claim
+ * and land them on a search box, which is a dead end with an hour's wait
+ * attached.
+ */
+body.job-mode [data-action="restart"] { display: none !important; }
+
+.statusline { font-size: 13.5px; color: var(--muted); min-height: 20px; margin-bottom: 10px; }
+.statusline.warn { color: #a35b00; }
+.statusline.error { color: #b3261e; }
+
+/* ---------------------------------------------------------------- tabs */
+/*
+ * Four steps, one strip. Numbered because they are a sequence -- address, then
+ * AI, then corrections -- and "Saved" is deliberately not numbered, because it
+ * is not a step in that sequence but a way back into an old one.
+ *
+ * Sticky so the strip survives a long tab: on a phone the panel is the bottom
+ * half of the screen, and scrolling down the drawing tools should never make
+ * the way back to the AI scroll away with them.
+ */
+.tabs {
+  display: flex; gap: 2px; margin-bottom: 14px;
+  position: sticky; top: -22px; z-index: 2;
+  padding: 6px 0; background: #fff;
+  border-bottom: 1px solid var(--line);
+}
+/*
+ * Sized to their words rather than split four equal ways.
+ *
+ * "Property line" is three times the width of "AI", and equal columns either
+ * clipped it or forced every tab down to a size that fitted the longest. Let
+ * each take what it needs and share what is left over.
+ */
+.tab {
+  flex: 1 1 auto; min-width: 0;
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+  padding: 9px 6px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--muted);
+  font: inherit; font-size: 13px; font-weight: 550; letter-spacing: -0.01em;
+  cursor: pointer; white-space: nowrap;
+}
+.tab:hover { background: #f2f5f2; color: var(--ink); }
+.tab.is-on { background: #eaf2ea; color: var(--green-dark); font-weight: 680; }
+.tab-step {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 17px; height: 17px; border-radius: 50%;
+  background: #e3e8e4; color: var(--muted);
+  font-size: 10.5px; font-weight: 700;
+}
+.tab.is-on .tab-step { background: var(--green); color: #fff; }
+/* A padlock rather than a word: the reason is on the tab itself when opened,
+ * and a label long enough to explain would not fit four across on a phone. */
+.tab.is-locked::after { content: '🔒'; font-size: 10px; opacity: .75; }
+
+/*
+ * A locked pane is visibly out of action but still readable, so you can see
+ * what the settings ARE before deciding to throw your corrections away.
+ * pointer-events alone would leave it looking live.
+ *
+ * DIMMED PER CHILD, NOT ON THE PANE, so that `.stays-free` can opt back out.
+ * Opacity on the parent could not be undone by a child at any specificity --
+ * it composites the whole subtree once, so a child at opacity 1 inside a
+ * parent at .42 is still drawn at .42. The controls that cost nothing have to
+ * stay properly usable, which means the dimming can never be applied above
+ * them in the first place.
+ */
+.tabpane.is-locked > *:not(.stays-free) {
+  opacity: .42; pointer-events: none; user-select: none;
+}
+
+.locked {
+  border: 1px solid #f0e2c4; background: #fdf9ef;
+  border-radius: 12px; padding: 13px 14px; margin-bottom: 14px;
+}
+.lock-text { margin: 0 0 11px; font-size: 13.5px; line-height: 1.45; }
+
+/* --------------------------------------------------------------- saves */
+.saves { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.save { display: flex; gap: 6px; align-items: stretch; }
+.save-open {
+  flex: 1; min-width: 0; text-align: left; cursor: pointer;
+  display: grid; gap: 2px;
+  padding: 11px 13px; border: 1px solid var(--line); border-radius: 10px;
+  background: #fff; font: inherit; color: var(--ink);
+}
+.save-open:hover { border-color: var(--green); background: #f6faf6; }
+/* The address is the thing being chosen between, so it gets the room and the
+ * ellipsis; a wrapped three-line address would push the figure off screen. */
+.save-addr { font-weight: 600; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.save-meta { font-size: 12px; color: var(--muted); }
+.save-figure { font-size: 12.5px; font-weight: 650; color: var(--green-dark); }
+.save-del {
+  flex: 0 0 34px; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 10px; background: #fff;
+  color: var(--muted); font-size: 19px; line-height: 1;
+}
+.save-del:hover { border-color: #e5b4ae; color: #b3261e; background: #fdf6f5; }
+
+.tools { display: flex; flex-wrap: wrap; gap: 8px; }
+.tools .primary { width: auto; margin-top: 0; flex: 1 1 100%; }
+.tools .ghost { flex: 1 1 0; }
+
+.exports { display: flex; gap: 8px; margin-top: 14px; }
+.exports .ghost { flex: 1; }
+
+.help { margin-top: 16px; font-size: 13.5px; color: var(--muted); }
+.help summary { cursor: pointer; color: var(--ink); font-weight: 550; }
+.help ul { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 4px; }
+kbd {
+  font: inherit; font-size: 12px; background: #eef0ee;
+  border: 1px solid var(--line); border-radius: 4px; padding: 0 4px;
+}
+
+.debug { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--muted); margin-top: 16px; }
+.disclaimer { margin: auto 0 0; padding-top: 20px; font-size: 12px; color: var(--muted); }
+
+.fatal {
+  border: 1px solid #f0d0cc; background: #fdf5f4;
+  border-radius: 12px; padding: 16px;
+}
+.fatal h2 { color: #b3261e; }
+
+/* --------------------------------------------------------- map chrome */
+.hint {
+  position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+  background: rgba(22, 33, 26, .88); color: #fff;
+  padding: 9px 15px; border-radius: 999px; font-size: 13.5px; font-weight: 500;
+  max-width: 82%; text-align: center; pointer-events: none; z-index: 3;
+}
+/*
+ * The held-press pan indicator.
+ *
+ * Centred on the map rather than beside the finger: it is a statement about
+ * what the whole map is doing, and a badge that tracks the finger is under the
+ * finger, which is the one place nobody can see.
+ */
+.panbadge {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  z-index: 5; pointer-events: none;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 13px 15px 10px; border-radius: 16px;
+  background: rgba(22, 33, 26, .82); color: #fff;
+  font-size: 12px; font-weight: 600; letter-spacing: .02em;
+}
+.panbadge svg { width: 30px; height: 30px; }
+
+/* ------------------------------------------------------------ feedback */
+/*
+ * Over the map, not in the panel: it is about the shape on the map, and on a
+ * phone the panel is the half of the screen the map is not on.
+ */
+/* Above the coaching tip, which is fixed at 7: a modal question is the one
+ * thing that should never have something else sitting on top of it. */
+.feedback {
+  position: absolute; inset: 0; z-index: 8;
+  display: flex; align-items: center; justify-content: center;
+  padding: 18px; background: rgba(22, 33, 26, .55);
+}
+.feedback-card {
+  width: 100%; max-width: 340px; max-height: 100%; overflow-y: auto;
+  background: #fff; border-radius: 16px; padding: 18px;
+  display: grid; gap: 9px;
+}
+.feedback-title { margin: 0; font-size: 16px; font-weight: 680; letter-spacing: -0.01em; }
+/* Ordinary type, not small print: what is being sent has to be readable
+ * before the press rather than after it. */
+.feedback-why { margin: 0 0 3px; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+.fb-opt {
+  display: grid; gap: 2px; text-align: left; cursor: pointer;
+  padding: 10px 13px; border: 1px solid var(--line); border-radius: 11px;
+  background: #fff; font: inherit; color: var(--ink);
+}
+.fb-opt:hover { border-color: var(--green); background: #f6faf6; }
+.fb-opt b { font-size: 13.5px; font-weight: 650; }
+.fb-opt small { font-size: 11.5px; color: var(--muted); line-height: 1.35; }
+#feedback-note {
+  width: 100%; padding: 9px 11px; font: inherit; font-size: 13px;
+  border: 1px solid var(--line); border-radius: 10px;
+}
+
+.overlay {
+  position: absolute; inset: 0; z-index: 4;
+  background: rgba(246, 248, 246, .82);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+}
+.overlay p { margin: 0; font-weight: 550; }
+.spinner {
+  width: 34px; height: 34px; border-radius: 50%;
+  border: 3px solid #cfd8d1; border-top-color: var(--green);
+  animation: spin .9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 3s; } }
+
+/* ------------------------------------------------------------- printing */
+.printblock { display: none; }
+@media print {
+  .topbar, .panel, .hint, .overlay, .mapboxgl-ctrl,
+  .maprail, .coach, .layerlist { display: none !important; }
+  .layout { display: block; height: auto; }
+  .mapwrap { position: relative; height: 62vh; page-break-after: avoid; }
+  .printblock { display: block; padding: 18px 4px; font-size: 13px; }
+  .printblock h1 { font-size: 20px; margin: 0 0 6px; }
+  .print-figure { font-size: 26px; font-weight: 700; margin: 10px 0; }
+  .print-foot { color: #666; font-size: 11px; margin-top: 18px; }
+}
+
+/* Brush width, indented under the brush it belongs to. */
+.railsize {
+  display: flex; flex-direction: column; gap: 5px;
+  margin-top: 4px; padding-top: 5px;
+  border-top: 2px solid rgba(255, 255, 255, 0.85);
+}
+
+/*
+ * The every-map list lives in console.css with the rest of the owner's
+ * furniture. It was here, which was the wrong shelf: this is the measuring
+ * app's stylesheet, and that page is not the measuring app.
+ */

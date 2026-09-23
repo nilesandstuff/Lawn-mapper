@@ -1,0 +1,183 @@
+/**
+ * Probes each county GIS service to confirm the layer index and field names
+ * in counties.js are still correct, and runs a real point lookup.
+ *
+ * Run this FIRST, from a machine with network access (Cloudflare Workers'
+ * dev sandbox has no outbound fetch to arbitrary hosts by default, so plain
+ * Node is the right place to run this, not `wrangler dev`):
+ *   node tools/probe-counties.js
+ *
+ * Counties republish services without notice, so re-run this whenever
+ * lookups start returning null for addresses that should be covered.
+ */
+
+import { COUNTIES } from '../worker/src/counties.js';
+import { lookupParcel } from '../worker/src/parcel.js';
+import { measure } from '../public/lib/area.js';
+import { TEST_POINTS } from './test-points.js';
+
+/*
+ * EVERY REQUEST HERE NEEDS A DEADLINE.
+ *
+ * The two metadata steps below used bare fetch with no timeout. Node's default
+ * is no timeout at all, so one county server that accepts a connection and
+ * never answers hangs the step until the GitHub job limit -- six hours -- on
+ * the workflow that gates every deploy. That is not hypothetical: adding
+ * Champaign's portal did exactly this, and the run had to be cancelled by hand
+ * after 35 minutes sitting on step one.
+ *
+ * The end-to-end step never had the problem because it goes through the
+ * worker's lookupParcel, which carries its own 6-second abort. These two talk
+ * to the servers directly and had nothing.
+ *
+ * Twelve seconds, matching discover-counties.js. A county that cannot answer a
+ * metadata request in twelve seconds cannot serve a property line to somebody
+ * standing on a lawn either.
+ */
+const TIMEOUT_MS = 12000;
+
+async function getJson(url) {
+  const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
+  return res.json();
+}
+
+async function listLayers(key) {
+  const cfg = COUNTIES[key];
+  if (!cfg.service) return console.log(`  ${key}: no service configured`);
+
+  try {
+    const data = await getJson(`${cfg.service}?f=json`);
+    if (data.error) return console.log(`  ${key}: ERROR ${data.error.message}`);
+
+    const parcelLayers = (data.layers || []).filter((l) =>
+      /parcel/i.test(l.name)
+    );
+    console.log(`  ${key}: ${(data.layers || []).length} layers total`);
+    for (const l of parcelLayers) {
+      const flag = l.id === cfg.layer ? ' <-- configured' : '';
+      console.log(`      [${l.id}] ${l.name}${flag}`);
+    }
+    if (!parcelLayers.some((l) => l.id === cfg.layer)) {
+      console.log(`      WARNING: configured layer ${cfg.layer} is not a parcel layer`);
+    }
+  } catch (e) {
+    console.log(`  ${key}: unreachable (${e.message})`);
+  }
+}
+
+async function checkFields(key) {
+  const cfg = COUNTIES[key];
+  if (!cfg.service) return;
+
+  try {
+    const data = await getJson(`${cfg.service}/${cfg.layer}?f=json`);
+    if (data.error) return console.log(`  ${key}: layer error`);
+
+    const names = (data.fields || []).map((f) => f.name);
+    for (const [role, field] of Object.entries(cfg.fields)) {
+      const ok = names.includes(field);
+      console.log(`  ${key}.${role}: ${field} ${ok ? 'OK' : 'MISSING'}`);
+      if (!ok) {
+        const guess = names.filter((n) =>
+          new RegExp(role.replace('streetNum', 'num').slice(0, 4), 'i').test(n)
+        );
+        if (guess.length) console.log(`      candidates: ${guess.join(', ')}`);
+      }
+    }
+  } catch (e) {
+    console.log(`  ${key}: field check failed (${e.message})`);
+  }
+}
+
+/**
+ * Counties that are configured with a service and returned nothing anywhere.
+ *
+ * A county with `service: null` is legitimately absent -- those addresses fall
+ * through to drawing by hand, and that is a documented state, not a fault. A
+ * county that HAS a service and answers no point at all is a broken deploy,
+ * and it needs to fail rather than print a line into a green run.
+ *
+ * This is not hypothetical. Kent passed field verification and returned no
+ * parcel at any of its three points, in the same run, and shipped -- because
+ * the fields come from a metadata request and the parcels come from a query,
+ * and only one of them had stopped working.
+ */
+const dead = [];
+
+async function endToEnd(key) {
+  const points = TEST_POINTS[key];
+  if (!points || !COUNTIES[key]?.service) return;
+
+  /*
+   * Every point, not just until one answers.
+   *
+   * Stopping at the first hit meant a county was declared working on the
+   * strength of a single town: Washoe passed on Reno while Sparks and Incline
+   * Village -- the latter across a mountain range on the Tahoe shore -- were
+   * never tried at all. A layer that covers part of a county is a real and
+   * invisible failure, and it costs nothing to look.
+   *
+   * One point returning nothing is still normal: addresses land on road
+   * right-of-way and unplatted lots. Only all of them failing is a fault.
+   */
+  const tried = [];
+  let hits = 0;
+  for (const pt of points) {
+    const parcel = await lookupParcel(pt.lng, pt.lat);
+    if (!parcel) {
+      tried.push(`${pt.label}: none`);
+      continue;
+    }
+    hits++;
+
+    const m = measure(parcel.geometry);
+    console.log(
+      `  ${key} (${pt.label}): ${m.acres} ac / ${m.squareFeet.toLocaleString()} sq ft` +
+        `  pin=${parcel.properties.pin}  addr=${parcel.properties.address}`
+    );
+
+    // Sanity: a residential parcel should not be 0 or absurdly large.
+    if (m.acres < 0.01 || m.acres > 500) {
+      console.log('      WARNING: implausible area -- check outSR handling');
+    }
+  }
+
+  if (hits) {
+    if (tried.length) {
+      console.log(`      no parcel at ${tried.join(', ')}` +
+        ' -- normal for a right-of-way or unplatted point, but worth a look' +
+        ' if a whole town is missing');
+    }
+    return;
+  }
+
+  console.log(`  ${key}: NO PARCEL AT ANY TEST POINT (${tried.join(', ')})`);
+  dead.push(key);
+}
+
+(async () => {
+  console.log('\n=== 1. Layer discovery ===');
+  for (const key of Object.keys(COUNTIES)) await listLayers(key);
+
+  console.log('\n=== 2. Field verification ===');
+  for (const key of Object.keys(COUNTIES)) await checkFields(key);
+
+  console.log('\n=== 3. End-to-end lookup ===');
+  for (const key of Object.keys(TEST_POINTS)) await endToEnd(key);
+
+  if (dead.length) {
+    console.error(
+      `\nFAIL  ${dead.length} configured count${dead.length > 1 ? 'ies' : 'y'} ` +
+      `returned no parcel at any test point: ${dead.join(', ')}\n\n` +
+      '      These have a service configured, so this is not the expected\n' +
+      '      "no public endpoint" state -- it is a county that has stopped\n' +
+      '      answering. Every address there silently loses its property line.\n\n' +
+      '      Run the "3. Find county servers" workflow for it: the endpoint has\n' +
+      '      usually moved rather than gone, and a sibling service on the same\n' +
+      '      host often answers when the configured one has begun timing out.'
+    );
+    process.exit(1);
+  }
+
+  console.log('\nDone.');
+})();

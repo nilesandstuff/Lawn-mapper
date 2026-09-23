@@ -1,0 +1,2227 @@
+{
+  "importedFrom": "@urbankitstudio/atlas",
+  "atlasVersion": "0.6.3",
+  "importedAt": "2026-09-21",
+  "note": "Candidates only. Nothing here is claimed as working until verify-counties.js says so.",
+  "listed": 171,
+  "dropped": 6,
+  "candidates": [
+    {
+      "key": "al-shelby",
+      "name": "Shelby County, AL",
+      "fips": "01117",
+      "service": "https://maps.shelbyal.com/gisserver/rest/services/LegacyServices/Cadastral_2022/MapServer",
+      "layer": 91,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "Parcel_Num",
+        "address": "PROP_ADR"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "al-jefferson",
+      "name": "Jefferson County, AL",
+      "fips": "01073",
+      "service": "https://jccgis.jccal.org/server/rest/services/Basemap/Parcels/MapServer",
+      "layer": 0,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "PARCELID",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ak-anchorage",
+      "name": "Anchorage County, AK",
+      "fips": "02020",
+      "service": "https://services1.arcgis.com/7HDiw78fcUiM2BWn/arcgis/rest/services/AK_Parcels/FeatureServer",
+      "layer": 0,
+      "layerName": "AK_Parcels",
+      "fields": {
+        "pin": "parcel_id",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "az-maricopa",
+      "name": "Maricopa County, AZ",
+      "fips": "04013",
+      "service": "https://gis.mcassessor.maricopa.gov/arcgis/rest/services/MaricopaDynamicQueryService/MapServer",
+      "layer": 3,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "APN",
+        "address": "PHYSICAL_ADDRESS"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "az-pima",
+      "name": "Pima County, AZ",
+      "fips": "04019",
+      "service": "https://mapdata.tucsonaz.gov/public/rest/services/PublicMaps/PropertyHousing/MapServer",
+      "layer": 17,
+      "layerName": "PAREGION",
+      "fields": {
+        "pin": "PARCEL",
+        "address": "SITE_ADDRESS"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "az-pinal",
+      "name": "Pinal County, AZ",
+      "fips": "04021",
+      "service": "https://rogue.casagrandeaz.gov/arcgis/rest/services/Pinal_County/Pinal_County_Parcels/MapServer",
+      "layer": 0,
+      "layerName": "Pinal County Parcels",
+      "fields": {
+        "pin": "PARCELID",
+        "address": "SITEADDRESS"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ar-pulaski",
+      "name": "Pulaski County, AR",
+      "fips": "05119",
+      "service": "https://gis.arkansas.gov/arcgis/rest/services/FEATURESERVICES/Planning_Cadastre/FeatureServer",
+      "layer": 6,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "parcelid",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ar-benton",
+      "name": "Benton County, AR",
+      "fips": "05007",
+      "service": "https://gis.arkansas.gov/arcgis/rest/services/FEATURESERVICES/Planning_Cadastre/FeatureServer",
+      "layer": 6,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "parcelid",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ar-washington",
+      "name": "Washington County, AR",
+      "fips": "05143",
+      "service": "https://gis.arkansas.gov/arcgis/rest/services/FEATURESERVICES/Planning_Cadastre/FeatureServer",
+      "layer": 6,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "parcelid",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ca-los-angeles",
+      "name": "Los Angeles County, CA",
+      "fips": "06037",
+      "service": "https://public.gis.lacounty.gov/public/rest/services/LACounty_Cache/LACounty_Parcel/MapServer",
+      "layer": 0,
+      "layerName": "LA County Parcel",
+      "fields": {
+        "pin": "APN",
+        "address": "SitusFullAddress"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ca-sacramento",
+      "name": "Sacramento County, CA",
+      "fips": "06067",
+      "service": "https://services1.arcgis.com/5NARefyPVtAeuJPU/arcgis/rest/services/Parcels/FeatureServer",
+      "layer": 0,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "APN",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ca-sonoma",
+      "name": "Sonoma County, CA",
+      "fips": "06097",
+      "service": "https://socogis.sonomacounty.ca.gov/map/rest/services/OWTSPublic/Cities_GIS_Parcel_Base/FeatureServer",
+      "layer": 0,
+      "layerName": "Cities GIS Parcel Base",
+      "fields": {
+        "pin": "APN",
+        "address": "SitusFormatted1"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ca-orange",
+      "name": "Orange County, CA",
+      "fips": "06059",
+      "service": "https://www.ocgis.com/arcpub/rest/services/Map_Layers/Parcels/MapServer",
+      "layer": 0,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": null,
+        "address": "SITE_ADDRESS"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ca-san-bernardino",
+      "name": "San Bernardino County, CA",
+      "fips": "06071",
+      "service": "https://services.arcgis.com/aA3snZwJfFkVyDuP/arcgis/rest/services/Parcels_for_San_Bernardino_County/FeatureServer",
+      "layer": 0,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "ParcelNumber",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ca-san-diego",
+      "name": "San Diego County, CA",
+      "fips": "06073",
+      "service": "https://gis-public.sandiegocounty.gov/arcgis/rest/services/cosd_warehouse/parcels_all_for_public_use/MapServer",
+      "layer": 0,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "APN",
+        "address": "SITUS_STREET"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ca-santa-clara",
+      "name": "Santa Clara County, CA",
+      "fips": "06085",
+      "service": "https://services8.arcgis.com/fpjs8A5Vtkshblnd/arcgis/rest/services/Santa_Clara_County_Parcels/FeatureServer",
+      "layer": 0,
+      "layerName": "Santa_Clara_County_Parcels",
+      "fields": {
+        "pin": "apn",
+        "address": "situs_ho_1"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ca-alameda",
+      "name": "Alameda County, CA",
+      "fips": "06001",
+      "service": "https://services5.arcgis.com/ROBnTHSNjoZ2Wm1P/arcgis/rest/services/Parcels/FeatureServer",
+      "layer": 0,
+      "layerName": "Parcel Boundaries",
+      "fields": {
+        "pin": "APN",
+        "address": "SitusAddress"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ca-contra-costa",
+      "name": "Contra Costa County, CA",
+      "fips": "06013",
+      "service": "https://gis.cccounty.us/arcgis/rest/services/CCMAP/Assessment_Parcels_ArcPro/MapServer",
+      "layer": 0,
+      "layerName": "Assessment Parcels",
+      "fields": {
+        "pin": "APN",
+        "address": "N_STR_NM"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ca-ventura",
+      "name": "Ventura County, CA",
+      "fips": "06111",
+      "service": "https://maps.ventura.org/arcgis/rest/services/SDs/Parcels/MapServer",
+      "layer": 0,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "APN",
+        "address": "SITUS"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "co-denver",
+      "name": "Denver County, CO",
+      "fips": "08031",
+      "service": "https://services1.arcgis.com/zdB7qR0BtYrg0Xpl/arcgis/rest/services/ODC_PROP_PARCELS_A/FeatureServer",
+      "layer": 245,
+      "layerName": "PROP_PARCELS_A",
+      "fields": {
+        "pin": "SCHEDNUM",
+        "address": "SITUS_ADDRESS_LINE1"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "co-el-paso",
+      "name": "El Paso County, CO",
+      "fips": "08041",
+      "service": "https://gis.colorado.gov/public/rest/services/Address_and_Parcel/Colorado_Public_Parcels/FeatureServer",
+      "layer": 0,
+      "layerName": "Colorado_Public_Parcel_Composite",
+      "fields": {
+        "pin": "parcel_id",
+        "address": "situsAdd"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "co-jefferson",
+      "name": "Jefferson County, CO",
+      "fips": "08059",
+      "service": "https://gis.colorado.gov/public/rest/services/Address_and_Parcel/Colorado_Public_Parcels/FeatureServer",
+      "layer": 0,
+      "layerName": "Colorado_Public_Parcel_Composite",
+      "fields": {
+        "pin": "parcel_id",
+        "address": "situsAdd"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ct-capitol-planning-region",
+      "name": "Capitol Planning Region County, CT",
+      "fips": "09110",
+      "service": "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
+      "layer": 0,
+      "layerName": "Connecticut_CAMA_and_Parcel_Layer",
+      "fields": {
+        "pin": "Parcel_ID",
+        "address": "Location_1"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ct-greater-bridgeport-planning-region",
+      "name": "Greater Bridgeport Planning Region County, CT",
+      "fips": "09120",
+      "service": "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
+      "layer": 0,
+      "layerName": "Connecticut_CAMA_and_Parcel_Layer",
+      "fields": {
+        "pin": "Parcel_ID",
+        "address": "Location_1"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ct-lower-connecticut-river-valley-planning-region",
+      "name": "Lower Connecticut River Valley Planning Region County, CT",
+      "fips": "09130",
+      "service": "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
+      "layer": 0,
+      "layerName": "Connecticut_CAMA_and_Parcel_Layer",
+      "fields": {
+        "pin": "Parcel_ID",
+        "address": "Location_1"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ct-naugatuck-valley-planning-region",
+      "name": "Naugatuck Valley Planning Region County, CT",
+      "fips": "09140",
+      "service": "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
+      "layer": 0,
+      "layerName": "Connecticut_CAMA_and_Parcel_Layer",
+      "fields": {
+        "pin": "Parcel_ID",
+        "address": "Location_1"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ct-northeastern-connecticut-planning-region",
+      "name": "Northeastern Connecticut Planning Region County, CT",
+      "fips": "09150",
+      "service": "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
+      "layer": 0,
+      "layerName": "Connecticut_CAMA_and_Parcel_Layer",
+      "fields": {
+        "pin": "Parcel_ID",
+        "address": "Location_1"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ct-northwest-hills-planning-region",
+      "name": "Northwest Hills Planning Region County, CT",
+      "fips": "09160",
+      "service": "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
+      "layer": 0,
+      "layerName": "Connecticut_CAMA_and_Parcel_Layer",
+      "fields": {
+        "pin": "Parcel_ID",
+        "address": "Location_1"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ct-south-central-connecticut-planning-region",
+      "name": "South Central Connecticut Planning Region County, CT",
+      "fips": "09170",
+      "service": "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
+      "layer": 0,
+      "layerName": "Connecticut_CAMA_and_Parcel_Layer",
+      "fields": {
+        "pin": "Parcel_ID",
+        "address": "Location_1"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ct-southeastern-connecticut-planning-region",
+      "name": "Southeastern Connecticut Planning Region County, CT",
+      "fips": "09180",
+      "service": "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
+      "layer": 0,
+      "layerName": "Connecticut_CAMA_and_Parcel_Layer",
+      "fields": {
+        "pin": "Parcel_ID",
+        "address": "Location_1"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ct-western-connecticut-planning-region",
+      "name": "Western Connecticut Planning Region County, CT",
+      "fips": "09190",
+      "service": "https://services3.arcgis.com/3FL1kr7L4LvwA2Kb/arcgis/rest/services/Connecticut_CAMA_and_Parcel_Layer_2024/FeatureServer",
+      "layer": 0,
+      "layerName": "Connecticut_CAMA_and_Parcel_Layer",
+      "fields": {
+        "pin": "Parcel_ID",
+        "address": "Location_1"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "de-new-castle",
+      "name": "New Castle County, DE",
+      "fips": "10003",
+      "service": "https://gis.nccde.org/entserver/rest/services/Foundation/Base_Layers/MapServer",
+      "layer": 0,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "PRCLID",
+        "address": "ADDRESS"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "fl-miami-dade",
+      "name": "Miami-Dade County, FL",
+      "fips": "12086",
+      "service": "https://gisweb.miamidade.gov/arcgis/rest/services/MD_LandInformation/MapServer",
+      "layer": 26,
+      "layerName": "Parcels @ PaParcel",
+      "fields": {
+        "pin": "FOLIO",
+        "address": "TRUE_SITE_ADDR"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "fl-hillsborough",
+      "name": "Hillsborough County, FL",
+      "fips": "12057",
+      "service": "https://gis.hcpafl.org/arcgis/rest/services/Webmaps/HillsboroughFL_WebParcels/MapServer",
+      "layer": 0,
+      "layerName": "WebParcels_NonConfidential",
+      "fields": {
+        "pin": "folio",
+        "address": "FullAddress"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "fl-broward",
+      "name": "Broward County, FL",
+      "fips": "12011",
+      "service": "https://gisweb-adapters.bcpa.net/arcgis/rest/services/BCPA_EXTERNAL_JAN26/MapServer",
+      "layer": 16,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "FOLIO",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "fl-duval",
+      "name": "Duval County, FL",
+      "fips": "12031",
+      "service": "https://maps.coj.net/coj/rest/services/CityBiz/Parcels/MapServer",
+      "layer": 0,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "RE",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "fl-manatee",
+      "name": "Manatee County, FL",
+      "fips": "12081",
+      "service": "https://gis.manateepao.com/arcgis/rest/services/Website/WebLayers/MapServer",
+      "layer": 0,
+      "layerName": "Parcel Search",
+      "fields": {
+        "pin": "PARID",
+        "address": "SITUS_ADDRESS"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "fl-sarasota",
+      "name": "Sarasota County, FL",
+      "fips": "12115",
+      "service": "https://services3.arcgis.com/icrWMv7eBkctFu1f/arcgis/rest/services/ParcelHosted/FeatureServer",
+      "layer": 0,
+      "layerName": "ParcelHosted",
+      "fields": {
+        "pin": "ACCOUNT",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "fl-palm-beach",
+      "name": "Palm Beach County, FL",
+      "fips": "12099",
+      "service": "https://services1.arcgis.com/ZWOoUZbtaYePLlPw/arcgis/rest/services/Parcels_and_Property_Details_WebMercator/FeatureServer",
+      "layer": 0,
+      "layerName": "Parcels and Property Details",
+      "fields": {
+        "pin": "PARID",
+        "address": "SITE_ADDR_STR"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "fl-pinellas",
+      "name": "Pinellas County, FL",
+      "fips": "12103",
+      "service": "https://egis.pinellas.gov/gis/rest/services/PublicWebGIS/Parcels/MapServer",
+      "layer": 1,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "PARCELID",
+        "address": "SITE_ADDRESS"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "fl-lee",
+      "name": "Lee County, FL",
+      "fips": "12071",
+      "service": "https://services2.arcgis.com/LvWGAAhHwbCJ2GMP/arcgis/rest/services/Lee_County_Parcels/FeatureServer",
+      "layer": 0,
+      "layerName": "Lee County Parcels",
+      "fields": {
+        "pin": "STRAP",
+        "address": "SITEADDR"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "fl-pasco",
+      "name": "Pasco County, FL",
+      "fips": "12101",
+      "service": "https://maps.pascopa.com/arcgis/rest/services/Parcels/MapServer",
+      "layer": 3,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "ParcelID",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ga-fulton",
+      "name": "Fulton County, GA",
+      "fips": "13121",
+      "service": "https://gismaps.fultoncountyga.gov/arcgispub2/rest/services/PropertyMapViewer/PropertyMapViewer/MapServer",
+      "layer": 11,
+      "layerName": "Tax Parcel",
+      "fields": {
+        "pin": "ParcelID",
+        "address": "Address"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ga-cobb",
+      "name": "Cobb County, GA",
+      "fips": "13067",
+      "service": "https://gis.cobbcounty.gov/gisserver/rest/services/tax/taxassessorsdaily/MapServer",
+      "layer": 0,
+      "layerName": "CobbParcels",
+      "fields": {
+        "pin": "PIN",
+        "address": "SITUS_ADDR"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ga-dekalb",
+      "name": "DeKalb County, GA",
+      "fips": "13089",
+      "service": "https://dcgis.dekalbcountyga.gov/hosted/rest/services/Parcels/MapServer",
+      "layer": 0,
+      "layerName": "Tax Parcels",
+      "fields": {
+        "pin": "PARCELID",
+        "address": "SITEADDRESS"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ga-gwinnett",
+      "name": "Gwinnett County, GA",
+      "fips": "13135",
+      "service": "https://services3.arcgis.com/RfpmnkSAQleRbndX/arcgis/rest/services/Property_and_Tax/FeatureServer",
+      "layer": 3,
+      "layerName": "Tax Master Table",
+      "fields": {
+        "pin": "PIN",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ga-chatham",
+      "name": "Chatham County, GA",
+      "fips": "13051",
+      "service": "https://pub.sagis.org/arcgis/rest/services/OpenData/Parcels/FeatureServer",
+      "layer": 27,
+      "layerName": "Parcel Digest 2025",
+      "fields": {
+        "pin": "PIN",
+        "address": "PropAddress_Full"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "hi-kauai",
+      "name": "Kauai County, HI",
+      "fips": "15007",
+      "service": "https://geodata.hawaii.gov/arcgis/rest/services/ParcelsZoning/MapServer",
+      "layer": 9,
+      "layerName": "Kauai County Parcels",
+      "fields": {
+        "pin": null,
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "hi-maui",
+      "name": "Maui County, HI",
+      "fips": "15009",
+      "service": "https://services1.arcgis.com/x4h61KaW16vFs7PM/arcgis/rest/services/Parcels_2024_Owners/FeatureServer",
+      "layer": 196,
+      "layerName": "Parcels 2024 Owners",
+      "fields": {
+        "pin": null,
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "id-ada",
+      "name": "Ada County, ID",
+      "fips": "16001",
+      "service": "https://services2.arcgis.com/dgGjZc6xAH5m5JyP/arcgis/rest/services/Parcels/FeatureServer",
+      "layer": 5,
+      "layerName": "Parcel",
+      "fields": {
+        "pin": "PARCEL",
+        "address": "ADDRESS"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "il-kane",
+      "name": "Kane County, IL",
+      "fips": "17089",
+      "service": "https://gistech.countyofkane.org/arcgis/rest/services/KanePINList/MapServer",
+      "layer": 0,
+      "layerName": "Kane.DBO.Parcels_v2025",
+      "fields": {
+        "pin": "PIN",
+        "address": "SiteAddress"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "il-cook",
+      "name": "Cook County, IL",
+      "fips": "17031",
+      "service": "https://gis12.cookcountyil.gov/traditional/rest/services/CookViewer3Parcels/MapServer",
+      "layer": 0,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": null,
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "il-dupage",
+      "name": "DuPage County, IL",
+      "fips": "17043",
+      "service": "https://gis.dupageco.org/arcgis/rest/services/DuPage_County_IL/ParcelsWithRealEstateCC/MapServer",
+      "layer": 0,
+      "layerName": "ParcelsRealEstate",
+      "fields": {
+        "pin": "PIN",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "il-dekalb",
+      "name": "DeKalb County, IL",
+      "fips": "17037",
+      "service": "https://services7.arcgis.com/hEXJrPwm89CLXBYe/arcgis/rest/services/DeKalbIL_Parcels/FeatureServer",
+      "layer": 0,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "Parcel_Number",
+        "address": "SiteAddress"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "il-will",
+      "name": "Will County, IL",
+      "fips": "17197",
+      "service": "https://gis.willcountyillinois.com/server/rest/services/Basemap/Parcels_20/MapServer",
+      "layer": 0,
+      "layerName": "Parcels_20",
+      "fields": {
+        "pin": "PIN",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "il-mchenry",
+      "name": "McHenry County, IL",
+      "fips": "17111",
+      "service": "https://services1.arcgis.com/6iYC5AXXYapRVNzl/arcgis/rest/services/McHenry_County_TaxParcels/FeatureServer",
+      "layer": 0,
+      "layerName": "McHenry County TaxParcels",
+      "fields": {
+        "pin": "ParcelNumber",
+        "address": "SiteAddress"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "il-lake",
+      "name": "Lake County, IL",
+      "fips": "17097",
+      "service": "https://maps.lakecountyil.gov/arcgis/rest/services/GISMapping/WABParcels/MapServer",
+      "layer": 12,
+      "layerName": "Tax Parcel Information",
+      "fields": {
+        "pin": "PIN",
+        "address": "situs_addr_line_1"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "il-st-clair",
+      "name": "St. Clair County, IL",
+      "fips": "17163",
+      "service": "https://arcgispublicmap.co.st-clair.il.us/server/rest/services/SCC_parcel_map_data/MapServer",
+      "layer": 29,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "parcel_number",
+        "address": "siteadr1"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "in-hamilton",
+      "name": "Hamilton County, IN",
+      "fips": "18057",
+      "service": "https://gis1.hamiltoncounty.in.gov/arcgis/rest/services/HamCoParcelsPublic/FeatureServer",
+      "layer": 0,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "FMTPRCLNO",
+        "address": "LOCADDRESS"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "in-allen",
+      "name": "Allen County, IN",
+      "fips": "18003",
+      "service": "https://gis.acimap.us/services/rest/services/parcels/MapServer",
+      "layer": 0,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "PIN",
+        "address": "PropertyAddress1"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "in-marion",
+      "name": "Marion County, IN",
+      "fips": "18097",
+      "service": "https://xmaps.indy.gov/arcgis/rest/services/Basemaps/IndyBase_Topographic/MapServer",
+      "layer": 54,
+      "layerName": "Parcel",
+      "fields": {
+        "pin": "PARCEL_TAG",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ia-johnson",
+      "name": "Johnson County, IA",
+      "fips": "19103",
+      "service": "https://gis.johnsoncountyiowa.gov/arcgis/rest/services/Parcels_AddressPoints_Roads_IC/FeatureServer",
+      "layer": 2,
+      "layerName": "Parcels_Auditor_Year",
+      "fields": {
+        "pin": "PPN",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ks-shawnee",
+      "name": "Shawnee County, KS",
+      "fips": "20177",
+      "service": "https://gis.sncoapps.us/arcgis2/rest/services/Appraiser/AppraisalDataPro/MapServer",
+      "layer": 4,
+      "layerName": "Current Parcels",
+      "fields": {
+        "pin": "PARCELNUM",
+        "address": "PADDRESS"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ky-fayette",
+      "name": "Fayette County, KY",
+      "fips": "21067",
+      "service": "https://services.arcgis.com/f4rR7WnIfGBdVYFd/arcgis/rest/services/Tax_Parcels/FeatureServer",
+      "layer": 0,
+      "layerName": "Tax_Parcels",
+      "fields": {
+        "pin": "PAN",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "la-east-baton-rouge-parish",
+      "name": "East Baton Rouge Parish County, LA",
+      "fips": "22033",
+      "service": "https://maps.brla.gov/gis/rest/services/Cadastral/Tax_Parcel/MapServer",
+      "layer": 0,
+      "layerName": "Tax Parcel",
+      "fields": {
+        "pin": "ASSESSMENT_NUM",
+        "address": "PHYSICAL_ADDRESS"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "la-orleans-parish",
+      "name": "Orleans Parish County, LA",
+      "fips": "22071",
+      "service": "https://gis.nola.gov/arcgis/rest/services/apps/property3/MapServer",
+      "layer": 15,
+      "layerName": "Property Information [Parcels]",
+      "fields": {
+        "pin": "PARCELID",
+        "address": "SITEADDRESS"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "me-cumberland",
+      "name": "Cumberland County, ME",
+      "fips": "23005",
+      "service": "https://services1.arcgis.com/RbMX0mRVOFNTdLzd/arcgis/rest/services/Maine_Parcels_Organized_Towns/FeatureServer",
+      "layer": 10,
+      "layerName": "Maine Parcels Organized Towns (polygon)",
+      "fields": {
+        "pin": "MAP_BK_LOT",
+        "address": "PROP_LOC"
+      },
+      "fallbacks": [
+        {
+          "service": "https://services1.arcgis.com/RbMX0mRVOFNTdLzd/arcgis/rest/services/Maine_Parcels_Organized_Towns/FeatureServer",
+          "layer": 9,
+          "fields": {
+            "pin": null,
+            "address": null
+          }
+        }
+      ]
+    },
+    {
+      "key": "me-york",
+      "name": "York County, ME",
+      "fips": "23031",
+      "service": "https://services1.arcgis.com/RbMX0mRVOFNTdLzd/arcgis/rest/services/Maine_Parcels_Organized_Towns/FeatureServer",
+      "layer": 10,
+      "layerName": "Maine Parcels Organized Towns (polygon)",
+      "fields": {
+        "pin": "MAP_BK_LOT",
+        "address": "PROP_LOC"
+      },
+      "fallbacks": [
+        {
+          "service": "https://services1.arcgis.com/RbMX0mRVOFNTdLzd/arcgis/rest/services/Maine_Parcels_Organized_Towns/FeatureServer",
+          "layer": 9,
+          "fields": {
+            "pin": null,
+            "address": null
+          }
+        }
+      ]
+    },
+    {
+      "key": "md-montgomery",
+      "name": "Montgomery County, MD",
+      "fips": "24031",
+      "service": "https://mcmaps.org/server11/rest/services/Overlays/MCAtlas_Property_Points/FeatureServer",
+      "layer": 0,
+      "layerName": "Property Points",
+      "fields": {
+        "pin": null,
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "md-prince-george-s",
+      "name": "Prince George's County, MD",
+      "fips": "24033",
+      "service": "https://gis.princegeorgescountymd.gov/arcgis/rest/services/Property/Property_Flattened/MapServer",
+      "layer": 0,
+      "layerName": "Property Flattened",
+      "fields": {
+        "pin": null,
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ma-statewide",
+      "name": "Statewide County, MA",
+      "fips": null,
+      "service": "https://arcgisserver.digital.mass.gov/arcgisserver/rest/services/AGOL/MassachusettsPropertyTaxParcels/FeatureServer",
+      "layer": 1,
+      "layerName": "Tax Parcels",
+      "fields": {
+        "pin": "MAP_PAR_ID",
+        "address": null
+      },
+      "fallbacks": [
+        {
+          "service": "https://arcgisserver.digital.mass.gov/arcgisserver/rest/services/AGOL/MassachusettsPropertyTaxParcels/FeatureServer",
+          "layer": 4,
+          "fields": {
+            "pin": null,
+            "address": "SITE_ADDR"
+          }
+        }
+      ]
+    },
+    {
+      "key": "mi-kent",
+      "name": "Kent County, MI",
+      "fips": "26081",
+      "service": "https://gis.kentcountymi.gov/agisprod/rest/services/ParcelsWithCondos/MapServer",
+      "layer": 0,
+      "layerName": "Parcels With Condos",
+      "fields": {
+        "pin": "PPN",
+        "address": "PROPERTYADDRESS"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "mi-oakland",
+      "name": "Oakland County, MI",
+      "fips": "26125",
+      "service": "https://gisservices.oakgov.com/arcgis/rest/services/Enterprise/EnterpriseOpenParcelDataMapService/MapServer",
+      "layer": 1,
+      "layerName": "Tax Parcel Plus",
+      "fields": {
+        "pin": "PIN",
+        "address": "SITEADDRESS"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "mi-wayne",
+      "name": "Wayne County, MI",
+      "fips": "26163",
+      "service": "https://services1.arcgis.com/b6rkZNtCd6Mx2gvB/arcgis/rest/services/Wayne_County_Parcel_Shape_File/FeatureServer",
+      "layer": 0,
+      "layerName": "Wayne County Parcel Shape File",
+      "fields": {
+        "pin": "packedParc",
+        "address": "propstreet"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "mn-ramsey",
+      "name": "Ramsey County, MN",
+      "fips": "27123",
+      "service": "https://maps.co.ramsey.mn.us/arcgis/rest/services/ParcelData/AttributedData/MapServer",
+      "layer": 0,
+      "layerName": "Parcels MultiUse",
+      "fields": {
+        "pin": "ParcelID",
+        "address": "SiteAddress"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "mn-hennepin",
+      "name": "Hennepin County, MN",
+      "fips": "27053",
+      "service": "https://gis.hennepin.us/arcgis/rest/services/HennepinData/LAND_PROPERTY/MapServer",
+      "layer": 1,
+      "layerName": "County Parcels",
+      "fields": {
+        "pin": "PID",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ms-hinds",
+      "name": "Hinds County, MS",
+      "fips": "28049",
+      "service": "https://opcgis.deq.state.ms.us/opcgis/rest/services/Government/HINDS_PARCELS/MapServer",
+      "layer": 0,
+      "layerName": "HINDS_PARCELS",
+      "fields": {
+        "pin": "PARNO",
+        "address": "SITEADD"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ms-desoto",
+      "name": "DeSoto County, MS",
+      "fips": "28033",
+      "service": "https://maps.desotocountyms.gov/arcgis/rest/services/CountyWebMap/Tax_Assessors_County_Web_Map/MapServer",
+      "layer": 29,
+      "layerName": "Tax Parcels",
+      "fields": {
+        "pin": "PIN",
+        "address": "FULL_ADDR"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "mo-jackson",
+      "name": "Jackson County, MO",
+      "fips": "29095",
+      "service": "https://gis.mijackson.org/countygis/rest/services/RealEstate/RealEstateParcels/FeatureServer",
+      "layer": 0,
+      "layerName": "RealEstateParcels",
+      "fields": {
+        "pin": "PIN",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "mo-st-louis",
+      "name": "St. Louis County, MO",
+      "fips": "29189",
+      "service": "https://maps.stlouisco.com/hosting/rest/services/Maps/AGS_Parcels/MapServer",
+      "layer": 0,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "LOCATOR",
+        "address": "PROP_ADD"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "mt-yellowstone",
+      "name": "Yellowstone County, MT",
+      "fips": "30111",
+      "service": "https://gisservice.mt.gov/arcgis/rest/services/msdi_cadastral_map_v1/MapServer",
+      "layer": 1,
+      "layerName": "Montana Parcels",
+      "fields": {
+        "pin": "PARCELID",
+        "address": "AddressLine1"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "mt-missoula",
+      "name": "Missoula County, MT",
+      "fips": "30063",
+      "service": "https://gisservice.mt.gov/arcgis/rest/services/msdi_cadastral_map_v1/MapServer",
+      "layer": 1,
+      "layerName": "Montana Parcels",
+      "fields": {
+        "pin": "PARCELID",
+        "address": "AddressLine1"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "mt-cascade",
+      "name": "Cascade County, MT",
+      "fips": "30013",
+      "service": "https://gisservice.mt.gov/arcgis/rest/services/msdi_cadastral_map_v1/MapServer",
+      "layer": 1,
+      "layerName": "Montana Parcels",
+      "fields": {
+        "pin": "PARCELID",
+        "address": "AddressLine1"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "mt-flathead",
+      "name": "Flathead County, MT",
+      "fips": "30029",
+      "service": "https://gisservice.mt.gov/arcgis/rest/services/msdi_cadastral_map_v1/MapServer",
+      "layer": 1,
+      "layerName": "Montana Parcels",
+      "fields": {
+        "pin": "PARCELID",
+        "address": "AddressLine1"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ne-douglas",
+      "name": "Douglas County, NE",
+      "fips": "31055",
+      "service": "https://dcgis.org/server/rest/services/vector/Parcels_public/FeatureServer",
+      "layer": 0,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "PIN",
+        "address": "PROPERTY_A"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ne-lancaster",
+      "name": "Lancaster County, NE",
+      "fips": "31109",
+      "service": "https://gis.lincoln.ne.gov/integration/rest/services/Assessor/TaxParcels/MapServer",
+      "layer": 0,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "PARCELID",
+        "address": "SITEADDRESS"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ne-sarpy",
+      "name": "Sarpy County, NE",
+      "fips": "31153",
+      "service": "https://geodata.sarpy.gov/arcgis/rest/services/Cadastral/LandRecordsSearch/FeatureServer",
+      "layer": 5,
+      "layerName": "Tax Parcels",
+      "fields": {
+        "pin": "PARCELID",
+        "address": "SITEADDRESS"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "nv-clark",
+      "name": "Clark County, NV",
+      "fips": "32003",
+      "service": "https://maps.clarkcountynv.gov/arcgis/rest/services/GISMO/AssessorMapv2/MapServer",
+      "layer": 1,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "APN",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "nv-washoe",
+      "name": "Washoe County, NV",
+      "fips": "32031",
+      "service": "https://wcgisweb.washoecounty.us/arcgis/rest/services/OpenData/OpenData/MapServer",
+      "layer": 0,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "APN",
+        "address": "STREET"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "nj-bergen",
+      "name": "Bergen County, NJ",
+      "fips": "34003",
+      "service": "https://services2.arcgis.com/XVOqAjTOJ5P6ngMu/arcgis/rest/services/Parcels_Composite_NJ_WM/FeatureServer",
+      "layer": 0,
+      "layerName": "Cad_parcel_mod4",
+      "fields": {
+        "pin": "PAMS_PIN",
+        "address": "PROP_LOC"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "nj-monmouth",
+      "name": "Monmouth County, NJ",
+      "fips": "34025",
+      "service": "https://services9.arcgis.com/GCI7uwdn5grdMNX1/arcgis/rest/services/GEO_MC_Parcels/FeatureServer",
+      "layer": 9,
+      "layerName": "GEO.MC.Parcels",
+      "fields": {
+        "pin": "PAMS_PIN",
+        "address": "PropertyLocation"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "nj-ocean",
+      "name": "Ocean County, NJ",
+      "fips": "34029",
+      "service": "https://maps.nj.gov/arcgis/rest/services/Framework/Cadastral/MapServer",
+      "layer": 0,
+      "layerName": "Parcels (NJ Statewide Cadastral)",
+      "fields": {
+        "pin": "PAMS_PIN",
+        "address": "PROP_LOC"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "nj-camden",
+      "name": "Camden County, NJ",
+      "fips": "34007",
+      "service": "https://maps.nj.gov/arcgis/rest/services/Framework/Cadastral/MapServer",
+      "layer": 0,
+      "layerName": "Parcels (NJ Statewide Cadastral)",
+      "fields": {
+        "pin": "PAMS_PIN",
+        "address": "PROP_LOC"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "nj-morris",
+      "name": "Morris County, NJ",
+      "fips": "34027",
+      "service": "https://maps.nj.gov/arcgis/rest/services/Framework/Cadastral/MapServer",
+      "layer": 0,
+      "layerName": "Parcels (NJ Statewide Cadastral)",
+      "fields": {
+        "pin": "PAMS_PIN",
+        "address": "PROP_LOC"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "nm-bernalillo",
+      "name": "Bernalillo County, NM",
+      "fips": "35001",
+      "service": "https://assessormap.bernco.gov/server/rest/services/Enterprise_Assessment_And_Tax/Public_Access_Parcel_Data_EAT/MapServer",
+      "layer": 0,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": null,
+        "address": "SITUSADD"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ny-bronx",
+      "name": "Bronx County, NY",
+      "fips": "36005",
+      "service": "https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer",
+      "layer": 1,
+      "layerName": "NYS_Tax_Parcels_Public",
+      "fields": {
+        "pin": "PRINT_KEY",
+        "address": "PARCEL_ADDR"
+      },
+      "fallbacks": [
+        {
+          "service": "https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/MAPPLUTO/FeatureServer",
+          "layer": 0,
+          "fields": {
+            "pin": "BBL",
+            "address": "Address"
+          }
+        }
+      ]
+    },
+    {
+      "key": "ny-erie",
+      "name": "Erie County, NY",
+      "fips": "36029",
+      "service": "https://services1.arcgis.com/CgOSc11uky3egK6O/arcgis/rest/services/Erie_County_Parcels/FeatureServer",
+      "layer": 0,
+      "layerName": "Erie_County_Parcels",
+      "fields": {
+        "pin": "PIN",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ny-kings",
+      "name": "Kings County, NY",
+      "fips": "36047",
+      "service": "https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer",
+      "layer": 1,
+      "layerName": "NYS_Tax_Parcels_Public",
+      "fields": {
+        "pin": "PRINT_KEY",
+        "address": "PARCEL_ADDR"
+      },
+      "fallbacks": [
+        {
+          "service": "https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/MAPPLUTO/FeatureServer",
+          "layer": 0,
+          "fields": {
+            "pin": "BBL",
+            "address": "Address"
+          }
+        }
+      ]
+    },
+    {
+      "key": "ny-monroe",
+      "name": "Monroe County, NY",
+      "fips": "36055",
+      "service": "https://services1.arcgis.com/yisUfwZZ4fyubK3R/arcgis/rest/services/Monroe_County_Parcels/FeatureServer",
+      "layer": 0,
+      "layerName": "BASE_MC_Parcels",
+      "fields": {
+        "pin": "COUNTYSBL",
+        "address": "PARCELADDRESS"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ny-new-york",
+      "name": "New York County, NY",
+      "fips": "36061",
+      "service": "https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer",
+      "layer": 1,
+      "layerName": "NYS_Tax_Parcels_Public",
+      "fields": {
+        "pin": "PRINT_KEY",
+        "address": "PARCEL_ADDR"
+      },
+      "fallbacks": [
+        {
+          "service": "https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/MAPPLUTO/FeatureServer",
+          "layer": 0,
+          "fields": {
+            "pin": "BBL",
+            "address": "Address"
+          }
+        }
+      ]
+    },
+    {
+      "key": "ny-onondaga",
+      "name": "Onondaga County, NY",
+      "fips": "36067",
+      "service": "https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer",
+      "layer": 1,
+      "layerName": "NYS_Tax_Parcels_Public",
+      "fields": {
+        "pin": "PRINT_KEY",
+        "address": "PARCEL_ADDR"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ny-queens",
+      "name": "Queens County, NY",
+      "fips": "36081",
+      "service": "https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer",
+      "layer": 1,
+      "layerName": "NYS_Tax_Parcels_Public",
+      "fields": {
+        "pin": "PRINT_KEY",
+        "address": "PARCEL_ADDR"
+      },
+      "fallbacks": [
+        {
+          "service": "https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/MAPPLUTO/FeatureServer",
+          "layer": 0,
+          "fields": {
+            "pin": "BBL",
+            "address": "Address"
+          }
+        }
+      ]
+    },
+    {
+      "key": "ny-richmond",
+      "name": "Richmond County, NY",
+      "fips": "36085",
+      "service": "https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer",
+      "layer": 1,
+      "layerName": "NYS_Tax_Parcels_Public",
+      "fields": {
+        "pin": "PRINT_KEY",
+        "address": "PARCEL_ADDR"
+      },
+      "fallbacks": [
+        {
+          "service": "https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/MAPPLUTO/FeatureServer",
+          "layer": 0,
+          "fields": {
+            "pin": "BBL",
+            "address": "Address"
+          }
+        }
+      ]
+    },
+    {
+      "key": "ny-suffolk",
+      "name": "Suffolk County, NY",
+      "fips": "36103",
+      "service": "https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer",
+      "layer": 1,
+      "layerName": "NYS_Tax_Parcels_Public",
+      "fields": {
+        "pin": "SWIS_SBL_ID",
+        "address": "PARCEL_ADDR"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ny-westchester",
+      "name": "Westchester County, NY",
+      "fips": "36119",
+      "service": "https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer",
+      "layer": 1,
+      "layerName": "NYS_Tax_Parcels_Public",
+      "fields": {
+        "pin": "SWIS_SBL_ID",
+        "address": "PARCEL_ADDR"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "nc-wake",
+      "name": "Wake County, NC",
+      "fips": "37183",
+      "service": "https://maps.wake.gov/arcgis/rest/services/Property/Parcels/MapServer",
+      "layer": 0,
+      "layerName": "Property",
+      "fields": {
+        "pin": "PIN_NUM",
+        "address": "SITE_ADDRESS"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "nc-mecklenburg",
+      "name": "Mecklenburg County, NC",
+      "fips": "37119",
+      "service": "https://gis.charlottenc.gov/arcgis/rest/services/CountyData/Parcels/MapServer",
+      "layer": 0,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "PID",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "nc-forsyth",
+      "name": "Forsyth County, NC",
+      "fips": "37067",
+      "service": "https://services.nconemap.gov/secure/rest/services/NC1Map_Parcels/MapServer",
+      "layer": 1,
+      "layerName": "Parcels (polys)",
+      "fields": {
+        "pin": "parno",
+        "address": "siteadd"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "nc-guilford",
+      "name": "Guilford County, NC",
+      "fips": "37081",
+      "service": "https://services.nconemap.gov/secure/rest/services/NC1Map_Parcels/MapServer",
+      "layer": 1,
+      "layerName": "Parcels (polys)",
+      "fields": {
+        "pin": "parno",
+        "address": "siteadd"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "nc-durham",
+      "name": "Durham County, NC",
+      "fips": "37063",
+      "service": "https://webgis.durhamnc.gov/server/rest/services/PublicServices/Property/MapServer",
+      "layer": 4,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "PIN",
+        "address": "LOCATION_ADDR"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "nc-cumberland",
+      "name": "Cumberland County, NC",
+      "fips": "37051",
+      "service": "https://services.nconemap.gov/secure/rest/services/NC1Map_Parcels/MapServer",
+      "layer": 1,
+      "layerName": "Parcels (polys)",
+      "fields": {
+        "pin": "parno",
+        "address": "siteadd"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "nc-buncombe",
+      "name": "Buncombe County, NC",
+      "fips": "37021",
+      "service": "https://gis.buncombecounty.org/arcgis/rest/services/property_bc_dis/MapServer",
+      "layer": 1,
+      "layerName": "Property",
+      "fields": {
+        "pin": "pin",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "nd-cass",
+      "name": "Cass County, ND",
+      "fips": "38017",
+      "service": "https://gisweb.casscountynd.gov/arcgis/rest/services/Public/CountyParcels/MapServer",
+      "layer": 0,
+      "layerName": "CountyParcels",
+      "fields": {
+        "pin": "PIN",
+        "address": "PropertyAddress"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "oh-montgomery",
+      "name": "Montgomery County, OH",
+      "fips": "39113",
+      "service": "https://services6.arcgis.com/EbVsqZ18sv1kVJ3k/ArcGIS/rest/services/Montgomery_County_Parcels/FeatureServer",
+      "layer": 0,
+      "layerName": "Montgomery_Parcels",
+      "fields": {
+        "pin": "PRINT_KEY",
+        "address": "PROP_ADDR"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "oh-stark",
+      "name": "Stark County, OH",
+      "fips": "39151",
+      "service": "https://scgisa.starkcountyohio.gov/arcgis/rest/services/Auditor/StarkCountyParcels/MapServer",
+      "layer": 0,
+      "layerName": "Stark County Parcels",
+      "fields": {
+        "pin": "PIN",
+        "address": "SITE_ADDRESS"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "oh-franklin",
+      "name": "Franklin County, OH",
+      "fips": "39049",
+      "service": "https://gis.franklincountyohio.gov/hosting/rest/services/ParcelFeatures/Parcel_Features/MapServer",
+      "layer": 0,
+      "layerName": "Tax Parcel",
+      "fields": {
+        "pin": "PARCELID",
+        "address": "SITEADDRESS"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "oh-cuyahoga",
+      "name": "Cuyahoga County, OH",
+      "fips": "39035",
+      "service": "https://gis.cuyahogacounty.gov/server/rest/services/CCFO/Parcel_Fabric_Taxparcels/FeatureServer",
+      "layer": 0,
+      "layerName": "Parcel Fabric Taxparcels",
+      "fields": {
+        "pin": "parcel_id",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "oh-hamilton",
+      "name": "Hamilton County, OH",
+      "fips": "39061",
+      "service": "https://cagisonline.hamilton-co.org/arcgis/rest/services/HCE/Cadastral/MapServer",
+      "layer": 0,
+      "layerName": "CAGIS.Ham_Parcel_Poly",
+      "fields": {
+        "pin": "PARCELID",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "oh-summit",
+      "name": "Summit County, OH",
+      "fips": "39153",
+      "service": "https://maps.summitcounty.org/arcgis/rest/services/Maps/ParcelQuery/MapServer",
+      "layer": 0,
+      "layerName": "ParcelQuery",
+      "fields": {
+        "pin": null,
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "oh-lucas",
+      "name": "Lucas County, OH",
+      "fips": "39095",
+      "service": "https://lcaudgis.co.lucas.oh.us/gisaudserver/rest/services/Hosted/OSE_ParcelsAddresses_AREIS/FeatureServer",
+      "layer": 0,
+      "layerName": "Parcels Addresses (AREIS)",
+      "fields": {
+        "pin": "parid",
+        "address": "property_address"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ok-oklahoma",
+      "name": "Oklahoma County, OK",
+      "fips": "40109",
+      "service": "https://services8.arcgis.com/euhkr1dAJeQBIjV0/arcgis/rest/services/TaxParcelsPublics_view/FeatureServer",
+      "layer": 0,
+      "layerName": "TaxParcelPublic",
+      "fields": {
+        "pin": null,
+        "address": "location"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "or-multnomah",
+      "name": "Multnomah County, OR",
+      "fips": "41051",
+      "service": "https://services5.arcgis.com/x7DNZL1YqNQVNykA/arcgis/rest/services/Multnomah_County_Taxlot_Parcels/FeatureServer",
+      "layer": 0,
+      "layerName": "Multnomah County Tax Parcels",
+      "fields": {
+        "pin": null,
+        "address": "SITUSADDR"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "or-lane",
+      "name": "Lane County, OR",
+      "fips": "41039",
+      "service": "https://lcgispubags.lanecountyor.gov/arcgis/rest/services/LaneCountyMaps/AddressParcel/MapServer",
+      "layer": 2,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": null,
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "or-marion",
+      "name": "Marion County, OR",
+      "fips": "41047",
+      "service": "https://gis.co.marion.or.us/arcgis/rest/services/Public/Parcels/MapServer",
+      "layer": 0,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": null,
+        "address": "SITUS"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "or-umatilla",
+      "name": "Umatilla County, OR",
+      "fips": "41059",
+      "service": "https://services3.arcgis.com/tNPgIZWOB0Efvm0g/ArcGIS/rest/services/Tax_Lots/FeatureServer",
+      "layer": 0,
+      "layerName": "Tax Lots",
+      "fields": {
+        "pin": null,
+        "address": "SITUS_STRE"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "pa-allegheny",
+      "name": "Allegheny County, PA",
+      "fips": "42003",
+      "service": "https://gisdata.alleghenycounty.us/arcgis/rest/services/EGIS/Web_Parcels/MapServer",
+      "layer": 0,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "PIN",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "pa-philadelphia",
+      "name": "Philadelphia County, PA",
+      "fips": "42101",
+      "service": "https://services.arcgis.com/fLeGjb7u4uXqeF9q/arcgis/rest/services/PWD_PARCELS/FeatureServer",
+      "layer": 0,
+      "layerName": "PWD_PARCELS",
+      "fields": {
+        "pin": "parcelid",
+        "address": "address"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "pa-montgomery",
+      "name": "Montgomery County, PA",
+      "fips": "42091",
+      "service": "https://services1.arcgis.com/kOChldNuKsox8qZD/arcgis/rest/services/Montgomery_County_Parcels/FeatureServer",
+      "layer": 6,
+      "layerName": "Montgomery County Parcels",
+      "fields": {
+        "pin": "TAXPIN",
+        "address": "LOCATION1"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "pa-bucks",
+      "name": "Bucks County, PA",
+      "fips": "42017",
+      "service": "https://services3.arcgis.com/SP47Tddf7RK32lBU/arcgis/rest/services/Bucks_County_Parcels/FeatureServer",
+      "layer": 0,
+      "layerName": "Bucks County Parcels",
+      "fields": {
+        "pin": "PARCEL_NUM",
+        "address": "ADDRESS"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "sc-greenville",
+      "name": "Greenville County, SC",
+      "fips": "45045",
+      "service": "https://www.gcgis.org/arcgis/rest/services/GreenvilleJS/Map_Layers_JS/MapServer",
+      "layer": 52,
+      "layerName": "Tax Parcel",
+      "fields": {
+        "pin": "PIN",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "sc-charleston",
+      "name": "Charleston County, SC",
+      "fips": "45019",
+      "service": "https://gisccapps.charlestoncounty.org/arcgis/rest/services/GIS_VIEWER/New_Parcel_Search/MapServer",
+      "layer": 61,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "PID",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "sd-minnehaha",
+      "name": "Minnehaha County, SD",
+      "fips": "46099",
+      "service": "https://gis.minnehahacounty.gov/minnemap/rest/services/Parcels/MapServer",
+      "layer": 0,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "TAG",
+        "address": "FULL_ADDRESS"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "tn-davidson",
+      "name": "Davidson County, TN",
+      "fips": "47037",
+      "service": "https://maps.nashville.gov/arcgis/rest/services/Cadastral/Parcels/MapServer",
+      "layer": 0,
+      "layerName": "Ownership Parcels",
+      "fields": {
+        "pin": "ParID",
+        "address": "PropAddr"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "tn-shelby",
+      "name": "Shelby County, TN",
+      "fips": "47157",
+      "service": "https://scgis.shelbycountytn.gov/serverhigh/rest/services/Parcel/CurrentParcels/MapServer",
+      "layer": 0,
+      "layerName": "Current Parcels",
+      "fields": {
+        "pin": "PARCELID",
+        "address": "PAR_ADDR1"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "tn-hamilton",
+      "name": "Hamilton County, TN",
+      "fips": "47065",
+      "service": "https://mapsdev.hamiltontn.gov/hcwa03/rest/services/Live_Parcels/MapServer",
+      "layer": 0,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "PBA_NUM",
+        "address": "ADDRESS"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "tx-harris",
+      "name": "Harris County, TX",
+      "fips": "48201",
+      "service": "https://www.gis.hctx.net/arcgis/rest/services/HCAD/Parcels/MapServer",
+      "layer": 0,
+      "layerName": "HCAD Parcels",
+      "fields": {
+        "pin": "HCAD_NUM",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "tx-travis",
+      "name": "Travis County, TX",
+      "fips": "48453",
+      "service": "https://services.arcgis.com/0L95CJ0VTaxqcmED/arcgis/rest/services/EXTERNAL_tcad_parcel/FeatureServer",
+      "layer": 0,
+      "layerName": "TCAD Parcels",
+      "fields": {
+        "pin": "PID_10",
+        "address": "SITUS"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "tx-tarrant",
+      "name": "Tarrant County, TX",
+      "fips": "48439",
+      "service": "https://mapit.tarrantcounty.com/arcgis/rest/services/Tax/TCProperty/MapServer",
+      "layer": 0,
+      "layerName": "Tarrant County Parcel",
+      "fields": {
+        "pin": "TAXPIN",
+        "address": "SITUS_ADDR"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "tx-dallas",
+      "name": "Dallas County, TX",
+      "fips": "48113",
+      "service": "https://services2.arcgis.com/rwnOSbfKSwyTBcwN/arcgis/rest/services/DallasTaxParcels/FeatureServer",
+      "layer": 0,
+      "layerName": "TaxParcels",
+      "fields": {
+        "pin": null,
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "tx-bexar",
+      "name": "Bexar County, TX",
+      "fips": "48029",
+      "service": "https://maps.bexar.org/arcgis/rest/services/Parcels/MapServer",
+      "layer": 0,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": null,
+        "address": "Situs"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "tx-collin",
+      "name": "Collin County, TX",
+      "fips": "48085",
+      "service": "https://gismaps.cityofallen.org/arcgis/rest/services/ReferenceData/Collin_County_Appraisal_District_Parcels/MapServer",
+      "layer": 1,
+      "layerName": "Collin County Appraisal District Parcels",
+      "fields": {
+        "pin": null,
+        "address": "GIS_DBO_AD_Entity_situs_display"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "tx-denton",
+      "name": "Denton County, TX",
+      "fips": "48121",
+      "service": "https://gis.dentoncounty.gov/arcgis/rest/services/Parcels/MapServer",
+      "layer": 0,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": null,
+        "address": "SITUS"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "tx-el-paso",
+      "name": "El Paso County, TX",
+      "fips": "48141",
+      "service": "https://gis.elpasotexas.gov/arcgis/rest/services/EPParcels/FeatureServer",
+      "layer": 0,
+      "layerName": "EP Parcels",
+      "fields": {
+        "pin": "PIDN",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "tx-fort-bend",
+      "name": "Fort Bend County, TX",
+      "fips": "48157",
+      "service": "https://gisportal.fortbendcountytx.gov/arcgis/rest/services/InteractiveMap/Parcels_Public/FeatureServer",
+      "layer": 1,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": null,
+        "address": "Situs"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "tx-williamson",
+      "name": "Williamson County, TX",
+      "fips": "48491",
+      "service": "https://gis.wilco.org/arcgis/rest/services/public/county_wcad_parcels/MapServer",
+      "layer": 0,
+      "layerName": "WCAD Parcels",
+      "fields": {
+        "pin": "PARCELID",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ut-salt-lake",
+      "name": "Salt Lake County, UT",
+      "fips": "49035",
+      "service": "https://services1.arcgis.com/99lidPhWCzftIe9K/ArcGIS/rest/services/Parcels_SaltLake_LIR/FeatureServer",
+      "layer": 0,
+      "layerName": "Parcels_SaltLake_LIR",
+      "fields": {
+        "pin": "PARCEL_ID",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ut-davis",
+      "name": "Davis County, UT",
+      "fips": "49011",
+      "service": "https://services1.arcgis.com/99lidPhWCzftIe9K/ArcGIS/rest/services/Parcels_Davis_LIR/FeatureServer",
+      "layer": 0,
+      "layerName": "Parcels_Davis_LIR",
+      "fields": {
+        "pin": "PARCEL_ID",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ut-utah",
+      "name": "Utah County, UT",
+      "fips": "49049",
+      "service": "https://services1.arcgis.com/99lidPhWCzftIe9K/ArcGIS/rest/services/Parcels_Utah_LIR/FeatureServer",
+      "layer": 0,
+      "layerName": "Parcels_Utah_LIR",
+      "fields": {
+        "pin": "PARCEL_ID",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "ut-weber",
+      "name": "Weber County, UT",
+      "fips": "49057",
+      "service": "https://services1.arcgis.com/99lidPhWCzftIe9K/ArcGIS/rest/services/Parcels_Weber_LIR/FeatureServer",
+      "layer": 0,
+      "layerName": "Parcels_Weber_LIR",
+      "fields": {
+        "pin": "PARCEL_ID",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "vt-chittenden",
+      "name": "Chittenden County, VT",
+      "fips": "50007",
+      "service": "https://services1.arcgis.com/BkFxaEFNwHqX3tAw/arcgis/rest/services/FS_VCGI_VTPARCELS_WM_NOCACHE_v2/FeatureServer",
+      "layer": 1,
+      "layerName": "Cadastral_VTPARCELS_poly (active parcels)",
+      "fields": {
+        "pin": null,
+        "address": "E911ADDR"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "va-fairfax",
+      "name": "Fairfax County, VA",
+      "fips": "51059",
+      "service": "https://www.fairfaxcounty.gov/mercator/rest/services/OpenData/OpenData_A9/MapServer",
+      "layer": 0,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "PIN",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "va-prince-william",
+      "name": "Prince William County, VA",
+      "fips": "51153",
+      "service": "https://gisweb.pwcva.gov/arcgis/rest/services/OpenData/OpenData/MapServer",
+      "layer": 0,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "GPIN",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "wa-king",
+      "name": "King County, WA",
+      "fips": "53033",
+      "service": "https://gismaps.kingcounty.gov/arcgis/rest/services/Property/KingCo_Parcels/MapServer",
+      "layer": 0,
+      "layerName": "King County Parcels",
+      "fields": {
+        "pin": "PIN",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "wa-spokane",
+      "name": "Spokane County, WA",
+      "fips": "53063",
+      "service": "https://services1.arcgis.com/ozNll27nt9ZtPWOn/arcgis/rest/services/Parcels/FeatureServer",
+      "layer": 0,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "PID_NUM",
+        "address": "site_address"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "wa-snohomish",
+      "name": "Snohomish County, WA",
+      "fips": "53061",
+      "service": "https://services6.arcgis.com/z6WYi9VRHfgwgtyW/arcgis/rest/services/Parcels/FeatureServer",
+      "layer": 0,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "PARCEL_ID",
+        "address": "SITUSLINE1"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "wa-thurston",
+      "name": "Thurston County, WA",
+      "fips": "53067",
+      "service": "https://map.co.thurston.wa.us/arcgis/rest/services/Thurston/Thurston_Parcels/FeatureServer",
+      "layer": 0,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "PARCEL_NO",
+        "address": "SITUS_STRE"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "wv-kanawha",
+      "name": "Kanawha County, WV",
+      "fips": "54039",
+      "service": "https://services.wvgis.wvu.edu/arcgis/rest/services/Planning_Cadastre/WV_Parcels/MapServer",
+      "layer": 0,
+      "layerName": "WVParcels",
+      "fields": {
+        "pin": "CleanParcelID",
+        "address": "FullPhysicalAddress"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "wv-monongalia",
+      "name": "Monongalia County, WV",
+      "fips": "54061",
+      "service": "https://services.wvgis.wvu.edu/arcgis/rest/services/Planning_Cadastre/WV_Parcels/MapServer",
+      "layer": 0,
+      "layerName": "WVParcels",
+      "fields": {
+        "pin": "CleanParcelID",
+        "address": "FullPhysicalAddress"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "wv-raleigh",
+      "name": "Raleigh County, WV",
+      "fips": "54081",
+      "service": "https://services.wvgis.wvu.edu/arcgis/rest/services/Planning_Cadastre/WV_Parcels/MapServer",
+      "layer": 0,
+      "layerName": "WVParcels",
+      "fields": {
+        "pin": "CleanParcelID",
+        "address": "FullPhysicalAddress"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "wv-cabell",
+      "name": "Cabell County, WV",
+      "fips": "54011",
+      "service": "https://services.wvgis.wvu.edu/arcgis/rest/services/Planning_Cadastre/WV_Parcels/MapServer",
+      "layer": 0,
+      "layerName": "WVParcels",
+      "fields": {
+        "pin": "CleanParcelID",
+        "address": "FullPhysicalAddress"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "wi-dane",
+      "name": "Dane County, WI",
+      "fips": "55025",
+      "service": "https://dcimapapps.danecounty.gov/arcgissrv/rest/services/TaxParcels/MapServer",
+      "layer": 0,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "PARCELNO",
+        "address": "PropertyAddress"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "wi-milwaukee",
+      "name": "Milwaukee County, WI",
+      "fips": "55079",
+      "service": "https://services2.arcgis.com/s1wgJQKbKJihhhaT/arcgis/rest/services/Milwaukee_County_Parcels_Property_Information_view/FeatureServer",
+      "layer": 58,
+      "layerName": "Milwaukee County Property Information",
+      "fields": {
+        "pin": "TAXKEY",
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "wi-waukesha",
+      "name": "Waukesha County, WI",
+      "fips": "55133",
+      "service": "https://gis.waukeshacounty.gov/host/rest/services/Web_Tax_Parcel/FeatureServer",
+      "layer": 2,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": null,
+        "address": "SITEADRESS"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "wi-brown",
+      "name": "Brown County, WI",
+      "fips": "55009",
+      "service": "https://gis.browncountywi.gov/arcgis/rest/services/ParcelPolygons/MapServer",
+      "layer": 1,
+      "layerName": "TaxParcel",
+      "fields": {
+        "pin": "PARCELID",
+        "address": "SITEADRESS"
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "wy-laramie",
+      "name": "Laramie County, WY",
+      "fips": "56021",
+      "service": "https://maps.laramiecounty.com/arcgis/rest/services/Planning/SmartGovParcels/MapServer",
+      "layer": 1,
+      "layerName": "SmartGovParcels",
+      "fields": {
+        "pin": "statepidn",
+        "address": "site_address1"
+      },
+      "fallbacks": []
+    }
+  ]
+}

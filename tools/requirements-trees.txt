@@ -1,0 +1,33 @@
+# Python for one job: photographs in, tree crowns out. See tree-crowns.py.
+#
+# THE CPU INDEX FIRST, for the same reason as tools/requirements.txt: the
+# default PyPI wheel for torch carries about two gigabytes of CUDA support for
+# a runner with no GPU.
+--index-url https://download.pytorch.org/whl/cpu
+--extra-index-url https://pypi.org/simple
+
+torch
+# NAMED EXPLICITLY, and leaving it out is what failed the first run of workflow
+# 19. SegformerImageProcessor is built on torchvision's transforms, so the
+# model loads fine and then the PROCESSOR raises ImportError -- after the
+# weights have downloaded, which reads as a model problem rather than a missing
+# package. It is also why it is named here rather than left to resolve: without
+# the line, pip takes the CUDA build from PyPI.
+torchvision
+transformers
+pillow
+numpy
+
+# The watershed. SegFormer answers tree/no-tree and the crowns have to be split
+# out of that; scikit-image carries the distance transform, the peak finder,
+# the watershed and the contour tracer, all tested, and this project's history
+# is that a subtly wrong reimplementation returns a confident wrong answer
+# rather than failing.
+scikit-image
+scipy
+
+# NOT torchgeo, and not detectron2. torchgeo is for Scale-MAE and is a heavy
+# install this job never touches. detectron2 is what the INSTANCE model needs
+# -- a source build pinned to particular torch versions -- and the whole point
+# of this step is to be cheap enough to throw away. See the note at the top of
+# tree-crowns.py for what that trade actually costs.

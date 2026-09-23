@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lawn Mapper — worth tracing?</title>
+<!--
+  SCREENING THE QUEUE.
+
+  The corpus is the constraint on everything, the detector cannot help build it
+  until it beats SAM and it does not, so the corpus grows by paying people. The
+  cheapest minute in that whole arrangement is this one: a lawn rejected here
+  costs a glance, and the same lawn rejected after somebody has traced it costs
+  fifty cents and a review.
+
+  So this page is built for SPEED and for nothing else. One question, two
+  buttons, no scrolling between decisions. The pictures for the next few are
+  already in the browser before they are asked about, because a page that
+  pauses to load is a page that gets abandoned at number forty.
+
+  ONE TAP IS FINAL HERE, deliberately unlike the every-map list where rejecting
+  takes two. Nothing is destroyed by a mistake: a wrong answer costs one lawn
+  out of a county with thousands, and the sampler will offer another. Making
+  each decision cost two taps would double the work to protect against
+  something that does not matter.
+
+  Nothing is gated in this markup. The gate is the API, which answers 404 to
+  anybody who is not an administrator.
+-->
+<link href="/styles.css" rel="stylesheet">
+<link href="/console.css" rel="stylesheet">
+<style>
+  /* The picture is the page. Everything else is a caption on it. */
+  .shot.lawn {
+    width: 100%; max-width: 560px; aspect-ratio: 1; display: block;
+    border-radius: 12px; background: #e7ebe7;
+  }
+  /* Wider / closer, beside the picture rather than under the verdict: this is
+     a question about the view, not about the lawn. */
+  .zoomrow {
+    display: flex; gap: 8px; align-items: center; justify-content: center;
+    width: 100%; max-width: 560px;
+  }
+  .zoomrow button {
+    font: inherit; font-size: 13px; padding: 7px 14px;
+    border: 1px solid var(--line); border-radius: 9px; background: #fff; cursor: pointer;
+  }
+  .zoomrow small { color: var(--muted); font-size: 11.5px; flex: 1; text-align: center; }
+  .legend-line { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap;
+                 font-size: 11.5px; color: var(--muted); }
+  .legend-line i { width: 11px; height: 11px; border-radius: 3px; display: inline-block;
+                   vertical-align: -1px; margin-right: 5px; }
+  .ask { display: grid; gap: 10px; justify-items: center; }
+  .ask h2 { font-size: 15px; margin: 0; text-align: center; }
+  .verdict-big { display: flex; gap: 10px; width: 100%; max-width: 560px; }
+  .verdict-big button {
+    font: inherit; font-size: 16px; font-weight: 650; padding: 15px 10px;
+    border: 1px solid var(--line); border-radius: 11px; background: #fff;
+    cursor: pointer; flex: 1 1 0;
+  }
+  .verdict-big .yes { background: #e4f2e5; border-color: #9ec5a1; color: #1f5b22; }
+  .verdict-big .no  { background: #f6eceb; border-color: #d3a9a4; color: #7d2d22; }
+  .verdict-big button:disabled { opacity: .5; }
+  .tally { font-size: 12px; color: var(--muted); text-align: center; }
+  .rule { font-size: 12.5px; color: var(--muted); max-width: 560px; }
+  .rule b { color: var(--ink, #23301f); }
+</style>
+</head>
+<body>
+
+<div class="console">
+  <div class="conhead">
+    <h1>Worth tracing?</h1>
+    <a href="/admin.html">← back to the console</a>
+  </div>
+
+  <div class="locked-out" id="locked" hidden>
+    <p>This page is for the site owner.</p>
+    <p><a href="/">Go and measure a lawn instead →</a></p>
+  </div>
+
+  <div class="empty-state" id="none" hidden>
+    <div class="card">
+      <h2>Nothing left to screen</h2>
+      <p class="sub">Run workflow <b>15</b> to sample more lawns from the
+        counties with working parcel services.</p>
+      <p class="sub" id="none-counts"></p>
+    </div>
+  </div>
+
+  <div id="page" hidden>
+    <div class="card ask">
+      <h2 id="question">Is there a grass lawn here, of any size, that is mostly visible?</h2>
+      <!--
+        A canvas rather than an img, because the property line has to go ON the
+        photograph. The first screening session stalled on exactly this: a
+        square of imagery does not say which plot is being asked about, and at
+        house scale it does not show enough ground to tell a garden from the
+        edge of a wood.
+      -->
+      <canvas class="shot lawn" id="shot" width="640" height="640"></canvas>
+      <div class="legend-line">
+        <span><i style="background:#f2c744"></i>the property line</span>
+        <span><i style="background:#e2725b;border-radius:50%"></i>the spot we sampled</span>
+      </div>
+      <div class="zoomrow">
+        <button id="out">− wider</button>
+        <small id="zoom-note"></small>
+        <button id="in">closer +</button>
+      </div>
+      <p class="tally" id="where"></p>
+      <div class="verdict-big">
+        <button class="no" id="no">No</button>
+        <button class="yes" id="yes">Yes — trace this</button>
+      </div>
+      <p class="tally" id="tally"></p>
+    </div>
+
+    <div class="card">
+      <!--
+        THE RULE, on the page rather than in somebody's head. Screening drifts
+        over a session -- the fortieth answer is looser than the first unless
+        the standard is written down where it is being applied.
+      -->
+      <p class="rule">
+        <b>Yes</b> if you can see grass and could draw its edge: a front lawn, a
+        back garden, a verge. Size does not matter and neither does condition —
+        dormant, patchy and shaded all count.
+      </p>
+      <p class="rule">
+        <b>No</b> if there is no grass, if the picture is too old, blurred or
+        cloudy to trace from, if it is a farm field, a park, a car park or a
+        block of flats, or if a tree covers so much that the lawn is guesswork.
+        A stranger being paid for five minutes cannot resolve what you cannot.
+      </p>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="/screen.js"></script>
+</body>
+</html>

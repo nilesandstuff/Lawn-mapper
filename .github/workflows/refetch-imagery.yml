@@ -1,0 +1,88 @@
+name: 21. Re-bank the photographs at 10 cm
+
+# Re-take every corpus photograph at the resolution the detector actually
+# wants, stitching from several Mapbox requests where one will not reach it.
+#
+# WHY. Until 2026-09-23 the resolution of a stored photograph was a side effect
+# of how big the lot was -- zoomToFit fits the parcel into a fixed 640 logical
+# pixels, so a 25 m garden was banked at 2 cm a pixel and a 319 m lot at 25 cm.
+# The detector wants 10 cm, so the big lots were being upsampled into it. That
+# is H20, and it is the best explanation anyone has for the canopy model
+# reading worse on big lawns.
+#
+# captureFrame fixed that at the point of capture, but only for photographs
+# banked from then on. This re-takes the ones already in the bucket.
+#
+# NOTHING BUT THE PHOTOGRAPH CHANGES. Not the outline, not the parcel, not the
+# review status. A map somebody traced by hand is the same map, of a better
+# picture of the same ground.
+#
+# COSTS MAPBOX REQUESTS, one or four per lawn, on the same free tier the app
+# already uses. Nothing is bought from Replicate.
+#
+# START WITH A DRY RUN. It prints what each lawn would gain and touches
+# nothing.
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Only say what would change, and touch nothing'
+        type: boolean
+        default: true
+      force:
+        # A lot already banked finer than 10 cm is normally left alone, because
+        # re-taking it could only make it worse -- the imagery may have been
+        # reflown since, and a photograph is the archive. This is for after a
+        # change to the capture rules, not for ordinary use.
+        description: 'Re-take even the ones already fine enough'
+        type: boolean
+        default: false
+      limit:
+        description: 'How many maps to consider, newest first'
+        required: false
+        default: '200'
+
+jobs:
+  refetch:
+    name: Re-take each photograph at the detector's scale
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install the image decoders
+        run: npm install pngjs jpeg-js --no-save
+
+      - name: Re-bank them
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CORPUS_BUCKET: lawn-mapper-corpus
+          MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
+          MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          FORCE: ${{ inputs.force }}
+          LIMIT: ${{ inputs.limit }}
+        run: node tools/refetch-imagery.js
+
+      - name: If that failed
+        if: failure()
+        run: |
+          echo "The photographs already in the bucket are untouched unless a"
+          echo "line above says otherwise -- each map is stored one at a time,"
+          echo "so a failure part way through leaves the rest as they were."
+          echo
+          echo "The usual reasons, in order:"
+          echo "  * MAPBOX_TOKEN is not set, or is a restricted token that"
+          echo "    refuses a request with no Referer -- the Worker uses"
+          echo "    MAPBOX_SERVER_TOKEN for exactly this reason"
+          echo "  * the corpus table has no image_frame column, which means the"
+          echo "    deploy that added it has not run yet"
+          echo "  * the R2 bucket is not reachable with this API token"

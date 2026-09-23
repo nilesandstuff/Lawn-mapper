@@ -1,0 +1,111 @@
+name: 4. Browser test
+
+# Runs the real app in a real browser against the real Mapbox libraries, which
+# is the only place bugs in the map interaction itself can show up.
+#
+# Stops before "Detect my lawn", so it spends nothing on Replicate. It uses a
+# geocode and a few map tiles from your Mapbox allowance.
+on:
+  workflow_dispatch:
+    inputs:
+      detect:
+        description: 'Also run a REAL detection (costs a few cents)'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+      address:
+        description: 'Address to test (blank = a known Ottawa County lot)'
+        required: false
+        default: ''
+        type: string
+
+jobs:
+  browser:
+    name: Drive the app in a browser
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      # Not a project dependency: it would slow every other workflow's install
+      # for something only this job needs.
+      - name: Install Playwright
+        run: |
+          npm install playwright --no-save
+          npx playwright install --with-deps chromium
+
+      # BEFORE the app starts, not after: wrangler dev holds the local SQLite
+      # file open, and writing to it from a second process while it is running
+      # is a way to lose the writes quietly.
+      #
+      # LOCAL ONLY, and the --local flag is the whole safety of it. The paid
+      # queue test claims, submits and skips these rows; doing that to the
+      # deployed database would burn real lawns and put test maps in the
+      # corpus.
+      - name: Give the local database a queue to hand out
+        run: |
+          npx wrangler d1 execute lawn-mapper --local --file=worker/schema.sql --yes
+          npx wrangler d1 execute lawn-mapper --local --file=tools/test-jobs.sql --yes
+
+      - name: Start the app
+        env:
+          MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
+          MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN }}
+          REPLICATE_TOKEN: ${{ secrets.REPLICATE_TOKEN }}
+        run: |
+          # The browser here runs on 127.0.0.1, which is not one of the domains
+          # MAPBOX_TOKEN is restricted to, so handing it to the page means every
+          # tile comes back 403 and the test drives a map with no imagery on it.
+          # Locally the unrestricted token is the right one for both jobs; the
+          # restriction exists to protect the token once it is on a public page.
+          DEV_TOKEN="${MAPBOX_SERVER_TOKEN:-$MAPBOX_TOKEN}"
+          printf 'MAPBOX_TOKEN=%s\nMAPBOX_SERVER_TOKEN=%s\nREPLICATE_TOKEN=%s\n' \
+            "$DEV_TOKEN" "$DEV_TOKEN" "$REPLICATE_TOKEN" > .dev.vars
+          npx wrangler dev --port 8787 --local > wrangler.log 2>&1 &
+          for i in $(seq 1 40); do
+            if curl -sf -o /dev/null http://127.0.0.1:8787/api/config; then
+              echo "app is up after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::the app never came up"; cat wrangler.log; exit 1
+
+      - name: Drive it
+        env:
+          RUN_DETECT: ${{ inputs.detect }}
+          TEST_ADDRESS: ${{ inputs.address }}
+        run: node tools/browser-test.mjs http://127.0.0.1:8787
+
+      # The paid queue, driven the way a stranger on a crowd platform will.
+      #
+      # `if: always()` so a failure in the ordinary app does not hide this one.
+      # They are separate journeys with separate consequences: the app failing
+      # is a visitor who can come back tomorrow, and this failing is somebody
+      # who has done four minutes of unpaid work with nobody to tell.
+      #
+      # It spends nothing on Replicate -- detection is stubbed at the network,
+      # which also makes it check the case that matters most: a worker whose
+      # automatic outline never arrived must still be able to trace the lawn by
+      # hand and send it.
+      - name: Drive the paid queue
+        if: always()
+        run: node tools/job-test.mjs http://127.0.0.1:8787
+
+      - name: Screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-test-screenshot
+          path: browser-test.png
+          if-no-files-found: ignore
+
+      - name: Worker log
+        if: failure()
+        run: cat wrangler.log || true
