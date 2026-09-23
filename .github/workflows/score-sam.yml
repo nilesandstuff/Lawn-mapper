@@ -44,8 +44,9 @@ jobs:
 
       - run: npm ci
 
+      # Both: Mapbox's picture is a JPEG and SAM's mask is a PNG.
       - name: Install the image decoders
-        run: npm install pngjs --no-save
+        run: npm install pngjs jpeg-js --no-save
 
       - name: Ask SAM about every lawn and score it
         env:

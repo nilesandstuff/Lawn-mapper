@@ -97,22 +97,36 @@ async function predict(version, input) {
   return Buffer.from(await (await fetch(url)).arrayBuffer());
 }
 
-/** A PNG's pixels as the {width, height, data} the mask tools read. */
-const decodePng = (PNG, bytes) => {
-  const png = PNG.sync.read(bytes);
-  return { width: png.width, height: png.height, data: png.data };
+/**
+ * An image's pixels as the {width, height, data} the mask tools read.
+ *
+ * BY SIGNATURE, NOT BY ASSUMPTION. Mapbox's static satellite picture is a
+ * JPEG; SAM's mask is a PNG. The first version of this read everything as
+ * PNG, and the first run paid for every prediction and then threw every lawn
+ * away on "unrecognised content at end of stream".
+ */
+const decodeImage = (decoders, bytes) => {
+  if (bytes[0] === 0x89 && bytes[1] === 0x50) {
+    const png = decoders.png.PNG.sync.read(bytes);
+    return { width: png.width, height: png.height, data: png.data };
+  }
+  if (bytes[0] === 0xff && bytes[1] === 0xd8) {
+    const img = decoders.jpeg.decode(bytes, { useTArray: true });
+    return { width: img.width, height: img.height, data: img.data };
+  }
+  throw new Error(`not an image (starts ${bytes[0]},${bytes[1]})`);
 };
 
 /**
  * Ask SAM for every piece of a plan and paste the answers together, exactly
  * as the browser does. Returns the stitched RGBA image and the pieces used.
  */
-async function askPlan(plan, version, pass, PNG) {
+async function askPlan(plan, version, pass, decoders) {
   const pieces = [];
   for (const tile of plan.tiles) {
     const url = detectionImageUrl('mapbox', tile.frame, mapbox, process.env);
     const bytes = await predict(version, MODELS.sam3.input(url, pass));
-    pieces.push({ col: tile.col, row: tile.row, image: decodePng(PNG, bytes) });
+    pieces.push({ col: tile.col, row: tile.row, image: decodeImage(decoders, bytes) });
   }
   return pieces.length === 1 ? pieces[0].image : stitchMasks(pieces, plan.cols, plan.rows);
 }
@@ -124,13 +138,16 @@ async function askPlan(plan, version, pass, PNG) {
  * picture of a different rectangle is the misalignment the rendering exists
  * to catch.
  */
-async function photoOf(plan, PNG) {
+async function photoOf(plan, decoders) {
   const pieces = [];
   for (const tile of plan.tiles) {
     const url = detectionImageUrl('mapbox', tile.frame, mapbox, process.env);
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Mapbox HTTP ${res.status}`);
-    pieces.push({ col: tile.col, row: tile.row, image: decodePng(PNG, Buffer.from(await res.arrayBuffer())) });
+    pieces.push({
+      col: tile.col, row: tile.row,
+      image: decodeImage(decoders, Buffer.from(await res.arrayBuffer())),
+    });
   }
   return pieces.length === 1 ? pieces[0].image : stitchMasks(pieces, plan.cols, plan.rows);
 }
@@ -179,7 +196,11 @@ async function main() {
     process.exitCode = 1;
     return;
   }
-  const { PNG } = await import('pngjs');
+  const decoders = {
+    png: await import('pngjs'),
+    jpeg: (await import('jpeg-js')).default,
+  };
+  const { PNG } = decoders.png;
 
   const env = process.env;
   const modelId = 'sam3';
@@ -227,18 +248,20 @@ async function main() {
 
       let stitched, single = null, photo;
       try {
-        stitched = await askPlan(plan, version, pass, PNG);
+        /* THE PHOTOGRAPH FIRST, before anything is paid for: if the picture
+           cannot be had or read, the lawn is skipped for free. */
+        photo = await photoOf(plan, decoders);
+        stitched = await askPlan(plan, version, pass, decoders);
         predictions += plan.tiles.length;
         if (plan.tiles.length > 1) {
           /* THE CONTROL: the same lawn the old way, one picture of the
              display frame, which is a plan of one. */
           single = await askPlan(
             { frame: display, cols: 1, rows: 1, tiles: [{ frame: display, col: 0, row: 0 }] },
-            version, pass, PNG,
+            version, pass, decoders,
           );
           predictions += 1;
         }
-        photo = await photoOf(plan, PNG);
       } catch (e) {
         console.log(`  ${label}  skipped -- ${String(e.message || e).slice(0, 90)}`);
         continue;
