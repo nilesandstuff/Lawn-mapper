@@ -135,6 +135,27 @@ const TOTAL_FEATURES = FEATURE_COUNT + 2 * PROJ_DIMS;
  */
 const GRID = 512;
 
+/**
+ * How big the PUBLISHED pictures are, which is not the grid the model is
+ * scored on.
+ *
+ * GRID is 512 because that is where the masks are compared and the error
+ * figures computed, and moving it would move every number this project has.
+ * The pictures are a different job: they are looked at, and since the
+ * photographs are now banked at 1280 to 3192 px (H20), drawing them at 512
+ * throws away everything a person would zoom in to see.
+ *
+ * 1280 is the common stored size, so it is real detail rather than an upscale
+ * for most lots, and it costs about 6x the drawing time -- three minutes
+ * becomes twenty, which is free CI and worth it for a picture somebody
+ * actually reads. Capped at 2048 because a 33-lawn page on a phone is already
+ * the binding constraint on how big these can be.
+ */
+const renderPx = () => {
+  const n = Number(process.env.RENDER_PX);
+  return Number.isFinite(n) && n >= 256 ? Math.min(2048, Math.round(n)) : 1280;
+};
+
 /*
  * WHAT SIZE THE PHOTOGRAPHS ARE WRITTEN OUT AT, which is not the same question
  * as what grid they are scored on.
@@ -1003,17 +1024,39 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
        * hand" -- and that is a question about the shape the drawing tools would
        * receive, not about the mask behind it.
        */
+      /*
+       * TRACED ON THE SCORING GRID, DRAWN BIGGER. The trace has to happen at
+       * GRID because that is where the mask lives and where TRACE_TOLERANCE_M
+       * was calibrated -- tracing at 1280 would give a different vertex count
+       * from the one the app would produce, which is the number this page is
+       * FOR. The rings are then scaled up for drawing.
+       */
       const trace = tracePrediction({
         predicted: r.predicted, within: L.within, grid: GRID, mpp: L.mpp,
       });
+      const PX = renderPx();
+      const scale = PX / GRID;
+      const bigRings = trace.rings.map((ring) => ring.map(([x, y]) => [x * scale, y * scale]));
+      const bigPhoto = L.photoBig || L.photo;
+      const big = (m) => {
+        if (!m || PX === GRID) return m;
+        const out = new Uint8Array(PX * PX);
+        for (let y = 0; y < PX; y++) {
+          const sy = Math.min(GRID - 1, Math.floor(y / scale));
+          for (let x = 0; x < PX; x++) {
+            out[y * PX + x] = m[sy * GRID + Math.min(GRID - 1, Math.floor(x / scale))];
+          }
+        }
+        return out;
+      };
 
       const pixels = drawPrediction({
-        photo: L.photo,
-        truth: L.truth,
-        within: L.within,
-        inferred: L.inferred,
-        rings: trace.rings,
-        grid: GRID,
+        photo: bigPhoto,
+        truth: big(L.truth),
+        within: big(L.within),
+        inferred: big(L.inferred),
+        rings: bigRings,
+        grid: PX,
       });
 
       /*
@@ -1023,12 +1066,12 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
        * the model's own layer differs.
        */
       const rawPixels = drawPrediction({
-        photo: L.photo,
-        truth: L.truth,
-        within: L.within,
-        inferred: L.inferred,
-        mask: r.predicted,
-        grid: GRID,
+        photo: bigPhoto,
+        truth: big(L.truth),
+        within: big(L.within),
+        inferred: big(L.inferred),
+        mask: big(r.predicted),
+        grid: PX,
       });
 
       /* Named by position, not by map id. The id contains the coordinates of
@@ -1036,7 +1079,7 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
       const key = keys.shapes(n);
       const maskKey = keys.mask(n);
       const write = (pix, name) => {
-        const png = new PNG({ width: GRID, height: GRID });
+        const png = new PNG({ width: PX, height: PX });
         png.data = Buffer.from(pix.buffer, pix.byteOffset, pix.length);
         const file = join(dir, name);
         writeFileSync(file, PNG.sync.write(png));
@@ -1093,6 +1136,9 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
           ? null : Number(counts.missedInferredPct.toFixed(1)),
         inferredPct: Number(L.inferredPct.toFixed(1)),
         mpp: Number(L.mpp.toFixed(3)),
+        /* How big the published picture is, so the page knows whether opening
+           it full size gains anything. */
+        renderPx: PX,
         /*
          * THE EDITING COST, which is what this page is really for. Pieces and
          * handles are what a person would be dragging; the dropped count is
@@ -1380,6 +1426,12 @@ async function main() {
          * saw rather than a prettier copy of it.
          */
         photo: renderWanted ? rgb : null,
+        /* AND A BIGGER COPY FOR THE PICTURE. The scored one is at GRID, which
+           is where every number comes from; this is what gets drawn, so a
+           reader zooming in sees the photograph rather than 512 soft pixels. */
+        photoBig: renderWanted && renderPx() !== GRID
+          ? resize(img.data, img.width, img.height, img.channels, renderPx())
+          : null,
         /* Held raw: each fold standardises against its own training lawns. */
         /* The windows are distances on the ground, so this frame's scale goes
            in with the pixels -- see FINE_M in lib/features.js. */
@@ -2229,7 +2281,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
 }
 
 export {
-  compare, resize, maskOf, GRID, dumpSize, FETCH_TRIES,
+  compare, resize, maskOf, GRID, renderPx, dumpSize, FETCH_TRIES,
   inferredGeometries, seenGeometries,
   /* For tools/tree-crowns.js, which draws over the same photographs and must
      build the same masks from the same rows. A second copy of the fetch, the
