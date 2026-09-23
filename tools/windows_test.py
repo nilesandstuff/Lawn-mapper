@@ -19,7 +19,7 @@ wrong number.
 
 import numpy as np
 
-from windows import window_plan, windowed
+from windows import padded_side_metres, window_plan, windowed
 
 
 def coords(w, h):
@@ -85,5 +85,16 @@ assert window_plan(1720, 1720, 672, 16)[:2] == (80, 512)
 assert window_plan(1720, 1720, 448, 16)[:2] == (48, 352)
 # A patch that is kept always had a margin's worth of real picture around it.
 assert window_plan(1720, 1720, 896, 16)[0] >= 7 * 16
+
+# THE SCALE OF A PADDED RECTANGLE. The extractor pads a rectangle to a square
+# and tells a scale-aware model the metres a pixel covers, from the metres
+# ACROSS the photograph. On a wide lot the square's side is the width, so the
+# scale is unchanged; on a tall one it is the height. max(cover) got the wide
+# case wrong by the aspect ratio (run 35927228827: 98 cm/px for a 34 cm lot).
+wide_cover = (3004 / 3004, 3004 / 1028)      # 319 m across, 109 m down
+assert abs(padded_side_metres(319.0, wide_cover) - 319.0) < 1e-9
+tall_cover = (1520 / 544, 1520 / 1520)       # 54 m across, 152 m down
+assert abs(padded_side_metres(54.4, tall_cover) - 152.0) < 1e-6
+assert padded_side_metres(80.0, (1.0, 1.0)) == 80.0
 
 print("windows: ok")

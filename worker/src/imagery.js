@@ -307,17 +307,27 @@ export function detectionPlan(provider, frame, {
   if (id !== 'mapbox') return one;
 
   const wanted = Math.ceil(longM / (inputPx * target));
-  if (wanted <= 1) return one;
+  /*
+   * ONE PIECE MEANS THE PICTURE AS ASKED, not one piece at the target. With
+   * pieces switched off (maxAcross 1, the default since H21) this used to
+   * fall through to a 1 x 1 "grid" whose single tile was the whole lot at
+   * 10 cm -- 1500 logical px for a 300 m lot, which Mapbox refuses (HTTP
+   * 422), so the biggest lots could not be detected at all. The one-picture
+   * path is the one H21 measured and the one the app took before pieces
+   * existed; it is what "off" has to mean.
+   */
+  if (wanted <= 1 || maxAcross <= 1) return one;
 
   /* At exactly the target, each side cut into as many pieces of at most
-     `inputPx` as it needs, each side capped separately. */
+     `inputPx` as it needs, each side capped separately. A capped piece is
+     read shrunk, but it can never be asked for bigger than Mapbox serves. */
   const wantW = Math.ceil(across / target / 2);
   const wantH = Math.ceil(down / target / 2);
   const tile = inputPx / 2; // logical; Mapbox renders @2x
   const cols = Math.max(1, Math.min(maxAcross, Math.ceil(wantW / tile)));
   const rows = Math.max(1, Math.min(maxAcross, Math.ceil(wantH / tile)));
-  const tileW = Math.ceil(wantW / cols);
-  const tileH = Math.ceil(wantH / rows);
+  const tileW = Math.min(MAX_LOGICAL, Math.ceil(wantW / cols));
+  const tileH = Math.min(MAX_LOGICAL, Math.ceil(wantH / rows));
   /* The zoom that puts the lot's width into the stitched width: exactly the
      target when no side is capped, coarser when one is. */
   const zoom = Math.log2(

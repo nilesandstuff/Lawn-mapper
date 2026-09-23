@@ -44,6 +44,25 @@ import math
 import numpy as np
 
 
+def padded_side_metres(span_across, cover):
+    """How many metres the padded square's side covers, from the span ACROSS.
+
+    `cover` is (long / w, long / h) for a photograph padded to a square of
+    side `long`. The square's side in metres is the width in metres times
+    long / w -- that is cover[0], whichever side is the long one: on a wide
+    photograph cover[0] is 1 and the side IS the width; on a tall one it is
+    h / w and the side is the height.
+
+    NOT max(cover). The first rectangular run used that, and on a wide lot
+    max(cover) is long / h -- the width multiplied by the wrong ratio. A 319 m
+    lot at 3004 x 1028 was told it was 932 m across and read at 98 cm a
+    pixel, and every backbone row collapsed (81.6% on the eye alone). A
+    scale-aware model told the wrong scale does not fail; it reads a garden
+    as a landscape.
+    """
+    return span_across * cover[0]
+
+
 def window_plan(w, h, size, patch):
     """Margin, core and window counts for a w x h photograph read at `size`.
 
