@@ -5228,8 +5228,14 @@ async function showTrainedModel() {
      * At the grid the model was TRAINED at. Its idea of "rough at five pixels"
      * is a fact about that resolution, so reading features at another one asks
      * it a question in a unit it has never seen.
+     *
+     * AND THAT GRID FOLLOWS METRES since 2026-09-23: 15 cm a cell, floored at
+     * 512 and capped at 1024 -- the same rule as gridFor in the trainer, and
+     * it has to be the same rule, because a head trained on 15 cm cells read
+     * at 512 over a 200 m lot would be asked about 40 cm cells it never saw.
      */
-    const G = 512;
+    const across = metresPerPixel(state.frame, 1);
+    const G = Math.min(1024, Math.max(512, Math.ceil(across / 0.15 - 1e-9)));
     const canvas = document.createElement('canvas');
     canvas.width = canvas.height = G;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
