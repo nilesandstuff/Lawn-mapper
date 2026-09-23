@@ -40,8 +40,19 @@ import { fileURLToPath } from 'node:url';
 
 import { query, wrangler, resolveDatabase } from './corpus-db.js';
 import {
-  capturePlan, groundPerPixel, TARGET_GROUND_M,
+  capturePlan, groundPerPixel, groundAcross, TARGET_GROUND_M,
 } from '../worker/src/imagery.js';
+import { frameFor, geometryBounds } from '../public/lib/mercator.js';
+
+/*
+ * THE FRAME IS THE PARCEL'S BOX PLUS THIS MARGIN, CROPPED BOTH WAYS -- the
+ * same rule the app uses for its display frame (FRAME_MARGIN_M in app.js),
+ * so a banked photograph is the picture the live detector would have seen.
+ * A square around the longer side put the neighbours in on both sides of
+ * the shorter one, and every detector read them.
+ */
+const MARGIN_M = 10;
+const LONG_SIDE = 640;
 
 const TOKEN = process.env.MAPBOX_SERVER_TOKEN || process.env.MAPBOX_TOKEN || '';
 const BUCKET = process.env.CORPUS_BUCKET || 'lawn-mapper-corpus';
@@ -56,7 +67,7 @@ const DRY = /^(1|true|yes)$/i.test(String(process.env.DRY_RUN || ''));
  * a map somebody approved while looking at it.
  */
 const QUERY = `
-  SELECT id, county, frame, image_frame, image_key, image_provider, status
+  SELECT id, county, frame, parcel, image_frame, image_key, image_provider, status
     FROM corpus
    WHERE frame IS NOT NULL AND image_key IS NOT NULL
      AND (image_provider IS NULL OR image_provider = 'mapbox')
@@ -69,7 +80,7 @@ const esc = (s) => String(s).replace(/'/g, "''");
 
 const url = (f) =>
   'https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/'
-  + `${f.lng},${f.lat},${f.zoom},0/${f.size}x${f.size}@2x`
+  + `${f.lng},${f.lat},${f.zoom},0/${f.size}x${f.height || f.size}@2x`
   + `?access_token=${TOKEN}&attribution=false&logo=false`;
 
 /**
@@ -82,8 +93,10 @@ const url = (f) =>
  */
 async function stitch(plan, decoders) {
   const px = plan.tileSize * 2;
-  const side = px * plan.cols;
-  const out = new Uint8Array(side * side * 4);
+  const py = (plan.tileHeight || plan.tileSize) * 2;
+  const width = px * plan.cols;
+  const height = py * plan.rows;
+  const out = new Uint8Array(width * height * 4);
 
   for (const tile of plan.tiles) {
     const res = await fetch(url(tile.frame));
@@ -98,21 +111,21 @@ async function stitch(plan, decoders) {
     const img = isPng
       ? decoders.png.PNG.sync.read(buf)
       : decoders.jpeg.decode(buf, { useTArray: true });
-    if (img.width !== px) {
+    if (img.width !== px || img.height !== py) {
       /* Mapbox served a different size from the one asked for, which would
          paste misaligned and leave a seam. Refused rather than stitched. */
-      return { ok: false, reason: `tile-${img.width}px-wanted-${px}` };
+      return { ok: false, reason: `tile-${img.width}x${img.height}px-wanted-${px}x${py}` };
     }
 
     const ox = tile.col * px;
-    const oy = tile.row * px;
-    for (let y = 0; y < px; y++) {
+    const oy = tile.row * py;
+    for (let y = 0; y < py; y++) {
       const from = y * px * 4;
-      const to = ((oy + y) * side + ox) * 4;
+      const to = ((oy + y) * width + ox) * 4;
       out.set(img.data.subarray(from, from + px * 4), to);
     }
   }
-  return { ok: true, pixels: out, side };
+  return { ok: true, pixels: out, width, height };
 }
 
 async function main() {
@@ -136,19 +149,30 @@ async function main() {
 
   try {
     for (const row of rows) {
-      const display = parse(row.frame);
+      /* The parcel's box plus the margin, cropped both ways; a row with no
+         parcel keeps the frame the phone showed. */
+      const parcel = parse(row.parcel);
+      const bbox = parcel ? geometryBounds(parcel) : null;
+      const display = bbox ? frameFor(bbox, LONG_SIDE, { marginM: MARGIN_M }) : parse(row.frame);
       if (!display) { failed++; continue; }
       const label = String(row.county || 'traced by hand').padEnd(20).slice(0, 20);
 
       /* What it is banked at NOW. A row with no image_frame was taken on the
          display frame, which is exactly the case this exists to fix. */
-      const wasFrame = parse(row.image_frame) || display;
+      const wasFrame = parse(row.image_frame) || parse(row.frame);
       const was = groundPerPixel(wasFrame);
       const plan = capturePlan(display);
 
-      if (!FORCE && was <= plan.groundM + 1e-9) {
+      /* Left alone only when the photograph in the bucket is the same
+         rectangle of ground at least as fine. A square from before the crop
+         is not the same rectangle, whatever its resolution. */
+      const shape = (f) => (f.height || f.size) / f.size;
+      const sameShape = Number.isFinite(wasFrame.height)
+        && Math.abs(shape(wasFrame) - shape(plan.frame)) < 0.01
+        && Math.abs(groundAcross(wasFrame) - plan.across) < 1;
+      if (!FORCE && sameShape && was <= plan.groundM + 1e-9) {
         skipped++;
-        console.log(`  ${label} ${(was * 100).toFixed(1).padStart(5)} cm/px  already at least as fine`);
+        console.log(`  ${label} ${(was * 100).toFixed(1).padStart(5)} cm/px  already this rectangle, at least as fine`);
         continue;
       }
 
@@ -167,7 +191,7 @@ async function main() {
         continue;
       }
 
-      const png = new decoders.png.PNG({ width: shot.side, height: shot.side });
+      const png = new decoders.png.PNG({ width: shot.width, height: shot.height });
       png.data = Buffer.from(shot.pixels.buffer, shot.pixels.byteOffset, shot.pixels.length);
       const file = join(dir, 'shot.png');
       writeFileSync(file, decoders.png.PNG.sync.write(png));
@@ -194,10 +218,10 @@ async function main() {
 
       done++;
       gains.push(was / plan.groundM);
-      if (plan.cols > 1) tiled++;
+      if (plan.tiles.length > 1) tiled++;
       console.log(`  ${label} ${(was * 100).toFixed(1).padStart(5)} -> `
         + `${(plan.groundM * 100).toFixed(1).padStart(5)} cm/px  `
-        + `${shot.side}px${plan.cols > 1 ? `  ${plan.cols}x${plan.rows} stitched` : ''}`
+        + `${shot.width}x${shot.height}px${plan.tiles.length > 1 ? `  ${plan.cols}x${plan.rows} stitched` : ''}`
         + `${plan.capped ? '  still capped' : ''}`);
     }
 
@@ -206,7 +230,7 @@ async function main() {
     console.log(`\n${'='.repeat(64)}\n`);
     console.log(`${DRY ? 'WOULD RE-BANK' : 'Re-banked'} ${done}.  `
       + `Left alone ${skipped} already fine.  Failed ${failed}.`);
-    if (tiled) console.log(`${tiled} needed stitching from ${2 * 2} tiles.`);
+    if (tiled) console.log(`${tiled} needed stitching from more than one request.`);
     if (gains.length) {
       console.log(`\nResolution gained: up to ${Math.max(...gains).toFixed(1)}x finer, `
         + `middle ${mid(gains).toFixed(1)}x.`);
@@ -215,8 +239,8 @@ async function main() {
     console.log('parcel, no review status: a map somebody traced by hand is the');
     console.log('same map, of a better picture of the same ground.');
     if (!DRY && done) {
-      console.log('\nRun workflow 19 next to see whether the canopy reads better on');
-      console.log('the big lawns, which is the whole point of H20.');
+      console.log('\nEvery photograph is now the parcel plus 10 m, cropped both ways,');
+      console.log('at 10 cm a pixel or finer. Run workflow 19 and 14 on them next.');
     }
     console.log(`\n${'='.repeat(64)}`);
   } finally {
