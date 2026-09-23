@@ -48,13 +48,21 @@ import {
   frameCorners,
   metresPerPixel,
   zoomToFit,
+  frameFor as parcelFrame,
   geometryBounds,
   worldSize,
 } from './lib/mercator.js';
 
 /* ------------------------------------------------------------------ state */
 
-const FRAME_SIZE = 640;          // logical px requested; the PNG comes back @2x
+const FRAME_SIZE = 640;          // logical px on the LONGER side; the PNG comes back @2x
+/*
+ * How much beyond the property line the picture reaches, in metres, on
+ * every side. Context the detectors need -- the house, the drive, the road
+ * the grass is read against (H21) -- and no more: 12% of a 319 m lot was
+ * 38 m of somebody else's garden.
+ */
+const FRAME_MARGIN_M = 10;
 const IMAGERY_ZOOM_FALLBACK = 19; // used when we have no parcel to fit
 
 const state = {
@@ -2072,12 +2080,13 @@ async function confirmLocation() {
       map.getSource('parcel').setData(state.parcel);
       const bbox = geometryBounds(state.parcel);
       map.fitBounds([[bbox[0], bbox[1]], [bbox[2], bbox[3]]], { padding: 60, duration: 800 });
-      state.frame = {
-        lng: (bbox[0] + bbox[2]) / 2,
-        lat: (bbox[1] + bbox[3]) / 2,
-        zoom: zoomToFit(bbox, FRAME_SIZE),
-        size: FRAME_SIZE,
-      };
+      /*
+       * THE PARCEL'S BOX PLUS A MARGIN, CROPPED BOTH WAYS. This was a square
+       * around the longer side, so a long thin lot was photographed with the
+       * neighbours on both sides of its short one -- and every detector read
+       * them, paid for them, and drew on them. See frameFor in lib/mercator.js (parcelFrame here).
+       */
+      state.frame = parcelFrame(bbox, FRAME_SIZE, { marginM: FRAME_MARGIN_M });
       // Remember the county's own corners so the map can show which parts of
       // the final outline are still survey-accurate.
       state.surveyed = (parcelRing() || []).map((p) => [...p]);
@@ -4007,9 +4016,10 @@ async function detect() {
    * sent in frame units would land at half the distance from the corner, which
    * is a plausible-looking spot somewhere else on the property.
    */
-  const imgPx = Math.min(frame.size * 2, 2560);
+  const imgW = Math.min(frame.size * 2, 2560);
+  const imgH = Math.min((frame.height || frame.size) * 2, 2560);
   const points = state.pins.map((ll) => {
-    const [x, y] = lngLatToFramePx(frame, ll, imgPx, imgPx);
+    const [x, y] = lngLatToFramePx(frame, ll, imgW, imgH);
     return [Math.round(x), Math.round(y)];
   });
 
@@ -5153,7 +5163,8 @@ async function showImagery() {
 /** The same URL the Worker builds, asked for through our own origin. */
 function imageryUrlFor(provider, frame) {
   return '/api/imagery?' + new URLSearchParams({
-    lng: frame.lng, lat: frame.lat, zoom: frame.zoom, size: frame.size, provider,
+    lng: frame.lng, lat: frame.lat, zoom: frame.zoom, size: frame.size,
+    height: frame.height || frame.size, provider,
   });
 }
 
@@ -5236,21 +5247,25 @@ async function showTrainedModel() {
      */
     const across = metresPerPixel(state.frame, 1);
     const G = Math.min(1024, Math.max(512, Math.ceil(across / 0.15 - 1e-9)));
+    /* The frame is a rectangle now, so the raster is too: the same cells
+       per metre down as across, or the texture windows would be squashed. */
+    const GH = Math.max(1, Math.round((G * (state.frame.height || state.frame.size)) / state.frame.size));
     const canvas = document.createElement('canvas');
-    canvas.width = canvas.height = G;
+    canvas.width = G;
+    canvas.height = GH;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    ctx.drawImage(img, 0, 0, G, G);
-    const { data } = ctx.getImageData(0, 0, G, G);
+    ctx.drawImage(img, 0, 0, G, GH);
+    const { data } = ctx.getImageData(0, 0, G, GH);
 
     /* The same scale the training run measured its windows at, or the texture
        columns mean something different here from what they meant there. */
-    const rows = imageFeatures(data, G, G, { mpp: metresPerPixel(state.frame, G) });
+    const rows = imageFeatures(data, G, GH, { mpp: metresPerPixel(state.frame, G) });
     standardise(rows, { mean: model.mean, sd: model.sd }, model.inputs);
     const p = predict(model, rows);
 
     /* Painted as a translucent wash rather than traced into an outline: an
        outline would invite dragging it, and this is not editable. */
-    const out = ctx.createImageData(G, G);
+    const out = ctx.createImageData(G, GH);
     let lit = 0;
     for (let i = 0; i < p.length; i++) {
       const on = p[i] > 0.5;
@@ -8048,12 +8063,7 @@ function adoptDrawnParcel(feature) {
 
   const bbox = geometryBounds(state.parcel);
   if (bbox) {
-    state.frame = {
-      lng: (bbox[0] + bbox[2]) / 2,
-      lat: (bbox[1] + bbox[3]) / 2,
-      zoom: zoomToFit(bbox, FRAME_SIZE),
-      size: FRAME_SIZE,
-    };
+    state.frame = parcelFrame(bbox, FRAME_SIZE, { marginM: FRAME_MARGIN_M });
   }
 
   const a = measure(state.parcel.geometry);
@@ -9717,12 +9727,7 @@ function setParcelRing(ring) {
 
   const bbox = geometryBounds(state.parcel);
   if (bbox) {
-    state.frame = {
-      lng: (bbox[0] + bbox[2]) / 2,
-      lat: (bbox[1] + bbox[3]) / 2,
-      zoom: zoomToFit(bbox, FRAME_SIZE),
-      size: FRAME_SIZE,
-    };
+    state.frame = parcelFrame(bbox, FRAME_SIZE, { marginM: FRAME_MARGIN_M });
     // An image-service photograph is pinned to the frame's four corners, so
     // re-framing moves the ground out from under it. Refetch for the new
     // rectangle rather than leave a correctly-drawn picture of the old one.
