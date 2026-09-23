@@ -530,6 +530,9 @@ function readPythonFeatures(dir) {
     grids.set(stem, {
       data: new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4),
       gridW: shape.gridW, gridH: shape.gridH, dim: shape.dim,
+      /* How far past the photograph a windowed grid runs. See sampleAt. */
+      coverX: shape.coverX || 1, coverY: shape.coverY || 1,
+      windows: shape.windows || 1, mpp: shape.mpp || null,
     });
   }
   return { manifest, grids };
@@ -1309,9 +1312,27 @@ async function main() {
   }
   if (py) {
     const any = [...py.grids.values()][0];
+    const all = [...py.grids.values()];
+    const windowed = all.filter((g) => g.windows > 1).length;
+    const seen = all.map((g) => g.mpp).filter((m) => Number.isFinite(m) && m > 0);
     console.log(`Features from ${py.manifest.model} at ${py.manifest.size}px:`);
-    console.log(`${py.grids.size} lawns, ${any?.gridW}x${any?.gridH} patches of ${any?.dim},`);
-    console.log('one pass over the whole property -- every patch saw all of it.\n');
+    console.log(`${py.grids.size} lawns, ${any?.dim} numbers a patch.`);
+    /*
+     * HOW THE MODEL READ THEM, said here because the old sentence -- "one pass
+     * over the whole property, every patch saw all of it" -- was true and was
+     * the problem: one pass over a 319 m lot at 896 px is 36 cm a pixel.
+     */
+    if (windowed) {
+      console.log(`${windowed} of them too big to read at the target in one pass, so read in`);
+      console.log('overlapping windows at the photograph\'s own resolution and stitched.');
+    } else {
+      console.log('Every one read in a single pass at the target or finer.');
+    }
+    if (seen.length) {
+      console.log(`The coarsest any lawn reached the model: ${(Math.max(...seen) * 100).toFixed(1)} cm a pixel.\n`);
+    } else {
+      console.log('');
+    }
   }
 
   let eye = null;

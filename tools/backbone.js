@@ -202,8 +202,19 @@ export async function tiledFeatures(bag, rgb, w, h, { tiles = 4, size = NATIVE_S
  */
 export function sampleAt(feat, px, py, gridPx, out, offset) {
   const { data, gridW, gridH, dim } = feat;
-  const gx = Math.min(gridW - 1, Math.max(0, (px / gridPx) * gridW - 0.5));
-  const gy = Math.min(gridH - 1, Math.max(0, (py / gridPx) * gridH - 0.5));
+  /*
+   * A grid read in windows runs a little past the photograph's edge -- the
+   * last window's core lands in padding -- so its columns span `coverX`
+   * times the picture's width, not exactly the width. Dividing here is what
+   * keeps a photograph pixel on its own patch; without it every feature on a
+   * windowed lawn would sit slightly up and left of the ground it describes,
+   * by more the further right it is. One-pass grids carry no cover and read
+   * as they always did.
+   */
+  const coverX = feat.coverX || 1;
+  const coverY = feat.coverY || 1;
+  const gx = Math.min(gridW - 1, Math.max(0, ((px / gridPx) * gridW) / coverX - 0.5));
+  const gy = Math.min(gridH - 1, Math.max(0, ((py / gridPx) * gridH) / coverY - 0.5));
   const x0 = Math.floor(gx), y0 = Math.floor(gy);
   const x1 = Math.min(gridW - 1, x0 + 1), y1 = Math.min(gridH - 1, y0 + 1);
   const fx = gx - x0, fy = gy - y0;

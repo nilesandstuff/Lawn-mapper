@@ -16,6 +16,14 @@ name: 14. Train with a real backbone (Python)
 # to every other. That is what makes shadow legible -- and shadow is the thing
 # colour alone will never survive.
 #
+# ONE PASS IS NOW ONLY FOR LOTS IT CAN READ AT 10 CM A PIXEL. The photographs
+# are banked at 10 cm or finer whatever the lot, and one pass at 896 px over a
+# 172 m lot is 19 cm a pixel -- the model's rule is 10. Past that the
+# extractor reads the photograph at its own resolution in overlapping windows
+# and keeps only the middle of each, so every patch still had about 11 m of
+# real picture on every side when it was read. That is the difference from
+# the tiling above: overlap, and a margin thrown away. See tools/windows.py.
+#
 # AND NOW A SECOND EYE, which is the reason to run this again.
 #
 # DINOv2 learned from ordinary photographs. It has seen grass and tarmac, but
@@ -163,13 +171,23 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CORPUS_BUCKET: lawn-mapper-corpus
           DUMP_FRAMES: frames
-          # Written at the size the model reads them at, so the one resize is a
-          # box-average DOWN from the stored photograph. Dumping at 512 and
-          # letting the extractor blow it up to 896 gives a finer patch grid
-          # over a blurrier picture -- a sharper-looking edge drawn from less.
-          DUMP_SIZE: ${{ inputs.size }}
+          # AS STORED, not at the model's size. This used to be `inputs.size`,
+          # which squeezed a 3192 px photograph of a 319 m lot into 896 before
+          # the extractor ever saw it -- 36 cm a pixel handed to a model whose
+          # rule is 10. The extractor now decides for itself: a lot it can read
+          # at 10 cm in one pass is resized there exactly as before, and a
+          # bigger one is read in overlapping windows at the photograph's own
+          # resolution. Either way it needs the real pixels to choose from.
+          DUMP_SIZE: native
           NO_BACKBONE: 'true'
         run: node tools/train-detector.js
+
+      # That the windows land where the photograph has them, before twenty
+      # minutes of extraction relies on it. A stitch off by a patch does not
+      # fail; it trains the head on a picture out of register with its labels.
+      - name: Check the window stitching
+        working-directory: tools
+        run: python3 windows_test.py
 
       - name: Run the backbone over them
         env:

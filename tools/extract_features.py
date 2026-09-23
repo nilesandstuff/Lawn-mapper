@@ -35,6 +35,16 @@ of that is built and tested and has no reason to move. This does one job:
 pictures in, patch features out. Raw float32 so nothing is lost to JSON, and a
 manifest saying what shape they are.
 
+AND SINCE 2026-09-23, THE MODEL READS EVERY LAWN AT 10 CM A PIXEL. "One pass
+over the whole property" was true and, on a big lot, was the problem: the
+photographs are 10 cm a pixel or finer whatever the size of the lot, so
+squeezing a 172 m lot into 896 px handed the model 19 cm a pixel and a 319 m
+lot 36. A lot the eye can read whole at the target still is, exactly as
+before. A bigger one is read in overlapping windows of SIZE pixels at the
+photograph's own resolution, keeping only the middle of each so every patch
+had context on all sides, and the windows are stitched into one grid. See
+windows.py for why overlap rather than tiles.
+
   IMAGES=dir OUT=dir MODEL=facebook/dinov2-base SIZE=672 python3 extract_features.py
   IMAGES=dir OUT=dir MODEL=scalemae-large    SIZE=672 python3 extract_features.py
 """
@@ -47,6 +57,13 @@ import time
 import numpy as np
 import torch
 from PIL import Image
+
+from windows import window_plan, windowed
+
+# The ground a pixel may cover, at most, when the model reads it. The canopy
+# model was trained at this and the live detector is fed it; the rule is that
+# every detector gets it. TARGET_MPP overrides it for an experiment.
+TARGET_MPP = float(os.environ.get("TARGET_MPP", "0.10"))
 
 IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 IMAGENET_SD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
@@ -115,6 +132,7 @@ class SatelliteEye:
                 f"{self.PATCH}. Try 448, 672 or 896."
             )
         self.name = "scalemae-large"
+        self.patch = self.PATCH
         self.side = size // self.PATCH
         self.model = scalemae_large_patch16(
             weights=ScaleMAELarge16_Weights.FMOW_RGB, img_size=size, res=1.0
@@ -136,18 +154,42 @@ def open_eye(model_id, size):
     return HubEye(model_id, size)
 
 
+def normalised(img):
+    """A PIL image as the (h, w, 3) float array the models are fed."""
+    arr = np.asarray(img, dtype=np.float32) / 255.0
+    return (arr - IMAGENET_MEAN) / IMAGENET_SD
+
+
+def to_tensor(arr):
+    return torch.from_numpy(np.ascontiguousarray(arr)).permute(2, 0, 1).unsqueeze(0)
+
+
 def as_tensor(path, size):
     img = Image.open(path).convert("RGB")
     if img.size != (size, size):
         # BOX is an area average and is the right filter going down -- it is
         # the same thing the Node side does to reach its 512 grid. Going UP it
-        # is blocky nonsense, so bicubic for that case. Neither runs at all
-        # when DUMP_SIZE matched SIZE, which is how the workflow sets it.
+        # is blocky nonsense, so bicubic for that case.
         shrinking = img.size[0] >= size
         img = img.resize((size, size), Image.BOX if shrinking else Image.BICUBIC)
-    arr = np.asarray(img, dtype=np.float32) / 255.0
-    arr = (arr - IMAGENET_MEAN) / IMAGENET_SD
-    return torch.from_numpy(arr).permute(2, 0, 1).unsqueeze(0)
+    return to_tensor(normalised(img))
+
+
+def read_whole(span, w, h, size, target=TARGET_MPP):
+    """Whether one resized pass already reads this lawn at the target.
+
+    Yes when the lot is small enough that `size` pixels over it is 10 cm or
+    finer -- the path every run before 2026-09-23 took, kept byte for byte for
+    those lots. Yes too when the photograph itself has no more pixels than
+    the window, because windows cannot add resolution a picture does not
+    hold. And yes when nobody said how big the lot is, since the alternative
+    is guessing.
+    """
+    if span is None:
+        return True
+    if max(w, h) <= size:
+        return True
+    return span / size <= target + 1e-9
 
 
 def patches_of(hidden, side):
@@ -246,24 +288,61 @@ def main():
               "a tenfold change)", flush=True)
 
     manifest = {"model": eye.name, "size": size, "scaleAware": eye.wants_scale,
-                "images": {}}
+                "targetMpp": TARGET_MPP, "windowed": 0, "images": {}}
     extra = 0
     dim = 0
+    coarsest = 0.0
+    passes = 0
     for i, name in enumerate(names):
         t = time.time()
         stem = name[:-4]
-        # Metres per pixel of what the model is about to see, which depends on
-        # the size it is read at and so cannot be stored alongside the picture.
-        mpp = (spans.get(stem, 0.0) / size) if eye.wants_scale else 0.0
-        hidden = eye.look(as_tensor(os.path.join(images, name), size), mpp)
-        grid, dim, extra = patches_of(hidden, eye.side)
-        grid.tofile(os.path.join(out_dir, f"{stem}.f32"))
-        manifest["images"][stem] = {"gridW": eye.side, "gridH": eye.side, "dim": dim}
+        img = Image.open(os.path.join(images, name)).convert("RGB")
+        w, h = img.size
+        span = spans.get(stem)
+
+        if read_whole(span, w, h, size):
+            # Metres per pixel of what the model is about to see, which depends
+            # on the size it is read at and so cannot be stored with the picture.
+            mpp = (span / size) if (eye.wants_scale and span) else 0.0
+            hidden = eye.look(as_tensor(os.path.join(images, name), size), mpp)
+            flat, dim, extra = patches_of(hidden, eye.side)
+            grid = flat.reshape(eye.side, eye.side, dim)
+            cover = (1.0, 1.0)
+            windows = 1
+            # What the model resolved, for the summary -- a scale-blind eye is
+            # still fed pixels of a known size.
+            seen_mpp = span / size if span else 0.0
+        else:
+            # At the photograph's own resolution, in overlapping windows.
+            mpp = (span / w) if eye.wants_scale else 0.0
+            seen_mpp = span / w
+
+            tokens = {"extra": 0}
+
+            def look(win):
+                hidden = eye.look(to_tensor(win), mpp)
+                flat, d, tokens["extra"] = patches_of(hidden, eye.side)
+                return flat.reshape(eye.side, eye.side, d)
+
+            grid, cover, windows = windowed(normalised(img), size, eye.patch, look)
+            dim = grid.shape[2]
+            extra = tokens["extra"]
+            manifest["windowed"] += 1
+
+        np.ascontiguousarray(grid).tofile(os.path.join(out_dir, f"{stem}.f32"))
+        manifest["images"][stem] = {
+            "gridW": int(grid.shape[1]), "gridH": int(grid.shape[0]), "dim": int(dim),
+            "coverX": cover[0], "coverY": cover[1],
+            "windows": windows, "mpp": seen_mpp,
+        }
         manifest["extraTokens"] = extra
-        scale = f"  {mpp:.3f} m/px" if eye.wants_scale else ""
+        coarsest = max(coarsest, seen_mpp)
+        passes += windows
+        scale = f"  {seen_mpp:.3f} m/px" if span else ""
+        how = "one pass" if windows == 1 else f"{windows} windows"
         print(
-            f"  {i + 1}/{len(names)}  {eye.side}x{eye.side} patches of {dim}"
-            f"{scale}  {time.time() - t:.1f}s",
+            f"  {i + 1}/{len(names)}  {grid.shape[1]}x{grid.shape[0]} patches of {dim}"
+            f"{scale}  {how}  {time.time() - t:.1f}s",
             flush=True,
         )
 
@@ -271,9 +350,17 @@ def main():
         json.dump(manifest, f)
 
     total = time.time() - started
-    print(f"\n{len(names)} done in {total:.0f}s ({total / len(names):.1f}s each)")
-    print(f"{eye.side}x{eye.side} patches, {dim} numbers each, "
-          f"{extra} non-patch token(s) skipped")
+    print(f"\n{len(names)} done in {total:.0f}s ({total / len(names):.1f}s each), "
+          f"{passes} passes of {size} px")
+    print(f"{dim} numbers a patch, {extra} non-patch token(s) skipped")
+    if manifest["windowed"]:
+        print(f"{manifest['windowed']} of {len(names)} lawns were too big to read at "
+              f"{TARGET_MPP * 100:.0f} cm a pixel in one pass and were read in "
+              "overlapping windows at the photograph's own resolution.")
+    else:
+        print(f"Every lawn fitted one pass at {TARGET_MPP * 100:.0f} cm a pixel or finer.")
+    if spans:
+        print(f"The coarsest any lawn reached the model: {coarsest * 100:.1f} cm a pixel.")
 
 
 if __name__ == "__main__":
