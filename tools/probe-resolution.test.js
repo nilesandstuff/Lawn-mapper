@@ -108,37 +108,56 @@ const score = (img) => extraDetail(img, W, W, C).extra;
     'both smooth cases must fall under the "cannot tell" floor of 0.05');
 }
 
-/* ------------------------------------------- the labelling, with no network */
+/* --------------------------------- the staircase, with no network involved */
 
 {
   /*
-   * BOTH OF THIS FILE'S CI FAILURES WERE HERE, not in the arithmetic: once a
-   * field renamed in one place and not the other, once an undefined spread.
-   * Neither needed Mapbox to catch and both cost a round trip. So the labels
-   * are a pure function now and this is what covers them.
+   * BOTH OF THIS FILE'S CI FAILURES WERE IN THE REPORTING, not the arithmetic:
+   * once a field renamed in one place and not the other, once an undefined
+   * spread. Neither needed Mapbox to catch and both cost a round trip.
+   *
+   * AND A THIRD THING THIS CAUGHT, which was not a crash. The obvious reading
+   * of the numbers above is "above about 0.4 is real detail". Real Mapbox
+   * frames score 0.017 to 0.164 -- every one BELOW the synthetic upscale's
+   * 0.37 -- because aerial photography is far smoother than white noise. An
+   * absolute threshold read off these images would have called every real
+   * frame an upscale. So the verdict compares each step against the one below
+   * it instead, and these cases are written as ratios for that reason.
    */
-  const v = (a, b) => verdictFor(a, b).verdict;
+  const v = (a, b, c) => verdictFor([a, b, c]).verdict;
+  const ceil = (a, b, c) => verdictFor([a, b, c]).ceiling;
 
-  assert.equal(v(0.80, 0.75), 'real detail', 'as sharp per pixel at both sizes');
-  assert.equal(v(0.80, 0.30), 'UPSCALED', 'the bigger frame keeps well under half');
-  assert.equal(v(0.80, 0.50), 'partly real', 'between the two lines');
+  /* Still gaining at every step, at the low absolute values real imagery
+     actually produces. There is more to ask for than we are asking. */
+  assert.equal(ceil(0.070, 0.080, 0.089), 2560);
+  assert.match(v(0.070, 0.080, 0.089), /2560/);
 
-  /* Flat ground is refused rather than ruled on. Both numbers are tiny, so
-     their ratio is noise -- and a lawn of open grass would otherwise be
-     reported as a confident verdict about Mapbox. */
-  assert.equal(v(0.01, 0.005), 'flat, cannot tell');
-  assert.equal(v(0.04, 0.049), 'flat, cannot tell', 'just under the floor is still refused');
+  /* Real up to 1280, then the top step collapses: we already request all
+     there is. */
+  assert.equal(ceil(0.100, 0.120, 0.030), 1280);
+  assert.match(v(0.100, 0.120, 0.030), /ceiling/);
 
-  /* And a zero denominator does not become NaN and slip through as a verdict. */
-  assert.equal(v(0, 0.4), 'UPSCALED');
-  assert.equal(verdictFor(0, 0.4).keeps, 0);
+  /*
+   * THE CASE THE TWO-SIZE VERSION COULD NOT SEE, and the one the owner
+   * pointed at: the step up to 1280 gains almost nothing, so the frame we
+   * store was stretched by Mapbox before we ever received it. H20's crossover
+   * is wrong for that lawn.
+   */
+  assert.equal(ceil(0.200, 0.060, 0.050), 640);
+  assert.match(v(0.200, 0.060, 0.050), /STRETCHED/);
 
-  /* The real numbers from the images above land where the thresholds say. */
-  const realNative = score(native);
-  const anUpscale = score(upscaled);
-  assert.equal(v(realNative, anUpscale), 'UPSCALED',
-    'the measured upscale must be labelled as one, or the thresholds are wrong');
-  assert.equal(v(realNative, realNative), 'real detail');
+  /*
+   * And flat ground is none of those. Nothing measurable at any size means
+   * there is nothing there to carry -- open grass, a bare field -- which is a
+   * fact about the lawn, not the imagery. These are the real Bullitt County
+   * figures, and they must not read as a complaint about Mapbox.
+   */
+  assert.equal(ceil(0.019, 0.020, 0.023), null);
+  assert.match(v(0.019, 0.020, 0.023), /flat ground/);
+  assert.doesNotMatch(v(0.019, 0.020, 0.023), /STRETCHED/);
+
+  /* A zero lower step does not become NaN and slip through as a verdict. */
+  assert.equal(ceil(0, 0.2, 0.2), 640);
 }
 
 console.log('resolution probe: ok');
