@@ -1025,11 +1025,22 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
        * receive, not about the mask behind it.
        */
       /*
-       * TRACED ON THE SCORING GRID, DRAWN BIGGER. The trace has to happen at
-       * GRID because that is where the mask lives and where TRACE_TOLERANCE_M
-       * was calibrated -- tracing at 1280 would give a different vertex count
-       * from the one the app would produce, which is the number this page is
-       * FOR. The rings are then scaled up for drawing.
+       * TRACED ON THE SCORING GRID, DRAWN BIGGER, and the reason is simply
+       * that THERE IS NO FINER MASK TO TRACE.
+       *
+       * runFold answers one value per grid cell, so `r.predicted` is a 512x512
+       * array and that is the entire resolution of the model's opinion.
+       * Tracing an upsampled copy would not find more shape; it would find the
+       * staircase the upsample invented, and report those as handles somebody
+       * would have to drag.
+       *
+       * (An earlier version of this comment said the reason was that
+       * TRACE_TOLERANCE_M is calibrated at 512. That is wrong.
+       * tracePrediction converts the tolerance through `mpp`, so the smoothing
+       * stays the same distance in METRES at any grid size. The tolerance was
+       * never the obstacle; the mask's own resolution is.)
+       *
+       * The rings are scaled up afterwards purely for drawing.
        */
       const trace = tracePrediction({
         predicted: r.predicted, within: L.within, grid: GRID, mpp: L.mpp,
