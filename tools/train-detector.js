@@ -549,6 +549,42 @@ function resize(src, w, h, channels, size, sizeH = size) {
   return out;
 }
 
+/**
+ * A lawn's three masks as one picture: red is the traced lawn, green is
+ * inside the property line (all of it, when there is no line), blue is
+ * "inferred, not seen". On the scoring grid, G x GH, so a reader that knows
+ * the grid needs nothing else to line them up.
+ */
+export function labelsPng(L, PNG) {
+  const G = L.grid || GRID;
+  const GH = L.gridH || G;
+  const png = new PNG({ width: G, height: GH });
+  const px = png.data;
+  for (let i = 0; i < G * GH; i++) {
+    const o = i * 4;
+    px[o] = L.truth[i] ? 255 : 0;
+    px[o + 1] = !L.within || L.within[i] ? 255 : 0;
+    px[o + 2] = L.inferred && L.inferred[i] ? 255 : 0;
+    px[o + 3] = 255;
+  }
+  return PNG.sync.write(png);
+}
+
+/**
+ * A decoder's answer, read back off its picture as a mask on the grid.
+ *
+ * Grey, 255 meaning certainly lawn, cut at the middle -- the same 0.5 the
+ * head's own answers are cut at in runFold. Null when the picture is not
+ * the size of the grid it claims to answer, because a resample here would
+ * hide exactly the registration bug the Python side's tests exist to catch.
+ */
+export function predictionMask(png, G, GH = G) {
+  if (!png || png.width !== G || png.height !== GH) return null;
+  const out = new Uint8Array(G * GH);
+  for (let i = 0; i < out.length; i++) out[i] = png.data[i * 4] >= 128 ? 1 : 0;
+  return out;
+}
+
 /** Geometries -> a filled mask on the GRID, using the row's own frame. */
 function maskOf(geoms, frame, size, sizeH = size) {
   const project = (ll) => lngLatToFramePx(frame, ll, size, sizeH);
@@ -768,24 +804,26 @@ function shrink(grid, dims) {
  * lawns -- which also makes them comparable to each other, not just to SAM.
  */
 const CONFIGS = [
-  { name: 'colour and texture only', colour: true, backbone: false, dims: 0 },
+  /*
+   * THE CONTROL, NOT A CANDIDATE. Colour will never be the answer: it is what
+   * shadow defeats, and the plan (docs/DETECTOR-FINDINGS.md, THE PLAN) puts
+   * the visible lawn on the satellite-pretrained eye. This row stays because
+   * it is reproducible to the decimal (H10) and so says whether the corpus
+   * moved between two runs, and because it is the only head a browser can
+   * run (EXPORT_MODEL). It is excluded from "best" -- see `contenders`.
+   */
+  { name: 'colour and texture only', colour: true, backbone: false, dims: 0, control: true },
   { name: 'the pretrained eye only', colour: false, backbone: true, dims: 32 },
   { name: 'both', colour: true, backbone: true, dims: 32 },
-  { name: 'both, 96 numbers a patch', colour: true, backbone: true, dims: 96 },
   /*
-   * THE SAME EVIDENCE, PLUS WHAT IS AROUND IT.
-   *
-   * Deliberately identical to "both" except for the ring, so the difference
-   * between those two rows is the surroundings and nothing else. A ring
-   * configuration that also changed the squeeze would answer two questions at
-   * once and settle neither.
-   *
-   * The colour-only ring is here for the same reason: it says whether the gain
-   * (if any) needs the backbone at all, or whether "is it green over there" is
-   * the whole of it. Cheap to know and cheaper than assuming.
+   * The 96-number squeeze, the colour-only ring and the combined ring were
+   * rows here until 2026-09-23. Six rows of the same random projection into
+   * the same 16-unit head were six ways of asking the same narrow question,
+   * and the winner among them moved with the corpus (H4, H13, H23). The
+   * decoder row -- tools/train_decoder.py, scored below from PREDICTIONS_DIR
+   * -- reads the eye's full width instead of a random 32 of it, which is the
+   * question those rows could not ask.
    */
-  { name: 'colour, with surroundings', colour: true, backbone: false, dims: 0, ring: true },
-  { name: 'both, with surroundings', colour: true, backbone: true, dims: 32, ring: true },
 ];
 
 /**
@@ -928,6 +966,18 @@ export function runFold(lawns, held, opts = {}) {
     for (let i = 0; i < count; i++) got[y0 * tg + i] = p[i] > 0.5 ? 1 : 0;
   }
 
+  return judgeFold(test, got, { trainedOn, sampled: picked.length });
+}
+
+/**
+ * Everything a fold reports about one held-out answer, from the mask alone.
+ *
+ * Split out of runFold so an answer that did not come from the head -- the
+ * decoder's, read from a file -- is judged by exactly the same arithmetic
+ * and lands in the same table. Two copies of "how wrong, and where" would be
+ * two chances to disagree about the number the whole run is for.
+ */
+export function judgeFold(test, got, { trainedOn = 0, sampled = 0 } = {}) {
   /*
    * HOW WRONG IS IT IN THE DARK?
    *
@@ -1045,7 +1095,7 @@ export function runFold(lawns, held, opts = {}) {
        silently failed to reach the sampling would produce a twin identical to
        its original, which is also a legitimate result of the experiment. The
        two are indistinguishable from the report and not from this number. */
-    sampled: picked.length,
+    sampled,
     collapsed: judged > 0 && (lit === 0 || lit === judged),
     crispEdgePct: edge?.crispPct ?? null,
     softEdgePct: edge?.softPct ?? null,
@@ -1458,10 +1508,11 @@ async function main() {
   } else if (!py) {
     console.log('NO_BACKBONE is set, so this is colour and texture only.');
   }
-  const using = py
+  const using = (py
     ? `colour, texture and ${py.manifest.model} at ${py.manifest.size}px`
     : eye ? 'colour, texture and a pretrained eye (tiled, 224px)'
-      : 'colour and texture only';
+      : 'colour and texture only')
+    + (process.env.PREDICTIONS_DIR ? ', and a decoder over the eye\'s full grid' : '');
 
   /*
    * HAS THIS EYE EVER SEEN THE GROUND FROM ABOVE?
@@ -1686,6 +1737,14 @@ async function main() {
       const png = new decoders.png.PNG({ width: L.dumpW, height: L.dumpH });
       png.data = Buffer.from(L.dump.buffer, L.dump.byteOffset, L.dump.byteLength);
       writeFileSync(join(dest, `${L.id}.png`), decoders.png.PNG.sync.write(png));
+      /*
+       * AND WHAT THE TRACER SAID ABOUT IT, on the scoring grid, for the
+       * decoder (tools/train_decoder.py): the traced lawn, the property line
+       * and the "inferred, not seen" marks, one channel each. The same masks
+       * the head is trained and scored on, written from the same arrays, so
+       * the decoder cannot be graded against a different outline.
+       */
+      writeFileSync(join(dest, `${L.id}-labels.png`), labelsPng(L, decoders.png.PNG));
     }
     /*
      * The ground truth of the pictures, for any model that asks what scale it
@@ -1771,6 +1830,7 @@ async function main() {
 
   const hasEye = Boolean(eye) || Boolean(py);
   const scales = py ? 1 : 2;
+  const any = py ? [...py.grids.values()][0] : null;
   const runnable = CONFIGS.filter((c) => rowWidth(c, hasEye, scales) > 0
     && (!c.backbone || hasEye));
 
@@ -1803,6 +1863,45 @@ async function main() {
     for (const L of lawns) L.ring = L.fineFull ? shrink(L.fineFull, RING_DIMS) : null;
   }
 
+  /* One fold's verdict as a table row, the same shape for every source. */
+  const foldRow = (held, f) => ({
+    lawn: lawns[held], mine: f.mine, theirs: samScores[held],
+    collapsed: f.collapsed, darkPct: f.darkPct, brightPct: f.brightPct,
+    seenPct: f.seenPct, guessPct: f.guessPct,
+    crispEdgePct: f.crispEdgePct, softEdgePct: f.softEdgePct,
+    hardShadePct: f.hardShadePct, softShadePct: f.softShadePct,
+    interiorPct: f.interiorPct,
+    /* The held-out answer itself, for RENDER_PREDICTIONS. Kept only when
+       asked: twenty-three masks per configuration is memory spent on
+       something most runs never look at. */
+    predicted: renderWanted ? f.predicted : null,
+  });
+
+  /* The rows of one configuration, summarised into its line of the table. */
+  const summarise = (cfg, rows, width) => {
+    const med = median(rows.map((r) => r.mine.errorPct));
+    const paired = rows.filter((r) => r.theirs);
+    const wins = paired.filter((r) => r.mine.errorPct < r.theirs.errorPct).length;
+    const collapsed = rows.filter((r) => r.collapsed).length;
+    const dark = median(rows.map((r) => r.darkPct).filter((v) => v !== null));
+    const bright = median(rows.map((r) => r.brightPct).filter((v) => v !== null));
+    const seen = median(rows.map((r) => r.seenPct).filter((v) => v !== null));
+    const guess = median(rows.map((r) => r.guessPct).filter((v) => v !== null));
+    const mid = (key) => {
+      const vs = rows.map((r) => r[key]).filter((v) => v !== null && v !== undefined);
+      return vs.length ? median(vs) : null;
+    };
+    console.log(`   ${med.toFixed(1)}% out on the middle lawn, better than SAM on ${wins} of ${paired.length}.\n`);
+    return {
+      cfg, med, wins, of: paired.length, rows, width, collapsed, dark, bright, seen, guess,
+      crispEdge: mid('crispEdgePct'),
+      softEdge: mid('softEdgePct'),
+      hardShade: mid('hardShadePct'),
+      softShade: mid('softShadePct'),
+      interior: mid('interiorPct'),
+    };
+  };
+
   for (const cfg of runnable) {
     /* Squeeze the patches to this configuration's width, once for all lawns. */
     if (cfg.backbone && hasEye) {
@@ -1816,41 +1915,53 @@ async function main() {
 
     const rows = [];
     for (let held = 0; held < lawns.length; held++) {
-      const f = runFold(lawns, held, { cfg, width });
-      rows.push({
-        lawn: lawns[held], mine: f.mine, theirs: samScores[held],
-        collapsed: f.collapsed, darkPct: f.darkPct, brightPct: f.brightPct,
-        seenPct: f.seenPct, guessPct: f.guessPct,
-        crispEdgePct: f.crispEdgePct, softEdgePct: f.softEdgePct,
-        hardShadePct: f.hardShadePct, softShadePct: f.softShadePct,
-        interiorPct: f.interiorPct,
-        /* The held-out answer itself, for RENDER_PREDICTIONS. Kept only when
-           asked: twenty-three masks per configuration is memory spent on
-           something most runs never look at. */
-        predicted: renderWanted ? f.predicted : null,
-      });
+      rows.push(foldRow(held, runFold(lawns, held, { cfg, width })));
     }
-    const med = median(rows.map((r) => r.mine.errorPct));
-    const paired = rows.filter((r) => r.theirs);
-    const wins = paired.filter((r) => r.mine.errorPct < r.theirs.errorPct).length;
-    const collapsed = rows.filter((r) => r.collapsed).length;
-    const dark = median(rows.map((r) => r.darkPct).filter((v) => v !== null));
-    const bright = median(rows.map((r) => r.brightPct).filter((v) => v !== null));
-    const seen = median(rows.map((r) => r.seenPct).filter((v) => v !== null));
-    const guess = median(rows.map((r) => r.guessPct).filter((v) => v !== null));
-    const mid = (key) => {
-      const vs = rows.map((r) => r[key]).filter((v) => v !== null && v !== undefined);
-      return vs.length ? median(vs) : null;
+    table.push(summarise(cfg, rows, width));
+  }
+
+  /*
+   * THE DECODER'S ANSWERS, read from files and judged by the same arithmetic.
+   *
+   * tools/train_decoder.py trains one small convolutional decoder per
+   * held-out lawn over the eye's FULL patch grid -- all 1024 numbers, and the
+   * neighbours' -- and writes each held-out answer as a probability picture
+   * on this lawn's own grid. Nothing about that can be done in Node in the
+   * time a workflow has, so it is a step of its own; what is done here is the
+   * only part that has to be identical, which is the scoring.
+   *
+   * A lawn with no answer is reported, not skipped silently: a row over 29 of
+   * 32 lawns would sit in the same table as rows over 32 and look comparable.
+   */
+  const predDir = process.env.PREDICTIONS_DIR || '';
+  if (predDir) {
+    const manifestPath = join(predDir, 'manifest.json');
+    const pm = existsSync(manifestPath) ? JSON.parse(readFileSync(manifestPath, 'utf8')) : {};
+    const cfg = {
+      name: 'the pretrained eye, decoder', colour: false, backbone: true,
+      dims: pm.dim || any?.dim || 0, decoder: true,
     };
-    table.push({
-      cfg, med, wins, of: paired.length, rows, width, collapsed, dark, bright, seen, guess,
-      crispEdge: mid('crispEdgePct'),
-      softEdge: mid('softEdgePct'),
-      hardShade: mid('hardShadePct'),
-      softShade: mid('softShadePct'),
-      interior: mid('interiorPct'),
-    });
-    console.log(`   ${med.toFixed(1)}% out on the middle lawn, better than SAM on ${wins} of ${paired.length}.\n`);
+    console.log(`Scoring "${cfg.name}" (${cfg.dims} numbers a patch, `
+      + `${pm.params ? `${pm.params.toLocaleString()} weights, ` : ''}`
+      + `${pm.epochs || '?'} epochs a fold)…`);
+    const rows = [];
+    const unanswered = [];
+    for (let held = 0; held < lawns.length; held++) {
+      const L = lawns[held];
+      const file = join(predDir, `${L.id}-pred.png`);
+      const got = existsSync(file)
+        ? predictionMask(decoders.png.PNG.sync.read(readFileSync(file)), L.grid, L.gridH)
+        : null;
+      if (!got) { unanswered.push(L.id.slice(0, 28)); continue; }
+      rows.push(foldRow(held, judgeFold(L, got, { trainedOn: lawns.length - 1 })));
+    }
+    if (unanswered.length) {
+      console.log(`   ${unanswered.length} of ${lawns.length} lawns have no decoder answer `
+        + `(${unanswered.slice(0, 3).join(', ')}${unanswered.length > 3 ? ', …' : ''}),`);
+      console.log('   so this row is over fewer lawns than the others and does not compare.');
+    }
+    if (rows.length) table.push(summarise(cfg, rows, cfg.dims));
+    else console.log('   No decoder answers found, so there is no row for it.\n');
   }
 
   /* The per-lawn detail, for the best configuration only -- twenty lines per
@@ -1862,7 +1973,18 @@ async function main() {
      * draw the pictures and set the verdict for a configuration that is losing
      * on purpose. Its own comparison is printed below, on the column that
      * means something for it. */
-  const contenders = table.filter((t) => !t.cfg.twinOf);
+  /*
+   * AND SO IS THE COLOUR CONTROL. It has won the headline more than once
+   * (35886436057, on the windowed corpus) and each time the run drew its
+   * pictures and set its verdict around a row that will never be the
+   * detector: colour is what shadow washes out, and the plan puts the visible
+   * lawn on the eye. It stays in the table, where it is a control; it does
+   * not get to be "best".
+   */
+  const candidates = table.filter((t) => !t.cfg.twinOf && !t.cfg.control);
+  /* A run with no eye at all has only the control, and a table with no best
+     row would print "no SAM outline" about a run that has one. */
+  const contenders = candidates.length ? candidates : table.filter((t) => !t.cfg.twinOf);
   const best = contenders.slice().sort((a, b) => a.med - b.med)[0];
   if (best) {
     console.log(`Lawn by lawn, under "${best.cfg.name}":\n`);

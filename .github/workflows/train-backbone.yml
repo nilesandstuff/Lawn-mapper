@@ -140,6 +140,17 @@ on:
         type: choice
         default: '15 cm'
         options: ['15 cm', '512']
+      decoder:
+        # STAGE 1 OF THE PLAN. Every row the scorer trains itself is a 16-unit
+        # head over a RANDOM 32 of the eye's 1024 numbers, one cell at a time.
+        # The decoder (tools/train_decoder.py) is a small convolutional net
+        # over the whole patch grid, trained per fold on visible ground only,
+        # and lands in the same table as a row of its own. Measured at about
+        # 40 s a fold on four threads, so around 20-25 minutes of CPU on top
+        # of the extraction at 32 lawns.
+        description: 'Also train the convolutional decoder over the full patch grid (about 25 minutes more)'
+        type: boolean
+        default: true
       about:
         # WHAT THIS RUN IS FOR, kept with the pictures for ever.
         #
@@ -214,6 +225,13 @@ jobs:
         working-directory: tools
         run: python3 windows_test.py
 
+      # And that labels land on the right patches and answers on the right
+      # cells, before the decoder is trained on either. Same reason.
+      - name: Check the decoder's grids
+        if: ${{ inputs.decoder }}
+        working-directory: tools
+        run: python3 decoder_test.py
+
       - name: Run the backbone over them
         env:
           IMAGES: frames
@@ -224,6 +242,18 @@ jobs:
           # lot whole -- the pre-2026-09-23 behaviour, kept as the control.
           TARGET_MPP: ${{ inputs.windows == 'off' && '9' || '0.10' }}
         run: python3 tools/extract_features.py
+
+      # Step one and a half: one decoder per held-out lawn over the full patch
+      # grid, its answers written as pictures for the scorer to read. Leave
+      # one out exactly as the scorer does, so the row it produces is the same
+      # kind of number as the rows beside it.
+      - name: Train the decoder
+        if: ${{ inputs.decoder }}
+        env:
+          FEATURES: feats
+          FRAMES: frames
+          OUT: preds
+        run: python3 tools/train_decoder.py
 
       # Step two: the same folds, the same scoring, the same comparison against
       # SAM. Only where the numbers came from has changed, which is what makes
@@ -240,6 +270,8 @@ jobs:
           RUN_ABOUT: ${{ inputs.about }}
           # "fixed" scores every lawn on 512 cells, the pre-2026-09-23 grid.
           GRID_CELL_M: ${{ inputs.grid == '512' && 'fixed' || '0.15' }}
+          # Empty when the decoder was not trained, and the scorer skips the row.
+          PREDICTIONS_DIR: ${{ inputs.decoder && 'preds' || '' }}
         run: node tools/train-detector.js
 
       - name: If that failed
