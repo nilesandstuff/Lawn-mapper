@@ -14,6 +14,35 @@
 
 export const SAM_MODEL = 'mattsays/sam3-image';
 
+/**
+ * The size SAM 3 reads its input at, on the long side, in pixels.
+ *
+ * Its published input resolution, and the number that turns "how big is the
+ * picture" into "how much ground is one pixel": a 1280 px photograph of a
+ * 172 m lot is resized to 1008 before the model sees it, so the model sees
+ * 17 cm a pixel, not 13. The live detection plan (detectionPlan in
+ * imagery.js) cuts a lot into pieces of this many pixels at 10 cm each so the
+ * model is never handed less than it was built for.
+ *
+ * NOT MEASURED HERE -- taken from the model's own documentation, the way
+ * Mapbox's ground size is taken from theirs. If a later SAM reads larger, this
+ * is the one number to change.
+ */
+export const SAM_INPUT_PX = 1008;
+
+/**
+ * How many pieces across a live detection may be cut into. Each piece is a
+ * prediction -- an allowance slot, and one of the handful of requests a
+ * minute Replicate allows a low-credit account -- so this is a budget rather
+ * than a capability. Two covers a lot up to about 200 m across at 10 cm; past
+ * that the pieces get coarser and the response says so. Raise it with the
+ * SAM_MAX_TILES_ACROSS variable once the Replicate account can take it.
+ */
+export const samMaxTilesAcross = (env) => {
+  const n = parseInt(env?.SAM_MAX_TILES_ACROSS, 10);
+  return Number.isFinite(n) && n >= 1 ? Math.min(n, 4) : 2;
+};
+
 /** Exactly the input fields the Worker sends, for preflight to validate. */
 export const SAM_INPUT_FIELDS = [
   'image', 'prompt', 'mask_only', 'save_overlay', 'return_zip', 'threshold',

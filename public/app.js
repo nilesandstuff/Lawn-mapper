@@ -25,6 +25,8 @@ import {
   heldInsideRings,
 } from './lib/edges.js';
 import { afterStroke, restoreAway } from './lib/stitch.js';
+// Pasting the pieces of a big lot's detection back into one mask.
+import { stitchMasks } from './lib/tiles.js';
 import {
   planHandles, HANDLE_DOT_PX, HANDLE_REACH_PX, HANDLE_MAX_CORNERS,
 } from './lib/handles.js';
@@ -4055,22 +4057,37 @@ async function detect() {
      * starts end to end, when they were all started at the same moment and are
      * warming up together.
      */
+    /*
+     * AND EVERY PIECE OF EVERY PASS. A lot too big to reach the model at
+     * 10 cm a pixel in one picture comes back as an n x n grid of masks per
+     * pass, laid out by the Worker to abut exactly; they are pasted onto one
+     * bitmap here, the size of the stitched frame, and from then on nothing
+     * downstream knows there were pieces. A pass of one piece is the old
+     * shape and takes the old path.
+     */
+    const tiling = data.tiling || { cols: 1, rows: 1 };
     const layers = await Promise.all((data.passes || [{ ...data, exclusion: null }])
       .map(async (pass) => {
-        const done = pass.status === 'succeeded'
-          ? pass
-          : await waitForPrediction(pass.id, rendered);
-        const url = maskUrl(done.mask);
-        if (!url) {
-          throw new Error(pass.exclusion
-            ? `The detector returned nothing for "${exclusionInfo(pass.exclusion).label}".`
-            : 'The detector returned no mask. Try drawing it by hand.');
-        }
+        const label = pass.exclusion ? exclusionInfo(pass.exclusion).label : null;
+        const pieces = await Promise.all((pass.tiles || [pass]).map(async (tile) => {
+          const done = tile.status === 'succeeded'
+            ? tile
+            : await waitForPrediction(tile.id, rendered);
+          const url = maskUrl(done.mask);
+          if (!url) {
+            throw new Error(label
+              ? `The detector returned nothing for "${label}".`
+              : 'The detector returned no mask. Try drawing it by hand.');
+          }
+          return { col: tile.col || 0, row: tile.row || 0, url, image: await loadMask(url) };
+        }));
         return {
-          url,
+          url: pieces[0].url,
           exclusion: pass.exclusion || null,
-          label: pass.exclusion ? exclusionInfo(pass.exclusion).label : null,
-          image: await loadMask(url),
+          label,
+          image: pieces.length === 1
+            ? pieces[0].image
+            : stitchMasks(pieces, tiling.cols, tiling.rows),
         };
       }));
 
@@ -4300,12 +4317,27 @@ async function detect() {
           + ' and this press used a detection.'
         : '';
 
+    /*
+     * SAY WHEN THE LOT WAS PHOTOGRAPHED IN PIECES, because it cost that many
+     * passes per box and because the resolution the model read is the fact
+     * that decides whether a bad outline is the model's fault or the
+     * picture's. Said only when it happened: "one picture" after every press
+     * is noise.
+     */
+    const tiled = tiling.cols > 1
+      ? ` This lot is big, so it was photographed in ${tiling.cols * tiling.rows} pieces`
+        + ` and the AI read it at ${tiling.groundCm} cm a pixel`
+        + (tiling.capped
+          ? ', the finest the piece limit allows here — an even bigger lot would need the limit raised.'
+          : '.')
+      : '';
+
     setStatus(
       (subtractive
         ? `${polygons.length} section${polygons.length > 1 ? 's' : ''} of lawn left after removing `
           + `${layers.length} thing${layers.length > 1 ? 's' : ''}`
         : `Found ${polygons.length} section${polygons.length > 1 ? 's' : ''} of lawn`) +
-      (parcelRing() ? ', trimmed to your property line' : '') + on + '.' + source + lost + gaps + scraps +
+      (parcelRing() ? ', trimmed to your property line' : '') + on + '.' + source + tiled + lost + gaps + scraps +
       overTrim + ' Correct anything it got wrong.'
     );
   } catch (err) {
@@ -4454,9 +4486,19 @@ async function detect() {
        * one limit an account does not raise, so saying it would is a promise
        * the next press would break.
        */
+      /*
+       * WHY IT NEEDED SO MANY, when the lot is the reason. "Needs 8" with two
+       * boxes ticked reads as broken unless the pieces are named: a lot too
+       * big to reach the AI at 10 cm a pixel in one picture is photographed
+       * in several, and every piece of every box is a pass.
+       */
+      const because = b.pieces > 1
+        ? `This lot is big enough to be photographed in ${b.pieces} pieces, so each box is `
+          + `${b.pieces} passes. `
+        : '';
       setStatus(
         short
-          ? `That needs ${b.wanted} AI passes and you have ${left} left today. `
+          ? `${because}That needs ${b.wanted} AI passes and you have ${left} left today. `
             + 'Untick a box or two, or draw the lawn by hand.'
           : b.reason === 'shared-network'
             ? `Your network has hit today's detection limit${counted}. You can still draw the lawn by hand.`
@@ -4564,9 +4606,30 @@ function loadMask(url) {
 function showOverlay() {
   if (!state.lastMask) return;
   hideOverlay();
+  /*
+   * The bitmap the tracer read, not the file the detector wrote. They were
+   * the same thing until big lots were cut into pieces: now the first
+   * piece's file is a quarter of the lot, and stretching it over the whole
+   * frame would put the mask in the wrong place -- the exact misalignment
+   * this overlay exists to catch, manufactured by the overlay itself. So the
+   * stitched pixels are drawn back into a canvas and shown from there, for
+   * every detection, pieces or not.
+   */
+  const image = state.lastMask.layers?.[0]?.image;
+  const canvas = document.createElement('canvas');
+  let url = `/api/mask?url=${encodeURIComponent(state.lastMask.url)}`;
+  if (image?.width && image?.data) {
+    canvas.width = image.width;
+    canvas.height = image.height;
+    canvas.getContext('2d').putImageData(
+      image instanceof ImageData ? image : new ImageData(image.data, image.width, image.height),
+      0, 0
+    );
+    url = canvas.toDataURL('image/png');
+  }
   map.addSource('mask-overlay', {
     type: 'image',
-    url: `/api/mask?url=${encodeURIComponent(state.lastMask.url)}`,
+    url,
     coordinates: frameCorners(state.lastMask.frame),
   });
   map.addLayer({

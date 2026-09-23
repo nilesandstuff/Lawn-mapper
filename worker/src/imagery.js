@@ -186,6 +186,20 @@ export function capturePlan(frame, target = TARGET_GROUND_M) {
      plain paste. A remainder tile would be a second size to keep track of for
      no gain -- the total is rounded up instead. */
   const tileSize = Math.ceil(size / across);
+  return { ...shot, ...tileGrid(frame, zoom, tileSize, across) };
+}
+
+/**
+ * An `across` x `across` grid of frames, each `tileSize` logical pixels,
+ * centred as a whole on `frame` at `zoom`, plus the frame of the stitched
+ * result. Shared by the banking plan and the live detection plan, because the
+ * seam arithmetic is the part that must not be written twice.
+ *
+ * The stitched photograph covers `tileSize * across` logical pixels, so the
+ * frame recorded against it has to be the stitched one, or every mask built
+ * from it would be a fraction of a lawn out.
+ */
+function tileGrid(frame, zoom, tileSize, across) {
   const full = tileSize * across;
   const ws = 512 * 2 ** zoom;
   const cx = ((frame.lng + 180) / 360) * ws;
@@ -211,16 +225,80 @@ export function capturePlan(frame, target = TARGET_GROUND_M) {
     }
   }
 
-  /* The stitched photograph covers `full` logical pixels, which is at least
-     `size` -- so the frame recorded against it has to be the stitched one, or
-     every mask built from it would be a fraction of a lawn out. */
   return {
-    ...shot,
     frame: { lng: frame.lng, lat: frame.lat, zoom, size: full },
     cols: across,
     rows: across,
     tileSize,
     tiles,
+  };
+}
+
+/**
+ * The pictures one LIVE detection is made from, so the model reads 10 cm a
+ * pixel whatever the size of the lot.
+ *
+ * THE RULE THIS SERVES: every detector gets 10 cm a pixel unless a coarser
+ * feed has been shown not to hurt. The live path did not: the browser asks for
+ * the frame it is DISPLAYING -- the parcel fitted into 640 logical pixels,
+ * 1280 px at @2x -- and sent that to SAM, which reads its input at a fixed
+ * `inputPx` on the long side. So a 60 m lot reached the model at 6 cm and a
+ * 172 m lot at 17 cm, and nothing said so. H20 again, on the path that
+ * measures real lawns for real people.
+ *
+ * WHEN THE LOT FITS, NOTHING CHANGES. Below `inputPx` x 10 cm across (about
+ * 100 m) the display frame already puts 10 cm or better into the model's
+ * input, and it is sent exactly as before. Past that the ground is cut into
+ * an n x n grid where each piece is `inputPx` pixels, the lot fills the grid
+ * (so a piece is at the target or finer -- a lot that only just needed
+ * cutting comes out at 5 cm), the model is asked once per piece, and the
+ * browser pastes the masks back together on a grid the tiles were laid out
+ * to abut on. Same arithmetic as capturePlan, same seam guarantee.
+ *
+ * `maxAcross` is the budget. Each tile is a prediction -- an allowance slot
+ * and a Replicate request, against a rate limit of a handful a minute -- so
+ * past the cap the pieces get coarser rather than more numerous, and the
+ * plan says so in `capped` and `groundM`.
+ *
+ * Only Mapbox is tiled. NAIP is 30 cm native, so 10 cm asks for detail that
+ * is not there; Google serves one fixed size at integer zooms; and neither
+ * is the default. Those come back as a plan of one, which is the same shape,
+ * so the handler has one path.
+ */
+export function detectionPlan(provider, frame, {
+  inputPx = 1008, maxAcross = 2, target = TARGET_GROUND_M,
+} = {}) {
+  const id = detectionProvider(provider);
+  const served = providerFrame(id, frame);
+  const across = groundAcross(served);
+  const one = {
+    frame: served, cols: 1, rows: 1, tileSize: served.size,
+    tiles: [{ frame: served, col: 0, row: 0 }],
+    /* What the model actually resolves: the picture is `size * 2` px and is
+       read at `inputPx`, whichever is smaller. */
+    groundM: across / Math.min(inputPx, served.size * 2),
+    across, capped: false, wanted: 1,
+  };
+  if (id !== 'mapbox') return one;
+
+  const wanted = Math.ceil(across / (inputPx * target));
+  if (wanted <= 1) return one;
+
+  const n = Math.max(1, Math.min(maxAcross, wanted));
+  const tileSize = inputPx / 2; // logical; Mapbox renders @2x
+  const full = tileSize * n;
+  /* The zoom that puts the whole lot into `full` logical pixels: exactly the
+     target when the cap is not hit, coarser when it is. */
+  const zoom = Math.log2(
+    (40075016.686 * Math.cos((frame.lat * Math.PI) / 180) * full) / (512 * across)
+  );
+  const grid = tileGrid(frame, zoom, tileSize, n);
+  return {
+    ...grid,
+    groundM: groundPerPixel(grid.frame),
+    across,
+    capped: n < wanted,
+    wanted,
   };
 }
 
