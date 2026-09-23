@@ -64,7 +64,9 @@ globalThis.fetch = async (url, init) => {
   throw new Error(`unexpected fetch: ${u}`);
 };
 
-const env = { REPLICATE_TOKEN: 'test', MAPBOX_SERVER_TOKEN: 'sk.test' };
+/* Cutting into pieces is OFF by default since workflow 22 measured it worse
+   (H21); switched on here so the wiring for it stays tested. */
+const env = { REPLICATE_TOKEN: 'test', MAPBOX_SERVER_TOKEN: 'sk.test', SAM_MAX_TILES_ACROSS: '4' };
 // No waitUntil work is asserted here; testlog.js owns that.
 const ctx = { waitUntil() {} };
 

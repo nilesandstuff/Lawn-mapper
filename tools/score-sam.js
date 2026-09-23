@@ -282,10 +282,29 @@ async function main() {
 
       /* Find-grass polarity, as the app reads it: literal, with the
          mostly-on safety flip. */
-      const readMask = (img) => toGrid(binarize(img, 128, { autoPolarity: true }), img.width, img.height, PX);
-      const predicted = readMask(stitched);
+      /*
+       * AND WHETHER THE SAFETY FLIP FIRED. binarize inverts a mask that is
+       * more than 90% on, on the theory that nothing we segment covers that
+       * much of the frame. A treeless lot cut into pieces at 5 cm can come
+       * back almost all grass, and a flip there would turn a right answer
+       * into a wrong one -- so the on-fraction and the flip are recorded for
+       * both masks, and a lawn whose "worse in pieces" is really "flipped in
+       * pieces" can be told apart from one where SAM lost the plot.
+       */
+      const readMask = (img) => {
+        const literal = binarize(img, 128, { autoPolarity: false });
+        let on = 0;
+        for (let i = 0; i < literal.length; i++) on += literal[i];
+        const onFrac = on / literal.length;
+        const flipped = onFrac > 0.9;
+        const used = binarize(img, 128, { autoPolarity: true });
+        return { mask: toGrid(used, img.width, img.height, PX), onFrac, flipped };
+      };
+      const got = readMask(stitched);
+      const predicted = got.mask;
       const mine = compare(predicted, truth, within);
-      const control = single ? compare(readMask(single), truth, within) : null;
+      const one = single ? readMask(single) : null;
+      const control = one ? compare(one.mask, truth, within) : null;
       const stored = row.detected_shapes
         ? compare(maskOf(geometries(parse(row.detected_shapes)), frame, PX), truth, within)
         : null;
@@ -342,13 +361,24 @@ async function main() {
         tiles: plan.tiles.length,
         groundCm: Math.round(plan.groundM * 1000) / 10,
         capped: Boolean(plan.capped),
+        /* Which way the mask was wrong, and whether it was flipped. */
+        extraPct: mine.truth ? Number(((100 * mine.extra) / mine.truth).toFixed(1)) : null,
+        missedPct: mine.truth ? Number(((100 * mine.missed) / mine.truth).toFixed(1)) : null,
+        onPct: Number((100 * got.onFrac).toFixed(1)),
+        flipped: got.flipped,
+        controlExtraPct: control && control.truth ? Number(((100 * control.extra) / control.truth).toFixed(1)) : null,
+        controlMissedPct: control && control.truth ? Number(((100 * control.missed) / control.truth).toFixed(1)) : null,
+        controlOnPct: one ? Number((100 * one.onFrac).toFixed(1)) : null,
+        controlFlipped: one ? one.flipped : null,
       });
       spent += plan.tiles.length + (single ? 1 : 0);
 
       const e = entries[n];
+      const how = (err, extra, missed, on, flipped) =>
+        `${String(err).padStart(5)}% out (${extra} over, ${missed} missed; mask ${on}% on${flipped ? ', FLIPPED' : ''})`;
       console.log(`  ${label}  ${String(e.tiles).padStart(2)} piece${e.tiles === 1 ? ' ' : 's'} `
-        + `${String(e.groundCm).padStart(5)} cm/px  now ${String(e.errorPct).padStart(5)}% out`
-        + (control ? `  one picture ${String(e.samErrorPct).padStart(5)}%` : '')
+        + `${String(e.groundCm).padStart(5)} cm/px  now ${how(e.errorPct, e.extraPct, e.missedPct, e.onPct, e.flipped)}`
+        + (control ? `  one picture ${how(e.samErrorPct, e.controlExtraPct, e.controlMissedPct, e.controlOnPct, e.controlFlipped)}` : '')
         + (stored ? `  stored outline ${String(e.storedErrorPct).padStart(5)}%` : ''));
     }
 
@@ -422,12 +452,20 @@ async function main() {
       console.log(`  one picture median ${mid(was).toFixed(1)}% out`);
       console.log(`  better on ${better}, worse on ${worse}, within 0.05 on ${tiled.length - better - worse}.`);
       for (const e of tiled.slice().sort((a, b) => a.metresAcross - b.metresAcross)) {
-        console.log(`    ${String(e.metresAcross).padStart(4)} m  ${e.tiles} pieces at ${e.groundCm} cm  `
+        console.log(`    ${String(e.metresAcross).padStart(4)} m  ${String(e.tiles).padStart(2)} pieces at ${e.groundCm} cm  `
           + `${String(e.samErrorPct).padStart(5)}% -> ${String(e.errorPct).padStart(5)}%`
+          + `   over ${e.controlExtraPct} -> ${e.extraPct}, missed ${e.controlMissedPct} -> ${e.missedPct}`
+          + `   mask on ${e.controlOnPct}% -> ${e.onPct}%`
+          + (e.controlFlipped || e.flipped ? `   flipped: ${e.controlFlipped ? 'one picture' : ''}${e.controlFlipped && e.flipped ? ' and ' : ''}${e.flipped ? 'pieces' : ''}` : '')
           + (e.capped ? '  (capped)' : ''));
       }
+      const flips = tiled.filter((e) => e.flipped || e.controlFlipped).length;
       console.log('\nSame model, same prompt, same minute: only the cut differs. This is');
       console.log('the number that says whether 10 cm a pixel helped SAM.');
+      console.log(flips
+        ? `\n${flips} of these had the >90%-on polarity flip fire on at least one mask, so`
+          + '\nread those rows as "flipped", not as SAM being wrong.'
+        : '\nThe polarity flip fired on none of them: the difference is SAM\'s answer.');
     } else {
       console.log('\nNo lawn was big enough to be cut into pieces, so there is no');
       console.log('one-picture control in this run.');

@@ -161,7 +161,8 @@ to 319 m across; 11 of 32 are over about 120 m.
 | lawn backbone, NOW (`tools/windows.py`) | one pass under ~90 m at 896; past that, overlapping 896 px windows at the photo's own resolution | 6.7 | 7.8 | 10 | 10 | **yes**, unmeasured whether it helps |
 | lawn head, `GRID=512` | scores one cell per 1/512 of the frame | 12 | 20 | 34 | 62 | cells, not pixels — see below |
 | SAM 3, live (`/api/segment`), BEFORE 2026-09-23 | the DISPLAY frame: 640 logical @2x = 1280 px, resized by SAM to about 1008 px (its published input size; not measured here) | 6 | 10 | **17** | **32** | only under ~100 m |
-| SAM 3, live, NOW | one picture under ~100 m; past that an n×n of 1008 px pieces at 10 cm or finer, up to 4×4 (`detectionPlan`) | 6 | 10 | 8.5 | 10 | **yes to ~400 m** |
+| SAM 3, live, for a few hours on 2026-09-23 | one picture under ~100 m; past that an n×n of 1008 px pieces at 10 cm or finer (`detectionPlan`) | 6 | 10 | 8.5 | 10 | yes — and **measured worse** (H21), so switched back off |
+| SAM 3, live, NOW | one picture again, the machinery behind `SAM_MAX_TILES_ACROSS` | 6 | 10 | **17** | **32** | **no**, on purpose: H21 |
 
 Numbers are cm per pixel; bold is coarser than 15 cm. The `512` and `896`
 and `1280` that keep coming up are three different things: **512** is the grid
@@ -245,6 +246,64 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H21. Cutting a big lot into 10 cm pieces made SAM WORSE, 2026-09-23
+
+**The measurement.** Workflow 22 (run 35891200799, 32 lawns, 93 predictions)
+asked `mattsays/sam3-image` for "grass" at 0.05 about every approved lawn the
+way the app asked from that morning: one picture under about 100 m across,
+pieces of 1008 px at 10 cm a pixel or finer past that. Every lawn that was
+cut into pieces was ALSO asked the old way in the same minute — one picture
+of the display frame, which SAM reads at 1008 px — so the two masks differ in
+nothing but the cut. Raw mask against the hand trace, inside the property
+line, at 1280 px over the same rectangle of ground.
+
+| lot | pieces | cm/px in pieces | one picture | in pieces |
+|---|---|---|---|---|
+| 108 m | 4 | 5.4 | 50.1% | **68.2%** |
+| 108 m | 4 | 5.3 | 30.3% | **48.5%** |
+| 111 m | 4 | 5.5 | 13.4% | 14.2% |
+| 112 m | 4 | 5.5 | 17.6% | **70.8%** |
+| 122 m | 4 | 6.1 | 21.8% | **33.5%** |
+| 172 m | 4 | 8.5 | 45.4% | 50.6% |
+| 190 m | 4 | 9.4 | 23.4% | 27.3% |
+| 197 m | 4 | 9.8 | 405% | 482% |
+| 197 m | 4 | 9.8 | 33.3% | **53.0%** |
+| 231 m | 9 | 7.6 | 36.8% | **33.8%** |
+| 319 m | 16 | 7.9 | 14.2% | **8.9%** |
+
+**Worse on 9 of 11; median 30.3% as one picture, 48.5% in pieces.** The two
+that improved are the two biggest lots, where one picture had been 23 and
+32 cm a pixel. The lots just over the line — 108 to 122 m, where one picture
+was already 10.7 to 12 cm — were hurt most, and they were cut the finest
+(5.4 to 6.1 cm a pixel, because the plan fills the grid). Over all 32 lawns
+the median was 33.8%, against the 20.3% "SAM" column in the tables above —
+but that column is the stored `detected_shapes`, drawn another day, clipped
+and traced, not a raw mask, so the two are not the same measurement.
+
+**What it means, as far as n=11 can say.** SAM with a text prompt appears to
+need the whole property in view more than it needs 10 cm a pixel: a piece
+that is a quarter of a lot has lost the house, the drive and the road it was
+reading the grass against. That is the same objection the backbone workflow
+made about tiling in 2026-09-19, now measured on the live detector. It is
+also the owner's own rule applied honestly — "unless we specifically
+demonstrate that we can drop the resolution … if performance of traces is not
+hurt too badly" — the demonstration went the other way: on lots under about
+200 m, one picture at 11 to 20 cm beat pieces at 5 to 10 cm.
+
+**Caveat, being checked.** The scorer applies the same >90%-on polarity flip
+the app does, and a treeless lot cut into pieces at 5 cm could come back
+almost all grass and be inverted — the 112 m lot's 17.6 → 70.8 has that
+shape. The re-run records the on-fraction and whether the flip fired on each
+mask; until it lands, "worse on 9 of 11" is the finding and "SAM lost
+context" is the leading explanation, not the established one.
+
+**Done about it, same day.** The live path is back to one picture
+(`samMaxTilesAcross` defaults to 1); the machinery stays behind
+`SAM_MAX_TILES_ACROSS` for the next experiment, which is pieces that
+OVERLAP so that each keeps most of the lot in view — the backbone's
+window-and-margin idea applied to SAM — and pieces at exactly 10 cm rather
+than filling the grid finer. Neither is measured.
 
 ### H20. Resolution was a side effect of lot size. FIXED at capture, 2026-09-23
 *Arithmetic over the frame sizes in the code and the per-lawn read sizes logged
@@ -1806,3 +1865,5 @@ fields) were both more obviously right than this one.
 | 2026-09-23 | 35848980523 | 12 | — (workflow 20, corrected) | — | — | **The other half of H20: a bigger request will NOT fix it.** Zoom and size moved together this time, so each step really is the same lot at twice the resolution. Detail falls at every step up on every lawn (Kent 197 m: 0.246 → 0.164 → 0.062), which is what running out of native imagery looks like; bytes per pixel one step up is 0.65×, agreeing independently. **8 of 12 are already at Mapbox's ceiling, 2 have a little more, 1 is already stretched, 1 is flat.** So closing H20 needs different imagery — NAIP or a county orthophoto service — and the 33 banked photographs are probably not worth refetching. **Caveat:** no control for what a genuinely native zoom step scores under this measure, so the ordering is solid and the absolute counts are provisional |
 | 2026-09-23 | — | — | — (no run; a capture fix) | — | — | **H20 fixed at the source.** The banked photograph's resolution was a side effect of lot size, because `zoomToFit` fits the parcel into a fixed 640 logical px. `captureFrame` now pins resolution and varies size: 10 cm/px or better wherever one request reaches it, never coarser than before, `capped` flagged past ~256 m where Mapbox's 1280-logical limit bites. 172 m lot 13.4 → 10.0 cm/px; 319 m lot 24.9 → 12.5. Small lots keep the finer imagery they already got free. `corpus.image_frame` stores the frame the picture was taken on, so ground size is exact arithmetic rather than inference. **Applies to newly banked photographs only** — the 33 existing rows keep their old frames and the readers fall back to `frame` for them |
 | 2026-09-23 | 35866737322 | 32 | — (workflow 19, no training) | — | — | **The H20 test, and the prediction held exactly.** Run started with a falsifiable claim in its own description: the canopy should move on the re-banked lawns and nowhere else. **Six lawns changed — precisely the six flagged UPSAMPLED last run — and 26 are byte-identical.** Log ends "No lawn was upsampled: every frame was at or finer than 10 cm". On-lawn share rose on five of six, fell 0.7 on one, all by 1–3 points: the right direction, at a size H7 says not to trust alone. Establishes the causal chain, NOT that the canopy is better — there is no canopy truth to score against, so the pictures decide. Note: 33 approved maps became 32 between runs, unexplained; workflow 21 touches no status, so most likely a map re-finished in between |
+| 2026-09-23 | 35890603985 | 32 | — (workflow 22, first attempt) | — | — | **Void.** Paid for about sixty predictions and scored nothing: the tool read Mapbox's JPEG as a PNG. Fixed by decoding by signature and fetching the photograph before asking SAM |
+| 2026-09-23 | 35891200799 | 32 | — (workflow 22: SAM scored, 93 predictions) | — | 33.8% raw mask, as the app asked that morning | **H21: pieces made SAM worse on 9 of 11 big lots** — median 30.3% as one picture, 48.5% in pieces, same model, prompt and minute. The two biggest lots (231, 319 m) improved; the 108–122 m lots were hurt most. Live path put back to one picture the same afternoon. Polarity-flip caveat open until the diagnostic re-run |
