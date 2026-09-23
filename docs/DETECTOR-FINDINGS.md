@@ -291,12 +291,23 @@ demonstrate that we can drop the resolution … if performance of traces is not
 hurt too badly" — the demonstration went the other way: on lots under about
 200 m, one picture at 11 to 20 cm beat pieces at 5 to 10 cm.
 
-**Caveat, being checked.** The scorer applies the same >90%-on polarity flip
-the app does, and a treeless lot cut into pieces at 5 cm could come back
-almost all grass and be inverted — the 112 m lot's 17.6 → 70.8 has that
-shape. The re-run records the on-fraction and whether the flip fired on each
-mask; until it lands, "worse on 9 of 11" is the finding and "SAM lost
-context" is the leading explanation, not the established one.
+**The caveat is closed, and the mechanism is visible.** The diagnostic re-run
+(35892399654, same 93 predictions, byte-identical scores — SAM is
+deterministic here) recorded each mask's on-fraction and whether the >90%-on
+polarity flip fired. **It fired on none of the 22 masks.** What it showed
+instead is the shape of the failure: in pieces, **over-calling rose on 11 of
+11 lots and misses fell on 10 of 11.** The 112 m lot went from 10.9% over
+and 6.8% missed as one picture to 64.8% over and 6.0% missed in pieces; the
+108 m lot from 13.3 over / 17.0 missed to 37.1 / 11.4. The finer picture did
+find more of the lawn's edge (misses down), but a piece with less of the
+non-grass world in it gets far more of itself called "grass" at the same
+0.05 threshold — a field edge, a verge, rough ground that read as not-lawn
+when the house and drive were in the same picture. The two lots that gained
+were the two where misses had been the big term (30% and 12%) and over-call
+stayed small. So the leading explanation is now the measured one: the text
+prompt's threshold is calibrated against what else is in the picture, and a
+quarter of a lot is a different picture. Resolution helped where it was
+missing; context was worth more.
 
 **Done about it, same day.** The live path is back to one picture
 (`samMaxTilesAcross` defaults to 1); the machinery stays behind
@@ -1867,3 +1878,4 @@ fields) were both more obviously right than this one.
 | 2026-09-23 | 35866737322 | 32 | — (workflow 19, no training) | — | — | **The H20 test, and the prediction held exactly.** Run started with a falsifiable claim in its own description: the canopy should move on the re-banked lawns and nowhere else. **Six lawns changed — precisely the six flagged UPSAMPLED last run — and 26 are byte-identical.** Log ends "No lawn was upsampled: every frame was at or finer than 10 cm". On-lawn share rose on five of six, fell 0.7 on one, all by 1–3 points: the right direction, at a size H7 says not to trust alone. Establishes the causal chain, NOT that the canopy is better — there is no canopy truth to score against, so the pictures decide. Note: 33 approved maps became 32 between runs, unexplained; workflow 21 touches no status, so most likely a map re-finished in between |
 | 2026-09-23 | 35890603985 | 32 | — (workflow 22, first attempt) | — | — | **Void.** Paid for about sixty predictions and scored nothing: the tool read Mapbox's JPEG as a PNG. Fixed by decoding by signature and fetching the photograph before asking SAM |
 | 2026-09-23 | 35891200799 | 32 | — (workflow 22: SAM scored, 93 predictions) | — | 33.8% raw mask, as the app asked that morning | **H21: pieces made SAM worse on 9 of 11 big lots** — median 30.3% as one picture, 48.5% in pieces, same model, prompt and minute. The two biggest lots (231, 319 m) improved; the 108–122 m lots were hurt most. Live path put back to one picture the same afternoon. Polarity-flip caveat open until the diagnostic re-run |
+| 2026-09-23 | 35892399654 | 32 | — (workflow 22, diagnostic re-run, 93 predictions) | — | 33.8% raw mask | **H21 confirmed and explained.** Scores byte-identical to the run before. The polarity flip fired on none of the 22 masks. In pieces, over-calling rose on 11 of 11 lots and misses fell on 10 of 11: SAM's "grass" at 0.05 claims far more of a piece that has less of the non-grass world in it. Context beat resolution on every lot under 200 m |
