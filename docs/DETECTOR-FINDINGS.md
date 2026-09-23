@@ -249,7 +249,41 @@ across, inside the upsampled group — suggestive at n=5, and not more than that
    > feel like the whole of it.
    >
    > **The fix.** Zoom and size move together: one zoom step up with twice the
-   > size is the same lot at twice the linear resolution. Not yet re-run.
+   > size is the same lot at twice the linear resolution.
+
+   **RE-RUN CORRECTLY, run 35848980523, the 12 biggest lots.** The answer is
+   the opposite of what the void runs said.
+
+   | | |
+   |---|---|
+   | Sharper imagery exists above what we store | **2** |
+   | What we store is already the ceiling | **8** |
+   | Already stretched at what we store | 1 |
+   | Flat ground, nothing to gain | 1 |
+
+   **Detail falls at every zoom step up, on every lawn**, which is the
+   signature of running out of native imagery rather than of our request being
+   too small. Kent at 197 m: 0.246 → 0.164 → 0.062. Ottawa at 87 m:
+   0.073 → 0.028 → 0.015. Bytes per pixel one step up came back **0.65×** — the
+   higher-zoom image compresses *better* per pixel, which independently says
+   there is less in it.
+
+   **So a bigger request does not fix H20's other half.** For 10 of 12 lots we
+   are already at or past what Mapbox holds there. Closing it needs different
+   imagery — NAIP, or a county orthophoto service (E7 has Virginia's) — not
+   more pixels from the same source. That also means **the 33 banked
+   photographs are not obviously worth refetching**, which was the expensive
+   option on the table.
+
+   **What this run still cannot tell you, and it is worth naming.** There is no
+   control here for what a *genuinely native* zoom step looks like under this
+   measure. `extra` was tested at a single size against known images; it was
+   never checked for scale-invariance across two zooms of real imagery. So the
+   ORDERING is trustworthy — Ottawa at 87 m loses far more per step than Kent
+   at 197 m — while the absolute "8 are at the ceiling" rests on thresholds
+   that have not been validated for this particular comparison. The cheap
+   control is a lot in a city centre where Mapbox certainly holds fine imagery:
+   if its steps stay flat while these fall, the measure is doing its job.
 
    **Why a bigger request was not obviously a fix.** Past a place's real
    coverage the Mapbox static API upscales its own tiles and returns them
@@ -1643,3 +1677,4 @@ fields) were both more obviously right than this one.
 | 2026-09-23 | 35809715707 | 33 | — (workflow 19, no training) | — | — | **First canopy run, no watershed, `DUMP_SIZE=1280`.** Folder `2026-09-22-2236-edt-restor-tcd-segformer-mit-b5`. **H20 confirmed:** upsampled lawns 11 of 32 → **6 of 33**, worst 2.3× → **1.6×**, exactly the five lawns the arithmetic predicted. **H20's Bullitt County guess refuted:** those three are no longer upsampled and still return 0 canopy, so resolution is not what ails them. Patches per lawn 0–47, middle 6. Canopy on traced lawn 0–51% **middle 20%** (was 7%); inside the property line 0–73% **middle 44%** (was 32%). **Those two shifts are NOT attributable** — the watershed was removed and the resolution changed in the same run, so this is exactly the two-variables-at-once the rules forbid reading. A decomposition run (this code at `DUMP_SIZE=1024`) would separate them for ~20 min of free CI |
 | 2026-09-23 | 35813325014 | 12 | — (workflow 20, no training) | — | — | **The other half of H20, answered.** Each of the 12 biggest lots fetched at 640/1280/2560 px and asked where its detail stops being real. **8 have real imagery at 2560 we are not requesting**, 0 top out at 1280, **2 are already stretched at 1280** (the Bullitt pair, 0.047 → 0.019), 2 are flat ground. Bytes per pixel 1.01× agrees independently. So: raise the stored frame **per lawn**, not globally — four times the R2 bytes buys nothing on 4 of 12. Confirms the owner's point that resolution is a fact about the address, so H20's 128 m crossover is a best case rather than a rule. Weakest calls: 4 of the 8 sit just above the noise floor |
 | 2026-09-23 | 35812991329, 35813325014 | 12 | — (workflow 20) | — | — | **BOTH VOID, retracted same day.** The probe varied the static API's `size` at a FIXED zoom, but ground per returned pixel depends on the zoom alone — at z19, sizes 320/640/1280 all return 5.47 cm/px covering 35/70/140 m. So it compared three different-sized crops at one resolution and read the differences as detail. Every figure is withdrawn, including "8 of 12 have detail we are not asking for" and "2 are already stretched at 1280". The tests passed throughout: they cover the residual measure and the labelling, and both were right — neither knows what images it is handed. Fixed by moving zoom and size together; not yet re-run |
+| 2026-09-23 | 35848980523 | 12 | — (workflow 20, corrected) | — | — | **The other half of H20: a bigger request will NOT fix it.** Zoom and size moved together this time, so each step really is the same lot at twice the resolution. Detail falls at every step up on every lawn (Kent 197 m: 0.246 → 0.164 → 0.062), which is what running out of native imagery looks like; bytes per pixel one step up is 0.65×, agreeing independently. **8 of 12 are already at Mapbox's ceiling, 2 have a little more, 1 is already stretched, 1 is flat.** So closing H20 needs different imagery — NAIP or a county orthophoto service — and the 33 banked photographs are probably not worth refetching. **Caveat:** no control for what a genuinely native zoom step scores under this measure, so the ordering is solid and the absolute counts are provisional |
