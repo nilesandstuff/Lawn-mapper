@@ -138,6 +138,48 @@ stop.**
 **Each stage is useful alone for building the corpus**, which S3 names as the
 binding constraint.
 
+### The resolution rule — every detector gets 10 cm/px
+
+*(Owner, 2026-09-23: "i want you to be sure that at the end of the day, every
+detector is getting 10-15cm/px ... Every detector should be receiving and
+working with 10cm/px unless we specifically demonstrate that we can drop the
+resolution beyond that if performance of traces is not hurt too badly. If a
+detector has to work with lower resolution, we should evaluate if we're using
+the right detector.")*
+
+This is a RULE, not a finding. Ground per pixel is `metres across the frame /
+pixels the model reads`, so a fixed pixel count means the resolution falls out
+of the lot size — which is H20, and it was true of every detector here, not
+just the canopy one. Audited from the code on 2026-09-23. Corpus lots run 25 m
+to 319 m across; 11 of 32 are over about 120 m.
+
+| detector | what it reads | 60 m lot | 100 m | 172 m | 319 m | meets the rule? |
+|---|---|---|---|---|---|---|
+| canopy, `tcd-segformer` (wf 19) | the banked photo, resampled to 0.10 m/px, tiled | 10 | 10 | 10 | 10 | **yes** — since the 10 cm re-bank |
+| lawn backbone, Scale-MAE at `size=896` (wf 14) | whole frame squeezed to 896 px | 6.7 | 11.2 | **19** | **36** | only under ~90 m |
+| lawn backbone at `size=1280` | whole frame squeezed to 1280 px | 4.7 | 7.8 | **13.4** | **25** | only under ~128 m |
+| lawn head, `GRID=512` | scores one cell per 1/512 of the frame | 12 | 20 | 34 | 62 | cells, not pixels — see below |
+| SAM 3, live (`/api/segment`) | the DISPLAY frame: 640 logical @2x = 1280 px over the parcel | 4.7 | 7.8 | **13.4** | **25** | only under ~128 m |
+| SAM 3, after its own resize | SAM 3 resizes its input to about 1008 px (its published input size; not measured here) | 6 | 10 | **17** | **32** | only under ~100 m |
+
+Numbers are cm per pixel; bold is coarser than 15 cm. The `512` and `896`
+and `1280` that keep coming up are three different things: **512** is the grid
+the lawn head SCORES on (one number per cell, and the tracer's input), **896 or
+1280** is the picture the backbone LOOKS AT, and **1280** is also the size of
+the published rendering. None of them is a resolution until you divide the
+lot size by it.
+
+**So as of this audit only the canopy detector honours the rule.** The lawn
+detector and SAM both inherit H20 unfixed: they read a whole-lot picture at a
+fixed pixel count, so a big lot is a blurry lot. The fix in both cases is the
+one the canopy path already has — capture at 10 cm and TILE, so a big lot is
+more pictures rather than a coarser one. For the backbone that means the frame
+is cut into 896 px tiles (about 90 m each) and the feature maps stitched; for
+SAM it means one Replicate prediction per tile, which is a cost per press.
+Neither is built yet. The head's 512-cell grid is a separate question — it is
+the resolution of the ANSWER, not of what the model saw, and it should follow
+metres (a fixed cm per cell) rather than a fixed count once the backbone does.
+
 **Crowns are out of scope** until everything above works. The measured crown
 area per lawn is small enough that it is not where the square footage is, and
 the one thing that made them attractive -- an off-the-shelf, well-tested
