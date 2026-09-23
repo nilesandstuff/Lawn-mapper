@@ -200,7 +200,7 @@ export async function tiledFeatures(bag, rgb, w, h, { tiles = 4, size = NATIVE_S
  * Nearest-neighbour here would stamp the patch grid into the output as visible
  * squares, and the head would learn the squares.
  */
-export function sampleAt(feat, px, py, gridPx, out, offset) {
+export function sampleAt(feat, px, py, gridPx, out, offset, gridPy = gridPx) {
   const { data, gridW, gridH, dim } = feat;
   /*
    * A grid read in windows runs a little past the photograph's edge -- the
@@ -214,7 +214,7 @@ export function sampleAt(feat, px, py, gridPx, out, offset) {
   const coverX = feat.coverX || 1;
   const coverY = feat.coverY || 1;
   const gx = Math.min(gridW - 1, Math.max(0, ((px / gridPx) * gridW) / coverX - 0.5));
-  const gy = Math.min(gridH - 1, Math.max(0, ((py / gridPx) * gridH) / coverY - 0.5));
+  const gy = Math.min(gridH - 1, Math.max(0, ((py / gridPy) * gridH) / coverY - 0.5));
   const x0 = Math.floor(gx), y0 = Math.floor(gy);
   const x1 = Math.min(gridW - 1, x0 + 1), y1 = Math.min(gridH - 1, y0 + 1);
   const fx = gx - x0, fy = gy - y0;

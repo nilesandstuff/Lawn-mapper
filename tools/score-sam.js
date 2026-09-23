@@ -43,7 +43,7 @@ import { drawPrediction, tracePrediction, traceMask, mistakeCounts } from './ren
 import { runSlug, runKeys, runRow, publishRunList } from './run-folder.js';
 import { stitchMasks } from '../public/lib/tiles.js';
 import { binarize } from '../public/lib/mask.js';
-import { metresPerPixel } from '../public/lib/mercator.js';
+import { metresPerPixel, frameFor, geometryBounds } from '../public/lib/mercator.js';
 import {
   detectionPlan, detectionImageUrl, imageryPrompt, groundAcross,
 } from '../worker/src/imagery.js';
@@ -154,11 +154,11 @@ async function photoOf(plan, decoders) {
 
 /* ------------------------------------------------------------- rasters */
 
-/** Nearest-neighbour resample of a binary mask to a square grid. */
-function toGrid(bin, w, h, px) {
-  const out = new Uint8Array(px * px);
-  for (let y = 0; y < px; y++) {
-    const sy = Math.min(h - 1, Math.floor((y * h) / px));
+/** Nearest-neighbour resample of a binary mask to a grid. */
+function toGrid(bin, w, h, px, py = px) {
+  const out = new Uint8Array(px * py);
+  for (let y = 0; y < py; y++) {
+    const sy = Math.min(h - 1, Math.floor((y * h) / py));
     for (let x = 0; x < px; x++) {
       out[y * px + x] = bin[sy * w + Math.min(w - 1, Math.floor((x * w) / px))];
     }
@@ -166,12 +166,12 @@ function toGrid(bin, w, h, px) {
   return out;
 }
 
-/** Box-average an RGBA picture to a square grid, RGBA out. */
-function resizeRgba(img, px) {
+/** Box-average an RGBA picture to a grid, RGBA out. */
+function resizeRgba(img, px, py = px) {
   const { width: w, height: h, data } = img;
-  const out = new Uint8Array(px * px * 4);
-  for (let y = 0; y < px; y++) {
-    const y0 = Math.floor((y * h) / px), y1 = Math.max(y0 + 1, Math.floor(((y + 1) * h) / px));
+  const out = new Uint8Array(px * py * 4);
+  for (let y = 0; y < py; y++) {
+    const y0 = Math.floor((y * h) / py), y1 = Math.max(y0 + 1, Math.floor(((y + 1) * h) / py));
     for (let x = 0; x < px; x++) {
       const x0 = Math.floor((x * w) / px), x1 = Math.max(x0 + 1, Math.floor(((x + 1) * w) / px));
       let r = 0, g = 0, b = 0, n = 0;
@@ -225,8 +225,9 @@ async function main() {
   let predictions = 0;
   let spent = 0;
 
+  let PY = PX;
   const write = (pix, name) => {
-    const png = new PNG({ width: PX, height: PX });
+    const png = new PNG({ width: PX, height: PY });
     png.data = Buffer.from(pix.buffer, pix.byteOffset, pix.length);
     const out = join(dir, name);
     writeFileSync(out, PNG.sync.write(png));
@@ -237,7 +238,11 @@ async function main() {
     for (const row of rows) {
       /* THE DISPLAY FRAME, not the banked one: the live path receives what
          the phone is showing, and that is what is being scored. */
-      const display = parse(row.frame);
+      /* As the app frames it now: the parcel's box plus 10 m, cropped both
+         ways. A row without a parcel keeps the frame the phone showed. */
+      const parcelForFrame = parse(row.parcel);
+      const bboxForFrame = parcelForFrame ? geometryBounds(parcelForFrame) : null;
+      const display = bboxForFrame ? frameFor(bboxForFrame, 640, { marginM: 10 }) : parse(row.frame);
       const truthGeoms = geometries(parse(row.shapes));
       if (!display || !truthGeoms.length) continue;
 
@@ -267,12 +272,14 @@ async function main() {
         continue;
       }
 
-      /* Everything on the stitched frame at the picture size. */
-      const truth = maskOf(truthGeoms, frame, PX);
+      /* Everything on the stitched frame at the picture size, which keeps
+         the frame's shape. */
+      PY = Math.max(1, Math.round((PX * (frame.height || frame.size)) / frame.size));
+      const truth = maskOf(truthGeoms, frame, PX, PY);
       const inferredGeoms = inferredGeometries(parse(row.shapes));
-      const inferred = inferredGeoms.length ? maskOf(inferredGeoms, frame, PX) : null;
+      const inferred = inferredGeoms.length ? maskOf(inferredGeoms, frame, PX, PY) : null;
       const parcelGeom = parse(row.parcel);
-      const within = parcelGeom ? maskOf([parcelGeom], frame, PX) : null;
+      const within = parcelGeom ? maskOf([parcelGeom], frame, PX, PY) : null;
       const mpp = metresPerPixel(frame, PX);
       const sqft = (px) => (px * mpp * mpp) / SQM_PER_SQFT;
 
@@ -298,7 +305,7 @@ async function main() {
         const onFrac = on / literal.length;
         const flipped = onFrac > 0.9;
         const used = binarize(img, 128, { autoPolarity: true });
-        return { mask: toGrid(used, img.width, img.height, PX), onFrac, flipped };
+        return { mask: toGrid(used, img.width, img.height, PX, PY), onFrac, flipped };
       };
       const got = readMask(stitched);
       const predicted = got.mask;
@@ -306,25 +313,25 @@ async function main() {
       const one = single ? readMask(single) : null;
       const control = one ? compare(one.mask, truth, within) : null;
       const stored = row.detected_shapes
-        ? compare(maskOf(geometries(parse(row.detected_shapes)), frame, PX), truth, within)
+        ? compare(maskOf(geometries(parse(row.detected_shapes)), frame, PX, PY), truth, within)
         : null;
 
       /* The outline the drawing tools would get, and what it costs to fix. */
-      const trace = tracePrediction({ predicted, within, grid: PX, mpp });
-      const traced = traceMask({ shapes: trace.shapes, within, grid: PX });
+      const trace = tracePrediction({ predicted, within, grid: PX, gridH: PY, mpp });
+      const traced = traceMask({ shapes: trace.shapes, within, grid: PX, gridH: PY });
       const counts = mistakeCounts({ truth, predicted: traced, within, inferred });
 
       const n = entries.length;
-      const pix = resizeRgba(photo, PX);
+      const pix = resizeRgba(photo, PX, PY);
       try {
         execFileSync('npx', [
           'wrangler', 'r2', 'object', 'put', `${BUCKET}/${keys.shapes(n)}`,
-          '--file', write(drawPrediction({ photo: pix, truth, within, inferred, rings: trace.rings, grid: PX }), `${n}.png`),
+          '--file', write(drawPrediction({ photo: pix, truth, within, inferred, rings: trace.rings, grid: PX, gridH: PY }), `${n}.png`),
           '--content-type', 'image/png', '--remote',
         ], { stdio: ['ignore', 'pipe', 'pipe'] });
         execFileSync('npx', [
           'wrangler', 'r2', 'object', 'put', `${BUCKET}/${keys.mask(n)}`,
-          '--file', write(drawPrediction({ photo: pix, truth, within, inferred, mask: predicted, grid: PX }), `${n}-mask.png`),
+          '--file', write(drawPrediction({ photo: pix, truth, within, inferred, mask: predicted, grid: PX, gridH: PY }), `${n}-mask.png`),
           '--content-type', 'image/png', '--remote',
         ], { stdio: ['ignore', 'pipe', 'pipe'] });
       } catch (e) {
@@ -353,6 +360,7 @@ async function main() {
         inferredPct: 0,
         mpp: Number(mpp.toFixed(3)),
         renderPx: PX,
+        renderPy: PY,
         pieces: trace.pieces,
         vertices: trace.vertices,
         droppedPieces: trace.droppedPieces,

@@ -165,14 +165,33 @@ def to_tensor(arr):
 
 
 def as_tensor(path, size):
+    """The whole photograph as one `size` x `size` tensor, plus its cover.
+
+    A RECTANGLE IS PADDED TO A SQUARE FIRST, never squashed. The frames are
+    the parcel plus a margin, cropped both ways (2026-09-23), and a ViT with
+    a fixed window wants a square -- so the shorter side is extended by
+    reflection to the longer one, and the whole is resized to `size`. The
+    padding is context the model sees and the head never reads: `cover` says
+    how far past the photograph the grid runs on each axis, and sampleAt on
+    the Node side divides by it (the same mechanism the windows use).
+    """
     img = Image.open(path).convert("RGB")
+    w, h = img.size
+    cover = (1.0, 1.0)
+    if w != h:
+        long = max(w, h)
+        arr = np.asarray(img)
+        pad = ((0, long - h), (0, long - w), (0, 0))
+        mode = "reflect" if max(long - h, long - w) < min(w, h) else "edge"
+        img = Image.fromarray(np.pad(arr, pad, mode=mode))
+        cover = (long / w, long / h)
     if img.size != (size, size):
         # BOX is an area average and is the right filter going down -- it is
         # the same thing the Node side does to reach its 512 grid. Going UP it
         # is blocky nonsense, so bicubic for that case.
         shrinking = img.size[0] >= size
         img = img.resize((size, size), Image.BOX if shrinking else Image.BICUBIC)
-    return to_tensor(normalised(img))
+    return to_tensor(normalised(img)), cover
 
 
 def read_whole(span, w, h, size, target=TARGET_MPP):
@@ -283,7 +302,7 @@ def main():
                 f"scale.json has no ground size for {len(missing)} of "
                 f"{len(names)} frames, starting with {missing[0]}"
             )
-        moved = prove_scale_is_read(eye, as_tensor(os.path.join(images, names[0]), size))
+        moved = prove_scale_is_read(eye, as_tensor(os.path.join(images, names[0]), size)[0])
         print(f"scale is reaching the model (features move {moved:.4f} across "
               "a tenfold change)", flush=True)
 
@@ -303,15 +322,18 @@ def main():
         if read_whole(span, w, h, size):
             # Metres per pixel of what the model is about to see, which depends
             # on the size it is read at and so cannot be stored with the picture.
-            mpp = (span / size) if (eye.wants_scale and span) else 0.0
-            hidden = eye.look(as_tensor(os.path.join(images, name), size), mpp)
+            tensor, cover = as_tensor(os.path.join(images, name), size)
+            # Metres per pixel of what the model sees: the LONGER side of the
+            # photograph (the padded square's side) over `size`.
+            long_m = (span * max(cover)) if span else 0.0
+            mpp = (long_m / size) if (eye.wants_scale and span) else 0.0
+            hidden = eye.look(tensor, mpp)
             flat, dim, extra = patches_of(hidden, eye.side)
             grid = flat.reshape(eye.side, eye.side, dim)
-            cover = (1.0, 1.0)
             windows = 1
             # What the model resolved, for the summary -- a scale-blind eye is
             # still fed pixels of a known size.
-            seen_mpp = span / size if span else 0.0
+            seen_mpp = long_m / size if span else 0.0
         else:
             # At the photograph's own resolution, in overlapping windows.
             mpp = (span / w) if eye.wants_scale else 0.0

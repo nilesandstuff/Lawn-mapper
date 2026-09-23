@@ -99,3 +99,63 @@ const frameAcross = (across, lat = 42.9, size = 640) => ({
 }
 
 console.log('grid: ok');
+
+/* ------------------------------------------ rectangular frames and grids */
+{
+  const { gridDims } = await import('./train-detector.js');
+  /* A frame twice as wide as it is tall: the rule lands on the longer side
+     and the shorter one follows at the same cells per metre. */
+  const wide = { ...frameAcross(150), height: 320 };
+  const d = gridDims(wide);
+  assert.equal(d.w, 1000, `wide: ${d.w} across`);
+  assert.equal(d.h, 500, `wide: ${d.h} down`);
+  /* A tall one: the longer side is the height. */
+  const tall = { ...frameAcross(75), height: 1280 };   // 75 m across, 150 m down
+  const t = gridDims(tall);
+  assert.equal(t.h, 1000, `tall: ${t.h} down`);
+  assert.equal(t.w, 500, `tall: ${t.w} across`);
+  /* Under the floor the square rule still holds on the longer side. */
+  const small = gridDims({ ...frameAcross(40), height: 320 });
+  assert.equal(small.w, GRID);
+  assert.equal(small.h, GRID / 2);
+  /* Fixed mode: 512 on the longer side, the other by aspect. */
+  const fixed = gridDims(wide, 0);
+  assert.equal(fixed.w, GRID);
+  assert.equal(fixed.h, GRID / 2);
+}
+
+{
+  /* A fold over lawns whose grids are rectangles answers each on its own
+     rectangle, and the right cells. */
+  const MPP = { mpp: 0.1 };
+  const makeLawn = (W, H, seedColour, lawnRows) => {
+    const px = new Uint8Array(W * H * 4);
+    const truth = new Uint8Array(W * H);
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const i = y * W + x;
+        const grass = y < lawnRows;
+        truth[i] = grass ? 1 : 0;
+        const [r, g, b] = grass ? [60, 130 + seedColour, 55] : [140, 138, 135];
+        px[i * 4] = r; px[i * 4 + 1] = g; px[i * 4 + 2] = b; px[i * 4 + 3] = 255;
+      }
+    }
+    return {
+      grid: W, gridH: H, cheap: imageFeatures(px, W, H, MPP), width: FEATURE_COUNT,
+      truth, within: null, detected: null, mpp: 0.1,
+    };
+  };
+  const lawns = [
+    makeLawn(64, 32, 0, 14), makeLawn(32, 64, 6, 30), makeLawn(64, 32, -6, 18),
+    makeLawn(48, 96, 3, 40), makeLawn(96, 48, -3, 20),
+  ];
+  for (const held of [0, 1, 3]) {
+    const fold = runFold(lawns, held, { perLawn: 900, grid: 999 });
+    const L = lawns[held];
+    assert.equal(fold.predicted.length, L.grid * L.gridH,
+      `held ${held}: answered ${fold.predicted.length} cells for a ${L.grid}x${L.gridH} lawn`);
+    assert.ok(fold.mine.errorPct < 15, `held ${held}: ${fold.mine.errorPct}% wrong`);
+  }
+}
+
+console.log('grid: ok (rectangles)');
