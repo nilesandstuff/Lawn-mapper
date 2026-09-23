@@ -1,33 +1,37 @@
 /**
- * Draw the tree crowns over the lawns they were found on, so somebody can look
- * at them.
+ * Draw the tree canopy over the lawns it was found on, so somebody can look at
+ * it.
  *
- * THE QUESTION THIS ANSWERS IS NOT "how accurate is the model". It is: would
- * these crowns work as TOGGLES -- one tap each, on for grass underneath and off
- * to ignore. Those are different questions and the second is not answerable
- * from a number. A model that finds 94% of the canopy as one enormous blob is
- * accurate and useless here; one that finds nine crowns out of eleven, each
- * cleanly separated, is less accurate and exactly what is wanted.
+ * STAGE 2 of the plan in docs/DETECTOR-FINDINGS.md. The canopy raster is the
+ * product; this draws it, and reports what share of it sits on ground somebody
+ * traced as lawn and what share is on the property at all.
  *
- * So the deliverable is pictures, and the numbers beside them are about the
- * EDITING rather than the accuracy: how many crowns, how many are big enough to
- * hit with a thumb, and -- the one that matters most -- how much of the crown
- * area falls inside the lawn somebody traced by hand.
+ * THE CROWNS ARE GONE and the numbers that went with them went too. This used
+ * to cut the canopy into crowns with a watershed and report how many there
+ * were and how many were big enough to tap. The model is semantic -- tree or
+ * no tree, per pixel -- so those counts were facts about the watershed's gap
+ * parameter rather than about the trees, and they were published as results.
+ * See H18 and H19.
  *
- * WHY THAT LAST NUMBER IS THE MEASUREMENT. A crown sitting inside the traced
- * lawn is a tree the tracer decided has grass under it: a toggle that should
- * start ON. A crown outside it is one they decided against: OFF. If those two
- * groups separate cleanly the toggles have something to be right about. If the
- * crowns land half in and half out of every lawn, the idea does not work and
- * this is where it shows.
+ * What survives is the pair of ratios, because they were always nearly canopy
+ * statistics: the clump outlines are disjoint, so summing over them is summing
+ * over the canopy minus simplification and the smallest patches.
+ *
+ *   onLawnPct   how much canopy sits on ground traced as lawn
+ *   insidePct   how much canopy is inside the property line at all
+ *
+ * READ THEM TOGETHER OR NEITHER MEANS ANYTHING. Low on the lawn and high
+ * inside the line is somebody looking at those trees and deciding there is no
+ * grass under them. Low on both is a neighbour's tree, which nobody was ever
+ * asked about.
  *
  * It reuses the detector's own fetch, resize, rasteriser and renderer so the
  * pictures are directly comparable with /predictions.html -- same frames, same
  * dimming outside the property line, same green for the traced lawn.
  *
- *   node tools/tree-crowns.js
+ *   node tools/tree-canopy.js
  *
- * or, the way anybody actually runs it, workflow "19. Find the tree crowns".
+ * or, the way anybody actually runs it, workflow "19. Find the tree canopy".
  */
 
 import { readFileSync, existsSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
@@ -47,22 +51,12 @@ import { metresPerPixel } from '../public/lib/mercator.js';
 
 const SQM_PER_SQFT = 0.09290304;
 
-const CROWNS = process.env.CROWNS || 'crowns';
+const CANOPY = process.env.CANOPY || process.env.CROWNS || 'canopy';
 const BUCKET = process.env.CORPUS_BUCKET || 'lawn-mapper-corpus';
 
 /** What this run was for, in the words of whoever started it. See RUN_ABOUT
     in tools/train-detector.js for why it is a sentence and not a flag dump. */
 const RUN_ABOUT = String(process.env.RUN_ABOUT || '').trim().slice(0, 600);
-
-/**
- * A crown too small to tap is a crown that costs more than it saves.
- *
- * Forty-four points is the usual floor for a touch target and a phone shows
- * one of these frames about 360 points wide, so anything under roughly an
- * eighth of the frame's width is a fiddle. Reported rather than dropped --
- * the model found it, and hiding it here would flatter the idea.
- */
-const THUMB_FRACTION = 1 / 12;
 
 const QUERY = `
   SELECT id, county, frame, shapes, parcel, image_key
@@ -75,7 +69,7 @@ const QUERY = `
 const parse = (t) => { try { return JSON.parse(t); } catch { return null; } };
 
 /**
- * A crown's polygon, from the dumped frame's pixels into the 512 grid
+ * A clump's polygon, from the dumped frame's pixels into the 512 grid
  * everything is drawn and measured on.
  *
  * The frames are written at whatever DUMP_SIZE the run used and the renderer
@@ -88,10 +82,10 @@ export const toGrid = (polygon, framePx) => polygon.map(([x, y]) => [
 ]);
 
 /**
- * How much of a crown lands on ground the tracer called lawn.
+ * How much of a clump lands on ground the tracer called lawn.
  *
  * `rasterizePolygon(rings, width, height, project)` -- the projection is
- * IDENTITY here because a crown arrives already in the grid's own pixels,
+ * IDENTITY here because a clump arrives already in the grid's own pixels,
  * where every other caller hands it lng/lat and a frame to project through.
  * Getting that argument list wrong is what killed the first run of this, and
  * it did not throw where the mistake was: the mask went in as `width`, so the
@@ -104,13 +98,13 @@ export const toGrid = (polygon, framePx) => polygon.map(([x, y]) => [
  *
  * NEAREST NEIGHBOUR, NOT AVERAGED, and that matters here more than it usually
  * does. This is a yes/no raster; averaging it would put a grey halo round
- * every crown and the halo would then be thresholded back into canopy that the
- * model never claimed -- a thin one around sixty crowns is a lot of invented
+ * every clump and the halo would then be thresholded back into canopy that the
+ * model never claimed -- a thin one around sixty clumps is a lot of invented
  * tree. Sampling asks the same question of the same pixel and cannot invent
  * anything.
  *
  * Missing is not an error. The masks arrived with a later version of the
- * Python than some crowns folders were written by, and a run without them
+ * Python than some canopy folders were written by, and a run without them
  * should still draw its shapes.
  */
 function maskFromPng(file, decoders) {
@@ -144,8 +138,8 @@ export function overlap(ring, truth, within) {
 }
 
 async function main() {
-  if (!existsSync(CROWNS)) {
-    console.log(`No ${CROWNS}/ directory. Run tools/tree-crowns.py first.`);
+  if (!existsSync(CANOPY)) {
+    console.log(`No ${CANOPY}/ directory. Run tools/tree-canopy.py first.`);
     process.exitCode = 1;
     return;
   }
@@ -162,7 +156,7 @@ async function main() {
   const rows = query(QUERY);
   console.log(`${rows.length} approved maps.\n`);
 
-  const dir = mkdtempSync(join(tmpdir(), 'crowns-'));
+  const dir = mkdtempSync(join(tmpdir(), 'canopy-'));
   const entries = [];
   let put = 0;
 
@@ -175,7 +169,7 @@ async function main() {
 
   try {
     for (const row of rows) {
-      const file = join(CROWNS, `${row.id}.json`);
+      const file = join(CANOPY, `${row.id}.json`);
       if (!existsSync(file)) continue;
       const found = parse(readFileSync(file, 'utf8'));
       const frame = parse(row.frame);
@@ -199,23 +193,16 @@ async function main() {
 
       const rings = [];
       let onLawnPx = 0;
-      let crownPx = 0;
+      let clumpPx = 0;
       let insidePx = 0;
-      let thumbable = 0;
-      const minSide = GRID * THUMB_FRACTION;
 
-      for (const crown of found.crowns || []) {
-        const ring = toGrid(crown.polygon, found.framePx || GRID);
+      for (const clump of found.clumps || found.crowns || []) {
+        const ring = toGrid(clump.polygon, found.framePx || GRID);
         rings.push(ring);
         const o = overlap(ring, truth, within);
-        crownPx += o.area;
+        clumpPx += o.area;
         onLawnPx += o.onLawn;
         insidePx += o.inside;
-
-        const xs = ring.map((p) => p[0]);
-        const ys = ring.map((p) => p[1]);
-        const side = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
-        if (side >= minSide) thumbable++;
       }
 
       const n = entries.length;
@@ -234,22 +221,22 @@ async function main() {
       /*
        * AND THE RASTER THE CROWNS WERE CUT OUT OF, where the Python left one.
        *
-       * The crowns are an interpretation of it -- distance transform, peak
-       * finder, watershed -- and when a lawn comes back with sixty of them the
-       * question is whether the model saw sixty trees or the splitter invented
-       * fifty. That is not answerable from either picture alone.
+       * The clump outlines beside it are a simplified boundary of this; the
+       * raster is where the holes, the speckle and the thin connections
+       * between patches actually live, and stage 3 will work on the raster
+       * rather than on the outlines.
        */
-      const canopy = maskFromPng(join(CROWNS, `${row.id}-mask.png`), decoders);
+      const canopy = maskFromPng(join(CANOPY, `${row.id}-mask.png`), decoders);
       const maskKey = canopy ? keys.mask(n) : null;
       if (canopy) {
         shots.push([maskKey, drawPrediction({
           photo, truth, within, inferred, mask: canopy, grid: GRID,
           /*
-           * UNCLIPPED, because the crowns beside it are. A crown ring comes
-           * straight from the watershed and is never cut at the property line,
-           * so clipping the canopy under it made the canopy appear to stop at
-           * a boundary the crowns sailed past -- which reads as the mask being
-           * truncated, and was. Beyond the line it draws weaker, matching the
+           * UNCLIPPED, because the clump outlines beside it are. A clump ring
+           * covers whatever canopy the model found, and is never cut at the
+           * property line, so clipping the canopy under it made the canopy
+           * appear to stop at a boundary the outlines sailed past -- which
+           * reads as the mask being truncated, and was. Beyond the line it draws weaker, matching the
            * dimmed photograph: a neighbour's tree is a fact about the picture,
            * not a claim about the property.
            */
@@ -275,27 +262,34 @@ async function main() {
         key: keys.shapes(n),
         maskKey,
         county: row.county || null,
-        crowns: rings.length,
-        thumbable,
-        crownSqFt: Math.round(sqft(crownPx)),
+        /* Contiguous patches of canopy. NOT a count of trees: two trees whose
+           branches touch are one clump. */
+        clumps: rings.length,
+        clumpSqFt: Math.round(sqft(clumpPx)),
         /*
-         * THE NUMBER THE WHOLE RUN IS FOR. Of all the crown area found, how
-         * much sits on ground the tracer called lawn -- the toggles that
-         * should start ON. A clean split between lawns is the idea working; a
-         * middling number on every lawn is the idea failing.
+         * How much of the canopy sits on ground the tracer called lawn, and
+         * how much is on the property at all. Neither reads alone -- see the
+         * note at the top of this file.
          */
-        onLawnPct: crownPx ? Number(((100 * onLawnPx) / crownPx).toFixed(1)) : null,
-        insidePct: crownPx ? Number(((100 * insidePx) / crownPx).toFixed(1)) : null,
+        onLawnPct: clumpPx ? Number(((100 * onLawnPx) / clumpPx).toFixed(1)) : null,
+        insidePct: clumpPx ? Number(((100 * insidePx) / clumpPx).toFixed(1)) : null,
         canopySqFt: Math.round((found.canopySqM || 0) / SQM_PER_SQFT),
         readAtPx: found.readAt?.px ?? null,
         mpp: Number(mpp.toFixed(3)),
+        /* Whether this frame had to be UPSAMPLED to reach the model's 10 cm.
+           Above 1.0 the model was shown interpolation rather than imagery. */
+        metresAcross: found.metresAcross ?? null,
+        sourceMpp: found.sourceMpp ?? null,
+        upsampled: found.upsampled ?? null,
       });
 
+      const e = entries[entries.length - 1];
       console.log(
         `  ${String(row.county || 'traced by hand').padEnd(22).slice(0, 22)} `
-        + `${String(rings.length).padStart(3)} crowns  `
-        + `${String(thumbable).padStart(3)} big enough to tap  `
-        + `${String(entries[entries.length - 1].onLawnPct ?? '--').padStart(5)}% on traced lawn`
+        + `${String(rings.length).padStart(3)} clumps  `
+        + `${String(e.onLawnPct ?? '--').padStart(5)}% on traced lawn  `
+        + `${String(e.insidePct ?? '--').padStart(5)}% inside the line`
+        + (e.upsampled > 1.05 ? `  UPSAMPLED ${e.upsampled}x` : '')
       );
     }
 
@@ -305,14 +299,12 @@ async function main() {
       return;
     }
 
-    /* Most crowns first: the busiest lawns are where a toggle list either
-       saves real time or becomes a wall of switches. */
-    entries.sort((a, b) => b.crowns - a.crowns);
+    /* Most canopy first: the wooded lots are where stage 3 has work to do. */
+    entries.sort((a, b) => (b.canopySqFt || 0) - (a.canopySqFt || 0));
 
     const settings = {
       model,
-      crownGapM: Number(process.env.CROWN_GAP_M || 3),
-      minCrownM2: Number(process.env.MIN_CROWN_M2 || 4),
+      minClumpM2: Number(process.env.MIN_CLUMP_M2 || 4),
       targetMpp: Number(process.env.TARGET_MPP || 0.1),
       gridPx: GRID,
       lawns: entries.length,
@@ -322,16 +314,17 @@ async function main() {
     writeFileSync(indexFile, `${JSON.stringify({
       drawnAt: new Date().toISOString(),
       slug,
-      config: 'tree crowns',
+      config: 'tree canopy',
       features: model,
       about: RUN_ABOUT,
       settings,
       lawns: entries.length,
-      note: 'Each outline is one tree crown the model found, drawn over the lawn '
-        + 'somebody traced by hand (green). "Raw mask" is the tree/no-tree raster '
-        + 'those crowns were cut out of, before the watershed split it. The '
-        + 'question is whether these would work as one-tap toggles, not how '
-        + 'accurate they are.',
+      note: 'Tree canopy over the lawn somebody traced by hand (green). "Raw mask" '
+        + 'is the model\'s own tree/no-tree answer per pixel; "shapes" is the '
+        + 'simplified outline of each contiguous patch. A patch is NOT a tree -- '
+        + 'two trees whose branches touch are one patch. Read the two percentages '
+        + 'together: low on the lawn and high inside the line is a tracer deciding '
+        + 'there is no grass under those trees; low on both is a neighbour\'s tree.',
       entries,
     }, null, 1)}\n`);
 
@@ -344,7 +337,7 @@ async function main() {
     const list = publishRunList(BUCKET, dir, runRow({
       slug,
       at: startedAt,
-      title: `tree crowns · ${model.split('/').pop()}`,
+      title: `tree canopy · ${model.split('/').pop()}`,
       about: RUN_ABOUT,
       settings,
       lawns: entries.length,
@@ -354,9 +347,9 @@ async function main() {
     }));
 
     /* ------------------------------------------------- the end of the log */
-    const counts = entries.map((e) => e.crowns);
-    const taps = entries.map((e) => e.thumbable);
+    const clumps = entries.map((e) => e.clumps);
     const shares = entries.map((e) => e.onLawnPct).filter((v) => v !== null);
+    const inside = entries.map((e) => e.insidePct).filter((v) => v !== null);
     const mid = (a) => a.slice().sort((x, y) => x - y)[a.length >> 1];
 
     console.log(`\n${'='.repeat(64)}\n`);
@@ -364,52 +357,51 @@ async function main() {
     console.log(`  ${slug}`);
     console.log(`The page now lists ${list.runs} run${list.runs === 1 ? '' : 's'}. `
       + 'The button at the top flips every');
-    console.log('picture between the crowns and the raster they were cut from.');
-    console.log(`\nCrowns per lawn: ${Math.min(...counts)} to ${Math.max(...counts)}, `
-      + `middle ${mid(counts)}.`);
-    console.log(`Big enough to tap: middle ${mid(taps)} of ${mid(counts)}.`);
-    if (shares.length) {
-      console.log(`\nCrown area sitting on the traced lawn: ${Math.min(...shares).toFixed(0)}% `
-        + `to ${Math.max(...shares).toFixed(0)}%, middle ${mid(shares).toFixed(0)}%.`);
-      console.log('\nTHAT SPREAD IS THE RESULT, not the average. A crown inside the');
-      console.log('traced lawn is a tree somebody decided has grass under it -- a');
-      console.log('toggle that should start ON -- and one outside is a no. If lawns');
-      console.log('sit at the ends of that range the two groups separate and the');
-      console.log('toggles have something to be right about. If every lawn sits in');
-      console.log('the middle, the crowns do not line up with anybody\'s judgement.');
+    console.log('picture between the canopy outlines and the raw per-pixel mask.');
 
-      /*
-       * AND THE NUMBER THAT MAKES THAT ONE READABLE, which the first run of
-       * this left in index.json where nobody would find it.
-       *
-       * A low share on the traced lawn has two meanings and the line above
-       * cannot tell them apart: the tracer decided there is no grass under
-       * those trees, or the trees belong to next door and were never anybody's
-       * to decide. Only the second is a reason to ignore the result.
-       */
-      const inside = entries.map((e) => e.insidePct).filter((v) => v !== null);
-      if (inside.length) {
-        console.log(`\nOf that crown area, ${mid(inside).toFixed(0)}% is inside the property `
-          + `line at all (${Math.min(...inside).toFixed(0)}% to `
-          + `${Math.max(...inside).toFixed(0)}%).`);
-        console.log('\nREAD THE TWO TOGETHER. Low on the lawn and HIGH inside the line');
-        console.log('means somebody looked at those trees and said no, which is the');
-        console.log('idea working. Low on both means the crowns are a neighbour\'s and');
-        console.log('the first number was never about anybody\'s judgement.');
+    console.log(`\nContiguous patches of canopy per lawn: ${Math.min(...clumps)} to `
+      + `${Math.max(...clumps)}, middle ${mid(clumps)}.`);
+    console.log('A PATCH IS NOT A TREE. Two trees whose branches touch are one patch.');
+    console.log('This run does not count trees and nothing here should be read as if');
+    console.log('it did -- the model answers tree or no tree, per pixel, and has no');
+    console.log('notion of where one tree ends. See H18 and H19.');
 
-        /* The lawns where the two disagree most are the ones worth opening
-           first, so they are named rather than left to be hunted for. */
-        const judged = entries
-          .filter((e) => e.insidePct >= 50 && e.onLawnPct !== null && e.onLawnPct < 10).length;
-        const elsewhere = entries.filter((e) => e.insidePct !== null && e.insidePct < 25).length;
-        console.log(`\n${judged} lawns are mostly on the property and mostly NOT on the lawn: `
-          + 'trees somebody declined.');
-        console.log(`${elsewhere} lawns are mostly off the property: not theirs to answer.`);
-      }
+    if (shares.length && inside.length) {
+      console.log(`\nCanopy on ground traced as lawn:  ${Math.min(...shares).toFixed(0)}% to `
+        + `${Math.max(...shares).toFixed(0)}%, middle ${mid(shares).toFixed(0)}%.`);
+      console.log(`Canopy inside the property line: ${Math.min(...inside).toFixed(0)}% to `
+        + `${Math.max(...inside).toFixed(0)}%, middle ${mid(inside).toFixed(0)}%.`);
+      console.log('\nREAD THE TWO TOGETHER. Low on the lawn and HIGH inside the line');
+      console.log('means somebody looked at those trees and decided there is no grass');
+      console.log('under them. Low on both means the canopy is a neighbour\'s and the');
+      console.log('first number was never about anybody\'s judgement.');
+
+      const judged = entries
+        .filter((e) => e.insidePct >= 50 && e.onLawnPct !== null && e.onLawnPct < 10).length;
+      const elsewhere = entries.filter((e) => e.insidePct !== null && e.insidePct < 25).length;
+      console.log(`\n${judged} lawns are mostly on the property and mostly NOT on the lawn: `
+        + 'trees somebody declined.');
+      console.log(`${elsewhere} lawns are mostly off the property: not theirs to answer.`);
     }
-    console.log('\nThe pictures decide it. A model that finds the canopy as one');
-    console.log('enormous blob is accurate and useless; nine clean crowns out of');
-    console.log('eleven is less accurate and exactly what a toggle list needs.');
+
+    /*
+     * THE RESOLUTION SPLIT, which is the open question about this step.
+     *
+     * The stored photograph is a fixed pixel count whatever the lot, so a big
+     * lot arrives coarser than the model's 10 cm and reaching 10 cm means
+     * INVENTING pixels. Printed at the end because it is the first thing to
+     * rule out when the canopy reads worse on the bigger lots.
+     */
+    const up = entries.filter((e) => e.upsampled > 1.05);
+    if (up.length) {
+      const worst = up.reduce((a, b) => (a.upsampled > b.upsampled ? a : b));
+      console.log(`\n${up.length} of ${entries.length} lawns were UPSAMPLED to reach the `
+        + `model's 10 cm,`);
+      console.log(`worst ${worst.upsampled}x at ${Math.round(worst.metresAcross)} m across. `
+        + 'Upsampling adds pixels, not detail.');
+    } else if (entries.some((e) => e.upsampled !== null)) {
+      console.log('\nNo lawn was upsampled: every frame was at or finer than 10 cm.');
+    }
     console.log(`\n${'='.repeat(64)}`);
   } finally {
     rmSync(dir, { recursive: true, force: true });

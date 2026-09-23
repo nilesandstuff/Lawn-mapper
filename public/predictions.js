@@ -77,18 +77,31 @@ function row(e, i) {
   top.append(el('b', null, e.county || 'traced by hand'));
 
   /*
-   * THE TREE CROWNS ARE A DIFFERENT KIND OF ENTRY and get a different caption.
+   * THE TREE CANOPY IS A DIFFERENT KIND OF ENTRY and gets a different caption.
    *
-   * They carry no error figure because they are not a measurement -- they are
-   * a question about whether each crown would work as a one-tap toggle. Reusing
-   * this page rather than building a second one is right (same frames, same
-   * green wash, same lazy loading), and reusing its NUMBERS would not be:
+   * It carries no error figure because it is not a measurement against truth
+   * -- there is no canopy truth in the corpus to measure against. Reusing this
+   * page rather than building a second one is right (same frames, same green
+   * wash, same lazy loading), and reusing its NUMBERS would not be:
    * "undefined% out" over a picture of trees is worse than no pill at all.
    */
-  if (e.crowns !== undefined) {
-    top.append(el('span', 'pill', `${n(e.crowns)} crowns`));
-    top.append(el('span', e.thumbable ? 'pill' : 'pill grey',
-      `${n(e.thumbable)} big enough to tap`));
+  if (e.clumps !== undefined || e.crowns !== undefined) {
+    /*
+     * PATCHES, NOT TREES, and the wording is the whole point of the change.
+     *
+     * This model is semantic: tree or no tree, per pixel, with no notion of
+     * where one tree ends. It used to be cut into "crowns" by a watershed
+     * here, and the counts that produced were facts about that watershed's gap
+     * parameter -- published, for one run, as though they were counts of
+     * trees. Entries from that run are still in the bucket and still readable,
+     * so they are relabelled on the way out rather than left saying "crowns".
+     */
+    top.append(el('span', 'pill', `${n(e.clumps ?? e.crowns)} canopy patches`));
+    if (e.upsampled > 1.05) {
+      /* The frame was coarser than the model's 10 cm and had to be blown up to
+         reach it, so this lawn was shown interpolation rather than imagery. */
+      top.append(el('span', 'pill warn', `upsampled ${e.upsampled}×`));
+    }
     if (e.onLawnPct !== null && e.onLawnPct !== undefined) {
       top.append(el('span', 'pill warn', `${pct(e.onLawnPct)} on the traced lawn`));
     }
@@ -110,15 +123,16 @@ function row(e, i) {
     }
     box.append(top);
     box.append(el('div', 'meta',
-      `${n(e.crownSqFt)} sq ft of crown · ${n(e.canopySqFt)} sq ft of canopy found · `
-      + `${Math.round(e.mpp * 100)} cm a pixel in the frame`
+      `${n(e.canopySqFt)} sq ft of canopy · ${Math.round(e.mpp * 100)} cm a pixel in the frame`
+      + (e.metresAcross ? ` · ${Math.round(e.metresAcross)} m across` : '')
       + (e.readAtPx ? ` · read at ${n(e.readAtPx)} px` : '')));
     box.append(el('div', 'meta cost',
-      'A crown inside the green is a tree somebody decided has grass under it — '
-      + 'a toggle that should start ON. One outside the green but inside the '
-      + 'property line is a no. One outside the line is not theirs to answer.'));
+      'Canopy inside the green is a tree somebody decided has grass under it. '
+      + 'Canopy outside the green but inside the property line is a no. Canopy '
+      + 'outside the line is not theirs to answer. A patch is not a tree — two '
+      + 'trees whose branches touch are one patch.'));
     return withPicture(box, e, i,
-      `Lawn ${i + 1}: every tree crown found, over the photograph, with the `
+      `Lawn ${i + 1}: the tree canopy found, over the photograph, with the `
       + 'hand-traced lawn washed in green');
   }
 
@@ -215,8 +229,9 @@ function withPicture(box, e, i, alt) {
   const paint = () => {
     img.src = `/api/admin/prediction-image?key=${encodeURIComponent(shown())}`;
     img.alt = showMask && e.maskKey
-      ? `Lawn ${i + 1}: every pixel the model called lawn, before tracing, `
-        + 'over the photograph with the hand-traced lawn washed in green'
+      ? `Lawn ${i + 1}: the model's own per-pixel answer, before any tracing `
+        + 'or simplification, over the photograph with the hand-traced lawn '
+        + 'washed in green'
       : alt;
   };
   paint();

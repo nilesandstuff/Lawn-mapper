@@ -1,5 +1,5 @@
 /**
- * The two arithmetic steps between a crown and a picture.
+ * The two arithmetic steps between a canopy patch and a picture.
  *
  * WHY THIS FILE EXISTS. The drawing half of workflow 19 has now broken twice,
  * both times eight seconds after a seventeen-minute segmentation step it then
@@ -8,14 +8,14 @@
  * step that was supposed to save the work refusing a colon in a file name.
  * Both were cheap to test and expensive to discover.
  *
- * So the pure arithmetic is tested here, where it costs nothing: does a crown
+ * So the pure arithmetic is tested here, where it costs nothing: does a clump
  * land where it is supposed to land, and is the one number the whole run
  * reports actually measuring what its name says.
  */
 
 import assert from 'node:assert/strict';
 
-import { toGrid, overlap } from './tree-crowns.js';
+import { toGrid, overlap } from './tree-canopy.js';
 import { drawPrediction } from './render-prediction.js';
 import { GRID } from './train-detector.js';
 
@@ -35,8 +35,8 @@ const block = (x0, y0, w, h) => {
 /* ------------------------------------------------------- the scale factor */
 
 {
-  /* A crown found in a 1024-wide frame has to arrive in the 512 grid the
-     renderer and every mask work in. Half the numbers, or the crowns sit in
+  /* A clump found in a 1024-wide frame has to arrive in the 512 grid the
+     renderer and every mask work in. Half the numbers, or the clumps sit in
      the top-left quarter of every picture -- which would look like the model
      failing rather than like a forgotten division. */
   const ring = toGrid(square(100, 200, 40), 1024);
@@ -50,7 +50,7 @@ const block = (x0, y0, w, h) => {
 /* ------------------------------------------- the number the run is reporting */
 
 {
-  /* A 20-pixel crown, whole, on ground nobody traced as lawn. The area is the
+  /* A 20-pixel clump, whole, on ground nobody traced as lawn. The area is the
      rasteriser's business; what matters here is that none of it counts as
      on-lawn, because that is the reading "this toggle should start OFF". */
   const empty = new Uint8Array(GRID * GRID);
@@ -61,7 +61,7 @@ const block = (x0, y0, w, h) => {
 }
 
 {
-  /* The same crown sitting entirely inside traced lawn: a toggle that should
+  /* The same clump sitting entirely inside traced lawn: a toggle that should
      start ON, and the run should say so at 100%. */
   const truth = block(30, 30, 60, 60);
   const on = overlap(square(40, 40, 20), truth, null);
@@ -70,9 +70,9 @@ const block = (x0, y0, w, h) => {
 }
 
 {
-  /* Half on, half off -- a crown on the boundary of the traced lawn. This is
+  /* Half on, half off -- a clump on the boundary of the traced lawn. This is
      the case the end of the log warns about: if every lawn reads like this the
-     crowns are not lining up with anybody's judgement. The test is that the
+     clumps are not lining up with anybody's judgement. The test is that the
      arithmetic can express it, not that it is good news. */
   const truth = block(0, 0, 50, GRID);
   const straddle = overlap(square(40, 40, 20), truth, null);
@@ -82,7 +82,7 @@ const block = (x0, y0, w, h) => {
 
 {
   /* The property line is counted separately from the traced lawn, because a
-     crown outside the parcel is not the tracer declining it -- it is somebody
+     clump outside the parcel is not the tracer declining it -- it is somebody
      else's tree, and lumping the two together would read as a judgement that
      was never made. */
   const truth = new Uint8Array(GRID * GRID);
@@ -98,12 +98,12 @@ const block = (x0, y0, w, h) => {
 {
   /*
    * THE BUG THIS PINS, found by looking at the pictures rather than at the
-   * code. The canopy mask was clipped to the property line while the crown
+   * code. The canopy mask was clipped to the property line while the clump
    * outlines over it were not, so the canopy appeared to stop dead at a
-   * boundary the crowns carried on past. It reads as the mask being truncated,
+   * boundary the clumps carried on past. It reads as the mask being truncated,
    * which is exactly what it was.
    *
-   * A crown ring is never clipped -- it comes straight from the watershed --
+   * A clump ring is never clipped -- it comes straight from the watershed --
    * so the canopy under it must not be either. The rule is that the two
    * pictures are clipped the same way or neither is trustworthy.
    */
@@ -180,4 +180,4 @@ const block = (x0, y0, w, h) => {
     'and painted more weakly than the ground somebody is actually measuring');
 }
 
-console.log('tree crowns: ok');
+console.log('tree canopy: ok');

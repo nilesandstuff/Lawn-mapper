@@ -1,17 +1,21 @@
-name: 19. Find the tree crowns
+name: 19. Find the tree canopy
 
-# Every tree on every approved lawn, as its own shape, drawn over the map
-# somebody traced by hand.
+# Where the tree canopy is, on every approved lawn, drawn over the map somebody
+# traced by hand.
 #
-# WHAT IT IS FOR. The plan is to hand a tracer each crown as a toggle -- one
-# tap, on for grass underneath and off to ignore -- which turns the slowest part
-# of tracing a wooded lawn into a row of switches. Nothing here builds that
-# interface. This answers the question that decides whether it is worth
-# building: are the crowns clean enough to BE toggles.
+# WHAT IT IS FOR. Stage 2 of the four-stage plan in docs/DETECTOR-FINDINGS.md:
+# the detector finds grass it can SEE, this finds canopy, and the stage after
+# decides where lawn continues underneath.
+#
+# IT USED TO REPORT CROWNS AND NO LONGER DOES. The model is semantic -- tree or
+# no tree, per pixel -- so the crowns came out of a watershed with a gap
+# parameter somebody chose here, and every count it produced was partly a fact
+# about that number. It was published as a result anyway. What it reports now
+# is canopy, plus its contiguous patches, which are not trees. See H18 and H19.
 #
 # WHY IT RUNS HERE RATHER THAN IN THE WORKER. A V8 isolate cannot host a
 # PyTorch model, and workflow 18 established that nothing on Replicate does
-# per-crown segmentation, so calling one per address would mean publishing a
+# per-tree segmentation, so calling one per address would mean publishing a
 # cog and paying per prediction for ever. The tracing queue is known in advance
 # -- lawns sit at 'approved' before anybody opens them -- so the work can be
 # done here, where the time is free, and the answer stored.
@@ -20,12 +24,12 @@ name: 19. Find the tree crowns
 #
 # THE ANSWER IS THE PICTURES, at /predictions.html -- this run appears in the
 # picker at the top, named for the minute it ran and the model it used, and the
-# button beside it flips every picture between the crowns and the tree/no-tree
-# raster they were cut out of. The numbers at the end of the log say how many
-# crowns and how big, and two numbers together say how much of the crown area
+# button beside it flips between the canopy outlines and the model's own
+# per-pixel answer. Two numbers at the end of the log say how much canopy
 # landed on ground somebody traced as lawn AND how much was on the property at
-# all -- which is the closest thing here to "would the toggles start in the
-# right position". Neither is readable without the other.
+# all; neither is readable without the other. A third says how many lawns had
+# to be UPSAMPLED to reach the model's 10 cm, which is the open question about
+# this step.
 on:
   workflow_dispatch:
     inputs:
@@ -33,7 +37,7 @@ on:
         # b0 is the quick one and b5 the good one. This is a one-off judgement
         # over thirty-one lawns and CPU time in CI costs nothing, so the
         # default is the one that gives the idea its fairest hearing: a weak
-        # model producing ragged crowns would read as the idea failing.
+        # model producing a ragged canopy would read as the idea failing.
         description: 'Which tree model'
         type: choice
         default: restor/tcd-segformer-mit-b5
@@ -41,12 +45,10 @@ on:
           - restor/tcd-segformer-mit-b5
           - restor/tcd-segformer-mit-b2
           - restor/tcd-segformer-mit-b0
-      gap:
-        description: 'Metres between two crowns before they count as two'
-        required: false
-        default: '3'
-      min_crown:
-        description: 'Smallest crown to keep, in square metres'
+      min_clump:
+        # Only affects the patch list that gets drawn. The canopy raster is
+        # written whole, speckle included, because stage 3 works on the raster.
+        description: 'Smallest canopy patch to outline, in square metres'
         required: false
         default: '4'
       about:
@@ -57,8 +59,8 @@ on:
         default: ''
 
 jobs:
-  crowns:
-    name: Segment the trees, then draw them
+  canopy:
+    name: Segment the canopy, then draw it
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -84,25 +86,38 @@ jobs:
         run: pip install -r tools/requirements-trees.txt
 
       # The same frames the detector is trained on, written by the same code,
-      # so a crown drawn here lands on exactly the pixels a feature would.
+      # so canopy drawn here lands on exactly the pixels a feature would.
       - name: Fetch the lawns and write the frames out
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CORPUS_BUCKET: lawn-mapper-corpus
           DUMP_FRAMES: frames
-          DUMP_SIZE: '1024'
+          # 1280, NOT 1024, AND THAT IS THE WHOLE OF THE FREE HALF OF H20.
+          #
+          # FRAME_SIZE is 640 logical and Mapbox is asked at @2x, so every
+          # stored photograph is 1280x1280 whatever the lot. Dumping at 1024
+          # threw a fifth of the linear resolution away before the model saw
+          # anything -- which costs nothing on a small lot, where the frame is
+          # far finer than the model's 10 cm anyway, and is the difference
+          # between real pixels and interpolation on a big one.
+          #
+          # It moves the upsampling crossover from 102 m across to 128 m, which
+          # in the last run is five lawns that stop being fed invented detail.
+          # Above 128 m the frame is genuinely too coarse and no dump size
+          # fixes it; that is the other half of H20 and it needs more pixels
+          # out of Mapbox, which has not been measured.
+          DUMP_SIZE: '1280'
           NO_BACKBONE: 'true'
         run: node tools/train-detector.js
 
-      - name: Find the crowns
+      - name: Find the canopy
         env:
           IMAGES: frames
-          OUT: crowns
+          OUT: canopy
           MODEL: ${{ inputs.model }}
-          CROWN_GAP_M: ${{ inputs.gap }}
-          MIN_CROWN_M2: ${{ inputs.min_crown }}
-        run: python3 tools/tree-crowns.py
+          MIN_CLUMP_M2: ${{ inputs.min_clump }}
+        run: python3 tools/tree-canopy.py
 
       # KEPT EVEN IF THE DRAWING FAILS, because the segmentation is seventeen
       # minutes and the drawing is eight seconds. The first time the second
@@ -114,33 +129,32 @@ jobs:
       # name outright. Uploading the directory took the whole run down with it
       # on the attempt after the one it was written to protect. A tar keeps the
       # names it was given.
-      - name: Pack the crowns up
+      - name: Pack the canopy up
         if: always()
         continue-on-error: true
-        run: tar -czf crowns.tar.gz crowns/ || true
+        run: tar -czf canopy.tar.gz canopy/ || true
 
-      - name: Keep the crowns whatever happens next
+      - name: Keep the canopy whatever happens next
         if: always()
         # AND NEVER FAIL THE RUN FOR IT. This step exists to save somebody
         # else's work; it has no business ending the job.
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: crowns
-          path: crowns.tar.gz
+          name: canopy
+          path: canopy.tar.gz
           if-no-files-found: warn
 
-      - name: Draw them over the traced lawns
+      - name: Draw it over the traced lawns
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CORPUS_BUCKET: lawn-mapper-corpus
-          CROWNS: crowns
+          CANOPY: canopy
           MODEL: ${{ inputs.model }}
-          CROWN_GAP_M: ${{ inputs.gap }}
-          MIN_CROWN_M2: ${{ inputs.min_crown }}
+          MIN_CLUMP_M2: ${{ inputs.min_clump }}
           RUN_ABOUT: ${{ inputs.about }}
-        run: node tools/tree-crowns.js
+        run: node tools/tree-canopy.js
 
       - name: If that failed
         if: failure()
@@ -150,7 +164,7 @@ jobs:
           echo "The usual reasons, in order:"
           echo "  * the runner could not reach the weights (huggingface.co)"
           echo "  * scale.json missing from the frames, which means the dump"
-          echo "    step failed first -- the crowns refuse to be found at an"
+          echo "    step failed first -- the canopy refuses to be found at an"
           echo "    unknown ground size rather than be found at the wrong one"
           echo "  * mit-b5 ran out of memory; try b2 or b0 before concluding"
           echo "    anything about the idea"

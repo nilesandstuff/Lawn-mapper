@@ -19,6 +19,14 @@ of a theory that later measured as nothing.
 - **HARD FINDING** — measured here, or cited with a link. Repeatable.
 - **SPECULATION** — a theory that fits the evidence and has not been tested.
   It may be worth acting on. It is not worth asserting.
+- **THE PLAN** — what is being built, decided by the owner. A decision, not a
+  result. It is not evidence for itself, and a stage being in the plan says
+  nothing about whether it works.
+
+A finding can also be **RETRACTED**, and one is (H18). Retractions are struck
+through and kept rather than deleted: the wrong version is how the mistake
+stays findable, and this file exists because results get misremembered in good
+faith.
 
 Every finding carries the date and the corpus it came from, because the corpus
 changes and results from different corpora are not comparable.
@@ -66,7 +74,122 @@ is not the same as saying it would hold on the next twenty lawns.
 
 ---
 
+## THE PLAN — decided, not measured
+
+**This is the shape the project is being built to, as of 2026-09-23. It is
+recorded here because it governs what gets built; it is NOT a finding, and
+nothing in it has been measured end to end.** Where a stage already has
+evidence, the evidence is named. Where it does not, that is said.
+
+    1. a trained Scale-MAE finds VISIBLE lawn only, shadows included
+    2. restor/tcd finds tree canopy
+    3. reasoning -- a model or plain geometry -- decides where lawn continues
+       under canopy:
+         - canopy surrounded by grass through more than ~180 degrees
+           probably has grass under it
+         - canopy sitting on a lawn edge: follow that edge under the tree
+         - lawn cannot appear more than about 10-15 ft from where stage 1
+           actually saw grass
+    4. LiDAR and infrared find the DRIVEWAYS, SIDEWALKS AND PATIOS THAT ARE
+       HIDDEN UNDER CANOPY, and cancel any lawn stage 3 invented over them --
+       the job Virginia's land cover layer already does (E7)
+
+**Stage 4 is narrower than "find hard surfaces", and the narrowness is the
+point.** The case it exists for is a driveway running under a tree: the camera
+cannot see it, so stage 3 will confidently pave it with grass. LiDAR is the
+right instrument precisely there, because returns reach the ground between
+leaves where the camera cannot. E8 records that 3DEP's ImageServer serves
+**bare earth only**, so this needs the Entwine point cloud's returns or an nDSM
+from a DSM we do not have. Infrared is the cheaper half: NAIP carries a
+near-infrared band, this repo already has an `ndvi` provider, and NDVI
+separates vegetation from pavement nearly for free -- on the NAIP subset.
+
+**The numbers in stage 3 are placeholders.** 180 degrees and 10-15 ft are
+starting points to be swept, not settings.
+
+**What is already known, per stage.**
+
+- **Stage 1: measured.** H17 -- dropping unseen ground from training improved
+  the visible half by 2.1-3.5 points on four of six rows. "Find only what you
+  can see" is the configuration that scored better, not a hope.
+- **Stage 2: works by eye, unmeasured** (H19), free, and precomputable --
+  workflow 19, about 18 minutes of CPU, nothing bought. Its open problem is
+  H20, resolution on big lots.
+- **Stage 3: untested, and the cheapest thing here to test.** All three rules
+  are ordinary raster geometry over two masks that already exist: an angular
+  test round a blob, a geodesic dilation along an edge, a bounded dilation. No
+  training, no corpus, no money, scoreable over all 33 approved maps in
+  minutes.
+- **Stage 4: the expensive one.** H16 says 29 of 31 lawns have LiDAR over them,
+  flown 2011-2020, a median of ten years before the photographs.
+
+**The two known problems, which are problems to solve rather than reasons to
+stop.**
+
+1. **Pines and mulch beds defeat the 180-degree rule.** Both are common in
+   exactly the suburban lots this is for.
+2. **Three hand-set numbers fitted on 33 lawns will fit noise** (H7: one map
+   here is worth up to 10 points). The mitigation is real and is why this is
+   worth trying where a bigger model is not: **three parameters can be swept
+   and shown as a curve.** A flat curve means the rule does not work; a peak
+   that moves when a lawn is added means it was noise. Neither is available
+   from a network.
+
+**Each stage is useful alone for building the corpus**, which S3 names as the
+binding constraint.
+
+**Crowns are out of scope** until everything above works. The measured crown
+area per lawn is small enough that it is not where the square footage is, and
+the one thing that made them attractive -- an off-the-shelf, well-tested
+delineator -- turned out not to exist for our imagery. See H18's retraction.
+
+---
+
 ## HARD FINDINGS — our own measurements
+
+### H20. Above about 102 m across, the canopy model is fed upsampled pixels
+*Arithmetic over the frame sizes in the code and the per-lawn read sizes logged
+by runs 35762129844 and 35781727027, 2026-09-23. The chain is measured; that it
+is WHY the canopy reads worse on big lots is not.*
+
+`public/app.js` sets `FRAME_SIZE = 640` logical pixels and Mapbox is asked at
+`@2x`, so **every stored photograph is 1280×1280 whatever the lot**. Ground
+coverage varies with the parcel, so ground resolution does:
+
+| lot across | stored | after `DUMP_SIZE=1024` | to reach the model's 0.10 m/px |
+|---|---|---|---|
+| 25 m | 0.020 m/px | 0.024 | 4× **down**sample — real detail |
+| 63 m | 0.049 | 0.061 | 1.6× down — real detail |
+| 102 m | 0.080 | 0.100 | break-even |
+| 194 m | 0.152 | 0.190 | 1.9× **up**sample — interpolated |
+| 319 m | 0.249 | 0.312 | 3.1× up |
+
+**The crossover is 102 m across**, and above it `tree-canopy.py` is inventing
+pixels with a bilinear resize and handing them to a model that was trained on
+10 cm imagery. That is E2 from the usual direction.
+
+**11 of the 32 lawns in run 35762129844 were above the crossover.** The three
+Bullitt County lawns that returned 0.0% canopy were all read at 107–112 m
+across, inside the upsampled group — suggestive at n=5, and not more than that.
+
+**Two separate losses, and the first is free to fix.**
+
+1. **The dump discards pixels it was given.** The stored photograph is 1280 and
+   `DUMP_SIZE=1024` resizes it down before the model sees anything. Pure waste.
+   Removing it moves the crossover from 102 m to 128 m and recovers 5 of those
+   11 lawns at no cost.
+2. **Above 128 m, 1280 px is genuinely not enough.** `imagePixels` in
+   `worker/src/imagery.js` caps at 2560, so Mapbox *can* be asked for more —
+   but whether more pixels means more detail, or just Mapbox doing the
+   upsampling instead of us, depends on what imagery it holds at that zoom.
+   **Not measured.** It also only helps newly captured photographs; the 33
+   already in the bucket are 1280 px and would need refetching.
+
+Every run now records `sourceMpp` and `upsampled` per lawn and prints the split
+at the end of the log, so this is answerable from the output instead of being
+re-derived.
+
+---
 
 ### H19. The canopy mask is the good half. The crowns are not.
 *Owner's reading of all 33 pictures from run 35781727027, 2026-09-22.*
@@ -116,10 +239,26 @@ canopy would find the mismarked areas without anyone re-reviewing by eye.
 
 ---
 
-### H18. The tree model finds tappable crowns, and most of them land off the traced lawn
+### H18. ~~The tree model finds tappable crowns~~ — HALF RETRACTED. The crown counts were a fact about our own watershed
 *Run 35764574338, 2026-09-22, 33 approved maps, `1wxlejo`,
 `restor/tcd-segformer-mit-b5` at 0.1 m/px. Pictures at
 `/predictions.html?set=crowns`. No predictions bought — 18 minutes of CPU.*
+
+> **RETRACTED, 2026-09-23: every crown number below.** `tcd-segformer` is a
+> SEMANTIC model — tree / no tree, per pixel, with no notion of where one tree
+> ends (E5 says so in its own words). The crowns came out of a watershed in
+> `tools/tree-canopy.py`, driven by a `CROWN_GAP_M` this repo chose. So "0 to
+> 63 crowns, middle 9" and "middle 6 big enough to tap" are measurements of
+> that parameter, not of those lawns, and **they were published here as
+> results.** A lawn reported at 63 crowns may be one canopy split 63 ways.
+>
+> **What survives:** `onLawnPct` and `insidePct`. Watershed labels are
+> disjoint, so summing over crowns is summing over the canopy mask minus
+> simplification and the patches under `MIN_CROWN_M2`. Those two were always
+> near enough canopy statistics, and the 32%-inside result stands.
+>
+> The watershed has been removed. See H19 for what replaced it, and the note
+> below is kept unedited as the record of what was claimed.
 
 The idea being tested is a tracer's interface, not a detector: hand somebody
 each tree crown as a toggle — on for grass underneath, off to ignore — and the
@@ -1334,63 +1473,6 @@ Three things to settle before any of it is a finding, none of them settled:
 argued at length and then measured as nothing (H4's ring, E3's receptive
 fields) were both more obviously right than this one.
 
-### S9. Four stages instead of one model: see, then canopy, then reason, then veto
-
-*Proposed by the owner, 2026-09-22, after reading the run 35781727027 pictures.
-**Nothing here is measured.** Recorded because it is a specific, falsifiable
-plan rather than a direction, and because three of the four stages already
-have evidence pointing at them.*
-
-    1. a trained Scale-MAE finds VISIBLE lawn only, shadows included
-    2. restor/tcd finds tree canopy
-    3. reasoning -- a model or plain geometry -- decides where lawn continues
-       under canopy:
-         - canopy blob surrounded by grass through more than 180 degrees
-           probably has grass under it
-         - canopy sitting on a lawn edge: follow that edge under the tree
-         - lawn cannot appear more than about 10-15 ft from where stage 1
-           actually saw grass
-    4. LiDAR and infrared find hard surfaces and cancel any lawn stage 3
-       invented over them
-
-The case for it, stage by stage, out of this file rather than out of the idea:
-
-- **Stage 1 is already measured.** H17: dropping unseen ground from training
-  improved the visible half by 2.1-3.5 points on four of six rows. "Find only
-  what you can see" is the configuration that measured better, not a hope.
-- **Stage 2 has H19 behind it** and the model is free and precomputable
-  (workflow 19, ~18 min of CPU, nothing bought).
-- **Stage 3 is the untested part, and it is also the cheapest to test.** All
-  three rules are ordinary raster geometry over two masks that already exist:
-  an angular test round a blob, a geodesic dilation along an edge, a bounded
-  dilation. No training, no corpus, no money. They can be run over all 33
-  approved maps and scored against the traced truth in minutes.
-- **Stage 4 is the expensive and least certain one.** H16 says 29 of 31 lawns
-  have LiDAR over them, flown 2011-2020, a median of ten years before the
-  photographs. E8 records that 3DEP's ImageServer serves BARE EARTH only, so
-  "hard surfaces" needs either the Entwine point cloud's returns or an nDSM
-  built from a DSM we do not have. **The cheaper half of stage 4 is infrared,
-  not LiDAR**: NAIP carries a near-infrared band, this repo already has an
-  `ndvi` provider, and NDVI separates vegetation from pavement almost for
-  free -- for the subset of the corpus banked as NAIP.
-
-**The two arguments against, stated plainly.**
-
-The gap the proposal names itself: pines and mulch beds defeat the 180-degree
-rule, and both are common in exactly the suburban lots this is for.
-
-The one it does not name: stage 3 has hand-set numbers in it -- 180 degrees,
-10-15 ft -- and H7 says one map in this corpus is worth up to 10 points, so
-fitting them on 33 lawns will fit noise. The mitigation is real though, and it
-is why this is worth trying where a bigger model is not: **three parameters
-can be swept and shown as a curve.** A flat curve means the rule does not
-work; a peak that moves when a lawn is added means it was noise. Neither is
-available for a network.
-
-**Worth recording separately:** each stage is useful alone for building the
-corpus, which is S3's binding constraint. Stage 2 plus the inferred-ground
-check in H19 would find mismarked truth today without any of the rest.
-
 ---
 
 ## Rules for running and reading these experiments
@@ -1467,3 +1549,4 @@ check in H19 would find mismarked truth today without any of the rest.
 | 2026-09-22 | 35683684006 | **31** | Scale-MAE large 896px | 34.4% | 23.8% | **NEW CORPUS `1wxlejo`** — work restarted. Control 28.6 → 37.8, so nothing compares to the rows above (H15). Gap 1.39× → 1.45×, wins flat at 10 of 25. Winner changed to "both"; top three within 0.5 points. H12 reproduced on a second corpus, ring negative again, S5 worse than ever. Baseline confirmed all `sam3`. 31 of 31 outlines drawn to /predictions.html |
 | 2026-09-22 | 35764574338 | **33** | — (workflow 19, no training) | — | — | **Tree crowns (H18).** `restor/tcd-segformer-mit-b5` at 0.1 m/px over 33 approved maps, 18 min CPU, nothing bought. Crowns per lawn 0-63, middle 9; middle 6 of them big enough to tap. Crown area on traced lawn 0-51%, middle 7% — **not interpretable yet**, because `insidePct` (crown inside the property line at all) is not summarised, so "the tracer said no" and "it is a neighbour's tree" are not separated. Tappability collapses on the busiest lawns: 1 of 28, 2 of 39. Pictures at /predictions.html?set=crowns |
 | 2026-09-22 | 35781727027 | 33 | — (workflow 19, no training) | — | — | **Crowns again, into the first dated run folder** (`2026-09-22-1659-edt-restor-tcd-segformer-mit-b5`). Same model and settings as 35764574338, so the crown numbers are identical — the point was the two things the last run could not do. **Settles the H18 caveat:** only 32% of crown area is inside the property line (0-69%), 9 of 33 lawns are mostly OFF the property and just 2 are in the "tracer declined these trees" quadrant. The 7% on-lawn figure was measured mostly over neighbours' trees. Also the first run with a raw-mask picture per lawn, so a 63-crown lawn can be checked against the raster it was split from |
+| 2026-09-23 | — | 33 | — (no run; arithmetic over the code) | — | — | **H20, and H18 half retracted.** The crown counts were measurements of our own watershed's gap parameter, not of trees — `tcd-segformer` is semantic and has no notion of where one tree ends. `onLawnPct`/`insidePct` survive and the 32%-inside result stands. The watershed is removed; the tool reports canopy plus contiguous patches, which are not trees. Separately: `FRAME_SIZE=640` @2x means every stored photograph is 1280px whatever the lot, so **above 102 m across the canopy model is fed upsampled pixels** — 11 of 32 lawns in the last run. The `DUMP_SIZE=1024` resize is free waste on top of that |
