@@ -132,6 +132,28 @@ starting points to be swept, not settings.
 - **Stage 1: measured.** H17 -- dropping unseen ground from training improved
   the visible half by 2.1-3.5 points on four of six rows. "Find only what you
   can see" is the configuration that scored better, not a hope.
+
+  **Since 2026-09-23 stage 1 has a reader built for it: `tools/train_decoder.py`.**
+  Every "backbone" row before this went through the same door -- the eye's 1024
+  numbers a patch squeezed through a FIXED RANDOM projection to 32 (or 96) and
+  then a 16-unit head deciding each 15 cm cell on its own. Nothing in that path
+  learns which of the eye's directions matter, and it is the reader H22 ran into,
+  not the eye. The decoder is a small convolutional net (1x1 1024→128, two 3x3
+  layers, 1x1→1; about 220k weights) over the WHOLE patch grid, trained per
+  fold on visible ground only (inferred and off-property cells carry no weight,
+  as H17 says), and scored by the same `judgeFold` as every other row, as
+  **"the pretrained eye, decoder"** in workflow 14's table. UNMEASURED at the
+  time of writing; the first run is the row after this one in the run log.
+
+  **And the colour row is a control from here, not a candidate.** It stays in
+  the table because it is reproducible to the decimal (H10) and so says when the
+  corpus moved, and because it is the only head a browser can run; it no longer
+  gets to be "best", set the verdict or draw the pictures. The 96-number squeeze
+  and the two ring rows were dropped the same day: six rows of the same random
+  projection into the same head were six ways of asking one narrow question, and
+  the winner among them moved with the corpus (H4, H13, H23). **Tables from
+  runs after this have three head rows plus the decoder, so they do not line up
+  row for row with the ones above.**
 - **Stage 2: works by eye, unmeasured** (H19), free, and precomputable --
   workflow 19, about 18 minutes of CPU, nothing bought. Its open problem is
   H20, resolution on big lots.
