@@ -115,6 +115,24 @@ on:
         description: 'Also train a twin of each row with unseen ground dropped (doubles the run)'
         type: boolean
         default: false
+      windows:
+        # THE CONTROL SWITCH for the 10 cm change to the backbone. "on" reads
+        # a lot too big for one pass at the photograph's own resolution in
+        # overlapping windows; "off" squeezes every lot whole into the input
+        # size, which is what every run before 2026-09-23 did. Same corpus,
+        # both settings, is the only way to say what windows were worth.
+        description: 'Read big lots in overlapping windows at 10 cm (on), or squeeze every lot whole (off, the old way)'
+        type: choice
+        default: 'on'
+        options: ['on', 'off']
+      grid:
+        # THE CONTROL SWITCH for the scoring grid. "15 cm" gives each lawn
+        # ceil(across / 0.15) cells between 512 and 1024; "512" scores every
+        # lawn on 512 cells as every run before 2026-09-23 did.
+        description: 'Scoring grid: 15 cm a cell (512 to 1024), or the old fixed 512'
+        type: choice
+        default: '15 cm'
+        options: ['15 cm', '512']
       about:
         # WHAT THIS RUN IS FOR, kept with the pictures for ever.
         #
@@ -195,6 +213,9 @@ jobs:
           OUT: feats
           MODEL: ${{ inputs.model }}
           SIZE: ${{ inputs.size }}
+          # Nine metres a pixel is a target no lot fails, so "off" reads every
+          # lot whole -- the pre-2026-09-23 behaviour, kept as the control.
+          TARGET_MPP: ${{ inputs.windows == 'off' && '9' || '0.10' }}
         run: python3 tools/extract_features.py
 
       # Step two: the same folds, the same scoring, the same comparison against
@@ -210,6 +231,8 @@ jobs:
           RENDER_PREDICTIONS: ${{ inputs.render }}
           SEEN_ONLY_TWINS: ${{ inputs.seen_only }}
           RUN_ABOUT: ${{ inputs.about }}
+          # "fixed" scores every lawn on 512 cells, the pre-2026-09-23 grid.
+          GRID_CELL_M: ${{ inputs.grid == '512' && 'fixed' || '0.15' }}
         run: node tools/train-detector.js
 
       - name: If that failed

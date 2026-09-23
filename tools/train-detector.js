@@ -155,12 +155,28 @@ const GRID = 512;
 export const CELL_M = 0.15;
 export const GRID_MAX = 1024;
 
+/**
+ * The cell size in force, in metres, or 0 for the old fixed 512.
+ *
+ * GRID_CELL_M exists so the change can be MEASURED: "fixed" (or 0) scores
+ * every lawn on 512 cells exactly as every run before 2026-09-23 did, which
+ * is the control a run at 15 cm reads against. Unset means CELL_M.
+ */
+export const cellMetres = () => {
+  const raw = String(process.env.GRID_CELL_M ?? '').trim().toLowerCase();
+  if (raw === '') return CELL_M;
+  if (raw === 'fixed' || raw === '512') return 0;
+  const v = parseFloat(raw);
+  return Number.isFinite(v) && v > 0 ? v : 0;
+};
+
 /** How many cells across this frame gets: 15 cm a cell, between the floor and the cap. */
-export const gridFor = (frame) => {
+export const gridFor = (frame, cell = cellMetres()) => {
+  if (!cell) return GRID;
   const across = metresPerPixel(frame, 1);
   if (!Number.isFinite(across) || across <= 0) return GRID;
   /* The nudge keeps 150 / 0.15 from rounding up to 1001 cells. */
-  return Math.min(GRID_MAX, Math.max(GRID, Math.ceil(across / CELL_M - 1e-9)));
+  return Math.min(GRID_MAX, Math.max(GRID, Math.ceil(across / cell - 1e-9)));
 };
 
 /**
@@ -1239,11 +1255,17 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
          floored at GRID and capped at GRID_MAX. The range is what this run
          actually used; `capped` is how many lawns hit the ceiling and so are
          coarser than the cell size says. */
-      gridPx: null,
-      cellM: CELL_M,
+      gridPx: cellMetres() ? null : GRID,
+      cellM: cellMetres() || null,
       gridMin: Math.min(...lawns.map((L) => L.grid || GRID)),
       gridMax: Math.max(...lawns.map((L) => L.grid || GRID)),
-      gridCapped: lawns.filter((L) => (L.grid || GRID) >= GRID_MAX && L.mpp > CELL_M * 1.001).length,
+      gridCapped: cellMetres()
+        ? lawns.filter((L) => (L.grid || GRID) >= GRID_MAX && L.mpp > cellMetres() * 1.001).length
+        : null,
+      /* Whether the backbone read big lots in windows or squeezed them
+         whole -- the extractor's manifest says, and it belongs beside the
+         pictures because it is the other half of what this run varied. */
+      windowedLawns: meta.windowed ?? null,
       aerialEye: Boolean(meta.aerialEye),
       noBackbone: Boolean(meta.noBackbone),
       medianErrorPct: Number(best.med.toFixed(1)),
@@ -1828,6 +1850,7 @@ async function main() {
       size: py ? py.manifest.size : (eye ? 224 : null),
       noBackbone: process.env.NO_BACKBONE === 'true',
       aerialEye,
+      windowed: py ? (py.manifest.windowed ?? null) : null,
     });
   }
 
