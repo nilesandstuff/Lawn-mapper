@@ -32,15 +32,19 @@ export const SAM_INPUT_PX = 1008;
 
 /**
  * How many pieces across a live detection may be cut into. Each piece is a
- * prediction -- an allowance slot, and one of the handful of requests a
- * minute Replicate allows a low-credit account -- so this is a budget rather
- * than a capability. Two covers a lot up to about 200 m across at 10 cm; past
- * that the pieces get coarser and the response says so. Raise it with the
- * SAM_MAX_TILES_ACROSS variable once the Replicate account can take it.
+ * prediction and an allowance slot, so this is a budget rather than a
+ * capability. Four covers a lot up to about 400 m across at 10 cm, which is
+ * past anything the corpus holds; past it the pieces get coarser and the
+ * response says so. SAM_MAX_TILES_ACROSS moves it, up to eight.
+ *
+ * It was two while the Replicate account was throttled to six requests a
+ * minute. The owner fixed that on 2026-09-23 (the standard six hundred), so
+ * the rate limit no longer decides this; the daily allowance does, and that
+ * is a per-person choice the refusal explains rather than a ceiling here.
  */
 export const samMaxTilesAcross = (env) => {
   const n = parseInt(env?.SAM_MAX_TILES_ACROSS, 10);
-  return Number.isFinite(n) && n >= 1 ? Math.min(n, 4) : 2;
+  return Number.isFinite(n) && n >= 1 ? Math.min(n, 8) : 4;
 };
 
 /** Exactly the input fields the Worker sends, for preflight to validate. */
