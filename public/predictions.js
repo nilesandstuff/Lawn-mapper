@@ -59,6 +59,154 @@ const n = (v) => Number(v || 0).toLocaleString();
 const pct = (v) => (v === null || v === undefined ? '—' : `${v.toFixed(1)}%`);
 
 /**
+ * ONE PICTURE, FULL SIZE, WITH PINCH AND DRAG.
+ *
+ * WHY IT IS NOT JUST A BIGGER <img>. The published PNG is 1280 px and the
+ * column on a phone is about 360, so the list shows roughly a quarter of the
+ * detail in each direction. Everything worth arguing about here is at that
+ * scale: whether an edge is crisp or crumbly, whether a patch of canopy is one
+ * tree or three, whether a stitched frame has a seam down it. A lightbox that
+ * only made the picture fill the screen would still be showing a third of what
+ * is there.
+ *
+ * SO IT STARTS FIT TO THE SCREEN AND ZOOMS TO 1:1 AND PAST IT. Double-tap
+ * toggles between the two, which is the gesture people already expect from a
+ * photo viewer, and pinch does what pinch does.
+ *
+ * WRITTEN WITH POINTER EVENTS RATHER THAN TOUCH, so a trackpad and a mouse
+ * work the same way as a thumb -- this page is read on a phone and debugged on
+ * a laptop, and two code paths for one gesture is how they drift.
+ */
+function viewer(key, alt) {
+  const back = el('div', 'lightbox');
+  const img = el('img', 'lightshot');
+  img.alt = alt;
+  img.src = `/api/admin/prediction-image?key=${encodeURIComponent(key)}`;
+  img.draggable = false;
+
+  const close = el('button', 'lightclose');
+  close.type = 'button';
+  close.setAttribute('aria-label', 'Close');
+  close.textContent = '✕';
+
+  const hint = el('div', 'lighthint', 'pinch or scroll to zoom · drag to pan · double-tap to fit');
+  back.append(img, close, hint);
+  document.body.append(back);
+  document.body.classList.add('lightbox-open');
+
+  /* The transform, applied as one string so a zoom and a pan cannot land in
+     different frames and jitter. */
+  let scale = 1, tx = 0, ty = 0;
+  const apply = () => { img.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`; };
+
+  /*
+   * PANNING IS CLAMPED so the picture cannot be flung off the screen and lost.
+   * At fit or below there is nothing to pan to, so it re-centres instead --
+   * otherwise a stray drag leaves a blank screen and no way back.
+   */
+  const clamp = () => {
+    /* getBoundingClientRect already has the transform in it, so this is the
+       picture's size ON SCREEN right now -- which is what decides how far
+       there is to pan. */
+    const r = img.getBoundingClientRect();
+    const maxX = Math.max(0, (r.width - window.innerWidth) / 2);
+    const maxY = Math.max(0, (r.height - window.innerHeight) / 2);
+    tx = Math.max(-maxX, Math.min(maxX, tx));
+    ty = Math.max(-maxY, Math.min(maxY, ty));
+  };
+
+  const zoomTo = (next, cx, cy) => {
+    const was = scale;
+    scale = Math.max(1, Math.min(8, next));
+    /* Keep the point under the fingers where it was, which is what makes a
+       pinch feel like it is grabbing the picture rather than a slider. */
+    const k = scale / was;
+    tx = cx - k * (cx - tx);
+    ty = cy - k * (cy - ty);
+    clamp();
+    apply();
+  };
+
+  const pointers = new Map();
+  let startDist = 0, startScale = 1, lastX = 0, lastY = 0, moved = 0;
+
+  const mid = () => {
+    const p = [...pointers.values()];
+    return [(p[0].x + p[1].x) / 2, (p[0].y + p[1].y) / 2];
+  };
+  const dist = () => {
+    const p = [...pointers.values()];
+    return Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
+  };
+
+  back.addEventListener('pointerdown', (ev) => {
+    if (ev.target === close) return;
+    pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    back.setPointerCapture(ev.pointerId);
+    moved = 0;
+    if (pointers.size === 2) { startDist = dist(); startScale = scale; }
+    lastX = ev.clientX; lastY = ev.clientY;
+  });
+
+  back.addEventListener('pointermove', (ev) => {
+    if (!pointers.has(ev.pointerId)) return;
+    pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    if (pointers.size === 2 && startDist) {
+      const [cx, cy] = mid();
+      zoomTo(startScale * (dist() / startDist), cx - window.innerWidth / 2, cy - window.innerHeight / 2);
+      return;
+    }
+    if (pointers.size === 1) {
+      const dx = ev.clientX - lastX;
+      const dy = ev.clientY - lastY;
+      moved += Math.abs(dx) + Math.abs(dy);
+      lastX = ev.clientX; lastY = ev.clientY;
+      if (scale > 1) { tx += dx; ty += dy; clamp(); apply(); }
+    }
+  });
+
+  let lastTap = 0;
+  const up = (ev) => {
+    pointers.delete(ev.pointerId);
+    if (pointers.size < 2) startDist = 0;
+    if (pointers.size) return;
+
+    /* A tap that did not drag: double-tap zooms, a single tap on the backdrop
+       closes. The picture itself does not close on a tap, because a stray
+       thumb while panning would keep dismissing it. */
+    if (moved < 10) {
+      const now = Date.now();
+      if (now - lastTap < 300) {
+        zoomTo(scale > 1.05 ? 1 : 3, 0, 0);
+        lastTap = 0;
+      } else {
+        lastTap = now;
+        if (ev.target === back && scale <= 1.05) shut();
+      }
+    }
+  };
+  back.addEventListener('pointerup', up);
+  back.addEventListener('pointercancel', up);
+
+  back.addEventListener('wheel', (ev) => {
+    ev.preventDefault();
+    zoomTo(scale * (ev.deltaY < 0 ? 1.15 : 1 / 1.15),
+      ev.clientX - window.innerWidth / 2, ev.clientY - window.innerHeight / 2);
+  }, { passive: false });
+
+  function shut() {
+    back.remove();
+    document.body.classList.remove('lightbox-open');
+    window.removeEventListener('keydown', onKey);
+  }
+  function onKey(ev) { if (ev.key === 'Escape') shut(); }
+  window.addEventListener('keydown', onKey);
+  close.addEventListener('click', shut);
+
+  apply();
+}
+
+/**
  * One lawn.
  *
  * THE TWO KINDS OF MISTAKE ARE SHOWN SEPARATELY, not rolled into the error
@@ -214,6 +362,16 @@ function withPicture(box, e, i, alt) {
   img.alt = alt;
 
   /*
+   * THIS LAWN'S OWN FLIP, because the one at the top is a long scroll away.
+   *
+   * Comparing the shapes against the mask means going back and forth on ONE
+   * picture, and a control at the top of a page of thirty-three turns that
+   * into a scroll each way. The top one stays -- flipping everything at once
+   * is how you compare ACROSS lawns -- and this is how you compare within one.
+   */
+  let mine = null;
+
+  /*
    * THE TWO PICTURES OF THE SAME LAWN, swapped in place.
    *
    * Swapping `src` rather than holding both in the DOM: these are a quarter of
@@ -225,22 +383,62 @@ function withPicture(box, e, i, alt) {
    * A run from before the mask was drawn has no second picture. Those entries
    * stay on the shapes rather than breaking, and the button says why.
    */
-  const shown = () => (showMask && e.maskKey ? e.maskKey : e.key);
+  /* `mine` overrides the page-wide setting for this lawn only, and is cleared
+     whenever the page-wide button is pressed so the two cannot disagree. */
+  const masked = () => (mine === null ? showMask : mine) && Boolean(e.maskKey);
+  const shown = () => (masked() ? e.maskKey : e.key);
   const paint = () => {
     img.src = `/api/admin/prediction-image?key=${encodeURIComponent(shown())}`;
-    img.alt = showMask && e.maskKey
+    img.alt = masked()
       ? `Lawn ${i + 1}: the model's own per-pixel answer, before any tracing `
         + 'or simplification, over the photograph with the hand-traced lawn '
         + 'washed in green'
       : alt;
+    if (flipMine) {
+      flipMine.textContent = masked() ? 'shapes' : 'raw mask';
+      flipMine.setAttribute('aria-pressed', String(masked()));
+    }
   };
+
+  let flipMine = null;
+  if (e.maskKey) {
+    flipMine = el('button', 'ghost tiny');
+    flipMine.type = 'button';
+    flipMine.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      mine = !masked();
+      paint();
+    });
+  }
+
   paint();
-  pictures.push(paint);
+  /* The page-wide button clears every per-lawn override, so "show the raw
+     mask" at the top means all of them and not all-except-the-ones-you-
+     touched. */
+  pictures.push(() => { mine = null; paint(); });
 
   img.addEventListener('error', () => {
     img.replaceWith(el('p', 'empty', 'That picture could not be loaded.'));
   });
-  box.append(img);
+
+  /*
+   * TAP TO OPEN IT PROPERLY. The picture in the list is squeezed into a phone
+   * column; the published PNG is 1280 px. Everything worth arguing about --
+   * whether an edge is crisp or crumbly, whether a patch of canopy is one tree
+   * or three -- is invisible at list size.
+   */
+  const frame = el('div', 'shotwrap');
+  frame.append(img);
+  if (flipMine) frame.append(flipMine);
+  const open = el('button', 'shotopen');
+  open.type = 'button';
+  open.title = 'Open full size';
+  open.setAttribute('aria-label', `Open lawn ${i + 1} full size`);
+  open.textContent = '⤢';
+  open.addEventListener('click', (ev) => { ev.stopPropagation(); viewer(shown(), img.alt); });
+  frame.append(open);
+  img.addEventListener('click', () => viewer(shown(), img.alt));
+  box.append(frame);
 
   /* Only where there is marked ground to say anything about. Printing "—" on
      the maps with none would make the interesting ones harder to spot. */
@@ -369,7 +567,7 @@ function settingsLine(settings) {
     flip.addEventListener('click', () => {
       showMask = !showMask;
       flip.setAttribute('aria-pressed', String(showMask));
-      flip.textContent = showMask ? 'Show the shapes' : 'Show the raw mask';
+      flip.textContent = showMask ? 'All: shapes' : 'All: raw mask';
       for (const paint of pictures) paint();
     });
   }

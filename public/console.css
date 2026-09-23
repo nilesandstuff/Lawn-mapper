@@ -187,3 +187,62 @@ body { background: var(--bg); }
 .cost { font-variant-numeric: tabular-nums; }
 
 .empty-state { margin-top: 12px; }
+
+/*
+ * ------------------------------------------- opening a rendering full size
+ *
+ * WHY THIS EXISTS. The published PNG is 1280 px and the column on a phone is
+ * about 360, so the list shows roughly a quarter of the detail in each
+ * direction -- and everything worth arguing about on this page lives at that
+ * scale: whether an edge is crisp or crumbly, whether a patch of canopy is one
+ * tree or three, whether a stitched frame has a seam down it.
+ */
+.shotwrap { position: relative; }
+
+/* The two controls sit ON the picture rather than under it, because a row of
+   buttons per entry down a list of thirty-three is more furniture than list. */
+.shotopen, .shotwrap .ghost.tiny {
+  position: absolute; bottom: 8px;
+  font: inherit; font-size: 12px; line-height: 1;
+  padding: 6px 9px; border-radius: 8px; cursor: pointer;
+  background: rgba(255, 255, 255, .92); border: 1px solid rgba(0, 0, 0, .18);
+  color: var(--ink);
+}
+.shotopen { right: 8px; font-size: 15px; padding: 5px 9px; }
+/* THIS LAWN'S OWN FLIP. The page-wide one at the top is a long scroll away
+   when the thing you are comparing is a single picture. */
+.shotwrap .ghost.tiny { left: 8px; font-weight: 600; }
+.shotwrap .ghost.tiny[aria-pressed="true"] {
+  background: rgba(253, 238, 233, .95); border-color: var(--ai, #e2725b); color: #9c3b22;
+}
+.shot.pred { cursor: zoom-in; }
+
+.lightbox {
+  position: fixed; inset: 0; z-index: 90;
+  background: #0d100e; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  /* The browser must not claim the gestures -- every one of them is ours. */
+  touch-action: none; overscroll-behavior: contain;
+}
+.lightshot {
+  max-width: 100vw; max-height: 100vh;
+  /* Crisp on purpose past 1:1. Smoothing a mask's edge is smoothing the exact
+     thing somebody opened this to look at. */
+  image-rendering: pixelated;
+  transform-origin: center center; will-change: transform;
+  user-select: none; -webkit-user-drag: none;
+}
+.lightclose {
+  position: absolute; top: max(10px, env(safe-area-inset-top)); right: 10px;
+  width: 42px; height: 42px; border-radius: 999px; cursor: pointer;
+  font-size: 17px; line-height: 1;
+  background: rgba(255, 255, 255, .92); border: 0; color: #1d2320;
+}
+.lighthint {
+  position: absolute; bottom: max(12px, env(safe-area-inset-bottom));
+  left: 0; right: 0; text-align: center; pointer-events: none;
+  font-size: 11.5px; color: rgba(255, 255, 255, .62);
+}
+/* The page behind must not scroll while a picture is open, or closing it
+   leaves you somewhere else in the list. */
+body.lightbox-open { overflow: hidden; }

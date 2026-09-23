@@ -84,10 +84,13 @@
         run once a newer one exists, and the description beside it is the only
         record of what that run was trying to find out.
 
-        The mask button flips every picture at once rather than one at a time.
-        Comparing two stages of the same answer means looking at the same lawn
-        twice, and a per-picture control turns that into hunting for the button
-        you pressed last.
+        THE MASK BUTTON HERE FLIPS EVERY PICTURE, and each picture has its own
+        flip as well. They are different jobs: this one is for comparing ACROSS
+        lawns, and the one on the picture is for comparing the two stages of a
+        SINGLE answer -- which is most of what anybody does here, and which a
+        control at the top of a thirty-three item list turns into a scroll each
+        way. Pressing this one clears every per-picture override, so "all: raw
+        mask" means all of them.
       -->
       <div class="runbar">
         <label class="runpick">
@@ -95,7 +98,7 @@
           <select id="run"></select>
         </label>
         <button type="button" id="flip" class="ghost" aria-pressed="false">
-          Show the raw mask
+          All: raw mask
         </button>
       </div>
       <p class="sub" id="about" hidden></p>
@@ -117,6 +120,10 @@
         HOW TO READ IT, in one line, because the two mistakes are now absences
         rather than colours and that is less obvious than a red patch.
       -->
+      <p class="sub">Tap any picture to open it full size — pinch or scroll to
+        zoom, drag to pan, double-tap to fit. The list shows about a quarter of
+        the detail each way, and the things worth arguing about are finer than
+        that.</p>
       <p class="sub">Green with no outline over it is lawn it gave up on;
         outline over bare ground is lawn it invented. The handle count is the
         one to watch: twenty round a lawn is a shape you can nudge, two hundred

@@ -42,7 +42,7 @@ import { fileURLToPath } from 'node:url';
 
 import { query } from './corpus-db.js';
 import {
-  fetchImage, resize, maskOf, geometries, inferredGeometries, GRID,
+  fetchImage, resize, maskOf, geometries, inferredGeometries, GRID, renderPx,
 } from './train-detector.js';
 import { drawPrediction } from './render-prediction.js';
 import { runSlug, runKeys, runRow, publishRunList } from './run-folder.js';
@@ -77,8 +77,8 @@ const parse = (t) => { try { return JSON.parse(t); } catch { return null; } };
  * Python, which does not know what the renderer wants, or in the renderer,
  * which would then need to know where the numbers came from.
  */
-export const toGrid = (polygon, framePx) => polygon.map(([x, y]) => [
-  (x * GRID) / framePx, (y * GRID) / framePx,
+export const toGrid = (polygon, framePx, px = GRID) => polygon.map(([x, y]) => [
+  (x * px) / framePx, (y * px) / framePx,
 ]);
 
 /**
@@ -107,24 +107,24 @@ export const toGrid = (polygon, framePx) => polygon.map(([x, y]) => [
  * Python than some canopy folders were written by, and a run without them
  * should still draw its shapes.
  */
-function maskFromPng(file, decoders) {
+function maskFromPng(file, decoders, px = GRID) {
   if (!existsSync(file)) return null;
   const png = decoders.png.PNG.sync.read(readFileSync(file));
-  const out = new Uint8Array(GRID * GRID);
-  for (let y = 0; y < GRID; y++) {
-    const sy = Math.min(png.height - 1, Math.floor((y * png.height) / GRID));
-    for (let x = 0; x < GRID; x++) {
-      const sx = Math.min(png.width - 1, Math.floor((x * png.width) / GRID));
+  const out = new Uint8Array(px * px);
+  for (let y = 0; y < px; y++) {
+    const sy = Math.min(png.height - 1, Math.floor((y * png.height) / px));
+    for (let x = 0; x < px; x++) {
+      const sx = Math.min(png.width - 1, Math.floor((x * png.width) / px));
       /* Red alone: the Python writes 1-bit, which decodes to white or black,
          so the three channels agree and one read is enough. */
-      out[y * GRID + x] = png.data[(sy * png.width + sx) * 4] > 127 ? 1 : 0;
+      out[y * px + x] = png.data[(sy * png.width + sx) * 4] > 127 ? 1 : 0;
     }
   }
   return out;
 }
 
-export function overlap(ring, truth, within) {
-  const mask = rasterizePolygon([ring], GRID, GRID, (p) => p);
+export function overlap(ring, truth, within, px = GRID) {
+  const mask = rasterizePolygon([ring], px, px, (p) => p);
   let area = 0;
   let onLawn = 0;
   let inside = 0;
@@ -193,13 +193,20 @@ async function main() {
         continue;
       }
 
-      const photo = resize(img.data, img.width, img.height, img.channels, GRID);
-      const truth = maskOf(truthGeoms, frame, GRID);
+      /*
+       * DRAWN BIGGER THAN IT IS MEASURED. GRID is where the masks are compared
+       * and every error figure computed; PX is how big the published picture
+       * is. Since the photographs are banked at 1280 to 3192 px (H20), drawing
+       * at 512 would throw away everything somebody would zoom in to see.
+       */
+      const PX = renderPx();
+      const photo = resize(img.data, img.width, img.height, img.channels, PX);
+      const truth = maskOf(truthGeoms, frame, PX);
       const inferredGeoms = inferredGeometries(parse(row.shapes));
-      const inferred = inferredGeoms.length ? maskOf(inferredGeoms, frame, GRID) : null;
+      const inferred = inferredGeoms.length ? maskOf(inferredGeoms, frame, PX) : null;
       const parcelGeom = parse(row.parcel);
-      const within = parcelGeom ? maskOf([parcelGeom], frame, GRID) : null;
-      const mpp = metresPerPixel(frame, GRID);
+      const within = parcelGeom ? maskOf([parcelGeom], frame, PX) : null;
+      const mpp = metresPerPixel(frame, PX);
       const sqft = (px) => (px * mpp * mpp) / SQM_PER_SQFT;
 
       const rings = [];
@@ -208,9 +215,9 @@ async function main() {
       let insidePx = 0;
 
       for (const clump of found.clumps || found.crowns || []) {
-        const ring = toGrid(clump.polygon, found.framePx || GRID);
+        const ring = toGrid(clump.polygon, found.framePx || PX, PX);
         rings.push(ring);
-        const o = overlap(ring, truth, within);
+        const o = overlap(ring, truth, within, PX);
         clumpPx += o.area;
         onLawnPx += o.onLawn;
         insidePx += o.inside;
@@ -218,7 +225,7 @@ async function main() {
 
       const n = entries.length;
       const write = (pix, name) => {
-        const png = new decoders.png.PNG({ width: GRID, height: GRID });
+        const png = new decoders.png.PNG({ width: PX, height: PX });
         png.data = Buffer.from(pix.buffer, pix.byteOffset, pix.length);
         const out = join(dir, name);
         writeFileSync(out, decoders.png.PNG.sync.write(png));
@@ -226,7 +233,7 @@ async function main() {
       };
 
       const shots = [[keys.shapes(n), drawPrediction({
-        photo, truth, within, inferred, rings, grid: GRID,
+        photo, truth, within, inferred, rings, grid: PX,
       }), `${n}.png`]];
 
       /*
@@ -237,11 +244,11 @@ async function main() {
        * between patches actually live, and stage 3 will work on the raster
        * rather than on the outlines.
        */
-      const canopy = maskFromPng(join(CANOPY, `${row.id}-mask.png`), decoders);
+      const canopy = maskFromPng(join(CANOPY, `${row.id}-mask.png`), decoders, PX);
       const maskKey = canopy ? keys.mask(n) : null;
       if (canopy) {
         shots.push([maskKey, drawPrediction({
-          photo, truth, within, inferred, mask: canopy, grid: GRID,
+          photo, truth, within, inferred, mask: canopy, grid: PX,
           /*
            * UNCLIPPED, because the clump outlines beside it are. A clump ring
            * covers whatever canopy the model found, and is never cut at the
@@ -285,6 +292,9 @@ async function main() {
         onLawnPct: clumpPx ? Number(((100 * onLawnPx) / clumpPx).toFixed(1)) : null,
         insidePct: clumpPx ? Number(((100 * insidePx) / clumpPx).toFixed(1)) : null,
         canopySqFt: Math.round((found.canopySqM || 0) / SQM_PER_SQFT),
+        /* How big the published picture is, so the page knows whether there
+           is anything to gain from opening it full size. */
+        renderPx: PX,
         readAtPx: found.readAt?.px ?? null,
         mpp: Number(mpp.toFixed(3)),
         /* Whether this frame had to be UPSAMPLED to reach the model's 10 cm.
