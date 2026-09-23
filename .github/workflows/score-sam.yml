@@ -1,0 +1,72 @@
+name: 22. Score SAM on the corpus (COSTS MONEY)
+
+# SAM on every approved lawn, the way the app asks it NOW, scored against the
+# hand trace -- and on every lawn big enough to be cut into pieces, the same
+# lawn the OLD way as well: one picture of the display frame, same model,
+# same prompt, same minute. The difference between those two is the effect
+# of feeding SAM 10 cm a pixel, and nothing else.
+#
+# COSTS MONEY: one Replicate prediction per piece, plus one per tiled lawn
+# for the control. About forty on this corpus, which is cents. Mapbox is
+# asked for the same pictures again for the renderings.
+#
+# The pictures go to /predictions.html like every other detector run. The
+# last few lines of the log are the report.
+on:
+  workflow_dispatch:
+    inputs:
+      about:
+        description: 'What is this run testing? (kept with the pictures)'
+        required: false
+        default: ''
+      limit:
+        description: 'Only the newest N approved lawns (blank for all)'
+        required: false
+        default: ''
+      max_across:
+        description: 'Most pieces across a lot may be cut into'
+        type: choice
+        default: '4'
+        options: ['1', '2', '3', '4', '6', '8']
+
+jobs:
+  score:
+    name: Ask SAM, then score it
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install the image decoders
+        run: npm install pngjs --no-save
+
+      - name: Ask SAM about every lawn and score it
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CORPUS_BUCKET: lawn-mapper-corpus
+          MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
+          MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN }}
+          REPLICATE_TOKEN: ${{ secrets.REPLICATE_TOKEN }}
+          SAM_MAX_TILES_ACROSS: ${{ inputs.max_across }}
+          LIMIT: ${{ inputs.limit }}
+          RUN_ABOUT: ${{ inputs.about }}
+        run: node tools/score-sam.js
+
+      - name: If that failed
+        if: failure()
+        run: |
+          echo "Predictions already made were paid for; the ones after the"
+          echo "failure were not started."
+          echo
+          echo "The usual reasons, in order:"
+          echo "  * REPLICATE_TOKEN or MAPBOX_SERVER_TOKEN missing from secrets"
+          echo "  * Replicate refused (the log carries its own sentence)"
+          echo "  * the corpus database could not be read (CLOUDFLARE_* secrets)"
