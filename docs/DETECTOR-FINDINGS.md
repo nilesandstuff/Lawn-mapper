@@ -168,6 +168,27 @@ coverage varies with the parcel, so ground resolution does:
 pixels with a bilinear resize and handing them to a model that was trained on
 10 cm imagery. That is E2 from the usual direction.
 
+> **THE CROSSOVER IS NOT ONE NUMBER. It is a fact about each address.**
+> *(Owner, 2026-09-23: "some mapbox photos are legitimately lower resolution".)*
+>
+> Every figure in the table above assumes a stored 1280 px frame holds 1280 px
+> of **real** detail. Mapbox stitches its satellite layer out of many sources —
+> Maxar in one place, a state orthophoto in another, something older elsewhere
+> — so what is actually available differs from address to address, and past
+> that limit the static API upscales its own tiles and returns them without
+> comment.
+>
+> Where that is happening, the stored frame is *already* interpolated, the true
+> crossover for that lawn is **below** 102 m, and `sourceMpp` and `upsampled`
+> in every canopy run are **optimistic** for it. The single-number framing
+> above is the convenient case, not the general one.
+>
+> Workflow 20 reports per lawn rather than as a median for exactly this reason:
+> averaging a sharp suburban lot together with a coarse rural one describes
+> neither, and the decision it informs — ask for more pixels where more pixels
+> exist — is per lawn anyway. **Not yet measured**; the first run crashed in its
+> own reporting.
+
 **11 of the 32 lawns in run 35762129844 were above the crossover.** The three
 Bullitt County lawns that returned 0.0% canopy were all read at 107–112 m
 across, inside the upsampled group — suggestive at n=5, and not more than that.

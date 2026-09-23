@@ -69,6 +69,17 @@ const HOW_MANY = Number(process.env.HOW_MANY || 6);
 /* The two sizes: what we store today, and the most one request can return. */
 const SIZES = [640, 1280];
 
+/*
+ * WHERE THE LINES SIT, and they are read off a test rather than chosen.
+ * tools/probe-resolution.test.js runs this measure over images whose answer is
+ * known: real texture scores about 0.89, the SAME content upscaled twice about
+ * 0.37, and smooth ground about 0.01. So an upscale keeps roughly 40% of what
+ * native keeps.
+ */
+const UPSCALED = 0.5;    // keeps less than this -- the extra pixels are made up
+const REAL = 0.8;        // keeps more than this -- the extra pixels are imagery
+const FEATURELESS = 0.05; // nothing at either size, so there is nothing to rule on
+
 const QUERY = `
   SELECT id, county, frame
     FROM corpus
@@ -150,6 +161,24 @@ export function extraDetail(pixels, width, height, channels) {
   return { extra: residual / signal, residual: residual / n };
 }
 
+/**
+ * What to call one lawn, from the two detail figures.
+ *
+ * SEPARATED OUT SO IT CAN BE TESTED WITHOUT A NETWORK. Both times this file
+ * has failed in CI it failed in the reporting, not the arithmetic -- once on a
+ * renamed field, once on an undefined spread -- and neither needed Mapbox to
+ * catch. A run costs two minutes and a round trip; this costs nothing.
+ */
+export function verdictFor(smallExtra, bigExtra) {
+  const keeps = smallExtra ? bigExtra / smallExtra : 0;
+  if (smallExtra < FEATURELESS && bigExtra < FEATURELESS) {
+    return { keeps, verdict: 'flat, cannot tell' };
+  }
+  if (keeps < UPSCALED) return { keeps, verdict: 'UPSCALED' };
+  if (keeps < REAL) return { keeps, verdict: 'partly real' };
+  return { keeps, verdict: 'real detail' };
+}
+
 async function fetchOne(frame, size, decoders) {
   const res = await fetch(url(frame, size));
   if (!res.ok) return { ok: false, reason: `http-${res.status}` };
@@ -160,13 +189,18 @@ async function fetchOne(frame, size, decoders) {
   const img = png
     ? decoders.png.PNG.sync.read(buf)
     : decoders.jpeg.decode(buf, { useTArray: true });
-  const channels = png ? 4 : 4;
+  const detail = extraDetail(img.data, img.width, img.height, 4);
+  /* A frame with no variation at all -- a solid tile, or a failed fetch that
+     decoded anyway -- has nothing to measure. Refused here rather than spread
+     into an object whose `extra` is then undefined, which is how this file
+     crashed twice. */
+  if (!detail) return { ok: false, reason: 'no-variation' };
   return {
     ok: true,
     bytes: buf.length,
     width: img.width,
     height: img.height,
-    ...extraDetail(img.data, img.width, img.height, channels),
+    ...detail,
   };
 }
 
@@ -199,30 +233,35 @@ async function main() {
   const results = [];
 
   for (const row of rows) {
-    const label = String(row.county || 'traced by hand').padEnd(22).slice(0, 22);
-    const line = [`  ${label} ${row.across.toFixed(0).padStart(4)} m across`];
+    const label = String(row.county || 'traced by hand').padEnd(20).slice(0, 20);
     const got = {};
+    let failed = '';
     for (const size of SIZES) {
       const r = await fetchOne(row.f, size, decoders);
-      if (!r.ok) { line.push(`  ${size * 2}px: ${r.reason}`); continue; }
+      if (!r.ok) { failed = r.reason; continue; }
       got[size] = r;
-      const mpp = row.across / r.width;
-      line.push(
-        `  ${String(r.width).padStart(4)}px ${(mpp * 100).toFixed(1).padStart(5)} cm/px`
-        + ` detail ${r.ratio.toFixed(3)}`
-        + ` ${(r.bytes / 1024).toFixed(0).padStart(4)} KB`
-      );
     }
-    console.log(line.join(''));
-    if (got[640] && got[1280]) {
-      results.push({
-        across: row.across,
-        small: got[640],
-        big: got[1280],
-        bytesPerPx: (got[1280].bytes / got[1280].width ** 2)
-          / (got[640].bytes / got[640].width ** 2),
-      });
+    if (failed || !got[640] || !got[1280]) {
+      console.log(`  ${label} ${row.across.toFixed(0).padStart(4)} m   ${failed || 'no pair'}`);
+      continue;
     }
+
+    /*
+     * A VERDICT PER LAWN, not just a number, because this varies BY PLACE.
+     * Mapbox stitches its satellite layer out of many sources and the real
+     * resolution differs from one address to the next, so a single median over
+     * the corpus would average a sharp city lot together with a coarse rural
+     * one and describe neither.
+     */
+    const { keeps, verdict } = verdictFor(got[640].extra, got[1280].extra);
+    results.push({ across: row.across, ...got, keeps, verdict });
+    console.log(
+      `  ${label} ${row.across.toFixed(0).padStart(4)} m  `
+      + ` 1280:${got[640].extra.toFixed(3)}`
+      + ` 2560:${got[1280].extra.toFixed(3)}`
+      + ` keeps ${(100 * keeps).toFixed(0).padStart(3)}%`
+      + `  ${verdict}`
+    );
   }
 
   if (!results.length) {
@@ -232,58 +271,75 @@ async function main() {
   }
 
   /* ---------------------------------------------------- the end of the log */
+  const tally = (v) => results.filter((r) => r.verdict === v).length;
+  const upscaled = tally('UPSCALED');
+  const real = tally('real detail');
+  const partly = tally('partly real');
+  const flat = tally('flat, cannot tell');
+  const bytes = results.map((r) => (r[1280].bytes / r[1280].width ** 2)
+    / (r[640].bytes / r[640].width ** 2));
   const mid = (a) => a.slice().sort((x, y) => x - y)[a.length >> 1];
-  const smallE = mid(results.map((r) => r.small.extra));
-  const bigE = mid(results.map((r) => r.big.extra));
-  const bytes = mid(results.map((r) => r.bytesPerPx));
-  const keeps = smallE ? bigE / smallE : 0;
 
   console.log(`\n${'='.repeat(64)}\n`);
   console.log('THE QUESTION: if we ask Mapbox for 2560 px instead of 1280,');
   console.log('do we get more detail, or the same picture stretched?\n');
-  console.log(`Detail only that size can hold, at 1280 px: ${smallE.toFixed(3)}`);
-  console.log(`Detail only that size can hold, at 2560 px: ${bigE.toFixed(3)}`);
-  console.log(`  the bigger frame keeps ${(100 * keeps).toFixed(0)}% as much`);
-  console.log(`Bytes per pixel, 2560 against 1280: ${bytes.toFixed(2)}x\n`);
+  console.log(`  real detail        ${String(real).padStart(2)} lawns`);
+  console.log(`  partly real        ${String(partly).padStart(2)} lawns`);
+  console.log(`  UPSCALED           ${String(upscaled).padStart(2)} lawns`);
+  console.log(`  flat, cannot tell  ${String(flat).padStart(2)} lawns`);
+  console.log(`\nBytes per pixel, 2560 against 1280: ${mid(bytes).toFixed(2)}x`);
 
   /*
-   * THE VERDICT IS STATED, not left to be inferred from two decimals, because
-   * this is read on a phone at the end of a log.
+   * COUNTED, NOT AVERAGED, and that is the whole shape of this answer.
    *
-   * THE THRESHOLD IS ANCHORED ON A TEST, not picked. tools/probe-resolution
-   * .test.js runs this measure over four images whose answer is known: real
-   * texture scores about 0.89, the SAME content upscaled twice scores about
-   * 0.37, and smooth ground scores near 0.01. So an upscale keeps roughly 40%
-   * of what native keeps, and half is a fair line between the two.
-   *
-   * SMOOTH GROUND IS NOT A FAILURE HERE. A flat lawn has nothing above 1280 to
-   * lose and scores near zero at both sizes -- and that is the right answer,
-   * because for flat ground the bigger request genuinely buys nothing. It does
-   * make `keeps` noisy when both numbers are tiny, which is why the absolute
-   * figures are printed beside it rather than the ratio alone.
+   * Mapbox stitches its satellite layer out of many sources -- Maxar here, a
+   * state orthophoto there, something older somewhere else -- so the real
+   * resolution is a fact about the ADDRESS, not about Mapbox. A median over
+   * the corpus would average a sharp suburban lot together with a coarse rural
+   * one and describe neither, and the decision this informs is per-lawn
+   * anyway: ask for more pixels where more pixels exist.
    */
-  if (smallE < 0.05 && bigE < 0.05) {
-    console.log('VERDICT: CANNOT TELL. Both frames are nearly featureless at');
-    console.log('this scale, so there is no detail for either size to carry and');
-    console.log('the comparison has nothing to work with. Try lots with trees');
-    console.log('or buildings on them rather than open ground.');
-  } else if (keeps < 0.5) {
-    console.log('VERDICT: NO. The bigger frame is Mapbox upscaling its own');
-    console.log('tiles. Asking for it would cost four times the bytes in R2,');
-    console.log('move the interpolation from our side to theirs, and change');
-    console.log('nothing. The other half of H20 needs different imagery -- NAIP,');
-    console.log('or a county orthophoto service -- not a bigger request.');
-  } else if (keeps < 0.8) {
-    console.log('VERDICT: PARTLY. The bigger frame carries real detail but less');
-    console.log('per pixel than the smaller one, so some is genuine and some is');
-    console.log('stretch. Worth it on the big lots, where H20 bites, and not');
-    console.log('worth the bytes on the small ones that are already fine enough.');
+  console.log('\nTHIS VARIES BY PLACE, which is why they are counted rather than');
+  console.log('averaged. Mapbox stitches its satellite layer from many sources,');
+  console.log('so the resolution actually available is a fact about the address.');
+
+  if (upscaled + flat === results.length) {
+    console.log('\nVERDICT: NO, nowhere in this sample. Every frame that could be');
+    console.log('ruled on is Mapbox upscaling its own tiles. A bigger request');
+    console.log('would cost four times the bytes in R2, move the interpolation');
+    console.log('from our side to theirs, and change nothing. The other half of');
+    console.log('H20 needs different imagery -- NAIP, or a county orthophoto');
+    console.log('service -- not a bigger request.');
+  } else if (real + partly >= upscaled) {
+    console.log(`\nVERDICT: YES, on ${real + partly} of ${results.length}. Those lawns have real`);
+    console.log('imagery we are not asking for. Worth raising the stored frame --');
+    console.log('PER LAWN, not globally, since asking everywhere would pay four');
+    console.log('times the bytes on the lawns where it buys nothing.');
   } else {
-    console.log('VERDICT: YES. The bigger frame is as informative per pixel as');
-    console.log('the smaller one, so those pixels are real imagery. Raising the');
-    console.log('stored frame closes the other half of H20 -- at four times the');
-    console.log('bytes in R2, which is the cost to weigh against it.');
+    console.log(`\nVERDICT: SOMETIMES. ${real + partly} of ${results.length} have detail we are not`);
+    console.log('asking for and the rest do not, so a global change is the wrong');
+    console.log('shape: it would pay four times the bytes everywhere to help a');
+    console.log('minority. Ask per lawn, where the detail is there.');
   }
+
+  /*
+   * AND THE CONSEQUENCE FOR H20, which is bigger than this workflow.
+   *
+   * H20 puts the upsampling crossover at 128 m across, worked out from the
+   * stored frame being 1280 px. That assumes the stored frame carries 1280 px
+   * of REAL detail. Where Mapbox is already upscaling, it does not -- so the
+   * true crossover is lower there, and `sourceMpp` in every canopy run is
+   * optimistic for those lawns.
+   */
+  if (upscaled) {
+    console.log(`\nAND A CAVEAT ON H20: ${upscaled} of these lawns are ALREADY upscaled at`);
+    console.log('1280 px. H20 puts the crossover at 128 m across on the assumption');
+    console.log('that a stored 1280 px frame holds 1280 px of real detail. Where');
+    console.log('Mapbox is stretching, it does not -- so for those lawns the real');
+    console.log('crossover is lower and every sourceMpp figure is optimistic.');
+    console.log('The crossover is a fact about the address, not one number.');
+  }
+
   console.log('\nThis is a proxy and it is measured, not assumed: the same');
   console.log('arithmetic over images whose answer is known is in');
   console.log('tools/probe-resolution.test.js.');
