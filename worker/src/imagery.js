@@ -77,6 +77,17 @@ export const TARGET_GROUND_M = 0.10;
 export const MAX_LOGICAL = 1280;
 
 /**
+ * The most tiles one photograph is allowed to be stitched from.
+ *
+ * Four requests covers a lot up to about 512 m across at 10 cm a pixel, which
+ * is past anything the corpus has seen. The limit exists because the cost is
+ * quadratic in both directions -- requests AND stored bytes -- and a 3x3 of a
+ * farm would be nine calls for a 7,700-pixel image nobody asked for. Past it
+ * the photograph is coarser and says so.
+ */
+export const MAX_TILES_ACROSS = 2;
+
+/**
  * The frame to BANK a training photograph at, which is not the frame the phone
  * is showing.
  *
@@ -117,7 +128,8 @@ export function captureFrame(frame, target = TARGET_GROUND_M) {
    * 10 cm or better, and leave alone anything that already clears it.
    */
   const wanted = Math.ceil(across / target / 2);
-  const size = Math.min(MAX_LOGICAL, Math.max(frame.size, wanted));
+  const ceiling = MAX_LOGICAL * MAX_TILES_ACROSS;
+  const size = Math.min(ceiling, Math.max(frame.size, wanted));
 
   /*
    * The zoom then follows from the size: whatever puts `across` metres into
@@ -134,12 +146,81 @@ export function captureFrame(frame, target = TARGET_GROUND_M) {
   return {
     frame: out,
     groundM,
-    /* True when one request could not reach the target: the lot is wider than
-       about 256 m at 10 cm. The photograph is still better than the display
-       frame would have given, and the caller is told so rather than left to
-       assume it got what it asked for. */
-    capped: size >= MAX_LOGICAL && groundM > target * 1.001,
+    /* True when even a full grid of tiles could not reach the target: the lot
+       is wider than about 512 m at 10 cm. The photograph is still far better
+       than the display frame would have given, and the caller is told rather
+       than left to assume it got what it asked for. */
+    capped: size >= ceiling && groundM > target * 1.001,
     across,
+  };
+}
+
+/**
+ * The requests that actually make up one photograph.
+ *
+ * ONE CALL IS USUALLY ENOUGH and then this is a list of one. Past about 256 m
+ * across at 10 cm a pixel the frame needs more logical pixels than Mapbox will
+ * serve in a single static image, so the ground is split into a grid and the
+ * pieces are stitched.
+ *
+ * THE SPLIT IS DONE IN WORLD PIXELS, not in degrees, and that is what makes
+ * the seams invisible. Web Mercator is conformal and the static API centres a
+ * frame on a coordinate, so two frames whose centres are exactly `size` world
+ * pixels apart at the same zoom abut precisely. Splitting by longitude instead
+ * would drift with latitude and leave a visible join -- and a join running
+ * through a lawn is a feature the detector would learn.
+ *
+ * Returns tiles in reading order with their column and row, so a caller can
+ * paste each one at (col * px, row * px) without recomputing anything.
+ */
+export function capturePlan(frame, target = TARGET_GROUND_M) {
+  const shot = captureFrame(frame, target);
+  const { zoom, size } = shot.frame;
+  const across = Math.ceil(size / MAX_LOGICAL);
+
+  if (across <= 1) {
+    return { ...shot, cols: 1, rows: 1, tileSize: size, tiles: [{ frame: shot.frame, col: 0, row: 0 }] };
+  }
+
+  /* Equal tiles, so every piece is the same pixel size and the stitch is a
+     plain paste. A remainder tile would be a second size to keep track of for
+     no gain -- the total is rounded up instead. */
+  const tileSize = Math.ceil(size / across);
+  const full = tileSize * across;
+  const ws = 512 * 2 ** zoom;
+  const cx = ((frame.lng + 180) / 360) * ws;
+  const s = Math.sin((Math.max(-85.05112878, Math.min(85.05112878, frame.lat)) * Math.PI) / 180);
+  const cy = (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * ws;
+
+  const tiles = [];
+  for (let row = 0; row < across; row++) {
+    for (let col = 0; col < across; col++) {
+      const x = cx - full / 2 + (col + 0.5) * tileSize;
+      const y = cy - full / 2 + (row + 0.5) * tileSize;
+      const n = Math.PI * (1 - (2 * y) / ws);
+      tiles.push({
+        col,
+        row,
+        frame: {
+          lng: (x / ws) * 360 - 180,
+          lat: (Math.atan(Math.sinh(n)) * 180) / Math.PI,
+          zoom,
+          size: tileSize,
+        },
+      });
+    }
+  }
+
+  /* The stitched photograph covers `full` logical pixels, which is at least
+     `size` -- so the frame recorded against it has to be the stitched one, or
+     every mask built from it would be a fraction of a lawn out. */
+  return {
+    ...shot,
+    frame: { lng: frame.lng, lat: frame.lat, zoom, size: full },
+    cols: across,
+    rows: across,
+    tileSize,
+    tiles,
   };
 }
 
