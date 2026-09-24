@@ -51,7 +51,7 @@ not the same measurement; the ratio is the only number worth carrying across.
 | | error | notes |
 |---|---|---|
 | SAM (what we pay for) | **24.7%** | 26 lawns with a stored answer, all `sam3`, rasterised on the rectangular grids (23.3% on the square ones) |
-| best of ours | **28.5%** | **the pretrained eye, decoder**: Scale-MAE 896px whole, a conv decoder over the full 1024-number grid, seen-only training, beat SAM on **15 of 26** (run 35937239958). ONE run, not yet repeated |
+| best of ours | **28.5%** | **the pretrained eye, decoder**: Scale-MAE 896px whole, a conv decoder over the full 1024-number grid, seen-only training, beat SAM on **15 of 26** (runs 35937239958 and 35945907897, identical to the decimal — seeded, so determinism not a second draw). The head reading the same eye: 36.5% alone, 32.1% with colour (H26) |
 
 Gap: **1.15×**. It was 1.30× on squares with the head. The decoder is the
 first row to beat SAM on more than half the shared lawns.
@@ -326,6 +326,45 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H26. The decoder reproduces to the decimal, and the head rows on rectangles are finally valid, 2026-09-24
+
+Run 35945907897: identical to 35937239958 (H25) except that `shrink` now
+keeps the cover. Corpus `1rijjz2`, rectangular frames, Scale-MAE 896 px
+squeezed whole, 15 cm grid, windows off.
+
+| row | H25 run | this run | over SAM |
+|---|---|---|---|
+| colour and texture only (control) | 33.3% | 33.3% | 12 of 26 |
+| the pretrained eye only (head) | ~~80.5%~~ | **36.5%** | 12 of 26 |
+| both (head) | ~~35.5%~~ | **32.1%** | 12 of 26 |
+| the pretrained eye, decoder | 28.5% | **28.5%** | 15 of 26 |
+| SAM, same 26 lawns | 24.7% | 24.7% | |
+
+**The decoder reproduced exactly** — the median and all 32 per-lawn figures
+are the same to the decimal. It is seeded, and the extraction reproduced
+byte for byte (as H13 says it usually does), so this is determinism rather
+than a second measurement; it says the 28.5% is not a lucky draw of the
+seed's dropout and flips, and nothing about what a different seed would
+give. A different-seed run is still owed.
+
+**The head rows are valid for the first time on rectangles, and the fix
+was the whole story:** the eye alone went from 80.5% to 36.5% with no change
+but the cover travelling through the squeeze. Against the last valid
+square-frame run at the same grid (35914319694: eye alone 34.1, both 33.1)
+the head rows moved 2.4 and −1.0 points — inside H13's drift. So for the
+old head, cropping the neighbours out changed nothing measurable; the crop's
+gains were SAM's (H24) and the decoder's.
+
+**The decoder against the head, on the same features, is now a clean
+comparison:** 28.5% against the head's best of 32.1% (both) and 36.5% (the
+eye alone) — 8 points better than the head reading the same eye. The seen
+column tells the same story (29.7 against 37.3 and 33.4). Its inferred
+column is worse (30.5 against 18.5–22.1), which is the seen-only training
+showing: it was never taught what is under a tree.
+
+H22 stays suspended: the windows-on twin of this run (35945911259) is still
+extracting at the time of writing.
 
 ### H25. The decoder: 28.5%, over SAM on 15 of 26, the best number this corpus has given — and a second bug in the head rows, 2026-09-24
 
@@ -2181,3 +2220,4 @@ fields) were both more obviously right than this one.
 | 2026-09-23 | 35927223633 | 32 | — (workflow 19, no training) | — | — | **H24: canopy on the rectangular frames.** On traced lawn middle 19% (was 19%), inside the line middle 35% (was 38%), patches middle 6 (was 7), 9 lawns mostly off the property (was 9). The crop did not move the medians; the parcel's box still holds neighbours' trees. No lawn upsampled. Folder `2026-09-23-1825-edt-restor-tcd-segformer-mit-b5` |
 | 2026-09-23 | 35927228827 | 32 | Scale-MAE large 896px, squeezed whole, 15 cm grid, **rectangular frames** | 33.3% (colour) | 24.7% | **H24: backbone rows VOID.** Eye alone 81.6%, both 36.8, both-96 39.3, both+ring 43.0 — the extractor told Scale-MAE the wrong scale on every wide lot (`max(cover)` instead of the across ratio: a 319 m lot read at 98 cm/px). Colour 33.3 vs 35.0 on squares at the same grid, inside noise. The SAM column reads 24.7 rather than 23.3 because the stored outlines are now rasterised on rectangular grids. Fixed; not yet re-run. The decoder run on these features (35932533679) was cancelled |
 | 2026-09-24 | 35937239958 | 32 | Scale-MAE large 896px, squeezed whole (coarsest 33.5 cm/px), 15 cm grid, rectangular frames, **+ decoder** | **28.5%** (decoder) | 24.7% | **H25: THE DECODER'S FIRST RUN.** Conv decoder over the full 1024-number grid, seen-only, 30 epochs, 35 s a fold: **28.5%, over SAM on 15 of 26**, gap 1.15× — the best number this corpus has given and the first row over SAM on more than half. Colour control 33.3 (byte-identical to the void run, as H10 says). Head rows VOID AGAIN: eye alone 80.5, both 35.5 — `shrink` dropped `coverX/coverY`, so the head read padded grids stretched by the aspect ratio; same files, read right by the decoder. H22 suspended pending re-run. Pictures in `runs/2026-09-23-2048-edt-scalemae-large-896px` |
+| 2026-09-24 | 35945907897 | 32 | Scale-MAE large 896px, squeezed whole, 15 cm grid, rectangular frames, + decoder, **squeeze fix** | **28.5%** (decoder) | 24.7% | **H26: the first valid head rows on rectangles, and the decoder to the decimal.** Eye alone 80.5 → **36.5** with nothing changed but the cover kept through `shrink`; both 32.1; colour 33.3 (identical); decoder **28.5, 15 of 26**, every per-lawn figure identical to H25 (seeded; extraction byte-identical). Head rows within H13 drift of the last square-frame run (34.1 / 33.1). Decoder 21 min for 32 folds, 35 s each. Pictures in `runs/2026-09-23-2254-edt-scalemae-large-896px` |
