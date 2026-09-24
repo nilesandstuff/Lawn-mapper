@@ -210,11 +210,20 @@ starting points to be swept, not settings.
 - **Stage 2: works by eye, unmeasured** (H19), free, and precomputable --
   workflow 19, about 18 minutes of CPU, nothing bought. Its open problem is
   H20, resolution on big lots.
-- **Stage 3: untested, and the cheapest thing here to test.** All three rules
-  are ordinary raster geometry over two masks that already exist: an angular
-  test round a blob, a geodesic dilation along an edge, a bounded dilation. No
-  training, no corpus, no money, scoreable over all 33 approved maps in
-  minutes.
+- **Stage 3: BUILT 2026-09-24, not yet measured.** `tools/stage3.js`: the
+  canopy is cleared from stage 1's answer (its opinion under a tree is
+  untrained and is not evidence), then canopy within `reach` metres of
+  visible lawn becomes lawn (a walk that only enters canopy, so it cannot
+  cross a driveway to a second tree), then a clump of canopy with lawn round
+  more than `ring` of its rim is filled (off-grid counts as not-grass, so
+  woods running off the frame are not "surrounded"). Workflow 14 sweeps
+  reach {0, 1.5, 3, 4.5 m} × rim {off, 180°, 126°} over the first decoder's
+  masks and prints headline / seen / inferred for each cell, and adds a
+  "+ stage 3" row (reach 3 m, 180°) per decoder to the table. The inferred
+  column is the one to read: it is the only ground stage 3 may change. All
+  three rules are ordinary raster geometry over two masks that already
+  exist; no training, no corpus, no money, scored over all 32 maps in
+  seconds at the end of a run.
 - **Stage 4: the expensive one.** H16 says 29 of 31 lawns have LiDAR over them,
   flown 2011-2020, a median of ten years before the photographs.
 
