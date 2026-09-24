@@ -51,6 +51,7 @@ import {
   loadBackbone, tiledFeatures, sampleAt, projection, project,
 } from './backbone.js';
 import { rasterizePolygon } from '../public/lib/mask.js';
+import { stage3 } from './stage3.js';
 import { lngLatToFramePx, metresPerPixel } from '../public/lib/mercator.js';
 
 const SQM_PER_SQFT = 0.09290304;
@@ -1643,11 +1644,13 @@ async function main() {
        * did not mark. So: canopy over traced lawn (marked or not) is unseen;
        * canopy the tracer left out stays what they said it was, not lawn.
        */
+      let canopyRaw = null;
       if (canopyDir) {
         const file = join(canopyDir, `${row.id}-mask.png`);
         const canopy = existsSync(file)
           ? canopyMask(decoders.png.PNG.sync.read(readFileSync(file)), G, GH) : null;
         if (canopy) {
+          canopyRaw = canopy;
           inferred = inferred || new Uint8Array(G * GH);
           for (let i = 0; i < canopy.length; i++) {
             if (canopy[i] && (canopyMode === 'all' || truth[i])) inferred[i] = 1;
@@ -1740,6 +1743,9 @@ async function main() {
         /* Where the reviewer said "I know, I cannot see it". Null until some
            map has been marked, and null means every pixel counts as seen. */
         inferred,
+        /* The tree model's mask on its own, for stage 3 (tools/stage3.js),
+           which reasons about canopy as canopy rather than as unseen ground. */
+        canopy: canopyRaw,
         inferredPct: 100 * inferredShare(truth, inferred, within),
         truthPx,
         mpp: metresPerPixel(frame, G),
@@ -2025,6 +2031,8 @@ async function main() {
    * back in more than one state, and two runs can differ by that alone).
    */
   const predDirs = [];
+  /* Each decoder's answers per lawn, kept for stage 3 below. */
+  const decoderMasks = [];
   if (process.env.PREDICTIONS_DIR) predDirs.push({ label: '', dir: process.env.PREDICTIONS_DIR });
   for (const entry of String(process.env.PREDICTIONS_DIRS || '').split(',')) {
     const at = entry.indexOf('=');
@@ -2043,6 +2051,7 @@ async function main() {
       + `${pm.epochs || '?'} epochs a fold)…`);
     const rows = [];
     const unanswered = [];
+    const masks = new Array(lawns.length).fill(null);
     for (let held = 0; held < lawns.length; held++) {
       const L = lawns[held];
       const file = join(predDir, `${L.id}-pred.png`);
@@ -2050,6 +2059,7 @@ async function main() {
         ? predictionMask(decoders.png.PNG.sync.read(readFileSync(file)), L.grid, L.gridH)
         : null;
       if (!got) { unanswered.push(L.id.slice(0, 28)); continue; }
+      masks[held] = got;
       rows.push(foldRow(held, judgeFold(L, got, { trainedOn: lawns.length - 1 })));
     }
     if (unanswered.length) {
@@ -2057,8 +2067,72 @@ async function main() {
         + `(${unanswered.slice(0, 3).join(', ')}${unanswered.length > 3 ? ', …' : ''}),`);
       console.log('   so this row is over fewer lawns than the others and does not compare.');
     }
-    if (rows.length) table.push(summarise(cfg, rows, cfg.dims));
-    else console.log('   No decoder answers found, so there is no row for it.\n');
+    if (rows.length) {
+      table.push(summarise(cfg, rows, cfg.dims));
+      decoderMasks.push({ cfg, masks });
+    } else console.log('   No decoder answers found, so there is no row for it.\n');
+  }
+
+  /*
+   * STAGE 3: LAWN UNDER THE TREES, by geometry over two masks.
+   *
+   * Stage 1 is taught nothing under the canopy; stage 2 says where the
+   * canopy is; this reasons between them (tools/stage3.js): the canopy is
+   * cleared from stage 1's answer, then canopy within `reach` of visible lawn
+   * becomes lawn, then a clump of canopy with lawn round more than `ring` of
+   * its rim is filled. No training, so the two numbers are SWEPT here and
+   * printed as a table: a flat table means the rules do nothing, a peak that
+   * moves when a lawn is added means noise (THE PLAN, docs/DETECTOR-FINDINGS.md).
+   *
+   * Read the INFERRED column: that is the ground under the trees, and the
+   * only ground stage 3 is allowed to change. The seen column says what it
+   * cost on visible ground (canopy the tracer left out counts as seen when
+   * CANOPY_MODE is "lawn", so a bridge into the woods shows up there).
+   */
+  if (decoderMasks.length && lawns.some((L) => L.canopy)) {
+    const judge = (masks, opts) => {
+      const rows = [];
+      for (let held = 0; held < lawns.length; held++) {
+        const L = lawns[held];
+        if (!masks[held]) continue;
+        const mask = L.canopy
+          ? stage3(masks[held], L.canopy, L.grid, L.gridH, { mpp: L.mpp, ...opts }).mask
+          : masks[held];
+        rows.push(foldRow(held, judgeFold(L, mask, { trainedOn: lawns.length - 1 })));
+      }
+      return rows;
+    };
+    const mid = (rows, key) => {
+      const vs = rows.map((r) => (key === 'mine' ? r.mine.errorPct : r[key])).filter((v) => v !== null && v !== undefined);
+      return vs.length ? median(vs) : null;
+    };
+    const fmt = (v) => (v === null ? '  --' : v.toFixed(1).padStart(5));
+
+    const first = decoderMasks[0];
+    console.log(`\nSTAGE 3 over "${first.cfg.name}": reach in metres across, `
+      + 'rim fraction down. Each cell: headline / seen / inferred.\n');
+    const reaches = [0, 1.5, 3, 4.5];
+    const rings = [1, 0.5, 0.35];
+    console.log(`  ${'rim'.padEnd(10)}${reaches.map((r) => `reach ${r} m`.padStart(22)).join('')}`);
+    for (const minRing of rings) {
+      const label = minRing >= 1 ? 'no bridge' : `> ${Math.round(minRing * 360)}°`;
+      let line = `  ${label.padEnd(10)}`;
+      for (const reachM of reaches) {
+        const rows = judge(first.masks, { reachM, minRing });
+        line += `${fmt(mid(rows, 'mine'))} /${fmt(mid(rows, 'seenPct'))} /${fmt(mid(rows, 'guessPct'))}`.padStart(22);
+      }
+      console.log(line);
+    }
+    const base = judge(first.masks, { reachM: 0, minRing: 1 });
+    console.log(`\n  (canopy cleared, no rules: ${fmt(mid(base, 'mine'))} / ${fmt(mid(base, 'seenPct'))} / ${fmt(mid(base, 'guessPct'))};`
+      + ` stage 1 as it came: ${fmt(mid(table.find((t) => t.cfg === first.cfg).rows, 'mine'))})\n`);
+
+    /* And the plan's own numbers as a row in the table, for every decoder. */
+    for (const { cfg, masks } of decoderMasks) {
+      const cfg3 = { ...cfg, name: `${cfg.name} + stage 3`, stage3: true };
+      console.log(`Scoring "${cfg3.name}" (reach 3 m, bridge over 180°)…`);
+      table.push(summarise(cfg3, judge(masks, { reachM: 3, minRing: 0.5 }), cfg.dims));
+    }
   }
 
   /* The per-lawn detail, for the best configuration only -- twenty lines per
