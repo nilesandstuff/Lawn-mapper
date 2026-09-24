@@ -75,6 +75,8 @@ LR = float(os.environ.get("LR", "1e-3"))
 WEIGHT_DECAY = float(os.environ.get("WEIGHT_DECAY", "1e-2"))
 DROPOUT = float(os.environ.get("DROPOUT", "0.1"))
 BATCH = int(os.environ.get("BATCH", "4"))
+# A directory of <id>-mask.png from tools/tree-canopy.py, or unset.
+CANOPY = os.environ.get("CANOPY", "")
 # How many lawns to hold out, for a quick look. Unset means every lawn.
 LIMIT = int(os.environ.get("LIMIT", "0") or 0)
 
@@ -108,6 +110,19 @@ def read_lawn(feats, frames, stem, shape):
     cells_h, cells_w = truth.shape
     cx, cy = float(shape.get("coverX") or 1.0), float(shape.get("coverY") or 1.0)
 
+    # THE CANOPY IS UNSEEN GROUND TOO, when the run brought the tree model's
+    # mask (CANOPY=dir of <id>-mask.png from tools/tree-canopy.py). It is a
+    # better record of what the camera could not see than the hand-drawn
+    # marks, and it means the same thing here: no weight, never a zero. A
+    # zero would teach "canopy means not lawn", which is stage 3's question
+    # and the wrong answer to it.
+    canopy = False
+    mask_file = os.path.join(CANOPY, f"{stem}-mask.png") if CANOPY else None
+    if mask_file and os.path.exists(mask_file):
+        can = Image.open(mask_file).convert("L").resize((cells_w, cells_h), Image.NEAREST)
+        inferred = inferred | (np.asarray(can) >= 128)
+        canopy = True
+
     target, inside = box_targets(truth, gw, gh, cx, cy)
     allowed, _ = box_targets(within, gw, gh, cx, cy)
     unseen, _ = box_targets(inferred, gw, gh, cx, cy)
@@ -121,6 +136,7 @@ def read_lawn(feats, frames, stem, shape):
         "w": torch.from_numpy(weight)[None],
         "cells": (cells_w, cells_h),
         "cover": (cx, cy),
+        "canopy": canopy,
     }
 
 
@@ -239,6 +255,10 @@ def main():
     print(f"{len(lawns)} lawns, {dim} numbers a patch, grids "
           f"{min(L['x'].shape[2] for L in lawns)}-{max(L['x'].shape[2] for L in lawns)} patches across")
     print(f"decoder of {params:,} weights, {EPOCHS} epochs a fold, seed {SEED}", flush=True)
+    if CANOPY:
+        with_canopy = sum(1 for L in lawns if L["canopy"])
+        print(f"canopy from {CANOPY} treated as unseen ground on {with_canopy} of {len(lawns)} lawns"
+              + ("" if with_canopy else " -- no masks found; was the canopy step run?"), flush=True)
 
     held_out = lawns if not LIMIT else lawns[:LIMIT]
     for n, held in enumerate(held_out):
@@ -261,6 +281,7 @@ def main():
             "dim": dim, "params": params, "epochs": EPOCHS, "seed": SEED,
             "lr": LR, "weightDecay": WEIGHT_DECAY, "dropout": DROPOUT,
             "seenOnly": True, "lawns": len(lawns), "folds": len(held_out),
+            "canopyUnseen": sum(1 for L in lawns if L["canopy"]),
             "seconds": round(total),
         }, f)
     print(f"\n{len(held_out)} folds in {total:.0f}s ({total / len(held_out):.0f}s each). "

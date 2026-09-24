@@ -151,6 +151,18 @@ on:
         description: 'Also train the convolutional decoder over the full patch grid (about 25 minutes more)'
         type: boolean
         default: true
+      canopy:
+        # THE TREE MODEL'S MASK AS UNSEEN GROUND. The plan's stage 1 finds
+        # VISIBLE lawn, and the hand-drawn "inferred" marks are a person's
+        # guess at where a canopy edge is; the tree model draws that edge per
+        # pixel. With this on, workflow 19's segmenter runs over the same
+        # frames first (about eight minutes), and its mask joins the marks:
+        # the decoder does not train on it and the SEEN column scores outside
+        # it. Never a "not lawn" label -- see seenOnlyTwin in the scorer.
+        description: 'Run the tree model first and treat its canopy as unseen ground (about eight minutes more)'
+        type: choice
+        default: 'unseen'
+        options: ['unseen', 'off']
       about:
         # WHAT THIS RUN IS FOR, kept with the pictures for ever.
         #
@@ -232,6 +244,23 @@ jobs:
         working-directory: tools
         run: python3 decoder_test.py
 
+      # The tree model over the same frames, exactly as workflow 19 runs it,
+      # so the canopy lands on the pixels the features describe. Its
+      # requirements share the CPU torch already installed and add
+      # scikit-image and scipy.
+      - name: Install the tree model's loader
+        if: ${{ inputs.canopy == 'unseen' }}
+        run: pip install -r tools/requirements-trees.txt
+
+      - name: Find the canopy
+        if: ${{ inputs.canopy == 'unseen' }}
+        env:
+          IMAGES: frames
+          OUT: canopy
+          MODEL: restor/tcd-segformer-mit-b5
+          MIN_CLUMP_M2: 4
+        run: python3 tools/tree-canopy.py
+
       - name: Run the backbone over them
         env:
           IMAGES: frames
@@ -253,6 +282,7 @@ jobs:
           FEATURES: feats
           FRAMES: frames
           OUT: preds
+          CANOPY: ${{ inputs.canopy == 'unseen' && 'canopy' || '' }}
         run: python3 tools/train_decoder.py
 
       # Step two: the same folds, the same scoring, the same comparison against
@@ -272,6 +302,8 @@ jobs:
           GRID_CELL_M: ${{ inputs.grid == '512' && 'fixed' || '0.15' }}
           # Empty when the decoder was not trained, and the scorer skips the row.
           PREDICTIONS_DIR: ${{ inputs.decoder && 'preds' || '' }}
+          # The canopy joins the hand-marked unseen ground for the seen column.
+          CANOPY_DIR: ${{ inputs.canopy == 'unseen' && 'canopy' || '' }}
         run: node tools/train-detector.js
 
       - name: If that failed
