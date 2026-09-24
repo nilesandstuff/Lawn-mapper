@@ -431,6 +431,11 @@ stage 1 finds visible lawn, stage 3 decides under the trees.
 **Speculation, unmeasured.** (1) The seen-column cost of reach is the edge of
 the untraced woods; a reach that requires lawn on more than one side, or one
 that stops at the property line, might keep the inferred gain without it.
+*Built the same evening as `enclose` in `tools/stage3.js`: a reached cell
+stays only with visible lawn in at least N of 8 directions within the reach
+(a straight wood edge gives three at most, a tree in a lawn eight). Workflow
+14 prints a second small table, sides 4 and 6 × reach 1.5 / 3 / 4.5 m, under
+the sweep. Unmeasured until the run after the one below.*
 (2) Stage 3 over the no-canopy decoder, whose visible-ground column is the
 best of the three (H29), should read better than over the on-lawn one; the
 run launched as this is written (`canopy: compare` with stage 3 in the code)

@@ -2129,6 +2129,26 @@ async function main() {
     console.log(`\n  (canopy cleared, no rules: ${fmt(mid(base, 'mine'))} / ${fmt(mid(base, 'seenPct'))} / ${fmt(mid(base, 'guessPct'))};`
       + ` stage 1 as it came: ${fmt(mid(table.find((t) => t.cfg === first.cfg).rows, 'mine'))})\n`);
 
+    /*
+     * ENCLOSURE, the answer to H30's trade: reach fills the edge of the
+     * woods as readily as a lawn tree. Keep a reached cell only where
+     * visible lawn lies in at least `sides` of 8 directions. Bridge at 180°
+     * throughout; the row above with sides 0 is the comparison.
+     */
+    console.log('  Enclosure: a reached cell stays only with visible lawn in at least N of 8 directions (bridge over 180°).\n');
+    const sidesList = [4, 6];
+    const reaches2 = [1.5, 3, 4.5];
+    console.log(`  ${'sides'.padEnd(10)}${reaches2.map((r) => `reach ${r} m`.padStart(22)).join('')}`);
+    for (const sides of sidesList) {
+      let line = `  ${`${sides} of 8`.padEnd(10)}`;
+      for (const reachM of reaches2) {
+        const rows = judge(first.masks, { reachM, minRing: 0.5, sides });
+        line += `${fmt(mid(rows, 'mine'))} /${fmt(mid(rows, 'seenPct'))} /${fmt(mid(rows, 'guessPct'))}`.padStart(22);
+      }
+      console.log(line);
+    }
+    console.log();
+
     /* And the plan's own numbers as a row in the table, for every decoder. */
     for (const { cfg, masks } of decoderMasks) {
       const cfg3 = { ...cfg, name: `${cfg.name} + stage 3`, stage3: true };

@@ -5,7 +5,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { clumps, clearCanopy, reach, bridge, stage3 } from './stage3.js';
+import { clumps, clearCanopy, reach, enclose, bridge, stage3 } from './stage3.js';
 
 const grid = (rows) => {
   const h = rows.length, w = rows[0].length;
@@ -59,6 +59,50 @@ const show = (mask, w, h) => {
   const under = grid(['...#........', '............', '............']).mask;
   const rr = reach(clearCanopy(under, canopy), canopy, w, h, 3);
   assert.equal(rr.reduce((a, b) => a + b, 0), 0, 'no visible lawn, nothing reached');
+}
+
+/* ------------------------------------------------------------ enclose */
+{
+  /* THE TRADE H30 MEASURED. Lawn on the left against a straight wood edge,
+     and a tree standing in the lawn. Reach fills both alike; a cell inside
+     the wood edge has lawn in three of eight directions at most, the tree's
+     cells have it all round. */
+  const w = 12, h = 7;
+  const lawn = grid([
+    '########....',
+    '########....',
+    '########....',
+    '########....',
+    '########....',
+    '########....',
+    '########....',
+  ]).mask;
+  const canopy = grid([
+    '........####',
+    '........####',
+    '..##....####',
+    '..##....####',
+    '........####',
+    '........####',
+    '........####',
+  ]).mask;
+  const cleared = clearCanopy(lawn, canopy);
+  const reached = reach(cleared, canopy, w, h, 2);
+  assert.equal(show(reached, w, h).split('\n')[3], '##########..', 'reach alone takes two cells of the woods');
+  assert.equal(reached[3 * w + 2], 1, 'and the tree');
+
+  const four = enclose(cleared, canopy, reached, w, h, 2, 4);
+  assert.equal(show(four, w, h).split('\n')[3], '########....',
+    'four sides: the wood edge is dropped (three directions at most), the tree stays');
+  assert.equal(show(four, w, h).split('\n')[0], '########....', 'nothing under the woods anywhere');
+  const eight = enclose(cleared, canopy, reached, w, h, 2, 8);
+  for (const p of [2 * w + 2, 2 * w + 3, 3 * w + 2, 3 * w + 3]) {
+    assert.equal(four[p], 1, `tree cell ${p} has lawn on four sides and stays`);
+    assert.equal(eight[p], 1, `tree cell ${p} has lawn on all eight sides`);
+  }
+  for (let p = 0; p < w * h; p++) if (cleared[p]) assert.equal(four[p], 1, 'visible ground never changes');
+  /* sides 0 is the reach H30 measured, unchanged. */
+  assert.deepEqual([...enclose(cleared, canopy, reached, w, h, 2, 0)], [...reached]);
 }
 
 /* ------------------------------------------------------------- bridge */
