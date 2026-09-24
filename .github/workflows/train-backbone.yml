@@ -16,15 +16,20 @@ name: 14. Train with a real backbone (Python)
 # to every other. That is what makes shadow legible -- and shadow is the thing
 # colour alone will never survive.
 #
-# THE WINDOWS WERE TRIED AND MEASURED WORSE. On 2026-09-23 the extractor
-# gained a mode that reads a lot too big for 10 cm a pixel in one pass in
-# overlapping 896 px windows at the photograph's own resolution, keeping only
-# the middle of each so every patch had about 11 m of real picture around it
-# -- overlap and a margin thrown away, which is the difference from the
-# tiling above. Same corpus, both ways (H22): every backbone row was worse in
-# windows, the eye alone by 16 points. The whole lot in view was worth more
-# than the resolution, which is what the paragraph above argued. The mode
-# stays behind the `windows` input, off by default. See tools/windows.py.
+# THE WINDOWS WERE TRIED, "MEASURED WORSE", AND THEN THE MEASUREMENT WAS
+# RETRACTED. On 2026-09-23 the extractor gained a mode that reads a lot too
+# big for 10 cm a pixel in one pass in overlapping 896 px windows at the
+# photograph's own resolution, keeping only the middle of each so every
+# patch had about 11 m of real picture around it -- overlap and a margin
+# thrown away, which is the difference from the tiling above. The first
+# comparison (H22) said every backbone row was 16 points worse in windows,
+# and this header said the whole lot in view was worth more than the
+# resolution. It was not: the squeeze was dropping the grid's cover, so the
+# windowed rows were read out of register (H25). Re-run with that fixed
+# (2026-09-24), windows are within 1.5 points of squeezing whole, both
+# directions. The mode stays behind the `windows` input, off by default,
+# because it costs three times the run for nothing measurable at 32 lawns.
+# See tools/windows.py.
 #
 # AND NOW A SECOND EYE, which is the reason to run this again.
 #
@@ -124,11 +129,12 @@ on:
         # size, which is what every run before 2026-09-23 did. Same corpus,
         # both settings, is the only way to say what windows were worth.
         #
-        # OFF BY DEFAULT, BECAUSE IT WAS MEASURED (H22, 2026-09-23): on the
-        # same 32 lawns, every row that reads the backbone was worse in
-        # windows, the eye alone by 16 points (31.4% squeezed whole, 47.4%
-        # in windows). The whole lot in view was worth more than 10 cm.
-        description: 'Read big lots in overlapping windows at 10 cm (on), or squeeze every lot whole (off, the old way, measured better)'
+        # OFF BY DEFAULT FOR THE RUN TIME, not for a measured loss. The first
+        # comparison (H22, 2026-09-23) read windows 16 points worse; that was
+        # a registration bug in the squeeze (H25), and the re-run with it
+        # fixed (2026-09-24) put every row within 1.5 points either way.
+        # Windows triple the extraction and the decoder's time.
+        description: 'Read big lots in overlapping windows at 10 cm (on), or squeeze every lot whole (off: same score within noise, a third of the time)'
         type: choice
         default: 'off'
         options: ['on', 'off']
@@ -151,6 +157,15 @@ on:
         description: 'Also train the convolutional decoder over the full patch grid (about 25 minutes more)'
         type: boolean
         default: true
+      seed:
+        # THE DECODER'S SEED. It is deterministic given the seed and the
+        # features (H26: two runs identical to the decimal), which means one
+        # run says nothing about how much the number would move under a
+        # different draw of dropout and flips. A second seed is the cheapest
+        # measurement of that; H13 says the extraction itself drifts too.
+        description: 'Seed for the decoder (change it to measure how much the decoder row moves on a different draw)'
+        type: string
+        default: '7'
       canopy:
         # THE TREE MODEL'S MASK AS UNSEEN GROUND. The plan's stage 1 finds
         # VISIBLE lawn, and the hand-drawn "inferred" marks are a person's
@@ -283,6 +298,7 @@ jobs:
           FRAMES: frames
           OUT: preds
           CANOPY: ${{ inputs.canopy == 'unseen' && 'canopy' || '' }}
+          SEED: ${{ inputs.seed }}
         run: python3 tools/train_decoder.py
 
       # Step two: the same folds, the same scoring, the same comparison against
