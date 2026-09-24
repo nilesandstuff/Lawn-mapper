@@ -585,6 +585,25 @@ export function predictionMask(png, G, GH = G) {
   return out;
 }
 
+/**
+ * The tree model's mask, written at the frame's own pixels, brought to the
+ * scoring grid by nearest neighbour. Both cover the same frame, so a cell
+ * reads the mask pixel under its top-left corner; at 15 cm cells over a 10 cm
+ * mask that is never more than a cell out. Null for a picture with no pixels.
+ */
+export function canopyMask(png, G, GH = G) {
+  if (!png || !png.width || !png.height) return null;
+  const out = new Uint8Array(G * GH);
+  for (let y = 0; y < GH; y++) {
+    const sy = Math.min(png.height - 1, Math.floor((y * png.height) / GH));
+    for (let x = 0; x < G; x++) {
+      const sx = Math.min(png.width - 1, Math.floor((x * png.width) / G));
+      out[y * G + x] = png.data[(sy * png.width + sx) * 4] >= 128 ? 1 : 0;
+    }
+  }
+  return out;
+}
+
 /** Geometries -> a filled mask on the GRID, using the row's own frame. */
 function maskOf(geoms, frame, size, sizeH = size) {
   const project = (ll) => lngLatToFramePx(frame, ll, size, sizeH);
@@ -1478,6 +1497,10 @@ async function main() {
    */
   const pyDir = process.env.FEATURES_DIR || '';
   const py = pyDir ? readPythonFeatures(pyDir) : null;
+  /* The canopy masks, when workflow 14 ran the tree model first. See where
+     each lawn's `inferred` is built for what they are used for. */
+  const canopyDir = process.env.CANOPY_DIR || '';
+  let canopied = 0;
   if (pyDir && !py) {
     console.log(`No features found in ${pyDir}. Run the extractor first, or`);
     console.log('unset FEATURES_DIR to fall back to the in-browser backbone.');
@@ -1591,7 +1614,29 @@ async function main() {
          later mark is the more careful one. See inferredShare above for why,
          and for what stands in for the guard that rule used to be. */
       const inferredGeoms = inferredGeometries(parse(row.shapes));
-      const inferred = inferredGeoms.length ? maskOf(inferredGeoms, frame, G, GH) : null;
+      let inferred = inferredGeoms.length ? maskOf(inferredGeoms, frame, G, GH) : null;
+      /*
+       * AND THE CANOPY, WHEN A RUN BRINGS ONE. The tree model's mask
+       * (tools/tree-canopy.py) is a better record of what the camera could
+       * not see than the hand-drawn "inferred" marks: it is drawn per pixel
+       * by a model built for the job, and the marks are a person's guess at
+       * where a canopy edge is. Merged into `inferred` rather than kept
+       * separate, because both mean the same thing here -- ground nobody
+       * could see -- and every reader below already knows what to do with
+       * it: the seen column scores outside it, the seen-only rows and the
+       * decoder do not train on it. It is NEVER a "not lawn" label; see
+       * seenOnlyTwin for why zero would be the wrong answer.
+       */
+      if (canopyDir) {
+        const file = join(canopyDir, `${row.id}-mask.png`);
+        const canopy = existsSync(file)
+          ? canopyMask(decoders.png.PNG.sync.read(readFileSync(file)), G, GH) : null;
+        if (canopy) {
+          inferred = inferred || new Uint8Array(G * GH);
+          for (let i = 0; i < canopy.length; i++) if (canopy[i]) inferred[i] = 1;
+          canopied++;
+        }
+      }
       const parcelGeom = parse(row.parcel);
       /*
        * No property line means the whole frame is fair game. Rare, and the
@@ -1718,7 +1763,13 @@ async function main() {
     rmSync(dir, { recursive: true, force: true });
   }
 
-  console.log(`\n${lawns.length} usable.\n`);
+  console.log(`\n${lawns.length} usable.`);
+  if (canopyDir) {
+    console.log(`Canopy from ${canopyDir} merged into the unseen ground of ${canopied} of ${lawns.length} lawns:`);
+    console.log('the SEEN column scores outside it and the decoder does not train on it.');
+    if (!canopied) console.log('(No masks found -- was the canopy step run over these frames?)');
+  }
+  console.log('');
 
   /*
    * WRITE THE FRAMES OUT AND STOP, when asked.

@@ -82,4 +82,34 @@ import { labelsPng, predictionMask } from './train-detector.js';
   assert.equal(predictionMask(null, G, GH), null);
 }
 
+/* --------------------------------------------------------------- canopy */
+{
+  const { canopyMask } = await import('./train-detector.js');
+  /* A 4 x 2 mask with its right half lit, brought to an 8 x 4 grid: the
+     right half of every row is canopy, and nothing else is. */
+  const png = new PNG({ width: 4, height: 2 });
+  for (let i = 0; i < 8; i++) {
+    const on = i % 4 >= 2 ? 255 : 0;
+    png.data[i * 4] = on; png.data[i * 4 + 1] = on; png.data[i * 4 + 2] = on; png.data[i * 4 + 3] = 255;
+  }
+  const m = canopyMask(PNG.sync.read(PNG.sync.write(png)), 8, 4);
+  assert.equal(m.length, 32);
+  for (let y = 0; y < 4; y++) {
+    for (let x = 0; x < 8; x++) assert.equal(m[y * 8 + x], x >= 4 ? 1 : 0, `cell ${x},${y}`);
+  }
+  /* And a 1-BIT PNG, which is what tree-canopy.py writes (Pillow mode "1"),
+     reads the same. pngjs cannot write one, so this is a real one, the
+     same 4 x 2 picture written by Pillow. */
+  const oneBit = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAQAAAACAQAAAABX00DOAAAADElEQVR4nGMwYGIAAACYADMvBHgeAAAAAElFTkSuQmCC',
+    'base64',
+  );
+  const read = PNG.sync.read(oneBit);
+  assert.equal(read.width, 4);
+  assert.equal(read.height, 2);
+  const m2 = canopyMask(read, 8, 4);
+  assert.deepEqual([...m2], [...m], 'a 1-bit mask must read the same as an 8-bit one');
+  assert.equal(canopyMask(null, 8, 4), null);
+}
+
 console.log('decoder: ok');

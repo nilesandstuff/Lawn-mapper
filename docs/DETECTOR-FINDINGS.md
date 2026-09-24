@@ -165,6 +165,18 @@ starting points to be swept, not settings.
   **"the pretrained eye, decoder"** in workflow 14's table. UNMEASURED at the
   time of writing; the first run is the row after this one in the run log.
 
+  **Since 2026-09-24 the tree model's canopy counts as unseen ground too**
+  (workflow 14's `canopy` input, on by default). The owner's reasoning, which
+  is right: the canopy mask in every run so far is a better record of what the
+  camera could not see than the hand-drawn "inferred" marks, and stage 1 is
+  being taught to find only visible lawn. So the decoder carries no weight on
+  canopy cells (in addition to the marked ones) and the SEEN column is scored
+  outside them. One refinement to how it was put: canopy is DON'T-CARE, never
+  "not lawn". A zero label there would teach "canopy means not lawn", which is
+  stage 3's question and the wrong answer to it (the same reasoning as
+  `seenOnlyTwin`). The headline column still includes canopy, so it still
+  answers the whole question; the seen column answers stage 1's.
+
   **And the colour row is a control from here, not a candidate.** It stays in
   the table because it is reproducible to the decimal (H10) and so says when the
   corpus moved, and because it is the only head a browser can run; it no longer
