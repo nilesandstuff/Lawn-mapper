@@ -93,6 +93,13 @@ jobs:
       - name: Install the model loader
         run: pip install -r tools/requirements-trees.txt
 
+      # That a patch's outline keeps the clearings inside it, before seventeen
+      # minutes of segmentation are drawn with it. The outer ring alone drew a
+      # treeless patch of grass as canopy.
+      - name: Check the clump outlines
+        working-directory: tools
+        run: python3 canopy_test.py
+
       # The same frames the detector is trained on, written by the same code,
       # so canopy drawn here lands on exactly the pixels a feature would.
       - name: Fetch the lawns and write the frames out
