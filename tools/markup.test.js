@@ -673,6 +673,16 @@ check('every class the code toggles is styled',
   check('the review canvas fills a shape and its holes as one path',
     /fill\('evenodd'\)/.test(drawJs),
     'a hole filled separately reads as lawn, and gets approved as one');
+  /*
+   * And it projects the outlines with the frame the STORED photograph was
+   * taken on, not the display frame. Those differ on every re-banked row and
+   * every Google-drawn one, and with the display frame the outlines sat well
+   * off the picture while the editor and the training tools were both right.
+   */
+  check('the review canvas projects against the stored photograph\'s own frame',
+    /c\.hasImage && c\.imageFrame \? c\.imageFrame : c\.frame/.test(drawJs)
+    && !/lngLatToFramePx\(c\.frame, \[lng, lat\]/.test(drawJs),
+    'outlines projected with the display frame land off the stored photograph');
 }
 
 /* ------------------------ the property line holds a corner in */

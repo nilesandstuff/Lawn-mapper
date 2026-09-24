@@ -456,6 +456,19 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
           parcelSqFt: r.parcel_sq_ft,
           hasImage: Boolean(r.image_key),
           frame: r.frame ? JSON.parse(r.frame) : null,
+          /*
+           * THE FRAME THE STORED PHOTOGRAPH WAS TAKEN ON, which is not the
+           * frame the phone showed. Workflow 21 re-banks a lot as the
+           * rectangle round its parcel at 10 cm, and a map drawn on Google
+           * has a 640-square display frame at a whole zoom, so the two
+           * rectangles differ on every such row. The card draws the stored
+           * photograph, so it must project the outlines with this one: with
+           * `frame` the outlines sat a long way off the picture on every
+           * Google-drawn map, while the same rows were right in the editor
+           * (Mapbox tiles under `frame`) and right in training (the tools
+           * have used image_frame since it existed).
+           */
+          imageFrame: r.image_frame ? JSON.parse(r.image_frame) : null,
           parcel: r.parcel ? JSON.parse(r.parcel) : null,
           shapes: JSON.parse(r.shapes || '[]'),
           detectedShapes: r.detected_shapes ? JSON.parse(r.detected_shapes) : null,
@@ -499,6 +512,10 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
               drawn: row.parcel_source === 'hand' }, geometry: JSON.parse(row.parcel) }
           : null,
         frame: row.frame ? JSON.parse(row.frame) : null,
+        /* For the every-map page, which draws the stored photograph through
+           the same card as the console; see the candidates route. The editor
+           ignores it and lays `frame` on live tiles. */
+        imageFrame: row.image_frame ? JSON.parse(row.image_frame) : null,
         provider: row.provider,
         model: row.model,
         exclude: row.exclusions ? row.exclusions.split(',') : [],
@@ -609,7 +626,7 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
     const rows = await env.DB.prepare(
       `SELECT j.id, j.worker, j.county, j.parcel_sqft, j.submitted_at, j.note,
               j.map_id, j.lng, j.lat, j.seconds,
-              c.square_feet, c.frame, c.shapes, c.parcel, c.image_key
+              c.square_feet, c.frame, c.image_frame, c.shapes, c.parcel, c.image_key
          FROM lawn_jobs j
          LEFT JOIN corpus c ON c.id = j.map_id
         WHERE j.state = 'submitted'
@@ -714,6 +731,9 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
          * outline in the wrong place.
          */
         frame: r.frame ? JSON.parse(r.frame) : null,
+        /* And the frame the STORED photograph was taken on, which the grading
+           page draws under the outline; see the candidates route. */
+        imageFrame: r.image_frame ? JSON.parse(r.image_frame) : null,
         parcel: r.parcel ? JSON.parse(r.parcel) : null,
         /* Both stored forms, same as the candidate route: older rows hold bare
            geometries, newer ones hold Features carrying the inferred flag. */

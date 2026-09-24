@@ -774,6 +774,33 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
     && q.candidates[0].shapes[0].geometry?.type === 'Polygon',
     JSON.stringify(q.candidates[0].shapes?.[0])?.slice(0, 90));
 
+  /*
+   * THE FRAME THE PHOTOGRAPH WAS TAKEN ON travels to the card. Workflow 21
+   * re-banks a lot as the rectangle round its parcel, which is not the frame
+   * the phone showed, and a map drawn on Google has a 640-square display
+   * frame at a whole zoom. The card draws the STORED photograph, so with only
+   * `frame` to project by its outlines sat well off the picture on every
+   * Google-drawn map -- the same rows being right in the editor and right in
+   * training. The console reported it as the maps being misaligned.
+   */
+  {
+    const shot = { lng: -97.4005, lat: 42.9005, zoom: 19.2, size: 700, height: 520 };
+    await env.DB.prepare(
+      'UPDATE corpus SET image_key = ?2, image_frame = ?3 WHERE id = ?1'
+    ).bind(q.candidates[0].id, 'maps/mapbox/x.png', JSON.stringify(shot)).run();
+    const withShot = (await ask(env, ownerToken, 'candidates')).body.candidates
+      .find((c) => c.id === q.candidates[0].id);
+    check('the frame the stored photograph was taken on arrives beside the display frame',
+      withShot?.imageFrame?.size === 700 && withShot?.imageFrame?.height === 520,
+      JSON.stringify(withShot?.imageFrame));
+    check('and a row never banked says so with null rather than a guess',
+      (await ask(env, ownerToken, 'candidates')).body.candidates
+        .find((c) => c.id !== q.candidates[0].id)?.imageFrame === null);
+    const one = (await ask(env, ownerToken, `candidate?id=${encodeURIComponent(q.candidates[0].id)}`)).body;
+    check('the every-map page gets it through the single-candidate route too',
+      one?.imageFrame?.size === 700, JSON.stringify(one?.imageFrame));
+  }
+
   /* ------------------------------------------------ a verdict, and its effects */
   const id = q.candidates[0].id;
   check('approving works',
