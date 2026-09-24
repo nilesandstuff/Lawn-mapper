@@ -2110,44 +2110,46 @@ async function main() {
     };
     const fmt = (v) => (v === null ? '  --' : v.toFixed(1).padStart(5));
 
-    const first = decoderMasks[0];
-    console.log(`\nSTAGE 3 over "${first.cfg.name}": reach in metres across, `
-      + 'rim fraction down. Each cell: headline / seen / inferred.\n');
+    /*
+     * SWEPT OVER EVERY DECODER, not just the first. H31 found the three
+     * decoders differ under stage 3 in the tail (the wooded lots) and not
+     * the median, and a sweep over one of them said nothing about the other
+     * two. Each table is a few seconds.
+     */
     const reaches = [0, 1.5, 3, 4.5];
     const rings = [1, 0.5, 0.35];
-    console.log(`  ${'rim'.padEnd(10)}${reaches.map((r) => `reach ${r} m`.padStart(22)).join('')}`);
-    for (const minRing of rings) {
-      const label = minRing >= 1 ? 'no bridge' : `> ${Math.round(minRing * 360)}°`;
-      let line = `  ${label.padEnd(10)}`;
-      for (const reachM of reaches) {
-        const rows = judge(first.masks, { reachM, minRing });
-        line += `${fmt(mid(rows, 'mine'))} /${fmt(mid(rows, 'seenPct'))} /${fmt(mid(rows, 'guessPct'))}`.padStart(22);
-      }
-      console.log(line);
-    }
-    const base = judge(first.masks, { reachM: 0, minRing: 1 });
-    console.log(`\n  (canopy cleared, no rules: ${fmt(mid(base, 'mine'))} / ${fmt(mid(base, 'seenPct'))} / ${fmt(mid(base, 'guessPct'))};`
-      + ` stage 1 as it came: ${fmt(mid(table.find((t) => t.cfg === first.cfg).rows, 'mine'))})\n`);
-
-    /*
-     * ENCLOSURE, the answer to H30's trade: reach fills the edge of the
-     * woods as readily as a lawn tree. Keep a reached cell only where
-     * visible lawn lies in at least `sides` of 8 directions. Bridge at 180°
-     * throughout; the row above with sides 0 is the comparison.
-     */
-    console.log('  Enclosure: a reached cell stays only with visible lawn in at least N of 8 directions (bridge over 180°).\n');
     const sidesList = [4, 6];
     const reaches2 = [1.5, 3, 4.5];
-    console.log(`  ${'sides'.padEnd(10)}${reaches2.map((r) => `reach ${r} m`.padStart(22)).join('')}`);
-    for (const sides of sidesList) {
-      let line = `  ${`${sides} of 8`.padEnd(10)}`;
-      for (const reachM of reaches2) {
-        const rows = judge(first.masks, { reachM, minRing: 0.5, sides });
-        line += `${fmt(mid(rows, 'mine'))} /${fmt(mid(rows, 'seenPct'))} /${fmt(mid(rows, 'guessPct'))}`.padStart(22);
+    const cell = (rows) => `${fmt(mid(rows, 'mine'))} /${fmt(mid(rows, 'seenPct'))} /${fmt(mid(rows, 'guessPct'))}`.padStart(22);
+    for (const first of decoderMasks) {
+      console.log(`\nSTAGE 3 over "${first.cfg.name}": reach in metres across, `
+        + 'rim fraction down. Each cell: headline / seen / inferred.\n');
+      console.log(`  ${'rim'.padEnd(10)}${reaches.map((r) => `reach ${r} m`.padStart(22)).join('')}`);
+      for (const minRing of rings) {
+        const label = minRing >= 1 ? 'no bridge' : `> ${Math.round(minRing * 360)}°`;
+        let line = `  ${label.padEnd(10)}`;
+        for (const reachM of reaches) line += cell(judge(first.masks, { reachM, minRing }));
+        console.log(line);
       }
-      console.log(line);
+      const base = judge(first.masks, { reachM: 0, minRing: 1 });
+      console.log(`\n  (canopy cleared, no rules: ${fmt(mid(base, 'mine'))} / ${fmt(mid(base, 'seenPct'))} / ${fmt(mid(base, 'guessPct'))};`
+        + ` stage 1 as it came: ${fmt(mid(table.find((t) => t.cfg === first.cfg).rows, 'mine'))})\n`);
+
+      /*
+       * ENCLOSURE, the answer to H30's trade: reach fills the edge of the
+       * woods as readily as a lawn tree. Keep a reached cell only where
+       * visible lawn lies in at least `sides` of 8 directions. Bridge at 180°
+       * throughout; the row above with sides 0 is the comparison.
+       */
+      console.log('  Enclosure: a reached cell stays only with visible lawn in at least N of 8 directions (bridge over 180°).\n');
+      console.log(`  ${'sides'.padEnd(10)}${reaches2.map((r) => `reach ${r} m`.padStart(22)).join('')}`);
+      for (const sides of sidesList) {
+        let line = `  ${`${sides} of 8`.padEnd(10)}`;
+        for (const reachM of reaches2) line += cell(judge(first.masks, { reachM, minRing: 0.5, sides }));
+        console.log(line);
+      }
+      console.log();
     }
-    console.log();
 
     /* And the plan's own numbers as a row in the table, for every decoder. */
     for (const { cfg, masks } of decoderMasks) {
@@ -2190,6 +2192,34 @@ async function main() {
         + `trained ${r.mine.errorPct.toFixed(1).padStart(5)}% wrong   `
         + (r.theirs ? `SAM ${r.theirs.errorPct.toFixed(1).padStart(5)}% wrong` : 'SAM not stored')
       );
+    }
+  }
+
+  /*
+   * THE TAIL, FOR EVERY ROW. The headline is a median and the per-lawn list
+   * above is one row's, so a row that wins the median while losing the
+   * wooded lots by fifty points looked like the best row (H31: the everywhere
+   * decoder + stage 3, 24.2% and Kent 22,481 sq ft at 50%). Every lot that
+   * ANY candidate row gets more than 60% wrong, with every row's figure
+   * beside it, so median and tail are read together.
+   */
+  const BADLY = 60;
+  const byLawn = new Map();
+  for (const t of contenders) {
+    for (const r of t.rows) {
+      if (!byLawn.has(r.lawn)) byLawn.set(r.lawn, new Map());
+      byLawn.get(r.lawn).set(t.cfg, r.mine.errorPct);
+    }
+  }
+  const badLots = [...byLawn].filter(([, errs]) => Math.max(...errs.values()) > BADLY);
+  if (badLots.length && contenders.length > 1) {
+    console.log(`\nThe lots any row gets more than ${BADLY}% wrong, under every row:\n`);
+    const short = (name) => name.replace('the pretrained eye, ', '').replace('decoder, ', '').replace('canopy ', '').slice(0, 14).padStart(14);
+    console.log(`  ${''.padEnd(29)}${contenders.map((t) => short(t.cfg.name)).join('')}`);
+    for (const [L, errs] of badLots) {
+      const sqft = Math.round((L.truthPx * L.mpp * L.mpp) / SQM_PER_SQFT);
+      console.log(`  ${String(L.county || 'traced by hand').padEnd(18).slice(0, 18)} ${sqft.toLocaleString().padStart(9)} `
+        + contenders.map((t) => (errs.has(t.cfg) ? `${errs.get(t.cfg).toFixed(0)}%` : '--').padStart(14)).join(''));
     }
   }
 
