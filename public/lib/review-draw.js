@@ -57,8 +57,27 @@ export function paint(canvas, c, { showAi = false } = {}) {
   const H = canvas.height;
   ctx.clearRect(0, 0, W, H);
 
+  /*
+   * THE FRAME OF THE PICTURE BEING DRAWN ON, not the frame the phone showed.
+   *
+   * The photograph under this canvas is the STORED one, and since workflow 21
+   * that is banked as the rectangle round the parcel at 10 cm -- a different
+   * rectangle from the display frame whenever the display frame was not
+   * already that: every map drawn on Google (a 640-square at a whole zoom) and
+   * every map from before the frames were cropped to the parcel. Projecting
+   * the outlines with the display frame put them a long way off the picture
+   * on those maps, which read as the map being wrong. It was not: the editor
+   * lays the display frame on live tiles and was right, and the training tools
+   * have projected against image_frame since the column existed. Only this
+   * card disagreed, so only this card is fixed.
+   *
+   * Without a photograph there is nothing to line up with, and the display
+   * frame is as good a rectangle as any.
+   */
+  const frame = c.hasImage && c.imageFrame ? c.imageFrame : c.frame;
+
   const overlay = () => {
-    if (!c.frame) {
+    if (!frame) {
       ctx.fillStyle = '#7a8578';
       ctx.font = '16px system-ui, sans-serif';
       ctx.fillText('No frame stored, so this cannot be drawn to scale.', 18, 30);
@@ -80,7 +99,7 @@ export function paint(canvas, c, { showAi = false } = {}) {
       ctx.beginPath();
       for (const coords of rings) {
         coords.forEach(([lng, lat], i) => {
-          const [x, y] = lngLatToFramePx(c.frame, [lng, lat], W, H);
+          const [x, y] = lngLatToFramePx(frame, [lng, lat], W, H);
           if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
         });
         ctx.closePath();
