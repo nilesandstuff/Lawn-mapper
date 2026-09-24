@@ -54,11 +54,17 @@ not the same measurement; the ratio is the only number worth carrying across.
 | best of ours | **24.3%** | **the pretrained eye, decoder, canopy as unseen ground**: Scale-MAE 896px whole, a conv decoder over the full 1024-number grid, trained on visible ground only (the hand marks AND the tree model's canopy carry no weight), beat SAM on **16 of 26**, **18.6% on visible ground** (run 35948780766, H27). ONE run; without the canopy it read 28.5% twice to the decimal (H25, H26). The head reading the same eye: 34.2% alone, 31.8% with colour |
 
 Gap: **0.98×** — under the SAM line by 0.4 points, which at 32 lawns is a
-tie (H7), and it is one run. It was 1.15× without the canopy and 1.30× on
-squares with the head. The decoder is the first row to beat SAM on more than
-half the shared lawns, and the first under the line. **Not yet a finding
-about the canopy: the head rows drifted up to 2.3 points in the same run
-with no cause in the training, so a repeat is owed (H27).**
+tie (H7). It was 1.15× without the canopy and 1.30× on squares with the
+head. The decoder is the first row to beat SAM on more than half the shared
+lawns, and the first under the line. It reproduces to the decimal and a
+different seed moves it about a point (H28). **Still not a finding about
+the canopy:** the extraction comes back in two states 2 points apart and
+every canopy-everywhere run landed in the better one (H28), so the 4.2-point
+gain is confounded. The three-decoders-over-one-extraction run (`canopy:
+compare`) is what settles it. **The owner's reading of the pictures stands
+regardless: with every canopy cell unseen the lawn crept into the woods on
+the wooded lots (Kent 22,481 sq ft 170% wrong), and "on lawn" stopped it
+(41.5%); on lawn is the default.**
 
 **H22 is retracted** (2026-09-24): with the registration bug fixed, windows
 are within noise of squeezing whole, both ways. The default stays off for the
@@ -341,6 +347,63 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H28. The decoder repeats to the decimal, the seed moves it a point, and the extraction comes in two states — so the canopy's credit is NOT yet attributable, 2026-09-24
+
+Three runs on `1rijjz2`, same settings as H27, launched the same minute
+after the GitHub Actions allowance ran out and the account went to Pro:
+
+| run | canopy mode | seed | colour | eye (head) | both (head) | decoder | over SAM | seen | inferred |
+|---|---|---|---|---|---|---|---|---|---|
+| 35945907897 (H26) | none | 7 | 33.3 | **36.5** | **32.1** | 28.5 | 15 of 26 | 29.7 | 30.5 |
+| 36002884707 | on lawn | 7 | 33.3 | **36.5** | **32.1** | 29.8 | 15 of 26 | 24.3 | 34.5 |
+| 35948780766 (H27) | everywhere | 7 | 33.3 | **34.2** | **31.8** | 24.3 | 16 of 26 | 18.6 | 60.4 |
+| 36002889613 | everywhere | 7 | 33.3 | **34.2** | **31.8** | 24.3 | 16 of 26 | 18.6 | 60.4 |
+| 36002894789 | everywhere | 11 | 33.3 | **34.2** | **31.8** | 25.5 | 16 of 26 | 18.6 | 64.1 |
+
+**The decoder is deterministic.** 24.3% came back to the decimal, every
+per-lawn figure identical, in the exact repeat (36002889613 against
+35948780766). Three for three now (H26 was the first pair).
+
+**The seed is worth about a point.** Seed 11 read 25.5% against seed 7's
+24.3% on the headline; the seen column did not move (18.6 both). So a
+decoder number carries about ±1 point of seed noise on top of H7's corpus
+noise — small, and now measured rather than guessed.
+
+**The extraction comes in two states, and that is the finding that matters.**
+The head rows do not train on the canopy at all (checked: nothing in the
+head's sampling or scoring reads the unseen mask except the seen/inferred
+columns), yet they came back as 36.5/32.1 in both runs without
+canopy-everywhere and 34.2/31.8 in all three runs with it — to the decimal
+each time. There is no code path for that. What there is, is H13: the
+Scale-MAE extraction does not always reproduce, and these look like two
+stable outcomes of it (most plausibly different runner hardware taking
+different arithmetic paths). Five runs landing 2–3 exactly along the canopy
+setting has about a one-in-sixteen chance if the state is a coin toss per
+run. **So the decoder's 28.5 → 24.3 (H27) is CONFOUNDED with the extraction
+state: the "everywhere" decoders all read features from the state whose
+head rows are 2.3 points better, and the "none" and "on lawn" decoders all
+read the other.** Within the 36.5-state, no canopy 28.5 and on-lawn 29.8
+differ by 1.3 — inside seed noise. The 4.2-point gain could be the canopy,
+the extraction state, or both; three runs each side cannot say.
+
+**On lawn against everywhere, on the lawns the pictures were about.** The
+per-lawn figures are where the two modes actually differ, and they differ
+in the direction the owner's reading predicted: Kent 22,481 sq ft 170.2%
+(everywhere) → 41.5% (on lawn); Prince William 3,429 sq ft 319.4% → 94.3%;
+Utah 86.4% → 68.8%. Those are the wooded lots where every-canopy-unseen let
+the lawn creep into the trees. Elsewhere "everywhere" is a few points
+better on most lawns, which is the median. On-lawn's seen column reads 24.3
+against colour's 33.6 and the head's 34.3–37.0 on the same set — 9 to 13
+points clear; the sets differ between modes (on-lawn's seen set includes
+untraced canopy, everywhere's excludes all canopy), so the two decoders'
+seen figures are not comparable to each other.
+
+**What settles it: three decoders over ONE extraction.** Workflow 14's
+`canopy` input gained `compare`: the same features, the same seed, the same
+folds, and the decoder trained three times — no canopy, on lawn, everywhere
+— scored as three rows in one table. The extraction state is then common to
+all three and drops out. That run is launched as this is written.
 
 ### H27. With the canopy as unseen ground, the decoder reads 24.3% — under SAM's 24.7% for the first time, 2026-09-24
 
@@ -2322,4 +2385,7 @@ fields) were both more obviously right than this one.
 | 2026-09-24 | 35945907897 | 32 | Scale-MAE large 896px, squeezed whole, 15 cm grid, rectangular frames, + decoder, **squeeze fix** | **28.5%** (decoder) | 24.7% | **H26: the first valid head rows on rectangles, and the decoder to the decimal.** Eye alone 80.5 → **36.5** with nothing changed but the cover kept through `shrink`; both 32.1; colour 33.3 (identical); decoder **28.5, 15 of 26**, every per-lawn figure identical to H25 (seeded; extraction byte-identical). Head rows within H13 drift of the last square-frame run (34.1 / 33.1). Decoder 21 min for 32 folds, 35 s each. Pictures in `runs/2026-09-23-2254-edt-scalemae-large-896px` |
 | 2026-09-24 | 35945911259 | 32 | Scale-MAE large 896px, **windowed** (11 lawns, coarsest 13.5 cm/px), 15 cm grid, rectangular frames, + decoder, squeeze fix | 30.0% (decoder) | 24.7% | **H22 RETRACTED.** Against the whole-lot twin the same minute: eye alone 35.9 vs 36.5, both 30.8 vs 32.1, decoder 30.0 vs 28.5 (16 of 26 over SAM either way). Within noise both ways; the 16-point loss was the registration bug. Extraction 60 min, decoder 53 min (100 s a fold on windowed grids). Default stays off for the time. Pictures in `runs/2026-09-24-0009-edt-scalemae-large-896px` |
 | 2026-09-24 | 35955276222, 35955279657, 35989581358, 35989586854, 35989591674, 35993754388 | — | — (nothing ran) | — | — | **GitHub Actions stopped starting jobs at about 04:00 UTC.** Six runs in a row, workflow 14 and then the untouched workflow 1, each "failed" in four seconds with no steps and an empty log. Not the workflow files: the eleven-input theory was tried (`render` removed) and refuted by workflow 1 failing identically. Everything that ran since 2026-09-23 22:00 UTC — 14 runs, most of them 50–125 minutes — is what an exhausted Actions allowance looks like. **Three runs are owed and will be started when jobs run again:** canopy on lawn, seed 7 (the new default, against 35948780766); canopy everywhere, seed 7 (the exact H27 repeat); canopy everywhere, seed 11 |
+| 2026-09-24 | 36002884707 | 32 | as 35948780766 but canopy **on lawn only**, seed 7 | 29.8% (decoder) | 24.7% | **H28.** Head rows 36.5 / 32.1 (the no-canopy state, to the decimal). Decoder 29.8, 15 of 26, seen 24.3. The wooded lots came back: Kent 22,481 sq ft 170 → 41.5%, PW 3,429 319 → 94%, Utah 86 → 69%. Pictures `runs/2026-09-24-1001-edt-scalemae-large-896px` |
+| 2026-09-24 | 36002889613 | 32 | as 35948780766 exactly (canopy everywhere, seed 7) | **24.3%** (decoder) | 24.7% | **H28: reproduced to the decimal**, every per-lawn figure and both head rows (34.2 / 31.8). Pictures `runs/2026-09-24-1016-edt-scalemae-large-896px` |
+| 2026-09-24 | 36002894789 | 32 | as 35948780766 but **seed 11** | 25.5% (decoder) | 24.7% | **H28: the seed is worth about a point.** 16 of 26, seen 18.6 (unchanged), inferred 64.1. Head rows 34.2 / 31.8 again. Pictures `runs/2026-09-24-1010-edt-scalemae-large-896px` |
 | 2026-09-24 | 35948780766 | 32 | Scale-MAE large 896px, squeezed whole, 15 cm grid, rectangular frames, + decoder, **canopy as unseen ground** | **24.3%** (decoder) | 24.7% | **H27: UNDER THE SAM LINE, by 0.4, first time.** Decoder 24.3, **16 of 26**, SEEN 18.6 against 26.0–27.4 for the head rows; the run printed "AHEAD, BUT NOT BY ENOUGH TO TRUST". Canopy on 32 of 32 lawns (the tree step, 11 min). Head rows drifted −2.3 / −0.3 with no training reason (H13), so of the decoder's 4.2-point gain some may be drift; repeat owed. Kent 22,481 sq ft 38 → 170%. Pictures in `runs/2026-09-23-2356-edt-scalemae-large-896px` |

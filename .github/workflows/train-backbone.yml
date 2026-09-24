@@ -176,10 +176,16 @@ on:
         # the first run (H27, 24.3%) -- and in its pictures the lawn's edge
         # crept into the woods, because the woods the tracer never drew had
         # been the decoder's only weighted examples of not-lawn under trees.
-        description: 'Tree canopy as unseen ground: only over lawn the tracer drew (on lawn), every canopy cell (everywhere), or not at all (off). About ten minutes more.'
+        #
+        # "compare" trains the decoder THREE times over the one extraction --
+        # no canopy, on lawn, everywhere -- and scores all three. H28: the
+        # extraction comes back in more than one state and the head rows move
+        # 2 points between states, so two RUNS cannot say what the canopy did;
+        # three decoders over the same features can. About an hour more.
+        description: 'Tree canopy as unseen ground: only over lawn the tracer drew (on lawn), every canopy cell (everywhere), all three decoders over one extraction (compare), or not at all (off).'
         type: choice
         default: 'on lawn'
-        options: ['on lawn', 'everywhere', 'off']
+        options: ['on lawn', 'everywhere', 'compare', 'off']
       about:
         # WHAT THIS RUN IS FOR, kept with the pictures for ever.
         #
@@ -294,13 +300,46 @@ jobs:
       # one out exactly as the scorer does, so the row it produces is the same
       # kind of number as the rows beside it.
       - name: Train the decoder
-        if: ${{ inputs.decoder }}
+        if: ${{ inputs.decoder && inputs.canopy != 'compare' }}
         env:
           FEATURES: feats
           FRAMES: frames
           OUT: preds
           CANOPY: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
           CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}
+          SEED: ${{ inputs.seed }}
+        run: python3 tools/train_decoder.py
+
+      # THE THREE-WAY COMPARISON, over the one extraction above. Same seed,
+      # same features, same folds; only what carries weight differs.
+      - name: Train the decoder without the canopy
+        if: ${{ inputs.decoder && inputs.canopy == 'compare' }}
+        env:
+          FEATURES: feats
+          FRAMES: frames
+          OUT: preds-none
+          SEED: ${{ inputs.seed }}
+        run: python3 tools/train_decoder.py
+
+      - name: Train the decoder, canopy unseen on lawn
+        if: ${{ inputs.decoder && inputs.canopy == 'compare' }}
+        env:
+          FEATURES: feats
+          FRAMES: frames
+          OUT: preds-lawn
+          CANOPY: canopy
+          CANOPY_MODE: lawn
+          SEED: ${{ inputs.seed }}
+        run: python3 tools/train_decoder.py
+
+      - name: Train the decoder, canopy unseen everywhere
+        if: ${{ inputs.decoder && inputs.canopy == 'compare' }}
+        env:
+          FEATURES: feats
+          FRAMES: frames
+          OUT: preds-all
+          CANOPY: canopy
+          CANOPY_MODE: all
           SEED: ${{ inputs.seed }}
         run: python3 tools/train_decoder.py
 
@@ -327,7 +366,10 @@ jobs:
           # "fixed" scores every lawn on 512 cells, the pre-2026-09-23 grid.
           GRID_CELL_M: ${{ inputs.grid == '512' && 'fixed' || '0.15' }}
           # Empty when the decoder was not trained, and the scorer skips the row.
-          PREDICTIONS_DIR: ${{ inputs.decoder && 'preds' || '' }}
+          PREDICTIONS_DIR: ${{ inputs.decoder && inputs.canopy != 'compare' && 'preds' || '' }}
+          # The three-way comparison, one row each. The seen column is scored
+          # with the canopy unseen on lawn, whichever decoder is being read.
+          PREDICTIONS_DIRS: ${{ inputs.decoder && inputs.canopy == 'compare' && 'no canopy=preds-none,canopy on lawn=preds-lawn,canopy everywhere=preds-all' || '' }}
           # The canopy joins the hand-marked unseen ground for the seen column.
           CANOPY_DIR: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
           CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}

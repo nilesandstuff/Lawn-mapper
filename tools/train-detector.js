@@ -1552,7 +1552,8 @@ async function main() {
     ? `colour, texture and ${py.manifest.model} at ${py.manifest.size}px`
     : eye ? 'colour, texture and a pretrained eye (tiled, 224px)'
       : 'colour and texture only')
-    + (process.env.PREDICTIONS_DIR ? ', and a decoder over the eye\'s full grid' : '');
+    + (process.env.PREDICTIONS_DIR || process.env.PREDICTIONS_DIRS
+      ? ', and a decoder over the eye\'s full grid' : '');
 
   /*
    * HAS THIS EYE EVER SEEN THE GROUND FROM ABOVE?
@@ -2016,12 +2017,25 @@ async function main() {
    * A lawn with no answer is reported, not skipped silently: a row over 29 of
    * 32 lawns would sit in the same table as rows over 32 and look comparable.
    */
-  const predDir = process.env.PREDICTIONS_DIR || '';
-  if (predDir) {
+  /*
+   * ONE ROW PER DIRECTORY. PREDICTIONS_DIR is one decoder; PREDICTIONS_DIRS
+   * is several, as `label=dir,label=dir`, for a run that trained the same
+   * decoder more than once over the SAME extracted features -- which is the
+   * only way to compare two training rules (H28: the extraction itself comes
+   * back in more than one state, and two runs can differ by that alone).
+   */
+  const predDirs = [];
+  if (process.env.PREDICTIONS_DIR) predDirs.push({ label: '', dir: process.env.PREDICTIONS_DIR });
+  for (const entry of String(process.env.PREDICTIONS_DIRS || '').split(',')) {
+    const at = entry.indexOf('=');
+    if (at > 0) predDirs.push({ label: entry.slice(0, at).trim(), dir: entry.slice(at + 1).trim() });
+  }
+  for (const { label, dir: predDir } of predDirs) {
     const manifestPath = join(predDir, 'manifest.json');
     const pm = existsSync(manifestPath) ? JSON.parse(readFileSync(manifestPath, 'utf8')) : {};
     const cfg = {
-      name: 'the pretrained eye, decoder', colour: false, backbone: true,
+      name: label ? `decoder, ${label}` : 'the pretrained eye, decoder',
+      colour: false, backbone: true,
       dims: pm.dim || any?.dim || 0, decoder: true,
     };
     console.log(`Scoring "${cfg.name}" (${cfg.dims} numbers a patch, `
