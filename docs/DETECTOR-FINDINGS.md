@@ -350,6 +350,16 @@ Not at 10 cm anywhere: the canopy tool's overlap statistics (`onLawnPct`,
 `insidePct`) are counted on its own 512 grid, which is a statistic's
 resolution and not a detector's; the canopy model itself reads 10 cm.
 
+**And, before 2026-09-24, counted on outlines with no holes.** Every clump
+outline was the longest contour of the patch, which is its outer boundary, so
+a clearing ringed by woods was drawn as canopy and counted as canopy in
+`onLawnPct`. The owner found it in the pictures of the Kent county lot: a few
+thousand square feet of grass, no trees in the raw mask, inside the outline.
+Fixed by tracing the holes too (`tools/clumps.py`, `canopy_test.py`). The
+raster never had the bug, so nothing the decoder or stage 3 measured moves;
+only workflow 19's two overlap numbers and its outline pictures were wrong,
+and every `onLawnPct` quoted above is from before the fix.
+
 **Crowns are out of scope** until everything above works. The measured crown
 area per lawn is small enough that it is not where the square footage is, and
 the one thing that made them attractive -- an off-the-shelf, well-tested

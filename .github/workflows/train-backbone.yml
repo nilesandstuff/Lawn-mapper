@@ -281,6 +281,11 @@ jobs:
         if: ${{ inputs.canopy != 'off' }}
         run: pip install -r tools/requirements-trees.txt
 
+      - name: Check the clump outlines
+        if: ${{ inputs.canopy != 'off' }}
+        working-directory: tools
+        run: python3 canopy_test.py
+
       - name: Find the canopy
         if: ${{ inputs.canopy != 'off' }}
         env:

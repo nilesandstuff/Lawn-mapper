@@ -93,6 +93,24 @@ const block = (x0, y0, w, h) => {
   assert.equal(o.onLawn, 0);
 }
 
+{
+  /*
+   * A CLEARING INSIDE THE CLUMP. The outer ring alone counted a treeless patch
+   * of grass ringed by woods as canopy -- and drew it so -- on the Kent county
+   * lot, while the raw mask beside it was right. With the hole passed as a
+   * second ring, the even-odd fill leaves the clearing out of the area and out
+   * of the on-lawn count.
+   */
+  const truth = block(45, 45, 10, 10);           /* grass exactly in the clearing */
+  const hole = square(45, 45, 10);
+  const whole = overlap(square(40, 40, 20), truth, null);
+  const ringed = overlap(square(40, 40, 20), truth, null, GRID, GRID, [hole]);
+  assert.equal(whole.area, 400);
+  assert.equal(whole.onLawn, 100, 'without the hole the clearing counts as canopy on lawn');
+  assert.equal(ringed.area, 300, 'the clearing is subtracted from the clump');
+  assert.equal(ringed.onLawn, 0, 'and grass in the clearing is not under canopy');
+}
+
 /* ------------------------------- the two pictures have to agree on the clip */
 
 {

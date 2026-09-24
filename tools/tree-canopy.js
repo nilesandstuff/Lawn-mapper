@@ -124,8 +124,14 @@ function maskFromPng(file, decoders, px = GRID, py = px) {
   return out;
 }
 
-export function overlap(ring, truth, within, px = GRID, py = px) {
-  const mask = rasterizePolygon([ring], px, py, (p) => p);
+/**
+ * `holes` are the clearings inside the clump, as rings in the same grid. The
+ * rasteriser fills even-odd, so the outer ring minus its holes is the patch --
+ * which is what the model said, and what the outer ring alone got wrong on
+ * every lot with a treeless patch inside its woods.
+ */
+export function overlap(ring, truth, within, px = GRID, py = px, holes = []) {
+  const mask = rasterizePolygon([ring, ...holes], px, py, (p) => p);
   let area = 0;
   let onLawn = 0;
   let inside = 0;
@@ -218,9 +224,14 @@ async function main() {
       let insidePx = 0;
 
       for (const clump of found.clumps || found.crowns || []) {
-        const ring = toGrid(clump.polygon, found.framePx || PX, PX, found.framePy || found.framePx || PY, PY);
-        rings.push(ring);
-        const o = overlap(ring, truth, within, PX, PY);
+        const grid = (poly) => toGrid(poly, found.framePx || PX, PX, found.framePy || found.framePx || PY, PY);
+        const ring = grid(clump.polygon);
+        /* The clearings inside it. Drawn as outlines like the ring, and
+           subtracted from it when the overlap is counted. Canopy folders
+           written before 2026-09-24 have none. */
+        const holes = (clump.holes || []).map(grid);
+        rings.push(ring, ...holes);
+        const o = overlap(ring, truth, within, PX, PY, holes);
         clumpPx += o.area;
         onLawnPx += o.onLawn;
         insidePx += o.inside;

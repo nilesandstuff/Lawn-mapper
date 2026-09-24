@@ -43,9 +43,10 @@ from pathlib import Path
 import numpy as np
 import torch
 from PIL import Image
-from scipy import ndimage
-from skimage.measure import approximate_polygon, find_contours
 from transformers import SegformerForSemanticSegmentation, SegformerImageProcessor
+
+# The patches and their outlines, holes included, tested in canopy_test.py.
+from clumps import clumps_for, outlines_for
 
 IMAGES = Path(os.environ.get("IMAGES", "frames"))
 OUT = Path(os.environ.get("OUT", "crowns"))
@@ -85,26 +86,6 @@ def tree_index(model):
     # Two classes and neither named: background first is the near-universal
     # convention, so the second is the thing being looked for.
     return 1 if len(labels) != 1 else 0
-
-
-def clumps_for(mask):
-    """
-    The canopy's connected components.
-
-    NO PARAMETER, which is the point. Two canopy pixels are in the same clump
-    if you can walk between them through canopy; that is a property of the
-    model's output and of nothing else. The watershed this replaced had a gap
-    in metres that somebody picked, and every count it produced was partly a
-    fact about that number.
-
-    A clump is not a tree. Two trees that touch are one clump, and a tree split
-    by a driveway running under it is two. The name is chosen to stop those
-    being read as tree counts, which is what happened last time.
-    """
-    if not mask.any():
-        return np.zeros_like(mask, dtype=np.int32), 0
-    labels, count = ndimage.label(mask)
-    return labels.astype(np.int32), int(count)
 
 
 def main():
@@ -198,26 +179,31 @@ def main():
             area = int(blob.sum())
             if area < min_px:
                 continue
-            contours = find_contours(blob.astype(float), 0.5)
-            if not contours:
+            # THE OUTER RING AND EVERY CLEARING INSIDE IT. The outer ring alone
+            # drew a treeless patch of grass ringed by woods as canopy; see
+            # clumps.py. Holes under the clump minimum are branch gaps, not
+            # clearings, and are left out for the same reason small clumps are.
+            outline, holes = outlines_for(blob, tolerance, min_px)
+            if outline is None:
                 continue
-            outline = max(contours, key=len)
-            outline = approximate_polygon(outline, tolerance=tolerance)
-            if len(outline) < 4:
-                continue
+            # [x, y] in the frame's pixels, which is the order everything
+            # downstream uses. find_contours answers [row, col].
+            to_xy = lambda ring: [
+                [round(float(x) * to_frame, 1), round(float(y) * to_frame_y, 1)]
+                for y, x in ring
+            ]
             ys, xs = np.nonzero(blob)
             clumps.append({
                 "areaSqM": round(area * per_px_m2, 1),
-                # [x, y] in the frame's pixels, which is the order everything
-                # downstream uses. find_contours answers [row, col].
                 "centre": [
                     round(float(xs.mean()) * to_frame, 1),
                     round(float(ys.mean()) * to_frame_y, 1),
                 ],
-                "polygon": [
-                    [round(float(x) * to_frame, 1), round(float(y) * to_frame_y, 1)]
-                    for y, x in outline
-                ],
+                "polygon": to_xy(outline),
+                # Clearings, as rings to subtract from the polygon. Drawn as
+                # outlines and rasterised even-odd, so the patch is the polygon
+                # minus its holes. Older canopy folders have no such key.
+                "holes": [to_xy(h) for h in holes],
             })
 
         # THE PRODUCT. Everything else in this file is a way of looking at it.
