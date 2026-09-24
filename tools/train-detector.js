@@ -2151,11 +2151,15 @@ async function main() {
       console.log();
     }
 
-    /* And the plan's own numbers as a row in the table, for every decoder. */
+    /* And the plan's own numbers as a row in the table, for every decoder,
+       plus the enclosed cell (H32) so the tail table below carries it. */
     for (const { cfg, masks } of decoderMasks) {
       const cfg3 = { ...cfg, name: `${cfg.name} + stage 3`, stage3: true };
       console.log(`Scoring "${cfg3.name}" (reach 3 m, bridge over 180°)…`);
       table.push(summarise(cfg3, judge(masks, { reachM: 3, minRing: 0.5 }), cfg.dims));
+      const cfg4 = { ...cfg, name: `${cfg.name} + stage 3, 4 sides`, stage3: true };
+      console.log(`Scoring "${cfg4.name}" (reach 3 m, bridge over 180°, lawn on 4 of 8 sides)…`);
+      table.push(summarise(cfg4, judge(masks, { reachM: 3, minRing: 0.5, sides: 4 }), cfg.dims));
     }
   }
 
