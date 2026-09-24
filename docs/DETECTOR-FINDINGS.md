@@ -46,11 +46,25 @@ Gap: **1.30×**. It was 1.45× on `1wxlejo` (31 lawns) and 1.39× at 23. One map
 left and one arrived between `1wxlejo` and this, so by H7 the two tables are
 not the same measurement; the ratio is the only number worth carrying across.
 
-**Rectangular frames, later on 2026-09-23 (H24): SAM 27.1% on 31 lawns (was
-33.8% on the squares that morning); the canopy medians unchanged; the first
-backbone run VOID from a scale bug in the extractor, fixed and not yet re-run.
-Until it is, the table above is the last valid backbone number and it was
-measured on square frames.**
+**CORPUS `1rijjz2`, 32 lawns, RECTANGULAR FRAMES, 2026-09-24 — the current state (H25).**
+
+| | error | notes |
+|---|---|---|
+| SAM (what we pay for) | **24.7%** | 26 lawns with a stored answer, all `sam3`, rasterised on the rectangular grids (23.3% on the square ones) |
+| best of ours | **28.5%** | **the pretrained eye, decoder**: Scale-MAE 896px whole, a conv decoder over the full 1024-number grid, seen-only training, beat SAM on **15 of 26** (run 35937239958). ONE run, not yet repeated |
+
+Gap: **1.15×**. It was 1.30× on squares with the head. The decoder is the
+first row to beat SAM on more than half the shared lawns.
+
+**Rectangular frames, 2026-09-23/24 (H24, H25): SAM 27.1% on 31 lawns as the
+app asks (was 33.8% on the squares that morning); the canopy medians
+unchanged; the first backbone run VOID from a scale bug in the extractor; the
+second run gave the decoder row above but its head rows are void again from a
+registration bug in the squeeze (`shrink` dropped the cover), which also puts
+H22 under re-test. The head rows on rectangles have not yet been validly
+measured.**
+
+*(The table below is the 2026-09-23 square-frame state, kept for the history.)*
 
 **Three things were tried on 2026-09-23 to get every detector 10 cm a pixel.
 Two were measured worse and are off:** cutting SAM's lot into pieces (H21)
@@ -301,6 +315,67 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H25. The decoder: 28.5%, over SAM on 15 of 26, the best number this corpus has given — and a second bug in the head rows, 2026-09-24
+
+Run 35937239958, corpus `1rijjz2` (32 lawns), rectangular frames, Scale-MAE
+large at 896 px squeezed whole (coarsest lawn 33.5 cm/px, the scale bug of
+H24 gone), 15 cm grid. Stage 1's own reader, `tools/train_decoder.py`, ran for
+the first time: one 223,489-weight convolutional decoder per held-out lawn over
+the eye's FULL 1024-number patch grid, 30 epochs, trained on visible ground
+only, 35 s a fold.
+
+| row | wrong | shade | sun | over SAM | seen | inferred |
+|---|---|---|---|---|---|---|
+| colour and texture only (control) | 33.3% | 24.1 | 39.7 | 12 of 26 | 33.9 | 25.6 |
+| the pretrained eye only (head) | 80.5% | 59.7 | 93.9 | 3 of 26 | 80.9 | 23.1 |
+| both (head) | 35.5% | 34.7 | 52.7 | 10 of 26 | 35.5 | 21.5 |
+| **the pretrained eye, decoder** | **28.5%** | 25.5 | 37.7 | **15 of 26** | 29.7 | 30.5 |
+| SAM, same 26 lawns | 24.7% | | | | | |
+
+**What the decoder says.** 28.5% is the lowest headline any of our rows has
+ever read on this corpus (30.2% was the selected best-of-six on squares), and
+it is the first row to beat SAM on MORE than half the lawns it shares with it.
+The gap is 1.15×; it was 1.30×. It beats colour by 4.8 points and the head
+reading the same eye by 52 — the eye was never the ceiling, the reader was.
+Its middle-of-lawn error is 17.6% against colour's 26.9%, and soft shade 9.9%
+against 13.6%. Where it is worse: sharp boundaries (76.3% against colour's
+58.3%), which is the S8 pattern, and the inferred column (30.5% against
+21.5–25.6%) — expected, it was never taught what is under a tree; that is
+stage 3's job. Per lawn it is 181% and 86% wrong on two small lots (Prince
+William 3,429 sq ft and Utah) and 74% on one NC lot; those three are the
+whole difference from SAM. Pictures: `runs/2026-09-23-2048-edt-scalemae-large-896px`.
+
+**Caveats, in order.** One run (H13: a backbone row can move 3 points on a
+re-run; the decoder has its own seed and has not been repeated). 32 lawns
+(H7: one map is worth up to 10 points). Seen-only training, so the headline
+carries an inferred column it was never taught. And a 223k-weight model on
+31 lawns is fitting noise somewhere; the dihedral flips, dropout and weight
+decay are guesses, not settings anyone swept.
+
+**The second bug, found because the decoder worked.** After the scale fix
+the head's "eye only" row STILL read 80.5%, while the decoder read the same
+.f32 files at 28.5%. Same features, two readers: the reader was wrong.
+`shrink` — the random squeeze from 1024 to 32 numbers — returned a grid
+without its `coverX`/`coverY`, so `sampleAt` read every squeezed grid as if
+it covered the photograph exactly. On a rectangle padded to a square the
+photo is only part of the grid (cover up to 2.9), so the head read features
+stretched by the aspect ratio: a cell at the right edge of a wide lot read a
+patch of padding. **So every head row that reads the eye on a padded or
+windowed grid was mis-registered**, and that includes H22: a windowed grid
+carries a cover of about 1.15, so its head rows were read about 15% off,
+right-and-down, by more the further from the top-left. H22's "windows made
+every backbone row worse" was measured with that error in it and is
+**suspended pending a re-run** — not retracted, because the squeezed-whole
+rows in that comparison had cover 1 and were read correctly, and 16 points is
+more than a 15% stretch obviously explains. Fixed in `shrink` (test in
+`tools/grid.test.js`); the head rows on rectangles have still not been
+validly measured.
+
+**What this does NOT say.** It does not say the decoder is the detector: it
+is 3.8 points behind SAM on the median and worse than SAM on 11 of 26. It
+does not say seen-only is right for the headline. It does not say anything
+about 1280 px, windows, or more epochs, none of which have been tried with it.
+
 ### H24. The first runs on rectangular frames, 2026-09-23 — SAM better, canopy unchanged, the backbone rows VOID
 
 Three runs on the re-banked photographs (parcel box plus 10 m, cropped both
@@ -388,7 +463,9 @@ same rule, so a published head and the frame it is asked about agree.
 selected best-of-six on one run, 1.2 points from the control's 31.4, and H13
 says a backbone row can drift that much between identical runs.
 
-### H22. Reading the backbone in 10 cm windows made EVERY backbone row worse, 2026-09-23
+### H22. ~~Reading the backbone in 10 cm windows made EVERY backbone row worse~~ — SUSPENDED 2026-09-24, see H25: the windowed rows were read mis-registered (the squeeze dropped the cover), so this needs a re-run before it is a finding either way
+
+*(The entry below is as written on 2026-09-23.)*
 
 *Runs 35900673594 (control: every lot squeezed whole into 896 px, the
 pre-2026-09-23 way) and 35886436057 (windowed: 11 of 32 lots read in
@@ -2091,3 +2168,4 @@ fields) were both more obviously right than this one.
 | 2026-09-23 | 35927233073 | 32 | — (workflow 22, 31 predictions) | — | **27.1%** raw mask, one picture per lawn | **H24: SAM on the rectangular frames.** 33.8% → 27.1% median against the square frames that morning, same model and prompt. 31 of 32: the 300 m Ottawa lot got Mapbox HTTP 422 because pieces-off still planned one 1500 px piece at the target — a live bug on the biggest lots, fixed that evening. Kent 183 m still 419% over |
 | 2026-09-23 | 35927223633 | 32 | — (workflow 19, no training) | — | — | **H24: canopy on the rectangular frames.** On traced lawn middle 19% (was 19%), inside the line middle 35% (was 38%), patches middle 6 (was 7), 9 lawns mostly off the property (was 9). The crop did not move the medians; the parcel's box still holds neighbours' trees. No lawn upsampled. Folder `2026-09-23-1825-edt-restor-tcd-segformer-mit-b5` |
 | 2026-09-23 | 35927228827 | 32 | Scale-MAE large 896px, squeezed whole, 15 cm grid, **rectangular frames** | 33.3% (colour) | 24.7% | **H24: backbone rows VOID.** Eye alone 81.6%, both 36.8, both-96 39.3, both+ring 43.0 — the extractor told Scale-MAE the wrong scale on every wide lot (`max(cover)` instead of the across ratio: a 319 m lot read at 98 cm/px). Colour 33.3 vs 35.0 on squares at the same grid, inside noise. The SAM column reads 24.7 rather than 23.3 because the stored outlines are now rasterised on rectangular grids. Fixed; not yet re-run. The decoder run on these features (35932533679) was cancelled |
+| 2026-09-24 | 35937239958 | 32 | Scale-MAE large 896px, squeezed whole (coarsest 33.5 cm/px), 15 cm grid, rectangular frames, **+ decoder** | **28.5%** (decoder) | 24.7% | **H25: THE DECODER'S FIRST RUN.** Conv decoder over the full 1024-number grid, seen-only, 30 epochs, 35 s a fold: **28.5%, over SAM on 15 of 26**, gap 1.15× — the best number this corpus has given and the first row over SAM on more than half. Colour control 33.3 (byte-identical to the void run, as H10 says). Head rows VOID AGAIN: eye alone 80.5, both 35.5 — `shrink` dropped `coverX/coverY`, so the head read padded grids stretched by the aspect ratio; same files, read right by the decoder. H22 suspended pending re-run. Pictures in `runs/2026-09-23-2048-edt-scalemae-large-896px` |

@@ -760,7 +760,7 @@ export function lensFor(dim, dims) {
   return lenses.get(key);
 }
 
-function shrink(grid, dims) {
+export function shrink(grid, dims) {
   const { data, gridW, gridH, dim } = grid;
   /*
    * ONE PROJECTION FOR EVERY LAWN AND BOTH SCALES, cached by the pair of
@@ -785,7 +785,21 @@ function shrink(grid, dims) {
   for (let p = 0; p < gridW * gridH; p++) {
     project(M, dim, dims, data, p * dim, out, p * dims);
   }
-  return { data: out, gridW, gridH, dim: dims };
+  /*
+   * THE COVER TRAVELS WITH THE SQUEEZED GRID. This returned only the four
+   * fields above until 2026-09-24, so sampleAt read every squeezed grid as
+   * if it covered the photograph exactly -- which it did, until the windows
+   * (cover about 1.15) and then the padded rectangles (cover up to 2.9). On
+   * a padded rectangle the head read features stretched by the aspect ratio
+   * and scored 80% wrong on the eye alone while the decoder, reading the
+   * same files with its own mapping, scored 28.5%. H22's windowed rows
+   * carried the same error at a smaller size. See H25.
+   */
+  return {
+    data: out, gridW, gridH, dim: dims,
+    coverX: grid.coverX || 1, coverY: grid.coverY || 1,
+    windows: grid.windows || 1, mpp: grid.mpp ?? null,
+  };
 }
 
 /**
