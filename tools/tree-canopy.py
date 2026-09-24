@@ -108,7 +108,9 @@ def clumps_for(mask):
 
 
 def main():
-    frames = sorted(p for p in IMAGES.glob("*.png"))
+    # The photographs only: the frame dump also writes <id>-labels.png beside
+    # each one (the decoder's targets), and a label picture is not a lawn.
+    frames = sorted(p for p in IMAGES.glob("*.png") if not p.name.endswith("-labels.png"))
     if not frames:
         print(f"No frames in {IMAGES}. The dump step writes them.")
         sys.exit(1)
