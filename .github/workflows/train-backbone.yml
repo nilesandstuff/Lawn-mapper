@@ -314,10 +314,13 @@ jobs:
           CORPUS_BUCKET: lawn-mapper-corpus
           FEATURES_DIR: feats
           EXPORT_MODEL: ${{ inputs.publish }}
-          # ALWAYS DRAWN. This was an input until 2026-09-24, when the
-          # eleventh input (seed) took the workflow over GitHub's limit of ten
-          # and every run failed in four seconds with no log. The pictures
-          # are two minutes and have never been the thing anyone turned off.
+          # ALWAYS DRAWN. This was an input until 2026-09-24; it went to make
+          # room for `seed` under GitHub's limit of ten dispatch inputs. (The
+          # runs that failed in four seconds with no log that morning were
+          # NOT this -- workflow 1, untouched, failed the same way. Every job
+          # on the account stopped starting, which is what an exhausted
+          # Actions allowance looks like.) The pictures are two minutes and
+          # have never been the thing anyone turned off.
           RENDER_PREDICTIONS: 'true'
           SEEN_ONLY_TWINS: ${{ inputs.seen_only }}
           RUN_ABOUT: ${{ inputs.about }}
