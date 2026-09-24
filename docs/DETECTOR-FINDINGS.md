@@ -53,20 +53,17 @@ the default). New maps join the corpus but not this table.*
 | | error | notes |
 |---|---|---|
 | SAM (what we pay for) | **24.7%** | 26 lawns with a stored answer, all `sam3`, rasterised on the rectangular grids (23.3% on the square ones) |
-| best of ours | **24.3%** | **the pretrained eye, decoder, canopy as unseen ground**: Scale-MAE 896px whole, a conv decoder over the full 1024-number grid, trained on visible ground only (the hand marks AND the tree model's canopy carry no weight), beat SAM on **16 of 26**, **18.6% on visible ground** (run 35948780766, H27). ONE run; without the canopy it read 28.5% twice to the decimal (H25, H26). The head reading the same eye: 34.2% alone, 31.8% with colour |
+| best headline | **24.3%** | **decoder, canopy everywhere**: Scale-MAE 896px whole, a conv decoder over the full 1024-number grid, trained with the hand marks and every canopy cell as don't-care; 16 of 26 over SAM; reproduced four times (H27, H28, H29). 23.4% on visible ground, 18.7% under the trees. Its 4.1 points over the no-canopy decoder (28.4) are all under the trees (H29), and it gets them by guessing lawn under any tree near lawn: Kent 22,481 sq ft 170% wrong, Prince William 3,429 319% |
+| THE PLAN's row | **25.8%** | **decoder (canopy on lawn) + stage 3** (reach 3 m, bridge over 180°): **17 of 26 over SAM**, the most any row has; 26.0% on visible ground, **12.2% under the trees**; Kent 22,481 at 39%, Prince William 3,429 at 80%. One run (H30). The head reading the same eye: 34.2% alone, 31.8% with colour |
 
-Gap: **0.98×** — under the SAM line by 0.4 points, which at 32 lawns is a
-tie (H7). It was 1.15× without the canopy and 1.30× on squares with the
-head. The decoder is the first row to beat SAM on more than half the shared
-lawns, and the first under the line. It reproduces to the decimal and a
-different seed moves it about a point (H28). **Still not a finding about
-the canopy:** the extraction comes back in two states 2 points apart and
-every canopy-everywhere run landed in the better one (H28), so the 4.2-point
-gain is confounded. The three-decoders-over-one-extraction run (`canopy:
-compare`) is what settles it. **The owner's reading of the pictures stands
-regardless: with every canopy cell unseen the lawn crept into the woods on
-the wooded lots (Kent 22,481 sq ft 170% wrong), and "on lawn" stopped it
-(41.5%); on lawn is the default.**
+Gap: **0.98×** for the headline row and **1.04×** for the plan's row, both
+a tie at 32 lawns (H7). Read them together: the same headline within noise,
+and the plan's row reaches it without lawn in the woods. Stage 1 chosen on
+its visible-ground column (none 23.0, everywhere 23.4, on lawn 24.3 — inside
+seed noise, H29) and stage 3 deciding under the trees is now measured, not
+decided (H30). Clearing the canopy alone is worth 3.6 points on visible
+ground; reach trades visible for hidden a metre at a time and peaks at 3 m.
+Next measured: stage 3 over all three decoders in one run.
 
 **H22 is retracted** (2026-09-24): with the registration bug fixed, windows
 are within noise of squeezing whole, both ways. The default stays off for the
@@ -160,8 +157,10 @@ from a DSM we do not have. Infrared is the cheaper half: NAIP carries a
 near-infrared band, this repo already has an `ndvi` provider, and NDVI
 separates vegetation from pavement nearly for free -- on the NAIP subset.
 
-**The numbers in stage 3 are placeholders.** 180 degrees and 10-15 ft are
-starting points to be swept, not settings.
+**The numbers in stage 3 were placeholders, and have now been swept once
+(H30):** reach 3 m and 180° sit at the peak of a 4 × 3 sweep on the
+benchmark; the peak is a trade between the seen and inferred columns, not a
+setting that is right.
 
 **What is already known, per stage.**
 
@@ -191,14 +190,18 @@ starting points to be swept, not settings.
   "not lawn". A zero label there would teach "canopy means not lawn", which is
   stage 3's question and the wrong answer to it (the same reasoning as
   `seenOnlyTwin`). The headline column still includes canopy, so it still
-  answers the whole question; the seen column answers stage 1's. **First
-  measured in H27: the decoder went 28.5% → 24.3% on the headline and reads
-  18.6% on visible ground, under the SAM line for the first time. One run;
-  a repeat is owed before the canopy gets the credit.** And a second
-  refinement from the pictures of that run: canopy is unseen ONLY where the
-  tracer drew lawn. Woods they never drew stay not-lawn, because with every
-  canopy cell don't-care the decoder lost its only examples of a forest and
-  the lawn edge crept into the trees (H27).
+  answers the whole question; the seen column answers stage 1's. **Measured
+  and settled in H29 (three decoders over one extraction): the canopy is
+  worth 4.1 points on the headline and none on visible ground** — none 23.0,
+  everywhere 23.4, on lawn 24.3 on the seen column, inside seed noise. The
+  headline gain is the everywhere decoder guessing lawn under trees near
+  lawn, which is stage 3's question answered by accident, right on lawn trees
+  and wrong in the woods (Kent 22,481 sq ft 170%). The owner's refinement
+  from the pictures — canopy unseen ONLY where the tracer drew lawn — keeps
+  the woods out but is the worst of the three on every column as a stage 1
+  alone (H29). Since stage 3 clears the canopy before it reasons (H30), the
+  choice is to be made on the seen column, and it is not yet made: on lawn
+  stays the default until stage 3 has been run over all three.
 
   **And the colour row is a control from here, not a candidate.** It stays in
   the table because it is reproducible to the decimal (H10) and so says when the
@@ -212,7 +215,13 @@ starting points to be swept, not settings.
 - **Stage 2: works by eye, unmeasured** (H19), free, and precomputable --
   workflow 19, about 18 minutes of CPU, nothing bought. Its open problem is
   H20, resolution on big lots.
-- **Stage 3: BUILT 2026-09-24, not yet measured.** `tools/stage3.js`: the
+- **Stage 3: MEASURED 2026-09-24 (H30).** Over the on-lawn decoder:
+  clearing the canopy alone takes visible ground 24.3 → 20.7; reach 3 m with
+  a 180° bridge reads **25.8% headline, 17 of 26 over SAM, 12.2% under the
+  trees**, the wooded lots intact. Reach trades the seen column for the
+  inferred one a metre at a time (the walk fills the edge of the woods as
+  readily as a lawn tree), and peaks at 3 m. The fixed row's cell was chosen
+  before the sweep was seen. Built as: `tools/stage3.js`: the
   canopy is cleared from stage 1's answer (its opinion under a tree is
   untrained and is not evidence), then canopy within `reach` metres of
   visible lawn becomes lawn (a walk that only enters canopy, so it cannot
@@ -369,7 +378,119 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H30. Stage 3 measured: clearing the canopy is worth 3.6 points on visible ground, reach trades visible for hidden, and the plan's own row reads 25.8% with the wooded lots intact, 2026-09-24
+
+Run 36020948046, the first with `tools/stage3.js` in it: the on-lawn decoder
+(seed 7, canopy on lawn, 29.8 / 24.3 / 34.5 — reproduced to the decimal for
+the third time) with stage 3 swept over its masks. Each cell is headline /
+seen / inferred, the median lawn:
+
+| rim | reach 0 m | reach 1.5 m | reach 3 m | reach 4.5 m |
+|---|---|---|---|---|
+| no bridge | 27.9 / 20.7 / 93.7 | 28.9 / 22.0 / 38.6 | 25.9 / 26.0 / 21.7 | 26.8 / 29.8 / 7.0 |
+| > 180° | 27.1 / 21.4 / 42.3 | 26.7 / 22.0 / 29.4 | **25.8 / 26.0 / 12.2** | 26.8 / 29.8 / 7.0 |
+| > 126° | 29.5 / 23.7 / 21.0 | 28.2 / 25.2 / 12.2 | 28.2 / 28.1 / 11.2 | 28.1 / 30.2 / 6.1 |
+
+Stage 1 as it came: 29.8 / 24.3 / 34.5.
+
+**Clearing the canopy is a finding on its own.** Reach 0, no bridge — take
+stage 1's answer and remove every canopy cell — reads 27.9 on the headline and
+**20.7 on visible ground, from 24.3**. The seen column under on-lawn mode
+includes the canopy the tracer never drew (the woods), and stage 1 was
+claiming lawn there. Its opinion under a tree it was never taught about is not
+evidence, and removing it is worth 3.6 points on the column stage 1 is
+supposed to be judged on. Inferred goes to 93.7, as it must: nothing under a
+tree is lawn until a rule puts it back.
+
+**Reach trades the seen column for the inferred one, a metre at a time.**
+Seen 20.7 → 22.0 → 26.0 → 29.8 as reach goes 0 → 1.5 → 3 → 4.5 m; inferred
+93.7 → 38.6 → 21.7 → 7.0. The walk enters any canopy touching visible lawn,
+and the edge of a wood touches the lawn as surely as a lawn tree does, so
+reach fills the wood's edge too, and that edge is scored as seen. The
+headline peaks at 3 m (25.9 / 25.8), which is where the two columns cross,
+not where either is good.
+
+**The bridge helps only where reach has not already filled the clump.** Over
+180°: 27.9 → 27.1 at reach 0, 28.9 → 26.7 at 1.5, nothing at 3 (25.9 → 25.8),
+identical at 4.5. Over 126° is worse on the headline in every column: it
+fills clumps the tracer did not.
+
+**The plan's own row: 25.8%, 17 of 26 over SAM, inferred 12.2.** The
+"+ stage 3" row uses reach 3 m and 180°, fixed in the code before the sweep
+was seen, so it is not chosen on the lawns it is scored on; the sweep says it
+sits at the peak. Against the on-lawn decoder alone: 4.0 points better on the
+headline, 22 points better under the trees, 1.7 worse on visible ground.
+Against the everywhere decoder alone (H29: 24.3 / 23.4 / 18.7, 16 of 26):
+the same headline within noise, better under the trees (12.2 against 18.7),
+and **the wooded lots stay intact — Kent 22,481 sq ft 39.1% (170% under
+everywhere), Prince William 3,429 80% (319%), Utah 69% (86%)**. It beats SAM
+on more lawns than any row has. 25.8 against 24.7 is 1.04×, a tie at 32 lawns
+(H7), and it is the first tie reached the way THE PLAN says to reach it:
+stage 1 finds visible lawn, stage 3 decides under the trees.
+
+**Speculation, unmeasured.** (1) The seen-column cost of reach is the edge of
+the untraced woods; a reach that requires lawn on more than one side, or one
+that stops at the property line, might keep the inferred gain without it.
+(2) Stage 3 over the no-canopy decoder, whose visible-ground column is the
+best of the three (H29), should read better than over the on-lawn one; the
+run launched as this is written (`canopy: compare` with stage 3 in the code)
+puts stage 3 over all three and answers it.
+
+### H29. The canopy's credit is settled: 4.1 points, all of it under the trees, and the extraction was never in two states, 2026-09-24
+
+Run 36013573532, `canopy: compare`: one extraction, seed 7, three decoders,
+three rows. The scorer excluded canopy-on-lawn from the seen column for all
+three, so the seen figures are on one set and comparable for the first time.
+
+| decoder trained with | headline | seen | inferred | over SAM |
+|---|---|---|---|---|
+| no canopy | 28.4 | **23.0** | 28.8 | 15 of 26 |
+| canopy on lawn | 29.8 | 24.3 | 34.5 | 15 of 26 |
+| canopy everywhere | **24.3** | 23.4 | **18.7** | 16 of 26 |
+
+Head rows 33.3 / 34.2 / 31.8 — the state that in H28 had only ever come with
+"everywhere".
+
+**The H28 confound is dissolved, and the wrong way round.** Every decoder row
+reproduced its single-run figure to within 0.1 (none 28.5 → 28.4, on lawn
+29.8 → 29.8, everywhere 24.3 → 24.3) although this run's head rows sit in the
+state that H28 said belonged only to the everywhere runs. So the extraction
+does not come in two states as far as the decoder can tell; whatever moves
+the head rows by two points is in the head, not in the features, and the
+alignment with the canopy setting was five coin tosses. The canopy's
+28.5 → 24.3 stands: **4.1 points**.
+
+**And all 4.1 of them are under the trees.** No canopy and everywhere read
+the same on visible ground, 23.0 against 23.4, and differ by ten points on
+the inferred ground, 28.8 against 18.7. Training with every canopy cell as
+don't-care does not make stage 1 see lawn better. It makes stage 1 guess lawn
+under trees that are near lawn, which the hand-drawn inferred marks reward
+and the wooded lots punish (H28's pictures: Kent 22,481 sq ft 170%, Prince
+William 3,429 319%). The headline is a median over lawns and the wooded lots
+are a minority of them, so the median rises while four lots are badly wrong.
+
+**On lawn is the worst of the three on every column**: 1.4 worse than none on
+the headline, 1.3 on visible ground, 5.7 under the trees. Taking the on-lawn
+trees out of training while the off-lawn trees stay in as hard "not lawn"
+teaches "a tree is not lawn" and then asks about the lawn trees, where the
+inferred marks say the opposite. It is still the mode that kept the wooded
+lots intact as a stage 1 alone; it is not the mode that sees best.
+
+**Which mode to keep.** THE PLAN puts the canopy question in stage 3, and
+stage 3's first move is to clear the canopy from stage 1's answer (H30), so
+what stage 1 says under a tree is discarded either way. Stage 1 is then to be
+chosen on the seen column: none 23.0, everywhere 23.4, on lawn 24.3 — a
+1.3-point spread, inside seed noise (H28). **No measured reason to prefer
+any of the three as stage 3's input yet.** The default stays on lawn until
+the run that puts stage 3 over all three (launched with this entry) says
+otherwise. H27's "18.6% on visible ground" for the everywhere decoder was on
+a smaller set (all canopy excluded) and is not comparable to the 23.4 here.
+
 ### H28. The decoder repeats to the decimal, the seed moves it a point, and the extraction comes in two states — so the canopy's credit is NOT yet attributable, 2026-09-24
+
+> **Superseded by H29 (same day):** the compare run put the decoder rows
+> back to within 0.1 in the other head state. The two states are the head's,
+> not the extraction's, and the canopy's 4.1 points are attributable.
 
 Three runs on `1rijjz2`, same settings as H27, launched the same minute
 after the GitHub Actions allowance ran out and the account went to Pro:
@@ -2418,3 +2539,5 @@ fields) were both more obviously right than this one.
 | 2026-09-24 | 36002889613 | 32 | as 35948780766 exactly (canopy everywhere, seed 7) | **24.3%** (decoder) | 24.7% | **H28: reproduced to the decimal**, every per-lawn figure and both head rows (34.2 / 31.8). Pictures `runs/2026-09-24-1016-edt-scalemae-large-896px` |
 | 2026-09-24 | 36002894789 | 32 | as 35948780766 but **seed 11** | 25.5% (decoder) | 24.7% | **H28: the seed is worth about a point.** 16 of 26, seen 18.6 (unchanged), inferred 64.1. Head rows 34.2 / 31.8 again. Pictures `runs/2026-09-24-1010-edt-scalemae-large-896px` |
 | 2026-09-24 | 35948780766 | 32 | Scale-MAE large 896px, squeezed whole, 15 cm grid, rectangular frames, + decoder, **canopy as unseen ground** | **24.3%** (decoder) | 24.7% | **H27: UNDER THE SAM LINE, by 0.4, first time.** Decoder 24.3, **16 of 26**, SEEN 18.6 against 26.0–27.4 for the head rows; the run printed "AHEAD, BUT NOT BY ENOUGH TO TRUST". Canopy on 32 of 32 lawns (the tree step, 11 min). Head rows drifted −2.3 / −0.3 with no training reason (H13), so of the decoder's 4.2-point gain some may be drift; repeat owed. Kent 22,481 sq ft 38 → 170%. Pictures in `runs/2026-09-23-2356-edt-scalemae-large-896px` |
+| 2026-09-24 | 36013573532 | 32 | as 35948780766, `canopy: compare` — three decoders over ONE extraction (none / on lawn / everywhere), seed 7 | **24.3%** (decoder, everywhere) | 24.7% | **H29: the canopy's 4.1 points are real and all under the trees.** none 28.4 / seen 23.0 / inferred 28.8; on lawn 29.8 / 24.3 / 34.5; everywhere 24.3 / 23.4 / 18.7 (15, 15, 16 of 26). Head rows 34.2 / 31.8 — the state H28 had only seen with "everywhere", yet every decoder row matched its single run within 0.1, so the "two extraction states" were the head's. On lawn worst on every column. Pictures `runs/2026-09-24-1241-edt-scalemae-large-896px` (drawn for the everywhere row) |
+| 2026-09-24 | 36020948046 | 32 | as 36002884707 (canopy on lawn, seed 7) + **stage 3** swept and scored | **25.8%** (decoder + stage 3) | 24.7% | **H30: stage 3's first measurement.** Stage 1 29.8 / 24.3 / 34.5 (third exact repeat). Canopy cleared, no rules: 27.9 / 20.7 / 93.7. Reach 3 m + 180°: 25.8 / 26.0 / 12.2, **17 of 26**, Kent 22,481 sq ft 39.1%, PW 3,429 80.3%. Reach trades seen for inferred (20.7 → 29.8 against 93.7 → 7.0 from 0 to 4.5 m); bridge over 126° worse everywhere. Same folder as the row above (same minute); the pictures there are the compare run's |
