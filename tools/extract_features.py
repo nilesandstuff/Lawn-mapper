@@ -279,7 +279,12 @@ def main():
         raise SystemExit("IMAGES and OUT are required")
 
     os.makedirs(out_dir, exist_ok=True)
-    names = sorted(n for n in os.listdir(images) if n.endswith(".png"))
+    # The photographs only: the frame dump writes each lawn's labels beside
+    # its picture as <id>-labels.png (for the decoder), and those are not
+    # frames. Reading them as frames doubled the count and stopped the run at
+    # "scale.json has no ground size for 32 of 64 frames".
+    names = sorted(n for n in os.listdir(images)
+                   if n.endswith(".png") and not n.endswith("-labels.png"))
     if not names:
         raise SystemExit(f"no .png files in {images}")
 
