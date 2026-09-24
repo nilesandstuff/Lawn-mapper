@@ -104,10 +104,6 @@ on:
         description: 'Write the colour-and-texture head to R2 for developer mode (does NOT check whether it beat SAM)'
         type: boolean
         default: false
-      render:
-        description: 'Draw the outlines it would hand the drawing tools, on /predictions.html'
-        type: boolean
-        default: true
       seen_only:
         # DOUBLES THE TABLE AND ROUGHLY THE RUN. Every configuration gets a twin
         # trained with the "inferred, not seen" pixels dropped from the sample,
@@ -318,7 +314,11 @@ jobs:
           CORPUS_BUCKET: lawn-mapper-corpus
           FEATURES_DIR: feats
           EXPORT_MODEL: ${{ inputs.publish }}
-          RENDER_PREDICTIONS: ${{ inputs.render }}
+          # ALWAYS DRAWN. This was an input until 2026-09-24, when the
+          # eleventh input (seed) took the workflow over GitHub's limit of ten
+          # and every run failed in four seconds with no log. The pictures
+          # are two minutes and have never been the thing anyone turned off.
+          RENDER_PREDICTIONS: 'true'
           SEEN_ONLY_TWINS: ${{ inputs.seen_only }}
           RUN_ABOUT: ${{ inputs.about }}
           # "fixed" scores every lawn on 512 cells, the pre-2026-09-23 grid.
