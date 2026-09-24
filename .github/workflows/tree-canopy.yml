@@ -51,6 +51,14 @@ on:
         description: 'Smallest canopy patch to outline, in square metres'
         required: false
         default: '4'
+      lawns:
+        # The 32 frozen as the benchmark (comparable with every number in
+        # docs/DETECTOR-FINDINGS.md), every approved map, or only the ones
+        # approved since the freeze. See tools/lawn-set.js.
+        description: 'Which lawns: the frozen benchmark of 32, every approved map (all), or only those since the freeze (new)'
+        type: choice
+        default: 'benchmark'
+        options: ['benchmark', 'all', 'new']
       about:
         # Kept with the pictures for ever. The settings above say what was
         # different; only this says what the difference was meant to prove.
@@ -106,6 +114,7 @@ jobs:
           # reference to the source belonged. It follows the photograph now.
           DUMP_SIZE: native
           NO_BACKBONE: 'true'
+          LAWN_SET: ${{ inputs.lawns }}
         run: node tools/train-detector.js
 
       - name: Find the canopy
@@ -150,6 +159,7 @@ jobs:
           CANOPY: canopy
           MODEL: ${{ inputs.model }}
           MIN_CLUMP_M2: ${{ inputs.min_clump }}
+          LAWN_SET: ${{ inputs.lawns }}
           RUN_ABOUT: ${{ inputs.about }}
         run: node tools/tree-canopy.js
 

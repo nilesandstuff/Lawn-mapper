@@ -309,6 +309,12 @@ CREATE TABLE IF NOT EXISTS corpus (
   -- are not equally good ground truth and a corpus that could not tell them
   -- apart would quietly mix them.
   parcel_source  TEXT,
+  -- Which frozen measurement set this row belongs to, or NULL for none.
+  -- 'benchmark-1rijjz2' is the 32 maps every table in docs/DETECTOR-FINDINGS.md
+  -- from 2026-09-23 on was measured against; see tools/lawn-set.js and the
+  -- stamping statement in migrations.sql. The corpus grows; the benchmark
+  -- does not.
+  cohort         TEXT,
   -- Which exclusion prompts ran, e.g. "woods,driveway". The nearest thing to a
   -- "was this a hard one" flag the app knows: a lawn needing the woods prompt
   -- is a lawn with a tree line, and the hard slice of the eval is mostly those.

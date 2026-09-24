@@ -44,6 +44,7 @@ import { runSlug, runKeys, runRow, publishRunList } from './run-folder.js';
 import { stitchMasks } from '../public/lib/tiles.js';
 import { binarize } from '../public/lib/mask.js';
 import { metresPerPixel, frameFor, geometryBounds } from '../public/lib/mercator.js';
+import { lawnSetClause, lawnSetDescription } from './lawn-set.js';
 import {
   detectionPlan, detectionImageUrl, imageryPrompt, groundAcross,
 } from '../worker/src/imagery.js';
@@ -61,7 +62,7 @@ const auth = { Authorization: `Bearer ${process.env.REPLICATE_TOKEN}` };
 const QUERY = `
   SELECT id, county, frame, image_frame, shapes, parcel, detected_shapes, model, mode
     FROM corpus
-   WHERE status = 'approved' AND image_key IS NOT NULL AND frame IS NOT NULL
+   WHERE status = 'approved' AND image_key IS NOT NULL AND frame IS NOT NULL${lawnSetClause()}
    ORDER BY at DESC
    LIMIT 200
 `;
@@ -213,7 +214,7 @@ async function main() {
 
   let rows = query(QUERY);
   if (LIMIT) rows = rows.slice(0, LIMIT);
-  console.log(`${rows.length} approved maps. Asking ${MODELS.sam3.slug} for "${pass.prompt}" `
+  console.log(`${rows.length} approved maps (${lawnSetDescription()}). Asking ${MODELS.sam3.slug} for "${pass.prompt}" `
     + `at ${pass.threshold}, pieces up to ${maxAcross} across.\n`);
 
   const PX = renderPx();

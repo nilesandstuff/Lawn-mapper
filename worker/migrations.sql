@@ -191,3 +191,22 @@ ALTER TABLE users ADD COLUMN payout_at TEXT;
 -- than guessing. lawn_jobs shipped long ago, so the CREATE in schema.sql
 -- reaches new databases only.
 ALTER TABLE lawn_jobs ADD COLUMN route TEXT;
+
+-- WHICH LAWNS ARE THE BENCHMARK. Every number in docs/DETECTOR-FINDINGS.md
+-- from 2026-09-23 on was measured on the same 32 approved maps (fingerprint
+-- 1rijjz2), and one map moves a table by up to ten points (H7). The corpus
+-- has to grow, so those 32 are stamped here and the training, canopy and SAM
+-- tools select by it (tools/lawn-set.js): LAWN_SET=benchmark is the default,
+-- =all is everything, =new is only what arrived since. NULL means "not in the
+-- frozen set", which every map approved after this is.
+ALTER TABLE corpus ADD COLUMN cohort TEXT;
+
+-- THE ONE DATA STATEMENT IN THIS FILE, and it is safe to run on every deploy
+-- because its WHERE makes it so: only rows finished before the freeze, only
+-- rows still unstamped. The second run finds nothing to do. A row finished
+-- before the cutoff but approved after it WOULD be stamped by a later deploy;
+-- train-detector.js checks the fingerprint of what it got against 1rijjz2
+-- and says so if that ever happens.
+UPDATE corpus SET cohort = 'benchmark-1rijjz2'
+ WHERE cohort IS NULL AND status = 'approved' AND image_key IS NOT NULL
+   AND frame IS NOT NULL AND at < '2026-09-24T16:30:00Z';

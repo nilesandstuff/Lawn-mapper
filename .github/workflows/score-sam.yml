@@ -28,6 +28,14 @@ on:
         type: choice
         default: '4'
         options: ['1', '2', '3', '4', '6', '8']
+      lawns:
+        # The 32 frozen as the benchmark (comparable with every number in
+        # docs/DETECTOR-FINDINGS.md), every approved map, or only the ones
+        # approved since the freeze. See tools/lawn-set.js.
+        description: 'Which lawns: the frozen benchmark of 32, every approved map (all), or only those since the freeze (new)'
+        type: choice
+        default: 'benchmark'
+        options: ['benchmark', 'all', 'new']
 
 jobs:
   score:
@@ -58,6 +66,7 @@ jobs:
           REPLICATE_TOKEN: ${{ secrets.REPLICATE_TOKEN }}
           SAM_MAX_TILES_ACROSS: ${{ inputs.max_across }}
           LIMIT: ${{ inputs.limit }}
+          LAWN_SET: ${{ inputs.lawns }}
           RUN_ABOUT: ${{ inputs.about }}
         run: node tools/score-sam.js
 

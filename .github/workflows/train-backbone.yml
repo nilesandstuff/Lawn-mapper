@@ -134,14 +134,19 @@ on:
         type: choice
         default: 'off'
         options: ['on', 'off']
-      grid:
-        # THE CONTROL SWITCH for the scoring grid. "15 cm" gives each lawn
-        # ceil(across / 0.15) cells between 512 and 1024; "512" scores every
-        # lawn on 512 cells as every run before 2026-09-23 did.
-        description: 'Scoring grid: 15 cm a cell (512 to 1024), or the old fixed 512'
+      lawns:
+        # WHICH LAWNS. The 32 maps every table since 2026-09-23 was measured
+        # on are frozen as the benchmark (tools/lawn-set.js, cohort column);
+        # the corpus keeps growing past them. "benchmark" compares with every
+        # table in docs/DETECTOR-FINDINGS.md; "all" trains on the most and
+        # compares with nothing; "new" is only what arrived since the freeze.
+        # (The 15 cm scoring grid is fixed now: H23 measured the old 512
+        # against it as nothing, and this input took its place under
+        # GitHub's limit of ten.)
+        description: 'Which lawns: the frozen benchmark of 32 (comparable), every approved map (all), or only those approved since the freeze (new)'
         type: choice
-        default: '15 cm'
-        options: ['15 cm', '512']
+        default: 'benchmark'
+        options: ['benchmark', 'all', 'new']
       decoder:
         # STAGE 1 OF THE PLAN. Every row the scorer trains itself is a 16-unit
         # head over a RANDOM 32 of the eye's 1024 numbers, one cell at a time.
@@ -251,6 +256,7 @@ jobs:
           # resolution. Either way it needs the real pixels to choose from.
           DUMP_SIZE: native
           NO_BACKBONE: 'true'
+          LAWN_SET: ${{ inputs.lawns }}
         run: node tools/train-detector.js
 
       # That the windows land where the photograph has them, before twenty
@@ -363,8 +369,10 @@ jobs:
           RENDER_PREDICTIONS: 'true'
           SEEN_ONLY_TWINS: ${{ inputs.seen_only }}
           RUN_ABOUT: ${{ inputs.about }}
-          # "fixed" scores every lawn on 512 cells, the pre-2026-09-23 grid.
-          GRID_CELL_M: ${{ inputs.grid == '512' && 'fixed' || '0.15' }}
+          # 15 cm a cell, 512 to 1024 across. The old fixed 512 was an input
+          # until 2026-09-24; H23 measured the two as the same.
+          GRID_CELL_M: '0.15'
+          LAWN_SET: ${{ inputs.lawns }}
           # Empty when the decoder was not trained, and the scorer skips the row.
           PREDICTIONS_DIR: ${{ inputs.decoder && inputs.canopy != 'compare' && 'preds' || '' }}
           # The three-way comparison, one row each. The seen column is scored
