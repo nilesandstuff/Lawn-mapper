@@ -48,6 +48,7 @@ import { drawPrediction } from './render-prediction.js';
 import { runSlug, runKeys, runRow, publishRunList } from './run-folder.js';
 import { rasterizePolygon } from '../public/lib/mask.js';
 import { metresPerPixel } from '../public/lib/mercator.js';
+import { lawnSetClause, lawnSetDescription } from './lawn-set.js';
 
 const SQM_PER_SQFT = 0.09290304;
 
@@ -61,7 +62,7 @@ const RUN_ABOUT = String(process.env.RUN_ABOUT || '').trim().slice(0, 600);
 const QUERY = `
   SELECT id, county, frame, image_frame, shapes, parcel, image_key
     FROM corpus
-   WHERE status = 'approved' AND image_key IS NOT NULL AND frame IS NOT NULL
+   WHERE status = 'approved' AND image_key IS NOT NULL AND frame IS NOT NULL${lawnSetClause()}
    ORDER BY at DESC
    LIMIT 200
 `;
@@ -154,7 +155,7 @@ async function main() {
   };
 
   const rows = query(QUERY);
-  console.log(`${rows.length} approved maps.\n`);
+  console.log(`${rows.length} approved maps: ${lawnSetDescription()}.\n`);
 
   const dir = mkdtempSync(join(tmpdir(), 'canopy-'));
   const entries = [];

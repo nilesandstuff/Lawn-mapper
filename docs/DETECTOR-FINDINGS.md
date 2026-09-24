@@ -47,6 +47,8 @@ left and one arrived between `1wxlejo` and this, so by H7 the two tables are
 not the same measurement; the ratio is the only number worth carrying across.
 
 **CORPUS `1rijjz2`, 32 lawns, RECTANGULAR FRAMES, 2026-09-24 — the current state (H25).**
+*These 32 are frozen as the benchmark from 2026-09-24 (`lawns: benchmark`,
+the default). New maps join the corpus but not this table.*
 
 | | error | notes |
 |---|---|---|
@@ -2300,7 +2302,15 @@ fields) were both more obviously right than this one.
 ## Rules for running and reading these experiments
 
 1. **Check the fingerprint and lawn count first.** Two tables from two corpora
-   are not comparable (H7).
+   are not comparable (H7). **Since 2026-09-24 the 32 lawns of `1rijjz2` are
+   frozen as the benchmark** (`cohort = 'benchmark-1rijjz2'` in the corpus
+   table, stamped once by a migration; `tools/lawn-set.js`). Workflows 14, 19
+   and 22 take a `lawns` input: `benchmark` (the default, comparable with every
+   table from 2026-09-23 on), `all` (everything approved, for training on the
+   most; compares with nothing here), `new` (only maps approved since the
+   freeze). A benchmark run checks its own fingerprint against `1rijjz2` and
+   shouts if it differs. The corpus can grow freely; the benchmark does not
+   move, and a new benchmark is a decision to be written here when it is made.
 2. **Use a backbone-free row as the control** when the corpus has changed.
 3. **Do not trust a difference under about 10 points** at this corpus size —
    and for any row using the backbone, re-run the identical configuration

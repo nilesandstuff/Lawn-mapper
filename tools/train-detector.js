@@ -52,6 +52,7 @@ import {
 } from './backbone.js';
 import { rasterizePolygon } from '../public/lib/mask.js';
 import { stage3 } from './stage3.js';
+import { lawnSetClause, lawnSetName, lawnSetDescription, BENCHMARK_PRINT } from './lawn-set.js';
 import { lngLatToFramePx, metresPerPixel } from '../public/lib/mercator.js';
 
 const SQM_PER_SQFT = 0.09290304;
@@ -370,7 +371,7 @@ const QUERY = `
   SELECT id, county, tree_line, frame, shapes, detected_shapes, parcel,
          image_key, image_provider, image_frame, mode, model
     FROM corpus
-   WHERE status = 'approved' AND image_key IS NOT NULL AND frame IS NOT NULL
+   WHERE status = 'approved' AND image_key IS NOT NULL AND frame IS NOT NULL${lawnSetClause()}
    ORDER BY at DESC
    LIMIT 200
 `;
@@ -1477,7 +1478,8 @@ async function main() {
     return;
   }
 
-  console.log(`${rows.length} approved map${rows.length === 1 ? '' : 's'} with a stored photograph.\n`);
+  console.log(`${rows.length} approved map${rows.length === 1 ? '' : 's'} with a stored photograph: `
+    + `${lawnSetDescription()}.\n`);
 
   /*
    * THE BACKBONE IS OPTIONAL, and the run says which it used.
@@ -2213,7 +2215,23 @@ async function main() {
    * being assumed -- same number, same table means the only thing that changed
    * is the thing under test.
    */
-  console.log(`Lawn set: ${lawns.length} of ${rows.length}, fingerprint ${setPrint(lawns)}.\n`);
+  console.log(`Lawn set: ${lawns.length} of ${rows.length}, fingerprint ${setPrint(lawns)}, ${lawnSetDescription()}.`);
+  /*
+   * THE BENCHMARK IS A FINGERPRINT, NOT A LABEL. The cohort column says which
+   * rows were frozen; this says whether the run got exactly those. A row
+   * rejected since, a photograph that would not fetch, a row re-stamped by a
+   * later deploy -- any of them makes this a different set, and the tables
+   * above stop comparing with the ones in docs/DETECTOR-FINDINGS.md.
+   */
+  if (lawnSetName() === 'benchmark' && setPrint(lawns) !== BENCHMARK_PRINT) {
+    console.log(`\n${'!'.repeat(64)}`);
+    console.log(`\nTHIS IS NOT THE BENCHMARK. The frozen set has fingerprint ${BENCHMARK_PRINT};`);
+    console.log(`this run got ${setPrint(lawns)} over ${lawns.length} lawns. Do not set this table`);
+    console.log('beside the ones in docs/DETECTOR-FINDINGS.md until the difference is');
+    console.log('explained (a rejected row, a photograph that failed, or a row stamped late).');
+    console.log(`\n${'!'.repeat(64)}`);
+  }
+  console.log('');
 
   console.log('  what it looked at                  wrong   in shade  in sun   beat SAM on');
   for (const t of table) {
