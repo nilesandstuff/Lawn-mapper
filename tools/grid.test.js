@@ -159,3 +159,50 @@ console.log('grid: ok');
 }
 
 console.log('grid: ok (rectangles)');
+
+/* ------------------------------------------ the squeeze keeps the cover */
+{
+  /*
+   * A grid that runs past the photograph -- a windowed read, or a rectangle
+   * padded to a square -- says so with coverX/coverY, and sampleAt divides
+   * by them. The squeeze to 32 numbers dropped them until 2026-09-24, so
+   * every head row on such a grid read features stretched by the cover: a
+   * tall lot padded to a square had its whole grid read as if it were the
+   * photograph, and the eye alone scored 80% wrong. See H25.
+   */
+  const { shrink } = await import('./train-detector.js');
+  const { sampleAt } = await import('./backbone.js');
+  const gridW = 8, gridH = 8, dim = 64;
+  const data = new Float32Array(gridW * gridH * dim);
+  /* Every patch's features are its own column number, so a read that lands
+     on the wrong patch reads a different number. */
+  for (let p = 0; p < gridW * gridH; p++) {
+    for (let d = 0; d < dim; d++) data[p * dim + d] = (p % gridW) * (d % 2 ? 1 : -1);
+  }
+  const full = { data, gridW, gridH, dim, coverX: 2, coverY: 1, windows: 1, mpp: 0.1 };
+  const small = shrink(full, 16);
+  assert.equal(small.coverX, 2, 'the squeeze must keep coverX');
+  assert.equal(small.coverY, 1, 'the squeeze must keep coverY');
+  assert.equal(small.dim, 16);
+  /* And with the cover kept, a photograph 40 cells wide reads its last
+     column from patch 3 (the photo is the left half of the grid), not
+     from patch 7. Compare the squeezed read against a read of the full
+     grid at the same place, projected the same way. */
+  const a = new Float32Array(16), b = new Float32Array(16);
+  sampleAt(small, 39, 0, 40, a, 0, 40);
+  const smallNoCover = { ...small, coverX: 1 };
+  sampleAt(smallNoCover, 39, 0, 40, b, 0, 40);
+  assert.notDeepEqual([...a], [...b], 'dropping the cover must change what is read');
+  /* Cell 35 of 40 sits exactly on patch 3's centre through cover 2
+     ((35 / 40) * 8 / 2 - 0.5 = 3), and on the same patch of a grid cropped
+     to the photo's own four columns with cover 1. Both must read patch 3. */
+  const fullSmall = shrink({ ...full, gridW: 4, coverX: 1, data: data.filter((_, i) => ((i / dim | 0) % gridW) < 4) }, 16);
+  const a35 = new Float32Array(16), c = new Float32Array(16);
+  sampleAt(small, 35, 0, 40, a35, 0, 40);
+  sampleAt(fullSmall, 35, 0, 40, c, 0, 40);
+  for (let i = 0; i < 16; i++) {
+    assert.ok(Math.abs(a35[i] - c[i]) < 1e-5, `with the cover kept, cell 35 reads the photo's own patch 3 (${a35[i]} vs ${c[i]})`);
+  }
+}
+
+console.log('grid: ok (cover kept through the squeeze)');
