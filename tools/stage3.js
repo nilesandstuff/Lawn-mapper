@@ -104,6 +104,47 @@ export function reach(lawn, canopy, w, h, cells) {
 }
 
 /**
+ * ENCLOSURE: of the cells reach added, keep only those with visible lawn in
+ * at least `sides` of the 8 directions within `cells` steps.
+ *
+ * WHY. H30 measured reach as a trade: every metre of it added lawn under the
+ * lawn's own trees AND crept into the edge of the woods, because the edge of
+ * a wood touches the lawn as surely as a lawn tree does. The two differ in
+ * how much lawn is round them. A cell just inside a straight wood edge finds
+ * lawn in three of eight directions (straight out and the two diagonals) and
+ * canopy or nothing in the other five; a cell under a tree standing in a lawn
+ * finds lawn in all eight; under a tree at a lawn's corner, five or six.
+ *
+ * Each ray walks through canopy only, like reach itself, and counts if it
+ * meets visible lawn before leaving the canopy, the grid, or the reach.
+ * `sides` 0 switches it off, which is the reach H30 measured.
+ */
+const DIRS = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];
+
+export function enclose(lawn, canopy, reached, w, h, cells, sides) {
+  const out = Uint8Array.from(reached);
+  if (sides <= 0 || cells <= 0) return out;
+  for (let p = 0; p < w * h; p++) {
+    if (!reached[p] || !canopy[p]) continue;
+    const x0 = p % w, y0 = (p / w) | 0;
+    let hits = 0;
+    for (const [dx, dy] of DIRS) {
+      let x = x0, y = y0;
+      for (let step = 1; step <= cells; step++) {
+        x += dx; y += dy;
+        if (x < 0 || x >= w || y < 0 || y >= h) break;
+        const q = y * w + x;
+        if (lawn[q]) { hits++; break; }
+        if (!canopy[q]) break;
+      }
+      if (hits >= sides) break;
+    }
+    if (hits < sides) out[p] = 0;
+  }
+  return out;
+}
+
+/**
  * BRIDGE: a clump of canopy whose rim is lawn through more than `minRing`
  * of its length is filled in.
  *
@@ -153,10 +194,10 @@ export function bridge(lawn, canopy, w, h, { minRing = 0.5 } = {}) {
  * The whole of stage 3 over one lawn: clear the canopy, reach, then bridge.
  * `reachM` in metres, converted with this lawn's own cell size.
  */
-export function stage3(lawn, canopy, w, h, { mpp, reachM = 3, minRing = 0.5 } = {}) {
+export function stage3(lawn, canopy, w, h, { mpp, reachM = 3, minRing = 0.5, sides = 0 } = {}) {
   const cleared = clearCanopy(lawn, canopy);
   const cells = reachM > 0 && mpp > 0 ? Math.round(reachM / mpp) : 0;
-  const reached = reach(cleared, canopy, w, h, cells);
+  const reached = enclose(cleared, canopy, reach(cleared, canopy, w, h, cells), w, h, cells, sides);
   const bridged = minRing < 1 ? bridge(reached, canopy, w, h, { minRing }) : { mask: reached, filled: 0, clumps: 0 };
   return { mask: bridged.mask, filled: bridged.filled, clumps: bridged.clumps, cells };
 }
