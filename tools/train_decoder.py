@@ -77,6 +77,8 @@ DROPOUT = float(os.environ.get("DROPOUT", "0.1"))
 BATCH = int(os.environ.get("BATCH", "4"))
 # A directory of <id>-mask.png from tools/tree-canopy.py, or unset.
 CANOPY = os.environ.get("CANOPY", "")
+# "lawn": canopy is unseen only where the tracer drew lawn. "all": everywhere.
+CANOPY_MODE = "all" if os.environ.get("CANOPY_MODE", "lawn") == "all" else "lawn"
 # How many lawns to hold out, for a quick look. Unset means every lawn.
 LIMIT = int(os.environ.get("LIMIT", "0") or 0)
 
@@ -116,11 +118,19 @@ def read_lawn(feats, frames, stem, shape):
     # marks, and it means the same thing here: no weight, never a zero. A
     # zero would teach "canopy means not lawn", which is stage 3's question
     # and the wrong answer to it.
+    #
+    # ONLY OVER TRACED LAWN, unless CANOPY_MODE=all. Making every canopy
+    # cell don't-care (H27) took away the decoder's only weighted examples
+    # of woods -- the tracer had looked at them and drawn nothing -- and the
+    # lawn's edge crept into the trees. Canopy the tracer left out stays a
+    # weighted zero; canopy over lawn they drew (marked inferred or not) is
+    # the case the mask is here to catch.
     canopy = False
     mask_file = os.path.join(CANOPY, f"{stem}-mask.png") if CANOPY else None
     if mask_file and os.path.exists(mask_file):
         can = Image.open(mask_file).convert("L").resize((cells_w, cells_h), Image.NEAREST)
-        inferred = inferred | (np.asarray(can) >= 128)
+        can = np.asarray(can) >= 128
+        inferred = inferred | (can if CANOPY_MODE == "all" else (can & truth))
         canopy = True
 
     target, inside = box_targets(truth, gw, gh, cx, cy)
@@ -258,6 +268,7 @@ def main():
     if CANOPY:
         with_canopy = sum(1 for L in lawns if L["canopy"])
         print(f"canopy from {CANOPY} treated as unseen ground on {with_canopy} of {len(lawns)} lawns"
+              + (" (every canopy cell)" if CANOPY_MODE == "all" else " (only over traced lawn)")
               + ("" if with_canopy else " -- no masks found; was the canopy step run?"), flush=True)
 
     held_out = lawns if not LIMIT else lawns[:LIMIT]
@@ -282,6 +293,7 @@ def main():
             "lr": LR, "weightDecay": WEIGHT_DECAY, "dropout": DROPOUT,
             "seenOnly": True, "lawns": len(lawns), "folds": len(held_out),
             "canopyUnseen": sum(1 for L in lawns if L["canopy"]),
+            "canopyMode": CANOPY_MODE if CANOPY else None,
             "seconds": round(total),
         }, f)
     print(f"\n{len(held_out)} folds in {total:.0f}s ({total / len(held_out):.0f}s each). "

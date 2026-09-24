@@ -186,7 +186,11 @@ starting points to be swept, not settings.
   answers the whole question; the seen column answers stage 1's. **First
   measured in H27: the decoder went 28.5% → 24.3% on the headline and reads
   18.6% on visible ground, under the SAM line for the first time. One run;
-  a repeat is owed before the canopy gets the credit.**
+  a repeat is owed before the canopy gets the credit.** And a second
+  refinement from the pictures of that run: canopy is unseen ONLY where the
+  tracer drew lawn. Woods they never drew stay not-lawn, because with every
+  canopy cell don't-care the decoder lost its only examples of a forest and
+  the lawn edge crept into the trees (H27).
 
   **And the colour row is a control from here, not a candidate.** It stays in
   the table because it is reproducible to the decimal (H10) and so says when the
@@ -381,7 +385,20 @@ to 9 points better on visible ground than any head row on the same eye.
 Per lawn: the same three small lots carry the loss (Prince William 3,429 sq
 ft 319% wrong, Utah 86%, NC 10,556 sq ft 79%), and the Kent 22,481 sq ft lot
 went from 38% to 170% — still a fifth of SAM's 382% there, but it is the one
-lawn the canopy change clearly hurt. Pictures in
+lawn the canopy change clearly hurt.
+
+**What the pictures showed, which the table did not (the owner, reading the
+`2356-edt` folder):** the lawn's edge crept deeper into the wood lines. The
+mechanism is plain once said. The tracer's inferred marks say "probably some
+grass under these edge trees, not deeper in the woods"; woods they never drew
+were weighted not-lawn examples, the decoder's only lessons in what a forest
+looks like. Making EVERY canopy cell don't-care threw those lessons away, so
+the decoder had nothing pushing back at a tree line. The Kent lot going 38 →
+170% is the same thing in a number. **Since 2026-09-24 the default is "on
+lawn": canopy is unseen only where the tracer drew lawn (marked inferred or
+not); canopy they left out stays what they said, not lawn.** "Everywhere" is
+kept as an option so the two can be measured on the same corpus; the run is
+queued behind the H27 repeats. Pictures in
 `runs/2026-09-23-2356-edt-scalemae-large-896px`. Decoder 52 s a fold (28
 min), the canopy step 11 min.
 

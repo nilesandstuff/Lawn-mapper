@@ -171,13 +171,19 @@ on:
         # VISIBLE lawn, and the hand-drawn "inferred" marks are a person's
         # guess at where a canopy edge is; the tree model draws that edge per
         # pixel. With this on, workflow 19's segmenter runs over the same
-        # frames first (about eight minutes), and its mask joins the marks:
+        # frames first (about ten minutes), and its mask joins the marks:
         # the decoder does not train on it and the SEEN column scores outside
         # it. Never a "not lawn" label -- see seenOnlyTwin in the scorer.
-        description: 'Run the tree model first and treat its canopy as unseen ground (about eight minutes more)'
+        #
+        # "on lawn" (the default) makes canopy unseen ONLY where the tracer
+        # drew lawn. "everywhere" makes every canopy cell unseen, which was
+        # the first run (H27, 24.3%) -- and in its pictures the lawn's edge
+        # crept into the woods, because the woods the tracer never drew had
+        # been the decoder's only weighted examples of not-lawn under trees.
+        description: 'Tree canopy as unseen ground: only over lawn the tracer drew (on lawn), every canopy cell (everywhere), or not at all (off). About ten minutes more.'
         type: choice
-        default: 'unseen'
-        options: ['unseen', 'off']
+        default: 'on lawn'
+        options: ['on lawn', 'everywhere', 'off']
       about:
         # WHAT THIS RUN IS FOR, kept with the pictures for ever.
         #
@@ -264,11 +270,11 @@ jobs:
       # requirements share the CPU torch already installed and add
       # scikit-image and scipy.
       - name: Install the tree model's loader
-        if: ${{ inputs.canopy == 'unseen' }}
+        if: ${{ inputs.canopy != 'off' }}
         run: pip install -r tools/requirements-trees.txt
 
       - name: Find the canopy
-        if: ${{ inputs.canopy == 'unseen' }}
+        if: ${{ inputs.canopy != 'off' }}
         env:
           IMAGES: frames
           OUT: canopy
@@ -297,7 +303,8 @@ jobs:
           FEATURES: feats
           FRAMES: frames
           OUT: preds
-          CANOPY: ${{ inputs.canopy == 'unseen' && 'canopy' || '' }}
+          CANOPY: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
+          CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}
           SEED: ${{ inputs.seed }}
         run: python3 tools/train_decoder.py
 
@@ -319,7 +326,8 @@ jobs:
           # Empty when the decoder was not trained, and the scorer skips the row.
           PREDICTIONS_DIR: ${{ inputs.decoder && 'preds' || '' }}
           # The canopy joins the hand-marked unseen ground for the seen column.
-          CANOPY_DIR: ${{ inputs.canopy == 'unseen' && 'canopy' || '' }}
+          CANOPY_DIR: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
+          CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}
         run: node tools/train-detector.js
 
       - name: If that failed

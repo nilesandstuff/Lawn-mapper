@@ -1500,6 +1500,9 @@ async function main() {
   /* The canopy masks, when workflow 14 ran the tree model first. See where
      each lawn's `inferred` is built for what they are used for. */
   const canopyDir = process.env.CANOPY_DIR || '';
+  /* "lawn": canopy is unseen only where the tracer drew lawn. "all": every
+     canopy cell is unseen, which H27 measured and the pictures argued against. */
+  const canopyMode = process.env.CANOPY_MODE === 'all' ? 'all' : 'lawn';
   let canopied = 0;
   if (pyDir && !py) {
     console.log(`No features found in ${pyDir}. Run the extractor first, or`);
@@ -1627,13 +1630,27 @@ async function main() {
        * decoder do not train on it. It is NEVER a "not lawn" label; see
        * seenOnlyTwin for why zero would be the wrong answer.
        */
+      /*
+       * BUT ONLY WHERE THE TRACER DREW LAWN, unless CANOPY_MODE=all. The
+       * first run (H27) made EVERY canopy cell don't-care, and the owner saw
+       * what that did in the pictures: the lawn's edge crept into the woods.
+       * Woods the tracer never drew were the decoder's only weighted
+       * examples of "not lawn under trees", and making them don't-care threw
+       * those lessons away. The tracer's own marks already say "probably
+       * grass under these edge trees, not deeper in"; what the canopy mask
+       * adds is the case where the traced lawn runs under a tree the tracer
+       * did not mark. So: canopy over traced lawn (marked or not) is unseen;
+       * canopy the tracer left out stays what they said it was, not lawn.
+       */
       if (canopyDir) {
         const file = join(canopyDir, `${row.id}-mask.png`);
         const canopy = existsSync(file)
           ? canopyMask(decoders.png.PNG.sync.read(readFileSync(file)), G, GH) : null;
         if (canopy) {
           inferred = inferred || new Uint8Array(G * GH);
-          for (let i = 0; i < canopy.length; i++) if (canopy[i]) inferred[i] = 1;
+          for (let i = 0; i < canopy.length; i++) {
+            if (canopy[i] && (canopyMode === 'all' || truth[i])) inferred[i] = 1;
+          }
           canopied++;
         }
       }
@@ -1765,7 +1782,8 @@ async function main() {
 
   console.log(`\n${lawns.length} usable.`);
   if (canopyDir) {
-    console.log(`Canopy from ${canopyDir} merged into the unseen ground of ${canopied} of ${lawns.length} lawns:`);
+    console.log(`Canopy from ${canopyDir} merged into the unseen ground of ${canopied} of ${lawns.length} lawns`
+      + (canopyMode === 'all' ? ' (EVERY canopy cell):' : ' (only where the tracer drew lawn):'));
     console.log('the SEEN column scores outside it and the decoder does not train on it.');
     if (!canopied) console.log('(No masks found -- was the canopy step run over these frames?)');
   }
