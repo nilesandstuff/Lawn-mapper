@@ -58,12 +58,15 @@ the default). New maps join the corpus but not this table.*
 | best median | **24.2%** | **decoder (canopy everywhere) + stage 3**: **18 of 26 over SAM** and **22.6% on visible ground**, both the best any row has; 11.7% under the trees. One run (H31). And the worst row on the wooded lots: Kent 22,481 at 50%, Prince William 3,429 at 130%, Utah 86% |
 
 Gap: **0.98×** on the best median, **1.04×** on the plan's row as run, both
-a tie at 32 lawns (H7). Stage 3 is measured (H30, H31): clearing the canopy
+a tie at 32 lawns (H7). Stage 3 is measured (H30–H32): clearing the canopy
 alone is worth about 3 points on visible ground; reach trades visible for
-hidden a metre at a time and peaks at 3 m; which decoder feeds it is a median
-against tail choice (H31) that the enclosure rule may dissolve. Next
-measured: the enclosure rule over all three decoders, with the badly-wrong
-lots tabled for every row.
+hidden a metre at a time and peaks at 3 m; the enclosure rule takes the
+visible cost back and gives up most of the hidden gain, because the traced
+inferred ground and the untraced wood edge are the same shape (H32). Which
+decoder feeds it is a median against tail choice (H31). **Stage 3 is at its
+floor with rules over two masks.** What is left: two lots (Utah 13,689 sq ft,
+NC 10,556) where every decoder is 30–50 points worse than colour and the
+canopy is not involved (H32), and stage 4.
 
 **H22 is retracted** (2026-09-24): with the registration bug fixed, windows
 are within noise of squeezing whole, both ways. The default stays off for the
@@ -228,7 +231,10 @@ setting that is right.
   readily as a lawn tree), and peaks at 3 m. The fixed row's cell was chosen
   before the sweep was seen. Over all three decoders (H31): the everywhere
   decoder feeds it best on the median and worst on the wooded lots; the
-  no-canopy decoder is no better than on lawn. Built as: `tools/stage3.js`: the
+  no-canopy decoder is no better than on lawn. The enclosure rule (H32)
+  recovers the visible ground reach cost and loses most of the hidden gain:
+  the traced inferred strip and the untraced wood edge look the same to
+  geometry, and only the tracer's mark tells them apart. Built as: `tools/stage3.js`: the
   canopy is cleared from stage 1's answer (its opinion under a tree is
   untrained and is not evidence), then canopy within `reach` metres of
   visible lawn becomes lawn (a walk that only enters canopy, so it cannot
@@ -384,6 +390,88 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H32. Enclosure takes the seen column back to the cleared figure and gives back most of the hidden gain: the hand-marked inferred ground is itself a wood edge, and geometry cannot tell a traced edge from an untraced one, 2026-09-24
+
+Run 36054887434, `canopy: compare`, stage 3 and the enclosure rule swept
+over all three decoders (decoder rows 28.4 / 29.8 / 24.3, fourth exact
+repeat). The fixed cell (reach 3 m, bridge over 180°, sides 0) against the
+same cell with enclosure at 4 of 8 sides, headline / seen / inferred:
+
+| stage 1 | cleared, no rules | reach 3 m, 180° | + enclosure 4 of 8 | 6 of 8 |
+|---|---|---|---|---|
+| no canopy | 26.4 / 20.3 / 93.6 | 26.3 / 26.7 / 12.2 | 27.6 / 21.4 / 28.2 | 27.9 / 21.3 / 41.1 |
+| canopy on lawn | 27.9 / 20.7 / 93.7 | 25.8 / 26.0 / 12.2 | 27.8 / 21.5 / 33.5 | 27.5 / 21.4 / 41.3 |
+| canopy everywhere | 23.3 / 18.6 / 90.2 | 24.2 / 22.6 / 11.7 | 23.3 / 20.8 / 20.9 | 23.3 / 20.1 / 35.9 |
+
+(Reach 1.5 and 4.5 m with enclosure are within a point of the 3 m cells on
+every column; the full tables are in the run's log.)
+
+**On the seen column it does exactly what it was built to do.** Reach had
+cost 5 to 6 points of visible ground on every decoder (20.3 → 26.7, 20.7 →
+26.0, 18.6 → 22.6); with lawn required in four of eight directions the
+column comes back to within a point of the cleared figure (21.4, 21.5,
+20.8). So the seen-column cost of reach is, as H30 guessed, cells with lawn
+on one side only: the edge of the untraced woods.
+
+**And it gives back most of the hidden gain**: 12.2 → 28.2 and 33.5 on the
+two decoders that do not guess under trees, 11.7 → 20.9 on the one that
+does. The ground the tracer marked "inferred, not seen" is, for the most
+part, the SAME SHAPE as the untraced wood edge — lawn on one side, deeper
+canopy on the other — which is what the owner said it was on 2026-09-24
+("there's probably some grass under these trees on the edge of the woods,
+but not deeper in the woods"). A cell there has lawn in three of eight
+directions whether the tracer marked it or not. **No rule over two masks can
+tell a traced edge from an untraced one; the tracer's mark is the only
+thing that distinguishes them, and stage 3 does not have it at inference
+time.** Reach at 3 m is the depth of that strip on the median lot, and it
+fills the strip on the traced edges and the untraced ones alike. That is the
+trade, and it is inherent to geometry over canopy + visible lawn, not to
+these particular rules.
+
+**Six of eight is the bridge alone.** Its inferred column (36–41) is the
+reach-0-with-bridge cell's (42–43): nothing reach adds survives six sides
+except a tree standing in a lawn, which the bridge already fills.
+
+**On the headline** enclosure costs the no-canopy and on-lawn decoders 1.3
+to 2 points (the hidden loss outweighs the visible gain on the median lot)
+and moves the everywhere decoder not at all: its headline reads 23.3 in nine
+of the twelve sweep cells and every enclosure cell. The median lot has
+little canopy at stake, so the everywhere decoder's headline is not a
+measure of stage 3 and should not be read as one; its seen and inferred
+columns are.
+
+**The tail was not measured under enclosure** — the badly-wrong table
+prints the fixed rows only, and enclosure was built for the everywhere
+decoder's wooded lots. Fixed for the next run: a second fixed row per
+decoder, "+ stage 3, 4 sides", so the tail table carries it.
+
+**What the tail table said about the fixed rows.** Seven lots over 60%
+wrong under some row; every row's figure beside them. Two kinds:
+
+| lot | eye (head) | both | none | on lawn | everywhere | none + s3 | on lawn + s3 | everywhere + s3 |
+|---|---|---|---|---|---|---|---|---|
+| Prince William 3,429 | 269 | 261 | 182 | 94 | 319 | 89 | 80 | 130 |
+| Kent 22,481 | 85 | 79 | 38 | 42 | 170 | 37 | 39 | 50 |
+| NC 7,945 | 65 | 84 | 38 | 36 | 41 | 25 | 25 | 25 |
+| Utah 13,689 | 39 | 36 | 86 | 69 | 86 | 86 | 69 | 86 |
+| NC 10,556 | 48 | 42 | 74 | 69 | 79 | 74 | 69 | 79 |
+
+The first three are canopy lots: stage 3 helps every decoder on them, and
+the everywhere decoder's remaining excess on Kent and Prince William is
+the visible gaps inside the woods (H31). **The last two are not canopy
+lots at all**: stage 3 does not move them (86 → 86, 74 → 74), and the old
+head reading colour and texture is 30 to 50 points BETTER than every
+decoder on them. Two lots out of 32 where the decoder is badly worse than
+colour, and nothing in the canopy work touches them. Unexplained;
+speculation: the owner's "counting buildings as lawn" from the pictures of
+the 2356 run, or bright dry lawn read as not-lawn. The pictures are the way
+to find out, and they are in `runs/2026-09-24-1830-edt-scalemae-large-896px`.
+
+**Not changed:** the fixed cell (reach 3 m, 180°) and the on-lawn default.
+Stage 3 is at the floor these rules can reach: what remains under the trees
+is the traced/untraced ambiguity above, and what remains on visible ground
+is stage 1's, led by the two lots in the last two rows.
 
 ### H31. Stage 3 over all three decoders: the everywhere decoder is the best input on the median and the worst on the wooded lots, and H30's guess about the no-canopy decoder measured as nothing, 2026-09-24
 
@@ -2606,3 +2694,4 @@ fields) were both more obviously right than this one.
 | 2026-09-24 | 36013573532 | 32 | as 35948780766, `canopy: compare` — three decoders over ONE extraction (none / on lawn / everywhere), seed 7 | **24.3%** (decoder, everywhere) | 24.7% | **H29: the canopy's 4.1 points are real and all under the trees.** none 28.4 / seen 23.0 / inferred 28.8; on lawn 29.8 / 24.3 / 34.5; everywhere 24.3 / 23.4 / 18.7 (15, 15, 16 of 26). Head rows 34.2 / 31.8 — the state H28 had only seen with "everywhere", yet every decoder row matched its single run within 0.1, so the "two extraction states" were the head's. On lawn worst on every column. Pictures `runs/2026-09-24-1241-edt-scalemae-large-896px` (drawn for the everywhere row) |
 | 2026-09-24 | 36020948046 | 32 | as 36002884707 (canopy on lawn, seed 7) + **stage 3** swept and scored | **25.8%** (decoder + stage 3) | 24.7% | **H30: stage 3's first measurement.** Stage 1 29.8 / 24.3 / 34.5 (third exact repeat). Canopy cleared, no rules: 27.9 / 20.7 / 93.7. Reach 3 m + 180°: 25.8 / 26.0 / 12.2, **17 of 26**, Kent 22,481 sq ft 39.1%, PW 3,429 80.3%. Reach trades seen for inferred (20.7 → 29.8 against 93.7 → 7.0 from 0 to 4.5 m); bridge over 126° worse everywhere. Same folder as the row above (same minute); the pictures there are the compare run's |
 | 2026-09-24 | 36035231729 | 32 | `canopy: compare` + stage 3 over all three decoders, seed 7, benchmark set (first run with `lawns`) | **24.2%** (decoder, everywhere + stage 3) | 24.7% | **H31.** Alone 28.5 / 29.8 / 24.3 (third exact repeat, head rows in the 36.5 / 32.1 state this time — H29 confirmed). + stage 3: none 26.4 / 26.7 / 12.2 (17 of 26); on lawn 25.8 / 26.0 / 12.2 (17); everywhere **24.2 / 22.6 / 11.7 (18 of 26)** but Kent 22,481 sq ft 49.8%, PW 3,429 130%, Utah 86%. H30's guess (none feeds stage 3 best) measured as nothing. Fast runner: 12 min a decoder, 68 min in all. Pictures `runs/2026-09-24-1440-edt-scalemae-large-896px` |
+| 2026-09-24 | 36054887434 | 32 | `canopy: compare`, stage 3 + **enclosure** swept over all three decoders, badly-wrong table | **24.2%** (everywhere + stage 3) | 24.7% | **H32.** Decoder rows 28.4 / 29.8 / 24.3 (fourth exact repeat). Enclosure at 4 of 8 sides, reach 3 m: seen back to 21.4 / 21.5 / 20.8 (from 26.7 / 26.0 / 22.6), inferred up to 28.2 / 33.5 / 20.9 (from 12.2 / 12.2 / 11.7). The traced inferred strip is a wood edge too. Tail table: Utah 13,689 and NC 10,556 are 69–86% under every decoder and 36–48% under the head, untouched by stage 3. Pictures `runs/2026-09-24-1830-edt-scalemae-large-896px` |
