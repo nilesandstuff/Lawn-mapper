@@ -241,6 +241,35 @@ export function bridge(lawn, canopy, w, h, { minRing = 0.5 } = {}) {
 }
 
 /**
+ * WOODS: a clump of canopy whose median height is `tallM` or more.
+ *
+ * H34, from the lidar: lawn under canopy sits under about 4 m of tree on
+ * the middle lawn, and canopy the tracer did not call lawn under 7. A tree
+ * standing in a lawn, a row along a drive, an edge tree, is short; the woods
+ * are tall. Every rule above only knew WHERE the canopy was; this is the
+ * first that knows what it is. `height` is metres above ground per cell, on
+ * the scoring grid (the lidar reads at 2 m and is sampled up to it, so a
+ * clump's median is over many copies of a few readings, which is fine for a
+ * median). Woods are never filled by span, reach or bridge, and the walks
+ * stop at them as they stop at a driveway.
+ */
+export function woods(canopy, height, w, h, tallM) {
+  const out = new Uint8Array(w * h);
+  if (!height || !(tallM > 0)) return out;
+  const { labels, count } = clumps(canopy, w, h);
+  if (!count) return out;
+  const cells = Array.from({ length: count + 1 }, () => []);
+  for (let p = 0; p < w * h; p++) if (labels[p]) cells[labels[p]].push(height[p]);
+  const tall = new Uint8Array(count + 1);
+  for (let k = 1; k <= count; k++) {
+    const hs = cells[k].sort((a, b) => a - b);
+    if (hs.length && hs[hs.length >> 1] >= tallM) tall[k] = 1;
+  }
+  for (let p = 0; p < w * h; p++) if (labels[p] && tall[labels[p]]) out[p] = 1;
+  return out;
+}
+
+/**
  * The whole of stage 3 over one lawn: clear the canopy, span, reach, then
  * bridge. `spanM` and `reachM` in metres, converted with this lawn's own
  * cell size; `spanM` 0 (the default, and every run before 2026-09-25) is
@@ -248,11 +277,21 @@ export function bridge(lawn, canopy, w, h, { minRing = 0.5 } = {}) {
  *
  * Span first and reach after, so the reach is "a little beyond" the joined
  * shape: it starts from the spanned lawn as well as the visible lawn.
+ *
+ * `height` with `tallM` > 0 switches the woods rule on: tall clumps are
+ * taken out of the canopy the rules may fill, and out of the ground they
+ * may walk through.
  */
 export function stage3(lawn, canopy, w, h, {
-  mpp, spanM = 0, reachM = 3, minRing = 0.5, sides = 0,
+  mpp, spanM = 0, reachM = 3, minRing = 0.5, sides = 0, height = null, tallM = 0,
 } = {}) {
   const cleared = clearCanopy(lawn, canopy);
+  const tall = woods(canopy, height, w, h, tallM);
+  if (tallM > 0 && height) {
+    const fillable = new Uint8Array(canopy.length);
+    for (let i = 0; i < canopy.length; i++) fillable[i] = canopy[i] && !tall[i] ? 1 : 0;
+    canopy = fillable;
+  }
   const spanCells = spanM > 0 && mpp > 0 ? Math.round(spanM / mpp) : 0;
   const spanned = span(cleared, canopy, w, h, spanCells);
   const cells = reachM > 0 && mpp > 0 ? Math.round(reachM / mpp) : 0;

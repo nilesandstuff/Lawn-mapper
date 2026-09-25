@@ -84,7 +84,7 @@ import { labelsPng, predictionMask } from './train-detector.js';
 
 /* --------------------------------------------------------------- canopy */
 {
-  const { canopyMask } = await import('./train-detector.js');
+  const { canopyMask, heightMask } = await import('./train-detector.js');
   /* A 4 x 2 mask with its right half lit, brought to an 8 x 4 grid: the
      right half of every row is canopy, and nothing else is. */
   const png = new PNG({ width: 4, height: 2 });
@@ -110,6 +110,15 @@ import { labelsPng, predictionMask } from './train-detector.js';
   const m2 = canopyMask(read, 8, 4);
   assert.deepEqual([...m2], [...m], 'a 1-bit mask must read the same as an 8-bit one');
   assert.equal(canopyMask(null, 8, 4), null);
+
+  /* The lidar's height reads the same way, as metres: a tenth of a metre a
+     byte, nearest onto the grid, so a 2 m reading is the reading of every
+     15 cm cell under it. */
+  const hp = new PNG({ width: 2, height: 1 });
+  hp.data.set([37, 37, 37, 255, 120, 120, 120, 255]);
+  const hm = heightMask(PNG.sync.read(PNG.sync.write(hp)), 4, 2);
+  assert.deepEqual([...hm].map((v) => Number(v.toFixed(1))), [3.7, 3.7, 12, 12, 3.7, 3.7, 12, 12]);
+  assert.equal(heightMask(null, 4, 2), null);
 }
 
 console.log('decoder: ok');

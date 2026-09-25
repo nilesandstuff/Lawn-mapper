@@ -222,6 +222,11 @@ def shrink_mask(mask, gw, gh):
     return np.asarray(im) >= 128
 
 
+def height_png(height):
+    """Height in metres to bytes, a tenth of a metre a level, clamped at 25.5 m."""
+    return np.clip(np.round(np.nan_to_num(height, nan=0.0) * 10), 0, 255).astype(np.uint8)
+
+
 def auc(pos, neg):
     """
     Mann-Whitney AUC: the chance a random positive scores above a random
@@ -417,6 +422,10 @@ def main():
                 pooled[k][lab_name][1].extend(layers[k][classes == b].tolist())
 
         np.savez_compressed(out / f"{lawn_id}.npz", classes=classes, **layers)
+        # THE HEIGHT, FOR STAGE 3 (H34): a grey PNG on the coarse grid, a tenth
+        # of a metre a level, so the JavaScript scorer can read the canopy's
+        # height the way it reads the tree model's mask. 25.5 m is the top.
+        Image.fromarray(height_png(layers["height"])).save(out / f"{lawn_id}-height.png")
         inten = layers["intensity"]
         if np.isfinite(inten).any():
             lo, hi = np.nanpercentile(inten, [2, 98])

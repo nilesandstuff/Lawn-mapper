@@ -621,6 +621,26 @@ export function canopyMask(png, G, GH = G) {
   return out;
 }
 
+/**
+ * The lidar's height above ground, from the grey PNG tools/lidar_frame.py
+ * writes (a tenth of a metre a level, on its own 2 m grid), sampled nearest
+ * onto the scoring grid as metres. Nearest for the same reason as the canopy
+ * mask: a 2 m reading copied into the 15 cm cells under it is the reading;
+ * an average would invent heights between two trees.
+ */
+export function heightMask(png, G, GH = G) {
+  if (!png || !png.width || !png.height) return null;
+  const out = new Float32Array(G * GH);
+  for (let y = 0; y < GH; y++) {
+    const sy = Math.min(png.height - 1, Math.floor((y * png.height) / GH));
+    for (let x = 0; x < G; x++) {
+      const sx = Math.min(png.width - 1, Math.floor((x * png.width) / G));
+      out[y * G + x] = png.data[(sy * png.width + sx) * 4] / 10;
+    }
+  }
+  return out;
+}
+
 /** Geometries -> a filled mask on the GRID, using the row's own frame. */
 function maskOf(geoms, frame, size, sizeH = size) {
   const project = (ll) => lngLatToFramePx(frame, ll, size, sizeH);
@@ -1539,6 +1559,9 @@ async function main() {
      canopy cell is unseen, which H27 measured and the pictures argued against. */
   const canopyMode = process.env.CANOPY_MODE === 'all' ? 'all' : 'lawn';
   let canopied = 0;
+  /* Workflow 23's height layers, for stage 3's woods rule (H34). */
+  const lidarDir = process.env.LIDAR_DIR || '';
+  let lidared = 0;
   if (pyDir && !py) {
     console.log(`No features found in ${pyDir}. Run the extractor first, or`);
     console.log('unset FEATURES_DIR to fall back to the in-browser backbone.');
@@ -1692,6 +1715,20 @@ async function main() {
           canopied++;
         }
       }
+      /*
+       * THE LIDAR'S CANOPY HEIGHT, where workflow 23's reader ran over these
+       * frames (LIDAR_DIR). Stage 3's woods rule (H34) is the only reader;
+       * nothing is trained on it. Missing is not an error: three benchmark
+       * lawns have no point cloud over them and read as they did before.
+       */
+      let height = null;
+      if (lidarDir) {
+        const file = join(lidarDir, `${row.id}-height.png`);
+        if (existsSync(file)) {
+          height = heightMask(decoders.png.PNG.sync.read(readFileSync(file)), G, GH);
+          if (height) lidared++;
+        }
+      }
       const parcelGeom = parse(row.parcel);
       /*
        * No property line means the whole frame is fair game. Rare, and the
@@ -1782,6 +1819,8 @@ async function main() {
         /* The tree model's mask on its own, for stage 3 (tools/stage3.js),
            which reasons about canopy as canopy rather than as unseen ground. */
         canopy: canopyRaw,
+        /* And the lidar's height above ground in metres, for its woods rule. */
+        height,
         inferredPct: 100 * inferredShare(truth, inferred, within),
         truthPx,
         mpp: metresPerPixel(frame, G),
@@ -1829,6 +1868,10 @@ async function main() {
       + (canopyMode === 'all' ? ' (EVERY canopy cell):' : ' (only where the tracer drew lawn):'));
     console.log('the SEEN column scores outside it and the decoder does not train on it.');
     if (!canopied) console.log('(No masks found -- was the canopy step run over these frames?)');
+  }
+  if (lidarDir) {
+    console.log(`Lidar height from ${lidarDir} on ${lidared} of ${lawns.length} lawns, for stage 3's woods rule only.`);
+    if (!lidared) console.log('(No height layers found -- was the lidar step run over these frames?)');
   }
   console.log('');
 
@@ -2134,7 +2177,7 @@ async function main() {
         const L = lawns[held];
         if (!masks[held]) continue;
         const mask = L.canopy
-          ? stage3(masks[held], L.canopy, L.grid, L.gridH, { mpp: L.mpp, ...opts }).mask
+          ? stage3(masks[held], L.canopy, L.grid, L.gridH, { mpp: L.mpp, height: L.height, ...opts }).mask
           : masks[held];
         const row = foldRow(held, judgeFold(L, mask, { trainedOn: lawns.length - 1 }));
         /*
@@ -2195,19 +2238,40 @@ async function main() {
         console.log(line);
       }
       console.log();
+
+      /*
+       * WOODS, from the lidar (H34): a canopy clump whose median height is
+       * H metres or more is woods and is never filled. Swept at the fixed
+       * span cell (8 m, 1 m, 180°); "off" is that cell as it was.
+       */
+      if (lawns.some((L) => L.height)) {
+        console.log('  Woods: a canopy clump at least H metres tall (lidar median) is never filled; at span 8 m, reach 1 m, bridge over 180°.\n');
+        let line = `  ${'H'.padEnd(10)}`;
+        const talls = [0, 4, 6, 8, 12];
+        console.log(`  ${''.padEnd(10)}${talls.map((t) => (t ? `${t} m` : 'off').padStart(22)).join('')}`);
+        for (const tallM of talls) line += cell(judge(first.masks, { spanM: 8, reachM: 1, minRing: 0.5, tallM }));
+        console.log(line);
+        console.log();
+      }
     }
 
-    /* And the plan's own numbers as a row in the table, for every decoder,
-       plus the enclosed cell (H32) so the tail table below carries it. */
+    /*
+     * And the plan's own numbers as rows in the table, for every decoder.
+     * The span cell (H33's row) was fixed before its sweep was seen: 8 m
+     * each way joins a tree up to 16 m across, 1 m of reach is "a little
+     * beyond". The woods cell adds H34's rule at 6 m, chosen from the two
+     * class medians (3.7 and 7.3 m) before the sweep above was seen. The
+     * reach-only row of H30 to H32 is in the sweep tables, not the table.
+     */
     for (const { cfg, masks } of decoderMasks) {
-      const cfg3 = { ...cfg, name: `${cfg.name} + stage 3`, stage3: true };
-      console.log(`Scoring "${cfg3.name}" (reach 3 m, bridge over 180°)…`);
-      table.push(summarise(cfg3, judge(masks, { reachM: 3, minRing: 0.5 }), cfg.dims));
-      /* The span cell, fixed here before its sweep was seen: 8 m each way
-         joins a tree up to 16 m across, 1 m of reach is "a little beyond". */
       const cfg4 = { ...cfg, name: `${cfg.name} + stage 3, span`, stage3: true };
       console.log(`Scoring "${cfg4.name}" (span 8 m, reach 1 m, bridge over 180°)…`);
       table.push(summarise(cfg4, judge(masks, { spanM: 8, reachM: 1, minRing: 0.5 }), cfg.dims));
+      if (lawns.some((L) => L.height)) {
+        const cfg5 = { ...cfg, name: `${cfg.name} + stage 3, span, woods`, stage3: true };
+        console.log(`Scoring "${cfg5.name}" (span 8 m, reach 1 m, bridge over 180°, woods at 6 m)…`);
+        table.push(summarise(cfg5, judge(masks, { spanM: 8, reachM: 1, minRing: 0.5, tallM: 6 }), cfg.dims));
+      }
     }
   }
 

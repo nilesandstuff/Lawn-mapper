@@ -251,7 +251,13 @@ setting that is right.
   side only — the wood-edge strip and the setback along a house — and
   needs a third mask (stage 4). Workflow 14 sweeps span 4 / 8 / 12 m ×
   reach 0 / 1 / 1.5 m per decoder and scores the fixed "+ stage 3, span"
-  row (8 m, 1 m, 180°) beside the reach row. Built as: `tools/stage3.js`: the
+  row (8 m, 1 m, 180°) beside the reach row. **A fourth rule, WOODS, built
+  2026-09-25 from the lidar (H34) and UNMEASURED: a canopy clump whose
+  median height above ground is H metres or more is woods and is never
+  filled by span, reach or bridge. Workflow 14 reads the lidar after the
+  canopy (LIDAR_DIR), sweeps H at off / 4 / 6 / 8 / 12 m at the span cell,
+  and scores a fixed "+ stage 3, span, woods" row at 6 m, chosen from the
+  two class medians before the sweep was seen.** Built as: `tools/stage3.js`: the
   canopy is cleared from stage 1's answer (its opinion under a tree is
   untrained and is not evidence), then canopy within `reach` metres of
   visible lawn becomes lawn (a walk that only enters canopy, so it cannot

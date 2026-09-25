@@ -14,7 +14,7 @@ made-up points before a run spends its time downloading real ones.
 import numpy as np
 
 from lidar_frame import (
-    CLASSES, auc, classify, fill_surface, layers_from, node_box, rasterise,
+    CLASSES, auc, classify, fill_surface, height_png, layers_from, node_box, rasterise,
     separations, summarise, touches, walk,
 )
 
@@ -83,6 +83,9 @@ check("ground density is per square metre", abs(layers["ground_per_m2"][0, 0] - 
 z = np.full((3, 3), np.nan, dtype=np.float32)
 z[1, 1] = 5
 check("fill_surface spreads a single value to its neighbours", (fill_surface(z) == 5).all())
+
+hp = height_png(np.array([[0.04, 3.7, 40.0, np.nan]]))
+check("height travels as a tenth of a metre a byte, clamped, NaN as 0", hp.tolist() == [[0, 37, 255, 0]], str(hp.tolist()))
 
 # ------------------------------------------------------------ the classes
 truth = np.array([[1, 1, 0, 0]], dtype=bool)

@@ -277,14 +277,16 @@ jobs:
       # so the canopy lands on the pixels the features describe. Its
       # requirements share the CPU torch already installed and add
       # scikit-image and scipy.
-      - name: Install the tree model's loader
+      - name: Install the tree model's loader and the lidar reader
         if: ${{ inputs.canopy != 'off' }}
-        run: pip install -r tools/requirements-trees.txt
+        run: pip install -r tools/requirements-trees.txt -r tools/requirements-lidar.txt
 
-      - name: Check the clump outlines
+      - name: Check the clump outlines and the lidar arithmetic
         if: ${{ inputs.canopy != 'off' }}
         working-directory: tools
-        run: python3 canopy_test.py
+        run: |
+          python3 canopy_test.py
+          python3 lidar_test.py
 
       - name: Find the canopy
         if: ${{ inputs.canopy != 'off' }}
@@ -294,6 +296,21 @@ jobs:
           MODEL: restor/tcd-segformer-mit-b5
           MIN_CLUMP_M2: 4
         run: python3 tools/tree-canopy.py
+
+      # The lidar's canopy height over the same frames, exactly as workflow
+      # 23 reads it, for stage 3's woods rule (H34). Three minutes and a few
+      # MB a lawn from the public point clouds; a frame with no project over
+      # it simply has no height and reads as before.
+      - name: Read the lidar over the frames
+        if: ${{ inputs.canopy != 'off' }}
+        env:
+          FRAMES: frames
+          CANOPY: canopy
+          PLAN: lidar-plan.json
+          OUT: lidar
+        run: |
+          node tools/lidar-plan.js
+          python3 tools/lidar_frame.py
 
       - name: Run the backbone over them
         env:
@@ -386,6 +403,8 @@ jobs:
           # The canopy joins the hand-marked unseen ground for the seen column.
           CANOPY_DIR: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
           CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}
+          # The lidar's height, for stage 3's woods rule only (H34).
+          LIDAR_DIR: ${{ inputs.canopy != 'off' && 'lidar' || '' }}
         run: node tools/train-detector.js
 
       - name: If that failed
