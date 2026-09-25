@@ -5,7 +5,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { clumps, clearCanopy, reach, enclose, bridge, stage3 } from './stage3.js';
+import { clumps, clearCanopy, reach, enclose, span, bridge, stage3 } from './stage3.js';
 
 const grid = (rows) => {
   const h = rows.length, w = rows[0].length;
@@ -103,6 +103,66 @@ const show = (mask, w, h) => {
   for (let p = 0; p < w * h; p++) if (cleared[p]) assert.equal(four[p], 1, 'visible ground never changes');
   /* sides 0 is the reach H30 measured, unchanged. */
   assert.deepEqual([...enclose(cleared, canopy, reached, w, h, 2, 0)], [...reached]);
+}
+
+/* --------------------------------------------------------------- span */
+{
+  /* THE OWNER'S RULE: lawn under canopy joins the lawn that can be seen.
+     Left to right: a lawn, a row of trees, more lawn, then a wood edge
+     running off the frame. And a tree standing in the lawn. */
+  const w = 16, h = 7;
+  const lawn = grid([
+    '####..####......',
+    '####..####......',
+    '####..####......',
+    '####..####......',
+    '####..####......',
+    '####..####......',
+    '####..####......',
+  ]).mask;
+  const canopy = grid([
+    '....##....######',
+    '....##....######',
+    '.##.##....######',
+    '.##.##....######',
+    '....##....######',
+    '....##....######',
+    '....##....######',
+  ]).mask;
+  const cleared = clearCanopy(lawn, canopy);
+  const s = span(cleared, canopy, w, h, 3);
+  assert.equal(show(s, w, h).split('\n')[0], '##########......',
+    'the row of trees between two lawns is filled; the wood edge is not');
+  assert.equal(show(s, w, h).split('\n')[3], '##########......',
+    'and the tree in the lawn is filled (lawn on both sides of it)');
+  /* Too far apart for the span: nothing. */
+  const s1 = span(cleared, canopy, w, h, 1);
+  assert.equal(show(s1, w, h).split('\n')[0], '####..####......',
+    'a gap wider than twice the span stays open (the tree row is 2 wide, 1 each way is not enough)');
+  /* A driveway between the lawn and the tree stops the ray. */
+  const drive = grid([
+    '###...####......',
+    '###...####......',
+    '###...####......',
+    '###...####......',
+    '###...####......',
+    '###...####......',
+    '###...####......',
+  ]).mask;
+  const sd = span(clearCanopy(drive, canopy), canopy, w, h, 3);
+  assert.equal(show(sd, w, h).split('\n')[0], '###...####......',
+    'the ray leaves the canopy onto a driveway and does not count');
+  /* Visible ground never changes; span 0 is a no-op. */
+  for (let p = 0; p < w * h; p++) if (cleared[p]) assert.equal(s[p], 1);
+  assert.deepEqual([...span(cleared, canopy, w, h, 0)], [...cleared]);
+
+  /* Through stage3: span joins, a small reach goes a little beyond, and the
+     wood edge still gets only that little. */
+  const st = stage3(lawn, canopy, w, h, { mpp: 1, spanM: 3, reachM: 1, minRing: 1 });
+  assert.equal(show(st.mask, w, h).split('\n')[0], '###########.....',
+    'span filled the row, one cell of reach went beyond into the woods and no further');
+  const none = stage3(lawn, canopy, w, h, { mpp: 1, spanM: 0, reachM: 0, minRing: 1 });
+  assert.deepEqual([...none.mask], [...cleared], 'spanM 0 is the old stage 3');
 }
 
 /* ------------------------------------------------------------- bridge */
