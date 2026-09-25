@@ -199,6 +199,12 @@ const show = (mask, w, h) => {
   assert.equal(show(tall, w, h).split('\n')[0], '..........######', 'the tall clump is woods, the short row is not');
   assert.equal(woods(canopy, height, w, h, 12).reduce((a, b) => a + b, 0), 0, 'nothing is that tall');
   assert.equal(woods(canopy, null, w, h, 6).reduce((a, b) => a + b, 0), 0, 'no height, no woods');
+  /* Tall AND big: the wood edge is 42 cells; a size floor above that makes
+     it a tree, not a wood, however tall. */
+  assert.equal(woods(canopy, height, w, h, 6, 42).reduce((a, b) => a + b, 0), 42, 'at the floor it is still woods');
+  assert.equal(woods(canopy, height, w, h, 6, 43).reduce((a, b) => a + b, 0), 0, 'one cell over the floor and it is a tree');
+  const sized = stage3(lawn, canopy, w, h, { mpp: 1, spanM: 3, reachM: 1, minRing: 1, height, tallM: 6, woodsM2: 100 });
+  assert.equal(show(sized.mask, w, h).split('\n')[0], '###########.....', 'a 42 m² clump is under a 100 m² floor, so the reach enters it');
 
   const with_ = stage3(lawn, canopy, w, h, { mpp: 1, spanM: 3, reachM: 1, minRing: 1, height, tallM: 6 });
   assert.equal(show(with_.mask, w, h).split('\n')[0], '##########......',

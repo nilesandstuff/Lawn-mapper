@@ -2251,6 +2251,15 @@ async function main() {
         console.log(`  ${''.padEnd(10)}${talls.map((t) => (t ? `${t} m` : 'off').padStart(22)).join('')}`);
         for (const tallM of talls) line += cell(judge(first.masks, { spanM: 8, reachM: 1, minRing: 0.5, tallM }));
         console.log(line);
+        /*
+         * AND BIG (H35): tall alone took the tracer's own lawn trees for
+         * woods. A wood is many trees, so the clump has to be at least A m²
+         * as well; at 12 m, the cutoff the first sweep favoured.
+         */
+        console.log(`\n  ${'12 m and'.padEnd(10)}${[0, 200, 500, 1000].map((a) => (a ? `≥ ${a} m²` : 'any size').padStart(22)).join('')}`);
+        line = `  ${''.padEnd(10)}`;
+        for (const woodsM2 of [0, 200, 500, 1000]) line += cell(judge(first.masks, { spanM: 8, reachM: 1, minRing: 0.5, tallM: 12, woodsM2 }));
+        console.log(line);
         console.log();
       }
     }
@@ -2268,9 +2277,11 @@ async function main() {
       console.log(`Scoring "${cfg4.name}" (span 8 m, reach 1 m, bridge over 180°)…`);
       table.push(summarise(cfg4, judge(masks, { spanM: 8, reachM: 1, minRing: 0.5 }), cfg.dims));
       if (lawns.some((L) => L.height)) {
+        /* 12 m and 500 m², fixed after H35's sweep of height alone (6 m was
+           wrong: a lawn tree is that tall) and before the size sweep. */
         const cfg5 = { ...cfg, name: `${cfg.name} + stage 3, span, woods`, stage3: true };
-        console.log(`Scoring "${cfg5.name}" (span 8 m, reach 1 m, bridge over 180°, woods at 6 m)…`);
-        table.push(summarise(cfg5, judge(masks, { spanM: 8, reachM: 1, minRing: 0.5, tallM: 6 }), cfg.dims));
+        console.log(`Scoring "${cfg5.name}" (span 8 m, reach 1 m, bridge over 180°, woods at 12 m and 500 m²)…`);
+        table.push(summarise(cfg5, judge(masks, { spanM: 8, reachM: 1, minRing: 0.5, tallM: 12, woodsM2: 500 }), cfg.dims));
       }
     }
   }

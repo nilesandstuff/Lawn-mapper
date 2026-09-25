@@ -253,7 +253,7 @@ export function bridge(lawn, canopy, w, h, { minRing = 0.5 } = {}) {
  * median). Woods are never filled by span, reach or bridge, and the walks
  * stop at them as they stop at a driveway.
  */
-export function woods(canopy, height, w, h, tallM) {
+export function woods(canopy, height, w, h, tallM, minCells = 0) {
   const out = new Uint8Array(w * h);
   if (!height || !(tallM > 0)) return out;
   const { labels, count } = clumps(canopy, w, h);
@@ -263,7 +263,13 @@ export function woods(canopy, height, w, h, tallM) {
   const tall = new Uint8Array(count + 1);
   for (let k = 1; k <= count; k++) {
     const hs = cells[k].sort((a, b) => a - b);
-    if (hs.length && hs[hs.length >> 1] >= tallM) tall[k] = 1;
+    /*
+     * TALL AND BIG (H35). Tall alone took the tracer's own lawn trees for
+     * woods -- a mature oak in a lawn is 15 m -- and gave back most of the
+     * hidden lawn. A wood is many trees: the clump has to be at least
+     * `minCells` cells as well, so a single crown, however tall, is not it.
+     */
+    if (hs.length >= Math.max(1, minCells) && hs[hs.length >> 1] >= tallM) tall[k] = 1;
   }
   for (let p = 0; p < w * h; p++) if (labels[p] && tall[labels[p]]) out[p] = 1;
   return out;
@@ -283,10 +289,11 @@ export function woods(canopy, height, w, h, tallM) {
  * may walk through.
  */
 export function stage3(lawn, canopy, w, h, {
-  mpp, spanM = 0, reachM = 3, minRing = 0.5, sides = 0, height = null, tallM = 0,
+  mpp, spanM = 0, reachM = 3, minRing = 0.5, sides = 0, height = null, tallM = 0, woodsM2 = 0,
 } = {}) {
   const cleared = clearCanopy(lawn, canopy);
-  const tall = woods(canopy, height, w, h, tallM);
+  const minCells = woodsM2 > 0 && mpp > 0 ? Math.round(woodsM2 / (mpp * mpp)) : 0;
+  const tall = woods(canopy, height, w, h, tallM, minCells);
   if (tallM > 0 && height) {
     const fillable = new Uint8Array(canopy.length);
     for (let i = 0; i < canopy.length; i++) fillable[i] = canopy[i] && !tall[i] ? 1 : 0;
