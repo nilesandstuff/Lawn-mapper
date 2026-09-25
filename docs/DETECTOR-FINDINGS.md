@@ -38,7 +38,13 @@ changes and results from different corpora are not comparable.
 *Kept current so a fresh session can pick up without the conversation that
 got here. Update it whenever the in-flight run changes.*
 
-- **In flight (2026-09-25, launched after H35):** workflow 14, `canopy:
+- **In flight (2026-09-25, launched after H35): TWO identical runs,**
+  36151868024 (15:05 UTC, `claude/resume-previous-session-y94slo`) and
+  36152888443 (15:15 UTC, `claude/new-session-8204jd`), both at 262efc2,
+  launched by two sessions by accident and both kept: same code, same
+  inputs, so the pair is a free measure of how far the woods row moves
+  between identical runs (H13, H28). Read both; quote the difference
+  beside H36. Each is workflow 14, `canopy:
   compare`, on the benchmark, "H36: the woods rule as TALL AND BIG". The
   log prints a "12 m and" line per decoder (any size / 200 / 500 /
   1,000 m²) and a fixed "+ stage 3, span, woods" row at 12 m and 500 m².
