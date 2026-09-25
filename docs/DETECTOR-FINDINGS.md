@@ -264,6 +264,20 @@ setting that is right.
   seconds at the end of a run.
 - **Stage 4: the expensive one.** H16 says 29 of 31 lawns have LiDAR over them,
   flown 2011-2020, a median of ten years before the photographs.
+  **Phase two BUILT 2026-09-25, UNMEASURED: workflow 23, `tools/lidar_frame.py`.**
+  The public Entwine octree is walked over each frame's own rectangle (the
+  frame dump now writes the frames' Web Mercator boxes into scale.json, and
+  the point clouds are in Web Mercator, so nothing is reprojected); every
+  touching node is downloaded (probed on the Kent County project: 13 nodes,
+  3 MB, 9 s, 9,321 points over a 70 m square, 1.9 points/m², 0.7 ground
+  returns/m², classes ground and unclassified, intensity present). Three
+  layers at 2 m cells — a QL2 cloud has under one ground return a square
+  metre, so 15 cm is out of the question — ground-return density, ground
+  intensity, height above ground; four classes from the labels and the
+  canopy mask; and the number stage 4 turns on: an AUC per layer for lawn
+  against not-lawn UNDER CANOPY, beside the same on visible ground as the
+  sanity check. No PDAL: laspy and lazrs are pure wheels. First run is the
+  row after this one in the run log.
 
 **The two known problems, which are problems to solve rather than reasons to
 stop.**

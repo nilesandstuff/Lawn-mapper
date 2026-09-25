@@ -1,0 +1,153 @@
+name: 23. What does the lidar say under our lawns
+
+# STAGE 4, PHASE TWO. Workflow 17 asked whether the lawns were flown (H16:
+# 94% were). This reads the point clouds themselves, over exactly the frames
+# the detector is trained on, and answers the one question stage 4 turns on:
+# under the canopy, does what comes back from the ground DIFFER between the
+# ground the tracer called lawn and the ground they did not? If it does not,
+# stage 4 as lidar is over, cheaply. If it does, the layers this writes are the
+# third mask stage 3 needs (H33).
+#
+# WHAT RUNS. The same frame dump and the same tree model as workflows 14 and
+# 19, so the labels and the canopy are the ones every other number was measured
+# on. Then one small JSON matching frames to 3DEP projects, then the reader:
+# for each frame, every octree node touching its rectangle is downloaded (a few
+# MB and a few seconds a lawn), rasterised at 2 m, classed against the labels
+# and the canopy, and scored.
+#
+# FREE. Public buckets, public weights, no predictions bought, nothing published
+# to the site. The layers are kept as a workflow artifact for the next step.
+#
+# THE ANSWER IS AT THE BOTTOM OF THE LOG: per class what the lidar reads, and
+# an AUC per layer for lawn-versus-not under the canopy, beside the same figure
+# on visible ground as the sanity check.
+on:
+  workflow_dispatch:
+    inputs:
+      lawns:
+        description: 'Which lawns: the frozen benchmark of 32 (comparable), every approved map (all), or only those since the freeze (new)'
+        type: choice
+        default: 'benchmark'
+        options: ['benchmark', 'all', 'new']
+      cell:
+        # A QL2 collection is about two points and under one ground return a
+        # square metre, so 1 m cells are mostly empty and 15 cm is out of the
+        # question. 2 m is a few ground returns a cell on the middle lawn.
+        description: 'Lidar cell size in metres'
+        type: choice
+        default: '2'
+        options: ['1', '2', '3']
+      limit:
+        description: 'Only the first N frames (blank for all)'
+        required: false
+        default: ''
+      about:
+        description: 'What is this run testing? (kept in the log)'
+        required: false
+        default: ''
+
+jobs:
+  lidar:
+    name: Read the point clouds over the frames
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            tools/requirements-trees.txt
+            tools/requirements-lidar.txt
+
+      - run: npm ci
+
+      - name: Install the image decoders
+        run: npm install pngjs jpeg-js --no-save
+
+      - name: Install the tree model's loader and the lidar reader
+        run: pip install -r tools/requirements-trees.txt -r tools/requirements-lidar.txt
+
+      # The pure halves first, offline. A raster flipped north-for-south or a
+      # walk that skips the coarse nodes does not fail; it reports a plausible
+      # number about the wrong ground.
+      - name: Check the clump outlines and the lidar arithmetic
+        working-directory: tools
+        run: |
+          python3 canopy_test.py
+          python3 lidar_test.py
+          node lidar-cover.test.js
+
+      - name: Fetch the lawns and write the frames out
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CORPUS_BUCKET: lawn-mapper-corpus
+          DUMP_FRAMES: frames
+          DUMP_SIZE: native
+          NO_BACKBONE: 'true'
+          LAWN_SET: ${{ inputs.lawns }}
+        run: node tools/train-detector.js
+
+      - name: Find the canopy
+        env:
+          IMAGES: frames
+          OUT: canopy
+          MODEL: restor/tcd-segformer-mit-b5
+          MIN_CLUMP_M2: 4
+        run: python3 tools/tree-canopy.py
+
+      - name: Match the frames to the 3DEP projects
+        env:
+          FRAMES: frames
+          OUT: lidar-plan.json
+        run: node tools/lidar-plan.js
+
+      - name: Read the point clouds
+        env:
+          FRAMES: frames
+          CANOPY: canopy
+          PLAN: lidar-plan.json
+          OUT: lidar
+          CELL_M: ${{ inputs.cell }}
+          LIMIT: ${{ inputs.limit }}
+          RUN_ABOUT: ${{ inputs.about }}
+        run: |
+          echo "About: $RUN_ABOUT"
+          python3 tools/lidar_frame.py
+
+      # Kept whatever happens next, as one tarball (a lawn id has a colon in
+      # it and upload-artifact refuses those in file names).
+      - name: Pack the layers up
+        if: always()
+        continue-on-error: true
+        run: tar -czf lidar.tar.gz lidar/ lidar-plan.json || true
+
+      - name: Keep the layers
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: lidar
+          path: lidar.tar.gz
+          if-no-files-found: warn
+
+      - name: If that failed
+        if: failure()
+        run: |
+          echo "Nothing was spent finding this out."
+          echo
+          echo "The usual reasons, in order:"
+          echo "  * the runner could not reach s3-us-west-2.amazonaws.com (the"
+          echo "    public point clouds) or raw.githubusercontent.com (the footprints)"
+          echo "  * scale.json has no boxes, which means the dump step is older"
+          echo "    than 2026-09-25"
+          echo "  * a project that is not in Web Mercator; the reader refuses"
+          echo "    rather than line the wrong metres up with the frame"
