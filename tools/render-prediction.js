@@ -66,6 +66,13 @@ import {
 export const TRACE = [226, 114, 91];          // REVIEW_COLOURS.ai, #e2725b
 export const TRUTH_FILL = [78, 194, 106];     // REVIEW_COLOURS.lawn, #4ec26a
 export const INFERRED_EDGE = [179, 136, 255]; // REVIEW_COLOURS.inferred, #b388ff
+/*
+ * What stage 3 put back under the canopy, as distinct from what the detector
+ * said. Amber: not one of the console's three, because it is not one of the
+ * console's three things -- it exists only in a stage 3 row's pictures, and
+ * the owner needed to tell the guesser's shapes from the detector's.
+ */
+export const ADDED = [255, 191, 0];
 
 /**
  * The property line itself.
@@ -288,7 +295,7 @@ function segment(out, grid, gridH, [x0, y0], [x1, y1], half, colour) {
  * for anything drawing unclipped polygons -- see the note at the clip itself.
  */
 export function drawPrediction({
-  photo, truth, within, inferred, rings, grid, mask, clipMask, gridH = grid,
+  photo, truth, within, inferred, rings, grid, mask, clipMask, gridH = grid, added = null,
 }) {
   const out = new Uint8Array(grid * gridH * 4);
 
@@ -364,6 +371,34 @@ export function drawPrediction({
    * the reviewer said "I know it is lawn, I cannot see it".
    */
   if (inferred) outline(out, grid, gridH, scored(inferred), INFERRED_EDGE, half);
+
+  /*
+   * STAGE 3'S ADDITIONS, on either picture, under the trace or the mask.
+   * The same stipple as the raw mask so the ground reads through, in amber
+   * so that what the rules put back under the trees is never mistaken for
+   * what the detector saw. On the raw-mask picture the red stipple below is
+   * painted over it on the same cells, so the amber is drawn on the OTHER
+   * parity of the checker: red and amber interleave where both apply, and a
+   * cell only stage 3 claimed is amber alone.
+   */
+  const paintAdded = (parity) => {
+    if (!added) return;
+    const clip = clipMask === false ? null : within;
+    for (let y = 0; y < gridH; y++) {
+      for (let x = 0; x < grid; x++) {
+        const i = y * grid + x;
+        if (!added[i]) continue;
+        if (clip && !clip[i]) continue;
+        if ((((x >> 1) + (y >> 1)) % 2) !== parity) continue;
+        const p = i * 4;
+        out[p] = mix(out[p], ADDED[0], 0.85);
+        out[p + 1] = mix(out[p + 1], ADDED[1], 0.85);
+        out[p + 2] = mix(out[p + 2], ADDED[2], 0.85);
+      }
+    }
+    outline(out, grid, gridH, clip ? scored(added) : added, ADDED, Math.max(1, half - 1));
+  };
+  paintAdded(mask ? 1 : 0);
 
   /*
    * THE RAW MASK, WHERE ONE WAS ASKED FOR, and it replaces the trace rather
