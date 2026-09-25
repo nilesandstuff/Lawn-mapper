@@ -51,7 +51,7 @@ import {
   loadBackbone, tiledFeatures, sampleAt, projection, project,
 } from './backbone.js';
 import { rasterizePolygon } from '../public/lib/mask.js';
-import { stage3 } from './stage3.js';
+import { stage3, clearCanopy } from './stage3.js';
 import { lawnSetClause, lawnSetName, lawnSetDescription, BENCHMARK_PRINT } from './lawn-set.js';
 import { lngLatToFramePx, metresPerPixel } from '../public/lib/mercator.js';
 
@@ -1237,12 +1237,25 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
         return out;
       };
 
+      /*
+       * STAGE 3'S ADDITIONS, where this row has a stage 3: every cell the
+       * rules put back under the canopy that stage 1 (cleared) did not claim.
+       * Painted amber on both pictures, so "was that the detector or the
+       * guesser" can be answered by looking.
+       */
+      let added = null;
+      if (r.base) {
+        added = new Uint8Array(r.predicted.length);
+        for (let i = 0; i < added.length; i++) added[i] = r.predicted[i] && !r.base[i] ? 1 : 0;
+      }
+
       const pixels = drawPrediction({
         photo: bigPhoto,
         truth: big(L.truth),
         within: big(L.within),
         inferred: big(L.inferred),
         rings: bigRings,
+        added: big(added),
         grid: PX,
         gridH: PY,
       });
@@ -1259,6 +1272,7 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
         within: big(L.within),
         inferred: big(L.inferred),
         mask: big(r.predicted),
+        added: big(added),
         grid: PX,
         gridH: PY,
       });
@@ -1422,7 +1436,10 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
       note: 'Leave-one-out: each lawn was drawn by a model trained on the other '
         + `${lawns.length - 1} and never shown this one. "Shapes" is the traced `
         + 'polygon the drawing tools would receive; "raw mask" is what the model '
-        + 'actually answered, before smoothing, hole-filling and speckle removal.',
+        + 'actually answered, before smoothing, hole-filling and speckle removal.'
+        + (best.cfg.stage3
+          ? ' AMBER is what stage 3 put back under the canopy; red is what the detector itself said.'
+          : ''),
       entries,
     }, null, 1)}\n`);
 
@@ -2100,7 +2117,15 @@ async function main() {
         const mask = L.canopy
           ? stage3(masks[held], L.canopy, L.grid, L.gridH, { mpp: L.mpp, ...opts }).mask
           : masks[held];
-        rows.push(foldRow(held, judgeFold(L, mask, { trainedOn: lawns.length - 1 })));
+        const row = foldRow(held, judgeFold(L, mask, { trainedOn: lawns.length - 1 }));
+        /*
+         * WHAT STAGE 1 SAID, with the canopy cleared, so the pictures can
+         * paint stage 3's additions in their own colour. The owner could not
+         * tell from the pictures whether a shape under the trees was the
+         * detector's or the guesser's, and the two are different bugs.
+         */
+        row.base = L.canopy ? clearCanopy(masks[held], L.canopy) : null;
+        rows.push(row);
       }
       return rows;
     };
