@@ -2976,6 +2976,76 @@ fields) were both more obviously right than this one.
 
 ---
 
+### S9. Count the trees, not the canopy: woods are several crowns with no lawn between them (the owner's, 2026-09-25)
+
+After H37 closed the woods question for height, size and understory. A tree
+is one or two highest returns with a skirt of lower ones round it, the skirt
+wider the taller the tree (not in proportion: species and pruning). So count
+crowns by peaks in the lidar's canopy height model, with a search window that
+grows with height — the published method for single-tree detection is this
+(variable-window local maxima). Then: **several crowns in a group with no
+seen lawn between them is woods; one or two with a good border of lawn is a
+lawn tree.** The owner's constraint: decent and reliable over perfect and
+brittle.
+
+**Why it might work where H35–H36 did not:** it asks the question size could
+not. A big lawn tree and a small wood can have the same area; they should
+not have the same crown count. And "no lawn between them" is the owner's
+measure of joined-up, not the raster's (H36: clumps join at the canopy).
+
+**Why it might not, as far as is known now:** the wooded lots are the
+sparsest clouds (Kent and Kentucky at 1–2 points/m², flown leaf-off), and a
+bare deciduous crown gives few returns at its top; at 2 m cells peaks will
+merge and split. The test before any rule: per canopy clump, crown count
+against whether the tracer called lawn under it, as an AUC, the way H34 did
+it — at clump level, which H35 showed is the level that matters. With the
+20+ maps approved since the freeze, on `lawns: all`, because the benchmark
+holds about ten wooded lots.
+
+### S10. Small things standing in the open: shrubs, sheds, pools, playsets, planters (the owner's, 2026-09-25)
+
+H37's understory separated lawn from not-lawn IN THE OPEN about as well as
+under canopy (0.33–0.38 over 6 m). That was read as "not a woods signal",
+which it is not; the owner's point is that it may be a *not-lawn* signal in
+its own right, for exactly the things the tree model misses: shrubs under
+2–3 m, sheds, above-ground pools, playsets, raised planters. **Unmeasured.**
+Against it: a shrub is often under 1 m across and a 2 m cell is 4 m²; the
+cloud is a median of ten years older than the photograph (H16), and sheds,
+pools and playsets move; and the detector may already get most of them right
+from the photograph. So the number to measure is not the AUC but the
+overlap with the detector's OWN false lawn: of the cells stage 1 calls lawn
+and the tracer did not, how many does a "something stands here" mask cover,
+against how many of its true lawn. That needs workflow 14's predictions.
+
+### Owner's reading of the H36 pictures, 2026-09-25
+
+Not measurements — what the owner saw in `runs/2026-09-25-1324-edt-…`, drawn
+for everywhere + span. Kept because each points at a different stage.
+
+- **Prince William 3,429:** at least half is dense woods running up to the
+  house; two tree clusters may have grass under them, and the trace makes
+  that look feasible. **Its truth under the woods is uncertain even to the
+  owner**, so it should stop being the lot every woods rule is tuned to.
+- **Maryland 6,658:** very good except one large front-yard tree marked as
+  having no grass under it, which probably does. A label question.
+- **Kent 8,626:** a narrow strip of tall trees across the back yard, north to
+  south, with no canopy detected — a tree-model miss; the lawn marks there are
+  all the detector's. The lidar canopy (H38) is the check.
+- **NC 114,992:** a big crown rooted in a non-turf area overhangs lawn; there
+  is certainly grass under the overhang. Lawn on one side only: the case span
+  cannot reach (H33).
+- **Prince William 5,042:** a big lawn tree missed, but the detector also
+  missed the grass round it in shadow — stage 1, more training data.
+- **Kent 22,481:** the best run yet there; misses turf between canopies,
+  almost certainly stage 1.
+- **Kent 72,863:** fantastic, except the detector reads a large pond as lawn.
+  Not canopy; the lidar's void/water mask (H38) and NIR are candidates.
+- **Island County 19,932:** the starkest case of lawn under canopy fully
+  missed: big trees, some in clusters of two or three, with enough lawn round
+  them that grass should be inferred; one stretch runs along the house where
+  the lawn is narrow. No lidar project over it. Span at 8 m cannot bridge a
+  cluster wider than 8 m.
+
 ## Rules for running and reading these experiments
 
 1. **Check the fingerprint and lawn count first.** Two tables from two corpora
