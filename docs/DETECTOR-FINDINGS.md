@@ -38,7 +38,9 @@ changes and results from different corpora are not comparable.
 *Kept current so a fresh session can pick up without the conversation that
 got here. Update it whenever the in-flight run changes.*
 
-- **Nothing in flight (2026-09-25, after H35).** The next run to launch:
+- **In flight (2026-09-25): run 36151868024**, launched 15:05 UTC on
+  `claude/resume-previous-session-y94slo` at 262efc2 (about 2.5 hours).
+  If it has finished, read it and write H36. It is
   workflow 14, `canopy: compare`, on the benchmark, to measure the woods
   rule as TALL AND BIG (H35): the log prints a "12 m and" line per decoder
   (any size / 200 / 500 / 1,000 m²) and a fixed "+ stage 3, span, woods"
