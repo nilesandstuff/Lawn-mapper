@@ -38,17 +38,29 @@ changes and results from different corpora are not comparable.
 *Kept current so a fresh session can pick up without the conversation that
 got here. Update it whenever the in-flight run changes.*
 
-- **In flight (2026-09-25): run 36151868024**, launched 15:05 UTC on
-  `claude/resume-previous-session-y94slo` at 262efc2 (about 2.5 hours).
-  If it has finished, read it and write H36. It is
-  workflow 14, `canopy: compare`, on the benchmark, to measure the woods
-  rule as TALL AND BIG (H35): the log prints a "12 m and" line per decoder
-  (any size / 200 / 500 / 1,000 m²) and a fixed "+ stage 3, span, woods"
-  row at 12 m and 500 m². **Prediction, written before the run (H35):
-  Prince William 3,429 stays fixed (about 30%), the hidden column comes
-  back to within two points of span alone, the visible column keeps most
-  of its point.** Write H36, a run-log row, update the numbers and THE
-  PLAN. If the prediction holds, the woods row becomes THE PLAN's row.
+- **In flight (2026-09-25, launched after H35):** workflow 14, `canopy:
+  compare`, on the benchmark, "H36: the woods rule as TALL AND BIG". The
+  log prints a "12 m and" line per decoder (any size / 200 / 500 /
+  1,000 m²) and a fixed "+ stage 3, span, woods" row at 12 m and 500 m².
+  **Prediction, written before the run (H35): Prince William 3,429 stays
+  fixed (about 30%), the hidden column comes back to within two points of
+  span alone, the visible column keeps most of its point.** Write H36, a
+  run-log row, update the numbers and THE PLAN. If the prediction holds,
+  the woods row becomes THE PLAN's row. **The owner doubts size + height
+  (2026-09-25): lawn trees can be big too.** The alternative to measure if
+  H36 disappoints is the ground UNDER the crown, which the lidar has and
+  the photograph does not: understory returns in the 0.5–3 m band. Mown
+  grass under a lawn tree has none; a wood's floor has many. Add that
+  layer to workflow 23 and measure its AUC the way H34 did.
+- **What stage 4 is and is not doing with the lidar (owner's question,
+  2026-09-25):** its stated job was hidden hard surfaces. Roofs it finds
+  for free (no ground return, 3–10 m of height) and that mask is unused;
+  hidden driveways it cannot find on these clouds (H34, intensity is a
+  coin toss under trees). The woods rule is a stage 3 rule that borrowed
+  the lidar's height, not stage 4's job. A third use, checking or
+  replacing the tree model's canopy with the lidar's height (canopy =
+  taller than 2 m and not a roof), is unmeasured; the cheap first
+  measurement is the agreement between the two on the benchmark.
 - **The plan's row today:** decoder (canopy on lawn) + stage 3, span
   (H33). Best median: everywhere + span. Default stays on lawn for the
   wooded lots.
