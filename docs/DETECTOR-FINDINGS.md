@@ -33,6 +33,33 @@ changes and results from different corpora are not comparable.
 
 ---
 
+## Where things stand — for whoever opens this next
+
+*Kept current so a fresh session can pick up without the conversation that
+got here. Update it whenever the in-flight run changes.*
+
+- **In flight (2026-09-25, launched ~14:40 UTC):** workflow 14, `canopy:
+  compare`, "H35: the woods rule … Relaunch". It measures stage 3's WOODS
+  rule (a canopy clump with lidar median height ≥ H is never filled),
+  swept H off / 4 / 6 / 8 / 12 m at the span cell for all three decoders,
+  with a fixed "+ stage 3, span, woods" row at 6 m. **Prediction, written
+  before the run (H34): the everywhere decoder's Kent 22,481 and Prince
+  William 3,429 lots come down without the median moving.** Read the
+  "Woods" line per decoder, both fixed rows, and the badly-wrong-lots
+  table; write H35, a run-log row, update the numbers below and THE PLAN.
+- **The plan's row today:** decoder (canopy on lawn) + stage 3, span
+  (H33). Best median: everywhere + span. Default stays on lawn for the
+  wooded lots.
+- **Stage 4:** the lidar reaches the ground under every canopy but cannot
+  tell lawn from not-lawn there; it tells woods from lawn trees by height
+  (H34). Hidden pavement is not findable this way and is not being pursued.
+- **After H35:** more maps (the corpus can grow; the benchmark is frozen,
+  `lawns: benchmark`), the two stage 1 lots the decoder gets wrong (NC
+  10,556 is semi-dormant grass, H32), and the roof mask the lidar gives for
+  free (H34), unused.
+
+---
+
 ## The numbers that matter right now
 
 **CORPUS `1rijjz2`, 32 lawns, 2026-09-23 — the current state.**
