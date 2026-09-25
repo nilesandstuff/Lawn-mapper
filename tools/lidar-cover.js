@@ -214,7 +214,7 @@ const LAWNS = `
 `;
 
 /** Retried, because one flaky download should not read as "no lidar anywhere". */
-async function fetchFootprints(url, tries = 3) {
+export async function fetchFootprints(url, tries = 3) {
   let last;
   for (let i = 0; i < tries; i++) {
     try {

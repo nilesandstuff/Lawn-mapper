@@ -52,6 +52,7 @@ import {
 } from './backbone.js';
 import { rasterizePolygon } from '../public/lib/mask.js';
 import { stage3, clearCanopy } from './stage3.js';
+import { frameBbox3857 } from '../worker/src/imagery.js';
 import { lawnSetClause, lawnSetName, lawnSetDescription, BENCHMARK_PRINT } from './lawn-set.js';
 import { lngLatToFramePx, metresPerPixel } from '../public/lib/mercator.js';
 
@@ -346,6 +347,20 @@ export const setPrint = (lawns) => {
 export const frameSpans = (lawns, grid = GRID) => {
   const out = {};
   for (const L of lawns) out[L.id] = L.mpp * (L.grid || grid);
+  return out;
+};
+
+/**
+ * Each frame as [west, south, east, north] in EPSG:3857 metres, for anything
+ * that has to find the frame in a dataset that is not a picture -- the 3DEP
+ * point clouds are published in exactly that projection, so a reader can
+ * cut the frame's rectangle straight out of the octree with no reprojection
+ * and no guessing about which pixel is which metre. Written into scale.json
+ * beside the spans.
+ */
+export const frameBoxes = (lawns) => {
+  const out = {};
+  for (const L of lawns) if (L.frame) out[L.id] = frameBbox3857(L.frame);
   return out;
 };
 
@@ -1695,6 +1710,8 @@ async function main() {
       lawns.push({
         id: row.id,
         county: row.county,
+        /* The frame the photograph was taken on, for scale.json's boxes. */
+        frame,
         /* Cells across and down. Everything below for this lawn is on this grid. */
         grid: G,
         gridH: GH,
@@ -1864,6 +1881,8 @@ async function main() {
       join(dest, 'scale.json'),
       JSON.stringify({
         frames: frameSpans(lawns),
+        /* Where each frame IS, in Web Mercator metres, for the lidar reader. */
+        boxes: frameBoxes(lawns),
         /* Metres DOWN each frame, which since the crop is not the same as
            across it. */
         downs: Object.fromEntries(lawns.map((L) => [L.id, L.mpp * (L.gridH || L.grid || GRID)])),

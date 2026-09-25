@@ -1,0 +1,5 @@
+# Reading the public 3DEP point clouds (Entwine, laszip-compressed nodes).
+# Pure wheels: no libpdal, no apt. laspy reads LAS; lazrs is the Rust laszip
+# backend it uses for .laz. numpy and scipy come with requirements-trees.txt.
+laspy
+lazrs
