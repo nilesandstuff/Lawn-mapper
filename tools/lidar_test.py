@@ -16,6 +16,7 @@ import numpy as np
 from lidar_frame import (
     CLASSES, auc, box_sum, classify, fill_surface, height_png, layers_from, node_box, rasterise,
     separations, summarise, touches, understory_counts, understory_layers, walk,
+    masks_from, mask_shares, canopy_agreement, web_mercator_lat, print_masks,
 )
 
 passed = 0
@@ -108,6 +109,54 @@ check("box_sum adds the 3x3 square and stops at the edge", box_sum(np.ones((3, 3
 check("over 6 m the wood's neighbour inherits its share", abs(ul["understory_6m"][3, 3] - 2 / 3) < 1e-6)
 check("a ground-classified point counts as ground even if it sits a metre high",
       understory_counts(np.array([[0.5, 9.5, 101.0, 1, 2]]), bbox, 2, np.full((5, 5), 100.0, dtype=np.float32))[1][0, 0] == 0)
+
+# -------------------------------------------------------------- the masks
+# 3 x 3 cells of 2 m over a 6 x 6 m box. (0,0) a ROOF: three returns 6 m up
+# within 0.4 m, no ground. (0,2) a TREE: ground, returns at 3, 6, 9 m.
+# (2,2) a DENSE CROWN with no ground but spread over 4 m -- not a roof.
+# (2,0) nothing at all, and the rest open ground.
+mb = (0, 0, 6, 6)
+mp = [
+    [0.5, 5.5, 106.0, 1, 1], [1.0, 5.2, 106.2, 1, 1], [1.5, 5.0, 106.4, 1, 1],
+    [5.5, 5.5, 100.0, 1, 2], [5.3, 5.3, 103.0, 1, 1], [5.2, 5.2, 106.0, 1, 1], [5.1, 5.1, 109.0, 1, 1],
+    [5.5, 0.5, 104.0, 1, 1], [5.3, 0.7, 106.0, 1, 1], [5.1, 0.9, 108.0, 1, 1],
+    [3.0, 3.0, 100.0, 1, 2], [3.0, 5.0, 100.0, 1, 2], [1.0, 3.0, 100.0, 1, 2], [5.0, 3.0, 100.0, 1, 2], [3.0, 1.0, 100.0, 1, 2],
+]
+mr = rasterise(np.array(mp), mb, 2)
+check("the raster keeps the lowest return too", mr["z_min"][0, 0] == 106.0 and mr["z_min"][0, 2] == 100.0)
+ml = layers_from(mr, 2)
+mk = masks_from(mr, ml)
+check("a flat solid thing with no ground under it is a roof", bool(mk["roof"][0, 0]))
+check("a tree with ground under it is not", not mk["roof"][0, 2])
+check("a dense crown with no ground but spread down 4 m is not", not mk["roof"][2, 2])
+check("the tree and the dense crown are lidar canopy, the roof is not",
+      bool(mk["lidar_canopy"][0, 2]) and bool(mk["lidar_canopy"][2, 2]) and not mk["lidar_canopy"][0, 0])
+check("open ground is neither", not mk["roof"][1, 1] and not mk["lidar_canopy"][1, 1])
+check("one empty cell among returns is not void (the 6 m square has points)", not mk["void"][2, 0])
+empty = rasterise(np.array([[0.5, 19.5, 100.0, 1, 2]]), (0, 0, 20, 20), 2)
+ve = masks_from(empty, layers_from(empty, 2))["void"]
+check("a 6 m square with nothing back is void, one with a return is not", bool(ve[9, 9]) and not ve[0, 0])
+wat = rasterise(np.array([[1.0, 5.0, 100.0, 1, 9], [3.0, 3.0, 100.0, 1, 9], [5.0, 1.0, 100.0, 1, 2]]), mb, 2)
+check("mostly water-classed returns is void", bool(masks_from(wat, layers_from(wat, 2))["void"][1, 1]))
+
+cls3 = np.array([[3, 1, 2], [0, 0, 3], [-1, 2, 2]], dtype=np.int8)
+sh = mask_shares(cls3, mk)
+check("mask shares are per class", sh["not lawn, visible"]["cells"] == 2 and sh["not lawn, visible"]["roof"] == 0.5, str(sh["not lawn, visible"]))
+wi = np.ones((3, 3), dtype=bool)
+rest = np.zeros((3, 3), dtype=bool)
+rest[0, 2] = rest[1, 1] = True
+ag = canopy_agreement(wi, rest, mk["lidar_canopy"])
+check("agreement: both on the tree, lidar only on the crown, model only on open ground",
+      ag["both"] == 1 and ag["only_lidar"] == 1 and ag["only_restor"] == 1 and abs(ag["iou"] - 1 / 3) < 1e-9, str(ag))
+check("web mercator y back to latitude", abs(web_mercator_lat(4865942.28) - 40.0) < 1e-3 and web_mercator_lat(0) == 0)
+
+import contextlib, io
+rec = {"masks": sh, "canopy_agreement": ag, "lawn_sqft": 8626, "year": 2016, "cell_true_m2": 3.1}
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    print_masks([("-85.6,43.0:sam3:find", rec), ("-77.6,38.7:sam3:find", rec)], 2)
+out_txt = buf.getvalue()
+check("the end-of-log table prints a row per lot with its square feet", out_txt.count("8,626") == 2 and "IoU 0.33" in out_txt, out_txt[-400:])
 
 # ------------------------------------------------------------ the classes
 truth = np.array([[1, 1, 0, 0]], dtype=bool)

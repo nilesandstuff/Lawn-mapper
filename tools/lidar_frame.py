@@ -133,6 +133,8 @@ def rasterise(points, bbox, cell):
         "i_ground": np.full((gh, gw), np.nan, dtype=np.float32),
         "z_ground": np.full((gh, gw), np.nan, dtype=np.float32),
         "z_max": np.full((gh, gw), np.nan, dtype=np.float32),
+        "z_min": np.full((gh, gw), np.nan, dtype=np.float32),
+        "n_water": np.zeros((gh, gw), dtype=np.int32),
     }
     if points is None or len(points) == 0:
         return out
@@ -146,6 +148,10 @@ def rasterise(points, bbox, cell):
     zmax = np.full(gw * gh, -np.inf)
     np.maximum.at(zmax, flat, z)
     out["z_max"] = np.where(np.isfinite(zmax), zmax, np.nan).reshape(gh, gw).astype(np.float32)
+    zmin_all = np.full(gw * gh, np.inf)
+    np.minimum.at(zmin_all, flat, z)
+    out["z_min"] = np.where(np.isfinite(zmin_all), zmin_all, np.nan).reshape(gh, gw).astype(np.float32)
+    out["n_water"] = np.bincount(flat[cls == 9], minlength=gw * gh).reshape(gh, gw).astype(np.int32)
     ground = cls == 2
     if ground.any():
         gf = flat[ground]
@@ -255,6 +261,70 @@ def understory_layers(below, mid):
         b6, m6 = box_sum(below), box_sum(mid)
         share6 = np.where(b6 > 0, m6 / np.maximum(b6, 1), np.nan).astype(np.float32)
     return {"understory": share, "understory_6m": share6}
+
+
+# ---------------------------------------------------------------- the masks
+#
+# THREE THINGS THE LIDAR MAY SAY OUTRIGHT, each a yes/no per cell, with the
+# thresholds fixed on 2026-09-25 before any of them was read on real frames:
+#
+#   roof          no pulse reached the ground, the top is 2.5 m or more up,
+#                 and every return in the cell is within 1.5 m of the others:
+#                 a flat-ish solid thing above head height. A crown lets some
+#                 pulses through (H34: 95-100% of canopy cells have ground)
+#                 and spreads its returns down through the branches. Three
+#                 returns at least, or two hits on one crown top would pass.
+#   void          nothing came back over the 6 m square, or most of what did
+#                 is classed water (9): open water swallows the pulse. For
+#                 the pond the detector reads as lawn (owner, 2026-09-25).
+#   lidar canopy  2 m or more above ground and not a roof: the canopy height
+#                 model's own canopy, flown leaf-off, blind to shadow, and
+#                 years older than the photograph (H16). For the tree strips
+#                 the tree model misses (owner, 2026-09-25: Kent 8,626).
+
+ROOF_MIN_M, ROOF_SPREAD_M, ROOF_MIN_RETURNS = 2.5, 1.5, 3
+CANOPY_MIN_M = 2.0
+
+
+def masks_from(raster, layers):
+    n_all, n_ground = raster["n_all"], raster["n_ground"]
+    spread = np.nan_to_num(raster["z_max"] - raster["z_min"], nan=99.0)
+    roof = (n_ground == 0) & (n_all >= ROOF_MIN_RETURNS) & (layers["height"] >= ROOF_MIN_M) & (spread <= ROOF_SPREAD_M)
+    n6, w6 = box_sum(n_all), box_sum(raster["n_water"])
+    void = (n6 == 0) | (w6 * 2 > n6)
+    lidar_canopy = (layers["height"] >= CANOPY_MIN_M) & ~roof
+    return {"roof": roof, "void": void, "lidar_canopy": lidar_canopy}
+
+
+MASKS = ("roof", "void", "lidar_canopy")
+
+
+def mask_shares(classes, masks):
+    """Per class, the share of its cells under each mask."""
+    out = {}
+    for k, name in enumerate(CLASSES):
+        m = classes == k
+        n = int(m.sum())
+        out[name] = {"cells": n, **{mk: (float(masks[mk][m].mean()) if n else None) for mk in MASKS}}
+    return out
+
+
+def canopy_agreement(within, restor, lidar_canopy):
+    """
+    Inside the line: cells both call canopy, cells only the lidar does (the
+    tree model missed a tree -- or it grew since), cells only the tree model
+    does (the lidar says under 2 m: a bed, dark grass, or a tree newer than
+    the flight).
+    """
+    a, b = restor & within, lidar_canopy & within
+    both, only_lidar, only_restor = int((a & b).sum()), int((b & ~a).sum()), int((a & ~b).sum())
+    union = both + only_lidar + only_restor
+    return {"both": both, "only_lidar": only_lidar, "only_restor": only_restor,
+            "iou": (both / union) if union else None}
+
+
+def web_mercator_lat(y):
+    return math.degrees(math.atan(math.sinh(y / 6378137.0)))
 
 
 # --------------------------------------------------------------- the classes
@@ -477,12 +547,22 @@ def main():
 
         rows = summarise(classes, layers)
         seps = separations(classes, layers)
+        masks = masks_from(raster, layers)
+        within_c = shrink_mask(within, gw, gh)
+        agree = canopy_agreement(within_c, shrink_mask(canopy, gw, gh), masks["lidar_canopy"])
+        # Web Mercator stretches distance by 1/cos(latitude); the frame box is
+        # in it, so a coarse cell's true area is cell² × cos².
+        k = math.cos(math.radians(web_mercator_lat((bbox[1] + bbox[3]) / 2)))
+        true_m2 = cell * cell * k * k
+        lawn_sqft = float((truth | inferred).sum()) * ((bbox[2] - bbox[0]) / truth.shape[1]) ** 2 * k * k / 0.09290304
         area = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
         rec = {
             "project": p["name"], "year": p.get("year"), "nodes": got["nodes"], "mb": round(got["mb"], 1),
             "points": got["points"], "points_per_m2": round(got["points"] / area, 2),
             "ground_per_m2": round(float(raster["n_ground"].sum()) / area, 2),
             "classes": rows, "separation": seps, "seconds": round(time.time() - t0, 1),
+            "lawn_sqft": round(lawn_sqft), "cell_true_m2": true_m2,
+            "masks": mask_shares(classes, masks), "canopy_agreement": agree,
         }
         summary["lawns"][lawn_id] = rec
         for k in pooled:
@@ -490,7 +570,9 @@ def main():
                 pooled[k][lab_name][0].extend(layers[k][classes == a].tolist())
                 pooled[k][lab_name][1].extend(layers[k][classes == b].tolist())
 
-        np.savez_compressed(out / f"{lawn_id}.npz", classes=classes, **layers)
+        np.savez_compressed(out / f"{lawn_id}.npz", classes=classes, **layers, **masks)
+        for mk in MASKS:
+            Image.fromarray(masks[mk].astype(np.uint8) * 255).save(out / f"{lawn_id}-{mk.replace('_', '-')}.png")
         # THE HEIGHT, FOR STAGE 3 (H34): a grey PNG on the coarse grid, a tenth
         # of a metre a level, so the JavaScript scorer can read the canopy's
         # height the way it reads the tree model's mask. 25.5 m is the top.
@@ -547,11 +629,52 @@ def main():
     print("\nRead 'under canopy' against 'visible': a layer that cannot tell lawn from")
     print("pavement in the open will not do it under a tree. Direction is in the number:")
     print("above 0.5 means lawn reads HIGHER on that layer, below means lower.")
+    print_masks([(k, r) for k, r in summary["lawns"].items() if "skipped" not in r], cell)
     print("UNDERSTORY (H36): the woods rule needs 'under canopy' to read well BELOW 0.5 on")
     print("the understory columns -- lawn under a tree has none, not-lawn under canopy has")
     print("shrubs -- and height (H34) read 0.23 pooled here yet failed as a rule, so a")
     print("column is only a candidate until stage 3 scores it.")
     print("The gap between the lidar's year and the photograph's cannot be measured (H16).")
+
+
+def print_masks(items, cell):
+    """What the three masks say, per class and per lot. The part stage 4 turns on."""
+    done = [r for _, r in items]
+    print("\nWHAT THE LIDAR SAYS OUTRIGHT: share of each class under each mask, pooled over every cell")
+    print("(roof = no ground return, 2.5 m+, flat within 1.5 m; void = nothing back over 6 m, or water;")
+    print(" lidar canopy = 2 m+ and not roof):\n")
+    print(f"  {'':24}{'cells':>8}{'roof':>8}{'void':>8}{'lidar canopy':>14}")
+    for name in CLASSES:
+        n = sum(r["masks"][name]["cells"] for r in done)
+        if not n:
+            continue
+        pooled = {mk: sum((r["masks"][name][mk] or 0) * r["masks"][name]["cells"] for r in done) / n for mk in MASKS}
+        print(f"  {name:24}{n:8d}{100 * pooled['roof']:7.1f}%{100 * pooled['void']:7.1f}%{100 * pooled['lidar_canopy']:13.1f}%")
+    print("\nRead: a mask worth using is near 0% on both lawn rows and well above 0 on a not-lawn row.")
+    print("Roof on 'not lawn, visible' is the houses it finds; on 'lawn under canopy' it is lawn a roof rule would cost.")
+
+    tot = {k: sum(r["canopy_agreement"][k] for r in done) for k in ("both", "only_lidar", "only_restor")}
+    union = sum(tot.values())
+    print(f"\nTHE TREE MODEL AGAINST THE LIDAR'S CANOPY, inside the line: agree on {tot['both']} cells, "
+          f"lidar only {tot['only_lidar']}, tree model only {tot['only_restor']}"
+          + (f" (IoU {tot['both'] / union:.2f})." if union else "."))
+    print("Lidar only = a tree the model missed, or one grown since the flight; tree model only = the lidar")
+    print("says under 2 m there: a bed or dark grass the model took for a tree, or a tree newer than the flight.\n")
+
+    print(f"  {'lot':34}{'lawn':>10}{'flown':>7}{'roof in':>9}{'roof in':>9}{'void in':>9}{'void in':>9}{'lidar-only':>12}{'model-only':>12}")
+    print(f"  {'':34}{'sq ft':>10}{'':>7}{'lawn':>9}{'not-lawn':>9}{'lawn':>9}{'not-lawn':>9}{'canopy m²':>12}{'canopy m²':>12}")
+    for lawn_id, r in sorted(items, key=lambda kv: -kv[1]["canopy_agreement"]["only_lidar"] * kv[1]["cell_true_m2"]):
+        m = r["masks"]
+
+        def cells_of(names, mk):
+            return sum((m[nm][mk] or 0) * m[nm]["cells"] for nm in names)
+        lawn_rows, not_rows = ("visible lawn", "lawn under canopy"), ("not lawn, under canopy", "not lawn, visible")
+        a = r["canopy_agreement"]
+        print(f"  {lawn_id[:34]:34}{r['lawn_sqft']:>10,}{str(r.get('year') or '—'):>7}"
+              f"{cells_of(lawn_rows, 'roof'):9.0f}{cells_of(not_rows, 'roof'):9.0f}"
+              f"{cells_of(lawn_rows, 'void'):9.0f}{cells_of(not_rows, 'void'):9.0f}"
+              f"{a['only_lidar'] * r['cell_true_m2']:12.0f}{a['only_restor'] * r['cell_true_m2']:12.0f}")
+    print(f"\n  (roof and void columns are {cell:g} m cells; worst lidar-only canopy first)\n")
 
 
 def fmt(v):
