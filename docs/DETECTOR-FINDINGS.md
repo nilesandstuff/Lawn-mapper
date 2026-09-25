@@ -38,26 +38,17 @@ changes and results from different corpora are not comparable.
 *Kept current so a fresh session can pick up without the conversation that
 got here. Update it whenever the in-flight run changes.*
 
-- **In flight (2026-09-25, launched after H35): TWO identical runs,**
-  36151868024 (15:05 UTC, `claude/resume-previous-session-y94slo`) and
-  36152888443 (15:15 UTC, `claude/new-session-8204jd`), both at 262efc2,
-  launched by two sessions by accident and both kept: same code, same
-  inputs, so the pair is a free measure of how far the woods row moves
-  between identical runs (H13, H28). Read both; quote the difference
-  beside H36. Each is workflow 14, `canopy:
-  compare`, on the benchmark, "H36: the woods rule as TALL AND BIG". The
-  log prints a "12 m and" line per decoder (any size / 200 / 500 /
-  1,000 m²) and a fixed "+ stage 3, span, woods" row at 12 m and 500 m².
-  **Prediction, written before the run (H35): Prince William 3,429 stays
-  fixed (about 30%), the hidden column comes back to within two points of
-  span alone, the visible column keeps most of its point.** Write H36, a
-  run-log row, update the numbers and THE PLAN. If the prediction holds,
-  the woods row becomes THE PLAN's row. **The owner doubts size + height
-  (2026-09-25): lawn trees can be big too.** The alternative to measure if
-  H36 disappoints is the ground UNDER the crown, which the lidar has and
-  the photograph does not: understory returns in the 0.5–3 m band. Mown
-  grass under a lawn tree has none; a wood's floor has many. Add that
-  layer to workflow 23 and measure its AUC the way H34 did.
+- **Nothing in flight (2026-09-25, after H36).** Tall AND big failed
+  its prediction (H36): Prince William 3,429 unfixed, the size floor is
+  span alone on two decoders and costs hidden lawn on the third, and
+  200 / 500 / 1,000 m² are identical. The owner's doubt (lawn trees can be
+  big too) holds. **Next: the understory measurement.** Workflow 23 gets a
+  layer for lidar returns 0.5–3 m above ground under the canopy (mown grass
+  under a lawn tree has none; a wood's floor has many) and prints its AUC
+  for lawn against not-lawn under canopy, the way H34 did for height.
+  Only if that separates does it become a stage 3 rule. **After that:
+  wire in the roof mask** (no ground return and 3–10 m of height), which
+  is stage 4's actual job and is unused.
 - **What stage 4 is and is not doing with the lidar (owner's question,
   2026-09-25):** its stated job was hidden hard surfaces. Roofs it finds
   for free (no ground return, 3–10 m of height) and that mask is unused;
@@ -115,8 +106,9 @@ wood-edge strip (H32) and the setback along a house (H33), which no rule
 over two masks reaches. **Stage 4 measured (H34): the lidar reaches the
 ground under every canopy but its ground intensity cannot tell lawn from
 not-lawn there; what it can tell is woods from lawn trees, by height
-(3.7 m against 7.3 m).** What is left: a woods rule for stage 3 from the
-lidar's canopy height (built next), two lots where the decoder is 30–50
+(3.7 m against 7.3 m).** What is left: telling woods from lawn trees (height alone is a
+trade the wrong way, H35; height and size is nothing, H36; the understory
+under the crown is next, unmeasured), the roof mask, two lots where the decoder is 30–50
 points worse than colour (Utah's photograph is bad, NC 10,556 is
 semi-dormant grass, H32), and more maps.
 
@@ -307,8 +299,10 @@ setting that is right.
   two class medians before the sweep was seen.** MEASURED (H35): fixes
   Prince William under every decoder (60–91% → 28–35%) and costs nearly
   all the hidden lawn at 6 m, because a lawn tree is tall too; 12 m is a
-  gentler trade; the rule is now tall AND big (a size floor), fixed at 12 m
-  and 500 m², unmeasured. Built as: `tools/stage3.js`: the
+  gentler trade. MEASURED (H36): tall AND big (12 m and a size floor of
+  200, 500 or 1,000 m², all identical) leaves Prince William unfixed and is
+  span alone on two decoders; not adopted. The woods question moves to the
+  understory under the crown (stage 4, workflow 23), unmeasured. Built as: `tools/stage3.js`: the
   canopy is cleared from stage 1's answer (its opinion under a tree is
   untrained and is not evidence), then canopy within `reach` metres of
   visible lawn becomes lawn (a walk that only enters canopy, so it cannot
@@ -484,6 +478,57 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H36. Tall AND big does nothing useful: a size floor switches the woods rule off where it helped and leaves it on where it hurt, and Prince William is not fixed; two identical runs agree to the decimal, 2026-09-25
+
+Runs 36151868024 and 36152888443, both at 262efc2, both `canopy: compare`
+on the benchmark, launched ten minutes apart by two sessions by accident.
+**From the first score line to the last, the two logs are identical** —
+every sweep cell, every per-lawn figure, the badly-wrong table. Decoder rows
+28.4 / 29.8 / 24.3 (the seventh and eighth exact repeats). Lidar on 29 of 32.
+
+The size sweep at 12 m, headline / seen / inferred, beside span alone and
+12 m at any size (H35):
+
+| stage 1 | span alone (H33) | 12 m, any size | 12 m, ≥ 200 m² | ≥ 500 m² (the fixed row) | ≥ 1,000 m² |
+|---|---|---|---|---|---|
+| no canopy | 26.9 / 22.5 / 24.8 | 27.4 / 21.9 / 29.8 | 26.9 / 21.9 / 24.8 | 26.9 / 21.9 / 24.8 | 26.9 / 21.9 / 24.8 |
+| canopy on lawn | 26.6 / 22.2 / 28.5 | 28.2 / 22.1 / 31.3 | 26.6 / 22.2 / 28.5 | 26.6 / 22.2 / 28.5 | 26.6 / 22.2 / 28.5 |
+| canopy everywhere | 23.3 / 21.7 / 18.3 | 23.3 / 21.0 / 26.0 | 23.3 / 21.0 / 23.8 | 23.3 / 21.0 / 23.8 | 23.3 / 21.0 / 23.8 |
+
+**The prediction failed on its first and main clause.** Prince William
+3,429 sq ft under the fixed woods row: 67 / 60 / 91% — exactly span alone,
+on every decoder. It is not fixed. (H35's "stays fixed" assumed 12 m fixed
+it, and the per-lawn table was only ever printed for 6 m; whether 12 m at any
+size fixed it is not known.) The hidden column came back to span alone on
+two decoders, but only because on those two the floored rule does nothing at
+all — canopy on lawn reads span alone to the decimal. On the everywhere
+decoder the floored rule still costs 5.5 points of hidden lawn (18.3 →
+23.8) for 0.7 of visible (21.7 → 21.0). Median unmoved, 16 / 16 / 17 of 26
+over SAM, as span alone.
+
+**200, 500 and 1,000 m² are identical on every decoder, to the decimal.** No
+tall clump on the benchmark falls between 200 and 1,000 m² in a way that
+changes a score. Everything the 12 m rule did on the first two decoders was
+done by clumps under 200 m², and a 12 m clump under 200 m² is a single crown
+— which is what the floor was built to spare, and which on Prince William is
+evidently the part that was doing the fixing. *Why* there are no clumps in
+between is not measured; that canopy clumps join up — a lawn tree whose crown
+touches the wood edge is part of the wood's clump — would explain it and is
+SPECULATION. It is the owner's objection of 2026-09-25 in concrete form: a
+big lawn tree and a wood cannot be told apart by size, and on these lots
+size mostly measures what touches what.
+
+**Not changed.** THE PLAN's row stays span without woods; the canopy default
+stays on lawn. Height alone is a trade the wrong way (H35); height and size is
+nothing on two decoders and the same trade on the third. **Next, as decided
+before this run: the ground UNDER the crown** — lidar returns in the 0.5–3 m
+band beneath the canopy, which mown grass under a lawn tree lacks and a wood's
+understory is full of. Measured first as an AUC in workflow 23, the way H34
+measured height, before any rule is built on it.
+
+**Pictures**: `runs/2026-09-25-1324-edt-scalemae-large-896px` (and the twin
+run's folder), drawn for everywhere + span.
 
 ### H35. The woods rule fixes Prince William under every decoder and gives back the hidden lawn, because a lawn tree is tall too: 6 m was the wrong cutoff, 12 m is a trade, and "tall AND big" is the next shape, 2026-09-25
 
@@ -2998,3 +3043,4 @@ fields) were both more obviously right than this one.
 | 2026-09-25 | 36078758001 | 32 | `canopy: compare`, stage 3 **span** swept 4/8/12 m × reach 0/1/1.5 m over all three decoders, fixed "+ stage 3, span" row (8 m, 1 m), amber pictures | **23.3%** (everywhere + span) | 24.7% | **H33.** Decoder rows 28.4 / 29.8 / 24.3 (fifth exact repeat). Span 8 m + 1 m: none 26.9 / 22.5 / 24.8 (16 of 26), on lawn 26.6 / 22.2 / 28.5 (16), everywhere 23.3 / 21.7 / 18.3 (17). Visible ground within 2 points of cleared (reach cost 5–6); Kent 22,481 36 / 40 / 38 (everywhere was 50), PW 3,429 67 / 60 / 91 (was 89 / 80 / 130); hidden column half of reach's. Span is THE PLAN's row from here. Pictures `runs/2026-09-24-2251-edt-scalemae-large-896px` (first with amber) |
 | 2026-09-25 | 36095115276 | 32 | — (workflow 23, the 3DEP point clouds over the benchmark frames, 2 m cells, no training) | — | — | **H34: stage 4, first read.** 29 of 32 frames read in 3 min; 0.8–31 points/m², 1.05 ground returns/m² on the middle lawn; 95–100% of canopy cells have a ground return. Under canopy, lawn vs not: ground intensity AUC 0.45 pooled / 0.61 middle (a coin toss that flips lawn to lawn), ground density 0.68 / 0.59, **height 0.23 / 0.32 — lawn is under 3.7 m of canopy, the woods under 7.3**. In the open intensity reads 0.79. Hidden pavement is not findable this way; which canopy is woods is. Layers in the run's artifact |
 | 2026-09-25 | 36111426731 | 32 | `canopy: compare`, stage 3 **woods** (lidar clump median height ≥ H) swept off/4/6/8/12 m at the span cell, fixed row at 6 m; lidar on 29 of 32 | **23.3%** (everywhere + span) | 24.7% | **H35.** At 6 m: seen improves a point on every decoder (everywhere 21.7 → **19.3**, best ever), Prince William 3,429 **67 / 60 / 91 → 30 / 28 / 35**, Kent +2–4, median unmoved, 17 of 26 on all three — and inferred 24.8 / 28.5 / 18.3 → 42–44: a lawn tree is tall too. 12 m keeps most of the visible gain for 5–8 points hidden. Not adopted; rule reshaped to tall AND big for the next run. Pictures `runs/2026-09-25-0626-edt-scalemae-large-896px` |
+| 2026-09-25 | 36151868024, 36152888443 | 32 | `canopy: compare`, woods at **12 m AND a size floor** swept any / 200 / 500 / 1,000 m², fixed row 12 m and 500 m²; two identical runs launched by two sessions | **23.3%** (everywhere + span) | 24.7% | **H36: prediction failed.** The two runs identical to the decimal from the first score on. 200 = 500 = 1,000 m² on every decoder. Fixed woods row: none 26.9 / 21.9 / 24.8, on lawn 26.6 / 22.2 / 28.5 (span alone exactly), everywhere 23.3 / 21.0 / 23.8 (hidden +5.5). **Prince William 3,429 67 / 60 / 91, unfixed.** Size cannot tell a big lawn tree from a wood here. Next: understory returns under the crown (workflow 23). Pictures `runs/2026-09-25-1324-edt-scalemae-large-896px` |
