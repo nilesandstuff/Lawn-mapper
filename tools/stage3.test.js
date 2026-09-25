@@ -5,7 +5,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { clumps, clearCanopy, reach, enclose, span, bridge, stage3 } from './stage3.js';
+import { clumps, clearCanopy, reach, enclose, span, woods, bridge, stage3 } from './stage3.js';
 
 const grid = (rows) => {
   const h = rows.length, w = rows[0].length;
@@ -163,6 +163,48 @@ const show = (mask, w, h) => {
     'span filled the row, one cell of reach went beyond into the woods and no further');
   const none = stage3(lawn, canopy, w, h, { mpp: 1, spanM: 0, reachM: 0, minRing: 1 });
   assert.deepEqual([...none.mask], [...cleared], 'spanM 0 is the old stage 3');
+}
+
+/* -------------------------------------------------------------- woods */
+{
+  /* H34: the same lawn-and-tree-row grid as span, but the wood edge on the
+     right is 9 m tall and the tree row 4 m. With the woods rule at 6 m the
+     tall clump is woods: span still joins the row, and reach into the wood
+     edge is stopped where before it went a cell in. */
+  const w = 16, h = 7;
+  const lawn = grid([
+    '####..####......',
+    '####..####......',
+    '####..####......',
+    '####..####......',
+    '####..####......',
+    '####..####......',
+    '####..####......',
+  ]).mask;
+  const canopy = grid([
+    '....##....######',
+    '....##....######',
+    '....##....######',
+    '....##....######',
+    '....##....######',
+    '....##....######',
+    '....##....######',
+  ]).mask;
+  const height = new Float32Array(w * h);
+  for (let p = 0; p < w * h; p++) {
+    const x = p % w;
+    if (canopy[p]) height[p] = x >= 10 ? 9 : 4;
+  }
+  const tall = woods(canopy, height, w, h, 6);
+  assert.equal(show(tall, w, h).split('\n')[0], '..........######', 'the tall clump is woods, the short row is not');
+  assert.equal(woods(canopy, height, w, h, 12).reduce((a, b) => a + b, 0), 0, 'nothing is that tall');
+  assert.equal(woods(canopy, null, w, h, 6).reduce((a, b) => a + b, 0), 0, 'no height, no woods');
+
+  const with_ = stage3(lawn, canopy, w, h, { mpp: 1, spanM: 3, reachM: 1, minRing: 1, height, tallM: 6 });
+  assert.equal(show(with_.mask, w, h).split('\n')[0], '##########......',
+    'the row is joined, and the reach does not enter the woods');
+  const without = stage3(lawn, canopy, w, h, { mpp: 1, spanM: 3, reachM: 1, minRing: 1, height, tallM: 0 });
+  assert.equal(show(without.mask, w, h).split('\n')[0], '###########.....', 'off, the reach goes one cell into the woods as before');
 }
 
 /* ------------------------------------------------------------- bridge */
