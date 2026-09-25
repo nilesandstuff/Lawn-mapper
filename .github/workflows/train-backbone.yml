@@ -301,6 +301,17 @@ jobs:
       # 23 reads it, for stage 3's woods rule (H34). Three minutes and a few
       # MB a lawn from the public point clouds; a frame with no project over
       # it simply has no height and reads as before.
+      #
+      # TWO STEPS, NOT ONE: both tools read OUT, and one env block sent the
+      # plan into a FILE called "lidar" that the reader then could not make a
+      # folder of. Run 36098297014 failed on exactly that.
+      - name: Match the frames to the 3DEP projects
+        if: ${{ inputs.canopy != 'off' }}
+        env:
+          FRAMES: frames
+          OUT: lidar-plan.json
+        run: node tools/lidar-plan.js
+
       - name: Read the lidar over the frames
         if: ${{ inputs.canopy != 'off' }}
         env:
@@ -308,9 +319,7 @@ jobs:
           CANOPY: canopy
           PLAN: lidar-plan.json
           OUT: lidar
-        run: |
-          node tools/lidar-plan.js
-          python3 tools/lidar_frame.py
+        run: python3 tools/lidar_frame.py
 
       - name: Run the backbone over them
         env:
