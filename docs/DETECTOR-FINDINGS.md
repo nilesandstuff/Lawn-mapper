@@ -38,15 +38,17 @@ changes and results from different corpora are not comparable.
 *Kept current so a fresh session can pick up without the conversation that
 got here. Update it whenever the in-flight run changes.*
 
-- **Nothing in flight (2026-09-25, after H37).** The woods question is
-  closed: height alone is a trade the wrong way (H35), tall and big is
-  nothing (H36), the understory is weaker than height and as strong in the
-  open (H37). THE PLAN's row stays span without woods. **Next: the roof
-  mask**, stage 4's actual job: a lidar cell with no ground return and
-  several metres of height is a building whatever the photograph shows.
-  Unbuilt. The measurement first, the way H34 did it: how much of the
-  canopy stage 3 fills, and how much of the tracer's not-lawn, is roof by
-  that test; then a stage 3 rule that never fills it, scored in workflow 14.
+- **In flight (2026-09-25, after H38):** workflow 14, `canopy:
+  compare`, benchmark, with the **lidar veto** (roof and void are never
+  lawn, after stage 3) as a fixed row per decoder. Read the "+ stage 3,
+  span, lidar veto" rows, the "veto took" line (m² of tracer's lawn / not)
+  and the lots moved. **Prediction (H38): medians move under half a point,
+  Kent 72,885 down 3–8 points, no lot worse by more than a point, roof takes
+  under 20 m² of lawn.** Write H39. If it holds, the veto joins THE PLAN's
+  row. After that, on `lawns: all` (20+ maps approved since the freeze):
+  the tree count per clump (S9) and small things in the open against the
+  detector's own false lawn (S10). The lidar canopy (H38) needs its
+  lidar-only cells looked at in pictures before it is anything.
 - **What stage 4 is and is not doing with the lidar (owner's question,
   2026-09-25):** its stated job was hidden hard surfaces. Roofs it finds
   for free (no ground return, 3–10 m of height) and that mask is unused;
@@ -488,6 +490,54 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H38. The lidar finds roofs and the pond cleanly and almost never touches lawn; its own canopy is not clean, and sees far more trees than the tree model, 2026-09-25
+
+Run 36179937840, workflow 23, benchmark, 29 of 32 frames (the same three
+missing), every H34 and H37 number reproduced. Three masks, thresholds fixed
+in the code before the run: **roof** = no ground return, top 2.5 m or more,
+all returns within 1.5 m, three returns at least; **void** = nothing back
+over a 6 m square, or mostly water-classed; **lidar canopy** = 2 m or more
+and not roof. Share of each class's 2 m cells under each, pooled:
+
+| class | cells | roof | void | lidar canopy |
+|---|---|---|---|---|
+| visible lawn | 29,386 | **0.2%** | **0.0%** | 13.6% |
+| lawn under canopy | 1,734 | **0.5%** | **0.0%** | 62.7% |
+| not lawn, under canopy | 14,488 | 1.0% | 0.0% | 89.2% |
+| not lawn, visible | 25,350 | **26.2%** | 0.7% | 18.7% |
+
+**Roof is clean.** A quarter of the visible not-lawn is roof by this test and
+a fifth of a percent of the visible lawn; the most lawn it touches on any lot
+is 18 cells (Ottawa 158,244). But it is almost never under a tree (1.0% of
+not-lawn under canopy): a roof with a crown over it has ground returns or
+spread, so stage 3 was not filling roofs much to begin with. Its use is a
+veto on stage 1, where the detector calls roof lawn.
+
+**Void found the pond and nothing else.** 186 cells of not-lawn on Kent
+72,885 sq ft (the owner's pond, 2026-09-25) and zero lawn cells on any lot;
+every other lot reads 0 in the not-lawn column too.
+
+**The lidar's canopy is not a replacement for the tree model, as built.**
+13.6% of visible lawn sits under it. Three explanations, not separated here:
+trees the tree model missed over lawn the tracer drew, trees felled since the
+flight (2011–2020), and 2 m cells catching a crown's or an eave's edge. Inside
+the line the two agree on 14,006 cells (IoU 0.56); **the lidar alone calls
+8,759 cells canopy, the tree model alone 2,216.** Kent 8,626 (the owner's
+missed strip): 724 m² lidar-only, 0 model-only. NC 115,085: 6,711 m²
+lidar-only. NC 10,563: 1,482 m² lidar-only on a lot where the tree model found
+no canopy at all. As a *check* on the tree model's misses it points the right
+way on the one lot the owner named; the pictures would have to say which of
+the three explanations the rest are before it becomes a rule.
+
+**Next, built with this finding: the lidar veto.** Workflow 14 applies roof
+and void as "never lawn" after stage 3 over the span row, per decoder, and
+prints what each took of the tracer's lawn against lawn the tracer did not
+draw, in m², and every lot moved by a point or more. **Prediction, written
+before the run:** the medians move by under half a point; Kent 72,885 comes
+down by 3 to 8 points (the pond, if the detector called it lawn); no lot gets
+worse by more than a point; the roof veto takes under 20 m² of the tracer's
+lawn in all.
 
 ### H37. The understory does not tell a wood from a lawn tree: weaker than height, and as strong in the open as under the trees, so the woods question is closed, 2026-09-25
 
@@ -3164,3 +3214,4 @@ for everywhere + span. Kept because each points at a different stage.
 | 2026-09-25 | 36111426731 | 32 | `canopy: compare`, stage 3 **woods** (lidar clump median height ≥ H) swept off/4/6/8/12 m at the span cell, fixed row at 6 m; lidar on 29 of 32 | **23.3%** (everywhere + span) | 24.7% | **H35.** At 6 m: seen improves a point on every decoder (everywhere 21.7 → **19.3**, best ever), Prince William 3,429 **67 / 60 / 91 → 30 / 28 / 35**, Kent +2–4, median unmoved, 17 of 26 on all three — and inferred 24.8 / 28.5 / 18.3 → 42–44: a lawn tree is tall too. 12 m keeps most of the visible gain for 5–8 points hidden. Not adopted; rule reshaped to tall AND big for the next run. Pictures `runs/2026-09-25-0626-edt-scalemae-large-896px` |
 | 2026-09-25 | 36151868024, 36152888443 | 32 | `canopy: compare`, woods at **12 m AND a size floor** swept any / 200 / 500 / 1,000 m², fixed row 12 m and 500 m²; two identical runs launched by two sessions | **23.3%** (everywhere + span) | 24.7% | **H36: prediction failed.** The two runs identical to the decimal from the first score on. 200 = 500 = 1,000 m² on every decoder. Fixed woods row: none 26.9 / 21.9 / 24.8, on lawn 26.6 / 22.2 / 28.5 (span alone exactly), everywhere 23.3 / 21.0 / 23.8 (hidden +5.5). **Prince William 3,429 67 / 60 / 91, unfixed.** Size cannot tell a big lawn tree from a wood here. Next: understory returns under the crown (workflow 23). Pictures `runs/2026-09-25-1324-edt-scalemae-large-896px` |
 | 2026-09-25 | 36168701134 | 32 | — (workflow 23 with the **understory** layer: share of sub-3 m returns from 0.5–3 m, per 2 m cell and over 6 m) | — | — | **H37: no.** Under canopy, lawn vs not: understory 0.45 / 0.45 per cell, **0.38 / 0.35 over 6 m** (pooled / middle), against height 0.23 / 0.32 in the same run; in the open 0.43 / 0.40 and 0.38 / 0.33, so not a woods signal. Median share 0.00 in every class; 0.10–0.76 lot to lot. The woods question is closed; next the roof mask. Every H34 number reproduced to the digit |
+| 2026-09-25 | 36179937840 | 32 | — (workflow 23: **roof / void / lidar canopy** masks, thresholds fixed before the run) | — | — | **H38.** Roof 0.2 / 0.5% of the lawn classes against 26.2% of visible not-lawn; void 0.0% of lawn, 186 cells on Kent 72,885 (the pond) and nowhere else; lidar canopy 13.6% of visible lawn, IoU 0.56 with the tree model, lidar-only 8,759 cells against 2,216 model-only, Kent 8,626 724 m² lidar-only. Roof and void built as a veto after stage 3 |
