@@ -65,10 +65,13 @@ the visible lawn on both sides of it, then a little beyond) keeps visible
 ground within two points of cleared, leaves the woods alone, and gets half
 of reach's hidden gain — the half with lawn on one side only is the traced
 wood-edge strip (H32) and the setback along a house (H33), which no rule
-over two masks reaches. What is left: the setback rule once stage 4 gives
-a hard-surface mask, two lots where the decoder is 30–50 points worse than
-colour (Utah's photograph is bad, NC 10,556 is semi-dormant grass, H32),
-and stage 4.
+over two masks reaches. **Stage 4 measured (H34): the lidar reaches the
+ground under every canopy but its ground intensity cannot tell lawn from
+not-lawn there; what it can tell is woods from lawn trees, by height
+(3.7 m against 7.3 m).** What is left: a woods rule for stage 3 from the
+lidar's canopy height (built next), two lots where the decoder is 30–50
+points worse than colour (Utah's photograph is bad, NC 10,556 is
+semi-dormant grass, H32), and more maps.
 
 **H22 is retracted** (2026-09-24): with the registration bug fixed, windows
 are within noise of squeezing whole, both ways. The default stays off for the
@@ -276,8 +279,14 @@ setting that is right.
   intensity, height above ground; four classes from the labels and the
   canopy mask; and the number stage 4 turns on: an AUC per layer for lawn
   against not-lawn UNDER CANOPY, beside the same on visible ground as the
-  sanity check. No PDAL: laspy and lazrs are pure wheels. First run is the
-  row after this one in the run log.
+  sanity check. No PDAL: laspy and lazrs are pure wheels. **MEASURED (H34):
+  the pulses reach the ground under 95–100% of canopy cells, ground
+  intensity does NOT tell lawn from not-lawn under the trees (a coin toss
+  pooled, direction flips lawn to lawn), ground density barely does, and
+  HEIGHT does: lawn under canopy is under 3.7 m of tree, the woods are 7.3 m
+  (AUC 0.23 pooled). So the "driveway under a tree" case has no instrument
+  here after all, and stage 4's product is a canopy height model that says
+  which canopy is woods — a fourth stage 3 rule, unmeasured.**
 
 **The two known problems, which are problems to solve rather than reasons to
 stop.**
@@ -418,6 +427,86 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H34. The lidar reaches the ground under every canopy, and what it tells apart is not the ground but the TREES: lawn sits under 4 m of canopy, the woods under 7, 2026-09-25
+
+Run 36095115276, workflow 23, the first read of the 3DEP point clouds over
+the benchmark frames: 29 of 32 read (three have no project over them, H16's
+Maryland gap and one more), 3 minutes for all of them, 2 m cells.
+
+**The instrument does what E8 said it would.** Middle lawn: 2.4 points/m²,
+1.05 ground returns/m² (0.6 to 9.9 across the corpus; the Carolinas are flown
+at 10 to 30 points/m², Kent County and Kentucky at 1 to 2). **Under the
+canopy 95 to 100% of 2 m cells have at least one ground return**, against
+66% on visible not-lawn, which is roofs. So the pulses reach the ground
+between leaves everywhere we have trees, at about four returns a cell.
+
+Per class, middle lawn:
+
+| | ground returns/m² | cells with ground | ground intensity | height above ground |
+|---|---|---|---|---|
+| visible lawn | 1.34 | 99% | 28,650 | 0.1 m |
+| lawn under canopy | 1.14 | 100% | 26,911 | **3.7 m** |
+| not lawn, under canopy | 0.98 | 95% | 25,898 | **7.3 m** |
+| not lawn, visible | 0.70 | 66% | 24,850 | 1.6 m |
+
+Can each layer tell lawn from not-lawn? AUC, 0.5 is a coin toss:
+
+| | ground density | ground intensity | height |
+|---|---|---|---|
+| under canopy, pooled | 0.68 | 0.45 | **0.23** |
+| under canopy, middle of 10 lawns with 20+ cells each side | 0.59 | 0.61 | **0.32** |
+| visible, pooled | 0.68 | 0.79 | 0.35 |
+| visible, middle of 29 | 0.74 | 0.77 | 0.34 |
+
+**Ground intensity is not the third mask.** In the open it tells lawn from
+pavement and roof moderately (0.77 to 0.79, lawn brighter), which is the
+sanity check passing. Under the canopy it is a coin toss pooled (0.45) and
+inconsistent lawn by lawn: 0.20, 0.40, 0.43 on some, 0.74, 0.77, 0.83 on
+others, direction and all. Intensity is not calibrated across projects or
+even flight lines, and four returns a cell is thin. It does not answer
+"driveway under a tree", which was the case stage 4 was written for, and no
+amount of rules over it will.
+
+**Ground density is a weak yes** (0.68 pooled, 0.59 middle): lawn under
+canopy gets slightly more pulses to the ground than the woods do. Real,
+small, and it is the same fact as the next one seen from below.
+
+**HEIGHT IS THE SIGNAL, and it is a fact about the trees, not the ground.**
+Lawn under canopy sits under 3.7 m of canopy on the middle lawn; canopy the
+tracer did not call lawn is 7.3 m tall. Pooled AUC 0.23 (0.77 in the
+"lower means lawn" direction), 0.32 on the middle lawn, and the direction
+holds on most lawns with the cells to say (0.08, 0.09, 0.10, 0.16, 0.21,
+0.30, 0.31 against 0.55 to 0.76 on a few). This is the owner's suggestion of
+2026-09-25 measured — "maybe the actual geometry of the tree needs to be
+taken into account" — and it is the distinction every stage 3 rule has been
+groping for: a tree standing in a lawn, a row along a drive, an edge tree, is
+SHORT; the woods are TALL. Reach could not tell them apart because it only
+knew where the canopy was, not what it was.
+
+**Two things the lidar gives for free that it was not asked for.** Roofs:
+a cell inside the line with no ground return and 3 to 10 m of height is a
+building, whatever the photograph shows (66% of visible not-lawn cells
+have a ground return; the rest are roofs). And the canopy's height, which
+the tree model (a picture) cannot know.
+
+**The caveats travel with it.** The lidar is 2011 to 2020 and the
+photographs are not dated (H16); tall woods are stable over ten years and
+young lawn trees are not, which biases the height rule toward being right
+about the woods and wrong about a sapling. Three Bullitt County lots match
+`KY_FullState`, undated. The pooled figures are dominated by the two Kent
+lots with 4,500 and 7,000 canopy cells of woods — which are also the lots
+the tail table is about.
+
+**Verdict: stage 4 as "lidar finds the hidden pavement" stops here; stage 4
+as "lidar says which canopy is woods" is worth one rule.** Speculation, to
+be measured next: a fourth stage 3 rule, WOODS — a canopy clump whose median
+height is above H metres is woods and is never filled by span, reach or
+bridge — swept over H in workflow 14 with the lidar layers read in.
+Prediction, written before the run: it takes the everywhere decoder's
+Prince William and Kent lots down without touching the median, because the
+median lot has no woods. The layers are in the run's artifact and the reader
+is a step any workflow can add.
 
 ### H33. Span, the owner's rule, is the first stage 3 that does not creep into the woods: visible ground within two points of cleared, the wooded lots the best any row has read, and half of reach's hidden gain, 2026-09-25
 
@@ -2794,3 +2883,4 @@ fields) were both more obviously right than this one.
 | 2026-09-24 | 36035231729 | 32 | `canopy: compare` + stage 3 over all three decoders, seed 7, benchmark set (first run with `lawns`) | **24.2%** (decoder, everywhere + stage 3) | 24.7% | **H31.** Alone 28.5 / 29.8 / 24.3 (third exact repeat, head rows in the 36.5 / 32.1 state this time — H29 confirmed). + stage 3: none 26.4 / 26.7 / 12.2 (17 of 26); on lawn 25.8 / 26.0 / 12.2 (17); everywhere **24.2 / 22.6 / 11.7 (18 of 26)** but Kent 22,481 sq ft 49.8%, PW 3,429 130%, Utah 86%. H30's guess (none feeds stage 3 best) measured as nothing. Fast runner: 12 min a decoder, 68 min in all. Pictures `runs/2026-09-24-1440-edt-scalemae-large-896px` |
 | 2026-09-24 | 36054887434 | 32 | `canopy: compare`, stage 3 + **enclosure** swept over all three decoders, badly-wrong table | **24.2%** (everywhere + stage 3) | 24.7% | **H32.** Decoder rows 28.4 / 29.8 / 24.3 (fourth exact repeat). Enclosure at 4 of 8 sides, reach 3 m: seen back to 21.4 / 21.5 / 20.8 (from 26.7 / 26.0 / 22.6), inferred up to 28.2 / 33.5 / 20.9 (from 12.2 / 12.2 / 11.7). The traced inferred strip is a wood edge too. Tail table: Utah 13,689 and NC 10,556 are 69–86% under every decoder and 36–48% under the head, untouched by stage 3. Pictures `runs/2026-09-24-1830-edt-scalemae-large-896px` |
 | 2026-09-25 | 36078758001 | 32 | `canopy: compare`, stage 3 **span** swept 4/8/12 m × reach 0/1/1.5 m over all three decoders, fixed "+ stage 3, span" row (8 m, 1 m), amber pictures | **23.3%** (everywhere + span) | 24.7% | **H33.** Decoder rows 28.4 / 29.8 / 24.3 (fifth exact repeat). Span 8 m + 1 m: none 26.9 / 22.5 / 24.8 (16 of 26), on lawn 26.6 / 22.2 / 28.5 (16), everywhere 23.3 / 21.7 / 18.3 (17). Visible ground within 2 points of cleared (reach cost 5–6); Kent 22,481 36 / 40 / 38 (everywhere was 50), PW 3,429 67 / 60 / 91 (was 89 / 80 / 130); hidden column half of reach's. Span is THE PLAN's row from here. Pictures `runs/2026-09-24-2251-edt-scalemae-large-896px` (first with amber) |
+| 2026-09-25 | 36095115276 | 32 | — (workflow 23, the 3DEP point clouds over the benchmark frames, 2 m cells, no training) | — | — | **H34: stage 4, first read.** 29 of 32 frames read in 3 min; 0.8–31 points/m², 1.05 ground returns/m² on the middle lawn; 95–100% of canopy cells have a ground return. Under canopy, lawn vs not: ground intensity AUC 0.45 pooled / 0.61 middle (a coin toss that flips lawn to lawn), ground density 0.68 / 0.59, **height 0.23 / 0.32 — lawn is under 3.7 m of canopy, the woods under 7.3**. In the open intensity reads 0.79. Hidden pavement is not findable this way; which canopy is woods is. Layers in the run's artifact |
