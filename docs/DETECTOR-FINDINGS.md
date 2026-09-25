@@ -54,19 +54,21 @@ the default). New maps join the corpus but not this table.*
 |---|---|---|
 | SAM (what we pay for) | **24.7%** | 26 lawns with a stored answer, all `sam3`, rasterised on the rectangular grids (23.3% on the square ones) |
 | best headline | **24.3%** | **decoder, canopy everywhere**: Scale-MAE 896px whole, a conv decoder over the full 1024-number grid, trained with the hand marks and every canopy cell as don't-care; 16 of 26 over SAM; reproduced four times (H27, H28, H29). 23.4% on visible ground, 18.7% under the trees. Its 4.1 points over the no-canopy decoder (28.4) are all under the trees (H29), and it gets them by guessing lawn under any tree near lawn: Kent 22,481 sq ft 170% wrong, Prince William 3,429 319% |
-| THE PLAN's row, as run | **25.8%** | **decoder (canopy on lawn) + stage 3** (reach 3 m, bridge over 180°): 17 of 26 over SAM; 26.0% on visible ground, **12.2% under the trees**; Kent 22,481 at 39%, Prince William 3,429 at 80%. Reproduced (H30, H31). The head reading the same eye: 34.2–36.5% alone, 31.8–32.1% with colour |
-| best median | **24.2%** | **decoder (canopy everywhere) + stage 3**: **18 of 26 over SAM** and **22.6% on visible ground**, both the best any row has; 11.7% under the trees. One run (H31). And the worst row on the wooded lots: Kent 22,481 at 50%, Prince William 3,429 at 130%, Utah 86% |
+| THE PLAN's row | **26.6%** | **decoder (canopy on lawn) + stage 3, span** (span 8 m, reach 1 m, bridge over 180°): 16 of 26 over SAM; 22.2% on visible ground, 28.5% under the trees; **Kent 22,481 at 40%, Prince William 3,429 at 60%, the best any row reads on the wooded lots**. One run (H33). The reach-3 m row it replaced: 25.8 / 26.0 / 12.2, 17 of 26, PW 80 |
+| best median | **23.3%** | **decoder (canopy everywhere) + stage 3, span**: 17 of 26 over SAM, **21.7% on visible ground, the best any row has**, 18.3% under the trees; Kent 38% (was 50% under reach), Prince William 91% (the visible gaps inside the wood, H31). One run (H33) |
 
-Gap: **0.98×** on the best median, **1.04×** on the plan's row as run, both
-a tie at 32 lawns (H7). Stage 3 is measured (H30–H32): clearing the canopy
-alone is worth about 3 points on visible ground; reach trades visible for
-hidden a metre at a time and peaks at 3 m; the enclosure rule takes the
-visible cost back and gives up most of the hidden gain, because the traced
-inferred ground and the untraced wood edge are the same shape (H32). Which
-decoder feeds it is a median against tail choice (H31). **Stage 3 is at its
-floor with rules over two masks.** What is left: two lots (Utah 13,689 sq ft,
-NC 10,556) where every decoder is 30–50 points worse than colour and the
-canopy is not involved (H32), and stage 4.
+Gap: **0.94×** on the best median, **1.08×** on the plan's row, both a tie
+at 32 lawns (H7). Stage 3 is measured (H30–H33): clearing the canopy alone
+is worth about 3 points on visible ground; reach trades visible for hidden
+a metre at a time and creeps into the woods; span (lawn under canopy joins
+the visible lawn on both sides of it, then a little beyond) keeps visible
+ground within two points of cleared, leaves the woods alone, and gets half
+of reach's hidden gain — the half with lawn on one side only is the traced
+wood-edge strip (H32) and the setback along a house (H33), which no rule
+over two masks reaches. What is left: the setback rule once stage 4 gives
+a hard-surface mask, two lots where the decoder is 30–50 points worse than
+colour (Utah's photograph is bad, NC 10,556 is semi-dormant grass, H32),
+and stage 4.
 
 **H22 is retracted** (2026-09-24): with the registration bug fixed, windows
 are within noise of squeezing whole, both ways. The default stays off for the
@@ -234,15 +236,19 @@ setting that is right.
   no-canopy decoder is no better than on lawn. The enclosure rule (H32)
   recovers the visible ground reach cost and loses most of the hidden gain:
   one-sided ground under canopy, traced or not, looks the same to geometry.
-  **The owner's rule, built 2026-09-25 and UNMEASURED: `span`.** Lawn under
-  canopy joins the lawn that can be seen: canopy with visible lawn on both
-  sides of it along some straight line, within the span each way, is filled;
-  then a small reach goes "a little beyond, not far"; then the bridge. A
-  wood edge has lawn on one side only along every line and is never
-  spanned; a tree in a lawn, or a row of trees with lawn either side, is.
-  Workflow 14 sweeps span 4 / 8 / 12 m × reach 0 / 1 / 1.5 m per decoder
-  and scores a fixed "+ stage 3, span" row (8 m, 1 m, 180°, chosen before
-  the sweep). Built as: `tools/stage3.js`: the
+  **The owner's rule, `span`, MEASURED 2026-09-25 (H33) and now THE PLAN's
+  row.** Lawn under canopy joins the lawn that can be seen: canopy with
+  visible lawn on both sides of it along some straight line, within the
+  span each way, is filled; then a small reach goes "a little beyond, not
+  far"; then the bridge. A wood edge has lawn on one side only along every
+  line and is never spanned; a tree in a lawn, or a row of trees with lawn
+  either side, is. Measured: visible ground within two points of cleared
+  (reach cost five), the wooded lots the best any row reads, half of
+  reach's hidden gain, headline a wash. The half it misses has lawn on one
+  side only — the wood-edge strip and the setback along a house — and
+  needs a third mask (stage 4). Workflow 14 sweeps span 4 / 8 / 12 m ×
+  reach 0 / 1 / 1.5 m per decoder and scores the fixed "+ stage 3, span"
+  row (8 m, 1 m, 180°) beside the reach row. Built as: `tools/stage3.js`: the
   canopy is cleared from stage 1's answer (its opinion under a tree is
   untrained and is not evidence), then canopy within `reach` metres of
   visible lawn becomes lawn (a walk that only enters canopy, so it cannot
@@ -398,6 +404,67 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H33. Span, the owner's rule, is the first stage 3 that does not creep into the woods: visible ground within two points of cleared, the wooded lots the best any row has read, and half of reach's hidden gain, 2026-09-25
+
+Run 36078758001, `canopy: compare`, span swept 4 / 8 / 12 m × reach 0 / 1 /
+1.5 m (bridge over 180°) over all three decoders, and a fixed row per
+decoder at span 8 m, reach 1 m, chosen before the sweep. Decoder rows
+28.4 / 29.8 / 24.3 (fifth exact repeat). Headline / seen / inferred:
+
+| stage 1 | cleared | reach 3 m (H30's row) | **span 8 m + reach 1 m** | span 12 m + 1.5 m |
+|---|---|---|---|---|
+| no canopy | 26.4 / 20.3 / 93.6 | 26.3 / 26.7 / 12.2 (17 of 26) | 26.9 / 22.5 / 24.8 (16) | 26.1 / 23.7 / 22.3 |
+| canopy on lawn | 27.9 / 20.7 / 93.7 | 25.8 / 26.0 / 12.2 (17) | 26.6 / 22.2 / 28.5 (16) | 25.8 / 23.0 / 26.2 |
+| canopy everywhere | 23.3 / 18.6 / 90.2 | 24.2 / 22.6 / 11.7 (18) | 23.3 / 21.7 / 18.3 (17) | 23.3 / 22.2 / 16.3 |
+
+The wooded lots, reach 3 m → span 8 m + 1 m: Prince William 3,429 sq ft
+89 → 67 (none), 80 → 60 (on lawn), 130 → 91 (everywhere); Kent 22,481
+37 → 36, 39 → 40, **50 → 38**; NC 7,945 25 → 22, 25 → 21, 25 → 21.
+
+**On visible ground span does what reach could not.** Reach cost 5 to 6
+points of visible ground on every decoder; span costs 1.5 to 3 (22.5,
+22.2, 21.7 against cleared 20.3, 20.7, 18.6). And the woods creep is gone
+from the tail: the everywhere decoder's Kent lot goes from 50% to 38%,
+which is where the on-lawn decoder reads it, and every decoder's Prince
+William lot improves by 20 to 40 points. These are the best figures any
+row has read on those lots.
+
+**Under the trees it gets about half of what reach got.** Inferred 24.8 /
+28.5 / 18.3 against reach's 12.2 / 12.2 / 11.7, from 90+ cleared. The half
+it does not get is hidden lawn with visible lawn on ONE side only: the
+traced strip along a wood edge (H32's ambiguity, which no rule over two
+masks resolves) and lawn that runs along a house under trees, where the
+boundary is the house's setback rather than a join between two lawns (the
+owner's 2026-09-25 picture, the blue line). A bigger span with a little
+more reach (12 m, 1.5 m) reads a point better on the headline and the
+hidden column on every decoder and a point worse on visible ground: the
+same trade at a gentler slope, and inside noise of the fixed cell.
+
+**On the headline it is a wash**: +0.6, +0.8, −0.9 against reach, one
+lawn fewer over SAM on each decoder, all inside seed noise (H28). The
+headline does not decide between them; the columns and the tail do, and
+they say span.
+
+**Decided:** THE PLAN's row is now "+ stage 3, span" (8 m, 1 m, 180°),
+because it is the rule as the owner stated it, it is the only stage 3
+that leaves the woods alone, and the headline cost is noise. The reach
+row stays in the table as the comparison. The canopy default stays on
+lawn: the everywhere decoder + span reads the best headline and visible
+ground of any row (23.3, 21.7) and its Kent lot is fixed, but its Prince
+William lot is still 91% against on-lawn's 60% — the visible gaps inside
+a wood again (H31), which span rightly does not touch and clearing does
+not remove.
+
+**Pictures**: `runs/2026-09-24-2251-edt-scalemae-large-896px`, drawn for
+everywhere + span, the first with stage 3's additions in amber.
+
+**Speculation, unmeasured.** The setback rule: where visible lawn runs
+along a hard surface and enters canopy, continue the lawn's boundary
+under the trees at the same distance from that surface. It is the owner's
+blue line, it is what the half span misses on lots like the one in the
+picture, and it is a rule over three masks (lawn, canopy, hard surface),
+which stage 4 is about to provide.
 
 ### H32. Enclosure takes the seen column back to the cleared figure and gives back most of the hidden gain: the hand-marked inferred ground is itself a wood edge, and geometry cannot tell a traced edge from an untraced one, 2026-09-24
 
@@ -2712,3 +2779,4 @@ fields) were both more obviously right than this one.
 | 2026-09-24 | 36020948046 | 32 | as 36002884707 (canopy on lawn, seed 7) + **stage 3** swept and scored | **25.8%** (decoder + stage 3) | 24.7% | **H30: stage 3's first measurement.** Stage 1 29.8 / 24.3 / 34.5 (third exact repeat). Canopy cleared, no rules: 27.9 / 20.7 / 93.7. Reach 3 m + 180°: 25.8 / 26.0 / 12.2, **17 of 26**, Kent 22,481 sq ft 39.1%, PW 3,429 80.3%. Reach trades seen for inferred (20.7 → 29.8 against 93.7 → 7.0 from 0 to 4.5 m); bridge over 126° worse everywhere. Same folder as the row above (same minute); the pictures there are the compare run's |
 | 2026-09-24 | 36035231729 | 32 | `canopy: compare` + stage 3 over all three decoders, seed 7, benchmark set (first run with `lawns`) | **24.2%** (decoder, everywhere + stage 3) | 24.7% | **H31.** Alone 28.5 / 29.8 / 24.3 (third exact repeat, head rows in the 36.5 / 32.1 state this time — H29 confirmed). + stage 3: none 26.4 / 26.7 / 12.2 (17 of 26); on lawn 25.8 / 26.0 / 12.2 (17); everywhere **24.2 / 22.6 / 11.7 (18 of 26)** but Kent 22,481 sq ft 49.8%, PW 3,429 130%, Utah 86%. H30's guess (none feeds stage 3 best) measured as nothing. Fast runner: 12 min a decoder, 68 min in all. Pictures `runs/2026-09-24-1440-edt-scalemae-large-896px` |
 | 2026-09-24 | 36054887434 | 32 | `canopy: compare`, stage 3 + **enclosure** swept over all three decoders, badly-wrong table | **24.2%** (everywhere + stage 3) | 24.7% | **H32.** Decoder rows 28.4 / 29.8 / 24.3 (fourth exact repeat). Enclosure at 4 of 8 sides, reach 3 m: seen back to 21.4 / 21.5 / 20.8 (from 26.7 / 26.0 / 22.6), inferred up to 28.2 / 33.5 / 20.9 (from 12.2 / 12.2 / 11.7). The traced inferred strip is a wood edge too. Tail table: Utah 13,689 and NC 10,556 are 69–86% under every decoder and 36–48% under the head, untouched by stage 3. Pictures `runs/2026-09-24-1830-edt-scalemae-large-896px` |
+| 2026-09-25 | 36078758001 | 32 | `canopy: compare`, stage 3 **span** swept 4/8/12 m × reach 0/1/1.5 m over all three decoders, fixed "+ stage 3, span" row (8 m, 1 m), amber pictures | **23.3%** (everywhere + span) | 24.7% | **H33.** Decoder rows 28.4 / 29.8 / 24.3 (fifth exact repeat). Span 8 m + 1 m: none 26.9 / 22.5 / 24.8 (16 of 26), on lawn 26.6 / 22.2 / 28.5 (16), everywhere 23.3 / 21.7 / 18.3 (17). Visible ground within 2 points of cleared (reach cost 5–6); Kent 22,481 36 / 40 / 38 (everywhere was 50), PW 3,429 67 / 60 / 91 (was 89 / 80 / 130); hidden column half of reach's. Span is THE PLAN's row from here. Pictures `runs/2026-09-24-2251-edt-scalemae-large-896px` (first with amber) |
