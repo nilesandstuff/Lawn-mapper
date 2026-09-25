@@ -46,7 +46,8 @@ got here. Update it whenever the in-flight run changes.*
   layer for lidar returns 0.5–3 m above ground under the canopy (mown grass
   under a lawn tree has none; a wood's floor has many) and prints its AUC
   for lawn against not-lawn under canopy, the way H34 did for height.
-  Only if that separates does it become a stage 3 rule. **After that:
+  Only if that separates does it become a stage 3 rule. Built in
+  `tools/lidar_frame.py`; workflow 23 is the run. **After that:
   wire in the roof mask** (no ground return and 3–10 m of height), which
   is stage 4's actual job and is unused.
 - **What stage 4 is and is not doing with the lidar (owner's question,
@@ -337,7 +338,15 @@ setting that is right.
   HEIGHT does: lawn under canopy is under 3.7 m of tree, the woods are 7.3 m
   (AUC 0.23 pooled). So the "driveway under a tree" case has no instrument
   here after all, and stage 4's product is a canopy height model that says
-  which canopy is woods — a fourth stage 3 rule, unmeasured.**
+  which canopy is woods — a fourth stage 3 rule, unmeasured.** (It was
+  measured as a rule in H35 and H36 and failed both ways: a lawn tree is
+  tall and can be big.) **A fourth layer, BUILT 2026-09-25 and UNMEASURED:
+  the understory** — of the returns from below 3 m, the share from 0.5 to
+  3 m above ground, per 2 m cell and over a 6 m square (`understory`,
+  `understory_6m`), with its AUC beside the other three. Mown grass under a
+  lawn tree should have none; a wood's floor should have shrubs. That is a
+  theory until the AUC is read, and a candidate rule only after stage 3
+  scores it, because height read 0.23 here and still failed as a rule.
 
 **The two known problems, which are problems to solve rather than reasons to
 stop.**

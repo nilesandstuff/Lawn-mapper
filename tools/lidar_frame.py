@@ -28,6 +28,15 @@ THREE LAYERS PER CELL, all from the points and nothing inferred:
                             in between, and only a measurement says which
     height above ground     the highest return over the lowest ground return,
                             which is the canopy height model; ~0 on open ground
+    understory              of the returns that came back from below 3 m, the
+                            share from 0.5 to 3 m above the ground (H36): the
+                            layer UNDER a crown. Mown grass under a lawn tree
+                            has almost nothing there; a wood's floor has
+                            shrubs and saplings. Also over a 6 m square
+                            (understory_6m), because a 2 m cell holds a
+                            handful of returns and the woods rule decides on
+                            an area, not a cell -- H35's lesson was a layer
+                            that read well per cell and failed per clump.
 
 THE MEASUREMENT. Each coarse cell is classed from the labels the frame dump
 wrote (traced lawn, property line, inferred) and the tree model's canopy mask:
@@ -194,6 +203,60 @@ def layers_from(raster, cell):
     }
 
 
+UNDER_LO, UNDER_HI = 0.5, 3.0
+
+
+def understory_counts(points, bbox, cell, ground_z, lo=UNDER_LO, hi=UNDER_HI):
+    """
+    Per cell, on the same grid as rasterise(): how many returns came back
+    from below `hi` metres above the ground surface (`ground_z`, filled),
+    and how many of those from `lo` to `hi`. Ground-classified points count
+    as below `lo` whatever their height; everything else is sorted by its
+    own height over its cell's ground.
+    """
+    gh, gw = ground_z.shape
+    below = np.zeros((gh, gw), dtype=np.int32)
+    mid = np.zeros((gh, gw), dtype=np.int32)
+    if points is None or len(points) == 0:
+        return below, mid
+    w, s, e, n = bbox
+    x, y, z, cls = points[:, 0], points[:, 1], points[:, 2], points[:, 4]
+    keep = (x >= w) & (x < e) & (y > s) & (y <= n)
+    x, y, z, cls = x[keep], y[keep], z[keep], cls[keep]
+    col = np.minimum(gw - 1, ((x - w) / (e - w) * gw).astype(np.int64))
+    row = np.minimum(gh - 1, ((n - y) / (n - s) * gh).astype(np.int64))
+    g = ground_z[row, col]
+    ok = ~np.isnan(g)
+    hag = np.where(ok, z - np.nan_to_num(g), np.nan)
+    hag = np.where(cls == 2, 0.0, hag)
+    is_below = ok & (hag < hi)
+    is_mid = is_below & (hag >= lo) & (cls != 2)
+    flat = row * gw + col
+    below = np.bincount(flat[is_below], minlength=gw * gh).reshape(gh, gw).astype(np.int32)
+    mid = np.bincount(flat[is_mid], minlength=gw * gh).reshape(gh, gw).astype(np.int32)
+    return below, mid
+
+
+def box_sum(a, r=1):
+    """Sum over the (2r+1)-square around each cell, zero beyond the edge."""
+    a = a.astype(np.float64)
+    p = np.pad(a, r)
+    out = np.zeros_like(a)
+    for dy in range(2 * r + 1):
+        for dx in range(2 * r + 1):
+            out += p[dy:dy + a.shape[0], dx:dx + a.shape[1]]
+    return out
+
+
+def understory_layers(below, mid):
+    """The share per cell and over the 3-cell square (6 m at 2 m cells); NaN where nothing came back low."""
+    with np.errstate(invalid="ignore", divide="ignore"):
+        share = np.where(below > 0, mid / np.maximum(below, 1), np.nan).astype(np.float32)
+        b6, m6 = box_sum(below), box_sum(mid)
+        share6 = np.where(b6 > 0, m6 / np.maximum(b6, 1), np.nan).astype(np.float32)
+    return {"understory": share, "understory_6m": share6}
+
+
 # --------------------------------------------------------------- the classes
 
 CLASSES = ["visible lawn", "lawn under canopy", "not lawn, under canopy", "not lawn, visible"]
@@ -261,8 +324,16 @@ def summarise(classes, layers):
             "with_ground": float((layers["n_ground"][m] > 0).mean()),
             "intensity_p50": float(np.nanmedian(inten)) if np.isfinite(inten).any() else None,
             "height_p50": float(np.median(layers["height"][m])),
+            "understory_p50": _nanmedian(layers["understory"][m]) if "understory" in layers else None,
         }
     return rows
+
+
+def _nanmedian(v):
+    return float(np.nanmedian(v)) if np.isfinite(v).any() else None
+
+
+SEPARATED = ("ground_per_m2", "intensity", "height", "understory", "understory_6m")
 
 
 def separations(classes, layers):
@@ -276,12 +347,9 @@ def separations(classes, layers):
     out = {}
     for label, a, b in (("under canopy", 1, 2), ("visible", 0, 3)):
         pa, pb = classes == a, classes == b
-        out[label] = {
-            "cells": [int(pa.sum()), int(pb.sum())],
-            "ground_per_m2": auc(layers["ground_per_m2"][pa], layers["ground_per_m2"][pb]),
-            "intensity": auc(layers["intensity"][pa], layers["intensity"][pb]),
-            "height": auc(layers["height"][pa], layers["height"][pb]),
-        }
+        out[label] = {"cells": [int(pa.sum()), int(pb.sum())]}
+        for k in SEPARATED:
+            out[label][k] = auc(layers[k][pa], layers[k][pb]) if k in layers else None
     return out
 
 
@@ -368,7 +436,7 @@ def main():
         ids = ids[:limit]
     print(f"{len(ids)} frames, {cell:g} m cells\n")
     summary = {"cell_m": cell, "lawns": {}}
-    pooled = {k: {"under canopy": [[], []], "visible": [[], []]} for k in ("ground_per_m2", "intensity", "height")}
+    pooled = {k: {"under canopy": [[], []], "visible": [[], []]} for k in SEPARATED}
     t_all = time.time()
 
     for lawn_id in ids:
@@ -394,6 +462,7 @@ def main():
 
         raster = rasterise(pts, bbox, cell)
         layers = layers_from(raster, cell)
+        layers.update(understory_layers(*understory_counts(pts, bbox, cell, layers["ground_z"])))
         gh, gw = raster["n_all"].shape
 
         lab = np.asarray(Image.open(labels_file).convert("RGB"))
@@ -436,6 +505,7 @@ def main():
         print(f"  {label} {str(p.get('year') or '—'):>4}  {rec['points_per_m2']:5.1f} pts/m²  "
               f"{rec['ground_per_m2']:4.2f} ground/m²  under canopy {uc['cells'][0]:4d} lawn / {uc['cells'][1]:4d} not:  "
               f"AUC dens {fmt(uc['ground_per_m2'])}  int {fmt(uc['intensity'])}  hgt {fmt(uc['height'])}  "
+              f"und {fmt(uc['understory'])}  und6 {fmt(uc['understory_6m'])}  "
               f"{rec['seconds']:4.0f}s")
 
     (out / "summary.json").write_text(json.dumps(summary, indent=1))
@@ -455,27 +525,32 @@ def main():
           f"{grd[0]:.2f} to {grd[-1]:.2f} ground returns/m² (middle {grd[len(grd) // 2]:.2f}).")
     print(f"At {cell:g} m cells that is about {grd[len(grd) // 2] * cell * cell:.1f} ground returns a cell on the middle lawn.\n")
 
-    print("Per class, middle lawn (ground returns/m², share of cells with any ground return, ground intensity, height m):\n")
+    print("Per class, middle lawn (ground returns/m², share of cells with any ground return, ground intensity, height m, understory share):\n")
     for name in CLASSES:
         vals = [r["classes"][name] for r in done if r["classes"].get(name, {}).get("cells")]
         if not vals:
             continue
         med = lambda key: np.median([v[key] for v in vals if v.get(key) is not None])  # noqa: E731
-        print(f"  {name:24} {med('ground_per_m2'):5.2f}   {100 * med('with_ground'):3.0f}%   {med('intensity_p50'):8.0f}   {med('height_p50'):5.1f}")
+        print(f"  {name:24} {med('ground_per_m2'):5.2f}   {100 * med('with_ground'):3.0f}%   {med('intensity_p50'):8.0f}   {med('height_p50'):5.1f}   {med('understory_p50'):5.2f}")
 
     print("\nCAN THE LIDAR TELL LAWN FROM NOT-LAWN? AUC, 0.5 is a coin toss; pooled over every cell, then the middle lawn:\n")
-    print(f"  {'':16}{'ground density':>16}{'intensity':>12}{'height':>10}")
+    print(f"  {'':16}{'ground density':>16}{'intensity':>12}{'height':>10}{'understory':>12}{'over 6 m':>10}")
     for lab_name in ("under canopy", "visible"):
         pooled_auc = {k: auc(pooled[k][lab_name][0], pooled[k][lab_name][1]) for k in pooled}
         per = {k: [r["separation"][lab_name][k] for r in done
                    if r["separation"][lab_name][k] is not None and min(r["separation"][lab_name]["cells"]) >= 20]
                for k in pooled}
         mid = {k: (float(np.median(v)) if v else None) for k, v in per.items()}
-        print(f"  {lab_name:16}{fmt(pooled_auc['ground_per_m2']):>16}{fmt(pooled_auc['intensity']):>12}{fmt(pooled_auc['height']):>10}   pooled")
-        print(f"  {'':16}{fmt(mid['ground_per_m2']):>16}{fmt(mid['intensity']):>12}{fmt(mid['height']):>10}   middle lawn, of {len(per['intensity'])} with 20+ cells each side")
+        cols = lambda d: f"{fmt(d['ground_per_m2']):>16}{fmt(d['intensity']):>12}{fmt(d['height']):>10}{fmt(d['understory']):>12}{fmt(d['understory_6m']):>10}"  # noqa: E731
+        print(f"  {lab_name:16}{cols(pooled_auc)}   pooled")
+        print(f"  {'':16}{cols(mid)}   middle lawn, of {len(per['intensity'])} with 20+ cells each side")
     print("\nRead 'under canopy' against 'visible': a layer that cannot tell lawn from")
     print("pavement in the open will not do it under a tree. Direction is in the number:")
     print("above 0.5 means lawn reads HIGHER on that layer, below means lower.")
+    print("UNDERSTORY (H36): the woods rule needs 'under canopy' to read well BELOW 0.5 on")
+    print("the understory columns -- lawn under a tree has none, not-lawn under canopy has")
+    print("shrubs -- and height (H34) read 0.23 pooled here yet failed as a rule, so a")
+    print("column is only a candidate until stage 3 scores it.")
     print("The gap between the lidar's year and the photograph's cannot be measured (H16).")
 
 

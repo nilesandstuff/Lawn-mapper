@@ -14,8 +14,8 @@ made-up points before a run spends its time downloading real ones.
 import numpy as np
 
 from lidar_frame import (
-    CLASSES, auc, classify, fill_surface, height_png, layers_from, node_box, rasterise,
-    separations, summarise, touches, walk,
+    CLASSES, auc, box_sum, classify, fill_surface, height_png, layers_from, node_box, rasterise,
+    separations, summarise, touches, understory_counts, understory_layers, walk,
 )
 
 passed = 0
@@ -87,6 +87,28 @@ check("fill_surface spreads a single value to its neighbours", (fill_surface(z) 
 hp = height_png(np.array([[0.04, 3.7, 40.0, np.nan]]))
 check("height travels as a tenth of a metre a byte, clamped, NaN as 0", hp.tolist() == [[0, 37, 255, 0]], str(hp.tolist()))
 
+# ---------------------------------------------------------- the understory
+# Two cells on flat ground at 100 m. The NW cell is a LAWN TREE: ground, a
+# crown at 9 and 10 m, nothing between. The SE cell is WOODS: ground, a shrub
+# at 1.5 m, a sapling at 2.5 m, a crown at 12 m. A point at 3.5 m is neither.
+wpts = np.array([
+    [0.5, 9.5, 100.0, 1, 2], [0.7, 9.3, 109.0, 1, 1], [0.9, 9.1, 110.0, 1, 1],
+    [9.5, 0.5, 100.0, 1, 2], [9.3, 0.7, 101.5, 1, 1], [9.1, 0.9, 102.5, 1, 1],
+    [9.2, 0.8, 112.0, 1, 1], [9.4, 0.6, 103.5, 1, 1],
+])
+ground = fill_surface(rasterise(wpts, bbox, 2)["z_ground"])
+below, mid = understory_counts(wpts, bbox, 2, ground)
+check("the lawn tree's cell: one return below 3 m, none in the band", below[0, 0] == 1 and mid[0, 0] == 0)
+check("the wood's cell: three below 3 m, two in the 0.5-3 m band", below[4, 4] == 3 and mid[4, 4] == 2, f"{below[4, 4]} {mid[4, 4]}")
+ul = understory_layers(below, mid)
+check("understory share 0 under the lawn tree, 2/3 in the wood",
+      ul["understory"][0, 0] == 0 and abs(ul["understory"][4, 4] - 2 / 3) < 1e-6)
+check("a cell where nothing came back low is NaN, not 0", np.isnan(ul["understory"][2, 2]))
+check("box_sum adds the 3x3 square and stops at the edge", box_sum(np.ones((3, 3)))[1, 1] == 9 and box_sum(np.ones((3, 3)))[0, 0] == 4)
+check("over 6 m the wood's neighbour inherits its share", abs(ul["understory_6m"][3, 3] - 2 / 3) < 1e-6)
+check("a ground-classified point counts as ground even if it sits a metre high",
+      understory_counts(np.array([[0.5, 9.5, 101.0, 1, 2]]), bbox, 2, np.full((5, 5), 100.0, dtype=np.float32))[1][0, 0] == 0)
+
 # ------------------------------------------------------------ the classes
 truth = np.array([[1, 1, 0, 0]], dtype=bool)
 within = np.array([[1, 1, 1, 0]], dtype=bool)
@@ -117,5 +139,11 @@ seps = separations(classes, lay)
 check("under canopy, denser ground reads as lawn (AUC 1)", seps["under canopy"]["ground_per_m2"] == 1.0)
 check("and brighter ground reads as lawn here (AUC 1)", seps["under canopy"]["intensity"] == 1.0)
 check("visible: lawn is darker than the pavement in this fixture (AUC 0)", seps["visible"]["intensity"] == 0.0)
+check("without the understory layers the separation says None, not a number",
+      seps["under canopy"]["understory"] is None and rows["visible lawn"]["understory_p50"] is None)
+lay["understory"] = np.array([[0, 0, 0.05, 0.1, 0.4, 0.5, 0, 0]], dtype=np.float32)
+lay["understory_6m"] = lay["understory"]
+seps = separations(classes, lay)
+check("with them: lawn under canopy with less understory reads BELOW 0.5 (here 0)", seps["under canopy"]["understory"] == 0.0)
 
 print(f"\nAll {passed} checks passed.")
