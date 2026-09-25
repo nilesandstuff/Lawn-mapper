@@ -474,7 +474,10 @@ async function loadRuns() {
 function runLabel(r) {
   const when = r.at ? new Date(r.at).toLocaleString() : r.slug;
   const score = Number.isFinite(r.headline) ? ` · ${r.headline.toFixed(1)}%` : '';
-  return `${when} · ${r.title || r.slug}${score}`;
+  /* WHICH ROW WAS DRAWN. Two runs that drew the same row draw the same
+     pictures (H36), and the picker used to hide that. */
+  const row = r.settings?.config ? ` · ${r.settings.config}` : '';
+  return `${when} · ${r.title || r.slug}${row}${score}`;
 }
 
 function fillPicker(runs, current) {

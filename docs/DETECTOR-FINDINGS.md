@@ -38,6 +38,13 @@ changes and results from different corpora are not comparable.
 *Kept current so a fresh session can pick up without the conversation that
 got here. Update it whenever the in-flight run changes.*
 
+- **The pictures were the same picture (found 2026-09-25, after H39).**
+  Every run from H33 on drew its pictures for the lowest median, "canopy
+  everywhere + stage 3, span", which is deterministic (H36), so the owner
+  was shown the same drawings run after run while the row under test was
+  never drawn. Fixed: a run draws THE PLAN's row (`PLAN_ROW` in
+  tools/train-detector.js) when it scored it, and the picker names the row
+  each run drew. Runs before the fix are unchanged on the page.
 - **Nothing in flight (2026-09-25, after H39).** The lidar veto (roof and
   void never lawn) is adopted into THE PLAN's row: same medians, the pond
   and Kent 8,626's roof fixed, none worse. Next, in order: (1) look at

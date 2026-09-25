@@ -59,6 +59,12 @@ import { lngLatToFramePx, metresPerPixel } from '../public/lib/mercator.js';
 const SQM_PER_SQFT = 0.09290304;
 
 /*
+ * THE PLAN'S ROW (docs/DETECTOR-FINDINGS.md, H39): the one the pictures are
+ * drawn for whenever a run scores it. Change it here when THE PLAN changes.
+ */
+const PLAN_ROW = 'decoder, canopy on lawn + stage 3, span, lidar veto';
+
+/*
  * HOW MANY NUMBERS OF THE BACKBONE'S 384 EACH PIXEL CARRIES.
  *
  * All of them, twice over, would be 768 floats a pixel -- three quarters of a
@@ -2435,14 +2441,27 @@ async function main() {
    * phone, and a zip file is not something a phone opens. The page at
    * /predictions.html reads them straight out of the same place.
    */
-  if (renderWanted && best) {
+  /*
+   * WHICH ROW GETS DRAWN: THE PLAN'S, when the run scored it, and the lowest
+   * median only when it did not. The lowest median was "canopy everywhere +
+   * stage 3, span" in every run from H33 on, and it is deterministic (H36:
+   * identical to the decimal), so run after run drew the SAME pictures while
+   * the row each run was testing -- the woods rule, the lidar veto -- was
+   * never drawn. The owner looked for the difference and there was none to
+   * find (2026-09-25). The best median is still named in the table.
+   */
+  const drawn = table.find((t) => t.cfg.name === PLAN_ROW) || best;
+  if (renderWanted && drawn && drawn !== best) {
+    console.log(`\nDrawing THE PLAN's row, "${drawn.cfg.name}" (${drawn.med.toFixed(1)}%), not the lowest median ("${best.cfg.name}", ${best.med.toFixed(1)}%).`);
+  }
+  if (renderWanted && drawn) {
     /*
      * THE RUN'S OWN IDENTITY, assembled here where the facts are rather than
      * re-derived inside the renderer from the one sentence it used to be
      * handed. The folder name and the picker label both come out of this, and
      * a run labelled from a guess is a run nobody can find again.
      */
-    await publishRenderings(bucket, best, lawns, using, {
+    await publishRenderings(bucket, drawn, lawns, using, {
       model: py ? py.manifest.model : (eye ? 'dinov2-tiled-224' : 'no-backbone'),
       size: py ? py.manifest.size : (eye ? 224 : null),
       noBackbone: process.env.NO_BACKBONE === 'true',
