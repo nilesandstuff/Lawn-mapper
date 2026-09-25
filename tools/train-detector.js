@@ -2118,8 +2118,8 @@ async function main() {
      */
     const reaches = [0, 1.5, 3, 4.5];
     const rings = [1, 0.5, 0.35];
-    const sidesList = [4, 6];
-    const reaches2 = [1.5, 3, 4.5];
+    const spans = [4, 8, 12];
+    const spanReaches = [0, 1, 1.5];
     const cell = (rows) => `${fmt(mid(rows, 'mine'))} /${fmt(mid(rows, 'seenPct'))} /${fmt(mid(rows, 'guessPct'))}`.padStart(22);
     for (const first of decoderMasks) {
       console.log(`\nSTAGE 3 over "${first.cfg.name}": reach in metres across, `
@@ -2136,16 +2136,18 @@ async function main() {
         + ` stage 1 as it came: ${fmt(mid(table.find((t) => t.cfg === first.cfg).rows, 'mine'))})\n`);
 
       /*
-       * ENCLOSURE, the answer to H30's trade: reach fills the edge of the
-       * woods as readily as a lawn tree. Keep a reached cell only where
-       * visible lawn lies in at least `sides` of 8 directions. Bridge at 180°
-       * throughout; the row above with sides 0 is the comparison.
+       * SPAN, the owner's rule (2026-09-25): lawn under canopy joins the lawn
+       * that can be seen, and may fall a little beyond the joined shape but
+       * not far. Canopy with visible lawn on both sides of it within `span`
+       * each way is filled, then a small reach goes beyond, then the bridge.
+       * Enclosure (H32) was measured as a trade the other way and is not
+       * printed any more; its code stays.
        */
-      console.log('  Enclosure: a reached cell stays only with visible lawn in at least N of 8 directions (bridge over 180°).\n');
-      console.log(`  ${'sides'.padEnd(10)}${reaches2.map((r) => `reach ${r} m`.padStart(22)).join('')}`);
-      for (const sides of sidesList) {
-        let line = `  ${`${sides} of 8`.padEnd(10)}`;
-        for (const reachM of reaches2) line += cell(judge(first.masks, { reachM, minRing: 0.5, sides }));
+      console.log('  Span: canopy with visible lawn on BOTH sides within N metres is filled, then a small reach (bridge over 180°).\n');
+      console.log(`  ${'span'.padEnd(10)}${spanReaches.map((r) => `reach ${r} m`.padStart(22)).join('')}`);
+      for (const spanM of spans) {
+        let line = `  ${`${spanM} m`.padEnd(10)}`;
+        for (const reachM of spanReaches) line += cell(judge(first.masks, { spanM, reachM, minRing: 0.5 }));
         console.log(line);
       }
       console.log();
@@ -2157,9 +2159,11 @@ async function main() {
       const cfg3 = { ...cfg, name: `${cfg.name} + stage 3`, stage3: true };
       console.log(`Scoring "${cfg3.name}" (reach 3 m, bridge over 180°)…`);
       table.push(summarise(cfg3, judge(masks, { reachM: 3, minRing: 0.5 }), cfg.dims));
-      const cfg4 = { ...cfg, name: `${cfg.name} + stage 3, 4 sides`, stage3: true };
-      console.log(`Scoring "${cfg4.name}" (reach 3 m, bridge over 180°, lawn on 4 of 8 sides)…`);
-      table.push(summarise(cfg4, judge(masks, { reachM: 3, minRing: 0.5, sides: 4 }), cfg.dims));
+      /* The span cell, fixed here before its sweep was seen: 8 m each way
+         joins a tree up to 16 m across, 1 m of reach is "a little beyond". */
+      const cfg4 = { ...cfg, name: `${cfg.name} + stage 3, span`, stage3: true };
+      console.log(`Scoring "${cfg4.name}" (span 8 m, reach 1 m, bridge over 180°)…`);
+      table.push(summarise(cfg4, judge(masks, { spanM: 8, reachM: 1, minRing: 0.5 }), cfg.dims));
     }
   }
 

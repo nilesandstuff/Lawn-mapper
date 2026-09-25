@@ -145,6 +145,56 @@ export function enclose(lawn, canopy, reached, w, h, cells, sides) {
 }
 
 /**
+ * SPAN: canopy with visible lawn on BOTH sides of it, within `cells` each
+ * way along some straight line, becomes lawn.
+ *
+ * THE OWNER'S RULE, 2026-09-25: grass inferred under canopy has to follow
+ * the geometry of the grass that can be seen. Where two pieces of lawn meet
+ * a canopy, the lawn under it is the shape that joins them, and it may fall a
+ * little beyond that shape but not far. Reach cannot express this: it grows
+ * every lawn edge outward by the same distance whether anything is on the
+ * other side or not, which is how it crept into the woods (H30) -- and the
+ * enclosure rule (H32) counted directions with lawn without asking whether
+ * they were opposite each other, so a corner of woods passed it.
+ *
+ * This is a morphological closing along four line directions (across, down,
+ * both diagonals), confined to canopy. A cell inside a straight wood edge
+ * has lawn on one side and canopy or nothing on the other along every line
+ * and is never filled. A tree standing in a lawn has lawn both ways along
+ * every line. A row of trees with lawn on either side has it along the line
+ * across the row. A tree against a house has lawn on one side and house on
+ * the other -- not filled here, and the bridge decides it from the rim.
+ *
+ * Each ray walks through canopy only and counts if it meets visible lawn
+ * before leaving the canopy, the grid, or `cells`. The lines meet in the
+ * middle, so the widest canopy this fills is 2 x `cells` across.
+ */
+const AXES = [[1, 0], [0, 1], [1, 1], [1, -1]];
+
+export function span(lawn, canopy, w, h, cells) {
+  const out = Uint8Array.from(lawn);
+  if (cells <= 0) return out;
+  const meets = (x, y, dx, dy) => {
+    for (let step = 1; step <= cells; step++) {
+      x += dx; y += dy;
+      if (x < 0 || x >= w || y < 0 || y >= h) return false;
+      const q = y * w + x;
+      if (lawn[q]) return true;
+      if (!canopy[q]) return false;
+    }
+    return false;
+  };
+  for (let p = 0; p < w * h; p++) {
+    if (!canopy[p] || lawn[p]) continue;
+    const x = p % w, y = (p / w) | 0;
+    for (const [dx, dy] of AXES) {
+      if (meets(x, y, dx, dy) && meets(x, y, -dx, -dy)) { out[p] = 1; break; }
+    }
+  }
+  return out;
+}
+
+/**
  * BRIDGE: a clump of canopy whose rim is lawn through more than `minRing`
  * of its length is filled in.
  *
@@ -191,13 +241,22 @@ export function bridge(lawn, canopy, w, h, { minRing = 0.5 } = {}) {
 }
 
 /**
- * The whole of stage 3 over one lawn: clear the canopy, reach, then bridge.
- * `reachM` in metres, converted with this lawn's own cell size.
+ * The whole of stage 3 over one lawn: clear the canopy, span, reach, then
+ * bridge. `spanM` and `reachM` in metres, converted with this lawn's own
+ * cell size; `spanM` 0 (the default, and every run before 2026-09-25) is
+ * the reach-only stage 3 of H30 to H32.
+ *
+ * Span first and reach after, so the reach is "a little beyond" the joined
+ * shape: it starts from the spanned lawn as well as the visible lawn.
  */
-export function stage3(lawn, canopy, w, h, { mpp, reachM = 3, minRing = 0.5, sides = 0 } = {}) {
+export function stage3(lawn, canopy, w, h, {
+  mpp, spanM = 0, reachM = 3, minRing = 0.5, sides = 0,
+} = {}) {
   const cleared = clearCanopy(lawn, canopy);
+  const spanCells = spanM > 0 && mpp > 0 ? Math.round(spanM / mpp) : 0;
+  const spanned = span(cleared, canopy, w, h, spanCells);
   const cells = reachM > 0 && mpp > 0 ? Math.round(reachM / mpp) : 0;
-  const reached = enclose(cleared, canopy, reach(cleared, canopy, w, h, cells), w, h, cells, sides);
+  const reached = enclose(cleared, canopy, reach(spanned, canopy, w, h, cells), w, h, cells, sides);
   const bridged = minRing < 1 ? bridge(reached, canopy, w, h, { minRing }) : { mask: reached, filled: 0, clumps: 0 };
   return { mask: bridged.mask, filled: bridged.filled, clumps: bridged.clumps, cells };
 }

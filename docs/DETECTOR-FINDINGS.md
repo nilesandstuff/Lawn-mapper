@@ -233,8 +233,16 @@ setting that is right.
   decoder feeds it best on the median and worst on the wooded lots; the
   no-canopy decoder is no better than on lawn. The enclosure rule (H32)
   recovers the visible ground reach cost and loses most of the hidden gain:
-  the traced inferred strip and the untraced wood edge look the same to
-  geometry, and only the tracer's mark tells them apart. Built as: `tools/stage3.js`: the
+  one-sided ground under canopy, traced or not, looks the same to geometry.
+  **The owner's rule, built 2026-09-25 and UNMEASURED: `span`.** Lawn under
+  canopy joins the lawn that can be seen: canopy with visible lawn on both
+  sides of it along some straight line, within the span each way, is filled;
+  then a small reach goes "a little beyond, not far"; then the bridge. A
+  wood edge has lawn on one side only along every line and is never
+  spanned; a tree in a lawn, or a row of trees with lawn either side, is.
+  Workflow 14 sweeps span 4 / 8 / 12 m × reach 0 / 1 / 1.5 m per decoder
+  and scores a fixed "+ stage 3, span" row (8 m, 1 m, 180°, chosen before
+  the sweep). Built as: `tools/stage3.js`: the
   canopy is cleared from stage 1's answer (its opinion under a tree is
   untrained and is not evidence), then canopy within `reach` metres of
   visible lawn becomes lawn (a walk that only enters canopy, so it cannot
@@ -416,18 +424,22 @@ on one side only: the edge of the untraced woods.
 
 **And it gives back most of the hidden gain**: 12.2 → 28.2 and 33.5 on the
 two decoders that do not guess under trees, 11.7 → 20.9 on the one that
-does. The ground the tracer marked "inferred, not seen" is, for the most
-part, the SAME SHAPE as the untraced wood edge — lawn on one side, deeper
-canopy on the other — which is what the owner said it was on 2026-09-24
-("there's probably some grass under these trees on the edge of the woods,
-but not deeper in the woods"). A cell there has lawn in three of eight
-directions whether the tracer marked it or not. **No rule over two masks can
-tell a traced edge from an untraced one; the tracer's mark is the only
-thing that distinguishes them, and stage 3 does not have it at inference
-time.** Reach at 3 m is the depth of that strip on the median lot, and it
-fills the strip on the traced edges and the untraced ones alike. That is the
-trade, and it is inherent to geometry over canopy + visible lawn, not to
-these particular rules.
+does. What the rule loses is ONE-SIDED ground: canopy with visible lawn in
+three or fewer of eight directions, which is a wood edge, or a tree against
+a house or a driveway. The size of the loss says a large share of the
+marked inferred ground within 3 m of lawn is of that kind. *(First written
+as "the inferred ground is mostly a wood edge"; the owner corrected it on
+2026-09-25: plenty of the marked ground is isolated trees in lawns, trees
+at the edge of a house, rows of a few trees with lawn either side. Those
+pass the four-sides test and were never the loss. The measurement is about
+what the rule dropped, not about what the tracer marks.)* For the one-sided
+kind, no rule over two masks can tell a traced wood edge from an untraced
+one: the tracer's mark is the only thing that distinguishes them, and stage
+3 does not have it at inference time. Reach fills both alike. **But the rule
+itself was the wrong shape** — it counted directions with lawn without
+asking whether they were opposite each other, so it could not express the
+owner's actual rule, which is that lawn under canopy joins the lawn on
+either side of it. That rule is `span` (below, H33's run).
 
 **Six of eight is the bridge alone.** Its inferred column (36–41) is the
 reach-0-with-bridge cell's (42–43): nothing reach adds survives six sides
@@ -462,11 +474,16 @@ the everywhere decoder's remaining excess on Kent and Prince William is
 the visible gaps inside the woods (H31). **The last two are not canopy
 lots at all**: stage 3 does not move them (86 → 86, 74 → 74), and the old
 head reading colour and texture is 30 to 50 points BETTER than every
-decoder on them. Two lots out of 32 where the decoder is badly worse than
-colour, and nothing in the canopy work touches them. Unexplained;
-speculation: the owner's "counting buildings as lawn" from the pictures of
-the 2356 run, or bright dry lawn read as not-lawn. The pictures are the way
-to find out, and they are in `runs/2026-09-24-1830-edt-scalemae-large-896px`.
+decoder on them. The owner read the pictures (2026-09-25): **Utah 13,689 is
+the worst photograph in the corpus**, so it says nothing about any
+detector. **NC 10,556 is one of the most straightforward lawns in the
+corpus** — good imagery, almost no shadow, no trees, one continuous section
+with a couple of objects in it — **and the grass is semi-dormant.** SAM
+struggled with it too when its threshold was low. So this is a stage 1
+finding: the decoder over Scale-MAE reads dormant grass as not-lawn on a lot
+where colour reads it as lawn. Speculation: too few dormant lawns among 32
+for the decoder to learn the look, which more maps would fix, and which the
+colour control was never in a position to be fooled by.
 
 **Not changed:** the fixed cell (reach 3 m, 180°) and the on-lawn default.
 Stage 3 is at the floor these rules can reach: what remains under the trees
