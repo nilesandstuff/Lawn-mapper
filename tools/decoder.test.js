@@ -84,7 +84,7 @@ import { labelsPng, predictionMask } from './train-detector.js';
 
 /* --------------------------------------------------------------- canopy */
 {
-  const { canopyMask, heightMask } = await import('./train-detector.js');
+  const { canopyMask, heightMask, lidarVeto } = await import('./train-detector.js');
   /* A 4 x 2 mask with its right half lit, brought to an 8 x 4 grid: the
      right half of every row is canopy, and nothing else is. */
   const png = new PNG({ width: 4, height: 2 });
@@ -119,6 +119,14 @@ import { labelsPng, predictionMask } from './train-detector.js';
   const hm = heightMask(PNG.sync.read(PNG.sync.write(hp)), 4, 2);
   assert.deepEqual([...hm].map((v) => Number(v.toFixed(1))), [3.7, 3.7, 12, 12, 3.7, 3.7, 12, 12]);
   assert.equal(heightMask(null, 4, 2), null);
+
+  /* The lidar veto (H38): roof or void is never lawn, and returns a copy. */
+  const lawnIn = Uint8Array.from([1, 1, 1, 1, 0]);
+  const vetoOut = lidarVeto(lawnIn, Uint8Array.from([1, 0, 0, 0, 1]), Uint8Array.from([0, 0, 1, 0, 0]));
+  assert.deepEqual([...vetoOut], [0, 1, 0, 1, 0]);
+  assert.deepEqual([...lawnIn], [1, 1, 1, 1, 0], 'the veto must not change stage 3\'s own mask');
+  assert.equal(lidarVeto(lawnIn, null, null), lawnIn, 'no point cloud, no veto');
+  assert.deepEqual([...lidarVeto(lawnIn, null, Uint8Array.from([0, 1, 0, 0, 0]))], [1, 0, 1, 1, 0]);
 }
 
 console.log('decoder: ok');

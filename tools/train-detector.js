@@ -641,6 +641,20 @@ export function heightMask(png, G, GH = G) {
   return out;
 }
 
+/**
+ * THE LIDAR VETO (H38): a cell the point cloud calls roof or void is not
+ * lawn, whatever stage 1 and stage 3 said. Returns a copy; a missing mask
+ * vetoes nothing.
+ */
+export function lidarVeto(mask, roof, voidMask) {
+  if (!roof && !voidMask) return mask;
+  const out = Uint8Array.from(mask);
+  for (let i = 0; i < out.length; i++) {
+    if ((roof && roof[i]) || (voidMask && voidMask[i])) out[i] = 0;
+  }
+  return out;
+}
+
 /** Geometries -> a filled mask on the GRID, using the row's own frame. */
 function maskOf(geoms, frame, size, sizeH = size) {
   const project = (ll) => lngLatToFramePx(frame, ll, size, sizeH);
@@ -1722,12 +1736,27 @@ async function main() {
        * lawns have no point cloud over them and read as they did before.
        */
       let height = null;
+      /*
+       * AND WHAT IT SAYS OUTRIGHT (H38): a roof (no ground return, 2.5 m up,
+       * flat) or a void (nothing back over 6 m, or water). Neither can be
+       * lawn whatever the photograph shows, so they veto lawn after stage 3.
+       * Measured before use: 0.2 / 0.5% of lawn cells under roof, 0.0% under
+       * void, against 26% and 0.7% of the visible not-lawn.
+       */
+      let roof = null;
+      let voidMask = null;
       if (lidarDir) {
         const file = join(lidarDir, `${row.id}-height.png`);
         if (existsSync(file)) {
           height = heightMask(decoders.png.PNG.sync.read(readFileSync(file)), G, GH);
           if (height) lidared++;
         }
+        const read = (name) => {
+          const f = join(lidarDir, `${row.id}-${name}.png`);
+          return existsSync(f) ? canopyMask(decoders.png.PNG.sync.read(readFileSync(f)), G, GH) : null;
+        };
+        roof = read('roof');
+        voidMask = read('void');
       }
       const parcelGeom = parse(row.parcel);
       /*
@@ -1821,6 +1850,9 @@ async function main() {
         canopy: canopyRaw,
         /* And the lidar's height above ground in metres, for its woods rule. */
         height,
+        /* Roof and void, for the veto (H38). Null without a point cloud. */
+        roof,
+        void: voidMask,
         inferredPct: 100 * inferredShare(truth, inferred, within),
         truthPx,
         mpp: metresPerPixel(frame, G),
@@ -2176,9 +2208,10 @@ async function main() {
       for (let held = 0; held < lawns.length; held++) {
         const L = lawns[held];
         if (!masks[held]) continue;
-        const mask = L.canopy
+        let mask = L.canopy
           ? stage3(masks[held], L.canopy, L.grid, L.gridH, { mpp: L.mpp, height: L.height, ...opts }).mask
           : masks[held];
+        if (opts.veto) mask = lidarVeto(mask, L.roof, L.void);
         const row = foldRow(held, judgeFold(L, mask, { trainedOn: lawns.length - 1 }));
         /*
          * WHAT STAGE 1 SAID, with the canopy cleared, so the pictures can
@@ -2276,12 +2309,50 @@ async function main() {
       const cfg4 = { ...cfg, name: `${cfg.name} + stage 3, span`, stage3: true };
       console.log(`Scoring "${cfg4.name}" (span 8 m, reach 1 m, bridge over 180°)…`);
       table.push(summarise(cfg4, judge(masks, { spanM: 8, reachM: 1, minRing: 0.5 }), cfg.dims));
-      if (lawns.some((L) => L.height)) {
-        /* 12 m and 500 m², fixed after H35's sweep of height alone (6 m was
-           wrong: a lawn tree is that tall) and before the size sweep. */
-        const cfg5 = { ...cfg, name: `${cfg.name} + stage 3, span, woods`, stage3: true };
-        console.log(`Scoring "${cfg5.name}" (span 8 m, reach 1 m, bridge over 180°, woods at 12 m and 500 m²)…`);
-        table.push(summarise(cfg5, judge(masks, { spanM: 8, reachM: 1, minRing: 0.5, tallM: 12, woodsM2: 500 }), cfg.dims));
+      /*
+       * The woods row is retired: tall and big measured as nothing (H36) and
+       * the understory as weaker than height (H37). Its sweep stays above.
+       *
+       * THE LIDAR VETO (H38): roof and void cells are never lawn, applied
+       * after stage 3 over the span row. The split says, in square metres of
+       * stage 3's answer, what each mask took from the tracer's lawn (cost)
+       * and from lawn the tracer did not draw (gain) -- the number that says
+       * whether the veto earns its place, beside the medians that may not
+       * move at all when the pond is one lot of 32.
+       */
+      if (lawns.some((L) => L.roof || L.void)) {
+        const cfg6 = { ...cfg, name: `${cfg.name} + stage 3, span, lidar veto`, stage3: true };
+        console.log(`Scoring "${cfg6.name}" (span 8 m, reach 1 m, bridge over 180°, then roof and void are not lawn)…`);
+        const vetoed = judge(masks, { spanM: 8, reachM: 1, minRing: 0.5, veto: true });
+        table.push(summarise(cfg6, vetoed, cfg.dims));
+        const split = { roof: [0, 0], void: [0, 0] };
+        const moved = [];
+        const plain = judge(masks, { spanM: 8, reachM: 1, minRing: 0.5 });
+        for (let held = 0; held < lawns.length; held++) {
+          const L = lawns[held];
+          if (!masks[held] || !L.canopy) continue;
+          const m = stage3(masks[held], L.canopy, L.grid, L.gridH, { mpp: L.mpp, spanM: 8, reachM: 1, minRing: 0.5 }).mask;
+          const a = L.mpp * L.mpp;
+          for (const k of ['roof', 'void']) {
+            const v = L[k];
+            if (!v) continue;
+            for (let i = 0; i < m.length; i++) {
+              if (!m[i] || !v[i] || (L.within && !L.within[i])) continue;
+              split[k][L.truth[i] ? 0 : 1] += a;
+            }
+          }
+        }
+        vetoed.forEach((r, i) => {
+          const p = plain[i];
+          if (Math.abs(r.mine.errorPct - p.mine.errorPct) >= 1) moved.push([r.lawn, p.mine.errorPct, r.mine.errorPct]);
+        });
+        console.log(`   veto took, of stage 3's lawn: roof ${Math.round(split.roof[0])} m² of the tracer's lawn / ${Math.round(split.roof[1])} m² not;`
+          + ` void ${Math.round(split.void[0])} m² / ${Math.round(split.void[1])} m².`);
+        for (const [L, before, after] of moved) {
+          const sqft = Math.round((L.truthPx * L.mpp * L.mpp) / SQM_PER_SQFT);
+          console.log(`   ${String(L.county || 'traced by hand').slice(0, 18).padEnd(18)} ${sqft.toLocaleString().padStart(8)} sq ft: ${before.toFixed(1)}% -> ${after.toFixed(1)}%`);
+        }
+        if (!moved.length) console.log('   no lawn moved by a point or more.');
       }
     }
   }
