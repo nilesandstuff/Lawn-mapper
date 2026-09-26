@@ -139,6 +139,53 @@ def read_index(boxes, url=INDEX_URL, tries=3):
 
 
 COVER_MIN = 0.5  # H41: half the cell's NAIP pixels at CANOPY_M or more
+READ_COVERS = {}  # the last read's cover at each SWEEP_M height (H45), beside its return value
+
+
+SWEEP_M = (2.0, 3.0, 4.0, 5.0)       # H45: cover at each height
+SWEEP_AREA_M2 = (0, 20, 50)          # and a least object size, in m²
+
+
+def objects_at_least(mask, min_cells):
+    """The mask with connected objects (8-neighbour) under `min_cells` cells removed."""
+    if min_cells <= 1 or not mask.any():
+        return mask
+    from scipy.ndimage import label
+    lab, n = label(mask, structure=np.ones((3, 3), dtype=bool))
+    if not n:
+        return mask
+    sizes = np.bincount(lab.ravel())
+    keep = sizes >= min_cells
+    keep[0] = False
+    return keep[lab]
+
+
+def sweep_counts(covers, not_roof, within, restor, lidar_canopy, visible_lawn, tall_trees, cell_m2):
+    """
+    H45, the owner's "use it better" test: for every height in SWEEP_M and
+    least object size in SWEEP_AREA_M2, NAIP canopy = half the cell at that
+    height or more, not roof, in objects at least that big. Counted inside the
+    line against the same bars as H41 (where the tree model and lidar agree
+    there is / is not canopy), plus the traced visible lawn it would call
+    canopy and the lidar's 4 m trees it still finds. {"thr/area": {k: [n, yes]}}.
+    """
+    out = {}
+    w = within
+    cases = {
+        "both": restor & lidar_canopy & w,
+        "neither": ~restor & ~lidar_canopy & w,
+        "lawn": visible_lawn,
+        "trees": tall_trees & w,
+    }
+    for thr in SWEEP_M:
+        cov = covers.get(thr)
+        if cov is None:
+            continue
+        base = (np.nan_to_num(cov) >= 0.5) & not_roof
+        for area in SWEEP_AREA_M2:
+            v = objects_at_least(base, int(np.ceil(area / cell_m2)) if area else 0)
+            out[f"{thr:g}/{area}"] = {k: [int(m.sum()), int((m & v).sum())] for k, m in cases.items()}
+    return out
 
 
 def read_height(bbox, gw, gh, files):
@@ -160,6 +207,7 @@ def read_height(bbox, gw, gh, files):
 
     out = np.full((gh, gw), np.nan, dtype=np.float32)
     cover = np.full((gh, gw), np.nan, dtype=np.float32)
+    covers = {thr: np.full((gh, gw), np.nan, dtype=np.float32) for thr in SWEEP_M}
     dst_t = from_bounds(*bbox, gw, gh)
     with rasterio.Env(GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR", CPL_VSIL_CURL_ALLOWED_EXTENSIONS=".tif",
                       GDAL_HTTP_MAX_RETRY="3", GDAL_HTTP_RETRY_DELAY="2"):
@@ -180,4 +228,12 @@ def read_height(bbox, gw, gh, files):
                 reproject(tall, dc, src_transform=src.window_transform(win), src_crs=src.crs, src_nodata=np.nan,
                           dst_transform=dst_t, dst_crs="EPSG:3857", dst_nodata=np.nan, resampling=Resampling.average)
                 cover = np.where(np.isnan(cover), dc, np.fmax(cover, dc))
+                for thr in SWEEP_M:
+                    t2 = np.where(np.isnan(m), np.nan, (m >= thr).astype(np.float32))
+                    d2 = np.full((gh, gw), np.nan, dtype=np.float32)
+                    reproject(t2, d2, src_transform=src.window_transform(win), src_crs=src.crs, src_nodata=np.nan,
+                              dst_transform=dst_t, dst_crs="EPSG:3857", dst_nodata=np.nan, resampling=Resampling.average)
+                    covers[thr] = np.where(np.isnan(covers[thr]), d2, np.fmax(covers[thr], d2))
+    READ_COVERS.clear()
+    READ_COVERS.update(covers)
     return out, cover
