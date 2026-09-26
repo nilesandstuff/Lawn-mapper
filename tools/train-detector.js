@@ -77,8 +77,9 @@ const lawnName = (L) => `${L.tag ? `${L.tag} ` : ''}${L.county || 'traced by han
  */
 const PLAN_ROW = 'decoder, canopy on lawn + stage 3, span, lidar veto';
 /* THE ROW ON TRIAL, drawn in preference to THE PLAN's when a run scores it,
-   because the pictures are how a candidate is judged (owner, 2026-09-26). */
-const TRIAL_ROW = `${PLAN_ROW}, lidar ∩ NAIP canopy`;
+   because the pictures are how a candidate is judged (owner, 2026-09-26).
+   None now: the lidar ∩ NAIP canopy row was drawn once and lost (H42). */
+const TRIAL_ROW = null;
 
 /*
  * HOW MANY NUMBERS OF THE BACKBONE'S 384 EACH PIXEL CARRIES.
@@ -2598,7 +2599,7 @@ async function main() {
    * never drawn. The owner looked for the difference and there was none to
    * find (2026-09-25). The best median is still named in the table.
    */
-  const drawn = table.find((t) => t.cfg.name === TRIAL_ROW) || table.find((t) => t.cfg.name === PLAN_ROW) || best;
+  const drawn = (TRIAL_ROW && table.find((t) => t.cfg.name === TRIAL_ROW)) || table.find((t) => t.cfg.name === PLAN_ROW) || best;
   if (renderWanted && drawn && drawn !== best) {
     console.log(`\nDrawing "${drawn.cfg.name}" (${drawn.med.toFixed(1)}%) -- ${drawn.cfg.name === TRIAL_ROW ? 'the row on trial' : "THE PLAN's row"} -- not the lowest median ("${best.cfg.name}", ${best.med.toFixed(1)}%).`);
   }
