@@ -3272,9 +3272,13 @@ tile reads, a few hundred KB, no model run at all. The index is 256 MB CSV /
 299 MB GeoJSON (quad id, date, URL per file). Reached from this container;
 not yet tried from a GitHub runner.
 
-What it is NOT: it cannot see through leaves (it is a surface, from a
-photograph), so it says nothing about the ground under a crown; and 0.6 m
-with 2.3 m RMSE is not a shrub-height instrument. What it could be: a
+What it is NOT: lidar, although lidar taught it. Its inputs at inference are
+NAIP's four bands (red, green, blue, near-infrared) and static climate, soil
+and elevation rasters -- which is what makes it nationwide and recent; the
+lidar was only the training target (owner's question, 2026-09-26). So it
+cannot see through leaves (it is a surface estimated from an image), says
+nothing about the ground under a crown, can be no better than the lidar it
+imitates, and at 0.6 m with 2.3 m RMSE is not a shrub-height instrument. What it could be: a
 second, much newer opinion on WHERE the trees are and how tall, over the
 three benchmark lots with no lidar too (Island County among them).
 
