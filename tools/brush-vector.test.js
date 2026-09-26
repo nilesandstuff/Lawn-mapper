@@ -68,6 +68,17 @@ check('an erase right across a strip cuts it in two', two.length === 2);
 const sliver = strokeOnShapes([big], [[[at(-1, -1), at(21, -1), at(21, 14.999), at(-1, 14.999), at(-1, -1)]]], { paint: false, clip });
 check('a sliver thinner than the brush could mean is dropped', sliver.length === 0, JSON.stringify(sliver.length));
 
+// Erase a patch, then paint most of it back with a stroke traced a hair off
+// the first: the seam must not stay behind as a pinstripe hole.
+const notched = strokeOnShapes([big], [[[at(5, 5), at(9, 5), at(9, 9), at(5, 9), at(5, 5)]]], { paint: false, clip });
+const refill = strokeOnShapes(notched.map((g) => g.coordinates),
+  [[[at(5.03, 5.03), at(9.5, 5.03), at(9.5, 8.97), at(5.03, 8.97), at(5.03, 5.03)]]],
+  { paint: true, clip, minAreaM2: 0.1, minWidthM: 0.15 });
+check('painting back over an erase leaves no hairline hole along the seam',
+  refill.length === 1 && refill[0].coordinates.length === 1, `${refill[0]?.coordinates.length - 1} hole(s)`);
+const keptHole = strokeOnShapes([big], [disc(10, 7, 0.5)], { paint: false, clip, minAreaM2: 0.1, minWidthM: 0.15 });
+check('while a real round hole of the same size is kept', keptHole[0].coordinates.length === 2);
+
 check('no clip library: null, so the caller falls back', strokeOnShapes([big], [disc(1, 1, 1)], { paint: true, clip: null }) === null);
 
 if (failures) { console.log(`\n${failures} failed.`); process.exit(1); }
