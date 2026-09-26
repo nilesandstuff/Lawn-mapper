@@ -83,6 +83,7 @@ jobs:
         run: |
           python3 canopy_test.py
           python3 lidar_test.py
+          python3 naip_chm_test.py
           node lidar-cover.test.js
 
       - name: Fetch the lawns and write the frames out
@@ -119,6 +120,10 @@ jobs:
           CELL_M: ${{ inputs.cell }}
           LIMIT: ${{ inputs.limit }}
           RUN_ABOUT: ${{ inputs.about }}
+          # NAIP-CHM (E9): the 256 MB index once (about 10 s), then a windowed
+          # read over each frame (about 1.5 s). Workflow 23 only; workflow 14
+          # does not read it.
+          NAIP_CHM: '1'
         run: |
           echo "About: $RUN_ABOUT"
           python3 tools/lidar_frame.py

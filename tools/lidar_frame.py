@@ -305,7 +305,7 @@ def mask_shares(classes, masks):
     for k, name in enumerate(CLASSES):
         m = classes == k
         n = int(m.sum())
-        out[name] = {"cells": n, **{mk: (float(masks[mk][m].mean()) if n else None) for mk in MASKS}}
+        out[name] = {"cells": n, **{mk: (float(masks[mk][m].mean()) if n else None) for mk in masks}}
     return out
 
 
@@ -508,6 +508,18 @@ def main():
     summary = {"cell_m": cell, "lawns": {}}
     pooled = {k: {"under canopy": [[], []], "visible": [[], []]} for k in SEPARATED}
     t_all = time.time()
+    # NAIP-CHM (E9), when asked: the index once, then a windowed read a frame.
+    naip_files = {}
+    if os.environ.get("NAIP_CHM") == "1":
+        import naip_chm
+        t_ix = time.time()
+        try:
+            naip_files = naip_chm.read_index({k: boxes[k] for k in ids})
+            print(f"NAIP-CHM index read in {time.time() - t_ix:.0f} s: files over "
+                  f"{sum(1 for v in naip_files.values() if v)} of {len(ids)} frames.\n")
+        except Exception as e:  # noqa: BLE001 - the lidar part still runs
+            print(f"NAIP-CHM index could not be read ({str(e)[:80]}); the lidar part runs without it.\n")
+    summary["naip_only"] = {}
 
     for lawn_id in ids:
         label = lawn_id[:28].ljust(30)
@@ -515,6 +527,10 @@ def main():
         if not p or not p.get("url"):
             print(f"  {label} no lidar project over it")
             summary["lawns"][lawn_id] = {"skipped": "no lidar"}
+            if naip_files.get(lawn_id):
+                rec = naip_without_lidar(lawn_id, boxes[lawn_id], cell, frames, canopy_dir, naip_files[lawn_id], out)
+                if rec:
+                    summary["naip_only"][lawn_id] = rec
             continue
         labels_file = frames / f"{lawn_id}-labels.png"
         if not labels_file.exists():
@@ -549,7 +565,19 @@ def main():
         seps = separations(classes, layers)
         masks = masks_from(raster, layers)
         within_c = shrink_mask(within, gw, gh)
-        agree = canopy_agreement(within_c, shrink_mask(canopy, gw, gh), masks["lidar_canopy"])
+        restor_c = shrink_mask(canopy, gw, gh)
+        agree = canopy_agreement(within_c, restor_c, masks["lidar_canopy"])
+        naip_rec = None
+        if naip_files.get(lawn_id):
+            try:
+                naip_h = naip_chm.read_height(bbox, gw, gh, naip_files[lawn_id])
+                masks["naip_canopy"] = (np.nan_to_num(naip_h) >= naip_chm.CANOPY_M) & ~masks["roof"]
+                layers["naip_height"] = naip_h
+                Image.fromarray(height_png(naip_h)).save(out / f"{lawn_id}-naip-height.png")
+                naip_rec = {"year": naip_files[lawn_id][0][0],
+                            "three_way": naip_chm.three_way(within_c, restor_c, masks["lidar_canopy"], masks["naip_canopy"])}
+            except Exception as e:  # noqa: BLE001 - one frame's read failing is reported, not fatal
+                naip_rec = {"error": str(e)[:200]}
         # Web Mercator stretches distance by 1/cos(latitude); the frame box is
         # in it, so a coarse cell's true area is cell² × cos².
         k = math.cos(math.radians(web_mercator_lat((bbox[1] + bbox[3]) / 2)))
@@ -563,6 +591,7 @@ def main():
             "classes": rows, "separation": seps, "seconds": round(time.time() - t0, 1),
             "lawn_sqft": round(lawn_sqft), "cell_true_m2": true_m2,
             "masks": mask_shares(classes, masks), "canopy_agreement": agree,
+            "naip": naip_rec,
         }
         summary["lawns"][lawn_id] = rec
         for k in pooled:
@@ -630,6 +659,8 @@ def main():
     print("pavement in the open will not do it under a tree. Direction is in the number:")
     print("above 0.5 means lawn reads HIGHER on that layer, below means lower.")
     print_masks([(k, r) for k, r in summary["lawns"].items() if "skipped" not in r], cell)
+    if naip_files:
+        print_naip([(k, r) for k, r in summary["lawns"].items() if "skipped" not in r], summary["naip_only"])
     print("UNDERSTORY (H36): the woods rule needs 'under canopy' to read well BELOW 0.5 on")
     print("the understory columns -- lawn under a tree has none, not-lawn under canopy has")
     print("shrubs -- and height (H34) read 0.23 pooled here yet failed as a rule, so a")
@@ -675,6 +706,80 @@ def print_masks(items, cell):
               f"{cells_of(lawn_rows, 'void'):9.0f}{cells_of(not_rows, 'void'):9.0f}"
               f"{a['only_lidar'] * r['cell_true_m2']:12.0f}{a['only_restor'] * r['cell_true_m2']:12.0f}")
     print(f"\n  (roof and void columns are {cell:g} m cells; worst lidar-only canopy first)\n")
+
+
+def naip_without_lidar(lawn_id, bbox, cell, frames, canopy_dir, files, out):
+    """A frame with no point cloud: the tree model against NAIP-CHM on the same coarse grid."""
+    import naip_chm
+    from PIL import Image
+    labels_file = frames / f"{lawn_id}-labels.png"
+    if not labels_file.exists():
+        return None
+    gw = max(1, int(round((bbox[2] - bbox[0]) / cell)))
+    gh = max(1, int(round((bbox[3] - bbox[1]) / cell)))
+    lab = np.asarray(Image.open(labels_file).convert("RGB"))
+    within = shrink_mask(lab[:, :, 1] >= 128, gw, gh)
+    can_file = canopy_dir / f"{lawn_id}-mask.png"
+    canopy = (np.asarray(Image.open(can_file).convert("L")) >= 128) if can_file.exists() else np.zeros(lab.shape[:2], dtype=bool)
+    try:
+        h = naip_chm.read_height(bbox, gw, gh, files)
+    except Exception as e:  # noqa: BLE001
+        return {"error": str(e)[:200]}
+    Image.fromarray(height_png(h)).save(out / f"{lawn_id}-naip-height.png")
+    k = math.cos(math.radians(web_mercator_lat((bbox[1] + bbox[3]) / 2)))
+    return {"year": files[0][0], "cell_true_m2": cell * cell * k * k,
+            "two_way": naip_chm.two_way(within, shrink_mask(canopy, gw, gh), np.nan_to_num(h) >= naip_chm.CANOPY_M)}
+
+
+def print_naip(items, naip_only):
+    """The tie-breaker (H38's open question): where the tree model and the lidar disagree, what does NAIP-CHM say?"""
+    have = [(k, r) for k, r in items if r.get("naip") and "three_way" in r["naip"]]
+    failed = [k for k, r in items if r.get("naip") and "error" in r["naip"]]
+    print("\nNAIP-CHM (E9), 2 m or more and not roof, against the tree model and the lidar's canopy, inside the line:")
+    if not have:
+        print("  nothing read." + (f" {len(failed)} frames failed, e.g. {failed[:3]}" if failed else ""))
+        return
+    years = sorted(r["naip"]["year"] for _, r in have)
+    print(f"  {len(have)} frames with lidar and NAIP-CHM (NAIP {years[0]} to {years[-1]}); {len(failed)} reads failed.\n")
+    tot = {c: [0, 0] for c in ("both", "lidar only", "model only", "neither")}
+    for _, r in have:
+        for c, (n, yes) in r["naip"]["three_way"].items():
+            tot[c][0] += n
+            tot[c][1] += yes
+    print(f"  {'class':24}{'cells':>8}{'NAIP canopy':>13}{'lidar canopy':>14}")
+    for name in CLASSES:
+        rows = [r["masks"][name] for _, r in have if r["masks"][name].get("naip_canopy") is not None]
+        n = sum(x["cells"] for x in rows)
+        if n:
+            nc = sum(x["naip_canopy"] * x["cells"] for x in rows) / n
+            lc = sum(x["lidar_canopy"] * x["cells"] for x in rows) / n
+            print(f"  {name:24}{n:8d}{100 * nc:12.1f}%{100 * lc:13.1f}%")
+    print()
+    print(f"  {'tree model / lidar':22}{'cells':>8}{'NAIP says canopy':>18}")
+    for c, (n, yes) in tot.items():
+        print(f"  {c:22}{n:8d}{(100 * yes / n if n else 0):17.1f}%")
+    print("\n  Read: 'lidar only' high = trees the tree model misses (still there in 2022-23);")
+    print("  low = trees gone since the flight, or the lidar's 2 m cells catching an edge.")
+    print("  'model only' high = the tree model is right and the lidar is old; low = the model's false trees.")
+    print("  'both' and 'neither' are the calibration: how often NAIP-CHM agrees when the other two do.\n")
+
+    print(f"  {'lot':34}{'lawn':>10}{'lidar':>7}{'NAIP':>6}{'lidar-only m²':>15}{'NAIP agrees':>13}{'model-only m²':>15}{'NAIP agrees':>13}")
+    for k, r in sorted(have, key=lambda kv: -kv[1]["naip"]["three_way"]["lidar only"][0] * kv[1]["cell_true_m2"]):
+        tw, a = r["naip"]["three_way"], r["cell_true_m2"]
+        lo, mo = tw["lidar only"], tw["model only"]
+        print(f"  {k[:34]:34}{r['lawn_sqft']:>10,}{str(r.get('year') or '—'):>7}{r['naip']['year']:>6}"
+              f"{lo[0] * a:15.0f}{(100 * lo[1] / lo[0] if lo[0] else 0):12.0f}%"
+              f"{mo[0] * a:15.0f}{(100 * mo[1] / mo[0] if mo[0] else 0):12.0f}%")
+    if naip_only:
+        print("\n  Frames with no lidar, the tree model against NAIP-CHM alone (m²):\n")
+        print(f"  {'lot':34}{'NAIP':>6}{'both':>8}{'model only':>12}{'NAIP only':>11}")
+        for k, r in naip_only.items():
+            if "two_way" not in r:
+                print(f"  {k[:34]:34}  read failed: {r.get('error', '')[:60]}")
+                continue
+            t, a = r["two_way"], r["cell_true_m2"]
+            print(f"  {k[:34]:34}{r['year']:>6}{t['both'] * a:8.0f}{t['model only'] * a:12.0f}{t['naip only'] * a:11.0f}")
+    print()
 
 
 def fmt(v):

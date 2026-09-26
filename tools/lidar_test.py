@@ -16,7 +16,7 @@ import numpy as np
 from lidar_frame import (
     CLASSES, auc, box_sum, classify, fill_surface, height_png, layers_from, node_box, rasterise,
     separations, summarise, touches, understory_counts, understory_layers, walk,
-    masks_from, mask_shares, canopy_agreement, web_mercator_lat, print_masks,
+    masks_from, mask_shares, canopy_agreement, web_mercator_lat, print_masks, print_naip,
 )
 
 passed = 0
@@ -157,6 +157,17 @@ with contextlib.redirect_stdout(buf):
     print_masks([("-85.6,43.0:sam3:find", rec), ("-77.6,38.7:sam3:find", rec)], 2)
 out_txt = buf.getvalue()
 check("the end-of-log table prints a row per lot with its square feet", out_txt.count("8,626") == 2 and "IoU 0.33" in out_txt, out_txt[-400:])
+
+mk2 = dict(mk, naip_canopy=mk["lidar_canopy"])
+rec2 = {"masks": mask_shares(cls3, mk2), "lawn_sqft": 8626, "year": 2016, "cell_true_m2": 3.1,
+        "naip": {"year": 2022, "three_way": {"both": [2, 2], "lidar only": [4, 3], "model only": [2, 0], "neither": [9, 1]}}}
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    print_naip([("-85.6,43.0:sam3:find", rec2)], {"-122.5,48.0:sam3:find": {"year": 2023, "cell_true_m2": 2.0,
+                                                                            "two_way": {"both": 5, "model only": 1, "naip only": 7}}})
+nt = buf.getvalue()
+check("the NAIP table prints the tie-breaker, the lot row and the no-lidar frame",
+      "75.0%" in nt and "8,626" in nt and "-122.5,48.0" in nt and "NAIP canopy" in nt, nt[-600:])
 
 # ------------------------------------------------------------ the classes
 truth = np.array([[1, 1, 0, 0]], dtype=bool)

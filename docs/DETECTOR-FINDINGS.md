@@ -45,6 +45,17 @@ got here. Update it whenever the in-flight run changes.*
   never drawn. Fixed: a run draws THE PLAN's row (`PLAN_ROW` in
   tools/train-detector.js) when it scored it, and the picker names the row
   each run drew. Runs before the fix are unchanged on the page.
+- **In flight (2026-09-26): workflow 23 with NAIP-CHM (E9)**, benchmark.
+  `tools/naip_chm.py` reads NAIP-CHM onto the lidar's 2 m grid (tallest
+  reading a cell); canopy = 2 m or more and not the lidar's roof. The log
+  prints each class's share under it, and the tie-breaker for H38's open
+  question: of the cells only the lidar calls canopy, and of those only the
+  tree model does, how many NAIP-CHM calls canopy. Frames without lidar
+  (Island County) get the tree model against NAIP-CHM alone. **Written
+  before the run, the check that NAIP-CHM is usable at all:** where the
+  tree model and the lidar agree, NAIP-CHM should agree over 80% of the time
+  on 'both' and under 10% on 'neither'. No prediction on the split itself.
+  Write H40.
 - **Nothing in flight (2026-09-25, after H39).** The lidar veto (roof and
   void never lawn) is adopted into THE PLAN's row: same medians, the pond
   and Kent 8,626's roof fixed, none worse. Next, in order: (1) look at
