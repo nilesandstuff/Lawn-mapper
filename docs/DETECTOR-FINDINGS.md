@@ -46,6 +46,18 @@ got here. Update it whenever the in-flight run changes.*
   tools/train-detector.js) when it scored it, and the picker names the row
   each run drew. Runs before the fix are unchanged on the page.
 - **Pictures of THE PLAN's row are up (2026-09-26):** `runs/2026-09-25-2152-edt-scalemae-large-896px`, the first drawn for the row actually adopted.
+- **In flight (2026-09-26, after H47): S11, the fused inputs** — workflow 14,
+  `canopy: compare`, `decoder: fused`, benchmark. Write it up as H48. **The
+  baseline** is run 36263512588 on the same 32 (THE PLAN's row 26.6%, seen
+  22.2%, inferred 28.5%, in shade 24.8%; the plan's decoder alone 29.8%, seen
+  24.3%). **The bar, written before the run:** THE PLAN's row with fused
+  inputs reads **24.6% or better (two points, twice the seed's one, H28)**
+  with more benchmark lots better than worse; below that it is noise and not
+  adopted. Read also, because this is where it should act: the seen column,
+  the in-shade column, B06 and Kent 8,626 (roofs), B12 (the pond), B04 and
+  B23 (shadow), and whether the lidar veto still takes anything. Prediction:
+  better on the seen column and the roof/pond lots, little change under the
+  trees; an honest chance it reads worse at 31 training lawns.
 - **Nothing in flight (2026-09-26, after H47).** Telling woods from lawn
   trees PASSES its bar for the first time, per crown segment and with the
   detector's own lawn edge (H47): "no visible lawn on the segment's border"
@@ -3657,6 +3669,39 @@ for everywhere + span. Kept because each points at a different stage.
   them that grass should be inferred; one stretch runs along the house where
   the lawn is narrow. No lidar project over it. Span at 8 m cannot bridge a
   cluster wider than 8 m.
+
+### S11. Give the detector every source and let it learn the rules (the owner's, 2026-09-26)
+
+**The question.** Rather than hand-written logic over each source (the lidar
+veto, stage 3's woods reasoning, NAIP-CHM as a canopy), feed lidar, NAIP's
+near-infrared and the tree model to the detector beside the photograph and
+let it learn how to use them; worse at first on a small corpus, perhaps, but
+it should scale where rules do not.
+
+**Why it is plausible (external).** Height above ground is the input that
+separates "low vegetation" from "tree" on the ISPRS Vaihingen/Potsdam
+benchmarks, which is their commonest confusion and ours (Audebert, Le Saux &
+Lefèvre 2018, arXiv 1711.08681: early fusion learns the sources jointly but
+is more sensitive to missing data than late fusion). The Chesapeake 1 m land
+cover, which has a turf-grass class, is built from NAIP plus lidar height.
+NDVI is a band ratio, so it survives shadow (the note on the `ndvi` provider
+in worker/src/imagery.js); that provider was rejected as SAM's ONLY picture
+for being soft at 3.5 cm, which does not apply to one number per 1.4 m patch.
+
+**What it cannot do, from this repo's own findings.** The decoder is trained
+on visible ground only (H17), so no input teaches it what lies under a
+canopy; stage 3 keeps that. It cannot be TOLD to trust RGB over stale lidar;
+it learns that only from examples, so the lidar is hidden at random in
+training (modality dropout, 0.3; NAIP 0.2) and a lot with no point cloud
+reads as zeros with a flag down, which dropout has shown it. Registration
+is less of a worry than it sounds at this grain: a patch is 1.4 m and the
+lidar cell 2 m, and NAIP-CHM measured 0-1 cell off (H43).
+
+**Built (tools/fuse_layers.py, naip_bands.py; workflow 14 `decoder: fused`):**
+seven more numbers a patch beside the eye's 1024 -- lidar height (m/10,
+clipped at 30 m), ground-return share, log return count (H38's void), a
+has-lidar flag, NAIP NDVI, a has-NAIP flag, the tree model's canopy share --
+each area-averaged onto the patch grid exactly as the labels are.
 
 ## Rules for running and reading these experiments
 

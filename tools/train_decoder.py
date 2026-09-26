@@ -81,6 +81,18 @@ CANOPY = os.environ.get("CANOPY", "")
 CANOPY_MODE = "all" if os.environ.get("CANOPY_MODE", "lawn") == "all" else "lawn"
 # How many lawns to hold out, for a quick look. Unset means every lawn.
 LIMIT = int(os.environ.get("LIMIT", "0") or 0)
+# THE FUSED-INPUTS TEST (tools/fuse_layers.py): seven more numbers a patch
+# from the lidar (FUSE_LIDAR=dir of <id>.npz from lidar_frame.py), NAIP's
+# near-infrared (FUSE_NAIP=dir of <id>-naip.png from naip_bands.py) and the
+# tree model's mask (CANOPY). Off unless FUSE=1.
+FUSE = os.environ.get("FUSE") == "1"
+FUSE_LIDAR = os.environ.get("FUSE_LIDAR", "")
+FUSE_NAIP = os.environ.get("FUSE_NAIP", "")
+# Modality dropout: the chance, per lawn per step, that a source is hidden
+# as though it were missing -- so the decoder cannot lean on the lidar where
+# it is stale, and has met "no lidar here" before it meets it on a lot.
+DROP_LIDAR = float(os.environ.get("DROP_LIDAR", "0.3"))
+DROP_NAIP = float(os.environ.get("DROP_NAIP", "0.2"))
 
 
 class Decoder(nn.Module):
@@ -133,6 +145,31 @@ def read_lawn(feats, frames, stem, shape):
         inferred = inferred | (can if CANOPY_MODE == "all" else (can & truth))
         canopy = True
 
+    extra = None
+    sources = []
+    if FUSE:
+        from fuse_layers import extra_channels, ndvi_from_png
+        lidar = None
+        lf = os.path.join(FUSE_LIDAR, f"{stem}.npz") if FUSE_LIDAR else None
+        if lf and os.path.exists(lf):
+            z = np.load(lf)
+            lidar = {k: z[k] for k in ("height", "n_ground", "n_all")}
+            sources.append("lidar")
+        ndvi = valid = None
+        nf = os.path.join(FUSE_NAIP, f"{stem}-naip.png") if FUSE_NAIP else None
+        if nf and os.path.exists(nf):
+            ndvi, valid = ndvi_from_png(Image.open(nf).convert("RGB"))
+            if valid.any():
+                sources.append("naip")
+            else:
+                ndvi = valid = None
+        can_in = None
+        if mask_file and os.path.exists(mask_file):
+            can_in = np.asarray(Image.open(mask_file).convert("L")) >= 128
+            sources.append("canopy")
+        extra = extra_channels(gw, gh, cx, cy, lidar=lidar, ndvi=ndvi, ndvi_valid=valid, canopy=can_in)
+        grid = np.concatenate([grid, extra.transpose(1, 2, 0)], axis=2)
+
     target, inside = box_targets(truth, gw, gh, cx, cy)
     allowed, _ = box_targets(within, gw, gh, cx, cy)
     unseen, _ = box_targets(inferred, gw, gh, cx, cy)
@@ -147,6 +184,7 @@ def read_lawn(feats, frames, stem, shape):
         "cells": (cells_w, cells_h),
         "cover": (cx, cy),
         "canopy": canopy,
+        "sources": sources,
     }
 
 
@@ -179,6 +217,16 @@ def dihedral(x, t, w, k, flip):
     if k:
         x, t, w = torch.rot90(x, k, (-2, -1)), torch.rot90(t, k, (-2, -1)), torch.rot90(w, k, (-2, -1))
     return x, t, w
+
+
+def with_dropout(x, rng):
+    """The lawn's patches, with a fused source hidden now and then (FUSE only)."""
+    if not FUSE:
+        return x
+    from fuse_layers import CHANNELS, drop_sources
+    k = len(CHANNELS)
+    e = drop_sources(x[-k:].numpy(), rng, DROP_LIDAR, DROP_NAIP)
+    return torch.cat([x[:-k], torch.from_numpy(e)], dim=0)
 
 
 def train_one(train, dim, seed):
@@ -216,7 +264,7 @@ def train_one(train, dim, seed):
         rng.shuffle(batches)
         loss_sum, w_sum = 0.0, 0.0
         for batch in batches:
-            x = torch.stack([(train[i]["x"] - mean) / sd for i in batch])
+            x = torch.stack([(with_dropout(train[i]["x"], rng) - mean) / sd for i in batch])
             t = torch.stack([train[i]["t"] for i in batch])
             w = torch.stack([train[i]["w"] for i in batch])
             x, t, w = dihedral(x, t, w, int(rng.integers(4)), bool(rng.integers(2)))
@@ -271,6 +319,15 @@ def main():
               + (" (every canopy cell)" if CANOPY_MODE == "all" else " (only over traced lawn)")
               + ("" if with_canopy else " -- no masks found; was the canopy step run?"), flush=True)
 
+    if FUSE:
+        from fuse_layers import CHANNELS
+        n_l = sum(1 for L in lawns if "lidar" in L["sources"])
+        n_n = sum(1 for L in lawns if "naip" in L["sources"])
+        n_c = sum(1 for L in lawns if "canopy" in L["sources"])
+        print(f"FUSED INPUTS: {len(CHANNELS)} more numbers a patch ({', '.join(CHANNELS)}); "
+              f"lidar on {n_l}, NAIP on {n_n}, tree canopy on {n_c} of {len(lawns)} lawns; "
+              f"dropout lidar {DROP_LIDAR:g}, NAIP {DROP_NAIP:g}", flush=True)
+
     held_out = lawns if not LIMIT else lawns[:LIMIT]
     for n, held in enumerate(held_out):
         t0 = time.time()
@@ -294,6 +351,10 @@ def main():
             "seenOnly": True, "lawns": len(lawns), "folds": len(held_out),
             "canopyUnseen": sum(1 for L in lawns if L["canopy"]),
             "canopyMode": CANOPY_MODE if CANOPY else None,
+            "fused": ({"lidar": sum(1 for L in lawns if "lidar" in L["sources"]),
+                       "naip": sum(1 for L in lawns if "naip" in L["sources"]),
+                       "canopy": sum(1 for L in lawns if "canopy" in L["sources"]),
+                       "dropLidar": DROP_LIDAR, "dropNaip": DROP_NAIP} if FUSE else None),
             "seconds": round(total),
         }, f)
     print(f"\n{len(held_out)} folds in {total:.0f}s ({total / len(held_out):.0f}s each). "
