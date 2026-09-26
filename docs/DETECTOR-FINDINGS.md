@@ -46,6 +46,14 @@ got here. Update it whenever the in-flight run changes.*
   tools/train-detector.js) when it scored it, and the picker names the row
   each run drew. Runs before the fix are unchanged on the page.
 - **Pictures of THE PLAN's row are up (2026-09-26):** `runs/2026-09-25-2152-edt-scalemae-large-896px`, the first drawn for the row actually adopted.
+- **In flight (2026-09-26): workflow 23, benchmark, the H45 sweep** — the
+  owner's "we are not using CHM right": NAIP-CHM as cover (half the 2 m cell)
+  at 2 / 3 / 4 / 5 m, in objects of at least 0 / 20 / 50 m², not roof. Judged
+  on H41's bars (both over 80%, neither under 10%) and on the traced lawn it
+  would call canopy and the lidar's 4 m trees it still finds. **Written
+  before the run: a cell passing both bars AND calling under 5% of the
+  visible lawn canopy is worth a scored row; none doing so closes NAIP-CHM
+  as a canopy for this project.** Write H45.
 - **Nothing in flight (2026-09-26, after H44).** More maps helped more lots
   than they hurt (15 against 8 on the benchmark lots) and fixed Utah, but
   broke Island County and did not fix the pond. Open: the owner's look at

@@ -9,7 +9,7 @@ real-looking agreement about somebody else's trees.
 
 import numpy as np
 
-from naip_chm import geo_bounds, lonlat_box, match_index, newest_only, overlaps, three_way, two_way
+from naip_chm import geo_bounds, lonlat_box, match_index, newest_only, overlaps, three_way, two_way, objects_at_least, sweep_counts
 
 passed = 0
 
@@ -53,5 +53,21 @@ W2 = W.copy()
 W2[:, 3] = False
 check("cells outside the line are not counted", three_way(W2, restor, lidar, naip)["lidar only"] == [2, 1])
 check("two-way for a frame with no lidar", two_way(W, restor, naip) == {"both": 1, "model only": 2, "naip only": 2})
+
+speck = np.zeros((6, 6), dtype=bool)
+speck[0, 0] = True
+speck[2:5, 2:5] = True
+kept = objects_at_least(speck, 4)
+check("a least object size drops the one-cell speck and keeps the 9-cell crown", not kept[0, 0] and kept[3, 3] and kept.sum() == 9)
+cov = np.zeros((6, 6), dtype=np.float32)
+cov[2:5, 2:5] = 0.8
+cov[0, 0] = 1.0
+ones = np.ones((6, 6), dtype=bool)
+lawn = np.zeros((6, 6), dtype=bool)
+lawn[0, :] = True
+sw = sweep_counts({2.0: cov, 3.0: cov * 0}, ones, ones, np.zeros((6, 6), bool), np.zeros((6, 6), bool), lawn, speck, 4.0)
+check("the sweep: at 2 m and no size floor the speck on the lawn counts", sw["2/0"]["lawn"] == [6, 1], str(sw["2/0"]))
+check("with a 20 m² floor (5 cells of 4 m²) it does not, and the crown's 9 cells stay found", sw["2/20"]["lawn"] == [6, 0] and sw["2/20"]["trees"] == [10, 9], str(sw["2/20"]))
+check("a height with nothing above it finds nothing", sw["3/0"]["trees"][1] == 0)
 
 print(f"\nAll {passed} checks passed.")

@@ -575,8 +575,12 @@ def main():
                 masks["naip_canopy"] = (np.nan_to_num(naip_cover) >= naip_chm.COVER_MIN) & ~masks["roof"]
                 layers["naip_height"] = naip_h
                 Image.fromarray(height_png(naip_h)).save(out / f"{lawn_id}-naip-height.png")
+                k2 = math.cos(math.radians(web_mercator_lat((bbox[1] + bbox[3]) / 2)))
                 naip_rec = {"year": naip_files[lawn_id][0][0],
-                            "three_way": naip_chm.three_way(within_c, restor_c, masks["lidar_canopy"], masks["naip_canopy"])}
+                            "three_way": naip_chm.three_way(within_c, restor_c, masks["lidar_canopy"], masks["naip_canopy"]),
+                            "sweep": naip_chm.sweep_counts(
+                                dict(naip_chm.READ_COVERS), ~masks["roof"], within_c, restor_c, masks["lidar_canopy"],
+                                classes == 0, (layers["height"] >= 4.0) & ~masks["roof"], cell * cell * k2 * k2)}
             except Exception as e:  # noqa: BLE001 - one frame's read failing is reported, not fatal
                 naip_rec = {"error": str(e)[:200]}
         # Web Mercator stretches distance by 1/cos(latitude); the frame box is
@@ -760,6 +764,15 @@ def print_naip(items, naip_only):
     print(f"  {'tree model / lidar':22}{'cells':>8}{'NAIP says canopy':>18}")
     for c, (n, yes) in tot.items():
         print(f"  {c:22}{n:8d}{(100 * yes / n if n else 0):17.1f}%")
+    sweeps = [r["naip"]["sweep"] for _, r in have if r["naip"].get("sweep")]
+    if sweeps:
+        print("\n  H45, NAIP-CHM used better? Cover at H m (half the 2 m cell), not roof, objects at least A m²:\n")
+        print(f"  {'H / A':10}{'both (>80)':>12}{'neither (<10)':>15}{'lawn called canopy':>20}{'lidar 4 m trees found':>23}")
+        for key in sweeps[0]:
+            tot = {c: [sum(sw[key][c][0] for sw in sweeps), sum(sw[key][c][1] for sw in sweeps)] for c in ("both", "neither", "lawn", "trees")}
+            pc = {c: (100 * y / n if n else 0) for c, (n, y) in tot.items()}
+            h, a = key.split("/")
+            print(f"  {h + ' m / ' + a:10}{pc['both']:11.1f}%{pc['neither']:14.1f}%{pc['lawn']:19.1f}%{pc['trees']:22.1f}%")
     print("\n  Read: 'lidar only' high = trees the tree model misses (still there in 2022-23);")
     print("  low = trees gone since the flight, or the lidar's 2 m cells catching an edge.")
     print("  'model only' high = the tree model is right and the lidar is old; low = the model's false trees.")
