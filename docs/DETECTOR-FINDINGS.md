@@ -46,7 +46,7 @@ got here. Update it whenever the in-flight run changes.*
   tools/train-detector.js) when it scored it, and the picker names the row
   each run drew. Runs before the fix are unchanged on the page.
 - **Pictures of THE PLAN's row are up (2026-09-26):** `runs/2026-09-25-2152-edt-scalemae-large-896px`, the first drawn for the row actually adopted.
-- **In flight (2026-09-26, after H42): workflow 14 on `lawns: all`** — the
+- **In flight (2026-09-26, after H43): workflow 14 on `lawns: all`** (write it up as H44) — the
   32 and the 20-odd maps approved since, NOT comparable with any benchmark
   table. What it is for: the owner's point that the pond (B12), the roofs
   (B06) and the shadowed grass (B23) should yield to more training data —
@@ -545,6 +545,51 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H43. NAIP-CHM is registered but not trustworthy at lawn scale: right in the median, a tenth of flat lawn reads 4 m or more, and on some lots the lawn itself reads 2–3 m; not a canopy source here, 2026-09-26
+
+*The owner's reading, 2026-09-26, then measured.* In the pictures of H42 the
+NAIP-CHM canopy "extends far beyond canopies, marks open spaces nowhere near
+trees or buildings, and follows shapes with no correlation to anything". In
+the NAIP-CHM Earth Engine app, B25's lawn reads a little over 2 m, its roof
+6–7 m, and a "tree line" under 1 m — which Street View shows to be shrubs of
+about 1 m. The owner's diagnosis: poorly calibrated below about 3 m.
+
+**Measured from run 36208871886's saved layers** (the 2 m lidar grid,
+NAIP-CHM's tallest pixel a cell, 29 lots with lidar):
+
+- **Registration is not the problem.** Sliding NAIP-CHM against the lidar's
+  height ±12 m, the best correlation sits at zero or one 2 m cell on 27 of
+  29 lots (r 0.6–0.9). Two exceptions: B28 (r 0.1 — its trees are gone since
+  the flight, H41) and **B24 (r 0.26 at zero, 0.83 one cell north — unexplained,
+  noted)**.
+- **On ground the lidar calls flat (under 0.5 m, with a ground return), NAIP-
+  CHM's median is 0.08 m — but its tail is heavy:** 16.9% of those cells read
+  2 m or more, 14.2% 3 m or more, **11.9% 4 m or more**. On the tracer's
+  visible lawn over lidar-flat ground: 13.3% / 10.7% / 8.7%.
+- **On some lots the lawn itself reads 2–3 m:** visible-lawn median B22 2.6,
+  **B23 3.1**, B24 2.2, B06 1.7, B02 1.3, B31 1.2 (every other lot 0.0–0.3).
+  B25 and B26, with no lidar to check against, read a median of 5.2 and 5.9 m
+  over the whole frame.
+
+**So the owner is right that it is unreliable low down, and a higher cutoff
+does not rescue it**: 4 m instead of 2 m only takes the false share on lawn
+from 13% to 9%, and on B22–B24 the lawn sits at the cutoff either way. Some
+of the tail may be real change since the flights (2011–2020 against
+2021–2023), which nothing here separates; for a lawn tool it does not
+matter which. H41's tie-breaker (the tree model misses trees) was read
+against a floor of 8.6% and stands; its use as a canopy failed in H42 and
+this is why.
+
+**NAIP-CHM is not a canopy source for this project.** Its read stays in
+workflow 23 and as a switch on the pictures page, off by default.
+
+**The lidar roof, from the same pictures (owner):** it misses part of the
+roof and sits off the Mapbox photograph a little. Both are expected and
+neither is a bug found: the roof test needs "no ground return", so the 2 m
+cells along the eaves fail it; and an aerial photograph shows a roof leaned
+a few metres off its footprint (relief displacement) where the lidar has it
+where it stands. The veto's measured cost stays 69–102 m² of lawn (H39).
 
 ### H42. Widening the tree model's canopy with lidar ∩ NAIP-CHM costs four points: stage 3 clears the detector's own lawn under every added cell, and the added cells are coarse, 2026-09-26
 
