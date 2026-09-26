@@ -570,8 +570,8 @@ def main():
         naip_rec = None
         if naip_files.get(lawn_id):
             try:
-                naip_h = naip_chm.read_height(bbox, gw, gh, naip_files[lawn_id])
-                masks["naip_canopy"] = (np.nan_to_num(naip_h) >= naip_chm.CANOPY_M) & ~masks["roof"]
+                naip_h, naip_cover = naip_chm.read_height(bbox, gw, gh, naip_files[lawn_id])
+                masks["naip_canopy"] = (np.nan_to_num(naip_cover) >= naip_chm.COVER_MIN) & ~masks["roof"]
                 layers["naip_height"] = naip_h
                 Image.fromarray(height_png(naip_h)).save(out / f"{lawn_id}-naip-height.png")
                 naip_rec = {"year": naip_files[lawn_id][0][0],
@@ -722,20 +722,20 @@ def naip_without_lidar(lawn_id, bbox, cell, frames, canopy_dir, files, out):
     can_file = canopy_dir / f"{lawn_id}-mask.png"
     canopy = (np.asarray(Image.open(can_file).convert("L")) >= 128) if can_file.exists() else np.zeros(lab.shape[:2], dtype=bool)
     try:
-        h = naip_chm.read_height(bbox, gw, gh, files)
+        h, cover = naip_chm.read_height(bbox, gw, gh, files)
     except Exception as e:  # noqa: BLE001
         return {"error": str(e)[:200]}
     Image.fromarray(height_png(h)).save(out / f"{lawn_id}-naip-height.png")
     k = math.cos(math.radians(web_mercator_lat((bbox[1] + bbox[3]) / 2)))
     return {"year": files[0][0], "cell_true_m2": cell * cell * k * k,
-            "two_way": naip_chm.two_way(within, shrink_mask(canopy, gw, gh), np.nan_to_num(h) >= naip_chm.CANOPY_M)}
+            "two_way": naip_chm.two_way(within, shrink_mask(canopy, gw, gh), np.nan_to_num(cover) >= naip_chm.COVER_MIN)}
 
 
 def print_naip(items, naip_only):
     """The tie-breaker (H38's open question): where the tree model and the lidar disagree, what does NAIP-CHM say?"""
     have = [(k, r) for k, r in items if r.get("naip") and "three_way" in r["naip"]]
     failed = [k for k, r in items if r.get("naip") and "error" in r["naip"]]
-    print("\nNAIP-CHM (E9), 2 m or more and not roof, against the tree model and the lidar's canopy, inside the line:")
+    print("\nNAIP-CHM (E9), half the 2 m cell's pixels 2 m or more (H41) and not roof, against the tree model and the lidar's canopy, inside the line:")
     if not have:
         print("  nothing read." + (f" {len(failed)} frames failed, e.g. {failed[:3]}" if failed else ""))
         return
