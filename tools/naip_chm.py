@@ -138,17 +138,28 @@ def read_index(boxes, url=INDEX_URL, tries=3):
     return {}
 
 
+COVER_MIN = 0.5  # H41: half the cell's NAIP pixels at CANOPY_M or more
+
+
 def read_height(bbox, gw, gh, files):
     """
-    NAIP-CHM in metres on the (gw x gh) Web Mercator grid over bbox, each cell
-    the TALLEST reading inside it (as the lidar's z_max is). NaN where no file
-    covers it. Files of the newest year only; where two overlap, the taller.
+    NAIP-CHM on the (gw x gh) Web Mercator grid over bbox, as two layers:
+    `height`, the TALLEST reading in each cell (as the lidar's z_max is), and
+    `cover`, the share of the cell's NAIP pixels at CANOPY_M or more. NaN
+    where no file covers it. Files of the newest year only; where two
+    overlap, the larger of each.
+
+    WHY COVER (H40): the tallest of ~11 pixels decided a 2 m cell, so a
+    crown's edge or an eave flagged it, and NAIP-CHM called 13.7% of the
+    cells neither the tree model nor the lidar calls canopy. Cover asks for
+    half the cell.
     """
     import rasterio
     from rasterio.transform import from_bounds
     from rasterio.warp import Resampling, reproject, transform_bounds
 
     out = np.full((gh, gw), np.nan, dtype=np.float32)
+    cover = np.full((gh, gw), np.nan, dtype=np.float32)
     dst_t = from_bounds(*bbox, gw, gh)
     with rasterio.Env(GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR", CPL_VSIL_CURL_ALLOWED_EXTENSIONS=".tif",
                       GDAL_HTTP_MAX_RETRY="3", GDAL_HTTP_RETRY_DELAY="2"):
@@ -164,4 +175,9 @@ def read_height(bbox, gw, gh, files):
                 reproject(m, dst, src_transform=src.window_transform(win), src_crs=src.crs, src_nodata=np.nan,
                           dst_transform=dst_t, dst_crs="EPSG:3857", dst_nodata=np.nan, resampling=Resampling.max)
                 out = np.where(np.isnan(out), dst, np.fmax(out, dst))
-    return out
+                tall = np.where(np.isnan(m), np.nan, (m >= CANOPY_M).astype(np.float32))
+                dc = np.full((gh, gw), np.nan, dtype=np.float32)
+                reproject(tall, dc, src_transform=src.window_transform(win), src_crs=src.crs, src_nodata=np.nan,
+                          dst_transform=dst_t, dst_crs="EPSG:3857", dst_nodata=np.nan, resampling=Resampling.average)
+                cover = np.where(np.isnan(cover), dc, np.fmax(cover, dc))
+    return out, cover
