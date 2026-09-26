@@ -2631,6 +2631,32 @@ async function main() {
     });
   }
 
+  /*
+   * H47's fair half: the drawn row's held-out mask per lawn, for
+   * tools/segments_pred.py to re-run the per-crown test with the DETECTOR's
+   * visible lawn instead of the tracer's. Outside the canopy the plan row's
+   * mask is stage 1's own answer (stage 3 only changes ground under it).
+   */
+  if (process.env.PRED_OUT && drawn) {
+    const { PNG } = await import('pngjs');
+    mkdirSync(process.env.PRED_OUT, { recursive: true });
+    let wrote = 0;
+    for (const r of drawn.rows) {
+      const L = r.lawn;
+      if (!r.predicted) continue;
+      const G = L.grid || GRID;
+      const GH = L.gridH || G;
+      const png = new PNG({ width: G, height: GH });
+      for (let i = 0; i < G * GH; i++) {
+        const v = r.predicted[i] ? 255 : 0;
+        png.data[i * 4] = v; png.data[i * 4 + 1] = v; png.data[i * 4 + 2] = v; png.data[i * 4 + 3] = 255;
+      }
+      writeFileSync(join(process.env.PRED_OUT, `${L.id}-pred.png`), PNG.sync.write(png));
+      wrote++;
+    }
+    console.log(`Held-out masks of "${drawn.cfg.name}" for ${wrote} lawns in ${process.env.PRED_OUT}.`);
+  }
+
   /* ------------------------------------------------------------- verdict */
   console.log(`\n${'='.repeat(64)}`);
   console.log(`\nTrained on ${lawns.length - 1} lawns, tested on the one left out, ${lawns.length} times.`);

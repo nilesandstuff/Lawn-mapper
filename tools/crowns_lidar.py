@@ -92,3 +92,58 @@ def rule_trade(clumps, woods):
     lawn_all = sum(c["lawn"] for c in clumps)
     woods_all = sum(c["area"] - c["lawn"] for c in clumps)
     return cost, lawn_all, found, woods_all
+
+
+def crown_segments(canopy, tops, lawn, visible_lawn, cell_m, chm=None, near_m=10.0):
+    """
+    H47, the unit below the clump: every canopy cell goes to its nearest tree
+    top IN THE SAME CLUMP; a clump with no top the lidar can see is one
+    segment. One record per segment:
+
+      area, lawn     m², and the tracer's lawn under it
+      border         of the non-canopy cells touching the segment, the share
+                     that is visible lawn (0 for a crown with none: the middle
+                     of a wood)
+      dist           median distance of its cells to visible lawn, metres
+      crowding       other tops within `near_m` of its top (0 if topless)
+      height         its top's height (the clump median if topless)
+    """
+    from scipy.ndimage import binary_dilation, distance_transform_edt, label
+    cell_m2 = cell_m * cell_m
+    clump, n = label(canopy, structure=np.ones((3, 3), dtype=bool))
+    ty, tx = np.nonzero(tops & canopy)
+    seg = np.zeros(canopy.shape, dtype=np.int64)
+    if len(ty):
+        _, (iy, ix) = distance_transform_edt(~(tops & canopy), return_indices=True)
+        top_id = np.zeros(canopy.shape, dtype=np.int64)
+        top_id[ty, tx] = np.arange(1, len(ty) + 1)
+        near = top_id[iy, ix]
+        same = clump[iy, ix] == clump
+        seg = np.where(canopy & same, near, 0)
+    # canopy cells whose nearest top is in another clump (or no top at all):
+    # one segment per clump, numbered after the tops
+    rest = canopy & (seg == 0)
+    seg[rest] = len(ty) + clump[rest]
+    dist = distance_transform_edt(~visible_lawn) * cell_m
+    out = []
+    ring_all = ~canopy
+    for s in np.unique(seg[seg > 0]):
+        m = seg == s
+        cells = int(m.sum())
+        ring = binary_dilation(m, structure=np.ones((3, 3), dtype=bool)) & ~m & ring_all
+        if s <= len(ty):
+            y, x = ty[s - 1], tx[s - 1]
+            crowd = int(((ty - y) ** 2 + (tx - x) ** 2 <= (near_m / cell_m) ** 2).sum()) - 1
+            h = float(chm[y, x]) if chm is not None else 0.0
+        else:
+            crowd = 0
+            h = float(np.median(chm[m])) if chm is not None else 0.0
+        out.append({
+            "area": cells * cell_m2,
+            "lawn": float((m & lawn).sum() * cell_m2),
+            "border": float((ring & visible_lawn).sum() / ring.sum()) if ring.any() else 0.0,
+            "dist": float(np.median(dist[m])),
+            "crowding": crowd,
+            "height": h,
+        })
+    return out

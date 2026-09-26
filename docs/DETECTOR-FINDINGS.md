@@ -46,7 +46,29 @@ got here. Update it whenever the in-flight run changes.*
   tools/train-detector.js) when it scored it, and the picker names the row
   each run drew. Runs before the fix are unchanged on the page.
 - **Pictures of THE PLAN's row are up (2026-09-26):** `runs/2026-09-25-2152-edt-scalemae-large-896px`, the first drawn for the row actually adopted.
-- **Nothing in flight (2026-09-26, after H46).** NAIP-CHM is closed as a canopy (H42, H43, H45); telling woods from lawn trees is closed at the clump level (H35, H36, H37, H46) — the lawn border separates clumps (AUC 0.16) but joined clumps make any clump rule cost a third of the lawn. Open: the per-crown unit (SPECULATION, H46). More maps helped more lots
+- **In flight (2026-09-26, after H46): H47, one segment per crown.** Every
+  canopy cell goes to its nearest lidar tree top in the same clump
+  (tools/crowns_lidar.py `crown_segments`); each segment is judged by its own
+  border of visible lawn, its distance to visible lawn, and how many tops
+  stand within 10 m. **The bar, written before the run: a rule calling a
+  segment woods finds at least half the woods canopy and loses at most a
+  tenth of the lawn under canopy, pooled by area — judged on (b) below.**
+  **THE LEAK, found in the preview:** H46's border and this test's first
+  form measure "visible lawn" with the TRACER's lawn, which the pipeline
+  never has; distance from the true lawn edge predicts lawn under a tree
+  almost by construction. So the run prints two versions on the same lots:
+  (a) the tracer's edge (workflow 23, and workflow 14's step), (b) the
+  detector's held-out answer outside the canopy (workflow 14, new step
+  "One segment per crown, judged by the detector's lawn edge",
+  tools/segments_pred.py). **Preview of (a) only**, on H43's saved layers
+  (29 lots, 497 segments, 96 lawn): AUC distance to lawn 0.95, crowding
+  0.87, height 0.85, border 0.06; "border lawn 0%" finds 83.0% of woods for
+  5.6% of lawn, "distance 10 m+" 79.0% for 2.4% — passing easily, and not
+  to be believed until (b). Prediction for (b): worse, because where the
+  detector misses lawn (B04's shadows) a lawn tree's border reads zero and
+  it is called woods; whether it still passes is not something I can guess.
+  H46's border AUC of 0.16 carries the same leak and is recorded as such in H47.
+- **Before that (2026-09-26, after H46).** NAIP-CHM is closed as a canopy (H42, H43, H45); telling woods from lawn trees is closed at the clump level (H35, H36, H37, H46) — the lawn border separates clumps (AUC 0.16) but joined clumps make any clump rule cost a third of the lawn. Open: the per-crown unit (SPECULATION, H46). More maps helped more lots
   than they hurt (15 against 8 on the benchmark lots) and fixed Utah, but
   broke Island County and did not fix the pond. Open: the owner's look at
   B04 and B03 in the layered pictures of the 44-lawn run; S9 (tree count per
