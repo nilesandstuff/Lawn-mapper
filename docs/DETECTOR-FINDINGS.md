@@ -46,6 +46,13 @@ got here. Update it whenever the in-flight run changes.*
   tools/train-detector.js) when it scored it, and the picker names the row
   each run drew. Runs before the fix are unchanged on the page.
 - **Pictures of THE PLAN's row are up (2026-09-26):** `runs/2026-09-25-2152-edt-scalemae-large-896px`, the first drawn for the row actually adopted.
+- **Nothing in flight (2026-09-26, after H44).** More maps helped more lots
+  than they hurt (15 against 8 on the benchmark lots) and fixed Utah, but
+  broke Island County and did not fix the pond. Open: the owner's look at
+  B04 and B03 in the layered pictures of the 44-lawn run; S9 (tree count per
+  clump) and S10 (small things in the open against the detector's own false
+  lawn), both on `lawns: all`; and whether to refreeze a larger benchmark.
+- **Pictures of THE PLAN's row are up (2026-09-26):** `runs/2026-09-25-2152-edt-scalemae-large-896px`, the first drawn for the row actually adopted.
 - **In flight (2026-09-26, after H43): workflow 14 on `lawns: all`** (write it up as H44) — the
   32 and the 20-odd maps approved since, NOT comparable with any benchmark
   table. What it is for: the owner's point that the pond (B12), the roofs
@@ -545,6 +552,45 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H44. Twelve more maps: fifteen of the benchmark lots better and eight worse, Utah fixed, Island County broken; the pond not fixed — NOT COMPARABLE with any benchmark table, 2026-09-26
+
+Run 36219427024, `canopy: compare`, **`lawns: all`: 44 lawns** (fingerprint
+`0rjzt1k`) — the 32 and 12 approved since the freeze (Georgia, Alabama,
+Louisiana, Iowa, Kentucky, North Dakota, Maryland). Leave-one-out, so each
+benchmark lot was drawn by a model trained on 43 lawns instead of 31. The
+headline table is over 44 lawns and 30 SAM outlines and compares with
+nothing: THE PLAN's row 23.7% (seen 20.2, inferred 26.7), 20 of 30 over
+SAM at 32.2%; everywhere + span 19.5%.
+
+**The comparable part is lot by lot.** The per-lawn table (printed for
+everywhere + span, the same row the benchmark runs printed) against H39's,
+on the 32: **15 better by more than a point, 8 worse, median change −0.6.**
+
+| better | before → after | worse | before → after |
+|---|---|---|---|
+| **B03 Utah** | **86.2 → 38.3** | **B04 Island County** | **33.3 → 64.7** |
+| B17 | 42.6 → 32.8 | B18 | 25.0 → 32.7 |
+| B20 | 23.8 → 14.1 | B24 | 15.4 → 18.9 |
+| B22 | 91.1 → 81.4 | **B12 (the pond)** | 34.1 → 37.3 |
+| B28 | 79.0 → 73.4 | B19 | 22.8 → 25.5 |
+| B06 | 47.4 → 42.9 | B16 | 13.6 → 16.2 |
+| B09, B23, B02, B27, B13, B21, B29, B08, B01 | 1–3 points each | B15, B11 | 1–2 points |
+
+**The owner's three questions:** the pond (B12) did not yield to more data —
+slightly worse; B06's roof lot improved 4.5 points on this row (and the veto
+takes it further on the plan's row); B23's shadowed grass improved 3 points.
+Utah (B03), stuck at 86% since H30 under every decoder, came down to 38%.
+Island County (B04) doubled its error, which one run cannot explain.
+
+**One run, one extraction** (H13, H28: the extraction comes back in
+states); a lot moving 3 points is inside what a re-run can do, and 30-plus
+points (B03, B04) is not. The plan's row had no lot-by-lot table in this run
+(only the lots a rule moved); from here every run prints it too.
+
+**Pictures**: THE PLAN's row, every layer, 44 lawns,
+`runs/2026-09-26-0253-edt-scalemae-large-896px`. B04 and B03 are the two to
+open.
 
 ### H43. NAIP-CHM is registered but not trustworthy at lawn scale: right in the median, a tenth of flat lawn reads 4 m or more, and on some lots the lawn itself reads 2–3 m; not a canopy source here, 2026-09-26
 
@@ -3565,3 +3611,4 @@ for everywhere + span. Kept because each points at a different stage.
 | 2026-09-26 | 36208871886 | 32 | — (workflow 23 + NAIP-CHM as **cover**: half the 2 m cell's pixels ≥ 2 m, not roof) | — | — | **H41: passes its bar.** Both 98.2% (> 80), neither 8.6% (< 10). Lidar-only 67.4%, model-only 68.6% NAIP canopy: most of the 8,759 lidar-only cells are trees the tree model misses. Kent 8,626 66%, B28 NC 10,556 16% (trees gone). Visible lawn 15.6% under NAIP canopy. Island County NAIP-only 706 m² against the model's 579 |
 | 2026-09-26 | 36201920931 | 32 | as 36182100031 (H39), the first run to **draw THE PLAN's row** (canopy on lawn + span + lidar veto) instead of the lowest median | 23.3% (everywhere + span) | 24.7% | Pictures of the plan's row for the first time, `runs/2026-09-25-2152-edt-scalemae-large-896px`. The plan's row 26.6% to the decimal of H39, everywhere 23.3 / 23.4 likewise; head rows back in the 34.2 / 31.8 state and the no-canopy decoder 28.4 against H39's 28.5 (H28/H29's two extraction states). Kent 72,863 37.1 → 31.3 and Kent 8,626 51.3 → 41.0 under the plan's decoder, as H39 |
 | 2026-09-26 | 36212931237 | 32 | `canopy: compare`; THE PLAN's row + **stage 3 over tree model ∪ (lidar ∩ NAIP-CHM) canopy** (NAIP alone without lidar); first **layered pictures**; B-numbers | 23.3% (everywhere + span) | 24.7% | **H42: worse, not adopted.** Plan's row 26.6 / 22.2 / 28.5 → 30.4 / 27.2 / 31.4, 16 → 14 over SAM; 15,476 m² canopy added, 6,719 over lawn. B25 9 → 71, B26 45 → 61, B31 14 → 32, B04 56 → 61; B22, B09, B30 slightly better. Pictures (the losing row, every layer) `runs/2026-09-26-0041-edt-scalemae-large-896px` |
+| 2026-09-26 | 36219427024 | **44** | `canopy: compare`, **`lawns: all`** (the 32 + 12 since the freeze) — **NOT COMPARABLE** | 19.5% (everywhere + span); plan's row 23.7% | 32.2% (30 lawns) | **H44.** On the 32, lot by lot (everywhere + span) against H39: 15 better, 8 worse, median −0.6. B03 86 → 38, B17 −10, B20 −10, B22 −10, B06 −4.5; B04 33 → 65, B18 +8, B12 (pond) +3. Pictures (plan's row, layered) `runs/2026-09-26-0253-edt-scalemae-large-896px` |

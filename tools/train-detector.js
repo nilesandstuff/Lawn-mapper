@@ -2534,9 +2534,17 @@ async function main() {
      row would print "no SAM outline" about a run that has one. */
   const contenders = candidates.length ? candidates : table.filter((t) => !t.cfg.twinOf);
   const best = contenders.slice().sort((a, b) => a.med - b.med)[0];
-  if (best) {
-    console.log(`Lawn by lawn, under "${best.cfg.name}":\n`);
-    for (const r of best.rows) {
+  /*
+   * AND THE SAME FOR THE PLAN'S ROW, when it is not the lowest median. The
+   * lowest median's table is the one every run since H33 printed, so it stays
+   * for comparison; but the row the project is building is THE PLAN's, and
+   * its lot-by-lot figures were only ever visible for the lots a rule moved.
+   */
+  const planRow = table.find((t) => t.cfg.name === PLAN_ROW);
+  for (const t of [best, planRow !== best ? planRow : null]) {
+    if (!t) continue;
+    console.log(`Lawn by lawn, under "${t.cfg.name}":\n`);
+    for (const r of t.rows) {
       const L = r.lawn;
       const sqft = (px) => (px * L.mpp * L.mpp) / SQM_PER_SQFT;
       console.log(
@@ -2546,6 +2554,7 @@ async function main() {
         + (r.theirs ? `SAM ${r.theirs.errorPct.toFixed(1).padStart(5)}% wrong` : 'SAM not stored')
       );
     }
+    console.log('');
   }
 
   /*
