@@ -107,7 +107,7 @@ got here. Update it whenever the in-flight run changes.*
 
 ## The benchmark lawns by name — B01 to B32
 
-*Fixed 2026-09-26 at the owner's request (`tools/benchmark-ids.json`). Never
+*Fixed 2026-09-26 at the owner's request (`worker/src/benchmark-ids.js`). Never
 renumbered. Every run's log prints this legend with its own square feet, and
 the pictures page puts the name on each card. Square feet here are the
 scorer's (true lawn); the lidar reader's own estimate differs by a few, which
@@ -3416,6 +3416,26 @@ fields) were both more obviously right than this one.
   footage is likely well off: **the numbers alone cannot judge this; where
   the square feet are matters more than how many.** Hence every layer drawn
   separately on the pictures page, with switches.
+
+### Owner's reading of the 44-lawn pictures (H44), 2026-09-26
+
+- **The detector itself has improved a lot**, and on some lawns did much
+  better than it ever had; it still feels like it should do better on the
+  straightforward lawns.
+- **B03 (Utah):** took a lot more real lawn than before and over-did it, but
+  is closer than ever. The photograph is blurry; the lawn is straightforward.
+- **B04 (Island County):** missed a lot of lawn, some of it easy. The
+  photograph is clear but has shadows.
+
+**The owner's relative-height idea for NAIP-CHM, tested the same day on
+H43's saved layers:** subtracting a local ground level (the 10th percentile
+of NAIP-CHM within 14, 30 or 50 m) takes the traced lawn reading 2 m or more
+from 13.3% only to 12.5–12.9%, and the trees the lidar calls 4 m or more
+still read 2 m or more from 89.5% down to 68–82%. It lowers the lots whose
+lawn reads high as a whole (B22 2.6 → 1.5 m, B23 3.1 → 2.4 m median) but
+about 45% of those lawns still read 2 m or more: **the false heights are
+speckle within the lawn, not an offset under it.** Tested on the
+tallest-pixel read (H40), which exaggerates speckle; cover (H41) not yet.
 
 ### S9. Count the trees, not the canopy: woods are several crowns with no lawn between them (the owner's, 2026-09-25)
 
