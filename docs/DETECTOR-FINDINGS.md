@@ -2949,6 +2949,51 @@ measured.
 
 ---
 
+### E9. NAIP-CHM: a 0.6 m canopy height raster for the whole of CONUS, mostly 2022–2023, precomputed
+*Looked up 2026-09-26 at the owner's question; probed from this container.*
+
+Morford et al. 2026, *Sci Data*, [doi:10.1038/s41597-026-07549-w](https://doi.org/10.1038/s41597-026-07549-w);
+code and weights at [smorf-ntsg/naip-chm](https://github.com/smorf-ntsg/naip-chm);
+[catalog entry](https://gee-community-catalog.org/projects/naip_chm_conus/).
+A U-Net (~22 M parameters, attention, climate/soil/elevation conditioning)
+trained on 22.8 M NAIP–lidar CHM pairs, run over every NAIP quarter-quad.
+**Pixel RMSE 2.28 m, r² 0.87**; no breakdown by height, land cover or
+developed areas was found. **NAIP 2012–2023, 96% of it 2022–2023** — a
+decade newer than 3DEP here (2011–2020, H16). **Buildings are in it**: it
+maps every elevated structure, not just trees. Licence: the catalog says
+CC-BY 4.0, the download README says MIT.
+
+**Probed:** the files are served by the University of Montana at
+`rangeland.ntsg.umt.edu/data/naip-chm/<year>/<utm zone>/…_chm.tif`, one per
+NAIP quarter-quad, uint16 centimetres, **tiled 512×512, deflate, with
+overviews, and the server answers byte ranges** — so one lot is one or two
+tile reads, a few hundred KB, no model run at all. The index is 256 MB CSV /
+299 MB GeoJSON (quad id, date, URL per file). Reached from this container;
+not yet tried from a GitHub runner.
+
+What it is NOT: it cannot see through leaves (it is a surface, from a
+photograph), so it says nothing about the ground under a crown; and 0.6 m
+with 2.3 m RMSE is not a shrub-height instrument. What it could be: a
+second, much newer opinion on WHERE the trees are and how tall, over the
+three benchmark lots with no lidar too (Island County among them).
+
+### E10. Open Forest Observatory's tree-detection-framework is a wrapper, and its useful piece is the owner's own idea
+*Looked up 2026-09-26.*
+
+[open-forest-observatory/tree-detection-framework](https://github.com/open-forest-observatory/tree-detection-framework)
+(BSD-3, active development) standardises training and inference over
+DeepForest, Detectree2 (Mask R-CNN, detectron2), SAM2/SAM3, and a
+learning-free **geometric detector on a canopy height model: Popescu & Wynne
+(2004) variable-window tree tops plus Silva et al. (2016) crown
+segmentation** — the "search window grows with height" method S9 describes.
+It is built for **drone orthomosaics of forest**; its docker image bundles
+detectron2 and SAM. No speed figures published.
+
+For this project the framework is heavy for what it would add: the learned
+detectors are crown detectors (H19: our problem was never crowns), and the
+geometric one is a few dozen lines that can run on any CHM we already have
+(3DEP at 2 m) or could fetch (E9 at 0.6 m).
+
 ## SPECULATION — theories not yet tested
 
 Marked so they are not later quoted as findings.
