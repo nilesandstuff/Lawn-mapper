@@ -46,6 +46,13 @@ got here. Update it whenever the in-flight run changes.*
   tools/train-detector.js) when it scored it, and the picker names the row
   each run drew. Runs before the fix are unchanged on the page.
 - **Pictures of THE PLAN's row are up (2026-09-26):** `runs/2026-09-25-2152-edt-scalemae-large-896px`, the first drawn for the row actually adopted.
+- **In flight (2026-09-26, after H42): workflow 14 on `lawns: all`** — the
+  32 and the 20-odd maps approved since, NOT comparable with any benchmark
+  table. What it is for: the owner's point that the pond (B12), the roofs
+  (B06) and the shadowed grass (B23) should yield to more training data —
+  read B12, B06, B23, B09 and B04 lot by lot against their benchmark
+  figures, and the layered pictures of THE PLAN's row.
+- **Pictures of THE PLAN's row are up (2026-09-26):** `runs/2026-09-25-2152-edt-scalemae-large-896px`, the first drawn for the row actually adopted.
 - **In flight (2026-09-26): workflow 14, `canopy: compare`, benchmark,
   with the "lidar ∩ NAIP canopy" row** — THE PLAN's row with stage 3 over the
   tree model's canopy plus the cells the lidar and NAIP-CHM (cover) both call
@@ -101,8 +108,8 @@ is how "B28 (NC 10,556; written B28 NC 10,556 at first, the lidar reader's own s
 
 | | lawn | | lawn | | lawn | | lawn |
 |---|---|---|---|---|---|---|---|
-| B01 | Cass ND 4,987 | B09 | Kent 22,481 | B17 | Wayne 12,426 | B25 | Maryland, −77.237 (2,657 or 6,658: the next legend says) |
-| B02 | traced by hand, TX 4,315 | B10 | Kent 26,207 | B18 | traced by hand, OH 10,304 | B26 | Maryland, −77.260 (the other) |
+| B01 | Cass ND 4,987 | B09 | Kent 22,481 | B17 | Wayne 12,426 | B25 | Maryland 2,657 |
+| B02 | traced by hand, TX 4,315 | B10 | Kent 26,207 | B18 | traced by hand, OH 10,304 | B26 | Maryland 6,658 |
 | B03 | Utah 13,689 | B11 | Kent 29,680 | B19 | Bullitt KY 8,615 | B27 | NC 7,945 |
 | B04 | Island WA 19,932 | B12 | Kent 72,863 (the pond) | B20 | Bullitt KY 11,947 | B28 | NC 10,556 (semi-dormant; trees gone, H41) |
 | B05 | Kent 8,134 | B13 | Kent 105,584 | B21 | Bullitt KY 19,619 | B29 | NC 13,165 |
@@ -538,6 +545,51 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H42. Widening the tree model's canopy with lidar ∩ NAIP-CHM costs four points: stage 3 clears the detector's own lawn under every added cell, and the added cells are coarse, 2026-09-26
+
+Run 36212931237, `canopy: compare`, benchmark. THE PLAN's row with one
+change: stage 3 worked over the tree model's canopy plus the cells the lidar
+(2 m or more, not roof) and NAIP-CHM (half the cell 2 m or more) both call
+canopy — NAIP-CHM alone on B04, B25, B26, which have no point cloud. Training
+and scoring unchanged. Decoder rows 28.5 / 29.8 / 24.3; the plan's row 26.6
+to the decimal of H39. NAIP index 8 s, files over 32 of 32.
+
+| stage 1 | + span + veto (the plan) | **+ lidar ∩ NAIP canopy** | over SAM |
+|---|---|---|---|
+| no canopy | 27.0 / 22.4 / 24.8 | **30.9 / 26.4 / 31.4** | 16 → 14 |
+| canopy on lawn (THE PLAN) | 26.6 / 22.2 / 28.5 | **30.4 / 27.2 / 31.4** | 16 → 14 |
+| canopy everywhere | 23.4 / 21.6 / 19.3 | **28.2 / 23.7 / 25.3** | 17 → 15 |
+
+Canopy added inside the lines: **15,476 m², 6,719 m² of it over the
+tracer's lawn.** Worse by a point or more, under the plan's decoder: **B25
+9.4 → 71.3**, B26 45.1 → 60.7, **B31 14.3 → 31.6**, B28 69.5 → 78.5, B04
+56.3 → 61.2, B08 18.3 → 22.4, and nine more by 1–4. Better: B22 60.0 → 58.7,
+B09 39.9 → 38.5, B30 21.5 → 19.1 (and B06, B16 on other decoders).
+
+**The prediction failed on every clause** but the direction of the seen
+column: the median moved 3.8 points, not under half a point; B04 got worse,
+not better; B06 did not move on the plan's decoder.
+
+**Why, as far as this run shows.** Stage 3 CLEARS stage 1's answer under
+every canopy cell and puts lawn back only by span. So every added cell over
+lawn the detector had right is lawn thrown away unless span refills it, and
+the added cells are the lidar's and NAIP-CHM's 2 m squares copied onto a
+15 cm grid — blocky at every crown edge. Where NAIP-CHM stood alone (B25,
+B26, B04) there was not even the lidar's agreement to thin it. H41 said the
+two instruments find trees the tree model misses; this says **a missed tree
+is not a reason to discard what the detector saw under it.**
+
+**Not adopted.** THE PLAN's row stays span + lidar veto over the tree
+model's canopy. The row stays in the code and in the tables; the pictures
+page draws THE PLAN's row again. **SPECULATION, the shape to try if the
+missed trees are to be used:** let the added canopy only ADD — stage 3 may
+fill under it from visible lawn, but may not clear what stage 1 called lawn
+there.
+
+**Pictures**, drawn for the losing row with every layer separate (the first
+layered run): `runs/2026-09-26-0041-edt-scalemae-large-896px`. B25 is the
+one to open: switch on "NAIP-CHM canopy" and "detector: raw answer".
 
 ### H41. Read as cover, NAIP-CHM passes its bar, and it says the tree model misses trees far more often than the lidar is stale, 2026-09-26
 
@@ -3467,3 +3519,4 @@ for everywhere + span. Kept because each points at a different stage.
 | 2026-09-26 | 36207546426 | 32 | — (workflow 23 + **NAIP-CHM**, tallest pixel a 2 m cell ≥ 2 m, not roof) | — | — | **H40: fails its bar.** Index 11 s, files over 32 of 32 (NAIP 2021–23). Where tree model and lidar agree: canopy 99.3% (bar > 80), neither 13.7% (bar < 10: failed). Visible lawn 21.8% under it. Lidar-only 76% / model-only 79% NAIP canopy, confounded by edge cells. Kent 8,626 strip 77% still canopy (tree-model miss); B28 NC 10,556 20% (trees gone). Island County: NAIP-only 830 m² vs model 579 |
 | 2026-09-26 | 36208871886 | 32 | — (workflow 23 + NAIP-CHM as **cover**: half the 2 m cell's pixels ≥ 2 m, not roof) | — | — | **H41: passes its bar.** Both 98.2% (> 80), neither 8.6% (< 10). Lidar-only 67.4%, model-only 68.6% NAIP canopy: most of the 8,759 lidar-only cells are trees the tree model misses. Kent 8,626 66%, B28 NC 10,556 16% (trees gone). Visible lawn 15.6% under NAIP canopy. Island County NAIP-only 706 m² against the model's 579 |
 | 2026-09-26 | 36201920931 | 32 | as 36182100031 (H39), the first run to **draw THE PLAN's row** (canopy on lawn + span + lidar veto) instead of the lowest median | 23.3% (everywhere + span) | 24.7% | Pictures of the plan's row for the first time, `runs/2026-09-25-2152-edt-scalemae-large-896px`. The plan's row 26.6% to the decimal of H39, everywhere 23.3 / 23.4 likewise; head rows back in the 34.2 / 31.8 state and the no-canopy decoder 28.4 against H39's 28.5 (H28/H29's two extraction states). Kent 72,863 37.1 → 31.3 and Kent 8,626 51.3 → 41.0 under the plan's decoder, as H39 |
+| 2026-09-26 | 36212931237 | 32 | `canopy: compare`; THE PLAN's row + **stage 3 over tree model ∪ (lidar ∩ NAIP-CHM) canopy** (NAIP alone without lidar); first **layered pictures**; B-numbers | 23.3% (everywhere + span) | 24.7% | **H42: worse, not adopted.** Plan's row 26.6 / 22.2 / 28.5 → 30.4 / 27.2 / 31.4, 16 → 14 over SAM; 15,476 m² canopy added, 6,719 over lawn. B25 9 → 71, B26 45 → 61, B31 14 → 32, B04 56 → 61; B22, B09, B30 slightly better. Pictures (the losing row, every layer) `runs/2026-09-26-0041-edt-scalemae-large-896px` |
