@@ -46,17 +46,7 @@ got here. Update it whenever the in-flight run changes.*
   tools/train-detector.js) when it scored it, and the picker names the row
   each run drew. Runs before the fix are unchanged on the page.
 - **Pictures of THE PLAN's row are up (2026-09-26):** `runs/2026-09-25-2152-edt-scalemae-large-896px`, the first drawn for the row actually adopted.
-- **In flight (2026-09-26): workflow 23, benchmark, S9's test** (the
-  owner asked for it) — crowns per canopy clump from the lidar CHM
-  (`tools/crowns_lidar.py`: Popescu & Wynne variable-window tops, 3 m+, on
-  a 3x3-smoothed CHM), the border of visible lawn round each clump, and
-  area-weighted trades for rules calling a clump woods. **Bar, written before
-  the run: a rule worth building finds half the woods canopy while costing a
-  tenth of the lawn under canopy.** A preview on H43's saved layers already
-  says none does (best: 3+ crowns and border < 25%, 33% of the lawn for 93%
-  of the woods; border share AUC 0.16, crowns 0.69) — the run is the record
-  on the tree model's own clumps. Write H46.
-- **Nothing in flight (2026-09-26, after H45).** NAIP-CHM is closed as a canopy (H42, H43, H45). More maps helped more lots
+- **Nothing in flight (2026-09-26, after H46).** NAIP-CHM is closed as a canopy (H42, H43, H45); telling woods from lawn trees is closed at the clump level (H35, H36, H37, H46) — the lawn border separates clumps (AUC 0.16) but joined clumps make any clump rule cost a third of the lawn. Open: the per-crown unit (SPECULATION, H46). More maps helped more lots
   than they hurt (15 against 8 on the benchmark lots) and fixed Utah, but
   broke Island County and did not fix the pond. Open: the owner's look at
   B04 and B03 in the layered pictures of the 44-lawn run; S9 (tree count per
@@ -562,6 +552,48 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H46. Counting crowns per clump does not tell woods from lawn trees; a lawn border does, per clump, but no clump-level rule is cheap enough — the clumps are joined, 2026-09-26
+
+Run 36256482254, workflow 23, benchmark (29 lots with lidar), the owner's
+S9: tree tops on the lidar CHM by Popescu & Wynne's variable window
+(deciduous crown width, tops 3 m and up, 3x3-smoothed), counted per clump of
+the tree model's canopy inside the lines; each clump's border of visible
+lawn; area-weighted trades for rules calling a clump woods. It repeated the
+preview on H43's saved layers to the clump count and every AUC.
+
+**95 clumps: 57 mostly lawn under them, 38 mostly not.** Medians: crowns 0
+against 1 (most small clumps have no 3 m top the 2 m lidar can see), area
+19 against 37 m², border lawn **69% against 34%**.
+
+| per clump, AUC (not-lawn above lawn) | |
+|---|---|
+| crowns | 0.69 |
+| crowns per 100 m² | 0.67 |
+| **border lawn share** | **0.16** (i.e. 0.84 the other way — the best single separation any woods test has shown) |
+| median height | 0.63 |
+| area | 0.66 |
+
+| rule calling a clump woods (area-weighted) | lawn under canopy it loses | woods canopy it finds |
+|---|---|---|
+| 3+ crowns | 48.5% | 94.5% |
+| 6+ crowns | 33.0% | 93.4% |
+| border lawn < 25% | 31.5% | 94.9% |
+| **3+ crowns and border < 25%** | **30.4%** | **92.5%** |
+| height 12 m+ (H35) | 28.6% | 81.1% |
+
+**Against the bar (half the woods for a tenth of the lawn): no rule passes.**
+Every rule finds nine tenths of the woods, because the woods are a few huge
+joined clumps; and every one loses a third to a half of the lawn under
+canopy, because those same clumps hold much of it — **the owner's
+prediction that crowns join exactly where it matters (H36's speculation) is
+now measured.** The crown count adds little the border does not; the border
+is the owner's idea that works, and it works per clump, not per square metre.
+
+**Closed at the clump level.** SPECULATION, the one form left: the unit
+below the clump — each crown's own segment (the cells nearest each top), or
+the canopy within some metres of the visible-lawn border — judged by its own
+neighbours and border, so a lawn tree touching a wood is judged as itself.
 
 ### H45. Used as tall, tree-sized cover, NAIP-CHM passes the agreement bars from 4 m up but never the lawn bar — which was badly chosen; closed as a canopy anyway, 2026-09-26
 
@@ -3682,3 +3714,4 @@ for everywhere + span. Kept because each points at a different stage.
 | 2026-09-26 | 36212931237 | 32 | `canopy: compare`; THE PLAN's row + **stage 3 over tree model ∪ (lidar ∩ NAIP-CHM) canopy** (NAIP alone without lidar); first **layered pictures**; B-numbers | 23.3% (everywhere + span) | 24.7% | **H42: worse, not adopted.** Plan's row 26.6 / 22.2 / 28.5 → 30.4 / 27.2 / 31.4, 16 → 14 over SAM; 15,476 m² canopy added, 6,719 over lawn. B25 9 → 71, B26 45 → 61, B31 14 → 32, B04 56 → 61; B22, B09, B30 slightly better. Pictures (the losing row, every layer) `runs/2026-09-26-0041-edt-scalemae-large-896px` |
 | 2026-09-26 | 36219427024 | **44** | `canopy: compare`, **`lawns: all`** (the 32 + 12 since the freeze) — **NOT COMPARABLE** | 19.5% (everywhere + span); plan's row 23.7% | 32.2% (30 lawns) | **H44.** On the 32, lot by lot (everywhere + span) against H39: 15 better, 8 worse, median −0.6. B03 86 → 38, B17 −10, B20 −10, B22 −10, B06 −4.5; B04 33 → 65, B18 +8, B12 (pond) +3. Pictures (plan's row, layered) `runs/2026-09-26-0253-edt-scalemae-large-896px` |
 | 2026-09-26 | 36247435370 | 32 | — (workflow 23: **NAIP-CHM cover swept** 2/3/4/5 m × objects 0/20/50 m², not roof) | — | — | **H45: no cell passes.** Both 98.2 → 93.8%, neither 8.6 → 4.0% (passing from 4 m up); traced visible lawn called canopy 15.6 → 9.4% (bar < 5, never met — and a bar a perfect map would fail, since the lidar calls 13.6% of that ground canopy); lidar 4 m trees found 89.5 → 77.1%. Closed as a canopy |
+| 2026-09-26 | 36256482254 | 32 | — (workflow 23: **S9, crowns per canopy clump** from the lidar CHM, lawn border, rule trades) | — | — | **H46: no clump rule passes.** 95 clumps (57 lawn, 38 not); AUC border lawn 0.16, crowns 0.69, height 0.63. Best: 3+ crowns & border < 25% finds 92.5% of woods for 30.4% of lawn under canopy; 12 m height 81% / 29%. Clumps are joined; closed at the clump level |
