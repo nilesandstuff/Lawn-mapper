@@ -46,28 +46,14 @@ got here. Update it whenever the in-flight run changes.*
   tools/train-detector.js) when it scored it, and the picker names the row
   each run drew. Runs before the fix are unchanged on the page.
 - **Pictures of THE PLAN's row are up (2026-09-26):** `runs/2026-09-25-2152-edt-scalemae-large-896px`, the first drawn for the row actually adopted.
-- **In flight (2026-09-26, after H46): H47, one segment per crown.** Every
-  canopy cell goes to its nearest lidar tree top in the same clump
-  (tools/crowns_lidar.py `crown_segments`); each segment is judged by its own
-  border of visible lawn, its distance to visible lawn, and how many tops
-  stand within 10 m. **The bar, written before the run: a rule calling a
-  segment woods finds at least half the woods canopy and loses at most a
-  tenth of the lawn under canopy, pooled by area — judged on (b) below.**
-  **THE LEAK, found in the preview:** H46's border and this test's first
-  form measure "visible lawn" with the TRACER's lawn, which the pipeline
-  never has; distance from the true lawn edge predicts lawn under a tree
-  almost by construction. So the run prints two versions on the same lots:
-  (a) the tracer's edge (workflow 23, and workflow 14's step), (b) the
-  detector's held-out answer outside the canopy (workflow 14, new step
-  "One segment per crown, judged by the detector's lawn edge",
-  tools/segments_pred.py). **Preview of (a) only**, on H43's saved layers
-  (29 lots, 497 segments, 96 lawn): AUC distance to lawn 0.95, crowding
-  0.87, height 0.85, border 0.06; "border lawn 0%" finds 83.0% of woods for
-  5.6% of lawn, "distance 10 m+" 79.0% for 2.4% — passing easily, and not
-  to be believed until (b). Prediction for (b): worse, because where the
-  detector misses lawn (B04's shadows) a lawn tree's border reads zero and
-  it is called woods; whether it still passes is not something I can guess.
-  H46's border AUC of 0.16 carries the same leak and is recorded as such in H47.
+- **Nothing in flight (2026-09-26, after H47).** Telling woods from lawn
+  trees PASSES its bar for the first time, per crown segment and with the
+  detector's own lawn edge (H47): "no visible lawn on the segment's border"
+  finds 85.0% of the woods canopy for 7.5% of the lawn under canopy. That is
+  a measurement, not a pipeline row: stage 3 already reasons from the lawn
+  edge (span, reach), so how much of this it already gets is unknown. **Next:
+  the row** — stage 3 over the plan's decoder with segments that fail the
+  rule taken out of the canopy it may refill, scored on the 32.
 - **Before that (2026-09-26, after H46).** NAIP-CHM is closed as a canopy (H42, H43, H45); telling woods from lawn trees is closed at the clump level (H35, H36, H37, H46) — the lawn border separates clumps (AUC 0.16) but joined clumps make any clump rule cost a third of the lawn. Open: the per-crown unit (SPECULATION, H46). More maps helped more lots
   than they hurt (15 against 8 on the benchmark lots) and fixed Utah, but
   broke Island County and did not fix the pond. Open: the owner's look at
@@ -574,6 +560,68 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H47. One segment per crown, judged by its own lawn border, tells woods from lawn trees — and still does with the detector's edge instead of the tracer's, 2026-09-26
+
+Runs 36263514117 (workflow 23) and 36263512588 (workflow 14, `canopy:
+compare`, benchmark), 29 lots with lidar. The unit H46 left open: every
+cell of the tree model's canopy inside the lines goes to its nearest lidar
+tree top in the same clump (tools/crowns_lidar.py `crown_segments`); a
+clump with no top is one segment. Each segment: its border share of visible
+lawn, median distance to visible lawn, other tops within 10 m (crowding),
+top height, area. Bar written before the run: a rule finds at least half
+the woods canopy for at most a tenth of the lawn under canopy, pooled by
+area, **judged on (b)**.
+
+**THE LEAK, and its size.** H46 and this test's first form took "visible
+lawn" from the TRACER, which the pipeline never has. So workflow 14 now
+writes the drawn row's held-out mask per lot (PRED_OUT) and
+tools/segments_pred.py repeats the test with (b) the detector's answer
+outside the canopy as the visible lawn. Workflow 23's block and (a)
+reproduce to the digit. **497 segments: 96 mostly lawn under them, 401
+mostly not** (the lawn/not-lawn truth is the tracer's in both).
+
+| per segment, AUC (not-lawn above lawn) | (a) tracer's edge | **(b) detector's edge** |
+|---|---|---|
+| border lawn share | 0.06 | **0.08** |
+| distance to visible lawn | 0.95 | **0.94** |
+| crowding (tops within 10 m) | 0.87 | 0.87 |
+| top height | 0.85 | 0.85 |
+| area | 0.74 | 0.74 |
+
+| rule calling a segment woods (area-weighted) | (a) lawn lost / woods found | **(b) lawn lost / woods found** |
+|---|---|---|
+| **border lawn 0%** | 5.6% / 83.0% | **7.5% / 85.0%** |
+| border lawn < 10% | 8.8% / 83.8% | 12.1% / 86.7% |
+| border lawn < 25% | 12.3% / 89.1% | 18.2% / 90.2% |
+| distance 6 m+ | 10.7% / 88.5% | 16.4% / 90.4% |
+| **distance 10 m+** | 2.4% / 79.0% | **3.1% / 79.5%** |
+| crowding 2+ | 23.4% / 67.1% | 23.4% / 67.1% |
+| crowding 2+ and border 0% | 5.5% / 58.9% | 6.7% / 60.4% |
+| height 12 m+ and distance 6 m+ | 8.1% / 77.3% | 10.0% / 79.3% |
+
+**Against the bar, on (b): passes.** "Border lawn 0%" finds 85.0% of the
+woods for 7.5% of the lawn under canopy; "distance 10 m+" finds 79.5% for
+3.1%. Five rules pass on (b). The first woods test to pass after H35, H36,
+H37 and H46, and the difference from H46 is only the unit: a lawn tree
+touching a wood is its own segment, with its own lawn border, instead of a
+corner of the wood's clump.
+
+**The leak was real and small.** The prediction was that (b) would be
+worse; it is, by one to six points of lawn cost, never by enough to change
+a verdict. The detector's visible lawn is close enough to the tracer's at
+the edges that matter here. H46's border AUC (0.16) carried the same leak;
+its verdict (no clump rule passes) does not depend on it, since every clump
+rule failed on the lawn cost with the tracer's edge already.
+
+**WHAT THIS DOES NOT SAY.** It is a separation, not a score. Stage 3
+already works outward from the visible lawn edge (span 8 m, reach 1 m), so
+the segments "distance 10 m+" calls woods may be ground stage 3 never
+refills anyway, and the gain on the benchmark could be anything from none
+to most of it. The crowding and height columns do not use the lawn edge at
+all and are unchanged between (a) and (b), and neither alone passes.
+SPECULATION until the row is scored: stage 3 with segments failing "border
+lawn 0%" removed from the canopy it may refill.
 
 ### H46. Counting crowns per clump does not tell woods from lawn trees; a lawn border does, per clump, but no clump-level rule is cheap enough — the clumps are joined, 2026-09-26
 
@@ -3737,3 +3785,4 @@ for everywhere + span. Kept because each points at a different stage.
 | 2026-09-26 | 36219427024 | **44** | `canopy: compare`, **`lawns: all`** (the 32 + 12 since the freeze) — **NOT COMPARABLE** | 19.5% (everywhere + span); plan's row 23.7% | 32.2% (30 lawns) | **H44.** On the 32, lot by lot (everywhere + span) against H39: 15 better, 8 worse, median −0.6. B03 86 → 38, B17 −10, B20 −10, B22 −10, B06 −4.5; B04 33 → 65, B18 +8, B12 (pond) +3. Pictures (plan's row, layered) `runs/2026-09-26-0253-edt-scalemae-large-896px` |
 | 2026-09-26 | 36247435370 | 32 | — (workflow 23: **NAIP-CHM cover swept** 2/3/4/5 m × objects 0/20/50 m², not roof) | — | — | **H45: no cell passes.** Both 98.2 → 93.8%, neither 8.6 → 4.0% (passing from 4 m up); traced visible lawn called canopy 15.6 → 9.4% (bar < 5, never met — and a bar a perfect map would fail, since the lidar calls 13.6% of that ground canopy); lidar 4 m trees found 89.5 → 77.1%. Closed as a canopy |
 | 2026-09-26 | 36256482254 | 32 | — (workflow 23: **S9, crowns per canopy clump** from the lidar CHM, lawn border, rule trades) | — | — | **H46: no clump rule passes.** 95 clumps (57 lawn, 38 not); AUC border lawn 0.16, crowns 0.69, height 0.63. Best: 3+ crowns & border < 25% finds 92.5% of woods for 30.4% of lawn under canopy; 12 m height 81% / 29%. Clumps are joined; closed at the clump level |
+| 2026-09-26 | 36263514117 + 36263512588 | 32 | — (workflow 23: **H47, one segment per crown**; workflow 14 `canopy: compare` repeats it with the **detector's** visible lawn) | — | 24.7% | **H47: passes on the detector's edge.** 497 segments (96 lawn). (b) AUC distance 0.94, border 0.08, crowding 0.87. Border lawn 0% finds 85.0% of woods for 7.5% of lawn under canopy; distance 10 m+ 79.5% for 3.1%. Tracer's edge (a) 83.0/5.6 and 79.0/2.4: the leak is small. A separation, not yet a row |
