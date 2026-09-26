@@ -46,15 +46,7 @@ got here. Update it whenever the in-flight run changes.*
   tools/train-detector.js) when it scored it, and the picker names the row
   each run drew. Runs before the fix are unchanged on the page.
 - **Pictures of THE PLAN's row are up (2026-09-26):** `runs/2026-09-25-2152-edt-scalemae-large-896px`, the first drawn for the row actually adopted.
-- **In flight (2026-09-26): workflow 23, benchmark, the H45 sweep** — the
-  owner's "we are not using CHM right": NAIP-CHM as cover (half the 2 m cell)
-  at 2 / 3 / 4 / 5 m, in objects of at least 0 / 20 / 50 m², not roof. Judged
-  on H41's bars (both over 80%, neither under 10%) and on the traced lawn it
-  would call canopy and the lidar's 4 m trees it still finds. **Written
-  before the run: a cell passing both bars AND calling under 5% of the
-  visible lawn canopy is worth a scored row; none doing so closes NAIP-CHM
-  as a canopy for this project.** Write H45.
-- **Nothing in flight (2026-09-26, after H44).** More maps helped more lots
+- **Nothing in flight (2026-09-26, after H45).** NAIP-CHM is closed as a canopy (H42, H43, H45). More maps helped more lots
   than they hurt (15 against 8 on the benchmark lots) and fixed Utah, but
   broke Island County and did not fix the pond. Open: the owner's look at
   B04 and B03 in the layered pictures of the 44-lawn run; S9 (tree count per
@@ -560,6 +552,41 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H45. Used as tall, tree-sized cover, NAIP-CHM passes the agreement bars from 4 m up but never the lawn bar — which was badly chosen; closed as a canopy anyway, 2026-09-26
+
+Run 36247435370, workflow 23, benchmark (29 lots with lidar), the owner's
+"we are not using CHM right": NAIP-CHM cover (half the 2 m cell) at H m, not
+roof, in objects of at least A m². Everything H41 printed reproduced.
+
+| H / A | both (bar > 80) | neither (bar < 10) | traced visible lawn called canopy (bar < 5) | lidar 4 m trees found |
+|---|---|---|---|---|
+| 2 m / 0 | 98.2% | 8.6% | 15.6% | 89.5% |
+| 3 m / 0 | 97.1% | 6.8% | 13.5% | 87.3% |
+| 4 m / 0 | 95.7% | 5.4% | 11.8% | 84.0% |
+| 4 m / 50 | 95.5% | 5.1% | 10.7% | 81.0% |
+| 5 m / 0 | 94.0% | 4.3% | 10.3% | 79.6% |
+| **5 m / 50** | **93.8%** | **4.0%** | **9.4%** | **77.1%** |
+
+(20 m² sits between 0 and 50 at every height.)
+
+**Against the bar written before the run: no cell passes.** Taller and bigger
+does what the owner expected — the false canopy where neither the tree model
+nor the lidar sees a tree falls from 8.6% to 4.0% — but the traced lawn it
+calls canopy never falls below 9.4%, and the size floor buys only a point.
+
+**The lawn bar was badly chosen, and that is recorded rather than quietly
+fixed.** "Visible lawn" is the tracer's lawn outside the TREE MODEL's
+canopy, and the tree model misses trees (H41): the lidar itself calls 13.6%
+of that same ground canopy (H38). So a perfect canopy map would fail a 5%
+bar too. The fair version is lawn over ground the lidar calls flat, which
+this run did not print; H43 put it at 13.3% for NAIP-CHM's tallest pixel.
+
+**Closed as a canopy for this project regardless**, for the reason H42
+measured: any canopy stage 3 is given clears the detector's own answer under
+it, and at its best setting NAIP-CHM still covers a tenth of the traced lawn
+and loses a quarter of the real trees. It stays a switch on the pictures page
+(off by default) and a column in workflow 23.
 
 ### H44. Twelve more maps: fifteen of the benchmark lots better and eight worse, Utah fixed, Island County broken; the pond not fixed — NOT COMPARABLE with any benchmark table, 2026-09-26
 
@@ -3640,3 +3667,4 @@ for everywhere + span. Kept because each points at a different stage.
 | 2026-09-26 | 36201920931 | 32 | as 36182100031 (H39), the first run to **draw THE PLAN's row** (canopy on lawn + span + lidar veto) instead of the lowest median | 23.3% (everywhere + span) | 24.7% | Pictures of the plan's row for the first time, `runs/2026-09-25-2152-edt-scalemae-large-896px`. The plan's row 26.6% to the decimal of H39, everywhere 23.3 / 23.4 likewise; head rows back in the 34.2 / 31.8 state and the no-canopy decoder 28.4 against H39's 28.5 (H28/H29's two extraction states). Kent 72,863 37.1 → 31.3 and Kent 8,626 51.3 → 41.0 under the plan's decoder, as H39 |
 | 2026-09-26 | 36212931237 | 32 | `canopy: compare`; THE PLAN's row + **stage 3 over tree model ∪ (lidar ∩ NAIP-CHM) canopy** (NAIP alone without lidar); first **layered pictures**; B-numbers | 23.3% (everywhere + span) | 24.7% | **H42: worse, not adopted.** Plan's row 26.6 / 22.2 / 28.5 → 30.4 / 27.2 / 31.4, 16 → 14 over SAM; 15,476 m² canopy added, 6,719 over lawn. B25 9 → 71, B26 45 → 61, B31 14 → 32, B04 56 → 61; B22, B09, B30 slightly better. Pictures (the losing row, every layer) `runs/2026-09-26-0041-edt-scalemae-large-896px` |
 | 2026-09-26 | 36219427024 | **44** | `canopy: compare`, **`lawns: all`** (the 32 + 12 since the freeze) — **NOT COMPARABLE** | 19.5% (everywhere + span); plan's row 23.7% | 32.2% (30 lawns) | **H44.** On the 32, lot by lot (everywhere + span) against H39: 15 better, 8 worse, median −0.6. B03 86 → 38, B17 −10, B20 −10, B22 −10, B06 −4.5; B04 33 → 65, B18 +8, B12 (pond) +3. Pictures (plan's row, layered) `runs/2026-09-26-0253-edt-scalemae-large-896px` |
+| 2026-09-26 | 36247435370 | 32 | — (workflow 23: **NAIP-CHM cover swept** 2/3/4/5 m × objects 0/20/50 m², not roof) | — | — | **H45: no cell passes.** Both 98.2 → 93.8%, neither 8.6 → 4.0% (passing from 4 m up); traced visible lawn called canopy 15.6 → 9.4% (bar < 5, never met — and a bar a perfect map would fail, since the lidar calls 13.6% of that ground canopy); lidar 4 m trees found 89.5 → 77.1%. Closed as a canopy |
