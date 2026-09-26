@@ -287,6 +287,7 @@ jobs:
         run: |
           python3 canopy_test.py
           python3 lidar_test.py
+          python3 crowns_lidar_test.py
 
       - name: Find the canopy
         if: ${{ inputs.canopy != 'off' }}
@@ -418,7 +419,21 @@ jobs:
           CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}
           # The lidar's height, for stage 3's woods rule only (H34).
           LIDAR_DIR: ${{ inputs.canopy != 'off' && 'lidar' || '' }}
+          # H47: the drawn row's held-out masks, for the step below.
+          PRED_OUT: ${{ inputs.canopy != 'off' && 'preds-out' || '' }}
         run: node tools/train-detector.js
+
+      # H47's fair half: the per-crown woods test again, with the detector's
+      # visible lawn in place of the tracer's (tools/segments_pred.py). It
+      # measures, it changes nothing, so it never fails the run.
+      - name: One segment per crown, judged by the detector's lawn edge
+        if: ${{ inputs.canopy != 'off' }}
+        continue-on-error: true
+        working-directory: tools
+        env:
+          LIDAR: ../lidar
+          PRED: ../preds-out
+        run: python3 segments_pred.py
 
       - name: If that failed
         if: failure()

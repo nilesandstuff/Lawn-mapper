@@ -575,6 +575,9 @@ def main():
         k1 = math.cos(math.radians(web_mercator_lat((bbox[1] + bbox[3]) / 2)))
         clumps_here = crowns_lidar.clump_stats(restor_c & within_c, lawn_c, classes == 0, tops_c,
                                                cell * cell * k1 * k1, chm=layers["height"])
+        # H47: the same canopy cut into one segment per crown, each judged as itself.
+        segs_here = crowns_lidar.crown_segments(restor_c & within_c, tops_c, lawn_c, classes == 0,
+                                                cell * k1, chm=layers["height"])
         naip_rec = None
         if naip_files.get(lawn_id):
             try:
@@ -605,6 +608,7 @@ def main():
             "masks": mask_shares(classes, masks), "canopy_agreement": agree,
             "naip": naip_rec,
             "clumps": clumps_here,
+            "segments": segs_here,
         }
         summary["lawns"][lawn_id] = rec
         for k in pooled:
@@ -673,6 +677,7 @@ def main():
     print("above 0.5 means lawn reads HIGHER on that layer, below means lower.")
     print_masks([(k, r) for k, r in summary["lawns"].items() if "skipped" not in r], cell)
     print_crowns([r for k, r in summary["lawns"].items() if "skipped" not in r])
+    print_segments([r for k, r in summary["lawns"].items() if "skipped" not in r])
     if naip_files:
         print_naip([(k, r) for k, r in summary["lawns"].items() if "skipped" not in r], summary["naip_only"])
     print("UNDERSTORY (H36): the woods rule needs 'under canopy' to read well BELOW 0.5 on")
@@ -764,6 +769,49 @@ def print_crowns(done):
     for name_, rule in rules:
         cost, lawn_all, found, woods_all = crowns_lidar.rule_trade(cl, rule)
         print(f"  {name_:30}{cost:10.0f} m² {100 * cost / max(lawn_all, 1):5.1f}%{found:10.0f} m² {100 * found / max(woods_all, 1):5.1f}%")
+    print()
+
+
+def print_segments(done):
+    """H47: the unit below the clump -- each crown's own segment, judged by its own border."""
+    import crowns_lidar
+    sg = [c for r in done for c in r.get("segments", [])]
+    if not sg:
+        return
+    lawn_s = [c for c in sg if c["lawn"] >= 0.5 * c["area"]]
+    wood_s = [c for c in sg if c["lawn"] < 0.5 * c["area"]]
+    print("\nH47, ONE SEGMENT PER CROWN (canopy cells to their nearest top in the same clump):")
+    print(f"  {len(sg)} segments: {len(lawn_s)} mostly lawn under them, {len(wood_s)} mostly not.")
+    if not lawn_s or not wood_s:
+        return
+    feats = {
+        "border lawn share": lambda c: c["border"],
+        "distance to lawn": lambda c: c["dist"],
+        "crowding (tops in 10 m)": lambda c: c["crowding"],
+        "height": lambda c: c["height"],
+        "area": lambda c: c["area"],
+    }
+    print("\n  AUC, a segment that is mostly NOT lawn scoring higher than one that is (0.5 = coin toss; below 0.5 = lower):")
+    for k, f in feats.items():
+        print(f"    {k:24} {fmt(auc([f(c) for c in wood_s], [f(c) for c in lawn_s]))}")
+    rules = [
+        ("border lawn 0%", lambda c: c["border"] == 0),
+        ("border lawn < 10%", lambda c: c["border"] < 0.10),
+        ("border lawn < 25%", lambda c: c["border"] < 0.25),
+        ("distance 4 m+", lambda c: c["dist"] >= 4),
+        ("distance 6 m+", lambda c: c["dist"] >= 6),
+        ("distance 10 m+", lambda c: c["dist"] >= 10),
+        ("crowding 2+", lambda c: c["crowding"] >= 2),
+        ("crowding 4+", lambda c: c["crowding"] >= 4),
+        ("crowding 2+ and border 0%", lambda c: c["crowding"] >= 2 and c["border"] == 0),
+        ("crowding 2+ and distance 6 m+", lambda c: c["crowding"] >= 2 and c["dist"] >= 6),
+        ("height 12 m+ and distance 6 m+", lambda c: c["height"] >= 12 and c["dist"] >= 6),
+    ]
+    print("\n  A rule calling a segment woods, pooled by area (bar: finds half the woods, costs a tenth of the lawn):\n")
+    print(f"  {'rule':34}{'lawn it would lose':>22}{'woods it finds':>20}")
+    for name_, rule in rules:
+        cost, lawn_all, found, woods_all = crowns_lidar.rule_trade(sg, rule)
+        print(f"  {name_:34}{cost:10.0f} m² {100 * cost / max(lawn_all, 1):5.1f}%{found:10.0f} m² {100 * found / max(woods_all, 1):5.1f}%")
     print()
 
 
