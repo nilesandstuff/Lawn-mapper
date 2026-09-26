@@ -2835,6 +2835,77 @@ await armPoints(page);
 await page.waitForTimeout(300);
 
 /*
+ * DRAWING A PATCH (2026-09-26, the owner's list): Undo takes corners off one
+ * at a time, closing is one step of its own, a closed patch is finished --
+ * blue, locked, not dragged by a pan -- and Redo walks it all forward again.
+ * Before this, Undo deleted the whole patch and a closed one stayed orange
+ * and slid across the map under the next drag.
+ */
+{
+  await goTab(page, 'draw');
+  await page.click('#btn-draw');
+  await page.waitForTimeout(200);
+  const mb = await page.locator('#map').boundingBox();
+  const px = [[0.40, 0.40], [0.55, 0.40], [0.55, 0.55], [0.40, 0.55]]
+    .map(([fx, fy]) => [Math.round(mb.x + mb.width * fx), Math.round(mb.y + mb.height * fy)]);
+  const start = await page.evaluate(() => window.__lmDraft());
+  for (const [x, y] of px) {
+    await page.mouse.click(x, y);
+    await page.waitForTimeout(150);
+  }
+  const open = await page.evaluate(() => window.__lmDraft());
+  check('four corners placed on a new patch',
+    open.mode === 'draw_polygon' && open.corners === 4, JSON.stringify(open));
+  await page.click('#btn-undo');
+  await page.waitForTimeout(150);
+  const three = await page.evaluate(() => window.__lmDraft());
+  check('Undo while drawing takes off one corner, not the patch',
+    three.mode === 'draw_polygon' && three.corners === 3, JSON.stringify(three));
+  await page.click('#btn-redo');
+  await page.waitForTimeout(150);
+  check('and Redo puts it back',
+    (await page.evaluate(() => window.__lmDraft().corners)) === 4);
+
+  await page.mouse.click(px[0][0], px[0][1]);
+  await page.waitForTimeout(400);
+  const closed = await page.evaluate(() => window.__lmDraft());
+  check('closing it finishes it: locked, not left selected and draggable',
+    closed.mode === 'lm_locked' && closed.corners === 0, JSON.stringify(closed));
+  check('and the close is one undo step', closed.history === start.history + 1,
+    `${start.history} -> ${closed.history}`);
+
+  const beforeDrag = await page.evaluate(() => window.__lmCentroids());
+  const [mx, my] = [(px[0][0] + px[2][0]) / 2, (px[0][1] + px[2][1]) / 2];
+  await page.mouse.move(mx, my);
+  await page.mouse.down();
+  await page.mouse.move(mx + 60, my + 40, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(400);
+  const afterPan = await page.evaluate(() => window.__lmCentroids());
+  const slid = beforeDrag.length !== afterPan.length || beforeDrag.some((c, i) =>
+    Math.hypot(afterPan[i][0] - c[0], afterPan[i][1] - c[1]) > 1e-7);
+  check('a drag that starts on the new patch pans the map and leaves the patch', !slid);
+
+  await page.click('#btn-undo');
+  await page.waitForTimeout(300);
+  const reopened = await page.evaluate(() => window.__lmDraft());
+  check('Undo after closing reopens it with every corner still placed',
+    reopened.mode === 'draw_polygon' && reopened.corners === 4 && reopened.history === start.history,
+    JSON.stringify(reopened));
+  await page.click('#btn-undo');
+  await page.waitForTimeout(150);
+  check('and the next Undo takes a corner off',
+    (await page.evaluate(() => window.__lmDraft().corners)) === 3);
+  await page.click('#btn-redo');
+  await page.waitForTimeout(150);
+  await page.click('#btn-redo');
+  await page.waitForTimeout(300);
+  const redone = await page.evaluate(() => window.__lmDraft());
+  check('and Redo, once every corner is back, closes it again',
+    redone.mode === 'lm_locked' && redone.history === start.history + 1, JSON.stringify(redone));
+}
+
+/*
  * Everything above corrected the lawn by hand, which locks the AI tab on
  * purpose. Clearing through the notice is how a person gets back to the model
  * picker, so that is how this does it.

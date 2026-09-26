@@ -558,6 +558,9 @@
 
         <div class="tools">
           <button class="primary" id="btn-detect" disabled>Detect my lawn</button>
+          <!-- The same Clear all as the Draw tab: a detection that went wrong is
+               thrown away from where it was made, not a tab later. -->
+          <button class="ghost" id="btn-clear-detect">Clear all</button>
         </div>
 
         <!-- Pull the detected outline in or push it out, in feet on the ground.
@@ -629,6 +632,7 @@
           <button class="ghost" id="btn-cut">Cut out a shape</button>
           <button class="ghost" id="btn-parcel-shape" hidden>Use property line</button>
           <button class="ghost" id="btn-undo" disabled>Undo</button>
+          <button class="ghost" id="btn-redo" disabled>Redo</button>
           <button class="ghost" id="btn-delete" disabled>Delete selected</button>
           <!--
             A SECOND LAYER FOR LAWN YOU KNOW IS THERE AND CANNOT SEE.
@@ -924,6 +928,12 @@
           fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span>Undo</span>
       </button>
+      <button class="railbtn railundo" id="rail-redo" disabled title="Redo what was undone">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path
+          d="M20 9H9.5a4.5 4.5 0 0 0 0 9H16M20 9l-4-4M20 9l-4 4"
+          fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>Redo</span>
+      </button>
 
       <!-- Sub-tools, only while the lawn shape is being edited. -->
       <div class="railsub" id="shape-tools" hidden>
@@ -1211,6 +1221,9 @@
 
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.js"></script>
 <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.js"></script>
+<!-- Polygon clipping for the brush (lib/brush-vector.js): cut and join outlines
+     rather than re-tracing them, so corners the brush missed never move. -->
+<script src="/lib/vendor/polygon-clipping.umd.min.js"></script>
 <script type="module" src="/app.js"></script>
 </body>
 </html>
