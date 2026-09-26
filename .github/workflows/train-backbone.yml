@@ -155,9 +155,17 @@ on:
         # and lands in the same table as a row of its own. Measured at about
         # 40 s a fold on four threads, so around 20-25 minutes of CPU on top
         # of the extraction at 32 lawns.
-        description: 'Also train the convolutional decoder over the full patch grid (about 25 minutes more)'
-        type: boolean
-        default: true
+        #
+        # "fused" (S11, the owner's question of 2026-09-26): the same decoder
+        # with seven more numbers a patch -- lidar height, ground-return share
+        # and return count, NAIP's NDVI, the tree model's canopy, and a flag
+        # each for "no lidar" / "no NAIP" -- with modality dropout. See
+        # tools/fuse_layers.py. A choice rather than an eleventh input because
+        # GitHub allows ten. Needs the canopy (anything but off).
+        description: 'Train the convolutional decoder over the full patch grid (on), the same with lidar + NAIP NDVI + canopy as extra inputs (fused), or not at all (off)'
+        type: choice
+        default: 'on'
+        options: ['on', 'fused', 'off']
       seed:
         # THE DECODER'S SEED. It is deterministic given the seed and the
         # features (H26: two runs identical to the decimal), which means one
@@ -269,7 +277,7 @@ jobs:
       # And that labels land on the right patches and answers on the right
       # cells, before the decoder is trained on either. Same reason.
       - name: Check the decoder's grids
-        if: ${{ inputs.decoder }}
+        if: ${{ inputs.decoder != 'off' }}
         working-directory: tools
         run: python3 decoder_test.py
 
@@ -288,6 +296,7 @@ jobs:
           python3 canopy_test.py
           python3 lidar_test.py
           python3 crowns_lidar_test.py
+          python3 fuse_test.py
 
       - name: Find the canopy
         if: ${{ inputs.canopy != 'off' }}
@@ -326,6 +335,16 @@ jobs:
           NAIP_CHM: '1'
         run: python3 tools/lidar_frame.py
 
+      # S11, the fused inputs: NAIP's near-infrared over every frame (one
+      # exportImage each, about a metre a pixel), for the decoder to read as
+      # NDVI beside the lidar and the canopy. See tools/naip_bands.py.
+      - name: Read NAIP's near-infrared over the frames
+        if: ${{ inputs.decoder == 'fused' && inputs.canopy != 'off' }}
+        env:
+          FRAMES: frames
+          OUT: naip
+        run: python3 tools/naip_bands.py
+
       - name: Run the backbone over them
         env:
           IMAGES: frames
@@ -342,7 +361,7 @@ jobs:
       # one out exactly as the scorer does, so the row it produces is the same
       # kind of number as the rows beside it.
       - name: Train the decoder
-        if: ${{ inputs.decoder && inputs.canopy != 'compare' }}
+        if: ${{ inputs.decoder != 'off' && inputs.canopy != 'compare' }}
         env:
           FEATURES: feats
           FRAMES: frames
@@ -350,21 +369,27 @@ jobs:
           CANOPY: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
           CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}
           SEED: ${{ inputs.seed }}
+          FUSE: ${{ inputs.decoder == 'fused' && '1' || '' }}
+          FUSE_LIDAR: lidar
+          FUSE_NAIP: naip
         run: python3 tools/train_decoder.py
 
       # THE THREE-WAY COMPARISON, over the one extraction above. Same seed,
       # same features, same folds; only what carries weight differs.
       - name: Train the decoder without the canopy
-        if: ${{ inputs.decoder && inputs.canopy == 'compare' }}
+        if: ${{ inputs.decoder != 'off' && inputs.canopy == 'compare' }}
         env:
           FEATURES: feats
           FRAMES: frames
           OUT: preds-none
           SEED: ${{ inputs.seed }}
+          FUSE: ${{ inputs.decoder == 'fused' && '1' || '' }}
+          FUSE_LIDAR: lidar
+          FUSE_NAIP: naip
         run: python3 tools/train_decoder.py
 
       - name: Train the decoder, canopy unseen on lawn
-        if: ${{ inputs.decoder && inputs.canopy == 'compare' }}
+        if: ${{ inputs.decoder != 'off' && inputs.canopy == 'compare' }}
         env:
           FEATURES: feats
           FRAMES: frames
@@ -372,10 +397,13 @@ jobs:
           CANOPY: canopy
           CANOPY_MODE: lawn
           SEED: ${{ inputs.seed }}
+          FUSE: ${{ inputs.decoder == 'fused' && '1' || '' }}
+          FUSE_LIDAR: lidar
+          FUSE_NAIP: naip
         run: python3 tools/train_decoder.py
 
       - name: Train the decoder, canopy unseen everywhere
-        if: ${{ inputs.decoder && inputs.canopy == 'compare' }}
+        if: ${{ inputs.decoder != 'off' && inputs.canopy == 'compare' }}
         env:
           FEATURES: feats
           FRAMES: frames
@@ -383,6 +411,9 @@ jobs:
           CANOPY: canopy
           CANOPY_MODE: all
           SEED: ${{ inputs.seed }}
+          FUSE: ${{ inputs.decoder == 'fused' && '1' || '' }}
+          FUSE_LIDAR: lidar
+          FUSE_NAIP: naip
         run: python3 tools/train_decoder.py
 
       # Step two: the same folds, the same scoring, the same comparison against
@@ -410,10 +441,10 @@ jobs:
           GRID_CELL_M: '0.15'
           LAWN_SET: ${{ inputs.lawns }}
           # Empty when the decoder was not trained, and the scorer skips the row.
-          PREDICTIONS_DIR: ${{ inputs.decoder && inputs.canopy != 'compare' && 'preds' || '' }}
+          PREDICTIONS_DIR: ${{ inputs.decoder != 'off' && inputs.canopy != 'compare' && 'preds' || '' }}
           # The three-way comparison, one row each. The seen column is scored
           # with the canopy unseen on lawn, whichever decoder is being read.
-          PREDICTIONS_DIRS: ${{ inputs.decoder && inputs.canopy == 'compare' && 'no canopy=preds-none,canopy on lawn=preds-lawn,canopy everywhere=preds-all' || '' }}
+          PREDICTIONS_DIRS: ${{ inputs.decoder != 'off' && inputs.canopy == 'compare' && 'no canopy=preds-none,canopy on lawn=preds-lawn,canopy everywhere=preds-all' || '' }}
           # The canopy joins the hand-marked unseen ground for the seen column.
           CANOPY_DIR: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
           CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}
