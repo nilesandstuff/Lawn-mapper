@@ -784,7 +784,7 @@ def print_naip(items, naip_only):
     print()
 
 
-TAGS = {}  # B01..B32 from scale.json (tools/benchmark-ids.json)
+TAGS = {}  # B01..B32 from scale.json (worker/src/benchmark-ids.js)
 
 
 def tagged(lawn_id):

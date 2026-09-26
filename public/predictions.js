@@ -10,6 +10,8 @@
  * innerHTML on this page runs a stranger's string while signed in as the owner.
  */
 
+import { latLngText, coordsLine } from '/lib/coords.js';
+
 const $ = (s) => document.querySelector(s);
 
 /*
@@ -307,6 +309,8 @@ function row(e, i) {
   box.append(el('div', 'meta',
     `${n(e.squareFeet)} sq ft of lawn · ${Math.round(e.mpp * 100)} cm a pixel · `
     + `the outline found ${pct(e.foundPct)} of it · over-called ${pct(e.overPct)}`));
+  /* Where it is, "lat, lng", for the NAIP-CHM app and anything else. */
+  if (Number.isFinite(e.lat) && Number.isFinite(e.lng)) box.append(coordsLine(latLngText(e.lat, e.lng)));
 
   /*
    * What correcting it would cost. Written as a sentence rather than as two
@@ -729,6 +733,16 @@ function settingsLine(settings) {
     flip.hidden = true;
   }
 
+  /*
+   * IN B-NUMBER ORDER (owner, 2026-09-26): B01 to B32 first, then any lawn
+   * with no tag in the order the run wrote them. The index is kept as written;
+   * `i` stays the position there, which is what the picture keys are named by.
+   */
+  const order = entries.map((e, i) => [e, i]).sort(([a, ia], [b, ib]) => {
+    if (a.tag && b.tag) return a.tag.localeCompare(b.tag);
+    if (a.tag || b.tag) return a.tag ? -1 : 1;
+    return ia - ib;
+  });
   const list = $('#list');
-  for (const [i, e] of entries.entries()) list.append(row(e, i));
+  for (const [e, i] of order) list.append(row(e, i));
 })();

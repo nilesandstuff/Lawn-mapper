@@ -36,6 +36,7 @@ import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 
 import { query } from './corpus-db.js';
+import { benchmarkTag, coordsOfId } from '../worker/src/benchmark-ids.js';
 import {
   imageFeatures, featureStats, standardise, FEATURE_COUNT, FEATURE_NAMES,
 } from '../public/lib/features.js';
@@ -59,14 +60,13 @@ import { lngLatToFramePx, metresPerPixel } from '../public/lib/mercator.js';
 const SQM_PER_SQFT = 0.09290304;
 
 /*
- * SHORT NAMES FOR THE BENCHMARK LAWNS, B01 to B32 (tools/benchmark-ids.json,
+ * SHORT NAMES FOR THE BENCHMARK LAWNS, B01 to B32 (worker/src/benchmark-ids.js,
  * fixed 2026-09-26). "Kent County 8,626 sq ft" was how the owner and every
  * session had to name a lot, and two tools computing square feet two ways
  * had already produced two names for one lawn. Null for any lawn not in it.
  */
-const BENCHMARK_TAGS = JSON.parse(readFileSync(new URL('./benchmark-ids.json', import.meta.url), 'utf8'));
 export function lawnTag(id) {
-  return (!String(id).startsWith('_') && BENCHMARK_TAGS[id]) || null;
+  return benchmarkTag(id);
 }
 /** "B06 Kent County" -- the tag first, so a column of them sorts and reads at a glance. */
 const lawnName = (L) => `${L.tag ? `${L.tag} ` : ''}${L.county || 'traced by hand'}`;
@@ -1461,6 +1461,9 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
         layersKey,
         county: L.county || null,
         tag: L.tag || null,
+        /* The address point, "lat, lng" on the card, for pasting into other
+           map tools. The index is served only to the signed-in owner. */
+        ...(coordsOfId(L.id) || {}),
         squareFeet: Math.round(sqft(L.truthPx)),
         errorPct: Number(r.mine.errorPct.toFixed(1)),
         samErrorPct: r.theirs ? Number(r.theirs.errorPct.toFixed(1)) : null,
@@ -2000,7 +2003,7 @@ async function main() {
   /* The legend for B01..B32, once a run, with the scorer's own square feet. */
   if (lawns.some((L) => L.tag)) {
     const named = lawns.filter((L) => L.tag).sort((a, b) => a.tag.localeCompare(b.tag));
-    console.log('Benchmark names (tools/benchmark-ids.json):');
+    console.log('Benchmark names (worker/src/benchmark-ids.js):');
     for (let i = 0; i < named.length; i += 2) {
       console.log(named.slice(i, i + 2).map((L) => {
         const ft = Math.round((L.truthPx * L.mpp * L.mpp) / SQM_PER_SQFT).toLocaleString();
@@ -2071,7 +2074,7 @@ async function main() {
         frames: frameSpans(lawns),
         /* Where each frame IS, in Web Mercator metres, for the lidar reader. */
         boxes: frameBoxes(lawns),
-        /* B01..B32, for the Python readers' tables (tools/benchmark-ids.json). */
+        /* B01..B32, for the Python readers' tables (worker/src/benchmark-ids.js). */
         tags: Object.fromEntries(lawns.filter((L) => L.tag).map((L) => [L.id, L.tag])),
         /* Metres DOWN each frame, which since the crop is not the same as
            across it. */

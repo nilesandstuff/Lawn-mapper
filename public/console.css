@@ -269,3 +269,5 @@ body.lightbox-open { overflow: hidden; }
   max-width: none; max-height: none;
 }
 .lightshot.stack > .layer, .lightshot.stack > img { image-rendering: pixelated; }
+.coords { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.coords .ghost.tiny { margin: 0; padding: 2px 8px; font-size: 11.5px; }

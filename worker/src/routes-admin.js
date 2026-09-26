@@ -19,6 +19,7 @@
  */
 
 import { currentUser } from './auth.js';
+import { benchmarkId, coordsOfId } from './benchmark-ids.js';
 import {
   accountsEnabled, grantCredits, publicUser, setDailyLimit, dayKey,
 } from './db.js';
@@ -1273,7 +1274,16 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
     try {
       const object = await env.CORPUS.get(key);
       if (!object) return json({ error: 'Nothing drawn yet' }, 404, origin);
-      return json(await object.json(), 200, origin);
+      const data = await object.json();
+      /*
+       * COORDINATES FOR RUNS DRAWN BEFORE THEY WERE WRITTEN IN (owner,
+       * 2026-09-26): a benchmark lot's tag names its map id, and the id starts
+       * with the address point. Admin only, like everything on this route.
+       */
+      for (const e of Array.isArray(data?.entries) ? data.entries : []) {
+        if (e && e.lat === undefined && e.tag) Object.assign(e, coordsOfId(benchmarkId(e.tag)) || {});
+      }
+      return json(data, 200, origin);
     } catch {
       return json({ error: 'Nothing drawn yet' }, 404, origin);
     }
