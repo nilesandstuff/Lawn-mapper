@@ -84,6 +84,7 @@ jobs:
           python3 canopy_test.py
           python3 lidar_test.py
           python3 naip_chm_test.py
+          python3 crowns_lidar_test.py
           node lidar-cover.test.js
 
       - name: Fetch the lawns and write the frames out

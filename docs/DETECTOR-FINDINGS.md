@@ -46,6 +46,16 @@ got here. Update it whenever the in-flight run changes.*
   tools/train-detector.js) when it scored it, and the picker names the row
   each run drew. Runs before the fix are unchanged on the page.
 - **Pictures of THE PLAN's row are up (2026-09-26):** `runs/2026-09-25-2152-edt-scalemae-large-896px`, the first drawn for the row actually adopted.
+- **In flight (2026-09-26): workflow 23, benchmark, S9's test** (the
+  owner asked for it) — crowns per canopy clump from the lidar CHM
+  (`tools/crowns_lidar.py`: Popescu & Wynne variable-window tops, 3 m+, on
+  a 3x3-smoothed CHM), the border of visible lawn round each clump, and
+  area-weighted trades for rules calling a clump woods. **Bar, written before
+  the run: a rule worth building finds half the woods canopy while costing a
+  tenth of the lawn under canopy.** A preview on H43's saved layers already
+  says none does (best: 3+ crowns and border < 25%, 33% of the lawn for 93%
+  of the woods; border share AUC 0.16, crowns 0.69) — the run is the record
+  on the tree model's own clumps. Write H46.
 - **Nothing in flight (2026-09-26, after H45).** NAIP-CHM is closed as a canopy (H42, H43, H45). More maps helped more lots
   than they hurt (15 against 8 on the benchmark lots) and fixed Utah, but
   broke Island County and did not fix the pond. Open: the owner's look at
