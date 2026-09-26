@@ -190,4 +190,6 @@ export const runKeys = (slug) => ({
   index: `${RUNS}/${slug}/index.json`,
   shapes: (n) => `${RUNS}/${slug}/${n}.png`,
   mask: (n) => `${RUNS}/${slug}/${n}-mask.png`,
+  photo: (n) => `${RUNS}/${slug}/${n}-photo.png`,
+  layers: (n) => `${RUNS}/${slug}/${n}-layers.png`,
 });

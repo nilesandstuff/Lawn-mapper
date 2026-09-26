@@ -22,7 +22,7 @@
  */
 
 import {
-  drawPrediction, tracePrediction, traceMask, traceDrift, mistakeCounts,
+  drawPrediction, drawLayers, LAYERS, tracePrediction, traceMask, traceDrift, mistakeCounts,
   TRACE, TRUTH_FILL, INFERRED_EDGE,
 } from './render-prediction.js';
 import {
@@ -389,6 +389,26 @@ const block = (mask, x0, y0, x1, y1) => {
   check('and ground outside the property line is not counted',
     clipped.lawnPx === 1 && clipped.missed === 0 && clipped.overcalled === 0,
     JSON.stringify(clipped));
+}
+
+{
+  /* THE LAYERS (owner, 2026-09-26): one transparent frame per layer, in LAYERS
+     order, so the page can show slice k the same way on every lawn. */
+  const within = zeros();
+  for (let y = 0; y < GRID; y++) for (let x = 0; x < GRID / 2; x++) within[y * GRID + x] = 1;
+  const roof = zeros();
+  for (let y = 10; y < 30; y++) for (let x = 10; x < 30; x++) roof[y * GRID + x] = 1;
+  const L = drawLayers({ photo: photo(), within, grid: GRID, masks: { roof, line: within } });
+  const k = (id) => LAYERS.findIndex((l) => l.id === id);
+  const frame = (id) => L.sprite.subarray(k(id) * N * 4, (k(id) + 1) * N * 4);
+  check('the sprite holds one frame per layer', L.sprite.length === N * 4 * LAYERS.length && L.layers.length === LAYERS.length);
+  const alphaAt = (id, x, y) => frame(id)[(y * GRID + x) * 4 + 3];
+  check('a roof cell is painted on the roof frame', alphaAt('roof', 20, 20) > 0 || alphaAt('roof', 21, 20) > 0);
+  check('and nothing is painted on the roof frame away from it', alphaAt('roof', 100, 100) === 0);
+  check('a layer with no mask is an empty frame, not an error', frame('naipCanopy').every((v) => v === 0));
+  check('the photograph is opaque and dimmed outside the line',
+    L.photo[(5 * GRID + 100) * 4 + 3] === 255 && L.photo[(5 * GRID + 100) * 4] < L.photo[(5 * GRID + 5) * 4]);
+  check('every layer has a label and a colour', LAYERS.every((l) => l.label && l.colour.length === 3));
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
