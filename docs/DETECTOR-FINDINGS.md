@@ -46,18 +46,15 @@ got here. Update it whenever the in-flight run changes.*
   tools/train-detector.js) when it scored it, and the picker names the row
   each run drew. Runs before the fix are unchanged on the page.
 - **Pictures of THE PLAN's row are up (2026-09-26):** `runs/2026-09-25-2152-edt-scalemae-large-896px`, the first drawn for the row actually adopted.
-- **In flight (2026-09-26, after H47): S11, the fused inputs** — workflow 14,
-  `canopy: compare`, `decoder: fused`, benchmark. Write it up as H48. **The
-  baseline** is run 36263512588 on the same 32 (THE PLAN's row 26.6%, seen
-  22.2%, inferred 28.5%, in shade 24.8%; the plan's decoder alone 29.8%, seen
-  24.3%). **The bar, written before the run:** THE PLAN's row with fused
-  inputs reads **24.6% or better (two points, twice the seed's one, H28)**
-  with more benchmark lots better than worse; below that it is noise and not
-  adopted. Read also, because this is where it should act: the seen column,
-  the in-shade column, B06 and Kent 8,626 (roofs), B12 (the pond), B04 and
-  B23 (shadow), and whether the lidar veto still takes anything. Prediction:
-  better on the seen column and the roof/pond lots, little change under the
-  trees; an honest chance it reads worse at 31 training lawns.
+- **Nothing in flight (2026-09-26, after H48).** The fused inputs (S11)
+  FAIL their bar on THE PLAN's row (26.6 → 26.5%, bar 24.6) and are not
+  adopted — but the fused decoder ON ITS OWN reads 25.0%, below THE PLAN's
+  26.6% with no stage 3 and no veto (H48). A different row from the one the
+  bar was written for, so recorded as a lead, not a result. Open, in order:
+  (1) the canopy-channel leak H48 names (the "on lawn" decoder learns
+  "canopy input = not lawn"); (2) stale lidar — B28, whose trees are gone
+  (H40), went 69.5 → 79.5%; (3) a bar for "fused decoder, no stage 3" as a
+  candidate plan. H47's woods row is still unbuilt.
 - **Nothing in flight (2026-09-26, after H47).** Telling woods from lawn
   trees PASSES its bar for the first time, per crown segment and with the
   detector's own lawn edge (H47): "no visible lawn on the segment's border"
@@ -572,6 +569,65 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H48. Fused inputs: THE PLAN's row does not move, 18 lots better against 7, and the fused decoder alone reads under THE PLAN — not adopted, a lead, 2026-09-26
+
+Run 36271469618, workflow 14, `canopy: compare`, `decoder: fused`,
+benchmark (32, fingerprint 1rijjz2). S11 as built: seven more numbers a
+patch beside the eye's 1024 (lidar height, ground-return share, log return
+count, has-lidar, NAIP NDVI, has-NAIP, canopy share), lidar dropout 0.3,
+NAIP 0.2. Lidar on 29 lots, NAIP on 31 of 32, canopy on 32 (0 for the
+no-canopy decoder, by design). Baseline: run 36263512588, the same 32, same
+seed, same code otherwise.
+
+| row | baseline | **fused** |
+|---|---|---|
+| **THE PLAN (canopy on lawn + stage 3, span, veto)** | 26.6% | **26.5%** |
+| … seen / inferred | 22.2 / 28.5 | 21.8 / **32.5** |
+| … in shade / in sun | 24.8 / 32.2 | 23.2 / 34.3 |
+| … over SAM | 16 of 26 | 17 of 26 |
+| decoder, no canopy (alone) | 28.5% | **26.1%** |
+| **decoder, canopy on lawn (alone)** | 29.8% | **25.0%** (18 of 26 over SAM) |
+| … seen / inferred | 24.3 / 34.5 | 22.1 / **44.6** |
+| decoder, canopy everywhere (alone) | 24.3% | 24.5% |
+| canopy everywhere + stage 3, span, veto (lowest) | 23.4% | 23.2% |
+| sharp-boundary error, decoders alone | 72.0–76.3% | **69.7–71.9%** |
+| hard-shade error, plan row | 40.2% | 36.9% |
+
+**Against the bar (THE PLAN's row 24.6% or better): fails. Not adopted.**
+The median moved a tenth of a point.
+
+**Lot by lot on THE PLAN's row: 18 better, 7 worse, 7 within half a point**
+(median change −0.7). B03 Utah 65.8 → 26.4, B02 −6.5, B06 (Kent 8,626, the
+roof) −4.6, B21 −3.4, B09 −3.2, B04 −1.9, B23 −1.1; worse: **B28 69.5 →
+79.5** (NC 10,556, the lot whose trees NAIP says are gone, H40 — stale
+lidar, exactly the owner's worry, and dropout at 0.3 did not stop it), B24
++9.3 (the one-cell registration oddity), B22 +4.7, B26 +2.3, B25 +1.9. B12
+(the pond) unchanged; the veto still took 382–397 m² of void, so the
+decoder did not learn water. It took 196–201 m² of roof it would otherwise
+have kept, against 245–311 before, so it learned some roofs.
+
+**WHY THE PLAN'S ROW DID NOT MOVE, read from the table rather than
+guessed:** the gains are in the decoders alone (−2.4, −4.8) and stage 3
+replaces the decoder's answer under every canopy cell. Much of what the
+fused decoder learned is what stage 3 already does — the "on lawn"
+decoder's inferred column went 34.5 → 44.6 while its total fell, i.e. it
+learned to call canopy not-lawn. **That is a leak of this run's own
+making:** that decoder is trained with canopy over traced lawn weightless
+(H27) and canopy the tracer left out as weighted zeros, so every graded
+canopy cell it sees is not lawn, and a canopy channel lets it learn "canopy
+= not lawn" directly. The everywhere decoder, where canopy carries no
+weight at all, did not move (24.3 → 24.5).
+
+**WHAT IS REAL, and only a lead:** on visible ground the fused inputs help
+where they were expected to — sharp boundaries 4–7 points better (the
+driveway edge that S8 said the eye makes worse), hard shade 3.3 points
+better, seen 22.2 → 21.8 on the plan row and 24.3 → 22.1 on its decoder.
+And the fused "on lawn" decoder alone, with no stage 3 and no veto, reads
+25.0% against THE PLAN's 26.6%. That is the owner's thesis in one number —
+a learned model matching the hand logic — but it is a different row from
+the one the bar was written for, one run, and inside H7's noise; so it is
+SPECULATION until a bar written for it is met.
 
 ### H47. One segment per crown, judged by its own lawn border, tells woods from lawn trees — and still does with the detector's edge instead of the tracer's, 2026-09-26
 
@@ -3831,3 +3887,4 @@ each area-averaged onto the patch grid exactly as the labels are.
 | 2026-09-26 | 36247435370 | 32 | — (workflow 23: **NAIP-CHM cover swept** 2/3/4/5 m × objects 0/20/50 m², not roof) | — | — | **H45: no cell passes.** Both 98.2 → 93.8%, neither 8.6 → 4.0% (passing from 4 m up); traced visible lawn called canopy 15.6 → 9.4% (bar < 5, never met — and a bar a perfect map would fail, since the lidar calls 13.6% of that ground canopy); lidar 4 m trees found 89.5 → 77.1%. Closed as a canopy |
 | 2026-09-26 | 36256482254 | 32 | — (workflow 23: **S9, crowns per canopy clump** from the lidar CHM, lawn border, rule trades) | — | — | **H46: no clump rule passes.** 95 clumps (57 lawn, 38 not); AUC border lawn 0.16, crowns 0.69, height 0.63. Best: 3+ crowns & border < 25% finds 92.5% of woods for 30.4% of lawn under canopy; 12 m height 81% / 29%. Clumps are joined; closed at the clump level |
 | 2026-09-26 | 36263514117 + 36263512588 | 32 | — (workflow 23: **H47, one segment per crown**; workflow 14 `canopy: compare` repeats it with the **detector's** visible lawn) | — | 24.7% | **H47: passes on the detector's edge.** 497 segments (96 lawn). (b) AUC distance 0.94, border 0.08, crowding 0.87. Border lawn 0% finds 85.0% of woods for 7.5% of lawn under canopy; distance 10 m+ 79.5% for 3.1%. Tracer's edge (a) 83.0/5.6 and 79.0/2.4: the leak is small. A separation, not yet a row |
+| 2026-09-26 | 36271469618 | 32 | `canopy: compare`, **`decoder: fused`** (S11: lidar height, ground share, returns, NAIP NDVI, canopy + flags; dropout 0.3 / 0.2) | 23.2% (everywhere + span, veto) | 24.7% | **H48: fails its bar, not adopted.** Plan's row 26.6 → 26.5 (bar 24.6); seen 22.2 → 21.8, inferred 28.5 → 32.5; 18 lots better, 7 worse; B03 −39, B06 −4.6; B28 +10 (stale lidar), B24 +9. Fused decoders alone 28.5 → 26.1 and **29.8 → 25.0** (under the plan's 26.6, a lead); sharp edges −4 to −7. Pictures `runs/2026-09-26-1839-edt-scalemae-large-896px` |
