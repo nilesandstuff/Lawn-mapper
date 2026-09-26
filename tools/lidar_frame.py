@@ -568,6 +568,13 @@ def main():
         within_c = shrink_mask(within, gw, gh)
         restor_c = shrink_mask(canopy, gw, gh)
         agree = canopy_agreement(within_c, restor_c, masks["lidar_canopy"])
+        # S9: crowns per canopy clump from the lidar's CHM (tools/crowns_lidar.py).
+        import crowns_lidar
+        lawn_c = (classes == 0) | (classes == 1)
+        tops_c = crowns_lidar.tree_tops(layers["height"], cell)
+        k1 = math.cos(math.radians(web_mercator_lat((bbox[1] + bbox[3]) / 2)))
+        clumps_here = crowns_lidar.clump_stats(restor_c & within_c, lawn_c, classes == 0, tops_c,
+                                               cell * cell * k1 * k1, chm=layers["height"])
         naip_rec = None
         if naip_files.get(lawn_id):
             try:
@@ -597,6 +604,7 @@ def main():
             "lawn_sqft": round(lawn_sqft), "cell_true_m2": true_m2,
             "masks": mask_shares(classes, masks), "canopy_agreement": agree,
             "naip": naip_rec,
+            "clumps": clumps_here,
         }
         summary["lawns"][lawn_id] = rec
         for k in pooled:
@@ -664,6 +672,7 @@ def main():
     print("pavement in the open will not do it under a tree. Direction is in the number:")
     print("above 0.5 means lawn reads HIGHER on that layer, below means lower.")
     print_masks([(k, r) for k, r in summary["lawns"].items() if "skipped" not in r], cell)
+    print_crowns([r for k, r in summary["lawns"].items() if "skipped" not in r])
     if naip_files:
         print_naip([(k, r) for k, r in summary["lawns"].items() if "skipped" not in r], summary["naip_only"])
     print("UNDERSTORY (H36): the woods rule needs 'under canopy' to read well BELOW 0.5 on")
@@ -711,6 +720,51 @@ def print_masks(items, cell):
               f"{cells_of(lawn_rows, 'void'):9.0f}{cells_of(not_rows, 'void'):9.0f}"
               f"{a['only_lidar'] * r['cell_true_m2']:12.0f}{a['only_restor'] * r['cell_true_m2']:12.0f}")
     print(f"\n  (roof and void columns are {cell:g} m cells; worst lidar-only canopy first)\n")
+
+
+def print_crowns(done):
+    """S9: does the crown count per clump tell woods from lawn trees? (The owner's rule.)"""
+    import crowns_lidar
+    cl = [c for r in done for c in r.get("clumps", [])]
+    if not cl:
+        return
+    lawn_cl = [c for c in cl if c["lawn"] >= 0.5 * c["area"]]
+    wood_cl = [c for c in cl if c["lawn"] < 0.5 * c["area"]]
+    print(f"\nS9, CROWNS PER CANOPY CLUMP (lidar CHM, Popescu & Wynne variable window, tops {crowns_lidar.MIN_TOP_M:g} m+):")
+    print(f"  {len(cl)} clumps of the tree model's canopy inside the lines: {len(lawn_cl)} mostly lawn under them, {len(wood_cl)} mostly not.")
+    if not lawn_cl or not wood_cl:
+        return
+    med = lambda xs: float(np.median(xs)) if xs else float("nan")  # noqa: E731
+    print(f"  median crowns: lawn clumps {med([c['crowns'] for c in lawn_cl]):.0f}, others {med([c['crowns'] for c in wood_cl]):.0f};"
+          f" median area {med([c['area'] for c in lawn_cl]):.0f} m² against {med([c['area'] for c in wood_cl]):.0f} m²;"
+          f" median border lawn {100 * med([c['border'] for c in lawn_cl]):.0f}% against {100 * med([c['border'] for c in wood_cl]):.0f}%.")
+    feats = {
+        "crowns": lambda c: c["crowns"],
+        "crowns per 100 m²": lambda c: 100 * c["crowns"] / c["area"],
+        "border lawn share": lambda c: c["border"],
+        "median height": lambda c: c["height"],
+        "area": lambda c: c["area"],
+    }
+    print("\n  AUC, a clump that is mostly NOT lawn scoring higher than one that is (0.5 = coin toss; below 0.5 = lower):")
+    for k, f in feats.items():
+        print(f"    {k:20} {fmt(auc([f(c) for c in wood_cl], [f(c) for c in lawn_cl]))}")
+    rules = [
+        ("2+ crowns", lambda c: c["crowns"] >= 2),
+        ("3+ crowns", lambda c: c["crowns"] >= 3),
+        ("4+ crowns", lambda c: c["crowns"] >= 4),
+        ("6+ crowns", lambda c: c["crowns"] >= 6),
+        ("border lawn < 25%", lambda c: c["border"] < 0.25),
+        ("3+ crowns and border < 25%", lambda c: c["crowns"] >= 3 and c["border"] < 0.25),
+        ("2+ crowns and border < 10%", lambda c: c["crowns"] >= 2 and c["border"] < 0.10),
+        ("height 6 m+ (H35)", lambda c: c["height"] >= 6),
+        ("height 12 m+ (H35)", lambda c: c["height"] >= 12),
+    ]
+    print("\n  A rule calling a clump woods, pooled by area (bar: finds half the woods, costs a tenth of the lawn):\n")
+    print(f"  {'rule':30}{'lawn it would lose':>22}{'woods it finds':>20}")
+    for name_, rule in rules:
+        cost, lawn_all, found, woods_all = crowns_lidar.rule_trade(cl, rule)
+        print(f"  {name_:30}{cost:10.0f} m² {100 * cost / max(lawn_all, 1):5.1f}%{found:10.0f} m² {100 * found / max(woods_all, 1):5.1f}%")
+    print()
 
 
 def naip_without_lidar(lawn_id, bbox, cell, frames, canopy_dir, files, out):
