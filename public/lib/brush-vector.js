@@ -34,17 +34,42 @@ function ringAreaM2(ring, frame) {
   return Math.abs(a) / 2;
 }
 
+/** Perimeter of one ring, in metres. */
+function ringPerimeterM(ring, frame) {
+  let p = 0;
+  for (let i = 1; i < ring.length; i++) {
+    const [x1, y1] = frame.toXY(ring[i - 1]);
+    const [x2, y2] = frame.toXY(ring[i]);
+    p += Math.hypot(x2 - x1, y2 - y1);
+  }
+  return p;
+}
+
+/*
+ * A ring too THIN to mean anything, whatever its area: a stroke's edge traced
+ * on one grid meeting an earlier stroke's edge traced on another leaves a
+ * long hairline gap between them -- erase a patch, paint most of it back, and
+ * the lawn gets a pinstripe hole along the seam. Mean width is 2 × area /
+ * perimeter; below the brush grid's own pixel it is an artefact of the two
+ * traces, not something anybody painted.
+ */
+const tooThin = (ring, frame, minWidthM) => {
+  const per = ringPerimeterM(ring, frame);
+  return per > 0 && (2 * ringAreaM2(ring, frame)) / per < minWidthM;
+};
+
 /**
  * shapes:  Polygon coordinate arrays (or MultiPolygon ones) the stroke touched
  * stroke:  Polygon coordinate arrays of the painted stroke
  * paint:   true to add, false to erase
  * minAreaM2: slivers and pinholes the clip leaves smaller than this are
  *            dropped, as the pixel path's tracer dropped specks.
+ * minWidthM: and rings thinner than this on average, however long.
  *
  * Returns Polygon geometries, or null when the clip failed and the caller
  * should fall back to the raster path.
  */
-export function strokeOnShapes(shapes, stroke, { paint, clip, minAreaM2 = 0.05 }) {
+export function strokeOnShapes(shapes, stroke, { paint, clip, minAreaM2 = 0.05, minWidthM = 0 }) {
   if (!clip || !stroke.length) return null;
   let out;
   try {
@@ -60,11 +85,10 @@ export function strokeOnShapes(shapes, stroke, { paint, clip, minAreaM2 = 0.05 }
   const geoms = [];
   for (const poly of out) {
     const [outer, ...holes] = poly;
-    if (!outer || outer.length < 4 || ringAreaM2(outer, frame) < minAreaM2) continue;
-    geoms.push({
-      type: 'Polygon',
-      coordinates: [outer, ...holes.filter((h) => h.length >= 4 && ringAreaM2(h, frame) >= minAreaM2)],
-    });
+    const keeps = (r) => r.length >= 4 && ringAreaM2(r, frame) >= minAreaM2
+      && !tooThin(r, frame, minWidthM);
+    if (!outer || !keeps(outer)) continue;
+    geoms.push({ type: 'Polygon', coordinates: [outer, ...holes.filter(keeps)] });
   }
   return geoms;
 }

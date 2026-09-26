@@ -969,7 +969,8 @@ if (typeof window !== 'undefined') {
     return {
       buttonVisible: !document.getElementById('maprail-left').hidden,
       open: !list.hidden,
-      options: [...list.querySelectorAll('button')].map((b) => ({
+      // The photographs only; the overlays under "Compare against" are not sources.
+      options: [...list.querySelectorAll('button[data-provider]')].map((b) => ({
         id: b.dataset.provider,
         checked: b.getAttribute('aria-checked') === 'true',
       })),
@@ -2684,7 +2685,7 @@ function applyErase() {
   const clipped = strokeOnShapes(
     touchedShapes.map((f) => f.geometry.coordinates),
     strokePolys,
-    { paint: Boolean(mode.paint), clip: window.polygonClipping, minAreaM2: mPerPx * mPerPx * 4 }
+    { paint: Boolean(mode.paint), clip: window.polygonClipping, minAreaM2: mPerPx * mPerPx * 4, minWidthM: mPerPx * 1.5 }
   );
   if (clipped) {
     pushHistory();
