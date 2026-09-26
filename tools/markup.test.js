@@ -1500,14 +1500,26 @@ check('every class the code toggles is styled',
   check('job mode is still a list of removals rather than a second page',
     rules.length >= 4, rules.join(', '));
 
-  /* The tips switch, and the AI step with everything on it. */
-  for (const id of ['#toggle-tutorials', '#tab-detect', '#btn-detect', '#btn-to-detect',
-    '#imagery-source', '#model-choice', '#edge-ft', '#toggle-trees', '#btn-clear']) {
+  /* The tips switch and the drawing tools. */
+  for (const id of ['#toggle-tutorials', '#btn-clear', '#btn-draw', '#btn-undo', '#btn-redo']) {
     check(`a paid tracer still has ${id}`,
       !rules.includes(id),
-      'taken away, and every one of these is a control somebody needs when the '
-      + 'automatic outline is worse than an empty map');
+      'taken away, and a tracer on an empty map needs every one of these');
   }
+
+  /*
+   * THE AI IS OFF EVERY JOB ROUTE (2026-09-26): the owner's call, until there
+   * is a better interim answer than an outline that has to be dismantled
+   * before the lawn can be traced. So the tab and the button into it go, and
+   * nothing runs a detection when a lawn opens.
+   */
+  for (const id of ['#tab-detect', '#pane-detect', '#btn-to-detect']) {
+    check(`and does not have ${id}`, rules.includes(id), 'the AI is off the job routes');
+  }
+  const opener = js.slice(js.indexOf('async function openJob'), js.indexOf('async function openJob') + 6000);
+  check('and opening a lawn runs no detection', !/await detect\(/.test(opener));
+  check('and every way into the AI tab lands on Draw in job mode',
+    /name === 'detect' && document\.body\.classList\.contains\('job-mode'\)/.test(js));
 
   /* And the ones that genuinely do not exist for somebody with no account. */
   for (const id of ['#account-btn', '#quota-badge', '#tab-saved', '#btn-finish']) {

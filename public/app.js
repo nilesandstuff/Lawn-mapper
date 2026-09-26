@@ -25,6 +25,7 @@ import {
   heldInsideRings,
 } from './lib/edges.js';
 import { afterStroke, restoreAway } from './lib/stitch.js';
+import { strokeOnShapes } from './lib/brush-vector.js';
 // Pasting the pieces of a big lot's detection back into one mask.
 import { stitchMasks } from './lib/tiles.js';
 import {
@@ -538,6 +539,13 @@ if (typeof window !== 'undefined') {
    * exactly right and does nothing when pressed. Only the depth catches that.
    */
   window.__lmHistory = () => history.length;
+  // The drawing in progress: which Draw mode, how many corners, both stacks.
+  window.__lmDraft = () => ({
+    mode: draw ? draw.getMode() : null,
+    corners: draftCorners(),
+    history: history.length,
+    future: future.length,
+  });
 
   /*
    * Duplicate the largest shape exactly on top of itself.
@@ -1369,6 +1377,29 @@ async function initMap() {
     defaultMode: 'simple_select',
     modes: {
       ...MapboxDraw.modes,
+      draw_polygon: stepwisePolygonMode(MapboxDraw.modes.draw_polygon),
+      /*
+       * AND NO WHOLE-SHAPE DRAG OUTSIDE MOVE, WHATEVER MODE DRAW IS IN. The
+       * lock above covers our own modes; these cover Draw's, which it enters
+       * by itself (simple_select on load, direct_select on a second tap). A
+       * press on a shape there used to grab it and stop the map panning, so a
+       * pan that started over a shape slid the shape instead. Declined here,
+       * the press is the map's and the drag pans.
+       */
+      simple_select: {
+        ...MapboxDraw.modes.simple_select,
+        startOnActiveFeature(st, e) {
+          if (!moveArmed()) return undefined;
+          return MapboxDraw.modes.simple_select.startOnActiveFeature.call(this, st, e);
+        },
+      },
+      direct_select: {
+        ...MapboxDraw.modes.direct_select,
+        onFeature(st, e) {
+          if (!moveArmed()) return this.stopDragging(st);
+          return MapboxDraw.modes.direct_select.onFeature.call(this, st, e);
+        },
+      },
       [LOCKED_MODE]: {
         onSetup() { this.setActionableState(); return {}; },
         toDisplayFeatures(state, geojson, display) { display(geojson); },
@@ -1397,10 +1428,24 @@ async function initMap() {
      * inside Points, trace it, and land in no mode at all with the rail
      * collapsed -- having to find your own way back in to carry on correcting.
      */
+    /*
+     * Deferred, like the lock below: this runs inside Draw's own changeMode,
+     * and a changeMode from in here is overwritten by the one still unwinding
+     * (it re-enters the polygon mode's onStop, too).
+     */
+    const wasReturning = state.returnToPoints;
+    state.returnToPoints = false;
     const back = () => {
-      if (!state.returnToPoints) return;
-      state.returnToPoints = false;
-      setMode('shape', 'points');
+      queueMicrotask(() => {
+        if (wasReturning) setMode('shape', 'points');
+        /*
+         * A CLOSED SHAPE IS A FINISHED SHAPE: blue, and not draggable. Left in
+         * simple_select it stayed orange and selected, and the next drag meant
+         * as a pan slid the whole patch across the map. Only Move moves.
+         */
+        else if (state.mode !== 'move') setDrawLock(true);
+        refreshHistoryButtons();
+      });
     };
 
     if (state.drawingParcel) {
@@ -1409,9 +1454,33 @@ async function initMap() {
       back();
       return;
     }
+
+    /*
+     * UNDO REOPENS IT. The entry recorded for a closed patch or cut-out is the
+     * map as it was before the shape existed, plus the corners it was closed
+     * with -- so Undo takes the map back AND puts the drawing back open with
+     * every corner still placed, and the next Undo takes corners off one at a
+     * time. Taken now, before anything below changes the map, with the new
+     * shape left out of it.
+     */
+    const made0 = e.features?.[0];
+    const reopen = made0 ? {
+      corners: (outerRing(made0) || []).slice(0, -1).map((p) => [...p]),
+      hole: Boolean(state.drawingHole),
+      returnToPoints: wasReturning,
+    } : null;
+    const before = snapshot({ without: made0?.id });
+    const depth = history.length;
+    const recordClose = () => {
+      if (!reopen || reopen.corners.length < 3) return;
+      if (history.length > depth) history[history.length - 1].reopen = reopen;
+      else pushHistory(null, { ...before, reopen });
+    };
+
     if (state.drawingHole) {
       state.drawingHole = false;
       cutHoleFromDrawn(e.features?.[0]);
+      recordClose();
       back();
       return;
     }
@@ -1450,6 +1519,7 @@ async function initMap() {
         + 'underneath, so the same ground is not outlined twice. The total is '
         + 'unchanged — this tidies the outlines, it does not take anything away.');
     }
+    recordClose();
     back();
   });
 
@@ -2146,7 +2216,9 @@ async function confirmLocation() {
     refreshRail();
     refreshPins();
     setHint(state.parcel
-      ? 'Check the property line, then open the AI or Draw step'
+      ? (document.body.classList.contains('job-mode')
+        ? 'Check the property line, then open the Draw step'
+        : 'Check the property line, then open the AI or Draw step')
       : 'Trace your property line first');
     showTip('parcel');
   } catch (err) {
@@ -2588,6 +2660,49 @@ function applyErase() {
     return;
   }
 
+  const mPerPx = metresPerPixel(frame, ERASE_GRID);
+  const touchedShapes = candidates.filter((f) => touched.includes(f));
+
+  /*
+   * THE STROKE AS A SHAPE, CLIPPED AGAINST THE OUTLINES (lib/brush-vector.js).
+   * Only the stroke goes through the tracer; the shapes are cut or joined as
+   * outlines, so every corner the brush did not cover comes back exactly --
+   * which the pixel round trip below could not promise, and on small shapes
+   * visibly did not. The round trip stays as the fallback if clipping fails.
+   */
+  const strokeData = new Uint8ClampedArray(ERASE_GRID * ERASE_GRID * 4);
+  for (let p = 0; p < strokeMask.length; p++) {
+    const v = strokeMask[p] ? 255 : 0;
+    strokeData[p * 4] = strokeData[p * 4 + 1] = strokeData[p * 4 + 2] = v;
+    strokeData[p * 4 + 3] = 255;
+  }
+  const strokePolys = maskToPolygons(
+    { width: ERASE_GRID, height: ERASE_GRID, data: strokeData },
+    (x, y) => framePxToLngLat(frame, [x, y], ERASE_GRID, ERASE_GRID),
+    { tolerance: BRUSH_TRACE_PX, maxVertices: MAX_BRUSH_VERTICES, ...EDIT_TRACE_LIMITS }
+  ).map((g) => g.coordinates);
+  const clipped = strokeOnShapes(
+    touchedShapes.map((f) => f.geometry.coordinates),
+    strokePolys,
+    { paint: Boolean(mode.paint), clip: window.polygonClipping, minAreaM2: mPerPx * mPerPx * 4 }
+  );
+  if (clipped) {
+    pushHistory();
+    draw.deleteAll();
+    for (const f of afterStroke(spared, untouched, clipped, {
+      inferred: state.inferredMode,
+    })) draw.add(f);
+    refreshMeasurement();
+    refreshSurveyed();
+    updateSelectionButtons();
+    const n = clipped.length + untouched.length;
+    const secs = `${n} section${n > 1 ? 's' : ''}`;
+    setStatus(mode.paint
+      ? `Added. ${secs} of lawn.`
+      : n ? `Erased. ${secs} left.` : 'Erased everything. Undo, or detect again.');
+    return;
+  }
+
   // Back through the tracer, which owns simplification and hole handling.
   const data = new Uint8ClampedArray(ERASE_GRID * ERASE_GRID * 4);
   for (let p = 0; p < keep.length; p++) {
@@ -2612,7 +2727,6 @@ function applyErase() {
    * result needs. There is no noise to remove: the staircase this leaves along
    * the untouched edges is put back on its original line below.
    */
-  const mPerPx = metresPerPixel(frame, ERASE_GRID);
   const polygons = maskToPolygons(
     { width: ERASE_GRID, height: ERASE_GRID, data },
     (x, y) => framePxToLngLat(frame, [x, y], ERASE_GRID, ERASE_GRID),
@@ -2833,9 +2947,10 @@ function clipGroupToParcel(features, inferred) {
 const MAX_HISTORY = 30;
 let history = [];
 
-function snapshot() {
+function snapshot({ without = null } = {}) {
   return {
-    features: JSON.parse(JSON.stringify(draw.getAll().features)),
+    features: JSON.parse(JSON.stringify(
+      draw.getAll().features.filter((f) => without == null || f.id !== without))),
     parcel: state.parcel ? JSON.parse(JSON.stringify(state.parcel.geometry)) : null,
     // Placing pins is work too. Undo that skipped them would quietly make
     // "remove all pins" the only way back from one stray tap.
@@ -2850,14 +2965,19 @@ function snapshot() {
  * a hundred times and is one thing the user did. `key` collapses a run of
  * changes into a single entry -- passing the same key again while that
  * interaction is still current adds nothing.
+ *
+ * Anything new done to the map ends the redo trail: redoing past a change
+ * made since would silently throw that change away.
  */
 let historyKey = null;
-function pushHistory(key = null) {
+let future = [];
+function pushHistory(key = null, entry = null) {
   if (key !== null && key === historyKey) return;
   historyKey = key;
-  history.push(snapshot());
+  history.push(entry || snapshot());
   if (history.length > MAX_HISTORY) history.shift();
-  updateUndoButton();
+  future = [];
+  refreshHistoryButtons();
 }
 
 /** End the current interaction, so the next one starts a new undo entry. */
@@ -2865,15 +2985,128 @@ const endHistoryGroup = () => { historyKey = null; };
 
 function clearHistory() {
   history = [];
+  future = [];
   historyKey = null;
-  updateUndoButton();
+  refreshHistoryButtons();
 }
 
-function undo() {
-  const prev = history.pop();
-  if (!prev) return;
-  historyKey = null;
+/*
+ * THE DRAWING IN PROGRESS, corner by corner.
+ *
+ * Draw's own polygon mode knows one undo -- Delete, which throws the whole
+ * outline away -- and closing it left the shape selected, orange, and
+ * draggable by the next pan. This wraps it so that:
+ *   - Undo while drawing takes the last corner off, Redo puts it back;
+ *   - closing lands in the locked mode, so the shape is finished (blue) and
+ *     only Move can move it;
+ *   - it can be reopened with corners already placed (Undo after a close).
+ * `drafting` is the live one, for the Undo and Redo buttons to reach.
+ */
+let drafting = null;
 
+/** Whole shapes move only in Move mode (see the Draw modes in initMap). */
+const moveArmed = () => state.mode === 'move';
+
+function stepwisePolygonMode(base) {
+  const close = (mode) => mode.changeMode(LOCKED_MODE);
+  return {
+    ...base,
+    onSetup(opts = {}) {
+      const st = base.onSetup.call(this, opts);
+      const corners = Array.isArray(opts.corners) ? opts.corners : [];
+      corners.forEach((p, i) => st.polygon.updateCoordinate(`0.${i}`, p[0], p[1]));
+      if (corners.length) {
+        st.currentVertexPosition = corners.length;
+        const last = corners[corners.length - 1];
+        st.polygon.updateCoordinate(`0.${corners.length}`, last[0], last[1]);
+      }
+      st.undone = [];
+      drafting = { mode: this, state: st };
+      queueMicrotask(refreshHistoryButtons);
+      return st;
+    },
+    clickAnywhere(st, e) {
+      const pos = st.currentVertexPosition;
+      const last = pos > 0 ? st.polygon.coordinates[0][pos - 1] : null;
+      if (last && last[0] === e.lngLat.lng && last[1] === e.lngLat.lat) return close(this);
+      // A new corner: whatever was undone is gone for good, as with any edit.
+      st.undone = [];
+      future = [];
+      base.clickAnywhere.call(this, st, e);
+      refreshHistoryButtons();
+      return undefined;
+    },
+    clickOnVertex() { return close(this); },
+    onKeyUp(st, e) {
+      if (e.keyCode === 13) return close(this);
+      if (e.keyCode === 27) {
+        this.deleteFeature([st.polygon.id], { silent: true });
+        return this.changeMode(LOCKED_MODE);
+      }
+      return undefined;
+    },
+    onStop(st) {
+      if (drafting?.state === st) drafting = null;
+      base.onStop.call(this, st);
+      queueMicrotask(refreshHistoryButtons);
+    },
+    // Delete / Backspace while drawing: the last corner, not the whole outline.
+    onTrash(st) { draftUndo(); },
+  };
+}
+
+const draftCorners = () => (drafting ? drafting.state.currentVertexPosition : 0);
+
+/** Take the last corner off the open drawing. */
+function draftUndo() {
+  const d = drafting;
+  if (!d) return false;
+  const st = d.state;
+  const pos = st.currentVertexPosition;
+  if (pos === 0) return false;
+  const ring = st.polygon.coordinates[0];
+  st.undone.push([...ring[pos - 1]]);
+  st.polygon.removeCoordinate(`0.${pos - 1}`);
+  st.currentVertexPosition = pos - 1;
+  d.mode._ctx.store.render();
+  refreshHistoryButtons();
+  setStatus(st.currentVertexPosition
+    ? `Corner removed — ${st.currentVertexPosition} left.`
+    : 'All corners removed. Tap to start again, or Undo once more to stop drawing.');
+  return true;
+}
+
+/** Put the last corner taken off back on. */
+function draftRedo() {
+  const d = drafting;
+  if (!d || !d.state.undone.length) return false;
+  const st = d.state;
+  const p = st.undone.pop();
+  const pos = st.currentVertexPosition;
+  st.polygon.updateCoordinate(`0.${pos}`, p[0], p[1]);
+  st.currentVertexPosition = pos + 1;
+  st.polygon.updateCoordinate(`0.${pos + 1}`, p[0], p[1]);
+  d.mode._ctx.store.render();
+  refreshHistoryButtons();
+  setStatus('Corner put back.');
+  return true;
+}
+
+/** Abandon the open drawing without it becoming a shape. */
+function draftCancel() {
+  const d = drafting;
+  if (!d) return;
+  d.mode.deleteFeature([d.state.polygon.id], { silent: true });
+  drafting = null;
+  state.drawingHole = false;
+  state.drawingParcel = false;
+  state.returnToPoints = false;
+  setDrawLock(true);
+  setHint('');
+}
+
+/** Put the map back to a recorded state. */
+function restore(prev) {
   draw.deleteAll();
   for (const f of prev.features) draw.add(f);
 
@@ -2901,18 +3134,74 @@ function undo() {
   refreshMeasurement();
   refreshSurveyed();
   updateSelectionButtons();
-  updateUndoButton();
-  setStatus(history.length
-    ? 'Undone.'
-    : 'Undone — back to where this step started.');
 }
 
-function updateUndoButton() {
-  // Two buttons, one state: the panel's and the one on the map. Undo is
+/** Open a closed patch or cut-out again, every corner in place. */
+function reopenDrawing(reopen) {
+  setMode(null);
+  state.drawingHole = reopen.hole;
+  state.drawingParcel = false;
+  state.returnToPoints = reopen.returnToPoints;
+  draw.changeMode('draw_polygon', { corners: reopen.corners });
+  setHint('Drawing again. Undo takes corners off; tap the first corner to close it.');
+}
+
+function undo() {
+  // While drawing, Undo is about corners.
+  if (drafting) {
+    if (draftUndo()) return;
+    // No corners left: stop drawing, and that is this press.
+    draftCancel();
+    refreshHistoryButtons();
+    setStatus('Stopped drawing.');
+    return;
+  }
+
+  const prev = history.pop();
+  if (!prev) return;
+  historyKey = null;
+  future.push({ ...snapshot(), reopen: prev.reopen || null });
+  restore(prev);
+  if (prev.reopen) {
+    reopenDrawing(prev.reopen);
+    setStatus('Reopened — the shape is back to its corners. Undo again to take them off one at a time.');
+  } else {
+    setStatus(history.length
+      ? 'Undone.'
+      : 'Undone — back to where this step started.');
+  }
+  refreshHistoryButtons();
+}
+
+function redo() {
+  if (drafting) {
+    if (draftRedo()) return;
+    // Every corner is back: Redo closes it again, as it was.
+    if (!future.length || !future[future.length - 1].reopen) return;
+    draftCancel();
+  }
+  const next = future.pop();
+  if (!next) return;
+  historyKey = null;
+  history.push({ ...snapshot(), reopen: next.reopen || null });
+  if (history.length > MAX_HISTORY) history.shift();
+  restore(next);
+  setStatus('Redone.');
+  refreshHistoryButtons();
+}
+
+function refreshHistoryButtons() {
+  // Two of each, one state: the panel's and the one on the map. Undo is
   // pressed while looking at whatever went wrong, which is on the map.
+  const canUndo = history.length > 0 || Boolean(drafting);
+  const canRedo = future.length > 0 || Boolean(drafting?.state.undone.length);
   for (const id of ['#btn-undo', '#rail-undo']) {
     const btn = $(id);
-    if (btn) btn.disabled = history.length === 0;
+    if (btn) btn.disabled = !canUndo;
+  }
+  for (const id of ['#btn-redo', '#rail-redo']) {
+    const btn = $(id);
+    if (btn) btn.disabled = !canRedo;
   }
 
   /*
@@ -6496,20 +6785,6 @@ async function claimNextJob(skipped = '') {
 }
 
 /**
- * Did this person arrive through one of the two PUBLIC links?
- *
- * The same question isOpenLink answers on the server, and the same two routes:
- * a volunteer doing a favour, and somebody on the paid link owed 75c for each
- * map that is approved. What they have in common here is that nothing is
- * traced for them until they ask -- see openJob.
- *
- * Read from the route the SERVER sent back with the lawn rather than from the
- * link, because the link may only propose and a stored row wins. `state.jobVia`
- * is what was asked for; `state.jobRoute` is what was granted.
- */
-const openLinkJob = () => state.jobRoute === 'volunteer' || state.jobRoute === 'paid';
-
-/**
  * Put one claimed lawn on the map, ready to correct.
  *
  * It goes through confirmLocation, which is the ordinary path a chosen address
@@ -6557,22 +6832,12 @@ async function openJob(job, prompts, cleared) {
   await confirmLocation();
 
   /*
-   * THE STARTING OUTLINE, RUN FOR THEM -- ON THE PAID PLATFORMS ONLY.
-   *
-   * A crowd worker is paid to CORRECT an outline, and arriving at an empty map
-   * with an AI tab nobody has mentioned is arriving at a task they cannot
-   * start. So for them it is still run once, automatically, and paid for by the
-   * job rather than by their browser's own allowance -- see spendJobDetection.
-   *
-   * NOT ON THE TWO PUBLIC ROUTES. Volunteers and paid tracers said the drawn-on
-   * outline was making the work MORE annoying rather than less, and that is a
-   * report about arithmetic rather than taste: a wrong outline has to be
-   * dismantled corner by corner before the lawn can be traced, which is slower
-   * than tracing it on an empty map. The AI tab is theirs to press if they want
-   * it -- which is the whole reason that tab came back for them -- and the
-   * prompt in the job bar says so. See promptsFor in routes-jobs.js.
+   * NO STARTING OUTLINE, ON ANY ROUTE. The AI is off the job routes entirely
+   * (volunteer, paid and crowd alike) until there is something better to put
+   * in its place: a wrong outline has to be dismantled corner by corner, which
+   * tracers said was slower than drawing on an empty map. See body.job-mode in
+   * styles.css, which takes the AI tab away too.
    */
-  if (!openLinkJob()) await detect();
   /*
    * Detection counts as the map appearing rather than as somebody editing it,
    * and `edited` is the one machine-checkable thing about a submission. detect
@@ -6610,11 +6875,8 @@ async function openJob(job, prompts, cleared) {
    */
   setStatus([
     cleared,
-    openLinkJob()
-      ? 'Nothing is traced for you here. Check the yellow property line first, '
-        + 'then draw the lawn — or open the AI tab for a rough first attempt to '
-        + 'correct, if you would rather start from one.'
-      : null,
+    'Nothing is traced for you here. Check the yellow property line first, '
+      + 'then draw the lawn on the Draw tab.',
   ].filter(Boolean).join(' '));
 }
 
@@ -7165,7 +7427,12 @@ function markHandEdited() {
 }
 
 function setTab(name) {
-  const next = TABS.includes(name) ? name : 'address';
+  /*
+   * No AI on the job routes (see openJob): every way into that tab -- a
+   * finished property line, "Find the lawn", a clear -- lands on Draw instead.
+   */
+  const asked = (name === 'detect' && document.body.classList.contains('job-mode')) ? 'draw' : name;
+  const next = TABS.includes(asked) ? asked : 'address';
   state.tab = next;
 
   /*
@@ -8151,7 +8418,8 @@ function refreshRail() {
    * away -- so the rail survives for its sake alone.
    */
   const undo = $('#rail-undo');
-  if (undo) rail.hidden = rail.hidden || (!anyTool && undo.disabled);
+  const redoBtn = $('#rail-redo');
+  if (undo) rail.hidden = rail.hidden || (!anyTool && undo.disabled && (!redoBtn || redoBtn.disabled));
 
   $('#shape-tools').hidden = state.mode !== 'shape';
   for (const [id, tool] of [['#tool-points', 'points'], ['#tool-add', 'add'], ['#tool-erase', 'erase']]) {
@@ -10589,7 +10857,8 @@ $('#dev-model-off')?.addEventListener('click', hideTrainedModel);
 $('#btn-draw').addEventListener('click', () => {
   setMode(null); // drawing owns the map while it is open
   state.drawingHole = false;
-  pushHistory();
+  // No pushHistory: each corner is its own undo step while the drawing is
+  // open, and closing it records one entry that can reopen it (draw.create).
   draw.changeMode('draw_polygon');
   setHint('Click around the edge of your lawn. Click the first point again to finish.');
   setStatus('Drawing by hand. Every shape you add counts toward the total.');
@@ -10620,7 +10889,8 @@ $('#btn-cut').addEventListener('click', () => {
   setStatus('Cutting out. Trace right around the thing, inside one patch of lawn.');
 });
 
-$('#btn-clear').addEventListener('click', () => {
+function clearAll() {
+  if (drafting) draftCancel();
   pushHistory();
   draw.deleteAll();
   if (state.mode === 'shape') setMode(null);
@@ -10634,11 +10904,16 @@ $('#btn-clear').addEventListener('click', () => {
   refreshTabs();
   updatePromptHint();
   setStatus('Cleared. Detect again, or draw the lawn by hand.');
-});
+}
+$('#btn-clear').addEventListener('click', clearAll);
+$('#btn-clear-detect').addEventListener('click', clearAll);
 
 $('#btn-parcel-shape').addEventListener('click', useParcelShape);
 for (const id of ['#btn-undo', '#rail-undo']) {
   $(id).addEventListener('click', undo);
+}
+for (const id of ['#btn-redo', '#rail-redo']) {
+  $(id).addEventListener('click', redo);
 }
 /*
  * The rail. Pressing the live mode turns it off; pressing another switches

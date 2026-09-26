@@ -117,8 +117,9 @@ export const PROMPTS = [
     title: 'Hug the hard edges',
     body: 'Where the grass meets a driveway, path, patio or building, follow '
       + 'that line closely. These edges are sharp in the photograph and they '
-      + 'are where the automatic outline is worst — it drifts into the drive '
-      + 'or stops short of it. This is most of the job.',
+      + 'are what makes a map worth keeping — a lawn that runs a foot into the '
+      + 'drive all the way round is the commonest thing wrong with one. This '
+      + 'is most of the job.',
   },
   {
     key: 'road',
@@ -131,10 +132,9 @@ export const PROMPTS = [
   {
     key: 'shade',
     title: 'Shaded grass is still grass',
-    body: 'Grass in the shadow of a house or a tree is dark, and the automatic '
-      + 'outline usually drops it. If you can tell it is lawn, include it. If '
-      + 'a tree canopy hides the ground so completely that you are guessing, '
-      + 'leave it out.',
+    body: 'Grass in the shadow of a house or a tree is dark and easy to leave '
+      + 'out. If you can tell it is lawn, include it. If a tree canopy hides '
+      + 'the ground so completely that you are guessing, leave it out.',
   },
   {
     key: 'inferred',
@@ -154,49 +154,20 @@ export const PROMPTS = [
 ];
 
 /**
- * THE SAME JOB, DESCRIBED HONESTLY FOR THE ROUTE SOMEBODY IS ON.
+ * THE SAME JOB FOR EVERY ROUTE, NOW THAT NO ROUTE HAS THE AI.
  *
- * A crowd worker gets an outline drawn for them on arrival and is paid to
- * correct it. A volunteer or a paid tracer no longer does: they said the
- * drawn-on outline made the work more annoying rather than less, and they were
- * right about the arithmetic -- a wrong outline has to be dismantled corner by
- * corner before the lawn can be traced, which is slower than tracing it on an
- * empty map. See openJob in app.js.
- *
- * SO THE PROMPTS CANNOT SAY "the automatic outline" TO THEM, and that is not a
- * cosmetic point. Two of these prompts describe where that outline goes wrong,
- * which for somebody looking at an empty map is an instruction about a thing
- * that is not on their screen -- the surest way to make a person think they
- * have missed a step and go looking for it.
- *
- * Rewritten here rather than in the browser because the route is decided here,
- * and a second copy of this wording in app.js would be a second copy to
- * forget.
+ * It used to be described two ways: a crowd worker was handed an outline drawn
+ * on arrival and paid to correct it, while volunteers and paid tracers got an
+ * empty map and an AI tab to ask for one. Volunteers and paid tracers said the
+ * drawn-on outline made the work more annoying rather than less -- a wrong
+ * outline has to be dismantled corner by corner, which is slower than tracing
+ * an empty map -- and the AI is now off every job route (see openJob and
+ * body.job-mode in the browser). So PROMPTS never mention an automatic outline,
+ * and nobody is pointed at a tab they do not have.
  */
-const OPEN_LINK_PROMPTS = {
-  edges: 'Where the grass meets a driveway, path, patio or building, follow '
-    + 'that line closely. These edges are sharp in the photograph and they are '
-    + 'what makes a map worth keeping — a lawn that runs a foot into the drive '
-    + 'all the way round is the commonest thing wrong with one. This is most '
-    + 'of the job.',
-  shade: 'Grass in the shadow of a house or a tree is dark and easy to leave '
-    + 'out. If you can tell it is lawn, include it. If a tree canopy hides the '
-    + 'ground so completely that you are guessing, leave it out.',
-  ai: 'Nothing is traced for you on this one. Draw the lawn yourself — or open '
-    + 'the AI tab and press "Detect my lawn" for a rough first attempt to '
-    + 'correct, if you would rather start from one. It is free either way, and '
-    + 'you can clear it and start again from the Draw tab.',
-};
-
-export function promptsFor(route) {
-  if (!isOpenLink(route)) return PROMPTS;
-  return [
-    /* First, because it is the thing that has changed about their screen. */
-    { key: 'ai', title: 'The AI is yours to ask for', body: OPEN_LINK_PROMPTS.ai },
-    ...PROMPTS.map((p) => (OPEN_LINK_PROMPTS[p.key]
-      ? { ...p, body: OPEN_LINK_PROMPTS[p.key] }
-      : p)),
-  ];
+/** The same prompts on every route; kept a function so callers need not change. */
+export function promptsFor() {
+  return PROMPTS;
 }
 
 const shortId = (id) => String(id || '').replace(/-/g, '').slice(0, 8).toUpperCase();
