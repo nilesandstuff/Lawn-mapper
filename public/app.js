@@ -6168,7 +6168,13 @@ const MTURK_PREVIEW = 'ASSIGNMENT_ID_NOT_AVAILABLE';
  * for somebody with no lawn open this IS the app, and an × revealing an empty
  * address form behind it is a worker filing a support ticket.
  */
-function jobSheet({ title, why, code = null, note = null, go = null, link = null }) {
+const MYWORK_LINK = { href: '/mywork.html', label: 'Your maps, balance and payouts →' };
+
+function jobSheet({ title, why, code = null, note = null, go = null, link }) {
+  /* Every sheet on the paid route carries the way to the tracer's own page
+     unless it says otherwise (`link: null`): "no lawn just now" and the day's
+     cap are exactly when somebody wants to check what they are owed. */
+  if (link === undefined) link = state.jobVia === 'paid' ? MYWORK_LINK : null;
   $('#job-sheet-title').textContent = title;
   $('#job-sheet-why').textContent = why;
   $('#job-code').hidden = !code;
@@ -6315,6 +6321,7 @@ async function enterJobMode({ worker, preview, volunteer, paid }) {
   state.worker = worker;
   state.jobVia = paid ? 'paid' : (volunteer ? 'volunteer' : null);
   document.body.classList.add('job-mode');
+  $('#job-mywork').hidden = !paid;
 
   if (preview) {
     /*
@@ -6449,6 +6456,7 @@ async function claimNextJob(skipped = '') {
        * the sign-in one is the other, since it is resolved by the button
        * rather than by time.
        */
+      link: data?.needsAccount ? null : undefined,
       go: data?.needsAccount
         ? {
           label: 'Sign in',
@@ -6796,7 +6804,7 @@ async function submitJob() {
     go: { label: 'Trace another lawn', onClick: () => claimNextJob() },
     /* A paid tracer needs somewhere to check what was approved and change
        where the money goes. Nobody else has a page to be sent to. */
-    link: data.route === 'paid' ? { href: '/mywork.html', label: 'Your maps and payments →' } : null,
+    link: data.route === 'paid' ? MYWORK_LINK : null,
   });
 
   /*

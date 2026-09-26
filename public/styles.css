@@ -730,6 +730,8 @@ body.inferred-mode .panel { box-shadow: inset 4px 0 0 #7c4dff; }
 .job-ask b { display: block; }
 .job-ask.optional { color: #4d6350; }
 .jobbar-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.job-mywork { margin: 8px 0 0; font-size: 13px; text-align: center; }
+.job-mywork a { color: #1f5b22; font-weight: 600; }
 .jobbar-acts button { flex: 1 1 200px; margin: 0; }
 
 /*
