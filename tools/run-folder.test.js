@@ -87,6 +87,8 @@ const IMAGE = patternIn('image key', /\|\| \/(\^runs.+?)\/\.test\(key\)/);
   const keys = runKeys(slug);
   assert.match(keys.shapes(0), IMAGE);
   assert.match(keys.mask(31), IMAGE);
+  assert.match(keys.photo(3), IMAGE);
+  assert.match(keys.layers(3), IMAGE);
   assert.equal(keys.index, `runs/${slug}/index.json`);
 }
 

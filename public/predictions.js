@@ -77,12 +77,16 @@ const pct = (v) => (v === null || v === undefined ? '—' : `${v.toFixed(1)}%`);
  * work the same way as a thumb -- this page is read on a phone and debugged on
  * a laptop, and two code paths for one gesture is how they drift.
  */
-function viewer(key, alt) {
+function viewer(key, alt, build = null) {
   const back = el('div', 'lightbox');
-  const img = el('img', 'lightshot');
-  img.alt = alt;
-  img.src = `/api/admin/prediction-image?key=${encodeURIComponent(key)}`;
-  img.draggable = false;
+  /* A layered lawn opens as its stack, zoomed and panned as one piece, so the
+     switches at the top of the page hold in the full-size view too. */
+  const img = build ? build('lightshot') : el('img', 'lightshot');
+  if (!build) {
+    img.alt = alt;
+    img.src = `/api/admin/prediction-image?key=${encodeURIComponent(key)}`;
+    img.draggable = false;
+  }
 
   const close = el('button', 'lightclose');
   close.type = 'button';
@@ -222,7 +226,8 @@ function row(e, i) {
   const box = el('div', 'entry');
 
   const top = el('div', 'top');
-  top.append(el('b', null, e.county || 'traced by hand'));
+  /* B01..B32 first: the name the owner and the findings file use. */
+  top.append(el('b', null, `${e.tag ? `${e.tag} · ` : ''}${e.county || 'traced by hand'}`));
 
   /*
    * THE TREE CANOPY IS A DIFFERENT KIND OF ENTRY and gets a different caption.
@@ -348,6 +353,134 @@ function row(e, i) {
     + 'with the hand-traced lawn washed in green');
 }
 
+/* ------------------------------------------------------------ the layers */
+
+/* The run's layers (index.json `layers`), and which are showing. */
+let LAYER_DEFS = [];
+const LAYER_STORE = 'predictions-layers';
+let layerOn = {};
+const imageUrl = (key) => `/api/admin/prediction-image?key=${encodeURIComponent(key)}`;
+
+/* A <style> rule per hidden layer, so a switch is one change for every lawn
+   and the full-size view at once, not a walk over hundreds of elements. */
+function applyLayers() {
+  let css = document.getElementById('layer-css');
+  if (!css) {
+    css = document.createElement('style');
+    css.id = 'layer-css';
+    document.head.append(css);
+  }
+  css.textContent = LAYER_DEFS.filter((l) => !layerOn[l.id])
+    .map((l) => `.layer-${l.id} { display: none; }`).join('\n');
+  for (const lab of document.querySelectorAll('.layerbar label[data-id]')) {
+    lab.classList.toggle('on', Boolean(layerOn[lab.dataset.id]));
+  }
+  try { localStorage.setItem(LAYER_STORE, JSON.stringify(layerOn)); } catch { /* private mode */ }
+}
+
+function layerBar(defs) {
+  LAYER_DEFS = defs;
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(LAYER_STORE) || '{}') || {}; } catch { saved = {}; }
+  layerOn = Object.fromEntries(defs.map((l) => [l.id, l.id in saved ? Boolean(saved[l.id]) : Boolean(l.on)]));
+  const bar = $('#layerbar');
+  bar.hidden = false;
+  /* Top of the drawing order first, which is how a reader looks for them. */
+  for (const l of defs.slice().reverse()) {
+    const lab = el('label');
+    lab.dataset.id = l.id;
+    const box = el('input');
+    box.type = 'checkbox';
+    box.checked = layerOn[l.id];
+    box.addEventListener('change', () => { layerOn[l.id] = box.checked; applyLayers(); });
+    const sw = el('i');
+    sw.style.background = `rgb(${l.colour.join(',')})`;
+    if (l.id === 'line') sw.style.outline = '1px solid #9aa39d';
+    lab.append(box, sw, document.createTextNode(l.label));
+    bar.append(lab);
+  }
+  const reset = el('button', 'ghost tiny allnone', 'defaults');
+  reset.type = 'button';
+  reset.addEventListener('click', () => {
+    for (const l of defs) layerOn[l.id] = Boolean(l.on);
+    for (const inp of bar.querySelectorAll('input')) inp.checked = layerOn[inp.parentElement.dataset.id];
+    applyLayers();
+  });
+  bar.append(reset);
+  applyLayers();
+}
+
+/*
+ * One lawn as the photograph with every layer stacked over it: a div per
+ * layer, each showing its own frame of the one tall layers image. Loaded when
+ * scrolled to, like the pictures before it.
+ */
+const seen = 'IntersectionObserver' in window
+  ? new IntersectionObserver((items) => {
+    for (const it of items) {
+      if (!it.isIntersecting) continue;
+      it.target.dispatchEvent(new Event('load-layers'));
+      seen.unobserve(it.target);
+    }
+  }, { rootMargin: '400px' })
+  : null;
+
+function layerStack(e, cls, eager = false) {
+  const wrap = el('div', `${cls} stack`);
+  const w = e.renderPx || 1;
+  const h = e.renderPy || w;
+  wrap.style.setProperty('--ar', String(w / h));
+  wrap.style.aspectRatio = `${w} / ${h}`;
+  const photo = el('img');
+  photo.alt = '';
+  photo.draggable = false;
+  wrap.append(photo);
+  const N = LAYER_DEFS.length;
+  const layers = LAYER_DEFS.map((l, k) => {
+    const d = el('div', `layer layer-${l.id}`);
+    d.style.backgroundSize = `100% ${N * 100}%`;
+    d.style.backgroundPosition = `0 ${N > 1 ? (k / (N - 1)) * 100 : 0}%`;
+    wrap.append(d);
+    return d;
+  });
+  const load = () => {
+    photo.src = imageUrl(e.photoKey);
+    for (const d of layers) d.style.backgroundImage = `url("${imageUrl(e.layersKey)}")`;
+  };
+  if (eager || !seen) load();
+  else {
+    wrap.addEventListener('load-layers', load, { once: true });
+    seen.observe(wrap);
+  }
+  photo.addEventListener('error', () => {
+    wrap.replaceWith(el('p', 'empty', 'That picture could not be loaded.'));
+  });
+  return wrap;
+}
+
+function withLayers(box, e, i, alt) {
+  const frame = el('div', 'shotwrap');
+  const pic = layerStack(e, 'shot pred');
+  pic.setAttribute('role', 'img');
+  pic.setAttribute('aria-label', alt);
+  const open = el('button', 'shotopen');
+  open.type = 'button';
+  open.title = 'Open full size';
+  open.setAttribute('aria-label', `Open lawn ${i + 1} full size`);
+  open.textContent = '⤢';
+  const full = () => viewer(null, alt, (cls) => layerStack(e, cls, true));
+  open.addEventListener('click', (ev) => { ev.stopPropagation(); full(); });
+  pic.addEventListener('click', full);
+  frame.append(pic, open);
+  box.append(frame);
+  if (e.missedInferredPct !== null && e.missedInferredPct !== undefined) {
+    box.append(el('div', 'meta',
+      `Of the ground marked "inferred, not seen", the outline misses `
+      + `${pct(e.missedInferredPct)}.`));
+  }
+  return box;
+}
+
 /**
  * The picture, loaded only when it is scrolled to.
  *
@@ -356,6 +489,7 @@ function row(e, i) {
  * lazy loading and the failure message cannot drift apart between them.
  */
 function withPicture(box, e, i, alt) {
+  if (e.layersKey && e.photoKey && LAYER_DEFS.length) return withLayers(box, e, i, alt);
   const img = el('img', 'shot pred');
   img.loading = 'lazy';
   img.decoding = 'async';
@@ -587,6 +721,13 @@ function settingsLine(settings) {
   $('#sub').textContent = `${entries.length} lawns · ${data.features} · drawn `
     + `${new Date(data.drawnAt).toLocaleString()}`;
   $('#caveat').textContent = data.note || '';
+
+  /* A run drawn with layers gets the switches; the raw mask is one of them,
+     so the old all-or-nothing flip steps aside. */
+  if (Array.isArray(data.layers) && data.layers.length && entries.some((e) => e.layersKey)) {
+    layerBar(data.layers);
+    flip.hidden = true;
+  }
 
   const list = $('#list');
   for (const [i, e] of entries.entries()) list.append(row(e, i));

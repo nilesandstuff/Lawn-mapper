@@ -495,6 +495,7 @@ def main():
 
     scale = json.loads((frames / "scale.json").read_text())
     boxes = scale.get("boxes") or {}
+    TAGS.update(scale.get("tags") or {})
     plan = json.loads(plan_file.read_text()) if plan_file.exists() else {}
     if not boxes:
         print("scale.json carries no frame boxes; the dump step writes them since 2026-09-25.")
@@ -522,7 +523,7 @@ def main():
     summary["naip_only"] = {}
 
     for lawn_id in ids:
-        label = lawn_id[:28].ljust(30)
+        label = tagged(lawn_id)[:28].ljust(30)
         p = plan.get(lawn_id)
         if not p or not p.get("url"):
             print(f"  {label} no lidar project over it")
@@ -600,7 +601,7 @@ def main():
                 pooled[k][lab_name][1].extend(layers[k][classes == b].tolist())
 
         np.savez_compressed(out / f"{lawn_id}.npz", classes=classes, **layers, **masks)
-        for mk in MASKS:
+        for mk in masks:  # roof, void, lidar-canopy, and naip-canopy where it was read
             Image.fromarray(masks[mk].astype(np.uint8) * 255).save(out / f"{lawn_id}-{mk.replace('_', '-')}.png")
         # THE HEIGHT, FOR STAGE 3 (H34): a grey PNG on the coarse grid, a tenth
         # of a metre a level, so the JavaScript scorer can read the canopy's
@@ -701,7 +702,7 @@ def print_masks(items, cell):
             return sum((m[nm][mk] or 0) * m[nm]["cells"] for nm in names)
         lawn_rows, not_rows = ("visible lawn", "lawn under canopy"), ("not lawn, under canopy", "not lawn, visible")
         a = r["canopy_agreement"]
-        print(f"  {lawn_id[:34]:34}{r['lawn_sqft']:>10,}{str(r.get('year') or '—'):>7}"
+        print(f"  {tagged(lawn_id)[:34]:34}{r['lawn_sqft']:>10,}{str(r.get('year') or '—'):>7}"
               f"{cells_of(lawn_rows, 'roof'):9.0f}{cells_of(not_rows, 'roof'):9.0f}"
               f"{cells_of(lawn_rows, 'void'):9.0f}{cells_of(not_rows, 'void'):9.0f}"
               f"{a['only_lidar'] * r['cell_true_m2']:12.0f}{a['only_restor'] * r['cell_true_m2']:12.0f}")
@@ -726,6 +727,7 @@ def naip_without_lidar(lawn_id, bbox, cell, frames, canopy_dir, files, out):
     except Exception as e:  # noqa: BLE001
         return {"error": str(e)[:200]}
     Image.fromarray(height_png(h)).save(out / f"{lawn_id}-naip-height.png")
+    Image.fromarray(((np.nan_to_num(cover) >= naip_chm.COVER_MIN).astype(np.uint8) * 255)).save(out / f"{lawn_id}-naip-canopy.png")
     k = math.cos(math.radians(web_mercator_lat((bbox[1] + bbox[3]) / 2)))
     return {"year": files[0][0], "cell_true_m2": cell * cell * k * k,
             "two_way": naip_chm.two_way(within, shrink_mask(canopy, gw, gh), np.nan_to_num(cover) >= naip_chm.COVER_MIN)}
@@ -767,7 +769,7 @@ def print_naip(items, naip_only):
     for k, r in sorted(have, key=lambda kv: -kv[1]["naip"]["three_way"]["lidar only"][0] * kv[1]["cell_true_m2"]):
         tw, a = r["naip"]["three_way"], r["cell_true_m2"]
         lo, mo = tw["lidar only"], tw["model only"]
-        print(f"  {k[:34]:34}{r['lawn_sqft']:>10,}{str(r.get('year') or '—'):>7}{r['naip']['year']:>6}"
+        print(f"  {tagged(k)[:34]:34}{r['lawn_sqft']:>10,}{str(r.get('year') or '—'):>7}{r['naip']['year']:>6}"
               f"{lo[0] * a:15.0f}{(100 * lo[1] / lo[0] if lo[0] else 0):12.0f}%"
               f"{mo[0] * a:15.0f}{(100 * mo[1] / mo[0] if mo[0] else 0):12.0f}%")
     if naip_only:
@@ -775,11 +777,20 @@ def print_naip(items, naip_only):
         print(f"  {'lot':34}{'NAIP':>6}{'both':>8}{'model only':>12}{'NAIP only':>11}")
         for k, r in naip_only.items():
             if "two_way" not in r:
-                print(f"  {k[:34]:34}  read failed: {r.get('error', '')[:60]}")
+                print(f"  {tagged(k)[:34]:34}  read failed: {r.get('error', '')[:60]}")
                 continue
             t, a = r["two_way"], r["cell_true_m2"]
-            print(f"  {k[:34]:34}{r['year']:>6}{t['both'] * a:8.0f}{t['model only'] * a:12.0f}{t['naip only'] * a:11.0f}")
+            print(f"  {tagged(k)[:34]:34}{r['year']:>6}{t['both'] * a:8.0f}{t['model only'] * a:12.0f}{t['naip only'] * a:11.0f}")
     print()
+
+
+TAGS = {}  # B01..B32 from scale.json (tools/benchmark-ids.json)
+
+
+def tagged(lawn_id):
+    """The benchmark tag before the id, so the tables read "B06 -85.61014,43.03520"."""
+    t = TAGS.get(lawn_id)
+    return f"{t} {lawn_id}" if t else lawn_id
 
 
 def fmt(v):

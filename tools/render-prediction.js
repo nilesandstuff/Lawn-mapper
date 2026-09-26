@@ -223,6 +223,9 @@ const put = (out, grid, gridH, x, y, colour) => {
   out[p] = colour[0];
   out[p + 1] = colour[1];
   out[p + 2] = colour[2];
+  /* Opaque. A no-op on the composite pictures, which are opaque already, and
+     what makes a stroke visible on a transparent layer (drawLayers). */
+  out[p + 3] = 255;
 };
 
 /** A filled square, used for line thickness and for vertex dots. */
@@ -533,4 +536,108 @@ export function mistakeCounts({ truth, predicted, within, inferred }) {
     inferredPx,
     missedInferredPct: inferredPx ? (100 * missedInferred) / inferredPx : null,
   };
+}
+
+/* ------------------------------------------------------------- the layers */
+
+/**
+ * EVERY THING A RUN KNOWS ABOUT A LAWN, as a layer of its own that the page
+ * can switch on and off (owner, 2026-09-26).
+ *
+ * The composite pictures above put five things on one photograph, and with
+ * stage 3, the lidar veto and three canopies there are now a dozen -- too
+ * many to overlap, and too important to leave out: "sq ft matters, but where
+ * that sq ft is matters more". So each is drawn alone on a transparent frame,
+ * the frames are stacked into ONE tall image (a sprite), and the page shows
+ * whichever slices are ticked over the photograph. One upload a lawn rather
+ * than a dozen.
+ *
+ * Order is drawing order on the page, bottom first. Colours: the console's
+ * three (lawn green, detector red, inferred purple), amber for stage 3 as
+ * before, and a colour each for the rest, chosen to stay apart from those.
+ */
+export const LAYERS = [
+  { id: 'truth', label: 'traced lawn', colour: TRUTH_FILL, on: true },
+  { id: 'inferred', label: 'marked “inferred, not seen”', colour: INFERRED_EDGE, on: true },
+  { id: 'canopy', label: 'tree model canopy', colour: [174, 234, 0], on: false },
+  { id: 'lidarCanopy', label: 'lidar canopy (2 m+, not roof)', colour: [255, 152, 0], on: false },
+  { id: 'naipCanopy', label: 'NAIP-CHM canopy (half the cell 2 m+)', colour: [224, 64, 251], on: false },
+  { id: 'roof', label: 'lidar roof', colour: [66, 133, 244], on: false },
+  { id: 'void', label: 'lidar void / water', colour: [0, 188, 212], on: false },
+  { id: 'mask', label: 'detector: raw answer', colour: TRACE, on: false },
+  { id: 'added', label: 'stage 3: put back under trees', colour: ADDED, on: true },
+  { id: 'vetoed', label: 'lidar veto: taken out', colour: [255, 64, 129], on: true },
+  { id: 'shapes', label: 'detector: outline and handles', colour: TRACE, on: true },
+  { id: 'line', label: 'property line', colour: PARCEL_EDGE, on: true },
+];
+
+/**
+ * The photograph, dimmed outside the property line, and every layer on a
+ * transparent frame of the same size, stacked top to bottom in LAYERS order.
+ * A layer with no data (no lidar over this lawn, say) is an empty frame, so
+ * the page can address slice k the same way on every lawn.
+ *
+ * Masks are on the drawing grid (grid x gridH); `rings` in drawing pixels.
+ */
+export function drawLayers({ photo, within, grid, gridH = grid, rings = [], masks = {} }) {
+  const n = grid * gridH;
+  const base = new Uint8Array(n * 4);
+  for (let i = 0; i < n; i++) {
+    const p = i * 4;
+    const dim = within && !within[i] ? OUTSIDE_DIM : 1;
+    base[p] = Math.round(photo[p] * dim);
+    base[p + 1] = Math.round(photo[p + 1] * dim);
+    base[p + 2] = Math.round(photo[p + 2] * dim);
+    base[p + 3] = 255;
+  }
+  const half = Math.max(1, Math.round(grid / 512));
+  const dot = half + 2;
+  const sprite = new Uint8Array(n * 4 * LAYERS.length);
+
+  /* A see-through fill: a checker of opaque 2x2 blocks so the ground reads
+     between them, as the composite pictures' stipple does, plus the edge. */
+  const fill = (out, mask, colour, alpha, parity = 0) => {
+    for (let y = 0; y < gridH; y++) {
+      for (let x = 0; x < grid; x++) {
+        const i = y * grid + x;
+        if (!mask[i] || (((x >> 1) + (y >> 1)) % 2) !== parity) continue;
+        const p = i * 4;
+        out[p] = colour[0]; out[p + 1] = colour[1]; out[p + 2] = colour[2]; out[p + 3] = alpha;
+      }
+    }
+    outline(out, grid, gridH, mask, colour, Math.max(1, half - 1));
+  };
+  /* A soft wash, for the traced lawn, which is big and underneath everything. */
+  const wash = (out, mask, colour, alpha) => {
+    for (let i = 0; i < n; i++) {
+      if (!mask[i]) continue;
+      const p = i * 4;
+      out[p] = colour[0]; out[p + 1] = colour[1]; out[p + 2] = colour[2]; out[p + 3] = alpha;
+    }
+    outline(out, grid, gridH, mask, colour, half);
+  };
+
+  for (const [k, layer] of LAYERS.entries()) {
+    const out = sprite.subarray(k * n * 4, (k + 1) * n * 4);
+    const m = masks[layer.id];
+    if (layer.id === 'shapes') {
+      for (const ring of rings) {
+        for (let i = 1; i < ring.length; i++) segment(out, grid, gridH, ring[i - 1], ring[i], half, TRACE);
+        const last = ring.length > 1 && ring[0][0] === ring[ring.length - 1][0]
+          && ring[0][1] === ring[ring.length - 1][1] ? ring.length - 1 : ring.length;
+        for (let i = 0; i < last; i++) {
+          const [x, y] = ring[i];
+          blob(out, grid, gridH, Math.round(x), Math.round(y), dot, TRACE);
+          blob(out, grid, gridH, Math.round(x), Math.round(y), Math.max(0, dot - 2), [255, 245, 240]);
+        }
+      }
+      continue;
+    }
+    if (!m) continue;
+    if (layer.id === 'line') outline(out, grid, gridH, m, layer.colour, Math.max(1, half - 1));
+    else if (layer.id === 'truth') wash(out, m, layer.colour, 80);
+    else if (layer.id === 'inferred' || layer.id.endsWith('anopy')) outline(out, grid, gridH, m, layer.colour, half);
+    else fill(out, m, layer.colour, 215, layer.id === 'added' ? 1 : 0);
+  }
+  return { photo: base, sprite, width: grid, height: gridH, layers: LAYERS.map((l) => l.id) };
 }

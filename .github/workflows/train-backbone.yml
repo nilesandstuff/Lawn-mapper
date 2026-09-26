@@ -319,6 +319,10 @@ jobs:
           CANOPY: canopy
           PLAN: lidar-plan.json
           OUT: lidar
+          # NAIP-CHM too (E9, H41): its canopy joins the lidar's in the
+          # "lidar ∩ NAIP canopy" row and is a layer on the pictures. About
+          # 10 s for the index and 1.5 s a frame.
+          NAIP_CHM: '1'
         run: python3 tools/lidar_frame.py
 
       - name: Run the backbone over them

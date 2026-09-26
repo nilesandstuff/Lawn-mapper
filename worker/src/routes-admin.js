@@ -1296,7 +1296,7 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
      * inside a name, so nothing here can address the photographs.
      */
     const ok = /^(predictions|crowns)\/\d+\.png$/.test(key)
-      || /^runs\/[a-z0-9][a-z0-9-]{0,95}\/\d+(-mask)?\.png$/.test(key);
+      || /^runs\/[a-z0-9][a-z0-9-]{0,95}\/\d+(-mask|-photo|-layers)?\.png$/.test(key);
     if (!ok) return json({ error: 'Not a prediction' }, 400, origin);
     try {
       const object = await env.CORPUS.get(key);
