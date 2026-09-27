@@ -5389,8 +5389,19 @@ function watchTileErrors() {
   });
 }
 
+/*
+ * WHICH IMAGERY REQUEST PUT "Fetching…" UP, if one did. A newer choice takes
+ * it down: the older request, when it finally lands, sees it is stale and
+ * returns without touching the overlay -- which left "Fetching USGS
+ * vegetation index…" over the map for good whenever USGS took longer than
+ * the next choice (the browser test, 2026-09-27: 17 s for one NDVI frame).
+ * Only an overlay imagery put up is taken down; detection's is its own.
+ */
+let imageryBusyRun = 0;
+
 async function showImagery() {
   const run = ++imageryRun;
+  if (imageryBusyRun) { idle(); imageryBusyRun = 0; }
   hideImagery();
   if (state.provider === 'mapbox') return;
 
@@ -5455,6 +5466,7 @@ async function showImagery() {
    * is the source's, not ours -- but silence about it is.
    */
   busy(`Fetching ${info.label}…`);
+  imageryBusyRun = run;
   /* NAIP's own picture, kept for lining it up with Mapbox: USGS is slow
      (seven to eleven seconds a picture) and asking it twice made the next
      request queue behind the first (the browser test, 2026-09-27). */
@@ -5487,7 +5499,7 @@ async function showImagery() {
     // A failure for a source the user has already moved on from is not news,
     // and falling back to Mapbox on their behalf would undo their choice.
     if (run !== imageryRun) return;
-    idle();
+    idle(); imageryBusyRun = 0;
     setStatus(
       err.refused
         ? `${info.label} refused the request — this is a set-up problem, not a gap in the photography. It said: “${err.message}” Staying on Mapbox.`
@@ -5515,7 +5527,7 @@ async function showImagery() {
       : frameCorners(served),
   });
   map.addLayer({ id: 'imagery-alt', type: 'raster', source: 'imagery-alt' }, before);
-  idle();
+  idle(); imageryBusyRun = 0;
   if (isNaip(state.provider)) alignNaip(served, run, naipBlob);
   setStatus(info.detect
     ? `Showing ${info.label} over the measurement frame. Detect again to use it.`
@@ -5578,7 +5590,10 @@ async function alignNaip(served, run, naipBlob = null) {
   state.naipBlob = naipBlob;
   const acrossM = metresPerPixel(served, 1);
   const downM = acrossM * ((served.height || served.size) / served.size);
-  const cellM = Math.max(0.6, acrossM / 256);
+  /* Small on purpose: this runs on the phone's main thread. 192 cells and a
+     5 m search over five scales is about 40 million steps, well under a
+     second, where 256 cells, 6 m and seven scales was nearly four times it. */
+  const cellM = Math.max(0.6, acrossM / 192);
   const w = Math.max(48, Math.round(acrossM / cellM));
   const h = Math.max(48, Math.round(downM / cellM));
   renderNaipPanel(served, 'Lining NAIP up with the Mapbox photograph…');
@@ -5588,7 +5603,11 @@ async function alignNaip(served, run, naipBlob = null) {
       greyOf(naipBlob, w, h),
     ]);
     if (run !== imageryRun || !isNaip(state.provider)) return;
-    const r = alignImages(ref, mov, w, h, { maxShift: Math.max(2, Math.round(6 / cellM)) });
+    await new Promise((resolve) => setTimeout(resolve, 0));  // let the message paint first
+    const r = alignImages(ref, mov, w, h, {
+      maxShift: Math.max(2, Math.round(5 / cellM)),
+      scales: [0.99, 0.995, 1, 1.005, 1.01],
+    });
     state.naipAlign = {
       east: r.dx * cellM, north: -r.dy * cellM, scale: r.scale, source: 'auto',
       fit: Math.round(r.ncc * 100) / 100, fit0: Math.round(r.ncc0 * 100) / 100,
