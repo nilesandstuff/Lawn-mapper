@@ -94,6 +94,12 @@ got here. Update it whenever the in-flight run changes.*
     INTERIORS only (shrunk ~1 m, ignore band at their edges) and never used
     to score. Licence: OSM and Microsoft are ODbL -- attribution, and
     share-alike if the derived label set is ever published. Not wired in.
+    **Fetched 2026-09-27 (workflow 25, run 36352185509):** drafts for all 55
+    approved maps, 2 to 38 outlines each, mostly buildings and roads; one
+    map got no OSM (every Overpass mirror busy), NHD/Microsoft still
+    answered. Water on only 3 maps and a pool on 1 -- and **not on B12: the
+    pond is in neither OSM nor NHD**, so public outlines will not teach the
+    pond. The owner's handful of pond maps is the route for water.
   - **ANSWERED (H53): the ~10% is a half-metre band along the true edge (94%
     of B01's error within 0.5 m), not registration, not the tracing.**
   - **B01 scores ~10% on a near-perfect picture, under every method, colour
