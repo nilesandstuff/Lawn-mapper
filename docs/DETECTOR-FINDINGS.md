@@ -57,6 +57,21 @@ got here. Update it whenever the in-flight run changes.*
   workflows that exist on the default branch (`claude/new-session-8204jd`),
   and compare-runs.yml exists only on this branch; the same code
   (tools/compare-runs.js) was run on the six downloaded lot-results files.
+- **Owner decisions and a scoring question, 2026-09-27 (afternoon):**
+  - **Lidar canopy is shelved** ("the canopy model is doing the intended
+    function better"): the "lidar ∩ NAIP canopy" rows now run only with
+    LIDAR_CANOPY=1. It never fed THE PLAN's row, whose veto is roof and
+    void, and that veto stays until the owner says otherwise (H39: roof
+    alone was worth 10 points on Kent 8,626).
+  - **B01 scores ~10% on a near-perfect picture, under every method, colour
+    too.** The picture is the TRACE; the "% out" is the raw MASK. The scorer
+    now prints, for THE PLAN's row, the outline's own error, the share of
+    the mask's wrong ground within 0.5 m and 1 m of the true edge, and the
+    shift (up to 0.6 m) that best lays the mask on the truth, which would
+    expose a registration offset; the page shows the outline's figure
+    beside the mask's. Run launched to read it.
+  - The fused inputs stay a second arm in runs, not THE PLAN: H50 is a tie,
+    not a loss, and the owner's scaling argument is untested either way.
 - **Decided (2026-09-27): H52, Scale-MAE keeps being told metres a
   pixel.** Its pretraining used a relative scale of 2.2-5 (E2's
   correction), but x5, x10 and x25 each scored 1.4-2.6 points worse lot
@@ -3325,7 +3340,12 @@ against each FMoW image's own pixels, not metres. The kNN evaluation passes
 (`scalemae_large_patch16`) defaults `res` to 1.0 and multiplies the position
 grid by it. **This project passes metres a pixel, 0.07-0.10**, so the
 position encoding is squeezed 20-70x tighter than anything in pretraining.
-Whether that costs anything is NOT measured: see S12. Sources: the paper
+Whether that costs anything is NOT measured: see S12. **Settled
+2026-09-27:** torchgeo's own docstring for `ScaleMAE(res=...)` reads
+"Spatial resolution of the image in meters", and the paper's G is 1 m, so
+metres a pixel is what both the paper and the loader we use ask for; only the
+authors' pretraining script counts differently. H52 measured the
+alternatives as worse. We pass metres; nothing to change. Sources: the paper
 (arXiv 2212.14532, sec. 3), github.com/bair-climate-initiative/scale-mae,
 torchgeo/models/scale_mae.py.
 
