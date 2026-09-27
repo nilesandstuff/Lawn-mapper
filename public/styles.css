@@ -1000,3 +1000,16 @@ kbd {
  * furniture. It was here, which was the wrong shelf: this is the measuring
  * app's stylesheet, and that page is not the measuring app.
  */
+
+/* Tinker mode: a button inside a neighbouring parcel, to take it in as well. */
+.merge-parcel {
+  font: 600 12px/1 system-ui, sans-serif;
+  padding: 6px 9px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  background: rgba(20, 20, 20, 0.72);
+  color: #fff;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.merge-parcel:hover { background: rgba(20, 20, 20, 0.9); }

@@ -26,6 +26,7 @@ import {
 } from './lib/edges.js';
 import { afterStroke, restoreAway } from './lib/stitch.js';
 import { strokeOnShapes } from './lib/brush-vector.js';
+import { extendToRoads, mergeButtonPoint, mergeRings } from './lib/frontage.js';
 // Pasting the pieces of a big lot's detection back into one mask.
 import { stitchMasks } from './lib/tiles.js';
 import {
@@ -2183,7 +2184,11 @@ async function confirmLocation() {
         `(${state.parcel.properties.county}).${tidyNote} Check it, then open AI ` +
         'to detect your lawn — or Draw to trace it yourself.'
       );
+      // Tinker mode only until the owner has tried it: neighbours, merge, road.
+      clearNeighbours();
+      if (state.dev) tinkerAroundParcel();
     } else {
+      clearNeighbours();
       map.getSource('parcel').setData(empty());
       state.surveyed = [];
       $('#btn-parcel-shape').hidden = true;
@@ -3135,6 +3140,8 @@ function restore(prev) {
   refreshMeasurement();
   refreshSurveyed();
   updateSelectionButtons();
+  // A merge undone brings its neighbour's button back.
+  if (neighbourState.all.length) refreshNeighbours();
 }
 
 /** Open a closed patch or cut-out again, every corner in place. */
@@ -9966,6 +9973,161 @@ function applyEdgeOffset(feet) {
   refreshSurveyed();
 }
 
+/* ------------------------------------------- neighbours, merge, the road */
+/*
+ * TINKER MODE ONLY, until the owner has tried it (2026-09-27).
+ *
+ * The parcels around this one come from the county's own layer
+ * (/api/parcel/neighbours). They are drawn as thin dashed lines, and each one
+ * that shares a line with this parcel gets a "Merge this parcel" button a
+ * little way inside it, for somebody who owns two lots and mows both.
+ *
+ * Then the front edges go out to the road: public/lib/frontage.js decides
+ * which edges are frontage and where the pavement is, from the road
+ * centrelines already in the map's own street data, and refuses any move that
+ * would run over a neighbour. It is one undo step, and it says what it did.
+ */
+const neighbourState = { all: [], markers: [] };
+
+function clearNeighbours() {
+  for (const m of neighbourState.markers) m.remove();
+  neighbourState.markers = [];
+  neighbourState.all = [];
+  if (map?.getSource('neighbours')) map.getSource('neighbours').setData(empty());
+  $('#btn-parcel-road') && ($('#btn-parcel-road').hidden = true);
+}
+
+function outerRingsOf(geometry) {
+  if (!geometry) return [];
+  if (geometry.type === 'Polygon') return [geometry.coordinates[0]];
+  if (geometry.type === 'MultiPolygon') return geometry.coordinates.map((p) => p[0]);
+  return [];
+}
+
+/** A neighbour already inside the parcel (merged, or the parcel itself). */
+function neighbourAbsorbed(ring) {
+  const pr = parcelRing();
+  if (!pr) return false;
+  const pts = openRing(ring);
+  const inside = pts.filter((p) => ringContains(pr, p) || nearestPointOnRing(pr, p)?.distanceM < 0.5).length;
+  return inside >= pts.length * 0.8;
+}
+
+function refreshNeighbours() {
+  if (!map) return;
+  if (!map.getSource('neighbours')) {
+    map.addSource('neighbours', { type: 'geojson', data: empty() });
+    map.addLayer({
+      id: 'neighbours', type: 'line', source: 'neighbours',
+      paint: { 'line-color': '#ffffff', 'line-width': 1.2, 'line-opacity': 0.55, 'line-dasharray': [3, 2] },
+    }, map.getLayer('parcel-line') ? 'parcel-line' : undefined);
+  }
+  for (const m of neighbourState.markers) m.remove();
+  neighbourState.markers = [];
+  const live = neighbourState.all.filter((nb) => !neighbourAbsorbed(nb.ring));
+  map.getSource('neighbours').setData({
+    type: 'FeatureCollection',
+    features: live.map((nb) => ({ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [nb.ring] } })),
+  });
+  const pr = parcelRing();
+  if (!pr) return;
+  for (const nb of live) {
+    const at = mergeButtonPoint(pr, nb.ring);
+    if (!at) continue;
+    const el = document.createElement('button');
+    el.type = 'button';
+    el.className = 'merge-parcel';
+    el.textContent = 'Merge this parcel';
+    el.addEventListener('click', (e) => { e.stopPropagation(); mergeNeighbour(nb); });
+    neighbourState.markers.push(new mapboxgl.Marker({ element: el }).setLngLat(at).addTo(map));
+  }
+}
+
+function mergeNeighbour(nb) {
+  const pr = parcelRing();
+  const merged = pr && window.polygonClipping ? mergeRings(window.polygonClipping, pr, nb.ring) : null;
+  if (!merged) {
+    setStatus('Those two parcels do not join into one outline, so they cannot be merged.', 'warn');
+    return;
+  }
+  pushHistory();
+  setParcelRing(merged);
+  state.parcel.properties.merged = [...(state.parcel.properties.merged || []), nb.pin ?? null];
+  // The neighbour's corners are the county's too.
+  state.surveyed = [...(state.surveyed || []), ...openRing(nb.ring).map((p) => [...p])];
+  refreshSurveyed();
+  refreshMeasurement();
+  refreshNeighbours();
+  setStatus(`Merged — the property line is now ${measure(state.parcel.geometry).acres} acres. Undo takes it back apart.`);
+}
+
+/** Road centrelines near the parcel, from the map's own street data. */
+async function roadsNearParcel() {
+  const src = map.getSource('composite') ? 'composite' : null;
+  if (!src) return [];
+  // The tiles for where the map is now; give them a moment to arrive.
+  for (let t = 0; t < 30 && !map.isSourceLoaded(src); t++) await new Promise((r) => setTimeout(r, 200));
+  const bbox = geometryBounds(state.parcel);
+  const pad = 0.0008;
+  const inBox = ([x, y]) => x > bbox[0] - pad && x < bbox[2] + pad && y > bbox[1] - pad && y < bbox[3] + pad;
+  const roads = [];
+  for (const f of map.querySourceFeatures(src, { sourceLayer: 'road' })) {
+    if (f.properties?.structure === 'tunnel') continue;
+    const g = f.geometry;
+    const lines = g.type === 'LineString' ? [g.coordinates] : g.type === 'MultiLineString' ? g.coordinates : [];
+    for (const coords of lines) {
+      if (coords.some(inBox)) roads.push({ cls: f.properties?.class, coords });
+    }
+  }
+  return roads;
+}
+
+async function extendParcelToRoad({ quiet = false } = {}) {
+  const pr = parcelRing();
+  if (!pr || !window.polygonClipping) return;
+  const roads = await roadsNearParcel();
+  const neighbours = neighbourState.all.filter((nb) => !neighbourAbsorbed(nb.ring)).map((nb) => nb.ring);
+  const r = extendToRoads(pr, roads, { neighbours, clip: window.polygonClipping });
+  if (!r.moved.length) {
+    if (!quiet) {
+      const why = r.skipped.length ? ` (${r.skipped.map((k) => k.reason).join('; ')})` : '';
+      setStatus(`No front edge to move out to the road${why}.`);
+    }
+    return;
+  }
+  pushHistory();
+  setParcelRing(r.ring);
+  refreshSurveyed();
+  refreshNeighbours();
+  const skipped = r.skipped.length ? ` Left alone: ${r.skipped.map((k) => k.reason).join('; ')}.` : '';
+  setStatus(`Moved ${r.moved.length} front edge${r.moved.length === 1 ? '' : 's'} out to the road (tinker mode). `
+    + `Undo puts ${r.moved.length === 1 ? 'it' : 'them'} back, or adjust with Property line.${skipped}`);
+}
+
+async function tinkerAroundParcel() {
+  const parcel = state.parcel;
+  const key = parcel?.properties?.countyKey;
+  const bbox = geometryBounds(parcel);
+  if (!key || !bbox) return;
+  const pad = 0.0004;
+  const q = new URLSearchParams({ county: key, bbox: [bbox[0] - pad, bbox[1] - pad, bbox[2] + pad, bbox[3] + pad].join(',') });
+  try {
+    const data = await api(`/api/parcel/neighbours?${q}`);
+    if (state.parcel !== parcel) return; // a different address since
+    const own = parcelRing();
+    neighbourState.all = (data.features || []).flatMap((f) => outerRingsOf(f.geometry).map((ring) => ({ ring, pin: f.properties?.pin ?? null })))
+      .filter((nb) => !(nb.pin && nb.pin === parcel.properties?.pin))
+      .filter((nb) => !(own && neighbourAbsorbed(nb.ring)));
+  } catch {
+    neighbourState.all = [];
+  }
+  refreshNeighbours();
+  if ($('#btn-parcel-road')) $('#btn-parcel-road').hidden = false;
+  // After the fly-in, so the street tiles for this place are the ones loaded.
+  await new Promise((resolve) => (map.isMoving() ? map.once('moveend', resolve) : resolve()));
+  if (state.parcel === parcel) await extendParcelToRoad({ quiet: true });
+}
+
 /** The parcel's outer ring, whatever geometry type it arrived as. */
 function parcelRing() {
   const g = state.parcel?.geometry;
@@ -10793,6 +10955,8 @@ $('#btn-to-draw').addEventListener('click', () => {
  * is its opposite number between one and two, and the pair is what turns four
  * tabs into a sequence.
  */
+$('#btn-parcel-road').addEventListener('click', () => extendParcelToRoad());
+
 $('#btn-to-detect').addEventListener('click', () => {
   setTab('detect');
 });
