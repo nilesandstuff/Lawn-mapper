@@ -143,10 +143,14 @@ on:
         # (The 15 cm scoring grid is fixed now: H23 measured the old 512
         # against it as nothing, and this input took its place under
         # GitHub's limit of ten.)
-        description: 'Which lawns: the frozen benchmark of 32 (comparable), every approved map (all), or only those approved since the freeze (new)'
+        #
+        # "benchmark, 10 folds" is the same 32 trained the way `all` is (ten
+        # folds, not leave-one-out): the check that the change of method did
+        # not change the answer (owner's question, 2026-09-27).
+        description: 'Which lawns: the frozen benchmark of 32 (comparable), every approved map (all), only those approved since the freeze (new), or the benchmark trained in 10 folds (method check)'
         type: choice
         default: 'benchmark'
-        options: ['benchmark', 'all', 'new']
+        options: ['benchmark', 'all', 'new', 'benchmark, 10 folds']
       decoder:
         # STAGE 1 OF THE PLAN. Every row the scorer trains itself is a 16-unit
         # head over a RANDOM 32 of the eye's 1024 numbers, one cell at a time.
@@ -264,7 +268,7 @@ jobs:
           # resolution. Either way it needs the real pixels to choose from.
           DUMP_SIZE: native
           NO_BACKBONE: 'true'
-          LAWN_SET: ${{ inputs.lawns }}
+          LAWN_SET: ${{ inputs.lawns == 'benchmark, 10 folds' && 'benchmark' || inputs.lawns }}
         run: node tools/train-detector.js
 
       # That the windows land where the photograph has them, before twenty
@@ -374,7 +378,7 @@ jobs:
           # Leave-one-out costs the square of the corpus (68 min a decoder at
           # 53 lawns, past the time limit with three); 10 folds on the full
           # corpus. The benchmark stays leave-one-out, as every table was.
-          FOLDS: ${{ inputs.lawns == 'all' && '10' || '' }}
+          FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'benchmark, 10 folds') && '10' || '' }}
           FUSE_NAIP: naip
           FUSE_CANOPY: ${{ inputs.canopy == 'everywhere' && '1' || '0' }}
         run: python3 tools/train_decoder.py
@@ -393,7 +397,7 @@ jobs:
           # Leave-one-out costs the square of the corpus (68 min a decoder at
           # 53 lawns, past the time limit with three); 10 folds on the full
           # corpus. The benchmark stays leave-one-out, as every table was.
-          FOLDS: ${{ inputs.lawns == 'all' && '10' || '' }}
+          FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'benchmark, 10 folds') && '10' || '' }}
           FUSE_NAIP: naip
         run: python3 tools/train_decoder.py
 
@@ -411,7 +415,7 @@ jobs:
           # Leave-one-out costs the square of the corpus (68 min a decoder at
           # 53 lawns, past the time limit with three); 10 folds on the full
           # corpus. The benchmark stays leave-one-out, as every table was.
-          FOLDS: ${{ inputs.lawns == 'all' && '10' || '' }}
+          FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'benchmark, 10 folds') && '10' || '' }}
           FUSE_NAIP: naip
           # H48: no canopy CHANNEL for this decoder -- every canopy cell it is
           # graded on is not-lawn, so the channel taught "canopy = not lawn".
@@ -432,7 +436,7 @@ jobs:
           # Leave-one-out costs the square of the corpus (68 min a decoder at
           # 53 lawns, past the time limit with three); 10 folds on the full
           # corpus. The benchmark stays leave-one-out, as every table was.
-          FOLDS: ${{ inputs.lawns == 'all' && '10' || '' }}
+          FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'benchmark, 10 folds') && '10' || '' }}
           FUSE_NAIP: naip
         run: python3 tools/train_decoder.py
 
@@ -459,7 +463,7 @@ jobs:
           # 15 cm a cell, 512 to 1024 across. The old fixed 512 was an input
           # until 2026-09-24; H23 measured the two as the same.
           GRID_CELL_M: '0.15'
-          LAWN_SET: ${{ inputs.lawns }}
+          LAWN_SET: ${{ inputs.lawns == 'benchmark, 10 folds' && 'benchmark' || inputs.lawns }}
           # Empty when the decoder was not trained, and the scorer skips the row.
           PREDICTIONS_DIR: ${{ inputs.decoder != 'off' && inputs.canopy != 'compare' && 'preds' || '' }}
           # The three-way comparison, one row each. The seen column is scored
