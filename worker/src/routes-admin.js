@@ -28,7 +28,10 @@ import { logEntries, loggingEnabled } from './testlog.js';
 import { feedbackEntries, feedbackEnabled } from './feedback.js';
 import { corpusGaps, candidateScore } from './corpus.js';
 import { parcelGaps } from './gaps.js';
-import { outlineKeys, idOfOutlineKey, applyReview, OUTLINE_PREFIX } from './outlines.js';
+import {
+  outlineKeys, idOfOutlineKey, applyReview, OUTLINE_PREFIX,
+  EXAMPLE_PREFIX, isExampleId, exampleKey, exampleImageKey, keptByClass, reviewExample,
+} from './outlines.js';
 // The same cleaner the paid queue puts a worker id through on the way in. Two
 // spellings of one id is a row the claim lookup never finds.
 import {
@@ -1394,6 +1397,63 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
       customMetadata: { status: saved.status, count: String(kept) },
     });
     return json({ ok: true, status: saved.status, kept }, 200, origin);
+  }
+
+  /* ------------------------------------------- not-lawn examples (owner) */
+  if (path === 'examples') {
+    if (!env.CORPUS) return json({ error: 'No bucket' }, 404, origin);
+    const out = [];
+    let cursor;
+    do {
+      const page = await env.CORPUS.list({ prefix: EXAMPLE_PREFIX, cursor, include: ['customMetadata'] });
+      for (const o of page.objects) {
+        if (!o.key.endsWith('.json')) continue;
+        const id = o.key.slice(EXAMPLE_PREFIX.length, -'.json'.length);
+        if (!isExampleId(id)) continue;
+        let kept = {};
+        try { kept = JSON.parse(o.customMetadata?.kept || '{}'); } catch { kept = {}; }
+        out.push({ id, status: o.customMetadata?.status || 'draft', kept });
+      }
+      cursor = page.truncated ? page.cursor : undefined;
+    } while (cursor);
+    out.sort((a, b) => a.id.localeCompare(b.id));
+    return json({ examples: out }, 200, origin);
+  }
+
+  if (path === 'example' && request.method === 'GET') {
+    if (!env.CORPUS) return json({ error: 'No bucket' }, 404, origin);
+    const id = url.searchParams.get('id') || '';
+    if (!isExampleId(id)) return json({ error: 'No such example' }, 404, origin);
+    const object = await env.CORPUS.get(exampleKey(id));
+    if (!object) return json({ error: 'No such example' }, 404, origin);
+    return json(await object.json(), 200, origin);
+  }
+
+  if (path === 'example' && request.method === 'POST') {
+    if (!env.CORPUS) return json({ error: 'No bucket' }, 404, origin);
+    const body = await request.json().catch(() => ({}));
+    const id = String(body?.id || '');
+    if (!isExampleId(id)) return json({ error: 'No such example' }, 404, origin);
+    const object = await env.CORPUS.get(exampleKey(id));
+    if (!object) return json({ error: 'No such example' }, 404, origin);
+    const saved = reviewExample(await object.json(), body);
+    const kept = keptByClass(saved);
+    await env.CORPUS.put(exampleKey(id), JSON.stringify(saved), {
+      httpMetadata: { contentType: 'application/json' },
+      customMetadata: { status: saved.status, kept: JSON.stringify(kept) },
+    });
+    return json({ ok: true, status: saved.status, kept }, 200, origin);
+  }
+
+  if (path === 'example-image') {
+    if (!env.CORPUS) return json({ error: 'No bucket' }, 404, origin);
+    const id = url.searchParams.get('id') || '';
+    if (!isExampleId(id)) return json({ error: 'No image' }, 404, origin);
+    const object = await env.CORPUS.get(exampleImageKey(id));
+    if (!object) return json({ error: 'No image' }, 404, origin);
+    return new Response(object.body, {
+      headers: { 'Content-Type': 'image/png', 'Cache-Control': 'private, max-age=600' },
+    });
   }
 
   if (path === 'candidate-image') {

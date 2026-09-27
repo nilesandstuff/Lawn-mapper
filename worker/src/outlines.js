@@ -67,3 +67,36 @@ export function applyReview(stored, review) {
     })),
   };
 }
+
+/* ------------------------------------------ not-lawn examples (the real idea) */
+/*
+ * NEW FRAMES, AWAY FROM OUR MAPS (owner, 2026-09-27): a pond, a house, a pool,
+ * a driveway, a car park or a road near our corpus, photographed as a map is,
+ * with public outlines on it. Training will teach only the outlined ground as
+ * "not lawn" and ignore the rest of the frame. Each is a draft until the owner
+ * approves or rejects it on /outlines.html; the outlines he drops stay in the
+ * file, marked.
+ */
+export const EXAMPLE_PREFIX = 'examples/';
+const EXAMPLE_ID = /^[a-z]+-\d{3}$/;
+export const isExampleId = (id) => EXAMPLE_ID.test(String(id || ''));
+export const exampleKey = (id) => `${EXAMPLE_PREFIX}${id}.json`;
+export const exampleImageKey = (id) => `${EXAMPLE_PREFIX}${id}.png`;
+
+/** Kept outlines by class, e.g. { water: 1, building: 3 }. */
+export function keptByClass(doc) {
+  const out = {};
+  for (const f of Array.isArray(doc?.features) ? doc.features : []) {
+    if (f?.properties?.dropped) continue;
+    const c = f?.properties?.class || 'other';
+    out[c] = (out[c] || 0) + 1;
+  }
+  return out;
+}
+
+/** A review of an example: keep/drop by index, and approve, reject or leave as draft. */
+export function reviewExample(stored, review) {
+  const saved = applyReview(stored, review);
+  saved.status = ['approved', 'rejected'].includes(review?.status) ? review.status : 'draft';
+  return saved;
+}

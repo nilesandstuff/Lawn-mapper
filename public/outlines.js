@@ -1,8 +1,8 @@
 /**
- * The review page for public outlines (see outlines.html and
+ * The review page for not-lawn examples (see outlines.html and
  * worker/src/outlines.js). Everything goes in with textContent and DOM
- * nodes; the shapes are drawn as SVG over the stored photograph, projected
- * with the same frame arithmetic the training pipeline uses.
+ * nodes; the outlines are drawn as SVG over the example's photograph,
+ * projected with the same frame arithmetic the training pipeline uses.
  */
 import { lngLatToFramePx } from './lib/mercator.js';
 
@@ -14,7 +14,7 @@ export const CLASS_COLOURS = {
   driveway: '#ff9800', parking: '#ffeb3b', sidewalk: '#e040fb', rail: '#795548',
 };
 
-const view = { maps: [], at: 0, doc: null, dropped: new Set(), frame: null, w: 0, h: 0, lawnOn: true };
+const view = { list: [], at: 0, doc: null, dropped: new Set(), w: 0, h: 0 };
 
 /** Polygons of any geometry, as lists of rings. Overlapping parts stay separate. */
 export function polygonsOf(g) {
@@ -24,38 +24,38 @@ export function polygonsOf(g) {
   return [];
 }
 
+/** What is approved so far, by kind: outlines kept across approved examples. */
+export function approvedTotals(list) {
+  const kept = {};
+  let examples = 0;
+  for (const e of list) {
+    if (e.status !== 'approved') continue;
+    examples++;
+    for (const [c, n] of Object.entries(e.kept || {})) kept[c] = (kept[c] || 0) + n;
+  }
+  return { examples, kept };
+}
+
 function pathFor(rings) {
   return rings.map((ring) => ring.map((ll, i) => {
-    const [x, y] = lngLatToFramePx(view.frame, ll, view.w, view.h);
+    const [x, y] = lngLatToFramePx(view.doc.frame, ll, view.w, view.h);
     return `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`;
   }).join('') + 'Z').join('');
 }
 
-function draw(candidate) {
+function draw() {
   const svg = $('#overlay');
   svg.textContent = '';
   svg.setAttribute('viewBox', `0 0 ${view.w} ${view.h}`);
-  if (view.lawnOn) {
-    for (const f of candidate.shapes || []) {
-      for (const rings of polygonsOf(f.geometry || f)) {
-        const p = document.createElementNS(SVG, 'path');
-        p.setAttribute('class', 'lawn');
-        p.setAttribute('d', pathFor(rings));
-        svg.append(p);
-      }
-    }
-  }
-  const features = view.doc.features || [];
-  features.forEach((f, i) => {
+  (view.doc.features || []).forEach((f, i) => {
     const colour = CLASS_COLOURS[f.properties?.class] || '#ffffff';
     const g = document.createElementNS(SVG, 'g');
     for (const rings of polygonsOf(f.geometry)) {
       const p = document.createElementNS(SVG, 'path');
-      p.setAttribute('class', `shape${view.dropped.has(i) ? ' dropped' : ''}`);
+      p.setAttribute('class', `shape${f.properties?.target ? ' target' : ''}${view.dropped.has(i) ? ' dropped' : ''}`);
       p.setAttribute('d', pathFor(rings));
       p.setAttribute('fill', colour);
       p.setAttribute('stroke', colour);
-      p.setAttribute('fill-rule', 'nonzero');
       const t = document.createElementNS(SVG, 'title');
       t.textContent = `${f.properties?.class} (${f.properties?.source})`;
       p.append(t);
@@ -63,19 +63,11 @@ function draw(candidate) {
     }
     g.addEventListener('click', () => {
       if (view.dropped.has(i)) view.dropped.delete(i); else view.dropped.add(i);
-      draw(candidate);
+      draw();
       legend();
     });
     svg.append(g);
   });
-  if (candidate.parcel?.geometry) {
-    for (const rings of polygonsOf(candidate.parcel.geometry)) {
-      const p = document.createElementNS(SVG, 'path');
-      p.setAttribute('class', 'parcel');
-      p.setAttribute('d', pathFor(rings));
-      svg.append(p);
-    }
-  }
 }
 
 function legend() {
@@ -93,98 +85,99 @@ function legend() {
     s.textContent = `${c} ${n.kept}${n.dropped ? ` (+${n.dropped} dropped)` : ''}`;
     el.append(s);
   }
-  if (!Object.keys(counts).length) el.textContent = 'No public outlines fall in this frame.';
+}
+
+function totals() {
+  const t = approvedTotals(view.list);
+  const parts = Object.entries(t.kept).sort((a, b) => b[1] - a[1]).map(([c, n]) => `${c} ${n}`);
+  const drafts = view.list.filter((e) => e.status === 'draft').length;
+  $('#totals').textContent = `Approved: ${t.examples} of ${view.list.length} examples`
+    + (parts.length ? ` — outlines kept: ${parts.join(', ')}` : '')
+    + ` · ${drafts} still to review`;
 }
 
 async function open(i) {
-  view.at = (i + view.maps.length) % view.maps.length;
-  const m = view.maps[view.at];
-  $('#pick').value = m.id;
+  view.at = (i + view.list.length) % view.list.length;
+  const e = view.list[view.at];
+  $('#pick').value = e.id;
   $('#said').textContent = '';
-  const [doc, cand] = await Promise.all([
-    fetch(`/api/admin/outline?id=${encodeURIComponent(m.id)}`).then((r) => r.json()),
-    fetch(`/api/admin/candidate?id=${encodeURIComponent(m.id)}`).then((r) => r.json()),
-  ]);
-  if (doc.error) {
-    /* Say it, rather than drawing an empty frame that looks like "none". */
-    view.doc = { features: [] };
+  const doc = await fetch(`/api/admin/example?id=${encodeURIComponent(e.id)}`).then((r) => r.json());
+  if (doc.error || !doc.frame) {
+    view.doc = { features: [], frame: null };
     $('#errors').hidden = false;
-    $('#errors').textContent = `Could not load this map's outlines: ${doc.error}.`;
-  } else {
-    view.doc = doc;
+    $('#errors').textContent = `Could not load this example: ${doc.error || 'no frame'}.`;
+    return;
   }
+  view.doc = doc;
   view.dropped = new Set((doc.features || []).map((f, k) => (f.properties?.dropped ? k : -1)).filter((k) => k >= 0));
-  view.frame = cand.imageFrame || cand.frame;
-  $('#sub').textContent = `${m.county || 'Traced by hand'}${m.squareFeet ? `, ${m.squareFeet.toLocaleString()} sq ft of lawn` : ''}`
-    + ` — ${doc.status === 'approved' ? 'APPROVED' : 'draft'}${doc.fetchedAt ? `, fetched ${doc.fetchedAt.slice(0, 10)}` : ''}`;
-  const errs = !doc.error && doc.errors ? Object.entries(doc.errors).map(([k, v]) => `${k}: ${String(v).split('\n')[0]}`) : [];
-  if (!doc.error) {
-    $('#errors').hidden = !errs.length;
-    $('#errors').textContent = errs.length ? `Some sources did not answer — ${errs.join('; ')}` : '';
-  }
+  const t = doc.target || {};
+  $('#sub').textContent = `${e.id}: chosen for a ${t.class || '?'} (${t.source || '?'}) — `
+    + `${doc.status === 'approved' ? 'APPROVED' : doc.status === 'rejected' ? 'REJECTED' : 'draft'}`;
+  const errs = doc.errors ? Object.entries(doc.errors).map(([k, v]) => `${k}: ${String(v).split('\n')[0]}`) : [];
+  $('#errors').hidden = !errs.length;
+  $('#errors').textContent = errs.length ? `Some sources did not answer — ${errs.join('; ')}` : '';
   $('#attribution').textContent = doc.attribution || '';
   const img = $('#photo');
-  img.onload = () => {
-    view.w = img.naturalWidth; view.h = img.naturalHeight;
-    draw(cand); legend();
-  };
-  img.src = `/api/admin/candidate-image?id=${encodeURIComponent(m.id)}`;
-  view.candidate = cand;
+  img.onload = () => { view.w = img.naturalWidth; view.h = img.naturalHeight; draw(); legend(); };
+  img.src = `/api/admin/example-image?id=${encodeURIComponent(e.id)}`;
 }
 
 async function save(status) {
-  const m = view.maps[view.at];
+  const e = view.list[view.at];
   $('#said').textContent = 'Saving…';
-  const res = await fetch('/api/admin/outline', {
+  const res = await fetch('/api/admin/example', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: m.id, status, dropped: [...view.dropped] }),
+    body: JSON.stringify({ id: e.id, status, dropped: [...view.dropped] }),
   });
   const out = await res.json().catch(() => ({}));
   if (!res.ok) { $('#said').textContent = `Not saved (${out.error || res.status}).`; return; }
-  m.status = out.status;
-  $('#said').textContent = out.status === 'approved'
-    ? `Approved — ${out.kept} shapes will be shown to the detector as "not lawn".`
-    : `Saved as a draft (${out.kept} kept).`;
+  e.status = out.status;
+  e.kept = out.kept || {};
+  $('#said').textContent = out.status === 'approved' ? 'Approved.' : out.status === 'rejected' ? 'Rejected.' : 'Saved as a draft.';
   labelOptions();
+  totals();
+  /* On to the next one still to review: this page is a queue. */
+  if (out.status !== 'draft') {
+    const next = view.list.findIndex((x, k) => k > view.at && x.status === 'draft');
+    if (next >= 0) open(next);
+  }
 }
 
 function labelOptions() {
   const pick = $('#pick');
   pick.textContent = '';
-  view.maps.forEach((m) => {
+  view.list.forEach((e) => {
     const o = document.createElement('option');
-    o.value = m.id;
-    o.textContent = `${m.status === 'approved' ? '✓ ' : ''}${m.county || 'Traced by hand'} — ${m.id.slice(0, 22)}`;
+    o.value = e.id;
+    o.textContent = `${e.status === 'approved' ? '✓ ' : e.status === 'rejected' ? '✗ ' : ''}${e.id}`;
     pick.append(o);
   });
-  pick.value = view.maps[view.at]?.id || '';
+  pick.value = view.list[view.at]?.id || '';
 }
 
 async function start() {
   let data;
   try {
-    const res = await fetch('/api/admin/outlines');
+    const res = await fetch('/api/admin/examples');
     if (!res.ok) throw new Error(String(res.status));
     data = await res.json();
   } catch {
     $('#locked').hidden = false;
     return;
   }
-  view.maps = (data.maps || []).sort((a, b) => (a.status === 'approved') - (b.status === 'approved'));
-  if (!view.maps.length) { $('#none').hidden = false; return; }
+  view.list = data.examples || [];
+  if (!view.list.length) { $('#none').hidden = false; return; }
   $('#page').hidden = false;
   labelOptions();
-  $('#pick').addEventListener('change', (e) => open(view.maps.findIndex((m) => m.id === e.target.value)));
+  totals();
+  $('#pick').addEventListener('change', (ev) => open(view.list.findIndex((x) => x.id === ev.target.value)));
   $('#prev').addEventListener('click', () => open(view.at - 1));
   $('#next').addEventListener('click', () => open(view.at + 1));
   $('#save').addEventListener('click', () => save('draft'));
   $('#approve').addEventListener('click', () => save('approved'));
-  $('#lawn-toggle').addEventListener('click', () => {
-    view.lawnOn = !view.lawnOn;
-    $('#lawn-toggle').textContent = view.lawnOn ? 'Hide the traced lawn' : 'Show the traced lawn';
-    draw(view.candidate);
-  });
-  open(0);
+  $('#reject').addEventListener('click', () => save('rejected'));
+  const first = view.list.findIndex((x) => x.status === 'draft');
+  open(first >= 0 ? first : 0);
 }
 
 if (typeof document !== 'undefined' && document.getElementById('overlay')) start();
