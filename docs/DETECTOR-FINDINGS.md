@@ -101,6 +101,12 @@ got here. Update it whenever the in-flight run changes.*
     answered. Water on only 3 maps and a pool on 1 -- and **not on B12: the
     pond is in neither OSM nor NHD**, so public outlines will not teach the
     pond. The owner's handful of pond maps is the route for water.
+    **And they were built in the wrong place (the owner, same night):**
+    fetched over the corpus's own frames, they mostly repeat what the
+    tracing already says inside the lot line -- the only new ground is the
+    padding, which is being cut. The owner's idea was examples of not-lawn
+    from ANYWHERE: frames centred on public outlines away from our maps,
+    labelled only on the outline, the rest ignored. Not built yet.
   - **ANSWERED (H53): the ~10% is a half-metre band along the true edge (94%
     of B01's error within 0.5 m), not registration, not the tracing.**
   - **B01 scores ~10% on a near-perfect picture, under every method, colour
