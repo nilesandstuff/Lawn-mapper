@@ -1300,6 +1300,15 @@ if (sources.includes('naip')) {
   check('and it sits UNDER the drawn shapes, not over them',
     order.firstDraw === -1 || order.photo < order.firstDraw,
     `photo at ${order.photo}, first draw layer at ${order.firstDraw}`);
+
+  /* NAIP is lined up with Mapbox on the spot, and says so (owner,
+     2026-09-27). The panel is up at once; the answer follows. */
+  await page.waitForTimeout(1500);
+  const panel = await page.evaluate(() => {
+    const el = document.querySelector('#naip-align');
+    return { shown: !!el && !el.hidden, text: el?.textContent || '' };
+  });
+  check('NAIP shows its alignment panel', panel.shown, panel.text.slice(0, 120));
 }
 
 /* NDVI was measured against real lawns and rejected, so it must not be

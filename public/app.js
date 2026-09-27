@@ -5446,8 +5446,15 @@ async function showImagery() {
    * is the source's, not ours -- but silence about it is.
    */
   busy(`Fetching ${info.label}…`);
+  /* NAIP's own picture, kept for lining it up with Mapbox: USGS is slow
+     (seven to eleven seconds a picture) and asking it twice made the next
+     request queue behind the first (the browser test, 2026-09-27). */
+  let naipBlob = null;
   try {
-    const res = await fetch(url);
+    /* A source that never answers must not leave "Fetching…" over the map
+       for good: the browser test caught USGS doing exactly that. */
+    const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
+    if (res.ok && state.provider === 'naip') naipBlob = await res.clone().blob();
     if (!res.ok) {
       /*
        * Say which kind of failure this is, because they need opposite actions.
@@ -5475,7 +5482,9 @@ async function showImagery() {
     setStatus(
       err.refused
         ? `${info.label} refused the request — this is a set-up problem, not a gap in the photography. It said: “${err.message}” Staying on Mapbox.`
-        : `${info.label} has no photograph of this spot (${err.message}). Staying on Mapbox.`,
+        : err.name === 'TimeoutError'
+          ? `${info.label} did not answer within 30 seconds. Staying on Mapbox — try it again in a moment.`
+          : `${info.label} has no photograph of this spot (${err.message}). Staying on Mapbox.`,
       err.refused ? 'error' : 'warn'
     );
     state.provider = 'mapbox';
@@ -5498,7 +5507,7 @@ async function showImagery() {
   });
   map.addLayer({ id: 'imagery-alt', type: 'raster', source: 'imagery-alt' }, before);
   idle();
-  if (isNaip(state.provider)) alignNaip(served, run);
+  if (isNaip(state.provider)) alignNaip(served, run, naipBlob);
   setStatus(info.detect
     ? `Showing ${info.label} over the measurement frame. Detect again to use it.`
     : `Showing ${info.label}. This one is for looking at — detection uses Mapbox.`);
@@ -5519,10 +5528,14 @@ const NAIP_STEP_M = 0.25;
 const NAIP_STEP_SCALE = 0.0025;
 const isNaip = (id) => id === 'naip' || id === 'ndvi';
 
-async function greyOf(url, w, h) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const bitmap = await createImageBitmap(await res.blob());
+async function greyOf(source, w, h) {
+  let blob = source;
+  if (typeof source === 'string') {
+    const res = await fetch(source);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    blob = await res.blob();
+  }
+  const bitmap = await createImageBitmap(blob);
   const canvas = document.createElement('canvas');
   canvas.width = w; canvas.height = h;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -5542,10 +5555,18 @@ function applyNaipAlign(served) {
   renderNaipPanel(served);
 }
 
-async function alignNaip(served, run) {
+async function alignNaip(served, run, naipBlob = null) {
   state.naipServed = served;
   /* A nudge somebody made stands; the machine does not overrule a person. */
   if (state.naipAlign?.source === 'person') { applyNaipAlign(served); return; }
+  /*
+   * ONLY FROM THE NAIP PICTURE ALREADY DOWNLOADED. NDVI is drawn from the
+   * same NAIP, so it takes whatever alignment NAIP got; fetching NAIP again
+   * just to align NDVI would put a second slow USGS request in front of
+   * whatever the person asks for next.
+   */
+  if (!naipBlob) { applyNaipAlign(served); return; }
+  state.naipBlob = naipBlob;
   const acrossM = metresPerPixel(served, 1);
   const downM = acrossM * ((served.height || served.size) / served.size);
   const cellM = Math.max(0.6, acrossM / 256);
@@ -5555,7 +5576,7 @@ async function alignNaip(served, run) {
   try {
     const [ref, mov] = await Promise.all([
       greyOf(imageryUrlFor('mapbox', served), w, h),
-      greyOf(imageryUrlFor('naip', served), w, h),
+      greyOf(naipBlob, w, h),
     ]);
     if (run !== imageryRun || !isNaip(state.provider)) return;
     const r = alignImages(ref, mov, w, h, { maxShift: Math.max(2, Math.round(6 / cellM)) });
@@ -5615,10 +5636,12 @@ function renderNaipPanel(served, message) {
   btn('▼', 'Move NAIP south 25 cm', () => nudgeNaip(0, -NAIP_STEP_M, 0));
   btn('−', 'Shrink NAIP a quarter of a percent', () => nudgeNaip(0, 0, -NAIP_STEP_SCALE));
   btn('+', 'Grow NAIP a quarter of a percent', () => nudgeNaip(0, 0, NAIP_STEP_SCALE));
-  btn('Auto', 'Line it up automatically again', () => {
-    state.naipAlign = null;
-    alignNaip(state.naipServed || served, imageryRun);
-  });
+  if (state.naipBlob) {
+    btn('Auto', 'Line it up automatically again', () => {
+      state.naipAlign = null;
+      alignNaip(state.naipServed || served, imageryRun, state.naipBlob);
+    });
+  }
   panel.append(row);
 }
 
@@ -7360,6 +7383,7 @@ function openMap(s) {
   /* NAIP's alignment belongs to the place; a reopened map starts from what
      the pipeline or the editor finds again rather than a stale nudge. */
   state.naipAlign = null;
+  state.naipBlob = null;
 
   map.getSource('parcel').setData(state.parcel || empty());
   for (const f of (s.shapes || [])) {
@@ -11094,6 +11118,7 @@ function reset() {
   state.detectedExcluding = null;
   state.detectedShapes = null;
   state.naipAlign = null;
+  state.naipBlob = null;
   state.provider = 'mapbox';
   state.model = 'sam3';
   state.pins = [];
