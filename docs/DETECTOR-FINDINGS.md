@@ -54,8 +54,8 @@ got here. Update it whenever the in-flight run changes.*
   on more lots than worse with a sign-test p under 0.1 AND a 95% interval
   for the median paired change that stays below zero; and not worse on the
   lots approved since the freeze. The earlier 10-fold H50 pair is cancelled
-  (superseded). The method check (benchmark in 10 folds) is left to finish,
-  because it answers the owner's direct question about 10 folds.
+  (superseded). The method check (benchmark in 10 folds) is DONE: H51 --
+  10 folds did not break anything, and fused won the plan row 25 lots to 6.
 - **Also in flight (2026-09-27): S12, the scale Scale-MAE is told.** Three
   workflow 14 runs, `model: scalemae-large, res x5 / x10 / x25`, decoder on,
   canopy compare, lawns all, seed 7; each read with workflow 24 against the
@@ -587,6 +587,44 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H51. 10 folds did not manufacture or hide the fused result: on the 32 it reproduces, and lot by lot it is stronger, 2026-09-27
+
+*Runs 36298873117 (fused) and 36298874496 (unfused), commit ecc9678, the
+frozen 32 (fingerprint `1rijjz2`), `lawns: benchmark, 10 folds` (about 3
+lawns held out a fold, random, not by place), `canopy: compare`, seed 7.
+Asked by the owner: "are you sure the 10 groups thing didn't mess it up?"
+The same pair as H48 in every setting except the folds.*
+
+| row | H48, leave one out: unfused → fused | 10 folds: unfused → fused |
+|---|---|---|
+| **THE PLAN's row** | 26.6 → 26.5 | **26.5 → 25.2** |
+| decoder alone, no canopy | 28.5 → 26.1 | 27.5 → 25.8 |
+| decoder alone, canopy on lawn | 29.8 → 25.0 | 28.0 → 26.1 |
+| decoder alone, canopy everywhere | 24.3 → 24.5 | 25.8 → 28.2 |
+| canopy everywhere + stage 3, span, veto | — | 23.9 → 23.5 |
+
+**Lot by lot on THE PLAN's row** (paired from the log's "Lawn by lawn"
+tables, tools/compare-runs.js statistics): fused better on **25**, worse
+on **6**, sign test **p = 0.001**, median paired change **-1.2 points**,
+95% bootstrap interval **[-2.0, -0.45]**. H48 on the same row was 18
+better / 7 worse. On "canopy everywhere + stage 3, span, veto": 22 / 9,
+p = 0.03, median -1.0 [-1.4, -0.2].
+
+**What this establishes:**
+- Leave-one-out to 10 folds moved the UNFUSED medians by 0.1 (plan row)
+  to 1.8 points (decoders alone), within the run-to-run spread this file
+  has already recorded (H13, H49's rejected-map note). The protocol change
+  did not break the pipeline.
+- The fused direction on THE PLAN's row held under the other protocol and
+  was clearer lot by lot. The one row that reversed is the canopy-
+  everywhere decoder alone (+2.4 fused), which H48 already had level.
+
+**What it does NOT establish:** that fused is adopted. One seed, random
+folds (neighbours can share a fold's training set), the 32 only. H50 (53
+lots, place folds, three seeds each) is the decision; this is its first
+supporting data point and nothing more. The 10-fold medians are NOT
+comparable to leave-one-out medians as levels, only as directions.
 
 ### H49. On all 53 maps the fused inputs are worth a point or two at most — and the run found the lidar veto erasing two lots whole, 2026-09-27
 
@@ -4051,3 +4089,4 @@ metres a pixel (`model: scalemae-large, res xN` in workflow 14; 0.1 m ->
 | 2026-09-26 | 36263514117 + 36263512588 | 32 | — (workflow 23: **H47, one segment per crown**; workflow 14 `canopy: compare` repeats it with the **detector's** visible lawn) | — | 24.7% | **H47: passes on the detector's edge.** 497 segments (96 lawn). (b) AUC distance 0.94, border 0.08, crowding 0.87. Border lawn 0% finds 85.0% of woods for 7.5% of lawn under canopy; distance 10 m+ 79.5% for 3.1%. Tracer's edge (a) 83.0/5.6 and 79.0/2.4: the leak is small. A separation, not yet a row |
 | 2026-09-26 | 36271469618 | 32 | `canopy: compare`, **`decoder: fused`** (S11: lidar height, ground share, returns, NAIP NDVI, canopy + flags; dropout 0.3 / 0.2) | 23.2% (everywhere + span, veto) | 24.7% | **H48: fails its bar, not adopted.** Plan's row 26.6 → 26.5 (bar 24.6); seen 22.2 → 21.8, inferred 28.5 → 32.5; 18 lots better, 7 worse; B03 −39, B06 −4.6; B28 +10 (stale lidar), B24 +9. Fused decoders alone 28.5 → 26.1 and **29.8 → 25.0** (under the plan's 26.6, a lead); sharp edges −4 to −7. Pictures `runs/2026-09-26-1839-edt-scalemae-large-896px` |
 | 2026-09-27 | 36290696462 + 36290697360 | **53** | `canopy: compare`, **`lawns: all`, 10 folds**, `decoder: fused` beside `decoder: on` (no canopy channel on the on-lawn decoder) — **NOT COMPARABLE** with the benchmark | 20.4% fused (everywhere + span) / 20.8% unfused (everywhere decoder) | — | **H49: no bar met.** Stage-3 rows 1.2–1.9 pts better fused; decoders alone level; sharp-edge gain did not replicate. **Veto bug:** Peach County GA lots have a lidar project with 0 points over them → void everywhere → both lots 100% wrong on every veto row (5,514 m² of lawn taken). Fixed in lidar_frame.py (MIN_COVERED, VOID_NEEDS_COVERED) |
+| 2026-09-27 | 36298873117 + 36298874496 | 32 | `canopy: compare`, **`lawns: benchmark, 10 folds`**, `decoder: fused` beside `decoder: on`, seed 7 — the method check | 23.5% (everywhere + span, veto, fused) | 24.7% | **H51: 10 folds did not break it.** Plan row 26.5 → 25.2 fused; **25 lots better, 6 worse, p 0.001, median −1.2 [−2.0, −0.45]** (H48 LOO: 18 / 7). Unfused medians within 0.1–1.8 of LOO. Supporting only; H50 decides |
