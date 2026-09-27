@@ -527,9 +527,37 @@ def summary(fc):
     return "\n".join(lines) or "  nothing"
 
 
+def run_jobs(jobs_path, outdir, sources):
+    """Workflow 25's batch: one draft per corpus map (tools/fetch-outlines.js
+    writes the job list: id, the frame's box in degrees, the file name). A
+    map whose every source failed is written anyway, with its errors, so the
+    review page says why it is empty rather than showing nothing."""
+    import os
+    import time as _time
+    jobs = json.load(open(jobs_path))
+    os.makedirs(outdir, exist_ok=True)
+    for i, job in enumerate(jobs, 1):
+        fc = fetch_negatives(tuple(job["bbox"]), sources)
+        fc.update({"id": job["id"], "status": "draft",
+                   "fetchedAt": _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime())})
+        with open(os.path.join(outdir, job["file"]), "w") as f:
+            json.dump(fc, f)
+        print(f"{i}/{len(jobs)}  {job['id'][:40]:40}  {len(fc['features'])} outlines", flush=True)
+        print(summary(fc), flush=True)
+        # The public Overpass servers ask for restraint; a second between
+        # maps costs a minute over the corpus.
+        _time.sleep(1.0)
+    return 0
+
+
 def main(argv):
     args = [a for a in argv if not a.startswith("--")]
     flags = [a for a in argv if a.startswith("--")]
+    jobs = next((f.split("=", 1)[1] for f in flags if f.startswith("--jobs=")), None)
+    if jobs:
+        outdir = next((f.split("=", 1)[1] for f in flags if f.startswith("--outdir=")), "outlines")
+        sources = [s for s in ("osm", "nhd", "msbf") if f"--no-{s}" not in flags]
+        return run_jobs(jobs, outdir, sources)
     if len(args) < 2:
         print(__doc__)
         return 2

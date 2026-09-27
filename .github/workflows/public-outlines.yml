@@ -1,0 +1,75 @@
+name: 25. Fetch public outlines for review
+
+# THINGS THAT ARE CERTAINLY NOT LAWN, ALREADY DRAWN BY SOMEBODY ELSE:
+# buildings, water, pools, roads, driveways, parking, sidewalks and rail from
+# OpenStreetMap, USGS NHD and Microsoft's building footprints
+# (tools/public_negatives.py), over the photograph of every approved map.
+#
+# NOTHING HERE REACHES THE DETECTOR. Every map's outlines are written as a
+# DRAFT for the owner to look at on /outlines.html, drop what is wrong, and
+# approve (owner, 2026-09-27). Training reads approved files only, and an
+# approved file is never overwritten by this workflow.
+#
+# Free: public servers and the project's own bucket. The public Overpass
+# servers are sometimes busy; a map whose sources all failed is written with
+# the reason, and "drafts too" fetches it again.
+on:
+  workflow_dispatch:
+    inputs:
+      refetch:
+        description: 'Which maps: only those with no outlines yet, or drafts too (approved ones are never touched)'
+        type: choice
+        default: 'new only'
+        options: ['new only', 'drafts too']
+
+jobs:
+  outlines:
+    name: Fetch drafts for the owner to review
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: npm ci
+
+      - name: Check the parsing before trusting the answer
+        working-directory: tools
+        run: |
+          python3 public_negatives_test.py
+          node outlines.test.js
+
+      # Microsoft's footprints come in county-sized tiles of up to 120 MB;
+      # kept between runs so a second run does not fetch them again.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/lawn-mapper/msbf
+          key: msbf-footprints-v1
+
+      - name: Which maps need outlines
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          REFETCH: ${{ inputs.refetch == 'drafts too' && 'drafts' || '' }}
+        run: node tools/fetch-outlines.js list > jobs.json
+
+      - name: Fetch them
+        run: python3 tools/public_negatives.py --jobs=jobs.json --outdir=outlines
+
+      - name: Save them as drafts
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node tools/fetch-outlines.js upload outlines
+
+      - name: Where to look
+        if: always()
+        run: |
+          echo
+          echo "Drafts are on the site at /outlines.html (owner only)."
+          echo "Nothing is shown to the detector until it is approved there."

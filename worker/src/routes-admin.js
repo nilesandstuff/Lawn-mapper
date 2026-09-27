@@ -28,6 +28,7 @@ import { logEntries, loggingEnabled } from './testlog.js';
 import { feedbackEntries, feedbackEnabled } from './feedback.js';
 import { corpusGaps, candidateScore } from './corpus.js';
 import { parcelGaps } from './gaps.js';
+import { outlineKey, idOfOutlineKey, applyReview, OUTLINE_PREFIX } from './outlines.js';
 // The same cleaner the paid queue puts a worker id through on the way in. Two
 // spellings of one id is a row the claim lookup never finds.
 import {
@@ -1332,6 +1333,61 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
     } catch {
       return json({ error: 'No image' }, 404, origin);
     }
+  }
+
+  /* ------------------------------------ public not-lawn outlines (owner) */
+  /*
+   * EVERY MAP WITH PUBLIC OUTLINES FETCHED, and whether the owner has
+   * approved them. See worker/src/outlines.js; workflow 25 writes the drafts.
+   */
+  if (path === 'outlines') {
+    if (!env.CORPUS) return json({ error: 'No bucket' }, 404, origin);
+    const out = [];
+    let cursor;
+    do {
+      const page = await env.CORPUS.list({ prefix: OUTLINE_PREFIX, cursor, include: ['customMetadata'] });
+      for (const o of page.objects) {
+        const id = idOfOutlineKey(o.key);
+        if (id) out.push({ id, status: o.customMetadata?.status || 'draft', count: Number(o.customMetadata?.count || 0) });
+      }
+      cursor = page.truncated ? page.cursor : undefined;
+    } while (cursor);
+    /* The whole corpus is a few hundred rows; one read beats D1's hundred-
+       parameter cap on an IN list that grows with the corpus. */
+    const rows = out.length ? (await env.DB.prepare(
+      'SELECT id, county, square_feet FROM corpus'
+    ).all()).results : [];
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    return json({
+      maps: out.map((o) => ({ ...o, county: byId.get(o.id)?.county || null,
+        squareFeet: byId.get(o.id)?.square_feet ?? null })),
+    }, 200, origin);
+  }
+
+  if (path === 'outline' && request.method === 'GET') {
+    if (!env.CORPUS) return json({ error: 'No bucket' }, 404, origin);
+    const id = url.searchParams.get('id') || '';
+    const object = await env.CORPUS.get(outlineKey(id));
+    if (!object) return json({ error: 'Not fetched yet' }, 404, origin);
+    return json(await object.json(), 200, origin);
+  }
+
+  if (path === 'outline' && request.method === 'POST') {
+    if (!env.CORPUS) return json({ error: 'No bucket' }, 404, origin);
+    const body = await request.json().catch(() => ({}));
+    const id = String(body?.id || '');
+    /* A real map, or nothing is written: the key is built from this id. */
+    const row = id ? await env.DB.prepare('SELECT id FROM corpus WHERE id = ?1').bind(id).first() : null;
+    if (!row) return json({ error: 'No such map' }, 404, origin);
+    const object = await env.CORPUS.get(outlineKey(id));
+    if (!object) return json({ error: 'Not fetched yet' }, 404, origin);
+    const saved = applyReview(await object.json(), body);
+    const kept = saved.features.filter((f) => !f.properties?.dropped).length;
+    await env.CORPUS.put(outlineKey(id), JSON.stringify(saved), {
+      httpMetadata: { contentType: 'application/json' },
+      customMetadata: { status: saved.status, count: String(kept) },
+    });
+    return json({ ok: true, status: saved.status, kept }, 200, origin);
   }
 
   if (path === 'candidate-image') {
