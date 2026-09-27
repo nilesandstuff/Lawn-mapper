@@ -301,6 +301,7 @@ jobs:
           python3 lidar_test.py
           python3 crowns_lidar_test.py
           python3 fuse_test.py
+          python3 folds_test.py
 
       - name: Find the canopy
         if: ${{ inputs.canopy != 'off' }}
@@ -376,9 +377,11 @@ jobs:
           FUSE: ${{ inputs.decoder == 'fused' && '1' || '' }}
           FUSE_LIDAR: lidar
           # Leave-one-out costs the square of the corpus (68 min a decoder at
-          # 53 lawns, past the time limit with three); 10 folds on the full
-          # corpus. The benchmark stays leave-one-out, as every table was.
-          FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'benchmark, 10 folds') && '10' || '' }}
+          # 53 lawns, past the time limit with three). The full corpus is held
+          # out a NEIGHBOURHOOD at a time in 15 folds (tools/folds.py): a lot is
+          # never scored by a decoder that trained on the lot next door. The
+          # benchmark stays leave-one-out, as every table was.
+          FOLDS: ${{ inputs.lawns == 'all' && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
           FUSE_NAIP: naip
           FUSE_CANOPY: ${{ inputs.canopy == 'everywhere' && '1' || '0' }}
         run: python3 tools/train_decoder.py
@@ -395,9 +398,11 @@ jobs:
           FUSE: ${{ inputs.decoder == 'fused' && '1' || '' }}
           FUSE_LIDAR: lidar
           # Leave-one-out costs the square of the corpus (68 min a decoder at
-          # 53 lawns, past the time limit with three); 10 folds on the full
-          # corpus. The benchmark stays leave-one-out, as every table was.
-          FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'benchmark, 10 folds') && '10' || '' }}
+          # 53 lawns, past the time limit with three). The full corpus is held
+          # out a NEIGHBOURHOOD at a time in 15 folds (tools/folds.py): a lot is
+          # never scored by a decoder that trained on the lot next door. The
+          # benchmark stays leave-one-out, as every table was.
+          FOLDS: ${{ inputs.lawns == 'all' && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
           FUSE_NAIP: naip
         run: python3 tools/train_decoder.py
 
@@ -413,9 +418,11 @@ jobs:
           FUSE: ${{ inputs.decoder == 'fused' && '1' || '' }}
           FUSE_LIDAR: lidar
           # Leave-one-out costs the square of the corpus (68 min a decoder at
-          # 53 lawns, past the time limit with three); 10 folds on the full
-          # corpus. The benchmark stays leave-one-out, as every table was.
-          FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'benchmark, 10 folds') && '10' || '' }}
+          # 53 lawns, past the time limit with three). The full corpus is held
+          # out a NEIGHBOURHOOD at a time in 15 folds (tools/folds.py): a lot is
+          # never scored by a decoder that trained on the lot next door. The
+          # benchmark stays leave-one-out, as every table was.
+          FOLDS: ${{ inputs.lawns == 'all' && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
           FUSE_NAIP: naip
           # H48: no canopy CHANNEL for this decoder -- every canopy cell it is
           # graded on is not-lawn, so the channel taught "canopy = not lawn".
@@ -434,9 +441,11 @@ jobs:
           FUSE: ${{ inputs.decoder == 'fused' && '1' || '' }}
           FUSE_LIDAR: lidar
           # Leave-one-out costs the square of the corpus (68 min a decoder at
-          # 53 lawns, past the time limit with three); 10 folds on the full
-          # corpus. The benchmark stays leave-one-out, as every table was.
-          FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'benchmark, 10 folds') && '10' || '' }}
+          # 53 lawns, past the time limit with three). The full corpus is held
+          # out a NEIGHBOURHOOD at a time in 15 folds (tools/folds.py): a lot is
+          # never scored by a decoder that trained on the lot next door. The
+          # benchmark stays leave-one-out, as every table was.
+          FOLDS: ${{ inputs.lawns == 'all' && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
           FUSE_NAIP: naip
         run: python3 tools/train_decoder.py
 
@@ -445,6 +454,11 @@ jobs:
       # this answerable against workflow 12's table.
       - name: Score it the same way as before
         env:
+          # Every row's per-lot result as a file, for workflow 24 to compare
+          # runs lot by lot and across seeds (tools/compare-runs.js).
+          LOT_RESULTS: lot-results.json
+          SEED: ${{ inputs.seed }}
+          DECODER_KIND: ${{ inputs.decoder }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CORPUS_BUCKET: lawn-mapper-corpus
@@ -489,6 +503,14 @@ jobs:
           LIDAR: ../lidar
           PRED: ../preds-out
         run: python3 segments_pred.py
+
+      - name: Keep the per-lot results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lot-results
+          path: lot-results.json
+          if-no-files-found: ignore
 
       - name: If that failed
         if: failure()

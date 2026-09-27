@@ -46,23 +46,16 @@ got here. Update it whenever the in-flight run changes.*
   tools/train-detector.js) when it scored it, and the picker names the row
   each run drew. Runs before the fix are unchanged on the page.
 - **Pictures of THE PLAN's row are up (2026-09-26):** `runs/2026-09-25-2152-edt-scalemae-large-896px`, the first drawn for the row actually adopted.
-- **In flight (2026-09-27, after H49): the 53-map pair again, with the
-  lidar veto's no-points bug fixed** (H49) — workflow 14, `canopy: compare`,
-  `lawns: all`, 10 folds, `decoder: fused` beside `decoder: on`. Write it up
-  as H50. Same bar as H49: (a) THE PLAN's row fused vs unfused, two points
-  or more, more lots better than worse; (b) the best fused decoder alone two
-  points or more under the unfused PLAN's row.
-- **Also in flight: the method check (owner, 2026-09-27: "are you sure the
-  10 groups thing didn't mess it up?").** H48 → H49 changed two things at
-  once, the lawns (32 → 53) and the method (leave-one-out → 10 folds), so the
-  shrinking of the fused gain cannot yet be put on either. The same pair on
-  the 32 benchmark lawns in 10 folds (`lawns: benchmark, 10 folds`), set
-  against H48's leave-one-out pair (plan row 26.6 → 26.5, 18 lots better
-  against 7; decoders alone 28.5 → 26.1 and 29.8 → 25.0). If 10 folds
-  reproduce H48's pattern, the method is not the cause and the corpus is. A
-  known way it could differ: in leave-one-out every lot gets its own seed,
-  in 10 folds about five share one, so the seed's noise (about a point,
-  H28) no longer averages out across lots -- more noise, not bias.
+- **In flight (2026-09-27): the first decision under the new protocol**
+  (see "How a decision is made" in the rules): the fused inputs against
+  none, on all 53 lots, folds by neighbourhood, three seeds (7, 8, 9) of
+  each -- six workflow 14 runs -- read with workflow 24. Write it up as
+  H50. **The bar, written before the run:** on THE PLAN's row, fused better
+  on more lots than worse with a sign-test p under 0.1 AND a 95% interval
+  for the median paired change that stays below zero; and not worse on the
+  lots approved since the freeze. The earlier 10-fold H50 pair is cancelled
+  (superseded). The method check (benchmark in 10 folds) is left to finish,
+  because it answers the owner's direct question about 10 folds.
 - **Before that (2026-09-26, after H48).** The fused inputs (S11)
   FAIL their bar on THE PLAN's row (26.6 → 26.5%, bar 24.6) and are not
   adopted — but the fused decoder ON ITS OWN reads 25.0%, below THE PLAN's
@@ -3829,6 +3822,33 @@ has-lidar flag, NAIP NDVI, a has-NAIP flag, the tree model's canopy share --
 each area-averaged onto the patch grid exactly as the labels are.
 
 ## Rules for running and reading these experiments
+
+- **HOW A DECISION IS MADE, FROM 2026-09-27** (owner: "get the most out of
+  the training data"; "neighbouring lots leak into each other"). Four
+  weaknesses in how every result above was read, fixed together:
+  1. **Neighbours leaked.** Leave-one-out scored a lot with a decoder
+     trained on the lot next door -- same photograph, same light, same
+     grass. On the benchmark, 12 of 32 lots have another within 2 km (5
+     neighbourhoods of 2-3). Full-corpus runs now hold out a NEIGHBOURHOOD
+     at a time (lots within 2 km, single linkage) in 15 folds
+     (tools/folds.py; workflow 14 `lawns: all`). Not by county: a lot still
+     learns from its county across town, as the site will be used.
+     (The frame's padding is NOT a leak: ground outside a lot's line has no
+     weight in training. Its cost is resolution on big and diagonal lots.)
+  2. **One seed per setting.** A seed moves a decoder about a point (H28),
+     the size of several effects here. Each setting is now run 2-3 times
+     with different `seed`, in parallel.
+  3. **The headline median decided.** A median moves on a lot or two; the
+     same lots compared under both settings do not. Decisions are read from
+     workflow 24 (tools/compare-runs.js): per lot, the mean over a setting's
+     runs; then wins/losses, the median paired change with a 95% bootstrap
+     interval, and a sign test. (H48's 18-against-7 is p = 0.043; its 0.1
+     on the median said nothing.)
+  4. **Every rule was tuned on the frozen 32.** So workflow 24 also prints
+     the lots approved since the freeze on their own -- the nearest thing to
+     an untouched test -- and a decision should hold there too.
+  The site's own model is still trained on every lot. Tables before this
+  are leave-one-out on the 32 and are not comparable with runs after it.
 
 - **Actions minutes are not a constraint (owner, 2026-09-27).** Run
   comparisons side by side, and repeat a run when noise is the question,

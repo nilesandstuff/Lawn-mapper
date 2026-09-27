@@ -2615,6 +2615,37 @@ async function main() {
   if (renderWanted && drawn && drawn !== best) {
     console.log(`\nDrawing "${drawn.cfg.name}" (${drawn.med.toFixed(1)}%) -- ${drawn.cfg.name === TRIAL_ROW ? 'the row on trial' : "THE PLAN's row"} -- not the lowest median ("${best.cfg.name}", ${best.med.toFixed(1)}%).`);
   }
+  /*
+   * EVERY ROW'S PER-LOT RESULT, AS A FILE (LOT_RESULTS), so runs can be
+   * compared lot by lot and across seeds (tools/compare-runs.js). The table
+   * above is a median of these; decisions are made on the paired lots.
+   * `benchmark` marks the frozen 32 -- the lots every rule so far was tuned
+   * on -- so the ones approved since can be read on their own.
+   */
+  if (process.env.LOT_RESULTS) {
+    const r1 = (v) => (v === null || v === undefined || !Number.isFinite(v) ? null : Number(v.toFixed(2)));
+    writeFileSync(process.env.LOT_RESULTS, `${JSON.stringify({
+      seed: Number(process.env.SEED || 0) || null,
+      fingerprint: setPrint(lawns),
+      decoder: process.env.DECODER_KIND || null,
+      folds: process.env.FOLDS || 'leave-one-out',
+      rows: table.map((t) => ({
+        name: t.cfg.name,
+        median: r1(t.med),
+        lots: t.rows.map((r) => ({
+          id: r.lawn.id,
+          tag: benchmarkTag(r.lawn.id) || null,
+          benchmark: Boolean(benchmarkTag(r.lawn.id)),
+          error: r1(r.mine.errorPct),
+          seen: r1(r.seenPct),
+          inferred: r1(r.guessPct),
+          truthM2: r1(r.mine.truth),
+        })),
+      })),
+    })}\n`);
+    console.log(`Per-lot results for ${table.length} rows in ${process.env.LOT_RESULTS}.`);
+  }
+
   if (renderWanted && drawn) {
     /*
      * THE RUN'S OWN IDENTITY, assembled here where the facts are rather than
