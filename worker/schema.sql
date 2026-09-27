@@ -319,6 +319,13 @@ CREATE TABLE IF NOT EXISTS corpus (
   -- "was this a hard one" flag the app knows: a lawn needing the woods prompt
   -- is a lawn with a tree line, and the hard slice of the eval is mostly those.
   exclusions     TEXT,
+  -- HOW NAIP LINES UP WITH THE MAPBOX PHOTOGRAPH HERE, as the editor found it
+  -- or the person nudged it: JSON {east, north, scale, source}, metres on the
+  -- ground and a scale about the frame's centre. NAIP is sometimes shifted or
+  -- a little off in scale against Mapbox, and Mapbox is the one trusted
+  -- (owner, 2026-09-27). tools/naip_bands.py applies it before the detector
+  -- sees NAIP's near-infrared; NULL means the pipeline aligns it itself.
+  naip_align     TEXT,
   -- Where the aerial photograph is in R2, and which source it came from.
   --
   -- TWO COLUMNS BECAUSE THEY DISAGREE. `provider` above is what the person was
