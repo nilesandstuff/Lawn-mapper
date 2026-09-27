@@ -81,8 +81,13 @@ CANOPY = os.environ.get("CANOPY", "")
 CANOPY_MODE = "all" if os.environ.get("CANOPY_MODE", "lawn") == "all" else "lawn"
 # How many lawns to hold out, for a quick look. Unset means every lawn.
 LIMIT = int(os.environ.get("LIMIT", "0") or 0)
-# Folds; unset or 0 means leave-one-out (see main).
-FOLDS = int(os.environ.get("FOLDS", "0") or 0)
+# Folds; unset or 0 means leave-one-out (see main). "place" is grouped
+# folds: lots within NEIGHBOUR_KM of each other are always held out together.
+FOLDS_RAW = (os.environ.get("FOLDS", "") or "").strip()
+FOLDS = int(FOLDS_RAW) if FOLDS_RAW.isdigit() else 0
+BY_PLACE = FOLDS_RAW == "place"
+PLACE_FOLDS = int(os.environ.get("PLACE_FOLDS", "15") or 15)
+NEIGHBOUR_KM = float(os.environ.get("NEIGHBOUR_KM", "2") or 2)
 # THE FUSED-INPUTS TEST (tools/fuse_layers.py): seven more numbers a patch
 # from the lidar (FUSE_LIDAR=dir of <id>.npz from lidar_frame.py), NAIP's
 # near-infrared (FUSE_NAIP=dir of <id>-naip.png from naip_bands.py) and the
@@ -344,7 +349,13 @@ def main():
     # every lawn is still answered by a decoder that never saw it. Unset, it
     # is leave-one-out exactly as every benchmark table was measured.
     groups = [[L] for L in held_out]
-    if FOLDS > 1 and not LIMIT:
+    if BY_PLACE and not LIMIT:
+        from folds import place_folds
+        assign = place_folds([L["id"] for L in lawns], PLACE_FOLDS, NEIGHBOUR_KM, SEED)
+        groups = [[lawns[i] for i in fold] for fold in assign]
+        print(f"{len(groups)} folds by place: lots within {NEIGHBOUR_KM:g} km of each other held out together "
+              f"(sizes {', '.join(str(len(g)) for g in groups)})", flush=True)
+    elif FOLDS > 1 and not LIMIT:
         order = np.random.default_rng(SEED).permutation(len(lawns))
         groups = [[lawns[i] for i in order[k::FOLDS]] for k in range(FOLDS)]
         groups = [g for g in groups if g]
