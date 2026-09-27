@@ -52,6 +52,17 @@ got here. Update it whenever the in-flight run changes.*
   as H50. Same bar as H49: (a) THE PLAN's row fused vs unfused, two points
   or more, more lots better than worse; (b) the best fused decoder alone two
   points or more under the unfused PLAN's row.
+- **Also in flight: the method check (owner, 2026-09-27: "are you sure the
+  10 groups thing didn't mess it up?").** H48 → H49 changed two things at
+  once, the lawns (32 → 53) and the method (leave-one-out → 10 folds), so the
+  shrinking of the fused gain cannot yet be put on either. The same pair on
+  the 32 benchmark lawns in 10 folds (`lawns: benchmark, 10 folds`), set
+  against H48's leave-one-out pair (plan row 26.6 → 26.5, 18 lots better
+  against 7; decoders alone 28.5 → 26.1 and 29.8 → 25.0). If 10 folds
+  reproduce H48's pattern, the method is not the cause and the corpus is. A
+  known way it could differ: in leave-one-out every lot gets its own seed,
+  in 10 folds about five share one, so the seed's noise (about a point,
+  H28) no longer averages out across lots -- more noise, not bias.
 - **Before that (2026-09-26, after H48).** The fused inputs (S11)
   FAIL their bar on THE PLAN's row (26.6 → 26.5%, bar 24.6) and are not
   adopted — but the fused decoder ON ITS OWN reads 25.0%, below THE PLAN's
