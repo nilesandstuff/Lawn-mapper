@@ -123,7 +123,19 @@ class SatelliteEye:
     wants_scale = True
     PATCH = 16
 
-    def __init__(self, size):
+    # WHAT UNIT `res` IS IN, checked against the authors' code on 2026-09-27.
+    # The paper writes the scale as g/G with G "nominally 1 m", and this reader
+    # has always passed metres a pixel. The pretraining code never uses metres:
+    # scale-mae/mae/dataloaders/utils.py sets res = (crop px / output px) *
+    # base_resolution, with base_resolution 2.5 in config/fmow.yaml, over
+    # 448 px crops of 20-100% area downsampled to 224. So the encoder only
+    # ever saw res of about 2.2 to 5.0, whatever the photograph's real ground
+    # size. We pass 0.07-0.10. Nothing errors -- the features move, which is
+    # all prove_scale_is_read can check -- but the position encoding it gets
+    # is one it never saw in training. RES_FACTOR multiplies what is passed,
+    # so the right number can be MEASURED rather than argued; 1 is every run
+    # before this note.
+    def __init__(self, size, res_factor=1.0):
         from torchgeo.models import ScaleMAELarge16_Weights, scalemae_large_patch16
 
         if size % self.PATCH:
@@ -132,6 +144,7 @@ class SatelliteEye:
                 f"{self.PATCH}. Try 448, 672 or 896."
             )
         self.name = "scalemae-large"
+        self.res_factor = float(res_factor)
         self.patch = self.PATCH
         self.side = size // self.PATCH
         self.model = scalemae_large_patch16(
@@ -142,15 +155,28 @@ class SatelliteEye:
     def look(self, tensor, metres_per_pixel):
         # Read at forward time out of self.res, so this is the whole of telling
         # it what it is looking at.
-        self.model.res = float(metres_per_pixel)
+        self.model.res = float(metres_per_pixel) * self.res_factor
         with torch.no_grad():
             return self.model.forward_features(tensor)
+
+
+def res_factor_of(model_id):
+    """The x in "scalemae-large, res x5": what metres a pixel is multiplied by.
+
+    Absent is 1, the reading every run before 2026-09-27 used.
+    """
+    if "res x" not in model_id:
+        return 1.0
+    factor = float(model_id.split("res x", 1)[1].strip())
+    if factor <= 0:
+        raise SystemExit(f"res factor must be positive, got {factor}")
+    return factor
 
 
 def open_eye(model_id, size):
     """One of the two, chosen by name."""
     if model_id.startswith("scalemae"):
-        return SatelliteEye(size)
+        return SatelliteEye(size, res_factor_of(model_id))
     return HubEye(model_id, size)
 
 
@@ -311,7 +337,12 @@ def main():
         print(f"scale is reaching the model (features move {moved:.4f} across "
               "a tenfold change)", flush=True)
 
+    factor = getattr(eye, "res_factor", 1.0)
+    if factor != 1.0:
+        print(f"res factor x{factor:g}: the model is told {factor:g} x the metres "
+              "a pixel", flush=True)
     manifest = {"model": eye.name, "size": size, "scaleAware": eye.wants_scale,
+                "resFactor": factor,
                 "targetMpp": TARGET_MPP, "windowed": 0, "images": {}}
     extra = 0
     dim = 0

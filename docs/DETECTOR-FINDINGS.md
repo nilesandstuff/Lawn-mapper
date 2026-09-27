@@ -56,6 +56,14 @@ got here. Update it whenever the in-flight run changes.*
   lots approved since the freeze. The earlier 10-fold H50 pair is cancelled
   (superseded). The method check (benchmark in 10 folds) is left to finish,
   because it answers the owner's direct question about 10 folds.
+- **Also in flight (2026-09-27): S12, the scale Scale-MAE is told.** Three
+  workflow 14 runs, `model: scalemae-large, res x5 / x10 / x25`, decoder on,
+  canopy compare, lawns all, seed 7; each read with workflow 24 against the
+  three H50 unfused runs (x1). **The bar, before the run:** a factor is
+  worth confirming (seeds 8 and 9) if on THE PLAN's row its median paired
+  change is below zero with more lots better than worse; it is adopted only
+  when the confirmed three-seed set passes the protocol's full bar. If all
+  three are level or worse, x1 stands and S12 is closed as measured-nothing.
 - **Before that (2026-09-26, after H48).** The fused inputs (S11)
   FAIL their bar on THE PLAN's row (26.6 → 26.5%, bar 24.6) and are not
   adopted — but the fused decoder ON ITS OWN reads 25.0%, below THE PLAN's
@@ -3177,6 +3185,22 @@ encoding from it. Its advantage over SatMAE and ConvMAE **grows** as the GSD
 departs from what it trained on. This is why it suits us despite H1, and why
 the frame dump writes `scale.json` and the run refuses to guess.
 
+**CORRECTED 2026-09-27, from the authors' code rather than the paper.** The
+paper writes the scale as g/G, "G a reference GSD, nominally set to 1 m". The
+pretraining code never reads a ground size: `mae/dataloaders/utils.py` sets
+`res = ratios * base_resolution`, where `ratios` is crop pixels over output
+pixels from a random 20-100% crop of a 448 px piece, `base_resolution` is 2.5
+(`config/fmow.yaml`), and the encoder's 224 px input doubles it. So the
+encoder saw `res` of about **2.2 to 5.0** in pretraining: a RELATIVE zoom
+against each FMoW image's own pixels, not metres. The kNN evaluation passes
+`eval_base_resolution * 224 / eval_scale`, again relative. torchgeo's loader
+(`scalemae_large_patch16`) defaults `res` to 1.0 and multiplies the position
+grid by it. **This project passes metres a pixel, 0.07-0.10**, so the
+position encoding is squeezed 20-70x tighter than anything in pretraining.
+Whether that costs anything is NOT measured: see S12. Sources: the paper
+(arXiv 2212.14532, sec. 3), github.com/bair-climate-initiative/scale-mae,
+torchgeo/models/scale_mae.py.
+
 ### E3. Bigger receptive fields do NOT solve occlusion
 *The published result on our exact problem — inferring what is under tree
 canopy.* A U-Net gets **84% recall on unoccluded roads, 63.5% on roads under
@@ -3820,6 +3844,49 @@ seven more numbers a patch beside the eye's 1024 -- lidar height (m/10,
 clipped at 30 m), ground-return share, log return count (H38's void), a
 has-lidar flag, NAIP NDVI, a has-NAIP flag, the tree model's canopy share --
 each area-averaged onto the patch grid exactly as the labels are.
+
+### S12. We may be telling Scale-MAE the wrong scale (found 2026-09-27, checking the setup at the owner's request)
+
+**What is established** (E2's correction): pretraining fed the encoder a
+relative scale of about 2.2-5.0; we pass metres a pixel, 0.07-0.10. The
+encoder builds its position encoding by multiplying each patch's position by
+that number, so ours are compressed far past anything it trained on. Nothing
+errors; the features do move with it (the extractor's check), which proves
+the number arrives and nothing about whether it is the right number.
+
+**What is NOT established:** that this costs accuracy. Arguments both ways,
+neither measured here:
+- For a cost: an encoding outside the training range is a textbook way to
+  get worse features without an error. H4's 896 beating 1280 is at least
+  consistent with it (a bigger picture at the same `res` spans still less of
+  the range the model knows), and H22 found 10 cm windows no better than
+  squeezing whole, which a mis-scaled model would also produce.
+- Against: the decoder is trained on whatever comes out, and a consistent
+  distortion applied to every lot may be learnable. The eye-alone numbers
+  already beat colour (H3/H4).
+
+**The test (launched 2026-09-27):** the same model told 5x, 10x and 25x the
+metres a pixel (`model: scalemae-large, res xN` in workflow 14; 0.1 m ->
+0.5, 1.0, 2.5), each against the three H50 unfused runs (x1) with workflow
+24. Not argued further until that is in.
+
+**The owner's other two questions, answered here so they are not re-asked:**
+- *Padding teaches it woodland, roads and farmland.* Not in this setup: the
+  backbone is frozen (it learns nothing from our lots), and the decoder's
+  loss gives ground outside the lot line weight 0, so nothing outside the
+  line is taught as lawn or as not-lawn. What padding does do: it is context
+  every patch's features are computed with, the same at test time as in
+  training, and it costs compute. Whether blanking it helps or hurts (the
+  segmentation literature mostly finds context helps) is a cheap test and
+  is not run yet.
+- *One model should see all maps minus a few for testing.* That is what the
+  folds are: each fold trains a fresh decoder on every lot except the held-
+  out group, so every lot gets scored by a decoder that never saw it or its
+  neighbours. The folds only MEASURE the recipe; the model that would ship
+  (`publish`) trains once on all lots. "Make them compete, keep the best,
+  train it more" is model selection, which is what comparing settings is;
+  picking a winner by its score on the same lots it is then reported on is
+  the trap the protocol exists to avoid.
 
 ## Rules for running and reading these experiments
 
