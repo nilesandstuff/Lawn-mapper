@@ -63,21 +63,24 @@ def padded_side_metres(span_across, cover):
     return span_across * cover[0]
 
 
-def window_plan(w, h, size, patch):
+def window_plan(w, h, size, patch, margin_px=None):
     """Margin, core and window counts for a w x h photograph read at `size`.
 
     The margin is an eighth of the window, rounded DOWN to a whole number of
     patches so the kept core lands on patch boundaries: 896 -> 112 px (7
-    patches), 1280 -> 160 (10), 672 -> 80 (5), 448 -> 48 (3).
+    patches), 1280 -> 160 (10), 672 -> 80 (5), 448 -> 48 (3). `margin_px`
+    asks for a different one (rounded down to whole patches the same way):
+    the tiles want ground, not a fraction -- 5 m of context past every kept
+    edge (2026-09-27).
     """
-    margin = (size // 8 // patch) * patch
+    margin = ((size // 8 if margin_px is None else int(margin_px)) // patch) * patch
     core = size - 2 * margin
     if core <= 0 or core % patch:
         raise ValueError(f"no usable core for size {size} and patch {patch}")
     return margin, core, math.ceil(w / core), math.ceil(h / core)
 
 
-def windowed(arr, size, patch, look, keep=None):
+def windowed(arr, size, patch, look, keep=None, margin_px=None):
     """Read `arr` (h, w, c) in overlapping windows; return the stitched grid.
 
     Returns (grid, cover, windows) where grid is (gridH, gridW, dim), `cover`
@@ -87,7 +90,7 @@ def windowed(arr, size, patch, look, keep=None):
     photograph pixel x to grid column x / patch, i.e. (x / w) * gridW / coverX.
     """
     h, w = arr.shape[:2]
-    margin, core, nx, ny = window_plan(w, h, size, patch)
+    margin, core, nx, ny = window_plan(w, h, size, patch, margin_px)
     pad_r = margin + nx * core - w
     pad_b = margin + ny * core - h
     pads = ((margin, pad_b), (margin, pad_r), (0, 0))

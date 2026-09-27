@@ -59,8 +59,9 @@ got here. Update it whenever the in-flight run changes.*
   (tools/compare-runs.js) was run on the six downloaded lot-results files.
 - **In flight (2026-09-27 night):** S14 colour edges -- three runs of the
   main set-up (fused, seeds 7/8/9) each scoring THE PLAN's row with and
-  without colour on the edges; S13 tiles -- one run, fused, `windows:
-  tiles`, seed 7, screened against H50's fused runs.
+  without colour on the edges; S13 tiles -- two runs, fused, seed 7:
+  `windows: tiles` (6 cm, 27 m blocks, 5 m context) and `tiles 10 cm` (the
+  control), screened against H50's fused runs.
 - **Owner decisions and a scoring question, 2026-09-27 (afternoon):**
   - **Lidar canopy is shelved** ("the canopy model is doing the intended
     function better"): the "lidar ∩ NAIP canopy" rows now run only with
@@ -4142,10 +4143,17 @@ ground at the same pixels, overlapping a little, and skip the padding
 (which is how "A", cutting the padding of diagonal lots, is implemented:
 blocks that do not come within 8 m of the lot are never read, so no
 rotation is needed). **Built** (`windows: tiles` in workflow 14;
-TILE_MPP 0.06, TILE_SIZE 448 in tools/extract_features.py): 27 m blocks
-keeping the middle 21 m, 3 m overlap each side, a patch of 0.96 m on every
-lot. The photograph is upsampled from ~10 cm to 6 cm to get there: finer
-patches, not new detail. **Why it might help:** H53 -- the error on lawns
+TILE_MPP 0.06, TILE_SIZE 448 in tools/extract_features.py). The owner's
+numbers were a starting point to be refined; refined to: **6 cm a pixel,
+448 px blocks = 27 m, kept middle 17 m, 5 m of context past it each side**
+(TILE_OVERLAP_M; the first launch used 3 m and was stopped -- a patch near a
+block edge should see well past it). A patch is 0.96 m on every lot. The
+photograph (~10 cm) is enlarged 1.7x to get there: no new detail, but an
+answer every 0.96 m instead of every 1.6 m; past ~2x (5 cm) there is little
+left to gain. **Control, `tiles 10 cm`:** the same blocks at the
+photograph's own resolution (45 m, 1.6 m patches) -- separates "every lot
+read at one scale" (a 3x3 decoder step is 4 m on one lot and 16 m on another
+today) from "finer patches". **Why it might help:** H53 -- the error on lawns
 the detector gets right is almost all a half-metre band along the edge,
 and the owner judges the ~1.5 m patch broadly responsible. **Why it might
 not:** a 27 m block is less context than a whole lot, and H4 once found

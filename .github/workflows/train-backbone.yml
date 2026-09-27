@@ -139,14 +139,17 @@ on:
         # Windows triple the extraction and the decoder's time.
         #
         # "tiles" (owner, 2026-09-27): EVERY lot resampled to 6 cm a pixel and
-        # read in 448 px blocks -- 27 m, keeping the middle 21 m, 3 m of
-        # overlap each side -- so the model always sees the same pixels over
-        # the same ground, a patch is 0.96 m instead of 1.3-5.4 m, and blocks
-        # nowhere near the lot are skipped (tools/extract_features.py, TILE_*).
-        description: 'Read big lots in overlapping windows at 10 cm (on), squeeze every lot whole (off), or every lot in 6 cm blocks of 27 m, padding skipped (tiles)'
+        # read in 448 px blocks -- 27 m, keeping the middle 17 m, 5 m of
+        # context past it each side -- so the model always sees the same
+        # pixels over the same ground, a patch is 0.96 m instead of 1.3-5.4 m,
+        # and blocks nowhere near the lot are skipped (TILE_* in
+        # tools/extract_features.py). "tiles 10 cm" is the control: the same
+        # blocks at the photograph's own resolution (45 m, 1.6 m patches), to
+        # tell "every lot read the same way" from "finer patches".
+        description: 'Big lots in 10 cm windows (on), every lot squeezed whole (off), or every lot in blocks: 6 cm / 27 m (tiles) or 10 cm / 45 m (tiles 10 cm)'
         type: choice
         default: 'off'
-        options: ['on', 'off', 'tiles']
+        options: ['on', 'off', 'tiles', 'tiles 10 cm']
       lawns:
         # WHICH LAWNS. The 32 maps every table since 2026-09-23 was measured
         # on are frozen as the benchmark (tools/lawn-set.js, cohort column);
@@ -377,7 +380,7 @@ jobs:
           # Nine metres a pixel is a target no lot fails, so "off" reads every
           # lot whole -- the pre-2026-09-23 behaviour, kept as the control.
           TARGET_MPP: ${{ inputs.windows == 'off' && '9' || '0.10' }}
-          TILE_MPP: ${{ inputs.windows == 'tiles' && '0.06' || '' }}
+          TILE_MPP: ${{ inputs.windows == 'tiles' && '0.06' || (inputs.windows == 'tiles 10 cm' && '0.10' || '') }}
         run: python3 tools/extract_features.py
 
       # Step one and a half: one decoder per held-out lawn over the full patch

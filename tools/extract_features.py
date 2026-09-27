@@ -77,6 +77,10 @@ TARGET_MPP = float(os.environ.get("TARGET_MPP", "0.10"))
 TILE_MPP = float(os.environ.get("TILE_MPP", "0") or 0)
 TILE_SIZE = int(os.environ.get("TILE_SIZE", "448") or 448)
 TILE_BUFFER_M = float(os.environ.get("TILE_BUFFER_M", "8") or 8)
+# Context kept past every block's kept middle, in metres of ground. 5 m, not
+# the window reader's eighth-of-a-block: at 6 cm an eighth is under 3 m, and
+# a patch judged near a block edge should see well past it.
+TILE_OVERLAP_M = float(os.environ.get("TILE_OVERLAP_M", "5") or 5)
 
 
 def lot_keeper(labels_path, w, h, buffer_px):
@@ -376,8 +380,10 @@ def main():
         print(f"res factor x{factor:g}: the model is told {factor:g} x the metres "
               "a pixel", flush=True)
     if TILE_MPP > 0:
+        m_px = (int(TILE_OVERLAP_M / TILE_MPP) // 16) * 16
         print(f"TILES: every lot at {TILE_MPP * 100:.0f} cm a pixel in {TILE_SIZE} px blocks "
-              f"({TILE_SIZE * TILE_MPP:.0f} m, kept middle {(TILE_SIZE - 2 * ((TILE_SIZE // 8 // 16) * 16)) * TILE_MPP:.0f} m), "
+              f"({TILE_SIZE * TILE_MPP:.0f} m, kept middle {(TILE_SIZE - 2 * m_px) * TILE_MPP:.0f} m, "
+              f"{m_px * TILE_MPP:.1f} m of context past it), "
               f"a patch {16 * TILE_MPP:.2f} m; blocks over {TILE_BUFFER_M:.0f} m from the lot skipped", flush=True)
     manifest = {"model": eye.name, "size": size, "scaleAware": eye.wants_scale,
                 "tileMpp": TILE_MPP or None,
@@ -412,7 +418,8 @@ def main():
                 flat, d, tokens["extra"] = patches_of(hidden, eye.side)
                 return flat.reshape(eye.side, eye.side, d)
 
-            grid, cover, windows = windowed(normalised(img2), TILE_SIZE, eye.patch, look, keep=keep)
+            grid, cover, windows = windowed(normalised(img2), TILE_SIZE, eye.patch, look, keep=keep,
+                                            margin_px=TILE_OVERLAP_M / TILE_MPP)
             dim = grid.shape[2]
             extra = tokens["extra"]
             manifest["windowed"] += 1
