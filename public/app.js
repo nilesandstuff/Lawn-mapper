@@ -26,7 +26,7 @@ import {
 } from './lib/edges.js';
 import { afterStroke, restoreAway } from './lib/stitch.js';
 import { strokeOnShapes } from './lib/brush-vector.js';
-import { extendToRoads, mergeButtonPoint, mergeRings } from './lib/frontage.js';
+import { extendToRoads, mergeButtonPoint, mergeRings, placeInside } from './lib/frontage.js';
 // Pasting the pieces of a big lot's detection back into one mask.
 import { stitchMasks } from './lib/tiles.js';
 import {
@@ -540,6 +540,35 @@ if (typeof window !== 'undefined') {
    * exactly right and does nothing when pressed. Only the depth catches that.
    */
   window.__lmHistory = () => history.length;
+  // Tinker mode's neighbours and their merge buttons: whether each button is
+  // shown, and whether every corner of it sits inside its own parcel.
+  window.__lmNeighbours = () => {
+    const inPoly = (poly, [x, y]) => {
+      let c = false;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const [xi, yi] = poly[i];
+        const [xj, yj] = poly[j];
+        if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c;
+      }
+      return c;
+    };
+    const box = map.getContainer().getBoundingClientRect();
+    return {
+      count: neighbourState.all.length,
+      parcelM2: state.parcel ? measure(state.parcel.geometry).squareMeters ?? null : null,
+      parcelSqFt: state.parcel ? measure(state.parcel.geometry).squareFeetRaw : null,
+      buttons: neighbourState.markers.map((m) => {
+        const el = m.lmPlace?.el;
+        const shown = Boolean(el && el.style.display !== 'none' && el.style.visibility !== 'hidden');
+        const r = el ? el.getBoundingClientRect() : null;
+        const poly = m.lmPlace ? m.lmPlace.nb.ring.map((ll) => { const q = map.project(ll); return [q.x, q.y]; }) : [];
+        const corners = r ? [[r.left, r.top], [r.right, r.top], [r.right, r.bottom], [r.left, r.bottom]]
+          .map(([x, y]) => [x - box.left, y - box.top]) : [];
+        return { shown, label: el?.textContent, inside: corners.length === 4 && corners.every((c) => inPoly(poly, c)),
+          x: r ? (r.left + r.right) / 2 : null, y: r ? (r.top + r.bottom) / 2 : null };
+      }),
+    };
+  };
   // The drawing in progress: which Draw mode, how many corners, both stacks.
   window.__lmDraft = () => ({
     mode: draw ? draw.getMode() : null,
@@ -3567,7 +3596,7 @@ function endDrag() {
 }
 
 function onMouseDown(e) {
-  if (e.button !== 0) return;
+  if (e.button !== 0 || onMarker(e)) return;
   gestureIsTouch = false;
   beginPanHold(e.clientX, e.clientY);
   beginDrag(e.clientX, e.clientY);
@@ -3706,6 +3735,7 @@ const ECHO_SLOP_PX = 30;   // ...and lands on the same spot
 let bareTouch = null;
 
 function onBareTouchStart(e) {
+  if (onMarker(e)) { bareTouch = null; touchStart = null; return; }
   if (diag.armed || e.touches.length !== 1) { bareTouch = null; return; }
   bareTouch = { x: e.touches[0].clientX, y: e.touches[0].clientY, at: Date.now() };
 }
@@ -3730,6 +3760,7 @@ function onBareTouchEnd(e) {
 }
 
 function onTouchStart(e) {
+  if (onMarker(e)) { touchStart = null; return; }
   /*
    * Deliberately NOT claimed, however many fingers there are.
    *
@@ -3777,6 +3808,8 @@ function onTouchEnd(e) {
 
 function onMapClick(e) {
   const src = e.originalEvent || {};
+  // A click on a merge button is the button's; it must not also select an edge under it.
+  if (onMarker(src)) return;
   const x = Number.isFinite(src.clientX) ? src.clientX : null;
   const y = Number.isFinite(src.clientY) ? src.clientY : null;
 
@@ -10016,6 +10049,7 @@ function neighbourAbsorbed(ring) {
 function refreshNeighbours() {
   if (!map) return;
   if (!map.getSource('neighbours')) {
+    map.on('move', placeMergeButtons);
     map.addSource('neighbours', { type: 'geojson', data: empty() });
     map.addLayer({
       id: 'neighbours', type: 'line', source: 'neighbours',
@@ -10038,16 +10072,80 @@ function refreshNeighbours() {
     el.type = 'button';
     el.className = 'merge-parcel';
     el.textContent = 'Merge this parcel';
-    el.addEventListener('click', (e) => { e.stopPropagation(); mergeNeighbour(nb); });
-    neighbourState.markers.push(new mapboxgl.Marker({ element: el }).setLngLat(at).addTo(map));
+    /*
+     * A TAP HERE IS THE BUTTON'S, NOT THE MAP'S. The map's own touch
+     * listeners capture on its container, which holds the marker, so they see
+     * this touch first; they now step aside for anything inside a marker
+     * (see onMarker). And the merge runs on the touch itself as well as on
+     * click, once, so a browser that never turns the touch into a click
+     * still merges.
+     */
+    let fired = 0;
+    const go = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (Date.now() - fired < 600) return;
+      fired = Date.now();
+      mergeNeighbour(nb, el);
+    };
+    el.addEventListener('touchend', go, { passive: false });
+    el.addEventListener('click', go);
+    const marker = new mapboxgl.Marker({ element: el }).setLngLat(at).addTo(map);
+    neighbourState.markers.push(marker);
+    marker.lmPlace = { nb, pref: at, el };
   }
+  placeMergeButtons();
 }
 
-function mergeNeighbour(nb) {
+/** A pointer event that landed on a marker (the merge buttons): not the map's. */
+const onMarker = (e) => Boolean(e?.target?.closest?.('.mapboxgl-marker'));
+
+/*
+ * WHOLE, INSIDE ITS PARCEL, OR NOT SHOWN (the owner, 2026-09-27). The button
+ * is placed in SCREEN pixels, because how much of a parcel it covers depends
+ * on the zoom: the nearest spot to the 20 ft point where the whole button
+ * fits inside the neighbour, re-checked whenever the map moves. Too little
+ * room for "Merge this parcel" tries "Merge"; too little for that, hidden.
+ */
+let placeQueued = false;
+function placeMergeButtons() {
+  if (placeQueued) return;
+  placeQueued = true;
+  requestAnimationFrame(() => {
+    placeQueued = false;
+    for (const m of neighbourState.markers) {
+      const { nb, pref, el } = m.lmPlace || {};
+      if (!el) continue;
+      const poly = nb.ring.map((ll) => { const p = map.project(ll); return [p.x, p.y]; });
+      const want = map.project(pref);
+      let spot = null;
+      for (const label of ['Merge this parcel', 'Merge']) {
+        el.textContent = label;
+        el.style.visibility = 'hidden';
+        el.style.display = '';
+        spot = placeInside(poly, [want.x, want.y], el.offsetWidth, el.offsetHeight);
+        if (spot) break;
+      }
+      if (spot) {
+        m.setLngLat(map.unproject(spot));
+        el.style.visibility = '';
+      } else {
+        el.style.display = 'none';
+      }
+    }
+  });
+}
+
+function mergeNeighbour(nb, el = null) {
   const pr = parcelRing();
   const merged = pr && window.polygonClipping ? mergeRings(window.polygonClipping, pr, nb.ring) : null;
   if (!merged) {
     setStatus('Those two parcels do not join into one outline, so they cannot be merged.', 'warn');
+    // Said on the button too: the status line can be off screen on a phone.
+    if (el) {
+      el.textContent = 'Can\'t merge';
+      setTimeout(() => placeMergeButtons(), 2000);
+    }
     return;
   }
   pushHistory();

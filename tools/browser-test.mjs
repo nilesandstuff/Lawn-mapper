@@ -3211,6 +3211,58 @@ console.log('\n--- developer mode ---');
     left.on === false && left.panelVisible === false, JSON.stringify(left));
 }
 
+/* ------------------------------------------ tinker: merge a neighbour */
+/*
+ * THE OWNER TAPPED "Merge this parcel" AND NOTHING HAPPENED (2026-09-27).
+ * On a phone, in tinker mode: the neighbours arrive from the county, every
+ * button shown sits wholly inside its own parcel (the owner's second rule),
+ * and a real TAP on one makes the property line bigger.
+ */
+console.log('\n--- tinker: neighbours and merging ---');
+{
+  const tp = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
+  tp.on('pageerror', (err) => errors.push(`PAGEERROR (tinker): ${err.message}`));
+  await tp.addInitScript(() => {
+    try { sessionStorage.setItem('lawnmap.ai-notice.v1', '1'); } catch { /* fine */ }
+  });
+  await tp.goto(`${BASE}/#tinker`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await tp.waitForFunction(() => window.__lmNeighbours !== undefined, { timeout: 30000 });
+  await tp.waitForTimeout(3000);
+  await tp.fill('#address', ADDRESS);
+  await tp.click('#address-form button[type=submit]');
+  await tp.waitForFunction(
+    () => document.querySelector('#step-candidates')?.hidden === false
+      || document.querySelector('#step-confirm')?.hidden === false,
+    { timeout: 60000 }
+  ).catch(() => {});
+  if (await tp.locator('#step-candidates').isVisible()) {
+    await tp.locator('#candidate-list button').first().click();
+    await tp.waitForTimeout(600);
+  }
+  await tp.click('[data-action=confirm]');
+  await tp.waitForFunction(() => {
+    const n = window.__lmNeighbours();
+    return n.count > 0 && n.buttons.some((b) => b.shown);
+  }, { timeout: 60000 }).catch(() => {});
+  await tp.waitForTimeout(1500);
+  const before = await tp.evaluate(() => window.__lmNeighbours());
+  const shown = before.buttons.filter((b) => b.shown);
+  check('tinker mode draws the neighbouring parcels', before.count > 0, `${before.count} neighbours`);
+  check('and offers a merge button on at least one of them', shown.length > 0,
+    `${before.buttons.length} button(s), ${shown.length} shown`);
+  check('every button shown sits wholly inside its own parcel',
+    shown.length > 0 && shown.every((b) => b.inside), JSON.stringify(shown.map((b) => [b.label, b.inside])));
+  if (shown.length) {
+    await tp.touchscreen.tap(shown[0].x, shown[0].y);
+    await tp.waitForTimeout(800);
+    const after = await tp.evaluate(() => window.__lmNeighbours());
+    check('a TAP on "Merge this parcel" makes the property line bigger',
+      after.parcelSqFt > before.parcelSqFt + 1,
+      `${Math.round(before.parcelSqFt)} -> ${Math.round(after.parcelSqFt)} sq ft; status: ${await tp.textContent('#status')}`);
+  }
+  await tp.close();
+}
+
 if (errors.some((e) => e.includes('403'))) {
   check('the map got its tiles (no 403 from Mapbox)', false,
     'the page is using a URL-restricted token on a host it does not allow — ' +
