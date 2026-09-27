@@ -540,6 +540,13 @@ if (typeof window !== 'undefined') {
    * exactly right and does nothing when pressed. Only the depth catches that.
    */
   window.__lmHistory = () => history.length;
+  // Zoom in on the i-th merge button's neighbour, as a person would to tap it.
+  window.__lmZoomToNeighbour = (i = 0, zoomBy = 2.5) => {
+    const m = neighbourState.markers[i];
+    if (!m?.lmPlace) return false;
+    map.jumpTo({ center: m.lmPlace.pref, zoom: map.getZoom() + zoomBy });
+    return true;
+  };
   // Tinker mode's neighbours and their merge buttons: whether each button is
   // shown, and whether every corner of it sits inside its own parcel.
   window.__lmNeighbours = () => {
