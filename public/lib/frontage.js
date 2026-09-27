@@ -169,27 +169,43 @@ export function extendToRoads(ringLL, roads, {
     const out = new Map();
     const first = chain[0];
     const last = chain[chain.length - 1];
-    // The vertex at the start of the chain: moved front line meets the unmoved side line before it.
+    const cap = Math.max(...chain.map((i) => shift[i])) * 3 + 3;
+    const within = (v, q) => q && len(sub(q, P[v])) <= cap;
+    /*
+     * THE ENDS: the moved front line meets the unmoved side line, so the side
+     * keeps its angle (the edge slider's rule). Where that meeting point is
+     * absurdly far -- a side line nearly along the road -- the corner steps
+     * straight out instead, turning that side a little rather than refusing
+     * the whole frontage.
+     */
     const sideBefore = lineOf((first - 1 + n) % n, false);
     const L0 = lineOf(first, true);
-    out.set(first, intersect(sideBefore.p, sideBefore.u, L0.p, L0.u) || add(P[first], mul(normals[first], shift[first])));
-    // Between two moved edges.
+    const q0 = intersect(sideBefore.p, sideBefore.u, L0.p, L0.u);
+    out.set(first, within(first, q0) ? q0 : add(P[first], mul(normals[first], shift[first])));
+    /*
+     * BETWEEN TWO MOVED EDGES: pushed out along the corner's own normal (the
+     * mitre) by the two edges' mean shift. Crossing the two moved lines was
+     * right for a sharp corner and wrong for a curve: a curved frontage is
+     * many short edges a degree or two apart, each moving its own distance,
+     * and two nearly parallel lines at slightly different offsets cross a
+     * long way off. That threw the corner out, and the frontage was refused as
+     * "a side line runs almost along the road" or "the outline would fold"
+     * (the owner's two lots, 2026-09-27).
+     */
     for (let k = 0; k < chain.length - 1; k++) {
       const i = chain[k];
       const j = chain[k + 1];
-      const Li = lineOf(i, true);
-      const Lj = lineOf(j, true);
-      out.set(j, intersect(Li.p, Li.u, Lj.p, Lj.u)
-        || add(P[j], mul(add(mul(normals[i], shift[i]), mul(normals[j], shift[j])), 0.5)));
+      const d = (shift[i] + shift[j]) / 2;
+      const c = dot(normals[i], normals[j]);
+      const m = c > -0.5 ? mul(add(normals[i], normals[j]), d / (1 + c)) : mul(add(normals[i], normals[j]), d);
+      out.set(j, add(P[j], m));
     }
-    // The vertex at the end of the chain: moved front line meets the unmoved side line after it.
     const endV = (last + 1) % n;
     const sideAfter = lineOf(endV, false);
     const Ln = lineOf(last, true);
-    out.set(endV, intersect(Ln.p, Ln.u, sideAfter.p, sideAfter.u) || add(P[endV], mul(normals[last], shift[last])));
-    // No corner may travel absurdly far (a side line nearly parallel to the road).
-    const cap = Math.max(...chain.map((i) => shift[i])) * 3 + 3;
-    for (const [v, q] of out) if (len(sub(q, P[v])) > cap) return null;
+    const q1 = intersect(Ln.p, Ln.u, sideAfter.p, sideAfter.u);
+    out.set(endV, within(endV, q1) ? q1 : add(P[endV], mul(normals[last], shift[last])));
+    for (const [v, q] of out) if (!within(v, q)) return null;
     return out;
   };
 
@@ -204,7 +220,7 @@ export function extendToRoads(ringLL, roads, {
   const skipped = [];
   for (const chain of chains) {
     const verts = chainVerts(chain);
-    if (!verts) { skipped.push({ edges: chain, reason: 'a side line runs almost along the road' }); continue; }
+    if (!verts) { skipped.push({ edges: chain, reason: 'a corner would have to move too far' }); continue; }
     const trial = toRing(verts);
     if (clip) {
       let addedGeom;

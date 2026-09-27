@@ -85,6 +85,27 @@ const curve = road('street', [-50, -9], [15, -9], [60, 0]);
 r = extendToRoads(bent, [curve], { clip });
 check('a bent frontage moves as one piece', r.moved.length === 2 && clip.union([r.ring]).length === 1, show(r.ring));
 
+// The owner's Conifer Ridge lot (2026-09-27): a curving frontage drawn as many
+// short edges, along a curving road, each a slightly different distance away.
+{
+  const arc = [];
+  for (let k = 0; k <= 16; k++) {
+    const t = Math.PI * (0.25 + 0.5 * k / 16);
+    arc.push([60 * Math.cos(t), 60 * Math.sin(t) - 80]);   // front: an arc of radius 60 around (0,-80)... bulging away from the road
+  }
+  // lot: the arc (front, facing the road inside the curve) and a back line 30 m further out
+  const back = arc.map(([x, y]) => [x * 1.5, (y + 80) * 1.5 - 80]).reverse();
+  const curvyLot = ring(...arc.map(([x, y]) => [x, -y - 60]), ...back.map(([x, y]) => [x, -y - 60]));
+  const curvyRoad = { cls: 'street', coords: [] };
+  for (let k = 0; k <= 40; k++) {
+    const t = Math.PI * (0.15 + 0.7 * k / 40);
+    curvyRoad.coords.push(ll(51 * Math.cos(t), -(51 * Math.sin(t) - 80) - 60 - 0.2 * Math.sin(k)));
+  }
+  const cr = extendToRoads(curvyLot, [curvyRoad], { clip });
+  check('a curving frontage of many short edges moves as one smooth piece',
+    cr.moved.length >= 12 && clip.union([cr.ring]).length === 1, `${cr.moved.length} edges; ${JSON.stringify(cr.skipped)}`);
+}
+
 // Merging: two lots that share a side.
 const merged = mergeRings(clip, lot, beside);
 check('two adjoining parcels merge into one outline', merged && Math.abs(openRing(merged).length - 4) <= 2, merged && show(merged));
