@@ -3793,6 +3793,12 @@ each area-averaged onto the patch grid exactly as the labels are.
 
 ## Rules for running and reading these experiments
 
+- **Actions minutes are not a constraint (owner, 2026-09-27).** Run
+  comparisons side by side, and repeat a run when noise is the question,
+  rather than economising on runner time. The limits that do bind are the
+  job's own `timeout-minutes` (300 in workflow 14; GitHub's hosted ceiling
+  is 6 hours) and CPU-only runners.
+
 1. **Check the fingerprint and lawn count first.** Two tables from two corpora
    are not comparable (H7). **Since 2026-09-24 the 32 lawns of `1rijjz2` are
    frozen as the benchmark** (`cohort = 'benchmark-1rijjz2'` in the corpus
