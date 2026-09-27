@@ -57,6 +57,10 @@ got here. Update it whenever the in-flight run changes.*
   workflows that exist on the default branch (`claude/new-session-8204jd`),
   and compare-runs.yml exists only on this branch; the same code
   (tools/compare-runs.js) was run on the six downloaded lot-results files.
+- **In flight (2026-09-27 night):** S14 colour edges -- three runs of the
+  main set-up (fused, seeds 7/8/9) each scoring THE PLAN's row with and
+  without colour on the edges; S13 tiles -- one run, fused, `windows:
+  tiles`, seed 7, screened against H50's fused runs.
 - **Owner decisions and a scoring question, 2026-09-27 (afternoon):**
   - **Lidar canopy is shelved** ("the canopy model is doing the intended
     function better"): the "lidar ∩ NAIP canopy" rows now run only with
@@ -4122,6 +4126,43 @@ metres a pixel (`model: scalemae-large, res xN` in workflow 14; 0.1 m ->
   train it more" is model selection, which is what comparing settings is;
   picking a winner by its score on the same lots it is then reported on is
   the trap the protocol exists to avoid.
+
+### S13. Every lot in the same-sized blocks at one ground resolution (the owner's, 2026-09-27)
+
+**The idea (owner):** instead of squeezing each lot into one 896 px pass
+(5.4 to 33.5 cm a pixel, so a backbone patch of 0.9 to 5.4 m, set by how
+big the frame is), read every lot in standard blocks that show the same
+ground at the same pixels, overlapping a little, and skip the padding
+(which is how "A", cutting the padding of diagonal lots, is implemented:
+blocks that do not come within 8 m of the lot are never read, so no
+rotation is needed). **Built** (`windows: tiles` in workflow 14;
+TILE_MPP 0.06, TILE_SIZE 448 in tools/extract_features.py): 27 m blocks
+keeping the middle 21 m, 3 m overlap each side, a patch of 0.96 m on every
+lot. The photograph is upsampled from ~10 cm to 6 cm to get there: finer
+patches, not new detail. **Why it might help:** H53 -- the error on lawns
+the detector gets right is almost all a half-metre band along the edge,
+and the owner judges the ~1.5 m patch broadly responsible. **Why it might
+not:** a 27 m block is less context than a whole lot, and H4 once found
+896 beat 1280. **Bar, before the run:** one seed screens it against H50's
+fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
+PLAN's median paired change is below zero with more lots better than worse;
+adopted only under the protocol's full bar.
+
+### S14. Colour on the edges only (the owner liked it, 2026-09-27)
+
+**The idea:** colour cannot find a lawn (dormant grass, shade), but once
+the decoder has found it, colour at 15 cm can say which side of the line a
+cell falls on. **Built** (tools/colour-edges.js, 4 checks): per lot, a
+logistic model on the 14 colour/texture numbers, fitted to that lot's own
+confident ground (over 1.5 m inside or outside the decoder's edge, inside
+the property line, off the canopy), re-decides only cells within 1 m of the
+edge, never under canopy, then a 3x3 majority pass; the lidar veto still
+has the last word. Every run from now scores "THE PLAN's row, colour edges"
+beside THE PLAN's row, so the comparison is within the same runs and seeds.
+**Bar, before the run:** on THE PLAN's row versus the same row with colour
+edges, across seeds 7, 8, 9: more lots better than worse with a sign-test p
+under 0.1, a 95% interval for the median paired change below zero, and not
+worse on the lots approved since. Then it joins THE PLAN.
 
 ## Rules for running and reading these experiments
 

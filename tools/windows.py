@@ -77,7 +77,7 @@ def window_plan(w, h, size, patch):
     return margin, core, math.ceil(w / core), math.ceil(h / core)
 
 
-def windowed(arr, size, patch, look):
+def windowed(arr, size, patch, look, keep=None):
     """Read `arr` (h, w, c) in overlapping windows; return the stitched grid.
 
     Returns (grid, cover, windows) where grid is (gridH, gridW, dim), `cover`
@@ -98,8 +98,17 @@ def windowed(arr, size, patch, look):
 
     cp, mp = core // patch, margin // patch
     out = None
+    skipped = []
     for ky in range(ny):
         for kx in range(nx):
+            # A window whose core is nowhere near the lot is not read at all
+            # (the owner's "don't process the padding", 2026-09-27): its
+            # patches stay zero, and the decoder gives ground outside the
+            # property line no weight anyway. `keep` gets the core's box in
+            # the photograph's own pixels.
+            if keep is not None and not keep(kx * core, ky * core, (kx + 1) * core, (ky + 1) * core):
+                skipped.append((ky, kx))
+                continue
             win = padded[ky * core:ky * core + size, kx * core:kx * core + size]
             g = look(win)
             if g.shape[0] != size // patch or g.shape[1] != size // patch:
@@ -112,4 +121,12 @@ def windowed(arr, size, patch, look):
                 out = np.zeros((ny * cp, nx * cp, g.shape[2]), dtype=np.float32)
             out[ky * cp:(ky + 1) * cp, kx * cp:(kx + 1) * cp] = g[mp:mp + cp, mp:mp + cp]
 
-    return out, (nx * core / w, ny * core / h), nx * ny
+    if out is None:
+        # Every window skipped: nothing of the lot in the photograph. One read
+        # of the first window keeps the grid's shape honest.
+        g = look(padded[0:size, 0:size])
+        out = np.zeros((ny * cp, nx * cp, g.shape[2]), dtype=np.float32)
+        skipped = [s for s in skipped if s != (0, 0)]
+        out[0:cp, 0:cp] = g[mp:mp + cp, mp:mp + cp]
+    windowed.last_skipped = len(skipped)
+    return out, (nx * core / w, ny * core / h), nx * ny - len(skipped)
