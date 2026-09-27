@@ -54,6 +54,7 @@ import {
 } from './backbone.js';
 import { rasterizePolygon } from '../public/lib/mask.js';
 import { stage3, clearCanopy } from './stage3.js';
+import { colourEdges } from './colour-edges.js';
 import { frameBbox3857 } from '../worker/src/imagery.js';
 import { lawnSetClause, lawnSetName, lawnSetDescription, BENCHMARK_PRINT } from './lawn-set.js';
 import { lngLatToFramePx, metresPerPixel } from '../public/lib/mercator.js';
@@ -2365,6 +2366,13 @@ async function main() {
         let mask = canopy
           ? stage3(masks[held], canopy, L.grid, L.gridH, { mpp: L.mpp, height: L.height, ...opts }).mask
           : masks[held];
+        /* Colour on the edges only (tools/colour-edges.js), before the veto
+           so roof and void still have the last word. */
+        if (opts.edges && L.cheap) {
+          mask = colourEdges(mask, L.cheap, FEATURE_COUNT, {
+            w: L.grid, h: L.gridH, mpp: L.mpp, within: L.within, canopy: L.canopy,
+          }).mask;
+        }
         const preVeto = opts.veto ? mask : null;
         if (opts.veto) mask = lidarVeto(mask, L.roof, L.void);
         const row = foldRow(held, judgeFold(L, mask, { trainedOn: lawns.length - 1 }));
@@ -2482,6 +2490,15 @@ async function main() {
         console.log(`Scoring "${cfg6.name}" (span 8 m, reach 1 m, bridge over 180°, then roof and void are not lawn)…`);
         const vetoed = judge(masks, { spanM: 8, reachM: 1, minRing: 0.5, veto: true });
         table.push(summarise(cfg6, vetoed, cfg.dims));
+        /*
+         * THE SAME ROW WITH COLOUR ON THE EDGES (owner, 2026-09-27): every
+         * cell within 1 m of the decoder's edge re-decided by a colour model
+         * fitted to this lot's own confident ground. Its lot-by-lot figures
+         * against the row above are the test; compare-runs reads both.
+         */
+        const cfgE = { ...cfg, name: `${cfg6.name}, colour edges`, stage3: true };
+        console.log(`Scoring "${cfgE.name}" (cells within 1 m of the edge re-decided by this lot's own colours)…`);
+        table.push(summarise(cfgE, judge(masks, { spanM: 8, reachM: 1, minRing: 0.5, veto: true, edges: true }), cfg.dims));
         const split = { roof: [0, 0], void: [0, 0] };
         const moved = [];
         const plain = judge(masks, { spanM: 8, reachM: 1, minRing: 0.5 });

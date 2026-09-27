@@ -97,4 +97,30 @@ tall_cover = (1520 / 544, 1520 / 1520)       # 54 m across, 152 m down
 assert abs(padded_side_metres(54.4, tall_cover) - 152.0) < 1e-6
 assert padded_side_metres(80.0, (1.0, 1.0)) == 80.0
 
+# SKIPPING WINDOWS AWAY FROM THE LOT (2026-09-27). Only windows whose core
+# the `keep` test accepts are read; the rest stay zero, and every patch that
+# WAS read is still exactly where the photograph had it.
+arr = coords(1000, 700)
+calls = []
+
+def counting(look):
+    def inner(win):
+        calls.append(1)
+        return look(win)
+    return inner
+
+keep_left = lambda x0, y0, x1, y1: x0 < 400        # the lot sits on the left
+grid, cover, read = windowed(arr, 448, 16, counting(mean_eye(16)), keep=keep_left)
+margin, core, nx, ny = window_plan(1000, 700, 448, 16)
+kept_cols = sum(1 for kx in range(nx) if kx * core < 400)
+assert read == kept_cols * ny == len(calls), (read, kept_cols, ny, len(calls))
+cp = core // 16
+assert np.all(grid[:, kept_cols * cp:] == 0), "a skipped window left something behind"
+for gy in range(0, ny * cp, 7):
+    for gx in range(0, kept_cols * cp, 7):
+        if (gx + 1) * 16 > 1000 or (gy + 1) * 16 > 700:
+            continue
+        assert abs(grid[gy, gx, 0] - (gx * 16 + 7.5) / 1000) < 1e-5
+print("windows: skipping keeps registration and reads only what was asked")
+
 print("windows: ok")
