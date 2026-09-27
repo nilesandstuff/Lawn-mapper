@@ -46,36 +46,12 @@ got here. Update it whenever the in-flight run changes.*
   tools/train-detector.js) when it scored it, and the picker names the row
   each run drew. Runs before the fix are unchanged on the page.
 - **Pictures of THE PLAN's row are up (2026-09-26):** `runs/2026-09-25-2152-edt-scalemae-large-896px`, the first drawn for the row actually adopted.
-- **In flight (2026-09-27, after H48): the fused inputs on `lawns: all` (53
-  maps), two runs side by side** — workflow 14, `canopy: compare`, one with
-  `decoder: fused` and one with `decoder: on`, the same corpus, seed and
-  code. Write it up as H49. NOT comparable with any benchmark table; the pair
-  is compared only with itself. **The owner's call (2026-09-27): fused inputs
-  are the path forward** ("this run was extremely promising"); train on the
-  full corpus from here. Teaching the decoder the inferred ground under big
-  trees is deliberately HELD — stage 3 fills that, and it needs the lawn to
-  reach the canopy's edge first, which it does not yet do well. **The bar,
-  written before the run:** (a) THE PLAN's row, fused against unfused on the
-  same 53, two points or more better with more lots better than worse; (b)
-  the lead from H48 — the best fused decoder ALONE (no stage 3, no veto) two
-  points or more under the unfused PLAN's row. Also read: sharp edges, hard
-  shade, B28, and whether H48's 18-against-7 holds on the 32 inside the 53.
-  **Changed before the fused half ran (owner, 2026-09-27): H48's canopy
-  leak, fix 1** — the "canopy on lawn" decoder no longer gets the canopy as
-  an input channel (FUSE_CANOPY=0; zeros, same grid shape). Partial: lidar
-  height offers the same shortcut less directly. The real fix, grading lawn
-  under trees from the tracer's own drawing, is the owner's stated
-  preference for later ("it'd be more convenient if the detector is able to
-  sort out grass under trees"). The first fused launch (36281237314) was
-  cancelled for this; the unfused half (36281238620) was not affected.
-  **Both then died on workflow 14's 3-hour limit** (unfused cancelled by it
-  at 03:02; the fused one, 68 minutes into its second decoder, cancelled by
-  hand before it could). Leave-one-out costs the square of the corpus: 20
-  minutes a decoder at 32 lawns, 68 at 53. **So `lawns: all` now trains 10
-  folds instead** (FOLDS=10; every lawn still answered by a decoder that
-  never saw it), and the limit is 300 minutes. The benchmark stays
-  leave-one-out. Both halves relaunched together, so the pair still
-  compares like with like.
+- **In flight (2026-09-27, after H49): the 53-map pair again, with the
+  lidar veto's no-points bug fixed** (H49) — workflow 14, `canopy: compare`,
+  `lawns: all`, 10 folds, `decoder: fused` beside `decoder: on`. Write it up
+  as H50. Same bar as H49: (a) THE PLAN's row fused vs unfused, two points
+  or more, more lots better than worse; (b) the best fused decoder alone two
+  points or more under the unfused PLAN's row.
 - **Before that (2026-09-26, after H48).** The fused inputs (S11)
   FAIL their bar on THE PLAN's row (26.6 → 26.5%, bar 24.6) and are not
   adopted — but the fused decoder ON ITS OWN reads 25.0%, below THE PLAN's
@@ -599,6 +575,56 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H49. On all 53 maps the fused inputs are worth a point or two at most — and the run found the lidar veto erasing two lots whole, 2026-09-27
+
+Runs 36290696462 (`decoder: fused`) and 36290697360 (`decoder: on`),
+workflow 14, `canopy: compare`, **`lawns: all`, 53 maps, fingerprint
+17dzt95, NOT the benchmark**, and for the first time **10 folds** rather
+than leave-one-out (H49's first attempt died on the 3-hour limit). The
+canopy-on-lawn decoder had no canopy channel (H48's fix 1). Compared only
+with each other. Lidar on 50 lots, NAIP on 52.
+
+**THE VETO BUG, first.** Both Peach County, GA lots went to 100% wrong on
+every veto row, in both runs ("2 of 53 folds answered the same thing
+everywhere"). GA_Central_5_2018's footprint claims them, and its point
+cloud returns ZERO points over either frame (12 nodes read, 0 points inside
+— checked directly). "Nothing came back" read as void everywhere, and the
+veto took 5,514 m² of the tracer's lawn (0 m² on the benchmark 32, H39).
+**Fixed** (tools/lidar_frame.py): a frame with returns in under half its
+cells is written as having no lidar at all, and "nothing came back" is void
+only in a frame the lidar otherwise covers (90%+). So **every veto row in
+both runs is void as a comparison**, and the fair rows are the ones without
+it.
+
+| row (median wrong) | unfused | fused |
+|---|---|---|
+| decoder, no canopy (alone) | 21.7% | 21.6% |
+| decoder, canopy on lawn (alone) | 21.7% | 21.9% |
+| decoder, canopy everywhere (alone) | 20.8% | 21.7% |
+| no canopy + stage 3, span | 23.0% | **21.1%** |
+| canopy on lawn + stage 3, span | 22.1% | **20.9%** |
+| canopy everywhere + stage 3, span | 21.7% | **20.4%** |
+| THE PLAN (on lawn + span + veto) — **void, veto bug** | 23.2% | 25.2% |
+| sharp-boundary error, decoders alone | 69.4–71.6% | 71.0–72.6% |
+| on-lawn decoder, inferred column | 43.2% | 43.1% |
+
+**Against the bar: neither half passes.** (a) THE PLAN's row cannot be
+read (the veto bug); lot by lot on it, fused is 22 better against 16
+worse, median change 0.0; on the 32 benchmark lots inside the 53, 16
+better against 10 worse, median −0.45 — H48's direction, a third of its
+size. (b) The best fused decoder alone (21.6%) is 1.6 points under the
+void plan row and 0.5 under the fair "on lawn + span" row: fails.
+
+**What held and what did not.** The stage-3 rows are 1.2–1.9 points
+better fused, in all three decoders — consistent, and under the two-point
+bar. The decoders alone are level. **H48's sharp-edge gain did not
+replicate** (fused is 1–1.5 points worse here). **Fix 1 changed nothing
+measurable:** at 53 lawns the unfused on-lawn decoder leaks just as much
+(inferred 43.2%), so the leak is the on-lawn WEIGHTING, not the canopy
+channel. And 53 lawns made everything better: the unfused on-lawn + span
+row reads 22.1% against the benchmark's 26.6% — not comparable, but the
+owner's "more data" is the largest lever this file has seen.
 
 ### H48. Fused inputs: THE PLAN's row does not move, 18 lots better against 7, and the fused decoder alone reads under THE PLAN — not adopted, a lead, 2026-09-26
 
@@ -3926,3 +3952,4 @@ each area-averaged onto the patch grid exactly as the labels are.
 | 2026-09-26 | 36256482254 | 32 | — (workflow 23: **S9, crowns per canopy clump** from the lidar CHM, lawn border, rule trades) | — | — | **H46: no clump rule passes.** 95 clumps (57 lawn, 38 not); AUC border lawn 0.16, crowns 0.69, height 0.63. Best: 3+ crowns & border < 25% finds 92.5% of woods for 30.4% of lawn under canopy; 12 m height 81% / 29%. Clumps are joined; closed at the clump level |
 | 2026-09-26 | 36263514117 + 36263512588 | 32 | — (workflow 23: **H47, one segment per crown**; workflow 14 `canopy: compare` repeats it with the **detector's** visible lawn) | — | 24.7% | **H47: passes on the detector's edge.** 497 segments (96 lawn). (b) AUC distance 0.94, border 0.08, crowding 0.87. Border lawn 0% finds 85.0% of woods for 7.5% of lawn under canopy; distance 10 m+ 79.5% for 3.1%. Tracer's edge (a) 83.0/5.6 and 79.0/2.4: the leak is small. A separation, not yet a row |
 | 2026-09-26 | 36271469618 | 32 | `canopy: compare`, **`decoder: fused`** (S11: lidar height, ground share, returns, NAIP NDVI, canopy + flags; dropout 0.3 / 0.2) | 23.2% (everywhere + span, veto) | 24.7% | **H48: fails its bar, not adopted.** Plan's row 26.6 → 26.5 (bar 24.6); seen 22.2 → 21.8, inferred 28.5 → 32.5; 18 lots better, 7 worse; B03 −39, B06 −4.6; B28 +10 (stale lidar), B24 +9. Fused decoders alone 28.5 → 26.1 and **29.8 → 25.0** (under the plan's 26.6, a lead); sharp edges −4 to −7. Pictures `runs/2026-09-26-1839-edt-scalemae-large-896px` |
+| 2026-09-27 | 36290696462 + 36290697360 | **53** | `canopy: compare`, **`lawns: all`, 10 folds**, `decoder: fused` beside `decoder: on` (no canopy channel on the on-lawn decoder) — **NOT COMPARABLE** with the benchmark | 20.4% fused (everywhere + span) / 20.8% unfused (everywhere decoder) | — | **H49: no bar met.** Stage-3 rows 1.2–1.9 pts better fused; decoders alone level; sharp-edge gain did not replicate. **Veto bug:** Peach County GA lots have a lidar project with 0 points over them → void everywhere → both lots 100% wrong on every veto row (5,514 m² of lawn taken). Fixed in lidar_frame.py (MIN_COVERED, VOID_NEEDS_COVERED) |
