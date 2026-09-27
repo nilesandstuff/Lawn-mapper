@@ -286,12 +286,20 @@ ROOF_MIN_M, ROOF_SPREAD_M, ROOF_MIN_RETURNS = 2.5, 1.5, 3
 CANOPY_MIN_M = 2.0
 
 
+# Below this share of cells with any return, a frame has no lidar (see main).
+MIN_COVERED = 0.5
+# "Nothing came back" means water only where the lidar otherwise covers the
+# frame; in a patchy one it means a gap in the data.
+VOID_NEEDS_COVERED = 0.9
+
+
 def masks_from(raster, layers):
     n_all, n_ground = raster["n_all"], raster["n_ground"]
     spread = np.nan_to_num(raster["z_max"] - raster["z_min"], nan=99.0)
     roof = (n_ground == 0) & (n_all >= ROOF_MIN_RETURNS) & (layers["height"] >= ROOF_MIN_M) & (spread <= ROOF_SPREAD_M)
     n6, w6 = box_sum(n_all), box_sum(raster["n_water"])
-    void = (n6 == 0) | (w6 * 2 > n6)
+    empty = (n6 == 0) if float((n_all > 0).mean()) >= VOID_NEEDS_COVERED else np.zeros(n_all.shape, dtype=bool)
+    void = empty | (w6 * 2 > n6)
     lidar_canopy = (layers["height"] >= CANOPY_MIN_M) & ~roof
     return {"roof": roof, "void": void, "lidar_canopy": lidar_canopy}
 
@@ -548,6 +556,17 @@ def main():
             continue
 
         raster = rasterise(pts, bbox, cell)
+        # A PROJECT THAT CLAIMS THE FRAME AND HAS NO POINTS IN IT (Peach
+        # County, GA, 2026-09-27: GA_Central_5_2018's footprint covers two lots,
+        # twelve nodes are read, zero points fall inside the box). "Nothing came
+        # back" everywhere then read as void everywhere, and the veto deleted
+        # both lawns whole. A frame whose cells are mostly empty has no lidar,
+        # and is written as such: no layers, no masks.
+        covered = float((raster["n_all"] > 0).mean())
+        if covered < MIN_COVERED:
+            print(f"  {label} {p['name']}: points in only {100 * covered:.0f}% of the frame's cells -- treated as no lidar")
+            summary["lawns"][lawn_id] = {"skipped": f"points in {100 * covered:.0f}% of cells", "project": p["name"]}
+            continue
         layers = layers_from(raster, cell)
         layers.update(understory_layers(*understory_counts(pts, bbox, cell, layers["ground_z"])))
         gh, gw = raster["n_all"].shape

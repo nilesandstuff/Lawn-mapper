@@ -133,9 +133,18 @@ check("the tree and the dense crown are lidar canopy, the roof is not",
       bool(mk["lidar_canopy"][0, 2]) and bool(mk["lidar_canopy"][2, 2]) and not mk["lidar_canopy"][0, 0])
 check("open ground is neither", not mk["roof"][1, 1] and not mk["lidar_canopy"][1, 1])
 check("one empty cell among returns is not void (the 6 m square has points)", not mk["void"][2, 0])
+# A 40 x 40 m frame covered on a 2 m grid, except a 10 m hole: the hole is void.
+cover = [[x + 1.0, y + 1.0, 100.0, 1, 2] for x in range(0, 40, 2) for y in range(0, 40, 2)
+         if not (14 <= x < 24 and 14 <= y < 24)]
+holed = rasterise(np.array(cover), (0, 0, 40, 40), 2)
+ve = masks_from(holed, layers_from(holed, 2))["void"]
+check("in a covered frame, a 6 m square with nothing back is void, one with a return is not",
+      bool(ve[9, 9]) and not ve[0, 0])
+# Peach County (2026-09-27): a project that claims the frame and returns one point.
 empty = rasterise(np.array([[0.5, 19.5, 100.0, 1, 2]]), (0, 0, 20, 20), 2)
 ve = masks_from(empty, layers_from(empty, 2))["void"]
-check("a 6 m square with nothing back is void, one with a return is not", bool(ve[9, 9]) and not ve[0, 0])
+check("in a frame the lidar barely covers, empty cells are a data gap, not void",
+      not ve.any())
 wat = rasterise(np.array([[1.0, 5.0, 100.0, 1, 9], [3.0, 3.0, 100.0, 1, 9], [5.0, 1.0, 100.0, 1, 2]]), mb, 2)
 check("mostly water-classed returns is void", bool(masks_from(wat, layers_from(wat, 2))["void"][1, 1]))
 
