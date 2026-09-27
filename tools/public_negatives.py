@@ -521,7 +521,9 @@ def summary(fc):
         counts[k] = counts.get(k, 0) + 1
     lines = [f"  {c:9s} {s:5s} {n}" for (c, s), n in sorted(counts.items())]
     for src, err in (fc.get("errors") or {}).items():
-        lines.append(f"  ERROR {src}: {err.splitlines()[0][:200]}")
+        # Every line: the first alone is "every Overpass mirror failed:", which
+        # says nothing about which one failed how.
+        lines += [f"  ERROR {src}: {ln.strip()[:200]}" for ln in err.splitlines()]
     return "\n".join(lines) or "  nothing"
 
 
