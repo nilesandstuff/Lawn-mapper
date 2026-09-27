@@ -57,14 +57,12 @@ got here. Update it whenever the in-flight run changes.*
   workflows that exist on the default branch (`claude/new-session-8204jd`),
   and compare-runs.yml exists only on this branch; the same code
   (tools/compare-runs.js) was run on the six downloaded lot-results files.
-- **Also in flight (2026-09-27): S12, the scale Scale-MAE is told.** Three
-  workflow 14 runs, `model: scalemae-large, res x5 / x10 / x25`, decoder on,
-  canopy compare, lawns all, seed 7; each read with workflow 24 against the
-  three H50 unfused runs (x1). **The bar, before the run:** a factor is
-  worth confirming (seeds 8 and 9) if on THE PLAN's row its median paired
-  change is below zero with more lots better than worse; it is adopted only
-  when the confirmed three-seed set passes the protocol's full bar. If all
-  three are level or worse, x1 stands and S12 is closed as measured-nothing.
+- **Decided (2026-09-27): H52, Scale-MAE keeps being told metres a
+  pixel.** Its pretraining used a relative scale of 2.2-5 (E2's
+  correction), but x5, x10 and x25 each scored 1.4-2.6 points worse lot
+  by lot than x1 on 55 lots. S12 closed. **Nothing in flight.** Next, by
+  the owner's priorities: the padding test (blank the ground outside the
+  lot line vs keep it, S12's note), and teaching lawn under trees.
 - **Before that (2026-09-26, after H48).** The fused inputs (S11)
   FAIL their bar on THE PLAN's row (26.6 → 26.5%, bar 24.6) and are not
   adopted — but the fused decoder ON ITS OWN reads 25.0%, below THE PLAN's
@@ -588,6 +586,41 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H52. Telling Scale-MAE a scale inside its pretraining range makes it WORSE, not better: x1 (metres a pixel) stands, 2026-09-27
+
+*Runs 36303807284 (x5), 36303809104 (x10), 36303810721 (x25; factors
+read back from each log's "res factor xN"), commit a2a1ead, `lawns: all`
+(55, fingerprint `00fp0bu`), folds by place, `decoder: on`,
+`canopy: compare`, seed 7 each. Against the three H50 unfused runs (x1,
+seeds 7/8/9, per-lot mean). S12's test. One seed a factor: a SCREEN.*
+
+THE PLAN's row, lot by lot against x1:
+
+| factor (res passed for 10 cm) | all 55: better / worse, median change [95%] | frozen 32 | since (23) |
+|---|---|---|---|
+| x5 (0.5) | 19 / 33, **+1.6** [-0.2, +2.6], p 0.07 | 8 / 23, +2.4 [+1.0, +5.7], p 0.01 | 11 / 10, -0.4 |
+| x10 (1.0, torchgeo's default) | 16 / 31, **+1.4** [-0.0, +3.1], p 0.04 | 6 / 23, +3.6 [+1.1, +9.3], p 0.002 | 10 / 8, -0.3 |
+| x25 (2.5, inside pretraining's 2.2-5) | 19 / 33, **+2.6** [+0.2, +6.0], p 0.07 | 12 / 18, +1.7 | 7 / 15, +2.6 |
+
+Every factor is worse on more lots than it is better, on THE PLAN's row
+and on the decoder alone ("no canopy": x5 +1.8, x10 +2.2, x25 +1.9), and
+the eye alone (no decoder) is worse too at x5 (+2.5 [+1.1, +3.9], 16 / 37).
+**S12's bar (median change below zero with more lots better) is failed by
+all three. None is confirmed with more seeds; x1 stands.**
+
+**What this establishes:** passing metres a pixel -- outside the range
+Scale-MAE was pretrained on (E2's correction) -- is not costing us
+anything measurable, and moving into that range costs one to three points.
+S12's worry is measured as nothing, the third idea in this file argued for
+and then measured as nothing.
+
+**What it does NOT establish -- speculation:** why. The frozen 32 lose
+more than the lots since (x5, x10 are level there), and the stage-3 and
+veto settings were tuned on the 32 with x1 features, so part of the loss
+may be retuning owed rather than worse features. That would still not
+make any factor better on the untuned lots, where none is. S12's side
+remark that H4's 896-over-1280 might be this effect is unsupported.
 
 ### H50. The first decision under the new protocol: the fused inputs are worth NOTHING on 55 lots, folds by place, three seeds each — not adopted, 2026-09-27
 
@@ -3960,6 +3993,10 @@ neither measured here:
   distortion applied to every lot may be learnable. The eye-alone numbers
   already beat colour (H3/H4).
 
+**MEASURED 2026-09-27 -- H52: x5, x10 and x25 are all WORSE than x1
+(metres a pixel) on THE PLAN's row, by 1.4 to 2.6 points lot by lot. x1
+stands; this theory is closed.**
+
 **The test (launched 2026-09-27):** the same model told 5x, 10x and 25x the
 metres a pixel (`model: scalemae-large, res xN` in workflow 14; 0.1 m ->
 0.5, 1.0, 2.5), each against the three H50 unfused runs (x1) with workflow
@@ -4148,3 +4185,4 @@ metres a pixel (`model: scalemae-large, res xN` in workflow 14; 0.1 m ->
 | 2026-09-27 | 36290696462 + 36290697360 | **53** | `canopy: compare`, **`lawns: all`, 10 folds**, `decoder: fused` beside `decoder: on` (no canopy channel on the on-lawn decoder) — **NOT COMPARABLE** with the benchmark | 20.4% fused (everywhere + span) / 20.8% unfused (everywhere decoder) | — | **H49: no bar met.** Stage-3 rows 1.2–1.9 pts better fused; decoders alone level; sharp-edge gain did not replicate. **Veto bug:** Peach County GA lots have a lidar project with 0 points over them → void everywhere → both lots 100% wrong on every veto row (5,514 m² of lawn taken). Fixed in lidar_frame.py (MIN_COVERED, VOID_NEEDS_COVERED) |
 | 2026-09-27 | 36298873117 + 36298874496 | 32 | `canopy: compare`, **`lawns: benchmark, 10 folds`**, `decoder: fused` beside `decoder: on`, seed 7 — the method check | 23.5% (everywhere + span, veto, fused) | 24.7% | **H51: 10 folds did not break it.** Plan row 26.5 → 25.2 fused; **25 lots better, 6 worse, p 0.001, median −1.2 [−2.0, −0.45]** (H48 LOO: 18 / 7). Unfused medians within 0.1–1.8 of LOO. Supporting only; H50 decides |
 | 2026-09-27 | 36299639542 36299640699 36299641884 (fused) vs 36299643380 36299644583 36299645971 (unfused) | **55** | `canopy: compare`, `lawns: all`, **folds by place (15)**, seeds 7/8/9 each side — the first decision under the protocol | 22.0% (everywhere + span, veto, unfused s8) | — | **H50: fused NOT adopted.** Plan row 23 better / 20 worse, −0.1 [−0.7, +0.4], p 0.76; frozen 32: 12 / 13; since: 11 / 7. Seed spread 2.5 pts within one setting. Peach County fixed (no lidar). Supersedes H51 |
+| 2026-09-27 | 36303807284 (x5) 36303809104 (x10) 36303810721 (x25) | 55 | `model: scalemae-large, res xN`, `decoder: on`, `canopy: compare`, folds by place, seed 7 — S12 | — | — | **H52: every factor worse than x1.** Plan row vs H50 unfused (3 seeds): x5 19 better / 33 worse +1.6; x10 16 / 31 +1.4; x25 19 / 33 +2.6. x1 stands; S12 closed |
