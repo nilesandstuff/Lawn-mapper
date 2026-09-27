@@ -61,6 +61,13 @@ on:
           # looking at. The only entry here that has ever seen a lawn from
           # above before today.
           - scalemae-large
+          # The same model told N x the metres a pixel. Scale-MAE's own
+          # pretraining fed it res of about 2.2-5.0, never metres; we pass
+          # 0.07-0.10. These measure which number it reads best. See
+          # SatelliteEye in tools/extract_features.py.
+          - scalemae-large, res x5
+          - scalemae-large, res x10
+          - scalemae-large, res x25
           - facebook/dinov2-base
           - facebook/dinov2-small
           - facebook/dinov2-large
