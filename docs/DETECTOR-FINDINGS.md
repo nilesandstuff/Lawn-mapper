@@ -60,6 +60,14 @@ got here. Update it whenever the in-flight run changes.*
   the lead from H48 — the best fused decoder ALONE (no stage 3, no veto) two
   points or more under the unfused PLAN's row. Also read: sharp edges, hard
   shade, B28, and whether H48's 18-against-7 holds on the 32 inside the 53.
+  **Changed before the fused half ran (owner, 2026-09-27): H48's canopy
+  leak, fix 1** — the "canopy on lawn" decoder no longer gets the canopy as
+  an input channel (FUSE_CANOPY=0; zeros, same grid shape). Partial: lidar
+  height offers the same shortcut less directly. The real fix, grading lawn
+  under trees from the tracer's own drawing, is the owner's stated
+  preference for later ("it'd be more convenient if the detector is able to
+  sort out grass under trees"). The first fused launch (36281237314) was
+  cancelled for this; the unfused half (36281238620) was not affected.
 - **Before that (2026-09-26, after H48).** The fused inputs (S11)
   FAIL their bar on THE PLAN's row (26.6 → 26.5%, bar 24.6) and are not
   adopted — but the fused decoder ON ITS OWN reads 25.0%, below THE PLAN's
