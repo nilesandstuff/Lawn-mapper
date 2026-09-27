@@ -34,3 +34,31 @@ console.log('PASS  the fetch tool and the worker agree on where a map\'s outline
   assert.equal(applyReview(stored, { status: 'whatever' }).status, 'draft');
   console.log('PASS  a review keeps or drops what was fetched and cannot add to it');
 }
+
+// Not-lawn examples: ids are shape-checked, kept outlines counted by kind,
+// a review approves, rejects or leaves a draft, and the page's totals add up.
+{
+  const { isExampleId, exampleKey, keptByClass, reviewExample } = await import('../worker/src/outlines.js');
+  const { approvedTotals } = await import('../public/outlines.js');
+  assert.equal(isExampleId('water-001'), true);
+  assert.equal(isExampleId('../corpus/x'), false);
+  assert.equal(isExampleId('water-1'), false);
+  assert.equal(exampleKey('pool-015'), 'examples/pool-015.json');
+  const doc = { features: [
+    { properties: { class: 'water', target: true } }, { properties: { class: 'building' } },
+    { properties: { class: 'building' } }, { properties: { class: 'road' } },
+  ] };
+  const saved = reviewExample(doc, { status: 'approved', dropped: [3] });
+  assert.equal(saved.status, 'approved');
+  assert.deepEqual(keptByClass(saved), { water: 1, building: 2 });
+  assert.equal(reviewExample(doc, { status: 'rejected' }).status, 'rejected');
+  assert.equal(reviewExample(doc, { status: 'publish' }).status, 'draft');
+  const t = approvedTotals([
+    { status: 'approved', kept: { water: 1, building: 2 } },
+    { status: 'approved', kept: { water: 1 } },
+    { status: 'rejected', kept: { water: 1 } },
+    { status: 'draft', kept: {} },
+  ]);
+  assert.deepEqual(t, { examples: 2, kept: { water: 2, building: 2 } });
+  console.log('PASS  examples: ids checked, kinds counted, approvals and rejections kept apart');
+}
