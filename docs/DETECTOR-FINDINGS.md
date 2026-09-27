@@ -46,7 +46,21 @@ got here. Update it whenever the in-flight run changes.*
   tools/train-detector.js) when it scored it, and the picker names the row
   each run drew. Runs before the fix are unchanged on the page.
 - **Pictures of THE PLAN's row are up (2026-09-26):** `runs/2026-09-25-2152-edt-scalemae-large-896px`, the first drawn for the row actually adopted.
-- **Nothing in flight (2026-09-26, after H48).** The fused inputs (S11)
+- **In flight (2026-09-27, after H48): the fused inputs on `lawns: all` (53
+  maps), two runs side by side** — workflow 14, `canopy: compare`, one with
+  `decoder: fused` and one with `decoder: on`, the same corpus, seed and
+  code. Write it up as H49. NOT comparable with any benchmark table; the pair
+  is compared only with itself. **The owner's call (2026-09-27): fused inputs
+  are the path forward** ("this run was extremely promising"); train on the
+  full corpus from here. Teaching the decoder the inferred ground under big
+  trees is deliberately HELD — stage 3 fills that, and it needs the lawn to
+  reach the canopy's edge first, which it does not yet do well. **The bar,
+  written before the run:** (a) THE PLAN's row, fused against unfused on the
+  same 53, two points or more better with more lots better than worse; (b)
+  the lead from H48 — the best fused decoder ALONE (no stage 3, no veto) two
+  points or more under the unfused PLAN's row. Also read: sharp edges, hard
+  shade, B28, and whether H48's 18-against-7 holds on the 32 inside the 53.
+- **Before that (2026-09-26, after H48).** The fused inputs (S11)
   FAIL their bar on THE PLAN's row (26.6 → 26.5%, bar 24.6) and are not
   adopted — but the fused decoder ON ITS OWN reads 25.0%, below THE PLAN's
   26.6% with no stage 3 and no veto (H48). A different row from the one the
@@ -601,7 +615,9 @@ The median moved a tenth of a point.
 (median change −0.7). B03 Utah 65.8 → 26.4, B02 −6.5, B06 (Kent 8,626, the
 roof) −4.6, B21 −3.4, B09 −3.2, B04 −1.9, B23 −1.1; worse: **B28 69.5 →
 79.5** (NC 10,556, the lot whose trees NAIP says are gone, H40 — stale
-lidar, exactly the owner's worry, and dropout at 0.3 did not stop it), B24
+lidar, exactly the owner's worry, and dropout at 0.3 did not stop it; the
+owner confirms the trees are gone from the Mapbox photograph too, so the
+lidar is the one source that is wrong there), B24
 +9.3 (the one-cell registration oddity), B22 +4.7, B26 +2.3, B25 +1.9. B12
 (the pond) unchanged; the veto still took 382–397 m² of void, so the
 decoder did not learn water. It took 196–201 m² of roof it would otherwise
