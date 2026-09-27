@@ -46,16 +46,17 @@ got here. Update it whenever the in-flight run changes.*
   tools/train-detector.js) when it scored it, and the picker names the row
   each run drew. Runs before the fix are unchanged on the page.
 - **Pictures of THE PLAN's row are up (2026-09-26):** `runs/2026-09-25-2152-edt-scalemae-large-896px`, the first drawn for the row actually adopted.
-- **In flight (2026-09-27): the first decision under the new protocol**
-  (see "How a decision is made" in the rules): the fused inputs against
-  none, on all 53 lots, folds by neighbourhood, three seeds (7, 8, 9) of
-  each -- six workflow 14 runs -- read with workflow 24. Write it up as
-  H50. **The bar, written before the run:** on THE PLAN's row, fused better
-  on more lots than worse with a sign-test p under 0.1 AND a 95% interval
-  for the median paired change that stays below zero; and not worse on the
-  lots approved since the freeze. The earlier 10-fold H50 pair is cancelled
-  (superseded). The method check (benchmark in 10 folds) is DONE: H51 --
-  10 folds did not break anything, and fused won the plan row 25 lots to 6.
+- **Decided (2026-09-27): H50, the fused inputs are NOT adopted.** 55
+  lots, folds by place, three seeds a side: THE PLAN's row 23 lots better,
+  20 worse, median change -0.1 [-0.7, +0.4]. The seeds of one setting
+  differ by 2.5 points, more than the setting does -- so from here a
+  single-seed comparison is a screen, never a result. H51 (the 10-fold
+  method check) is superseded by it. The six unfused runs are the x1
+  baseline S12 is read against.
+  **Workflow 24 cannot be dispatched yet:** GitHub only offers manual
+  workflows that exist on the default branch (`claude/new-session-8204jd`),
+  and compare-runs.yml exists only on this branch; the same code
+  (tools/compare-runs.js) was run on the six downloaded lot-results files.
 - **Also in flight (2026-09-27): S12, the scale Scale-MAE is told.** Three
   workflow 14 runs, `model: scalemae-large, res x5 / x10 / x25`, decoder on,
   canopy compare, lawns all, seed 7; each read with workflow 24 against the
@@ -588,6 +589,55 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H50. The first decision under the new protocol: the fused inputs are worth NOTHING on 55 lots, folds by place, three seeds each — not adopted, 2026-09-27
+
+*Workflow 14 runs on commit 2ca74ca, `lawns: all` (**55** approved lots,
+fingerprint `00fp0bu`; the corpus grew from 53), `FOLDS=place` (15 folds,
+neighbourhoods within 2 km held out together; sizes 6, 4×7, 3×7),
+`canopy: compare`. Fused: 36299639542, 36299640699, 36299641884 (seeds 7,
+8, 9). Unfused: 36299643380, 36299644583, 36299645971 (seeds 7, 8, 9).
+Seed and decoder read back from each run's lot-results.json. Compared with
+tools/compare-runs.js, per-lot mean over each side's three seeds.*
+
+**THE PLAN's row, "decoder, canopy on lawn + stage 3, span, lidar veto":**
+
+| lots | fused better / worse / level | median paired change [95%] | sign test |
+|---|---|---|---|
+| all 55 | 23 / 20 / 12 | **-0.1 [-0.7, +0.4]** | p = 0.76 |
+| the frozen 32 | 12 / 13 / 7 | -0.0 [-0.8, +0.6] | p = 1.00 |
+| approved since (23) | 11 / 7 / 5 | -0.5 [-0.8, +0.7] | p = 0.48 |
+
+**The bar (written before the run) is not met on any of its three
+counts.** No other row clears it either: canopy everywhere + stage 3,
+veto 25 / 18, -0.3 [-1.2, +0.2], p 0.36; the decoders alone -0.1 to -0.5
+with every interval crossing zero, the best being canopy everywhere alone
+at 28 / 17, p 0.14.
+
+**The seeds matter as much as the setting.** Run medians on THE PLAN's
+row: unfused 25.5, 25.1, 27.6; fused 26.3, 26.3, 27.0. The spread between
+seeds of the SAME setting (2.5 points) is larger than anything the fused
+inputs did. On "decoder, canopy everywhere" alone, unfused went 27.6,
+23.4, 23.8.
+
+**Also checked:** the two Peach County, GA lots are now "treated as no
+lidar" (0% of cells with points) and score 57% and 12-18% on the veto rows,
+no longer 100% (H49's bug is fixed). The lot-results files label their
+folds "leave-one-out"; that was only the label (the scorer was not given
+FOLDS); the decoder logs say "15 folds by place". Label fixed.
+
+**What this establishes:** under folds by place and averaged over three
+seeds, the seven fused channels do not move THE PLAN's row, on the tuned
+32 or on the lots since. H48's lead (fused decoders alone under THE PLAN)
+and H51's 25-to-6 do not survive it.
+
+**What it does NOT establish -- speculation, not measured:** WHY H51 and
+H50 disagree on the same 32. Two candidates, untested: (a) H51 was ONE
+seed a side, and a seed shifts a whole decoder, so its 32 lot-by-lot
+results are not independent and its p = 0.001 was overconfident; (b)
+random folds let a lot's neighbours into training and the fused channels
+(lidar, NAIP, both local) exploit that more than the eye does. (a) alone
+is enough to explain it given the 2.5-point seed spread above.
+
 ### H51. 10 folds did not manufacture or hide the fused result: on the 32 it reproduces, and lot by lot it is stronger, 2026-09-27
 
 *Runs 36298873117 (fused) and 36298874496 (unfused), commit ecc9678, the
@@ -619,6 +669,13 @@ p = 0.03, median -1.0 [-1.4, -0.2].
 - The fused direction on THE PLAN's row held under the other protocol and
   was clearer lot by lot. The one row that reversed is the canopy-
   everywhere decoder alone (+2.4 fused), which H48 already had level.
+
+**SUPERSEDED BY H50 (same day): under folds by place and three seeds a
+side, fused is worth nothing on these same 32 (12 better / 13 worse). The
+p = 0.001 above treats 32 lots as independent draws, and within one seed
+they are not -- one seed shifts the whole decoder (H50 measured 2.5 points
+between seeds of the same setting). Read this entry as "10 folds did not
+break the pipeline", and nothing about the fused inputs.**
 
 **What it does NOT establish:** that fused is adopted. One seed, random
 folds (neighbours can share a fold's training set), the 32 only. H50 (53
@@ -4090,3 +4147,4 @@ metres a pixel (`model: scalemae-large, res xN` in workflow 14; 0.1 m ->
 | 2026-09-26 | 36271469618 | 32 | `canopy: compare`, **`decoder: fused`** (S11: lidar height, ground share, returns, NAIP NDVI, canopy + flags; dropout 0.3 / 0.2) | 23.2% (everywhere + span, veto) | 24.7% | **H48: fails its bar, not adopted.** Plan's row 26.6 → 26.5 (bar 24.6); seen 22.2 → 21.8, inferred 28.5 → 32.5; 18 lots better, 7 worse; B03 −39, B06 −4.6; B28 +10 (stale lidar), B24 +9. Fused decoders alone 28.5 → 26.1 and **29.8 → 25.0** (under the plan's 26.6, a lead); sharp edges −4 to −7. Pictures `runs/2026-09-26-1839-edt-scalemae-large-896px` |
 | 2026-09-27 | 36290696462 + 36290697360 | **53** | `canopy: compare`, **`lawns: all`, 10 folds**, `decoder: fused` beside `decoder: on` (no canopy channel on the on-lawn decoder) — **NOT COMPARABLE** with the benchmark | 20.4% fused (everywhere + span) / 20.8% unfused (everywhere decoder) | — | **H49: no bar met.** Stage-3 rows 1.2–1.9 pts better fused; decoders alone level; sharp-edge gain did not replicate. **Veto bug:** Peach County GA lots have a lidar project with 0 points over them → void everywhere → both lots 100% wrong on every veto row (5,514 m² of lawn taken). Fixed in lidar_frame.py (MIN_COVERED, VOID_NEEDS_COVERED) |
 | 2026-09-27 | 36298873117 + 36298874496 | 32 | `canopy: compare`, **`lawns: benchmark, 10 folds`**, `decoder: fused` beside `decoder: on`, seed 7 — the method check | 23.5% (everywhere + span, veto, fused) | 24.7% | **H51: 10 folds did not break it.** Plan row 26.5 → 25.2 fused; **25 lots better, 6 worse, p 0.001, median −1.2 [−2.0, −0.45]** (H48 LOO: 18 / 7). Unfused medians within 0.1–1.8 of LOO. Supporting only; H50 decides |
+| 2026-09-27 | 36299639542 36299640699 36299641884 (fused) vs 36299643380 36299644583 36299645971 (unfused) | **55** | `canopy: compare`, `lawns: all`, **folds by place (15)**, seeds 7/8/9 each side — the first decision under the protocol | 22.0% (everywhere + span, veto, unfused s8) | — | **H50: fused NOT adopted.** Plan row 23 better / 20 worse, −0.1 [−0.7, +0.4], p 0.76; frozen 32: 12 / 13; since: 11 / 7. Seed spread 2.5 pts within one setting. Peach County fixed (no lidar). Supersedes H51 |

@@ -464,6 +464,9 @@ jobs:
           # Every row's per-lot result as a file, for workflow 24 to compare
           # runs lot by lot and across seeds (tools/compare-runs.js).
           LOT_RESULTS: lot-results.json
+          # Only a label here -- the decoders above did the folding -- but
+          # without it every file said "leave-one-out" (H50's six did).
+          FOLDS: ${{ inputs.lawns == 'all' && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
           SEED: ${{ inputs.seed }}
           DECODER_KIND: ${{ inputs.decoder }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
