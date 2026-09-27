@@ -68,6 +68,14 @@ got here. Update it whenever the in-flight run changes.*
   preference for later ("it'd be more convenient if the detector is able to
   sort out grass under trees"). The first fused launch (36281237314) was
   cancelled for this; the unfused half (36281238620) was not affected.
+  **Both then died on workflow 14's 3-hour limit** (unfused cancelled by it
+  at 03:02; the fused one, 68 minutes into its second decoder, cancelled by
+  hand before it could). Leave-one-out costs the square of the corpus: 20
+  minutes a decoder at 32 lawns, 68 at 53. **So `lawns: all` now trains 10
+  folds instead** (FOLDS=10; every lawn still answered by a decoder that
+  never saw it), and the limit is 300 minutes. The benchmark stays
+  leave-one-out. Both halves relaunched together, so the pair still
+  compares like with like.
 - **Before that (2026-09-26, after H48).** The fused inputs (S11)
   FAIL their bar on THE PLAN's row (26.6 → 26.5%, bar 24.6) and are not
   adopted — but the fused decoder ON ITS OWN reads 25.0%, below THE PLAN's

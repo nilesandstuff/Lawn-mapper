@@ -81,6 +81,8 @@ CANOPY = os.environ.get("CANOPY", "")
 CANOPY_MODE = "all" if os.environ.get("CANOPY_MODE", "lawn") == "all" else "lawn"
 # How many lawns to hold out, for a quick look. Unset means every lawn.
 LIMIT = int(os.environ.get("LIMIT", "0") or 0)
+# Folds; unset or 0 means leave-one-out (see main).
+FOLDS = int(os.environ.get("FOLDS", "0") or 0)
 # THE FUSED-INPUTS TEST (tools/fuse_layers.py): seven more numbers a patch
 # from the lidar (FUSE_LIDAR=dir of <id>.npz from lidar_frame.py), NAIP's
 # near-infrared (FUSE_NAIP=dir of <id>-naip.png from naip_bands.py) and the
@@ -335,18 +337,33 @@ def main():
               f"dropout lidar {DROP_LIDAR:g}, NAIP {DROP_NAIP:g}", flush=True)
 
     held_out = lawns if not LIMIT else lawns[:LIMIT]
-    for n, held in enumerate(held_out):
+    # K-FOLD WHEN ASKED (FOLDS=k). Leave-one-out trains one decoder per lawn,
+    # so its cost grows with the square of the corpus: 20 minutes a decoder
+    # at 32 lawns, 68 at 53, past workflow 14's time limit with three of
+    # them (2026-09-27). k folds train k decoders on (k-1)/k of the lawns;
+    # every lawn is still answered by a decoder that never saw it. Unset, it
+    # is leave-one-out exactly as every benchmark table was measured.
+    groups = [[L] for L in held_out]
+    if FOLDS > 1 and not LIMIT:
+        order = np.random.default_rng(SEED).permutation(len(lawns))
+        groups = [[lawns[i] for i in order[k::FOLDS]] for k in range(FOLDS)]
+        groups = [g for g in groups if g]
+        print(f"{len(groups)} folds of about {len(lawns) // len(groups)} lawns, not leave-one-out", flush=True)
+    n = 0
+    for f, group in enumerate(groups):
         t0 = time.time()
-        train = [L for L in lawns if L is not held]
-        model, mean, sd, loss = train_one(train, dim, SEED + n)
-        prob = answer(model, mean, sd, held)
-        img = Image.fromarray(np.clip(np.round(prob * 255), 0, 255).astype(np.uint8), mode="L")
-        img.save(os.path.join(out, f"{held['id']}-pred.png"))
-        # How much of the photograph it called lawn, so a fold that collapsed
-        # to one answer everywhere shows up here rather than in the table.
-        print(f"  {n + 1}/{len(held_out)}  {held['id'][:28]:28}  train loss {loss:.3f}  "
-              f"lit {100 * float((prob > 0.5).mean()):4.1f}% of the picture  {time.time() - t0:.0f}s",
-              flush=True)
+        train = [L for L in lawns if all(L is not h for h in group)]
+        model, mean, sd, loss = train_one(train, dim, SEED + f)
+        for held in group:
+            prob = answer(model, mean, sd, held)
+            img = Image.fromarray(np.clip(np.round(prob * 255), 0, 255).astype(np.uint8), mode="L")
+            img.save(os.path.join(out, f"{held['id']}-pred.png"))
+            n += 1
+            # How much of the photograph it called lawn, so a fold that collapsed
+            # to one answer everywhere shows up here rather than in the table.
+            print(f"  {n}/{len(held_out)}  {held['id'][:28]:28}  train loss {loss:.3f}  "
+                  f"lit {100 * float((prob > 0.5).mean()):4.1f}% of the picture  {time.time() - t0:.0f}s",
+                  flush=True)
 
     total = time.time() - started
     with open(os.path.join(out, "manifest.json"), "w") as f:
@@ -354,7 +371,7 @@ def main():
             "model": manifest.get("model"), "size": manifest.get("size"),
             "dim": dim, "params": params, "epochs": EPOCHS, "seed": SEED,
             "lr": LR, "weightDecay": WEIGHT_DECAY, "dropout": DROPOUT,
-            "seenOnly": True, "lawns": len(lawns), "folds": len(held_out),
+            "seenOnly": True, "lawns": len(lawns), "folds": len(groups),
             "canopyUnseen": sum(1 for L in lawns if L["canopy"]),
             "canopyMode": CANOPY_MODE if CANOPY else None,
             "fused": ({"lidar": sum(1 for L in lawns if "lidar" in L["sources"]),
@@ -364,7 +381,7 @@ def main():
                        "dropLidar": DROP_LIDAR, "dropNaip": DROP_NAIP} if FUSE else None),
             "seconds": round(total),
         }, f)
-    print(f"\n{len(held_out)} folds in {total:.0f}s ({total / len(held_out):.0f}s each). "
+    print(f"\n{len(groups)} folds in {total:.0f}s ({total / len(groups):.0f}s each). "
           f"Answers in {out}/; score them with PREDICTIONS_DIR={out}.")
 
 
