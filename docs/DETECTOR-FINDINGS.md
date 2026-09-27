@@ -78,9 +78,18 @@ got here. Update it whenever the in-flight run changes.*
     (naip-align.json). Not yet measured: whether it changes any score.
   - **The frame is not to grow** (owner). Padding is still to be cut for
     lots that sit diagonally (a rotated crop); not yet done.
-  - **Water:** the owner will add a handful of maps with ponds. Public
-    already-drawn outlines (OSM, USGS NHD water, building footprints) as
-    "certainly not lawn" labels is liked in principle; not built.
+  - **Water:** the owner will add a handful of maps with ponds.
+  - **Public already-drawn outlines (owner: yes, but he reviews and tweaks
+    them before the detector is shown any).** tools/public_negatives.py
+    (44 offline checks) fetches, per box: OSM via Overpass (buildings,
+    water, pools, roads/driveways/parking/sidewalks buffered by a class
+    half-width, rail), USGS NHD waterbodies, Microsoft building footprints.
+    Live: works; overpass-api.de refuses this sandbox, mirrors answer, busy
+    mirrors 504. Positional accuracy is 1-3 m (OSM), ~12 m (NHD) -- worse
+    than H53's half-metre edge band, so these are to be trusted in their
+    INTERIORS only (shrunk ~1 m, ignore band at their edges) and never used
+    to score. Licence: OSM and Microsoft are ODbL -- attribution, and
+    share-alike if the derived label set is ever published. Not wired in.
   - **ANSWERED (H53): the ~10% is a half-metre band along the true edge (94%
     of B01's error within 0.5 m), not registration, not the tracing.**
   - **B01 scores ~10% on a near-perfect picture, under every method, colour
