@@ -3266,12 +3266,28 @@ console.log('\n--- tinker: neighbours and merging ---');
   check('every button shown sits wholly inside its own parcel',
     shown.length > 0 && shown.every((b) => b.inside), JSON.stringify(shown.map((b) => [b.label, b.inside])));
   if (shown.length) {
+    // What is actually under the finger there: the button, or something on top of it.
+    const under = await tp.evaluate(([x, y]) => {
+      const chain = [];
+      for (let el = document.elementFromPoint(x, y); el && chain.length < 5; el = el.parentElement) {
+        chain.push(`${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''}${el.className && typeof el.className === 'string' ? `.${el.className.trim().split(/\s+/).join('.')}` : ''}`);
+      }
+      return chain.join(' < ');
+    }, [shown[0].x, shown[0].y]);
+    check('nothing sits on top of the merge button', /merge-parcel/.test(under), under);
     await tp.touchscreen.tap(shown[0].x, shown[0].y);
     await tp.waitForTimeout(800);
     const after = await tp.evaluate(() => window.__lmNeighbours());
     check('a TAP on "Merge this parcel" makes the property line bigger',
       after.parcelSqFt > before.parcelSqFt + 1,
       `${Math.round(before.parcelSqFt)} -> ${Math.round(after.parcelSqFt)} sq ft; status: ${await tp.textContent('#status')}`);
+    if (!(after.parcelSqFt > before.parcelSqFt + 1)) {
+      // Tap blocked, or the merge itself failing? Press the button directly.
+      await tp.evaluate(() => document.querySelector('.merge-parcel')?.click());
+      await tp.waitForTimeout(800);
+      const direct = await tp.evaluate(() => window.__lmNeighbours());
+      console.log(`      pressed directly: ${Math.round(before.parcelSqFt)} -> ${Math.round(direct.parcelSqFt)} sq ft; status: ${await tp.textContent('#status')}`);
+    }
   }
   await tp.close();
 }
