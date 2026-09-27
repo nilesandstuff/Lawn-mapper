@@ -48,6 +48,7 @@ import {
   classesFor, errorByClass, interiorError, classOverlap,
 } from './boundary.js';
 import { runSlug, runKeys, runRow, publishRunList } from './run-folder.js';
+import { edgeBand, bestShift } from './edge-band.js';
 import {
   loadBackbone, tiledFeatures, sampleAt, projection, project,
 } from './backbone.js';
@@ -723,6 +724,31 @@ function compare(got, want, within) {
     else if (!got[i] && want[i]) { wrong++; missed++; }
   }
   return { wrong, truth, extra, missed, errorPct: truth ? (100 * wrong) / truth : null };
+}
+
+/**
+ * The traced outline's error, and how much of the raw mask's error lies near
+ * the truth's edge (see tools/edge-band.js). Percentages; null-safe.
+ */
+export function edgeDiagnosis(L, predicted) {
+  const G = L.grid || GRID;
+  const GH = L.gridH || G;
+  const trace = tracePrediction({ predicted, within: L.within, grid: G, gridH: GH, mpp: L.mpp });
+  const traced = traceMask({ shapes: trace.shapes, within: L.within, grid: G, gridH: GH });
+  const t = compare(traced, L.truth, L.within);
+  const cellsFor = (m) => Math.max(1, Math.round(m / (L.mpp || 0.15)));
+  const band = edgeBand({
+    truth: L.truth, got: predicted, within: L.within, w: G, h: GH,
+    radii: [cellsFor(0.5), cellsFor(1.0)],
+  });
+  const share = (k) => (band.wrong ? (100 * band.near[k]) / band.wrong : 0);
+  /* Up to 0.6 m each way: past that it is not registration, it is a different answer. */
+  const s = bestShift({ truth: L.truth, got: predicted, within: L.within, w: G, h: GH, reach: cellsFor(0.6) });
+  const truthPx = t.truth || 1;
+  return {
+    tracedPct: t.errorPct ?? 0, near05: share(0), near10: share(1),
+    shiftX: s.dx * L.mpp, shiftY: s.dy * L.mpp, shiftedPct: (100 * s.wrong) / truthPx,
+  };
 }
 
 /**
@@ -1466,6 +1492,10 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
         ...(coordsOfId(L.id) || {}),
         squareFeet: Math.round(sqft(L.truthPx)),
         errorPct: Number(r.mine.errorPct.toFixed(1)),
+        /* The same count for the outline in the picture, which is what the
+           owner reads a picture as (B01: 10.8% on the mask, drawn all but
+           perfectly). The table stays on the mask. */
+        outlineErrorPct: (() => { const c = compare(traced, L.truth, L.within).errorPct; return c === null ? null : Number(c.toFixed(1)); })(),
         samErrorPct: r.theirs ? Number(r.theirs.errorPct.toFixed(1)) : null,
         foundPct: counts.foundPct === null ? null : Number(counts.foundPct.toFixed(1)),
         overPct: counts.overPct === null ? null : Number(counts.overPct.toFixed(1)),
@@ -2484,7 +2514,13 @@ async function main() {
          * column is scored, against the tree model's canopy as before, so
          * this row differs from the one above in exactly one thing.
          */
-        if (lawns.some((L) => L.canopyPlus)) {
+        /*
+         * SHELVED 2026-09-27 (owner): "lidar canopy is bad ... the canopy
+         * model is doing the intended function better." The row is kept
+         * behind LIDAR_CANOPY=1 in case a specific use turns up; it never fed
+         * THE PLAN's row, whose veto is roof and void only.
+         */
+        if (/^(1|true|yes)$/i.test(String(process.env.LIDAR_CANOPY || '')) && lawns.some((L) => L.canopyPlus)) {
           const cfg7 = { ...cfg, name: `${cfg.name} + stage 3, span, lidar veto, lidar ∩ NAIP canopy`, stage3: true };
           console.log(`Scoring "${cfg7.name}" (as above, stage 3 over the tree model's canopy plus lidar ∩ NAIP-CHM)…`);
           const plus = judge(masks, { spanM: 8, reachM: 1, minRing: 0.5, veto: true, plus: true });
@@ -2550,14 +2586,40 @@ async function main() {
     for (const r of t.rows) {
       const L = r.lawn;
       const sqft = (px) => (px * L.mpp * L.mpp) / SQM_PER_SQFT;
+      const d = r.predicted ? edgeDiagnosis(L, r.predicted) : null;
+      if (d) r.diagnosis = d;
       console.log(
         `  ${lawnName(L).padEnd(24).slice(0, 24)} `
         + `${Math.round(sqft(L.truthPx)).toLocaleString().padStart(8)} sq ft true   `
         + `trained ${r.mine.errorPct.toFixed(1).padStart(5)}% wrong   `
         + (r.theirs ? `SAM ${r.theirs.errorPct.toFixed(1).padStart(5)}% wrong` : 'SAM not stored')
+        + (d ? `   outline ${d.tracedPct.toFixed(1).padStart(5)}%   `
+          + `within 0.5 m of the edge ${d.near05.toFixed(0).padStart(3)}%, 1 m ${d.near10.toFixed(0).padStart(3)}%   `
+          + `best shift ${d.shiftX.toFixed(2)},${d.shiftY.toFixed(2)} m -> ${d.shiftedPct.toFixed(1)}%` : '')
       );
     }
     console.log('');
+  }
+  /*
+   * WHAT THE ~10% ON A NEAR-PERFECT PICTURE IS MADE OF (owner, 2026-09-27,
+   * B01). "outline" is the error of the traced polygon the picture shows and
+   * the app would hand over; the percentages after it are the share of the
+   * RAW mask's wrong ground lying within half a metre and a metre of the
+   * truth's edge. Mostly-edge error is the patch grid's resolution, not a
+   * mistake anybody would fix; see tools/edge-band.js.
+   */
+  if (planRow) {
+    const ds = planRow.rows.map((r) => r.diagnosis).filter(Boolean);
+    if (ds.length) {
+      const med = (a) => { const b = a.slice().sort((x, y) => x - y); const m = b.length >> 1; return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2; };
+      console.log(`Where THE PLAN's row is wrong, median over ${ds.length} lawns: `
+        + `${med(ds.map((d) => d.near05)).toFixed(0)}% of the wrong ground is within 0.5 m of the true edge, `
+        + `${med(ds.map((d) => d.near10)).toFixed(0)}% within 1 m; the traced outline scores `
+        + `${med(ds.map((d) => d.tracedPct)).toFixed(1)}% against the mask's ${planRow.med.toFixed(1)}%. `
+        + `Best shift of the mask onto the truth (x right, y down): median ${med(ds.map((d) => d.shiftX)).toFixed(2)}, `
+        + `${med(ds.map((d) => d.shiftY)).toFixed(2)} m, error then ${med(ds.map((d) => d.shiftedPct)).toFixed(1)}% -- `
+        + 'a consistent nonzero shift is a registration bug, not a detector one.\n');
+    }
   }
 
   /*
@@ -2640,6 +2702,14 @@ async function main() {
           seen: r1(r.seenPct),
           inferred: r1(r.guessPct),
           truthM2: r1(r.mine.truth),
+          ...(r.diagnosis ? {
+            outline: r1(r.diagnosis.tracedPct),
+            nearEdge05: r1(r.diagnosis.near05),
+            nearEdge10: r1(r.diagnosis.near10),
+            shiftX: r1(r.diagnosis.shiftX),
+            shiftY: r1(r.diagnosis.shiftY),
+            shifted: r1(r.diagnosis.shiftedPct),
+          } : {}),
         })),
       })),
     })}\n`);

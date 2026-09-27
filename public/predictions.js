@@ -292,6 +292,12 @@ function row(e, i) {
   }
 
   top.append(el('span', 'pill warn', `${pct(e.errorPct)} out`));
+  /* The outline in the picture, scored the same way. The pill above is the
+     raw mask (the run's own figure); this is the shape actually drawn, which
+     is what a picture is read as. Runs before 2026-09-27 have no such field. */
+  if (Number.isFinite(e.outlineErrorPct)) {
+    top.append(el('span', 'pill grey', `outline ${pct(e.outlineErrorPct)}`));
+  }
   if (e.samErrorPct !== null && e.samErrorPct !== undefined) {
     /* SAM beside it, because "28% wrong" only means something against the
        thing we currently pay for on the same lawn. */
