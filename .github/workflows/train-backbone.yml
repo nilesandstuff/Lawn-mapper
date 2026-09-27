@@ -218,7 +218,7 @@ jobs:
     # a CPU plus the scoring, and a cap that cut that off would waste the whole
     # run at the last step. Three hours is still far short of the six-hour
     # default, so a hung run does not sit there all afternoon.
-    timeout-minutes: 180
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@v5
 
@@ -371,6 +371,10 @@ jobs:
           SEED: ${{ inputs.seed }}
           FUSE: ${{ inputs.decoder == 'fused' && '1' || '' }}
           FUSE_LIDAR: lidar
+          # Leave-one-out costs the square of the corpus (68 min a decoder at
+          # 53 lawns, past the time limit with three); 10 folds on the full
+          # corpus. The benchmark stays leave-one-out, as every table was.
+          FOLDS: ${{ inputs.lawns == 'all' && '10' || '' }}
           FUSE_NAIP: naip
           FUSE_CANOPY: ${{ inputs.canopy == 'everywhere' && '1' || '0' }}
         run: python3 tools/train_decoder.py
@@ -386,6 +390,10 @@ jobs:
           SEED: ${{ inputs.seed }}
           FUSE: ${{ inputs.decoder == 'fused' && '1' || '' }}
           FUSE_LIDAR: lidar
+          # Leave-one-out costs the square of the corpus (68 min a decoder at
+          # 53 lawns, past the time limit with three); 10 folds on the full
+          # corpus. The benchmark stays leave-one-out, as every table was.
+          FOLDS: ${{ inputs.lawns == 'all' && '10' || '' }}
           FUSE_NAIP: naip
         run: python3 tools/train_decoder.py
 
@@ -400,6 +408,10 @@ jobs:
           SEED: ${{ inputs.seed }}
           FUSE: ${{ inputs.decoder == 'fused' && '1' || '' }}
           FUSE_LIDAR: lidar
+          # Leave-one-out costs the square of the corpus (68 min a decoder at
+          # 53 lawns, past the time limit with three); 10 folds on the full
+          # corpus. The benchmark stays leave-one-out, as every table was.
+          FOLDS: ${{ inputs.lawns == 'all' && '10' || '' }}
           FUSE_NAIP: naip
           # H48: no canopy CHANNEL for this decoder -- every canopy cell it is
           # graded on is not-lawn, so the channel taught "canopy = not lawn".
@@ -417,6 +429,10 @@ jobs:
           SEED: ${{ inputs.seed }}
           FUSE: ${{ inputs.decoder == 'fused' && '1' || '' }}
           FUSE_LIDAR: lidar
+          # Leave-one-out costs the square of the corpus (68 min a decoder at
+          # 53 lawns, past the time limit with three); 10 folds on the full
+          # corpus. The benchmark stays leave-one-out, as every table was.
+          FOLDS: ${{ inputs.lawns == 'all' && '10' || '' }}
           FUSE_NAIP: naip
         run: python3 tools/train_decoder.py
 
