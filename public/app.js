@@ -1025,6 +1025,15 @@ if (typeof window !== 'undefined') {
     // The frame as this source serves it: for Google that is a whole zoom
     // level, and the photograph must be compared against THAT rectangle.
     frameCorners: state.frame ? frameCorners(frameFor(state.provider, state.frame)) : null,
+    /* Where the picture SHOULD sit: the frame, moved by NAIP's alignment
+       with Mapbox when NAIP is showing (lib/align.js), else the frame. */
+    alignedCorners: state.frame
+      ? (isNaip(state.provider) && state.naipAlign
+        ? movedCorners(frameCorners(frameFor(state.provider, state.frame)),
+          state.naipAlign.east, state.naipAlign.north, state.naipAlign.scale)
+        : frameCorners(frameFor(state.provider, state.frame)))
+      : null,
+    naipAlign: state.naipAlign || null,
     frameImageUrl: state.frame && !providerInfo(state.provider).tiles
       ? imageryUrlFor(state.provider, frameFor(state.provider, state.frame))
       : null,
