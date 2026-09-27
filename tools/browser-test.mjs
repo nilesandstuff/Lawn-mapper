@@ -3245,10 +3245,22 @@ console.log('\n--- tinker: neighbours and merging ---');
     return n.count > 0 && n.buttons.some((b) => b.shown);
   }, { timeout: 60000 }).catch(() => {});
   await tp.waitForTimeout(1500);
+  /*
+   * WHOLE OR NOT AT ALL means a small neighbour on a zoomed-out phone gets no
+   * button until you zoom in -- the first run of this found exactly that
+   * (lots 60 px across). So first: zoomed out, nothing shown overhangs; then
+   * zoom in on one as a person would, and that one must show and merge.
+   */
+  const far = await tp.evaluate(() => window.__lmNeighbours());
+  const farShown = far.buttons.filter((b) => b.shown);
+  check('zoomed out, no button shown overhangs its parcel',
+    farShown.every((b) => b.inside), `${far.buttons.length} button(s), ${farShown.length} shown`);
+  await tp.evaluate(() => window.__lmZoomToNeighbour(0));
+  await tp.waitForTimeout(1500);
   const before = await tp.evaluate(() => window.__lmNeighbours());
   const shown = before.buttons.filter((b) => b.shown);
   check('tinker mode draws the neighbouring parcels', before.count > 0, `${before.count} neighbours`);
-  check('and offers a merge button on at least one of them', shown.length > 0,
+  check('zoomed in on a neighbour, its merge button shows', shown.length > 0,
     `${before.buttons.length} button(s), ${shown.length} shown; `
     + JSON.stringify(before.buttons.map((b) => b.diag)));
   check('every button shown sits wholly inside its own parcel',
