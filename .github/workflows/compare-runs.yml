@@ -1,0 +1,61 @@
+name: 24. Compare two settings, lot by lot
+
+# THE WAY A DECISION IS MADE NOW (2026-09-27). Run each setting of workflow
+# 14 more than once, with different seeds (minutes are no object), then give
+# this the run numbers of each side. It reads each run's per-lot results,
+# averages a lot over its side's runs, and prints the paired comparison: wins
+# and losses, the median paired change with a 95% interval, a sign test --
+# for all lots, for the frozen 32 the rules were tuned on, and for the lots
+# approved since. See tools/compare-runs.js.
+
+on:
+  workflow_dispatch:
+    inputs:
+      a_runs:
+        description: 'Setting A: workflow 14 run ids, comma-separated (e.g. the unfused seeds)'
+        required: true
+      b_runs:
+        description: 'Setting B: workflow 14 run ids, comma-separated'
+        required: true
+      row:
+        description: 'The table row to compare (default: THE PLAN''s row)'
+        default: 'decoder, canopy on lawn + stage 3, span, lidar veto'
+      row_b:
+        description: 'A different row for side B, to compare two rows (leave empty for the same row)'
+        default: ''
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Fetch each run's per-lot results
+        env:
+          GH_TOKEN: ${{ github.token }}
+          A_RUNS: ${{ inputs.a_runs }}
+          B_RUNS: ${{ inputs.b_runs }}
+        run: |
+          set -e
+          for side in a b; do
+            ids=$([ "$side" = a ] && echo "$A_RUNS" || echo "$B_RUNS")
+            for id in $(echo "$ids" | tr ',' ' '); do
+              gh run download "$id" --repo "$GITHUB_REPOSITORY" -n lot-results -D "$side/$id"
+            done
+          done
+          find a b -name lot-results.json
+      - name: Compare
+        env:
+          ROW: ${{ inputs.row }}
+          ROW_B: ${{ inputs.row_b }}
+        run: |
+          A=$(find a -name lot-results.json | paste -sd, -)
+          B=$(find b -name lot-results.json | paste -sd, -)
+          node tools/compare-runs.js --a "$A" --b "$B" --row "$ROW" ${ROW_B:+--row-b "$ROW_B"}
