@@ -3249,7 +3249,8 @@ console.log('\n--- tinker: neighbours and merging ---');
   const shown = before.buttons.filter((b) => b.shown);
   check('tinker mode draws the neighbouring parcels', before.count > 0, `${before.count} neighbours`);
   check('and offers a merge button on at least one of them', shown.length > 0,
-    `${before.buttons.length} button(s), ${shown.length} shown`);
+    `${before.buttons.length} button(s), ${shown.length} shown; `
+    + JSON.stringify(before.buttons.map((b) => b.diag)));
   check('every button shown sits wholly inside its own parcel',
     shown.length > 0 && shown.every((b) => b.inside), JSON.stringify(shown.map((b) => [b.label, b.inside])));
   if (shown.length) {
