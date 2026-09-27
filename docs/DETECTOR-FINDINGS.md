@@ -75,6 +75,8 @@ got here. Update it whenever the in-flight run changes.*
   - **Water:** the owner will add a handful of maps with ponds. Public
     already-drawn outlines (OSM, USGS NHD water, building footprints) as
     "certainly not lawn" labels is liked in principle; not built.
+  - **ANSWERED (H53): the ~10% is a half-metre band along the true edge (94%
+    of B01's error within 0.5 m), not registration, not the tracing.**
   - **B01 scores ~10% on a near-perfect picture, under every method, colour
     too.** The picture is the TRACE; the "% out" is the raw MASK. The scorer
     now prints, for THE PLAN's row, the outline's own error, the share of
@@ -613,6 +615,49 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H53. The ~10% on a near-perfect picture is a thin band along the true edge -- not a scoring bug, not misregistration, not the tracing, 2026-09-27
+
+*Run 36339575912, commit 400d0d1, `lawns: all` (55), folds by place,
+`decoder: on`, `canopy: compare`, seed 7 -- a repeat of H50's unfused seed 7
+with the new per-lot diagnosis (tools/edge-band.js). Asked by the owner:
+B01 is drawn all but perfectly and reads 10.8% out.*
+
+**Reproducible:** all 32 benchmark lots' errors on THE PLAN's row match
+H50's seed 7 run (36299643380) to the tenth. Same seed, same corpus, same
+answer.
+
+**B01 (Cass ND, 4,987 sq ft):** mask 10.9%, traced outline 11.1%; **94% of
+its wrong ground lies within 0.5 m of the true edge**, 96% within 1 m; the
+best shift (0.13 m, -0.13 m) only takes it to 10.4%. 10.9% of 463 m² is
+about 50 m², which along a lawn edge of roughly 100 m is a band averaging
+half a metre -- a foot and a half of wobble, invisible at phone zoom and
+counted in full.
+
+**Across all 55 lots (medians):** 41% of the wrong ground is within 0.5 m
+of the true edge, 60% within 1 m. The lots that score well are almost all
+edge (B29 5.6%: 92% within 0.5 m; Cass 10,554 4.0%: 94%; B21 6.3%: 85%;
+B05 11.6%: 83%); the lots that score badly are mostly real mistakes away
+from the edge (B04 61.5%: 13%; B20 57.2%: 16%; B28 76.3%: 21%; B16 20.2%:
+14%).
+
+**Not registration:** the best shift within 0.6 m has median (0.00, 0.00)
+m and takes the median from 25.5% to 25.3%. **Not the tracing:** the
+outline the picture shows scores 25.8% median against the mask's 25.5%.
+
+**What this establishes:** the scorer counts what it says it counts. On a
+lawn the detector gets right, ~10% is the price of placing the edge to
+about half a metre; a small lawn has more edge per square foot, so the
+same band is a larger share of it. A lot's error has two
+parts that the headline adds together: edge wobble, and real mistakes.
+
+**What it does NOT establish -- speculation:** how much of the edge band
+is the decoder's resolution (one answer per ~1.5 m patch, smoothed to 15 cm)
+and how much is the truth's own precision (a hand-traced line is not exact
+either). The colour-and-texture row, which answers per 15 cm cell, also
+scores ~9.5% on B01 (H50), which says the truth's own wobble may be a large
+part of it. A finer output (edges placed from the photograph's own pixels)
+is the lever if it is the decoder's; nothing is if it is the truth's.
 
 ### H52. Telling Scale-MAE a scale inside its pretraining range makes it WORSE, not better: x1 (metres a pixel) stands, 2026-09-27
 
@@ -4218,3 +4263,4 @@ metres a pixel (`model: scalemae-large, res xN` in workflow 14; 0.1 m ->
 | 2026-09-27 | 36298873117 + 36298874496 | 32 | `canopy: compare`, **`lawns: benchmark, 10 folds`**, `decoder: fused` beside `decoder: on`, seed 7 — the method check | 23.5% (everywhere + span, veto, fused) | 24.7% | **H51: 10 folds did not break it.** Plan row 26.5 → 25.2 fused; **25 lots better, 6 worse, p 0.001, median −1.2 [−2.0, −0.45]** (H48 LOO: 18 / 7). Unfused medians within 0.1–1.8 of LOO. Supporting only; H50 decides |
 | 2026-09-27 | 36299639542 36299640699 36299641884 (fused) vs 36299643380 36299644583 36299645971 (unfused) | **55** | `canopy: compare`, `lawns: all`, **folds by place (15)**, seeds 7/8/9 each side — the first decision under the protocol | 22.0% (everywhere + span, veto, unfused s8) | — | **H50: fused NOT adopted.** Plan row 23 better / 20 worse, −0.1 [−0.7, +0.4], p 0.76; frozen 32: 12 / 13; since: 11 / 7. Seed spread 2.5 pts within one setting. Peach County fixed (no lidar). Supersedes H51 |
 | 2026-09-27 | 36303807284 (x5) 36303809104 (x10) 36303810721 (x25) | 55 | `model: scalemae-large, res xN`, `decoder: on`, `canopy: compare`, folds by place, seed 7 — S12 | — | — | **H52: every factor worse than x1.** Plan row vs H50 unfused (3 seeds): x5 19 better / 33 worse +1.6; x10 16 / 31 +1.4; x25 19 / 33 +2.6. x1 stands; S12 closed |
+| 2026-09-27 | 36339575912 | 55 | repeat of H50 unfused seed 7 with the per-lot diagnosis (outline error, edge share, best shift) | — | — | **H53: the ~10% is edge wobble.** All 32 benchmark lots identical to 36299643380. B01 10.9% mask / 11.1% outline, 94% within 0.5 m of the edge, best shift → 10.4%. Median over 55: 41% within 0.5 m, 60% within 1 m; best shift (0, 0); outline 25.8% vs mask 25.5% |
