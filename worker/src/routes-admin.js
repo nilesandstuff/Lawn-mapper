@@ -28,7 +28,7 @@ import { logEntries, loggingEnabled } from './testlog.js';
 import { feedbackEntries, feedbackEnabled } from './feedback.js';
 import { corpusGaps, candidateScore } from './corpus.js';
 import { parcelGaps } from './gaps.js';
-import { outlineKey, idOfOutlineKey, applyReview, OUTLINE_PREFIX } from './outlines.js';
+import { outlineKeys, idOfOutlineKey, applyReview, OUTLINE_PREFIX } from './outlines.js';
 // The same cleaner the paid queue puts a worker id through on the way in. Two
 // spellings of one id is a row the claim lookup never finds.
 import {
@@ -1367,9 +1367,11 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
   if (path === 'outline' && request.method === 'GET') {
     if (!env.CORPUS) return json({ error: 'No bucket' }, 404, origin);
     const id = url.searchParams.get('id') || '';
-    const object = await env.CORPUS.get(outlineKey(id));
-    if (!object) return json({ error: 'Not fetched yet' }, 404, origin);
-    return json(await object.json(), 200, origin);
+    for (const key of outlineKeys(id)) {
+      const object = await env.CORPUS.get(key);
+      if (object) return json(await object.json(), 200, origin);
+    }
+    return json({ error: 'Not fetched yet' }, 404, origin);
   }
 
   if (path === 'outline' && request.method === 'POST') {
@@ -1379,11 +1381,15 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
     /* A real map, or nothing is written: the key is built from this id. */
     const row = id ? await env.DB.prepare('SELECT id FROM corpus WHERE id = ?1').bind(id).first() : null;
     if (!row) return json({ error: 'No such map' }, 404, origin);
-    const object = await env.CORPUS.get(outlineKey(id));
+    let key = null, object = null;
+    for (const k of outlineKeys(id)) {
+      object = await env.CORPUS.get(k);
+      if (object) { key = k; break; }
+    }
     if (!object) return json({ error: 'Not fetched yet' }, 404, origin);
     const saved = applyReview(await object.json(), body);
     const kept = saved.features.filter((f) => !f.properties?.dropped).length;
-    await env.CORPUS.put(outlineKey(id), JSON.stringify(saved), {
+    await env.CORPUS.put(key, JSON.stringify(saved), {
       httpMetadata: { contentType: 'application/json' },
       customMetadata: { status: saved.status, count: String(kept) },
     });

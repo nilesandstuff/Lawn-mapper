@@ -105,14 +105,23 @@ async function open(i) {
     fetch(`/api/admin/outline?id=${encodeURIComponent(m.id)}`).then((r) => r.json()),
     fetch(`/api/admin/candidate?id=${encodeURIComponent(m.id)}`).then((r) => r.json()),
   ]);
-  view.doc = doc;
+  if (doc.error) {
+    /* Say it, rather than drawing an empty frame that looks like "none". */
+    view.doc = { features: [] };
+    $('#errors').hidden = false;
+    $('#errors').textContent = `Could not load this map's outlines: ${doc.error}.`;
+  } else {
+    view.doc = doc;
+  }
   view.dropped = new Set((doc.features || []).map((f, k) => (f.properties?.dropped ? k : -1)).filter((k) => k >= 0));
   view.frame = cand.imageFrame || cand.frame;
   $('#sub').textContent = `${m.county || 'Traced by hand'}${m.squareFeet ? `, ${m.squareFeet.toLocaleString()} sq ft of lawn` : ''}`
     + ` — ${doc.status === 'approved' ? 'APPROVED' : 'draft'}${doc.fetchedAt ? `, fetched ${doc.fetchedAt.slice(0, 10)}` : ''}`;
-  const errs = doc.errors ? Object.entries(doc.errors).map(([k, v]) => `${k}: ${String(v).split('\n')[0]}`) : [];
-  $('#errors').hidden = !errs.length;
-  $('#errors').textContent = errs.length ? `Some sources did not answer — ${errs.join('; ')}` : '';
+  const errs = !doc.error && doc.errors ? Object.entries(doc.errors).map(([k, v]) => `${k}: ${String(v).split('\n')[0]}`) : [];
+  if (!doc.error) {
+    $('#errors').hidden = !errs.length;
+    $('#errors').textContent = errs.length ? `Some sources did not answer — ${errs.join('; ')}` : '';
+  }
   $('#attribution').textContent = doc.attribution || '';
   const img = $('#photo');
   img.onload = () => {
