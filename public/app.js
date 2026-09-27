@@ -564,7 +564,7 @@ if (typeof window !== 'undefined') {
         const poly = m.lmPlace ? m.lmPlace.nb.ring.map((ll) => { const q = map.project(ll); return [q.x, q.y]; }) : [];
         const corners = r ? [[r.left, r.top], [r.right, r.top], [r.right, r.bottom], [r.left, r.bottom]]
           .map(([x, y]) => [x - box.left, y - box.top]) : [];
-        return { shown, label: el?.textContent, inside: corners.length === 4 && corners.every((c) => inPoly(poly, c)),
+        return { shown, label: el?.textContent, diag: m.lmDiag, inside: corners.length === 4 && corners.every((c) => inPoly(poly, c)),
           x: r ? (r.left + r.right) / 2 : null, y: r ? (r.top + r.bottom) / 2 : null };
       }),
     };
@@ -10119,13 +10119,23 @@ function placeMergeButtons() {
       const poly = nb.ring.map((ll) => { const p = map.project(ll); return [p.x, p.y]; });
       const want = map.project(pref);
       let spot = null;
+      const tried = [];
       for (const label of ['Merge this parcel', 'Merge']) {
         el.textContent = label;
         el.style.visibility = 'hidden';
         el.style.display = '';
+        tried.push([label, el.offsetWidth, el.offsetHeight]);
         spot = placeInside(poly, [want.x, want.y], el.offsetWidth, el.offsetHeight);
         if (spot) break;
       }
+      // For the browser test: what it measured and where it looked.
+      const xs = poly.map((q) => q[0]);
+      const ys = poly.map((q) => q[1]);
+      m.lmDiag = {
+        tried, pref: [Math.round(want.x), Math.round(want.y)],
+        box: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)].map(Math.round),
+        verts: poly.length, spot: spot && spot.map(Math.round),
+      };
       if (spot) {
         m.setLngLat(map.unproject(spot));
         el.style.visibility = '';
