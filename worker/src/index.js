@@ -12,6 +12,7 @@
  *   GET  /api/coverage                 -> every state and county with parcels
  *   GET  /api/geocode?q=<address>      -> candidate addresses (no quota)
  *   GET  /api/parcel?lng=&lat=         -> parcel boundary or null (no quota)
+ *   GET  /api/parcel/neighbours?county=&bbox=w,s,e,n -> the parcels around one (tinker mode)
  *   GET  /api/imagery?...              -> satellite PNG (no quota)
  *   GET  /api/mask?url=<replicate url> -> proxied SAM mask (no quota)
  *   POST /api/segment                  -> SAM lawn mask (CONSUMES QUOTA)
@@ -33,7 +34,7 @@
  *   ASSETS           -- the static site in public/
  */
 
-import { lookupParcel } from './parcel.js';
+import { lookupParcel, lookupNeighbours } from './parcel.js';
 import { isCovered, servesCounty } from './counties.js';
 import { coverage, coverageSummary, NEAR_COMPLETE } from './coverage.js';
 import { checkQuota, consumeQuota, refundQuota } from './quota.js';
@@ -248,6 +249,26 @@ async function handleGeocode(url, env, origin) {
 }
 
 /* ----------------------------------------------------------------- parcel */
+/*
+ * The parcels in a box around one (tinker mode: merging a second lot, and
+ * keeping a front edge moved to the road off a neighbour's). The box is
+ * capped at about 400 m a side so this cannot be used to pull a county's
+ * parcel layer down a tile at a time.
+ */
+async function handleNeighbours(url, origin) {
+  const county = url.searchParams.get('county') || '';
+  const bbox = (url.searchParams.get('bbox') || '').split(',').map(Number);
+  if (!county || bbox.length !== 4 || bbox.some((v) => !Number.isFinite(v))) {
+    return json({ error: 'county and bbox=w,s,e,n required' }, 400, origin);
+  }
+  const [w, s, e, n] = bbox;
+  if (!(e > w && n > s) || e - w > 0.005 || n - s > 0.004) {
+    return json({ error: 'bbox too large' }, 400, origin);
+  }
+  const features = await lookupNeighbours(county, bbox);
+  return json({ features }, 200, origin);
+}
+
 async function handleParcel(request, url, env, origin, ctx) {
   const lng = parseFloat(url.searchParams.get('lng'));
   const lat = parseFloat(url.searchParams.get('lat'));
@@ -1302,6 +1323,8 @@ export default {
           return await handlePrediction(url, env, origin);
         case '/api/parcel':
           return await handleParcel(request, url, env, origin, ctx);
+        case '/api/parcel/neighbours':
+          return await handleNeighbours(url, origin);
         /*
          * THE TRAINED MODEL'S WEIGHTS, a few hundred numbers.
          *

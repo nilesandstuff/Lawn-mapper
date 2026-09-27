@@ -207,4 +207,63 @@ async function lookupParcel(lng, lat) {
   return null;
 }
 
-export { lookupParcel, queryCounty, esriToGeoJSON };
+/**
+ * THE PARCELS AROUND ONE, for tinker mode's "merge this parcel" and for
+ * checking that a front edge moved out to the road does not run over
+ * somebody else's lot (public/lib/frontage.js).
+ *
+ * One envelope query on the county's own layer, the box the caller names
+ * (the parcel's, padded). Same endpoints and fallbacks as the point lookup.
+ * At most MAX_NEIGHBOURS come back: a box around a house lot holds a dozen,
+ * and one around a farm in a subdivision should not return the subdivision.
+ */
+const MAX_NEIGHBOURS = 60;
+
+export function envelopeParams(bbox, where) {
+  const [w, s, e, n] = bbox;
+  return {
+    f: 'json',
+    geometry: JSON.stringify({ xmin: w, ymin: s, xmax: e, ymax: n, spatialReference: { wkid: 4326 } }),
+    geometryType: 'esriGeometryEnvelope',
+    inSR: '4326',
+    outSR: '4326',
+    spatialRel: 'esriSpatialRelIntersects',
+    outFields: '*',
+    returnGeometry: 'true',
+    ...(where ? { where } : {}),
+  };
+}
+
+async function lookupNeighbours(countyKey, bbox) {
+  const cfg = ALL_COUNTIES[countyKey];
+  if (!cfg || !cfg.service) return [];
+  for (const endpoint of endpointsFor(cfg)) {
+    const url = `${endpoint.service}/${endpoint.layer}/query?${new URLSearchParams(envelopeParams(bbox, endpoint.where))}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      const res = await fetch(url, { signal: controller.signal, headers: { Accept: 'application/json' } });
+      if (!res.ok) continue;
+      const body = await res.json();
+      if (body.error || !Array.isArray(body.features)) continue;
+      const f = endpoint.fields || {};
+      return body.features.slice(0, MAX_NEIGHBOURS).map((feat) => {
+        const geometry = esriToGeoJSON(feat.geometry);
+        if (!geometry) return null;
+        const attrs = feat.attributes || {};
+        return {
+          type: 'Feature',
+          geometry,
+          properties: { pin: attrs[f.pin] ?? null, county: cfg.name, countyKey },
+        };
+      }).filter(Boolean);
+    } catch {
+      // Next endpoint; a county that will not answer simply has no neighbours today.
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return [];
+}
+
+export { lookupParcel, lookupNeighbours, queryCounty, esriToGeoJSON };
