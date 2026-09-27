@@ -173,9 +173,13 @@ on:
         # each for "no lidar" / "no NAIP" -- with modality dropout. See
         # tools/fuse_layers.py. A choice rather than an eleventh input because
         # GitHub allows ten. Needs the canopy (anything but off).
-        description: 'Train the convolutional decoder over the full patch grid (on), the same with lidar + NAIP NDVI + canopy as extra inputs (fused), or not at all (off)'
+        #
+        # FUSED IS THE MAIN SET-UP FROM 2026-09-27 (owner): H50 measured it
+        # level with "on" at 55 lots, and it is the one expected to pull
+        # ahead as the corpus grows. "on" stays as the other arm.
+        description: 'Train the convolutional decoder over the full patch grid (on), the same with lidar + NAIP NDVI + canopy as extra inputs (fused, the main set-up), or not at all (off)'
         type: choice
-        default: 'on'
+        default: 'fused'
         options: ['on', 'fused', 'off']
       seed:
         # THE DECODER'S SEED. It is deterministic given the seed and the

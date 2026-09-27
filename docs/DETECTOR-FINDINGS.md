@@ -84,8 +84,9 @@ got here. Update it whenever the in-flight run changes.*
     shift (up to 0.6 m) that best lays the mask on the truth, which would
     expose a registration offset; the page shows the outline's figure
     beside the mask's. Run launched to read it.
-  - The fused inputs stay a second arm in runs, not THE PLAN: H50 is a tie,
-    not a loss, and the owner's scaling argument is untested either way.
+  - **THE MAIN SET-UP IS FUSED (owner, 2026-09-27 evening):** workflow 14's
+    decoder defaults to `fused`; `on` stays as the other arm. H50 measured
+    them level; the owner's reasoning is that fused should scale better.
 - **Decided (2026-09-27): H52, Scale-MAE keeps being told metres a
   pixel.** Its pretraining used a relative scale of 2.2-5 (E2's
   correction), but x5, x10 and x25 each scored 1.4-2.6 points worse lot
@@ -651,13 +652,23 @@ about half a metre; a small lawn has more edge per square foot, so the
 same band is a larger share of it. A lot's error has two
 parts that the headline adds together: edge wobble, and real mistakes.
 
-**What it does NOT establish -- speculation:** how much of the edge band
-is the decoder's resolution (one answer per ~1.5 m patch, smoothed to 15 cm)
-and how much is the truth's own precision (a hand-traced line is not exact
-either). The colour-and-texture row, which answers per 15 cm cell, also
-scores ~9.5% on B01 (H50), which says the truth's own wobble may be a large
-part of it. A finer output (edges placed from the photograph's own pixels)
-is the lever if it is the decoder's; nothing is if it is the truth's.
+**The owner on B01, from the pictures (2026-09-27) -- and the rule it
+sets: TRACING IS TO BE TAKEN AS NEARLY PERFECT.** The trace stops at a
+white vinyl fence on the north side and the detector ran a little past it
+(it did not read the fence as not-lawn); the property line takes in two or
+three inches of the neighbour's lawn, which nothing can help; on the south
+side the trace is perhaps two inches off where it skips part of a fence's
+shadow, and there the detector matched the line almost exactly. The owner
+judges the ~1.5 m patch broadly responsible for the edge error.
+
+**What it does NOT establish -- speculation:** how much a finer output would
+recover. The patch is 1.3-5.4 m depending on the lot: every lot is squeezed
+into ONE 896 px pass (`windows: off`), 5.4 to 33.5 cm a pixel in this run,
+so the frame's size -- padding included -- sets the patch. A fence one
+patch wide cannot be resolved. The colour-and-texture row answers per
+15 cm cell and scores ~9.5% on B01, so pixel-level colour may help place
+edges where the decoder cannot (the owner's question: colour as a helper,
+not a replacement).
 
 ### H52. Telling Scale-MAE a scale inside its pretraining range makes it WORSE, not better: x1 (metres a pixel) stands, 2026-09-27
 
