@@ -408,7 +408,7 @@ export const framePixels = (lawns) => {
 
 const QUERY = `
   SELECT id, county, tree_line, frame, shapes, detected_shapes, parcel,
-         image_key, image_provider, image_frame, mode, model
+         image_key, image_provider, image_frame, mode, model, naip_align
     FROM corpus
    WHERE status = 'approved' AND image_key IS NOT NULL AND frame IS NOT NULL${lawnSetClause()}
    ORDER BY at DESC
@@ -1903,6 +1903,8 @@ async function main() {
         county: row.county,
         /* The frame the photograph was taken on, for scale.json's boxes. */
         frame,
+        /* How NAIP lines up here, if the editor set it (tools/naip_bands.py). */
+        naipAlign: parse(row.naip_align),
         /* Cells across and down. Everything below for this lawn is on this grid. */
         grid: G,
         gridH: GH,
@@ -2104,6 +2106,9 @@ async function main() {
         frames: frameSpans(lawns),
         /* Where each frame IS, in Web Mercator metres, for the lidar reader. */
         boxes: frameBoxes(lawns),
+        /* NAIP's alignment where the editor set one; the rest are aligned by
+           tools/naip_bands.py against the photograph. */
+        naipAlign: Object.fromEntries(lawns.filter((L) => L.naipAlign).map((L) => [L.id, L.naipAlign])),
         /* B01..B32, for the Python readers' tables (worker/src/benchmark-ids.js). */
         tags: Object.fromEntries(lawns.filter((L) => L.tag).map((L) => [L.id, L.tag])),
         /* Metres DOWN each frame, which since the crop is not the same as

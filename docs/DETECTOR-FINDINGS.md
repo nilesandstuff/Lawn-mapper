@@ -68,8 +68,14 @@ got here. Update it whenever the in-flight run changes.*
     3,0,1); there is no other NIR source. Nothing currently imposes the
     order except modality dropout (NAIP 0.2, lidar 0.3, the photograph
     never dropped) and the photograph's 1024 numbers a patch against seven.
-    Open: register NAIP to the photograph per frame (its red and green
-    against Mapbox's) before it is used.
+    **Built 2026-09-27:** NAIP is lined up with the photograph edge for
+    edge (public/lib/align.js; the same arithmetic in tools/naip_align.py).
+    In the EDITOR, showing NAIP or NDVI aligns it on the spot, says how far
+    it moved, and offers nudges (25 cm, 0.25% scale); what the person
+    settles on is saved as corpus.naip_align. In the PIPELINE,
+    tools/naip_bands.py applies a saved alignment, otherwise aligns each
+    frame against its own photograph, and prints the move per frame
+    (naip-align.json). Not yet measured: whether it changes any score.
   - **The frame is not to grow** (owner). Padding is still to be cut for
     lots that sit diagonally (a rotated crop); not yet done.
   - **Water:** the owner will add a handful of maps with ponds. Public

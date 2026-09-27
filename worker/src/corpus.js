@@ -146,6 +146,23 @@ export async function storeImage(env, row) {
 }
 
 /**
+ * How NAIP lines up with Mapbox on this map, as the editor sends it, or null.
+ *
+ * Bounded rather than trusted: a shift past 20 m or a scale past 5% is not
+ * NAIP being a little off, it is a bug or somebody's thumb, and storing it
+ * would move a lawn's near-infrared onto the neighbour's house.
+ */
+export function naipAlignOf(a) {
+  if (!a || typeof a !== 'object') return null;
+  const east = Number(a.east), north = Number(a.north), scale = Number(a.scale ?? 1);
+  if (![east, north, scale].every(Number.isFinite)) return null;
+  if (Math.abs(east) > 20 || Math.abs(north) > 20 || Math.abs(scale - 1) > 0.05) return null;
+  const source = a.source === 'person' ? 'person' : 'auto';
+  const r = (v, d) => Math.round(v * 10 ** d) / 10 ** d;
+  return JSON.stringify({ east: r(east, 2), north: r(north, 2), scale: r(scale, 4), source });
+}
+
+/**
  * One ring, cleaned to finite numbers at six decimal places.
  *
  * Six is about eleven centimetres, which is finer than any lawn edge is
@@ -338,6 +355,7 @@ export async function recordFinished(env, body) {
     parcel_source: ['county', 'hand'].includes(body?.parcelSource)
       ? body.parcelSource
       : null,
+    naip_align: naipAlignOf(body?.naipAlign),
     exclusions: Array.isArray(body?.exclusions) && body.exclusions.length
       ? text(body.exclusions.filter((e) => typeof e === 'string').join(','), 200)
       : null,
@@ -352,8 +370,8 @@ export async function recordFinished(env, body) {
          id, at, lng, lat, county, provider, model, mode, hand_edited,
          detected_sq_ft, square_feet, parcel_sq_ft, frame, parcel, shapes,
          detected_shapes, parcel_source, exclusions, created_at,
-         inferred_checked_at
-       ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?2,?19)
+         inferred_checked_at, naip_align
+       ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?2,?19,?20)
        ON CONFLICT(id) DO UPDATE SET
          at = ?2, county = ?5, provider = ?6, hand_edited = ?9,
          detected_sq_ft = ?10, square_feet = ?11, parcel_sq_ft = ?12,
@@ -395,13 +413,16 @@ export async function recordFinished(env, body) {
           * a person can say which. Assignment here would also un-check a map
           * every time its outline was edited afterwards.
           */
-         inferred_checked_at = COALESCE(?19, corpus.inferred_checked_at)`
+         inferred_checked_at = COALESCE(?19, corpus.inferred_checked_at),
+         /* A finish without looking at NAIP says nothing about NAIP, so it
+            must not erase an alignment somebody set. */
+         naip_align = COALESCE(?20, corpus.naip_align)`
     ).bind(
       row.id, row.at, row.lng, row.lat, row.county, row.provider, row.model,
       row.mode, row.hand_edited, row.detected_sq_ft, row.square_feet,
       row.parcel_sq_ft, row.frame, row.parcel, row.shapes,
       row.detected_shapes, row.parcel_source, row.exclusions,
-      row.inferred_checked_at
+      row.inferred_checked_at, row.naip_align
     ).run();
     /*
      * The row is handed back so the caller can pass it to storeImage under

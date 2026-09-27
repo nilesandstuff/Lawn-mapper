@@ -210,3 +210,7 @@ ALTER TABLE corpus ADD COLUMN cohort TEXT;
 UPDATE corpus SET cohort = 'benchmark-1rijjz2'
  WHERE cohort IS NULL AND status = 'approved' AND image_key IS NOT NULL
    AND frame IS NOT NULL AND at < '2026-09-24T16:30:00Z';
+
+-- HOW NAIP LINES UP WITH MAPBOX, per map (see the column in schema.sql).
+-- corpus shipped long ago, so the CREATE there reaches new databases only.
+ALTER TABLE corpus ADD COLUMN naip_align TEXT;

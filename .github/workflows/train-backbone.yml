@@ -313,6 +313,7 @@ jobs:
           python3 crowns_lidar_test.py
           python3 fuse_test.py
           python3 folds_test.py
+          python3 naip_align_test.py
 
       - name: Find the canopy
         if: ${{ inputs.canopy != 'off' }}

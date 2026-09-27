@@ -27,6 +27,7 @@ import {
 import { afterStroke, restoreAway } from './lib/stitch.js';
 import { strokeOnShapes } from './lib/brush-vector.js';
 import { extendToRoads, mergeButtonPoint, mergeRings, placeInside } from './lib/frontage.js';
+import { alignImages, luminance, movedCorners } from './lib/align.js';
 // Pasting the pieces of a big lot's detection back into one mask.
 import { stitchMasks } from './lib/tiles.js';
 import {
@@ -5318,6 +5319,8 @@ function hideImagery() {
   tileWatch = null;
   if (map.getLayer('imagery-alt')) map.removeLayer('imagery-alt');
   if (map.getSource('imagery-alt')) map.removeSource('imagery-alt');
+  const panel = document.getElementById('naip-align');
+  if (panel) panel.hidden = true;
 }
 
 /**
@@ -5488,13 +5491,135 @@ async function showImagery() {
   hideImagery(); // in case a later-started run already put something up
 
   map.addSource('imagery-alt', {
-    type: 'image', url, coordinates: frameCorners(served),
+    type: 'image', url,
+    coordinates: isNaip(state.provider) && state.naipAlign
+      ? movedCorners(frameCorners(served), state.naipAlign.east, state.naipAlign.north, state.naipAlign.scale)
+      : frameCorners(served),
   });
   map.addLayer({ id: 'imagery-alt', type: 'raster', source: 'imagery-alt' }, before);
   idle();
+  if (isNaip(state.provider)) alignNaip(served, run);
   setStatus(info.detect
     ? `Showing ${info.label} over the measurement frame. Detect again to use it.`
     : `Showing ${info.label}. This one is for looking at — detection uses Mapbox.`);
+}
+
+/* ------------------------------------------ NAIP, lined up with Mapbox */
+/**
+ * NAIP IS MOVED ONTO THE MAPBOX PHOTOGRAPH, not the other way round (owner,
+ * 2026-09-27): it is sometimes shifted or a little off in scale, and Mapbox
+ * is the trusted one. On showing NAIP (or the NDVI drawn from it), both
+ * pictures of the same frame are compared edge for edge (lib/align.js) and
+ * NAIP's corners moved by what fits best. The person can nudge it from the
+ * panel; whatever they settle on is saved with the map (corpus.naip_align)
+ * and applied again before the detector reads NAIP's near-infrared, so the
+ * check happens here, in front of somebody, rather than only in a pipeline.
+ */
+const NAIP_STEP_M = 0.25;
+const NAIP_STEP_SCALE = 0.0025;
+const isNaip = (id) => id === 'naip' || id === 'ndvi';
+
+async function greyOf(url, w, h) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const bitmap = await createImageBitmap(await res.blob());
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  return luminance(ctx.getImageData(0, 0, w, h).data, w, h);
+}
+
+function applyNaipAlign(served) {
+  const src = map.getSource('imagery-alt');
+  const a = state.naipAlign;
+  if (src?.setCoordinates && served) {
+    src.setCoordinates(a
+      ? movedCorners(frameCorners(served), a.east, a.north, a.scale)
+      : frameCorners(served));
+  }
+  renderNaipPanel(served);
+}
+
+async function alignNaip(served, run) {
+  state.naipServed = served;
+  /* A nudge somebody made stands; the machine does not overrule a person. */
+  if (state.naipAlign?.source === 'person') { applyNaipAlign(served); return; }
+  const acrossM = metresPerPixel(served, 1);
+  const downM = acrossM * ((served.height || served.size) / served.size);
+  const cellM = Math.max(0.6, acrossM / 256);
+  const w = Math.max(48, Math.round(acrossM / cellM));
+  const h = Math.max(48, Math.round(downM / cellM));
+  renderNaipPanel(served, 'Lining NAIP up with the Mapbox photograph…');
+  try {
+    const [ref, mov] = await Promise.all([
+      greyOf(imageryUrlFor('mapbox', served), w, h),
+      greyOf(imageryUrlFor('naip', served), w, h),
+    ]);
+    if (run !== imageryRun || !isNaip(state.provider)) return;
+    const r = alignImages(ref, mov, w, h, { maxShift: Math.max(2, Math.round(6 / cellM)) });
+    state.naipAlign = {
+      east: r.dx * cellM, north: -r.dy * cellM, scale: r.scale, source: 'auto',
+      fit: Math.round(r.ncc * 100) / 100, fit0: Math.round(r.ncc0 * 100) / 100,
+    };
+    applyNaipAlign(served);
+  } catch (e) {
+    if (run !== imageryRun) return;
+    renderNaipPanel(served, `Could not compare NAIP with Mapbox here (${e.message}); shown as delivered.`);
+  }
+}
+
+function nudgeNaip(dEast, dNorth, dScale) {
+  const a = state.naipAlign || { east: 0, north: 0, scale: 1 };
+  state.naipAlign = {
+    east: a.east + dEast, north: a.north + dNorth,
+    scale: Math.min(1.05, Math.max(0.95, a.scale + dScale)), source: 'person',
+  };
+  applyNaipAlign(state.naipServed);
+}
+
+function renderNaipPanel(served, message) {
+  const panel = document.getElementById('naip-align');
+  if (!panel) return;
+  panel.hidden = !isNaip(state.provider);
+  if (panel.hidden) return;
+  panel.textContent = '';
+  const a = state.naipAlign;
+  const say = document.createElement('p');
+  if (message) {
+    say.textContent = message;
+  } else if (!a || (!a.east && !a.north && a.scale === 1)) {
+    say.textContent = a?.source === 'auto'
+      ? 'NAIP already lines up with Mapbox here. Nudge it if it looks off.'
+      : 'NAIP as delivered.';
+  } else {
+    const ew = `${Math.abs(a.east).toFixed(1)} m ${a.east >= 0 ? 'east' : 'west'}`;
+    const ns = `${Math.abs(a.north).toFixed(1)} m ${a.north >= 0 ? 'north' : 'south'}`;
+    const sc = a.scale !== 1 ? `, scaled ${((a.scale - 1) * 100).toFixed(1)}%` : '';
+    say.textContent = `NAIP moved ${ew}, ${ns}${sc} to line up with Mapbox`
+      + (a.source === 'person' ? ' (set by you).' : ' (automatic).');
+  }
+  panel.append(say);
+  const row = document.createElement('div');
+  row.className = 'naipalign-buttons';
+  const btn = (text, title, fn) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = text; b.title = title;
+    b.addEventListener('click', fn);
+    row.append(b);
+  };
+  btn('◀', 'Move NAIP west 25 cm', () => nudgeNaip(-NAIP_STEP_M, 0, 0));
+  btn('▶', 'Move NAIP east 25 cm', () => nudgeNaip(NAIP_STEP_M, 0, 0));
+  btn('▲', 'Move NAIP north 25 cm', () => nudgeNaip(0, NAIP_STEP_M, 0));
+  btn('▼', 'Move NAIP south 25 cm', () => nudgeNaip(0, -NAIP_STEP_M, 0));
+  btn('−', 'Shrink NAIP a quarter of a percent', () => nudgeNaip(0, 0, -NAIP_STEP_SCALE));
+  btn('+', 'Grow NAIP a quarter of a percent', () => nudgeNaip(0, 0, NAIP_STEP_SCALE));
+  btn('Auto', 'Line it up automatically again', () => {
+    state.naipAlign = null;
+    alignNaip(state.naipServed || served, imageryRun);
+  });
+  panel.append(row);
 }
 
 /** The same URL the Worker builds, asked for through our own origin. */
@@ -7232,6 +7357,9 @@ function openMap(s) {
    * lawn's detection and look entirely plausible.
    */
   state.detectedShapes = null;
+  /* NAIP's alignment belongs to the place; a reopened map starts from what
+     the pipeline or the editor finds again rather than a stale nudge. */
+  state.naipAlign = null;
 
   map.getSource('parcel').setData(state.parcel || empty());
   for (const f of (s.shapes || [])) {
@@ -10130,7 +10258,7 @@ function placeMergeButtons() {
       const want = map.project(pref);
       // Whatever floats over the map right now, in the map's own pixels.
       const box = map.getContainer().getBoundingClientRect();
-      const avoid = ['#coach', '#maprail', '#maprail-left', '#layer-list', '#edge-panel', '#map-hint']
+      const avoid = ['#coach', '#maprail', '#maprail-left', '#layer-list', '#edge-panel', '#map-hint', '#naip-align']
         .map((sel) => $(sel))
         .filter((node) => node && !node.hidden && node.offsetParent !== null)
         .map((node) => node.getBoundingClientRect())
@@ -10965,6 +11093,7 @@ function reset() {
   state.detectedBy = null;
   state.detectedExcluding = null;
   state.detectedShapes = null;
+  state.naipAlign = null;
   state.provider = 'mapbox';
   state.model = 'sam3';
   state.pins = [];
@@ -11562,6 +11691,12 @@ function finishedBody() {
       // Which exclusion prompts ran. A lawn that needed `woods` is a lawn with
       // a tree line, which is what the hard half of the eval is made of.
       exclusions: state.exclude?.length ? state.exclude.slice().sort() : null,
+      /* How NAIP lines up here, if somebody looked at it in NAIP. Absent, the
+         pipeline aligns it itself (tools/naip_bands.py). */
+      naipAlign: state.naipAlign
+        ? { east: state.naipAlign.east, north: state.naipAlign.north,
+            scale: state.naipAlign.scale, source: state.naipAlign.source }
+        : null,
   };
 }
 
