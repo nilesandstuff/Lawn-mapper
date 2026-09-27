@@ -1245,10 +1245,13 @@ if (sources.includes('naip')) {
   check('and it is fetched as one image of the frame, not tiles',
     shot.sourceType === 'image', `sourceType=${shot.sourceType}`);
 
-  // The whole point: the picture's corners ARE the frame's corners.
-  const drift = shot.corners && shot.frameCorners
+  // The whole point: the picture's corners ARE the frame's corners -- moved
+  // by exactly the alignment with Mapbox the page reports, and no further
+  // (NAIP is lined up with Mapbox on the spot since 2026-09-27).
+  const target = shot.alignedCorners || shot.frameCorners;
+  const drift = shot.corners && target
     ? Math.max(...shot.corners.flatMap((c, i) =>
-        [Math.abs(c[0] - shot.frameCorners[i][0]), Math.abs(c[1] - shot.frameCorners[i][1])]))
+        [Math.abs(c[0] - target[i][0]), Math.abs(c[1] - target[i][1])]))
     : Infinity;
   check('and it covers exactly the frame the measurement is made against',
     drift < 1e-9, `worst corner off by ${drift} degrees`);
