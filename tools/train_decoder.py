@@ -88,6 +88,12 @@ LIMIT = int(os.environ.get("LIMIT", "0") or 0)
 FUSE = os.environ.get("FUSE") == "1"
 FUSE_LIDAR = os.environ.get("FUSE_LIDAR", "")
 FUSE_NAIP = os.environ.get("FUSE_NAIP", "")
+# The tree model's canopy as an input channel. OFF for the "canopy on lawn"
+# decoder (H48): that decoder grades canopy only where the tracer drew no
+# lawn, so every graded canopy cell is not-lawn, and a canopy channel let it
+# learn "canopy = not lawn" outright (inferred 34.5 -> 44.6%). The channel
+# stays in the grid as zeros so every decoder reads the same shape.
+FUSE_CANOPY = os.environ.get("FUSE_CANOPY", "1") == "1"
 # Modality dropout: the chance, per lawn per step, that a source is hidden
 # as though it were missing -- so the decoder cannot lean on the lidar where
 # it is stale, and has met "no lidar here" before it meets it on a lot.
@@ -164,7 +170,7 @@ def read_lawn(feats, frames, stem, shape):
             else:
                 ndvi = valid = None
         can_in = None
-        if mask_file and os.path.exists(mask_file):
+        if FUSE_CANOPY and mask_file and os.path.exists(mask_file):
             can_in = np.asarray(Image.open(mask_file).convert("L")) >= 128
             sources.append("canopy")
         extra = extra_channels(gw, gh, cx, cy, lidar=lidar, ndvi=ndvi, ndvi_valid=valid, canopy=can_in)
@@ -354,6 +360,7 @@ def main():
             "fused": ({"lidar": sum(1 for L in lawns if "lidar" in L["sources"]),
                        "naip": sum(1 for L in lawns if "naip" in L["sources"]),
                        "canopy": sum(1 for L in lawns if "canopy" in L["sources"]),
+                       "canopyInput": FUSE_CANOPY,
                        "dropLidar": DROP_LIDAR, "dropNaip": DROP_NAIP} if FUSE else None),
             "seconds": round(total),
         }, f)

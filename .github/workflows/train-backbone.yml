@@ -372,6 +372,7 @@ jobs:
           FUSE: ${{ inputs.decoder == 'fused' && '1' || '' }}
           FUSE_LIDAR: lidar
           FUSE_NAIP: naip
+          FUSE_CANOPY: ${{ inputs.canopy == 'everywhere' && '1' || '0' }}
         run: python3 tools/train_decoder.py
 
       # THE THREE-WAY COMPARISON, over the one extraction above. Same seed,
@@ -400,6 +401,9 @@ jobs:
           FUSE: ${{ inputs.decoder == 'fused' && '1' || '' }}
           FUSE_LIDAR: lidar
           FUSE_NAIP: naip
+          # H48: no canopy CHANNEL for this decoder -- every canopy cell it is
+          # graded on is not-lawn, so the channel taught "canopy = not lawn".
+          FUSE_CANOPY: '0'
         run: python3 tools/train_decoder.py
 
       - name: Train the decoder, canopy unseen everywhere
