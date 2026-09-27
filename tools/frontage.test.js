@@ -6,7 +6,7 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { extendToRoads, mergeButtonPoint, mergeRings } from '../public/lib/frontage.js';
+import { extendToRoads, mergeButtonPoint, mergeRings, placeInside } from '../public/lib/frontage.js';
 import { makeFrame, openRing } from '../public/lib/edges.js';
 import { envelopeParams } from '../worker/src/parcel.js';
 
@@ -90,6 +90,11 @@ const merged = mergeRings(clip, lot, beside);
 check('two adjoining parcels merge into one outline', merged && Math.abs(openRing(merged).length - 4) <= 2, merged && show(merged));
 const gap = ring([20.2, 0], [20.2, 30], [40, 30], [40, 0]);
 check('a hair\'s gap between them (20 cm) still merges', mergeRings(clip, lot, gap) !== null);
+// The owner's case (2026-09-27): the button showed and the merge did nothing.
+// A 1.5 m gap between the two lines, corners not opposite each other.
+const gapped = ring([21.5, -3], [21.5, 33], [40, 33], [40, -3]);
+check('a gap the button allows (1.5 m, corners not lined up) merges too',
+  mergeButtonPoint(lot, gapped) !== null && mergeRings(clip, lot, gapped) !== null);
 check('a parcel across the street does not', mergeRings(clip, lot, ring([0, -20], [0, -50], [20, -50], [20, -20])) === null);
 
 const btn = mergeButtonPoint(lot, beside);
@@ -101,6 +106,19 @@ check('no button on a parcel that does not touch this one', mergeButtonPoint(lot
 const q = envelopeParams([-85.61, 43.02, -85.60, 43.03], "STATUS='A'");
 check('the neighbours query is an envelope in WGS84, with the county\'s own filter',
   q.geometryType === 'esriGeometryEnvelope' && JSON.parse(q.geometry).xmin === -85.61 && q.inSR === '4326' && q.where === "STATUS='A'");
+
+// The button, whole inside the parcel or nowhere.
+const box = [[0, 0], [300, 0], [300, 200], [0, 200], [0, 0]];
+const at = placeInside(box, [150, 100], 120, 26);
+check('a button fits where it was asked to go', at && at[0] === 150 && at[1] === 100);
+const edge = placeInside(box, [5, 100], 120, 26);
+check('asked to sit on the edge, it moves inside instead of overhanging',
+  edge && edge[0] - 60 >= 0 && edge[0] + 60 <= 300, edge && edge.join(','));
+check('a parcel too small on screen gets no button at all', placeInside([[0, 0], [60, 0], [60, 20], [0, 20], [0, 0]], [30, 10], 120, 26) === null);
+const ell = [[0, 0], [300, 0], [300, 40], [40, 40], [40, 200], [0, 200], [0, 0]];
+const inL = placeInside(ell, [20, 100], 120, 26);
+check('in an L-shaped parcel it goes where it fits whole, not across the notch',
+  inL && inL[1] + 16 <= 40 && inL[1] - 16 >= 0, inL && inL.join(','));
 
 if (failures) { console.log(`\n${failures} failed.`); process.exit(1); }
 console.log('\nAll checks passed.');

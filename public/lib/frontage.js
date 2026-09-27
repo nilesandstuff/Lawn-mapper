@@ -289,33 +289,82 @@ export function mergeButtonPoint(parcelLL, neighbourLL, { insetM = 6.1, touchM =
   return null;
 }
 
-/** The two parcels as one outline, or null if they do not join into one piece. */
-export function mergeRings(clip, aLL, bLL, { snapM = 0.5 } = {}) {
-  /*
-   * Two county parcels share a line, but not always to the last digit: a
-   * hair's gap between them would come out of a union as two pieces. So the
-   * neighbour's corners within snapM of this parcel's line are put ON it
-   * first.
-   */
-  const A = openRing(aLL);
-  const frame = makeFrame(A[0]);
-  const pa = A.map(frame.toXY);
-  const snapped = openRing(bLL).map((ll) => {
+/** Put the corners of ring `r` that lie within snapM of ring `onto`'s line exactly on that line. */
+function snapOnto(r, onto, frame, snapM) {
+  const po = openRing(onto).map(frame.toXY);
+  const out = openRing(r).map((ll) => {
     const p = frame.toXY(ll);
     let best = null;
-    for (let i = 0; i < pa.length; i++) {
-      const q = nearestOnSegment(p, pa[i], pa[(i + 1) % pa.length]);
+    for (let i = 0; i < po.length; i++) {
+      const q = nearestOnSegment(p, po[i], po[(i + 1) % po.length]);
       const d = len(sub(q, p));
       if (!best || d < best.d) best = { q, d };
     }
     return best && best.d <= snapM ? frame.toLngLat(best.q) : ll;
   });
-  const b = [...snapped, snapped[0]];
+  return [...out, out[0]];
+}
+
+/**
+ * The two parcels as one outline, or null if they do not join into one piece.
+ *
+ * Two county parcels share a line, but not always to the last digit, and a
+ * gap between them comes out of a union as two pieces. The button is offered
+ * to any parcel within 2 m (mergeButtonPoint's touchM), so the merge must
+ * close any gap that size or the button does nothing -- which is what the
+ * owner found (2026-09-27). So each parcel's corners within snapM of the
+ * other's line are put ON it, both ways, before the union.
+ */
+export function mergeRings(clip, aLL, bLL, { snapM = 2.5 } = {}) {
+  const frame = makeFrame(openRing(aLL)[0]);
+  const b = snapOnto(bLL, aLL, frame, snapM);
+  const a = snapOnto(aLL, b, frame, snapM);
   try {
-    const out = clip.union([aLL], [b]);
+    const out = clip.union([a], [b]);
     if (out.length !== 1) return null;
     return out[0][0];
   } catch {
     return null;
   }
+}
+
+/**
+ * Where a w x h button (screen pixels) can sit ENTIRELY inside a polygon
+ * (screen pixels), as near `pref` as possible. The owner's rule: the button
+ * shows whole inside the parcel it merges, never overhanging, or not at all.
+ *
+ * A rectangle is inside a simple polygon when its four corners are inside and
+ * no corner of the polygon is inside it (an edge cannot cross it otherwise
+ * without cutting off a corner). Candidates: `pref`, then rings around it out
+ * to `reach` pixels. Returns the centre, or null.
+ */
+export function placeInside(polyPx, pref, w, h, { pad = 3, reach = 600, step = 6 } = {}) {
+  const P = openRing(polyPx);
+  if (P.length < 3) return null;
+  const inside = ([x, y]) => {
+    let c = false;
+    for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
+      const [xi, yi] = P[i];
+      const [xj, yj] = P[j];
+      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c;
+    }
+    return c;
+  };
+  const hw = w / 2 + pad;
+  const hh = h / 2 + pad;
+  const fits = ([cx, cy]) => {
+    const x0 = cx - hw; const x1 = cx + hw; const y0 = cy - hh; const y1 = cy + hh;
+    if (![[x0, y0], [x1, y0], [x1, y1], [x0, y1]].every(inside)) return false;
+    return !P.some(([x, y]) => x > x0 && x < x1 && y > y0 && y < y1);
+  };
+  if (fits(pref)) return pref;
+  for (let r = step; r <= reach; r += step) {
+    const n = Math.max(8, Math.round((2 * Math.PI * r) / step));
+    for (let k = 0; k < n; k++) {
+      const t = (2 * Math.PI * k) / n;
+      const c = [pref[0] + r * Math.cos(t), pref[1] + r * Math.sin(t)];
+      if (fits(c)) return c;
+    }
+  }
+  return null;
 }
