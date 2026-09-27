@@ -61,8 +61,20 @@ got here. Update it whenever the in-flight run changes.*
   - **Lidar canopy is shelved** ("the canopy model is doing the intended
     function better"): the "lidar ∩ NAIP canopy" rows now run only with
     LIDAR_CANOPY=1. It never fed THE PLAN's row, whose veto is roof and
-    void, and that veto stays until the owner says otherwise (H39: roof
-    alone was worth 10 points on Kent 8,626).
+    void, and that veto STAYS (owner, confirmed the same evening).
+  - **Trust order (owner):** the Mapbox photograph first, then lidar, then
+    NAIP last -- NAIP is soft and sometimes shifted or slightly mis-scaled
+    against Mapbox in the editor. Note the near-infrared IS NAIP (bands
+    3,0,1); there is no other NIR source. Nothing currently imposes the
+    order except modality dropout (NAIP 0.2, lidar 0.3, the photograph
+    never dropped) and the photograph's 1024 numbers a patch against seven.
+    Open: register NAIP to the photograph per frame (its red and green
+    against Mapbox's) before it is used.
+  - **The frame is not to grow** (owner). Padding is still to be cut for
+    lots that sit diagonally (a rotated crop); not yet done.
+  - **Water:** the owner will add a handful of maps with ponds. Public
+    already-drawn outlines (OSM, USGS NHD water, building footprints) as
+    "certainly not lawn" labels is liked in principle; not built.
   - **B01 scores ~10% on a near-perfect picture, under every method, colour
     too.** The picture is the TRACE; the "% out" is the raw MASK. The scorer
     now prints, for THE PLAN's row, the outline's own error, the share of
