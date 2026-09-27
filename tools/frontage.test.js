@@ -120,5 +120,9 @@ const inL = placeInside(ell, [20, 100], 120, 26);
 check('in an L-shaped parcel it goes where it fits whole, not across the notch',
   inL && inL[1] + 16 <= 40 && inL[1] - 16 >= 0, inL && inL.join(','));
 
+const dodged = placeInside(box, [150, 100], 120, 26, { avoid: [[60, 60, 240, 140]] });
+check('and it keeps out from under the tip box floating over the map (the owner\'s tap that did nothing)',
+  dodged && (dodged[1] + 16 <= 60 || dodged[1] - 16 >= 140 || dodged[0] + 63 <= 60 || dodged[0] - 63 >= 240), dodged && dodged.join(','));
+
 if (failures) { console.log(`\n${failures} failed.`); process.exit(1); }
 console.log('\nAll checks passed.');

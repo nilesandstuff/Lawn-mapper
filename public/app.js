@@ -8920,6 +8920,7 @@ function showTip(stage) {
 
 function hideTip() {
   $('#coach').hidden = true;
+  placeMergeButtons(); // the room the tip took is free again
   tips.stage = null;
   tips.target = null;
 }
@@ -8935,6 +8936,8 @@ function hideTip() {
 function placeTip() {
   const box = $('#coach');
   const arrow = $('#coach-arrow');
+  // The merge buttons keep out from under the tip, wherever it lands.
+  requestAnimationFrame(() => placeMergeButtons());
   if (box.hidden) return;
 
   /*
@@ -10125,6 +10128,14 @@ function placeMergeButtons() {
       if (!el) continue;
       const poly = nb.ring.map((ll) => { const p = map.project(ll); return [p.x, p.y]; });
       const want = map.project(pref);
+      // Whatever floats over the map right now, in the map's own pixels.
+      const box = map.getContainer().getBoundingClientRect();
+      const avoid = ['#coach', '#maprail', '#maprail-left', '#layer-list', '#edge-panel', '#map-hint']
+        .map((sel) => $(sel))
+        .filter((node) => node && !node.hidden && node.offsetParent !== null)
+        .map((node) => node.getBoundingClientRect())
+        .filter((r) => r.width && r.height)
+        .map((r) => [r.left - box.left, r.top - box.top, r.right - box.left, r.bottom - box.top]);
       let spot = null;
       const tried = [];
       for (const label of ['Merge this parcel', 'Merge']) {
@@ -10132,7 +10143,7 @@ function placeMergeButtons() {
         el.style.visibility = 'hidden';
         el.style.display = '';
         tried.push([label, el.offsetWidth, el.offsetHeight]);
-        spot = placeInside(poly, [want.x, want.y], el.offsetWidth, el.offsetHeight);
+        spot = placeInside(poly, [want.x, want.y], el.offsetWidth, el.offsetHeight, { avoid });
         if (spot) break;
       }
       // For the browser test: what it measured and where it looked.

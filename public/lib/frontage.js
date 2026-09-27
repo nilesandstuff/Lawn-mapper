@@ -336,9 +336,10 @@ export function mergeRings(clip, aLL, bLL, { snapM = 2.5 } = {}) {
  * A rectangle is inside a simple polygon when its four corners are inside and
  * no corner of the polygon is inside it (an edge cannot cross it otherwise
  * without cutting off a corner). Candidates: `pref`, then rings around it out
- * to `reach` pixels. Returns the centre, or null.
+ * to `reach` pixels. `avoid` is a list of [x0, y0, x1, y1] boxes it must
+ * not overlap. Returns the centre, or null.
  */
-export function placeInside(polyPx, pref, w, h, { pad = 3, reach = 600, step = 6 } = {}) {
+export function placeInside(polyPx, pref, w, h, { pad = 3, reach = 600, step = 6, avoid = [] } = {}) {
   const P = openRing(polyPx);
   if (P.length < 3) return null;
   const inside = ([x, y]) => {
@@ -355,7 +356,10 @@ export function placeInside(polyPx, pref, w, h, { pad = 3, reach = 600, step = 6
   const fits = ([cx, cy]) => {
     const x0 = cx - hw; const x1 = cx + hw; const y0 = cy - hh; const y1 = cy + hh;
     if (![[x0, y0], [x1, y0], [x1, y1], [x0, y1]].every(inside)) return false;
-    return !P.some(([x, y]) => x > x0 && x < x1 && y > y0 && y < y1);
+    if (P.some(([x, y]) => x > x0 && x < x1 && y > y0 && y < y1)) return false;
+    // Nor under anything floating over the map (the tip, the tool rails):
+    // a button under the tip is a button the tap never reaches.
+    return !avoid.some(([a0, b0, a1, b1]) => x0 < a1 && x1 > a0 && y0 < b1 && y1 > b0);
   };
   if (fits(pref)) return pref;
   for (let r = step; r <= reach; r += step) {
