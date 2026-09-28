@@ -1423,6 +1423,8 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
           mask: big(clipTo(r.predicted)),
           added: big(clipTo(added)),
           vetoed: big(clipTo(vetoed)),
+          edgeAdded: big(clipTo(r.edgeAdded)),
+          edgeRemoved: big(clipTo(r.edgeRemoved)),
           line: big(L.within),
         },
       });
@@ -2498,7 +2500,22 @@ async function main() {
          */
         const cfgE = { ...cfg, name: `${cfg6.name}, colour edges`, stage3: true };
         console.log(`Scoring "${cfgE.name}" (cells within 1 m of the edge re-decided by this lot's own colours)…`);
-        table.push(summarise(cfgE, judge(masks, { spanM: 8, reachM: 1, minRing: 0.5, veto: true, edges: true }), cfg.dims));
+        const edged = judge(masks, { spanM: 8, reachM: 1, minRing: 0.5, veto: true, edges: true });
+        table.push(summarise(cfgE, edged, cfg.dims));
+        /* What colour edges changed in THE PLAN's final answer, for the
+           pictures' own two layers (owner, 2026-09-28: "no labelled layer
+           for it"). Both rows are after the veto, so this is exactly the
+           difference between the two scores. */
+        vetoed.forEach((r, i) => {
+          const e = edged[i];
+          if (!r.predicted || !e?.predicted) return;
+          r.edgeAdded = new Uint8Array(r.predicted.length);
+          r.edgeRemoved = new Uint8Array(r.predicted.length);
+          for (let k = 0; k < r.predicted.length; k++) {
+            r.edgeAdded[k] = e.predicted[k] && !r.predicted[k] ? 1 : 0;
+            r.edgeRemoved[k] = r.predicted[k] && !e.predicted[k] ? 1 : 0;
+          }
+        });
         const split = { roof: [0, 0], void: [0, 0] };
         const moved = [];
         const plain = judge(masks, { spanM: 8, reachM: 1, minRing: 0.5 });
