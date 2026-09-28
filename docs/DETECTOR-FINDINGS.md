@@ -65,8 +65,11 @@ got here. Update it whenever the in-flight run changes.*
   21 better / 31 worse, +0.9; 10 cm: 23 / 25, +0.2. Both move the same lots
   by tens of points (B28 and B03 far better, B20 far worse) -- and NOT by
   lot size (B13, the biggest, got much worse). S13 closed.
-- **In flight (2026-09-28): S15**, the owner's "maximum block size"
-  (`windows: on`: whole below ~90 m, windows above), fused, seeds 7/8/9.
+- **Decided (2026-09-28): H56, the owner's "maximum block size" (S15,
+  `windows: on`) is NOT adopted.** Three seeds against the fair baseline
+  (S14's runs -- H50's predate NAIP alignment): 18 better / 28 worse,
+  +0.6 [-0.1, +1.4]; lots approved since 6 / 15. The whole-lot squeeze
+  stays. B28 improves under every finer reading (85 -> ~30).
 - **Owner decisions and a scoring question, 2026-09-27 (afternoon):**
   - **Lidar canopy is shelved** ("the canopy model is doing the intended
     function better"): the "lidar ∩ NAIP canopy" rows now run only with
@@ -653,6 +656,49 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H56. A maximum block size (S15: whole below ~90 m, windows above) is no better, and on the lots approved since it is worse -- not adopted, 2026-09-28
+
+*Runs 36409834421 (seed 7, commit 0fdfee7), 36411745885 (seed 8) and
+36411749028 (seed 9) (both commit 7cbae83 -- the first seed-8/9 launches,
+36409837637 and 36409840302, died installing packages when PyPI timed out,
+fixed by a longer pip timeout; no code difference), `windows: on`, fused,
+`canopy: on lawn` (one decoder, THE PLAN's row named "the pretrained eye,
+decoder + stage 3, span, lidar veto"), `lawns: all` (55), folds by place.*
+
+**THE BASELINE, CORRECTED:** H50's fused runs predate NAIP alignment
+(e8e9bf7, 2026-09-27 evening), so a comparison with them changes two things
+at once. The S14 runs (36355253442 / 36355254898 / 36355256268, commit
+79f28ba, fused, windows off, seeds 7/8/9) include it and are the fair
+baseline. Both are given; they agree.
+
+| B against | lots | better / worse / level | median | paired change [95%] | sign test |
+|---|---|---|---|---|---|
+| S14 (fair) | all 55 | 18 / 28 / 9 | 25.3 -> 27.6% | +0.6 [-0.1, +1.4] | p 0.18 |
+| S14 (fair) | frozen 32 | 12 / 13 / 7 | 28.1 -> 28.9% | +0.1 [-1.2, +0.9] | p 1.00 |
+| S14 (fair) | approved since | 6 / 15 / 2 | 24.8 -> 23.4% | +1.4 [+0.1, +5.6] | p 0.08 |
+| H50 | all 55 | 18 / 31 / 6 | 25.6 -> 27.6% | +0.8 [+0.0, +1.4] | p 0.09 |
+
+Workflow 24 runs 36442768901 (against S14) and 36442743520 (against H50).
+Runs' medians 26.1 / 27.3 / 28.7.
+
+**Bar (before the runs): failed** -- more lots worse than better, the
+interval does not lie below zero, and on the lots approved since it is
+worse with an interval above zero. S15 is closed.
+
+**H55 re-read against the fair baseline (same workflow, S14 as side A):**
+tiles 6 cm 21 better / 29 worse, +0.8 [-0.6, +2.3] (run 36442789494);
+tiles 10 cm 23 / 25, -0.1 [-1.6, +1.0] (run 36442793651). The conclusion
+stands: neither screens.
+
+**One lot every variant helps:** B28 (NC 10,556, semi-dormant, trees gone
+since the lidar) goes 85.6 -> 30.2 under windows, 27.5 at 6 cm, 28.5 at
+10 cm. The lots windows hurt most are B10 (20.8 -> 36.8), and three
+approved since. B20, which blocks sent past 120%, windows IMPROVE
+(45.6 -> 33.7) -- so the lots each reading helps are not the same lots.
+**Speculation, not established:** that B28 suffers from the whole-lot
+squeeze specifically (it improves under every finer reading); nothing
+about it has been checked beyond the numbers.
 
 ### H55. Reading every lot in fixed blocks (S13) does not screen -- at 6 cm or at 10 cm -- but it moves the SAME lots by tens of points both times, 2026-09-28
 
@@ -4267,6 +4313,8 @@ adopted only under the protocol's full bar.
 
 ### S15. A MAXIMUM block size instead of a fixed one: small lots whole, big lots split (owner, 2026-09-28)
 
+**CLOSED 2026-09-28 by H56: failed its bar (18 better / 28 worse; worse on the lots approved since).**
+
 **The idea (owner):** "rather than a standardized size tile, just a maximum
 tile size... small lots fit into 1 tile, but big lots get more." **This is
 already built** as `windows: on` (tools/windows.py): a frame that fits one
@@ -4473,3 +4521,4 @@ worse on the lots approved since. Then it joins THE PLAN.
 | 2026-09-28 | 36355253442 36355254898 36355256268 | 55 | `decoder: fused`, folds by place, seeds 7/8/9; THE PLAN's row with and without **colour edges** (S14), compared within the runs by workflow 24 (36362309179) | — | — | **H54: fails its bar, not adopted.** 25 better / 20 worse, -0.3 [-1.0, +0.3], p 0.55; frozen 32 18 / 10; since 7 / 10 (+0.2). B20 -13.7, B19 -11.0, B23 -7.0; B22 +4.6, B28 +4.2. Lot -84.06045,33.94050 is 409% in both columns |
 | 2026-09-28 | 36358021364 | 55 | **`windows: tiles 10 cm`** (S13's control: 45 m blocks, 1.6 m patch, padding skipped), fused, folds by place, seed 7; vs H50 fused s7/8/9 (workflow 24 36367542993) | — | — | **H55: screen not met, but a reshuffle.** Plan row 23 better / 25 worse, +0.2 [-1.4, +1.4]; B28 -54, B03 -38, B18 -18; B20 +76, B02 +24, B24 +23, B19 +22. Backbone 18 min |
 | 2026-09-28 | 36358019744 | 55 | **`windows: tiles`** (S13: 6 cm, 27 m blocks, 0.96 m patch, padding skipped), fused, folds by place, seed 7; vs H50 fused s7/8/9 (workflow 24 36377343429) | — | — | **H55: screen not met; S13 closed.** Plan row 21 better / 31 worse, +0.9 [-0.7, +2.4]; B28 -55, B03 -43; B20 +90, B23 +31, B13 +19, B10 +18 -- same lots as the 10 cm run. Backbone 91 min, 48 min a decoder |
+| 2026-09-28 | 36409834421 36411745885 36411749028 | 55 | **`windows: on`** (S15: whole below ~90 m, 10 cm windows above), fused, `canopy: on lawn`, seeds 7/8/9; vs S14's fused s7/8/9 (workflow 24 36442768901) and H50's (36442743520). Seeds 8/9 first died at the pip install (PyPI timeouts; 36409837637, 36409840302) and were rerun | — | — | **H56: fails its bar, S15 closed.** vs S14: 18 better / 28 worse, +0.6 [-0.1, +1.4]; since 6 / 15, +1.4 [+0.1, +5.6]. B28 85.6 -> 30.2, B20 45.6 -> 33.7; B10 20.8 -> 36.8. H55's tiles re-read against S14: 6 cm +0.8, 10 cm -0.1 -- unchanged |
