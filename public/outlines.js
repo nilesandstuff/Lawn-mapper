@@ -25,6 +25,10 @@ const view = {
   dirty: false,
 };
 const NUDGE_M = 0.25;
+/* The server holds a move at 60 m either way (worker/src/outlines.js); the
+   page holds it there too, so what is on screen is what is saved. */
+const MAX_SHIFT_M = 60;
+const hold = (v) => Math.max(-MAX_SHIFT_M, Math.min(MAX_SHIFT_M, v));
 const DRAG_SLOP_PX = 5;
 
 /** Shift in metres from alignImages' answer on a grid of cellM metres a cell. */
@@ -153,7 +157,7 @@ function grab(g, i) {
       if (!dragging && Math.hypot(dx, dy) < DRAG_SLOP_PX) return;
       dragging = true;
       const m = mpp();
-      view.shifts.set(i, { east: start.was.east + dx * perPx * m, north: start.was.north - dy * perPx * m });
+      view.shifts.set(i, { east: hold(start.was.east + dx * perPx * m), north: hold(start.was.north - dy * perPx * m) });
       const o = offsetOf(i);
       g.setAttribute('transform', `translate(${(o.east / m).toFixed(2)} ${(-o.north / m).toFixed(2)})`);
     };
@@ -186,7 +190,7 @@ function shiftLine() {
 }
 
 function nudge(east, north) {
-  view.shift = { east: view.shift.east + east, north: view.shift.north + north, source: 'person' };
+  view.shift = { east: hold(view.shift.east + east), north: hold(view.shift.north + north), source: 'person' };
   view.dirty = true;
   draw();
 }
@@ -218,9 +222,15 @@ async function autoAlign() {
     for (const rings of polygonsOf(f.geometry)) mc.fill(new Path2D(pathFor(rings)), 'evenodd');
   });
   const mov = luminance(mc.getImageData(0, 0, gw, gh).data, gw, gh);
-  const fit = alignImages(ref, mov, gw, gh, { maxShift: Math.max(2, Math.round(5 / cellM)), scales: [1] });
-  const sh = fit.moved ? shiftFromFit(fit, cellM) : { east: 0, north: 0 };
-  view.shift = { ...sh, source: fit.moved ? 'auto' : null };
+  const maxShift = Math.max(2, Math.round(5 / cellM));
+  const fit = alignImages(ref, mov, gw, gh, { maxShift, scales: [1] });
+  /* A best fit on the edge of the search is not a fit, just the edge: the
+     audit of 2026-09-28 found pond after pond "lined up" by exactly 5 m
+     both ways. Leave those where the public map has them. */
+  const onEdge = Math.abs(fit.dx) >= maxShift - 0.5 || Math.abs(fit.dy) >= maxShift - 0.5;
+  const use = fit.moved && !onEdge;
+  const sh = use ? shiftFromFit(fit, cellM) : { east: 0, north: 0 };
+  view.shift = { ...sh, source: use ? 'auto' : null };
   draw();
 }
 
@@ -441,6 +451,15 @@ async function save(status, { advance = true } = {}) {
   if (!res.ok) { $('#said').textContent = `Not saved (${out.error || res.status}).`; return false; }
   view.dirty = false;
   e.status = out.status;
+  /* Check what was stored against what is on screen: never lose a move quietly again. */
+  if (out.stored) {
+    const sent = [...view.shifts.entries()].filter(([, v]) => v && (v.east || v.north)).length;
+    const kept = Object.keys(out.stored.shifts || {}).length;
+    if (kept !== sent || (!!out.stored.shift) !== !!(view.shift.east || view.shift.north)) {
+      $('#said').textContent = `Saved, but ${sent - kept} move(s) were not stored -- tell Claude.`;
+      return false;
+    }
+  }
   e.kept = out.kept || {};
   $('#said').textContent = out.status === 'approved' ? 'Approved.' : out.status === 'rejected' ? 'Rejected.' : 'Saved as a draft.';
   totals();

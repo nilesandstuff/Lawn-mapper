@@ -1442,7 +1442,12 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
       httpMetadata: { contentType: 'application/json' },
       customMetadata: { status: saved.status, kept: JSON.stringify(kept) },
     });
-    return json({ ok: true, status: saved.status, kept }, 200, origin);
+    /* What was stored, so the page can check it against what it sent. */
+    const stored = {
+      shift: saved.shift || null,
+      shifts: Object.fromEntries(saved.features.map((f, k) => [k, f.properties?.shift]).filter(([, v]) => v)),
+    };
+    return json({ ok: true, status: saved.status, kept, stored }, 200, origin);
   }
 
   if (path === 'example-image') {

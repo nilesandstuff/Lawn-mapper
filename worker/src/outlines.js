@@ -104,14 +104,23 @@ export function keptByClass(doc) {
  * shift, and a shift is bounded so a slip of the finger cannot move a pond
  * into the next field.
  */
-export const MAX_SHIFT_M = 15;
+/*
+ * 60 M, AND NEVER DROPPED SILENTLY (2026-09-28). The first cap was 15 m and a
+ * move past it was thrown away without a word while the page showed it
+ * moved: the owner went back over approved examples and found outlines where
+ * the public map had put them. A pond can sit 20 m off. A frame is at most
+ * about 110 m across, so 60 m in either direction is the most any real move
+ * needs; past it the move is held AT 60 m (the page holds it there too),
+ * never discarded. Only something that is not a number is refused.
+ */
+export const MAX_SHIFT_M = 60;
 export function cleanShift(v) {
   const east = Number(v?.east);
   const north = Number(v?.north);
   if (!Number.isFinite(east) || !Number.isFinite(north)) return null;
-  if (Math.abs(east) > MAX_SHIFT_M || Math.abs(north) > MAX_SHIFT_M) return null;
   if (!east && !north) return null;
-  return { east: Math.round(east * 100) / 100, north: Math.round(north * 100) / 100 };
+  const hold = (x) => Math.round(Math.max(-MAX_SHIFT_M, Math.min(MAX_SHIFT_M, x)) * 100) / 100;
+  return { east: hold(east), north: hold(north) };
 }
 
 /** A review of an example: keep/drop by index, shifts, and approve, reject or leave as draft. */

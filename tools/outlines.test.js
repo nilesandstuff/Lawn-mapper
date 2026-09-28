@@ -72,11 +72,15 @@ console.log('PASS  the fetch tool and the worker agree on where a map\'s outline
   assert.deepEqual(s.shift, { east: 1.23, north: -0.5, source: 'auto' });
   assert.deepEqual(s.features[0].properties.shift, { east: 0.25, north: 0 });
   assert.equal(s.features[1].properties.shift, undefined, 'a drag put back to zero is cleared');
-  const far = reviewExample(doc, { shift: { east: MAX_SHIFT_M + 1, north: 0 }, shifts: { 0: { east: 'x', north: 1 } } });
-  assert.equal(far.shift, undefined);
+  // Past the cap a move is HELD at it, never dropped (a 15 m cap once threw
+  // the owner's longer drags away silently); only a non-number is refused.
+  const far = reviewExample(doc, { shift: { east: MAX_SHIFT_M + 25, north: -(MAX_SHIFT_M + 5) }, shifts: { 0: { east: 'x', north: 1 }, 1: { east: 22.5, north: -18 } } });
+  assert.deepEqual(far.shift, { east: MAX_SHIFT_M, north: -MAX_SHIFT_M, source: 'person' });
   assert.equal(far.features[0].properties.shift, undefined);
+  assert.deepEqual(far.features[1].properties.shift, { east: 22.5, north: -18 }, 'a 20 m move is kept as it was made');
+  assert.ok(MAX_SHIFT_M >= 50);
   assert.equal(reviewExample(doc, { shift: { east: 2, north: 0, source: 'anything' } }).shift.source, 'person');
-  console.log('PASS  examples: outline shifts kept in metres, bounded, zero cleared');
+  console.log('PASS  examples: outline shifts kept in metres, held at the cap never dropped, zero cleared');
 }
 
 // An outline counts only if some of it is inside the photo -- not when just
