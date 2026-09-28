@@ -81,12 +81,16 @@ def box_targets(label, grid_w, grid_h, cover_x, cover_y):
     return mean.astype(np.float32), inside.astype(np.float32)
 
 
-def _lerp_axis(arr, n_out, cover, axis):
-    """Bilinear resample along one axis: label cell centres read off patches."""
+def _lerp_axis(arr, n_out, cover, axis, cover_out=1.0):
+    """Bilinear resample along one axis: label cell centres read off patches.
+
+    `cover` is how far past the photograph the INPUT grid runs; `cover_out`
+    the same for the output (1 for label cells, which are the photograph).
+    """
     n_in = arr.shape[axis]
-    # Label cell x has its centre at (x + 0.5) cells; a patch is
-    # n_out * cover / n_in cells wide, so its centre is at (k + 0.5) patches.
-    u = (np.arange(n_out) + 0.5) * (n_in / (n_out * cover)) - 0.5
+    # Output cell x has its centre at (x + 0.5) * cover_out / n_out of the
+    # photograph; input patch k has its centre at (k + 0.5) * cover / n_in.
+    u = (np.arange(n_out) + 0.5) * (cover_out * n_in / (n_out * cover)) - 0.5
     u = np.clip(u, 0, n_in - 1)
     i0 = np.floor(u).astype(int)
     i1 = np.minimum(i0 + 1, n_in - 1)
@@ -105,3 +109,14 @@ def to_photo(grid, cells_w, cells_h, cover_x, cover_y):
     out = _lerp_axis(grid, cells_w, cover_x, axis=1)
     out = _lerp_axis(out, cells_h, cover_y, axis=0)
     return out
+
+
+def onto_grid(grid, cover_x, cover_y, out_w, out_h, out_cover_x, out_cover_y):
+    """A (H x W x C) patch grid resampled onto another patch grid of the SAME
+    photograph -- the whole-lot pass read at the 6 cm blocks' cell centres, for
+    the both-scales decoder. Each grid's cover says how far past the
+    photograph it runs; past the edge the nearest patch is repeated."""
+    grid = np.asarray(grid, dtype=np.float32)
+    out = _lerp_axis(grid, out_w, cover_x, axis=1, cover_out=out_cover_x)
+    out = _lerp_axis(out, out_h, cover_y, axis=0, cover_out=out_cover_y)
+    return np.ascontiguousarray(out)

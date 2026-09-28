@@ -106,6 +106,15 @@ FUSE_CANOPY = os.environ.get("FUSE_CANOPY", "1") == "1"
 # it is stale, and has met "no lidar here" before it meets it on a lot.
 DROP_LIDAR = float(os.environ.get("DROP_LIDAR", "0.3"))
 DROP_NAIP = float(os.environ.get("DROP_NAIP", "0.2"))
+# BOTH SCALES (workflow 14 `windows: both`, 2026-09-28): FEATURES are the
+# 6 cm blocks, and FEATURES_WHOLE the same lots squeezed whole into one pass.
+# H55: the blocks and the whole-lot read are each far better on DIFFERENT
+# lots, by tens of points, and not by lot size -- so neither replaces the
+# other; the decoder is given both at every cell and learns which to trust.
+# The whole-lot grid is resampled onto the block grid (decoder_grid.onto_grid)
+# and its numbers are stacked beside the blocks' at each cell.
+FEATURES_WHOLE = os.environ.get("FEATURES_WHOLE", "")
+WHOLE_MANIFEST = None
 
 
 class Decoder(nn.Module):
@@ -135,13 +144,23 @@ def read_lawn(feats, frames, stem, shape):
     if grid.size != gh * gw * dim:
         raise SystemExit(f"{stem}.f32 holds {grid.size} numbers, not {gh}x{gw}x{dim}")
     grid = grid.reshape(gh, gw, dim)
+    cx, cy = float(shape.get("coverX") or 1.0), float(shape.get("coverY") or 1.0)
+
+    if FEATURES_WHOLE:
+        from decoder_grid import onto_grid
+        ws = WHOLE_MANIFEST["images"].get(stem)
+        if ws is None:
+            raise SystemExit(f"{stem} has block features but no whole-lot features in {FEATURES_WHOLE}")
+        whole = np.fromfile(os.path.join(FEATURES_WHOLE, f"{stem}.f32"), dtype=np.float32)
+        whole = whole.reshape(ws["gridH"], ws["gridW"], ws["dim"])
+        whole = onto_grid(whole, float(ws.get("coverX") or 1.0), float(ws.get("coverY") or 1.0), gw, gh, cx, cy)
+        grid = np.concatenate([grid, whole], axis=2)
 
     labels = np.asarray(Image.open(os.path.join(frames, f"{stem}-labels.png")).convert("RGB"))
     truth = labels[:, :, 0] >= 128
     within = labels[:, :, 1] >= 128
     inferred = labels[:, :, 2] >= 128
     cells_h, cells_w = truth.shape
-    cx, cy = float(shape.get("coverX") or 1.0), float(shape.get("coverY") or 1.0)
 
     # THE CANOPY IS UNSEEN GROUND TOO, when the run brought the tree model's
     # mask (CANOPY=dir of <id>-mask.png from tools/tree-canopy.py). It is a
@@ -331,6 +350,13 @@ def main():
     if len(stems) < 3:
         raise SystemExit(f"only {len(stems)} lawns have both features and labels; three is the floor")
 
+    global WHOLE_MANIFEST
+    if FEATURES_WHOLE:
+        with open(os.path.join(FEATURES_WHOLE, "manifest.json")) as f:
+            WHOLE_MANIFEST = json.load(f)
+        print(f"BOTH SCALES: {manifest.get('tileMpp') or '?'} m blocks from {feats} plus the whole-lot "
+              f"pass from {FEATURES_WHOLE}, stacked at every block cell", flush=True)
+
     torch.set_num_threads(max(1, os.cpu_count() or 1))
     started = time.time()
     lawns = [read_lawn(feats, frames, s, manifest["images"][s]) for s in stems]
@@ -419,7 +445,7 @@ def main():
             "model": manifest.get("model"), "size": manifest.get("size"),
             "dim": dim, "params": params, "epochs": EPOCHS, "seed": SEED,
             "lr": LR, "weightDecay": WEIGHT_DECAY, "dropout": DROPOUT,
-            "seenOnly": True, "lawns": len(lawns), "folds": len(groups), "examples": len(examples),
+            "seenOnly": True, "bothScales": bool(FEATURES_WHOLE), "lawns": len(lawns), "folds": len(groups), "examples": len(examples),
             "canopyUnseen": sum(1 for L in lawns if L["canopy"]),
             "canopyMode": CANOPY_MODE if CANOPY else None,
             "fused": ({"lidar": sum(1 for L in lawns if "lidar" in L["sources"]),

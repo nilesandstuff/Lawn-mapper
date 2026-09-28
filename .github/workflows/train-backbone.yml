@@ -146,10 +146,18 @@ on:
         # tools/extract_features.py). "tiles 10 cm" is the control: the same
         # blocks at the photograph's own resolution (45 m, 1.6 m patches), to
         # tell "every lot read the same way" from "finer patches".
-        description: 'Big lots in 10 cm windows (on), every lot squeezed whole (off), or every lot in blocks: 6 cm / 27 m (tiles) or 10 cm / 45 m (tiles 10 cm)'
+        #
+        # "both" (2026-09-28, after H55): every lot read BOTH ways -- squeezed
+        # whole, and in the 6 cm blocks -- and the decoder given the two side
+        # by side at every block cell (FEATURES_WHOLE in
+        # tools/train_decoder.py). H55 found each reading far better on
+        # different lots, so this asks whether the decoder can pick. Costs
+        # the tiles run plus one whole-lot pass; use `canopy: on lawn` (one
+        # decoder) to stay inside the time limit.
+        description: 'Big lots in 10 cm windows (on), every lot whole (off), in blocks: 6 cm (tiles) or 10 cm (tiles 10 cm), or whole + 6 cm blocks stacked (both)'
         type: choice
         default: 'off'
-        options: ['on', 'off', 'tiles', 'tiles 10 cm']
+        options: ['on', 'off', 'tiles', 'tiles 10 cm', 'both']
       lawns:
         # WHICH LAWNS. The 32 maps every table since 2026-09-23 was measured
         # on are frozen as the benchmark (tools/lawn-set.js, cohort column);
@@ -397,6 +405,18 @@ jobs:
           OUT: naip
         run: python3 tools/naip_bands.py
 
+      # Both scales: the whole-lot pass first, into its own directory, exactly
+      # as `windows: off` reads it; the step below then reads the 6 cm blocks.
+      - name: Run the backbone over each lot whole (both scales)
+        if: ${{ inputs.windows == 'both' }}
+        env:
+          IMAGES: frames
+          OUT: feats-whole
+          MODEL: ${{ inputs.model }}
+          SIZE: ${{ inputs.size }}
+          TARGET_MPP: '9'
+        run: python3 tools/extract_features.py
+
       - name: Run the backbone over them
         env:
           IMAGES: frames
@@ -406,7 +426,7 @@ jobs:
           # Nine metres a pixel is a target no lot fails, so "off" reads every
           # lot whole -- the pre-2026-09-23 behaviour, kept as the control.
           TARGET_MPP: ${{ inputs.windows == 'off' && '9' || '0.10' }}
-          TILE_MPP: ${{ inputs.windows == 'tiles' && '0.06' || (inputs.windows == 'tiles 10 cm' && '0.10' || '') }}
+          TILE_MPP: ${{ (inputs.windows == 'tiles' || inputs.windows == 'both') && '0.06' || (inputs.windows == 'tiles 10 cm' && '0.10' || '') }}
         run: python3 tools/extract_features.py
 
       # Step one and a half: one decoder per held-out lawn over the full patch
@@ -417,6 +437,7 @@ jobs:
         if: ${{ inputs.decoder != 'off' && inputs.canopy != 'compare' }}
         env:
           FEATURES: feats
+          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
           FRAMES: frames
           OUT: preds
           CANOPY: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
@@ -440,6 +461,7 @@ jobs:
         if: ${{ inputs.decoder != 'off' && inputs.canopy == 'compare' }}
         env:
           FEATURES: feats
+          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
           FRAMES: frames
           OUT: preds-none
           SEED: ${{ inputs.seed }}
@@ -458,6 +480,7 @@ jobs:
         if: ${{ inputs.decoder != 'off' && inputs.canopy == 'compare' }}
         env:
           FEATURES: feats
+          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
           FRAMES: frames
           OUT: preds-lawn
           CANOPY: canopy
@@ -481,6 +504,7 @@ jobs:
         if: ${{ inputs.decoder != 'off' && inputs.canopy == 'compare' }}
         env:
           FEATURES: feats
+          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
           FRAMES: frames
           OUT: preds-all
           CANOPY: canopy

@@ -11,7 +11,7 @@ reads as a disappointing result. So the checks below are exact.
 
 import numpy as np
 
-from decoder_grid import box_targets, patch_edges, to_photo
+from decoder_grid import box_targets, onto_grid, patch_edges, to_photo
 
 
 def check_edges():
@@ -101,7 +101,26 @@ def check_to_photo():
     assert err < 0.01, err
 
 
+def check_onto_grid():
+    # The whole-lot grid (56 patches over 1.5x the photo) read at the block
+    # grid's centres (150 patches over 1.2x): a field that is linear in the
+    # PHOTOGRAPH's coordinate must come back as the same field, so both grids
+    # describe the same ground at the same cell.
+    p_in = (np.arange(56) + 0.5) * 1.5 / 56
+    grid = np.tile(p_in[None, :, None], (40, 1, 3)).astype(np.float32)
+    out = onto_grid(grid, 1.5, 1.0, 150, 90, 1.2, 1.0)
+    assert out.shape == (90, 150, 3)
+    p_out = (np.arange(150) + 0.5) * 1.2 / 150
+    inner = (p_out > p_in[0]) & (p_out < p_in[-1])
+    assert np.allclose(out[0, inner, 0], p_out[inner], atol=1e-5)
+    assert np.allclose(out[:, :, 2], out[:, :, 0])
+    # Same grid, same cover: unchanged.
+    same = onto_grid(grid, 1.5, 1.0, 56, 40, 1.5, 1.0)
+    assert np.allclose(same, grid, atol=1e-6)
+
+
 check_edges()
 check_box_means()
 check_to_photo()
+check_onto_grid()
 print("decoder grid: ok")

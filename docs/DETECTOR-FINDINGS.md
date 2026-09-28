@@ -68,6 +68,9 @@ got here. Update it whenever the in-flight run changes.*
 - **In flight (2026-09-28): S16, the not-lawn examples in training** --
   nine runs: whole lot, windows and tiles 6 cm, each with the approved
   examples, three seeds each. Bars written above before they ran.
+- **Also in flight (2026-09-28): S17, both scales** -- whole-lot and 6 cm
+  block features stacked for every lot (`windows: both`), examples on,
+  canopy on lawn, three seeds. Bars in S17, written before the runs.
 - **Decided (2026-09-28): H56, the owner's "maximum block size" (S15,
   `windows: on`) is NOT adopted.** Three seeds against the fair baseline
   (S14's runs -- H50's predate NAIP alignment): 18 better / 28 worse,
@@ -4313,6 +4316,32 @@ not:** a 27 m block is less context than a whole lot, and H4 once found
 fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
+
+### S17. Both scales: the whole-lot pass AND the 6 cm blocks, stacked for every lot (2026-09-28)
+
+**The idea:** H55 found the 6 cm blocks and the whole-lot squeeze each far
+better on DIFFERENT lots (B28 82 -> 28 and B03 72 -> 29 under blocks; B20
+46 -> 122-136 and B13 20 -> 40 worse), the same lots at both block sizes,
+and not by lot size -- so picking one reading per lot by a rule (S15) failed
+(H56). This gives the decoder both at every cell and lets it learn which to
+trust: the blocks' numbers and the whole-lot pass's, resampled onto the
+block grid, side by side (workflow 14 `windows: both`; FEATURES_WHOLE in
+tools/train_decoder.py; decoder_grid.onto_grid, checked in decoder_test.py).
+**Why it might help:** neither reading has to be given up. **Why it might
+not:** twice the numbers a cell for the same 55 lots is more room to
+overfit, and a decoder that averages the two may land between them on both
+kinds of lot.
+
+**Bars, before the runs (three seeds, fused, 55 lots, folds by place,
+`canopy: on lawn`, `examples: on` so it sits beside S16's runs):**
+1. **Against S16's whole lot with examples** (the arrangement that stands):
+   THE PLAN's row; adopted if more lots better than worse with a sign-test p
+   under 0.1, the 95% interval of the median paired change below zero, and
+   not worse on the lots approved since.
+2. **Also reported, not a bar:** against S16's tiles with examples, and
+   B28, B03, B20, B13 by name -- the lots H55 says the two readings split on.
+   If both scales is level with the whole lot overall but takes B28 and B03
+   without losing B20 and B13, that is what it was for, and it is said so.
 
 ### S16. The owner's not-lawn examples in training, under each arrangement (owner, 2026-09-28)
 
