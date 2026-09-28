@@ -78,6 +78,12 @@ const lawnName = (L) => `${L.tag ? `${L.tag} ` : ''}${L.county || 'traced by han
  * drawn for whenever a run scores it. Change it here when THE PLAN changes.
  */
 const PLAN_ROW = 'decoder, canopy on lawn + stage 3, span, lidar veto';
+/* The same row in a run that trains only the on-lawn decoder (`canopy: on
+   lawn`), where the single decoder is named "the pretrained eye, decoder".
+   Without this such a run drew the lowest median instead (2026-09-28). */
+const PLAN_ROW_ALONE = 'the pretrained eye, decoder + stage 3, span, lidar veto';
+const isPlanRow = (name) => name === PLAN_ROW
+  || (name === PLAN_ROW_ALONE && (process.env.CANOPY_MODE || 'lawn') === 'lawn');
 /* THE ROW ON TRIAL, drawn in preference to THE PLAN's when a run scores it,
    because the pictures are how a candidate is judged (owner, 2026-09-26).
    None now: the lidar ∩ NAIP canopy row was drawn once and lost (H42). */
@@ -2618,7 +2624,7 @@ async function main() {
    * for comparison; but the row the project is building is THE PLAN's, and
    * its lot-by-lot figures were only ever visible for the lots a rule moved.
    */
-  const planRow = table.find((t) => t.cfg.name === PLAN_ROW);
+  const planRow = table.find((t) => isPlanRow(t.cfg.name));
   for (const t of [best, planRow !== best ? planRow : null]) {
     if (!t) continue;
     console.log(`Lawn by lawn, under "${t.cfg.name}":\n`);
@@ -2712,7 +2718,7 @@ async function main() {
    * never drawn. The owner looked for the difference and there was none to
    * find (2026-09-25). The best median is still named in the table.
    */
-  const drawn = (TRIAL_ROW && table.find((t) => t.cfg.name === TRIAL_ROW)) || table.find((t) => t.cfg.name === PLAN_ROW) || best;
+  const drawn = (TRIAL_ROW && table.find((t) => t.cfg.name === TRIAL_ROW)) || table.find((t) => isPlanRow(t.cfg.name)) || best;
   if (renderWanted && drawn && drawn !== best) {
     console.log(`\nDrawing "${drawn.cfg.name}" (${drawn.med.toFixed(1)}%) -- ${drawn.cfg.name === TRIAL_ROW ? 'the row on trial' : "THE PLAN's row"} -- not the lowest median ("${best.cfg.name}", ${best.med.toFixed(1)}%).`);
   }
