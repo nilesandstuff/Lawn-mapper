@@ -57,9 +57,11 @@ got here. Update it whenever the in-flight run changes.*
   workflows that exist on the default branch (`claude/new-session-8204jd`),
   and compare-runs.yml exists only on this branch; the same code
   (tools/compare-runs.js) was run on the six downloaded lot-results files.
-- **In flight (2026-09-27 night):** S14 colour edges -- three runs of the
-  main set-up (fused, seeds 7/8/9) each scoring THE PLAN's row with and
-  without colour on the edges; S13 tiles -- two runs, fused, seed 7:
+- **Decided (2026-09-28): H54, colour on the edges is NOT adopted.** 55
+  lots, fused, seeds 7/8/9: 25 better / 20 worse, -0.3 [-1.0, +0.3], p
+  0.55; on the lots approved since, 7 better / 10 worse. The row stays
+  scored beside THE PLAN's at no cost.
+- **In flight (2026-09-27 night):** S13 tiles -- two runs, fused, seed 7:
   `windows: tiles` (6 cm, 27 m blocks, 5 m context) and `tiles 10 cm` (the
   control), screened against H50's fused runs.
 - **Owner decisions and a scoring question, 2026-09-27 (afternoon):**
@@ -648,6 +650,40 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H54. Colour on the edges (S14) fails its bar: a small gain on the lots it was designed on, none on the lots since -- not adopted, 2026-09-28
+
+*Runs 36355253442 / 36355254898 / 36355256268 (seeds 7 / 8 / 9), commit
+79f28ba, `lawns: all` (55), folds by place, `decoder: fused`, `windows:
+off`. Each run scores THE PLAN's row and the same row with colour edges
+(tools/colour-edges.js), so the comparison is within the same decoders.
+Workflow 24 run 36362309179.*
+
+| lots | better / worse / level | median | paired change [95%] | sign test |
+|---|---|---|---|---|
+| all 55 | 25 / 20 / 10 | 25.3 -> 24.8% | -0.3 [-1.0, +0.3] | p 0.55 |
+| frozen 32 (tuned on) | 18 / 10 / 4 | 28.1 -> 27.1% | -0.8 [-1.7, +0.1] | p 0.19 |
+| approved since | 7 / 10 / 6 | 24.8 -> 24.3% | +0.2 [-0.3, +0.9] | p 0.63 |
+
+**Bar (written before the run): all three parts failed** -- p 0.55 not
+under 0.1, the interval crosses zero, and worse on the lots approved since.
+Runs' medians A 25.7 / 26.3 / 26.3, B 25.0 / 25.0 / 26.5.
+
+**Lot by lot:** big gains on three lots -- B20 45.6 -> 31.9, B19 41.3 ->
+30.3, B23 37.4 -> 30.4 -- and losses of 2-5 points spread over B22, B28,
+B02, B06 and others. A lot at -84.06045, 33.94050 (Georgia, approved since
+the freeze) is 409% wrong WITHOUT colour edges and 441% with: its traced
+lawn is tiny against what the detector calls lawn. That lot is broken in
+both columns and is worth the owner's eye; it is not colour edges' doing.
+
+**What this establishes:** re-deciding the metre next to the decoder's
+edge from the lot's own colours does not, on balance, move the edge the
+right way. It stays scored beside THE PLAN's row (no cost), but is not
+part of THE PLAN.
+
+**Speculation, not established:** that it helps a particular kind of lot
+(B19/B20/B23 all gained 7-14 points) and hurts another. Three lots is not
+a pattern; nothing here says what they share.
 
 ### H53. The ~10% on a near-perfect picture is a thin band along the true edge -- not a scoring bug, not misregistration, not the tracing, 2026-09-27
 
@@ -4170,6 +4206,8 @@ adopted only under the protocol's full bar.
 
 ### S14. Colour on the edges only (the owner liked it, 2026-09-27)
 
+**CLOSED 2026-09-28 by H54: failed its bar on every part.**
+
 **The idea:** colour cannot find a lawn (dormant grass, shade), but once
 the decoder has found it, colour at 15 cm can say which side of the line a
 cell falls on. **Built** (tools/colour-edges.js, 4 checks): per lot, a
@@ -4351,3 +4389,4 @@ worse on the lots approved since. Then it joins THE PLAN.
 | 2026-09-27 | 36299639542 36299640699 36299641884 (fused) vs 36299643380 36299644583 36299645971 (unfused) | **55** | `canopy: compare`, `lawns: all`, **folds by place (15)**, seeds 7/8/9 each side — the first decision under the protocol | 22.0% (everywhere + span, veto, unfused s8) | — | **H50: fused NOT adopted.** Plan row 23 better / 20 worse, −0.1 [−0.7, +0.4], p 0.76; frozen 32: 12 / 13; since: 11 / 7. Seed spread 2.5 pts within one setting. Peach County fixed (no lidar). Supersedes H51 |
 | 2026-09-27 | 36303807284 (x5) 36303809104 (x10) 36303810721 (x25) | 55 | `model: scalemae-large, res xN`, `decoder: on`, `canopy: compare`, folds by place, seed 7 — S12 | — | — | **H52: every factor worse than x1.** Plan row vs H50 unfused (3 seeds): x5 19 better / 33 worse +1.6; x10 16 / 31 +1.4; x25 19 / 33 +2.6. x1 stands; S12 closed |
 | 2026-09-27 | 36339575912 | 55 | repeat of H50 unfused seed 7 with the per-lot diagnosis (outline error, edge share, best shift) | — | — | **H53: the ~10% is edge wobble.** All 32 benchmark lots identical to 36299643380. B01 10.9% mask / 11.1% outline, 94% within 0.5 m of the edge, best shift → 10.4%. Median over 55: 41% within 0.5 m, 60% within 1 m; best shift (0, 0); outline 25.8% vs mask 25.5% |
+| 2026-09-28 | 36355253442 36355254898 36355256268 | 55 | `decoder: fused`, folds by place, seeds 7/8/9; THE PLAN's row with and without **colour edges** (S14), compared within the runs by workflow 24 (36362309179) | — | — | **H54: fails its bar, not adopted.** 25 better / 20 worse, -0.3 [-1.0, +0.3], p 0.55; frozen 32 18 / 10; since 7 / 10 (+0.2). B20 -13.7, B19 -11.0, B23 -7.0; B22 +4.6, B28 +4.2. Lot -84.06045,33.94050 is 409% in both columns |
