@@ -4,7 +4,8 @@
  * nodes; the outlines are drawn as SVG over the example's photograph,
  * projected with the same frame arithmetic the training pipeline uses.
  */
-import { lngLatToFramePx } from './lib/mercator.js';
+import { lngLatToFramePx, metresPerPixel } from './lib/mercator.js';
+import { alignImages, luminance } from './lib/align.js';
 
 const $ = (s) => document.querySelector(s);
 const SVG = 'http://www.w3.org/2000/svg';
@@ -14,7 +15,18 @@ export const CLASS_COLOURS = {
   driveway: '#ff9800', parking: '#ffeb3b', sidewalk: '#e040fb', rail: '#795548',
 };
 
-const view = { list: [], at: 0, doc: null, dropped: new Set(), w: 0, h: 0 };
+const view = {
+  list: [], at: 0, doc: null, dropped: new Set(), w: 0, h: 0,
+  /* Metres (east, north): all outlines together, and one outline dragged on its own. */
+  shift: { east: 0, north: 0, source: null }, shifts: new Map(),
+};
+const NUDGE_M = 0.25;
+const DRAG_SLOP_PX = 5;
+
+/** Shift in metres from alignImages' answer on a grid of cellM metres a cell. */
+export function shiftFromFit(fit, cellM) {
+  return { east: fit.dx * cellM, north: -fit.dy * cellM };
+}
 
 /** Polygons of any geometry, as lists of rings. Overlapping parts stay separate. */
 export function polygonsOf(g) {
@@ -43,13 +55,22 @@ function pathFor(rings) {
   }).join('') + 'Z').join('');
 }
 
+const mpp = () => metresPerPixel(view.doc.frame, view.w);
+const offsetOf = (i) => {
+  const one = view.shifts.get(i) || { east: 0, north: 0 };
+  return { east: view.shift.east + one.east, north: view.shift.north + one.north };
+};
+
 function draw() {
   const svg = $('#overlay');
   svg.textContent = '';
   svg.setAttribute('viewBox', `0 0 ${view.w} ${view.h}`);
+  const m = mpp();
   (view.doc.features || []).forEach((f, i) => {
     const colour = CLASS_COLOURS[f.properties?.class] || '#ffffff';
     const g = document.createElementNS(SVG, 'g');
+    const o = offsetOf(i);
+    g.setAttribute('transform', `translate(${(o.east / m).toFixed(2)} ${(-o.north / m).toFixed(2)})`);
     for (const rings of polygonsOf(f.geometry)) {
       const p = document.createElementNS(SVG, 'path');
       p.setAttribute('class', `shape${f.properties?.target ? ' target' : ''}${view.dropped.has(i) ? ' dropped' : ''}`);
@@ -61,13 +82,98 @@ function draw() {
       p.append(t);
       g.append(p);
     }
-    g.addEventListener('click', () => {
-      if (view.dropped.has(i)) view.dropped.delete(i); else view.dropped.add(i);
-      draw();
-      legend();
-    });
+    grab(g, i);
     svg.append(g);
   });
+  shiftLine();
+}
+
+/*
+ * TAP TO DROP, DRAG TO MOVE (owner, 2026-09-28). A press that stays within a
+ * few pixels is a tap and drops or keeps the outline, as before; one that
+ * moves drags that outline alone.
+ */
+function grab(g, i) {
+  g.addEventListener('pointerdown', (ev) => {
+    ev.preventDefault();
+    const svg = $('#overlay');
+    const perPx = view.w / svg.getBoundingClientRect().width;
+    const start = { x: ev.clientX, y: ev.clientY, was: { ...(view.shifts.get(i) || { east: 0, north: 0 }) } };
+    let dragging = false;
+    g.setPointerCapture(ev.pointerId);
+    const move = (e) => {
+      const dx = e.clientX - start.x;
+      const dy = e.clientY - start.y;
+      if (!dragging && Math.hypot(dx, dy) < DRAG_SLOP_PX) return;
+      dragging = true;
+      const m = mpp();
+      view.shifts.set(i, { east: start.was.east + dx * perPx * m, north: start.was.north - dy * perPx * m });
+      const o = offsetOf(i);
+      g.setAttribute('transform', `translate(${(o.east / m).toFixed(2)} ${(-o.north / m).toFixed(2)})`);
+    };
+    const up = () => {
+      g.removeEventListener('pointermove', move);
+      g.removeEventListener('pointerup', up);
+      g.removeEventListener('pointercancel', up);
+      if (!dragging) {
+        if (view.dropped.has(i)) view.dropped.delete(i); else view.dropped.add(i);
+      }
+      draw();
+      legend();
+    };
+    g.addEventListener('pointermove', move);
+    g.addEventListener('pointerup', up);
+    g.addEventListener('pointercancel', up);
+  });
+}
+
+function shiftLine() {
+  const s = view.shift;
+  const moved = [...view.shifts.values()].filter((v) => v.east || v.north).length;
+  const dir = (v, pos, neg) => `${Math.abs(v).toFixed(2)} m ${v >= 0 ? pos : neg}`;
+  $('#shiftsaid').textContent = (s.east || s.north
+    ? `All outlines moved ${dir(s.east, 'east', 'west')}, ${dir(s.north, 'north', 'south')}`
+      + (s.source === 'auto' ? ' (lined up with the photo automatically)' : '')
+    : 'Outlines where the public map puts them')
+    + (moved ? `; ${moved} dragged on ${moved === 1 ? 'its' : 'their'} own.` : '.');
+}
+
+function nudge(east, north) {
+  view.shift = { east: view.shift.east + east, north: view.shift.north + north, source: 'person' };
+  draw();
+}
+
+/*
+ * LINE THE OUTLINES UP WITH THE PHOTOGRAPH, as NAIP is lined up in the editor
+ * (public/lib/align.js): the kept outlines are painted as a mask on a small
+ * grid, and the shift that best lays the mask's edges on the photo's edges is
+ * taken if it is clearly better than none. Up to 5 m; whole outlines only.
+ */
+async function autoAlign() {
+  const img = $('#photo');
+  const gw = 192;
+  const gh = Math.max(8, Math.round(gw * view.h / view.w));
+  const cellM = mpp() * view.w / gw;
+  const photo = document.createElement('canvas');
+  photo.width = gw; photo.height = gh;
+  const pc = photo.getContext('2d', { willReadFrequently: true });
+  pc.drawImage(img, 0, 0, gw, gh);
+  const ref = luminance(pc.getImageData(0, 0, gw, gh).data, gw, gh);
+  const mask = document.createElement('canvas');
+  mask.width = gw; mask.height = gh;
+  const mc = mask.getContext('2d', { willReadFrequently: true });
+  mc.fillStyle = '#000'; mc.fillRect(0, 0, gw, gh);
+  mc.fillStyle = '#fff';
+  mc.scale(gw / view.w, gh / view.h);
+  (view.doc.features || []).forEach((f, i) => {
+    if (view.dropped.has(i)) return;
+    for (const rings of polygonsOf(f.geometry)) mc.fill(new Path2D(pathFor(rings)), 'evenodd');
+  });
+  const mov = luminance(mc.getImageData(0, 0, gw, gh).data, gw, gh);
+  const fit = alignImages(ref, mov, gw, gh, { maxShift: Math.max(2, Math.round(5 / cellM)), scales: [1] });
+  const sh = fit.moved ? shiftFromFit(fit, cellM) : { east: 0, north: 0 };
+  view.shift = { ...sh, source: fit.moved ? 'auto' : null };
+  draw();
 }
 
 function legend() {
@@ -110,6 +216,8 @@ async function open(i) {
   }
   view.doc = doc;
   view.dropped = new Set((doc.features || []).map((f, k) => (f.properties?.dropped ? k : -1)).filter((k) => k >= 0));
+  view.shift = doc.shift ? { east: doc.shift.east, north: doc.shift.north, source: doc.shift.source } : { east: 0, north: 0, source: null };
+  view.shifts = new Map((doc.features || []).map((f, k) => [k, f.properties?.shift]).filter(([, v]) => v));
   const t = doc.target || {};
   $('#sub').textContent = `${e.id}: chosen for a ${t.class || '?'} (${t.source || '?'}) — `
     + `${doc.status === 'approved' ? 'APPROVED' : doc.status === 'rejected' ? 'REJECTED' : 'draft'}`;
@@ -118,7 +226,14 @@ async function open(i) {
   $('#errors').textContent = errs.length ? `Some sources did not answer — ${errs.join('; ')}` : '';
   $('#attribution').textContent = doc.attribution || '';
   const img = $('#photo');
-  img.onload = () => { view.w = img.naturalWidth; view.h = img.naturalHeight; draw(); legend(); };
+  img.onload = async () => {
+    view.w = img.naturalWidth; view.h = img.naturalHeight;
+    draw(); legend();
+    /* Never saved before: line the outlines up now; what was saved stands. */
+    if (!doc.shift && !doc.reviewedAt) {
+      try { await autoAlign(); } catch { /* shown as delivered */ }
+    }
+  };
   img.src = `/api/admin/example-image?id=${encodeURIComponent(e.id)}`;
 }
 
@@ -127,7 +242,11 @@ async function save(status) {
   $('#said').textContent = 'Saving…';
   const res = await fetch('/api/admin/example', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: e.id, status, dropped: [...view.dropped] }),
+    body: JSON.stringify({
+      id: e.id, status, dropped: [...view.dropped],
+      shift: view.shift.east || view.shift.north ? view.shift : null,
+      shifts: Object.fromEntries([...view.shifts.entries()].filter(([, v]) => v && (v.east || v.north))),
+    }),
   });
   const out = await res.json().catch(() => ({}));
   if (!res.ok) { $('#said').textContent = `Not saved (${out.error || res.status}).`; return; }
@@ -176,6 +295,16 @@ async function start() {
   $('#save').addEventListener('click', () => save('draft'));
   $('#approve').addEventListener('click', () => save('approved'));
   $('#reject').addEventListener('click', () => save('rejected'));
+  $('#n-left').addEventListener('click', () => nudge(-NUDGE_M, 0));
+  $('#n-right').addEventListener('click', () => nudge(NUDGE_M, 0));
+  $('#n-up').addEventListener('click', () => nudge(0, NUDGE_M));
+  $('#n-down').addEventListener('click', () => nudge(0, -NUDGE_M));
+  $('#n-auto').addEventListener('click', () => { view.shifts = new Map(); autoAlign().catch(() => {}); });
+  $('#n-reset').addEventListener('click', () => { view.shift = { east: 0, north: 0, source: null }; view.shifts = new Map(); draw(); });
+  $('#zoom').addEventListener('click', () => {
+    const big = $('#scroll').classList.toggle('zoomed');
+    $('#zoom').textContent = big ? 'Zoom out' : 'Zoom 2×';
+  });
   const first = view.list.findIndex((x) => x.status === 'draft');
   open(first >= 0 ? first : 0);
 }

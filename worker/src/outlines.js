@@ -94,9 +94,39 @@ export function keptByClass(doc) {
   return out;
 }
 
-/** A review of an example: keep/drop by index, and approve, reject or leave as draft. */
+/*
+ * OUTLINES MOVED ONTO THE PHOTOGRAPH (owner, 2026-09-28: "we might need to
+ * make shapes draggable, or apply the same alignment fix" as NAIP got). A
+ * public outline is often a metre or two off the Mapbox photograph. The page
+ * finds the shift that lays the outlines on the photo's edges and lets the
+ * owner nudge all of them, or drag one. Stored as metres (east, north), never
+ * as new geometry: the public shape stays as delivered, training adds the
+ * shift, and a shift is bounded so a slip of the finger cannot move a pond
+ * into the next field.
+ */
+export const MAX_SHIFT_M = 15;
+export function cleanShift(v) {
+  const east = Number(v?.east);
+  const north = Number(v?.north);
+  if (!Number.isFinite(east) || !Number.isFinite(north)) return null;
+  if (Math.abs(east) > MAX_SHIFT_M || Math.abs(north) > MAX_SHIFT_M) return null;
+  if (!east && !north) return null;
+  return { east: Math.round(east * 100) / 100, north: Math.round(north * 100) / 100 };
+}
+
+/** A review of an example: keep/drop by index, shifts, and approve, reject or leave as draft. */
 export function reviewExample(stored, review) {
   const saved = applyReview(stored, review);
   saved.status = ['approved', 'rejected'].includes(review?.status) ? review.status : 'draft';
+  const all = cleanShift(review?.shift);
+  if (all) saved.shift = { ...all, source: review.shift.source === 'auto' ? 'auto' : 'person' };
+  else delete saved.shift;
+  const each = review?.shifts && typeof review.shifts === 'object' ? review.shifts : {};
+  saved.features = saved.features.map((f, i) => {
+    const one = cleanShift(each[i]);
+    const properties = { ...f.properties };
+    if (one) properties.shift = one; else delete properties.shift;
+    return { ...f, properties };
+  });
   return saved;
 }

@@ -62,3 +62,19 @@ console.log('PASS  the fetch tool and the worker agree on where a map\'s outline
   assert.deepEqual(t, { examples: 2, kept: { water: 2, building: 2 } });
   console.log('PASS  examples: ids checked, kinds counted, approvals and rejections kept apart');
 }
+
+// Outlines moved onto the photograph: a whole-example shift and per-outline
+// drags are kept in metres, bounded, and a zero or absurd one is dropped.
+{
+  const { reviewExample, MAX_SHIFT_M } = await import('../worker/src/outlines.js');
+  const doc = { features: [{ properties: { class: 'water' } }, { properties: { class: 'building', shift: { east: 1, north: 1 } } }] };
+  const s = reviewExample(doc, { status: 'draft', shift: { east: 1.234, north: -0.5, source: 'auto' }, shifts: { 0: { east: 0.25, north: 0 }, 1: { east: 0, north: 0 } } });
+  assert.deepEqual(s.shift, { east: 1.23, north: -0.5, source: 'auto' });
+  assert.deepEqual(s.features[0].properties.shift, { east: 0.25, north: 0 });
+  assert.equal(s.features[1].properties.shift, undefined, 'a drag put back to zero is cleared');
+  const far = reviewExample(doc, { shift: { east: MAX_SHIFT_M + 1, north: 0 }, shifts: { 0: { east: 'x', north: 1 } } });
+  assert.equal(far.shift, undefined);
+  assert.equal(far.features[0].properties.shift, undefined);
+  assert.equal(reviewExample(doc, { shift: { east: 2, north: 0, source: 'anything' } }).shift.source, 'person');
+  console.log('PASS  examples: outline shifts kept in metres, bounded, zero cleared');
+}
