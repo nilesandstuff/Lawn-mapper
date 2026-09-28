@@ -82,11 +82,18 @@ export function alreadySaved(id, get = wranglerGet) {
   throw new Error(`could not tell whether ${id} is already saved: ${r.err.split('\n')[0]}`);
 }
 
+/*
+ * TO A FILE, NEVER THROUGH A PIPE: a pond's example carries USGS outlines of
+ * a megabyte and more, past execFileSync's 1 MB pipe limit -- the call then
+ * failed, left wrangler running, and the orphans piled up until GitHub shut
+ * the runner down (the first audit, twice, 2026-09-28).
+ */
+const TMP = join(process.env.RUNNER_TEMP || '/tmp', 'not-lawn-get.json');
 function wranglerGet(key) {
   try {
-    execFileSync('npx', ['--no-install', 'wrangler', 'r2', 'object', 'get', key, '--pipe', '--remote'],
-      { stdio: ['ignore', 'pipe', 'pipe'] });
-    return { ok: true, err: '' };
+    execFileSync('npx', ['--no-install', 'wrangler', 'r2', 'object', 'get', key, '--file', TMP, '--remote'],
+      { stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 });
+    return { ok: true, err: '', text: () => readFileSync(TMP, 'utf8') };
   } catch (e) {
     return { ok: false, err: String(e.stderr || e.stdout || e.message) };
   }
@@ -121,22 +128,22 @@ function audit() {
   for (const [kind, n] of Object.entries(kinds)) {
     for (let i = 1; i <= n; i++) {
       const id = `${kind}-${String(i).padStart(3, '0')}`;
-      let doc;
-      try {
-        doc = JSON.parse(execFileSync('npx', ['--no-install', 'wrangler', 'r2', 'object', 'get',
-          `${BUCKET}/${EXAMPLE_PREFIX}${id}.json`, '--pipe', '--remote'], { stdio: ['ignore', 'pipe', 'pipe'] }).toString());
-      } catch { continue; }
+      const got = wranglerGet(`${BUCKET}/${EXAMPLE_PREFIX}${id}.json`);
+      if (!got.ok) { console.log(`${id}: not read (${got.err.split('\n')[0].slice(0, 100)})`); continue; }
+      const doc = JSON.parse(got.text());
       if (doc.status === 'draft' && !doc.reviewedAt) continue;
       const own = (doc.features || []).map((f, k) => (f.properties?.shift ? `${k}:${f.properties.shift.east},${f.properties.shift.north}` : null)).filter(Boolean);
       const dropped = (doc.features || []).filter((f) => f.properties?.dropped).length;
-      rows.push(`${id.padEnd(13)} ${String(doc.status).padEnd(9)} ${String(doc.reviewedAt || '').slice(0, 19).padEnd(20)}`
+      const row = (`${id.padEnd(13)} ${String(doc.status).padEnd(9)} ${String(doc.reviewedAt || '').slice(0, 19).padEnd(20)}`
         + ` shift=${doc.shift ? `${doc.shift.east},${doc.shift.north} (${doc.shift.source})` : '-'}`
         + ` own=[${own.join(' ')}] dropped=${dropped}/${(doc.features || []).length}`
         + ` record=${doc.reviewed ? `${doc.reviewed.kept.length}/${doc.reviewed.count}` : '-'}`);
+      console.log(row);
+      rows.push(row);
     }
   }
   rows.sort((a, b) => a.slice(24, 44).localeCompare(b.slice(24, 44)));
-  console.log(rows.join('\n'));
+  console.log('\nIn review order:\n' + rows.join('\n'));
   console.log(`${rows.length} examples reviewed at least once.`);
 }
 
