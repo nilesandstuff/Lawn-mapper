@@ -109,10 +109,42 @@ function upload(dir) {
   console.log(`${wrote} new examples written to ${BUCKET}/${EXAMPLE_PREFIX}.`);
 }
 
+/*
+ * READ-ONLY: what is stored for every example -- status, when reviewed, the
+ * whole-example shift and each outline's own, and the review record. Asked
+ * for when the owner saw approved examples load with outlines where the
+ * public map had them, not where he had moved them (2026-09-28).
+ */
+function audit() {
+  const kinds = { water: 75, building: 20, pool: 2, driveway: 15, parking: 15, road: 5, sidewalk: 5 };
+  const rows = [];
+  for (const [kind, n] of Object.entries(kinds)) {
+    for (let i = 1; i <= n; i++) {
+      const id = `${kind}-${String(i).padStart(3, '0')}`;
+      let doc;
+      try {
+        doc = JSON.parse(execFileSync('npx', ['--no-install', 'wrangler', 'r2', 'object', 'get',
+          `${BUCKET}/${EXAMPLE_PREFIX}${id}.json`, '--pipe', '--remote'], { stdio: ['ignore', 'pipe', 'pipe'] }).toString());
+      } catch { continue; }
+      if (doc.status === 'draft' && !doc.reviewedAt) continue;
+      const own = (doc.features || []).map((f, k) => (f.properties?.shift ? `${k}:${f.properties.shift.east},${f.properties.shift.north}` : null)).filter(Boolean);
+      const dropped = (doc.features || []).filter((f) => f.properties?.dropped).length;
+      rows.push(`${id.padEnd(13)} ${String(doc.status).padEnd(9)} ${String(doc.reviewedAt || '').slice(0, 19).padEnd(20)}`
+        + ` shift=${doc.shift ? `${doc.shift.east},${doc.shift.north} (${doc.shift.source})` : '-'}`
+        + ` own=[${own.join(' ')}] dropped=${dropped}/${(doc.features || []).length}`
+        + ` record=${doc.reviewed ? `${doc.reviewed.kept.length}/${doc.reviewed.count}` : '-'}`);
+    }
+  }
+  rows.sort((a, b) => a.slice(24, 44).localeCompare(b.slice(24, 44)));
+  console.log(rows.join('\n'));
+  console.log(`${rows.length} examples reviewed at least once.`);
+}
+
 if (process.argv[1] && process.argv[1].endsWith('not-lawn-examples.js')) {
   const [cmd, a, b] = process.argv.slice(2);
   if (cmd === 'seeds') seeds();
   else if (cmd === 'fetch') await fetchAll(a, b || 'examples');
   else if (cmd === 'upload') upload(a || 'examples');
+  else if (cmd === 'audit') audit();
   else { console.error('usage: not-lawn-examples.js seeds | fetch candidates.json DIR | upload DIR'); process.exit(2); }
 }

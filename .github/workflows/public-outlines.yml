@@ -26,6 +26,9 @@ on:
       seed:
         description: 'Random seed for where to search (change it for a top-up, to search new places)'
         default: '7'
+      mode:
+        description: 'fetch (pick, photograph, save drafts) or audit (read-only: print what is stored for every reviewed example)'
+        default: 'fetch'
 
 jobs:
   examples:
@@ -43,7 +46,15 @@ jobs:
           python-version: '3.11'
       - run: npm ci
 
+      - name: What is stored for every reviewed example (read-only)
+        if: ${{ inputs.mode == 'audit' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node tools/not-lawn-examples.js audit
+
       - name: Check the parsing and the picking before trusting them
+        if: ${{ inputs.mode != 'audit' }}
         working-directory: tools
         run: |
           python3 public_negatives_test.py
@@ -51,12 +62,14 @@ jobs:
           node outlines.test.js
 
       - name: Where our maps are (to search near, and to keep clear of)
+        if: ${{ inputs.mode != 'audit' }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node tools/not-lawn-examples.js seeds > seeds.json
 
       - name: Pick about 150 outlined places
+        if: ${{ inputs.mode != 'audit' }}
         working-directory: tools
         env:
           QUOTA: ${{ inputs.quota }}
@@ -65,12 +78,14 @@ jobs:
         run: python3 not_lawn_candidates.py ../seeds.json ../candidates.json
 
       - name: Photograph them as a map is photographed
+        if: ${{ inputs.mode != 'audit' }}
         env:
           MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN }}
           MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
         run: node tools/not-lawn-examples.js fetch candidates.json examples
 
       - name: Save them as drafts
+        if: ${{ inputs.mode != 'audit' }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
