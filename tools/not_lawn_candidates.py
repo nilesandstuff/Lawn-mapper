@@ -20,6 +20,7 @@ tools/not-lawn-examples.js to photograph.
 
 import json
 import math
+import os
 import random
 import sys
 import time
@@ -102,9 +103,11 @@ def say(*a):
     print(*a, flush=True)   # a pipe buffers; the log was empty for 45 minutes
 
 
-def pick(seeds, rng, log=say, max_searches=160, searched=None, batch=4):
+def pick(seeds, rng, log=say, max_searches=160, searched=None, batch=4, deadline=None):
     """Fills the quotas. Every box searched is appended to `searched` as
-    (source, box, features), so a frame inside one needs no second query."""
+    (source, box, features), so a frame inside one needs no second query.
+    Past `deadline` (time.time()) it stops searching and keeps what it has:
+    fewer examples beat a run the 3-hour limit kills with none."""
     searched = [] if searched is None else searched
     chosen = {c: [] for c in QUOTA}
     seen = set()
@@ -121,8 +124,9 @@ def pick(seeds, rng, log=say, max_searches=160, searched=None, batch=4):
     # the corpus lacks.
     order = seeds[:]
     rng.shuffle(order)
+    late = lambda: deadline is not None and time.time() > deadline  # noqa: E731
     for s in order:
-        if len(chosen["water"]) >= QUOTA["water"]:
+        if len(chosen["water"]) >= QUOTA["water"] or late():
             break
         box = bbox_around(s["lng"], s["lat"], 3000)
         try:
@@ -149,7 +153,7 @@ def pick(seeds, rng, log=say, max_searches=160, searched=None, batch=4):
 
     searches = 0
     with ThreadPoolExecutor(batch) as pool:
-        while searches < max_searches and any(len(chosen[c]) < QUOTA[c] for c in QUOTA):
+        while searches < max_searches and any(len(chosen[c]) < QUOTA[c] for c in QUOTA) and not late():
             spots = []
             for _ in range(min(batch, max_searches - searches)):
                 s = rng.choice(seeds)
@@ -183,7 +187,7 @@ def overlaps(a, b):
     return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
 
 
-def frame_contents(box, searched, fetch=fetch_negatives):
+def frame_contents(box, searched, fetch=fetch_negatives, may_fetch=True):
     """Every public outline in a frame: from a box already searched that holds
     the whole frame (both queries return anything touching their box, so
     nothing in the frame is missed), else fetched. Returns (features, errors,
@@ -196,6 +200,13 @@ def frame_contents(box, searched, fetch=fetch_negatives):
         else:
             feats += [g for g in hit if overlaps(bbox_of(g["geometry"]), box)]
     errors = None
+    if need and not may_fetch:
+        # Out of time: whatever the searches already hold that touches the
+        # frame, and a note for the review page that it may be incomplete.
+        for source in need:
+            feats += [g for s, b, f in searched if s == source for g in f
+                      if overlaps(bbox_of(g["geometry"]), box)]
+        return feats, {s: "not fetched (time budget): outlines here may be incomplete" for s in need}, 0
     if need:
         try:
             fc = fetch(tuple(box), sources=tuple(need))
@@ -213,7 +224,12 @@ def main(argv, workers=4):
     seeds = json.load(open(argv[0]))
     rng = random.Random(7)
     searched = []
-    chosen = pick(seeds, rng, searched=searched)
+    start = time.time()
+    pick_s = float(os.environ.get("PICK_BUDGET_MIN", "50")) * 60
+    frame_s = float(os.environ.get("FRAME_BUDGET_MIN", "25")) * 60
+    chosen = pick(seeds, rng, searched=searched, deadline=start + pick_s)
+    say(f"Picking took {(time.time() - start) / 60:.0f} min.")
+    frame_deadline = time.time() + frame_s
     todo = [(cls, i, f, frame_box(f["geometry"]))
             for cls, feats in chosen.items() for i, f in enumerate(feats, 1)]
     say(f"Framing {len(todo)} candidates ({workers} at a time where a query is needed).")
@@ -222,7 +238,7 @@ def main(argv, workers=4):
         cls, i, f, box = job
         # Every public outline in the frame, so the owner sees the whole
         # picture and a house beside the pond is taught too.
-        others, errors, fetched = frame_contents(box, searched)
+        others, errors, fetched = frame_contents(box, searched, may_fetch=time.time() < frame_deadline)
         tid = (f["properties"]["source"], f["properties"]["source_id"])
         features = [g for g in others if (g["properties"]["source"], g["properties"]["source_id"]) != tid]
         f["properties"]["target"] = True
