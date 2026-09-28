@@ -50,3 +50,21 @@ print("PASS  every frame is between 40 and 110 m across")
 
 assert nl.area_m2(square(-85.6, 42.9, 20)) > 390 and nl.area_m2(square(-85.6, 42.9, 20)) < 410
 print("PASS  a 20 m square measures 400 m2")
+
+# A frame inside a box already searched is filled from that search, not fetched.
+searched = [("osm", [-85.7, 42.8, -85.5, 43.0], [feat(square(-85.6, 42.9, 10), "building", "in"),
+                                                  feat(square(-85.52, 42.98, 10), "building", "out")]),
+            ("nhd", [-85.7, 42.8, -85.5, 43.0], [])]
+calls = []
+def no_fetch(box, sources):
+    calls.append(sources)
+    return {"features": []}
+frame = nl.frame_box(square(-85.6, 42.9, 10))
+got, errs, fetched = nl.frame_contents(frame, searched, fetch=no_fetch)
+assert fetched == 0 and not calls, calls
+assert [g["properties"]["source_id"] for g in got] == ["in"], got
+print("PASS  a frame inside a searched box is filled from it, only with what touches the frame")
+
+got, errs, fetched = nl.frame_contents([-80.0, 40.0, -79.999, 40.001], searched, fetch=no_fetch)
+assert fetched == 2 and calls == [("osm", "nhd")], calls
+print("PASS  a frame outside every searched box is fetched")

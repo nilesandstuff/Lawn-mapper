@@ -23,6 +23,7 @@ import math
 import random
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 from public_negatives import (Local, bbox_around, centroid, fetch_negatives, fetch_nhd,
                               fetch_overpass, parse_overpass, ring_area)
@@ -97,7 +98,14 @@ def offset(lon, lat, rng, lo_m=600, hi_m=3000):
             lat + d * math.sin(b) / 110540.0)
 
 
-def pick(seeds, rng, log=print, max_searches=160):
+def say(*a):
+    print(*a, flush=True)   # a pipe buffers; the log was empty for 45 minutes
+
+
+def pick(seeds, rng, log=say, max_searches=160, searched=None, batch=4):
+    """Fills the quotas. Every box searched is appended to `searched` as
+    (source, box, features), so a frame inside one needs no second query."""
+    searched = [] if searched is None else searched
     chosen = {c: [] for c in QUOTA}
     seen = set()
 
@@ -116,11 +124,13 @@ def pick(seeds, rng, log=print, max_searches=160):
     for s in order:
         if len(chosen["water"]) >= QUOTA["water"]:
             break
+        box = bbox_around(s["lng"], s["lat"], 3000)
         try:
-            got = fetch_nhd(bbox_around(s["lng"], s["lat"], 3000))
+            got = fetch_nhd(box)
         except Exception as e:  # noqa: BLE001 - one region failing is not the run failing
             log(f"  nhd near {s['lng']:.4f},{s['lat']:.4f}: {str(e)[:80]}")
             continue
+        searched.append(("nhd", box, got))
         n = 0
         for f in got:
             if n < PER_PLACE and suitable(f, "water", seeds) and take(f, "water"):
@@ -129,61 +139,105 @@ def pick(seeds, rng, log=print, max_searches=160):
 
     # Everything else (and water NHD did not supply) from OSM, in small boxes
     # a short drive from our lots.
-    searches = 0
-    while searches < max_searches and any(len(chosen[c]) < QUOTA[c] for c in QUOTA):
-        s = rng.choice(seeds)
-        lon, lat = offset(s["lng"], s["lat"], rng)
-        searches += 1
+    # A few queries at a time: the one public mirror that answers from CI can
+    # take half a minute each. Picking still goes in order, so it is repeatable.
+    def query(box):
         try:
-            data, _ = fetch_overpass(bbox_around(lon, lat, 250))
+            return fetch_overpass(box)[0], None
         except Exception as e:  # noqa: BLE001
-            log(f"  osm search {searches}: {str(e).splitlines()[0][:80]}")
-            continue
-        feats = parse_overpass(data, Local(lon, lat))
-        took = {}
-        for f in feats:
-            cls = f["properties"]["class"]
-            if cls not in QUOTA or took.get(cls, 0) >= PER_PLACE:
-                continue
-            if suitable(f, cls, seeds) and take(f, cls):
-                took[cls] = took.get(cls, 0) + 1
-        log(f"  osm search {searches}: {len(feats)} outlines, took "
-            + (", ".join(f"{k} {v}" for k, v in took.items()) or "nothing"))
-        time.sleep(1.0)   # the public Overpass servers ask for restraint
+            return None, e
+
+    searches = 0
+    with ThreadPoolExecutor(batch) as pool:
+        while searches < max_searches and any(len(chosen[c]) < QUOTA[c] for c in QUOTA):
+            spots = []
+            for _ in range(min(batch, max_searches - searches)):
+                s = rng.choice(seeds)
+                spots.append(offset(s["lng"], s["lat"], rng))
+            boxes = [bbox_around(lon, lat, 250) for lon, lat in spots]
+            for (lon, lat), box, (data, err) in zip(spots, boxes, pool.map(query, boxes)):
+                searches += 1
+                if err is not None:
+                    log(f"  osm search {searches}: {str(err).splitlines()[0][:80]}")
+                    continue
+                feats = parse_overpass(data, Local(lon, lat))
+                searched.append(("osm", box, feats))
+                took = {}
+                for f in feats:
+                    cls = f["properties"]["class"]
+                    if cls not in QUOTA or took.get(cls, 0) >= PER_PLACE:
+                        continue
+                    if suitable(f, cls, seeds) and take(f, cls):
+                        took[cls] = took.get(cls, 0) + 1
+                log(f"  osm search {searches}: {len(feats)} outlines, took "
+                    + (", ".join(f"{k} {v}" for k, v in took.items()) or "nothing"))
+            time.sleep(1.0)   # the public Overpass servers ask for restraint
     return chosen
 
 
-def main(argv):
+def inside(inner, outer):
+    return outer[0] <= inner[0] and outer[1] <= inner[1] and inner[2] <= outer[2] and inner[3] <= outer[3]
+
+
+def overlaps(a, b):
+    return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+
+def frame_contents(box, searched, fetch=fetch_negatives):
+    """Every public outline in a frame: from a box already searched that holds
+    the whole frame (both queries return anything touching their box, so
+    nothing in the frame is missed), else fetched. Returns (features, errors,
+    how many sources were fetched)."""
+    feats, need = [], []
+    for source in ("osm", "nhd"):
+        hit = next((f for s, b, f in searched if s == source and inside(box, b)), None)
+        if hit is None:
+            need.append(source)
+        else:
+            feats += [g for g in hit if overlaps(bbox_of(g["geometry"]), box)]
+    errors = None
+    if need:
+        try:
+            fc = fetch(tuple(box), sources=tuple(need))
+            feats += fc["features"]
+            errors = fc.get("errors")
+        except Exception as e:  # noqa: BLE001
+            errors = {"all": str(e)}
+    return feats, errors, len(need)
+
+
+def main(argv, workers=4):
     if len(argv) < 2:
         print(__doc__)
         return 2
     seeds = json.load(open(argv[0]))
     rng = random.Random(7)
-    chosen = pick(seeds, rng)
-    out = []
-    for cls, feats in chosen.items():
-        for i, f in enumerate(feats, 1):
-            box = frame_box(f["geometry"])
-            # Every public outline in the frame, so the owner sees the whole
-            # picture and a house beside the pond is taught too.
-            try:
-                fc = fetch_negatives(tuple(box), sources=("osm", "nhd"))
-                others = fc["features"]
-                errors = fc.get("errors")
-            except Exception as e:  # noqa: BLE001
-                others, errors = [], {"all": str(e)}
-            tid = (f["properties"]["source"], f["properties"]["source_id"])
-            features = [g for g in others if (g["properties"]["source"], g["properties"]["source_id"]) != tid]
-            f["properties"]["target"] = True
-            features.insert(0, f)
-            out.append({"id": f"{cls}-{i:03d}", "target": f["properties"], "bbox": box,
-                        "features": features, **({"errors": errors} if errors else {})})
-            print(f"{len(out):3d}  {cls}-{i:03d}  {len(features)} outlines in a "
-                  f"{(box[2] - box[0]) * 111320 * math.cos(math.radians(box[1])):.0f} m frame", flush=True)
-            time.sleep(1.0)
+    searched = []
+    chosen = pick(seeds, rng, searched=searched)
+    todo = [(cls, i, f, frame_box(f["geometry"]))
+            for cls, feats in chosen.items() for i, f in enumerate(feats, 1)]
+    say(f"Framing {len(todo)} candidates ({workers} at a time where a query is needed).")
+
+    def one(job):
+        cls, i, f, box = job
+        # Every public outline in the frame, so the owner sees the whole
+        # picture and a house beside the pond is taught too.
+        others, errors, fetched = frame_contents(box, searched)
+        tid = (f["properties"]["source"], f["properties"]["source_id"])
+        features = [g for g in others if (g["properties"]["source"], g["properties"]["source_id"]) != tid]
+        f["properties"]["target"] = True
+        features.insert(0, f)
+        say(f"  {cls}-{i:03d}  {len(features)} outlines in a "
+            f"{(box[2] - box[0]) * 111320 * math.cos(math.radians(box[1])):.0f} m frame"
+            + (f" ({fetched} fetched)" if fetched else " (from the search)"))
+        return {"id": f"{cls}-{i:03d}", "target": f["properties"], "bbox": box,
+                "features": features, **({"errors": errors} if errors else {})}
+
+    with ThreadPoolExecutor(workers) as pool:
+        out = list(pool.map(one, todo))
     json.dump(out, open(argv[1], "w"))
     counts = {c: len(v) for c, v in chosen.items()}
-    print("Candidates by class: " + ", ".join(f"{k} {v}/{QUOTA[k]}" for k, v in counts.items()))
+    say("Candidates by class: " + ", ".join(f"{k} {v}/{QUOTA[k]}" for k, v in counts.items()))
     return 0
 
 
