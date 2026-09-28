@@ -233,6 +233,32 @@ def read_lawn(feats, frames, stem, shape):
     }
 
 
+CROP_MARGIN = 4
+
+
+def crop_to_graded(L, margin=CROP_MARGIN):
+    """An example cut down to its graded cells plus `margin` on every side.
+
+    Examples are trained on and never answered, and only their kept outlines
+    carry weight -- a pond in a 100 m frame is mostly weight-0 photograph that
+    the decoder was convolving for nothing (2026-09-28: ~140 examples made
+    each decoder 3x slower). Four cells is more than the decoder's reach (two
+    3x3 layers), so what it says on a graded cell is what it would have said
+    on the whole grid. The standardiser does see less of each example.
+    """
+    w = L["w"][0]
+    rows = torch.nonzero(w.sum(dim=1) > 0).flatten()
+    cols = torch.nonzero(w.sum(dim=0) > 0).flatten()
+    if not len(rows) or not len(cols):
+        return L
+    y0, y1 = max(0, int(rows[0]) - margin), min(w.shape[0], int(rows[-1]) + 1 + margin)
+    x0, x1 = max(0, int(cols[0]) - margin), min(w.shape[1], int(cols[-1]) + 1 + margin)
+    out = dict(L)
+    for k in ("x", "t", "w"):
+        out[k] = L[k][:, y0:y1, x0:x1].contiguous()
+    return out
+
+
 def standardiser(lawns):
     """Per-channel mean and sd over the training lawns' patches.
 
@@ -384,7 +410,7 @@ def main():
     # fold's training -- except that a fold does not see an example within
     # NEIGHBOUR_KM of a lot it holds out, the same rule that keeps a lot's
     # neighbours out of its decoder (same photograph, same light).
-    examples = [L for L in lawns if is_example(L["id"])]
+    examples = [crop_to_graded(L) for L in lawns if is_example(L["id"])]
     lawns = [L for L in lawns if not is_example(L["id"])]
     if examples:
         from folds import lonlat, km_between

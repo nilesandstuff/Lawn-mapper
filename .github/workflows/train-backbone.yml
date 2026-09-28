@@ -254,14 +254,15 @@ on:
         default: ''
 
 jobs:
-  train:
-    name: Extract with PyTorch, then leave one out
+  extract:
+    name: Extract with PyTorch
     runs-on: ubuntu-latest
     # Generous rather than tight. 1280px is roughly 70 minutes of extraction on
     # a CPU plus the scoring, and a cap that cut that off would waste the whole
     # run at the last step. Three hours is still far short of the six-hour
     # default, so a hung run does not sit there all afternoon.
-    timeout-minutes: 300
+    # (350 since the examples, 2026-09-28: the job limit is 360.)
+    timeout-minutes: 350
     # PyPI SLOW, NOT GONE (2026-09-28): two of three runs died at the install
     # when pypi.org timed out five times running at pip's 15 s default on one
     # small package; pip then backtracked to an old numpy it could not build.
@@ -428,6 +429,73 @@ jobs:
           TARGET_MPP: ${{ inputs.windows == 'off' && '9' || '0.10' }}
           TILE_MPP: ${{ (inputs.windows == 'tiles' || inputs.windows == 'both') && '0.06' || (inputs.windows == 'tiles 10 cm' && '0.10' || '') }}
         run: python3 tools/extract_features.py
+
+      # TWO JOBS, NOT ONE (2026-09-28). A job may run six hours at most, and
+      # the not-lawn examples (~140 frames beside 55 lots) made every step
+      # about 3.6x longer: the 6 cm blocks would have spent five hours in the
+      # backbone alone. Everything the decoders and the scorer read goes to
+      # the second job as one artifact, and that job gets six hours of its own.
+      - name: Hand the frames and features to the training job
+        run: |
+          mkdir -p work
+          for d in frames canopy lidar naip feats feats-whole lidar-plan.json; do
+            if [ -e "$d" ]; then mv "$d" work/; fi
+          done
+          du -sh work/* || true
+
+      - name: Keep them for the training job
+        uses: actions/upload-artifact@v4
+        with:
+          name: work
+          path: work
+          retention-days: 1
+          # Floats and photographs do not compress; zipping them is only time.
+          compression-level: 0
+
+  train:
+    name: Train the decoder and score it
+    needs: extract
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      PIP_DEFAULT_TIMEOUT: '60'
+      PIP_RETRIES: '10'
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: tools/requirements.txt
+
+      - run: npm ci
+
+      - name: Install the image decoders
+        run: npm install pngjs jpeg-js --no-save
+
+      - name: Install PyTorch and the model loader
+        run: pip install -r tools/requirements.txt
+
+      - name: Install the tree model's loader and the lidar reader
+        if: ${{ inputs.canopy != 'off' }}
+        run: pip install -r tools/requirements-trees.txt -r tools/requirements-lidar.txt
+
+      - name: Fetch the frames and features from the extraction job
+        uses: actions/download-artifact@v4
+        with:
+          name: work
+          path: work
+
+      - name: Put them where the steps below expect them
+        run: |
+          for d in work/*; do mv "$d" .; done
+          ls
 
       # Step one and a half: one decoder per held-out lawn over the full patch
       # grid, its answers written as pictures for the scorer to read. Leave

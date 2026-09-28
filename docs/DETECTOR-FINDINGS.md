@@ -71,6 +71,20 @@ got here. Update it whenever the in-flight run changes.*
 - **Also in flight (2026-09-28): S17, both scales** -- whole-lot and 6 cm
   block features stacked for every lot (`windows: both`), examples on,
   canopy on lawn, three seeds. Bars in S17, written before the runs.
+- **The examples made every run ~3.6x slower (2026-09-28, measured):** ~140
+  example frames beside 55 lots. Whole-lot backbone 12 -> 46 min, each
+  decoder 10 -> 33 min; windows backbone 78-91 min. The 6 cm tile runs and
+  S17 could not finish inside a job's six hours, so they were CANCELLED
+  mid-backbone (runs 36450763774 / 36450766989 / 36450771744 and
+  36453431102 / 36453434382 / 36453439067 -- no results; do not read them).
+  Fixed in workflow 14: extraction and training are now TWO jobs (the work
+  passed as an artifact), each with its own limit; and the decoder trains on
+  each example cropped to its graded cells plus 4 (more than its reach).
+  The crop changes batching and the standardiser for examples, so S16's
+  whole-lot and windows runs (uncropped) are NOT like-for-like with the
+  relaunched tiles and S17 runs: whole-lot with examples is re-run on the
+  new code as S17's comparison side, and the old-vs-new whole-lot pair says
+  what the crop moved.
 - **Decided (2026-09-28): H56, the owner's "maximum block size" (S15,
   `windows: on`) is NOT adopted.** Three seeds against the fair baseline
   (S14's runs -- H50's predate NAIP alignment): 18 better / 28 worse,
@@ -4334,7 +4348,9 @@ kinds of lot.
 
 **Bars, before the runs (three seeds, fused, 55 lots, folds by place,
 `canopy: on lawn`, `examples: on` so it sits beside S16's runs):**
-1. **Against S16's whole lot with examples** (the arrangement that stands):
+1. **Against the whole lot with examples, re-run on the same code** (the
+   arrangement that stands; S16's own whole-lot runs trained on uncropped
+   examples, see where-things-stand):
    THE PLAN's row; adopted if more lots better than worse with a sign-test p
    under 0.1, the 95% interval of the median paired change below zero, and
    not worse on the lots approved since.
