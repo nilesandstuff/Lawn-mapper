@@ -63,7 +63,10 @@ got here. Update it whenever the in-flight run changes.*
   scored beside THE PLAN's at no cost.
 - **Decided (2026-09-28): H55, fixed blocks (S13) NOT adopted.** 6 cm:
   21 better / 31 worse, +0.9; 10 cm: 23 / 25, +0.2. Both move the same lots
-  by tens of points (B28 and B03 far better, B20 far worse). S13 closed.
+  by tens of points (B28 and B03 far better, B20 far worse) -- and NOT by
+  lot size (B13, the biggest, got much worse). S13 closed.
+- **In flight (2026-09-28): S15**, the owner's "maximum block size"
+  (`windows: on`: whole below ~90 m, windows above), fused, seeds 7/8/9.
 - **Owner decisions and a scoring question, 2026-09-27 (afternoon):**
   - **Lidar canopy is shelved** ("the canopy model is doing the intended
     function better"): the "lidar ∩ NAIP canopy" rows now run only with
@@ -697,13 +700,15 @@ ft traced) is 428 -> 514%, broken in both (see H54).
 Extraction was cheap: the backbone step took 18 minutes (7 windows a
 typical lot, 40 on the largest), the run 2 h 8 min, no memory trouble.
 
-**Speculation, not established:** that big lots gain (finer patches than
-the squeeze gave them) and lots that need the whole yard in view lose (a
-block sees less than the whole lot did). Whether B28/B03/B18 are big and
-B20/B23/B13/B10 small has not been checked. If it holds, the idea to try is
+**Checked 2026-09-28, and it is NOT size:** the lots blocks helped are
+B28 (10,556 sq ft), B03 (13,689), B18 (10,304), B04 (19,932); the lots they
+hurt include B13 (105,584) and B10 (26,207) as well as B20 (11,947), B23
+(5,042), B02 (4,315). The biggest lot got much worse, mid-sized ones much
+better. So the earlier guess ("big lots gain, small lose") is wrong as
+stated. What separates them is not known. If it holds, the idea to try is
 not blocks for every lot but the whole-lot pass PLUS block features for
-lots too big for one pass -- which is a new setting to bar before it runs,
-not a conclusion from this one.
+lots too big for one pass -- which the size check above does not support;
+see S15 for the owner's version of it, measured anyway.
 
 ### H54. Colour on the edges (S14) fails its bar: a small gain on the lots it was designed on, none on the lots since -- not adopted, 2026-09-28
 
@@ -4259,6 +4264,26 @@ not:** a 27 m block is less context than a whole lot, and H4 once found
 fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
+
+### S15. A MAXIMUM block size instead of a fixed one: small lots whole, big lots split (owner, 2026-09-28)
+
+**The idea (owner):** "rather than a standardized size tile, just a maximum
+tile size... small lots fit into 1 tile, but big lots get more." **This is
+already built** as `windows: on` (tools/windows.py): a frame that fits one
+896 px pass at the photograph's own ~10 cm (about 90 m) is read whole, as
+today; a bigger one is read in overlapping 896 px windows at 10 cm. The
+maximum is therefore ~90 m, set by the backbone's 896 px input at the
+photo's native resolution -- smaller would mean enlarging past the photo or
+cutting lots that fit. Measured once, 2026-09-24 (H22 retracted): within
+1.5 points either way, on the old method (32 lots, leave-one-out, one seed,
+unfused). **Never measured under the protocol.** Caveat written before the
+run: H55's size check says the lots blocks moved were not the big ones, so
+there is no measured reason to expect a gain; this is run because the
+owner asked and it is cheap. **Bar, before the runs:** `windows: on`,
+fused, seeds 7/8/9, THE PLAN's row against H50's three fused runs: more
+lots better than worse with a sign-test p under 0.1, a 95% interval for
+the median paired change below zero, and not worse on the lots approved
+since. Otherwise closed.
 
 ### S14. Colour on the edges only (the owner liked it, 2026-09-27)
 
