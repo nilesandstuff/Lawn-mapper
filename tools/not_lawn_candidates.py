@@ -42,6 +42,7 @@ MIN_FROM_LOT_M = 400     # never near a map we score: a held-out lot must not ap
 FRAME_MARGIN_M = 12
 MIN_SIDE_M, MAX_SIDE_M = 40, 110
 PER_PLACE = 3            # at most this many of one class from one search box
+GIVE_UP = 30             # searches in a row with none of a class: stop looking for it
 
 
 def metres(lon1, lat1, lon2, lat2):
@@ -126,7 +127,7 @@ def pick(seeds, rng, log=say, max_searches=160, searched=None, batch=4, deadline
     rng.shuffle(order)
     late = lambda: deadline is not None and time.time() > deadline  # noqa: E731
     for s in order:
-        if len(chosen["water"]) >= QUOTA["water"] or late():
+        if len(chosen.get("water", [])) >= QUOTA.get("water", 0) or late():
             break
         box = bbox_around(s["lng"], s["lat"], 3000)
         try:
@@ -151,9 +152,13 @@ def pick(seeds, rng, log=say, max_searches=160, searched=None, batch=4, deadline
         except Exception as e:  # noqa: BLE001
             return None, e
 
+    # A class that has not turned up in GIVE_UP searches running is dropped:
+    # the first full run spent two hours looking for its last four pools.
+    dry = {c: 0 for c in QUOTA}
+    wanted = lambda c: len(chosen[c]) < QUOTA[c] and dry[c] < GIVE_UP  # noqa: E731
     searches = 0
     with ThreadPoolExecutor(batch) as pool:
-        while searches < max_searches and any(len(chosen[c]) < QUOTA[c] for c in QUOTA) and not late():
+        while searches < max_searches and any(wanted(c) for c in QUOTA) and not late():
             spots = []
             for _ in range(min(batch, max_searches - searches)):
                 s = rng.choice(seeds)
@@ -175,6 +180,12 @@ def pick(seeds, rng, log=say, max_searches=160, searched=None, batch=4, deadline
                         took[cls] = took.get(cls, 0) + 1
                 log(f"  osm search {searches}: {len(feats)} outlines, took "
                     + (", ".join(f"{k} {v}" for k, v in took.items()) or "nothing"))
+                for c in QUOTA:
+                    if len(chosen[c]) >= QUOTA[c]:
+                        continue
+                    dry[c] = 0 if took.get(c) else dry[c] + 1
+                    if dry[c] == GIVE_UP:
+                        log(f"  giving up on {c}: none in {GIVE_UP} searches running ({len(chosen[c])} of {QUOTA[c]})")
             time.sleep(1.0)   # the public Overpass servers ask for restraint
     return chosen
 
@@ -217,12 +228,32 @@ def frame_contents(box, searched, fetch=fetch_negatives, may_fetch=True):
     return feats, errors, len(need)
 
 
+def parse_counts(text):
+    """'pool:14, parking:10' -> {'pool': 14, 'parking': 10}."""
+    out = {}
+    for part in filter(None, (p.strip() for p in text.split(","))):
+        k, v = part.split(":")
+        k = k.strip()
+        if k not in AREA_M2:
+            raise ValueError(f"unknown class {k!r}; one of {', '.join(AREA_M2)}")
+        out[k] = int(v)
+    return out
+
+
 def main(argv, workers=4):
     if len(argv) < 2:
         print(__doc__)
         return 2
     seeds = json.load(open(argv[0]))
-    rng = random.Random(7)
+    # A top-up (workflow 25's quota input): QUOTA="pool:14,parking:10" asks
+    # for those classes only; ID_START="pool:2,parking:6" numbers them on
+    # from the examples already saved, so none is overwritten; SEED searches
+    # new places.
+    global QUOTA
+    if os.environ.get("QUOTA"):
+        QUOTA = parse_counts(os.environ["QUOTA"])
+    start_at = parse_counts(os.environ.get("ID_START", ""))
+    rng = random.Random(int(os.environ.get("SEED", "7")))
     searched = []
     start = time.time()
     pick_s = float(os.environ.get("PICK_BUDGET_MIN", "50")) * 60
@@ -231,7 +262,7 @@ def main(argv, workers=4):
     say(f"Picking took {(time.time() - start) / 60:.0f} min.")
     frame_deadline = time.time() + frame_s
     todo = [(cls, i, f, frame_box(f["geometry"]))
-            for cls, feats in chosen.items() for i, f in enumerate(feats, 1)]
+            for cls, feats in chosen.items() for i, f in enumerate(feats, start_at.get(cls, 1))]
     say(f"Framing {len(todo)} candidates ({workers} at a time where a query is needed).")
 
     def one(job):

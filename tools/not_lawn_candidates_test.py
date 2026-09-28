@@ -80,3 +80,21 @@ n[0] = 0
 chosen = nl.pick(seeds, random.Random(1), log=lambda *a: None, max_searches=20, deadline=0)
 assert n[0] == 0 and sum(len(v) for v in chosen.values()) == 0, n[0]
 print("PASS  past its deadline the picker stops and keeps what it has")
+
+# A top-up: only the classes asked for, and a class that never turns up is given up.
+assert nl.parse_counts("pool:14, parking:10") == {"pool": 14, "parking": 10}
+try:
+    nl.parse_counts("pools:3"); raise SystemExit("unknown class accepted")
+except ValueError:
+    pass
+nl.QUOTA = {"pool": 5}
+n[0] = 0
+searches = [0]
+def counting_overpass(bbox):
+    searches[0] += 1
+    return {"elements": []}, "fake"
+nl.fetch_overpass = counting_overpass
+chosen = nl.pick(seeds, random.Random(2), log=lambda *a: None, max_searches=200)
+assert n[0] == 0, "no water asked for, so no NHD query"
+assert searches[0] <= nl.GIVE_UP + 4, searches[0]
+print(f"PASS  a top-up asks only for its classes and gives up on one missing for {nl.GIVE_UP} searches ({searches[0]} made)")

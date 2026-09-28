@@ -16,6 +16,16 @@ name: 25. Fetch not-lawn examples for review
 # which mostly repeats what the tracing already says; the owner caught it.
 on:
   workflow_dispatch:
+    inputs:
+      quota:
+        description: 'A top-up: only these classes, e.g. pool:14,parking:10 (empty = the full ~150)'
+        default: ''
+      id_start:
+        description: 'For a top-up, number on from the saved examples, e.g. pool:2,parking:6 -- or they overwrite'
+        default: ''
+      seed:
+        description: 'Random seed for where to search (change it for a top-up, to search new places)'
+        default: '7'
 
 jobs:
   examples:
@@ -48,6 +58,10 @@ jobs:
 
       - name: Pick about 150 outlined places
         working-directory: tools
+        env:
+          QUOTA: ${{ inputs.quota }}
+          ID_START: ${{ inputs.id_start }}
+          SEED: ${{ inputs.seed }}
         run: python3 not_lawn_candidates.py ../seeds.json ../candidates.json
 
       - name: Photograph them as a map is photographed
