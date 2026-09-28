@@ -287,13 +287,23 @@ def http(url, data=None, timeout=90):
         return r.read()
 
 
+_answered = []   # the mirror that last answered, tried first next time
+
+
 def fetch_overpass(bbox, urls=None):
+    """The mirror that answered last goes first: a refused or hanging mirror
+    tried first on every one of a few hundred queries costs hours (workflow
+    25's first run, 2026-09-28)."""
     q = urllib.parse.urlencode({"data": overpass_query(bbox)}).encode()
     errors = []
-    for url in urls or OVERPASS_URLS:
+    mirrors = list(urls or OVERPASS_URLS)
+    mirrors = [u for u in _answered if u in mirrors] + [u for u in mirrors if u not in _answered]
+    for url in mirrors:
         for attempt in range(2):
             try:
-                return json.loads(http(url, q)), url
+                data = json.loads(http(url, q))
+                _answered[:] = [url]
+                return data, url
             except Exception as e:  # 429, 504, reset: next try, then next mirror
                 errors.append(f"{url}: {e}")
                 time.sleep(2 + 3 * attempt)
