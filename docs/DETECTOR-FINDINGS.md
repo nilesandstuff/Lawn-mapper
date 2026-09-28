@@ -61,6 +61,8 @@ got here. Update it whenever the in-flight run changes.*
   lots, fused, seeds 7/8/9: 25 better / 20 worse, -0.3 [-1.0, +0.3], p
   0.55; on the lots approved since, 7 better / 10 worse. The row stays
   scored beside THE PLAN's at no cost.
+- **H55 (2026-09-28): tiles at 10 cm** tie on count and reshuffle which
+  lots are wrong (B28 -54, B20 +76). The 6 cm run is still running.
 - **In flight (2026-09-27 night):** S13 tiles -- two runs, fused, seed 7:
   `windows: tiles` (6 cm, 27 m blocks, 5 m context) and `tiles 10 cm` (the
   control), screened against H50's fused runs.
@@ -650,6 +652,42 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H55. Tiles at 10 cm (S13's control) screen as a tie that is really a reshuffle: huge gains and huge losses on different lots, 2026-09-28
+
+*Run 36358021364, commit 16f0f62, `windows: tiles 10 cm`, `lawns: all`
+(55), folds by place, `decoder: fused`, seed 7: every lot at 10 cm a pixel
+in 448 px blocks (45 m, kept middle 35 m, 4.8 m of context past it), a
+backbone patch 1.60 m on every lot, blocks over 8 m from the lot skipped.
+Against H50's three fused runs (36299639542 / 36299640699 / 36299641884),
+THE PLAN's row, workflow 24 run 36367542993. The 6 cm run (the one S13 is
+actually about) is still running.*
+
+| lots | better / worse / level | median | paired change [95%] | sign test |
+|---|---|---|---|---|
+| all 55 | 23 / 25 / 7 | 25.6 -> 28.0% | +0.2 [-1.4, +1.4] | p 0.89 |
+| frozen 32 | 12 / 15 / 5 | 28.2 -> 28.7% | +0.3 [-1.1, +2.1] | p 0.70 |
+| approved since | 11 / 10 / 2 | 25.1 -> 22.7% | -0.3 [-2.9, +2.2] | p 1.00 |
+
+**Screening bar (before the run): not met** -- the median paired change
+is above zero and fewer lots are better than worse. One seed, so a screen,
+not a result.
+
+**But it is not "nothing happened".** The lots that move, move by tens of
+points, both ways: B28 82.3 -> 28.5, B03 72.1 -> 33.8, B18 49.4 -> 31.4,
+B04 65.1 -> 53.0; and B20 45.5 -> 121.7, B02 51.6 -> 75.5, B24 40.6 ->
+63.8, B19 39.8 -> 61.6. H50's seeds move lots by a few points; these are
+ten times that. Reading in fixed blocks changes WHICH lots the detector
+gets wrong, not how many. The Georgia lot at -84.06045, 33.94050 (870 sq
+ft traced) is 428 -> 514%, broken in both (see H54).
+
+Extraction was cheap: the backbone step took 18 minutes (7 windows a
+typical lot, 40 on the largest), the run 2 h 8 min, no memory trouble.
+
+**Speculation, not established:** that big lots gain (finer patches than
+the squeeze gave them) and lots that need the whole yard in view lose (a
+45 m block sees less than the whole lot did). Whether B28/B03/B18 are big
+and B20/B02/B24/B19 small has not been checked.
 
 ### H54. Colour on the edges (S14) fails its bar: a small gain on the lots it was designed on, none on the lots since -- not adopted, 2026-09-28
 
@@ -4390,3 +4428,4 @@ worse on the lots approved since. Then it joins THE PLAN.
 | 2026-09-27 | 36303807284 (x5) 36303809104 (x10) 36303810721 (x25) | 55 | `model: scalemae-large, res xN`, `decoder: on`, `canopy: compare`, folds by place, seed 7 — S12 | — | — | **H52: every factor worse than x1.** Plan row vs H50 unfused (3 seeds): x5 19 better / 33 worse +1.6; x10 16 / 31 +1.4; x25 19 / 33 +2.6. x1 stands; S12 closed |
 | 2026-09-27 | 36339575912 | 55 | repeat of H50 unfused seed 7 with the per-lot diagnosis (outline error, edge share, best shift) | — | — | **H53: the ~10% is edge wobble.** All 32 benchmark lots identical to 36299643380. B01 10.9% mask / 11.1% outline, 94% within 0.5 m of the edge, best shift → 10.4%. Median over 55: 41% within 0.5 m, 60% within 1 m; best shift (0, 0); outline 25.8% vs mask 25.5% |
 | 2026-09-28 | 36355253442 36355254898 36355256268 | 55 | `decoder: fused`, folds by place, seeds 7/8/9; THE PLAN's row with and without **colour edges** (S14), compared within the runs by workflow 24 (36362309179) | — | — | **H54: fails its bar, not adopted.** 25 better / 20 worse, -0.3 [-1.0, +0.3], p 0.55; frozen 32 18 / 10; since 7 / 10 (+0.2). B20 -13.7, B19 -11.0, B23 -7.0; B22 +4.6, B28 +4.2. Lot -84.06045,33.94050 is 409% in both columns |
+| 2026-09-28 | 36358021364 | 55 | **`windows: tiles 10 cm`** (S13's control: 45 m blocks, 1.6 m patch, padding skipped), fused, folds by place, seed 7; vs H50 fused s7/8/9 (workflow 24 36367542993) | — | — | **H55: screen not met, but a reshuffle.** Plan row 23 better / 25 worse, +0.2 [-1.4, +1.4]; B28 -54, B03 -38, B18 -18; B20 +76, B02 +24, B24 +23, B19 +22. Backbone 18 min |
