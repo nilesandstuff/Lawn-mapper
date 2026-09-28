@@ -98,3 +98,11 @@ chosen = nl.pick(seeds, random.Random(2), log=lambda *a: None, max_searches=200)
 assert n[0] == 0, "no water asked for, so no NHD query"
 assert searches[0] <= nl.GIVE_UP + 4, searches[0]
 print(f"PASS  a top-up asks only for its classes and gives up on one missing for {nl.GIVE_UP} searches ({searches[0]} made)")
+
+# Only shapes with some part in the frame: an L round the outside is not.
+box = [0.0, 0.0, 1.0, 1.0]
+sq = lambda x0, y0, x1, y1: {"type": "Polygon", "coordinates": [[[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]]]}
+assert nl.touches(sq(0.2, 0.2, 0.4, 0.4), box) and nl.touches(sq(-1, -1, 2, 2), box) and nl.touches(sq(-1, 0.4, 2, 0.6), box)
+L = {"type": "Polygon", "coordinates": [[[-0.5, -0.5], [-0.1, -0.5], [-0.1, 1.5], [1.5, 1.5], [1.5, 1.9], [-0.5, 1.9], [-0.5, -0.5]]]}
+assert not nl.touches(L, box) and not nl.touches(sq(1.2, 0, 1.5, 1), box)
+print("PASS  a frame lists only outlines with some part inside it, not ones whose box merely touches")

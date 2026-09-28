@@ -78,3 +78,18 @@ console.log('PASS  the fetch tool and the worker agree on where a map\'s outline
   assert.equal(reviewExample(doc, { shift: { east: 2, north: 0, source: 'anything' } }).shift.source, 'person');
   console.log('PASS  examples: outline shifts kept in metres, bounded, zero cleared');
 }
+
+// An outline counts only if some of it is inside the photo -- not when just
+// its box touches (a winding stream beside the frame, an L-shaped pond).
+{
+  const { touchesPhoto } = await import('../public/outlines.js');
+  const sq = (x0, y0, x1, y1) => [[[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]]];
+  assert.equal(touchesPhoto(sq(10, 10, 20, 20), 100, 100), true, 'inside');
+  assert.equal(touchesPhoto(sq(-50, -50, 200, 200), 100, 100), true, 'covers the whole photo');
+  assert.equal(touchesPhoto(sq(-10, 40, 110, 60), 100, 100), true, 'a band straight across');
+  assert.equal(touchesPhoto(sq(120, 0, 150, 100), 100, 100), false, 'beside it');
+  // An L whose box covers the photo but whose arms go round it.
+  const L = [[[-50, -50], [-10, -50], [-10, 150], [150, 150], [150, 190], [-50, 190], [-50, -50]]];
+  assert.equal(touchesPhoto(L, 100, 100), false, 'an L round the outside');
+  console.log('PASS  an outline counts only where some of it is in the photo');
+}

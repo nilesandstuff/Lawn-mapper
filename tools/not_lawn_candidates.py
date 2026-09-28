@@ -198,6 +198,41 @@ def overlaps(a, b):
     return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
 
 
+def touches(geom, box):
+    """Some of the shape inside the box -- not merely its bounding box. A
+    winding stream or an L-shaped pond whose box overlaps the frame was
+    listed on the review page with none of it in the picture (2026-09-28)."""
+    w, s, e, n = box
+    corners = [(w, s), (e, s), (e, n), (w, n)]
+
+    def in_ring(x, y, ring):
+        c = False
+        for i in range(len(ring)):
+            (xi, yi), (xj, yj) = ring[i][:2], ring[i - 1][:2]
+            if (yi > y) != (yj > y) and x < (xj - xi) * (y - yi) / (yj - yi) + xi:
+                c = not c
+        return c
+
+    def orient(p, q, r):
+        v = (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])
+        return (v > 0) - (v < 0)
+
+    def cross(a, b, c, d):
+        return orient(a, b, c) != orient(a, b, d) and orient(c, d, a) != orient(c, d, b)
+
+    for poly in parts(geom):
+        outer = poly[0] if poly else []
+        if any(w <= x <= e and s <= y <= n for x, y in (p[:2] for p in outer)):
+            return True
+        if any(in_ring(x, y, outer) for x, y in corners):
+            return True
+        for i in range(1, len(outer)):
+            for k in range(4):
+                if cross(outer[i - 1][:2], outer[i][:2], corners[k], corners[(k + 1) % 4]):
+                    return True
+    return False
+
+
 def frame_contents(box, searched, fetch=fetch_negatives, may_fetch=True):
     """Every public outline in a frame: from a box already searched that holds
     the whole frame (both queries return anything touching their box, so
@@ -209,19 +244,19 @@ def frame_contents(box, searched, fetch=fetch_negatives, may_fetch=True):
         if hit is None:
             need.append(source)
         else:
-            feats += [g for g in hit if overlaps(bbox_of(g["geometry"]), box)]
+            feats += [g for g in hit if overlaps(bbox_of(g["geometry"]), box) and touches(g["geometry"], box)]
     errors = None
     if need and not may_fetch:
         # Out of time: whatever the searches already hold that touches the
         # frame, and a note for the review page that it may be incomplete.
         for source in need:
             feats += [g for s, b, f in searched if s == source for g in f
-                      if overlaps(bbox_of(g["geometry"]), box)]
+                      if overlaps(bbox_of(g["geometry"]), box) and touches(g["geometry"], box)]
         return feats, {s: "not fetched (time budget): outlines here may be incomplete" for s in need}, 0
     if need:
         try:
             fc = fetch(tuple(box), sources=tuple(need))
-            feats += fc["features"]
+            feats += [g for g in fc["features"] if touches(g["geometry"], box)]
             errors = fc.get("errors")
         except Exception as e:  # noqa: BLE001
             errors = {"all": str(e)}

@@ -19,6 +19,8 @@ const view = {
   list: [], at: 0, doc: null, dropped: new Set(), w: 0, h: 0,
   /* Metres (east, north): all outlines together, and one outline dragged on its own. */
   shift: { east: 0, north: 0, source: null }, shifts: new Map(),
+  /* Outlines listed for this frame with no part inside the photograph. */
+  outside: new Set(),
 };
 const NUDGE_M = 0.25;
 const DRAG_SLOP_PX = 5;
@@ -36,6 +38,36 @@ export function polygonsOf(g) {
   return [];
 }
 
+/**
+ * Whether any part of a polygon (rings in photo pixels) lies inside the
+ * w x h photograph. A public outline is picked up when its BOX touches the
+ * frame, so a winding stream or an L-shaped pond can be listed while none of
+ * it is in the picture (owner, 2026-09-28: "the key says water, but I'm not
+ * seeing anything labelled water").
+ */
+export function touchesPhoto(rings, w, h) {
+  const outer = rings[0] || [];
+  if (outer.some(([x, y]) => x >= 0 && x <= w && y >= 0 && y <= h)) return true;
+  const inRing = (px, py, ring) => {
+    let c = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = ring[i]; const [xj, yj] = ring[j];
+      if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) c = !c;
+    }
+    return c;
+  };
+  if ([[0, 0], [w, 0], [w, h], [0, h]].some(([x, y]) => inRing(x, y, outer))) return true;
+  const cross = (a, b, c, d) => {
+    const o = (p, q, r) => Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]));
+    return o(a, b, c) !== o(a, b, d) && o(c, d, a) !== o(c, d, b);
+  };
+  const box = [[0, 0], [w, 0], [w, h], [0, h]];
+  for (let i = 1; i < outer.length; i++) {
+    for (let k = 0; k < 4; k++) if (cross(outer[i - 1], outer[i], box[k], box[(k + 1) % 4])) return true;
+  }
+  return false;
+}
+
 /** What is approved so far, by kind: outlines kept across approved examples. */
 export function approvedTotals(list) {
   const kept = {};
@@ -46,6 +78,15 @@ export function approvedTotals(list) {
     for (const [c, n] of Object.entries(e.kept || {})) kept[c] = (kept[c] || 0) + n;
   }
   return { examples, kept };
+}
+
+const pxRings = (rings) => rings.map((ring) => ring.map((ll) => lngLatToFramePx(view.doc.frame, ll, view.w, view.h)));
+
+function findOutside() {
+  view.outside = new Set();
+  (view.doc.features || []).forEach((f, i) => {
+    if (!polygonsOf(f.geometry).some((rings) => touchesPhoto(pxRings(rings), view.w, view.h))) view.outside.add(i);
+  });
 }
 
 function pathFor(rings) {
@@ -67,6 +108,7 @@ function draw() {
   svg.setAttribute('viewBox', `0 0 ${view.w} ${view.h}`);
   const m = mpp();
   (view.doc.features || []).forEach((f, i) => {
+    if (view.outside.has(i)) return;
     const colour = CLASS_COLOURS[f.properties?.class] || '#ffffff';
     const g = document.createElementNS(SVG, 'g');
     const o = offsetOf(i);
@@ -166,7 +208,7 @@ async function autoAlign() {
   mc.fillStyle = '#fff';
   mc.scale(gw / view.w, gh / view.h);
   (view.doc.features || []).forEach((f, i) => {
-    if (view.dropped.has(i)) return;
+    if (view.dropped.has(i) || view.outside.has(i)) return;
     for (const rings of polygonsOf(f.geometry)) mc.fill(new Path2D(pathFor(rings)), 'evenodd');
   });
   const mov = luminance(mc.getImageData(0, 0, gw, gh).data, gw, gh);
@@ -179,6 +221,7 @@ async function autoAlign() {
 function legend() {
   const counts = {};
   (view.doc.features || []).forEach((f, i) => {
+    if (view.outside.has(i)) return;
     const c = f.properties?.class || 'other';
     counts[c] = counts[c] || { kept: 0, dropped: 0 };
     counts[c][view.dropped.has(i) ? 'dropped' : 'kept']++;
@@ -189,6 +232,12 @@ function legend() {
     const s = document.createElement('span');
     s.style.setProperty('--c', CLASS_COLOURS[c] || '#fff');
     s.textContent = `${c} ${n.kept}${n.dropped ? ` (+${n.dropped} dropped)` : ''}`;
+    el.append(s);
+  }
+  if (view.outside.size) {
+    const s = document.createElement('span');
+    s.className = 'outside';
+    s.textContent = `${view.outside.size} listed outline${view.outside.size === 1 ? ' lies' : 's lie'} wholly outside the photo: not shown, not taught`;
     el.append(s);
   }
 }
@@ -228,7 +277,11 @@ async function open(i) {
   const img = $('#photo');
   img.onload = async () => {
     view.w = img.naturalWidth; view.h = img.naturalHeight;
+    findOutside();
     draw(); legend();
+    /* How much ground the photo covers: all of it is on screen, edge to edge. */
+    const m = mpp();
+    $('#sub').textContent += ` · whole photo shown, ${Math.round(view.w * m)} × ${Math.round(view.h * m)} m`;
     /* Never saved before: line the outlines up now; what was saved stands. */
     if (!doc.shift && !doc.reviewedAt) {
       try { await autoAlign(); } catch { /* shown as delivered */ }
@@ -243,7 +296,7 @@ async function save(status) {
   const res = await fetch('/api/admin/example', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      id: e.id, status, dropped: [...view.dropped],
+      id: e.id, status, dropped: [...new Set([...view.dropped, ...view.outside])],
       shift: view.shift.east || view.shift.north ? view.shift : null,
       shifts: Object.fromEntries([...view.shifts.entries()].filter(([, v]) => v && (v.east || v.north))),
     }),
