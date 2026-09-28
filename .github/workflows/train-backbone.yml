@@ -243,6 +243,13 @@ jobs:
     # run at the last step. Three hours is still far short of the six-hour
     # default, so a hung run does not sit there all afternoon.
     timeout-minutes: 300
+    # PyPI SLOW, NOT GONE (2026-09-28): two of three runs died at the install
+    # when pypi.org timed out five times running at pip's 15 s default on one
+    # small package; pip then backtracked to an old numpy it could not build.
+    # A minute a try and ten tries rides that out.
+    env:
+      PIP_DEFAULT_TIMEOUT: '60'
+      PIP_RETRIES: '10'
     steps:
       - uses: actions/checkout@v5
 
