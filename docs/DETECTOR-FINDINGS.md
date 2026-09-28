@@ -77,6 +77,14 @@ got here. Update it whenever the in-flight run changes.*
   did not. The relaunched runs on 6792729 still carry examples (cropped),
   so they measure the arrangements WITH examples and the crop; the clean
   both-scales question is three more runs without examples against S14.
+- **The two-job split failed its first real run (2026-09-28, 21:02):**
+  artifacts refuse file names with a colon, and every lot id has two. All
+  twelve runs on 6792729 / cffd94b were cancelled or died at that step (no
+  results). Fixed by handing over one tar file. RELAUNCHED, and narrowed
+  after H57: both scales WITHOUT examples (S17's real question, vs S14) and
+  the whole lot with the CROPPED examples (does the crop change H57?). Tiles
+  and both scales WITH examples are dropped -- H57 already says examples
+  are not adopted, so those runs would decide nothing.
 - **The examples made every run ~3.6x longer (2026-09-28, measured):** 90
   examples, 145 frames beside 55 lots. Whole-lot backbone 12 -> 46 min, each
   decoder 10 -> 33 min; windows backbone 78-91 min. The 6 cm tile runs and

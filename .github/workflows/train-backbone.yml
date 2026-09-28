@@ -435,19 +435,25 @@ jobs:
       # about 3.6x longer: the 6 cm blocks would have spent five hours in the
       # backbone alone. Everything the decoders and the scorer read goes to
       # the second job as one artifact, and that job gets six hours of its own.
+      # ONE TAR, NOT A FOLDER: artifacts refuse file names with a colon, and
+      # every lot id has two ("-112.83597,37.70577:sam3:find"). The first
+      # run of this split died on exactly that (36471713925).
       - name: Hand the frames and features to the training job
         run: |
           mkdir -p work
+          have=""
           for d in frames canopy lidar naip feats feats-whole lidar-plan.json; do
-            if [ -e "$d" ]; then mv "$d" work/; fi
+            if [ -e "$d" ]; then have="$have $d"; fi
           done
-          du -sh work/* || true
+          du -sh $have || true
+          tar -cf work/work.tar $have
+          ls -la work
 
       - name: Keep them for the training job
         uses: actions/upload-artifact@v4
         with:
           name: work
-          path: work
+          path: work/work.tar
           retention-days: 1
           # Floats and photographs do not compress; zipping them is only time.
           compression-level: 0
@@ -494,7 +500,8 @@ jobs:
 
       - name: Put them where the steps below expect them
         run: |
-          for d in work/*; do mv "$d" .; done
+          tar -xf work/work.tar
+          rm -f work/work.tar
           ls
 
       # Step one and a half: one decoder per held-out lawn over the full patch
