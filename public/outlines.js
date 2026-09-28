@@ -21,6 +21,8 @@ const view = {
   shift: { east: 0, north: 0, source: null }, shifts: new Map(),
   /* Outlines listed for this frame with no part inside the photograph. */
   outside: new Set(),
+  /* Changed since opened or last saved: kept on leaving, never dropped silently. */
+  dirty: false,
 };
 const NUDGE_M = 0.25;
 const DRAG_SLOP_PX = 5;
@@ -162,6 +164,7 @@ function grab(g, i) {
       if (!dragging) {
         if (view.dropped.has(i)) view.dropped.delete(i); else view.dropped.add(i);
       }
+      view.dirty = true;
       draw();
       legend();
     };
@@ -184,6 +187,7 @@ function shiftLine() {
 
 function nudge(east, north) {
   view.shift = { east: view.shift.east + east, north: view.shift.north + north, source: 'person' };
+  view.dirty = true;
   draw();
 }
 
@@ -361,9 +365,26 @@ export function stepIn(list, filter, at, dir = 1) {
   return [...idx].reverse().find((i) => i < at) ?? idx[idx.length - 1];
 }
 
+/*
+ * LEAVING KEEPS WHAT WAS DONE (owner, 2026-09-28: going back over approved
+ * examples, "some shapes load in their original position, not the position
+ * I moved them to"). Moves and drops were saved only by Approve, Reject or
+ * Draft; Previous, Next, the list or the filter threw them away without a
+ * word. Now leaving an example with changes saves them under the status it
+ * already has -- an approved one stays approved with the new record.
+ */
+async function keepChanges() {
+  if (!view.dirty || !view.doc?.frame) return true;
+  const e = view.list[view.at];
+  const status = e.status === 'approved' || e.status === 'rejected' ? e.status : 'draft';
+  return save(status, { advance: false });
+}
+
 async function open(i) {
   if (i < 0) { labelOptions(); return; }
+  if (!(await keepChanges())) return;   /* not saved: stay, and say so */
   view.at = i;
+  view.dirty = false;
   const e = view.list[view.at];
   labelOptions();
   $('#said').textContent = '';
@@ -405,7 +426,7 @@ async function open(i) {
   img.src = `/api/admin/example-image?id=${encodeURIComponent(e.id)}`;
 }
 
-async function save(status) {
+async function save(status, { advance = true } = {}) {
   const e = view.list[view.at];
   $('#said').textContent = 'Saving…';
   const res = await fetch('/api/admin/example', {
@@ -417,16 +438,19 @@ async function save(status) {
     }),
   });
   const out = await res.json().catch(() => ({}));
-  if (!res.ok) { $('#said').textContent = `Not saved (${out.error || res.status}).`; return; }
+  if (!res.ok) { $('#said').textContent = `Not saved (${out.error || res.status}).`; return false; }
+  view.dirty = false;
   e.status = out.status;
   e.kept = out.kept || {};
   $('#said').textContent = out.status === 'approved' ? 'Approved.' : out.status === 'rejected' ? 'Rejected.' : 'Saved as a draft.';
   totals();
+  if (!advance) { $('#said').textContent = `Changes to ${e.id} saved.`; return true; }
   /* On to the next one in this list: reviewing is a queue, and so is going back over. */
   if (out.status !== 'draft') {
     const next = stepIn(view.list, view.filter, view.at, 1);
     if (next >= 0 && next !== view.at) open(next); else labelOptions();
   } else labelOptions();
+  return true;
 }
 
 function labelOptions() {
@@ -485,8 +509,10 @@ async function start() {
   $('#n-right').addEventListener('click', () => nudge(NUDGE_M, 0));
   $('#n-up').addEventListener('click', () => nudge(0, NUDGE_M));
   $('#n-down').addEventListener('click', () => nudge(0, -NUDGE_M));
-  $('#n-auto').addEventListener('click', () => { view.shifts = new Map(); autoAlign().catch(() => {}); });
-  $('#n-reset').addEventListener('click', () => { view.shift = { east: 0, north: 0, source: null }; view.shifts = new Map(); draw(); });
+  $('#n-auto').addEventListener('click', () => { view.shifts = new Map(); view.dirty = true; autoAlign().catch(() => {}); });
+  $('#n-reset').addEventListener('click', () => { view.shift = { east: 0, north: 0, source: null }; view.shifts = new Map(); view.dirty = true; draw(); });
+  /* A reload or closing the tab with changes: the browser asks first. */
+  window.addEventListener('beforeunload', (ev) => { if (view.dirty) { ev.preventDefault(); ev.returnValue = ''; } });
   $('#helpbtn').addEventListener('click', () => { $('#help').hidden = !$('#help').hidden; });
   $('#helpclose').addEventListener('click', () => { $('#help').hidden = true; });
   $('#help').addEventListener('pointerdown', (e) => e.stopPropagation());
