@@ -17,6 +17,7 @@
  * job, so a drawing that cannot be trusted would make the page pointless.
  */
 import { paint } from '/lib/review-draw.js';
+import { latLngOfId, coordsLine } from '/lib/coords.js';
 
 const $ = (s) => document.querySelector(s);
 const el = (tag, cls, text) => {
@@ -106,6 +107,9 @@ function row(m, { dim = false, open = false } = {}) {
    * the same lawn twice, and nothing but reading them side by side showed it.
    */
   box.append(el('div', 'mono', m.id));
+  /* And the address point the right way round, to paste elsewhere. */
+  const ll = latLngOfId(m.id);
+  if (ll) box.append(coordsLine(ll));
 
   /*
    * AND THE MAP ITSELF, which a list of square footages cannot stand in for.

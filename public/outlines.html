@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lawn Mapper — not-lawn examples to review</title>
+<!--
+  EXAMPLES OF THINGS THAT ARE CERTAINLY NOT LAWN, AWAY FROM OUR OWN MAPS
+  (owner, 2026-09-27): new photographs, taken exactly as a finished map's
+  is, each centred on a pond, a house, a pool, a driveway, a car park or a
+  road that OpenStreetMap or USGS has already drawn (workflow 25). Training
+  will teach only the outlined ground as "not lawn" and ignore the rest of
+  the picture, as it ignores ground outside a lot line today.
+
+  The owner looks first: tap an outline that is wrong to drop it, then
+  approve the example, or reject it whole. Only approved examples, and only
+  the outlines left standing, are ever shown to the detector. The counts at
+  the top are what is approved so far, by kind, so the mix can be chosen at
+  training time.
+
+  Nothing is gated in this markup. The gate is the API, which answers 404 to
+  anybody who is not an administrator.
+-->
+<link href="/styles.css" rel="stylesheet">
+<link href="/console.css" rel="stylesheet">
+<style>
+  .ol-stage { position: relative; width: 100%; max-width: 900px; margin: 8px 0; touch-action: manipulation; }
+  .ol-stage img { display: block; width: 100%; height: auto; border-radius: 8px; }
+  .ol-stage svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .ol-stage path.shape { cursor: pointer; stroke-width: 2.5; fill-opacity: .35; vector-effect: non-scaling-stroke; }
+  .ol-stage path.shape.dropped { fill-opacity: .05; stroke: #9e9e9e !important; fill: #9e9e9e !important; stroke-dasharray: 6 4; }
+  .ol-stage path.parcel { fill: none; stroke: #fff; stroke-width: 2; vector-effect: non-scaling-stroke; }
+  .ol-stage path.shape.target { stroke-width: 5; }
+  .ol-legend { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 13px; margin: 6px 0; }
+  .ol-legend span::before { content: ""; display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; background: var(--c); }
+  .ol-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+  .ol-bar select { max-width: 100%; font-size: 15px; padding: 6px; }
+  .ol-bar button { min-height: 40px; }
+  .ol-errors { color: #b00020; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<div class="console">
+  <div class="conhead">
+    <h1>Not-lawn examples to review</h1>
+    <a href="/admin.html">← back to the console</a>
+  </div>
+
+  <div class="locked-out" id="locked" hidden>
+    <p>This page is for the site owner.</p>
+    <p><a href="/">Go and measure a lawn instead →</a></p>
+  </div>
+
+  <div class="empty-state" id="none" hidden>
+    <div class="card">
+      <h2>Nothing fetched yet</h2>
+      <p class="sub">Run workflow <b>25</b>. It photographs about 150 places with a
+        public outline of something that is not lawn and leaves them here as drafts.</p>
+    </div>
+  </div>
+
+  <div id="page" hidden>
+    <div class="card">
+      <div class="ol-bar">
+        <select id="pick" aria-label="Which map"></select>
+        <button class="ghost" id="prev" type="button">◀ Previous</button>
+        <button class="ghost" id="next" type="button">Next ▶</button>
+      </div>
+      <p class="sub" id="totals"></p>
+      <p class="sub" id="sub"></p>
+      <p class="sub">The thick outline is the one this example was chosen for. Tap any outline
+        that is wrong to drop it (it goes grey and dashed); tap again to keep it. Approve when
+        everything left is certainly not lawn, or reject the whole example.</p>
+      <div class="ol-legend" id="legend"></div>
+      <p class="ol-errors" id="errors" hidden></p>
+      <div class="ol-stage" id="stage">
+        <img id="photo" alt="The map's photograph">
+        <svg id="overlay" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none"></svg>
+      </div>
+      <div class="ol-bar">
+        <button class="ghost" id="reject" type="button">Reject this example</button>
+        <button class="ghost" id="save" type="button">Save as draft</button>
+        <button class="primary" id="approve" type="button">Approve</button>
+        <span class="sub" id="said"></span>
+      </div>
+      <p class="sub" id="attribution"></p>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="/outlines.js"></script>
+</body>
+</html>

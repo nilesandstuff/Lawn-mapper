@@ -246,3 +246,28 @@ body { background: var(--bg); }
 /* The page behind must not scroll while a picture is open, or closing it
    leaves you somewhere else in the list. */
 body.lightbox-open { overflow: hidden; }
+
+/* ------------------------------------------------ predictions: the layers */
+.layerbar { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
+.layerbar label {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  font-size: 12.5px; padding: 5px 10px; border-radius: 999px;
+  border: 1px solid var(--line); background: #fff; color: var(--muted);
+}
+.layerbar label.on { color: #1d2320; border-color: #9aa39d; font-weight: 600; }
+.layerbar input { margin: 0; }
+.layerbar i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.layerbar .allnone { font-size: 12px; }
+.stack { position: relative; width: 100%; line-height: 0; }
+.stack > img { display: block; width: 100%; height: auto; }
+.stack > .layer {
+  position: absolute; inset: 0; background-repeat: no-repeat; pointer-events: none;
+}
+.shot.pred.stack { cursor: zoom-in; border-radius: 8px; overflow: hidden; }
+.lightshot.stack {
+  width: min(100vw, calc(100vh * var(--ar)));
+  max-width: none; max-height: none;
+}
+.lightshot.stack > .layer, .lightshot.stack > img { image-rendering: pixelated; }
+.coords { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.coords .ghost.tiny { margin: 0; padding: 2px 8px; font-size: 11.5px; }

@@ -10,6 +10,8 @@
  * innerHTML on this page runs a stranger's string while signed in as the owner.
  */
 
+import { latLngText, coordsLine } from '/lib/coords.js';
+
 const $ = (s) => document.querySelector(s);
 
 /*
@@ -77,12 +79,16 @@ const pct = (v) => (v === null || v === undefined ? '—' : `${v.toFixed(1)}%`);
  * work the same way as a thumb -- this page is read on a phone and debugged on
  * a laptop, and two code paths for one gesture is how they drift.
  */
-function viewer(key, alt) {
+function viewer(key, alt, build = null) {
   const back = el('div', 'lightbox');
-  const img = el('img', 'lightshot');
-  img.alt = alt;
-  img.src = `/api/admin/prediction-image?key=${encodeURIComponent(key)}`;
-  img.draggable = false;
+  /* A layered lawn opens as its stack, zoomed and panned as one piece, so the
+     switches at the top of the page hold in the full-size view too. */
+  const img = build ? build('lightshot') : el('img', 'lightshot');
+  if (!build) {
+    img.alt = alt;
+    img.src = `/api/admin/prediction-image?key=${encodeURIComponent(key)}`;
+    img.draggable = false;
+  }
 
   const close = el('button', 'lightclose');
   close.type = 'button';
@@ -222,7 +228,8 @@ function row(e, i) {
   const box = el('div', 'entry');
 
   const top = el('div', 'top');
-  top.append(el('b', null, e.county || 'traced by hand'));
+  /* B01..B32 first: the name the owner and the findings file use. */
+  top.append(el('b', null, `${e.tag ? `${e.tag} · ` : ''}${e.county || 'traced by hand'}`));
 
   /*
    * THE TREE CANOPY IS A DIFFERENT KIND OF ENTRY and gets a different caption.
@@ -285,6 +292,12 @@ function row(e, i) {
   }
 
   top.append(el('span', 'pill warn', `${pct(e.errorPct)} out`));
+  /* The outline in the picture, scored the same way. The pill above is the
+     raw mask (the run's own figure); this is the shape actually drawn, which
+     is what a picture is read as. Runs before 2026-09-27 have no such field. */
+  if (Number.isFinite(e.outlineErrorPct)) {
+    top.append(el('span', 'pill grey', `outline ${pct(e.outlineErrorPct)}`));
+  }
   if (e.samErrorPct !== null && e.samErrorPct !== undefined) {
     /* SAM beside it, because "28% wrong" only means something against the
        thing we currently pay for on the same lawn. */
@@ -302,6 +315,8 @@ function row(e, i) {
   box.append(el('div', 'meta',
     `${n(e.squareFeet)} sq ft of lawn · ${Math.round(e.mpp * 100)} cm a pixel · `
     + `the outline found ${pct(e.foundPct)} of it · over-called ${pct(e.overPct)}`));
+  /* Where it is, "lat, lng", for the NAIP-CHM app and anything else. */
+  if (Number.isFinite(e.lat) && Number.isFinite(e.lng)) box.append(coordsLine(latLngText(e.lat, e.lng)));
 
   /*
    * What correcting it would cost. Written as a sentence rather than as two
@@ -348,6 +363,134 @@ function row(e, i) {
     + 'with the hand-traced lawn washed in green');
 }
 
+/* ------------------------------------------------------------ the layers */
+
+/* The run's layers (index.json `layers`), and which are showing. */
+let LAYER_DEFS = [];
+const LAYER_STORE = 'predictions-layers';
+let layerOn = {};
+const imageUrl = (key) => `/api/admin/prediction-image?key=${encodeURIComponent(key)}`;
+
+/* A <style> rule per hidden layer, so a switch is one change for every lawn
+   and the full-size view at once, not a walk over hundreds of elements. */
+function applyLayers() {
+  let css = document.getElementById('layer-css');
+  if (!css) {
+    css = document.createElement('style');
+    css.id = 'layer-css';
+    document.head.append(css);
+  }
+  css.textContent = LAYER_DEFS.filter((l) => !layerOn[l.id])
+    .map((l) => `.layer-${l.id} { display: none; }`).join('\n');
+  for (const lab of document.querySelectorAll('.layerbar label[data-id]')) {
+    lab.classList.toggle('on', Boolean(layerOn[lab.dataset.id]));
+  }
+  try { localStorage.setItem(LAYER_STORE, JSON.stringify(layerOn)); } catch { /* private mode */ }
+}
+
+function layerBar(defs) {
+  LAYER_DEFS = defs;
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(LAYER_STORE) || '{}') || {}; } catch { saved = {}; }
+  layerOn = Object.fromEntries(defs.map((l) => [l.id, l.id in saved ? Boolean(saved[l.id]) : Boolean(l.on)]));
+  const bar = $('#layerbar');
+  bar.hidden = false;
+  /* Top of the drawing order first, which is how a reader looks for them. */
+  for (const l of defs.slice().reverse()) {
+    const lab = el('label');
+    lab.dataset.id = l.id;
+    const box = el('input');
+    box.type = 'checkbox';
+    box.checked = layerOn[l.id];
+    box.addEventListener('change', () => { layerOn[l.id] = box.checked; applyLayers(); });
+    const sw = el('i');
+    sw.style.background = `rgb(${l.colour.join(',')})`;
+    if (l.id === 'line') sw.style.outline = '1px solid #9aa39d';
+    lab.append(box, sw, document.createTextNode(l.label));
+    bar.append(lab);
+  }
+  const reset = el('button', 'ghost tiny allnone', 'defaults');
+  reset.type = 'button';
+  reset.addEventListener('click', () => {
+    for (const l of defs) layerOn[l.id] = Boolean(l.on);
+    for (const inp of bar.querySelectorAll('input')) inp.checked = layerOn[inp.parentElement.dataset.id];
+    applyLayers();
+  });
+  bar.append(reset);
+  applyLayers();
+}
+
+/*
+ * One lawn as the photograph with every layer stacked over it: a div per
+ * layer, each showing its own frame of the one tall layers image. Loaded when
+ * scrolled to, like the pictures before it.
+ */
+const seen = 'IntersectionObserver' in window
+  ? new IntersectionObserver((items) => {
+    for (const it of items) {
+      if (!it.isIntersecting) continue;
+      it.target.dispatchEvent(new Event('load-layers'));
+      seen.unobserve(it.target);
+    }
+  }, { rootMargin: '400px' })
+  : null;
+
+function layerStack(e, cls, eager = false) {
+  const wrap = el('div', `${cls} stack`);
+  const w = e.renderPx || 1;
+  const h = e.renderPy || w;
+  wrap.style.setProperty('--ar', String(w / h));
+  wrap.style.aspectRatio = `${w} / ${h}`;
+  const photo = el('img');
+  photo.alt = '';
+  photo.draggable = false;
+  wrap.append(photo);
+  const N = LAYER_DEFS.length;
+  const layers = LAYER_DEFS.map((l, k) => {
+    const d = el('div', `layer layer-${l.id}`);
+    d.style.backgroundSize = `100% ${N * 100}%`;
+    d.style.backgroundPosition = `0 ${N > 1 ? (k / (N - 1)) * 100 : 0}%`;
+    wrap.append(d);
+    return d;
+  });
+  const load = () => {
+    photo.src = imageUrl(e.photoKey);
+    for (const d of layers) d.style.backgroundImage = `url("${imageUrl(e.layersKey)}")`;
+  };
+  if (eager || !seen) load();
+  else {
+    wrap.addEventListener('load-layers', load, { once: true });
+    seen.observe(wrap);
+  }
+  photo.addEventListener('error', () => {
+    wrap.replaceWith(el('p', 'empty', 'That picture could not be loaded.'));
+  });
+  return wrap;
+}
+
+function withLayers(box, e, i, alt) {
+  const frame = el('div', 'shotwrap');
+  const pic = layerStack(e, 'shot pred');
+  pic.setAttribute('role', 'img');
+  pic.setAttribute('aria-label', alt);
+  const open = el('button', 'shotopen');
+  open.type = 'button';
+  open.title = 'Open full size';
+  open.setAttribute('aria-label', `Open lawn ${i + 1} full size`);
+  open.textContent = '⤢';
+  const full = () => viewer(null, alt, (cls) => layerStack(e, cls, true));
+  open.addEventListener('click', (ev) => { ev.stopPropagation(); full(); });
+  pic.addEventListener('click', full);
+  frame.append(pic, open);
+  box.append(frame);
+  if (e.missedInferredPct !== null && e.missedInferredPct !== undefined) {
+    box.append(el('div', 'meta',
+      `Of the ground marked "inferred, not seen", the outline misses `
+      + `${pct(e.missedInferredPct)}.`));
+  }
+  return box;
+}
+
 /**
  * The picture, loaded only when it is scrolled to.
  *
@@ -356,6 +499,7 @@ function row(e, i) {
  * lazy loading and the failure message cannot drift apart between them.
  */
 function withPicture(box, e, i, alt) {
+  if (e.layersKey && e.photoKey && LAYER_DEFS.length) return withLayers(box, e, i, alt);
   const img = el('img', 'shot pred');
   img.loading = 'lazy';
   img.decoding = 'async';
@@ -474,7 +618,10 @@ async function loadRuns() {
 function runLabel(r) {
   const when = r.at ? new Date(r.at).toLocaleString() : r.slug;
   const score = Number.isFinite(r.headline) ? ` · ${r.headline.toFixed(1)}%` : '';
-  return `${when} · ${r.title || r.slug}${score}`;
+  /* WHICH ROW WAS DRAWN. Two runs that drew the same row draw the same
+     pictures (H36), and the picker used to hide that. */
+  const row = r.settings?.config ? ` · ${r.settings.config}` : '';
+  return `${when} · ${r.title || r.slug}${row}${score}`;
 }
 
 function fillPicker(runs, current) {
@@ -585,6 +732,23 @@ function settingsLine(settings) {
     + `${new Date(data.drawnAt).toLocaleString()}`;
   $('#caveat').textContent = data.note || '';
 
+  /* A run drawn with layers gets the switches; the raw mask is one of them,
+     so the old all-or-nothing flip steps aside. */
+  if (Array.isArray(data.layers) && data.layers.length && entries.some((e) => e.layersKey)) {
+    layerBar(data.layers);
+    flip.hidden = true;
+  }
+
+  /*
+   * IN B-NUMBER ORDER (owner, 2026-09-26): B01 to B32 first, then any lawn
+   * with no tag in the order the run wrote them. The index is kept as written;
+   * `i` stays the position there, which is what the picture keys are named by.
+   */
+  const order = entries.map((e, i) => [e, i]).sort(([a, ia], [b, ib]) => {
+    if (a.tag && b.tag) return a.tag.localeCompare(b.tag);
+    if (a.tag || b.tag) return a.tag ? -1 : 1;
+    return ia - ib;
+  });
   const list = $('#list');
-  for (const [i, e] of entries.entries()) list.append(row(e, i));
+  for (const [e, i] of order) list.append(row(e, i));
 })();

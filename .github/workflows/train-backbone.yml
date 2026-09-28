@@ -61,6 +61,13 @@ on:
           # looking at. The only entry here that has ever seen a lawn from
           # above before today.
           - scalemae-large
+          # The same model told N x the metres a pixel. Scale-MAE's own
+          # pretraining fed it res of about 2.2-5.0, never metres; we pass
+          # 0.07-0.10. These measure which number it reads best. See
+          # SatelliteEye in tools/extract_features.py.
+          - scalemae-large, res x5
+          - scalemae-large, res x10
+          - scalemae-large, res x25
           - facebook/dinov2-base
           - facebook/dinov2-small
           - facebook/dinov2-large
@@ -130,10 +137,19 @@ on:
         # a registration bug in the squeeze (H25), and the re-run with it
         # fixed (2026-09-24) put every row within 1.5 points either way.
         # Windows triple the extraction and the decoder's time.
-        description: 'Read big lots in overlapping windows at 10 cm (on), or squeeze every lot whole (off: same score within noise, a third of the time)'
+        #
+        # "tiles" (owner, 2026-09-27): EVERY lot resampled to 6 cm a pixel and
+        # read in 448 px blocks -- 27 m, keeping the middle 17 m, 5 m of
+        # context past it each side -- so the model always sees the same
+        # pixels over the same ground, a patch is 0.96 m instead of 1.3-5.4 m,
+        # and blocks nowhere near the lot are skipped (TILE_* in
+        # tools/extract_features.py). "tiles 10 cm" is the control: the same
+        # blocks at the photograph's own resolution (45 m, 1.6 m patches), to
+        # tell "every lot read the same way" from "finer patches".
+        description: 'Big lots in 10 cm windows (on), every lot squeezed whole (off), or every lot in blocks: 6 cm / 27 m (tiles) or 10 cm / 45 m (tiles 10 cm)'
         type: choice
         default: 'off'
-        options: ['on', 'off']
+        options: ['on', 'off', 'tiles', 'tiles 10 cm']
       lawns:
         # WHICH LAWNS. The 32 maps every table since 2026-09-23 was measured
         # on are frozen as the benchmark (tools/lawn-set.js, cohort column);
@@ -143,10 +159,14 @@ on:
         # (The 15 cm scoring grid is fixed now: H23 measured the old 512
         # against it as nothing, and this input took its place under
         # GitHub's limit of ten.)
-        description: 'Which lawns: the frozen benchmark of 32 (comparable), every approved map (all), or only those approved since the freeze (new)'
+        #
+        # "benchmark, 10 folds" is the same 32 trained the way `all` is (ten
+        # folds, not leave-one-out): the check that the change of method did
+        # not change the answer (owner's question, 2026-09-27).
+        description: 'Which lawns: the frozen benchmark of 32 (comparable), every approved map (all), only those approved since the freeze (new), or the benchmark trained in 10 folds (method check)'
         type: choice
         default: 'benchmark'
-        options: ['benchmark', 'all', 'new']
+        options: ['benchmark', 'all', 'new', 'benchmark, 10 folds']
       decoder:
         # STAGE 1 OF THE PLAN. Every row the scorer trains itself is a 16-unit
         # head over a RANDOM 32 of the eye's 1024 numbers, one cell at a time.
@@ -155,9 +175,21 @@ on:
         # and lands in the same table as a row of its own. Measured at about
         # 40 s a fold on four threads, so around 20-25 minutes of CPU on top
         # of the extraction at 32 lawns.
-        description: 'Also train the convolutional decoder over the full patch grid (about 25 minutes more)'
-        type: boolean
-        default: true
+        #
+        # "fused" (S11, the owner's question of 2026-09-26): the same decoder
+        # with seven more numbers a patch -- lidar height, ground-return share
+        # and return count, NAIP's NDVI, the tree model's canopy, and a flag
+        # each for "no lidar" / "no NAIP" -- with modality dropout. See
+        # tools/fuse_layers.py. A choice rather than an eleventh input because
+        # GitHub allows ten. Needs the canopy (anything but off).
+        #
+        # FUSED IS THE MAIN SET-UP FROM 2026-09-27 (owner): H50 measured it
+        # level with "on" at 55 lots, and it is the one expected to pull
+        # ahead as the corpus grows. "on" stays as the other arm.
+        description: 'Train the convolutional decoder over the full patch grid (on), the same with lidar + NAIP NDVI + canopy as extra inputs (fused, the main set-up), or not at all (off)'
+        type: choice
+        default: 'fused'
+        options: ['on', 'fused', 'off']
       seed:
         # THE DECODER'S SEED. It is deterministic given the seed and the
         # features (H26: two runs identical to the decimal), which means one
@@ -210,7 +242,7 @@ jobs:
     # a CPU plus the scoring, and a cap that cut that off would waste the whole
     # run at the last step. Three hours is still far short of the six-hour
     # default, so a hung run does not sit there all afternoon.
-    timeout-minutes: 180
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@v5
 
@@ -256,7 +288,7 @@ jobs:
           # resolution. Either way it needs the real pixels to choose from.
           DUMP_SIZE: native
           NO_BACKBONE: 'true'
-          LAWN_SET: ${{ inputs.lawns }}
+          LAWN_SET: ${{ inputs.lawns == 'benchmark, 10 folds' && 'benchmark' || inputs.lawns }}
         run: node tools/train-detector.js
 
       # That the windows land where the photograph has them, before twenty
@@ -269,7 +301,7 @@ jobs:
       # And that labels land on the right patches and answers on the right
       # cells, before the decoder is trained on either. Same reason.
       - name: Check the decoder's grids
-        if: ${{ inputs.decoder }}
+        if: ${{ inputs.decoder != 'off' }}
         working-directory: tools
         run: python3 decoder_test.py
 
@@ -287,6 +319,10 @@ jobs:
         run: |
           python3 canopy_test.py
           python3 lidar_test.py
+          python3 crowns_lidar_test.py
+          python3 fuse_test.py
+          python3 folds_test.py
+          python3 naip_align_test.py
 
       - name: Find the canopy
         if: ${{ inputs.canopy != 'off' }}
@@ -319,7 +355,21 @@ jobs:
           CANOPY: canopy
           PLAN: lidar-plan.json
           OUT: lidar
+          # NAIP-CHM too (E9, H41): its canopy joins the lidar's in the
+          # "lidar ∩ NAIP canopy" row and is a layer on the pictures. About
+          # 10 s for the index and 1.5 s a frame.
+          NAIP_CHM: '1'
         run: python3 tools/lidar_frame.py
+
+      # S11, the fused inputs: NAIP's near-infrared over every frame (one
+      # exportImage each, about a metre a pixel), for the decoder to read as
+      # NDVI beside the lidar and the canopy. See tools/naip_bands.py.
+      - name: Read NAIP's near-infrared over the frames
+        if: ${{ inputs.decoder == 'fused' && inputs.canopy != 'off' }}
+        env:
+          FRAMES: frames
+          OUT: naip
+        run: python3 tools/naip_bands.py
 
       - name: Run the backbone over them
         env:
@@ -330,6 +380,7 @@ jobs:
           # Nine metres a pixel is a target no lot fails, so "off" reads every
           # lot whole -- the pre-2026-09-23 behaviour, kept as the control.
           TARGET_MPP: ${{ inputs.windows == 'off' && '9' || '0.10' }}
+          TILE_MPP: ${{ inputs.windows == 'tiles' && '0.06' || (inputs.windows == 'tiles 10 cm' && '0.10' || '') }}
         run: python3 tools/extract_features.py
 
       # Step one and a half: one decoder per held-out lawn over the full patch
@@ -337,7 +388,7 @@ jobs:
       # one out exactly as the scorer does, so the row it produces is the same
       # kind of number as the rows beside it.
       - name: Train the decoder
-        if: ${{ inputs.decoder && inputs.canopy != 'compare' }}
+        if: ${{ inputs.decoder != 'off' && inputs.canopy != 'compare' }}
         env:
           FEATURES: feats
           FRAMES: frames
@@ -345,21 +396,40 @@ jobs:
           CANOPY: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
           CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}
           SEED: ${{ inputs.seed }}
+          FUSE: ${{ inputs.decoder == 'fused' && '1' || '' }}
+          FUSE_LIDAR: lidar
+          # Leave-one-out costs the square of the corpus (68 min a decoder at
+          # 53 lawns, past the time limit with three). The full corpus is held
+          # out a NEIGHBOURHOOD at a time in 15 folds (tools/folds.py): a lot is
+          # never scored by a decoder that trained on the lot next door. The
+          # benchmark stays leave-one-out, as every table was.
+          FOLDS: ${{ inputs.lawns == 'all' && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
+          FUSE_NAIP: naip
+          FUSE_CANOPY: ${{ inputs.canopy == 'everywhere' && '1' || '0' }}
         run: python3 tools/train_decoder.py
 
       # THE THREE-WAY COMPARISON, over the one extraction above. Same seed,
       # same features, same folds; only what carries weight differs.
       - name: Train the decoder without the canopy
-        if: ${{ inputs.decoder && inputs.canopy == 'compare' }}
+        if: ${{ inputs.decoder != 'off' && inputs.canopy == 'compare' }}
         env:
           FEATURES: feats
           FRAMES: frames
           OUT: preds-none
           SEED: ${{ inputs.seed }}
+          FUSE: ${{ inputs.decoder == 'fused' && '1' || '' }}
+          FUSE_LIDAR: lidar
+          # Leave-one-out costs the square of the corpus (68 min a decoder at
+          # 53 lawns, past the time limit with three). The full corpus is held
+          # out a NEIGHBOURHOOD at a time in 15 folds (tools/folds.py): a lot is
+          # never scored by a decoder that trained on the lot next door. The
+          # benchmark stays leave-one-out, as every table was.
+          FOLDS: ${{ inputs.lawns == 'all' && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
+          FUSE_NAIP: naip
         run: python3 tools/train_decoder.py
 
       - name: Train the decoder, canopy unseen on lawn
-        if: ${{ inputs.decoder && inputs.canopy == 'compare' }}
+        if: ${{ inputs.decoder != 'off' && inputs.canopy == 'compare' }}
         env:
           FEATURES: feats
           FRAMES: frames
@@ -367,10 +437,22 @@ jobs:
           CANOPY: canopy
           CANOPY_MODE: lawn
           SEED: ${{ inputs.seed }}
+          FUSE: ${{ inputs.decoder == 'fused' && '1' || '' }}
+          FUSE_LIDAR: lidar
+          # Leave-one-out costs the square of the corpus (68 min a decoder at
+          # 53 lawns, past the time limit with three). The full corpus is held
+          # out a NEIGHBOURHOOD at a time in 15 folds (tools/folds.py): a lot is
+          # never scored by a decoder that trained on the lot next door. The
+          # benchmark stays leave-one-out, as every table was.
+          FOLDS: ${{ inputs.lawns == 'all' && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
+          FUSE_NAIP: naip
+          # H48: no canopy CHANNEL for this decoder -- every canopy cell it is
+          # graded on is not-lawn, so the channel taught "canopy = not lawn".
+          FUSE_CANOPY: '0'
         run: python3 tools/train_decoder.py
 
       - name: Train the decoder, canopy unseen everywhere
-        if: ${{ inputs.decoder && inputs.canopy == 'compare' }}
+        if: ${{ inputs.decoder != 'off' && inputs.canopy == 'compare' }}
         env:
           FEATURES: feats
           FRAMES: frames
@@ -378,6 +460,15 @@ jobs:
           CANOPY: canopy
           CANOPY_MODE: all
           SEED: ${{ inputs.seed }}
+          FUSE: ${{ inputs.decoder == 'fused' && '1' || '' }}
+          FUSE_LIDAR: lidar
+          # Leave-one-out costs the square of the corpus (68 min a decoder at
+          # 53 lawns, past the time limit with three). The full corpus is held
+          # out a NEIGHBOURHOOD at a time in 15 folds (tools/folds.py): a lot is
+          # never scored by a decoder that trained on the lot next door. The
+          # benchmark stays leave-one-out, as every table was.
+          FOLDS: ${{ inputs.lawns == 'all' && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
+          FUSE_NAIP: naip
         run: python3 tools/train_decoder.py
 
       # Step two: the same folds, the same scoring, the same comparison against
@@ -385,6 +476,14 @@ jobs:
       # this answerable against workflow 12's table.
       - name: Score it the same way as before
         env:
+          # Every row's per-lot result as a file, for workflow 24 to compare
+          # runs lot by lot and across seeds (tools/compare-runs.js).
+          LOT_RESULTS: lot-results.json
+          # Only a label here -- the decoders above did the folding -- but
+          # without it every file said "leave-one-out" (H50's six did).
+          FOLDS: ${{ inputs.lawns == 'all' && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
+          SEED: ${{ inputs.seed }}
+          DECODER_KIND: ${{ inputs.decoder }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CORPUS_BUCKET: lawn-mapper-corpus
@@ -403,18 +502,40 @@ jobs:
           # 15 cm a cell, 512 to 1024 across. The old fixed 512 was an input
           # until 2026-09-24; H23 measured the two as the same.
           GRID_CELL_M: '0.15'
-          LAWN_SET: ${{ inputs.lawns }}
+          LAWN_SET: ${{ inputs.lawns == 'benchmark, 10 folds' && 'benchmark' || inputs.lawns }}
           # Empty when the decoder was not trained, and the scorer skips the row.
-          PREDICTIONS_DIR: ${{ inputs.decoder && inputs.canopy != 'compare' && 'preds' || '' }}
+          PREDICTIONS_DIR: ${{ inputs.decoder != 'off' && inputs.canopy != 'compare' && 'preds' || '' }}
           # The three-way comparison, one row each. The seen column is scored
           # with the canopy unseen on lawn, whichever decoder is being read.
-          PREDICTIONS_DIRS: ${{ inputs.decoder && inputs.canopy == 'compare' && 'no canopy=preds-none,canopy on lawn=preds-lawn,canopy everywhere=preds-all' || '' }}
+          PREDICTIONS_DIRS: ${{ inputs.decoder != 'off' && inputs.canopy == 'compare' && 'no canopy=preds-none,canopy on lawn=preds-lawn,canopy everywhere=preds-all' || '' }}
           # The canopy joins the hand-marked unseen ground for the seen column.
           CANOPY_DIR: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
           CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}
           # The lidar's height, for stage 3's woods rule only (H34).
           LIDAR_DIR: ${{ inputs.canopy != 'off' && 'lidar' || '' }}
+          # H47: the drawn row's held-out masks, for the step below.
+          PRED_OUT: ${{ inputs.canopy != 'off' && 'preds-out' || '' }}
         run: node tools/train-detector.js
+
+      # H47's fair half: the per-crown woods test again, with the detector's
+      # visible lawn in place of the tracer's (tools/segments_pred.py). It
+      # measures, it changes nothing, so it never fails the run.
+      - name: One segment per crown, judged by the detector's lawn edge
+        if: ${{ inputs.canopy != 'off' }}
+        continue-on-error: true
+        working-directory: tools
+        env:
+          LIDAR: ../lidar
+          PRED: ../preds-out
+        run: python3 segments_pred.py
+
+      - name: Keep the per-lot results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lot-results
+          path: lot-results.json
+          if-no-files-found: ignore
 
       - name: If that failed
         if: failure()

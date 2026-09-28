@@ -1245,10 +1245,13 @@ if (sources.includes('naip')) {
   check('and it is fetched as one image of the frame, not tiles',
     shot.sourceType === 'image', `sourceType=${shot.sourceType}`);
 
-  // The whole point: the picture's corners ARE the frame's corners.
-  const drift = shot.corners && shot.frameCorners
+  // The whole point: the picture's corners ARE the frame's corners -- moved
+  // by exactly the alignment with Mapbox the page reports, and no further
+  // (NAIP is lined up with Mapbox on the spot since 2026-09-27).
+  const target = shot.alignedCorners || shot.frameCorners;
+  const drift = shot.corners && target
     ? Math.max(...shot.corners.flatMap((c, i) =>
-        [Math.abs(c[0] - shot.frameCorners[i][0]), Math.abs(c[1] - shot.frameCorners[i][1])]))
+        [Math.abs(c[0] - target[i][0]), Math.abs(c[1] - target[i][1])]))
     : Infinity;
   check('and it covers exactly the frame the measurement is made against',
     drift < 1e-9, `worst corner off by ${drift} degrees`);
@@ -1300,6 +1303,15 @@ if (sources.includes('naip')) {
   check('and it sits UNDER the drawn shapes, not over them',
     order.firstDraw === -1 || order.photo < order.firstDraw,
     `photo at ${order.photo}, first draw layer at ${order.firstDraw}`);
+
+  /* NAIP is lined up with Mapbox on the spot, and says so (owner,
+     2026-09-27). The panel is up at once; the answer follows. */
+  await page.waitForTimeout(1500);
+  const panel = await page.evaluate(() => {
+    const el = document.querySelector('#naip-align');
+    return { shown: !!el && !el.hidden, text: el?.textContent || '' };
+  });
+  check('NAIP shows its alignment panel', panel.shown, panel.text.slice(0, 120));
 }
 
 /* NDVI was measured against real lawns and rejected, so it must not be
@@ -2835,6 +2847,77 @@ await armPoints(page);
 await page.waitForTimeout(300);
 
 /*
+ * DRAWING A PATCH (2026-09-26, the owner's list): Undo takes corners off one
+ * at a time, closing is one step of its own, a closed patch is finished --
+ * blue, locked, not dragged by a pan -- and Redo walks it all forward again.
+ * Before this, Undo deleted the whole patch and a closed one stayed orange
+ * and slid across the map under the next drag.
+ */
+{
+  await goTab(page, 'draw');
+  await page.click('#btn-draw');
+  await page.waitForTimeout(200);
+  const mb = await page.locator('#map').boundingBox();
+  const px = [[0.40, 0.40], [0.55, 0.40], [0.55, 0.55], [0.40, 0.55]]
+    .map(([fx, fy]) => [Math.round(mb.x + mb.width * fx), Math.round(mb.y + mb.height * fy)]);
+  const start = await page.evaluate(() => window.__lmDraft());
+  for (const [x, y] of px) {
+    await page.mouse.click(x, y);
+    await page.waitForTimeout(150);
+  }
+  const open = await page.evaluate(() => window.__lmDraft());
+  check('four corners placed on a new patch',
+    open.mode === 'draw_polygon' && open.corners === 4, JSON.stringify(open));
+  await page.click('#btn-undo');
+  await page.waitForTimeout(150);
+  const three = await page.evaluate(() => window.__lmDraft());
+  check('Undo while drawing takes off one corner, not the patch',
+    three.mode === 'draw_polygon' && three.corners === 3, JSON.stringify(three));
+  await page.click('#btn-redo');
+  await page.waitForTimeout(150);
+  check('and Redo puts it back',
+    (await page.evaluate(() => window.__lmDraft().corners)) === 4);
+
+  await page.mouse.click(px[0][0], px[0][1]);
+  await page.waitForTimeout(400);
+  const closed = await page.evaluate(() => window.__lmDraft());
+  check('closing it finishes it: locked, not left selected and draggable',
+    closed.mode === 'lm_locked' && closed.corners === 0, JSON.stringify(closed));
+  check('and the close is one undo step', closed.history === start.history + 1,
+    `${start.history} -> ${closed.history}`);
+
+  const beforeDrag = await page.evaluate(() => window.__lmCentroids());
+  const [mx, my] = [(px[0][0] + px[2][0]) / 2, (px[0][1] + px[2][1]) / 2];
+  await page.mouse.move(mx, my);
+  await page.mouse.down();
+  await page.mouse.move(mx + 60, my + 40, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(400);
+  const afterPan = await page.evaluate(() => window.__lmCentroids());
+  const slid = beforeDrag.length !== afterPan.length || beforeDrag.some((c, i) =>
+    Math.hypot(afterPan[i][0] - c[0], afterPan[i][1] - c[1]) > 1e-7);
+  check('a drag that starts on the new patch pans the map and leaves the patch', !slid);
+
+  await page.click('#btn-undo');
+  await page.waitForTimeout(300);
+  const reopened = await page.evaluate(() => window.__lmDraft());
+  check('Undo after closing reopens it with every corner still placed',
+    reopened.mode === 'draw_polygon' && reopened.corners === 4 && reopened.history === start.history,
+    JSON.stringify(reopened));
+  await page.click('#btn-undo');
+  await page.waitForTimeout(150);
+  check('and the next Undo takes a corner off',
+    (await page.evaluate(() => window.__lmDraft().corners)) === 3);
+  await page.click('#btn-redo');
+  await page.waitForTimeout(150);
+  await page.click('#btn-redo');
+  await page.waitForTimeout(300);
+  const redone = await page.evaluate(() => window.__lmDraft());
+  check('and Redo, once every corner is back, closes it again',
+    redone.mode === 'lm_locked' && redone.history === start.history + 1, JSON.stringify(redone));
+}
+
+/*
  * Everything above corrected the lawn by hand, which locks the AI tab on
  * purpose. Clearing through the notice is how a person gets back to the model
  * picker, so that is how this does it.
@@ -3138,6 +3221,87 @@ console.log('\n--- developer mode ---');
   const left = await page.evaluate(() => window.__lmDev());
   check('leaving developer mode is remembered too',
     left.on === false && left.panelVisible === false, JSON.stringify(left));
+}
+
+/* ------------------------------------------ tinker: merge a neighbour */
+/*
+ * THE OWNER TAPPED "Merge this parcel" AND NOTHING HAPPENED (2026-09-27).
+ * On a phone, in tinker mode: the neighbours arrive from the county, every
+ * button shown sits wholly inside its own parcel (the owner's second rule),
+ * and a real TAP on one makes the property line bigger.
+ */
+console.log('\n--- tinker: neighbours and merging ---');
+{
+  const tp = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
+  tp.on('pageerror', (err) => errors.push(`PAGEERROR (tinker): ${err.message}`));
+  await tp.addInitScript(() => {
+    try { sessionStorage.setItem('lawnmap.ai-notice.v1', '1'); } catch { /* fine */ }
+  });
+  await tp.goto(`${BASE}/#tinker`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await tp.waitForFunction(() => window.__lmNeighbours !== undefined, { timeout: 30000 });
+  await tp.waitForTimeout(3000);
+  await tp.fill('#address', ADDRESS);
+  await tp.click('#address-form button[type=submit]');
+  await tp.waitForFunction(
+    () => document.querySelector('#step-candidates')?.hidden === false
+      || document.querySelector('#step-confirm')?.hidden === false,
+    { timeout: 60000 }
+  ).catch(() => {});
+  if (await tp.locator('#step-candidates').isVisible()) {
+    await tp.locator('#candidate-list button').first().click();
+    await tp.waitForTimeout(600);
+  }
+  await tp.click('[data-action=confirm]');
+  await tp.waitForFunction(() => {
+    const n = window.__lmNeighbours();
+    return n.count > 0 && n.buttons.some((b) => b.shown);
+  }, { timeout: 60000 }).catch(() => {});
+  await tp.waitForTimeout(1500);
+  /*
+   * WHOLE OR NOT AT ALL means a small neighbour on a zoomed-out phone gets no
+   * button until you zoom in -- the first run of this found exactly that
+   * (lots 60 px across). So first: zoomed out, nothing shown overhangs; then
+   * zoom in on one as a person would, and that one must show and merge.
+   */
+  const far = await tp.evaluate(() => window.__lmNeighbours());
+  const farShown = far.buttons.filter((b) => b.shown);
+  check('zoomed out, no button shown overhangs its parcel',
+    farShown.every((b) => b.inside), `${far.buttons.length} button(s), ${farShown.length} shown`);
+  await tp.evaluate(() => window.__lmZoomToNeighbour(0));
+  await tp.waitForTimeout(1500);
+  const before = await tp.evaluate(() => window.__lmNeighbours());
+  const shown = before.buttons.filter((b) => b.shown);
+  check('tinker mode draws the neighbouring parcels', before.count > 0, `${before.count} neighbours`);
+  check('zoomed in on a neighbour, its merge button shows', shown.length > 0,
+    `${before.buttons.length} button(s), ${shown.length} shown; `
+    + JSON.stringify(before.buttons.map((b) => b.diag)));
+  check('every button shown sits wholly inside its own parcel',
+    shown.length > 0 && shown.every((b) => b.inside), JSON.stringify(shown.map((b) => [b.label, b.inside])));
+  if (shown.length) {
+    // What is actually under the finger there: the button, or something on top of it.
+    const under = await tp.evaluate(([x, y]) => {
+      const chain = [];
+      for (let el = document.elementFromPoint(x, y); el && chain.length < 5; el = el.parentElement) {
+        chain.push(`${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''}${el.className && typeof el.className === 'string' ? `.${el.className.trim().split(/\s+/).join('.')}` : ''}`);
+      }
+      return chain.join(' < ');
+    }, [shown[0].x, shown[0].y]);
+    check('nothing sits on top of the merge button', /merge-parcel/.test(under), under);
+    await tp.touchscreen.tap(shown[0].x, shown[0].y);
+    await tp.waitForTimeout(800);
+    const after = await tp.evaluate(() => window.__lmNeighbours());
+    check('a TAP on "Merge this parcel" makes the property line bigger',
+      after.parcelSqFt > before.parcelSqFt + 1,
+      `${Math.round(before.parcelSqFt)} -> ${Math.round(after.parcelSqFt)} sq ft; status: ${await tp.textContent('#status')}`);
+    if (!(after.parcelSqFt > before.parcelSqFt + 1)) {
+      // Tap blocked, or the merge itself failing? Press the button directly.
+      await tp.evaluate(() => document.querySelector('.merge-parcel')?.click());
+      await tp.waitForTimeout(800);
+      const direct = await tp.evaluate(() => window.__lmNeighbours());
+      console.log(`      pressed directly: ${Math.round(before.parcelSqFt)} -> ${Math.round(direct.parcelSqFt)} sq ft; status: ${await tp.textContent('#status')}`);
+    }
+  }
+  await tp.close();
 }
 
 if (errors.some((e) => e.includes('403'))) {

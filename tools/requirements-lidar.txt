@@ -3,3 +3,6 @@
 # backend it uses for .laz. numpy and scipy come with requirements-trees.txt.
 laspy
 lazrs
+# NAIP-CHM (E9): windowed reads of the Montana GeoTIFFs over HTTP and the
+# reprojection onto the frame's grid. A wheel with GDAL inside it.
+rasterio

@@ -25,6 +25,9 @@ import {
   heldInsideRings,
 } from './lib/edges.js';
 import { afterStroke, restoreAway } from './lib/stitch.js';
+import { strokeOnShapes } from './lib/brush-vector.js';
+import { extendToRoads, mergeButtonPoint, mergeRings, placeInside } from './lib/frontage.js';
+import { alignImages, luminance, movedCorners } from './lib/align.js';
 // Pasting the pieces of a big lot's detection back into one mask.
 import { stitchMasks } from './lib/tiles.js';
 import {
@@ -538,6 +541,49 @@ if (typeof window !== 'undefined') {
    * exactly right and does nothing when pressed. Only the depth catches that.
    */
   window.__lmHistory = () => history.length;
+  // Zoom in on the i-th merge button's neighbour, as a person would to tap it.
+  window.__lmZoomToNeighbour = (i = 0, zoomBy = 2.5) => {
+    const m = neighbourState.markers[i];
+    if (!m?.lmPlace) return false;
+    map.jumpTo({ center: m.lmPlace.pref, zoom: map.getZoom() + zoomBy });
+    return true;
+  };
+  // Tinker mode's neighbours and their merge buttons: whether each button is
+  // shown, and whether every corner of it sits inside its own parcel.
+  window.__lmNeighbours = () => {
+    const inPoly = (poly, [x, y]) => {
+      let c = false;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const [xi, yi] = poly[i];
+        const [xj, yj] = poly[j];
+        if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c;
+      }
+      return c;
+    };
+    const box = map.getContainer().getBoundingClientRect();
+    return {
+      count: neighbourState.all.length,
+      parcelM2: state.parcel ? measure(state.parcel.geometry).squareMeters ?? null : null,
+      parcelSqFt: state.parcel ? measure(state.parcel.geometry).squareFeetRaw : null,
+      buttons: neighbourState.markers.map((m) => {
+        const el = m.lmPlace?.el;
+        const shown = Boolean(el && el.style.display !== 'none' && el.style.visibility !== 'hidden');
+        const r = el ? el.getBoundingClientRect() : null;
+        const poly = m.lmPlace ? m.lmPlace.nb.ring.map((ll) => { const q = map.project(ll); return [q.x, q.y]; }) : [];
+        const corners = r ? [[r.left, r.top], [r.right, r.top], [r.right, r.bottom], [r.left, r.bottom]]
+          .map(([x, y]) => [x - box.left, y - box.top]) : [];
+        return { shown, label: el?.textContent, diag: m.lmDiag, inside: corners.length === 4 && corners.every((c) => inPoly(poly, c)),
+          x: r ? (r.left + r.right) / 2 : null, y: r ? (r.top + r.bottom) / 2 : null };
+      }),
+    };
+  };
+  // The drawing in progress: which Draw mode, how many corners, both stacks.
+  window.__lmDraft = () => ({
+    mode: draw ? draw.getMode() : null,
+    corners: draftCorners(),
+    history: history.length,
+    future: future.length,
+  });
 
   /*
    * Duplicate the largest shape exactly on top of itself.
@@ -961,7 +1007,8 @@ if (typeof window !== 'undefined') {
     return {
       buttonVisible: !document.getElementById('maprail-left').hidden,
       open: !list.hidden,
-      options: [...list.querySelectorAll('button')].map((b) => ({
+      // The photographs only; the overlays under "Compare against" are not sources.
+      options: [...list.querySelectorAll('button[data-provider]')].map((b) => ({
         id: b.dataset.provider,
         checked: b.getAttribute('aria-checked') === 'true',
       })),
@@ -978,6 +1025,15 @@ if (typeof window !== 'undefined') {
     // The frame as this source serves it: for Google that is a whole zoom
     // level, and the photograph must be compared against THAT rectangle.
     frameCorners: state.frame ? frameCorners(frameFor(state.provider, state.frame)) : null,
+    /* Where the picture SHOULD sit: the frame, moved by NAIP's alignment
+       with Mapbox when NAIP is showing (lib/align.js), else the frame. */
+    alignedCorners: state.frame
+      ? (isNaip(state.provider) && state.naipAlign
+        ? movedCorners(frameCorners(frameFor(state.provider, state.frame)),
+          state.naipAlign.east, state.naipAlign.north, state.naipAlign.scale)
+        : frameCorners(frameFor(state.provider, state.frame)))
+      : null,
+    naipAlign: state.naipAlign || null,
     frameImageUrl: state.frame && !providerInfo(state.provider).tiles
       ? imageryUrlFor(state.provider, frameFor(state.provider, state.frame))
       : null,
@@ -1369,6 +1425,29 @@ async function initMap() {
     defaultMode: 'simple_select',
     modes: {
       ...MapboxDraw.modes,
+      draw_polygon: stepwisePolygonMode(MapboxDraw.modes.draw_polygon),
+      /*
+       * AND NO WHOLE-SHAPE DRAG OUTSIDE MOVE, WHATEVER MODE DRAW IS IN. The
+       * lock above covers our own modes; these cover Draw's, which it enters
+       * by itself (simple_select on load, direct_select on a second tap). A
+       * press on a shape there used to grab it and stop the map panning, so a
+       * pan that started over a shape slid the shape instead. Declined here,
+       * the press is the map's and the drag pans.
+       */
+      simple_select: {
+        ...MapboxDraw.modes.simple_select,
+        startOnActiveFeature(st, e) {
+          if (!moveArmed()) return undefined;
+          return MapboxDraw.modes.simple_select.startOnActiveFeature.call(this, st, e);
+        },
+      },
+      direct_select: {
+        ...MapboxDraw.modes.direct_select,
+        onFeature(st, e) {
+          if (!moveArmed()) return this.stopDragging(st);
+          return MapboxDraw.modes.direct_select.onFeature.call(this, st, e);
+        },
+      },
       [LOCKED_MODE]: {
         onSetup() { this.setActionableState(); return {}; },
         toDisplayFeatures(state, geojson, display) { display(geojson); },
@@ -1397,10 +1476,24 @@ async function initMap() {
      * inside Points, trace it, and land in no mode at all with the rail
      * collapsed -- having to find your own way back in to carry on correcting.
      */
+    /*
+     * Deferred, like the lock below: this runs inside Draw's own changeMode,
+     * and a changeMode from in here is overwritten by the one still unwinding
+     * (it re-enters the polygon mode's onStop, too).
+     */
+    const wasReturning = state.returnToPoints;
+    state.returnToPoints = false;
     const back = () => {
-      if (!state.returnToPoints) return;
-      state.returnToPoints = false;
-      setMode('shape', 'points');
+      queueMicrotask(() => {
+        if (wasReturning) setMode('shape', 'points');
+        /*
+         * A CLOSED SHAPE IS A FINISHED SHAPE: blue, and not draggable. Left in
+         * simple_select it stayed orange and selected, and the next drag meant
+         * as a pan slid the whole patch across the map. Only Move moves.
+         */
+        else if (state.mode !== 'move') setDrawLock(true);
+        refreshHistoryButtons();
+      });
     };
 
     if (state.drawingParcel) {
@@ -1409,9 +1502,33 @@ async function initMap() {
       back();
       return;
     }
+
+    /*
+     * UNDO REOPENS IT. The entry recorded for a closed patch or cut-out is the
+     * map as it was before the shape existed, plus the corners it was closed
+     * with -- so Undo takes the map back AND puts the drawing back open with
+     * every corner still placed, and the next Undo takes corners off one at a
+     * time. Taken now, before anything below changes the map, with the new
+     * shape left out of it.
+     */
+    const made0 = e.features?.[0];
+    const reopen = made0 ? {
+      corners: (outerRing(made0) || []).slice(0, -1).map((p) => [...p]),
+      hole: Boolean(state.drawingHole),
+      returnToPoints: wasReturning,
+    } : null;
+    const before = snapshot({ without: made0?.id });
+    const depth = history.length;
+    const recordClose = () => {
+      if (!reopen || reopen.corners.length < 3) return;
+      if (history.length > depth) history[history.length - 1].reopen = reopen;
+      else pushHistory(null, { ...before, reopen });
+    };
+
     if (state.drawingHole) {
       state.drawingHole = false;
       cutHoleFromDrawn(e.features?.[0]);
+      recordClose();
       back();
       return;
     }
@@ -1450,6 +1567,7 @@ async function initMap() {
         + 'underneath, so the same ground is not outlined twice. The total is '
         + 'unchanged — this tidies the outlines, it does not take anything away.');
     }
+    recordClose();
     back();
   });
 
@@ -2112,7 +2230,11 @@ async function confirmLocation() {
         `(${state.parcel.properties.county}).${tidyNote} Check it, then open AI ` +
         'to detect your lawn — or Draw to trace it yourself.'
       );
+      // Tinker mode only until the owner has tried it: neighbours, merge, road.
+      clearNeighbours();
+      if (state.dev) tinkerAroundParcel();
     } else {
+      clearNeighbours();
       map.getSource('parcel').setData(empty());
       state.surveyed = [];
       $('#btn-parcel-shape').hidden = true;
@@ -2146,7 +2268,9 @@ async function confirmLocation() {
     refreshRail();
     refreshPins();
     setHint(state.parcel
-      ? 'Check the property line, then open the AI or Draw step'
+      ? (document.body.classList.contains('job-mode')
+        ? 'Check the property line, then open the Draw step'
+        : 'Check the property line, then open the AI or Draw step')
       : 'Trace your property line first');
     showTip('parcel');
   } catch (err) {
@@ -2588,6 +2712,49 @@ function applyErase() {
     return;
   }
 
+  const mPerPx = metresPerPixel(frame, ERASE_GRID);
+  const touchedShapes = candidates.filter((f) => touched.includes(f));
+
+  /*
+   * THE STROKE AS A SHAPE, CLIPPED AGAINST THE OUTLINES (lib/brush-vector.js).
+   * Only the stroke goes through the tracer; the shapes are cut or joined as
+   * outlines, so every corner the brush did not cover comes back exactly --
+   * which the pixel round trip below could not promise, and on small shapes
+   * visibly did not. The round trip stays as the fallback if clipping fails.
+   */
+  const strokeData = new Uint8ClampedArray(ERASE_GRID * ERASE_GRID * 4);
+  for (let p = 0; p < strokeMask.length; p++) {
+    const v = strokeMask[p] ? 255 : 0;
+    strokeData[p * 4] = strokeData[p * 4 + 1] = strokeData[p * 4 + 2] = v;
+    strokeData[p * 4 + 3] = 255;
+  }
+  const strokePolys = maskToPolygons(
+    { width: ERASE_GRID, height: ERASE_GRID, data: strokeData },
+    (x, y) => framePxToLngLat(frame, [x, y], ERASE_GRID, ERASE_GRID),
+    { tolerance: BRUSH_TRACE_PX, maxVertices: MAX_BRUSH_VERTICES, ...EDIT_TRACE_LIMITS }
+  ).map((g) => g.coordinates);
+  const clipped = strokeOnShapes(
+    touchedShapes.map((f) => f.geometry.coordinates),
+    strokePolys,
+    { paint: Boolean(mode.paint), clip: window.polygonClipping, minAreaM2: mPerPx * mPerPx * 4, minWidthM: mPerPx * 1.5 }
+  );
+  if (clipped) {
+    pushHistory();
+    draw.deleteAll();
+    for (const f of afterStroke(spared, untouched, clipped, {
+      inferred: state.inferredMode,
+    })) draw.add(f);
+    refreshMeasurement();
+    refreshSurveyed();
+    updateSelectionButtons();
+    const n = clipped.length + untouched.length;
+    const secs = `${n} section${n > 1 ? 's' : ''}`;
+    setStatus(mode.paint
+      ? `Added. ${secs} of lawn.`
+      : n ? `Erased. ${secs} left.` : 'Erased everything. Undo, or detect again.');
+    return;
+  }
+
   // Back through the tracer, which owns simplification and hole handling.
   const data = new Uint8ClampedArray(ERASE_GRID * ERASE_GRID * 4);
   for (let p = 0; p < keep.length; p++) {
@@ -2612,7 +2779,6 @@ function applyErase() {
    * result needs. There is no noise to remove: the staircase this leaves along
    * the untouched edges is put back on its original line below.
    */
-  const mPerPx = metresPerPixel(frame, ERASE_GRID);
   const polygons = maskToPolygons(
     { width: ERASE_GRID, height: ERASE_GRID, data },
     (x, y) => framePxToLngLat(frame, [x, y], ERASE_GRID, ERASE_GRID),
@@ -2833,9 +2999,10 @@ function clipGroupToParcel(features, inferred) {
 const MAX_HISTORY = 30;
 let history = [];
 
-function snapshot() {
+function snapshot({ without = null } = {}) {
   return {
-    features: JSON.parse(JSON.stringify(draw.getAll().features)),
+    features: JSON.parse(JSON.stringify(
+      draw.getAll().features.filter((f) => without == null || f.id !== without))),
     parcel: state.parcel ? JSON.parse(JSON.stringify(state.parcel.geometry)) : null,
     // Placing pins is work too. Undo that skipped them would quietly make
     // "remove all pins" the only way back from one stray tap.
@@ -2850,14 +3017,19 @@ function snapshot() {
  * a hundred times and is one thing the user did. `key` collapses a run of
  * changes into a single entry -- passing the same key again while that
  * interaction is still current adds nothing.
+ *
+ * Anything new done to the map ends the redo trail: redoing past a change
+ * made since would silently throw that change away.
  */
 let historyKey = null;
-function pushHistory(key = null) {
+let future = [];
+function pushHistory(key = null, entry = null) {
   if (key !== null && key === historyKey) return;
   historyKey = key;
-  history.push(snapshot());
+  history.push(entry || snapshot());
   if (history.length > MAX_HISTORY) history.shift();
-  updateUndoButton();
+  future = [];
+  refreshHistoryButtons();
 }
 
 /** End the current interaction, so the next one starts a new undo entry. */
@@ -2865,15 +3037,128 @@ const endHistoryGroup = () => { historyKey = null; };
 
 function clearHistory() {
   history = [];
+  future = [];
   historyKey = null;
-  updateUndoButton();
+  refreshHistoryButtons();
 }
 
-function undo() {
-  const prev = history.pop();
-  if (!prev) return;
-  historyKey = null;
+/*
+ * THE DRAWING IN PROGRESS, corner by corner.
+ *
+ * Draw's own polygon mode knows one undo -- Delete, which throws the whole
+ * outline away -- and closing it left the shape selected, orange, and
+ * draggable by the next pan. This wraps it so that:
+ *   - Undo while drawing takes the last corner off, Redo puts it back;
+ *   - closing lands in the locked mode, so the shape is finished (blue) and
+ *     only Move can move it;
+ *   - it can be reopened with corners already placed (Undo after a close).
+ * `drafting` is the live one, for the Undo and Redo buttons to reach.
+ */
+let drafting = null;
 
+/** Whole shapes move only in Move mode (see the Draw modes in initMap). */
+const moveArmed = () => state.mode === 'move';
+
+function stepwisePolygonMode(base) {
+  const close = (mode) => mode.changeMode(LOCKED_MODE);
+  return {
+    ...base,
+    onSetup(opts = {}) {
+      const st = base.onSetup.call(this, opts);
+      const corners = Array.isArray(opts.corners) ? opts.corners : [];
+      corners.forEach((p, i) => st.polygon.updateCoordinate(`0.${i}`, p[0], p[1]));
+      if (corners.length) {
+        st.currentVertexPosition = corners.length;
+        const last = corners[corners.length - 1];
+        st.polygon.updateCoordinate(`0.${corners.length}`, last[0], last[1]);
+      }
+      st.undone = [];
+      drafting = { mode: this, state: st };
+      queueMicrotask(refreshHistoryButtons);
+      return st;
+    },
+    clickAnywhere(st, e) {
+      const pos = st.currentVertexPosition;
+      const last = pos > 0 ? st.polygon.coordinates[0][pos - 1] : null;
+      if (last && last[0] === e.lngLat.lng && last[1] === e.lngLat.lat) return close(this);
+      // A new corner: whatever was undone is gone for good, as with any edit.
+      st.undone = [];
+      future = [];
+      base.clickAnywhere.call(this, st, e);
+      refreshHistoryButtons();
+      return undefined;
+    },
+    clickOnVertex() { return close(this); },
+    onKeyUp(st, e) {
+      if (e.keyCode === 13) return close(this);
+      if (e.keyCode === 27) {
+        this.deleteFeature([st.polygon.id], { silent: true });
+        return this.changeMode(LOCKED_MODE);
+      }
+      return undefined;
+    },
+    onStop(st) {
+      if (drafting?.state === st) drafting = null;
+      base.onStop.call(this, st);
+      queueMicrotask(refreshHistoryButtons);
+    },
+    // Delete / Backspace while drawing: the last corner, not the whole outline.
+    onTrash(st) { draftUndo(); },
+  };
+}
+
+const draftCorners = () => (drafting ? drafting.state.currentVertexPosition : 0);
+
+/** Take the last corner off the open drawing. */
+function draftUndo() {
+  const d = drafting;
+  if (!d) return false;
+  const st = d.state;
+  const pos = st.currentVertexPosition;
+  if (pos === 0) return false;
+  const ring = st.polygon.coordinates[0];
+  st.undone.push([...ring[pos - 1]]);
+  st.polygon.removeCoordinate(`0.${pos - 1}`);
+  st.currentVertexPosition = pos - 1;
+  d.mode._ctx.store.render();
+  refreshHistoryButtons();
+  setStatus(st.currentVertexPosition
+    ? `Corner removed — ${st.currentVertexPosition} left.`
+    : 'All corners removed. Tap to start again, or Undo once more to stop drawing.');
+  return true;
+}
+
+/** Put the last corner taken off back on. */
+function draftRedo() {
+  const d = drafting;
+  if (!d || !d.state.undone.length) return false;
+  const st = d.state;
+  const p = st.undone.pop();
+  const pos = st.currentVertexPosition;
+  st.polygon.updateCoordinate(`0.${pos}`, p[0], p[1]);
+  st.currentVertexPosition = pos + 1;
+  st.polygon.updateCoordinate(`0.${pos + 1}`, p[0], p[1]);
+  d.mode._ctx.store.render();
+  refreshHistoryButtons();
+  setStatus('Corner put back.');
+  return true;
+}
+
+/** Abandon the open drawing without it becoming a shape. */
+function draftCancel() {
+  const d = drafting;
+  if (!d) return;
+  d.mode.deleteFeature([d.state.polygon.id], { silent: true });
+  drafting = null;
+  state.drawingHole = false;
+  state.drawingParcel = false;
+  state.returnToPoints = false;
+  setDrawLock(true);
+  setHint('');
+}
+
+/** Put the map back to a recorded state. */
+function restore(prev) {
   draw.deleteAll();
   for (const f of prev.features) draw.add(f);
 
@@ -2901,18 +3186,76 @@ function undo() {
   refreshMeasurement();
   refreshSurveyed();
   updateSelectionButtons();
-  updateUndoButton();
-  setStatus(history.length
-    ? 'Undone.'
-    : 'Undone — back to where this step started.');
+  // A merge undone brings its neighbour's button back.
+  if (neighbourState.all.length) refreshNeighbours();
 }
 
-function updateUndoButton() {
-  // Two buttons, one state: the panel's and the one on the map. Undo is
+/** Open a closed patch or cut-out again, every corner in place. */
+function reopenDrawing(reopen) {
+  setMode(null);
+  state.drawingHole = reopen.hole;
+  state.drawingParcel = false;
+  state.returnToPoints = reopen.returnToPoints;
+  draw.changeMode('draw_polygon', { corners: reopen.corners });
+  setHint('Drawing again. Undo takes corners off; tap the first corner to close it.');
+}
+
+function undo() {
+  // While drawing, Undo is about corners.
+  if (drafting) {
+    if (draftUndo()) return;
+    // No corners left: stop drawing, and that is this press.
+    draftCancel();
+    refreshHistoryButtons();
+    setStatus('Stopped drawing.');
+    return;
+  }
+
+  const prev = history.pop();
+  if (!prev) return;
+  historyKey = null;
+  future.push({ ...snapshot(), reopen: prev.reopen || null });
+  restore(prev);
+  if (prev.reopen) {
+    reopenDrawing(prev.reopen);
+    setStatus('Reopened — the shape is back to its corners. Undo again to take them off one at a time.');
+  } else {
+    setStatus(history.length
+      ? 'Undone.'
+      : 'Undone — back to where this step started.');
+  }
+  refreshHistoryButtons();
+}
+
+function redo() {
+  if (drafting) {
+    if (draftRedo()) return;
+    // Every corner is back: Redo closes it again, as it was.
+    if (!future.length || !future[future.length - 1].reopen) return;
+    draftCancel();
+  }
+  const next = future.pop();
+  if (!next) return;
+  historyKey = null;
+  history.push({ ...snapshot(), reopen: next.reopen || null });
+  if (history.length > MAX_HISTORY) history.shift();
+  restore(next);
+  setStatus('Redone.');
+  refreshHistoryButtons();
+}
+
+function refreshHistoryButtons() {
+  // Two of each, one state: the panel's and the one on the map. Undo is
   // pressed while looking at whatever went wrong, which is on the map.
+  const canUndo = history.length > 0 || Boolean(drafting);
+  const canRedo = future.length > 0 || Boolean(drafting?.state.undone.length);
   for (const id of ['#btn-undo', '#rail-undo']) {
     const btn = $(id);
-    if (btn) btn.disabled = history.length === 0;
+    if (btn) btn.disabled = !canUndo;
+  }
+  for (const id of ['#btn-redo', '#rail-redo']) {
+    const btn = $(id);
+    if (btn) btn.disabled = !canRedo;
   }
 
   /*
@@ -3270,7 +3613,7 @@ function endDrag() {
 }
 
 function onMouseDown(e) {
-  if (e.button !== 0) return;
+  if (e.button !== 0 || onMarker(e)) return;
   gestureIsTouch = false;
   beginPanHold(e.clientX, e.clientY);
   beginDrag(e.clientX, e.clientY);
@@ -3409,6 +3752,7 @@ const ECHO_SLOP_PX = 30;   // ...and lands on the same spot
 let bareTouch = null;
 
 function onBareTouchStart(e) {
+  if (onMarker(e)) { bareTouch = null; touchStart = null; return; }
   if (diag.armed || e.touches.length !== 1) { bareTouch = null; return; }
   bareTouch = { x: e.touches[0].clientX, y: e.touches[0].clientY, at: Date.now() };
 }
@@ -3433,6 +3777,7 @@ function onBareTouchEnd(e) {
 }
 
 function onTouchStart(e) {
+  if (onMarker(e)) { touchStart = null; return; }
   /*
    * Deliberately NOT claimed, however many fingers there are.
    *
@@ -3480,6 +3825,8 @@ function onTouchEnd(e) {
 
 function onMapClick(e) {
   const src = e.originalEvent || {};
+  // A click on a merge button is the button's; it must not also select an edge under it.
+  if (onMarker(src)) return;
   const x = Number.isFinite(src.clientX) ? src.clientX : null;
   const y = Number.isFinite(src.clientY) ? src.clientY : null;
 
@@ -4981,6 +5328,8 @@ function hideImagery() {
   tileWatch = null;
   if (map.getLayer('imagery-alt')) map.removeLayer('imagery-alt');
   if (map.getSource('imagery-alt')) map.removeSource('imagery-alt');
+  const panel = document.getElementById('naip-align');
+  if (panel) panel.hidden = true;
 }
 
 /**
@@ -5040,8 +5389,19 @@ function watchTileErrors() {
   });
 }
 
+/*
+ * WHICH IMAGERY REQUEST PUT "Fetching…" UP, if one did. A newer choice takes
+ * it down: the older request, when it finally lands, sees it is stale and
+ * returns without touching the overlay -- which left "Fetching USGS
+ * vegetation index…" over the map for good whenever USGS took longer than
+ * the next choice (the browser test, 2026-09-27: 17 s for one NDVI frame).
+ * Only an overlay imagery put up is taken down; detection's is its own.
+ */
+let imageryBusyRun = 0;
+
 async function showImagery() {
   const run = ++imageryRun;
+  if (imageryBusyRun) { idle(); imageryBusyRun = 0; }
   hideImagery();
   if (state.provider === 'mapbox') return;
 
@@ -5106,8 +5466,16 @@ async function showImagery() {
    * is the source's, not ours -- but silence about it is.
    */
   busy(`Fetching ${info.label}…`);
+  imageryBusyRun = run;
+  /* NAIP's own picture, kept for lining it up with Mapbox: USGS is slow
+     (seven to eleven seconds a picture) and asking it twice made the next
+     request queue behind the first (the browser test, 2026-09-27). */
+  let naipBlob = null;
   try {
-    const res = await fetch(url);
+    /* A source that never answers must not leave "Fetching…" over the map
+       for good: the browser test caught USGS doing exactly that. */
+    const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
+    if (res.ok && state.provider === 'naip') naipBlob = await res.clone().blob();
     if (!res.ok) {
       /*
        * Say which kind of failure this is, because they need opposite actions.
@@ -5131,11 +5499,13 @@ async function showImagery() {
     // A failure for a source the user has already moved on from is not news,
     // and falling back to Mapbox on their behalf would undo their choice.
     if (run !== imageryRun) return;
-    idle();
+    idle(); imageryBusyRun = 0;
     setStatus(
       err.refused
         ? `${info.label} refused the request — this is a set-up problem, not a gap in the photography. It said: “${err.message}” Staying on Mapbox.`
-        : `${info.label} has no photograph of this spot (${err.message}). Staying on Mapbox.`,
+        : err.name === 'TimeoutError'
+          ? `${info.label} did not answer within 30 seconds. Staying on Mapbox — try it again in a moment.`
+          : `${info.label} has no photograph of this spot (${err.message}). Staying on Mapbox.`,
       err.refused ? 'error' : 'warn'
     );
     state.provider = 'mapbox';
@@ -5151,13 +5521,156 @@ async function showImagery() {
   hideImagery(); // in case a later-started run already put something up
 
   map.addSource('imagery-alt', {
-    type: 'image', url, coordinates: frameCorners(served),
+    type: 'image', url,
+    coordinates: isNaip(state.provider) && state.naipAlign
+      ? movedCorners(frameCorners(served), state.naipAlign.east, state.naipAlign.north, state.naipAlign.scale)
+      : frameCorners(served),
   });
   map.addLayer({ id: 'imagery-alt', type: 'raster', source: 'imagery-alt' }, before);
-  idle();
+  idle(); imageryBusyRun = 0;
+  if (isNaip(state.provider)) alignNaip(served, run, naipBlob);
   setStatus(info.detect
     ? `Showing ${info.label} over the measurement frame. Detect again to use it.`
     : `Showing ${info.label}. This one is for looking at — detection uses Mapbox.`);
+}
+
+/* ------------------------------------------ NAIP, lined up with Mapbox */
+/**
+ * NAIP IS MOVED ONTO THE MAPBOX PHOTOGRAPH, not the other way round (owner,
+ * 2026-09-27): it is sometimes shifted or a little off in scale, and Mapbox
+ * is the trusted one. On showing NAIP (or the NDVI drawn from it), both
+ * pictures of the same frame are compared edge for edge (lib/align.js) and
+ * NAIP's corners moved by what fits best. The person can nudge it from the
+ * panel; whatever they settle on is saved with the map (corpus.naip_align)
+ * and applied again before the detector reads NAIP's near-infrared, so the
+ * check happens here, in front of somebody, rather than only in a pipeline.
+ */
+const NAIP_STEP_M = 0.25;
+const NAIP_STEP_SCALE = 0.0025;
+const isNaip = (id) => id === 'naip' || id === 'ndvi';
+
+async function greyOf(source, w, h) {
+  let blob = source;
+  if (typeof source === 'string') {
+    const res = await fetch(source);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    blob = await res.blob();
+  }
+  const bitmap = await createImageBitmap(blob);
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  return luminance(ctx.getImageData(0, 0, w, h).data, w, h);
+}
+
+function applyNaipAlign(served) {
+  const src = map.getSource('imagery-alt');
+  const a = state.naipAlign;
+  if (src?.setCoordinates && served) {
+    src.setCoordinates(a
+      ? movedCorners(frameCorners(served), a.east, a.north, a.scale)
+      : frameCorners(served));
+  }
+  renderNaipPanel(served);
+}
+
+async function alignNaip(served, run, naipBlob = null) {
+  state.naipServed = served;
+  /* A nudge somebody made stands; the machine does not overrule a person. */
+  if (state.naipAlign?.source === 'person') { applyNaipAlign(served); return; }
+  /*
+   * ONLY FROM THE NAIP PICTURE ALREADY DOWNLOADED. NDVI is drawn from the
+   * same NAIP, so it takes whatever alignment NAIP got; fetching NAIP again
+   * just to align NDVI would put a second slow USGS request in front of
+   * whatever the person asks for next.
+   */
+  if (!naipBlob) { applyNaipAlign(served); return; }
+  state.naipBlob = naipBlob;
+  const acrossM = metresPerPixel(served, 1);
+  const downM = acrossM * ((served.height || served.size) / served.size);
+  /* Small on purpose: this runs on the phone's main thread. 192 cells and a
+     5 m search over five scales is about 40 million steps, well under a
+     second, where 256 cells, 6 m and seven scales was nearly four times it. */
+  const cellM = Math.max(0.6, acrossM / 192);
+  const w = Math.max(48, Math.round(acrossM / cellM));
+  const h = Math.max(48, Math.round(downM / cellM));
+  renderNaipPanel(served, 'Lining NAIP up with the Mapbox photograph…');
+  try {
+    const [ref, mov] = await Promise.all([
+      greyOf(imageryUrlFor('mapbox', served), w, h),
+      greyOf(naipBlob, w, h),
+    ]);
+    if (run !== imageryRun || !isNaip(state.provider)) return;
+    await new Promise((resolve) => setTimeout(resolve, 0));  // let the message paint first
+    const r = alignImages(ref, mov, w, h, {
+      maxShift: Math.max(2, Math.round(5 / cellM)),
+      scales: [0.99, 0.995, 1, 1.005, 1.01],
+    });
+    state.naipAlign = {
+      east: r.dx * cellM, north: -r.dy * cellM, scale: r.scale, source: 'auto',
+      fit: Math.round(r.ncc * 100) / 100, fit0: Math.round(r.ncc0 * 100) / 100,
+    };
+    applyNaipAlign(served);
+  } catch (e) {
+    if (run !== imageryRun) return;
+    renderNaipPanel(served, `Could not compare NAIP with Mapbox here (${e.message}); shown as delivered.`);
+  }
+}
+
+function nudgeNaip(dEast, dNorth, dScale) {
+  const a = state.naipAlign || { east: 0, north: 0, scale: 1 };
+  state.naipAlign = {
+    east: a.east + dEast, north: a.north + dNorth,
+    scale: Math.min(1.05, Math.max(0.95, a.scale + dScale)), source: 'person',
+  };
+  applyNaipAlign(state.naipServed);
+}
+
+function renderNaipPanel(served, message) {
+  const panel = document.getElementById('naip-align');
+  if (!panel) return;
+  panel.hidden = !isNaip(state.provider);
+  if (panel.hidden) return;
+  panel.textContent = '';
+  const a = state.naipAlign;
+  const say = document.createElement('p');
+  if (message) {
+    say.textContent = message;
+  } else if (!a || (!a.east && !a.north && a.scale === 1)) {
+    say.textContent = a?.source === 'auto'
+      ? 'NAIP already lines up with Mapbox here. Nudge it if it looks off.'
+      : 'NAIP as delivered.';
+  } else {
+    const ew = `${Math.abs(a.east).toFixed(1)} m ${a.east >= 0 ? 'east' : 'west'}`;
+    const ns = `${Math.abs(a.north).toFixed(1)} m ${a.north >= 0 ? 'north' : 'south'}`;
+    const sc = a.scale !== 1 ? `, scaled ${((a.scale - 1) * 100).toFixed(1)}%` : '';
+    say.textContent = `NAIP moved ${ew}, ${ns}${sc} to line up with Mapbox`
+      + (a.source === 'person' ? ' (set by you).' : ' (automatic).');
+  }
+  panel.append(say);
+  const row = document.createElement('div');
+  row.className = 'naipalign-buttons';
+  const btn = (text, title, fn) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = text; b.title = title;
+    b.addEventListener('click', fn);
+    row.append(b);
+  };
+  btn('◀', 'Move NAIP west 25 cm', () => nudgeNaip(-NAIP_STEP_M, 0, 0));
+  btn('▶', 'Move NAIP east 25 cm', () => nudgeNaip(NAIP_STEP_M, 0, 0));
+  btn('▲', 'Move NAIP north 25 cm', () => nudgeNaip(0, NAIP_STEP_M, 0));
+  btn('▼', 'Move NAIP south 25 cm', () => nudgeNaip(0, -NAIP_STEP_M, 0));
+  btn('−', 'Shrink NAIP a quarter of a percent', () => nudgeNaip(0, 0, -NAIP_STEP_SCALE));
+  btn('+', 'Grow NAIP a quarter of a percent', () => nudgeNaip(0, 0, NAIP_STEP_SCALE));
+  if (state.naipBlob) {
+    btn('Auto', 'Line it up automatically again', () => {
+      state.naipAlign = null;
+      alignNaip(state.naipServed || served, imageryRun, state.naipBlob);
+    });
+  }
+  panel.append(row);
 }
 
 /** The same URL the Worker builds, asked for through our own origin. */
@@ -6168,7 +6681,13 @@ const MTURK_PREVIEW = 'ASSIGNMENT_ID_NOT_AVAILABLE';
  * for somebody with no lawn open this IS the app, and an × revealing an empty
  * address form behind it is a worker filing a support ticket.
  */
-function jobSheet({ title, why, code = null, note = null, go = null, link = null }) {
+const MYWORK_LINK = { href: '/mywork.html', label: 'Your maps, balance and payouts →' };
+
+function jobSheet({ title, why, code = null, note = null, go = null, link }) {
+  /* Every sheet on the paid route carries the way to the tracer's own page
+     unless it says otherwise (`link: null`): "no lawn just now" and the day's
+     cap are exactly when somebody wants to check what they are owed. */
+  if (link === undefined) link = state.jobVia === 'paid' ? MYWORK_LINK : null;
   $('#job-sheet-title').textContent = title;
   $('#job-sheet-why').textContent = why;
   $('#job-code').hidden = !code;
@@ -6315,6 +6834,7 @@ async function enterJobMode({ worker, preview, volunteer, paid }) {
   state.worker = worker;
   state.jobVia = paid ? 'paid' : (volunteer ? 'volunteer' : null);
   document.body.classList.add('job-mode');
+  $('#job-mywork').hidden = !paid;
 
   if (preview) {
     /*
@@ -6449,6 +6969,7 @@ async function claimNextJob(skipped = '') {
        * the sign-in one is the other, since it is resolved by the button
        * rather than by time.
        */
+      link: data?.needsAccount ? null : undefined,
       go: data?.needsAccount
         ? {
           label: 'Sign in',
@@ -6486,20 +7007,6 @@ async function claimNextJob(skipped = '') {
       + 'do it.'
     : (data.cleared || null));
 }
-
-/**
- * Did this person arrive through one of the two PUBLIC links?
- *
- * The same question isOpenLink answers on the server, and the same two routes:
- * a volunteer doing a favour, and somebody on the paid link owed 75c for each
- * map that is approved. What they have in common here is that nothing is
- * traced for them until they ask -- see openJob.
- *
- * Read from the route the SERVER sent back with the lawn rather than from the
- * link, because the link may only propose and a stored row wins. `state.jobVia`
- * is what was asked for; `state.jobRoute` is what was granted.
- */
-const openLinkJob = () => state.jobRoute === 'volunteer' || state.jobRoute === 'paid';
 
 /**
  * Put one claimed lawn on the map, ready to correct.
@@ -6549,22 +7056,12 @@ async function openJob(job, prompts, cleared) {
   await confirmLocation();
 
   /*
-   * THE STARTING OUTLINE, RUN FOR THEM -- ON THE PAID PLATFORMS ONLY.
-   *
-   * A crowd worker is paid to CORRECT an outline, and arriving at an empty map
-   * with an AI tab nobody has mentioned is arriving at a task they cannot
-   * start. So for them it is still run once, automatically, and paid for by the
-   * job rather than by their browser's own allowance -- see spendJobDetection.
-   *
-   * NOT ON THE TWO PUBLIC ROUTES. Volunteers and paid tracers said the drawn-on
-   * outline was making the work MORE annoying rather than less, and that is a
-   * report about arithmetic rather than taste: a wrong outline has to be
-   * dismantled corner by corner before the lawn can be traced, which is slower
-   * than tracing it on an empty map. The AI tab is theirs to press if they want
-   * it -- which is the whole reason that tab came back for them -- and the
-   * prompt in the job bar says so. See promptsFor in routes-jobs.js.
+   * NO STARTING OUTLINE, ON ANY ROUTE. The AI is off the job routes entirely
+   * (volunteer, paid and crowd alike) until there is something better to put
+   * in its place: a wrong outline has to be dismantled corner by corner, which
+   * tracers said was slower than drawing on an empty map. See body.job-mode in
+   * styles.css, which takes the AI tab away too.
    */
-  if (!openLinkJob()) await detect();
   /*
    * Detection counts as the map appearing rather than as somebody editing it,
    * and `edited` is the one machine-checkable thing about a submission. detect
@@ -6602,11 +7099,8 @@ async function openJob(job, prompts, cleared) {
    */
   setStatus([
     cleared,
-    openLinkJob()
-      ? 'Nothing is traced for you here. Check the yellow property line first, '
-        + 'then draw the lawn — or open the AI tab for a rough first attempt to '
-        + 'correct, if you would rather start from one.'
-      : null,
+    'Nothing is traced for you here. Check the yellow property line first, '
+      + 'then draw the lawn on the Draw tab.',
   ].filter(Boolean).join(' '));
 }
 
@@ -6796,7 +7290,7 @@ async function submitJob() {
     go: { label: 'Trace another lawn', onClick: () => claimNextJob() },
     /* A paid tracer needs somewhere to check what was approved and change
        where the money goes. Nobody else has a page to be sent to. */
-    link: data.route === 'paid' ? { href: '/mywork.html', label: 'Your maps and payments →' } : null,
+    link: data.route === 'paid' ? MYWORK_LINK : null,
   });
 
   /*
@@ -6914,6 +7408,10 @@ function openMap(s) {
    * lawn's detection and look entirely plausible.
    */
   state.detectedShapes = null;
+  /* NAIP's alignment belongs to the place; a reopened map starts from what
+     the pipeline or the editor finds again rather than a stale nudge. */
+  state.naipAlign = null;
+  state.naipBlob = null;
 
   map.getSource('parcel').setData(state.parcel || empty());
   for (const f of (s.shapes || [])) {
@@ -7157,7 +7655,12 @@ function markHandEdited() {
 }
 
 function setTab(name) {
-  const next = TABS.includes(name) ? name : 'address';
+  /*
+   * No AI on the job routes (see openJob): every way into that tab -- a
+   * finished property line, "Find the lawn", a clear -- lands on Draw instead.
+   */
+  const asked = (name === 'detect' && document.body.classList.contains('job-mode')) ? 'draw' : name;
+  const next = TABS.includes(asked) ? asked : 'address';
   state.tab = next;
 
   /*
@@ -8143,7 +8646,8 @@ function refreshRail() {
    * away -- so the rail survives for its sake alone.
    */
   const undo = $('#rail-undo');
-  if (undo) rail.hidden = rail.hidden || (!anyTool && undo.disabled);
+  const redoBtn = $('#rail-redo');
+  if (undo) rail.hidden = rail.hidden || (!anyTool && undo.disabled && (!redoBtn || redoBtn.disabled));
 
   $('#shape-tools').hidden = state.mode !== 'shape';
   for (const [id, tool] of [['#tool-points', 'points'], ['#tool-add', 'add'], ['#tool-erase', 'erase']]) {
@@ -8596,6 +9100,7 @@ function showTip(stage) {
 
 function hideTip() {
   $('#coach').hidden = true;
+  placeMergeButtons(); // the room the tip took is free again
   tips.stage = null;
   tips.target = null;
 }
@@ -8611,6 +9116,8 @@ function hideTip() {
 function placeTip() {
   const box = $('#coach');
   const arrow = $('#coach-arrow');
+  // The merge buttons keep out from under the tip, wherever it lands.
+  requestAnimationFrame(() => placeMergeButtons());
   if (box.hidden) return;
 
   /*
@@ -9689,6 +10196,244 @@ function applyEdgeOffset(feet) {
   refreshSurveyed();
 }
 
+/* ------------------------------------------- neighbours, merge, the road */
+/*
+ * TINKER MODE ONLY, until the owner has tried it (2026-09-27).
+ *
+ * The parcels around this one come from the county's own layer
+ * (/api/parcel/neighbours). They are drawn as thin dashed lines, and each one
+ * that shares a line with this parcel gets a "Merge this parcel" button a
+ * little way inside it, for somebody who owns two lots and mows both.
+ *
+ * Then the front edges go out to the road: public/lib/frontage.js decides
+ * which edges are frontage and where the pavement is, from the road
+ * centrelines already in the map's own street data, and refuses any move that
+ * would run over a neighbour. It is one undo step, and it says what it did.
+ */
+const neighbourState = { all: [], markers: [] };
+
+function clearNeighbours() {
+  for (const m of neighbourState.markers) m.remove();
+  neighbourState.markers = [];
+  neighbourState.all = [];
+  if (map?.getSource('neighbours')) map.getSource('neighbours').setData(empty());
+  $('#btn-parcel-road') && ($('#btn-parcel-road').hidden = true);
+}
+
+function outerRingsOf(geometry) {
+  if (!geometry) return [];
+  if (geometry.type === 'Polygon') return [geometry.coordinates[0]];
+  if (geometry.type === 'MultiPolygon') return geometry.coordinates.map((p) => p[0]);
+  return [];
+}
+
+/** A neighbour already inside the parcel (merged, or the parcel itself). */
+function neighbourAbsorbed(ring) {
+  const pr = parcelRing();
+  if (!pr) return false;
+  const pts = openRing(ring);
+  const inside = pts.filter((p) => ringContains(pr, p) || nearestPointOnRing(pr, p)?.distanceM < 0.5).length;
+  return inside >= pts.length * 0.8;
+}
+
+function refreshNeighbours() {
+  if (!map) return;
+  if (!map.getSource('neighbours')) {
+    map.on('move', placeMergeButtons);
+    map.addSource('neighbours', { type: 'geojson', data: empty() });
+    map.addLayer({
+      id: 'neighbours', type: 'line', source: 'neighbours',
+      paint: { 'line-color': '#ffffff', 'line-width': 1.2, 'line-opacity': 0.55, 'line-dasharray': [3, 2] },
+    }, map.getLayer('parcel-line') ? 'parcel-line' : undefined);
+  }
+  for (const m of neighbourState.markers) m.remove();
+  neighbourState.markers = [];
+  const live = neighbourState.all.filter((nb) => !neighbourAbsorbed(nb.ring));
+  map.getSource('neighbours').setData({
+    type: 'FeatureCollection',
+    features: live.map((nb) => ({ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [nb.ring] } })),
+  });
+  const pr = parcelRing();
+  if (!pr) return;
+  for (const nb of live) {
+    const at = mergeButtonPoint(pr, nb.ring);
+    if (!at) continue;
+    const el = document.createElement('button');
+    el.type = 'button';
+    el.className = 'merge-parcel';
+    el.textContent = 'Merge this parcel';
+    /*
+     * A TAP HERE IS THE BUTTON'S, NOT THE MAP'S. The map's own touch
+     * listeners capture on its container, which holds the marker, so they see
+     * this touch first; they now step aside for anything inside a marker
+     * (see onMarker). And the merge runs on the touch itself as well as on
+     * click, once, so a browser that never turns the touch into a click
+     * still merges.
+     */
+    let fired = 0;
+    const go = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (Date.now() - fired < 600) return;
+      fired = Date.now();
+      mergeNeighbour(nb, el);
+    };
+    el.addEventListener('touchend', go, { passive: false });
+    el.addEventListener('click', go);
+    const marker = new mapboxgl.Marker({ element: el }).setLngLat(at).addTo(map);
+    neighbourState.markers.push(marker);
+    marker.lmPlace = { nb, pref: at, el };
+  }
+  placeMergeButtons();
+}
+
+/** A pointer event that landed on a marker (the merge buttons): not the map's. */
+const onMarker = (e) => Boolean(e?.target?.closest?.('.mapboxgl-marker'));
+
+/*
+ * WHOLE, INSIDE ITS PARCEL, OR NOT SHOWN (the owner, 2026-09-27). The button
+ * is placed in SCREEN pixels, because how much of a parcel it covers depends
+ * on the zoom: the nearest spot to the 20 ft point where the whole button
+ * fits inside the neighbour, re-checked whenever the map moves. Too little
+ * room for "Merge this parcel" tries "Merge"; too little for that, hidden.
+ */
+let placeQueued = false;
+function placeMergeButtons() {
+  if (placeQueued) return;
+  placeQueued = true;
+  requestAnimationFrame(() => {
+    placeQueued = false;
+    for (const m of neighbourState.markers) {
+      const { nb, pref, el } = m.lmPlace || {};
+      if (!el) continue;
+      const poly = nb.ring.map((ll) => { const p = map.project(ll); return [p.x, p.y]; });
+      const want = map.project(pref);
+      // Whatever floats over the map right now, in the map's own pixels.
+      const box = map.getContainer().getBoundingClientRect();
+      const avoid = ['#coach', '#maprail', '#maprail-left', '#layer-list', '#edge-panel', '#map-hint', '#naip-align']
+        .map((sel) => $(sel))
+        .filter((node) => node && !node.hidden && node.offsetParent !== null)
+        .map((node) => node.getBoundingClientRect())
+        .filter((r) => r.width && r.height)
+        .map((r) => [r.left - box.left, r.top - box.top, r.right - box.left, r.bottom - box.top]);
+      let spot = null;
+      const tried = [];
+      for (const label of ['Merge this parcel', 'Merge']) {
+        el.textContent = label;
+        el.style.visibility = 'hidden';
+        el.style.display = '';
+        tried.push([label, el.offsetWidth, el.offsetHeight]);
+        spot = placeInside(poly, [want.x, want.y], el.offsetWidth, el.offsetHeight, { avoid });
+        if (spot) break;
+      }
+      // For the browser test: what it measured and where it looked.
+      const xs = poly.map((q) => q[0]);
+      const ys = poly.map((q) => q[1]);
+      m.lmDiag = {
+        tried, pref: [Math.round(want.x), Math.round(want.y)],
+        box: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)].map(Math.round),
+        verts: poly.length, spot: spot && spot.map(Math.round),
+      };
+      if (spot) {
+        m.setLngLat(map.unproject(spot));
+        el.style.visibility = '';
+      } else {
+        el.style.display = 'none';
+      }
+    }
+  });
+}
+
+function mergeNeighbour(nb, el = null) {
+  const pr = parcelRing();
+  const merged = pr && window.polygonClipping ? mergeRings(window.polygonClipping, pr, nb.ring) : null;
+  if (!merged) {
+    setStatus('Those two parcels do not join into one outline, so they cannot be merged.', 'warn');
+    // Said on the button too: the status line can be off screen on a phone.
+    if (el) {
+      el.textContent = 'Can\'t merge';
+      setTimeout(() => placeMergeButtons(), 2000);
+    }
+    return;
+  }
+  pushHistory();
+  setParcelRing(merged);
+  state.parcel.properties.merged = [...(state.parcel.properties.merged || []), nb.pin ?? null];
+  // The neighbour's corners are the county's too.
+  state.surveyed = [...(state.surveyed || []), ...openRing(nb.ring).map((p) => [...p])];
+  refreshSurveyed();
+  refreshMeasurement();
+  refreshNeighbours();
+  setStatus(`Merged — the property line is now ${measure(state.parcel.geometry).acres} acres. Undo takes it back apart.`);
+}
+
+/** Road centrelines near the parcel, from the map's own street data. */
+async function roadsNearParcel() {
+  const src = map.getSource('composite') ? 'composite' : null;
+  if (!src) return [];
+  // The tiles for where the map is now; give them a moment to arrive.
+  for (let t = 0; t < 30 && !map.isSourceLoaded(src); t++) await new Promise((r) => setTimeout(r, 200));
+  const bbox = geometryBounds(state.parcel);
+  const pad = 0.0008;
+  const inBox = ([x, y]) => x > bbox[0] - pad && x < bbox[2] + pad && y > bbox[1] - pad && y < bbox[3] + pad;
+  const roads = [];
+  for (const f of map.querySourceFeatures(src, { sourceLayer: 'road' })) {
+    if (f.properties?.structure === 'tunnel') continue;
+    const g = f.geometry;
+    const lines = g.type === 'LineString' ? [g.coordinates] : g.type === 'MultiLineString' ? g.coordinates : [];
+    for (const coords of lines) {
+      if (coords.some(inBox)) roads.push({ cls: f.properties?.class, coords });
+    }
+  }
+  return roads;
+}
+
+async function extendParcelToRoad({ quiet = false } = {}) {
+  const pr = parcelRing();
+  if (!pr || !window.polygonClipping) return;
+  const roads = await roadsNearParcel();
+  const neighbours = neighbourState.all.filter((nb) => !neighbourAbsorbed(nb.ring)).map((nb) => nb.ring);
+  const r = extendToRoads(pr, roads, { neighbours, clip: window.polygonClipping });
+  if (!r.moved.length) {
+    if (!quiet) {
+      const why = r.skipped.length ? ` (${r.skipped.map((k) => k.reason).join('; ')})` : '';
+      setStatus(`No front edge to move out to the road${why}.`);
+    }
+    return;
+  }
+  pushHistory();
+  setParcelRing(r.ring);
+  refreshSurveyed();
+  refreshNeighbours();
+  const skipped = r.skipped.length ? ` Left alone: ${r.skipped.map((k) => k.reason).join('; ')}.` : '';
+  setStatus(`Moved ${r.moved.length} front edge${r.moved.length === 1 ? '' : 's'} out to the road (tinker mode). `
+    + `Undo puts ${r.moved.length === 1 ? 'it' : 'them'} back, or adjust with Property line.${skipped}`);
+}
+
+async function tinkerAroundParcel() {
+  const parcel = state.parcel;
+  const key = parcel?.properties?.countyKey;
+  const bbox = geometryBounds(parcel);
+  if (!key || !bbox) return;
+  const pad = 0.0004;
+  const q = new URLSearchParams({ county: key, bbox: [bbox[0] - pad, bbox[1] - pad, bbox[2] + pad, bbox[3] + pad].join(',') });
+  try {
+    const data = await api(`/api/parcel/neighbours?${q}`);
+    if (state.parcel !== parcel) return; // a different address since
+    const own = parcelRing();
+    neighbourState.all = (data.features || []).flatMap((f) => outerRingsOf(f.geometry).map((ring) => ({ ring, pin: f.properties?.pin ?? null })))
+      .filter((nb) => !(nb.pin && nb.pin === parcel.properties?.pin))
+      .filter((nb) => !(own && neighbourAbsorbed(nb.ring)));
+  } catch {
+    neighbourState.all = [];
+  }
+  refreshNeighbours();
+  if ($('#btn-parcel-road')) $('#btn-parcel-road').hidden = false;
+  // After the fly-in, so the street tiles for this place are the ones loaded.
+  await new Promise((resolve) => (map.isMoving() ? map.once('moveend', resolve) : resolve()));
+  if (state.parcel === parcel) await extendParcelToRoad({ quiet: true });
+}
+
 /** The parcel's outer ring, whatever geometry type it arrived as. */
 function parcelRing() {
   const g = state.parcel?.geometry;
@@ -10400,6 +11145,8 @@ function reset() {
   state.detectedBy = null;
   state.detectedExcluding = null;
   state.detectedShapes = null;
+  state.naipAlign = null;
+  state.naipBlob = null;
   state.provider = 'mapbox';
   state.model = 'sam3';
   state.pins = [];
@@ -10516,6 +11263,8 @@ $('#btn-to-draw').addEventListener('click', () => {
  * is its opposite number between one and two, and the pair is what turns four
  * tabs into a sequence.
  */
+$('#btn-parcel-road').addEventListener('click', () => extendParcelToRoad());
+
 $('#btn-to-detect').addEventListener('click', () => {
   setTab('detect');
 });
@@ -10581,7 +11330,8 @@ $('#dev-model-off')?.addEventListener('click', hideTrainedModel);
 $('#btn-draw').addEventListener('click', () => {
   setMode(null); // drawing owns the map while it is open
   state.drawingHole = false;
-  pushHistory();
+  // No pushHistory: each corner is its own undo step while the drawing is
+  // open, and closing it records one entry that can reopen it (draw.create).
   draw.changeMode('draw_polygon');
   setHint('Click around the edge of your lawn. Click the first point again to finish.');
   setStatus('Drawing by hand. Every shape you add counts toward the total.');
@@ -10612,7 +11362,8 @@ $('#btn-cut').addEventListener('click', () => {
   setStatus('Cutting out. Trace right around the thing, inside one patch of lawn.');
 });
 
-$('#btn-clear').addEventListener('click', () => {
+function clearAll() {
+  if (drafting) draftCancel();
   pushHistory();
   draw.deleteAll();
   if (state.mode === 'shape') setMode(null);
@@ -10626,11 +11377,16 @@ $('#btn-clear').addEventListener('click', () => {
   refreshTabs();
   updatePromptHint();
   setStatus('Cleared. Detect again, or draw the lawn by hand.');
-});
+}
+$('#btn-clear').addEventListener('click', clearAll);
+$('#btn-clear-detect').addEventListener('click', clearAll);
 
 $('#btn-parcel-shape').addEventListener('click', useParcelShape);
 for (const id of ['#btn-undo', '#rail-undo']) {
   $(id).addEventListener('click', undo);
+}
+for (const id of ['#btn-redo', '#rail-redo']) {
+  $(id).addEventListener('click', redo);
 }
 /*
  * The rail. Pressing the live mode turns it off; pressing another switches
@@ -10988,6 +11744,12 @@ function finishedBody() {
       // Which exclusion prompts ran. A lawn that needed `woods` is a lawn with
       // a tree line, which is what the hard half of the eval is made of.
       exclusions: state.exclude?.length ? state.exclude.slice().sort() : null,
+      /* How NAIP lines up here, if somebody looked at it in NAIP. Absent, the
+         pipeline aligns it itself (tools/naip_bands.py). */
+      naipAlign: state.naipAlign
+        ? { east: state.naipAlign.east, north: state.naipAlign.north,
+            scale: state.naipAlign.scale, source: state.naipAlign.source }
+        : null,
   };
 }
 

@@ -81,6 +81,31 @@ CANOPY = os.environ.get("CANOPY", "")
 CANOPY_MODE = "all" if os.environ.get("CANOPY_MODE", "lawn") == "all" else "lawn"
 # How many lawns to hold out, for a quick look. Unset means every lawn.
 LIMIT = int(os.environ.get("LIMIT", "0") or 0)
+# Folds; unset or 0 means leave-one-out (see main). "place" is grouped
+# folds: lots within NEIGHBOUR_KM of each other are always held out together.
+FOLDS_RAW = (os.environ.get("FOLDS", "") or "").strip()
+FOLDS = int(FOLDS_RAW) if FOLDS_RAW.isdigit() else 0
+BY_PLACE = FOLDS_RAW == "place"
+PLACE_FOLDS = int(os.environ.get("PLACE_FOLDS", "15") or 15)
+NEIGHBOUR_KM = float(os.environ.get("NEIGHBOUR_KM", "2") or 2)
+# THE FUSED-INPUTS TEST (tools/fuse_layers.py): seven more numbers a patch
+# from the lidar (FUSE_LIDAR=dir of <id>.npz from lidar_frame.py), NAIP's
+# near-infrared (FUSE_NAIP=dir of <id>-naip.png from naip_bands.py) and the
+# tree model's mask (CANOPY). Off unless FUSE=1.
+FUSE = os.environ.get("FUSE") == "1"
+FUSE_LIDAR = os.environ.get("FUSE_LIDAR", "")
+FUSE_NAIP = os.environ.get("FUSE_NAIP", "")
+# The tree model's canopy as an input channel. OFF for the "canopy on lawn"
+# decoder (H48): that decoder grades canopy only where the tracer drew no
+# lawn, so every graded canopy cell is not-lawn, and a canopy channel let it
+# learn "canopy = not lawn" outright (inferred 34.5 -> 44.6%). The channel
+# stays in the grid as zeros so every decoder reads the same shape.
+FUSE_CANOPY = os.environ.get("FUSE_CANOPY", "1") == "1"
+# Modality dropout: the chance, per lawn per step, that a source is hidden
+# as though it were missing -- so the decoder cannot lean on the lidar where
+# it is stale, and has met "no lidar here" before it meets it on a lot.
+DROP_LIDAR = float(os.environ.get("DROP_LIDAR", "0.3"))
+DROP_NAIP = float(os.environ.get("DROP_NAIP", "0.2"))
 
 
 class Decoder(nn.Module):
@@ -133,6 +158,31 @@ def read_lawn(feats, frames, stem, shape):
         inferred = inferred | (can if CANOPY_MODE == "all" else (can & truth))
         canopy = True
 
+    extra = None
+    sources = []
+    if FUSE:
+        from fuse_layers import extra_channels, ndvi_from_png
+        lidar = None
+        lf = os.path.join(FUSE_LIDAR, f"{stem}.npz") if FUSE_LIDAR else None
+        if lf and os.path.exists(lf):
+            z = np.load(lf)
+            lidar = {k: z[k] for k in ("height", "n_ground", "n_all")}
+            sources.append("lidar")
+        ndvi = valid = None
+        nf = os.path.join(FUSE_NAIP, f"{stem}-naip.png") if FUSE_NAIP else None
+        if nf and os.path.exists(nf):
+            ndvi, valid = ndvi_from_png(Image.open(nf).convert("RGB"))
+            if valid.any():
+                sources.append("naip")
+            else:
+                ndvi = valid = None
+        can_in = None
+        if FUSE_CANOPY and mask_file and os.path.exists(mask_file):
+            can_in = np.asarray(Image.open(mask_file).convert("L")) >= 128
+            sources.append("canopy")
+        extra = extra_channels(gw, gh, cx, cy, lidar=lidar, ndvi=ndvi, ndvi_valid=valid, canopy=can_in)
+        grid = np.concatenate([grid, extra.transpose(1, 2, 0)], axis=2)
+
     target, inside = box_targets(truth, gw, gh, cx, cy)
     allowed, _ = box_targets(within, gw, gh, cx, cy)
     unseen, _ = box_targets(inferred, gw, gh, cx, cy)
@@ -147,6 +197,7 @@ def read_lawn(feats, frames, stem, shape):
         "cells": (cells_w, cells_h),
         "cover": (cx, cy),
         "canopy": canopy,
+        "sources": sources,
     }
 
 
@@ -179,6 +230,16 @@ def dihedral(x, t, w, k, flip):
     if k:
         x, t, w = torch.rot90(x, k, (-2, -1)), torch.rot90(t, k, (-2, -1)), torch.rot90(w, k, (-2, -1))
     return x, t, w
+
+
+def with_dropout(x, rng):
+    """The lawn's patches, with a fused source hidden now and then (FUSE only)."""
+    if not FUSE:
+        return x
+    from fuse_layers import CHANNELS, drop_sources
+    k = len(CHANNELS)
+    e = drop_sources(x[-k:].numpy(), rng, DROP_LIDAR, DROP_NAIP)
+    return torch.cat([x[:-k], torch.from_numpy(e)], dim=0)
 
 
 def train_one(train, dim, seed):
@@ -216,7 +277,7 @@ def train_one(train, dim, seed):
         rng.shuffle(batches)
         loss_sum, w_sum = 0.0, 0.0
         for batch in batches:
-            x = torch.stack([(train[i]["x"] - mean) / sd for i in batch])
+            x = torch.stack([(with_dropout(train[i]["x"], rng) - mean) / sd for i in batch])
             t = torch.stack([train[i]["t"] for i in batch])
             w = torch.stack([train[i]["w"] for i in batch])
             x, t, w = dihedral(x, t, w, int(rng.integers(4)), bool(rng.integers(2)))
@@ -271,19 +332,49 @@ def main():
               + (" (every canopy cell)" if CANOPY_MODE == "all" else " (only over traced lawn)")
               + ("" if with_canopy else " -- no masks found; was the canopy step run?"), flush=True)
 
+    if FUSE:
+        from fuse_layers import CHANNELS
+        n_l = sum(1 for L in lawns if "lidar" in L["sources"])
+        n_n = sum(1 for L in lawns if "naip" in L["sources"])
+        n_c = sum(1 for L in lawns if "canopy" in L["sources"])
+        print(f"FUSED INPUTS: {len(CHANNELS)} more numbers a patch ({', '.join(CHANNELS)}); "
+              f"lidar on {n_l}, NAIP on {n_n}, tree canopy on {n_c} of {len(lawns)} lawns; "
+              f"dropout lidar {DROP_LIDAR:g}, NAIP {DROP_NAIP:g}", flush=True)
+
     held_out = lawns if not LIMIT else lawns[:LIMIT]
-    for n, held in enumerate(held_out):
+    # K-FOLD WHEN ASKED (FOLDS=k). Leave-one-out trains one decoder per lawn,
+    # so its cost grows with the square of the corpus: 20 minutes a decoder
+    # at 32 lawns, 68 at 53, past workflow 14's time limit with three of
+    # them (2026-09-27). k folds train k decoders on (k-1)/k of the lawns;
+    # every lawn is still answered by a decoder that never saw it. Unset, it
+    # is leave-one-out exactly as every benchmark table was measured.
+    groups = [[L] for L in held_out]
+    if BY_PLACE and not LIMIT:
+        from folds import place_folds
+        assign = place_folds([L["id"] for L in lawns], PLACE_FOLDS, NEIGHBOUR_KM, SEED)
+        groups = [[lawns[i] for i in fold] for fold in assign]
+        print(f"{len(groups)} folds by place: lots within {NEIGHBOUR_KM:g} km of each other held out together "
+              f"(sizes {', '.join(str(len(g)) for g in groups)})", flush=True)
+    elif FOLDS > 1 and not LIMIT:
+        order = np.random.default_rng(SEED).permutation(len(lawns))
+        groups = [[lawns[i] for i in order[k::FOLDS]] for k in range(FOLDS)]
+        groups = [g for g in groups if g]
+        print(f"{len(groups)} folds of about {len(lawns) // len(groups)} lawns, not leave-one-out", flush=True)
+    n = 0
+    for f, group in enumerate(groups):
         t0 = time.time()
-        train = [L for L in lawns if L is not held]
-        model, mean, sd, loss = train_one(train, dim, SEED + n)
-        prob = answer(model, mean, sd, held)
-        img = Image.fromarray(np.clip(np.round(prob * 255), 0, 255).astype(np.uint8), mode="L")
-        img.save(os.path.join(out, f"{held['id']}-pred.png"))
-        # How much of the photograph it called lawn, so a fold that collapsed
-        # to one answer everywhere shows up here rather than in the table.
-        print(f"  {n + 1}/{len(held_out)}  {held['id'][:28]:28}  train loss {loss:.3f}  "
-              f"lit {100 * float((prob > 0.5).mean()):4.1f}% of the picture  {time.time() - t0:.0f}s",
-              flush=True)
+        train = [L for L in lawns if all(L is not h for h in group)]
+        model, mean, sd, loss = train_one(train, dim, SEED + f)
+        for held in group:
+            prob = answer(model, mean, sd, held)
+            img = Image.fromarray(np.clip(np.round(prob * 255), 0, 255).astype(np.uint8), mode="L")
+            img.save(os.path.join(out, f"{held['id']}-pred.png"))
+            n += 1
+            # How much of the photograph it called lawn, so a fold that collapsed
+            # to one answer everywhere shows up here rather than in the table.
+            print(f"  {n}/{len(held_out)}  {held['id'][:28]:28}  train loss {loss:.3f}  "
+                  f"lit {100 * float((prob > 0.5).mean()):4.1f}% of the picture  {time.time() - t0:.0f}s",
+                  flush=True)
 
     total = time.time() - started
     with open(os.path.join(out, "manifest.json"), "w") as f:
@@ -291,12 +382,17 @@ def main():
             "model": manifest.get("model"), "size": manifest.get("size"),
             "dim": dim, "params": params, "epochs": EPOCHS, "seed": SEED,
             "lr": LR, "weightDecay": WEIGHT_DECAY, "dropout": DROPOUT,
-            "seenOnly": True, "lawns": len(lawns), "folds": len(held_out),
+            "seenOnly": True, "lawns": len(lawns), "folds": len(groups),
             "canopyUnseen": sum(1 for L in lawns if L["canopy"]),
             "canopyMode": CANOPY_MODE if CANOPY else None,
+            "fused": ({"lidar": sum(1 for L in lawns if "lidar" in L["sources"]),
+                       "naip": sum(1 for L in lawns if "naip" in L["sources"]),
+                       "canopy": sum(1 for L in lawns if "canopy" in L["sources"]),
+                       "canopyInput": FUSE_CANOPY,
+                       "dropLidar": DROP_LIDAR, "dropNaip": DROP_NAIP} if FUSE else None),
             "seconds": round(total),
         }, f)
-    print(f"\n{len(held_out)} folds in {total:.0f}s ({total / len(held_out):.0f}s each). "
+    print(f"\n{len(groups)} folds in {total:.0f}s ({total / len(groups):.0f}s each). "
           f"Answers in {out}/; score them with PREDICTIONS_DIR={out}.")
 
 

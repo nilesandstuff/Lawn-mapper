@@ -371,6 +371,11 @@
           <button class="primary" type="button" id="btn-job-submit">Send this map</button>
           <button class="ghost" type="button" id="btn-job-skip">I cannot do this one</button>
         </div>
+        <!-- A paid tracer's way to their approved and refused maps, balance,
+             payout request and where payments go. It used to appear only on
+             the sheet after a map was sent, so before the first map -- or
+             between maps -- there was no way to reach it (owner, 2026-09-26). -->
+        <p class="job-mywork" id="job-mywork" hidden><a href="/mywork.html">Your maps, balance and payouts →</a></p>
       </div>
 
       <div class="result" id="result" hidden>
@@ -489,6 +494,8 @@
 
         <div class="tools">
           <button class="ghost" id="btn-draw-parcel" hidden>Draw the property line</button>
+          <!-- Tinker mode only, until the owner has tried it: see extendParcelToRoad. -->
+          <button class="ghost" id="btn-parcel-road" hidden>Extend to the road</button>
         </div>
 
         <p class="sub">Press <b>Line</b> on the map to move the boundary, or a
@@ -553,6 +560,9 @@
 
         <div class="tools">
           <button class="primary" id="btn-detect" disabled>Detect my lawn</button>
+          <!-- The same Clear all as the Draw tab: a detection that went wrong is
+               thrown away from where it was made, not a tab later. -->
+          <button class="ghost" id="btn-clear-detect">Clear all</button>
         </div>
 
         <!-- Pull the detected outline in or push it out, in feet on the ground.
@@ -624,6 +634,7 @@
           <button class="ghost" id="btn-cut">Cut out a shape</button>
           <button class="ghost" id="btn-parcel-shape" hidden>Use property line</button>
           <button class="ghost" id="btn-undo" disabled>Undo</button>
+          <button class="ghost" id="btn-redo" disabled>Redo</button>
           <button class="ghost" id="btn-delete" disabled>Delete selected</button>
           <!--
             A SECOND LAYER FOR LAWN YOU KNOW IS THERE AND CANNOT SEE.
@@ -919,6 +930,12 @@
           fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span>Undo</span>
       </button>
+      <button class="railbtn railundo" id="rail-redo" disabled title="Redo what was undone">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path
+          d="M20 9H9.5a4.5 4.5 0 0 0 0 9H16M20 9l-4-4M20 9l-4 4"
+          fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>Redo</span>
+      </button>
 
       <!-- Sub-tools, only while the lawn shape is being edited. -->
       <div class="railsub" id="shape-tools" hidden>
@@ -1093,6 +1110,10 @@
            you are comparing photographs, so the choice belongs next to the
            photograph. Populated from /api/config. -->
       <div class="layerlist" id="layer-list" role="menu" aria-label="Satellite image" hidden></div>
+
+      <!-- NAIP lined up with Mapbox, and nudges for when it is still off.
+           Shown only while NAIP (or the NDVI drawn from it) is on the map. -->
+      <div class="naipalign" id="naip-align" role="group" aria-label="NAIP alignment" hidden></div>
     </div>
 
     <!--
@@ -1206,6 +1227,9 @@
 
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.js"></script>
 <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.js"></script>
+<!-- Polygon clipping for the brush (lib/brush-vector.js): cut and join outlines
+     rather than re-tracing them, so corners the brush missed never move. -->
+<script src="/lib/vendor/polygon-clipping.umd.min.js"></script>
 <script type="module" src="/app.js"></script>
 </body>
 </html>

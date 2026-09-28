@@ -583,15 +583,15 @@ const read = async (res) => ({ status: res.status, body: await res.json() });
   check('and the prompts do not promise them an automatic outline',
     !/automatic outline/i.test(words(helper.body.prompts)),
     words(helper.body.prompts).match(/[^.]*automatic outline[^.]*/i)?.[0] || 'none mentioned');
-  check('but do say where to get one if they want it',
-    helper.body.prompts.some((p) => p.key === 'ai' && /AI tab/.test(p.body)),
-    'the AI is opt-in here, not absent, and nothing else on the screen says so');
+  check('and nobody is pointed at an AI tab they no longer have',
+    !helper.body.prompts.some((p) => p.key === 'ai' || /\bAI\b/.test(p.body)),
+    'the AI is off every job route');
 
   const crowdPrompts = await read(await ask('/api/job', { search: '?w=CROWDPROMPTS' }));
-  check('while a crowd worker, who gets one run for them, is still told to correct it',
-    /automatic outline/i.test(words(crowdPrompts.body.prompts))
+  check('and a crowd worker, who no longer gets one run for them, is not told to correct one either',
+    !/automatic outline/i.test(words(crowdPrompts.body.prompts))
     && !crowdPrompts.body.prompts.some((p) => p.key === 'ai'),
-    'they are paid to correct an outline that is drawn before they arrive');
+    words(crowdPrompts.body.prompts).match(/[^.]*automatic outline[^.]*/i)?.[0] || 'none mentioned');
 
   /*
    * AND THE ROUTE IS WRITTEN ON THE JOB, not merely acted on and discarded.

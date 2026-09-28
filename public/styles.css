@@ -730,6 +730,8 @@ body.inferred-mode .panel { box-shadow: inset 4px 0 0 #7c4dff; }
 .job-ask b { display: block; }
 .job-ask.optional { color: #4d6350; }
 .jobbar-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.job-mywork { margin: 8px 0 0; font-size: 13px; text-align: center; }
+.job-mywork a { color: #1f5b22; font-weight: 600; }
 .jobbar-acts button { flex: 1 1 200px; margin: 0; }
 
 /*
@@ -757,22 +759,19 @@ body.inferred-mode .panel { box-shadow: inset 4px 0 0 #7c4dff; }
  * ends the task, and two buttons that both look like the end is how a map gets
  * saved without being submitted).
  *
- * THE AI STEP IS BACK, and taking it away was a mistake of exactly the kind
- * this comment warns about -- a removal that read as tidy and left somebody
- * without the way out of a problem we had given them.
- *
- * The reasoning was that the outline is run for them once on arrival, so the
- * tab is a step they never have to take. What that missed is that the outline
- * is sometimes WORSE than an empty map -- a shape sprayed across the drive and
- * half the neighbour's grass -- and a tracer who thinks it is wrong had no
- * control over it at all: no way to try another method, another photograph, or
- * trim the whole edge in a foot. Only corner-by-corner repair of somebody
- * else's guess, which several people said was slower than drawing it
- * themselves. That tab is where all four of those controls live, and none of
- * them spends money the job has not already paid for -- FREE_DETECTS_PER_JOB
- * is six per lawn, and trimming the edge re-reads a mask already downloaded.
- * "Clear all" on the Draw tab throws the AI shape away entirely.
+ * THE AI STEP CAME BACK ONCE, because an outline was run for crowd workers on
+ * arrival and the tab was the only control over a bad one. No outline is run
+ * on any job route now, so the reason for the tab went with it: see below.
  */
+/*
+ * AND THE AI IS GONE FROM THE JOB ROUTES AGAIN, all three of them, until
+ * there is a better interim answer than an outline that has to be taken
+ * apart before the lawn can be traced. The tab and the "Find the lawn" button
+ * that leads to it; setTab sends any other way in to Draw.
+ */
+body.job-mode #tab-detect,
+body.job-mode #pane-detect,
+body.job-mode #btn-to-detect,
 body.job-mode #account-btn,
 body.job-mode #quota-badge,
 body.job-mode #tab-saved,
@@ -980,7 +979,7 @@ kbd {
 .printblock { display: none; }
 @media print {
   .topbar, .panel, .hint, .overlay, .mapboxgl-ctrl,
-  .maprail, .coach, .layerlist { display: none !important; }
+  .maprail, .coach, .layerlist, .naipalign { display: none !important; }
   .layout { display: block; height: auto; }
   .mapwrap { position: relative; height: 62vh; page-break-after: avoid; }
   .printblock { display: block; padding: 18px 4px; font-size: 13px; }
@@ -1001,3 +1000,31 @@ kbd {
  * furniture. It was here, which was the wrong shelf: this is the measuring
  * app's stylesheet, and that page is not the measuring app.
  */
+
+/* Tinker mode: a button inside a neighbouring parcel, to take it in as well. */
+.merge-parcel {
+  font: 600 12px/1 system-ui, sans-serif;
+  padding: 6px 9px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  background: rgba(20, 20, 20, 0.72);
+  color: #fff;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.merge-parcel:hover { background: rgba(20, 20, 20, 0.9); }
+
+/* NAIP lined up with Mapbox: a small panel over the top of the map. */
+.naipalign {
+  position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+  z-index: 6; max-width: min(92vw, 360px);
+  background: rgba(255, 255, 255, .95); border-radius: 10px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .25); padding: 8px 10px; font-size: 13px;
+}
+.naipalign p { margin: 0 0 6px; }
+.naipalign-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+.naipalign-buttons button {
+  min-width: 36px; min-height: 36px; border: 1px solid #b7c4b7; border-radius: 8px;
+  background: #fff; font-size: 15px;
+}
+.naipalign-buttons button:active { background: #eef2ee; }

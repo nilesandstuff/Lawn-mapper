@@ -36,27 +36,58 @@ import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 
 import { query } from './corpus-db.js';
+import { benchmarkTag, coordsOfId } from '../worker/src/benchmark-ids.js';
 import {
   imageFeatures, featureStats, standardise, FEATURE_COUNT, FEATURE_NAMES,
 } from '../public/lib/features.js';
 import { train, predict, balanceWeights } from './learner.js';
 import {
-  drawPrediction, tracePrediction, traceMask, traceDrift, mistakeCounts,
+  drawPrediction, drawLayers, LAYERS, tracePrediction, traceMask, traceDrift, mistakeCounts,
 } from './render-prediction.js';
 import {
   classesFor, errorByClass, interiorError, classOverlap,
 } from './boundary.js';
 import { runSlug, runKeys, runRow, publishRunList } from './run-folder.js';
+import { edgeBand, bestShift } from './edge-band.js';
 import {
   loadBackbone, tiledFeatures, sampleAt, projection, project,
 } from './backbone.js';
 import { rasterizePolygon } from '../public/lib/mask.js';
 import { stage3, clearCanopy } from './stage3.js';
+import { colourEdges } from './colour-edges.js';
 import { frameBbox3857 } from '../worker/src/imagery.js';
 import { lawnSetClause, lawnSetName, lawnSetDescription, BENCHMARK_PRINT } from './lawn-set.js';
 import { lngLatToFramePx, metresPerPixel } from '../public/lib/mercator.js';
 
 const SQM_PER_SQFT = 0.09290304;
+
+/*
+ * SHORT NAMES FOR THE BENCHMARK LAWNS, B01 to B32 (worker/src/benchmark-ids.js,
+ * fixed 2026-09-26). "Kent County 8,626 sq ft" was how the owner and every
+ * session had to name a lot, and two tools computing square feet two ways
+ * had already produced two names for one lawn. Null for any lawn not in it.
+ */
+export function lawnTag(id) {
+  return benchmarkTag(id);
+}
+/** "B06 Kent County" -- the tag first, so a column of them sorts and reads at a glance. */
+const lawnName = (L) => `${L.tag ? `${L.tag} ` : ''}${L.county || 'traced by hand'}`;
+
+/*
+ * THE PLAN'S ROW (docs/DETECTOR-FINDINGS.md, H39): the one the pictures are
+ * drawn for whenever a run scores it. Change it here when THE PLAN changes.
+ */
+const PLAN_ROW = 'decoder, canopy on lawn + stage 3, span, lidar veto';
+/* The same row in a run that trains only the on-lawn decoder (`canopy: on
+   lawn`), where the single decoder is named "the pretrained eye, decoder".
+   Without this such a run drew the lowest median instead (2026-09-28). */
+const PLAN_ROW_ALONE = 'the pretrained eye, decoder + stage 3, span, lidar veto';
+const isPlanRow = (name) => name === PLAN_ROW
+  || (name === PLAN_ROW_ALONE && (process.env.CANOPY_MODE || 'lawn') === 'lawn');
+/* THE ROW ON TRIAL, drawn in preference to THE PLAN's when a run scores it,
+   because the pictures are how a candidate is judged (owner, 2026-09-26).
+   None now: the lidar ∩ NAIP canopy row was drawn once and lost (H42). */
+const TRIAL_ROW = null;
 
 /*
  * HOW MANY NUMBERS OF THE BACKBONE'S 384 EACH PIXEL CARRIES.
@@ -384,7 +415,7 @@ export const framePixels = (lawns) => {
 
 const QUERY = `
   SELECT id, county, tree_line, frame, shapes, detected_shapes, parcel,
-         image_key, image_provider, image_frame, mode, model
+         image_key, image_provider, image_frame, mode, model, naip_align
     FROM corpus
    WHERE status = 'approved' AND image_key IS NOT NULL AND frame IS NOT NULL${lawnSetClause()}
    ORDER BY at DESC
@@ -641,6 +672,34 @@ export function heightMask(png, G, GH = G) {
   return out;
 }
 
+/**
+ * The tree model's canopy, widened where the lidar and NAIP-CHM agree it
+ * missed a tree (H41), or where NAIP-CHM alone says so on a lawn with no
+ * point cloud. Null when there is nothing to widen.
+ */
+export function canopyPlus(canopy, lidarCanopy, naipCanopy) {
+  if (!canopy || !naipCanopy) return null;
+  const out = Uint8Array.from(canopy);
+  for (let i = 0; i < out.length; i++) {
+    if (naipCanopy[i] && (!lidarCanopy || lidarCanopy[i])) out[i] = 1;
+  }
+  return out;
+}
+
+/**
+ * THE LIDAR VETO (H38): a cell the point cloud calls roof or void is not
+ * lawn, whatever stage 1 and stage 3 said. Returns a copy; a missing mask
+ * vetoes nothing.
+ */
+export function lidarVeto(mask, roof, voidMask) {
+  if (!roof && !voidMask) return mask;
+  const out = Uint8Array.from(mask);
+  for (let i = 0; i < out.length; i++) {
+    if ((roof && roof[i]) || (voidMask && voidMask[i])) out[i] = 0;
+  }
+  return out;
+}
+
 /** Geometries -> a filled mask on the GRID, using the row's own frame. */
 function maskOf(geoms, frame, size, sizeH = size) {
   const project = (ll) => lngLatToFramePx(frame, ll, size, sizeH);
@@ -672,6 +731,31 @@ function compare(got, want, within) {
     else if (!got[i] && want[i]) { wrong++; missed++; }
   }
   return { wrong, truth, extra, missed, errorPct: truth ? (100 * wrong) / truth : null };
+}
+
+/**
+ * The traced outline's error, and how much of the raw mask's error lies near
+ * the truth's edge (see tools/edge-band.js). Percentages; null-safe.
+ */
+export function edgeDiagnosis(L, predicted) {
+  const G = L.grid || GRID;
+  const GH = L.gridH || G;
+  const trace = tracePrediction({ predicted, within: L.within, grid: G, gridH: GH, mpp: L.mpp });
+  const traced = traceMask({ shapes: trace.shapes, within: L.within, grid: G, gridH: GH });
+  const t = compare(traced, L.truth, L.within);
+  const cellsFor = (m) => Math.max(1, Math.round(m / (L.mpp || 0.15)));
+  const band = edgeBand({
+    truth: L.truth, got: predicted, within: L.within, w: G, h: GH,
+    radii: [cellsFor(0.5), cellsFor(1.0)],
+  });
+  const share = (k) => (band.wrong ? (100 * band.near[k]) / band.wrong : 0);
+  /* Up to 0.6 m each way: past that it is not registration, it is a different answer. */
+  const s = bestShift({ truth: L.truth, got: predicted, within: L.within, w: G, h: GH, reach: cellsFor(0.6) });
+  const truthPx = t.truth || 1;
+  return {
+    tracedPct: t.errorPct ?? 0, near05: share(0), near10: share(1),
+    shiftX: s.dx * L.mpp, shiftY: s.dy * L.mpp, shiftedPct: (100 * s.wrong) / truthPx,
+  };
 }
 
 /**
@@ -1312,12 +1396,53 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
         gridH: PY,
       });
 
+      /*
+       * EVERY LAYER ON ITS OWN (owner, 2026-09-26), for the page's switches:
+       * the photograph once, and one tall image holding a transparent frame
+       * per layer in LAYERS order. See drawLayers.
+       */
+      const clipTo = (m) => {
+        if (!m || !L.within) return m;
+        const o = new Uint8Array(m.length);
+        for (let i = 0; i < m.length; i++) o[i] = m[i] && L.within[i] ? 1 : 0;
+        return o;
+      };
+      let vetoed = null;
+      if (r.preVeto) {
+        vetoed = new Uint8Array(r.predicted.length);
+        for (let i = 0; i < vetoed.length; i++) vetoed[i] = r.preVeto[i] && !r.predicted[i] ? 1 : 0;
+      }
+      const layered = drawLayers({
+        photo: bigPhoto,
+        within: big(L.within),
+        grid: PX,
+        gridH: PY,
+        rings: bigRings,
+        masks: {
+          truth: big(clipTo(L.truth)),
+          inferred: big(clipTo(L.inferred)),
+          canopy: big(L.canopy),
+          lidarCanopy: big(L.lidarCanopy),
+          naipCanopy: big(L.naipCanopy),
+          roof: big(L.roof),
+          void: big(L.void),
+          mask: big(clipTo(r.predicted)),
+          added: big(clipTo(added)),
+          vetoed: big(clipTo(vetoed)),
+          edgeAdded: big(clipTo(r.edgeAdded)),
+          edgeRemoved: big(clipTo(r.edgeRemoved)),
+          line: big(L.within),
+        },
+      });
+
       /* Named by position, not by map id. The id contains the coordinates of
          somebody's house, and a bucket key is not the place for those. */
       const key = keys.shapes(n);
       const maskKey = keys.mask(n);
-      const write = (pix, name) => {
-        const png = new PNG({ width: PX, height: PY });
+      const photoKey = keys.photo(n);
+      const layersKey = keys.layers(n);
+      const write = (pix, name, h = PY) => {
+        const png = new PNG({ width: PX, height: h });
         png.data = Buffer.from(pix.buffer, pix.byteOffset, pix.length);
         const file = join(dir, name);
         writeFileSync(file, PNG.sync.write(png));
@@ -1325,13 +1450,15 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
       };
 
       try {
-        for (const [k, pix, name] of [
-          [key, pixels, `${n}.png`],
-          [maskKey, rawPixels, `${n}-mask.png`],
+        for (const [k, pix, name, h] of [
+          [key, pixels, `${n}.png`, PY],
+          [maskKey, rawPixels, `${n}-mask.png`, PY],
+          [photoKey, layered.photo, `${n}-photo.png`, PY],
+          [layersKey, layered.sprite, `${n}-layers.png`, PY * LAYERS.length],
         ]) {
           execFileSync('npx', [
             'wrangler', 'r2', 'object', 'put', `${bucket}/${k}`,
-            '--file', write(pix, name), '--content-type', 'image/png', '--remote',
+            '--file', write(pix, name, h), '--content-type', 'image/png', '--remote',
           ], { stdio: ['ignore', 'pipe', 'pipe'] });
         }
         put++;
@@ -1364,9 +1491,20 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
         /* The same lawn, as the model actually answered it. The page flips
            every picture between the two at once. */
         maskKey,
+        /* The photograph and the stacked layers (LAYERS order, one frame each). */
+        photoKey,
+        layersKey,
         county: L.county || null,
+        tag: L.tag || null,
+        /* The address point, "lat, lng" on the card, for pasting into other
+           map tools. The index is served only to the signed-in owner. */
+        ...(coordsOfId(L.id) || {}),
         squareFeet: Math.round(sqft(L.truthPx)),
         errorPct: Number(r.mine.errorPct.toFixed(1)),
+        /* The same count for the outline in the picture, which is what the
+           owner reads a picture as (B01: 10.8% on the mask, drawn all but
+           perfectly). The table stays on the mask. */
+        outlineErrorPct: (() => { const c = compare(traced, L.truth, L.within).errorPct; return c === null ? null : Number(c.toFixed(1)); })(),
         samErrorPct: r.theirs ? Number(r.theirs.errorPct.toFixed(1)) : null,
         foundPct: counts.foundPct === null ? null : Number(counts.foundPct.toFixed(1)),
         overPct: counts.overPct === null ? null : Number(counts.overPct.toFixed(1)),
@@ -1457,6 +1595,9 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
          settings say what was different; only this says what the difference
          was meant to prove. */
       about: RUN_ABOUT,
+      /* The layers in each lawn's `layersKey`, top frame first, with the
+         colour and whether the page shows it until told otherwise. */
+      layers: LAYERS.map(({ id, label, colour, on }) => ({ id, label, colour, on })),
       settings,
       lawns: lawns.length,
       medianErrorPct: Number(best.med.toFixed(1)),
@@ -1722,12 +1863,33 @@ async function main() {
        * lawns have no point cloud over them and read as they did before.
        */
       let height = null;
+      /*
+       * AND WHAT IT SAYS OUTRIGHT (H38): a roof (no ground return, 2.5 m up,
+       * flat) or a void (nothing back over 6 m, or water). Neither can be
+       * lawn whatever the photograph shows, so they veto lawn after stage 3.
+       * Measured before use: 0.2 / 0.5% of lawn cells under roof, 0.0% under
+       * void, against 26% and 0.7% of the visible not-lawn.
+       */
+      let roof = null;
+      let voidMask = null;
+      /* The lidar's canopy and NAIP-CHM's (H38, H41), for the canopy row and
+         the pictures. NAIP is read over every frame, lidar or not. */
+      let lidarCanopy = null;
+      let naipCanopy = null;
       if (lidarDir) {
         const file = join(lidarDir, `${row.id}-height.png`);
         if (existsSync(file)) {
           height = heightMask(decoders.png.PNG.sync.read(readFileSync(file)), G, GH);
           if (height) lidared++;
         }
+        const read = (name) => {
+          const f = join(lidarDir, `${row.id}-${name}.png`);
+          return existsSync(f) ? canopyMask(decoders.png.PNG.sync.read(readFileSync(f)), G, GH) : null;
+        };
+        roof = read('roof');
+        voidMask = read('void');
+        lidarCanopy = read('lidar-canopy');
+        naipCanopy = read('naip-canopy');
       }
       const parcelGeom = parse(row.parcel);
       /*
@@ -1746,9 +1908,12 @@ async function main() {
 
       lawns.push({
         id: row.id,
+        tag: lawnTag(row.id),
         county: row.county,
         /* The frame the photograph was taken on, for scale.json's boxes. */
         frame,
+        /* How NAIP lines up here, if the editor set it (tools/naip_bands.py). */
+        naipAlign: parse(row.naip_align),
         /* Cells across and down. Everything below for this lawn is on this grid. */
         grid: G,
         gridH: GH,
@@ -1821,6 +1986,19 @@ async function main() {
         canopy: canopyRaw,
         /* And the lidar's height above ground in metres, for its woods rule. */
         height,
+        /* Roof and void, for the veto (H38). Null without a point cloud. */
+        roof,
+        void: voidMask,
+        lidarCanopy,
+        naipCanopy,
+        /*
+         * THE TREE MODEL'S CANOPY PLUS WHAT TWO OTHER INSTRUMENTS AGREE IT
+         * MISSED (H41): cells the lidar (2011-2020) AND NAIP-CHM (2021-2023)
+         * both call canopy, and on a lawn with no point cloud NAIP-CHM alone.
+         * Used only by stage 3 in the "lidar ∩ NAIP canopy" row; training and
+         * scoring still use the tree model's, so every column stays comparable.
+         */
+        canopyPlus: canopyPlus(canopyRaw, lidarCanopy, naipCanopy),
         inferredPct: 100 * inferredShare(truth, inferred, within),
         truthPx,
         mpp: metresPerPixel(frame, G),
@@ -1863,6 +2041,17 @@ async function main() {
   }
 
   console.log(`\n${lawns.length} usable.`);
+  /* The legend for B01..B32, once a run, with the scorer's own square feet. */
+  if (lawns.some((L) => L.tag)) {
+    const named = lawns.filter((L) => L.tag).sort((a, b) => a.tag.localeCompare(b.tag));
+    console.log('Benchmark names (worker/src/benchmark-ids.js):');
+    for (let i = 0; i < named.length; i += 2) {
+      console.log(named.slice(i, i + 2).map((L) => {
+        const ft = Math.round((L.truthPx * L.mpp * L.mpp) / SQM_PER_SQFT).toLocaleString();
+        return `  ${lawnName(L).padEnd(26).slice(0, 26)} ${ft.padStart(8)} sq ft`;
+      }).join('    '));
+    }
+  }
   if (canopyDir) {
     console.log(`Canopy from ${canopyDir} merged into the unseen ground of ${canopied} of ${lawns.length} lawns`
       + (canopyMode === 'all' ? ' (EVERY canopy cell):' : ' (only where the tracer drew lawn):'));
@@ -1926,6 +2115,11 @@ async function main() {
         frames: frameSpans(lawns),
         /* Where each frame IS, in Web Mercator metres, for the lidar reader. */
         boxes: frameBoxes(lawns),
+        /* NAIP's alignment where the editor set one; the rest are aligned by
+           tools/naip_bands.py against the photograph. */
+        naipAlign: Object.fromEntries(lawns.filter((L) => L.naipAlign).map((L) => [L.id, L.naipAlign])),
+        /* B01..B32, for the Python readers' tables (worker/src/benchmark-ids.js). */
+        tags: Object.fromEntries(lawns.filter((L) => L.tag).map((L) => [L.id, L.tag])),
         /* Metres DOWN each frame, which since the crop is not the same as
            across it. */
         downs: Object.fromEntries(lawns.map((L) => [L.id, L.mpp * (L.gridH || L.grid || GRID)])),
@@ -2176,9 +2370,19 @@ async function main() {
       for (let held = 0; held < lawns.length; held++) {
         const L = lawns[held];
         if (!masks[held]) continue;
-        const mask = L.canopy
-          ? stage3(masks[held], L.canopy, L.grid, L.gridH, { mpp: L.mpp, height: L.height, ...opts }).mask
+        const canopy = opts.plus && L.canopyPlus ? L.canopyPlus : L.canopy;
+        let mask = canopy
+          ? stage3(masks[held], canopy, L.grid, L.gridH, { mpp: L.mpp, height: L.height, ...opts }).mask
           : masks[held];
+        /* Colour on the edges only (tools/colour-edges.js), before the veto
+           so roof and void still have the last word. */
+        if (opts.edges && L.cheap) {
+          mask = colourEdges(mask, L.cheap, FEATURE_COUNT, {
+            w: L.grid, h: L.gridH, mpp: L.mpp, within: L.within, canopy: L.canopy,
+          }).mask;
+        }
+        const preVeto = opts.veto ? mask : null;
+        if (opts.veto) mask = lidarVeto(mask, L.roof, L.void);
         const row = foldRow(held, judgeFold(L, mask, { trainedOn: lawns.length - 1 }));
         /*
          * WHAT STAGE 1 SAID, with the canopy cleared, so the pictures can
@@ -2186,7 +2390,9 @@ async function main() {
          * tell from the pictures whether a shape under the trees was the
          * detector's or the guesser's, and the two are different bugs.
          */
-        row.base = L.canopy ? clearCanopy(masks[held], L.canopy) : null;
+        row.base = canopy ? clearCanopy(masks[held], canopy) : null;
+        /* And what the veto took, for the pictures' own layer. */
+        row.preVeto = preVeto;
         rows.push(row);
       }
       return rows;
@@ -2276,12 +2482,116 @@ async function main() {
       const cfg4 = { ...cfg, name: `${cfg.name} + stage 3, span`, stage3: true };
       console.log(`Scoring "${cfg4.name}" (span 8 m, reach 1 m, bridge over 180°)…`);
       table.push(summarise(cfg4, judge(masks, { spanM: 8, reachM: 1, minRing: 0.5 }), cfg.dims));
-      if (lawns.some((L) => L.height)) {
-        /* 12 m and 500 m², fixed after H35's sweep of height alone (6 m was
-           wrong: a lawn tree is that tall) and before the size sweep. */
-        const cfg5 = { ...cfg, name: `${cfg.name} + stage 3, span, woods`, stage3: true };
-        console.log(`Scoring "${cfg5.name}" (span 8 m, reach 1 m, bridge over 180°, woods at 12 m and 500 m²)…`);
-        table.push(summarise(cfg5, judge(masks, { spanM: 8, reachM: 1, minRing: 0.5, tallM: 12, woodsM2: 500 }), cfg.dims));
+      /*
+       * The woods row is retired: tall and big measured as nothing (H36) and
+       * the understory as weaker than height (H37). Its sweep stays above.
+       *
+       * THE LIDAR VETO (H38): roof and void cells are never lawn, applied
+       * after stage 3 over the span row. The split says, in square metres of
+       * stage 3's answer, what each mask took from the tracer's lawn (cost)
+       * and from lawn the tracer did not draw (gain) -- the number that says
+       * whether the veto earns its place, beside the medians that may not
+       * move at all when the pond is one lot of 32.
+       */
+      if (lawns.some((L) => L.roof || L.void)) {
+        const cfg6 = { ...cfg, name: `${cfg.name} + stage 3, span, lidar veto`, stage3: true };
+        console.log(`Scoring "${cfg6.name}" (span 8 m, reach 1 m, bridge over 180°, then roof and void are not lawn)…`);
+        const vetoed = judge(masks, { spanM: 8, reachM: 1, minRing: 0.5, veto: true });
+        table.push(summarise(cfg6, vetoed, cfg.dims));
+        /*
+         * THE SAME ROW WITH COLOUR ON THE EDGES (owner, 2026-09-27): every
+         * cell within 1 m of the decoder's edge re-decided by a colour model
+         * fitted to this lot's own confident ground. Its lot-by-lot figures
+         * against the row above are the test; compare-runs reads both.
+         */
+        const cfgE = { ...cfg, name: `${cfg6.name}, colour edges`, stage3: true };
+        console.log(`Scoring "${cfgE.name}" (cells within 1 m of the edge re-decided by this lot's own colours)…`);
+        const edged = judge(masks, { spanM: 8, reachM: 1, minRing: 0.5, veto: true, edges: true });
+        table.push(summarise(cfgE, edged, cfg.dims));
+        /* What colour edges changed in THE PLAN's final answer, for the
+           pictures' own two layers (owner, 2026-09-28: "no labelled layer
+           for it"). Both rows are after the veto, so this is exactly the
+           difference between the two scores. */
+        vetoed.forEach((r, i) => {
+          const e = edged[i];
+          if (!r.predicted || !e?.predicted) return;
+          r.edgeAdded = new Uint8Array(r.predicted.length);
+          r.edgeRemoved = new Uint8Array(r.predicted.length);
+          for (let k = 0; k < r.predicted.length; k++) {
+            r.edgeAdded[k] = e.predicted[k] && !r.predicted[k] ? 1 : 0;
+            r.edgeRemoved[k] = r.predicted[k] && !e.predicted[k] ? 1 : 0;
+          }
+        });
+        const split = { roof: [0, 0], void: [0, 0] };
+        const moved = [];
+        const plain = judge(masks, { spanM: 8, reachM: 1, minRing: 0.5 });
+        for (let held = 0; held < lawns.length; held++) {
+          const L = lawns[held];
+          if (!masks[held] || !L.canopy) continue;
+          const m = stage3(masks[held], L.canopy, L.grid, L.gridH, { mpp: L.mpp, spanM: 8, reachM: 1, minRing: 0.5 }).mask;
+          const a = L.mpp * L.mpp;
+          for (const k of ['roof', 'void']) {
+            const v = L[k];
+            if (!v) continue;
+            for (let i = 0; i < m.length; i++) {
+              if (!m[i] || !v[i] || (L.within && !L.within[i])) continue;
+              split[k][L.truth[i] ? 0 : 1] += a;
+            }
+          }
+        }
+        vetoed.forEach((r, i) => {
+          const p = plain[i];
+          if (Math.abs(r.mine.errorPct - p.mine.errorPct) >= 1) moved.push([r.lawn, p.mine.errorPct, r.mine.errorPct]);
+        });
+        console.log(`   veto took, of stage 3's lawn: roof ${Math.round(split.roof[0])} m² of the tracer's lawn / ${Math.round(split.roof[1])} m² not;`
+          + ` void ${Math.round(split.void[0])} m² / ${Math.round(split.void[1])} m².`);
+        for (const [L, before, after] of moved) {
+          const sqft = Math.round((L.truthPx * L.mpp * L.mpp) / SQM_PER_SQFT);
+          console.log(`   ${lawnName(L).slice(0, 22).padEnd(22)} ${sqft.toLocaleString().padStart(8)} sq ft: ${before.toFixed(1)}% -> ${after.toFixed(1)}%`);
+        }
+        if (!moved.length) console.log('   no lawn moved by a point or more.');
+
+        /*
+         * THE LIDAR ∩ NAIP CANOPY (H41, owner 2026-09-26): the plan's row
+         * with stage 3 working over the tree model's canopy PLUS the cells
+         * the lidar and NAIP-CHM both call canopy (NAIP alone where there is
+         * no point cloud). Stage 3 only: the decoder was trained, and every
+         * column is scored, against the tree model's canopy as before, so
+         * this row differs from the one above in exactly one thing.
+         */
+        /*
+         * SHELVED 2026-09-27 (owner): "lidar canopy is bad ... the canopy
+         * model is doing the intended function better." The row is kept
+         * behind LIDAR_CANOPY=1 in case a specific use turns up; it never fed
+         * THE PLAN's row, whose veto is roof and void only.
+         */
+        if (/^(1|true|yes)$/i.test(String(process.env.LIDAR_CANOPY || '')) && lawns.some((L) => L.canopyPlus)) {
+          const cfg7 = { ...cfg, name: `${cfg.name} + stage 3, span, lidar veto, lidar ∩ NAIP canopy`, stage3: true };
+          console.log(`Scoring "${cfg7.name}" (as above, stage 3 over the tree model's canopy plus lidar ∩ NAIP-CHM)…`);
+          const plus = judge(masks, { spanM: 8, reachM: 1, minRing: 0.5, veto: true, plus: true });
+          table.push(summarise(cfg7, plus, cfg.dims));
+          let extra = 0;
+          let extraOnLawn = 0;
+          for (const L of lawns) {
+            if (!L.canopyPlus || !L.canopy) continue;
+            for (let i = 0; i < L.canopy.length; i++) {
+              if (!L.canopyPlus[i] || L.canopy[i] || (L.within && !L.within[i])) continue;
+              extra += L.mpp * L.mpp;
+              if (L.truth[i]) extraOnLawn += L.mpp * L.mpp;
+            }
+          }
+          console.log(`   canopy added inside the lines: ${Math.round(extra)} m², ${Math.round(extraOnLawn)} m² of it over the tracer's lawn.`);
+          const movedPlus = [];
+          plus.forEach((r, i) => {
+            const p = vetoed[i];
+            if (Math.abs(r.mine.errorPct - p.mine.errorPct) >= 1) movedPlus.push([r.lawn, p.mine.errorPct, r.mine.errorPct]);
+          });
+          for (const [L, before, after] of movedPlus) {
+            const sqft = Math.round((L.truthPx * L.mpp * L.mpp) / SQM_PER_SQFT);
+            console.log(`   ${lawnName(L).slice(0, 22).padEnd(22)} ${sqft.toLocaleString().padStart(8)} sq ft: ${before.toFixed(1)}% -> ${after.toFixed(1)}%`);
+          }
+          if (!movedPlus.length) console.log('   no lawn moved by a point or more.');
+        }
       }
     }
   }
@@ -2308,17 +2618,52 @@ async function main() {
      row would print "no SAM outline" about a run that has one. */
   const contenders = candidates.length ? candidates : table.filter((t) => !t.cfg.twinOf);
   const best = contenders.slice().sort((a, b) => a.med - b.med)[0];
-  if (best) {
-    console.log(`Lawn by lawn, under "${best.cfg.name}":\n`);
-    for (const r of best.rows) {
+  /*
+   * AND THE SAME FOR THE PLAN'S ROW, when it is not the lowest median. The
+   * lowest median's table is the one every run since H33 printed, so it stays
+   * for comparison; but the row the project is building is THE PLAN's, and
+   * its lot-by-lot figures were only ever visible for the lots a rule moved.
+   */
+  const planRow = table.find((t) => isPlanRow(t.cfg.name));
+  for (const t of [best, planRow !== best ? planRow : null]) {
+    if (!t) continue;
+    console.log(`Lawn by lawn, under "${t.cfg.name}":\n`);
+    for (const r of t.rows) {
       const L = r.lawn;
       const sqft = (px) => (px * L.mpp * L.mpp) / SQM_PER_SQFT;
+      const d = r.predicted ? edgeDiagnosis(L, r.predicted) : null;
+      if (d) r.diagnosis = d;
       console.log(
-        `  ${String(L.county || 'traced by hand').padEnd(20).slice(0, 20)} `
+        `  ${lawnName(L).padEnd(24).slice(0, 24)} `
         + `${Math.round(sqft(L.truthPx)).toLocaleString().padStart(8)} sq ft true   `
         + `trained ${r.mine.errorPct.toFixed(1).padStart(5)}% wrong   `
         + (r.theirs ? `SAM ${r.theirs.errorPct.toFixed(1).padStart(5)}% wrong` : 'SAM not stored')
+        + (d ? `   outline ${d.tracedPct.toFixed(1).padStart(5)}%   `
+          + `within 0.5 m of the edge ${d.near05.toFixed(0).padStart(3)}%, 1 m ${d.near10.toFixed(0).padStart(3)}%   `
+          + `best shift ${d.shiftX.toFixed(2)},${d.shiftY.toFixed(2)} m -> ${d.shiftedPct.toFixed(1)}%` : '')
       );
+    }
+    console.log('');
+  }
+  /*
+   * WHAT THE ~10% ON A NEAR-PERFECT PICTURE IS MADE OF (owner, 2026-09-27,
+   * B01). "outline" is the error of the traced polygon the picture shows and
+   * the app would hand over; the percentages after it are the share of the
+   * RAW mask's wrong ground lying within half a metre and a metre of the
+   * truth's edge. Mostly-edge error is the patch grid's resolution, not a
+   * mistake anybody would fix; see tools/edge-band.js.
+   */
+  if (planRow) {
+    const ds = planRow.rows.map((r) => r.diagnosis).filter(Boolean);
+    if (ds.length) {
+      const med = (a) => { const b = a.slice().sort((x, y) => x - y); const m = b.length >> 1; return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2; };
+      console.log(`Where THE PLAN's row is wrong, median over ${ds.length} lawns: `
+        + `${med(ds.map((d) => d.near05)).toFixed(0)}% of the wrong ground is within 0.5 m of the true edge, `
+        + `${med(ds.map((d) => d.near10)).toFixed(0)}% within 1 m; the traced outline scores `
+        + `${med(ds.map((d) => d.tracedPct)).toFixed(1)}% against the mask's ${planRow.med.toFixed(1)}%. `
+        + `Best shift of the mask onto the truth (x right, y down): median ${med(ds.map((d) => d.shiftX)).toFixed(2)}, `
+        + `${med(ds.map((d) => d.shiftY)).toFixed(2)} m, error then ${med(ds.map((d) => d.shiftedPct)).toFixed(1)}% -- `
+        + 'a consistent nonzero shift is a registration bug, not a detector one.\n');
     }
   }
 
@@ -2345,7 +2690,7 @@ async function main() {
     console.log(`  ${''.padEnd(29)}${contenders.map((t) => short(t.cfg.name)).join('')}`);
     for (const [L, errs] of badLots) {
       const sqft = Math.round((L.truthPx * L.mpp * L.mpp) / SQM_PER_SQFT);
-      console.log(`  ${String(L.county || 'traced by hand').padEnd(18).slice(0, 18)} ${sqft.toLocaleString().padStart(9)} `
+      console.log(`  ${lawnName(L).padEnd(22).slice(0, 22)} ${sqft.toLocaleString().padStart(9)} `
         + contenders.map((t) => (errs.has(t.cfg) ? `${errs.get(t.cfg).toFixed(0)}%` : '--').padStart(14)).join(''));
     }
   }
@@ -2364,20 +2709,98 @@ async function main() {
    * phone, and a zip file is not something a phone opens. The page at
    * /predictions.html reads them straight out of the same place.
    */
-  if (renderWanted && best) {
+  /*
+   * WHICH ROW GETS DRAWN: THE PLAN'S, when the run scored it, and the lowest
+   * median only when it did not. The lowest median was "canopy everywhere +
+   * stage 3, span" in every run from H33 on, and it is deterministic (H36:
+   * identical to the decimal), so run after run drew the SAME pictures while
+   * the row each run was testing -- the woods rule, the lidar veto -- was
+   * never drawn. The owner looked for the difference and there was none to
+   * find (2026-09-25). The best median is still named in the table.
+   */
+  const drawn = (TRIAL_ROW && table.find((t) => t.cfg.name === TRIAL_ROW)) || table.find((t) => isPlanRow(t.cfg.name)) || best;
+  if (renderWanted && drawn && drawn !== best) {
+    console.log(`\nDrawing "${drawn.cfg.name}" (${drawn.med.toFixed(1)}%) -- ${drawn.cfg.name === TRIAL_ROW ? 'the row on trial' : "THE PLAN's row"} -- not the lowest median ("${best.cfg.name}", ${best.med.toFixed(1)}%).`);
+  }
+  /*
+   * EVERY ROW'S PER-LOT RESULT, AS A FILE (LOT_RESULTS), so runs can be
+   * compared lot by lot and across seeds (tools/compare-runs.js). The table
+   * above is a median of these; decisions are made on the paired lots.
+   * `benchmark` marks the frozen 32 -- the lots every rule so far was tuned
+   * on -- so the ones approved since can be read on their own.
+   */
+  if (process.env.LOT_RESULTS) {
+    const r1 = (v) => (v === null || v === undefined || !Number.isFinite(v) ? null : Number(v.toFixed(2)));
+    writeFileSync(process.env.LOT_RESULTS, `${JSON.stringify({
+      seed: Number(process.env.SEED || 0) || null,
+      fingerprint: setPrint(lawns),
+      decoder: process.env.DECODER_KIND || null,
+      folds: process.env.FOLDS || 'leave-one-out',
+      rows: table.map((t) => ({
+        name: t.cfg.name,
+        median: r1(t.med),
+        lots: t.rows.map((r) => ({
+          id: r.lawn.id,
+          tag: benchmarkTag(r.lawn.id) || null,
+          benchmark: Boolean(benchmarkTag(r.lawn.id)),
+          error: r1(r.mine.errorPct),
+          seen: r1(r.seenPct),
+          inferred: r1(r.guessPct),
+          truthM2: r1(r.mine.truth),
+          ...(r.diagnosis ? {
+            outline: r1(r.diagnosis.tracedPct),
+            nearEdge05: r1(r.diagnosis.near05),
+            nearEdge10: r1(r.diagnosis.near10),
+            shiftX: r1(r.diagnosis.shiftX),
+            shiftY: r1(r.diagnosis.shiftY),
+            shifted: r1(r.diagnosis.shiftedPct),
+          } : {}),
+        })),
+      })),
+    })}\n`);
+    console.log(`Per-lot results for ${table.length} rows in ${process.env.LOT_RESULTS}.`);
+  }
+
+  if (renderWanted && drawn) {
     /*
      * THE RUN'S OWN IDENTITY, assembled here where the facts are rather than
      * re-derived inside the renderer from the one sentence it used to be
      * handed. The folder name and the picker label both come out of this, and
      * a run labelled from a guess is a run nobody can find again.
      */
-    await publishRenderings(bucket, best, lawns, using, {
+    await publishRenderings(bucket, drawn, lawns, using, {
       model: py ? py.manifest.model : (eye ? 'dinov2-tiled-224' : 'no-backbone'),
       size: py ? py.manifest.size : (eye ? 224 : null),
       noBackbone: process.env.NO_BACKBONE === 'true',
       aerialEye,
       windowed: py ? (py.manifest.windowed ?? null) : null,
     });
+  }
+
+  /*
+   * H47's fair half: the drawn row's held-out mask per lawn, for
+   * tools/segments_pred.py to re-run the per-crown test with the DETECTOR's
+   * visible lawn instead of the tracer's. Outside the canopy the plan row's
+   * mask is stage 1's own answer (stage 3 only changes ground under it).
+   */
+  if (process.env.PRED_OUT && drawn) {
+    const { PNG } = await import('pngjs');
+    mkdirSync(process.env.PRED_OUT, { recursive: true });
+    let wrote = 0;
+    for (const r of drawn.rows) {
+      const L = r.lawn;
+      if (!r.predicted) continue;
+      const G = L.grid || GRID;
+      const GH = L.gridH || G;
+      const png = new PNG({ width: G, height: GH });
+      for (let i = 0; i < G * GH; i++) {
+        const v = r.predicted[i] ? 255 : 0;
+        png.data[i * 4] = v; png.data[i * 4 + 1] = v; png.data[i * 4 + 2] = v; png.data[i * 4 + 3] = 255;
+      }
+      writeFileSync(join(process.env.PRED_OUT, `${L.id}-pred.png`), PNG.sync.write(png));
+      wrote++;
+    }
+    console.log(`Held-out masks of "${drawn.cfg.name}" for ${wrote} lawns in ${process.env.PRED_OUT}.`);
   }
 
   /* ------------------------------------------------------------- verdict */
@@ -2410,10 +2833,12 @@ async function main() {
   }
   console.log('');
 
-  console.log('  what it looked at                  wrong   in shade  in sun   beat SAM on');
+  /* Row names in full: at 32 characters the stage 3 rows all read "decoder, canopy on lawn + stage". */
+  const NAME_W = Math.min(72, Math.max(32, ...table.map((t) => t.cfg.name.length)));
+  console.log(`  ${'what it looked at'.padEnd(NAME_W)}   wrong   in shade  in sun   beat SAM on`);
   for (const t of table) {
     console.log(
-      `  ${t.cfg.name.padEnd(32).slice(0, 32)} ${t.med.toFixed(1).padStart(5)}%   `
+      `  ${t.cfg.name.padEnd(NAME_W).slice(0, NAME_W)} ${t.med.toFixed(1).padStart(5)}%   `
       + `${(t.dark === null ? '  --' : t.dark.toFixed(1)).padStart(6)}%  `
       + `${(t.bright === null ? '  --' : t.bright.toFixed(1)).padStart(6)}%   `
       + `${t.wins} of ${t.of}`
@@ -2453,10 +2878,10 @@ async function main() {
       console.log('  going blind. Worth opening and checking the marks are meant.');
     }
     console.log('\n  Error on those, against error everywhere else:\n');
-    console.log('  what it looked at                  seen   inferred');
+    console.log(`  ${'what it looked at'.padEnd(NAME_W)}   seen   inferred`);
     for (const t of table) {
       console.log(
-        `  ${t.cfg.name.padEnd(32).slice(0, 32)} `
+        `  ${t.cfg.name.padEnd(NAME_W).slice(0, NAME_W)} `
         + `${(t.seen === null ? '  --' : t.seen.toFixed(1)).padStart(5)}%  `
         + `${(t.guess === null ? '  --' : t.guess.toFixed(1)).padStart(6)}%`
       );
@@ -2477,7 +2902,7 @@ async function main() {
       console.log('\n  DOES TRAINING ON GROUND NOBODY COULD SEE COST THE VISIBLE HALF?');
       console.log('  Each row against its twin, on SEEN ground only. Lower is better;');
       console.log('  a minus in the last column means dropping the guesses helped.\n');
-      console.log('  what it looked at                 as-is  seen-only   change');
+      console.log(`  ${'what it looked at'.padEnd(NAME_W)}  as-is  seen-only   change`);
       let best = null;
       for (const t of twins) {
         const base = table.find((o) => o.cfg.name === t.cfg.twinOf);
@@ -2485,7 +2910,7 @@ async function main() {
         const delta = t.seen - base.seen;
         if (best === null || delta < best) best = delta;
         console.log(
-          `  ${t.cfg.twinOf.padEnd(32).slice(0, 32)} `
+          `  ${t.cfg.twinOf.padEnd(NAME_W).slice(0, NAME_W)} `
           + `${base.seen.toFixed(1).padStart(5)}%  `
           + `${t.seen.toFixed(1).padStart(8)}%  `
           + `${(delta >= 0 ? '+' : '') + delta.toFixed(1)}`.padStart(8)
@@ -2541,11 +2966,11 @@ async function main() {
   if (table.some((t) => t.crispEdge !== null)) {
     console.log('\n  Where the error lives -- the sharp half of a boundary against');
     console.log('  the soft half, and hard-rimmed shade against soft-rimmed:\n');
-    console.log('  what it looked at                 sharp    soft   hard shade  soft shade  middle');
+    console.log(`  ${'what it looked at'.padEnd(NAME_W)}  sharp    soft   hard shade  soft shade  middle`);
     const cell = (v, w) => (v === null ? '  --' : v.toFixed(1)).padStart(w);
     for (const t of table) {
       console.log(
-        `  ${t.cfg.name.padEnd(32).slice(0, 32)} `
+        `  ${t.cfg.name.padEnd(NAME_W).slice(0, NAME_W)} `
         + `${cell(t.crispEdge, 5)}%  ${cell(t.softEdge, 5)}%  `
         + `${cell(t.hardShade, 8)}%  ${cell(t.softShade, 8)}%  ${cell(t.interior, 5)}%`
       );

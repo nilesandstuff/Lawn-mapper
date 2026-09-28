@@ -311,21 +311,20 @@ const mine = await settled(one.page);
     && await page.locator('#mode-shape').isVisible());
 
   /*
-   * THE CLAIM RIDES ALONG WITH THE DETECTION, and this cannot be checked from
-   * the server: if the browser stops sending it, every worker silently falls
-   * back to a five-a-day signed-out allowance and the task breaks on their
-   * sixth map -- which looks like the site being broken rather than like one
-   * missing field.
+   * NO AI ON ANY JOB ROUTE (2026-09-26), the crowd one included: nothing is
+   * run on arrival and the tab is gone. Waited past the moment the parcel
+   * comes back, which is when the detection used to fire.
    */
-  check('and the automatic outline is asked for on the job\'s account, not theirs',
-    detects.length > 0 && detects[0].job === mine.jobId && detects[0].worker === 'BROWSERTEST1',
-    detects.length
-      ? `job=${detects[0].job || '(missing)'} worker=${detects[0].worker || '(missing)'}`
-      : 'no detection was attempted at all');
+  await page.waitForTimeout(3000);
+  check('and nothing was traced for a crowd worker either',
+    detects.length === 0,
+    detects.length ? `${detects.length} detection(s) fired anyway` : 'an empty map');
+  check('and there is no AI tab to find',
+    !(await page.locator('#tab-detect').isVisible()));
 
-  check('and a failed detection does not count as them having edited anything',
+  check('and arriving does not count as them having edited anything',
     mine.handEdited === false,
-    'a stale flag would let an untouched outline through as corrected');
+    'a stale flag would let an untouched map through as corrected');
 }
 
 /* ------------------------------------------------- doing it and sending it */
@@ -473,7 +472,7 @@ const mine = await settled(one.page);
    * Volunteers and paid tracers said the drawn-on outline made the work MORE
    * annoying, and they were right about the arithmetic: a wrong outline has to
    * be dismantled corner by corner before the lawn can be traced, which is
-   * slower than tracing an empty map. The AI tab is theirs to press instead.
+   * slower than tracing an empty map. The AI is off the job routes now.
    *
    * Given a moment first, because "no request was made" and "the request has
    * not been made yet" look identical the instant the bar appears -- and the
@@ -486,9 +485,9 @@ const mine = await settled(one.page);
     detects.length
       ? `${detects.length} detection(s) fired anyway`
       : 'an empty map, and a prompt saying where the AI lives');
-  check('and the job bar says where to get an outline if they want one',
-    /AI tab/.test(await page.textContent('#job-prompts')),
-    'opt-in is fine; opt-in with nothing on screen saying so is a missing step');
+  check('and the job bar does not send them to an AI tab they do not have',
+    !/AI tab/.test(await page.textContent('#job-prompts')),
+    'the AI is off the job routes');
 
   await page.click('#coach-ok').catch(() => {});
   await page.click('#tab-draw');

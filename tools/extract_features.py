@@ -65,6 +65,42 @@ from windows import padded_side_metres, window_plan, windowed
 # every detector gets it. TARGET_MPP overrides it for an experiment.
 TARGET_MPP = float(os.environ.get("TARGET_MPP", "0.10"))
 
+# TILES (owner, 2026-09-27): every lot read the same way -- resampled to ONE
+# ground resolution and read in blocks of TILE_SIZE pixels, so the model sees
+# the same number of pixels over the same area of ground everywhere, however
+# big or oddly placed the lot. 448 px at 6 cm is a 27 m block whose kept
+# middle is 21 m, overlapping its neighbours by 3 m each side (windows.py's
+# margin) -- and a backbone patch of 16 px is 0.96 m, against 1.3 to 5.4 m
+# when every lot was squeezed into one 896 px pass. Blocks whose middle is
+# more than TILE_BUFFER_M from the property line are not read at all, which
+# is what makes a diagonal lot's padding cost nothing. Off (0) unless set.
+TILE_MPP = float(os.environ.get("TILE_MPP", "0") or 0)
+TILE_SIZE = int(os.environ.get("TILE_SIZE", "448") or 448)
+TILE_BUFFER_M = float(os.environ.get("TILE_BUFFER_M", "8") or 8)
+# Context kept past every block's kept middle, in metres of ground. 5 m, not
+# the window reader's eighth-of-a-block: at 6 cm an eighth is under 3 m, and
+# a patch judged near a block edge should see well past it.
+TILE_OVERLAP_M = float(os.environ.get("TILE_OVERLAP_M", "5") or 5)
+
+
+def lot_keeper(labels_path, w, h, buffer_px):
+    """A test for windows.windowed: does this core come within `buffer_px`
+    of the property line? From the frame's own labels (green = inside the
+    line), stretched over a w x h picture. None when there are no labels."""
+    if not os.path.exists(labels_path):
+        return None
+    within = np.asarray(Image.open(labels_path).convert("RGB"))[:, :, 1] >= 128
+    within = np.asarray(Image.fromarray(within.astype(np.uint8) * 255).resize((w, h), Image.NEAREST)) > 0
+    integral = np.pad(within.astype(np.int32).cumsum(0).cumsum(1), ((1, 0), (1, 0)))
+
+    def keep(x0, y0, x1, y1):
+        xa, ya = max(0, int(x0 - buffer_px)), max(0, int(y0 - buffer_px))
+        xb, yb = min(w, int(x1 + buffer_px)), min(h, int(y1 + buffer_px))
+        if xa >= xb or ya >= yb:
+            return False
+        return (integral[yb, xb] - integral[ya, xb] - integral[yb, xa] + integral[ya, xa]) > 0
+    return keep
+
 IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 IMAGENET_SD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
@@ -123,7 +159,19 @@ class SatelliteEye:
     wants_scale = True
     PATCH = 16
 
-    def __init__(self, size):
+    # WHAT UNIT `res` IS IN, checked against the authors' code on 2026-09-27.
+    # The paper writes the scale as g/G with G "nominally 1 m", and this reader
+    # has always passed metres a pixel. The pretraining code never uses metres:
+    # scale-mae/mae/dataloaders/utils.py sets res = (crop px / output px) *
+    # base_resolution, with base_resolution 2.5 in config/fmow.yaml, over
+    # 448 px crops of 20-100% area downsampled to 224. So the encoder only
+    # ever saw res of about 2.2 to 5.0, whatever the photograph's real ground
+    # size. We pass 0.07-0.10. Nothing errors -- the features move, which is
+    # all prove_scale_is_read can check -- but the position encoding it gets
+    # is one it never saw in training. RES_FACTOR multiplies what is passed,
+    # so the right number can be MEASURED rather than argued; 1 is every run
+    # before this note.
+    def __init__(self, size, res_factor=1.0):
         from torchgeo.models import ScaleMAELarge16_Weights, scalemae_large_patch16
 
         if size % self.PATCH:
@@ -132,6 +180,7 @@ class SatelliteEye:
                 f"{self.PATCH}. Try 448, 672 or 896."
             )
         self.name = "scalemae-large"
+        self.res_factor = float(res_factor)
         self.patch = self.PATCH
         self.side = size // self.PATCH
         self.model = scalemae_large_patch16(
@@ -142,15 +191,28 @@ class SatelliteEye:
     def look(self, tensor, metres_per_pixel):
         # Read at forward time out of self.res, so this is the whole of telling
         # it what it is looking at.
-        self.model.res = float(metres_per_pixel)
+        self.model.res = float(metres_per_pixel) * self.res_factor
         with torch.no_grad():
             return self.model.forward_features(tensor)
+
+
+def res_factor_of(model_id):
+    """The x in "scalemae-large, res x5": what metres a pixel is multiplied by.
+
+    Absent is 1, the reading every run before 2026-09-27 used.
+    """
+    if "res x" not in model_id:
+        return 1.0
+    factor = float(model_id.split("res x", 1)[1].strip())
+    if factor <= 0:
+        raise SystemExit(f"res factor must be positive, got {factor}")
+    return factor
 
 
 def open_eye(model_id, size):
     """One of the two, chosen by name."""
     if model_id.startswith("scalemae"):
-        return SatelliteEye(size)
+        return SatelliteEye(size, res_factor_of(model_id))
     return HubEye(model_id, size)
 
 
@@ -275,6 +337,8 @@ def main():
     out_dir = os.environ.get("OUT")
     model_id = os.environ.get("MODEL", "facebook/dinov2-base")
     size = int(os.environ.get("SIZE", "672"))
+    if TILE_MPP > 0:
+        size = TILE_SIZE     # the eye reads blocks of this size, not the whole picture
     if not images or not out_dir:
         raise SystemExit("IMAGES and OUT are required")
 
@@ -311,7 +375,19 @@ def main():
         print(f"scale is reaching the model (features move {moved:.4f} across "
               "a tenfold change)", flush=True)
 
+    factor = getattr(eye, "res_factor", 1.0)
+    if factor != 1.0:
+        print(f"res factor x{factor:g}: the model is told {factor:g} x the metres "
+              "a pixel", flush=True)
+    if TILE_MPP > 0:
+        m_px = (int(TILE_OVERLAP_M / TILE_MPP) // 16) * 16
+        print(f"TILES: every lot at {TILE_MPP * 100:.0f} cm a pixel in {TILE_SIZE} px blocks "
+              f"({TILE_SIZE * TILE_MPP:.0f} m, kept middle {(TILE_SIZE - 2 * m_px) * TILE_MPP:.0f} m, "
+              f"{m_px * TILE_MPP:.1f} m of context past it), "
+              f"a patch {16 * TILE_MPP:.2f} m; blocks over {TILE_BUFFER_M:.0f} m from the lot skipped", flush=True)
     manifest = {"model": eye.name, "size": size, "scaleAware": eye.wants_scale,
+                "tileMpp": TILE_MPP or None,
+                "resFactor": factor,
                 "targetMpp": TARGET_MPP, "windowed": 0, "images": {}}
     extra = 0
     dim = 0
@@ -324,7 +400,32 @@ def main():
         w, h = img.size
         span = spans.get(stem)
 
-        if read_whole(span, w, h, size):
+        if TILE_MPP > 0 and span:
+            # Resampled to one ground resolution, then read block by block.
+            native = span / w
+            f = native / TILE_MPP
+            W2, H2 = max(TILE_SIZE, round(w * f)), max(1, round(h * f))
+            img2 = img.resize((W2, H2), Image.BICUBIC if f > 1 else Image.BOX)
+            keep = lot_keeper(os.path.join(images, f"{stem}-labels.png"), W2, H2,
+                              TILE_BUFFER_M / TILE_MPP)
+            mpp = TILE_MPP if eye.wants_scale else 0.0
+            seen_mpp = TILE_MPP
+
+            tokens = {"extra": 0}
+
+            def look(win):
+                hidden = eye.look(to_tensor(win), mpp)
+                flat, d, tokens["extra"] = patches_of(hidden, eye.side)
+                return flat.reshape(eye.side, eye.side, d)
+
+            grid, cover, windows = windowed(normalised(img2), TILE_SIZE, eye.patch, look, keep=keep,
+                                            margin_px=TILE_OVERLAP_M / TILE_MPP)
+            dim = grid.shape[2]
+            extra = tokens["extra"]
+            manifest["windowed"] += 1
+            manifest["tiles"] = manifest.get("tiles", 0) + windows
+            manifest["tilesSkipped"] = manifest.get("tilesSkipped", 0) + getattr(windowed, "last_skipped", 0)
+        elif read_whole(span, w, h, size):
             # Metres per pixel of what the model is about to see, which depends
             # on the size it is read at and so cannot be stored with the picture.
             tensor, cover = as_tensor(os.path.join(images, name), size)
@@ -382,7 +483,12 @@ def main():
     print(f"\n{len(names)} done in {total:.0f}s ({total / len(names):.1f}s each), "
           f"{passes} passes of {size} px")
     print(f"{dim} numbers a patch, {extra} non-patch token(s) skipped")
-    if manifest["windowed"]:
+    if TILE_MPP > 0:
+        print(f"Tiles read: {manifest.get('tiles', 0)}; skipped as nowhere near a lot: "
+              f"{manifest.get('tilesSkipped', 0)}.")
+    if TILE_MPP > 0:
+        pass  # said above, with the block counts
+    elif manifest["windowed"]:
         print(f"{manifest['windowed']} of {len(names)} lawns were too big to read at "
               f"{TARGET_MPP * 100:.0f} cm a pixel in one pass and were read in "
               "overlapping windows at the photograph's own resolution.")
