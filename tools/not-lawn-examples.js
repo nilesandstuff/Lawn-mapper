@@ -66,14 +66,47 @@ async function fetchAll(candidatesPath, dir) {
   console.log(`${got} of ${candidates.length} examples photographed.`);
 }
 
-function upload(dir) {
-  const files = readdirSync(dir).filter((f) => f.endsWith('.json') || f.endsWith('.png'));
-  for (const f of files) {
-    execFileSync('npx', ['--no-install', 'wrangler', 'r2', 'object', 'put', `${BUCKET}/${EXAMPLE_PREFIX}${f}`,
-      '--file', join(dir, f), '--content-type', f.endsWith('.png') ? 'image/png' : 'application/json', '--remote'],
-    { stdio: ['ignore', 'pipe', 'pipe'] });
+/*
+ * NEVER OVER AN EXAMPLE ALREADY SAVED (owner, 2026-09-28: "it'd be
+ * unfortunate if there's missing shapes that get inserted later on"). A
+ * top-up or a rerun numbers the same ids again; writing over one would
+ * replace an example the owner reviewed with a fresh draft carrying
+ * different outlines. So an id already in the bucket is skipped, JSON and
+ * photo both, and said so. Any other failure to look stops the upload
+ * rather than guessing.
+ */
+export function alreadySaved(id, get = wranglerGet) {
+  const r = get(`${BUCKET}/${EXAMPLE_PREFIX}${id}.json`);
+  if (r.ok) return true;
+  if (/not.?found|does not exist|NoSuchKey|404/i.test(r.err)) return false;
+  throw new Error(`could not tell whether ${id} is already saved: ${r.err.split('\n')[0]}`);
+}
+
+function wranglerGet(key) {
+  try {
+    execFileSync('npx', ['--no-install', 'wrangler', 'r2', 'object', 'get', key, '--pipe', '--remote'],
+      { stdio: ['ignore', 'pipe', 'pipe'] });
+    return { ok: true, err: '' };
+  } catch (e) {
+    return { ok: false, err: String(e.stderr || e.stdout || e.message) };
   }
-  console.log(`${files.length} files written to ${BUCKET}/${EXAMPLE_PREFIX}.`);
+}
+
+function upload(dir) {
+  const ids = readdirSync(dir).filter((f) => f.endsWith('.json')).map((f) => f.slice(0, -5));
+  let wrote = 0;
+  const kept = [];
+  for (const id of ids) {
+    if (alreadySaved(id)) { kept.push(id); continue; }
+    for (const [f, type] of [[`${id}.png`, 'image/png'], [`${id}.json`, 'application/json']]) {
+      execFileSync('npx', ['--no-install', 'wrangler', 'r2', 'object', 'put', `${BUCKET}/${EXAMPLE_PREFIX}${f}`,
+        '--file', join(dir, f), '--content-type', type, '--remote'],
+      { stdio: ['ignore', 'pipe', 'pipe'] });
+    }
+    wrote++;
+  }
+  if (kept.length) console.log(`${kept.length} already saved and left alone: ${kept.join(', ')}`);
+  console.log(`${wrote} new examples written to ${BUCKET}/${EXAMPLE_PREFIX}.`);
 }
 
 if (process.argv[1] && process.argv[1].endsWith('not-lawn-examples.js')) {

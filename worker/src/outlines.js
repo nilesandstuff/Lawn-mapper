@@ -128,5 +128,33 @@ export function reviewExample(stored, review) {
     if (one) properties.shift = one; else delete properties.shift;
     return { ...f, properties };
   });
+  /*
+   * WHAT THE OWNER SAW AND KEPT, fixed at review (2026-09-28). Training
+   * reads an approved example through keptOutlines() and nothing else: only
+   * the outlines listed here, by position, and only if they are still the
+   * same count -- so an outline that was not on the page when the owner
+   * reviewed it can never be taught, even if the file somehow gained one.
+   */
+  saved.reviewed = {
+    at: saved.reviewedAt,
+    count: saved.features.length,
+    kept: saved.features.map((f, i) => (f.properties?.dropped ? -1 : i)).filter((i) => i >= 0),
+  };
   return saved;
+}
+
+/**
+ * The outlines training may teach from an example: approved, reviewed, and
+ * exactly the ones kept at review. Anything else -- a draft, a rejected
+ * example, a file whose outline count changed since review -- gives none.
+ */
+export function keptOutlines(doc) {
+  if (doc?.status !== 'approved') return [];
+  const features = Array.isArray(doc.features) ? doc.features : [];
+  /* Approved before the record existed (2026-09-28 morning): what was kept
+     on the page then. An outline wholly outside the photo has no pixels to
+     teach, so the ones that page still listed cost nothing. */
+  if (!doc.reviewed) return doc.reviewedAt ? features.filter((f) => !f.properties?.dropped) : [];
+  if (features.length !== doc.reviewed.count) return [];
+  return doc.reviewed.kept.map((i) => features[i]).filter((f) => f && !f.properties?.dropped);
 }

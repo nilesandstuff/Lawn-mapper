@@ -93,3 +93,28 @@ console.log('PASS  the fetch tool and the worker agree on where a map\'s outline
   assert.equal(touchesPhoto(L, 100, 100), false, 'an L round the outside');
   console.log('PASS  an outline counts only where some of it is in the photo');
 }
+
+// Only what the owner saw and kept at review is ever taught; a shape that
+// turns up in the file afterwards is not, and an example already saved is
+// never written over by a later fetch.
+{
+  const { reviewExample, keptOutlines } = await import('../worker/src/outlines.js');
+  const { alreadySaved } = await import('./not-lawn-examples.js');
+  const doc = { features: [{ properties: { class: 'water' } }, { properties: { class: 'road' } }, { properties: { class: 'building' } }] };
+  const ok = reviewExample(doc, { status: 'approved', dropped: [1] });
+  assert.deepEqual(keptOutlines(ok).map((f) => f.properties.class), ['water', 'building']);
+  assert.deepEqual(keptOutlines(reviewExample(doc, { status: 'draft' })), [], 'a draft teaches nothing');
+  assert.deepEqual(keptOutlines(reviewExample(doc, { status: 'rejected' })), [], 'a rejected example teaches nothing');
+  const grown = { ...ok, features: [...ok.features, { properties: { class: 'pool' } }] };
+  assert.deepEqual(keptOutlines(grown), [], 'an outline added after review voids the example rather than slipping in');
+  assert.equal(alreadySaved('water-001', () => ({ ok: true, err: '' })), true);
+  assert.equal(alreadySaved('water-001', () => ({ ok: false, err: 'The specified key does not exist.' })), false);
+  assert.throws(() => alreadySaved('water-001', () => ({ ok: false, err: 'Authentication error' })));
+  console.log('PASS  examples: only outlines kept at review are taught; a saved example is never written over');
+}
+{
+  const { keptOutlines } = await import('../worker/src/outlines.js');
+  const early = { status: 'approved', reviewedAt: '2026-09-28T09:00:00Z', features: [{ properties: { class: 'water' } }, { properties: { class: 'road', dropped: true } }] };
+  assert.deepEqual(keptOutlines(early).map((f) => f.properties.class), ['water']);
+  console.log('PASS  examples approved before the review record keep what was kept then');
+}
