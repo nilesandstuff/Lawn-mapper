@@ -68,3 +68,15 @@ print("PASS  a frame inside a searched box is filled from it, only with what tou
 got, errs, fetched = nl.frame_contents([-80.0, 40.0, -79.999, 40.001], searched, fetch=no_fetch)
 assert fetched == 2 and calls == [("osm", "nhd")], calls
 print("PASS  a frame outside every searched box is fetched")
+
+# Out of time: no fetch, what the searches hold, and a note that it may be incomplete.
+calls.clear()
+got, errs, fetched = nl.frame_contents([-80.0, 40.0, -79.999, 40.001], searched, fetch=no_fetch, may_fetch=False)
+assert not calls and fetched == 0 and set(errs) == {"osm", "nhd"}, (calls, errs)
+print("PASS  past the time budget a frame is not fetched, and says it may be incomplete")
+
+# A deadline already passed: pick stops before searching anything.
+n[0] = 0
+chosen = nl.pick(seeds, random.Random(1), log=lambda *a: None, max_searches=20, deadline=0)
+assert n[0] == 0 and sum(len(v) for v in chosen.values()) == 0, n[0]
+print("PASS  past its deadline the picker stops and keeps what it has")
