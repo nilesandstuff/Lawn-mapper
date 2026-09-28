@@ -110,6 +110,10 @@ IMAGENET_SD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 # normalisation" is the obvious guess and it is wrong.
 
 
+# A GPU WHEN THERE IS ONE (Modal, 2026-09-28); the CPU runner is unchanged.
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+
 class HubEye:
     """Anything on the HuggingFace hub shaped like a plain ViT.
 
@@ -124,7 +128,7 @@ class HubEye:
         from transformers import AutoModel
 
         self.name = model_id
-        self.model = AutoModel.from_pretrained(model_id)
+        self.model = AutoModel.from_pretrained(model_id).to(DEVICE)
         # eval() and no_grad are not an optimisation here -- training is not
         # happening, and a backbone left in training mode would run its dropout
         # and return a different answer to the same photograph every time,
@@ -141,7 +145,7 @@ class HubEye:
 
     def look(self, tensor, _metres_per_pixel):
         with torch.no_grad():
-            return self.model(pixel_values=tensor).last_hidden_state
+            return self.model(pixel_values=tensor.to(DEVICE)).last_hidden_state.cpu()
 
 
 class SatelliteEye:
@@ -185,7 +189,7 @@ class SatelliteEye:
         self.side = size // self.PATCH
         self.model = scalemae_large_patch16(
             weights=ScaleMAELarge16_Weights.FMOW_RGB, img_size=size, res=1.0
-        )
+        ).to(DEVICE)
         self.model.eval()
 
     def look(self, tensor, metres_per_pixel):
@@ -193,7 +197,7 @@ class SatelliteEye:
         # it what it is looking at.
         self.model.res = float(metres_per_pixel) * self.res_factor
         with torch.no_grad():
-            return self.model.forward_features(tensor)
+            return self.model.forward_features(tensor.to(DEVICE)).cpu()
 
 
 def res_factor_of(model_id):

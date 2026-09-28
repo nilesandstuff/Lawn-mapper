@@ -242,6 +242,19 @@ on:
         type: choice
         default: 'off'
         options: ['off', 'on']
+      gpu:
+        # WHERE THE ARITHMETIC HAPPENS (owner, 2026-09-28). "modal" sends the
+        # tree model, the backbone and the decoders to a GPU on Modal
+        # (tools/modal_gpu.py; secrets MODAL_TOKEN_ID / MODAL_TOKEN_SECRET);
+        # the downloads and the scorer stay here. "github" is the four-core
+        # CPU runner every run before this used. Same scripts, same settings
+        # (tools/modal_plan.py, pinned by modal_plan_test.py); a GPU's float
+        # arithmetic differs from a CPU's in the last digits, so compare
+        # like with like when it matters.
+        description: 'Where the models run: a GPU on Modal, or this CPU runner'
+        type: choice
+        default: 'github'
+        options: ['modal', 'github']
       about:
         # WHAT THIS RUN IS FOR, kept with the pictures for ever.
         #
@@ -359,14 +372,34 @@ jobs:
           python3 folds_test.py
           python3 naip_align_test.py
 
+      - name: Install the Modal client
+        if: ${{ inputs.gpu == 'modal' }}
+        run: pip install modal
+
       - name: Find the canopy
-        if: ${{ inputs.canopy != 'off' }}
+        if: ${{ inputs.canopy != 'off' && inputs.gpu != 'modal' }}
         env:
           IMAGES: frames
           OUT: canopy
           MODEL: restor/tcd-segformer-mit-b5
           MIN_CLUMP_M2: 4
         run: python3 tools/tree-canopy.py
+
+      # The same script on Modal's GPU. The frames go up once, here, and stay
+      # in this run's folder on the volume for the backbone below.
+      - name: Find the canopy on Modal's GPU
+        if: ${{ inputs.canopy != 'off' && inputs.gpu == 'modal' }}
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+          RUN_DIR: gh-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          cat > canopy-plan.json <<EOF
+          {"run": "$RUN_DIR", "send": ["frames"], "fetch": ["canopy"],
+           "steps": [{"script": "tree-canopy.py", "env": {"IMAGES": "frames", "OUT": "canopy",
+                      "MODEL": "restor/tcd-segformer-mit-b5", "MIN_CLUMP_M2": "4"}}]}
+          EOF
+          modal run tools/modal_gpu.py --plan canopy-plan.json
 
       # The lidar's canopy height over the same frames, exactly as workflow
       # 23 reads it, for stage 3's woods rule (H34). Three minutes and a few
@@ -409,7 +442,7 @@ jobs:
       # Both scales: the whole-lot pass first, into its own directory, exactly
       # as `windows: off` reads it; the step below then reads the 6 cm blocks.
       - name: Run the backbone over each lot whole (both scales)
-        if: ${{ inputs.windows == 'both' }}
+        if: ${{ inputs.windows == 'both' && inputs.gpu != 'modal' }}
         env:
           IMAGES: frames
           OUT: feats-whole
@@ -419,6 +452,7 @@ jobs:
         run: python3 tools/extract_features.py
 
       - name: Run the backbone over them
+        if: ${{ inputs.gpu != 'modal' }}
         env:
           IMAGES: frames
           OUT: feats
@@ -429,6 +463,30 @@ jobs:
           TARGET_MPP: ${{ inputs.windows == 'off' && '9' || '0.10' }}
           TILE_MPP: ${{ (inputs.windows == 'tiles' || inputs.windows == 'both') && '0.06' || (inputs.windows == 'tiles 10 cm' && '0.10' || '') }}
         run: python3 tools/extract_features.py
+
+      # The backbone and every decoder in one call on Modal's GPU, with the
+      # environment each would get here (tools/modal_plan.py). The frames are
+      # already there when the canopy ran there; the lidar and NAIP are not.
+      # Features and answers come back for the scorer, and the run's folder
+      # on the volume is deleted.
+      - name: Run the backbone and train the decoders on Modal's GPU
+        if: ${{ inputs.gpu == 'modal' }}
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+          RUN: gh-${{ github.run_id }}-${{ github.run_attempt }}
+          SEND: ${{ inputs.canopy == 'off' && 'frames' || '' }},lidar,naip
+          WINDOWS: ${{ inputs.windows }}
+          CANOPY: ${{ inputs.canopy }}
+          DECODER: ${{ inputs.decoder }}
+          SEED: ${{ inputs.seed }}
+          LAWNS: ${{ inputs.lawns }}
+          MODEL: ${{ inputs.model }}
+          SIZE: ${{ inputs.size }}
+          OUT: gpu-plan.json
+        run: |
+          python3 tools/modal_plan.py
+          modal run tools/modal_gpu.py --plan gpu-plan.json
 
       # TWO JOBS, NOT ONE (2026-09-28). A job may run six hours at most, and
       # the not-lawn examples (~140 frames beside 55 lots) made every step
@@ -442,7 +500,7 @@ jobs:
         run: |
           mkdir -p work
           have=""
-          for d in frames canopy lidar naip feats feats-whole lidar-plan.json; do
+          for d in frames canopy lidar naip feats feats-whole lidar-plan.json preds preds-none preds-lawn preds-all; do
             if [ -e "$d" ]; then have="$have $d"; fi
           done
           du -sh $have || true
@@ -509,7 +567,7 @@ jobs:
       # one out exactly as the scorer does, so the row it produces is the same
       # kind of number as the rows beside it.
       - name: Train the decoder
-        if: ${{ inputs.decoder != 'off' && inputs.canopy != 'compare' }}
+        if: ${{ inputs.decoder != 'off' && inputs.canopy != 'compare' && inputs.gpu != 'modal' }}
         env:
           FEATURES: feats
           FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
@@ -533,7 +591,7 @@ jobs:
       # THE THREE-WAY COMPARISON, over the one extraction above. Same seed,
       # same features, same folds; only what carries weight differs.
       - name: Train the decoder without the canopy
-        if: ${{ inputs.decoder != 'off' && inputs.canopy == 'compare' }}
+        if: ${{ inputs.decoder != 'off' && inputs.canopy == 'compare' && inputs.gpu != 'modal' }}
         env:
           FEATURES: feats
           FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
@@ -552,7 +610,7 @@ jobs:
         run: python3 tools/train_decoder.py
 
       - name: Train the decoder, canopy unseen on lawn
-        if: ${{ inputs.decoder != 'off' && inputs.canopy == 'compare' }}
+        if: ${{ inputs.decoder != 'off' && inputs.canopy == 'compare' && inputs.gpu != 'modal' }}
         env:
           FEATURES: feats
           FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
@@ -576,7 +634,7 @@ jobs:
         run: python3 tools/train_decoder.py
 
       - name: Train the decoder, canopy unseen everywhere
-        if: ${{ inputs.decoder != 'off' && inputs.canopy == 'compare' }}
+        if: ${{ inputs.decoder != 'off' && inputs.canopy == 'compare' && inputs.gpu != 'modal' }}
         env:
           FEATURES: feats
           FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}

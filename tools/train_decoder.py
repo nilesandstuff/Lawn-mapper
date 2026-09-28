@@ -117,6 +117,12 @@ FEATURES_WHOLE = os.environ.get("FEATURES_WHOLE", "")
 WHOLE_MANIFEST = None
 
 
+# A GPU WHEN THERE IS ONE (Modal, 2026-09-28); the CPU runner is unchanged.
+# The lawns stay in memory on the CPU and each batch is moved over, so a
+# corpus bigger than the card still fits.
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+
 class Decoder(nn.Module):
     def __init__(self, dim):
         super().__init__()
@@ -304,7 +310,8 @@ def train_one(train, dim, seed):
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
     mean, sd = standardiser(train)
-    model = Decoder(dim)
+    mean, sd = mean.to(DEVICE), sd.to(DEVICE)
+    model = Decoder(dim).to(DEVICE)
 
     # Lawns of one shape go through together: every lot squeezed whole is
     # the same 64x64 grid. (Measured: batches of 1, 4 and 8 cost the same on
@@ -323,7 +330,7 @@ def train_one(train, dim, seed):
     # soft targets of the training set.
     pos = sum(float((L["w"] * L["t"]).sum()) for L in train)
     neg = sum(float((L["w"] * (1 - L["t"])).sum()) for L in train)
-    pos_weight = torch.tensor(neg / max(pos, 1e-6))
+    pos_weight = torch.tensor(neg / max(pos, 1e-6), device=DEVICE)
 
     last = 0.0
     for epoch in range(EPOCHS):
@@ -335,9 +342,10 @@ def train_one(train, dim, seed):
         rng.shuffle(batches)
         loss_sum, w_sum = 0.0, 0.0
         for batch in batches:
-            x = torch.stack([(with_dropout(train[i]["x"], rng) - mean) / sd for i in batch])
-            t = torch.stack([train[i]["t"] for i in batch])
-            w = torch.stack([train[i]["w"] for i in batch])
+            x = torch.stack([with_dropout(train[i]["x"], rng) for i in batch]).to(DEVICE)
+            x = (x - mean) / sd
+            t = torch.stack([train[i]["t"] for i in batch]).to(DEVICE)
+            w = torch.stack([train[i]["w"] for i in batch]).to(DEVICE)
             x, t, w = dihedral(x, t, w, int(rng.integers(4)), bool(rng.integers(2)))
             logits = model(x)
             loss = F.binary_cross_entropy_with_logits(logits, t, weight=w, pos_weight=pos_weight, reduction="sum")
@@ -355,8 +363,8 @@ def train_one(train, dim, seed):
 def answer(model, mean, sd, L):
     model.eval()
     with torch.no_grad():
-        x = (L["x"] - mean) / sd
-        prob = torch.sigmoid(model(x[None])[0, 0]).numpy()
+        x = (L["x"].to(DEVICE) - mean) / sd
+        prob = torch.sigmoid(model(x[None])[0, 0]).cpu().numpy()
     w, h = L["cells"]
     return to_photo(prob, w, h, *L["cover"])
 

@@ -77,6 +77,15 @@ got here. Update it whenever the in-flight run changes.*
   did not. The relaunched runs on 6792729 still carry examples (cropped),
   so they measure the arrangements WITH examples and the crop; the clean
   both-scales question is three more runs without examples against S14.
+- **Modal GPU, built 2026-09-28 (owner set up the account):** workflow 14
+  `gpu: modal` runs the tree model, the backbone and the decoders on a GPU
+  on Modal (tools/modal_gpu.py, plan from tools/modal_plan.py, pinned to
+  the workflow by modal_plan_test.py); downloads and the scorer stay on
+  GitHub. The scripts use the GPU when there is one and are unchanged on
+  the CPU (decoder smoke run: identical losses). FIRST CHECK, not a result:
+  a repeat of S14 seed 7 on the GPU, against 36355253442 -- GPU arithmetic
+  differs from the CPU's in the last digits, so how far that moves lots is
+  itself worth knowing before GPU runs are compared with CPU ones.
 - **The two-job split failed its first real run (2026-09-28, 21:02):**
   artifacts refuse file names with a colon, and every lot id has two. All
   twelve runs on 6792729 / cffd94b were cancelled or died at that step (no

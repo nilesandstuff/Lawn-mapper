@@ -121,7 +121,9 @@ def main():
     stored_px = scale.get("storedPx") or {}
 
     print(f"Loading {MODEL}…")
-    model = SegformerForSemanticSegmentation.from_pretrained(MODEL)
+    # A GPU when there is one (Modal, 2026-09-28); the CPU runner is unchanged.
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model = SegformerForSemanticSegmentation.from_pretrained(MODEL).to(device)
     model.eval()
     processor = SegformerImageProcessor.from_pretrained(MODEL, do_resize=False)
     want = tree_index(model)
@@ -154,14 +156,14 @@ def main():
         target_h = max(8, int(round(down / mpp)))
         small = img.resize((target_w, target_h), Image.BILINEAR)
 
-        inputs = processor(images=small, return_tensors="pt")
+        inputs = {k: v.to(device) for k, v in processor(images=small, return_tensors="pt").items()}
         with torch.no_grad():
             logits = model(**inputs).logits
         # SegFormer answers at a quarter of the input; put it back.
         logits = torch.nn.functional.interpolate(
             logits, size=(target_h, target_w), mode="bilinear", align_corners=False
         )
-        mask = (logits.argmax(dim=1)[0].numpy() == want)
+        mask = (logits.argmax(dim=1)[0].cpu().numpy() == want)
 
         labels, count = clumps_for(mask)
 
