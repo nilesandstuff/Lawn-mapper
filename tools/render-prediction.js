@@ -567,6 +567,8 @@ export const LAYERS = [
   { id: 'mask', label: 'detector: raw answer', colour: TRACE, on: false },
   { id: 'added', label: 'stage 3: put back under trees', colour: ADDED, on: true },
   { id: 'vetoed', label: 'lidar veto: taken out', colour: [255, 64, 129], on: true },
+  { id: 'edgeAdded', label: 'colour edges: added (not in the score)', colour: [0, 230, 118], on: false },
+  { id: 'edgeRemoved', label: 'colour edges: taken out (not in the score)', colour: [255, 234, 0], on: false },
   { id: 'shapes', label: 'detector: outline and handles', colour: TRACE, on: true },
   { id: 'line', label: 'property line', colour: PARCEL_EDGE, on: true },
 ];
