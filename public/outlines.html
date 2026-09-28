@@ -24,92 +24,113 @@
 <link href="/styles.css" rel="stylesheet">
 <link href="/console.css" rel="stylesheet">
 <style>
-  /* As big as the screen allows, and 2x in a scroll box for the fine ones. */
-  .console:has(#page:not([hidden])) { max-width: none; }
-  .ol-scroll { width: 100%; overflow: auto; border-radius: 8px; margin: 8px 0; }
-  .ol-stage { position: relative; width: 100%; touch-action: manipulation; }
-  .ol-scroll.zoomed .ol-stage { width: 200%; }
-  .ol-stage img { display: block; width: 100%; height: auto; }
-  /* The photograph's edge is the edge of what the detector is shown: an
-     outline running past it is cut there, on the page and in training. */
+  /*
+   * A FULL-SCREEN VIEWER (owner, 2026-09-28): the photo is fitted whole into
+   * the space between the bars, nothing scrolls, and a drag on the photo is
+   * the photo's -- move an outline, or pan when zoomed -- never the page's.
+   * (Before this, a long error line widened the page past the screen and the
+   * photo grew with it, so part of it was off-screen without a sign.)
+   */
+  html.viewer, html.viewer body { height: 100%; overflow: hidden; overscroll-behavior: none; }
+  .ol-app { position: fixed; inset: 0; display: flex; flex-direction: column; background: #111; color: #eee; font-size: 14px; }
+  .ol-app * { box-sizing: border-box; min-width: 0; }
+  .ol-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 8px; }
+  .ol-row.top { background: #1c1c1c; }
+  .ol-row.info { padding-top: 0; font-size: 12px; color: #bbb; gap: 4px 10px; }
+  .ol-row select { font-size: 14px; padding: 5px; max-width: 46vw; }
+  .ol-row button { min-height: 38px; padding: 0 10px; border-radius: 8px; border: 1px solid #555; background: #262626; color: #eee; font-size: 14px; }
+  .ol-row button.primary { background: #2e7d32; border-color: #2e7d32; color: #fff; font-weight: 600; flex: 1; }
+  .ol-row button.bad { border-color: #8a3a3a; }
+  .ol-row a { color: #9ccc9c; }
+  .ol-count { color: #bbb; font-size: 12px; }
+  .ol-view { position: relative; flex: 1; overflow: hidden; touch-action: none; background: #000; }
+  .ol-stage { position: absolute; transform-origin: 0 0; }
+  .ol-stage img { display: block; width: 100%; height: 100%; user-select: none; -webkit-user-drag: none; pointer-events: none; }
+  /* The photograph's edge is the edge of what the detector is shown. */
   .ol-stage svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: hidden; }
-  .ol-stage path.shape { cursor: grab; stroke-width: 2.5; fill-opacity: .35; vector-effect: non-scaling-stroke; touch-action: none; }
+  .ol-stage path.shape { cursor: grab; stroke-width: 2.5; fill-opacity: .35; vector-effect: non-scaling-stroke; }
   .ol-stage path.shape.dropped { fill-opacity: .05; stroke: #9e9e9e !important; fill: #9e9e9e !important; stroke-dasharray: 6 4; }
-  .ol-stage path.parcel { fill: none; stroke: #fff; stroke-width: 2; vector-effect: non-scaling-stroke; }
   .ol-stage path.shape.target { stroke-width: 5; }
-  .ol-legend { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 13px; margin: 6px 0; }
-  .ol-legend span::before { content: ""; display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; background: var(--c); }
-  .ol-legend span.outside { color: #6b6b6b; font-style: italic; }
+  .ol-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; padding: 4px 8px; }
+  .ol-legend span::before { content: ""; display: inline-block; width: 11px; height: 11px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; background: var(--c); }
+  .ol-legend span.outside { color: #aaa; font-style: italic; }
   .ol-legend span.outside::before { display: none; }
-  .ol-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
-  .ol-bar select { max-width: 100%; font-size: 15px; padding: 6px; }
-  .ol-bar button { min-height: 40px; }
-  .ol-errors { color: #b00020; font-size: 13px; }
+  .ol-errors { color: #ff8a80; font-size: 12px; padding: 0 8px; overflow-wrap: anywhere; }
+  .ol-help { position: absolute; inset: 8px; overflow: auto; background: rgba(20,20,20,.96); border: 1px solid #444; border-radius: 10px; padding: 12px 14px; font-size: 14px; line-height: 1.45; z-index: 5; touch-action: pan-y; }
+  .ol-said { font-size: 12px; color: #9ccc9c; }
 </style>
 </head>
 <body>
 
-<div class="console">
-  <div class="conhead">
-    <h1>Not-lawn examples to review</h1>
-    <a href="/admin.html">← back to the console</a>
-  </div>
-
+<div class="console" id="gate">
   <div class="locked-out" id="locked" hidden>
     <p>This page is for the site owner.</p>
     <p><a href="/">Go and measure a lawn instead →</a></p>
   </div>
-
   <div class="empty-state" id="none" hidden>
     <div class="card">
       <h2>Nothing fetched yet</h2>
-      <p class="sub">Run workflow <b>25</b>. It photographs about 150 places with a
-        public outline of something that is not lawn and leaves them here as drafts.</p>
+      <p class="sub">Run workflow <b>25</b>. It photographs places with a public outline of
+        something that is not lawn and leaves them here as drafts.</p>
     </div>
   </div>
+</div>
 
-  <div id="page" hidden>
-    <div class="card">
-      <div class="ol-bar">
-        <select id="pick" aria-label="Which map"></select>
-        <button class="ghost" id="prev" type="button">◀ Previous</button>
-        <button class="ghost" id="next" type="button">Next ▶</button>
-      </div>
-      <p class="sub" id="totals"></p>
-      <p class="sub" id="sub"></p>
-      <div class="ol-scroll" id="scroll">
-        <div class="ol-stage" id="stage">
-          <img id="photo" alt="The map's photograph">
-          <svg id="overlay" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none"></svg>
-        </div>
-      </div>
-      <div class="ol-legend" id="legend"></div>
-      <p class="ol-errors" id="errors" hidden></p>
-      <p class="sub" id="shiftsaid"></p>
-      <div class="ol-bar">
-        <span class="sub">Move all outlines:</span>
-        <button class="ghost" id="n-left" type="button" aria-label="West 25 cm">←</button>
-        <button class="ghost" id="n-up" type="button" aria-label="North 25 cm">↑</button>
-        <button class="ghost" id="n-down" type="button" aria-label="South 25 cm">↓</button>
-        <button class="ghost" id="n-right" type="button" aria-label="East 25 cm">→</button>
-        <button class="ghost" id="n-auto" type="button">Line up again</button>
-        <button class="ghost" id="n-reset" type="button">As delivered</button>
-        <button class="ghost" id="zoom" type="button">Zoom 2×</button>
-      </div>
-      <div class="ol-bar">
-        <button class="ghost" id="reject" type="button">Reject this example</button>
-        <button class="ghost" id="save" type="button">Save as draft</button>
-        <button class="primary" id="approve" type="button">Approve</button>
-        <span class="sub" id="said"></span>
-      </div>
-      <p class="sub">The thick outline is the one this example was chosen for. Tap any outline
-        that is wrong to drop it (it goes grey and dashed); tap again to keep it. Drag an outline
-        to move it on its own; the arrows move them all (25 cm a press). Each picture opens with
-        the outlines already lined up with the photo where that was clear. The photo is exactly
-        what the detector is shown: anything past its edge is cut off there. Approve when
-        everything left is certainly not lawn, or reject the whole example.</p>
-      <p class="sub" id="attribution"></p>
+<div class="ol-app" id="page" hidden>
+  <div class="ol-row top">
+    <select id="filter" aria-label="Which examples">
+      <option value="draft">To review</option>
+      <option value="approved">Approved</option>
+      <option value="rejected">Rejected</option>
+      <option value="all">All</option>
+    </select>
+    <select id="pick" aria-label="Which example"></select>
+    <button id="prev" type="button" aria-label="Previous">◀</button>
+    <button id="next" type="button" aria-label="Next">▶</button>
+    <span class="ol-count" id="count"></span>
+    <button id="helpbtn" type="button" aria-label="How this works">?</button>
+    <a href="/admin.html">Console</a>
+  </div>
+  <div class="ol-row info"><span id="sub"></span><span id="totals"></span></div>
+  <div class="ol-view" id="viewport">
+    <div class="ol-stage" id="stage">
+      <img id="photo" alt="The example's photograph">
+      <svg id="overlay" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none"></svg>
     </div>
+    <div class="ol-help" id="help" hidden>
+      <p><b>The whole photo is on screen</b>, fitted between the bars; it is exactly what the
+        detector is shown, and anything past its edge is cut off there.</p>
+      <p><b>Tap</b> an outline to drop it (grey, dashed); tap again to keep it.
+        <b>Drag</b> an outline to move it on its own. The <b>arrows</b> move all of them,
+        25 cm a press. Each new picture opens with the outlines already lined up with the
+        photo where that was clear; <b>Line up</b> does it again, <b>As delivered</b> puts
+        them back where the public map has them.</p>
+      <p><b>Pinch</b>, or the zoom button, to zoom; drag empty photo to look around. Nothing
+        here scrolls the page.</p>
+      <p><b>Approve</b> when everything outlined is certainly not lawn; <b>Reject</b> the whole
+        example otherwise. Only what is kept on screen when you approve is ever taught, and
+        going back over an approved one and approving again replaces that record.</p>
+      <p id="attribution"></p>
+      <button id="helpclose" type="button">Close</button>
+    </div>
+  </div>
+  <div class="ol-legend" id="legend"></div>
+  <p class="ol-errors" id="errors" hidden></p>
+  <div class="ol-row">
+    <button id="n-left" type="button" aria-label="West 25 cm">←</button>
+    <button id="n-up" type="button" aria-label="North 25 cm">↑</button>
+    <button id="n-down" type="button" aria-label="South 25 cm">↓</button>
+    <button id="n-right" type="button" aria-label="East 25 cm">→</button>
+    <button id="n-auto" type="button">Line up</button>
+    <button id="n-reset" type="button">As delivered</button>
+    <button id="zoom" type="button">Zoom</button>
+    <span class="ol-said" id="shiftsaid"></span>
+  </div>
+  <div class="ol-row">
+    <button class="bad" id="reject" type="button">Reject</button>
+    <button id="save" type="button">Draft</button>
+    <button class="primary" id="approve" type="button">Approve</button>
+    <span class="ol-said" id="said"></span>
   </div>
 </div>
 

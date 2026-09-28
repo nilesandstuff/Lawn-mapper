@@ -16,7 +16,7 @@ export const CLASS_COLOURS = {
 };
 
 const view = {
-  list: [], at: 0, doc: null, dropped: new Set(), w: 0, h: 0,
+  list: [], at: 0, filter: 'draft', doc: null, dropped: new Set(), w: 0, h: 0,
   /* Metres (east, north): all outlines together, and one outline dragged on its own. */
   shift: { east: 0, north: 0, source: null }, shifts: new Map(),
   /* Outlines listed for this frame with no part inside the photograph. */
@@ -138,6 +138,8 @@ function draw() {
 function grab(g, i) {
   g.addEventListener('pointerdown', (ev) => {
     ev.preventDefault();
+    ev.stopPropagation();   /* the outline's, not a pan of the photo */
+    if (cam.pointers.size) return;   /* a second finger joins a pinch, not a drag */
     const svg = $('#overlay');
     const perPx = view.w / svg.getBoundingClientRect().width;
     const start = { x: ev.clientX, y: ev.clientY, was: { ...(view.shifts.get(i) || { east: 0, north: 0 }) } };
@@ -251,11 +253,121 @@ function totals() {
     + ` · ${drafts} still to review`;
 }
 
+/* ----------------------------------------------- the viewer: fit, zoom, pan */
+
+/* The photo fitted whole into the viewport, then zoomed about a point. */
+const cam = { fit: 1, zoom: 1, x: 0, y: 0, pointers: new Map(), pinch: null, pan: null };
+const ZOOMS = [1, 2, 4];
+
+function layout() {
+  if (!view.w) return;
+  const vp = $('#viewport').getBoundingClientRect();
+  cam.fit = Math.min(vp.width / view.w, vp.height / view.h);
+  const st = $('#stage');
+  st.style.width = `${view.w * cam.fit}px`;
+  st.style.height = `${view.h * cam.fit}px`;
+  clampPan();
+  st.style.left = '0px';
+  st.style.top = '0px';
+  st.style.transform = `translate(${cam.x}px, ${cam.y}px) scale(${cam.zoom})`;
+}
+
+/* Centred when it fits; never panned so far that photo leaves a gap it need not. */
+function clampPan() {
+  const vp = $('#viewport').getBoundingClientRect();
+  const w = view.w * cam.fit * cam.zoom;
+  const h = view.h * cam.fit * cam.zoom;
+  cam.x = w <= vp.width ? (vp.width - w) / 2 : Math.min(0, Math.max(vp.width - w, cam.x));
+  cam.y = h <= vp.height ? (vp.height - h) / 2 : Math.min(0, Math.max(vp.height - h, cam.y));
+}
+
+/* Zoom to z keeping the viewport point (px, py) where it is. */
+function zoomAt(z, px, py) {
+  const z0 = cam.zoom;
+  cam.zoom = Math.max(1, Math.min(6, z));
+  cam.x = px - (px - cam.x) * (cam.zoom / z0);
+  cam.y = py - (py - cam.y) * (cam.zoom / z0);
+  layout();
+}
+
+function wireCamera() {
+  const vp = $('#viewport');
+  const local = (e) => { const r = vp.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  vp.addEventListener('pointerdown', (e) => {
+    cam.pointers.set(e.pointerId, local(e));
+    vp.setPointerCapture(e.pointerId);
+    if (cam.pointers.size === 2) {
+      const [a, b] = [...cam.pointers.values()];
+      cam.pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), z: cam.zoom };
+      cam.pan = null;
+    } else {
+      cam.pan = { at: local(e), x: cam.x, y: cam.y };
+    }
+  });
+  vp.addEventListener('pointermove', (e) => {
+    if (!cam.pointers.has(e.pointerId)) return;
+    cam.pointers.set(e.pointerId, local(e));
+    if (cam.pinch && cam.pointers.size === 2) {
+      const [a, b] = [...cam.pointers.values()];
+      const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+      zoomAt(cam.pinch.z * (d / cam.pinch.d), (a[0] + b[0]) / 2, (a[1] + b[1]) / 2);
+    } else if (cam.pan) {
+      const [x, y] = local(e);
+      cam.x = cam.pan.x + (x - cam.pan.at[0]);
+      cam.y = cam.pan.y + (y - cam.pan.at[1]);
+      layout();
+    }
+  });
+  const end = (e) => {
+    cam.pointers.delete(e.pointerId);
+    if (cam.pointers.size < 2) cam.pinch = null;
+    if (!cam.pointers.size) cam.pan = null;
+  };
+  vp.addEventListener('pointerup', end);
+  vp.addEventListener('pointercancel', end);
+  vp.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const [x, y] = local(e);
+    zoomAt(cam.zoom * (e.deltaY < 0 ? 1.25 : 0.8), x, y);
+  }, { passive: false });
+  window.addEventListener('resize', layout);
+  $('#zoom').addEventListener('click', () => {
+    const next = ZOOMS.find((z) => z > cam.zoom + 0.01) || 1;
+    const r = vp.getBoundingClientRect();
+    zoomAt(next, r.width / 2, r.height / 2);
+  });
+}
+
+/* ------------------------------------------------ which examples, in order */
+
+export const FILTERS = {
+  draft: (e) => e.status !== 'approved' && e.status !== 'rejected',
+  approved: (e) => e.status === 'approved',
+  rejected: (e) => e.status === 'rejected',
+  all: () => true,
+};
+
+/** Positions in `list` that pass the filter, in order. */
+export function shown(list, filter) {
+  const keep = FILTERS[filter] || FILTERS.all;
+  return list.map((e, i) => (keep(e) ? i : -1)).filter((i) => i >= 0);
+}
+
+/** The next position after `at` (or before, dir -1) that passes, wrapping; -1 if none. */
+export function stepIn(list, filter, at, dir = 1) {
+  const idx = shown(list, filter);
+  if (!idx.length) return -1;
+  if (dir > 0) return idx.find((i) => i > at) ?? idx[0];
+  return [...idx].reverse().find((i) => i < at) ?? idx[idx.length - 1];
+}
+
 async function open(i) {
-  view.at = (i + view.list.length) % view.list.length;
+  if (i < 0) { labelOptions(); return; }
+  view.at = i;
   const e = view.list[view.at];
-  $('#pick').value = e.id;
+  labelOptions();
   $('#said').textContent = '';
+  $('#help').hidden = true;
   const doc = await fetch(`/api/admin/example?id=${encodeURIComponent(e.id)}`).then((r) => r.json());
   if (doc.error || !doc.frame) {
     view.doc = { features: [], frame: null };
@@ -268,20 +380,23 @@ async function open(i) {
   view.shift = doc.shift ? { east: doc.shift.east, north: doc.shift.north, source: doc.shift.source } : { east: 0, north: 0, source: null };
   view.shifts = new Map((doc.features || []).map((f, k) => [k, f.properties?.shift]).filter(([, v]) => v));
   const t = doc.target || {};
-  $('#sub').textContent = `${e.id}: chosen for a ${t.class || '?'} (${t.source || '?'}) — `
+  const sub = `${e.id}: a ${t.class || '?'} (${t.source || '?'}), `
     + `${doc.status === 'approved' ? 'APPROVED' : doc.status === 'rejected' ? 'REJECTED' : 'draft'}`;
+  $('#sub').textContent = sub;
   const errs = doc.errors ? Object.entries(doc.errors).map(([k, v]) => `${k}: ${String(v).split('\n')[0]}`) : [];
   $('#errors').hidden = !errs.length;
-  $('#errors').textContent = errs.length ? `Some sources did not answer — ${errs.join('; ')}` : '';
+  $('#errors').textContent = errs.length
+    ? `Some outlines may be missing here (a public map did not answer when this was fetched): ${errs.join('; ')}` : '';
   $('#attribution').textContent = doc.attribution || '';
   const img = $('#photo');
   img.onload = async () => {
     view.w = img.naturalWidth; view.h = img.naturalHeight;
+    cam.zoom = 1;
+    layout();
     findOutside();
     draw(); legend();
-    /* How much ground the photo covers: all of it is on screen, edge to edge. */
     const m = mpp();
-    $('#sub').textContent += ` · whole photo shown, ${Math.round(view.w * m)} × ${Math.round(view.h * m)} m`;
+    $('#sub').textContent = `${sub} · ${Math.round(view.w * m)} × ${Math.round(view.h * m)} m`;
     /* Never saved before: line the outlines up now; what was saved stands. */
     if (!doc.shift && !doc.reviewedAt) {
       try { await autoAlign(); } catch { /* shown as delivered */ }
@@ -306,25 +421,34 @@ async function save(status) {
   e.status = out.status;
   e.kept = out.kept || {};
   $('#said').textContent = out.status === 'approved' ? 'Approved.' : out.status === 'rejected' ? 'Rejected.' : 'Saved as a draft.';
-  labelOptions();
   totals();
-  /* On to the next one still to review: this page is a queue. */
+  /* On to the next one in this list: reviewing is a queue, and so is going back over. */
   if (out.status !== 'draft') {
-    const next = view.list.findIndex((x, k) => k > view.at && x.status === 'draft');
-    if (next >= 0) open(next);
-  }
+    const next = stepIn(view.list, view.filter, view.at, 1);
+    if (next >= 0 && next !== view.at) open(next); else labelOptions();
+  } else labelOptions();
 }
 
 function labelOptions() {
   const pick = $('#pick');
   pick.textContent = '';
-  view.list.forEach((e) => {
+  const idx = shown(view.list, view.filter);
+  for (const i of idx) {
+    const e = view.list[i];
     const o = document.createElement('option');
-    o.value = e.id;
+    o.value = String(i);
     o.textContent = `${e.status === 'approved' ? '✓ ' : e.status === 'rejected' ? '✗ ' : ''}${e.id}`;
     pick.append(o);
-  });
-  pick.value = view.list[view.at]?.id || '';
+  }
+  if (!idx.includes(view.at)) {
+    const o = document.createElement('option');
+    o.value = String(view.at);
+    o.textContent = `${view.list[view.at]?.id || ''} (not in this list)`;
+    pick.prepend(o);
+  }
+  pick.value = String(view.at);
+  const pos = idx.indexOf(view.at);
+  $('#count').textContent = idx.length ? `${pos >= 0 ? pos + 1 : '–'} of ${idx.length}` : 'none';
 }
 
 async function start() {
@@ -339,12 +463,21 @@ async function start() {
   }
   view.list = data.examples || [];
   if (!view.list.length) { $('#none').hidden = false; return; }
+  document.documentElement.classList.add('viewer');
+  $('#gate').hidden = true;
   $('#page').hidden = false;
-  labelOptions();
+  view.filter = shown(view.list, 'draft').length ? 'draft' : 'all';
+  $('#filter').value = view.filter;
   totals();
-  $('#pick').addEventListener('change', (ev) => open(view.list.findIndex((x) => x.id === ev.target.value)));
-  $('#prev').addEventListener('click', () => open(view.at - 1));
-  $('#next').addEventListener('click', () => open(view.at + 1));
+  wireCamera();
+  $('#filter').addEventListener('change', (ev) => {
+    view.filter = ev.target.value;
+    const idx = shown(view.list, view.filter);
+    if (idx.length && !idx.includes(view.at)) open(idx[0]); else labelOptions();
+  });
+  $('#pick').addEventListener('change', (ev) => open(Number(ev.target.value)));
+  $('#prev').addEventListener('click', () => open(stepIn(view.list, view.filter, view.at, -1)));
+  $('#next').addEventListener('click', () => open(stepIn(view.list, view.filter, view.at, 1)));
   $('#save').addEventListener('click', () => save('draft'));
   $('#approve').addEventListener('click', () => save('approved'));
   $('#reject').addEventListener('click', () => save('rejected'));
@@ -354,12 +487,11 @@ async function start() {
   $('#n-down').addEventListener('click', () => nudge(0, -NUDGE_M));
   $('#n-auto').addEventListener('click', () => { view.shifts = new Map(); autoAlign().catch(() => {}); });
   $('#n-reset').addEventListener('click', () => { view.shift = { east: 0, north: 0, source: null }; view.shifts = new Map(); draw(); });
-  $('#zoom').addEventListener('click', () => {
-    const big = $('#scroll').classList.toggle('zoomed');
-    $('#zoom').textContent = big ? 'Zoom out' : 'Zoom 2×';
-  });
-  const first = view.list.findIndex((x) => x.status === 'draft');
-  open(first >= 0 ? first : 0);
+  $('#helpbtn').addEventListener('click', () => { $('#help').hidden = !$('#help').hidden; });
+  $('#helpclose').addEventListener('click', () => { $('#help').hidden = true; });
+  $('#help').addEventListener('pointerdown', (e) => e.stopPropagation());
+  const first = shown(view.list, view.filter)[0];
+  open(first ?? 0);
 }
 
 if (typeof document !== 'undefined' && document.getElementById('overlay')) start();

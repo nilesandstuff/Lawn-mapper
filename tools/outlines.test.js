@@ -118,3 +118,19 @@ console.log('PASS  the fetch tool and the worker agree on where a map\'s outline
   assert.deepEqual(keptOutlines(early).map((f) => f.properties.class), ['water']);
   console.log('PASS  examples approved before the review record keep what was kept then');
 }
+
+// The viewer's filter: to review / approved / rejected / all, and stepping
+// wraps within the filter.
+{
+  const { shown, stepIn } = await import('../public/outlines.js');
+  const list = [{ status: 'approved' }, { status: 'draft' }, { status: 'approved' }, { status: 'rejected' }, { status: 'draft' }];
+  assert.deepEqual(shown(list, 'approved'), [0, 2]);
+  assert.deepEqual(shown(list, 'draft'), [1, 4]);
+  assert.deepEqual(shown(list, 'all'), [0, 1, 2, 3, 4]);
+  assert.equal(stepIn(list, 'approved', 0, 1), 2);
+  assert.equal(stepIn(list, 'approved', 2, 1), 0, 'wraps');
+  assert.equal(stepIn(list, 'approved', 0, -1), 2, 'wraps backwards');
+  assert.equal(stepIn(list, 'draft', 2, 1), 4, 'from outside the filter, the next one in it');
+  assert.equal(stepIn([], 'draft', 0, 1), -1);
+  console.log('PASS  viewer: the filter lists the right examples and stepping stays inside it');
+}
