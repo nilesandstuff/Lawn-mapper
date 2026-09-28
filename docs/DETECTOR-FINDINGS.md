@@ -71,8 +71,14 @@ got here. Update it whenever the in-flight run changes.*
 - **Also in flight (2026-09-28): S17, both scales** -- whole-lot and 6 cm
   block features stacked for every lot (`windows: both`), examples on,
   canopy on lawn, three seeds. Bars in S17, written before the runs.
-- **The examples made every run ~3.6x slower (2026-09-28, measured):** ~140
-  example frames beside 55 lots. Whole-lot backbone 12 -> 46 min, each
+- **Decided (2026-09-28): H57, the not-lawn examples are NOT adopted.**
+  Worse at the whole lot (14 better / 38 worse, +2.7 [+1.1, +4.6]) and under
+  windows (11 / 40, +3.3 [+1.4, +5.0]). The pond (B12) improved; many lawns
+  did not. The relaunched runs on 6792729 still carry examples (cropped),
+  so they measure the arrangements WITH examples and the crop; the clean
+  both-scales question is three more runs without examples against S14.
+- **The examples made every run ~3.6x longer (2026-09-28, measured):** 90
+  examples, 145 frames beside 55 lots. Whole-lot backbone 12 -> 46 min, each
   decoder 10 -> 33 min; windows backbone 78-91 min. The 6 cm tile runs and
   S17 could not finish inside a job's six hours, so they were CANCELLED
   mid-backbone (runs 36450763774 / 36450766989 / 36450771744 and
@@ -676,6 +682,64 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H57. The owner's not-lawn examples (S16) make the detector WORSE at the whole lot and under windows -- not adopted, 2026-09-28
+
+*Runs on commit eb3dc3d, `examples: on`, fused, 55 lots, folds by place,
+seeds 7/8/9. Whole lot (`windows: off`, `canopy: compare`): 36450737419 /
+36450743019 / 36450746563, against S14's 36355253442 / 36355254898 /
+36355256268, THE PLAN's row ("decoder, canopy on lawn + stage 3, span, lidar
+veto") -- compare-runs.js run locally on the six lot-results files, because
+workflow 24 run 36481560815 sat queued behind the training runs. Windows
+(`windows: on`, `canopy: on lawn`): 36450750741 / 36450754828 / 36450758924
+against S15's 36409834421 / 36411745885 / 36411749028, row "the pretrained
+eye, decoder + stage 3, span, lidar veto" both sides, workflow 24 run
+36481564377. In every one of these runs the examples trained on the whole
+example frame (uncropped; see where-things-stand).*
+
+**What went in:** 90 approved examples written as frames (outlines kept:
+water 68, road 148, building 77, sidewalk 62, parking 23, driveway 20, pool
+2); the decoder counted 90 (water 35, building 19, parking 15, driveway 10,
+sidewalk 5, road 4, pool 2 -- by the id's kind). 145 frames in all beside
+the 55 lots. Folds left out 1 to 13 examples within 2 km of a held-out lot.
+
+**Whole lot, against S14:**
+
+| lots | better / worse / level | median | paired change [95%] | sign test |
+|---|---|---|---|---|
+| all 55 | 14 / 38 / 3 | 25.3 -> 31.1% | +2.7 [+1.1, +4.6] | p 0.001 |
+| frozen 32 | 9 / 22 / 1 | 28.1 -> 32.8% | +2.7 [+1.0, +6.1] | p 0.029 |
+| approved since | 5 / 16 / 2 | 24.8 -> 23.3% | +2.7 [+0.8, +5.2] | p 0.027 |
+
+**Windows, against S15:**
+
+| lots | better / worse / level | median | paired change [95%] | sign test |
+|---|---|---|---|---|
+| all 55 | 11 / 40 / 4 | 27.6 -> 29.9% | +3.3 [+1.4, +5.0] | p 0.000 |
+| frozen 32 | 6 / 23 / 3 | 28.9 -> 31.8% | +2.8 [+1.1, +5.2] | p 0.002 |
+| approved since | 5 / 17 / 1 | 23.4 -> 28.9% | +4.3 [+1.1, +5.3] | p 0.017 |
+
+**Bar 1 (whole lot) and bar 2 (windows): both fail, and not narrowly** --
+the 95% intervals sit wholly ABOVE zero. This is the first setting in this
+file measured as clearly worse by three seeds a side, both ways.
+
+**Where it helped, as hoped:** the pond, B12, 28.8 -> 22.0 at the whole
+lot; the Georgia lot (-84.06045, 33.94050) 409 -> 148 at the whole lot and
+440 -> 300 under windows; B19 41 -> 31 and 36 -> 24. **Where it hurt:** at
+the whole lot B03 53.6 -> 95.2, B02 51.6 -> 91.0, B23 37.4 -> 66.3, B10
+20.8 -> 47.9, -77.40500,38.46195 45.2 -> 71.2; under windows B16 10.8 ->
+86.4, B15 9.4 -> 52.2, B18 40.6 -> 66.7, B28 30.2 -> 50.4.
+
+**Not known:** whether those lots lost lawn or gained it -- the per-lot
+files carry the error, not its direction. The pictures of these runs would
+say. S16's "why it might not" (the examples shift the decoder's balance and
+push the lawn's edge in everywhere) is the obvious reading of lots going
+from 10% to 86%, and it is SPECULATION until a picture shows it.
+
+**Also measured:** the examples made the run ~3.6x longer (backbone 12 ->
+46 min, a decoder 10 -> 33 min) for 145 frames against 55 -- the example
+photographs are bigger frames than the lots on average (19 s a frame at the
+backbone against 13).
 
 ### H56. A maximum block size (S15: whole below ~90 m, windows above) is no better, and on the lots approved since it is worse -- not adopted, 2026-09-28
 
@@ -4350,7 +4414,9 @@ kinds of lot.
 `canopy: on lawn`, `examples: on` so it sits beside S16's runs):**
 1. **Against the whole lot with examples, re-run on the same code** (the
    arrangement that stands; S16's own whole-lot runs trained on uncropped
-   examples, see where-things-stand):
+   examples, see where-things-stand). **Added after H57 (examples lose):**
+   both scales WITHOUT examples against S14's three runs, same bar -- the
+   question S17 was really about:
    THE PLAN's row; adopted if more lots better than worse with a sign-test p
    under 0.1, the 95% interval of the median paired change below zero, and
    not worse on the lots approved since.
@@ -4601,3 +4667,6 @@ worse on the lots approved since. Then it joins THE PLAN.
 | 2026-09-28 | 36358021364 | 55 | **`windows: tiles 10 cm`** (S13's control: 45 m blocks, 1.6 m patch, padding skipped), fused, folds by place, seed 7; vs H50 fused s7/8/9 (workflow 24 36367542993) | — | — | **H55: screen not met, but a reshuffle.** Plan row 23 better / 25 worse, +0.2 [-1.4, +1.4]; B28 -54, B03 -38, B18 -18; B20 +76, B02 +24, B24 +23, B19 +22. Backbone 18 min |
 | 2026-09-28 | 36358019744 | 55 | **`windows: tiles`** (S13: 6 cm, 27 m blocks, 0.96 m patch, padding skipped), fused, folds by place, seed 7; vs H50 fused s7/8/9 (workflow 24 36377343429) | — | — | **H55: screen not met; S13 closed.** Plan row 21 better / 31 worse, +0.9 [-0.7, +2.4]; B28 -55, B03 -43; B20 +90, B23 +31, B13 +19, B10 +18 -- same lots as the 10 cm run. Backbone 91 min, 48 min a decoder |
 | 2026-09-28 | 36409834421 36411745885 36411749028 | 55 | **`windows: on`** (S15: whole below ~90 m, 10 cm windows above), fused, `canopy: on lawn`, seeds 7/8/9; vs S14's fused s7/8/9 (workflow 24 36442768901) and H50's (36442743520). Seeds 8/9 first died at the pip install (PyPI timeouts; 36409837637, 36409840302) and were rerun | — | — | **H56: fails its bar, S15 closed.** vs S14: 18 better / 28 worse, +0.6 [-0.1, +1.4]; since 6 / 15, +1.4 [+0.1, +5.6]. B28 85.6 -> 30.2, B20 45.6 -> 33.7; B10 20.8 -> 36.8. H55's tiles re-read against S14: 6 cm +0.8, 10 cm -0.1 -- unchanged |
+| 2026-09-28 | 36450737419 36450743019 36450746563 | 55 (+90 examples) | **`examples: on`** (S16), whole lot, fused, `canopy: compare`, seeds 7/8/9, uncropped examples; vs S14 s7/8/9 (compare-runs.js locally) | — | — | **H57: worse.** 14 better / 38 worse, +2.7 [+1.1, +4.6], p 0.001. B12 28.8 -> 22.0; B03 +42, B02 +39, B23 +29, B10 +27. Backbone 46 min, 33 min a decoder |
+| 2026-09-28 | 36450750741 36450754828 36450758924 | 55 (+90 examples) | **`examples: on`** (S16), `windows: on`, fused, `canopy: on lawn`, seeds 7/8/9, uncropped; vs S15 (workflow 24 36481564377) | — | — | **H57: worse.** 11 better / 40 worse, +3.3 [+1.4, +5.0], p 0.000. B16 10.8 -> 86.4, B15 9.4 -> 52.2. Backbone 78-91 min |
+| 2026-09-28 | 36450763774 36450766989 36450771744, 36453431102 36453434382 36453439067 | — | S16 tiles 6 cm and the first S17 (both scales), examples on | — | — | **CANCELLED mid-backbone** -- could not finish in one job's time with the examples. No results |
