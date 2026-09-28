@@ -122,6 +122,12 @@ class Decoder(nn.Module):
         return self.net(x)
 
 
+def is_example(stem):
+    """A not-lawn example (owner-reviewed public outline, 2026-09-28): trained
+    on, never held out, never scored. Ids look like 'lng,lat:example:water-001'."""
+    return ":example:" in stem
+
+
 def read_lawn(feats, frames, stem, shape):
     """One lawn: its patch grid, and its targets and weights on that grid."""
     grid = np.fromfile(os.path.join(feats, f"{stem}.f32"), dtype=np.float32)
@@ -155,7 +161,14 @@ def read_lawn(feats, frames, stem, shape):
     if mask_file and os.path.exists(mask_file):
         can = Image.open(mask_file).convert("L").resize((cells_w, cells_h), Image.NEAREST)
         can = np.asarray(can) >= 128
-        inferred = inferred | (can if CANOPY_MODE == "all" else (can & truth))
+        # A NOT-LAWN EXAMPLE (tools/not-lawn-examples.js frames): the part of
+        # an outline under the tree model's canopy is unseen too (owner,
+        # 2026-09-28) -- the photo shows leaves there, not the pavement or
+        # the pond, and teaching "leaves are not lawn" is stage 3's question.
+        if is_example(stem):
+            inferred = inferred | can
+        else:
+            inferred = inferred | (can if CANOPY_MODE == "all" else (can & truth))
         canopy = True
 
     extra = None
@@ -341,6 +354,24 @@ def main():
               f"lidar on {n_l}, NAIP on {n_n}, tree canopy on {n_c} of {len(lawns)} lawns; "
               f"dropout lidar {DROP_LIDAR:g}, NAIP {DROP_NAIP:g}", flush=True)
 
+    # NOT-LAWN EXAMPLES TRAIN, THEY ARE NEVER HELD OUT. They join every
+    # fold's training -- except that a fold does not see an example within
+    # NEIGHBOUR_KM of a lot it holds out, the same rule that keeps a lot's
+    # neighbours out of its decoder (same photograph, same light).
+    examples = [L for L in lawns if is_example(L["id"])]
+    lawns = [L for L in lawns if not is_example(L["id"])]
+    if examples:
+        from folds import lonlat, km_between
+        from collections import Counter
+        kinds = Counter(L["id"].split(":example:")[1].split("-")[0] for L in examples)
+        print(f"NOT-LAWN EXAMPLES: {len(examples)} trained on, never held out "
+              f"({', '.join(f'{k} {n}' for k, n in sorted(kinds.items()))})", flush=True)
+
+    def near_held(example, group):
+        a = lonlat(example["id"])
+        return a is not None and any(
+            (b := lonlat(h["id"])) is not None and km_between(a, b) < NEIGHBOUR_KM for h in group)
+
     held_out = lawns if not LIMIT else lawns[:LIMIT]
     # K-FOLD WHEN ASKED (FOLDS=k). Leave-one-out trains one decoder per lawn,
     # so its cost grows with the square of the corpus: 20 minutes a decoder
@@ -364,6 +395,12 @@ def main():
     for f, group in enumerate(groups):
         t0 = time.time()
         train = [L for L in lawns if all(L is not h for h in group)]
+        if examples:
+            kept = [E for E in examples if not near_held(E, group)]
+            if len(kept) < len(examples):
+                print(f"  fold {f + 1}: {len(examples) - len(kept)} example(s) within {NEIGHBOUR_KM:g} km "
+                      f"of a held-out lot left out", flush=True)
+            train = train + kept
         model, mean, sd, loss = train_one(train, dim, SEED + f)
         for held in group:
             prob = answer(model, mean, sd, held)
@@ -382,7 +419,7 @@ def main():
             "model": manifest.get("model"), "size": manifest.get("size"),
             "dim": dim, "params": params, "epochs": EPOCHS, "seed": SEED,
             "lr": LR, "weightDecay": WEIGHT_DECAY, "dropout": DROPOUT,
-            "seenOnly": True, "lawns": len(lawns), "folds": len(groups),
+            "seenOnly": True, "lawns": len(lawns), "folds": len(groups), "examples": len(examples),
             "canopyUnseen": sum(1 for L in lawns if L["canopy"]),
             "canopyMode": CANOPY_MODE if CANOPY else None,
             "fused": ({"lidar": sum(1 for L in lawns if "lidar" in L["sources"]),

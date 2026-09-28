@@ -138,3 +138,31 @@ console.log('PASS  the fetch tool and the worker agree on where a map\'s outline
   assert.equal(stepIn([], 'draft', 0, 1), -1);
   console.log('PASS  viewer: the filter lists the right examples and stepping stays inside it');
 }
+
+// Approved examples become training frames: the kept outlines, moved by
+// their shifts, and nothing else.
+{
+  const { exampleMask, exampleFrameId, imageDims } = await import('./not-lawn-examples.js');
+  const { reviewExample } = await import('../worker/src/outlines.js');
+  const { framePxToLngLat, metresPerPixel } = await import('../public/lib/mercator.js');
+  const frame = { lng: -85.6, lat: 42.9, zoom: 19, size: 400, height: 400 };
+  const sq = (x, y, s) => [[x, y], [x + s, y], [x + s, y + s], [x, y + s], [x, y]].map((p) => framePxToLngLat(frame, p, 100, 100));
+  const doc = reviewExample({ id: 'water-001', frame, features: [
+    { geometry: { type: 'Polygon', coordinates: [sq(10, 10, 10)] }, properties: { class: 'water' } },
+    { geometry: { type: 'Polygon', coordinates: [sq(60, 60, 10)] }, properties: { class: 'road' } },
+  ] }, { status: 'approved', dropped: [1] });
+  let m = exampleMask(doc, 100, 100);
+  assert.equal(m[15 * 100 + 15], 1, 'inside the kept pond');
+  assert.equal(m[65 * 100 + 65], 0, 'the dropped road is not taught');
+  assert.equal(m.reduce((a, b) => a + b, 0) > 80 && m.reduce((a, b) => a + b, 0) < 130, true);
+  const cell = metresPerPixel(frame, 100);
+  const moved = { ...doc, shift: { east: 20 * cell, north: 0, source: 'person' } };
+  m = exampleMask(moved, 100, 100);
+  assert.equal(m[15 * 100 + 15], 0, 'moved away');
+  assert.equal(m[15 * 100 + 35], 1, 'moved 20 cells east');
+  assert.equal(exampleMask({ ...doc, status: 'draft' }, 100, 100).some(Boolean), false, 'a draft teaches nothing');
+  assert.match(exampleFrameId(doc), /^-85\.60000,42\.90000:example:water-001$/);
+  const png = Buffer.alloc(32); png.writeUInt32BE(0x89504e47, 0); png.writeUInt32BE(1272, 16); png.writeUInt32BE(1216, 20);
+  assert.deepEqual(imageDims(png), { w: 1272, h: 1216 });
+  console.log('PASS  examples as training frames: kept outlines only, shifts applied, drafts give nothing');
+}

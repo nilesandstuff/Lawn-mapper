@@ -65,6 +65,9 @@ got here. Update it whenever the in-flight run changes.*
   21 better / 31 worse, +0.9; 10 cm: 23 / 25, +0.2. Both move the same lots
   by tens of points (B28 and B03 far better, B20 far worse) -- and NOT by
   lot size (B13, the biggest, got much worse). S13 closed.
+- **In flight (2026-09-28): S16, the not-lawn examples in training** --
+  nine runs: whole lot, windows and tiles 6 cm, each with the approved
+  examples, three seeds each. Bars written above before they ran.
 - **Decided (2026-09-28): H56, the owner's "maximum block size" (S15,
   `windows: on`) is NOT adopted.** Three seeds against the fair baseline
   (S14's runs -- H50's predate NAIP alignment): 18 better / 28 worse,
@@ -4310,6 +4313,37 @@ not:** a 27 m block is less context than a whole lot, and H4 once found
 fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
+
+### S16. The owner's not-lawn examples in training, under each arrangement (owner, 2026-09-28)
+
+**The idea (owner):** public outlines of things that are certainly not lawn
+-- ponds above all, then houses, driveways, car parks, roads, sidewalks --
+photographed away from our maps, reviewed by the owner on /outlines.html
+(drop, move, approve, reject), taught as "not lawn" and nothing else in the
+picture. **Built** (workflow 14 `examples: on`; tools/not-lawn-examples.js
+`frames`; tools/train_decoder.py): only keptOutlines() -- approved, the
+outlines kept at review, moved as the owner moved them -- are graded 0;
+everything else in an example is weight 0; the part under the tree model's
+canopy is unseen; examples are trained on in every fold but never held out
+or scored, and a fold leaves out any example within 2 km of a lot it holds
+out. **Why it might help:** the pond (B12 and others) is one of a kind in
+55 lots, and water is the most-approved class. **Why it might not:** a few
+dozen frames of negatives against 55 lots of mixed labels can shift the
+decoder's balance (pos_weight is computed over the training set) and push
+lawn edges inward everywhere.
+
+**Bars, before the runs (three seeds each, fused, 55 lots, folds by place):**
+1. **The main question -- whole lot (`windows: off`, `canopy: compare`) with
+   examples against S14's three runs without:** THE PLAN's row; adopted if
+   more lots better than worse with a sign-test p under 0.1, the 95% interval
+   of the median paired change below zero, and not worse on the lots
+   approved since. **Also reported, not a bar:** the lots with water in them
+   (B12 and any the owner names).
+2. **Windows (`windows: on`, `canopy: on lawn`) with examples against S15's
+   three runs without** -- the same bar; says whether examples help there.
+3. **The arrangements with examples against each other:** tiles 6 cm
+   (`canopy: on lawn`, three seeds) and windows, each against the whole lot
+   with examples, same bar. Nothing is adopted from 3 alone unless 1 holds.
 
 ### S15. A MAXIMUM block size instead of a fixed one: small lots whole, big lots split (owner, 2026-09-28)
 

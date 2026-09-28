@@ -19,7 +19,10 @@ import { readFileSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { frameFor } from '../public/lib/mercator.js';
-import { captureFrame, imageryUrl } from '../worker/src/imagery.js';
+import { captureFrame, imageryUrl, frameBbox3857 } from '../worker/src/imagery.js';
+import { lngLatToFramePx, metresPerPixel } from '../public/lib/mercator.js';
+import { rasterizePolygon } from '../public/lib/mask.js';
+import { keptOutlines } from '../worker/src/outlines.js';
 import { query } from './corpus-db.js';
 
 const BUCKET = process.env.CORPUS_BUCKET || 'lawn-mapper-corpus';
@@ -147,11 +150,112 @@ function audit() {
   console.log(`${rows.length} examples reviewed at least once.`);
 }
 
+/*
+ * THE APPROVED EXAMPLES AS TRAINING FRAMES (owner, 2026-09-28: "run some
+ * fused runs with the outlines"). Each approved example is written into
+ * workflow 14's frames directory exactly as a corpus lot is -- the photo,
+ * a labels PNG on the scoring grid, and its entries in scale.json -- so the
+ * canopy, lidar, NAIP and backbone steps treat it like any other frame.
+ *
+ * The labels say only what the owner kept: G (graded ground) is 255 inside
+ * the kept outlines, moved by the example's and each outline's own shift,
+ * and 0 everywhere else, so nothing outside them is taught at all; R (lawn)
+ * is 0. tools/train_decoder.py recognises the id (':example:') and trains on
+ * it without ever holding it out; the scorer never sees it (it scores the
+ * corpus only). Only keptOutlines() is read: a draft, a rejected example or
+ * one whose outline count changed since review contributes nothing.
+ */
+export const exampleFrameId = (doc) => `${doc.frame.lng.toFixed(5)},${doc.frame.lat.toFixed(5)}:example:${doc.id}`;
+
+/** The kept outlines, shifts applied, as a mask on a w x h grid over the example's frame. */
+export function exampleMask(doc, w, h) {
+  const out = new Uint8Array(w * h);
+  const cell = metresPerPixel(doc.frame, w);
+  const all = doc.shift || { east: 0, north: 0 };
+  for (const f of keptOutlines(doc)) {
+    const own = f.properties?.shift || { east: 0, north: 0 };
+    const dx = (all.east + own.east) / cell;
+    const dy = -(all.north + own.north) / cell;
+    const project = (ll) => { const [x, y] = lngLatToFramePx(doc.frame, ll, w, h); return [x + dx, y + dy]; };
+    const g = f.geometry;
+    const polys = g?.type === 'Polygon' ? [g.coordinates] : g?.type === 'MultiPolygon' ? g.coordinates : [];
+    for (const rings of polys) {
+      const m = rasterizePolygon(rings, w, h, project);
+      for (let i = 0; i < m.length; i++) if (m[i]) out[i] = 1;
+    }
+  }
+  return out;
+}
+
+/** Pixel size of a PNG or JPEG from its header, or null. */
+export function imageDims(buf) {
+  if (buf.length > 24 && buf.readUInt32BE(0) === 0x89504e47) return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) };
+  if (buf[0] === 0xff && buf[1] === 0xd8) {
+    for (let i = 2; i + 9 < buf.length;) {
+      if (buf[i] !== 0xff) { i++; continue; }
+      const m = buf[i + 1];
+      if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) return { h: buf.readUInt16BE(i + 5), w: buf.readUInt16BE(i + 7) };
+      i += 2 + buf.readUInt16BE(i + 2);
+    }
+  }
+  return null;
+}
+
+async function framesMode(dir) {
+  const { PNG } = await import('pngjs');
+  const { gridDims } = await import('./train-detector.js');
+  const scalePath = join(dir, 'scale.json');
+  const scale = JSON.parse(readFileSync(scalePath, 'utf8'));
+  for (const k of ['frames', 'downs', 'boxes', 'storedPx', 'storedPy']) scale[k] = scale[k] || {};
+  const kinds = ['water', 'building', 'pool', 'driveway', 'parking', 'road', 'sidewalk', 'rail'];
+  const counts = {};
+  let written = 0;
+  for (const kind of kinds) {
+    for (let i = 1, misses = 0; misses < 3; i++) {
+      const id = `${kind}-${String(i).padStart(3, '0')}`;
+      const got = wranglerGet(`${BUCKET}/${EXAMPLE_PREFIX}${id}.json`);
+      if (!got.ok) { misses++; continue; }
+      misses = 0;
+      const doc = JSON.parse(got.text());
+      if (!keptOutlines(doc).length || !doc.frame) continue;
+      const { w, h } = gridDims(doc.frame);
+      const mask = exampleMask(doc, w, h);
+      if (!mask.some(Boolean)) continue;
+      const fid = exampleFrameId(doc);
+      const img = wranglerGet(`${BUCKET}/${EXAMPLE_PREFIX}${id}.png`);
+      if (!img.ok) { console.log(`  ${id}: photo not read, left out`); continue; }
+      writeFileSync(join(dir, `${fid}.png`), readFileSync(TMP));
+      const png = new PNG({ width: w, height: h });
+      for (let k = 0; k < w * h; k++) {
+        png.data[k * 4] = 0; png.data[k * 4 + 1] = mask[k] ? 255 : 0; png.data[k * 4 + 2] = 0; png.data[k * 4 + 3] = 255;
+      }
+      writeFileSync(join(dir, `${fid}-labels.png`), PNG.sync.write(png));
+      const across = metresPerPixel(doc.frame, 1);
+      const height = doc.frame.height || doc.frame.size;
+      scale.frames[fid] = across;
+      scale.downs[fid] = across * (height / doc.frame.size);
+      scale.boxes[fid] = frameBbox3857(doc.frame);
+      const dims = imageDims(readFileSync(TMP)) || { w: doc.frame.size * 2, h: height * 2 };
+      scale.storedPx[fid] = dims.w;
+      scale.storedPy[fid] = dims.h;
+      for (const f of keptOutlines(doc)) {
+        const c = f.properties?.class || 'other';
+        counts[c] = (counts[c] || 0) + 1;
+      }
+      written++;
+    }
+  }
+  writeFileSync(scalePath, JSON.stringify(scale));
+  console.log(`${written} approved not-lawn examples written as training frames; `
+    + `outlines kept: ${Object.entries(counts).map(([c, n]) => `${c} ${n}`).join(', ') || 'none'}.`);
+}
+
 if (process.argv[1] && process.argv[1].endsWith('not-lawn-examples.js')) {
   const [cmd, a, b] = process.argv.slice(2);
   if (cmd === 'seeds') seeds();
   else if (cmd === 'fetch') await fetchAll(a, b || 'examples');
   else if (cmd === 'upload') upload(a || 'examples');
   else if (cmd === 'audit') audit();
+  else if (cmd === 'frames') await framesMode(a || 'frames');
   else { console.error('usage: not-lawn-examples.js seeds | fetch candidates.json DIR | upload DIR'); process.exit(2); }
 }
