@@ -86,6 +86,14 @@ got here. Update it whenever the in-flight run changes.*
   a repeat of S14 seed 7 on the GPU, against 36355253442 -- GPU arithmetic
   differs from the CPU's in the last digits, so how far that moves lots is
   itself worth knowing before GPU runs are compared with CPU ones.
+  **Measured (run 36488404436, S14 seed 7 on an L4):** THE PLAN's row 26.3
+  -> 26.2%, paired change +0.2 [-0.4, +0.8], 19 better / 23 worse / 13
+  level, p 0.64. A lot moves 1.2 points (median |GPU - CPU|; max 53, the
+  Georgia lot) against 2.6 for seed 7 -> seed 8 on the CPU. So GPU and CPU
+  runs may be compared, and a GPU-vs-CPU difference is about half a seed's.
+  **Time:** canopy 3 min (7 on CPU, incl. the first image build), backbone
+  + three decoders 12 min (~42), extraction job 28 min (~73), whole run
+  ~60 min (1 h 43). Workflow 14's `gpu` default is now `modal`.
 - **The two-job split failed its first real run (2026-09-28, 21:02):**
   artifacts refuse file names with a colon, and every lot id has two. All
   twelve runs on 6792729 / cffd94b were cancelled or died at that step (no
@@ -4687,3 +4695,4 @@ worse on the lots approved since. Then it joins THE PLAN.
 | 2026-09-28 | 36450737419 36450743019 36450746563 | 55 (+90 examples) | **`examples: on`** (S16), whole lot, fused, `canopy: compare`, seeds 7/8/9, uncropped examples; vs S14 s7/8/9 (compare-runs.js locally) | — | — | **H57: worse.** 14 better / 38 worse, +2.7 [+1.1, +4.6], p 0.001. B12 28.8 -> 22.0; B03 +42, B02 +39, B23 +29, B10 +27. Backbone 46 min, 33 min a decoder |
 | 2026-09-28 | 36450750741 36450754828 36450758924 | 55 (+90 examples) | **`examples: on`** (S16), `windows: on`, fused, `canopy: on lawn`, seeds 7/8/9, uncropped; vs S15 (workflow 24 36481564377) | — | — | **H57: worse.** 11 better / 40 worse, +3.3 [+1.4, +5.0], p 0.000. B16 10.8 -> 86.4, B15 9.4 -> 52.2. Backbone 78-91 min |
 | 2026-09-28 | 36450763774 36450766989 36450771744, 36453431102 36453434382 36453439067 | — | S16 tiles 6 cm and the first S17 (both scales), examples on | — | — | **CANCELLED mid-backbone** -- could not finish in one job's time with the examples. No results |
+| 2026-09-28 | 36488404436 | 55 | **`gpu: modal`** -- S14 seed 7 (windows off, fused, `canopy: compare`) repeated on an L4 GPU; vs 36355253442 (compare-runs.js locally) | — | — | **GPU = CPU within half a seed.** Plan row +0.2 [-0.4, +0.8], p 0.64; median lot moves 1.2 (seed change 2.6). Canopy 3 min, backbone + 3 decoders 12 min, run ~60 min vs 1 h 43. Default flipped to modal |

@@ -251,9 +251,12 @@ on:
         # (tools/modal_plan.py, pinned by modal_plan_test.py); a GPU's float
         # arithmetic differs from a CPU's in the last digits, so compare
         # like with like when it matters.
+        # DEFAULT MODAL since 2026-09-28: S14 seed 7 repeated on the GPU moved
+        # the plan row +0.2 [-0.4, +0.8] and a lot by 1.2 points (median),
+        # half what a change of seed moves it (2.6). See where-things-stand.
         description: 'Where the models run: a GPU on Modal, or this CPU runner'
         type: choice
-        default: 'github'
+        default: 'modal'
         options: ['modal', 'github']
       about:
         # WHAT THIS RUN IS FOR, kept with the pictures for ever.
