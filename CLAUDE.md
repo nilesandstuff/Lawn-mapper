@@ -62,3 +62,14 @@ Adding a column to a table that has ever shipped means editing BOTH:
 This is not hypothetical -- see the commit "CREATE TABLE IF NOT EXISTS cannot
 add a column". A missing column cost six deploys and looked like a feature that
 was switched off.
+
+## Modal costs money: ask before sending runs there
+
+Workflow 14 can run its models on a paid GPU on Modal (`gpu: modal`). The
+owner pays for it -- $8.78 in the first day -- so ASK FIRST, every time, with
+how many runs and a rough cost. The default is `github`, the free CPU runner,
+and that is what to use without asking. A job there may take six hours, and
+workflow 14's two jobs get six each.
+
+Spread launches out rather than dispatching a batch in one minute: eight at
+once hit Modal's app-create rate limit.

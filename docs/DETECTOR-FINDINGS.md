@@ -80,6 +80,12 @@ got here. Update it whenever the in-flight run changes.*
 - **H58 (2026-09-29): both scales leans better, misses its bar** (27 better
   / 16 worse, -0.4 [-1.4, +0.2], p 0.13). S18 is the deciding test: six
   seeds a side, both sides on the GPU, bar written before the runs.
+- **Modal is opt-in, with the owner's approval (2026-09-29):** $8.78 in the
+  first day, about $1 a run -- well over the $0.20-0.40 estimated. Default
+  back to `gpu: github`; job limit 360 min (GitHub's ceiling) for each of the
+  two jobs. S18's two relaunched seeds (A seed 11, B seed 10) were moved off
+  Modal to the CPU runner: S18 is therefore NOT all-GPU as barred -- two of
+  its twelve runs are CPU, a known shift of about half a seed on those two.
 - **Modal refuses a burst (2026-09-29):** of eight S18 runs dispatched in one
   minute, two (36503989380, 36503994244) died four minutes in on Modal's
   "App create rate limit exceeded". tools/modal-run.sh now retries that

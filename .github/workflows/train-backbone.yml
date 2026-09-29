@@ -251,13 +251,14 @@ on:
         # (tools/modal_plan.py, pinned by modal_plan_test.py); a GPU's float
         # arithmetic differs from a CPU's in the last digits, so compare
         # like with like when it matters.
-        # DEFAULT MODAL since 2026-09-28: S14 seed 7 repeated on the GPU moved
-        # the plan row +0.2 [-0.4, +0.8] and a lot by 1.2 points (median),
-        # half what a change of seed moves it (2.6). See where-things-stand.
-        description: 'Where the models run: a GPU on Modal, or this CPU runner'
+        # DEFAULT GITHUB (owner, 2026-09-29): Modal costs money -- $8.78 in the
+        # first day -- so it is chosen per run, with the owner's approval,
+        # never by default. It was measured the same as the CPU to within half
+        # a seed (+0.2 [-0.4, +0.8]; a lot moves 1.2 points, a seed 2.6).
+        description: 'Where the models run: this free CPU runner, or a paid GPU on Modal (ask first)'
         type: choice
-        default: 'modal'
-        options: ['modal', 'github']
+        default: 'github'
+        options: ['github', 'modal']
       about:
         # WHAT THIS RUN IS FOR, kept with the pictures for ever.
         #
@@ -277,8 +278,9 @@ jobs:
     # a CPU plus the scoring, and a cap that cut that off would waste the whole
     # run at the last step. Three hours is still far short of the six-hour
     # default, so a hung run does not sit there all afternoon.
-    # (350 since the examples, 2026-09-28: the job limit is 360.)
-    timeout-minutes: 350
+    # 360 since 2026-09-29: GitHub's own ceiling for a job (owner: use all
+    # of it). The two jobs each get it, so a run can take up to twelve hours.
+    timeout-minutes: 360
     # PyPI SLOW, NOT GONE (2026-09-28): two of three runs died at the install
     # when pypi.org timed out five times running at pip's 15 s default on one
     # small package; pip then backtracked to an old numpy it could not build.
@@ -523,7 +525,7 @@ jobs:
     name: Train the decoder and score it
     needs: extract
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 360
     env:
       PIP_DEFAULT_TIMEOUT: '60'
       PIP_RETRIES: '10'
