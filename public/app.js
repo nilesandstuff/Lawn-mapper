@@ -1227,7 +1227,11 @@ let detection = null;   // {press, abort, started, timer, action}
 function startDetectionTimer(run) {
   const tick = () => {
     const secs = Math.floor((Date.now() - run.started) / 1000);
-    $('#busy-timer').textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+    const clock = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+    /* What to expect (owner, 2026-09-29), and an honest word once past it. */
+    $('#busy-timer').textContent = secs < 60
+      ? `${clock} · usually takes less than 60 seconds`
+      : `${clock} · taking longer than usual`;
     $('#busy-timer').hidden = false;
     if (secs >= DETECT_PATIENCE_S && !run.action) $('#busy-actions').hidden = false;
   };

@@ -475,6 +475,8 @@ check('every class the code toggles is styled',
  * notice was apologising for. Checked gone so it cannot come back by merge.
  */
 check('the "AI detection is bad" sheet is gone', !/id="ai-notice"/.test(html) && !/showAiNotice/.test(js));
+check('the detection timer says what to expect', /usually takes less than 60 seconds/.test(js)
+  && /id="busy-timer"/.test(html) && /id="busy-cancel"/.test(html) && /id="busy-retry"/.test(html));
 
 /* ------------------------------- nothing redraws over somebody's work */
 /*
