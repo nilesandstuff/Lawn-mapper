@@ -38,6 +38,33 @@ changes and results from different corpora are not comparable.
 *Kept current so a fresh session can pick up without the conversation that
 got here. Update it whenever the in-flight run changes.*
 
+- **PARKED BY THE OWNER, 2026-09-29 -- come back to these once blocks /
+  windows / scale is settled, not before.** Both need the best arrangement
+  loaded into the live app and the paid / volunteer / crowd tracing flows,
+  which is why they wait on it.
+  1. **Corrections as training data.** Every map a person finishes (or
+     adjusts the detector's outline on) is a labelled example; training
+     images already go to R2 on finish. Close the loop: those become the
+     next training set, so the detector improves as the app is used.
+  2. **Active learning -- the detector chooses what gets traced next.** NOT
+     the training maps (they are already traced). It is the UNTRACED
+     addresses: the detector is run over a pool of candidates (addresses
+     people ask the live app about, or a batch of residential parcels), and
+     the ones it is least sure of -- lowest confidence along the edge, or
+     most disagreement between seeds -- go to the front of the tracing queue.
+  Discussed and set aside: a second model "grading" the first (it cannot
+  know the truth without human labels, and the remaining error is the edge
+  band of H53, not implausible shapes); self-training on the detector's own
+  confident output (possible later, but H57 says added data must be
+  measured, not assumed).
+- **Next, in this order (owner, 2026-09-29):** (a) S18's result; (b) cache
+  the frames, canopy, lidar, NAIP and backbone features per arrangement so
+  an experiment is decoder + scoring only (free runner); (c) research what is
+  PUBLISHED on tiling / windows / multi-scale for aerial segmentation with
+  fine edges (candidates to check, from memory and unverified: hierarchical
+  multi-scale attention, Tao et al. 2020; PointRend boundary refinement,
+  Kirillov et al. 2020) and write it into the external-findings section.
+
 - **The pictures were the same picture (found 2026-09-25, after H39).**
   Every run from H33 on drew its pictures for the lowest median, "canopy
   everywhere + stage 3, span", which is deterministic (H36), so the owner
