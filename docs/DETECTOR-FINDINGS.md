@@ -77,6 +77,9 @@ got here. Update it whenever the in-flight run changes.*
   did not. The relaunched runs on 6792729 still carry examples (cropped),
   so they measure the arrangements WITH examples and the crop; the clean
   both-scales question is three more runs without examples against S14.
+- **H58 (2026-09-29): both scales leans better, misses its bar** (27 better
+  / 16 worse, -0.4 [-1.4, +0.2], p 0.13). S18 is the deciding test: six
+  seeds a side, both sides on the GPU, bar written before the runs.
 - **Modal GPU, built 2026-09-28 (owner set up the account):** workflow 14
   `gpu: modal` runs the tree model, the backbone and the decoders on a GPU
   on Modal (tools/modal_gpu.py, plan from tools/modal_plan.py, pinned to
@@ -707,6 +710,40 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H58. Both scales (S17: the whole-lot pass and the 6 cm blocks stacked) LEANS better but misses its bar -- not adopted yet; S18 decides, 2026-09-29
+
+*Runs 36495279827 / 36495282695 / 36495284820 (commit cd91b92, `windows:
+both`, fused, `canopy: on lawn`, no examples, 55 lots, folds by place, seeds
+7/8/9, **on Modal's GPU**), row "the pretrained eye, decoder + stage 3,
+span, lidar veto", against S14's 36355253442 / 36355254898 / 36355256268
+(CPU), row "decoder, canopy on lawn + stage 3, span, lidar veto" --
+compare-runs.js locally.*
+
+| lots | better / worse / level | median | paired change [95%] | sign test |
+|---|---|---|---|---|
+| all 55 | 27 / 16 / 12 | 25.3 -> 24.1% | -0.4 [-1.4, +0.2] | p 0.13 |
+| frozen 32 | 17 / 9 / 6 | 28.1 -> 25.5% | -0.8 [-1.9, +0.2] | p 0.17 |
+| approved since | 10 / 7 / 6 | 24.8 -> 23.9% | -0.2 [-1.3, +0.5] | p 0.63 |
+
+**Bar (S17): not met** -- more lots better than worse and not worse on the
+lots since, but the sign test is 0.13 (bar 0.1) and the interval reaches
++0.2. It is the first arrangement since H50 whose every row leans the right
+way, and it is still inside what three seeds cannot tell from nothing.
+
+**Confounded, mildly:** B ran on the GPU, A on the CPU. The GPU was measured
+the same as the CPU to +0.2 [-0.4, +0.8] (a lot moves 1.2 points against 2.6
+for a seed), so it is not the explanation, but it is not nothing either.
+
+**By name (mean of three seeds):** B28 85.6 -> 86.0 -- NOT rescued, though
+blocks alone took it to ~28 (H55): stacked, the decoder listens to the whole
+pass there. B03 53.6 -> 48.5, B13 20.2 -> 16.7, B12 28.8 -> 25.9, B24 39.5
+-> 22.5, B32 48.7 -> 38.9; B20 45.6 -> 53.4 (blocks' worst lot, less bad
+than blocks' 122-136), B10 20.8 -> 25.3, B23 37.4 -> 42.0.
+
+**Time on Modal:** 57 min a run -- canopy 1.5 min, the whole pass + the 6 cm
+blocks + the decoder 24 min, scoring 15 min. On the CPU the blocks alone were
+91 min of backbone and 48 min a decoder.
 
 ### H57. The owner's not-lawn examples (S16) make the detector WORSE at the whole lot and under windows -- not adopted, 2026-09-28
 
@@ -4420,6 +4457,21 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
+### S18. Both scales, decided: six seeds a side, both sides on the GPU (2026-09-29)
+
+**Why:** H58 leans better (27 / 16, -0.4) and misses its bar at three seeds,
+with the two sides on different hardware. Written BEFORE the runs, so the
+extra seeds are a pre-registered test and not a second look until it passes.
+**Runs:** A = the whole lot on Modal (`windows: off`, `canopy: compare`,
+fused, no examples) seeds 7-12 (seed 7 is 36488404436); B = both scales on
+Modal (`windows: both`, `canopy: on lawn`) seeds 7-12 (7-9 are H58's).
+**Bar:** A row "decoder, canopy on lawn + stage 3, span, lidar veto", B row
+"the pretrained eye, decoder + stage 3, span, lidar veto"; adopted if more
+lots better than worse with a sign-test p under 0.1, the 95% interval of the
+median paired change below zero, and not worse on the lots approved since.
+If not, both scales is closed and the whole lot stays. Also reported: B28,
+B03, B20, B13.
+
 ### S17. Both scales: the whole-lot pass AND the 6 cm blocks, stacked for every lot (2026-09-28)
 
 **The idea:** H55 found the 6 cm blocks and the whole-lot squeeze each far
@@ -4696,3 +4748,4 @@ worse on the lots approved since. Then it joins THE PLAN.
 | 2026-09-28 | 36450750741 36450754828 36450758924 | 55 (+90 examples) | **`examples: on`** (S16), `windows: on`, fused, `canopy: on lawn`, seeds 7/8/9, uncropped; vs S15 (workflow 24 36481564377) | — | — | **H57: worse.** 11 better / 40 worse, +3.3 [+1.4, +5.0], p 0.000. B16 10.8 -> 86.4, B15 9.4 -> 52.2. Backbone 78-91 min |
 | 2026-09-28 | 36450763774 36450766989 36450771744, 36453431102 36453434382 36453439067 | — | S16 tiles 6 cm and the first S17 (both scales), examples on | — | — | **CANCELLED mid-backbone** -- could not finish in one job's time with the examples. No results |
 | 2026-09-28 | 36488404436 | 55 | **`gpu: modal`** -- S14 seed 7 (windows off, fused, `canopy: compare`) repeated on an L4 GPU; vs 36355253442 (compare-runs.js locally) | — | — | **GPU = CPU within half a seed.** Plan row +0.2 [-0.4, +0.8], p 0.64; median lot moves 1.2 (seed change 2.6). Canopy 3 min, backbone + 3 decoders 12 min, run ~60 min vs 1 h 43. Default flipped to modal |
+| 2026-09-29 | 36495279827 36495282695 36495284820 | 55 | **`windows: both`** (S17), fused, `canopy: on lawn`, no examples, seeds 7/8/9, **Modal**; vs S14 (CPU) s7/8/9 (compare-runs.js locally) | — | — | **H58: leans better, bar missed.** 27 better / 16 worse, -0.4 [-1.4, +0.2], p 0.13; since -0.2. B28 not rescued (86); B24 -17, B32 -10, B03 -5; B20 +8. 57 min a run on Modal |
