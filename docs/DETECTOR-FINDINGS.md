@@ -123,8 +123,11 @@ got here. Update it whenever the in-flight run changes.*
   the next commit with the same frames, restored both, skipped all five steps,
   and its extraction job took 2 min 40 s. So an experiment now costs just
   the decoders and the scoring: about 13 min per decoder, and three for a
-  canopy comparison. Still to check: the "pretrained eye" row (which uses the
-  features alone) should match run 1 exactly.
+  canopy comparison. **Same scores (checked 2026-09-29):** the three rows
+  that depend on the features and frames alone ("colour and texture only",
+  "the pretrained eye only", "both") match on all 55 lots to the hundredth
+  between the run that built the cache and the run that restored it. The
+  decoder rows differ, as they should: those two runs used seeds 7 and 8.
 - **Decided (2026-09-29): H59, both scales is closed; the whole lot stays.**
   Six seeds a side: 26 better / 19 worse, -0.2 [-1.2, +0.4], p 0.37 --
   weaker than H58's three-seed lean. Every arrangement tried (windows,
