@@ -7,7 +7,7 @@ the CPU runner in everything but where the arithmetic happens. If a decoder
 or extraction setting changes in the workflow, it changes here too --
 modal_plan_test.py pins the two to each other.
 
-    WINDOWS, CANOPY, DECODER, SEED, LAWNS, MODEL, SIZE: the dispatch inputs
+    WINDOWS, CANOPY, DECODER, SEED, LAWNS, MODEL, SIZE, RELEASE: the dispatch inputs
     RUN: the run's folder on the volume
     SEND: comma-separated local paths to send first
     OUT: where to write the plan (default plan.json)
@@ -46,7 +46,19 @@ def plan(inputs, run, send):
         "FOLDS": folds(inputs["lawns"]),
     }
     outs = []
-    if decoder != "off":
+    if inputs.get("release") and inputs["release"] != "off":
+        # THE RELEASE (workflow 14 `release: alpha`): THE PLAN's decoder and
+        # edge refiner trained once on every lot, the env the GitHub step
+        # "Train the release model on every lot" sets. No folds, no scoring.
+        steps.append({"script": "train_decoder.py", "env": {
+            "FEATURES": "feats", "FEATURES_WHOLE": whole, "FRAMES": "frames",
+            "CANOPY": "canopy", "CANOPY_MODE": "all" if canopy == "everywhere" else "lawn",
+            "SEED": seed, "FUSE": "1", "FUSE_LIDAR": "lidar", "FUSE_NAIP": "naip",
+            "FUSE_CANOPY": "1" if canopy == "everywhere" else "0",
+            "REFINE": "1", "OUT": "preds-release", "RELEASE_OUT": "release",
+        }})
+        outs = ["release"]
+    elif decoder != "off":
         if canopy != "compare":
             steps.append({"script": "train_decoder.py", "env": {
                 **common, "OUT": "preds",
@@ -74,7 +86,7 @@ def plan(inputs, run, send):
 
 def main():
     e = os.environ
-    inputs = {k: e.get(k.upper(), "") for k in ("windows", "canopy", "decoder", "seed", "lawns", "model", "size")}
+    inputs = {k: e.get(k.upper(), "") for k in ("windows", "canopy", "decoder", "seed", "lawns", "model", "size", "release")}
     p = plan(inputs, e["RUN"], (e.get("SEND") or "").split(","))
     with open(e.get("OUT") or "plan.json", "w") as f:
         json.dump(p, f, indent=1)

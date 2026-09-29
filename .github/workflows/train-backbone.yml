@@ -286,8 +286,8 @@ on:
         # decoder + edge refiner ONCE on every lot in `lawns` -- no folds, no
         # scoring, because a scoring run keeps no weights and a release is
         # not measured, it is shipped -- and puts it on Modal's volume, where
-        # the site's "Trained model (alpha release)" reads it. Free runner
-        # only; the upload is a file copy, not a GPU. Run workflow 2 after
+        # the site's "Trained model (alpha release)" reads it. Either runner:
+        # `gpu: modal` does the backbone and the training on Modal's L4. Run workflow 2 after
         # the first one so the site switches the model on.
         #
         # FEEDBACK LOOP 1 IS THIS BUTTON: every approved correction joins
@@ -345,9 +345,9 @@ jobs:
       # Stop in seconds rather than after an hour of extraction when the
       # choices cannot go together.
       - name: Check the choices go together
-        if: ${{ (inputs.decoder == 'fused + edge' && (inputs.canopy == 'compare' || inputs.gpu == 'modal')) || (inputs.not_lawn == 'on' && inputs.gpu == 'modal') || (inputs.release != 'off' && (inputs.decoder != 'fused + edge' || inputs.gpu != 'github' || inputs.canopy == 'compare' || inputs.canopy == 'off')) }}
+        if: ${{ (inputs.release == 'off' && inputs.decoder == 'fused + edge' && (inputs.canopy == 'compare' || inputs.gpu == 'modal')) || (inputs.not_lawn == 'on' && inputs.gpu == 'modal') || (inputs.release != 'off' && (inputs.decoder != 'fused + edge' || inputs.canopy == 'compare' || inputs.canopy == 'off')) }}
         run: |
-          echo "::error::'fused + edge' trains two decoders under ONE canopy setting on the free runner (canopy not 'compare', gpu 'github'); not-lawn traces are read on the free runner only; a release is THE PLAN (decoder 'fused + edge', a canopy setting, gpu 'github')."
+          echo "::error::'fused + edge' trains two decoders under ONE canopy setting on the free runner (canopy not 'compare', gpu 'github'); not-lawn traces are read on the free runner only; a release is THE PLAN (decoder 'fused + edge', a canopy setting) on either runner."
           exit 1
 
       - run: npm ci
@@ -564,10 +564,27 @@ jobs:
           LAWNS: ${{ inputs.lawns }}
           MODEL: ${{ inputs.model }}
           SIZE: ${{ inputs.size }}
+          RELEASE: ${{ inputs.release }}
           OUT: gpu-plan.json
         run: |
           python3 tools/modal_plan.py
           bash tools/modal-run.sh gpu-plan.json
+
+      # A release trained on Modal ships from here; the training job has
+      # nothing left to do for it.
+      - name: Hand the release to the live server (trained on Modal)
+        if: ${{ inputs.gpu == 'modal' && inputs.release != 'off' }}
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: bash tools/ship-release.sh
+
+      - name: Keep the release beside the run (trained on Modal)
+        if: ${{ inputs.gpu == 'modal' && inputs.release != 'off' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: release/
 
       # Saved BEFORE the handoff below moves the folders into the tar. Only
       # what was computed this run is saved; a hit is left as it was.
@@ -848,7 +865,7 @@ jobs:
       # /models/alpha/model.pt when a container starts, so the next cold
       # start serves it; no redeploy of the model server is needed.
       - name: Train the release model on every lot
-        if: ${{ inputs.release != 'off' }}
+        if: ${{ inputs.release != 'off' && inputs.gpu != 'modal' }}
         env:
           FEATURES: feats
           FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
@@ -866,36 +883,14 @@ jobs:
         run: python3 tools/train_decoder.py
 
       - name: Hand the release to the live server
-        if: ${{ inputs.release != 'off' }}
+        if: ${{ inputs.release != 'off' && inputs.gpu != 'modal' }}
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-        run: |
-          if [ -z "$MODAL_TOKEN_ID" ] || [ -z "$MODAL_TOKEN_SECRET" ]; then
-            echo "::error::No MODAL_TOKEN_ID / MODAL_TOKEN_SECRET secrets, so the release cannot reach the server."
-            exit 1
-          fi
-          pip install modal
-          modal volume create lawn-mapper-models 2>/dev/null || true
-          modal volume put --force lawn-mapper-models release/model.pt alpha/model.pt
-          modal volume put --force lawn-mapper-models release/release.json alpha/release.json
-          # A copy kept under its own date, so a bad release can be rolled
-          # back by copying the old one over alpha/model.pt.
-          stamp=$(python3 -c "import json;print(json.load(open('release/release.json'))['trainedAt'].replace(':','').replace('-',''))")
-          modal volume put --force lawn-mapper-models release/model.pt "alpha/history/$stamp.pt"
-          # A container already warm keeps the old weights until it idles
-          # out (five minutes); stopping the app makes the next lot load
-          # the new ones. Harmless when nothing is running.
-          modal app stop lawn-mapper-alpha 2>/dev/null || true
-          echo
-          echo "=== Release shipped ==="
-          cat release/release.json
-          echo
-          echo "Trained on $(python3 -c "import json;print(json.load(open('release/release.json'))['lawns'])") lots."
-          echo "If the site does not offer \"Trained model (alpha release)\" yet, run workflow 2 once."
+        run: bash tools/ship-release.sh
 
       - name: Keep the release beside the run
-        if: ${{ inputs.release != 'off' }}
+        if: ${{ inputs.release != 'off' && inputs.gpu != 'modal' }}
         uses: actions/upload-artifact@v4
         with:
           name: release

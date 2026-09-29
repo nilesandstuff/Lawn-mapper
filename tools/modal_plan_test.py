@@ -29,6 +29,16 @@ def inputs(**over):
     return base
 
 
+def check_release():
+    p = plan(inputs(canopy="on lawn", decoder="fused + edge", release="alpha"), "r", [])
+    dec = [s["env"] for s in p["steps"] if s["script"] == "train_decoder.py"]
+    assert len(dec) == 1, "a release trains one decoder and scores nothing"
+    assert set(dec[0]) == wf_env("Train the release model on every lot"), \
+        set(dec[0]) ^ wf_env("Train the release model on every lot")
+    assert dec[0]["FUSE"] == "1" and dec[0]["REFINE"] == "1" and dec[0]["FUSE_CANOPY"] == "0"
+    assert "release" in p["fetch"]
+
+
 def check_names():
     p = plan(inputs(), "r", ["lidar", "naip"])
     dec = [s["env"] for s in p["steps"] if s["script"] == "train_decoder.py"]
@@ -73,5 +83,6 @@ def check_values():
 
 
 check_names()
+check_release()
 check_values()
 print("modal plan: ok")
