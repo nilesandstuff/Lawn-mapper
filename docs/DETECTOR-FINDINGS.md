@@ -51,6 +51,11 @@ got here. Update it whenever the in-flight run changes.*
   functions); worker/src/alpha.js; deploy step "Serve the trained model".
   Measuring the LIVE model means scoring maps finished AFTER the release.
   Those carry `corpus.model_version`.
+  **First release: 2026-09-29T21:10:24Z** (workflow 14 run 36629128194,
+  `gpu: modal`, 23 min end to end). It was trained on 55 lots: dim 1031
+  (1024 + 7 fused), refiner on, canopy on lawn, seed 7, 30 epochs, final
+  train loss 0.194. That loss is a training number, not a score. Earlier
+  copies are kept under alpha/history/ on the Modal volume for rollback.
 - **The two feedback loops are built (owner asked 2026-09-29; they were parked
   until the release existed):**
   1. **Corrections as training data.** Every finish records which release

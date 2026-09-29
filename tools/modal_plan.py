@@ -88,6 +88,11 @@ def main():
     e = os.environ
     inputs = {k: e.get(k.upper(), "") for k in ("windows", "canopy", "decoder", "seed", "lawns", "model", "size", "release")}
     p = plan(inputs, e["RUN"], (e.get("SEND") or "").split(","))
+    # A release records where it came from; Modal's container has no GitHub
+    # environment of its own, so the two names are carried across here.
+    for step in p["steps"]:
+        if step["env"].get("RELEASE_OUT"):
+            step["env"].update({k: e.get(k, "") for k in ("GITHUB_SHA", "GITHUB_RUN_ID")})
     with open(e.get("OUT") or "plan.json", "w") as f:
         json.dump(p, f, indent=1)
     print(json.dumps(p, indent=1))
