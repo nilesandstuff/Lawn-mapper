@@ -57,6 +57,19 @@ got here. Update it whenever the in-flight run changes.*
   band of H53, not implausible shapes); self-training on the detector's own
   confident output (possible later, but H57 says added data must be
   measured, not assumed).
+- **The public outlines are dropped (owner, 2026-09-29).** They were mostly the
+  middle of a road, roof or pond and rarely its edge. Replaced by NOT-LAWN
+  TRACES the owner draws in tinker mode (#tinker: "Trace not-lawn" beside the
+  inferred tools). Stored per map in `corpus.not_lawn`, written beside the
+  labels as `<id>-notlawn.png` when workflow 14 runs with `not_lawn: on`
+  (default off until measured), and graded "not lawn" by the decoder and the
+  edge refiner -- even outside the property line. The cache ignores them.
+  The `examples` input and its step are gone; tools/not-lawn-examples.js stays.
+- **The pictures of S20's runs are the PLAIN decoder's, not THE PLAN's**
+  (found 2026-09-29 from the owner's report that the edge-refiner layers were
+  empty): the drawn-row lookup took the first row that could be THE PLAN's,
+  and a `fused + edge` run scores the plain decoder first. Fixed
+  (findPlanRow, tested); pictures from the next run on are THE PLAN's.
 - **Measured (2026-09-29): H61 (S20), fewer outlines still worse overall**
   (14 better / 33 worse, +0.8) -- but they fixed the parking-lot lots (B20
   75 -> 36, B19 46 -> 30) and broke others (B03 57 -> 97, B23 33 -> 55).

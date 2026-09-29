@@ -356,12 +356,20 @@ export async function recordFinished(env, body) {
       ? body.parcelSource
       : null,
     naip_align: naipAlignOf(body?.naipAlign),
+    /*
+     * NOT-LAWN TRACES (tinker mode, owner 2026-09-29), cleaned like any
+     * geometry. Null when the finish did not say -- which every ordinary
+     * finish does not -- and an empty list when somebody deleted them all.
+     */
+    not_lawn: Array.isArray(body?.notLawn)
+      ? JSON.stringify(cleanGeometries(body.notLawn))
+      : null,
     exclusions: Array.isArray(body?.exclusions) && body.exclusions.length
       ? text(body.exclusions.filter((e) => typeof e === 'string').join(','), 200)
       : null,
   };
 
-  const size = (row.shapes?.length || 0) + (row.parcel?.length || 0);
+  const size = (row.shapes?.length || 0) + (row.parcel?.length || 0) + (row.not_lawn?.length || 0);
   if (size > MAX_BYTES) return { ok: false, reason: 'too-big' };
 
   try {
@@ -370,8 +378,8 @@ export async function recordFinished(env, body) {
          id, at, lng, lat, county, provider, model, mode, hand_edited,
          detected_sq_ft, square_feet, parcel_sq_ft, frame, parcel, shapes,
          detected_shapes, parcel_source, exclusions, created_at,
-         inferred_checked_at, naip_align
-       ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?2,?19,?20)
+         inferred_checked_at, naip_align, not_lawn
+       ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?2,?19,?20,?21)
        ON CONFLICT(id) DO UPDATE SET
          at = ?2, county = ?5, provider = ?6, hand_edited = ?9,
          detected_sq_ft = ?10, square_feet = ?11, parcel_sq_ft = ?12,
@@ -416,13 +424,17 @@ export async function recordFinished(env, body) {
          inferred_checked_at = COALESCE(?19, corpus.inferred_checked_at),
          /* A finish without looking at NAIP says nothing about NAIP, so it
             must not erase an alignment somebody set. */
-         naip_align = COALESCE(?20, corpus.naip_align)`
+         naip_align = COALESCE(?20, corpus.naip_align),
+         /* A finish that sent no not-lawn list (every ordinary one) leaves
+            the owner's traces alone; one that sent a list, even an empty
+            one, replaces them. */
+         not_lawn = COALESCE(?21, corpus.not_lawn)`
     ).bind(
       row.id, row.at, row.lng, row.lat, row.county, row.provider, row.model,
       row.mode, row.hand_edited, row.detected_sq_ft, row.square_feet,
       row.parcel_sq_ft, row.frame, row.parcel, row.shapes,
       row.detected_shapes, row.parcel_source, row.exclusions,
-      row.inferred_checked_at, row.naip_align
+      row.inferred_checked_at, row.naip_align, row.not_lawn
     ).run();
     /*
      * The row is handed back so the caller can pass it to storeImage under

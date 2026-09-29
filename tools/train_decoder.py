@@ -121,6 +121,12 @@ WHOLE_MANIFEST = None
 # Off unless REFINE=1; FINE_WEIGHT is its loss beside the decoder's own.
 REFINE = os.environ.get("REFINE") == "1"
 FINE_WEIGHT = float(os.environ.get("FINE_WEIGHT", "1.0"))
+# THE OWNER'S NOT-LAWN TRACES (tinker mode, 2026-09-29): FRAMES/<id>-notlawn.png,
+# written by the frame dump when NOT_LAWN=1. Where one is set, the cell is
+# graded -- even outside the property line -- and graded NOT lawn. Canopy over
+# it stays unseen, for the reason the examples gave: the photo shows leaves
+# there, not the parking lot.
+NOT_LAWN = os.environ.get("NOT_LAWN") == "1"
 
 
 # A GPU WHEN THERE IS ONE (Modal, 2026-09-28); the CPU runner is unchanged.
@@ -206,6 +212,13 @@ def read_lawn(feats, frames, stem, shape):
         else:
             inferred = inferred | (can if CANOPY_MODE == "all" else (can & truth))
         canopy = True
+
+    if NOT_LAWN:
+        nl_file = os.path.join(frames, f"{stem}-notlawn.png")
+        if os.path.exists(nl_file):
+            nl = np.asarray(Image.open(nl_file).convert("L").resize((cells_w, cells_h), Image.NEAREST)) >= 128
+            truth = truth & ~nl
+            within = within | nl
 
     extra = None
     sources = []

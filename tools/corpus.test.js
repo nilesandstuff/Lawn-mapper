@@ -617,5 +617,40 @@ const png = () => new Response('x', { headers: { 'content-type': 'image/png' } }
     'a key nothing can find again scatters rows worse than a duplicate does');
 }
 
+/* ------------------------------------------ the owner's not-lawn traces */
+/*
+ * Tinker mode (2026-09-29): a finish that sends traces stores them; one that
+ * sends none -- every ordinary finish -- sends null, which the upsert's
+ * COALESCE reads as "leave what is stored alone".
+ */
+{
+  const withTraces = fakeDB();
+  await recordFinished({ DB: withTraces }, body({ notLawn: [square(-85.667, 42.963)] }));
+  const w = withTraces.writes[0];
+  const stored = w.args[w.args.length - 1];
+  check('not-lawn traces are stored as the last bound value',
+    typeof stored === 'string' && JSON.parse(stored).length === 1 && JSON.parse(stored)[0].type === 'Polygon',
+    String(stored).slice(0, 80));
+  check('and the upsert keeps the stored traces when a finish sends none',
+    /not_lawn = COALESCE\(\?21, corpus\.not_lawn\)/.test(w.sql), 'COALESCE on ?21');
+
+  const without = fakeDB();
+  await recordFinished({ DB: without }, body());
+  const none = without.writes[0].args;
+  check('an ordinary finish sends null, not an empty list',
+    none[none.length - 1] === null, String(none[none.length - 1]));
+
+  const emptied = fakeDB();
+  await recordFinished({ DB: emptied }, body({ notLawn: [] }));
+  const e = emptied.writes[0].args;
+  check('removing them all sends an empty list, which replaces them',
+    e[e.length - 1] === '[]', String(e[e.length - 1]));
+
+  const schema = readFileSync(join(root, 'worker/schema.sql'), 'utf8');
+  const migrations = readFileSync(join(root, 'worker/migrations.sql'), 'utf8');
+  check('the column is in the CREATE and has its ALTER for databases already out there',
+    /\bnot_lawn\s+TEXT/.test(schema) && /ALTER TABLE corpus ADD COLUMN not_lawn TEXT/.test(migrations));
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);

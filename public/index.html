@@ -683,6 +683,18 @@
           </label>
           <!-- For fixing one after the fact, without redrawing it. -->
           <button class="ghost" id="btn-inferred" disabled>Mark as inferred</button>
+          <!--
+            NOT-LAWN TRACES, tinker mode only (owner, 2026-09-29). The public
+            outlines tried as training examples were mostly the middle of a road
+            or a roof, rarely its edge; tracing a parking lot or a pond right to
+            its edge here says "this, exactly, is not lawn" where it matters.
+            They are kept apart from the lawn -- never measured, never merged,
+            untouched by the brushes -- and saved with the finished map.
+          -->
+          <span id="not-lawn-tools" hidden>
+            <button class="ghost" id="btn-not-lawn">Trace not-lawn</button>
+            <button class="ghost" id="btn-not-lawn-undo" disabled>Remove last not-lawn</button>
+          </span>
           <button class="ghost" id="btn-clear">Clear all</button>
         </div>
 

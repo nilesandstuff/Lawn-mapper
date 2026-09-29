@@ -423,9 +423,14 @@ export const framePixels = (lawns) => {
   return out;
 };
 
+/*
+ * NOT-LAWN TRACES (tinker mode, owner 2026-09-29) are read only when a run asks
+ * (NOT_LAWN=1), so a database the migration has not reached yet still trains.
+ */
+const NOT_LAWN = /^(1|true|yes|on)$/i.test(String(process.env.NOT_LAWN || ''));
 const QUERY = `
   SELECT id, county, tree_line, frame, shapes, detected_shapes, parcel,
-         image_key, image_provider, image_frame, mode, model, naip_align
+         image_key, image_provider, image_frame, mode, model, naip_align${NOT_LAWN ? ', not_lawn' : ''}
     FROM corpus
    WHERE status = 'approved' AND image_key IS NOT NULL AND frame IS NOT NULL${lawnSetClause()}
    ORDER BY at DESC
@@ -613,6 +618,18 @@ function resize(src, w, h, channels, size, sizeH = size) {
  * "inferred, not seen". On the scoring grid, G x GH, so a reader that knows
  * the grid needs nothing else to line them up.
  */
+/** A lot's not-lawn traces as a grey PNG on its label grid (255 = not lawn). */
+export function notLawnPng(L, PNG) {
+  const G = L.grid || GRID;
+  const GH = L.gridH || G;
+  const png = new PNG({ width: G, height: GH });
+  for (let i = 0; i < G * GH; i++) {
+    const v = L.notLawn && L.notLawn[i] ? 255 : 0;
+    png.data[i * 4] = v; png.data[i * 4 + 1] = v; png.data[i * 4 + 2] = v; png.data[i * 4 + 3] = 255;
+  }
+  return PNG.sync.write(png);
+}
+
 export function labelsPng(L, PNG) {
   const G = L.grid || GRID;
   const GH = L.gridH || G;
@@ -1826,6 +1843,11 @@ async function main() {
       /* Where both layers cover a pixel it counts as INFERRED -- the narrower,
          later mark is the more careful one. See inferredShare above for why,
          and for what stands in for the guard that rule used to be. */
+      /* The owner's not-lawn traces, when this run reads them: a mask of its
+         own, written beside the labels as <id>-notlawn.png for the decoder
+         only (tools/train_decoder.py, NOT_LAWN=1). Nothing here scores it. */
+      const notLawnGeoms = NOT_LAWN ? geometries(parse(row.not_lawn)) : [];
+      const notLawn = notLawnGeoms.length ? maskOf(notLawnGeoms, frame, G, GH) : null;
       const inferredGeoms = inferredGeometries(parse(row.shapes));
       let inferred = inferredGeoms.length ? maskOf(inferredGeoms, frame, G, GH) : null;
       /*
@@ -1920,6 +1942,7 @@ async function main() {
         id: row.id,
         tag: lawnTag(row.id),
         county: row.county,
+        notLawn,
         /* The frame the photograph was taken on, for scale.json's boxes. */
         frame,
         /* How NAIP lines up here, if the editor set it (tools/naip_bands.py). */
@@ -2099,6 +2122,7 @@ async function main() {
      * disagree with the pixels it describes.
      */
     const sides = [];
+    let notLawnWritten = 0;
     for (const L of lawns) {
       const side = Math.max(L.dumpW, L.dumpH);
       sides.push(side);
@@ -2113,12 +2137,20 @@ async function main() {
        * the decoder cannot be graded against a different outline.
        */
       writeFileSync(join(dest, `${L.id}-labels.png`), labelsPng(L, decoders.png.PNG));
+      /* Not-lawn traces, only for lots that have any and only when asked:
+         grey, 255 = the owner traced this as not lawn. A file of its own so
+         the labels -- and every cache keyed on them -- are untouched. */
+      if (L.notLawn) {
+        writeFileSync(join(dest, `${L.id}-notlawn.png`), notLawnPng(L, decoders.png.PNG));
+        notLawnWritten++;
+      }
     }
     /*
      * The ground truth of the pictures, for any model that asks what scale it
      * is looking at. Written next to them rather than inside them because a
      * PNG has nowhere honest to put it.
      */
+    if (NOT_LAWN) console.log(`Not-lawn traces written for ${notLawnWritten} of ${lawns.length} lots (<id>-notlawn.png).`);
     writeFileSync(
       join(dest, 'scale.json'),
       JSON.stringify({

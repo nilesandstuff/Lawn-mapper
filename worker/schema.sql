@@ -326,6 +326,11 @@ CREATE TABLE IF NOT EXISTS corpus (
   -- (owner, 2026-09-27). tools/naip_bands.py applies it before the detector
   -- sees NAIP's near-infrared; NULL means the pipeline aligns it itself.
   naip_align     TEXT,
+  -- GROUND THE TRACER OUTLINED AS NOT LAWN (owner, tinker mode, 2026-09-29):
+  -- a JSON array of GeoJSON polygons -- a parking lot, a road, a pond -- traced
+  -- to their edges. Training reads them as "graded, and not lawn"; nothing
+  -- measures them. NULL means nobody traced any.
+  not_lawn       TEXT,
   -- Where the aerial photograph is in R2, and which source it came from.
   --
   -- TWO COLUMNS BECAUSE THEY DISAGREE. `provider` above is what the person was

@@ -176,6 +176,16 @@ const state = {
    * reshaping the careful layer using the sloppy one as its boundary.
    */
   inferredInside: false,
+  /*
+   * NOT-LAWN TRACES (tinker mode, owner 2026-09-29): polygons of ground that
+   * is definitely not lawn -- a parking lot, a road, a pond -- traced to its
+   * edges, for training. A plain list of geometries, NOT shapes in Draw:
+   * everything in Draw is lawn to the measurement, the brushes and the merge,
+   * and these must never be any of that. Drawn with Draw's polygon tool, then
+   * lifted out of it the moment they close (see draw.create).
+   */
+  notLawn: [],
+  notLawnMode: false,
   // The training candidate being corrected, when the console sent us here.
   // Null far more often than not, and the way back out is shown only while it
   // is set -- see leaveReview.
@@ -1532,6 +1542,20 @@ async function initMap() {
       back();
       return;
     }
+    /* A NOT-LAWN TRACE leaves Draw at once and joins its own list, so no lawn
+       tool ever sees it (tinker mode; see state.notLawn). */
+    if (state.notLawnMode && e.features?.[0]) {
+      const traced = e.features[0];
+      try { draw.delete(traced.id); } catch { /* already gone */ }
+      state.notLawn.push(traced.geometry);
+      refreshNotLawn();
+      setStatus(`Not-lawn traced (${state.notLawn.length} on this map). It is kept `
+        + 'for training only and does not change the total. Trace another, or '
+        + 'press "Tracing not-lawn" to stop.');
+      /* Ready for the next one, once Draw has finished closing this one. */
+      queueMicrotask(() => { if (state.notLawnMode) draw.changeMode('draw_polygon'); });
+      return;
+    }
     // A patch drawn by hand is a hand correction, whether it is the first
     // shape on the map or the tenth on top of a detection.
     markHandEdited();
@@ -1778,6 +1802,17 @@ async function initMap() {
          boundary means to anybody who has read a map. */
       'line-dasharray': [2, 2],
     },
+  });
+
+  /* Not-lawn traces (tinker mode): their own colour, never Draw's. */
+  map.addSource('not-lawn', { type: 'geojson', data: empty() });
+  map.addLayer({
+    id: 'not-lawn-fill', type: 'fill', source: 'not-lawn',
+    paint: { 'fill-color': '#e53935', 'fill-opacity': 0.3 },
+  });
+  map.addLayer({
+    id: 'not-lawn-line', type: 'line', source: 'not-lawn',
+    paint: { 'line-color': '#b71c1c', 'line-width': 2 },
   });
 
   map.addSource('surveyed', { type: 'geojson', data: empty() });
@@ -6469,6 +6504,7 @@ function snapshotForSave() {
       properties: f.properties?.inferred ? { inferred: true } : {},
       geometry: f.geometry,
     })),
+    notLawn: state.notLawn.length ? state.notLawn.slice() : undefined,
   };
 }
 
@@ -7424,6 +7460,10 @@ function openMap(s) {
       geometry: f.geometry,
     });
   }
+  /* Not-lawn traces come back with the map (a save, or a candidate reopened
+     for review), so correcting a lawn does not drop them. */
+  state.notLawn = Array.isArray(s.notLawn) ? s.notLawn.filter((g) => g?.type && g.coordinates) : [];
+  refreshNotLawn();
 
   showStep('work');
   $('#work-address').textContent = s.address;
@@ -7818,6 +7858,9 @@ const MODES = ['parcel', 'pins', 'move', 'shape'];
 
 function setMode(mode, tool = null) {
   const next = MODES.includes(mode) ? mode : null;
+  /* Any other tool ends not-lawn tracing, so the next lawn patch drawn is
+     never swallowed into the not-lawn list. */
+  if (state.notLawnMode) leaveNotLawnMode();
 
   // Tear the old one down first, so no two modes ever hold the map at once.
   if (eraser) exitEraserMode({ quiet: true });
@@ -8833,6 +8876,9 @@ function refreshDevPanel() {
   const panel = $('#dev-panel');
   if (!panel) return;
   panel.hidden = !state.dev;
+  const notLawnTools = $('#not-lawn-tools');
+  if (notLawnTools) notLawnTools.hidden = !state.dev;
+  if (!state.dev && state.notLawnMode) setNotLawnMode(false);
   if (!state.dev) return;
 
   const typed = ($('#dev-prompt')?.value || '').trim();
@@ -10812,6 +10858,55 @@ function refreshInferred() {
   map.getSource('inferred').setData({ type: 'FeatureCollection', features });
 }
 
+/** Repaint the not-lawn traces and the button that removes them. */
+function refreshNotLawn() {
+  if (map && map.getSource('not-lawn')) {
+    map.getSource('not-lawn').setData({
+      type: 'FeatureCollection',
+      features: state.notLawn.map((geometry) => ({ type: 'Feature', properties: {}, geometry })),
+    });
+  }
+  const undo = $('#btn-not-lawn-undo');
+  if (undo) undo.disabled = !state.notLawn.length;
+}
+
+/** The flag and the button only -- no change to what Draw is doing. */
+function leaveNotLawnMode() {
+  state.notLawnMode = false;
+  const btn = $('#btn-not-lawn');
+  if (btn) {
+    btn.classList.remove('on');
+    btn.textContent = 'Trace not-lawn';
+  }
+}
+
+/** Tracing not-lawn on or off. Tinker mode only. */
+function setNotLawnMode(on) {
+  if (on && state.dev) {
+    /* Everything else off FIRST: setMode ends not-lawn tracing by design. */
+    setMode(null);
+    state.drawingHole = false;
+    state.drawingParcel = false;
+    setInferredMode(false);
+    state.notLawnMode = true;
+    const btn = $('#btn-not-lawn');
+    if (btn) {
+      btn.classList.add('on');
+      btn.textContent = 'Tracing not-lawn';
+    }
+    draw.changeMode('draw_polygon');
+    setHint('Click around the edge of something that is NOT lawn -- a parking lot, '
+      + 'a road, a pond. Trace right to its edge. Click the first point to finish.');
+    setStatus('Tracing not-lawn. These are for training only and never count toward the total.');
+  } else {
+    const was = state.notLawnMode;
+    leaveNotLawnMode();
+    if (was) {
+      try { if (draw.getMode() === 'draw_polygon') draw.changeMode('simple_select'); } catch { /* not ready */ }
+    }
+  }
+}
+
 function updateSelectionButtons() {
   let chosen = [];
   try {
@@ -11161,6 +11256,10 @@ function reset() {
   setInferredMode(false);
   state.inferredInside = false;
   $('#toggle-inside-lawn').checked = false;
+  /* Not-lawn traces belong to the map they were drawn on. */
+  setNotLawnMode(false);
+  state.notLawn = [];
+  refreshNotLawn();
   // Back to Find grass, and to both defaults for the gap option.
   state.fillGaps = { find: true, exclude: false };
   state.handEdited = false;
@@ -11541,6 +11640,12 @@ function setInferredMode(on) {
 }
 
 $('#btn-inferred-mode').addEventListener('click', () => setInferredMode(!state.inferredMode));
+$('#btn-not-lawn')?.addEventListener('click', () => setNotLawnMode(!state.notLawnMode));
+$('#btn-not-lawn-undo')?.addEventListener('click', () => {
+  state.notLawn.pop();
+  refreshNotLawn();
+  setStatus(`Removed. ${state.notLawn.length} not-lawn trace${state.notLawn.length === 1 ? '' : 's'} left on this map.`);
+});
 
 $('#toggle-inside-lawn').addEventListener('change', (e) => {
   state.inferredInside = e.target.checked;
@@ -11736,6 +11841,12 @@ function finishedBody() {
         properties: f.properties?.inferred ? { inferred: true } : {},
         geometry: f.geometry,
       })),
+      /*
+       * Not-lawn traces (tinker mode). Sent as a list whenever tinker mode is
+       * on -- an empty list means "I removed them" -- and as null otherwise,
+       * which the server reads as "leave whatever is stored alone".
+       */
+      notLawn: state.dev || state.notLawn.length ? state.notLawn.slice() : null,
       // Null, not empty, when nothing was detected: "no detection happened"
       // and "the detector found nothing" are different examples.
       detectedShapes: state.detectedShapes

@@ -214,3 +214,7 @@ UPDATE corpus SET cohort = 'benchmark-1rijjz2'
 -- HOW NAIP LINES UP WITH MAPBOX, per map (see the column in schema.sql).
 -- corpus shipped long ago, so the CREATE there reaches new databases only.
 ALTER TABLE corpus ADD COLUMN naip_align TEXT;
+
+-- NOT-LAWN TRACES, per map (see the column in schema.sql). corpus shipped
+-- long ago, so the CREATE there reaches new databases only.
+ALTER TABLE corpus ADD COLUMN not_lawn TEXT;

@@ -534,6 +534,9 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
         shapes: JSON.parse(row.shapes || '[]').map((f) => (f?.geometry
           ? { geometry: f.geometry, properties: f.properties || {} }
           : { geometry: f, properties: {} })),
+        /* The owner's not-lawn traces, so reopening a map to correct it does
+           not drop them (tinker mode, 2026-09-29). */
+        notLawn: JSON.parse(row.not_lawn || '[]'),
       }, 200, origin);
     } catch (e) {
       return json({ error: String(e?.message || e).slice(0, 200) }, 500, origin);

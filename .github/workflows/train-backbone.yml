@@ -241,22 +241,17 @@ on:
         type: choice
         default: 'on lawn'
         options: ['on lawn', 'everywhere', 'compare', 'off']
-      examples:
-        # THE OWNER'S NOT-LAWN EXAMPLES (2026-09-28). "on" writes every approved
-        # example from /outlines.html into the frames as a training-only frame:
-        # its kept outlines (moved as he moved them) are graded "not lawn",
-        # nothing else in the picture is graded at all, the part under the tree
-        # model's canopy is left unseen, it is never held out or scored, and a
-        # fold does not see an example within 2 km of a lot it holds out.
-        description: 'Train with the approved not-lawn examples from /outlines.html (on) or without (off)'
-        #
-        # "some" (owner, 2026-09-29: "possibly we just gave it the wrong number
-        # of outlines"): at most EXAMPLES_PER_KIND (4) frames of each kind --
-        # water, building, pool, driveway, parking, road, sidewalk, rail --
-        # about 30 in all, against the ~90 H57 trained on beside 55 lots.
+      not_lawn:
+        # THE OWNER'S NOT-LAWN TRACES (tinker mode, 2026-09-29), replacing the
+        # public outlines (H57, H61: mostly the middle of a road or a roof,
+        # rarely an edge). "on" writes each approved lot's traces beside its
+        # labels as <id>-notlawn.png, and the decoders grade those cells as not
+        # lawn, even outside the property line. Off by default until measured.
+        # The cache ignores the traces, so either setting reuses the features.
+        description: 'Train with the not-lawn traces drawn in tinker mode (on) or without (off)'
         type: choice
         default: 'off'
-        options: ['off', 'on', 'some']
+        options: ['off', 'on']
       cache:
         # REUSE WHAT DOES NOT CHANGE (owner, 2026-09-29). The canopy, lidar and
         # NAIP depend only on the frames and their code; the backbone's
@@ -334,9 +329,9 @@ jobs:
       # Stop in seconds rather than after an hour of extraction when the
       # choices cannot go together.
       - name: Check the choices go together
-        if: ${{ inputs.decoder == 'fused + edge' && (inputs.canopy == 'compare' || inputs.gpu == 'modal') }}
+        if: ${{ (inputs.decoder == 'fused + edge' && (inputs.canopy == 'compare' || inputs.gpu == 'modal')) || (inputs.not_lawn == 'on' && inputs.gpu == 'modal') }}
         run: |
-          echo "::error::'fused + edge' trains two decoders under ONE canopy setting on the free runner: choose a canopy other than 'compare', and gpu 'github'."
+          echo "::error::'fused + edge' trains two decoders under ONE canopy setting on the free runner (canopy not 'compare', gpu 'github'); not-lawn traces are read on the free runner only."
           exit 1
 
       - run: npm ci
@@ -368,17 +363,9 @@ jobs:
           # resolution. Either way it needs the real pixels to choose from.
           DUMP_SIZE: native
           NO_BACKBONE: 'true'
+          NOT_LAWN: ${{ inputs.not_lawn == 'on' && '1' || '' }}
           LAWN_SET: ${{ inputs.lawns == 'benchmark, 10 folds' && 'benchmark' || inputs.lawns }}
         run: node tools/train-detector.js
-
-      - name: Add the approved not-lawn examples as training-only frames
-        if: ${{ inputs.examples != 'off' }}
-        env:
-          EXAMPLES_PER_KIND: ${{ inputs.examples == 'some' && '4' || '' }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CORPUS_BUCKET: lawn-mapper-corpus
-        run: node tools/not-lawn-examples.js frames frames
 
       # That the windows land where the photograph has them, before twenty
       # minutes of extraction relies on it. A stitch off by a patch does not
@@ -408,7 +395,9 @@ jobs:
         id: frames
         if: ${{ inputs.gpu != 'modal' }}
         run: |
-          fp=$(cd frames && find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-20)
+          # Not-lawn traces (<id>-notlawn.png) are left out: only the decoder
+          # reads them, so a run with them reuses everything saved without.
+          fp=$(cd frames && find . -type f ! -name '*-notlawn.png' -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-20)
           echo "fp=$fp" >> "$GITHUB_OUTPUT"
           echo "frames fingerprint $fp ($(ls frames | wc -l) files)"
 
@@ -622,6 +611,8 @@ jobs:
     env:
       PIP_DEFAULT_TIMEOUT: '60'
       PIP_RETRIES: '10'
+      # Every decoder reads the not-lawn traces the dump wrote, when asked.
+      NOT_LAWN: ${{ inputs.not_lawn == 'on' && '1' || '' }}
     steps:
       - uses: actions/checkout@v5
 
