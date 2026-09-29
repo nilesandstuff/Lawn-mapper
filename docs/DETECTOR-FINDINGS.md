@@ -62,7 +62,7 @@ got here. Update it whenever the in-flight run changes.*
   choice per location, trained on far more images than 55) and points at
   edge refinement for our actual error (PointRend, FeatUp's guided
   upsampling, boundary losses). Proposed as S19, not started.
-- **Next, in this order (owner, 2026-09-29):** (a) S18's result; (b) cache
+- **Next, in this order (owner, 2026-09-29):** (a) S18's result; (b) DONE, see below: cache
   the frames, canopy, lidar, NAIP and backbone features per arrangement so
   an experiment is decoder + scoring only (free runner); (c) research what is
   PUBLISHED on tiling / windows / multi-scale for aerial segmentation with
@@ -116,8 +116,15 @@ got here. Update it whenever the in-flight run changes.*
   fingerprint + model + size + arrangement + extractor code. A hit skips
   those steps; a new lot, a re-trace or a code change misses by itself.
   `rebuild` ignores the saved copy. Free runner only (`gpu: github`).
-  Untested until two runs: whether the frame dump is byte-identical run to
-  run -- if not, the cache simply never hits.
+  **Measured (2026-09-29): it hits.** The frame dump is byte-identical run to
+  run (fingerprint d7a05dc197df67e7d9d7 both times). Run 36528025528 built
+  the caches (canopy/lidar/NAIP 4.7 MB, features 657 MB); its extraction job
+  took 43 min (canopy 9, lidar 12.5, NAIP 1, backbone 17). Run 36535770825,
+  the next commit with the same frames, restored both, skipped all five steps,
+  and its extraction job took 2 min 40 s. So an experiment now costs just
+  the decoders and the scoring: about 13 min per decoder, and three for a
+  canopy comparison. Still to check: the "pretrained eye" row (which uses the
+  features alone) should match run 1 exactly.
 - **Decided (2026-09-29): H59, both scales is closed; the whole lot stays.**
   Six seeds a side: 26 better / 19 worse, -0.2 [-1.2, +0.4], p 0.37 --
   weaker than H58's three-seed lean. Every arrangement tried (windows,
