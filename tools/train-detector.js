@@ -2510,10 +2510,10 @@ async function main() {
            separately?"): THE PLAN's final answer against the plain decoder's,
            both after stage 3 and the veto, from the same run. The plain one
            (PREDICTIONS_DIR, label '') is always scored first. */
-        const plain = label === 'edge refined' ? finalByLabel[''] : null;
-        if (plain) {
+        const plainFinal = label === 'edge refined' ? finalByLabel[''] : null;
+        if (plainFinal) {
           vetoed.forEach((r, i) => {
-            const p = plain[i];
+            const p = plainFinal[i];
             if (!r.predicted || !p?.predicted) return;
             r.refineAdded = new Uint8Array(r.predicted.length);
             r.refineRemoved = new Uint8Array(r.predicted.length);
