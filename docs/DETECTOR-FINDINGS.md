@@ -57,9 +57,12 @@ got here. Update it whenever the in-flight run changes.*
   band of H53, not implausible shapes); self-training on the detector's own
   confident output (possible later, but H57 says added data must be
   measured, not assumed).
-- **In flight (2026-09-29): S19, the edge refiner** -- owner's go-ahead;
-  built (tools/edge_refine.py, `decoder: fused + edge`), three seeds on the
-  free runner. Bar written in S19 before the runs.
+- **Measured (2026-09-29): H60, the edge refiner PASSES its bar.** 34
+  better / 9 worse, -1.7 [-2.6, -0.5], p 0.0002; approved since 12 / 5,
+  -0.5. NOT yet THE PLAN: adopting means THE PLAN's row becomes "decoder,
+  edge refined + stage 3, span, lidar veto" (PLAN_ROW in train-detector.js
+  and compare-runs.js), and workflow 14's default decoder `fused + edge`.
+  Waiting on the owner's word.
 - **Research done (2026-09-29): E11.** Published work agrees with H55-H59
   (bigger context wins; scales only combine well when a network learns the
   choice per location, trained on far more images than 55) and points at
@@ -779,6 +782,55 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H60. The edge refiner (S19) PASSES its bar: learned edge re-drawing on the 15 cm grid beats the plain decoder -- 34 lots better, 9 worse, 2026-09-29
+
+*Runs 36555664599 / 36558441061 / 36558444702 (seeds 7 / 8 / 9), commit
+0ecdfff, `lawns: all` (55), folds by place, `decoder: fused + edge`,
+`windows: off`, `canopy: on lawn`, `cache: use`, free CPU runner. Each run
+trains the plain fused decoder and the refined one over the SAME features,
+folds and seed, so the comparison is within each run. compare-runs.js run
+locally on the three lot-results files.*
+
+THE PLAN's row, A = "the pretrained eye, decoder + stage 3, span, lidar
+veto" (plain), B = "decoder, edge refined + stage 3, span, lidar veto":
+
+| lots | better / worse / level | median | paired change [95%] | sign test |
+|---|---|---|---|---|
+| all 55 | **34 / 9 / 12** | 25.1 -> **22.6%** | **-1.7 [-2.6, -0.5]** | p 0.0002 |
+| frozen 32 | 22 / 4 / 6 | 28.2 -> 26.0% | -2.3 [-3.0, -0.7] | p 0.001 |
+| approved since | 12 / 5 / 6 | 25.1 -> 21.2% | -0.5 [-2.3, -0.2] | p 0.14 |
+
+Runs' medians A 26.1 / 26.4 / 27.0, B 23.9 / 25.6 / 21.3. The decoder rows
+alone (before stage 3): 38 better / 9 worse, -2.2 [-2.8, -1.0], p < 0.001;
+on the lots approved since 15 / 4, -1.4 [-2.9, -0.5], p 0.02.
+
+**Bar (written in S19 before the runs): all three parts pass** -- p well
+under 0.1, the interval wholly below zero, and better (not worse) on the
+lots approved since. Seed 7 alone passed too (36 / 14, -1.3), so this is
+not one lucky seed.
+
+**Named lots (mean of three seeds, THE PLAN's row):** H53's near-all-edge
+lots, where it should help if anywhere: B01 10.6 -> 9.6, B05 11.4 -> 9.0,
+B21 5.4 -> 4.6, B29 4.9 -> 4.9. Real-mistake lots: B28 85.6 -> 83.2, B04
+64.3 -> 62.5, **B20 47.0 -> 57.0 (worse)**. Biggest gains B03 69.5 -> 53.9,
+B32 47.6 -> 36.4, B18 49.1 -> 43.2 and two unlettered lots by 12-14 points;
+biggest losses B19 38.9 -> 53.2, B20, -84.53700,38.97534 46.5 -> 57.2, B16
+13.1 -> 17.6.
+
+**What this establishes:** re-deciding the decoder's answer on the 15 cm
+grid from the photograph, with a small net trained jointly with the decoder,
+lowers the error on most lots, on the frozen benchmark and on the lots
+added since. It costs about 2x a decoder's training time (14-35 min on the
+free runner against 6-13).
+
+**Not established -- speculation:** WHY B19 and B20 got worse (B20 also got
+worse under colour edges' opposite, and is a real-mistake lot per H53), or
+whether the gain is mostly the edge band or partly the refiner fixing
+whole regions (B03's 16 points is more than an edge band). A per-lot
+edge-band split (tools/edge-band.js, H53) on the refined row would say.
+Also untested: whether stage 3 still helps on top -- on seed 7 the refined
+decoder ALONE (22.8) beat the refined row WITH stage 3 (23.9).
 
 ### H59. Both scales, six seeds a side (S18): no better than the whole lot -- S17/S18 closed; the whole-lot squeeze stays, 2026-09-29
 
@@ -4220,8 +4272,12 @@ marked as reading, not finding.*
 Evaluation of Image Tiling Adverse Effects on Deep Learning Semantic
 Segmentation" ([PMC7020775](https://pmc.ncbi.nlm.nih.gov/articles/PMC7020775/)):
 a U-Net on SpaceNet-Vegas 650 px images scored F1 0.748 on 128 px tiles, 0.803
-on 256, 0.838 on 496 and 0.847 on the whole image -- rising until about half
-the image, then flat. Disagreements concentrate on object borders, and even a
+on 256, 0.838 on 496 and 0.847 on the whole image -- the whole image best;
+the gains shrinking to almost nothing by 496 px (about three-quarters of the
+width, ~150 m of ground at their ~30 cm), then flat to the whole. (Written
+earlier as "about half the image", which was loose: the owner asked whether
+that meant halving images is better. It does not -- bigger was never worse.)
+Disagreements concentrate on object borders, and even a
 one-pixel shift of the input changes them. Authors: use the largest tile that
 fits, whole images when possible. **Reading for us:** consistent with H55/H59
 -- 6 cm blocks give each patch 27 m of context against the whole lot's
@@ -4958,3 +5014,4 @@ worse on the lots approved since. Then it joins THE PLAN.
 | 2026-09-29 | 36495279827 36495282695 36495284820 | 55 | **`windows: both`** (S17), fused, `canopy: on lawn`, no examples, seeds 7/8/9, **Modal**; vs S14 (CPU) s7/8/9 (compare-runs.js locally) | — | — | **H58: leans better, bar missed.** 27 better / 16 worse, -0.4 [-1.4, +0.2], p 0.13; since -0.2. B28 not rescued (86); B24 -17, B32 -10, B03 -5; B20 +8. 57 min a run on Modal |
 | 2026-09-29 | 36484570562 36484573224 36484577454 | 55 (+90 examples) | `examples: on`, **cropped** to graded cells, whole lot, fused, `canopy: compare`, seeds 7/8/9, CPU; vs S14 and vs the uncropped runs (compare-runs.js locally) | — | — | **H57 stands, stronger.** vs S14 10 better / 41 worse, +3.8 [+2.7, +5.4]; vs uncropped +0.7 [+0.0, +1.0]. Examples closed as built |
 | 2026-09-29 | A 36488404436 36503982887 36503985030 36503987452 36507985116 36503991446; B 36495279827 36495282695 36495284820 36507987770 36503996787 36503998921 | 55 | **S18**: whole lot vs both scales, six seeds a side, Modal except A s11 / B s10 (CPU) | — | — | **H59: both scales closed.** 26 better / 19 worse, -0.2 [-1.2, +0.4], p 0.37. B24 -15, B32 -9; B20 +8, B10 +5; B28 unchanged |
+| 2026-09-29 | 36555664599 36558441061 36558444702 | 55 | **S19 edge refiner** (`decoder: fused + edge`), windows off, `canopy: on lawn`, seeds 7/8/9, CPU, cache hit (extract 4 min); plain vs refined within each run | — | — | **H60: passes.** 34 better / 9 worse, -1.7 [-2.6, -0.5], p 0.0002; since 12 / 5. B03 -16, B32 -11; B19 +14, B20 +10. Refiner 14-35 min |
