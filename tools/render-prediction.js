@@ -568,7 +568,10 @@ export const LAYERS = [
   { id: 'added', label: 'stage 3: put back under trees', colour: ADDED, on: true },
   { id: 'vetoed', label: 'lidar veto: taken out', colour: [255, 64, 129], on: true },
   { id: 'edgeAdded', label: 'colour edges: added (not in the score)', colour: [0, 230, 118], on: false },
-  { id: 'edgeRemoved', label: 'colour edges: taken out (not in the score)', colour: [255, 234, 0], on: false },
+  // Red, not yellow (owner, 2026-09-29): yellow sat next to stage 3's amber
+  // "put back under trees", so an area colour edges TOOK OUT read as one
+  // something had ADDED. Green in, red out.
+  { id: 'edgeRemoved', label: 'colour edges: taken out (not in the score)', colour: [229, 57, 53], on: false },
   { id: 'shapes', label: 'detector: outline and handles', colour: TRACE, on: true },
   { id: 'line', label: 'property line', colour: PARCEL_EDGE, on: true },
 ];

@@ -77,18 +77,21 @@ const lawnName = (L) => `${L.tag ? `${L.tag} ` : ''}${L.county || 'traced by han
  * THE PLAN'S ROW (docs/DETECTOR-FINDINGS.md, H39): the one the pictures are
  * drawn for whenever a run scores it. Change it here when THE PLAN changes.
  */
-const PLAN_ROW = 'decoder, canopy on lawn + stage 3, span, lidar veto';
-/* The same row in a run that trains only the on-lawn decoder (`canopy: on
-   lawn`), where the single decoder is named "the pretrained eye, decoder".
-   Without this such a run drew the lowest median instead (2026-09-28). */
+/* Since 2026-09-29 (H60, owner): the decoder with the edge refiner, which
+   workflow 14 scores as its own row beside the plain one (`decoder: fused +
+   edge`). Before that: 'decoder, canopy on lawn + stage 3, span, lidar veto'. */
+const PLAN_ROW = 'decoder, edge refined + stage 3, span, lidar veto';
+/* In a run without the refiner (`decoder: fused`, `canopy: on lawn`) the
+   single plain decoder, named "the pretrained eye, decoder", is drawn instead:
+   the previous plan's row, and the nearest thing that run has. Without this
+   such a run drew the lowest median (2026-09-28). */
 const PLAN_ROW_ALONE = 'the pretrained eye, decoder + stage 3, span, lidar veto';
 const isPlanRow = (name) => name === PLAN_ROW
   || (name === PLAN_ROW_ALONE && (process.env.CANOPY_MODE || 'lawn') === 'lawn');
 /* THE ROW ON TRIAL, drawn in preference to THE PLAN's when a run scores it,
    because the pictures are how a candidate is judged (owner, 2026-09-26).
-   S19 (2026-09-29): the edge refiner, scored only by `decoder: fused + edge`
-   runs -- elsewhere the row does not exist and THE PLAN's is drawn as before. */
-const TRIAL_ROW = 'decoder, edge refined + stage 3, span, lidar veto';
+   None now: the edge refiner was on trial (S19) and became THE PLAN (H60). */
+const TRIAL_ROW = null;
 
 /*
  * HOW MANY NUMBERS OF THE BACKBONE'S 384 EACH PIXEL CARRIES.

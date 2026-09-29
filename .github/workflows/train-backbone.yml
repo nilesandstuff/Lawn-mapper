@@ -202,8 +202,11 @@ on:
         # "the pretrained eye, decoder" and "decoder, edge refined". Takes the
         # canopy setting for both (not 'compare'); free runner only.
         description: 'Train the convolutional decoder over the full patch grid (on), the same with lidar + NAIP NDVI + canopy as extra inputs (fused, the main set-up), fused with and without the edge refiner (fused + edge, S19), or not at all (off)'
+        # THE PLAN FROM 2026-09-29 (H60, owner): `fused + edge`, the default.
+        # It still trains and scores the plain fused decoder beside the
+        # refined one, so every run keeps the comparison.
         type: choice
-        default: 'fused'
+        default: 'fused + edge'
         options: ['on', 'fused', 'fused + edge', 'off']
       seed:
         # THE DECODER'S SEED. It is deterministic given the seed and the

@@ -27,7 +27,10 @@
 
 import { readFileSync } from 'node:fs';
 
-export const PLAN_ROW = 'decoder, canopy on lawn + stage 3, span, lidar veto';
+// THE PLAN's row since 2026-09-29 (H60): the edge-refined decoder. Runs from
+// before it name the old row, 'decoder, canopy on lawn + stage 3, span, lidar
+// veto' -- pass it with --row when comparing against those.
+export const PLAN_ROW = 'decoder, edge refined + stage 3, span, lidar veto';
 const TIE = 0.5;
 
 /** lot id -> { error, benchmark, tag } for one row of one results file. */

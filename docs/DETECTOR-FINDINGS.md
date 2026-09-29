@@ -59,10 +59,11 @@ got here. Update it whenever the in-flight run changes.*
   measured, not assumed).
 - **Measured (2026-09-29): H60, the edge refiner PASSES its bar.** 34
   better / 9 worse, -1.7 [-2.6, -0.5], p 0.0002; approved since 12 / 5,
-  -0.5. NOT yet THE PLAN: adopting means THE PLAN's row becomes "decoder,
-  edge refined + stage 3, span, lidar veto" (PLAN_ROW in train-detector.js
-  and compare-runs.js), and workflow 14's default decoder `fused + edge`.
-  Waiting on the owner's word.
+  -0.5. **ADOPTED into THE PLAN (owner, 2026-09-29):** THE PLAN's row is
+  now "decoder, edge refined + stage 3, span, lidar veto" (PLAN_ROW in
+  train-detector.js and compare-runs.js), and workflow 14's default decoder
+  is `fused + edge`, which still scores the plain decoder beside it. Runs
+  before this name the old row; compare against them with --row.
 - **Research done (2026-09-29): E11.** Published work agrees with H55-H59
   (bigger context wins; scales only combine well when a network learns the
   choice per location, trained on far more images than 55) and points at
@@ -512,6 +513,12 @@ setting that is right.
   **"the pretrained eye, decoder"** in workflow 14's table. UNMEASURED at the
   time of writing; the first run is the row after this one in the run log.
 
+  **Since 2026-09-29 stage 1 ends in the edge refiner (H60, adopted by the
+  owner):** tools/edge_refine.py, a small net on the 15 cm scoring grid that
+  sees the photograph and the decoder's answer and re-draws the edge, trained
+  with the decoder in every fold. 34 lots better / 9 worse, -1.7 [-2.6,
+  -0.5]. Workflow 14 `decoder: fused + edge`, the default.
+
   **Since 2026-09-24 the tree model's canopy counts as unseen ground too**
   (workflow 14's `canopy` input, on by default). The owner's reasoning, which
   is right: the canopy mask in every run so far is a better record of what the
@@ -823,6 +830,20 @@ grid from the photograph, with a small net trained jointly with the decoder,
 lowers the error on most lots, on the frozen benchmark and on the lots
 added since. It costs about 2x a decoder's training time (14-35 min on the
 free runner against 6-13).
+
+**The owner, from the pictures (2026-09-29):** B19 and B20's losses in
+seeds 8 and 9 are both PARKING LOTS called lawn; seed 7 took no parking lot.
+B16 is a mess in both the plain and refined answers: it misses featureless
+open ground and is confused by leaf-off trees. Note: these three runs had
+`examples: off` -- the not-lawn examples (parking lots among them) were NOT
+in training, because H57 found them worse overall. So "shown many not-lawn
+examples and still took a parking lot" is not what happened here; whether
+examples help THIS decoder on parking lots specifically is untested.
+The owner also saw the colour-edges layers appear to add where they should
+subtract: the layers were computed correctly (added = in the colour-edges
+answer and not THE PLAN's; taken out = the reverse), but "taken out" was
+yellow beside stage 3's amber "put back under trees", which reads as an
+addition. "Taken out" is red from 2026-09-29.
 
 **Not established -- speculation:** WHY B19 and B20 got worse (B20 also got
 worse under colour edges' opposite, and is a real-mistake lot per H53), or
