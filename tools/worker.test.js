@@ -78,7 +78,7 @@ for (const [id, model] of Object.entries(MODELS)) {
    * the preflight and billed for by Replicate while the picker still called it
    * free, which is the failure worth a test.
    */
-  if (model.local) {
+  if (model.local || model.modal) {
     check(`${id}: carries no prediction machinery`,
       !model.slug && !model.input && !model.fields,
       `slug=${model.slug} input=${typeof model.input} fields=${model.fields}`);

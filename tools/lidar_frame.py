@@ -491,6 +491,19 @@ def points_over(base, bbox, limit_nodes=400):
                  "ept_points": ept.get("points")}
 
 
+def lidar_for(url, bbox, cell=2.0):
+    """One frame's lidar for the live server: (layers, masks), or None when
+    the project has too few points over the frame (MIN_COVERED), exactly as
+    main() treats it. `url` is the EPT url tools/lidar-plan.js picks."""
+    base = url.rsplit("/", 1)[0]
+    pts, _ = points_over(base, bbox)
+    raster = rasterise(pts, bbox, cell)
+    if float((raster["n_all"] > 0).mean()) < MIN_COVERED:
+        return None
+    layers = layers_from(raster, cell)
+    return layers, masks_from(raster, layers)
+
+
 def main():
     from PIL import Image
 

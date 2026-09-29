@@ -218,3 +218,12 @@ ALTER TABLE corpus ADD COLUMN naip_align TEXT;
 -- NOT-LAWN TRACES, per map (see the column in schema.sql). corpus shipped
 -- long ago, so the CREATE there reaches new databases only.
 ALTER TABLE corpus ADD COLUMN not_lawn TEXT;
+
+-- WHICH TRAINED-MODEL RELEASE DREW THE OUTLINE (see the column in schema.sql).
+ALTER TABLE corpus ADD COLUMN model_version TEXT;
+
+-- HOW UNSURE THE TRAINED MODEL IS ABOUT A QUEUED LOT (see schema.sql).
+-- lawn_jobs shipped long ago, so the CREATE there reaches new databases only.
+ALTER TABLE lawn_jobs ADD COLUMN uncertainty REAL;
+ALTER TABLE lawn_jobs ADD COLUMN scored_model TEXT;
+ALTER TABLE lawn_jobs ADD COLUMN scored_at TEXT;

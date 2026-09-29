@@ -91,7 +91,9 @@ const state = {
   devThreshold: null, // null means "let the model decide"
   devInvert: false,   // Testing's inversion, which no shipped model owns
   model: 'sam3',      // which one Detect will use
+  defaultModel: 'sam3', // what a fresh page starts on; /api/config says (the trained model where it is served)
   detectedBy: null,   // which one the shapes on screen actually came from
+  detectedVersion: null, // which release of the trained model drew them, for the corpus (feedback loop 1)
   exclusions: [],     // what exclude mode can remove, from /api/config
   exclude: [],        // which of those are ticked -- one AI pass each
   detectedExcluding: null, // the tick set the shapes on screen came from
@@ -1225,7 +1227,7 @@ async function initMap() {
 
   const {
     mapboxToken, imagery, models, exclusions, defaultExclusions, accounts,
-    coverage, overlays,
+    coverage, overlays, defaultModel,
   } = await api('/api/config');
   state.accountsOn = Boolean(accounts);
   /*
@@ -1242,6 +1244,11 @@ async function initMap() {
   state.overlays = Array.isArray(overlays) ? overlays : [];
   state.overlaysOn = new Set();
   state.models = Array.isArray(models) ? models : [];
+  /* The trained model where the Worker serves one, "Find grass" where not.
+     Only a method that is actually offered, so an old Worker or a pulled
+     release lands on the one that always works. */
+  state.defaultModel = knownModel(defaultModel) ? defaultModel : 'sam3';
+  state.model = state.defaultModel;
   state.exclusions = Array.isArray(exclusions) ? exclusions : [];
   state.exclude = Array.isArray(defaultExclusions)
     ? defaultExclusions.slice()
@@ -3954,6 +3961,8 @@ function handleMapPoint(lngLat, x = null, y = null, fromTouch = false) {
 const modelInverts = (id) =>
   modelInfo(id).devOnly ? state.devInvert : Boolean(modelInfo(id).invert);
 
+const knownModel = (id) => typeof id === 'string' && state.models.some((m) => m.id === id);
+
 const modelInfo = (id) =>
   state.models.find((m) => m.id === id)
   // The fallback must default `invert` to false, not leave it undefined: an
@@ -4373,6 +4382,14 @@ function detectionRequest(frame, provider, model, points) {
     address: state.chosen?.label || null,
     parcelSqFt: state.parcel ? measure(state.parcel.geometry).squareFeet : null,
     county: state.parcel?.properties?.county || null,
+    /*
+     * The trained model also takes the property line and the NAIP alignment.
+     * The line only decides how unsure it reports being (feedback loop 2 ranks
+     * lots by that); the alignment is the one training read NAIP with.
+     */
+    ...(modelInfo(model).fixedPolarity
+      ? { parcel: state.parcel?.geometry || null, naipAlign: state.naipAlign || null }
+      : {}),
   };
 }
 
@@ -4458,6 +4475,8 @@ async function detect() {
      * shape and takes the old path.
      */
     const tiling = data.tiling || { cols: 1, rows: 1 };
+    /* Which release of the trained model answered, when it was that. */
+    let version = null;
     const layers = await Promise.all((data.passes || [{ ...data, exclusion: null }])
       .map(async (pass) => {
         const label = pass.exclusion ? exclusionInfo(pass.exclusion).label : null;
@@ -4465,6 +4484,7 @@ async function detect() {
           const done = tile.status === 'succeeded'
             ? tile
             : await waitForPrediction(tile.id, rendered);
+          if (done.version) version = done.version;
           const url = maskUrl(done.mask);
           if (!url) {
             throw new Error(label
@@ -4498,6 +4518,7 @@ async function detect() {
       // Whatever produced these pixels decides the polarity, not the picker,
       // which the user may change before the next re-trace.
       invert: modelInverts(model),
+      fixedPolarity: Boolean(modelInfo(data.model || model).fixedPolarity),
     });
     const { polygons, collapsed } = traced;
 
@@ -4561,6 +4582,7 @@ async function detect() {
     // a look-only source, and the status line has to name the real one.
     state.detectedWith = rendered.provider || provider;
     state.detectedBy = data.model || model;
+    state.detectedVersion = version;
     state.detectedExcluding = excludesWanted() ? excludeKey() : null;
     /*
      * How to read these pixels is stored WITH them, not looked up at re-trace
@@ -4575,6 +4597,7 @@ async function detect() {
       layers,
       subtractive,
       invert: modelInverts(model),
+      fixedPolarity: Boolean(modelInfo(data.model || model).fixedPolarity),
       /*
        * Carried with the mask, not looked up again at re-trace time. The edge
        * slider re-traces THIS mask, and by then the picker may say something
@@ -4707,7 +4730,9 @@ async function detect() {
       : data.fellBack === 'landcover'
         ? ' The land cover map has no data at this address, so the AI answered instead'
           + ' and this press used a detection.'
-        : '';
+        : data.fellBack === 'alpha'
+          ? ' The trained model is not switched on right now, so "Find grass" answered instead.'
+          : '';
 
     /*
      * SAY WHEN THE LOT WAS PHOTOGRAPHED IN PIECES, because it cost that many
@@ -6482,6 +6507,7 @@ function snapshotForSave() {
     county: state.parcel?.properties?.county || null,
     model: state.detectedBy || state.model,
     modelLabel: modelInfo(state.detectedBy || state.model).label || null,
+    modelVersion: state.detectedVersion || null,
     mode,
     provider: state.detectedWith || state.provider,
     exclude: state.detectedExcluding ? state.detectedExcluding.split(',') : [],
@@ -7415,7 +7441,7 @@ function openMap(s) {
   state.parcel = s.parcel || null;
   state.frame = s.frame || null;
   state.provider = s.provider || 'mapbox';
-  state.model = s.model || 'sam3';
+  state.model = knownModel(s.model) ? s.model : state.defaultModel;
   state.exclude = Array.isArray(s.exclude) ? s.exclude.filter(Boolean) : [];
   state.edgeFt = Number.isFinite(s.edgeFt) ? s.edgeFt : DEFAULT_EDGE_FT;
   state.fillGaps = { find: true, exclude: false, ...(s.fillGaps || {}) };
@@ -7432,6 +7458,7 @@ function openMap(s) {
    */
   state.detected = true;
   state.detectedBy = s.model || null;
+  state.detectedVersion = s.modelVersion || null;
   state.detectedWith = s.provider || null;
   state.detectedExcluding = state.exclude.length ? state.exclude.slice().sort().join(',') : null;
   state.handEdited = true;
@@ -8096,7 +8123,9 @@ const COLLAPSE_FRACTION = 0.98;
  *   and not-a-building, and two independently noisy masks intersect to
  *   slivers. Same pixels for one concept, incompatible for two.
  */
-function traceDetection({ layers, subtractive, invert, rendered, edgeFt = 0, maxVertices = MAX_TRACE_VERTICES }) {
+function traceDetection({
+  layers, subtractive, invert, rendered, edgeFt = 0, maxVertices = MAX_TRACE_VERTICES, fixedPolarity = false,
+}) {
   const { width: w, height: h } = layers[0].image;
 
   // All passes are the same model on the same image, so this should never
@@ -8213,7 +8242,9 @@ function traceDetection({ layers, subtractive, invert, rendered, edgeFt = 0, max
       sqFtPerPx,
       collapsed: [],
       polygons: polygonsFromBinary(
-        maskBinary(layers[0].image, { invert: Boolean(invert) }),
+        /* The trained model's mask is lawn = white however much of the frame
+           that is; the guess that mostly-white means upside down is for SAM. */
+        maskBinary(layers[0].image, { invert: Boolean(invert), ...(fixedPolarity ? { autoPolarity: false } : {}) }),
         w, h, unproject, options
       ),
     };
@@ -8314,6 +8345,7 @@ function retrace(what = 'That') {
     layers: mask.layers,
     subtractive: mask.subtractive,
     invert: mask.invert,
+    fixedPolarity: Boolean(mask.fixedPolarity),
     rendered: mask.frame,
     maxVertices: mask.maxVertices || MAX_TRACE_VERTICES,
     // Feet on the ground -> pixels of this particular mask.
@@ -11238,12 +11270,13 @@ function reset() {
   state.detected = false;
   state.detectedWith = null;
   state.detectedBy = null;
+  state.detectedVersion = null;
   state.detectedExcluding = null;
   state.detectedShapes = null;
   state.naipAlign = null;
   state.naipBlob = null;
   state.provider = 'mapbox';
-  state.model = 'sam3';
+  state.model = state.defaultModel;
   state.pins = [];
   state.mode = null;
   state.shapeTool = 'points';
@@ -11821,6 +11854,8 @@ function finishedBody() {
       parcelSource: state.parcel ? (state.parcel.properties?.drawn ? 'hand' : 'county') : null,
       provider: state.detectedWith || state.provider,
       model: state.detectedBy || null,
+      /* Which release drew the outline being corrected (feedback loop 1). */
+      modelVersion: state.detectedBy ? state.detectedVersion || null : null,
       mode: saveMode(),
       handEdited: state.handEdited,
       // Null when nothing was detected: a lawn drawn entirely by hand is a

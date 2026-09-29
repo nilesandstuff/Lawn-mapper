@@ -1,0 +1,86 @@
+name: 26. Rank the tracing queue by the trained model (COSTS MONEY)
+
+# FEEDBACK LOOP 2 (owner, 2026-09-29). Runs "Trained model (alpha release)"
+# over lots waiting in the tracing queue and writes how unsure it was about
+# each; the queue then hands out the least sure first (routes-jobs.js,
+# claimFor). A lot the model already reads well teaches it little when
+# somebody traces it.
+#
+# COSTS MONEY: Modal's L4, through the same server the site uses
+# (tools/modal_serve.py), at most three GPUs at once. Roughly a cent or two a
+# lot plus a minute of cold start -- forty lots is well under a dollar. Ask the
+# owner before running it (CLAUDE.md, "Modal costs money").
+#
+# Only lots not yet scored by the release on Modal now, so running it again
+# after a new release re-ranks the queue for the new model, and running it
+# twice in a row does nothing the second time.
+on:
+  workflow_dispatch:
+    inputs:
+      lots:
+        description: 'How many queued lots to score (each is Modal GPU time)'
+        type: string
+        default: '40'
+      confirm:
+        description: 'Type "spend" -- this runs on a paid GPU'
+        required: true
+        default: ''
+
+concurrency:
+  group: score-queue
+  cancel-in-progress: false
+
+jobs:
+  score:
+    name: Score the queue on Modal
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+    steps:
+      - name: Check the confirmation
+        if: inputs.confirm != 'spend'
+        run: |
+          echo "::error::Type 'spend' in the confirmation box: this runs on Modal's paid GPU."
+          exit 1
+
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - run: npm ci
+
+      - name: Install the Modal client
+        run: pip install --quiet modal
+
+      - name: Which release is live
+        run: |
+          modal volume get --force lawn-mapper-models alpha/release.json release.json
+          release=$(python3 -c "import json;print(json.load(open('release.json'))['trainedAt'])")
+          echo "RELEASE=$release" >> "$GITHUB_ENV"
+          echo "Scoring against the release trained $release."
+
+      - name: Pick the lots and frame them as the app would
+        env:
+          LIMIT: ${{ inputs.lots }}
+          MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
+          MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN }}
+        run: node tools/score-queue.js plan > lots.jsonl
+
+      - name: Run the trained model over them (Modal)
+        run: python3 tools/score_queue_modal.py lots.jsonl scores.jsonl
+
+      - name: Write the ranking to the queue
+        if: always()
+        run: |
+          if [ -s scores.jsonl ]; then node tools/score-queue.js write < scores.jsonl; else echo "No scores to write."; fi

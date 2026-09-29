@@ -331,6 +331,11 @@ CREATE TABLE IF NOT EXISTS corpus (
   -- to their edges. Training reads them as "graded, and not lawn"; nothing
   -- measures them. NULL means nobody traced any.
   not_lawn       TEXT,
+  -- WHICH RELEASE OF THE TRAINED MODEL DREW detected_shapes (feedback loop 1,
+  -- 2026-09-29): the release's training date, as Modal reports it. NULL for
+  -- SAM, land cover and hand-drawn maps. Kept so a correction can be scored
+  -- against the model that made the mistake rather than whichever is live.
+  model_version  TEXT,
   -- Where the aerial photograph is in R2, and which source it came from.
   --
   -- TWO COLUMNS BECAUSE THEY DISAGREE. `provider` above is what the person was
@@ -603,6 +608,15 @@ CREATE TABLE IF NOT EXISTS lawn_jobs (
   -- platform reports its own timing, which includes reading the instructions
   -- and is not the same number.
   seconds       INTEGER,
+
+  -- HOW UNSURE THE TRAINED MODEL IS ABOUT THIS LOT (feedback loop 2,
+  -- 2026-09-29): the share of the lot it put between 20% and 80% lawn, from
+  -- workflow 16. The queue hands out the least sure first, because a lot the
+  -- model already gets right teaches it nothing when somebody traces it.
+  -- NULL until scored; unscored lots go after scored ones.
+  uncertainty   REAL,
+  scored_model  TEXT,
+  scored_at     TEXT,
 
   created_at    TEXT NOT NULL
 );

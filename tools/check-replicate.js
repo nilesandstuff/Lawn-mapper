@@ -51,7 +51,7 @@ for (const [id, model] of Object.entries(MODELS)) {
    * skipped in silence, so the count of methods still adds up for whoever is
    * reading the preflight to find out what is live.
    */
-  if (model.local) {
+  if (model.local || model.modal) {
     console.log(`\n=== ${id}: not a prediction, nothing to preflight`);
     continue;
   }

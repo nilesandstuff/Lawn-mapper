@@ -627,8 +627,8 @@ const png = () => new Response('x', { headers: { 'content-type': 'image/png' } }
   const withTraces = fakeDB();
   await recordFinished({ DB: withTraces }, body({ notLawn: [square(-85.667, 42.963)] }));
   const w = withTraces.writes[0];
-  const stored = w.args[w.args.length - 1];
-  check('not-lawn traces are stored as the last bound value',
+  const stored = w.args[20];
+  check('not-lawn traces are stored as ?21',
     typeof stored === 'string' && JSON.parse(stored).length === 1 && JSON.parse(stored)[0].type === 'Polygon',
     String(stored).slice(0, 80));
   check('and the upsert keeps the stored traces when a finish sends none',
@@ -638,18 +638,41 @@ const png = () => new Response('x', { headers: { 'content-type': 'image/png' } }
   await recordFinished({ DB: without }, body());
   const none = without.writes[0].args;
   check('an ordinary finish sends null, not an empty list',
-    none[none.length - 1] === null, String(none[none.length - 1]));
+    none[20] === null, String(none[20]));
 
   const emptied = fakeDB();
   await recordFinished({ DB: emptied }, body({ notLawn: [] }));
   const e = emptied.writes[0].args;
   check('removing them all sends an empty list, which replaces them',
-    e[e.length - 1] === '[]', String(e[e.length - 1]));
+    e[20] === '[]', String(e[20]));
 
   const schema = readFileSync(join(root, 'worker/schema.sql'), 'utf8');
   const migrations = readFileSync(join(root, 'worker/migrations.sql'), 'utf8');
   check('the column is in the CREATE and has its ALTER for databases already out there',
     /\bnot_lawn\s+TEXT/.test(schema) && /ALTER TABLE corpus ADD COLUMN not_lawn TEXT/.test(migrations));
+}
+
+/* ---------------------------- which trained-model release drew it (loop 1) */
+{
+  const alpha = fakeDB();
+  await recordFinished({ DB: alpha }, body({ model: 'alpha', modelVersion: '2026-09-29T20:00:00Z', detectedShapes: [square(-85.667, 42.963)] }));
+  const a = alpha.writes[0];
+  check('the release is stored as ?22', a.args[21] === '2026-09-29T20:00:00Z', String(a.args[21]));
+  check('and it travels with the detector outline, not on its own',
+    /model_version = CASE WHEN \?16 IS NOT NULL THEN \?22 ELSE corpus\.model_version END/.test(a.sql));
+  const sam = fakeDB();
+  await recordFinished({ DB: sam }, body());
+  check('a SAM finish stores no release', sam.writes[0].args[21] === null, String(sam.writes[0].args[21]));
+  const schema = readFileSync(join(root, 'worker/schema.sql'), 'utf8');
+  const migrations = readFileSync(join(root, 'worker/migrations.sql'), 'utf8');
+  check('model_version is in the CREATE and has its ALTER',
+    /\bmodel_version\s+TEXT/.test(schema) && /ALTER TABLE corpus ADD COLUMN model_version TEXT/.test(migrations));
+  for (const col of ['uncertainty REAL', 'scored_model TEXT', 'scored_at TEXT']) {
+    const [name, type] = col.split(' ');
+    check(`lawn_jobs.${name} is in the CREATE and has its ALTER`,
+      new RegExp(`\\b${name}\\s+${type}`).test(schema)
+      && migrations.includes(`ALTER TABLE lawn_jobs ADD COLUMN ${col};`));
+  }
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);

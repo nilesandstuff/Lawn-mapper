@@ -60,8 +60,9 @@ import {
   MODELS, samVersion, samThreshold, samPrompt, normaliseModel, modelCatalogue,
   SAM_INPUT_PX, samMaxTilesAcross,
   promptProblem, normaliseExclusions, exclusionPass, exclusionCatalogue,
-  DEFAULT_EXCLUSIONS, DEFAULT_MODEL,
+  DEFAULT_EXCLUSIONS, DEFAULT_MODEL, defaultModelFor,
 } from './sam.js';
+import { alphaEnabled, startAlpha, pollAlpha, isAlphaId, alphaMaskResponse } from './alpha.js';
 import { covers, lawnMaskUrl, LANDCOVER_HOST, overlayCatalogue } from './landcover.js';
 // Which satellite picture to use, and how to ask each source for exactly our
 // frame. Also lives outside the entrypoint, for the same reason as sam.js.
@@ -438,7 +439,7 @@ async function handleImagery(url, env, origin) {
  */
 const MASK_HOSTS = ['replicate.delivery', LANDCOVER_HOST];
 
-async function handleMask(url, origin) {
+async function handleMask(url, origin, env) {
   const raw = url.searchParams.get('url');
   if (!raw) return json({ error: 'url required' }, 400, origin);
 
@@ -447,6 +448,13 @@ async function handleMask(url, origin) {
     target = new URL(raw);
   } catch {
     return json({ error: 'Invalid url' }, 400, origin);
+  }
+
+  /* The trained model's masks are this Worker's own, kept in R2: read them
+     there rather than fetching ourselves over the network. Same host only --
+     this is not a way to widen the list below. */
+  if (target.host === url.host && target.pathname === '/api/alpha-mask') {
+    return alphaMaskResponse(env, target.searchParams.get('id') || '', cors(origin));
   }
 
   // Without this check the endpoint is an open proxy: anyone could use the
@@ -480,6 +488,16 @@ async function handleMask(url, origin) {
  */
 async function handlePrediction(url, env, origin) {
   const id = url.searchParams.get('id') || '';
+  /* The trained model's lots, polled on Modal. See alpha.js. */
+  if (isAlphaId(id)) {
+    if (!alphaEnabled(env)) return json({ status: 'failed', mask: null, detail: 'The trained model is not switched on here.' }, 200, origin);
+    try {
+      return json(await pollAlpha(env, id, url.origin), 200, origin);
+    } catch (e) {
+      // A dropped poll is not a failed lot; the browser asks again.
+      return json({ error: 'Could not read the trained model', detail: String(e?.message || e) }, 502, origin);
+    }
+  }
   // Replicate ids are opaque alphanumeric strings; anything else is not ours.
   if (!/^[a-z0-9]{6,64}$/i.test(id)) {
     return json({ error: 'Invalid prediction id' }, 400, origin);
@@ -543,6 +561,19 @@ async function handleSegment(request, env, origin, ctx) {
   let model = MODELS[modelId];
 
   /*
+   * THE TRAINED MODEL WHERE NO RELEASE IS SERVED falls back to "Find grass"
+   * and says so, like the land cover method below. A page cached from a
+   * deployment that had it, or a release pulled, must not become a button
+   * that fails.
+   */
+  let fellBack = null;
+  if (model.modal && !alphaEnabled(env)) {
+    fellBack = 'alpha';
+    modelId = DEFAULT_MODEL;
+    model = MODELS[modelId];
+  }
+
+  /*
    * Pins, in the pixel space of the image the model will be shown.
    *
    * The browser sends them already converted, because it is the only side that
@@ -587,7 +618,6 @@ async function handleSegment(request, env, origin, ctx) {
    * label is the one thing that must not happen here, because the whole point
    * of shipping both is finding out which is better.
    */
-  let fellBack = null;
   if (model.local) {
     const served = providerFrame(provider, { lng, lat, zoom, size, height });
     if (await covers(lng, lat, env)) {
@@ -680,6 +710,9 @@ async function handleSegment(request, env, origin, ctx) {
     } else {
       passes = wanted.map((id) => exclusionPass(id, env, devThreshold));
     }
+  } else if (model.modal) {
+    /* No prompt and no cut: the trained model answers one question. */
+    passes = [{ id: null, prompt: 'trained model', threshold: null }];
   } else {
     passes = [{
       id: null,
@@ -701,10 +734,14 @@ async function handleSegment(request, env, origin, ctx) {
    * Decided BEFORE the allowance is touched, because every piece is a
    * prediction and the charge has to be for all of them.
    */
-  const plan = detectionPlan(provider, { lng, lat, zoom, size, height }, {
-    inputPx: SAM_INPUT_PX,
-    maxAcross: samMaxTilesAcross(env),
-  });
+  /* The trained model reads the whole lot in one picture, as it was trained:
+     one piece, one pass, one slot of the allowance. */
+  const plan = model.modal
+    ? { tiles: [{ col: 0, row: 0 }], cols: 1, rows: 1, frame: null, groundM: 0, capped: false }
+    : detectionPlan(provider, { lng, lat, zoom, size, height }, {
+      inputPx: SAM_INPUT_PX,
+      maxAcross: samMaxTilesAcross(env),
+    });
   const starts = passes.length * plan.tiles.length;
   const pieces = plan.tiles.length > 1
     ? ` in ${plan.tiles.length} pieces` : '';
@@ -951,6 +988,47 @@ async function handleSegment(request, env, origin, ctx) {
    * to the browser below is exactly what each mask must be unprojected
    * against.
    */
+  /*
+   * THE TRAINED MODEL, handed to Modal here, after the allowance -- a lot costs
+   * a GPU for a few seconds, so it is a detection like any other -- and
+   * answered in the shape a still-running Replicate pass has, so the browser
+   * polls it with the code it already has.
+   *
+   * The photograph is Mapbox's whatever the picker says: that is what every
+   * lot it was trained on was photographed with (storeImage), and a model
+   * shown a different camera is a different, unmeasured model.
+   */
+  if (model.modal) {
+    let begun;
+    try {
+      begun = await startAlpha(env, {
+        frame: { lng, lat, zoom, size, height },
+        parcel: body.parcel?.geometry || body.parcel || null,
+        naipAlign: body.naipAlign || null,
+      });
+    } catch (err) {
+      await handBack();
+      note('upstream_error', `trained model: ${err.message}`);
+      return json({ error: 'The trained model could not start', detail: err.message }, 502, origin);
+    }
+    note('processing', `trained model at ${(begun.groundM * 100).toFixed(1)} cm/px`);
+    const pass = { exclusion: null, prompt: 'trained model', threshold: null, status: 'processing', id: begun.id, mask: null };
+    return json({
+      passes: [{ ...pass, tiles: [{ col: 0, row: 0, status: 'processing', id: begun.id, mask: null }] }],
+      subtractive: false,
+      remaining: quota.unlimited ? null
+        : (Number.isFinite(quota.remaining)
+          ? quota.remaining
+          : Math.max(0, (quota.limit || 0) - (quota.used || 0))),
+      frame: { ...begun.frame, provider: 'mapbox' },
+      model: modelId,
+      tiling: { cols: 1, rows: 1, groundCm: Math.round(begun.groundM * 1000) / 10, capped: Boolean(begun.capped) },
+      pending: true,
+      status: 'processing',
+      id: begun.id,
+    }, 202, origin);
+  }
+
   const served = plan.frame;
   const pictures = plan.tiles.map((tile) => ({
     col: tile.col,
@@ -1281,7 +1359,10 @@ export default {
                * radio group cannot express that.
                */
               overlays: overlayCatalogue(env),
-              models: modelCatalogue(),
+              models: modelCatalogue(env),
+              /* Which method a fresh page starts on: the trained model where
+                 a release is being served, "Find grass" where it is not. */
+              defaultModel: defaultModelFor(env),
               // The things exclude mode can remove, and which start ticked.
               // Same reasoning as the imagery list: the browser draws the boxes
               // and the Worker runs the prompts, so one list, sent once.
@@ -1318,7 +1399,9 @@ export default {
         case '/api/geocode':
           return await handleGeocode(url, env, origin);
         case '/api/mask':
-          return await handleMask(url, origin);
+          return await handleMask(url, origin, env);
+        case '/api/alpha-mask':
+          return await alphaMaskResponse(env, url.searchParams.get('id') || '', cors(origin));
         case '/api/prediction':
           return await handlePrediction(url, env, origin);
         case '/api/parcel':

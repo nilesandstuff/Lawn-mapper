@@ -481,13 +481,23 @@ async function claimFor(worker, route, env, now, json, origin, avoid = '') {
    * created_at, and that stopped meaning anything the moment the order became
    * random -- so the skip note is read instead. See SKIP_NOTE, which both
    * places that release a claim write.
+   *
+   * AND THEN THE LOTS THE TRAINED MODEL IS LEAST SURE OF (feedback loop 2,
+   * 2026-09-29). Workflow 26 runs the model over the queue and writes how
+   * unsure it was; a lot it already reads well teaches it little when
+   * somebody traces it, so the unsure ones go first. Unscored lots come after
+   * every scored one and stay random among themselves, so a queue nobody has
+   * scored behaves exactly as before. The variety argument above still
+   * holds: scoring is a batch of a few dozen, spread wherever the sampler
+   * found them, not one street.
    */
   const pick = async (exclude) => env.DB.prepare(
     `UPDATE lawn_jobs
         SET state = 'claimed', worker = ?1, claimed_at = ?2, route = ?3
       WHERE id = (SELECT id FROM lawn_jobs WHERE state = 'approved'
                     AND (?4 = '' OR id != ?4)
-                   ORDER BY (CASE WHEN note LIKE ?5 THEN 1 ELSE 0 END), RANDOM()
+                   ORDER BY (CASE WHEN note LIKE ?5 THEN 1 ELSE 0 END),
+                            (uncertainty IS NULL), uncertainty DESC, RANDOM()
                    LIMIT 1)
     RETURNING *`
   ).bind(worker, claimedAt, route, exclude, `${SKIP_NOTE}%`).first();

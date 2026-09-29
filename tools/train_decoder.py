@@ -555,6 +555,37 @@ def main():
         return a is not None and any(
             (b := lonlat(h["id"])) is not None and km_between(a, b) < NEIGHBOUR_KM for h in group)
 
+    # THE RELEASE (owner, 2026-09-29: "trained model (alpha release)"): one
+    # decoder trained on EVERY lot, nothing held out, saved for the live
+    # server (tools/modal_serve.py). Scoring is the folds' job, in their own
+    # step; this only makes the thing that gets served.
+    release_out = os.environ.get("RELEASE_OUT", "")
+    if release_out:
+        os.makedirs(release_out, exist_ok=True)
+        t0 = time.time()
+        model, mean, sd, loss = train_one(lawns + examples, dim, SEED)
+        state = {k: v.detach().cpu() for k, v in model.state_dict().items()}
+        from fuse_layers import CHANNELS
+        meta = {
+            "backbone": manifest.get("model"), "size": manifest.get("size"),
+            "resFactor": manifest.get("resFactor", 1.0),
+            "dim": dim, "refine": REFINE, "fuse": FUSE, "fuseCanopy": FUSE_CANOPY,
+            "channels": list(CHANNELS) if FUSE else [],
+            "canopyMode": CANOPY_MODE if CANOPY else None,
+            "epochs": EPOCHS, "seed": SEED, "lr": LR, "weightDecay": WEIGHT_DECAY, "dropout": DROPOUT,
+            "lawns": len(lawns), "examples": len(examples), "notLawn": NOT_LAWN,
+            "trainLoss": round(float(loss), 4), "seconds": round(time.time() - t0),
+            "commit": os.environ.get("GITHUB_SHA", ""), "run": os.environ.get("GITHUB_RUN_ID", ""),
+            "trainedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
+        torch.save({"state": state, "mean": mean.detach().cpu(), "sd": sd.detach().cpu(), "meta": meta},
+                   os.path.join(release_out, "model.pt"))
+        with open(os.path.join(release_out, "release.json"), "w") as f:
+            json.dump(meta, f, indent=1)
+        print(f"RELEASE: one decoder{' + edge refiner' if REFINE else ''} on all {len(lawns)} lots "
+              f"in {meta['seconds']}s, train loss {loss:.3f}; saved to {release_out}/model.pt", flush=True)
+        return 0
+
     held_out = lawns if not LIMIT else lawns[:LIMIT]
     # K-FOLD WHEN ASKED (FOLDS=k). Leave-one-out trains one decoder per lawn,
     # so its cost grows with the square of the corpus: 20 minutes a decoder

@@ -78,6 +78,50 @@ def grey(arr, naip=False):
     return 0.299 * a[..., 0] + 0.587 * a[..., 1] + 0.114 * a[..., 2]
 
 
+def naip_for(box, photo=None, stored=None):
+    """NAIP (bands 3,0,1 -> near-infrared, red, green) over one frame, lined up
+    with its photograph.
+
+    `box` is the frame in EPSG:3857; `photo` the frame's photograph (a PIL
+    image) for the automatic alignment; `stored` an editor-set {east, north,
+    scale}, which wins. Returns (uint8 h x w x 3 array, record). Raises when
+    NAIP cannot be read. Shared by main() and the live server
+    (tools/alpha_infer.py), so a lot served is read exactly as a lot trained.
+    """
+    from PIL import Image
+    from naip_align import align_images, resample
+
+    w = max(8, min(MAX_PX, round((box[2] - box[0]) / CELL_M)))
+    h = max(8, min(MAX_PX, round((box[3] - box[1]) / CELL_M)))
+    cell = (box[2] - box[0]) / w            # Mercator metres a pixel
+    pad = int(math.ceil(MARGIN_M / cell))
+    big = [box[0] - pad * cell, box[1] - pad * cell, box[2] + pad * cell, box[3] + pad * cell]
+    img = Image.open(io.BytesIO(fetch(export_url(big)))).convert("RGB")
+    arr = np.asarray(img.resize((w + 2 * pad, h + 2 * pad), Image.BILINEAR), dtype=np.float32)
+    ground = cell * math.cos(math.radians(lat_of(box)))   # ground metres a pixel
+
+    how = "none"
+    dx = dy = 0.0
+    sc = 1.0
+    a = stored
+    if a and all(k in a for k in ("east", "north")):
+        dx, dy, sc = a["east"] / ground, -a["north"] / ground, float(a.get("scale", 1.0))
+        how = "editor"
+    elif photo is not None:
+        small = photo.convert("RGB").resize((w, h), Image.BOX)
+        inner = arr[pad:pad + h, pad:pad + w]
+        r = align_images(grey(small), grey(inner, naip=True),
+                         max_shift=max(2, min(pad, int(round(6.0 / ground)))))
+        if r["moved"]:
+            dx, dy, sc, how = r["dx"], r["dy"], r["scale"], f"auto (edges {r['ncc0']:.2f} -> {r['ncc']:.2f})"
+        else:
+            how = f"auto, left alone (edges {r['ncc0']:.2f})"
+    moved = resample(arr, dx, dy, sc, offset=(pad, pad), out_shape=(h, w))
+    out = np.clip(np.round(moved), 0, 255).astype(np.uint8)
+    east, north = dx * ground, -dy * ground
+    return out, {"east": round(east, 2), "north": round(north, 2), "scale": sc, "how": how}
+
+
 def main():
     from PIL import Image
     from naip_align import align_images, resample
@@ -95,44 +139,17 @@ def main():
     record = {}
     t0 = time.time()
     for lawn_id in sorted(boxes):
-        box = boxes[lawn_id]
-        w = max(8, min(MAX_PX, round((box[2] - box[0]) / CELL_M)))
-        h = max(8, min(MAX_PX, round((box[3] - box[1]) / CELL_M)))
-        cell = (box[2] - box[0]) / w            # Mercator metres a pixel
-        pad = int(math.ceil(MARGIN_M / cell))
-        big = [box[0] - pad * cell, box[1] - pad * cell, box[2] + pad * cell, box[3] + pad * cell]
+        photo_path = frames / f"{lawn_id}.png"
+        photo = Image.open(photo_path).convert("RGB") if photo_path.exists() else None
         try:
-            img = Image.open(io.BytesIO(fetch(export_url(big)))).convert("RGB")
+            moved, rec = naip_for(boxes[lawn_id], photo=photo, stored=stored.get(lawn_id))
         except Exception as e:  # noqa: BLE001 - one frame failing is reported, not fatal
             print(f"  {lawn_id[:40]:40} no NAIP: {str(e)[:80]}")
             continue
-        arr = np.asarray(img.resize((w + 2 * pad, h + 2 * pad), Image.BILINEAR), dtype=np.float32)
-        ground = cell * math.cos(math.radians(lat_of(box)))   # ground metres a pixel
-
-        how = "none"
-        dx = dy = 0.0
-        sc = 1.0
-        a = stored.get(lawn_id)
-        if a and all(k in a for k in ("east", "north")):
-            dx, dy, sc = a["east"] / ground, -a["north"] / ground, float(a.get("scale", 1.0))
-            how = "editor"
-        else:
-            photo_path = frames / f"{lawn_id}.png"
-            if photo_path.exists():
-                photo = Image.open(photo_path).convert("RGB").resize((w, h), Image.BOX)
-                inner = arr[pad:pad + h, pad:pad + w]
-                r = align_images(grey(photo), grey(inner, naip=True),
-                                 max_shift=max(2, min(pad, int(round(6.0 / ground)))))
-                if r["moved"]:
-                    dx, dy, sc, how = r["dx"], r["dy"], r["scale"], f"auto (edges {r['ncc0']:.2f} -> {r['ncc']:.2f})"
-                else:
-                    how = f"auto, left alone (edges {r['ncc0']:.2f})"
-        moved = resample(arr, dx, dy, sc, offset=(pad, pad), out_shape=(h, w))
-        Image.fromarray(np.clip(np.round(moved), 0, 255).astype(np.uint8)).save(out / f"{lawn_id}-naip.png")
-        east, north = dx * ground, -dy * ground
-        record[lawn_id] = {"east": round(east, 2), "north": round(north, 2), "scale": sc, "how": how}
-        print(f"  {lawn_id[:40]:40} NAIP moved {east:+5.1f} m east, {north:+5.1f} m north, "
-              f"scale {sc:.3f} -- {how}")
+        Image.fromarray(moved).save(out / f"{lawn_id}-naip.png")
+        record[lawn_id] = rec
+        print(f"  {lawn_id[:40]:40} NAIP moved {rec['east']:+5.1f} m east, {rec['north']:+5.1f} m north, "
+              f"scale {rec['scale']:.3f} -- {rec['how']}")
         got += 1
     (out / "naip-align.json").write_text(json.dumps(record, indent=1))
     shifts = [math.hypot(v["east"], v["north"]) for v in record.values()]

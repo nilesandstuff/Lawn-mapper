@@ -361,6 +361,8 @@ export async function recordFinished(env, body) {
      * geometry. Null when the finish did not say -- which every ordinary
      * finish does not -- and an empty list when somebody deleted them all.
      */
+    /* The trained model's release, with the outline it drew (loop 1). */
+    model_version: text(body?.modelVersion, 40),
     not_lawn: Array.isArray(body?.notLawn)
       ? JSON.stringify(cleanGeometries(body.notLawn))
       : null,
@@ -378,8 +380,8 @@ export async function recordFinished(env, body) {
          id, at, lng, lat, county, provider, model, mode, hand_edited,
          detected_sq_ft, square_feet, parcel_sq_ft, frame, parcel, shapes,
          detected_shapes, parcel_source, exclusions, created_at,
-         inferred_checked_at, naip_align, not_lawn
-       ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?2,?19,?20,?21)
+         inferred_checked_at, naip_align, not_lawn, model_version
+       ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?2,?19,?20,?21,?22)
        ON CONFLICT(id) DO UPDATE SET
          at = ?2, county = ?5, provider = ?6, hand_edited = ?9,
          detected_sq_ft = ?10, square_feet = ?11, parcel_sq_ft = ?12,
@@ -428,13 +430,16 @@ export async function recordFinished(env, body) {
          /* A finish that sent no not-lawn list (every ordinary one) leaves
             the owner's traces alone; one that sent a list, even an empty
             one, replaces them. */
-         not_lawn = COALESCE(?21, corpus.not_lawn)`
+         not_lawn = COALESCE(?21, corpus.not_lawn),
+         /* Travels with detected_shapes: a fresh detection brings its own
+            release (or none, for SAM), an absent one leaves both alone. */
+         model_version = CASE WHEN ?16 IS NOT NULL THEN ?22 ELSE corpus.model_version END`
     ).bind(
       row.id, row.at, row.lng, row.lat, row.county, row.provider, row.model,
       row.mode, row.hand_edited, row.detected_sq_ft, row.square_feet,
       row.parcel_sq_ft, row.frame, row.parcel, row.shapes,
       row.detected_shapes, row.parcel_source, row.exclusions,
-      row.inferred_checked_at, row.naip_align, row.not_lawn
+      row.inferred_checked_at, row.naip_align, row.not_lawn, row.model_version
     ).run();
     /*
      * The row is handed back so the caller can pass it to storeImage under

@@ -38,10 +38,38 @@ changes and results from different corpora are not comparable.
 *Kept current so a fresh session can pick up without the conversation that
 got here. Update it whenever the in-flight run changes.*
 
-- **PARKED BY THE OWNER, 2026-09-29 -- come back to these once blocks /
-  windows / scale is settled, not before.** Both need the best arrangement
-  loaded into the live app and the paid / volunteer / crowd tracing flows,
-  which is why they wait on it.
+- **THE PLAN IS LIVE AS "Trained model (alpha release)" (owner, 2026-09-29)**,
+  the default method wherever a release is on Modal. The configuration is the
+  one that scored 24.0% in run 36601001355 (S20 A, seed 7: fused + edge
+  refiner, canopy on lawn, windows off, lawns all, no outlines). That run kept
+  no weights, so the served model is trained ONCE MORE on every approved lot,
+  with no folds, by workflow 14 `release: alpha`. **Its own score is therefore
+  UNMEASURED.** It is the configuration that scored 24.0% under folds, not a
+  model that did, and it saw the lots it would be scored on. The pieces:
+  tools/modal_serve.py (L4, max 3 containers, 5 min idle), alpha_infer.py
+  (Python half) and serve-alpha.mjs (stage 3 + lidar veto via the scorer's own
+  functions); worker/src/alpha.js; deploy step "Serve the trained model".
+  Measuring the LIVE model means scoring maps finished AFTER the release.
+  Those carry `corpus.model_version`.
+- **The two feedback loops are built (owner asked 2026-09-29; they were parked
+  until the release existed):**
+  1. **Corrections as training data.** Every finish records which release
+     drew the outline (`corpus.model_version`, beside `detected_shapes`).
+     Approved corrections join `lawns: all`, so re-running workflow 14
+     `release: alpha` ships a model trained on them. Nothing retrains by
+     itself: there is no schedule, and a release should be a decision.
+  2. **Active learning.** Workflow 26 (COSTS MONEY, ask first) runs the live
+     model over approved, unclaimed lawn_jobs and writes
+     `lawn_jobs.uncertainty`: the share of the lot put between 20% and 80%
+     lawn. The queue (claimFor) hands out the least sure first; unscored lots
+     stay random after them. **SPECULATION until measured:** that this
+     uncertainty tracks where the model is wrong. Nothing here has tested it.
+     The check is whether lots scored as unsure end up with larger
+     corrections (detected vs finished) than the sure ones.
+- **(Was parked by the owner, 2026-09-29, until the best arrangement was loaded
+  into the live app. It now is; see the two entries above.)** Both needed the
+  best arrangement loaded into the live app and the paid / volunteer / crowd
+  tracing flows, which is why they waited on it.
   1. **Corrections as training data.** Every map a person finishes (or
      adjusts the detector's outline on) is a labelled example; training
      images already go to R2 on finish. Close the loop: those become the

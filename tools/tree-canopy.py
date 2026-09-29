@@ -88,6 +88,31 @@ def tree_index(model):
     return 1 if len(labels) != 1 else 0
 
 
+def canopy_at(model, processor, want, device, img, across, down):
+    """The tree model's canopy for one photograph, at the model's own scale.
+
+    Returns (mask, target_w, target_h, mpp): a boolean mask target_h x
+    target_w, read at TARGET_MPP within the clamps on the longer side. Shared
+    by main() and the live server (tools/alpha_infer.py), so a lot served is
+    read exactly as a lot trained.
+    """
+    long_m = max(across, down)
+    target = int(round(long_m / TARGET_MPP))
+    target = max(MIN_PX, min(MAX_PX, target))
+    mpp = long_m / target
+    target_w = max(8, int(round(across / mpp)))
+    target_h = max(8, int(round(down / mpp)))
+    small = img.resize((target_w, target_h), Image.BILINEAR)
+    inputs = {k: v.to(device) for k, v in processor(images=small, return_tensors="pt").items()}
+    with torch.no_grad():
+        logits = model(**inputs).logits
+    logits = torch.nn.functional.interpolate(
+        logits, size=(target_h, target_w), mode="bilinear", align_corners=False
+    )
+    mask = (logits.argmax(dim=1)[0].cpu().numpy() == want)
+    return mask, target_w, target_h, mpp
+
+
 def main():
     # The photographs only: the frame dump also writes <id>-labels.png beside
     # each one (the decoder's targets), and a label picture is not a lawn.
@@ -147,23 +172,10 @@ def main():
         real_px = int(stored_px.get(lawn_id) or frame_px)
 
         # To the model's own scale, within the clamps -- on the LONGER side,
-        # the shorter following, so the picture keeps its shape.
+        # the shorter following, so the picture keeps its shape. See canopy_at.
         long_m = max(across, down)
-        target = int(round(long_m / TARGET_MPP))
-        target = max(MIN_PX, min(MAX_PX, target))
-        mpp = long_m / target
-        target_w = max(8, int(round(across / mpp)))
-        target_h = max(8, int(round(down / mpp)))
-        small = img.resize((target_w, target_h), Image.BILINEAR)
-
-        inputs = {k: v.to(device) for k, v in processor(images=small, return_tensors="pt").items()}
-        with torch.no_grad():
-            logits = model(**inputs).logits
-        # SegFormer answers at a quarter of the input; put it back.
-        logits = torch.nn.functional.interpolate(
-            logits, size=(target_h, target_w), mode="bilinear", align_corners=False
-        )
-        mask = (logits.argmax(dim=1)[0].cpu().numpy() == want)
+        mask, target_w, target_h, mpp = canopy_at(model, processor, want, device, img, across, down)
+        target = max(target_w, target_h)
 
         labels, count = clumps_for(mask)
 

@@ -485,6 +485,33 @@ export const SUBTRACT_THRESHOLD = EXCLUSIONS.woods.threshold;
  * the shape is what lets a second be added without touching the Worker.
  */
 export const MODELS = {
+  /*
+   * THE TRAINED MODEL, first in the list because it is the default wherever
+   * it is switched on (owner, 2026-09-29).
+   *
+   * Not SAM, not a prompt, not Replicate: THE PLAN from docs/DETECTOR-FINDINGS.md
+   * (H60) -- the lawn detector this project trained on its own corrected maps,
+   * served on Modal. See worker/src/alpha.js for the wire and
+   * tools/modal_serve.py for the other end.
+   *
+   * `modal: true` is the difference the Worker branches on. There is no slug
+   * and no input schema because Replicate never sees it. `fixedPolarity`
+   * because its mask is lawn = white by construction, and the tracer's guess
+   * that a mostly-white bitmap must be upside down would flip a lot that
+   * really is mostly lawn.
+   *
+   * Hidden from the picker unless the deployment has a release to serve
+   * (alphaEnabled), and asking for it without one falls back to "Find grass"
+   * and says so -- the same arrangement as the land cover method.
+   */
+  alpha: {
+    modal: true,
+    label: 'Trained model (alpha release)',
+    note: 'Our own lawn detector, trained on corrected maps. One press, about a minute the first time. An early release: check the edges.',
+    needsPoints: false,
+    fixedPolarity: true,
+  },
+
   sam3: {
     slug: 'mattsays/sam3-image',
     // Named for the question it asks, now that the other method asks the
@@ -709,8 +736,12 @@ export const normaliseModel = (value) => {
  * the whole problem with a bitmap that is 92% white -- so the fact travels with
  * the model description instead.
  */
-export const modelCatalogue = () =>
-  Object.entries(MODELS).filter(([, m]) => !m.hidden).map(([id, m]) => ({
+export const modelCatalogue = (env = null) =>
+  Object.entries(MODELS)
+    .filter(([, m]) => !m.hidden)
+    /* The trained model only where there is a release to serve. */
+    .filter(([, m]) => !m.modal || modalAvailable(env))
+    .map(([id, m]) => ({
     id,
     label: m.label,
     note: m.note,
@@ -744,7 +775,17 @@ export const modelCatalogue = () =>
      * unlocked the panel gets a control for it.
      */
     devOnly: Boolean(m.devOnly),
+    /* Read the mask as sent: white is lawn, however much of it there is. */
+    fixedPolarity: Boolean(m.fixedPolarity),
   }));
+
+/** Whether the trained model can be served here. Mirrors alphaEnabled in
+    alpha.js, written out rather than imported so this file stays free of the
+    imagery code. */
+export const modalAvailable = (env) => Boolean(env?.ALPHA_URL && env?.ALPHA_TOKEN && env?.CORPUS);
+
+/** The method a fresh page starts on: the trained model where it is served. */
+export const defaultModelFor = (env) => (modalAvailable(env) ? 'alpha' : DEFAULT_MODEL);
 
 /**
  * What to ask this model to find.
