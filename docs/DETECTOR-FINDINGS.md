@@ -80,6 +80,11 @@ got here. Update it whenever the in-flight run changes.*
 - **H58 (2026-09-29): both scales leans better, misses its bar** (27 better
   / 16 worse, -0.4 [-1.4, +0.2], p 0.13). S18 is the deciding test: six
   seeds a side, both sides on the GPU, bar written before the runs.
+- **Modal refuses a burst (2026-09-29):** of eight S18 runs dispatched in one
+  minute, two (36503989380, 36503994244) died four minutes in on Modal's
+  "App create rate limit exceeded". tools/modal-run.sh now retries that
+  error, and only that, up to six times with a growing random wait; the two
+  seeds were relaunched. No result was lost -- they never reached the GPU.
 - **Modal GPU, built 2026-09-28 (owner set up the account):** workflow 14
   `gpu: modal` runs the tree model, the backbone and the decoders on a GPU
   on Modal (tools/modal_gpu.py, plan from tools/modal_plan.py, pinned to

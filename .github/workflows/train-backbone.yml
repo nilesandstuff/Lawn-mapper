@@ -402,7 +402,7 @@ jobs:
            "steps": [{"script": "tree-canopy.py", "env": {"IMAGES": "frames", "OUT": "canopy",
                       "MODEL": "restor/tcd-segformer-mit-b5", "MIN_CLUMP_M2": "4"}}]}
           EOF
-          modal run tools/modal_gpu.py --plan canopy-plan.json
+          bash tools/modal-run.sh canopy-plan.json
 
       # The lidar's canopy height over the same frames, exactly as workflow
       # 23 reads it, for stage 3's woods rule (H34). Three minutes and a few
@@ -489,7 +489,7 @@ jobs:
           OUT: gpu-plan.json
         run: |
           python3 tools/modal_plan.py
-          modal run tools/modal_gpu.py --plan gpu-plan.json
+          bash tools/modal-run.sh gpu-plan.json
 
       # TWO JOBS, NOT ONE (2026-09-28). A job may run six hours at most, and
       # the not-lawn examples (~140 frames beside 55 lots) made every step
