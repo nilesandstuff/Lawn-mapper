@@ -242,6 +242,18 @@ on:
         type: choice
         default: 'off'
         options: ['off', 'on']
+      cache:
+        # REUSE WHAT DOES NOT CHANGE (owner, 2026-09-29). The canopy, lidar and
+        # NAIP depend only on the frames and their code; the backbone's
+        # features only on the frames, the model, the size and the arrangement.
+        # Each is saved under a key made of exactly those, so a run that
+        # changes only the decoder, the seed or the scorer skips straight to
+        # training. 'rebuild' ignores what is saved (e.g. after 3DEP or NAIP
+        # themselves change) and saves afresh. Free runner only.
+        description: 'Reuse saved canopy / lidar / NAIP / features when nothing they depend on changed'
+        type: choice
+        default: 'use'
+        options: ['use', 'rebuild']
       gpu:
         # WHERE THE ARITHMETIC HAPPENS (owner, 2026-09-28). "modal" sends the
         # tree model, the backbone and the decoders to a GPU on Modal
@@ -362,6 +374,40 @@ jobs:
       # so the canopy lands on the pixels the features describe. Its
       # requirements share the CPU torch already installed and add
       # scikit-image and scipy.
+      # THE FRAMES' FINGERPRINT: every photograph, label and scale.json byte
+      # that went into this run (the examples too, when on). A new approved
+      # lot, a re-traced one or a changed NAIP alignment changes it, so a
+      # cache can never hand back work done on a different corpus.
+      - name: Fingerprint the frames for the cache
+        id: frames
+        if: ${{ inputs.gpu != 'modal' }}
+        run: |
+          fp=$(cd frames && find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-20)
+          echo "fp=$fp" >> "$GITHUB_OUTPUT"
+          echo "frames fingerprint $fp ($(ls frames | wc -l) files)"
+
+      - name: Reuse the canopy, lidar and NAIP if saved
+        id: prep
+        if: ${{ inputs.gpu != 'modal' && inputs.cache == 'use' && inputs.canopy != 'off' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            canopy
+            lidar
+            lidar-plan.json
+            naip
+          key: prep-v1-${{ steps.frames.outputs.fp }}-fused${{ inputs.decoder == 'fused' }}-${{ hashFiles('tools/tree-canopy.py', 'tools/clumps.py', 'tools/lidar-plan.js', 'tools/lidar-cover.js', 'tools/lidar_frame.py', 'tools/naip_bands.py', 'tools/naip_align.py', 'tools/requirements-trees.txt', 'tools/requirements-lidar.txt') }}
+
+      - name: Reuse the backbone's features if saved
+        id: feats
+        if: ${{ inputs.gpu != 'modal' && inputs.cache == 'use' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            feats
+            feats-whole
+          key: feats-v1-${{ steps.frames.outputs.fp }}-${{ inputs.model }}-${{ inputs.size }}-${{ inputs.windows }}-${{ hashFiles('tools/extract_features.py', 'tools/windows.py', 'tools/requirements.txt') }}
+
       - name: Install the tree model's loader and the lidar reader
         if: ${{ inputs.canopy != 'off' }}
         run: pip install -r tools/requirements-trees.txt -r tools/requirements-lidar.txt
@@ -382,7 +428,7 @@ jobs:
         run: pip install modal
 
       - name: Find the canopy
-        if: ${{ inputs.canopy != 'off' && inputs.gpu != 'modal' }}
+        if: ${{ inputs.canopy != 'off' && inputs.gpu != 'modal' && steps.prep.outputs.cache-hit != 'true' }}
         env:
           IMAGES: frames
           OUT: canopy
@@ -415,14 +461,14 @@ jobs:
       # plan into a FILE called "lidar" that the reader then could not make a
       # folder of. Run 36098297014 failed on exactly that.
       - name: Match the frames to the 3DEP projects
-        if: ${{ inputs.canopy != 'off' }}
+        if: ${{ inputs.canopy != 'off' && steps.prep.outputs.cache-hit != 'true' }}
         env:
           FRAMES: frames
           OUT: lidar-plan.json
         run: node tools/lidar-plan.js
 
       - name: Read the lidar over the frames
-        if: ${{ inputs.canopy != 'off' }}
+        if: ${{ inputs.canopy != 'off' && steps.prep.outputs.cache-hit != 'true' }}
         env:
           FRAMES: frames
           CANOPY: canopy
@@ -438,7 +484,7 @@ jobs:
       # exportImage each, about a metre a pixel), for the decoder to read as
       # NDVI beside the lidar and the canopy. See tools/naip_bands.py.
       - name: Read NAIP's near-infrared over the frames
-        if: ${{ inputs.decoder == 'fused' && inputs.canopy != 'off' }}
+        if: ${{ inputs.decoder == 'fused' && inputs.canopy != 'off' && steps.prep.outputs.cache-hit != 'true' }}
         env:
           FRAMES: frames
           OUT: naip
@@ -447,7 +493,7 @@ jobs:
       # Both scales: the whole-lot pass first, into its own directory, exactly
       # as `windows: off` reads it; the step below then reads the 6 cm blocks.
       - name: Run the backbone over each lot whole (both scales)
-        if: ${{ inputs.windows == 'both' && inputs.gpu != 'modal' }}
+        if: ${{ inputs.windows == 'both' && inputs.gpu != 'modal' && steps.feats.outputs.cache-hit != 'true' }}
         env:
           IMAGES: frames
           OUT: feats-whole
@@ -457,7 +503,7 @@ jobs:
         run: python3 tools/extract_features.py
 
       - name: Run the backbone over them
-        if: ${{ inputs.gpu != 'modal' }}
+        if: ${{ inputs.gpu != 'modal' && steps.feats.outputs.cache-hit != 'true' }}
         env:
           IMAGES: frames
           OUT: feats
@@ -492,6 +538,28 @@ jobs:
         run: |
           python3 tools/modal_plan.py
           bash tools/modal-run.sh gpu-plan.json
+
+      # Saved BEFORE the handoff below moves the folders into the tar. Only
+      # what was computed this run is saved; a hit is left as it was.
+      - name: Save the canopy, lidar and NAIP for later runs
+        if: ${{ inputs.gpu != 'modal' && inputs.canopy != 'off' && steps.prep.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            canopy
+            lidar
+            lidar-plan.json
+            naip
+          key: prep-v1-${{ steps.frames.outputs.fp }}-fused${{ inputs.decoder == 'fused' }}-${{ hashFiles('tools/tree-canopy.py', 'tools/clumps.py', 'tools/lidar-plan.js', 'tools/lidar-cover.js', 'tools/lidar_frame.py', 'tools/naip_bands.py', 'tools/naip_align.py', 'tools/requirements-trees.txt', 'tools/requirements-lidar.txt') }}
+
+      - name: Save the backbone's features for later runs
+        if: ${{ inputs.gpu != 'modal' && steps.feats.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            feats
+            feats-whole
+          key: feats-v1-${{ steps.frames.outputs.fp }}-${{ inputs.model }}-${{ inputs.size }}-${{ inputs.windows }}-${{ hashFiles('tools/extract_features.py', 'tools/windows.py', 'tools/requirements.txt') }}
 
       # TWO JOBS, NOT ONE (2026-09-28). A job may run six hours at most, and
       # the not-lawn examples (~140 frames beside 55 lots) made every step

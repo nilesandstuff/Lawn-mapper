@@ -104,6 +104,15 @@ got here. Update it whenever the in-flight run changes.*
   did not. The relaunched runs on 6792729 still carry examples (cropped),
   so they measure the arrangements WITH examples and the crop; the clean
   both-scales question is three more runs without examples against S14.
+- **Cache built (2026-09-29, owner's order):** workflow 14 `cache: use` (the
+  default) saves the canopy, lidar, lidar plan and NAIP under a key of the
+  frames' fingerprint (every byte of every photo, label and scale.json) +
+  the code that makes them, and the backbone's features under the
+  fingerprint + model + size + arrangement + extractor code. A hit skips
+  those steps; a new lot, a re-trace or a code change misses by itself.
+  `rebuild` ignores the saved copy. Free runner only (`gpu: github`).
+  Untested until two runs: whether the frame dump is byte-identical run to
+  run -- if not, the cache simply never hits.
 - **Decided (2026-09-29): H59, both scales is closed; the whole lot stays.**
   Six seeds a side: 26 better / 19 worse, -0.2 [-1.2, +0.4], p 0.37 --
   weaker than H58's three-seed lean. Every arrangement tried (windows,
