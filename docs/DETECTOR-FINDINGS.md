@@ -57,6 +57,11 @@ got here. Update it whenever the in-flight run changes.*
   band of H53, not implausible shapes); self-training on the detector's own
   confident output (possible later, but H57 says added data must be
   measured, not assumed).
+- **Research done (2026-09-29): E11.** Published work agrees with H55-H59
+  (bigger context wins; scales only combine well when a network learns the
+  choice per location, trained on far more images than 55) and points at
+  edge refinement for our actual error (PointRend, FeatUp's guided
+  upsampling, boundary losses). Proposed as S19, not started.
 - **Next, in this order (owner, 2026-09-29):** (a) S18's result; (b) cache
   the frames, canopy, lidar, NAIP and backbone features per arrangement so
   an experiment is decoder + scoring only (free runner); (c) research what is
@@ -4193,6 +4198,60 @@ detectors are crown detectors (H19: our problem was never crowns), and the
 geometric one is a few dozen lines that can run on any CHM we already have
 (3DEP at 2 m) or could fetch (E9 at 0.6 m).
 
+### E11. What is published on tiles, windows and scales -- and where our edge error is actually addressed
+*Looked up 2026-09-29, at the owner's request, after H55-H59 closed every
+arrangement we tried. Cited sources checked; what each would mean HERE is
+marked as reading, not finding.*
+
+**1. Bigger context wins, and tile edges cost accuracy.** "Systematic
+Evaluation of Image Tiling Adverse Effects on Deep Learning Semantic
+Segmentation" ([PMC7020775](https://pmc.ncbi.nlm.nih.gov/articles/PMC7020775/)):
+a U-Net on SpaceNet-Vegas 650 px images scored F1 0.748 on 128 px tiles, 0.803
+on 256, 0.838 on 496 and 0.847 on the whole image -- rising until about half
+the image, then flat. Disagreements concentrate on object borders, and even a
+one-pixel shift of the input changes them. Authors: use the largest tile that
+fits, whole images when possible. **Reading for us:** consistent with H55/H59
+-- 6 cm blocks give each patch 27 m of context against the whole lot's
+whole lot, and they lost.
+
+**2. Combining scales works when the network LEARNS, per location, which
+scale to trust.** Tao, Sapra & Catanzaro, "Hierarchical Multi-Scale Attention
+for Semantic Segmentation" ([arXiv 2005.10821](https://arxiv.org/abs/2005.10821)):
+predictions at different scales fix different failure modes, and an attention
+head learns to favour the right scale for each. GLNet, Chen et al. CVPR 2019
+([arXiv 1905.06368](https://arxiv.org/abs/1905.06368v1)): a global branch on
+the downsampled whole image and a local branch on full-resolution crops,
+sharing features both ways, on aerial images up to 30 MP. **Reading for us:**
+this is what S17 was reaching for, and it matches H55's "the blocks and the
+whole lot are right on DIFFERENT lots". Our both-scales stacked frozen
+features into a three-layer decoder trained on 55 lots; both papers train the
+fusion end to end on thousands of images. Whether 55 lots can teach a
+per-location choice is not known.
+
+**3. The error we actually have -- a thin band on the true edge (H53) -- is
+addressed by edge refinement, not by tiling.**
+- PointRend, Kirillov et al. CVPR 2020
+  ([paper](https://openaccess.thecvf.com/content_CVPR_2020/html/Kirillov_PointRend_Image_Segmentation_As_Rendering_CVPR_2020_paper.html)):
+  re-predicts only the uncertain points along a coarse mask's boundary, at
+  high resolution, iteratively; crisp borders where others over-smooth.
+- FeatUp, Fu et al. ICLR 2024 ([arXiv 2403.10516](https://arxiv.org/abs/2403.10516)):
+  raises a ViT's 16-px-patch features to the input's own resolution with an
+  upsampler guided by the photograph (joint bilateral upsampling), keeping
+  their meaning; gains in segmentation without retraining the backbone.
+  AnyUp ([arXiv 2510.12764](https://arxiv.org/pdf/2510.12764)) is a 2025
+  follow-up that works across backbones.
+- Boundary losses (e.g. [arXiv 1905.07852](https://arxiv.org/pdf/1905.07852)):
+  a loss term that penalises boundary misalignment, which Dice / cross-entropy
+  barely do; shown on remote-sensing buildings.
+**Reading for us:** our backbone sees 16 px patches -- at 896 px over a lot,
+1-5 m of ground each -- and the decoder answers at that grid before it is
+resized to the 15 cm scoring grid. Tiling tried to shrink the patch by
+shrinking the ground per image, and cost context (point 1). These methods
+keep the whole-lot context and sharpen only the edge, which is where H53 put
+the error. H54 (colour edges) was a crude hand-made version of this; it did
+not pass, which says the crude version was not enough, not that the idea is
+wrong.
+
 ## SPECULATION — theories not yet tested
 
 Marked so they are not later quoted as findings.
@@ -4549,6 +4608,19 @@ not:** a 27 m block is less context than a whole lot, and H4 once found
 fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
+
+### S19. Keep the whole-lot reading; sharpen only the edge (proposed 2026-09-29 from E11, NOT started)
+**The idea:** the arrangement question is settled for this backbone (H59) --
+the whole lot wins on context. The remaining error is the edge band (H53),
+and it is set by the 16 px patch grid, not by the arrangement. So: an
+image-guided upsampler on the decoder's answer (joint bilateral upsampling,
+the cheap core of FeatUp), or a PointRend-style second pass that re-decides
+only the uncertain edge cells from full-resolution colour plus the coarse
+features. Both run after the backbone, so with the cache (where-things-stand)
+an experiment is decoder + scoring only, on the free runner. **Why it might
+not work:** H54's colour edges were a similar idea and failed; the photo's
+colour edge is not always the lawn's edge (shade, mulch beds). **Needs the
+owner's go-ahead before it is built.**
 
 ### S18. Both scales, decided: six seeds a side, both sides on the GPU (2026-09-29)
 
