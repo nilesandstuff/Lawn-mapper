@@ -57,8 +57,11 @@ got here. Update it whenever the in-flight run changes.*
   band of H53, not implausible shapes); self-training on the detector's own
   confident output (possible later, but H57 says added data must be
   measured, not assumed).
-- **Next (2026-09-29, owner): S20** -- THE PLAN with and without ~30 not-lawn
-  outlines (4 per kind), one seed each as a screen. Bar in S20.
+- **Measured (2026-09-29): H61 (S20), fewer outlines still worse overall**
+  (14 better / 33 worse, +0.8) -- but they fixed the parking-lot lots (B20
+  75 -> 36, B19 46 -> 30) and broke others (B03 57 -> 97, B23 33 -> 55).
+  Not adopted; `examples: off` stays. Weighting the examples less is the
+  untried next step (owner's call).
 - **Measured (2026-09-29): H60, the edge refiner PASSES its bar.** 34
   better / 9 worse, -1.7 [-2.6, -0.5], p 0.0002; approved since 12 / 5,
   -0.5. **ADOPTED into THE PLAN (owner, 2026-09-29):** THE PLAN's row is
@@ -791,6 +794,47 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H61. Fewer not-lawn outlines (S20: 26 frames, 4 per kind) under THE PLAN: worse overall -- but they fix exactly the lots that took parking lots, and break others, 2026-09-29
+
+*Runs 36601001355 (A, `examples: off`) / 36601005719 (B, `examples: some`),
+commit 8ecfe8f, seed 7, `decoder: fused + edge`, `canopy: on lawn`,
+`windows: off`, `lawns: all`, free runner. B trained on 26 example frames:
+outlines road 62, sidewalk 27, building 25, water 17, driveway 8, parking 5,
+pool 2. compare-runs.js locally, THE PLAN's row.*
+
+| lots | better / worse / level | median | paired change [95%] | sign test |
+|---|---|---|---|---|
+| all 55 | 14 / 33 / 8 | 24.0 -> 27.3% | +0.8 [+0.3, +1.4] | p 0.008 |
+| frozen 32 | 9 / 17 / 6 | 26.0 -> 28.5% | +0.7 [-0.1, +1.1] | p 0.17 |
+| approved since | 5 / 16 / 2 | 21.9 -> 23.7% | +1.4 [+0.7, +3.5] | p 0.03 |
+
+The plain decoder's row moves the same way (14 / 37, +1.3 [+0.7, +2.3]).
+
+**The screen (S20, before the runs): failed** -- the median paired change is
+above zero with more lots worse than better. One seed, so this is a screen;
+but it is the wrong side by more than its own interval, so seeds 8 and 9
+were not run.
+
+**Lot by lot, which is the interesting part:** the lots the owner named for
+parking lots got much better -- **B20 75.0 -> 36.2, B19 46.5 -> 29.8**,
+Georgia -84.06045,33.94050 321 -> 112, -84.53700,38.97534 57 -> 36, B16 19.3
+-> 14.3. B12 (the pond) 25.9 -> 26.5, level. And others got much worse:
+**B03 56.7 -> 96.6**, -77.40500,38.46195 52.9 -> 86.6, -76.89019,39.64422
+28.8 -> 52.8, B23 32.9 -> 55.5, B04 57.7 -> 78.5.
+
+**What this establishes:** the outlines teach what they are meant to -- the
+lots whose error was pavement or water called lawn improved by 5-200 points
+-- and cost more than that elsewhere, at 26 frames as at ~90 (H57). The
+number of outlines is not what made H57 fail, or not all of it.
+
+**Speculation, not established:** that the cost is the decoder becoming
+generally more reluctant to call lawn (every graded cell in an example is
+"not lawn", so 26 frames of them shift its sense of how much of a picture
+is lawn), which would make the lost lots under-called rather than
+over-called; the pictures would say. If so, weighting the examples' cells
+less, rather than showing fewer of them, is the next thing to try -- not
+run, needs the owner's word.
 
 ### H60. The edge refiner (S19) PASSES its bar: learned edge re-drawing on the 15 cm grid beats the plain decoder -- 34 lots better, 9 worse, 2026-09-29
 
@@ -5071,3 +5115,4 @@ worse on the lots approved since. Then it joins THE PLAN.
 | 2026-09-29 | 36484570562 36484573224 36484577454 | 55 (+90 examples) | `examples: on`, **cropped** to graded cells, whole lot, fused, `canopy: compare`, seeds 7/8/9, CPU; vs S14 and vs the uncropped runs (compare-runs.js locally) | — | — | **H57 stands, stronger.** vs S14 10 better / 41 worse, +3.8 [+2.7, +5.4]; vs uncropped +0.7 [+0.0, +1.0]. Examples closed as built |
 | 2026-09-29 | A 36488404436 36503982887 36503985030 36503987452 36507985116 36503991446; B 36495279827 36495282695 36495284820 36507987770 36503996787 36503998921 | 55 | **S18**: whole lot vs both scales, six seeds a side, Modal except A s11 / B s10 (CPU) | — | — | **H59: both scales closed.** 26 better / 19 worse, -0.2 [-1.2, +0.4], p 0.37. B24 -15, B32 -9; B20 +8, B10 +5; B28 unchanged |
 | 2026-09-29 | 36555664599 36558441061 36558444702 | 55 | **S19 edge refiner** (`decoder: fused + edge`), windows off, `canopy: on lawn`, seeds 7/8/9, CPU, cache hit (extract 4 min); plain vs refined within each run | — | — | **H60: passes.** 34 better / 9 worse, -1.7 [-2.6, -0.5], p 0.0002; since 12 / 5. B03 -16, B32 -11; B19 +14, B20 +10. Refiner 14-35 min |
+| 2026-09-29 | A 36601001355, B 36601005719 | 55 (+26 examples in B) | **S20**: THE PLAN, `examples: off` vs `some` (4 per kind), seed 7, CPU | — | — | **H61: screen failed.** 14 better / 33 worse, +0.8 [+0.3, +1.4], p 0.008. B20 75 -> 36, B19 46 -> 30; B03 57 -> 97, B23 33 -> 55 |
