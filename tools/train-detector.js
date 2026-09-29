@@ -2351,7 +2351,7 @@ async function main() {
     }
     if (rows.length) {
       table.push(summarise(cfg, rows, cfg.dims));
-      decoderMasks.push({ cfg, masks });
+      decoderMasks.push({ cfg, masks, label });
     } else console.log('   No decoder answers found, so there is no row for it.\n');
   }
 
@@ -2485,7 +2485,7 @@ async function main() {
      * class medians (3.7 and 7.3 m) before the sweep above was seen. The
      * reach-only row of H30 to H32 is in the sweep tables, not the table.
      */
-    for (const { cfg, masks } of decoderMasks) {
+    for (const { cfg, masks, label } of decoderMasks) {
       const cfg4 = { ...cfg, name: `${cfg.name} + stage 3, span`, stage3: true };
       console.log(`Scoring "${cfg4.name}" (span 8 m, reach 1 m, bridge over 180°)…`);
       table.push(summarise(cfg4, judge(masks, { spanM: 8, reachM: 1, minRing: 0.5 }), cfg.dims));
