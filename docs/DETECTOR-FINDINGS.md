@@ -104,6 +104,10 @@ got here. Update it whenever the in-flight run changes.*
   did not. The relaunched runs on 6792729 still carry examples (cropped),
   so they measure the arrangements WITH examples and the crop; the clean
   both-scales question is three more runs without examples against S14.
+- **Decided (2026-09-29): H59, both scales is closed; the whole lot stays.**
+  Six seeds a side: 26 better / 19 worse, -0.2 [-1.2, +0.4], p 0.37 --
+  weaker than H58's three-seed lean. Every arrangement tried (windows,
+  blocks, max block, both scales) has now failed against the whole lot.
 - **H58 (2026-09-29): both scales leans better, misses its bar** (27 better
   / 16 worse, -0.4 [-1.4, +0.2], p 0.13). S18 is the deciding test: six
   seeds a side, both sides on the GPU, bar written before the runs.
@@ -748,6 +752,40 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H59. Both scales, six seeds a side (S18): no better than the whole lot -- S17/S18 closed; the whole-lot squeeze stays, 2026-09-29
+
+*A = the whole lot (`windows: off`, `canopy: compare`, fused, no examples)
+seeds 7-12: 36488404436, 36503982887, 36503985030, 36503987452,
+36507985116, 36503991446. B = both scales (`windows: both`, `canopy: on
+lawn`) seeds 7-12: 36495279827, 36495282695, 36495284820, 36507987770,
+36503996787, 36503998921. All on Modal's GPU except A seed 11 and B seed 10,
+moved to the CPU runner (owner's cost rule) -- a known shift of about half a
+seed on those two. Rows as barred; compare-runs.js locally.*
+
+| lots | better / worse / level | median | paired change [95%] | sign test |
+|---|---|---|---|---|
+| all 55 | 26 / 19 / 10 | 24.2 -> 23.6% | -0.2 [-1.2, +0.4] | p 0.37 |
+| frozen 32 | 14 / 10 / 8 | 27.3 -> 26.0% | -0.1 [-1.3, +0.5] | p 0.54 |
+| approved since | 12 / 9 / 2 | 24.1 -> 23.0% | -0.7 [-1.6, +0.7] | p 0.66 |
+
+**Bar (S18): not met.** Doubling the seeds made the lean SMALLER (H58's
+-0.4, p 0.13 -> -0.2, p 0.37): the three-seed lean was mostly seed noise,
+which is what three seeds cannot rule out and six were for. **Both scales is
+closed. The whole-lot squeeze stays.**
+
+**By name (mean of six):** B24 38.7 -> 23.6 and B32 48.9 -> 39.6 are real
+and large; B03 67.0 -> 61.6, B13 20.8 -> 17.1, B12 28.2 -> 25.9. B20 41.8
+-> 49.3, B10 21.2 -> 26.1, B02 51.9 -> 56.8. B28 84.2 -> 86.4 -- not
+rescued, as in H58.
+
+**Where the arrangement question stands, on this backbone and decoder:**
+every alternative to the whole-lot squeeze measured so far has failed its
+bar -- windows (H56), fixed blocks at 6 and 10 cm (H55), the max-block rule
+(H56), both scales stacked (H58/H59). Each reshuffles WHICH lots are wrong
+(B28, B24, B20 move by tens of points) without moving how many. What is
+NOT known is why a lot prefers one reading; see the research note in
+where-things-stand before designing another arrangement.
 
 ### H58. Both scales (S17: the whole-lot pass and the 6 cm blocks stacked) LEANS better but misses its bar -- not adopted yet; S18 decides, 2026-09-29
 
@@ -4796,3 +4834,4 @@ worse on the lots approved since. Then it joins THE PLAN.
 | 2026-09-28 | 36488404436 | 55 | **`gpu: modal`** -- S14 seed 7 (windows off, fused, `canopy: compare`) repeated on an L4 GPU; vs 36355253442 (compare-runs.js locally) | — | — | **GPU = CPU within half a seed.** Plan row +0.2 [-0.4, +0.8], p 0.64; median lot moves 1.2 (seed change 2.6). Canopy 3 min, backbone + 3 decoders 12 min, run ~60 min vs 1 h 43. Default flipped to modal |
 | 2026-09-29 | 36495279827 36495282695 36495284820 | 55 | **`windows: both`** (S17), fused, `canopy: on lawn`, no examples, seeds 7/8/9, **Modal**; vs S14 (CPU) s7/8/9 (compare-runs.js locally) | — | — | **H58: leans better, bar missed.** 27 better / 16 worse, -0.4 [-1.4, +0.2], p 0.13; since -0.2. B28 not rescued (86); B24 -17, B32 -10, B03 -5; B20 +8. 57 min a run on Modal |
 | 2026-09-29 | 36484570562 36484573224 36484577454 | 55 (+90 examples) | `examples: on`, **cropped** to graded cells, whole lot, fused, `canopy: compare`, seeds 7/8/9, CPU; vs S14 and vs the uncropped runs (compare-runs.js locally) | — | — | **H57 stands, stronger.** vs S14 10 better / 41 worse, +3.8 [+2.7, +5.4]; vs uncropped +0.7 [+0.0, +1.0]. Examples closed as built |
+| 2026-09-29 | A 36488404436 36503982887 36503985030 36503987452 36507985116 36503991446; B 36495279827 36495282695 36495284820 36507987770 36503996787 36503998921 | 55 | **S18**: whole lot vs both scales, six seeds a side, Modal except A s11 / B s10 (CPU) | — | — | **H59: both scales closed.** 26 better / 19 worse, -0.2 [-1.2, +0.4], p 0.37. B24 -15, B32 -9; B20 +8, B10 +5; B28 unchanged |
