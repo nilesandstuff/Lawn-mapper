@@ -14,7 +14,7 @@
 
 import assert from 'node:assert/strict';
 import { PNG } from 'pngjs';
-import { labelsPng, predictionMask } from './train-detector.js';
+import { findPlanRow, labelsPng, predictionMask } from './train-detector.js';
 
 /* ------------------------------------------------------------- labels */
 {
@@ -127,6 +127,20 @@ import { labelsPng, predictionMask } from './train-detector.js';
   assert.deepEqual([...lawnIn], [1, 1, 1, 1, 0], 'the veto must not change stage 3\'s own mask');
   assert.equal(lidarVeto(lawnIn, null, null), lawnIn, 'no point cloud, no veto');
   assert.deepEqual([...lidarVeto(lawnIn, null, Uint8Array.from([0, 1, 0, 0, 0]))], [1, 0, 1, 1, 0]);
+}
+
+/*
+ * THE PLAN'S ROW WHEN A RUN SCORED BOTH DECODERS (2026-09-29): the plain
+ * decoder is scored first, and "the first row that could be THE PLAN's"
+ * drew it -- with the edge refiner's layers empty.
+ */
+{
+  const row = (name) => ({ cfg: { name } });
+  const plain = row('the pretrained eye, decoder + stage 3, span, lidar veto');
+  const refined = row('decoder, edge refined + stage 3, span, lidar veto');
+  assert.equal(findPlanRow([plain, refined]), refined, 'both scored: the refined row is drawn');
+  assert.equal(findPlanRow([plain]), plain, 'only the plain decoder: it stands in');
+  assert.equal(findPlanRow([row('both')]), undefined, 'neither: nothing');
 }
 
 console.log('decoder: ok');
