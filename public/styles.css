@@ -967,6 +967,9 @@ kbd {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
 }
 .overlay p { margin: 0; font-weight: 550; }
+.overlay .busy-timer { font-variant-numeric: tabular-nums; font-weight: 450; color: var(--muted); }
+.overlay .busy-actions { display: flex; gap: 10px; }
+.overlay .busy-actions[hidden] { display: none; }
 .spinner {
   width: 34px; height: 34px; border-radius: 50%;
   border: 3px solid #cfd8d1; border-top-color: var(--green);

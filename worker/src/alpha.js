@@ -29,6 +29,12 @@ export function resultUrl(env) {
   return String(env.ALPHA_URL).replace(/-start(\.modal\.run)/, '-result$1');
 }
 
+/** The `cancel` endpoint, likewise. */
+export function cancelUrl(env) {
+  if (env?.ALPHA_CANCEL_URL) return env.ALPHA_CANCEL_URL;
+  return String(env.ALPHA_URL).replace(/-start(\.modal\.run)/, '-cancel$1');
+}
+
 export const isAlphaId = (id) => typeof id === 'string' && id.startsWith(PREFIX)
   && /^alpha-[A-Za-z0-9_-]{6,80}$/.test(id);
 
@@ -94,5 +100,26 @@ export async function alphaMaskResponse(env, id, headers = {}) {
   if (!obj) return new Response('Not found', { status: 404, headers });
   return new Response(obj.body, {
     headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=3600', ...headers },
+  });
+}
+
+/** Replicate's words for where a lot has got to, for presses.js. */
+export async function alphaStatus(env, id) {
+  const res = await fetch(`${resultUrl(env)}?id=${encodeURIComponent(id.slice(PREFIX.length))}`, {
+    headers: { authorization: `Bearer ${env.ALPHA_TOKEN}` },
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!res.ok) return 'unknown';
+  const r = await res.json();
+  return r.status === 'running' ? 'processing' : r.status === 'succeeded' ? 'succeeded' : 'failed';
+}
+
+/** Stop a lot nobody is waiting for. Best effort: a server without the
+    endpoint simply finishes the lot. */
+export async function cancelAlpha(env, id) {
+  await fetch(`${cancelUrl(env)}?id=${encodeURIComponent(id.slice(PREFIX.length))}`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${env.ALPHA_TOKEN}` },
+    signal: AbortSignal.timeout(15000),
   });
 }

@@ -741,3 +741,33 @@ CREATE TABLE IF NOT EXISTS lawn_workers (
   decided_by  TEXT,
   created_at  TEXT NOT NULL
 );
+
+-- ----------------------------------------------------------------------
+-- ONE ROW PER DETECT PRESS THAT MAY STILL BE HANDED BACK (owner, 2026-09-29:
+-- "only counted against the daily total if the user receives a trace back").
+--
+-- The allowance is charged when the press starts, because every prediction
+-- is billed from that moment. This row remembers who paid and how, so that a
+-- press the person cancels, that fails, or that runs out of time can be
+-- handed back -- once, to whoever paid, and only if the detector had not
+-- already finished (otherwise "cancel" after seeing the answer would be a
+-- free detection). See worker/src/presses.js.
+--
+-- state: 'open' (running or finished, not handed back), 'refunded', or
+-- 'cancelled' -- a cancel that arrived before the press was recorded, which
+-- the press reads when it gets here and hands itself back. Rows older than a
+-- day are swept on the next press.
+CREATE TABLE IF NOT EXISTS detect_presses (
+  id          TEXT PRIMARY KEY,
+  client_id   TEXT,
+  user_id     TEXT,
+  n           INTEGER NOT NULL DEFAULT 0,
+  from_daily  INTEGER,
+  job         TEXT,
+  claimant    TEXT,
+  ceiling     INTEGER,
+  ids         TEXT,
+  state       TEXT NOT NULL DEFAULT 'open',
+  created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS detect_presses_at ON detect_presses(created_at);

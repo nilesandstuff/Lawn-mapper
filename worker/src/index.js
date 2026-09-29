@@ -63,6 +63,7 @@ import {
   DEFAULT_EXCLUSIONS, DEFAULT_MODEL, defaultModelFor,
 } from './sam.js';
 import { alphaEnabled, startAlpha, pollAlpha, isAlphaId, alphaMaskResponse } from './alpha.js';
+import { pressIdOf, openPress, releasePress, stopPrediction } from './presses.js';
 import { covers, lawnMaskUrl, LANDCOVER_HOST, overlayCatalogue } from './landcover.js';
 // Which satellite picture to use, and how to ask each source for exactly our
 // frame. Also lives outside the entrypoint, for the same reason as sam.js.
@@ -543,6 +544,8 @@ async function handleSegment(request, env, origin, ctx) {
   const user = await currentUser(request, env, ctx);
 
   const { lng, lat, clientId } = body;
+  /* The browser's name for this press, so a cancel can find it. See presses.js. */
+  const press = pressIdOf(body.press);
   if (!Number.isFinite(lng) || !Number.isFinite(lat) || !clientId) {
     return json({ error: 'lng, lat, and clientId required' }, 400, origin);
   }
@@ -888,6 +891,25 @@ async function handleSegment(request, env, origin, ctx) {
     ? spendJobDetection(env, body.job, claimant, -starts, onLawn.ceiling)
     : refund(request, env, { user, clientId, n: starts, fromDaily: quota.fromDaily }));
 
+  /*
+   * REMEMBER THE PRESS, so it can be handed back if no trace reaches the
+   * person (owner, 2026-09-29) -- see presses.js. A cancel that beat this
+   * here is honoured now: the predictions are stopped and the passes returned.
+   * True when the press was cancelled and has been handed back.
+   */
+  const recordPress = async (ids) => {
+    const got = await openPress(env, press, {
+      clientId, userId: user?.id || null, n: starts, fromDaily: quota.fromDaily ?? null,
+      job: onTheClock ? body.job : null, claimant: onTheClock ? claimant : null,
+      ceiling: onTheClock ? onLawn.ceiling : null, ids,
+    });
+    if (got !== 'cancelled') return false;
+    await handBack();
+    recordLater(ctx, Promise.all(ids.map((id) => stopPrediction(env, id))));
+    note('cancelled', 'cancelled before the detector answered; handed back');
+    return true;
+  };
+
   if (!quota.allowed) {
     /*
      * THE LAWN'S OWN PASSES, AND NOT A WORD ABOUT ANYBODY'S ALLOWANCE.
@@ -1010,6 +1032,9 @@ async function handleSegment(request, env, origin, ctx) {
       await handBack();
       note('upstream_error', `trained model: ${err.message}`);
       return json({ error: 'The trained model could not start', detail: err.message }, 502, origin);
+    }
+    if (await recordPress([begun.id])) {
+      return json({ error: 'cancelled', cancelled: true }, 409, origin);
     }
     note('processing', `trained model at ${(begun.groundM * 100).toFixed(1)} cm/px`);
     const pass = { exclusion: null, prompt: 'trained model', threshold: null, status: 'processing', id: begun.id, mask: null };
@@ -1156,6 +1181,10 @@ async function handleSegment(request, env, origin, ctx) {
     return json({ error: 'Segmentation failed', detail: failed.detail }, 502, origin);
   }
 
+  if (await recordPress(started.map((s) => s.prediction?.id).filter(Boolean))) {
+    return json({ error: 'cancelled', cancelled: true }, 409, origin);
+  }
+
   /*
    * One entry per pass, still, with its pieces inside it.
    *
@@ -1293,6 +1322,40 @@ async function handleSegment(request, env, origin, ctx) {
     200,
     origin
   );
+}
+
+/* ------------------------------------------------------ cancel a press */
+/**
+ * The person gave up on a press, or it failed or ran out of time in the
+ * browser: hand the passes back if no trace was to be had. See presses.js
+ * for what is checked; this only pays back whoever paid.
+ */
+async function handleCancelPress(request, env, origin, ctx) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: 'Invalid JSON' }, 400, origin);
+  }
+  const press = pressIdOf(body?.press);
+  const clientId = typeof body?.clientId === 'string' ? body.clientId : '';
+  if (!press || !clientId) return json({ error: 'press and clientId required' }, 400, origin);
+
+  const user = await currentUser(request, env, ctx);
+  const got = await releasePress(env, press, { clientId, userId: user?.id || null });
+  if (got.forbidden) return json({ error: 'Not your press' }, 403, origin);
+  if (got.refunded) {
+    const row = got.row;
+    if (row.job) await spendJobDetection(env, row.job, row.claimant, -row.n, row.ceiling);
+    else await refund(request, env, { user, clientId: row.client_id, n: row.n, fromDaily: row.from_daily });
+    recordLater(ctx, Promise.all((got.stop || []).map((id) => stopPrediction(env, id))));
+    return json({ refunded: true, n: row.n }, 200, origin);
+  }
+  return json({
+    refunded: false,
+    finished: Boolean(got.finished),
+    pending: Boolean(got.pending),
+  }, 200, origin);
 }
 
 /* ------------------------------------------------------------------ router */
@@ -1436,6 +1499,9 @@ export default {
         case '/api/segment':
           if (request.method !== 'POST') return json({ error: 'POST required' }, 405, origin);
           return await handleSegment(request, env, origin, ctx);
+        case '/api/segment/cancel':
+          if (request.method !== 'POST') return json({ error: 'POST required' }, 405, origin);
+          return await handleCancelPress(request, env, origin, ctx);
         /*
          * The test log, readable only with the token.
          *

@@ -306,6 +306,9 @@ jobs:
           [ -n "$result" ] || result=$(grep -o 'https://[^ ]*-result\.modal\.run' modal-deploy.log | head -1)
           printf '%s' "$url" | npx wrangler secret put ALPHA_URL
           if [ -n "$result" ]; then printf '%s' "$result" | npx wrangler secret put ALPHA_RESULT_URL; fi
+          cancel=$(python3 -c "import modal; print(modal.Function.from_name('lawn-mapper-alpha', 'cancel').get_web_url() or '')" 2>/dev/null || true)
+          [ -n "$cancel" ] || cancel=$(grep -o 'https://[^ ]*-cancel\.modal\.run' modal-deploy.log | head -1)
+          if [ -n "$cancel" ]; then printf '%s' "$cancel" | npx wrangler secret put ALPHA_CANCEL_URL; fi
           printf '%s' "$token" | npx wrangler secret put ALPHA_TOKEN
           modal volume get --force lawn-mapper-models alpha/release.json release.json >/dev/null 2>&1 || true
           when=$(python3 -c "import json;m=json.load(open('release.json'));print(m.get('trainedAt','?')+', '+str(m.get('lawns','?'))+' lots')" 2>/dev/null || echo "date unknown")

@@ -195,7 +195,7 @@ const page = await browser.newPage({
  * without needing a browser at all.
  */
 await page.addInitScript(() => {
-  try { sessionStorage.setItem('lawnmap.ai-notice.v1', '1'); } catch { /* fine */ }
+  /* (the AI notice sheet is gone, 2026-09-29) */
 });
 
 /*
@@ -700,7 +700,7 @@ console.log('\n--- accounts are optional ---');
     isMobile: true, hasTouch: true,
   });
   await fresh.addInitScript(() => {
-    try { sessionStorage.setItem('lawnmap.ai-notice.v1', '1'); } catch { /* fine */ }
+    /* (the AI notice sheet is gone, 2026-09-29) */
   });
 
   /*
@@ -3235,7 +3235,7 @@ console.log('\n--- tinker: neighbours and merging ---');
   const tp = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
   tp.on('pageerror', (err) => errors.push(`PAGEERROR (tinker): ${err.message}`));
   await tp.addInitScript(() => {
-    try { sessionStorage.setItem('lawnmap.ai-notice.v1', '1'); } catch { /* fine */ }
+    /* (the AI notice sheet is gone, 2026-09-29) */
   });
   await tp.goto(`${BASE}/#tinker`, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await tp.waitForFunction(() => window.__lmNeighbours !== undefined, { timeout: 30000 });

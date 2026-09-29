@@ -11,6 +11,7 @@ HOW THE SITE USES IT. Same shape as the Replicate calls it already makes:
 
     POST {start url}   {imageUrl, frame, parcel?, naipAlign?}   -> {id}
     GET  {result url}?id=...                                   -> {status: running | succeeded | failed, ...}
+    POST {cancel url}?id=...                                   -> {cancelled}
 
 The worker (worker/src/index.js, model "alpha") sends the photograph's URL --
 the same capture tools/train-detector.js trained on -- and polls. Both
@@ -180,3 +181,16 @@ def result(id: str, request: "Request"):
     except Exception as e:  # noqa: BLE001 - the detection itself failed
         return {"status": "failed", "error": str(e)[:300]}
     return {"status": "succeeded", **out}
+
+
+@app.function(image=web_image, secrets=[auth])
+@modal.fastapi_endpoint(method="POST")
+def cancel(id: str, request: "Request"):
+    """Stop a lot the person gave up waiting for, so the GPU stops too."""
+    if not _authorised(request.headers.get("authorization", "")):
+        raise HTTPException(status_code=401, detail="not authorised")
+    try:
+        modal.FunctionCall.from_id(id).cancel()
+    except Exception:  # noqa: BLE001 - already finished or unknown: nothing to stop
+        return {"cancelled": False}
+    return {"cancelled": True}

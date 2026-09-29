@@ -1137,10 +1137,21 @@ async function api(path, options = {}) {
   // exactly how "Detecting your lawn..." hung forever.
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), options.timeoutMs || 30000);
+  /* The caller's own cancel (the detection timer's Cancel and Retry). */
+  const outer = options.signal;
+  if (outer) {
+    if (outer.aborted) controller.abort();
+    else outer.addEventListener('abort', () => controller.abort(), { once: true });
+  }
   let res;
   try {
     res = await fetch(path, { ...options, signal: controller.signal });
   } catch (err) {
+    if (outer?.aborted) {
+      const e = new Error('Cancelled.');
+      e.cancelled = true;
+      throw e;
+    }
     if (err.name === 'AbortError') {
       const e = new Error('The server took too long to answer.');
       e.status = 0;
@@ -1193,7 +1204,74 @@ function busy(text) {
   $('#busy-text').textContent = text;
   $('#busy').hidden = false;
 }
-const idle = () => { $('#busy').hidden = true; };
+const idle = () => {
+  $('#busy').hidden = true;
+  stopDetectionTimer();
+};
+
+/* ------------------------------------------------ the detection timer */
+/*
+ * HOW LONG, AND A WAY OUT (owner, 2026-09-29). A detection can take a minute
+ * or more -- the trained model's first lot of a quiet spell starts a GPU --
+ * and a spinner alone gives no way to tell slow from stuck. So the overlay
+ * counts, and at 90 seconds offers Cancel and Retry.
+ *
+ * NEITHER COSTS A DETECTION. The allowance is charged when the press starts
+ * (every prediction is billed from then); cancelling asks the Worker to hand
+ * it back, which it does unless the detector had in fact already answered --
+ * in which case the answer is shown rather than thrown away. See presses.js.
+ */
+const DETECT_PATIENCE_S = 90;
+let detection = null;   // {press, abort, started, timer, action}
+
+function startDetectionTimer(run) {
+  const tick = () => {
+    const secs = Math.floor((Date.now() - run.started) / 1000);
+    $('#busy-timer').textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+    $('#busy-timer').hidden = false;
+    if (secs >= DETECT_PATIENCE_S && !run.action) $('#busy-actions').hidden = false;
+  };
+  tick();
+  run.timer = setInterval(tick, 1000);
+}
+
+function stopDetectionTimer() {
+  if (detection?.timer) clearInterval(detection.timer);
+  $('#busy-timer').hidden = true;
+  $('#busy-actions').hidden = true;
+}
+
+/** Ask the Worker to hand a press back. Never throws. */
+async function releasePress(press, reason) {
+  try {
+    return await api('/api/segment/cancel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ press, clientId: state.clientId, reason }),
+      timeoutMs: 40000,
+    });
+  } catch {
+    return { refunded: false };
+  }
+}
+
+/** Cancel or Retry, pressed on the overlay. */
+async function giveUpOnDetection(action) {
+  const run = detection;
+  if (!run || run.action) return;
+  run.action = action;
+  $('#busy-actions').hidden = true;
+  busy(action === 'retry' ? 'Starting again…' : 'Cancelling…');
+  const got = await releasePress(run.press, action);
+  if (got.finished) {
+    /* It answered while the buttons were up: show it rather than bin it. */
+    run.action = 'finishing';
+    busy('It has just finished — loading it…');
+    return;
+  }
+  run.released = true;
+  run.abort.abort();
+}
 
 /* ------------------------------------------------------------------- map */
 
@@ -4393,7 +4471,7 @@ function detectionRequest(frame, provider, model, points) {
   };
 }
 
-async function detect() {
+async function detect({ again = false } = {}) {
   if (!state.frame) return;
 
   // Developer mode can type a prompt the encoder cannot take. Stopping here
@@ -4429,19 +4507,29 @@ async function detect() {
    * detection -- and re-arming it for a second source quietly put hand-drawn
    * shapes and every correction at risk.
    */
-  if (draw.getAll().features.length && !confirm(
+  if (!again && draw.getAll().features.length && !confirm(
     'Detecting again replaces the shapes on the map, including any corrections ' +
     'you have made. Carry on?'
   )) return;
 
   busy('Detecting your lawn…');
   $('#btn-detect').disabled = true;
+  const run = {
+    press: (crypto.randomUUID && crypto.randomUUID()) || `p-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+    abort: new AbortController(),
+    started: Date.now(),
+    action: null,
+    accepted: false,
+  };
+  detection = run;
+  startDetectionTimer(run);
 
   try {
     let data = await api('/api/segment', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(detectionRequest(frame, provider, model, points)),
+      body: JSON.stringify({ ...detectionRequest(frame, provider, model, points), press: run.press }),
+      signal: run.abort.signal,
       /*
        * Room for a throttled pass to wait and try again.
        *
@@ -4453,6 +4541,7 @@ async function detect() {
       timeoutMs: 150000,
     });
 
+    run.accepted = true;
     // data.frame is authoritative: the server clamps zoom and size, so the
     // frame we sent is not necessarily the frame that was rendered.
     const rendered = data.frame || frame;
@@ -4483,7 +4572,7 @@ async function detect() {
         const pieces = await Promise.all((pass.tiles || [pass]).map(async (tile) => {
           const done = tile.status === 'succeeded'
             ? tile
-            : await waitForPrediction(tile.id, rendered);
+            : await waitForPrediction(tile.id, rendered, run.abort.signal);
           if (done.version) version = done.version;
           const url = maskUrl(done.mask);
           if (!url) {
@@ -4759,6 +4848,27 @@ async function detect() {
     );
   } catch (err) {
     /*
+     * CANCELLED OR RETRIED from the timer, and already handed back.
+     */
+    if (run.released || err.cancelled || err.body?.cancelled) {
+      if (run.action !== 'retry') {
+        setStatus('Cancelled. It did not count against today\'s detections.', 'warn');
+      }
+      return;
+    }
+    /*
+     * ANY OTHER FAILURE AFTER THE PRESS STARTED is handed back too: no trace
+     * reached the person, so it does not count (the Worker checks the
+     * detector really did not answer). Before it started, nothing was charged.
+     */
+    /* Timed out waiting for the first answer counts too: the Worker may have
+       started (and charged) it, and a cancel left before it records the press
+       is read when it does. */
+    if (run.accepted || err.status === 0) {
+      const back = await releasePress(run.press, 'failed');
+      if (back.refunded) err.message = `${err.message} It did not count against today's detections.`;
+    }
+    /*
      * An account out of today's passes. 402 rather than 429 because nothing is
      * rate limited -- the day's allowance is simply spent.
      *
@@ -4928,8 +5038,10 @@ async function detect() {
     }
   } finally {
     idle();
+    if (detection === run) detection = null;
     updatePromptHint();
     refreshQuota();
+    if (run.action === 'retry') setTimeout(() => detect({ again: true }), 0);
   }
 }
 
@@ -4939,22 +5051,31 @@ async function detect() {
  * The first run of the day is the slow one -- the model has to be loaded onto
  * a GPU before it can look at anything. Saying so beats a silent spinner.
  */
-async function waitForPrediction(id, frame) {
+async function waitForPrediction(id, frame, signal = null) {
   const started = Date.now();
   const DEADLINE_MS = 4 * 60 * 1000;
+  const cancelled = () => {
+    const e = new Error('Cancelled.');
+    e.cancelled = true;
+    return e;
+  };
 
   while (Date.now() - started < DEADLINE_MS) {
     await new Promise((r) => setTimeout(r, 2500));
+    if (signal?.aborted) throw cancelled();
 
     const secs = Math.round((Date.now() - started) / 1000);
-    busy(secs < 25
-      ? 'Detecting your lawn…'
-      : `Still working — the AI is warming up (${secs}s)`);
+    /* The overlay's own timer counts; this only says why it is slow. And it
+       leaves the words alone while Cancel or Retry is being answered. */
+    if (!detection?.action) {
+      busy(secs < 25 ? 'Detecting your lawn…' : 'Still working — the AI is warming up');
+    }
 
     let p;
     try {
-      p = await api(`/api/prediction?id=${encodeURIComponent(id)}`);
-    } catch {
+      p = await api(`/api/prediction?id=${encodeURIComponent(id)}`, { signal });
+    } catch (e) {
+      if (e.cancelled) throw e;
       continue; // a dropped poll is not a failed prediction
     }
 
@@ -5935,54 +6056,6 @@ const SIGNIN_ERRORS = {
   expired: 'That link had expired, or had already been used. Ask for another '
     + '— they work once and last twenty minutes.',
 };
-
-/*
- * What the AI actually is, said before it is watched being it.
- *
- * ONCE A VISIT, on first arrival at the AI tab. The timing is the whole point:
- * read before a detection, "this is bad, correct it and the corrections train
- * the replacement" sets an expectation and hands over a job. Read after one,
- * the same words are an excuse for a result somebody has already judged.
- *
- * sessionStorage rather than a variable, so a reload does not repeat it, and
- * rather than localStorage, so it comes back on the next visit -- the ask
- * inside it is a standing one, and somebody who has been away for a month has
- * forgotten that finishing is what keeps the map.
- *
- * Wrapped, because sessionStorage throws rather than returning null in a
- * locked-down browser. The fallback is the in-memory flag, which still holds
- * for the life of the page: worst case it reappears after a reload, which is
- * a far better failure than a notice that never shows or a map that does not
- * load.
- */
-let aiNoticeShown = false;
-const AI_NOTICE_KEY = 'lawnmap.ai-notice.v1';
-
-function showAiNotice() {
-  if (aiNoticeShown) return;
-  /*
-   * NOT ON THE PAID QUEUE, because it would give them an instruction that is
-   * false on their screen.
-   *
-   * It ends "be sure to hit Finish, save, and see more options after you've
-   * made the corrections" -- and job mode has no Finish button: sending the
-   * map is what ends the task. A sheet telling somebody to press a button that
-   * is not there is how a worker concludes the page is broken and abandons
-   * work already done. What the notice exists to say, they are told better
-   * anyway: the job bar carries what the job is asking for, and the sheet at
-   * the start says what the corrections are for.
-   *
-   * It matters now because the AI tab is back for them (see body.job-mode in
-   * styles.css), and this fires on first arrival at that tab.
-   */
-  if (document.body.classList.contains('job-mode')) return;
-  aiNoticeShown = true;
-  try {
-    if (sessionStorage.getItem(AI_NOTICE_KEY)) return;
-    sessionStorage.setItem(AI_NOTICE_KEY, '1');
-  } catch { /* private mode: the flag above still stops a second one today */ }
-  openSheet('#ai-notice');
-}
 
 /*
  * SOURCE ORDER IS NOT A STACKING POLICY.
@@ -7753,7 +7826,6 @@ function setTab(name) {
 
   if (next === 'saved') renderSaves();
   if (next === 'plan') refreshPlanTab();
-  if (next === 'detect') showAiNotice();
   refreshTabs();
   refreshRail();
   updatePromptHint();
@@ -11339,7 +11411,9 @@ document.addEventListener('click', (e) => {
   if (action === 'confirm') confirmLocation();
 });
 
-$('#btn-detect').addEventListener('click', detect);
+$('#btn-detect').addEventListener('click', () => detect());
+$('#busy-cancel').addEventListener('click', () => giveUpOnDetection('cancel'));
+$('#busy-retry').addEventListener('click', () => giveUpOnDetection('retry'));
 
 $('#imagery-source').addEventListener('change', (e) => setProvider(e.target.value));
 $('#model-choice').addEventListener('change', (e) => setModel(e.target.value));
@@ -12086,9 +12160,6 @@ $('#signin-close').addEventListener('click', () => closeSheet('#signin'));
 $('#account-close').addEventListener('click', () => closeSheet('#account-sheet'));
 /* Two ways out, because the × is small on a phone and this one has nothing to
    agree to -- "Got it" is an acknowledgement, not a decision. */
-for (const id of ['#ai-notice-close', '#ai-notice-ok']) {
-  $(id).addEventListener('click', () => closeSheet('#ai-notice'));
-}
 
 /* Tapping the darkened area behind a sheet closes it, which is what everyone
  * tries first. The test is on the target itself, so a press inside the card
