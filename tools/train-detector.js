@@ -1435,6 +1435,8 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
           vetoed: big(clipTo(vetoed)),
           edgeAdded: big(clipTo(r.edgeAdded)),
           edgeRemoved: big(clipTo(r.edgeRemoved)),
+          refineAdded: big(clipTo(r.refineAdded)),
+          refineRemoved: big(clipTo(r.refineRemoved)),
           line: big(L.within),
         },
       });
@@ -2310,6 +2312,9 @@ async function main() {
    * back in more than one state, and two runs can differ by that alone).
    */
   const predDirs = [];
+  /* Each decoder's final answer (after stage 3 and the veto), by label, so the
+     edge refiner's own change can be drawn as a layer of its own. */
+  const finalByLabel = {};
   /* Each decoder's answers per lawn, kept for stage 3 below. */
   const decoderMasks = [];
   if (process.env.PREDICTIONS_DIR) predDirs.push({ label: '', dir: process.env.PREDICTIONS_DIR });
@@ -2502,6 +2507,24 @@ async function main() {
         console.log(`Scoring "${cfg6.name}" (span 8 m, reach 1 m, bridge over 180°, then roof and void are not lawn)…`);
         const vetoed = judge(masks, { spanM: 8, reachM: 1, minRing: 0.5, veto: true });
         table.push(summarise(cfg6, vetoed, cfg.dims));
+        finalByLabel[label] = vetoed;
+        /* WHAT THE EDGE REFINER CHANGED (owner, 2026-09-29: "can it be shown
+           separately?"): THE PLAN's final answer against the plain decoder's,
+           both after stage 3 and the veto, from the same run. The plain one
+           (PREDICTIONS_DIR, label '') is always scored first. */
+        const plain = label === 'edge refined' ? finalByLabel[''] : null;
+        if (plain) {
+          vetoed.forEach((r, i) => {
+            const p = plain[i];
+            if (!r.predicted || !p?.predicted) return;
+            r.refineAdded = new Uint8Array(r.predicted.length);
+            r.refineRemoved = new Uint8Array(r.predicted.length);
+            for (let k = 0; k < r.predicted.length; k++) {
+              r.refineAdded[k] = r.predicted[k] && !p.predicted[k] ? 1 : 0;
+              r.refineRemoved[k] = p.predicted[k] && !r.predicted[k] ? 1 : 0;
+            }
+          });
+        }
         /*
          * THE SAME ROW WITH COLOUR ON THE EDGES (owner, 2026-09-27): every
          * cell within 1 m of the decoder's edge re-decided by a colour model

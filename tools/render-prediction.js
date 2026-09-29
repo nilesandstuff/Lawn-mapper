@@ -572,6 +572,13 @@ export const LAYERS = [
   // "put back under trees", so an area colour edges TOOK OUT read as one
   // something had ADDED. Green in, red out.
   { id: 'edgeRemoved', label: 'colour edges: taken out (not in the score)', colour: [229, 57, 53], on: false },
+  // THE EDGE REFINER'S OWN CHANGE (owner, 2026-09-29): THE PLAN's answer
+  // against the same decoder without the refiner, both final. Both in the
+  // score -- the refiner is THE PLAN. Every bright colour already means
+  // something (roof is blue, NAIP violet), so these two are the dark ones:
+  // navy in, black out.
+  { id: 'refineAdded', label: 'edge refiner: added (navy)', colour: [26, 35, 126], on: false },
+  { id: 'refineRemoved', label: 'edge refiner: taken out (black)', colour: [20, 20, 20], on: false },
   { id: 'shapes', label: 'detector: outline and handles', colour: TRACE, on: true },
   { id: 'line', label: 'property line', colour: PARCEL_EDGE, on: true },
 ];

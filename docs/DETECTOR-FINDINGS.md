@@ -843,7 +843,13 @@ The owner also saw the colour-edges layers appear to add where they should
 subtract: the layers were computed correctly (added = in the colour-edges
 answer and not THE PLAN's; taken out = the reverse), but "taken out" was
 yellow beside stage 3's amber "put back under trees", which reads as an
-addition. "Taken out" is red from 2026-09-29.
+addition. "Taken out" is red from 2026-09-29. **Confirmed by the owner:** the
+parking lot in seed 7 was under "colour edges: taken out" -- colour edges
+REMOVED it, correctly. From the same date the pictures carry two more layers,
+"edge refiner: added" (navy) and "taken out" (black): THE PLAN's final
+answer against the plain decoder's, same run, both after stage 3 and the
+veto. The two decoders are scored as separate rows in every `fused + edge`
+run ("the pretrained eye, decoder ..." and "decoder, edge refined ...").
 
 **Not established -- speculation:** WHY B19 and B20 got worse (B20 also got
 worse under colour edges' opposite, and is a real-mistake lot per H53), or
