@@ -809,6 +809,14 @@ say. S16's "why it might not" (the examples shift the decoder's balance and
 push the lawn's edge in everywhere) is the obvious reading of lots going
 from 10% to 86%, and it is SPECULATION until a picture shows it.
 
+**The crop does not rescue them (2026-09-29).** Whole lot with the examples
+CROPPED to their graded cells (runs 36484570562 / 36484573224 / 36484577454,
+commit 071becf, CPU): against S14 without examples 10 better / 41 worse,
++3.8 [+2.7, +5.4], p 0.000 -- worse than the uncropped runs, and against
+them +0.7 [+0.0, +1.0], 16 better / 30 worse. On the lots approved since,
++3.8 [+2.9, +5.6]. The Georgia lot improves again (409 -> 152) and B19 (41
+-> 21); little else. Examples are closed as built.
+
 **Also measured:** the examples made the run ~3.6x longer (backbone 12 ->
 46 min, a decoder 10 -> 33 min) for 145 frames against 55 -- the example
 photographs are bigger frames than the lots on average (19 s a frame at the
@@ -4760,3 +4768,4 @@ worse on the lots approved since. Then it joins THE PLAN.
 | 2026-09-28 | 36450763774 36450766989 36450771744, 36453431102 36453434382 36453439067 | — | S16 tiles 6 cm and the first S17 (both scales), examples on | — | — | **CANCELLED mid-backbone** -- could not finish in one job's time with the examples. No results |
 | 2026-09-28 | 36488404436 | 55 | **`gpu: modal`** -- S14 seed 7 (windows off, fused, `canopy: compare`) repeated on an L4 GPU; vs 36355253442 (compare-runs.js locally) | — | — | **GPU = CPU within half a seed.** Plan row +0.2 [-0.4, +0.8], p 0.64; median lot moves 1.2 (seed change 2.6). Canopy 3 min, backbone + 3 decoders 12 min, run ~60 min vs 1 h 43. Default flipped to modal |
 | 2026-09-29 | 36495279827 36495282695 36495284820 | 55 | **`windows: both`** (S17), fused, `canopy: on lawn`, no examples, seeds 7/8/9, **Modal**; vs S14 (CPU) s7/8/9 (compare-runs.js locally) | — | — | **H58: leans better, bar missed.** 27 better / 16 worse, -0.4 [-1.4, +0.2], p 0.13; since -0.2. B28 not rescued (86); B24 -17, B32 -10, B03 -5; B20 +8. 57 min a run on Modal |
+| 2026-09-29 | 36484570562 36484573224 36484577454 | 55 (+90 examples) | `examples: on`, **cropped** to graded cells, whole lot, fused, `canopy: compare`, seeds 7/8/9, CPU; vs S14 and vs the uncropped runs (compare-runs.js locally) | — | — | **H57 stands, stronger.** vs S14 10 better / 41 worse, +3.8 [+2.7, +5.4]; vs uncropped +0.7 [+0.0, +1.0]. Examples closed as built |
