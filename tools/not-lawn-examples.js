@@ -210,8 +210,13 @@ async function framesMode(dir) {
   const kinds = ['water', 'building', 'pool', 'driveway', 'parking', 'road', 'sidewalk', 'rail'];
   const counts = {};
   let written = 0;
+  /* At most this many frames of each kind (owner, 2026-09-29: "possibly we
+     just gave it the wrong number of outlines"); unset means all of them.
+     The lowest-numbered approved ones, so a run is repeatable. */
+  const perKind = Number(process.env.EXAMPLES_PER_KIND) || Infinity;
   for (const kind of kinds) {
-    for (let i = 1, misses = 0; misses < 3; i++) {
+    let ofKind = 0;
+    for (let i = 1, misses = 0; misses < 3 && ofKind < perKind; i++) {
       const id = `${kind}-${String(i).padStart(3, '0')}`;
       const got = wranglerGet(`${BUCKET}/${EXAMPLE_PREFIX}${id}.json`);
       if (!got.ok) { misses++; continue; }
@@ -243,6 +248,7 @@ async function framesMode(dir) {
         counts[c] = (counts[c] || 0) + 1;
       }
       written++;
+      ofKind++;
     }
   }
   writeFileSync(scalePath, JSON.stringify(scale));

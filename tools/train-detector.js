@@ -1426,8 +1426,6 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
           truth: big(clipTo(L.truth)),
           inferred: big(clipTo(L.inferred)),
           canopy: big(L.canopy),
-          lidarCanopy: big(L.lidarCanopy),
-          naipCanopy: big(L.naipCanopy),
           roof: big(L.roof),
           void: big(L.void),
           mask: big(clipTo(r.predicted)),
@@ -2531,10 +2529,14 @@ async function main() {
          * fitted to this lot's own confident ground. Its lot-by-lot figures
          * against the row above are the test; compare-runs reads both.
          */
+        /* SHELVED 2026-09-29 (owner: "let's not run the things we aren't
+           actually using"): H54 did not adopt it, and the edge refiner (H60)
+           does the job it was reaching for. Kept behind COLOUR_EDGES=1. */
+        const colourEdgesOn = /^(1|true|yes)$/i.test(String(process.env.COLOUR_EDGES || ''));
         const cfgE = { ...cfg, name: `${cfg6.name}, colour edges`, stage3: true };
-        console.log(`Scoring "${cfgE.name}" (cells within 1 m of the edge re-decided by this lot's own colours)…`);
-        const edged = judge(masks, { spanM: 8, reachM: 1, minRing: 0.5, veto: true, edges: true });
-        table.push(summarise(cfgE, edged, cfg.dims));
+        if (colourEdgesOn) console.log(`Scoring "${cfgE.name}" (cells within 1 m of the edge re-decided by this lot's own colours)…`);
+        const edged = colourEdgesOn ? judge(masks, { spanM: 8, reachM: 1, minRing: 0.5, veto: true, edges: true }) : [];
+        if (colourEdgesOn) table.push(summarise(cfgE, edged, cfg.dims));
         /* What colour edges changed in THE PLAN's final answer, for the
            pictures' own two layers (owner, 2026-09-28: "no labelled layer
            for it"). Both rows are after the veto, so this is exactly the

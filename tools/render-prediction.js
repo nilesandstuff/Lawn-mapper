@@ -560,18 +560,14 @@ export const LAYERS = [
   { id: 'truth', label: 'traced lawn', colour: TRUTH_FILL, on: true },
   { id: 'inferred', label: 'marked “inferred, not seen”', colour: INFERRED_EDGE, on: true },
   { id: 'canopy', label: 'tree model canopy', colour: [174, 234, 0], on: false },
-  { id: 'lidarCanopy', label: 'lidar canopy (2 m+, not roof)', colour: [255, 152, 0], on: false },
-  { id: 'naipCanopy', label: 'NAIP-CHM canopy (half the cell 2 m+)', colour: [224, 64, 251], on: false },
   { id: 'roof', label: 'lidar roof', colour: [66, 133, 244], on: false },
   { id: 'void', label: 'lidar void / water', colour: [0, 188, 212], on: false },
   { id: 'mask', label: 'detector: raw answer', colour: TRACE, on: false },
   { id: 'added', label: 'stage 3: put back under trees', colour: ADDED, on: true },
   { id: 'vetoed', label: 'lidar veto: taken out', colour: [255, 64, 129], on: true },
-  { id: 'edgeAdded', label: 'colour edges: added (not in the score)', colour: [0, 230, 118], on: false },
-  // Red, not yellow (owner, 2026-09-29): yellow sat next to stage 3's amber
-  // "put back under trees", so an area colour edges TOOK OUT read as one
-  // something had ADDED. Green in, red out.
-  { id: 'edgeRemoved', label: 'colour edges: taken out (not in the score)', colour: [229, 57, 53], on: false },
+  // Lidar canopy, NAIP-CHM canopy and colour edges' two layers were here
+  // until 2026-09-29: none of them is used, and the owner asked for them to
+  // stop being run and drawn.
   // THE EDGE REFINER'S OWN CHANGE (owner, 2026-09-29): THE PLAN's answer
   // against the same decoder without the refiner, both final. Both in the
   // score -- the refiner is THE PLAN. Every bright colour already means

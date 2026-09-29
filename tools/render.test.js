@@ -405,7 +405,7 @@ const block = (mask, x0, y0, x1, y1) => {
   const alphaAt = (id, x, y) => frame(id)[(y * GRID + x) * 4 + 3];
   check('a roof cell is painted on the roof frame', alphaAt('roof', 20, 20) > 0 || alphaAt('roof', 21, 20) > 0);
   check('and nothing is painted on the roof frame away from it', alphaAt('roof', 100, 100) === 0);
-  check('a layer with no mask is an empty frame, not an error', frame('naipCanopy').every((v) => v === 0));
+  check('a layer with no mask is an empty frame, not an error', frame('void').every((v) => v === 0));
   check('the photograph is opaque and dimmed outside the line',
     L.photo[(5 * GRID + 100) * 4 + 3] === 255 && L.photo[(5 * GRID + 100) * 4] < L.photo[(5 * GRID + 5) * 4]);
   check('every layer has a label and a colour', LAYERS.every((l) => l.label && l.colour.length === 3));

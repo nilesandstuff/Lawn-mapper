@@ -57,6 +57,8 @@ got here. Update it whenever the in-flight run changes.*
   band of H53, not implausible shapes); self-training on the detector's own
   confident output (possible later, but H57 says added data must be
   measured, not assumed).
+- **Next (2026-09-29, owner): S20** -- THE PLAN with and without ~30 not-lawn
+  outlines (4 per kind), one seed each as a screen. Bar in S20.
 - **Measured (2026-09-29): H60, the edge refiner PASSES its bar.** 34
   better / 9 worse, -1.7 [-2.6, -0.5], p 0.0002; approved since 12 / 5,
   -0.5. **ADOPTED into THE PLAN (owner, 2026-09-29):** THE PLAN's row is
@@ -4704,6 +4706,33 @@ not:** a 27 m block is less context than a whole lot, and H4 once found
 fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
+
+### S20. The not-lawn outlines again, fewer of them, under THE PLAN (owner, 2026-09-29)
+
+**The owner:** "we abandoned the outlines, but I don't think that was the
+right move, possibly we just gave it the wrong number of outlines." H57
+trained ~90 examples beside 55 lots (more not-lawn frames than lawns) on the
+old plain decoder, and was worse (+3.8). Since then THE PLAN changed (the
+edge refiner, H60), and B19 / B20's refined answers took parking lots.
+
+**The runs:** two, identical but for `examples` -- THE PLAN's settings
+(`decoder: fused + edge`, `canopy: on lawn`, `windows: off`, `lawns: all`,
+seed 7, free runner): A `examples: off`, B `examples: some` = at most 4
+frames of each of the 8 kinds (EXAMPLES_PER_KIND; about 30), against ~90 in
+H57. The decoder trains on them; the refiner does not (an example has no
+scoring grid of its own to refine -- its frame is cropped to its outlines).
+
+**Bar, before the runs:** THE PLAN's row, B against A. One seed a side is a
+SCREEN (H50: a seed moves the median 2.5 points). Worth seeds 8 and 9 if the
+median paired change is below zero with more lots better than worse;
+adopted only under the full bar (sign test p < 0.1, the 95% interval below
+zero, not worse on the lots approved since). Also reported: B19, B20 (the
+parking lots), B16, B12 (the pond).
+
+**Also from 2026-09-29, not run any more (owner):** the NAIP-CHM read, the
+colour-edges row and its two layers, and the lidar-canopy and NAIP-CHM
+picture layers. Code kept behind NAIP_CHM=1 / COLOUR_EDGES=1 /
+LIDAR_CANOPY=1.
 
 ### S19. Keep the whole-lot reading; sharpen only the edge (proposed 2026-09-29 from E11; owner go-ahead, built and running the same day)
 **The idea:** the arrangement question is settled for this backbone (H59) --

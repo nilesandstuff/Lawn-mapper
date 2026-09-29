@@ -249,9 +249,14 @@ on:
         # model's canopy is left unseen, it is never held out or scored, and a
         # fold does not see an example within 2 km of a lot it holds out.
         description: 'Train with the approved not-lawn examples from /outlines.html (on) or without (off)'
+        #
+        # "some" (owner, 2026-09-29: "possibly we just gave it the wrong number
+        # of outlines"): at most EXAMPLES_PER_KIND (4) frames of each kind --
+        # water, building, pool, driveway, parking, road, sidewalk, rail --
+        # about 30 in all, against the ~90 H57 trained on beside 55 lots.
         type: choice
         default: 'off'
-        options: ['off', 'on']
+        options: ['off', 'on', 'some']
       cache:
         # REUSE WHAT DOES NOT CHANGE (owner, 2026-09-29). The canopy, lidar and
         # NAIP depend only on the frames and their code; the backbone's
@@ -367,8 +372,9 @@ jobs:
         run: node tools/train-detector.js
 
       - name: Add the approved not-lawn examples as training-only frames
-        if: ${{ inputs.examples == 'on' }}
+        if: ${{ inputs.examples != 'off' }}
         env:
+          EXAMPLES_PER_KIND: ${{ inputs.examples == 'some' && '4' || '' }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CORPUS_BUCKET: lawn-mapper-corpus
@@ -494,10 +500,9 @@ jobs:
           CANOPY: canopy
           PLAN: lidar-plan.json
           OUT: lidar
-          # NAIP-CHM too (E9, H41): its canopy joins the lidar's in the
-          # "lidar ∩ NAIP canopy" row and is a layer on the pictures. About
-          # 10 s for the index and 1.5 s a frame.
-          NAIP_CHM: '1'
+          # NAIP-CHM (E9, H41) is no longer read (owner, 2026-09-29): its
+          # only uses were the shelved "lidar ∩ NAIP canopy" row and a
+          # picture layer. NAIP_CHM=1 brings it back.
         run: python3 tools/lidar_frame.py
 
       # S11, the fused inputs: NAIP's near-infrared over every frame (one
