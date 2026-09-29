@@ -57,6 +57,9 @@ got here. Update it whenever the in-flight run changes.*
   band of H53, not implausible shapes); self-training on the detector's own
   confident output (possible later, but H57 says added data must be
   measured, not assumed).
+- **In flight (2026-09-29): S19, the edge refiner** -- owner's go-ahead;
+  built (tools/edge_refine.py, `decoder: fused + edge`), three seeds on the
+  free runner. Bar written in S19 before the runs.
 - **Research done (2026-09-29): E11.** Published work agrees with H55-H59
   (bigger context wins; scales only combine well when a network learns the
   choice per location, trained on far more images than 55) and points at
@@ -4619,7 +4622,7 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
-### S19. Keep the whole-lot reading; sharpen only the edge (proposed 2026-09-29 from E11, NOT started)
+### S19. Keep the whole-lot reading; sharpen only the edge (proposed 2026-09-29 from E11; owner go-ahead, built and running the same day)
 **The idea:** the arrangement question is settled for this backbone (H59) --
 the whole lot wins on context. The remaining error is the edge band (H53),
 and it is set by the 16 px patch grid, not by the arrangement. So: an
@@ -4631,6 +4634,35 @@ an experiment is decoder + scoring only, on the free runner. **Why it might
 not work:** H54's colour edges were a similar idea and failed; the photo's
 colour edge is not always the lawn's edge (shade, mulch beds). **Needs the
 owner's go-ahead before it is built.**
+
+**Owner's go-ahead 2026-09-29 ("give smarter edge refinement a shot"). Built
+as the learned kind, not the hand-made kind:** tools/edge_refine.py, a
+~20,000-weight net on the 15 cm scoring grid that sees the photograph's
+colour, the decoder's answer and its last hidden layer (both stretched
+exactly as to_photo stretches them; refine_test.py checks this to 1e-5),
+and outputs a CHANGE to the decoder's logit, starting at zero. Trained
+together with the decoder in each fold (not after it, so it does not learn
+to correct a decoder that is overconfident on its own training lots), on
+112-cell squares, 70% centred on a traced edge; targets are the trace cell
+by cell. Workflow 14 `decoder: fused + edge` trains the plain fused decoder
+and the refined one over the same features, folds and seed, and scores both.
+The difference from H54: H54 re-decided the edge by a fixed rule from the
+lot's colours; this LEARNS, from 55 lots of traced edges, when a colour edge
+is the lawn's edge and when it is shade or mulch. Synthetic check only (a
+clean ellipse, 9 lots): 4.4% -> 2.6% median; says the plumbing works, not
+that real edges will move. About 2x a decoder's training time.
+
+**Bar, before the runs (three seeds 7 / 8 / 9, `lawns: all`, folds by place,
+`windows: off`, `canopy: on lawn`, `cache: use`, free runner):** A = "the
+pretrained eye, decoder + stage 3, span, lidar veto" (the plain fused
+decoder, THE PLAN's row in a single-decoder run), B = "decoder, edge refined
++ stage 3, span, lidar veto", same runs. Adopted if more lots better than
+worse with a sign-test p under 0.1, the 95% interval of the median paired
+change below zero, and not worse on the lots approved since. If it leans
+better and misses, three more seeds (10 / 11 / 12) before deciding, as S18.
+Also reported: B01, B29, B21, B05 (H53's near-all-edge lots, where it should
+help if anywhere) and B20, B28, B04 (real mistakes, where it should not
+matter).
 
 ### S18. Both scales, decided: six seeds a side, both sides on the GPU (2026-09-29)
 

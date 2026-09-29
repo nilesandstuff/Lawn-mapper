@@ -81,6 +81,14 @@ def box_targets(label, grid_w, grid_h, cover_x, cover_y):
     return mean.astype(np.float32), inside.astype(np.float32)
 
 
+def photo_coords(cells, patches, cover):
+    """The patch coordinate to_photo reads each label cell's centre at, clamped
+    to the grid: cell x sits at patch (x + 0.5) * patches / (cells * cover) - 0.5.
+    The edge refiner (edge_refine.py) reads the decoder at these same points."""
+    u = (np.arange(cells) + 0.5) * (patches / (cells * cover)) - 0.5
+    return np.clip(u, 0, patches - 1)
+
+
 def _lerp_axis(arr, n_out, cover, axis, cover_out=1.0):
     """Bilinear resample along one axis: label cell centres read off patches.
 

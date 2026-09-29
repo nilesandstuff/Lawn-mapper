@@ -194,10 +194,17 @@ on:
         # FUSED IS THE MAIN SET-UP FROM 2026-09-27 (owner): H50 measured it
         # level with "on" at 55 lots, and it is the one expected to pull
         # ahead as the corpus grows. "on" stays as the other arm.
-        description: 'Train the convolutional decoder over the full patch grid (on), the same with lidar + NAIP NDVI + canopy as extra inputs (fused, the main set-up), or not at all (off)'
+        #
+        # "fused + edge" (S19, owner 2026-09-29): the fused decoder TWICE over
+        # the same features -- as it is, and with the edge refiner
+        # (tools/edge_refine.py), a small net on the 15 cm grid that sees the
+        # photograph and re-draws the decoder's edge -- scored side by side as
+        # "the pretrained eye, decoder" and "decoder, edge refined". Takes the
+        # canopy setting for both (not 'compare'); free runner only.
+        description: 'Train the convolutional decoder over the full patch grid (on), the same with lidar + NAIP NDVI + canopy as extra inputs (fused, the main set-up), fused with and without the edge refiner (fused + edge, S19), or not at all (off)'
         type: choice
         default: 'fused'
-        options: ['on', 'fused', 'off']
+        options: ['on', 'fused', 'fused + edge', 'off']
       seed:
         # THE DECODER'S SEED. It is deterministic given the seed and the
         # features (H26: two runs identical to the decimal), which means one
@@ -316,6 +323,14 @@ jobs:
           # finds none, and fails the job before anything has run.
           cache-dependency-path: tools/requirements.txt
 
+      # Stop in seconds rather than after an hour of extraction when the
+      # choices cannot go together.
+      - name: Check the choices go together
+        if: ${{ inputs.decoder == 'fused + edge' && (inputs.canopy == 'compare' || inputs.gpu == 'modal') }}
+        run: |
+          echo "::error::'fused + edge' trains two decoders under ONE canopy setting on the free runner: choose a canopy other than 'compare', and gpu 'github'."
+          exit 1
+
       - run: npm ci
 
       - name: Install the image decoders
@@ -368,7 +383,9 @@ jobs:
       - name: Check the decoder's grids
         if: ${{ inputs.decoder != 'off' }}
         working-directory: tools
-        run: python3 decoder_test.py
+        run: |
+          python3 decoder_test.py
+          python3 refine_test.py
 
       # The tree model over the same frames, exactly as workflow 19 runs it,
       # so the canopy lands on the pixels the features describe. Its
@@ -396,7 +413,7 @@ jobs:
             lidar
             lidar-plan.json
             naip
-          key: prep-v1-${{ steps.frames.outputs.fp }}-fused${{ inputs.decoder == 'fused' }}-${{ hashFiles('tools/tree-canopy.py', 'tools/clumps.py', 'tools/lidar-plan.js', 'tools/lidar-cover.js', 'tools/lidar_frame.py', 'tools/naip_bands.py', 'tools/naip_align.py', 'tools/requirements-trees.txt', 'tools/requirements-lidar.txt') }}
+          key: prep-v1-${{ steps.frames.outputs.fp }}-fused${{ startsWith(inputs.decoder, 'fused') }}-${{ hashFiles('tools/tree-canopy.py', 'tools/clumps.py', 'tools/lidar-plan.js', 'tools/lidar-cover.js', 'tools/lidar_frame.py', 'tools/naip_bands.py', 'tools/naip_align.py', 'tools/requirements-trees.txt', 'tools/requirements-lidar.txt') }}
 
       - name: Reuse the backbone's features if saved
         id: feats
@@ -484,7 +501,7 @@ jobs:
       # exportImage each, about a metre a pixel), for the decoder to read as
       # NDVI beside the lidar and the canopy. See tools/naip_bands.py.
       - name: Read NAIP's near-infrared over the frames
-        if: ${{ inputs.decoder == 'fused' && inputs.canopy != 'off' && steps.prep.outputs.cache-hit != 'true' }}
+        if: ${{ startsWith(inputs.decoder, 'fused') && inputs.canopy != 'off' && steps.prep.outputs.cache-hit != 'true' }}
         env:
           FRAMES: frames
           OUT: naip
@@ -550,7 +567,7 @@ jobs:
             lidar
             lidar-plan.json
             naip
-          key: prep-v1-${{ steps.frames.outputs.fp }}-fused${{ inputs.decoder == 'fused' }}-${{ hashFiles('tools/tree-canopy.py', 'tools/clumps.py', 'tools/lidar-plan.js', 'tools/lidar-cover.js', 'tools/lidar_frame.py', 'tools/naip_bands.py', 'tools/naip_align.py', 'tools/requirements-trees.txt', 'tools/requirements-lidar.txt') }}
+          key: prep-v1-${{ steps.frames.outputs.fp }}-fused${{ startsWith(inputs.decoder, 'fused') }}-${{ hashFiles('tools/tree-canopy.py', 'tools/clumps.py', 'tools/lidar-plan.js', 'tools/lidar-cover.js', 'tools/lidar_frame.py', 'tools/naip_bands.py', 'tools/naip_align.py', 'tools/requirements-trees.txt', 'tools/requirements-lidar.txt') }}
 
       - name: Save the backbone's features for later runs
         if: ${{ inputs.gpu != 'modal' && steps.feats.outputs.cache-hit != 'true' }}
@@ -649,7 +666,7 @@ jobs:
           CANOPY: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
           CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}
           SEED: ${{ inputs.seed }}
-          FUSE: ${{ inputs.decoder == 'fused' && '1' || '' }}
+          FUSE: ${{ startsWith(inputs.decoder, 'fused') && '1' || '' }}
           FUSE_LIDAR: lidar
           # Leave-one-out costs the square of the corpus (68 min a decoder at
           # 53 lawns, past the time limit with three). The full corpus is held
@@ -659,6 +676,28 @@ jobs:
           FOLDS: ${{ inputs.lawns == 'all' && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
           FUSE_NAIP: naip
           FUSE_CANOPY: ${{ inputs.canopy == 'everywhere' && '1' || '0' }}
+        run: python3 tools/train_decoder.py
+
+      # S19: the same decoder, same features, same folds and seed, trained
+      # together with the edge refiner (tools/edge_refine.py), which re-draws
+      # its edge on the 15 cm grid from the photograph. Scored beside the
+      # plain one above, so the comparison is within one extraction.
+      - name: Train the decoder with the edge refiner
+        if: ${{ inputs.decoder == 'fused + edge' && inputs.canopy != 'compare' && inputs.gpu != 'modal' }}
+        env:
+          FEATURES: feats
+          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
+          FRAMES: frames
+          OUT: preds-edge
+          CANOPY: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
+          CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}
+          SEED: ${{ inputs.seed }}
+          FUSE: '1'
+          FUSE_LIDAR: lidar
+          FOLDS: ${{ inputs.lawns == 'all' && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
+          FUSE_NAIP: naip
+          FUSE_CANOPY: ${{ inputs.canopy == 'everywhere' && '1' || '0' }}
+          REFINE: '1'
         run: python3 tools/train_decoder.py
 
       # THE THREE-WAY COMPARISON, over the one extraction above. Same seed,
@@ -671,7 +710,7 @@ jobs:
           FRAMES: frames
           OUT: preds-none
           SEED: ${{ inputs.seed }}
-          FUSE: ${{ inputs.decoder == 'fused' && '1' || '' }}
+          FUSE: ${{ startsWith(inputs.decoder, 'fused') && '1' || '' }}
           FUSE_LIDAR: lidar
           # Leave-one-out costs the square of the corpus (68 min a decoder at
           # 53 lawns, past the time limit with three). The full corpus is held
@@ -692,7 +731,7 @@ jobs:
           CANOPY: canopy
           CANOPY_MODE: lawn
           SEED: ${{ inputs.seed }}
-          FUSE: ${{ inputs.decoder == 'fused' && '1' || '' }}
+          FUSE: ${{ startsWith(inputs.decoder, 'fused') && '1' || '' }}
           FUSE_LIDAR: lidar
           # Leave-one-out costs the square of the corpus (68 min a decoder at
           # 53 lawns, past the time limit with three). The full corpus is held
@@ -716,7 +755,7 @@ jobs:
           CANOPY: canopy
           CANOPY_MODE: all
           SEED: ${{ inputs.seed }}
-          FUSE: ${{ inputs.decoder == 'fused' && '1' || '' }}
+          FUSE: ${{ startsWith(inputs.decoder, 'fused') && '1' || '' }}
           FUSE_LIDAR: lidar
           # Leave-one-out costs the square of the corpus (68 min a decoder at
           # 53 lawns, past the time limit with three). The full corpus is held
@@ -763,7 +802,8 @@ jobs:
           PREDICTIONS_DIR: ${{ inputs.decoder != 'off' && inputs.canopy != 'compare' && 'preds' || '' }}
           # The three-way comparison, one row each. The seen column is scored
           # with the canopy unseen on lawn, whichever decoder is being read.
-          PREDICTIONS_DIRS: ${{ inputs.decoder != 'off' && inputs.canopy == 'compare' && 'no canopy=preds-none,canopy on lawn=preds-lawn,canopy everywhere=preds-all' || '' }}
+          # S19 (`fused + edge`): the refined decoder as a row of its own.
+          PREDICTIONS_DIRS: ${{ (inputs.decoder != 'off' && inputs.canopy == 'compare' && 'no canopy=preds-none,canopy on lawn=preds-lawn,canopy everywhere=preds-all') || (inputs.decoder == 'fused + edge' && 'edge refined=preds-edge') || '' }}
           # The canopy joins the hand-marked unseen ground for the seen column.
           CANOPY_DIR: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
           CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}

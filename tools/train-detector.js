@@ -86,8 +86,9 @@ const isPlanRow = (name) => name === PLAN_ROW
   || (name === PLAN_ROW_ALONE && (process.env.CANOPY_MODE || 'lawn') === 'lawn');
 /* THE ROW ON TRIAL, drawn in preference to THE PLAN's when a run scores it,
    because the pictures are how a candidate is judged (owner, 2026-09-26).
-   None now: the lidar ∩ NAIP canopy row was drawn once and lost (H42). */
-const TRIAL_ROW = null;
+   S19 (2026-09-29): the edge refiner, scored only by `decoder: fused + edge`
+   runs -- elsewhere the row does not exist and THE PLAN's is drawn as before. */
+const TRIAL_ROW = 'decoder, edge refined + stage 3, span, lidar veto';
 
 /*
  * HOW MANY NUMBERS OF THE BACKBONE'S 384 EACH PIXEL CARRIES.

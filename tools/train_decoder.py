@@ -115,6 +115,12 @@ DROP_NAIP = float(os.environ.get("DROP_NAIP", "0.2"))
 # and its numbers are stacked beside the blocks' at each cell.
 FEATURES_WHOLE = os.environ.get("FEATURES_WHOLE", "")
 WHOLE_MANIFEST = None
+# S19, THE EDGE REFINER (tools/edge_refine.py; owner go-ahead 2026-09-29): a
+# small net on the 15 cm scoring grid that sees the photograph and the
+# decoder's answer and re-draws the edge, trained together with the decoder.
+# Off unless REFINE=1; FINE_WEIGHT is its loss beside the decoder's own.
+REFINE = os.environ.get("REFINE") == "1"
+FINE_WEIGHT = float(os.environ.get("FINE_WEIGHT", "1.0"))
 
 
 # A GPU WHEN THERE IS ONE (Modal, 2026-09-28); the CPU runner is unchanged.
@@ -135,6 +141,11 @@ class Decoder(nn.Module):
 
     def forward(self, x):
         return self.net(x)
+
+    def parts(self, x):
+        """The last hidden layer (32 numbers a patch) and the answer from it."""
+        hidden = self.net[:-1](x)
+        return hidden, self.net[-1](hidden)
 
 
 def is_example(stem):
@@ -227,7 +238,7 @@ def read_lawn(feats, frames, stem, shape):
     # Graded where it is on the photograph, inside the line, and seen.
     weight = inside * allowed * (1.0 - unseen)
 
-    return {
+    L = {
         "id": stem,
         "x": torch.from_numpy(np.ascontiguousarray(grid.transpose(2, 0, 1))),  # (dim, gh, gw)
         "t": torch.from_numpy(target)[None],
@@ -237,6 +248,19 @@ def read_lawn(feats, frames, stem, shape):
         "canopy": canopy,
         "sources": sources,
     }
+    if REFINE and not is_example(stem):
+        # THE REFINER'S VIEW, on the scoring grid itself: the photograph the
+        # features came from, box-averaged onto the label cells (it is the
+        # same frame, at ~10 cm against 15), and the trace cell by cell --
+        # graded where the decoder is graded: inside the line and seen.
+        from edge_refine import edge_cells
+        photo = Image.open(os.path.join(frames, f"{stem}.png")).convert("RGB")
+        L["rgb"] = np.asarray(photo.resize((cells_w, cells_h), Image.BOX))
+        fine_w = (within & ~inferred).astype(np.float32)
+        L["fine_t"] = torch.from_numpy(truth.astype(np.float32))[None]
+        L["fine_w"] = torch.from_numpy(fine_w)[None]
+        L["edge_idx"], L["graded_idx"] = edge_cells(truth, fine_w)
+    return L
 
 
 CROP_MARGIN = 4
@@ -306,12 +330,63 @@ def with_dropout(x, rng):
     return torch.cat([x[:-k], torch.from_numpy(e)], dim=0)
 
 
+def undo_dihedral(x, k, flip):
+    """dihedral's turn and flip taken back off (it flips first, then turns)."""
+    if k:
+        x = torch.rot90(x, -k, (-2, -1))
+    if flip:
+        x = x.flip(-1)
+    return x
+
+
+def refine_loss(refiner, hidden, logits, members, train, rng, pos_weight):
+    """The refiner's loss on edge-heavy squares of each lawn's scoring grid.
+
+    `hidden` and `logits` are the decoder's, for the lawns `members`, already
+    turned back to each lawn's own orientation; each square is then given a
+    turn and flip of its own, photograph, answer and trace together.
+    """
+    from edge_refine import pick_crops, rgb_tensor, sampling_grid, stretch
+    by_shape = {}
+    for j, i in enumerate(members):
+        L = train[i]
+        if "fine_t" not in L:
+            continue
+        cw, ch = L["cells"]
+        gh, gw = logits.shape[-2:]
+        for x0, y0, w, h in pick_crops(L, rng):
+            sg = sampling_grid(cw, ch, gw, gh, *L["cover"], x0=x0, y0=y0, w=w, h=h)
+            coarse_h = stretch(hidden[j:j + 1], sg)
+            coarse_l = stretch(logits[j:j + 1], sg)
+            rgb = rgb_tensor(L["rgb"][y0:y0 + h, x0:x0 + w])[None].to(DEVICE)
+            t = L["fine_t"][None, :, y0:y0 + h, x0:x0 + w].to(DEVICE)
+            wt = L["fine_w"][None, :, y0:y0 + h, x0:x0 + w].to(DEVICE)
+            k, flip = int(rng.integers(4)), bool(rng.integers(2))
+            parts = []
+            for a in (rgb, coarse_l, coarse_h, t, wt):
+                a = a.flip(-1) if flip else a
+                parts.append(torch.rot90(a, k, (-2, -1)) if k else a)
+            key = tuple(parts[0].shape[-2:])
+            by_shape.setdefault(key, []).append(parts)
+    loss, denom = 0.0, 0.0
+    for group in by_shape.values():
+        rgb, cl, chd, t, wt = (torch.cat([g[n] for g in group]) for n in range(5))
+        out = refiner(rgb, cl, chd)
+        loss = loss + F.binary_cross_entropy_with_logits(out, t, weight=wt, pos_weight=pos_weight, reduction="sum")
+        denom += float(wt.sum())
+    return loss, denom
+
+
 def train_one(train, dim, seed):
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
     mean, sd = standardiser(train)
     mean, sd = mean.to(DEVICE), sd.to(DEVICE)
     model = Decoder(dim).to(DEVICE)
+    refiner = None
+    if REFINE:
+        from edge_refine import Refiner
+        refiner = Refiner().to(DEVICE)
 
     # Lawns of one shape go through together: every lot squeezed whole is
     # the same 64x64 grid. (Measured: batches of 1, 4 and 8 cost the same on
@@ -323,7 +398,8 @@ def train_one(train, dim, seed):
         by_shape.setdefault(tuple(L["x"].shape[1:]), []).append(i)
     steps_per_epoch = sum(-(-len(v) // BATCH) for v in by_shape.values())
 
-    opt = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
+    params = list(model.parameters()) + (list(refiner.parameters()) if refiner else [])
+    opt = torch.optim.AdamW(params, lr=LR, weight_decay=WEIGHT_DECAY)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=EPOCHS * steps_per_epoch, eta_min=LR / 10)
 
     # Balance lawn against not-lawn the way the head does, from the weighted
@@ -331,10 +407,16 @@ def train_one(train, dim, seed):
     pos = sum(float((L["w"] * L["t"]).sum()) for L in train)
     neg = sum(float((L["w"] * (1 - L["t"])).sum()) for L in train)
     pos_weight = torch.tensor(neg / max(pos, 1e-6), device=DEVICE)
+    if REFINE:
+        fpos = sum(float((L["fine_w"] * L["fine_t"]).sum()) for L in train if "fine_t" in L)
+        fneg = sum(float((L["fine_w"] * (1 - L["fine_t"])).sum()) for L in train if "fine_t" in L)
+        fine_pos_weight = torch.tensor(fneg / max(fpos, 1e-6), device=DEVICE)
 
     last = 0.0
     for epoch in range(EPOCHS):
         model.train()
+        if refiner:
+            refiner.train()
         batches = []
         for members in by_shape.values():
             order = rng.permutation(members)
@@ -346,27 +428,49 @@ def train_one(train, dim, seed):
             x = (x - mean) / sd
             t = torch.stack([train[i]["t"] for i in batch]).to(DEVICE)
             w = torch.stack([train[i]["w"] for i in batch]).to(DEVICE)
-            x, t, w = dihedral(x, t, w, int(rng.integers(4)), bool(rng.integers(2)))
-            logits = model(x)
+            k, flip = int(rng.integers(4)), bool(rng.integers(2))
+            x, t, w = dihedral(x, t, w, k, flip)
+            if refiner:
+                hidden, logits = model.parts(x)
+            else:
+                logits = model(x)
             loss = F.binary_cross_entropy_with_logits(logits, t, weight=w, pos_weight=pos_weight, reduction="sum")
             denom = w.sum().clamp(min=1e-6)
+            total = loss / denom
+            if refiner:
+                fine, fine_denom = refine_loss(refiner, undo_dihedral(hidden, k, flip), undo_dihedral(logits, k, flip),
+                                               batch, train, rng, fine_pos_weight)
+                if fine_denom > 0:
+                    total = total + FINE_WEIGHT * fine / fine_denom
             opt.zero_grad()
-            (loss / denom).backward()
+            total.backward()
             opt.step()
             sched.step()
             loss_sum += loss.item()
             w_sum += float(denom)
         last = loss_sum / max(w_sum, 1e-6)
+    if refiner:
+        model.refiner = refiner
     return model, mean, sd, last
 
 
 def answer(model, mean, sd, L):
     model.eval()
+    w, h = L["cells"]
+    refiner = getattr(model, "refiner", None)
     with torch.no_grad():
         x = (L["x"].to(DEVICE) - mean) / sd
-        prob = torch.sigmoid(model(x[None])[0, 0]).cpu().numpy()
-    w, h = L["cells"]
-    return to_photo(prob, w, h, *L["cover"])
+        if refiner is None:
+            prob = torch.sigmoid(model(x[None])[0, 0]).cpu().numpy()
+            return to_photo(prob, w, h, *L["cover"])
+        # Refined: the decoder read onto every scoring cell, and the refiner's
+        # answer there. Already on the label grid, so no to_photo.
+        from edge_refine import rgb_tensor, sampling_grid, stretch
+        refiner.eval()
+        hidden, logits = model.parts(x[None])
+        sg = sampling_grid(w, h, logits.shape[-1], logits.shape[-2], *L["cover"])
+        out = refiner(rgb_tensor(L["rgb"])[None].to(DEVICE), stretch(logits, sg), stretch(hidden, sg))
+        return torch.sigmoid(out[0, 0]).cpu().numpy()
 
 
 def main():
@@ -396,6 +500,12 @@ def main():
     lawns = [read_lawn(feats, frames, s, manifest["images"][s]) for s in stems]
     dim = lawns[0]["x"].shape[0]
     params = sum(p.numel() for p in Decoder(dim).parameters())
+    if REFINE:
+        from edge_refine import Refiner
+        ref_params = sum(p.numel() for p in Refiner().parameters())
+        params += ref_params
+        print(f"EDGE REFINER (S19): {ref_params:,} more weights on the 15 cm grid, trained with the decoder "
+              f"(fine loss x{FINE_WEIGHT:g})", flush=True)
     print(f"{len(lawns)} lawns, {dim} numbers a patch, grids "
           f"{min(L['x'].shape[2] for L in lawns)}-{max(L['x'].shape[2] for L in lawns)} patches across")
     print(f"decoder of {params:,} weights, {EPOCHS} epochs a fold, seed {SEED}", flush=True)
@@ -479,7 +589,7 @@ def main():
             "model": manifest.get("model"), "size": manifest.get("size"),
             "dim": dim, "params": params, "epochs": EPOCHS, "seed": SEED,
             "lr": LR, "weightDecay": WEIGHT_DECAY, "dropout": DROPOUT,
-            "seenOnly": True, "bothScales": bool(FEATURES_WHOLE), "lawns": len(lawns), "folds": len(groups), "examples": len(examples),
+            "seenOnly": True, "bothScales": bool(FEATURES_WHOLE), "refine": REFINE, "lawns": len(lawns), "folds": len(groups), "examples": len(examples),
             "canopyUnseen": sum(1 for L in lawns if L["canopy"]),
             "canopyMode": CANOPY_MODE if CANOPY else None,
             "fused": ({"lidar": sum(1 for L in lawns if "lidar" in L["sources"]),
