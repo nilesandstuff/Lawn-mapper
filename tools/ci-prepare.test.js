@@ -225,7 +225,7 @@ id = "REPLACE_WITH_KV_NAMESPACE_ID"
   const filled = fillSiteOrigin(page, 'lawnmap.example.com');
   check('the domain fills every placeholder', !filled.includes('__SITE__')
     && filled.includes('<link rel="canonical" href="https://lawnmap.example.com/">')
-    && filled.includes('content="https://lawnmap.example.com/og-image.png"'));
+    && /content="https:\/\/lawnmap\.example\.com\/og-image\.png(\?v=\d+)?"/.test(filled));
   const none = fillSiteOrigin(page, null);
   check('with no domain the lines go, and nothing else does',
     !none.includes('__SITE__') && !none.includes('rel="canonical"') && none.includes('og:title'));
