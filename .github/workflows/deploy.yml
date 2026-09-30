@@ -72,6 +72,14 @@ jobs:
       - name: Deploy the Worker and the site
         run: npx wrangler deploy
 
+      # http:// used to serve the site unencrypted, which browsers flag as "Not
+      # secure" (reported as "SSL errors", 2026-09-30). Never fails the deploy;
+      # the answer is repeated at the end of this log.
+      - name: Send http to https
+        env:
+          CUSTOM_DOMAIN: ${{ vars.CUSTOM_DOMAIN }}
+        run: node tools/https-only.js
+
       # After the deploy, so the Worker exists to attach them to. Secrets
       # persist across deploys, so this is only load-bearing the first time --
       # but re-applying them makes rotating a key a matter of editing the
@@ -340,6 +348,7 @@ jobs:
             echo "The reason is in the \"Prepare wrangler.toml\" step above."
           fi
           echo "Trained model (alpha release): ${ALPHA_STATE:-off -- the step that serves it did not finish; see \"Serve the trained model\" above}"
+          echo "HTTPS only: ${HTTPS_STATE:-not checked -- see \"Send http to https\" above}"
           # A database change that did not land is the quietest failure this
           # project has had: six deploys reported success while a column was
           # missing and a feature reported itself switched off. It gets said
