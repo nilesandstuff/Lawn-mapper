@@ -2354,9 +2354,14 @@ async function confirmLocation() {
         `(${state.parcel.properties.county}).${tidyNote} Check it, then open AI ` +
         'to detect your lawn — or Draw to trace it yourself.'
       );
-      // Tinker mode only until the owner has tried it: neighbours, merge, road.
+      /*
+       * Neighbours, merge, and the line out to the road: for everybody since
+       * 2026-09-30 (the owner, after trying them in tinker mode). Not on the
+       * paid tracing queue, where the lot is the job's to set, not the
+       * tracer's to grow.
+       */
       clearNeighbours();
-      if (state.dev) tinkerAroundParcel();
+      if (!document.body.classList.contains('job-mode')) aroundParcel();
     } else {
       clearNeighbours();
       map.getSource('parcel').setData(empty());
@@ -10352,7 +10357,8 @@ function applyEdgeOffset(feet) {
 
 /* ------------------------------------------- neighbours, merge, the road */
 /*
- * TINKER MODE ONLY, until the owner has tried it (2026-09-27).
+ * ON FOR EVERYBODY since 2026-09-30 (tinker mode only from 2026-09-27 until
+ * the owner had tried it); off on the paid tracing queue.
  *
  * The parcels around this one come from the county's own layer
  * (/api/parcel/neighbours). They are drawn as thin dashed lines, and each one
@@ -10560,11 +10566,11 @@ async function extendParcelToRoad({ quiet = false } = {}) {
   refreshSurveyed();
   refreshNeighbours();
   const skipped = r.skipped.length ? ` Left alone: ${r.skipped.map((k) => k.reason).join('; ')}.` : '';
-  setStatus(`Moved ${r.moved.length} front edge${r.moved.length === 1 ? '' : 's'} out to the road (tinker mode). `
+  setStatus(`Moved ${r.moved.length} front edge${r.moved.length === 1 ? '' : 's'} out to the road. `
     + `Undo puts ${r.moved.length === 1 ? 'it' : 'them'} back, or adjust with Property line.${skipped}`);
 }
 
-async function tinkerAroundParcel() {
+async function aroundParcel() {
   const parcel = state.parcel;
   const key = parcel?.properties?.countyKey;
   const bbox = geometryBounds(parcel);

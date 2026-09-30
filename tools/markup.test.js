@@ -482,6 +482,8 @@ for (const page of ['admin', 'grade', 'maps', 'mywork', 'outlines', 'payouts', '
   check(`${page}.html is kept out of search`,
     /<meta name="robots" content="noindex, nofollow">/.test(readFileSync(join(root, `public/${page}.html`), 'utf8')));
 }
+check('neighbours, merge and the road are on for everybody, not only tinker mode',
+  /if \(!document\.body\.classList\.contains\('job-mode'\)\) aroundParcel\(\);/.test(js) && !/if \(state\.dev\) \w*[Aa]roundParcel/.test(js));
 check('the detection timer says what to expect', /usually takes less than 60 seconds/.test(js)
   && /id="busy-timer"/.test(html) && /id="busy-cancel"/.test(html) && /id="busy-retry"/.test(html));
 
