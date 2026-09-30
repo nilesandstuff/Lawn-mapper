@@ -31,6 +31,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
 import modal
@@ -117,22 +118,38 @@ def _node(cmd, payload):
     return json.loads(r.stdout)
 
 
+_footprints_lock = threading.Lock()
+
+
+def _prepare(body):
+    """The scorer's `prepare`. The first call on a machine with no 3DEP
+    footprints file downloads and writes it; with several lots in flight that
+    happens under a lock, so no lot reads a half-written file."""
+    if os.path.exists(FOOTPRINTS):
+        return _node("prepare", body)
+    with _footprints_lock:
+        fresh = not os.path.exists(FOOTPRINTS)
+        out = _node("prepare", body)
+        if fresh and os.path.exists(FOOTPRINTS):
+            models.commit()
+        return out
+
+
 def _gather_here(payload):
     """alpha_sources.gather with this machine's copy of the scorer's `prepare`."""
     if f"{REPO}/tools" not in sys.path:
         sys.path.insert(0, f"{REPO}/tools")
     import alpha_sources
-    fresh = not os.path.exists(FOOTPRINTS)
-    out = alpha_sources.gather(payload, lambda body: _node("prepare", body))
-    if fresh and os.path.exists(FOOTPRINTS):
-        models.commit()
-    return out
+    return alpha_sources.gather(payload, _prepare)
 
 
 @app.function(image=cpu_image, volumes={"/models": models}, timeout=300, cpu=1.0, memory=2048,
               # A CPU machine costs a few cents an hour, so it can wait longer
               # for the next lot than the GPU does.
               scaledown_window=300)
+# Several lots at once: it is downloads, so one CPU machine can wait on four
+# as easily as one, and a second press need not start a second machine.
+@modal.concurrent(max_inputs=PER_MACHINE)
 def gather(payload):
     """The downloads for one lot, on a CPU: see tools/alpha_sources.py."""
     return _gather_here(payload)
