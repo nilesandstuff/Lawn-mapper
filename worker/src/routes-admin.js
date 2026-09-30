@@ -18,6 +18,7 @@
  * changes to.
  */
 
+import { usageSince, usageDaily } from './usage.js';
 import { currentUser } from './auth.js';
 import { benchmarkId, coordsOfId } from './benchmark-ids.js';
 import {
@@ -71,18 +72,10 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
     const [people, maps, today, week, month, owed, live, corpus] = await Promise.all([
       env.DB.prepare('SELECT COUNT(*) n FROM users').first(),
       env.DB.prepare('SELECT COUNT(*) n FROM maps').first(),
-      env.DB.prepare(
-        `SELECT COUNT(*) presses, COALESCE(SUM(units), 0) passes FROM ledger
-         WHERE reason = 'detect' AND at >= ?`
-      ).bind(daysAgo(1)).first(),
-      env.DB.prepare(
-        `SELECT COUNT(*) presses, COALESCE(SUM(units), 0) passes FROM ledger
-         WHERE reason = 'detect' AND at >= ?`
-      ).bind(daysAgo(7)).first(),
-      env.DB.prepare(
-        `SELECT COUNT(*) presses, COALESCE(SUM(units), 0) passes FROM ledger
-         WHERE reason = 'detect' AND at >= ?`
-      ).bind(daysAgo(30)).first(),
+      /* Every charged press, signed in or not -- see usage.js. */
+      usageSince(env, daysAgo(1)),
+      usageSince(env, daysAgo(7)),
+      usageSince(env, daysAgo(30)),
       env.DB.prepare('SELECT COALESCE(SUM(credits), 0) n FROM users WHERE unlimited = 0').first(),
       env.DB.prepare('SELECT COUNT(*) n FROM sessions WHERE expires_at > ?')
         .bind(new Date().toISOString()).first(),
@@ -153,11 +146,7 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
     ]);
 
     /* Passes per day, which is the shape of the Replicate bill. */
-    const { results: daily } = await env.DB.prepare(
-      `SELECT substr(at, 1, 10) day, COUNT(*) presses, COALESCE(SUM(units), 0) passes
-       FROM ledger WHERE reason = 'detect' AND at >= ?
-       GROUP BY day ORDER BY day DESC LIMIT 30`
-    ).bind(daysAgo(30)).all();
+    const daily = await usageDaily(env, daysAgo(30));
 
     return json({
       users: people.n,

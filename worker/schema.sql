@@ -771,3 +771,26 @@ CREATE TABLE IF NOT EXISTS detect_presses (
   created_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS detect_presses_at ON detect_presses(created_at);
+
+-- ----------------------------------------------------------------------
+-- EVERY CHARGED DETECT PRESS, whoever made it (owner, 2026-09-30: "the ai
+-- passes counter in the console doesn't appear to be working").
+--
+-- The console counted passes from `ledger`, which only an ACCOUNT writes to
+-- -- so a signed-out visitor's press, a paid tracer's press on the job's own
+-- passes, and every press handed back, were all invisible to it. This is the
+-- one place every charged press is written, for the console's usage figures
+-- only; the allowance itself still lives where it did.
+--
+-- who: 'account' | 'visitor' | 'job'. refunded: 1 once the press was handed
+-- back (cancelled, failed, out of time -- see presses.js). id is the
+-- browser's press id when it sent one.
+CREATE TABLE IF NOT EXISTS detect_usage (
+  id        TEXT PRIMARY KEY,
+  at        TEXT NOT NULL,
+  passes    INTEGER NOT NULL,
+  who       TEXT,
+  model     TEXT,
+  refunded  INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS detect_usage_at ON detect_usage(at);
