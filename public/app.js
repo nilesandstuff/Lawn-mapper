@@ -855,7 +855,12 @@ if (typeof window !== 'undefined') {
     on: state.tab,
     tabs: TABS.slice(),
     visiblePanes: TABS.filter((t) => document.querySelector(`#pane-${t}`)?.hidden === false),
-    rail: MODES.filter((m) => document.querySelector(`#mode-${m}`)?.hidden === false),
+    /* A step's own tool has no button (restMode); it is on the rail when it
+       is in hand, which on its step is always. */
+    rail: MODES.filter((m) => {
+      const btn = document.querySelector(`#mode-${m}`);
+      return btn ? btn.hidden === false : state.mode === m;
+    }),
     locked: TABS.filter((t) => Boolean(tabLock(t))),
     noticeVisible: document.querySelector('#lock-notice')?.hidden === false,
     handEdited: state.handEdited,
@@ -984,6 +989,17 @@ if (typeof window !== 'undefined') {
       target: t ? { left: t.left, right: t.right, top: t.top, bottom: t.bottom } : null,
     };
   };
+
+  /*
+   * The tour, and where each of its arrows ends. Same reasoning as __lmTip:
+   * the words cannot be wrong, the aim can -- so every card reports the
+   * rectangle it claims to point at and the point its arrow actually reaches.
+   */
+  window.__lmTour = () => ({
+    stage: tour.stage,
+    visible: !document.getElementById('tour').hidden,
+    items: tour.placed.map((p) => ({ ...p })),
+  });
 
   /* The imagery catalogue as the Worker described it, for checks that must be
    * made against what this deployment really offers rather than a hard-coded
@@ -1585,6 +1601,8 @@ async function initMap() {
     const back = () => {
       queueMicrotask(() => {
         if (wasReturning) setMode('shape', 'points');
+        // A drawing started from the panel lands on the step's own tool too.
+        else if (!state.mode && restMode()) settleMode();
         /*
          * A CLOSED SHAPE IS A FINISHED SHAPE: blue, and not draggable. Left in
          * simple_select it stayed orange and selected, and the next drag meant
@@ -3222,6 +3240,7 @@ function stepwisePolygonMode(base) {
       if (e.keyCode === 13) return close(this);
       if (e.keyCode === 27) {
         this.deleteFeature([st.polygon.id], { silent: true });
+        queueMicrotask(settleMode); // once the polygon mode has let go
         return this.changeMode(LOCKED_MODE);
       }
       return undefined;
@@ -3284,6 +3303,7 @@ function draftCancel() {
   state.returnToPoints = false;
   setDrawLock(true);
   setHint('');
+  settleMode(); // back to the step's own tool, now the drawing is gone
 }
 
 /** Put the map back to a recorded state. */
@@ -4398,7 +4418,7 @@ function setModel(id) {
    * leaving it drops you out of a mode that no longer exists.
    */
   if (modelInfo(id).needsPoints) setMode('pins');
-  else if (state.mode === 'pins') setMode(null);
+  else if (state.mode === 'pins') settleMode();
   else { refreshPins(); refreshRail(); updatePromptHint(); }
 
   // The panel's note names the method it is driving, so it has to follow.
@@ -7271,12 +7291,12 @@ let roadTipShown = false;
 
 function roadTip() {
   if (roadTipShown) return;
-  const target = $('#mode-parcel');
-  if (!target || target.offsetParent === null) return;
   roadTipShown = true;
 
+  /* No arrow: the boundary editor is on for the whole step now (restMode),
+     so there is no button to point at -- the box sits at the top of the map. */
   tips.stage = 'job-road';
-  tips.target = target;
+  tips.target = null;
   $('#coach-title').textContent = 'Check the boundary first';
   $('#coach-text').textContent =
     'The yellow line is the property boundary, and it can be dragged. If this '
@@ -7663,6 +7683,7 @@ function closeFeedback() {
    * and asked once; the tip is about tools that will still be there.
    */
   flushPendingTip();
+  requestAnimationFrame(maybeToolTour);
 }
 
 /**
@@ -7820,10 +7841,15 @@ function setTab(name) {
    * visible saying so. Whether the mode belongs to the tab is the same
    * question the rail asks, so it is answered in one place.
    */
-  if (state.mode && !modeBelongsTo(state.mode, next)) setMode(null);
-  // ...and a tool whose step is locked is not usable either, even if it
-  // belongs to the step you are arriving at. See refreshRail.
-  else if (state.mode && tabLock(next)) setMode(null);
+  /*
+   * ...and arriving at a step puts ITS tool in hand (owner, 2026-09-30): the
+   * boundary editor on the Property line step, the lawn tools on Draw. See
+   * restMode. A tool whose step is locked is not usable either, even if it
+   * belongs to the step you are arriving at -- see refreshRail.
+   */
+  const rest = restMode();
+  if (state.mode && (!modeBelongsTo(state.mode, next) || tabLock(next))) setMode(rest);
+  else if (!state.mode && rest) setMode(rest);
 
   for (const t of TABS) {
     const tab = $(`#tab-${t}`);
@@ -7849,6 +7875,7 @@ function setTab(name) {
   if (next === 'draw' && askFeedback()) return;
 
   flushPendingTip();
+  requestAnimationFrame(maybeToolTour);
 }
 
 /**
@@ -7868,6 +7895,30 @@ function flushPendingTip() {
 /** Which tab each map tool belongs to. One table, two readers. */
 const MODE_TAB = { parcel: 'address', pins: 'detect', move: 'draw', shape: 'draw' };
 const modeBelongsTo = (mode, tab) => MODE_TAB[mode] === tab;
+
+/*
+ * THE TOOL A STEP HOLDS WHEN NOTHING ELSE IS IN HAND (owner, 2026-09-30).
+ *
+ * "Line" and "Lawn" were buttons, and each was the only tool of its step: the
+ * Property line step is for editing the property line, the Draw step is for
+ * editing the lawn. So pressing one was a chore on every visit, and not
+ * pressing it was the commonest way to be stuck -- dragging at a corner that
+ * would not move. The buttons are gone and the tools are simply on while you
+ * are on their step. The Draw step's only other state is Move; pressing Move
+ * again comes back here.
+ *
+ * Nothing while a drawing is open: Draw's polygon mode owns every tap then,
+ * and a corner tool arming underneath it would take the next one.
+ */
+function restMode() {
+  if (!state.frame || !map || !draw || drafting) return null;
+  if (state.tab === 'draw') return 'shape';
+  if (state.tab === 'address' && parcelRing() && !tabLock('address')) return 'parcel';
+  return null;
+}
+
+/** Put down whatever is in hand, and pick up the step's own tool. */
+const settleMode = () => setMode(restMode());
 
 function refreshTabs() {
   const bar = $('#tabs');
@@ -8044,6 +8095,7 @@ function setMode(mode, tool = null) {
   refreshPins();
   refreshRail();
   updatePromptHint();
+  requestAnimationFrame(maybeToolTour);
 }
 
 /**
@@ -8067,9 +8119,10 @@ function setDrawLock(locked) {
 function enterRingEditing(which) {
   const rings = editableRings();
   if (!rings.length) {
-    setStatus(which === 'parcel'
-      ? 'No property line yet. Use "Draw the property line" to trace one.'
-      : 'No lawn shape yet. Detect one, or draw it by hand.', 'warn');
+    /* On the Draw step this is the ordinary start of a hand-drawn lawn, not a
+       mistake: the lawn tools are on by default there (restMode). */
+    if (which === 'parcel') setStatus('No property line yet. Use "Draw the property line" to trace one.', 'warn');
+    else setHint('No lawn yet: paint one in with the brushes, or press New shape');
     return;
   }
 
@@ -8805,9 +8858,30 @@ function refreshRail() {
    * and is the only undo reachable from one where the panel's copy is a tab
    * away -- so the rail survives for its sake alone.
    */
+  /*
+   * THE CHECKMARK, for a New shape or a Cut out with three points down (owner,
+   * 2026-09-30): the fewest a shape can have. Tapping the first point again
+   * still closes it, and was the only way -- which nobody guessed. Not for the
+   * property line or not-lawn traces, which were not asked for.
+   */
+  const finish = $('#tool-finish');
+  const finishing = Boolean(state.frame) && Boolean(drafting) && !state.drawingParcel
+    && !state.notLawnMode && drafting.state.currentVertexPosition >= 3;
+  if (finish) {
+    const was = !finish.hidden;
+    finish.hidden = !finishing;
+    if (finishing) anyTool = true;
+    // Shown once, the first time it appears: what it does and what still works.
+    if (finishing && !was && !tips.seen.has('finish')) requestAnimationFrame(() => showTip('finish'));
+  }
+
   const undo = $('#rail-undo');
   const redoBtn = $('#rail-redo');
   if (undo) rail.hidden = rail.hidden || (!anyTool && undo.disabled && (!redoBtn || redoBtn.disabled));
+
+  // "Done adjusting" means nothing where the editor is the step's own tool.
+  const done = $('#btn-edge-done');
+  if (done) done.hidden = Boolean(state.mode) && state.mode === restMode();
 
   $('#shape-tools').hidden = state.mode !== 'shape';
   for (const [id, tool] of [['#tool-points', 'points'], ['#tool-add', 'add'], ['#tool-erase', 'erase']]) {
@@ -9165,14 +9239,21 @@ function currentStage() {
  */
 function tipContent(stage) {
   if (stage === 'parcel') {
+    /*
+     * No arrow: the boundary editor is simply on while you are on this step
+     * (restMode), so there is no button left to point at. The owner's words,
+     * 2026-09-30 -- including leaving out "you can come back and do that at
+     * any time", because the line should be right BEFORE the AI traces.
+     */
     return parcelRing()
       ? {
-          target: '#mode-parcel',
+          target: null,
           title: 'First: check your property line',
-          text: 'The dashed outline is your lot, from the county record. Only '
-              + 'grass inside it gets measured — so if your lawn runs past it '
-              + 'to the road, press Line and slide that edge out — you can '
-              + 'come back and do that at any time, even after measuring.',
+          text: 'The dashed outline is your lot, from the county record (when '
+              + 'available). Only grass inside it gets measured — so if your '
+              + 'lawn runs past it to the road, manually drag the points out OR '
+              + 'select the line and slide the line using the slider tool in the '
+              + 'drawer. Make sure the property line is correct before continuing.',
         }
       : {
           target: null,
@@ -9201,15 +9282,58 @@ function tipContent(stage) {
     };
   }
 
-  return {
-    target: '#mode-shape',
-    title: 'Last: correct what it got wrong',
-    text: 'The AI is a good first guess, not the final word. Press Lawn, then '
-        + 'Erase to rub out a driveway or a flower bed, Add to paint in grass '
-        + 'it missed, or Points to drag a corner. Move is the only mode where a '
-        + 'whole patch can be dragged, and Undo is on the map next to them.',
-  };
+  return { target: null, title: '', text: '' }; // the tours below cover the rest
 }
+
+/*
+ * THE TOURS: every button in a group at once, each with its own arrow (owner,
+ * 2026-09-30). The Draw step's rail is a dozen unlabelled icons, and a first
+ * visit ended with people not knowing the brushes existed. Words are the
+ * owner's.
+ *
+ *   tools    the first time the Draw step's rail appears
+ *   points   the first time the point tools do (straight after `tools`)
+ *   brushes  the first time a brush is picked up
+ *   finish   the third point of a New shape or Cut out
+ *
+ * `panel` rather than `target` for the one card that points into the drawer:
+ * a coach tip cannot reach the panel (markup.test.js), a tour can.
+ */
+const TOURS = {
+  tools: [
+    { target: '#mode-move', name: 'Move', text: 'Drag whole lawn shapes.' },
+    { target: '#tool-points', name: 'Points',
+      text: 'Manually add, remove, and drag points of the lawn outline (slow but precise).' },
+    { target: '#tool-brushes', name: 'Brushes',
+      text: 'Add or remove lawn areas with a brush (fast but imprecise). Great on mobile devices.' },
+    { panel: '#pane-draw', name: 'The drawer',
+      text: 'Some of the same tools, and more, are also in the drawer.' },
+  ],
+  points: [
+    { target: '#tool-handles', name: 'Handles',
+      text: 'Show handles for points, useful for adjusting points from a mobile device.' },
+    { target: '#tool-unpoint', name: 'Point eraser', text: 'Tap/click to delete points.' },
+    { target: '#tool-newpatch', name: 'New shape',
+      text: 'Manually place points to create a new lawn shape from scratch.' },
+    { target: '#tool-cutout', name: 'Cut out',
+      text: 'The inverse of the new shape tool. Place points to create a shape that '
+          + 'removes that part of the map from an existing lawn shape. Useful for sheds, '
+          + 'playsets, and anything that’s not grass and is in the middle of a lawn.' },
+    { target: '#tool-delpoint', name: 'Delete point', text: 'Delete the selected point.' },
+  ],
+  brushes: [
+    { target: '#tool-erase', name: 'Erase', text: 'Draw to erase from the lawn shape.' },
+    { target: '#tool-add', name: 'Add',
+      text: 'Draw to add to existing lawn shapes, create new shapes, or merge shapes.' },
+    { target: '#brush-sizes', name: 'Fine and Bulk', text: 'Change the size of the brushes.' },
+  ],
+  finish: [
+    { target: '#tool-finish', name: 'Finish',
+      text: 'Hit the checkmark to finish placing new points. You can still move the '
+          + 'placed points or create new points by tapping/clicking the middle of an '
+          + 'existing line, while in point mode.' },
+  ],
+};
 
 /** "a", "a and b", "a, b and c" — the list is built from live data. */
 function listSentence(items) {
@@ -9237,6 +9361,7 @@ function listSentence(items) {
 let pendingTip = null;
 
 function showTip(stage) {
+  if (TOURS[stage]) { showTour(stage); return; }
   if (!tipsOn() || tips.seen.has(stage) || !state.frame) return;
   const { target, title, text } = tipContent(stage);
 
@@ -9263,6 +9388,8 @@ function showTip(stage) {
 
 function hideTip() {
   $('#coach').hidden = true;
+  $('#tour').hidden = true;
+  tour.stage = null;
   placeMergeButtons(); // the room the tip took is free again
   tips.stage = null;
   tips.target = null;
@@ -9326,8 +9453,257 @@ function placeTip() {
   arrow.style.top = `${Math.min(Math.max(ay - 6, 12), Math.max(12, h - 24))}px`;
 }
 
+/* ------------------------------------------------------------ the tours */
+/*
+ * Several cards at once, one per button, each with an arrow to it: see TOURS.
+ *
+ * Shares the tips' switch, seen-set and single pending slot, so "Show me tips
+ * as I go" governs all of it and a tour whose buttons are a tab away waits
+ * for that tab exactly as a tip does.
+ */
+const tour = { stage: null, placed: [] };
+
+function showTour(stage) {
+  if (!tipsOn() || tips.seen.has(stage) || !state.frame) return;
+  /* Not on the paid queue: the job bar carries that page's instructions, and
+     a dimmed window between a tracer and the lawn they are paid to trace is
+     in the way on every lawn after the first. */
+  if (document.body.classList.contains('job-mode')) return;
+  const first = $(TOURS[stage][0].target);
+  if (!first || first.offsetParent === null) { pendingTip = stage; return; }
+  // A modal question goes first, and the tour follows it (closeFeedback).
+  if (!$('#feedback').hidden) { pendingTip = stage; return; }
+  pendingTip = null;
+
+  hideTip(); // one box at a time, and the tour is the more useful one here
+  tips.seen.add(stage);
+  tips.stage = stage;
+  tour.stage = stage;
+  $('#tour').hidden = false;
+  placeTour();
+}
+
+/**
+ * The next tour the Draw step owes, if any: the rail itself first, then the
+ * set of tools in hand. Run a frame late, so a modal question opened in the
+ * same breath (askFeedback) is already up and goes first.
+ */
+function maybeToolTour() {
+  if (state.tab !== 'draw' || tour.stage) return;
+  if (!tips.seen.has('tools')) { showTip('tools'); return; }
+  if (state.mode !== 'shape') return;
+  showTip(state.shapeTool === 'points' ? 'points' : 'brushes');
+}
+
+/**
+ * Cards in one column to the left of the rail, each as near its button's
+ * height as the ones above it allow; the drawer's card under them. Arrows run
+ * from the card's nearest edge to the button's, so a card pushed below its
+ * button comes in from underneath rather than across its neighbour.
+ */
+function placeTour() {
+  const box = $('#tour');
+  if (box.hidden || !tour.stage) return;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const clip = (r) => {
+    const c = {
+      left: Math.max(r.left, 0), right: Math.min(r.right, vw),
+      top: Math.max(r.top, 0), bottom: Math.min(r.bottom, vh),
+    };
+    return c.right - c.left > 8 && c.bottom - c.top > 8 ? c : null;
+  };
+
+  const items = [];
+  for (const it of TOURS[tour.stage]) {
+    const el = $(it.target || it.panel);
+    if (!el || el.offsetParent === null) continue;
+    // The drawer can be mostly scrolled away; aim at the part on screen.
+    const r = it.panel
+      ? clip(el.getBoundingClientRect()) || clip($('#panel').getBoundingClientRect())
+      : el.getBoundingClientRect();
+    if (r) items.push({ ...it, r: { left: r.left, right: r.right, top: r.top, bottom: r.bottom } });
+  }
+
+  const onRail = items.filter((it) => it.target);
+  const colRight = (onRail.length ? Math.min(...onRail.map((it) => it.r.left)) : vw) - 26;
+  const width = Math.max(140, Math.min(232, colRight - 10));
+  const left = Math.max(8, colRight - width);
+
+  const cards = $('#tour-cards');
+  cards.textContent = '';
+  for (const it of items) {
+    const card = document.createElement('div');
+    card.className = 'tour-card';
+    card.style.width = `${width}px`;
+    card.style.left = `${left}px`;
+    const name = document.createElement('b');
+    name.textContent = it.name;
+    card.append(name, document.createTextNode(it.text));
+    cards.append(card);
+    it.card = card;
+  }
+
+  const GAP = 8;
+  const OK_H = 40;
+  let y = GAP;
+  const mid = (r) => (r.top + r.bottom) / 2;
+  const order = [...onRail].sort((a, b) => (mid(a.r) - mid(b.r)) || (a.r.left - b.r.left));
+  for (const it of order) {
+    const h = it.card.offsetHeight;
+    it.y = Math.max(mid(it.r) - h / 2, y);
+    y = it.y + h + GAP;
+  }
+  /*
+   * The drawer's card: under the others on a phone, where the drawer is the
+   * bottom of the screen; beside the panel on a wide screen, where it is the
+   * left-hand column, so the arrow is short rather than a line across the map.
+   */
+  for (const it of items.filter((i) => i.panel)) {
+    const beside = it.r.right < left - 40;
+    if (beside) {
+      it.card.style.left = `${Math.round(it.r.right + 30)}px`;
+      it.y = Math.max(GAP, Math.min(vh - it.card.offsetHeight - GAP,
+        (it.r.top + it.r.bottom) / 2 - it.card.offsetHeight / 2));
+    } else {
+      it.y = y + 6;
+      y = it.y + it.card.offsetHeight + GAP;
+    }
+  }
+  // Too tall for the window: slide the column up, never off the top.
+  const over = y + OK_H + GAP - vh;
+  if (over > 0 && items.length) {
+    const shift = Math.min(over, Math.min(...items.map((it) => it.y)) - GAP);
+    for (const it of items) it.y -= shift;
+    y -= shift;
+  }
+  for (const it of items) it.card.style.top = `${it.y}px`;
+
+  /*
+   * NUMBERED WHEN TWO BUTTONS SHARE A ROW. The point tools sit two to a row,
+   * and two arrows into one row start side by side -- which card meant which
+   * button was a guess. A number on the card and the same number on the
+   * button settles it; where every button has a row of its own the arrows
+   * already do, and numbers would be noise.
+   */
+  const shareRow = onRail.some((a) => onRail.some((b) => a !== b
+    && a.r.top < b.r.bottom && b.r.top < a.r.bottom));
+  if (shareRow) {
+    [...items].sort((a, b) => a.y - b.y).forEach((it, k) => {
+      it.num = k + 1;
+      const badge = document.createElement('span');
+      badge.className = 'tour-num';
+      badge.textContent = String(it.num);
+      it.card.querySelector('b').prepend(badge);
+    });
+  }
+
+  const ok = $('#tour-ok');
+  ok.style.top = `${Math.max(GAP, Math.min(y, vh - OK_H - GAP))}px`;
+  ok.style.left = `${Math.max(GAP, left + width - ok.offsetWidth)}px`;
+
+  /* The picture: the window dimmed, a hole and a ring round each button, and
+     an arrow from each card. Only numbers go into this markup. */
+  const near = (r, px, py) => [Math.min(Math.max(px, r.left), r.right), Math.min(Math.max(py, r.top), r.bottom)];
+  const n = (v) => Math.round(v * 10) / 10;
+  const PAD = 4;
+  let holes = '';
+  let rings = '';
+  let arrows = '';
+  tour.placed = [];
+  const cardRects = items.map((it) => it.card.getBoundingClientRect());
+  /* Does the segment a-b pass through rectangle r (Liang-Barsky)? */
+  const crosses = (a, b, r) => {
+    let t0 = 0;
+    let t1 = 1;
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const edges = [[-dx, a[0] - r.left], [dx, r.right - a[0]], [-dy, a[1] - r.top], [dy, r.bottom - a[1]]];
+    for (const [pp, q] of edges) {
+      if (pp === 0) { if (q < 0) return false; continue; }
+      const t = q / pp;
+      if (pp < 0) t0 = Math.max(t0, t); else t1 = Math.min(t1, t);
+      if (t0 > t1) return false;
+    }
+    return t1 - t0 > 0.02;
+  };
+  const shrink = (r, by) => ({ left: r.left + by, right: r.right - by, top: r.top + by, bottom: r.bottom - by });
+  for (const [k, it] of items.entries()) {
+    const c = cardRects[k];
+    /*
+     * The straight line to the nearest point can run through a neighbouring
+     * button -- two point tools share a row -- or through another card. Try
+     * the nearest point first, then the target's corners and edge middles,
+     * and take the shortest that crosses nothing else.
+     */
+    const others = [
+      ...items.filter((o, j) => j !== k && o.target).map((o) => shrink(o.r, 2)),
+      ...cardRects.filter((_, j) => j !== k).map((r) => shrink(r, 2)),
+    ];
+    const r0 = it.r;
+    const cx = (c.left + c.right) / 2;
+    const cy = (c.top + c.bottom) / 2;
+    const candidates = [
+      near(r0, cx, cy),
+      [(r0.left + r0.right) / 2, r0.top], [(r0.left + r0.right) / 2, r0.bottom],
+      [r0.left, r0.top], [r0.left, r0.bottom], [r0.right, r0.top], [r0.right, r0.bottom],
+    ];
+    let best = null;
+    for (const e of candidates) {
+      const a = near(c, e[0], e[1]);
+      if (others.some((o) => crosses(a, e, o))) continue;
+      const d = Math.hypot(e[0] - a[0], e[1] - a[1]);
+      if (!best || d < best.d - 12) best = { e, d };
+    }
+    let end = best ? best.e : candidates[0];
+    /*
+     * On a phone the drawer is the lower half of the screen and the column of
+     * cards runs down into it, so the drawer's card can land ON the drawer
+     * and "the nearest point" is the card itself. Point straight down into it
+     * instead.
+     */
+    if (it.panel && end[0] >= c.left && end[0] <= c.right && end[1] >= c.top && end[1] <= c.bottom) {
+      end = [(c.left + c.right) / 2, Math.min(vh - 10, Math.max(c.bottom + 46, it.r.top + 24))];
+    }
+    const start = near(c, end[0], end[1]);
+    const len = Math.hypot(end[0] - start[0], end[1] - start[1]);
+    if (it.target) {
+      const [x, yy, w, h] = [it.r.left - PAD, it.r.top - PAD, it.r.right - it.r.left + 2 * PAD, it.r.bottom - it.r.top + 2 * PAD];
+      holes += `<rect x="${n(x)}" y="${n(yy)}" width="${n(w)}" height="${n(h)}" rx="12" fill="#000"/>`;
+      rings += `<rect x="${n(x)}" y="${n(yy)}" width="${n(w)}" height="${n(h)}" rx="12" fill="none" stroke="#fff" stroke-width="2"/>`;
+      if (it.num) {
+        rings += `<circle cx="${n(x + 3)}" cy="${n(yy + 3)}" r="9" fill="#2e7d32" stroke="#fff" stroke-width="1.5"/>`
+          + `<text x="${n(x + 3)}" y="${n(yy + 3)}" fill="#fff" font-size="11" font-weight="700" `
+          + `text-anchor="middle" dominant-baseline="central" font-family="inherit">${it.num}</text>`;
+      }
+    }
+    if (len > 10) {
+      // Stop just short of the edge, so the head sits on the ring, not in it.
+      const k = (len - PAD - 2) / len;
+      end = [start[0] + (end[0] - start[0]) * k, start[1] + (end[1] - start[1]) * k];
+      arrows += `<line x1="${n(start[0])}" y1="${n(start[1])}" x2="${n(end[0])}" y2="${n(end[1])}" `
+        + 'stroke="#fff" stroke-width="2.2" stroke-linecap="round" marker-end="url(#tour-head)"/>';
+    }
+    tour.placed.push({
+      name: it.name,
+      target: it.target || it.panel,
+      arrow: len > 10 ? { x: end[0], y: end[1] } : null,
+      rect: it.r,
+      card: { left: c.left, right: c.right, top: c.top, bottom: c.bottom },
+    });
+  }
+  $('#tour-lines').innerHTML = `
+    <defs>
+      <mask id="tour-mask"><rect width="100%" height="100%" fill="#fff"/>${holes}</mask>
+      <marker id="tour-head" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7"
+              orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#fff"/></marker>
+    </defs>
+    <rect width="100%" height="100%" fill="rgb(10,20,14)" fill-opacity=".55" mask="url(#tour-mask)"/>
+    ${rings}${arrows}`;
+}
+
 /* Kept as the names the rest of the file already calls. */
-const exitEdgeMode = () => setMode(null);
+const exitEdgeMode = () => settleMode();
 
 /**
  * Every editable outline, in the order a tap should consider them.
@@ -9945,7 +10321,7 @@ function removeVertexAt(ringId, index) {
   state.edgeEdit = { ringId: null, vertexIndex: null, edgeIndex: null, baseRing: null };
   $('#point-controls').hidden = true;
   $('#edge-info').textContent = state.pointEraser
-    ? 'Corner removed. Tap another to remove it, or press Remove again to stop.'
+    ? 'Point removed. Tap another to remove it, or press Point eraser again to stop.'
     : state.mode === 'parcel'
       ? 'Corner deleted. Tap another corner or edge.'
       : 'Corner deleted. Tap another corner.';
@@ -10888,6 +11264,17 @@ function refreshMeasurement() {
   const hasShapes = fc.features.length > 0;
   $('#result').hidden = !hasShapes;
 
+  /* The point tool, on by default on the Draw step, found nothing to edit
+     when it came on over an empty map. Now there is a lawn, arm it -- there
+     is no Lawn button left to press to do that by hand. */
+  if (hasShapes && state.mode === 'shape' && state.shapeTool === 'points' && !state.edgeEdit) {
+    queueMicrotask(() => {
+      if (state.mode === 'shape' && state.shapeTool === 'points' && !state.edgeEdit && hasLawn()) {
+        enterRingEditing('shape');
+      }
+    });
+  }
+
   /* Every path that changes the shapes ends up here, which makes it the one
      place the inferred overlay can be repainted without hunting for callers. */
   refreshInferred();
@@ -11594,7 +11981,7 @@ function clearAll() {
   if (drafting) draftCancel();
   pushHistory();
   draw.deleteAll();
-  if (state.mode === 'shape') setMode(null);
+  if (state.mode === 'shape') settleMode(); // the corner tool re-reads what is left
   refreshMeasurement();
   refreshSurveyed();
   updateSelectionButtons();
@@ -11621,9 +12008,12 @@ for (const id of ['#btn-redo', '#rail-redo']) {
  * straight to it -- making you close one before opening the next would be a
  * press per correction, and corrections come in runs.
  */
+/* Only Move and Pins still have buttons; the other two are a step's own tool
+   (restMode), so pressing Move off lands back on the lawn tools. */
 for (const mode of MODES) {
-  $(`#mode-${mode}`).addEventListener('click', () => {
-    setMode(state.mode === mode ? null : mode);
+  $(`#mode-${mode}`)?.addEventListener('click', () => {
+    if (state.mode === mode) settleMode();
+    else setMode(mode);
   });
 }
 
@@ -11671,7 +12061,7 @@ $('#tool-unpoint').addEventListener('click', () => {
   refreshRail();
   if (state.pointEraser) {
     setHint('Tap a corner to remove it');
-    setStatus('Removing corners. Tap any corner dot to delete it — press Remove again to stop.');
+    setStatus('Point eraser on. Tap any point to delete it — press Point eraser again to stop.');
   } else {
     setHint('Tap a corner to move it');
     setStatus('Back to moving corners.');
@@ -11726,13 +12116,21 @@ $('#tool-cutout').addEventListener('click', () => {
 $('#tool-delpoint').addEventListener('click', () => {
   const edit = state.edgeEdit;
   if (!edit?.ringId || edit.vertexIndex == null) {
-    setStatus('Tap a corner first — this deletes the one you last touched.', 'warn');
+    setStatus('Tap a point first — Delete point removes the one you last touched.', 'warn');
     return;
   }
   deleteSelectedVertex();
 });
 
-$('#btn-edge-done').addEventListener('click', () => setMode(null));
+$('#btn-edge-done').addEventListener('click', () => settleMode());
+
+/* The checkmark: close the open New shape or Cut out, exactly as tapping its
+   first point does (stepwisePolygonMode's close). draw.create takes it from
+   there, back into Points when that is where it was started. */
+$('#tool-finish').addEventListener('click', () => {
+  if (!drafting || drafting.state.currentVertexPosition < 3) return;
+  drafting.mode.changeMode(LOCKED_MODE);
+});
 $('#btn-tidy').addEventListener('click', tidyShapes);
 $('#btn-point-add').addEventListener('click', addPointOnEdge);
 $('#btn-point-delete').addEventListener('click', deleteSelectedVertex);
@@ -11852,12 +12250,20 @@ $('#coach-ok').addEventListener('click', () => {
 });
 
 for (const mode of MODES) {
-  $(`#mode-${mode}`).addEventListener('click', () => {
+  $(`#mode-${mode}`)?.addEventListener('click', () => {
     if (tips.stage) hideTip();
   });
 }
 
 window.addEventListener('resize', placeTip);
+
+/* A tap anywhere on the tour puts it away -- "Got it" is the obvious place,
+   not the only one -- and brings on the next one the Draw step owes. */
+$('#tour').addEventListener('click', () => {
+  hideTip();
+  requestAnimationFrame(maybeToolTour);
+});
+window.addEventListener('resize', placeTour);
 
 $('#btn-png').addEventListener('click', exportPng);
 $('#btn-print').addEventListener('click', () => window.print());

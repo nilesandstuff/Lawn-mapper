@@ -489,6 +489,11 @@ body.inferred-mode .panel { box-shadow: inset 4px 0 0 #7c4dff; }
 #mode-move[aria-pressed="true"] { background: #1565c0; border-color: #0d47a1; }
 #tool-add[aria-pressed="true"]   { background: #2e7d32; border-color: #1b5e20; }
 #tool-erase[aria-pressed="true"] { background: #c62828; border-color: #8e0000; }
+/* Two-word names ("Point eraser", "New shape") wrap inside a 46px button. */
+.railbtn span { text-align: center; line-height: 1.08; }
+/* Finish is the one thing to press next while it is showing. */
+.railfinish { background: #2e7d32; border-color: #1b5e20; color: #fff; }
+.railfinish:active { background: #1b5e20; }
 
 /* Layers sits opposite the editing tools: what you are LOOKING at on one
  * side, what you are CHANGING on the other. */
@@ -578,6 +583,30 @@ body.inferred-mode .panel { box-shadow: inset 4px 0 0 #7c4dff; }
 }
 .coach-arrow.at-left  { left: -7px;  border-right: 0; border-top: 0; }
 .coach-arrow.at-right { right: -7px; border-left: 0;  border-bottom: 0; }
+
+/*
+ * The tour: a dimmed window, a ring round each button being explained, a card
+ * for each and an arrow from card to button. Everything is placed by showTour
+ * from the buttons' own positions, so it follows the rail on any screen.
+ * Above the coach (6) and the map's controls; below the modal sheets (20).
+ */
+/* The dimming is drawn in the SVG, with holes cut where the buttons are. */
+.tour { position: fixed; inset: 0; z-index: 15; cursor: pointer; }
+.tour-lines { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.tour-card {
+  position: absolute; width: 232px;
+  padding: 8px 11px 9px;
+  background: #fff; color: var(--ink);
+  border-radius: 11px; box-shadow: 0 4px 16px rgba(0, 0, 0, .3);
+  font-size: 12.5px; line-height: 1.38;
+}
+.tour-card b { display: block; font-size: 13px; margin-bottom: 1px; }
+.tour-num {
+  display: inline-block; min-width: 18px; height: 18px; margin-right: 6px;
+  border-radius: 999px; background: #2e7d32; color: #fff;
+  font-size: 11px; line-height: 18px; text-align: center; vertical-align: 1px;
+}
+.tour-ok { position: absolute; width: auto; padding: 8px 22px; border-radius: 999px; }
 
 /* ------------------------------------------------------- imagery source */
 .imagery {

@@ -132,15 +132,15 @@ async function settled(page) {
 /**
  * Paint a lawn, the way somebody with no outline to fix would.
  *
- * THREE PRESSES, NOT TWO, and the third is the whole reason this is a helper.
- * Shape mode opens on Points -- corner editing -- and the rail folds Add and
- * Erase away behind one Brushes icon while it is live, because the rail sits
- * over the map and the tools for the job you are not doing are covering the
- * lawn. So a brush is: shape, brushes, add.
+ * TWO PRESSES, and the reason this is a helper. The lawn tools open on
+ * Points -- corner editing -- and the rail folds Add and Erase away behind
+ * one Brushes icon while it is live, because the rail sits over the map and
+ * the tools for the job you are not doing are covering the lawn. So a brush
+ * is: brushes, add.
  */
 async function traceALawn(page) {
-  await page.click('#mode-shape');
-  await page.waitForTimeout(250);
+  // No Lawn button to press: the lawn tools are on while Draw is open.
+  await page.locator('#shape-tools').waitFor({ state: 'visible', timeout: 5000 });
   if (await page.locator('#tool-brushes').isVisible()) {
     await page.click('#tool-brushes');
     await page.waitForTimeout(250);
@@ -288,15 +288,14 @@ const mine = await settled(one.page);
    * looked like the arming had failed, when it had simply not happened yet.
    */
   const landed = await page.waitForFunction(
-    () => (window.__lmTabs().on === 'address'
-      && document.querySelector('#mode-parcel')?.getAttribute('aria-pressed') === 'true'),
+    () => (window.__lmTabs().on === 'address' && window.__lmEditable().mode === 'parcel'),
     null,
     { timeout: 45000 }
   ).then(() => true).catch(() => false);
 
   check('and lands on the property line with the tool already on', landed,
     landed ? '' : `tab=${await page.evaluate(() => window.__lmTabs().on)}, `
-      + `parcel=${await page.evaluate(() => document.querySelector('#mode-parcel')?.getAttribute('aria-pressed'))}`);
+      + `mode=${await page.evaluate(() => window.__lmEditable().mode)}`);
 
   check('and is told to drag the boundary out to the kerb',
     await page.locator('#coach').isVisible()
@@ -308,7 +307,7 @@ const mine = await settled(one.page);
   await page.waitForTimeout(250);
   check('and has the drawing tools, which are the entire job',
     await page.locator('#btn-draw').isEnabled()
-    && await page.locator('#mode-shape').isVisible());
+    && await page.locator('#shape-tools').isVisible());
 
   /*
    * NO AI ON ANY JOB ROUTE (2026-09-26), the crowd one included: nothing is

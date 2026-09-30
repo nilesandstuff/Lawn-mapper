@@ -93,7 +93,16 @@ family('tab panel', 'pane-', tabs);
 
 const modes = listFrom(/const MODES = \[([^\]]*)\]/);
 check('the mode list is readable from the source', modes.length >= 3, modes.join(', '));
-family('map mode button', 'mode-', modes);
+/*
+ * Except a step's own tool, which has no button: the Property line step's
+ * boundary editor and the Draw step's lawn tools are simply on while you are
+ * on them (restMode in app.js, owner 2026-09-30). Read from restMode itself,
+ * so a mode that stops being one keeps its button check.
+ */
+const restBody = (js.match(/function restMode\(\) \{([\s\S]*?)\n\}/) || [])[1] || '';
+const stepTools = [...restBody.matchAll(/return '([a-z]+)'/g)].map((m) => m[1]);
+check('the step-owned tools are readable from restMode', stepTools.length >= 2, stepTools.join(', '));
+family('map mode button', 'mode-', modes.filter((m) => !stepTools.includes(m)));
 
 /*
  * EVERY MODE BELONGS TO A TAB.

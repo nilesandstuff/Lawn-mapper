@@ -84,13 +84,18 @@ async function goTab(page, name) {
  * property line waits ten seconds for something that was never going to
  * appear, throws, and takes every section below it unrun.
  *
- * Checked rather than pressed, because #mode-shape TOGGLES: pressing it when
- * lawn mode is already live closes it, which is how this suite kept turning a
- * precondition into the opposite of one.
+ * THERE IS NO LAWN BUTTON ANY MORE (owner, 2026-09-30): the lawn tools are
+ * simply on while the Draw step is open, unless Move is. So "get into lawn
+ * mode" is "be on the Draw step, and not in Move" -- checked rather than
+ * pressed, because Move TOGGLES, and pressing it blind is how this suite used
+ * to turn a precondition into the opposite of one.
  */
 async function inLawnMode(page) {
   if (await page.locator('#shape-tools').isVisible()) return;
-  await page.click('#mode-shape');
+  if (!(await page.locator('#mode-move').isVisible())) await goTab(page, 'draw');
+  if (await page.evaluate(() => document.querySelector('#mode-move')?.getAttribute('aria-pressed') === 'true')) {
+    await page.click('#mode-move');
+  }
   await page.locator('#shape-tools').waitFor({ state: 'visible', timeout: 5000 });
 }
 
@@ -278,6 +283,10 @@ process.on('uncaughtException', bailOut);
 async function dismissTip(page) {
   if (await page.locator('#coach').isVisible()) {
     await page.click('#coach-ok');
+    await page.waitForTimeout(250);
+  }
+  if (await page.locator('#tour').isVisible()) {
+    await page.click('#tour-ok');
     await page.waitForTimeout(250);
   }
 }
@@ -775,15 +784,73 @@ check('and only that step\'s tools are on screen',
  * Pressing "Line" while meaning to paint is not a mistake worth being able to
  * make; on the drawing tab it is not there to press.
  */
+/*
+ * AND THE BOUNDARY EDITOR IS ALREADY ON (owner, 2026-09-30): there is no Line
+ * button to find. Where the county had no line there is nothing to edit yet.
+ */
 check('the map shows this step\'s tools and not another\'s',
-  tabs.rail.includes('parcel') && !tabs.rail.includes('shape'),
-  `rail: ${tabs.rail.join(', ') || '(empty)'} on "${tabs.on}"`);
+  (tabs.rail.includes('parcel') || !tabs.hasParcel) && !tabs.rail.includes('shape'),
+  `rail: ${tabs.rail.join(', ') || '(empty)'} on "${tabs.on}", parcel=${tabs.hasParcel}`);
 
 await goTab(page, 'draw');
+await page.waitForTimeout(400);
 const drawRail = await page.evaluate(() => window.__lmTabs());
-check('the drawing tab offers the shape tools and not the boundary',
-  drawRail.rail.includes('shape') && !drawRail.rail.includes('parcel'),
+check('the drawing tab has the lawn tools on, and not the boundary',
+  drawRail.rail.includes('shape') && !drawRail.rail.includes('parcel')
+    && await page.locator('#shape-tools').isVisible(),
   drawRail.rail.join(', ') || '(empty)');
+
+/*
+ * THE TOURS OF THE DRAWING TOOLS (owner, 2026-09-30). First visit to Draw
+ * with tips on: a card per button and an arrow to each -- Move, Points,
+ * Brushes, and the drawer -- then the point tools, then the brushes the first
+ * time one is picked up. What can be wrong is the aim, so every arrow is
+ * checked to end on the thing its card names.
+ */
+async function tourCheck(stage, parts) {
+  await page.waitForFunction(
+    (s) => window.__lmTour().visible && window.__lmTour().stage === s, stage, { timeout: 5000 },
+  ).catch(() => {});
+  const t = await page.evaluate(() => window.__lmTour());
+  check(`the "${stage}" tour appears`, t.visible && t.stage === stage,
+    `stage=${t.stage} visible=${t.visible}`);
+  if (!t.visible) return;
+  check(`  with a card for each of its ${parts} parts`, t.items.length === parts,
+    t.items.map((i) => i.name).join(', '));
+  const astray = t.items.filter((i) => !i.arrow
+    || i.arrow.x < i.rect.left - 9 || i.arrow.x > i.rect.right + 9
+    || i.arrow.y < i.rect.top - 9 || i.arrow.y > i.rect.bottom + 9);
+  check('  and every arrow ends at the thing its card names', astray.length === 0,
+    astray.map((i) => `${i.name} -> ${i.target}`).join(', ') || 'all on target');
+  const overlaps = t.items.filter((a, k) => t.items.some((b, j) => j !== k
+    && a.card.left < b.card.right && a.card.right > b.card.left
+    && a.card.top < b.card.bottom && a.card.bottom > b.card.top));
+  check('  and no two cards sit on top of each other', overlaps.length === 0,
+    overlaps.map((i) => i.name).join(', ') || 'one column, in order');
+}
+
+await tourCheck('tools', 4);
+await page.click('#tour-ok');
+await tourCheck('points', 5);
+await page.click('#tour-ok');
+await page.waitForTimeout(250);
+check('"Got it" puts the tours away',
+  (await page.evaluate(() => window.__lmTour().visible)) === false);
+await page.click('#tool-brushes');
+await tourCheck('brushes', 3);
+await page.click('#tour-ok');
+await page.waitForTimeout(250);
+await page.click('#tool-points');
+await page.waitForTimeout(250);
+
+/*
+ * AND THEN TIPS OFF, for the rest of the run. Every section below presses
+ * through the map, and a tour is a dimmed window over it on purpose -- the
+ * Finish tour in particular fires on the third point of any New shape. The
+ * tours have been checked; what follows is about the tools.
+ */
+await page.uncheck('#toggle-tutorials');
+await page.waitForTimeout(200);
 
 /*
  * DRAWING BY HAND MUST NOT NEED THE AI AT ALL. Somebody who never presses
@@ -801,7 +868,7 @@ check('with nothing locked before any work has been done',
  */
 {
   const painted = await page.evaluate(() => window.__lmShapeCount());
-  await page.click('#mode-shape');
+  await inLawnMode(page);
   await page.waitForTimeout(250);
   await armBrush(page, 'add');
   await page.waitForTimeout(250);
@@ -976,7 +1043,6 @@ check('with nothing locked before any work has been done',
    * button. Clearing through the notice is how a person gets back, and it is
    * also this section proving that the way back works.
    */
-  await page.click('#mode-shape');          // close lawn mode
   await page.waitForTimeout(200);
   const locked = await page.evaluate(() => window.__lmTabs());
   check('and painting by hand locks the AI step, as correcting a detection does',
@@ -1501,15 +1567,8 @@ if (process.env.RUN_DETECT === 'true') {
     check('skipping closes it', (await page.evaluate(() => window.__lmFeedback().open)) === false);
   }
 
-  const toolTip = await page.evaluate(() => window.__lmTip());
-  check('and the editing tip arrives once the question is out of the way',
-    toolTip.visible && toolTip.stage === 'tools',
-    `stage=${toolTip.stage} visible=${toolTip.visible}`);
-  if (toolTip.visible) {
-    const aim = pointsAt(toolTip);
-    check('pointing at the shape tools', aim.ok, `${toolTip.targetId}: ${aim.why}`);
-    await dismissTip(page);
-  }
+  /* The editing tip that used to follow is the Draw step's tour now, checked
+     on the first visit to that step above -- tips are off from there on. */
 }
 
 /* Nothing may be left covering the map before the tap-based checks below. */
@@ -1738,7 +1797,7 @@ console.log('\n--- saved maps ---');
  * something it did not move -- passing or failing for reasons unrelated to the
  * edit. The property line gets its own check further down.
  */
-await page.click('#mode-shape');
+await inLawnMode(page);
 await page.waitForTimeout(400);
 check('edge panel opens', await page.locator('#edge-panel').isVisible());
 check('the edge tool arms the map for a tap',
@@ -1789,8 +1848,9 @@ check('tapping a line in lawn mode does not open the edge slider',
   // reaching for a control on another one is how a run stops dead partway
   // through, which tools/testflow.test.js exists to catch before it does.
   await goTab(page, 'address');
-  await page.click('#mode-parcel');
   await page.waitForTimeout(450);
+  check('the property line step arms the boundary editor by itself',
+    (await page.evaluate(() => window.__lmEditable().mode)) === 'parcel');
 
   /*
    * Aimed at the middle of the longest segment on screen, so the tap is as far
@@ -1872,10 +1932,8 @@ check('tapping a line in lawn mode does not open the edge slider',
     console.log(`      (no segment long enough to aim at: ${mid ? Math.round(mid.len) : 0} px)`);
   }
 
-  await page.click('#mode-parcel');  // out of property-line mode
-  await page.waitForTimeout(250);
-  await goTab(page, 'draw');
-  await page.click('#mode-shape');   // and back to the lawn, where the rest runs
+  await goTab(page, 'draw');         // and back to the lawn, where the rest runs
+  await inLawnMode(page);
   await page.waitForTimeout(400);
 }
 
@@ -2108,7 +2166,7 @@ await page.waitForTimeout(700);
 check('a shape is available to erase',
   (await page.evaluate(() => window.__lmShapeCount?.() ?? 0)) > 0);
 
-await page.click('#mode-shape');
+await inLawnMode(page);
 await page.waitForTimeout(300);
 check('the lawn tools appear inside lawn mode',
   await page.locator('#shape-tools').isVisible());
@@ -2623,11 +2681,20 @@ console.log('\n--- an idle stroke changes nothing at all ---');
   }
 }
 
-await page.click('#mode-shape');
-await page.waitForTimeout(200);
-check('the Lawn button is what closes lawn mode', await page.evaluate(() =>
-  document.querySelector('#mode-shape').getAttribute('aria-pressed') === 'false' &&
+/*
+ * THE LAWN TOOLS STAY OUT ON THE DRAW STEP (owner, 2026-09-30): Move is the
+ * only thing that puts them away, and pressing Move again brings them back.
+ */
+await inLawnMode(page);
+await page.click('#mode-move');
+await page.waitForTimeout(250);
+check('Move puts the lawn tools away', await page.evaluate(() =>
   document.querySelector('#shape-tools').hidden === true));
+await page.click('#mode-move');
+await page.waitForTimeout(250);
+check('and pressing Move again brings them back', await page.evaluate(() =>
+  document.querySelector('#shape-tools').hidden === false
+  && window.__lmEditable().mode === 'shape'));
 
 /* ------------------------------------- the brush stops at the boundary */
 /*
@@ -2656,7 +2723,7 @@ if (outsideVisible) {
   check('and it is off by default, so the boundary is honoured',
     (await page.locator('#toggle-outside').isChecked()) === false);
 
-  await page.click('#mode-shape');
+  await inLawnMode(page);
   await page.waitForTimeout(250);
   await armBrush(page, 'add');
   await page.waitForTimeout(250);
@@ -2705,7 +2772,6 @@ if (outsideVisible) {
     back > 0 && (await page.evaluate(() => window.__lmShapeCount())) > 0,
     `${Math.round(back).toLocaleString()} sq ft still measured`);
 
-  await page.click('#mode-shape');
   await page.waitForTimeout(200);
 }
 
@@ -2716,7 +2782,7 @@ if (outsideVisible) {
  * being edited. A hollow dot on the line does it in one tap.
  */
 console.log('\n--- phantom midpoints ---');
-await page.click('#mode-shape');
+await inLawnMode(page);
 await page.waitForTimeout(300);
 await armPoints(page);
 await page.waitForTimeout(500);
@@ -2952,7 +3018,7 @@ if (hasPinModel) {
     await page.evaluate(() => window.__lmPinsDrawn()) === true);
 
   await goTab(page, 'draw');
-  await page.click('#mode-shape');
+  await inLawnMode(page);
   await page.waitForTimeout(400);
   const after = await page.evaluate(() => ({
     drawn: window.__lmPinsDrawn(), kept: window.__lmPins().length,
