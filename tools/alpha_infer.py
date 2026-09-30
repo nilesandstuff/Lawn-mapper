@@ -68,18 +68,57 @@ class Release:
 
 
 class Detector:
-    """Everything loaded once per container: the eye, the tree model, the release."""
+    """Everything loaded once per container: the eye, the tree model, the release.
 
-    def __init__(self, release_path):
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.release = Release(release_path, self.device)
-        meta = self.release.meta
-        self.eye = extract_features.open_eye(meta.get("backbone") or "scalemae-large", int(meta.get("size") or 896))
+    IN TWO HALVES, for Modal's memory snapshot (tools/modal_serve.py). The
+    two big models -- Scale-MAE and the tree model, fixed, baked into the
+    image -- load first, on whatever device the modules chose (the CPU while a
+    snapshot is being taken). `to(device)` then moves them onto the GPU after
+    a restore, and `load_release` reads the small, replaceable decoder last,
+    so a new release is picked up without a new snapshot.
+    """
+
+    def __init__(self, release_path=None, backbone="scalemae-large", size=896):
+        self.device = extract_features.DEVICE
+        self.eye_key = (backbone, int(size))
+        self.eye = extract_features.open_eye(*self.eye_key)
         self.tree = _tree_module()
         from transformers import SegformerForSemanticSegmentation, SegformerImageProcessor
         self.tree_model = SegformerForSemanticSegmentation.from_pretrained(self.tree.MODEL).to(self.device).eval()
         self.tree_processor = SegformerImageProcessor.from_pretrained(self.tree.MODEL, do_resize=False)
         self.tree_want = self.tree.tree_index(self.tree_model)
+        self.release = None
+        if release_path:
+            self.load_release(release_path)
+
+    def to(self, device):
+        """Every model, and the modules' own notion of the device, onto `device`."""
+        extract_features.DEVICE = device
+        td = sys.modules.get("train_decoder")
+        if td is not None:
+            td.DEVICE = device
+        self.eye.model.to(device)
+        self.tree_model.to(device)
+        if self.release is not None:
+            self.release.model.to(device)
+            self.release.mean = self.release.mean.to(device)
+            self.release.sd = self.release.sd.to(device)
+            self.release.device = device
+        self.device = device
+        return self
+
+    def load_release(self, release_path):
+        """The trained decoder (+ edge refiner). Reopens the eye only if the
+        release was trained on a different backbone or size."""
+        self.release = Release(release_path, self.device)
+        self.release.td.DEVICE = self.device
+        meta = self.release.meta
+        key = (meta.get("backbone") or "scalemae-large", int(meta.get("size") or 896))
+        if key != self.eye_key:
+            extract_features.DEVICE = self.device
+            self.eye = extract_features.open_eye(*key)
+            self.eye_key = key
+        return self
 
     # --------------------------------------------------------------- pieces
     def features(self, photo, span):

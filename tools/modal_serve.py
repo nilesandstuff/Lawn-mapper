@@ -101,15 +101,45 @@ def _node(cmd, payload):
          scaledown_window=SCALEDOWN,
          # A ceiling on the bill: at most this many GPUs at once, however
          # many lots arrive together (the queue scorer sends dozens).
-         max_containers=MAX_CONTAINERS)
+         max_containers=MAX_CONTAINERS,
+         # FASTER COLD STARTS (owner, 2026-09-30). Modal snapshots the
+         # container's memory once the big models are loaded, and later cold
+         # starts restore from it instead of loading them again -- a GPU
+         # billed for seconds, not for most of a minute. The snapshot is
+         # taken on the CPU (no GPU is attached then); see the two halves below.
+         enable_memory_snapshot=True)
 class Alpha:
-    @modal.enter()
-    def load(self):
-        sys.path.insert(0, f"{REPO}/tools")
-        os.environ["REFINE"] = "1"
-        import alpha_infer
+    @modal.enter(snap=True)
+    def load_models(self):
+        """Into the snapshot: Scale-MAE and the tree model, on the CPU.
+
+        torch is told there is no GPU while this runs, so nothing touches
+        CUDA before the snapshot -- the modules' own device choice included.
+        """
+        import torch
+        real = torch.cuda.is_available
+        torch.cuda.is_available = lambda: False
+        try:
+            sys.path.insert(0, f"{REPO}/tools")
+            os.environ["REFINE"] = "1"
+            t0 = time.time()
+            import alpha_infer
+            self.det = alpha_infer.Detector(None)
+            print(f"models loaded for the snapshot in {time.time() - t0:.0f}s", flush=True)
+        finally:
+            torch.cuda.is_available = real
+
+    @modal.enter(snap=False)
+    def onto_gpu(self):
+        """After every start, snapshot or not: onto the GPU, then the release.
+
+        The release is read here, never snapshotted, so shipping a new one
+        (workflow 14 `release: alpha`) takes effect on the next start.
+        """
+        import torch
         t0 = time.time()
-        self.det = alpha_infer.Detector(RELEASE)
+        self.det.to("cuda" if torch.cuda.is_available() else "cpu")
+        self.det.load_release(RELEASE)
         self.version = self.det.release.meta.get("trainedAt") or "unknown"
         # The 3DEP footprints once, onto the volume, so later containers skip
         # the download. Refetched by deleting the file.
@@ -119,7 +149,7 @@ class Alpha:
                 models.commit()
             except Exception as e:  # noqa: BLE001 - each lot then fetches them itself
                 print(f"footprints not cached: {e}", flush=True)
-        print(f"alpha release {self.version} loaded in {time.time() - t0:.0f}s", flush=True)
+        print(f"alpha release {self.version} ready on {self.det.device} in {time.time() - t0:.1f}s", flush=True)
 
     @modal.method()
     def detect(self, payload):
