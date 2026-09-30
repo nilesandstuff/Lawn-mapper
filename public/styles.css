@@ -102,6 +102,11 @@ body.job-mode #support-btn, body.job-mode .support-line { display: none; }
  * this is all the header needs to stay on a phone.
  */
 .quota { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quota .q-short, .account .a-short { display: none; }
+@media (max-width: 700px) {
+  .quota .q-long, .account .a-long { display: none; }
+  .quota .q-short, .account .a-short { display: inline; }
+}
 @media (max-width: 400px) {
   .topbar { padding: 0 12px; }
   .account { padding: 5px 10px; }
@@ -523,7 +528,8 @@ body.inferred-mode .panel { box-shadow: inset 4px 0 0 #7c4dff; }
  * rail's flex column, which would stretch the rail to the width of the
  * longest source name. */
 .layerlist {
-  position: absolute; top: 58px; left: 0; width: 212px; max-width: 60vw;
+  /* Above the NAIP nudges, which sit in the same spot while NAIP is on. */
+  position: absolute; top: 58px; left: 0; z-index: 7; width: 212px; max-width: 60vw;
   display: flex; flex-direction: column; gap: 2px; padding: 5px;
   background: rgba(255, 255, 255, .97);
   border: 1px solid rgba(0, 0, 0, .16); border-radius: 11px;
@@ -1068,9 +1074,16 @@ kbd {
 .merge-parcel:hover { background: rgba(20, 20, 20, 0.9); }
 
 /* NAIP lined up with Mapbox: a small panel over the top of the map. */
+/*
+ * UNDER the Layers button, not on it. This box lives inside #maprail-left,
+ * which is one button wide, so "centred, 10px from the top" put it squarely
+ * over that button and squeezed its nudges into a single tall column (owner's
+ * phone, 2026-09-30). Width is its own, capped to leave the tool rail on the
+ * right clear.
+ */
 .naipalign {
-  position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
-  z-index: 6; max-width: min(92vw, 360px);
+  position: absolute; top: 62px; left: 0;
+  z-index: 6; width: max-content; max-width: min(330px, calc(100vw - 190px));
   background: rgba(255, 255, 255, .95); border-radius: 10px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, .25); padding: 8px 10px; font-size: 13px;
 }

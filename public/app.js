@@ -6189,9 +6189,16 @@ function renderAccountButton() {
    * reads as a door for people who already have something.
    */
   const me = state.user;
-  $('#account-label').textContent = me
-    ? me.email.split('@')[0]
-    : 'Sign in / 1-click sign up';
+  const label = $('#account-label');
+  if (me) {
+    label.textContent = me.email.split('@')[0];
+    return;
+  }
+  /* On a phone the bar also carries the passes badge and the support heart,
+     so the button keeps the half nobody expects -- it is one click -- and
+     drops the half everybody assumes. Same single action either way. */
+  label.innerHTML = '<span class="a-long">Sign in / 1-click sign up</span>'
+    + '<span class="a-short" aria-hidden="true">1-click sign up</span>';
 }
 
 function renderAccountSheet() {
@@ -11752,8 +11759,9 @@ async function refreshQuota() {
       }
       const free = Math.max(0, (state.quota.limit || 0) - (state.quota.used || 0));
       const bought = Number(state.quota.credits || 0);
-      badge.textContent = `${free} of ${state.quota.limit} AI passes left today`
-        + (bought ? `, plus ${bought.toLocaleString()} bought` : '');
+      setQuotaBadge(badge, `${free} of ${state.quota.limit} AI passes left today`
+        + (bought ? `, plus ${bought.toLocaleString()} bought` : ''),
+      `${free}/${state.quota.limit} AI${bought ? ` +${bought.toLocaleString()}` : ''}`);
       badge.hidden = false;
       return;
     }
@@ -11795,13 +11803,33 @@ async function refreshQuota() {
       ? ` · an account gets ${state.quota.accountLimit} a day`
       : '';
 
-    badge.textContent = (state.quota.reason === 'shared-network'
+    setQuotaBadge(badge, (state.quota.reason === 'shared-network'
       ? `${left} of ${state.quota.limit} AI passes left today on this network`
-      : `${left} of ${state.quota.limit} AI passes left today`) + offer;
+      : `${left} of ${state.quota.limit} AI passes left today`) + offer,
+    `${left}/${state.quota.limit} AI`);
     badge.hidden = false;
   } catch {
     // A quota read failing is not worth interrupting anyone over.
   }
+}
+
+/**
+ * The badge in two lengths: the sentence, and "5/5 AI" for a phone's
+ * top bar, where the heart and the account button leave room for about that
+ * much and the sentence was cut to "5..". CSS picks one; the short one is
+ * hidden from screen readers, which get the sentence either way.
+ */
+function setQuotaBadge(badge, long, short) {
+  badge.textContent = '';
+  const full = document.createElement('span');
+  full.className = 'q-long';
+  full.textContent = long;
+  const brief = document.createElement('span');
+  brief.className = 'q-short';
+  brief.setAttribute('aria-hidden', 'true');
+  brief.textContent = short;
+  badge.append(full, brief);
+  badge.title = long;
 }
 
 /* --------------------------------------------------------------- exports */
