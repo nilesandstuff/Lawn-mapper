@@ -6512,7 +6512,10 @@ async function refreshAccount() {
 function readReviewRequest() {
   const raw = location.hash.slice(1);
   if (!raw.startsWith('review=')) return;
-  const id = decodeURIComponent(raw.slice('review='.length));
+  const params = new URLSearchParams(raw);
+  const id = params.get('review');
+  // Where to go afterwards: the console by default, /maps when it sent us.
+  state.reviewBack = params.get('back') === 'maps' ? '/maps.html' : '/admin.html';
   window.history.replaceState(null, '', location.pathname + location.search);
   if (id) openCandidate(id);
 }
@@ -6947,6 +6950,8 @@ async function openCandidate(id) {
    */
   state.reviewingId = id;
   $('#review-bar').hidden = false;
+  const toList = state.reviewBack === '/maps.html';
+  $('#btn-review-save').textContent = toList ? 'Save and return to the map list' : 'Save and return to the console';
   setStatus('Reviewing a training candidate. Fix whatever is off, then use the buttons above to go back.');
 }
 
@@ -6967,7 +6972,7 @@ function leaveReview(save) {
   if (save) keepFinished();
   state.reviewingId = null;
   $('#review-bar').hidden = true;
-  window.location.href = '/admin.html';
+  window.location.href = state.reviewBack || '/admin.html';
 }
 
 /* ====================================================== the paid queue ==== */
@@ -12691,7 +12696,7 @@ $('#btn-job-skip').addEventListener('click', skipJob);
 
 $('#btn-review-save').addEventListener('click', () => leaveReview(true));
 $('#btn-review-back').addEventListener('click', () => {
-  if (!confirm('Go back to the console without saving? Any corrections you have made here are lost.')) return;
+  if (!confirm('Go back without saving? Any corrections you have made here are lost.')) return;
   leaveReview(false);
 });
 
@@ -12707,8 +12712,8 @@ $('#btn-finish').addEventListener('click', () => {
   if (state.reviewingId) {
     state.reviewingId = null;
     $('#review-bar').hidden = true;
-    setStatus('Saved. Back to the review queue.');
-    window.location.href = '/admin.html';
+    setStatus('Saved. Going back.');
+    window.location.href = state.reviewBack || '/admin.html';
     return;
   }
 

@@ -56,6 +56,12 @@ body { background: var(--bg); }
 }
 .actions input { width: 76px; cursor: text; }
 .actions button:hover { border-color: var(--green); }
+/* A link that opens the editor, dressed as the buttons beside it. */
+.actions a.button-link {
+  font: inherit; font-size: 12.5px; padding: 6px 10px; color: inherit; text-decoration: none;
+  border: 1px solid var(--line); border-radius: 8px; background: #fff;
+}
+.actions a.button-link:hover { border-color: var(--green); }
 /* A note beside the buttons rather than under them: "saved here" belongs to
    the field it describes, and a row of its own reads as a separate fact. */
 .actions small { align-self: center; color: var(--muted); font-size: 11.5px; }

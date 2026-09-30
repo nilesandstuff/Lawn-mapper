@@ -231,7 +231,17 @@ function verdictRow(m, pills) {
     armed = setTimeout(disarm, 5000);
   });
 
-  wrap.append(btn, note);
+  /*
+   * EDIT, in the real editor (owner, 2026-09-30: a mistake spotted in one of
+   * the inferred areas). The same door the console's Edit button uses --
+   * /#review=<id> -- with a note to come back HERE rather than to the console.
+   * Saving puts the map back to unreviewed, as it does from the console:
+   * the approval was of the old outline.
+   */
+  const editLink = el('a', 'button-link', 'Edit');
+  editLink.href = `/#review=${encodeURIComponent(m.id)}&back=maps`;
+  editLink.title = 'Open this map in the editor, fix it, and save it back';
+  wrap.append(btn, editLink, note);
   return wrap;
 }
 
