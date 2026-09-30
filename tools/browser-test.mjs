@@ -1226,7 +1226,8 @@ console.log('\n--- detection modes ---');
    * which is what it is for -- so comparing the dropdown to that list asserts
    * the opposite of the filter: it demands the hidden method be on screen.
    */
-  const shouldBeListed = models.options.filter((m) => !m.devOnly).map((m) => m.id);
+  // ...and not the land cover map, away from Virginia (owner, 2026-09-30).
+  const shouldBeListed = models.offered;
   check('and the dropdown lists exactly the methods on offer',
     optionIds.join(',') === shouldBeListed.join(','),
     `dropdown: ${optionIds.join(',')} vs offered: ${shouldBeListed.join(',')}`);

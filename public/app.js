@@ -1016,6 +1016,9 @@ if (typeof window !== 'undefined') {
     chosen: state.model,
     panelVisible: !document.getElementById('model-panel').hidden,
     options: state.models.map((m) => ({ ...m })),
+    // What THIS visitor at THIS address is offered: no developer-only
+    // methods, and no land cover map outside Virginia.
+    offered: offeredModels().map((m) => m.id),
     /*
      * The exclusion boxes as they actually are on screen, not as state thinks.
      * `rendered` is read back out of the DOM on purpose: the bug worth catching
