@@ -270,7 +270,8 @@ jobs:
       # that fails.
       #
       # COST: nothing here runs a GPU. The server bills an L4 only while a lot
-      # is being read, plus one idle minute after the last one.
+      # is being read, plus 20 idle seconds after the last one; the lidar and
+      # NAIP downloads run on a CPU machine beside it.
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'

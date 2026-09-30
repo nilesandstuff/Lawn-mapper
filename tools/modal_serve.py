@@ -18,8 +18,8 @@ the same capture tools/train-detector.js trained on -- and polls. Both
 endpoints want `Authorization: Bearer <ALPHA_TOKEN>`; workflow 2 derives the
 token from the Modal secret and hands it to both sides.
 
-COST. A GPU (L4) only while lots are being read, plus SCALEDOWN (60) seconds idle
-after the last one, so a second lot within a minute does not pay the cold start
+COST. A GPU (L4) only while lots are being read, plus SCALEDOWN (20) seconds idle
+after the last one, so an immediate retry does not pay the cold start
 again. Nothing runs, and nothing is billed, when nobody is detecting.
 
     modal deploy tools/modal_serve.py        (workflow 2 does this)
@@ -32,7 +32,6 @@ import subprocess
 import sys
 import tempfile
 import time
-import urllib.request
 
 import modal
 
@@ -43,7 +42,13 @@ GPU = os.environ.get("MODAL_GPU", "L4")
 # alone, so the idle tail was most of the bill -- roughly 300 of every ~360
 # GPU-seconds a lone press paid for. A press within a minute of the last one
 # still finds it warm; after that it pays a cold start (~30-60 s) instead.
-SCALEDOWN = int(os.environ.get("ALPHA_SCALEDOWN", "60"))
+# 20 s since 2026-09-30 (owner): enough for an immediate Retry or re-detect
+# to find the GPU warm, and a lone press no longer pays a minute of idle.
+SCALEDOWN = int(os.environ.get("ALPHA_SCALEDOWN", "20"))
+# Lots one GPU machine works on at once. Most of a lot is downloads and CPU
+# arithmetic, so an overlapping press shares a warm machine rather than
+# paying a second cold start (owner, 2026-09-30).
+PER_MACHINE = int(os.environ.get("ALPHA_PER_MACHINE", "4"))
 MAX_CONTAINERS = int(os.environ.get("ALPHA_MAX_CONTAINERS", "3"))
 FOOTPRINTS = "/models/footprints.json"
 MODELS_VOLUME = "lawn-mapper-models"
@@ -84,6 +89,21 @@ gpu_image = (
     .add_local_dir(os.path.join(ROOT, "public", "lib"), f"{REPO}/public/lib")
 )
 
+# THE DOWNLOADS' MACHINE (owner, 2026-09-30): lidar, NAIP and the photograph
+# on a CPU, started beside the GPU one -- see tools/alpha_sources.py. No torch.
+cpu_image = (
+    modal.Image.debian_slim(python_version="3.12")
+    .apt_install("curl", "ca-certificates")
+    .run_commands("curl -fsSL https://deb.nodesource.com/setup_22.x | bash -", "apt-get install -y nodejs")
+    .pip_install("numpy", "pillow", "scipy", "scikit-image", "laspy[lazrs]")
+    .run_commands(f"mkdir -p {REPO} && cd {REPO} && echo '{{\"type\": \"module\", \"private\": true}}' > package.json"
+                  " && npm install pngjs@7 >/dev/null")
+    .add_local_dir(os.path.join(ROOT, "tools"), f"{REPO}/tools",
+                   ignore=["**/__pycache__/**", "**/*.test.*", "**/*_test.py"])
+    .add_local_dir(os.path.join(ROOT, "worker", "src"), f"{REPO}/worker/src")
+    .add_local_dir(os.path.join(ROOT, "public", "lib"), f"{REPO}/public/lib")
+)
+
 web_image = modal.Image.debian_slim(python_version="3.12").pip_install("fastapi[standard]")
 auth = modal.Secret.from_name("lawn-alpha-auth")
 
@@ -97,6 +117,27 @@ def _node(cmd, payload):
     return json.loads(r.stdout)
 
 
+def _gather_here(payload):
+    """alpha_sources.gather with this machine's copy of the scorer's `prepare`."""
+    if f"{REPO}/tools" not in sys.path:
+        sys.path.insert(0, f"{REPO}/tools")
+    import alpha_sources
+    fresh = not os.path.exists(FOOTPRINTS)
+    out = alpha_sources.gather(payload, lambda body: _node("prepare", body))
+    if fresh and os.path.exists(FOOTPRINTS):
+        models.commit()
+    return out
+
+
+@app.function(image=cpu_image, volumes={"/models": models}, timeout=300, cpu=1.0, memory=2048,
+              # A CPU machine costs a few cents an hour, so it can wait longer
+              # for the next lot than the GPU does.
+              scaledown_window=300)
+def gather(payload):
+    """The downloads for one lot, on a CPU: see tools/alpha_sources.py."""
+    return _gather_here(payload)
+
+
 @app.cls(image=gpu_image, gpu=GPU, volumes={"/models": models}, timeout=600,
          scaledown_window=SCALEDOWN,
          # A ceiling on the bill: at most this many GPUs at once, however
@@ -108,6 +149,7 @@ def _node(cmd, payload):
          # billed for seconds, not for most of a minute. The snapshot is
          # taken on the CPU (no GPU is attached then); see the two halves below.
          enable_memory_snapshot=True)
+@modal.concurrent(max_inputs=PER_MACHINE)
 class Alpha:
     @modal.enter(snap=True)
     def load_models(self):
@@ -156,12 +198,24 @@ class Alpha:
         from PIL import Image
         t0 = time.time()
         frame = payload["frame"]
-        prep = _node("prepare", {"frame": frame})
-        req = urllib.request.Request(payload["imageUrl"], headers={"User-Agent": "lawn-mapper-alpha"})
-        with urllib.request.urlopen(req, timeout=60) as r:
-            photo = Image.open(__import__("io").BytesIO(r.read())).convert("RGB")
+        # The CPU machine's downloads when `start` launched one beside this
+        # (it usually finished while this GPU was waking); read here otherwise
+        # -- the queue scorer calls this directly, and a failed gather is not
+        # a failed lot.
+        got = None
+        if payload.get("gather"):
+            try:
+                got = modal.FunctionCall.from_id(payload["gather"]).get(timeout=240)
+            except Exception as e:  # noqa: BLE001
+                print(f"gather failed, reading here: {e}", flush=True)
+        if got is None:
+            got = _gather_here(payload)
+        waited = round(time.time() - t0, 1)
+        prep = got["prep"]
+        photo = Image.open(__import__("io").BytesIO(got["photo"])).convert("RGB")
         with tempfile.TemporaryDirectory() as d:
-            rec = self.det.run(photo, prep, d, naip_align=payload.get("naipAlign"))
+            rec = self.det.run(photo, prep, d, naip_align=payload.get("naipAlign"), sources=got["sources"])
+            rec["seconds"]["waited"] = waited
             fin = _node("finish", {"dir": d, "w": prep["w"], "h": prep["h"], "mpp": prep["mpp"],
                                    "frame": frame, "parcel": payload.get("parcel")})
             with open(os.path.join(d, "final.png"), "rb") as f:
@@ -195,7 +249,9 @@ async def start(request: "Request"):
         body = None
     if not isinstance(body, dict) or not body.get("imageUrl") or not isinstance(body.get("frame"), dict):
         raise HTTPException(status_code=400, detail="imageUrl and frame are required")
-    call = Alpha().detect.spawn(body)
+    # Both at once: the downloads on a CPU while the GPU machine wakes.
+    got = gather.spawn(body)
+    call = Alpha().detect.spawn({**body, "gather": got.object_id})
     return {"id": call.object_id}
 
 

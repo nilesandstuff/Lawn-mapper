@@ -22,6 +22,7 @@ import importlib.util
 import os
 import sys
 import tempfile
+import threading
 import time
 
 import numpy as np
@@ -88,6 +89,8 @@ class Detector:
         self.tree_processor = SegformerImageProcessor.from_pretrained(self.tree.MODEL, do_resize=False)
         self.tree_want = self.tree.tree_index(self.tree_model)
         self.release = None
+        # The GPU steps take turns when a machine runs several lots at once.
+        self.gpu_lock = threading.Lock()
         if release_path:
             self.load_release(release_path)
 
@@ -139,70 +142,71 @@ class Detector:
         return np.asarray(Image.fromarray(mask.astype(np.uint8) * 255).resize(photo.size, Image.NEAREST)) >= 128
 
     # ------------------------------------------------------------ one lot
-    def run(self, photo, prep, out_dir, naip_align=None):
+    def run(self, photo, prep, out_dir, naip_align=None, sources=None):
         """Writes prob.png, canopy.png and (when lidar reads) roof/void/height.png
-        into out_dir; returns a record of what was used and how long it took."""
-        import lidar_frame
-        import naip_bands
+        into out_dir; returns a record of what was used and how long it took.
+
+        `sources` is what alpha_sources.gather_sources read on the CPU machine
+        (tools/modal_serve.py); without it, this reads them itself, as before.
+
+        ONE LOT ON THE GPU AT A TIME, several in flight (owner, 2026-09-30:
+        a machine takes up to four lots at once). Only the GPU steps take turns
+        -- the backbone sets a per-lot scale on the shared model before it
+        reads, so two at once could swap scales -- and everything else, the
+        downloads included, runs side by side.
+        """
+        import alpha_sources
 
         t = {}
-        rec = {"lidar": False, "naip": False}
-        t0 = time.time()
-        grid, cover = self.features(photo, prep["span"])
-        gh, gw = grid.shape[:2]
-        t["backbone"] = round(time.time() - t0, 1)
+        if sources is None:
+            sources = alpha_sources.gather_sources(photo, prep, naip_align)
+        rec = dict(sources["rec"])
+        t.update(sources.get("seconds", {}))
 
-        lidar = None
-        if prep.get("lidarUrl"):
-            t0 = time.time()
-            try:
-                got = lidar_frame.lidar_for(prep["lidarUrl"], prep["bbox"])
-                if got:
-                    layers, masks = got
-                    lidar = {k: layers[k] for k in ("height", "n_ground", "n_all")}
-                    Image.fromarray(lidar_frame.height_png(layers["height"])).save(os.path.join(out_dir, "height.png"))
-                    for k in ("roof", "void"):
-                        Image.fromarray(masks[k].astype(np.uint8) * 255).save(os.path.join(out_dir, f"{k}.png"))
-                    rec["lidar"] = True
-            except Exception as e:  # noqa: BLE001 - served without it, as trained
-                rec["lidarError"] = str(e)[:200]
-            t["lidar"] = round(time.time() - t0, 1)
+        lidar = sources.get("lidar")
+        if lidar is not None:
+            Image.fromarray(np.asarray(sources["height_png"])).save(os.path.join(out_dir, "height.png"))
+            for k in ("roof", "void"):
+                Image.fromarray(np.asarray(sources[k]).astype(np.uint8) * 255).save(os.path.join(out_dir, f"{k}.png"))
 
         ndvi = valid = None
-        t0 = time.time()
-        try:
-            naip, _ = naip_bands.naip_for(prep["bbox"], photo=photo, stored=naip_align)
-            ndvi, valid = ndvi_from_png(naip)
-            if valid.any():
-                rec["naip"] = True
-            else:
+        if sources.get("naip") is not None:
+            ndvi, valid = ndvi_from_png(sources["naip"])
+            if not valid.any():
                 ndvi = valid = None
-        except Exception as e:  # noqa: BLE001 - served without it, as trained
-            rec["naipError"] = str(e)[:200]
-        t["naip"] = round(time.time() - t0, 1)
+                rec["naip"] = False
+            else:
+                rec["naip"] = True
 
-        t0 = time.time()
-        can = self.canopy(photo, prep["span"], prep["down"])
+        with self.gpu_lock:
+            t0 = time.time()
+            grid, cover = self.features(photo, prep["span"])
+            gh, gw = grid.shape[:2]
+            t["backbone"] = round(time.time() - t0, 1)
+
+            t0 = time.time()
+            can = self.canopy(photo, prep["span"], prep["down"])
+            t["canopy"] = round(time.time() - t0, 1)
+
+            t0 = time.time()
+            meta = self.release.meta
+            x = grid
+            if meta.get("fuse"):
+                fuse_can = can if meta.get("fuseCanopy") else None
+                extra = extra_channels(gw, gh, cover[0], cover[1], lidar=lidar, ndvi=ndvi, ndvi_valid=valid, canopy=fuse_can)
+                x = np.concatenate([grid, extra.transpose(1, 2, 0)], axis=2)
+            cells_w, cells_h = int(prep["w"]), int(prep["h"])
+            L = {
+                "x": torch.from_numpy(np.ascontiguousarray(x.transpose(2, 0, 1))),
+                "cells": (cells_w, cells_h),
+                "cover": cover,
+                "rgb": np.asarray(photo.convert("RGB").resize((cells_w, cells_h), Image.BOX)),
+            }
+            prob = self.release.td.answer(self.release.model, self.release.mean, self.release.sd, L)
+            t["decoder"] = round(time.time() - t0, 1)
+
         Image.fromarray(can.astype(np.uint8) * 255).save(os.path.join(out_dir, "canopy.png"))
-        t["canopy"] = round(time.time() - t0, 1)
-
-        t0 = time.time()
-        meta = self.release.meta
-        x = grid
-        if meta.get("fuse"):
-            fuse_can = can if meta.get("fuseCanopy") else None
-            extra = extra_channels(gw, gh, cover[0], cover[1], lidar=lidar, ndvi=ndvi, ndvi_valid=valid, canopy=fuse_can)
-            x = np.concatenate([grid, extra.transpose(1, 2, 0)], axis=2)
-        cells_w, cells_h = int(prep["w"]), int(prep["h"])
-        L = {
-            "x": torch.from_numpy(np.ascontiguousarray(x.transpose(2, 0, 1))),
-            "cells": (cells_w, cells_h),
-            "cover": cover,
-            "rgb": np.asarray(photo.convert("RGB").resize((cells_w, cells_h), Image.BOX)),
-        }
-        prob = self.release.td.answer(self.release.model, self.release.mean, self.release.sd, L)
         Image.fromarray(np.clip(np.round(prob * 255), 0, 255).astype(np.uint8), mode="L").save(
             os.path.join(out_dir, "prob.png"))
-        t["decoder"] = round(time.time() - t0, 1)
         rec["seconds"] = t
         return rec
