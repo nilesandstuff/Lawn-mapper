@@ -4,3 +4,7 @@ node_modules/
 .env
 .DS_Store
 __pycache__/
+
+# Written at deploy time by tools/home-prepare.js
+home/build/
+home/wrangler.toml

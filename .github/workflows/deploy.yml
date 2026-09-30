@@ -80,6 +80,25 @@ jobs:
           CUSTOM_DOMAIN: ${{ vars.CUSTOM_DOMAIN }}
         run: node tools/https-only.js
 
+      # nilesandstuff.com, the home page (owner, 2026-09-30): a second, tiny
+      # Worker on the bare domain and www, linking to the app and the other
+      # lawn tools. Its own step, and never allowed to fail the app's deploy.
+      - name: The home page
+        continue-on-error: true
+        env:
+          CUSTOM_DOMAIN: ${{ vars.CUSTOM_DOMAIN }}
+          HOME_DOMAIN: ${{ vars.HOME_DOMAIN }}
+        run: |
+          node tools/home-prepare.js
+          if [ ! -f home/wrangler.toml ]; then exit 0; fi
+          if npx wrangler deploy --config home/wrangler.toml > home-deploy.log 2>&1; then
+            echo "HOME_STATE=ON at https://${HOME_DOMAIN_RESOLVED} (www goes there too)" >> "$GITHUB_ENV"
+          else
+            tail -25 home-deploy.log
+            echo "HOME_STATE=did not deploy -- see \"The home page\" step above" >> "$GITHUB_ENV"
+            exit 1
+          fi
+
       # After the deploy, so the Worker exists to attach them to. Secrets
       # persist across deploys, so this is only load-bearing the first time --
       # but re-applying them makes rotating a key a matter of editing the
@@ -349,6 +368,7 @@ jobs:
           fi
           echo "Trained model (alpha release): ${ALPHA_STATE:-off -- the step that serves it did not finish; see \"Serve the trained model\" above}"
           echo "HTTPS only: ${HTTPS_STATE:-not checked -- see \"Send http to https\" above}"
+          echo "Home page: ${HOME_STATE:-not built -- see \"The home page\" above}"
           # A database change that did not land is the quietest failure this
           # project has had: six deploys reported success while a column was
           # missing and a feature reported itself switched off. It gets said

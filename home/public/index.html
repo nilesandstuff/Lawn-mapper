@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nilesandstuff — lawn tools</title>
+<meta name="description" content="Free lawn tools: Lawn Mapper measures your lawn from your address with a trained AI lawn detector, plus a grass seed selector and turf calculators.">
+<meta name="robots" content="index, follow">
+<meta name="theme-color" content="#2f7d32">
+<link rel="canonical" href="__HOME__/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="nilesandstuff">
+<meta property="og:title" content="nilesandstuff — lawn tools">
+<meta property="og:description" content="Measure your lawn from your address with a trained AI lawn detector, pick grass seed, and more.">
+<meta property="og:url" content="__HOME__/">
+<meta property="og:image" content="__LAWNMAP__/og-image.png?v=2">
+<meta name="twitter:card" content="summary_large_image">
+<style>
+  :root {
+    --green: #2f7d32; --green-dark: #245f27; --ink: #16211a; --muted: #5d6b62;
+    --line: #dfe5e0; --bg: #f6f8f6; --card: #fff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --ink: #e8efe9; --muted: #a3b2a8; --line: #2c3a31; --bg: #121a15; --card: #18231c; }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink); background: var(--bg);
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 32px 16px 48px; }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; }
+  header img { width: 40px; height: 40px; }
+  header .name { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+  h1 { font-size: clamp(26px, 5vw, 36px); line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 8px; }
+  .lead { color: var(--muted); margin: 0 0 28px; max-width: 60ch; }
+  .cards { display: grid; gap: 14px; grid-template-columns: 1fr; }
+  @media (min-width: 640px) { .cards { grid-template-columns: 1fr 1fr; } .feature { grid-column: 1 / -1; } }
+  .card {
+    display: block; text-decoration: none; color: inherit;
+    background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+    padding: 18px 18px 16px; transition: border-color .15s, transform .15s;
+  }
+  .card:hover, .card:focus-visible { border-color: var(--green); transform: translateY(-1px); outline: none; }
+  .card h2 { font-size: 19px; margin: 0 0 4px; }
+  .card p { margin: 0 0 12px; color: var(--muted); font-size: 15px; }
+  .card .go { font-weight: 600; color: var(--green); font-size: 15px; }
+  @media (prefers-color-scheme: dark) { .card .go { color: #6cc070; } }
+  .feature { display: grid; gap: 16px; align-items: center; }
+  @media (min-width: 640px) { .feature { grid-template-columns: 1.1fr 1fr; } }
+  .feature img { width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--line); }
+  .tag {
+    display: inline-block; font-size: 12px; font-weight: 600; letter-spacing: .02em;
+    color: #fff; background: var(--green); border-radius: 999px; padding: 2px 9px; margin-bottom: 8px;
+  }
+  footer { margin-top: 32px; color: var(--muted); font-size: 14px; }
+  footer a { color: inherit; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <img src="favicon.svg" alt="" width="40" height="40">
+    <span class="name">nilesandstuff</span>
+  </header>
+
+  <h1>Free tools for your lawn</h1>
+  <p class="lead">Measure it, plan it, and pick what to grow in it.</p>
+
+  <main class="cards">
+    <!-- The flagship, and the only one on this domain. -->
+    <a class="card feature" href="__LAWNMAP__/">
+      <div>
+        <span class="tag">AI lawn detector</span>
+        <h2>Lawn Mapper</h2>
+        <p>Measure your lawn's square footage from your address. Our own trained
+          AI traces the grass from satellite, lidar and near-infrared inside your
+          property line, and you fine-tune the outline.</p>
+        <span class="go">Measure my lawn →</span>
+      </div>
+      <img src="__LAWNMAP__/og-image.png?v=2" alt="A lawn outline traced by the AI inside a dashed property line" loading="lazy" width="600" height="315">
+    </a>
+
+    <!-- The same two links as Lawn Mapper's "More lawn tools" menu;
+         tools/home.test.js keeps the two lists the same. -->
+    <a class="card" href="https://lawn-answers.com/?tool=SeedSelector" target="_blank" rel="noopener noreferrer">
+      <h2>Seed Selector</h2>
+      <p>An advanced explorer for NTEP turfgrass trial results, to choose the
+        right grass seed for where you are.</p>
+      <span class="go">Open Seed Selector →</span>
+    </a>
+    <a class="card" href="https://lawn-answers.com" target="_blank" rel="noopener noreferrer">
+      <h2>Turf Tools</h2>
+      <p>Calculators and answers for lawn care, at lawn-answers.com.</p>
+      <span class="go">Open Turf Tools →</span>
+    </a>
+  </main>
+
+  <footer>
+    Free and ad-free.
+    <a href="https://buymeacoffee.com/nilesandstuff" target="_blank" rel="noopener noreferrer">Help keep it that way</a>.
+  </footer>
+</div>
+</body>
+</html>
