@@ -475,6 +475,13 @@ check('every class the code toggles is styled',
  * notice was apologising for. Checked gone so it cannot come back by merge.
  */
 check('the "AI detection is bad" sheet is gone', !/id="ai-notice"/.test(html) && !/showAiNotice/.test(js));
+for (const tag of ['rel="canonical"', 'property="og:image"', 'name="twitter:card"', 'application/ld+json', 'rel="icon"']) {
+  check(`the home page carries ${tag}`, html.includes(tag));
+}
+for (const page of ['admin', 'grade', 'maps', 'mywork', 'outlines', 'payouts', 'predictions', 'review', 'screen', 'workers']) {
+  check(`${page}.html is kept out of search`,
+    /<meta name="robots" content="noindex, nofollow">/.test(readFileSync(join(root, `public/${page}.html`), 'utf8')));
+}
 check('the detection timer says what to expect', /usually takes less than 60 seconds/.test(js)
   && /id="busy-timer"/.test(html) && /id="busy-cancel"/.test(html) && /id="busy-retry"/.test(html));
 

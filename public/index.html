@@ -5,6 +5,43 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lawn Mapper — measure your lawn from your address</title>
 <meta name="description" content="Find your lawn's square footage from your address. Uses county property lines and satellite imagery, then lets you correct the shape by hand.">
+<!--
+  SEARCH AND SHARING (owner, 2026-09-30). __SITE__ is the site's own origin,
+  filled in by the deploy from CUSTOM_DOMAIN (tools/ci-prepare.js,
+  fillSiteOrigin); without a domain those lines are dropped rather than left
+  pointing nowhere. One tag a line, so dropping one cannot break another.
+-->
+<meta name="robots" content="index, follow">
+<meta name="theme-color" content="#2f7d32">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="canonical" href="__SITE__/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Lawn Mapper">
+<meta property="og:title" content="Lawn Mapper — measure your lawn from your address">
+<meta property="og:description" content="Find your lawn's square footage from your address, then correct the shape by hand. Free to use.">
+<meta property="og:url" content="__SITE__/">
+<meta property="og:image" content="__SITE__/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Lawn Mapper: measure your lawn from your address.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Lawn Mapper — measure your lawn from your address">
+<meta name="twitter:description" content="Find your lawn's square footage from your address, then correct the shape by hand.">
+<meta name="twitter:image" content="__SITE__/og-image.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "url": "__SITE__/",
+  "name": "Lawn Mapper",
+  "description": "Find your lawn's square footage from your address. Uses county property lines and satellite imagery, then lets you correct the shape by hand.",
+  "applicationCategory": "UtilitiesApplication",
+  "operatingSystem": "Any",
+  "browserRequirements": "Requires JavaScript",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
 
 <link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.css" rel="stylesheet">
 <link href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.css" rel="stylesheet">

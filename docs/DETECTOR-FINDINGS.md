@@ -4797,6 +4797,32 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
+### S21. Learn from the PAIRING: weight training toward where the detector's own outline was corrected (owner, 2026-09-30 -- WANTED, NOT YET BUILT)
+
+**What.** Every finished map already stores both halves of a correction:
+`detected_shapes` (what the AI drew) and `shapes` (what the person left). Since
+2026-09-29 it also stores `model_version` (which release drew it). Training
+today uses only `shapes`, as truth, the same way as a hand-traced map. The
+original outline is read only by the scorer, as the SAM baseline. So the
+decoder is never pointed at WHERE it went wrong. The owner's point
+(2026-09-30): zeroing in on its mistakes was the reason for recording
+corrections.
+
+**The proposal.** Up-weight the loss on cells where the detector's outline and
+the corrected one disagree, the "error band", in train_decoder.py. Every other
+cell keeps its ordinary weight. Use it only on rows whose `model_version` is a
+trained-model release: a SAM outline's mistakes are SAM's, not this decoder's.
+
+**Why it might not help (keep it speculation until measured).** The residual
+error is already concentrated in the edge band (H53), which the edge refiner
+(H60) targets. Extra weight there may just re-weight the same pixels. With few
+release-drawn corrections so far, a handful of lots would dominate. H57 is the
+warning: extra "helpful" training signal measured worse.
+
+**The test.** THE PLAN with and without the error-band weight. Same seed, same
+folds, lawns all, free runner. It only becomes meaningful once there are
+enough release-drawn corrections, some dozens, to weight.
+
 ### S20. The not-lawn outlines again, fewer of them, under THE PLAN (owner, 2026-09-29)
 
 **The owner:** "we abandoned the outlines, but I don't think that was the

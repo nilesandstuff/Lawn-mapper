@@ -406,6 +406,20 @@ function migrate() {
  * and nothing else, which cannot contain a semicolon in a string literal or
  * any other thing that would need a real parser.
  */
+/**
+ * The site's own origin into the public pages' share and search tags
+ * (public/index.html: canonical, og:url, og:image ...). Those need an absolute
+ * address and only the deploy knows it. With no custom domain every line
+ * carrying the placeholder is dropped, so no tag points at "__SITE__".
+ * Touches the runner's copy only, like wrangler.toml above.
+ */
+export const SITE_PLACEHOLDER = '__SITE__';
+export function fillSiteOrigin(html, customDomain) {
+  if (!html.includes(SITE_PLACEHOLDER)) return html;
+  if (customDomain) return html.split(SITE_PLACEHOLDER).join(`https://${customDomain}`);
+  return html.split('\n').filter((l) => !l.includes(SITE_PLACEHOLDER)).join('\n');
+}
+
 export function parseMigrations(text) {
   return String(text)
     .split('\n')
@@ -500,6 +514,12 @@ function main() {
       readFileSync(CONFIG, 'utf8'), { kvId, dbId, bucket, customDomain }
     );
     writeFileSync(CONFIG, updated);
+
+    const page = new URL('../public/index.html', import.meta.url);
+    writeFileSync(page, fillSiteOrigin(readFileSync(page, 'utf8'), customDomain));
+    console.log(customDomain
+      ? `Search and share tags point at https://${customDomain}.`
+      : 'No CUSTOM_DOMAIN, so the canonical and share-image tags were left out.');
 
     /*
      * The schema runs AFTER the id is in the file, because wrangler resolves

@@ -1593,6 +1593,24 @@ export default {
         /* The saved maps, once they belong to an account. See routes-maps.js. */
         case '/api/maps':
           return await handleMaps(request, env, url, origin, ctx, json);
+        /*
+         * FOR SEARCH ENGINES (owner, 2026-09-30). Written from the address that
+         * was asked for, so they are right on the custom domain and on
+         * workers.dev alike. One public page; the consoles carry noindex.
+         */
+        case '/robots.txt':
+          return new Response(
+            `User-agent: *\nAllow: /\nDisallow: /api/\n\nSitemap: ${url.origin}/sitemap.xml\n`,
+            { headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=86400' } }
+          );
+        case '/sitemap.xml':
+          return new Response(
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            + '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+            + `  <url><loc>${url.origin}/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>\n`
+            + '</urlset>\n',
+            { headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=86400' } }
+          );
         default:
           if (url.pathname.startsWith('/api/')) {
             return json({ error: 'Not found' }, 404, origin);

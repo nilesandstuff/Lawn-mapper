@@ -18,6 +18,7 @@ import {
   applyConfig,
   bucketExists,
   bucketFailureHelp,
+  fillSiteOrigin,
 } from './ci-prepare.js';
 
 let failures = 0;
@@ -216,6 +217,21 @@ id = "REPLACE_WITH_KV_NAMESPACE_ID"
       && /Everything else is/.test(t)));
   check('and every case names the bucket for the by-hand route',
     /"lawn-mapper-corpus"/.test(enable) && /"lawn-mapper-corpus"/.test(token));
+}
+
+/* The share and search tags get the real address, or go. */
+{
+  const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  const filled = fillSiteOrigin(page, 'lawnmap.example.com');
+  check('the domain fills every placeholder', !filled.includes('__SITE__')
+    && filled.includes('<link rel="canonical" href="https://lawnmap.example.com/">')
+    && filled.includes('content="https://lawnmap.example.com/og-image.png"'));
+  const none = fillSiteOrigin(page, null);
+  check('with no domain the lines go, and nothing else does',
+    !none.includes('__SITE__') && !none.includes('rel="canonical"') && none.includes('og:title'));
+  const ld = (s) => JSON.parse(s.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)[1]);
+  check('the structured data is still JSON either way',
+    ld(filled).url === 'https://lawnmap.example.com/' && ld(none).name === 'Lawn Mapper' && !('url' in ld(none)));
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
