@@ -482,9 +482,13 @@ body.inferred-mode .panel { box-shadow: inset 4px 0 0 #7c4dff; }
  * a problem that no longer exists is not free.
  */
 
-.railbtn.sub { width: 46px; font-size: 9.5px; }
+/* margin: 0 because `.sub` is also the panel's paragraph class, whose 16px
+   bottom margin was quietly spacing every one of these apart. */
+.railbtn.sub { width: 46px; font-size: 9.5px; margin: 0; }
 .railbtn.sub svg { width: 19px; height: 19px; }
-.railundo { margin-top: 4px; }
+.railundo { margin-top: 0; }
+.railpair { display: flex; gap: 5px; margin-top: 4px; }
+.railpair .railbtn { width: 46px; }
 .railundo:disabled { opacity: .4; cursor: not-allowed; }
 #mode-move[aria-pressed="true"] { background: #1565c0; border-color: #0d47a1; }
 #tool-add[aria-pressed="true"]   { background: #2e7d32; border-color: #1b5e20; }
@@ -538,7 +542,8 @@ body.inferred-mode .panel { box-shadow: inset 4px 0 0 #7c4dff; }
 }
 
 @media (max-width: 700px) {
-  .maprail { top: 88px; right: 8px; }
+  /* Just under the zoom buttons: every pixel of the map's height is needed. */
+  .maprail { top: 74px; right: 8px; }
   .maprail-left { right: auto; left: 8px; }
 }
 
@@ -1022,7 +1027,7 @@ kbd {
 
 /* Brush width, indented under the brush it belongs to. */
 .railsize {
-  display: flex; flex-direction: column; gap: 5px;
+  display: flex; flex-direction: row; gap: 5px;
   margin-top: 4px; padding-top: 5px;
   border-top: 2px solid rgba(255, 255, 255, 0.85);
 }

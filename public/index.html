@@ -943,13 +943,22 @@
         <span>Pins</span>
       </button>
 
-      <button class="railbtn" id="mode-move" aria-pressed="false" title="Move a whole shape">
+
+      <!--
+        MOVE, UNDO AND REDO IN ONE ROW, and the lawn tools two to a row
+        below, because the rail has to fit inside the map. On a
+        phone the map is under half the screen, and one button per row ran the
+        lawn tools off the bottom of it and over the step tabs -- which, once
+        the lawn tools were always out on Draw (owner, 2026-09-30), meant the
+        tabs could not be pressed at all.
+      -->
+      <div class="railpair">
+        <button class="railbtn" id="mode-move" aria-pressed="false" title="Move a whole shape">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path
           d="M12 2.5v19M2.5 12h19M12 2.5l-3 3M12 2.5l3 3M12 21.5l-3-3M12 21.5l3-3M2.5 12l3-3M2.5 12l3 3M21.5 12l-3-3M21.5 12l3 3"
           fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span>Move</span>
       </button>
-
       <button class="railbtn railundo" id="rail-undo" disabled title="Undo the last change">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path
           d="M4 9h10.5a4.5 4.5 0 0 1 0 9H8M4 9l4-4M4 9l4 4"
@@ -962,16 +971,11 @@
           fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span>Redo</span>
       </button>
+      </div>
 
       <!-- The lawn tools: always out on the Draw step, except while Move is. -->
       <div class="railsub" id="shape-tools" hidden>
-        <button class="railbtn sub" id="tool-points" aria-pressed="false" title="Move corners">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 17l5-9 4 5 5-7"
-            fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-            <circle cx="5" cy="17" r="2.4" fill="currentColor"/><circle cx="10" cy="8" r="2.4" fill="currentColor"/>
-            <circle cx="14" cy="13" r="2.4" fill="currentColor"/><circle cx="19" cy="6" r="2.4" fill="currentColor"/></svg>
-          <span>Points</span>
-        </button>
+        <div class="railgrid">
         <!--
           THE BRUSHES, COLLAPSED TO ONE ICON WHILE CORRECTING CORNERS.
 
@@ -1029,6 +1033,14 @@
             <line x1="16.4" y1="4.6" x2="22" y2="4.6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
           <span>Erase</span>
         </button>
+        <button class="railbtn sub" id="tool-points" aria-pressed="false" title="Move corners">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 17l5-9 4 5 5-7"
+            fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <circle cx="5" cy="17" r="2.4" fill="currentColor"/><circle cx="10" cy="8" r="2.4" fill="currentColor"/>
+            <circle cx="14" cy="13" r="2.4" fill="currentColor"/><circle cx="19" cy="6" r="2.4" fill="currentColor"/></svg>
+          <span>Points</span>
+        </button>
+        </div>
 
         <!--
           THE CORNER TOOLS, which appear only with Points.

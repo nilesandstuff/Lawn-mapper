@@ -448,8 +448,15 @@ console.log(`      hint:   "${await page.locator('#map-hint').textContent()}"`);
  * pins went away, describing a contract the app no longer has. Assert the
  * current one: nothing on the map needs tapping before a detection.
  */
+/*
+ * ...except the boundary editor, which is ON on the Property line step now
+ * (owner, 2026-09-30): the map listens for a tap exactly when there is a
+ * county line to edit, and for nothing else.
+ */
 const armed = await page.evaluate(() => window.__lm.armed);
-check('nothing needs tapping before detection', armed === false, `armed=${armed}`);
+const landedWithLine = (await page.evaluate(() => window.__lmTabs())).hasParcel;
+check('nothing but the property line needs tapping before detection',
+  armed === landedWithLine, `armed=${armed}, county line=${landedWithLine}`);
 
 const busyVisible = await page.locator('#busy').isVisible();
 check('loading overlay is gone', busyVisible === false, `busy visible=${busyVisible}`);
@@ -811,17 +818,26 @@ async function tourCheck(stage, parts) {
   await page.waitForFunction(
     (s) => window.__lmTour().visible && window.__lmTour().stage === s, stage, { timeout: 5000 },
   ).catch(() => {});
-  const t = await page.evaluate(() => window.__lmTour());
+  let t = await page.evaluate(() => window.__lmTour());
   check(`the "${stage}" tour appears`, t.visible && t.stage === stage,
     `stage=${t.stage} visible=${t.visible}`);
   if (!t.visible) return;
-  check(`  with a card for each of its ${parts} parts`, t.items.length === parts,
-    t.items.map((i) => i.name).join(', '));
-  const astray = t.items.filter((i) => !i.arrow
+  check(`  with a card for each of its ${parts} parts`, t.total === parts,
+    `${t.total}${t.stepping ? ', one at a time' : ''}`);
+  /* Where the arrows would tangle it steps through them, one card each --
+     so walk every step and check every arrow either way. */
+  const seen = [...t.items];
+  while (t.stepping && t.index < t.total - 1) {
+    await page.click('#tour-ok');
+    await page.waitForTimeout(150);
+    t = await page.evaluate(() => window.__lmTour());
+    seen.push(...t.items);
+  }
+  const astray = seen.filter((i) => !i.arrow
     || i.arrow.x < i.rect.left - 9 || i.arrow.x > i.rect.right + 9
     || i.arrow.y < i.rect.top - 9 || i.arrow.y > i.rect.bottom + 9);
-  check('  and every arrow ends at the thing its card names', astray.length === 0,
-    astray.map((i) => `${i.name} -> ${i.target}`).join(', ') || 'all on target');
+  check('  and every arrow ends at the thing its card names', astray.length === 0 && seen.length === parts,
+    astray.map((i) => `${i.name} -> ${i.target}`).join(', ') || `${seen.length} on target`);
   const overlaps = t.items.filter((a, k) => t.items.some((b, j) => j !== k
     && a.card.left < b.card.right && a.card.right > b.card.left
     && a.card.top < b.card.bottom && a.card.bottom > b.card.top));
@@ -2145,7 +2161,10 @@ check('undo leaves the map in a state we can read',
   typeof drainedShapes === 'number',
   `${drainedShapes} shape(s) at the floor of the step`);
 
-await page.click('#btn-edge-done');
+/* No "Done adjusting" where the corner tool is the step's own (restMode):
+   on Draw the way out of it is Move, so that is what closes it here. */
+await inLawnMode(page);
+await page.click('#mode-move');
 await page.waitForTimeout(300);
 check('edge panel closes', !(await page.locator('#edge-panel').isVisible()));
 check('corner handles go away when the tool closes',
@@ -2839,9 +2858,11 @@ const reachableIn = async (mode, tool) => {
      * that unfolding them arms whichever was last in hand.
      */
     await armBrush(page, tool);
-  } else {
+  } else if (await page.locator(`#mode-${mode}`).count()) {
     await page.click(`#mode-${mode}`);
   }
+  /* The property line and the lawn tools have no button: each is simply on
+     while its step is open (restMode), so being on the step is reaching it. */
   await page.waitForTimeout(450);
   return page.evaluate(() => window.__lmEditable());
 };

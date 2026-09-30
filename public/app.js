@@ -998,6 +998,9 @@ if (typeof window !== 'undefined') {
   window.__lmTour = () => ({
     stage: tour.stage,
     visible: !document.getElementById('tour').hidden,
+    stepping: tour.stepping,
+    index: tour.index,
+    total: tour.total,
     items: tour.placed.map((p) => ({ ...p })),
   });
 
@@ -3249,6 +3252,10 @@ function stepwisePolygonMode(base) {
       if (drafting?.state === st) drafting = null;
       base.onStop.call(this, st);
       queueMicrotask(refreshHistoryButtons);
+      // However the drawing ended -- closed, abandoned, too few points to be a
+      // shape -- the step's own tool comes back (restMode). A close has
+      // usually done this already through draw.create.
+      queueMicrotask(() => { if (!state.mode && restMode()) settleMode(); });
     },
     // Delete / Backspace while drawing: the last corner, not the whole outline.
     onTrash(st) { draftUndo(); },
@@ -9461,7 +9468,7 @@ function placeTip() {
  * as I go" governs all of it and a tour whose buttons are a tab away waits
  * for that tab exactly as a tip does.
  */
-const tour = { stage: null, placed: [] };
+const tour = { stage: null, placed: [], stepping: false, index: 0, total: 0 };
 
 function showTour(stage) {
   if (!tipsOn() || tips.seen.has(stage) || !state.frame) return;
@@ -9479,6 +9486,8 @@ function showTour(stage) {
   tips.seen.add(stage);
   tips.stage = stage;
   tour.stage = stage;
+  tour.stepping = false;
+  tour.index = 0;
   $('#tour').hidden = false;
   placeTour();
 }
@@ -9523,6 +9532,11 @@ function placeTour() {
       ? clip(el.getBoundingClientRect()) || clip($('#panel').getBoundingClientRect())
       : el.getBoundingClientRect();
     if (r) items.push({ ...it, r: { left: r.left, right: r.right, top: r.top, bottom: r.bottom } });
+  }
+  tour.total = items.length;
+  if (tour.stepping) {
+    tour.index = Math.min(tour.index, items.length - 1);
+    items.splice(0, items.length, ...items.slice(tour.index, tour.index + 1));
   }
 
   const onRail = items.filter((it) => it.target);
@@ -9655,6 +9669,7 @@ function placeTour() {
       const d = Math.hypot(e[0] - a[0], e[1] - a[1]);
       if (!best || d < best.d - 12) best = { e, d };
     }
+    if (!best) it.tangled = true;
     let end = best ? best.e : candidates[0];
     /*
      * On a phone the drawer is the lower half of the screen and the column of
@@ -9684,6 +9699,7 @@ function placeTour() {
       arrows += `<line x1="${n(start[0])}" y1="${n(start[1])}" x2="${n(end[0])}" y2="${n(end[1])}" `
         + 'stroke="#fff" stroke-width="2.2" stroke-linecap="round" marker-end="url(#tour-head)"/>';
     }
+    it.seg = len > 10 ? [start, end] : null;
     tour.placed.push({
       name: it.name,
       target: it.target || it.panel,
@@ -9692,6 +9708,32 @@ function placeTour() {
       card: { left: c.left, right: c.right, top: c.top, bottom: c.bottom },
     });
   }
+  /*
+   * ONE AT A TIME WHEN THE ARROWS WOULD TANGLE. The point tools sit two to a
+   * row in a block much shorter than their five cards, so on a phone the
+   * arrows fan in across each other and the numbers are all that says which
+   * is which. Then the tour steps instead -- one card, one arrow, "Next".
+   */
+  if (!tour.stepping && items.length > 1) {
+    const cross = (p1, p2, p3, p4) => {
+      const d = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+      return d(p1, p2, p3) * d(p1, p2, p4) < 0 && d(p3, p4, p1) * d(p3, p4, p2) < 0;
+    };
+    const segs = items.map((it) => it.seg).filter(Boolean);
+    const tangled = items.some((it) => it.tangled)
+      || segs.some((a, i) => segs.some((b, j) => j > i && cross(a[0], a[1], b[0], b[1])));
+    if (tangled) {
+      tour.stepping = true;
+      tour.index = 0;
+      placeTour();
+      return;
+    }
+  }
+  ok.textContent = tour.stepping && tour.index < tour.total - 1
+    ? `Next · ${tour.index + 1} of ${tour.total}`
+    : 'Got it';
+  ok.style.left = `${Math.max(GAP, left + width - ok.offsetWidth)}px`;
+
   $('#tour-lines').innerHTML = `
     <defs>
       <mask id="tour-mask"><rect width="100%" height="100%" fill="#fff"/>${holes}</mask>
@@ -12260,6 +12302,11 @@ window.addEventListener('resize', placeTip);
 /* A tap anywhere on the tour puts it away -- "Got it" is the obvious place,
    not the only one -- and brings on the next one the Draw step owes. */
 $('#tour').addEventListener('click', () => {
+  if (tour.stage && tour.stepping && tour.index < tour.total - 1) {
+    tour.index += 1;
+    placeTour();
+    return;
+  }
   hideTip();
   requestAnimationFrame(maybeToolTour);
 });
