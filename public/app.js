@@ -7837,6 +7837,10 @@ function setTab(name) {
   if (next === 'plan') refreshPlanTab();
   refreshTabs();
   refreshRail();
+  // Merge buttons belong to the Property line step only (owner, 2026-09-30).
+  // A frame later: setTab runs during start-up, before placeMergeButtons' own
+  // state further down this file exists.
+  requestAnimationFrame(() => placeMergeButtons());
   updatePromptHint();
 
   // Arriving at the drawing tools after a detection IS the handover, however
@@ -10463,9 +10467,17 @@ function placeMergeButtons() {
   placeQueued = true;
   requestAnimationFrame(() => {
     placeQueued = false;
+    /*
+     * ON THE PROPERTY LINE STEP ONLY (owner, 2026-09-30). Merging is a
+     * boundary decision, so the buttons show where the boundary is being
+     * decided and nowhere else; the dashed neighbour lines stay on every step,
+     * as context.
+     */
+    const onBoundaryStep = state.tab === 'address';
     for (const m of neighbourState.markers) {
       const { nb, pref, el } = m.lmPlace || {};
       if (!el) continue;
+      if (!onBoundaryStep) { el.style.display = 'none'; continue; }
       const poly = nb.ring.map((ll) => { const p = map.project(ll); return [p.x, p.y]; });
       const want = map.project(pref);
       // Whatever floats over the map right now, in the map's own pixels.

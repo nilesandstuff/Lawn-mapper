@@ -484,6 +484,9 @@ for (const page of ['admin', 'grade', 'maps', 'mywork', 'outlines', 'payouts', '
 }
 check('neighbours, merge and the road are on for everybody, not only tinker mode',
   /if \(!document\.body\.classList\.contains\('job-mode'\)\) aroundParcel\(\);/.test(js) && !/if \(state\.dev\) \w*[Aa]roundParcel/.test(js));
+check('merge buttons show on the Property line step only, the dashed lines everywhere',
+  /const onBoundaryStep = state\.tab === 'address';/.test(js)
+  && /if \(!onBoundaryStep\) \{ el\.style\.display = 'none'; continue; \}/.test(js));
 check('the detection timer says what to expect', /usually takes less than 60 seconds/.test(js)
   && /id="busy-timer"/.test(html) && /id="busy-cancel"/.test(html) && /id="busy-retry"/.test(html));
 
