@@ -2973,17 +2973,34 @@ await page.waitForTimeout(300);
   check('and the close is one undo step', closed.history === start.history + 1,
     `${start.history} -> ${closed.history}`);
 
-  const beforeDrag = await page.evaluate(() => window.__lmCentroids());
+  /*
+   * CLOSING LANDS BACK ON THE POINT TOOL (owner, 2026-09-30: "you can still
+   * move the placed points"), so a drag near a corner now moves that corner --
+   * which is the tool working. What must never happen is the WHOLE patch
+   * sliding, the old simple_select bug: every corner shifted by one offset.
+   */
+  check('closing it lands back on the point tool',
+    (await page.evaluate(() => window.__lmEditable().mode)) === 'shape');
+  const ringsBefore = await page.evaluate(() => window.__lmRings());
+  const histBefore = (await page.evaluate(() => window.__lmDraft())).history;
   const [mx, my] = [(px[0][0] + px[2][0]) / 2, (px[0][1] + px[2][1]) / 2];
   await page.mouse.move(mx, my);
   await page.mouse.down();
   await page.mouse.move(mx + 60, my + 40, { steps: 8 });
   await page.mouse.up();
   await page.waitForTimeout(400);
-  const afterPan = await page.evaluate(() => window.__lmCentroids());
-  const slid = beforeDrag.length !== afterPan.length || beforeDrag.some((c, i) =>
-    Math.hypot(afterPan[i][0] - c[0], afterPan[i][1] - c[1]) > 1e-7);
-  check('a drag that starts on the new patch pans the map and leaves the patch', !slid);
+  const ringsAfter = await page.evaluate(() => window.__lmRings());
+  const shifted = ringsBefore.flat().filter((p, i) => {
+    const q = ringsAfter.flat()[i];
+    return !q || Math.hypot(q[0] - p[0], q[1] - p[1]) > 1e-9;
+  }).length;
+  check('a drag on the new patch never slides the whole shape', shifted <= 1,
+    `${shifted} corner(s) moved`);
+  // Take back a corner the drag may have moved, so the next Undo is the close.
+  if ((await page.evaluate(() => window.__lmDraft())).history > histBefore) {
+    await page.click('#btn-undo');
+    await page.waitForTimeout(300);
+  }
 
   await page.click('#btn-undo');
   await page.waitForTimeout(300);
