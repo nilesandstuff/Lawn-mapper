@@ -519,6 +519,11 @@ body.inferred-mode .panel { box-shadow: inset 4px 0 0 #7c4dff; }
 /* Finish is the one thing to press next while it is showing. */
 .railfinish { background: #2e7d32; border-color: #1b5e20; color: #fff; }
 .railfinish:active { background: #1b5e20; }
+/* Checkmark and X side by side, the X at the screen edge with a clear gap
+   between them. Empty (both hidden) takes no room. */
+.raildraft { display: flex; justify-content: flex-end; gap: 26px; }
+.raildraft:not(:has(> :not([hidden]))) { display: none; }
+.railcancel { color: #b3261e; }
 
 /* Layers sits opposite the editing tools: what you are LOOKING at on one
  * side, what you are CHANGING on the other. */

@@ -2966,7 +2966,19 @@ await page.waitForTimeout(300);
   check('and Redo puts it back',
     (await page.evaluate(() => window.__lmDraft().corners)) === 4);
 
+  /*
+   * A TAP ON A PLACED POINT IS NOT "DONE" (owner, 2026-09-30): New shape
+   * finishes with the checkmark only, and a tap squarely on a point already
+   * placed adds nothing.
+   */
   await page.mouse.click(px[0][0], px[0][1]);
+  await page.waitForTimeout(300);
+  const stillOpen = await page.evaluate(() => window.__lmDraft());
+  check('tapping the first point neither closes the shape nor stacks a point on it',
+    stillOpen.mode === 'draw_polygon' && stillOpen.corners === 4, JSON.stringify(stillOpen));
+  check('and the checkmark and the X are both on offer',
+    await page.locator('#tool-finish').isVisible() && await page.locator('#tool-cancel').isVisible());
+  await page.click('#tool-finish');
   await page.waitForTimeout(400);
   const closed = await page.evaluate(() => window.__lmDraft());
   check('closing it finishes it: locked, not left selected and draggable',
@@ -3020,6 +3032,34 @@ await page.waitForTimeout(300);
   const redone = await page.evaluate(() => window.__lmDraft());
   check('and Redo, once every corner is back, closes it again',
     redone.mode === 'lm_locked' && redone.history === start.history + 1, JSON.stringify(redone));
+}
+
+/*
+ * THE X: cancels an open New shape, and Undo brings it back with its points.
+ */
+{
+  await goTab(page, 'draw');
+  await page.click('#btn-draw');
+  await page.waitForTimeout(200);
+  const mb = await page.locator('#map').boundingBox();
+  for (const [fx, fy] of [[0.42, 0.42], [0.52, 0.42], [0.52, 0.52]]) {
+    await page.mouse.click(Math.round(mb.x + mb.width * fx), Math.round(mb.y + mb.height * fy));
+    await page.waitForTimeout(150);
+  }
+  const shapesBefore = await page.evaluate(() => window.__lmShapeCount());
+  await page.click('#tool-cancel');
+  await page.waitForTimeout(300);
+  const gone = await page.evaluate(() => window.__lmDraft());
+  check('the X puts the open shape away', gone.mode !== 'draw_polygon', JSON.stringify(gone));
+  await page.click('#btn-undo');
+  await page.waitForTimeout(300);
+  const back = await page.evaluate(() => window.__lmDraft());
+  check('and Undo brings it back with every point', back.mode === 'draw_polygon' && back.corners === 3,
+    JSON.stringify(back));
+  await page.click('#tool-cancel');
+  await page.waitForTimeout(300);
+  check('and cancelling adds no shape to the lawn',
+    (await page.evaluate(() => window.__lmShapeCount())) <= shapesBefore);
 }
 
 /*

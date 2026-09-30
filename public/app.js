@@ -28,6 +28,7 @@ import { afterStroke, restoreAway } from './lib/stitch.js';
 import { strokeOnShapes } from './lib/brush-vector.js';
 import { extendToRoads, mergeButtonPoint, mergeRings, placeInside } from './lib/frontage.js';
 import { alignImages, luminance, movedCorners } from './lib/align.js';
+import { snapPoint } from './lib/snap.js';
 // Pasting the pieces of a big lot's detection back into one mask.
 import { stitchMasks } from './lib/tiles.js';
 import {
@@ -1062,12 +1063,13 @@ if (typeof window !== 'undefined') {
     /* Where the picture SHOULD sit: the frame, moved by NAIP's alignment
        with Mapbox when NAIP is showing (lib/align.js), else the frame. */
     alignedCorners: state.frame
-      ? (isNaip(state.provider) && state.naipAlign
+      ? (alignOf(state.provider)
         ? movedCorners(frameCorners(frameFor(state.provider, state.frame)),
-          state.naipAlign.east, state.naipAlign.north, state.naipAlign.scale)
+          alignOf(state.provider).east, alignOf(state.provider).north, alignOf(state.provider).scale)
         : frameCorners(frameFor(state.provider, state.frame)))
       : null,
     naipAlign: state.naipAlign || null,
+    googleAlign: state.googleAlign || null,
     frameImageUrl: state.frame && !providerInfo(state.provider).tiles
       ? imageryUrlFor(state.provider, frameFor(state.provider, state.frame))
       : null,
@@ -3231,6 +3233,7 @@ function stepwisePolygonMode(base) {
       return st;
     },
     clickAnywhere(st, e) {
+      if (precisePlacing()) return placePoint(this, base, st, e);
       const pos = st.currentVertexPosition;
       const last = pos > 0 ? st.polygon.coordinates[0][pos - 1] : null;
       if (last && last[0] === e.lngLat.lng && last[1] === e.lngLat.lat) return close(this);
@@ -3241,7 +3244,12 @@ function stepwisePolygonMode(base) {
       refreshHistoryButtons();
       return undefined;
     },
-    clickOnVertex() { return close(this); },
+    /* New shape and Cut out finish with the checkmark only: a tap on or near
+       a placed point is another point (placePoint), not "done". */
+    clickOnVertex(st, e) {
+      if (precisePlacing()) return placePoint(this, base, st, e);
+      return close(this);
+    },
     onKeyUp(st, e) {
       if (e.keyCode === 13) return close(this);
       if (e.keyCode === 27) {
@@ -3266,6 +3274,59 @@ function stepwisePolygonMode(base) {
 }
 
 const draftCorners = () => (drafting ? drafting.state.currentVertexPosition : 0);
+
+/*
+ * NEW SHAPE AND CUT OUT PLACE POINTS UNTIL THE CHECKMARK (owner, 2026-09-30).
+ *
+ * Tapping the first point used to close the shape, and tapping near ANY
+ * point hit Draw's vertex and closed it too -- so a careful run of points
+ * along a fence ended itself halfway. Now every tap is a point, snapped
+ * (lib/snap.js), except one squarely on a point already placed, which would
+ * only make a zero-length edge. Tracing a property line and not-lawn keep
+ * the old first-point close; nobody asked for those to change.
+ */
+const precisePlacing = () => Boolean(drafting) && !state.drawingParcel && !state.notLawnMode;
+const ON_A_POINT_PX = 4;
+
+/** The rings a point placed now may snap to, and what counts as inside. */
+function snapTargets() {
+  const proj = (ll) => { const q = map.project(ll); return [q.x, q.y]; };
+  const polys = (g) => (g?.type === 'Polygon' ? [g.coordinates]
+    : g?.type === 'MultiPolygon' ? g.coordinates : []);
+  const rings = [];
+  const areas = [];
+  const add = (poly) => {
+    const px = poly.map((r) => r.map(proj));
+    rings.push(...px);
+    areas.push({ outer: px[0], holes: px.slice(1) });
+  };
+  if (state.drawingHole) {
+    // The lawn as it is, not the outline being drawn.
+    const own = drafting?.state.polygon.id;
+    for (const f of draw.getAll().features) if (f.id !== own) polys(f.geometry).forEach(add);
+  } else if (!state.measureOutside && state.parcel?.geometry) {
+    polys(state.parcel.geometry).forEach(add);
+  }
+  return { rings, areas };
+}
+
+function placePoint(mode, base, st, e) {
+  const placed = st.polygon.coordinates[0].slice(0, st.currentVertexPosition)
+    .map((p) => map.project(p));
+  const near = (q, tol) => placed.some((v) => Math.hypot(v.x - q.x, v.y - q.y) <= tol);
+  if (near(map.project(e.lngLat), ON_A_POINT_PX)) return undefined;
+  const q = map.project(e.lngLat);
+  const { point } = snapPoint([q.x, q.y], snapTargets());
+  // Snapping two taps to the same corner must not stack two points on it
+  // (Draw would also read that as "close").
+  if (near({ x: point[0], y: point[1] }, 1)) return undefined;
+  const at = map.unproject(point);
+  st.undone = [];
+  future = [];
+  base.clickAnywhere.call(mode, st, { ...e, lngLat: { lng: at.lng, lat: at.lat } });
+  refreshHistoryButtons();
+  return undefined;
+}
 
 /** Take the last corner off the open drawing. */
 function draftUndo() {
@@ -3356,7 +3417,7 @@ function reopenDrawing(reopen) {
   state.drawingParcel = false;
   state.returnToPoints = reopen.returnToPoints;
   draw.changeMode('draw_polygon', { corners: reopen.corners });
-  setHint('Drawing again. Undo takes corners off; tap the first corner to close it.');
+  setHint('Drawing again. Undo takes points off; press the ✓ to finish.');
 }
 
 function undo() {
@@ -4663,8 +4724,13 @@ async function detect({ again = false } = {}) {
       }));
 
     const subtractive = Boolean(data.subtractive);
+    /* A picture that was moved onto Mapbox is traced where it was shown, so
+       the outline lands on the grass the person saw (Google; see alignKey). */
+    const traceFrame = rendered.provider === 'google' || (!rendered.provider && provider === 'google')
+      ? alignedFrame(rendered, state.googleAlign)
+      : rendered;
     const traced = traceDetection({
-      layers, subtractive, rendered,
+      layers, subtractive, rendered: traceFrame,
       /*
        * A source whose outline is genuinely blockier gets a bigger handle
        * budget, from the catalogue rather than from a list kept here. See the
@@ -4753,6 +4819,7 @@ async function detect({ again = false } = {}) {
     state.lastMask = {
       url: layers[0].url,
       frame: rendered,
+      traceFrame,
       layers,
       subtractive,
       invert: modelInverts(model),
@@ -5238,7 +5305,7 @@ function showOverlay() {
   map.addSource('mask-overlay', {
     type: 'image',
     url,
-    coordinates: frameCorners(state.lastMask.frame),
+    coordinates: frameCorners(state.lastMask.traceFrame || state.lastMask.frame),
   });
   map.addLayer({
     id: 'mask-overlay', type: 'raster', source: 'mask-overlay',
@@ -5731,7 +5798,9 @@ async function showImagery() {
     /* A source that never answers must not leave "Fetching…" over the map
        for good: the browser test caught USGS doing exactly that. */
     const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
-    if (res.ok && state.provider === 'naip') naipBlob = await res.clone().blob();
+    if (res.ok && (state.provider === 'naip' || state.provider === 'google')) {
+      naipBlob = await res.clone().blob();
+    }
     if (!res.ok) {
       /*
        * Say which kind of failure this is, because they need opposite actions.
@@ -5778,13 +5847,14 @@ async function showImagery() {
 
   map.addSource('imagery-alt', {
     type: 'image', url,
-    coordinates: isNaip(state.provider) && state.naipAlign
-      ? movedCorners(frameCorners(served), state.naipAlign.east, state.naipAlign.north, state.naipAlign.scale)
+    coordinates: alignOf(state.provider)
+      ? movedCorners(frameCorners(served), alignOf(state.provider).east,
+        alignOf(state.provider).north, alignOf(state.provider).scale)
       : frameCorners(served),
   });
   map.addLayer({ id: 'imagery-alt', type: 'raster', source: 'imagery-alt' }, before);
   idle(); imageryBusyRun = 0;
-  if (isNaip(state.provider)) alignNaip(served, run, naipBlob);
+  if (isAligned(state.provider)) alignNaip(served, run, naipBlob);
   setStatus(info.detect
     ? `Showing ${info.label} over the measurement frame. Detect again to use it.`
     : `Showing ${info.label}. This one is for looking at — detection uses Mapbox.`);
@@ -5805,6 +5875,35 @@ const NAIP_STEP_M = 0.25;
 const NAIP_STEP_SCALE = 0.0025;
 const isNaip = (id) => id === 'naip' || id === 'ndvi';
 
+/*
+ * AND GOOGLE, THE SAME WAY (owner, 2026-09-30: "Google and Mapbox don't line
+ * up very well, sometimes worse than others"). Same edge-for-edge comparison
+ * and the same nudges, with its own record: Google's error at a place has
+ * nothing to do with NAIP's, and NAIP's is the one saved for the detector.
+ * Google's search reaches further, because its misfit is the larger one.
+ */
+const alignKey = (id) => (isNaip(id) ? 'naipAlign' : id === 'google' ? 'googleAlign' : null);
+const isAligned = (id) => Boolean(alignKey(id));
+const alignOf = (id) => (alignKey(id) ? state[alignKey(id)] || null : null);
+const ALIGN_REACH_M = { naipAlign: 5, googleAlign: 8 };
+
+/**
+ * A frame moved onto the Mapbox photograph by an alignment: centre shifted,
+ * ground per pixel scaled. The picture is drawn on it, and a detection made
+ * from that picture is traced against it, so the outline lands where the
+ * picture showed the grass rather than where the source's own frame puts it.
+ */
+function alignedFrame(frame, a) {
+  if (!frame || !a) return frame;
+  const lat = frame.lat * Math.PI / 180;
+  return {
+    ...frame,
+    lng: frame.lng + (a.east / (6378137 * Math.cos(lat))) * 180 / Math.PI,
+    lat: frame.lat + (a.north / 6378137) * 180 / Math.PI,
+    zoom: frame.zoom - Math.log2(a.scale || 1),
+  };
+}
+
 async function greyOf(source, w, h) {
   let blob = source;
   if (typeof source === 'string') {
@@ -5823,7 +5922,7 @@ async function greyOf(source, w, h) {
 
 function applyNaipAlign(served) {
   const src = map.getSource('imagery-alt');
-  const a = state.naipAlign;
+  const a = alignOf(state.provider);
   if (src?.setCoordinates && served) {
     src.setCoordinates(a
       ? movedCorners(frameCorners(served), a.east, a.north, a.scale)
@@ -5834,16 +5933,20 @@ function applyNaipAlign(served) {
 
 async function alignNaip(served, run, naipBlob = null) {
   state.naipServed = served;
+  const key = alignKey(state.provider);
+  const provider = state.provider;
+  const name = providerInfo(provider).label || provider;
   /* A nudge somebody made stands; the machine does not overrule a person. */
-  if (state.naipAlign?.source === 'person') { applyNaipAlign(served); return; }
+  if (state[key]?.source === 'person') { applyNaipAlign(served); return; }
   /*
    * ONLY FROM THE NAIP PICTURE ALREADY DOWNLOADED. NDVI is drawn from the
    * same NAIP, so it takes whatever alignment NAIP got; fetching NAIP again
    * just to align NDVI would put a second slow USGS request in front of
    * whatever the person asks for next.
    */
+  if (!naipBlob && !state[key]) naipBlob = state.alignBlobs?.[key] || null;
   if (!naipBlob) { applyNaipAlign(served); return; }
-  state.naipBlob = naipBlob;
+  state.alignBlobs = { ...(state.alignBlobs || {}), [key]: naipBlob };
   const acrossM = metresPerPixel(served, 1);
   const downM = acrossM * ((served.height || served.size) / served.size);
   /* Small on purpose: this runs on the phone's main thread. 192 cells and a
@@ -5852,32 +5955,34 @@ async function alignNaip(served, run, naipBlob = null) {
   const cellM = Math.max(0.6, acrossM / 192);
   const w = Math.max(48, Math.round(acrossM / cellM));
   const h = Math.max(48, Math.round(downM / cellM));
-  renderNaipPanel(served, 'Lining NAIP up with the Mapbox photograph…');
+  renderNaipPanel(served, `Lining ${name} up with the Mapbox photograph…`);
   try {
     const [ref, mov] = await Promise.all([
       greyOf(imageryUrlFor('mapbox', served), w, h),
       greyOf(naipBlob, w, h),
     ]);
-    if (run !== imageryRun || !isNaip(state.provider)) return;
+    if (run !== imageryRun || state.provider !== provider) return;
     await new Promise((resolve) => setTimeout(resolve, 0));  // let the message paint first
     const r = alignImages(ref, mov, w, h, {
-      maxShift: Math.max(2, Math.round(5 / cellM)),
+      maxShift: Math.max(2, Math.round(ALIGN_REACH_M[key] / cellM)),
       scales: [0.99, 0.995, 1, 1.005, 1.01],
     });
-    state.naipAlign = {
+    state[key] = {
       east: r.dx * cellM, north: -r.dy * cellM, scale: r.scale, source: 'auto',
       fit: Math.round(r.ncc * 100) / 100, fit0: Math.round(r.ncc0 * 100) / 100,
     };
     applyNaipAlign(served);
   } catch (e) {
     if (run !== imageryRun) return;
-    renderNaipPanel(served, `Could not compare NAIP with Mapbox here (${e.message}); shown as delivered.`);
+    renderNaipPanel(served, `Could not compare ${name} with Mapbox here (${e.message}); shown as delivered.`);
   }
 }
 
 function nudgeNaip(dEast, dNorth, dScale) {
-  const a = state.naipAlign || { east: 0, north: 0, scale: 1 };
-  state.naipAlign = {
+  const key = alignKey(state.provider);
+  if (!key) return;
+  const a = state[key] || { east: 0, north: 0, scale: 1 };
+  state[key] = {
     east: a.east + dEast, north: a.north + dNorth,
     scale: Math.min(1.05, Math.max(0.95, a.scale + dScale)), source: 'person',
   };
@@ -5887,22 +5992,23 @@ function nudgeNaip(dEast, dNorth, dScale) {
 function renderNaipPanel(served, message) {
   const panel = document.getElementById('naip-align');
   if (!panel) return;
-  panel.hidden = !isNaip(state.provider);
+  panel.hidden = !isAligned(state.provider);
   if (panel.hidden) return;
   panel.textContent = '';
-  const a = state.naipAlign;
+  const a = alignOf(state.provider);
+  const who = isNaip(state.provider) ? 'NAIP' : (providerInfo(state.provider).label || 'This picture');
   const say = document.createElement('p');
   if (message) {
     say.textContent = message;
   } else if (!a || (!a.east && !a.north && a.scale === 1)) {
     say.textContent = a?.source === 'auto'
-      ? 'NAIP already lines up with Mapbox here. Nudge it if it looks off.'
-      : 'NAIP as delivered.';
+      ? `${who} already lines up with Mapbox here. Nudge it if it looks off.`
+      : `${who} as delivered.`;
   } else {
     const ew = `${Math.abs(a.east).toFixed(1)} m ${a.east >= 0 ? 'east' : 'west'}`;
     const ns = `${Math.abs(a.north).toFixed(1)} m ${a.north >= 0 ? 'north' : 'south'}`;
     const sc = a.scale !== 1 ? `, scaled ${((a.scale - 1) * 100).toFixed(1)}%` : '';
-    say.textContent = `NAIP moved ${ew}, ${ns}${sc} to line up with Mapbox`
+    say.textContent = `${who} moved ${ew}, ${ns}${sc} to line up with Mapbox`
       + (a.source === 'person' ? ' (set by you).' : ' (automatic).');
   }
   panel.append(say);
@@ -5914,16 +6020,17 @@ function renderNaipPanel(served, message) {
     b.addEventListener('click', fn);
     row.append(b);
   };
-  btn('◀', 'Move NAIP west 25 cm', () => nudgeNaip(-NAIP_STEP_M, 0, 0));
-  btn('▶', 'Move NAIP east 25 cm', () => nudgeNaip(NAIP_STEP_M, 0, 0));
-  btn('▲', 'Move NAIP north 25 cm', () => nudgeNaip(0, NAIP_STEP_M, 0));
-  btn('▼', 'Move NAIP south 25 cm', () => nudgeNaip(0, -NAIP_STEP_M, 0));
-  btn('−', 'Shrink NAIP a quarter of a percent', () => nudgeNaip(0, 0, -NAIP_STEP_SCALE));
-  btn('+', 'Grow NAIP a quarter of a percent', () => nudgeNaip(0, 0, NAIP_STEP_SCALE));
-  if (state.naipBlob) {
+  btn('◀', `Move ${who} west 25 cm`, () => nudgeNaip(-NAIP_STEP_M, 0, 0));
+  btn('▶', `Move ${who} east 25 cm`, () => nudgeNaip(NAIP_STEP_M, 0, 0));
+  btn('▲', `Move ${who} north 25 cm`, () => nudgeNaip(0, NAIP_STEP_M, 0));
+  btn('▼', `Move ${who} south 25 cm`, () => nudgeNaip(0, -NAIP_STEP_M, 0));
+  btn('−', `Shrink ${who} a quarter of a percent`, () => nudgeNaip(0, 0, -NAIP_STEP_SCALE));
+  btn('+', `Grow ${who} a quarter of a percent`, () => nudgeNaip(0, 0, NAIP_STEP_SCALE));
+  const blob = state.alignBlobs?.[alignKey(state.provider)];
+  if (blob) {
     btn('Auto', 'Line it up automatically again', () => {
-      state.naipAlign = null;
-      alignNaip(state.naipServed || served, imageryRun, state.naipBlob);
+      state[alignKey(state.provider)] = null;
+      alignNaip(state.naipServed || served, imageryRun, blob);
     });
   }
   panel.append(row);
@@ -7629,7 +7736,8 @@ function openMap(s) {
   /* NAIP's alignment belongs to the place; a reopened map starts from what
      the pipeline or the editor finds again rather than a stale nudge. */
   state.naipAlign = null;
-  state.naipBlob = null;
+  state.googleAlign = null;
+  state.alignBlobs = {};
 
   map.getSource('parcel').setData(state.parcel || empty());
   for (const f of (s.shapes || [])) {
@@ -8555,7 +8663,7 @@ function retrace(what = 'That') {
     subtractive: mask.subtractive,
     invert: mask.invert,
     fixedPolarity: Boolean(mask.fixedPolarity),
-    rendered: mask.frame,
+    rendered: mask.traceFrame || mask.frame,
     maxVertices: mask.maxVertices || MAX_TRACE_VERTICES,
     // Feet on the ground -> pixels of this particular mask.
     edgeFt: state.edgeFt,
@@ -8938,6 +9046,10 @@ function refreshRail() {
   const finish = $('#tool-finish');
   const finishing = Boolean(state.frame) && Boolean(drafting) && !state.drawingParcel
     && !state.notLawnMode && drafting.state.currentVertexPosition >= 3;
+  const cancel = $('#tool-cancel');
+  const placing = Boolean(state.frame) && precisePlacing();
+  if (cancel) cancel.hidden = !placing;
+  if (placing) anyTool = true;
   if (finish) {
     const was = !finish.hidden;
     finish.hidden = !finishing;
@@ -11886,7 +11998,8 @@ function reset() {
   state.detectedExcluding = null;
   state.detectedShapes = null;
   state.naipAlign = null;
-  state.naipBlob = null;
+  state.googleAlign = null;
+  state.alignBlobs = {};
   state.provider = 'mapbox';
   state.model = state.defaultModel;
   state.pins = [];
@@ -12079,7 +12192,9 @@ $('#btn-draw').addEventListener('click', () => {
   // No pushHistory: each corner is its own undo step while the drawing is
   // open, and closing it records one entry that can reopen it (draw.create).
   draw.changeMode('draw_polygon');
-  setHint('Click around the edge of your lawn. Click the first point again to finish.');
+  setHint(state.measureOutside || !state.parcel
+    ? 'Tap around the edge of your lawn, then press the ✓ to finish.'
+    : 'Tap around the edge of your lawn, then press the ✓. Points snap to the property line.');
   setStatus('Drawing by hand. Every shape you add counts toward the total.');
 });
 
@@ -12104,7 +12219,7 @@ $('#btn-cut').addEventListener('click', () => {
   setMode(null);
   state.drawingHole = true;
   draw.changeMode('draw_polygon');
-  setHint('Tap each corner of the shed, pool or patio. Tap the first one again to close it.');
+  setHint('Tap each corner of the shed, pool or patio, then press the ✓. Points snap to the lawn\'s edge.');
   setStatus('Cutting out. Trace right around the thing, inside one patch of lawn.');
 });
 
@@ -12254,6 +12369,28 @@ $('#tool-delpoint').addEventListener('click', () => {
 });
 
 $('#btn-edge-done').addEventListener('click', () => settleMode());
+
+/*
+ * THE CANCEL X: put the open New shape or Cut out away -- and keep it in the
+ * undo history with every point, the way a closed shape is kept (see
+ * draw.create), so a slip of the thumb is one Undo from being back.
+ */
+$('#tool-cancel').addEventListener('click', () => {
+  if (!drafting || !precisePlacing()) return;
+  const st = drafting.state;
+  const corners = st.polygon.coordinates[0].slice(0, st.currentVertexPosition).map((p) => [...p]);
+  if (corners.length) {
+    pushHistory(null, {
+      ...snapshot({ without: st.polygon.id }),
+      reopen: { corners, hole: Boolean(state.drawingHole), returnToPoints: Boolean(state.returnToPoints) },
+    });
+  }
+  draftCancel();
+  refreshHistoryButtons();
+  setStatus(corners.length
+    ? 'Cancelled. Undo brings it back with every point in place.'
+    : 'Cancelled.');
+});
 
 /* The checkmark: close the open New shape or Cut out, exactly as tapping its
    first point does (stepwisePolygonMode's close). draw.create takes it from

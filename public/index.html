@@ -969,11 +969,23 @@
         corners -- tapping the first corner again still works, and was the only
         way, which nobody guessed.
       -->
-      <button class="railbtn railfinish" id="tool-finish" hidden title="Finish this shape">
+      <!--
+        Finish and cancel for New shape / Cut out. The X is nearer the edge of
+        the screen and set apart from the checkmark, so reaching for one does
+        not land on the other (owner, 2026-09-30).
+      -->
+      <div class="raildraft">
+        <button class="railbtn railfinish" id="tool-finish" hidden title="Finish this shape">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.5l5 5 10-11"
           fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span>Finish</span>
       </button>
+        <button class="railbtn railcancel" id="tool-cancel" hidden title="Cancel this shape (Undo brings it back)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"
+            fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+          <span>Cancel</span>
+        </button>
+      </div>
 
       <button class="railbtn" id="mode-pins" aria-pressed="false" title="Detection pins" hidden>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path
