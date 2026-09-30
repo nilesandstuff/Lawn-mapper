@@ -68,6 +68,17 @@
     <div id="quota-badge" class="quota" hidden></div>
 
     <!--
+      SUPPORT (owner, 2026-09-30). A heart in the bar rather than on the map:
+      the map's corners are the tools', and a dialog that opens mid-trace from
+      a stray tap reads as exactly the ad this is asking to avoid. The word
+      shows only where there is room for it.
+    -->
+    <button class="support" id="support-btn" type="button" aria-label="Support Lawn Mapper">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-7.5-4.6-9.2-9.3C1.6 7.8 3.9 4.5 7.3 4.5c2 0 3.6 1.1 4.7 2.8 1.1-1.7 2.7-2.8 4.7-2.8 3.4 0 5.7 3.3 4.5 6.7-1.7 4.7-9.2 9.3-9.2 9.3z"/></svg>
+      <span>Support</span>
+    </button>
+
+    <!--
       One button with two jobs: the invitation when nobody is signed in, and
       the account when somebody is. Hidden entirely when the deployment has no
       account store, because a button that cannot work is worse than one less
@@ -111,6 +122,22 @@
 
     <p class="sheet-note" id="signin-note">No password. We send a link that
       signs you in and expires in 20 minutes.</p>
+  </div>
+</div>
+
+<!-- Support: what it costs, and where to chip in. Opened only by a press. -->
+<div class="sheet" id="support-sheet" role="dialog" aria-modal="true" aria-labelledby="support-title" hidden>
+  <div class="sheet-card">
+    <button class="sheet-x" id="support-close" type="button" aria-label="Close">×</button>
+    <p class="sheet-title" id="support-title">Help keep Lawn Mapper free</p>
+    <p class="sheet-why">Want to help keep it free and without ads? The map
+      services cost a little every time someone looks up an address, and the AI
+      lawn detector runs on rented computing power. Chip in any amount.</p>
+    <div class="tools">
+      <a class="primary support-go" id="support-go" href="https://buymeacoffee.com/nilesandstuff"
+         target="_blank" rel="noopener noreferrer">Buy me a coffee</a>
+      <button class="ghost" id="support-later" type="button">Maybe later</button>
+    </div>
   </div>
 </div>
 
@@ -811,6 +838,10 @@
       <div class="tabpane" id="pane-plan" role="tabpanel" aria-labelledby="tab-plan" hidden>
         <p class="sub" id="plan-lead">Your lawn is measured. These tools work on
           the finished map.</p>
+        <!-- The one place the app asks, unprompted: right after it has been
+             useful. A link to the same sheet as the heart, never a pop-up. -->
+        <p class="sub support-line">Found this useful?
+          <button class="link" type="button" data-support-open>You can help keep it free.</button></p>
 
         <!--
           MEASURED PIECES TO WALK.

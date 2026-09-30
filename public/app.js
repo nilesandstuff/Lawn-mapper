@@ -12692,6 +12692,14 @@ $('#account-btn').addEventListener('click', () => {
   }
 });
 
+/* Support (owner, 2026-09-30): only ever opened by a press. */
+$('#support-btn').addEventListener('click', () => openSheet('#support-sheet'));
+for (const b of document.querySelectorAll('[data-support-open]')) {
+  b.addEventListener('click', () => openSheet('#support-sheet'));
+}
+for (const id of ['#support-close', '#support-later', '#support-go']) {
+  $(id).addEventListener('click', () => closeSheet('#support-sheet'));
+}
 $('#signin-close').addEventListener('click', () => closeSheet('#signin'));
 $('#account-close').addEventListener('click', () => closeSheet('#account-sheet'));
 /* Two ways out, because the × is small on a phone and this one has nothing to
@@ -12700,13 +12708,14 @@ $('#account-close').addEventListener('click', () => closeSheet('#account-sheet')
 /* Tapping the darkened area behind a sheet closes it, which is what everyone
  * tries first. The test is on the target itself, so a press inside the card
  * does not count as a press outside it. */
-for (const id of ['#signin', '#account-sheet']) {
+for (const id of ['#signin', '#account-sheet', '#support-sheet']) {
   $(id).addEventListener('click', (e) => { if (e.target === $(id)) closeSheet(id); });
 }
 window.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
   closeSheet('#signin');
   closeSheet('#account-sheet');
+  closeSheet('#support-sheet');
   closeTools();
 });
 

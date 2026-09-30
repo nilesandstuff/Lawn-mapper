@@ -57,6 +57,22 @@ html, body {
   padding: 5px 12px; max-width: 46vw;
 }
 .account:hover { border-color: var(--green); }
+/* Support: a heart, and the word where the bar has room for it. */
+.support {
+  display: flex; align-items: center; gap: 6px; flex: 0 0 auto; cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 550; color: var(--ink);
+  background: #fff; border: 1px solid var(--line); border-radius: 999px;
+  padding: 5px 11px;
+}
+.support svg { width: 16px; height: 16px; fill: #d64545; }
+.support:hover { border-color: #d64545; }
+@media (max-width: 700px) {
+  .support { padding: 6px 8px; }
+  .support span { display: none; }
+}
+body.job-mode #support-btn, body.job-mode .support-line { display: none; }
+.support-go { display: block; text-align: center; text-decoration: none; border-radius: 9px; }
+.support-line .link { font: inherit; padding: 0; }
 .account span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ----------------------------------------------------- the tools menu */
