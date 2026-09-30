@@ -10924,6 +10924,10 @@ function placeMergeButtons() {
         box: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)].map(Math.round),
         verts: poly.length, spot: spot && spot.map(Math.round),
       };
+      /* Only a spot inside the map is a spot: off its edge the button is
+         for ground nobody can see, and where the map's stylesheet has not
+         loaded nothing clips it, so it lands on the panel instead. */
+      if (spot && (spot[0] < 0 || spot[1] < 0 || spot[0] > box.width || spot[1] > box.height)) spot = null;
       if (spot) {
         m.setLngLat(map.unproject(spot));
         el.style.visibility = '';
