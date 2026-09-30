@@ -270,7 +270,7 @@ jobs:
       # that fails.
       #
       # COST: nothing here runs a GPU. The server bills an L4 only while a lot
-      # is being read, plus five idle minutes after the last one.
+      # is being read, plus one idle minute after the last one.
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'

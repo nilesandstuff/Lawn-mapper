@@ -18,8 +18,8 @@ the same capture tools/train-detector.js trained on -- and polls. Both
 endpoints want `Authorization: Bearer <ALPHA_TOKEN>`; workflow 2 derives the
 token from the Modal secret and hands it to both sides.
 
-COST. A GPU (L4) only while lots are being read, plus SCALEDOWN seconds idle
-after the last one so a second lot minutes later does not pay the cold start
+COST. A GPU (L4) only while lots are being read, plus SCALEDOWN (60) seconds idle
+after the last one, so a second lot within a minute does not pay the cold start
 again. Nothing runs, and nothing is billed, when nobody is detecting.
 
     modal deploy tools/modal_serve.py        (workflow 2 does this)
@@ -38,7 +38,12 @@ import modal
 
 APP = "lawn-mapper-alpha"
 GPU = os.environ.get("MODAL_GPU", "L4")
-SCALEDOWN = int(os.environ.get("ALPHA_SCALEDOWN", "300"))
+# How long a GPU stays on after its last lot. Was 300 s; cut to 60 s on
+# 2026-09-30 (owner: "costs accruing faster than I'd hoped"). Most presses are
+# alone, so the idle tail was most of the bill -- roughly 300 of every ~360
+# GPU-seconds a lone press paid for. A press within a minute of the last one
+# still finds it warm; after that it pays a cold start (~30-60 s) instead.
+SCALEDOWN = int(os.environ.get("ALPHA_SCALEDOWN", "60"))
 MAX_CONTAINERS = int(os.environ.get("ALPHA_MAX_CONTAINERS", "3"))
 FOOTPRINTS = "/models/footprints.json"
 MODELS_VOLUME = "lawn-mapper-models"

@@ -46,7 +46,7 @@ got here. Update it whenever the in-flight run changes.*
   with no folds, by workflow 14 `release: alpha`. **Its own score is therefore
   UNMEASURED.** It is the configuration that scored 24.0% under folds, not a
   model that did, and it saw the lots it would be scored on. The pieces:
-  tools/modal_serve.py (L4, max 3 containers, 5 min idle), alpha_infer.py
+  tools/modal_serve.py (L4, max 3 containers, 60 s idle since 2026-09-30; was 5 min), alpha_infer.py
   (Python half) and serve-alpha.mjs (stage 3 + lidar veto via the scorer's own
   functions); worker/src/alpha.js; deploy step "Serve the trained model".
   Measuring the LIVE model means scoring maps finished AFTER the release.
