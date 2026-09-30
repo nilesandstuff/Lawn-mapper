@@ -4223,12 +4223,43 @@ function updatePromptHint() {
  * than withheld by the Worker -- which runs whatever id it is given, so
  * withholding the name would suggest a guard that does not exist.
  */
+/*
+ * THE LAND COVER MAP, ONLY WHERE IT IS (owner, 2026-09-30: "only Virginia
+ * right now"). Its method in the AI picker and its two overlays in the layer
+ * list were offered everywhere, and outside the raster the method only ever
+ * fell back to the AI -- an option that is a detour, shown to everyone.
+ *
+ * The state comes from the geocoder's region code, or failing that from the
+ * county the parcel came from ('va-fairfax'): a dragged pin or a reopened save
+ * can have one without the other.
+ */
+const LAND_COVER_STATES = ['VA'];
+const STATE_NAMES = { VIRGINIA: 'VA' };
+
+function stateHere() {
+  const said = String(state.chosen?.state || '').trim().toUpperCase();
+  if (/^[A-Z]{2}$/.test(said)) return said;
+  if (STATE_NAMES[said]) return STATE_NAMES[said];
+  const key = String(state.parcel?.properties?.countyKey || '');
+  return /^[a-z]{2}-/.test(key) ? key.slice(0, 2).toUpperCase() : null;
+}
+
+const landCoverHere = () => LAND_COVER_STATES.includes(stateHere());
+const isLandCoverModel = (m) => m.id === 'landcover';
+/* Every overlay there is today is the land cover raster (landcover.js). */
+const overlaysHere = () => (landCoverHere() ? state.overlays : []);
+
 const offeredModels = () =>
-  state.models.filter((m) => !m.devOnly || state.dev);
+  state.models.filter((m) => (!m.devOnly || state.dev) && (!isLandCoverModel(m) || landCoverHere()));
 
 function buildModelPicker() {
   const select = $('#model-choice');
   const offered = offeredModels();
+  // A method this address cannot have (the land cover map outside Virginia)
+  // is not left selected with nothing in the menu to say so.
+  if (offered.length && !offered.some((m) => m.id === state.model)) {
+    state.model = offered.some((m) => m.id === state.defaultModel) ? state.defaultModel : offered[0].id;
+  }
   if (offered.length < 2) { $('#model-panel').hidden = true; return; }
 
   select.innerHTML = '';
@@ -5398,14 +5429,19 @@ function buildLayerList() {
    * them on and off against each other, and a menu that shut after every tap
    * would turn that into nine taps.
    */
-  if (!state.overlays.length) return;
+  // Overlays left on from a Virginia address come off away from it.
+  const here = overlaysHere();
+  for (const id of [...state.overlaysOn]) {
+    if (!here.some((o) => o.id === id)) toggleOverlay(id);
+  }
+  if (!here.length) return;
 
   const rule = document.createElement('div');
   rule.className = 'layerrule';
   rule.textContent = 'Compare against';
   list.append(rule);
 
-  for (const o of state.overlays) {
+  for (const o of here) {
     const b = document.createElement('button');
     b.type = 'button';
     b.setAttribute('role', 'menuitemcheckbox');
@@ -7780,11 +7816,13 @@ const TABS = ['address', 'detect', 'draw', 'saved', 'plan'];
 /**
  * Why a tab's tools are not available, or null when they are.
  *
- * ONE LOCK, AND ONLY ONE. Running the AI again replaces every shape on the
- * map, so doing it by accident from a tab you wandered into destroys hand
- * corrections that took real work. That is worth a gate.
+ * TWO LOCKS. Running the AI again replaces every shape on the map, so doing
+ * it by accident from a tab you wandered into destroys hand corrections that
+ * took real work. That is worth a gate. And the property line locks once the
+ * AI has traced (owner, 2026-09-30) -- see the end of this function.
  *
- * THE PROPERTY LINE IS NOT. It was gated too, on the reasoning that moving the
+ * HISTORY, since the second lock reverses it: the property line was once
+ * gated on hand edits, on the reasoning that moving the
  * boundary re-trims a lawn measured against the old one -- which sounded right
  * and was wrong in practice. Noticing that your lawn runs past the recorded
  * line to the road is something you notice AFTER seeing the detection, and the
@@ -7811,6 +7849,22 @@ function tabLock(tab) {
         + 'which you want. The two free settings at the bottom still work.',
       clear: true,
       redetect: true,
+    };
+  }
+  /*
+   * AND THE PROPERTY LINE, ONCE THE AI HAS TRACED (owner, 2026-09-30). This
+   * reverses the paragraph above on purpose: the line is meant to be settled
+   * BEFORE detecting -- the tip on this step says so -- and a line moved under
+   * an AI trace leaves that trace clipped to a boundary that no longer exists.
+   * Clearing the lawn keeps the line and lifts this, same as the AI step's.
+   */
+  if (tab === 'address' && state.detected) {
+    return {
+      text: 'The AI has already traced this lawn against this property line, so '
+        + 'the line is locked. To change it, clear the lawn — the line is kept — '
+        + 'then adjust it and detect again.',
+      clear: true,
+      redetect: false,
     };
   }
   return null;
@@ -10891,7 +10945,7 @@ function placeMergeButtons() {
      * decided and nowhere else; the dashed neighbour lines stay on every step,
      * as context.
      */
-    const onBoundaryStep = state.tab === 'address';
+    const onBoundaryStep = state.tab === 'address' && !tabLock('address');
     for (const m of neighbourState.markers) {
       const { nb, pref, el } = m.lmPlace || {};
       if (!el) continue;
