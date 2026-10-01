@@ -153,5 +153,8 @@ export function paint(canvas, c, { showAi = false } = {}) {
      an empty square and reads as a mask over nothing. */
   img.onload = () => { ctx.drawImage(img, 0, 0, W, H); overlay(); };
   img.onerror = () => overlay();
-  img.src = `/api/admin/candidate-image?id=${encodeURIComponent(c.id)}`;
+  /* The save time in the address: a map re-saved under the same id has a new
+     photo AND a new frame, and the photo is cached for ten minutes by id --
+     so without this the card could pair the old picture with the new frame. */
+  img.src = `/api/admin/candidate-image?id=${encodeURIComponent(c.id)}${c.at ? `&v=${encodeURIComponent(c.at)}` : ''}`;
 }
