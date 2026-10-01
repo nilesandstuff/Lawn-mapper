@@ -858,7 +858,7 @@ traces. The full per-lot table is that run's imagery-probe artifact.*
 - **County or state imagery** was found for **22 of 60 lots**; the finest per
   lot is a median **6 cm** native, **1.0 m** from Mapbox. Where detail could be
   scored (image services only) it beat Mapbox every time: Ottawa County MI
-  2024 3.74x (2 lots), Will County IL 2023 2.69x (1), Adams County 2015 2.19x
+  2024 3.74x (2 lots), Will County IL 2023 2.69x (1), gis.acimap.us 2015 2.19x
   (1). Most county sources are map services, whose detail cannot be scored
   (see the retraction note below).
 - **Season, not established.** The share of clearly green pixels against
