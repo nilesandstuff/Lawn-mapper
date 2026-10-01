@@ -232,3 +232,21 @@ ALTER TABLE lawn_jobs ADD COLUMN scored_at TEXT;
 -- long ago, so the CREATE there reaches new databases only.
 ALTER TABLE corpus ADD COLUMN admin_edited_at TEXT;
 ALTER TABLE corpus ADD COLUMN admin_edited_by TEXT;
+
+-- COUNTY PHOTOS: HOW EACH WAS LINED UP, AND OUTLINES TRACED ON IT (see the
+-- columns in schema.sql). county_imagery shipped on 2026-10-01, so the
+-- CREATE there reaches new databases only. tools/county-imagery.js runs these
+-- too, since it can run before the deploy that would.
+ALTER TABLE county_imagery ADD COLUMN reg_model TEXT;
+ALTER TABLE county_imagery ADD COLUMN reg_affine TEXT;
+ALTER TABLE county_imagery ADD COLUMN reg_inliers INTEGER;
+ALTER TABLE county_imagery ADD COLUMN reg_patches INTEGER;
+ALTER TABLE county_imagery ADD COLUMN reg_rms_m REAL;
+ALTER TABLE county_imagery ADD COLUMN reg_confident INTEGER;
+ALTER TABLE county_imagery ADD COLUMN reg_why TEXT;
+ALTER TABLE county_imagery ADD COLUMN shapes TEXT;
+ALTER TABLE county_imagery ADD COLUMN not_lawn TEXT;
+ALTER TABLE county_imagery ADD COLUMN outlines_at TEXT;
+ALTER TABLE county_imagery ADD COLUMN outlines_by TEXT;
+ALTER TABLE county_imagery ADD COLUMN mapbox_shapes TEXT;
+ALTER TABLE county_imagery ADD COLUMN mapbox_not_lawn TEXT;

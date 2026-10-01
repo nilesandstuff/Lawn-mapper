@@ -26,20 +26,32 @@
  *   - flown 2012 or later when it names a year
  * The newest usable flight wins, the finer one on a tie.
  *
- * LINED UP BEFORE IT IS BANKED. The outlines were traced on the banked Mapbox
- * photo, so a county photo is only useful to training if it sits exactly on
- * that one. lib/align.js -- the app's own alignment -- finds the shift and
- * scale against the banked photo; the county photo is then fetched again over
- * the frame moved by the inverse of that, which lands it on Mapbox's pixel
- * grid, and aligned once more to prove it (residual_m, which should be near
- * zero). A person checks the doubtful ones on /county.html, and a nudge made
- * there is applied by MODE=rebank.
+ * PUT ON MAPBOX'S GROUND BEFORE IT IS BANKED. Every outline in the corpus was
+ * traced on Mapbox, the property lines were drawn over Mapbox while it was
+ * traced, and the detector runs on Mapbox -- so Mapbox's ground is the one
+ * every photo is put on, and then a property line lands on the same kerb in
+ * every photo. lib/register.js measures where Mapbox's ground is in the
+ * county photo patch by patch, ON THE GROUND (roofs and trees lean
+ * differently in every photo and are outvoted), and fits one map to it. The
+ * county photo is fetched with a margin and resampled through that map onto
+ * the banked Mapbox photo's own pixel grid, then measured again against it
+ * (residual_m, near zero when it worked).
+ *
+ * The first version of this (owner, 2026-10-01: "consistently off, both
+ * positionally and perspective") scored one shift on every edge in the frame
+ * at 30 cm cells -- pulled toward the roofs -- and banked anything without a
+ * clear fit as delivered. A photo the measurement is not sure of is still
+ * banked as delivered, and says so (reg_confident 0); /county.html shows
+ * those first, and a nudge made there is applied by MODE=rebank.
+ *
+ * MODE=realign does the lining-up again for every banked map without looking
+ * for imagery again: the service is in the row.
  *
  * SLOW AND CAREFUL. One lot at a time, a pause between requests, retries,
  * and a row written for every lot looked at -- found or not -- so a run that
  * stops part-way resumes where it left off (FORCE=1 to look again).
  *
- *   MODE=find|rebank LIMIT=… FORCE=1 DRY_RUN=1 ONLY=<corpus id> node tools/county-imagery.js
+ *   MODE=find|realign|rebank LIMIT=… FORCE=1 DRY_RUN=1 ONLY=<corpus id> node tools/county-imagery.js
  * or workflow "8. Check the free imagery sources", "find county imagery".
  * Free: public servers, the R2 bucket and D1 the app already has.
  */
@@ -55,7 +67,7 @@ import { extraDetail } from './probe-resolution.js';
 import {
   catalogueRoot, siblingRoots, pickImagery, yearHints, nativeCm, greyGrid, greenShare,
 } from './compare-imagery.js';
-import { alignImages } from '../public/lib/align.js';
+import { registerImages, applyAffine } from '../public/lib/register.js';
 import { frameBbox3857 } from '../worker/src/imagery.js';
 import { candidateCounties, ALL_COUNTIES } from '../worker/src/counties.js';
 
@@ -73,11 +85,11 @@ const TIMEOUT_MS = 120000;
 const MAX_NATIVE_CM = 25;
 const MIN_COVER = 0.98;
 const MIN_DETAIL = 0.8;
-/* The offset search reaches 10 m: H62's medians were about 1 m, the worst
-   few metres. A fit at the edge of the reach is not a fit. */
-const REACH_M = 10;
-/* A fit below this is not trusted to move a photo (see findFor). */
-const MIN_FIT = 0.3;
+/* The offset search reaches 15 m: H62's medians were about 1 m, the worst
+   few metres, and the old search's "suggestions" up to 13. */
+const REACH_M = 15;
+/* A banked photo re-measured further than this from Mapbox did not land. */
+const MAX_RESIDUAL_M = 0.1;
 
 const R = 20037508.342789244;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -539,26 +551,77 @@ function ensureTable() {
   if (!m) throw new Error('county_imagery is not in worker/schema.sql');
   // Even on a dry run: an empty table is harmless, and the reads below join it.
   exec(m[0].replace(/--[^\n]*/g, ''), { always: true });
+  /* And the columns added since it first shipped, as migrations.sql adds
+     them: this can run before the deploy that would. One that exists fails,
+     which is the "already there" answer. */
+  const mig = readFileSync(new URL('../worker/migrations.sql', import.meta.url), 'utf8');
+  for (const alter of mig.match(/ALTER TABLE county_imagery ADD COLUMN [^;]+;/g) || []) {
+    try { exec(alter, { always: true }); } catch { /* already there */ }
+  }
 }
 
 const countyKey = (id) => `maps/county/${String(id).replace(/[^A-Za-z0-9._-]+/g, '_')}.png`;
 
 /* ----------------------------------------------------------------- align */
 
+/** Ground metres across a frame. */
+export const frameGroundM = (frame) => {
+  const box = frameBbox3857(frame);
+  return (box[2] - box[0]) * Math.cos((frame.lat * Math.PI) / 180);
+};
+
+/**
+ * Where the banked Mapbox photo's ground is in `img`, a picture of the same
+ * frame at the same size. A: Mapbox pixel -> img pixel. east/north: how far
+ * the county photo has Mapbox's centre, in metres (east positive).
+ */
 export function alignTo(base, img, frame) {
-  const across = (frameBbox3857(frame)[2] - frameBbox3857(frame)[0]) * Math.cos((frame.lat * Math.PI) / 180);
-  const cellM = Math.max(0.3, across / 320);
-  const w = Math.max(64, Math.round(across / cellM));
-  const h = Math.max(64, Math.round((w * base.height) / base.width));
-  const maxShift = Math.max(3, Math.round(REACH_M / cellM));
-  const fit = alignImages(greyGrid(base.data, base.width, base.height, w, h),
-    greyGrid(img.data, img.width, img.height, w, h), w, h,
-    { maxShift, scales: [0.98, 0.99, 0.995, 1, 1.005, 1.01, 1.02] });
-  const atEdge = Math.abs(fit.dx) >= maxShift - 0.5 || Math.abs(fit.dy) >= maxShift - 0.5;
-  return {
-    east: fit.dx * cellM, north: -fit.dy * cellM, scale: fit.scale,
-    fit: fit.ncc, fit0: fit.ncc0, moved: fit.moved, atEdge, cellM,
-  };
+  const r = registerImages(base, img, frameGroundM(frame), { reachM: REACH_M });
+  return { ...r, east: r.offsetM?.east ?? 0, north: r.offsetM?.north ?? 0 };
+}
+
+/**
+ * The picture Mapbox's pixel grid would show of `src`, which covers the frame
+ * plus `padX`/`padY` pixels each side: out(p) = src(A(p) + pad), bilinear.
+ */
+export function resampleThrough(src, A, W, H, padX, padY) {
+  const out = new Uint8Array(W * H * 4);
+  const sw = src.width, sh = src.height, d = src.data;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const [u0, v0] = applyAffine(A, [x + 0.5, y + 0.5]);
+      const u = u0 + padX - 0.5, v = v0 + padY - 0.5;
+      const x0 = Math.floor(u), y0 = Math.floor(v);
+      if (x0 < 0 || y0 < 0 || x0 + 1 >= sw || y0 + 1 >= sh) continue; // stays transparent
+      const fx = u - x0, fy = v - y0;
+      const o = (y * W + x) * 4;
+      for (let c = 0; c < 4; c++) {
+        const i = (y0 * sw + x0) * 4 + c;
+        const top = d[i] * (1 - fx) + d[i + 4] * fx;
+        const bot = d[i + sw * 4] * (1 - fx) + d[i + sw * 4 + 4] * fx;
+        out[o + c] = Math.round(top * (1 - fy) + bot * fy);
+      }
+    }
+  }
+  return { data: out, width: W, height: H };
+}
+
+/** How far outside the frame A reaches, in source pixels, each way. */
+export function padFor(A, W, H) {
+  let px = 0, py = 0;
+  for (const p of [[0, 0], [W, 0], [0, H], [W, H]]) {
+    const [u, v] = applyAffine(A, p);
+    px = Math.max(px, -u, u - W);
+    py = Math.max(py, -v, v - H);
+  }
+  return [Math.ceil(Math.max(0, px)) + 4, Math.ceil(Math.max(0, py)) + 4];
+}
+
+/** A nudge of the county photo by east/north metres, folded into A. */
+export function nudged(A, east, north, metresPerPx) {
+  const ex = east / metresPerPx, ny = -north / metresPerPx;
+  /* The photo moved by e shows at p what it showed at p - e. */
+  return [A[0], A[1], A[2] - (A[0] * ex + A[1] * ny), A[3], A[4], A[5] - (A[3] * ex + A[4] * ny)];
 }
 
 /* ------------------------------------------------------------------ find */
@@ -643,75 +706,147 @@ async function findFor(row, decoders, dir) {
       tried: tried.map((t) => `x ${t.title || t.url} (${t.why})`) };
   }
 
-  /*
-   * ONLY A CLEAR FIT MOVES THE PHOTO. A weak correlation, or one at the edge
-   * of the search, is not evidence of an offset -- the first run "moved"
-   * Massachusetts' false-colour layer 11 m on a fit of 0.14 -- so the photo is
-   * banked as delivered and flagged for an eye on /county.html.
-   */
-  const found0 = alignTo(base, best.img, frame);
-  const clear = found0.moved && !found0.atEdge && found0.fit >= MIN_FIT;
-  const a = clear ? found0 : { ...found0, east: 0, north: 0, scale: 1, held: true };
-  const banked = await bank(row, best, a, base, frame, decoders, dir);
-  exec(`INSERT INTO county_imagery (id, service, service_type, title, year, native_cm, image_key, east, north,
-          scale, fit, fit0, residual_m, detail, green, candidates, checked_at, banked_at)
-        VALUES (${[row.id, best.url, best.type, best.title, best.year, round(best.nativeCm, 1), banked.key,
-    round(a.east, 3), round(a.north, 3), a.scale, round(a.fit, 3), round(a.fit0, 3), round(banked.residual, 3),
-    round(best.detail, 2), round(best.green, 2), candidates, new Date().toISOString(), banked.at].map(lit).join(', ')})
+  const placed = await place(row, best, base, frame, decoders, dir);
+  exec(`INSERT INTO county_imagery (id, service, service_type, title, year, native_cm, detail, green,
+          candidates, checked_at)
+        VALUES (${[row.id, best.url, best.type, best.title, best.year, round(best.nativeCm, 1),
+    round(best.detail, 2), round(best.green, 2), candidates, new Date().toISOString()].map(lit).join(', ')})
         ON CONFLICT(id) DO UPDATE SET
           review = CASE WHEN county_imagery.service IS excluded.service THEN county_imagery.review ELSE NULL END,
-          review_east = 0, review_north = 0,
           service = excluded.service, service_type = excluded.service_type, title = excluded.title,
-          year = excluded.year, native_cm = excluded.native_cm, image_key = excluded.image_key,
-          east = excluded.east, north = excluded.north, scale = excluded.scale, fit = excluded.fit,
-          fit0 = excluded.fit0, residual_m = excluded.residual_m, detail = excluded.detail,
-          green = excluded.green, candidates = excluded.candidates, checked_at = excluded.checked_at,
-          banked_at = excluded.banked_at`);
+          year = excluded.year, native_cm = excluded.native_cm, detail = excluded.detail,
+          green = excluded.green, candidates = excluded.candidates, checked_at = excluded.checked_at`);
+  writePlacement(row.id, placed, { resetNudge: true });
   return {
     id: row.id, status: 'banked', title: best.title, host: new URL(best.url).host, year: best.year,
-    nativeCm: best.nativeCm, east: a.east, north: a.north, scale: a.scale, fit: a.fit, fit0: a.fit0,
-    atEdge: a.atEdge, residual: banked.residual, found: ranked.length,
-    held: Boolean(a.held), suggested: a.held ? { east: found0.east, north: found0.north } : null,
+    nativeCm: best.nativeCm, found: ranked.length, ...summaryOf(placed),
     tried: tried.map((t) => `${t.usable ? 'OK' : 'x'} ${t.title || t.url} (${t.why})`),
   };
 }
 
 const round = (v, d) => (v === null || v === undefined || !Number.isFinite(v) ? null : Math.round(v * 10 ** d) / 10 ** d);
 
-/** Fetch the chosen service over the inverse-shifted box, check, bank. */
-async function bank(row, c, a, base, frame, decoders, dir) {
+/**
+ * Measure, move, bank, measure again.
+ *
+ * `img` is the service's picture of the frame (fetched if not given); `extra`
+ * is a person's nudge in metres, applied on top of the measurement.
+ */
+export async function place(row, c, base, frame, decoders, dir, { img = null, extra = null } = {}) {
   const m = await meta(c.url);
-  const box = shiftedBbox(frameBbox3857(frame), a.east, a.north, a.scale, frame.lat);
-  const img = await fetchOver(c, m, box, base.width, base.height, decoders);
-  if (!img) return { key: null, residual: null, at: null };
-  const check = alignTo(base, img, frame);
-  const residual = Math.hypot(check.east, check.north);
-  if (DRY_RUN) return { key: null, residual, at: null };
+  const W = base.width, H = base.height;
+  const box = frameBbox3857(frame);
+  const look = img || c.img || await fetchOver(c, m, box, W, H, decoders);
+  if (!look) return { key: null, why: 'no picture over this frame' };
+  const reg = alignTo(base, look, frame);
+  const metresPerPx = frameGroundM(frame) / W;
+  /* A photo the measurement is not sure of is banked as delivered. */
+  let A = reg.confident ? reg.A : [1, 0, 0, 0, 1, 0];
+  if (extra && (extra.east || extra.north)) A = nudged(A, extra.east, extra.north, metresPerPx);
+  const moved = A.some((v, i) => Math.abs(v - [1, 0, 0, 0, 1, 0][i]) > 1e-9);
+  let out = look;
+  if (moved) {
+    const [padX, padY] = padFor(A, W, H);
+    const kx = (box[2] - box[0]) / W, ky = (box[3] - box[1]) / H;
+    const wide = [box[0] - padX * kx, box[1] - padY * ky, box[2] + padX * kx, box[3] + padY * ky];
+    const big = await fetchOver(c, m, wide, W + 2 * padX, H + 2 * padY, decoders);
+    if (!big) return { key: null, why: 'no picture over the widened frame', reg };
+    out = resampleThrough(big, A, W, H, padX, padY);
+  }
+  /* Measured again: where is Mapbox's ground in what is about to be banked? */
+  const check = alignTo(base, out, frame);
+  const residual = check.confident ? Math.hypot(check.east, check.north) : null;
+  const placed = { reg, A, moved, check, residual, nudge: extra, key: null, at: null, picture: out };
+  if (DRY_RUN) return placed;
   const { PNG } = decoders.png;
-  const png = new PNG({ width: img.width, height: img.height });
-  png.data = Buffer.from(img.data);
+  const png = new PNG({ width: out.width, height: out.height });
+  png.data = Buffer.from(out.data);
   const key = countyKey(row.id);
-  if (!r2Put(key, PNG.sync.write(png), dir)) return { key: null, residual, at: null };
-  return { key, residual, at: new Date().toISOString() };
+  if (!r2Put(key, PNG.sync.write(png), dir)) return { ...placed, why: 'could not write to the bucket' };
+  return { ...placed, key, at: new Date().toISOString() };
+}
+
+/** What the log and the artifact say about a placement. */
+function summaryOf(p) {
+  const r = p.reg || {};
+  return {
+    confident: Boolean(r.confident), why: r.why, model: r.model, inliers: r.inliers, patches: r.patches,
+    rmsM: r.rmsM, east: r.east ?? 0, north: r.north ?? 0, moved: Boolean(p.moved),
+    residual: p.residual, landed: p.residual !== null && p.residual !== undefined && p.residual <= MAX_RESIDUAL_M,
+  };
+}
+
+/* A new picture unsettles a "lines up": that was said of the old one. A
+   "don't use" stands -- it is usually about the photo itself (its year, its
+   season), which lining up does not change. */
+function writePlacement(id, p, { resetNudge = false, keepVerdict = false } = {}) {
+  const r = p.reg || {};
+  exec(`UPDATE county_imagery SET image_key = ${lit(p.key)}, banked_at = ${lit(p.at)},
+          east = ${lit(round(r.east, 3))}, north = ${lit(round(r.north, 3))},
+          scale = ${lit(p.A ? round(Math.sqrt(Math.abs(p.A[0] * p.A[4] - p.A[1] * p.A[3])), 5) : null)},
+          fit = NULL, fit0 = NULL, residual_m = ${lit(round(p.residual, 3))},
+          reg_model = ${lit(r.model || null)}, reg_affine = ${lit(p.A ? JSON.stringify(p.A.map((v) => round(v, 6))) : null)},
+          reg_inliers = ${lit(r.inliers ?? null)}, reg_patches = ${lit(r.patches ?? null)},
+          reg_rms_m = ${lit(round(r.rmsM, 3))}, reg_confident = ${r.confident ? 1 : 0},
+          reg_why = ${lit(r.why || p.why || null)}
+          ${resetNudge ? ', review_east = 0, review_north = 0' : ''}
+          ${keepVerdict ? '' : ", review = CASE WHEN review = 'ok' THEN NULL ELSE review END"}
+        WHERE id = ${lit(id)}`);
 }
 
 /* ---------------------------------------------------------------- rebank */
 
+/** A person's nudge from /county.html, on top of a fresh measurement. */
 async function rebank(row, decoders, dir) {
   const frame = JSON.parse(row.image_frame || row.frame);
   const base = r2Get(row.image_key, dir, decoders);
   if (!base) return { id: row.id, status: 'no banked photo' };
-  const a = {
-    east: Number(row.east) + Number(row.review_east), north: Number(row.north) + Number(row.review_north),
-    scale: Number(row.scale) || 1,
-  };
   const c = { url: row.service, type: row.service_type };
-  const banked = await bank(row, c, a, base, frame, decoders, dir);
-  if (!banked.key && !DRY_RUN) return { id: row.id, status: 'could not re-bank' };
-  exec(`UPDATE county_imagery SET east = ${lit(round(a.east, 3))}, north = ${lit(round(a.north, 3))},
-          review_east = 0, review_north = 0, residual_m = ${lit(round(banked.residual, 3))},
-          banked_at = ${lit(banked.at)} WHERE id = ${lit(row.id)}`);
-  return { id: row.id, status: 'rebanked', east: a.east, north: a.north, residual: banked.residual };
+  const extra = { east: Number(row.review_east) || 0, north: Number(row.review_north) || 0 };
+  /* The nudge was made against the photo as it was banked, so it goes on top
+     of the map that banked it, not a new measurement. */
+  const prior = row.reg_affine ? JSON.parse(row.reg_affine) : [1, 0, 0, 0, 1, 0];
+  const placed = await placeWith(row, c, base, frame, decoders, dir, nudged(prior, extra.east, extra.north, frameGroundM(frame) / base.width));
+  if (!placed.key && !DRY_RUN) return { id: row.id, status: `could not re-bank: ${placed.why || '?'}` };
+  writePlacement(row.id, { ...placed, reg: { ...(placed.reg || {}), confident: true, why: 'nudged by a person' } },
+    { resetNudge: true, keepVerdict: true });
+  return { id: row.id, status: 'rebanked', ...summaryOf(placed) };
+}
+
+/** Bank through a given map, no measuring first. */
+async function placeWith(row, c, base, frame, decoders, dir, A) {
+  const m = await meta(c.url);
+  const W = base.width, H = base.height;
+  const box = frameBbox3857(frame);
+  const [padX, padY] = padFor(A, W, H);
+  const kx = (box[2] - box[0]) / W, ky = (box[3] - box[1]) / H;
+  const big = await fetchOver(c, m, [box[0] - padX * kx, box[1] - padY * ky, box[2] + padX * kx, box[3] + padY * ky],
+    W + 2 * padX, H + 2 * padY, decoders);
+  if (!big) return { key: null, why: 'no picture over the widened frame' };
+  const out = resampleThrough(big, A, W, H, padX, padY);
+  const check = alignTo(base, out, frame);
+  const residual = check.confident ? Math.hypot(check.east, check.north) : null;
+  const placed = { reg: { model: 'nudged', inliers: check.inliers, patches: check.patches, rmsM: check.rmsM, east: 0, north: 0 }, A, moved: true, check, residual, key: null, at: null };
+  if (DRY_RUN) return placed;
+  const { PNG } = decoders.png;
+  const png = new PNG({ width: out.width, height: out.height });
+  png.data = Buffer.from(out.data);
+  const key = countyKey(row.id);
+  if (!r2Put(key, PNG.sync.write(png), dir)) return { ...placed, why: 'could not write to the bucket' };
+  return { ...placed, key, at: new Date().toISOString() };
+}
+
+/** Line up again every banked map, from its own service: no searching. */
+async function realign(row, decoders, dir) {
+  const frame = JSON.parse(row.image_frame || row.frame);
+  const base = r2Get(row.image_key, dir, decoders);
+  if (!base) return { id: row.id, status: 'no banked photo' };
+  const c = { url: row.service, type: row.service_type };
+  const placed = await place(row, c, base, frame, decoders, dir);
+  if (!placed.key && !DRY_RUN) return { id: row.id, status: `could not re-bank: ${placed.why || '?'}` };
+  writePlacement(row.id, placed, { resetNudge: true });
+  return { id: row.id, status: 'banked', title: row.title, host: new URL(row.service).host, year: row.year,
+    nativeCm: row.native_cm, ...summaryOf(placed) };
 }
 
 /* ------------------------------------------------------------------ main */
@@ -733,9 +868,30 @@ async function main() {
     return;
   }
 
+  if (MODE === 'realign') {
+    const rows = query(`SELECT ci.*, c.county, c.frame, c.image_frame, c.image_key AS mapbox_key
+                          FROM county_imagery ci JOIN corpus c ON c.id = ci.id
+                         WHERE ci.service IS NOT NULL AND c.status = 'approved'
+                           ${ONLY ? `AND c.id = ${lit(ONLY)}` : ''}
+                         ORDER BY c.at DESC LIMIT ${Math.max(1, LIMIT)}`);
+    console.log(`${rows.length} banked county photos to line up again${DRY_RUN ? ' -- DRY RUN, nothing written' : ''}.`);
+    const results = [];
+    for (const [n, row] of rows.entries()) {
+      let out;
+      try { out = await realign({ ...row, image_key: row.mapbox_key }, decoders, dir); } catch (e) {
+        out = { id: row.id, status: `error: ${String(e.message || e).slice(0, 80)}` };
+      }
+      results.push({ ...out, county: row.county });
+      console.log(`${n + 1}/${rows.length} ${row.county || '?'} ${row.id.slice(0, 40)}: ${say(out)}`);
+    }
+    report(results);
+    return;
+  }
+
+  /* Approved maps only: they are the training data (owner, 2026-10-01). */
   const rows = query(`SELECT c.id, c.county, c.status, c.frame, c.image_frame, c.image_key, ci.checked_at
                         FROM corpus c LEFT JOIN county_imagery ci ON ci.id = c.id
-                       WHERE c.status IN ('approved', 'new', 'rejected') AND c.image_key IS NOT NULL
+                       WHERE c.status = 'approved' AND c.image_key IS NOT NULL
                          AND c.frame IS NOT NULL ${ONLY ? `AND c.id = ${lit(ONLY)}` : ''}
                        ORDER BY c.at DESC LIMIT ${Math.max(1, LIMIT)}`);
   const todo = rows.filter((r) => FORCE || ONLY || !r.checked_at);
@@ -749,35 +905,47 @@ async function main() {
       out = { id: row.id, status: `error: ${String(e.message || e).slice(0, 80)}` };
     }
     results.push({ ...out, county: row.county, corpusStatus: row.status });
-    const say = out.status === 'banked'
-      ? `${out.host} "${out.title}" ${out.year ?? '?'}, ${out.nativeCm ? Math.round(out.nativeCm) : '?'} cm; `
-        + `moved ${out.east.toFixed(2)} m E ${out.north.toFixed(2)} m N x${out.scale}, fit ${out.fit.toFixed(2)} `
-        + `(was ${out.fit0.toFixed(2)})${out.atEdge ? ' AT EDGE' : ''}; residual ${out.residual?.toFixed(2) ?? '?'} m`
-      : `${out.status}${out.found !== undefined ? ` (${out.found} candidate${out.found === 1 ? '' : 's'}, ${out.tried?.length ?? 0} tried)` : ''}`;
-    console.log(`${n + 1}/${todo.length} ${row.county || '?'} ${row.id.slice(0, 40)}: ${say}`
-      + `${out.held ? ` -- FIT NOT CLEAR, banked as delivered (it suggested ${out.suggested.east.toFixed(1)} m E, ${out.suggested.north.toFixed(1)} m N)` : ''}`);
+    console.log(`${n + 1}/${todo.length} ${row.county || '?'} ${row.id.slice(0, 40)}: ${say(out)}`);
     for (const t of out.tried || []) console.log(`      ${t.slice(0, 160)}`);
   }
+  report(results);
+}
+
+function say(out) {
+  if (out.status !== 'banked') {
+    return `${out.status}${out.found !== undefined ? ` (${out.found} candidate${out.found === 1 ? '' : 's'}, ${out.tried?.length ?? 0} tried)` : ''}`;
+  }
+  const head = `${out.host} "${out.title}" ${out.year ?? '?'}, ${out.nativeCm ? Math.round(out.nativeCm) : '?'} cm; `;
+  if (!out.confident) return `${head}NOT SURE (${out.why}), banked as delivered`;
+  return `${head}Mapbox's ground ${out.east.toFixed(2)} m E ${out.north.toFixed(2)} m N in it (${out.model}, `
+    + `${out.inliers}/${out.patches} patches agree to ${out.rmsM.toFixed(2)} m); `
+    + `after banking ${out.residual === null ? 'NOT MEASURABLE' : `${out.residual.toFixed(2)} m`}${out.landed ? '' : ' -- DID NOT LAND'}`;
+}
+
+function report(results) {
   writeFileSync('county-imagery.json', JSON.stringify(results, null, 2));
 
   /* THE PART WORTH READING. */
   const banked = results.filter((r) => r.status === 'banked');
   const med = (xs) => { const v = xs.filter(Number.isFinite).sort((a, b) => a - b); return v.length ? v[Math.floor(v.length / 2)] : null; };
-  const doubtful = banked.filter((r) => r.held || r.atEdge || r.fit < MIN_FIT || (r.residual ?? 9) > 0.3);
+  const sure = banked.filter((r) => r.confident && r.landed);
+  const doubtful = banked.filter((r) => !(r.confident && r.landed));
   console.log('\n================ COUNTY IMAGERY ================');
   console.log(`Looked at ${results.length} maps: ${banked.length} with usable county or state imagery, banked;`
     + ` ${results.filter((r) => r.status === 'none usable').length} with none usable;`
     + ` ${results.filter((r) => !['banked', 'none usable'].includes(r.status)).length} could not be checked.`);
   if (banked.length) {
     console.log(`Median native ${Math.round(med(banked.map((r) => r.nativeCm)))} cm;`
-      + ` median offset from Mapbox ${med(banked.map((r) => Math.hypot(r.east, r.north))).toFixed(2)} m;`
-      + ` median residual after banking ${med(banked.map((r) => r.residual))?.toFixed(2)} m.`);
+      + ` median offset from Mapbox ${med(sure.map((r) => Math.hypot(r.east, r.north)))?.toFixed(2) ?? '?'} m;`
+      + ` median left after banking ${med(sure.map((r) => r.residual))?.toFixed(2) ?? '?'} m.`);
+    console.log(`Put on Mapbox's ground and measured there: ${sure.length} of ${banked.length}`
+      + ` (to within ${MAX_RESIDUAL_M} m).`);
     const hosts = {};
     for (const r of banked) hosts[r.host] = (hosts[r.host] || 0) + 1;
     console.log(`Sources: ${Object.entries(hosts).sort((a, b) => b[1] - a[1]).map(([h, n]) => `${h} ${n}`).join(', ')}`);
   }
-  console.log(`To check by eye on /county.html: ${doubtful.length} doubtful (no clear fit, so banked as`
-    + ' delivered; or a residual over 0.3 m) -- and every other one is worth a look too.');
+  console.log(`To check by eye on /county.html: ${doubtful.length} not sure (nothing on the ground to measure,`
+    + ' so banked as delivered; or it did not land) -- they are shown first.');
   console.log('Per-map results: the county-imagery artifact.');
 }
 

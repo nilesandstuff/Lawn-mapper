@@ -432,11 +432,17 @@ const NOT_LAWN = /^(1|true|yes|on)$/i.test(String(process.env.NOT_LAWN || ''));
 /*
  * WHICH PHOTOGRAPH (owner, 2026-10-01). 'mapbox', the default, is the banked
  * Mapbox photo every run so far has used. 'county' swaps in the county or
- * state orthophoto tools/county-imagery.js banked for a map, where there is
- * one a person has not marked "don't use" on /county.html, and keeps Mapbox
- * for the rest. The county photo is banked over the same image_frame at the
- * same pixel size, already shifted onto the Mapbox photo, so the frame and
- * every outline are untouched: only the pixels change.
+ * state orthophoto tools/county-imagery.js banked for a map -- where a person
+ * has looked at it on /county.html and either said it lines up or traced
+ * outlines on it, and not said "don't use" -- and keeps Mapbox for the rest.
+ *
+ * WITH THE OUTLINES TRACED ON IT when there are some. The county photo is put
+ * on Mapbox's ground over the same image_frame at the same pixel size, so the
+ * Mapbox outlines land where they were traced -- but roofs and trees lean
+ * differently in every photo and things change between flights, which is why
+ * the owner traces them again there ("I will need to actually edit the
+ * traces"). Those are the truth for that photo, in training and in scoring.
+ * A map the owner only said lines up keeps its Mapbox outlines.
  */
 export const PHOTOS = process.env.PHOTOS === 'county' ? 'county' : 'mapbox';
 
@@ -1721,9 +1727,14 @@ async function main() {
   let countyKeys = new Map();
   if (PHOTOS === 'county') {
     try {
-      countyKeys = new Map(query(`SELECT id, image_key FROM county_imagery
-                                   WHERE image_key IS NOT NULL AND (review IS NULL OR review != 'off')`)
-        .map((r) => [r.id, r.image_key]));
+      const county = query(`SELECT id, image_key, shapes, not_lawn FROM county_imagery
+                             WHERE image_key IS NOT NULL AND (review IS NULL OR review != 'off')
+                               AND (review = 'ok' OR shapes IS NOT NULL)`);
+      countyKeys = new Map(county.map((r) => [r.id, r.image_key]));
+      const traced = new Map(county.filter((r) => r.shapes).map((r) => [r.id, r]));
+      rows = rows.map((r) => (traced.has(r.id)
+        ? { ...r, shapes: traced.get(r.id).shapes, not_lawn: traced.get(r.id).not_lawn, countyTraced: true }
+        : r));
     } catch (err) {
       console.log('Could not read county_imagery, so this run was asked for county photos and cannot have them.');
       console.log(err.message);
@@ -1731,7 +1742,8 @@ async function main() {
       return;
     }
     const used = rows.filter((r) => countyKeys.has(r.id)).length;
-    console.log(`PHOTOS: county -- the county photo for ${used} of ${rows.length} maps, Mapbox for the rest.\n`);
+    console.log(`PHOTOS: county -- the county photo for ${used} of ${rows.length} maps`
+      + ` (${rows.filter((r) => r.countyTraced).length} with outlines traced on it), Mapbox for the rest.\n`);
   }
 
   /*

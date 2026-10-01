@@ -4,6 +4,7 @@
  */
 import {
   agolKeep, rankCandidates, chooseBest, coverage, blockiness, resizeRGBA, shiftedBbox,
+  resampleThrough, padFor, nudged,
 } from './county-imagery.js';
 
 let failures = 0;
@@ -89,6 +90,30 @@ check('and one that must be enlarged 1.25x is asked for a box 1/1.25 the size ab
   Math.abs(scaled[2] - scaled[0] - 80) < 1e-9 && Math.abs((scaled[0] + scaled[2]) / 2 - 50) < 1e-9, JSON.stringify(scaled));
 const north = shiftedBbox(box, 0, 1, 1, 60);
 check('at 60 degrees a ground metre is two Mercator metres', Math.abs(north[1] + 2) < 1e-9, JSON.stringify(north));
+
+/* Banking through a measured map: the county picture is fetched with a margin
+   and read through A onto Mapbox's grid. */
+{
+  const W = 8, H = 6, padX = 2, padY = 3;
+  const src = { width: W + 2 * padX, height: H + 2 * padY, data: new Uint8Array((W + 2 * padX) * (H + 2 * padY) * 4) };
+  for (let y = 0; y < src.height; y++) for (let x = 0; x < src.width; x++) {
+    const i = (y * src.width + x) * 4; src.data[i] = x * 10; src.data[i + 1] = y * 10; src.data[i + 3] = 255;
+  }
+  const same = resampleThrough(src, [1, 0, 0, 0, 1, 0], W, H, padX, padY);
+  check('through no map, the frame is the middle of the widened picture',
+    same.data[0] === padX * 10 && same.data[1] === padY * 10 && same.data[((H - 1) * W + W - 1) * 4] === (W - 1 + padX) * 10);
+  const moved = resampleThrough(src, [1, 0, 1, 0, 1, -2], W, H, padX, padY);
+  check('through a shift, each pixel reads the ground the map says',
+    moved.data[0] === (padX + 1) * 10 && moved.data[1] === (padY - 2) * 10);
+  const half = resampleThrough(src, [1, 0, 0.5, 0, 1, 0], W, H, padX, padY);
+  check('between pixels it blends', half.data[0] === padX * 10 + 5);
+}
+check('the margin covers where the map reaches, and a little more',
+  JSON.stringify(padFor([1, 0, 0, 0, 1, 0], 100, 80)) === '[4,4]'
+  && JSON.stringify(padFor([1, 0, -10, 0, 1, 6], 100, 80)) === '[14,10]');
+check('a person nudging the photo 1 m east moves where Mapbox reads it 10 px west (10 cm pixels)',
+  JSON.stringify(nudged([1, 0, 5, 0, 1, 5], 1, 0, 0.1)) === JSON.stringify([1, 0, -5, 0, 1, 5])
+  && JSON.stringify(nudged([1, 0, 5, 0, 1, 5], 0, 1, 0.1)) === JSON.stringify([1, 0, 5, 0, 1, 15]));
 
 if (failures) { console.log(`\n${failures} check(s) FAILED.`); process.exit(1); }
 console.log('\nAll checks passed.');

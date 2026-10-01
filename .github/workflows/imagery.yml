@@ -42,10 +42,11 @@ on:
         required: false
         default: '60'
       county_mode:
-        description: 'county: find (look and bank) or rebank (apply /county.html nudges)'
+        description: 'county: find (look and bank), realign (line up the banked ones again, no searching) or rebank (apply /county.html nudges)'
         type: choice
         options:
           - find
+          - realign
           - rebank
         default: find
       county_limit:

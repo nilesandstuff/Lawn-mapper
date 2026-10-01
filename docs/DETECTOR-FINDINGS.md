@@ -841,6 +841,58 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H63. Lining photos up: on five county-imagery lots the ground differs from Mapbox by a plain shift of 0.15-0.8 m, measured to about 0.15 m; roofs and trees lean differently in each photo by up to metres; the old whole-frame alignment was pulled toward the roofs; parcel lines cannot be checked against any photo per lot, 2026-10-01
+
+*Local bench, not CI and not the corpus: five lots chosen because the
+earlier county runs found imagery there (Milwaukee WI -87.95621,42.86220;
+Monmouth NJ -74.07922,40.37016; Northampton PA -75.52344,40.60945; Ottawa MI
+-85.86,42.87, no parcel; Plymouth MA -70.62126,41.93372). Each: the Mapbox
+frame from the site's own /api/imagery, the county photo the tool picked over
+the same frame, NAIP over the same frame. Measured with public/lib/register.js
+(patch-by-patch offsets, 9 m patches every 5 m, 20 cm cells; the mode of the
+offsets, then a shift, shift+scale or affine kept only if it predicts
+held-out patches better). No training, nothing scored. Five lots is an
+anecdote about the method, not a measurement of the corpus.*
+
+- **Synthetic, known answers** (tools/register.test.js, and the same on a real
+  Mapbox photo warped by hand): a shift found to 0.02 m; 6 m + 1.2% scale +
+  0.5 degrees to 0.01-0.07 m; a 2.5 m "lean" over a third of the frame left
+  out, the rest found to 0.05 m.
+- **County photo against Mapbox, all five: a SHIFT.** No lot needed scale or
+  shear -- the richer models never predicted held-out patches better. The
+  shifts (Mapbox's ground in the county photo): Milwaukee 0.40 m E 0.11 m N,
+  NJ 0.48 E 0.24 N, PA 0.55 E -0.64 N, Ottawa 0.14 E -0.02 N, MA -0.28 E
+  -0.73 N. Agreeing patches scatter 0.13-0.17 m about the fit, and the answer
+  moved by 0.02 m or less as the tolerance went 0.25 -> 0.4 m.
+- **Consistent around a triangle:** county->NAIP plus NAIP->Mapbox against
+  county->Mapbox closes to 0.12 m (NJ) and 0.23 m (PA), the lots where all
+  three were measurable.
+- **Lean is real and large.** On Milwaukee the ground patches (road, kerbs)
+  read about -0.35 m E, the house patches -0.8 to -1.3 m E; in NJ the walkway
+  curve lines up where the roof is displaced by a metre or more. The old
+  whole-frame alignment (lib/align.js on 30 cm cells, every edge) reported
+  -0.95 m E on Milwaukee with an "affine" 2% squash -- the roofs, not the
+  ground. With 14 m patches and a loose tolerance the new one still merged
+  roofs and said -0.49 m; the mode with a 15 cm kernel said -0.41 m.
+- **Banked and measured again:** fetched with a margin and resampled onto
+  Mapbox's pixel grid, every one of the five measured 0.005-0.034 m from
+  Mapbox afterwards.
+- **Canopy defeats it, and it says so:** MA (leaf-on Mapbox, leaf-off
+  county, mostly trees) was "not sure" in one direction (9 of 31 patches
+  agreeing, covering 0.28 of the frame).
+- **Parcel lines against photos: inconclusive.** Scoring how well each
+  parcel line sits on line features (fences, kerbs) at offsets up to 3 m
+  gave best offsets of 1-3 m that disagreed between photos and peaks barely
+  above background. Nothing here says which photo, if any, the county's
+  property lines are drawn true to.
+
+**What it decided (not measured):** every photo is put on MAPBOX's ground,
+because every outline in the corpus was traced there with the property line
+drawn over it, and the detector runs there; then a property line lands on the
+same ground in every photo. Which photo is "true" to the property records is
+not known (last bullet), and lining photos up cannot fix a parcel that is
+itself off.
+
 ### H62. Imagery: county or state orthophotos cover 22 of 60 lots at a median 6 cm native, sharper than Mapbox wherever sharpness could be measured; NAIP is about a third as detailed; USGS has nothing finer than NAIP; Google was 13 of 102 maps, 2026-10-01
 
 *Workflow 8 "compare on our lawns" (tools/compare-imagery.js), run

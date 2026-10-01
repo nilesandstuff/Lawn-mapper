@@ -841,5 +841,30 @@ CREATE TABLE IF NOT EXISTS county_imagery (
   review_east   REAL NOT NULL DEFAULT 0,
   review_north  REAL NOT NULL DEFAULT 0,
   reviewed_at   TEXT,
-  reviewed_by   TEXT
+  reviewed_by   TEXT,
+  -- HOW THE PHOTO WAS PUT ON MAPBOX'S GROUND (lib/register.js, 2026-10-01):
+  -- the model ('shift', 'shift+scale', 'affine'), the map that banked it as
+  -- JSON [a,b,c,d,e,f] taking a Mapbox pixel to the service's picture of the
+  -- frame, how many patches agreed out of how many, their spread in metres,
+  -- whether the measurement was sure of itself and, if not, why. residual_m
+  -- above is the same measurement made again on the banked file.
+  reg_model     TEXT,
+  reg_affine    TEXT,
+  reg_inliers   INTEGER,
+  reg_patches   INTEGER,
+  reg_rms_m     REAL,
+  reg_confident INTEGER,
+  reg_why       TEXT,
+  -- OUTLINES TRACED ON THE COUNTY PHOTO (owner, 2026-10-01: "I will need to
+  -- actually edit the traces"). The same shapes as corpus.shapes and
+  -- corpus.not_lawn, drawn on this photo; NULL until somebody edits. corpus
+  -- keeps its own, traced on Mapbox, untouched -- and mapbox_shapes /
+  -- mapbox_not_lawn are a copy of those taken at the first county edit, so
+  -- they survive even if the corpus row is finished again later.
+  shapes          TEXT,
+  not_lawn        TEXT,
+  outlines_at     TEXT,
+  outlines_by     TEXT,
+  mapbox_shapes   TEXT,
+  mapbox_not_lawn TEXT
 );

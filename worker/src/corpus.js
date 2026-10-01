@@ -39,7 +39,7 @@ const text = (v, max) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 
  * The same ceiling the feedback store uses, and for the same reason: one lawn
  * is a few KB of coordinates, so anything approaching this is not a lawn.
  */
-const MAX_BYTES = 96 * 1024;
+export const MAX_BYTES = 96 * 1024;
 
 /** Off unless a database is bound. A missing binding is not an error here. */
 export const corpusEnabled = (env) => Boolean(env?.DB);
@@ -226,12 +226,12 @@ function cleanGeometry(g, maxRings = 60, maxPoints = 6000) {
  * change -- for no gain, because the detector has no opinion about what it
  * could not see. It draws what is in the picture. That is the whole of it.
  */
-const cleanGeometries = (list) => (Array.isArray(list) ? list : [])
+export const cleanGeometries = (list) => (Array.isArray(list) ? list : [])
   .slice(0, 40)
   .map((f) => cleanGeometry(f?.geometry || f))
   .filter(Boolean);
 
-const cleanShapes = (list) => (Array.isArray(list) ? list : [])
+export const cleanShapes = (list) => (Array.isArray(list) ? list : [])
   .slice(0, 40)
   .map((f) => {
     const geometry = cleanGeometry(f?.geometry || f);

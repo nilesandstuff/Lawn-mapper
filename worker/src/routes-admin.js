@@ -29,7 +29,7 @@ import { logEntries, loggingEnabled } from './testlog.js';
 import { feedbackEntries, feedbackEnabled } from './feedback.js';
 import { corpusGaps, candidateScore } from './corpus.js';
 import { parcelGaps } from './gaps.js';
-import { cleanCountyReview } from './county.js';
+import { cleanCountyReview, cleanCountyOutlines } from './county.js';
 import {
   outlineKeys, idOfOutlineKey, applyReview, OUTLINE_PREFIX,
   EXAMPLE_PREFIX, isExampleId, exampleKey, exampleImageKey, keptByClass, reviewExample,
@@ -1466,12 +1466,16 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
    * rasterises them against -- and a verdict. See public/county.html.
    */
   if (path === 'county-list') {
+    /* Approved maps only: only those are training data, and a candidate's
+       outline may still change (owner, 2026-10-01: "you sent some maps that
+       weren't yet approved"). */
     try {
       const rows = await env.DB.prepare(
         `SELECT ci.id, ci.title, ci.year, ci.native_cm, ci.review, ci.fit, ci.fit0, ci.residual_m,
-                ci.east, ci.north, ci.scale, ci.review_east, ci.review_north, c.county, c.status
+                ci.east, ci.north, ci.scale, ci.review_east, ci.review_north, c.county, c.status,
+                ci.reg_confident, ci.reg_why, ci.outlines_at
            FROM county_imagery ci JOIN corpus c ON c.id = ci.id
-          WHERE ci.image_key IS NOT NULL
+          WHERE ci.image_key IS NOT NULL AND c.status = 'approved'
           ORDER BY c.at DESC`
       ).all();
       const looked = await env.DB.prepare('SELECT COUNT(*) n FROM county_imagery').first();
@@ -1483,8 +1487,15 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
 
   if (path === 'county' && request.method === 'GET') {
     const id = url.searchParams.get('id') || '';
+    /* Named, not ci.*: county_imagery has shapes and not_lawn of its own now,
+       and two columns of one name in a row is whichever came last. */
     const row = await env.DB.prepare(
-      `SELECT ci.*, c.county, c.status, c.frame, c.image_frame, c.shapes, c.parcel
+      `SELECT ci.id, ci.service, ci.title, ci.year, ci.native_cm, ci.east, ci.north, ci.scale,
+              ci.fit, ci.fit0, ci.residual_m, ci.review, ci.review_east, ci.review_north,
+              ci.banked_at, ci.candidates, ci.reg_model, ci.reg_inliers, ci.reg_patches, ci.reg_rms_m,
+              ci.reg_confident, ci.reg_why, ci.outlines_at, ci.outlines_by,
+              ci.shapes AS county_shapes, ci.not_lawn AS county_not_lawn,
+              c.county, c.status, c.frame, c.image_frame, c.shapes, c.not_lawn, c.parcel
          FROM county_imagery ci JOIN corpus c ON c.id = ci.id WHERE ci.id = ?1`
     ).bind(id).first();
     if (!row) return json({ error: 'No such map' }, 404, origin);
@@ -1493,6 +1504,9 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
       ...row,
       frame: parse(row.image_frame) || parse(row.frame),
       shapes: parse(row.shapes) || [],
+      not_lawn: parse(row.not_lawn) || [],
+      county_shapes: row.county_shapes ? parse(row.county_shapes) || [] : null,
+      county_not_lawn: row.county_not_lawn ? parse(row.county_not_lawn) || [] : null,
       parcel: parse(row.parcel),
       candidates: parse(row.candidates) || [],
       image_frame: undefined,
@@ -1510,6 +1524,27 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
     ).bind(id, clean.review, clean.east, clean.north, new Date().toISOString(), me.email || me.id).run();
     if (!res.meta?.changes) return json({ error: 'No such map' }, 404, origin);
     return json({ ok: true, ...clean }, 200, origin);
+  }
+
+  /*
+   * Outlines traced on the county photo, from the editor. corpus is not
+   * touched: its outlines were traced on Mapbox and stay Mapbox's. The first
+   * time, a copy of those is set aside beside the county ones (COALESCE keeps
+   * the first copy), so they survive the corpus row being finished again.
+   */
+  if (path === 'county-outlines' && request.method === 'POST') {
+    const body = await request.json().catch(() => ({}));
+    const id = String(body?.id || '');
+    const clean = cleanCountyOutlines(body);
+    if (!clean) return json({ error: 'No outlines to keep' }, 400, origin);
+    const res = await env.DB.prepare(
+      `UPDATE county_imagery SET shapes = ?2, not_lawn = ?3, outlines_at = ?4, outlines_by = ?5,
+              mapbox_shapes = COALESCE(mapbox_shapes, (SELECT shapes FROM corpus WHERE id = ?1)),
+              mapbox_not_lawn = COALESCE(mapbox_not_lawn, (SELECT not_lawn FROM corpus WHERE id = ?1))
+        WHERE id = ?1 AND image_key IS NOT NULL`
+    ).bind(id, clean.shapes, clean.notLawn, new Date().toISOString(), me.email || me.id).run();
+    if (!res.meta?.changes) return json({ error: 'No such map' }, 404, origin);
+    return json({ ok: true }, 200, origin);
   }
 
   if (path === 'county-image') {

@@ -3,8 +3,8 @@
  * compare page's filters and projection (public/county.js).
  *   node tools/county.test.js
  */
-import { cleanCountyReview, MAX_NUDGE_M } from '../worker/src/county.js';
-import { FILTERS, shown, stepIn, doubtful, pathFor, polygonsOf } from '../public/county.js';
+import { cleanCountyReview, cleanCountyOutlines, MAX_NUDGE_M } from '../worker/src/county.js';
+import { FILTERS, shown, stepIn, doubtful, pathFor, polygonsOf, editHref } from '../public/county.js';
 import { lngLatToFramePx } from '../public/lib/mercator.js';
 
 let failures = 0;
@@ -40,6 +40,24 @@ const d = pathFor([ring], frame, 1280, 1280);
 const [x0, y0] = lngLatToFramePx(frame, ring[0], 1280, 1280);
 check('outlines use the training projection', d.startsWith(`M${x0.toFixed(1)},${y0.toFixed(1)}`), d.slice(0, 30));
 check('multipolygons draw every part', polygonsOf({ type: 'MultiPolygon', coordinates: [[ring], [ring]] }).length === 2);
+
+/* Measured by lib/register.js: doubtful unless it was sure AND the banked file
+   measures within 10 cm of Mapbox. */
+check('measured and landed is not doubtful', !doubtful({ reg_confident: 1, residual_m: 0.03 }));
+check('not sure is doubtful, whatever else', doubtful({ reg_confident: 0, residual_m: 0.01, fit: 0.9 }));
+check('sure but the banked file is off, or not measurable, is doubtful',
+  doubtful({ reg_confident: 1, residual_m: 0.4 }) && doubtful({ reg_confident: 1, residual_m: null }));
+check('Edit outlines opens the editor on the county photo and comes back',
+  editHref('a b:c') === '/#review=a%20b%3Ac&photo=county&back=county');
+
+/* Outlines saved from the editor on a county photo. */
+const sq = { type: 'Polygon', coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]] };
+const kept = cleanCountyOutlines({ shapes: [{ geometry: sq, properties: { inferred: true, junk: 1 } }], notLawn: [sq] });
+check('outlines are cleaned as a finished map\'s are, inferred flag and all',
+  kept && JSON.parse(kept.shapes)[0].properties.inferred === true && !('junk' in JSON.parse(kept.shapes)[0].properties)
+  && JSON.parse(kept.notLawn).length === 1, JSON.stringify(kept));
+check('not-lawn alone is a set of outlines', cleanCountyOutlines({ shapes: [], notLawn: [sq] })?.shapes === '[]');
+check('nothing at all is refused', cleanCountyOutlines({ shapes: [], notLawn: [] }) === null && cleanCountyOutlines({}) === null);
 
 if (failures) { console.log(`\n${failures} check(s) FAILED.`); process.exit(1); }
 console.log('\nAll checks passed.');

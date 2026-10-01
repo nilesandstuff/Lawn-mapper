@@ -22,9 +22,23 @@ const view = {
 
 /* ------------------------------------------------------------ pure parts */
 
-/** Doubtful: the automatic fit was weak, ran to the edge of its search, or did not settle. */
-export const doubtful = (m) => (Number(m.fit) < 0.3)
-  || (Number(m.residual_m) > 0.3) || Math.hypot(Number(m.east) || 0, Number(m.north) || 0) > 9;
+/**
+ * Doubtful: lib/register.js was not sure where Mapbox's ground is in this
+ * photo (so it was banked as delivered), or the banked file, measured again,
+ * is more than 10 cm off. Rows banked before that measurement existed fall
+ * back to the old fit and residual.
+ */
+export function doubtful(m) {
+  if (m.reg_confident !== undefined && m.reg_confident !== null) {
+    const left = m.residual_m === null || m.residual_m === undefined ? NaN : Number(m.residual_m);
+    return !Number(m.reg_confident) || !(left <= 0.1);
+  }
+  return (Number(m.fit) < 0.3) || !(Number(m.residual_m) <= 0.3)
+    || Math.hypot(Number(m.east) || 0, Number(m.north) || 0) > 9;
+}
+
+/** Where the editor opens this map on its county photo, and comes back to. */
+export const editHref = (id) => `/#review=${encodeURIComponent(id)}&photo=county&back=county`;
 
 export const FILTERS = {
   todo: (m) => !m.review,
@@ -79,9 +93,17 @@ function draw() {
   };
   const parcel = view.doc.parcel?.geometry || view.doc.parcel;
   for (const rings of polygonsOf(parcel)) add('parcel', rings);
-  for (const f of view.doc.shapes || []) {
-    const g = f.geometry || f;
-    for (const rings of polygonsOf(g)) add(f.properties?.inferred ? 'inferred' : 'lawn', rings);
+  /* Outlines traced on the county photo when there are any, with the Mapbox
+     ones faint beneath them so the difference shows; otherwise Mapbox's. */
+  const edited = Array.isArray(view.doc.county_shapes);
+  const sets = edited ? [['mapbox-was', view.doc.shapes, view.doc.not_lawn], ['', view.doc.county_shapes, view.doc.county_not_lawn]]
+    : [['', view.doc.shapes, view.doc.not_lawn]];
+  for (const [extra, shapes, notLawn] of sets) {
+    for (const f of shapes || []) {
+      const g = f.geometry || f;
+      for (const rings of polygonsOf(g)) add(`${extra || (f.properties?.inferred ? 'inferred' : 'lawn')}`, rings);
+    }
+    for (const g of notLawn || []) for (const rings of polygonsOf(g.geometry || g)) add(extra || 'notlawn', rings);
   }
 }
 
@@ -204,10 +226,17 @@ function describe(d) {
   pill(d.county || 'no county');
   pill(`${d.title || 'county photo'}${d.year ? ` ${d.year}` : ''}`);
   if (d.native_cm) pill(`${Math.round(d.native_cm)} cm native`);
-  pill(`auto-aligned ${Number(d.east).toFixed(2)} m E, ${Number(d.north).toFixed(2)} m N`
-    + `${Number(d.scale) !== 1 ? `, x${d.scale}` : ''}`);
-  pill(`fit ${Number(d.fit).toFixed(2)} (was ${Number(d.fit0).toFixed(2)})`, doubtful(d) ? 'warn' : '');
-  if (d.residual_m !== null && d.residual_m !== undefined) pill(`residual ${Number(d.residual_m).toFixed(2)} m`, Number(d.residual_m) > 0.3 ? 'warn' : '');
+  if (d.reg_confident !== undefined && d.reg_confident !== null) {
+    pill(Number(d.reg_confident)
+      ? `put on Mapbox's ground: moved ${Number(d.east).toFixed(2)} m E, ${Number(d.north).toFixed(2)} m N`
+        + ` (${d.reg_inliers}/${d.reg_patches} patches agree to ${Number(d.reg_rms_m).toFixed(2)} m)`
+      : `NOT lined up automatically: ${d.reg_why || 'not sure'}`, Number(d.reg_confident) ? '' : 'warn');
+    pill(d.residual_m === null || d.residual_m === undefined ? 'banked file: not measurable'
+      : `banked file ${Number(d.residual_m).toFixed(2)} m from Mapbox`, doubtful(d) ? 'warn' : 'ok');
+  } else {
+    pill(`auto-aligned ${Number(d.east).toFixed(2)} m E, ${Number(d.north).toFixed(2)} m N (old method)`, 'warn');
+  }
+  if (Array.isArray(d.county_shapes)) pill(`outlines edited on this photo${d.outlines_by ? ` by ${d.outlines_by}` : ''}`, 'ok');
   if (d.review) pill(d.review === 'ok' ? 'lines up' : "don't use", d.review);
   if (d.status) pill(`map ${d.status}`);
 }
@@ -294,7 +323,7 @@ function labelOptions() {
     const m = view.list[i];
     const o = document.createElement('option');
     o.value = String(i);
-    o.textContent = `${m.review === 'ok' ? '✓ ' : m.review === 'off' ? '✗ ' : doubtful(m) ? '? ' : ''}${m.county || m.id.slice(0, 24)}`;
+    o.textContent = `${m.review === 'ok' ? '✓ ' : m.review === 'off' ? '✗ ' : doubtful(m) ? '? ' : ''}${m.outlines_at ? '✎ ' : ''}${m.county || m.id.slice(0, 24)}`;
     pick.append(o);
   }
   if (!idx.includes(view.at) && view.list[view.at]) {
@@ -322,6 +351,8 @@ async function start() {
     return;
   }
   view.list = data.maps || [];
+  /* Back from the editor: open the map it was editing. */
+  const back = new URLSearchParams(location.hash.slice(1)).get('map');
   if (!view.list.length) {
     if (data.looked) $('#nonewhy').textContent = `${data.looked} maps looked at so far; none had usable county imagery yet.`;
     $('#none').hidden = false;
@@ -355,6 +386,18 @@ async function start() {
   $('#helpbtn').addEventListener('click', () => { $('#help').hidden = !$('#help').hidden; });
   $('#helpclose').addEventListener('click', () => { $('#help').hidden = true; });
   $('#help').addEventListener('pointerdown', (e) => e.stopPropagation());
+  $('#edit').addEventListener('click', () => {
+    const m = view.list[view.at];
+    if (m) location.href = editHref(m.id);
+  });
+  const again = back ? view.list.findIndex((m) => m.id === back) : -1;
+  if (again >= 0) {
+    window.history.replaceState(null, '', location.pathname);
+    view.filter = 'all';
+    $('#filter').value = 'all';
+    open(again);
+    return;
+  }
   const first = shown(view.list, view.filter)[0];
   open(first ?? 0);
 }
