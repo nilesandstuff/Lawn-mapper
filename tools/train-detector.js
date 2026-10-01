@@ -428,6 +428,22 @@ export const framePixels = (lawns) => {
  * (NOT_LAWN=1), so a database the migration has not reached yet still trains.
  */
 const NOT_LAWN = /^(1|true|yes|on)$/i.test(String(process.env.NOT_LAWN || ''));
+
+/*
+ * WHICH PHOTOGRAPH (owner, 2026-10-01). 'mapbox', the default, is the banked
+ * Mapbox photo every run so far has used. 'county' swaps in the county or
+ * state orthophoto tools/county-imagery.js banked for a map, where there is
+ * one a person has not marked "don't use" on /county.html, and keeps Mapbox
+ * for the rest. The county photo is banked over the same image_frame at the
+ * same pixel size, already shifted onto the Mapbox photo, so the frame and
+ * every outline are untouched: only the pixels change.
+ */
+export const PHOTOS = process.env.PHOTOS === 'county' ? 'county' : 'mapbox';
+
+/** Which banked photo a map is trained on, under PHOTOS. */
+export function photoKeyFor(row, countyKeys) {
+  return (PHOTOS === 'county' && countyKeys?.get(row.id)) || row.image_key;
+}
 const QUERY = `
   SELECT id, county, tree_line, frame, shapes, detected_shapes, parcel,
          image_key, image_provider, image_frame, mode, model, naip_align${NOT_LAWN ? ', not_lawn' : ''}
@@ -1701,6 +1717,23 @@ async function main() {
   console.log(`${rows.length} approved map${rows.length === 1 ? '' : 's'} with a stored photograph: `
     + `${lawnSetDescription()}.\n`);
 
+  /* County photos, when this run asked for them (PHOTOS=county). */
+  let countyKeys = new Map();
+  if (PHOTOS === 'county') {
+    try {
+      countyKeys = new Map(query(`SELECT id, image_key FROM county_imagery
+                                   WHERE image_key IS NOT NULL AND (review IS NULL OR review != 'off')`)
+        .map((r) => [r.id, r.image_key]));
+    } catch (err) {
+      console.log('Could not read county_imagery, so this run was asked for county photos and cannot have them.');
+      console.log(err.message);
+      process.exitCode = 1;
+      return;
+    }
+    const used = rows.filter((r) => countyKeys.has(r.id)).length;
+    console.log(`PHOTOS: county -- the county photo for ${used} of ${rows.length} maps, Mapbox for the rest.\n`);
+  }
+
   /*
    * THE BACKBONE IS OPTIONAL, and the run says which it used.
    *
@@ -1829,7 +1862,7 @@ async function main() {
       const truthGeoms = geometries(parse(row.shapes));
       if (!frame || !truthGeoms.length) continue;
 
-      const img = fetchImage(bucket, row.image_key, dir, decoders);
+      const img = fetchImage(bucket, photoKeyFor(row, countyKeys), dir, decoders);
       if (!img.ok) {
         console.log(`  skipped ${row.id.slice(0, 28)} -- ${img.reason}`);
         missing.push(row.id.slice(0, 28));

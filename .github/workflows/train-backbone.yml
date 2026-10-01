@@ -252,6 +252,17 @@ on:
         type: choice
         default: 'off'
         options: ['off', 'on']
+      photos:
+        # WHICH PHOTOGRAPH (owner, 2026-10-01). "mapbox" is the banked Mapbox
+        # photo every run so far used. "county" uses the county or state
+        # orthophoto tools/county-imagery.js banked for a map, where there is
+        # one not marked "don't use" on /county.html, and Mapbox elsewhere --
+        # same frame, same outlines, only the pixels change. The cache key
+        # includes the frames, so the two never share features.
+        description: 'Train on the Mapbox photos (mapbox) or county photos where banked (county)'
+        type: choice
+        default: 'mapbox'
+        options: ['mapbox', 'county']
       cache:
         # REUSE WHAT DOES NOT CHANGE (owner, 2026-09-29). The canopy, lidar and
         # NAIP depend only on the frames and their code; the backbone's
@@ -381,6 +392,7 @@ jobs:
           NO_BACKBONE: 'true'
           NOT_LAWN: ${{ inputs.not_lawn == 'on' && '1' || '' }}
           LAWN_SET: ${{ inputs.lawns == 'benchmark, 10 folds' && 'benchmark' || inputs.lawns }}
+          PHOTOS: ${{ inputs.photos }}
         run: node tools/train-detector.js
 
       # That the windows land where the photograph has them, before twenty
@@ -844,6 +856,7 @@ jobs:
           LIDAR_DIR: ${{ inputs.canopy != 'off' && 'lidar' || '' }}
           # H47: the drawn row's held-out masks, for the step below.
           PRED_OUT: ${{ inputs.canopy != 'off' && 'preds-out' || '' }}
+          PHOTOS: ${{ inputs.photos }}
         run: node tools/train-detector.js
 
       # H47's fair half: the per-crown woods test again, with the detector's
