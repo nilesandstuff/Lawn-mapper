@@ -841,6 +841,48 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H62. Imagery: county or state orthophotos cover 22 of 60 lots at a median 6 cm native, sharper than Mapbox wherever sharpness could be measured; NAIP is about a third as detailed; USGS has nothing finer than NAIP; Google was 13 of 102 maps, 2026-10-01
+
+*Workflow 8 "compare on our lawns" (tools/compare-imagery.js), run
+36864827736 on commit 1411e80: the 60 newest approved lots, the same frame from
+Mapbox and from every source found, each compared with Mapbox on the same
+1280 px grid. Not a detector result: no training run, nothing scored against
+traces. The full per-lot table is that run's imagery-probe artifact.*
+
+- **USGS has no high-resolution ortho service.** Its catalogues list NAIP
+  (USGSNAIPPlus, USGSNAIPImagery) and USGSImageryOnly, a cache that stops at
+  1:9,028 -- about 1.8 m a pixel here, 2.1 m from Mapbox (median), covering
+  50 of 60 lots.
+- **NAIP** covers 60 of 60, about 23 cm native, median 0.9 m from Mapbox.
+  Detail against Mapbox **0.36x** (more than Mapbox on 6 of 60).
+- **County or state imagery** was found for **22 of 60 lots**; the finest per
+  lot is a median **6 cm** native, **1.0 m** from Mapbox. Where detail could be
+  scored (image services only) it beat Mapbox every time: Ottawa County MI
+  2024 3.74x (2 lots), Will County IL 2023 2.69x (1), Adams County 2015 2.19x
+  (1). Most county sources are map services, whose detail cannot be scored
+  (see the retraction note below).
+- **Season, not established.** The share of clearly green pixels against
+  Mapbox's was low for some (Maryland 0.02x, Will 0.03x, Virginia VBMP 2025
+  0.10x) and near Mapbox for others (Ottawa 0.82x, Cass ND 0.77x). That fits
+  "often flown leaf-off or dormant, not always" -- but the measure has not been
+  checked against a single real flight date, so it is SPECULATION, not a
+  finding.
+- **Google**: 13 of 102 corpus maps were drawn on it (89 on Mapbox). Made view
+  only the same day (owner).
+- Native figures for map services whose metadata has no `maxScale` come from
+  the tile scheme and are not real (Virginia's "1 cm"); treat those as unknown.
+
+**The first run of this (36860455959) is void for detail.** It asked servers
+for their default resampling, nearest-neighbour, and the block edges of an
+enlarged coarse picture read as fine detail: NAIP "1.73x", the 1.8 m USGS cache
+"2.75x" sharper than Mapbox. Measured on one frame: NAIP 0.022 default,
+0.007 bilinear; Ottawa 2024 0.045 either way. Its coverage, offsets and counts
+stand.
+
+**What this does not say:** that the detector would do better on county
+imagery. It was trained on Mapbox. Changing the picture under it changes the
+corpus, and that is a training question with its own runs.
+
 ### H61. Fewer not-lawn outlines (S20: 26 frames, 4 per kind) under THE PLAN: worse overall -- but they fix exactly the lots that took parking lots, and break others, 2026-09-29
 
 *Runs 36601001355 (A, `examples: off`) / 36601005719 (B, `examples: some`),
