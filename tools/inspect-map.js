@@ -83,6 +83,43 @@ function describe(row) {
   console.log(`measured  ${row.provider || '?'} imagery, ${row.model || 'no model'}, ${row.mode || '?'} mode`);
   console.log(`photo     ${row.image_provider || '(none stored)'}`);
   console.log(`corrected ${row.hand_edited ? 'yes' : 'no'}`);
+  console.log(`release   ${row.model_version || '(none recorded)'}`);
+
+  /*
+   * THE TWO FRAMES, and whether the outline lands inside the photograph
+   * (owner, 2026-09-30: review cards with outlines well off the imagery).
+   * The card projects onto image_frame when a photo is stored; if the lawn's
+   * own box falls mostly outside that rectangle, or far from its middle, the
+   * frame and the picture disagree -- and this says by how much.
+   */
+  const frame = parse(row.frame);
+  const imageFrame = parse(row.image_frame);
+  const fmt = (f) => (f ? `${Number(f.lng).toFixed(6)},${Number(f.lat).toFixed(6)} z${Number(f.zoom).toFixed(3)} `
+    + `${f.size}x${f.height || f.size}` : '(none)');
+  console.log(`frame       ${fmt(frame)}`);
+  console.log(`image frame ${fmt(imageFrame)}`);
+  const shapeGeoms = geometries(parse(row.shapes));
+  for (const [name, f] of [['frame', frame], ['image frame', imageFrame]]) {
+    if (!f || !shapeGeoms.length) continue;
+    const W = f.size;
+    const H = f.height || f.size;
+    let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
+    for (const g of shapeGeoms) {
+      const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
+      for (const poly of polys) for (const ring of poly) for (const ll of ring) {
+        const [x, y] = lngLatToFramePx(f, ll, W, H);
+        x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+      }
+    }
+    const mpp = metresPerPixel(f, W);
+    console.log(`  lawn in ${name}: x ${Math.round(x0)}..${Math.round(x1)} of ${W}, `
+      + `y ${Math.round(y0)}..${Math.round(y1)} of ${H} (${mpp.toFixed(3)} m/px)`);
+  }
+  if (frame && imageFrame) {
+    const dLng = (imageFrame.lng - frame.lng) * 111320 * Math.cos(frame.lat * Math.PI / 180);
+    const dLat = (imageFrame.lat - frame.lat) * 110540;
+    console.log(`  image centre vs frame centre: ${dLng.toFixed(1)} m east, ${dLat.toFixed(1)} m north`);
+  }
 
   /*
    * THE TWO CLAIMS THIS TOOL EXISTS FOR.
@@ -127,7 +164,8 @@ function main() {
   try {
     rows = query(`
       SELECT id, at, status, county, provider, model, mode, hand_edited,
-             image_provider, square_feet, shapes, detected_shapes
+             image_provider, square_feet, shapes, detected_shapes,
+             frame, image_frame, parcel, model_version
         FROM corpus WHERE ${where} ORDER BY at DESC LIMIT 5
     `);
   } catch (err) {
