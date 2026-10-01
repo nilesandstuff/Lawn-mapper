@@ -3462,6 +3462,38 @@ console.log('\n--- tinker: neighbours and merging ---');
       console.log(`      pressed directly: ${Math.round(before.parcelSqFt)} -> ${Math.round(direct.parcelSqFt)} sq ft; status: ${await tp.textContent('#status')}`);
     }
   }
+
+  /*
+   * A NOT-LAWN TRACE CUT SHORT IS STILL NOT LAWN (owner, 2026-10-01). Stopping
+   * mid-trace makes Draw close the outline by itself, after the mode flag is
+   * off -- and it used to land as a blue lawn shape that raised the total.
+   * Same page: tinker mode is on here and nowhere else.
+   */
+  await tp.evaluate(() => document.querySelector('#tab-draw')?.click());
+  await tp.waitForTimeout(400);
+  const sqBefore = await tp.evaluate(() => window.__lmSqft());
+  const nlBefore = await tp.evaluate(() => window.__lmNotLawn());
+  await tp.evaluate(() => document.querySelector('#btn-not-lawn')?.click());
+  await tp.waitForTimeout(300);
+  const armed = await tp.evaluate(() => window.__lmNotLawn());
+  check('tracing not-lawn draws the open outline in the not-lawn colour',
+    armed.tracing && armed.draftRed, JSON.stringify(armed));
+  const tb = await tp.locator('#map').boundingBox();
+  /* Four corners, so a dropped tap still leaves the three Draw needs to close. */
+  for (const [fx, fy] of [[0.30, 0.55], [0.45, 0.55], [0.45, 0.70], [0.30, 0.70]]) {
+    await tp.mouse.click(Math.round(tb.x + tb.width * fx), Math.round(tb.y + tb.height * fy));
+    await tp.waitForTimeout(250);
+  }
+  await tp.evaluate(() => document.querySelector('#btn-not-lawn')?.click()); // stop, trace still open
+  await tp.waitForTimeout(500);
+  const nlAfter = await tp.evaluate(() => window.__lmNotLawn());
+  const sqAfter = await tp.evaluate(() => window.__lmSqft());
+  check('a not-lawn trace stopped before closing is kept as not-lawn',
+    nlAfter.count === nlBefore.count + 1, `${nlBefore.count} -> ${nlAfter.count} not-lawn traces`);
+  check('and it does not count toward the lawn total',
+    Math.abs(sqAfter - sqBefore) < 1, `${Math.round(sqBefore)} -> ${Math.round(sqAfter)} sq ft`);
+  check('and the draft colour is put back afterwards', !nlAfter.draftRed && !nlAfter.tracing,
+    JSON.stringify(nlAfter));
   await tp.close();
 }
 

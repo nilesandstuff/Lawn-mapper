@@ -189,6 +189,9 @@ const state = {
    */
   notLawn: [],
   notLawnMode: false,
+  /* True for the moment it takes Draw to close a not-lawn trace that was cut
+     short (see leaveNotLawnMode): the flag above is already off by then. */
+  notLawnClosing: false,
   // The training candidate being corrected, when the console sent us here.
   // Null far more often than not, and the way back out is shown only while it
   // is set -- see leaveReview.
@@ -544,6 +547,18 @@ if (typeof window !== 'undefined') {
 
   /* The measured area, from the geometry rather than the formatted panel. */
   window.__lmSqft = () => (draw ? totalSquareFeet() : 0);
+  /* Not-lawn traces kept apart from the lawn, and whether the open trace is
+     being drawn in their colour (tinker mode). */
+  window.__lmNotLawn = () => ({
+    count: state.notLawn.length,
+    tracing: state.notLawnMode,
+    draftRed: (() => {
+      try {
+        return (map.getStyle().layers || []).some((l) => l.id.startsWith('gl-draw-polygon-fill-active')
+          && map.getPaintProperty(l.id, 'fill-color') === '#e53935');
+      } catch { return false; }
+    })(),
+  });
 
   /*
    * How deep the undo stack is.
@@ -1661,7 +1676,8 @@ async function initMap() {
     }
     /* A NOT-LAWN TRACE leaves Draw at once and joins its own list, so no lawn
        tool ever sees it (tinker mode; see state.notLawn). */
-    if (state.notLawnMode && e.features?.[0]) {
+    if ((state.notLawnMode || state.notLawnClosing) && e.features?.[0]) {
+      state.notLawnClosing = false;
       const traced = e.features[0];
       try { draw.delete(traced.id); } catch { /* already gone */ }
       state.notLawn.push(traced.geometry);
@@ -11690,6 +11706,37 @@ function refreshInferred() {
   map.getSource('inferred').setData({ type: 'FeatureCollection', features });
 }
 
+/*
+ * THE OPEN TRACE IN THE NOT-LAWN COLOUR. Draw paints every outline being drawn
+ * the same way, so a not-lawn trace looked exactly like a lawn patch until it
+ * closed -- and nobody could tell which one they were making. Draw's own
+ * "active" layers are recoloured red for as long as the mode is on, and put
+ * back exactly as they were after.
+ */
+const draftPaintSaved = new Map();
+function paintNotLawnDraft(on) {
+  if (!map || !map.getStyle) return;
+  let layers = [];
+  try { layers = map.getStyle().layers || []; } catch { return; }
+  for (const layer of layers) {
+    if (!layer.id.startsWith('gl-draw-') || !/-active/.test(layer.id) || /inactive/.test(layer.id)) continue;
+    const prop = layer.type === 'fill' ? 'fill-color'
+      : layer.type === 'line' ? 'line-color'
+        : layer.type === 'circle' ? 'circle-color' : null;
+    if (!prop) continue;
+    const key = `${layer.id}|${prop}`;
+    try {
+      if (on) {
+        if (!draftPaintSaved.has(key)) draftPaintSaved.set(key, map.getPaintProperty(layer.id, prop));
+        map.setPaintProperty(layer.id, prop, '#e53935');
+      } else if (draftPaintSaved.has(key)) {
+        map.setPaintProperty(layer.id, prop, draftPaintSaved.get(key));
+        draftPaintSaved.delete(key);
+      }
+    } catch { /* a layer Draw has not added yet */ }
+  }
+}
+
 /** Repaint the not-lawn traces and the button that removes them. */
 function refreshNotLawn() {
   if (map && map.getSource('not-lawn')) {
@@ -11702,9 +11749,23 @@ function refreshNotLawn() {
   if (undo) undo.disabled = !state.notLawn.length;
 }
 
-/** The flag and the button only -- no change to what Draw is doing. */
+/**
+ * The flag and the button only -- no change to what Draw is doing.
+ *
+ * BUT DRAW MAY BE ABOUT TO CLOSE A TRACE. Stopping, or picking any other tool,
+ * takes Draw out of draw_polygon, and Draw closes an open outline of three or
+ * more corners by itself on the way out -- firing draw.create AFTER this flag
+ * is off. That trace landed as an ordinary blue lawn shape and the total went
+ * up by its area (owner, 2026-10-01). notLawnClosing carries it across that
+ * one step, synchronous inside the changeMode, and is dropped right after.
+ */
 function leaveNotLawnMode() {
+  if (state.notLawnMode) {
+    state.notLawnClosing = true;
+    setTimeout(() => { state.notLawnClosing = false; }, 0);
+  }
   state.notLawnMode = false;
+  paintNotLawnDraft(false);
   const btn = $('#btn-not-lawn');
   if (btn) {
     btn.classList.remove('on');
@@ -11721,6 +11782,7 @@ function setNotLawnMode(on) {
     state.drawingParcel = false;
     setInferredMode(false);
     state.notLawnMode = true;
+    paintNotLawnDraft(true);
     const btn = $('#btn-not-lawn');
     if (btn) {
       btn.classList.add('on');
