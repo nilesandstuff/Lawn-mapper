@@ -16,6 +16,16 @@ name: 8. Check the free imagery sources
 #                            drawn on each source, for the Google question.
 #                            The answer is the end of the log; per-lot results
 #                            are the imagery-probe artifact.
+#
+#   find county imagery      (owner, 2026-10-01) the thorough pass, every
+#                            corpus map: candidates from the county's own GIS
+#                            host and ArcGIS Online, each fetched over the
+#                            map's banked frame, the newest usable one lined up
+#                            with the banked Mapbox photo and banked beside it
+#                            in R2 (maps/county/...), a county_imagery row for
+#                            every map looked at. Slow on purpose; resumes
+#                            where it stopped. county mode "rebank" applies the
+#                            nudges made on /county.html. tools/county-imagery.js
 on:
   workflow_dispatch:
     inputs:
@@ -25,17 +35,37 @@ on:
         options:
           - check one frame
           - compare on our lawns
+          - find county imagery
         default: check one frame
       how_many:
         description: 'compare: how many approved lots (newest first)'
         required: false
         default: '60'
+      county_mode:
+        description: 'county: find (look and bank) or rebank (apply /county.html nudges)'
+        type: choice
+        options:
+          - find
+          - rebank
+        default: find
+      county_limit:
+        description: 'county: how many corpus maps at most (newest first)'
+        required: false
+        default: '500'
+      county_force:
+        description: 'county: look again at maps already looked at'
+        type: boolean
+        default: false
+      county_dry_run:
+        description: 'county: fetch and report, write nothing'
+        type: boolean
+        default: false
 
 jobs:
   imagery:
     name: Probe the imagery sources
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 340
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -62,6 +92,32 @@ jobs:
           MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN }}
           HOW_MANY: ${{ inputs.how_many }}
         run: node tools/compare-imagery.js
+
+      - name: Install what the county pass needs
+        if: inputs.what == 'find county imagery'
+        run: |
+          npm ci
+          npm install pngjs jpeg-js proj4 --no-save
+
+      - name: Find, line up and bank county imagery, map by map
+        if: inputs.what == 'find county imagery'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CORPUS_BUCKET: lawn-mapper-corpus
+          MODE: ${{ inputs.county_mode }}
+          LIMIT: ${{ inputs.county_limit }}
+          FORCE: ${{ inputs.county_force }}
+          DRY_RUN: ${{ inputs.county_dry_run }}
+        run: node tools/county-imagery.js
+
+      - name: Keep the county results
+        if: always() && inputs.what == 'find county imagery'
+        uses: actions/upload-artifact@v4
+        with:
+          name: county-imagery
+          path: county-imagery.json
+          if-no-files-found: ignore
 
       - name: Keep the per-lot results
         if: always() && inputs.what == 'compare on our lawns'

@@ -802,3 +802,44 @@ CREATE TABLE IF NOT EXISTS detect_usage (
   refunded  INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS detect_usage_at ON detect_usage(at);
+
+-- ----------------------------------------------------------------------
+-- COUNTY OR STATE ORTHOPHOTOS FOR A CORPUS MAP (owner, 2026-10-01).
+--
+-- One row per corpus map that tools/county-imagery.js has looked at, found
+-- something or not (service NULL = looked, nothing usable). The chosen photo
+-- is banked to R2 at image_key over EXACTLY the map's image_frame, already
+-- shifted (east/north metres) and scaled onto the banked Mapbox photo -- so
+-- the outlines traced on Mapbox apply to it unchanged, and a training run can
+-- swap one photo for the other without touching any geometry.
+--
+-- residual_m: the offset left when the banked copy is aligned again (should
+-- be near 0). review: null (not looked at), 'ok', 'off' (do not use), set on
+-- /county.html; review_east/north is a person's further nudge, applied by the
+-- tool's rebank pass, which then folds it into east/north and zeroes it.
+-- candidates: JSON, every service tried for this map and what came of it.
+CREATE TABLE IF NOT EXISTS county_imagery (
+  id            TEXT PRIMARY KEY,
+  service       TEXT,
+  service_type  TEXT,
+  title         TEXT,
+  year          INTEGER,
+  native_cm     REAL,
+  image_key     TEXT,
+  east          REAL,
+  north         REAL,
+  scale         REAL,
+  fit           REAL,
+  fit0          REAL,
+  residual_m    REAL,
+  detail        REAL,
+  green         REAL,
+  candidates    TEXT,
+  checked_at    TEXT,
+  banked_at     TEXT,
+  review        TEXT,
+  review_east   REAL NOT NULL DEFAULT 0,
+  review_north  REAL NOT NULL DEFAULT 0,
+  reviewed_at   TEXT,
+  reviewed_by   TEXT
+);
