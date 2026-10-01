@@ -149,17 +149,23 @@ export function chooseBest(evaluated) {
 
 /** Share of the picture that is real data: opaque, not a flat white or black fill. */
 export function coverage(data, w, h) {
-  let good = 0, n = 0;
+  let clear = 0, white = 0, black = 0, n = 0;
   for (let i = 0; i < w * h; i += 5) {
     n++;
     const [r, g, b, a] = [data[i * 4], data[i * 4 + 1], data[i * 4 + 2], data[i * 4 + 3]];
-    if (a < 250) continue;
-    /* Exactly white or exactly black is a no-data fill; a bright roof is not
-       (the first run turned Milwaukee's 2026 flight away at 98% for them). */
-    if ((r === 255 && g === 255 && b === 255) || (r === 0 && g === 0 && b === 0)) continue;
-    good++;
+    if (a < 250) clear++;
+    else if (r === 255 && g === 255 && b === 255) white++;
+    else if (r === 0 && g === 0 && b === 0) black++;
   }
-  return n ? good / n : 0;
+  if (!n) return 0;
+  /*
+   * Transparent is always missing. Exactly white or black is a no-data fill
+   * only in bulk: a sunlit driveway saturates to pure white too (2% of
+   * Ingham County's 2025 frame, which was turned away for it), while a
+   * missing corner is a large block.
+   */
+  const bulk = (k) => (k / n > 0.04 ? k : 0);
+  return 1 - (clear + bulk(white) + bulk(black)) / n;
 }
 
 /**
@@ -370,15 +376,35 @@ async function fetchTiled(c, m, bbox, w, h, decoders) {
   const want = merc ? (bbox[2] - bbox[0]) / w : ((bbox[2] - bbox[0]) / w) * Math.cos(latC) / proj.toMetres;
   const lods = ti.lods.filter((l) => !(Number(m.maxScale) > 0) || l.scale >= Number(m.maxScale) - 1);
   if (!lods.length) return null;
-  let lod = lods.filter((l) => l.resolution <= want).sort((a, b) => b.resolution - a.resolution)[0];
-  if (!lod) lod = lods.slice().sort((a, b) => a.resolution - b.resolution)[0];
-  const res = lod.resolution;
-  const span = res * size;
   /* The box in the service's own coordinates: its four corners, projected. */
   const corners = [[bbox[0], bbox[1]], [bbox[2], bbox[1]], [bbox[2], bbox[3]], [bbox[0], bbox[3]]]
     .map(([x, y]) => proj.forward(x, y));
   const sx0 = Math.min(...corners.map((p) => p[0])), sx1 = Math.max(...corners.map((p) => p[0]));
   const sy0 = Math.min(...corners.map((p) => p[1])), sy1 = Math.max(...corners.map((p) => p[1]));
+  /*
+   * THE FINEST LEVEL THE CACHE ACTUALLY HOLDS. Massachusetts' 2025 and Ingham
+   * County's 2025 caches list levels down to 1.9 cm and hold tiles only to a
+   * coarser one, so the level asked for answered nothing at full size while a
+   * 128 px look (a coarse level) worked. The centre tile is tried at the level
+   * wanted and then coarser, and the first that answers is used -- which also
+   * makes that level the honest native resolution.
+   */
+  const byRes = lods.slice().sort((a, b) => a.resolution - b.resolution);
+  let at = byRes.findIndex((l) => l.resolution >= want * 0.999);
+  if (at < 0) at = byRes.length - 1;
+  else if (byRes[at].resolution > want * 1.001 && at > 0) at -= 1;
+  const midX = (sx0 + sx1) / 2, midY = (sy0 + sy1) / 2;
+  let lod = null;
+  for (let k = at; k < byRes.length && k < at + 8; k++) {
+    const l = byRes[k];
+    const sp = l.resolution * size;
+    const t = await getImage(`${c.url}/tile/${l.level}/${Math.floor((oy - midY) / sp)}/${Math.floor((midX - ox) / sp)}`, decoders);
+    await sleep(60);
+    if (t) { lod = l; break; }
+  }
+  if (!lod) return null;
+  const res = lod.resolution;
+  const span = res * size;
   const c0 = Math.floor((sx0 - ox) / span), c1 = Math.floor((sx1 - ox) / span);
   const r0 = Math.floor((oy - sy1) / span), r1 = Math.floor((oy - sy0) / span);
   if ((c1 - c0 + 1) * (r1 - r0 + 1) > 400) return null;
