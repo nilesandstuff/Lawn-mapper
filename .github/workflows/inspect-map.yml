@@ -41,3 +41,13 @@ jobs:
           ID: ${{ inputs.id }}
           STATUS: ${{ inputs.status }}
         run: node tools/inspect-map.js
+
+      # The photographs with the stored outlines drawn on, as the console card
+      # draws them -- to look at rather than argue about.
+      - name: Keep the pictures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: inspected-maps
+          path: inspect/*.png
+          if-no-files-found: ignore

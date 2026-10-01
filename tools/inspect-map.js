@@ -14,6 +14,9 @@
  */
 
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync } from 'node:fs';
+import sharp from 'sharp';
 import { resolve } from 'node:path';
 import { query } from './corpus-db.js';
 import { areaSqFt } from '../worker/src/score.js';
@@ -32,6 +35,50 @@ const geometries = (stored) => {
   const list = Array.isArray(stored) ? stored : stored?.features || [];
   return list.map((g) => (g?.geometry ? g.geometry : g)).filter(Boolean);
 };
+
+/**
+ * THE CARD, DRAWN HERE: the stored photograph with the stored outlines on it,
+ * projected exactly as the console card projects them (onto image_frame when
+ * there is a photo). Written to inspect/<n>.png for the workflow to keep, so
+ * "the outlines are off the imagery" can be looked at, not argued about.
+ */
+let pictured = 0;
+async function picture(row) {
+  if (!row.image_key) return;
+  const f = parse(row.image_frame) || parse(row.frame);
+  if (!f) return;
+  const dir = 'inspect';
+  mkdirSync(dir, { recursive: true });
+  const raw = `${dir}/raw.bin`;
+  try {
+    execFileSync('npx', ['--no-install', 'wrangler', 'r2', 'object', 'get',
+      `lawn-mapper-corpus/${row.image_key}`, '--file', raw, '--remote'],
+    { stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 });
+  } catch (e) {
+    console.log(`(no picture for ${row.id}: ${String(e.stderr || e.message).slice(0, 160)})`);
+    return;
+  }
+  const meta = await sharp(raw).metadata();
+  const W = meta.width;
+  const H = meta.height;
+  const path = (g) => {
+    const polys = g?.type === 'Polygon' ? [g.coordinates] : g?.type === 'MultiPolygon' ? g.coordinates : [];
+    return polys.map((poly) => poly.map((ring) => 'M' + ring.map((ll) => lngLatToFramePx(f, ll, W, H)
+      .map((v) => v.toFixed(1)).join(',')).join('L') + 'Z').join(' ')).join(' ');
+  };
+  const parts = [];
+  const parcel = parse(row.parcel);
+  if (parcel) parts.push(`<path d="${path(parcel.geometry || parcel)}" fill="none" stroke="#f2c744" stroke-width="4"/>`);
+  for (const g of geometries(parse(row.shapes))) {
+    parts.push(`<path d="${path(g)}" fill="rgba(78,194,106,.25)" fill-rule="evenodd" stroke="#4ec26a" stroke-width="4"/>`);
+  }
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${parts.join('')}</svg>`;
+  pictured += 1;
+  const out = `${dir}/${pictured}.png`;
+  await sharp(raw).composite([{ input: Buffer.from(svg), top: 0, left: 0 }]).png().toFile(out);
+  console.log(`picture   ${out}  (${W}x${H} photo, frame ${f.size}x${f.height || f.size} -> `
+    + `${(W / f.size).toFixed(3)} x ${(H / (f.height || f.size)).toFixed(3)} px per frame px)`);
+}
 
 /**
  * How much ground two or more shapes share.
@@ -152,7 +199,7 @@ function describe(row) {
   }
 }
 
-function main() {
+async function main() {
   const id = process.env.ID || '';
   const status = process.env.STATUS || 'rejected';
 
@@ -165,7 +212,7 @@ function main() {
     rows = query(`
       SELECT id, at, status, county, provider, model, mode, hand_edited,
              image_provider, square_feet, shapes, detected_shapes,
-             frame, image_frame, parcel, model_version
+             frame, image_frame, parcel, model_version, image_key
         FROM corpus WHERE ${where} ORDER BY at DESC LIMIT 5
     `);
   } catch (err) {
@@ -182,6 +229,7 @@ function main() {
 
   console.log(`${rows.length} map${rows.length === 1 ? '' : 's'} to look at.`);
   for (const row of rows) describe(row);
+  for (const row of rows) await picture(row);
 
   console.log(`\n${'='.repeat(64)}`);
   console.log('\nOverlap is not a problem for training: the target is a filled');
