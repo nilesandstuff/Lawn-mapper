@@ -36,7 +36,7 @@
  * corpus itself.
  *
  *   node tools/compare-imagery.js            (needs the corpus, like any probe)
- * or workflow "27. Which aerial photos are better here". Free: public servers
+ * or workflow "8. Check the free imagery sources", "compare on our lawns". Free: public servers
  * and the Mapbox static tier the app already uses.
  */
 
