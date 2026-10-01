@@ -34,7 +34,7 @@ import { upstreamReason, redactSecrets } from '../worker/src/upstream.js';
 import { LANDCOVER_HOST } from '../worker/src/landcover.js';
 import { logMeasurement, readLog, loggingEnabled, recordLater } from '../worker/src/testlog.js';
 import {
-  providerCatalogue, providerFrame, detectionImageUrl,
+  providerCatalogue, providerFrame, detectionImageUrl, imageryUrl,
 } from '../worker/src/imagery.js';
 import { worldSize } from '../public/lib/mercator.js';
 import {
@@ -394,7 +394,11 @@ check('the signed-out allowance defaults to 5', DAILY_LIMIT_PER_CLIENT === 5,
   check('the frame is otherwise identical',
     g.lng === frame.lng && g.lat === frame.lat && g.size === frame.size);
 
-  const url = new URL(detectionImageUrl('google', g, 'MB', { GOOGLE_MAPS_KEY: 'K' }));
+  /* View only since 2026-10-01: detection falls back to Mapbox, and the
+     Google picture is the one for LOOKING at. */
+  check('detection on Google uses Mapbox (view only)',
+    detectionImageUrl('google', g, 'MB', { GOOGLE_MAPS_KEY: 'K' }).startsWith('https://api.mapbox.com/'));
+  const url = new URL(imageryUrl('google', g, 'MB', { GOOGLE_MAPS_KEY: 'K' }));
   const googleZoom = Number(url.searchParams.get('zoom'));
   check('the URL asks Google for one zoom level in, for its 256px tiles',
     googleZoom === g.zoom + 1, `frame z${g.zoom} -> Google z${googleZoom}`);

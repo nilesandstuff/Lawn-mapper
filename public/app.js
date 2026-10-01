@@ -5710,6 +5710,8 @@ function renderProviderNote(id) {
 async function setProvider(id) {
   if (id === state.provider) return;
   state.provider = id;
+  // Looked at on this map: the save check asks whether it lined up.
+  if (isAligned(id)) state.altViewed = id;
   $('#imagery-source').value = id;
   renderProviderNote(id);
   refreshLayerList();
@@ -6082,9 +6084,32 @@ function applyAlignOpacity() {
   try { map.setPaintProperty('imagery-alt', 'raster-opacity', v); } catch { /* not ready */ }
 }
 
+/*
+ * THE IMAGERY TOUR, AND WHO HAS SEEN THE LINE-UP PANEL (owner, 2026-10-01).
+ * Once a session, for whichever of Google or NAIP is opened first; and on
+ * demand from the save check (imageryTourDue). Session storage, so a reload
+ * does not ask again; a fresh tab does.
+ */
+const IMAGERY_TOUR_KEY = 'lm_imagery_tour';
+const ALIGN_OPENED_KEY = 'lm_align_opened';
+const sessionFlag = (key) => { try { return sessionStorage.getItem(key) === '1'; } catch { return false; } };
+const setSessionFlag = (key) => { try { sessionStorage.setItem(key, '1'); } catch { /* private mode */ } };
+let imageryTourDue = false;
+
+function maybeImageryTour() {
+  if (!isAligned(state.provider) || state.alignOpen || tour.stage === 'imagery') return;
+  const btn = document.querySelector('#naip-align .naipalign-open');
+  if (!btn || btn.offsetParent === null) return;
+  if (!imageryTourDue && sessionFlag(IMAGERY_TOUR_KEY)) return;
+  imageryTourDue = false;
+  setSessionFlag(IMAGERY_TOUR_KEY);
+  showTour('imagery', { force: true });
+}
+
 function setAlignOpen(open) {
   const was = Boolean(state.alignOpen);
   state.alignOpen = Boolean(open) && isAligned(state.provider);
+  if (state.alignOpen) setSessionFlag(ALIGN_OPENED_KEY);
   if (state.alignOpen && !was) {
     setMode(null);
     if (tips.stage) hideTip();
@@ -6130,6 +6155,7 @@ function renderNaipPanel(served, message) {
     open.title = said;
     open.addEventListener('click', () => setAlignOpen(true));
     panel.append(open);
+    requestAnimationFrame(maybeImageryTour);
     return;
   }
 
@@ -9703,6 +9729,22 @@ function tipContent(stage) {
  * a coach tip cannot reach the panel (markup.test.js), a tour can.
  */
 const TOURS = {
+  /*
+   * GOOGLE AND NAIP ARE FOR LOOKING (owner, 2026-10-01). Shown the first time
+   * either is opened in a session, and again from the save check if the
+   * line-up panel was never opened. Shapes are kept against Mapbox, which is
+   * what the detector learns from, so a photo that sits off it moves every
+   * corner traced on it by the same amount.
+   */
+  imagery: [
+    { target: '#naip-align .naipalign-open', name: 'Line it up',
+      text: 'This photo can sit a little off. If it does, open this and nudge it until it lines up '
+        + 'with Mapbox. Auto tries for you, and the slider fades between the two.' },
+    { target: '#btn-layers', name: 'Mapbox is what gets saved',
+      text: 'Your shapes are saved on the Mapbox photo, and that is what goes to the lawn detector. '
+        + 'Trace on this one if it is clearer, but line it up first, then switch back to Mapbox to '
+        + 'check the shapes sit right.' },
+  ],
   tools: [
     { target: '#mode-pan', name: 'Pan', text: 'Move around the map without changing any shapes. Where the Draw step starts.' },
     { target: '#mode-move', name: 'Move', text: 'Drag whole lawn shapes.' },
@@ -9865,8 +9907,9 @@ function placeTip() {
  */
 const tour = { stage: null, placed: [], stepping: false, index: 0, total: 0 };
 
-function showTour(stage) {
-  if (!tipsOn() || tips.seen.has(stage) || !state.frame) return;
+function showTour(stage, { force = false } = {}) {
+  if (!force && (!tipsOn() || tips.seen.has(stage))) return;
+  if (!state.frame) return;
   /* Not on the paid queue: the job bar carries that page's instructions, and
      a dimmed window between a tracer and the lawn they are paid to trace is
      in the way on every lawn after the first. */
@@ -9935,9 +9978,20 @@ function placeTour() {
   }
 
   const onRail = items.filter((it) => it.target);
-  const colRight = (onRail.length ? Math.min(...onRail.map((it) => it.r.left)) : vw) - 26;
-  const width = Math.max(140, Math.min(232, colRight - 10));
-  const left = Math.max(8, colRight - width);
+  /* Cards beside the buttons, on whichever side has the room: left of the
+     rail (the tool tours), right of the Layers column (the imagery tour). */
+  const leftSide = onRail.length && onRail.every((it) => (it.r.left + it.r.right) / 2 < vw / 2);
+  let width;
+  let left;
+  if (leftSide) {
+    left = Math.max(...onRail.map((it) => it.r.right)) + 26;
+    width = Math.max(140, Math.min(232, vw - left - 10));
+    left = Math.min(left, vw - width - 8);
+  } else {
+    const colRight = (onRail.length ? Math.min(...onRail.map((it) => it.r.left)) : vw) - 26;
+    width = Math.max(140, Math.min(232, colRight - 10));
+    left = Math.max(8, colRight - width);
+  }
 
   const cards = $('#tour-cards');
   cards.textContent = '';
@@ -12312,6 +12366,9 @@ function reset() {
   /* Not-lawn traces belong to the map they were drawn on. */
   setNotLawnMode(false);
   state.notLawn = [];
+  /* So does having looked at Google or NAIP, and having been asked about it. */
+  state.altViewed = null;
+  state.alignAsked = false;
   refreshNotLawn();
   // Back to Find grass, and to both defaults for the gap option.
   state.fillGaps = { find: true, exclude: false };
@@ -12994,7 +13051,41 @@ $('#btn-review-back').addEventListener('click', () => {
   leaveReview(false);
 });
 
+/*
+ * BEFORE SAVING, DID THE PHOTO LINE UP? (owner, 2026-10-01). Asked once per
+ * map, only when Google or NAIP was looked at while it was being drawn: shapes
+ * are kept against Mapbox, so a photo that sat off it moved every corner
+ * traced on it. "Check" goes back to that photo, and shows the imagery tour if
+ * the line-up panel has never been opened -- otherwise opens the panel itself.
+ */
+function askAlignCheck() {
+  if (!state.altViewed || state.alignAsked || state.job) return false;
+  state.alignAsked = true;
+  const name = providerInfo(state.altViewed).label || 'the other photo';
+  $('#align-check-why').textContent = `You looked at ${name} on this map. Your shapes are saved on the `
+    + 'Mapbox photo, and that is what the lawn detector learns from, so if that photo sat off Mapbox '
+    + 'the shapes are off too.';
+  $('#align-check').hidden = false;
+  return true;
+}
+
+$('#align-check-ok')?.addEventListener('click', () => {
+  $('#align-check').hidden = true;
+  $('#btn-finish').click();
+});
+$('#align-check-look')?.addEventListener('click', async () => {
+  $('#align-check').hidden = true;
+  const opened = sessionFlag(ALIGN_OPENED_KEY);
+  if (!opened) imageryTourDue = true;
+  setTab('draw');
+  if (state.provider !== state.altViewed) await setProvider(state.altViewed);
+  if (opened) setAlignOpen(true);
+  else requestAnimationFrame(maybeImageryTour);
+  setStatus('Line the photo up with Mapbox if it needs it, then press Finish again.');
+});
+
 $('#btn-finish').addEventListener('click', () => {
+  if (askAlignCheck()) return;
   keepFinished();
 
   /*

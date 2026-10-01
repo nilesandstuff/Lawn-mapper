@@ -205,15 +205,17 @@ for (const lat of [25.8, 42.9, 61.2]) {
       `a piece of ${t.frame.size}x${t.frame.height} logical px is more than Mapbox serves`);
   }
 
-  /* Other sources are never cut. NAIP has no 10 cm to give and Google serves
-     one fixed picture; both come back as a plan of one in the same shape. */
-  for (const provider of ['naip', 'google']) {
-    const plan = detectionPlan(provider, display(197), { inputPx: INPUT });
-    assert.equal(plan.tiles.length, 1, `${provider} should never be tiled`);
-    assert.equal(plan.cols, 1);
+  /* NAIP is never cut: it has no 10 cm to give, and comes back as a plan of
+     one in the same shape. */
+  const naipPlan = detectionPlan('naip', display(197), { inputPx: INPUT });
+  assert.equal(naipPlan.tiles.length, 1, 'naip should never be tiled');
+  assert.equal(naipPlan.cols, 1);
+  /* A look-only source detects on the default, which IS cut -- Esri, and
+     Google since it became view only (2026-10-01). */
+  for (const provider of ['esri', 'google']) {
+    assert.equal(detectionPlan(provider, display(197), { inputPx: INPUT }).tiles.length, 4,
+      `${provider} is view only, so it detects on Mapbox`);
   }
-  /* A look-only source detects on the default, which IS cut. */
-  assert.equal(detectionPlan('esri', display(197), { inputPx: INPUT }).tiles.length, 4);
 }
 
 /* --------------------------------------------- rectangular frames */

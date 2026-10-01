@@ -1302,6 +1302,21 @@
       </div>
     </div>
 
+    <!-- Before saving, when Google or NAIP was looked at: see askAlignCheck. -->
+    <div class="feedback" id="align-check" role="dialog" aria-modal="true"
+         aria-labelledby="align-check-title" hidden>
+      <div class="feedback-card">
+        <p class="feedback-title" id="align-check-title">Does the photo line up?</p>
+        <p class="feedback-why" id="align-check-why"></p>
+        <button class="fb-opt" type="button" id="align-check-look">
+          <b>Check the alignment</b><small>Back to that photo to line it up with Mapbox.</small>
+        </button>
+        <button class="fb-opt" type="button" id="align-check-ok">
+          <b>It lines up, save</b><small>Carry on to the finished map.</small>
+        </button>
+      </div>
+    </div>
+
     <div class="hint" id="map-hint" hidden></div>
     <div class="overlay" id="busy" hidden>
       <div class="spinner" aria-hidden="true"></div>

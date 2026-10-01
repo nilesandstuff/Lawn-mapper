@@ -1371,6 +1371,19 @@ if (sources.includes('naip')) {
   check('USGS returned a real photograph for that frame',
     fetched.ok && /^image\//.test(fetched.type || '') && fetched.bytes > 5000,
     `${fetched.type} ${fetched.bytes} bytes`);
+
+  /*
+   * THE IMAGERY TOUR (owner, 2026-10-01): the first look at Google or NAIP in
+   * a session says to line it up, and that Mapbox is what gets saved. Shown
+   * whatever the tips switch says. Put away here, or it sits over every click
+   * below.
+   */
+  await page.waitForFunction(() => window.__lmTour().stage === 'imagery', { timeout: 8000 }).catch(() => {});
+  const imgTour = await page.evaluate(() => window.__lmTour());
+  check('the first look at NAIP brings the line-up tour',
+    imgTour.stage === 'imagery' && imgTour.visible && imgTour.total === 2, JSON.stringify(imgTour));
+  await page.evaluate(() => { if (window.__lmTour().visible) document.querySelector('#tour').click(); });
+  await page.waitForTimeout(200);
 }
 
 /*
@@ -1409,6 +1422,8 @@ if (sources.includes('naip')) {
     return { shown: !!el && !el.hidden, text: el?.textContent || '' };
   });
   check('NAIP shows its alignment panel', panel.shown, panel.text.slice(0, 120));
+  check('and the line-up tour is once a session, not every look',
+    (await page.evaluate(() => window.__lmTour().stage)) !== 'imagery');
 }
 
 /* NDVI was measured against real lawns and rejected, so it must not be
@@ -3552,6 +3567,42 @@ console.log('\n--- tinker: neighbours and merging ---');
     await tp.waitForTimeout(400);
     check('and Undo puts it back',
       (await tp.evaluate(() => window.__lmNotLawn())).corners === closed.nl.corners);
+  }
+
+  /*
+   * BEFORE SAVING, DID THE PHOTO LINE UP? (owner, 2026-10-01). Having looked
+   * at NAIP on this map, Finish asks first; "Check the alignment" goes back
+   * to it and, the line-up panel never having been opened, shows the tour.
+   * This page is fresh, so the first look brings the tour too.
+   */
+  const tpSources = await tp.evaluate(() => [...document.querySelectorAll('#imagery-source option')].map((o) => o.value));
+  if (tpSources.includes('naip')) {
+    // The picker is on another tab; set it the way its change event would.
+    const pick = (id) => tp.evaluate((v) => {
+      const sel = document.querySelector('#imagery-source');
+      sel.value = v;
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+    }, id);
+    await pick('naip');
+    await tp.waitForFunction(() => window.__lmTour().stage === 'imagery', { timeout: 30000 }).catch(() => {});
+    await tp.evaluate(() => { if (window.__lmTour().visible) document.querySelector('#tour').click(); });
+    await pick('mapbox');
+    await tp.waitForTimeout(400);
+    await tp.evaluate(() => document.querySelector('#btn-finish')?.click());
+    await tp.waitForTimeout(300);
+    const asked = await tp.evaluate(() => ({
+      shown: !document.querySelector('#align-check').hidden,
+      why: document.querySelector('#align-check-why').textContent,
+      tab: document.querySelector('.tab[aria-selected="true"]')?.id || null,
+    }));
+    check('having looked at NAIP, Finish asks whether the photo lined up first',
+      asked.shown && /NAIP/.test(asked.why), JSON.stringify(asked));
+    await tp.evaluate(() => document.querySelector('#align-check-look')?.click());
+    await tp.waitForFunction(() => window.__lmTour().stage === 'imagery', { timeout: 30000 }).catch(() => {});
+    const back = await tp.evaluate(() => ({ provider: window.__lmImagery().provider, tour: window.__lmTour() }));
+    check('"Check the alignment" goes back to NAIP and shows the line-up tour',
+      back.provider === 'naip' && back.tour.stage === 'imagery' && back.tour.visible,
+      JSON.stringify({ provider: back.provider, stage: back.tour.stage }));
   }
   await tp.close();
 }

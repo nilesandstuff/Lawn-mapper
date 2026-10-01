@@ -487,8 +487,16 @@ export const PROVIDERS = {
    */
   google: {
     label: 'Google satellite',
-    note: 'Often a different year again, and the imagery most people recognise. Costs a fraction of a cent per look.',
-    detect: true,
+    note: 'Often a different year again, and the imagery most people recognise. View only: '
+      + 'detection and the saved photo use Mapbox, so line it up before tracing on it.',
+    /*
+     * VIEW ONLY (owner, 2026-10-01). Its terms keep us from storing its
+     * pictures, so a map drawn on Google already banks a Mapbox photo -- and
+     * its pictures are often warped in ways no shift lines up (workflow 8,
+     * "compare on our lawns"). 13 of 101 maps had been drawn on it. Looking
+     * stays; detection and training are Mapbox's.
+     */
+    detect: false,
     prompt: 'grass',
     promptVar: 'SAM_PROMPT',
     keyVar: 'GOOGLE_MAPS_KEY',
