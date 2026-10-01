@@ -23,6 +23,10 @@ check('ArcGIS Online: a local image service over the point is kept',
   kept.length === 1 && kept[0].type === 'ImageServer', JSON.stringify(kept));
 
 /* Ranking: newest first, old flights dropped, duplicates dropped, cached twin after. */
+check('false colour and other non-photos are not candidates',
+  rankCandidates([{ url: 'https://t/MA_2025_CIR/MapServer', title: 'Massachusetts 2025 Aerial Imagery - CIR (Tile Service)' },
+    { url: 'https://t/Ortho_Index/MapServer', title: 'Ortho index' },
+    { url: 'https://t/NDVI2023/ImageServer', title: 'NDVI 2023' }]).length === 0);
 const ranked = rankCandidates([
   { url: 'https://a/Aerial2008/ImageServer', title: 'Aerial 2008' },
   { url: 'https://a/Aerial2024_Cached/ImageServer', title: 'Aerial 2024' },

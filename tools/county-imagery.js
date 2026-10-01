@@ -65,7 +65,7 @@ const FORCE = /^(1|true|yes)$/i.test(process.env.FORCE || '');
 const DRY_RUN = /^(1|true|yes)$/i.test(process.env.DRY_RUN || '');
 const ONLY = process.env.ONLY || '';
 const BUCKET = process.env.CORPUS_BUCKET || 'lawn-mapper-corpus';
-const MAX_TRY = Number(process.env.MAX_TRY || 6);
+const MAX_TRY = Number(process.env.MAX_TRY || 12);
 const MIN_YEAR = Number(process.env.MIN_YEAR || 2012);
 const PAUSE_MS = Number(process.env.PAUSE_MS || 250);
 const TIMEOUT_MS = 60000;
@@ -76,6 +76,8 @@ const MIN_DETAIL = 0.8;
 /* The offset search reaches 10 m: H62's medians were about 1 m, the worst
    few metres. A fit at the edge of the reach is not a fit. */
 const REACH_M = 10;
+/* A fit below this is not trusted to move a photo (see findFor). */
+const MIN_FIT = 0.3;
 
 const R = 20037508.342789244;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -108,6 +110,13 @@ export function agolKeep(results, lng, lat, maxArea = 30) {
   return out;
 }
 
+/*
+ * NOT A PHOTOGRAPH OF THE GROUND AS SEEN. The first run picked
+ * Massachusetts' "2025 Aerial Imagery - CIR": colour infrared, false colour.
+ * Indexes, footprints and elevation layers are not photos either.
+ */
+export const NOT_A_PHOTO = /\bcir\b|infra.?red|\bnir\b|ndvi|false.?colou?r|color.?infrared|index|footprint|boundar|tile.?scheme|flight|\blidar|\bdem\b|hillshade|elevation|contour|parcel|topo|labels?\b|reference/i;
+
 /**
  * Candidates in the order to try them: dropping flights named before
  * MIN_YEAR, then the newest named year first, then those naming none, a
@@ -120,6 +129,7 @@ export function rankCandidates(list, minYear = MIN_YEAR) {
     const key = c.url.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
+    if (NOT_A_PHOTO.test(`${c.title} ${c.url.split('/rest/services/')[1] || c.url}`)) continue;
     const years = yearHints(`${c.title} ${c.url}`);
     const year = years.length ? Math.max(...years) : null;
     if (year !== null && year < minYear) continue;
@@ -501,9 +511,16 @@ export async function evaluate(c, base, frame, decoders) {
   const m = await meta(c.url);
   if (!m || m.failed) return { ...c, usable: false, why: `metadata: ${m?.failed || 'none'}` };
   const bbox = frameBbox3857(frame);
+  /* A small look first: most candidates found by place are not over this
+     frame at all (a catalogue box is loose), and that is cheap to learn. */
+  const probe = await fetchOver(c, m, bbox, 128, Math.max(16, Math.round((128 * base.height) / base.width)), decoders);
+  await sleep(PAUSE_MS);
+  if (!probe) return { ...c, usable: false, why: 'no picture over this frame' };
+  const probeCover = coverage(probe.data, probe.width, probe.height);
+  if (probeCover < 0.9) return { ...c, usable: false, why: `covers ${(probeCover * 100).toFixed(0)}%`, cover: probeCover };
   const img = await fetchOver(c, m, bbox, base.width, base.height, decoders);
   await sleep(PAUSE_MS);
-  if (!img) return { ...c, usable: false, why: 'no picture over this frame' };
+  if (!img) return { ...c, usable: false, why: 'no full picture over this frame' };
   const cover = coverage(img.data, img.width, img.height);
   const pixelCm = ((bbox[2] - bbox[0]) / img.width) * Math.cos((frame.lat * Math.PI) / 180) * 100;
   let native = nativeCm(m, frame.lat);
@@ -562,10 +579,19 @@ async function findFor(row, decoders, dir) {
     exec(`INSERT INTO county_imagery (id, candidates, checked_at) VALUES (${lit(row.id)}, ${lit(candidates)}, ${lit(new Date().toISOString())})
           ON CONFLICT(id) DO UPDATE SET service = NULL, service_type = NULL, title = NULL, year = NULL,
             native_cm = NULL, image_key = NULL, candidates = excluded.candidates, checked_at = excluded.checked_at`);
-    return { id: row.id, status: 'none usable', found: ranked.length, tried: tried.length };
+    return { id: row.id, status: 'none usable', found: ranked.length,
+      tried: tried.map((t) => `x ${t.title || t.url} (${t.why})`) };
   }
 
-  const a = alignTo(base, best.img, frame);
+  /*
+   * ONLY A CLEAR FIT MOVES THE PHOTO. A weak correlation, or one at the edge
+   * of the search, is not evidence of an offset -- the first run "moved"
+   * Massachusetts' false-colour layer 11 m on a fit of 0.14 -- so the photo is
+   * banked as delivered and flagged for an eye on /county.html.
+   */
+  const found0 = alignTo(base, best.img, frame);
+  const clear = found0.moved && !found0.atEdge && found0.fit >= MIN_FIT;
+  const a = clear ? found0 : { ...found0, east: 0, north: 0, scale: 1, held: true };
   const banked = await bank(row, best, a, base, frame, decoders, dir);
   exec(`INSERT INTO county_imagery (id, service, service_type, title, year, native_cm, image_key, east, north,
           scale, fit, fit0, residual_m, detail, green, candidates, checked_at, banked_at)
@@ -585,6 +611,8 @@ async function findFor(row, decoders, dir) {
     id: row.id, status: 'banked', title: best.title, host: new URL(best.url).host, year: best.year,
     nativeCm: best.nativeCm, east: a.east, north: a.north, scale: a.scale, fit: a.fit, fit0: a.fit0,
     atEdge: a.atEdge, residual: banked.residual, found: ranked.length,
+    held: Boolean(a.held), suggested: a.held ? { east: found0.east, north: found0.north } : null,
+    tried: tried.map((t) => `${t.usable ? 'OK' : 'x'} ${t.title || t.url} (${t.why})`),
   };
 }
 
@@ -665,15 +693,17 @@ async function main() {
       ? `${out.host} "${out.title}" ${out.year ?? '?'}, ${out.nativeCm ? Math.round(out.nativeCm) : '?'} cm; `
         + `moved ${out.east.toFixed(2)} m E ${out.north.toFixed(2)} m N x${out.scale}, fit ${out.fit.toFixed(2)} `
         + `(was ${out.fit0.toFixed(2)})${out.atEdge ? ' AT EDGE' : ''}; residual ${out.residual?.toFixed(2) ?? '?'} m`
-      : `${out.status}${out.found !== undefined ? ` (${out.found} candidate${out.found === 1 ? '' : 's'}, ${out.tried ?? 0} tried)` : ''}`;
-    console.log(`${n + 1}/${todo.length} ${row.county || '?'} ${row.id.slice(0, 40)}: ${say}`);
+      : `${out.status}${out.found !== undefined ? ` (${out.found} candidate${out.found === 1 ? '' : 's'}, ${out.tried?.length ?? 0} tried)` : ''}`;
+    console.log(`${n + 1}/${todo.length} ${row.county || '?'} ${row.id.slice(0, 40)}: ${say}`
+      + `${out.held ? ` -- FIT NOT CLEAR, banked as delivered (it suggested ${out.suggested.east.toFixed(1)} m E, ${out.suggested.north.toFixed(1)} m N)` : ''}`);
+    for (const t of out.tried || []) console.log(`      ${t.slice(0, 160)}`);
   }
   writeFileSync('county-imagery.json', JSON.stringify(results, null, 2));
 
   /* THE PART WORTH READING. */
   const banked = results.filter((r) => r.status === 'banked');
   const med = (xs) => { const v = xs.filter(Number.isFinite).sort((a, b) => a - b); return v.length ? v[Math.floor(v.length / 2)] : null; };
-  const doubtful = banked.filter((r) => r.atEdge || r.fit < 0.3 || (r.residual ?? 9) > 0.3);
+  const doubtful = banked.filter((r) => r.held || r.atEdge || r.fit < MIN_FIT || (r.residual ?? 9) > 0.3);
   console.log('\n================ COUNTY IMAGERY ================');
   console.log(`Looked at ${results.length} maps: ${banked.length} with usable county or state imagery, banked;`
     + ` ${results.filter((r) => r.status === 'none usable').length} with none usable;`
@@ -686,8 +716,8 @@ async function main() {
     for (const r of banked) hosts[r.host] = (hosts[r.host] || 0) + 1;
     console.log(`Sources: ${Object.entries(hosts).sort((a, b) => b[1] - a[1]).map(([h, n]) => `${h} ${n}`).join(', ')}`);
   }
-  console.log(`To check by eye on /county.html: ${doubtful.length} doubtful (fit at the edge of the search,`
-    + ' weak fit, or a residual over 0.3 m) -- and every other one is worth a look too.');
+  console.log(`To check by eye on /county.html: ${doubtful.length} doubtful (no clear fit, so banked as`
+    + ' delivered; or a residual over 0.3 m) -- and every other one is worth a look too.');
   console.log('Per-map results: the county-imagery artifact.');
 }
 

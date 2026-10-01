@@ -74,7 +74,7 @@ jobs:
           cache: npm
 
       - name: Check one frame
-        if: inputs.what != 'compare on our lawns'
+        if: inputs.what == 'check one frame' || inputs.what == ''
         run: node tools/probe-imagery.js
 
       - name: Install what the comparison needs
