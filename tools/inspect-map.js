@@ -74,7 +74,7 @@ async function picture(row) {
   }
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${parts.join('')}</svg>`;
   pictured += 1;
-  const out = `${dir}/${pictured}.png`;
+  const out = `${dir}/${String(pictured).padStart(2, '0')}-${row.id.replace(/[^A-Za-z0-9.-]+/g, '_')}.png`;
   await sharp(raw).composite([{ input: Buffer.from(svg), top: 0, left: 0 }]).png().toFile(out);
   console.log(`picture   ${out}  (${W}x${H} photo, frame ${f.size}x${f.height || f.size} -> `
     + `${(W / f.size).toFixed(3)} x ${(H / (f.height || f.size)).toFixed(3)} px per frame px)`);
@@ -213,7 +213,7 @@ async function main() {
       SELECT id, at, status, county, provider, model, mode, hand_edited,
              image_provider, square_feet, shapes, detected_shapes,
              frame, image_frame, parcel, model_version, image_key
-        FROM corpus WHERE ${where} ORDER BY at DESC LIMIT 5
+        FROM corpus WHERE ${where} ORDER BY at DESC LIMIT ${Math.max(1, Math.min(60, Number(process.env.LIMIT) || 5))}
     `);
   } catch (err) {
     console.log('Could not read the database, so nothing was inspected.');

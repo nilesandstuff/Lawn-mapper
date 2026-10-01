@@ -15,6 +15,10 @@ on:
         description: 'A map id. Leave blank to look at the most recent ones by status.'
         required: false
         default: ''
+      limit:
+        description: 'How many of the most recent to look at (1-60)'
+        required: false
+        default: '5'
       status:
         description: 'Which ones, when no id is given'
         required: false
@@ -40,6 +44,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           ID: ${{ inputs.id }}
           STATUS: ${{ inputs.status }}
+          LIMIT: ${{ inputs.limit }}
         run: node tools/inspect-map.js
 
       # The photographs with the stored outlines drawn on, as the console card
