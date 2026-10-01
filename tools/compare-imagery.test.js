@@ -3,7 +3,7 @@
  *   node tools/compare-imagery.test.js
  */
 import {
-  siblingRoots, newestFirst, catalogueRoot, pickImagery, yearHints, nativeCm, isBlank, greenShare, greyGrid, summarise,
+  siblingRoots, newestFirst, countyReach, catalogueRoot, pickImagery, yearHints, nativeCm, isBlank, greenShare, greyGrid, summarise,
 } from './compare-imagery.js';
 
 let failures = 0;
@@ -69,6 +69,13 @@ const s = summarise([
 check('the summary counts coverage and keeps medians',
   s.length === 1 && s[0].tried === 2 && s[0].covered === 1 && s[0].detailVsMapbox === 1.5 && s[0].sharperThanMapbox === 1
     && JSON.stringify(s[0].years) === '[2023]', JSON.stringify(s[0]));
+
+const r = countyReach([
+  { sources: [{ county: true, covered: true, nativeCm: 15, offsetM: 1 }, { county: true, covered: true, nativeCm: 8, offsetM: 2 }] },
+  { sources: [{ county: true, covered: false }] },
+  { sources: [{ key: 'usgs:x', covered: true, nativeCm: 23 }] },
+]);
+check('county reach counts a lot once, at its finest source', r.lots === 3 && r.covered === 1 && r.nativeCm === 8 && r.offsetM === 2, JSON.stringify(r));
 
 if (failures) { console.log(`\n${failures} check(s) FAILED.`); process.exit(1); }
 console.log('\nAll checks passed.');

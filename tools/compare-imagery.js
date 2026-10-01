@@ -203,7 +203,25 @@ const median = (xs) => {
   return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
 };
 
-/** One line per source family, from every lot's results. */
+/**
+ * Per lot, the best county source that covered it: the finest native
+ * resolution. One line for "how many of our lots have county imagery at all".
+ */
+export function countyReach(lots) {
+  let covered = 0;
+  const native = [], offset = [];
+  for (const lot of lots) {
+    const hits = lot.sources.filter((s) => s.county && s.covered);
+    if (!hits.length) continue;
+    covered++;
+    const best = hits.slice().sort((a, b) => (a.nativeCm ?? 1e9) - (b.nativeCm ?? 1e9))[0];
+    native.push(best.nativeCm);
+    if (best.offsetM !== null && best.offsetM !== undefined) offset.push(best.offsetM);
+  }
+  return { lots: lots.length, covered, nativeCm: median(native), offsetM: median(offset) };
+}
+
+/** One line per source, from every lot's results. */
 export function summarise(lots) {
   const by = new Map();
   for (const lot of lots) {
@@ -213,7 +231,7 @@ export function summarise(lots) {
       e.tried++;
       if (s.covered) {
         e.covered++;
-        e.detail.push(s.detailVsMapbox);
+        if (s.detailVsMapbox !== null && s.detailVsMapbox !== undefined) e.detail.push(s.detailVsMapbox);
         if (s.offsetM !== null) e.offset.push(s.offsetM);
         e.native.push(s.nativeCm);
         e.green.push(s.greenVsMapbox);
@@ -269,6 +287,15 @@ function exportUrl(s, frame) {
     f: 'image',
   });
   if (s.type === 'MapServer') params.set('transparent', 'true');
+  /*
+   * SMOOTH ENLARGEMENT, OR THE DETAIL FIGURE LIES. The first run asked with
+   * the servers' default resampling, which is nearest-neighbour: a 23 cm NAIP
+   * picture enlarged to our 5 cm grid became hard-edged blocks, and the block
+   * edges read as fine detail -- NAIP "1.73x sharper than Mapbox", the 1.8 m
+   * USGS basemap "2.75x". Bilinear makes a coarse source look as soft as it
+   * is. Map services cannot be asked, so their detail is not scored at all.
+   */
+  if (s.type === 'ImageServer') params.set('interpolation', 'RSP_BilinearInterpolation');
   return `${serviceUrl(s)}/${s.type === 'ImageServer' ? 'exportImage' : 'export'}?${params}`;
 }
 
@@ -393,7 +420,8 @@ async function main() {
       .map((k) => catalogueRoot(ALL_COUNTIES[k]?.service)).filter(Boolean))];
     for (const root of roots) {
       for (const s of (await countyServices(root)).slice(0, MAX_COUNTY_SERVICES)) {
-        candidates.push({ s, key: 'county', label: `county ${new URL(root).host} ${s.name}` });
+        const label = `county ${new URL(root).host} ${s.name}`;
+        candidates.push({ s, key: `county:${label}`, label, county: true });
       }
     }
 
@@ -410,7 +438,9 @@ async function main() {
       const img = await fetchImage(exportUrl(c.s, f), decoders).catch((e) => ({ ok: false, reason: e.message }));
       if (!img.ok) { sources.push({ ...entry, covered: false, reason: img.reason }); continue; }
       try {
-        sources.push({ ...entry, ...measure(img.img, base, f) });
+        const m2 = measure(img.img, base, f);
+        if (c.s.type !== 'ImageServer') m2.detailVsMapbox = null; // see exportUrl
+        sources.push({ ...entry, county: Boolean(c.county), ...m2 });
       } catch (e) {
         sources.push({ ...entry, covered: false, reason: `measure: ${e.message}` });
       }
@@ -437,6 +467,10 @@ async function main() {
       + `; native ${s.nativeCm === null ? 'unknown' : `${Math.round(s.nativeCm)} cm`}`
       + `; green ${pct(s.greenVsMapbox)}${s.years.length ? `; years ${s.years.join(', ')}` : ''}`);
   }
+  const reach = countyReach(lots);
+  console.log(`\nANY county imagery: ${reach.covered} of ${reach.lots} lots; best per lot median `
+    + `${reach.nativeCm === null ? '?' : `${Math.round(reach.nativeCm)} cm`} native, `
+    + `${reach.offsetM === null ? '?' : `${reach.offsetM.toFixed(1)} m`} from Mapbox.`);
   console.log('\nMaps drawn on each source (the Google question):');
   for (const d of drawnOn) console.log(`  ${d.provider}: ${d.n}`);
   console.log('\n"green" is a rough season hint only; it has not been checked against real flight dates.');
