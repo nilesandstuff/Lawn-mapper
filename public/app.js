@@ -29,6 +29,7 @@ import { strokeOnShapes } from './lib/brush-vector.js';
 import { extendToRoads, mergeButtonPoint, mergeRings, placeInside } from './lib/frontage.js';
 import { movedCorners } from './lib/align.js';
 import { alignFromRegistration } from './lib/register.js';
+import { extraDetail } from './lib/sharpness.js';
 import { snapPoint, nearestOnRings } from './lib/snap.js';
 import { notchShapes } from './lib/cutout.js';
 // Pasting the pieces of a big lot's detection back into one mask.
@@ -5540,7 +5541,7 @@ async function lookupCountyPhoto({ makeDefault = false } = {}) {
   state.countySvc = svc;
   buildImageryPicker();
   if (svc && makeDefault && state.provider === 'mapbox') {
-    await setProvider('county');
+    await setProvider('county', { auto: true });
     /* setProvider says what it shows; this is the why. */
     if (state.provider === 'county') {
       setStatus(`Showing ${svc.title ? `"${svc.title}"` : "the county's own photo"}${svc.year ? `, flown ${svc.year}` : ''}`
@@ -5762,8 +5763,11 @@ function renderProviderNote(id) {
   el.append(info.note || '');
 }
 
-async function setProvider(id) {
+async function setProvider(id, { auto = false } = {}) {
   if (id === state.provider) return;
+  /* Chosen for somebody (the county default) or by them: only the first is
+     held to "not softer than Mapbox". */
+  state.countyAuto = auto;
   state.provider = id;
   // Looked at on this map: the save check asks whether it lined up.
   /* Not the county photo: it is the default and lined up automatically on
@@ -6004,6 +6008,29 @@ async function showImagery() {
       refreshLayerList();
       return;
     }
+    /*
+     * AND NOT SOFTER THAN MAPBOX, when it was chosen for somebody. Some county
+     * services list 6 cm and serve far less (New Jersey's 2020 orthos). The
+     * two photos of this frame at Mapbox's pixel size, the same measure H62
+     * used: under 0.8 of Mapbox's fine detail and the map stays on Mapbox,
+     * with the county photo still in Layers for anyone who picks it.
+     */
+    if (state.countyAuto) {
+      const k = await detailVsMapbox(naipBlob, served).catch(() => null);
+      if (run !== imageryRun) return;
+      state.countyDetail = k;
+      if (k !== null && k < 0.8) {
+        idle(); imageryBusyRun = 0;
+        state.countyAuto = false;
+        state.provider = 'mapbox';
+        $('#imagery-source').value = 'mapbox';
+        renderProviderNote('mapbox');
+        refreshLayerList();
+        setStatus(`There is a county photo here, but it is softer than Mapbox's (${Math.round(k * 100)}% of the detail), `
+          + 'so this map uses Mapbox. It is in Layers if you want to look.');
+        return;
+      }
+    }
   }
   hideImagery(); // in case a later-started run already put something up
 
@@ -6084,6 +6111,15 @@ async function gapShare(blob) {
   const n = width * height;
   return (clear + (flat / n > 0.04 ? flat : 0)) / n;
 }
+
+/** The county photo's fine detail as a share of Mapbox's, same frame, same pixels. */
+async function detailVsMapbox(blob, served) {
+  const w = Math.min(1280, imagePixelsOf(served)), h = Math.round(w * ((served.height || served.size) / served.size));
+  const [c, m] = await Promise.all([rgbaOf(blob, w, h), rgbaOf(imageryUrlFor('mapbox', served), w, h)]);
+  const dc = extraDetail(c.data, w, h, 4), dm = extraDetail(m.data, w, h, 4);
+  return dc && dm && dm.extra > 0 ? dc.extra / dm.extra : null;
+}
+const imagePixelsOf = (frame) => Math.min(frame.size * 2, 2560);
 
 /** A picture (URL or blob) as RGBA on a w x h canvas. */
 async function rgbaOf(source, w, h) {
