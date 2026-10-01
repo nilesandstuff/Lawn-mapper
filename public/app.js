@@ -8318,7 +8318,7 @@ function refreshTabs() {
   if (planTab) planTab.hidden = !ready;
 
   const finish = $('#btn-finish');
-  if (finish) finish.hidden = !ready || (state.tab !== 'detect' && state.tab !== 'draw');
+  if (finish) finish.hidden = !(ready || notLawnOnly()) || (state.tab !== 'detect' && state.tab !== 'draw');
   // The note travels with the button: it is about what pressing it does.
   const finishNote = $('#finish-note');
   if (finishNote && finish) finishNote.hidden = finish.hidden;
@@ -11937,6 +11937,8 @@ function refreshNotLawn() {
   }
   const undo = $('#btn-not-lawn-undo');
   if (undo) undo.disabled = !state.notLawn.length;
+  // A map of only not-lawn traces can be finished too (notLawnOnly).
+  refreshTabs();
 }
 
 /**
@@ -12935,10 +12937,19 @@ $('#btn-print').addEventListener('click', () => window.print());
  *
  * Null when there is nothing to record, which both callers check.
  */
+/*
+ * A MAP OF NOT-LAWN TRACES AND NO LAWN (tinker mode, owner 2026-10-01): a
+ * parking lot, a road. Savable -- the server keeps it apart from the lawn maps
+ * (status 'notlawn'), so it is never read as "this lot has no lawn at all".
+ */
+const notLawnOnly = () => state.dev && state.notLawn.length > 0 && !hasLawn();
+
 function finishedBody() {
   const shapes = draw.getAll().features.filter((f) => outerRing(f));
-  if (!shapes.length) return null;
-  const m = measureLawn({ type: 'FeatureCollection', features: shapes });
+  if (!shapes.length && !notLawnOnly()) return null;
+  const m = shapes.length
+    ? measureLawn({ type: 'FeatureCollection', features: shapes })
+    : { squareFeet: 0 };
 
   return {
       /*
@@ -13102,6 +13113,11 @@ $('#btn-finish').addEventListener('click', () => {
     return;
   }
 
+  if (notLawnOnly()) {
+    setStatus(`Saved: ${state.notLawn.length} not-lawn trace${state.notLawn.length === 1 ? '' : 's'}, `
+      + 'kept apart from the lawn maps for training.');
+    return;
+  }
   setTab('plan');
   setStatus('Measuring done. These tools work on the finished map.');
 });

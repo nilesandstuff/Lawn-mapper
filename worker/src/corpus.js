@@ -285,7 +285,16 @@ export async function recordFinished(env, body, { adminId = null } = {}) {
   }
 
   const shapes = cleanShapes(body?.shapes);
-  if (!shapes.length) return { ok: false, reason: 'no-shapes' };
+  /*
+   * NOT-LAWN TRACES AND NO LAWN (tinker mode, owner 2026-10-01) is a map too:
+   * a parking lot, a road. It is stored with status 'notlawn', never 'new',
+   * so it stays out of the review queue and out of every query that reads
+   * approved maps as lawns -- an empty lawn there would teach "nothing on this
+   * lot is lawn", which nobody said.
+   */
+  const notLawnOnly = !shapes.length && Array.isArray(body?.notLawn)
+    && cleanGeometries(body.notLawn).length > 0;
+  if (!shapes.length && !notLawnOnly) return { ok: false, reason: 'no-shapes' };
 
   const model = text(body?.model, 40);
   const mode = text(body?.mode, 20);
@@ -385,8 +394,8 @@ export async function recordFinished(env, body, { adminId = null } = {}) {
          detected_sq_ft, square_feet, parcel_sq_ft, frame, parcel, shapes,
          detected_shapes, parcel_source, exclusions, created_at,
          inferred_checked_at, naip_align, not_lawn, model_version,
-         admin_edited_at, admin_edited_by
-       ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?2,?19,?20,?21,?22,?23,?24)
+         admin_edited_at, admin_edited_by, status
+       ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?2,?19,?20,?21,?22,?23,?24,?25)
        ON CONFLICT(id) DO UPDATE SET
          at = ?2, county = ?5, provider = ?6, hand_edited = ?9,
          detected_sq_ft = ?10, square_feet = ?11, parcel_sq_ft = ?12,
@@ -415,7 +424,7 @@ export async function recordFinished(env, body, { adminId = null } = {}) {
           * finish, and the row comes back to the top of the queue to be
           * approved in its corrected form.
           */
-         status = 'new', reviewed_at = NULL, reviewed_by = NULL,
+         status = ?25, reviewed_at = NULL, reviewed_by = NULL,
          review_note = NULL, review_queue = NULL,
          /*
           * MARKING A SHAPE IS PROOF SOMEBODY LOOKED, so a map that arrives
@@ -449,7 +458,7 @@ export async function recordFinished(env, body, { adminId = null } = {}) {
       row.parcel_sq_ft, row.frame, row.parcel, row.shapes,
       row.detected_shapes, row.parcel_source, row.exclusions,
       row.inferred_checked_at, row.naip_align, row.not_lawn, row.model_version,
-      row.admin_edited_at, row.admin_edited_by
+      row.admin_edited_at, row.admin_edited_by, notLawnOnly ? 'notlawn' : 'new'
     ).run();
     /*
      * The row is handed back so the caller can pass it to storeImage under

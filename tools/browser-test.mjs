@@ -3570,6 +3570,22 @@ console.log('\n--- tinker: neighbours and merging ---');
   }
 
   /*
+   * A MAP OF ONLY NOT-LAWN TRACES CAN BE FINISHED (owner, 2026-10-01): this
+   * page has two and no lawn. The server keeps it apart from the lawn maps.
+   */
+  const onlyNl = await tp.evaluate(() => ({
+    sq: window.__lmSqft(), nl: window.__lmNotLawn().count,
+    finish: !document.querySelector('#btn-finish').hidden,
+  }));
+  check('with only not-lawn traces on the map, Finish is offered',
+    onlyNl.sq === 0 && onlyNl.nl > 0 && onlyNl.finish, JSON.stringify(onlyNl));
+  const saved = tp.waitForResponse((r) => r.url().includes('/api/finished'), { timeout: 15000 })
+    .then((r) => r.json()).catch((e) => ({ ok: false, reason: e.message }));
+  await tp.evaluate(() => document.querySelector('#btn-finish')?.click());
+  const answer = await saved;
+  check('and the server keeps it', answer.ok === true, JSON.stringify(answer));
+
+  /*
    * BEFORE SAVING, DID THE PHOTO LINE UP? (owner, 2026-10-01). Having looked
    * at NAIP on this map, Finish asks first; "Check the alignment" goes back
    * to it and, the line-up panel never having been opened, shows the tour.
