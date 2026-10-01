@@ -872,6 +872,8 @@ async function main() {
     const rows = query(`SELECT ci.*, c.county, c.frame, c.image_frame, c.image_key AS mapbox_key
                           FROM county_imagery ci JOIN corpus c ON c.id = ci.id
                          WHERE ci.service IS NOT NULL AND c.status = 'approved'
+                           -- never move a photo out from under outlines a person traced on it
+                           AND ci.shapes IS NULL
                            ${ONLY ? `AND c.id = ${lit(ONLY)}` : ''}
                          ORDER BY c.at DESC LIMIT ${Math.max(1, LIMIT)}`);
     console.log(`${rows.length} banked county photos to line up again${DRY_RUN ? ' -- DRY RUN, nothing written' : ''}.`);
@@ -892,6 +894,8 @@ async function main() {
   const rows = query(`SELECT c.id, c.county, c.status, c.frame, c.image_frame, c.image_key, ci.checked_at
                         FROM corpus c LEFT JOIN county_imagery ci ON ci.id = c.id
                        WHERE c.status = 'approved' AND c.image_key IS NOT NULL
+                         -- never replace a photo somebody traced outlines on
+                         AND ci.shapes IS NULL
                          AND c.frame IS NOT NULL ${ONLY ? `AND c.id = ${lit(ONLY)}` : ''}
                        ORDER BY c.at DESC LIMIT ${Math.max(1, LIMIT)}`);
   const todo = rows.filter((r) => FORCE || ONLY || !r.checked_at);
