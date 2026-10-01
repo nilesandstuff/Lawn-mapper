@@ -9592,6 +9592,7 @@ const TOURS = {
       text: 'Some of the same tools, and more, are also in the drawer.' },
   ],
   points: [
+    { target: '#tool-delpoint', name: 'Delete point', text: 'Delete the selected point.' },
     { target: '#tool-unpoint', name: 'Point eraser', text: 'Tap/click to delete points.' },
     { target: '#tool-newpatch', name: 'New shape',
       text: 'Manually place points to create a new lawn shape from scratch.' },
@@ -9599,7 +9600,6 @@ const TOURS = {
       text: 'The inverse of the new shape tool. Place points to create a shape that '
           + 'removes that part of the map from an existing lawn shape. Useful for sheds, '
           + 'playsets, and anything that’s not grass and is in the middle of a lawn.' },
-    { target: '#tool-delpoint', name: 'Delete point', text: 'Delete the selected point.' },
   ],
   brushes: [
     { target: '#tool-erase', name: 'Erase', text: 'Draw to erase from the lawn shape.' },

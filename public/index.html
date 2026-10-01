@@ -1114,17 +1114,18 @@
           rail is drawn over the map it is for.
         -->
         <div class="railsub railgrid" id="point-tools" hidden>
-          <!-- HANDLES IS PUT AWAY, NOT DELETED (owner, 2026-10-01): the rail had
-               grown too wide. Remove `hidden` to bring it back; app.js only
-               honours a remembered "on" while this button can be seen. -->
-          <button class="railbtn sub" id="tool-handles" aria-pressed="false" hidden
-                  title="Show a drag handle on every corner">
+          <!--
+            One-shot, where the point eraser is a mode. After dragging a corner it is
+            still selected, so this is "that one was a mistake" without having
+            to aim at it a second time -- and without the trip to the panel,
+            where the same button has been sitting out of sight.
+          -->
+          <button class="railbtn sub" id="tool-delpoint" title="Delete the selected point">
             <svg viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="7" cy="17" r="2.2" fill="currentColor"/>
-              <line x1="8.6" y1="15.4" x2="15" y2="9" stroke="currentColor"
-                    stroke-width="1.6" stroke-linecap="round"/>
-              <circle cx="17" cy="7" r="4" fill="none" stroke="currentColor" stroke-width="2"/></svg>
-            <span>Handles</span>
+              <circle cx="9" cy="12" r="3.2" fill="currentColor"/>
+              <line x1="14" y1="12" x2="20" y2="12" stroke="currentColor"
+                    stroke-width="2.4" stroke-linecap="round"/></svg>
+            <span>Delete point</span>
           </button>
           <button class="railbtn sub" id="tool-unpoint" aria-pressed="false"
                   title="Tap a point to delete it">
@@ -1163,18 +1164,17 @@
             <span>Cut out</span>
           </button>
 
-          <!--
-            One-shot, where the point eraser is a mode. After dragging a corner it is
-            still selected, so this is "that one was a mistake" without having
-            to aim at it a second time -- and without the trip to the panel,
-            where the same button has been sitting out of sight.
-          -->
-          <button class="railbtn sub" id="tool-delpoint" title="Delete the selected point">
+          <!-- HANDLES IS PUT AWAY, NOT DELETED (owner, 2026-10-01): the rail had
+               grown too wide. Remove `hidden` to bring it back; app.js only
+               honours a remembered "on" while this button can be seen. -->
+          <button class="railbtn sub" id="tool-handles" aria-pressed="false" hidden
+                  title="Show a drag handle on every corner">
             <svg viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="9" cy="12" r="3.2" fill="currentColor"/>
-              <line x1="14" y1="12" x2="20" y2="12" stroke="currentColor"
-                    stroke-width="2.4" stroke-linecap="round"/></svg>
-            <span>Delete point</span>
+              <circle cx="7" cy="17" r="2.2" fill="currentColor"/>
+              <line x1="8.6" y1="15.4" x2="15" y2="9" stroke="currentColor"
+                    stroke-width="1.6" stroke-linecap="round"/>
+              <circle cx="17" cy="7" r="4" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+            <span>Handles</span>
           </button>
         </div>
 
