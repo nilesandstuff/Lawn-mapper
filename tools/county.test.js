@@ -3,7 +3,7 @@
  * compare page's filters and projection (public/county.js).
  *   node tools/county.test.js
  */
-import { cleanCountyReview, cleanCountyOutlines, MAX_NUDGE_M, countyServiceAt, countyServiceById } from '../worker/src/county.js';
+import { cleanCountyReview, cleanCountyOutlines, MAX_NUDGE_M, countyServiceAt, countyServiceById, MAX_SERVICE_SQ_DEG } from '../worker/src/county.js';
 import { providerCatalogue, imageryUrl, detectionProvider, countyExportUrl, frameBbox3857 } from '../worker/src/imagery.js';
 import { FILTERS, shown, stepIn, doubtful, pathFor, polygonsOf, editHref } from '../public/county.js';
 import { lngLatToFramePx } from '../public/lib/mercator.js';
@@ -80,11 +80,13 @@ check('nothing at all is refused', cleanCountyOutlines({ shapes: [], notLawn: []
   /* The lookup, against a stand-in database. */
   const rows = [{ id: 7, url: 'https://a/ImageServer', type: 'ImageServer', title: 'Ortho 2024', year: 2024, native_cm: 7.5, max_px: 4000 }];
   const seen = [];
-  const env = { DB: { prepare: (sql) => ({ bind: (...a) => { seen.push([sql, a]); return { first: async () => rows[0] }; } }) } };
+  const env = { DB: { prepare: (sql) => ({ bind: (...a) => { seen.push([sql, a]); return { first: async () => rows[0], all: async () => ({ results: rows }) }; } }) } };
   const at = await countyServiceAt(env, -85.86, 42.87);
   check('the lookup asks for a service that draws a box and covers the point, newest then finest',
     at?.id === 7 && at.maxPx === 4000 && /export_ok = 1/.test(seen[0][0]) && /west <= \?1 AND east >= \?1/.test(seen[0][0])
-    && /ORDER BY COALESCE\(year, 0\) DESC, COALESCE\(native_cm, 99\) ASC/.test(seen[0][0]), JSON.stringify(at));
+    && /ORDER BY COALESCE\(year, 0\) DESC, \(east - west\) \* \(north - south\) ASC/.test(seen[0][0]), JSON.stringify(at));
+  check('and never a box bigger than a state (Virginia\'s claimed New Jersey)',
+    /\(east - west\) \* \(north - south\) <= \?3/.test(seen[0][0]) && seen[0][1][2] === MAX_SERVICE_SQ_DEG);
   check('by id: only a whole number, never a URL', await countyServiceById(env, 'https://evil') === null
     && (await countyServiceById(env, '7'))?.url === 'https://a/ImageServer');
   check('no database, no answer', await countyServiceAt({}, 1, 2) === null);

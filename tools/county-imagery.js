@@ -928,6 +928,8 @@ export async function qualify(c, lng, lat, decoders) {
   if (!ext || !(lng >= ext[0] && lng <= ext[2] && lat >= ext[1] && lat <= ext[3])) {
     return { usable: false, why: 'extent does not cover the point' };
   }
+  /* The Worker ignores boxes bigger than a state (worker/src/county.js);
+     kept anyway, marked, so the catalogue's count is honest about them. */
   const maxPx = Math.min(Number(m.maxImageWidth) || 4096, Number(m.maxImageHeight) || 4096);
   return {
     usable: true, url: c.url, type: c.type, title: c.title || m.name || null, year, nativeCm: native,

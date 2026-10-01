@@ -34,7 +34,7 @@
  *   ASSETS           -- the static site in public/
  */
 
-import { countyServiceAt, countyServiceById } from './county.js';
+import { countyServicesAt, countyServiceById } from './county.js';
 import { lookupParcel, lookupNeighbours } from './parcel.js';
 import { isCovered, servesCounty } from './counties.js';
 import { coverage, coverageSummary, NEAR_COMPLETE } from './coverage.js';
@@ -1524,8 +1524,9 @@ export default {
         /* Is there a county or state photo for this point? The catalogue's
            answer (worker/src/county.js), for the editor to offer it. */
         case '/api/county-imagery': {
-          const at = await countyServiceAt(env, parseFloat(url.searchParams.get('lng')), parseFloat(url.searchParams.get('lat')));
-          return json({ service: at ? { id: at.id, title: at.title, year: at.year, nativeCm: at.nativeCm, maxPx: at.maxPx } : null }, 200, origin);
+          const all = await countyServicesAt(env, parseFloat(url.searchParams.get('lng')), parseFloat(url.searchParams.get('lat')));
+          const pub = (at) => ({ id: at.id, title: at.title, year: at.year, nativeCm: at.nativeCm, maxPx: at.maxPx });
+          return json({ service: all[0] ? pub(all[0]) : null, services: all.map(pub) }, 200, origin);
         }
         case '/api/segment':
           if (request.method !== 'POST') return json({ error: 'POST required' }, 405, origin);

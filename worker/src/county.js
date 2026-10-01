@@ -52,21 +52,38 @@ const svcOf = (r) => (r ? {
   nativeCm: r.native_cm, maxPx: r.max_px,
 } : null);
 
-/**
- * The county or state photo for a point, from county_services: one that
- * draws an arbitrary box (export_ok) and whose box covers the point; the
- * newest flight, then the finest. Null where there is none, or no table yet.
+/*
+ * A box bigger than this is not a county's or a state's: Virginia's VBMP
+ * claimed one that took in New Jersey (2026-10-01). 40 square degrees holds
+ * any state east of the Rockies.
  */
-export async function countyServiceAt(env, lng, lat) {
-  if (!env?.DB || !Number.isFinite(lng) || !Number.isFinite(lat)) return null;
+export const MAX_SERVICE_SQ_DEG = 40;
+
+/**
+ * The county or state photos for a point, from county_services, best first:
+ * ones that draw an arbitrary box (export_ok), whose box covers the point and
+ * is no bigger than a state; the newest flight, then the smallest box (a
+ * county's own over a state's), then the finest. The editor tries them in
+ * order and takes the first with no gaps over the lot -- a box says where a
+ * service might have pictures, not that it has one here.
+ */
+export async function countyServicesAt(env, lng, lat, n = 4) {
+  if (!env?.DB || !Number.isFinite(lng) || !Number.isFinite(lat)) return [];
   try {
     const r = await env.DB.prepare(
       `SELECT * FROM county_services
         WHERE export_ok = 1 AND west <= ?1 AND east >= ?1 AND south <= ?2 AND north >= ?2
-        ORDER BY COALESCE(year, 0) DESC, COALESCE(native_cm, 99) ASC LIMIT 1`
-    ).bind(lng, lat).first();
-    return svcOf(r);
-  } catch { return null; }
+          AND (east - west) * (north - south) <= ?3
+        ORDER BY COALESCE(year, 0) DESC, (east - west) * (north - south) ASC, COALESCE(native_cm, 99) ASC
+        LIMIT ?4`
+    ).bind(lng, lat, MAX_SERVICE_SQ_DEG, n).all();
+    return (r.results || []).map(svcOf);
+  } catch { return []; }
+}
+
+/** The best one, or null. */
+export async function countyServiceAt(env, lng, lat) {
+  return (await countyServicesAt(env, lng, lat, 1))[0] || null;
 }
 
 /** One service by its id, only if it is in the catalogue and can draw a box. */

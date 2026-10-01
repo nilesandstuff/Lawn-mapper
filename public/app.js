@@ -5525,12 +5525,18 @@ async function lookupCountyPhoto({ makeDefault = false } = {}) {
   const at = state.frame || state.chosen;
   if (!at || !state.imagery.some((p) => p.id === 'county')) return;
   const mine = ++countyLookup;
-  let svc = null;
+  let list = [];
   try {
     const res = await fetch(`/api/county-imagery?lng=${encodeURIComponent(at.lng)}&lat=${encodeURIComponent(at.lat)}`);
-    if (res.ok) svc = (await res.json())?.service || null;
+    if (res.ok) {
+      const j = await res.json();
+      list = Array.isArray(j?.services) ? j.services : j?.service ? [j.service] : [];
+    }
   } catch { /* none, then */ }
   if (mine !== countyLookup) return;
+  /* Best first; showImagery moves down the list past any with gaps here. */
+  state.countyNext = list.slice(1);
+  const svc = list[0] || null;
   state.countySvc = svc;
   buildImageryPicker();
   if (svc && makeDefault && state.provider === 'mapbox') {
@@ -5984,6 +5990,13 @@ async function showImagery() {
     if (run !== imageryRun) return;
     if (gaps > 0.02) {
       idle(); imageryBusyRun = 0;
+      /* The next service that claims this spot, if there is one. */
+      if (state.countyNext?.length) {
+        state.countySvc = state.countyNext.shift();
+        buildImageryPicker();
+        showImagery();
+        return;
+      }
       setStatus(`The county photo has gaps over this lot (${Math.round(gaps * 100)}% missing), so this map stays on Mapbox.`, 'warn');
       state.countySvc = null;
       state.provider = 'mapbox';
@@ -12588,6 +12601,7 @@ function reset() {
   state.googleAlign = null;
   state.countyAlign = null;
   state.countySvc = null;
+  state.countyNext = [];
   state.alignBlobs = {};
   state.provider = 'mapbox';
   state.model = state.defaultModel;
