@@ -1,0 +1,70 @@
+name: 27. Which aerial photos are better here
+
+# Do USGS or county orthophotos exist for our lawns, and are any of them
+# sharper than Mapbox, or better lined up than Google? (owner, 2026-10-01)
+#
+# For every approved lot: fetches the same frame from Mapbox, NAIP, every
+# imagery service the USGS National Map lists, and every imagery service on
+# the lot's own county GIS server, then compares each with Mapbox -- detail
+# on the same pixel grid, offset from the app's own alignment, native
+# resolution, years named, a rough season hint. Also counts the maps drawn on
+# each source, for the question of whether Google earns its place.
+#
+# FREE: public servers and the Mapbox static tier the app already uses. Runs
+# on GitHub's runner, not Modal.
+#
+# THE ANSWER IS THE LAST LINES OF THE LOG; the full per-lot table is the
+# imagery-probe artifact.
+on:
+  workflow_dispatch:
+    inputs:
+      how_many:
+        description: 'How many approved lots to measure (newest first)'
+        required: false
+        default: '60'
+
+jobs:
+  compare:
+    name: Fetch each lot from every source we can find
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install the image decoders
+        run: npm install pngjs jpeg-js --no-save
+
+      - name: Compare the sources, lot by lot
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
+          MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN }}
+          HOW_MANY: ${{ inputs.how_many }}
+        run: node tools/compare-imagery.js
+
+      - name: Keep the per-lot results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: imagery-probe
+          path: imagery-probe.json
+          if-no-files-found: ignore
+
+      - name: If that failed
+        if: failure()
+        run: |
+          echo "Nothing was spent finding this out."
+          echo
+          echo "The usual reasons, in order:"
+          echo "  * MAPBOX_TOKEN is not set, or refuses a request with no"
+          echo "    Referer -- the Worker uses MAPBOX_SERVER_TOKEN for that"
+          echo "  * the corpus table is not reachable, which the deploy would"
+          echo "    also have said"
