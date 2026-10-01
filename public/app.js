@@ -1609,7 +1609,9 @@ async function initMap() {
     const back = () => {
       queueMicrotask(() => {
         if (wasReturning) setMode('shape', 'points');
-        // A drawing started from the panel lands on the step's own tool too.
+        // A drawing started from the panel lands on its points, ready to
+        // adjust -- not on Pan, the Draw step's resting tool.
+        else if (!state.mode && restMode() === 'pan') setMode('shape', 'points');
         else if (!state.mode && restMode()) settleMode();
         /*
          * A CLOSED SHAPE IS A FINISHED SHAPE: blue, and not draggable. Left in
@@ -3385,11 +3387,17 @@ function restore(prev) {
   // Restoring the parcel has to go through setParcelRing: extending a boundary
   // widened the photograph's frame, so undoing it has to narrow it back or the
   // next detection would still be framed for a boundary that no longer exists.
+  /*
+   * ONLY WHEN THE LINE ACTUALLY DIFFERS. Every undo entry carries the parcel,
+   * so this re-set it on every Undo -- and setParcelRing re-frames, which
+   * re-fetches a Google or NAIP photograph: with one showing, each Undo of a
+   * brush stroke looked like the map reloading (owner, 2026-10-01).
+   */
   if (prev.parcel && state.parcel) {
     const ring = prev.parcel.type === 'Polygon'
       ? prev.parcel.coordinates[0]
       : prev.parcel.coordinates[0][0];
-    setParcelRing(ring);
+    if (JSON.stringify(ring) !== JSON.stringify(parcelRing())) setParcelRing(ring);
   }
 
   if (state.edgeEdit) {
@@ -5853,6 +5861,7 @@ async function showImagery() {
       : frameCorners(served),
   });
   map.addLayer({ id: 'imagery-alt', type: 'raster', source: 'imagery-alt' }, before);
+  applyAlignOpacity();
   idle(); imageryBusyRun = 0;
   if (isAligned(state.provider)) alignNaip(served, run, naipBlob);
   setStatus(info.detect
@@ -5989,29 +5998,85 @@ function nudgeNaip(dEast, dNorth, dScale) {
   applyNaipAlign(state.naipServed);
 }
 
+/*
+ * THE LINE-UP PANEL: COLLAPSED UNTIL ASKED FOR (owner, 2026-10-01: "it takes
+ * up too much space"). Collapsed it is one small button under Layers. Open it
+ * is a bar along the bottom of the map with the nudges and an opacity slider
+ * (Google or NAIP over the Mapbox photograph, 60% to start, so the two can be
+ * lined up by eye), and the drawing tools are put away and switched off while
+ * it is: nudging a picture and editing a lawn are not one job.
+ */
+const ALIGN_OPACITY_DEFAULT = 0.6;
+
+function applyAlignOpacity() {
+  if (!map?.getLayer('imagery-alt')) return;
+  const v = state.alignOpen ? (state.alignOpacity ?? ALIGN_OPACITY_DEFAULT) : 1;
+  try { map.setPaintProperty('imagery-alt', 'raster-opacity', v); } catch { /* not ready */ }
+}
+
+function setAlignOpen(open) {
+  const was = Boolean(state.alignOpen);
+  state.alignOpen = Boolean(open) && isAligned(state.provider);
+  if (state.alignOpen && !was) {
+    setMode(null);
+    if (tips.stage) hideTip();
+  }
+  applyAlignOpacity();
+  refreshRail();
+  renderNaipPanel(state.naipServed);
+  if (!state.alignOpen && was) settleMode();
+}
+
 function renderNaipPanel(served, message) {
   const panel = document.getElementById('naip-align');
   if (!panel) return;
   panel.hidden = !isAligned(state.provider);
-  if (panel.hidden) return;
+  if (panel.hidden) {
+    if (state.alignOpen) { state.alignOpen = false; refreshRail(); }
+    return;
+  }
+  panel.classList.toggle('open', Boolean(state.alignOpen));
   panel.textContent = '';
   const a = alignOf(state.provider);
   const who = isNaip(state.provider) ? 'NAIP' : (providerInfo(state.provider).label || 'This picture');
-  const say = document.createElement('p');
+  let said;
   if (message) {
-    say.textContent = message;
+    said = message;
   } else if (!a || (!a.east && !a.north && a.scale === 1)) {
-    say.textContent = a?.source === 'auto'
+    said = a?.source === 'auto'
       ? `${who} already lines up with Mapbox here. Nudge it if it looks off.`
       : `${who} as delivered.`;
   } else {
     const ew = `${Math.abs(a.east).toFixed(1)} m ${a.east >= 0 ? 'east' : 'west'}`;
     const ns = `${Math.abs(a.north).toFixed(1)} m ${a.north >= 0 ? 'north' : 'south'}`;
     const sc = a.scale !== 1 ? `, scaled ${((a.scale - 1) * 100).toFixed(1)}%` : '';
-    say.textContent = `${who} moved ${ew}, ${ns}${sc} to line up with Mapbox`
+    said = `${who} moved ${ew}, ${ns}${sc} to line up with Mapbox`
       + (a.source === 'person' ? ' (set by you).' : ' (automatic).');
   }
-  panel.append(say);
+
+  if (!state.alignOpen) {
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'naipalign-open';
+    open.textContent = `Line up ${isNaip(state.provider) ? 'NAIP' : 'Google'} ▸`;
+    open.title = said;
+    open.addEventListener('click', () => setAlignOpen(true));
+    panel.append(open);
+    return;
+  }
+
+  const head = document.createElement('div');
+  head.className = 'naipalign-head';
+  const say = document.createElement('p');
+  say.textContent = said;
+  const done = document.createElement('button');
+  done.type = 'button';
+  done.className = 'naipalign-done';
+  done.textContent = 'Done';
+  done.addEventListener('click', () => setAlignOpen(false));
+  head.append(say, done);
+  panel.append(head);
+
   const row = document.createElement('div');
   row.className = 'naipalign-buttons';
   const btn = (text, title, fn) => {
@@ -6034,6 +6099,24 @@ function renderNaipPanel(served, message) {
     });
   }
   panel.append(row);
+
+  // See-through, so the picture can be lined up against Mapbox underneath.
+  const fade = document.createElement('label');
+  fade.className = 'naipalign-fade';
+  const pct = Math.round((state.alignOpacity ?? ALIGN_OPACITY_DEFAULT) * 100);
+  const words = document.createElement('span');
+  words.textContent = `${who} opacity ${pct}%`;
+  const slider = document.createElement('input');
+  slider.type = 'range'; slider.min = '0'; slider.max = '100'; slider.step = '5';
+  slider.value = String(pct);
+  slider.setAttribute('aria-label', `${who} opacity over the Mapbox photograph`);
+  slider.addEventListener('input', () => {
+    state.alignOpacity = Number(slider.value) / 100;
+    words.textContent = `${who} opacity ${slider.value}%`;
+    applyAlignOpacity();
+  });
+  fade.append(words, slider);
+  panel.append(fade);
 }
 
 /** The same URL the Worker builds, asked for through our own origin. */
@@ -8077,7 +8160,7 @@ function flushPendingTip() {
 }
 
 /** Which tab each map tool belongs to. One table, two readers. */
-const MODE_TAB = { parcel: 'address', pins: 'detect', move: 'draw', shape: 'draw' };
+const MODE_TAB = { parcel: 'address', pins: 'detect', move: 'draw', pan: 'draw', shape: 'draw' };
 const modeBelongsTo = (mode, tab) => MODE_TAB[mode] === tab;
 
 /*
@@ -8096,7 +8179,8 @@ const modeBelongsTo = (mode, tab) => MODE_TAB[mode] === tab;
  */
 function restMode() {
   if (!state.frame || !map || !draw || drafting) return null;
-  if (state.tab === 'draw') return 'shape';
+  // Pan (owner, 2026-10-01): arriving on Draw changes nothing by accident.
+  if (state.tab === 'draw') return 'pan';
   if (state.tab === 'address' && parcelRing() && !tabLock('address')) return 'parcel';
   return null;
 }
@@ -8201,10 +8285,14 @@ function clearLawnAndUnlock({ toDetect = false } = {}) {
  * are not placing them: a numbered marker you cannot move and did not ask for
  * is just something in front of the lawn.
  */
-const MODES = ['parcel', 'pins', 'move', 'shape'];
+const MODES = ['parcel', 'pins', 'move', 'pan', 'shape'];
+/* The two with no button of their own: the boundary editor is simply on on the
+   Property line step, and the lawn tools are reached through Points/Brushes. */
+const BUTTONLESS_MODES = ['parcel', 'shape'];
 
 function setMode(mode, tool = null) {
-  const next = MODES.includes(mode) ? mode : null;
+  // No tool while the line-up panel is open: it switches them off.
+  const next = MODES.includes(mode) && !state.alignOpen ? mode : null;
   /* Any other tool ends not-lawn tracing, so the next lawn patch drawn is
      never swallowed into the not-lawn list. */
   if (state.notLawnMode) leaveNotLawnMode();
@@ -8257,7 +8345,10 @@ function setMode(mode, tool = null) {
    */
   state.pointEraser = false;
 
-  if (next === 'move') {
+  if (next === 'pan') {
+    // Nothing armed: every drag pans and no shape can be touched.
+    setHint('Drag to move around. Pick Points or Brushes to edit.');
+  } else if (next === 'move') {
     // Our own listeners run first and decline everything here, which is what
     // lets beginDrag() take the undo snapshot before Draw moves the shape.
     armLawnPicker();
@@ -8990,7 +9081,7 @@ function refreshRail() {
   const rail = $('#maprail');
   if (!rail) return;
   const onSaves = state.tab === 'saved';
-  rail.hidden = !state.frame || onSaves;
+  rail.hidden = !state.frame || onSaves || Boolean(state.alignOpen);
 
   // One source is not a choice, so the Layers button only exists when there is
   // something to switch between.
@@ -9071,7 +9162,9 @@ function refreshRail() {
   const done = $('#btn-edge-done');
   if (done) done.hidden = Boolean(state.mode) && state.mode === restMode();
 
-  $('#shape-tools').hidden = state.mode !== 'shape';
+  // With Pan in hand the lawn tools stay one tap away (Points, Brushes).
+  const panning = state.mode === 'pan';
+  $('#shape-tools').hidden = state.mode !== 'shape' && !panning;
   for (const [id, tool] of [['#tool-points', 'points'], ['#tool-add', 'add'], ['#tool-erase', 'erase']]) {
     $(id)?.setAttribute('aria-pressed',
       String(state.mode === 'shape' && state.shapeTool === tool));
@@ -9093,7 +9186,7 @@ function refreshRail() {
   const brushLive = state.mode === 'shape' && state.shapeTool !== 'points';
   const show = (id, on) => { const el = $(id); if (el) el.hidden = !on; };
 
-  show('#tool-brushes', onPoints);
+  show('#tool-brushes', onPoints || panning);
   show('#tool-add', brushLive);
   show('#tool-erase', brushLive);
 
@@ -9489,6 +9582,7 @@ function tipContent(stage) {
  */
 const TOURS = {
   tools: [
+    { target: '#mode-pan', name: 'Pan', text: 'Move around the map without changing any shapes. Where the Draw step starts.' },
     { target: '#mode-move', name: 'Move', text: 'Drag whole lawn shapes.' },
     { target: '#tool-points', name: 'Points',
       text: 'Manually add, remove, and drag points of the lawn outline (slow but precise).' },

@@ -91,10 +91,19 @@ async function goTab(page, name) {
  * to turn a precondition into the opposite of one.
  */
 async function inLawnMode(page) {
-  if (await page.locator('#shape-tools').isVisible()) return;
+  if (await page.evaluate(() => window.__lmEditable().mode) === 'shape'
+    && await page.locator('#shape-tools').isVisible()) return;
   if (!(await page.locator('#mode-move').isVisible())) await goTab(page, 'draw');
   if (await page.evaluate(() => document.querySelector('#mode-move')?.getAttribute('aria-pressed') === 'true')) {
     await page.click('#mode-move');
+  }
+  /* The Draw step starts on Pan (owner, 2026-10-01): Points is the press
+     that picks the lawn tools up. */
+  if (await page.evaluate(() => window.__lmEditable().mode) !== 'shape') {
+    // Through the page: the step was opened just above, and testflow.test.js
+    // reads helpers in a straight line.
+    await page.evaluate(() => document.querySelector('#tool-points').click());
+    await page.waitForTimeout(200);
   }
   await page.locator('#shape-tools').waitFor({ state: 'visible', timeout: 5000 });
 }
@@ -802,8 +811,9 @@ check('the map shows this step\'s tools and not another\'s',
 await goTab(page, 'draw');
 await page.waitForTimeout(400);
 const drawRail = await page.evaluate(() => window.__lmTabs());
-check('the drawing tab has the lawn tools on, and not the boundary',
-  drawRail.rail.includes('shape') && !drawRail.rail.includes('parcel')
+check('the drawing tab starts on Pan, with the lawn tools one tap away, and not the boundary',
+  drawRail.rail.includes('pan') && !drawRail.rail.includes('parcel')
+    && (await page.evaluate(() => window.__lmEditable().mode)) === 'pan'
     && await page.locator('#shape-tools').isVisible(),
   drawRail.rail.join(', ') || '(empty)');
 
@@ -845,8 +855,10 @@ async function tourCheck(stage, parts) {
     overlaps.map((i) => i.name).join(', ') || 'one column, in order');
 }
 
-await tourCheck('tools', 4);
+await tourCheck('tools', 5);
 await page.click('#tour-ok');
+await page.waitForTimeout(250);
+await page.click('#tool-points');       // the point tools' own tour comes with them
 await tourCheck('points', 5);
 await page.click('#tour-ok');
 await page.waitForTimeout(250);
@@ -2712,9 +2724,9 @@ check('Move puts the lawn tools away', await page.evaluate(() =>
   document.querySelector('#shape-tools').hidden === true));
 await page.click('#mode-move');
 await page.waitForTimeout(250);
-check('and pressing Move again brings them back', await page.evaluate(() =>
+check('and pressing Move again brings them back, on Pan', await page.evaluate(() =>
   document.querySelector('#shape-tools').hidden === false
-  && window.__lmEditable().mode === 'shape'));
+  && window.__lmEditable().mode === 'pan'));
 
 /* ------------------------------------- the brush stops at the boundary */
 /*
@@ -2859,6 +2871,8 @@ const reachableIn = async (mode, tool) => {
      * that unfolding them arms whichever was last in hand.
      */
     await armBrush(page, tool);
+  } else if (mode === 'shape') {
+    await inLawnMode(page);
   } else if (await page.locator(`#mode-${mode}`).count()) {
     await page.click(`#mode-${mode}`);
   }

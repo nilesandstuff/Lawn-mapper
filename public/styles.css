@@ -456,6 +456,9 @@ body.inferred-mode .panel { box-shadow: inset 4px 0 0 #7c4dff; }
 .maprail {
   position: absolute; top: 96px; right: 10px; z-index: 3;
   display: flex; flex-direction: column; gap: 6px;
+  /* Right-aligned: the top row (Pan, Move, Undo, Redo) is the widest, and
+     everything under it hangs from the screen edge, not from its left end. */
+  align-items: flex-end;
 }
 .railbtn {
   width: 54px; padding: 7px 2px 5px;
@@ -512,6 +515,7 @@ body.inferred-mode .panel { box-shadow: inset 4px 0 0 #7c4dff; }
 .railpair .railbtn { width: 46px; }
 .railundo:disabled { opacity: .4; cursor: not-allowed; }
 #mode-move[aria-pressed="true"] { background: #1565c0; border-color: #0d47a1; }
+#mode-pan[aria-pressed="true"] { background: #455a64; border-color: #263238; }
 #tool-add[aria-pressed="true"]   { background: #2e7d32; border-color: #1b5e20; }
 #tool-erase[aria-pressed="true"] { background: #c62828; border-color: #8e0000; }
 /* Two-word names ("Point eraser", "New shape") wrap inside a 46px button. */
@@ -1080,18 +1084,34 @@ kbd {
 
 /* NAIP lined up with Mapbox: a small panel over the top of the map. */
 /*
- * UNDER the Layers button, not on it. This box lives inside #maprail-left,
- * which is one button wide, so "centred, 10px from the top" put it squarely
- * over that button and squeezed its nudges into a single tall column (owner's
- * phone, 2026-09-30). Width is its own, capped to leave the tool rail on the
- * right clear.
+ * COLLAPSED: one small button under the Layers button (owner, 2026-10-01).
+ * OPEN: a bar along the bottom edge of the map, the full width of it, while
+ * the tool rail is put away (setAlignOpen).
  */
 .naipalign {
-  position: absolute; top: 62px; left: 0;
-  z-index: 6; width: max-content; max-width: min(330px, calc(100vw - 190px));
-  background: rgba(255, 255, 255, .95); border-radius: 10px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, .25); padding: 8px 10px; font-size: 13px;
+  position: absolute; top: 153px; left: 10px; z-index: 6; font-size: 13px;
 }
+@media (max-width: 700px) { .naipalign { top: 131px; left: 8px; } }
+.naipalign-open {
+  font: inherit; font-size: 12.5px; font-weight: 600; padding: 7px 11px;
+  color: #1f2d24; background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(0, 0, 0, 0.16); border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.22);
+}
+.naipalign.open {
+  top: auto; bottom: 10px; left: 10px; right: 10px;
+  background: rgba(255, 255, 255, .96); border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, .3); padding: 8px 10px 10px;
+}
+.naipalign-head { display: flex; gap: 10px; align-items: flex-start; }
+.naipalign-head p { flex: 1; }
+.naipalign-done {
+  font: inherit; font-weight: 600; padding: 6px 14px; border-radius: 8px;
+  background: var(--green); color: #fff; border: 0;
+}
+.naipalign-fade { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 12.5px; }
+.naipalign-fade span { white-space: nowrap; min-width: 9.5em; }
+.naipalign-fade input { flex: 1; }
 .naipalign p { margin: 0 0 6px; }
 .naipalign-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
 .naipalign-buttons button {

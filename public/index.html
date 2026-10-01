@@ -1004,6 +1004,14 @@
         tabs could not be pressed at all.
       -->
       <div class="railpair">
+        <!-- PAN (owner, 2026-10-01): move around the map and touch nothing.
+             The tool the Draw step starts on. -->
+        <button class="railbtn" id="mode-pan" aria-pressed="false" title="Pan: move around the map without changing anything">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path
+            d="M8.5 12V6.2a1.4 1.4 0 0 1 2.8 0V11m0-1.2V4.6a1.4 1.4 0 0 1 2.8 0v5.7m0-.9a1.4 1.4 0 0 1 2.8 0V12m0-1.1a1.4 1.4 0 0 1 2.8 0v4.3c0 3.6-2.6 6.3-6.2 6.3h-1.2c-2.1 0-3.6-.9-4.8-2.6l-2.8-4.1a1.4 1.4 0 0 1 2.2-1.7l1.6 1.9"
+            fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>Pan</span>
+        </button>
         <button class="railbtn" id="mode-move" aria-pressed="false" title="Move a whole shape">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path
           d="M12 2.5v19M2.5 12h19M12 2.5l-3 3M12 2.5l3 3M12 21.5l-3-3M12 21.5l3-3M2.5 12l3-3M2.5 12l3 3M21.5 12l-3-3M21.5 12l3 3"
@@ -1203,10 +1211,15 @@
            photograph. Populated from /api/config. -->
       <div class="layerlist" id="layer-list" role="menu" aria-label="Satellite image" hidden></div>
 
-      <!-- NAIP lined up with Mapbox, and nudges for when it is still off.
-           Shown only while NAIP (or the NDVI drawn from it) is on the map. -->
-      <div class="naipalign" id="naip-align" role="group" aria-label="NAIP alignment" hidden></div>
     </div>
+
+    <!--
+      Lining Google or NAIP up with Mapbox. A small button under Layers until
+      it is asked for, then a bar along the bottom of the map with the nudges
+      and an opacity slider (renderNaipPanel). Shown only while one of those
+      pictures is on the map.
+    -->
+    <div class="naipalign" id="naip-align" role="group" aria-label="Line the photograph up with Mapbox" hidden></div>
 
     <!--
       One tip at a time, pointed at the thing it is talking about.
