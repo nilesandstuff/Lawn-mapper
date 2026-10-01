@@ -29,6 +29,7 @@ import { logEntries, loggingEnabled } from './testlog.js';
 import { feedbackEntries, feedbackEnabled } from './feedback.js';
 import { corpusGaps, candidateScore } from './corpus.js';
 import { parcelGaps } from './gaps.js';
+import { cleanCountyReview } from './county.js';
 import {
   outlineKeys, idOfOutlineKey, applyReview, OUTLINE_PREFIX,
   EXAMPLE_PREFIX, isExampleId, exampleKey, exampleImageKey, keptByClass, reviewExample,
@@ -1455,6 +1456,71 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
     if (!object) return json({ error: 'No image' }, 404, origin);
     return new Response(object.body, {
       headers: { 'Content-Type': 'image/png', 'Cache-Control': 'private, max-age=600' },
+    });
+  }
+
+  /* ------------------------------------------- county orthophotos (owner, 2026-10-01) */
+  /*
+   * The maps tools/county-imagery.js banked a county photo for, the photo
+   * itself, the map's outlines and frame -- the same image_frame training
+   * rasterises them against -- and a verdict. See public/county.html.
+   */
+  if (path === 'county-list') {
+    try {
+      const rows = await env.DB.prepare(
+        `SELECT ci.id, ci.title, ci.year, ci.native_cm, ci.review, ci.fit, ci.fit0, ci.residual_m,
+                ci.east, ci.north, ci.scale, ci.review_east, ci.review_north, c.county, c.status
+           FROM county_imagery ci JOIN corpus c ON c.id = ci.id
+          WHERE ci.image_key IS NOT NULL
+          ORDER BY c.at DESC`
+      ).all();
+      const looked = await env.DB.prepare('SELECT COUNT(*) n FROM county_imagery').first();
+      return json({ maps: rows.results || [], looked: looked?.n || 0 }, 200, origin);
+    } catch (e) {
+      return json({ maps: [], looked: 0, unavailable: String(e.message || e) }, 200, origin);
+    }
+  }
+
+  if (path === 'county' && request.method === 'GET') {
+    const id = url.searchParams.get('id') || '';
+    const row = await env.DB.prepare(
+      `SELECT ci.*, c.county, c.status, c.frame, c.image_frame, c.shapes, c.parcel
+         FROM county_imagery ci JOIN corpus c ON c.id = ci.id WHERE ci.id = ?1`
+    ).bind(id).first();
+    if (!row) return json({ error: 'No such map' }, 404, origin);
+    const parse = (t) => { try { return JSON.parse(t); } catch { return null; } };
+    return json({
+      ...row,
+      frame: parse(row.image_frame) || parse(row.frame),
+      shapes: parse(row.shapes) || [],
+      parcel: parse(row.parcel),
+      candidates: parse(row.candidates) || [],
+      image_frame: undefined,
+    }, 200, origin);
+  }
+
+  if (path === 'county-review' && request.method === 'POST') {
+    const body = await request.json().catch(() => ({}));
+    const id = String(body?.id || '');
+    const clean = cleanCountyReview(body);
+    if (!clean) return json({ error: 'Bad verdict' }, 400, origin);
+    const res = await env.DB.prepare(
+      `UPDATE county_imagery SET review = ?2, review_east = ?3, review_north = ?4,
+              reviewed_at = ?5, reviewed_by = ?6 WHERE id = ?1 AND image_key IS NOT NULL`
+    ).bind(id, clean.review, clean.east, clean.north, new Date().toISOString(), me.email || me.id).run();
+    if (!res.meta?.changes) return json({ error: 'No such map' }, 404, origin);
+    return json({ ok: true, ...clean }, 200, origin);
+  }
+
+  if (path === 'county-image') {
+    if (!env.CORPUS) return json({ error: 'No bucket' }, 404, origin);
+    const id = url.searchParams.get('id') || '';
+    const row = await env.DB.prepare('SELECT image_key FROM county_imagery WHERE id = ?1').bind(id).first();
+    if (!row?.image_key) return json({ error: 'No image' }, 404, origin);
+    const object = await env.CORPUS.get(row.image_key);
+    if (!object) return json({ error: 'No image' }, 404, origin);
+    return new Response(object.body, {
+      headers: { 'Content-Type': 'image/png', 'Cache-Control': 'private, max-age=60' },
     });
   }
 
