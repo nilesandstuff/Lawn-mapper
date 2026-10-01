@@ -5488,10 +5488,13 @@ const effectiveProvider = (id) => (providerInfo(id).detect ? id : 'mapbox');
  *
  * Floored, never rounded, on both sides for the same reason: rounding up
  * crops, and a parcel that fitted the frame would lose its edges.
+ *
+ * And at its own size: Google is one 640 x 640 picture whatever shape the
+ * lot's frame is, so laying it on a cropped frame squeezed it (fixedSize).
  */
 const frameFor = (provider, frame) =>
   (frame && providerInfo(provider).integerZoom
-    ? { ...frame, zoom: Math.floor(frame.zoom) }
+    ? { ...frame, zoom: Math.floor(frame.zoom), ...(providerInfo(provider).fixedSize || {}) }
     : frame);
 
 function buildImageryPicker() {

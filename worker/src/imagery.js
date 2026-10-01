@@ -613,6 +613,13 @@ export function imageryPrompt(provider, env) {
   return String(env?.[p.promptVar] || p.prompt).trim();
 }
 
+/** The width and height a fixed-size source serves, from its own frame rule:
+    a frame that differs from it in both says which sides the rule sets. */
+const fixedSizeOf = (p) => {
+  const f = p.frame({ lng: 0, lat: 0, zoom: 19.5, size: 1, height: 1 });
+  return f.size !== 1 ? { size: f.size, height: f.height ?? f.size } : null;
+};
+
 /**
  * What the browser needs to build the picker, without duplicating the list.
  *
@@ -640,6 +647,15 @@ export const providerCatalogue = (env) =>
       // The frame this source will actually be served at, so the browser can
       // place a preview on the same ground the detector will measure.
       integerZoom: Boolean(p.frame),
+      /*
+       * And its size: Google serves one 640 x 640 picture whatever the frame's
+       * shape. Frames became rectangles cropped to the lot (731ea38) and only
+       * this side learned it, so the browser laid a 640-wide picture on a frame
+       * a third that wide -- Google looked squeezed about twice over (owner,
+       * 2026-10-01, a lot 170 ft wide showing 350 ft). Read off the frame rule
+       * itself so the two cannot drift apart again.
+       */
+      fixedSize: p.frame ? fixedSizeOf(p) : null,
     }));
 
 /** Is this source usable at all in this deployment? */

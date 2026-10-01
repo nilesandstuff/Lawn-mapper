@@ -423,6 +423,18 @@ check('the signed-out allowance defaults to 5', DAILY_LIMIT_PER_CLIENT === 5,
   check('and offered when there is one',
     providerCatalogue({ GOOGLE_MAPS_KEY: 'K' }).some((p) => p.id === 'google'));
 
+  /* The browser lays the preview on the frame the catalogue describes. A
+     cropped frame (500 x 260 here) was being given Google's 640 x 640
+     picture, which squeezed it about twice over (owner, 2026-10-01). */
+  const gInfo = providerCatalogue({ GOOGLE_MAPS_KEY: 'K' }).find((p) => p.id === 'google');
+  const cropped = { lng: -85.86, lat: 42.87, zoom: 19.6, size: 500, height: 260 };
+  const served = providerFrame('google', cropped);
+  check('the catalogue tells the browser the size Google is really served at',
+    gInfo.fixedSize?.size === served.size && gInfo.fixedSize?.height === served.height,
+    JSON.stringify(gInfo.fixedSize));
+  check('and a source served at the frame as asked has no fixed size',
+    providerCatalogue({}).find((p) => p.id === 'mapbox').fixedSize === null);
+
 }
 
 /* ------------------------------------------------------- the threshold */
