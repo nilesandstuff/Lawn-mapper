@@ -841,6 +841,35 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H64. Corpus-wide: 55 of 55 approved maps that had a county photo banked are re-lined-up; 38 measured on the ground and landed within 0.1 m of Mapbox, 17 not measurable; the ground offset from Mapbox is a median 0.54 m and always a plain shift but one, 2026-10-01
+
+*Two workflow 8 runs. The full search (36889876365, commit 0f82df2, old
+alignment, before the approved-only filter): 103 corpus maps looked at, 92
+with usable county or state imagery, median native 6 cm, median offset 0.43 m
+by the old whole-frame method, 42 called doubtful by it. Then MODE=realign
+(36915494071, commit d65b480): every APPROVED map with a banked county photo,
+from its stored service, measured with lib/register.js as in H63 and banked
+through the measurement. Per-map lines are in that run's log and its
+county-imagery artifact.*
+
+- **55 approved maps** have a county or state photo (20 hosts; Kent County MI
+  9, Cass County ND 6, Virginia VBMP 4, Maryland six-inch 4, ...).
+- **38 of 55 measured and landed**: the banked file re-measured within 0.1 m
+  of Mapbox (median 0.01 m left). Median ground offset from Mapbox **0.54 m**;
+  range about 0.15 m to 1.8 m (DeKalb GA 1.49 E -1.01 N).
+- **Every measured map was a plain shift except one** (Onslow NC, an affine
+  -- 18 of 46 patches). Same as H63's five.
+- **15 "not sure"** -- too few agreeing patches (canopy-heavy frames: Kent MI,
+  Prince William VA, Island WA, Indiana, Maryland) -- banked as delivered.
+- **2 did not land**: Lawrence County AL, a tile cache read in a mosaic (0.19 m
+  left after banking); one NC OneMap lot whose measurement said 3.60 m W and
+  whose banked file could not be measured again. Both are in the 17 shown
+  first on /county.html.
+- SPECULATION, not tested: the shifts look regional (PA, NJ, KY, IL, MA about
+  0.4-0.7 m E and 0.3-0.8 m S of north; Cass ND about 0.7 m N; Ottawa MI near
+  zero), which is the size of the NAD83-to-WGS84 difference that ArcGIS
+  services apply or do not. Nothing here measures which.
+
 ### H63. Lining photos up: on five county-imagery lots the ground differs from Mapbox by a plain shift of 0.15-0.8 m, measured to about 0.15 m; roofs and trees lean differently in each photo by up to metres; the old whole-frame alignment was pulled toward the roofs; parcel lines cannot be checked against any photo per lot, 2026-10-01
 
 *Local bench, not CI and not the corpus: five lots chosen because the
