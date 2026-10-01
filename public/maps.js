@@ -143,7 +143,10 @@ function row(m, { dim = false, open = false } = {}) {
   show.addEventListener('click', draw);
   if (open) draw(); else box.append(show);
 
-  box.append(verdictRow(m, pills));
+  /* A not-lawn-only map (tinker mode) is not a lawn to approve: "Put it back"
+     after a reject would make it 'approved', and training would read its
+     empty lawn as "nothing on this lot is lawn". No verdict offered. */
+  if (m.status !== 'notlawn') box.append(verdictRow(m, pills));
   return box;
 }
 
