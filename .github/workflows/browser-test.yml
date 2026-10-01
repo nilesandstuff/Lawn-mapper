@@ -108,4 +108,10 @@ jobs:
 
       - name: Worker log
         if: failure()
-        run: cat wrangler.log || true
+        run: |
+          cat wrangler.log || true
+          # wrangler's own error is printed EMPTY in wrangler.log ("✘ [ERROR]"
+          # and nothing else) -- twice on 2026-09-30, both times on a plain
+          # GET / -- and says the detail went to a file. That file, then.
+          echo "---- wrangler's detailed log ----"
+          tail -n 120 ~/.config/.wrangler/logs/*.log 2>/dev/null || echo "(no detailed log)"
