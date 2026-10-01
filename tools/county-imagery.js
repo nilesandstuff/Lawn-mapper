@@ -68,7 +68,7 @@ const BUCKET = process.env.CORPUS_BUCKET || 'lawn-mapper-corpus';
 const MAX_TRY = Number(process.env.MAX_TRY || 12);
 const MIN_YEAR = Number(process.env.MIN_YEAR || 2012);
 const PAUSE_MS = Number(process.env.PAUSE_MS || 250);
-const TIMEOUT_MS = 60000;
+const TIMEOUT_MS = 120000;
 
 const MAX_NATIVE_CM = 25;
 const MIN_COVER = 0.98;
@@ -154,7 +154,9 @@ export function coverage(data, w, h) {
     n++;
     const [r, g, b, a] = [data[i * 4], data[i * 4 + 1], data[i * 4 + 2], data[i * 4 + 3]];
     if (a < 250) continue;
-    if ((r > 252 && g > 252 && b > 252) || (r < 3 && g < 3 && b < 3)) continue;
+    /* Exactly white or exactly black is a no-data fill; a bright roof is not
+       (the first run turned Milwaukee's 2026 flight away at 98% for them). */
+    if ((r === 255 && g === 255 && b === 255) || (r === 0 && g === 0 && b === 0)) continue;
     good++;
   }
   return n ? good / n : 0;
@@ -379,7 +381,7 @@ async function fetchTiled(c, m, bbox, w, h, decoders) {
   const sy0 = Math.min(...corners.map((p) => p[1])), sy1 = Math.max(...corners.map((p) => p[1]));
   const c0 = Math.floor((sx0 - ox) / span), c1 = Math.floor((sx1 - ox) / span);
   const r0 = Math.floor((oy - sy1) / span), r1 = Math.floor((oy - sy0) / span);
-  if ((c1 - c0 + 1) * (r1 - r0 + 1) > 100) return null;
+  if ((c1 - c0 + 1) * (r1 - r0 + 1) > 400) return null;
   const mw = (c1 - c0 + 1) * size, mh = (r1 - r0 + 1) * size;
   const mosaic = new Uint8Array(mw * mh * 4);
   let got = 0;
@@ -429,11 +431,39 @@ async function fetchTiled(c, m, bbox, w, h, decoders) {
 export async function fetchOver(c, m, bbox, w, h, decoders) {
   const maxW = Number(m.maxImageWidth) || 4096, maxH = Number(m.maxImageHeight) || 4096;
   const fw = Math.min(w, maxW), fh = Math.min(h, maxH);
-  const exported = await getImage(exportUrl(c, bbox, fw, fh), decoders);
-  /* A picture of another size is letterboxed -- not our box -- so it is not
-     used; the tiles, if there are any, still can be. */
-  const exact = exported && exported.width === fw && exported.height === fh;
-  if (exact && coverage(exported.data, exported.width, exported.height) > 0.05) {
+  const one = async (box, bw, bh) => {
+    const img = await getImage(exportUrl(c, box, bw, bh), decoders);
+    /* A picture of another size is letterboxed -- not our box -- so it is
+       not used; the tiles, if there are any, still can be. */
+    return img && img.width === bw && img.height === bh ? img : null;
+  };
+  let exported = await one(bbox, fw, fh);
+  /*
+   * IN FOUR QUARTERS when the whole will not come: a big frame at 5 cm is a
+   * large export, and some servers time out or refuse it (Ingham County's
+   * 2025 flight answered a 128 px look and nothing at full size).
+   */
+  if (!exported && fw >= 512 && fh >= 512) {
+    const hw = Math.floor(fw / 2), hh = Math.floor(fh / 2);
+    const xm = bbox[0] + ((bbox[2] - bbox[0]) * hw) / fw;
+    const ym = bbox[3] - ((bbox[3] - bbox[1]) * hh) / fh;
+    const parts = [
+      [[bbox[0], ym, xm, bbox[3]], 0, 0, hw, hh], [[xm, ym, bbox[2], bbox[3]], hw, 0, fw - hw, hh],
+      [[bbox[0], bbox[1], xm, ym], 0, hh, hw, fh - hh], [[xm, bbox[1], bbox[2], ym], hw, hh, fw - hw, fh - hh],
+    ];
+    const out = new Uint8Array(fw * fh * 4);
+    let ok = true;
+    let lossless = true;
+    for (const [box, ox, oy, pw, ph] of parts) {
+      const part = await one(box, pw, ph);
+      await sleep(PAUSE_MS);
+      if (!part) { ok = false; break; }
+      lossless = lossless && part.lossless;
+      for (let y = 0; y < ph; y++) out.set(part.data.subarray(y * pw * 4, (y + 1) * pw * 4), ((oy + y) * fw + ox) * 4);
+    }
+    if (ok) exported = { data: out, width: fw, height: fh, lossless };
+  }
+  if (exported && coverage(exported.data, exported.width, exported.height) > 0.05) {
     return { ...exported, data: resizeRGBA(exported.data, fw, fh, w, h), width: w, height: h };
   }
   return fetchTiled(c, m, bbox, w, h, decoders);
@@ -524,10 +554,14 @@ export async function evaluate(c, base, frame, decoders) {
   const cover = coverage(img.data, img.width, img.height);
   const pixelCm = ((bbox[2] - bbox[0]) / img.width) * Math.cos((frame.lat * Math.PI) / 180) * 100;
   let native = nativeCm(m, frame.lat);
+  /* Under 3 cm is a tile scheme talking, not a camera (New Jersey's "1 cm"). */
+  if (native !== null && native < 3) native = null;
   if (img.tiled) native = Math.max(native ?? 0, img.tileCm * (img.merc ? Math.cos((frame.lat * Math.PI) / 180) : 1));
   if (img.lossless && c.type === 'MapServer') {
     const b = blockiness(img.data, img.width, img.height);
     if (b > 1.5) native = Math.max(native ?? 0, pixelCm * b);
+    /* Not visibly enlarged at our grid: at least as fine as our grid. */
+    else if (native === null) native = pixelCm;
   }
   const detail = c.type === 'ImageServer' && base.detail
     ? (extraDetail(img.data, img.width, img.height, 4)?.extra ?? 0) / base.detail.extra : null;
