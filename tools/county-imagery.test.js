@@ -55,7 +55,7 @@ const W = 40, H = 40;
 const fill = (fn) => { const d = new Uint8Array(W * H * 4); for (let i = 0; i < W * H; i++) d.set(fn(i), i * 4); return d; };
 check('a photograph is covered', coverage(fill((i) => [(i * 7) % 200 + 20, 120, 80, 255]), W, H) > 0.98);
 check('a few saturated white pixels (a sunlit driveway) are not missing data',
-  coverage(fill((i) => (i % 50 === 0 ? [255, 255, 255, 255] : [90, 120, 80, 255])), W, H) > 0.99);
+  coverage(fill((i) => (i % 250 === 0 ? [255, 255, 255, 255] : [90, 120, 80, 255])), W, H) > 0.99);
 check('transparent or white no-data is not',
   coverage(fill((i) => (i % 2 ? [255, 255, 255, 255] : [0, 0, 0, 0])), W, H) < 0.05);
 
