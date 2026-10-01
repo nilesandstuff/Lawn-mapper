@@ -373,6 +373,33 @@ export function providerFrame(provider, frame) {
 
 /* -------------------------------------------------------------- sources */
 
+/**
+ * One county service's picture of exactly our frame: an ArcGIS export of the
+ * frame's Web Mercator box at the frame's pixel size -- or, where the service
+ * will not draw that big, the biggest it will, same box, same shape (the
+ * readers resample to their own grid either way).
+ */
+export function countyExportUrl(svc, frame) {
+  if (!svc?.url) return null;
+  let w = imagePixels(frame), h = imageHeightPixels(frame);
+  const max = Number(svc.maxPx) || Number(svc.max_px) || 4096;
+  if (Math.max(w, h) > max) {
+    const k = max / Math.max(w, h);
+    w = Math.max(1, Math.floor(w * k)); h = Math.max(1, Math.floor(h * k));
+  }
+  const params = new URLSearchParams({
+    bbox: frameBbox3857(frame).join(','), bboxSR: '3857', imageSR: '3857', size: `${w},${h}`, f: 'image',
+  });
+  if (svc.type === 'ImageServer') {
+    params.set('format', 'png');
+    params.set('interpolation', 'RSP_BilinearInterpolation');
+    return `${svc.url}/exportImage?${params}`;
+  }
+  params.set('format', 'png32');
+  params.set('transparent', 'true');
+  return `${svc.url}/export?${params}`;
+}
+
 const USGS_NAIP = 'https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer';
 
 /**
@@ -516,6 +543,30 @@ export const PROVIDERS = {
       }),
   },
 
+  /*
+   * THE COUNTY'S OWN PHOTO, where there is one (owner, 2026-10-01: "make the
+   * county maps available for any location that has them, and have them be
+   * the default ... County map layers will not be view only").
+   *
+   * Not one service but whichever one covers the lot: county_services, built
+   * ahead of time by tools/county-imagery.js, and looked up by the Worker
+   * (worker/src/county.js) into frame.svc before anything asks for a URL. No
+   * svc, no picture -- never somebody else's county, and never an address
+   * typed into a query string (the Worker only fetches services it lists).
+   *
+   * DETECTS. The trained model has only been trained on Mapbox, so how it
+   * does on these photos is what the training comparison measures (H62, H63).
+   */
+  county: {
+    label: 'County photo',
+    note: "The county's or state's own aerial photography: usually the sharpest there is, often flown in early spring with the leaves off.",
+    detect: true,
+    perLot: true,
+    prompt: 'grass',
+    promptVar: 'SAM_PROMPT',
+    url: (frame) => (frame?.svc ? countyExportUrl(frame.svc, frame) : null),
+  },
+
   esri: {
     // No "(look only)" in the name. The picker, the on-map list and the tip
     // all mark a view-only source themselves, from `detect` -- baking it into
@@ -647,6 +698,9 @@ export const providerCatalogue = (env) =>
       // The frame this source will actually be served at, so the browser can
       // place a preview on the same ground the detector will measure.
       integerZoom: Boolean(p.frame),
+      /* Offered only where a lot has one (the county photo): the editor asks
+         /api/county-imagery and shows it only when the answer is yes. */
+      perLot: Boolean(p.perLot),
       /*
        * And its size: Google serves one 640 x 640 picture whatever the frame's
        * shape. Frames became rectangles cropped to the lot (731ea38) and only

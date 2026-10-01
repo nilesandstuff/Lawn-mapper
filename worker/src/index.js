@@ -34,6 +34,7 @@
  *   ASSETS           -- the static site in public/
  */
 
+import { countyServiceAt, countyServiceById } from './county.js';
 import { lookupParcel, lookupNeighbours } from './parcel.js';
 import { isCovered, servesCounty } from './counties.js';
 import { coverage, coverageSummary, NEAR_COMPLETE } from './coverage.js';
@@ -391,6 +392,11 @@ async function handleImagery(url, env, origin) {
   if (!providerAvailable(provider, env)) {
     return json({ error: 'That source is not configured here', provider }, 400, origin);
   }
+  /* The county photo: only a service in the catalogue, by its id. */
+  if (provider === 'county') {
+    frame.svc = await countyServiceById(env, url.searchParams.get('svc'));
+    if (!frame.svc) return json({ error: 'No county photo service by that id', provider }, 400, origin);
+  }
   const src = imageryUrl(provider, frame, serverToken(env), env);
   // Esri serves tiles and nothing else; the browser paints those itself.
   if (!src) return json({ error: 'That source has no single-image form', provider }, 400, origin);
@@ -554,7 +560,15 @@ async function handleSegment(request, env, origin, ctx) {
   const zoom = clampZoom(Number(body.zoom) || 19);
   const size = clampSize(Number(body.size) || 640);
   const height = clampSize(Number(body.height) || size);
-  const provider = detectionProvider(body.provider);
+  let provider = detectionProvider(body.provider);
+  /*
+   * THE COUNTY PHOTO is whichever service covers this lot, named by its id in
+   * the catalogue (county_services) -- never a URL from the request. One that
+   * is not there measures on Mapbox, and the echoed frame says so.
+   */
+  const svc = provider === 'county' ? await countyServiceById(env, body.svc) : null;
+  if (provider === 'county' && !svc) provider = 'mapbox';
+  const sv = svc ? { svc } : {};
   /*
    * Not const, because the land cover method can hand the request back to the
    * AI when its raster does not reach the address. See the fallback below --
@@ -623,7 +637,7 @@ async function handleSegment(request, env, origin, ctx) {
    * of shipping both is finding out which is better.
    */
   if (model.local) {
-    const served = providerFrame(provider, { lng, lat, zoom, size, height });
+    const served = providerFrame(provider, { lng, lat, zoom, size, height, ...sv });
     if (await covers(lng, lat, env)) {
       return json({
         frame: served,
@@ -742,7 +756,7 @@ async function handleSegment(request, env, origin, ctx) {
      one piece, one pass, one slot of the allowance. */
   const plan = model.modal
     ? { tiles: [{ col: 0, row: 0 }], cols: 1, rows: 1, frame: null, groundM: 0, capped: false }
-    : detectionPlan(provider, { lng, lat, zoom, size, height }, {
+    : detectionPlan(provider, { lng, lat, zoom, size, height, ...sv }, {
       inputPx: SAM_INPUT_PX,
       maxAcross: samMaxTilesAcross(env),
     });
@@ -1033,7 +1047,10 @@ async function handleSegment(request, env, origin, ctx) {
       begun = await startAlpha(env, {
         frame: { lng, lat, zoom, size, height },
         parcel: body.parcel?.geometry || body.parcel || null,
-        naipAlign: body.naipAlign || null,
+        /* NAIP's alignment was measured against Mapbox; on the county photo
+           the model's pipeline aligns NAIP to that photo itself. */
+        naipAlign: svc ? null : body.naipAlign || null,
+        county: svc,
       });
     } catch (err) {
       await handBack();
@@ -1052,7 +1069,7 @@ async function handleSegment(request, env, origin, ctx) {
         : (Number.isFinite(quota.remaining)
           ? quota.remaining
           : Math.max(0, (quota.limit || 0) - (quota.used || 0))),
-      frame: { ...begun.frame, provider: 'mapbox' },
+      frame: { ...begun.frame, provider: begun.provider || 'mapbox' },
       model: modelId,
       tiling: { cols: 1, rows: 1, groundCm: Math.round(begun.groundM * 1000) / 10, capped: Boolean(begun.capped) },
       pending: true,
@@ -1282,7 +1299,7 @@ async function handleSegment(request, env, origin, ctx) {
     // pixels back to lng/lat requires the exact centre, zoom, and size. On a
     // tiled detection this is the frame of the STITCHED picture, which is
     // what the pasted-together mask is a picture of.
-    frame: { ...served, provider }, model: modelId,
+    frame: { ...served, provider, svc: served.svc?.id ?? undefined }, model: modelId,
     /*
      * How the lot was photographed, so the browser can paste the pieces on
      * the right grid and say what resolution the model actually read. Always
@@ -1504,6 +1521,12 @@ export default {
         }
         case '/api/imagery':
           return await handleImagery(url, env, origin);
+        /* Is there a county or state photo for this point? The catalogue's
+           answer (worker/src/county.js), for the editor to offer it. */
+        case '/api/county-imagery': {
+          const at = await countyServiceAt(env, parseFloat(url.searchParams.get('lng')), parseFloat(url.searchParams.get('lat')));
+          return json({ service: at ? { id: at.id, title: at.title, year: at.year, nativeCm: at.nativeCm, maxPx: at.maxPx } : null }, 200, origin);
+        }
         case '/api/segment':
           if (request.method !== 'POST') return json({ error: 'POST required' }, 405, origin);
           return await handleSegment(request, env, origin, ctx);

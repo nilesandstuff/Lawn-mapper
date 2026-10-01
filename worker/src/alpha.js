@@ -15,7 +15,7 @@
  * never be a button that fails.
  */
 
-import { captureFrame, imageryUrl } from './imagery.js';
+import { captureFrame, imageryUrl, countyExportUrl } from './imagery.js';
 
 export const ALPHA_ID = 'alpha';
 const PREFIX = 'alpha-';
@@ -43,11 +43,15 @@ export const isAlphaId = (id) => typeof id === 'string' && id.startsWith(PREFIX)
  * the display frame, from Mapbox, as storeImage banks it -- and the frame
  * handed back is that capture, which is what the mask covers.
  */
-export async function startAlpha(env, { frame, parcel = null, naipAlign = null }) {
+export async function startAlpha(env, { frame, parcel = null, naipAlign = null, county = null }) {
   const token = env.MAPBOX_SERVER_TOKEN || env.MAPBOX_TOKEN;
   if (!token) throw new Error('no imagery token');
   const shot = captureFrame(frame);
-  const imageUrl = imageryUrl('mapbox', shot.frame, token, env);
+  /* The county photo, when the lot has one and it was chosen (owner,
+     2026-10-01: county photos are not view only). Same capture frame; the
+     model reads whatever size comes back at its own 15 cm grid. Trained on
+     Mapbox only, so how it does here is what the comparison run measures. */
+  const imageUrl = county ? countyExportUrl(county, shot.frame) : imageryUrl('mapbox', shot.frame, token, env);
   if (!imageUrl) throw new Error('no imagery url');
   const res = await fetch(env.ALPHA_URL, {
     method: 'POST',
@@ -58,7 +62,8 @@ export async function startAlpha(env, { frame, parcel = null, naipAlign = null }
   if (!res.ok) throw new Error(`trained model start: HTTP ${res.status}`);
   const got = await res.json();
   if (!got?.id) throw new Error('trained model start: no id');
-  return { id: `${PREFIX}${got.id}`, frame: shot.frame, groundM: shot.groundM, capped: shot.capped };
+  return { id: `${PREFIX}${got.id}`, frame: shot.frame, groundM: shot.groundM, capped: shot.capped,
+    provider: county ? 'county' : 'mapbox' };
 }
 
 /**

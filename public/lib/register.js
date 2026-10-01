@@ -484,3 +484,20 @@ export function registerImages(ref, mov, groundM, {
     models: all.map((m) => m && { name: m.name, inliers: m.inliers.length, rmsM: m.rms * cell, cvM: m.cv * cell }),
   };
 }
+
+/**
+ * A measurement as the editor's {east, north, scale}: the move and scale of
+ * the other photo, about the frame's centre, that puts its ground on
+ * Mapbox's (lib/align.js movedCorners). register says where Mapbox's centre
+ * is in the other photo (offsetM) and how much bigger its ground is there
+ * (the map's determinant); the photo moves the other way, by that scale.
+ */
+export function alignFromRegistration(r) {
+  const A = r?.A || [1, 0, 0, 0, 1, 0];
+  const scale = 1 / Math.sqrt(Math.abs(A[0] * A[4] - A[1] * A[3]) || 1);
+  return {
+    east: -scale * (r?.offsetM?.east || 0),
+    north: -scale * (r?.offsetM?.north || 0),
+    scale: Math.round(scale * 10000) / 10000,
+  };
+}

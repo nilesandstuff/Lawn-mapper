@@ -27,7 +27,8 @@ import {
 import { afterStroke, restoreAway } from './lib/stitch.js';
 import { strokeOnShapes } from './lib/brush-vector.js';
 import { extendToRoads, mergeButtonPoint, mergeRings, placeInside } from './lib/frontage.js';
-import { alignImages, luminance, movedCorners } from './lib/align.js';
+import { movedCorners } from './lib/align.js';
+import { alignFromRegistration } from './lib/register.js';
 import { snapPoint, nearestOnRings } from './lib/snap.js';
 import { notchShapes } from './lib/cutout.js';
 // Pasting the pieces of a big lot's detection back into one mask.
@@ -2476,6 +2477,7 @@ async function confirmLocation() {
     buildModelPicker();
     refreshRail();
     refreshPins();
+    lookupCountyPhoto({ makeDefault: true });
     setHint(state.parcel
       ? (document.body.classList.contains('job-mode')
         ? 'Check the property line, then open the Draw step'
@@ -4620,6 +4622,8 @@ function setModel(id) {
 function detectionRequest(frame, provider, model, points) {
   return {
     ...frame, provider, model, points, clientId: state.clientId,
+    /* Which county service, by its catalogue id (the Worker fetches only those). */
+    ...(provider === 'county' && state.countySvc ? { svc: state.countySvc.id } : {}),
     // One prediction per ticked box. Sent even when the method does not use
     // them, because the Worker decides which fields apply and a second copy of
     // that rule here is a second copy that can be wrong.
@@ -4802,9 +4806,11 @@ async function detect({ again = false } = {}) {
     const subtractive = Boolean(data.subtractive);
     /* A picture that was moved onto Mapbox is traced where it was shown, so
        the outline lands on the grass the person saw (Google; see alignKey). */
-    const traceFrame = rendered.provider === 'google' || (!rendered.provider && provider === 'google')
-      ? alignedFrame(rendered, state.googleAlign)
-      : rendered;
+    /* And the county photo, which is moved onto Mapbox's ground the same way. */
+    const shownOn = rendered.provider || provider;
+    const traceFrame = shownOn === 'google' ? alignedFrame(rendered, state.googleAlign)
+      : shownOn === 'county' ? alignedFrame(rendered, state.countyAlign)
+        : rendered;
     const traced = traceDetection({
       layers, subtractive, rendered: traceFrame,
       /*
@@ -5497,6 +5503,46 @@ const frameFor = (provider, frame) =>
     ? { ...frame, zoom: Math.floor(frame.zoom), ...(providerInfo(provider).fixedSize || {}) }
     : frame);
 
+/** The sources for this lot: the county photo only where the lot has one. */
+const sourcesHere = () => {
+  const here = state.imagery.filter((p) => !p.perLot || (p.id === 'county' && state.countySvc));
+  /* County first where there is one, then Mapbox, then the rest (owner). */
+  return [...here.filter((p) => p.id === 'county'), ...here.filter((p) => p.id !== 'county')];
+};
+
+/** "County photo (2024)", from what the lookup said about this lot's service. */
+const sourceLabel = (p) => (p.id === 'county' && state.countySvc?.year ? `${p.label} (${state.countySvc.year})` : p.label);
+
+/*
+ * THE COUNTY'S OWN PHOTO, AS THE DEFAULT WHERE THERE IS ONE (owner,
+ * 2026-10-01). The Worker answers from a catalogue built ahead of time
+ * (county_services); a lot with one gets "County photo" in the list, and a
+ * freshly entered address is switched to it. showImagery then checks the
+ * picture it gets for gaps, and goes back to Mapbox if it has any.
+ */
+let countyLookup = 0;
+async function lookupCountyPhoto({ makeDefault = false } = {}) {
+  const at = state.frame || state.chosen;
+  if (!at || !state.imagery.some((p) => p.id === 'county')) return;
+  const mine = ++countyLookup;
+  let svc = null;
+  try {
+    const res = await fetch(`/api/county-imagery?lng=${encodeURIComponent(at.lng)}&lat=${encodeURIComponent(at.lat)}`);
+    if (res.ok) svc = (await res.json())?.service || null;
+  } catch { /* none, then */ }
+  if (mine !== countyLookup) return;
+  state.countySvc = svc;
+  buildImageryPicker();
+  if (svc && makeDefault && state.provider === 'mapbox') {
+    await setProvider('county');
+    /* setProvider says what it shows; this is the why. */
+    if (state.provider === 'county') {
+      setStatus(`Showing ${svc.title ? `"${svc.title}"` : "the county's own photo"}${svc.year ? `, flown ${svc.year}` : ''}`
+        + ' — usually the sharpest there is. Lined up on the ground automatically; Layers switches back to Mapbox.');
+    }
+  }
+}
+
 function buildImageryPicker() {
   const select = $('#imagery-source');
   const panel = $('#imagery-panel');
@@ -5509,12 +5555,12 @@ function buildImageryPicker() {
   }
 
   select.innerHTML = '';
-  for (const p of state.imagery) {
+  for (const p of sourcesHere()) {
     const opt = document.createElement('option');
     opt.value = p.id;
     // Say it in the list too, not only after choosing. Picking a source and
     // then being told it cannot measure is a wasted step.
-    opt.textContent = p.detect ? p.label : `${p.label} — view only`;
+    opt.textContent = p.detect ? sourceLabel(p) : `${sourceLabel(p)} — view only`;
     select.append(opt);
   }
   select.value = state.provider;
@@ -5538,7 +5584,7 @@ function buildLayerList() {
   const list = $('#layer-list');
   list.innerHTML = '';
 
-  for (const p of state.imagery) {
+  for (const p of sourcesHere()) {
     const b = document.createElement('button');
     b.type = 'button';
     b.setAttribute('role', 'menuitemradio');
@@ -5546,7 +5592,7 @@ function buildLayerList() {
     b.dataset.provider = p.id;
 
     const label = document.createElement('span');
-    label.textContent = p.label;
+    label.textContent = sourceLabel(p);
     b.append(label);
 
     // Which sources the AI can be pointed at is the single most consequential
@@ -5714,7 +5760,9 @@ async function setProvider(id) {
   if (id === state.provider) return;
   state.provider = id;
   // Looked at on this map: the save check asks whether it lined up.
-  if (isAligned(id)) state.altViewed = id;
+  /* Not the county photo: it is the default and lined up automatically on
+     the ground, so asking at every save would be asking every time. */
+  if (isAligned(id) && id !== 'county') state.altViewed = id;
   $('#imagery-source').value = id;
   renderProviderNote(id);
   refreshLayerList();
@@ -5879,7 +5927,7 @@ async function showImagery() {
     /* A source that never answers must not leave "Fetching…" over the map
        for good: the browser test caught USGS doing exactly that. */
     const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
-    if (res.ok && (state.provider === 'naip' || state.provider === 'google')) {
+    if (res.ok && (state.provider === 'naip' || state.provider === 'google' || state.provider === 'county')) {
       naipBlob = await res.clone().blob();
     }
     if (!res.ok) {
@@ -5924,6 +5972,26 @@ async function showImagery() {
   // Someone else has asked for a different picture since this one was
   // requested. Theirs is the one the user is waiting to see.
   if (run !== imageryRun) return;
+
+  /*
+   * A COUNTY PHOTO WITH A HOLE IN IT IS NOT THE DEFAULT. The catalogue knows
+   * the box a service covers, not every gap inside it (a flight's edge, a
+   * missing tile), so the picture itself is looked at: transparent, or a flat
+   * white or black fill over more than 2% of it, and this lot stays on Mapbox.
+   */
+  if (state.provider === 'county' && naipBlob) {
+    const gaps = await gapShare(naipBlob).catch(() => 0);
+    if (run !== imageryRun) return;
+    if (gaps > 0.02) {
+      idle(); imageryBusyRun = 0;
+      setStatus(`The county photo has gaps over this lot (${Math.round(gaps * 100)}% missing), so this map stays on Mapbox.`, 'warn');
+      state.countySvc = null;
+      state.provider = 'mapbox';
+      buildImageryPicker();
+      refreshLayerList();
+      return;
+    }
+  }
   hideImagery(); // in case a later-started run already put something up
 
   map.addSource('imagery-alt', {
@@ -5964,10 +6032,11 @@ const isNaip = (id) => id === 'naip' || id === 'ndvi';
  * nothing to do with NAIP's, and NAIP's is the one saved for the detector.
  * Google's search reaches further, because its misfit is the larger one.
  */
-const alignKey = (id) => (isNaip(id) ? 'naipAlign' : id === 'google' ? 'googleAlign' : null);
+const alignKey = (id) => (isNaip(id) ? 'naipAlign' : id === 'google' ? 'googleAlign'
+  : id === 'county' ? 'countyAlign' : null);
 const isAligned = (id) => Boolean(alignKey(id));
 const alignOf = (id) => (alignKey(id) ? state[alignKey(id)] || null : null);
-const ALIGN_REACH_M = { naipAlign: 5, googleAlign: 8 };
+const ALIGN_REACH_M = { naipAlign: 5, googleAlign: 8, countyAlign: 4 };
 
 /**
  * A frame moved onto the Mapbox photograph by an alignment: centre shifted,
@@ -5986,7 +6055,25 @@ function alignedFrame(frame, a) {
   };
 }
 
-async function greyOf(source, w, h) {
+/**
+ * How much of a picture is missing: transparent always; flat pure white or
+ * black only past 4%, because a bright roof saturates to white too (the same
+ * rule as tools/county-imagery.js coverage()).
+ */
+async function gapShare(blob) {
+  const { data, width, height } = await rgbaOf(blob, 160, 160);
+  let clear = 0, flat = 0;
+  for (let i = 0; i < width * height; i++) {
+    const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2], a = data[i * 4 + 3];
+    if (a < 8) clear++;
+    else if ((r === 255 && g === 255 && b === 255) || (r === 0 && g === 0 && b === 0)) flat++;
+  }
+  const n = width * height;
+  return (clear + (flat / n > 0.04 ? flat : 0)) / n;
+}
+
+/** A picture (URL or blob) as RGBA on a w x h canvas. */
+async function rgbaOf(source, w, h) {
   let blob = source;
   if (typeof source === 'string') {
     const res = await fetch(source);
@@ -5999,8 +6086,30 @@ async function greyOf(source, w, h) {
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(bitmap, 0, 0, w, h);
-  return luminance(ctx.getImageData(0, 0, w, h).data, w, h);
+  return { data: ctx.getImageData(0, 0, w, h).data, width: w, height: h };
 }
+
+/* lib/register.js in a worker thread, or here if workers will not start. */
+let registerWorker = null;
+let registerSeq = 0;
+function registerOffThread(ref, mov, groundM, opts) {
+  try {
+    registerWorker = registerWorker || new Worker('/lib/register-worker.js', { type: 'module' });
+  } catch {
+    return import('./lib/register.js').then((m) => m.registerImages(ref, mov, groundM, opts));
+  }
+  const id = ++registerSeq;
+  return new Promise((resolve, reject) => {
+    const on = (e) => {
+      if (e.data?.id !== id) return;
+      registerWorker.removeEventListener('message', on);
+      if (e.data.error) reject(new Error(e.data.error)); else resolve(e.data.r);
+    };
+    registerWorker.addEventListener('message', on);
+    registerWorker.postMessage({ id, ref, mov, groundM, opts });
+  });
+}
+
 
 function applyNaipAlign(served) {
   const src = map.getSource('imagery-alt');
@@ -6031,28 +6140,29 @@ async function alignNaip(served, run, naipBlob = null) {
   state.alignBlobs = { ...(state.alignBlobs || {}), [key]: naipBlob };
   const acrossM = metresPerPixel(served, 1);
   const downM = acrossM * ((served.height || served.size) / served.size);
-  /* Small on purpose: this runs on the phone's main thread. 192 cells and a
-     5 m search over five scales is about 40 million steps, well under a
-     second, where 256 cells, 6 m and seven scales was nearly four times it. */
-  const cellM = Math.max(0.6, acrossM / 192);
-  const w = Math.max(48, Math.round(acrossM / cellM));
-  const h = Math.max(48, Math.round(downM / cellM));
+  /*
+   * MEASURED ON THE GROUND, PATCH BY PATCH (owner, 2026-10-01: "upgrade the
+   * Auto button"). lib/register.js, the measurement the county photos are
+   * banked with: a few hundred small patches each find their own offset, the
+   * tightest-agreeing group is the ground, and roofs and trees -- which lean
+   * differently in every photo -- are outvoted. The old whole-frame score
+   * (lib/align.js) was pulled toward the roofs; see H63. In a worker thread,
+   * 25 cm cells, so a phone stays responsive while it measures.
+   */
+  const px = (m) => Math.max(64, Math.min(1024, Math.round(m / 0.15)));
   renderNaipPanel(served, `Lining ${name} up with the Mapbox photograph…`);
   try {
     const [ref, mov] = await Promise.all([
-      greyOf(imageryUrlFor('mapbox', served), w, h),
-      greyOf(naipBlob, w, h),
+      rgbaOf(imageryUrlFor('mapbox', served), px(acrossM), px(downM)),
+      rgbaOf(naipBlob, px(acrossM), px(downM)),
     ]);
     if (run !== imageryRun || state.provider !== provider) return;
-    await new Promise((resolve) => setTimeout(resolve, 0));  // let the message paint first
-    const r = alignImages(ref, mov, w, h, {
-      maxShift: Math.max(2, Math.round(ALIGN_REACH_M[key] / cellM)),
-      scales: [0.99, 0.995, 1, 1.005, 1.01],
+    const r = await registerOffThread(ref, mov, acrossM, {
+      cellM: 0.25, reachM: ALIGN_REACH_M[key] + 1,
     });
-    state[key] = {
-      east: r.dx * cellM, north: -r.dy * cellM, scale: r.scale, source: 'auto',
-      fit: Math.round(r.ncc * 100) / 100, fit0: Math.round(r.ncc0 * 100) / 100,
-    };
+    if (run !== imageryRun || state.provider !== provider) return;
+    state[key] = r.confident ? { ...alignFromRegistration(r), source: 'auto', patches: `${r.inliers}/${r.patches}` }
+      : { east: 0, north: 0, scale: 1, source: 'auto', unsure: r.why || 'nothing on the ground to measure' };
     applyNaipAlign(served);
   } catch (e) {
     if (run !== imageryRun) return;
@@ -6100,7 +6210,8 @@ const setSessionFlag = (key) => { try { sessionStorage.setItem(key, '1'); } catc
 let imageryTourDue = false;
 
 function maybeImageryTour() {
-  if (!isAligned(state.provider) || state.alignOpen || tour.stage === 'imagery') return;
+  /* Not for the county photo: it is the default and lines itself up. */
+  if (!isAligned(state.provider) || state.provider === 'county' || state.alignOpen || tour.stage === 'imagery') return;
   const btn = document.querySelector('#naip-align .naipalign-open');
   if (!btn || btn.offsetParent === null) return;
   if (!imageryTourDue && sessionFlag(IMAGERY_TOUR_KEY)) return;
@@ -6138,6 +6249,8 @@ function renderNaipPanel(served, message) {
   let said;
   if (message) {
     said = message;
+  } else if (a?.unsure) {
+    said = `Could not line ${who} up automatically here (${a.unsure}) — shown as delivered. Nudge it if it looks off.`;
   } else if (!a || (!a.east && !a.north && a.scale === 1)) {
     said = a?.source === 'auto'
       ? `${who} already lines up with Mapbox here. Nudge it if it looks off.`
@@ -6147,14 +6260,15 @@ function renderNaipPanel(served, message) {
     const ns = `${Math.abs(a.north).toFixed(1)} m ${a.north >= 0 ? 'north' : 'south'}`;
     const sc = a.scale !== 1 ? `, scaled ${((a.scale - 1) * 100).toFixed(1)}%` : '';
     said = `${who} moved ${ew}, ${ns}${sc} to line up with Mapbox`
-      + (a.source === 'person' ? ' (set by you).' : ' (automatic).');
+      + (a.source === 'person' ? ' (set by you).'
+        : ` (automatic${a.patches ? `, measured on the ground: ${a.patches} patches agree` : ''}).`);
   }
 
   if (!state.alignOpen) {
     const open = document.createElement('button');
     open.type = 'button';
     open.className = 'naipalign-open';
-    open.textContent = `Line up ${isNaip(state.provider) ? 'NAIP' : 'Google'} ▸`;
+    open.textContent = `Line up ${isNaip(state.provider) ? 'NAIP' : state.provider === 'county' ? 'county photo' : 'Google'} ▸`;
     open.title = said;
     open.addEventListener('click', () => setAlignOpen(true));
     panel.append(open);
@@ -6221,6 +6335,7 @@ function imageryUrlFor(provider, frame) {
   return '/api/imagery?' + new URLSearchParams({
     lng: frame.lng, lat: frame.lat, zoom: frame.zoom, size: frame.size,
     height: frame.height || frame.size, provider,
+    ...(provider === 'county' && state.countySvc ? { svc: state.countySvc.id } : {}),
   });
 }
 
@@ -8034,6 +8149,8 @@ function openMap(s) {
      the pipeline or the editor finds again rather than a stale nudge. */
   state.naipAlign = null;
   state.googleAlign = null;
+  state.countyAlign = null;
+  state.countySvc = null;
   state.alignBlobs = {};
 
   map.getSource('parcel').setData(state.parcel || empty());
@@ -8058,6 +8175,7 @@ function openMap(s) {
 
   buildImageryPicker();
   buildModelPicker();
+  lookupCountyPhoto({ makeDefault: false });
   refreshExclusions();
   refreshSensitivity();
   refreshTreesOption();
@@ -12468,6 +12586,8 @@ function reset() {
   state.detectedShapes = null;
   state.naipAlign = null;
   state.googleAlign = null;
+  state.countyAlign = null;
+  state.countySvc = null;
   state.alignBlobs = {};
   state.provider = 'mapbox';
   state.model = state.defaultModel;

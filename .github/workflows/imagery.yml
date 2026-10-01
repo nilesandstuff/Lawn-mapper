@@ -42,12 +42,13 @@ on:
         required: false
         default: '60'
       county_mode:
-        description: 'county: find (look and bank), realign (line up the banked ones again, no searching) or rebank (apply /county.html nudges)'
+        description: 'county: find (look and bank), realign (line up the banked ones again), rebank (apply /county.html nudges) or catalogue (services for any address; county_limit = how many counties)'
         type: choice
         options:
           - find
           - realign
           - rebank
+          - catalogue
         default: find
       county_limit:
         description: 'county: how many corpus maps at most (newest first)'

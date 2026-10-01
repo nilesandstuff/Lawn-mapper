@@ -9,7 +9,7 @@
  * roof leaning a further 2 m, the way a second camera angle shows them.
  */
 import {
-  registerImages, applyAffine, invertAffine, fitAffine, fitShiftScale, robustFit,
+  registerImages, applyAffine, invertAffine, fitAffine, fitShiftScale, robustFit, alignFromRegistration,
 } from '../public/lib/register.js';
 
 let failures = 0;
@@ -152,6 +152,18 @@ const ref = render(street);
   check('the agreeing patches decide, not the average of all of them',
     pick && Math.abs(pick.A[2] - 2) < 1e-6 && Math.abs(pick.A[5] - 1) < 1e-6 && pick.inliers.length === 12,
     pick && `${pick.name} ${pick.A.map((v) => v.toFixed(3))}`);
+}
+
+{
+  /* The editor's Auto: a photo whose ground sits 1.3 m east and 0.8 m south
+     of Mapbox's is moved 1.3 m west and 0.8 m north, and one 1% too big is
+     shrunk by 1%. */
+  const r = registerImages(ref, render(street, motion(1.3, -0.8)), GROUND);
+  const a = alignFromRegistration(r);
+  check('Auto moves the photo back by what was measured',
+    Math.abs(a.east + 1.3) < 0.05 && Math.abs(a.north - 0.8) < 0.05 && a.scale === 1, JSON.stringify(a));
+  const big = alignFromRegistration({ A: [1.01, 0, 0, 0, 1.01, 0], offsetM: { east: 0, north: 0 } });
+  check('and a photo whose ground is 1% bigger is scaled by 1/1.01', Math.abs(big.scale - 1 / 1.01) < 1e-4, JSON.stringify(big));
 }
 
 if (failures) { console.log(`\n${failures} check(s) FAILED.`); process.exit(1); }

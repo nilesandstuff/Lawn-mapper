@@ -51,7 +51,7 @@
  * and a row written for every lot looked at -- found or not -- so a run that
  * stops part-way resumes where it left off (FORCE=1 to look again).
  *
- *   MODE=find|realign|rebank LIMIT=… FORCE=1 DRY_RUN=1 ONLY=<corpus id> node tools/county-imagery.js
+ *   MODE=find|realign|rebank|catalogue LIMIT=… FORCE=1 DRY_RUN=1 ONLY=<corpus id> node tools/county-imagery.js
  * or workflow "8. Check the free imagery sources", "find county imagery".
  * Free: public servers, the R2 bucket and D1 the app already has.
  */
@@ -849,6 +849,182 @@ async function realign(row, decoders, dir) {
     nativeCm: row.native_cm, ...summaryOf(placed) };
 }
 
+/* ------------------------------------------------------------- catalogue */
+/*
+ * COUNTY PHOTOS FOR ANY ADDRESS (owner, 2026-10-01: "make the county maps
+ * available for any location that has them, and have them be the default").
+ *
+ * The app cannot spend minutes searching while somebody waits, so the search
+ * is done here, ahead of time, and kept in county_services: every service
+ * that qualified -- a photo, flown 2012 or later, 25 cm or finer -- with the
+ * box it covers in longitude and latitude, the biggest picture it will draw,
+ * and whether it draws an arbitrary box at all (export_ok). The Worker looks
+ * a point up in that table (worker/src/county.js) and the editor checks the
+ * picture it gets for gaps before using it.
+ *
+ * Two sources: the services the corpus pass already banked from, and a sweep
+ * of every county the app covers -- at the centre of its parcel layer, or on
+ * a grid across a statewide one -- with the same two ways of finding
+ * candidates as the corpus pass. Resumable: county_sweep records every point
+ * looked at; FORCE looks again.
+ */
+
+const SWEEP_STEP = Number(process.env.SWEEP_STEP || 0.5); // degrees, statewide grids
+
+/** A service's extent as [west, south, east, north] in degrees. */
+export async function extentLngLat(m) {
+  const ext = m?.fullExtent || m?.extent || m?.initialExtent;
+  if (!ext || !Number.isFinite(Number(ext.xmin))) return null;
+  const wkid = ext.spatialReference?.latestWkid || ext.spatialReference?.wkid
+    || m.spatialReference?.latestWkid || m.spatialReference?.wkid;
+  const pts = [];
+  for (const fx of [0, 0.5, 1]) for (const fy of [0, 0.5, 1]) {
+    pts.push([ext.xmin + (ext.xmax - ext.xmin) * fx, ext.ymin + (ext.ymax - ext.ymin) * fy]);
+  }
+  let ll;
+  if (wkid === 4326 || wkid === 4269) ll = pts;
+  else if ([3857, 102100, 900913].includes(wkid)) {
+    ll = pts.map(([x, y]) => [(x / 6378137) * (180 / Math.PI), (2 * Math.atan(Math.exp(y / 6378137)) - Math.PI / 2) * (180 / Math.PI)]);
+  } else {
+    try {
+      const def = (await (await fetch(`https://epsg.io/${wkid}.proj4`, { signal: AbortSignal.timeout(TIMEOUT_MS) })).text()).trim();
+      if (!def.startsWith('+proj')) return null;
+      const proj4 = (await import('proj4')).default;
+      const inv = proj4(def, 'EPSG:4326');
+      ll = pts.map((p) => inv.forward(p));
+    } catch { return null; }
+  }
+  const xs = ll.map((p) => p[0]), ys = ll.map((p) => p[1]);
+  if (!xs.every(Number.isFinite) || !ys.every(Number.isFinite)) return null;
+  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+}
+
+/**
+ * Is this candidate one the app can use at (lng, lat)? Cheap: its metadata
+ * and one small picture of 150 m about the point. Returns the catalogue row,
+ * or { usable: false, why }.
+ */
+export async function qualify(c, lng, lat, decoders) {
+  const m = await meta(c.url);
+  if (!m || m.failed) return { usable: false, why: `metadata: ${m?.failed || 'none'}` };
+  const years = yearHints(`${c.title} ${c.url} ${m.description || ''} ${m.serviceDescription || ''} ${m.copyrightText || ''}`);
+  const year = c.year ?? (years.length ? Math.max(...years) : null);
+  if (year !== null && year < MIN_YEAR) return { usable: false, why: `flown ${year}` };
+  let native = nativeCm(m, lat);
+  if (native !== null && native < 3) native = null;
+  const [x, y] = [lng * (Math.PI / 180) * 6378137, Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360)) * 6378137];
+  const half = 75 / Math.cos((lat * Math.PI) / 180);
+  const box = [x - half, y - half, x + half, y + half];
+  const img = await getImage(exportUrl(c, box, 256, 256), decoders).catch(() => null);
+  const exportOk = Boolean(img && img.width === 256 && img.height === 256 && coverage(img.data, 256, 256) >= 0.9);
+  let tiled = null;
+  if (!exportOk) {
+    tiled = await fetchOver(c, m, box, 256, 256, decoders).catch(() => null);
+    if (!tiled || coverage(tiled.data, 256, 256) < 0.9) return { usable: false, why: 'no picture here' };
+    if (tiled.tiled) native = Math.max(native ?? 0, tiled.tileCm * (tiled.merc ? Math.cos((lat * Math.PI) / 180) : 1));
+  }
+  if (native !== null && native > MAX_NATIVE_CM) return { usable: false, why: `too coarse (${Math.round(native)} cm)` };
+  const ext = await extentLngLat(m);
+  if (!ext || !(lng >= ext[0] && lng <= ext[2] && lat >= ext[1] && lat <= ext[3])) {
+    return { usable: false, why: 'extent does not cover the point' };
+  }
+  const maxPx = Math.min(Number(m.maxImageWidth) || 4096, Number(m.maxImageHeight) || 4096);
+  return {
+    usable: true, url: c.url, type: c.type, title: c.title || m.name || null, year, nativeCm: native,
+    ext, maxPx, exportOk, tileMerc: !exportOk && Boolean(tiled?.tiled && tiled.merc),
+  };
+}
+
+function upsertService(q, source, key) {
+  exec(`INSERT INTO county_services (url, type, title, year, native_cm, west, south, east, north, max_px,
+          export_ok, tile_merc, county_key, source, checked_at)
+        VALUES (${[q.url, q.type, q.title, q.year, round(q.nativeCm, 1), round(q.ext[0], 6), round(q.ext[1], 6),
+    round(q.ext[2], 6), round(q.ext[3], 6), q.maxPx, q.exportOk ? 1 : 0, q.tileMerc ? 1 : 0, key, source,
+    new Date().toISOString()].map(lit).join(', ')})
+        ON CONFLICT(url) DO UPDATE SET type = excluded.type, title = excluded.title, year = excluded.year,
+          native_cm = excluded.native_cm, west = excluded.west, south = excluded.south, east = excluded.east,
+          north = excluded.north, max_px = excluded.max_px, export_ok = excluded.export_ok,
+          tile_merc = excluded.tile_merc, checked_at = excluded.checked_at`);
+}
+
+/** Where to look for one county entry: its parcel layer's centre, or a grid. */
+async function sweepPoints(key, entry) {
+  if (!entry?.service) return [];
+  const m = await meta(`${entry.service}/${entry.layer ?? 0}`);
+  const ext = await extentLngLat(m);
+  if (!ext) return [];
+  const [w, s, e, n] = ext;
+  if (!entry.statewide || (e - w <= SWEEP_STEP && n - s <= SWEEP_STEP)) return [[(w + e) / 2, (s + n) / 2]];
+  const out = [];
+  for (let y = s + SWEEP_STEP / 2; y < n; y += SWEEP_STEP) {
+    for (let x = w + SWEEP_STEP / 2; x < e; x += SWEEP_STEP) out.push([x, y]);
+  }
+  return out;
+}
+
+async function catalogue(decoders) {
+  exec(readFileSync(new URL('../worker/schema.sql', import.meta.url), 'utf8')
+    .match(/CREATE TABLE IF NOT EXISTS county_services \([\s\S]*?\n\);/)[0].replace(/--[^\n]*/g, ''), { always: true });
+  exec(readFileSync(new URL('../worker/schema.sql', import.meta.url), 'utf8')
+    .match(/CREATE TABLE IF NOT EXISTS county_sweep \([\s\S]*?\n\);/)[0].replace(/--[^\n]*/g, ''), { always: true });
+  const known = new Set(query('SELECT url FROM county_services').map((r) => r.url));
+  const failed = new Set();
+  let added = 0;
+
+  /* 1. What the corpus pass already banked from. */
+  for (const r of query(`SELECT ci.service, ci.service_type, ci.title, ci.year, c.lng, c.lat, c.county
+                           FROM county_imagery ci JOIN corpus c ON c.id = ci.id WHERE ci.service IS NOT NULL`)) {
+    if (known.has(r.service) && !FORCE) continue;
+    const q = await qualify({ url: r.service, type: r.service_type, title: r.title, year: r.year }, r.lng, r.lat, decoders)
+      .catch((e) => ({ usable: false, why: e.message }));
+    if (q.usable) { upsertService(q, 'corpus', r.county); known.add(r.service); added++; }
+    console.log(`corpus ${r.county || '?'}: ${q.usable ? `OK ${q.title} ${q.year ?? '?'}${q.exportOk ? '' : ' (tiles only)'}` : `x ${q.why}`}`);
+  }
+
+  /* 2. Every county the app covers. */
+  const swept = new Set(query('SELECT point FROM county_sweep').map((r) => r.point));
+  const keys = Object.keys(ALL_COUNTIES).slice(0, Math.max(1, LIMIT));
+  let n = 0;
+  for (const key of keys) {
+    let points;
+    try { points = await sweepPoints(key, ALL_COUNTIES[key]); } catch { points = []; }
+    for (const [lng, lat] of points) {
+      const point = `${key}@${lng.toFixed(2)},${lat.toFixed(2)}`;
+      if (swept.has(point) && !FORCE) continue;
+      n++;
+      let found = 0;
+      const notes = [];
+      try {
+        const ranked = rankCandidates([...await countyCandidates(lng, lat), ...await agolCandidates(lng, lat)]);
+        for (const c of ranked.slice(0, MAX_TRY)) {
+          if (failed.has(c.url)) continue;
+          if (known.has(c.url)) { found++; continue; }
+          const q = await qualify(c, lng, lat, decoders).catch((e) => ({ usable: false, why: e.message }));
+          await sleep(PAUSE_MS);
+          if (!q.usable) { failed.add(c.url); notes.push(`x ${c.title || c.url}: ${q.why}`); continue; }
+          upsertService(q, 'sweep', key);
+          known.add(c.url); added++; found++;
+          notes.push(`OK ${q.title} ${q.year ?? '?'} ${q.nativeCm ? `${Math.round(q.nativeCm)} cm` : ''}${q.exportOk ? '' : ' (tiles only)'}`);
+        }
+      } catch (e) { notes.push(`error ${String(e.message || e).slice(0, 60)}`); }
+      exec(`INSERT INTO county_sweep (point, county_key, lng, lat, found, checked_at)
+            VALUES (${[point, key, round(lng, 5), round(lat, 5), found, new Date().toISOString()].map(lit).join(', ')})
+            ON CONFLICT(point) DO UPDATE SET found = excluded.found, checked_at = excluded.checked_at`);
+      console.log(`${n} ${point}: ${found} service${found === 1 ? '' : 's'}`);
+      for (const t of notes) console.log(`      ${t.slice(0, 150)}`);
+    }
+  }
+
+  const all = query('SELECT export_ok, tile_merc, COUNT(*) n FROM county_services GROUP BY export_ok, tile_merc');
+  const count = (f) => all.filter(f).reduce((a, r) => a + Number(r.n), 0);
+  const pts = query('SELECT COUNT(*) n, SUM(found > 0) hit FROM county_sweep')[0] || {};
+  console.log('\n================ COUNTY PHOTO CATALOGUE ================');
+  console.log(`${added} services added this run; ${count(() => true)} in the catalogue:`
+    + ` ${count((r) => Number(r.export_ok))} the app can use (draw any box),`
+    + ` ${count((r) => !Number(r.export_ok))} tiles only (not used live yet).`);
+  console.log(`Points swept: ${pts.n ?? 0}, ${pts.hit ?? 0} with a county or state photo service.`);
+}
+
 /* ------------------------------------------------------------------ main */
 
 async function main() {
@@ -865,6 +1041,11 @@ async function main() {
       const out = await rebank({ ...r, image_key: r.mapbox_key }, decoders, dir);
       console.log(JSON.stringify(out));
     }
+    return;
+  }
+
+  if (MODE === 'catalogue') {
+    await catalogue(decoders);
     return;
   }
 

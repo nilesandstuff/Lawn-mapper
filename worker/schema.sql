@@ -868,3 +868,42 @@ CREATE TABLE IF NOT EXISTS county_imagery (
   mapbox_shapes   TEXT,
   mapbox_not_lawn TEXT
 );
+
+-- COUNTY AND STATE PHOTO SERVICES, FOR ANY ADDRESS (owner, 2026-10-01: "make
+-- the county maps available for any location that has them, and have them be
+-- the default"). Built ahead of time by tools/county-imagery.js MODE=catalogue
+-- (workflow 8), because finding them takes minutes and nobody waits that long:
+-- every service that qualified -- a photo, 2012 or later, 25 cm or finer --
+-- the box it covers in degrees, the biggest picture it will draw (max_px),
+-- and whether it draws an arbitrary box (export_ok; a tiles-only cache is
+-- kept but not served yet). The Worker answers "which one here?" from this
+-- (worker/src/county.js countyServiceAt); the editor checks the picture for
+-- gaps before using it.
+CREATE TABLE IF NOT EXISTS county_services (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  url         TEXT NOT NULL UNIQUE,
+  type        TEXT,
+  title       TEXT,
+  year        INTEGER,
+  native_cm   REAL,
+  west        REAL,
+  south       REAL,
+  east        REAL,
+  north       REAL,
+  max_px      INTEGER,
+  export_ok   INTEGER NOT NULL DEFAULT 0,
+  tile_merc   INTEGER NOT NULL DEFAULT 0,
+  county_key  TEXT,
+  source      TEXT,
+  checked_at  TEXT
+);
+
+-- Where the catalogue sweep has looked, so a run that stops resumes.
+CREATE TABLE IF NOT EXISTS county_sweep (
+  point       TEXT PRIMARY KEY,
+  county_key  TEXT,
+  lng         REAL,
+  lat         REAL,
+  found       INTEGER,
+  checked_at  TEXT
+);
