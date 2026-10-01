@@ -289,6 +289,8 @@ async function renderReview() {
             ? 'Nothing approved yet.'
             : queue === 'rejected'
               ? 'Nothing rejected yet.'
+            : queue === 'admin'
+              ? 'No map has been saved by an admin yet. Maps you finish while signed in as an admin land here.'
               : data.waiting
                 ? 'Nothing in this queue right now.'
                 : 'Every finished map has been reviewed. Go and make some more.'));
@@ -319,6 +321,11 @@ function drawCandidate(c) {
   const pieces = (c.shapes || []).length;
   if (pieces > 1) head.append(el('span', 'pill free', `${pieces} pieces`));
   if (c.parcelSource === 'hand') head.append(el('span', 'pill free', 'traced boundary'));
+  if (c.adminEditedAt) {
+    const pill = el('span', 'pill free', 'edited by admin');
+    pill.title = `Last saved by an admin ${String(c.adminEditedAt).slice(0, 10)}`;
+    head.append(pill);
+  }
 
   /*
    * HOW MUCH OF THE LAWN IS UNDER MORE THAN ONE SHAPE.
@@ -496,8 +503,10 @@ function drawCandidate(c) {
    * something nobody was asked to re-approve.
    */
   const checking = queue === 'unflagged';
-  const browsing = queue === 'approved' || queue === 'rejected';
   const settled = c.status === 'approved' || c.status === 'rejected' ? c.status : null;
+  /* The admin-edited list holds both kinds: a settled map there is looked back
+     at like the browsing queues, an unreviewed one is judged like any other. */
+  const browsing = queue === 'approved' || queue === 'rejected' || (queue === 'admin' && Boolean(settled));
 
   const verdict = el('div', 'verdict');
   const approve = el('button', 'approve',
@@ -1090,6 +1099,7 @@ async function renderLog() {
     ['#queue-unflagged', 'unflagged'],
     ['#queue-approved', 'approved'],
     ['#queue-rejected', 'rejected'],
+    ['#queue-admin', 'admin'],
   ];
   for (const [id, which] of QUEUES) {
     $(id).addEventListener('click', () => {

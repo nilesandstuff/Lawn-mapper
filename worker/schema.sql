@@ -446,6 +446,14 @@ CREATE TABLE IF NOT EXISTS corpus (
   -- does nothing to a database that already has this table, so a column added
   -- here alone reaches new databases and no deployed one.
   audition       INTEGER NOT NULL DEFAULT 0,
+  -- SAVED BY AN ADMINISTRATOR (owner, 2026-10-01): the last time a signed-in
+  -- admin finished this map, and who. Set on every admin save and never
+  -- cleared by anybody else's, so a map an admin has fixed stays findable in
+  -- the console's "Edited by an admin" queue. NULL means no admin ever saved it.
+  --
+  -- ALSO AN ALTER IN migrations.sql, for the databases already out there.
+  admin_edited_at TEXT,
+  admin_edited_by TEXT,
   created_at     TEXT NOT NULL
 );
 -- The index over `status` lives in migrations.sql, NOT here, and the reason is

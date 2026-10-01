@@ -227,3 +227,8 @@ ALTER TABLE corpus ADD COLUMN model_version TEXT;
 ALTER TABLE lawn_jobs ADD COLUMN uncertainty REAL;
 ALTER TABLE lawn_jobs ADD COLUMN scored_model TEXT;
 ALTER TABLE lawn_jobs ADD COLUMN scored_at TEXT;
+
+-- SAVED BY AN ADMINISTRATOR (see the columns in schema.sql). corpus shipped
+-- long ago, so the CREATE there reaches new databases only.
+ALTER TABLE corpus ADD COLUMN admin_edited_at TEXT;
+ALTER TABLE corpus ADD COLUMN admin_edited_by TEXT;

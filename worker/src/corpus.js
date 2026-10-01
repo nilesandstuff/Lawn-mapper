@@ -264,7 +264,7 @@ function idFor(lng, lat, model, mode) {
  * Upserts: a person who finishes, corrects further and finishes again should
  * leave their best answer behind, not their first one and their best one.
  */
-export async function recordFinished(env, body) {
+export async function recordFinished(env, body, { adminId = null } = {}) {
   if (!corpusEnabled(env)) return { ok: false, reason: 'off' };
 
   const frame = body?.frame && typeof body.frame === 'object' ? {
@@ -369,6 +369,10 @@ export async function recordFinished(env, body) {
     exclusions: Array.isArray(body?.exclusions) && body.exclusions.length
       ? text(body.exclusions.filter((e) => typeof e === 'string').join(','), 200)
       : null,
+    /* From the session, never from the body: a flag a browser could set for
+       itself would say nothing about who saved the map. */
+    admin_edited_at: adminId ? now : null,
+    admin_edited_by: adminId ? text(String(adminId), 80) : null,
   };
 
   const size = (row.shapes?.length || 0) + (row.parcel?.length || 0) + (row.not_lawn?.length || 0);
@@ -380,8 +384,9 @@ export async function recordFinished(env, body) {
          id, at, lng, lat, county, provider, model, mode, hand_edited,
          detected_sq_ft, square_feet, parcel_sq_ft, frame, parcel, shapes,
          detected_shapes, parcel_source, exclusions, created_at,
-         inferred_checked_at, naip_align, not_lawn, model_version
-       ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?2,?19,?20,?21,?22)
+         inferred_checked_at, naip_align, not_lawn, model_version,
+         admin_edited_at, admin_edited_by
+       ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?2,?19,?20,?21,?22,?23,?24)
        ON CONFLICT(id) DO UPDATE SET
          at = ?2, county = ?5, provider = ?6, hand_edited = ?9,
          detected_sq_ft = ?10, square_feet = ?11, parcel_sq_ft = ?12,
@@ -433,13 +438,18 @@ export async function recordFinished(env, body) {
          not_lawn = COALESCE(?21, corpus.not_lawn),
          /* Travels with detected_shapes: a fresh detection brings its own
             release (or none, for SAM), an absent one leaves both alone. */
-         model_version = CASE WHEN ?16 IS NOT NULL THEN ?22 ELSE corpus.model_version END`
+         model_version = CASE WHEN ?16 IS NOT NULL THEN ?22 ELSE corpus.model_version END,
+         /* Once an admin has saved it, it stays marked: a later save by
+            somebody else does not undo that an admin fixed it. */
+         admin_edited_at = COALESCE(?23, corpus.admin_edited_at),
+         admin_edited_by = COALESCE(?24, corpus.admin_edited_by)`
     ).bind(
       row.id, row.at, row.lng, row.lat, row.county, row.provider, row.model,
       row.mode, row.hand_edited, row.detected_sq_ft, row.square_feet,
       row.parcel_sq_ft, row.frame, row.parcel, row.shapes,
       row.detected_shapes, row.parcel_source, row.exclusions,
-      row.inferred_checked_at, row.naip_align, row.not_lawn, row.model_version
+      row.inferred_checked_at, row.naip_align, row.not_lawn, row.model_version,
+      row.admin_edited_at, row.admin_edited_by
     ).run();
     /*
      * The row is handed back so the caller can pass it to storeImage under

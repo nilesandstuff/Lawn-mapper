@@ -338,6 +338,8 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
        */
       const QUEUES = new Set([
         'priority', 'random', 'ungraded', 'unflagged', 'approved', 'rejected',
+        /* Maps an admin has saved, whatever their verdict, newest edit first. */
+        'admin',
       ]);
       const asked = url.searchParams.get('queue');
       const wanted = QUEUES.has(asked) ? asked : 'priority';
@@ -346,7 +348,7 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
           ? 'approved'
           : 'new';
       /* Browsing is chronological; the queues are ranked. Different jobs. */
-      const browsing = wanted === 'approved' || wanted === 'rejected';
+      const browsing = wanted === 'approved' || wanted === 'rejected' || wanted === 'admin';
       const BLOCK = `ROUND(lng, 2) || ',' || ROUND(lat, 2)`;
 
       const [approved, rows] = await Promise.all([
@@ -389,10 +391,11 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
                      WHERE a.status = 'approved' AND a.county = c.county
                   )) new_county
              FROM corpus c
-            WHERE c.status = '${status}'
+            WHERE ${wanted === 'admin' ? 'c.admin_edited_at IS NOT NULL' : `c.status = '${status}'`}
               ${wanted === 'ungraded' ? 'AND c.tree_line IS NULL' : ''}
               ${wanted === 'unflagged' ? 'AND c.inferred_checked_at IS NULL' : ''}
             ORDER BY ${wanted === 'random' ? 'RANDOM()'
+              : wanted === 'admin' ? 'c.admin_edited_at DESC'
               : browsing ? 'COALESCE(c.reviewed_at, c.at) DESC' : 'c.at DESC'}
             LIMIT ${wanted === 'random' ? 1 : 40}`
         ).all(),
@@ -401,7 +404,8 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
       const queue = (rows.results || [])
         .map((r) => ({ row: r, ...candidateScore(r, approved) }))
         /* Stable: equal scores keep the ORDER BY above rather than jittering. */
-        .sort((a, b) => b.score - a.score)
+        /* ...except the admin list, which is a history and stays newest first. */
+        .sort((a, b) => (wanted === 'admin' ? 0 : b.score - a.score))
         .slice(0, 10)
         .map(({ row: r, score, why }) => ({
           id: r.id,
@@ -443,6 +447,7 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
           status: r.status,
           reviewedAt: r.reviewed_at,
           reviewedBy: r.reviewed_by,
+          adminEditedAt: r.admin_edited_at,
           canopy: r.tree_line === null || r.tree_line === undefined ? null : Number(r.tree_line),
           parcelSource: r.parcel_source,
           squareFeet: r.square_feet,

@@ -1565,7 +1565,12 @@ export default {
           } catch {
             return json({ error: 'Invalid JSON' }, 400, origin);
           }
-          const kept = await recordFinished(env, body);
+          /* Who saved it, from the session: an admin's save marks the map
+             (the console's "Edited by an admin" queue). Never fatal. */
+          const saver = await currentUser(request, env, ctx).catch(() => null);
+          const kept = await recordFinished(env, body, {
+            adminId: saver?.role === 'admin' ? saver.id : null,
+          });
           /*
            * The picture comes after the row and outside the response.
            *
