@@ -3485,6 +3485,12 @@ console.log('\n--- tinker: neighbours and merging ---');
    */
   await tp.evaluate(() => document.querySelector('#tab-draw')?.click());
   await tp.waitForTimeout(400);
+  /* Tips off, as the main page has them by now: this is a fresh page, and the
+     Points tour that opens the first time would sit over the corners below. */
+  await tp.evaluate(() => {
+    const t = document.querySelector('#toggle-tutorials');
+    if (t?.checked) t.click();
+  });
   const sqBefore = await tp.evaluate(() => window.__lmSqft());
   const nlBefore = await tp.evaluate(() => window.__lmNotLawn());
   await tp.evaluate(() => document.querySelector('#btn-not-lawn')?.click());
@@ -3508,6 +3514,45 @@ console.log('\n--- tinker: neighbours and merging ---');
     Math.abs(sqAfter - sqBefore) < 1, `${Math.round(sqBefore)} -> ${Math.round(sqAfter)} sq ft`);
   check('and the draft colour is put back afterwards', !nlAfter.draftRed && !nlAfter.tracing,
     JSON.stringify(nlAfter));
+
+  /*
+   * AND LIKE A NEW SHAPE (owner, 2026-10-01): points placed until the
+   * checkmark, then the corners stay editable with Points.
+   */
+  await tp.evaluate(() => document.querySelector('#btn-not-lawn')?.click());
+  await tp.waitForTimeout(300);
+  for (const [fx, fy] of [[0.20, 0.76], [0.28, 0.74], [0.38, 0.76], [0.38, 0.88], [0.20, 0.88]]) {
+    await tp.mouse.click(Math.round(tb.x + tb.width * fx), Math.round(tb.y + tb.height * fy));
+    await tp.waitForTimeout(250);
+  }
+  const offered = await tp.evaluate(() => !document.querySelector('#tool-finish')?.hidden);
+  check('a not-lawn trace offers the checkmark once it has three points', offered);
+  await tp.evaluate(() => document.querySelector('#tool-finish')?.click());
+  await tp.waitForTimeout(600);
+  const closed = await tp.evaluate(() => ({ nl: window.__lmNotLawn(), ed: window.__lmEditable() }));
+  check('the checkmark closes it as not-lawn and lands on Points',
+    closed.nl.count === nlAfter.count + 1 && closed.ed.mode === 'shape' && closed.ed.tool === 'points',
+    JSON.stringify({ count: closed.nl.count, mode: closed.ed.mode, tool: closed.ed.tool }));
+  check('and the total still does not move',
+    Math.abs((await tp.evaluate(() => window.__lmSqft())) - sqAfter) < 1);
+
+  // The LAST trace's corner: the one stopped short above may be at three, the floor.
+  const nlCorner = (await tp.evaluate(() => window.__lmCorners())).filter((c) => c.notLawn).pop();
+  check('its corners are offered to the point tools', Boolean(nlCorner));
+  if (nlCorner) {
+    const box = await tp.locator('#map').boundingBox();
+    await tp.evaluate(() => document.querySelector('#tool-unpoint')?.click());
+    await tp.waitForTimeout(250);
+    await tp.mouse.click(box.x + nlCorner.x, box.y + nlCorner.y);
+    await tp.waitForTimeout(400);
+    const erased = await tp.evaluate(() => window.__lmNotLawn());
+    check('and a not-lawn corner can be removed after it was closed',
+      erased.corners === closed.nl.corners - 1, `${closed.nl.corners} -> ${erased.corners} corners`);
+    await tp.evaluate(() => document.querySelector('#btn-undo')?.click());
+    await tp.waitForTimeout(400);
+    check('and Undo puts it back',
+      (await tp.evaluate(() => window.__lmNotLawn())).corners === closed.nl.corners);
+  }
   await tp.close();
 }
 

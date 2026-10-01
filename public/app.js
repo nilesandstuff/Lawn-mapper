@@ -373,7 +373,7 @@ if (typeof window !== 'undefined') {
       // `hole` so a check can aim at a cut-out's corner specifically: that
       // those exist at all is the thing under test, and a tap at a corner
       // that turns out to belong to the outline proves nothing about them.
-      return { x: q.x, y: q.y, hole: isHoleRing(ringId) };
+      return { x: q.x, y: q.y, hole: isHoleRing(ringId), notLawn: isNotLawnRing(ringId) };
     }));
   window.__lmCornerCount = () => editableRings()
     .reduce((n, { ring }) => n + openRing(ring).length, 0);
@@ -584,6 +584,7 @@ if (typeof window !== 'undefined') {
      being drawn in their colour (tinker mode). */
   window.__lmNotLawn = () => ({
     count: state.notLawn.length,
+    corners: state.notLawn.reduce((n, g) => n + Math.max(0, (g?.coordinates?.[0]?.length || 1) - 1), 0),
     tracing: state.notLawnMode,
     draftRed: (() => {
       try {
@@ -1713,13 +1714,15 @@ async function initMap() {
       state.notLawnClosing = false;
       const traced = e.features[0];
       try { draw.delete(traced.id); } catch { /* already gone */ }
+      pushHistory(); // Undo takes the trace back off
       state.notLawn.push(traced.geometry);
       refreshNotLawn();
       setStatus(`Not-lawn traced (${state.notLawn.length} on this map). It is kept `
-        + 'for training only and does not change the total. Trace another, or '
-        + 'press "Tracing not-lawn" to stop.');
-      /* Ready for the next one, once Draw has finished closing this one. */
-      queueMicrotask(() => { if (state.notLawnMode) draw.changeMode('draw_polygon'); });
+        + 'for training only and does not change the total. Its points are editable '
+        + 'with Points, like a lawn shape. Press "Trace not-lawn" for another.');
+      /* LIKE A NEW SHAPE (owner, 2026-10-01): closed with the checkmark, and
+         landing on Points so its corners can be fixed straight away. */
+      queueMicrotask(() => setMode('shape', 'points'));
       return;
     }
     // A patch drawn by hand is a hand correction, whether it is the first
@@ -3213,6 +3216,8 @@ function snapshot({ without = null } = {}) {
     // Placing pins is work too. Undo that skipped them would quietly make
     // "remove all pins" the only way back from one stray tap.
     pins: state.pins.map((p) => [...p]),
+    // Not-lawn traces are edited with the same tools, so Undo has to cover them.
+    notLawn: JSON.parse(JSON.stringify(state.notLawn)),
   };
 }
 
@@ -3336,7 +3341,7 @@ const draftCorners = () => (drafting ? drafting.state.currentVertexPosition : 0)
  * only make a zero-length edge. Tracing a property line and not-lawn keep
  * the old first-point close; nobody asked for those to change.
  */
-const precisePlacing = () => Boolean(drafting) && !state.drawingParcel && !state.notLawnMode;
+const precisePlacing = () => Boolean(drafting) && !state.drawingParcel;
 const ON_A_POINT_PX = 4;
 
 /** The rings a point placed now may snap to, and what counts as inside. */
@@ -3351,7 +3356,17 @@ function snapTargets() {
     rings.push(...px);
     areas.push({ outer: px[0], holes: px.slice(1) });
   };
-  if (state.drawingHole) {
+  if (state.notLawnMode) {
+    /* A not-lawn trace snaps onto a lawn edge it comes near -- the road ends
+       where the lawn starts -- but nothing holds it in: a road, a pond, a car
+       park can be anywhere, so the whole map counts as inside. */
+    const own = drafting?.state.polygon.id;
+    for (const f of draw.getAll().features) {
+      if (f.id !== own) polys(f.geometry).forEach((poly) => rings.push(...poly.map((r) => r.map(proj))));
+    }
+    const far = 1e7;
+    areas.push({ outer: [[-far, -far], [far, -far], [far, far], [-far, far], [-far, -far]], holes: [] });
+  } else if (state.drawingHole) {
     // The lawn as it is, not the outline being drawn.
     const own = drafting?.state.polygon.id;
     for (const f of draw.getAll().features) if (f.id !== own) polys(f.geometry).forEach(add);
@@ -3457,6 +3472,10 @@ function restore(prev) {
   }
 
   state.pins = (prev.pins || []).map((p) => [...p]);
+  if (Array.isArray(prev.notLawn)) {
+    state.notLawn = JSON.parse(JSON.stringify(prev.notLawn));
+    refreshNotLawn();
+  }
   refreshPins();
 
   drawPoints();
@@ -9244,7 +9263,7 @@ function refreshRail() {
    */
   const finish = $('#tool-finish');
   const finishing = Boolean(state.frame) && Boolean(drafting) && !state.drawingParcel
-    && !state.notLawnMode && drafting.state.currentVertexPosition >= 3;
+    && drafting.state.currentVertexPosition >= 3;
   const cancel = $('#tool-cancel');
   const placing = Boolean(state.frame) && precisePlacing();
   if (cancel) cancel.hidden = !placing;
@@ -10139,6 +10158,11 @@ function editableRings() {
   }
 
   if (state.mode === 'shape' && state.shapeTool === 'points') {
+    /* Not-lawn traces too (tinker mode): their corners are fixed with the same
+       tool as the lawn's, though they never count toward it. */
+    const notLawn = state.notLawn.flatMap((g, i) => (g?.type === 'Polygon' ? g.coordinates : [])
+      .map((ring, j) => ({ ringId: ringKey(notLawnId(i), j), ring }))
+      .filter((r) => Array.isArray(r.ring) && r.ring.length >= 4));
     /*
      * EVERY RING, HOLES INCLUDED. A shed cut out of a lawn is a hole, and a
      * hole whose corners cannot be tapped is a cut you can make once and never
@@ -10150,7 +10174,7 @@ function editableRings() {
       return rings
         .map((ring, i) => ({ ringId: ringKey(f.id, i), ring }))
         .filter((r) => Array.isArray(r.ring) && r.ring.length >= 4);
-    });
+    }).concat(notLawn);
   }
 
   return [];
@@ -10411,15 +10435,31 @@ const isHoleRing = (ringId) => ringOwner(ringId).ringIndex > 0;
 /** Whether a ring id names the property line. */
 const isParcelRing = (ringId) => ringOwner(ringId).featureId === PARCEL_ID;
 
+/*
+ * Not-lawn traces are not Draw features (state.notLawn), so like the property
+ * line they get a made-up feature id: the prefix and their place in the list.
+ */
+const NOT_LAWN_PREFIX = '__notlawn__';
+const notLawnId = (i) => `${NOT_LAWN_PREFIX}${i}`;
+const notLawnIndex = (featureId) => (String(featureId).startsWith(NOT_LAWN_PREFIX)
+  ? Number(String(featureId).slice(NOT_LAWN_PREFIX.length)) : null);
+const isNotLawnRing = (ringId) => notLawnIndex(ringOwner(ringId).featureId) !== null;
+
+/** Does editing this ring change the lawn? Not the boundary, not a not-lawn trace. */
+const editsLawn = (ringId) => state.mode === 'shape' && !isNotLawnRing(ringId);
+
 /** What to call this ring in a sentence aimed at the person editing it. */
 const ringLabel = (ringId) => (isParcelRing(ringId)
   ? 'property line'
-  : isHoleRing(ringId) ? 'cut-out' : 'lawn outline');
+  : isNotLawnRing(ringId) ? 'not-lawn outline'
+    : isHoleRing(ringId) ? 'cut-out' : 'lawn outline');
 
 /** The ring a ring id names, read fresh. */
 function ringOf(ringId) {
   const { featureId, ringIndex } = ringOwner(ringId);
   if (featureId === PARCEL_ID) return ringIndex === 0 ? parcelRing() : null;
+  const nl = notLawnIndex(featureId);
+  if (nl !== null) return state.notLawn[nl]?.coordinates?.[ringIndex] || null;
   const rings = draw.get(featureId)?.geometry?.coordinates;
   return Array.isArray(rings) ? rings[ringIndex] || null : null;
 }
@@ -10430,6 +10470,14 @@ function writeRing(ringId, ring) {
   if (featureId === PARCEL_ID) {
     if (ringIndex !== 0) return false;
     setParcelRing(ring);
+    return true;
+  }
+  const nl = notLawnIndex(featureId);
+  if (nl !== null) {
+    const g = state.notLawn[nl];
+    if (!g?.coordinates?.[ringIndex]) return false;
+    state.notLawn[nl] = { ...g, coordinates: g.coordinates.map((r, i) => (i === ringIndex ? ring : r)) };
+    refreshNotLawn();
     return true;
   }
   const feature = draw.get(featureId);
@@ -10446,7 +10494,7 @@ function writeRing(ringId, ring) {
  */
 function dropRing(ringId) {
   const { featureId, ringIndex } = ringOwner(ringId);
-  if (featureId === PARCEL_ID || ringIndex === 0) return false;
+  if (featureId === PARCEL_ID || ringIndex === 0 || notLawnIndex(featureId) !== null) return false;
   const feature = draw.get(featureId);
   const rings = feature?.geometry?.coordinates;
   if (!Array.isArray(rings) || !rings[ringIndex]) return false;
@@ -10631,7 +10679,8 @@ function moveSelectedVertex(lngLat) {
    * and then dragged a corner of the ORDINARY lawn is editing the lawn, and
    * holding that inside itself is meaningless.
    */
-  let at = heldInsideParcel(lngLat);
+  /* A not-lawn trace is held by nothing: a road is outside the boundary. */
+  let at = isNotLawnRing(edit.ringId) ? lngLat : heldInsideParcel(lngLat);
   let heldBy = at !== lngLat ? 'parcel' : null;
   if (!heldBy && editingInferred()) {
     const held = heldInsideLawn(at);
@@ -10646,7 +10695,7 @@ function moveSelectedVertex(lngLat) {
   // A corner of the LAWN is a hand correction; a corner of the property line
   // is not -- the lock exists to protect work the AI would overwrite, and the
   // AI does not draw boundaries.
-  if (state.mode === 'shape') markHandEdited();
+  if (editsLawn(edit.ringId)) markHandEdited();
   writeRing(edit.ringId, moveVertex(ring, edit.vertexIndex, at));
   drawPoints();
   refreshMeasurement();
@@ -10666,7 +10715,7 @@ function addPointAt(ringId, edgeIndex, at) {
   if (!ring) return;
 
   pushHistory();
-  if (state.mode === 'shape') markHandEdited();
+  if (editsLawn(ringId)) markHandEdited();
   const grown = insertVertex(ring, edgeIndex, at);
   if (!writeRing(ringId, grown)) return;
 
@@ -10734,7 +10783,7 @@ function removeVertexAt(ringId, index) {
   }
 
   pushHistory();
-  if (state.mode === 'shape') markHandEdited();
+  if (editsLawn(ringId)) markHandEdited();
   writeRing(ringId, shrunk);
   state.edgeEdit = { ringId: null, vertexIndex: null, edgeIndex: null, baseRing: null };
   $('#point-controls').hidden = true;
@@ -11876,8 +11925,8 @@ function setNotLawnMode(on) {
       btn.textContent = 'Tracing not-lawn';
     }
     draw.changeMode('draw_polygon');
-    setHint('Click around the edge of something that is NOT lawn -- a parking lot, '
-      + 'a road, a pond. Trace right to its edge. Click the first point to finish.');
+    setHint('Tap around the edge of something that is NOT lawn -- a parking lot, '
+      + 'a road, a pond -- then press the ✓.');
     setStatus('Tracing not-lawn. These are for training only and never count toward the total.');
   } else {
     const was = state.notLawnMode;
