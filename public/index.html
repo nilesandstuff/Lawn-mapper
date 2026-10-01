@@ -1114,7 +1114,10 @@
           rail is drawn over the map it is for.
         -->
         <div class="railsub railgrid" id="point-tools" hidden>
-          <button class="railbtn sub" id="tool-handles" aria-pressed="false"
+          <!-- HANDLES IS PUT AWAY, NOT DELETED (owner, 2026-10-01): the rail had
+               grown too wide. Remove `hidden` to bring it back; app.js only
+               honours a remembered "on" while this button can be seen. -->
+          <button class="railbtn sub" id="tool-handles" aria-pressed="false" hidden
                   title="Show a drag handle on every corner">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <circle cx="7" cy="17" r="2.2" fill="currentColor"/>

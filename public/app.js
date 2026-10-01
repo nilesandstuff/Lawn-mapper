@@ -9592,8 +9592,6 @@ const TOURS = {
       text: 'Some of the same tools, and more, are also in the drawer.' },
   ],
   points: [
-    { target: '#tool-handles', name: 'Handles',
-      text: 'Show handles for points, useful for adjusting points from a mobile device.' },
     { target: '#tool-unpoint', name: 'Point eraser', text: 'Tap/click to delete points.' },
     { target: '#tool-newpatch', name: 'New shape',
       text: 'Manually place points to create a new lawn shape from scratch.' },
@@ -12384,7 +12382,11 @@ for (const size of ['fine', 'bulk']) {
  * anyway.
  */
 const HANDLES_KEY = 'lawnmap.handles.v1';
-try { state.handlesOn = localStorage.getItem(HANDLES_KEY) === '1'; } catch { /* off */ }
+/* Only while the button is on offer: with it put away (index.html), a
+   remembered "on" would leave stalks on the map and no way to turn them off. */
+try {
+  state.handlesOn = !$('#tool-handles').hidden && localStorage.getItem(HANDLES_KEY) === '1';
+} catch { /* off */ }
 
 $('#tool-handles').addEventListener('click', () => {
   state.handlesOn = !state.handlesOn;

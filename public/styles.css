@@ -495,9 +495,6 @@ body.inferred-mode .panel { box-shadow: inset 4px 0 0 #7c4dff; }
   display: grid; grid-template-columns: repeat(2, 46px); gap: 5px;
   align-content: start;
 }
-/* The corner tools in three: the Pan row added a row above them, and with two
-   columns Delete point hung off the bottom of the map onto the panel. */
-#point-tools { grid-template-columns: repeat(3, 46px); }
 /*
  * NO `overflow` ON THE RAIL, EVER.
  *

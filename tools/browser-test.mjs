@@ -859,7 +859,7 @@ await tourCheck('tools', 5);
 await page.click('#tour-ok');
 await page.waitForTimeout(250);
 await page.click('#tool-points');       // the point tools' own tour comes with them
-await tourCheck('points', 5);
+await tourCheck('points', 4);
 await page.click('#tour-ok');
 await page.waitForTimeout(250);
 check('"Got it" puts the tours away',
@@ -950,7 +950,9 @@ check('with nothing locked before any work has been done',
     (await page.evaluate(() => window.__lmHandles())).length === 0,
     'a hundred stalks on a traced outline is not a legible map');
 
-  await page.click('#tool-handles');
+  /* The button is put away for now (index.html), and the handles behind it
+     are kept working: switched on the way the button would. */
+  await page.evaluate(() => document.querySelector('#tool-handles').click());
   await page.waitForTimeout(400);
 
   const handles = await page.evaluate(() => window.__lmHandles());
