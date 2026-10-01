@@ -28,7 +28,8 @@ import { afterStroke, restoreAway } from './lib/stitch.js';
 import { strokeOnShapes } from './lib/brush-vector.js';
 import { extendToRoads, mergeButtonPoint, mergeRings, placeInside } from './lib/frontage.js';
 import { alignImages, luminance, movedCorners } from './lib/align.js';
-import { snapPoint } from './lib/snap.js';
+import { snapPoint, nearestOnRings } from './lib/snap.js';
+import { notchShapes } from './lib/cutout.js';
 // Pasting the pieces of a big lot's detection back into one mask.
 import { stitchMasks } from './lib/tiles.js';
 import {
@@ -457,6 +458,38 @@ if (typeof window !== 'undefined') {
       before,
       after: hostArea(),
       total: totalSquareFeet(),
+      cutSqFt: measure({ type: 'Polygon', coordinates: [ring] }).squareFeetRaw,
+      said: document.querySelector('#status')?.textContent || '',
+    };
+  };
+
+  /*
+   * A cut AT THE EDGE (owner, 2026-10-01): a square straddling the middle of
+   * the largest shape's first edge, two corners outside the lawn. It must take
+   * a notch out -- some area, less than the whole square -- not be refused.
+   */
+  window.__lmCutAtEdge = () => {
+    const shapes = draw.getAll().features.filter((f) => outerRing(f));
+    if (!shapes.length) return { ok: false, why: 'no shapes' };
+    const host = shapes.sort((a, b) => measure(b.geometry).squareFeetRaw - measure(a.geometry).squareFeetRaw)[0];
+    const [p0, p1] = outerRing(host);
+    const mid = [(p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2];
+    const r = 1.5; // metres
+    const dLat = r / 111320;
+    const dLng = r / (111320 * Math.cos((mid[1] * Math.PI) / 180));
+    const [x, y] = mid;
+    const ring = [
+      [x - dLng, y - dLat], [x + dLng, y - dLat],
+      [x + dLng, y + dLat], [x - dLng, y + dLat], [x - dLng, y - dLat],
+    ];
+    const before = totalSquareFeet();
+    try { draw.changeMode('simple_select'); } catch { /* Draw not ready */ }
+    state.drawingHole = false;
+    cutHoleFromDrawn({ geometry: { type: 'Polygon', coordinates: [ring] } });
+    return {
+      ok: true,
+      before,
+      after: totalSquareFeet(),
       cutSqFt: measure({ type: 'Polygon', coordinates: [ring] }).squareFeetRaw,
       said: document.querySelector('#status')?.textContent || '',
     };
@@ -8878,10 +8911,27 @@ function cutHoleFromDrawn(feature) {
     return;
   }
 
+  /*
+   * ON THE EDGE IS A NOTCH, NOT A HOLE. Cut out snaps to the lawn's edge, so a
+   * cut traced at the boundary has corners on it -- a fraction of a pixel to
+   * either side. Inside by a hair, a hole would leave a hairline of lawn
+   * between it and the edge; outside by a hair, it used to be refused as
+   * "hangs over the edge". Either way what was meant is the cut's area taken
+   * out of the lawn (lib/cutout.js), so that is what happens.
+   */
+  const px = (ll) => { const q = map.project(ll); return [q.x, q.y]; };
+  const cutPx = openRing(ring).map(px);
+  const touchesEdge = (f) => {
+    const rings = (f.geometry?.coordinates || []).map((r) => r.map(px));
+    return cutPx.some((p) => (nearestOnRings(p, rings)?.dist ?? Infinity) < 1);
+  };
+
   const hosts = draw.getAll().features.filter((f) => {
     const outer = outerRing(f);
     return outer && ringInsideRing(ring, outer);
   });
+
+  if ((!hosts.length || hosts.some(touchesEdge)) && notchFromDrawn(ring)) return;
 
   if (!hosts.length) {
     /*
@@ -8917,6 +8967,43 @@ function cutHoleFromDrawn(feature) {
     + (hosts.length > 1 ? ` from ${hosts.length} overlapping shapes` : '')
     + '. Its corners are editable with Points, like any other.'
   );
+}
+
+/**
+ * Take a cut that reaches the lawn's edge out of every shape it overlaps, as a
+ * notch (see cutHoleFromDrawn and lib/cutout.js). A shape cut right through
+ * becomes two; one covered entirely goes. Returns false when the cut touches
+ * no lawn, so the caller can say why.
+ */
+function notchFromDrawn(ring) {
+  const clip = window.polygonClipping;
+  if (!clip) return false;
+  const features = draw.getAll().features.filter((f) => f.geometry?.type === 'Polygon');
+  const results = notchShapes(clip, features.map((f) => f.geometry.coordinates), ring);
+  if (!results.some(Boolean)) return false;
+
+  pushHistory();
+  markHandEdited();
+  const before = totalSquareFeet();
+  features.forEach((f, i) => {
+    const left = results[i];
+    if (!left) return;
+    if (!left.length) { draw.delete(f.id); return; }
+    const [first, ...rest] = left;
+    f.geometry = { type: 'Polygon', coordinates: first };
+    draw.add(f); // same id: this updates in place
+    for (const poly of rest) {
+      draw.add({ type: 'Feature', properties: { ...(f.properties || {}) },
+        geometry: { type: 'Polygon', coordinates: poly } });
+    }
+  });
+
+  refreshMeasurement();
+  refreshSurveyed();
+  updateSelectionButtons();
+  setStatus(`Cut out ${Math.round(Math.max(0, before - totalSquareFeet())).toLocaleString()} sq ft `
+    + 'at the edge of the lawn. Its corners are editable with Points, like any other.');
+  return true;
 }
 
 /**

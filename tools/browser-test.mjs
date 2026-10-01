@@ -2328,6 +2328,7 @@ console.log('\n--- cutting a shape out ---');
   check('a traced outline inside the lawn becomes a cut-out', cut.ok === true,
     cut.ok ? '' : String(cut.why));
 
+
   if (cut.ok) {
     console.log(`      ${cut.said}`);
     /*
@@ -2388,6 +2389,19 @@ console.log('\n--- cutting a shape out ---');
     check('and undo puts the cut back',
       (await page.evaluate(() => window.__lmEditable().holes)) === 0);
   }
+
+  /*
+   * AT THE EDGE IT IS A NOTCH, NOT A REFUSAL (owner, 2026-10-01). Cut out
+   * snaps to the lawn's edge, so its corners land on it -- and every such cut
+   * was turned away as "hangs over the edge". Half in and half out, it must
+   * take some lawn away and no more than its own size.
+   */
+  const edgeCut = await page.evaluate(() => window.__lmCutAtEdge());
+  const notched = edgeCut.ok ? edgeCut.before - edgeCut.after : 0;
+  check('a cut reaching past the lawn edge takes a notch out instead of being refused',
+    edgeCut.ok && notched > 1 && notched < edgeCut.cutSqFt && !/hangs over/i.test(edgeCut.said),
+    edgeCut.ok ? `${Math.round(edgeCut.before)} -> ${Math.round(edgeCut.after)} sq ft for a `
+      + `${Math.round(edgeCut.cutSqFt)} sq ft square; ${edgeCut.said}` : String(edgeCut.why));
 }
 
 /* ------------------------------------- held at the property line */
