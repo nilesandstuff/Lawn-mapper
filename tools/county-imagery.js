@@ -127,7 +127,7 @@ export function agolKeep(results, lng, lat, maxArea = 30) {
  * Massachusetts' "2025 Aerial Imagery - CIR": colour infrared, false colour.
  * Indexes, footprints and elevation layers are not photos either.
  */
-export const NOT_A_PHOTO = /\bcir\b|infra.?red|\bnir\b|ndvi|false.?colou?r|color.?infrared|index|footprint|boundar|tile.?scheme|flight|\blidar|\bdem\b|hillshade|elevation|contour|parcel|topo|labels?\b|reference/i;
+export const NOT_A_PHOTO = /\bcir\b|infra.?red|\bnir\b|ndvi|false.?colou?r|color.?infrared|index|footprint|boundar|tile.?scheme|flight|\blidar|\bdem\b|hillshade|elevation|contour|parcel|topo|labels?\b|reference|\bbw\d*\b|bw\d{4}|black.?(and|&|n).?white|grayscale|greyscale|panchromatic|historic/i;
 
 /**
  * Candidates in the order to try them: dropping flights named before
@@ -969,6 +969,15 @@ async function catalogue(decoders) {
     .match(/CREATE TABLE IF NOT EXISTS county_services \([\s\S]*?\n\);/)[0].replace(/--[^\n]*/g, ''), { always: true });
   exec(readFileSync(new URL('../worker/schema.sql', import.meta.url), 'utf8')
     .match(/CREATE TABLE IF NOT EXISTS county_sweep \([\s\S]*?\n\);/)[0].replace(/--[^\n]*/g, ''), { always: true });
+  /* Anything the filters now refuse comes out (a 1940 black-and-white basemap
+     got in before they did). */
+  for (const r of query('SELECT url, title, year FROM county_services')) {
+    const old = r.year !== null && r.year !== undefined && Number(r.year) < MIN_YEAR;
+    if (old || NOT_A_PHOTO.test(`${r.title || ''} ${String(r.url).split('/rest/services/')[1] || r.url}`)) {
+      exec(`DELETE FROM county_services WHERE url = ${lit(r.url)}`);
+      console.log(`removed ${r.title || r.url} (${old ? `flown ${r.year}` : 'not a colour photo'})`);
+    }
+  }
   const known = new Set(query('SELECT url FROM county_services').map((r) => r.url));
   const failed = new Set();
   let added = 0;

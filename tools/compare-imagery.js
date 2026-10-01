@@ -114,8 +114,10 @@ export function pickImagery(services = []) {
 /** Plausible years named in some text: 1950 (county archives go back that far) to next year. */
 export function yearHints(text) {
   const max = new Date().getUTCFullYear() + 1;
-  const found = String(text || '').match(/(?<!\d)(19[5-9]\d|20[0-4]\d)(?!\d)/g) || [];
-  return [...new Set(found.map(Number).filter((y) => y >= 1950 && y <= max))].sort();
+  /* From 1900: a 1940 flight is a year to reject, not a year to miss (Oakland
+     County's "OC Ortho BW1940" passed as undated, 2026-10-01). */
+  const found = String(text || '').match(/(?<!\d)(19\d\d|20[0-4]\d)(?!\d)/g) || [];
+  return [...new Set(found.map(Number).filter((y) => y >= 1900 && y <= max))].sort();
 }
 
 /**
