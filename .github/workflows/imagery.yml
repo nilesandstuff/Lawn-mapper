@@ -42,13 +42,14 @@ on:
         required: false
         default: '60'
       county_mode:
-        description: 'county: find (look and bank), realign (line up the banked ones again), rebank (apply /county.html nudges) or catalogue (services for any address; county_limit = how many counties)'
+        description: 'county: find (look and bank), realign (line up the banked ones again), rebank (apply /county.html nudges) or catalogue (services for any address; county_limit = how many counties), or names (every county in states with statewide parcels, searched by name)'
         type: choice
         options:
           - find
           - realign
           - rebank
           - catalogue
+          - names
         default: find
       county_only:
         description: 'county catalogue: just these county keys now, comma-separated (e.g. id-blaine)'

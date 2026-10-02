@@ -66,6 +66,7 @@ import { query, wrangler, resolveDatabase } from './corpus-db.js';
 import { extraDetail } from './probe-resolution.js';
 import {
   catalogueRoot, siblingRoots, pickImagery, yearHints, nativeCm, greyGrid, greenShare,
+  IMAGERY,
 } from './compare-imagery.js';
 import { registerImages, applyAffine } from '../public/lib/register.js';
 import { looksLikePhoto } from '../worker/src/png-probe.js';
@@ -373,16 +374,24 @@ export function webMapLayers(data) {
 export const itemIdsIn = (json) => [...new Set((JSON.stringify(json || {}).match(/\b[0-9a-f]{32}\b/g) || []))];
 
 const nameCache = new Map();
-export async function agolByName(key) {
+export async function agolByName(key, entry = ALL_COUNTIES[key]) {
   if (nameCache.has(key)) return nameCache.get(key);
-  const entry = ALL_COUNTIES[key];
   const out = [];
   const seenMaps = new Set();
+  const hosts = []; // servers seen in web maps, browsed below even when the layer was not imagery
   const item = (id) => `https://www.arcgis.com/sharing/rest/content/items/${id}`;
   const fromWebMap = async (id) => {
     if (seenMaps.has(id) || seenMaps.size >= 25) return;
     seenMaps.add(id);
-    try { out.push(...webMapLayers(await getJson(`${item(id)}/data?f=json`)).map((c) => ({ ...c, via: 'ArcGIS Online web map' }))); } catch { /* unreadable */ }
+    /* Only the layers named like imagery: a web map also draws roads,
+       addresses and flood zones, and each would cost a look. Their servers
+       are still browsed whole below, through the same imagery filter. */
+    try {
+      for (const c of webMapLayers(await getJson(`${item(id)}/data?f=json`))) {
+        if (IMAGERY.test(`${c.title} ${c.url}`)) out.push({ ...c, via: 'ArcGIS Online web map' });
+        else hosts.push(c.url);
+      }
+    } catch { /* unreadable */ }
   };
   let start = 1;
   for (let page = 0; page < 3 && start > 0; page++) {
@@ -419,9 +428,10 @@ export async function agolByName(key) {
    */
   /* Esri's world imagery and ArcGIS Online's proxy are not a county's: the
      first is the app's own Esri source, the second a key-holding relay. */
-  const notCounty = (u) => /\/\/(services|server)\.arcgisonline\.com\/|\/\/utility\.arcgis\.com\//i.test(u);
+  const notCounty = (u) => /\/\/(services|server)\.arcgisonline\.com\/|\/\/(utility|tiledbasemaps|basemaps)\.arcgis\.com\/|\/\/hazards\.fema\.gov\//i.test(u);
   for (let i = out.length - 1; i >= 0; i--) if (notCounty(out[i].url)) out.splice(i, 1);
-  const roots = [...new Set(out.map((c) => catalogueRoot(c.url)).filter(Boolean))].slice(0, 6);
+  const roots = [...new Set([...out.map((c) => c.url), ...hosts].filter((u) => !notCounty(u))
+    .map(catalogueRoot).filter(Boolean))].slice(0, 6);
   for (const root of roots.flatMap(siblingRoots)) {
     if (!catalogueCache.has(root)) {
       catalogueCache.set(root, await listCatalogue(root).then(pickImagery).catch(() => []));
@@ -1141,11 +1151,83 @@ async function sweepPoints(key, entry) {
   return out;
 }
 
-async function catalogue(decoders) {
+/*
+ * EVERY COUNTY IN A STATE WHOSE PARCELS COME FROM THE STATE (owner,
+ * 2026-10-02: "also looking through the statewide databases for the states
+ * that had statewide sources"). The point sweep reaches the state's own
+ * server and any county with an entry of its own, but most counties in those
+ * states have none -- Montana has 56 and four entries -- and a half-degree
+ * grid steps over small counties altogether. So, by name, for each county in
+ * the Census gazetteer: ArcGIS Online and the servers it leads to
+ * (agolByName), each service checked at the middle of its own box rather than
+ * at a grid point, and only if that middle is in the state. Resumable: one
+ * county_sweep row per county ("name:<state>-<fips>").
+ */
+export const nameSweepKey = (st, fips) => `name:${st.toLowerCase()}-${fips}`;
+
+async function names(decoders) {
+  const { US_COUNTIES } = await import('../worker/src/us-counties.js');
+  const states = [...new Set(Object.values(ALL_COUNTIES).filter((e) => e.statewide)
+    .map((e) => e.state || null).filter(Boolean))];
+  /* Statewide entries without a `state` field carry it in their key. */
+  for (const [k, e] of Object.entries(ALL_COUNTIES)) if (e.statewide && !e.state) states.push(k.slice(0, 2).toUpperCase());
+  const wanted = [...new Set(states)].filter((ab) => Object.values(US_COUNTIES).some((v) => v.ab === ab));
+  const done = new Set(query("SELECT point FROM county_sweep WHERE point LIKE 'name:%'").map((r) => r.point));
+  const known = new Set(query('SELECT url FROM county_services').map((r) => r.url));
+  const tried = new Set();
+  let added = 0, counties = 0;
+  const deadline = Date.now() + Number(process.env.NAMES_MINUTES || 320) * 60000;
+  for (const ab of wanted.sort()) {
+    const st = Object.values(US_COUNTIES).find((v) => v.ab === ab);
+    const [bw, bs, be, bn] = st.box;
+    const box = [bw - 0.3, bs - 0.3, be + 0.3, bn + 0.3];
+    for (const [fips, county] of Object.entries(st.counties)) {
+      const point = nameSweepKey(ab, fips);
+      if (done.has(point) && !FORCE) continue;
+      if (Date.now() > deadline) { console.log('Out of time; the next run carries on from here.'); return report(); }
+      counties++;
+      const notes = [];
+      let found = 0;
+      const cands = rankCandidates(await agolByName(point, { name: `${county}, ${ab}`, box }).catch(() => []));
+      for (const c of cands.slice(0, MAX_TRY)) {
+        if (known.has(c.url)) { found++; continue; }
+        if (tried.has(c.url)) continue;
+        tried.add(c.url);
+        const ext = await extentLngLat(await meta(c.url)).catch(() => null);
+        if (!ext) { notes.push(`x ${c.title}: no extent`); continue; }
+        const mid = [(ext[0] + ext[2]) / 2, (ext[1] + ext[3]) / 2];
+        if (!(mid[0] >= box[0] && mid[0] <= box[2] && mid[1] >= box[1] && mid[1] <= box[3])) { notes.push(`x ${c.title}: not in ${ab}`); continue; }
+        const q = await qualify(c, mid[0], mid[1], decoders, { again: false }).catch((e) => ({ usable: false, why: e.message }));
+        await sleep(PAUSE_MS);
+        if (!q.usable) { notes.push(`x ${c.title}: ${q.why}`); continue; }
+        upsertService(q, 'names', point);
+        known.add(c.url); added++; found++;
+        notes.push(`OK ${q.title} ${q.year ?? '?'} ${q.nativeCm ? `${Math.round(q.nativeCm)} cm` : ''}${q.exportOk ? '' : ' (tiles only)'}`);
+      }
+      exec(`INSERT INTO county_sweep (point, county_key, lng, lat, found, checked_at)
+            VALUES (${[point, point, null, null, found, new Date().toISOString()].map(lit).join(', ')})
+            ON CONFLICT(point) DO UPDATE SET found = excluded.found, checked_at = excluded.checked_at`);
+      console.log(`${counties} ${county}, ${ab}: ${found} service${found === 1 ? '' : 's'}`);
+      for (const t of notes) console.log(`      ${t.slice(0, 150)}`);
+    }
+  }
+  return report();
+  function report() {
+    const n = query("SELECT COUNT(*) n, SUM(found > 0) hit FROM county_sweep WHERE point LIKE 'name:%'")[0] || {};
+    console.log('\n================ COUNTIES IN STATEWIDE STATES, BY NAME ================');
+    console.log(`${added} services added this run; ${n.n ?? 0} counties looked at so far, ${n.hit ?? 0} with a county or state photo service.`);
+  }
+}
+
+function ensureCatalogueTables() {
   exec(readFileSync(new URL('../worker/schema.sql', import.meta.url), 'utf8')
     .match(/CREATE TABLE IF NOT EXISTS county_services \([\s\S]*?\n\);/)[0].replace(/--[^\n]*/g, ''), { always: true });
   exec(readFileSync(new URL('../worker/schema.sql', import.meta.url), 'utf8')
     .match(/CREATE TABLE IF NOT EXISTS county_sweep \([\s\S]*?\n\);/)[0].replace(/--[^\n]*/g, ''), { always: true });
+}
+
+async function catalogue(decoders) {
+  ensureCatalogueTables();
   /* Anything the filters now refuse comes out (a 1940 black-and-white basemap
      got in before they did). */
   for (const r of query('SELECT url, title, year FROM county_services')) {
@@ -1213,7 +1295,7 @@ async function catalogue(decoders) {
 
   const all = query('SELECT export_ok, tile_merc, COUNT(*) n FROM county_services GROUP BY export_ok, tile_merc');
   const count = (f) => all.filter(f).reduce((a, r) => a + Number(r.n), 0);
-  const pts = query('SELECT COUNT(*) n, SUM(found > 0) hit FROM county_sweep')[0] || {};
+  const pts = query("SELECT COUNT(*) n, SUM(found > 0) hit FROM county_sweep WHERE point NOT LIKE 'name:%'")[0] || {};
   console.log('\n================ COUNTY PHOTO CATALOGUE ================');
   console.log(`${added} services added this run; ${count(() => true)} in the catalogue:`
     + ` ${count((r) => Number(r.export_ok))} draw any box, ${count((r) => !Number(r.export_ok) && Number(r.tile_merc))}`
@@ -1243,6 +1325,11 @@ async function main() {
 
   if (MODE === 'catalogue') {
     await catalogue(decoders);
+    return;
+  }
+  if (MODE === 'names') {
+    ensureCatalogueTables();
+    await names(decoders);
     return;
   }
 
