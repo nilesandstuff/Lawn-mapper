@@ -4741,7 +4741,21 @@ async function detect({ again = false } = {}) {
 
   try {
     /* A stitched county photo has to have reached the Worker first. */
-    if (provider === 'county' && state.countySvc?.tiled && state.countyFrameUpload) {
+    /*
+     * AND OF THIS FRAME. The Worker lays the AI's answer on the frame sent
+     * here, so a picture of any other frame puts the outline in the wrong
+     * place -- 1.96 m south at Ketchum, where the property line was moved
+     * out to the road while the photo was being stitched. Stitched again if
+     * it does not match.
+     */
+    if (provider === 'county' && state.countySvc?.tiled) {
+      if (!sameFrame(state.countyFrameFor, frameFor('county', frame))) {
+        await showImagery();
+        busy('Detecting your lawn…');
+      }
+      if (state.provider !== 'county' || !state.countyFrameUpload) {
+        throw new Error('The county photo could not be made for this frame. Press Detect again, or switch Layers to Mapbox.');
+      }
       state.countyFrameKey = await state.countyFrameUpload;
     }
     let data = await api('/api/segment', {
@@ -5564,6 +5578,12 @@ const sourceLabel = (p) => (p.id === 'county' && state.countySvc?.year ? `${p.la
  * picture it gets for gaps, and goes back to Mapbox if it has any.
  */
 let countyLookup = 0;
+/** What the status line says while the county photo is the default. */
+function countyShowing(svc) {
+  return `Showing ${svc?.title ? `"${svc.title}"` : "the county's own photo"}${svc?.year ? `, flown ${svc.year}` : ''}`
+    + ' — usually the sharpest there is. Lined up on the ground automatically; Layers switches back to Mapbox.';
+}
+
 async function lookupCountyPhoto({ makeDefault = false } = {}) {
   const at = state.frame || state.chosen;
   if (!at || !state.imagery.some((p) => p.id === 'county')) return;
@@ -5585,10 +5605,7 @@ async function lookupCountyPhoto({ makeDefault = false } = {}) {
   if (svc && makeDefault && state.provider === 'mapbox') {
     await setProvider('county', { auto: true });
     /* setProvider says what it shows; this is the why. */
-    if (state.provider === 'county') {
-      setStatus(`Showing ${svc.title ? `"${svc.title}"` : "the county's own photo"}${svc.year ? `, flown ${svc.year}` : ''}`
-        + ' — usually the sharpest there is. Lined up on the ground automatically; Layers switches back to Mapbox.');
-    }
+    if (state.provider === 'county') setStatus(countyShowing(state.countySvc));
   }
 }
 
@@ -5984,6 +6001,7 @@ async function showImagery() {
     /* A new picture: whatever was uploaded for the last one is not this one. */
     state.countyFrameKey = null;
     state.countyFrameUpload = null;
+    state.countyFrameFor = null;
     const res = tiled
       ? await stitchCountyTiles(state.countySvc, served).then((b) => (b
         ? new Response(b, { headers: { 'Content-Type': 'image/jpeg' } })
@@ -5993,8 +6011,13 @@ async function showImagery() {
       naipBlob = await res.clone().blob();
       if (tiled) {
         url = URL.createObjectURL(naipBlob);
-        /* And handed to the Worker for a detector to fetch. */
-        state.countyFrameUpload = uploadCountyFrame(state.countySvc, served, naipBlob);
+        /* And handed to the Worker for a detector to fetch -- by the current
+           run only, and with the frame it shows: a slower run for a frame
+           since replaced must not leave ITS picture as the one detected on. */
+        if (run === imageryRun) {
+          state.countyFrameUpload = uploadCountyFrame(state.countySvc, served, naipBlob);
+          state.countyFrameFor = served;
+        }
       }
     }
     if (!res.ok) {
@@ -6109,7 +6132,7 @@ async function showImagery() {
   applyAlignOpacity();
   idle(); imageryBusyRun = 0;
   if (isAligned(state.provider)) alignNaip(served, run, naipBlob);
-  setStatus(info.detect
+  setStatus(state.provider === 'county' && state.countyAuto ? countyShowing(state.countySvc) : info.detect
     ? `Showing ${info.label} over the measurement frame. Detect again to use it.`
     : `Showing ${info.label}. This one is for looking at — detection uses Mapbox.`);
 }
@@ -6148,6 +6171,14 @@ const ALIGN_REACH_M = { naipAlign: 5, googleAlign: 8, countyAlign: 4 };
  * from that picture is traced against it, so the outline lands where the
  * picture showed the grass rather than where the source's own frame puts it.
  */
+/** Two frames covering the same ground at the same size. */
+function sameFrame(a, b) {
+  if (!a || !b) return false;
+  return Math.abs(a.lng - b.lng) < 1e-9 && Math.abs(a.lat - b.lat) < 1e-9
+    && Math.abs(a.zoom - b.zoom) < 1e-9 && a.size === b.size
+    && (a.height || a.size) === (b.height || b.size);
+}
+
 function alignedFrame(frame, a) {
   if (!frame || !a) return frame;
   const lat = frame.lat * Math.PI / 180;
@@ -11939,7 +11970,10 @@ function setParcelRing(ring) {
     // An image-service photograph is pinned to the frame's four corners, so
     // re-framing moves the ground out from under it. Refetch for the new
     // rectangle rather than leave a correctly-drawn picture of the old one.
-    if (map.getLayer('imagery-alt') && !providerInfo(state.provider).tiles) {
+    /* And one still on its way: the property line is often moved out to the
+       road while the county photo is being stitched, and that picture is of
+       the old frame (owner, 2026-10-02: a Ketchum trace landed 2 m south). */
+    if ((map.getLayer('imagery-alt') || state.provider !== 'mapbox') && !providerInfo(state.provider).tiles) {
       showImagery(); // deliberately not awaited: nothing here depends on it
     }
   }
@@ -12746,6 +12780,7 @@ function reset() {
   state.countyNext = [];
   state.countyFrameKey = null;
   state.countyFrameUpload = null;
+  state.countyFrameFor = null;
   state.alignBlobs = {};
   state.provider = 'mapbox';
   state.model = state.defaultModel;

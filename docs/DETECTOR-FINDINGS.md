@@ -841,7 +841,7 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
-### H65. A live county-photo detection (Blaine County ID, 2025/2026 Nearmap tile cache) traced about 1.5-2 m south of the photo's features; what that lot's inputs measure, 2026-10-02
+### H65. A live county-photo detection (Blaine County ID, 2026 Nearmap tile cache) traced 1.5-2 m south of the photo's features: the uploaded picture was of the frame before the property line moved, 2026-10-02
 
 *Owner's report from the live app, not a run: the trained model (alpha
 release 2026-09-29, never trained on a county photo) on a Ketchum lot,
@@ -874,10 +874,20 @@ the roof and stopped 1.5-2 m short of the front walk on the south side, and
 
 So the photos cannot explain a 1.5-2 m north-south shift, and an outline
 "closer to Mapbox" has no route to Mapbox: the detector is never shown it.
-What is NOT established: why the outline moved. A model trained on Mapbox
-only reading a different camera is one candidate, a placement fault on the
-county path another; both are SPECULATION until the same lot is detected on
-both photographs.
+
+**CAUSE FOUND, same day: a placement fault, not the model.** Reproduced in a
+browser at the lot. The county photo is stitched for the frame of the moment;
+about 4 s in, the property line is moved out to the road, which re-frames the
+lot; the stitched picture, and the copy uploaded for the detector, were still
+of the OLD frame (centre lat 43.717870, zoom 18.60, 503 px) while detection
+sent the NEW one (43.717852, zoom 18.54, 483 px). The Worker lays the mask on
+the frame it is sent, so the outline landed 1.96 m south -- the owner's
+1.5-2 m. The owner's next try, after switching Layers to Mapbox and back
+(which re-stitches for the current frame), "worked really well". Fixed in
+public/app.js: re-framing re-stitches a county photo still on its way, only
+the current stitch may upload, and detection re-stitches when the uploaded
+picture's frame is not the one being sent. Nothing here says anything about
+how the model reads county photos; that is still unmeasured.
 
 **Decided the same day (owner):** the corpus maps keep their Mapbox outlines
 unless the owner re-traced them on the county photo ("even the ones where the
