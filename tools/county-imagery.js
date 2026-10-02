@@ -1037,7 +1037,7 @@ const VENDOR_SINCE = '2026-10-02T02:01:00Z';
 /* Points checked since "too coarse" was measured rather than read (owner,
    2026-10-02) are not redone by a named-county run, so one that runs out of
    time carries on where it stopped. */
-const MEASURED_SINCE = '2026-10-02T19:45:00Z';
+const MEASURED_SINCE = '2026-10-02T20:45:00Z';
 
 /** A service's extent as [west, south, east, north] in degrees. */
 export async function extentLngLat(m) {
