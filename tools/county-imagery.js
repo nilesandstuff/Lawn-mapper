@@ -1034,6 +1034,10 @@ const RETRY_BEFORE = '2026-10-02T02:20:00Z';
    pass, AK to IL, ran on the older code: a county there with a 2018 ortho
    found could still have a "2026_Nearmap" it never recognised. */
 const VENDOR_SINCE = '2026-10-02T02:01:00Z';
+/* Points checked since "too coarse" was measured rather than read (owner,
+   2026-10-02) are not redone by a named-county run, so one that runs out of
+   time carries on where it stopped. */
+const MEASURED_SINCE = '2026-10-02T19:45:00Z';
 
 /** A service's extent as [west, south, east, north] in degrees. */
 export async function extentLngLat(m) {
@@ -1069,6 +1073,16 @@ export async function extentLngLat(m) {
  * and one small picture of 150 m about the point. Returns the catalogue row,
  * or { usable: false, why }.
  */
+export const DETAIL_AT_12CM = 0.10;
+
+/** extraDetail of the service's picture over (x, y) at 12 cm a pixel, or null. */
+async function detailAt12cm(c, m, x, y, lat, decoders) {
+  const half = (256 * 0.12) / 2 / Math.cos((lat * Math.PI) / 180);
+  const img = await fetchOver(c, m, [x - half, y - half, x + half, y + half], 256, 256, decoders).catch(() => null);
+  if (!img || coverage(img.data, img.width, img.height) < 0.9) return null;
+  return extraDetail(img.data, img.width, img.height, 4)?.extra ?? null;
+}
+
 /** A resolution written into a layer's name ("60cm", "6in", "3 inch", "1m"), in cm, or null. */
 export function namedCm(text) {
   const m = String(text || '').match(/(\d+(?:\.\d+)?)\s?(cm|centimet|inch|in(?![a-z])|meter|metre|m(?![a-z]))/i);
@@ -1109,7 +1123,7 @@ async function qualifyAt(c, lng, lat, decoders) {
   /* What the name says, when the metadata says nothing: West Virginia's
      "wv_imagery_NAIP_2024_60cm" gave no resolution and got in (2026-10-02). */
   const named = namedCm(`${c.title} ${c.url}`);
-  if (native === null && named !== null && named > MAX_NATIVE_CM) return { usable: false, why: `too coarse (named ${Math.round(named)} cm)` };
+  const said = native !== null ? native : named;
   const [x, y] = [lng * (Math.PI / 180) * 6378137, Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360)) * 6378137];
   const half = 75 / Math.cos((lat * Math.PI) / 180);
   const box = [x - half, y - half, x + half, y + half];
@@ -1134,7 +1148,27 @@ async function qualifyAt(c, lng, lat, decoders) {
       native = t.tileCm * (t.merc ? Math.cos((lat * Math.PI) / 180) : 1);
     }
   }
-  if (native !== null && native > MAX_NATIVE_CM) return { usable: false, why: `too coarse (${Math.round(native)} cm)` };
+  /*
+   * TOO COARSE IS MEASURED, NOT TAKEN ON TRUST (owner, 2026-10-02: "on at
+   * least one occasion, the resolution detector was wrong" -- Blaine's 2026
+   * Nearmap first read "43 cm"; the sweep refused 391 services on what their
+   * metadata or a cache level said). When the metadata, the tile level or the
+   * name says coarser than MAX_NATIVE_CM, the picture is looked at: 256 px
+   * at 12 cm a pixel over the point, and extraDetail -- what the full
+   * picture holds that a half-size one could not. Calibrated the same day:
+   * Blaine 2026 Nearmap 0.16, Mammoth Lakes 2024 Nearmap 0.25, NY 2024 0.19,
+   * NY composite 0.33 against WV NAIP 60 cm 0.05 and Marquette's 2023 county
+   * layer 0.02 (its metadata's 164 cm was about right). 0.10 or more and the
+   * picture is kept, whatever was claimed.
+   */
+  const claimed = native !== null ? native : said;
+  if (claimed !== null && claimed > MAX_NATIVE_CM) {
+    const detail = await detailAt12cm(c, m, x, y, lat, decoders);
+    if (detail === null || detail < DETAIL_AT_12CM) {
+      return { usable: false, why: `too coarse (said ${Math.round(claimed)} cm, measured detail ${detail === null ? '?' : detail.toFixed(2)})` };
+    }
+    native = null; // finer than it claimed; the live app measures it against Mapbox anyway
+  }
   const ext = await extentLngLat(m);
   if (!ext || !(lng >= ext[0] && lng <= ext[2] && lat >= ext[1] && lat <= ext[3])) {
     return { usable: false, why: 'extent does not cover the point' };
@@ -1257,11 +1291,10 @@ async function catalogue(decoders) {
   for (const r of query('SELECT url, title, year, native_cm FROM county_services')) {
     const old = r.year !== null && r.year !== undefined && Number(r.year) < MIN_YEAR;
     const name = `${r.title || ''} ${String(r.url).split('/rest/services/')[1] || r.url}`;
-    const named = r.native_cm === null || r.native_cm === undefined ? namedCm(name) : null;
-    const coarse = named !== null && named > MAX_NATIVE_CM;
+    const coarse = false; // a name is a claim; qualify() measures it (DETAIL_AT_12CM)
     if (old || coarse || NOT_A_PHOTO.test(name)) {
       exec(`DELETE FROM county_services WHERE url = ${lit(r.url)}`);
-      console.log(`removed ${r.title || r.url} (${old ? `flown ${r.year}` : coarse ? `named ${Math.round(named)} cm` : 'not a colour photo'})`);
+      console.log(`removed ${r.title || r.url} (${old ? `flown ${r.year}` : 'not a colour photo'})`);
     }
   }
   const known = new Set(query('SELECT url FROM county_services').map((r) => r.url));
@@ -1282,6 +1315,7 @@ async function catalogue(decoders) {
   /* Points that found nothing before the fixes of 2026-10-02 (services that
      give their projection only as WKT, Kent County's among them) are looked
      at again once. */
+  const fresh = new Set(query(`SELECT point FROM county_sweep WHERE checked_at >= '${MEASURED_SINCE}'`).map((r) => r.point));
   const swept = new Set(query(`SELECT point FROM county_sweep
                                 WHERE NOT ((found = 0 AND checked_at < '${RETRY_BEFORE}')
                                            OR checked_at < '${VENDOR_SINCE}')`).map((r) => r.point));
@@ -1295,6 +1329,7 @@ async function catalogue(decoders) {
     for (const [lng, lat] of points) {
       const point = `${key}@${lng.toFixed(2)},${lat.toFixed(2)}`;
       if (swept.has(point) && !FORCE && !ONLY_KEY) continue;
+      if (ONLY_KEY && !FORCE && fresh.has(point)) continue;
       n++;
       let found = 0;
       const notes = [];
