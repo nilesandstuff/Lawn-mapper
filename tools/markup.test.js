@@ -495,8 +495,11 @@ check('neighbours, merge and the road are on for everybody, not only tinker mode
 check('merge buttons show on the Property line step only, the dashed lines everywhere',
   /const onBoundaryStep = state\.tab === 'address' && !tabLock\('address'\);/.test(js)
   && /if \(!onBoundaryStep\) \{ el\.style\.display = 'none'; continue; \}/.test(js));
-check('the property line locks once the AI has traced, and clearing the lawn lifts it',
-  /if \(tab === 'address' && state\.detected\)/.test(js));
+check('the property line is never locked after the AI traces (owner, 2026-10-02)',
+  !/if \(tab === 'address' && state\.detected\)/.test(js));
+check('and the line the AI traced against is kept with its trace',
+  /state\.detectedParcel = state\.parcel\?\.geometry \? structuredClone\(state\.parcel\.geometry\) : null;/.test(js)
+  && /detectedParcel: state\.detectedShapes \? state\.detectedParcel \|\| null : null,/.test(js));
 check('the land cover method and overlays are offered only where the map is (Virginia)',
   /const LAND_COVER_STATES = \['VA'\];/.test(js)
   && /!isLandCoverModel\(m\) \|\| landCoverHere\(\)/.test(js)

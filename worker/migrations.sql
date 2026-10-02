@@ -250,3 +250,8 @@ ALTER TABLE county_imagery ADD COLUMN outlines_at TEXT;
 ALTER TABLE county_imagery ADD COLUMN outlines_by TEXT;
 ALTER TABLE county_imagery ADD COLUMN mapbox_shapes TEXT;
 ALTER TABLE county_imagery ADD COLUMN mapbox_not_lawn TEXT;
+
+-- THE PROPERTY LINE AS IT STOOD WHEN THE AI TRACED (see the column in
+-- schema.sql). corpus shipped long ago, so the CREATE there reaches new
+-- databases only.
+ALTER TABLE corpus ADD COLUMN detected_parcel TEXT;

@@ -415,6 +415,25 @@ const png = () => new Response('x', { headers: { 'content-type': 'image/png' } }
     'otherwise there is nothing to compare');
 
   check('the property line records where it came from', row.parcel_source === 'county');
+
+  /* THE LINE THE AI TRACED AGAINST (owner, 2026-10-02): kept with the trace,
+     and a later finish with the line moved but no new detection leaves it. */
+  await recordFinished(env, {
+    lng: -85.6, lat: 42.9, model: 'alpha', mode: 'find',
+    shapes: [{ type: 'Polygon', coordinates: [ring(-85.6)] }],
+    detectedShapes: [{ geometry: poly(-85.6) }],
+    parcel: poly(-85.6005), detectedParcel: poly(-85.6005), squareFeet: 4000,
+  });
+  await recordFinished(env, {
+    lng: -85.6, lat: 42.9, model: 'alpha', mode: 'find',
+    shapes: [{ type: 'Polygon', coordinates: [ring(-85.6)] }],
+    parcel: poly(-85.6009), squareFeet: 4000,
+  });
+  const moved = await env.DB.prepare('SELECT parcel, detected_parcel FROM corpus WHERE lng = ?1').bind(-85.6).first();
+  check('the property line the AI traced against is kept, and a later move does not rewrite it',
+    JSON.parse(moved.detected_parcel).coordinates[0][0][0] === -85.6005
+    && JSON.parse(moved.parcel).coordinates[0][0][0] === -85.6009,
+    JSON.stringify(moved).slice(0, 160));
   check('and which exclusions ran', row.exclusions === 'woods,driveway');
 
   /* A hand-drawn lawn has no detection to compare against -- null, not empty. */

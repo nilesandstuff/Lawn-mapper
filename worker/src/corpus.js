@@ -356,6 +356,13 @@ export async function recordFinished(env, body, { adminId = null } = {}) {
     detected_shapes: Array.isArray(body?.detectedShapes)
       ? JSON.stringify(cleanGeometries(body.detectedShapes))
       : null,
+    /* The property line as it stood when the AI traced (owner, 2026-10-02):
+       the line can be moved afterwards, and this is what the trace above was
+       clipped to. Sent only with a detection, and kept with it below. */
+    detected_parcel: Array.isArray(body?.detectedShapes) ? (() => {
+      const p = cleanGeometry(body?.detectedParcel?.geometry || body?.detectedParcel);
+      return p ? JSON.stringify(p) : null;
+    })() : null,
     /*
      * Only the two values this can mean. Anything else is somebody's typo
      * arriving from a client we do not control, and storing it would put a
@@ -394,8 +401,8 @@ export async function recordFinished(env, body, { adminId = null } = {}) {
          detected_sq_ft, square_feet, parcel_sq_ft, frame, parcel, shapes,
          detected_shapes, parcel_source, exclusions, created_at,
          inferred_checked_at, naip_align, not_lawn, model_version,
-         admin_edited_at, admin_edited_by, status
-       ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?2,?19,?20,?21,?22,?23,?24,?25)
+         admin_edited_at, admin_edited_by, status, detected_parcel
+       ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?2,?19,?20,?21,?22,?23,?24,?25,?26)
        ON CONFLICT(id) DO UPDATE SET
          at = ?2, county = ?5, provider = ?6, hand_edited = ?9,
          detected_sq_ft = ?10, square_feet = ?11, parcel_sq_ft = ?12,
@@ -448,6 +455,8 @@ export async function recordFinished(env, body, { adminId = null } = {}) {
          /* Travels with detected_shapes: a fresh detection brings its own
             release (or none, for SAM), an absent one leaves both alone. */
          model_version = CASE WHEN ?16 IS NOT NULL THEN ?22 ELSE corpus.model_version END,
+         /* Likewise the property line the detection was traced against. */
+         detected_parcel = CASE WHEN ?16 IS NOT NULL THEN ?26 ELSE corpus.detected_parcel END,
          /* Once an admin has saved it, it stays marked: a later save by
             somebody else does not undo that an admin fixed it. */
          admin_edited_at = COALESCE(?23, corpus.admin_edited_at),
@@ -458,7 +467,8 @@ export async function recordFinished(env, body, { adminId = null } = {}) {
       row.parcel_sq_ft, row.frame, row.parcel, row.shapes,
       row.detected_shapes, row.parcel_source, row.exclusions,
       row.inferred_checked_at, row.naip_align, row.not_lawn, row.model_version,
-      row.admin_edited_at, row.admin_edited_by, notLawnOnly ? 'notlawn' : 'new'
+      row.admin_edited_at, row.admin_edited_by, notLawnOnly ? 'notlawn' : 'new',
+      row.detected_parcel
     ).run();
     /*
      * The row is handed back so the caller can pass it to storeImage under

@@ -4866,6 +4866,11 @@ async function detect({ again = false } = {}) {
      * back into this copy through a shared reference.
      */
     state.detectedShapes = polygons.map((geometry) => structuredClone(geometry));
+    /* And the property line it was traced against, as it stood: the line can
+       be moved later from step 1, and this copy is what the trace was clipped
+       to (owner, 2026-10-02: "preserve the state of the property at the time
+       of an ai trace"). */
+    state.detectedParcel = state.parcel?.geometry ? structuredClone(state.parcel.geometry) : null;
 
     // Re-running with the same prompt point returns the same mask, so keep
     // the button from quietly charging for a duplicate. "Clear shapes" re-arms
@@ -8194,6 +8199,7 @@ function openMap(s) {
    * lawn's detection and look entirely plausible.
    */
   state.detectedShapes = null;
+  state.detectedParcel = null;
   /* NAIP's alignment belongs to the place; a reopened map starts from what
      the pipeline or the editor finds again rather than a stale nudge. */
   state.naipAlign = null;
@@ -8437,21 +8443,12 @@ function tabLock(tab) {
     };
   }
   /*
-   * AND THE PROPERTY LINE, ONCE THE AI HAS TRACED (owner, 2026-09-30). This
-   * reverses the paragraph above on purpose: the line is meant to be settled
-   * BEFORE detecting -- the tip on this step says so -- and a line moved under
-   * an AI trace leaves that trace clipped to a boundary that no longer exists.
-   * Clearing the lawn keeps the line and lifts this, same as the AI step's.
+   * THE PROPERTY LINE IS NOT LOCKED after the AI traces (owner, 2026-10-02,
+   * reversing 2026-09-30): it can be moved at any time from step 1. What the
+   * AI traced against is kept instead -- state.detectedParcel, taken with the
+   * detector's own outline and saved with it (corpus.detected_parcel) -- so a
+   * line moved afterwards never rewrites the line a detection was clipped to.
    */
-  if (tab === 'address' && state.detected) {
-    return {
-      text: 'The AI has already traced this lawn against this property line, so '
-        + 'the line is locked. To change it, clear the lawn — the line is kept — '
-        + 'then adjust it and detect again.',
-      clear: true,
-      redetect: false,
-    };
-  }
   return null;
 }
 
@@ -12633,6 +12630,7 @@ function reset() {
   state.detectedVersion = null;
   state.detectedExcluding = null;
   state.detectedShapes = null;
+  state.detectedParcel = null;
   state.naipAlign = null;
   state.googleAlign = null;
   state.countyAlign = null;
@@ -13317,6 +13315,8 @@ function finishedBody() {
       detectedShapes: state.detectedShapes
         ? state.detectedShapes.map((geometry) => ({ geometry }))
         : null,
+      /* The property line as it was when the AI traced, with that trace. */
+      detectedParcel: state.detectedShapes ? state.detectedParcel || null : null,
       // Which exclusion prompts ran. A lawn that needed `woods` is a lawn with
       // a tree line, which is what the hard half of the eval is made of.
       exclusions: state.exclude?.length ? state.exclude.slice().sort() : null,

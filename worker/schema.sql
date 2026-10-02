@@ -454,6 +454,12 @@ CREATE TABLE IF NOT EXISTS corpus (
   -- ALSO AN ALTER IN migrations.sql, for the databases already out there.
   admin_edited_at TEXT,
   admin_edited_by TEXT,
+  -- THE PROPERTY LINE AS IT STOOD WHEN THE AI TRACED (owner, 2026-10-02):
+  -- the line can be moved at any time from step 1, so `parcel` is the line
+  -- at finish and this is the one detected_shapes was clipped to. Travels
+  -- with detected_shapes; NULL when there was no detection.
+  -- ALSO AN ALTER IN migrations.sql, for the databases already out there.
+  detected_parcel TEXT,
   created_at     TEXT NOT NULL
 );
 -- The index over `status` lives in migrations.sql, NOT here, and the reason is
