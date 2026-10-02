@@ -130,7 +130,7 @@ export function agolKeep(results, lng, lat, maxArea = 30) {
  * Massachusetts' "2025 Aerial Imagery - CIR": colour infrared, false colour.
  * Indexes, footprints and elevation layers are not photos either.
  */
-export const NOT_A_PHOTO = /\bcir\b|infra.?red|\bnir\b|ndvi|false.?colou?r|color.?infrared|index|footprint|boundar|tile.?scheme|flight|\blidar|\bdem\b|hillshade|elevation|contour|parcel|topo|labels?\b|reference|\bbw\d*\b|bw\d{4}|black.?(and|&|n).?white|grayscale|greyscale|panchromatic|historic|\bnaip|habitat|land.?cover|land.?use|classif/i;
+export const NOT_A_PHOTO = /(?<![a-z])cir(?![a-z])|infra.?red|(?<![a-z])nir(?![a-z])|ndvi|false.?colou?r|color.?infrared|index|footprint|boundar|tile.?scheme|flight|lidar|(?<![a-z])dem(?![a-z])|hillshade|elevation|contour|parcel|topo|labels?\b|reference|(?<![a-z])bw\d*(?![a-z])|bw\d{4}|black.?(and|&|n).?white|grayscale|greyscale|panchromatic|historic|naip|habitat|land.?cover|land.?use|classif/i;
 
 /**
  * Candidates in the order to try them: dropping flights named before
@@ -324,6 +324,29 @@ export async function agolCandidates(lng, lat) {
     start = j.nextStart > 0 ? j.nextStart : 0;
     await sleep(PAUSE_MS);
   }
+  /* And the servers they came from, whole (owner, 2026-10-02): New York's
+     2018 ortho was found this way and its 2022-2025 one, on the same server,
+     was not. */
+  out.push(...await browseServersOf(out.map((c) => c.url)));
+  return out;
+}
+
+/* Esri's world imagery and ArcGIS Online's proxy are not a county's: the
+   first is the app's own Esri source, the second a key-holding relay. */
+export const notCounty = (u) => /\/\/(services|server)\.arcgisonline\.com\/|\/\/(utility|tiledbasemaps|basemaps)\.arcgis\.com\/|\/\/hazards\.fema\.gov\//i.test(u);
+
+/** Every imagery service on the servers these URLs are on (a few servers at most). */
+async function browseServersOf(urls, max = 6) {
+  const out = [];
+  const roots = [...new Set(urls.filter((u) => !notCounty(u)).map(catalogueRoot).filter(Boolean))].slice(0, max);
+  for (const root of roots.flatMap(siblingRoots)) {
+    if (!catalogueCache.has(root)) {
+      catalogueCache.set(root, await listCatalogue(root).then(pickImagery).catch(() => []));
+    }
+    for (const sv of catalogueCache.get(root)) {
+      out.push({ url: `${sv.root}/${sv.name}/${sv.type}`, type: sv.type, title: sv.name, via: 'server of a search result' });
+    }
+  }
   return out;
 }
 
@@ -426,20 +449,8 @@ export async function agolByName(key, entry = ALL_COUNTIES[key]) {
    * and the same server often holds a newer flight nobody tagged -- the way
    * Blaine's held its 2026 Nearmap. A handful of servers per county at most.
    */
-  /* Esri's world imagery and ArcGIS Online's proxy are not a county's: the
-     first is the app's own Esri source, the second a key-holding relay. */
-  const notCounty = (u) => /\/\/(services|server)\.arcgisonline\.com\/|\/\/(utility|tiledbasemaps|basemaps)\.arcgis\.com\/|\/\/hazards\.fema\.gov\//i.test(u);
   for (let i = out.length - 1; i >= 0; i--) if (notCounty(out[i].url)) out.splice(i, 1);
-  const roots = [...new Set([...out.map((c) => c.url), ...hosts].filter((u) => !notCounty(u))
-    .map(catalogueRoot).filter(Boolean))].slice(0, 6);
-  for (const root of roots.flatMap(siblingRoots)) {
-    if (!catalogueCache.has(root)) {
-      catalogueCache.set(root, await listCatalogue(root).then(pickImagery).catch(() => []));
-    }
-    for (const sv of catalogueCache.get(root)) {
-      out.push({ url: `${sv.root}/${sv.name}/${sv.type}`, type: sv.type, title: sv.name, via: 'server found by name' });
-    }
-  }
+  out.push(...await browseServersOf([...out.map((c) => c.url), ...hosts]));
   nameCache.set(key, out);
   return out;
 }
@@ -1058,6 +1069,15 @@ export async function extentLngLat(m) {
  * and one small picture of 150 m about the point. Returns the catalogue row,
  * or { usable: false, why }.
  */
+/** A resolution written into a layer's name ("60cm", "6in", "3 inch", "1m"), in cm, or null. */
+export function namedCm(text) {
+  const m = String(text || '').match(/(\d+(?:\.\d+)?)\s?(cm|centimet|inch|in(?![a-z])|meter|metre|m(?![a-z]))/i);
+  if (!m) return null;
+  const v = Number(m[1]);
+  const u = m[2].toLowerCase();
+  return u.startsWith('c') ? v : u.startsWith('in') ? v * 2.54 : v * 100;
+}
+
 export async function qualify(c, lng, lat, decoders, { again = true } = {}) {
   const q = await qualifyAt(c, lng, lat, decoders);
   /*
@@ -1086,6 +1106,10 @@ async function qualifyAt(c, lng, lat, decoders) {
   if (year !== null && year < MIN_YEAR) return { usable: false, why: `flown ${year}` };
   let native = nativeCm(m, lat);
   if (native !== null && native < 3) native = null;
+  /* What the name says, when the metadata says nothing: West Virginia's
+     "wv_imagery_NAIP_2024_60cm" gave no resolution and got in (2026-10-02). */
+  const named = namedCm(`${c.title} ${c.url}`);
+  if (native === null && named !== null && named > MAX_NATIVE_CM) return { usable: false, why: `too coarse (named ${Math.round(named)} cm)` };
   const [x, y] = [lng * (Math.PI / 180) * 6378137, Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360)) * 6378137];
   const half = 75 / Math.cos((lat * Math.PI) / 180);
   const box = [x - half, y - half, x + half, y + half];
@@ -1230,11 +1254,14 @@ async function catalogue(decoders) {
   ensureCatalogueTables();
   /* Anything the filters now refuse comes out (a 1940 black-and-white basemap
      got in before they did). */
-  for (const r of query('SELECT url, title, year FROM county_services')) {
+  for (const r of query('SELECT url, title, year, native_cm FROM county_services')) {
     const old = r.year !== null && r.year !== undefined && Number(r.year) < MIN_YEAR;
-    if (old || NOT_A_PHOTO.test(`${r.title || ''} ${String(r.url).split('/rest/services/')[1] || r.url}`)) {
+    const name = `${r.title || ''} ${String(r.url).split('/rest/services/')[1] || r.url}`;
+    const named = r.native_cm === null || r.native_cm === undefined ? namedCm(name) : null;
+    const coarse = named !== null && named > MAX_NATIVE_CM;
+    if (old || coarse || NOT_A_PHOTO.test(name)) {
       exec(`DELETE FROM county_services WHERE url = ${lit(r.url)}`);
-      console.log(`removed ${r.title || r.url} (${old ? `flown ${r.year}` : 'not a colour photo'})`);
+      console.log(`removed ${r.title || r.url} (${old ? `flown ${r.year}` : coarse ? `named ${Math.round(named)} cm` : 'not a colour photo'})`);
     }
   }
   const known = new Set(query('SELECT url FROM county_services').map((r) => r.url));

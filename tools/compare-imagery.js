@@ -109,8 +109,12 @@ export function newestFirst(services = []) {
 
 /** Imagery-looking image or map services in one catalogue listing. */
 export function pickImagery(services = []) {
+  /* A server that is ABOUT imagery by its own address keeps every service:
+     New York's orthos.its.ny.gov serves its 2022-2025 statewide orthos as
+     "wms/Latest", a name no filter would keep (owner, 2026-10-02). */
+  const imageryHost = (root) => /\/\/[^/]*(ortho|imagery|aerial)[^/]*\//i.test(`${root || ''}/`);
   return services.filter((s) => (s.type === 'ImageServer' || s.type === 'MapServer')
-    && IMAGERY.test(s.name) && !NOT_IMAGERY.test(s.name));
+    && (IMAGERY.test(s.name) || imageryHost(s.root)) && !NOT_IMAGERY.test(s.name));
 }
 
 /** Plausible years named in some text: 1950 (county archives go back that far) to next year. */

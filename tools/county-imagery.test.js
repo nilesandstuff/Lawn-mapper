@@ -135,5 +135,21 @@ check('a person nudging the photo 1 m east moves where Mapbox reads it 10 px wes
   check('an app names its web maps by id', itemIdsIn({ map: { itemId: '0123456789abcdef0123456789abcdef' } })[0] === '0123456789abcdef0123456789abcdef');
 }
 
+
+/* Names that say what the metadata does not (2026-10-02). */
+{
+  const { namedCm, NOT_A_PHOTO } = await import('./county-imagery.js');
+  const { pickImagery } = await import('./compare-imagery.js');
+  check('a resolution in the name is read', namedCm('wv_imagery_NAIP_2024_60cm') === 60 && Math.abs(namedCm('NH_2021_2022_6in_RGB') - 15.24) < 0.01
+    && Math.abs(namedCm('CT 2023 Spring Aerial Imagery (4-band, 3 inch)') - 7.62) < 0.01 && namedCm('Orthos2020') === null);
+  check('NAIP is refused wherever it sits in a name', NOT_A_PHOTO.test('Imagery_BaseMaps_EarthCover/wv_imagery_NAIP_2024_60cm')
+    && NOT_A_PHOTO.test('ImageServices/NH_NAIP_2023_30cm') && !NOT_A_PHOTO.test('Orthoimagery_2020_2023')
+    && NOT_A_PHOTO.test('wms/2025_cir_summer') && !NOT_A_PHOTO.test('wms/2025_summer') && !NOT_A_PHOTO.test('Circle_City_Ortho_2024'));
+  const kept = pickImagery([{ name: 'wms/Latest', type: 'MapServer', root: 'https://orthos.its.ny.gov/arcgis/rest/services' },
+    { name: 'wms/Latest', type: 'MapServer', root: 'https://gis.example.gov/arcgis/rest/services' }]);
+  check('a server that is about imagery keeps every service, others only imagery-named ones',
+    kept.length === 1 && kept[0].root.includes('orthos.its.ny.gov'), JSON.stringify(kept));
+}
+
 if (failures) { console.log(`\n${failures} check(s) FAILED.`); process.exit(1); }
 console.log('\nAll checks passed.');
