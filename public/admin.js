@@ -336,10 +336,12 @@ function drawCandidate(c) {
   if (c.parcelSource === 'hand') head.append(el('span', 'pill free', 'traced boundary'));
   /* What the filters select on, so a filtered card says why it is here. */
   if (c.provider === 'county') head.append(el('span', 'pill free', 'made on a county photo'));
-  if (c.detectedSqFt > 0 && Math.abs(c.squareFeet - c.detectedSqFt) * 10 >= c.detectedSqFt) {
-    const pill = el('span', 'pill free',
-      `${c.squareFeet > c.detectedSqFt ? '+' : '−'}${Math.round(Math.abs(c.squareFeet - c.detectedSqFt) / c.detectedSqFt * 100)}% from the AI`);
-    pill.title = `The AI's outline was ${n(c.detectedSqFt)} sq ft; the saved lawn is ${n(c.squareFeet)}.`;
+  /* By shape once measured (the filter measures it): ground the AI's outline
+     and the saved one disagree about, as a share of the saved lawn. */
+  if (Number.isFinite(c.aiWrongPct) && c.aiWrongPct >= 10) {
+    const pill = el('span', 'pill free', `${Math.round(c.aiWrongPct)}% disagreed with the AI`);
+    pill.title = 'Ground the AI\'s outline and the saved one disagree about, either way round, '
+      + `as a share of the saved lawn. AI ${n(c.detectedSqFt)} sq ft; saved ${n(c.squareFeet)}.`;
     head.append(pill);
   }
   if (c.adminEditedAt) {

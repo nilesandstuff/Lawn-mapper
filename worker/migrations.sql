@@ -255,3 +255,7 @@ ALTER TABLE county_imagery ADD COLUMN mapbox_not_lawn TEXT;
 -- schema.sql). corpus shipped long ago, so the CREATE there reaches new
 -- databases only.
 ALTER TABLE corpus ADD COLUMN detected_parcel TEXT;
+
+-- HOW MUCH THE PERSON DISAGREED WITH THE AI, by shape (see the column in
+-- schema.sql), for the console's "Disagreed with the AI" filter.
+ALTER TABLE corpus ADD COLUMN ai_wrong_pct REAL;

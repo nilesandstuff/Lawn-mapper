@@ -30,6 +30,7 @@ import { feedbackEntries, feedbackEnabled } from './feedback.js';
 import { corpusGaps, candidateScore } from './corpus.js';
 import { parcelGaps } from './gaps.js';
 import { cleanCountyReview, cleanCountyOutlines } from './county.js';
+import { scoreMap } from './score.js';
 import {
   outlineKeys, idOfOutlineKey, applyReview, OUTLINE_PREFIX,
   EXAMPLE_PREFIX, isExampleId, exampleKey, exampleImageKey, keptByClass, reviewExample,
@@ -52,6 +53,41 @@ export const isAdminPath = (pathname) => pathname.startsWith('/api/admin/');
  * but it costs nothing to not advertise it.
  */
 const hidden = (json, origin) => json({ error: 'Not found' }, 404, origin);
+
+/*
+ * HOW FAR EACH MAP'S SAVED OUTLINE IS FROM THE AI'S, BY SHAPE, for the
+ * console's "Disagreed with the AI" filter (owner, 2026-10-02). Measured with
+ * the scorer training reports use, inside the property line, on a 256-pixel
+ * grid (about 1% of a lawn, plenty for a 10% line), and stored, so each map
+ * costs once: corpus.js sets it back to NULL when a map is saved again.
+ * Bounded per request; the Workers Paid plan's CPU is what makes it possible.
+ */
+export async function measureDisagreement(env, { limit = 400 } = {}) {
+  const rows = (await env.DB.prepare(
+    `SELECT id, shapes, detected_shapes, parcel FROM corpus
+      WHERE ai_wrong_pct IS NULL AND detected_shapes IS NOT NULL AND detected_shapes != '[]'
+      LIMIT ?1`
+  ).bind(limit).all()).results || [];
+  const writes = [];
+  for (const r of rows) {
+    let pct = null;
+    try {
+      const got = scoreMap({
+        truth: JSON.parse(r.shapes || '[]'),
+        detected: JSON.parse(r.detected_shapes || '[]'),
+        parcel: r.parcel ? JSON.parse(r.parcel) : null,
+        grid: 256,
+      });
+      pct = got?.errorPct;
+    } catch { pct = null; }
+    /* A pair that cannot be compared (nothing left of the lawn) is recorded as
+       a full disagreement rather than left to be measured again forever. */
+    writes.push(env.DB.prepare('UPDATE corpus SET ai_wrong_pct = ?2 WHERE id = ?1')
+      .bind(r.id, Number.isFinite(pct) ? Math.round(pct * 10) / 10 : 100));
+  }
+  if (writes.length) await env.DB.batch(writes);
+  return writes.length;
+}
 
 export async function handleAdmin(request, env, url, origin, ctx, json) {
   if (!accountsEnabled(env)) return hidden(json, origin);
@@ -354,10 +390,11 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
        *
        *   photo=county   drawn on a county or state photo (`provider`, what
        *                  the person was looking at and detected on)
-       *   disagreed=1    the AI drew an outline and the final lawn differs
-       *                  from it by a tenth or more of its area -- the
-       *                  console's own "corrected" line, less the hand-drawn
-       *                  maps, which had no AI answer to disagree with
+       *   disagreed=1    the AI drew an outline and a tenth or more of the
+       *                  saved lawn is ground the two disagree about, either
+       *                  way round: by SHAPE (score.js), so an outline moved
+       *                  without changing its area counts. Hand-drawn maps
+       *                  had no AI answer to disagree with.
        *
        * Fixed SQL, switched by the flags; nothing from the URL reaches the
        * query text.
@@ -366,9 +403,10 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
       const onlyDisagreed = url.searchParams.get('disagreed') === '1';
       const FILTERS = [
         onlyCounty ? "AND c.provider = 'county'" : '',
-        onlyDisagreed ? `AND c.detected_sq_ft > 0
-              AND ABS(c.square_feet - c.detected_sq_ft) * 10 >= c.detected_sq_ft` : '',
+        onlyDisagreed ? 'AND c.ai_wrong_pct >= 10' : '',
       ].join('\n              ');
+      /* Maps not yet measured by shape are measured now, once each. */
+      if (onlyDisagreed) await measureDisagreement(env);
       /* Browsing is chronological; the queues are ranked. Different jobs. */
       const browsing = wanted === 'approved' || wanted === 'rejected' || wanted === 'admin';
       const BLOCK = `ROUND(lng, 2) || ',' || ROUND(lat, 2)`;
@@ -475,6 +513,7 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
           parcelSource: r.parcel_source,
           squareFeet: r.square_feet,
           detectedSqFt: r.detected_sq_ft,
+          aiWrongPct: r.ai_wrong_pct,
           parcelSqFt: r.parcel_sq_ft,
           hasImage: Boolean(r.image_key),
           frame: r.frame ? JSON.parse(r.frame) : null,

@@ -2000,22 +2000,24 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
   const ring = (lng) => [
     [lng, 41.6], [lng, 41.601], [lng + 0.001, 41.601], [lng + 0.001, 41.6], [lng, 41.6],
   ];
-  const finish = (lng, provider, detectedSqFt) => recordFinished(env, {
+  const square = (lng, dx = 0) => ({ type: 'Polygon', coordinates: [ring(lng + dx)] });
+  const finish = (lng, provider, detected) => recordFinished(env, {
     lng, lat: 41.6, model: 'alpha', mode: 'find', county: 'oh-lucas', provider,
-    shapes: [{ type: 'Polygon', coordinates: [ring(lng)] }],
-    squareFeet: 4000, ...(detectedSqFt === undefined ? {} : { detectedSqFt }),
+    shapes: [square(lng)], squareFeet: 4000,
+    ...(detected ? { detectedShapes: detected, detectedSqFt: 4000 } : {}),
   });
-  await finish(-83.31, 'county', 6000);   // county, disagreed (a third off)
-  await finish(-83.32, 'county', 4100);   // county, agreed (2.5%)
-  await finish(-83.33, 'mapbox', 3000);   // Mapbox, disagreed
-  await finish(-83.34, 'county');         // county, drawn by hand: no AI to disagree with
+  /* The AI's square moved 30% of its width east: the same area, different ground. */
+  await finish(-83.31, 'county', [square(-83.31, 0.0003)]);  // county, disagreed by shape alone
+  await finish(-83.32, 'county', [square(-83.32)]);          // county, agreed
+  await finish(-83.33, 'mapbox', [square(-83.33, 0.0005)]);  // Mapbox, disagreed
+  await finish(-83.34, 'county');                            // county, drawn by hand: no AI to disagree with
   const ids = async (q) => (await ask(env, ownerToken, `candidates${q}`)).body.candidates
     .map((c) => c.id.slice(0, 6)).sort().join(' ');
 
   const county = await ids('?photo=county');
   check('county photo: the three drawn on one', county === '-83.31 -83.32 -83.34', county);
   const disagreed = await ids('?disagreed=1');
-  check('disagreed: the two moved a tenth or more from the AI, not the hand-drawn one',
+  check('disagreed, by shape: an outline moved without changing its area counts; hand-drawn does not',
     disagreed === '-83.31 -83.33', disagreed);
   const both = await ids('?photo=county&disagreed=1');
   check('both at once: only the map that is both', both === '-83.31', both);
@@ -2023,6 +2025,14 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
   check('and they apply inside another queue', rand === '-83.31', rand);
   const none = await ids('');
   check('no filter: all four', none.split(' ').length === 4, none);
+  const card = (await ask(env, ownerToken, 'candidates?disagreed=1')).body.candidates.find((c) => c.id.startsWith('-83.31'));
+  check('the card carries how much: the square moved 30% of its width is about 60% disagreement',
+    Math.abs(card.aiWrongPct - 60) < 3, String(card.aiWrongPct));
+  /* Saved again matching the AI: measured again, and no longer a disagreement. */
+  await recordFinished(env, { lng: -83.31, lat: 41.6, model: 'alpha', mode: 'find', county: 'oh-lucas',
+    provider: 'county', shapes: [square(-83.31, 0.0003)], squareFeet: 4000 });
+  const again = await ids('?disagreed=1');
+  check('saving a map again measures it again', again === '-83.33', again);
 }
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);

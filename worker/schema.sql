@@ -460,6 +460,13 @@ CREATE TABLE IF NOT EXISTS corpus (
   -- with detected_shapes; NULL when there was no detection.
   -- ALSO AN ALTER IN migrations.sql, for the databases already out there.
   detected_parcel TEXT,
+  -- HOW MUCH THE PERSON DISAGREED WITH THE AI (owner, 2026-10-02): ground the
+  -- AI's outline and the saved one disagree about, either way round, as a
+  -- percentage of the saved lawn (score.js scoreMap errorPct, inside the
+  -- property line). Filled in by the console when first asked; set back to
+  -- NULL whenever the map is saved again. NULL when there is no AI outline.
+  -- ALSO AN ALTER IN migrations.sql.
+  ai_wrong_pct  REAL,
   created_at     TEXT NOT NULL
 );
 -- The index over `status` lives in migrations.sql, NOT here, and the reason is

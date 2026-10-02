@@ -421,6 +421,9 @@ export async function recordFinished(env, body, { adminId = null } = {}) {
           * So a fresh detection replaces it and an absent one leaves it alone.
           */
          detected_shapes = COALESCE(?16, corpus.detected_shapes),
+         /* The outlines changed, so how far they are from the AI's must be
+            measured again (the console does, when asked). */
+         ai_wrong_pct = NULL,
          parcel_source = ?17, exclusions = ?18,
          /*
           * EDITING AN OUTLINE INVALIDATES ITS APPROVAL. The approval was of
