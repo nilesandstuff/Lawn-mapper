@@ -20,6 +20,7 @@ import { stitch } from './tile-mosaic.js';
 import { serviceMeta, countyServiceById } from './county.js';
 import { frameBbox3857, countyBoxUrl, captureFrame, imagePixels, imageHeightPixels } from './imagery.js';
 import { encodePng } from './tile-mosaic.js';
+import { imageKeyFor, storeImage, naipAlignOf } from './corpus.js';
 
 /**
  * The box to ask a service for so that, drawn on `bbox` after being moved
@@ -91,18 +92,22 @@ export async function countyPicture(svc, frame, { W, H, align = null, fetcher = 
 }
 
 /*
- * A MAP MADE ON A COUNTY PHOTO KEEPS THAT PHOTO (owner, 2026-10-02: "save the
- * county photo with those maps").
+ * A MAP MADE ON A COUNTY PHOTO KEEPS THAT PHOTO, AND ONLY THAT ONE (owner,
+ * 2026-10-02: "save the county photo with those maps", and then: why is
+ * Mapbox also saved? -- "that seems messy").
  *
- * The corpus row still banks Mapbox (storeImage), as every row does; this
- * banks the county photo beside it, in county_imagery -- where training's
- * PHOTOS=county reads -- over the same image_frame at the same pixel size,
- * and with the map's own outlines as the ones traced on it, because they
- * were. Shown moved by the editor's alignment when there was one, so the
- * picture is what the person saw under their outlines.
+ * It is the map's photo: corpus.image_key, image_provider 'county', over the
+ * same image_frame at the same pixel size a Mapbox capture would have, so
+ * every reader -- training in either PHOTOS mode, the review card, the
+ * predictions page -- pairs the outlines with the picture they were drawn
+ * on. No Mapbox photo beside it: outlines drawn on a county photo laid on
+ * Mapbox's is the mismatch the corpus decision ruled out. Drawn moved by the
+ * editor's alignment when there was one, so the picture is what the person
+ * saw under their outlines.
+ *
+ * If the county service cannot draw it, the map keeps no photo rather than
+ * the wrong one; the row itself is saved either way.
  */
-
-export const countyImageKey = (id) => `maps/county/${String(id).replace(/[^A-Za-z0-9._-]+/g, '_')}.png`;
 
 export async function storeCountyImage(env, row, { svcId, align = null, fetcher = fetch } = {}) {
   if (!env?.CORPUS || !env?.DB || !row?.frame || row.provider !== 'county') return { ok: false, reason: 'not-county' };
@@ -113,27 +118,21 @@ export async function storeCountyImage(env, row, { svcId, align = null, fetcher 
   try {
     const img = await countyPicture(svc, shot.frame, { W, H, align, fetcher });
     if (!img) return { ok: false, reason: 'no-picture' };
-    const key = countyImageKey(row.id);
+    const key = imageKeyFor(row.id, 'county');
     await env.CORPUS.put(key, await encodePng(img), { httpMetadata: { contentType: 'image/png' } });
-    const at = new Date().toISOString();
     await env.DB.prepare(
-      `INSERT INTO county_imagery (id, service, service_type, title, year, native_cm, image_key,
-              east, north, scale, checked_at, banked_at, reg_why, shapes, not_lawn, outlines_at, outlines_by)
-       SELECT c.id, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11,
-              'made on this photo in the app', c.shapes, c.not_lawn, ?11, 'app'
-         FROM corpus c WHERE c.id = ?1
-       ON CONFLICT(id) DO UPDATE SET
-         service = excluded.service, service_type = excluded.service_type, title = excluded.title,
-         year = excluded.year, native_cm = excluded.native_cm, image_key = excluded.image_key,
-         east = excluded.east, north = excluded.north, scale = excluded.scale,
-         checked_at = excluded.checked_at, banked_at = excluded.banked_at, reg_why = excluded.reg_why,
-         shapes = excluded.shapes, not_lawn = excluded.not_lawn,
-         outlines_at = excluded.outlines_at, outlines_by = excluded.outlines_by`
-    ).bind(row.id, svc.url, svc.tiled ? 'tiles' : svc.type || null, svc.title || null, svc.year || null,
-      svc.nativeCm || null, key, Number(align?.east) || 0, Number(align?.north) || 0,
-      Number(align?.scale) || 1, at).run();
-    return { ok: true, key, W, H };
+      "UPDATE corpus SET image_key = ?2, image_provider = 'county', image_frame = ?3 WHERE id = ?1"
+    ).bind(row.id, key, JSON.stringify(shot.frame)).run();
+    return { ok: true, key, W, H, service: svc.title || svc.url };
   } catch (e) {
     return { ok: false, reason: String(e?.message || e).slice(0, 120) };
   }
+}
+
+/** A finished map's photo: the county one for a map made on it, Mapbox (or NAIP) otherwise. */
+export function storeMapPhoto(env, row, body, opts = {}) {
+  if (row?.provider === 'county' && body?.countySvc) {
+    return storeCountyImage(env, row, { svcId: body.countySvc, align: naipAlignOf(body.countyAlign), ...opts });
+  }
+  return storeImage(env, row);
 }

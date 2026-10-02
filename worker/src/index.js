@@ -47,8 +47,8 @@ import { charge, refund, allowance } from './allowance.js';
 import { upstreamReason } from './upstream.js';
 import { logMeasurement, readLog, loggingEnabled, recordLater } from './testlog.js';
 import { recordFeedback, readFeedback, feedbackEnabled } from './feedback.js';
-import { recordFinished, storeImage, naipAlignOf } from './corpus.js';
-import { storeCountyImage } from './county-picture.js';
+import { recordFinished } from './corpus.js';
+import { storeMapPhoto } from './county-picture.js';
 import { handleAuth, isAuthPath } from './routes-auth.js';
 import { handleMaps } from './routes-maps.js';
 import { handleAdmin, isAdminPath } from './routes-admin.js';
@@ -1724,13 +1724,8 @@ export default {
            * still pending when the handler returns, which is exactly how the
            * detection log once reported itself enabled and stored nothing.
            */
-          if (kept.ok && kept.row) ctx.waitUntil(storeImage(env, kept.row));
-          /* And a map made on a county photo keeps that photo too (county-picture.js). */
-          if (kept.ok && kept.row?.provider === 'county' && body?.countySvc) {
-            ctx.waitUntil(storeCountyImage(env, kept.row, {
-              svcId: body.countySvc, align: naipAlignOf(body.countyAlign),
-            }));
-          }
+          /* A map made on a county photo keeps that photo instead (county-picture.js). */
+          if (kept.ok && kept.row) ctx.waitUntil(storeMapPhoto(env, kept.row, body));
           return json({ ok: kept.ok, reason: kept.reason || null }, kept.ok ? 200 : 202, origin);
         }
         case '/api/quota': {

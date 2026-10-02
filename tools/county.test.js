@@ -173,15 +173,16 @@ check('nothing at all is refused', cleanCountyOutlines({ shapes: [], notLawn: []
   const row = { id: 'm1', provider: 'county', frame };
   const got = await storeCountyImage(env, row, { svcId: 7, align: { east: 1, north: -0.5, scale: 1 }, fetcher });
   const shot = captureFrame(frame);
-  check('a county-photo map banks the county photo at the Mapbox capture size',
+  check('a county-photo map banks the county photo at the size a Mapbox capture would be',
     got.ok && got.W === px(shot.frame) && got.H === pxH(shot.frame), JSON.stringify(got));
   const saved = PNG.sync.read(Buffer.from(put[0]?.[1] || []));
   check('the file is that size, under maps/county/', put[0]?.[0] === 'maps/county/m1.png'
     && saved.width === got.W && saved.height === got.H, `${put[0]?.[0]} ${saved.width}x${saved.height}`);
-  const ci = await DB.prepare('SELECT * FROM county_imagery WHERE id = ?1').bind('m1').first();
-  check('with the map\'s own outlines as the ones traced on it, which training reads',
-    ci && ci.image_key === 'maps/county/m1.png' && ci.shapes === shapes && ci.outlines_by === 'app'
-      && ci.service.endsWith('/Ortho2025/ImageServer') && ci.east === 1 && ci.north === -0.5, JSON.stringify(ci)?.slice(0, 200));
+  const c = await DB.prepare('SELECT image_key, image_provider, image_frame FROM corpus WHERE id = ?1').bind('m1').first();
+  check('it IS the map\'s photo: no Mapbox one beside it, nor a second record',
+    c.image_key === 'maps/county/m1.png' && c.image_provider === 'county'
+      && c.image_frame === JSON.stringify(shot.frame) && put.length === 1
+      && !(await DB.prepare('SELECT 1 FROM county_imagery WHERE id = ?1').bind('m1').first()), JSON.stringify(c));
   const bbox = new URL(asked[0]).searchParams.get('bbox').split(',').map(Number);
   const want = shiftedBbox(frameBbox3857(shot.frame), 1, -0.5, 1, shot.frame.lat);
   check('and the picture is of what was shown: the box moved by the editor\'s alignment',
@@ -189,6 +190,11 @@ check('nothing at all is refused', cleanCountyOutlines({ shapes: [], notLawn: []
     `${bbox} vs ${want}`);
   check('a Mapbox map does nothing', (await storeCountyImage(env, { ...row, provider: 'mapbox' }, { svcId: 7, fetcher })).ok === false);
   check('nor an unknown service', (await storeCountyImage(env, row, { svcId: 999, fetcher })).reason === 'no-service');
+  /* The dispatcher: county maps with a service get the county photo, others Mapbox. */
+  const { storeMapPhoto } = await import('../worker/src/county-picture.js');
+  const before = put.length;
+  const viaMapbox = await storeMapPhoto({ ...env, MAPBOX_TOKEN: null }, { ...row, provider: 'mapbox' }, {});
+  check('a Mapbox map still goes the Mapbox way', viaMapbox.reason === 'no-token' && put.length === before, JSON.stringify(viaMapbox));
   const small = await countyPicture({ url: 'https://gis.example/x/ImageServer', type: 'ImageServer', maxPx: 100 }, frame, { W: 300, H: 200, fetcher });
   check('a service that draws smaller is stretched to the size asked', small?.width === 300 && small?.height === 200);
 }

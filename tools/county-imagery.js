@@ -1158,6 +1158,9 @@ async function main() {
                        WHERE c.status = 'approved' AND c.image_key IS NOT NULL
                          -- never replace a photo somebody traced outlines on
                          AND ci.shapes IS NULL
+                         -- nor look for one for a map made on a county photo:
+                         -- that photo IS its photo (county-picture.js)
+                         AND (c.image_provider IS NULL OR c.image_provider != 'county')
                          AND c.frame IS NOT NULL ${ONLY ? `AND c.id = ${lit(ONLY)}` : ''}
                        ORDER BY c.at DESC LIMIT ${Math.max(1, LIMIT)}`);
   const todo = rows.filter((r) => FORCE || ONLY || !r.checked_at);

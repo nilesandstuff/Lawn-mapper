@@ -16,7 +16,8 @@
  * that already knows the answer beats a signature that asserts it.
  */
 
-import { recordFinished, storeImage } from './corpus.js';
+import { recordFinished } from './corpus.js';
+import { storeMapPhoto } from './county-picture.js';
 import { currentUser } from './auth.js';
 import {
   claimVerdict, submissionVerdict, cleanWorker, looksUnsubstituted, staleBefore,
@@ -737,7 +738,7 @@ export async function handleJobs(request, url, env, origin, ctx, json) {
           : 'Something went wrong saving that map. Try sending it again.',
       }, 400, origin);
     }
-    if (kept.row) ctx.waitUntil(storeImage(env, kept.row));
+    if (kept.row) ctx.waitUntil(storeMapPhoto(env, kept.row, body));
 
     await env.DB.prepare(
       `UPDATE lawn_jobs
