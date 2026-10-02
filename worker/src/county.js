@@ -4,7 +4,16 @@
  * traced on one in the editor.
  */
 import { cleanShapes, cleanGeometries, MAX_BYTES } from './corpus.js';
+import jpeg from 'jpeg-js';
 import { decodePng, looksLikePhoto } from './png-probe.js';
+import { isMercatorCache, pickLevel } from './tile-mosaic.js';
+
+/** A service's own JSON, cached at the edge for a day. */
+export async function serviceMeta(url, fetcher = fetch) {
+  const res = await fetcher(`${url}?f=json`, { signal: AbortSignal.timeout(8000), cf: { cacheTtl: 86400, cacheEverything: true } });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
 
 /* A nudge is a correction on top of what the alignment found; the search
    itself reaches 10 m, so a correction past that is a different photo. */
@@ -51,6 +60,8 @@ export function cleanCountyOutlines(body) {
 const svcOf = (r) => (r ? {
   id: Number(r.id), url: r.url, type: r.type, title: r.title, year: r.year,
   nativeCm: r.native_cm, maxPx: r.max_px,
+  /* Tiles only: the Worker stitches the frame from them (tile-mosaic.js). */
+  tiled: !Number(r.export_ok) && Boolean(Number(r.tile_merc)),
 } : null);
 
 /*
@@ -74,7 +85,7 @@ export async function countyServicesAt(env, lng, lat, n = 4, { probe = true } = 
   try {
     rows = (await env.DB.prepare(
       `SELECT * FROM county_services
-        WHERE export_ok = 1 AND west <= ?1 AND east >= ?1 AND south <= ?2 AND north >= ?2
+        WHERE (export_ok = 1 OR tile_merc = 1) AND west <= ?1 AND east >= ?1 AND south <= ?2 AND north >= ?2
           AND (east - west) * (north - south) <= ?3
         ORDER BY COALESCE(year, 0) DESC, (east - west) * (north - south) ASC, COALESCE(native_cm, 99) ASC
         LIMIT ?4`
@@ -100,6 +111,26 @@ export async function probeService(svc, lng, lat, { fetcher = fetch } = {}) {
   const R = 6378137;
   const x = (lng * Math.PI / 180) * R;
   const y = Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360)) * R;
+  /* A tile cache: the one tile over the spot, at about 30 cm. */
+  if (svc.tiled) {
+    try {
+      const m = await serviceMeta(svc.url, fetcher);
+      if (!isMercatorCache(m)) return null;
+      const ti = m.tileInfo, size = ti.rows || 256;
+      const pick = pickLevel(m, 0.3 / Math.cos((lat * Math.PI) / 180));
+      if (!pick) return null;
+      const l = pick.byRes[pick.at];
+      const span = l.resolution * size;
+      const res = await fetcher(`${svc.url}/tile/${l.level}/${Math.floor((ti.origin.y - y) / span)}/${Math.floor((x - ti.origin.x) / span)}`,
+        { signal: AbortSignal.timeout(4000), cf: { cacheTtl: 604800, cacheEverything: true } });
+      if (res.status === 404) return false;
+      if (!res.ok) return null;
+      const b = new Uint8Array(await res.arrayBuffer());
+      const img = b[0] === 0xff ? (() => { const d = jpeg.decode(b, { useTArray: true, formatAsRGBA: true }); return { width: d.width, height: d.height, data: d.data }; })()
+        : await decodePng(b);
+      return img ? looksLikePhoto(img) : null;
+    } catch { return null; }
+  }
   const half = 20 / Math.cos((lat * Math.PI) / 180);
   const params = new URLSearchParams({
     bbox: [x - half, y - half, x + half, y + half].join(','), bboxSR: '3857', imageSR: '3857',
@@ -124,6 +155,6 @@ export async function countyServiceById(env, id) {
   const n = Number(id);
   if (!env?.DB || !Number.isInteger(n) || n <= 0) return null;
   try {
-    return svcOf(await env.DB.prepare('SELECT * FROM county_services WHERE id = ?1 AND export_ok = 1').bind(n).first());
+    return svcOf(await env.DB.prepare('SELECT * FROM county_services WHERE id = ?1 AND (export_ok = 1 OR tile_merc = 1)').bind(n).first());
   } catch { return null; }
 }

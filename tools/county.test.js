@@ -6,6 +6,7 @@
 import { cleanCountyReview, cleanCountyOutlines, MAX_NUDGE_M, countyServiceAt, countyServiceById, MAX_SERVICE_SQ_DEG } from '../worker/src/county.js';
 import { decodePng, looksLikePhoto } from '../worker/src/png-probe.js';
 import { probeService } from '../worker/src/county.js';
+import { stitch, encodePng, isMercatorCache } from '../worker/src/tile-mosaic.js';
 import { PNG } from 'pngjs';
 import { providerCatalogue, imageryUrl, detectionProvider, countyExportUrl, frameBbox3857 } from '../worker/src/imagery.js';
 import { FILTERS, shown, stepIn, doubtful, pathFor, polygonsOf, editHref } from '../public/county.js';
@@ -115,6 +116,35 @@ check('nothing at all is refused', cleanCountyOutlines({ shapes: [], notLawn: []
     && await probeService({ url: 'https://x/MapServer', type: 'MapServer' }, -85.6, 42.9, { fetcher: answer(png(() => [0, 0, 0, 0])) }) === false);
   check('and one that does not answer is "not known", not "no"',
     await probeService({ url: 'https://x/ImageServer', type: 'ImageServer' }, -85.6, 42.9, { fetcher: async () => { throw new Error('timeout'); } }) === null);
+}
+
+/* A tiles-only cache, stitched into one picture of the frame (tile-mosaic.js). */
+{
+  const O = 20037508.342787;
+  /* A two-level Web Mercator cache whose finest level is z20, every tile
+     coloured by its column and row so the stitch can be checked by colour. */
+  const lods = [{ level: 19, resolution: 0.29858214164761665, scale: 1128.497176 }, { level: 20, resolution: 0.14929107082380833, scale: 564.248588 }];
+  const meta = { tileInfo: { rows: 256, cols: 256, origin: { x: -O, y: O }, spatialReference: { wkid: 102100 }, lods }, maxScale: 564.248588 };
+  check('a standard Web Mercator cache is one the Worker can stitch', isMercatorCache(meta) && !isMercatorCache({ ...meta, tileInfo: { ...meta.tileInfo, spatialReference: { wkid: 2252 } } }));
+  const tile = (r, c) => { const p = new PNG({ width: 256, height: 256 }); for (let i = 0; i < 256 * 256; i++) { p.data[i * 4] = c % 256; p.data[i * 4 + 1] = r % 256; p.data[i * 4 + 2] = 99; p.data[i * 4 + 3] = 255; } return new Uint8Array(PNG.sync.write(p)); };
+  const asked = [];
+  const fetcher = async (u) => { const m = u.match(/tile\/(\d+)\/(\d+)\/(\d+)/); asked.push(m[1]); return new Response(tile(+m[2], +m[3])); };
+  const res = lods[1].resolution;
+  /* A box of exactly 4 x 3 tiles at z20, asked at that level's pixel size. */
+  const c0 = 280000, r0 = 390000, span = res * 256;
+  const box = [-O + c0 * span, O - (r0 + 3) * span, -O + (c0 + 4) * span, O - r0 * span];
+  const img = await stitch('https://x/MapServer', meta, box, 1024, 768, { fetcher });
+  const px = (x, y) => [img.data[(y * 1024 + x) * 4], img.data[(y * 1024 + x) * 4 + 1]];
+  check('the tiles land where they belong: column and row read back from the colour',
+    img && JSON.stringify(px(10, 10)) === JSON.stringify([c0 % 256, r0 % 256]) && JSON.stringify(px(1000, 760)) === JSON.stringify([(c0 + 3) % 256, (r0 + 2) % 256]),
+    JSON.stringify([px(10, 10), px(1000, 760)]));
+  check('at the finest level, not a coarser one', asked.every((l) => l === '20'), asked.slice(0, 3).join());
+  const png = await encodePng(img);
+  const back = PNG.sync.read(Buffer.from(png));
+  check('and handed back as a PNG that reads back pixel for pixel', back.width === 1024 && back.data[0] === img.data[0] && back.data[(767 * 1024 + 1023) * 4 + 1] === img.data[(767 * 1024 + 1023) * 4 + 1]);
+  const url = new URL(countyExportUrl({ url: 'https://x/MapServer', id: 9, tiled: true, selfOrigin: 'https://lawnmap.example' }, { lng: -114.36, lat: 43.68, zoom: 19.6, size: 640, height: 500 }));
+  check('a detector is pointed at the Worker\'s own stitched picture of a tile cache',
+    url.origin === 'https://lawnmap.example' && url.pathname === '/api/imagery' && url.searchParams.get('svc') === '9' && url.searchParams.get('provider') === 'county');
 }
 
 if (failures) { console.log(`\n${failures} check(s) FAILED.`); process.exit(1); }

@@ -62,7 +62,9 @@ const USGS_CATALOGUES = [
 
 /* ------------------------------------------------------------ pure parts */
 
-const IMAGERY = /ortho|imagery|image|aerial|photo|naip|hro|leaf.?off|leafoff|sid|ecw|mosaic/i;
+/* And the vendors counties name their layers after (owner, 2026-10-02: "usually
+   nearmap or eagleview"): Blaine County ID's is just "2026_Nearmap". */
+const IMAGERY = /ortho|imagery|image|aerial|photo|naip|hro|leaf.?off|leafoff|sid|ecw|mosaic|nearmap|eagle.?view|pictometry|vexcel|cyclomedia|sanborn|\bkucera|woolpert|\bqcoherent/i;
 const NOT_IMAGERY = /topo|index|footprint|boundar|grid|tile.?scheme|dates?$|flight|outline|extent|lidar|dem|hillshade|elevation|contour|parcel|address|zoning|landcover|land.?cover|ndvi|cir\b|infrared|cache_status|labels?/i;
 
 /** The catalogue root ("…/rest/services") a service URL lives under. */

@@ -102,6 +102,7 @@ export function agolSearchUrl(lng, lat, start = 1) {
   const d = 0.001;
   const q = '(title:ortho OR title:orthos OR title:orthoimagery OR title:orthophoto OR '
     + 'title:orthophotos OR title:aerial OR title:aerials OR title:imagery OR '
+    + 'title:nearmap OR title:eagleview OR title:pictometry OR '
     + 'tags:orthoimagery OR tags:"aerial imagery") AND (type:"Image Service" OR type:"Map Service")';
   return 'https://www.arcgis.com/sharing/rest/search?' + new URLSearchParams({
     q, bbox: [lng - d, lat - d, lng + d, lat + d].join(','), f: 'json', num: '100', start: String(start),
@@ -896,7 +897,8 @@ async function realign(row, decoders, dir) {
  */
 
 const SWEEP_STEP = Number(process.env.SWEEP_STEP || 0.5); // degrees, statewide grids
-const RETRY_BEFORE = '2026-10-02T01:50:00Z';
+const ONLY_KEY = process.env.ONLY_KEY || '';
+const RETRY_BEFORE = '2026-10-02T02:30:00Z';
 
 /** A service's extent as [west, south, east, north] in degrees. */
 export async function extentLngLat(m) {
@@ -953,7 +955,16 @@ export async function qualify(c, lng, lat, decoders) {
   if (!exportOk) {
     tiled = await fetchOver(c, m, box, 256, 256, decoders).catch(() => null);
     if (!tiled || coverage(tiled.data, 256, 256) < 0.9) return { usable: false, why: 'no picture here' };
-    if (tiled.tiled) native = Math.max(native ?? 0, tiled.tileCm * (tiled.merc ? Math.cos((lat * Math.PI) / 180) : 1));
+    /* How fine it really is: a 256 px look over 150 m reads a coarse level
+       (Blaine County's 2026 Nearmap came out "43 cm"), so look again over
+       40 m at 8 cm; the cache steps coarser by itself where the fine levels
+       are missing, so the level that answers is the real one. */
+    if (tiled.tiled) {
+      const h2 = 20 / Math.cos((lat * Math.PI) / 180);
+      const fine = await fetchOver(c, m, [x - h2, y - h2, x + h2, y + h2], 512, 512, decoders).catch(() => null);
+      const t = fine?.tiled ? fine : tiled;
+      native = t.tileCm * (t.merc ? Math.cos((lat * Math.PI) / 180) : 1);
+    }
   }
   if (native !== null && native > MAX_NATIVE_CM) return { usable: false, why: `too coarse (${Math.round(native)} cm)` };
   const ext = await extentLngLat(m);
@@ -1030,14 +1041,16 @@ async function catalogue(decoders) {
      at again once. */
   const swept = new Set(query(`SELECT point FROM county_sweep
                                 WHERE NOT (found = 0 AND checked_at < '${RETRY_BEFORE}')`).map((r) => r.point));
-  const keys = Object.keys(ALL_COUNTIES).slice(0, Math.max(1, LIMIT));
+  /* ONLY_KEY: one county now (an owner's request), looked at again. */
+  const keys = ONLY_KEY ? ONLY_KEY.split(',').map((k) => k.trim()).filter((k) => ALL_COUNTIES[k])
+    : Object.keys(ALL_COUNTIES).slice(0, Math.max(1, LIMIT));
   let n = 0;
   for (const key of keys) {
     let points;
     try { points = await sweepPoints(key, ALL_COUNTIES[key]); } catch { points = []; }
     for (const [lng, lat] of points) {
       const point = `${key}@${lng.toFixed(2)},${lat.toFixed(2)}`;
-      if (swept.has(point) && !FORCE) continue;
+      if (swept.has(point) && !FORCE && !ONLY_KEY) continue;
       n++;
       let found = 0;
       const notes = [];

@@ -381,6 +381,16 @@ export function providerFrame(provider, frame) {
  */
 export function countyExportUrl(svc, frame) {
   if (!svc?.url) return null;
+  /* A tile cache has no box to ask for: the picture is this Worker's own,
+     stitched from the tiles (index.js handleImagery, tile-mosaic.js), so a
+     detector is pointed here. */
+  if (svc.tiled) {
+    if (!svc.selfOrigin) return null;
+    return `${svc.selfOrigin}/api/imagery?` + new URLSearchParams({
+      lng: frame.lng, lat: frame.lat, zoom: frame.zoom, size: frame.size,
+      height: frame.height || frame.size, provider: 'county', svc: svc.id,
+    });
+  }
   let w = imagePixels(frame), h = imageHeightPixels(frame);
   const max = Number(svc.maxPx) || Number(svc.max_px) || 4096;
   if (Math.max(w, h) > max) {

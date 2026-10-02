@@ -50,6 +50,10 @@ on:
           - rebank
           - catalogue
         default: find
+      county_only:
+        description: 'county catalogue: just these county keys now, comma-separated (e.g. id-blaine)'
+        type: string
+        default: ''
       county_limit:
         description: 'county: how many corpus maps at most (newest first)'
         required: false
@@ -108,6 +112,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CORPUS_BUCKET: lawn-mapper-corpus
           MODE: ${{ inputs.county_mode }}
+          ONLY_KEY: ${{ inputs.county_only }}
           LIMIT: ${{ inputs.county_limit }}
           FORCE: ${{ inputs.county_force }}
           DRY_RUN: ${{ inputs.county_dry_run }}

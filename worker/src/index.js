@@ -34,7 +34,8 @@
  *   ASSETS           -- the static site in public/
  */
 
-import { countyServicesAt, countyServiceById } from './county.js';
+import { countyServicesAt, countyServiceById, serviceMeta } from './county.js';
+import { stitch, encodePng } from './tile-mosaic.js';
 import { lookupParcel, lookupNeighbours } from './parcel.js';
 import { isCovered, servesCounty } from './counties.js';
 import { coverage, coverageSummary, NEAR_COMPLETE } from './coverage.js';
@@ -72,7 +73,7 @@ import { covers, lawnMaskUrl, LANDCOVER_HOST, overlayCatalogue } from './landcov
 import {
   imageryUrl, detectionImageUrl, imageryPrompt, normaliseProvider,
   detectionProvider, providerCatalogue, providerFrame, providerAvailable,
-  detectionPlan,
+  detectionPlan, imagePixels, imageHeightPixels, frameBbox3857,
 } from './imagery.js';
 // Shared with the browser, which loads the same file over HTTP. See the note
 // at the top of that file for why it lives outside worker/.
@@ -396,6 +397,7 @@ async function handleImagery(url, env, origin) {
   if (provider === 'county') {
     frame.svc = await countyServiceById(env, url.searchParams.get('svc'));
     if (!frame.svc) return json({ error: 'No county photo service by that id', provider }, 400, origin);
+    if (frame.svc.tiled) return countyMosaic(url, frame, origin);
   }
   const src = imageryUrl(provider, frame, serverToken(env), env);
   // Esri serves tiles and nothing else; the browser paints those itself.
@@ -421,6 +423,34 @@ async function handleImagery(url, env, origin) {
       ...cors(origin),
     },
   });
+}
+
+/**
+ * A tiles-only county photo of exactly this frame, stitched here and kept in
+ * the edge cache under its own URL: the editor asks once, a detector asks
+ * again for the same frame and gets the copy. At most 1600 px on the long
+ * side -- the readers all resample to their own grid -- to keep the work
+ * per request bounded.
+ */
+async function countyMosaic(url, frame, origin) {
+  const cache = caches.default;
+  const key = new Request(url.toString(), { method: 'GET' });
+  const hit = await cache.match(key);
+  if (hit) return hit;
+  let m;
+  try { m = await serviceMeta(frame.svc.url); } catch (e) {
+    return json({ error: 'County photo unavailable', provider: 'county', upstream: 502, reason: String(e.message || e) }, 502, origin);
+  }
+  const pw = imagePixels(frame), ph = imageHeightPixels(frame);
+  const k = Math.min(1, 1600 / Math.max(pw, ph));
+  const W = Math.max(1, Math.round(pw * k)), H = Math.max(1, Math.round(ph * k));
+  const img = await stitch(frame.svc.url, m, frameBbox3857(frame), W, H).catch(() => null);
+  if (!img) return json({ error: 'No county photo here', provider: 'county', upstream: 404 }, 502, origin);
+  const res = new Response(await encodePng(img), {
+    headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400', ...cors(origin) },
+  });
+  await cache.put(key, res.clone());
+  return res;
 }
 
 /* ------------------------------------------------------------------ mask */
@@ -567,6 +597,8 @@ async function handleSegment(request, env, origin, ctx) {
    * is not there measures on Mapbox, and the echoed frame says so.
    */
   const svc = provider === 'county' ? await countyServiceById(env, body.svc) : null;
+  /* A detector fetches a tile cache's picture from this Worker (imagery.js). */
+  if (svc) svc.selfOrigin = new URL(request.url).origin;
   if (provider === 'county' && !svc) provider = 'mapbox';
   const sv = svc ? { svc } : {};
   /*
