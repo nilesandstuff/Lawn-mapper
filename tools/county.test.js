@@ -5,7 +5,7 @@
  */
 import { cleanCountyReview, cleanCountyOutlines, MAX_NUDGE_M, countyServiceAt, countyServiceById, MAX_SERVICE_SQ_DEG } from '../worker/src/county.js';
 import { decodePng, looksLikePhoto } from '../worker/src/png-probe.js';
-import { probeService } from '../worker/src/county.js';
+import { probeService, countyServicesAt, oldestYear } from '../worker/src/county.js';
 import { stitch, encodePng, isMercatorCache } from '../worker/src/tile-mosaic.js';
 import { PNG } from 'pngjs';
 import { providerCatalogue, imageryUrl, detectionProvider, countyExportUrl, frameBbox3857 } from '../worker/src/imagery.js';
@@ -111,11 +111,38 @@ check('nothing at all is refused', cleanCountyOutlines({ shapes: [], notLawn: []
   check('flat grey is not (New Hampshire\'s habitat layer)', !looksLikePhoto(await decodePng(png(() => [214, 214, 214, 255]))));
   check('transparent is not (a box with no picture in it)', !looksLikePhoto(await decodePng(png(() => [0, 0, 0, 0]))));
   const answer = (bytes) => async () => new Response(bytes, { headers: { 'content-type': 'image/png' } });
-  check('a service is asked for 32 px over the spot and judged on them',
+  check('a service is asked for its picture of the spot and judged on it',
     await probeService({ url: 'https://x/ImageServer', type: 'ImageServer' }, -85.6, 42.9, { fetcher: answer(png(ground)) }) === true
     && await probeService({ url: 'https://x/MapServer', type: 'MapServer' }, -85.6, 42.9, { fetcher: answer(png(() => [0, 0, 0, 0])) }) === false);
   check('and one that does not answer is "not known", not "no"',
     await probeService({ url: 'https://x/ImageServer', type: 'ImageServer' }, -85.6, 42.9, { fetcher: async () => { throw new Error('timeout'); } }) === null);
+}
+
+/* Sharpest first, not newest; ten years at most (owner, 2026-10-02: Marquette's 2020 beats its 2025). */
+{
+  const big = (fill) => {
+    const p = new PNG({ width: 256, height: 256 });
+    for (let i = 0; i < 256 * 256; i++) { const [r, g, b] = fill(i % 256, Math.floor(i / 256)); p.data.set([r, g, b, 255], i * 4); }
+    return new Uint8Array(PNG.sync.write(p));
+  };
+  /* Soft: texture only in 8-pixel blocks. Sharp: texture pixel by pixel. */
+  const noise = (x, y) => ((x * 73856093) ^ (y * 19349663)) % 97;
+  const soft = big((x, y) => { const v = 60 + noise(x >> 3, y >> 3); return [v, v + 30, v - 10]; });
+  const sharp = big((x, y) => { const v = 60 + noise(x, y); return [v, v + 30, v - 10]; });
+  const rows = [
+    { id: 1, url: 'https://a/Ortho2025/ImageServer', type: 'ImageServer', title: '2025', year: 2025, export_ok: 1 },
+    { id: 2, url: 'https://a/Ortho2020/ImageServer', type: 'ImageServer', title: '2020', year: 2020, export_ok: 1 },
+  ];
+  const seen = [];
+  const env = { DB: { prepare: (sql) => ({ bind: (...a) => { seen.push([sql, a]); return { all: async () => ({ results: rows }) }; } }) } };
+  const fetcher = async (u) => new Response(String(u).includes('2020') ? sharp : soft);
+  const list = await countyServicesAt(env, -87.4, 46.5, 4, { fetcher, now: new Date('2026-10-02') });
+  check('the sharper 2020 photo is offered before the softer 2025 one',
+    list.map((s) => s.id).join() === '2,1' && list[0].detail > list[1].detail, JSON.stringify(list.map((s) => [s.id, s.detail])));
+  const even = await countyServicesAt(env, -87.4, 46.5, 4, { fetcher: async () => new Response(sharp), now: new Date('2026-10-02') });
+  check('and of two that measure alike, the newer', even.map((s) => s.id).join() === '1,2');
+  check('nothing flown more than ten years ago (2016 is the oldest in 2026); undated kept',
+    oldestYear(new Date('2026-10-02')) === 2016 && /\(year IS NULL OR year >= \?5\)/.test(seen[0][0]) && seen[0][1][4] === 2016);
 }
 
 /* A tiles-only cache, stitched into one picture of the frame (tile-mosaic.js). */

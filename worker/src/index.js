@@ -1635,7 +1635,7 @@ export default {
            answer (worker/src/county.js), for the editor to offer it. */
         case '/api/county-imagery': {
           const all = await countyServicesAt(env, parseFloat(url.searchParams.get('lng')), parseFloat(url.searchParams.get('lat')));
-          const pub = (at) => ({ id: at.id, title: at.title, year: at.year, nativeCm: at.nativeCm, maxPx: at.maxPx, tiled: at.tiled });
+          const pub = (at) => ({ id: at.id, title: at.title, year: at.year, nativeCm: at.nativeCm, maxPx: at.maxPx, tiled: at.tiled, detail: at.detail ?? null });
           return json({ service: all[0] ? pub(all[0]) : null, services: all.map(pub) }, 200, origin);
         }
         case '/api/segment':

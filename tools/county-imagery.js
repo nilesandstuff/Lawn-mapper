@@ -23,7 +23,8 @@
  *     for a map service that will not say -- from how blocky its enlargement
  *     is; an image service whose metadata says nothing must score at least
  *     0.8x Mapbox's detail (bilinear, so the measure is honest; see H62)
- *   - flown 2012 or later when it names a year
+ *   - flown within the last ten years when it names a year (owner,
+ *     2026-10-02: "we can go as old as 10 years")
  * The newest usable flight wins, the finer one on a tie.
  *
  * PUT ON MAPBOX'S GROUND BEFORE IT IS BANKED. Every outline in the corpus was
@@ -80,7 +81,7 @@ const DRY_RUN = /^(1|true|yes)$/i.test(process.env.DRY_RUN || '');
 const ONLY = process.env.ONLY || '';
 const BUCKET = process.env.CORPUS_BUCKET || 'lawn-mapper-corpus';
 const MAX_TRY = Number(process.env.MAX_TRY || 12);
-const MIN_YEAR = Number(process.env.MIN_YEAR || 2012);
+const MIN_YEAR = Number(process.env.MIN_YEAR || new Date().getUTCFullYear() - 10);
 const PAUSE_MS = Number(process.env.PAUSE_MS || 250);
 const TIMEOUT_MS = 120000;
 
