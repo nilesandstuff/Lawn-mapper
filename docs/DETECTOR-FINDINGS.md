@@ -848,15 +848,18 @@ release 2026-09-29, never trained on a county photo) on a Ketchum lot,
 county photo stitched in the browser. The outline hugged the north edge of
 the roof and stopped 1.5-2 m short of the front walk on the south side, and
 "lines up a bit better with Mapbox". Measured here afterwards, frame
-158.7 m across centred on the lot, register.js as the editor runs it:*
+158.7 m across centred on the lot:*
 
-- **The two photographs disagree by about a metre there.** County vs
-  Mapbox: a plain shift, the county ground 1.08 m north and 0.48 m west of
-  Mapbox's; only 25 of 220 patches agree (rms 0.17 m): mostly canopy.
-- **NAIP vs county: 0.40 m west, 0.06 m north; NAIP vs Mapbox: 3.51 m west,
-  0.61 m north.** The three pairs do not add up (they should, to within
-  noise), so at this lot they are not trustworthy to better than a metre or
-  two.
+- **The two photographs agree north-south.** Whole-frame normalised
+  cross-correlation, 1-pixel (0.2 m) steps, county vs Mapbox: 0.0 m north,
+  Mapbox 0.79 m west (ncc 0.39); the road band alone 0.0 m north, 0.40 m
+  west (ncc 0.48). They are years apart -- Mapbox shows a building site where
+  the county photo has finished houses, and the lawn was rebuilt -- which is
+  why agreement is low, not canopy (the lot has very few trees; owner).
+- **CORRECTED, same day:** an earlier entry here said "county ground 1.08 m
+  north of Mapbox's" from register.js with only 25 of 220 patches agreeing.
+  It was wrong; the cross-correlation above replaces it. register.js's
+  "confident" passed on a pair this different, which is worth knowing.
 - **The served pipeline's own NAIP alignment** (naip_bands.naip_for, photo
   given, no stored alignment, which is what a county detection sends): left
   alone on the county photo ("edges 0.21"); moved 1.34 m east on the Mapbox
@@ -869,9 +872,12 @@ the roof and stopped 1.5-2 m short of the front walk on the south side, and
   the browser stitched; the outline is placed with the same alignment
   that places the photo on the map. No record of the press itself was read.
 
+So the photos cannot explain a 1.5-2 m north-south shift, and an outline
+"closer to Mapbox" has no route to Mapbox: the detector is never shown it.
 What is NOT established: why the outline moved. A model trained on Mapbox
-only reading a different camera is one candidate, and is SPECULATION until
-the same lot is detected on both photographs.
+only reading a different camera is one candidate, a placement fault on the
+county path another; both are SPECULATION until the same lot is detected on
+both photographs.
 
 **Decided the same day (owner):** the corpus maps keep their Mapbox outlines
 unless the owner re-traced them on the county photo ("even the ones where the
