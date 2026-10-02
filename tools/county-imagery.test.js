@@ -115,5 +115,25 @@ check('a person nudging the photo 1 m east moves where Mapbox reads it 10 px wes
   JSON.stringify(nudged([1, 0, 5, 0, 1, 5], 1, 0, 0.1)) === JSON.stringify([1, 0, -5, 0, 1, 5])
   && JSON.stringify(nudged([1, 0, 5, 0, 1, 5], 0, 1, 0.1)) === JSON.stringify([1, 0, 5, 0, 1, 15]));
 
+
+/* ArcGIS Online by the county's name (owner, 2026-10-02): the query, and the layers a web map draws. */
+{
+  const { agolNameSearchUrl, webMapLayers, itemIdsIn, countyWords } = await import('./county-imagery.js');
+  const u = new URL(agolNameSearchUrl({ name: 'Mono County, CA', box: [-119.66, 37.46, -117.83, 38.71] }));
+  check('the name search asks for the county by name, inside its box, web maps and apps included',
+    u.searchParams.get('q').startsWith('"Mono County" AND') && /Web Map/.test(u.searchParams.get('q'))
+      && u.searchParams.get('bbox') === '-119.66,37.46,-117.83,38.71');
+  check('and nothing for a statewide entry', countyWords({ name: 'Montana (found)', statewide: true }) === null
+    && agolNameSearchUrl({ name: 'Montana (found)', statewide: true, box: [0, 0, 1, 1] }) === null);
+  const layers = webMapLayers({
+    operationalLayers: [{ title: 'Parcels', url: 'https://a.gov/arcgis/rest/services/Parcels/FeatureServer/0' },
+      { title: 'Group', layers: [{ title: '2026 Nearmap', url: 'https://a.gov/server/rest/services/2026_Nearmap/MapServer' }] }],
+    baseMap: { baseMapLayers: [{ title: 'Ortho', url: 'https://a.gov/image/rest/services/Ortho/ImageServer/' }] },
+  });
+  check('a web map gives up its map and image services, nested ones too, and not feature layers',
+    layers.length === 2 && layers[0].title === '2026 Nearmap' && layers[1].type === 'ImageServer', JSON.stringify(layers));
+  check('an app names its web maps by id', itemIdsIn({ map: { itemId: '0123456789abcdef0123456789abcdef' } })[0] === '0123456789abcdef0123456789abcdef');
+}
+
 if (failures) { console.log(`\n${failures} check(s) FAILED.`); process.exit(1); }
 console.log('\nAll checks passed.');

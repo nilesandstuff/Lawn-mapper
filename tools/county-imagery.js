@@ -326,6 +326,114 @@ export async function agolCandidates(lng, lat) {
   return out;
 }
 
+/*
+ * ARCGIS ONLINE BY THE COUNTY'S NAME, WEB MAPS AND APPS INCLUDED (owner,
+ * 2026-10-02: "search through arcgis"). agolCandidates asks for services
+ * whose own extent covers one point, and that misses imagery published only
+ * INSIDE a web map or an app -- Blaine County's 2026 Nearmap was found
+ * through a county Experience Builder app, not as a listed service. So, once
+ * per county: items naming the county and imagery, within the county's box,
+ * services taken as they are and web maps and apps opened for the layers they
+ * draw. Every layer still has to pass qualify() at a point.
+ */
+const NAME_TERMS = '(imagery OR aerial OR aerials OR ortho OR orthos OR orthoimagery OR orthophoto OR orthophotos '
+  + 'OR nearmap OR eagleview OR pictometry OR basemap)';
+const NAME_TYPES = '(type:"Web Map" OR type:"Image Service" OR type:"Map Service" '
+  + 'OR type:"Web Mapping Application" OR type:"Web Experience" OR type:"Dashboard")';
+
+/** "Mono County, CA" -> 'Mono County'; null for a statewide entry. */
+export const countyWords = (entry) => (entry?.statewide || !entry?.name ? null
+  : String(entry.name).split(',')[0].trim() || null);
+
+export function agolNameSearchUrl(entry, start = 1) {
+  const words = countyWords(entry);
+  if (!words || !Array.isArray(entry.box)) return null;
+  return 'https://www.arcgis.com/sharing/rest/search?' + new URLSearchParams({
+    q: `"${words}" AND ${NAME_TERMS} AND ${NAME_TYPES}`,
+    bbox: entry.box.join(','), f: 'json', num: '100', start: String(start),
+  });
+}
+
+/** Every MapServer / ImageServer a web map draws, with its title. */
+export function webMapLayers(data) {
+  const out = [];
+  const walk = (layers) => {
+    for (const l of layers || []) {
+      const m = String(l?.url || '').match(/^(https?:\/\/.+\/(?:ImageServer|MapServer))(?:\/\d+)?\/?$/i);
+      if (m) out.push({ url: m[1], type: /ImageServer$/i.test(m[1]) ? 'ImageServer' : 'MapServer', title: l.title || '' });
+      walk(l?.layers);
+    }
+  };
+  walk(data?.operationalLayers);
+  walk(data?.baseMap?.baseMapLayers);
+  return out;
+}
+
+/** The 32-hex item ids an app's configuration mentions (its web maps among them). */
+export const itemIdsIn = (json) => [...new Set((JSON.stringify(json || {}).match(/\b[0-9a-f]{32}\b/g) || []))];
+
+const nameCache = new Map();
+export async function agolByName(key) {
+  if (nameCache.has(key)) return nameCache.get(key);
+  const entry = ALL_COUNTIES[key];
+  const out = [];
+  const seenMaps = new Set();
+  const item = (id) => `https://www.arcgis.com/sharing/rest/content/items/${id}`;
+  const fromWebMap = async (id) => {
+    if (seenMaps.has(id) || seenMaps.size >= 25) return;
+    seenMaps.add(id);
+    try { out.push(...webMapLayers(await getJson(`${item(id)}/data?f=json`)).map((c) => ({ ...c, via: 'ArcGIS Online web map' }))); } catch { /* unreadable */ }
+  };
+  let start = 1;
+  for (let page = 0; page < 3 && start > 0; page++) {
+    const url = agolNameSearchUrl(entry, start);
+    if (!url) break;
+    let j;
+    try { j = await getJson(url); } catch { break; }
+    for (const r of j.results || []) {
+      if (r.type === 'Image Service' || r.type === 'Map Service') {
+        const m = String(r.url || '').match(/^(https?:\/\/.+\/(?:ImageServer|MapServer))\/?$/i);
+        if (m) out.push({ url: m[1], type: /ImageServer$/i.test(m[1]) ? 'ImageServer' : 'MapServer', title: r.title || '', via: 'ArcGIS Online by name' });
+      } else if (r.type === 'Web Map') {
+        await fromWebMap(r.id);
+      } else {
+        /* An app: the web maps its configuration names. */
+        try {
+          const data = await getJson(`${item(r.id)}/data?f=json`);
+          for (const id of itemIdsIn(data).slice(0, 8)) {
+            let info;
+            try { info = await getJson(`${item(id)}?f=json`); } catch { continue; }
+            if (info?.type === 'Web Map') await fromWebMap(id);
+          }
+        } catch { /* unreadable */ }
+      }
+      await sleep(PAUSE_MS);
+    }
+    start = j.nextStart > 0 ? j.nextStart : 0;
+  }
+  /*
+   * AND EVERY SERVER THOSE CAME FROM, browsed whole, as the county's own
+   * parcel server already is (countyCandidates): a search names one layer,
+   * and the same server often holds a newer flight nobody tagged -- the way
+   * Blaine's held its 2026 Nearmap. A handful of servers per county at most.
+   */
+  /* Esri's world imagery and ArcGIS Online's proxy are not a county's: the
+     first is the app's own Esri source, the second a key-holding relay. */
+  const notCounty = (u) => /\/\/(services|server)\.arcgisonline\.com\/|\/\/utility\.arcgis\.com\//i.test(u);
+  for (let i = out.length - 1; i >= 0; i--) if (notCounty(out[i].url)) out.splice(i, 1);
+  const roots = [...new Set(out.map((c) => catalogueRoot(c.url)).filter(Boolean))].slice(0, 6);
+  for (const root of roots.flatMap(siblingRoots)) {
+    if (!catalogueCache.has(root)) {
+      catalogueCache.set(root, await listCatalogue(root).then(pickImagery).catch(() => []));
+    }
+    for (const sv of catalogueCache.get(root)) {
+      out.push({ url: `${sv.root}/${sv.name}/${sv.type}`, type: sv.type, title: sv.name, via: 'server found by name' });
+    }
+  }
+  nameCache.set(key, out);
+  return out;
+}
+
 const metaCache = new Map();
 export async function meta(url) {
   if (!metaCache.has(url)) metaCache.set(url, await getJson(`${url}?f=json`).catch((e) => ({ failed: e.message })));
@@ -1082,7 +1190,8 @@ async function catalogue(decoders) {
       let found = 0;
       const notes = [];
       try {
-        const ranked = rankCandidates([...await countyCandidates(lng, lat), ...await agolCandidates(lng, lat)]);
+        const ranked = rankCandidates([...await countyCandidates(lng, lat), ...await agolCandidates(lng, lat),
+          ...await agolByName(key).catch(() => [])]);
         for (const c of ranked.slice(0, MAX_TRY)) {
           if (failed.has(c.url)) continue;
           if (known.has(c.url)) { found++; continue; }
