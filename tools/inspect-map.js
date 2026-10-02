@@ -204,9 +204,13 @@ async function main() {
   const id = process.env.ID || '';
   const status = process.env.STATUS || 'rejected';
 
+  /* 'noparcel': approved maps with no property line at all, which training
+     grades over the whole frame (owner, 2026-10-02). */
   const where = id
     ? `id = '${id.replace(/'/g, "''")}'`
-    : `status = '${status.replace(/'/g, "''")}'`;
+    : status === 'noparcel'
+      ? "status = 'approved' AND (parcel IS NULL OR parcel = '' OR parcel = 'null')"
+      : `status = '${status.replace(/'/g, "''")}'`;
 
   let rows = [];
   try {

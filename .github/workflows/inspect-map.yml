@@ -24,7 +24,7 @@ on:
         required: false
         default: 'rejected'
         type: choice
-        options: [rejected, approved, new, notlawn]
+        options: [rejected, approved, new, notlawn, noparcel]
 
 jobs:
   inspect:
