@@ -30,7 +30,6 @@ import { extendToRoads, mergeButtonPoint, mergeRings, placeInside } from './lib/
 import { movedCorners } from './lib/align.js';
 import { alignFromRegistration } from './lib/register.js';
 import { extraDetail } from './lib/sharpness.js';
-import { stitch as stitchTiles } from './lib/tile-stitch.js';
 import { snapPoint, nearestOnRings } from './lib/snap.js';
 import { notchShapes } from './lib/cutout.js';
 // Pasting the pieces of a big lot's detection back into one mask.
@@ -4627,7 +4626,6 @@ function detectionRequest(frame, provider, model, points) {
     /* Which county service, by its catalogue id (the Worker fetches only those),
        and for a tiles-only one the picture this page stitched and uploaded. */
     ...(provider === 'county' && state.countySvc ? { svc: state.countySvc.id } : {}),
-    ...(provider === 'county' && state.countyFrameKey ? { countyFrame: state.countyFrameKey } : {}),
     // One prediction per ticked box. Sent even when the method does not use
     // them, because the Worker decides which fields apply and a second copy of
     // that rule here is a second copy that can be wrong.
@@ -4740,24 +4738,10 @@ async function detect({ again = false } = {}) {
   startDetectionTimer(run);
 
   try {
-    /* A stitched county photo has to have reached the Worker first. */
-    /*
-     * AND OF THIS FRAME. The Worker lays the AI's answer on the frame sent
-     * here, so a picture of any other frame puts the outline in the wrong
-     * place -- 1.96 m south at Ketchum, where the property line was moved
-     * out to the road while the photo was being stitched. Stitched again if
-     * it does not match.
-     */
-    if (provider === 'county' && state.countySvc?.tiled) {
-      if (!sameFrame(state.countyFrameFor, frameFor('county', frame))) {
-        await showImagery();
-        busy('Detecting your lawn…');
-      }
-      if (state.provider !== 'county' || !state.countyFrameUpload) {
-        throw new Error('The county photo could not be made for this frame. Press Detect again, or switch Layers to Mapbox.');
-      }
-      state.countyFrameKey = await state.countyFrameUpload;
-    }
+    /* A county photo needs nothing sent ahead: the Worker makes the picture
+       of exactly the frame posted here (county-picture.js), so the picture
+       and the frame the outline is laid on cannot differ -- the 1.96 m at
+       Ketchum came from a picture made in this browser for an earlier frame. */
     let data = await api('/api/segment', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -5995,30 +5979,12 @@ async function showImagery() {
   try {
     /* A source that never answers must not leave "Fetching…" over the map
        for good: the browser test caught USGS doing exactly that. */
-    /* A tiles-only county photo is stitched here, in the browser (see
-       stitchCountyTiles); the picture becomes a blob URL for the map. */
-    const tiled = state.provider === 'county' && state.countySvc?.tiled;
-    /* A new picture: whatever was uploaded for the last one is not this one. */
-    state.countyFrameKey = null;
-    state.countyFrameUpload = null;
-    state.countyFrameFor = null;
-    const res = tiled
-      ? await stitchCountyTiles(state.countySvc, served).then((b) => (b
-        ? new Response(b, { headers: { 'Content-Type': 'image/jpeg' } })
-        : new Response(JSON.stringify({ reason: 'no tiles here' }), { status: 404 })))
-      : await fetch(url, { signal: AbortSignal.timeout(30000) });
+    /* Every source, a tiles-only county cache included, is one picture of
+       exactly this frame from the Worker (county-picture.js stitches the
+       tiles there, since the Workers Paid plan). */
+    const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
     if (res.ok && (state.provider === 'naip' || state.provider === 'google' || state.provider === 'county')) {
       naipBlob = await res.clone().blob();
-      if (tiled) {
-        url = URL.createObjectURL(naipBlob);
-        /* And handed to the Worker for a detector to fetch -- by the current
-           run only, and with the frame it shows: a slower run for a frame
-           since replaced must not leave ITS picture as the one detected on. */
-        if (run === imageryRun) {
-          state.countyFrameUpload = uploadCountyFrame(state.countySvc, served, naipBlob);
-          state.countyFrameFor = served;
-        }
-      }
     }
     if (!res.ok) {
       /*
@@ -6171,14 +6137,6 @@ const ALIGN_REACH_M = { naipAlign: 5, googleAlign: 8, countyAlign: 4 };
  * from that picture is traced against it, so the outline lands where the
  * picture showed the grass rather than where the source's own frame puts it.
  */
-/** Two frames covering the same ground at the same size. */
-function sameFrame(a, b) {
-  if (!a || !b) return false;
-  return Math.abs(a.lng - b.lng) < 1e-9 && Math.abs(a.lat - b.lat) < 1e-9
-    && Math.abs(a.zoom - b.zoom) < 1e-9 && a.size === b.size
-    && (a.height || a.size) === (b.height || b.size);
-}
-
 function alignedFrame(frame, a) {
   if (!frame || !a) return frame;
   const lat = frame.lat * Math.PI / 180;
@@ -6215,55 +6173,6 @@ async function detailVsMapbox(blob, served) {
   return dc && dm && dm.extra > 0 ? dc.extra / dm.extra : null;
 }
 const imagePixelsOf = (frame) => Math.min(frame.size * 2, 2560);
-
-/*
- * A TILES-ONLY COUNTY PHOTO, STITCHED IN THE BROWSER (owner, 2026-10-02:
- * "(a Ketchum, Idaho address) ... County photo has no photograph of this spot
- * (HTTP 503)"). The Worker's free plan allows 50 fetches a request and a lot
- * of that size is about 50 tiles of Blaine County's 2026 Nearmap, so the
- * Worker only relays tiles one at a time (/api/county-tile) and this page
- * puts them together with the same code it would have used
- * (lib/tile-stitch.js). At most 1600 px on the long side, like Mapbox's @2x.
- */
-async function stitchCountyTiles(svc, served) {
-  const meta = await (await fetch(`/api/county-meta?svc=${svc.id}`, { signal: AbortSignal.timeout(20000) })).json();
-  const pw = Math.min(served.size * 2, 2560), ph = Math.min((served.height || served.size) * 2, 2560);
-  const k = Math.min(1, 1600 / Math.max(pw, ph));
-  const W = Math.round(pw * k), H = Math.round(ph * k);
-  const R = 6378137;
-  const corners = frameCorners(served).map(([lng, lat]) => [R * (lng * Math.PI / 180), R * Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360))]);
-  const bbox = [Math.min(...corners.map((c) => c[0])), Math.min(...corners.map((c) => c[1])),
-    Math.max(...corners.map((c) => c[0])), Math.max(...corners.map((c) => c[1]))];
-  const tile = document.createElement('canvas');
-  const getTile = async (l, r, c) => {
-    try {
-      const res = await fetch(`/api/county-tile?svc=${svc.id}&l=${l}&r=${r}&c=${c}`, { signal: AbortSignal.timeout(20000) });
-      if (!res.ok) return null;
-      const bmp = await createImageBitmap(await res.blob());
-      tile.width = bmp.width; tile.height = bmp.height;
-      const ctx = tile.getContext('2d', { willReadFrequently: true });
-      ctx.clearRect(0, 0, bmp.width, bmp.height);
-      ctx.drawImage(bmp, 0, 0);
-      return { width: bmp.width, height: bmp.height, data: ctx.getImageData(0, 0, bmp.width, bmp.height).data };
-    } catch { return null; }
-  };
-  const img = await stitchTiles(meta, bbox, W, H, getTile, { maxTiles: 160 });
-  if (!img) return null;
-  const out = document.createElement('canvas');
-  out.width = W; out.height = H;
-  out.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(img.data.buffer), W, H), 0, 0);
-  return new Promise((ok) => out.toBlob(ok, 'image/jpeg', 0.92));
-}
-
-/** The stitched picture to the Worker, for a detector; resolves to its key. */
-async function uploadCountyFrame(svc, served, blob) {
-  try {
-    const q = new URLSearchParams({ svc: svc.id, lng: served.lng, lat: served.lat, zoom: served.zoom,
-      size: served.size, height: served.height || served.size });
-    const res = await fetch(`/api/county-frame?${q}`, { method: 'POST', body: blob, headers: { 'Content-Type': 'image/jpeg' } });
-    return res.ok ? (await res.json()).key || null : null;
-  } catch { return null; }
-}
 
 /** A picture (URL or blob) as RGBA on a w x h canvas. */
 async function rgbaOf(source, w, h) {
@@ -12778,9 +12687,6 @@ function reset() {
   state.countyAlign = null;
   state.countySvc = null;
   state.countyNext = [];
-  state.countyFrameKey = null;
-  state.countyFrameUpload = null;
-  state.countyFrameFor = null;
   state.alignBlobs = {};
   state.provider = 'mapbox';
   state.model = state.defaultModel;

@@ -385,7 +385,6 @@ export function countyExportUrl(svc, frame) {
      stitched from the tiles (index.js handleImagery, tile-mosaic.js), so a
      detector is pointed here. */
   if (svc.tiled) {
-    if (svc.frameUrl) return svc.frameUrl;
     if (!svc.selfOrigin) return null;
     return `${svc.selfOrigin}/api/imagery?` + new URLSearchParams({
       lng: frame.lng, lat: frame.lat, zoom: frame.zoom, size: frame.size,
