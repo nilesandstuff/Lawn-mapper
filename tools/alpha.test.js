@@ -54,6 +54,15 @@ assert.ok(!isAlphaId('alpha-../../etc'));
   assert.equal(got.version, 'v1');
   assert.equal(put[0][0], 'alpha/masks/fc-1234567.png');
   assert.equal(Buffer.from(put[0][1]).toString(), 'png!');
+  assert.equal(got.raw, null, 'no raw picture when the release did not send one');
+
+  /* With the decoder's own picture: kept beside the mask, served with raw=1. */
+  globalThis.fetch = async () => new Response(JSON.stringify({ status: 'succeeded',
+    mask: Buffer.from('png!').toString('base64'), prob: Buffer.from('prob!').toString('base64'), version: 'v1' }));
+  const withRaw = await pollAlpha(env, 'alpha-fc-1234567', 'https://lawn.example');
+  assert.equal(withRaw.raw, 'https://lawn.example/api/alpha-mask?id=alpha-fc-1234567&raw=1');
+  assert.equal(put[2][0], 'alpha/masks/fc-1234567-raw.png');
+  assert.equal(Buffer.from(put[2][1]).toString(), 'prob!');
 
   globalThis.fetch = async () => new Response(JSON.stringify({ status: 'running' }));
   assert.equal((await pollAlpha(env, 'alpha-fc-1234567', 'x')).status, 'processing');
@@ -70,6 +79,9 @@ assert.ok(!isAlphaId('alpha-../../etc'));
   assert.equal((await alphaMaskResponse(env, 'alpha-fc-1234567')).status, 200);
   assert.equal((await alphaMaskResponse(env, 'alpha-fc-7654321')).status, 404);
   assert.equal((await alphaMaskResponse(env, '../secret')).status, 404);
+  const rawEnv = { CORPUS: { get: async (k) => (k === 'alpha/masks/fc-1234567-raw.png' ? { body: 'r' } : null) } };
+  assert.equal((await alphaMaskResponse(rawEnv, 'alpha-fc-1234567', {}, { raw: true })).status, 200);
+  assert.equal((await alphaMaskResponse(rawEnv, 'alpha-fc-1234567')).status, 404, 'raw only when asked');
 }
 
 /* Loop 2: a lot is framed as the app frames it; scores reach SQL only when well formed. */

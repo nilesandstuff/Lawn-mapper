@@ -85,9 +85,19 @@ export async function pollAlpha(env, id, selfOrigin) {
   }
   const bytes = Uint8Array.from(atob(r.mask), (c) => c.charCodeAt(0));
   await env.CORPUS.put(`${MASKS}${call}.png`, bytes, { httpMetadata: { contentType: 'image/png' } });
+  /* The decoder's picture before any of the finishing steps, for the app's
+     "show the raw AI mask" -- the finished mask is the outline itself, so
+     drawing it over the photo can never look different from the outline. */
+  let raw = null;
+  if (typeof r.prob === 'string' && r.prob) {
+    const probBytes = Uint8Array.from(atob(r.prob), (c) => c.charCodeAt(0));
+    await env.CORPUS.put(`${MASKS}${call}-raw.png`, probBytes, { httpMetadata: { contentType: 'image/png' } });
+    raw = `${selfOrigin}/api/alpha-mask?id=${encodeURIComponent(id)}&raw=1`;
+  }
   return {
     status: 'succeeded',
     mask: `${selfOrigin}/api/alpha-mask?id=${encodeURIComponent(id)}`,
+    raw,
     detail: null,
     /* For the corpus (feedback loop 1: which release drew the outline being
        corrected) and the queue (loop 2: how unsure it was). */
@@ -98,10 +108,10 @@ export async function pollAlpha(env, id, selfOrigin) {
   };
 }
 
-/** The finished mask, from R2. */
-export async function alphaMaskResponse(env, id, headers = {}) {
+/** The finished mask (or with `raw`, the decoder's own picture), from R2. */
+export async function alphaMaskResponse(env, id, headers = {}, { raw = false } = {}) {
   if (!isAlphaId(id) || !env?.CORPUS) return new Response('Not found', { status: 404, headers });
-  const obj = await env.CORPUS.get(`${MASKS}${id.slice(PREFIX.length)}.png`);
+  const obj = await env.CORPUS.get(`${MASKS}${id.slice(PREFIX.length)}${raw ? '-raw' : ''}.png`);
   if (!obj) return new Response('Not found', { status: 404, headers });
   return new Response(obj.body, {
     headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=3600', ...headers },

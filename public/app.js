@@ -4799,10 +4799,12 @@ async function detect({ again = false } = {}) {
               ? `The detector returned nothing for "${label}".`
               : 'The detector returned no mask. Try drawing it by hand.');
           }
-          return { col: tile.col || 0, row: tile.row || 0, url, image: await loadMask(url) };
+          return { col: tile.col || 0, row: tile.row || 0, url, image: await loadMask(url), raw: done.raw || null };
         }));
         return {
           url: pieces[0].url,
+          /* The trained model's own picture, before its finishing steps (alpha.js). */
+          raw: pieces.length === 1 ? pieces[0].raw : null,
           exclusion: pass.exclusion || null,
           label,
           image: pieces.length === 1
@@ -5373,9 +5375,31 @@ function loadMask(url) {
  * grass it traced; if it is wrong, the misalignment is obvious at a glance.
  * Cheap insurance against the one assumption this app cannot verify offline.
  */
-function showOverlay() {
+async function showOverlay() {
   if (!state.lastMask) return;
   hideOverlay();
+  /*
+   * THE TRAINED MODEL'S OWN PICTURE when it sent one. Its finished mask is
+   * already clipped to the property line with the gaps filled -- the outline
+   * itself -- so drawing that over the photo could never look different from
+   * the outline (owner, 2026-10-02: "not working with the trained model").
+   * The decoder's picture is greyscale, brighter where it is surer.
+   */
+  const mask = state.lastMask;
+  const raw = mask.layers?.[0]?.raw;
+  if (raw) {
+    let image = null;
+    try { image = await loadMask(raw); } catch { image = null; }
+    if (state.lastMask !== mask || !$('#toggle-overlay').checked) return;
+    if (image) {
+      hideOverlay();
+      const canvas = document.createElement('canvas');
+      canvas.width = image.width; canvas.height = image.height;
+      canvas.getContext('2d').putImageData(image, 0, 0);
+      addOverlay(canvas.toDataURL('image/png'), mask);
+      return;
+    }
+  }
   /*
    * The bitmap the tracer read, not the file the detector wrote. They were
    * the same thing until big lots were cut into pieces: now the first
@@ -5397,10 +5421,14 @@ function showOverlay() {
     );
     url = canvas.toDataURL('image/png');
   }
+  addOverlay(url, state.lastMask);
+}
+
+function addOverlay(url, mask) {
   map.addSource('mask-overlay', {
     type: 'image',
     url,
-    coordinates: frameCorners(state.lastMask.traceFrame || state.lastMask.frame),
+    coordinates: frameCorners(mask.traceFrame || mask.frame),
   });
   map.addLayer({
     id: 'mask-overlay', type: 'raster', source: 'mask-overlay',
@@ -5440,7 +5468,9 @@ function refreshOverlayLabel() {
       + 'so it covers what was removed, not the lawn'
     : mask?.invert
       ? 'Show the raw AI mask — this covers what was removed, not the lawn'
-      : 'Show the raw AI mask (alignment check)';
+      : first?.raw
+        ? "Show the raw AI mask — the trained model's own picture, before the property line (alignment check)"
+        : 'Show the raw AI mask (alignment check)';
 }
 
 /* --------------------------------------------------------- imagery source */

@@ -559,7 +559,8 @@ async function handleMask(url, origin, env) {
      there rather than fetching ourselves over the network. Same host only --
      this is not a way to widen the list below. */
   if (target.host === url.host && target.pathname === '/api/alpha-mask') {
-    return alphaMaskResponse(env, target.searchParams.get('id') || '', cors(origin));
+    return alphaMaskResponse(env, target.searchParams.get('id') || '', cors(origin),
+      { raw: target.searchParams.get('raw') === '1' });
   }
 
   // Without this check the endpoint is an open proxy: anyone could use the
@@ -1602,7 +1603,8 @@ export default {
         case '/api/mask':
           return await handleMask(url, origin, env);
         case '/api/alpha-mask':
-          return await alphaMaskResponse(env, url.searchParams.get('id') || '', cors(origin));
+          return await alphaMaskResponse(env, url.searchParams.get('id') || '', cors(origin),
+            { raw: url.searchParams.get('raw') === '1' });
         case '/api/prediction':
           return await handlePrediction(url, env, origin);
         case '/api/parcel':

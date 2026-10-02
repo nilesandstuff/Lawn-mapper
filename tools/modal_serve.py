@@ -237,8 +237,14 @@ class Alpha:
                                    "frame": frame, "parcel": payload.get("parcel")})
             with open(os.path.join(d, "final.png"), "rb") as f:
                 mask = base64.b64encode(f.read()).decode()
+            # The decoder's own picture, before the property line, the gap
+            # filling and the canopy/roof steps: what the app's "show the raw
+            # AI mask" draws, so a misplaced outline can be told from a
+            # misread photo (owner, 2026-10-02).
+            with open(os.path.join(d, "prob.png"), "rb") as f:
+                prob = base64.b64encode(f.read()).decode()
         return {
-            "mask": mask, "w": prep["w"], "h": prep["h"], "version": self.version,
+            "mask": mask, "prob": prob, "w": prep["w"], "h": prep["h"], "version": self.version,
             "uncertainty": fin.get("uncertainty"), "lawnCells": fin.get("lawnCells"),
             "used": {"lidar": rec["lidar"], "naip": rec["naip"]},
             "seconds": {**rec["seconds"], "total": round(time.time() - t0, 1)},
