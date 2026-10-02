@@ -81,10 +81,10 @@ export const MAX_AGE_YEARS = 10;
 export const oldestYear = (now = new Date()) => now.getUTCFullYear() - MAX_AGE_YEARS;
 
 /*
- * Two photos this close in measured detail are as sharp as each other, and
- * the newer one is offered first.
+ * Sharp enough: the catalogue's line (tools/county-imagery.js
+ * DETAIL_AT_12CM), between NAIP's 0.05 and the 0.16-0.33 of 5-15 cm flights.
  */
-const DETAIL_TIE = 0.02;
+export const SHARP_AT_12CM = 0.10;
 
 /**
  * The county or state photos for a point, from county_services, best first:
@@ -92,14 +92,15 @@ const DETAIL_TIE = 0.02;
  * whose box covers the point and is no bigger than a state, flown within the
  * last ten years.
  *
- * SHARPEST FIRST, NOT NEWEST (owner, 2026-10-02: "the 2020 imagery for
- * Marquette county is much clearer than the 2025"). Each candidate is looked
- * at over the spot itself at 12 cm a pixel and its fine detail measured
- * (lib/sharpness.js, the measure the catalogue and the editor's
- * county-vs-Mapbox check use); the most detailed is offered first, the newer
- * of two that measure alike. The editor tries them in order and takes the
- * first with no gaps over the lot -- a box says where a service might have
- * pictures, not that it has one here.
+ * THE NEWEST SHARP ONE (owner, 2026-10-02: "the 2020 imagery for Marquette
+ * county is much clearer than the 2025... start at the newest and work
+ * backwards until there's a hit with sufficient resolution"). Each candidate
+ * is looked at over the spot itself at 12 cm a pixel and its fine detail
+ * measured (lib/sharpness.js, the measure the catalogue uses). Newest first,
+ * passing over any that measure under SHARP_AT_12CM; those come after, still
+ * newest first, as a last resort. The editor tries them in order and takes
+ * the first with no gaps over the lot -- a box says where a service might
+ * have pictures, not that it has one here.
  */
 export async function countyServicesAt(env, lng, lat, n = 4, { probe = true, fetcher = fetch, now = new Date() } = {}) {
   if (!env?.DB || !Number.isFinite(lng) || !Number.isFinite(lat)) return [];
@@ -124,15 +125,13 @@ export async function countyServicesAt(env, lng, lat, n = 4, { probe = true, fet
    * editor's own gap and sharpness checks still stand behind this.
    */
   const looks = await Promise.all(list.map((svc) => measureService(svc, lng, lat, { fetcher })));
+  /* Still newest first, as the query put them. */
   const yes = list.map((svc, i) => ({ svc, ...looks[i] })).filter((l) => l.ok === true);
-  yes.sort((a, b) => {
-    const da = a.detail ?? -1, db = b.detail ?? -1;
-    if (Math.abs(da - db) > DETAIL_TIE) return db - da;
-    return (b.svc.year ?? 0) - (a.svc.year ?? 0);
-  });
   for (const l of yes) l.svc.detail = l.detail === null ? null : Math.round(l.detail * 1000) / 1000;
+  const soft = (l) => l.detail !== null && l.detail < SHARP_AT_12CM;
   const unsure = list.filter((_, i) => looks[i].ok === null);
-  return [...yes.map((l) => l.svc), ...unsure].slice(0, n);
+  return [...yes.filter((l) => !soft(l)).map((l) => l.svc), ...unsure,
+    ...yes.filter(soft).map((l) => l.svc)].slice(0, n);
 }
 
 /** True: ground here. False: nothing, or not a photo. Null: no answer. */
