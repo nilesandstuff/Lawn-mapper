@@ -246,9 +246,12 @@ on:
         # public outlines (H57, H61: mostly the middle of a road or a roof,
         # rarely an edge). "on" writes each approved lot's traces beside its
         # labels as <id>-notlawn.png, and the decoders grade those cells as not
-        # lawn, even outside the property line. Off by default until measured.
-        # The cache ignores the traces, so either setting reuses the features.
-        description: 'Train with the not-lawn traces drawn in tinker mode (on) or without (off)'
+        # lawn, even outside the property line. "on" also adds every approved
+        # not-lawn-only map (owner, 2026-10-02) as an example frame graded
+        # only inside its traces. Off by default until measured. The cache
+        # ignores the per-lot traces; the example frames are new photographs,
+        # so their features are extracted (and cached) like any frame's.
+        description: 'Train with the not-lawn traces drawn in tinker mode, and approved not-lawn-only maps (on), or without (off)'
         type: choice
         default: 'off'
         options: ['off', 'on']
@@ -394,6 +397,19 @@ jobs:
           LAWN_SET: ${{ inputs.lawns == 'benchmark, 10 folds' && 'benchmark' || inputs.lawns }}
           PHOTOS: ${{ inputs.photos }}
         run: node tools/train-detector.js
+
+      # APPROVED NOT-LAWN-ONLY MAPS (owner, 2026-10-02: the substitute for the
+      # public outlines, mostly for ponds) as example frames beside the lots:
+      # graded "not lawn" inside their traces and nothing anywhere else, so
+      # they say nothing about what surrounds a pond. Trained on, never held
+      # out, never scored (train_decoder.py, ':example:').
+      - name: Add the approved not-lawn-only maps
+        if: ${{ inputs.not_lawn == 'on' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CORPUS_BUCKET: lawn-mapper-corpus
+        run: node tools/not-lawn-examples.js maps frames
 
       # That the windows land where the photograph has them, before twenty
       # minutes of extraction relies on it. A stitch off by a patch does not

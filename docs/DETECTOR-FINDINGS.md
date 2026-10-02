@@ -98,6 +98,15 @@ got here. Update it whenever the in-flight run changes.*
   (default off until measured), and graded "not lawn" by the decoder and the
   edge refiner -- even outside the property line. The cache ignores them.
   The `examples` input and its step are gone; tools/not-lawn-examples.js stays.
+- **Not-lawn-only maps as examples (owner, 2026-10-02)** -- mostly for ponds,
+  which the corpus barely has in lawns. A map of only not-lawn traces, once
+  approved on the console (status `notlawn-approved`), is added by workflow 14
+  with `not_lawn: on` as an EXAMPLE frame (`:example:` id): graded "not lawn"
+  inside its traces and NOT AT ALL elsewhere, because "the not lawn shapes may
+  not necessarily be surrounded by lawn". Trained on, never held out, never
+  scored -- the same handling the approved public outlines had. Its photo is
+  the map's own banked one. Nothing measured yet: a `not_lawn: on` run from
+  now on is not comparable with one before it once such maps exist.
 - **The pictures of S20's runs are the PLAIN decoder's, not THE PLAN's**
   (found 2026-09-29 from the owner's report that the edge-refiner layers were
   empty): the drawn-row lookup took the first row that could be THE PLAN's,

@@ -3579,11 +3579,19 @@ console.log('\n--- tinker: neighbours and merging ---');
   }));
   check('with only not-lawn traces on the map, Finish is offered',
     onlyNl.sq === 0 && onlyNl.nl > 0 && onlyNl.finish, JSON.stringify(onlyNl));
+  const showing = await tp.evaluate(() => document.querySelector('#imagery-source')?.value || 'mapbox');
+  const sent = tp.waitForRequest((r) => r.url().includes('/api/finished'), { timeout: 15000 })
+    .then((r) => JSON.parse(r.postData() || '{}')).catch(() => ({}));
   const saved = tp.waitForResponse((r) => r.url().includes('/api/finished'), { timeout: 15000 })
     .then((r) => r.json()).catch((e) => ({ ok: false, reason: e.message }));
   await tp.evaluate(() => document.querySelector('#btn-finish')?.click());
   const answer = await saved;
   check('and the server keeps it', answer.ok === true, JSON.stringify(answer));
+  /* Owner, 2026-10-02: a map finished on the county photo was recorded as
+     Mapbox. What is recorded is the photo on screen at Finish. */
+  const body = await sent;
+  check('and records the photo on screen when it was finished', body.provider === showing,
+    `showing ${showing}, recorded ${body.provider}`);
 
   /*
    * BEFORE SAVING, DID THE PHOTO LINE UP? (owner, 2026-10-01). Having looked

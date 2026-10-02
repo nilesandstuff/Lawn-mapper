@@ -13331,10 +13331,20 @@ function finishedBody() {
       // Whether the line is a county record or a person's best guess. The
       // model is scored only inside it, so the two are not equal ground truth.
       parcelSource: state.parcel ? (state.parcel.properties?.drawn ? 'hand' : 'county') : null,
-      provider: state.detectedWith || state.provider,
+      /*
+       * THE PHOTO ON SCREEN WHEN IT WAS FINISHED, which is the one the outline
+       * was last drawn and corrected on, and so the one it is kept with
+       * (owner, 2026-10-02: "saving as county photo should save it as county
+       * photo"). It was `detectedWith || provider`, and a reopened map sets
+       * detectedWith from its last save -- so a map once recorded as Mapbox
+       * stayed Mapbox however it was saved again, county photo on screen or
+       * not. A look-only source (Google, Esri) still banks Mapbox's
+       * (corpus.js imageSourceFor), and the card says so.
+       */
+      provider: state.provider,
       /* Made on a county photo: which one, and how it was shown, so the
          Worker can keep that photo with the map (county-picture.js). */
-      ...((state.detectedWith || state.provider) === 'county' && state.countySvc
+      ...(state.provider === 'county' && state.countySvc
         ? { countySvc: state.countySvc.id, countyAlign: state.countyAlign || null } : {}),
       model: state.detectedBy || null,
       /* Which release drew the outline being corrected (feedback loop 1). */

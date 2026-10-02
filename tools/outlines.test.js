@@ -166,3 +166,21 @@ console.log('PASS  the fetch tool and the worker agree on where a map\'s outline
   assert.deepEqual(imageDims(png), { w: 1272, h: 1216 });
   console.log('PASS  examples as training frames: kept outlines only, shifts applied, drafts give nothing');
 }
+
+// Approved not-lawn-only maps become example frames too (owner, 2026-10-02):
+// graded inside their traces only, under an id train_decoder.py treats as an example.
+{
+  const { notLawnMask, mapExampleId } = await import('./not-lawn-examples.js');
+  const { framePxToLngLat } = await import('../public/lib/mercator.js');
+  const frame = { lng: -85.57636, lat: 43.08681, zoom: 18, size: 400, height: 300 };
+  const sq = (x, y, s) => [[x, y], [x + s, y], [x + s, y + s], [x, y + s], [x, y]].map((p) => framePxToLngLat(frame, p, 100, 75));
+  const pond = { type: 'Polygon', coordinates: [sq(20, 20, 10)] };
+  const m = notLawnMask([pond, { geometry: { type: 'Polygon', coordinates: [sq(70, 50, 5)] } }], frame, 100, 75);
+  assert.equal(m[25 * 100 + 25], 1, 'inside the pond');
+  assert.equal(m[60 * 100 + 10], 0, 'nothing outside the traces is graded');
+  assert.equal(m[52 * 100 + 72], 1, 'a trace stored as a Feature counts too');
+  const id = mapExampleId({ id: '-85.57636,43.08681:alpha:find' }, frame);
+  assert.ok(id.includes(':example:'), id);
+  assert.match(id, /^-85\.57636,43\.08681:example:map-/);
+  console.log('PASS  approved not-lawn-only maps: graded inside their traces only, as examples');
+}

@@ -256,6 +256,80 @@ async function framesMode(dir) {
     + `outlines kept: ${Object.entries(counts).map(([c, n]) => `${c} ${n}`).join(', ') || 'none'}.`);
 }
 
+/*
+ * APPROVED NOT-LAWN-ONLY MAPS AS EXAMPLE FRAMES (owner, 2026-10-02): the
+ * substitute for the public outlines, mostly for ponds, which the corpus has
+ * almost none of in lawns. A map of only not-lawn traces, once approved on
+ * the console ('notlawn-approved'), says "this shape is not lawn" and nothing
+ * about its surroundings -- "the not lawn shapes may not necessarily be
+ * surrounded by lawn". So it is written exactly as an approved public outline
+ * was: G (graded) 255 inside the traces and 0 everywhere else, R (lawn) 0, and
+ * an id carrying ':example:', which train_decoder.py trains on, never holds
+ * out and never scores. Its photo is the map's own banked one, on its
+ * image_frame -- the county photo for a map made on one.
+ */
+export const mapExampleId = (row, frame) => `${frame.lng.toFixed(5)},${frame.lat.toFixed(5)}:example:map-${
+  String(row.id).replace(/[^A-Za-z0-9]+/g, '').slice(-12)}`;
+
+/** A map's not-lawn traces as a mask on a w x h grid over `frame`. */
+export function notLawnMask(notLawn, frame, w, h) {
+  const out = new Uint8Array(w * h);
+  const project = (ll) => lngLatToFramePx(frame, ll, w, h);
+  for (const f of notLawn || []) {
+    const g = f?.geometry || f;
+    const polys = g?.type === 'Polygon' ? [g.coordinates] : g?.type === 'MultiPolygon' ? g.coordinates : [];
+    for (const rings of polys) {
+      const m = rasterizePolygon(rings, w, h, project);
+      for (let i = 0; i < m.length; i++) if (m[i]) out[i] = 1;
+    }
+  }
+  return out;
+}
+
+async function mapsMode(dir) {
+  const { PNG } = await import('pngjs');
+  const { gridDims } = await import('./train-detector.js');
+  const scalePath = join(dir, 'scale.json');
+  const scale = JSON.parse(readFileSync(scalePath, 'utf8'));
+  for (const k of ['frames', 'downs', 'boxes', 'storedPx', 'storedPy']) scale[k] = scale[k] || {};
+  let rows = [];
+  try {
+    rows = query(`SELECT id, image_key, image_frame, not_lawn FROM corpus
+                   WHERE status = 'notlawn-approved' AND image_key IS NOT NULL AND image_frame IS NOT NULL`);
+  } catch (e) {
+    console.log(`Could not read the approved not-lawn maps (${e.message}); none written.`);
+    return;
+  }
+  let written = 0;
+  for (const row of rows) {
+    const frame = JSON.parse(row.image_frame);
+    const { w, h } = gridDims(frame);
+    const mask = notLawnMask(JSON.parse(row.not_lawn || '[]'), frame, w, h);
+    if (!mask.some(Boolean)) { console.log(`  ${row.id}: no trace inside its photo, left out`); continue; }
+    const img = wranglerGet(`${BUCKET}/${row.image_key}`);
+    if (!img.ok) { console.log(`  ${row.id}: photo not read, left out`); continue; }
+    const fid = mapExampleId(row, frame);
+    writeFileSync(join(dir, `${fid}.png`), readFileSync(TMP));
+    const png = new PNG({ width: w, height: h });
+    for (let k = 0; k < w * h; k++) {
+      png.data[k * 4] = 0; png.data[k * 4 + 1] = mask[k] ? 255 : 0; png.data[k * 4 + 2] = 0; png.data[k * 4 + 3] = 255;
+    }
+    writeFileSync(join(dir, `${fid}-labels.png`), PNG.sync.write(png));
+    const across = metresPerPixel(frame, 1);
+    const height = frame.height || frame.size;
+    scale.frames[fid] = across;
+    scale.downs[fid] = across * (height / frame.size);
+    scale.boxes[fid] = frameBbox3857(frame);
+    const dims = imageDims(readFileSync(TMP)) || { w: frame.size * 2, h: height * 2 };
+    scale.storedPx[fid] = dims.w;
+    scale.storedPy[fid] = dims.h;
+    written++;
+  }
+  writeFileSync(scalePath, JSON.stringify(scale));
+  console.log(`${written} of ${rows.length} approved not-lawn-only maps written as example frames `
+    + '(graded inside their traces only).');
+}
+
 if (process.argv[1] && process.argv[1].endsWith('not-lawn-examples.js')) {
   const [cmd, a, b] = process.argv.slice(2);
   if (cmd === 'seeds') seeds();
@@ -263,5 +337,6 @@ if (process.argv[1] && process.argv[1].endsWith('not-lawn-examples.js')) {
   else if (cmd === 'upload') upload(a || 'examples');
   else if (cmd === 'audit') audit();
   else if (cmd === 'frames') await framesMode(a || 'frames');
-  else { console.error('usage: not-lawn-examples.js seeds | fetch candidates.json DIR | upload DIR'); process.exit(2); }
+  else if (cmd === 'maps') await mapsMode(a || 'frames');
+  else { console.error('usage: not-lawn-examples.js seeds | fetch candidates.json DIR | upload DIR | frames DIR | maps DIR'); process.exit(2); }
 }
