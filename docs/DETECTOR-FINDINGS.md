@@ -850,6 +850,28 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H66. County photo catalogue, first full sweep: 1,491 services; 2,707 of 3,427 sweep points (79%) have a county or state photo, 2026-10-02
+
+*Workflow 8, county_mode catalogue, four passes because each hit the 340-min
+limit and resumed: 36915622764, 36954939684, 36982672486, then 37018721378
+(completed 15:35 UTC, commit 0fe35bf). Qualifying rule as in
+tools/county-imagery.js on that commit: a photograph, 2012 or later, 25 cm or
+finer, picture checked at the point (flat, transparent, NAIP, habitat and
+land-cover layers refused). The final pass's own summary, verbatim:*
+
+    1491 in the catalogue: 1093 draw any box, 328 tiles only (stitched live
+    by the Worker), 70 tiles in another projection (not used live yet).
+    Points swept: 3427, 2707 with a county or state photo service.
+
+- **A sweep point is not a person's address:** points are each county's parcel
+  layer centre, or a 0.5 degree grid for statewide parcel services, so 79% is
+  coverage of those points, not of homes or of land area.
+- **Not in the 1,491:** services that refused without a token (seen in every
+  pass, e.g. "arcgis 499 Token Required" in North Carolina and Wyoming), and
+  the 70 tile caches in a projection the live app cannot stitch yet.
+- Service ids are stable across passes (upsert on url). An apparent change
+  (Blaine's 2026 Nearmap 379 -> 3) was a log line cut at 110 characters.
+
 ### H65. A live county-photo detection (Blaine County ID, 2026 Nearmap tile cache) traced 1.5-2 m south of the photo's features: the uploaded picture was of the frame before the property line moved, 2026-10-02
 
 *Owner's report from the live app, not a run: the trained model (alpha
