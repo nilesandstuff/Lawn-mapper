@@ -899,6 +899,12 @@ async function realign(row, decoders, dir) {
 const SWEEP_STEP = Number(process.env.SWEEP_STEP || 0.5); // degrees, statewide grids
 const ONLY_KEY = process.env.ONLY_KEY || '';
 const RETRY_BEFORE = '2026-10-02T02:20:00Z';
+/* Every point looked at before layers named after the vendor counted as
+   imagery (commit 5b7e827, 02:01 UTC) is looked at again, services found or
+   not (owner, 2026-10-02: the cleanup after the first full sweep). The first
+   pass, AK to IL, ran on the older code: a county there with a 2018 ortho
+   found could still have a "2026_Nearmap" it never recognised. */
+const VENDOR_SINCE = '2026-10-02T02:01:00Z';
 
 /** A service's extent as [west, south, east, north] in degrees. */
 export async function extentLngLat(m) {
@@ -1060,7 +1066,8 @@ async function catalogue(decoders) {
      give their projection only as WKT, Kent County's among them) are looked
      at again once. */
   const swept = new Set(query(`SELECT point FROM county_sweep
-                                WHERE NOT (found = 0 AND checked_at < '${RETRY_BEFORE}')`).map((r) => r.point));
+                                WHERE NOT ((found = 0 AND checked_at < '${RETRY_BEFORE}')
+                                           OR checked_at < '${VENDOR_SINCE}')`).map((r) => r.point));
   /* ONLY_KEY: one county now (an owner's request), looked at again. */
   const keys = ONLY_KEY ? ONLY_KEY.split(',').map((k) => k.trim()).filter((k) => ALL_COUNTIES[k])
     : Object.keys(ALL_COUNTIES).slice(0, Math.max(1, LIMIT));
