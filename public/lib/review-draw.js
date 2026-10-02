@@ -24,6 +24,8 @@ export const REVIEW_COLOURS = {
   // Lawn the reviewer knows is there and cannot see. Deliberately not a shade
   // of the lawn green: this is a different kind of claim, not a weaker one.
   inferred: '#b388ff',
+  // Ground somebody traced as NOT lawn (tinker mode): a parking lot, a road.
+  notLawn: '#e5484d',
 };
 
 
@@ -144,6 +146,8 @@ export function paint(canvas, c, { showAi = false } = {}) {
       for (const g of c.detectedShapes) ring(g, REVIEW_COLOURS.ai, 2);
       ctx.setLineDash([]);
     }
+    /* Not-lawn traces, which a map of only those is entirely made of. */
+    for (const g of c.notLawn || []) ring(g?.geometry || g, REVIEW_COLOURS.notLawn, 2.5, 'rgba(229,72,77,.22)');
   };
 
   if (!c.hasImage) { overlay(); return; }

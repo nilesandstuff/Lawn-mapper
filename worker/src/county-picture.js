@@ -18,7 +18,7 @@ import jpeg from 'jpeg-js';
 import { decodePng } from './png-probe.js';
 import { stitch } from './tile-mosaic.js';
 import { serviceMeta, countyServiceById } from './county.js';
-import { frameBbox3857, countyBoxUrl, captureFrame, imagePixels, imageHeightPixels } from './imagery.js';
+import { frameBbox3857, countyBoxUrl, liveCaptureFrame, imagePixels, imageHeightPixels } from './imagery.js';
 import { encodePng } from './tile-mosaic.js';
 import { imageKeyFor, storeImage, naipAlignOf } from './corpus.js';
 
@@ -113,7 +113,7 @@ export async function storeCountyImage(env, row, { svcId, align = null, fetcher 
   if (!env?.CORPUS || !env?.DB || !row?.frame || row.provider !== 'county') return { ok: false, reason: 'not-county' };
   const svc = await countyServiceById(env, svcId);
   if (!svc) return { ok: false, reason: 'no-service' };
-  const shot = captureFrame(row.frame);
+  const shot = liveCaptureFrame(row.frame);
   const W = imagePixels(shot.frame), H = imageHeightPixels(shot.frame);
   try {
     const img = await countyPicture(svc, shot.frame, { W, H, align, fetcher });

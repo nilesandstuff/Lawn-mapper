@@ -113,7 +113,7 @@ export const MAX_TILES_ACROSS = 2;
  * different from what was asked, the frame is clamped and the caller is handed
  * the ground size it actually achieved, so nothing downstream has to guess.
  */
-export function captureFrame(frame, target = TARGET_GROUND_M) {
+export function captureFrame(frame, target = TARGET_GROUND_M, { maxLogical = MAX_LOGICAL * MAX_TILES_ACROSS } = {}) {
   const across = groundAcross(frame);
   const down = groundDown(frame);
   const height0 = frameHeight(frame);
@@ -140,7 +140,7 @@ export function captureFrame(frame, target = TARGET_GROUND_M) {
   const longM = Math.max(across, down);
   const long0 = Math.max(frame.size, height0);
   const wanted = Math.ceil(longM / target / 2);
-  const ceiling = MAX_LOGICAL * MAX_TILES_ACROSS;
+  const ceiling = maxLogical;
   const long = Math.min(ceiling, Math.max(long0, wanted));
   const factor = long / long0;
   const size = Math.round(frame.size * factor);
@@ -189,6 +189,20 @@ export function captureFrame(frame, target = TARGET_GROUND_M) {
  * Returns tiles in reading order with their column and row, so a caller can
  * paste each one at (col * px, row * px) without recomputing anything.
  */
+/**
+ * THE FRAME FOR ONE LIVE REQUEST: captureFrame held to what Mapbox serves in
+ * one picture (owner's report, 2026-10-02: a 620 m not-lawn map in Kent
+ * County saved no photo). The Worker's banking and the trained model each
+ * make ONE request, and Mapbox refuses anything over 1280 logical pixels, so
+ * the full plan's 2560 got nothing at all for every frame past about 256 m --
+ * no photo, and no trained-model detection. Here such a lot is photographed
+ * coarser (a 620 m frame at 24 cm a pixel), flagged `capped`; workflow 21
+ * (tools/refetch-imagery.js) still re-banks it at full resolution from
+ * capturePlan's tiles.
+ */
+export const liveCaptureFrame = (frame, target = TARGET_GROUND_M) =>
+  captureFrame(frame, target, { maxLogical: MAX_LOGICAL });
+
 export function capturePlan(frame, target = TARGET_GROUND_M) {
   const shot = captureFrame(frame, target);
   const { zoom, size, height } = shot.frame;

@@ -15,7 +15,7 @@
  * never be a button that fails.
  */
 
-import { captureFrame, imageryUrl, countyExportUrl } from './imagery.js';
+import { liveCaptureFrame, imageryUrl, countyExportUrl } from './imagery.js';
 
 export const ALPHA_ID = 'alpha';
 const PREFIX = 'alpha-';
@@ -46,7 +46,7 @@ export const isAlphaId = (id) => typeof id === 'string' && id.startsWith(PREFIX)
 export async function startAlpha(env, { frame, parcel = null, naipAlign = null, county = null }) {
   const token = env.MAPBOX_SERVER_TOKEN || env.MAPBOX_TOKEN;
   if (!token) throw new Error('no imagery token');
-  const shot = captureFrame(frame);
+  const shot = liveCaptureFrame(frame);
   /* The county photo, when the lot has one and it was chosen (owner,
      2026-10-01: county photos are not view only). Same capture frame; the
      model reads whatever size comes back at its own 15 cm grid. Trained on

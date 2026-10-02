@@ -382,6 +382,13 @@ function drawCandidate(c) {
   if (c.status === 'approved' || c.status === 'rejected') {
     head.append(el('span', c.status === 'rejected' ? 'pill warn' : 'pill', c.status));
   }
+  /* A map of not-lawn traces only: judged like any other, kept apart from the
+     lawn maps by its own verdicts (see the review route). */
+  if (String(c.status || '').startsWith('notlawn')) {
+    const v = c.status.slice('notlawn-'.length);
+    head.append(el('span', 'pill free', 'not-lawn traces only'));
+    if (v) head.append(el('span', v === 'rejected' ? 'pill warn' : 'pill', v));
+  }
 
   /*
    * Which imagery did they draw on, and is it the one we kept?
@@ -427,6 +434,7 @@ function drawCandidate(c) {
   for (const [label, colour] of [
     ['property line', REVIEW_COLOURS.parcel],
     ['the lawn', REVIEW_COLOURS.lawn],
+    ...((c.notLawn || []).length ? [['not lawn', REVIEW_COLOURS.notLawn]] : []),
     ...(c.detectedShapes && showAi ? [["what the AI drew", REVIEW_COLOURS.ai]] : []),
   ]) {
     const item = el('span');
@@ -583,10 +591,34 @@ function drawCandidate(c) {
   box.append(extras);
 
   if (!c.hasImage) {
-    box.append(el('p', 'meta',
+    const note = el('p', 'meta',
       'No photograph stored for this one, so the outline is drawn on its own. '
       + 'Still reviewable, but nothing can be trained on it until the picture '
-      + 'is fetched.'));
+      + 'is fetched.');
+    box.append(note);
+    /* And the way to fetch it, which this note used to promise without one. */
+    const fetchBtn = el('button', null, 'Fetch the photo now');
+    fetchBtn.addEventListener('click', async () => {
+      fetchBtn.disabled = true;
+      fetchBtn.textContent = 'Fetching…';
+      try {
+        const res = await fetch('/api/admin/fetch-photo', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin', body: JSON.stringify({ id: c.id }),
+        });
+        const got = await res.json().catch(() => ({}));
+        if (!got.hasImage) throw new Error(got.reason || `HTTP ${res.status}`);
+        c.hasImage = true;
+        c.imageFrame = got.imageFrame;
+        c.at = `${c.at || ''}+photo`;
+        drawCandidate(c);
+      } catch (e) {
+        fetchBtn.textContent = 'Fetch the photo now';
+        fetchBtn.disabled = false;
+        note.textContent = `The photo could not be fetched (${e.message}).`;
+      }
+    });
+    box.append(fetchBtn);
   }
 
   const send = async (status) => {

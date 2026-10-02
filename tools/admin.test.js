@@ -2034,5 +2034,47 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
   const again = await ids('?disagreed=1');
   check('saving a map again measures it again', again === '-83.33', again);
 }
+
+/* A MAP OF NOT-LAWN TRACES ONLY CAN BE JUDGED (owner, 2026-10-02: approving one answered 409). */
+{
+  const { env, ownerToken } = await world();
+  const { recordFinished } = await import('../worker/src/corpus.js');
+  const ring = [[-83.5, 41.7], [-83.5, 41.701], [-83.499, 41.701], [-83.499, 41.7], [-83.5, 41.7]];
+  const saved = await recordFinished(env, { lng: -83.5, lat: 41.7, model: 'alpha', mode: 'find',
+    frame: { lng: -83.5, lat: 41.7, zoom: 18, size: 640, height: 640 },
+    shapes: [], notLawn: [{ type: 'Polygon', coordinates: [ring] }], squareFeet: 0 });
+  const id = saved.row.id;
+  const row = async () => env.DB.prepare('SELECT status FROM corpus WHERE id = ?1').bind(id).first();
+  check('a not-lawn-only map is saved apart', (await row()).status === 'notlawn');
+  const r1 = await ask(env, ownerToken, 'review', { method: 'POST', body: { id, status: 'approved', queue: 'admin' } });
+  check('and can be approved', r1.status === 200 && (await row()).status === 'notlawn-approved', `${r1.status} ${(await row()).status}`);
+  const approvedQ = (await ask(env, ownerToken, 'candidates?queue=approved')).body.candidates;
+  check('without joining the approved lawn maps', !approvedQ.some((c) => c.id === id));
+  const r2 = await ask(env, ownerToken, 'review', { method: 'POST', body: { id, status: 'rejected', queue: 'admin' } });
+  check('a stale tap cannot turn it round', r2.status === 409 && (await row()).status === 'notlawn-approved');
+  const r3 = await ask(env, ownerToken, 'review', { method: 'POST', body: { id, status: 'rejected', queue: 'admin', force: true } });
+  check('a deliberate change of mind can', r3.status === 200 && (await row()).status === 'notlawn-rejected');
+}
+
+/* FETCHING A MISSING PHOTO FROM THE CARD (owner, 2026-10-02), for the 620 m
+   Kent frame that banked nothing because it asked Mapbox for 2560 pixels. */
+{
+  const { env, ownerToken } = await world();
+  const { recordFinished } = await import('../worker/src/corpus.js');
+  const frame = { lng: -85.576364, lat: 43.086814, zoom: 15.85, size: 637, height: 256 };
+  const ring = [[-85.58, 43.086], [-85.58, 43.087], [-85.575, 43.087], [-85.575, 43.086], [-85.58, 43.086]];
+  const saved = await recordFinished(env, { lng: frame.lng, lat: frame.lat, model: 'alpha', mode: 'find', provider: 'mapbox',
+    frame, shapes: [], notLawn: [{ type: 'Polygon', coordinates: [ring] }], squareFeet: 0 });
+  const put = [];
+  env.CORPUS = { put: async (k) => put.push(k) };
+  env.MAPBOX_TOKEN = 'pk.test';
+  const real = globalThis.fetch; const asked = [];
+  globalThis.fetch = async (u) => { asked.push(String(u)); return new Response('jpeg', { headers: { 'content-type': 'image/jpeg' } }); };
+  const res = await ask(env, ownerToken, 'fetch-photo', { method: 'POST', body: { id: saved.row.id } });
+  globalThis.fetch = real;
+  const [w, h] = (asked[0]?.match(/\/(\d+)x(\d+)@2x/) || []).slice(1).map(Number);
+  check('the card can fetch a missing photo', res.status === 200 && res.body.hasImage && put.length === 1, JSON.stringify(res.body));
+  check('and a big frame asks Mapbox for no more than it serves', w <= 1280 && h <= 1280, `${w}x${h}`);
+}
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);

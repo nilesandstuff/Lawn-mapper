@@ -27,9 +27,10 @@ import {
 import { limits, limitsForConsole, setLimit, LIMITS } from './limits.js';
 import { logEntries, loggingEnabled } from './testlog.js';
 import { feedbackEntries, feedbackEnabled } from './feedback.js';
-import { corpusGaps, candidateScore } from './corpus.js';
+import { corpusGaps, candidateScore, storeImage } from './corpus.js';
+import { storeCountyImage } from './county-picture.js';
 import { parcelGaps } from './gaps.js';
-import { cleanCountyReview, cleanCountyOutlines } from './county.js';
+import { cleanCountyReview, cleanCountyOutlines, countyServicesAt } from './county.js';
 import { scoreMap } from './score.js';
 import {
   outlineKeys, idOfOutlineKey, applyReview, OUTLINE_PREFIX,
@@ -533,6 +534,7 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
           parcel: r.parcel ? JSON.parse(r.parcel) : null,
           shapes: JSON.parse(r.shapes || '[]'),
           detectedShapes: r.detected_shapes ? JSON.parse(r.detected_shapes) : null,
+          notLawn: r.not_lawn ? JSON.parse(r.not_lawn) : null,
         }));
 
       const waiting = await env.DB.prepare(
@@ -1646,6 +1648,32 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
   }
 
   /* ------------------------------------------------------- the verdict */
+  /*
+   * FETCH A MISSING PHOTO, from the review card (owner, 2026-10-02: a map
+   * whose photo never landed said "nothing can be trained on it until the
+   * picture is fetched", and nothing could fetch it). The same banking a
+   * finished map gets: the county photo for a map made on one (the first
+   * service that answers there; the map does not record which), Mapbox or
+   * NAIP otherwise.
+   */
+  if (path === 'fetch-photo' && request.method === 'POST') {
+    const body = await request.json().catch(() => ({}));
+    const id = String(body?.id || '');
+    const row = await env.DB.prepare('SELECT id, provider, frame, lng, lat FROM corpus WHERE id = ?1').bind(id).first();
+    if (!row?.frame) return json({ ok: false, reason: row ? 'no-frame' : 'no-map' }, 404, origin);
+    const map = { id: row.id, provider: row.provider, frame: JSON.parse(row.frame) };
+    let got;
+    if (row.provider === 'county') {
+      const svc = (await countyServicesAt(env, row.lng, row.lat, 1).catch(() => []))[0];
+      got = svc ? await storeCountyImage(env, map, { svcId: svc.id }) : { ok: false, reason: 'no-county-photo-here' };
+    } else {
+      got = await storeImage(env, map);
+    }
+    const after = await env.DB.prepare('SELECT image_key, image_frame FROM corpus WHERE id = ?1').bind(id).first();
+    return json({ ...got, hasImage: Boolean(after?.image_key),
+      imageFrame: after?.image_frame ? JSON.parse(after.image_frame) : null }, got.ok ? 200 : 502, origin);
+  }
+
   if (path === 'review') {
     if (request.method !== 'POST') return json({ error: 'POST only' }, 405, origin);
     let body;
@@ -1710,8 +1738,16 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
 
     try {
       const res = await env.DB.prepare(
+        /*
+         * A MAP OF NOT-LAWN TRACES ONLY (status 'notlawn', corpus.js) is
+         * judged too (owner, 2026-10-02: approving one answered 409), but its
+         * verdict keeps it apart: 'notlawn-approved' / 'notlawn-rejected', so
+         * nothing that reads status = 'approved' as a lawn map ever reads one
+         * as "this lot has no lawn".
+         */
         `UPDATE corpus
-            SET status = ?2, reviewed_at = ?3, reviewed_by = ?4,
+            SET status = CASE WHEN status LIKE 'notlawn%' THEN 'notlawn-' || ?2 ELSE ?2 END,
+                reviewed_at = ?3, reviewed_by = ?4,
                 review_note = ?5, review_queue = ?6, tree_line = ?7,
                 /*
                  * COALESCE so a later review cannot un-check a map: the
@@ -1721,7 +1757,8 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
                  * does without changing a line.
                  */
                 inferred_checked_at = COALESCE(?9, inferred_checked_at)
-          WHERE id = ?1 AND (?8 = 1 OR status = 'new' OR status = ?2)`
+          WHERE id = ?1 AND (?8 = 1 OR status = 'new' OR status = ?2
+                             OR status = 'notlawn' OR status = 'notlawn-' || ?2)`
       ).bind(
         id, status, new Date().toISOString(), me.email,
         typeof body?.note === 'string' ? body.note.slice(0, 300) : null,

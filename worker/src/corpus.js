@@ -11,7 +11,7 @@
  * a corpus write failed. Every path returns a reason instead.
  */
 
-import { captureFrame, imageryUrl } from './imagery.js';
+import { liveCaptureFrame, imageryUrl } from './imagery.js';
 
 const round = (n) => Math.round(n * 1e6) / 1e6;
 /*
@@ -111,7 +111,7 @@ export async function storeImage(env, row) {
    * better wherever one request can reach it, and never for less than the
    * display frame already managed.
    */
-  const shot = captureFrame(row.frame);
+  const shot = liveCaptureFrame(row.frame);
   const url = imageryUrl(source, shot.frame, token, env);
   if (!url) return { ok: false, reason: 'no-url' };
 

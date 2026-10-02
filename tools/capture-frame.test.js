@@ -25,7 +25,7 @@
 
 import assert from 'node:assert/strict';
 import {
-  captureFrame, capturePlan, detectionPlan, groundPerPixel, groundAcross,
+  captureFrame, liveCaptureFrame, capturePlan, detectionPlan, groundPerPixel, groundAcross,
   TARGET_GROUND_M, MAX_LOGICAL, MAX_TILES_ACROSS,
 } from '../worker/src/imagery.js';
 import { lngLatToWorld } from '../public/lib/mercator.js';
@@ -244,6 +244,23 @@ for (const lat of [25.8, 42.9, 61.2]) {
   const a = lngLatToWorld([at(0).frame.lng, at(0).frame.lat], plan.frame.zoom);
   const b = lngLatToWorld([at(1).frame.lng, at(1).frame.lat], plan.frame.zoom);
   assert.ok(Math.abs((b[0] - a[0]) - plan.tileSize) < 0.01, 'thin lot: columns do not abut');
+}
+
+
+{
+  /*
+   * ONE LIVE REQUEST NEVER ASKS MAPBOX FOR MORE THAN IT SERVES (owner's
+   * report, 2026-10-02): a 620 m not-lawn map in Kent County asked for 2560
+   * logical pixels, Mapbox refused, and nothing was banked.
+   */
+  const big = { lng: -85.576364, lat: 43.086814, zoom: 15.85, size: 637, height: 256 };
+  const live = liveCaptureFrame(big);
+  assert.ok(live.frame.size <= MAX_LOGICAL && live.frame.height <= MAX_LOGICAL, `live asks ${live.frame.size}x${live.frame.height}`);
+  assert.ok(live.capped, 'and says it is coarser than the target');
+  assert.ok(Math.abs(groundAcross(live.frame) - groundAcross(big)) < 1, 'and still covers the frame');
+  assert.ok(captureFrame(big).frame.size > MAX_LOGICAL, 'the full plan is still the tiled one, for workflow 21');
+  const small = { lng: -85.6681, lat: 42.9634, zoom: 19.5, size: 640, height: 600 };
+  assert.deepEqual(liveCaptureFrame(small), captureFrame(small), 'an ordinary lot is unchanged');
 }
 
 console.log('capture frame: ok');
