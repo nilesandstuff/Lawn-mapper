@@ -68,6 +68,7 @@ import {
   catalogueRoot, siblingRoots, pickImagery, yearHints, nativeCm, greyGrid, greenShare,
 } from './compare-imagery.js';
 import { registerImages, applyAffine } from '../public/lib/register.js';
+import { looksLikePhoto } from '../worker/src/png-probe.js';
 import { frameBbox3857 } from '../worker/src/imagery.js';
 import { candidateCounties, ALL_COUNTIES } from '../worker/src/counties.js';
 
@@ -127,7 +128,7 @@ export function agolKeep(results, lng, lat, maxArea = 30) {
  * Massachusetts' "2025 Aerial Imagery - CIR": colour infrared, false colour.
  * Indexes, footprints and elevation layers are not photos either.
  */
-export const NOT_A_PHOTO = /\bcir\b|infra.?red|\bnir\b|ndvi|false.?colou?r|color.?infrared|index|footprint|boundar|tile.?scheme|flight|\blidar|\bdem\b|hillshade|elevation|contour|parcel|topo|labels?\b|reference|\bbw\d*\b|bw\d{4}|black.?(and|&|n).?white|grayscale|greyscale|panchromatic|historic/i;
+export const NOT_A_PHOTO = /\bcir\b|infra.?red|\bnir\b|ndvi|false.?colou?r|color.?infrared|index|footprint|boundar|tile.?scheme|flight|\blidar|\bdem\b|hillshade|elevation|contour|parcel|topo|labels?\b|reference|\bbw\d*\b|bw\d{4}|black.?(and|&|n).?white|grayscale|greyscale|panchromatic|historic|\bnaip|habitat|land.?cover|land.?use|classif/i;
 
 /**
  * Candidates in the order to try them: dropping flights named before
@@ -354,23 +355,48 @@ function exportUrl(c, bbox, w, h) {
  * Web Mercator to the service's own coordinates (proj4, with the definition
  * from epsg.io) and sampled from a mosaic of its tiles.
  */
-const projCache = new Map();
-async function projectionFor(m) {
-  const wkid = m?.spatialReference?.latestWkid || m?.spatialReference?.wkid;
-  if (!wkid) return null;
-  if (!projCache.has(wkid)) {
-    projCache.set(wkid, (async () => {
+/**
+ * A coordinate system as proj4 can read it: from its EPSG code (epsg.io), or
+ * -- when a service gives none, only the WKT text, as Kent County MI's
+ * Orthos2020 does -- the WKT itself, which proj4 parses. Without the second,
+ * Kent's extent came back null and its county photo never reached the
+ * catalogue (owner, 2026-10-02).
+ */
+const defCache = new Map();
+export async function projDef(sr) {
+  const wkid = sr?.latestWkid || sr?.wkid;
+  const key = wkid ? `epsg:${wkid}` : sr?.wkt ? `wkt:${sr.wkt}` : null;
+  if (!key) return null;
+  if (!defCache.has(key)) {
+    defCache.set(key, (async () => {
+      if (!wkid) return sr.wkt;
       try {
         const def = (await (await fetch(`https://epsg.io/${wkid}.proj4`, { signal: AbortSignal.timeout(TIMEOUT_MS) })).text()).trim();
-        if (!def.startsWith('+proj')) return null;
+        return def.startsWith('+proj') ? def : (sr.wkt || null);
+      } catch { return sr.wkt || null; }
+    })());
+  }
+  return defCache.get(key);
+}
+
+/** Feet or metres, from either kind of definition. */
+const unitsToMetres = (def) => (/\+units=us-ft|Foot_US|US survey foot/i.test(def) ? 1200 / 3937
+  : /\+units=ft|UNIT\["Foot",0\.3048\]|"Foot"|International Foot/i.test(def) ? 0.3048 : 1);
+
+const projCache = new Map();
+async function projectionFor(m) {
+  const def = await projDef(m?.spatialReference);
+  if (!def) return null;
+  if (!projCache.has(def)) {
+    projCache.set(def, (async () => {
+      try {
         const proj4 = (await import('proj4')).default;
         const fwd = proj4('EPSG:3857', def);
-        const toMetres = /\+units=us-ft/.test(def) ? 1200 / 3937 : /\+units=ft/.test(def) ? 0.3048 : 1;
-        return { forward: (x, y) => fwd.forward([x, y]), toMetres };
+        return { forward: (x, y) => fwd.forward([x, y]), toMetres: unitsToMetres(def) };
       } catch { return null; }
     })());
   }
-  return projCache.get(wkid);
+  return projCache.get(def);
 }
 
 /** A cached service read tile by tile, for one that will not draw a box. */
@@ -870,13 +896,15 @@ async function realign(row, decoders, dir) {
  */
 
 const SWEEP_STEP = Number(process.env.SWEEP_STEP || 0.5); // degrees, statewide grids
+const RETRY_BEFORE = '2026-10-02T01:50:00Z';
 
 /** A service's extent as [west, south, east, north] in degrees. */
 export async function extentLngLat(m) {
   const ext = m?.fullExtent || m?.extent || m?.initialExtent;
   if (!ext || !Number.isFinite(Number(ext.xmin))) return null;
-  const wkid = ext.spatialReference?.latestWkid || ext.spatialReference?.wkid
-    || m.spatialReference?.latestWkid || m.spatialReference?.wkid;
+  const sr = (ext.spatialReference?.wkid || ext.spatialReference?.latestWkid || ext.spatialReference?.wkt)
+    ? ext.spatialReference : m.spatialReference;
+  const wkid = sr?.latestWkid || sr?.wkid;
   const pts = [];
   for (const fx of [0, 0.5, 1]) for (const fy of [0, 0.5, 1]) {
     pts.push([ext.xmin + (ext.xmax - ext.xmin) * fx, ext.ymin + (ext.ymax - ext.ymin) * fy]);
@@ -887,8 +915,8 @@ export async function extentLngLat(m) {
     ll = pts.map(([x, y]) => [(x / 6378137) * (180 / Math.PI), (2 * Math.atan(Math.exp(y / 6378137)) - Math.PI / 2) * (180 / Math.PI)]);
   } else {
     try {
-      const def = (await (await fetch(`https://epsg.io/${wkid}.proj4`, { signal: AbortSignal.timeout(TIMEOUT_MS) })).text()).trim();
-      if (!def.startsWith('+proj')) return null;
+      const def = await projDef(sr);
+      if (!def) return null;
       const proj4 = (await import('proj4')).default;
       const inv = proj4(def, 'EPSG:4326');
       ll = pts.map((p) => inv.forward(p));
@@ -916,6 +944,10 @@ export async function qualify(c, lng, lat, decoders) {
   const half = 75 / Math.cos((lat * Math.PI) / 180);
   const box = [x - half, y - half, x + half, y + half];
   const img = await getImage(exportUrl(c, box, 256, 256), decoders).catch(() => null);
+  /* A flat picture is a classification or a fill, not a photo: New
+     Hampshire's habitat layer drew a uniform grey (2026-10-02). */
+  if (img && img.width === 256 && img.height === 256 && !looksLikePhoto(img)
+    && coverage(img.data, 256, 256) >= 0.9) return { usable: false, why: 'flat, not a photo' };
   const exportOk = Boolean(img && img.width === 256 && img.height === 256 && coverage(img.data, 256, 256) >= 0.9);
   let tiled = null;
   if (!exportOk) {
@@ -993,7 +1025,11 @@ async function catalogue(decoders) {
   }
 
   /* 2. Every county the app covers. */
-  const swept = new Set(query('SELECT point FROM county_sweep').map((r) => r.point));
+  /* Points that found nothing before the fixes of 2026-10-02 (services that
+     give their projection only as WKT, Kent County's among them) are looked
+     at again once. */
+  const swept = new Set(query(`SELECT point FROM county_sweep
+                                WHERE NOT (found = 0 AND checked_at < '${RETRY_BEFORE}')`).map((r) => r.point));
   const keys = Object.keys(ALL_COUNTIES).slice(0, Math.max(1, LIMIT));
   let n = 0;
   for (const key of keys) {

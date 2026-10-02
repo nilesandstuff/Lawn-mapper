@@ -4,6 +4,9 @@
  *   node tools/county.test.js
  */
 import { cleanCountyReview, cleanCountyOutlines, MAX_NUDGE_M, countyServiceAt, countyServiceById, MAX_SERVICE_SQ_DEG } from '../worker/src/county.js';
+import { decodePng, looksLikePhoto } from '../worker/src/png-probe.js';
+import { probeService } from '../worker/src/county.js';
+import { PNG } from 'pngjs';
 import { providerCatalogue, imageryUrl, detectionProvider, countyExportUrl, frameBbox3857 } from '../worker/src/imagery.js';
 import { FILTERS, shown, stepIn, doubtful, pathFor, polygonsOf, editHref } from '../public/county.js';
 import { lngLatToFramePx } from '../public/lib/mercator.js';
@@ -90,6 +93,28 @@ check('nothing at all is refused', cleanCountyOutlines({ shapes: [], notLawn: []
   check('by id: only a whole number, never a URL', await countyServiceById(env, 'https://evil') === null
     && (await countyServiceById(env, '7'))?.url === 'https://a/ImageServer');
   check('no database, no answer', await countyServiceAt({}, 1, 2) === null);
+}
+
+/* Is there a photograph at the spot? (worker/src/png-probe.js) */
+{
+  const png = (fill, { colorType = 6 } = {}) => {
+    const p = new PNG({ width: 32, height: 32, colorType });
+    for (let i = 0; i < 32 * 32; i++) { const [r, g, b, a] = fill(i); p.data[i * 4] = r; p.data[i * 4 + 1] = g; p.data[i * 4 + 2] = b; p.data[i * 4 + 3] = a; }
+    return new Uint8Array(PNG.sync.write(p, { colorType }));
+  };
+  const ground = (i) => [60 + ((i * 37) % 90), 90 + ((i * 53) % 70), 50 + ((i * 29) % 60), 255];
+  const img = await decodePng(png(ground));
+  check('a PNG is decoded in the Worker, pixel for pixel', img && img.width === 32 && img.data[4 * 5] === ground(5)[0] && img.data[4 * 5 + 1] === ground(5)[1]);
+  check('and an RGB one too', (await decodePng(png(ground, { colorType: 2 })))?.data[3] === 255);
+  check('textured ground is a photo', looksLikePhoto(img));
+  check('flat grey is not (New Hampshire\'s habitat layer)', !looksLikePhoto(await decodePng(png(() => [214, 214, 214, 255]))));
+  check('transparent is not (a box with no picture in it)', !looksLikePhoto(await decodePng(png(() => [0, 0, 0, 0]))));
+  const answer = (bytes) => async () => new Response(bytes, { headers: { 'content-type': 'image/png' } });
+  check('a service is asked for 32 px over the spot and judged on them',
+    await probeService({ url: 'https://x/ImageServer', type: 'ImageServer' }, -85.6, 42.9, { fetcher: answer(png(ground)) }) === true
+    && await probeService({ url: 'https://x/MapServer', type: 'MapServer' }, -85.6, 42.9, { fetcher: answer(png(() => [0, 0, 0, 0])) }) === false);
+  check('and one that does not answer is "not known", not "no"',
+    await probeService({ url: 'https://x/ImageServer', type: 'ImageServer' }, -85.6, 42.9, { fetcher: async () => { throw new Error('timeout'); } }) === null);
 }
 
 if (failures) { console.log(`\n${failures} check(s) FAILED.`); process.exit(1); }

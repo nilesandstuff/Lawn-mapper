@@ -6026,6 +6026,13 @@ async function showImagery() {
       state.countyDetail = k;
       if (k !== null && k < 0.8) {
         idle(); imageryBusyRun = 0;
+        /* The next service that covers this spot may be sharper. */
+        if (state.countyNext?.length) {
+          state.countySvc = state.countyNext.shift();
+          buildImageryPicker();
+          showImagery();
+          return;
+        }
         state.countyAuto = false;
         state.provider = 'mapbox';
         $('#imagery-source').value = 'mapbox';

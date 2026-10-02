@@ -4,6 +4,7 @@
  * traced on one in the editor.
  */
 import { cleanShapes, cleanGeometries, MAX_BYTES } from './corpus.js';
+import { decodePng, looksLikePhoto } from './png-probe.js';
 
 /* A nudge is a correction on top of what the alignment found; the search
    itself reaches 10 m, so a correction past that is a different photo. */
@@ -67,23 +68,55 @@ export const MAX_SERVICE_SQ_DEG = 40;
  * order and takes the first with no gaps over the lot -- a box says where a
  * service might have pictures, not that it has one here.
  */
-export async function countyServicesAt(env, lng, lat, n = 4) {
+export async function countyServicesAt(env, lng, lat, n = 4, { probe = true } = {}) {
   if (!env?.DB || !Number.isFinite(lng) || !Number.isFinite(lat)) return [];
+  let rows;
   try {
-    const r = await env.DB.prepare(
+    rows = (await env.DB.prepare(
       `SELECT * FROM county_services
         WHERE export_ok = 1 AND west <= ?1 AND east >= ?1 AND south <= ?2 AND north >= ?2
           AND (east - west) * (north - south) <= ?3
         ORDER BY COALESCE(year, 0) DESC, (east - west) * (north - south) ASC, COALESCE(native_cm, 99) ASC
         LIMIT ?4`
-    ).bind(lng, lat, MAX_SERVICE_SQ_DEG, n).all();
-    return (r.results || []).map(svcOf);
+    ).bind(lng, lat, MAX_SERVICE_SQ_DEG, n * 2).all()).results || [];
   } catch { return []; }
+  const list = rows.map(svcOf);
+  if (!probe) return list.slice(0, n);
+  /*
+   * AND A LOOK AT THE SPOT ITSELF (owner, 2026-10-02): a box covering the
+   * point is not a picture of it. 32 x 32 pixels over 40 m, all candidates at
+   * once, four seconds each, cached a week by the edge. A service that does
+   * not answer in time is kept, after the ones that showed ground -- the
+   * editor's own gap and sharpness checks still stand behind this.
+   */
+  const verdicts = await Promise.all(list.map((svc) => probeService(svc, lng, lat)));
+  const yes = list.filter((_, i) => verdicts[i] === true);
+  const unsure = list.filter((_, i) => verdicts[i] === null);
+  return [...yes, ...unsure].slice(0, n);
+}
+
+/** True: ground here. False: nothing, or not a photo. Null: no answer. */
+export async function probeService(svc, lng, lat, { fetcher = fetch } = {}) {
+  const R = 6378137;
+  const x = (lng * Math.PI / 180) * R;
+  const y = Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360)) * R;
+  const half = 20 / Math.cos((lat * Math.PI) / 180);
+  const params = new URLSearchParams({
+    bbox: [x - half, y - half, x + half, y + half].join(','), bboxSR: '3857', imageSR: '3857',
+    size: '32,32', format: 'png32', transparent: 'true', f: 'image',
+  });
+  const url = `${svc.url}/${svc.type === 'ImageServer' ? 'exportImage' : 'export'}?${params}`;
+  try {
+    const res = await fetcher(url, { signal: AbortSignal.timeout(4000), cf: { cacheTtl: 604800, cacheEverything: true } });
+    if (!res.ok) return null;
+    const img = await decodePng(new Uint8Array(await res.arrayBuffer()));
+    return img ? looksLikePhoto(img) : null;
+  } catch { return null; }
 }
 
 /** The best one, or null. */
 export async function countyServiceAt(env, lng, lat) {
-  return (await countyServicesAt(env, lng, lat, 1))[0] || null;
+  return (await countyServicesAt(env, lng, lat, 1, { probe: false }))[0] || null;
 }
 
 /** One service by its id, only if it is in the catalogue and can draw a box. */
