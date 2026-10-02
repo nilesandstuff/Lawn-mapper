@@ -131,6 +131,7 @@ function describe(row) {
   console.log(`photo     ${row.image_provider || '(none stored)'}`);
   console.log(`corrected ${row.hand_edited ? 'yes' : 'no'}`);
   console.log(`release   ${row.model_version || '(none recorded)'}`);
+  console.log(`not-lawn  ${geometries(parse(row.not_lawn)).length} trace(s)`);
 
   /*
    * THE TWO FRAMES, and whether the outline lands inside the photograph
@@ -212,7 +213,7 @@ async function main() {
     rows = query(`
       SELECT id, at, status, county, provider, model, mode, hand_edited,
              image_provider, square_feet, shapes, detected_shapes,
-             frame, image_frame, parcel, model_version, image_key
+             frame, image_frame, parcel, model_version, image_key, not_lawn
         FROM corpus WHERE ${where} ORDER BY at DESC LIMIT ${Math.max(1, Math.min(60, Number(process.env.LIMIT) || 5))}
     `);
   } catch (err) {
