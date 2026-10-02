@@ -538,6 +538,12 @@ body.inferred-mode .panel { box-shadow: inset 4px 0 0 #7c4dff; }
 /* Layers sits opposite the editing tools: what you are LOOKING at on one
  * side, what you are CHANGING on the other. */
 .maprail-left { right: auto; left: 10px; }
+/* The rail's own z-index is the ceiling for everything inside it, the layer
+ * list included: at 3 the list's 7 meant nothing, and the "line up" button
+ * (6, just below Layers) was drawn over the open list (owner, 2026-10-02).
+ * Raised only while the list is open, so the rail does not otherwise cover
+ * the coach marks or the line-up bar. */
+.maprail-left:has(.layerlist:not([hidden])) { z-index: 7; }
 
 /* The source list hangs off the Layers button rather than sitting in the
  * rail's flex column, which would stretch the rail to the width of the

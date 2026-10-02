@@ -841,6 +841,44 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H65. A live county-photo detection (Blaine County ID, 2025/2026 Nearmap tile cache) traced about 1.5-2 m south of the photo's features; what that lot's inputs measure, 2026-10-02
+
+*Owner's report from the live app, not a run: the trained model (alpha
+release 2026-09-29, never trained on a county photo) on a Ketchum lot,
+county photo stitched in the browser. The outline hugged the north edge of
+the roof and stopped 1.5-2 m short of the front walk on the south side, and
+"lines up a bit better with Mapbox". Measured here afterwards, frame
+158.7 m across centred on the lot, register.js as the editor runs it:*
+
+- **The two photographs disagree by about a metre there.** County vs
+  Mapbox: a plain shift, the county ground 1.08 m north and 0.48 m west of
+  Mapbox's; only 25 of 220 patches agree (rms 0.17 m): mostly canopy.
+- **NAIP vs county: 0.40 m west, 0.06 m north; NAIP vs Mapbox: 3.51 m west,
+  0.61 m north.** The three pairs do not add up (they should, to within
+  noise), so at this lot they are not trustworthy to better than a metre or
+  two.
+- **The served pipeline's own NAIP alignment** (naip_bands.naip_for, photo
+  given, no stored alignment, which is what a county detection sends): left
+  alone on the county photo ("edges 0.21"); moved 1.34 m east on the Mapbox
+  photo ("edges 0.47 -> 0.54").
+- **No lidar at this lot.** The 3DEP project the plan picks
+  (ID_SouthernID_13_2018) has points over 31% of the frame at 1 m and 2 m
+  cells, under MIN_COVERED (0.5), so the model ran on photo + NAIP.
+- **The code path was read, not traced from logs:** the Worker sends the
+  uploaded county picture (svc.frameUrl) to the model with the same frame
+  the browser stitched; the outline is placed with the same alignment
+  that places the photo on the map. No record of the press itself was read.
+
+What is NOT established: why the outline moved. A model trained on Mapbox
+only reading a different camera is one candidate, and is SPECULATION until
+the same lot is detected on both photographs.
+
+**Decided the same day (owner):** the corpus maps keep their Mapbox outlines
+unless the owner re-traced them on the county photo ("even the ones where the
+imagery lines up well, the lawn outlines still don't fit because of the
+different perspectives, times of year"). PHOTOS=county now trains on a county
+photo only where outlines were traced on it, Mapbox elsewhere.
+
 ### H64. Corpus-wide: 55 of 55 approved maps that had a county photo banked are re-lined-up; 38 measured on the ground and landed within 0.1 m of Mapbox, 17 not measurable; the ground offset from Mapbox is a median 0.54 m and always a plain shift but one, 2026-10-01
 
 *Two workflow 8 runs. The full search (36889876365, commit 0f82df2, old
