@@ -348,6 +348,27 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
         : (wanted === 'ungraded' || wanted === 'unflagged' || wanted === 'approved')
           ? 'approved'
           : 'new';
+      /*
+       * FILTERS ON TOP OF ANY QUEUE (owner, 2026-10-02), and on top of each
+       * other: a map shown matches every one that is on.
+       *
+       *   photo=county   drawn on a county or state photo (`provider`, what
+       *                  the person was looking at and detected on)
+       *   disagreed=1    the AI drew an outline and the final lawn differs
+       *                  from it by a tenth or more of its area -- the
+       *                  console's own "corrected" line, less the hand-drawn
+       *                  maps, which had no AI answer to disagree with
+       *
+       * Fixed SQL, switched by the flags; nothing from the URL reaches the
+       * query text.
+       */
+      const onlyCounty = url.searchParams.get('photo') === 'county';
+      const onlyDisagreed = url.searchParams.get('disagreed') === '1';
+      const FILTERS = [
+        onlyCounty ? "AND c.provider = 'county'" : '',
+        onlyDisagreed ? `AND c.detected_sq_ft > 0
+              AND ABS(c.square_feet - c.detected_sq_ft) * 10 >= c.detected_sq_ft` : '',
+      ].join('\n              ');
       /* Browsing is chronological; the queues are ranked. Different jobs. */
       const browsing = wanted === 'approved' || wanted === 'rejected' || wanted === 'admin';
       const BLOCK = `ROUND(lng, 2) || ',' || ROUND(lat, 2)`;
@@ -395,6 +416,7 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
             WHERE ${wanted === 'admin' ? 'c.admin_edited_at IS NOT NULL' : `c.status = '${status}'`}
               ${wanted === 'ungraded' ? 'AND c.tree_line IS NULL' : ''}
               ${wanted === 'unflagged' ? 'AND c.inferred_checked_at IS NULL' : ''}
+              ${FILTERS}
             ORDER BY ${wanted === 'random' ? 'RANDOM()'
               : wanted === 'admin' ? 'c.admin_edited_at DESC'
               : browsing ? 'COALESCE(c.reviewed_at, c.at) DESC' : 'c.at DESC'}
@@ -478,7 +500,8 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
         `SELECT COUNT(*) n FROM corpus WHERE status = 'new'`
       ).first();
 
-      return json({ queue: wanted, waiting: waiting.n, candidates: queue }, 200, origin);
+      return json({ queue: wanted, waiting: waiting.n, candidates: queue,
+        filters: { county: onlyCounty, disagreed: onlyDisagreed } }, 200, origin);
     } catch (e) {
       return json({ unavailable: String(e?.message || e).slice(0, 200) }, 200, origin);
     }

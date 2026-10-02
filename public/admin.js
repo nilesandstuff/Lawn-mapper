@@ -262,6 +262,8 @@ function settingRow(s) {
  * here would be about the wrong pixels.
  */
 let queue = 'priority';
+/* Filters on top of the queue, combined: see the candidates route. */
+const filters = { county: false, disagreed: false };
 let pending = [];
 let showAi = false;
 
@@ -271,13 +273,24 @@ async function renderReview() {
   if (!pending.length) {
     box.innerHTML = '';
     box.append(el('p', 'empty', 'Loading…'));
-    const data = await get(`/api/admin/candidates?queue=${queue}`);
+    const q = new URLSearchParams({ queue });
+    if (filters.county) q.set('photo', 'county');
+    if (filters.disagreed) q.set('disagreed', '1');
+    const data = await get(`/api/admin/candidates?${q}`);
     if (data.unavailable) {
       box.innerHTML = '';
       box.append(el('p', 'empty', `Cannot read the candidates: ${data.unavailable}`));
       return;
     }
     pending = data.candidates || [];
+    if (!pending.length && (filters.county || filters.disagreed)) {
+      box.innerHTML = '';
+      box.append(el('p', 'empty', `Nothing in this queue is ${[
+        filters.county && 'made on a county photo',
+        filters.disagreed && 'a map where somebody disagreed with the AI',
+      ].filter(Boolean).join(' and ')}.`));
+      return;
+    }
     if (!pending.length) {
       box.innerHTML = '';
       box.append(el('p', 'empty',
@@ -321,6 +334,14 @@ function drawCandidate(c) {
   const pieces = (c.shapes || []).length;
   if (pieces > 1) head.append(el('span', 'pill free', `${pieces} pieces`));
   if (c.parcelSource === 'hand') head.append(el('span', 'pill free', 'traced boundary'));
+  /* What the filters select on, so a filtered card says why it is here. */
+  if (c.provider === 'county') head.append(el('span', 'pill free', 'made on a county photo'));
+  if (c.detectedSqFt > 0 && Math.abs(c.squareFeet - c.detectedSqFt) * 10 >= c.detectedSqFt) {
+    const pill = el('span', 'pill free',
+      `${c.squareFeet > c.detectedSqFt ? '+' : '−'}${Math.round(Math.abs(c.squareFeet - c.detectedSqFt) / c.detectedSqFt * 100)}% from the AI`);
+    pill.title = `The AI's outline was ${n(c.detectedSqFt)} sq ft; the saved lawn is ${n(c.squareFeet)}.`;
+    head.append(pill);
+  }
   if (c.adminEditedAt) {
     const pill = el('span', 'pill free', 'edited by admin');
     pill.title = `Last saved by an admin ${String(c.adminEditedAt).slice(0, 10)}`;
@@ -1107,6 +1128,17 @@ async function renderLog() {
       queue = which;
       pending = [];
       for (const [other, name] of QUEUES) $(other).classList.toggle('on', name === which);
+      renderReview().catch(() => { $('#review').textContent = 'Could not load the candidates.'; });
+    });
+  }
+  /* The filters re-ask the server too: the queue's own ranking and limit
+     apply to the maps that match, not to a page filtered after the fact. */
+  for (const [id, key] of [['#filter-county', 'county'], ['#filter-disagreed', 'disagreed']]) {
+    $(id).addEventListener('click', () => {
+      filters[key] = !filters[key];
+      $(id).classList.toggle('on', filters[key]);
+      $(id).setAttribute('aria-pressed', String(filters[key]));
+      pending = [];
       renderReview().catch(() => { $('#review').textContent = 'Could not load the candidates.'; });
     });
   }

@@ -1990,5 +1990,39 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
     + 'nothing has to be undone by hand');
 }
 
+/*
+ * FILTERING THE REVIEW CARD (owner, 2026-10-02): maps made on a county photo,
+ * maps where the person disagreed with the AI, and both at once.
+ */
+{
+  const { env, ownerToken } = await world();
+  const { recordFinished } = await import('../worker/src/corpus.js');
+  const ring = (lng) => [
+    [lng, 41.6], [lng, 41.601], [lng + 0.001, 41.601], [lng + 0.001, 41.6], [lng, 41.6],
+  ];
+  const finish = (lng, provider, detectedSqFt) => recordFinished(env, {
+    lng, lat: 41.6, model: 'alpha', mode: 'find', county: 'oh-lucas', provider,
+    shapes: [{ type: 'Polygon', coordinates: [ring(lng)] }],
+    squareFeet: 4000, ...(detectedSqFt === undefined ? {} : { detectedSqFt }),
+  });
+  await finish(-83.31, 'county', 6000);   // county, disagreed (a third off)
+  await finish(-83.32, 'county', 4100);   // county, agreed (2.5%)
+  await finish(-83.33, 'mapbox', 3000);   // Mapbox, disagreed
+  await finish(-83.34, 'county');         // county, drawn by hand: no AI to disagree with
+  const ids = async (q) => (await ask(env, ownerToken, `candidates${q}`)).body.candidates
+    .map((c) => c.id.slice(0, 6)).sort().join(' ');
+
+  const county = await ids('?photo=county');
+  check('county photo: the three drawn on one', county === '-83.31 -83.32 -83.34', county);
+  const disagreed = await ids('?disagreed=1');
+  check('disagreed: the two moved a tenth or more from the AI, not the hand-drawn one',
+    disagreed === '-83.31 -83.33', disagreed);
+  const both = await ids('?photo=county&disagreed=1');
+  check('both at once: only the map that is both', both === '-83.31', both);
+  const rand = await ids('?queue=random&photo=county&disagreed=1');
+  check('and they apply inside another queue', rand === '-83.31', rand);
+  const none = await ids('');
+  check('no filter: all four', none.split(' ').length === 4, none);
+}
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);

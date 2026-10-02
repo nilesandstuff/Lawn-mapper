@@ -119,6 +119,7 @@
   }
   #review .ask .meta { font-size: 11.5px; color: var(--muted); margin: 6px 0 0; }
   #queue-pick button.on,
+  #filter-pick button.on,
   #gap-sort button.on { background: var(--ink, #23301f); color: #fff; border-color: transparent; }
   #review .actions button.on { background: #e4f2e5; border-color: #9ec5a1; color: #1f5b22; font-weight: 600; }
   .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11.5px;
@@ -253,6 +254,14 @@
         <!-- Maps an admin account has saved (fixed from /maps, or mapped while
              signed in), whatever their verdict, newest edit first. -->
         <button id="queue-admin">Edited by admin</button>
+      </div>
+      <!-- Filters on top of whichever queue is chosen, and on top of each
+           other: a map shown matches every one that is on. -->
+      <div class="actions" id="filter-pick">
+        <span class="sub" style="margin: 0; align-self: center">Only:</span>
+        <button id="filter-county" aria-pressed="false">Made on a county photo</button>
+        <button id="filter-disagreed" aria-pressed="false"
+                title="The AI drew an outline and the final lawn differs from it by a tenth or more of its area">Disagreed with the AI</button>
       </div>
       <div id="review"><p class="empty">Loading…</p></div>
     </div>
