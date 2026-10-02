@@ -898,7 +898,7 @@ async function realign(row, decoders, dir) {
 
 const SWEEP_STEP = Number(process.env.SWEEP_STEP || 0.5); // degrees, statewide grids
 const ONLY_KEY = process.env.ONLY_KEY || '';
-const RETRY_BEFORE = '2026-10-02T02:30:00Z';
+const RETRY_BEFORE = '2026-10-02T02:20:00Z';
 
 /** A service's extent as [west, south, east, north] in degrees. */
 export async function extentLngLat(m) {
@@ -934,7 +934,27 @@ export async function extentLngLat(m) {
  * and one small picture of 150 m about the point. Returns the catalogue row,
  * or { usable: false, why }.
  */
-export async function qualify(c, lng, lat, decoders) {
+export async function qualify(c, lng, lat, decoders, { again = true } = {}) {
+  const q = await qualifyAt(c, lng, lat, decoders);
+  /*
+   * NOT HERE IS NOT NOWHERE. A vendor flight often covers the towns, not the
+   * whole county: Blaine County's 2026 Nearmap is the Wood River Valley, and
+   * the sweep's point (the middle of the county's parcel layer) is open
+   * country south of it (2026-10-02). So a service with nothing at the
+   * sweep's point is looked at once more at the middle of its own box; the
+   * Worker looks at each address's own spot before offering it anyway.
+   */
+  if (!q.usable && again && q.why === 'no picture here') {
+    const ext = await extentLngLat(await meta(c.url)).catch(() => null);
+    if (ext) {
+      const mid = [(ext[0] + ext[2]) / 2, (ext[1] + ext[3]) / 2];
+      if (Math.hypot(mid[0] - lng, mid[1] - lat) > 0.01) return qualifyAt(c, mid[0], mid[1], decoders);
+    }
+  }
+  return q;
+}
+
+async function qualifyAt(c, lng, lat, decoders) {
   const m = await meta(c.url);
   if (!m || m.failed) return { usable: false, why: `metadata: ${m?.failed || 'none'}` };
   const years = yearHints(`${c.title} ${c.url} ${m.description || ''} ${m.serviceDescription || ''} ${m.copyrightText || ''}`);
@@ -1080,8 +1100,9 @@ async function catalogue(decoders) {
   const pts = query('SELECT COUNT(*) n, SUM(found > 0) hit FROM county_sweep')[0] || {};
   console.log('\n================ COUNTY PHOTO CATALOGUE ================');
   console.log(`${added} services added this run; ${count(() => true)} in the catalogue:`
-    + ` ${count((r) => Number(r.export_ok))} the app can use (draw any box),`
-    + ` ${count((r) => !Number(r.export_ok))} tiles only (not used live yet).`);
+    + ` ${count((r) => Number(r.export_ok))} draw any box, ${count((r) => !Number(r.export_ok) && Number(r.tile_merc))}`
+    + ` tiles only (stitched live by the Worker), ${count((r) => !Number(r.export_ok) && !Number(r.tile_merc))}`
+    + ' tiles in another projection (not used live yet).');
   console.log(`Points swept: ${pts.n ?? 0}, ${pts.hit ?? 0} with a county or state photo service.`);
 }
 
