@@ -11,7 +11,7 @@
  */
 
 /** Decode an 8-bit RGB or RGBA (or palette) PNG to RGBA. Null for anything else. */
-export async function decodePng(bytes) {
+export async function decodePng(bytes, { maxPixels = 1 << 20 } = {}) {
   const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
   const sig = [137, 80, 78, 71, 13, 10, 26, 10];
   if (b.length < 33 || sig.some((v, i) => b[i] !== v)) return null;
@@ -29,7 +29,7 @@ export async function decodePng(bytes) {
     pos += 12 + len;
   }
   const ch = type === 6 ? 4 : type === 2 ? 3 : type === 3 ? 1 : type === 0 ? 1 : type === 4 ? 2 : 0;
-  if (!w || !h || depth !== 8 || !ch || w * h > 1 << 20) return null;
+  if (!w || !h || depth !== 8 || !ch || w * h > maxPixels) return null;
   const joined = new Uint8Array(idat.reduce((a, d) => a + d.length, 0));
   let o = 0;
   for (const d of idat) { joined.set(d, o); o += d.length; }

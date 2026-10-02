@@ -392,14 +392,19 @@ export function countyExportUrl(svc, frame) {
       height: frame.height || frame.size, provider: 'county', svc: svc.id,
     });
   }
-  let w = imagePixels(frame), h = imageHeightPixels(frame);
+  return countyBoxUrl(svc, frameBbox3857(frame), imagePixels(frame), imageHeightPixels(frame));
+}
+
+/** The same export for any Web Mercator box, at w x h or the biggest the
+    service draws at that shape. */
+export function countyBoxUrl(svc, bbox, w, h) {
   const max = Number(svc.maxPx) || Number(svc.max_px) || 4096;
   if (Math.max(w, h) > max) {
     const k = max / Math.max(w, h);
     w = Math.max(1, Math.floor(w * k)); h = Math.max(1, Math.floor(h * k));
   }
   const params = new URLSearchParams({
-    bbox: frameBbox3857(frame).join(','), bboxSR: '3857', imageSR: '3857', size: `${w},${h}`, f: 'image',
+    bbox: bbox.join(','), bboxSR: '3857', imageSR: '3857', size: `${w},${h}`, f: 'image',
   });
   if (svc.type === 'ImageServer') {
     params.set('format', 'png');

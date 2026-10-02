@@ -13426,6 +13426,10 @@ function finishedBody() {
       // model is scored only inside it, so the two are not equal ground truth.
       parcelSource: state.parcel ? (state.parcel.properties?.drawn ? 'hand' : 'county') : null,
       provider: state.detectedWith || state.provider,
+      /* Made on a county photo: which one, and how it was shown, so the
+         Worker can keep that photo with the map (county-picture.js). */
+      ...((state.detectedWith || state.provider) === 'county' && state.countySvc
+        ? { countySvc: state.countySvc.id, countyAlign: state.countyAlign || null } : {}),
       model: state.detectedBy || null,
       /* Which release drew the outline being corrected (feedback loop 1). */
       modelVersion: state.detectedBy ? state.detectedVersion || null : null,
