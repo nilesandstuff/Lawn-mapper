@@ -88,7 +88,7 @@ check('nothing at all is refused', cleanCountyOutlines({ shapes: [], notLawn: []
   const at = await countyServiceAt(env, -85.86, 42.87);
   check('the lookup asks for a service that draws a box and covers the point, newest then finest',
     at?.id === 7 && at.maxPx === 4000 && /export_ok = 1/.test(seen[0][0]) && /west <= \?1 AND east >= \?1/.test(seen[0][0])
-    && /ORDER BY COALESCE\(year, 0\) DESC, \(east - west\) \* \(north - south\) ASC/.test(seen[0][0]), JSON.stringify(at));
+    && /ORDER BY COALESCE\(year, CASE .*recent.* THEN 9999 ELSE 0 END\) DESC, \(east - west\) \* \(north - south\) ASC/s.test(seen[0][0]), JSON.stringify(at));
   check('and never a box bigger than a state (Virginia\'s claimed New Jersey)',
     /\(east - west\) \* \(north - south\) <= \?3/.test(seen[0][0]) && seen[0][1][2] === MAX_SERVICE_SQ_DEG);
   check('by id: only a whole number, never a URL', await countyServiceById(env, 'https://evil') === null

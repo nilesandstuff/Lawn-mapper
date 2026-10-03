@@ -80,6 +80,11 @@ export const MAX_SERVICE_SQ_DEG = 40;
 export const MAX_AGE_YEARS = 10;
 export const oldestYear = (now = new Date()) => now.getUTCFullYear() - MAX_AGE_YEARS;
 
+/* A flight's year, and "most recent" / "latest" / "current" with no year
+   counted as newest (Virginia's MostRecentImagery_WGS, 2026-10-03). */
+const NEWEST = `COALESCE(year, CASE WHEN lower(COALESCE(title, '') || url) LIKE '%recent%'
+  OR lower(COALESCE(title, '') || url) LIKE '%latest%' OR lower(COALESCE(title, '') || url) LIKE '%current%' THEN 9999 ELSE 0 END)`;
+
 /*
  * Sharp enough: the catalogue's line (tools/county-imagery.js
  * DETAIL_AT_12CM), between NAIP's 0.05 and the 0.16-0.33 of 5-15 cm flights.
@@ -111,7 +116,7 @@ export async function countyServicesAt(env, lng, lat, n = 4, { probe = true, fet
         WHERE (export_ok = 1 OR tile_merc = 1) AND west <= ?1 AND east >= ?1 AND south <= ?2 AND north >= ?2
           AND (east - west) * (north - south) <= ?3
           AND (year IS NULL OR year >= ?5)
-        ORDER BY COALESCE(year, 0) DESC, (east - west) * (north - south) ASC, COALESCE(native_cm, 99) ASC
+        ORDER BY ${NEWEST} DESC, (east - west) * (north - south) ASC, COALESCE(native_cm, 99) ASC
         LIMIT ?4`
     ).bind(lng, lat, MAX_SERVICE_SQ_DEG, n * 2, oldestYear(now)).all()).results || [];
   } catch { return []; }

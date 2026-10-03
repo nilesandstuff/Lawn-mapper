@@ -151,9 +151,17 @@ export function rankCandidates(list, minYear = MIN_YEAR) {
     if (year !== null && year < minYear) continue;
     out.push({ ...c, year });
   }
-  return out.sort((a, b) => ((b.year ?? 0) - (a.year ?? 0))
+  /*
+   * "MOST RECENT" IS NEWEST, NOT UNDATED (2026-10-03). Virginia's
+   * MostRecentImagery_WGS is every zone's latest flight in one service, the
+   * only one covering the whole state, and sorted with the undated it never
+   * made the first MAX_TRY behind fourteen dated VBMP years.
+   */
+  const rank = (c) => c.year ?? (LATEST.test(`${c.title} ${c.url}`) ? 9999 : 0);
+  return out.sort((a, b) => (rank(b) - rank(a))
     || (/cache/i.test(a.url) - /cache/i.test(b.url)));
 }
+const LATEST = /most.?recent|latest|current/i;
 
 /** The best of the usable: newest year, then finest. */
 export function chooseBest(evaluated) {

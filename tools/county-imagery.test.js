@@ -41,6 +41,13 @@ check('candidates: newest first, the cached twin after, undated last, pre-2012 a
     'https://a/Aerial2024/ImageServer', 'https://a/Aerial2024_Cached/ImageServer',
     'https://a/Aerial2021/ImageServer', 'https://a/Orthos/MapServer']), ranked.join(' '));
 
+check('a "most recent" service is tried first, not with the undated',
+  rankCandidates([
+    { url: 'https://v/VBMP_Imagery/VBMP2023_WGS/MapServer', title: 'VBMP_Imagery/VBMP2023_WGS' },
+    { url: 'https://v/VBMP_Imagery/Orthos/MapServer', title: 'Orthos' },
+    { url: 'https://v/VBMP_Imagery/MostRecentImagery_WGS/MapServer', title: 'VBMP_Imagery/MostRecentImagery_WGS' },
+  ], 2016).map((c) => c.title.split('/').pop()).join() === 'MostRecentImagery_WGS,VBMP2023_WGS,Orthos');
+
 /* Choosing: usable only; newest; finer on a tie. */
 const best = chooseBest([
   { url: 'old', usable: true, year: 2019, nativeCm: 8 },
