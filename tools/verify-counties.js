@@ -65,6 +65,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { esriToGeoJSON } from '../worker/src/parcel.js';
 import { measure } from '../public/lib/area.js';
 import { candidatePool } from './candidates.js';
+import { GONE, renamedCandidates } from './moved-service.js';
 import { US_COUNTIES } from '../worker/src/us-counties.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -974,11 +975,85 @@ const failed = [];
 const wasDown = new Set();
 const today = new Date().toISOString().slice(0, 10);
 
-for (const c of list) {
+/*
+ * STRIKES, NOT ONE BAD RUN (owner, 2026-10-03: "we wouldn't want a one-time
+ * failure to take down the current configuration if it's actually still
+ * good ... and at the same time servers do legitimately move"). A county
+ * that verified before and fails now -- for any reason but a server that is
+ * plainly down, which wasDown already holds over -- keeps its entry until it
+ * has failed on STRIKES_TO_DROP different days spanning at least
+ * STRIKE_DAYS days. The workflows run nightly now, and the statewide entries
+ * are re-checked on every run: one odd answer from a state server would
+ * otherwise take a whole state's property lines away until somebody noticed.
+ *
+ * A failure that proves the entry never belonged -- parcels in another
+ * state -- is final at once.
+ */
+const STRIKES_TO_DROP = 3;
+const STRIKE_DAYS = 2;
+const FINAL = [/its parcels are not in /i];
+const daysBetween = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000);
+const struck = (prev, why) => {
+  const final = FINAL.some((re) => re.test(String(why || '')));
+  const before = prev && !prev.ok ? prev : null;
+  const since = before?.since || today;
+  const strikes = before ? (before.at === today ? before.strikes || 1 : (before.strikes || 1) + 1) : 1;
+  return { since, strikes, final };
+};
+const onProbation = new Set();
+const promoted = [];
+
+/*
+ * A SERVER THAT MOVED, TO WHERE WE ALREADY KNOW: when the endpoint fails, the
+ * fallbacks the catalogues listed for the same county are tried in turn, and
+ * the first that passes becomes the endpoint, the old one riding along as a
+ * fallback in case the move was not one.
+ */
+/*
+ * AND TO WHERE WE DO NOT KNOW YET, ON THE SAME SERVER: a service that has
+ * gone ("Invalid URL", "Service not found") is looked for under the name it
+ * most likely moved to -- the same name with a version number added or
+ * changed. Jefferson County IL's Parcel_JeffersonIL became
+ * Parcel_JeffersonIL2 (2026-10-03).
+ */
+async function movedOnServer(c) {
+  const m = String(c.service).match(/^(.*\/rest\/services)\/(?:(.+)\/)?[^/]+\/(FeatureServer|MapServer)$/i);
+  if (!m) return [];
+  const listing = await getJson(`${m[1]}${m[2] ? `/${m[2]}` : ''}?f=json`).catch(() => null);
+  return renamedCandidates(c.service, listing?.services || []).slice(0, 3);
+}
+
+async function verifyWithFallbacks(c) {
   const r = await verify(c);
+  if (r.ok || r.down) return { r, c };
+  const tries = [...(c.fallbacks || []).slice(0, 3)];
+  if (GONE.test(String(r.why))) {
+    for (const service of await movedOnServer(c)) tries.push({ service, layer: c.layer, fields: c.fields });
+  }
+  for (const f of tries) {
+    const alt = { ...c, service: f.service, layer: f.layer, fields: f.fields || c.fields, fallbacks: [] };
+    const r2 = await verify(alt);
+    await sleep(PAUSE_MS);
+    if (r2.ok) {
+      const rest = (c.fallbacks || []).filter((x) => x !== f);
+      return { r: r2, c: { ...alt, fallbacks: [{ service: c.service, layer: c.layer, fields: c.fields }, ...rest] }, promotedFrom: c.service };
+    }
+  }
+  return { r, c };
+}
+
+for (const c0 of list) {
+  const { r, c, promotedFrom } = await verifyWithFallbacks(c0);
+  const prev = log[c.key];
+  const s0 = r.ok ? null : struck(prev, r.why);
   log[c.key] = r.ok
     ? { at: today, ok: true, acres: r.acres }
-    : { at: today, ok: false, ...(r.down ? { down: true } : {}), why: String(r.why).slice(0, 200) };
+    : { at: today, ok: false, ...(r.down ? { down: true } : {}), why: String(r.why).slice(0, 200),
+      since: s0.since, strikes: s0.strikes, ...(s0.final ? { final: true } : {}) };
+  if (!r.ok && !r.down && !s0.final
+    && (s0.strikes < STRIKES_TO_DROP || daysBetween(s0.since, today) < STRIKE_DAYS)) onProbation.add(c.key);
+  const short = (u) => String(u).replace(/^https?:\/\//, '').replace(/\/rest\/services\//i, ' ').replace(/\/(Feature|Map)Server$/i, '');
+  if (promotedFrom) promoted.push(`${c.key} (${short(promotedFrom)} -> ${short(c.service)})`);
   if (r.ok) {
     /* The layer that actually answered, which is not always the one the
        catalogue named. See parcelLayerIn. */
@@ -1066,6 +1141,12 @@ for (const [key, entry] of Object.entries(before)) {
    * pick it up again.
    */
   if (triedNow.has(key) && wasDown.has(key)) { heldOver.push(key); kept[key] = entry; continue; }
+  /* Failed, but not enough times yet -- see STRIKES_TO_DROP. */
+  if (triedNow.has(key) && onProbation.has(key)) {
+    heldOver.push(`${key} (strike ${log[key].strikes} of ${STRIKES_TO_DROP}, failing since ${log[key].since})`);
+    kept[key] = entry;
+    continue;
+  }
   if (triedNow.has(key)) continue;
   /*
    * A county both catalogues have stopped listing cannot be re-verified ever
@@ -1166,8 +1247,12 @@ const lost = [...had].filter((k) => !now.has(k) && triedNow.has(k));
 if (gained.length) console.log(`\nNEWLY COVERED (${gained.length}): ${gained.join(', ')}`);
 if (heldOver.length) {
   console.log(`\nKEPT THOUGH THEY FAILED TODAY (${heldOver.length}): ${heldOver.join(', ')}`);
-  console.log('Their servers did not answer, which is not the same as their');
-  console.log('endpoint being wrong. The previous entry stands. See wasDown.');
+  console.log('Their servers did not answer, or they have not failed on enough');
+  console.log(`separate days yet (${STRIKES_TO_DROP} days over at least ${STRIKE_DAYS}). The previous entry stands.`);
+}
+if (promoted.length) {
+  console.log(`\nMOVED (${promoted.length}): ${promoted.join(', ')}`);
+  console.log('The endpoint failed and a fallback, or a renamed service on the same server, passed; it is the endpoint now.');
 }
 if (dropped.length) {
   console.log(`\nNO LONGER IN ANY CATALOGUE (${dropped.length}): ${dropped.join(', ')}`);

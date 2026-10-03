@@ -2243,8 +2243,8 @@
   },
   "il-jefferson": {
     "at": "2026-10-03",
-    "ok": false,
-    "why": "layer metadata: Invalid URL"
+    "ok": true,
+    "acres": 0.811
   },
   "il-jersey": {
     "at": "2026-10-03",

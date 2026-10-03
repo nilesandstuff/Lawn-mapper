@@ -26,8 +26,8 @@
  * tools/import-openaddresses.js. Editing this file directly will be
  * overwritten; change an importer or the verifier instead.
  *
- * 743 entries (26 statewide), of 1005 candidates.
- * Last run 2026-10-03: 33 verified of 40 tried.
+ * 744 entries (26 statewide), of 1005 candidates.
+ * Last run 2026-10-03: 1 verified of 1 tried.
  */
 
 const VERIFIED_COUNTIES = {
@@ -2350,6 +2350,16 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"CountyPin","address":null},
     box: [-88.39,38.829,-87.924,39.192],
+    checked: "2026-10-03",
+  },
+  'il-jefferson': {
+    name: "Jefferson County, IL",
+    fips: "17081",
+    service: "https://services.arcgis.com/4YineAQdtmx0tv46/ArcGIS/rest/services/Parcel_JeffersonIL2/FeatureServer",
+    layer: 0,
+    fields: {"pin":"PIN","address":null},
+    fallbacks: [{"service":"https://services.arcgis.com/4YineAQdtmx0tv46/ArcGIS/rest/services/Parcel_JeffersonIL/FeatureServer","layer":0,"fields":{"pin":"PIN","address":null}}],
+    box: [-89.148,38.124,-88.7,38.477],
     checked: "2026-10-03",
   },
   'il-jersey': {
