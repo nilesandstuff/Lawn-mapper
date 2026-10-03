@@ -26,8 +26,8 @@
  * tools/import-openaddresses.js. Editing this file directly will be
  * overwritten; change an importer or the verifier instead.
  *
- * 744 entries (26 statewide), of 1005 candidates.
- * Last run 2026-10-03: 51 verified of 60 tried.
+ * 743 entries (26 statewide), of 1005 candidates.
+ * Last run 2026-10-03: 33 verified of 40 tried.
  */
 
 const VERIFIED_COUNTIES = {
@@ -5302,16 +5302,6 @@ const VERIFIED_COUNTIES = {
     fields: {"pin":"PARCELID","address":null},
     box: [-83.71,35.895,-83.236,36.192],
     checked: "2026-09-18",
-  },
-  'tn-knox': {
-    name: "Knox County, TN",
-    fips: "47093",
-    service: "https://services2.arcgis.com/Ju5vg9anco2Yv2af/arcgis/rest/services/KnoxCADWebService/FeatureServer",
-    layer: 0,
-    fields: {"pin":"prop_id","address":"situs_num"},
-    fallbacks: [{"service":"https://services1.arcgis.com/QWaOgwdmpqI9HUzf/arcgis/rest/services/Categorical_Zoning_Changes/FeatureServer","layer":0,"fields":{"pin":"PARCELID","address":null}}],
-    box: [-99.999,33.392,-99.47,33.842],
-    checked: "2026-10-03",
   },
   'tn-maury': {
     name: "Maury County, TN",

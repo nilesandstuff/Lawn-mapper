@@ -4898,8 +4898,8 @@
   },
   "tn-knox": {
     "at": "2026-10-03",
-    "ok": true,
-    "acres": 0.354
+    "ok": false,
+    "why": "its parcels are not in Tennessee (centred -99.73,33.62)"
   },
   "tn-rutherford": {
     "at": "2026-10-03",
