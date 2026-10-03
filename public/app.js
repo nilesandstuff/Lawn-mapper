@@ -5931,10 +5931,19 @@ function watchTileErrors() {
  */
 let imageryBusyRun = 0;
 
-async function showImagery() {
+/*
+ * QUIET: the same picture for a new frame, after the property line moved
+ * (owner, 2026-10-03: "it's annoying that you have to wait for the map to
+ * load between actions"). The picture on screen stays, nothing covers the
+ * map, the new one swaps in when it lands; if it fails, the old one stays.
+ * The checks made when the source was chosen (gaps, softer than Mapbox) are
+ * not made again for a frame change.
+ */
+async function showImagery({ quiet = false } = {}) {
   const run = ++imageryRun;
   if (imageryBusyRun) { idle(); imageryBusyRun = 0; }
-  hideImagery();
+  quiet = quiet && Boolean(map.getLayer('imagery-alt')) && !providerInfo(state.provider).tiles;
+  if (!quiet) hideImagery();
   if (state.provider === 'mapbox') return;
 
   const info = providerInfo(state.provider);
@@ -6000,8 +6009,11 @@ async function showImagery() {
    * as a dead button, and the natural response is to press it again. The wait
    * is the source's, not ours -- but silence about it is.
    */
-  busy(`Fetching ${info.label}…`);
-  imageryBusyRun = run;
+  if (quiet) setStatus(`Updating ${info.label} for the new property line… the map stays usable.`);
+  else {
+    busy(`Fetching ${info.label}…`);
+    imageryBusyRun = run;
+  }
   /* NAIP's own picture, kept for lining it up with Mapbox: USGS is slow
      (seven to eleven seconds a picture) and asking it twice made the next
      request queue behind the first (the browser test, 2026-09-27). */
@@ -6039,6 +6051,12 @@ async function showImagery() {
     // A failure for a source the user has already moved on from is not news,
     // and falling back to Mapbox on their behalf would undo their choice.
     if (run !== imageryRun) return;
+    if (quiet) {
+      /* The picture already on screen stays; the next move tries again. */
+      state.altFrame = null;
+      setStatus(`${info.label} could not be updated for the new property line (${err.message}); the earlier picture is still showing.`, 'warn');
+      return;
+    }
     idle(); imageryBusyRun = 0;
     setStatus(
       err.refused
@@ -6065,7 +6083,7 @@ async function showImagery() {
    * missing tile), so the picture itself is looked at: transparent, or a flat
    * white or black fill over more than 2% of it, and this lot stays on Mapbox.
    */
-  if (state.provider === 'county' && naipBlob) {
+  if (state.provider === 'county' && naipBlob && !quiet) {
     const gaps = await gapShare(naipBlob).catch(() => 0);
     if (run !== imageryRun) return;
     if (gaps > 0.02) {
@@ -6116,6 +6134,9 @@ async function showImagery() {
     }
   }
   hideImagery(); // in case a later-started run already put something up
+  /* A quiet swap uses the picture already downloaded, so the map is not
+     left on Mapbox while the image source fetches it a second time. */
+  if (quiet && naipBlob) url = URL.createObjectURL(naipBlob);
 
   map.addSource('imagery-alt', {
     type: 'image', url,
@@ -7474,6 +7495,7 @@ function leaveReview(save) {
   if (save) keepFinished();
   state.reviewingId = null;
   $('#review-bar').hidden = true;
+  leavingOnPurpose = true;
   window.location.href = state.reviewBack || '/admin.html';
 }
 
@@ -7511,6 +7533,7 @@ async function leaveCountyEdit(save) {
   state.reviewingId = null;
   state.reviewPhoto = null;
   $('#review-bar').hidden = true;
+  leavingOnPurpose = true;
   window.location.href = state.reviewBack || '/county.html';
 }
 
@@ -7753,7 +7776,7 @@ async function enterJobMode({ worker, preview, volunteer, paid }) {
         + 'blocking api.mapbox.com is the usual cause. Nothing has been '
         + 'assigned to you and you have not lost anything — try again in '
         + 'another browser, or return the task.',
-      go: { label: 'Try again', onClick: () => window.location.reload() },
+      go: { label: 'Try again', onClick: () => { leavingOnPurpose = true; window.location.reload(); } },
     });
     return;
   }
@@ -8537,6 +8560,21 @@ function tabLock(tab) {
 }
 
 const hasLawn = () => Boolean(draw?.getAll().features.some((f) => outerRing(f)));
+
+/*
+ * AND IF A RELOAD STARTS ANYWAY, THE BROWSER ASKS FIRST (owner, 2026-10-03:
+ * a stray swipe reloaded the page and lost the map). Only while there is
+ * something on the map to lose; the app's own moves away (back to the
+ * console after a save, "Try again") set leavingOnPurpose first.
+ */
+let leavingOnPurpose = false;
+window.addEventListener('beforeunload', (e) => {
+  if (leavingOnPurpose) return;
+  const work = hasLawn() || Boolean(drafting) || (state.notLawn?.length > 0);
+  if (!work) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
 
 /* The AI and Draw steps wait for a property line once an address is chosen
    (owner, 2026-10-03). Saved maps and the plan are not steps of this lot.
@@ -11945,7 +11983,7 @@ function setParcelRing(ring) {
     if ((map.getLayer('imagery-alt') || state.provider !== 'mapbox') && !providerInfo(state.provider).tiles
       && !frameInside(state.frame, state.altFrame)) {
       clearTimeout(setParcelRing.refetch);
-      setParcelRing.refetch = setTimeout(() => showImagery(), 600); // not awaited: nothing here depends on it
+      setParcelRing.refetch = setTimeout(() => showImagery({ quiet: true }), 600); // not awaited: nothing here depends on it
     }
   }
 }
@@ -13540,7 +13578,8 @@ $('#btn-finish').addEventListener('click', () => {
     state.reviewingId = null;
     $('#review-bar').hidden = true;
     setStatus('Saved. Going back.');
-    window.location.href = state.reviewBack || '/admin.html';
+    leavingOnPurpose = true;
+  window.location.href = state.reviewBack || '/admin.html';
     return;
   }
 
@@ -13814,7 +13853,7 @@ $('#account-signout').addEventListener('click', async () => {
   setStatus('Signed out. Maps you measure now stay in this browser.');
 });
 
-$('#account-admin').addEventListener('click', () => { location.href = '/admin.html'; });
+$('#account-admin').addEventListener('click', () => { location.href = '/admin.html'; }); // asks first if a map is open
 
 /*
  * THE FATAL BANNER SPEAKS FOR THE MAP AND NOTHING ELSE.

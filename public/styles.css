@@ -15,9 +15,17 @@
  * which left the loading spinner permanently on screen. Settle it globally. */
 [hidden] { display: none !important; }
 
+/* ...and a panel, dialog or list scrolled past its end never hands the
+   swipe on to the page, which is where the refresh would start. */
+* { overscroll-behavior: contain; }
+
 html, body {
   margin: 0;
   height: 100%;
+  /* NO PULL-TO-REFRESH (owner, 2026-10-03: a swipe down sometimes reloaded
+     the page and lost a map in progress). The page itself never refreshes
+     on an overscroll; normal scrolling is unaffected. */
+  overscroll-behavior: none;
   font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
         "Helvetica Neue", Arial, sans-serif;
   color: var(--ink);
