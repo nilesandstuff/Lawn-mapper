@@ -850,7 +850,7 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
-### H67. County photo catalogue, second sweep (vendor names, "too coarse" measured, statewide states by county name): 2,090 services; 2,801 of 3,427 sweep points (82%) have a photo -- two of three runs still going, 2026-10-03
+### H67. County photo catalogue, second sweep (vendor names, "too coarse" measured, statewide states by county name): 2,902 services; 2,904 of 3,427 sweep points (85%) have a photo, 2026-10-03
 
 *Workflow 8 on claude/resume-previous-session-y94slo. Three runs from 20:46
 UTC 2026-10-02 (bb948b3), continued from 03:05 UTC 2026-10-03 (b73897b),
@@ -861,6 +861,24 @@ services named for a vendor (Nearmap, EagleView, Pictometry, Woolpert...)
 searched for; counties in statewide-parcel states searched by name; from
 b73897b, "most recent / latest / current" with no year ranks as newest.*
 
+- **FINAL (all three runs done, 18:06 UTC 2026-10-03).** The last
+  catalogue run's summary, verbatim: "2902 in the catalogue: 2008 draw any
+  box, 778 tiles only (stitched live by the Worker), 116 tiles in another
+  projection (not used live yet). Points swept: 3427, 2904 with a county or
+  state photo service." By county name in the statewide-parcel states: 1,261
+  counties looked at, 523 with a county or state photo service. H66 was
+  1,491 services and 2,709 points. The ten-year rule (oldest 2016) and the
+  nightly pruning that came after (workflow 27) will take some of the 2,902
+  out; the live lookup already ignored them.
+- **Canadian layers from New York's border grid:** York Region and Durham
+  (Ontario) 2022-2025 5 cm caches, Brock University 2023 -- harmless for US
+  addresses, which they do not cover.
+- **A false year the year rule could not catch:**
+  "AirPhotos/Niagara1972mosaic_2025", a 1972 mosaic whose name carries
+  2025, was OFFERED FIRST at -78.95,43.05 (Grand Island / North Tonawanda,
+  NY), ahead of New York's own 0.086 "Latest". Fixed: a year before 1990
+  anywhere in a name now marks a layer historic, in the sweep, the nightly
+  pruning and the live lookup.
 - **The catalogue sweep (vendor re-sweep) finished**, its summary verbatim:
   "2090 in the catalogue: 1439 draw any box, 563 tiles only (stitched live
   by the Worker), 88 tiles in another projection (not used live yet).

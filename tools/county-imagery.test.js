@@ -164,6 +164,9 @@ check('a person nudging the photo 1 m east moves where Mapbox reads it 10 px wes
   const { yearHints } = await import('./compare-imagery.js');
   const { NOT_A_PHOTO } = await import('./county-imagery.js');
   check('an 1800s year in a name is a year', yearHints('1897_Cambridge_Sanborn_Map').includes(1897));
+  const { historic } = await import('./county-imagery.js');
+  check('a 1972 mosaic published in 2025 is historic; a 2015-2024 series is not',
+    historic('AirPhotos/Niagara1972mosaic_2025') && !historic('Ortho_2015_2024') && !historic('Aerial 2025'));
   check('a Sanborn map and a comments layer are not photos',
     NOT_A_PHOTO.test('1897_Cambridge_Sanborn_Map') && NOT_A_PHOTO.test('WestSideComments_WTL1')
     && !NOT_A_PHOTO.test('Sanborn 2024 Ortho'));

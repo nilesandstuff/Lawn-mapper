@@ -144,6 +144,12 @@ check('nothing at all is refused', cleanCountyOutlines({ shapes: [], notLawn: []
   check('of two sharp enough, the newer, however much sharper the older', both.map((s) => s.id).join() === '1,2');
   check('two dozen boxes are looked at the spot, not twice the answer (Manassas behind Fairfax and Loudoun)',
     seen[0][1][3] === 24, JSON.stringify(seen[0][1]));
+  {
+    const old = [{ id: 9, url: 'https://n/AirPhotos/Niagara1972mosaic_2025/MapServer', type: 'MapServer', title: 'AirPhotos/Niagara1972mosaic_2025', year: 2025, export_ok: 1 }, ...rows];
+    const env2 = { DB: { prepare: () => ({ bind: () => ({ all: async () => ({ results: old }) }) }) } };
+    const got = await countyServicesAt(env2, -87.4, 46.5, 4, { probe: false });
+    check('a 1972 mosaic published in 2025 is never offered', !got.some((s) => s.id === 9) && got.length === rows.length);
+  }
   check('nothing flown more than ten years ago (2016 is the oldest in 2026); undated kept',
     oldestYear(new Date('2026-10-02')) === 2016 && /\(year IS NULL OR year >= \?5\)/.test(seen[0][0]) && seen[0][1][4] === 2016);
 }

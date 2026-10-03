@@ -129,7 +129,11 @@ export async function countyServicesAt(env, lng, lat, n = 4, { probe = true, fet
         LIMIT ?4`
     ).bind(lng, lat, MAX_SERVICE_SQ_DEG, probe ? PROBE_CANDIDATES : n, oldestYear(now)).all()).results || [];
   } catch { return []; }
-  const list = rows.map(svcOf);
+  /* A year before 1990 in the name is a historic layer, whatever later year
+     rides along (tools/county-imagery.js historic): "Niagara1972mosaic_2025"
+     was offered first on Grand Island, NY (2026-10-03). */
+  const historic = (r) => (`${r.title || ''} ${r.url}`.match(/(?<!\d)1[89]\d\d(?!\d)/g) || []).some((y) => Number(y) < 1990);
+  const list = rows.filter((r) => !historic(r)).map(svcOf);
   if (!probe) return list.slice(0, n);
   /*
    * AND A LOOK AT THE SPOT ITSELF (owner, 2026-10-02): a box covering the

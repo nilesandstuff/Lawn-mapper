@@ -133,6 +133,14 @@ export function agolKeep(results, lng, lat, maxArea = 30) {
  */
 export const NOT_A_PHOTO = /(?<![a-z])cir(?![a-z])|infra.?red|(?<![a-z])nir(?![a-z])|ndvi|false.?colou?r|color.?infrared|index|footprint|boundar|tile.?scheme|flight|lidar|(?<![a-z])dem(?![a-z])|hillshade|elevation|contour|parcel|topo|labels?\b|reference|(?<![a-z])bw\d*(?![a-z])|bw\d{4}|black.?(and|&|n).?white|grayscale|greyscale|panchromatic|historic|naip|habitat|land.?cover|land.?use|classif|sanborn.?map|comments?(?![a-z])/i;
 
+/*
+ * A YEAR BEFORE 1990 ANYWHERE IN A NAME IS A HISTORIC LAYER, whatever later
+ * year rides along with it: "AirPhotos/Niagara1972mosaic_2025" is a 1972
+ * mosaic published in 2025, and it was offered first on Grand Island, NY
+ * (2026-10-03). No current flight series names a year that old.
+ */
+export const historic = (text) => yearHints(text).some((y) => y < 1990);
+
 /**
  * Candidates in the order to try them: dropping flights named before
  * MIN_YEAR, then the newest named year first, then those naming none, a
@@ -149,6 +157,7 @@ export function rankCandidates(list, minYear = MIN_YEAR) {
     const years = yearHints(`${c.title} ${c.url}`);
     const year = years.length ? Math.max(...years) : null;
     if (year !== null && year < minYear) continue;
+    if (historic(`${c.title} ${c.url}`)) continue;
     out.push({ ...c, year });
   }
   /*
@@ -1127,6 +1136,7 @@ async function qualifyAt(c, lng, lat, decoders) {
   const years = yearHints(`${c.title} ${c.url} ${m.description || ''} ${m.serviceDescription || ''} ${m.copyrightText || ''}`);
   const year = c.year ?? (years.length ? Math.max(...years) : null);
   if (year !== null && year < MIN_YEAR) return { usable: false, why: `flown ${year}` };
+  if (historic(`${c.title} ${c.url}`)) return { usable: false, why: 'a historic layer (a year before 1990 in its name)' };
   let native = nativeCm(m, lat);
   if (native !== null && native < 3) native = null;
   /* What the name says, when the metadata says nothing: West Virginia's
@@ -1371,7 +1381,7 @@ function pruneCatalogue() {
     const name = `${r.title || ''} ${String(r.url).split('/rest/services/')[1] || r.url}`;
     const named = yearHints(name);
     const year = r.year !== null && r.year !== undefined ? Number(r.year) : (named.length ? Math.max(...named) : null);
-    const old = year !== null && year < MIN_YEAR;
+    const old = (year !== null && year < MIN_YEAR) || historic(name);
     if (old || NOT_A_PHOTO.test(name)) {
       exec(`DELETE FROM county_services WHERE url = ${lit(r.url)}`);
       console.log(`removed ${r.title || r.url} (${old ? `flown ${year}` : 'not a colour photo'})`);
