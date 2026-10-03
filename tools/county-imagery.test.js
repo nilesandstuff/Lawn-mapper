@@ -159,6 +159,16 @@ check('a person nudging the photo 1 m east moves where Mapbox reads it 10 px wes
     kept.length === 1 && kept[0].root.includes('orthos.its.ny.gov'), JSON.stringify(kept));
 }
 
+/* Athens County, 2026-10-03: an 1897 Sanborn map and a comments layer passed as photos. */
+{
+  const { yearHints } = await import('./compare-imagery.js');
+  const { NOT_A_PHOTO } = await import('./county-imagery.js');
+  check('an 1800s year in a name is a year', yearHints('1897_Cambridge_Sanborn_Map').includes(1897));
+  check('a Sanborn map and a comments layer are not photos',
+    NOT_A_PHOTO.test('1897_Cambridge_Sanborn_Map') && NOT_A_PHOTO.test('WestSideComments_WTL1')
+    && !NOT_A_PHOTO.test('Sanborn 2024 Ortho'));
+}
+
 /* What the nightly search records for a county's photos (owner, 2026-10-03). */
 {
   const ok = imageryVerdict({ found: 2, notes: ['OK Ortho 2024 2024 6 cm'], candidates: 5 });

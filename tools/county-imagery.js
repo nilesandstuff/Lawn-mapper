@@ -131,7 +131,7 @@ export function agolKeep(results, lng, lat, maxArea = 30) {
  * Massachusetts' "2025 Aerial Imagery - CIR": colour infrared, false colour.
  * Indexes, footprints and elevation layers are not photos either.
  */
-export const NOT_A_PHOTO = /(?<![a-z])cir(?![a-z])|infra.?red|(?<![a-z])nir(?![a-z])|ndvi|false.?colou?r|color.?infrared|index|footprint|boundar|tile.?scheme|flight|lidar|(?<![a-z])dem(?![a-z])|hillshade|elevation|contour|parcel|topo|labels?\b|reference|(?<![a-z])bw\d*(?![a-z])|bw\d{4}|black.?(and|&|n).?white|grayscale|greyscale|panchromatic|historic|naip|habitat|land.?cover|land.?use|classif/i;
+export const NOT_A_PHOTO = /(?<![a-z])cir(?![a-z])|infra.?red|(?<![a-z])nir(?![a-z])|ndvi|false.?colou?r|color.?infrared|index|footprint|boundar|tile.?scheme|flight|lidar|(?<![a-z])dem(?![a-z])|hillshade|elevation|contour|parcel|topo|labels?\b|reference|(?<![a-z])bw\d*(?![a-z])|bw\d{4}|black.?(and|&|n).?white|grayscale|greyscale|panchromatic|historic|naip|habitat|land.?cover|land.?use|classif|sanborn.?map|comments?(?![a-z])/i;
 
 /**
  * Candidates in the order to try them: dropping flights named before
@@ -1363,19 +1363,25 @@ function ensureCatalogueTables() {
     .match(/CREATE TABLE IF NOT EXISTS county_sweep \([\s\S]*?\n\);/)[0].replace(/--[^\n]*/g, ''), { always: true });
 }
 
-async function catalogue(decoders) {
-  ensureCatalogueTables();
-  /* Anything the filters now refuse comes out (a 1940 black-and-white basemap
-     got in before they did). */
+/* Anything the filters now refuse comes out (a 1940 black-and-white basemap
+   got in before they did; an 1897 Sanborn map, 2026-10-03). A service with no
+   year stored is judged by the newest year its name gives. */
+function pruneCatalogue() {
   for (const r of query('SELECT url, title, year, native_cm FROM county_services')) {
-    const old = r.year !== null && r.year !== undefined && Number(r.year) < MIN_YEAR;
     const name = `${r.title || ''} ${String(r.url).split('/rest/services/')[1] || r.url}`;
-    const coarse = false; // a name is a claim; qualify() measures it (DETAIL_AT_12CM)
-    if (old || coarse || NOT_A_PHOTO.test(name)) {
+    const named = yearHints(name);
+    const year = r.year !== null && r.year !== undefined ? Number(r.year) : (named.length ? Math.max(...named) : null);
+    const old = year !== null && year < MIN_YEAR;
+    if (old || NOT_A_PHOTO.test(name)) {
       exec(`DELETE FROM county_services WHERE url = ${lit(r.url)}`);
-      console.log(`removed ${r.title || r.url} (${old ? `flown ${r.year}` : 'not a colour photo'})`);
+      console.log(`removed ${r.title || r.url} (${old ? `flown ${year}` : 'not a colour photo'})`);
     }
   }
+}
+
+async function catalogue(decoders) {
+  ensureCatalogueTables();
+  pruneCatalogue();
   const known = new Set(query('SELECT url FROM county_services').map((r) => r.url));
   const failed = new Set();
   let added = 0;
@@ -1475,6 +1481,7 @@ async function main() {
   }
   if (MODE === 'asked') {
     ensureCatalogueTables();
+    pruneCatalogue();
     await asked(decoders);
     return;
   }

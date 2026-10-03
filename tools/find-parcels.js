@@ -231,7 +231,11 @@ export async function findFor(place) {
     }
     start = j.nextStart > 0 ? j.nextStart : 0;
   }
-  return found.sort((a, b) => rank(a, b, place));
+  /* A project's copy is never the county's layer unless it holds a county's
+     worth of parcels: Knox County TN's only find was "Parcels With
+     Categorical Changes", a zoning layer (2026-10-03). */
+  return found.filter((c) => !PROJECT.test(`${c.service.split('/services/')[1] || ''} ${c.layerName}`) || c.count >= 5000)
+    .sort((a, b) => rank(a, b, place));
 }
 
 /* ---------------------------------------------------------------- main */
