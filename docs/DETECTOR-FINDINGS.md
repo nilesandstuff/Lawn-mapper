@@ -893,6 +893,28 @@ b73897b, "most recent / latest / current" with no year ranks as newest.*
   at 12 cm, under the 0.10 line: offered after any sharp service, and the
   editor's own comparison with Mapbox decides whether it becomes the
   default. At Richmond the city/county 2020-2024 layers measure 0.38-0.54.
+- **Virginia's resolution, from VGIN's own tile index (owner's lead,
+  2026-10-03).** MostRecentImagery_WGS_Tile_Index records a Product per
+  tile: 12 inch over most of the state, 6 inch and 3 inch where a locality
+  bought up (30,355 bought-up tiles, 75 clusters at 0.25°). **The state's
+  web services serve the 12 inch everywhere:** inside a 3-inch Richmond
+  tile, MostRecentImagery_WGS at 7.5 cm a pixel measures 0.045 against
+  0.049 and 0.031 in two 12-inch places, and VBMP2025_WGS 0.027. So the
+  bought-up pictures reach us only from the localities' own portals. Of
+  the 75 clusters, 60 get a local photo measuring 0.10 or more from the
+  live lookup; 11 get only the state mosaic (0.05-0.10) -- southwest
+  Virginia, Campbell/Bedford/Lynchburg, Orange/Louisa, Brunswick, James
+  City/York -- and an ArcGIS search found no public portal for them; 4 in
+  the far southwest are offered Kentucky's statewide services first, which
+  did not answer the look in time. Fairfax, Loudoun and Arlington serve
+  their own 2026 flights (0.14-0.25); Alexandria's public server stops at
+  a 2016 ortho, its 2019-2025 flights only as tile indexes.
+- **The live lookup looked at too few boxes (fixed 2026-10-03).**
+  It took the eight newest services whose boxes cover the point and then
+  looked at the spot. In Manassas those eight were Fairfax's and Loudoun's
+  2026 services with no picture there, so the 0.19 Prince William catalogue
+  was never looked at and only the soft state mosaic was offered. It now
+  looks at 24.
 - **Not established:** whether 0.10 at 12 cm is the right line for rural
   ground. The detail measure reads the scene as well as the camera; open
   fields read lower than a suburb at the same resolution. The Virginia
