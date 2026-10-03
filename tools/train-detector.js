@@ -53,7 +53,7 @@ import {
   loadBackbone, tiledFeatures, sampleAt, projection, project,
 } from './backbone.js';
 import { rasterizePolygon } from '../public/lib/mask.js';
-import { stage3, clearCanopy } from './stage3.js';
+import { stage3, clearCanopy, bareCanopy, SEE_THROUGH_MODES } from './stage3.js';
 import { colourEdges } from './colour-edges.js';
 import { frameBbox3857 } from '../worker/src/imagery.js';
 import { lawnSetClause, lawnSetName, lawnSetDescription, BENCHMARK_PRINT } from './lawn-set.js';
@@ -2068,6 +2068,13 @@ async function main() {
         /* The tree model's mask on its own, for stage 3 (tools/stage3.js),
            which reasons about canopy as canopy rather than as unseen ground. */
         canopy: canopyRaw,
+        /* Canopy the photo shows the ground through (tools/stage3.js
+           bareCanopy), for the see-through sweep. Computed here because the
+           grid photo is not kept otherwise. */
+        bare: canopyRaw ? bareCanopy(canopyRaw, rgb, G, GH, { mpp: metresPerPixel(frame, G) }) : null,
+        /* Which photo this lawn was scored on: the see-through sweep is
+           read on county photos, where the leaf-off flights are. */
+        photoSource: row.image_provider || null,
         /* And the lidar's height above ground in metres, for its woods rule. */
         height,
         /* Roof and void, for the veto (H38). Null without a point cloud. */
@@ -2467,8 +2474,11 @@ async function main() {
         const L = lawns[held];
         if (!masks[held]) continue;
         const canopy = opts.plus && L.canopyPlus ? L.canopyPlus : L.canopy;
+        if (opts.only && !opts.only(L)) continue;
+        const bare = opts.seeThrough === 'colour' ? L.bare
+          : opts.seeThrough === 'trust' ? canopy : null;
         let mask = canopy
-          ? stage3(masks[held], canopy, L.grid, L.gridH, { mpp: L.mpp, height: L.height, ...opts }).mask
+          ? stage3(masks[held], canopy, L.grid, L.gridH, { mpp: L.mpp, height: L.height, ...opts, bare }).mask
           : masks[held];
         /* Colour on the edges only (tools/colour-edges.js), before the veto
            so roof and void still have the last word. */
@@ -2564,6 +2574,42 @@ async function main() {
         console.log(line);
         console.log();
       }
+    }
+
+    /*
+     * SEE-THROUGH CANOPY (owner, 2026-10-03): leaf-off county photos show
+     * the grass under bare crowns, and stage 3 clears stage 1's answer there
+     * and guesses. Three modes at THE PLAN's cell (span 8 m, reach 1 m,
+     * bridge over 180°), over every lot and over the county-photo lots
+     * alone: off (the rule since H30), colour (canopy cells that are not
+     * green keep stage 1's answer), trust (every canopy cell does). Read
+     * the INFERRED column and the county row; the leaf-on Mapbox lots are
+     * there to show what each mode costs where the trees are in leaf.
+     * Off in serving until this says otherwise (tools/serve-alpha.mjs
+     * SEE_THROUGH).
+     */
+    {
+      const county = (L) => L.photoSource === 'county';
+      const nCounty = lawns.filter(county).length;
+      const bareShare = (() => {
+        let b = 0, c = 0;
+        for (const L of lawns) {
+          if (!L.canopy || !L.bare) continue;
+          for (let i = 0; i < L.canopy.length; i++) { c += L.canopy[i]; b += L.bare[i]; }
+        }
+        return c ? b / c : null;
+      })();
+      for (const first of decoderMasks) {
+        console.log(`\nSEE-THROUGH CANOPY over "${first.cfg.name}" at span 8 m, reach 1 m, bridge over 180°.`
+          + ` Each cell: headline / seen / inferred. ${bareShare === null ? '' : `${(bareShare * 100).toFixed(0)}% of canopy cells read bare.`}\n`);
+        console.log(`  ${'mode'.padEnd(10)}${'every lot'.padStart(22)}${`county photo (${nCounty})`.padStart(26)}`);
+        for (const seeThrough of SEE_THROUGH_MODES) {
+          const all = judge(first.masks, { spanM: 8, reachM: 1, minRing: 0.5, seeThrough });
+          const cty = nCounty ? judge(first.masks, { spanM: 8, reachM: 1, minRing: 0.5, seeThrough, only: county }) : [];
+          console.log(`  ${seeThrough.padEnd(10)}${cell(all)}${cty.length ? cell(cty).padStart(26) : '--'.padStart(26)}`);
+        }
+      }
+      console.log();
     }
 
     /*

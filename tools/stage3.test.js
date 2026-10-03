@@ -5,7 +5,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { clumps, clearCanopy, reach, enclose, span, woods, bridge, stage3 } from './stage3.js';
+import { clumps, clearCanopy, reach, enclose, span, woods, bridge, stage3, bareCanopy, seeThroughFor } from './stage3.js';
 
 const grid = (rows) => {
   const h = rows.length, w = rows[0].length;
@@ -284,6 +284,33 @@ const show = (mask, w, h) => {
   /* A rule set of nothing gives back the cleared mask. */
   const none = stage3(lawn, canopy, w, h, { mpp: 0.15, reachM: 0, minRing: 1 });
   assert.deepEqual([...none.mask], [...clearCanopy(lawn, canopy)]);
+}
+
+/* ---------------------------------------- see-through canopy (2026-10-03) */
+{
+  /* Four cells across: green leaves, grey bare branches, a dark shadow, open. */
+  const w = 4, h = 1;
+  const px = [[60, 140, 50], [130, 120, 110], [20, 25, 20], [90, 160, 70]];
+  const rgba = new Uint8Array(w * h * 4);
+  px.forEach(([r, g, b], i) => rgba.set([r, g, b, 255], i * 4));
+  const canopy = Uint8Array.from([1, 1, 1, 0]);
+  const bare = bareCanopy(canopy, rgba, w, h, { mpp: 1, radiusM: 0 });
+  assert.deepEqual([...bare], [0, 1, 0, 0], 'grey canopy is bare; leaves, shadow and open ground are not');
+  assert.equal(seeThroughFor('off', canopy, rgba, w, h), null);
+  assert.deepEqual([...seeThroughFor('trust', canopy, rgba, w, h)], [1, 1, 1, 0]);
+  assert.deepEqual([...seeThroughFor('colour', canopy, rgba, w, h, { mpp: 1 })], [...bareCanopy(canopy, rgba, w, h, { mpp: 1 })]);
+  assert.throws(() => seeThroughFor('sometimes', canopy, rgba, w, h));
+
+  /* Stage 1 saw lawn under the whole canopy. Off: cleared, and with no rules
+     nothing comes back. Bare cells keep stage 1's answer. */
+  const lawn = Uint8Array.from([1, 1, 1, 1]);
+  const off = stage3(lawn, canopy, w, h, { mpp: 1, reachM: 0, minRing: 1 });
+  assert.deepEqual([...off.mask], [0, 0, 0, 1]);
+  const kept = stage3(lawn, canopy, w, h, { mpp: 1, reachM: 0, minRing: 1, bare });
+  assert.deepEqual([...kept.mask], [0, 1, 0, 1], 'stage 1 stands on the bare cell only');
+  /* And it adds nothing stage 1 did not say: bare canopy with no lawn stays empty. */
+  const none = stage3(Uint8Array.from([0, 0, 0, 1]), canopy, w, h, { mpp: 1, reachM: 0, minRing: 1, bare });
+  assert.deepEqual([...none.mask], [0, 0, 0, 1]);
 }
 
 console.log('stage 3: ok');

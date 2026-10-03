@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 
 import { gridDims, predictionMask, lidarVeto } from './train-detector.js';
 import { stage3 } from './stage3.js';
-import { STAGE3, finishLot, prepareFrame, uncertaintyOf, parcelMask } from './serve-alpha.mjs';
+import { STAGE3, SEE_THROUGH, finishLot, prepareFrame, uncertaintyOf, parcelMask } from './serve-alpha.mjs';
 
 const pngOf = (w, h, fill) => {
   const data = new Uint8Array(w * h * 4);
@@ -51,6 +51,20 @@ const pngOf = (w, h, fill) => {
   }
   want = lidarVeto(want, roofGrid, null);
   assert.deepEqual([...got], [...want]);
+}
+
+/* See-through canopy is off in serving until it is measured, and 'trust'
+   keeps stage 1's lawn under the canopy instead of clearing it. */
+{
+  assert.equal(SEE_THROUGH, 'off');
+  const w = 64, h = 48;
+  const prob = pngOf(w, h, () => 230);                                   // lawn everywhere
+  const canopy = pngOf(w * 2, h * 2, (x) => (x >= 40 && x <= 82 ? 255 : 0));
+  const lawnAt = (m) => m[10 * w + 30];
+  const base = { prob, canopy, roof: null, voidMask: null, height: null, w, h, mpp: 0.15 };
+  const trusted = finishLot({ ...base, seeThrough: 'trust' });
+  assert.equal(lawnAt(trusted), 1, 'trust: stage 1 stands under the canopy');
+  assert.equal(trusted.reduce((a, b) => a + b, 0), w * h);
 }
 
 /* Uncertainty: the share of cells neither clearly lawn nor clearly not. */

@@ -232,6 +232,9 @@ class Alpha:
         photo = Image.open(__import__("io").BytesIO(got["photo"])).convert("RGB")
         with tempfile.TemporaryDirectory() as d:
             rec = self.det.run(photo, prep, d, naip_align=payload.get("naipAlign"), sources=got["sources"])
+            # The photo on the scoring grid, for stage 3's see-through canopy
+            # (tools/serve-alpha.mjs SEE_THROUGH; read only when it is 'colour').
+            photo.resize((prep["w"], prep["h"]), Image.BOX).save(os.path.join(d, "photo.png"))
             rec["seconds"]["waited"] = waited
             fin = _node("finish", {"dir": d, "w": prep["w"], "h": prep["h"], "mpp": prep["mpp"],
                                    "frame": frame, "parcel": payload.get("parcel")})

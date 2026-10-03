@@ -58,6 +58,91 @@ export function clumps(mask, w, h) {
 }
 
 /**
+ * BARE CANOPY: tree cells the ground shows through (owner, 2026-10-03).
+ *
+ * Leaf-off county photos are coming in, and the tree model still marks a
+ * bare crown as canopy -- correctly -- so stage 3 clears what stage 1 saw
+ * there and guesses instead, when the grass under the branches is plainly
+ * visible. Decided per cell, not per photo: a leaf-off flight still has
+ * evergreens, and a summer one a dead tree.
+ *
+ * A canopy cell is bare when the photo there, averaged over about a metre,
+ * is not green: excess green (2g - r - b) / (r + g + b) under `maxExg`.
+ * Grey and brown branches over grass read low; leaves and needles read high.
+ * Very dark cells (shadow) stay canopy, because nothing can be seen there.
+ * Autumn reds and yellows would read bare too -- untested, a known limit.
+ *
+ * AND ITS BLIND SPOT: green grass showing through bare branches reads green,
+ * so it is taken for leaves. The rule only catches bare crowns over dormant
+ * or brown ground. Hence the second mode, "trust" (seeThroughFor): every
+ * canopy cell is see-through and stage 1's answer stands under all of it --
+ * on a leaf-off photo, what stage 1 sees under an evergreen is mostly
+ * needles, which it should not call lawn anyway. Both are measured; neither
+ * is assumed.
+ *
+ * `rgba` is the photo on the same w x h grid, 4 bytes a cell.
+ *
+ * SPECULATION UNTIL MEASURED: stage 1 is untrained under any canopy (H30
+ * measured clearing it as worth 3.6 points on leaf-on Mapbox). This is an
+ * option, off by default, to be scored on leaf-off county maps.
+ */
+export const BARE_MAX_EXG = 0.03;
+export const BARE_MIN_SUM = 90;
+export function bareCanopy(canopy, rgba, w, h, { mpp = 0.15, maxExg = BARE_MAX_EXG, minSum = BARE_MIN_SUM, radiusM = 0.5 } = {}) {
+  const out = new Uint8Array(w * h);
+  if (!canopy || !rgba) return out;
+  const n = w * h;
+  /* Summed-area tables of excess green's numerator and brightness. */
+  const W1 = w + 1;
+  const sg = new Float64Array(W1 * (h + 1));
+  const ss = new Float64Array(W1 * (h + 1));
+  for (let y = 0; y < h; y++) {
+    let rg = 0, rs = 0;
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      const r = rgba[i], g = rgba[i + 1], b = rgba[i + 2];
+      rg += 2 * g - r - b;
+      rs += r + g + b;
+      sg[(y + 1) * W1 + x + 1] = sg[y * W1 + x + 1] + rg;
+      ss[(y + 1) * W1 + x + 1] = ss[y * W1 + x + 1] + rs;
+    }
+  }
+  const k = Math.max(0, Math.round(radiusM / mpp));
+  for (let i = 0; i < n; i++) {
+    if (!canopy[i]) continue;
+    const x = i % w, y = (i / w) | 0;
+    const x0 = Math.max(0, x - k), x1 = Math.min(w, x + k + 1);
+    const y0 = Math.max(0, y - k), y1 = Math.min(h, y + k + 1);
+    const box = (t) => t[y1 * W1 + x1] - t[y0 * W1 + x1] - t[y1 * W1 + x0] + t[y0 * W1 + x0];
+    const cells = (x1 - x0) * (y1 - y0);
+    const sum = box(ss);
+    if (sum / cells < minSum) continue;
+    if (box(sg) / sum < maxExg) out[i] = 1;
+  }
+  return out;
+}
+
+/**
+ * The see-through cells for a mode: 'off' (none -- the rule since H30),
+ * 'colour' (bareCanopy), or 'trust' (every canopy cell). Null for 'off'.
+ */
+export const SEE_THROUGH_MODES = ['off', 'colour', 'trust'];
+export function seeThroughFor(mode, canopy, rgba, w, h, { mpp = 0.15 } = {}) {
+  if (!canopy || !mode || mode === 'off') return null;
+  if (mode === 'trust') return Uint8Array.from(canopy);
+  if (mode === 'colour') return rgba ? bareCanopy(canopy, rgba, w, h, { mpp }) : null;
+  throw new Error(`see-through mode "${mode}" is not one of ${SEE_THROUGH_MODES.join(', ')}`);
+}
+
+/** The canopy without its bare cells: what stage 3 may clear and fill. */
+export function withoutBare(canopy, bare) {
+  if (!bare) return canopy;
+  const out = new Uint8Array(canopy.length);
+  for (let i = 0; i < canopy.length; i++) out[i] = canopy[i] && !bare[i] ? 1 : 0;
+  return out;
+}
+
+/**
  * Stage 1's answer with the canopy cleared: what stage 3 starts from.
  */
 export function clearCanopy(lawn, canopy) {
@@ -284,13 +369,19 @@ export function woods(canopy, height, w, h, tallM, minCells = 0) {
  * Span first and reach after, so the reach is "a little beyond" the joined
  * shape: it starts from the spanned lawn as well as the visible lawn.
  *
+ * `bare`, a mask from bareCanopy, takes see-through canopy out first.
+ *
  * `height` with `tallM` > 0 switches the woods rule on: tall clumps are
  * taken out of the canopy the rules may fill, and out of the ground they
  * may walk through.
  */
 export function stage3(lawn, canopy, w, h, {
-  mpp, spanM = 0, reachM = 3, minRing = 0.5, sides = 0, height = null, tallM = 0, woodsM2 = 0,
+  mpp, spanM = 0, reachM = 3, minRing = 0.5, sides = 0, height = null, tallM = 0, woodsM2 = 0, bare = null,
 } = {}) {
+  /* Bare canopy (bareCanopy) is visible ground: stage 1's answer stands there
+     and the rules neither clear it nor fill it. Null: every canopy cell is
+     hidden ground, as before 2026-10-03. */
+  canopy = withoutBare(canopy, bare);
   const cleared = clearCanopy(lawn, canopy);
   const minCells = woodsM2 > 0 && mpp > 0 ? Math.round(woodsM2 / (mpp * mpp)) : 0;
   const tall = woods(canopy, height, w, h, tallM, minCells);

@@ -24,7 +24,7 @@ import { join } from 'node:path';
 import {
   gridDims, predictionMask, canopyMask, heightMask, lidarVeto,
 } from './train-detector.js';
-import { stage3 } from './stage3.js';
+import { stage3, seeThroughFor } from './stage3.js';
 import { frameBbox3857 } from '../worker/src/imagery.js';
 import { metresPerPixel, lngLatToFramePx } from '../public/lib/mercator.js';
 import { rasterizePolygon } from '../public/lib/mask.js';
@@ -33,6 +33,14 @@ import { FOOTPRINTS, fetchFootprints } from './lidar-cover.js';
 
 /* THE PLAN's stage 3 (H39, H60): span 8 m, reach 1 m, bridge over 180°. */
 export const STAGE3 = { spanM: 8, reachM: 1, minRing: 0.5 };
+
+/*
+ * SEE-THROUGH CANOPY (owner, 2026-10-03, for leaf-off county photos):
+ * 'off', 'colour' or 'trust' -- tools/stage3.js seeThroughFor. OFF until
+ * workflow 14's stage 3 sweep has scored it on leaf-off county maps; this
+ * line is the only thing to change to switch it on.
+ */
+export const SEE_THROUGH = 'off';
 
 /** Where a lot is and what grid it is judged on -- the scorer's own numbers. */
 export function prepareFrame(frame) {
@@ -89,11 +97,15 @@ export function uncertaintyOf(probGrey, within) {
 }
 
 /** THE PLAN's final answer from the pieces the Python half wrote. */
-export function finishLot({ prob, canopy, roof, voidMask, height, w, h, mpp }) {
+export function finishLot({ prob, canopy, roof, voidMask, height, w, h, mpp, photo = null, seeThrough = SEE_THROUGH }) {
   let mask = predictionMask(prob, w, h);
   if (!mask) throw new Error(`prob.png is ${prob?.width}x${prob?.height}, not the ${w}x${h} grid`);
   const can = canopy ? canopyMask(canopy, w, h) : null;
-  if (can) mask = stage3(mask, can, w, h, { mpp, height: height ? heightMask(height, w, h) : null, ...STAGE3 }).mask;
+  /* The photo on the grid (photo.png, written by the Python half), only read
+     by the 'colour' mode. */
+  const rgba = photo && photo.width === w && photo.height === h ? photo.data : null;
+  const bare = can ? seeThroughFor(seeThrough, can, rgba, w, h, { mpp }) : null;
+  if (can) mask = stage3(mask, can, w, h, { mpp, height: height ? heightMask(height, w, h) : null, bare, ...STAGE3 }).mask;
   mask = lidarVeto(mask, roof ? canopyMask(roof, w, h) : null, voidMask ? canopyMask(voidMask, w, h) : null);
   return mask;
 }
@@ -122,6 +134,7 @@ async function main() {
     const mask = finishLot({
       prob, canopy: read('canopy.png'), roof: read('roof.png'), voidMask: read('void.png'),
       height: read('height.png'), w: input.w, h: input.h, mpp: input.mpp,
+      photo: SEE_THROUGH === 'colour' ? read('photo.png') : null,
     });
     const png = new PNG({ width: input.w, height: input.h });
     let lawn = 0;

@@ -5005,6 +5005,49 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
+### S22. See-through canopy on leaf-off county photos: let stage 1's answer stand under bare crowns (owner, 2026-10-03 -- BUILT, OFF, NOT MEASURED)
+
+**The worry (owner).** County photos are often flown leaf-off. The tree model
+still marks a bare crown as canopy, correctly, and stage 3 then clears what
+stage 1 saw there and guesses (span, reach, bridge) -- when the grass under
+the branches is plainly visible. Guessing cannot be as good as seeing.
+
+**What is established and what is not.** H30 measured clearing stage 1
+under canopy as worth 3.6 points on visible ground -- on a corpus of
+leaf-on Mapbox photos, where stage 1's opinion under a tree was untrained
+and wrong. Nothing has measured stage 1 under bare branches. It is still
+untrained there (canopy carries no weight in its training), so it may read
+the grass well, or it may trip on branch shadows and leaf litter.
+
+**Built (tools/stage3.js), three modes, `off` in serving:**
+- `off` -- every canopy cell is hidden ground, as since H30.
+- `colour` -- a canopy cell whose photo, averaged over about a metre, is
+  not green (excess green under 0.03, not dark shadow) is bare: stage 1's
+  answer stands there and the rules leave it alone. Decided per cell, so an
+  evergreen in a leaf-off photo stays canopy. **Known blind spot:** green
+  grass showing through bare branches reads green and is taken for leaves,
+  so this only catches bare crowns over dormant or brown ground. Autumn
+  colours would read bare; untested.
+- `trust` -- every canopy cell keeps stage 1's answer; the rules only add.
+
+**How it is read.** Workflow 14's stage 3 output prints a SEE-THROUGH
+CANOPY table at THE PLAN's cell (span 8 m, reach 1 m, bridge over 180°):
+each mode over every lot and over the county-photo lots alone, headline /
+seen / inferred. Canopy over traced lawn is scored as inferred, so the
+inferred column is the ground under the trees. Switching serving on is one
+line, `SEE_THROUGH` in tools/serve-alpha.mjs.
+
+**Bar, before the run.** Adopt a mode only if, on the county-photo lots, it
+lowers the inferred column's median and the headline, with more lots better
+than worse, and does not raise the headline on the Mapbox lots by more than
+a point. Fewer than about 15 county-photo lots with canopy on them is too
+few to read; say so rather than read it.
+
+**Feeding it (owner, already doing it).** On leaf-off photos, grass seen
+under a bare tree is traced as ordinary lawn, not marked inferred. If a mode
+passes, the next step is letting training weight those cells instead of
+ignoring all canopy.
+
 ### S21. Learn from the PAIRING: weight training toward where the detector's own outline was corrected (owner, 2026-09-30 -- WANTED, NOT YET BUILT)
 
 **What.** Every finished map already stores both halves of a correction:
