@@ -56,6 +56,7 @@ import { handleJobs, spendJobDetection, jobDetection } from './routes-jobs.js';
 import { accountsEnabled, publicUser } from './db.js';
 import { currentUser } from './auth.js';
 import { recordParcelGap } from './gaps.js';
+import { llmsTxt } from './llms.js';
 // Constants and the version lookup live in their own module: a Workers
 // entrypoint may only export handlers, and exporting a plain constant from
 // here kills the isolate on startup.
@@ -1751,6 +1752,11 @@ export default {
             `User-agent: *\nAllow: /\nDisallow: /api/\n\nSitemap: ${url.origin}/sitemap.xml\n`,
             { headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=86400' } }
           );
+        /* For AI assistants: what the site is, in plain words (llms.js). */
+        case '/llms.txt':
+          return new Response(llmsTxt(url.origin), {
+            headers: { 'Content-Type': 'text/markdown; charset=utf-8', 'Cache-Control': 'public, max-age=86400' },
+          });
         case '/sitemap.xml':
           return new Response(
             '<?xml version="1.0" encoding="UTF-8"?>\n'

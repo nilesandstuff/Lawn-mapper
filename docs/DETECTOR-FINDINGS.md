@@ -5093,6 +5093,33 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
+### S23. How much sun a spot gets, as evidence for lawn under trees (owner, 2026-10-03 -- IDEA, NOT BUILT, APPROACH OPEN)
+
+**The idea (owner).** Sites exist that map sunlight and shade over a
+property from the sun's path and the 3D shape of what surrounds a spot.
+Grass needs a certain amount of sun; under enough shade it does not grow.
+So a measure of how much sun each part of a lot receives over the growing
+season could tell stage 3 where lawn plausibly continues under a canopy and
+where it cannot -- the lawn-tree-or-woods question H34-H37 tried to answer
+from height and clump size alone.
+
+**What exists to build on.** The per-lot lidar the pipeline already reads
+(heights, roofs, canopy), the tree-canopy model, the lot's location and
+date. Nothing about the method is decided: **the owner expects the best
+approach to differ from the obvious one**, so none is recorded here as the
+plan.
+
+**Known complications, whatever the method.** Lidar is usually flown
+leaf-off and can be years old (H40: one lot's trees are gone); point
+density varies by county; grasses differ in how much shade they tolerate,
+so any threshold is a range, not a line.
+
+**How it would be judged.** As every stage 3 idea is: by the INFERRED
+column on the corpus, before anything reaches the app. Speculation until
+then. A sun map of a yard may also be worth showing people on its own
+(where grass will and will not take), which is a product question, not a
+detector one.
+
 ### S22. See-through canopy on leaf-off county photos: let stage 1's answer stand under bare crowns (owner, 2026-10-03 -- BUILT, OFF, NOT MEASURED)
 
 **The worry (owner).** County photos are often flown leaf-off. The tree model
