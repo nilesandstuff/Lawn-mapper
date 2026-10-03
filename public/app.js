@@ -5568,7 +5568,7 @@ function countyShowing(svc) {
     + ' — usually the sharpest there is. Lined up on the ground automatically; Layers switches back to Mapbox.';
 }
 
-async function lookupCountyPhoto({ makeDefault = false } = {}) {
+async function lookupCountyPhoto({ makeDefault = false, chosen = false } = {}) {
   const at = state.frame || state.chosen;
   if (!at || !state.imagery.some((p) => p.id === 'county')) return;
   const mine = ++countyLookup;
@@ -5587,7 +5587,7 @@ async function lookupCountyPhoto({ makeDefault = false } = {}) {
   state.countySvc = svc;
   buildImageryPicker();
   if (svc && makeDefault && state.provider === 'mapbox') {
-    await setProvider('county', { auto: true });
+    await setProvider('county', { auto: !chosen });
     /* setProvider says what it shows; this is the why. */
     if (state.provider === 'county') setStatus(countyShowing(state.countySvc));
   }
@@ -8216,7 +8216,11 @@ function openMap(s) {
   state.chosen = { label: s.address, lng: s.lng, lat: s.lat };
   state.parcel = s.parcel || null;
   state.frame = s.frame || null;
-  state.provider = s.provider || 'mapbox';
+  /* The county photo needs its service looked up first (lookupCountyPhoto,
+     below), so the map opens on Mapbox and switches once it is found --
+     set straight to 'county' here, the picker said county over a Mapbox
+     picture and nothing ever drew the county one. */
+  state.provider = s.provider === 'county' ? 'mapbox' : (s.provider || 'mapbox');
   state.model = knownModel(s.model) ? s.model : state.defaultModel;
   state.exclude = Array.isArray(s.exclude) ? s.exclude.filter(Boolean) : [];
   state.edgeFt = Number.isFinite(s.edgeFt) ? s.edgeFt : DEFAULT_EDGE_FT;
@@ -8278,7 +8282,9 @@ function openMap(s) {
 
   buildImageryPicker();
   buildModelPicker();
-  lookupCountyPhoto({ makeDefault: false });
+  /* A map saved on the county photo reopens on it (owner, 2026-10-02: it
+     reopened on Mapbox). Theirs, not chosen for them: no softness check. */
+  lookupCountyPhoto({ makeDefault: s.provider === 'county', chosen: s.provider === 'county' });
   refreshExclusions();
   refreshSensitivity();
   refreshTreesOption();

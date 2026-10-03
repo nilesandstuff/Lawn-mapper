@@ -159,6 +159,10 @@ export function paint(canvas, c, { showAi = false } = {}) {
   img.onerror = () => overlay();
   /* The save time in the address: a map re-saved under the same id has a new
      photo AND a new frame, and the photo is cached for ten minutes by id --
-     so without this the card could pair the old picture with the new frame. */
-  img.src = `/api/admin/candidate-image?id=${encodeURIComponent(c.id)}${c.at ? `&v=${encodeURIComponent(c.at)}` : ''}`;
+     so without this the card could pair the old picture with the new frame.
+     And which photo is stored: a county map's photo lands a few seconds
+     after its save, and a card opened in between cached the old Mapbox one
+     under the new save time (owner, 2026-10-02). */
+  const v = [c.at, c.imageProvider].filter(Boolean).join('|');
+  img.src = `/api/admin/candidate-image?id=${encodeURIComponent(c.id)}${v ? `&v=${encodeURIComponent(v)}` : ''}`;
 }
