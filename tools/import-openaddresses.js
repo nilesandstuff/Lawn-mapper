@@ -136,7 +136,10 @@ const bareName = (name) => String(name)
  * guessing our way through somebody's public server is exactly the traffic
  * that gets a tool blocked.
  */
-const SPLIT = /^(.*\/(?:Map|Feature)Server)\/(\d+)\/?$/i;
+/* https only: the app asks for nothing else (coverage.test.js), and a server
+   that answers only on http -- Cache County UT's, 2026-10-03 -- is a
+   candidate that can never pass. Counted as an unusable URL. */
+const SPLIT = /^(https:\/\/.*\/(?:Map|Feature)Server)\/(\d+)\/?$/i;
 
 const dir = sourcesDir();
 const stateDirs = readdirSync(dir, { withFileTypes: true })

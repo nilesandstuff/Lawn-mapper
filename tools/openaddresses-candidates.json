@@ -5,7 +5,7 @@
   "listed": 1972,
   "noParcels": 833,
   "notEsri": 107,
-  "unusableUrl": 1,
+  "unusableUrl": 2,
   "noFips": 116,
   "skipped": 1,
   "candidates": [
@@ -9522,19 +9522,6 @@
       "layerName": null,
       "fields": {
         "pin": "Parcel_Number",
-        "address": null
-      },
-      "fallbacks": []
-    },
-    {
-      "key": "ut-cache",
-      "name": "Cache County, UT",
-      "fips": "49005",
-      "service": "http://gis.cachecounty.org/arcgis/rest/services/BaseMap/Parcels_Current/FeatureServer",
-      "layer": 0,
-      "layerName": null,
-      "fields": {
-        "pin": "tax_id",
         "address": null
       },
       "fallbacks": []
