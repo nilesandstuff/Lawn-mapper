@@ -850,6 +850,54 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H67. County photo catalogue, second sweep (vendor names, "too coarse" measured, statewide states by county name): 2,090 services; 2,801 of 3,427 sweep points (82%) have a photo -- two of three runs still going, 2026-10-03
+
+*Workflow 8 on claude/resume-previous-session-y94slo. Three runs from 20:46
+UTC 2026-10-02 (bb948b3), continued from 03:05 UTC 2026-10-03 (b73897b),
+continued again 09:05 UTC (e687d20) where the 340-min limit stopped them.
+Rule changes since H66: "too coarse" is measured on the picture at 12 cm
+(detail under 0.10 refused) instead of read from metadata or the name;
+services named for a vendor (Nearmap, EagleView, Pictometry, Woolpert...)
+searched for; counties in statewide-parcel states searched by name; from
+b73897b, "most recent / latest / current" with no year ranks as newest.*
+
+- **The catalogue sweep (vendor re-sweep) finished**, its summary verbatim:
+  "2090 in the catalogue: 1439 draw any box, 563 tiles only (stitched live
+  by the Worker), 88 tiles in another projection (not used live yet).
+  Points swept: 3427, 2801 with a county or state photo service." H66 was
+  1,491 services and 2,707 points (the retry made it 2,709).
+- **By county name, statewide states: still running.** 899 counties looked
+  at so far, 357 with a service; 557 services added across the two runs.
+- **The 233-county re-check (the 121 empty counties and the 126 with a
+  "too coarse" refusal): 153 counties done, through nm-eddy, still running.**
+  Of the first 100, only five empty counties gained anything, and all five
+  look doubtful: a Mecklenburg County NC 2025 tile cache qualified at the
+  Cherokee County AL point; Monterey 2014; FDOT 2013-2016 in Santa Rosa FL;
+  Allatoona Lake 2015 in Chattahoochee GA; a 2017 library ortho in Sutter.
+  The live lookup does not offer the Mecklenburg one at Cherokee (it returns
+  nothing there), so its look at the spot filters it; the old years are
+  past the ten-year limit (oldest 2016) the live lookup now applies.
+- **Kept by the measurement where the metadata said coarse** (named only
+  where the log shows no native resolution, i.e. measured): Wisconsin's
+  WROC 2020, 2023 and 2025; "2025 Aerials - Woolpert"; Alabama's Barbour,
+  Dallas, Elmore and Monroe county aerials; Orange County's 2022 1 ft.
+- **Vendor flights found:** Woolpert 2022-2026 in several counties;
+  Pictometry/EagleView in Fairbanks AK (2023 at 3 cm, 2026), Sonoma CA
+  2025, St. Louis MN 2025 (5 cm), Steele MN 2025 (5 cm), Scott MN 2024
+  (5 cm), Waterloo IA 2020, Butler 2020.
+- **Virginia.** VBMP2025 covers only part of the state: fully transparent at
+  -78.5,37.6 and -79.0,37.6. VBMP's statewide MostRecentImagery_WGS was
+  never tried before b73897b -- undated, it sorted behind fourteen dated
+  VBMP years, past the twelve tries a point gets. It is now catalogued (its
+  metadata says 2025) and offered at both points, measuring 0.083 and 0.081
+  at 12 cm, under the 0.10 line: offered after any sharp service, and the
+  editor's own comparison with Mapbox decides whether it becomes the
+  default. At Richmond the city/county 2020-2024 layers measure 0.38-0.54.
+- **Not established:** whether 0.10 at 12 cm is the right line for rural
+  ground. The detail measure reads the scene as well as the camera; open
+  fields read lower than a suburb at the same resolution. The Virginia
+  readings may be that.
+
 ### H66. County photo catalogue, first full sweep: 1,491 services; 2,707 of 3,427 sweep points (79%) have a county or state photo, 2026-10-02
 
 *Workflow 8, county_mode catalogue, four passes because each hit the 340-min
