@@ -2583,12 +2583,25 @@ async function main() {
      * bridge over 180°), over every lot and over the county-photo lots
      * alone: off (the rule since H30), colour (canopy cells that are not
      * green keep stage 1's answer), trust (every canopy cell does). Read
-     * the INFERRED column and the county row; the leaf-on Mapbox lots are
-     * there to show what each mode costs where the trees are in leaf.
+     * the INFERRED column. Grouped by what the photo LOOKS like, not where
+     * it came from (owner, 2026-10-03: some Mapbox photos are leaf-off and
+     * some county ones leaf-on): "looks leaf-off" is a lot whose canopy
+     * reads at least LEAF_OFF_SHARE bare. The county column stays as a
+     * second, weaker proxy. Each lot's bare share is listed so the grouping
+     * can be checked against what the tracer saw.
      * Off in serving until this says otherwise (tools/serve-alpha.mjs
      * SEE_THROUGH).
      */
     {
+      const LEAF_OFF_SHARE = 0.3;
+      const shareOf = (L) => {
+        if (!L.canopy || !L.bare) return null;
+        let b = 0, c = 0;
+        for (let i = 0; i < L.canopy.length; i++) { c += L.canopy[i]; b += L.bare[i]; }
+        return c >= 200 ? b / c : null;
+      };
+      const leafOff = (L) => (shareOf(L) ?? 0) >= LEAF_OFF_SHARE;
+      const nLeafOff = lawns.filter(leafOff).length;
       const county = (L) => L.photoSource === 'county';
       const nCounty = lawns.filter(county).length;
       const bareShare = (() => {
@@ -2602,12 +2615,21 @@ async function main() {
       for (const first of decoderMasks) {
         console.log(`\nSEE-THROUGH CANOPY over "${first.cfg.name}" at span 8 m, reach 1 m, bridge over 180°.`
           + ` Each cell: headline / seen / inferred. ${bareShare === null ? '' : `${(bareShare * 100).toFixed(0)}% of canopy cells read bare.`}\n`);
-        console.log(`  ${'mode'.padEnd(10)}${'every lot'.padStart(22)}${`county photo (${nCounty})`.padStart(26)}`);
+        console.log(`  ${'mode'.padEnd(10)}${'every lot'.padStart(22)}${`looks leaf-off (${nLeafOff})`.padStart(26)}`
+          + `${`county photo (${nCounty})`.padStart(26)}`);
+        const at = (seeThrough, only) => judge(first.masks, { spanM: 8, reachM: 1, minRing: 0.5, seeThrough, only });
         for (const seeThrough of SEE_THROUGH_MODES) {
-          const all = judge(first.masks, { spanM: 8, reachM: 1, minRing: 0.5, seeThrough });
-          const cty = nCounty ? judge(first.masks, { spanM: 8, reachM: 1, minRing: 0.5, seeThrough, only: county }) : [];
-          console.log(`  ${seeThrough.padEnd(10)}${cell(all)}${cty.length ? cell(cty).padStart(26) : '--'.padStart(26)}`);
+          const off = nLeafOff ? at(seeThrough, leafOff) : [];
+          const cty = nCounty ? at(seeThrough, county) : [];
+          console.log(`  ${seeThrough.padEnd(10)}${cell(at(seeThrough))}`
+            + `${off.length ? cell(off).padStart(26) : '--'.padStart(26)}${cty.length ? cell(cty).padStart(26) : '--'.padStart(26)}`);
         }
+      }
+      console.log(`\n  Bare share of each lot's canopy (looks leaf-off at ${LEAF_OFF_SHARE * 100}% or more):`);
+      for (const L of lawns) {
+        const sh = shareOf(L);
+        if (sh === null) continue;
+        console.log(`    ${L.tag || L.id.slice(0, 28)}  ${(sh * 100).toFixed(0).padStart(3)}%  ${L.photoSource || '?'} photo`);
       }
       console.log();
     }

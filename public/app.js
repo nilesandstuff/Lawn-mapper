@@ -895,6 +895,21 @@ if (typeof window !== 'undefined') {
     painting: Boolean(eraser?.painting),
   });
 
+  /* No step past the first without a property line: the line taken away for
+     a moment, both steps tried, the line put back. */
+  window.__lmNeedsParcelProbe = () => {
+    const kept = state.parcel;
+    const was = state.tab;
+    state.parcel = null;
+    setTab('detect');
+    const detect = state.tab;
+    setTab('draw');
+    const draw = state.tab;
+    state.parcel = kept;
+    setTab(was);
+    return { detect, draw, restored: state.tab === was && Boolean(parcelRing()) };
+  };
+
   /*
    * Which step is on screen, and what it is offering.
    *
@@ -2415,7 +2430,7 @@ async function confirmLocation() {
       // the final outline are still survey-accurate.
       state.surveyed = (parcelRing() || []).map((p) => [...p]);
       $('#btn-parcel-shape').hidden = false;
-      $('#btn-draw-parcel').hidden = true;
+      refreshDrawParcelButton();
 
       const a = measure(state.parcel.geometry);
       // Names the next STEP rather than the next button, because the button is
@@ -2449,7 +2464,7 @@ async function confirmLocation() {
       map.getSource('parcel').setData(empty());
       state.surveyed = [];
       $('#btn-parcel-shape').hidden = true;
-      $('#btn-draw-parcel').hidden = false;
+      refreshDrawParcelButton();
       map.flyTo({ center: [lng, lat], zoom: IMAGERY_ZOOM_FALLBACK, duration: 600 });
       state.frame = { lng, lat, zoom: IMAGERY_ZOOM_FALLBACK, size: FRAME_SIZE };
       setStatus(
@@ -4355,6 +4370,18 @@ function updatePromptHint() {
   // could produce or remove a property line.
   const toDetect = $('#btn-to-detect');
   if (toDetect) toDetect.hidden = !parcelRing();
+
+  /* AND A WAY TO PLACE THE CORNERS, always on this step (owner, 2026-10-03):
+     with no line it starts one, with a line it draws a new one to replace it.
+     Not on the paid tracing queue, where the lot is the job's. */
+  refreshDrawParcelButton();
+}
+
+function refreshDrawParcelButton() {
+  const drawParcel = $('#btn-draw-parcel');
+  if (!drawParcel) return;
+  drawParcel.hidden = !state.chosen || document.body.classList.contains('job-mode');
+  drawParcel.textContent = parcelRing() ? 'Redraw the property line' : 'Draw the property line';
 }
 
 /* ---------------------------------------------------------- model picker */
@@ -5952,6 +5979,9 @@ async function showImagery() {
   // The frame this source will really serve, not the one we asked for -- the
   // picture has to be laid on the ground it actually covers.
   const served = frameFor(state.provider, state.frame);
+  /* What the picture on screen (or on its way) covers, so a property-line
+     edit inside it does not fetch it again (setParcelRing). */
+  state.altFrame = served;
   let url = imageryUrlFor(state.provider, served);
 
   /*
@@ -8508,6 +8538,15 @@ function tabLock(tab) {
 
 const hasLawn = () => Boolean(draw?.getAll().features.some((f) => outerRing(f)));
 
+/* The AI and Draw steps wait for a property line once an address is chosen
+   (owner, 2026-10-03). Saved maps and the plan are not steps of this lot.
+   Not on the paid tracing queue: the lot there is the job's, and a tracer
+   has no button to draw one. */
+function needsParcel(tab) {
+  return (tab === 'detect' || tab === 'draw') && Boolean(state.chosen) && !parcelRing()
+    && !document.body.classList.contains('job-mode');
+}
+
 /**
  * Anything the user did to the shapes themselves.
  *
@@ -8527,7 +8566,13 @@ function setTab(name) {
    * finished property line, "Find the lawn", a clear -- lands on Draw instead.
    */
   const asked = (name === 'detect' && document.body.classList.contains('job-mode')) ? 'draw' : name;
-  const next = TABS.includes(asked) ? asked : 'address';
+  let next = TABS.includes(asked) ? asked : 'address';
+  /* NO STEP WITHOUT A PROPERTY LINE (owner, 2026-10-03). */
+  if (needsParcel(next)) {
+    next = 'address';
+    setStatus('Set the property line first: every step after this one measures inside it. '
+      + 'Press "Draw the property line" to place its corners.', 'warn');
+  }
   state.tab = next;
 
   /*
@@ -8637,7 +8682,7 @@ function refreshTabs() {
   // A tab with a lock on it says so on the tab itself, so the reason is
   // findable without opening it and wondering why everything is grey.
   for (const t of TABS) {
-    $(`#tab-${t}`)?.classList.toggle('is-locked', Boolean(tabLock(t)));
+    $(`#tab-${t}`)?.classList.toggle('is-locked', Boolean(tabLock(t)) || needsParcel(t));
   }
 
   /*
@@ -9542,7 +9587,7 @@ function adoptDrawnParcel(feature) {
   }
 
   const a = measure(state.parcel.geometry);
-  $('#btn-draw-parcel').hidden = true;
+  refreshDrawParcelButton();
   $('#btn-parcel-shape').hidden = false;
   refreshSurveyed();
   /*
@@ -11888,10 +11933,33 @@ function setParcelRing(ring) {
     /* And one still on its way: the property line is often moved out to the
        road while the county photo is being stitched, and that picture is of
        the old frame (owner, 2026-10-02: a Ketchum trace landed 2 m south). */
-    if ((map.getLayer('imagery-alt') || state.provider !== 'mapbox') && !providerInfo(state.provider).tiles) {
-      showImagery(); // deliberately not awaited: nothing here depends on it
+    /*
+     * ONLY WHEN THE NEW FRAME LEAVES THE PICTURE (owner, 2026-10-03: every
+     * adjustment with the county photo on reloaded it, even making the
+     * boundary smaller). The picture is pinned to the corners of the frame it
+     * was drawn for, so it stays right on the ground; it only needs fetching
+     * again when the frame now reaches past it. A short wait, so a run of
+     * nudges fetches once. Detection fetches its own picture of the frame on
+     * the server, so a picture bigger than the frame is only for looking at.
+     */
+    if ((map.getLayer('imagery-alt') || state.provider !== 'mapbox') && !providerInfo(state.provider).tiles
+      && !frameInside(state.frame, state.altFrame)) {
+      clearTimeout(setParcelRing.refetch);
+      setParcelRing.refetch = setTimeout(() => showImagery(), 600); // not awaited: nothing here depends on it
     }
   }
+}
+
+/** True when frame `a`'s ground lies inside frame `b`'s. */
+function frameInside(a, b) {
+  if (!a || !b) return false;
+  const box = (f) => {
+    const c = frameCorners(f);
+    const lngs = c.map((p) => p[0]), lats = c.map((p) => p[1]);
+    return [Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)];
+  };
+  const [aw, as, ae, an] = box(a), [bw, bs, be, bn] = box(b);
+  return aw >= bw && as >= bs && ae <= be && an <= bn;
 }
 
 function currentEdgeRing() {
@@ -12872,8 +12940,11 @@ $('#btn-draw-parcel').addEventListener('click', () => {
   state.drawingHole = false;
   state.drawingParcel = true;
   draw.changeMode('draw_polygon');
+  const replacing = Boolean(parcelRing());
   setHint('Tap each corner of your property. Tap the first one again to close it.');
-  setStatus('Tracing the property line. Follow the kerb, the fences and the neighbours’ edges.');
+  setStatus(replacing
+    ? 'Placing a new property line. It replaces the current one when you close it; Cancel keeps the current one.'
+    : 'Tracing the property line. Follow the kerb, the fences and the neighbours’ edges.');
 });
 
 /*

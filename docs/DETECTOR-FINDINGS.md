@@ -5030,18 +5030,27 @@ the grass well, or it may trip on branch shadows and leaf litter.
   colours would read bare; untested.
 - `trust` -- every canopy cell keeps stage 1's answer; the rules only add.
 
+**Leaf-off is a property of the photo, not its source (owner, 2026-10-03):**
+some Mapbox photos are leaf-off and some county photos leaf-on; county ones
+are only more often leaf-off. So the table groups lots by what the photo
+looks like -- "looks leaf-off" is a lot whose canopy reads at least 30% bare
+under the colour rule -- with the county group kept as a weaker proxy, and
+lists each lot's bare share so the grouping can be checked by eye. The colour
+rule's blind spot (green grass under bare branches) means it UNDER-counts
+leaf-off lots whose grass was already green; the list is how to catch that.
+
 **How it is read.** Workflow 14's stage 3 output prints a SEE-THROUGH
 CANOPY table at THE PLAN's cell (span 8 m, reach 1 m, bridge over 180°):
-each mode over every lot and over the county-photo lots alone, headline /
-seen / inferred. Canopy over traced lawn is scored as inferred, so the
+each mode over every lot, the lots that look leaf-off, and the county-photo
+lots, headline / seen / inferred. Canopy over traced lawn is scored as inferred, so the
 inferred column is the ground under the trees. Switching serving on is one
 line, `SEE_THROUGH` in tools/serve-alpha.mjs.
 
-**Bar, before the run.** Adopt a mode only if, on the county-photo lots, it
-lowers the inferred column's median and the headline, with more lots better
-than worse, and does not raise the headline on the Mapbox lots by more than
-a point. Fewer than about 15 county-photo lots with canopy on them is too
-few to read; say so rather than read it.
+**Bar, before the run.** Adopt a mode only if, on the lots that look
+leaf-off, it lowers the inferred column's median and the headline, with more
+lots better than worse, and does not raise the headline over every lot by
+more than a point. Fewer than about 15 leaf-off lots is too few to read; say
+so rather than read it.
 
 **Feeding it (owner, already doing it).** On leaf-off photos, grass seen
 under a bare tree is traced as ordinary lawn, not marked inferred. If a mode

@@ -570,6 +570,23 @@ await dismissTip(page);
  */
 const hasParcel = (await page.evaluate(() => window.__lmTabs())).hasParcel;
 
+/* Owner, 2026-10-03: a button on step 1 that starts placing the boundary's
+   corners, always there; and no AI or Draw step without a property line. */
+{
+  const btn = await page.evaluate(() => {
+    const b = document.querySelector('#btn-draw-parcel');
+    return { shown: Boolean(b && !b.hidden && b.offsetParent), text: b?.textContent || '' };
+  });
+  check('step 1 offers to place the property line\'s corners',
+    btn.shown && (hasParcel ? /Redraw/.test(btn.text) : /^Draw/.test(btn.text)), JSON.stringify(btn));
+  if (hasParcel) {
+    /* Take the line away for a moment, try to leave step 1, put it back. */
+    const blocked = await page.evaluate(() => window.__lmNeedsParcelProbe());
+    check('with no property line, the AI and Draw steps stay shut',
+      blocked.detect === 'address' && blocked.draw === 'address' && blocked.restored, JSON.stringify(blocked));
+  }
+}
+
 /*
  * SAY IT ONCE, HERE, IF THIS ADDRESS HAS NO BOUNDARY ON FILE.
  *
