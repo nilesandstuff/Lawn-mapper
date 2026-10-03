@@ -15,7 +15,7 @@
  * through the app's own lookup, a parcel-sized polygon or nothing. A county
  * found here and failed there stays uncovered, and says why in the log.
  *
- * Runs in workflow 22, which then verifies, commits and deploys.
+ * Runs in workflow 10 (input asked_by), which then verifies, commits and deploys.
  *
  *   MIN_PEOPLE=2 node tools/find-parcels.js
  */

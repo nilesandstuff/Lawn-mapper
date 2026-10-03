@@ -914,7 +914,7 @@ const when = (c) => log[c.key]?.at || '';
  */
 /*
  * AND THE COUNTIES JUST FOUND FOR PEOPLE WHO ASKED (FIRST_FIPS, set by
- * workflow 22 from tools/find-parcels.js) ahead of everything: a county found
+ * workflow 10, input asked_by, from tools/find-parcels.js) ahead of everything: a county found
  * by name may replace a catalogue entry that was tried and failed long ago,
  * which the date order would leave at the back.
  */

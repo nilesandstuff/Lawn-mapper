@@ -33,6 +33,16 @@ on:
         default: 'true'
         type: choice
         options: ['true', 'false']
+      # COUNTIES PEOPLE ASKED FOR (owner, 2026-10-03). Set to a number of
+      # people and the run first searches ArcGIS Online by name for every
+      # county in the console's "asked for and did not get" with at least that
+      # many people behind it (tools/find-parcels.js), proves those first,
+      # commits, and deploys if any passed. Here rather than in a workflow of
+      # its own: GitHub only dispatches workflows the default branch has.
+      asked_by:
+        description: 'Also search for counties asked for by at least this many people, verify them first and deploy (blank = no)'
+        required: false
+        default: ''
 
 jobs:
   verify:
@@ -44,6 +54,7 @@ jobs:
     timeout-minutes: 50
     permissions:
       contents: write
+      actions: write
     steps:
       - uses: actions/checkout@v5
 
@@ -69,10 +80,20 @@ jobs:
           node tools/import-atlas.js
           node tools/import-openaddresses.js
 
+      - name: Search for the counties people asked for
+        id: find
+        if: inputs.asked_by != '' && inputs.only == ''
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          MIN_PEOPLE: ${{ inputs.asked_by }}
+        run: node tools/find-parcels.js
+
       - name: Verify
         env:
           ONLY: ${{ inputs.only }}
           LIMIT: ${{ inputs.limit }}
+          FIRST_FIPS: ${{ steps.find.outputs.fips }}
         run: node tools/verify-counties.js
 
       # KEEP THE RESULT EVEN IF THE PUSH FAILS. The sweep is half an hour of
@@ -90,15 +111,18 @@ jobs:
           path: |
             worker/src/counties-verified.js
             tools/verify-log.json
+            tools/found-candidates.json
           if-no-files-found: warn
 
       # Only on a real run: the verifier writes nothing when ONLY is set, so
       # committing then would push an unchanged file and a confusing commit.
       - name: Commit the result
+        id: commit
         if: inputs.commit == 'true' && inputs.only == ''
         run: |
           FILES="worker/src/counties-verified.js tools/verify-log.json
                  tools/atlas-candidates.json tools/openaddresses-candidates.json"
+          [ -f tools/found-candidates.json ] && FILES="$FILES tools/found-candidates.json"
 
           if git diff --quiet -- $FILES; then
             echo "Nothing changed."
@@ -163,7 +187,7 @@ jobs:
           polygon, and every statewide entry answered across its own state.
 
           Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
-            git push && exit 0
+            if git push; then echo "pushed=true" >> "$GITHUB_OUTPUT"; exit 0; fi
 
             echo "Push $attempt failed; the branch moved again. Retrying."
             sleep 5
@@ -171,3 +195,12 @@ jobs:
           echo "::error::Could not push the verified counties after three tries."
           echo "::error::They are on this run as the 'counties-verified' artifact."
           exit 1
+
+      # Only a run that searched for asked-for counties deploys by itself: the
+      # owner's ask was for those to arrive without anybody remembering to.
+      # The deploy runs the tests first, so it cannot ship a red branch.
+      - name: Deploy what was found
+        if: inputs.asked_by != '' && steps.commit.outputs.pushed == 'true' && steps.find.outputs.found != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run deploy.yml --ref "$GITHUB_REF_NAME" -f confirm=deploy
