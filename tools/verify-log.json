@@ -401,12 +401,14 @@
     "acres": 3.474
   },
   "il-kane": {
-    "at": "2026-09-18",
-    "ok": true
+    "at": "2026-10-03",
+    "ok": true,
+    "acres": 101.399
   },
   "il-lake": {
-    "at": "2026-09-18",
-    "ok": true
+    "at": "2026-10-03",
+    "ok": true,
+    "acres": 19.717
   },
   "il-mchenry": {
     "at": "2026-09-18",
@@ -2175,127 +2177,127 @@
     "acres": 79.585
   },
   "il-edwards": {
-    "at": "2026-09-18",
+    "at": "2026-10-03",
     "ok": true,
     "acres": 65.901
   },
   "il-effingham": {
-    "at": "2026-09-18",
+    "at": "2026-10-03",
     "ok": true,
     "acres": 20.448
   },
   "il-fayette": {
-    "at": "2026-09-18",
+    "at": "2026-10-03",
     "ok": true,
     "acres": 1.001
   },
   "il-ford": {
-    "at": "2026-09-18",
+    "at": "2026-10-03",
     "ok": true,
     "acres": 2.225
   },
   "il-fulton": {
-    "at": "2026-09-18",
+    "at": "2026-10-03",
     "ok": true,
     "acres": 4.451
   },
   "il-grundy": {
-    "at": "2026-09-18",
+    "at": "2026-10-03",
     "ok": false,
     "why": "returned no parcels"
   },
   "il-hamilton": {
-    "at": "2026-09-18",
+    "at": "2026-10-03",
     "ok": true,
     "acres": 0.487
   },
   "il-hancock": {
-    "at": "2026-09-18",
+    "at": "2026-10-03",
     "ok": true,
     "acres": 5.633
   },
   "il-henderson": {
-    "at": "2026-09-18",
+    "at": "2026-10-03",
     "ok": true,
     "acres": 45.442
   },
   "il-henry": {
-    "at": "2026-09-18",
+    "at": "2026-10-03",
     "ok": true,
     "acres": 0.603
   },
   "il-iroquois": {
-    "at": "2026-09-18",
+    "at": "2026-10-03",
     "ok": true,
     "acres": 3.381
   },
   "il-jackson": {
-    "at": "2026-09-18",
+    "at": "2026-10-03",
     "ok": true,
     "acres": 40.585
   },
   "il-jasper": {
-    "at": "2026-09-18",
+    "at": "2026-10-03",
     "ok": true,
     "acres": 43.871
   },
   "il-jefferson": {
-    "at": "2026-09-18",
-    "ok": true,
-    "acres": 13.761
+    "at": "2026-10-03",
+    "ok": false,
+    "why": "layer metadata: Invalid URL"
   },
   "il-jersey": {
-    "at": "2026-09-18",
+    "at": "2026-10-03",
     "ok": true,
     "acres": 1.002
   },
   "il-kankakee": {
-    "at": "2026-09-18",
+    "at": "2026-10-03",
     "ok": true,
     "acres": 2.942
   },
   "il-kendall": {
-    "at": "2026-09-18",
+    "at": "2026-10-03",
     "ok": true,
     "acres": 6.968
   },
   "il-knox": {
-    "at": "2026-09-18",
+    "at": "2026-10-03",
     "ok": true,
     "acres": 1.028
   },
   "il-lasalle": {
-    "at": "2026-09-18",
+    "at": "2026-10-03",
     "ok": true,
-    "acres": 40.447
+    "acres": 0.144
   },
   "il-lawrence": {
-    "at": "2026-09-18",
+    "at": "2026-10-03",
     "ok": true,
     "acres": 82.93
   },
   "il-lee": {
-    "at": "2026-09-18",
+    "at": "2026-10-03",
     "ok": true,
     "acres": 39.804
   },
   "il-logan": {
-    "at": "2026-09-18",
+    "at": "2026-10-03",
     "ok": true,
     "acres": 1.141
   },
   "il-macon": {
-    "at": "2026-09-18",
+    "at": "2026-10-03",
     "ok": true,
     "acres": 0.663
   },
   "il-macoupin": {
-    "at": "2026-09-18",
+    "at": "2026-10-03",
     "ok": true,
-    "acres": 39.726
+    "acres": 6.295
   },
   "il-madison": {
-    "at": "2026-09-18",
+    "at": "2026-10-03",
     "ok": false,
     "why": "layer metadata: fetch failed"
   },
@@ -4881,8 +4883,8 @@
   },
   "oh-warren": {
     "at": "2026-10-03",
-    "ok": false,
-    "why": "extent query: timed out"
+    "ok": true,
+    "acres": 62.727
   },
   "pa-delaware": {
     "at": "2026-10-03",

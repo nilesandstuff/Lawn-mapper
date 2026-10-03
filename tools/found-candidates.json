@@ -134,14 +134,22 @@
       "key": "oh-warren",
       "name": "Warren County, OH",
       "fips": "39165",
-      "service": "https://cagisonline.hamilton-co.org/arcgis/rest/services/Countywide_Layers/QueryLayers/MapServer",
+      "service": "https://services5.arcgis.com/bRVJbF13Nwgn5oKx/arcgis/rest/services/County_Parcel_Map/FeatureServer",
       "layer": 1,
-      "layerName": "Parcel",
+      "layerName": "Warren Parcels",
       "fields": {
-        "pin": "PARCEL",
-        "address": "ADDRNO"
+        "pin": null,
+        "address": "ADDRESS_LINE_1"
       },
       "fallbacks": [
+        {
+          "service": "https://services5.arcgis.com/bRVJbF13Nwgn5oKx/arcgis/rest/services/County_TIF_Parcels_Child_View/FeatureServer",
+          "layer": 1,
+          "fields": {
+            "pin": null,
+            "address": "ADDRESS_LINE_1"
+          }
+        },
         {
           "service": "https://services7.arcgis.com/qWymSnMRrQR7OiJ3/arcgis/rest/services/AGO_Parcels/FeatureServer",
           "layer": 1,
@@ -152,18 +160,10 @@
         },
         {
           "service": "https://services5.arcgis.com/bRVJbF13Nwgn5oKx/arcgis/rest/services/County_Parcel_Map/FeatureServer",
-          "layer": 1,
+          "layer": 0,
           "fields": {
-            "pin": null,
-            "address": "ADDRESS_LINE_1"
-          }
-        },
-        {
-          "service": "https://services5.arcgis.com/bRVJbF13Nwgn5oKx/arcgis/rest/services/County_TIF_Parcels_Child_View/FeatureServer",
-          "layer": 1,
-          "fields": {
-            "pin": null,
-            "address": "ADDRESS_LINE_1"
+            "pin": "PIN",
+            "address": "LOCATION"
           }
         }
       ]

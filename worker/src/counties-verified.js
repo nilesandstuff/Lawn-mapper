@@ -26,7 +26,7 @@
  * tools/import-openaddresses.js. Editing this file directly will be
  * overwritten; change an importer or the verifier instead.
  *
- * 744 entries (26 statewide), of 1006 candidates.
+ * 744 entries (26 statewide), of 1005 candidates.
  * Last run 2026-10-03: 51 verified of 60 tried.
  */
 
@@ -2251,7 +2251,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"parcel_number","address":null},
     box: [-88.151,38.255,-87.937,38.571],
-    checked: "2026-09-18",
+    checked: "2026-10-03",
   },
   'il-effingham': {
     name: "Effingham County, IL",
@@ -2260,7 +2260,7 @@ const VERIFIED_COUNTIES = {
     layer: 3,
     fields: {"pin":"PinFormatted","address":null},
     box: [-88.809,38.909,-88.36,39.218],
-    checked: "2026-09-18",
+    checked: "2026-10-03",
   },
   'il-fayette': {
     name: "Fayette County, IL",
@@ -2269,7 +2269,7 @@ const VERIFIED_COUNTIES = {
     layer: 3,
     fields: {"pin":"TSC_Parcel_Number","address":null},
     box: [-89.261,38.735,-88.692,39.221],
-    checked: "2026-09-18",
+    checked: "2026-10-03",
   },
   'il-ford': {
     name: "Ford County, IL",
@@ -2278,7 +2278,7 @@ const VERIFIED_COUNTIES = {
     layer: 2,
     fields: {"pin":"ParcelNumber","address":null},
     box: [-88.46,40.398,-87.931,40.998],
-    checked: "2026-09-18",
+    checked: "2026-10-03",
   },
   'il-fulton': {
     name: "Fulton County, IL",
@@ -2287,7 +2287,7 @@ const VERIFIED_COUNTIES = {
     layer: 82,
     fields: {"pin":"Name","address":null},
     box: [-90.455,40.183,-89.871,40.716],
-    checked: "2026-09-18",
+    checked: "2026-10-03",
   },
   'il-hamilton': {
     name: "Hamilton County, IL",
@@ -2296,7 +2296,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PIN","address":null},
     box: [-88.707,37.91,-88.372,38.257],
-    checked: "2026-09-18",
+    checked: "2026-10-03",
   },
   'il-hancock': {
     name: "Hancock County, IL",
@@ -2305,7 +2305,7 @@ const VERIFIED_COUNTIES = {
     layer: 54,
     fields: {"pin":"parcel_number","address":null},
     box: [-91.514,40.187,-90.899,40.64],
-    checked: "2026-09-18",
+    checked: "2026-10-03",
   },
   'il-henderson': {
     name: "Henderson County, IL",
@@ -2314,7 +2314,7 @@ const VERIFIED_COUNTIES = {
     layer: 6,
     fields: {"pin":"PIN_Dash","address":null},
     box: [-91.197,40.632,-90.781,41.072],
-    checked: "2026-09-18",
+    checked: "2026-10-03",
   },
   'il-henry': {
     name: "Henry County, IL",
@@ -2323,7 +2323,7 @@ const VERIFIED_COUNTIES = {
     layer: 7,
     fields: {"pin":"TSC_Parcel_Number","address":null},
     box: [-90.44,41.149,-89.855,41.585],
-    checked: "2026-09-18",
+    checked: "2026-10-03",
   },
   'il-iroquois': {
     name: "Iroquois County, IL",
@@ -2332,7 +2332,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"ParcelNumber","address":null},
     box: [-88.132,40.485,-87.525,41.011],
-    checked: "2026-09-18",
+    checked: "2026-10-03",
   },
   'il-jackson': {
     name: "Jackson County, IL",
@@ -2341,7 +2341,7 @@ const VERIFIED_COUNTIES = {
     layer: 2,
     fields: {"pin":"GIS_PIN","address":null},
     box: [-89.682,37.562,-89.15,37.956],
-    checked: "2026-09-18",
+    checked: "2026-10-03",
   },
   'il-jasper': {
     name: "Jasper County, IL",
@@ -2350,16 +2350,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"CountyPin","address":null},
     box: [-88.39,38.829,-87.924,39.192],
-    checked: "2026-09-18",
-  },
-  'il-jefferson': {
-    name: "Jefferson County, IL",
-    fips: "17081",
-    service: "https://services.arcgis.com/4YineAQdtmx0tv46/ArcGIS/rest/services/Parcel_JeffersonIL/FeatureServer",
-    layer: 0,
-    fields: {"pin":"PIN","address":null},
-    box: [-89.148,38.124,-88.7,38.477],
-    checked: "2026-09-18",
+    checked: "2026-10-03",
   },
   'il-jersey': {
     name: "Jersey County, IL",
@@ -2368,7 +2359,7 @@ const VERIFIED_COUNTIES = {
     layer: 5,
     fields: {"pin":"DevNet_Parcel_Number","address":null},
     box: [-90.604,38.925,-90.145,39.262],
-    checked: "2026-09-18",
+    checked: "2026-10-03",
   },
   'il-kane': {
     name: "Kane County, IL",
@@ -2376,8 +2367,9 @@ const VERIFIED_COUNTIES = {
     service: "https://gistech.countyofkane.org/arcgis/rest/services/KanePINList/MapServer",
     layer: 0,
     fields: {"pin":"PIN","address":"SiteAddress"},
+    fallbacks: [{"service":"https://utility.arcgis.com/usrsvcs/servers/70e0fc5c3f304b38b8e3466247818b5b/rest/services/Kane_Parcels/FeatureServer","layer":0,"fields":{"pin":"PIN","address":null}}],
     box: [-88.603,41.719,-88.238,42.155],
-    checked: "2026-09-18",
+    checked: "2026-10-03",
   },
   'il-kankakee': {
     name: "Kankakee County, IL",
@@ -2386,7 +2378,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"pin","address":null},
     box: [-88.252,40.991,-87.522,41.301],
-    checked: "2026-09-18",
+    checked: "2026-10-03",
   },
   'il-kendall': {
     name: "Kendall County, IL",
@@ -2395,7 +2387,7 @@ const VERIFIED_COUNTIES = {
     layer: 1,
     fields: {"pin":"pin","address":null},
     box: [-88.604,41.457,-88.252,41.725],
-    checked: "2026-09-18",
+    checked: "2026-10-03",
   },
   'il-knox': {
     name: "Knox County, IL",
@@ -2404,7 +2396,7 @@ const VERIFIED_COUNTIES = {
     layer: 1129,
     fields: {"pin":"TaxParcel.PARCELID","address":null},
     box: [-90.447,40.712,-89.984,41.153],
-    checked: "2026-09-18",
+    checked: "2026-10-03",
   },
   'il-lake': {
     name: "Lake County, IL",
@@ -2413,7 +2405,7 @@ const VERIFIED_COUNTIES = {
     layer: 12,
     fields: {"pin":"PIN","address":"situs_addr_line_1"},
     box: [-88.2,42.152,-87.758,42.496],
-    checked: "2026-09-18",
+    checked: "2026-10-03",
   },
   'il-lasalle': {
     name: "LaSalle County, IL",
@@ -2422,7 +2414,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PIN","address":null},
     box: [-89.168,40.925,-88.586,41.632],
-    checked: "2026-09-18",
+    checked: "2026-10-03",
   },
   'il-lawrence': {
     name: "Lawrence County, IL",
@@ -2431,7 +2423,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"IndexNumber","address":null},
     box: [-87.913,38.568,-87.495,38.853],
-    checked: "2026-09-18",
+    checked: "2026-10-03",
   },
   'il-lee': {
     name: "Lee County, IL",
@@ -2440,7 +2432,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"dbo_gis_data_parcel_number","address":null},
     box: [-89.634,41.579,-88.933,41.913],
-    checked: "2026-09-18",
+    checked: "2026-10-03",
   },
   'il-logan': {
     name: "Logan County, IL",
@@ -2449,7 +2441,7 @@ const VERIFIED_COUNTIES = {
     layer: 1,
     fields: {"pin":"parcel_number","address":null},
     box: [-89.607,39.915,-89.137,40.328],
-    checked: "2026-09-18",
+    checked: "2026-10-03",
   },
   'il-macon': {
     name: "Macon County, IL",
@@ -2458,7 +2450,7 @@ const VERIFIED_COUNTIES = {
     layer: 1,
     fields: {"pin":"ParcelNumb","address":null},
     box: [-89.221,39.65,-88.742,40.056],
-    checked: "2026-09-18",
+    checked: "2026-10-03",
   },
   'il-macoupin': {
     name: "Macoupin County, IL",
@@ -2467,7 +2459,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"ParcelNumber","address":null},
     box: [-90.154,38.998,-89.698,39.524],
-    checked: "2026-09-18",
+    checked: "2026-10-03",
   },
   'il-marshall': {
     name: "Marshall County, IL",
@@ -4396,6 +4388,16 @@ const VERIFIED_COUNTIES = {
     fields: {"pin":null,"address":null},
     box: [-83.552,40.106,-83.169,40.508],
     checked: "2026-09-18",
+  },
+  'oh-warren': {
+    name: "Warren County, OH",
+    fips: "39165",
+    service: "https://services5.arcgis.com/bRVJbF13Nwgn5oKx/arcgis/rest/services/County_Parcel_Map/FeatureServer",
+    layer: 1,
+    fields: {"pin":null,"address":"ADDRESS_LINE_1"},
+    fallbacks: [{"service":"https://services5.arcgis.com/bRVJbF13Nwgn5oKx/arcgis/rest/services/County_TIF_Parcels_Child_View/FeatureServer","layer":1,"fields":{"pin":null,"address":"ADDRESS_LINE_1"}},{"service":"https://services7.arcgis.com/qWymSnMRrQR7OiJ3/arcgis/rest/services/AGO_Parcels/FeatureServer","layer":1,"fields":{"pin":null,"address":"ADDRESS_LINE_1"}},{"service":"https://services5.arcgis.com/bRVJbF13Nwgn5oKx/arcgis/rest/services/County_Parcel_Map/FeatureServer","layer":0,"fields":{"pin":"PIN","address":"LOCATION"}}],
+    box: [-84.365,39.44,-84.267,39.571],
+    checked: "2026-10-03",
   },
   'ok-creek': {
     name: "Creek County, OK",
