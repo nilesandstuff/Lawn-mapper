@@ -250,7 +250,14 @@ async function main() {
     const label = `${r.county}, ${r.state} (${r.people} people, ${r.hits} asks)`;
     if (!place) { report.push(`??  ${label}: not a county the gazetteer knows`); continue; }
     if (registered(place.fips)) {
-      report.push(`ok  ${label}: in the registry already -- its server answered nothing for these addresses`);
+      /* One this search added earlier is proved again, first, by the verifier
+         -- with the rules as they are now, which is how a bad find leaves. */
+      if (kept.has(place.fips)) {
+        foundFips.push(place.fips);
+        report.push(`ok  ${label}: found earlier; proved again this run`);
+      } else {
+        report.push(`ok  ${label}: in the registry already -- its server answered nothing for these addresses`);
+      }
       continue;
     }
     const found = await findFor(place);
