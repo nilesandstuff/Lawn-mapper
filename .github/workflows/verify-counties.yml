@@ -196,11 +196,12 @@ jobs:
           echo "::error::They are on this run as the 'counties-verified' artifact."
           exit 1
 
-      # Only a run that searched for asked-for counties deploys by itself: the
+      # Only a run that searched for asked-for counties deploys by itself, when
+      # it changed the registry (a find added, or a bad one dropped): the
       # owner's ask was for those to arrive without anybody remembering to.
       # The deploy runs the tests first, so it cannot ship a red branch.
       - name: Deploy what was found
-        if: inputs.asked_by != '' && steps.commit.outputs.pushed == 'true' && steps.find.outputs.found != '0'
+        if: inputs.asked_by != '' && steps.commit.outputs.pushed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run deploy.yml --ref "$GITHUB_REF_NAME" -f confirm=deploy
