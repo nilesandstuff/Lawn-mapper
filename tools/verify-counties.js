@@ -754,6 +754,23 @@ async function verify(c) {
   }
   const box = extent.box;
 
+  /*
+   * IN ITS OWN STATE (2026-10-03). A county named by FIPS whose data lies
+   * outside that state is some other place's layer: the search for Knox
+   * County, Tennessee found the Knox Central Appraisal District's, which is
+   * Knox County, Texas, and it passed every test below -- real parcels, a
+   * point queried back -- because the test never asked where they were. The
+   * state box is drawn through county centroids, so it is padded a degree.
+   */
+  const home = !c.statewide && c.fips ? US_COUNTIES[String(c.fips).slice(0, 2)] : null;
+  if (home?.box && box) {
+    const [w, s, e, n] = home.box;
+    const cx = (box[0] + box[2]) / 2, cy = (box[1] + box[3]) / 2;
+    if (cx < w - 1 || cx > e + 1 || cy < s - 1 || cy > n + 1) {
+      return { ok: false, why: `its parcels are not in ${home.name} (centred ${cx.toFixed(2)},${cy.toFixed(2)})` };
+    }
+  }
+
   const samples = await sampleParcels(c.service, c.layer);
   await sleep(PAUSE_MS);
   if (!samples.length) return { ok: false, why: 'returned no parcels' };

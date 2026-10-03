@@ -158,8 +158,18 @@ async function parcelLayersOf(svc, stateBox) {
     let info;
     try { info = await getJson(`${svc.service}/${l.id}?f=json`); } catch { continue; }
     if (info.geometryType !== 'esriGeometryPolygon') continue;
-    const ext = extentDegrees(info.extent);
-    if (ext && stateBox && !overlaps(ext, [stateBox[0] - 1, stateBox[1] - 1, stateBox[2] + 1, stateBox[3] + 1])) continue;
+    /* Where the parcels are, in degrees. A layer in a state plane projection
+       is asked for its extent in WGS84; one that cannot say is skipped, so a
+       layer from another state with a county of the same name -- Knox
+       County, Texas for Knox County, Tennessee -- cannot slip through. */
+    let ext = extentDegrees(info.extent);
+    if (!ext) {
+      try {
+        const q = await getJson(`${svc.service}/${l.id}/query?where=1%3D1&returnExtentOnly=true&outSR=4326&f=json`);
+        ext = extentDegrees(q.extent);
+      } catch { /* none */ }
+    }
+    if (!ext || (stateBox && !overlaps(ext, [stateBox[0] - 1, stateBox[1] - 1, stateBox[2] + 1, stateBox[3] + 1]))) continue;
     const fields = guessFields(info.fields);
     /* How many parcels: a county's whole layer holds thousands; a project's
        copy (solar sites, county-owned land, a plan review) a handful. */
@@ -174,7 +184,7 @@ async function parcelLayersOf(svc, stateBox) {
 }
 
 /* A copy made for one project, not the county's parcel layer. */
-const PROJECT = /solar|flood|owned|review|innovation|zoning|plan|study|project|propos|sale|vacant|district|wfl1|_wfl|survey|farm|easement|story|dashboard|test|copy|sample|demo|historic|old|archive/i;
+const PROJECT = /solar|flood|buffer|within|owned|review|innovation|zoning|plan|study|project|propos|sale|vacant|district|wfl1|_wfl|survey|farm|easement|story|dashboard|test|copy|sample|demo|historic|old|archive/i;
 
 /**
  * Best first: the county's own layer over a project's copy of it. Points for
@@ -244,7 +254,14 @@ async function main() {
       continue;
     }
     const found = await findFor(place);
-    if (!found.length) { report.push(`--  ${label}: no parcel layer found on ArcGIS Online`); continue; }
+    if (!found.length) {
+      report.push(`--  ${label}: no parcel layer found on ArcGIS Online`);
+      /* An earlier find for this county stays in the pool and is proved again
+         first, so one that has stopped passing -- or never should have --
+         leaves the registry rather than lingering behind this search. */
+      if (kept.has(place.fips)) foundFips.push(place.fips);
+      continue;
+    }
     const [best, ...rest] = found;
     kept.set(place.fips, {
       key: keyFor(place.name, place.ab),
