@@ -142,6 +142,8 @@ check('nothing at all is refused', cleanCountyOutlines({ shapes: [], notLawn: []
     JSON.stringify(list.map((s) => [s.id, s.detail])));
   const both = await countyServicesAt(env, -87.4, 46.5, 4, { fetcher: async () => new Response(sharp), now: new Date('2026-10-02') });
   check('of two sharp enough, the newer, however much sharper the older', both.map((s) => s.id).join() === '1,2');
+  check('two dozen boxes are looked at the spot, not twice the answer (Manassas behind Fairfax and Loudoun)',
+    seen[0][1][3] === 24, JSON.stringify(seen[0][1]));
   check('nothing flown more than ten years ago (2016 is the oldest in 2026); undated kept',
     oldestYear(new Date('2026-10-02')) === 2016 && /\(year IS NULL OR year >= \?5\)/.test(seen[0][0]) && seen[0][1][4] === 2016);
 }

@@ -107,6 +107,15 @@ export const SHARP_AT_12CM = 0.10;
  * the first with no gaps over the lot -- a box says where a service might
  * have pictures, not that it has one here.
  */
+/*
+ * HOW MANY BOXES ARE LOOKED AT THE SPOT (2026-10-03). It was twice the
+ * answer's length, eight: in Manassas the eight newest boxes covering the
+ * city were Fairfax's and Loudoun's 2026 services, which have no picture
+ * there, so the city's own 2025 flight was never looked at. The looks run
+ * at once and are cached a week by the edge.
+ */
+export const PROBE_CANDIDATES = 24;
+
 export async function countyServicesAt(env, lng, lat, n = 4, { probe = true, fetcher = fetch, now = new Date() } = {}) {
   if (!env?.DB || !Number.isFinite(lng) || !Number.isFinite(lat)) return [];
   let rows;
@@ -118,7 +127,7 @@ export async function countyServicesAt(env, lng, lat, n = 4, { probe = true, fet
           AND (year IS NULL OR year >= ?5)
         ORDER BY ${NEWEST} DESC, (east - west) * (north - south) ASC, COALESCE(native_cm, 99) ASC
         LIMIT ?4`
-    ).bind(lng, lat, MAX_SERVICE_SQ_DEG, n * 2, oldestYear(now)).all()).results || [];
+    ).bind(lng, lat, MAX_SERVICE_SQ_DEG, probe ? PROBE_CANDIDATES : n, oldestYear(now)).all()).results || [];
   } catch { return []; }
   const list = rows.map(svcOf);
   if (!probe) return list.slice(0, n);
