@@ -912,10 +912,19 @@ const when = (c) => log[c.key]?.at || '';
  * loudest, so re-checking nineteen of them on every run is the cheapest
  * insurance here.
  */
+/*
+ * AND THE COUNTIES JUST FOUND FOR PEOPLE WHO ASKED (FIRST_FIPS, set by
+ * workflow 22 from tools/find-parcels.js) ahead of everything: a county found
+ * by name may replace a catalogue entry that was tried and failed long ago,
+ * which the date order would leave at the back.
+ */
+const firstFips = new Set(String(process.env.FIRST_FIPS || '').split(',').map((f) => f.trim()).filter(Boolean));
+const isFirst = (c) => (firstFips.has(String(c.fips || '')) ? 1 : 0);
 const list = only
   ? chosen
   : [...chosen]
-    .sort((a, b) => (b.statewide ? 1 : 0) - (a.statewide ? 1 : 0)
+    .sort((a, b) => isFirst(b) - isFirst(a)
+      || (b.statewide ? 1 : 0) - (a.statewide ? 1 : 0)
       || when(a).localeCompare(when(b))
       || a.key.localeCompare(b.key))
     .slice(0, LIMIT);

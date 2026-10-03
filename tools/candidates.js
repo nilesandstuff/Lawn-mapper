@@ -277,6 +277,27 @@ export function candidatePool() {
     }
   }
 
+  /*
+   * FOUND BY NAME FOR COUNTIES PEOPLE ASKED FOR (tools/find-parcels.js). It
+   * only looks for counties the registry does not serve, so a catalogue entry
+   * for the same county is one that has not passed: the found layer goes
+   * first and the catalogue's endpoint rides along behind it.
+   */
+  const found = read('found-candidates.json');
+  let foundFresh = 0;
+  for (const c of found?.candidates || []) {
+    const held = (c.fips && byFips.get(String(c.fips))) || byKey.get(c.key);
+    if (!held) { if (add(c, 'found')) foundFresh++; continue; }
+    const old = endpointsOf(held);
+    held.service = c.service;
+    held.layer = c.layer;
+    held.layerName = c.layerName;
+    held.fields = c.fields;
+    held.fallbacks = [...(c.fallbacks || []), ...old].filter((e, i, all) => all.findIndex((x) => sameEndpoint(x, e)) === i
+      && !sameEndpoint(e, c));
+    held.from = `${held.from}+found`;
+  }
+
   /* A state listed by both catalogues keeps the first, and the second rides
      along as a fallback -- same rule as a county. */
   const statewide = [];
@@ -306,6 +327,8 @@ export function candidatePool() {
       atlas: atlas?.candidates?.length || 0,
       openaddresses: oa?.candidates?.length || 0,
       foundStatewide: FOUND_STATEWIDE.length,
+      foundByName: found?.candidates?.length || 0,
+      foundFresh,
       joined,
       fresh,
       atlasVersion: atlas?.atlasVersion || null,
