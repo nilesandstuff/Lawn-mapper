@@ -1,0 +1,300 @@
+{
+  "foundBy": "tools/find-parcels.js",
+  "foundAt": "2026-10-03",
+  "note": "Candidates only, from parcel_gaps. Nothing here is coverage until verify-counties.js says so.",
+  "candidates": [
+    {
+      "key": "ks-johnson",
+      "name": "Johnson County, KS",
+      "fips": "20091",
+      "service": "https://utility.arcgis.com/usrsvcs/servers/24070bd1e727441fa5ca5fb13f1403c2/rest/services/Base_Layers/Parcels_Line/MapServer",
+      "layer": 0,
+      "layerName": "Parcel",
+      "fields": {
+        "pin": null,
+        "address": null
+      },
+      "fallbacks": [
+        {
+          "service": "https://services8.arcgis.com/x0gS7hstEoFA7X7l/arcgis/rest/services/STR_buffer_parcels_110425a/FeatureServer",
+          "layer": 0,
+          "fields": {
+            "pin": null,
+            "address": null
+          }
+        },
+        {
+          "service": "https://services8.arcgis.com/x0gS7hstEoFA7X7l/arcgis/rest/services/STR_buffer_parcels_031626/FeatureServer",
+          "layer": 0,
+          "fields": {
+            "pin": null,
+            "address": null
+          }
+        },
+        {
+          "service": "https://services8.arcgis.com/x0gS7hstEoFA7X7l/arcgis/rest/services/STR_buffer_parcels_052626_a/FeatureServer",
+          "layer": 0,
+          "fields": {
+            "pin": null,
+            "address": null
+          }
+        }
+      ]
+    },
+    {
+      "key": "ks-leavenworth",
+      "name": "Leavenworth County, KS",
+      "fips": "20103",
+      "service": "https://services7.arcgis.com/iMvGQCOFOosjPotn/arcgis/rest/services/Parcels_within_3_Mile_Boundary/FeatureServer",
+      "layer": 0,
+      "layerName": "Parcels_within_3_Mile_Boundary",
+      "fields": {
+        "pin": null,
+        "address": null
+      },
+      "fallbacks": []
+    },
+    {
+      "key": "mi-washtenaw",
+      "name": "Washtenaw County, MI",
+      "fips": "26161",
+      "service": "https://services1.arcgis.com/7k5pwykhBf04bSfy/arcgis/rest/services/WashtenawParcels/FeatureServer",
+      "layer": 0,
+      "layerName": "WashtenawParcels",
+      "fields": {
+        "pin": null,
+        "address": null
+      },
+      "fallbacks": [
+        {
+          "service": "https://services.arcgis.com/hVnyNvwbpFFPDV5j/arcgis/rest/services/Parcels_for_Washtenaw_County/FeatureServer",
+          "layer": 0,
+          "fields": {
+            "pin": null,
+            "address": null
+          }
+        },
+        {
+          "service": "https://services1.arcgis.com/4ezfu5dIwH83BUNL/arcgis/rest/services/Washtenaw_County_Parcel_Data/FeatureServer",
+          "layer": 0,
+          "fields": {
+            "pin": null,
+            "address": null
+          }
+        },
+        {
+          "service": "https://services1.arcgis.com/ZyuQAFDZ3HsELH0k/arcgis/rest/services/Millage_PARCELS_2025/FeatureServer",
+          "layer": 83,
+          "fields": {
+            "pin": "PIN",
+            "address": null
+          }
+        }
+      ]
+    },
+    {
+      "key": "oh-athens",
+      "name": "Athens County, OH",
+      "fips": "39009",
+      "service": "https://gisco.athensoh.org/hosting/rest/services/ParcelMapService/FeatureServer",
+      "layer": 4,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "pid",
+        "address": "address"
+      },
+      "fallbacks": [
+        {
+          "service": "https://services5.arcgis.com/t4xYDjfDFWC8eyBj/arcgis/rest/services/Athens_County_Parcels/FeatureServer",
+          "layer": 0,
+          "fields": {
+            "pin": "PID",
+            "address": "ADDRESS"
+          }
+        },
+        {
+          "service": "https://services2.arcgis.com/2zE4x6y8cTIstSBE/arcgis/rest/services/Parcels_/FeatureServer",
+          "layer": 0,
+          "fields": {
+            "pin": "pid",
+            "address": "address"
+          }
+        },
+        {
+          "service": "https://services2.arcgis.com/2zE4x6y8cTIstSBE/arcgis/rest/services/Surveys/FeatureServer",
+          "layer": 0,
+          "fields": {
+            "pin": "pid",
+            "address": "address"
+          }
+        }
+      ]
+    },
+    {
+      "key": "oh-warren",
+      "name": "Warren County, OH",
+      "fips": "39165",
+      "service": "https://cagisonline.hamilton-co.org/arcgis/rest/services/Countywide_Layers/QueryLayers/MapServer",
+      "layer": 1,
+      "layerName": "Parcel",
+      "fields": {
+        "pin": "PARCEL",
+        "address": "ADDRNO"
+      },
+      "fallbacks": [
+        {
+          "service": "https://services7.arcgis.com/qWymSnMRrQR7OiJ3/arcgis/rest/services/AGO_Parcels/FeatureServer",
+          "layer": 1,
+          "fields": {
+            "pin": null,
+            "address": "ADDRESS_LINE_1"
+          }
+        },
+        {
+          "service": "https://services5.arcgis.com/bRVJbF13Nwgn5oKx/arcgis/rest/services/County_Parcel_Map/FeatureServer",
+          "layer": 1,
+          "fields": {
+            "pin": null,
+            "address": "ADDRESS_LINE_1"
+          }
+        },
+        {
+          "service": "https://services5.arcgis.com/bRVJbF13Nwgn5oKx/arcgis/rest/services/County_TIF_Parcels_Child_View/FeatureServer",
+          "layer": 1,
+          "fields": {
+            "pin": null,
+            "address": "ADDRESS_LINE_1"
+          }
+        }
+      ]
+    },
+    {
+      "key": "pa-delaware",
+      "name": "Delaware County, PA",
+      "fips": "42045",
+      "service": "https://services.arcgis.com/G4S1dGvn7PIgYd6Y/arcgis/rest/services/Parcels_owners/FeatureServer",
+      "layer": 0,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "POLY_PER_PARCEL",
+        "address": "LOC_ADDRESS"
+      },
+      "fallbacks": [
+        {
+          "service": "https://gis.delcopa.gov/arcgis/rest/services/Parcels/Parcels_Public_Access/FeatureServer",
+          "layer": 0,
+          "fields": {
+            "pin": "PIN",
+            "address": null
+          }
+        },
+        {
+          "service": "https://services3.arcgis.com/2moS4uuhIzUP5dNH/arcgis/rest/services/ParcelsOnline/FeatureServer",
+          "layer": 0,
+          "fields": {
+            "pin": "PIN",
+            "address": "Address"
+          }
+        },
+        {
+          "service": "https://services2.arcgis.com/okXm0pb6aWH6XOGI/arcgis/rest/services/Mohawk_Water_Supply_Class_by_Parcel/FeatureServer",
+          "layer": 0,
+          "fields": {
+            "pin": "ParcelID",
+            "address": null
+          }
+        }
+      ]
+    },
+    {
+      "key": "pa-lackawanna",
+      "name": "Lackawanna County, PA",
+      "fips": "42069",
+      "service": "https://gis.lackawannacounty.org/arcgis/rest/services/GISViewer/Parcels/MapServer",
+      "layer": 0,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "PIN",
+        "address": "LOCATION"
+      },
+      "fallbacks": [
+        {
+          "service": "https://services.arcgis.com/0POQ0PQT9pHLMnL2/arcgis/rest/services/Benton_Parcels/FeatureServer",
+          "layer": 0,
+          "fields": {
+            "pin": "PIN",
+            "address": "LOCATION"
+          }
+        },
+        {
+          "service": "https://services7.arcgis.com/c8axx5qqzVWAC8iN/arcgis/rest/services/Vacant_Parcels/FeatureServer",
+          "layer": 5,
+          "fields": {
+            "pin": "PIN",
+            "address": "ADDR1"
+          }
+        }
+      ]
+    },
+    {
+      "key": "tn-knox",
+      "name": "Knox County, TN",
+      "fips": "47093",
+      "service": "https://services2.arcgis.com/Ju5vg9anco2Yv2af/arcgis/rest/services/KnoxCADWebService/FeatureServer",
+      "layer": 0,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "prop_id",
+        "address": "situs_num"
+      },
+      "fallbacks": [
+        {
+          "service": "https://services1.arcgis.com/QWaOgwdmpqI9HUzf/arcgis/rest/services/Categorical_Zoning_Changes/FeatureServer",
+          "layer": 0,
+          "fields": {
+            "pin": "PARCELID",
+            "address": null
+          }
+        }
+      ]
+    },
+    {
+      "key": "tn-rutherford",
+      "name": "Rutherford County, TN",
+      "fips": "47149",
+      "service": "https://services1.arcgis.com/mXBtdV44D3aRDgZQ/arcgis/rest/services/CUDBasemapVTC20220220/FeatureServer",
+      "layer": 9,
+      "layerName": "Tax Parcels",
+      "fields": {
+        "pin": "PARCEL",
+        "address": "STREETADDRESS"
+      },
+      "fallbacks": [
+        {
+          "service": "https://services5.arcgis.com/A5C0MR9xfkxVRwat/arcgis/rest/services/Parcels_CompleteFields/FeatureServer",
+          "layer": 0,
+          "fields": {
+            "pin": "PARCEL",
+            "address": "STREETADDRESS"
+          }
+        },
+        {
+          "service": "https://services5.arcgis.com/A5C0MR9xfkxVRwat/arcgis/rest/services/Parcel_Data/FeatureServer",
+          "layer": 1,
+          "fields": {
+            "pin": "ParcelID",
+            "address": "MailingAddress"
+          }
+        },
+        {
+          "service": "https://services1.arcgis.com/aT1T0pU1ZdpuDk1t/arcgis/rest/services/Project2_PublicHousingRutherfordCounty_WFL1/FeatureServer",
+          "layer": 6,
+          "fields": {
+            "pin": "ParcelID",
+            "address": null
+          }
+        }
+      ]
+    }
+  ]
+}
