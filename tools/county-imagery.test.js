@@ -5,6 +5,7 @@
 import {
   agolKeep, rankCandidates, chooseBest, coverage, blockiness, resizeRGBA, shiftedBbox,
   resampleThrough, padFor, nudged,
+  imageryVerdict,
 } from './county-imagery.js';
 
 let failures = 0;
@@ -156,6 +157,18 @@ check('a person nudging the photo 1 m east moves where Mapbox reads it 10 px wes
     { name: 'wms/Latest', type: 'MapServer', root: 'https://gis.example.gov/arcgis/rest/services' }]);
   check('a server that is about imagery keeps every service, others only imagery-named ones',
     kept.length === 1 && kept[0].root.includes('orthos.its.ny.gov'), JSON.stringify(kept));
+}
+
+/* What the nightly search records for a county's photos (owner, 2026-10-03). */
+{
+  const ok = imageryVerdict({ found: 2, notes: ['OK Ortho 2024 2024 6 cm'], candidates: 5 });
+  check('a county with photo services is recorded as covered, new ones named',
+    ok.status === 'covered' && /Ortho 2024/.test(ok.reason), JSON.stringify(ok));
+  const bad = imageryVerdict({ found: 0, notes: ['x A: no picture here', 'x B: no picture here', 'x C: too coarse (said 60 cm, measured detail 0.04)'], candidates: 3 });
+  check('a failure says why, the commonest reasons first',
+    bad.status === 'failed' && /no picture here \(2\); too coarse \(1\)/.test(bad.reason), JSON.stringify(bad));
+  check('and nothing found at all is said as that',
+    imageryVerdict({ found: 0, notes: [], candidates: 0 }).status === 'none');
 }
 
 if (failures) { console.log(`\n${failures} check(s) FAILED.`); process.exit(1); }

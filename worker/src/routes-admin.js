@@ -2079,6 +2079,29 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
     }), 200, origin);
   }
 
+  /*
+   * THE NIGHTLY COUNTY SEARCH, county by county (owner, 2026-10-03): what the
+   * search for parcel lines and for local photos found for each county people
+   * asked for, and why it failed where it did. Written by workflow 27.
+   */
+  if (path === 'county-search') {
+    try {
+      const rows = (await env.DB.prepare(
+        `SELECT fips, kind, county, state, people, status, reason, detail, checked_at
+           FROM county_search ORDER BY people DESC, county, kind LIMIT 400`
+      ).all()).results || [];
+      const byCounty = new Map();
+      for (const r of rows) {
+        const c = byCounty.get(r.fips) || { fips: r.fips, county: r.county, state: r.state, people: r.people };
+        c[r.kind] = { status: r.status, reason: r.reason, detail: r.detail, at: r.checked_at };
+        byCounty.set(r.fips, c);
+      }
+      return json({ counties: [...byCounty.values()] }, 200, origin);
+    } catch (e) {
+      return json({ counties: [], unavailable: String(e?.message || e).slice(0, 120) }, 200, origin);
+    }
+  }
+
   if (path === 'feedback') {
     if (!feedbackEnabled(env)) return json({ entries: [], enabled: false }, 200, origin);
     return json({ ...(await feedbackEntries(env, 100)), enabled: true }, 200, origin);

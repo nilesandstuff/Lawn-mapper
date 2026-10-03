@@ -1,0 +1,126 @@
+name: 27. Nightly county search
+
+# THE COUNTIES PEOPLE ASKED FOR, EVERY NIGHT (owner, 2026-10-03). For each
+# county in the console's "asked for and did not get" with enough people
+# behind it:
+#   - parcel lines: tools/find-parcels.js searches ArcGIS Online by name, the
+#     verifier proves what it found (and re-proves earlier finds), the result
+#     is committed and deployed;
+#   - local photos: tools/county-imagery.js mode 'asked' searches by name and
+#     catalogues what qualifies (live at once, no deploy needed);
+#   - every county's outcome, failures and their reasons included, goes to
+#     the county_search table, shown on the console's "Nightly county search".
+#
+# Scheduled jobs run from the default branch, which is this one since
+# 2026-10-03. Free: public ArcGIS servers and the free runner.
+on:
+  schedule:
+    # 3:17 AM EDT. Off the hour, when scheduled jobs queue.
+    - cron: '17 7 * * *'
+  workflow_dispatch:
+    inputs:
+      min_people:
+        description: 'Counties asked for by at least this many people'
+        required: false
+        default: '2'
+      force:
+        description: 'Search photos again even for counties looked at in the last 3 days'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+
+# One registry writer at a time: this and workflow 10 both commit the
+# generated county files.
+concurrency:
+  group: county-registry
+  cancel-in-progress: false
+
+jobs:
+  search:
+    name: Parcel lines and local photos for asked-for counties
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    permissions:
+      contents: write
+      actions: write
+    env:
+      MIN_PEOPLE: ${{ inputs.min_people || '2' }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+      - run: |
+          npm ci
+          npm install pngjs jpeg-js proj4 --no-save
+
+      - name: Search for parcel lines
+        id: find
+        run: node tools/find-parcels.js
+
+      - name: Prove what was found
+        if: steps.find.outputs.fips != ''
+        env:
+          FIRST_FIPS: ${{ steps.find.outputs.fips }}
+          # The statewide entries are re-checked on every run as well.
+          LIMIT: '60'
+        run: node tools/verify-counties.js
+
+      - name: Commit the registry
+        id: commit
+        if: steps.find.outputs.fips != ''
+        run: |
+          FILES="worker/src/counties-verified.js tools/verify-log.json tools/found-candidates.json"
+          if git diff --quiet -- $FILES; then echo "Nothing changed."; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p "$RUNNER_TEMP/out"
+          for f in $FILES; do cp "$f" "$RUNNER_TEMP/out/$(basename "$f")"; done
+          for attempt in 1 2 3; do
+            git fetch origin "$GITHUB_REF_NAME" || { sleep 5; continue; }
+            git reset --hard FETCH_HEAD
+            for f in $FILES; do cp "$RUNNER_TEMP/out/$(basename "$f")" "$f"; done
+            if git diff --quiet -- $FILES; then exit 0; fi
+            git add $FILES
+            git commit -m "Nightly county search: parcel lines for asked-for counties
+
+          Found by tools/find-parcels.js from parcel_gaps and proved by
+          tools/verify-counties.js."
+            if git push; then echo "pushed=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+            echo "Push $attempt failed; the branch moved. Retrying."
+            sleep 5
+          done
+          echo "::error::Could not push the registry after three tries."
+          exit 1
+
+      - name: Deploy the registry
+        if: steps.commit.outputs.pushed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run deploy.yml --ref "$GITHUB_REF_NAME" -f confirm=deploy
+
+      - name: Record the parcel results
+        if: always() && steps.find.outcome == 'success'
+        run: node tools/record-county-search.js
+
+      - name: Search for local photos
+        if: always()
+        env:
+          MODE: asked
+          FORCE: ${{ inputs.force || 'false' }}
+        run: node tools/county-imagery.js
+
+      - name: Keep the reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: county-search
+          path: |
+            tools/find-report.json
+            tools/found-candidates.json
+            tools/verify-log.json
+          if-no-files-found: ignore

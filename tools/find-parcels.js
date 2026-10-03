@@ -28,6 +28,9 @@ import { ALL_COUNTIES } from '../worker/src/counties.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const OUT = resolve(here, 'found-candidates.json');
+/* Every county this run looked at and what happened, for
+   tools/record-county-search.js (not committed; the workflow keeps it). */
+const REPORT = resolve(here, 'find-report.json');
 const MIN_PEOPLE = Math.max(1, Number(process.env.MIN_PEOPLE || 2));
 const TIMEOUT_MS = 15000;
 const PAUSE_MS = 250;
@@ -244,25 +247,38 @@ async function main() {
   const kept = new Map((before.candidates || []).map((c) => [c.fips, c]));
   const report = [];
   const foundFips = [];
+  const results = [];
+  const result = (r, place, status, detail) => results.push({
+    county: r.county, state: r.state, people: Number(r.people), hits: Number(r.hits),
+    fips: place?.fips || null, name: place?.name || `${r.county}, ${r.state}`, status, detail,
+  });
 
   for (const r of rows) {
     const place = fipsFor(r.county, r.state);
     const label = `${r.county}, ${r.state} (${r.people} people, ${r.hits} asks)`;
-    if (!place) { report.push(`??  ${label}: not a county the gazetteer knows`); continue; }
+    if (!place) {
+      report.push(`??  ${label}: not a county the gazetteer knows`);
+      result(r, null, 'unknown', 'not a US county the Census gazetteer knows');
+      continue;
+    }
     if (registered(place.fips)) {
       /* One this search added earlier is proved again, first, by the verifier
          -- with the rules as they are now, which is how a bad find leaves. */
       if (kept.has(place.fips)) {
         foundFips.push(place.fips);
         report.push(`ok  ${label}: found earlier; proved again this run`);
+        result(r, place, 'found', `${kept.get(place.fips).service}/${kept.get(place.fips).layer}`);
       } else {
         report.push(`ok  ${label}: in the registry already -- its server answered nothing for these addresses`);
+        result(r, place, 'registered', 'in the registry from a catalogue; its server returned no parcel at the addresses people tried');
       }
       continue;
     }
     const found = await findFor(place);
     if (!found.length) {
       report.push(`--  ${label}: no parcel layer found on ArcGIS Online`);
+      result(r, place, kept.has(place.fips) ? 'found' : 'none',
+        kept.has(place.fips) ? 'nothing new found; the earlier find is proved again' : 'no parcel layer found on ArcGIS Online by name');
       /* An earlier find for this county stays in the pool and is proved again
          first, so one that has stopped passing -- or never should have --
          leaves the registry rather than lingering behind this search. */
@@ -281,6 +297,7 @@ async function main() {
       fallbacks: rest.slice(0, 3).map((c) => ({ service: c.service, layer: c.layer, fields: c.fields })),
     });
     foundFips.push(place.fips);
+    result(r, place, 'found', `${best.layerName} at ${best.service}/${best.layer}`);
     report.push(`+   ${label}: ${best.layerName} at ${best.service}/${best.layer}`
       + `${rest.length ? ` (+${rest.length} more)` : ''}`);
   }
@@ -292,6 +309,7 @@ async function main() {
     candidates: [...kept.values()].sort((a, b) => a.key.localeCompare(b.key)),
   }, null, 2)}\n`);
 
+  writeFileSync(REPORT, `${JSON.stringify({ at: new Date().toISOString(), minPeople: MIN_PEOPLE, results }, null, 2)}\n`);
   console.log(report.join('\n'));
   const added = report.filter((l) => l.startsWith('+')).length;
   console.log(`\n${added} found and added to the candidate pool for the verifier; `

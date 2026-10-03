@@ -8,3 +8,4 @@ __pycache__/
 # Written at deploy time by tools/home-prepare.js
 home/build/
 home/wrangler.toml
+tools/find-report.json

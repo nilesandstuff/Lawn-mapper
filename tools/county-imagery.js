@@ -1232,6 +1232,35 @@ async function sweepPoints(key, entry) {
  */
 export const nameSweepKey = (st, fips) => `name:${st.toLowerCase()}-${fips}`;
 
+/**
+ * ONE COUNTY BY NAME: ArcGIS Online and the servers it leads to (agolByName),
+ * each service checked at the middle of its own box, and only if that middle
+ * is in `box` (the state's). Shared by the statewide-states sweep (names)
+ * and the nightly asked-for counties (asked). `known` and `tried` are the
+ * run's own sets, so a service is looked at once a run.
+ */
+export async function searchByName({ ab, county, box, point }, { known, tried, decoders }) {
+  const notes = [];
+  let found = 0, added = 0;
+  const cands = rankCandidates(await agolByName(point, { name: `${county}, ${ab}`, box }).catch(() => []));
+  for (const c of cands.slice(0, MAX_TRY)) {
+    if (known.has(c.url)) { found++; continue; }
+    if (tried.has(c.url)) continue;
+    tried.add(c.url);
+    const ext = await extentLngLat(await meta(c.url)).catch(() => null);
+    if (!ext) { notes.push(`x ${c.title}: no extent`); continue; }
+    const mid = [(ext[0] + ext[2]) / 2, (ext[1] + ext[3]) / 2];
+    if (!(mid[0] >= box[0] && mid[0] <= box[2] && mid[1] >= box[1] && mid[1] <= box[3])) { notes.push(`x ${c.title}: not in ${ab}`); continue; }
+    const q = await qualify(c, mid[0], mid[1], decoders, { again: false }).catch((e) => ({ usable: false, why: e.message }));
+    await sleep(PAUSE_MS);
+    if (!q.usable) { notes.push(`x ${c.title}: ${q.why}`); continue; }
+    upsertService(q, 'names', point);
+    known.add(c.url); added++; found++;
+    notes.push(`OK ${q.title} ${q.year ?? '?'} ${q.nativeCm ? `${Math.round(q.nativeCm)} cm` : ''}${q.exportOk ? '' : ' (tiles only)'}`);
+  }
+  return { found, added, notes, candidates: cands.length };
+}
+
 async function names(decoders) {
   const { US_COUNTIES } = await import('../worker/src/us-counties.js');
   const states = [...new Set(Object.values(ALL_COUNTIES).filter((e) => e.statewide)
@@ -1253,24 +1282,9 @@ async function names(decoders) {
       if (done.has(point) && !FORCE) continue;
       if (Date.now() > deadline) { console.log('Out of time; the next run carries on from here.'); return report(); }
       counties++;
-      const notes = [];
-      let found = 0;
-      const cands = rankCandidates(await agolByName(point, { name: `${county}, ${ab}`, box }).catch(() => []));
-      for (const c of cands.slice(0, MAX_TRY)) {
-        if (known.has(c.url)) { found++; continue; }
-        if (tried.has(c.url)) continue;
-        tried.add(c.url);
-        const ext = await extentLngLat(await meta(c.url)).catch(() => null);
-        if (!ext) { notes.push(`x ${c.title}: no extent`); continue; }
-        const mid = [(ext[0] + ext[2]) / 2, (ext[1] + ext[3]) / 2];
-        if (!(mid[0] >= box[0] && mid[0] <= box[2] && mid[1] >= box[1] && mid[1] <= box[3])) { notes.push(`x ${c.title}: not in ${ab}`); continue; }
-        const q = await qualify(c, mid[0], mid[1], decoders, { again: false }).catch((e) => ({ usable: false, why: e.message }));
-        await sleep(PAUSE_MS);
-        if (!q.usable) { notes.push(`x ${c.title}: ${q.why}`); continue; }
-        upsertService(q, 'names', point);
-        known.add(c.url); added++; found++;
-        notes.push(`OK ${q.title} ${q.year ?? '?'} ${q.nativeCm ? `${Math.round(q.nativeCm)} cm` : ''}${q.exportOk ? '' : ' (tiles only)'}`);
-      }
+      const r = await searchByName({ ab, county, box, point }, { known, tried, decoders });
+      const { notes, found } = r;
+      added += r.added;
       exec(`INSERT INTO county_sweep (point, county_key, lng, lat, found, checked_at)
             VALUES (${[point, point, null, null, found, new Date().toISOString()].map(lit).join(', ')})
             ON CONFLICT(point) DO UPDATE SET found = excluded.found, checked_at = excluded.checked_at`);
@@ -1283,6 +1297,62 @@ async function names(decoders) {
     const n = query("SELECT COUNT(*) n, SUM(found > 0) hit FROM county_sweep WHERE point LIKE 'name:%'")[0] || {};
     console.log('\n================ COUNTIES IN STATEWIDE STATES, BY NAME ================');
     console.log(`${added} services added this run; ${n.n ?? 0} counties looked at so far, ${n.hit ?? 0} with a county or state photo service.`);
+  }
+}
+
+/*
+ * THE COUNTIES PEOPLE ASKED FOR, BY NAME (owner, 2026-10-03: "make it so the
+ * scheduled job also looks for the local imagery ... writes failures
+ * somewhere so that we can troubleshoot"). Every county in parcel_gaps with
+ * at least MIN_PEOPLE people behind it, whether or not it has parcel lines,
+ * searched the way names() searches a statewide state's counties; what came
+ * of it goes to county_search (kind 'imagery') for the console. A county
+ * looked at in the last RECHECK_DAYS is left alone.
+ */
+export function imageryVerdict({ found, notes, candidates }) {
+  if (found > 0) {
+    const ok = notes.filter((n) => n.startsWith('OK ')).map((n) => n.slice(3));
+    return { status: 'covered', reason: `${found} service${found === 1 ? '' : 's'}${ok.length ? `; new: ${ok.slice(0, 3).join('; ')}` : ''}` };
+  }
+  if (!candidates) return { status: 'none', reason: 'no photo service found on ArcGIS Online by name' };
+  const why = {};
+  for (const n of notes.filter((x) => x.startsWith('x '))) {
+    const k = n.replace(/^x [^:]*: /, '').replace(/\(.*?\)/g, '').replace(/[0-9.]+/g, 'N').trim().slice(0, 60);
+    why[k] = (why[k] || 0) + 1;
+  }
+  const top = Object.entries(why).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, n]) => `${k} (${n})`);
+  return { status: 'failed', reason: `${candidates} candidate${candidates === 1 ? '' : 's'}, none usable: ${top.join('; ') || 'none tried'}` };
+}
+
+async function asked(decoders) {
+  const { fipsFor } = await import('./find-parcels.js');
+  const { upsertSql } = await import('./record-county-search.js');
+  exec(readFileSync(new URL('../worker/schema.sql', import.meta.url), 'utf8')
+    .match(/CREATE TABLE IF NOT EXISTS county_search \([\s\S]*?\n\);/)[0].replace(/--[^\n]*/g, ''), { always: true });
+  const min = Math.max(1, Number(process.env.MIN_PEOPLE || 2));
+  const days = Number(process.env.RECHECK_DAYS || 3);
+  const since = new Date(Date.now() - days * 86400000).toISOString();
+  const recent = new Set(query(`SELECT fips FROM county_search WHERE kind = 'imagery' AND checked_at >= ${lit(since)}`).map((r) => r.fips));
+  const rows = query(`SELECT county, state, SUM(hits) hits, COUNT(*) people FROM parcel_gaps
+                       GROUP BY county, state HAVING COUNT(*) >= ${min} ORDER BY people DESC, hits DESC`);
+  const known = new Set(query('SELECT url FROM county_services').map((r) => r.url));
+  const tried = new Set();
+  const { US_COUNTIES } = await import('../worker/src/us-counties.js');
+  console.log(`${rows.length} counties asked for by ${min}+ people.\n`);
+  for (const r of rows) {
+    const place = fipsFor(r.county, r.state);
+    if (!place) { console.log(`?? ${r.county}, ${r.state}: not a US county`); continue; }
+    if (recent.has(place.fips) && !FORCE) { console.log(`.. ${place.name}: looked at in the last ${days} days`); continue; }
+    const st = US_COUNTIES[place.fips.slice(0, 2)];
+    const [bw, bs, be, bn] = st.box;
+    const box = [bw - 0.3, bs - 0.3, be + 0.3, bn + 0.3];
+    const point = nameSweepKey(place.ab, place.fips.slice(2));
+    const res = await searchByName({ ab: place.ab, county: st.counties[place.fips.slice(2)], box, point }, { known, tried, decoders });
+    const v = imageryVerdict(res);
+    exec(upsertSql({ fips: place.fips, kind: 'imagery', county: place.name, state: place.ab, people: Number(r.people),
+      status: v.status, reason: v.reason, detail: res.notes.slice(0, 12).join('\n') || null }, new Date().toISOString()));
+    console.log(`${v.status.padEnd(8)} ${place.name}: ${v.reason}`);
+    for (const t of res.notes) console.log(`      ${t.slice(0, 150)}`);
   }
 }
 
@@ -1401,6 +1471,11 @@ async function main() {
   if (MODE === 'names') {
     ensureCatalogueTables();
     await names(decoders);
+    return;
+  }
+  if (MODE === 'asked') {
+    ensureCatalogueTables();
+    await asked(decoders);
     return;
   }
 

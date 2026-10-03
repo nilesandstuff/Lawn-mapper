@@ -36,3 +36,24 @@ assert.ok(scoreOf(own, place) > scoreOf(solar, place));
 assert.deepEqual([solar, own].sort((a, b) => rank(a, b, place))[0], own);
 
 console.log('find-parcels: ok');
+
+/* What the nightly search records for the console (tools/record-county-search.js). */
+{
+  const { rowsFrom } = await import('./record-county-search.js');
+  const report = { results: [
+    { county: 'Knox County', state: 'TN', people: 2, fips: '47093', name: 'Knox County, TN', status: 'found', detail: 'x/FeatureServer/0' },
+    { county: 'Washtenaw County', state: 'MI', people: 2, fips: '26161', name: 'Washtenaw County, MI', status: 'found', detail: 'y/FeatureServer/0' },
+    { county: 'Summit County', state: 'OH', people: 3, fips: '39153', name: 'Summit County, OH', status: 'registered', detail: 'its server returned nothing' },
+    { county: 'Metro Vancouver', state: 'BC', people: 2, fips: null, status: 'unknown', detail: 'not a US county' },
+  ] };
+  const log = { 'tn-knox': { at: '2026-10-03', ok: false, why: 'its parcels are not in Tennessee' }, 'mi-washtenaw': { at: '2026-10-03', ok: true, acres: 0.05 } };
+  const keyOf = (f) => ({ 47093: 'tn-knox', 26161: 'mi-washtenaw' })[f] || null;
+  const rows = rowsFrom(report, log, keyOf);
+  const by = Object.fromEntries(rows.map((r) => [r.county, r]));
+  assert.equal(by['Knox County, TN'].status, 'failed');
+  assert.match(by['Knox County, TN'].reason, /not in Tennessee/);
+  assert.equal(by['Washtenaw County, MI'].status, 'covered');
+  assert.equal(by['Summit County, OH'].status, 'registry-miss');
+  assert.equal(rows.find((r) => r.county === 'Metro Vancouver').status, 'unknown');
+  console.log('county search records: ok');
+}

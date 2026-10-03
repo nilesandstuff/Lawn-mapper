@@ -920,3 +920,21 @@ CREATE TABLE IF NOT EXISTS county_sweep (
   found       INTEGER,
   checked_at  TEXT
 );
+
+-- THE NIGHTLY COUNTY SEARCH, one row per county and kind (owner, 2026-10-03:
+-- "writes failures somewhere so that we can troubleshoot counties"). Written
+-- by tools/record-county-search.js (kind 'parcels') and tools/county-imagery.js
+-- mode 'asked' (kind 'imagery'); read by the console's county search card.
+-- status: covered / found / failed / registry-miss / none / unknown.
+CREATE TABLE IF NOT EXISTS county_search (
+  fips        TEXT NOT NULL,
+  kind        TEXT NOT NULL,
+  county      TEXT,
+  state       TEXT,
+  people      INTEGER,
+  status      TEXT,
+  reason      TEXT,
+  detail      TEXT,
+  checked_at  TEXT,
+  PRIMARY KEY (fips, kind)
+);

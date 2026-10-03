@@ -766,6 +766,46 @@ async function renderGaps() {
 }
 
 /*
+ * THE NIGHTLY COUNTY SEARCH (owner, 2026-10-03: "writes failures somewhere so
+ * that we can troubleshoot counties that have failures"). One row per county:
+ * parcel lines and local photos, each with what happened. Failures first.
+ */
+const SEARCH_OK = new Set(['covered']);
+async function renderCountySearch() {
+  const box = $('#county-search');
+  const data = await get('/api/admin/county-search');
+  box.innerHTML = '';
+  if (data.unavailable) {
+    box.append(el('p', 'empty', /no such table/i.test(data.unavailable)
+      ? 'The nightly search has not run yet.' : `Cannot read it: ${data.unavailable}`));
+    return;
+  }
+  if (!data.counties?.length) { box.append(el('p', 'empty', 'The nightly search has not run yet.')); return; }
+  const bad = (c) => ['parcels', 'imagery'].some((k) => c[k] && !SEARCH_OK.has(c[k].status));
+  const list = [...data.counties].sort((a, b) => Number(bad(b)) - Number(bad(a)) || (b.people || 0) - (a.people || 0));
+  const LABEL = { covered: 'found', found: 'found, verifying', failed: 'failed', 'registry-miss': 'listed, server gave nothing', none: 'nothing found', unknown: 'not a US county' };
+  for (const c of list) {
+    const row = el('div', 'entry');
+    const top = el('div', 'top');
+    top.append(el('b', null, c.county));
+    top.append(el('span', 'pill free', `${n(c.people)} ${c.people === 1 ? 'person' : 'people'}`));
+    row.append(top);
+    for (const [kind, name] of [['parcels', 'Parcel lines'], ['imagery', 'Local photos']]) {
+      const r = c[kind];
+      if (!r) continue;
+      const line = el('div', 'meta');
+      line.append(el('span', SEARCH_OK.has(r.status) ? 'pill free' : 'pill warn', `${name}: ${LABEL[r.status] || r.status}`));
+      line.append(document.createTextNode(` ${r.reason || ''}`));
+      if (r.detail) line.title = r.detail;
+      row.append(line);
+    }
+    const at = [c.parcels?.at, c.imagery?.at].filter(Boolean).sort().pop();
+    if (at) row.append(el('div', 'meta', `checked ${new Date(at).toLocaleString()}`));
+    box.append(row);
+  }
+}
+
+/*
  * WHAT TO GO AND MAP NEXT, which is the only question this panel answers.
  *
  * A total tells somebody nothing about where to spend an afternoon: four
@@ -1124,6 +1164,7 @@ async function renderLog() {
   renderReview().catch(() => { $('#review').textContent = 'Could not load the candidates.'; });
   renderCorpus().catch(() => { $('#corpus').textContent = 'Could not load the training data.'; });
   renderGaps().catch(() => { $('#gaps').textContent = 'Could not load the county list.'; });
+  renderCountySearch().catch(() => { $('#county-search').textContent = 'Could not load the county search.'; });
 
   /* Each sort is a fresh question to the server, for the reason in renderGaps. */
   const GAP_SORTS = [
