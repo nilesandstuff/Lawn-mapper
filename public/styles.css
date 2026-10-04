@@ -112,7 +112,13 @@ body.job-mode #support-btn, body.job-mode .support-line { display: none; }
 .quota { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .quota .q-short, .account .a-short { display: none; }
 @media (max-width: 700px) {
-  .quota .q-long, .account .a-long { display: none; }
+  /* Out of sight but still read aloud: the short half is aria-hidden, so
+     display:none here left the badge and the account button with no name
+     at all for a screen reader (Lighthouse, 2026-10-04). */
+  .quota .q-long, .account .a-long {
+    position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+  }
   .quota .q-short, .account .a-short { display: inline; }
 }
 @media (max-width: 400px) {

@@ -55,6 +55,7 @@
 }
 </script>
 
+<link rel="preconnect" href="https://api.mapbox.com" crossorigin>
 <link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.css" rel="stylesheet">
 <link href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.css" rel="stylesheet">
 <link href="/styles.css" rel="stylesheet">
@@ -90,7 +91,7 @@
       not expect: there is no form and no password, so signing up and signing
       in are the same single action -- type an address, press the link.
     -->
-    <button class="account" id="account-btn" type="button" hidden>
+    <button class="account" id="account-btn" type="button" aria-label="Sign in or 1-click sign up" hidden>
       <span id="account-label">Sign in / 1-click sign up</span>
     </button>
   </div>
@@ -1372,11 +1373,14 @@
     imagery and county parcel data, not a survey.</p>
 </div>
 
-<script src="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.js"></script>
-<script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.js"></script>
+<!-- defer (Lighthouse, 2026-10-04): the page paints first and these run
+     after parsing, in this order, before app.js -- a module, which is
+     deferred too and runs after the deferred scripts before it. -->
+<script defer src="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.js"></script>
+<script defer src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.js"></script>
 <!-- Polygon clipping for the brush (lib/brush-vector.js): cut and join outlines
      rather than re-tracing them, so corners the brush missed never move. -->
-<script src="/lib/vendor/polygon-clipping.umd.min.js"></script>
+<script defer src="/lib/vendor/polygon-clipping.umd.min.js"></script>
 <script type="module" src="/app.js"></script>
 </body>
 </html>

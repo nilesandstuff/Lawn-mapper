@@ -10,3 +10,20 @@ for (const said of [/parcel maps/i, /property line/i, /aerial/i, /near-infrared/
 }
 assert.match(t, /\(https:\/\/example\.test\/\)/, 'links are on the domain that served it');
 console.log('llms.txt: ok');
+
+/* Lighthouse, 2026-10-04: a file that is not here is a 404, not the app; a
+   path with no extension is still a deep link into the app. */
+{
+  const { default: worker } = await import('../worker/src/index.js');
+  const env = { ASSETS: { fetch: async () => new Response('<!doctype html><title>app</title>', { headers: { 'Content-Type': 'text/html' } }) } };
+  const at = (p) => worker.fetch(new Request(`https://example.test${p}`), env, { waitUntil() {} });
+  assert.equal((await at('/.well-known/ai-catalog.json')).status, 404);
+  assert.equal((await at('/missing.json')).status, 404);
+  const deep = await at('/some/deep/link');
+  assert.equal(deep.status, 200);
+  assert.match(await deep.text(), /<title>app/);
+  const llms = await at('/llms.txt');
+  assert.equal(llms.status, 200);
+  assert.match(llms.headers.get('content-type'), /text\/markdown/);
+  console.log('unknown files 404, deep links still open the app: ok');
+}

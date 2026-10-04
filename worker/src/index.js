@@ -1769,6 +1769,15 @@ export default {
           if (url.pathname.startsWith('/api/')) {
             return json({ error: 'Not found' }, 404, origin);
           }
+          /*
+           * A FILE THAT IS NOT HERE IS A 404, not the app (Lighthouse,
+           * 2026-10-04): an agent asking for /.well-known/ai-catalog.json got
+           * the app's HTML and reported a malformed manifest. Only paths
+           * without an extension are deep links into the app.
+           */
+          if (url.pathname.startsWith('/.well-known/') || /\.[a-z0-9]{1,8}$/i.test(url.pathname)) {
+            return new Response('Not found\n', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+          }
           // Static assets are matched before the Worker runs, so anything
           // reaching here is an unknown path. Hand back the app shell so
           // deep links and refreshes land on the site, not on JSON.
