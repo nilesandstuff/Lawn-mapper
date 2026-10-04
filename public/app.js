@@ -3309,7 +3309,7 @@ function stepwisePolygonMode(base) {
     clickAnywhere(st, e) {
       if (precisePlacing()) return placePoint(this, base, st, e);
       const pos = st.currentVertexPosition;
-      const last = pos > 0 ? st.polygon.coordinates[0][pos - 1] : null;
+      const last = pos > 0 ? draftRing(st)[pos - 1] : null;
       if (last && last[0] === e.lngLat.lng && last[1] === e.lngLat.lat) return close(this);
       // A new corner: whatever was undone is gone for good, as with any edit.
       st.undone = [];
@@ -3348,6 +3348,16 @@ function stepwisePolygonMode(base) {
 }
 
 const draftCorners = () => (drafting ? drafting.state.currentVertexPosition : 0);
+
+/*
+ * THE OPEN OUTLINE'S POINTS, EVEN WHEN DRAW HAS DROPPED THEM. Draw's
+ * removeCoordinate throws a ring away once it is under three entries -- and
+ * an open drawing's ring is its corners plus the one following the finger,
+ * so undoing down to one corner left no ring at all. Everything that then
+ * read it threw: the next Undo, every tap (the map lurched and nothing was
+ * placed), and the X (owner, 2026-10-04).
+ */
+const draftRing = (st) => st.polygon.coordinates[0] || [];
 
 /*
  * NEW SHAPE AND CUT OUT PLACE POINTS UNTIL THE CHECKMARK (owner, 2026-09-30).
@@ -3395,7 +3405,7 @@ function snapTargets() {
 }
 
 function placePoint(mode, base, st, e) {
-  const placed = st.polygon.coordinates[0].slice(0, st.currentVertexPosition)
+  const placed = draftRing(st).slice(0, st.currentVertexPosition)
     .map((p) => map.project(p));
   const near = (q, tol) => placed.some((v) => Math.hypot(v.x - q.x, v.y - q.y) <= tol);
   if (near(map.project(e.lngLat), ON_A_POINT_PX)) return undefined;
@@ -3419,9 +3429,15 @@ function draftUndo() {
   const st = d.state;
   const pos = st.currentVertexPosition;
   if (pos === 0) return false;
-  const ring = st.polygon.coordinates[0];
-  st.undone.push([...ring[pos - 1]]);
-  st.polygon.removeCoordinate(`0.${pos - 1}`);
+  /* Spliced here, not with removeCoordinate, which drops a short ring
+     (draftRing). The one following the finger stays as it is. */
+  const ring = draftRing(st).slice();
+  const [gone] = ring.splice(pos - 1, 1);
+  if (gone) st.undone.push([...gone]);
+  /* On a phone nothing moves the following point, so it would keep drawing
+     a line to the corner just taken off: put it on the last one left. */
+  if (pos > 1 && ring[pos - 2]) ring[pos - 1] = [...ring[pos - 2]];
+  st.polygon.setCoordinates([ring]);
   st.currentVertexPosition = pos - 1;
   d.mode._ctx.store.render();
   refreshHistoryButtons();
@@ -13241,7 +13257,7 @@ $('#btn-edge-done').addEventListener('click', () => settleMode());
 $('#tool-cancel').addEventListener('click', () => {
   if (!drafting || !precisePlacing()) return;
   const st = drafting.state;
-  const corners = st.polygon.coordinates[0].slice(0, st.currentVertexPosition).map((p) => [...p]);
+  const corners = draftRing(st).slice(0, st.currentVertexPosition).filter(Boolean).map((p) => [...p]);
   if (corners.length) {
     pushHistory(null, {
       ...snapshot({ without: st.polygon.id }),
