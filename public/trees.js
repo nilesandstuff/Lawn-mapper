@@ -258,7 +258,11 @@ async function open(i) {
   const model = got.model;
   view.model = model;
   view.w = model.w; view.h = model.h; view.mpp = model.mpp || 0.1;
-  view.clumps = got.saved?.clumps || model.clumps || [];
+  /* The outlines saved with the labels, unless workflow 28 has made the map
+     again since (B09's canopy came out inverted and was remade, 2026-10-04):
+     then the fresh outlines. The painted labels are per pixel and stay. */
+  const savedFirst = got.saved?.clumps && (!model.at || !got.saved.at || got.saved.at >= model.at);
+  view.clumps = (savedFirst ? got.saved.clumps : model.clumps) || [];
   view.undo = []; view.sel = null; view.dirty = false;
   const canvas = $('#paint');
   canvas.width = view.w; canvas.height = view.h;
