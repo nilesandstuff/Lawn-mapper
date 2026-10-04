@@ -334,10 +334,12 @@ CREATE TABLE IF NOT EXISTS corpus (
   county_svc     TEXT,
   county_align   TEXT,
   -- EVERY MAP'S NUMBER (owner, 2026-10-04: "assign id numbers to every
-  -- entry"), so a lot is "#47" on the console and in a training run's
-  -- results alike, as the benchmark's 32 are B01-B32. Given on first save,
-  -- one more than the highest so far; existing maps were numbered by
-  -- tools/ci-prepare.js in the order they were made. Never renumbered.
+  -- entry"), shown as C01, C02 ... (benchmark-ids.js mapName) on the console
+  -- and in a training run's results alike; the benchmark's 32 keep B01-B32
+  -- and have none. Given on first save, one more than the highest so far;
+  -- existing maps were numbered by tools/ci-prepare.js in the order they
+  -- were made. Renumbered once, the same day, from "#N" to C numbers; never
+  -- again.
   lot_no         INTEGER,
   -- GROUND THE TRACER OUTLINED AS NOT LAWN (owner, tinker mode, 2026-09-29):
   -- a JSON array of GeoJSON polygons -- a parking lot, a road, a pond -- traced

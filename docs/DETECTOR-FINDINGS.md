@@ -913,6 +913,42 @@ against it, so colour's gain is concentrated, not general.
   them Mapbox photos (B05 98%, B12 94%, B06 85%, B10 84%, B09 84%) -- the
   owner's point that leaf-off is a property of the photo, confirmed. Only 22
   lots: above S22's "about 15" floor, but one seed.
+- **The owner's reading of the pictures (2026-10-04), lot by lot.** What
+  a person saw, not a measurement; the lots are named for the next run to
+  check. (The pictures are of the evergreen row, so stage 3 there is that
+  mode's.)
+  - **B12 (the big Kent pond): fixed by the pond examples** -- "it perfectly
+    traced out the pond". The one lot H57's examples also helped; these are
+    the owner's own pond traces.
+  - **Lots by the "#N" this run printed; C numbers since (old #N above 47
+    is C(N-32): all 32 benchmark lots had numbers up to #47).** #110 (now C78): stage 3 put lawn under a canopy NOT adjacent to any lawn -- a rule
+    reaching where none should.
+  - **#63 (now C31), grass islands in a parking lot:** narrow strips (1-5 m) interrupted
+    by 6-10 m of canopy that overhangs both grass and asphalt. Of ~6 tree
+    spots, one was filled whole; the rest got only ~1 m under the canopy edge
+    (the reach), so span did not join the strips across the trees. Fills
+    drifted ~0.5 m into the lot (1 m both sides on one tree). One large tree
+    was missed largely because the detector stopped short of the canopy edge
+    at a shadow, leaving span nothing to join from.
+  - **#62 (now C30) and B04: the biggest misses of easy ground** -- plain green grass
+    and grass in tree shade, not unique to this run.
+  - **#66 (now C34): one large leaf-on tree in the middle of a lawn, marked wholly
+    inferred.** The detector missed the big shadow on one side; stage 3 drew
+    an "I" (1 m strips along two edges of the crown joined by a straight bar
+    through the middle) instead of filling the crown. The owner suggests the
+    single-tree case (a clump with lawn all round) should just be filled --
+    which is what the bridge rule is for; the missed shadow presumably broke
+    the ring of lawn round it. The straight bar looks like span's
+    row/column walk.
+  - **#98 (now C66), leaf-off:** a long row of evergreens was mostly avoided by the
+    detector (some drift onto it) and correctly not filled by stage 3; every
+    other (deciduous) tree was filled but one, with very dense branches and
+    no grass showing through.
+  - **The owner agrees with H69's reading of the colour rule:** stage 3
+    cannot tell evergreens, leaf-on canopy and grass through bare branches
+    apart from colour alone. Proposed (owner, 2026-10-04, NOT BUILT): mark
+    evergreens as their own shape, and leaf-off as an attribute, so the
+    separation can be learned from labels rather than guessed.
 - **The pictures were drawn for the evergreen row** (TRIAL_ROW was set
   before the run). It differs from THE PLAN's only under canopy on the 22
   leaf-off lots, where it is the worst of the four. TRIAL_ROW is now the

@@ -49,6 +49,20 @@ export const BENCHMARK_IDS = {
 /** The tag for a map id, or null. */
 export const benchmarkTag = (id) => BENCHMARK_IDS[id] || null;
 
+/*
+ * EVERY OTHER MAP IS A C NUMBER (owner, 2026-10-04: "keep the B numbered ones
+ * as is, then switch to C numbers for the rest"). C01, C02 ... from
+ * corpus.lot_no, which the benchmark's 32 do not have. The console, the map
+ * list and a training run's results all name a map with this.
+ */
+export const C_PREFIX = 'C';
+export function mapName(id, lotNo = null) {
+  const b = benchmarkTag(id);
+  if (b) return b;
+  const n = Number(lotNo);
+  return n > 0 ? `${C_PREFIX}${String(n).padStart(2, '0')}` : null;
+}
+
 /** The map id for a tag, or null. */
 export const benchmarkId = (tag) => Object.keys(BENCHMARK_IDS).find((k) => BENCHMARK_IDS[k] === tag) || null;
 

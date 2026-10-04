@@ -453,15 +453,29 @@ export function parseQueryRows(stdout) {
   }
 }
 
+/* The benchmark's 32 keep their B names and have no C number. */
+export const BENCHMARK_COHORT = 'benchmark-1rijjz2';
+
 function numberMaps() {
   const read = (sql) => parseQueryRows(wrangler(['d1', 'execute', DB_NAME, '--remote', '--json', `--command=${sql}`]));
+  const run = (sql) => wrangler(['d1', 'execute', DB_NAME, '--remote', `--command=${sql}`, '--yes']);
   try {
-    const highest = Number(read('SELECT COALESCE(MAX(lot_no), 0) AS n FROM corpus')[0]?.n) || 0;
-    const blank = read('SELECT id FROM corpus WHERE lot_no IS NULL ORDER BY created_at, id').map((r) => r.id);
-    for (const sql of numberingStatements(blank, highest)) {
-      wrangler(['d1', 'execute', DB_NAME, '--remote', `--command=${sql}`, '--yes']);
+    /*
+     * ONCE: the first numbering (2026-10-04, morning) numbered the benchmark
+     * too, as "#N". The owner asked for C numbers for every map but the B
+     * ones, so a benchmark row that still has a number means that scheme is
+     * in place: clear every number and start again from C01. Never again
+     * after that, because no benchmark row is numbered from then on.
+     */
+    const old = Number(read(`SELECT COUNT(*) AS n FROM corpus WHERE lot_no IS NOT NULL AND cohort = '${BENCHMARK_COHORT}'`)[0]?.n) || 0;
+    if (old) {
+      run('UPDATE corpus SET lot_no = NULL');
+      console.log('  cleared the first numbering (it numbered the benchmark too) to give C numbers.');
     }
-    console.log(blank.length ? `  numbered ${blank.length} map(s), #${highest + 1} to #${highest + blank.length}.` : '  every map has its number.');
+    const highest = Number(read('SELECT COALESCE(MAX(lot_no), 0) AS n FROM corpus')[0]?.n) || 0;
+    const blank = read(`SELECT id FROM corpus WHERE lot_no IS NULL AND (cohort IS NULL OR cohort != '${BENCHMARK_COHORT}') ORDER BY created_at, id`).map((r) => r.id);
+    for (const sql of numberingStatements(blank, highest)) run(sql);
+    console.log(blank.length ? `  numbered ${blank.length} map(s), C${highest + 1} to C${highest + blank.length}.` : '  every map has its number.');
     return '';
   } catch (err) {
     console.log(`  numbering maps FAILED (${firstLine(err)})`);

@@ -319,7 +319,7 @@ function drawCandidate(c) {
 
   const head = el('div', 'who');
   /* The map's number, as training runs name it (owner, 2026-10-04). */
-  if (c.lotNo) head.append(el('span', 'pill', `#${c.lotNo}`));
+  if (c.name) head.append(el('span', 'pill', c.name));
   head.append(el('b', null, c.county || 'somewhere with no county record'));
   head.append(el('span', 'pill', `${n(c.squareFeet)} sq ft`));
 

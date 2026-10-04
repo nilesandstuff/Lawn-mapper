@@ -266,6 +266,7 @@ ALTER TABLE corpus ADD COLUMN ai_wrong_pct REAL;
 ALTER TABLE corpus ADD COLUMN county_svc TEXT;
 ALTER TABLE corpus ADD COLUMN county_align TEXT;
 
--- EVERY MAP'S NUMBER (see the column in schema.sql). Existing maps are given
--- theirs by tools/ci-prepare.js numberMaps, in the order they were made.
+-- EVERY MAP'S NUMBER, the C in C01 (see the column in schema.sql). Existing
+-- maps are given theirs by tools/ci-prepare.js numberMaps, in the order they
+-- were made.
 ALTER TABLE corpus ADD COLUMN lot_no INTEGER;

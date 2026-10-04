@@ -100,6 +100,38 @@ function viewer(key, alt, build = null) {
   document.body.append(back);
   document.body.classList.add('lightbox-open');
 
+  /*
+   * ON THE SCREEN AS IT IS ZOOMED (owner, 2026-10-04: "it opens way off
+   * center and I can't pull it into view"). A fixed box is placed on the
+   * page's layout, so on a list that had been pinch-zoomed it opened where
+   * the unzoomed screen would be -- mostly off the visible part -- and,
+   * taking every gesture, could not be panned to. So it is laid over the
+   * visual viewport, and drawn at 1/zoom so it looks as it does unzoomed.
+   * `k` turns on-screen pixels into the box's own.
+   */
+  const vv = window.visualViewport;
+  let k = 1, boxW = window.innerWidth, boxH = window.innerHeight;
+  const place = () => {
+    k = vv?.scale || 1;
+    boxW = (vv ? vv.width : window.innerWidth) * k;
+    boxH = (vv ? vv.height : window.innerHeight) * k;
+    Object.assign(back.style, {
+      left: `${vv ? vv.offsetLeft : 0}px`, top: `${vv ? vv.offsetTop : 0}px`,
+      right: 'auto', bottom: 'auto', width: `${boxW}px`, height: `${boxH}px`,
+      transform: k === 1 ? '' : `scale(${1 / k})`, transformOrigin: '0 0',
+    });
+    back.style.setProperty('--vw', `${boxW}px`);
+    back.style.setProperty('--vh', `${boxH}px`);
+  };
+  place();
+  vv?.addEventListener('resize', place);
+  vv?.addEventListener('scroll', place);
+  /* A point on screen as an offset from the box's centre, in its pixels. */
+  const local = (x, y) => {
+    const r = back.getBoundingClientRect();
+    return [(x - r.left) * k - boxW / 2, (y - r.top) * k - boxH / 2];
+  };
+
   /* The transform, applied as one string so a zoom and a pan cannot land in
      different frames and jitter. */
   let scale = 1, tx = 0, ty = 0;
@@ -115,8 +147,8 @@ function viewer(key, alt, build = null) {
        picture's size ON SCREEN right now -- which is what decides how far
        there is to pan. */
     const r = img.getBoundingClientRect();
-    const maxX = Math.max(0, (r.width - window.innerWidth) / 2);
-    const maxY = Math.max(0, (r.height - window.innerHeight) / 2);
+    const maxX = Math.max(0, (r.width * k - boxW) / 2);
+    const maxY = Math.max(0, (r.height * k - boxH) / 2);
     tx = Math.max(-maxX, Math.min(maxX, tx));
     ty = Math.max(-maxY, Math.min(maxY, ty));
   };
@@ -158,8 +190,8 @@ function viewer(key, alt, build = null) {
     if (!pointers.has(ev.pointerId)) return;
     pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
     if (pointers.size === 2 && startDist) {
-      const [cx, cy] = mid();
-      zoomTo(startScale * (dist() / startDist), cx - window.innerWidth / 2, cy - window.innerHeight / 2);
+      const [cx, cy] = local(...mid());
+      zoomTo(startScale * (dist() / startDist), cx, cy);
       return;
     }
     if (pointers.size === 1) {
@@ -167,7 +199,7 @@ function viewer(key, alt, build = null) {
       const dy = ev.clientY - lastY;
       moved += Math.abs(dx) + Math.abs(dy);
       lastX = ev.clientX; lastY = ev.clientY;
-      if (scale > 1) { tx += dx; ty += dy; clamp(); apply(); }
+      if (scale > 1) { tx += dx * k; ty += dy * k; clamp(); apply(); }
     }
   });
 
@@ -196,12 +228,13 @@ function viewer(key, alt, build = null) {
 
   back.addEventListener('wheel', (ev) => {
     ev.preventDefault();
-    zoomTo(scale * (ev.deltaY < 0 ? 1.15 : 1 / 1.15),
-      ev.clientX - window.innerWidth / 2, ev.clientY - window.innerHeight / 2);
+    zoomTo(scale * (ev.deltaY < 0 ? 1.15 : 1 / 1.15), ...local(ev.clientX, ev.clientY));
   }, { passive: false });
 
   function shut() {
     back.remove();
+    vv?.removeEventListener('resize', place);
+    vv?.removeEventListener('scroll', place);
     document.body.classList.remove('lightbox-open');
     window.removeEventListener('keydown', onKey);
   }
@@ -740,12 +773,12 @@ function settingsLine(settings) {
   }
 
   /*
-   * IN B-NUMBER ORDER (owner, 2026-09-26): B01 to B32 first, then any lawn
-   * with no tag in the order the run wrote them. The index is kept as written;
+   * IN NUMBER ORDER (owner, 2026-09-26; C numbers 2026-10-04): B01 to B32,
+   * then C01 on, then any lawn with no name in the order the run wrote them. The index is kept as written;
    * `i` stays the position there, which is what the picture keys are named by.
    */
   const order = entries.map((e, i) => [e, i]).sort(([a, ia], [b, ib]) => {
-    if (a.tag && b.tag) return a.tag.localeCompare(b.tag);
+    if (a.tag && b.tag) return a.tag.localeCompare(b.tag, undefined, { numeric: true });
     if (a.tag || b.tag) return a.tag ? -1 : 1;
     return ia - ib;
   });

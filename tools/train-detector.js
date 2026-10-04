@@ -36,7 +36,7 @@ import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 
 import { query } from './corpus-db.js';
-import { benchmarkTag, coordsOfId } from '../worker/src/benchmark-ids.js';
+import { benchmarkTag, coordsOfId, mapName } from '../worker/src/benchmark-ids.js';
 import {
   imageFeatures, featureStats, standardise, FEATURE_COUNT, FEATURE_NAMES,
 } from '../public/lib/features.js';
@@ -67,12 +67,10 @@ const SQM_PER_SQFT = 0.09290304;
  * session had to name a lot, and two tools computing square feet two ways
  * had already produced two names for one lawn. Null for any lawn not in it.
  */
-/* With every map's number (corpus.lot_no, owner 2026-10-04): "B07 #5" for a
-   benchmark lawn, "#47" for the rest -- the number the console shows. */
+/* The map's name as the console shows it: B01-B32 for the benchmark, C01 on
+   for every other map (worker/src/benchmark-ids.js mapName). */
 export function lawnTag(id, lotNo = null) {
-  const b = benchmarkTag(id);
-  const n = Number(lotNo) > 0 ? `#${lotNo}` : '';
-  return [b, n].filter(Boolean).join(' ') || null;
+  return mapName(id, lotNo);
 }
 /** "B06 Kent County" -- the tag first, so a column of them sorts and reads at a glance. */
 const lawnName = (L) => `${L.tag ? `${L.tag} ` : ''}${L.county || 'traced by hand'}`;
@@ -1558,6 +1556,8 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
         layersKey,
         county: L.county || null,
         tag: L.tag || null,
+        /* The map id, so the page can name it as the console does today. */
+        id: L.id,
         /* The address point, "lat, lng" on the card, for pasting into other
            map tools. The index is served only to the signed-in owner. */
         ...(coordsOfId(L.id) || {}),
@@ -2142,7 +2142,7 @@ async function main() {
   /* The legend for B01..B32, once a run, with the scorer's own square feet. */
   if (lawns.some((L) => L.tag)) {
     const named = lawns.filter((L) => L.tag).sort((a, b) => a.tag.localeCompare(b.tag, undefined, { numeric: true }));
-    console.log('Lot names: B01-B32 the benchmark (worker/src/benchmark-ids.js), #N every map (corpus.lot_no, as the console shows it):');
+    console.log('Lot names: B01-B32 the benchmark, C01 on every other map (worker/src/benchmark-ids.js mapName, as the console shows them):');
     for (let i = 0; i < named.length; i += 2) {
       console.log(named.slice(i, i + 2).map((L) => {
         const ft = Math.round((L.truthPx * L.mpp * L.mpp) / SQM_PER_SQFT).toLocaleString();
@@ -2923,6 +2923,29 @@ async function main() {
    * find (2026-09-25). The best median is still named in the table.
    */
   const drawn = (TRIAL_ROW && table.find((t) => t.cfg.name === TRIAL_ROW)) || findPlanRow(table) || best;
+  /*
+   * THE EDGE REFINER'S LAYERS ON WHATEVER REFINED ROW IS DRAWN (owner,
+   * 2026-10-04: "the edge refiner still isn't showing anything"). They were
+   * filled in on THE PLAN's row only, and run 37195418220 drew a trial row
+   * built on the refined decoder, so both layers were empty. Any drawn row
+   * of the refined decoder now gets them against the same row of the plain
+   * one -- the same stage 3, the same veto, only the refiner different.
+   */
+  if (drawn && drawn.cfg.name.startsWith('decoder, edge refined') && drawn.rows.some((r) => !r.refineAdded)) {
+    const twin = table.find((t) => t.cfg.name === drawn.cfg.name.replace('decoder, edge refined', 'the pretrained eye, decoder'));
+    const byLawn = new Map((twin?.rows || []).map((r) => [r.lawn, r]));
+    for (const r of drawn.rows) {
+      const p = byLawn.get(r.lawn);
+      if (r.refineAdded || !r.predicted || !p?.predicted) continue;
+      r.refineAdded = new Uint8Array(r.predicted.length);
+      r.refineRemoved = new Uint8Array(r.predicted.length);
+      for (let k = 0; k < r.predicted.length; k++) {
+        r.refineAdded[k] = r.predicted[k] && !p.predicted[k] ? 1 : 0;
+        r.refineRemoved[k] = p.predicted[k] && !r.predicted[k] ? 1 : 0;
+      }
+    }
+    if (twin) console.log(`Edge refiner layers for "${drawn.cfg.name}" against "${twin.cfg.name}".`);
+  }
   if (renderWanted && drawn && drawn !== best) {
     console.log(`\nDrawing "${drawn.cfg.name}" (${drawn.med.toFixed(1)}%) -- ${drawn.cfg.name === TRIAL_ROW ? 'the row on trial' : "THE PLAN's row"} -- not the lowest median ("${best.cfg.name}", ${best.med.toFixed(1)}%).`);
   }

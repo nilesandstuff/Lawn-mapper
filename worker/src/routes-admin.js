@@ -20,7 +20,7 @@
 
 import { usageSince, usageDaily } from './usage.js';
 import { currentUser } from './auth.js';
-import { benchmarkId, coordsOfId } from './benchmark-ids.js';
+import { benchmarkId, coordsOfId, mapName } from './benchmark-ids.js';
 import {
   accountsEnabled, grantCredits, publicUser, setDailyLimit, dayKey,
 } from './db.js';
@@ -471,7 +471,7 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
         .slice(0, 10)
         .map(({ row: r, score, why }) => ({
           id: r.id,
-          lotNo: r.lot_no ?? null,
+          name: mapName(r.id, r.lot_no),
           score,
           why,
           at: r.at,
@@ -1354,6 +1354,27 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
       for (const e of Array.isArray(data?.entries) ? data.entries : []) {
         if (e && e.lat === undefined && e.tag) Object.assign(e, coordsOfId(benchmarkId(e.tag)) || {});
       }
+      /*
+       * TODAY'S NAMES, B01 and C01 (owner, 2026-10-04), for every run: a run
+       * keeps the name it was drawn with, and the ones drawn before C numbers
+       * said "#121" or nothing. Matched by the map id when the run wrote it,
+       * else by the address point every id starts with.
+       */
+      try {
+        const rows = (await env.DB.prepare('SELECT id, lot_no FROM corpus').all()).results || [];
+        const point = (lng, lat) => `${Number(lng)},${Number(lat)}`;
+        const byId = new Map(rows.map((r) => [r.id, r]));
+        const byPoint = new Map();
+        for (const r of rows) {
+          const c = coordsOfId(r.id);
+          if (c) byPoint.set(point(c.lng, c.lat), r);
+        }
+        for (const e of Array.isArray(data?.entries) ? data.entries : []) {
+          const r = (e?.id && byId.get(e.id)) || (Number.isFinite(e?.lng) && byPoint.get(point(e.lng, e.lat)));
+          const name = r ? mapName(r.id, r.lot_no) : null;
+          if (name) e.tag = name;
+        }
+      } catch { /* the names the run wrote, then */ }
       return json(data, 200, origin);
     } catch {
       return json({ error: 'Nothing drawn yet' }, 404, origin);
@@ -2045,7 +2066,7 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
         } catch { /* A row that will not parse still belongs in the list. */ }
         return {
           id: r.id,
-          lotNo: r.lot_no ?? null,
+          name: mapName(r.id, r.lot_no),
           county: r.county,
           status: r.status,
           squareFeet: r.square_feet,
