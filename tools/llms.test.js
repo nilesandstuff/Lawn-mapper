@@ -25,5 +25,9 @@ console.log('llms.txt: ok');
   const llms = await at('/llms.txt');
   assert.equal(llms.status, 200);
   assert.match(llms.headers.get('content-type'), /text\/markdown/);
-  console.log('unknown files 404, deep links still open the app: ok');
+  const robots = await (await at('/robots.txt')).text();
+  assert.match(robots, /User-agent: \*\nContent-Signal: search=yes, ai-input=yes\nAllow: \//);
+  assert.match(robots, /Disallow: \/api\//);
+  assert.match(robots, /https:\/\/example\.test\/llms\.txt/);
+  console.log('unknown files 404, deep links still open the app, robots says yes to search and AI answers: ok');
 }

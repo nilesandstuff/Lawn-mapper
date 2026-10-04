@@ -1747,9 +1747,19 @@ export default {
          * was asked for, so they are right on the custom domain and on
          * workers.dev alike. One public page; the consoles carry noindex.
          */
+        /*
+         * AND FOR AI (owner, 2026-10-04: "so users can find the site for LLM
+         * conversations"). Every crawler is allowed, AI ones included; the
+         * Content-Signal line (contentsignals.org) says this page may be used
+         * for search results and as input to an AI's answer. Training is left
+         * unstated -- no preference either way -- until the owner says.
+         * /llms.txt is the plain-words summary for them (llms.js).
+         */
         case '/robots.txt':
           return new Response(
-            `User-agent: *\nAllow: /\nDisallow: /api/\n\nSitemap: ${url.origin}/sitemap.xml\n`,
+            '# Search engines and AI assistants are welcome. A plain-language summary\n'
+            + `# of this site for AI assistants: ${url.origin}/llms.txt\n`
+            + `User-agent: *\nContent-Signal: search=yes, ai-input=yes\nAllow: /\nDisallow: /api/\n\nSitemap: ${url.origin}/sitemap.xml\n`,
             { headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=86400' } }
           );
         /* For AI assistants: what the site is, in plain words (llms.js). */
