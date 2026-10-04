@@ -70,6 +70,18 @@ bay[10:30, 25:35] = False
 _, none = outlines_for(bay, tolerance=1.0)
 check("a bay open to the edge of the patch is not a hole", none == [])
 
+# CANOPY RUNNING OFF THE FRAME (B09, 2026-10-04): most of the picture is
+# canopy, with open ground inside it. The outline must go round the canopy,
+# along the frame's edge, not round the open ground.
+edge = np.ones((60, 60), dtype=bool)
+edge[20:40, 20:40] = False          # a clearing in the middle
+edge[0:15, 45:60] = False           # open ground in a corner, off the frame
+outer, holes = outlines_for(edge, tolerance=1.0)
+check("a patch running off the frame is outlined round the canopy, not the gaps",
+      abs(area(outer) - (3600 - 225)) < 150)
+check("and its clearing is a hole, the open corner is not", len(holes) == 1 and abs(area(holes[0]) - 400) < 60)
+check("the outline stays on the frame", all(-1 <= y <= 60 and -1 <= x <= 60 for y, x in outer))
+
 # clumps_for still splits patches that do not touch.
 labels, n = clumps_for(blob(60, 60, [(0, 0, 10, 10), (30, 30, 10, 10)]))
 check("two separate patches are two clumps", n == 2)

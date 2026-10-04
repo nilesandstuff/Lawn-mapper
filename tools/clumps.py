@@ -45,11 +45,22 @@ def clumps_for(mask):
 
 def trace(blob, tolerance):
     """The simplified boundary of one solid blob as [row, col] points, or None
-    if it is too small to have a shape."""
-    contours = find_contours(blob.astype(float), 0.5)
+    if it is too small to have a shape.
+
+    PADDED BY ONE EMPTY PIXEL FIRST (owner, 2026-10-04: on B09 "the outline
+    was inverted" -- most of the frame is canopy and the shapes were drawn
+    round the parts that are not). find_contours leaves a boundary OPEN where
+    the blob runs off the edge of the array, so a patch touching the frame's
+    edge had no closed outer ring, and the longest open piece was the edge of
+    the open ground inside it. With a border of nothing round it, every patch
+    closes along the frame edge and the longest contour is its outside. The
+    half-pixel the padding adds is taken off again.
+    """
+    padded = np.pad(blob.astype(float), 1)
+    contours = find_contours(padded, 0.5)
     if not contours:
         return None
-    outline = approximate_polygon(max(contours, key=len), tolerance=tolerance)
+    outline = approximate_polygon(max(contours, key=len) - 1.0, tolerance=tolerance)
     return outline if len(outline) >= 4 else None
 
 
