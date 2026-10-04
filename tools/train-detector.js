@@ -2607,7 +2607,7 @@ async function main() {
       const nLeafOff = lawns.filter(leafOff).length;
       const county = (L) => L.photoSource === 'county';
       const nCounty = lawns.filter(county).length;
-      const bareShare = (() => {
+      const bareOverall = (() => {
         let b = 0, c = 0;
         for (const L of lawns) {
           if (!L.canopy || !L.bare) continue;
@@ -2617,7 +2617,7 @@ async function main() {
       })();
       for (const first of decoderMasks) {
         console.log(`\nSEE-THROUGH CANOPY over "${first.cfg.name}" at span 8 m, reach 1 m, bridge over 180°.`
-          + ` Each cell: headline / seen / inferred. ${bareShare === null ? '' : `${(bareShare * 100).toFixed(0)}% of canopy cells read bare.`}\n`);
+          + ` Each cell: headline / seen / inferred. ${bareOverall === null ? '' : `${(bareOverall * 100).toFixed(0)}% of canopy cells read bare.`}\n`);
         console.log(`  ${'mode'.padEnd(10)}${'every lot'.padStart(22)}${`looks leaf-off (${nLeafOff})`.padStart(26)}`
           + `${`county photo (${nCounty})`.padStart(26)}`);
         const at = (seeThrough, only) => judge(first.masks, { spanM: 8, reachM: 1, minRing: 0.5, seeThrough, only });
