@@ -274,3 +274,9 @@ ALTER TABLE corpus ADD COLUMN lot_no INTEGER;
 -- EVERGREEN CROWNS AND LEAF-OFF PHOTOS (see the columns in schema.sql).
 ALTER TABLE corpus ADD COLUMN evergreens TEXT;
 ALTER TABLE corpus ADD COLUMN leaf_off INTEGER;
+
+-- A COUNTY PHOTO SERVICE'S SEASON (see the columns in schema.sql).
+ALTER TABLE county_services ADD COLUMN leaf TEXT;
+ALTER TABLE county_services ADD COLUMN leaf_note TEXT;
+ALTER TABLE county_services ADD COLUMN flown TEXT;
+ALTER TABLE county_services ADD COLUMN season_checked_at TEXT;

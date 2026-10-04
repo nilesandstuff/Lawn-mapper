@@ -184,5 +184,28 @@ check('a person nudging the photo 1 m east moves where Mapbox reads it 10 px wes
     imageryVerdict({ found: 0, notes: [], candidates: 0 }).status === 'none');
 }
 
+/* WHAT A SERVICE SAYS ABOUT ITS SEASON (owner, 2026-10-04). */
+{
+  const { leafWording, flownWording, catalogueDates, seasonOf } = await import('./county-imagery.js');
+  check('"leaf-off" in a description reads as leaf-off, with the words kept',
+    leafWording('<p>4-band orthoimagery, spring <b>leaf-off</b> flight, 3 inch</p>').leaf === 'off'
+      && /spring leaf-off flight/.test(leafWording('<p>4-band orthoimagery, spring <b>leaf-off</b> flight</p>').note));
+  check('and the other spellings', ['Leaf Off 2024', 'leafoff', 'leaves-off imagery', 'leafless conditions'].every((t) => leafWording(t).leaf === 'off'));
+  check('"leaf-on" reads as leaf-on, and is not taken for leaf-off', leafWording('Summer leaf-on NAIP').leaf === 'on');
+  check('both mentioned is both', leafWording('leaf-off 2022 and leaf-on 2023 collections').leaf === 'both');
+  check('nothing said is nothing', leafWording('Orthoimagery 2025').leaf === null);
+  check('flight dates in the words', flownWording('Imagery flown March 15, 2024; also 04/02/2024 and spring 2023') === 'March 15, 2024; 04/02/2024; spring 2023',
+    flownWording('Imagery flown March 15, 2024; also 04/02/2024 and spring 2023'));
+  check('no date, no answer', flownWording('Ortho 2024') === null);
+  const m = { fields: [{ name: 'AcquisitionDate', type: 'esriFieldTypeDate' }] };
+  const fake = async () => ({ features: [{ attributes: { AcquisitionDate: Date.UTC(2024, 2, 10) } }, { attributes: { AcquisitionDate: Date.UTC(2024, 3, 2) } }] });
+  check('an image catalogue gives its acquisition dates',
+    (await catalogueDates('https://x/arcgis/rest/services/Ortho/ImageServer', m, fake)) === '2024-03-10..2024-04-02');
+  check('a MapServer is not asked', (await catalogueDates('https://x/arcgis/rest/services/Ortho/MapServer', m, fake)) === null);
+  const s = await seasonOf('https://x/arcgis/rest/services/Ortho/ImageServer', 'Ortho 2024',
+    { ...m, serviceDescription: 'Leaf-off, flown in April 2024.' }, fake);
+  check('all of it together', s.leaf === 'off' && s.flown === '2024-03-10..2024-04-02; April 2024', JSON.stringify(s));
+}
+
 if (failures) { console.log(`\n${failures} check(s) FAILED.`); process.exit(1); }
 console.log('\nAll checks passed.');

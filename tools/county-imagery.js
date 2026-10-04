@@ -141,6 +141,75 @@ export const NOT_A_PHOTO = /(?<![a-z])cir(?![a-z])|infra.?red|(?<![a-z])nir(?![a
  */
 export const historic = (text) => yearHints(text).some((y) => y < 1990);
 
+/*
+ * WHEN A PHOTO WAS FLOWN, AND WHETHER IN LEAF (owner, 2026-10-04: "do the
+ * meta data layers of the imagery say anything about collection date or leaf
+ * on vs leaf off?"). County flights are often leaf-off and their descriptions
+ * often say so ("spring leaf-off", "flown March 2024"); an image service's
+ * catalogue can carry each frame's acquisition date. Recorded per service,
+ * for dialling in the leaf-off guess -- never trusted over what a photo shows.
+ */
+const plain = (t) => String(t || '').replace(/<[^>]*>/g, ' ').replace(/&[a-z]+;/gi, ' ').replace(/\s+/g, ' ').trim();
+
+/** 'off', 'on', 'both' or null from a service's own words, and the words. */
+export function leafWording(text) {
+  const t = plain(text);
+  const off = /\bleaf[\s_-]*(off|less)\b|\bleafoff\b|\bleaves[\s_-]*off\b|\bleaf[\s_-]*free\b/i.exec(t);
+  const on = /\bleaf[\s_-]*on\b|\bleafon\b|\bfull[\s_-]*leaf\b|\bleaves[\s_-]*on\b/i.exec(t);
+  const first = [off, on].filter(Boolean).sort((a, b) => a.index - b.index)[0];
+  if (!first) return { leaf: null, note: null };
+  const note = t.slice(Math.max(0, first.index - 60), first.index + 80).trim();
+  return { leaf: off && on ? 'both' : off ? 'off' : 'on', note };
+}
+
+const MONTH = '(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
+/** Dates written in a service's own words: "March 2024", "04/12/2023", "2024-03-15", "spring 2022". */
+export function flownWording(text) {
+  const t = plain(text);
+  const found = [];
+  const res = [
+    new RegExp(`\\b${MONTH}\\.?\\s+(?:\\d{1,2}(?:st|nd|rd|th)?,?\\s+)?((?:19|20)\\d{2})\\b`, 'gi'),
+    /\b(\d{1,2})\/(\d{1,2})\/((?:19|20)\d{2})\b/g,
+    /\b((?:19|20)\d{2})-(\d{2})-(\d{2})\b/g,
+    /\b(spring|summer|fall|autumn|winter)\s+(?:of\s+)?((?:19|20)\d{2})\b/gi,
+  ];
+  for (const re of res) {
+    for (const m of t.matchAll(re)) {
+      if (!found.includes(m[0])) found.push(m[0]);
+      if (found.length >= 3) return found.join('; ');
+    }
+  }
+  return found.length ? found.join('; ') : null;
+}
+
+/**
+ * The acquisition dates an image service's catalogue holds, "YYYY-MM-DD" or
+ * "YYYY-MM-DD..YYYY-MM-DD", or null. Only an ImageServer with a date field
+ * that reads like one (acquisition, flown, capture, collected).
+ */
+export async function catalogueDates(url, m, fetchJson = getJson) {
+  if (!/ImageServer\/?$/i.test(url) || !Array.isArray(m?.fields)) return null;
+  const field = m.fields.find((f) => f.type === 'esriFieldTypeDate' && /acq|flown|flight|captur|collect|image.?date|^date$/i.test(f.name));
+  if (!field) return null;
+  const q = new URLSearchParams({ where: '1=1', outFields: field.name, returnGeometry: 'false', resultRecordCount: '500', f: 'json' });
+  const r = await fetchJson(`${url.replace(/\/$/, '')}/query?${q}`).catch(() => null);
+  const ms = (r?.features || []).map((f) => Number(f.attributes?.[field.name])).filter((v) => Number.isFinite(v) && v > 0);
+  if (!ms.length) return null;
+  const d = (v) => new Date(v).toISOString().slice(0, 10);
+  const lo = d(Math.min(...ms)), hi = d(Math.max(...ms));
+  return lo === hi ? lo : `${lo}..${hi}`;
+}
+
+/** Everything a service says about its season, from its metadata. */
+export async function seasonOf(url, title, m, fetchJson = getJson) {
+  const text = [title, m?.name, m?.description, m?.serviceDescription, m?.copyrightText,
+    m?.documentInfo?.Title, m?.documentInfo?.Subject, m?.documentInfo?.Comments, m?.documentInfo?.Keywords].filter(Boolean).join(' . ');
+  const { leaf, note } = leafWording(text);
+  const dates = await catalogueDates(url, m, fetchJson);
+  const words = flownWording(text);
+  return { leaf, leafNote: note ? note.slice(0, 200) : null, flown: [dates, words].filter(Boolean).join('; ').slice(0, 200) || null };
+}
+
 /**
  * Candidates in the order to try them: dropping flights named before
  * MIN_YEAR, then the newest named year first, then those naming none, a
@@ -1195,22 +1264,26 @@ async function qualifyAt(c, lng, lat, decoders) {
   /* The Worker ignores boxes bigger than a state (worker/src/county.js);
      kept anyway, marked, so the catalogue's count is honest about them. */
   const maxPx = Math.min(Number(m.maxImageWidth) || 4096, Number(m.maxImageHeight) || 4096);
+  const season = await seasonOf(c.url, c.title, m).catch(() => ({ leaf: null, leafNote: null, flown: null }));
   return {
     usable: true, url: c.url, type: c.type, title: c.title || m.name || null, year, nativeCm: native,
-    ext, maxPx, exportOk, tileMerc: !exportOk && Boolean(tiled?.tiled && tiled.merc),
+    ext, maxPx, exportOk, tileMerc: !exportOk && Boolean(tiled?.tiled && tiled.merc), ...season,
   };
 }
 
 function upsertService(q, source, key) {
+  const now = new Date().toISOString();
   exec(`INSERT INTO county_services (url, type, title, year, native_cm, west, south, east, north, max_px,
-          export_ok, tile_merc, county_key, source, checked_at)
+          export_ok, tile_merc, county_key, source, checked_at, leaf, leaf_note, flown, season_checked_at)
         VALUES (${[q.url, q.type, q.title, q.year, round(q.nativeCm, 1), round(q.ext[0], 6), round(q.ext[1], 6),
     round(q.ext[2], 6), round(q.ext[3], 6), q.maxPx, q.exportOk ? 1 : 0, q.tileMerc ? 1 : 0, key, source,
-    new Date().toISOString()].map(lit).join(', ')})
+    now, q.leaf ?? null, q.leafNote ?? null, q.flown ?? null, now].map(lit).join(', ')})
         ON CONFLICT(url) DO UPDATE SET type = excluded.type, title = excluded.title, year = excluded.year,
           native_cm = excluded.native_cm, west = excluded.west, south = excluded.south, east = excluded.east,
           north = excluded.north, max_px = excluded.max_px, export_ok = excluded.export_ok,
-          tile_merc = excluded.tile_merc, checked_at = excluded.checked_at`);
+          tile_merc = excluded.tile_merc, checked_at = excluded.checked_at,
+          leaf = excluded.leaf, leaf_note = excluded.leaf_note, flown = excluded.flown,
+          season_checked_at = excluded.season_checked_at`);
 }
 
 /** Where to look for one county entry: its parcel layer's centre, or a grid. */
@@ -1461,6 +1534,43 @@ async function catalogue(decoders) {
   console.log(`Points swept: ${pts.n ?? 0}, ${pts.hit ?? 0} with a county or state photo service.`);
 }
 
+/*
+ * MODE=season: the season of every catalogued service not yet read for it
+ * (owner, 2026-10-04), then how often counties say. Resumable: each service
+ * is marked when read, so a run that stops picks up where it left off.
+ */
+async function season() {
+  const rows = query('SELECT url, title FROM county_services WHERE season_checked_at IS NULL');
+  console.log(`${rows.length} catalogued service(s) not yet read for their season.`);
+  const started = Date.now();
+  let n = 0;
+  for (const r of rows) {
+    if (Date.now() - started > 5 * 3600 * 1000) { console.log('Stopping at five hours; the next run carries on.'); break; }
+    const m = await meta(r.url);
+    const got = m && !m.failed ? await seasonOf(r.url, r.title, m).catch(() => null) : null;
+    exec(`UPDATE county_services SET leaf = ${lit(got?.leaf ?? null)}, leaf_note = ${lit(got?.leafNote ?? null)},
+            flown = ${lit(got?.flown ?? null)}, season_checked_at = ${lit(new Date().toISOString())}
+          WHERE url = ${lit(r.url)}`);
+    if (++n % 100 === 0) console.log(`  read ${n} of ${rows.length}`);
+    await sleep(PAUSE_MS);
+  }
+  const [t] = query(`SELECT COUNT(*) AS total,
+      SUM(CASE WHEN season_checked_at IS NOT NULL THEN 1 ELSE 0 END) AS read,
+      SUM(CASE WHEN leaf = 'off' THEN 1 ELSE 0 END) AS off,
+      SUM(CASE WHEN leaf = 'on' THEN 1 ELSE 0 END) AS onn,
+      SUM(CASE WHEN leaf = 'both' THEN 1 ELSE 0 END) AS both,
+      SUM(CASE WHEN flown IS NOT NULL THEN 1 ELSE 0 END) AS dated,
+      SUM(CASE WHEN flown LIKE '____-__-__%' THEN 1 ELSE 0 END) AS catalogued
+    FROM county_services`);
+  console.log(`\nSEASON: ${t.read} of ${t.total} services read.`);
+  console.log(`  say leaf-off: ${t.off}; say leaf-on: ${t.onn}; mention both: ${t.both}; say nothing: ${t.read - t.off - t.onn - t.both}`);
+  console.log(`  give a date: ${t.dated} (from an image catalogue's acquisition dates: ${t.catalogued})`);
+  for (const r of query("SELECT title, leaf, flown, leaf_note FROM county_services WHERE leaf IS NOT NULL OR flown IS NOT NULL LIMIT 25")) {
+    console.log(`    ${String(r.title || '').slice(0, 40).padEnd(40)} ${String(r.leaf || '-').padEnd(5)} ${r.flown || ''}`);
+    if (r.leaf_note) console.log(`      "${r.leaf_note}"`);
+  }
+}
+
 /* ------------------------------------------------------------------ main */
 
 async function main() {
@@ -1487,6 +1597,11 @@ async function main() {
   if (MODE === 'names') {
     ensureCatalogueTables();
     await names(decoders);
+    return;
+  }
+  if (MODE === 'season') {
+    ensureCatalogueTables();
+    await season();
     return;
   }
   if (MODE === 'asked') {

@@ -931,7 +931,16 @@ CREATE TABLE IF NOT EXISTS county_services (
   tile_merc   INTEGER NOT NULL DEFAULT 0,
   county_key  TEXT,
   source      TEXT,
-  checked_at  TEXT
+  checked_at  TEXT,
+  -- ITS SEASON, as the service itself says (owner, 2026-10-04): 'off',
+  -- 'on' or 'both' from leaf-off / leaf-on wording in its metadata, the
+  -- words themselves, and any flight dates -- written in its text, or the
+  -- acquisition dates its image catalogue holds. For dialling in the
+  -- leaf-off guess. season_checked_at: read for this at all.
+  leaf        TEXT,
+  leaf_note   TEXT,
+  flown       TEXT,
+  season_checked_at TEXT
 );
 
 -- Where the catalogue sweep has looked, so a run that stops resumes.
