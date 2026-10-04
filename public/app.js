@@ -6748,13 +6748,12 @@ function renderAccountButton() {
   /* The whole sentence as the button's name: on a phone the long half is
      display:none and the short one aria-hidden, which left the button with
      no name at all (Lighthouse, 2026-10-04). */
-  const btn = $('#account-btn');
   if (me) {
     label.textContent = me.email.split('@')[0];
-    btn?.setAttribute('aria-label', `Your account (${me.email.split('@')[0]})`);
+    btn.setAttribute('aria-label', `Your account (${me.email.split('@')[0]})`);
     return;
   }
-  btn?.setAttribute('aria-label', 'Sign in or 1-click sign up');
+  btn.setAttribute('aria-label', 'Sign in or 1-click sign up');
   /* On a phone the bar also carries the passes badge and the support heart,
      so the button keeps the half nobody expects -- it is one click -- and
      drops the half everybody assumes. Same single action either way. */
