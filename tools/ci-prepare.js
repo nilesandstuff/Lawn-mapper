@@ -420,6 +420,55 @@ export function fillSiteOrigin(html, customDomain) {
   return html.split('\n').filter((l) => !l.includes(SITE_PLACEHOLDER)).join('\n');
 }
 
+/**
+ * EVERY MAP'S NUMBER, for the maps made before numbers existed (owner,
+ * 2026-10-04). A new map is numbered when the Worker first saves it (one more
+ * than the highest); this gives the rest theirs, in the order they were made,
+ * after the highest already given. Only ever fills a blank, so it is a no-op
+ * once everything has one, and a number once given never changes.
+ *
+ * Returns the UPDATE statements for the rows `blank` (ids in order), or [].
+ */
+export function numberingStatements(blank, highest, batch = 60) {
+  const q = (v) => `'${String(v).replace(/'/g, "''")}'`;
+  const out = [];
+  for (let i = 0; i < blank.length; i += batch) {
+    const part = blank.slice(i, i + batch);
+    const cases = part.map((id, k) => `WHEN ${q(id)} THEN ${highest + i + k + 1}`).join(' ');
+    out.push(`UPDATE corpus SET lot_no = CASE id ${cases} END WHERE lot_no IS NULL AND id IN (${part.map(q).join(',')})`);
+  }
+  return out;
+}
+
+/** wrangler d1 execute --json's rows, tolerating banners round the JSON. */
+export function parseQueryRows(stdout) {
+  const start = stdout.indexOf('[');
+  const end = stdout.lastIndexOf(']');
+  if (start < 0 || end <= start) return [];
+  try {
+    const parsed = JSON.parse(stdout.slice(start, end + 1));
+    return (Array.isArray(parsed) ? parsed : [parsed]).flatMap((r) => r?.results || []);
+  } catch {
+    return [];
+  }
+}
+
+function numberMaps() {
+  const read = (sql) => parseQueryRows(wrangler(['d1', 'execute', DB_NAME, '--remote', '--json', `--command=${sql}`]));
+  try {
+    const highest = Number(read('SELECT COALESCE(MAX(lot_no), 0) AS n FROM corpus')[0]?.n) || 0;
+    const blank = read('SELECT id FROM corpus WHERE lot_no IS NULL ORDER BY created_at, id').map((r) => r.id);
+    for (const sql of numberingStatements(blank, highest)) {
+      wrangler(['d1', 'execute', DB_NAME, '--remote', `--command=${sql}`, '--yes']);
+    }
+    console.log(blank.length ? `  numbered ${blank.length} map(s), #${highest + 1} to #${highest + blank.length}.` : '  every map has its number.');
+    return '';
+  } catch (err) {
+    console.log(`  numbering maps FAILED (${firstLine(err)})`);
+    return `maps not numbered (${firstLine(err)})`;
+  }
+}
+
 export function parseMigrations(text) {
   return String(text)
     .split('\n')
@@ -528,6 +577,7 @@ function main() {
      */
     let schema = false;
     let migrations = null;
+    let numbering = '';
     if (dbId) {
       console.log('Applying the account schema…');
       schema = migrate();
@@ -552,6 +602,8 @@ function main() {
        */
       console.log('Adding any columns older databases are missing…');
       migrations = applyMigrations();
+      console.log('Numbering maps that have no number yet…');
+      numbering = numberMaps();
     }
 
     console.log(`\nwrangler.toml prepared:`);
@@ -584,7 +636,7 @@ function main() {
        * was silent for six deploys.
        */
       const trouble = !schema ? 'the schema did not apply'
-        : migrations && !migrations.ok ? migrations.summary : '';
+        : migrations && !migrations.ok ? migrations.summary : numbering;
       appendFileSync(process.env.GITHUB_ENV, `DB_TROUBLE=${trouble}\n`);
     }
   } catch (err) {

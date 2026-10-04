@@ -109,7 +109,7 @@ export function compare(a, b, { only = null } = {}) {
     if (!lb) continue;
     if (only === 'benchmark' && !la.benchmark) continue;
     if (only === 'new' && la.benchmark) continue;
-    ds.push({ id, tag: la.tag, a: la.error, b: lb.error, d: lb.error - la.error });
+    ds.push({ id, tag: lb.tag || la.tag, a: la.error, b: lb.error, d: lb.error - la.error });
   }
   const wins = ds.filter((x) => x.d < -TIE).length;
   const losses = ds.filter((x) => x.d > TIE).length;

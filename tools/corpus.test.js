@@ -718,5 +718,30 @@ const png = () => new Response('x', { headers: { 'content-type': 'image/png' } }
     r?.county_svc === '9' && r.county_align === null, JSON.stringify(r));
 }
 
+/* ------------------------------------------------- every map's number */
+{
+  const { testDb } = await import('./d1.js');
+  const { numberingStatements, parseQueryRows } = await import('./ci-prepare.js');
+  const DB = testDb();
+  /* Two maps from before numbers existed, made in this order. */
+  for (const [id, at] of [["-85.1,42.1:sam3:find", '2026-09-01'], ["-85.2,42.2:sam3:fin'd", '2026-09-02']]) {
+    await DB.prepare("INSERT INTO corpus (id, at, created_at, lng, lat, hand_edited, square_feet, shapes) VALUES (?1, ?2, ?2, 0, 0, 0, 1, '[]')").bind(id, at).run();
+  }
+  const blank = (await DB.prepare('SELECT id FROM corpus WHERE lot_no IS NULL ORDER BY created_at, id').all()).results.map((r) => r.id);
+  for (const sql of numberingStatements(blank, 0, 1)) await DB.prepare(sql).run();
+  const old = (await DB.prepare('SELECT id, lot_no FROM corpus ORDER BY lot_no').all()).results;
+  check('maps made before numbers get theirs in the order they were made',
+    old.map((r) => r.lot_no).join() === '1,2' && old[0].id.startsWith('-85.1'), JSON.stringify(old));
+  check('and a second pass changes nothing', numberingStatements([], 2).length === 0);
+  const { row: { id } } = await recordFinished({ DB }, body());
+  let r = await DB.prepare('SELECT lot_no FROM corpus WHERE id = ?1').bind(id).first();
+  check('a new map is numbered one past the highest', r?.lot_no === 3, JSON.stringify(r));
+  await recordFinished({ DB }, body({ squareFeet: 5000 }));
+  r = await DB.prepare('SELECT lot_no FROM corpus WHERE id = ?1').bind(id).first();
+  check('and keeps its number when saved again', r?.lot_no === 3, JSON.stringify(r));
+  check('wrangler --json rows are read through its banners',
+    parseQueryRows('banner\n[{"results":[{"n":4}],"success":true}]')[0]?.n === 4);
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);

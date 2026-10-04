@@ -405,8 +405,11 @@ export async function recordFinished(env, body, { adminId = null } = {}) {
          detected_shapes, parcel_source, exclusions, created_at,
          inferred_checked_at, naip_align, not_lawn, model_version,
          admin_edited_at, admin_edited_by, status, detected_parcel,
-         county_svc, county_align
-       ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?2,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28)
+         county_svc, county_align, lot_no
+       ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?2,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,
+         /* A new map's number: one more than the highest. An update keeps
+            its own (the ON CONFLICT below never touches lot_no). */
+         (SELECT COALESCE(MAX(lot_no), 0) + 1 FROM corpus))
        ON CONFLICT(id) DO UPDATE SET
          at = ?2, county = ?5, provider = ?6, hand_edited = ?9,
          detected_sq_ft = ?10, square_feet = ?11, parcel_sq_ft = ?12,

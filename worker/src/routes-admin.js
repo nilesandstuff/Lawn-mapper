@@ -471,6 +471,7 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
         .slice(0, 10)
         .map(({ row: r, score, why }) => ({
           id: r.id,
+          lotNo: r.lot_no ?? null,
           score,
           why,
           at: r.at,
@@ -2027,7 +2028,7 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
          */
         `SELECT id, county, status, square_feet, at, reviewed_at,
                 inferred_checked_at, image_key, lng, lat, model, mode, shapes,
-                review_queue, tree_line
+                review_queue, tree_line, lot_no
            FROM corpus ORDER BY at DESC LIMIT 500`
       ).all();
 
@@ -2044,6 +2045,7 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
         } catch { /* A row that will not parse still belongs in the list. */ }
         return {
           id: r.id,
+          lotNo: r.lot_no ?? null,
           county: r.county,
           status: r.status,
           squareFeet: r.square_feet,

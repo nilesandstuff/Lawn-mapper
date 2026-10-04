@@ -53,7 +53,7 @@ import {
   loadBackbone, tiledFeatures, sampleAt, projection, project,
 } from './backbone.js';
 import { rasterizePolygon } from '../public/lib/mask.js';
-import { stage3, clearCanopy, bareCanopy, SEE_THROUGH_MODES } from './stage3.js';
+import { stage3, clearCanopy, bareCanopy, SEE_THROUGH_MODES, LEAF_OFF_SHARE, bareShare, evergreensOf } from './stage3.js';
 import { colourEdges } from './colour-edges.js';
 import { frameBbox3857 } from '../worker/src/imagery.js';
 import { lawnSetClause, lawnSetName, lawnSetDescription, BENCHMARK_PRINT } from './lawn-set.js';
@@ -67,8 +67,12 @@ const SQM_PER_SQFT = 0.09290304;
  * session had to name a lot, and two tools computing square feet two ways
  * had already produced two names for one lawn. Null for any lawn not in it.
  */
-export function lawnTag(id) {
-  return benchmarkTag(id);
+/* With every map's number (corpus.lot_no, owner 2026-10-04): "B07 #5" for a
+   benchmark lawn, "#47" for the rest -- the number the console shows. */
+export function lawnTag(id, lotNo = null) {
+  const b = benchmarkTag(id);
+  const n = Number(lotNo) > 0 ? `#${lotNo}` : '';
+  return [b, n].filter(Boolean).join(' ') || null;
 }
 /** "B06 Kent County" -- the tag first, so a column of them sorts and reads at a glance. */
 const lawnName = (L) => `${L.tag ? `${L.tag} ` : ''}${L.county || 'traced by hand'}`;
@@ -96,8 +100,10 @@ export const findPlanRow = (table) => table.find((t) => t.cfg.name === PLAN_ROW)
   || table.find((t) => isPlanRow(t.cfg.name));
 /* THE ROW ON TRIAL, drawn in preference to THE PLAN's when a run scores it,
    because the pictures are how a candidate is judged (owner, 2026-09-26).
-   None now: the edge refiner was on trial (S19) and became THE PLAN (H60). */
-const TRIAL_ROW = null;
+   The edge refiner was on trial (S19) and became THE PLAN (H60). */
+/* 2026-10-04: S22's see-through canopy with the evergreen rule (owner: "run
+   the canopy + green or brown fix"), so the pictures show it. */
+const TRIAL_ROW = `${PLAN_ROW}, see-through evergreen`;
 
 /*
  * HOW MANY NUMBERS OF THE BACKBONE'S 384 EACH PIXEL CARRIES.
@@ -458,7 +464,7 @@ export function photoKeyFor(row, countyKeys) {
 }
 const QUERY = `
   SELECT id, county, tree_line, frame, shapes, detected_shapes, parcel,
-         image_key, image_provider, image_frame, mode, model, naip_align${NOT_LAWN ? ', not_lawn' : ''}
+         image_key, image_provider, image_frame, mode, model, naip_align, lot_no${NOT_LAWN ? ', not_lawn' : ''}
     FROM corpus
    WHERE status = 'approved' AND image_key IS NOT NULL AND frame IS NOT NULL${lawnSetClause()}
    ORDER BY at DESC
@@ -1991,7 +1997,7 @@ async function main() {
 
       lawns.push({
         id: row.id,
-        tag: lawnTag(row.id),
+        tag: lawnTag(row.id, row.lot_no),
         county: row.county,
         notLawn,
         /* The frame the photograph was taken on, for scale.json's boxes. */
@@ -2134,8 +2140,8 @@ async function main() {
   console.log(`\n${lawns.length} usable.`);
   /* The legend for B01..B32, once a run, with the scorer's own square feet. */
   if (lawns.some((L) => L.tag)) {
-    const named = lawns.filter((L) => L.tag).sort((a, b) => a.tag.localeCompare(b.tag));
-    console.log('Benchmark names (worker/src/benchmark-ids.js):');
+    const named = lawns.filter((L) => L.tag).sort((a, b) => a.tag.localeCompare(b.tag, undefined, { numeric: true }));
+    console.log('Lot names: B01-B32 the benchmark (worker/src/benchmark-ids.js), #N every map (corpus.lot_no, as the console shows it):');
     for (let i = 0; i < named.length; i += 2) {
       console.log(named.slice(i, i + 2).map((L) => {
         const ft = Math.round((L.truthPx * L.mpp * L.mpp) / SQM_PER_SQFT).toLocaleString();
@@ -2475,10 +2481,13 @@ async function main() {
         if (!masks[held]) continue;
         const canopy = opts.plus && L.canopyPlus ? L.canopyPlus : L.canopy;
         if (opts.only && !opts.only(L)) continue;
-        const bare = opts.seeThrough === 'colour' ? L.bare
+        const bare = opts.seeThrough === 'colour' || opts.seeThrough === 'evergreen' ? L.bare
           : opts.seeThrough === 'trust' ? canopy : null;
+        /* 'evergreen': on a photo that looks leaf-off, the crowns that did
+           not read bare are never lawn (stage3.js evergreensOf). */
+        const evergreen = opts.seeThrough === 'evergreen' ? evergreensOf(canopy, L.bare) : null;
         let mask = canopy
-          ? stage3(masks[held], canopy, L.grid, L.gridH, { mpp: L.mpp, height: L.height, ...opts, bare }).mask
+          ? stage3(masks[held], canopy, L.grid, L.gridH, { mpp: L.mpp, height: L.height, ...opts, bare, evergreen }).mask
           : masks[held];
         /* Colour on the edges only (tools/colour-edges.js), before the veto
            so roof and void still have the last word. */
@@ -2593,13 +2602,7 @@ async function main() {
      * SEE_THROUGH).
      */
     {
-      const LEAF_OFF_SHARE = 0.3;
-      const shareOf = (L) => {
-        if (!L.canopy || !L.bare) return null;
-        let b = 0, c = 0;
-        for (let i = 0; i < L.canopy.length; i++) { c += L.canopy[i]; b += L.bare[i]; }
-        return c >= 200 ? b / c : null;
-      };
+      const shareOf = (L) => bareShare(L.canopy, L.bare);
       const leafOff = (L) => (shareOf(L) ?? 0) >= LEAF_OFF_SHARE;
       const nLeafOff = lawns.filter(leafOff).length;
       const county = (L) => L.photoSource === 'county';
@@ -2663,6 +2666,20 @@ async function main() {
         const vetoed = judge(masks, { spanM: 8, reachM: 1, minRing: 0.5, veto: true });
         table.push(summarise(cfg6, vetoed, cfg.dims));
         finalByLabel[label] = vetoed;
+        /*
+         * THE SEE-THROUGH CANOPY AS ROWS (owner, 2026-10-04: "run the canopy +
+         * green or brown fix ... evergreens are unlikely to have grass under
+         * them"). THE PLAN's row twice more, the only difference stage 3's
+         * canopy: 'colour' (S22: crowns that are not green keep stage 1's
+         * answer) and 'evergreen' (the same, and on a photo that looks
+         * leaf-off the crowns still green are never lawn). Full rows, so the
+         * lot-by-lot figures land in lot-results.json beside THE PLAN's.
+         */
+        for (const mode of ['colour', 'evergreen']) {
+          const cfgS = { ...cfg, name: `${cfg6.name}, see-through ${mode}`, stage3: true };
+          console.log(`Scoring "${cfgS.name}"…`);
+          table.push(summarise(cfgS, judge(masks, { spanM: 8, reachM: 1, minRing: 0.5, veto: true, seeThrough: mode }), cfg.dims));
+        }
         /* WHAT THE EDGE REFINER CHANGED (owner, 2026-09-29: "can it be shown
            separately?"): THE PLAN's final answer against the plain decoder's,
            both after stage 3 and the veto, from the same run. The plain one
@@ -2927,7 +2944,7 @@ async function main() {
         median: r1(t.med),
         lots: t.rows.map((r) => ({
           id: r.lawn.id,
-          tag: benchmarkTag(r.lawn.id) || null,
+          tag: r.lawn.tag || null,
           benchmark: Boolean(benchmarkTag(r.lawn.id)),
           error: r1(r.mine.errorPct),
           seen: r1(r.seenPct),

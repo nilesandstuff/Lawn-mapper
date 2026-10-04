@@ -75,6 +75,7 @@ function row(m, { dim = false, open = false } = {}) {
   const top = el('div', 'top');
   const pills = () => {
     top.replaceChildren();
+    if (m.lotNo) top.append(el('span', 'pill', `#${m.lotNo}`));
     top.append(el('b', null, m.county || 'traced by hand'));
     /*
      * Green for approved, grey for rejected, amber for one still waiting.

@@ -124,14 +124,52 @@ export function bareCanopy(canopy, rgba, w, h, { mpp = 0.15, maxExg = BARE_MAX_E
 
 /**
  * The see-through cells for a mode: 'off' (none -- the rule since H30),
- * 'colour' (bareCanopy), or 'trust' (every canopy cell). Null for 'off'.
+ * 'colour' (bareCanopy), 'evergreen' (the same, plus evergreensOf), or
+ * 'trust' (every canopy cell). Null for 'off'.
  */
-export const SEE_THROUGH_MODES = ['off', 'colour', 'trust'];
+export const SEE_THROUGH_MODES = ['off', 'colour', 'evergreen', 'trust'];
 export function seeThroughFor(mode, canopy, rgba, w, h, { mpp = 0.15 } = {}) {
   if (!canopy || !mode || mode === 'off') return null;
   if (mode === 'trust') return Uint8Array.from(canopy);
-  if (mode === 'colour') return rgba ? bareCanopy(canopy, rgba, w, h, { mpp }) : null;
+  if (mode === 'colour' || mode === 'evergreen') return rgba ? bareCanopy(canopy, rgba, w, h, { mpp }) : null;
   throw new Error(`see-through mode "${mode}" is not one of ${SEE_THROUGH_MODES.join(', ')}`);
+}
+
+/*
+ * A PHOTO THAT LOOKS LEAF-OFF: at least this share of its canopy reads bare
+ * (owner, 2026-10-03; the grouping of S22's table, moved here so serving and
+ * the scorer draw the line in the same place). Under 200 canopy cells there
+ * is too little canopy to say.
+ */
+export const LEAF_OFF_SHARE = 0.3;
+export function bareShare(canopy, bare) {
+  if (!canopy || !bare) return null;
+  let b = 0, c = 0;
+  for (let i = 0; i < canopy.length; i++) { c += canopy[i]; b += bare[i] && canopy[i] ? 1 : 0; }
+  return c >= 200 ? b / c : null;
+}
+export const looksLeafOff = (canopy, bare) => (bareShare(canopy, bare) ?? 0) >= LEAF_OFF_SHARE;
+
+/**
+ * EVERGREENS: NO LAWN UNDER THEM (owner, 2026-10-04: "evergreens are
+ * unlikely to have grass under them"). On a photo that looks leaf-off, the
+ * canopy that did NOT read bare -- still green, or too dark to see into -- is
+ * evergreen: a deciduous crown in that photo would be bare. Stage 3 neither
+ * keeps stage 1's lawn there nor fills it (stage3's `evergreen`).
+ *
+ * Only on a leaf-off photo. In a summer photo every crown is green, so the
+ * same test would call every tree an evergreen; there it answers null and
+ * nothing changes.
+ *
+ * SPECULATION UNTIL MEASURED, with the colour rule's blind spot inherited the
+ * other way round: green grass under bare branches reads green, so it would be
+ * taken for an evergreen and lost.
+ */
+export function evergreensOf(canopy, bare) {
+  if (!canopy || !bare || !looksLeafOff(canopy, bare)) return null;
+  const out = new Uint8Array(canopy.length);
+  for (let i = 0; i < canopy.length; i++) out[i] = canopy[i] && !bare[i] ? 1 : 0;
+  return out;
 }
 
 /** The canopy without its bare cells: what stage 3 may clear and fill. */
@@ -371,12 +409,15 @@ export function woods(canopy, height, w, h, tallM, minCells = 0) {
  *
  * `bare`, a mask from bareCanopy, takes see-through canopy out first.
  *
+ * `evergreen`, a mask from evergreensOf, is canopy that is never filled.
+ *
  * `height` with `tallM` > 0 switches the woods rule on: tall clumps are
  * taken out of the canopy the rules may fill, and out of the ground they
  * may walk through.
  */
 export function stage3(lawn, canopy, w, h, {
   mpp, spanM = 0, reachM = 3, minRing = 0.5, sides = 0, height = null, tallM = 0, woodsM2 = 0, bare = null,
+  evergreen = null,
 } = {}) {
   /* Bare canopy (bareCanopy) is visible ground: stage 1's answer stands there
      and the rules neither clear it nor fill it. Null: every canopy cell is
@@ -388,6 +429,13 @@ export function stage3(lawn, canopy, w, h, {
   if (tallM > 0 && height) {
     const fillable = new Uint8Array(canopy.length);
     for (let i = 0; i < canopy.length; i++) fillable[i] = canopy[i] && !tall[i] ? 1 : 0;
+    canopy = fillable;
+  }
+  /* Evergreens (evergreensOf): cleared above like any canopy, and never
+     filled or walked through, the way the woods rule treats a tall clump. */
+  if (evergreen) {
+    const fillable = new Uint8Array(canopy.length);
+    for (let i = 0; i < canopy.length; i++) fillable[i] = canopy[i] && !evergreen[i] ? 1 : 0;
     canopy = fillable;
   }
   const spanCells = spanM > 0 && mpp > 0 ? Math.round(spanM / mpp) : 0;
