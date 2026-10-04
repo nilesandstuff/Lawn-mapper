@@ -850,6 +850,30 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H68. A bug, not a measurement: every map saved on a county photo before 2026-10-04 banked that photo UNMOVED by the editor's line-up, while its outlines were drawn on the moved photo, 2026-10-04
+
+What was wrong (found from the owner's report: card on the county photo,
+outlines off it). county-picture.js storeMapPhoto passed `naipAlignOf(...)`,
+which returns the column's JSON TEXT, where countyPicture wanted an object; it
+read `.east` off a string, found nothing, and drew the frame as delivered.
+Tested only by calling storeCountyImage directly with an object, which is why
+the tests never saw it. Fixed in b399dde, with a test through the save path.
+
+What it means for training. The banked county photo of such a map is offset
+from its outlines by the line-up the editor had applied: H64 puts the typical
+ground offset from Mapbox at a median 0.54 m, so roughly that, more where it
+was nudged by hand. Mapbox-photo maps are unaffected. The line-up itself was
+not saved at the time (corpus.county_align is new), so these photos cannot be
+corrected from the row alone; re-banking one means re-measuring it (the
+console's fetch-photo) or opening and saving it again on the county photo.
+How many maps this covers was not counted. Before training on county photos,
+count `provider = 'county' AND county_align IS NULL AND image_provider =
+'county'` and treat those pairs as suspect.
+
+Also fixed with it: reopening re-measured the line-up instead of restoring
+it, so a hand nudge never survived a reopen; both are now kept with the map
+(county_svc, county_align) and put back.
+
 ### H67. County photo catalogue, second sweep (vendor names, "too coarse" measured, statewide states by county name): 2,902 services; 2,904 of 3,427 sweep points (85%) have a photo, 2026-10-03
 
 *Workflow 8 on claude/resume-previous-session-y94slo. Three runs from 20:46
