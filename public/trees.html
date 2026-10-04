@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lawn Mapper — label the trees</title>
+<meta name="robots" content="noindex, nofollow">
+<!--
+  THE TREE EXPERIMENT (owner, 2026-10-04). Each map is a lawn's banked photo,
+  its traced lawn (green line) and the tree model's canopy where it touches
+  the lawn (yellow outlines), made by workflow 28. The canopy is labelled
+  evergreen / in leaf / bare / not a tree: with a brush that paints only
+  inside the canopy, or a tap that fills a whole patch. Points fixes an
+  outline. The labels are the answer key for telling the kinds of tree apart
+  automatically; nobody measuring a lawn is ever asked.
+
+  Nothing is gated in this markup. The gate is the API, which answers 404 to
+  anybody who is not an administrator.
+-->
+<link href="/styles.css" rel="stylesheet">
+<link href="/console.css" rel="stylesheet">
+<style>
+  html.viewer, html.viewer body { height: 100%; overflow: hidden; overscroll-behavior: none; }
+  .tr-app { position: fixed; inset: 0; display: flex; flex-direction: column; background: #111; color: #eee; font-size: 14px; }
+  .tr-app * { box-sizing: border-box; min-width: 0; }
+  .tr-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 8px; }
+  .tr-row.top { background: #1c1c1c; }
+  .tr-row.info { padding-top: 0; font-size: 12px; color: #bbb; gap: 4px 10px; }
+  .tr-row select { font-size: 14px; padding: 5px; max-width: 46vw; }
+  .tr-row button { min-height: 38px; padding: 0 10px; border-radius: 8px; border: 1px solid #555; background: #262626; color: #eee; font-size: 14px; }
+  .tr-row button[aria-pressed="true"] { border-color: #fff; background: #3a3a3a; font-weight: 600; }
+  .tr-row button.primary { background: #2e7d32; border-color: #2e7d32; color: #fff; font-weight: 600; flex: 1; }
+  .tr-row button.cls { border-width: 2px; border-color: var(--c); }
+  .tr-row button.cls[aria-pressed="true"] { background: var(--c); color: #fff; }
+  .tr-row a { color: #9ccc9c; }
+  .tr-row label { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; color: #bbb; }
+  .tr-view { position: relative; flex: 1; overflow: hidden; touch-action: none; background: #000; }
+  .tr-stage { position: absolute; transform-origin: 0 0; }
+  .tr-stage img, .tr-stage canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; user-select: none; -webkit-user-drag: none; pointer-events: none; }
+  .tr-stage canvas { image-rendering: pixelated; }
+  .tr-stage svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: hidden; }
+  .tr-stage path.lawn { fill: none; stroke: #69f0ae; stroke-width: 2; vector-effect: non-scaling-stroke; pointer-events: none; }
+  .tr-stage path.clump { fill: none; stroke: #ffeb3b; stroke-width: 1.5; vector-effect: non-scaling-stroke; pointer-events: none; }
+  .tr-stage circle.vx { fill: #fff; stroke: #000; stroke-width: 1; vector-effect: non-scaling-stroke; cursor: grab; }
+  .tr-stage circle.vx.on { fill: #ff4081; }
+  .tr-said { font-size: 12px; color: #9ccc9c; }
+  .tr-help { position: absolute; inset: 8px; overflow: auto; background: rgba(20,20,20,.96); border: 1px solid #444; border-radius: 10px; padding: 12px 14px; font-size: 14px; line-height: 1.45; z-index: 5; touch-action: pan-y; }
+</style>
+</head>
+<body>
+
+<div class="console" id="gate">
+  <div class="locked-out" id="locked" hidden>
+    <p>This page is for the site owner.</p>
+    <p><a href="/">Go and measure a lawn instead →</a></p>
+  </div>
+  <div class="empty-state" id="none" hidden>
+    <div class="card">
+      <h2>No tree maps yet</h2>
+      <p class="sub">Run workflow <b>28. Tree maps for labelling</b>. It finds the canopy on every
+        approved map and leaves the part over each lawn here to label.</p>
+    </div>
+  </div>
+</div>
+
+<div class="tr-app" id="page" hidden>
+  <div class="tr-row top">
+    <select id="filter" aria-label="Which maps">
+      <option value="todo">To label</option>
+      <option value="done">Done</option>
+      <option value="all">All</option>
+    </select>
+    <select id="pick" aria-label="Which map"></select>
+    <button id="prev" type="button" aria-label="Previous">◀</button>
+    <button id="next" type="button" aria-label="Next">▶</button>
+    <button id="helpbtn" type="button" aria-label="How this works">?</button>
+    <a href="/admin.html">Console</a>
+  </div>
+  <div class="tr-row info"><span id="sub"></span><span id="left"></span></div>
+  <div class="tr-view" id="viewport">
+    <div class="tr-stage" id="stage">
+      <img id="photo" alt="The lawn's photograph">
+      <canvas id="paint"></canvas>
+      <svg id="overlay" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none"></svg>
+    </div>
+    <div class="tr-help" id="help" hidden>
+      <p>The <b>yellow outlines</b> are the tree model's canopy, only where it touches the lawn
+        (the <b>green line</b>). Say what each part of it is.</p>
+      <p><b>Brush</b> paints the chosen kind, only inside the yellow outlines. <b>Fill</b> paints a
+        whole outline with one tap. <b>Erase</b> (a kind) takes a label off. Unlabelled canopy shows
+        as a pale wash, so you can see what is left.</p>
+      <p><b>Evergreen</b>: needles or leaves all year. <b>In leaf</b>: a broadleaf tree with its
+        leaves. <b>Bare</b>: a broadleaf tree without them, the ground showing through.
+        <b>Not a tree</b>: the model was wrong (a shadow, a hedge, a roof).</p>
+      <p><b>Points</b> moves a corner of an outline (drag it); <b>Delete point</b> removes the one
+        you last touched. <b>Move</b> pans with one finger. Two fingers always pan and zoom.</p>
+      <p><b>Save</b> keeps it as a draft; <b>Done</b> saves and goes to the next map. Leaving a map
+        with changes saves them.</p>
+      <button id="helpclose" type="button">Close</button>
+    </div>
+  </div>
+  <div class="tr-row" id="classes"></div>
+  <div class="tr-row">
+    <button id="t-brush" type="button" aria-pressed="true">Brush</button>
+    <button id="t-fill" type="button" aria-pressed="false">Fill</button>
+    <button id="t-points" type="button" aria-pressed="false">Points</button>
+    <button id="t-move" type="button" aria-pressed="false">Move</button>
+    <label>Size <input id="size" type="range" min="0.25" max="4" step="0.25" value="1"><span id="sizesaid"></span></label>
+    <button id="delpoint" type="button" hidden>Delete point</button>
+    <button id="undo" type="button" disabled>Undo</button>
+  </div>
+  <div class="tr-row">
+    <button id="save" type="button">Save</button>
+    <button class="primary" id="done" type="button">Done → next</button>
+    <span class="tr-said" id="said"></span>
+  </div>
+</div>
+
+<script type="module" src="/trees.js"></script>
+</body>
+</html>

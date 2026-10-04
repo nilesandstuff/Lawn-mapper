@@ -1,0 +1,90 @@
+name: 28. Tree maps for labelling
+
+# THE TREE EXPERIMENT'S OWN MAPS (owner, 2026-10-04). Leaf-off turned out to
+# be per tree -- a fall photo had one tree in leaf beside bare ones -- and a
+# bare tree is hard to trace by eye where the tree model outlines canopy well.
+# So: the tree model (restor/tcd) over every approved map's banked photo, its
+# canopy kept only where it touches the traced lawn, and each map written for
+# /trees.html, where the canopy is labelled evergreen / in leaf / bare / not a
+# tree with brushes and tap-to-fill. Those labels are the answer key for
+# telling the three apart automatically (findings S22), not something anybody
+# measuring a lawn is ever asked.
+#
+# Re-running replaces the model's maps (trees/model/) and never the labels
+# (trees/labels/, written by the page). Free: CPU runner, downloaded weights.
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: 'Which tree model'
+        type: choice
+        default: restor/tcd-segformer-mit-b5
+        options:
+          - restor/tcd-segformer-mit-b5
+          - restor/tcd-segformer-mit-b2
+      lawns:
+        description: 'Which lawns: every approved map (all), the frozen benchmark of 32, or only those since the freeze (new)'
+        type: choice
+        default: 'all'
+        options: ['all', 'benchmark', 'new']
+      keep_m2:
+        description: 'Keep a canopy patch when at least this many square metres of it is on the traced lawn'
+        required: false
+        default: '1'
+
+jobs:
+  trees:
+    name: Find the canopy and write the labelling maps
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: tools/requirements-trees.txt
+      - run: npm ci
+      - name: Install the image decoders
+        run: npm install pngjs jpeg-js --no-save
+      - name: Install the model loader
+        run: pip install -r tools/requirements-trees.txt
+      - name: Check the clump outlines and the map writer
+        run: |
+          (cd tools && python3 canopy_test.py)
+          node tools/tree-maps.test.js
+
+      # The banked photos at their own pixels, so the canopy lands on the
+      # picture the page shows.
+      - name: Fetch the lawns and write the frames out
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CORPUS_BUCKET: lawn-mapper-corpus
+          DUMP_FRAMES: frames
+          DUMP_SIZE: native
+          NO_BACKBONE: 'true'
+          LAWN_SET: ${{ inputs.lawns }}
+        run: node tools/train-detector.js
+
+      - name: Find the canopy
+        env:
+          IMAGES: frames
+          OUT: canopy
+          MODEL: ${{ inputs.model }}
+          MIN_CLUMP_M2: '1'
+        run: python3 tools/tree-canopy.py
+
+      - name: Write the labelling maps
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CORPUS_BUCKET: lawn-mapper-corpus
+          CANOPY: canopy
+          LAWN_SET: ${{ inputs.lawns }}
+          KEEP_M2: ${{ inputs.keep_m2 }}
+        run: node tools/tree-maps.js

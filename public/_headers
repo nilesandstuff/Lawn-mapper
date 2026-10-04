@@ -20,6 +20,10 @@
   X-Frame-Options: DENY
   Content-Security-Policy: frame-ancestors 'none'
   X-Robots-Tag: noindex, nofollow
+/trees.html
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'
+  X-Robots-Tag: noindex, nofollow
 /outlines.html
   X-Frame-Options: DENY
   Content-Security-Policy: frame-ancestors 'none'

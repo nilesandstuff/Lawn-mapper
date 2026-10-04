@@ -971,6 +971,22 @@ against it, so colour's gain is concentrated, not general.
     prints the marked lots against "looks leaf-off" and the traced crowns
     against the canopy the colour rule left standing (found / right). Not
     trained on; a few dozen marked lots first.
+  - **Superseded the same evening by THE TREE EXPERIMENT (owner,
+    2026-10-04).** Leaf-off is per tree (a fall Mapbox photo had one tree in
+    leaf beside bare ones), and bare trees are hard to trace by eye where the
+    tree model outlines canopy well. So: workflow 28 runs restor/tcd over every
+    approved map's banked photo and keeps the canopy patches that touch the
+    traced lawn (tools/tree-maps.js); /trees.html labels that canopy per pixel
+    -- evergreen / in leaf / bare / not a tree -- with a brush confined to the
+    canopy, tap-to-fill a patch, and point editing of the outlines. Labels in
+    R2 `trees/labels/<name>.json` (class codes in a PNG's red channel), apart
+    from the model's maps so a re-run cannot lose them. **Plan (owner chose
+    #1 and #4):** (1) a per-crown colour test -- a bare crown shows a web of
+    grey / brown / black branch lines, a crown in leaf (evergreen or not)
+    mostly solid foliage; (4) a small classifier over crown features (colour,
+    branch-line share, lidar ground-return share, shape, greenness in another
+    season's photo) to separate an evergreen from a lone tree still in leaf.
+    The labels score both. NOTHING MEASURED YET.
 - **The pictures were drawn for the evergreen row** (TRIAL_ROW was set
   before the run). It differs from THE PLAN's only under canopy on the 22
   leaf-off lots, where it is the worst of the four. TRIAL_ROW is now the

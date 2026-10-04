@@ -1436,6 +1436,78 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
    * EVERY MAP WITH PUBLIC OUTLINES FETCHED, and whether the owner has
    * approved them. See worker/src/outlines.js; workflow 25 writes the drafts.
    */
+  /* ------------------------------------------------ the tree labelling maps */
+  /*
+   * THE TREE EXPERIMENT (owner, 2026-10-04; workflow 28, /trees.html). The
+   * model's maps are trees/model/<name>.json and the list trees/index.json,
+   * both written by tools/tree-maps.js; the owner's labels are
+   * trees/labels/<name>.json, written only here, so a re-run of the workflow
+   * never touches them. <name> is the map's B or C name.
+   */
+  const TREE_NAME = /^[BC]\d{2,5}$/;
+  if (path === 'trees' && request.method === 'GET') {
+    if (!env.CORPUS) return json({ error: 'No bucket' }, 404, origin);
+    const index = await env.CORPUS.get('trees/index.json');
+    if (!index) return json({ maps: [], none: true }, 200, origin);
+    const { maps = [], at = null } = await index.json();
+    const labelled = new Map();
+    let cursor;
+    do {
+      const page = await env.CORPUS.list({ prefix: 'trees/labels/', cursor, include: ['customMetadata'] });
+      for (const o of page.objects) {
+        const name = o.key.slice('trees/labels/'.length).replace(/\.json$/, '');
+        labelled.set(name, { status: o.customMetadata?.status || 'draft', savedAt: o.customMetadata?.at || null });
+      }
+      cursor = page.truncated ? page.cursor : undefined;
+    } while (cursor);
+    return json({ at, maps: maps.map((m) => ({ ...m, ...(labelled.get(m.name) || { status: 'new' }) })) }, 200, origin);
+  }
+
+  if (path === 'tree' && request.method === 'GET') {
+    if (!env.CORPUS) return json({ error: 'No bucket' }, 404, origin);
+    const name = url.searchParams.get('name') || '';
+    if (!TREE_NAME.test(name)) return json({ error: 'Bad name' }, 400, origin);
+    const model = await env.CORPUS.get(`trees/model/${name}.json`);
+    if (!model) return json({ error: 'Not made yet' }, 404, origin);
+    const saved = await env.CORPUS.get(`trees/labels/${name}.json`);
+    return json({ model: await model.json(), saved: saved ? await saved.json() : null }, 200, origin);
+  }
+
+  if (path === 'tree-photo' && request.method === 'GET') {
+    if (!env.CORPUS) return json({ error: 'No bucket' }, 404, origin);
+    const name = url.searchParams.get('name') || '';
+    if (!TREE_NAME.test(name)) return json({ error: 'Bad name' }, 400, origin);
+    const model = await env.CORPUS.get(`trees/model/${name}.json`);
+    const key = model ? (await model.json()).imageKey : null;
+    const photo = key ? await env.CORPUS.get(key) : null;
+    if (!photo) return json({ error: 'No photo' }, 404, origin);
+    return new Response(photo.body, { headers: {
+      'Content-Type': photo.httpMetadata?.contentType || 'image/png', 'Cache-Control': 'private, max-age=600',
+    } });
+  }
+
+  if (path === 'tree' && request.method === 'POST') {
+    if (!env.CORPUS) return json({ error: 'No bucket' }, 404, origin);
+    const body = await request.json().catch(() => null);
+    const name = String(body?.name || '');
+    if (!TREE_NAME.test(name)) return json({ error: 'Bad name' }, 400, origin);
+    if (!(await env.CORPUS.head(`trees/model/${name}.json`))) return json({ error: 'No such map' }, 404, origin);
+    const status = body?.status === 'done' ? 'done' : 'draft';
+    /* The labels as a PNG (class codes in the red channel, data URL), and
+       the canopy as the owner left it. Bounded: a lot is a few hundred KB. */
+    const labels = typeof body?.labels === 'string' && body.labels.startsWith('data:image/png;base64,') ? body.labels : null;
+    const clumps = Array.isArray(body?.clumps) ? body.clumps.slice(0, 2000) : null;
+    if (!labels || !clumps) return json({ error: 'Need labels and clumps' }, 400, origin);
+    const record = JSON.stringify({ name, status, at: new Date().toISOString(), classes: body?.classes || null,
+      counts: body?.counts || null, clumps, labels });
+    if (record.length > 12e6) return json({ error: 'Too big' }, 413, origin);
+    await env.CORPUS.put(`trees/labels/${name}.json`, record, {
+      httpMetadata: { contentType: 'application/json' },
+      customMetadata: { status, at: new Date().toISOString() },
+    });
+    return json({ ok: true, status }, 200, origin);
+  }
+
   if (path === 'outlines') {
     if (!env.CORPUS) return json({ error: 'No bucket' }, 404, origin);
     const out = [];
