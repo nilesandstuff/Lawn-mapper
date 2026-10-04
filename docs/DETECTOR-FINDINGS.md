@@ -850,6 +850,22 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H70. What county photo services say about their season: 93 of 2,910 say leaf-off, 16 leaf-on, 2 both, 2,799 nothing; 370 give some date, 2026-10-04
+
+Workflow 8 county mode "season", run 37232174494 (84 min), over every
+catalogued service's own metadata (tools/county-imagery.js seasonOf).
+**Leaf wording is rare (4%) but clear where present** -- KyFromAbove's
+phases ("leaf-off 3\"" in the very name), Loudoun ("annually obtains
+leaf-off, aerial imagery in the spring"). **Dates are commoner (13%) and
+noisy:** good ones ("March 27th 2025", Virginia's VBMP "Spring 2022", DC
+"January 2026" snow imagery), but also what are surely metadata-edit dates
+("Orthos2017Spring" -> 6/11/2024), year-start placeholders ("2023-01-01"),
+and a vendor mosaic's whole span ("2018-01-01..2026-08-29"). Only 25
+services expose per-frame acquisition dates in an image catalogue. So: a
+leaf-off word is worth trusting; a month in spring or winter is a hint; a
+January-1st date is nothing. Most services say nothing, so the photo itself
+has to answer for the rest (the crown tests in S22's discussion).
+
 ### H69. 80 lawns, pond examples on, one seed: THE PLAN's row 21.2% (was 24.0% at 55); see-through `colour` 20.6% and better on the lots that look leaf-off; the `evergreen` rule FAILS -- it doubles the error under the trees on leaf-off lots, 2026-10-04
 
 Run 37195418220 (the owner's run; its first launch, 37186132376, died at the
