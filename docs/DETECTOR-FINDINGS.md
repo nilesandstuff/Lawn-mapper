@@ -5191,6 +5191,31 @@ lots better than worse, and does not raise the headline over every lot by
 more than a point. Fewer than about 15 leaf-off lots is too few to read; say
 so rather than read it.
 
+**A fourth mode, `evergreen` (owner, 2026-10-04: "evergreens are unlikely
+to have grass under them").** `colour`, plus: on a photo that looks leaf-off,
+the canopy that did NOT read bare (still green, or too dark to see into) is
+taken for evergreen, and stage 3 neither keeps stage 1's lawn there nor
+fills it (stage3.js evergreensOf). A summer photo is left alone: there every
+crown is green. SPECULATION, with the colour rule's blind spot reversed:
+green grass under bare branches reads green and would be lost. From the
+first run with it, `colour` and `evergreen` are also scored as full rows
+beside THE PLAN's ("..., see-through colour" / "..., see-through
+evergreen"), so their lot-by-lot figures are in lot-results.json, and the
+pictures are drawn for the evergreen row (TRIAL_ROW).
+
+**The first run (owner, 2026-10-04), its purpose and its limits, written
+before it ran.** One run, seed 7, `lawns: all`, `not_lawn: on` (the
+not-lawn-only maps are all ponds, per the owner), `photos: mapbox`, free
+runner. The owner asked for raw accuracy and the look of the outlines, NOT a
+decision: no control run. It is read lot by lot against run 36601001355
+(the S20 A run whose configuration the alpha release uses, also seed 7, all
+lawns) on the lots both runs scored. What it can say: how THE PLAN does on
+the bigger corpus, and how the three canopy modes compare on the lots that
+look leaf-off. What it cannot: whether any mode should be adopted -- that
+needs S22's bar (15+ leaf-off lots, more better than worse) and more than
+one seed; two things changed against the comparison run (more lots,
+pond examples on), so a difference from it is not attributable to either.
+
 **Feeding it (owner, already doing it).** On leaf-off photos, grass seen
 under a bare tree is traced as ordinary lawn, not marked inferred. If a mode
 passes, the next step is letting training weight those cells instead of
