@@ -231,6 +231,14 @@ check('nothing at all is refused', cleanCountyOutlines({ shapes: [], notLawn: []
   const before = put.length;
   const viaMapbox = await storeMapPhoto({ ...env, MAPBOX_TOKEN: null }, { ...row, provider: 'mapbox' }, {});
   check('a Mapbox map still goes the Mapbox way', viaMapbox.reason === 'no-token' && put.length === before, JSON.stringify(viaMapbox));
+  /* Through the save path, with the line-up as the editor sends it (owner,
+     2026-10-04: the stored photo ignored it, so the card showed the outlines
+     off the photo they were drawn on). */
+  asked.length = 0;
+  const viaSave = await storeMapPhoto(env, row, { countySvc: 7, countyAlign: { east: 1, north: -0.5, scale: 1, source: 'person' } }, { fetcher });
+  const saveBox = asked[0] ? new URL(asked[0]).searchParams.get('bbox').split(',').map(Number) : [];
+  check('the finish banks the photo moved by the editor\'s line-up, not as delivered',
+    viaSave.ok && saveBox.length === 4 && saveBox.every((v, i) => Math.abs(v - want[i]) < 1e-6), `${saveBox} vs ${want}`);
   const small = await countyPicture({ url: 'https://gis.example/x/ImageServer', type: 'ImageServer', maxPx: 100 }, frame, { W: 300, H: 200, fetcher });
   check('a service that draws smaller is stretched to the size asked', small?.width === 300 && small?.height === 200);
 }

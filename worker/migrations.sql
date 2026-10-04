@@ -259,3 +259,9 @@ ALTER TABLE corpus ADD COLUMN detected_parcel TEXT;
 -- HOW MUCH THE PERSON DISAGREED WITH THE AI, by shape (see the column in
 -- schema.sql), for the console's "Disagreed with the AI" filter.
 ALTER TABLE corpus ADD COLUMN ai_wrong_pct REAL;
+
+-- WHICH COUNTY PHOTO A MAP WAS MADE ON, AND HOW IT WAS LINED UP (see the
+-- columns in schema.sql), so a reopened map shows the photo where its
+-- outlines were drawn.
+ALTER TABLE corpus ADD COLUMN county_svc TEXT;
+ALTER TABLE corpus ADD COLUMN county_align TEXT;

@@ -710,10 +710,10 @@ check('the detection timer says what to expect', /usually takes less than 60 sec
 
   const leave = js.match(/function leaveReview\([\s\S]*?\n}/)?.[0] || '';
   check('saving on the way out is the same finish the panel button runs',
-    /keepFinished\(\)/.test(leave),
+    /keepFinished\(/.test(leave),
     'a second way to save is a second thing to keep in step');
   check('and going back without saving writes nothing',
-    /if \(save\) keepFinished/.test(leave),
+    /if \(save\) \{[\s\S]*?await keepFinished\(/.test(leave),
     'a candidate that needed no correction should not go round the queue again');
   check('both land on the console',
     /admin\.html/.test(leave));

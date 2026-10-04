@@ -694,5 +694,29 @@ const png = () => new Response('x', { headers: { 'content-type': 'image/png' } }
   }
 }
 
+/* ---------------------------- the county photo a map was made on, and its line-up */
+/*
+ * Owner, 2026-10-04: saved on a lined-up county photo, the map reopened with
+ * the photo measured afresh and the outlines off it. The service and the
+ * line-up are kept with the row so the editor can put the photo back.
+ */
+{
+  const { testDb } = await import('./d1.js');
+  const DB = testDb();
+  const { row: { id } } = await recordFinished({ DB }, body({ provider: 'county', countySvc: 7,
+    countyAlign: { east: 1.234567, north: -0.5, scale: 1.0025, source: 'person' } }));
+  let r = await DB.prepare('SELECT county_svc, county_align FROM corpus WHERE id = ?1').bind(id).first();
+  check('a map saved on a county photo keeps which photo and how it was lined up',
+    r?.county_svc === '7' && JSON.parse(r.county_align || 'null')?.source === 'person'
+      && JSON.parse(r.county_align).east === 1.23, JSON.stringify(r));
+  await recordFinished({ DB }, body({ provider: 'mapbox' }));
+  r = await DB.prepare('SELECT county_svc, county_align FROM corpus WHERE id = ?1').bind(id).first();
+  check('saved again on Mapbox, the county line-up is left alone', r?.county_svc === '7' && Boolean(r.county_align), JSON.stringify(r));
+  await recordFinished({ DB }, body({ provider: 'county', countySvc: 9, countyAlign: null }));
+  r = await DB.prepare('SELECT county_svc, county_align FROM corpus WHERE id = ?1').bind(id).first();
+  check('saved on another county photo, its line-up replaces the old one, even with none',
+    r?.county_svc === '9' && r.county_align === null, JSON.stringify(r));
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);

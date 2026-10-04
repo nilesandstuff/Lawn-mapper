@@ -5595,7 +5595,7 @@ function countyShowing(svc) {
     + ' — usually the sharpest there is. Lined up on the ground automatically; Layers switches back to Mapbox.';
 }
 
-async function lookupCountyPhoto({ makeDefault = false, chosen = false } = {}) {
+async function lookupCountyPhoto({ makeDefault = false, chosen = false, prefer = null, align = null } = {}) {
   const at = state.frame || state.chosen;
   if (!at || !state.imagery.some((p) => p.id === 'county')) return;
   const mine = ++countyLookup;
@@ -5608,6 +5608,12 @@ async function lookupCountyPhoto({ makeDefault = false, chosen = false } = {}) {
     }
   } catch { /* none, then */ }
   if (mine !== countyLookup) return;
+  /* A reopened map's own photo first, with the line-up it was saved with
+     (countyLineUp). Only on that photo: another one's error is its own. */
+  const own = prefer != null ? list.findIndex((x) => String(x.id) === String(prefer)) : -1;
+  if (own > 0) list.unshift(...list.splice(own, 1));
+  const a = own >= 0 && align && [align.east, align.north, align.scale].every(Number.isFinite) ? align : null;
+  if (a) state.countyAlign = { east: a.east, north: a.north, scale: a.scale, source: a.source || 'auto', saved: true };
   /* Best first; showImagery moves down the list past any with gaps here. */
   state.countyNext = list.slice(1);
   const svc = list[0] || null;
@@ -5839,6 +5845,10 @@ async function setProvider(id, { auto = false } = {}) {
      held to "not softer than Mapbox". */
   state.countyAuto = auto;
   state.provider = id;
+  /* The line-up bar belongs to the picture being lined up. Switching to one
+     with nothing to line up (Mapbox) closes it and gives the drawing tools
+     back -- they were put away for it (owner, 2026-10-04: they were gone). */
+  if (state.alignOpen && !isAligned(id)) setAlignOpen(false);
   // Looked at on this map: the save check asks whether it lined up.
   /* Not the county photo: it is the default and lined up automatically on
      the ground, so asking at every save would be asking every time. */
@@ -5862,6 +5872,8 @@ function hideImagery() {
   if (map.getSource('imagery-alt')) map.removeSource('imagery-alt');
   const panel = document.getElementById('naip-align');
   if (panel) panel.hidden = true;
+  /* Fell back to a picture with nothing to line up: the bar goes, the tools come back. */
+  if (state.alignOpen && !isAligned(state.provider)) setAlignOpen(false);
 }
 
 /**
@@ -6091,6 +6103,7 @@ async function showImagery({ quiet = false } = {}) {
       /* The next service that claims this spot, if there is one. */
       if (state.countyNext?.length) {
         state.countySvc = state.countyNext.shift();
+        if (state.countyAlign?.saved) state.countyAlign = null; // another photo's line-up is its own
         buildImageryPicker();
         showImagery();
         return;
@@ -6118,6 +6131,7 @@ async function showImagery({ quiet = false } = {}) {
         /* The next service that covers this spot may be sharper. */
         if (state.countyNext?.length) {
           state.countySvc = state.countyNext.shift();
+          if (state.countyAlign?.saved) state.countyAlign = null; // another photo's line-up is its own
           buildImageryPicker();
           showImagery();
           return;
@@ -6181,6 +6195,23 @@ const alignKey = (id) => (isNaip(id) ? 'naipAlign' : id === 'google' ? 'googleAl
 const isAligned = (id) => Boolean(alignKey(id));
 const alignOf = (id) => (alignKey(id) ? state[alignKey(id)] || null : null);
 const ALIGN_REACH_M = { naipAlign: 5, googleAlign: 8, countyAlign: 4 };
+
+/*
+ * THE COUNTY PHOTO A MAP WAS MADE ON, AND WHERE IT SAT (owner, 2026-10-04:
+ * reopened, the photo was lined up afresh and the outlines no longer fit it;
+ * lined up by hand and saved, it came back misaligned again). The outlines
+ * were drawn on the photo as it was moved, so that move is part of the map:
+ * saved with it, and put back on reopening -- the same service, the same
+ * line-up, and not measured again over the top. "Auto" still re-measures.
+ */
+function countyLineUp() {
+  if (state.provider !== 'county' || !state.countySvc) return {};
+  const a = state.countyAlign;
+  return {
+    countySvc: state.countySvc.id,
+    countyAlign: a && !a.unsure ? { east: a.east, north: a.north, scale: a.scale, source: a.source } : null,
+  };
+}
 
 /**
  * A frame moved onto the Mapbox photograph by an alignment: centre shifted,
@@ -6281,7 +6312,7 @@ async function alignNaip(served, run, naipBlob = null) {
   const provider = state.provider;
   const name = providerInfo(provider).label || provider;
   /* A nudge somebody made stands; the machine does not overrule a person. */
-  if (state[key]?.source === 'person') { applyNaipAlign(served); return; }
+  if (state[key]?.source === 'person' || state[key]?.saved) { applyNaipAlign(served); return; }
   /*
    * ONLY FROM THE NAIP PICTURE ALREADY DOWNLOADED. NDVI is drawn from the
    * same NAIP, so it takes whatever alignment NAIP got; fetching NAIP again
@@ -6392,7 +6423,7 @@ function renderNaipPanel(served, message) {
   if (!panel) return;
   panel.hidden = !isAligned(state.provider);
   if (panel.hidden) {
-    if (state.alignOpen) { state.alignOpen = false; refreshRail(); }
+    if (state.alignOpen) { state.alignOpen = false; refreshRail(); settleMode(); }
     return;
   }
   panel.classList.toggle('open', Boolean(state.alignOpen));
@@ -7254,6 +7285,9 @@ function snapshotForSave() {
       geometry: f.geometry,
     })),
     notLawn: state.notLawn.length ? state.notLawn.slice() : undefined,
+    /* Made on a county photo: which one and how it sat, so reopening puts
+       it back under the outlines exactly (lookupCountyPhoto). */
+    ...countyLineUp(),
   };
 }
 
@@ -7494,10 +7528,20 @@ function toggleCountyPhoto() {
  * no correction should go back exactly as it was, and saving an unchanged map
  * would send it round the queue a second time for no reason.
  */
-function leaveReview(save) {
+async function leaveReview(save) {
   if (!state.reviewingId) return;
   if (state.reviewPhoto === 'county') { leaveCountyEdit(save); return; }
-  if (save) keepFinished();
+  /*
+   * WAITED FOR (owner, 2026-10-04: saved on the county photo, the console
+   * still showed Mapbox's). Leaving the page could cancel the save in flight,
+   * and for an admin the Worker answers only once the map's photo is stored,
+   * so the card read on arrival is the photo the outlines were saved on.
+   */
+  if (save) {
+    busy('Saving…');
+    await keepFinished({ timeoutMs: 60000 });
+    idle();
+  }
   state.reviewingId = null;
   $('#review-bar').hidden = true;
   leavingOnPurpose = true;
@@ -8342,7 +8386,11 @@ function openMap(s) {
   buildModelPicker();
   /* A map saved on the county photo reopens on it (owner, 2026-10-02: it
      reopened on Mapbox). Theirs, not chosen for them: no softness check. */
-  lookupCountyPhoto({ makeDefault: s.provider === 'county', chosen: s.provider === 'county' });
+  lookupCountyPhoto({
+    makeDefault: s.provider === 'county', chosen: s.provider === 'county',
+    prefer: s.provider === 'county' ? s.countySvc : null,
+    align: s.provider === 'county' ? s.countyAlign : null,
+  });
   refreshExclusions();
   refreshSensitivity();
   refreshTreesOption();
@@ -13464,8 +13512,7 @@ function finishedBody() {
       provider: state.provider,
       /* Made on a county photo: which one, and how it was shown, so the
          Worker can keep that photo with the map (county-picture.js). */
-      ...(state.provider === 'county' && state.countySvc
-        ? { countySvc: state.countySvc.id, countyAlign: state.countyAlign || null } : {}),
+      ...countyLineUp(),
       model: state.detectedBy || null,
       /* Which release drew the outline being corrected (feedback loop 1). */
       modelVersion: state.detectedBy ? state.detectedVersion || null : null,
@@ -13514,10 +13561,10 @@ function finishedBody() {
   };
 }
 
-function keepFinished() {
+function keepFinished({ timeoutMs } = {}) {
   const body = finishedBody();
-  if (!body) return;
-  api('/api/finished', { method: 'POST', body: JSON.stringify(body) })
+  if (!body) return Promise.resolve();
+  return api('/api/finished', { method: 'POST', body: JSON.stringify(body), timeoutMs })
     .catch(() => { /* Never the finisher's problem. */ });
 }
 

@@ -326,6 +326,13 @@ CREATE TABLE IF NOT EXISTS corpus (
   -- (owner, 2026-09-27). tools/naip_bands.py applies it before the detector
   -- sees NAIP's near-infrared; NULL means the pipeline aligns it itself.
   naip_align     TEXT,
+  -- A MAP MADE ON A COUNTY PHOTO: which service (county_services.id)
+  -- and how the editor lined it up with Mapbox, JSON {east, north, scale,
+  -- source} like naip_align. The outlines were drawn on the photo moved by
+  -- this, so reopening the map puts the photo back exactly there (owner,
+  -- 2026-10-04: a reopened map re-measured it and the outlines no longer fit).
+  county_svc     TEXT,
+  county_align   TEXT,
   -- GROUND THE TRACER OUTLINED AS NOT LAWN (owner, tinker mode, 2026-09-29):
   -- a JSON array of GeoJSON polygons -- a parking lot, a road, a pond -- traced
   -- to their edges. Training reads them as "graded, and not lawn"; nothing

@@ -581,6 +581,10 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
            ignores it and lays `frame` on live tiles. */
         imageFrame: row.image_frame ? JSON.parse(row.image_frame) : null,
         provider: row.provider,
+        /* The county photo it was made on and how it sat, so the editor puts
+           it back exactly under the outlines (owner, 2026-10-04). */
+        countySvc: row.county_svc || null,
+        countyAlign: (() => { try { return row.county_align ? JSON.parse(row.county_align) : null; } catch { return null; } })(),
         model: row.model,
         exclude: row.exclusions ? row.exclusions.split(',') : [],
         /*
@@ -1659,13 +1663,17 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
   if (path === 'fetch-photo' && request.method === 'POST') {
     const body = await request.json().catch(() => ({}));
     const id = String(body?.id || '');
-    const row = await env.DB.prepare('SELECT id, provider, frame, lng, lat FROM corpus WHERE id = ?1').bind(id).first();
+    const row = await env.DB.prepare('SELECT id, provider, frame, lng, lat, county_svc, county_align FROM corpus WHERE id = ?1').bind(id).first();
     if (!row?.frame) return json({ ok: false, reason: row ? 'no-frame' : 'no-map' }, 404, origin);
     const map = { id: row.id, provider: row.provider, frame: JSON.parse(row.frame) };
     let got;
     if (row.provider === 'county') {
-      const svc = (await countyServicesAt(env, row.lng, row.lat, 1).catch(() => []))[0];
-      got = svc ? await storeCountyImage(env, map, { svcId: svc.id }) : { ok: false, reason: 'no-county-photo-here' };
+      /* The photo it was made on and how it was lined up, when the map
+         says; else the first service that answers there. */
+      const svcId = row.county_svc || (await countyServicesAt(env, row.lng, row.lat, 1).catch(() => []))[0]?.id;
+      let align = null;
+      try { align = row.county_svc && row.county_align ? JSON.parse(row.county_align) : null; } catch { /* none */ }
+      got = svcId ? await storeCountyImage(env, map, { svcId, align }) : { ok: false, reason: 'no-county-photo-here' };
     } else {
       got = await storeImage(env, map);
     }

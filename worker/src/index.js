@@ -1653,7 +1653,13 @@ export default {
            * detection log once reported itself enabled and stored nothing.
            */
           /* A map made on a county photo keeps that photo instead (county-picture.js). */
-          if (kept.ok && kept.row) ctx.waitUntil(storeMapPhoto(env, kept.row, body));
+          /* An admin's save (a review edit) waits for it: they go straight
+             back to the console, whose card should show the photo the
+             outlines were saved on, not the one it replaces. */
+          if (kept.ok && kept.row) {
+            const photo = storeMapPhoto(env, kept.row, body).catch(() => null);
+            if (saver?.role === 'admin') await photo; else ctx.waitUntil(photo);
+          }
           return json({ ok: kept.ok, reason: kept.reason || null }, kept.ok ? 200 : 202, origin);
         }
         case '/api/quota': {

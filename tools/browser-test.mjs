@@ -1441,6 +1441,23 @@ if (sources.includes('naip')) {
   check('NAIP shows its alignment panel', panel.shown, panel.text.slice(0, 120));
   check('and the line-up tour is once a session, not every look',
     (await page.evaluate(() => window.__lmTour().stage)) !== 'imagery');
+
+  /* Owner, 2026-10-04: the line-up bar open, then Mapbox chosen, and the
+     drawing tools were gone -- the bar puts them away, and nothing gave them
+     back when the picture it was lining up went. */
+  await page.evaluate(() => document.querySelector('#naip-align .naipalign-open')?.click());
+  await page.waitForTimeout(200);
+  const opened = await page.evaluate(() => document.querySelector('#maprail').hidden);
+  await page.selectOption('#imagery-source', 'mapbox');
+  await page.waitForTimeout(500);
+  const after = await page.evaluate(() => ({
+    rail: !document.querySelector('#maprail').hidden,
+    bar: !document.querySelector('#naip-align').hidden,
+  }));
+  check('leaving NAIP with the line-up bar open gives the drawing tools back',
+    opened && after.rail && !after.bar, JSON.stringify({ opened, ...after }));
+  await page.selectOption('#imagery-source', 'naip');
+  await waitForPhoto();
 }
 
 /* NDVI was measured against real lawns and rejected, so it must not be

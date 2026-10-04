@@ -132,7 +132,11 @@ export async function storeCountyImage(env, row, { svcId, align = null, fetcher 
 /** A finished map's photo: the county one for a map made on it, Mapbox (or NAIP) otherwise. */
 export function storeMapPhoto(env, row, body, opts = {}) {
   if (row?.provider === 'county' && body?.countySvc) {
-    return storeCountyImage(env, row, { svcId: body.countySvc, align: naipAlignOf(body.countyAlign), ...opts });
+    /* naipAlignOf answers the column's JSON text; the picture wants the
+       object. Passed as text, every alignment was silently ignored and the
+       map kept the photo unmoved under outlines drawn on the moved one. */
+    const align = JSON.parse(naipAlignOf(body.countyAlign) || 'null');
+    return storeCountyImage(env, row, { svcId: body.countySvc, align, ...opts });
   }
   return storeImage(env, row);
 }

@@ -372,6 +372,9 @@ export async function recordFinished(env, body, { adminId = null } = {}) {
       ? body.parcelSource
       : null,
     naip_align: naipAlignOf(body?.naipAlign),
+    /* Made on a county photo: which one, and how it was lined up (schema.sql). */
+    county_svc: body?.provider === 'county' && body?.countySvc != null ? text(String(body.countySvc), 40) : null,
+    county_align: body?.provider === 'county' ? naipAlignOf(body?.countyAlign) : null,
     /*
      * NOT-LAWN TRACES (tinker mode, owner 2026-09-29), cleaned like any
      * geometry. Null when the finish did not say -- which every ordinary
@@ -401,8 +404,9 @@ export async function recordFinished(env, body, { adminId = null } = {}) {
          detected_sq_ft, square_feet, parcel_sq_ft, frame, parcel, shapes,
          detected_shapes, parcel_source, exclusions, created_at,
          inferred_checked_at, naip_align, not_lawn, model_version,
-         admin_edited_at, admin_edited_by, status, detected_parcel
-       ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?2,?19,?20,?21,?22,?23,?24,?25,?26)
+         admin_edited_at, admin_edited_by, status, detected_parcel,
+         county_svc, county_align
+       ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?2,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28)
        ON CONFLICT(id) DO UPDATE SET
          at = ?2, county = ?5, provider = ?6, hand_edited = ?9,
          detected_sq_ft = ?10, square_feet = ?11, parcel_sq_ft = ?12,
@@ -463,7 +467,11 @@ export async function recordFinished(env, body, { adminId = null } = {}) {
          /* Once an admin has saved it, it stays marked: a later save by
             somebody else does not undo that an admin fixed it. */
          admin_edited_at = COALESCE(?23, corpus.admin_edited_at),
-         admin_edited_by = COALESCE(?24, corpus.admin_edited_by)`
+         admin_edited_by = COALESCE(?24, corpus.admin_edited_by),
+         /* Saved on a county photo: that photo and its line-up, both
+            replaced together. Saved on anything else: left alone. */
+         county_svc = CASE WHEN ?6 = 'county' THEN ?27 ELSE corpus.county_svc END,
+         county_align = CASE WHEN ?6 = 'county' THEN ?28 ELSE corpus.county_align END`
     ).bind(
       row.id, row.at, row.lng, row.lat, row.county, row.provider, row.model,
       row.mode, row.hand_edited, row.detected_sq_ft, row.square_feet,
@@ -471,7 +479,7 @@ export async function recordFinished(env, body, { adminId = null } = {}) {
       row.detected_shapes, row.parcel_source, row.exclusions,
       row.inferred_checked_at, row.naip_align, row.not_lawn, row.model_version,
       row.admin_edited_at, row.admin_edited_by, notLawnOnly ? 'notlawn' : 'new',
-      row.detected_parcel
+      row.detected_parcel, row.county_svc, row.county_align
     ).run();
     /*
      * The row is handed back so the caller can pass it to storeImage under
