@@ -320,6 +320,9 @@ function drawCandidate(c) {
   const head = el('div', 'who');
   /* The map's number, as training runs name it (owner, 2026-10-04). */
   if (c.name) head.append(el('span', 'pill', c.name));
+  /* The owner's tree labels, when the map has any (2026-10-04). */
+  if (c.leafOff === true || c.leafOff === false) head.append(el('span', 'pill', c.leafOff ? 'leaf-off photo' : 'leaf-on photo'));
+  if (c.evergreens?.length) head.append(el('span', 'pill', `${c.evergreens.length} evergreen${c.evergreens.length === 1 ? '' : 's'}`));
   head.append(el('b', null, c.county || 'somewhere with no county record'));
   head.append(el('span', 'pill', `${n(c.squareFeet)} sq ft`));
 

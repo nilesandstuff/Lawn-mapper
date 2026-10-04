@@ -270,3 +270,7 @@ ALTER TABLE corpus ADD COLUMN county_align TEXT;
 -- maps are given theirs by tools/ci-prepare.js numberMaps, in the order they
 -- were made.
 ALTER TABLE corpus ADD COLUMN lot_no INTEGER;
+
+-- EVERGREEN CROWNS AND LEAF-OFF PHOTOS (see the columns in schema.sql).
+ALTER TABLE corpus ADD COLUMN evergreens TEXT;
+ALTER TABLE corpus ADD COLUMN leaf_off INTEGER;

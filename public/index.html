@@ -741,7 +741,20 @@
           -->
           <span id="not-lawn-tools" hidden>
             <button class="ghost" id="btn-not-lawn">Trace not-lawn</button>
-            <button class="ghost" id="btn-not-lawn-undo" disabled>Remove last not-lawn</button>
+            <!-- EVERGREENS AND LEAF-OFF PHOTOS, tinker mode only (owner,
+                 2026-10-04): labels for teaching the detector to tell an
+                 evergreen, a tree in leaf and a bare tree apart, and a
+                 leaf-off photo from a summer one. Never asked of anybody
+                 measuring their own lawn. -->
+            <button class="ghost" id="btn-evergreen">Trace evergreen</button>
+            <button class="ghost" id="btn-not-lawn-undo" disabled>Remove last trace</button>
+            <label class="leafoff-pick">This photo is
+              <select id="leaf-off">
+                <option value="">not marked</option>
+                <option value="0">leaf-on</option>
+                <option value="1">leaf-off</option>
+              </select>
+            </label>
           </span>
           <button class="ghost" id="btn-clear">Clear all</button>
         </div>

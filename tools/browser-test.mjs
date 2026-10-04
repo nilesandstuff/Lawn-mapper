@@ -3639,6 +3639,23 @@ console.log('\n--- tinker: neighbours and merging ---');
    * A MAP OF ONLY NOT-LAWN TRACES CAN BE FINISHED (owner, 2026-10-01): this
    * page has two and no lawn. The server keeps it apart from the lawn maps.
    */
+  /*
+   * EVERGREENS AND LEAF-OFF (owner, 2026-10-04): an evergreen crown is traced
+   * like not-lawn and saved apart from it; the photo is marked leaf-off.
+   */
+  const nlBeforeEv = (await tp.evaluate(() => window.__lmNotLawn())).count;
+  await tp.evaluate(() => document.querySelector('#btn-evergreen')?.click());
+  await tp.waitForTimeout(300);
+  for (const [fx, fy] of [[0.60, 0.20], [0.72, 0.20], [0.72, 0.32], [0.60, 0.32]]) {
+    await tp.mouse.click(Math.round(tb.x + tb.width * fx), Math.round(tb.y + tb.height * fy));
+    await tp.waitForTimeout(250);
+  }
+  await tp.evaluate(() => document.querySelector('#tool-finish')?.click());
+  await tp.waitForTimeout(600);
+  check('an evergreen is traced into the same list, marked as one',
+    (await tp.evaluate(() => window.__lmNotLawn())).count === nlBeforeEv + 1
+      && (await tp.evaluate(() => window.__lmNotLawn().kinds?.at(-1))) === 'evergreen');
+  await tp.selectOption('#leaf-off', '1');
   const onlyNl = await tp.evaluate(() => ({
     sq: window.__lmSqft(), nl: window.__lmNotLawn().count,
     finish: !document.querySelector('#btn-finish').hidden,
@@ -3658,6 +3675,9 @@ console.log('\n--- tinker: neighbours and merging ---');
   const body = await sent;
   check('and records the photo on screen when it was finished', body.provider === showing,
     `showing ${showing}, recorded ${body.provider}`);
+  check('and sends the evergreen apart from the not-lawn traces, with the leaf-off mark',
+    body.evergreens?.length === 1 && body.notLawn?.length === nlBeforeEv && body.leafOff === true,
+    JSON.stringify({ evergreens: body.evergreens?.length, notLawn: body.notLawn?.length, leafOff: body.leafOff }));
 
   /*
    * BEFORE SAVING, DID THE PHOTO LINE UP? (owner, 2026-10-01). Having looked

@@ -743,5 +743,22 @@ const png = () => new Response('x', { headers: { 'content-type': 'image/png' } }
     parseQueryRows('banner\n[{"results":[{"n":4}],"success":true}]')[0]?.n === 4);
 }
 
+/* ------------------------------------- evergreen crowns and leaf-off */
+{
+  const { testDb } = await import('./d1.js');
+  const DB = testDb();
+  const crown = square(-85.6682, 42.9635, 0.0001);
+  const { row: { id } } = await recordFinished({ DB }, body({ evergreens: [crown], leafOff: true }));
+  let r = await DB.prepare('SELECT evergreens, leaf_off FROM corpus WHERE id = ?1').bind(id).first();
+  check('evergreen crowns and a leaf-off mark are kept with the map',
+    JSON.parse(r.evergreens || '[]').length === 1 && r.leaf_off === 1, JSON.stringify(r).slice(0, 120));
+  await recordFinished({ DB }, body());
+  r = await DB.prepare('SELECT evergreens, leaf_off FROM corpus WHERE id = ?1').bind(id).first();
+  check('and a finish that does not say leaves them alone', JSON.parse(r.evergreens || '[]').length === 1 && r.leaf_off === 1);
+  await recordFinished({ DB }, body({ evergreens: [], leafOff: false }));
+  r = await DB.prepare('SELECT evergreens, leaf_off FROM corpus WHERE id = ?1').bind(id).first();
+  check('one that does replaces them', JSON.parse(r.evergreens || '[]').length === 0 && r.leaf_off === 0);
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);

@@ -946,9 +946,15 @@ against it, so colour's gain is concentrated, not general.
     no grass showing through.
   - **The owner agrees with H69's reading of the colour rule:** stage 3
     cannot tell evergreens, leaf-on canopy and grass through bare branches
-    apart from colour alone. Proposed (owner, 2026-10-04, NOT BUILT): mark
-    evergreens as their own shape, and leaf-off as an attribute, so the
-    separation can be learned from labels rather than guessed.
+    apart from colour alone. **Built the same day (owner's request), as
+    LABELS, not inputs:** in tinker mode "Trace evergreen" (crowns, saved as
+    `corpus.evergreens`, apart from not-lawn) and "This photo is leaf-off /
+    leaf-on" (`corpus.leaf_off`, for the photo the map is finished on).
+    Nobody measuring a lawn is asked either; they exist to dial in the
+    automatic guesses. From the next run, workflow 14's stage 3 output
+    prints the marked lots against "looks leaf-off" and the traced crowns
+    against the canopy the colour rule left standing (found / right). Not
+    trained on; a few dozen marked lots first.
 - **The pictures were drawn for the evergreen row** (TRIAL_ROW was set
   before the run). It differs from THE PLAN's only under canopy on the 22
   leaf-off lots, where it is the worst of the four. TRIAL_ROW is now the

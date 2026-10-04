@@ -463,7 +463,8 @@ export function photoKeyFor(row, countyKeys) {
 }
 const QUERY = `
   SELECT id, county, tree_line, frame, shapes, detected_shapes, parcel,
-         image_key, image_provider, image_frame, mode, model, naip_align, lot_no${NOT_LAWN ? ', not_lawn' : ''}
+         image_key, image_provider, image_frame, mode, model, naip_align, lot_no,
+         evergreens, leaf_off${NOT_LAWN ? ', not_lawn' : ''}
     FROM corpus
    WHERE status = 'approved' AND image_key IS NOT NULL AND frame IS NOT NULL${lawnSetClause()}
    ORDER BY at DESC
@@ -1906,6 +1907,11 @@ async function main() {
          only (tools/train_decoder.py, NOT_LAWN=1). Nothing here scores it. */
       const notLawnGeoms = NOT_LAWN ? geometries(parse(row.not_lawn)) : [];
       const notLawn = notLawnGeoms.length ? maskOf(notLawnGeoms, frame, G, GH) : null;
+      /* The owner's evergreen crowns and leaf-off mark (2026-10-04): scored
+         against the colour rule's guesses below, never trained on yet. */
+      const evergreenGeoms = geometries(parse(row.evergreens));
+      const evergreenTruth = evergreenGeoms.length ? maskOf(evergreenGeoms, frame, G, GH) : null;
+      const leafOffLabel = row.leaf_off === 1 ? true : row.leaf_off === 0 ? false : null;
       const inferredGeoms = inferredGeometries(parse(row.shapes));
       let inferred = inferredGeoms.length ? maskOf(inferredGeoms, frame, G, GH) : null;
       /*
@@ -2001,6 +2007,8 @@ async function main() {
         tag: lawnTag(row.id, row.lot_no),
         county: row.county,
         notLawn,
+        evergreenTruth,
+        leafOffLabel,
         /* The frame the photograph was taken on, for scale.json's boxes. */
         frame,
         /* How NAIP lines up here, if the editor set it (tools/naip_bands.py). */
@@ -2627,6 +2635,42 @@ async function main() {
           const cty = nCounty ? at(seeThrough, county) : [];
           console.log(`  ${seeThrough.padEnd(10)}${cell(at(seeThrough))}`
             + `${off.length ? cell(off).padStart(26) : '--'.padStart(26)}${cty.length ? cell(cty).padStart(26) : '--'.padStart(26)}`);
+        }
+      }
+      /*
+       * THE OWNER'S LABELS AGAINST THE GUESSES (2026-10-04). Leaf-off as marked
+       * against "looks leaf-off" (the colour rule's bare share), and the
+       * traced evergreen crowns against the canopy the colour rule left
+       * standing (canopy that did not read bare) -- how well each automatic
+       * signal finds what a person can see. This is what the labels are for:
+       * dialling the guesses in, not asking anybody.
+       */
+      const marked = lawns.filter((L) => L.leafOffLabel !== null && L.leafOffLabel !== undefined && shareOf(L) !== null);
+      if (marked.length) {
+        const cnt = (lab, guess) => marked.filter((L) => L.leafOffLabel === lab && leafOff(L) === guess).length;
+        console.log(`\n  LEAF-OFF, marked by the owner vs "looks leaf-off" (bare share ${LEAF_OFF_SHARE * 100}%+), ${marked.length} marked lots:`);
+        console.log(`    marked leaf-off: ${cnt(true, true)} guessed leaf-off, ${cnt(true, false)} missed`);
+        console.log(`    marked leaf-on:  ${cnt(false, false)} guessed leaf-on, ${cnt(false, true)} wrongly guessed leaf-off`);
+        for (const L of marked) {
+          const sh = shareOf(L);
+          console.log(`      ${(L.tag || L.id.slice(0, 20)).padEnd(8)} marked ${L.leafOffLabel ? 'leaf-off' : 'leaf-on '}  bare share ${(sh * 100).toFixed(0).padStart(3)}%`);
+        }
+      }
+      const traced = lawns.filter((L) => L.evergreenTruth && L.canopy && L.bare);
+      if (traced.length) {
+        console.log(`\n  EVERGREENS, traced by the owner vs canopy that did not read bare, ${traced.length} lots:`);
+        console.log('    (found = share of traced evergreen canopy left standing; '
+          + 'right = share of standing canopy that is a traced evergreen; leaf-off lots are where it is meant to work)');
+        for (const L of traced) {
+          let ev = 0, evStand = 0, stand = 0;
+          for (let i = 0; i < L.canopy.length; i++) {
+            if (!L.canopy[i]) continue;
+            const standing = !L.bare[i];
+            if (standing) stand++;
+            if (L.evergreenTruth[i]) { ev++; if (standing) evStand++; }
+          }
+          const p = (a, b) => (b ? `${((a / b) * 100).toFixed(0).padStart(3)}%` : '  --');
+          console.log(`      ${(L.tag || L.id.slice(0, 20)).padEnd(8)} ${leafOff(L) ? 'leaf-off' : 'leaf-on '}  found ${p(evStand, ev)}  right ${p(evStand, stand)}  (${ev} evergreen canopy cells)`);
         }
       }
       console.log(`\n  Bare share of each lot's canopy (looks leaf-off at ${LEAF_OFF_SHARE * 100}% or more):`);

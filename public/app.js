@@ -192,6 +192,12 @@ const state = {
    */
   notLawn: [],
   notLawnMode: false,
+  /* What the trace being drawn is: 'notlawn', or 'evergreen' (owner,
+     2026-10-04) -- an evergreen trace sits in the same list with
+     kind: 'evergreen' and is saved apart from the not-lawn ones. */
+  notLawnKind: 'notlawn',
+  /* The photo on screen: null not marked, true leaf-off, false leaf-on. */
+  leafOff: null,
   /* True for the moment it takes Draw to close a not-lawn trace that was cut
      short (see leaveNotLawnMode): the flag above is already off by then. */
   notLawnClosing: false,
@@ -586,6 +592,7 @@ if (typeof window !== 'undefined') {
      being drawn in their colour (tinker mode). */
   window.__lmNotLawn = () => ({
     count: state.notLawn.length,
+    kinds: state.notLawn.map((g) => g.kind || 'notlawn'),
     corners: state.notLawn.reduce((n, g) => n + Math.max(0, (g?.coordinates?.[0]?.length || 1) - 1), 0),
     tracing: state.notLawnMode,
     draftRed: (() => {
@@ -1732,11 +1739,13 @@ async function initMap() {
       const traced = e.features[0];
       try { draw.delete(traced.id); } catch { /* already gone */ }
       pushHistory(); // Undo takes the trace back off
-      state.notLawn.push(traced.geometry);
+      const evergreen = state.notLawnKind === 'evergreen';
+      state.notLawn.push(evergreen ? { ...traced.geometry, kind: 'evergreen' } : traced.geometry);
       refreshNotLawn();
-      setStatus(`Not-lawn traced (${state.notLawn.length} on this map). It is kept `
+      const what = evergreen ? 'Evergreen' : 'Not-lawn';
+      setStatus(`${what} traced (${state.notLawn.length} trace${state.notLawn.length === 1 ? '' : 's'} on this map). It is kept `
         + 'for training only and does not change the total. Its points are editable '
-        + 'with Points, like a lawn shape. Press "Trace not-lawn" for another.');
+        + `with Points, like a lawn shape. Press "Trace ${what.toLowerCase()}" for another.`);
       /* LIKE A NEW SHAPE (owner, 2026-10-01): closed with the checkmark, and
          landing on Points so its corners can be fixed straight away. */
       queueMicrotask(() => setMode('shape', 'points'));
@@ -1994,11 +2003,12 @@ async function initMap() {
   map.addSource('not-lawn', { type: 'geojson', data: empty() });
   map.addLayer({
     id: 'not-lawn-fill', type: 'fill', source: 'not-lawn',
-    paint: { 'fill-color': '#e53935', 'fill-opacity': 0.3 },
+    /* Evergreens dark blue-green, not-lawn red. */
+    paint: { 'fill-color': ['match', ['get', 'kind'], 'evergreen', '#00695c', '#e53935'], 'fill-opacity': 0.3 },
   });
   map.addLayer({
     id: 'not-lawn-line', type: 'line', source: 'not-lawn',
-    paint: { 'line-color': '#b71c1c', 'line-width': 2 },
+    paint: { 'line-color': ['match', ['get', 'kind'], 'evergreen', '#004d40', '#b71c1c'], 'line-width': 2 },
   });
 
   map.addSource('surveyed', { type: 'geojson', data: empty() });
@@ -7301,6 +7311,7 @@ function snapshotForSave() {
       geometry: f.geometry,
     })),
     notLawn: state.notLawn.length ? state.notLawn.slice() : undefined,
+    leafOff: state.leafOff === true || state.leafOff === false ? state.leafOff : undefined,
     /* Made on a county photo: which one and how it sat, so reopening puts
        it back under the outlines exactly (lookupCountyPhoto). */
     ...countyLineUp(),
@@ -7575,7 +7586,8 @@ async function leaveCountyEdit(save) {
   if (save) {
     const body = finishedBody();
     const shapes = body?.shapes || [];
-    const notLawn = state.notLawn.slice();
+    /* Not the evergreens: the county outlines have nowhere to keep them. */
+    const notLawn = state.notLawn.filter((g) => g.kind !== 'evergreen');
     if (!shapes.length && !notLawn.length) {
       setStatus('There is nothing to save: draw the lawn (or the not-lawn areas) first.', 'warn');
       return;
@@ -8392,7 +8404,13 @@ function openMap(s) {
   /* Not-lawn traces come back with the map (a save, or a candidate reopened
      for review), so correcting a lawn does not drop them. */
   state.notLawn = Array.isArray(s.notLawn) ? s.notLawn.filter((g) => g?.type && g.coordinates) : [];
+  /* Evergreens come back into the same list, marked (saved apart). */
+  if (Array.isArray(s.evergreens)) {
+    state.notLawn.push(...s.evergreens.filter((g) => g?.type && g.coordinates).map((g) => ({ ...g, kind: 'evergreen' })));
+  }
   refreshNotLawn();
+  state.leafOff = s.leafOff === true || s.leafOff === false ? s.leafOff : null;
+  refreshLeafOff();
 
   showStep('work');
   $('#work-address').textContent = s.address;
@@ -12418,7 +12436,7 @@ function refreshInferred() {
  * back exactly as they were after.
  */
 const draftPaintSaved = new Map();
-function paintNotLawnDraft(on) {
+function paintNotLawnDraft(on, colour = '#e53935') {
   if (!map || !map.getStyle) return;
   let layers = [];
   try { layers = map.getStyle().layers || []; } catch { return; }
@@ -12432,7 +12450,7 @@ function paintNotLawnDraft(on) {
     try {
       if (on) {
         if (!draftPaintSaved.has(key)) draftPaintSaved.set(key, map.getPaintProperty(layer.id, prop));
-        map.setPaintProperty(layer.id, prop, '#e53935');
+        map.setPaintProperty(layer.id, prop, colour);
       } else if (draftPaintSaved.has(key)) {
         map.setPaintProperty(layer.id, prop, draftPaintSaved.get(key));
         draftPaintSaved.delete(key);
@@ -12446,7 +12464,7 @@ function refreshNotLawn() {
   if (map && map.getSource('not-lawn')) {
     map.getSource('not-lawn').setData({
       type: 'FeatureCollection',
-      features: state.notLawn.map((geometry) => ({ type: 'Feature', properties: {}, geometry })),
+      features: state.notLawn.map((geometry) => ({ type: 'Feature', properties: { kind: geometry.kind || 'notlawn' }, geometry })),
     });
   }
   const undo = $('#btn-not-lawn-undo');
@@ -12472,15 +12490,14 @@ function leaveNotLawnMode() {
   }
   state.notLawnMode = false;
   paintNotLawnDraft(false);
-  const btn = $('#btn-not-lawn');
-  if (btn) {
-    btn.classList.remove('on');
-    btn.textContent = 'Trace not-lawn';
+  for (const [id, text] of [['#btn-not-lawn', 'Trace not-lawn'], ['#btn-evergreen', 'Trace evergreen']]) {
+    const btn = $(id);
+    if (btn) { btn.classList.remove('on'); btn.textContent = text; }
   }
 }
 
-/** Tracing not-lawn on or off. Tinker mode only. */
-function setNotLawnMode(on) {
+/** Tracing not-lawn (or an evergreen) on or off. Tinker mode only. */
+function setNotLawnMode(on, kind = 'notlawn') {
   if (on && state.dev) {
     /* Everything else off FIRST: setMode ends not-lawn tracing by design. */
     setMode(null);
@@ -12488,16 +12505,25 @@ function setNotLawnMode(on) {
     state.drawingParcel = false;
     setInferredMode(false);
     state.notLawnMode = true;
-    paintNotLawnDraft(true);
-    const btn = $('#btn-not-lawn');
+    state.notLawnKind = kind;
+    const evergreen = kind === 'evergreen';
+    paintNotLawnDraft(true, evergreen ? '#00695c' : '#e53935');
+    const btn = $(evergreen ? '#btn-evergreen' : '#btn-not-lawn');
     if (btn) {
       btn.classList.add('on');
-      btn.textContent = 'Tracing not-lawn';
+      btn.textContent = evergreen ? 'Tracing evergreen' : 'Tracing not-lawn';
     }
     draw.changeMode('draw_polygon');
-    setHint('Tap around the edge of something that is NOT lawn -- a parking lot, '
-      + 'a road, a pond -- then press the ✓.');
-    setStatus('Tracing not-lawn. These are for training only and never count toward the total.');
+    if (evergreen) {
+      setHint('Tap around the crown of an evergreen -- pine, spruce, cedar, holly -- '
+        + 'then press the ✓.');
+      setStatus('Tracing an evergreen. For teaching the detector which trees are evergreen; '
+        + 'never counts toward the total.');
+    } else {
+      setHint('Tap around the edge of something that is NOT lawn -- a parking lot, '
+        + 'a road, a pond -- then press the ✓.');
+      setStatus('Tracing not-lawn. These are for training only and never count toward the total.');
+    }
   } else {
     const was = state.notLawnMode;
     leaveNotLawnMode();
@@ -12886,6 +12912,8 @@ function reset() {
   /* Not-lawn traces belong to the map they were drawn on. */
   setNotLawnMode(false);
   state.notLawn = [];
+  state.leafOff = null;
+  refreshLeafOff();
   /* So does having looked at Google or NAIP, and having been asked about it. */
   state.altViewed = null;
   state.alignAsked = false;
@@ -13314,12 +13342,22 @@ function setInferredMode(on) {
 }
 
 $('#btn-inferred-mode').addEventListener('click', () => setInferredMode(!state.inferredMode));
-$('#btn-not-lawn')?.addEventListener('click', () => setNotLawnMode(!state.notLawnMode));
+const tracingKind = (kind) => state.notLawnMode && state.notLawnKind === kind;
+$('#btn-not-lawn')?.addEventListener('click', () => setNotLawnMode(!tracingKind('notlawn'), 'notlawn'));
+$('#btn-evergreen')?.addEventListener('click', () => setNotLawnMode(!tracingKind('evergreen'), 'evergreen'));
 $('#btn-not-lawn-undo')?.addEventListener('click', () => {
   state.notLawn.pop();
   refreshNotLawn();
-  setStatus(`Removed. ${state.notLawn.length} not-lawn trace${state.notLawn.length === 1 ? '' : 's'} left on this map.`);
+  setStatus(`Removed. ${state.notLawn.length} trace${state.notLawn.length === 1 ? '' : 's'} left on this map.`);
 });
+/* Leaf-off or not, for the photo on screen (tinker mode; owner 2026-10-04). */
+$('#leaf-off')?.addEventListener('change', (e) => {
+  state.leafOff = e.target.value === '' ? null : e.target.value === '1';
+});
+function refreshLeafOff() {
+  const sel = $('#leaf-off');
+  if (sel) sel.value = state.leafOff === null || state.leafOff === undefined ? '' : state.leafOff ? '1' : '0';
+}
 
 $('#toggle-inside-lawn').addEventListener('change', (e) => {
   state.inferredInside = e.target.checked;
@@ -13557,7 +13595,18 @@ function finishedBody() {
        * on -- an empty list means "I removed them" -- and as null otherwise,
        * which the server reads as "leave whatever is stored alone".
        */
-      notLawn: state.dev || state.notLawn.length ? state.notLawn.slice() : null,
+      notLawn: (() => {
+        const nl = state.notLawn.filter((g) => g.kind !== 'evergreen');
+        return state.dev || nl.length ? nl : null;
+      })(),
+      /* Evergreen crowns and whether the photo is leaf-off (tinker mode,
+         owner 2026-10-04): labels for the detector, saved apart. Null, as
+         with notLawn, leaves what is stored alone. */
+      evergreens: (() => {
+        const ev = state.notLawn.filter((g) => g.kind === 'evergreen');
+        return state.dev || ev.length ? ev : null;
+      })(),
+      leafOff: state.leafOff === true || state.leafOff === false ? state.leafOff : null,
       // Null, not empty, when nothing was detected: "no detection happened"
       // and "the detector found nothing" are different examples.
       detectedShapes: state.detectedShapes

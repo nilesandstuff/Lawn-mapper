@@ -1148,3 +1148,7 @@ kbd {
   background: #fff; font-size: 15px;
 }
 .naipalign-buttons button:active { background: #eef2ee; }
+
+/* The leaf-off mark beside the tinker tools (2026-10-04). */
+.leafoff-pick { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.leafoff-pick select { font-size: 13px; padding: 4px 6px; }

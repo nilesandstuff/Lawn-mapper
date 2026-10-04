@@ -536,6 +536,8 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
           shapes: JSON.parse(r.shapes || '[]'),
           detectedShapes: r.detected_shapes ? JSON.parse(r.detected_shapes) : null,
           notLawn: r.not_lawn ? JSON.parse(r.not_lawn) : null,
+          evergreens: r.evergreens ? JSON.parse(r.evergreens) : null,
+          leafOff: r.leaf_off === 1 ? true : r.leaf_off === 0 ? false : null,
         }));
 
       const waiting = await env.DB.prepare(
@@ -601,6 +603,9 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
         /* The owner's not-lawn traces, so reopening a map to correct it does
            not drop them (tinker mode, 2026-09-29). */
         notLawn: JSON.parse(row.not_lawn || '[]'),
+        /* The owner's evergreen crowns and leaf-off mark (2026-10-04). */
+        evergreens: JSON.parse(row.evergreens || '[]'),
+        leafOff: row.leaf_off === 1 ? true : row.leaf_off === 0 ? false : null,
       }, 200, origin);
     } catch (e) {
       return json({ error: String(e?.message || e).slice(0, 200) }, 500, origin);

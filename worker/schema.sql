@@ -341,6 +341,14 @@ CREATE TABLE IF NOT EXISTS corpus (
   -- were made. Renumbered once, the same day, from "#N" to C numbers; never
   -- again.
   lot_no         INTEGER,
+  -- EVERGREEN CROWNS AND LEAF-OFF PHOTOS (owner, tinker mode, 2026-10-04):
+  -- labels for teaching the detector to tell evergreens, trees in leaf and
+  -- bare trees apart, and a leaf-off photo from a summer one -- never asked
+  -- of the people measuring. `evergreens` is a JSON array of GeoJSON
+  -- polygons round evergreen crowns; `leaf_off` is 1 leaf-off, 0 leaf-on,
+  -- NULL not marked, for the photo the map was finished on.
+  evergreens     TEXT,
+  leaf_off       INTEGER,
   -- GROUND THE TRACER OUTLINED AS NOT LAWN (owner, tinker mode, 2026-09-29):
   -- a JSON array of GeoJSON polygons -- a parking lot, a road, a pond -- traced
   -- to their edges. Training reads them as "graded, and not lawn"; nothing
