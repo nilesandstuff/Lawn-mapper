@@ -3046,6 +3046,38 @@ await page.waitForTimeout(300);
     (await page.evaluate(() => window.__lmDraft().corners)) === 4);
 
   /*
+   * EVERY CORNER UNDONE, THEN TAPPING AGAIN (owner, 2026-10-04: the map
+   * lurched, no dots went down, and the X did nothing). Draw drops a ring
+   * under three entries, so undoing to one corner left no outline and the
+   * next Undo, tap or X threw (draftRing). Undone to nothing, the drawing is
+   * still open, a tap starts it again, and the X puts it away.
+   */
+  const errorsBefore = errors.filter((e) => e.startsWith('PAGEERROR')).length;
+  for (let i = 0; i < 4; i++) { await page.click('#btn-undo'); await page.waitForTimeout(120); }
+  const none = await page.evaluate(() => window.__lmDraft());
+  check('undone to no corners, the drawing is still open',
+    none.mode === 'draw_polygon' && none.corners === 0, JSON.stringify(none));
+  await page.touchscreen.tap(px[0][0], px[0][1]);
+  await page.waitForTimeout(250);
+  await page.touchscreen.tap(px[1][0], px[1][1]);
+  await page.waitForTimeout(250);
+  const again = await page.evaluate(() => window.__lmDraft());
+  check('and tapping places corners again', again.mode === 'draw_polygon' && again.corners === 2, JSON.stringify(again));
+  for (let i = 0; i < 2; i++) { await page.click('#btn-undo'); await page.waitForTimeout(120); }
+  const cancelShown = await page.locator('#tool-cancel').isVisible();
+  if (cancelShown) await page.click('#tool-cancel');
+  await page.waitForTimeout(250);
+  const gone = await page.evaluate(() => window.__lmDraft());
+  check('and the X puts an emptied drawing away', cancelShown && gone.mode !== 'draw_polygon' && gone.corners === 0,
+    JSON.stringify({ cancelShown, ...gone }));
+  const thrownHere = errors.filter((e) => e.startsWith('PAGEERROR')).slice(errorsBefore);
+  check('and none of it threw', thrownHere.length === 0, thrownHere.join(' | '));
+  /* Back to the four corners the checks below expect. */
+  await page.click('#btn-draw');
+  await page.waitForTimeout(200);
+  for (const [x, y] of px) { await page.mouse.click(x, y); await page.waitForTimeout(150); }
+
+  /*
    * A TAP ON A PLACED POINT IS NOT "DONE" (owner, 2026-09-30): New shape
    * finishes with the checkmark only, and a tap squarely on a point already
    * placed adds nothing.
