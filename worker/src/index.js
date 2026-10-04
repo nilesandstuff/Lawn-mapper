@@ -34,7 +34,7 @@
  *   ASSETS           -- the static site in public/
  */
 
-import { countyServicesAt, countyServiceById, serviceMeta } from './county.js';
+import { countyServicesAt, countyServiceById } from './county.js';
 import { encodePng } from './tile-mosaic.js';
 import { lookupParcel, lookupNeighbours } from './parcel.js';
 import { isCovered, servesCounty } from './counties.js';
@@ -453,71 +453,12 @@ async function countyMosaic(url, frame, origin) {
 }
 
 /*
- * TILES-ONLY COUNTY PHOTOS, THE EDITOR'S SIDE -- RETIRED (owner, 2026-10-02).
- *
- * On the free Workers plan the browser stitched and these relayed. Since the
- * Workers Paid plan the Worker makes the picture itself (countyMosaic), and
- * app.js no longer calls these; they stay only for pages loaded before that
- * change, and can be deleted once nobody has one open:
- *
- *   GET  /api/county-meta?svc=ID            the tile scheme (one fetch)
- *   GET  /api/county-tile?svc=ID&l=&r=&c=    one tile (one fetch, cached)
- *   POST /api/county-frame?svc=ID&lng..      the stitched picture -> R2
- *   GET  /api/county-frame/<key>            it, for a detector
- *
- * Only services in the catalogue, by id, and only tile caches; the frame's
- * key is made from the service and the frame, so a lot has one picture.
+ * TILES-ONLY COUNTY PHOTOS, THE EDITOR'S SIDE -- REMOVED (2026-10-04). The
+ * browser used to stitch tiles and upload the picture (/api/county-meta,
+ * /api/county-tile, /api/county-frame); since the Workers Paid plan the Worker
+ * makes it itself (countyMosaic), and the upload route had become an open,
+ * unsigned file host on this domain. Those paths now fall through to 404.
  */
-const COUNTY_FRAME_MAX = 6 * 1024 * 1024;
-
-async function countyTiles(request, url, env, origin) {
-  const path = url.pathname;
-  if (path.startsWith('/api/county-frame/') && request.method === 'GET') {
-    const key = path.slice('/api/county-frame/'.length);
-    if (!/^[a-f0-9]{40}$/.test(key) || !env.CORPUS) return json({ error: 'Not found' }, 404, origin);
-    const obj = await env.CORPUS.get(`frames/county/${key}.jpg`);
-    if (!obj) return json({ error: 'Not found' }, 404, origin);
-    return new Response(obj.body, { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400', ...cors(origin) } });
-  }
-  const svc = await countyServiceById(env, url.searchParams.get('svc'));
-  if (!svc || !svc.tiled) return json({ error: 'No tiled county photo service by that id' }, 400, origin);
-
-  if (path === '/api/county-meta') {
-    let m;
-    try { m = await serviceMeta(svc.url); } catch (e) { return json({ error: String(e.message || e) }, 502, origin); }
-    const ti = m.tileInfo || {};
-    return json({
-      tileInfo: { rows: ti.rows, cols: ti.cols, origin: ti.origin, spatialReference: ti.spatialReference, lods: ti.lods },
-      spatialReference: m.spatialReference, maxScale: m.maxScale,
-    }, 200, origin);
-  }
-
-  if (path === '/api/county-tile') {
-    const [l, r, c] = ['l', 'r', 'c'].map((k) => url.searchParams.get(k));
-    if (![l, r, c].every((v) => /^\d{1,9}$/.test(v || ''))) return json({ error: 'Bad tile' }, 400, origin);
-    const res = await fetch(`${svc.url}/tile/${l}/${r}/${c}`, { cf: { cacheTtl: 604800, cacheEverything: true } });
-    if (!res.ok) return new Response(null, { status: res.status === 404 ? 404 : 502, headers: cors(origin) });
-    return new Response(res.body, {
-      headers: { 'Content-Type': res.headers.get('Content-Type') || 'image/jpeg', 'Cache-Control': 'public, max-age=604800', ...cors(origin) },
-    });
-  }
-
-  if (path === '/api/county-frame' && request.method === 'POST') {
-    if (!env.CORPUS) return json({ error: 'No bucket' }, 503, origin);
-    const { frame } = frameFromQuery(url.searchParams);
-    if (!Number.isFinite(frame.lng) || !Number.isFinite(frame.lat)) return json({ error: 'lng and lat required' }, 400, origin);
-    const body = new Uint8Array(await request.arrayBuffer());
-    if (body.length > COUNTY_FRAME_MAX || body[0] !== 0xff || body[1] !== 0xd8) {
-      return json({ error: 'A JPEG under 6 MB, please' }, 400, origin);
-    }
-    const id = `${svc.id}|${frame.lng.toFixed(7)}|${frame.lat.toFixed(7)}|${frame.zoom}|${frame.size}|${frame.height}`;
-    const key = [...new Uint8Array(await crypto.subtle.digest('SHA-1', new TextEncoder().encode(id)))]
-      .map((b) => b.toString(16).padStart(2, '0')).join('');
-    await env.CORPUS.put(`frames/county/${key}.jpg`, body, { httpMetadata: { contentType: 'image/jpeg' } });
-    return json({ key }, 200, origin);
-  }
-  return json({ error: 'Not found' }, 404, origin);
-}
 
 /* ------------------------------------------------------------------ mask */
 /**
@@ -1525,14 +1466,6 @@ export default {
        */
       if (url.pathname === '/api/job' || url.pathname.startsWith('/api/job/')) {
         return await handleJobs(request, url, env, origin, ctx, json);
-      }
-
-      /* A tiles-only county photo, stitched in the browser: its tile scheme,
-         its tiles one by one, and the stitched picture handed back for a
-         detector to fetch. See countyTiles below. */
-      if (url.pathname.startsWith('/api/county-')
-        && url.pathname !== '/api/county-imagery') {
-        return await countyTiles(request, url, env, origin);
       }
 
       switch (url.pathname) {
