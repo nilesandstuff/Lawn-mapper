@@ -101,9 +101,10 @@ export const findPlanRow = (table) => table.find((t) => t.cfg.name === PLAN_ROW)
 /* THE ROW ON TRIAL, drawn in preference to THE PLAN's when a run scores it,
    because the pictures are how a candidate is judged (owner, 2026-09-26).
    The edge refiner was on trial (S19) and became THE PLAN (H60). */
-/* 2026-10-04: S22's see-through canopy with the evergreen rule (owner: "run
-   the canopy + green or brown fix"), so the pictures show it. */
-const TRIAL_ROW = `${PLAN_ROW}, see-through evergreen`;
+/* S22's see-through canopy, colour mode (owner, 2026-10-04: "run the canopy +
+   green or brown fix"). Was the evergreen row for run 37195418220, which H69
+   measured as the worst of the four under the trees. */
+const TRIAL_ROW = `${PLAN_ROW}, see-through colour`;
 
 /*
  * HOW MANY NUMBERS OF THE BACKBONE'S 384 EACH PIXEL CARRIES.

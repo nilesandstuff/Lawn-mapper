@@ -850,6 +850,74 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H69. 80 lawns, pond examples on, one seed: THE PLAN's row 21.2% (was 24.0% at 55); see-through `colour` 20.6% and better on the lots that look leaf-off; the `evergreen` rule FAILS -- it doubles the error under the trees on leaf-off lots, 2026-10-04
+
+Run 37195418220 (the owner's run; its first launch, 37186132376, died at the
+see-through table on a bug of mine -- a local name shadowing an import -- after
+training, so it left no results). `lawns: all` = **80 approved lots** (all 80
+on the console's card), `not_lawn: on` (the approved pond-only maps as
+examples), fused + edge, `canopy: on lawn`, seed 7, CPU, extraction 69 min
+on the first launch (cache miss: new lots), training + scoring 1 h 57 min.
+Every lot now carries its map number (#N, as on the console).
+
+**Headline, THE PLAN's row (decoder, edge refined + stage 3, span, lidar
+veto): 21.2%** over 80 lots; better than SAM on 39 of the 55 where SAM's
+answer is stored. Wrong ground: 43% within 0.5 m of the true edge, 60%
+within 1 m; median best shift 0.00, 0.00 m (no registration bug).
+
+**Lot by lot against run 36601001355** (S20 A, the configuration the alpha
+release uses; seed 7, 55 lots, no examples), workflow 24 run 37202209391,
+on the 55 lots both scored: **29 better / 15 worse / 11 level, median 24.0%
+-> 19.3%, paired change -0.8 [-1.5, +0.0], p 0.049.** Frozen 32: 17 / 8,
+-0.7; approved since: 12 / 7, -0.8. Most improved B28 #10 81.0 -> 23.0, B20
+#40 75.0 -> 39.2, B03 #29 56.7 -> 26.9, #62 92.6 -> 66.6, B24 #36 36.1 ->
+15.2. Most worsened #61 321 -> 344 (an 870 sq ft lawn; any miss is a huge
+percentage), B19 #42 46.5 -> 64.0, #72 25.7 -> 35.2, B04 #47 57.7 -> 66.2,
+#66 10.8 -> 19.3. **NOT attributable:** two things changed at once (25 more
+lots to learn from, and the pond examples on), on one seed each, and a seed
+alone moves a lot about 2.6 points (H50). It says the larger corpus with
+ponds is not worse and probably better; it does not say which did it. H57
+measured examples (public outlines then) as clearly worse; these are the
+owner's own pond traces, and a pond-only map adds no lawn-edge labels.
+
+**See-through canopy (S22), at THE PLAN's cell over the refined decoder,
+headline / seen / inferred:**
+
+| mode | every lot (80) | looks leaf-off (22) | county photo (11) |
+|---|---|---|---|
+| off (as served) | 21.1 / 18.0 / 26.2 | 26.3 / 22.6 / 34.9 | 58.5 / 53.0 / 36.7 |
+| colour | 20.5 / 19.2 / 32.5 | **22.6 / 22.1 / 37.2** | 49.7 / 52.7 / 33.4 |
+| evergreen | 21.3 / 19.1 / 44.3 | 29.0 / 20.1 / **73.1** | 51.5 / 47.1 / 73.1 |
+| trust | 24.0 / 17.7 / 43.4 | 22.6 / 21.3 / 41.9 | 50.1 / 52.5 / 67.4 |
+
+As full rows (with the veto): colour 20.6%, evergreen 21.4%, THE PLAN 21.2%.
+Colour against THE PLAN on the 55 shared with 36601001355 (workflow 24 run
+37202215454): 28 better / 18 worse, p 0.18 -- weaker than THE PLAN's own row
+against it, so colour's gain is concentrated, not general.
+
+- **`colour` helps the headline where it should** (leaf-off 26.3 -> 22.6),
+  but its INFERRED column gets worse on those lots (34.9 -> 37.2) and over
+  all lots (26.2 -> 32.5). S22's bar needed both to fall: **NOT MET.** The
+  gain is on visible ground under bare crowns being kept, the guessing
+  under the remaining canopy got worse.
+- **`evergreen` FAILS outright:** the inferred column on leaf-off lots goes
+  34.9 -> 73.1. Calling every not-bare crown on a leaf-off photo an
+  evergreen and clearing lawn under it removes far more traced lawn than it
+  saves -- the colour rule's known blind spot (green grass through bare
+  branches reads green) and the "too dark to see" cells, which this rule
+  also counted as evergreen. The owner's premise (no grass under
+  evergreens) is not tested by this: the rule did not find evergreens.
+  Kept in code, NOT for serving; a better evergreen test is needed (needle
+  texture, or leaf-on lidar returns), not this one.
+- **Leaf-off is common on Mapbox too:** 22 of 80 lots read leaf-off, 13 of
+  them Mapbox photos (B05 98%, B12 94%, B06 85%, B10 84%, B09 84%) -- the
+  owner's point that leaf-off is a property of the photo, confirmed. Only 22
+  lots: above S22's "about 15" floor, but one seed.
+- **The pictures were drawn for the evergreen row** (TRIAL_ROW was set
+  before the run). It differs from THE PLAN's only under canopy on the 22
+  leaf-off lots, where it is the worst of the four. TRIAL_ROW is now the
+  colour row for the next run.
+
 ### H68. A bug, not a measurement: every map saved on a county photo before 2026-10-04 banked that photo UNMOVED by the editor's line-up, while its outlines were drawn on the moved photo, 2026-10-04
 
 What was wrong (found from the owner's report: card on the county photo,
@@ -5612,3 +5680,5 @@ worse on the lots approved since. Then it joins THE PLAN.
 | 2026-09-29 | A 36488404436 36503982887 36503985030 36503987452 36507985116 36503991446; B 36495279827 36495282695 36495284820 36507987770 36503996787 36503998921 | 55 | **S18**: whole lot vs both scales, six seeds a side, Modal except A s11 / B s10 (CPU) | — | — | **H59: both scales closed.** 26 better / 19 worse, -0.2 [-1.2, +0.4], p 0.37. B24 -15, B32 -9; B20 +8, B10 +5; B28 unchanged |
 | 2026-09-29 | 36555664599 36558441061 36558444702 | 55 | **S19 edge refiner** (`decoder: fused + edge`), windows off, `canopy: on lawn`, seeds 7/8/9, CPU, cache hit (extract 4 min); plain vs refined within each run | — | — | **H60: passes.** 34 better / 9 worse, -1.7 [-2.6, -0.5], p 0.0002; since 12 / 5. B03 -16, B32 -11; B19 +14, B20 +10. Refiner 14-35 min |
 | 2026-09-29 | A 36601001355, B 36601005719 | 55 (+26 examples in B) | **S20**: THE PLAN, `examples: off` vs `some` (4 per kind), seed 7, CPU | — | — | **H61: screen failed.** 14 better / 33 worse, +0.8 [+0.3, +1.4], p 0.008. B20 75 -> 36, B19 46 -> 30; B03 57 -> 97, B23 33 -> 55 |
+| 2026-10-04 | 37186132376 | 80 | THE PLAN + see-through rows, `not_lawn: on`, seed 7, CPU | — | — | **Died at the see-through table** (my bug: a local `bareShare` shadowed the import) after 2 h 50 min; no results. Its extraction is the cache the next run used |
+| 2026-10-04 | 37195418220 | **80** (+ pond-only examples) | THE PLAN (fused + edge, canopy on lawn), `not_lawn: on`, `lawns: all`, seed 7, CPU, cache hit; colour and evergreen as rows | **21.2%** (colour row 20.6%) | — | **H69.** vs 36601001355 on 55 shared: 29 better / 15 worse, 24.0 -> 19.3, -0.8 [-1.5, +0.0], p 0.049 (workflow 24 37202209391). Colour better on leaf-off headline, worse inferred: S22 bar not met. Evergreen fails (inferred 34.9 -> 73.1 on leaf-off). Every lot tagged #N |
