@@ -904,7 +904,11 @@ job twice on seeds 7 and 8; re-run with the Modal output kept. A first CPU run,
 - **What the trade suggests (NOT measured):** use the taught decoder only
   under the canopy, and THE PLAN's answer everywhere else. That puts each
   where it measured better. It needs no new training: one more scorer row
-  over the masks these runs already make.
+  over the masks these runs already make. **Built (2026-10-05):** THE
+  PLAN's row with the taught decoder's answer on every tree-model canopy
+  cell, "…, taught under the canopy". `decoder: fused + edge + trees` now
+  trains only the taught arm. The returns arm is bookmarked under
+  `fused + edge + trees + returns`. Runs on the free runner, seeds 7/8/9.
 
 ### H74. Trees from the lidar alone, first pass: on the owner's inferred lawn (grass under a tree) lidar trees cover 52%, the tree model 73%, either 85%; lidar finds trees the model missed on some maps and almost none on others, 2026-10-05
 

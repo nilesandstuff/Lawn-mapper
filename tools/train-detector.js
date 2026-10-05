@@ -106,7 +106,7 @@ const TRIAL_ROW = `${PLAN_ROW}, see-through colour`;
 /* THE DECODER TAUGHT UNDER TREES (owner, 2026-10-05), alone: drawn first
    when a `fused + edge + trees` run scored it, since the pictures are how a
    candidate is judged. The one with the lidar by return, then without. */
-const TRIAL_ROWS = ['decoder, taught under trees + returns', 'decoder, taught under trees', TRIAL_ROW];
+const TRIAL_ROWS = [`${PLAN_ROW}, taught under the canopy`, 'decoder, taught under trees + returns', 'decoder, taught under trees', TRIAL_ROW];
 
 /*
  * HOW MANY NUMBERS OF THE BACKBONE'S 384 EACH PIXEL CARRIES.
@@ -2502,6 +2502,15 @@ async function main() {
         let mask = canopy
           ? stage3(masks[held], canopy, L.grid, L.gridH, { mpp: L.mpp, height: L.height, ...opts, bare, evergreen }).mask
           : masks[held];
+        /* UNDER THE TREES, ANOTHER DECODER'S ANSWER (H75): on every canopy
+           cell, the decoder taught under trees decides; everywhere else
+           stays this row's. The canopy is the tree model's, known at
+           prediction time -- never the tracer's lawn. */
+        const under = opts.under && opts.under[held];
+        if (under && canopy) {
+          mask = Uint8Array.from(mask);
+          for (let i = 0; i < mask.length; i++) if (canopy[i]) mask[i] = under[i] ? 1 : 0;
+        }
         /* Colour on the edges only (tools/colour-edges.js), before the veto
            so roof and void still have the last word. */
         if (opts.edges && L.cheap) {
@@ -2728,6 +2737,14 @@ async function main() {
          * leaf-off the crowns still green are never lawn). Full rows, so the
          * lot-by-lot figures land in lot-results.json beside THE PLAN's.
          */
+        /* THE TWO WHERE EACH MEASURED BETTER (H75): THE PLAN's answer in
+           the open, the decoder taught under trees under the canopy. */
+        const taught = label === 'edge refined' && decoderMasks.find((d) => d.label === 'taught under trees');
+        if (taught) {
+          const cfgU = { ...cfg, name: `${cfg6.name}, taught under the canopy`, stage3: true };
+          console.log(`Scoring "${cfgU.name}" (THE PLAN outside the tree model's canopy, the taught decoder inside it)…`);
+          table.push(summarise(cfgU, judge(masks, { spanM: 8, reachM: 1, minRing: 0.5, veto: true, under: taught.masks }), cfg.dims));
+        }
         for (const mode of ['colour', 'evergreen']) {
           const cfgS = { ...cfg, name: `${cfg6.name}, see-through ${mode}`, stage3: true };
           console.log(`Scoring "${cfgS.name}"…`);

@@ -84,6 +84,8 @@ def check_values():
 
 def check_trees():
     p = plan(inputs(canopy="on lawn", decoder="fused + edge + trees"), "r", [])
+    assert [s["env"]["OUT"] for s in p["steps"] if s["script"] == "train_decoder.py"] == ["preds", "preds-edge", "preds-trees"]
+    p = plan(inputs(canopy="on lawn", decoder="fused + edge + trees + returns"), "r", [])
     dec = {s["env"]["OUT"]: s["env"] for s in p["steps"] if s["script"] == "train_decoder.py"}
     assert list(dec) == ["preds", "preds-edge", "preds-trees", "preds-trees-returns"], list(dec)
     for out, step in (("preds", "Train the decoder"), ("preds-edge", "Train the decoder with the edge refiner"),

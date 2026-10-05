@@ -215,7 +215,12 @@ on:
         # RETURN (penetration, split pulses, spread; FUSE_RETURNS). Read
         # ALONE, beside THE PLAN's row: if a decoder taught what is under a
         # tree beats stage 3's rules, the rules can go. Free runner only.
-        options: ['on', 'fused', 'fused + edge', 'fused + edge + trees', 'off']
+        # H75: the taught decoder tied THE PLAN (better under the trees,
+        # worse in the open) and the lidar by return added nothing, so
+        # "+ trees" now trains only the taught decoder and scores THE PLAN
+        # with the taught answer under the canopy as a row of its own;
+        # "+ trees + returns" keeps the bookmarked returns arm.
+        options: ['on', 'fused', 'fused + edge', 'fused + edge + trees', 'fused + edge + trees + returns', 'off']
       seed:
         # THE DECODER'S SEED. It is deterministic given the seed and the
         # features (H26: two runs identical to the decimal), which means one
@@ -367,7 +372,7 @@ jobs:
       # Stop in seconds rather than after an hour of extraction when the
       # choices cannot go together.
       - name: Check the choices go together
-        if: ${{ (inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && (inputs.canopy == 'compare' || (inputs.decoder == 'fused + edge + trees' && inputs.canopy == 'off'))) || (inputs.not_lawn == 'on' && inputs.gpu == 'modal') || (inputs.release != 'off' && (inputs.decoder != 'fused + edge' || inputs.canopy == 'compare' || inputs.canopy == 'off')) }}
+        if: ${{ (inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && (inputs.canopy == 'compare' || (startsWith(inputs.decoder, 'fused + edge + trees') && inputs.canopy == 'off'))) || (inputs.not_lawn == 'on' && inputs.gpu == 'modal') || (inputs.release != 'off' && (inputs.decoder != 'fused + edge' || inputs.canopy == 'compare' || inputs.canopy == 'off')) }}
         run: |
           echo "::error::'fused + edge' (and '+ trees', which also needs a canopy setting) trains its decoders under ONE canopy setting (canopy not 'compare'); not-lawn traces are read on the free runner only; a release is THE PLAN (decoder 'fused + edge', a canopy setting) on either runner."
           exit 1
@@ -561,7 +566,7 @@ jobs:
       # read again keeping each point's return number (tools/tree_lidar.py).
       # Not cached: about 15-25 minutes of point downloads.
       - name: Read the lidar by return over the frames
-        if: ${{ inputs.decoder == 'fused + edge + trees' && inputs.canopy != 'off' }}
+        if: ${{ inputs.decoder == 'fused + edge + trees + returns' && inputs.canopy != 'off' }}
         env:
           FRAMES: frames
           PLAN: lidar-plan.json
@@ -606,7 +611,7 @@ jobs:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
           RUN: gh-${{ github.run_id }}-${{ github.run_attempt }}
-          SEND: ${{ inputs.canopy == 'off' && 'frames' || '' }},lidar,naip${{ inputs.decoder == 'fused + edge + trees' && ',tree-lidar' || '' }}
+          SEND: ${{ inputs.canopy == 'off' && 'frames' || '' }},lidar,naip${{ inputs.decoder == 'fused + edge + trees + returns' && ',tree-lidar' || '' }}
           WINDOWS: ${{ inputs.windows }}
           CANOPY: ${{ inputs.canopy }}
           DECODER: ${{ inputs.decoder }}
@@ -786,7 +791,7 @@ jobs:
       # edge refiner) again over the same features, seed and folds, with the
       # inferred lawn graded as lawn. Then the same with the lidar by return.
       - name: Train the decoder taught under trees
-        if: ${{ inputs.release == 'off' && inputs.decoder == 'fused + edge + trees' && inputs.canopy != 'compare' && inputs.canopy != 'off' && inputs.gpu != 'modal' }}
+        if: ${{ inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge + trees') && inputs.canopy != 'compare' && inputs.canopy != 'off' && inputs.gpu != 'modal' }}
         env:
           FEATURES: feats
           FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
@@ -806,7 +811,7 @@ jobs:
           (cd tools && python3 under_trees_test.py)
           python3 tools/train_decoder.py
       - name: Train the decoder taught under trees, with the lidar by return
-        if: ${{ inputs.release == 'off' && inputs.decoder == 'fused + edge + trees' && inputs.canopy != 'compare' && inputs.canopy != 'off' && inputs.gpu != 'modal' }}
+        if: ${{ inputs.release == 'off' && inputs.decoder == 'fused + edge + trees + returns' && inputs.canopy != 'compare' && inputs.canopy != 'off' && inputs.gpu != 'modal' }}
         env:
           FEATURES: feats
           FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
@@ -929,7 +934,7 @@ jobs:
           # The three-way comparison, one row each. The seen column is scored
           # with the canopy unseen on lawn, whichever decoder is being read.
           # S19 (`fused + edge`): the refined decoder as a row of its own.
-          PREDICTIONS_DIRS: ${{ (inputs.decoder != 'off' && inputs.canopy == 'compare' && 'no canopy=preds-none,canopy on lawn=preds-lawn,canopy everywhere=preds-all') || (inputs.decoder == 'fused + edge' && 'edge refined=preds-edge') || (inputs.decoder == 'fused + edge + trees' && 'edge refined=preds-edge,taught under trees=preds-trees,taught under trees + returns=preds-trees-returns') || '' }}
+          PREDICTIONS_DIRS: ${{ (inputs.decoder != 'off' && inputs.canopy == 'compare' && 'no canopy=preds-none,canopy on lawn=preds-lawn,canopy everywhere=preds-all') || (inputs.decoder == 'fused + edge' && 'edge refined=preds-edge') || (inputs.decoder == 'fused + edge + trees' && 'edge refined=preds-edge,taught under trees=preds-trees') || (inputs.decoder == 'fused + edge + trees + returns' && 'edge refined=preds-edge,taught under trees=preds-trees,taught under trees + returns=preds-trees-returns') || '' }}
           # The canopy joins the hand-marked unseen ground for the seen column.
           CANOPY_DIR: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
           CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}
