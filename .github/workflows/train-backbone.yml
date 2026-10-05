@@ -367,9 +367,9 @@ jobs:
       # Stop in seconds rather than after an hour of extraction when the
       # choices cannot go together.
       - name: Check the choices go together
-        if: ${{ (inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && (inputs.canopy == 'compare' || inputs.gpu == 'modal' || (inputs.decoder == 'fused + edge + trees' && inputs.canopy == 'off'))) || (inputs.not_lawn == 'on' && inputs.gpu == 'modal') || (inputs.release != 'off' && (inputs.decoder != 'fused + edge' || inputs.canopy == 'compare' || inputs.canopy == 'off')) }}
+        if: ${{ (inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && (inputs.canopy == 'compare' || (inputs.decoder == 'fused + edge + trees' && inputs.canopy == 'off'))) || (inputs.not_lawn == 'on' && inputs.gpu == 'modal') || (inputs.release != 'off' && (inputs.decoder != 'fused + edge' || inputs.canopy == 'compare' || inputs.canopy == 'off')) }}
         run: |
-          echo "::error::'fused + edge' (and '+ trees', which also needs a canopy setting) trains its decoders under ONE canopy setting on the free runner (canopy not 'compare', gpu 'github'); not-lawn traces are read on the free runner only; a release is THE PLAN (decoder 'fused + edge', a canopy setting) on either runner."
+          echo "::error::'fused + edge' (and '+ trees', which also needs a canopy setting) trains its decoders under ONE canopy setting (canopy not 'compare'); not-lawn traces are read on the free runner only; a release is THE PLAN (decoder 'fused + edge', a canopy setting) on either runner."
           exit 1
 
       - run: npm ci
@@ -561,7 +561,7 @@ jobs:
       # read again keeping each point's return number (tools/tree_lidar.py).
       # Not cached: about 15-25 minutes of point downloads.
       - name: Read the lidar by return over the frames
-        if: ${{ inputs.decoder == 'fused + edge + trees' && inputs.canopy != 'off' && inputs.gpu != 'modal' }}
+        if: ${{ inputs.decoder == 'fused + edge + trees' && inputs.canopy != 'off' }}
         env:
           FRAMES: frames
           PLAN: lidar-plan.json
@@ -606,7 +606,7 @@ jobs:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
           RUN: gh-${{ github.run_id }}-${{ github.run_attempt }}
-          SEND: ${{ inputs.canopy == 'off' && 'frames' || '' }},lidar,naip
+          SEND: ${{ inputs.canopy == 'off' && 'frames' || '' }},lidar,naip${{ inputs.decoder == 'fused + edge + trees' && ',tree-lidar' || '' }}
           WINDOWS: ${{ inputs.windows }}
           CANOPY: ${{ inputs.canopy }}
           DECODER: ${{ inputs.decoder }}
@@ -670,7 +670,7 @@ jobs:
         run: |
           mkdir -p work
           have=""
-          for d in frames canopy lidar naip tree-lidar feats feats-whole lidar-plan.json preds preds-none preds-lawn preds-all; do
+          for d in frames canopy lidar naip tree-lidar feats feats-whole lidar-plan.json preds preds-edge preds-trees preds-trees-returns preds-none preds-lawn preds-all; do
             if [ -e "$d" ]; then have="$have $d"; fi
           done
           du -sh $have || true

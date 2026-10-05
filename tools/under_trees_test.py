@@ -30,6 +30,9 @@ lab[:, :, 1] = 255
 lab[:8, :8, 2] = 255
 Image.fromarray(lab).save(os.path.join(d, "lot-labels.png"))
 shape = {"gridH": gh, "gridW": gw, "dim": dim}
+# Only the weights are under test; the step this runs in has the refiner on.
+td.REFINE = False
+td.FUSE = False
 
 td.UNDER_TREES = False
 plain = td.read_lawn(d, d, "lot", shape)

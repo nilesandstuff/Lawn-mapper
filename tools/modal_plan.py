@@ -26,7 +26,7 @@ def plan(inputs, run, send):
     canopy = inputs["canopy"]
     decoder = inputs["decoder"]
     seed = inputs["seed"]
-    fused = "1" if decoder == "fused" else ""
+    fused = "1" if decoder.startswith("fused") else ""
     whole = "feats-whole" if windows == "both" else ""
 
     steps = []
@@ -67,6 +67,21 @@ def plan(inputs, run, send):
                 "FUSE_CANOPY": "1" if canopy == "everywhere" else "0",
             }})
             outs = ["preds"]
+            # THE PLAN's refined decoder, and (S24, owner 2026-10-05) the two
+            # taught under trees: the env of workflow 14's own steps for them.
+            if decoder.startswith("fused + edge"):
+                edge = {**common, "FUSE": "1", "CANOPY": "canopy" if canopy != "off" else "",
+                        "CANOPY_MODE": "all" if canopy == "everywhere" else "lawn",
+                        "FUSE_CANOPY": "1" if canopy == "everywhere" else "0", "REFINE": "1"}
+                steps.append({"script": "train_decoder.py", "env": {**edge, "OUT": "preds-edge"}})
+                outs.append("preds-edge")
+                if decoder == "fused + edge + trees":
+                    steps.append({"script": "train_decoder.py", "env": {
+                        **edge, "CANOPY": "canopy", "OUT": "preds-trees", "UNDER_TREES": "1"}})
+                    steps.append({"script": "train_decoder.py", "env": {
+                        **edge, "CANOPY": "canopy", "OUT": "preds-trees-returns", "UNDER_TREES": "1",
+                        "FUSE_RETURNS": "tree-lidar"}})
+                    outs += ["preds-trees", "preds-trees-returns"]
         else:
             steps.append({"script": "train_decoder.py", "env": {**common, "OUT": "preds-none"}})
             steps.append({"script": "train_decoder.py", "env": {
