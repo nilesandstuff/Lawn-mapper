@@ -850,6 +850,36 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H73. Lidar by return, per labelled crown: evergreen vs broadleaf in leaf goes from chance (54% on colour) to 64-65% held out by map -- better, not good; any season of flight mixed in, 2026-10-05
+
+Workflow 29 run 37256336621 (tools/tree_lidar.py, then tools/tree-labels.js
+with LIDAR on). The same 46 maps and 205 crowns as H71. **Lidar lies under
+194 of the 205 crowns, on 42 maps**, from projects flown 2011 to 2020. Per
+1 m cell it keeps which return of its pulse each point was. Each crown gets
+the median over its cells.
+
+| question | crowns | best single feature (held out) | all together (logistic, held out) |
+|---|---|---|---|
+| 2. evergreen vs broadleaf, colour only | 36 v 103 | exg / darkShare 61% | 54% |
+| 3. same, lidar only | 35 v 92 | l_last_h 65% (AUC 0.65, higher = evergreen) | 64% |
+| 4. same, lidar + colour | 35 v 92 | l_last_h 65% | 65% |
+| 5. not a tree vs tree, lidar only | 5 v 184 | l_multi 69% | 73% |
+
+- **The direction is what the physics predicts.** In evergreens the last
+  return sits higher (l_last_h, AUC 0.65), fewer pulses reach the ground
+  (l_penetration 0.35), and fewer pulses split (l_multi 0.36). Total
+  height (l_height 0.49) and first-return height (l_first_h 0.51) say
+  nothing, as they should not.
+- **But 64% is weak, and this run mixes every flight season.** A broadleaf
+  in a summer flight stops last returns just as an evergreen does, so in
+  leaf-on lidar this test cannot work by construction. H72 says roughly
+  half of counties have leaf-off lidar. The split by flight season (q6,
+  leaf-off flights only) is the next run.
+- **Not a tree: 5 examples.** AUCs from 5 crowns are noise. Do not read
+  73% as a finding.
+- Adding colour to lidar gives nothing (64 → 65%).
+- The colour results repeat H71 exactly (same labels): bare vs in leaf 91%.
+
 ### H72. Lidar under the county photos: 106 of the 111 counties we could place have 3DEP lidar; the newest is leaf-off in 50, mixed in 31, leaf-on in 25, and six years older than the county photo at the median, 2026-10-05
 
 Workflow 8, county mode `lidar`, run 37256816474 (tools/county-imagery.js
