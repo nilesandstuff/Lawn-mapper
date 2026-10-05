@@ -863,7 +863,11 @@ cut or classifier chosen on the other maps, scored on this one).
 labels:** labelled bare 82% called bare; in leaf 5%; evergreen 9%; not a
 tree 71%. **Caveat:** pixel totals are dominated by a few maps whose woods
 patch fills the frame (B09 29,600 m², B12 13,600, B11 7,300), so read the
-crowns for the general picture.
+crowns for the general picture. (Correction, owner 2026-10-05: the saved outlines on
+the earlier maps were not inverted, as the first reading's note said, but
+very large -- woods running well past the property line, correctly marking
+trees, though not only trees over lawn. The second reading used today's
+outlines either way.)
 
 **1. Bare vs in leaf (option #1), 61 vs 139 crowns on 45 maps:** excess
 green alone 85% balanced accuracy held out (AUC 0.88 as "less green =

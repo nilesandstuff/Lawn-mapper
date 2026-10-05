@@ -127,6 +127,44 @@ export function features(px, rgba, w, h, ruleBare) {
 export const FEATURES = ['brightness', 'exg', 'blueShare', 'redShare', 'leafyShare', 'notGreenShare', 'darkShare',
   'greyBrownShare', 'edge', 'texture', 'ruleBareShare'];
 
+/*
+ * THE LIDAR UNDER EACH CROWN (owner, 2026-10-05: first returns against later
+ * ones), from tools/tree_lidar.py: the median over the crown's 1 m cells of
+ * each layer. See that file for what each means.
+ */
+export const LIDAR_FEATURES = ['l_height', 'l_first_h', 'l_last_h', 'l_spread', 'l_penetration', 'l_multi', 'l_veg_class', 'l_building_class'];
+
+/** One frame's tree-lidar layers, or null. */
+export function readLidar(dir, id, readFile = readFileSync, exists = existsSync) {
+  const safe = String(id).replace(/\//g, '_');
+  const metaFile = join(dir, `${safe}.json`), dataFile = join(dir, `${safe}.f32`);
+  if (!exists(metaFile) || !exists(dataFile)) return null;
+  const meta = JSON.parse(readFile(metaFile, 'utf8'));
+  const buf = readFile(dataFile);
+  const all = new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
+  const n = meta.gw * meta.gh;
+  const layers = {};
+  meta.layers.forEach((k, j) => { layers[k] = all.subarray(j * n, (j + 1) * n); });
+  return { ...meta, layers };
+}
+
+/** Medians of the lidar layers over a crown's cells (photo w x h onto the lidar grid). */
+export function lidarFeatures(px, w, h, lid) {
+  const out = {};
+  const cells = new Set();
+  for (const i of px) {
+    const x = i % w, y = (i / w) | 0;
+    const c = Math.min(lid.gw - 1, Math.floor((x * lid.gw) / w)) + lid.gw * Math.min(lid.gh - 1, Math.floor((y * lid.gh) / h));
+    cells.add(c);
+  }
+  for (const k of LIDAR_FEATURES) {
+    const layer = lid.layers[k.slice(2)];
+    const vals = [...cells].map((c) => layer?.[c]).filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
+    out[k] = vals.length ? vals[vals.length >> 1] : NaN;
+  }
+  return out;
+}
+
 /* ----------------------------------------------------------- the reading */
 
 /** Area under the ROC curve of `score` for pos vs neg (0.5 = no better than chance). */
@@ -210,7 +248,8 @@ export function heldOutLogistic(rows, keys = FEATURES, { iters = 400, rate = 0.3
   return p.length && n.length ? (p.filter((s) => s.says).length / p.length + n.filter((s) => !s.says).length / n.length) / 2 : null;
 }
 
-function question(title, rows, posName, negName) {
+function question(title, rows, posName, negName, keys = FEATURES) {
+  rows = rows.filter((r) => keys.every((k) => Number.isFinite(r.f[k])));
   const pos = rows.filter((r) => r.y), neg = rows.filter((r) => !r.y);
   const maps = new Set(rows.map((r) => r.map)).size;
   console.log(`\n${title}: ${pos.length} ${posName} crowns vs ${neg.length} ${negName}, on ${maps} maps.`);
@@ -220,7 +259,7 @@ function question(title, rows, posName, negName) {
   }
   console.log(`  ${'feature'.padEnd(16)}${'AUC'.padStart(7)}${'best cut'.padStart(12)}${'held out by map'.padStart(18)}`);
   const lines = [];
-  for (const k of FEATURES) {
+  for (const k of keys) {
     const a = auc(pos.map((r) => r.f[k]), neg.map((r) => r.f[k]));
     const sep = a === null ? null : Math.max(a, 1 - a);
     const ho = heldOutCut(rows, k);
@@ -231,7 +270,7 @@ function question(title, rows, posName, negName) {
     const dir = a === null ? '' : a >= 0.5 ? `higher = ${posName}` : `lower = ${posName}`;
     console.log(`  ${k.padEnd(16)}${(a === null ? '--' : a.toFixed(2)).padStart(7)}${(ho === null ? '--' : `${(ho * 100).toFixed(0)}%`).padStart(30)}   ${dir}`);
   }
-  const lr = heldOutLogistic(rows);
+  const lr = heldOutLogistic(rows, keys);
   console.log(`  every feature together (logistic regression, held out by map): ${lr === null ? '--' : `${(lr * 100).toFixed(0)}% balanced accuracy`}`);
   return { n: { [posName]: pos.length, [negName]: neg.length, maps }, features: lines, logistic: lr };
 }
@@ -284,7 +323,12 @@ async function main() {
     }
     const m2 = model.mpp * model.mpp;
     const cs = crowns(labels, ids, w, h).filter((c) => c.px.length * m2 >= MIN_CROWN_M2);
-    for (const c of cs) rows.push({ map: m.name, code: c.code, areaM2: c.px.length * m2, f: features(c.px, photo.data, w, h, ruleBare) });
+    const lid = process.env.LIDAR ? readLidar(process.env.LIDAR, model.id) : null;
+    for (const c of cs) {
+      rows.push({ map: m.name, code: c.code, areaM2: c.px.length * m2,
+        f: { ...features(c.px, photo.data, w, h, ruleBare), ...(lid ? lidarFeatures(c.px, w, h, lid) : {}) },
+        lidar: lid ? { project: lid.project, year: lid.year } : null });
+    }
     let canopyPx = 0;
     for (let i = 0; i < ids.length; i++) if (ids[i]) canopyPx++;
     perMap.push({ name: m.name, status: saved.status, stale: !fresh, labelledM2: Math.round(labelled * m2),
@@ -313,10 +357,25 @@ async function main() {
   const q2 = question('2. EVERGREEN VS BROADLEAF IN LEAF',
     rows.filter(leafy).map((r) => ({ ...r, y: r.code === 1 })), 'evergreen', 'broadleaf');
 
+  /* THE LIDAR (owner, 2026-10-05): the same two questions on the crowns with
+     lidar under them, on lidar alone and on lidar with the colour. */
+  let q3 = null, q4 = null, q5 = null;
+  if (rows.some((r) => r.lidar)) {
+    const withLidar = rows.filter((r) => r.lidar);
+    console.log(`\nLIDAR under ${withLidar.length} of ${rows.length} crowns, on ${new Set(withLidar.map((r) => r.map)).size} maps`
+      + ` (projects flown ${[...new Set(withLidar.map((r) => r.lidar.year).filter(Boolean))].sort().join(', ')}).`);
+    q3 = question('3. EVERGREEN VS BROADLEAF IN LEAF, lidar alone',
+      withLidar.filter(leafy).map((r) => ({ ...r, y: r.code === 1 })), 'evergreen', 'broadleaf', LIDAR_FEATURES);
+    q4 = question('4. EVERGREEN VS BROADLEAF IN LEAF, lidar and colour together',
+      withLidar.filter(leafy).map((r) => ({ ...r, y: r.code === 1 })), 'evergreen', 'broadleaf', [...FEATURES, ...LIDAR_FEATURES]);
+    q5 = question('5. NOT A TREE VS A TREE (the tree model wrong), lidar alone',
+      withLidar.map((r) => ({ ...r, y: r.code === 4 })), 'not-a-tree', 'tree', LIDAR_FEATURES);
+  }
+
   if (process.env.OUT) {
-    writeFileSync(process.env.OUT, JSON.stringify({ at: new Date().toISOString(), minCrownM2: MIN_CROWN_M2, perMap, pixels, q1, q2,
+    writeFileSync(process.env.OUT, JSON.stringify({ at: new Date().toISOString(), minCrownM2: MIN_CROWN_M2, perMap, pixels, q1, q2, q3, q4, q5,
       crowns: rows.map((r) => ({ map: r.map, kind: CODES[r.code], areaM2: Math.round(r.areaM2 * 10) / 10,
-        ...Object.fromEntries(Object.entries(r.f).map(([k, v]) => [k, Math.round(v * 1000) / 1000])) })) }, null, 1));
+        ...Object.fromEntries(Object.entries(r.f).map(([k, v]) => [k, Number.isFinite(v) ? Math.round(v * 1000) / 1000 : null])) })) }, null, 1));
     console.log(`\nEvery crown's numbers in ${process.env.OUT}.`);
   }
 }

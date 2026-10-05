@@ -2,7 +2,10 @@
  * The tree-label reader (tools/tree-labels.js).
  *   node tools/tree-labels.test.js
  */
-import { crowns, features, auc, heldOutCut, heldOutLogistic } from './tree-labels.js';
+import { crowns, features, auc, heldOutCut, heldOutLogistic, readLidar, lidarFeatures } from './tree-labels.js';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 let failures = 0;
 const check = (name, ok, detail = '') => {
@@ -43,6 +46,21 @@ for (const map of ['A', 'B', 'C', 'D']) {
 }
 check('a cut that holds on every map is 100% held out', heldOutCut(rows, 'a') === 1);
 check('and a classifier over it gets it too', heldOutLogistic(rows, ['a', 'b']) >= 0.9, String(heldOutLogistic(rows, ['a', 'b'])));
+
+/* The tree lidar as tools/tree_lidar.py writes it: 2 x 1 cells over a 20 x 10 photo. */
+{
+  const dir = mkdtempSync(join(tmpdir(), 'tl-'));
+  const layers = ['height', 'first_h', 'last_h', 'spread', 'penetration', 'multi', 'veg_class', 'building_class', 'n_all'];
+  writeFileSync(join(dir, 'a,b:c.json'), JSON.stringify({ id: 'a,b:c', gw: 2, gh: 1, layers }));
+  const f = new Float32Array(layers.length * 2);
+  f[2 * 2] = 0.2; f[2 * 2 + 1] = 7.5;            // last_h: left cell 0.2, right 7.5
+  writeFileSync(join(dir, 'a,b:c.f32'), Buffer.from(f.buffer));
+  const lid = readLidar(dir, 'a,b:c');
+  const left = lidarFeatures(Int32Array.from([0, 1, 20, 21]), 20, 10, lid);
+  const right = lidarFeatures(Int32Array.from([15, 16, 35]), 20, 10, lid);
+  check('a crown reads the lidar cells under it', Math.abs(left.l_last_h - 0.2) < 1e-6 && right.l_last_h === 7.5,
+    `${left.l_last_h} ${right.l_last_h}`);
+}
 
 if (failures) { console.log(`\n${failures} check(s) FAILED.`); process.exit(1); }
 console.log('\ntree labels: ok');
