@@ -1460,7 +1460,13 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
       }
       cursor = page.truncated ? page.cursor : undefined;
     } while (cursor);
-    return json({ at, maps: maps.map((m) => ({ ...m, ...(labelled.get(m.name) || { status: 'new' }) })) }, 200, origin);
+    /* A save older than the maps was painted on outlines that have since been
+       remade (2026-10-04: inverted outlines fixed, trees in lawn holes added):
+       flagged so the page puts it back in front of the owner. */
+    return json({ at, maps: maps.map((m) => {
+      const l = labelled.get(m.name);
+      return { ...m, ...(l || { status: 'new' }), stale: Boolean(l && at && l.savedAt && l.savedAt < at) };
+    }) }, 200, origin);
   }
 
   if (path === 'tree' && request.method === 'GET') {

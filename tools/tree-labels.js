@@ -266,7 +266,12 @@ async function main() {
     for (let i = 0; i < labels.length; i++) labels[i] = png.data[i * 4];
     const photo = fetchImage(BUCKET, model.imageKey, dir, decoders);
     if (!photo.ok || photo.width !== w || photo.height !== h) { console.log(`  ${m.name}: photo ${photo.ok ? `${photo.width}x${photo.height}` : photo.reason} -- skipped`); continue; }
-    const ids = patchIds(saved.clumps || model.clumps || [], w, h);
+    /* The outlines the editor shows: the saved ones unless the map was made
+       again since (outlines fixed 2026-10-04, B09 and B13). A save older
+       than the map was painted on outlines that are gone; only what it put
+       on today's canopy counts. */
+    const fresh = !saved.at || !model.at || saved.at >= model.at;
+    const ids = patchIds((fresh ? saved.clumps : model.clumps) || model.clumps || [], w, h);
     const canopy = new Uint8Array(w * h);
     for (let i = 0; i < canopy.length; i++) canopy[i] = ids[i] ? 1 : 0;
     const ruleBare = bareCanopy(canopy, photo.data, w, h, { mpp: model.mpp });
@@ -280,14 +285,22 @@ async function main() {
     const m2 = model.mpp * model.mpp;
     const cs = crowns(labels, ids, w, h).filter((c) => c.px.length * m2 >= MIN_CROWN_M2);
     for (const c of cs) rows.push({ map: m.name, code: c.code, areaM2: c.px.length * m2, f: features(c.px, photo.data, w, h, ruleBare) });
-    perMap.push({ name: m.name, status: saved.status, labelledM2: Math.round(labelled * m2), crowns: cs.length,
+    let canopyPx = 0;
+    for (let i = 0; i < ids.length; i++) if (ids[i]) canopyPx++;
+    perMap.push({ name: m.name, status: saved.status, stale: !fresh, labelledM2: Math.round(labelled * m2),
+      canopyM2: Math.round(canopyPx * m2), crowns: cs.length,
       byCode: Object.fromEntries(Object.entries(CODES).map(([k, v]) => [v, cs.filter((c) => c.code === Number(k)).length])) });
-    console.log(`  ${m.name.padEnd(5)} ${saved.status.padEnd(5)} ${String(Math.round(labelled * m2)).padStart(6)} m² labelled, ${cs.length} crowns`
+    console.log(`  ${m.name.padEnd(5)} ${saved.status.padEnd(5)} ${String(Math.round(labelled * m2)).padStart(6)} of ${String(Math.round(canopyPx * m2)).padStart(5)} m² canopy labelled${fresh ? '' : ' (saved before the outlines were remade)'}, ${cs.length} crowns`
       + ` (${Object.entries(CODES).map(([k, v]) => `${v} ${cs.filter((c) => c.code === Number(k)).length}`).join(', ')})`);
   }
   rmSync(dir, { recursive: true, force: true });
 
   console.log(`\n${perMap.length} maps labelled, ${rows.length} crowns of at least ${MIN_CROWN_M2} m².`);
+  const stale = perMap.filter((p) => p.stale);
+  if (stale.length) {
+    console.log(`${stale.length} were saved before their outlines were remade; what they painted counts only where it lands on today's canopy:`);
+    console.log(`  ${stale.map((p) => `${p.name} ${p.canopyM2 ? Math.round((p.labelledM2 / p.canopyM2) * 100) : 0}%`).join(', ')}`);
+  }
   console.log('\nTHE COLOUR RULE STAGE 3 HAS (bareCanopy: not green over ~1 m, not dark), per labelled pixel:');
   for (const [k, v] of Object.entries(CODES)) {
     const [n, bare] = pixels[k];
