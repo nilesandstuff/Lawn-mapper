@@ -893,10 +893,11 @@ with inferred lawn AND a tree-model map, the inferred lawn lies under:
     canopy, and occasionally mark bare ground.
   - Some whole deciduous canopies are marked dense.
 - **What each points at.** These are reasoned, not measured:
-  - B28 is a GROUND failure. If the ground surface is wrong, everything is
-    "2 m up" and no last return is "near the ground", so the whole frame is
-    tree and dense. A frame with few ground returns should be refused, not
-    traced.
+  - ~~B28 is a GROUND failure.~~ Wrong, written without reading H40/H48:
+    **B28's trees are gone**. NAIP-CHM said so (H40), and the owner confirmed
+    it on the Mapbox photo in September. The 2016 lidar still has them. It
+    is stale lidar, the same lot the fused inputs got 10 points worse on
+    (H48).
   - Roof EDGES: a pulse that falls half on the eave and half on the ground
     splits into two returns metres apart. That is the tree signature
     exactly. The 3x3 smoothing in lidar_canopy.py then spread it into the
@@ -911,6 +912,9 @@ with inferred lawn AND a tree-model map, the inferred lawn lies under:
     stands, by an amount and in a direction that vary across the photo.
     No single shift fixes that. And the lawn hidden in the PHOTO is under
     the leaned crown, not under the lidar's.
+- **Owner, on aligning by the canopy (2026-10-05):** it would not work.
+  "The shapes of the lidar drawn trees are different from the shapes the
+  tree model draws, often significantly so." Not run.
 - **This repeats H38** (2026-09-25: "the lidar's canopy is not a replacement
   for the tree model, as built"). It should have been read first. What has
   held up is lidar as an ATTRIBUTE of a crown the photo model found (H73:
