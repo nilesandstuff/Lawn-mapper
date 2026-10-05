@@ -850,6 +850,62 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H75. A decoder taught under trees ties THE PLAN overall, 80 lots × 3 seeds: much better under the trees, worse in the open, with two lots blown up; the lidar by return adds nothing measurable, 2026-10-05
+
+S24 as written. Workflow 14, `decoder: fused + edge + trees`, lawns `all` (80,
+place folds), canopy on lawn, **gpu: modal** (owner: "run it on modal now"),
+seeds 7, 8 and 9: runs **37360685855, 37361011304, 37361320989**. Every arm is
+in every run, over one extraction. (A GitHub Actions outage dropped the scoring
+job twice on seeds 7 and 8; re-run with the Modal output kept. A first CPU run,
+37342022957, died on a bug in the new test, not the method.)
+
+| row | seed 7 | seed 8 | seed 9 |
+|---|---|---|---|
+| THE PLAN (edge refined + stage 3, span, veto) | 22.5% | 22.6% | 24.7% |
+| … seen / inferred | 19.2 / 16.7 | 18.0 / 19.6 | 19.1 / 29.3 |
+| **taught under trees** (alone) | **20.9%** | **20.8%** | **22.8%** |
+| … seen / inferred | 21.6 / 14.7 | 20.7 / 14.7 | 22.7 / 16.7 |
+| taught under trees + returns (alone) | 22.6% | 21.3% | 22.8% |
+| … seen / inferred | 22.5 / 18.9 | 21.9 / 14.0 | 22.4 / 13.1 |
+| beat SAM on (of 55), PLAN → taught → +returns | 38 → 40 → 37 | 35 → 35 → 37 | 33 → 34 → 35 |
+
+**Lot by lot, pooled over the seeds (workflow 24, runs 37382273833 and
+37382313158).** Each taught arm is compared with THE PLAN's row.
+
+| | lots better / worse / level | paired median change [95%] | p |
+|---|---|---|---|
+| taught, all 80 | 37 / 27 / 16 | **-0.1 [-1.5, +0.2]** | 0.26 |
+| … frozen 32 (tuned on) | 11 / 13 / 8 | +0.3 [-0.9, +1.4] | 0.84 |
+| … 48 approved since (untuned) | 26 / 14 / 8 | -1.1 [-2.3, +0.1] | 0.08 |
+| taught + returns, all 80 | 38 / 27 / 15 | -0.5 [-1.1, +0.3] | 0.22 |
+
+- **By S24's rule this is EQUIVALENT: the interval spans zero.** It is not
+  a win. The lead is on the lots the rules were never tuned on (-1.1, p
+  0.08): a lead only.
+- **The two error types trade.** Under the trees (inferred) the taught
+  decoder is far better on every seed: 14.7–16.7 against THE PLAN's
+  16.7–29.3. In the open (seen) it is worse on every seed: 20.7–22.7
+  against 18.0–19.2, about +2.9. Stage 3 plus the edge refiner keeps the
+  open edge cleaner. The taught decoder knows more about what is under a
+  tree.
+- **Tails.** Most worsened: C29 537 → 1236% (a tiny lawn, so the percentage
+  explodes), **B22 63 → 272%**, C88 57 → 90%, B24 15 → 30%, B27 10 → 22%.
+  Most improved: C80 68 → 49, C31 52 → 37, C23 28 → 14, C89 64 → 53, B03
+  54 → 43. B22 and C88 look like the H27 failure, lawn claimed into
+  canopy that is not lawn. That is not checked against the pictures yet.
+- **The lidar by return measures as nothing over the taught decoder**
+  (-0.5 against -0.1, overlapping). By S24's rule, equal means the one
+  without returns: bookmarked, not shipped.
+- **Not shipped.** S24 said "equivalent → ship the cheaper". I wrote the
+  taught decoder as cheaper because it needs no stage 3. Stage 3 is cheap
+  arithmetic, so that premise is weak. The tails (B22, C88) are an outline
+  difference the median hides. Owner: "the lawn outline is the only thing
+  that matters". So: no ship on a median tie with a worse tail.
+- **What the trade suggests (NOT measured):** use the taught decoder only
+  under the canopy, and THE PLAN's answer everywhere else. That puts each
+  where it measured better. It needs no new training: one more scorer row
+  over the masks these runs already make.
+
 ### H74. Trees from the lidar alone, first pass: on the owner's inferred lawn (grass under a tree) lidar trees cover 52%, the tree model 73%, either 85%; lidar finds trees the model missed on some maps and almost none on others, 2026-10-05
 
 Workflow 30 run 37313636940 (tools/lidar_canopy.py at its defaults: a 1 m
@@ -6065,3 +6121,7 @@ worse on the lots approved since. Then it joins THE PLAN.
 | 2026-10-04 | 37186132376 | 80 | THE PLAN + see-through rows, `not_lawn: on`, seed 7, CPU | — | — | **Died at the see-through table** (my bug: a local `bareShare` shadowed the import) after 2 h 50 min; no results. Its extraction is the cache the next run used |
 | 2026-10-04 | 37195418220 | **80** (+ pond-only examples) | THE PLAN (fused + edge, canopy on lawn), `not_lawn: on`, `lawns: all`, seed 7, CPU, cache hit; colour and evergreen as rows | **21.2%** (colour row 20.6%) | — | **H69.** vs 36601001355 on 55 shared: 29 better / 15 worse, 24.0 -> 19.3, -0.8 [-1.5, +0.0], p 0.049 (workflow 24 37202209391). Colour better on leaf-off headline, worse inferred: S22 bar not met. Evergreen fails (inferred 34.9 -> 73.1 on leaf-off). Every lot tagged #N |
 | 2026-10-04 | 37221751475 | 80 | Same settings as 37195418220, redrawn: pictures of the see-through colour row, with the edge refiner's layers filled (they were empty on a trial row) and B/C names | 21.2% (colour row 20.8%, evergreen 21.2%) | — | **Still 80 lots** (two new maps since were not approved). The cache missed because the run's names (now C numbers) are written into scale.json, which the fingerprint covers; the rebuilt extraction moved the rows a little -- colour 20.6 -> 20.8, evergreen 21.4 -> 21.2, THE PLAN unchanged -- the size of H13's drift, so read nothing into it |
+| 2026-10-05 | 37342022957 | 80 | S24 `fused + edge + trees`, seed 7, CPU | — | — | **Died at the taught decoder's own test** (my bug: the test ran inside a REFINE=1 step and read a photo it never made). Seeds 8/9 on CPU (37348436269, 37348623524) cancelled for the same reason |
+| 2026-10-05 | 37360685855 | 80 | S24 `fused + edge + trees`, `lawns: all`, canopy on lawn, seed 7, **Modal** | 20.9% (taught) | — | **H75.** PLAN 22.5, taught 20.9, + returns 22.6. Scoring re-run twice through a GitHub Actions outage |
+| 2026-10-05 | 37361011304 | 80 | as above, seed 8, Modal | 20.8% (taught) | — | **H75.** PLAN 22.6, taught 20.8, + returns 21.3 |
+| 2026-10-05 | 37361320989 | 80 | as above, seed 9, Modal | 22.8% (taught, + returns) | — | **H75.** PLAN 24.7, taught 22.8, + returns 22.8. Pooled lot by lot (37382273833): taught -0.1 [-1.5, +0.2], equivalent; untuned 48 -1.1 [-2.3, +0.1] |
