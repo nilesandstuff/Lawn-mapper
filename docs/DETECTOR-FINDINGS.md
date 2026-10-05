@@ -888,6 +888,21 @@ the median over its cells.
   Mixed flights are what was left out. 64 → 71% on a third fewer crowns and
   23 maps is within what one map can move (H7). **It is a direction, not
   a result.** More labelled evergreens would settle it: there are 29.
+- **WITH MORE LABELS THE LEAF-OFF GAIN WENT AWAY (run 37299473566, 61 maps,
+  290 crowns, 58 evergreens).** Leaf-off lidar alone: **71% → 65%** (34 v 80,
+  31 maps). All seasons, lidar alone: 64 → 65%. The 71% was what one batch
+  of maps gave, as H7 warns. Meanwhile **colour got better**: evergreen vs
+  broadleaf on colour alone went from 54% to 61%, with edge at AUC 0.75 and
+  68% alone. Colour plus lidar is 68%. Bare vs in leaf FELL from 91% to 86%
+  (99 v 188, 60 maps). Read every number in this entry as ±5 at least.
+  Lidar season among the crowns: off 201, mixed 66, on 4.
+- **The penetration and multi-return numbers in all of H73 so far are
+  saturated.** Each crown took the MEDIAN of its 1 m cells. A share per
+  cell is mostly exactly 0 or 1, so the median "share of last returns
+  reaching the ground" was 100% for evergreens and broadleaf alike. That is
+  why the second-look list came back empty. The shares are now averaged
+  over the cells (tools/tree-labels.js `SHARE_FEATURES`). Heights still use
+  the median. Re-run pending.
 - **The labels are known to be noisy (owner, 2026-10-05).** Some
   evergreens may be labelled in leaf, and probably not the reverse. "Not a
   tree" was used for trees over pavement. Every number in H71 and H73 is

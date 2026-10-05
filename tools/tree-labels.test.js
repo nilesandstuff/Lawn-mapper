@@ -58,6 +58,10 @@ check('and a classifier over it gets it too', heldOutLogistic(rows, ['a', 'b']) 
   const lid = readLidar(dir, 'a,b:c');
   const left = lidarFeatures(Int32Array.from([0, 1, 20, 21]), 20, 10, lid);
   const right = lidarFeatures(Int32Array.from([15, 16, 35]), 20, 10, lid);
+  f[4 * 2] = 1; f[4 * 2 + 1] = 0;                 // penetration: a share, so the mean
+  const lid2 = (writeFileSync(join(dir, 'a,b:c.f32'), Buffer.from(f.buffer)), readLidar(dir, 'a,b:c'));
+  const both = lidarFeatures(Int32Array.from([0, 15]), 20, 10, lid2);
+  check('a share is averaged over the cells, not the median cell', Math.abs(both.l_penetration - 0.5) < 1e-6, String(both.l_penetration));
   check('a crown reads the lidar cells under it', Math.abs(left.l_last_h - 0.2) < 1e-6 && right.l_last_h === 7.5,
     `${left.l_last_h} ${right.l_last_h}`);
 }

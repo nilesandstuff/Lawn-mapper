@@ -151,6 +151,8 @@ export function readLidar(dir, id, readFile = readFileSync, exists = existsSync)
 }
 
 /** Medians of the lidar layers over a crown's cells (photo w x h onto the lidar grid). */
+const SHARE_FEATURES = new Set(['l_penetration', 'l_multi', 'l_veg_class', 'l_building_class']);
+
 export function lidarFeatures(px, w, h, lid) {
   const out = {};
   const cells = new Set();
@@ -159,10 +161,14 @@ export function lidarFeatures(px, w, h, lid) {
     const c = Math.min(lid.gw - 1, Math.floor((x * lid.gw) / w)) + lid.gw * Math.min(lid.gh - 1, Math.floor((y * lid.gh) / h));
     cells.add(c);
   }
+  /* Heights: the median cell. SHARES (penetration, multi, the two classes):
+     the mean -- per 1 m cell a share is mostly exactly 0 or 1, so the median
+     cell said "100% reach the ground" for evergreens and broadleaf alike
+     (run 37299473566, both medians 100%). */
   for (const k of LIDAR_FEATURES) {
     const layer = lid.layers[k.slice(2)];
     const vals = [...cells].map((c) => layer?.[c]).filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
-    out[k] = vals.length ? vals[vals.length >> 1] : NaN;
+    out[k] = !vals.length ? NaN : SHARE_FEATURES.has(k) ? vals.reduce((x, y) => x + y, 0) / vals.length : vals[vals.length >> 1];
   }
   return out;
 }
