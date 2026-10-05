@@ -906,7 +906,7 @@ with inferred lawn AND a tree-model map, the inferred lawn lies under:
     reaching the ground and the evergreen median 64%. Some flights are
     mixed season.
   - Alignment has two parts. One is a constant offset per map, which can
-    be measured and corrected. The other is relief displacement (H40's
+    be measured and corrected. The other is relief displacement (H43's
     note): an aerial photo shows a tall crown leaned metres off where it
     stands, by an amount and in a direction that vary across the photo.
     No single shift fixes that. And the lawn hidden in the PHOTO is under
