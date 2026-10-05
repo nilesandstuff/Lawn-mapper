@@ -287,6 +287,50 @@ function get(key, file) {
   } catch { return null; }
 }
 
+/**
+ * LABELS WORTH A SECOND LOOK (owner, 2026-10-05: "a handful of evergreens
+ * that I may have falsely labelled as in leaf"). In a LEAF-OFF flight a
+ * broadleaf has no leaves to stop the pulses, so most of its last returns
+ * reach the ground; an evergreen keeps them up. So, on leaf-off lidar only:
+ *   - labelled in leaf, but the pulses stop like an evergreen's (ground share
+ *     at or below the median of the crowns labelled evergreen);
+ *   - labelled evergreen, but the pulses get through like a broadleaf's (at or
+ *     above the median of the crowns labelled in leaf);
+ *   - everything labelled "not a tree", which the tree model is never wrong
+ *     about (owner) -- these were trees over pavement.
+ * A list to look at, not a verdict: the lidar is years older than the photo
+ * (H72), and a dense broadleaf stops some pulses with bare branches alone.
+ */
+export function labelsToCheck(offRows) {
+  const pen = (r) => r.f.l_penetration;
+  const median = (xs) => { const v = xs.filter(Number.isFinite).sort((a, b) => a - b); return v.length ? v[v.length >> 1] : null; };
+  const ever = median(offRows.filter((r) => r.code === 1).map(pen));
+  const leaf = median(offRows.filter((r) => r.code === 2).map(pen));
+  const out = [];
+  if (ever !== null && leaf !== null && ever < leaf) {
+    for (const r of offRows) {
+      if (r.code === 2 && pen(r) <= ever) out.push({ ...r, why: 'labelled in leaf; lidar says evergreen-like' });
+      if (r.code === 1 && pen(r) >= leaf) out.push({ ...r, why: 'labelled evergreen; lidar says broadleaf-like' });
+    }
+  }
+  const sorted = out.sort((a, b) => a.map.localeCompare(b.map, undefined, { numeric: true }));
+  console.log(`\nLABELS WORTH A SECOND LOOK (leaf-off lidar; evergreen median reaches the ground ${ever === null ? '--' : `${Math.round(ever * 100)}%`},`
+    + ` in-leaf median ${leaf === null ? '--' : `${Math.round(leaf * 100)}%`}). Position is across, down, in % of the photo:`);
+  for (const r of sorted) {
+    console.log(`  ${r.map.padEnd(5)} at ${String(r.where[0]).padStart(3)}%, ${String(r.where[1]).padStart(3)}%  ${String(Math.round(r.areaM2)).padStart(4)} m²`
+      + `  ${Math.round(pen(r) * 100)}% to the ground  ${r.why}`);
+  }
+  if (!sorted.length) console.log('  none');
+  return sorted.map((r) => ({ map: r.map, where: r.where, areaM2: Math.round(r.areaM2), penetration: Math.round(pen(r) * 1000) / 1000, why: r.why }));
+}
+
+/** Every crown labelled "not a tree", wherever the lidar is. */
+function notTrees(rows) {
+  const nt = rows.filter((r) => r.code === 4);
+  console.log(`\nLABELLED "NOT A TREE" (${nt.length}; the tree model does not mark things that are not trees, so these are likely trees over pavement):`);
+  for (const r of nt) console.log(`  ${r.map.padEnd(5)} at ${String(r.where[0]).padStart(3)}%, ${String(r.where[1]).padStart(3)}%  ${String(Math.round(r.areaM2)).padStart(4)} m²`);
+}
+
 async function main() {
   const decoders = { png: await import('pngjs'), jpeg: (await import('jpeg-js')).default };
   const dir = mkdtempSync(join(tmpdir(), 'tree-labels-'));
@@ -338,7 +382,10 @@ async function main() {
       lid.flown = match ? `${match.start}..${match.end}` : null;
     }
     for (const c of cs) {
+      let sx = 0, sy = 0;
+      for (const i of c.px) { sx += i % w; sy += Math.floor(i / w); }
       rows.push({ map: m.name, code: c.code, areaM2: c.px.length * m2,
+        where: [Math.round((sx / c.px.length / w) * 100), Math.round((sy / c.px.length / h) * 100)],
         f: { ...features(c.px, photo.data, w, h, ruleBare), ...(lid ? lidarFeatures(c.px, w, h, lid) : {}) },
         lidar: lid ? { project: lid.project, year: lid.year, season: lid.season, flown: lid.flown } : null });
     }
@@ -372,7 +419,7 @@ async function main() {
 
   /* THE LIDAR (owner, 2026-10-05): the same two questions on the crowns with
      lidar under them, on lidar alone and on lidar with the colour. */
-  let q3 = null, q4 = null, q5 = null, q6 = null;
+  let q3 = null, q4 = null, q5 = null, q6 = null, suspects = null;
   if (rows.some((r) => r.lidar)) {
     const withLidar = rows.filter((r) => r.lidar);
     console.log(`\nLIDAR under ${withLidar.length} of ${rows.length} crowns, on ${new Set(withLidar.map((r) => r.map)).size} maps`
@@ -390,11 +437,14 @@ async function main() {
     const offOnly = withLidar.filter((r) => r.lidar.season === 'off');
     q6 = question('6. EVERGREEN VS BROADLEAF IN LEAF, lidar alone, LEAF-OFF lidar only',
       offOnly.filter(leafy).map((r) => ({ ...r, y: r.code === 1 })), 'evergreen', 'broadleaf', LIDAR_FEATURES);
+    suspects = labelsToCheck(offOnly);
   }
 
+  notTrees(rows);
+
   if (process.env.OUT) {
-    writeFileSync(process.env.OUT, JSON.stringify({ at: new Date().toISOString(), minCrownM2: MIN_CROWN_M2, perMap, pixels, q1, q2, q3, q4, q5, q6,
-      crowns: rows.map((r) => ({ map: r.map, kind: CODES[r.code], areaM2: Math.round(r.areaM2 * 10) / 10, lidar: r.lidar,
+    writeFileSync(process.env.OUT, JSON.stringify({ at: new Date().toISOString(), minCrownM2: MIN_CROWN_M2, perMap, pixels, q1, q2, q3, q4, q5, q6, suspects,
+      crowns: rows.map((r) => ({ map: r.map, kind: CODES[r.code], where: r.where, areaM2: Math.round(r.areaM2 * 10) / 10, lidar: r.lidar,
         ...Object.fromEntries(Object.entries(r.f).map(([k, v]) => [k, Number.isFinite(v) ? Math.round(v * 1000) / 1000 : null])) })) }, null, 1));
     console.log(`\nEvery crown's numbers in ${process.env.OUT}.`);
   }

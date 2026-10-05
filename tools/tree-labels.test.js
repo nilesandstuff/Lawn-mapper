@@ -2,7 +2,7 @@
  * The tree-label reader (tools/tree-labels.js).
  *   node tools/tree-labels.test.js
  */
-import { crowns, features, auc, heldOutCut, heldOutLogistic, readLidar, lidarFeatures } from './tree-labels.js';
+import { crowns, features, auc, heldOutCut, heldOutLogistic, readLidar, lidarFeatures, labelsToCheck } from './tree-labels.js';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -60,6 +60,16 @@ check('and a classifier over it gets it too', heldOutLogistic(rows, ['a', 'b']) 
   const right = lidarFeatures(Int32Array.from([15, 16, 35]), 20, 10, lid);
   check('a crown reads the lidar cells under it', Math.abs(left.l_last_h - 0.2) < 1e-6 && right.l_last_h === 7.5,
     `${left.l_last_h} ${right.l_last_h}`);
+}
+
+{
+  const r = (map, code, pen) => ({ map, code, areaM2: 20, where: [10, 20], f: { l_penetration: pen } });
+  const log = console.log; console.log = () => {};
+  const got = labelsToCheck([r('B1', 1, 0.05), r('B1', 1, 0.1), r('B1', 1, 0.6), r('C2', 2, 0.5), r('C2', 2, 0.7), r('C3', 2, 0.08)]);
+  console.log = log;
+  check('a leafy-labelled crown that stops pulses like an evergreen is flagged, and the reverse',
+    got.length === 2 && got.some((g) => g.map === 'C3' && /in leaf/.test(g.why)) && got.some((g) => g.penetration === 0.6 && /evergreen;/.test(g.why)),
+    JSON.stringify(got));
 }
 
 if (failures) { console.log(`\n${failures} check(s) FAILED.`); process.exit(1); }

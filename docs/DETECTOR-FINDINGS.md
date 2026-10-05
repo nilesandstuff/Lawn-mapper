@@ -871,11 +871,14 @@ the median over its cells.
   (l_penetration 0.35), and fewer pulses split (l_multi 0.36). Total
   height (l_height 0.49) and first-return height (l_first_h 0.51) say
   nothing, as they should not.
-- **But 64% is weak, and this run mixes every flight season.** A broadleaf
-  in a summer flight stops last returns just as an evergreen does, so in
-  leaf-on lidar this test cannot work by construction. H72 says roughly
-  half of counties have leaf-off lidar. The split by flight season is q6,
-  below.
+- **But 64% is weak, and this run mixes flight seasons.** A broadleaf in a
+  summer flight stops MORE last returns than in winter, so the gap between it
+  and an evergreen should narrow. ~~"Cannot work by construction"~~: that was
+  written here first and is wrong as stated. Pulses do get through gaps in a
+  leaf-on canopy; that is how ground models are made under summer forest.
+  How much of the gap survives is unmeasured: none of our crowns has leaf-on
+  lidar (below). H72 says roughly half of counties have leaf-off lidar. The
+  split by flight season is q6, below.
 - **Leaf-off flights only (q6, run 37257508411): 71%** held out by map,
   from 29 evergreen and 66 broadleaf crowns on 23 maps. The best single
   features are l_penetration at 69% (AUC 0.31) and l_last_h at 65% (AUC
@@ -885,6 +888,19 @@ the median over its cells.
   Mixed flights are what was left out. 64 → 71% on a third fewer crowns and
   23 maps is within what one map can move (H7). **It is a direction, not
   a result.** More labelled evergreens would settle it: there are 29.
+- **The labels are known to be noisy (owner, 2026-10-05).** Some
+  evergreens may be labelled in leaf, and probably not the reverse. "Not a
+  tree" was used for trees over pavement. Every number in H71 and H73 is
+  against those labels. Workflow 29 now prints LABELS WORTH A SECOND LOOK
+  (in-leaf labels whose leaf-off lidar stops pulses like an evergreen's,
+  and the reverse) and every "not a tree" crown with its place. The
+  numbers should be re-read after those are checked.
+- **Owner's framing, for weighting this work (2026-10-05).** These are not
+  findings. The tree model misses many trees, especially narrow ones, and
+  does not mark non-trees. Whether a crown in the PHOTO is bare must come
+  from colour, since Mapbox gives no date (q1, 91%). Lidar's evergreen vs
+  deciduous is a bonus path, separate from leaf-on vs leaf-off and from
+  tree-or-not.
 - **Not a tree: 5 examples.** AUCs from 5 crowns are noise. Do not read
   73% as a finding.
 - Adding colour to lidar gives nothing (64 → 65%).
@@ -918,8 +934,10 @@ bug: name-searched counties had no point, so USGS was asked about (0, 0).
 
 What this means for trees: for about half the counties, the lidar was flown
 leaf-off. There, last returns stopping inside a crown can mean evergreen
-(H73, pending). For the other half, a broadleaf in leaf stops them too, and
-the same test cannot work.
+(H73). For the other half, a broadleaf in leaf stops more of them too, so
+the test should be weaker there. It was first written that it "cannot
+work". That overstates it: pulses do pass through gaps in leaves (owner,
+2026-10-05). Unmeasured either way.
 
 ### H71. The owner's tree labels, first reading: colour tells a bare crown from one in leaf (91% held out by map); colour and texture do NOT tell an evergreen from a broadleaf in leaf (54-61%, about chance), 2026-10-05
 

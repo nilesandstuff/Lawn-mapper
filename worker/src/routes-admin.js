@@ -1456,10 +1456,20 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
       const page = await env.CORPUS.list({ prefix: 'trees/labels/', cursor, include: ['customMetadata'] });
       for (const o of page.objects) {
         const name = o.key.slice('trees/labels/'.length).replace(/\.json$/, '');
-        labelled.set(name, { status: o.customMetadata?.status || 'draft', savedAt: o.customMetadata?.at || null });
+        const nt = o.customMetadata?.nottree;
+        labelled.set(name, { status: o.customMetadata?.status || 'draft', savedAt: o.customMetadata?.at || null,
+          notTreeM2: nt === undefined ? undefined : Number(nt) });
       }
       cursor = page.truncated ? page.cursor : undefined;
     } while (cursor);
+    /* Saves from before the "not a tree" area went into the metadata
+       (2026-10-05: the owner marked trees over pavement as not-a-tree and
+       could not find them again): read once from the save itself. */
+    await Promise.all([...labelled].filter(([, l]) => l.notTreeM2 === undefined).map(async ([name, l]) => {
+      const saved = await env.CORPUS.get(`trees/labels/${name}.json`);
+      const doc = saved ? await saved.json().catch(() => null) : null;
+      l.notTreeM2 = Number(doc?.counts?.nottree) || 0;
+    }));
     /* A save older than the maps was painted on outlines that have since been
        remade (2026-10-04: inverted outlines fixed, trees in lawn holes added):
        flagged so the page puts it back in front of the owner. */
@@ -1509,7 +1519,7 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
     if (record.length > 12e6) return json({ error: 'Too big' }, 413, origin);
     await env.CORPUS.put(`trees/labels/${name}.json`, record, {
       httpMetadata: { contentType: 'application/json' },
-      customMetadata: { status, at: new Date().toISOString() },
+      customMetadata: { status, at: new Date().toISOString(), nottree: String(Number(body?.counts?.nottree) || 0) },
     });
     return json({ ok: true, status }, 200, origin);
   }

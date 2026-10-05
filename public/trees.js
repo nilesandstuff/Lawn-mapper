@@ -83,6 +83,7 @@ const view = {
 };
 
 const shownIdx = () => view.list.map((m, i) => [m, i]).filter(([m]) => (view.filter === 'all' ? true
+  : view.filter === 'nottree' ? m.notTreeM2 > 0
   : view.filter === 'done' ? m.status === 'done' && !m.stale : m.status !== 'done' || m.stale)).map(([, i]) => i);
 
 function pickOptions() {
@@ -92,7 +93,7 @@ function pickOptions() {
     const m = view.list[i];
     const o = document.createElement('option');
     o.value = String(i);
-    o.textContent = `${m.name} · ${m.county || 'traced by hand'} · ${m.clumps} patch${m.clumps === 1 ? '' : 'es'}${m.stale ? ' · outlines remade, look again' : m.status === 'done' ? ' · done' : m.status === 'draft' ? ' · draft' : ''}`;
+    o.textContent = `${m.name} · ${m.county || 'traced by hand'} · ${m.clumps} patch${m.clumps === 1 ? '' : 'es'}${m.stale ? ' · outlines remade, look again' : m.status === 'done' ? ' · done' : m.status === 'draft' ? ' · draft' : ''}${m.notTreeM2 > 0 ? ` · not a tree ${Math.round(m.notTreeM2)} m²` : ''}`;
     if (i === view.at) o.selected = true;
     sel.append(o);
   }
@@ -231,6 +232,7 @@ async function save(status, { advance = false } = {}) {
   view.dirty = false;
   view.list[view.at].status = status;
   view.list[view.at].stale = false;
+  view.list[view.at].notTreeM2 = counts(view.labels, view.ids, view.mpp * view.mpp).nottree;
   $('#said').textContent = status === 'done' ? 'Saved as done.' : 'Saved.';
   pickOptions();
   if (advance) {
