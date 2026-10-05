@@ -850,6 +850,37 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H72. Lidar under the county photos: 106 of the 111 counties we could place have 3DEP lidar; the newest is leaf-off in 50, mixed in 31, leaf-on in 25, and six years older than the county photo at the median, 2026-10-05
+
+Workflow 8, county mode `lidar`, run 37256816474 (tools/county-imagery.js
+`countyLidar`, USGS 3DEP index layer 8 via tools/lidar-season.js). One point
+per county where the catalogue found a county photo; the newest lidar
+collection over that point.
+
+- **176 counties** have a county photo. **111** could be placed: a sweep
+  point, or the middle of a photo service filed under the county. **65 could
+  not**: they were found by name search, which stores no point, and their
+  services are filed under another key. They are not counted either way.
+- **106 of 111 (95%) have lidar**; 54 have more than one collection.
+- Newest collection's season: **leaf-off 50, mixed 31, leaf-on 25**. The
+  season is judged by the rule "nine days in ten between 1 Nov and 10 May".
+  That is a rule of thumb for the temperate US, not something the index says.
+- Newest lidar by year: 2012 1, 2016 4, 2017 16, 2018 5, 2019 14, 2020 22,
+  2021 7, 2022 14, 2023 14, 2024 4, 2025 5.
+- **Years from that lidar to the newest county photo: median 6.** The photo
+  is newer by 5+ years in 69 counties, and the lidar is newer in none. So a
+  tree or building seen in lidar may not be in the photo, or the reverse. The
+  lidar is a separate, older survey, not on the photo's schedule.
+
+The first run of this mode (37256641186) said 70 of 176 (40%). That was a
+bug: name-searched counties had no point, so USGS was asked about (0, 0).
+**Do not quote 40%.**
+
+What this means for trees: for about half the counties, the lidar was flown
+leaf-off. There, last returns stopping inside a crown can mean evergreen
+(H73, pending). For the other half, a broadleaf in leaf stops them too, and
+the same test cannot work.
+
 ### H71. The owner's tree labels, first reading: colour tells a bare crown from one in leaf (91% held out by map); colour and texture do NOT tell an evergreen from a broadleaf in leaf (54-61%, about chance), 2026-10-05
 
 Workflow 29 run 37255000075 (tools/tree-labels.js) over the first labelling
