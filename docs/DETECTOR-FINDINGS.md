@@ -850,7 +850,7 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
-### H73. Lidar by return, per labelled crown: evergreen vs broadleaf in leaf goes from chance (54% on colour) to 64-65% held out by map -- better, not good; any season of flight mixed in, 2026-10-05
+### H73. Lidar by return, per labelled crown: evergreen vs broadleaf in leaf goes from chance (54% on colour) to 64-65% held out by map, 71% on leaf-off flights alone (29 evergreens) -- better, not good, 2026-10-05
 
 Workflow 29 run 37256336621 (tools/tree_lidar.py, then tools/tree-labels.js
 with LIDAR on). The same 46 maps and 205 crowns as H71. **Lidar lies under
@@ -863,6 +863,7 @@ the median over its cells.
 | 2. evergreen vs broadleaf, colour only | 36 v 103 | exg / darkShare 61% | 54% |
 | 3. same, lidar only | 35 v 92 | l_last_h 65% (AUC 0.65, higher = evergreen) | 64% |
 | 4. same, lidar + colour | 35 v 92 | l_last_h 65% | 65% |
+| 6. evergreen vs broadleaf, lidar only, leaf-off flights | 29 v 66 | l_penetration 69% | 71% |
 | 5. not a tree vs tree, lidar only | 5 v 184 | l_multi 69% | 73% |
 
 - **The direction is what the physics predicts.** In evergreens the last
@@ -873,8 +874,17 @@ the median over its cells.
 - **But 64% is weak, and this run mixes every flight season.** A broadleaf
   in a summer flight stops last returns just as an evergreen does, so in
   leaf-on lidar this test cannot work by construction. H72 says roughly
-  half of counties have leaf-off lidar. The split by flight season (q6,
-  leaf-off flights only) is the next run.
+  half of counties have leaf-off lidar. The split by flight season is q6,
+  below.
+- **Leaf-off flights only (q6, run 37257508411): 71%** held out by map,
+  from 29 evergreen and 66 broadleaf crowns on 23 maps. The best single
+  features are l_penetration at 69% (AUC 0.31) and l_last_h at 65% (AUC
+  0.71). Of the 194 crowns under lidar, the flight was **leaf-off for 153,
+  mixed for 41, and leaf-on for none**. So "summer lidar is what drags it
+  down" could not be tested here: there is no summer lidar among our maps.
+  Mixed flights are what was left out. 64 → 71% on a third fewer crowns and
+  23 maps is within what one map can move (H7). **It is a direction, not
+  a result.** More labelled evergreens would settle it: there are 29.
 - **Not a tree: 5 examples.** AUCs from 5 crowns are noise. Do not read
   73% as a finding.
 - Adding colour to lidar gives nothing (64 → 65%).
