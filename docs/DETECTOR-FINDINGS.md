@@ -850,6 +850,43 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H71. The owner's tree labels, first reading: colour tells a bare crown from one in leaf (91% held out by map); colour and texture do NOT tell an evergreen from a broadleaf in leaf (54-61%, about chance), 2026-10-05
+
+Workflow 29 run 37255000075 (tools/tree-labels.js) over the first labelling
+session on /trees.html: **46 maps, 205 painted crowns of 2 m² or more** (61
+bare, 36 evergreen, 103 broadleaf in leaf, a few "not a tree"). One person's
+labels, one evening, on workflow 28's canopy. A "crown" is a connected run of
+one label inside one canopy patch. Every crown score is HELD OUT BY MAP (a
+cut or classifier chosen on the other maps, scored on this one).
+
+**Per pixel, stage 3's existing colour rule (bareCanopy) against the
+labels:** labelled bare 82% called bare; in leaf 5%; evergreen 9%; not a
+tree 71%. **Caveat:** pixel totals are dominated by a few maps whose woods
+patch fills the frame (B09 29,600 m², B12 13,600, B11 7,300), so read the
+crowns for the general picture.
+
+**1. Bare vs in leaf (option #1), 61 vs 139 crowns on 45 maps:** excess
+green alone 85% balanced accuracy held out (AUC 0.88 as "less green =
+bare"); share of not-green pixels 84%; red share 82%; the colour rule's own
+share 83%; brightness 73%; grey/brown share 71%; edge density and texture
+near useless (47%, 61%). **All features together (logistic regression):
+91%.** So the owner's idea holds on these labels: a bare crown is
+measurably less green, redder and brighter. The "web of branch lines" as I
+measured it (luminance edges) does NOT separate them -- the colour does.
+
+**2. Evergreen vs broadleaf in leaf (option #4), 36 vs 103 crowns on 36
+maps:** no single feature beats 61% held out; all together 54%. **Colour and
+texture from one photo cannot separate them here**, as expected: in a
+leaf-on photo both are green foliage. The signals S22's discussion named for
+this -- lidar ground returns under the crown (evergreens block leaf-off
+lidar), and the crown's greenness in a photo from another season -- are not
+in this reading yet; they are the next step.
+
+**What this does NOT say.** Nothing about stage 3's score: H69's
+see-through `colour` mode reads per cell and was measured on the lot's
+lawn, not on crowns. These labels make a crown-level version possible (fit
+on labels, scored held out by map). And one labeller, one evening.
+
 ### H70. What county photo services say about their season: 93 of 2,910 say leaf-off, 16 leaf-on, 2 both, 2,799 nothing; 370 give some date, 2026-10-04
 
 Workflow 8 county mode "season", run 37232174494 (84 min), over every
