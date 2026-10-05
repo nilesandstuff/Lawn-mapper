@@ -850,7 +850,7 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
-### H73. Lidar by return, per labelled crown: evergreen vs broadleaf in leaf goes from chance (54% on colour) to 64-65% held out by map, 71% on leaf-off flights alone (29 evergreens) -- better, not good, 2026-10-05
+### H73. Lidar by return, per labelled crown: evergreen vs broadleaf in leaf, 290 crowns: colour 61%, lidar 76% held out by map, 77% on leaf-off flights alone (share of pulses reaching the ground 75% by itself), 2026-10-05
 
 Workflow 29 run 37256336621 (tools/tree_lidar.py, then tools/tree-labels.js
 with LIDAR on). The same 46 maps and 205 crowns as H71. **Lidar lies under
@@ -902,7 +902,19 @@ the median over its cells.
   reaching the ground" was 100% for evergreens and broadleaf alike. That is
   why the second-look list came back empty. The shares are now averaged
   over the cells (tools/tree-labels.js `SHARE_FEATURES`). Heights still use
-  the median. Re-run pending.
+  the median.
+- **AVERAGED (run 37302462833, same 290 crowns, the current reading):**
+  lidar alone, evergreen vs broadleaf in leaf, **76%** held out by map (57 v
+  112, 43 maps; was 65%). Lidar plus colour 75%. **Leaf-off flights only 77%**
+  (34 v 80, 31 maps). The share of last returns reaching the ground ALONE is
+  **75%** there (AUC 0.22, i.e. 0.78 for "evergreen = fewer reach the
+  ground"). In leaf-off lidar, the median evergreen crown sends 64% of its
+  last returns to the ground and the median in-leaf crown 94%. The owner
+  said pulses get through gaps in an evergreen too, and they do. Multi-
+  return share is 65% alone. Not a tree, with 3 crowns: 49%, meaningless.
+  Second-look list: 15 crowns on B27, B31, C22, C25, C32, C34, C80, C86, C94
+  (11 labelled in leaf that look evergreen, 4 the reverse). **Every H73
+  number above this bullet is superseded by it.** Still ±5: H7.
 - **The labels are known to be noisy (owner, 2026-10-05).** Some
   evergreens may be labelled in leaf, and probably not the reverse. "Not a
   tree" was used for trees over pavement. Every number in H71 and H73 is
