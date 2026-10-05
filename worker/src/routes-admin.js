@@ -1502,6 +1502,29 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
     } });
   }
 
+  /* LIDAR TREES (owner, 2026-10-05; workflow 30, /lidar-trees.html): the
+     lidar's own tree patches beside the tree model's, for looking at. Read
+     only; tools/lidar-trees.js writes lidar-trees/. */
+  if (path === 'lidar-trees' && request.method === 'GET') {
+    if (!env.CORPUS) return json({ error: 'No bucket' }, 404, origin);
+    const index = await env.CORPUS.get('lidar-trees/index.json');
+    return index ? json(await index.json(), 200, origin) : json({ maps: [], none: true }, 200, origin);
+  }
+  if ((path === 'lidar-tree' || path === 'lidar-tree-photo') && request.method === 'GET') {
+    if (!env.CORPUS) return json({ error: 'No bucket' }, 404, origin);
+    const name = url.searchParams.get('name') || '';
+    if (!TREE_NAME.test(name)) return json({ error: 'Bad name' }, 400, origin);
+    const model = await env.CORPUS.get(`lidar-trees/model/${name}.json`);
+    if (!model) return json({ error: 'Not made yet' }, 404, origin);
+    const doc = await model.json();
+    if (path === 'lidar-tree') return json(doc, 200, origin);
+    const photo = doc.imageKey ? await env.CORPUS.get(doc.imageKey) : null;
+    if (!photo) return json({ error: 'No photo' }, 404, origin);
+    return new Response(photo.body, { headers: {
+      'Content-Type': photo.httpMetadata?.contentType || 'image/png', 'Cache-Control': 'private, max-age=600',
+    } });
+  }
+
   if (path === 'tree' && request.method === 'POST') {
     if (!env.CORPUS) return json({ error: 'No bucket' }, 404, origin);
     const body = await request.json().catch(() => null);

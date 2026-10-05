@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lawn Mapper — trees from the lidar</title>
+<meta name="robots" content="noindex, nofollow">
+<!--
+  LIDAR TREES (owner, 2026-10-05: "use lidar to replace the tree canopy model
+  all together ... tee up the results in a separate viewer page"). Each map is
+  a lawn's photo with, on top: the trees the LIDAR finds (cyan), the part of
+  them pulses do not get through (magenta: evergreen, or foliage too dense for
+  grass), the tree MODEL's canopy from workflow 28 (yellow), the traced lawn
+  (green line) and the owner's inferred lawn (purple). For looking only.
+  Made by workflow 30. The gate is the API.
+-->
+<link href="/styles.css" rel="stylesheet">
+<link href="/console.css" rel="stylesheet">
+<style>
+  html.viewer, html.viewer body { height: 100%; overflow: hidden; overscroll-behavior: none; }
+  .lt-app { position: fixed; inset: 0; display: flex; flex-direction: column; background: #111; color: #eee; font-size: 14px; }
+  .lt-app * { box-sizing: border-box; min-width: 0; }
+  .lt-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 8px; }
+  .lt-row.top { background: #1c1c1c; }
+  .lt-row.info { padding-top: 0; font-size: 12px; color: #bbb; gap: 4px 10px; }
+  .lt-row select { font-size: 14px; padding: 5px; max-width: 60vw; }
+  .lt-row button { min-height: 38px; padding: 0 10px; border-radius: 8px; border: 1px solid #555; background: #262626; color: #eee; font-size: 14px; }
+  .lt-row button.layer { border-width: 2px; border-color: var(--c); }
+  .lt-row button.layer[aria-pressed="false"] { opacity: .45; border-style: dashed; }
+  .lt-row a { color: #9ccc9c; }
+  .lt-view { position: relative; flex: 1; overflow: hidden; touch-action: none; background: #000; }
+  .lt-stage { position: absolute; transform-origin: 0 0; }
+  .lt-stage img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; user-select: none; -webkit-user-drag: none; pointer-events: none; }
+  .lt-stage svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: hidden; pointer-events: none; }
+  .lt-stage path { vector-effect: non-scaling-stroke; fill-rule: evenodd; }
+  path.lawn { fill: none; stroke: #69f0ae; stroke-width: 2; }
+  path.inferred { fill: rgba(171, 71, 188, .35); stroke: #ce93d8; stroke-width: 1; }
+  path.model { fill: none; stroke: #ffeb3b; stroke-width: 2; }
+  path.lidar { fill: rgba(0, 229, 255, .12); stroke: #00e5ff; stroke-width: 1.5; }
+  path.lidar.off { stroke-dasharray: 3 3; fill: none; opacity: .6; }
+  path.dense { fill: rgba(255, 64, 129, .35); stroke: #ff4081; stroke-width: 1; }
+  .lt-help { position: absolute; inset: 8px; overflow: auto; background: rgba(20,20,20,.96); border: 1px solid #444; border-radius: 10px; padding: 12px 14px; font-size: 14px; line-height: 1.45; z-index: 5; touch-action: pan-y; }
+  .sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 4px; }
+</style>
+</head>
+<body>
+
+<div class="console" id="gate">
+  <div class="locked-out" id="locked" hidden>
+    <p>This page is for the site owner.</p>
+    <p><a href="/">Go and measure a lawn instead →</a></p>
+  </div>
+  <div class="empty-state" id="none" hidden>
+    <div class="card">
+      <h2>No lidar trees yet</h2>
+      <p class="sub">Run workflow <b>30. Trees from the lidar</b>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="lt-app" id="page" hidden>
+  <div class="lt-row top">
+    <select id="pick" aria-label="Which map"></select>
+    <button id="prev" type="button" aria-label="Previous">◀</button>
+    <button id="next" type="button" aria-label="Next">▶</button>
+    <button id="helpbtn" type="button" aria-label="What the colours mean">?</button>
+    <a href="/admin.html">Console</a>
+  </div>
+  <div class="lt-row info"><span id="sub"></span></div>
+  <div class="lt-view" id="viewport">
+    <div class="lt-stage" id="stage">
+      <img id="photo" alt="The lawn's photograph">
+      <svg id="overlay" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none"></svg>
+    </div>
+    <div class="lt-help" id="help" hidden>
+      <p><span class="sw" style="background:#00e5ff"></span><b>Lidar trees</b>: where the laser found
+        something over 2 m tall that splits its pulses (or the survey called vegetation), and not a
+        roof. From the lidar alone, no photo. Dashed: not on the lawn.</p>
+      <p><span class="sw" style="background:#ff4081"></span><b>Dense</b>: the part of those trees
+        that few pulses get through. In a leaf-off flight, an evergreen or foliage too dense for
+        grass. The flight's dates are in the line above the picture.</p>
+      <p><span class="sw" style="background:#ffeb3b"></span><b>Tree model</b>: the canopy the
+        photo model found (workflow 28), only where it touches the lawn.</p>
+      <p><span class="sw" style="background:#69f0ae"></span><b>Lawn</b> as traced, and
+        <span class="sw" style="background:#ab47bc"></span><b>inferred</b>: the lawn you marked as
+        under a tree.</p>
+      <p>The lidar is usually years older than the photo, so a tree cut down or planted since will
+        disagree. Tap a colour below to hide or show it. One finger pans, two zoom.</p>
+      <button id="helpclose" type="button">Close</button>
+    </div>
+  </div>
+  <div class="lt-row" id="layers"></div>
+</div>
+
+<script type="module" src="/lidar-trees.js"></script>
+</body>
+</html>

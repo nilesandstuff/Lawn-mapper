@@ -915,6 +915,24 @@ the median over its cells.
   Second-look list: 15 crowns on B27, B31, C22, C25, C32, C34, C80, C86, C94
   (11 labelled in leaf that look evergreen, 4 the reverse). **Every H73
   number above this bullet is superseded by it.** Still ±5: H7.
+- **OWNER'S VERDICT on the second-look list (2026-10-05):** he looked at
+  every flagged crown. Each one was "very likely an evergreen and/or the
+  foliage was so dense and low that there's no way that grass would be
+  growing under it". He left the labels as they were. Some evergreens were
+  clustered tightly with broadleaf trees in leaf, and he could not trace
+  their footprints. He considers it **settled for the purpose that matters**:
+  leaf-off lidar marks "evergreen, or anything grass would not grow under".
+  This is an owner judgement from looking, not a held-out number. The
+  measured part is the 75–77% above, against labels that are noisiest in
+  exactly that direction. The three "not a tree" crowns were fixed: two
+  were mistakes, and one really is not a tree.
+- **Next, on the owner's direction (2026-10-05): lidar instead of the tree
+  model.** Workflow 30 (tools/lidar_canopy.py → /lidar-trees.html) calls a
+  1 m cell a tree when it is ≥ 2 m tall, the pulses split there or the
+  survey classed it vegetation, and it is not a building. That is unlike
+  stage 4's height-only layer, which could not tell a roof from a tree.
+  Judged by eye only. The one truth to hand is the inferred marks, which
+  cover leaf-on canopy only and stop short of canopy edges.
 - **The labels are known to be noisy (owner, 2026-10-05).** Some
   evergreens may be labelled in leaf, and probably not the reverse. "Not a
   tree" was used for trees over pavement. Every number in H71 and H73 is
