@@ -101,6 +101,22 @@ FUSE_NAIP = os.environ.get("FUSE_NAIP", "")
 # learn "canopy = not lawn" outright (inferred 34.5 -> 44.6%). The channel
 # stays in the grid as zeros so every decoder reads the same shape.
 FUSE_CANOPY = os.environ.get("FUSE_CANOPY", "1") == "1"
+# FUSE_RETURNS=dir of tools/tree_lidar.py's <id>.json + <id>.f32 (1 m cells):
+# four more fused numbers a patch, the share of last returns reaching the
+# ground, the share of points from split pulses, the first-to-last spread,
+# and a flag (owner, 2026-10-05; H73 found the first two tell an evergreen).
+FUSE_RETURNS = os.environ.get("FUSE_RETURNS", "")
+
+# TAUGHT UNDER TREES (owner, 2026-10-05: "simply letting scale Mae figure out
+# the scenarios where there's likely to be grass, which it learns from the
+# markings on lawn maps we already have"). Without it, lawn the tracer marked
+# inferred and canopy over traced lawn carry NO weight, so the decoder is
+# never shown what is under a tree and stage 3's rules decide there. With it
+# they are graded as what the tracer said: inferred lawn is lawn; canopy the
+# tracer drew no lawn under stays not-lawn (as it already was). Not-lawn
+# example frames keep their unseen canopy. The row to read is the decoder
+# ALONE, since stage 3 replaces its answer under every canopy cell.
+UNDER_TREES = os.environ.get("UNDER_TREES") == "1"
 # Modality dropout: the chance, per lawn per step, that a source is hidden
 # as though it were missing -- so the decoder cannot lean on the lidar where
 # it is stale, and has met "no lidar here" before it meets it on a lot.
@@ -152,6 +168,21 @@ class Decoder(nn.Module):
         """The last hidden layer (32 numbers a patch) and the answer from it."""
         hidden = self.net[:-1](x)
         return hidden, self.net[-1](hidden)
+
+
+def read_returns(stem):
+    """tree_lidar.py's layers for one frame, as {name: 2-D array}, or None."""
+    safe = stem.replace("/", "_")
+    meta_path = os.path.join(FUSE_RETURNS, f"{safe}.json")
+    if not os.path.exists(meta_path):
+        return None
+    with open(meta_path) as f:
+        meta = json.load(f)
+    gw, gh, names = meta["gw"], meta["gh"], meta["layers"]
+    raw = np.fromfile(os.path.join(FUSE_RETURNS, f"{safe}.f32"), dtype="<f4")
+    if raw.size != len(names) * gw * gh:
+        return None
+    return {k: raw[i * gw * gh:(i + 1) * gw * gh].reshape(gh, gw) for i, k in enumerate(names)}
 
 
 def is_example(stem):
@@ -242,14 +273,20 @@ def read_lawn(feats, frames, stem, shape):
         if FUSE_CANOPY and mask_file and os.path.exists(mask_file):
             can_in = np.asarray(Image.open(mask_file).convert("L")) >= 128
             sources.append("canopy")
-        extra = extra_channels(gw, gh, cx, cy, lidar=lidar, ndvi=ndvi, ndvi_valid=valid, canopy=can_in)
+        returns = read_returns(stem) if FUSE_RETURNS else None
+        if returns is not None:
+            sources.append("returns")
+        extra = extra_channels(gw, gh, cx, cy, lidar=lidar, ndvi=ndvi, ndvi_valid=valid, canopy=can_in,
+                               returns=returns, with_returns=bool(FUSE_RETURNS))
         grid = np.concatenate([grid, extra.transpose(1, 2, 0)], axis=2)
 
     target, inside = box_targets(truth, gw, gh, cx, cy)
     allowed, _ = box_targets(within, gw, gh, cx, cy)
     unseen, _ = box_targets(inferred, gw, gh, cx, cy)
-    # Graded where it is on the photograph, inside the line, and seen.
-    weight = inside * allowed * (1.0 - unseen)
+    # Graded where it is on the photograph, inside the line, and seen --
+    # or, taught under trees, unseen too (not on an example frame).
+    taught = UNDER_TREES and not is_example(stem)
+    weight = inside * allowed * (1.0 if taught else (1.0 - unseen))
 
     L = {
         "id": stem,
@@ -269,7 +306,7 @@ def read_lawn(feats, frames, stem, shape):
         from edge_refine import edge_cells
         photo = Image.open(os.path.join(frames, f"{stem}.png")).convert("RGB")
         L["rgb"] = np.asarray(photo.resize((cells_w, cells_h), Image.BOX))
-        fine_w = (within & ~inferred).astype(np.float32)
+        fine_w = (within if taught else (within & ~inferred)).astype(np.float32)
         L["fine_t"] = torch.from_numpy(truth.astype(np.float32))[None]
         L["fine_w"] = torch.from_numpy(fine_w)[None]
         L["edge_idx"], L["graded_idx"] = edge_cells(truth, fine_w)
@@ -337,8 +374,8 @@ def with_dropout(x, rng):
     """The lawn's patches, with a fused source hidden now and then (FUSE only)."""
     if not FUSE:
         return x
-    from fuse_layers import CHANNELS, drop_sources
-    k = len(CHANNELS)
+    from fuse_layers import CHANNELS, RETURN_CHANNELS, drop_sources
+    k = len(CHANNELS) + (len(RETURN_CHANNELS) if FUSE_RETURNS else 0)
     e = drop_sources(x[-k:].numpy(), rng, DROP_LIDAR, DROP_NAIP)
     return torch.cat([x[:-k], torch.from_numpy(e)], dim=0)
 
@@ -536,6 +573,13 @@ def main():
         print(f"FUSED INPUTS: {len(CHANNELS)} more numbers a patch ({', '.join(CHANNELS)}); "
               f"lidar on {n_l}, NAIP on {n_n}, tree canopy on {n_c} of {len(lawns)} lawns; "
               f"dropout lidar {DROP_LIDAR:g}, NAIP {DROP_NAIP:g}", flush=True)
+        if FUSE_RETURNS:
+            n_r = sum(1 for L in lawns if "returns" in L["sources"])
+            print(f"LIDAR BY RETURN: 4 more numbers a patch (penetration, multi, spread, has_returns) "
+                  f"on {n_r} of {len(lawns)} lawns, hidden with the lidar", flush=True)
+    if UNDER_TREES:
+        print("TAUGHT UNDER TREES: inferred lawn and canopy over traced lawn are graded as the tracer "
+              "drew them (lawn), not left out; read this decoder's row ALONE", flush=True)
 
     # NOT-LAWN EXAMPLES TRAIN, THEY ARE NEVER HELD OUT. They join every
     # fold's training -- except that a fold does not see an example within
@@ -570,6 +614,7 @@ def main():
             "backbone": manifest.get("model"), "size": manifest.get("size"),
             "resFactor": manifest.get("resFactor", 1.0),
             "dim": dim, "refine": REFINE, "fuse": FUSE, "fuseCanopy": FUSE_CANOPY,
+            "underTrees": UNDER_TREES, "fuseReturns": bool(FUSE_RETURNS),
             "channels": list(CHANNELS) if FUSE else [],
             "canopyMode": CANOPY_MODE if CANOPY else None,
             "epochs": EPOCHS, "seed": SEED, "lr": LR, "weightDecay": WEIGHT_DECAY, "dropout": DROPOUT,
@@ -639,7 +684,7 @@ def main():
             "fused": ({"lidar": sum(1 for L in lawns if "lidar" in L["sources"]),
                        "naip": sum(1 for L in lawns if "naip" in L["sources"]),
                        "canopy": sum(1 for L in lawns if "canopy" in L["sources"]),
-                       "canopyInput": FUSE_CANOPY,
+                       "canopyInput": FUSE_CANOPY, "underTrees": UNDER_TREES, "fuseReturns": bool(FUSE_RETURNS),
                        "dropLidar": DROP_LIDAR, "dropNaip": DROP_NAIP} if FUSE else None),
             "seconds": round(total),
         }, f)

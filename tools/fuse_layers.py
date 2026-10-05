@@ -32,6 +32,11 @@ from decoder_grid import box_targets
 CHANNELS = ("height", "ground_share", "returns", "has_lidar", "ndvi", "has_ndvi", "canopy")
 LIDAR = (0, 1, 2, 3)
 NAIP = (4, 5)
+# FIRST RETURNS AGAINST LATER ONES (owner, 2026-10-05; H73): appended after
+# CHANNELS when the run brings tools/tree_lidar.py's layers. Hidden together
+# with the lidar above, since they come from the same flight.
+RETURN_CHANNELS = ("penetration", "multi", "spread", "has_returns")
+RETURN_LIDAR = (7, 8, 9, 10)
 
 
 def ndvi_from_png(rgb):
@@ -44,7 +49,8 @@ def ndvi_from_png(rgb):
     return ndvi.astype(np.float32), valid
 
 
-def extra_channels(grid_w, grid_h, cover_x, cover_y, lidar=None, ndvi=None, ndvi_valid=None, canopy=None):
+def extra_channels(grid_w, grid_h, cover_x, cover_y, lidar=None, ndvi=None, ndvi_valid=None, canopy=None,
+                   returns=None, with_returns=False):
     """
     (len(CHANNELS), grid_h, grid_w) float32.
 
@@ -52,7 +58,8 @@ def extra_channels(grid_w, grid_h, cover_x, cover_y, lidar=None, ndvi=None, ndvi
     ndvi:   NDVI -1..1 over the photograph, with ndvi_valid, or None
     canopy: the tree model's mask (bool) over the photograph, or None
     """
-    out = np.zeros((len(CHANNELS), grid_h, grid_w), dtype=np.float32)
+    n = len(CHANNELS) + (len(RETURN_CHANNELS) if with_returns else 0)
+    out = np.zeros((n, grid_h, grid_w), dtype=np.float32)
 
     def down(layer):
         mean, _ = box_targets(np.asarray(layer, dtype=np.float64), grid_w, grid_h, cover_x, cover_y)
@@ -76,6 +83,16 @@ def extra_channels(grid_w, grid_h, cover_x, cover_y, lidar=None, ndvi=None, ndvi
         out[5] = v
     if canopy is not None:
         out[6] = down(np.asarray(canopy, dtype=np.float64))
+    if with_returns and returns is not None:
+        # returns: tree_lidar.py's 1 m layers. A cell with no points reads as
+        # open ground for the shares (all reach it, none split) and 0 spread.
+        pen = np.nan_to_num(np.asarray(returns["penetration"], dtype=np.float64), nan=1.0)
+        mul = np.nan_to_num(np.asarray(returns["multi"], dtype=np.float64), nan=0.0)
+        spr = np.clip(np.nan_to_num(np.asarray(returns["spread"], dtype=np.float64), nan=0.0), 0, 20) / 10.0
+        out[7] = down(pen)
+        out[8] = down(mul)
+        out[9] = down(spr)
+        out[10] = 1.0
     return out
 
 
@@ -83,7 +100,7 @@ def drop_sources(extra, rng, p_lidar, p_naip):
     """Modality dropout: zero a whole source's channels, flag included, as a missing one reads."""
     e = extra.copy()
     if p_lidar and rng.random() < p_lidar:
-        e[list(LIDAR)] = 0.0
+        e[[i for i in LIDAR + RETURN_LIDAR if i < len(e)]] = 0.0
     if p_naip and rng.random() < p_naip:
         e[list(NAIP)] = 0.0
     return e

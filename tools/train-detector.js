@@ -103,6 +103,10 @@ export const findPlanRow = (table) => table.find((t) => t.cfg.name === PLAN_ROW)
    green or brown fix"). Was the evergreen row for run 37195418220, which H69
    measured as the worst of the four under the trees. */
 const TRIAL_ROW = `${PLAN_ROW}, see-through colour`;
+/* THE DECODER TAUGHT UNDER TREES (owner, 2026-10-05), alone: drawn first
+   when a `fused + edge + trees` run scored it, since the pictures are how a
+   candidate is judged. The one with the lidar by return, then without. */
+const TRIAL_ROWS = ['decoder, taught under trees + returns', 'decoder, taught under trees', TRIAL_ROW];
 
 /*
  * HOW MANY NUMBERS OF THE BACKBONE'S 384 EACH PIXEL CARRIES.
@@ -2691,6 +2695,10 @@ async function main() {
      * reach-only row of H30 to H32 is in the sweep tables, not the table.
      */
     for (const { cfg, masks, label } of decoderMasks) {
+      /* A decoder TAUGHT UNDER TREES (owner, 2026-10-05) is read alone:
+         stage 3 replaces its answer under every canopy cell, which is the
+         very thing it was taught, and the rows would cost scoring time. */
+      if (/^taught under trees/.test(label)) continue;
       const cfg4 = { ...cfg, name: `${cfg.name} + stage 3, span`, stage3: true };
       console.log(`Scoring "${cfg4.name}" (span 8 m, reach 1 m, bridge over 180°)…`);
       table.push(summarise(cfg4, judge(masks, { spanM: 8, reachM: 1, minRing: 0.5 }), cfg.dims));
@@ -2966,7 +2974,8 @@ async function main() {
    * never drawn. The owner looked for the difference and there was none to
    * find (2026-09-25). The best median is still named in the table.
    */
-  const drawn = (TRIAL_ROW && table.find((t) => t.cfg.name === TRIAL_ROW)) || findPlanRow(table) || best;
+  const trial = TRIAL_ROWS.map((n) => table.find((t) => t.cfg.name === n)).find(Boolean);
+  const drawn = trial || findPlanRow(table) || best;
   /*
    * THE EDGE REFINER'S LAYERS ON WHATEVER REFINED ROW IS DRAWN (owner,
    * 2026-10-04: "the edge refiner still isn't showing anything"). They were
@@ -2991,7 +3000,7 @@ async function main() {
     if (twin) console.log(`Edge refiner layers for "${drawn.cfg.name}" against "${twin.cfg.name}".`);
   }
   if (renderWanted && drawn && drawn !== best) {
-    console.log(`\nDrawing "${drawn.cfg.name}" (${drawn.med.toFixed(1)}%) -- ${drawn.cfg.name === TRIAL_ROW ? 'the row on trial' : "THE PLAN's row"} -- not the lowest median ("${best.cfg.name}", ${best.med.toFixed(1)}%).`);
+    console.log(`\nDrawing "${drawn.cfg.name}" (${drawn.med.toFixed(1)}%) -- ${drawn === trial ? 'the row on trial' : "THE PLAN's row"} -- not the lowest median ("${best.cfg.name}", ${best.med.toFixed(1)}%).`);
   }
   /*
    * EVERY ROW'S PER-LOT RESULT, AS A FILE (LOT_RESULTS), so runs can be

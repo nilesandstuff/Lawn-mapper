@@ -8,7 +8,7 @@ a whole source at once.
 
 import numpy as np
 
-from fuse_layers import CHANNELS, LIDAR, NAIP, drop_sources, extra_channels, ndvi_from_png
+from fuse_layers import CHANNELS, LIDAR, NAIP, RETURN_CHANNELS, RETURN_LIDAR, drop_sources, extra_channels, ndvi_from_png
 
 passed = 0
 
@@ -63,5 +63,18 @@ d = drop_sources(full, rng, 1.0, 0.0)
 check("dropping the lidar zeroes all its channels and only those",
       not d[list(LIDAR)].any() and np.array_equal(d[list(NAIP)], full[list(NAIP)]))
 check("and leaves the original alone", full[3].min() == 1)
+
+# Lidar by return (H73): four more channels after the seven, hidden with the lidar.
+ret = {"penetration": np.array([[0.2, 1.0], [np.nan, 1.0]], np.float32),
+       "multi": np.array([[0.6, 0.0], [0.0, 0.0]], np.float32),
+       "spread": np.array([[8.0, 0.0], [0.0, 0.0]], np.float32)}
+er = extra_channels(2, 2, 1.0, 1.0, lidar=lidar, returns=ret, with_returns=True)
+check("eleven channels with the returns", er.shape[0] == len(CHANNELS) + len(RETURN_CHANNELS))
+check("a crown's returns come through; a cell with no points reads as open ground",
+      abs(er[7, 0, 0] - 0.2) < 1e-6 and abs(er[8, 0, 0] - 0.6) < 1e-6 and abs(er[9, 0, 0] - 0.8) < 1e-6
+      and er[7, 1, 0] == 1.0 and er[10].min() == 1)
+check("without the switch, still seven", extra_channels(2, 2, 1.0, 1.0, lidar=lidar, returns=ret).shape[0] == len(CHANNELS))
+dr = drop_sources(er, np.random.default_rng(2), 1.0, 0.0)
+check("dropping the lidar zeroes the return channels too", not dr[list(LIDAR + RETURN_LIDAR)].any())
 
 print(f"\nAll {passed} checks passed.")

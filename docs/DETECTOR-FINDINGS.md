@@ -5510,6 +5510,63 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
+### S24. Teach the decoder what is under a tree, and give it the lidar by return (owner, 2026-10-05 -- BUILT, ON TRIAL)
+
+**The owner's question.** "Would it be able to solve all of this simply by
+giving it the depth measurements? Then we don't need to classify trees at
+all ... simply letting scale Mae figure out the scenarios where there's
+likely to be grass (which it learns ... from the markings on lawn maps we
+already have)." And the standing rule for this trial: "the lawn outline is
+the only thing that matters ... If 2 fully equivalent paths exist, ship the
+cheaper option and bookmark the more expensive ... if one is measurably
+better, that's the one."
+
+**What was true before it (checked, not recalled).**
+- Scale-MAE sees the photo only.
+- The fused inputs (S11, H48, H50) already give the decoder lidar
+  height, ground-return share and return count per patch. They were
+  measured level with no fusion (H50).
+- Nothing teaches it what is under a tree. Inferred lawn and canopy over
+  traced lawn carry NO weight (H17; train_decoder.py `read_lawn`), and
+  stage 3's rules decide there.
+
+**Built.**
+- `UNDER_TREES=1` grades inferred lawn and canopy over traced lawn as lawn.
+  Canopy the tracer drew no lawn under was already a weighted not-lawn,
+  and stays one.
+- `FUSE_RETURNS=tree-lidar` adds four fused numbers a patch: the share of
+  last returns reaching the ground, the share of split pulses, the
+  first-to-last spread, and a flag. All are from tools/tree_lidar.py and
+  hidden with the lidar in dropout.
+- Workflow 14 `decoder: fused + edge + trees` trains THE PLAN's two decoders
+  and two more over the SAME features, seed and folds:
+  - **"decoder, taught under trees"**
+  - **"decoder, taught under trees + returns"**
+
+  Both are fused, with the edge refiner. They are scored ALONE (stage 3
+  would overwrite the very cells they were taught) and drawn as the row on
+  trial.
+
+**The test, written before the runs.** Lawns `all` (80), place folds, seeds
+7, 8 and 9, canopy on lawn. One run carries every arm, so H28's extraction
+drift cancels.
+- Read lot by lot against THE PLAN's row of the same run, pooled over the
+  three seeds (workflow 24).
+- **Adopt** a taught decoder if it beats THE PLAN's row lot by lot with the
+  interval on the median change below zero.
+- **Equivalent** (interval spans zero): the taught decoder alone is the
+  CHEAPER path, because it needs no stage 3, so ship the cheaper one by the
+  owner's rule. But the "+ returns" arm costs a second point download, so
+  between the two taught arms, equal means the one without returns.
+- **Watch** the inferred column (where it was taught) and the woods lots
+  (Kent 22,481, the edge creeping into trees in H27).
+
+**Risks, said in advance.**
+- The inferred marks are leaf-on only, with fuzzy edges, so it learns
+  them fuzz and all.
+- 80 lots is small.
+- Stale lidar (B28, H40) is in the training data.
+
 ### S23. How much sun a spot gets, as evidence for lawn under trees (owner, 2026-10-03 -- IDEA, NOT BUILT, APPROACH OPEN)
 
 **The idea (owner).** Sites exist that map sunlight and shade over a
