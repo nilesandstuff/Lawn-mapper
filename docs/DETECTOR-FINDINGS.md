@@ -850,6 +850,40 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H74. Trees from the lidar alone, first pass: on the owner's inferred lawn (grass under a tree) lidar trees cover 52%, the tree model 73%, either 85%; lidar finds trees the model missed on some maps and almost none on others, 2026-10-05
+
+Workflow 30 run 37313636940 (tools/lidar_canopy.py at its defaults: a 1 m
+cell is a tree at ≥ 2 m, with a 3x3 multi-return share ≥ 0.15 or classed
+vegetation or a first-to-last spread ≥ 1 m, and not classed building; no
+opening). **75 of 80 approved maps** have lidar. Viewer: /lidar-trees.html.
+
+**A HINT, NOT A SCORE.** The only truth is the inferred marks. They are leaf-on
+canopy only, stop short of the canopy's edges, and cover trees standing in
+the photo, while the lidar is a median 6 years older (H72). On the 56 maps
+with inferred lawn AND a tree-model map, the inferred lawn lies under:
+
+| | share of inferred lawn |
+|---|---|
+| lidar trees | 52% |
+| tree model (restor/tcd, workflow 28) | 73% |
+| either | 85% |
+
+- **Not uniform.** Maps where lidar covers far MORE inferred lawn than the
+  model: B06 96 v 0, C76 99 v 27, C35 60 v 13, C27 62 v 0, C86 34 v 0, B15
+  70 v 40, B30 54 v 19, C37 100 v 74, C87 100 v 71. Maps where it covers
+  almost NONE of what the model does: B16 2 v 69, C69 1 v 56, C71 3 v 51,
+  C66 13 v 81, C26 0 v 49, C28 15 v 89, C24 15 v 91, B22 13 v 83, C36 0 v 55.
+  On C33 and C36 (GA_Central_5_2018) the lidar finds no tree on the lawn at
+  all, where the model has 56 and 231 m².
+- **"Either 85%" is the useful number if this works as an addition rather
+  than a replacement.** Each method finds inferred lawn the other misses.
+- **Unexplained.** Candidate reasons, NOT measured: trees younger than the
+  lidar; a sparse or old cloud whose pulses rarely split (2011 VA, ND); the
+  frame and the lidar box disagreeing; the thresholds. The pictures decide.
+- Lidar on-lawn area exceeds the model's on many maps (B28 1323 v 0 m², C88
+  2226 v 803, C42 1484 v 319). That is either trees the model missed or
+  things the lidar wrongly calls trees. Unknown until looked at.
+
 ### H73. Lidar by return, per labelled crown: evergreen vs broadleaf in leaf, 290 crowns: colour 61%, lidar 76% held out by map, 77% on leaf-off flights alone (share of pulses reaching the ground 75% by itself), 2026-10-05
 
 Workflow 29 run 37256336621 (tools/tree_lidar.py, then tools/tree-labels.js
@@ -933,6 +967,10 @@ the median over its cells.
   stage 4's height-only layer, which could not tell a roof from a tree.
   Judged by eye only. The one truth to hand is the inferred marks, which
   cover leaf-on canopy only and stop short of canopy edges.
+- **After the owner's not-a-tree fixes (run 37313702985):** lidar alone
+  77%, leaf-off only 74% (35 v 80), penetration alone 76%. Colour alone 62%.
+  Bare vs in leaf on colour 86% (100 v 189, 60 maps; best single feature
+  "not green share" 85%). One not-a-tree crown remains, too few to read.
 - **The labels are known to be noisy (owner, 2026-10-05).** Some
   evergreens may be labelled in leaf, and probably not the reverse. "Not a
   tree" was used for trees over pavement. Every number in H71 and H73 is
