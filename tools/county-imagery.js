@@ -1571,6 +1571,53 @@ async function season() {
   }
 }
 
+/*
+ * MODE=lidar: WHICH COUNTIES WITH A COUNTY PHOTO ALSO HAVE LIDAR, AND WHEN
+ * (owner, 2026-10-05: "how many counties that supply imagery also supply
+ * lidar... possibly on a different schedule than NAIP"). One sweep point per
+ * county where a photo was found; USGS's 3DEP index there (lidar-season.js):
+ * the newest collection, its season, and the years between it and the
+ * newest county photo over the same point. Reads only; writes a JSON report.
+ */
+async function countyLidar() {
+  const { lidarAt } = await import('./lidar-season.js');
+  const pts = query('SELECT county_key, lng, lat FROM county_sweep WHERE found = 1 AND county_key IS NOT NULL ORDER BY county_key, point');
+  const svcs = query('SELECT year, west, south, east, north FROM county_services WHERE year IS NOT NULL');
+  const seen = new Set();
+  const out = [];
+  for (const p of pts) {
+    if (seen.has(p.county_key)) continue;
+    seen.add(p.county_key);
+    const lng = Number(p.lng), lat = Number(p.lat);
+    const photoYear = Math.max(0, ...svcs.filter((v) => lng >= v.west && lng <= v.east && lat >= v.south && lat <= v.north).map((v) => Number(v.year))) || null;
+    const all = await lidarAt(lng, lat).catch((e) => ({ error: String(e.message || e).slice(0, 80) }));
+    const newest = Array.isArray(all) ? all[0] || null : null;
+    out.push({ county: p.county_key, lng, lat, photoYear, collections: Array.isArray(all) ? all.length : null,
+      error: Array.isArray(all) ? null : all.error, newest });
+    if (out.length % 100 === 0) console.log(`  ${out.length} counties looked up`);
+    await sleep(120);
+  }
+  const ok = out.filter((r) => !r.error);
+  const withLidar = ok.filter((r) => r.newest);
+  const bySeason = {};
+  for (const r of withLidar) bySeason[r.newest.season || 'no dates'] = (bySeason[r.newest.season || 'no dates'] || 0) + 1;
+  const gaps = withLidar.filter((r) => r.photoYear && r.newest.year).map((r) => r.photoYear - r.newest.year).sort((a, b) => a - b);
+  const pct = (n, d) => (d ? `${Math.round((n / d) * 100)}%` : '--');
+  const years = {};
+  for (const r of withLidar) years[r.newest.year] = (years[r.newest.year] || 0) + 1;
+  console.log(`\nLIDAR UNDER THE COUNTY PHOTOS: ${out.length} counties with a county photo (${out.length - ok.length} could not be asked).`);
+  console.log(`  with 3DEP lidar: ${withLidar.length} (${pct(withLidar.length, ok.length)}); more than one collection: ${withLidar.filter((r) => r.collections > 1).length}`);
+  console.log(`  newest lidar flown leaf-off / mixed / leaf-on: ${bySeason.off || 0} / ${bySeason.mixed || 0} / ${bySeason.on || 0}`
+    + `${bySeason['no dates'] ? `, no dates ${bySeason['no dates']}` : ''} (leaf-off = 9 days in 10 between 1 Nov and 10 May)`);
+  console.log(`  newest lidar by year: ${Object.entries(years).sort().map(([y, n]) => `${y} ${n}`).join(', ')}`);
+  if (gaps.length) {
+    const mid = gaps[gaps.length >> 1];
+    console.log(`  years from that lidar to the newest county photo: median ${mid}; photo newer by 5+ years in ${gaps.filter((g) => g >= 5).length}, lidar newer in ${gaps.filter((g) => g < 0).length}`);
+  }
+  writeFileSync('county-lidar.json', JSON.stringify(out, null, 1));
+  console.log('Every county in county-lidar.json.');
+}
+
 /* ------------------------------------------------------------------ main */
 
 async function main() {
@@ -1597,6 +1644,11 @@ async function main() {
   if (MODE === 'names') {
     ensureCatalogueTables();
     await names(decoders);
+    return;
+  }
+  if (MODE === 'lidar') {
+    ensureCatalogueTables();
+    await countyLidar();
     return;
   }
   if (MODE === 'season') {

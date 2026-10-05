@@ -31,6 +31,8 @@ import { fileURLToPath } from 'node:url';
 import { fetchImage } from './train-detector.js';
 import { rasterizePolygon } from '../public/lib/mask.js';
 import { bareCanopy } from './stage3.js';
+import { lidarAt } from './lidar-season.js';
+import { coordsOfId } from '../worker/src/benchmark-ids.js';
 
 const BUCKET = process.env.CORPUS_BUCKET || 'lawn-mapper-corpus';
 export const MIN_CROWN_M2 = Number(process.env.MIN_CROWN_M2 || 2);
@@ -324,10 +326,21 @@ async function main() {
     const m2 = model.mpp * model.mpp;
     const cs = crowns(labels, ids, w, h).filter((c) => c.px.length * m2 >= MIN_CROWN_M2);
     const lid = process.env.LIDAR ? readLidar(process.env.LIDAR, model.id) : null;
+    /* When that lidar was flown, and whether in leaf (lidar-season.js): the
+       collection whose name matches the point cloud's, else the newest. */
+    if (lid) {
+      const at = coordsOfId(model.id);
+      const all = at ? await lidarAt(at.lng, at.lat).catch(() => []) : [];
+      const name = String(lid.project || '').toLowerCase();
+      const match = all.find((c) => name && (name.includes(String(c.workunit).toLowerCase()) || String(c.project || '').toLowerCase().includes(name)
+        || name.includes(String(c.project || '').toLowerCase()))) || all[0] || null;
+      lid.season = match?.season || null;
+      lid.flown = match ? `${match.start}..${match.end}` : null;
+    }
     for (const c of cs) {
       rows.push({ map: m.name, code: c.code, areaM2: c.px.length * m2,
         f: { ...features(c.px, photo.data, w, h, ruleBare), ...(lid ? lidarFeatures(c.px, w, h, lid) : {}) },
-        lidar: lid ? { project: lid.project, year: lid.year } : null });
+        lidar: lid ? { project: lid.project, year: lid.year, season: lid.season, flown: lid.flown } : null });
     }
     let canopyPx = 0;
     for (let i = 0; i < ids.length; i++) if (ids[i]) canopyPx++;
@@ -359,7 +372,7 @@ async function main() {
 
   /* THE LIDAR (owner, 2026-10-05): the same two questions on the crowns with
      lidar under them, on lidar alone and on lidar with the colour. */
-  let q3 = null, q4 = null, q5 = null;
+  let q3 = null, q4 = null, q5 = null, q6 = null;
   if (rows.some((r) => r.lidar)) {
     const withLidar = rows.filter((r) => r.lidar);
     console.log(`\nLIDAR under ${withLidar.length} of ${rows.length} crowns, on ${new Set(withLidar.map((r) => r.map)).size} maps`
@@ -370,11 +383,18 @@ async function main() {
       withLidar.filter(leafy).map((r) => ({ ...r, y: r.code === 1 })), 'evergreen', 'broadleaf', [...FEATURES, ...LIDAR_FEATURES]);
     q5 = question('5. NOT A TREE VS A TREE (the tree model wrong), lidar alone',
       withLidar.map((r) => ({ ...r, y: r.code === 4 })), 'not-a-tree', 'tree', LIDAR_FEATURES);
+    /* Pulses stopping in a crown mean "evergreen" only in a leaf-off flight. */
+    const seasons = {};
+    for (const r of withLidar) seasons[r.lidar.season || 'unknown'] = (seasons[r.lidar.season || 'unknown'] || 0) + 1;
+    console.log(`\n  Crowns by the lidar's season (leaf-off = 9 days in 10 between 1 Nov and 10 May): ${JSON.stringify(seasons)}`);
+    const offOnly = withLidar.filter((r) => r.lidar.season === 'off');
+    q6 = question('6. EVERGREEN VS BROADLEAF IN LEAF, lidar alone, LEAF-OFF lidar only',
+      offOnly.filter(leafy).map((r) => ({ ...r, y: r.code === 1 })), 'evergreen', 'broadleaf', LIDAR_FEATURES);
   }
 
   if (process.env.OUT) {
-    writeFileSync(process.env.OUT, JSON.stringify({ at: new Date().toISOString(), minCrownM2: MIN_CROWN_M2, perMap, pixels, q1, q2, q3, q4, q5,
-      crowns: rows.map((r) => ({ map: r.map, kind: CODES[r.code], areaM2: Math.round(r.areaM2 * 10) / 10,
+    writeFileSync(process.env.OUT, JSON.stringify({ at: new Date().toISOString(), minCrownM2: MIN_CROWN_M2, perMap, pixels, q1, q2, q3, q4, q5, q6,
+      crowns: rows.map((r) => ({ map: r.map, kind: CODES[r.code], areaM2: Math.round(r.areaM2 * 10) / 10, lidar: r.lidar,
         ...Object.fromEntries(Object.entries(r.f).map(([k, v]) => [k, Number.isFinite(v) ? Math.round(v * 1000) / 1000 : null])) })) }, null, 1));
     console.log(`\nEvery crown's numbers in ${process.env.OUT}.`);
   }

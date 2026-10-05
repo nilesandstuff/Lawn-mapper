@@ -42,7 +42,7 @@ on:
         required: false
         default: '60'
       county_mode:
-        description: 'county: find (look and bank), realign (line up the banked ones again), rebank (apply /county.html nudges) or catalogue (services for any address; county_limit = how many counties), or names (every county in states with statewide parcels, searched by name), or season (what each catalogued service says about leaf-off and flight dates)'
+        description: 'county: find (look and bank), realign (line up the banked ones again), rebank (apply /county.html nudges) or catalogue (services for any address; county_limit = how many counties), or names (every county in states with statewide parcels, searched by name), season (what each catalogued service says about leaf-off and flight dates), or lidar (which counties with a county photo also have 3DEP lidar, when and in what season)'
         type: choice
         options:
           - find
@@ -51,6 +51,7 @@ on:
           - catalogue
           - names
           - season
+          - lidar
         default: find
       county_only:
         description: 'county catalogue: just these county keys now, comma-separated (e.g. id-blaine)'
@@ -125,7 +126,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: county-imagery
-          path: county-imagery.json
+          path: |
+            county-imagery.json
+            county-lidar.json
           if-no-files-found: ignore
 
       - name: Keep the per-lot results
