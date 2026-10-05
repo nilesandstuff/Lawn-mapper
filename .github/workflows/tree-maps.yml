@@ -28,7 +28,11 @@ on:
         default: 'all'
         options: ['all', 'benchmark', 'new']
       keep_m2:
-        description: 'Keep a canopy patch when at least this many square metres of it is on the traced lawn'
+        description: 'Keep a canopy patch when at least this many square metres of it is in the lawn (inside its outer edge, holes included)'
+        required: false
+        default: '1'
+      reach_m:
+        description: 'How far past the lawn''s outer edge a tree still counts as in it, in metres'
         required: false
         default: '1'
 
@@ -87,4 +91,5 @@ jobs:
           CANOPY: canopy
           LAWN_SET: ${{ inputs.lawns }}
           KEEP_M2: ${{ inputs.keep_m2 }}
+          REACH_M: ${{ inputs.reach_m }}
         run: node tools/tree-maps.js

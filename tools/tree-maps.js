@@ -19,9 +19,10 @@
  * The labels are saved by the page under trees/labels/, which this never
  * touches, so a re-run cannot lose them.
  *
- * Canopy NOT on the lawn is left out (owner: "remove any canopy traces that
- * are not in a lawn"): a patch is kept when at least KEEP_M2 of it lies on
- * ground traced as lawn.
+ * Canopy NOT in the lawn is left out (owner: "remove any canopy traces that
+ * are not in a lawn"): a patch is kept when at least KEEP_M2 of it lies
+ * inside the lawn's outer edge -- holes included, since a tree in a lawn is
+ * usually traced round -- or within REACH_M of it (lawnMask).
  *
  *   node tools/tree-maps.js        (workflow 28, after tree-canopy.py)
  */
@@ -41,6 +42,8 @@ import { lawnSetClause, lawnSetDescription } from './lawn-set.js';
 const CANOPY = process.env.CANOPY || 'canopy';
 const BUCKET = process.env.CORPUS_BUCKET || 'lawn-mapper-corpus';
 export const KEEP_M2 = Number(process.env.KEEP_M2 || 1);
+/* How far past the lawn's outer edge a tree still counts as in it. */
+export const REACH_M = Number(process.env.REACH_M || 1);
 export const PREFIX = 'trees/';
 
 const parse = (t) => { try { return JSON.parse(t); } catch { return null; } };
@@ -60,14 +63,43 @@ export function lawnRings(shapes, frame, w, h) {
   return out;
 }
 
-/** One mask of every lawn polygon (each with its holes). */
-export function lawnMask(polys, w, h) {
+/**
+ * WHERE A TREE COUNTS AS "IN THE LAWN": inside any lawn polygon's OUTER
+ * ring, its holes included, and within `reachPx` of it.
+ *
+ * Holes included (owner, 2026-10-04: B13 lost most of its trees, "mostly
+ * evergreens"): a tree in a lawn is usually traced round, as a hole in the
+ * lawn, so its canopy overlapped no lawn and was dropped. And a little
+ * beyond the edge, so a tree standing in the gap between two traced pieces,
+ * or right on the lawn's edge, is kept too.
+ */
+export function lawnMask(polys, w, h, reachPx = 0) {
   const m = new Uint8Array(w * h);
   for (const rings of polys) {
-    const one = rasterizePolygon(rings.map(closed), w, h, identity);
+    if (!rings?.[0]) continue;
+    const one = rasterizePolygon([closed(rings[0])], w, h, identity);
     for (let i = 0; i < m.length; i++) if (one[i]) m[i] = 1;
   }
-  return m;
+  return reachPx > 0 ? grow(m, w, h, Math.round(reachPx)) : m;
+}
+
+/** A mask grown by r pixels (square), in two passes. */
+function grow(m, w, h, r) {
+  const row = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    let last = -Infinity;
+    for (let x = 0; x < w; x++) { if (m[y * w + x]) last = x; if (x - last <= r) row[y * w + x] = 1; }
+    last = Infinity;
+    for (let x = w - 1; x >= 0; x--) { if (m[y * w + x]) last = x; if (last - x <= r) row[y * w + x] = 1; }
+  }
+  const out = new Uint8Array(w * h);
+  for (let x = 0; x < w; x++) {
+    let last = -Infinity;
+    for (let y = 0; y < h; y++) { if (row[y * w + x]) last = y; if (y - last <= r) out[y * w + x] = 1; }
+    last = Infinity;
+    for (let y = h - 1; y >= 0; y--) { if (row[y * w + x]) last = y; if (last - y <= r) out[y * w + x] = 1; }
+  }
+  return out;
 }
 
 /**
@@ -118,7 +150,7 @@ async function main() {
     const mpp = found.metresAcross / w;
     const lawn = lawnRings(parse(row.shapes), frame, w, h);
     if (!lawn.length) continue;
-    const kept = clumpsOnLawn(found.clumps, lawnMask(lawn, w, h), w, h, mpp * mpp);
+    const kept = clumpsOnLawn(found.clumps, lawnMask(lawn, w, h, REACH_M / mpp), w, h, mpp * mpp);
     patches += kept.length;
     dropped += (found.clumps || []).length - kept.length;
     const doc = {

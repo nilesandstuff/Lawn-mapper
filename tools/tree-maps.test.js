@@ -29,5 +29,14 @@ check('a clearing inside a patch is not counted as canopy on the lawn',
   kept[2].onLawnSqM < 2 && kept[2].holes.length === 1, String(kept[2].onLawnSqM));
 check('a sliver under the bar is left out', clumpsOnLawn([{ polygon: sq(49, 0, 3) }], lawn, w, h, 0.01, 1).length === 0);
 
+/* B13 (owner, 2026-10-04): evergreens traced round as holes in the lawn. */
+const holed = lawnMask([[[[0, 0], [100, 0], [100, 100], [0, 100], [0, 0]], sq(40, 40, 20)]], w, h);
+check('a tree traced round, as a hole in the lawn, is in the lawn',
+  clumpsOnLawn([{ polygon: sq(42, 42, 16) }], holed, w, h, 0.01, 1).length === 1);
+const two = lawnMask([[[[0, 0], [45, 0], [45, 100], [0, 100], [0, 0]]], [[[55, 0], [100, 0], [100, 100], [55, 100], [55, 0]]]], w, h, 10);
+check('and a tree in the gap between two traced pieces, within the reach', clumpsOnLawn([{ polygon: sq(46, 20, 8) }], two, w, h, 0.01, 0.3).length === 1);
+check('but not one well away from the lawn',
+  clumpsOnLawn([{ polygon: sq(70, 70, 10) }], lawnMask([[[[0, 0], [40, 0], [40, 40], [0, 40], [0, 0]]]], w, h, 10), w, h, 0.01, 0.3).length === 0);
+
 if (failures) { console.log(`\n${failures} check(s) FAILED.`); process.exit(1); }
 console.log('\ntree maps: ok');
