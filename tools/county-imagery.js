@@ -1583,12 +1583,25 @@ async function countyLidar() {
   const { lidarAt } = await import('./lidar-season.js');
   const pts = query('SELECT county_key, lng, lat FROM county_sweep WHERE found = 1 AND county_key IS NOT NULL ORDER BY county_key, point');
   const svcs = query('SELECT year, west, south, east, north FROM county_services WHERE year IS NOT NULL');
+  /* Counties found by NAME were swept with no point (lng/lat null); for them,
+     the middle of the smallest photo service filed under the same key. */
+  const middles = {};
+  for (const v of query('SELECT county_key, west, south, east, north FROM county_services WHERE county_key IS NOT NULL AND west IS NOT NULL')) {
+    const area = (v.east - v.west) * (v.north - v.south);
+    if (!(area > 0)) continue;
+    if (!middles[v.county_key] || area < middles[v.county_key].area) {
+      middles[v.county_key] = { area, lng: (v.west + v.east) / 2, lat: (v.south + v.north) / 2 };
+    }
+  }
   const seen = new Set();
   const out = [];
+  let unplaced = 0;
   for (const p of pts) {
     if (seen.has(p.county_key)) continue;
     seen.add(p.county_key);
-    const lng = Number(p.lng), lat = Number(p.lat);
+    const at = p.lng !== null && p.lat !== null ? { lng: Number(p.lng), lat: Number(p.lat) } : middles[p.county_key];
+    if (!at) { unplaced++; continue; }
+    const { lng, lat } = at;
     const photoYear = Math.max(0, ...svcs.filter((v) => lng >= v.west && lng <= v.east && lat >= v.south && lat <= v.north).map((v) => Number(v.year))) || null;
     const all = await lidarAt(lng, lat).catch((e) => ({ error: String(e.message || e).slice(0, 80) }));
     const newest = Array.isArray(all) ? all[0] || null : null;
@@ -1605,7 +1618,7 @@ async function countyLidar() {
   const pct = (n, d) => (d ? `${Math.round((n / d) * 100)}%` : '--');
   const years = {};
   for (const r of withLidar) years[r.newest.year] = (years[r.newest.year] || 0) + 1;
-  console.log(`\nLIDAR UNDER THE COUNTY PHOTOS: ${out.length} counties with a county photo (${out.length - ok.length} could not be asked).`);
+  console.log(`\nLIDAR UNDER THE COUNTY PHOTOS: ${out.length} counties with a county photo (${out.length - ok.length} could not be asked${unplaced ? `, ${unplaced} more with no point to ask about` : ''}).`);
   console.log(`  with 3DEP lidar: ${withLidar.length} (${pct(withLidar.length, ok.length)}); more than one collection: ${withLidar.filter((r) => r.collections > 1).length}`);
   console.log(`  newest lidar flown leaf-off / mixed / leaf-on: ${bySeason.off || 0} / ${bySeason.mixed || 0} / ${bySeason.on || 0}`
     + `${bySeason['no dates'] ? `, no dates ${bySeason['no dates']}` : ''} (leaf-off = 9 days in 10 between 1 Nov and 10 May)`);
