@@ -883,6 +883,40 @@ with inferred lawn AND a tree-model map, the inferred lawn lies under:
 - Lidar on-lawn area exceeds the model's on many maps (B28 1323 v 0 m², C88
   2226 v 803, C42 1484 v 319). That is either trees the model missed or
   things the lidar wrongly calls trees. Unknown until looked at.
+- **OWNER'S REVIEW OF THE PICTURES (2026-10-05): discouraging.**
+  - B28: the whole frame is dense, and there is not one tree in it.
+  - Many roofs are marked dense, especially their edges.
+  - **Alignment is the biggest issue**: "if we can't get imagery to line up
+    with lidar, then lidar as a whole can't be used."
+  - Trunks are often dense (harmless).
+  - The lidar trees miss in both directions. They miss trees or part of a
+    canopy, and occasionally mark bare ground.
+  - Some whole deciduous canopies are marked dense.
+- **What each points at.** These are reasoned, not measured:
+  - B28 is a GROUND failure. If the ground surface is wrong, everything is
+    "2 m up" and no last return is "near the ground", so the whole frame is
+    tree and dense. A frame with few ground returns should be refused, not
+    traced.
+  - Roof EDGES: a pulse that falls half on the eave and half on the ground
+    splits into two returns metres apart. That is the tree signature
+    exactly. The 3x3 smoothing in lidar_canopy.py then spread it into the
+    roof. A sloped roof alone does not split pulses: returns closer than
+    ~2–3 m merge into one.
+  - Dense broadleaf: the 0.8 cut is loose. The in-leaf median is 94%
+    reaching the ground and the evergreen median 64%. Some flights are
+    mixed season.
+  - Alignment has two parts. One is a constant offset per map, which can
+    be measured and corrected. The other is relief displacement (H40's
+    note): an aerial photo shows a tall crown leaned metres off where it
+    stands, by an amount and in a direction that vary across the photo.
+    No single shift fixes that. And the lawn hidden in the PHOTO is under
+    the leaned crown, not under the lidar's.
+- **This repeats H38** (2026-09-25: "the lidar's canopy is not a replacement
+  for the tree model, as built"). It should have been read first. What has
+  held up is lidar as an ATTRIBUTE of a crown the photo model found (H73:
+  76–77% evergreen vs broadleaf). There, a few metres of offset only blurs
+  a per-crown average.
+
 
 ### H73. Lidar by return, per labelled crown: evergreen vs broadleaf in leaf, 290 crowns: colour 61%, lidar 76% held out by map, 77% on leaf-off flights alone (share of pulses reaching the ground 75% by itself), 2026-10-05
 
