@@ -868,6 +868,37 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H79. Weighting training 3x toward the release's own corrected cells (S21) measures WORSE; the pond maps measure as nothing overall but carry B12, 2026-10-06
+
+Three seeds (7/8/9), free runner, 80 lots, `corrections: on` + `not_lawn: on`:
+37455590620, 37455705640, 37455821616. 21 of the 80 lots carry a
+release-drawn outline to weight (S21's dump). Read with workflow 24
+(37499176071, 37499196754) against A = "decoder, edge refined + stage 3,
+span, lidar veto" of the same runs (pond maps in; runs' medians 20.9 /
+21.2 / 21.4).
+
+| row (B) | lots better / worse / level | paired change [95%], all 80 | frozen 32 | untuned 48 | runs' medians |
+|---|---|---|---|---|---|
+| corrections weighted + stage 3, span, veto | 15 / **34** / 31, **p 0.009** | **+0.3 [+0.1, +0.7]** | +0.1 [-0.1, +0.3], p 0.80 | **+0.7 [+0.3, +1.5], p 0.005** (8 / 25) | 20.9 / 24.3 / 22.0 |
+| no pond maps + stage 3, span, veto | 33 / 27 / 20, p 0.52 | -0.2 [-0.6, +0.1] | -0.1 [-0.5, +0.2], p 1.0 | -0.3 [-0.8, +0.5], p 0.52 | 20.7 / 22.0 / 21.0 |
+
+- **S21 fails, clearly.** Worse on more than twice as many lots as it helps,
+  and the interval is wholly above zero on all 80 and on the untuned 48.
+  Worst: B28 27.6 -> 51.7, C89 56 -> 69, B03 42 -> 52, C94 101 -> 111.
+  Best: C80 66 -> 60, B20 68 -> 64. One seed (8) moved its median 3 points,
+  so the weight also makes training less stable. As S21's own warning said
+  (and H57 before it), extra weight on the corrected band did not help. Shelved,
+  `corrections` off by default. The dump of `<id>-detected.png` stays; it
+  costs nothing and a different use of it is not ruled out by this.
+- **The ponds: nothing measurable overall** (sign reversed: B is WITHOUT them,
+  so -0.2 means removing them is, if anything, marginally better, well
+  inside noise). **B12, the pond, is the one lot they clearly carry:** 15.0%
+  with them, 21.3% without. Also worse without: C88 52 -> 68, C33 45 -> 60.
+  Better without: C29 563 -> 490, B04 64 -> 46, C80 66 -> 49. The release
+  already trains with them; with no measured difference, they stay as they are.
+- **No change to the release.** Neither row is a measured win, so version 2
+  stays live and nothing was retrained.
+
 ### H78. Taught under trees AND given the canopy as an input, then put through stage 3 and the veto, the decoder beats THE PLAN lot by lot on two extractions -- adopted, 2026-10-06
 
 Two sets of three seeds (7/8/9), free runner, `fused + edge + trees`, 80 lots.
@@ -5934,7 +5965,7 @@ under a bare tree is traced as ordinary lawn, not marked inferred. If a mode
 passes, the next step is letting training weight those cells instead of
 ignoring all canopy.
 
-### S21. Learn from the PAIRING: weight training toward where the detector's own outline was corrected (owner, 2026-09-30 -- BUILT 2026-10-06, ON TRIAL)
+### S21. Learn from the PAIRING: weight training toward where the detector's own outline was corrected (owner, 2026-09-30 -- BUILT 2026-10-06, MEASURED WORSE: H79)
 
 **Built 2026-10-06** (owner: "most, or all, of the 25 newest maps are
 corrections ... try running them while they're still useful"). Workflow 14
@@ -6349,3 +6380,4 @@ worse on the lots approved since. Then it joins THE PLAN.
 | 2026-10-06 | 37397123260 / 37397209793 / 37397296473 | 80 | as above + `distrust_lidar: on` | 20.6 / 21.1 / 21.3% (same row) | — | **H78.** 35 / 18, p 0.027; untuned -0.9 [-2.2, -0.2]. Distrust adds nothing |
 | 2026-10-06 | 37421464211 | 80 | **RELEASE (H78)**: `release: alpha`, fused + edge, canopy on lawn, UNDER_TREES + FUSE_CANOPY, seed 7, CPU | — (no folds; unscored by construction) | — | Shipped to the live server, trainedAt 2026-10-06T06:44:39Z, train loss 0.209. Deploy 37425627495: "Trained model (alpha release): ON ... 80 lots". The 2026-09-29 55-lot weights are kept under alpha/history/ |
 | 2026-10-06 | 37451515396 / 37451627810 / (37451740510 cancelled) | 80 | S21 `corrections: on` + `not_lawn: on`, seeds 7/8/9 | — | — | **Died in the extractor** (my bug): it took every `.png` in frames/ but `-labels.png` for a photograph, so the new `<id>-detected.png` masks were read as frames with no ground size. `-notlawn.png` had the same latent bug. Fixed in extract_features.py and tree-canopy.py. The dump found **21 of 80 lots drawn by the live release (2026-09-29T21:10:24Z)**, 34 more by SAM or land cover, and 4 approved not-lawn-only maps |
+| 2026-10-06 | 37455590620 / 37455705640 / 37455821616 | 80 | S21 `corrections: on` + `not_lawn: on` (third decoder without pond maps), seeds 7/8/9, CPU | 20.9 / 21.2 / 21.4% (edge refined + stage 3, span, veto) | — | **H79.** Corrections weighted: 15 better / 34 worse, p 0.009, +0.3 [+0.1, +0.7]; untuned +0.7. No pond maps: 33 / 27, p 0.52, -0.2 [-0.6, +0.1]; B12 15.0 -> 21.3 without. Neither adopted |
