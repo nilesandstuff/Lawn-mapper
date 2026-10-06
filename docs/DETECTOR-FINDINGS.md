@@ -913,6 +913,35 @@ should be ~0.
 - A softer flag (25–39% of the lawn over 1 m, median ~0.1 m) on 11 more lots
   is most likely branches overhanging the lawn's edge in 2 m cells. It is
   not acted on.
+- **CHECKED AGAINST DATED PHOTOS (owner, 2026-10-06: "confirm, to rule out
+  issues with the data").** The Esri World Imagery Wayback archive gives each
+  release's source date per point. For each flagged lot, the dated photo
+  nearest the middle of its lidar flight sits beside today's Mapbox photo
+  and the lidar (page: https://claude.ai/artifact/Wr6pM3jh2oMVPtT3kPcGPR).
+  The photos are within months of the flight, except C43's, which is three
+  years earlier. **None of it is bad data:**
+  - **6 are trees removed since the flight. The lidar is stale.**
+    - B28: forest in Nov 2016, a subdivision now.
+    - B31: Feb 2020 yard full of large bare trees, open lawn now.
+    - C88: wooded in Apr 2011.
+    - C57: dense canopy in Jul 2016.
+    - B02: trees in Nov 2017.
+    - C42: tree-lined in Nov 2020, cleared now, probably by a hurricane.
+  - **3 are the lidar RIGHT: bare deciduous trees standing over lawn**
+    traced through their branches in a leaf-off Mapbox photo: B06, C87,
+    C94. All three were flown leaf-off. The lidar is correct information
+    exactly where the detector needs it. C87 is the lot the taught decoder
+    missed.
+  - **1 (C43) is a canopy edge overlapping the traced lawn, mild.**
+  - **So "distrust lidar over visible lawn" hides real trees on 3 of 10.**
+    The `distrust_lidar` runs (37397123260, 37397209793, 37397296473)
+    treat all 10 alike and read as a mixed test. A cleaner rule needs a way
+    to tell stale from bare: e.g. the lidar's year against the photo's, or
+    whether the photo shows trunks and branch texture where the lidar
+    stands tall.
+  - **Side finding:** USGS's index also lists a 2022 QL1 survey over C88
+    (RI_Statewide_1_D22). Our reader takes the 2011 cloud. Whether newer
+    clouds are being skipped elsewhere is unchecked (tools/lidar-plan.js).
 - **Built: `distrust_lidar: on`** (workflow 14). The taught decoders TRAIN
   with the lidar zeroed on lots over 0.5 m. The check needs the tracing, so
   held-out lots are answered with their lidar as it is. THE PLAN's
