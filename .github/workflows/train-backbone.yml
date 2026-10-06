@@ -675,7 +675,7 @@ jobs:
         run: |
           mkdir -p work
           have=""
-          for d in frames canopy lidar naip tree-lidar feats feats-whole lidar-plan.json preds preds-edge preds-trees preds-trees-returns preds-none preds-lawn preds-all; do
+          for d in frames canopy lidar naip tree-lidar feats feats-whole lidar-plan.json preds preds-edge preds-trees preds-trees-canopy preds-trees-returns preds-none preds-lawn preds-all; do
             if [ -e "$d" ]; then have="$have $d"; fi
           done
           du -sh $have || true
@@ -810,6 +810,31 @@ jobs:
         run: |
           (cd tools && python3 under_trees_test.py)
           python3 tools/train_decoder.py
+      # THE SAME, TOLD WHERE THE CANOPY IS (owner's review of H75's pictures,
+      # 2026-10-06: "more willing to trace bare ground and pavement"). Taught
+      # lawn on leaf-coloured pixels with no canopy input, a decoder can only
+      # learn "not-grass can be lawn" everywhere; with the tree model's mask
+      # as an input it can learn it under trees only. H48's reason for
+      # keeping the channel out (every canopy cell it saw was not-lawn) does
+      # not hold once canopy over lawn is graded as lawn.
+      - name: Train the decoder taught under trees, canopy as input
+        if: ${{ inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge + trees') && inputs.canopy != 'compare' && inputs.canopy != 'off' && inputs.gpu != 'modal' }}
+        env:
+          FEATURES: feats
+          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
+          FRAMES: frames
+          OUT: preds-trees-canopy
+          CANOPY: canopy
+          CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}
+          SEED: ${{ inputs.seed }}
+          FUSE: '1'
+          FUSE_LIDAR: lidar
+          FOLDS: ${{ inputs.lawns == 'all' && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
+          FUSE_NAIP: naip
+          FUSE_CANOPY: '1'
+          REFINE: '1'
+          UNDER_TREES: '1'
+        run: python3 tools/train_decoder.py
       - name: Train the decoder taught under trees, with the lidar by return
         if: ${{ inputs.release == 'off' && inputs.decoder == 'fused + edge + trees + returns' && inputs.canopy != 'compare' && inputs.canopy != 'off' && inputs.gpu != 'modal' }}
         env:
@@ -934,7 +959,7 @@ jobs:
           # The three-way comparison, one row each. The seen column is scored
           # with the canopy unseen on lawn, whichever decoder is being read.
           # S19 (`fused + edge`): the refined decoder as a row of its own.
-          PREDICTIONS_DIRS: ${{ (inputs.decoder != 'off' && inputs.canopy == 'compare' && 'no canopy=preds-none,canopy on lawn=preds-lawn,canopy everywhere=preds-all') || (inputs.decoder == 'fused + edge' && 'edge refined=preds-edge') || (inputs.decoder == 'fused + edge + trees' && 'edge refined=preds-edge,taught under trees=preds-trees') || (inputs.decoder == 'fused + edge + trees + returns' && 'edge refined=preds-edge,taught under trees=preds-trees,taught under trees + returns=preds-trees-returns') || '' }}
+          PREDICTIONS_DIRS: ${{ (inputs.decoder != 'off' && inputs.canopy == 'compare' && 'no canopy=preds-none,canopy on lawn=preds-lawn,canopy everywhere=preds-all') || (inputs.decoder == 'fused + edge' && 'edge refined=preds-edge') || (inputs.decoder == 'fused + edge + trees' && 'edge refined=preds-edge,taught under trees=preds-trees,taught under trees, canopy input=preds-trees-canopy') || (inputs.decoder == 'fused + edge + trees + returns' && 'edge refined=preds-edge,taught under trees=preds-trees,taught under trees, canopy input=preds-trees-canopy,taught under trees + returns=preds-trees-returns') || '' }}
           # The canopy joins the hand-marked unseen ground for the seen column.
           CANOPY_DIR: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
           CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}

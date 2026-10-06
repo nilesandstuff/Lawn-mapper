@@ -106,7 +106,7 @@ const TRIAL_ROW = `${PLAN_ROW}, see-through colour`;
 /* THE DECODER TAUGHT UNDER TREES (owner, 2026-10-05), alone: drawn first
    when a `fused + edge + trees` run scored it, since the pictures are how a
    candidate is judged. The one with the lidar by return, then without. */
-const TRIAL_ROWS = [`${PLAN_ROW}, taught under the canopy`, 'decoder, taught under trees + returns', 'decoder, taught under trees', TRIAL_ROW];
+const TRIAL_ROWS = ['decoder, taught under trees, canopy input + lidar veto', `${PLAN_ROW}, taught under the canopy`, 'decoder, taught under trees + returns', 'decoder, taught under trees', TRIAL_ROW];
 
 /*
  * HOW MANY NUMBERS OF THE BACKBONE'S 384 EACH PIXEL CARRIES.
@@ -2499,7 +2499,7 @@ async function main() {
         /* 'evergreen': on a photo that looks leaf-off, the crowns that did
            not read bare are never lawn (stage3.js evergreensOf). */
         const evergreen = opts.seeThrough === 'evergreen' ? evergreensOf(canopy, L.bare) : null;
-        let mask = canopy
+        let mask = canopy && !opts.noStage3
           ? stage3(masks[held], canopy, L.grid, L.gridH, { mpp: L.mpp, height: L.height, ...opts, bare, evergreen }).mask
           : masks[held];
         /* UNDER THE TREES, ANOTHER DECODER'S ANSWER (H75): on every canopy
@@ -2707,7 +2707,17 @@ async function main() {
       /* A decoder TAUGHT UNDER TREES (owner, 2026-10-05) is read alone:
          stage 3 replaces its answer under every canopy cell, which is the
          very thing it was taught, and the rows would cost scoring time. */
-      if (/^taught under trees/.test(label)) continue;
+      /* Its own answer with the lidar veto and nothing else (owner,
+         2026-10-06: C94 "traced lawn on the roof" -- the alone row had no
+         veto, which THE PLAN's row always has). */
+      if (/^taught under trees/.test(label)) {
+        if (lawns.some((L) => L.roof || L.void)) {
+          const cfgV = { ...cfg, name: `${cfg.name} + lidar veto` };
+          console.log(`Scoring "${cfgV.name}" (no stage 3; roof and void are not lawn)…`);
+          table.push(summarise(cfgV, judge(masks, { veto: true, noStage3: true }), cfg.dims));
+        }
+        continue;
+      }
       const cfg4 = { ...cfg, name: `${cfg.name} + stage 3, span`, stage3: true };
       console.log(`Scoring "${cfg4.name}" (span 8 m, reach 1 m, bridge over 180°)…`);
       table.push(summarise(cfg4, judge(masks, { spanM: 8, reachM: 1, minRing: 0.5 }), cfg.dims));
@@ -2739,10 +2749,11 @@ async function main() {
          */
         /* THE TWO WHERE EACH MEASURED BETTER (H75): THE PLAN's answer in
            the open, the decoder taught under trees under the canopy. */
-        const taught = label === 'edge refined' && decoderMasks.find((d) => d.label === 'taught under trees');
-        if (taught) {
-          const cfgU = { ...cfg, name: `${cfg6.name}, taught under the canopy`, stage3: true };
-          console.log(`Scoring "${cfgU.name}" (THE PLAN outside the tree model's canopy, the taught decoder inside it)…`);
+        for (const [tl, tag] of [['taught under trees', 'taught'], ['taught under trees, canopy input', 'taught (canopy input)']]) {
+          const taught = label === 'edge refined' && decoderMasks.find((d) => d.label === tl);
+          if (!taught) continue;
+          const cfgU = { ...cfg, name: `${cfg6.name}, ${tag} under the canopy`, stage3: true };
+          console.log(`Scoring "${cfgU.name}" (THE PLAN outside the tree model's canopy, "${tl}" inside it)…`);
           table.push(summarise(cfgU, judge(masks, { spanM: 8, reachM: 1, minRing: 0.5, veto: true, under: taught.masks }), cfg.dims));
         }
         for (const mode of ['colour', 'evergreen']) {

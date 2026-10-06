@@ -79,6 +79,9 @@ def plan(inputs, run, send):
                     steps.append({"script": "train_decoder.py", "env": {
                         **edge, "CANOPY": "canopy", "OUT": "preds-trees", "UNDER_TREES": "1"}})
                     outs.append("preds-trees")
+                    steps.append({"script": "train_decoder.py", "env": {
+                        **edge, "CANOPY": "canopy", "OUT": "preds-trees-canopy", "UNDER_TREES": "1", "FUSE_CANOPY": "1"}})
+                    outs.append("preds-trees-canopy")
                 if decoder == "fused + edge + trees + returns":
                     steps.append({"script": "train_decoder.py", "env": {
                         **edge, "CANOPY": "canopy", "OUT": "preds-trees-returns", "UNDER_TREES": "1",

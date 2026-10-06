@@ -909,6 +909,37 @@ job twice on seeds 7 and 8; re-run with the Modal output kept. A first CPU run,
   cell, "…, taught under the canopy". `decoder: fused + edge + trees` now
   trains only the taught arm. The returns arm is bookmarked under
   `fused + edge + trees + returns`. Runs on the free runner, seeds 7/8/9.
+- **OWNER'S REVIEW OF SEED 8's PICTURES (2026-10-06).** The drawn row
+  there was "taught under trees + returns", the first in TRIAL_ROWS at the
+  time. His words, condensed:
+  - "Very promising but needs work."
+  - It aced properties never got right before, and made big errors on
+    some that had been good.
+  - It is more willing to trace bare ground and pavement. That made it
+    less afraid of edges: sometimes perfect, sometimes leaking into
+    parking lots.
+  - It is not afraid of tree shadows, finds difficult lawn at canopy edges,
+    and finds grass under large canopies where stage 3 was bad.
+  - **Much better on blurry Mapbox photos "by a LOT".**
+  - C88: it ate into bare winter dirt (forgivable) and into genuine woods.
+  - B22: it ate into dense leaf-on canopy.
+  - C94: it traced lawn on a roof.
+  - C87: it missed lawn visible through leaf-off canopy.
+  - It never avoided an evergreen.
+  - "When it messed up, it often did it in a very big way."
+- **Two causes the review points at, reasoned not measured:**
+  1. **No canopy input.** `FUSE_CANOPY=0` in canopy-on-lawn mode (kept
+     out since H48). Taught "lawn" on leaf-coloured pixels without being
+     told where the canopy is, a decoder can only learn "not-grass can be
+     lawn" everywhere: the pavement and bare-ground leaks. H48's reason
+     (every canopy cell it saw was not lawn) no longer holds once canopy
+     over lawn is graded lawn.
+  2. **No veto on the taught row.** It was scored alone with no lidar
+     roof/void veto, which THE PLAN's row always has: C94's roof.
+- **Built (2026-10-06):** a third taught arm, "taught under trees, canopy
+  input" (`FUSE_CANOPY=1`). Every taught row is now also scored "+ lidar
+  veto" (no stage 3). Each taught arm also gets a "… under the canopy"
+  combination with THE PLAN. The canopy-input + veto row is drawn first.
 
 ### H74. Trees from the lidar alone, first pass: on the owner's inferred lawn (grass under a tree) lidar trees cover 52%, the tree model 73%, either 85%; lidar finds trees the model missed on some maps and almost none on others, 2026-10-05
 

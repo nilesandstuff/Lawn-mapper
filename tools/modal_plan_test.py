@@ -84,18 +84,20 @@ def check_values():
 
 def check_trees():
     p = plan(inputs(canopy="on lawn", decoder="fused + edge + trees"), "r", [])
-    assert [s["env"]["OUT"] for s in p["steps"] if s["script"] == "train_decoder.py"] == ["preds", "preds-edge", "preds-trees"]
+    assert [s["env"]["OUT"] for s in p["steps"] if s["script"] == "train_decoder.py"] == ["preds", "preds-edge", "preds-trees", "preds-trees-canopy"]
     p = plan(inputs(canopy="on lawn", decoder="fused + edge + trees + returns"), "r", [])
     dec = {s["env"]["OUT"]: s["env"] for s in p["steps"] if s["script"] == "train_decoder.py"}
-    assert list(dec) == ["preds", "preds-edge", "preds-trees", "preds-trees-returns"], list(dec)
+    assert list(dec) == ["preds", "preds-edge", "preds-trees", "preds-trees-canopy", "preds-trees-returns"], list(dec)
     for out, step in (("preds", "Train the decoder"), ("preds-edge", "Train the decoder with the edge refiner"),
                       ("preds-trees", "Train the decoder taught under trees"),
+                      ("preds-trees-canopy", "Train the decoder taught under trees, canopy as input"),
                       ("preds-trees-returns", "Train the decoder taught under trees, with the lidar by return")):
         assert set(dec[out]) == wf_env(step), (out, set(dec[out]) ^ wf_env(step))
     assert dec["preds"]["FUSE"] == "1" and dec["preds-edge"]["REFINE"] == "1"
     assert dec["preds-trees"]["UNDER_TREES"] == "1" and "FUSE_RETURNS" not in dec["preds-trees"]
     assert dec["preds-trees-returns"]["FUSE_RETURNS"] == "tree-lidar"
-    assert p["fetch"] == ["feats", "preds", "preds-edge", "preds-trees", "preds-trees-returns"]
+    assert dec["preds-trees-canopy"]["FUSE_CANOPY"] == "1" and dec["preds-trees"]["FUSE_CANOPY"] == "0"
+    assert p["fetch"] == ["feats", "preds", "preds-edge", "preds-trees", "preds-trees-canopy", "preds-trees-returns"]
 
 
 check_trees()
