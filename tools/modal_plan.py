@@ -18,7 +18,7 @@ import os
 
 
 def folds(lawns):
-    return "place" if lawns == "all" else ("10" if lawns == "benchmark, 10 folds" else "")
+    return "place" if lawns in ("all", "locked") else ("10" if lawns == "benchmark, 10 folds" else "")
 
 
 def plan(inputs, run, send):
@@ -56,7 +56,8 @@ def plan(inputs, run, send):
             "CANOPY": "canopy", "CANOPY_MODE": "all" if canopy == "everywhere" else "lawn",
             "SEED": seed, "FUSE": "1", "FUSE_LIDAR": "lidar", "FUSE_NAIP": "naip",
             "FUSE_CANOPY": "1", "UNDER_TREES": "1",
-            "REFINE": "1", "OUT": "preds-release", "RELEASE_OUT": "release",
+            "REFINE": "1", "REFINE_REACH": "wide" if inputs.get("edge_reach") == "wide" else "",
+            "OUT": "preds-release", "RELEASE_OUT": "release",
         }})
         outs = ["release"]
     elif decoder != "off":
@@ -111,7 +112,7 @@ def plan(inputs, run, send):
 
 def main():
     e = os.environ
-    inputs = {k: e.get(k.upper(), "") for k in ("windows", "canopy", "decoder", "seed", "lawns", "model", "size", "release", "distrust_lidar")}
+    inputs = {k: e.get(k.upper(), "") for k in ("windows", "canopy", "decoder", "seed", "lawns", "model", "size", "release", "distrust_lidar", "edge_reach")}
     p = plan(inputs, e["RUN"], (e.get("SEND") or "").split(","))
     # A release records where it came from; Modal's container has no GitHub
     # environment of its own, so the two names are carried across here.

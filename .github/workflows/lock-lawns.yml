@@ -1,0 +1,73 @@
+name: 31. Let in the next batch of maps
+
+# THE LOCKED TRAINING SET (owner, 2026-10-06: "keep adding maps to the corpus
+# while we're doing tests without throwing off the data"). Tests in workflow
+# 14 run on `lawns: locked`, the maps listed in tools/locked-lawns.json, so
+# maps approved in the meantime wait outside. This rewrites that list to every
+# approved map now (or those saved before a time) and commits it. Run it when
+# a test series is done, or when the owner says so.
+
+on:
+  workflow_dispatch:
+    inputs:
+      before:
+        description: 'Optional: only maps last saved before this time (e.g. 2026-10-06T18:10:00Z). Empty = every approved map now'
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  group: lock-lawns
+  cancel-in-progress: false
+
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+
+      - name: Write the list
+        id: lock
+        shell: bash
+        env:
+          BEFORE: ${{ inputs.before }}
+        run: node tools/lock-lawns.js | tee lock.log
+
+      - name: Commit it
+        run: |
+          FILE=tools/locked-lawns.json
+          if git diff --quiet -- $FILE && git ls-files --error-unmatch $FILE >/dev/null 2>&1; then
+            echo "The list did not change."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cp $FILE "$RUNNER_TEMP/locked-lawns.json"
+          for attempt in 1 2 3; do
+            git fetch origin "$GITHUB_REF_NAME" || { sleep 5; continue; }
+            git reset --hard FETCH_HEAD
+            cp "$RUNNER_TEMP/locked-lawns.json" $FILE
+            git add $FILE
+            git diff --cached --quiet && exit 0
+            git commit -m "Training maps locked: $(head -1 lock.log)"
+            if git push; then exit 0; fi
+            echo "Push $attempt failed; the branch moved. Retrying."
+            sleep 5
+          done
+          echo "::error::Could not push the list after three tries."
+          exit 1
+
+      # The end of the log is the part read on a phone.
+      - name: What changed
+        if: always()
+        run: cat lock.log 2>/dev/null || echo "No list was written; see above."

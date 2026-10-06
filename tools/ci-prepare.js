@@ -623,7 +623,7 @@ function main() {
       numbering = numberMaps();
       try {
         approved = Number(parseQueryRows(wrangler(['d1', 'execute', DB_NAME, '--remote', '--json',
-          "--command=SELECT COUNT(*) AS n FROM corpus WHERE status = 'approved'"]))[0]?.n);
+          "--command=SELECT COUNT(*) AS n FROM corpus WHERE status = 'approved' AND image_key IS NOT NULL AND frame IS NOT NULL"]))[0]?.n);
       } catch { approved = NaN; }
     }
 

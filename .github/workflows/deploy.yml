@@ -380,6 +380,14 @@ jobs:
             echo "The detail is in the \"Prepare wrangler.toml\" step above."
           fi
           if [ -n "$MAPS_APPROVED" ]; then echo "Approved maps in the corpus: $MAPS_APPROVED"; fi
+          # The locked training set (tools/locked-lawns.json, workflow 31).
+          LOCKED=$(node -e "try{const l=require('./tools/locked-lawns.json');console.log(l.ids.length+' '+String(l.lockedAt).slice(0,10))}catch{}" 2>/dev/null || true)
+          if [ -n "$LOCKED" ]; then
+            n=${LOCKED%% *}
+            echo "Training maps locked: $n (since ${LOCKED#* })${MAPS_APPROVED:+; $((MAPS_APPROVED - n)) newer approved maps waiting -- workflow 31 lets them in}"
+          else
+            echo "Training maps locked: none yet -- workflow 31 makes the list"
+          fi
           # Reminders the owner asked to be given at a corpus size
           # (tools/milestones.js), here where they cannot be missed.
           if [ -n "$MILESTONES" ]; then

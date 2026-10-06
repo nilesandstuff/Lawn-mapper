@@ -171,10 +171,14 @@ on:
         # "benchmark, 10 folds" is the same 32 trained the way `all` is (ten
         # folds, not leave-one-out): the check that the change of method did
         # not change the answer (owner's question, 2026-09-27).
-        description: 'Which lawns: the frozen benchmark of 32 (comparable), every approved map (all), only those approved since the freeze (new), or the benchmark trained in 10 folds (method check)'
+        #
+        # "locked" (owner, 2026-10-06; the default since): exactly the maps in
+        # tools/locked-lawns.json, so tests stay comparable while new maps
+        # arrive. Workflow 31 lets the next batch in.
+        description: 'Which lawns: the locked training set (default; workflow 31 lets new maps in), every approved map (all), the frozen benchmark of 32, only those approved since that freeze (new), or the benchmark in 10 folds'
         type: choice
-        default: 'benchmark'
-        options: ['benchmark', 'all', 'new', 'benchmark, 10 folds']
+        default: 'locked'
+        options: ['locked', 'all', 'benchmark', 'new', 'benchmark, 10 folds']
       decoder:
         # STAGE 1 OF THE PLAN. Every row the scorer trains itself is a 16-unit
         # head over a RANDOM 32 of the eye's 1024 numbers, one cell at a time.
@@ -658,6 +662,7 @@ jobs:
           CANOPY: ${{ inputs.canopy }}
           DECODER: ${{ inputs.decoder }}
           DISTRUST_LIDAR: ${{ inputs.distrust_lidar }}
+          EDGE_REACH: ${{ inputs.edge_reach }}
           SEED: ${{ inputs.seed }}
           LAWNS: ${{ inputs.lawns }}
           MODEL: ${{ inputs.model }}
@@ -803,7 +808,7 @@ jobs:
           # out a NEIGHBOURHOOD at a time in 15 folds (tools/folds.py): a lot is
           # never scored by a decoder that trained on the lot next door. The
           # benchmark stays leave-one-out, as every table was.
-          FOLDS: ${{ inputs.lawns == 'all' && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
+          FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'locked') && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
           FUSE_NAIP: naip
           FUSE_CANOPY: ${{ inputs.canopy == 'everywhere' && '1' || '0' }}
         run: python3 tools/train_decoder.py
@@ -824,7 +829,7 @@ jobs:
           SEED: ${{ inputs.seed }}
           FUSE: '1'
           FUSE_LIDAR: lidar
-          FOLDS: ${{ inputs.lawns == 'all' && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
+          FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'locked') && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
           FUSE_NAIP: naip
           # H78 (2026-10-06): THE PLAN's decoder is taught under trees and given
           # the canopy as an input; stage 3 and the veto still follow it.
@@ -846,7 +851,7 @@ jobs:
           SEED: ${{ inputs.seed }}
           FUSE: '1'
           FUSE_LIDAR: lidar
-          FOLDS: ${{ inputs.lawns == 'all' && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
+          FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'locked') && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
           FUSE_NAIP: naip
           FUSE_CANOPY: ${{ inputs.canopy != 'off' && '1' || '0' }}
           UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
@@ -869,7 +874,7 @@ jobs:
           SEED: ${{ inputs.seed }}
           FUSE: '1'
           FUSE_LIDAR: lidar
-          FOLDS: ${{ inputs.lawns == 'all' && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
+          FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'locked') && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
           FUSE_NAIP: naip
           # H78 (2026-10-06): THE PLAN's decoder is taught under trees and given
           # the canopy as an input; stage 3 and the veto still follow it.
@@ -890,7 +895,7 @@ jobs:
           SEED: ${{ inputs.seed }}
           FUSE: '1'
           FUSE_LIDAR: lidar
-          FOLDS: ${{ inputs.lawns == 'all' && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
+          FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'locked') && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
           FUSE_NAIP: naip
           # H78 (2026-10-06): THE PLAN's decoder is taught under trees and given
           # the canopy as an input; stage 3 and the veto still follow it.
@@ -916,7 +921,7 @@ jobs:
           SEED: ${{ inputs.seed }}
           FUSE: '1'
           FUSE_LIDAR: lidar
-          FOLDS: ${{ inputs.lawns == 'all' && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
+          FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'locked') && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
           FUSE_NAIP: naip
           FUSE_CANOPY: ${{ inputs.canopy == 'everywhere' && '1' || '0' }}
           REFINE: '1'
@@ -944,7 +949,7 @@ jobs:
           SEED: ${{ inputs.seed }}
           FUSE: '1'
           FUSE_LIDAR: lidar
-          FOLDS: ${{ inputs.lawns == 'all' && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
+          FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'locked') && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
           FUSE_NAIP: naip
           FUSE_CANOPY: '1'
           REFINE: '1'
@@ -964,7 +969,7 @@ jobs:
           FUSE: '1'
           FUSE_LIDAR: lidar
           FUSE_RETURNS: tree-lidar
-          FOLDS: ${{ inputs.lawns == 'all' && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
+          FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'locked') && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
           FUSE_NAIP: naip
           FUSE_CANOPY: ${{ inputs.canopy == 'everywhere' && '1' || '0' }}
           REFINE: '1'
@@ -989,7 +994,7 @@ jobs:
           # out a NEIGHBOURHOOD at a time in 15 folds (tools/folds.py): a lot is
           # never scored by a decoder that trained on the lot next door. The
           # benchmark stays leave-one-out, as every table was.
-          FOLDS: ${{ inputs.lawns == 'all' && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
+          FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'locked') && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
           FUSE_NAIP: naip
         run: python3 tools/train_decoder.py
 
@@ -1010,7 +1015,7 @@ jobs:
           # out a NEIGHBOURHOOD at a time in 15 folds (tools/folds.py): a lot is
           # never scored by a decoder that trained on the lot next door. The
           # benchmark stays leave-one-out, as every table was.
-          FOLDS: ${{ inputs.lawns == 'all' && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
+          FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'locked') && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
           FUSE_NAIP: naip
           # H48: no canopy CHANNEL for this decoder -- every canopy cell it is
           # graded on is not-lawn, so the channel taught "canopy = not lawn".
@@ -1034,7 +1039,7 @@ jobs:
           # out a NEIGHBOURHOOD at a time in 15 folds (tools/folds.py): a lot is
           # never scored by a decoder that trained on the lot next door. The
           # benchmark stays leave-one-out, as every table was.
-          FOLDS: ${{ inputs.lawns == 'all' && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
+          FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'locked') && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
           FUSE_NAIP: naip
         run: python3 tools/train_decoder.py
 
@@ -1049,7 +1054,7 @@ jobs:
           LOT_RESULTS: lot-results.json
           # Only a label here -- the decoders above did the folding -- but
           # without it every file said "leave-one-out" (H50's six did).
-          FOLDS: ${{ inputs.lawns == 'all' && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
+          FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'locked') && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
           SEED: ${{ inputs.seed }}
           DECODER_KIND: ${{ inputs.decoder }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

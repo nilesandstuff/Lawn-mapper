@@ -478,7 +478,7 @@ const QUERY = `
     FROM corpus
    WHERE status = 'approved' AND image_key IS NOT NULL AND frame IS NOT NULL${lawnSetClause()}
    ORDER BY at DESC
-   LIMIT 200
+   LIMIT 5000
 `;
 
 const parse = (text) => {

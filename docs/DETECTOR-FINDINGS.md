@@ -6250,6 +6250,14 @@ worse on the lots approved since. Then it joins THE PLAN.
 
 ## Rules for running and reading these experiments
 
+**THE LOCKED SET (owner, 2026-10-06).** Tests run on `lawns: locked`, the
+default in workflow 14: exactly the maps listed in tools/locked-lawns.json.
+Maps approved while a test series runs wait outside it, so every run in the
+series is on the same maps. Workflow 31 ("Let in the next batch of maps")
+rewrites the list, when the owner says or when a series is finished; write
+the new count and fingerprint in the run log when it moves. The end of every
+deploy log says how many are locked and how many are waiting.
+
 - **HOW A DECISION IS MADE, FROM 2026-09-27** (owner: "get the most out of
   the training data"; "neighbouring lots leak into each other"). Four
   weaknesses in how every result above was read, fixed together:
