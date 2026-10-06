@@ -1,6 +1,6 @@
 {
   "foundBy": "tools/find-parcels.js",
-  "foundAt": "2026-10-05",
+  "foundAt": "2026-10-06",
   "note": "Candidates only, from parcel_gaps. Nothing here is coverage until verify-counties.js says so.",
   "candidates": [
     {
@@ -232,6 +232,44 @@
           "fields": {
             "pin": "PIN",
             "address": "ADDR1"
+          }
+        }
+      ]
+    },
+    {
+      "key": "pa-york",
+      "name": "York County, PA",
+      "fips": "42133",
+      "service": "https://services9.arcgis.com/fPQddIFWc5c78RSZ/arcgis/rest/services/YorkCityParcels/FeatureServer",
+      "layer": 0,
+      "layerName": "YorkCityParcels",
+      "fields": {
+        "pin": "PARCEL",
+        "address": "MAIL_ADDR_"
+      },
+      "fallbacks": [
+        {
+          "service": "https://services3.arcgis.com/QyE2WGV7PbLkjLWW/arcgis/rest/services/Parcels/FeatureServer",
+          "layer": 2,
+          "fields": {
+            "pin": "PARCEL",
+            "address": "MAIL_ADDR_FULL"
+          }
+        },
+        {
+          "service": "https://services3.arcgis.com/QyE2WGV7PbLkjLWW/arcgis/rest/services/Existing_Land_Use_Dover_Borough/FeatureServer",
+          "layer": 3,
+          "fields": {
+            "pin": "PARCEL",
+            "address": "MAIL_ADDR_FULL"
+          }
+        },
+        {
+          "service": "https://services1.arcgis.com/CNfeg2bqPqhTN34y/arcgis/rest/services/Manhattan_Lab/FeatureServer",
+          "layer": 3,
+          "fields": {
+            "pin": "PARCELADDR",
+            "address": "PARCELADDR"
           }
         }
       ]
