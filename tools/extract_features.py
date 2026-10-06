@@ -83,6 +83,9 @@ TILE_BUFFER_M = float(os.environ.get("TILE_BUFFER_M", "8") or 8)
 TILE_OVERLAP_M = float(os.environ.get("TILE_OVERLAP_M", "5") or 5)
 
 
+# Files the frame dump writes beside each photograph that are not photographs.
+SIDE_FILES = ("-labels.png", "-notlawn.png", "-detected.png")
+
 def lot_keeper(labels_path, w, h, buffer_px):
     """A test for windows.windowed: does this core come within `buffer_px`
     of the property line? From the frame's own labels (green = inside the
@@ -351,8 +354,11 @@ def main():
     # its picture as <id>-labels.png (for the decoder), and those are not
     # frames. Reading them as frames doubled the count and stopped the run at
     # "scale.json has no ground size for 32 of 64 frames".
+    # The photographs only: the dump also writes masks beside each one, and a
+    # mask is not a lawn (the live model's outline, <id>-detected.png, made
+    # two runs fail here on 2026-10-06).
     names = sorted(n for n in os.listdir(images)
-                   if n.endswith(".png") and not n.endswith("-labels.png"))
+                   if n.endswith(".png") and not n.endswith(SIDE_FILES))
     if not names:
         raise SystemExit(f"no .png files in {images}")
 

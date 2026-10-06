@@ -116,7 +116,8 @@ def canopy_at(model, processor, want, device, img, across, down):
 def main():
     # The photographs only: the frame dump also writes <id>-labels.png beside
     # each one (the decoder's targets), and a label picture is not a lawn.
-    frames = sorted(p for p in IMAGES.glob("*.png") if not p.name.endswith("-labels.png"))
+    frames = sorted(p for p in IMAGES.glob("*.png")
+                    if not p.name.endswith(("-labels.png", "-notlawn.png", "-detected.png")))
     if not frames:
         print(f"No frames in {IMAGES}. The dump step writes them.")
         sys.exit(1)
