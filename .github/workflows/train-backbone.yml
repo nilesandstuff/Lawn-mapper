@@ -324,6 +324,15 @@ on:
         type: choice
         default: 'off'
         options: ['off', 'alpha']
+      corrections:
+        # S21 (owner, 2026-10-06): one more decoder beside THE PLAN's, the same
+        # but with the cells where the person corrected the LIVE MODEL's own
+        # outline weighted 3x (lots whose outline a trained release drew).
+        # Free runner only.
+        description: 'Also train THE PLAN weighted toward the live model''s corrected mistakes (S21)'
+        type: choice
+        default: 'off'
+        options: ['off', 'on']
       distrust_lidar:
         # LIDAR THAT DISAGREES WITH ITS PHOTO, HIDDEN IN TRAINING (owner,
         # 2026-10-06; H76): a lot whose traced visible lawn stands over 0.5 m
@@ -382,7 +391,7 @@ jobs:
       # Stop in seconds rather than after an hour of extraction when the
       # choices cannot go together.
       - name: Check the choices go together
-        if: ${{ (inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && (inputs.canopy == 'compare' || (startsWith(inputs.decoder, 'fused + edge + trees') && inputs.canopy == 'off'))) || (inputs.not_lawn == 'on' && inputs.gpu == 'modal') || (inputs.release != 'off' && (inputs.decoder != 'fused + edge' || inputs.canopy == 'compare' || inputs.canopy == 'off')) }}
+        if: ${{ (inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && (inputs.canopy == 'compare' || (startsWith(inputs.decoder, 'fused + edge + trees') && inputs.canopy == 'off'))) || ((inputs.not_lawn == 'on' || inputs.corrections == 'on') && inputs.gpu == 'modal') || (inputs.release != 'off' && (inputs.decoder != 'fused + edge' || inputs.canopy == 'compare' || inputs.canopy == 'off')) }}
         run: |
           echo "::error::'fused + edge' (and '+ trees', which also needs a canopy setting) trains its decoders under ONE canopy setting (canopy not 'compare'); not-lawn traces are read on the free runner only; a release is THE PLAN (decoder 'fused + edge', a canopy setting) on either runner."
           exit 1
@@ -419,6 +428,7 @@ jobs:
           NOT_LAWN: ${{ inputs.not_lawn == 'on' && '1' || '' }}
           LAWN_SET: ${{ inputs.lawns == 'benchmark, 10 folds' && 'benchmark' || inputs.lawns }}
           PHOTOS: ${{ inputs.photos }}
+          CORRECTIONS: ${{ inputs.corrections == 'on' && '1' || '' }}
         run: node tools/train-detector.js
 
       # APPROVED NOT-LAWN-ONLY MAPS (owner, 2026-10-02: the substitute for the
@@ -462,9 +472,10 @@ jobs:
         id: frames
         if: ${{ inputs.gpu != 'modal' }}
         run: |
-          # Not-lawn traces (<id>-notlawn.png) are left out: only the decoder
+          # Not-lawn traces (<id>-notlawn.png) and the live model's outlines
+          # (<id>-detected.png, S21) are left out: only the decoder
           # reads them, so a run with them reuses everything saved without.
-          fp=$(cd frames && find . -type f ! -name '*-notlawn.png' -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-20)
+          fp=$(cd frames && find . -type f ! -name '*-notlawn.png' ! -name '*-detected.png' -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-20)
           echo "fp=$fp" >> "$GITHUB_OUTPUT"
           echo "frames fingerprint $fp ($(ls frames | wc -l) files)"
 
@@ -697,7 +708,7 @@ jobs:
         run: |
           mkdir -p work
           have=""
-          for d in frames canopy lidar naip tree-lidar feats feats-whole lidar-plan.json preds preds-edge preds-trees preds-trees-canopy preds-trees-returns preds-none preds-lawn preds-all; do
+          for d in frames canopy lidar naip tree-lidar feats feats-whole lidar-plan.json preds preds-edge preds-corr preds-nonl preds-trees preds-trees-canopy preds-trees-returns preds-none preds-lawn preds-all; do
             if [ -e "$d" ]; then have="$have $d"; fi
           done
           du -sh $have || true
@@ -810,6 +821,53 @@ jobs:
           FUSE_CANOPY: ${{ inputs.canopy != 'off' && '1' || '0' }}
           UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
           REFINE: '1'
+        run: python3 tools/train_decoder.py
+
+      # S21 and the pond maps (owner, 2026-10-06), over the same features as
+      # THE PLAN's decoder above: once weighted toward the live model's
+      # corrected mistakes, once without the not-lawn maps a not_lawn run adds.
+      - name: Train THE PLAN's decoder weighted to its corrections
+        if: ${{ inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && inputs.corrections == 'on' && inputs.canopy != 'compare' && inputs.gpu != 'modal' }}
+        env:
+          FEATURES: feats
+          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
+          FRAMES: frames
+          OUT: preds-corr
+          CANOPY: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
+          CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}
+          SEED: ${{ inputs.seed }}
+          FUSE: '1'
+          FUSE_LIDAR: lidar
+          FOLDS: ${{ inputs.lawns == 'all' && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
+          FUSE_NAIP: naip
+          # H78 (2026-10-06): THE PLAN's decoder is taught under trees and given
+          # the canopy as an input; stage 3 and the veto still follow it.
+          FUSE_CANOPY: ${{ inputs.canopy != 'off' && '1' || '0' }}
+          UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
+          REFINE: '1'
+          CORRECTIONS_WEIGHT: '3'
+        run: python3 tools/train_decoder.py
+      - name: Train THE PLAN's decoder without the not-lawn maps
+        if: ${{ inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && inputs.not_lawn == 'on' && inputs.canopy != 'compare' && inputs.gpu != 'modal' }}
+        env:
+          FEATURES: feats
+          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
+          FRAMES: frames
+          OUT: preds-nonl
+          CANOPY: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
+          CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}
+          SEED: ${{ inputs.seed }}
+          FUSE: '1'
+          FUSE_LIDAR: lidar
+          FOLDS: ${{ inputs.lawns == 'all' && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
+          FUSE_NAIP: naip
+          # H78 (2026-10-06): THE PLAN's decoder is taught under trees and given
+          # the canopy as an input; stage 3 and the veto still follow it.
+          FUSE_CANOPY: ${{ inputs.canopy != 'off' && '1' || '0' }}
+          UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
+          REFINE: '1'
+          SKIP_EXAMPLES: '1'
+          NOT_LAWN: ''
         run: python3 tools/train_decoder.py
 
       # TAUGHT UNDER TREES (owner, 2026-10-05): THE PLAN's decoder (fused,
@@ -987,7 +1045,7 @@ jobs:
           # The three-way comparison, one row each. The seen column is scored
           # with the canopy unseen on lawn, whichever decoder is being read.
           # S19 (`fused + edge`): the refined decoder as a row of its own.
-          PREDICTIONS_DIRS: ${{ (inputs.decoder != 'off' && inputs.canopy == 'compare' && 'no canopy=preds-none,canopy on lawn=preds-lawn,canopy everywhere=preds-all') || (inputs.decoder == 'fused + edge' && 'edge refined=preds-edge') || (inputs.decoder == 'fused + edge + trees' && 'edge refined=preds-edge,taught under trees=preds-trees,taught under trees with canopy input=preds-trees-canopy') || (inputs.decoder == 'fused + edge + trees + returns' && 'edge refined=preds-edge,taught under trees=preds-trees,taught under trees with canopy input=preds-trees-canopy,taught under trees + returns=preds-trees-returns') || '' }}
+          PREDICTIONS_DIRS: ${{ (inputs.decoder != 'off' && inputs.canopy == 'compare' && 'no canopy=preds-none,canopy on lawn=preds-lawn,canopy everywhere=preds-all') || (inputs.decoder == 'fused + edge' && format('edge refined=preds-edge{0}{1}', inputs.corrections == 'on' && ',corrections weighted=preds-corr' || '', inputs.not_lawn == 'on' && ',no pond maps=preds-nonl' || '')) || (inputs.decoder == 'fused + edge + trees' && 'edge refined=preds-edge,taught under trees=preds-trees,taught under trees with canopy input=preds-trees-canopy') || (inputs.decoder == 'fused + edge + trees + returns' && 'edge refined=preds-edge,taught under trees=preds-trees,taught under trees with canopy input=preds-trees-canopy,taught under trees + returns=preds-trees-returns') || '' }}
           # The canopy joins the hand-marked unseen ground for the seen column.
           CANOPY_DIR: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
           CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}

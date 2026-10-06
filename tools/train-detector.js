@@ -437,6 +437,12 @@ export const framePixels = (lawns) => {
  * (NOT_LAWN=1), so a database the migration has not reached yet still trains.
  */
 const NOT_LAWN = /^(1|true|yes|on)$/i.test(String(process.env.NOT_LAWN || ''));
+/* S21 (owner, 2026-10-06: "most, or all, of the 25 newest maps are
+   corrections ... try running them while they're still useful"): with
+   CORRECTIONS on, the dump writes the outline THE LIVE MODEL drew on each lot
+   it drew (model_version set) as <id>-detected.png, for train_decoder.py to
+   weight the cells where the person moved it. */
+const CORRECTIONS = /^(1|true|yes|on)$/i.test(String(process.env.CORRECTIONS || ''));
 
 /*
  * WHICH PHOTOGRAPH (owner, 2026-10-01). 'mapbox', the default, is the banked
@@ -467,7 +473,7 @@ export function photoKeyFor(row, countyKeys) {
 }
 const QUERY = `
   SELECT id, county, tree_line, frame, shapes, detected_shapes, parcel,
-         image_key, image_provider, image_frame, mode, model, naip_align, lot_no,
+         image_key, image_provider, image_frame, mode, model, naip_align, lot_no, model_version,
          evergreens, leaf_off${NOT_LAWN ? ', not_lawn' : ''}
     FROM corpus
    WHERE status = 'approved' AND image_key IS NOT NULL AND frame IS NOT NULL${lawnSetClause()}
@@ -663,6 +669,18 @@ export function notLawnPng(L, PNG) {
   const png = new PNG({ width: G, height: GH });
   for (let i = 0; i < G * GH; i++) {
     const v = L.notLawn && L.notLawn[i] ? 255 : 0;
+    png.data[i * 4] = v; png.data[i * 4 + 1] = v; png.data[i * 4 + 2] = v; png.data[i * 4 + 3] = 255;
+  }
+  return PNG.sync.write(png);
+}
+
+/** Any mask on a lot's label grid as a grey PNG (255 = set). */
+export function maskPng(mask, L, PNG) {
+  const G = L.grid || GRID;
+  const GH = L.gridH || G;
+  const png = new PNG({ width: G, height: GH });
+  for (let i = 0; i < G * GH; i++) {
+    const v = mask && mask[i] ? 255 : 0;
     png.data[i * 4] = v; png.data[i * 4 + 1] = v; png.data[i * 4 + 2] = v; png.data[i * 4 + 3] = 255;
   }
   return PNG.sync.write(png);
@@ -2129,6 +2147,7 @@ async function main() {
          * arithmetic; it stops the arithmetic being read as something it is not.
          */
         drawnBy: row.model || null,
+        modelVersion: row.model_version || null,
         run: `${row.model || 'no model'} / ${row.mode || 'no mode'}`,
       });
       /*
@@ -2200,6 +2219,7 @@ async function main() {
      */
     const sides = [];
     let notLawnWritten = 0;
+    let correctionsWritten = 0;
     for (const L of lawns) {
       const side = Math.max(L.dumpW, L.dumpH);
       sides.push(side);
@@ -2221,6 +2241,16 @@ async function main() {
         writeFileSync(join(dest, `${L.id}-notlawn.png`), notLawnPng(L, decoders.png.PNG));
         notLawnWritten++;
       }
+      if (CORRECTIONS && L.detected && L.modelVersion) {
+        writeFileSync(join(dest, `${L.id}-detected.png`), maskPng(L.detected, L, decoders.png.PNG));
+        correctionsWritten++;
+      }
+    }
+    if (CORRECTIONS) {
+      const byOther = lawns.filter((L) => L.detected && !L.modelVersion).length;
+      console.log(`CORRECTIONS (S21): the live model's own outline written for ${correctionsWritten} of ${lawns.length} lots `
+        + `(${[...new Set(lawns.filter((L) => L.modelVersion).map((L) => L.modelVersion))].join(', ') || 'no release'}); `
+        + `${byOther} more have an outline drawn by something else (SAM, land cover), left out.`);
     }
     /*
      * The ground truth of the pictures, for any model that asks what scale it

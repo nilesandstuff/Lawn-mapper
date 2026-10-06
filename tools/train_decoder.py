@@ -125,6 +125,16 @@ UNDER_TREES = os.environ.get("UNDER_TREES") == "1"
 # H76) trains with its lidar zeroed, as a lot with none reads. The check uses
 # the tracing, so it is for TRAINING ONLY: a held-out lot is answered with its
 # lidar as it is, which is all a new address would have.
+# S21, WHERE THE LIVE MODEL WAS CORRECTED (owner, 2026-10-06). A lot whose
+# outline the live release drew carries it as <id>-detected.png (the dump's
+# CORRECTIONS). Cells where the person's finished lawn disagrees with it --
+# what the model got wrong -- weigh 1 + CORRECTIONS_WEIGHT times as much.
+# Every other cell, and every lot without one, is unchanged.
+CORRECTIONS_WEIGHT = float(os.environ.get("CORRECTIONS_WEIGHT", "0") or 0)
+# The not-lawn example frames (pond maps) left out of this decoder's training
+# even when the run dumped them -- the arm a not_lawn run compares against.
+SKIP_EXAMPLES = os.environ.get("SKIP_EXAMPLES") == "1"
+
 LIDAR_DISTRUST = os.environ.get("LIDAR_DISTRUST", "")
 DISTRUST_M = float(os.environ.get("DISTRUST_M", "0.5"))
 _DISTRUSTED = None
@@ -310,6 +320,14 @@ def read_lawn(feats, frames, stem, shape):
     # or, taught under trees, unseen too (not on an example frame).
     taught = UNDER_TREES and not is_example(stem)
     weight = inside * allowed * (1.0 if taught else (1.0 - unseen))
+    wrong = None
+    if CORRECTIONS_WEIGHT and not is_example(stem):
+        df = os.path.join(frames, f"{stem}-detected.png")
+        if os.path.exists(df):
+            det = np.asarray(Image.open(df).convert("L").resize((cells_w, cells_h), Image.NEAREST)) >= 128
+            wrong = (det != truth) & within
+            err, _ = box_targets(wrong, gw, gh, cx, cy)
+            weight = weight * (1.0 + CORRECTIONS_WEIGHT * err)
 
     L = {
         "id": stem,
@@ -320,6 +338,7 @@ def read_lawn(feats, frames, stem, shape):
         "cover": (cx, cy),
         "canopy": canopy,
         "sources": sources,
+        "corrected": wrong is not None,
         "distrust": FUSE and "lidar" in sources and distrusted(stem),
     }
     if REFINE and not is_example(stem):
@@ -331,6 +350,8 @@ def read_lawn(feats, frames, stem, shape):
         photo = Image.open(os.path.join(frames, f"{stem}.png")).convert("RGB")
         L["rgb"] = np.asarray(photo.resize((cells_w, cells_h), Image.BOX))
         fine_w = (within if taught else (within & ~inferred)).astype(np.float32)
+        if wrong is not None:
+            fine_w = fine_w * (1.0 + CORRECTIONS_WEIGHT * wrong)
         L["fine_t"] = torch.from_numpy(truth.astype(np.float32))[None]
         L["fine_w"] = torch.from_numpy(fine_w)[None]
         L["edge_idx"], L["graded_idx"] = edge_cells(truth, fine_w)
@@ -602,6 +623,12 @@ def main():
             n_r = sum(1 for L in lawns if "returns" in L["sources"])
             print(f"LIDAR BY RETURN: 4 more numbers a patch (penetration, multi, spread, has_returns) "
                   f"on {n_r} of {len(lawns)} lawns, hidden with the lidar", flush=True)
+    if CORRECTIONS_WEIGHT:
+        n_c = sum(1 for L in lawns if L.get("corrected"))
+        print(f"CORRECTIONS WEIGHTED (S21): on {n_c} lots the live model's own outline is here; cells where the "
+              f"finished lawn disagrees with it weigh {1 + CORRECTIONS_WEIGHT:g}x", flush=True)
+    if SKIP_EXAMPLES:
+        print("NOT-LAWN EXAMPLE FRAMES LEFT OUT of this decoder (the without-ponds arm)", flush=True)
     if LIDAR_DISTRUST:
         bad = sorted(L["id"] for L in lawns if L.get("distrust"))
         print(f"LIDAR DISTRUSTED IN TRAINING: {len(bad)} lots whose visible lawn stands over {DISTRUST_M:g} m "
@@ -615,7 +642,7 @@ def main():
     # fold's training -- except that a fold does not see an example within
     # NEIGHBOUR_KM of a lot it holds out, the same rule that keeps a lot's
     # neighbours out of its decoder (same photograph, same light).
-    examples = [crop_to_graded(L) for L in lawns if is_example(L["id"])]
+    examples = [] if SKIP_EXAMPLES else [crop_to_graded(L) for L in lawns if is_example(L["id"])]
     lawns = [L for L in lawns if not is_example(L["id"])]
     if examples:
         from folds import lonlat, km_between
@@ -644,7 +671,7 @@ def main():
             "backbone": manifest.get("model"), "size": manifest.get("size"),
             "resFactor": manifest.get("resFactor", 1.0),
             "dim": dim, "refine": REFINE, "fuse": FUSE, "fuseCanopy": FUSE_CANOPY,
-            "underTrees": UNDER_TREES, "fuseReturns": bool(FUSE_RETURNS), "lidarDistrust": bool(LIDAR_DISTRUST),
+            "underTrees": UNDER_TREES, "fuseReturns": bool(FUSE_RETURNS), "lidarDistrust": bool(LIDAR_DISTRUST), "correctionsWeight": CORRECTIONS_WEIGHT,
             "channels": list(CHANNELS) if FUSE else [],
             "canopyMode": CANOPY_MODE if CANOPY else None,
             "epochs": EPOCHS, "seed": SEED, "lr": LR, "weightDecay": WEIGHT_DECAY, "dropout": DROPOUT,
@@ -714,7 +741,7 @@ def main():
             "fused": ({"lidar": sum(1 for L in lawns if "lidar" in L["sources"]),
                        "naip": sum(1 for L in lawns if "naip" in L["sources"]),
                        "canopy": sum(1 for L in lawns if "canopy" in L["sources"]),
-                       "canopyInput": FUSE_CANOPY, "underTrees": UNDER_TREES, "fuseReturns": bool(FUSE_RETURNS), "lidarDistrust": bool(LIDAR_DISTRUST),
+                       "canopyInput": FUSE_CANOPY, "underTrees": UNDER_TREES, "fuseReturns": bool(FUSE_RETURNS), "lidarDistrust": bool(LIDAR_DISTRUST), "correctionsWeight": CORRECTIONS_WEIGHT,
                        "dropLidar": DROP_LIDAR, "dropNaip": DROP_NAIP} if FUSE else None),
             "seconds": round(total),
         }, f)

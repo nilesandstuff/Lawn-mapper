@@ -44,4 +44,16 @@ wp, wt, t = plain["w"][0].numpy(), taught["w"][0].numpy(), taught["t"][0].numpy(
 check("as before: the inferred quarter carries no weight", wp[:2, :2].max() == 0 and wp[2:, :].min() == 1)
 check("taught under trees: it carries full weight", wt.min() == 1)
 check("and its target is lawn", t[:2, :2].min() == 1 and t[:, 2:].max() == 0)
+# S21: where the live model's outline (lot-detected.png) disagrees with the
+# finished lawn, the weight rises; elsewhere it does not.
+det = np.zeros((16, 16), np.uint8)
+det[:, :12] = 255                         # the model drew 4 columns too far right
+Image.fromarray(det).save(os.path.join(d, "lot-detected.png"))
+td.CORRECTIONS_WEIGHT = 2.0
+corr = td.read_lawn(d, d, "lot", shape)
+td.CORRECTIONS_WEIGHT = 0.0
+wc, w0 = corr["w"][0].numpy(), plain["w"][0].numpy()
+check("cells where the model was corrected weigh 3x", abs(wc[2, 2] - 3 * w0[2, 2]) < 1e-6 and wc[2, 2] > 0)
+check("cells it got right are unchanged", abs(wc[2, 0] - w0[2, 0]) < 1e-6 and abs(wc[2, 3] - w0[2, 3]) < 1e-6)
+check("and the lot says it was corrected", corr["corrected"] and not plain["corrected"])
 print(f"\nAll {passed} checks passed.")

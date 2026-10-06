@@ -5926,7 +5926,19 @@ under a bare tree is traced as ordinary lawn, not marked inferred. If a mode
 passes, the next step is letting training weight those cells instead of
 ignoring all canopy.
 
-### S21. Learn from the PAIRING: weight training toward where the detector's own outline was corrected (owner, 2026-09-30 -- WANTED, NOT YET BUILT)
+### S21. Learn from the PAIRING: weight training toward where the detector's own outline was corrected (owner, 2026-09-30 -- BUILT 2026-10-06, ON TRIAL)
+
+**Built 2026-10-06** (owner: "most, or all, of the 25 newest maps are
+corrections ... try running them while they're still useful"). Workflow 14
+`corrections: on` dumps the live release's own outline on each lot it drew
+(`model_version` set) as `<id>-detected.png`. A decoder like THE PLAN's
+then trains with the cells where the finished lawn disagrees with it
+weighted 3x (`CORRECTIONS_WEIGHT`), scored as "decoder, corrections
+weighted + stage 3, span, lidar veto". The same runs carry `not_lawn: on`
+(the pond maps), plus a third decoder without them ("no pond maps",
+`SKIP_EXAMPLES`), so the ponds' effect is measured in the same runs too.
+The test is lot by lot against THE PLAN's row (with ponds), three seeds.
+The ponds are read as THE PLAN vs "no pond maps".
 
 **What.** Every finished map already stores both halves of a correction:
 `detected_shapes` (what the AI drew) and `shapes` (what the person left). Since
