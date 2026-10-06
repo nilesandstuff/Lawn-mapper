@@ -805,7 +805,10 @@ jobs:
           FUSE_LIDAR: lidar
           FOLDS: ${{ inputs.lawns == 'all' && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
           FUSE_NAIP: naip
-          FUSE_CANOPY: ${{ inputs.canopy == 'everywhere' && '1' || '0' }}
+          # H78 (2026-10-06): THE PLAN's decoder is taught under trees and given
+          # the canopy as an input; stage 3 and the veto still follow it.
+          FUSE_CANOPY: ${{ inputs.canopy != 'off' && '1' || '0' }}
+          UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
           REFINE: '1'
         run: python3 tools/train_decoder.py
 
@@ -984,7 +987,7 @@ jobs:
           # The three-way comparison, one row each. The seen column is scored
           # with the canopy unseen on lawn, whichever decoder is being read.
           # S19 (`fused + edge`): the refined decoder as a row of its own.
-          PREDICTIONS_DIRS: ${{ (inputs.decoder != 'off' && inputs.canopy == 'compare' && 'no canopy=preds-none,canopy on lawn=preds-lawn,canopy everywhere=preds-all') || (inputs.decoder == 'fused + edge' && 'edge refined=preds-edge') || (inputs.decoder == 'fused + edge + trees' && 'edge refined=preds-edge,taught under trees=preds-trees,taught under trees, canopy input=preds-trees-canopy') || (inputs.decoder == 'fused + edge + trees + returns' && 'edge refined=preds-edge,taught under trees=preds-trees,taught under trees, canopy input=preds-trees-canopy,taught under trees + returns=preds-trees-returns') || '' }}
+          PREDICTIONS_DIRS: ${{ (inputs.decoder != 'off' && inputs.canopy == 'compare' && 'no canopy=preds-none,canopy on lawn=preds-lawn,canopy everywhere=preds-all') || (inputs.decoder == 'fused + edge' && 'edge refined=preds-edge') || (inputs.decoder == 'fused + edge + trees' && 'edge refined=preds-edge,taught under trees=preds-trees,taught under trees with canopy input=preds-trees-canopy') || (inputs.decoder == 'fused + edge + trees + returns' && 'edge refined=preds-edge,taught under trees=preds-trees,taught under trees with canopy input=preds-trees-canopy,taught under trees + returns=preds-trees-returns') || '' }}
           # The canopy joins the hand-marked unseen ground for the seen column.
           CANOPY_DIR: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
           CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}
@@ -1025,7 +1028,9 @@ jobs:
           FUSE: '1'
           FUSE_LIDAR: lidar
           FUSE_NAIP: naip
-          FUSE_CANOPY: ${{ inputs.canopy == 'everywhere' && '1' || '0' }}
+          # THE PLAN as H78 adopted it: taught under trees, canopy as input.
+          FUSE_CANOPY: '1'
+          UNDER_TREES: '1'
           REFINE: '1'
           OUT: preds-release
           RELEASE_OUT: release

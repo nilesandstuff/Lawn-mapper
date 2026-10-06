@@ -106,7 +106,7 @@ const TRIAL_ROW = `${PLAN_ROW}, see-through colour`;
 /* THE DECODER TAUGHT UNDER TREES (owner, 2026-10-05), alone: drawn first
    when a `fused + edge + trees` run scored it, since the pictures are how a
    candidate is judged. The one with the lidar by return, then without. */
-const TRIAL_ROWS = ['decoder, taught under trees, canopy input + lidar veto', `${PLAN_ROW}, taught under the canopy`, 'decoder, taught under trees + returns', 'decoder, taught under trees', TRIAL_ROW];
+const TRIAL_ROWS = ['decoder, taught under trees with canopy input + lidar veto', `${PLAN_ROW}, taught under the canopy`, 'decoder, taught under trees + returns', 'decoder, taught under trees', TRIAL_ROW];
 
 /*
  * HOW MANY NUMBERS OF THE BACKBONE'S 384 EACH PIXEL CARRIES.
@@ -2749,7 +2749,7 @@ async function main() {
          */
         /* THE TWO WHERE EACH MEASURED BETTER (H75): THE PLAN's answer in
            the open, the decoder taught under trees under the canopy. */
-        for (const [tl, tag] of [['taught under trees', 'taught'], ['taught under trees, canopy input', 'taught (canopy input)']]) {
+        for (const [tl, tag] of [['taught under trees', 'taught'], ['taught under trees with canopy input', 'taught (canopy input)']]) {
           const taught = label === 'edge refined' && decoderMasks.find((d) => d.label === tl);
           if (!taught) continue;
           const cfgU = { ...cfg, name: `${cfg6.name}, ${tag} under the canopy`, stage3: true };

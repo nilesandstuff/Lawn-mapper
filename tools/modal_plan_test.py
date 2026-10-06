@@ -35,7 +35,7 @@ def check_release():
     assert len(dec) == 1, "a release trains one decoder and scores nothing"
     assert set(dec[0]) == wf_env("Train the release model on every lot"), \
         set(dec[0]) ^ wf_env("Train the release model on every lot")
-    assert dec[0]["FUSE"] == "1" and dec[0]["REFINE"] == "1" and dec[0]["FUSE_CANOPY"] == "0"
+    assert dec[0]["FUSE"] == "1" and dec[0]["REFINE"] == "1" and dec[0]["FUSE_CANOPY"] == "1" and dec[0]["UNDER_TREES"] == "1"
     assert "release" in p["fetch"]
 
 

@@ -38,6 +38,16 @@ changes and results from different corpora are not comparable.
 *Kept current so a fresh session can pick up without the conversation that
 got here. Update it whenever the in-flight run changes.*
 
+- **THE PLAN CHANGED, 2026-10-06 (H78): its decoder is now TAUGHT UNDER
+  TREES with the CANOPY AS AN INPUT** (`UNDER_TREES=1`, `FUSE_CANOPY=1`).
+  Stage 3, the span rule, the edge refiner and the lidar veto all stay. It
+  beat the old PLAN lot by lot on two independent extractions × 3 seeds:
+  sign test p 0.036 and 0.027 on all 80; -1.1 and -0.9 points (p 0.002,
+  0.001) on the 48 untuned lots. Adopted by the owner's standing rule
+  ("if one is measurably better, then that's the one"). A release trained
+  that way on 80 lots replaces the 55-lot 2026-09-29 one; the old weights
+  are kept on the Modal volume under alpha/history/. The old decoder is in
+  git before commit "THE PLAN: taught under trees" if it is ever wanted.
 - **THE PLAN IS LIVE AS "Trained model (alpha release)" (owner, 2026-09-29)**,
   the default method wherever a release is on Modal. The configuration is the
   one that scored 24.0% in run 36601001355 (S20 A, seed 7: fused + edge
@@ -849,6 +859,51 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H78. Taught under trees AND given the canopy as an input, then put through stage 3 and the veto, the decoder beats THE PLAN lot by lot on two extractions -- adopted, 2026-10-06
+
+Two sets of three seeds (7/8/9), free runner, `fused + edge + trees`, 80 lots.
+Each is its own extraction:
+- **C** (canopy input only): 37393325860, 37393416186, 37393510265.
+- **D** (canopy input, plus `distrust_lidar: on`): 37397123260,
+  37397209793, 37397296473.
+
+All are read with workflow 24 against THE PLAN's row of the same runs.
+
+**A labelling bug changed the rows, not the training.** The arm was named
+"taught under trees, canopy input", and PREDICTIONS_DIRS splits on commas.
+So it was scored as "decoder, canopy input", like any decoder, with stage 3
+and the veto over it, and never alone + veto as intended. That turned out
+to be the row that matters. The label has no comma now.
+
+| row (B) | set | lots better / worse / level | paired change [95%], all 80 | untuned 48 | worst lot |
+|---|---|---|---|---|---|
+| **canopy input + stage 3, span, veto** | C | 38 / 21 / 21, **p 0.036** | -0.3 [-1.0, +0.0] | **-1.1 [-2.6, -0.3], p 0.002** | B17 31→39, C82 18→27 |
+| **canopy input + stage 3, span, veto** | D | 35 / 18 / 27, **p 0.027** | -0.2 [-0.8, +0.0] | **-0.9 [-2.2, -0.2], p 0.001** | B17 31→39 |
+| canopy input + … + see-through colour | C | 40 / 24 / 16, p 0.06 | -0.5 [-1.1, -0.0] | -1.1 [-2.7, -0.3] | **B22 65→184** |
+| canopy input, alone | C | 36 / 30 / 14, p 0.54 | -0.4 [-0.8, +0.3] | -0.5 [-1.7, -0.1] | B22 65→247 |
+| taught (no canopy input) + veto, alone | C | 36 / 24 / 20 | -0.4 [-1.2, +0.1] | -0.9 [-1.9, -0.1], p 0.03 | B22 65→256 |
+
+The tuned 32 sit at +0.1 to +0.3 in every row.
+
+- **Stage 3 tames the tail.** Alone, every taught decoder blows B22 up to
+  ~250%. Under stage 3 and the veto, B22 goes 65 → 70 and C29 improves.
+  The decoder's gain in the open and at canopy edges survives. The
+  see-through colour variant re-opens B22 (184%), so it is NOT the one.
+- **By S24's rule.** "Beats THE PLAN lot by lot with the interval below
+  zero": on all 80 the upper bound is +0.0, touching zero. On the 48
+  untuned lots it is clearly below, twice. The sign test is under 0.05
+  twice, on independent extractions. Read as measurably better, with that
+  caveat recorded. The tuned 32 favour the rules they were tuned on, as
+  every time.
+- **`distrust_lidar` measures as nothing** (C vs D, same row: -0.3 against
+  -0.2). With H76's photo check (3 of the 10 hidden lots have lidar that is
+  right), it is shelved, off by default.
+- **Owner's earlier review (H75's seed 8, the no-canopy-input arm):**
+  "very promising but needs work"; "much better on blurry Mapbox photos".
+  The adopted row is stage 3 over a better decoder, so its pictures should
+  look like THE PLAN's with fewer misses at canopy edges, not like seed 8's.
+  To be confirmed in the release's own pictures.
 
 ### H77. The taught decoder's lead on the untuned lots replicates (-1.2 [-1.7, -0.2], p 0.02); using it only under the canopy changes almost nothing lot by lot, and keeps both blow-ups -- they are under the canopy, 2026-10-06
 
@@ -6270,3 +6325,5 @@ worse on the lots approved since. Then it joins THE PLAN.
 | 2026-10-05 | 37361011304 | 80 | as above, seed 8, Modal | 20.8% (taught) | — | **H75.** PLAN 22.6, taught 20.8, + returns 21.3 |
 | 2026-10-05 | 37361320989 | 80 | as above, seed 9, Modal | 22.8% (taught, + returns) | — | **H75.** PLAN 24.7, taught 22.8, + returns 22.8. Pooled lot by lot (37382273833): taught -0.1 [-1.5, +0.2], equivalent; untuned 48 -1.1 [-2.3, +0.1] |
 | 2026-10-05 | 37382857695 / 37382974993 / 37383081694 | 80 | `fused + edge + trees` + the combined row, seeds 7/8/9, CPU | 21.6 / 20.4 / 23.2% (combined) | — | **H77.** PLAN 23.6 / 22.5 / 24.1; taught 21.6 / 21.4 / 22.1. Taught on the untuned 48: -1.2 [-1.7, -0.2], p 0.024 (replicates H75). Combined: 43 of 80 level, +0.0 |
+| 2026-10-06 | 37393325860 / 37393416186 / 37393510265 | 80 | `fused + edge + trees`, canopy-input arm (scored as "decoder, canopy input": label comma bug), seeds 7/8/9, CPU | 21.0 / 21.3 / 21.0% (canopy input + stage 3, span, veto) | — | **H78.** Against PLAN 24.1 / 22.5 / 23.6: 38 better / 21 worse, p 0.036; untuned -1.1 [-2.6, -0.3] |
+| 2026-10-06 | 37397123260 / 37397209793 / 37397296473 | 80 | as above + `distrust_lidar: on` | 20.6 / 21.1 / 21.3% (same row) | — | **H78.** 35 / 18, p 0.027; untuned -0.9 [-2.2, -0.2]. Distrust adds nothing |

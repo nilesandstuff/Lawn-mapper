@@ -55,7 +55,7 @@ def plan(inputs, run, send):
             "FEATURES": "feats", "FEATURES_WHOLE": whole, "FRAMES": "frames",
             "CANOPY": "canopy", "CANOPY_MODE": "all" if canopy == "everywhere" else "lawn",
             "SEED": seed, "FUSE": "1", "FUSE_LIDAR": "lidar", "FUSE_NAIP": "naip",
-            "FUSE_CANOPY": "1" if canopy == "everywhere" else "0",
+            "FUSE_CANOPY": "1", "UNDER_TREES": "1",
             "REFINE": "1", "OUT": "preds-release", "RELEASE_OUT": "release",
         }})
         outs = ["release"]
@@ -74,7 +74,10 @@ def plan(inputs, run, send):
                 edge = {**common, "FUSE": "1", "CANOPY": "canopy" if canopy != "off" else "",
                         "CANOPY_MODE": "all" if canopy == "everywhere" else "lawn",
                         "FUSE_CANOPY": "1" if canopy == "everywhere" else "0", "REFINE": "1"}
-                steps.append({"script": "train_decoder.py", "env": {**edge, "OUT": "preds-edge"}})
+                # H78: THE PLAN's decoder is taught under trees with the canopy as input.
+                steps.append({"script": "train_decoder.py", "env": {
+                    **edge, "OUT": "preds-edge", "FUSE_CANOPY": "1" if canopy != "off" else "0",
+                    "UNDER_TREES": "1" if canopy != "off" else ""}})
                 outs.append("preds-edge")
                 if decoder.startswith("fused + edge + trees"):
                     steps.append({"script": "train_decoder.py", "env": {
