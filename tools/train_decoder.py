@@ -117,6 +117,29 @@ FUSE_RETURNS = os.environ.get("FUSE_RETURNS", "")
 # example frames keep their unseen canopy. The row to read is the decoder
 # ALONE, since stage 3 replaces its answer under every canopy cell.
 UNDER_TREES = os.environ.get("UNDER_TREES") == "1"
+
+# LIDAR THAT DISAGREES WITH THE PHOTO, HIDDEN IN TRAINING (owner, 2026-10-06:
+# "filtering out bad lidar maps"). LIDAR_DISTRUST = tools/lidar_ground_check.py's
+# JSON: a lot whose visible lawn stands more than DISTRUST_M over the lidar's
+# ground (trees since cut, a building since built, a misregistered survey --
+# H76) trains with its lidar zeroed, as a lot with none reads. The check uses
+# the tracing, so it is for TRAINING ONLY: a held-out lot is answered with its
+# lidar as it is, which is all a new address would have.
+LIDAR_DISTRUST = os.environ.get("LIDAR_DISTRUST", "")
+DISTRUST_M = float(os.environ.get("DISTRUST_M", "0.5"))
+_DISTRUSTED = None
+
+
+def distrusted(stem):
+    global _DISTRUSTED
+    if _DISTRUSTED is None:
+        _DISTRUSTED = set()
+        if LIDAR_DISTRUST and os.path.exists(LIDAR_DISTRUST):
+            with open(LIDAR_DISTRUST) as f:
+                for k, r in json.load(f).items():
+                    if r.get("median_m") is not None and abs(r["median_m"]) > DISTRUST_M:
+                        _DISTRUSTED.add(k)
+    return stem in _DISTRUSTED or stem.replace("/", "_") in _DISTRUSTED
 # Modality dropout: the chance, per lawn per step, that a source is hidden
 # as though it were missing -- so the decoder cannot lean on the lidar where
 # it is stale, and has met "no lidar here" before it meets it on a lot.
@@ -297,6 +320,7 @@ def read_lawn(feats, frames, stem, shape):
         "cover": (cx, cy),
         "canopy": canopy,
         "sources": sources,
+        "distrust": FUSE and "lidar" in sources and distrusted(stem),
     }
     if REFINE and not is_example(stem):
         # THE REFINER'S VIEW, on the scoring grid itself: the photograph the
@@ -370,13 +394,14 @@ def dihedral(x, t, w, k, flip):
     return x, t, w
 
 
-def with_dropout(x, rng):
-    """The lawn's patches, with a fused source hidden now and then (FUSE only)."""
+def with_dropout(x, rng, distrust=False):
+    """The lawn's patches, with a fused source hidden now and then (FUSE only),
+    and the lidar always hidden on a lot whose lidar disagrees with its photo."""
     if not FUSE:
         return x
     from fuse_layers import CHANNELS, RETURN_CHANNELS, drop_sources
     k = len(CHANNELS) + (len(RETURN_CHANNELS) if FUSE_RETURNS else 0)
-    e = drop_sources(x[-k:].numpy(), rng, DROP_LIDAR, DROP_NAIP)
+    e = drop_sources(x[-k:].numpy(), rng, 1.0 if distrust else DROP_LIDAR, DROP_NAIP)
     return torch.cat([x[:-k], torch.from_numpy(e)], dim=0)
 
 
@@ -474,7 +499,7 @@ def train_one(train, dim, seed):
         rng.shuffle(batches)
         loss_sum, w_sum = 0.0, 0.0
         for batch in batches:
-            x = torch.stack([with_dropout(train[i]["x"], rng) for i in batch]).to(DEVICE)
+            x = torch.stack([with_dropout(train[i]["x"], rng, train[i].get("distrust")) for i in batch]).to(DEVICE)
             x = (x - mean) / sd
             t = torch.stack([train[i]["t"] for i in batch]).to(DEVICE)
             w = torch.stack([train[i]["w"] for i in batch]).to(DEVICE)
@@ -577,6 +602,11 @@ def main():
             n_r = sum(1 for L in lawns if "returns" in L["sources"])
             print(f"LIDAR BY RETURN: 4 more numbers a patch (penetration, multi, spread, has_returns) "
                   f"on {n_r} of {len(lawns)} lawns, hidden with the lidar", flush=True)
+    if LIDAR_DISTRUST:
+        bad = sorted(L["id"] for L in lawns if L.get("distrust"))
+        print(f"LIDAR DISTRUSTED IN TRAINING: {len(bad)} lots whose visible lawn stands over {DISTRUST_M:g} m "
+              f"on the lidar train with it hidden (answered with it as it is): {', '.join(b[:24] for b in bad) or 'none'}",
+              flush=True)
     if UNDER_TREES:
         print("TAUGHT UNDER TREES: inferred lawn and canopy over traced lawn are graded as the tracer "
               "drew them (lawn), not left out; read this decoder's row ALONE", flush=True)
@@ -614,7 +644,7 @@ def main():
             "backbone": manifest.get("model"), "size": manifest.get("size"),
             "resFactor": manifest.get("resFactor", 1.0),
             "dim": dim, "refine": REFINE, "fuse": FUSE, "fuseCanopy": FUSE_CANOPY,
-            "underTrees": UNDER_TREES, "fuseReturns": bool(FUSE_RETURNS),
+            "underTrees": UNDER_TREES, "fuseReturns": bool(FUSE_RETURNS), "lidarDistrust": bool(LIDAR_DISTRUST),
             "channels": list(CHANNELS) if FUSE else [],
             "canopyMode": CANOPY_MODE if CANOPY else None,
             "epochs": EPOCHS, "seed": SEED, "lr": LR, "weightDecay": WEIGHT_DECAY, "dropout": DROPOUT,
@@ -684,7 +714,7 @@ def main():
             "fused": ({"lidar": sum(1 for L in lawns if "lidar" in L["sources"]),
                        "naip": sum(1 for L in lawns if "naip" in L["sources"]),
                        "canopy": sum(1 for L in lawns if "canopy" in L["sources"]),
-                       "canopyInput": FUSE_CANOPY, "underTrees": UNDER_TREES, "fuseReturns": bool(FUSE_RETURNS),
+                       "canopyInput": FUSE_CANOPY, "underTrees": UNDER_TREES, "fuseReturns": bool(FUSE_RETURNS), "lidarDistrust": bool(LIDAR_DISTRUST),
                        "dropLidar": DROP_LIDAR, "dropNaip": DROP_NAIP} if FUSE else None),
             "seconds": round(total),
         }, f)

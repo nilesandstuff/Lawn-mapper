@@ -324,6 +324,16 @@ on:
         type: choice
         default: 'off'
         options: ['off', 'alpha']
+      distrust_lidar:
+        # LIDAR THAT DISAGREES WITH ITS PHOTO, HIDDEN IN TRAINING (owner,
+        # 2026-10-06; H76): a lot whose traced visible lawn stands over 0.5 m
+        # on the lidar (B28's felled trees at 25 m) trains the TAUGHT decoders
+        # with its lidar zeroed. THE PLAN's decoders are left alone, so they
+        # stay the anchor. Held-out lots keep their lidar as it is.
+        description: 'Hide in training the lidar of lots where it stands over traced visible lawn (taught decoders only)'
+        type: choice
+        default: 'off'
+        options: ['off', 'on']
       about:
         # WHAT THIS RUN IS FOR, kept with the pictures for ever.
         #
@@ -575,6 +585,17 @@ jobs:
           (cd tools && python3 tree_lidar_test.py)
           python3 tools/tree_lidar.py
 
+      # IS THE LIDAR'S GROUND WHERE THE GROUND IS? (H76) Seconds; its JSON is
+      # what `distrust_lidar` reads, and its table is worth having every run.
+      - name: Check the lidar against the visible lawn
+        if: ${{ inputs.canopy != 'off' }}
+        continue-on-error: true
+        env:
+          LIDAR: lidar
+          FRAMES: frames
+          OUT: lidar/ground-check.json
+        run: python3 tools/lidar_ground_check.py
+
       # Both scales: the whole-lot pass first, into its own directory, exactly
       # as `windows: off` reads it; the step below then reads the 6 cm blocks.
       - name: Run the backbone over each lot whole (both scales)
@@ -615,6 +636,7 @@ jobs:
           WINDOWS: ${{ inputs.windows }}
           CANOPY: ${{ inputs.canopy }}
           DECODER: ${{ inputs.decoder }}
+          DISTRUST_LIDAR: ${{ inputs.distrust_lidar }}
           SEED: ${{ inputs.seed }}
           LAWNS: ${{ inputs.lawns }}
           MODEL: ${{ inputs.model }}
@@ -807,6 +829,7 @@ jobs:
           FUSE_CANOPY: ${{ inputs.canopy == 'everywhere' && '1' || '0' }}
           REFINE: '1'
           UNDER_TREES: '1'
+          LIDAR_DISTRUST: ${{ inputs.distrust_lidar == 'on' && 'lidar/ground-check.json' || '' }}
         run: |
           (cd tools && python3 under_trees_test.py)
           python3 tools/train_decoder.py
@@ -834,6 +857,7 @@ jobs:
           FUSE_CANOPY: '1'
           REFINE: '1'
           UNDER_TREES: '1'
+          LIDAR_DISTRUST: ${{ inputs.distrust_lidar == 'on' && 'lidar/ground-check.json' || '' }}
         run: python3 tools/train_decoder.py
       - name: Train the decoder taught under trees, with the lidar by return
         if: ${{ inputs.release == 'off' && inputs.decoder == 'fused + edge + trees + returns' && inputs.canopy != 'compare' && inputs.canopy != 'off' && inputs.gpu != 'modal' }}
@@ -853,6 +877,7 @@ jobs:
           FUSE_CANOPY: ${{ inputs.canopy == 'everywhere' && '1' || '0' }}
           REFINE: '1'
           UNDER_TREES: '1'
+          LIDAR_DISTRUST: ${{ inputs.distrust_lidar == 'on' && 'lidar/ground-check.json' || '' }}
         run: python3 tools/train_decoder.py
 
       # THE THREE-WAY COMPARISON, over the one extraction above. Same seed,

@@ -28,6 +28,7 @@ def plan(inputs, run, send):
     seed = inputs["seed"]
     fused = "1" if decoder.startswith("fused") else ""
     whole = "feats-whole" if windows == "both" else ""
+    distrust = "lidar/ground-check.json" if inputs.get("distrust_lidar") == "on" else ""
 
     steps = []
     base = {"IMAGES": "frames", "MODEL": inputs["model"], "SIZE": inputs["size"]}
@@ -77,15 +78,16 @@ def plan(inputs, run, send):
                 outs.append("preds-edge")
                 if decoder.startswith("fused + edge + trees"):
                     steps.append({"script": "train_decoder.py", "env": {
-                        **edge, "CANOPY": "canopy", "OUT": "preds-trees", "UNDER_TREES": "1"}})
+                        **edge, "CANOPY": "canopy", "OUT": "preds-trees", "UNDER_TREES": "1", "LIDAR_DISTRUST": distrust}})
                     outs.append("preds-trees")
                     steps.append({"script": "train_decoder.py", "env": {
-                        **edge, "CANOPY": "canopy", "OUT": "preds-trees-canopy", "UNDER_TREES": "1", "FUSE_CANOPY": "1"}})
+                        **edge, "CANOPY": "canopy", "OUT": "preds-trees-canopy", "UNDER_TREES": "1", "FUSE_CANOPY": "1",
+                        "LIDAR_DISTRUST": distrust}})
                     outs.append("preds-trees-canopy")
                 if decoder == "fused + edge + trees + returns":
                     steps.append({"script": "train_decoder.py", "env": {
                         **edge, "CANOPY": "canopy", "OUT": "preds-trees-returns", "UNDER_TREES": "1",
-                        "FUSE_RETURNS": "tree-lidar"}})
+                        "FUSE_RETURNS": "tree-lidar", "LIDAR_DISTRUST": distrust}})
                     outs.append("preds-trees-returns")
         else:
             steps.append({"script": "train_decoder.py", "env": {**common, "OUT": "preds-none"}})
@@ -106,7 +108,7 @@ def plan(inputs, run, send):
 
 def main():
     e = os.environ
-    inputs = {k: e.get(k.upper(), "") for k in ("windows", "canopy", "decoder", "seed", "lawns", "model", "size", "release")}
+    inputs = {k: e.get(k.upper(), "") for k in ("windows", "canopy", "decoder", "seed", "lawns", "model", "size", "release", "distrust_lidar")}
     p = plan(inputs, e["RUN"], (e.get("SEND") or "").split(","))
     # A release records where it came from; Modal's container has no GitHub
     # environment of its own, so the two names are carried across here.

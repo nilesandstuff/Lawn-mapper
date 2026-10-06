@@ -850,6 +850,46 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H76. The lidar finds the ground almost everywhere; on 10 of 72 lots it shows something 1–25 m tall standing on lawn the photo shows open, and those include most of the owner's worst taught-decoder lots, 2026-10-06
+
+Workflow 23 run 37394492053, lawns `all`, 2 m cells,
+tools/lidar_ground_check.py. On ground the tracer called VISIBLE lawn
+(lidar_frame.py `classes == 0`), "highest return minus the ground surface"
+should be ~0.
+
+- **The owner's question** ("times when the lidar isn't zero-ing at ground")
+  **is answered no, as asked.** On 70 of 72 lots, 90–100% of visible-lawn
+  cells have a ground return of their own; the other two are 82% (C88) and
+  ~90% (B22). On 62 lots the lawn's median height is 0.05–0.19 m. Nothing
+  reads below the ground anywhere (0% under -0.3 m).
+- **But on 10 lots the lidar stands TALL over visible lawn:**
+  - B28 +25.3 m: its trees are gone, H40.
+  - B31 +10.5
+  - B06 +7.7: Kent 8,626, "the roof" lot.
+  - C88 +7.2
+  - C57 +6.5
+  - B02 +2.9
+  - C42 +2.8
+  - C87 +1.7
+  - C94 +1.0
+  - C43 +1.0
+
+  The ground is found, so this is not the ground surface. **The lidar shows
+  a different scene from the photo**: trees since felled, buildings since
+  built or changed, or a survey misregistered against the photo. This
+  check cannot tell those apart.
+- **It lines up with the owner's review of the taught decoder (seed 8,
+  H75):** C88 (ate into woods), C94 (lawn on a roof), C87 (missed lawn
+  under leaf-off canopy) and B28 are all flagged. B22, his other big miss,
+  is not (+0.12 m).
+- A softer flag (25–39% of the lawn over 1 m, median ~0.1 m) on 11 more lots
+  is most likely branches overhanging the lawn's edge in 2 m cells. It is
+  not acted on.
+- **Built: `distrust_lidar: on`** (workflow 14). The taught decoders TRAIN
+  with the lidar zeroed on lots over 0.5 m. The check needs the tracing, so
+  held-out lots are answered with their lidar as it is. THE PLAN's
+  decoders are untouched. Not run yet.
+
 ### H75. A decoder taught under trees ties THE PLAN overall, 80 lots × 3 seeds: much better under the trees, worse in the open, with two lots blown up; the lidar by return adds nothing measurable, 2026-10-05
 
 S24 as written. Workflow 14, `decoder: fused + edge + trees`, lawns `all` (80,
