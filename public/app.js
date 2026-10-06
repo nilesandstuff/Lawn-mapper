@@ -28,6 +28,7 @@ import { afterStroke, restoreAway } from './lib/stitch.js';
 import { strokeOnShapes } from './lib/brush-vector.js';
 import { extendToRoads, mergeButtonPoint, mergeRings, placeInside } from './lib/frontage.js';
 import { movedCorners } from './lib/align.js';
+import { sharpTiles } from './lib/sharp-tiles.js';
 import { alignFromRegistration } from './lib/register.js';
 import { extraDetail } from './lib/sharpness.js';
 import { snapPoint, nearestOnRings } from './lib/snap.js';
@@ -5949,6 +5950,61 @@ function contextCorners(frame, provider = state.provider) {
   return a ? movedCorners(frameCorners(frame), a.east, a.north, a.scale) : frameCorners(frame);
 }
 
+/*
+ * THE COUNTY PHOTO AT ITS OWN SHARPNESS, AFTER THE QUICK ONE (owner,
+ * 2026-10-06: "display every drop of clarity ... load the lower resolution
+ * initially and then silently render the higher resolution one onto the
+ * frame once it's available"). The quick picture is 1280 px across however
+ * big the lot; the service's own resolution (nativeCm in the catalogue) can
+ * be finer. lib/sharp-tiles.js plans the pieces; each is fetched and laid on
+ * top as it lands, moved by the same line-up. For looking at only: detection
+ * fetches its own picture on the server, and alignment reads the quick one.
+ */
+async function sharpen(run, provider, served) {
+  removeSharp();
+  if (provider !== 'county' || !state.countySvc) return;
+  const native = Number(state.countySvc.nativeCm);
+  const tiles = sharpTiles(served, native > 0 ? native / 100 : null);
+  if (!tiles.length) return;
+  state.sharp = { served, ids: [] };
+  let next = 0;
+  const one = async () => {
+    while (next < tiles.length) {
+      const k = next++;
+      let url;
+      try {
+        const res = await fetch(imageryUrlFor(provider, tiles[k]), { signal: AbortSignal.timeout(45000) });
+        if (!res.ok) continue;
+        url = URL.createObjectURL(await res.blob());
+      } catch { continue; } // the quick picture is still there under it
+      if (run !== imageryRun || provider !== state.provider || !map.getLayer('imagery-alt') || state.sharp?.served !== served) return;
+      const id = `imagery-sharp-${k}`;
+      if (map.getSource(id)) continue;
+      map.addSource(id, { type: 'image', url, coordinates: sharpCorners(tiles[k]) });
+      map.addLayer({ id, type: 'raster', source: id }, bottomOfOurLayers());
+      state.sharp.ids.push({ id, frame: tiles[k], url });
+      applyAlignOpacity();
+    }
+  };
+  await Promise.all([one(), one(), one()]); // three at a time
+}
+
+/* A piece's corners, moved with the whole picture it is part of. */
+function sharpCorners(tile) {
+  const a = alignOf(state.provider);
+  const s = state.sharp?.served;
+  return a && s ? movedCorners(frameCorners(tile), a.east, a.north, a.scale, [s.lng, s.lat]) : frameCorners(tile);
+}
+
+function removeSharp() {
+  for (const { id, url } of state.sharp?.ids || []) {
+    if (map.getLayer(id)) map.removeLayer(id);
+    if (map.getSource(id)) map.removeSource(id);
+    if (url) URL.revokeObjectURL(url);
+  }
+  state.sharp = null;
+}
+
 function removeContext() {
   if (map.getLayer('imagery-ctx')) map.removeLayer('imagery-ctx');
   if (map.getSource('imagery-ctx')) map.removeSource('imagery-ctx');
@@ -5980,6 +6036,7 @@ function hideImagery() {
   // switched to.
   tileWatch = null;
   removeContext();
+  removeSharp();
   if (map.getLayer('imagery-alt')) map.removeLayer('imagery-alt');
   if (map.getSource('imagery-alt')) map.removeSource('imagery-alt');
   const panel = document.getElementById('naip-align');
@@ -6275,6 +6332,7 @@ async function showImagery({ quiet = false } = {}) {
   applyAlignOpacity();
   idle(); imageryBusyRun = 0;
   showContext(run, state.provider); // not awaited: only for looking at
+  sharpen(run, state.provider, served); // not awaited: laid on as it arrives
   if (isAligned(state.provider)) alignNaip(served, run, naipBlob);
   setStatus(state.provider === 'county' && state.countyAuto ? countyShowing(state.countySvc) : info.detect
     ? `Showing ${info.label} over the measurement frame. Detect again to use it.`
@@ -6418,6 +6476,7 @@ function applyNaipAlign(served) {
   }
   const ctx = map.getSource('imagery-ctx');
   if (ctx?.setCoordinates && state.contextFrame) ctx.setCoordinates(contextCorners(state.contextFrame));
+  for (const { id, frame } of state.sharp?.ids || []) map.getSource(id)?.setCoordinates?.(sharpCorners(frame));
   renderNaipPanel(served);
 }
 
@@ -6495,6 +6554,9 @@ function applyAlignOpacity() {
   const v = state.alignOpen ? (state.alignOpacity ?? ALIGN_OPACITY_DEFAULT) : 1;
   try { map.setPaintProperty('imagery-alt', 'raster-opacity', v); } catch { /* not ready */ }
   try { if (map.getLayer('imagery-ctx')) map.setPaintProperty('imagery-ctx', 'raster-opacity', v); } catch { /* not ready */ }
+  for (const { id } of state.sharp?.ids || []) {
+    try { if (map.getLayer(id)) map.setPaintProperty(id, 'raster-opacity', v); } catch { /* not ready */ }
+  }
 }
 
 /*

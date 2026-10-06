@@ -146,13 +146,14 @@ export function alignImages(refGrey, movGrey, w, h, { maxShift = 8, scales = SCA
  * [[lng,lat] x4] as Mapbox GL image sources take them; the arithmetic is in
  * Web Mercator metres, where a shift is a shift everywhere in the frame.
  */
-export function movedCorners(corners, east, north, scale) {
+export function movedCorners(corners, east, north, scale, about = null) {
   const R = 6378137;
   const toM = ([lng, lat]) => [R * (lng * Math.PI / 180), R * Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI / 180) / 2))];
   const toLL = ([x, y]) => [x / R * 180 / Math.PI, (2 * Math.atan(Math.exp(y / R)) - Math.PI / 2) * 180 / Math.PI];
   const m = corners.map(toM);
-  const cx = m.reduce((a, p) => a + p[0], 0) / m.length;
-  const cy = m.reduce((a, p) => a + p[1], 0) / m.length;
+  /* `about`: scale about ANOTHER frame's centre ([lng, lat]) -- a piece of a
+     picture moves with the whole picture it belongs to. */
+  const [cx, cy] = about ? toM(about) : [m.reduce((a, p) => a + p[0], 0) / m.length, m.reduce((a, p) => a + p[1], 0) / m.length];
   /* Mercator metres are ground metres divided by cos(lat); convert so a
      "1.0 m east" means a metre on the ground. */
   const k = 1 / Math.cos((corners.reduce((a, p) => a + p[1], 0) / corners.length) * Math.PI / 180);
