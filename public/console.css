@@ -261,7 +261,7 @@ body.lightbox-open { overflow: hidden; }
    it is one row that scrolls sideways, so it never covers half the screen. */
 #page > .layerbar {
   position: sticky; top: 0; z-index: 20;
-  margin: 10px -16px 8px; padding: 8px 16px;
+  margin: 0 -16px 10px; padding: 8px 16px;
   background: var(--bg); border-bottom: 1px solid var(--line);
   box-shadow: 0 2px 6px rgba(0, 0, 0, .06);
 }

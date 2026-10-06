@@ -47,7 +47,7 @@
   anybody who is not an administrator.
 -->
 <link href="/styles.css" rel="stylesheet">
-<link href="/console.css" rel="stylesheet">
+<link href="/console.css?v=2026-10-06b" rel="stylesheet">
 </head>
 <body>
 
@@ -73,6 +73,20 @@
   </div>
 
   <div id="page" hidden>
+    <!--
+      THE LAYER SWITCHES (owner, 2026-09-26). A run drawn since then carries
+      every layer separately -- the traced lawn, the three canopies, the
+      lidar's roof and water, stage 3's additions, the veto's removals, the
+      detector's raw answer and its outline -- and these decide which are
+      drawn over the photograph, on every lawn and in the full-size view.
+      Remembered in this browser. Hidden for older runs, which have no layers.
+      STUCK TO THE TOP of the screen while the pictures scroll under it (owner,
+      2026-10-06: "change the selected layers while looking at the outlines").
+      It is the first thing on the page (owner, same day: "it should stick all
+      the time"), so it is pinned from the moment the page opens, not only
+      once the card below has scrolled away.
+    -->
+    <div class="layerbar" id="layerbar" hidden></div>
     <div class="card">
       <h2 id="head">Loading…</h2>
       <p class="sub" id="sub"></p>
@@ -155,18 +169,6 @@
       <p class="sheet-note warn" id="caveat"></p>
     </div>
 
-    <!--
-      THE LAYER SWITCHES (owner, 2026-09-26). A run drawn since then carries
-      every layer separately -- the traced lawn, the three canopies, the
-      lidar's roof and water, stage 3's additions, the veto's removals, the
-      detector's raw answer and its outline -- and these decide which are
-      drawn over the photograph, on every lawn and in the full-size view.
-      Remembered in this browser. Hidden for older runs, which have no layers.
-      STUCK TO THE TOP of the screen while the pictures scroll under it (owner,
-      2026-10-06: "change the selected layers while looking at the outlines"),
-      which is why it sits out here beside the list and not in the card above.
-    -->
-    <div class="layerbar" id="layerbar" hidden></div>
     <div id="list"></div>
   </div>
 </div>
