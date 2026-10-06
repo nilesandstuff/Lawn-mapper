@@ -868,6 +868,36 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H80. An edge refiner that reaches ~4.6 m instead of ~1 m (S25) measures WORSE on most lots -- not adopted, 2026-10-06
+
+Three seeds (7/8/9), free runner, `decoder: fused + edge`, `lawns: all`,
+`edge_reach: compare`: 37509209045, 37509342504, 37509477275. **81 maps,
+the first locked set (fingerprint `05cs4ud`, with C99).** Read with
+workflow 24 (37540760687) against A = "decoder, edge refined + stage 3,
+span, lidar veto" of the same runs (runs' medians 22.0 / 22.5 / 20.8).
+
+| row (B) | lots better / worse / level | paired change [95%], all 81 | frozen 32 | untuned 49 | runs' medians |
+|---|---|---|---|---|---|
+| wide edge + stage 3, span, veto | 13 / **49** / 19, **p < 0.001** | **+0.9 [+0.4, +1.4]** | +0.9 [+0.1, +1.6], p 0.02 | +0.9 [+0.4, +2.0], p < 0.001 (7 / 31) | 23.3 / 24.8 / 22.9 |
+
+- **S25's bar fails on every part**, the wrong way: worse on almost four lots
+  for every one it helps, and the interval is wholly above zero on the
+  tuned and untuned lots alike. Every seed's median is worse (by 1.3, 2.3,
+  2.1 points).
+- **Worst:** C94 101 -> 116, B28 29 -> 41, C99 130 -> 140, C41 17 -> 26,
+  C28 13.5 -> 21. **Best:** B19 80 -> 74, B20 73 -> 68 (the parking-lot
+  lots), B02 44 -> 41. Small, well-drawn lots (C28, C41) are hurt most in
+  relative terms: the extra reach moves edges that were right.
+- **Reading (speculation, S25's own warning):** given more room, the refiner
+  follows colour edges that are not the lawn's. Seeing the woodline from 4 m
+  away is not the same as knowing it is THE edge, and 81 lots did not teach
+  that. The owner's circled misses are real; this way of reaching them
+  does not work. Untried: a wide reach trained only where the decoder is
+  unsure, or a larger crop; neither is planned.
+- `edge_reach` stays in workflow 14, default `normal`. Version 2 stays live.
+- **C99, the map approved today, scores 130-140%** under both refiners: the
+  detector draws well over twice its lawn. Worth a look at its pictures.
+
 ### H79. Weighting training 3x toward the release's own corrected cells (S21) measures WORSE; the pond maps measure as nothing overall but carry B12, 2026-10-06
 
 Three seeds (7/8/9), free runner, 80 lots, `corrections: on` + `not_lawn: on`:
@@ -5830,7 +5860,7 @@ training run's. **The test, when it comes:** UperNet first, as one more
 decoder over the same features, seeds and folds as THE PLAN's, scored lot by
 lot with workflow 24; Mask2Former only if UperNet shows something.
 
-### S25. A wider-reaching edge refiner (owner, 2026-10-06 -- BUILT, ON TRIAL)
+### S25. A wider-reaching edge refiner (owner, 2026-10-06 -- BUILT, MEASURED WORSE: H80)
 
 **The owner's picture (a leaf-off county lot):** the outline stops 2-6 m
 short of, or runs 2-6 m past, edges that are plain to the eye: a hard
@@ -6454,3 +6484,4 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-06 | 37421464211 | 80 | **RELEASE (H78)**: `release: alpha`, fused + edge, canopy on lawn, UNDER_TREES + FUSE_CANOPY, seed 7, CPU | — (no folds; unscored by construction) | — | Shipped to the live server, trainedAt 2026-10-06T06:44:39Z, train loss 0.209. Deploy 37425627495: "Trained model (alpha release): ON ... 80 lots". The 2026-09-29 55-lot weights are kept under alpha/history/ |
 | 2026-10-06 | 37451515396 / 37451627810 / (37451740510 cancelled) | 80 | S21 `corrections: on` + `not_lawn: on`, seeds 7/8/9 | — | — | **Died in the extractor** (my bug): it took every `.png` in frames/ but `-labels.png` for a photograph, so the new `<id>-detected.png` masks were read as frames with no ground size. `-notlawn.png` had the same latent bug. Fixed in extract_features.py and tree-canopy.py. The dump found **21 of 80 lots drawn by the live release (2026-09-29T21:10:24Z)**, 34 more by SAM or land cover, and 4 approved not-lawn-only maps |
 | 2026-10-06 | 37455590620 / 37455705640 / 37455821616 | 80 | S21 `corrections: on` + `not_lawn: on` (third decoder without pond maps), seeds 7/8/9, CPU | 20.9 / 21.2 / 21.4% (edge refined + stage 3, span, veto) | — | **H79.** Corrections weighted: 15 better / 34 worse, p 0.009, +0.3 [+0.1, +0.7]; untuned +0.7. No pond maps: 33 / 27, p 0.52, -0.2 [-0.6, +0.1]; B12 15.0 -> 21.3 without. Neither adopted |
+| 2026-10-06 | 37509209045 / 37509342504 / 37509477275 | **81** (locked, `05cs4ud`, + C99) | S25 `edge_reach: compare` (wide refiner, dilations to 16), `decoder: fused + edge`, seeds 7/8/9, CPU | 22.0 / 22.5 / 20.8% (edge refined + stage 3, span, veto) | — | **H80.** Wide edge: 13 better / 49 worse, p < 0.001, +0.9 [+0.4, +1.4]; medians 23.3 / 24.8 / 22.9. Not adopted |
