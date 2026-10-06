@@ -939,9 +939,21 @@ should be ~0.
     to tell stale from bare: e.g. the lidar's year against the photo's, or
     whether the photo shows trunks and branch texture where the lidar
     stands tall.
-  - **Side finding:** USGS's index also lists a 2022 QL1 survey over C88
-    (RI_Statewide_1_D22). Our reader takes the 2011 cloud. Whether newer
-    clouds are being skipped elsewhere is unchecked (tools/lidar-plan.js).
+  - **Side finding, a BUG, fixed 2026-10-06:** USGS also lists a 2022 QL1
+    survey over C88 (RI_Statewide_1_D22), and our reader took the 2011
+    cloud. tools/lidar-cover.js `flownYear` read only four-digit years.
+    Newer 3DEP projects end in a letter and the work package's fiscal year
+    (`_D22`, `_B23`), so they read as UNDATED and sorted last. **7 of 80
+    frames read an older cloud:**
+    - B22, B23, B24, C31: VA 2011 → 2022. B22 is the taught decoder's
+      other big miss (H75).
+    - C88: RI 2011 → 2022.
+    - C84: DE 2013 → 2023.
+    - C82: OH 2019 → 2021.
+
+    The suffix is now read as 20NN. Every run from here reads the newer
+    clouds, all arms alike, so within-run comparisons stay fair. Runs
+    before this are not comparable lot by lot on those seven.
 - **Built: `distrust_lidar: on`** (workflow 14). The taught decoders TRAIN
   with the lidar zeroed on lots over 0.5 m. The check needs the tracing, so
   held-out lots are answered with their lidar as it is. THE PLAN's

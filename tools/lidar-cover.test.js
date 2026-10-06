@@ -57,6 +57,10 @@ const project = (name, lng, lat, d, count) => ({
    * point total inside a name are all digits, and a loose regex turns one into
    * a date that then sorts the project to the top as the "newest".
    */
+  check('a 3DEP work-package suffix reads as its year', flownYear('RI_Statewide_1_D22') === 2022
+    && flownYear('AL_11County_2_B23') === 2023 && flownYear('KY_Western_1_A22') === 2022 && flownYear('KY_FullState') === null);
+  check('so a 2022 project beats a 2011 one over the same ground',
+    pickBest([{ name: 'VA_FEMA_NorthCounties_2011', density: 9 }, { name: 'VA_NorthernVA_1_B22', density: 2 }]).name === 'VA_NorthernVA_1_B22');
   check('a county count is not a year', flownYear('MI_31Co_Barry_2016') === 2016,
     `31Co must not read as 3100-something: ${JSON.stringify(parseYears('MI_31Co_Barry_2016'))}`);
   check('and neither is a long number',

@@ -93,8 +93,23 @@ export function parseYears(name) {
   return [...new Set(found)].sort((a, b) => a - b);
 }
 
-/** The year to file a project under: the earliest, which is when it was flown. */
-export const flownYear = (name) => parseYears(name)[0] ?? null;
+/**
+ * The year to file a project under: the earliest, which is when it was flown.
+ *
+ * NEWER 3DEP PROJECTS CARRY NO FOUR-DIGIT YEAR (found 2026-10-06, checking
+ * H76's lots against dated photos): `RI_Statewide_1_D22`, `VA_NorthernVA_1_B22`,
+ * `AL_11County_2_B23` end in a letter and the two-digit fiscal year of the
+ * work package. Read as undated, they sorted LAST in pickBest, so 7 of 80
+ * frames read an older cloud over a newer one (B22 and three more Virginia
+ * lots took 2011 over 2022; C88 2011 over 2022). The suffix is the funding
+ * year, close to but not exactly the flight; it only has to order projects.
+ */
+export const flownYear = (name) => {
+  const y = parseYears(name)[0];
+  if (y !== undefined) return y;
+  const m = /_[A-Z](\d{2})$/.exec(String(name || ''));
+  return m ? 2000 + Number(m[1]) : null;
+};
 
 /**
  * Is this point inside this ring?
