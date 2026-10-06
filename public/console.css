@@ -257,6 +257,20 @@ body.lightbox-open { overflow: hidden; }
 
 /* ------------------------------------------------ predictions: the layers */
 .layerbar { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
+/* Stuck to the top while the pictures scroll (owner, 2026-10-06). On a phone
+   it is one row that scrolls sideways, so it never covers half the screen. */
+#page > .layerbar {
+  position: sticky; top: 0; z-index: 20;
+  margin: 10px -16px 8px; padding: 8px 16px;
+  background: var(--bg); border-bottom: 1px solid var(--line);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .06);
+}
+#page > .layerbar[hidden] { display: none; }
+@media (max-width: 700px) {
+  #page > .layerbar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  #page > .layerbar::-webkit-scrollbar { display: none; }
+  #page > .layerbar label { flex: 0 0 auto; white-space: nowrap; }
+}
 .layerbar label {
   display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
   font-size: 12.5px; padding: 5px 10px; border-radius: 999px;
