@@ -451,6 +451,21 @@ function layerBar(defs) {
   });
   bar.append(reset);
   applyLayers();
+  pin(bar);
+}
+
+/*
+ * PINNED TO THE TOP OF THE SCREEN (owner, 2026-10-06). Fixed rather than
+ * sticky -- sticky never stuck on the owner's phone -- so the bar leaves the
+ * page's flow, and the page is padded by its height to make room for it,
+ * kept right as it wraps or the phone turns.
+ */
+function pin(bar) {
+  bar.classList.add('pinned');
+  const room = () => { document.body.style.paddingTop = `${bar.offsetHeight}px`; };
+  room();
+  if ('ResizeObserver' in window) new ResizeObserver(room).observe(bar);
+  else window.addEventListener('resize', room);
 }
 
 /*
