@@ -333,6 +333,16 @@ on:
         type: choice
         default: 'off'
         options: ['off', 'on']
+      edge_reach:
+        # A WIDER-REACHING EDGE REFINER (owner, 2026-10-06: misses 2-6 m out
+        # from the outline along a hard woodline or pavement). "compare" trains
+        # THE PLAN's decoder once more over the same features, seed and folds
+        # with the refiner reaching ~4.6 m instead of ~1 m, scored as
+        # "decoder, wide edge ...". "wide" makes a release use it. Free runner.
+        description: 'Edge refiner reach: normal, compare (also train a wide one, ~4.6 m), or wide (for a release)'
+        type: choice
+        default: 'normal'
+        options: ['normal', 'compare', 'wide']
       distrust_lidar:
         # LIDAR THAT DISAGREES WITH ITS PHOTO, HIDDEN IN TRAINING (owner,
         # 2026-10-06; H76): a lot whose traced visible lawn stands over 0.5 m
@@ -708,7 +718,7 @@ jobs:
         run: |
           mkdir -p work
           have=""
-          for d in frames canopy lidar naip tree-lidar feats feats-whole lidar-plan.json preds preds-edge preds-corr preds-nonl preds-trees preds-trees-canopy preds-trees-returns preds-none preds-lawn preds-all; do
+          for d in frames canopy lidar naip tree-lidar feats feats-whole lidar-plan.json preds preds-edge preds-corr preds-nonl preds-wide preds-trees preds-trees-canopy preds-trees-returns preds-none preds-lawn preds-all; do
             if [ -e "$d" ]; then have="$have $d"; fi
           done
           du -sh $have || true
@@ -821,6 +831,27 @@ jobs:
           FUSE_CANOPY: ${{ inputs.canopy != 'off' && '1' || '0' }}
           UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
           REFINE: '1'
+        run: python3 tools/train_decoder.py
+
+      # The same, with the refiner reaching ~4.6 m either side (edge_reach).
+      - name: Train THE PLAN's decoder with a wide edge refiner
+        if: ${{ inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && inputs.edge_reach == 'compare' && inputs.canopy != 'compare' && inputs.gpu != 'modal' }}
+        env:
+          FEATURES: feats
+          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
+          FRAMES: frames
+          OUT: preds-wide
+          CANOPY: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
+          CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}
+          SEED: ${{ inputs.seed }}
+          FUSE: '1'
+          FUSE_LIDAR: lidar
+          FOLDS: ${{ inputs.lawns == 'all' && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
+          FUSE_NAIP: naip
+          FUSE_CANOPY: ${{ inputs.canopy != 'off' && '1' || '0' }}
+          UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
+          REFINE: '1'
+          REFINE_REACH: wide
         run: python3 tools/train_decoder.py
 
       # S21 and the pond maps (owner, 2026-10-06), over the same features as
@@ -1045,7 +1076,7 @@ jobs:
           # The three-way comparison, one row each. The seen column is scored
           # with the canopy unseen on lawn, whichever decoder is being read.
           # S19 (`fused + edge`): the refined decoder as a row of its own.
-          PREDICTIONS_DIRS: ${{ (inputs.decoder != 'off' && inputs.canopy == 'compare' && 'no canopy=preds-none,canopy on lawn=preds-lawn,canopy everywhere=preds-all') || (inputs.decoder == 'fused + edge' && format('edge refined=preds-edge{0}{1}', inputs.corrections == 'on' && ',corrections weighted=preds-corr' || '', inputs.not_lawn == 'on' && ',no pond maps=preds-nonl' || '')) || (inputs.decoder == 'fused + edge + trees' && 'edge refined=preds-edge,taught under trees=preds-trees,taught under trees with canopy input=preds-trees-canopy') || (inputs.decoder == 'fused + edge + trees + returns' && 'edge refined=preds-edge,taught under trees=preds-trees,taught under trees with canopy input=preds-trees-canopy,taught under trees + returns=preds-trees-returns') || '' }}
+          PREDICTIONS_DIRS: ${{ (inputs.decoder != 'off' && inputs.canopy == 'compare' && 'no canopy=preds-none,canopy on lawn=preds-lawn,canopy everywhere=preds-all') || (inputs.decoder == 'fused + edge' && format('edge refined=preds-edge{0}{1}{2}', inputs.corrections == 'on' && ',corrections weighted=preds-corr' || '', inputs.not_lawn == 'on' && ',no pond maps=preds-nonl' || '', inputs.edge_reach == 'compare' && ',wide edge=preds-wide' || '')) || (inputs.decoder == 'fused + edge + trees' && 'edge refined=preds-edge,taught under trees=preds-trees,taught under trees with canopy input=preds-trees-canopy') || (inputs.decoder == 'fused + edge + trees + returns' && 'edge refined=preds-edge,taught under trees=preds-trees,taught under trees with canopy input=preds-trees-canopy,taught under trees + returns=preds-trees-returns') || '' }}
           # The canopy joins the hand-marked unseen ground for the seen column.
           CANOPY_DIR: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
           CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}
@@ -1090,6 +1121,7 @@ jobs:
           FUSE_CANOPY: '1'
           UNDER_TREES: '1'
           REFINE: '1'
+          REFINE_REACH: ${{ inputs.edge_reach == 'wide' && 'wide' || '' }}
           OUT: preds-release
           RELEASE_OUT: release
         run: python3 tools/train_decoder.py

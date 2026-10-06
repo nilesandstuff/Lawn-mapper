@@ -34,6 +34,26 @@ def check_starts_as_decoder():
     assert torch.equal(r(rgb, logit, hidden), logit)
 
 
+def check_reach():
+    """How far a cell's answer can be moved by the photo: ~1 m normal, ~4.6 m wide,
+    and a normal refiner keeps the layout the live release's weights were saved in."""
+    for name, want in (("normal", 7), ("wide", 31)):
+        torch.manual_seed(0)
+        r = Refiner(reach=name)
+        for m in r.net:
+            if isinstance(m, torch.nn.Conv2d):
+                torch.nn.init.normal_(m.weight, std=0.3)
+        rgb = torch.zeros(1, 3, 81, 81, requires_grad=True)
+        out = r(rgb, torch.zeros(1, 1, 81, 81), torch.zeros(1, 32, 81, 81))
+        out[0, 0, 40, 40].backward()
+        cols = torch.nonzero(rgb.grad[0].abs().sum(0).sum(0))
+        assert int(40 - cols.min()) == want and int(cols.max() - 40) == want, (name, cols.min(), cols.max())
+    assert sorted(Refiner(reach="normal").state_dict()) == sorted(
+        f"net.{i}.{p}" for i in (0, 2, 4, 6) for p in ("weight", "bias"))
+    assert torch.equal(Refiner(reach="wide")(torch.randn(1, 3, 9, 9), torch.ones(1, 1, 9, 9), torch.randn(1, 32, 9, 9)),
+                       torch.ones(1, 1, 9, 9))
+
+
 def check_undo_dihedral():
     x = torch.randn(1, 3, 5, 8)
     for k in range(4):
@@ -58,6 +78,7 @@ def check_crops():
 
 check_stretch_matches_to_photo()
 check_starts_as_decoder()
+check_reach()
 check_undo_dihedral()
 check_crops()
 print("edge refiner: ok")

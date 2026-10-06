@@ -106,7 +106,7 @@ const TRIAL_ROW = `${PLAN_ROW}, see-through colour`;
 /* THE DECODER TAUGHT UNDER TREES (owner, 2026-10-05), alone: drawn first
    when a `fused + edge + trees` run scored it, since the pictures are how a
    candidate is judged. The one with the lidar by return, then without. */
-const TRIAL_ROWS = ['decoder, taught under trees with canopy input + lidar veto', `${PLAN_ROW}, taught under the canopy`, 'decoder, taught under trees + returns', 'decoder, taught under trees', TRIAL_ROW];
+const TRIAL_ROWS = ['decoder, wide edge + stage 3, span, lidar veto', 'decoder, taught under trees with canopy input + lidar veto', `${PLAN_ROW}, taught under the canopy`, 'decoder, taught under trees + returns', 'decoder, taught under trees', TRIAL_ROW];
 
 /*
  * HOW MANY NUMBERS OF THE BACKBONE'S 384 EACH PIXEL CARRIES.
@@ -3042,8 +3042,9 @@ async function main() {
    * of the refined decoder now gets them against the same row of the plain
    * one -- the same stage 3, the same veto, only the refiner different.
    */
-  if (drawn && drawn.cfg.name.startsWith('decoder, edge refined') && drawn.rows.some((r) => !r.refineAdded)) {
-    const twin = table.find((t) => t.cfg.name === drawn.cfg.name.replace('decoder, edge refined', 'the pretrained eye, decoder'));
+  const refinedPrefix = ['decoder, edge refined', 'decoder, wide edge'].find((p) => drawn?.cfg.name.startsWith(p));
+  if (drawn && refinedPrefix && drawn.rows.some((r) => !r.refineAdded)) {
+    const twin = table.find((t) => t.cfg.name === drawn.cfg.name.replace(refinedPrefix, 'the pretrained eye, decoder'));
     const byLawn = new Map((twin?.rows || []).map((r) => [r.lawn, r]));
     for (const r of drawn.rows) {
       const p = byLawn.get(r.lawn);

@@ -894,8 +894,10 @@ span, lidar veto" of the same runs (pond maps in; runs' medians 20.9 /
   so -0.2 means removing them is, if anything, marginally better, well
   inside noise). **B12, the pond, is the one lot they clearly carry:** 15.0%
   with them, 21.3% without. Also worse without: C88 52 -> 68, C33 45 -> 60.
-  Better without: C29 563 -> 490, B04 64 -> 46, C80 66 -> 49. The release
-  already trains with them; with no measured difference, they stay as they are.
+  Better without: C29 563 -> 490, B04 64 -> 46, C80 66 -> 49. **Correction, the same
+  day:** the live release (version 2, run 37421464211) was trained WITHOUT
+  them -- its log has `NOT_LAWN` empty and `"examples": 0`. With no measured
+  difference either way, it stays as it is; the cheaper side is without.
 - **No change to the release.** Neither row is a measured win, so version 2
   stays live and nothing was retrained.
 
@@ -5803,6 +5805,40 @@ not:** a 27 m block is less context than a whole lot, and H4 once found
 fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
+
+### S25. A wider-reaching edge refiner (owner, 2026-10-06 -- BUILT, ON TRIAL)
+
+**The owner's picture (a leaf-off county lot):** the outline stops 2-6 m
+short of, or runs 2-6 m past, edges that are plain to the eye: a hard
+woodline, and the kerb of a driveway, with fairly even colour on each side.
+The owner circled those as the refiner's easy wins; the circles are where
+to look, not the outline it should draw.
+
+**Why the refiner as built cannot reach them (a fact about the code, not a
+measurement):** its convolutions (3x3, then dilations 2 and 4) let a cell
+see 7 cells, about 1 m, either side. A cell 3 m inside the woods cannot see
+the woodline, so the refiner has nothing to move it by. H60's gains are the
+half-metre band (H53) it can see.
+
+**Built:** `REFINE_REACH=wide` adds two layers dilated 8 and 16, so a cell
+sees 31 cells, about 4.6 m, either side (refine_test.py checks both reaches
+by gradient). Everything else the same: inputs, crops (17 m squares, mostly
+on traced edges), loss, training beside the decoder. Workflow 14
+`edge_reach: compare` trains it over THE PLAN's features, seed and folds as
+row "decoder, wide edge + stage 3, span, lidar veto"; `edge_reach: wide`
+makes a release with it. The live release records its reach (`refineReach`)
+and alpha_infer.py builds the matching net; v2 loads unchanged.
+
+**Why it might not help (speculation):** more reach is also more room to
+follow a colour edge that is not the lawn's (a shadow, a mulch bed, H54),
+and 80 lots is not many to learn the difference from. The pictures' navy
+and black layers on the drawn row show what it moved.
+
+**The bar (written before the runs):** three seeds (7/8/9), `lawns: all`,
+free runner, read with workflow 24 against "decoder, edge refined + stage
+3, span, lidar veto" of the same runs. Adopted if the sign test is under
+0.05 with more lots better than worse and the paired interval on all 80 at
+or below zero; not if the untuned 48 go the other way.
 
 ### S24. Teach the decoder what is under a tree, and give it the lidar by return (owner, 2026-10-05 -- BUILT, ON TRIAL)
 

@@ -60,7 +60,7 @@ class Release:
         model = train_decoder.Decoder(self.meta["dim"])
         if self.meta.get("refine"):
             from edge_refine import Refiner
-            model.refiner = Refiner()
+            model.refiner = Refiner(reach=self.meta.get("refineReach") or "normal")
         model.load_state_dict(blob["state"])
         self.model = model.to(device).eval()
         self.mean = blob["mean"].to(device)

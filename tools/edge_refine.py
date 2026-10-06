@@ -26,8 +26,15 @@ and says how much to move the decoder's answer, as a logit:
     1x1 conv 32 -> 1, STARTING AT ZERO
 
 so it begins as exactly the decoder, and can only change the answer where
-learning to has paid. It reaches about 2 m either side, which is a patch or
-so. About 20,000 weights.
+learning to has paid. It reaches 7 cells, about 1 m, either side of a
+cell. About 20,000 weights.
+
+WIDE (REFINE_REACH=wide; owner, 2026-10-06, from a picture of misses 2-6 m
+out from the outline along a hard woodline and along pavement). The same
+net with two more dilated layers, 8 and 16, so it reaches 31 cells, about
+4.6 m, either side: far enough to see the woodline or the kerb from where
+the decoder's edge stopped. About 18,000 more weights. Whether it moves
+edges further or just invents them is what the trial measures.
 
 TRAINED WITH THE DECODER, NOT AFTER IT. A refiner trained on a decoder's
 answers for its own training lots learns to correct a decoder that is
@@ -43,6 +50,8 @@ grid_sample at exactly to_photo's coordinates (photo_coords in
 decoder_grid.py; refine_test.py checks the two agree).
 """
 
+import os
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -54,17 +63,18 @@ CROP = 112
 CROPS_PER_LAWN = 2
 EDGE_SHARE = 0.7
 EDGE_REACH = 3  # cells: a cell within this of a traced edge counts as edge
+REACHES = {"normal": (2, 4), "wide": (2, 4, 8, 16)}  # dilations after the first 3x3
+REFINE_REACH = os.environ.get("REFINE_REACH") or "normal"
 
 
 class Refiner(nn.Module):
-    def __init__(self, hidden=32, width=32):
+    def __init__(self, hidden=32, width=32, reach=None):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.Conv2d(3 + 1 + hidden, width, 3, padding=1), nn.GELU(),
-            nn.Conv2d(width, width, 3, padding=2, dilation=2), nn.GELU(),
-            nn.Conv2d(width, width, 3, padding=4, dilation=4), nn.GELU(),
-            nn.Conv2d(width, 1, 1),
-        )
+        self.reach = reach or REFINE_REACH
+        layers = [nn.Conv2d(3 + 1 + hidden, width, 3, padding=1), nn.GELU()]
+        for d in REACHES[self.reach]:
+            layers += [nn.Conv2d(width, width, 3, padding=d, dilation=d), nn.GELU()]
+        self.net = nn.Sequential(*layers, nn.Conv2d(width, 1, 1))
         nn.init.zeros_(self.net[-1].weight)
         nn.init.zeros_(self.net[-1].bias)
 
