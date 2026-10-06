@@ -70,6 +70,18 @@ const FRAME_SIZE = 640;          // logical px on the LONGER side; the PNG comes
  * 38 m of somebody else's garden.
  */
 const FRAME_MARGIN_M = 10;
+/*
+ * WHAT THE MAP SHOWS AROUND IT (owner, 2026-10-06: "much larger than the
+ * actual property line ... I don't want to change what the AI sees at all,
+ * just what the map sees"). The county photo and NAIP are fetched as one
+ * picture of the frame, so they stopped 10 m past the line while Esri (tiles)
+ * and Google (a fixed square) ran on. A second, wider picture of the same
+ * source -- 50 m past the line -- goes UNDER the frame's own, for looking at
+ * only: the frame's picture on top keeps its full detail, and detection,
+ * alignment and saving never see the wide one.
+ */
+const CONTEXT_MARGIN_M = 50;
+const CONTEXT_SOURCES = new Set(['county', 'naip', 'ndvi']);
 const IMAGERY_ZOOM_FALLBACK = 19; // used when we have no parcel to fit
 
 const state = {
@@ -5931,11 +5943,43 @@ async function setProvider(id, { auto = false } = {}) {
   updatePromptHint();
 }
 
+/* The wider picture's corners, moved by the same line-up as the frame's. */
+function contextCorners(frame, provider = state.provider) {
+  const a = alignOf(provider);
+  return a ? movedCorners(frameCorners(frame), a.east, a.north, a.scale) : frameCorners(frame);
+}
+
+function removeContext() {
+  if (map.getLayer('imagery-ctx')) map.removeLayer('imagery-ctx');
+  if (map.getSource('imagery-ctx')) map.removeSource('imagery-ctx');
+  state.contextFrame = null;
+}
+
+/** The same source 50 m past the property line, under the frame's own picture. */
+async function showContext(run, provider) {
+  const bbox = state.parcel ? geometryBounds(state.parcel) : null;
+  if (!bbox || !CONTEXT_SOURCES.has(provider)) return;
+  const wide = frameFor(provider, parcelFrame(bbox, FRAME_SIZE, { marginM: CONTEXT_MARGIN_M }));
+  let url;
+  try {
+    const res = await fetch(imageryUrlFor(provider, wide), { signal: AbortSignal.timeout(30000) });
+    if (!res.ok) return;
+    url = URL.createObjectURL(await res.blob());
+  } catch { return; } // the frame's own picture is up; the surroundings are a nicety
+  if (run !== imageryRun || provider !== state.provider || !map.getLayer('imagery-alt')) return;
+  removeContext();
+  state.contextFrame = wide;
+  map.addSource('imagery-ctx', { type: 'image', url, coordinates: contextCorners(wide, provider) });
+  map.addLayer({ id: 'imagery-ctx', type: 'raster', source: 'imagery-ctx' }, 'imagery-alt');
+  applyAlignOpacity();
+}
+
 function hideImagery() {
   // Nothing is watching once nothing is shown: a tile request already in
   // flight for the source you just left must not report against the one you
   // switched to.
   tileWatch = null;
+  removeContext();
   if (map.getLayer('imagery-alt')) map.removeLayer('imagery-alt');
   if (map.getSource('imagery-alt')) map.removeSource('imagery-alt');
   const panel = document.getElementById('naip-align');
@@ -6230,6 +6274,7 @@ async function showImagery({ quiet = false } = {}) {
   map.addLayer({ id: 'imagery-alt', type: 'raster', source: 'imagery-alt' }, before);
   applyAlignOpacity();
   idle(); imageryBusyRun = 0;
+  showContext(run, state.provider); // not awaited: only for looking at
   if (isAligned(state.provider)) alignNaip(served, run, naipBlob);
   setStatus(state.provider === 'county' && state.countyAuto ? countyShowing(state.countySvc) : info.detect
     ? `Showing ${info.label} over the measurement frame. Detect again to use it.`
@@ -6371,6 +6416,8 @@ function applyNaipAlign(served) {
       ? movedCorners(frameCorners(served), a.east, a.north, a.scale)
       : frameCorners(served));
   }
+  const ctx = map.getSource('imagery-ctx');
+  if (ctx?.setCoordinates && state.contextFrame) ctx.setCoordinates(contextCorners(state.contextFrame));
   renderNaipPanel(served);
 }
 
@@ -6447,6 +6494,7 @@ function applyAlignOpacity() {
   if (!map?.getLayer('imagery-alt')) return;
   const v = state.alignOpen ? (state.alignOpacity ?? ALIGN_OPACITY_DEFAULT) : 1;
   try { map.setPaintProperty('imagery-alt', 'raster-opacity', v); } catch { /* not ready */ }
+  try { if (map.getLayer('imagery-ctx')) map.setPaintProperty('imagery-ctx', 'raster-opacity', v); } catch { /* not ready */ }
 }
 
 /*
