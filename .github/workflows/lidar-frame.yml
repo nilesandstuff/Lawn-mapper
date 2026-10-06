@@ -129,6 +129,18 @@ jobs:
           echo "About: $RUN_ABOUT"
           python3 tools/lidar_frame.py
 
+      # IS THE GROUND WHERE THE GROUND IS? (owner, 2026-10-06): on the lawn
+      # the tracer called visible, the height over the lidar's ground should
+      # be ~0. A lot where it is not has every height wrong.
+      - name: Check the lidar's ground under the visible lawn
+        env:
+          LIDAR: lidar
+          FRAMES: frames
+          OUT: lidar/ground-check.json
+        run: |
+          (cd tools && python3 lidar_ground_check_test.py)
+          python3 tools/lidar_ground_check.py
+
       # Kept whatever happens next, as one tarball (a lawn id has a colon in
       # it and upload-artifact refuses those in file names).
       - name: Pack the layers up
