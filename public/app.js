@@ -70,6 +70,15 @@ const FRAME_SIZE = 640;          // logical px on the LONGER side; the PNG comes
  * 38 m of somebody else's garden.
  */
 const FRAME_MARGIN_M = 10;
+/*
+ * THE COUNTY PHOTO'S FRAME IS WIDER (owner, 2026-10-06: "load a larger frame
+ * right off the bat ... 50 meters of padding outside the property line").
+ * Whenever the county photo is the picture, the frame -- what is fetched,
+ * shown and detected on -- reaches 50 m past the line; every other source
+ * keeps 10 m. Switching source re-frames (reframe).
+ */
+const COUNTY_MARGIN_M = 50;
+const frameMargin = (provider = state.provider) => (provider === 'county' ? COUNTY_MARGIN_M : FRAME_MARGIN_M);
 const IMAGERY_ZOOM_FALLBACK = 19; // used when we have no parcel to fit
 
 const state = {
@@ -2437,7 +2446,7 @@ async function confirmLocation() {
        * neighbours on both sides of its short one -- and every detector read
        * them, paid for them, and drew on them. See frameFor in lib/mercator.js (parcelFrame here).
        */
-      state.frame = parcelFrame(bbox, FRAME_SIZE, { marginM: FRAME_MARGIN_M });
+      state.frame = parcelFrame(bbox, FRAME_SIZE, { marginM: frameMargin() });
       // Remember the county's own corners so the map can show which parts of
       // the final outline are still survey-accurate.
       state.surveyed = (parcelRing() || []).map((p) => [...p]);
@@ -5907,12 +5916,21 @@ function renderProviderNote(id) {
   el.append(info.note || '');
 }
 
+/** The frame again for the source now showing: 50 m past the line for the
+    county photo, 10 m for the rest (frameMargin). No-op without a parcel. */
+function reframe() {
+  const bbox = state.parcel ? geometryBounds(state.parcel) : null;
+  if (bbox) state.frame = parcelFrame(bbox, FRAME_SIZE, { marginM: frameMargin() });
+}
+
 async function setProvider(id, { auto = false } = {}) {
   if (id === state.provider) return;
   /* Chosen for somebody (the county default) or by them: only the first is
      held to "not softer than Mapbox". */
   state.countyAuto = auto;
+  const wider = frameMargin(id) !== frameMargin();
   state.provider = id;
+  if (wider) reframe();
   /* The line-up bar belongs to the picture being lined up. Switching to one
      with nothing to line up (Mapbox) closes it and gives the drawing tools
      back -- they were put away for it (owner, 2026-10-04: they were gone). */
@@ -6147,6 +6165,7 @@ async function showImagery({ quiet = false } = {}) {
       err.refused ? 'error' : 'warn'
     );
     state.provider = 'mapbox';
+    reframe();
     $('#imagery-source').value = 'mapbox';
     renderProviderNote('mapbox');
     refreshLayerList();
@@ -6179,6 +6198,7 @@ async function showImagery({ quiet = false } = {}) {
       setStatus(`The county photo has gaps over this lot (${Math.round(gaps * 100)}% missing), so this map stays on Mapbox.`, 'warn');
       state.countySvc = null;
       state.provider = 'mapbox';
+      reframe();
       buildImageryPicker();
       refreshLayerList();
       return;
@@ -6206,6 +6226,7 @@ async function showImagery({ quiet = false } = {}) {
         }
         state.countyAuto = false;
         state.provider = 'mapbox';
+        reframe();
         $('#imagery-source').value = 'mapbox';
         renderProviderNote('mapbox');
         refreshLayerList();
@@ -9750,7 +9771,7 @@ function adoptDrawnParcel(feature) {
 
   const bbox = geometryBounds(state.parcel);
   if (bbox) {
-    state.frame = parcelFrame(bbox, FRAME_SIZE, { marginM: FRAME_MARGIN_M });
+    state.frame = parcelFrame(bbox, FRAME_SIZE, { marginM: frameMargin() });
   }
 
   const a = measure(state.parcel.geometry);
@@ -12093,7 +12114,7 @@ function setParcelRing(ring) {
 
   const bbox = geometryBounds(state.parcel);
   if (bbox) {
-    state.frame = parcelFrame(bbox, FRAME_SIZE, { marginM: FRAME_MARGIN_M });
+    state.frame = parcelFrame(bbox, FRAME_SIZE, { marginM: frameMargin() });
     // An image-service photograph is pinned to the frame's four corners, so
     // re-framing moves the ground out from under it. Refetch for the new
     // rectangle rather than leave a correctly-drawn picture of the old one.
