@@ -379,5 +379,12 @@ jobs:
             echo "Some features will look switched off rather than broken."
             echo "The detail is in the \"Prepare wrangler.toml\" step above."
           fi
+          if [ -n "$MAPS_APPROVED" ]; then echo "Approved maps in the corpus: $MAPS_APPROVED"; fi
+          # Reminders the owner asked to be given at a corpus size
+          # (tools/milestones.js), here where they cannot be missed.
+          if [ -n "$MILESTONES" ]; then
+            echo
+            echo "::notice::REMINDER -- $MILESTONES"
+          fi
           echo
           echo "Open it on your phone and measure your own address."

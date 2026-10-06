@@ -25,6 +25,8 @@ import { execFileSync } from 'node:child_process';
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
+import { milestonesReached } from './milestones.js';
+
 const CONFIG = new URL('../wrangler.toml', import.meta.url);
 const PLACEHOLDER = 'REPLACE_WITH_KV_NAMESPACE_ID';
 const DB_PLACEHOLDER = 'REPLACE_WITH_D1_DATABASE_ID';
@@ -592,6 +594,7 @@ function main() {
     let schema = false;
     let migrations = null;
     let numbering = '';
+    let approved = NaN;
     if (dbId) {
       console.log('Applying the account schema…');
       schema = migrate();
@@ -618,6 +621,10 @@ function main() {
       migrations = applyMigrations();
       console.log('Numbering maps that have no number yet…');
       numbering = numberMaps();
+      try {
+        approved = Number(parseQueryRows(wrangler(['d1', 'execute', DB_NAME, '--remote', '--json',
+          "--command=SELECT COUNT(*) AS n FROM corpus WHERE status = 'approved'"]))[0]?.n);
+      } catch { approved = NaN; }
     }
 
     console.log(`\nwrangler.toml prepared:`);
@@ -652,6 +659,9 @@ function main() {
       const trouble = !schema ? 'the schema did not apply'
         : migrations && !migrations.ok ? migrations.summary : numbering;
       appendFileSync(process.env.GITHUB_ENV, `DB_TROUBLE=${trouble}\n`);
+      /* The corpus's size, and any reminder it has reached (tools/milestones.js). */
+      appendFileSync(process.env.GITHUB_ENV, `MAPS_APPROVED=${Number.isFinite(approved) ? approved : ''}\n`);
+      appendFileSync(process.env.GITHUB_ENV, `MILESTONES=${milestonesReached(approved).map((m) => `${m.maps} maps: ${m.say}`).join(' | ')}\n`);
     }
   } catch (err) {
     console.error(`\nFAIL  ${firstLine(err)}\n`);

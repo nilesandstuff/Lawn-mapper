@@ -5806,6 +5806,30 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
+### S26. A standard segmentation head instead of our own small decoder (owner, 2026-10-06 -- PARKED UNTIL 500 MAPS)
+
+**The question (owner):** is our own four-layer decoder (and the edge
+refiner beside it) really a better fit than a named, published design?
+
+**What was said, and how sure it is:**
+- Object detectors such as Deformable DETR and DINO (the detector, not
+  DINOv2) are the wrong kind of tool: they find countable things with boxes,
+  and a lawn is a region, a per-point answer (semantic segmentation). That is
+  a statement about what they do, not a measurement here.
+- The fair rivals are standard segmentation heads over the same frozen
+  Scale-MAE features: **UperNet** (the head in Scale-MAE's own paper) and
+  **Mask2Former**. NEITHER HAS BEEN MEASURED HERE. The case for starting
+  small (80 lots against heads with millions of weights built for thousands
+  of images; minutes on the free runner; H53 says most of a good lot's error
+  is the edge band) is a reason, not a result.
+
+**Parked until the corpus has 500 approved maps** (owner's choice), when a
+bigger head has enough to learn from. tools/milestones.js then says so at
+the end of every deploy log, and train_decoder.py at the start of every
+training run's. **The test, when it comes:** UperNet first, as one more
+decoder over the same features, seeds and folds as THE PLAN's, scored lot by
+lot with workflow 24; Mask2Former only if UperNet shows something.
+
 ### S25. A wider-reaching edge refiner (owner, 2026-10-06 -- BUILT, ON TRIAL)
 
 **The owner's picture (a leaf-off county lot):** the outline stops 2-6 m

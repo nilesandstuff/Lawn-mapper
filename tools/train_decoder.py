@@ -644,6 +644,10 @@ def main():
     # neighbours out of its decoder (same photograph, same light).
     examples = [] if SKIP_EXAMPLES else [crop_to_graded(L) for L in lawns if is_example(L["id"])]
     lawns = [L for L in lawns if not is_example(L["id"])]
+    # tools/milestones.js keeps the same reminder for the deploy log (owner, 2026-10-06).
+    if len(lawns) >= 500:
+        print(f"REMINDER -- {len(lawns)} lawns: revisit the decoder. Test a standard segmentation head "
+              "(UperNet, then Mask2Former) against this small one. S26 in docs/DETECTOR-FINDINGS.md.", flush=True)
     if examples:
         from folds import lonlat, km_between
         from collections import Counter
