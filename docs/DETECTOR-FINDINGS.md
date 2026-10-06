@@ -850,6 +850,34 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H77. The taught decoder's lead on the untuned lots replicates (-1.2 [-1.7, -0.2], p 0.02); using it only under the canopy changes almost nothing lot by lot, and keeps both blow-ups -- they are under the canopy, 2026-10-06
+
+Runs 37382857695, 37382974993 and 37383081694: free runner, seeds 7/8/9,
+`decoder: fused + edge + trees`, the same code as H75 plus the combined row.
+These are a fresh extraction, so the taught arm here is a REPLICATE of
+H75's. Workflow 24, against THE PLAN's row of the same runs (medians 23.6,
+22.5, 24.1):
+
+| B row | lots better / worse / level | paired change [95%] | untuned 48 |
+|---|---|---|---|
+| taught under trees (alone) | 38 / 27 / 15 | -0.4 [-1.3, +0.1] | **-1.2 [-1.7, -0.2], p 0.024** |
+| THE PLAN, taught under the canopy | 18 / 19 / **43** | +0.0 [-0.1, +0.0] | -0.0 [-0.2, +0.1] |
+
+- **The untuned-lots lead is now seen twice:** H75 -1.1 [-2.3, +0.1] p
+  0.08, and here -1.2 [-1.7, -0.2] p 0.02. On the 32 the rules were tuned on
+  it is +0.3 both times. A rule tuned on a set wins on that set, so the 48
+  are the fairer test. The PLAN-vs-taught gap overall is still inside the
+  interval (-0.4 [-1.3, +0.1]).
+- **Under the canopy only: 43 of 80 lots are level**, since most lots
+  have little canopy. The same blow-ups survive in it: B22 65 → 254, C88
+  61 → 82, C29, B24, B27. **So the taught decoder's big misses are UNDER the
+  tree model's canopy, not in the open.** The open-ground loss (+2.9 seen,
+  H75) is real but spread thin; the tail is in the canopy. This is the
+  canopy-input question H76's runs are testing.
+- Medians of the combined row (21.6, 20.4, 23.2) sit below THE PLAN's on
+  every seed. With 43 lots tied, the paired test cannot see it. Lot by lot,
+  this is not a win.
+
 ### H76. The lidar finds the ground almost everywhere; on 10 of 72 lots it shows something 1–25 m tall standing on lawn the photo shows open, and those include most of the owner's worst taught-decoder lots, 2026-10-06
 
 Workflow 23 run 37394492053, lawns `all`, 2 m cells,
@@ -6200,3 +6228,4 @@ worse on the lots approved since. Then it joins THE PLAN.
 | 2026-10-05 | 37360685855 | 80 | S24 `fused + edge + trees`, `lawns: all`, canopy on lawn, seed 7, **Modal** | 20.9% (taught) | — | **H75.** PLAN 22.5, taught 20.9, + returns 22.6. Scoring re-run twice through a GitHub Actions outage |
 | 2026-10-05 | 37361011304 | 80 | as above, seed 8, Modal | 20.8% (taught) | — | **H75.** PLAN 22.6, taught 20.8, + returns 21.3 |
 | 2026-10-05 | 37361320989 | 80 | as above, seed 9, Modal | 22.8% (taught, + returns) | — | **H75.** PLAN 24.7, taught 22.8, + returns 22.8. Pooled lot by lot (37382273833): taught -0.1 [-1.5, +0.2], equivalent; untuned 48 -1.1 [-2.3, +0.1] |
+| 2026-10-05 | 37382857695 / 37382974993 / 37383081694 | 80 | `fused + edge + trees` + the combined row, seeds 7/8/9, CPU | 21.6 / 20.4 / 23.2% (combined) | — | **H77.** PLAN 23.6 / 22.5 / 24.1; taught 21.6 / 21.4 / 22.1. Taught on the untuned 48: -1.2 [-1.7, -0.2], p 0.024 (replicates H75). Combined: 43 of 80 level, +0.0 |
