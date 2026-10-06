@@ -609,7 +609,7 @@ def main():
               flush=True)
     if UNDER_TREES:
         print("TAUGHT UNDER TREES: inferred lawn and canopy over traced lawn are graded as the tracer "
-              "drew them (lawn), not left out; read this decoder's row ALONE", flush=True)
+              "drew them (lawn), not left out", flush=True)
 
     # NOT-LAWN EXAMPLES TRAIN, THEY ARE NEVER HELD OUT. They join every
     # fold's training -- except that a fold does not see an example within
