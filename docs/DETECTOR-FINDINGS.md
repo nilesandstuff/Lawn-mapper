@@ -38,6 +38,14 @@ changes and results from different corpora are not comparable.
 *Kept current so a fresh session can pick up without the conversation that
 got here. Update it whenever the in-flight run changes.*
 
+- **THE LIVE MODEL HAS A NAME AND A VERSION HISTORY (owner, 2026-10-06):**
+  "Turf Trace - alpha version 2 (79% accuracy)". Every release ships with a
+  row in worker/src/model-versions.js: the next version number, the date,
+  and the accuracy of the configuration that picked it, rounded. Accuracy
+  is 100 minus the median held-out lot error of THE PLAN's row in those
+  runs. Version 1 (2026-09-29) is 76%, from 24.0%; version 2 is 79%, from
+  21.0 / 21.3 / 21.0. The stage follows the owner's thresholds: alpha below
+  82%, beta below 86%, none after. The picker's "Version history" lists them.
 - **THE PLAN CHANGED, 2026-10-06 (H78): its decoder is now TAUGHT UNDER
   TREES with the CANOPY AS AN INPUT** (`UNDER_TREES=1`, `FUSE_CANOPY=1`).
   Stage 3, the span rule, the edge refiner and the lidar veto all stay. It

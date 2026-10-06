@@ -24,4 +24,8 @@ echo "=== Release shipped ==="
 cat release/release.json
 echo
 echo "Trained on $(python3 -c "import json;print(json.load(open('release/release.json'))['lawns'])") lots."
-echo "If the site does not offer \"Trained model (alpha release)\" yet, run workflow 2 once."
+echo "If the site does not offer the trained model yet, run workflow 2 once."
+echo
+echo "NEXT: add this release as a row in worker/src/model-versions.js (the next version number,"
+echo "today's date, the accuracy of the configuration that picked it), then deploy. That row is"
+echo "the model's name in the picker and its line in Version history."

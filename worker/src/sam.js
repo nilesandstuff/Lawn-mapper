@@ -12,6 +12,8 @@
  * lets the Worker and the checking tools share one definition safely.
  */
 
+import { modelName, currentModel } from './model-versions.js';
+
 export const SAM_MODEL = 'mattsays/sam3-image';
 
 /**
@@ -506,7 +508,9 @@ export const MODELS = {
    */
   alpha: {
     modal: true,
-    label: 'Trained model (alpha release)',
+    /* "Turf Trace - alpha version 2 (79% accuracy)": the live release's
+       name and rough accuracy (owner, 2026-10-06; model-versions.js). */
+    label: modelName(currentModel()),
     note: 'Our own lawn detector, trained on corrected maps. One press, about a minute the first time. An early release: check the edges.',
     needsPoints: false,
     fixedPolarity: true,

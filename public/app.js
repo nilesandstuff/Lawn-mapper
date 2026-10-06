@@ -90,6 +90,7 @@ const state = {
   provider: 'mapbox', // which one is on screen and will be detected from
   detectedWith: null, // which one the shapes on screen actually came from
   models: [],         // detection methods, from /api/config
+  modelVersions: [], // the live model's releases, from /api/config (version history)
   dev: false,         // developer mode: prompt/threshold by hand
   devPrompt: '',
   devThreshold: null, // null means "let the model decide"
@@ -1406,8 +1407,9 @@ async function initMap() {
 
   const {
     mapboxToken, imagery, models, exclusions, defaultExclusions, accounts,
-    coverage, overlays, defaultModel,
+    coverage, overlays, defaultModel, modelVersions,
   } = await api('/api/config');
+  state.modelVersions = Array.isArray(modelVersions) ? modelVersions : [];
   state.accountsOn = Boolean(accounts);
   /*
    * Before the map, deliberately. This writes the "where property lines come
@@ -4468,7 +4470,47 @@ function buildModelPicker() {
   select.value = state.model;
   $('#model-panel').hidden = false;
   $('#model-note').textContent = modelInfo(state.model).note || '';
+  buildModelHistory();
   buildExclusions();
+}
+
+/* THE LIVE MODEL'S VERSION HISTORY (owner, 2026-10-06): every release with
+   the date it went live and its rough accuracy, newest first. */
+const SHIPPED_FMT = { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' };
+function buildModelHistory() {
+  const btn = $('#btn-model-history');
+  const list = $('#model-history-list');
+  const rows = state.modelVersions || [];
+  btn.hidden = !rows.length;
+  if (!rows.length) return;
+  list.textContent = '';
+  for (const v of rows) {
+    const li = document.createElement('li');
+    const when = new Date(`${v.shipped}T12:00:00Z`).toLocaleDateString(undefined, SHIPPED_FMT);
+    const name = document.createElement('span');
+    name.className = 'mh-name';
+    name.textContent = `Version ${v.version}${v.stage ? ` · ${v.stage}` : ''}`;
+    const meta = document.createElement('span');
+    meta.className = 'mh-meta';
+    meta.textContent = `${when} · ${v.accuracy}% accuracy`;
+    li.append(name, meta);
+    if (v.live) {
+      const tag = document.createElement('span');
+      tag.className = 'mh-live';
+      tag.textContent = 'Live now';
+      li.append(tag);
+    }
+    list.append(li);
+  }
+  if (!btn.dataset.wired) {
+    btn.dataset.wired = '1';
+    btn.addEventListener('click', () => {
+      const open = $('#model-history').hidden;
+      $('#model-history').hidden = !open;
+      btn.setAttribute('aria-expanded', String(open));
+      btn.textContent = open ? 'Hide version history' : 'Version history';
+    });
+  }
 }
 
 /* ------------------------------------------------------------- exclusions */

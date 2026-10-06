@@ -57,6 +57,7 @@ import { accountsEnabled, publicUser } from './db.js';
 import { currentUser } from './auth.js';
 import { recordParcelGap } from './gaps.js';
 import { llmsTxt } from './llms.js';
+import { versionHistory } from './model-versions.js';
 // Constants and the version lookup live in their own module: a Workers
 // entrypoint may only export handlers, and exporting a plain constant from
 // here kills the isolate on startup.
@@ -1491,6 +1492,9 @@ export default {
                */
               overlays: overlayCatalogue(env),
               models: modelCatalogue(env),
+              /* The live model's releases, for the picker's "Version
+                 history" (owner, 2026-10-06). */
+              modelVersions: versionHistory(),
               /* Which method a fresh page starts on: the trained model where
                  a release is being served, "Find grass" where it is not. */
               defaultModel: defaultModelFor(env),

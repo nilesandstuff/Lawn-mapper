@@ -581,6 +581,11 @@
           <label for="model-choice">AI method</label>
           <select id="model-choice"></select>
           <p class="sub" id="model-note"></p>
+          <button class="link model-history-btn" id="btn-model-history" type="button" aria-expanded="false" aria-controls="model-history" hidden>Version history</button>
+          <div class="model-history" id="model-history" hidden>
+            <ol id="model-history-list"></ol>
+            <p class="sub">Accuracy is roughly how much of a lawn's area the model gets right, measured on maps it was not trained on.</p>
+          </div>
 
           <!-- Exclude mode only. Each ticked box is a separate AI pass, which is
                separate money and a separate wait, so the cost line is not an
