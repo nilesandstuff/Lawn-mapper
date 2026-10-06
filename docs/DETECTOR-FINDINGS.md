@@ -6255,7 +6255,12 @@ default in workflow 14: exactly the maps listed in tools/locked-lawns.json.
 Maps approved while a test series runs wait outside it, so every run in the
 series is on the same maps. Workflow 31 ("Let in the next batch of maps")
 rewrites the list, when the owner says or when a series is finished; write
-the new count and fingerprint in the run log when it moves. The end of every
+the new count and fingerprint in the run log when it moves. **First lock (2026-10-06, 20:18 UTC): 81 maps, fingerprint `05cs4ud`** --
+the 80 of every run through H79 plus **C99**, approved by the owner between
+11:20 and 18:10 UTC that day. The S25 runs (37509209045 / 37509342504 /
+37509477275) have 81 frames, so they are on the locked set; every earlier
+80-lot run (H75-H79, the version 2 release) is not. S25 compares within its
+own runs, so its verdict stands; its medians are not comparable with H79's. The end of every
 deploy log says how many are locked and how many are waiting.
 
 - **HOW A DECISION IS MADE, FROM 2026-09-27** (owner: "get the most out of
