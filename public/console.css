@@ -283,6 +283,9 @@ body.lightbox-open { overflow: hidden; }
 .layerbar input { margin: 0; }
 .layerbar i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
 .layerbar .allnone { font-size: 12px; }
+/* The copy under each lawn: the same switches, a little smaller. */
+.layerbar.under { margin: 8px 0 2px; gap: 5px; }
+.layerbar.under label { font-size: 12px; padding: 4px 9px; }
 .stack { position: relative; width: 100%; line-height: 0; }
 .stack > img { display: block; width: 100%; height: auto; }
 .stack > .layer {

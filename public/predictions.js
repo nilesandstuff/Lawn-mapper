@@ -417,8 +417,40 @@ function applyLayers() {
     .map((l) => `.layer-${l.id} { display: none; }`).join('\n');
   for (const lab of document.querySelectorAll('.layerbar label[data-id]')) {
     lab.classList.toggle('on', Boolean(layerOn[lab.dataset.id]));
+    const box = lab.querySelector('input');
+    if (box) box.checked = Boolean(layerOn[lab.dataset.id]);
   }
   try { localStorage.setItem(LAYER_STORE, JSON.stringify(layerOn)); } catch { /* private mode */ }
+}
+
+/* One layer's switch. Every copy of it -- the bar at the top and the panel
+   under each lawn -- drives the same setting, and applyLayers keeps them all
+   showing it. */
+function layerChip(l) {
+  const lab = el('label');
+  lab.dataset.id = l.id;
+  const box = el('input');
+  box.type = 'checkbox';
+  box.checked = Boolean(layerOn[l.id]);
+  box.addEventListener('change', () => { layerOn[l.id] = box.checked; applyLayers(); });
+  const sw = el('i');
+  sw.style.background = `rgb(${l.colour.join(',')})`;
+  if (l.id === 'line') sw.style.outline = '1px solid #9aa39d';
+  lab.append(box, sw, document.createTextNode(l.label));
+  lab.classList.toggle('on', Boolean(layerOn[l.id]));
+  return lab;
+}
+
+/*
+ * THE SWITCHES UNDER EVERY LAWN (owner, 2026-10-07: the pinned bar never
+ * stayed up on the owner's phone -- Chrome on a Galaxy S21 Ultra -- "just add
+ * a toggle panel below every map"). The same switches, so a change here
+ * changes every lawn and the bar too.
+ */
+function layerPanel() {
+  const panel = el('div', 'layerbar under');
+  for (const l of LAYER_DEFS.slice().reverse()) panel.append(layerChip(l));
+  return panel;
 }
 
 function layerBar(defs) {
@@ -429,24 +461,11 @@ function layerBar(defs) {
   const bar = $('#layerbar');
   bar.hidden = false;
   /* Top of the drawing order first, which is how a reader looks for them. */
-  for (const l of defs.slice().reverse()) {
-    const lab = el('label');
-    lab.dataset.id = l.id;
-    const box = el('input');
-    box.type = 'checkbox';
-    box.checked = layerOn[l.id];
-    box.addEventListener('change', () => { layerOn[l.id] = box.checked; applyLayers(); });
-    const sw = el('i');
-    sw.style.background = `rgb(${l.colour.join(',')})`;
-    if (l.id === 'line') sw.style.outline = '1px solid #9aa39d';
-    lab.append(box, sw, document.createTextNode(l.label));
-    bar.append(lab);
-  }
+  for (const l of defs.slice().reverse()) bar.append(layerChip(l));
   const reset = el('button', 'ghost tiny allnone', 'defaults');
   reset.type = 'button';
   reset.addEventListener('click', () => {
     for (const l of defs) layerOn[l.id] = Boolean(l.on);
-    for (const inp of bar.querySelectorAll('input')) inp.checked = layerOn[inp.parentElement.dataset.id];
     applyLayers();
   });
   bar.append(reset);
@@ -530,7 +549,7 @@ function withLayers(box, e, i, alt) {
   open.addEventListener('click', (ev) => { ev.stopPropagation(); full(); });
   pic.addEventListener('click', full);
   frame.append(pic, open);
-  box.append(frame);
+  box.append(frame, layerPanel());
   if (e.missedInferredPct !== null && e.missedInferredPct !== undefined) {
     box.append(el('div', 'meta',
       `Of the ground marked "inferred, not seen", the outline misses `
