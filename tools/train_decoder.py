@@ -163,6 +163,20 @@ DROP_NAIP = float(os.environ.get("DROP_NAIP", "0.2"))
 # The whole-lot grid is resampled onto the block grid (decoder_grid.onto_grid)
 # and its numbers are stacked beside the blocks' at each cell.
 FEATURES_WHOLE = os.environ.get("FEATURES_WHOLE", "")
+# WHICH OF THOSE NUMBERS (S31, chasing H85's parking-lot gain): ranges like
+# "0-255" or "0-63,256-319" pick channels of the second grid -- with S30's
+# middle layers, block 8 is 0-255 and block 16 256-511, and the first k of
+# each 256 is itself a k-number random projection of that layer.
+def _slice(spec):
+    out = []
+    for part in str(spec or "").split(","):
+        if part.strip():
+            a, _, b = part.strip().partition("-")
+            out.extend(range(int(a), int(b or a) + 1))
+    return out
+
+
+WHOLE_SLICE = _slice(os.environ.get("WHOLE_SLICE"))
 WHOLE_MANIFEST = None
 # S19, THE EDGE REFINER (tools/edge_refine.py; owner go-ahead 2026-09-29): a
 # small net on the 15 cm scoring grid that sees the photograph and the
@@ -242,6 +256,8 @@ def read_lawn(feats, frames, stem, shape):
             raise SystemExit(f"{stem} has block features but no whole-lot features in {FEATURES_WHOLE}")
         whole = np.fromfile(os.path.join(FEATURES_WHOLE, f"{stem}.f32"), dtype=np.float32)
         whole = whole.reshape(ws["gridH"], ws["gridW"], ws["dim"])
+        if WHOLE_SLICE:
+            whole = whole[:, :, WHOLE_SLICE]
         whole = onto_grid(whole, float(ws.get("coverX") or 1.0), float(ws.get("coverY") or 1.0), gw, gh, cx, cy)
         grid = np.concatenate([grid, whole], axis=2)
 

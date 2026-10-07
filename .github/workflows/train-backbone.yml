@@ -366,10 +366,12 @@ on:
         # blocks 8 and 16 beside its last layer (256 numbers each) and trains
         # THE PLAN's decoder once more reading all three, scored as "decoder,
         # middle layers + ...". Free runner; the backbone runs once either way.
-        description: 'Backbone layers: last (as always), or compare (also train a decoder on blocks 8 and 16 too)'
+        # "variants" (S31): the same middle layers, cut down three ways --
+        # block 8 only, block 16 only, both at 64 numbers each.
+        description: 'Backbone layers: last (as always), compare (also a decoder on blocks 8 and 16 too), or variants (block 8 only / 16 only / both small)'
         type: choice
         default: 'last'
-        options: ['last', 'compare']
+        options: ['last', 'compare', 'variants']
       release_epochs:
         # How long a RELEASE trains (S29). 30 is every release so far.
         description: 'Epochs for a release (30 unless S29 found better)'
@@ -543,7 +545,7 @@ jobs:
             feats
             feats-whole
             feats-multi
-          key: feats-v1-${{ steps.frames.outputs.fp }}-${{ inputs.model }}-${{ inputs.size }}-${{ inputs.windows }}-${{ inputs.layers }}-${{ hashFiles('tools/extract_features.py', 'tools/windows.py', 'tools/requirements.txt') }}
+          key: feats-v1-${{ steps.frames.outputs.fp }}-${{ inputs.model }}-${{ inputs.size }}-${{ inputs.windows }}-${{ inputs.layers == 'last' && 'last' || 'compare' }}-${{ hashFiles('tools/extract_features.py', 'tools/windows.py', 'tools/requirements.txt') }}
 
       - name: Install the tree model's loader and the lidar reader
         if: ${{ inputs.canopy != 'off' }}
@@ -674,8 +676,8 @@ jobs:
           # lot whole -- the pre-2026-09-23 behaviour, kept as the control.
           TARGET_MPP: ${{ inputs.windows == 'off' && '9' || '0.10' }}
           TILE_MPP: ${{ (inputs.windows == 'tiles' || inputs.windows == 'both') && '0.06' || (inputs.windows == 'tiles 10 cm' && '0.10' || '') }}
-          MULTI_LAYERS: ${{ inputs.layers == 'compare' && '8,16' || '' }}
-          MULTI_OUT: ${{ inputs.layers == 'compare' && 'feats-multi' || '' }}
+          MULTI_LAYERS: ${{ inputs.layers != 'last' && '8,16' || '' }}
+          MULTI_OUT: ${{ inputs.layers != 'last' && 'feats-multi' || '' }}
         run: python3 tools/extract_features.py
 
       # The backbone and every decoder in one call on Modal's GPU, with the
@@ -744,7 +746,7 @@ jobs:
             feats
             feats-whole
             feats-multi
-          key: feats-v1-${{ steps.frames.outputs.fp }}-${{ inputs.model }}-${{ inputs.size }}-${{ inputs.windows }}-${{ inputs.layers }}-${{ hashFiles('tools/extract_features.py', 'tools/windows.py', 'tools/requirements.txt') }}
+          key: feats-v1-${{ steps.frames.outputs.fp }}-${{ inputs.model }}-${{ inputs.size }}-${{ inputs.windows }}-${{ inputs.layers == 'last' && 'last' || 'compare' }}-${{ hashFiles('tools/extract_features.py', 'tools/windows.py', 'tools/requirements.txt') }}
 
       # TWO JOBS, NOT ONE (2026-09-28). A job may run six hours at most, and
       # the not-lawn examples (~140 frames beside 55 lots) made every step
@@ -758,7 +760,7 @@ jobs:
         run: |
           mkdir -p work
           have=""
-          for d in frames canopy lidar naip tree-lidar feats feats-whole feats-multi lidar-plan.json preds preds-edge preds-corr preds-nonl preds-wide preds-hardedge preds-widegate preds-ens3 preds-ep15 preds-ep60 preds-multi preds-trees preds-trees-canopy preds-trees-returns preds-none preds-lawn preds-all; do
+          for d in frames canopy lidar naip tree-lidar feats feats-whole feats-multi lidar-plan.json preds preds-edge preds-corr preds-nonl preds-wide preds-hardedge preds-widegate preds-ens3 preds-ep15 preds-ep60 preds-multi preds-l8 preds-l16 preds-lsmall preds-trees preds-trees-canopy preds-trees-returns preds-none preds-lawn preds-all; do
             if [ -e "$d" ]; then have="$have $d"; fi
           done
           du -sh $have || true
@@ -1025,6 +1027,67 @@ jobs:
           REFINE: '1'
         run: python3 tools/train_decoder.py
 
+      # S31: chasing H85's parking-lot gain with less of the middle layers.
+      - name: Train THE PLAN's decoder reading block 8 too
+        if: ${{ inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && inputs.layers == 'variants' && inputs.canopy != 'compare' && inputs.gpu != 'modal' }}
+        env:
+          FEATURES: feats
+          FEATURES_WHOLE: feats-multi
+          WHOLE_SLICE: '0-255'
+          FRAMES: frames
+          OUT: preds-l8
+          CANOPY: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
+          CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}
+          SEED: ${{ inputs.seed }}
+          FUSE: '1'
+          FUSE_LIDAR: lidar
+          FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'locked') && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
+          FUSE_NAIP: naip
+          FUSE_CANOPY: ${{ inputs.canopy != 'off' && '1' || '0' }}
+          UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
+          REFINE: '1'
+        run: python3 tools/train_decoder.py
+
+      - name: Train THE PLAN's decoder reading block 16 too
+        if: ${{ inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && inputs.layers == 'variants' && inputs.canopy != 'compare' && inputs.gpu != 'modal' }}
+        env:
+          FEATURES: feats
+          FEATURES_WHOLE: feats-multi
+          WHOLE_SLICE: '256-511'
+          FRAMES: frames
+          OUT: preds-l16
+          CANOPY: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
+          CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}
+          SEED: ${{ inputs.seed }}
+          FUSE: '1'
+          FUSE_LIDAR: lidar
+          FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'locked') && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
+          FUSE_NAIP: naip
+          FUSE_CANOPY: ${{ inputs.canopy != 'off' && '1' || '0' }}
+          UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
+          REFINE: '1'
+        run: python3 tools/train_decoder.py
+
+      - name: Train THE PLAN's decoder reading both middle blocks, small
+        if: ${{ inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && inputs.layers == 'variants' && inputs.canopy != 'compare' && inputs.gpu != 'modal' }}
+        env:
+          FEATURES: feats
+          FEATURES_WHOLE: feats-multi
+          WHOLE_SLICE: '0-63,256-319'
+          FRAMES: frames
+          OUT: preds-lsmall
+          CANOPY: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
+          CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}
+          SEED: ${{ inputs.seed }}
+          FUSE: '1'
+          FUSE_LIDAR: lidar
+          FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'locked') && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
+          FUSE_NAIP: naip
+          FUSE_CANOPY: ${{ inputs.canopy != 'off' && '1' || '0' }}
+          UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
+          REFINE: '1'
+        run: python3 tools/train_decoder.py
+
       # S21 and the pond maps (owner, 2026-10-06), over the same features as
       # THE PLAN's decoder above: once weighted toward the live model's
       # corrected mistakes, once without the not-lawn maps a not_lawn run adds.
@@ -1247,7 +1310,7 @@ jobs:
           # The three-way comparison, one row each. The seen column is scored
           # with the canopy unseen on lawn, whichever decoder is being read.
           # S19 (`fused + edge`): the refined decoder as a row of its own.
-          PREDICTIONS_DIRS: ${{ (inputs.decoder != 'off' && inputs.canopy == 'compare' && 'no canopy=preds-none,canopy on lawn=preds-lawn,canopy everywhere=preds-all') || (inputs.decoder == 'fused + edge' && format('edge refined=preds-edge{0}{1}{2}{3}{4}{5}{6}', inputs.corrections == 'on' && ',corrections weighted=preds-corr' || '', inputs.not_lawn == 'on' && ',no pond maps=preds-nonl' || '', inputs.edge_reach == 'compare' && ',wide edge=preds-wide' || '', inputs.refiner_trial == 'compare' && ',hard edges=preds-hardedge,wide gated=preds-widegate' || '', inputs.refiner_trial == 'average of 3' && ',averaged x3=preds-ens3' || '', inputs.refiner_trial == 'epochs' && ',15 epochs=preds-ep15,60 epochs=preds-ep60' || '', inputs.layers == 'compare' && ',middle layers=preds-multi' || '')) || (inputs.decoder == 'fused + edge + trees' && 'edge refined=preds-edge,taught under trees=preds-trees,taught under trees with canopy input=preds-trees-canopy') || (inputs.decoder == 'fused + edge + trees + returns' && 'edge refined=preds-edge,taught under trees=preds-trees,taught under trees with canopy input=preds-trees-canopy,taught under trees + returns=preds-trees-returns') || '' }}
+          PREDICTIONS_DIRS: ${{ (inputs.decoder != 'off' && inputs.canopy == 'compare' && 'no canopy=preds-none,canopy on lawn=preds-lawn,canopy everywhere=preds-all') || (inputs.decoder == 'fused + edge' && format('edge refined=preds-edge{0}{1}{2}{3}{4}{5}{6}{7}', inputs.corrections == 'on' && ',corrections weighted=preds-corr' || '', inputs.not_lawn == 'on' && ',no pond maps=preds-nonl' || '', inputs.edge_reach == 'compare' && ',wide edge=preds-wide' || '', inputs.refiner_trial == 'compare' && ',hard edges=preds-hardedge,wide gated=preds-widegate' || '', inputs.refiner_trial == 'average of 3' && ',averaged x3=preds-ens3' || '', inputs.refiner_trial == 'epochs' && ',15 epochs=preds-ep15,60 epochs=preds-ep60' || '', inputs.layers == 'compare' && ',middle layers=preds-multi' || '', inputs.layers == 'variants' && ',layer 8=preds-l8,layer 16=preds-l16,layers small=preds-lsmall' || '')) || (inputs.decoder == 'fused + edge + trees' && 'edge refined=preds-edge,taught under trees=preds-trees,taught under trees with canopy input=preds-trees-canopy') || (inputs.decoder == 'fused + edge + trees + returns' && 'edge refined=preds-edge,taught under trees=preds-trees,taught under trees with canopy input=preds-trees-canopy,taught under trees + returns=preds-trees-returns') || '' }}
           # The canopy joins the hand-marked unseen ground for the seen column.
           CANOPY_DIR: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
           CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}

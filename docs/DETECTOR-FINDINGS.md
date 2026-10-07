@@ -6048,6 +6048,24 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
+### S31. Chasing H85's parking-lot gain with less of the middle layers (owner, 2026-10-07 -- ON TRIAL)
+
+**Why (owner: "do a little chasing of the parking lot gains"):** H85's middle
+layers cut B20 73 -> 48 and B19 79 -> 65 but cost elsewhere (C29, C80) and
+came out even overall. If the gain is texture and the cost is 512 more
+inputs to 81 lots, less of it may keep the first and shed the second.
+
+**Three arms, one set of runs** (workflow 14 `layers: variants`, cached
+middle layers, `WHOLE_SLICE` picks channels): **layer 8** (block 8 only,
+256), **layer 16** (block 16 only, 256), **layers small** (both, 64 each --
+the first 64 of each projection is itself a 64-number random projection).
+
+**The test, written before the runs:** seeds 7/8/9, `lawns: locked`, free
+runner, each arm against "decoder, edge refined + stage 3, span, lidar veto"
+of the same runs, the usual bar; B19/B20 reported but not the bar. Three
+arms tried at once means one may pass by luck -- a pass is re-run on fresh
+seeds before anything ships.
+
 ### S30. Read Scale-MAE's middle layers as well as its last (owner, 2026-10-07 -- MEASURED: NO OVERALL GAIN, H85)
 
 **Why (owner, from SegFormer's All-MLP decoder):** that decoder's strength is
