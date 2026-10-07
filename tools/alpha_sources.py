@@ -44,11 +44,7 @@ def gather_sources(photo, prep, naip_align=None):
     out = {"lidar": None, "height_png": None, "roof": None, "void": None, "naip": None,
            "rec": {"lidar": False, "naip": False}, "seconds": {}}
 
-    # THE TWO DOWNLOADS AT ONCE (owner, 2026-10-07: "fix the GPU waiting").
-    # They were one after the other, so a lot's wait was lidar + NAIP; the live
-    # GPU often sits through that wait (workflow 32: 11 s of a 12 s lot).
-    # Neither needs the other, so the wait is now the slower of the two.
-    def get_lidar():
+    if prep.get("lidarUrl"):
         t0 = time.time()
         try:
             got = lidar_frame.lidar_for(prep["lidarUrl"], prep["bbox"])
@@ -63,22 +59,13 @@ def gather_sources(photo, prep, naip_align=None):
             out["rec"]["lidarError"] = str(e)[:200]
         out["seconds"]["lidar"] = round(time.time() - t0, 1)
 
-    def get_naip():
-        t0 = time.time()
-        try:
-            naip, _ = naip_bands.naip_for(prep["bbox"], photo=photo, stored=naip_align)
-            out["naip"] = np.asarray(naip)
-        except Exception as e:  # noqa: BLE001 - served without it, as trained
-            out["rec"]["naipError"] = str(e)[:200]
-        out["seconds"]["naip"] = round(time.time() - t0, 1)
-
-    from concurrent.futures import ThreadPoolExecutor
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        jobs = [pool.submit(get_naip)]
-        if prep.get("lidarUrl"):
-            jobs.append(pool.submit(get_lidar))
-        for j in jobs:
-            j.result()
+    t0 = time.time()
+    try:
+        naip, _ = naip_bands.naip_for(prep["bbox"], photo=photo, stored=naip_align)
+        out["naip"] = np.asarray(naip)
+    except Exception as e:  # noqa: BLE001 - served without it, as trained
+        out["rec"]["naipError"] = str(e)[:200]
+    out["seconds"]["naip"] = round(time.time() - t0, 1)
     return out
 
 

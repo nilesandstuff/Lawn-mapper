@@ -910,6 +910,14 @@ Runs' medians B 20.3 / 22.1 / 20.7.
   ~12 s waiting on downloads (C88: 13.9 of 17.8). If the GPU were woken only
   after the downloads, most of each lot's GPU bill would go. A cost lever,
   bigger than anything decoder-side; for the owner to decide.
+- **Tried and undone the same day (owner: "fix the GPU waiting"):** fetching
+  the lidar and NAIP at once instead of one after the other. Workflow 32,
+  same 8 lots, median GPU wait: **11.0 s before; 14.8 s together on one CPU;
+  10.9 s together on two CPUs** -- no gain, both changes reverted. The lots
+  show why: once NAIP is cached it takes 0.2-0.9 s, and the LIDAR (6-21 s)
+  is nearly all of the wait, so overlapping the two saves little. Also: on a
+  COLD press the GPU is still starting while the downloads run (C99 waited
+  0.6-1.9 s), so the wait only costs on a press that finds the GPU warm.
 
 ### H82. Aiming the refiner (S27) does not pay: photo edges change nothing (22 / 24), a doubt-gated wide reach is worse but less so than the plain wide one (20 / 42); the wide reach, isolated, is what took B28, 2026-10-07
 

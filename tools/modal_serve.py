@@ -143,12 +143,9 @@ def _gather_here(payload):
     return alpha_sources.gather(payload, _prepare)
 
 
-@app.function(image=cpu_image, volumes={"/models": models}, timeout=300, cpu=2.0, memory=2048,
+@app.function(image=cpu_image, volumes={"/models": models}, timeout=300, cpu=1.0, memory=2048,
               # A CPU machine costs a few cents an hour, so it can wait longer
-              # for the next lot than the GPU does. Two CPUs (2026-10-07): the
-              # lidar and NAIP are fetched together (alpha_sources), and on one
-              # CPU that made each slower -- workflow 32 measured the wait at
-              # 14.8 s against 11.0 s one after the other.
+              # for the next lot than the GPU does.
               scaledown_window=300)
 # Several lots at once: it is downloads, so one CPU machine can wait on four
 # as easily as one, and a second press need not start a second machine.
