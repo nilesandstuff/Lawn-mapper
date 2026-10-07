@@ -5871,6 +5871,38 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
+### S27. Aiming the refiner: hand it the photo's edges, and let a wide reach act only where the decoder is unsure (owner, 2026-10-07 overnight -- BUILT, ON TRIAL)
+
+**Why (owner):** the misses that look easy are 2-6 m out along strong edges
+(driveways, houses, roads) and softer ones (woodlines). H80's plain wide
+reach saw them but also moved edges that were right, and ate into confident
+lawn (B28's mid-lawn black, though that picture also mixed in other changes,
+see the owner's reading above).
+
+**Built (tools/edge_refine.py):**
+- `REFINE_EDGES=1`, row "decoder, hard edges ...": two fixed input channels,
+  the Sobel strength of the brightness at 15 cm and over a ~0.75 m blur.
+  Nothing learned; the refiner no longer has to discover from 81 lots what a
+  kerb or a woodline looks like. Normal reach.
+- "decoder, wide gated ...": the same edges, the wide reach (31 cells, ~4.6 m),
+  and `REFINE_GATE=1`: its change is multiplied by sigmoid(level - steep *
+  |decoder logit|), both learned, so it can move ground the decoder is unsure
+  of and barely touch ground it is confident about.
+
+**Why it might not work (speculation):** a strong edge is often not the
+lawn's (a patio inside the lawn, a shadow); the gate may learn to stay shut
+and change nothing; three seeds on 81 lots may not separate a small effect.
+
+**The test, written before the runs:** workflow 14 `refiner_trial: compare`,
+`lawns: locked` (81, `05cs4ud`), free runner, seeds 7/8/9 (37563074383,
+37563158493, 37563241262). Each arm read with workflow 24 against "decoder,
+edge refined + stage 3, span, lidar veto" of the same runs. **Adopt-worthy
+only if** the sign test is under 0.05 with more lots better, the interval
+on all 81 is at or below zero, and the untuned 49 do not go the other way.
+The same runs also give the live refiner against its true twin (THE PLAN's
+decoder without it), a second extraction beside 37556372070 / 37556456369 /
+37556539907. Nothing is released from this without the owner.
+
 ### S26. A standard segmentation head instead of our own small decoder (owner, 2026-10-06 -- PARKED UNTIL 500 MAPS)
 
 **The question (owner):** is our own four-layer decoder (and the edge
