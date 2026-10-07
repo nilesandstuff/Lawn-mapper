@@ -1,0 +1,60 @@
+name: 32. Time the live model (COSTS A FEW CENTS)
+
+# How long the live model on Modal spends on each part of a lot: the
+# backbone, the tree canopy, the decoder + edge refiner (owner, 2026-10-07,
+# to weigh H83's average of three decoders against its cost). Sends a few
+# approved lots straight to the live server and prints its own timings.
+# Nothing is saved. Costs the GPU seconds it prints (an L4, about a minute or
+# two in all).
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "spend" to confirm this uses the paid GPU for a minute or two'
+        required: true
+        default: ''
+      lots:
+        description: 'Which lots, comma-separated (the first only warms the GPU and is left out of the medians)'
+        default: 'B01,B05,B19,B28,C41,C59,C88,C99'
+
+permissions:
+  contents: read
+
+jobs:
+  time:
+    if: ${{ inputs.confirm == 'spend' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      MAPBOX_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN || secrets.MAPBOX_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Find the live server
+        run: |
+          pip install --quiet modal
+          url=$(python3 -c "import modal; print(modal.Function.from_name('lawn-mapper-alpha', 'start').get_web_url() or '')")
+          res=$(python3 -c "import modal; print(modal.Function.from_name('lawn-mapper-alpha', 'result').get_web_url() or '')")
+          [ -n "$url" ] && [ -n "$res" ] || { echo "::error::The live server's addresses could not be read."; exit 1; }
+          echo "ALPHA_URL=$url" >> "$GITHUB_ENV"
+          echo "ALPHA_RESULT_URL=$res" >> "$GITHUB_ENV"
+          # The same derived token workflow 2 gives the Worker.
+          token=$(printf '%s:alpha' "$MODAL_TOKEN_SECRET" | sha256sum | cut -d' ' -f1)
+          echo "::add-mask::$token"
+          echo "ALPHA_TOKEN=$token" >> "$GITHUB_ENV"
+      - name: Time the lots
+        env:
+          LOTS: ${{ inputs.lots }}
+        run: node tools/time-alpha.js

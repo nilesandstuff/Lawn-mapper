@@ -5979,6 +5979,21 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
+### S29. How many epochs (owner, 2026-10-07 -- ON TRIAL)
+
+**Why (owner's question):** every decoder trains for 30 epochs, a number set
+on 2026-09-24 at 32 lots for the first decoder (H25) and never tested since.
+The corpus is now 81 lots, so an epoch is longer, and the decoder now has the
+refiner, the canopy input and teaching under trees.
+
+**The test, written before the runs:** workflow 14 `refiner_trial: epochs`,
+seeds 7/8/9, `lawns: locked`, free runner: THE PLAN at 15 and at 60 epochs
+beside the usual 30, same features and folds. Each read with workflow 24
+against "decoder, edge refined + stage 3, span, lidar veto". A change of
+default needs the same bar as everything else (sign test under 0.05, more
+lots better, interval at or below zero, untuned not the other way); if
+neither passes, 30 stays. Training only: no change to live cost.
+
 ### S28. Average three decoders instead of trusting one (overnight 2026-10-07 -- BUILT, PASSES: H83, NOT RELEASED)
 
 **Why:** seed alone moves a run's median by up to 1.7 points (THE PLAN's row,
