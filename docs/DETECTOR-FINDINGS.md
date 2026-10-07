@@ -897,8 +897,19 @@ Runs' medians B 20.3 / 22.1 / 20.7.
   NOT MEASURED; estimated from the arithmetic as 1-10 % more GPU work a lot
   (Scale-MAE ~2 TFLOP at 896 px; one decoder + refiner ~10 GFLOP on a typical
   lot, ~100 on the largest), and less in time, since a lot's time is mostly
-  downloads and CPU. To be measured before any release. Not wired for a
-  release yet (train_decoder RELEASE_OUT saves one decoder).
+  downloads and CPU. Not wired for a release yet (train_decoder RELEASE_OUT
+  saves one decoder).
+- **Cost, MEASURED 2026-10-07 (workflow 32, run 37618404581, 8 lots on the
+  live L4, the first a cold start):** median per warm lot, server seconds:
+  total 12.3, of which waiting for the lidar/NAIP downloads 11.0, Scale-MAE
+  0.8, tree canopy 0.1, decoder + refiner 0.1 (the server rounds to 0.1 s;
+  0.0-0.1 on every lot, up to 633 x 1024 cells). So two more decoders add
+  about 0.2 s to a ~12 s lot: about 2 % of the GPU's billed time, a fraction
+  of a cent per thousand lots, and no visible wait for the person.
+- **Seen in passing (not acted on):** the GPU sits for ~11 s of a lot's
+  ~12 s waiting on downloads (C88: 13.9 of 17.8). If the GPU were woken only
+  after the downloads, most of each lot's GPU bill would go. A cost lever,
+  bigger than anything decoder-side; for the owner to decide.
 
 ### H82. Aiming the refiner (S27) does not pay: photo edges change nothing (22 / 24), a doubt-gated wide reach is worse but less so than the plain wide one (20 / 42); the wide reach, isolated, is what took B28, 2026-10-07
 
