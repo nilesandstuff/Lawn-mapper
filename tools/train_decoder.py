@@ -169,6 +169,8 @@ WHOLE_MANIFEST = None
 # decoder's answer and re-draws the edge, trained together with the decoder.
 # Off unless REFINE=1; FINE_WEIGHT is its loss beside the decoder's own.
 REFINE = os.environ.get("REFINE") == "1"
+# Decoders per fold whose answers are averaged (1 = the usual single one).
+ENSEMBLE = max(1, int(os.environ.get("ENSEMBLE") or "1"))
 FINE_WEIGHT = float(os.environ.get("FINE_WEIGHT", "1.0"))
 # THE OWNER'S NOT-LAWN TRACES (tinker mode, 2026-09-29): FRAMES/<id>-notlawn.png,
 # written by the frame dump when NOT_LAWN=1. Where one is set, the cell is
@@ -722,8 +724,14 @@ def main():
                       f"of a held-out lot left out", flush=True)
             train = train + kept
         model, mean, sd, loss = train_one(train, dim, SEED + f)
+        # AN AVERAGE OF DECODERS (ENSEMBLE=k; overnight trial 2026-10-07): k-1
+        # more trained on the same fold from other seeds, their answers
+        # averaged. The first is the one above, so k=1 is exactly the usual.
+        extra = [train_one(train, dim, SEED + f + 1000 * j)[:3] for j in range(1, ENSEMBLE)]
         for held in group:
             prob = answer(model, mean, sd, held)
+            if extra:
+                prob = (prob + sum(answer(m, mu, sg, held) for m, mu, sg in extra)) / ENSEMBLE
             img = Image.fromarray(np.clip(np.round(prob * 255), 0, 255).astype(np.uint8), mode="L")
             img.save(os.path.join(out, f"{held['id']}-pred.png"))
             n += 1

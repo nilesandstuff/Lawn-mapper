@@ -5947,6 +5947,30 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
+### S28. Average three decoders instead of trusting one (overnight 2026-10-07 -- BUILT, ON TRIAL)
+
+**Why:** seed alone moves a run's median by up to 1.7 points (THE PLAN's row,
+H81/H82: 20.8 / 22.5 / 22.0), as large as most changes measured here. An
+average of decoders trained from different seeds is the standard way to take
+that noise out of the answer itself, not just out of the comparison. The
+decoder and refiner are small next to Scale-MAE, which runs once either way,
+so three of them would add little to the live GPU's time (to be measured
+before any release; cost is the owner's second goal).
+
+**Built:** `ENSEMBLE=k` in train_decoder.py trains k decoders (with the
+refiner) per fold from seeds SEED+f, +1000, +2000 and averages their answers
+before stage 3. Workflow 14 `refiner_trial: average of 3`, row "decoder,
+averaged x3 + ...". Not yet wired for a release.
+
+**Why it might not help (speculation):** the three may make the same mistakes
+(same features, same lots), so the average only smooths the edge band.
+
+**The test, written before the runs:** seeds 7/8/9, `lawns: locked`, free
+runner, against "decoder, edge refined + stage 3, span, lidar veto" of the
+same runs. Adopt-worthy only if the sign test is under 0.05 with more lots
+better, the interval on all 81 at or below zero, and the untuned 49 not the
+other way. Nothing is released from it without the owner.
+
 ### S27. Aiming the refiner: hand it the photo's edges, and let a wide reach act only where the decoder is unsure (owner, 2026-10-07 overnight -- BUILT, MEASURED: NO GAIN, H82)
 
 **Why (owner):** the misses that look easy are 2-6 m out along strong edges
