@@ -868,6 +868,34 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H85. Scale-MAE's middle layers (S30) do not pay overall (29 lots better / 23 worse, p 0.49) -- but they cut the parking-lot lots by 15-25 points, 2026-10-07
+
+Three seeds (7/8/9), free runner, `lawns: locked` (81), `layers: compare`
+(blocks 8 and 16, 256 numbers each, beside the last layer): 37628852627,
+37628956583, 37629069477 -- a fresh extraction (the cache key changed).
+Workflow 24 (37657411739) against "decoder, edge refined + stage 3, span,
+lidar veto" of the same runs.
+
+| lots | better / worse / level | median | paired change [95%] | sign test |
+|---|---|---|---|---|
+| all 81 | 29 / 23 / 29 | 22.1 -> 21.1% | -0.1 [-0.4, +0.1] | p 0.49 |
+| frozen 32 | 13 / 6 / 13 | 24.5 -> 25.2% | -0.3 [-0.7, +0.1] | p 0.17 |
+| untuned 49 | 16 / 17 / 16 | 21.9 -> 19.8% | -0.0 [-0.3, +0.4] | p 1.0 |
+
+Runs' medians B 20.8 / 21.3 / 20.8 (A as before, about 21-22).
+
+- **S30's bar fails:** no overall change; the interval spans zero. The
+  median's 1-2 point drop is level lots reshuffling, not a paired change.
+- **But the biggest movers are the lots nothing else fixes:** B20 73 -> 48,
+  B19 79 -> 65 (the two parking lots, H81), B03 72 -> 59, B32 33 -> 27, C88
+  60 -> 55. Worse: C29 407 -> 479, C80 56 -> 67, C30, C94, B12 by 4-5.
+  Reading (speculation): the middle layers keep texture -- pavement against
+  grass -- that the last layer has abstracted away; that helps where the
+  decoder confuses the two and costs a little elsewhere. A future arrangement
+  (fewer dims, one layer, or the middle layers only near uncertain cells)
+  might keep the gain without the cost. Not adopted.
+- The S30 machinery stays (`layers: compare`, default `last`).
+
 ### H84. 30 epochs stays: 15 is worse (21 lots better / 45 worse), 60 is no different (25 / 31) -- 2026-10-07
 
 Three seeds (7/8/9), free runner, `lawns: locked` (81), `refiner_trial:
@@ -6020,7 +6048,7 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
-### S30. Read Scale-MAE's middle layers as well as its last (owner, 2026-10-07 -- BUILT, ON TRIAL)
+### S30. Read Scale-MAE's middle layers as well as its last (owner, 2026-10-07 -- MEASURED: NO OVERALL GAIN, H85)
 
 **Why (owner, from SegFormer's All-MLP decoder):** that decoder's strength is
 mixing descriptions at several scales, which SegFormer's encoder hands it.
@@ -6776,3 +6804,4 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-07 | 37582634690 / 37582729096 / 37582829432 | 81 (locked) | S28 `refiner_trial: average of 3`, seeds 7/8/9, CPU | 20.9 / 22.5 / 22.0% (edge refined + stage 3, span, veto) | — | **H83.** Averaged x3: 31 / 9, -0.3 [-0.4, -0.1], p 0.001; medians 20.3 / 22.1 / 20.7. Passes; not released |
 | 2026-10-07 | 37643197968 | 81 (locked) | **RELEASE v3 (H83)**: `release: alpha`, `refiner_trial: average of 3`, fused + edge, canopy on lawn, UNDER_TREES + FUSE_CANOPY, 30 epochs, seed 7, CPU | — (no folds) | — | Three decoders averaged, trained on all 81 in 306 s, train loss 0.202, trainedAt 2026-10-07T15:52:29Z. Shipped to the live server; v2 kept under alpha/history/. Named "alpha version 3 (79%)": mean of the averaged row's run medians 21.0 (the single-decoder setup on the same runs 21.8) |
 | 2026-10-07 | 37618116401 / 37618210051 / 37618300740 | 81 (locked) | S29 `refiner_trial: epochs` (15 and 60 beside 30), seeds 7/8/9, CPU | 20.9 / 22.5 / 22.0% (30 epochs) | — | **H84.** 15: 21 / 45, +0.8, p 0.004 (worse); 60: 25 / 31, p 0.50 (nothing). 30 stays |
+| 2026-10-07 | 37628852627 / 37628956583 / 37629069477 | 81 (locked) | S30 `layers: compare` (blocks 8 and 16 squeezed to 256 each, fresh extraction), seeds 7/8/9, CPU | ~21-22% (edge refined + stage 3, span, veto) | — | **H85.** Middle layers 29 / 23, -0.1 [-0.4, +0.1], p 0.49; B20 73 -> 48, B19 79 -> 65. Not adopted |
