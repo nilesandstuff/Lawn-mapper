@@ -56,7 +56,10 @@ def plan(inputs, run, send):
             "CANOPY": "canopy", "CANOPY_MODE": "all" if canopy == "everywhere" else "lawn",
             "SEED": seed, "FUSE": "1", "FUSE_LIDAR": "lidar", "FUSE_NAIP": "naip",
             "FUSE_CANOPY": "1", "UNDER_TREES": "1",
-            "REFINE": "1", "REFINE_REACH": "wide" if inputs.get("edge_reach") == "wide" else "",
+            "REFINE": "1",
+            "REFINE_REACH": "wide" if (inputs.get("edge_reach") == "wide" or inputs.get("refiner_trial") == "wide gated") else "",
+            "REFINE_EDGES": "1" if inputs.get("refiner_trial") in ("hard edges", "wide gated") else "",
+            "REFINE_GATE": "1" if inputs.get("refiner_trial") == "wide gated" else "",
             "OUT": "preds-release", "RELEASE_OUT": "release",
         }})
         outs = ["release"]
@@ -116,7 +119,7 @@ def plan(inputs, run, send):
 
 def main():
     e = os.environ
-    inputs = {k: e.get(k.upper(), "") for k in ("windows", "canopy", "decoder", "seed", "lawns", "model", "size", "release", "distrust_lidar", "edge_reach")}
+    inputs = {k: e.get(k.upper(), "") for k in ("windows", "canopy", "decoder", "seed", "lawns", "model", "size", "release", "distrust_lidar", "edge_reach", "refiner_trial")}
     p = plan(inputs, e["RUN"], (e.get("SEND") or "").split(","))
     # A release records where it came from; Modal's container has no GitHub
     # environment of its own, so the two names are carried across here.

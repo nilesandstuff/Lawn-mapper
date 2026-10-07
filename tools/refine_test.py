@@ -54,6 +54,22 @@ def check_reach():
                        torch.ones(1, 1, 9, 9))
 
 
+def check_aimed_variants():
+    """The photo-edge and doubt-gated refiners start as the decoder too, keep
+    the live release's layout when off, and the edge filter finds a kerb."""
+    for kw in ({"edges": True}, {"gate": True}, {"reach": "wide", "edges": True, "gate": True}):
+        r = Refiner(**kw)
+        logit = torch.randn(1, 1, 12, 12)
+        assert torch.equal(r(torch.randn(1, 3, 12, 12), logit, torch.randn(1, 32, 12, 12)), logit), kw
+    assert sorted(Refiner(reach="normal", edges=False, gate=False).state_dict()) == sorted(
+        f"net.{i}.{p}" for i in (0, 2, 4, 6) for p in ("weight", "bias"))
+    from edge_refine import photo_edges
+    rgb = torch.zeros(1, 3, 20, 20)
+    rgb[..., 10:] = 1.0  # a hard edge between columns 9 and 10
+    e = photo_edges(rgb)[0, 0]
+    assert e[:, 9:11].min() > 0.2 and e[:, :7].max() < 0.01 and e[:, 13:].max() < 0.01
+
+
 def check_undo_dihedral():
     x = torch.randn(1, 3, 5, 8)
     for k in range(4):
@@ -79,6 +95,7 @@ def check_crops():
 check_stretch_matches_to_photo()
 check_starts_as_decoder()
 check_reach()
+check_aimed_variants()
 check_undo_dihedral()
 check_crops()
 print("edge refiner: ok")

@@ -67,20 +67,67 @@ REACHES = {"normal": (2, 4), "wide": (2, 4, 8, 16)}  # dilations after the first
 REFINE_REACH = os.environ.get("REFINE_REACH") or "normal"
 
 
+# OVERNIGHT TRIAL (owner, 2026-10-07: "reach further for strong edges like
+# driveways, houses, roads ... and softer, but still noticeable edges like
+# woodlines"). Two ways to aim the refiner, after H80's plain wide reach lost:
+#
+#   REFINE_EDGES=1  hand it the photo's edges: how sharply the brightness
+#                   changes at each cell, at the 15 cm grid and over a ~0.75 m
+#                   blur (a woodline is a soft edge, a kerb a sharp one).
+#                   Fixed filters, nothing learned, so it does not have to
+#                   discover from 81 lots what an edge is.
+#   REFINE_GATE=1   let it move the answer only where the decoder is unsure:
+#                   its change is scaled by a gate that falls as the decoder's
+#                   confidence (|logit|) rises, with the gate's level and
+#                   steepness learned. A confident lawn interior (B28) can
+#                   then not be eaten from 4 m away.
+#
+# Both start as exactly the decoder (the last layer is zero), like the rest.
+REFINE_EDGES = os.environ.get("REFINE_EDGES") == "1"
+REFINE_GATE = os.environ.get("REFINE_GATE") == "1"
+
+
+def photo_edges(rgb):
+    """(N, 3, H, W) photo -> (N, 2, H, W): Sobel magnitude of brightness, sharp
+    and over a ~5-cell blur. Edge padding, so a crop's border is not an edge."""
+    lum = rgb.mean(dim=1, keepdim=True)
+    kx = torch.tensor([[-1.0, 0.0, 1.0], [-2.0, 0.0, 2.0], [-1.0, 0.0, 1.0]], device=rgb.device) / 8
+    k = torch.stack([kx, kx.t()])[:, None]
+
+    def mag(x):
+        g = F.conv2d(F.pad(x, (1, 1, 1, 1), mode="replicate"), k)
+        return torch.sqrt((g * g).sum(1, keepdim=True) + 1e-6)
+
+    blur = F.avg_pool2d(F.pad(lum, (2, 2, 2, 2), mode="replicate"), 5, stride=1)
+    return torch.cat([mag(lum), mag(blur)], dim=1)
+
+
 class Refiner(nn.Module):
-    def __init__(self, hidden=32, width=32, reach=None):
+    def __init__(self, hidden=32, width=32, reach=None, edges=None, gate=None):
         super().__init__()
         self.reach = reach or REFINE_REACH
-        layers = [nn.Conv2d(3 + 1 + hidden, width, 3, padding=1), nn.GELU()]
+        self.edges = REFINE_EDGES if edges is None else bool(edges)
+        self.gated = REFINE_GATE if gate is None else bool(gate)
+        extra = 2 if self.edges else 0
+        layers = [nn.Conv2d(3 + extra + 1 + hidden, width, 3, padding=1), nn.GELU()]
         for d in REACHES[self.reach]:
             layers += [nn.Conv2d(width, width, 3, padding=d, dilation=d), nn.GELU()]
         self.net = nn.Sequential(*layers, nn.Conv2d(width, 1, 1))
         nn.init.zeros_(self.net[-1].weight)
         nn.init.zeros_(self.net[-1].bias)
+        if self.gated:
+            # gate = sigmoid(level - softplus(steep) * |logit|): about 0.9 at an
+            # unsure cell, about 0.1 where the decoder says |logit| = 8.
+            self.gate_level = nn.Parameter(torch.tensor(2.0))
+            self.gate_steep = nn.Parameter(torch.tensor(0.0))
 
     def forward(self, rgb, coarse_logit, coarse_hidden):
-        x = torch.cat([rgb, coarse_logit, coarse_hidden], dim=1)
-        return coarse_logit + self.net(x)
+        parts = [rgb] + ([photo_edges(rgb)] if self.edges else []) + [coarse_logit, coarse_hidden]
+        delta = self.net(torch.cat(parts, dim=1))
+        if self.gated:
+            gate = torch.sigmoid(self.gate_level - F.softplus(self.gate_steep) * coarse_logit.detach().abs())
+            delta = delta * gate
+        return coarse_logit + delta
 
 
 def sampling_grid(cells_w, cells_h, grid_w, grid_h, cover_x, cover_y, x0=0, y0=0, w=None, h=None):

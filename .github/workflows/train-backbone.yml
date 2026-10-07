@@ -347,6 +347,17 @@ on:
         type: choice
         default: 'normal'
         options: ['normal', 'compare', 'wide']
+      refiner_trial:
+        # AIMING THE REFINER (owner, 2026-10-07, overnight go-ahead). "compare"
+        # trains THE PLAN's decoder twice more over the same features, seed
+        # and folds: once with the photo's edges handed to the refiner ("hard
+        # edges"), once with those AND the wide reach, its changes gated to
+        # where the decoder is unsure ("wide gated"). Free runner only. "hard
+        # edges" / "wide gated" make a release with that refiner.
+        description: 'Refiner trial: off, compare (also train hard-edges and wide-gated refiners), or one of them for a release'
+        type: choice
+        default: 'off'
+        options: ['off', 'compare', 'hard edges', 'wide gated']
       distrust_lidar:
         # LIDAR THAT DISAGREES WITH ITS PHOTO, HIDDEN IN TRAINING (owner,
         # 2026-10-06; H76): a lot whose traced visible lawn stands over 0.5 m
@@ -663,6 +674,7 @@ jobs:
           DECODER: ${{ inputs.decoder }}
           DISTRUST_LIDAR: ${{ inputs.distrust_lidar }}
           EDGE_REACH: ${{ inputs.edge_reach }}
+          REFINER_TRIAL: ${{ inputs.refiner_trial }}
           SEED: ${{ inputs.seed }}
           LAWNS: ${{ inputs.lawns }}
           MODEL: ${{ inputs.model }}
@@ -723,7 +735,7 @@ jobs:
         run: |
           mkdir -p work
           have=""
-          for d in frames canopy lidar naip tree-lidar feats feats-whole lidar-plan.json preds preds-edge preds-corr preds-nonl preds-wide preds-trees preds-trees-canopy preds-trees-returns preds-none preds-lawn preds-all; do
+          for d in frames canopy lidar naip tree-lidar feats feats-whole lidar-plan.json preds preds-edge preds-corr preds-nonl preds-wide preds-hardedge preds-widegate preds-trees preds-trees-canopy preds-trees-returns preds-none preds-lawn preds-all; do
             if [ -e "$d" ]; then have="$have $d"; fi
           done
           du -sh $have || true
@@ -863,6 +875,49 @@ jobs:
           FUSE_CANOPY: ${{ inputs.canopy != 'off' && '1' || '0' }}
           UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
           REFINE: '1'
+          REFINE_REACH: wide
+        run: python3 tools/train_decoder.py
+
+      # AIMING THE REFINER (refiner_trial: compare), over THE PLAN's features.
+      - name: Train THE PLAN's decoder with the photo's edges in the refiner
+        if: ${{ inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && inputs.refiner_trial == 'compare' && inputs.canopy != 'compare' && inputs.gpu != 'modal' }}
+        env:
+          FEATURES: feats
+          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
+          FRAMES: frames
+          OUT: preds-hardedge
+          CANOPY: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
+          CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}
+          SEED: ${{ inputs.seed }}
+          FUSE: '1'
+          FUSE_LIDAR: lidar
+          FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'locked') && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
+          FUSE_NAIP: naip
+          FUSE_CANOPY: ${{ inputs.canopy != 'off' && '1' || '0' }}
+          UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
+          REFINE: '1'
+          REFINE_EDGES: '1'
+        run: python3 tools/train_decoder.py
+
+      - name: Train THE PLAN's decoder with a wide, doubt-gated refiner given the photo's edges
+        if: ${{ inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && inputs.refiner_trial == 'compare' && inputs.canopy != 'compare' && inputs.gpu != 'modal' }}
+        env:
+          FEATURES: feats
+          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
+          FRAMES: frames
+          OUT: preds-widegate
+          CANOPY: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
+          CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}
+          SEED: ${{ inputs.seed }}
+          FUSE: '1'
+          FUSE_LIDAR: lidar
+          FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'locked') && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
+          FUSE_NAIP: naip
+          FUSE_CANOPY: ${{ inputs.canopy != 'off' && '1' || '0' }}
+          UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
+          REFINE: '1'
+          REFINE_EDGES: '1'
+          REFINE_GATE: '1'
           REFINE_REACH: wide
         run: python3 tools/train_decoder.py
 
@@ -1088,7 +1143,7 @@ jobs:
           # The three-way comparison, one row each. The seen column is scored
           # with the canopy unseen on lawn, whichever decoder is being read.
           # S19 (`fused + edge`): the refined decoder as a row of its own.
-          PREDICTIONS_DIRS: ${{ (inputs.decoder != 'off' && inputs.canopy == 'compare' && 'no canopy=preds-none,canopy on lawn=preds-lawn,canopy everywhere=preds-all') || (inputs.decoder == 'fused + edge' && format('edge refined=preds-edge{0}{1}{2}', inputs.corrections == 'on' && ',corrections weighted=preds-corr' || '', inputs.not_lawn == 'on' && ',no pond maps=preds-nonl' || '', inputs.edge_reach == 'compare' && ',wide edge=preds-wide' || '')) || (inputs.decoder == 'fused + edge + trees' && 'edge refined=preds-edge,taught under trees=preds-trees,taught under trees with canopy input=preds-trees-canopy') || (inputs.decoder == 'fused + edge + trees + returns' && 'edge refined=preds-edge,taught under trees=preds-trees,taught under trees with canopy input=preds-trees-canopy,taught under trees + returns=preds-trees-returns') || '' }}
+          PREDICTIONS_DIRS: ${{ (inputs.decoder != 'off' && inputs.canopy == 'compare' && 'no canopy=preds-none,canopy on lawn=preds-lawn,canopy everywhere=preds-all') || (inputs.decoder == 'fused + edge' && format('edge refined=preds-edge{0}{1}{2}{3}', inputs.corrections == 'on' && ',corrections weighted=preds-corr' || '', inputs.not_lawn == 'on' && ',no pond maps=preds-nonl' || '', inputs.edge_reach == 'compare' && ',wide edge=preds-wide' || '', inputs.refiner_trial == 'compare' && ',hard edges=preds-hardedge,wide gated=preds-widegate' || '')) || (inputs.decoder == 'fused + edge + trees' && 'edge refined=preds-edge,taught under trees=preds-trees,taught under trees with canopy input=preds-trees-canopy') || (inputs.decoder == 'fused + edge + trees + returns' && 'edge refined=preds-edge,taught under trees=preds-trees,taught under trees with canopy input=preds-trees-canopy,taught under trees + returns=preds-trees-returns') || '' }}
           # The canopy joins the hand-marked unseen ground for the seen column.
           CANOPY_DIR: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
           CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}
@@ -1133,7 +1188,9 @@ jobs:
           FUSE_CANOPY: '1'
           UNDER_TREES: '1'
           REFINE: '1'
-          REFINE_REACH: ${{ inputs.edge_reach == 'wide' && 'wide' || '' }}
+          REFINE_REACH: ${{ (inputs.edge_reach == 'wide' || inputs.refiner_trial == 'wide gated') && 'wide' || '' }}
+          REFINE_EDGES: ${{ (inputs.refiner_trial == 'hard edges' || inputs.refiner_trial == 'wide gated') && '1' || '' }}
+          REFINE_GATE: ${{ inputs.refiner_trial == 'wide gated' && '1' || '' }}
           OUT: preds-release
           RELEASE_OUT: release
         run: python3 tools/train_decoder.py

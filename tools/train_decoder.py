@@ -600,7 +600,7 @@ def main():
         from edge_refine import Refiner
         ref_params = sum(p.numel() for p in Refiner().parameters())
         params += ref_params
-        print(f"EDGE REFINER (S19, reach {os.environ.get('REFINE_REACH') or 'normal'}): {ref_params:,} more weights on the 15 cm grid, trained with the decoder "
+        print(f"EDGE REFINER (S19, reach {os.environ.get('REFINE_REACH') or 'normal'}{', photo edges' if os.environ.get('REFINE_EDGES') == '1' else ''}{', gated by the decoder doubt' if os.environ.get('REFINE_GATE') == '1' else ''}): {ref_params:,} more weights on the 15 cm grid, trained with the decoder "
               f"(fine loss x{FINE_WEIGHT:g})", flush=True)
     print(f"{len(lawns)} lawns, {dim} numbers a patch, grids "
           f"{min(L['x'].shape[2] for L in lawns)}-{max(L['x'].shape[2] for L in lawns)} patches across")
@@ -674,7 +674,7 @@ def main():
         meta = {
             "backbone": manifest.get("model"), "size": manifest.get("size"),
             "resFactor": manifest.get("resFactor", 1.0),
-            "dim": dim, "refine": REFINE, "refineReach": (os.environ.get("REFINE_REACH") or "normal") if REFINE else None, "fuse": FUSE, "fuseCanopy": FUSE_CANOPY,
+            "dim": dim, "refine": REFINE, "refineReach": (os.environ.get("REFINE_REACH") or "normal") if REFINE else None, "refineEdges": os.environ.get("REFINE_EDGES") == "1", "refineGate": os.environ.get("REFINE_GATE") == "1", "fuse": FUSE, "fuseCanopy": FUSE_CANOPY,
             "underTrees": UNDER_TREES, "fuseReturns": bool(FUSE_RETURNS), "lidarDistrust": bool(LIDAR_DISTRUST), "correctionsWeight": CORRECTIONS_WEIGHT,
             "channels": list(CHANNELS) if FUSE else [],
             "canopyMode": CANOPY_MODE if CANOPY else None,
