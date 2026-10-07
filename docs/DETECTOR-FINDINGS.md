@@ -868,6 +868,44 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H86. Less of the middle layers (S31) does not pay either: layer 8 alone 28 / 24, layer 16 alone 30 / 19, both small 28 / 25 -- none passes, 2026-10-07
+
+Three seeds (7/8/9), free runner, `lawns: locked` (81), `layers: variants`
+(features from the cache): 37666184686, 37666283016, 37666382432. Workflow 24
+(37701688682 / 37701716621 / 37701744745) for each arm against "decoder, edge
+refined + stage 3, span, lidar veto" of the same runs (A's run medians 21.2 /
+22.0 / 22.4).
+
+| arm | all 81: better / worse / level | paired change [95%] | sign test | frozen 32 | untuned 49 | B's run medians |
+|---|---|---|---|---|---|---|
+| layer 8 (256) | 28 / 24 / 29 | -0.1 [-0.4, +0.2] | p 0.68 | 14 / 5, -0.4 [-1.0, +0.1], p 0.06 | 14 / 19, -0.0 [-0.3, +0.6], p 0.49 | 22.2 / 21.2 / 21.9 |
+| layer 16 (256) | 30 / 19 / 32 | -0.1 [-0.4, +0.0] | p 0.15 | 12 / 8, -0.0, p 0.50 | 18 / 11, -0.2 [-0.5, -0.0], p 0.27 | 22.6 / 21.3 / 22.7 |
+| both, 64 each | 28 / 25 / 28 | -0.0 [-0.2, +0.2] | p 0.78 | 13 / 6, -0.2, p 0.17 | 15 / 19, +0.1 [-0.1, +0.8], p 0.61 | 22.6 / 21.9 / 20.9 |
+
+The lots S31 was chasing (A -> B):
+
+| lot | layer 8 | layer 16 | both small | (H85, both at 256) |
+|---|---|---|---|---|
+| B20 (parking lot) | 73.0 -> 57.1 | 73.0 -> 59.2 | 73.0 -> 56.7 | 73 -> 48 |
+| B19 (parking lot) | 79.3 -> 68.2 | 79.3 -> 70.6 | 79.3 -> 69.7 | 79 -> 65 |
+| C29 | 406.3 -> 423.0 | not in the five worst | 406.3 -> 520.4 | 407 -> 479 |
+| C80 | 55.9 -> 65.9 | not in the five worst | 55.9 -> 61.6 | 56 -> 67 |
+
+- **S31's bar fails for all three.** No arm has a sign test under 0.05.
+  Layer 16 comes closest (30 / 19, interval touching zero), and that is
+  still within what one of three arms tried at once does by luck.
+- **The parking-lot gain is real and repeatable, and it does not come free.**
+  Every arm and H85 cut B20 by 14-25 points and B19 by 9-14. Every cut
+  shrinks as the layers shrink. The cost moves rather than vanishing: layer 8
+  and both-small pay at C29 and C80 as H85 did. Layer 16 avoids those but
+  loses B28 (30.8 -> 34.7) and C94 (101 -> 114).
+- Reading (speculation, not a finding): the texture that tells pavement from
+  grass sits in the middle blocks, and the decoder uses it everywhere, not
+  only where it helps. Something that applies it only near uncertain cells
+  might keep the gain. That would be a bigger change than this trial and is
+  not built.
+- Nothing adopted. `layers` stays `last`; the variants machinery stays.
+
 ### H85. Scale-MAE's middle layers (S30) do not pay overall (29 lots better / 23 worse, p 0.49) -- but they cut the parking-lot lots by 15-25 points, 2026-10-07
 
 Three seeds (7/8/9), free runner, `lawns: locked` (81), `layers: compare`
@@ -6048,7 +6086,7 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
-### S31. Chasing H85's parking-lot gain with less of the middle layers (owner, 2026-10-07 -- ON TRIAL)
+### S31. Chasing H85's parking-lot gain with less of the middle layers (owner, 2026-10-07 -- MEASURED: NONE PASSES, H86)
 
 **Why (owner: "do a little chasing of the parking lot gains"):** H85's middle
 layers cut B20 73 -> 48 and B19 79 -> 65 but cost elsewhere (C29, C80) and
@@ -6823,3 +6861,4 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-07 | 37643197968 | 81 (locked) | **RELEASE v3 (H83)**: `release: alpha`, `refiner_trial: average of 3`, fused + edge, canopy on lawn, UNDER_TREES + FUSE_CANOPY, 30 epochs, seed 7, CPU | — (no folds) | — | Three decoders averaged, trained on all 81 in 306 s, train loss 0.202, trainedAt 2026-10-07T15:52:29Z. Shipped to the live server; v2 kept under alpha/history/. Named "alpha version 3 (79%)": mean of the averaged row's run medians 21.0 (the single-decoder setup on the same runs 21.8) |
 | 2026-10-07 | 37618116401 / 37618210051 / 37618300740 | 81 (locked) | S29 `refiner_trial: epochs` (15 and 60 beside 30), seeds 7/8/9, CPU | 20.9 / 22.5 / 22.0% (30 epochs) | — | **H84.** 15: 21 / 45, +0.8, p 0.004 (worse); 60: 25 / 31, p 0.50 (nothing). 30 stays |
 | 2026-10-07 | 37628852627 / 37628956583 / 37629069477 | 81 (locked) | S30 `layers: compare` (blocks 8 and 16 squeezed to 256 each, fresh extraction), seeds 7/8/9, CPU | ~21-22% (edge refined + stage 3, span, veto) | — | **H85.** Middle layers 29 / 23, -0.1 [-0.4, +0.1], p 0.49; B20 73 -> 48, B19 79 -> 65. Not adopted |
+| 2026-10-07 | 37666184686 / 37666283016 / 37666382432 | 81 (locked) | S31 `layers: variants` (block 8 alone 256; block 16 alone 256; both at 64), cached features, seeds 7/8/9, CPU | 21.2 / 22.0 / 22.4% (edge refined + stage 3, span, veto) | — | **H86.** Layer 8 28 / 24, p 0.68; layer 16 30 / 19, p 0.15; both small 28 / 25, p 0.78. B20 73 -> 57-59, B19 79 -> 68-71. None adopted |
