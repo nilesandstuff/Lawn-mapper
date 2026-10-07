@@ -6,7 +6,7 @@
  */
 export const MILESTONES = [
   {
-    maps: 500,
+    maps: 150,
     say: 'Revisit the decoder: test a standard segmentation head (UperNet, then Mask2Former) '
       + 'against our own small decoder, now there are enough maps to train one. '
       + 'S26 in docs/DETECTOR-FINDINGS.md.',

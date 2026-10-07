@@ -6061,7 +6061,7 @@ The same runs also give the live refiner against its true twin (THE PLAN's
 decoder without it), a second extraction beside 37556372070 / 37556456369 /
 37556539907. Nothing is released from this without the owner.
 
-### S26. A standard segmentation head instead of our own small decoder (owner, 2026-10-06 -- PARKED UNTIL 500 MAPS)
+### S26. A standard segmentation head instead of our own small decoder (owner, 2026-10-06 -- PARKED UNTIL 150 MAPS, owner 2026-10-07; was 500)
 
 **The question (owner):** is our own four-layer decoder (and the edge
 refiner beside it) really a better fit than a named, published design?
@@ -6078,7 +6078,7 @@ refiner beside it) really a better fit than a named, published design?
   of images; minutes on the free runner; H53 says most of a good lot's error
   is the edge band) is a reason, not a result.
 
-**Parked until the corpus has 500 approved maps** (owner's choice), when a
+**Parked until the corpus has 150 approved maps** (owner's choice; 500 until 2026-10-07), when a
 bigger head has enough to learn from. tools/milestones.js then says so at
 the end of every deploy log, and train_decoder.py at the start of every
 training run's. **The test, when it comes:** UperNet first, as one more
