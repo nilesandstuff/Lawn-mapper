@@ -21,7 +21,7 @@ assert.ok(!modelCatalogue({}).some((m) => m.id === 'alpha'), 'hidden without a r
 assert.ok(!modelCatalogue().some((m) => m.id === 'alpha'), 'hidden when nobody says');
 const listed = modelCatalogue(on);
 assert.equal(listed[0].id, 'alpha', 'first in the picker where it is served');
-assert.equal(listed[0].label, 'Turf Trace - alpha version 2 (79% accuracy)');
+assert.equal(listed[0].label, 'Turf Trace - alpha version 3 (79% accuracy)');
 assert.equal(listed[0].fixedPolarity, true);
 assert.equal(listed.find((m) => m.id === 'sam3').fixedPolarity, false);
 assert.equal(defaultModelFor(on), 'alpha');

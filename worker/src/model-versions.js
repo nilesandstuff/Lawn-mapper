@@ -33,6 +33,14 @@ export const MODEL_VERSIONS = [
     lots: 80,
     basis: 'H78: taught under trees, canopy as input; 21.0 / 21.3 / 21.0% over three seeds, runs 37393325860, 37393416186, 37393510265',
   },
+  {
+    version: 3,
+    shipped: '2026-10-07',
+    trainedAt: '2026-10-07T15:52:29Z',
+    accuracy: 79,
+    lots: 81,
+    basis: 'H83: three decoders averaged; 20.3 / 22.1 / 20.7% over three seeds (mean 21.0), runs 37582634690, 37582729096, 37582829432 -- the single-decoder setup on the same runs and locked 81 lots is 21.8 (78%)',
+  },
 ];
 
 /** alpha below 82%, beta below 86%, then no stage label. */
