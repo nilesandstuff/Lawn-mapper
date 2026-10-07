@@ -868,6 +868,38 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H83. An average of three decoders (S28) beats THE PLAN's single one, modestly: 31 lots better, 9 worse, -0.3 [-0.4, -0.1] -- passes its bar, not released, 2026-10-07
+
+Three seeds (7/8/9), free runner, `lawns: locked` (81, `05cs4ud`),
+`refiner_trial: average of 3`: 37582634690, 37582729096, 37582829432.
+Workflow 24 (37615148959) against "decoder, edge refined + stage 3, span,
+lidar veto" of the same runs (runs' medians 20.9 / 22.5 / 22.0).
+
+| lots | better / worse / level | median | paired change [95%] | sign test |
+|---|---|---|---|---|
+| all 81 | **31 / 9 / 41** | 22.0 -> **20.3%** | **-0.3 [-0.4, -0.1]** | **p 0.001** |
+| frozen 32 | 7 / 3 / 22 | 24.5 -> 24.5% | -0.2 [-0.3, +0.0] | p 0.34 |
+| untuned 49 | 24 / 6 / 19 | 21.9 -> 20.3% | -0.4 [-0.9, -0.2] | p 0.001 |
+
+Runs' medians B 20.3 / 22.1 / 20.7.
+
+- **S28's bar passes on every part:** p 0.001 with more lots better, the
+  interval wholly below zero, the untuned 49 the same way.
+- **Small per lot, consistent:** half the lots do not move (41 level); the
+  ones that do mostly improve, by about a third of a point at the middle.
+  The median's 1.7-point drop is mostly level lots reshuffling -- the paired
+  change (-0.3) is the honest size.
+- **Best:** B20 73 -> 66, C88 61 -> 56, C99 130 -> 126, B19 80 -> 76 -- the
+  parking-lot lots the refiner hurts (H81) recover part of it. **Worst:** C29
+  407 -> 426, C94 101 -> 111, C33, B04, B22 by 1.5-2.5.
+- **Cost:** training 3x (seed 9: 2 h 07 m against 42 m for one refined
+  decoder; free runner). Live: three decoder + refiner passes, Scale-MAE once.
+  NOT MEASURED; estimated from the arithmetic as 1-10 % more GPU work a lot
+  (Scale-MAE ~2 TFLOP at 896 px; one decoder + refiner ~10 GFLOP on a typical
+  lot, ~100 on the largest), and less in time, since a lot's time is mostly
+  downloads and CPU. To be measured before any release. Not wired for a
+  release yet (train_decoder RELEASE_OUT saves one decoder).
+
 ### H82. Aiming the refiner (S27) does not pay: photo edges change nothing (22 / 24), a doubt-gated wide reach is worse but less so than the plain wide one (20 / 42); the wide reach, isolated, is what took B28, 2026-10-07
 
 Three seeds (7/8/9), free runner, `lawns: locked` (81, `05cs4ud`),
@@ -5947,7 +5979,7 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
-### S28. Average three decoders instead of trusting one (overnight 2026-10-07 -- BUILT, ON TRIAL)
+### S28. Average three decoders instead of trusting one (overnight 2026-10-07 -- BUILT, PASSES: H83, NOT RELEASED)
 
 **Why:** seed alone moves a run's median by up to 1.7 points (THE PLAN's row,
 H81/H82: 20.8 / 22.5 / 22.0), as large as most changes measured here. An
@@ -6655,3 +6687,4 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-07 | 37556372070 / 37556456369 / 37556539907 | **81** (locked `05cs4ud`) | `decoder: fused + edge`, plain decoder now THE PLAN minus the refiner, seeds 7/8/9, CPU | 20.9 / 22.5 / 22.0% (edge refined + stage 3, span, veto) | — | **H81.** Refiner vs true twin 55 / 18, -1.5 [-1.9, -0.9], p < 0.001; worst B19, B20 (parking lots). See-through colour vs THE PLAN 11 / 14, p 0.69 |
 | 2026-10-07 | 37562487510 | 81 (locked) | `edge_reach: compare`, seed 7, CPU: pictures of the wide row against the live refiner | 22.0% (edge refined + stage 3, span, veto) | — | H82 (supplementary to H80): wide vs live 21 / 44, +0.8; B28 28 -> 68 |
 | 2026-10-07 | 37563074383 / 37563158493 / 37563241262 | 81 (locked) | S27 `refiner_trial: compare` (hard edges; wide + edges + gate), seeds 7/8/9, CPU | 22.0 / 22.5 / 20.8% | — | **H82.** Hard edges 22 / 24, p 0.88; wide gated 20 / 42, +0.5 [+0.0, +0.9]. Refiner vs twin 55 / 17 (H81 replicates). Neither adopted |
+| 2026-10-07 | 37582634690 / 37582729096 / 37582829432 | 81 (locked) | S28 `refiner_trial: average of 3`, seeds 7/8/9, CPU | 20.9 / 22.5 / 22.0% (edge refined + stage 3, span, veto) | — | **H83.** Averaged x3: 31 / 9, -0.3 [-0.4, -0.1], p 0.001; medians 20.3 / 22.1 / 20.7. Passes; not released |
