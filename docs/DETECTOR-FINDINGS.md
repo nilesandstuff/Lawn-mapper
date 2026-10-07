@@ -868,6 +868,44 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H82. Aiming the refiner (S27) does not pay: photo edges change nothing (22 / 24), a doubt-gated wide reach is worse but less so than the plain wide one (20 / 42); the wide reach, isolated, is what took B28, 2026-10-07
+
+Three seeds (7/8/9), free runner, `lawns: locked` (81, `05cs4ud`),
+`refiner_trial: compare`: 37563074383, 37563158493, 37563241262. Workflow
+24 against "decoder, edge refined + stage 3, span, lidar veto" of the same
+runs (runs' medians 22.0 / 22.5 / 20.8).
+
+| row (B) | better / worse / level | paired change [95%], all 81 | frozen 32 | untuned 49 | runs' medians |
+|---|---|---|---|---|---|
+| hard edges (photo edges in) | 22 / 24 / 35, p 0.88 | -0.1 [-0.2, +0.1] | 12 / 5, -0.2 [-1.0, -0.0], p 0.14 | 10 / 19, +0.1 [-0.2, +0.5], p 0.14 | 20.8 / 22.2 / 20.8 |
+| wide gated (wide + edges + gate) | 20 / **42** / 19, **p 0.007** | **+0.5 [+0.0, +0.9]** | +0.7 [-0.3, +1.4] | +0.3 [+0.0, +0.9], p 0.04 | 22.7 / 22.6 / 22.5 |
+
+(37582145163, 37582166398.)
+
+- **S27's bar fails for both.** Hard edges is nothing: the refiner already
+  reads the photo's colour, and handing it the edge strength adds no
+  information it uses. Worst C99 130 -> 139, B28 28.5 -> 36; best B03
+  72 -> 66.
+- **The gate halves the wide reach's harm (+0.5 against H80's +0.9) but does
+  not turn it into a gain.** It is the one variant that helps the parking
+  lots -- B19 80 -> 71, B20 73 -> 71 -- and it costs C99 130 -> 146, C41
+  17 -> 25, B32 33 -> 39, B28 28.5 -> 34.
+- **The live refiner against its true twin, second extraction (37582187973):
+  55 / 17, -1.5 [-1.9, -0.8]** -- H81 replicates exactly.
+- **The wide reach drawn against the live refiner, seed 7 alone
+  (37562487510, 37582123151):** 21 / 44, +0.8 [+0.1, +1.3], p 0.006, and
+  **B28 28 -> 68**: the black chunk the owner saw in B28's mid-lawn is the
+  extra reach's own doing. Pictures: that run's folder, "decoder, wide edge"
+  drawn with navy/black against the live refiner.
+
+**What this says (reading, not measured):** the refiner's gains are local
+-- the half-metre band H53 found -- and every way tried of letting it act
+further out (plain, gated, with edge hints) costs more on lawns it had right
+than it wins on the misses the owner circled. Those misses are the decoder's,
+2-6 m wide, and the next lever is upstream of the refiner. Nothing from
+S25/S27 is released; `edge_reach` and `refiner_trial` stay in workflow 14,
+off by default.
+
 ### H81. The live edge refiner, against its TRUE twin at 81 lots, still pays: 55 lots better, 18 worse -- but it is the refiner that turns B19 and B20's parking lots worse, 2026-10-07
 
 Three seeds (7/8/9), free runner, `lawns: locked` (81, `05cs4ud`), `decoder:
@@ -5909,7 +5947,7 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
-### S27. Aiming the refiner: hand it the photo's edges, and let a wide reach act only where the decoder is unsure (owner, 2026-10-07 overnight -- BUILT, ON TRIAL)
+### S27. Aiming the refiner: hand it the photo's edges, and let a wide reach act only where the decoder is unsure (owner, 2026-10-07 overnight -- BUILT, MEASURED: NO GAIN, H82)
 
 **Why (owner):** the misses that look easy are 2-6 m out along strong edges
 (driveways, houses, roads) and softer ones (woodlines). H80's plain wide
@@ -6591,3 +6629,5 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-06 | 37455590620 / 37455705640 / 37455821616 | 80 | S21 `corrections: on` + `not_lawn: on` (third decoder without pond maps), seeds 7/8/9, CPU | 20.9 / 21.2 / 21.4% (edge refined + stage 3, span, veto) | — | **H79.** Corrections weighted: 15 better / 34 worse, p 0.009, +0.3 [+0.1, +0.7]; untuned +0.7. No pond maps: 33 / 27, p 0.52, -0.2 [-0.6, +0.1]; B12 15.0 -> 21.3 without. Neither adopted |
 | 2026-10-06 | 37509209045 / 37509342504 / 37509477275 | **81** (locked, `05cs4ud`, + C99) | S25 `edge_reach: compare` (wide refiner, dilations to 16), `decoder: fused + edge`, seeds 7/8/9, CPU | 22.0 / 22.5 / 20.8% (edge refined + stage 3, span, veto) | — | **H80.** Wide edge: 13 better / 49 worse, p < 0.001, +0.9 [+0.4, +1.4]; medians 23.3 / 24.8 / 22.9. Not adopted |
 | 2026-10-07 | 37556372070 / 37556456369 / 37556539907 | **81** (locked `05cs4ud`) | `decoder: fused + edge`, plain decoder now THE PLAN minus the refiner, seeds 7/8/9, CPU | 20.9 / 22.5 / 22.0% (edge refined + stage 3, span, veto) | — | **H81.** Refiner vs true twin 55 / 18, -1.5 [-1.9, -0.9], p < 0.001; worst B19, B20 (parking lots). See-through colour vs THE PLAN 11 / 14, p 0.69 |
+| 2026-10-07 | 37562487510 | 81 (locked) | `edge_reach: compare`, seed 7, CPU: pictures of the wide row against the live refiner | 22.0% (edge refined + stage 3, span, veto) | — | H82 (supplementary to H80): wide vs live 21 / 44, +0.8; B28 28 -> 68 |
+| 2026-10-07 | 37563074383 / 37563158493 / 37563241262 | 81 (locked) | S27 `refiner_trial: compare` (hard edges; wide + edges + gate), seeds 7/8/9, CPU | 22.0 / 22.5 / 20.8% | — | **H82.** Hard edges 22 / 24, p 0.88; wide gated 20 / 42, +0.5 [+0.0, +0.9]. Refiner vs twin 55 / 17 (H81 replicates). Neither adopted |
