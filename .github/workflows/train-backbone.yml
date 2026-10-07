@@ -810,7 +810,14 @@ jobs:
           # benchmark stays leave-one-out, as every table was.
           FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'locked') && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
           FUSE_NAIP: naip
-          FUSE_CANOPY: ${{ inputs.canopy == 'everywhere' && '1' || '0' }}
+          # THE REFINER'S TWIN (2026-10-07). In a `fused + edge` run this is
+          # THE PLAN's decoder WITHOUT the refiner -- taught under trees, the
+          # canopy as input, exactly as the step below -- so the pictures'
+          # navy and black layers are the refiner's change and nothing else.
+          # From H78 to this date it was the older untaught decoder, and those
+          # layers mixed three changes (owner's reading, 2026-10-07).
+          FUSE_CANOPY: ${{ (startsWith(inputs.decoder, 'fused + edge') && inputs.canopy != 'off' || inputs.canopy == 'everywhere') && '1' || '0' }}
+          UNDER_TREES: ${{ startsWith(inputs.decoder, 'fused + edge') && inputs.canopy != 'off' && '1' || '' }}
         run: python3 tools/train_decoder.py
 
       # S19: the same decoder, same features, same folds and seed, trained

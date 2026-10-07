@@ -898,6 +898,41 @@ span, lidar veto" of the same runs (runs' medians 22.0 / 22.5 / 20.8).
 - **C99, the map approved today, scores 130-140%** under both refiners: the
   detector draws well over twice its lawn. Worth a look at its pictures.
 
+### Owner's reading of the S25 pictures, and what they actually showed (2026-10-07)
+
+**The owner (B19, B28, C99, navy/black layers on, "detector: raw answer"):**
+B19: the detector traced a large area of blacktop and concrete, and the
+refiner pushed that trace further into the parking lot, while dialling in
+edges that were already close. B28: two patches of lawn in mild shadow
+missed and only crept towards by the refiner; a false trace on the roof
+(lidar omitted on that lot) that the refiner removed most of, not all; and
+a large black area that took a chunk out of the middle of a plain, treeless,
+evenly dormant lawn "for seemingly no reason". C99: "horrific", the refiner
+did not help; a low-contrast, leaf-off county photo. Overall: "a mix of good
+and bad behaviour, but the bad behaviour is often more costly than the good
+behaviour is helpful."
+
+**What those pictures were, found the same day (my error in telling the
+owner the layers were the refiner alone):**
+- **The drawn row was the WIDE refiner** (S25's trial row, which H80 measured
+  worse), not the live one. Every S25 run drew "decoder, wide edge + ...".
+- **Navy/black compared it with "the pretrained eye, decoder", which since
+  H78 was not THE PLAN's decoder minus the refiner:** it was neither taught
+  under trees nor given the canopy as input. So the layers showed three
+  changes at once: the wider refiner, teaching under trees, and the canopy
+  input. B28's black chunk in mid-lawn could be any of the three.
+- Ordinary runs before S25 drew TRIAL_ROW (S22's see-through colour), also not
+  the live model's row.
+
+**Fixed 2026-10-07:** in a `fused + edge` run the plain decoder is now THE
+PLAN's decoder without the refiner (taught under trees, canopy input), so
+the layers isolate the refiner; the wide row is drawn against the ordinary
+refined row; and TRIAL_ROW is off the drawing list, so ordinary runs draw
+THE PLAN's row. **Not yet measured:** whether the refiner, against its true
+twin, still helps at 81 lots (H60 measured it at 55, against the untaught
+decoder of the time). The owner's reading says it may not; three free runs
+(the next run log rows) answer that.
+
 ### H79. Weighting training 3x toward the release's own corrected cells (S21) measures WORSE; the pond maps measure as nothing overall but carry B12, 2026-10-06
 
 Three seeds (7/8/9), free runner, 80 lots, `corrections: on` + `not_lawn: on`:

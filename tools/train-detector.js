@@ -106,7 +106,10 @@ const TRIAL_ROW = `${PLAN_ROW}, see-through colour`;
 /* THE DECODER TAUGHT UNDER TREES (owner, 2026-10-05), alone: drawn first
    when a `fused + edge + trees` run scored it, since the pictures are how a
    candidate is judged. The one with the lidar by return, then without. */
-const TRIAL_ROWS = ['decoder, wide edge + stage 3, span, lidar veto', 'decoder, taught under trees with canopy input + lidar veto', `${PLAN_ROW}, taught under the canopy`, 'decoder, taught under trees + returns', 'decoder, taught under trees', TRIAL_ROW];
+const TRIAL_ROWS = ['decoder, wide edge + stage 3, span, lidar veto', 'decoder, taught under trees with canopy input + lidar veto', `${PLAN_ROW}, taught under the canopy`, 'decoder, taught under trees + returns', 'decoder, taught under trees'];
+/* TRIAL_ROW (S22's see-through colour) left this list 2026-10-07: it is not on
+   trial, and while it was here every ordinary run drew it instead of THE
+   PLAN's row -- so the owner was judging a row the live model does not use. */
 
 /*
  * HOW MANY NUMBERS OF THE BACKBONE'S 384 EACH PIXEL CARRIES.
@@ -3044,7 +3047,11 @@ async function main() {
    */
   const refinedPrefix = ['decoder, edge refined', 'decoder, wide edge'].find((p) => drawn?.cfg.name.startsWith(p));
   if (drawn && refinedPrefix && drawn.rows.some((r) => !r.refineAdded)) {
-    const twin = table.find((t) => t.cfg.name === drawn.cfg.name.replace(refinedPrefix, 'the pretrained eye, decoder'));
+    /* The wide refiner (S25) is drawn against the ordinary one, so its layers
+       are what the extra reach changed; the ordinary one against the same
+       decoder with no refiner (owner, 2026-10-07). */
+    const twinPrefix = refinedPrefix === 'decoder, wide edge' ? 'decoder, edge refined' : 'the pretrained eye, decoder';
+    const twin = table.find((t) => t.cfg.name === drawn.cfg.name.replace(refinedPrefix, twinPrefix));
     const byLawn = new Map((twin?.rows || []).map((r) => [r.lawn, r]));
     for (const r of drawn.rows) {
       const p = byLawn.get(r.lawn);
