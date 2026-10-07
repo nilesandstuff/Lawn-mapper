@@ -22,6 +22,7 @@ export function llmsTxt(origin) {
 - **AI lawn detector.** A detector trained on hand-traced lawns finds the visible grass inside the property line. It combines the photo with near-infrared, lidar height and a tree-canopy mask, then estimates lawn that continues under trees and marks that part separately.
 - **Manual drawing tools.** Trace or correct the lawn outline point by point, paint with brushes, cut out areas, mark things that are not lawn (beds, ponds, driveways), and redraw the property line.
 - **Results.** Square footage and acreage of the lawn, saved to an account.
+- **Free, without ads or tracking.** No ads, no analytics scripts or ad trackers, and no address sold or passed to contractors. Hand drawing is unlimited; AI tracing has a daily allowance that a free email-link account raises. A finished map's lawn outline and aerial view may be kept to train the detector, without the address or the account.
 
 ## Who it is for
 

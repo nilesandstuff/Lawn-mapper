@@ -1283,9 +1283,29 @@ async function api(path, options = {}) {
   return body;
 }
 
+/*
+ * LEAVING THE LANDING (owner, 2026-10-07). Every way out of the address step
+ * comes through showStep -- a search, the crosshair, a saved map -- so that is
+ * the one place the page turns into the app and the map gets its box. A
+ * failure is the exception: on the landing it shows above the address step
+ * rather than replacing it, so a browser that cannot draw the map still gets
+ * the page about what the tool does. Returns whether the address step stays.
+ */
+function leaveLanding(name) {
+  const root = document.documentElement;
+  if (!root.classList.contains('landing')) return false;
+  if (name === 'fatal') return true;
+  if (name === 'address') return false;
+  root.classList.remove('landing');
+  window.scrollTo(0, 0);
+  requestAnimationFrame(() => map?.resize());
+  return false;
+}
+
 function showStep(name) {
+  const keepAddress = leaveLanding(name);
   for (const el of document.querySelectorAll('.step')) {
-    el.hidden = el.id !== `step-${name}`;
+    el.hidden = el.id !== `step-${name}` && !(keepAddress && el.id === 'step-address');
   }
   /*
    * Taps on the map move the pin ONLY while the confirm step is up.

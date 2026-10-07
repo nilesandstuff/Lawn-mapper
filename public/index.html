@@ -46,7 +46,8 @@
     "Trained AI lawn detector that reads several layers at once: the aerial photo, NAIP near-infrared (NDVI), USGS 3DEP lidar height, and a tree-canopy model",
     "Manual drawing tools: trace or redraw the lawn and the property line point by point, paint with brushes, mark areas that are not lawn",
     "Lawn under trees estimated where the photo cannot see it, and marked separately",
-    "Square footage and acreage, saved to an account"
+    "Square footage and acreage, saved to an account",
+    "Free, with no ads, no analytics or ad trackers, and no address sold or passed to contractors"
   ],
   "applicationCategory": "UtilitiesApplication",
   "operatingSystem": "Any",
@@ -55,10 +56,85 @@
 }
 </script>
 
+<!-- The questions at the foot of the landing, for search. Same words as the page. -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "How do I measure my lawn from my address?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Type the address at the top of this page, or tap the crosshair to use your location. Confirm the pin, check the property line, then press the AI step to trace the grass or draw it yourself. The square footage and acreage are shown as you go."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is Lawn Mapper really free?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. There are no ads, no subscription and no paid tier. AI tracing has a daily allowance to keep the costs sane, and a free account raises it."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Where do the property lines come from?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "From the parcel layers that counties and states publish as public records. They are a close guide, not a survey. Where no record exists, you draw the line yourself."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How accurate is the measurement?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "The area of the shape on the map is measured exactly; how close that shape is to your real lawn depends on the photo and the outline. The AI gives a strong starting point and the drawing tools let you fix anything it missed. Treat the result as a close estimate."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can it see lawn under trees?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. Using lidar and a tree-canopy model, it estimates grass the photo cannot see and marks that part separately, so you choose whether to count it."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What happens to my data?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Saved maps belong to your account. A finished map's lawn outline and aerial view may be kept to train the detector, without your address or your account. Nothing is sold, and there are no ads or trackers."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Do I need an account?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. An account keeps your maps across devices and raises the daily AI allowance. Signing up is one email link: no password."
+      }
+    }
+  ]
+}
+</script>
 <link rel="preconnect" href="https://api.mapbox.com" crossorigin>
 <link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.css" rel="stylesheet">
 <link href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.css" rel="stylesheet">
 <link href="/styles.css" rel="stylesheet">
+<!--
+  THE LANDING (owner, 2026-10-07). A plain visit to the site opens on the
+  address step and the page about what the tool does, with the map kept out of
+  sight until there is something to put on it. Decided here, before the first
+  paint, so nobody sees the map flash up and vanish. Any link that carries a
+  query or a hash -- a sign-in link, a review, a paid job, developer mode --
+  is somebody already mid-task, and goes straight to the app as before.
+  app.js (showStep) takes the class off the moment the address step is left.
+-->
+<script>if (!location.search && !location.hash) document.documentElement.classList.add('landing');</script>
 </head>
 <body>
 
@@ -1352,6 +1428,254 @@
       </div>
     </div>
   </main>
+</div>
+
+<!--
+  THE LANDING PAGE (owner, 2026-10-07): "a well formatted sales pitch about
+  the features that my tool offers that others don't ... for users, search
+  engines, and AI. Obviously keep it classy and non invasive."
+
+  Plain HTML in the page itself rather than built by app.js, because the
+  readers it is mostly for -- search engines and AI crawlers -- read markup
+  and run little or no JavaScript. Shown only while html.landing is set (see
+  the script in the head); once somebody has an address in, it is gone and
+  the map has the screen, exactly as before.
+
+  Every claim here is something the app does today. "Others" are described as
+  what is typical, never named: the page is selling this tool, not accusing
+  anyone. If a feature changes, change this, worker/src/llms.js and the
+  JSON-LD in the head together.
+-->
+<div class="lp" id="landing">
+
+  <section class="lp-band lp-intro" aria-labelledby="lp-intro-title">
+    <h2 id="lp-intro-title">Your lawn, measured from public records and a trained AI</h2>
+    <p class="lp-lead">Most lawn calculators hand you a satellite picture and a
+      pencil. Lawn Mapper starts from your county's own property line, looks at
+      the yard through several kinds of imagery at once &mdash; aerial photos,
+      near-infrared and lidar &mdash; and has its own AI trace the grass. Then it
+      gives you proper tools to make the outline exact.</p>
+    <p class="lp-lead">It is free, it shows no ads, and it does not trade in
+      your address.</p>
+  </section>
+
+  <section class="lp-band" aria-labelledby="lp-steps-title">
+    <h2 id="lp-steps-title">How it works</h2>
+    <ol class="lp-steps">
+      <li><b>Enter an address</b> or use your location. Confirm the pin is on
+        your house.</li>
+      <li><b>Check the property line.</b> Where the county publishes parcel
+        records it is drawn for you; anywhere else you trace it in a few
+        taps.</li>
+      <li><b>Find the lawn.</b> One press and the AI traces the grass inside the
+        line, or draw it yourself. Square feet and acres update as you go.</li>
+    </ol>
+  </section>
+
+  <section class="lp-band" aria-labelledby="lp-compare-title">
+    <h2 id="lp-compare-title">What it does that other lawn tools don't</h2>
+    <div class="lp-scroll">
+    <table class="lp-table" id="lp-compare">
+      <caption>Lawn Mapper compared with typical lawn-measuring websites</caption>
+      <thead>
+        <tr><th scope="col">Feature</th><th scope="col">Lawn Mapper</th><th scope="col">Typical lawn-measuring sites</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Property lines</th>
+          <td data-label="Lawn Mapper">Drawn for you from the county's own parcel records, in
+            more than half of US counties, re-checked nightly. Editable point by point.</td>
+          <td data-label="Typical sites">You guess where the yard ends, or trace it yourself.</td>
+        </tr>
+        <tr>
+          <th scope="row">Aerial imagery</th>
+          <td data-label="Lawn Mapper">The county's or state's own aerial survey where one
+            exists &mdash; often 3&ndash;15&nbsp;cm a pixel, sharper than satellite &mdash; plus
+            Mapbox, Google, Esri and USDA NAIP. Switch between them to see past a shadow or
+            an old photo.</td>
+          <td data-label="Typical sites">One satellite map, whatever year it happens to be.</td>
+        </tr>
+        <tr>
+          <th scope="row">Lidar</th>
+          <td data-label="Lawn Mapper">USGS 3DEP lidar heights tell a lawn from a hedge, a roof
+            or a tree, and keep tall things out of the outline.</td>
+          <td data-label="Typical sites">Not used.</td>
+        </tr>
+        <tr>
+          <th scope="row">Near-infrared</th>
+          <td data-label="Lawn Mapper">USDA NAIP near-infrared (NDVI) adds a living-plant signal
+            that a colour photo alone does not have.</td>
+          <td data-label="Typical sites">Not used.</td>
+        </tr>
+        <tr>
+          <th scope="row">AI lawn tracing</th>
+          <td data-label="Lawn Mapper">Its own lawn detector, trained on lawns traced by hand,
+            reads the photo, near-infrared, lidar and a tree-canopy model together and draws
+            the outline in one press.</td>
+          <td data-label="Typical sites">Click around every edge yourself.</td>
+        </tr>
+        <tr>
+          <th scope="row">Lawn under trees</th>
+          <td data-label="Lawn Mapper">Estimated where the canopy hides the grass, and marked
+            separately so you decide whether it counts.</td>
+          <td data-label="Typical sites">Left out, or counted as tree.</td>
+        </tr>
+        <tr>
+          <th scope="row">Drawing tools</th>
+          <td data-label="Lawn Mapper">Drag points, brush lawn in or out, cut out beds and
+            driveways, mark ponds and patios as not-lawn, and redraw the property line.</td>
+          <td data-label="Typical sites">A basic shape tool, if any.</td>
+        </tr>
+        <tr>
+          <th scope="row">Price</th>
+          <td data-label="Lawn Mapper">Free. Drawing by hand is unlimited; AI tracing has a
+            daily allowance, raised by a free account.</td>
+          <td data-label="Typical sites">Free with ads, a subscription, or a quote form.</td>
+        </tr>
+        <tr>
+          <th scope="row">Ads and tracking</th>
+          <td data-label="Lawn Mapper">None. No ads, no analytics scripts, no ad trackers.</td>
+          <td data-label="Typical sites">Ads and third-party trackers are common.</td>
+        </tr>
+        <tr>
+          <th scope="row">Your address</th>
+          <td data-label="Lawn Mapper">Never sold or passed to contractors. An account is just an
+            email address with a sign-in link &mdash; no password, no phone number.</td>
+          <td data-label="Typical sites">Often the real price: a lead form that hands you to
+            salespeople.</td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+  </section>
+
+  <section class="lp-band" aria-labelledby="lp-coverage-title">
+    <h2 id="lp-coverage-title">Counties with property lines</h2>
+    <p>Property lines come from the public parcel records counties and states
+      publish. Where none exist yet, everything else still works: you trace the
+      line yourself, and the measurement is just as accurate.</p>
+    <!-- COVERAGE:START -->
+<p class="lp-stat"><b>1,680</b> counties across
+  <b>50</b> states and Washington, D.C., with
+  <b>27</b> served by a statewide parcel layer.</p>
+<details class="lp-states">
+<summary>Every state and county with property lines</summary>
+<div class="lp-scroll">
+<table class="lp-table lp-covtable">
+<caption>Property line coverage by state</caption>
+<thead><tr><th scope="col">State</th><th scope="col">Property lines</th><th scope="col">Counties</th></tr></thead>
+<tbody>
+<tr><th scope="row">Connecticut</th><td>Statewide</td><td></td></tr>
+<tr><th scope="row">Delaware</th><td>Statewide</td><td></td></tr>
+<tr><th scope="row">Maryland</th><td>Statewide</td><td></td></tr>
+<tr><th scope="row">Arizona</th><td>Statewide layer, most counties</td><td></td></tr>
+<tr><th scope="row">Arkansas</th><td>Statewide layer, most counties</td><td></td></tr>
+<tr><th scope="row">District of Columbia</th><td>Statewide layer, most counties</td><td></td></tr>
+<tr><th scope="row">Florida</th><td>Statewide layer, most counties</td><td></td></tr>
+<tr><th scope="row">Idaho</th><td>Statewide layer, most counties</td><td></td></tr>
+<tr><th scope="row">Indiana</th><td>Statewide layer, most counties</td><td></td></tr>
+<tr><th scope="row">Iowa</th><td>Statewide layer, most counties</td><td></td></tr>
+<tr><th scope="row">Massachusetts</th><td>Statewide layer, most counties</td><td></td></tr>
+<tr><th scope="row">Minnesota</th><td>Statewide layer, most counties</td><td></td></tr>
+<tr><th scope="row">Montana</th><td>Statewide layer, most counties</td><td></td></tr>
+<tr><th scope="row">Nevada</th><td>Statewide layer, most counties</td><td></td></tr>
+<tr><th scope="row">New Hampshire</th><td>Statewide layer, most counties</td><td></td></tr>
+<tr><th scope="row">New Jersey</th><td>Statewide layer, most counties</td><td></td></tr>
+<tr><th scope="row">New York</th><td>Statewide layer, most counties</td><td></td></tr>
+<tr><th scope="row">North Carolina</th><td>Statewide layer, most counties</td><td></td></tr>
+<tr><th scope="row">Rhode Island</th><td>Statewide layer, most counties</td><td></td></tr>
+<tr><th scope="row">Tennessee</th><td>Statewide layer, most counties</td><td></td></tr>
+<tr><th scope="row">Utah</th><td>Statewide layer, most counties</td><td></td></tr>
+<tr><th scope="row">Vermont</th><td>Statewide layer, most counties</td><td></td></tr>
+<tr><th scope="row">Virginia</th><td>Statewide layer, most counties</td><td></td></tr>
+<tr><th scope="row">Washington</th><td>Statewide layer, most counties</td><td></td></tr>
+<tr><th scope="row">West Virginia</th><td>Statewide layer, most counties</td><td></td></tr>
+<tr><th scope="row">Wisconsin</th><td>Statewide layer, most counties</td><td></td></tr>
+<tr><th scope="row">Wyoming</th><td>Statewide layer, most counties</td><td></td></tr>
+<tr><th scope="row">California</th><td>44 of 58 counties</td><td>Alameda County, Alpine County, Amador County, Butte County, Calaveras County, Colusa County, Contra Costa County, Del Norte County, El Dorado County, Humboldt County, Imperial County, Inyo County, Kern County, Kings County, Lassen County, Los Angeles County, Madera County, Marin County, Mariposa County, Mendocino County, Merced County, Mono County, Monterey County, Napa County, Nevada County, Orange County, Sacramento County, San Benito County, San Bernardino County, San Joaquin County, San Luis Obispo County, San Mateo County, Santa Barbara County, Santa Clara County, Santa Cruz County, Solano County, Sonoma County, Stanislaus County, Sutter County, Trinity County, Tulare County, Tuolumne County, Ventura County, Yuba County</td></tr>
+<tr><th scope="row">Illinois</th><td>68 of 102 counties</td><td>Adams County, Bond County, Boone County, Brown County, Bureau County, Champaign County, Christian County, Clay County, Clinton County, Coles County, Cook County, Cumberland County, De Witt County, DeKalb County, Douglas County, DuPage County, Edgar County, Edwards County, Effingham County, Fayette County, Ford County, Fulton County, Hamilton County, Hancock County, Henderson County, Henry County, Iroquois County, Jackson County, Jasper County, Jefferson County, Jersey County, Kane County, Kankakee County, Kendall County, Knox County, LaSalle County, Lake County, Lawrence County, Lee County, Logan County, Macon County, Macoupin County, Marshall County, Massac County, McDonough County, McHenry County, McLean County, Monroe County, Morgan County, Moultrie County, Peoria County, Putnam County, Randolph County, Rock Island County, Sangamon County, Schuyler County, Shelby County, St. Clair County, Stark County, Tazewell County, Vermilion County, Warren County, Wayne County, White County, Whiteside County, Will County, Winnebago County, Woodford County</td></tr>
+<tr><th scope="row">Oregon</th><td>23 of 36 counties</td><td>Clackamas County, Clatsop County, Columbia County, Curry County, Deschutes County, Douglas County, Gilliam County, Grant County, Harney County, Jackson County, Klamath County, Lake County, Lane County, Linn County, Malheur County, Marion County, Multnomah County, Tillamook County, Umatilla County, Wasco County, Washington County, Wheeler County, Yamhill County</td></tr>
+<tr><th scope="row">Hawaii</th><td>3 of 5 counties</td><td>Honolulu County, Kauai County, Maui County</td></tr>
+<tr><th scope="row">South Dakota</th><td>31 of 66 counties</td><td>Beadle County, Bennett County, Bon Homme County, Brule County, Buffalo County, Campbell County, Charles Mix County, Day County, Deuel County, Douglas County, Edmunds County, Faulk County, Grant County, Gregory County, Hamlin County, Hanson County, Hutchinson County, Jerauld County, Jones County, Lyman County, McCook County, McPherson County, Meade County, Mellette County, Pennington County, Sanborn County, Stanley County, Sully County, Walworth County, Yankton County, Ziebach County</td></tr>
+<tr><th scope="row">Colorado</th><td>26 of 64 counties</td><td>Adams County, Archuleta County, Boulder County, Broomfield County, Delta County, Denver County, Eagle County, El Paso County, Fremont County, Garfield County, Jefferson County, La Plata County, Larimer County, Logan County, Mesa County, Moffat County, Montezuma County, Montrose County, Morgan County, Ouray County, Park County, Pitkin County, Pueblo County, San Miguel County, Sedgwick County, Weld County</td></tr>
+<tr><th scope="row">South Carolina</th><td>16 of 46 counties</td><td>Berkeley County, Calhoun County, Charleston County, Colleton County, Darlington County, Florence County, Jasper County, Kershaw County, Lancaster County, Laurens County, Lexington County, Oconee County, Orangeburg County, Pickens County, Saluda County, York County</td></tr>
+<tr><th scope="row">Alabama</th><td>23 of 67 counties</td><td>Autauga County, Baldwin County, Bullock County, Calhoun County, Cherokee County, Cleburne County, Coosa County, Cullman County, Dallas County, Elmore County, Etowah County, Hale County, Jefferson County, Lauderdale County, Lawrence County, Monroe County, Montgomery County, Morgan County, Russell County, Shelby County, St. Clair County, Sumter County, Wilcox County</td></tr>
+<tr><th scope="row">Pennsylvania</th><td>20 of 67 counties</td><td>Adams County, Allegheny County, Bedford County, Blair County, Bradford County, Bucks County, Clinton County, Dauphin County, Delaware County, Fayette County, Greene County, Indiana County, Juniata County, Lackawanna County, Montgomery County, Northampton County, Philadelphia County, Sullivan County, Warren County, York County</td></tr>
+<tr><th scope="row">Georgia</th><td>44 of 159 counties</td><td>Atkinson County, Baldwin County, Barrow County, Bartow County, Ben Hill County, Berrien County, Bibb County, Brooks County, Bulloch County, Charlton County, Chatham County, Chattahoochee County, Clarke County, Cobb County, Coffee County, Cook County, Dawson County, DeKalb County, Evans County, Fayette County, Forsyth County, Fulton County, Gordon County, Grady County, Gwinnett County, Irwin County, Long County, Lowndes County, McDuffie County, Meriwether County, Montgomery County, Morgan County, Muscogee County, Peach County, Rockdale County, Stewart County, Thomas County, Tift County, Toombs County, Troup County, Turner County, Ware County, Whitfield County, Worth County</td></tr>
+<tr><th scope="row">Michigan</th><td>22 of 83 counties</td><td>Alcona County, Allegan County, Antrim County, Arenac County, Branch County, Eaton County, Emmet County, Hillsdale County, Ingham County, Jackson County, Kalamazoo County, Kent County, Macomb County, Marquette County, Midland County, Monroe County, Muskegon County, Newaygo County, Oakland County, Ottawa County, Washtenaw County, Wayne County</td></tr>
+<tr><th scope="row">North Dakota</th><td>14 of 53 counties</td><td>Bottineau County, Burleigh County, Cass County, Divide County, Hettinger County, McLean County, Morton County, Mountrail County, Rolette County, Sargent County, Sioux County, Stark County, Ward County, Williams County</td></tr>
+<tr><th scope="row">Alaska</th><td>7 of 30 counties</td><td>Bristol Bay Borough, Fairbanks North Star Borough, Kenai Peninsula Borough, Ketchikan Gateway Borough, Kodiak Island Borough, Matanuska-Susitna Borough, Yakutat City and Borough</td></tr>
+<tr><th scope="row">Mississippi</th><td>14 of 82 counties</td><td>Adams County, Alcorn County, Amite County, Attala County, Benton County, Bolivar County, Calhoun County, Chickasaw County, Clarke County, Clay County, Coahoma County, Covington County, DeSoto County, Hinds County</td></tr>
+<tr><th scope="row">Louisiana</th><td>10 of 64 counties</td><td>Ascension Parish, De Soto Parish, Jefferson Parish, Livingston Parish, St. Charles Parish, St. James Parish, St. Tammany Parish, Terrebonne Parish, Washington Parish, West Feliciana Parish</td></tr>
+<tr><th scope="row">Maine</th><td>2 of 16 counties</td><td>Cumberland County, York County</td></tr>
+<tr><th scope="row">Ohio</th><td>11 of 88 counties</td><td>Athens County, Cuyahoga County, Delaware County, Franklin County, Lucas County, Miami County, Montgomery County, Stark County, Summit County, Union County, Warren County</td></tr>
+<tr><th scope="row">New Mexico</th><td>3 of 33 counties</td><td>Bernalillo County, Eddy County, Santa Fe County</td></tr>
+<tr><th scope="row">Oklahoma</th><td>6 of 77 counties</td><td>Creek County, Oklahoma County, Osage County, Rogers County, Tulsa County, Wagoner County</td></tr>
+<tr><th scope="row">Kentucky</th><td>9 of 120 counties</td><td>Boyle County, Bullitt County, Campbell County, Fayette County, Jefferson County, Kenton County, Madison County, Meade County, Pendleton County</td></tr>
+<tr><th scope="row">Texas</th><td>13 of 254 counties</td><td>Bexar County, Collin County, Dallas County, Denton County, El Paso County, Fort Bend County, Harris County, Henderson County, Howard County, Lubbock County, Tarrant County, Travis County, Williamson County</td></tr>
+<tr><th scope="row">Nebraska</th><td>4 of 93 counties</td><td>Douglas County, Lancaster County, Sarpy County, Thurston County</td></tr>
+<tr><th scope="row">Kansas</th><td>3 of 105 counties</td><td>Johnson County, Leavenworth County, Shawnee County</td></tr>
+<tr><th scope="row">Missouri</th><td>3 of 115 counties</td><td>Jackson County, Jasper County, St. Louis County</td></tr>
+</tbody>
+</table>
+</div>
+</details>
+<!-- COVERAGE:END -->
+    <p><button class="link" data-coverage-open type="button">Search the full list by county →</button></p>
+  </section>
+
+  <section class="lp-band" aria-labelledby="lp-free-title">
+    <h2 id="lp-free-title">Free, without the catch</h2>
+    <ul class="lp-points">
+      <li><b>No ads.</b> Not on the map, not between steps, not anywhere.</li>
+      <li><b>No tracking.</b> No analytics scripts and no ad trackers. The map
+        and imagery providers only see the map tiles your screen asks for.</li>
+      <li><b>No lead forms.</b> Your address is not sold, and nobody calls you
+        about it.</li>
+      <li><b>What is kept, said plainly.</b> Maps you save stay in your account.
+        When you finish a map, its lawn outline and aerial view may be kept to
+        train the detector &mdash; without your address or your account.</li>
+      <li><b>Paid for by people who want it to exist.</b> If it saved you a
+        trip with a measuring wheel, the Support button is there.</li>
+    </ul>
+  </section>
+
+  <section class="lp-band" aria-labelledby="lp-faq-title">
+    <h2 id="lp-faq-title">Questions</h2>
+    <details class="lp-faq"><summary>How do I measure my lawn from my address?</summary>
+      <p>Type the address at the top of this page, or tap the crosshair to use your
+        location. Confirm the pin, check the property line, then press the AI step
+        to trace the grass or draw it yourself. The square footage and acreage are
+        shown as you go.</p></details>
+    <details class="lp-faq"><summary>Is Lawn Mapper really free?</summary>
+      <p>Yes. There are no ads, no subscription and no paid tier. AI tracing has a
+        daily allowance to keep the costs sane, and a free account raises it.</p></details>
+    <details class="lp-faq"><summary>Where do the property lines come from?</summary>
+      <p>From the parcel layers that counties and states publish as public records.
+        They are a close guide, not a survey. Where no record exists, you draw the
+        line yourself.</p></details>
+    <details class="lp-faq"><summary>How accurate is the measurement?</summary>
+      <p>The area of the shape on the map is measured exactly; how close that shape
+        is to your real lawn depends on the photo and the outline. The AI gives a
+        strong starting point and the drawing tools let you fix anything it missed.
+        Treat the result as a close estimate.</p></details>
+    <details class="lp-faq"><summary>Can it see lawn under trees?</summary>
+      <p>Yes. Using lidar and a tree-canopy model, it estimates grass the photo
+        cannot see and marks that part separately, so you choose whether to count it.</p></details>
+    <details class="lp-faq"><summary>What happens to my data?</summary>
+      <p>Saved maps belong to your account. A finished map's lawn outline and aerial
+        view may be kept to train the detector, without your address or your
+        account. Nothing is sold, and there are no ads or trackers.</p></details>
+    <details class="lp-faq"><summary>Do I need an account?</summary>
+      <p>No. An account keeps your maps across devices and raises the daily AI
+        allowance. Signing up is one email link: no password.</p></details>
+  </section>
+
+  <footer class="lp-foot">
+    <p>Lawn Mapper works for addresses in the United States. Measurements come
+      from aerial imagery and public county records; treat them as a close
+      estimate, not a survey.</p>
+  </footer>
 </div>
 
 <!--

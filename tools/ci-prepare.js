@@ -26,6 +26,8 @@ import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 import { milestonesReached } from './milestones.js';
+import { fillCoverage } from './landing-coverage.js';
+import { coverage } from '../worker/src/coverage.js';
 
 const CONFIG = new URL('../wrangler.toml', import.meta.url);
 const PLACEHOLDER = 'REPLACE_WITH_KV_NAMESPACE_ID';
@@ -581,7 +583,11 @@ function main() {
     writeFileSync(CONFIG, updated);
 
     const page = new URL('../public/index.html', import.meta.url);
-    writeFileSync(page, fillSiteOrigin(readFileSync(page, 'utf8'), customDomain));
+    /* The landing's county table, from the registry this deploy ships with
+       (tools/landing-coverage.js), so crawlers read today's list as text. */
+    writeFileSync(page, fillCoverage(
+      fillSiteOrigin(readFileSync(page, 'utf8'), customDomain), coverage()
+    ));
     console.log(customDomain
       ? `Search and share tags point at https://${customDomain}.`
       : 'No CUSTOM_DOMAIN, so the canonical and share-image tags were left out.');
