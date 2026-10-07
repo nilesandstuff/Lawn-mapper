@@ -361,6 +361,10 @@ on:
         type: choice
         default: 'off'
         options: ['off', 'compare', 'hard edges', 'wide gated', 'average of 3', 'epochs']
+      release_epochs:
+        # How long a RELEASE trains (S29). 30 is every release so far.
+        description: 'Epochs for a release (30 unless S29 found better)'
+        default: '30'
       distrust_lidar:
         # LIDAR THAT DISAGREES WITH ITS PHOTO, HIDDEN IN TRAINING (owner,
         # 2026-10-06; H76): a lot whose traced visible lawn stands over 0.5 m
@@ -487,6 +491,7 @@ jobs:
         run: |
           python3 decoder_test.py
           python3 refine_test.py
+          python3 release_ensemble_test.py
 
       # The tree model over the same frames, exactly as workflow 19 runs it,
       # so the canopy lands on the pixels the features describe. Its
@@ -678,6 +683,7 @@ jobs:
           DISTRUST_LIDAR: ${{ inputs.distrust_lidar }}
           EDGE_REACH: ${{ inputs.edge_reach }}
           REFINER_TRIAL: ${{ inputs.refiner_trial }}
+          RELEASE_EPOCHS: ${{ inputs.release_epochs }}
           SEED: ${{ inputs.seed }}
           LAWNS: ${{ inputs.lawns }}
           MODEL: ${{ inputs.model }}
@@ -1256,6 +1262,9 @@ jobs:
           REFINE_REACH: ${{ (inputs.edge_reach == 'wide' || inputs.refiner_trial == 'wide gated') && 'wide' || '' }}
           REFINE_EDGES: ${{ (inputs.refiner_trial == 'hard edges' || inputs.refiner_trial == 'wide gated') && '1' || '' }}
           REFINE_GATE: ${{ inputs.refiner_trial == 'wide gated' && '1' || '' }}
+          # H83: a release of three decoders, averaged (refiner_trial: average of 3).
+          ENSEMBLE: ${{ inputs.refiner_trial == 'average of 3' && '3' || '' }}
+          EPOCHS: ${{ inputs.release_epochs }}
           OUT: preds-release
           RELEASE_OUT: release
         run: python3 tools/train_decoder.py

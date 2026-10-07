@@ -60,6 +60,8 @@ def plan(inputs, run, send):
             "REFINE_REACH": "wide" if (inputs.get("edge_reach") == "wide" or inputs.get("refiner_trial") == "wide gated") else "",
             "REFINE_EDGES": "1" if inputs.get("refiner_trial") in ("hard edges", "wide gated") else "",
             "REFINE_GATE": "1" if inputs.get("refiner_trial") == "wide gated" else "",
+            "ENSEMBLE": "3" if inputs.get("refiner_trial") == "average of 3" else "",
+            "EPOCHS": inputs.get("release_epochs") or "30",
             "OUT": "preds-release", "RELEASE_OUT": "release",
         }})
         outs = ["release"]
@@ -119,7 +121,7 @@ def plan(inputs, run, send):
 
 def main():
     e = os.environ
-    inputs = {k: e.get(k.upper(), "") for k in ("windows", "canopy", "decoder", "seed", "lawns", "model", "size", "release", "distrust_lidar", "edge_reach", "refiner_trial")}
+    inputs = {k: e.get(k.upper(), "") for k in ("windows", "canopy", "decoder", "seed", "lawns", "model", "size", "release", "distrust_lidar", "edge_reach", "refiner_trial", "release_epochs")}
     p = plan(inputs, e["RUN"], (e.get("SEND") or "").split(","))
     # A release records where it came from; Modal's container has no GitHub
     # environment of its own, so the two names are carried across here.

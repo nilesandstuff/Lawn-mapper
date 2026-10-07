@@ -57,16 +57,35 @@ class Release:
         self.meta = blob["meta"]
         if self.meta.get("refine") and not train_decoder.REFINE:
             raise SystemExit("this release has an edge refiner; import train_decoder with REFINE=1")
-        model = train_decoder.Decoder(self.meta["dim"])
+        # AN AVERAGE OF DECODERS (H83; owner, 2026-10-07): a release may carry
+        # several, trained from different seeds; their answers are averaged.
+        # A release with one (every release before) has no "members".
+        parts = [blob] + list(blob.get("members") or [])
+        self.members = [(self._decoder(p["state"], device), p["mean"].to(device), p["sd"].to(device))
+                        for p in parts]
+        self.model, self.mean, self.sd = self.members[0]
+        self.device = device
+
+    def _decoder(self, state, device):
+        td = self.td
+        model = td.Decoder(self.meta["dim"])
         if self.meta.get("refine"):
             from edge_refine import Refiner
             model.refiner = Refiner(reach=self.meta.get("refineReach") or "normal",
                                     edges=bool(self.meta.get("refineEdges")), gate=bool(self.meta.get("refineGate")))
-        model.load_state_dict(blob["state"])
-        self.model = model.to(device).eval()
-        self.mean = blob["mean"].to(device)
-        self.sd = blob["sd"].to(device)
+        model.load_state_dict(state)
+        return model.to(device).eval()
+
+    def to(self, device):
+        self.members = [(m.to(device), mu.to(device), sd.to(device)) for m, mu, sd in self.members]
+        self.model, self.mean, self.sd = self.members[0]
         self.device = device
+        return self
+
+    def answer(self, L):
+        """The lawn probability on the 15 cm grid: the members' answers averaged."""
+        probs = [self.td.answer(m, mu, sd, L) for m, mu, sd in self.members]
+        return probs[0] if len(probs) == 1 else sum(probs) / len(probs)
 
 
 class Detector:
@@ -104,10 +123,7 @@ class Detector:
         self.eye.model.to(device)
         self.tree_model.to(device)
         if self.release is not None:
-            self.release.model.to(device)
-            self.release.mean = self.release.mean.to(device)
-            self.release.sd = self.release.sd.to(device)
-            self.release.device = device
+            self.release.to(device)
         self.device = device
         return self
 
@@ -203,7 +219,7 @@ class Detector:
                 "cover": cover,
                 "rgb": np.asarray(photo.convert("RGB").resize((cells_w, cells_h), Image.BOX)),
             }
-            prob = self.release.td.answer(self.release.model, self.release.mean, self.release.sd, L)
+            prob = self.release.answer(L)
             t["decoder"] = round(time.time() - t0, 1)
 
         Image.fromarray(can.astype(np.uint8) * 255).save(os.path.join(out_dir, "canopy.png"))

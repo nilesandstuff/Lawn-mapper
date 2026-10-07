@@ -672,6 +672,13 @@ def main():
         t0 = time.time()
         model, mean, sd, loss = train_one(lawns + examples, dim, SEED)
         state = {k: v.detach().cpu() for k, v in model.state_dict().items()}
+        # AN AVERAGE OF DECODERS (ENSEMBLE=k, H83): k-1 more from other seeds,
+        # saved beside the first as "members"; alpha_infer.py averages them.
+        members = []
+        for j in range(1, ENSEMBLE):
+            m, mu, sg, _ = train_one(lawns + examples, dim, SEED + 1000 * j)
+            members.append({"state": {k: v.detach().cpu() for k, v in m.state_dict().items()},
+                            "mean": mu.detach().cpu(), "sd": sg.detach().cpu()})
         from fuse_layers import CHANNELS
         meta = {
             "backbone": manifest.get("model"), "size": manifest.get("size"),
@@ -681,16 +688,17 @@ def main():
             "channels": list(CHANNELS) if FUSE else [],
             "canopyMode": CANOPY_MODE if CANOPY else None,
             "epochs": EPOCHS, "seed": SEED, "lr": LR, "weightDecay": WEIGHT_DECAY, "dropout": DROPOUT,
-            "lawns": len(lawns), "examples": len(examples), "notLawn": NOT_LAWN,
+            "lawns": len(lawns), "examples": len(examples), "notLawn": NOT_LAWN, "ensemble": ENSEMBLE,
             "trainLoss": round(float(loss), 4), "seconds": round(time.time() - t0),
             "commit": os.environ.get("GITHUB_SHA", ""), "run": os.environ.get("GITHUB_RUN_ID", ""),
             "trainedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         }
-        torch.save({"state": state, "mean": mean.detach().cpu(), "sd": sd.detach().cpu(), "meta": meta},
+        torch.save({"state": state, "mean": mean.detach().cpu(), "sd": sd.detach().cpu(), "meta": meta,
+                    **({"members": members} if members else {})},
                    os.path.join(release_out, "model.pt"))
         with open(os.path.join(release_out, "release.json"), "w") as f:
             json.dump(meta, f, indent=1)
-        print(f"RELEASE: one decoder{' + edge refiner' if REFINE else ''} on all {len(lawns)} lots "
+        print(f"RELEASE: {ENSEMBLE} decoder(s){' + edge refiner' if REFINE else ''}, averaged, on all {len(lawns)} lots "
               f"in {meta['seconds']}s, train loss {loss:.3f}; saved to {release_out}/model.pt", flush=True)
         return 0
 
