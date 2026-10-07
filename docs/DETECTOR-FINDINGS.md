@@ -5998,6 +5998,36 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
+### S30. Read Scale-MAE's middle layers as well as its last (owner, 2026-10-07 -- BUILT, ON TRIAL)
+
+**Why (owner, from SegFormer's All-MLP decoder):** that decoder's strength is
+mixing descriptions at several scales, which SegFormer's encoder hands it.
+Scale-MAE is a plain ViT: one grid, and the decoder has only ever read its
+LAST layer. Earlier blocks keep finer, more local detail (texture, edges);
+later ones what a place is. Using several layers is how plain-ViT
+segmenters (ViTDet, DPT) get multi-scale features. An All-MLP decoder on one
+layer would be a simpler decoder than ours, so the transferable idea is the
+layers, not the decoder.
+
+**Built:** extract_features.py `MULTI_LAYERS=8,16` keeps the outputs of
+blocks 8 and 16 (of 24) on the same pass, each squeezed 1024 -> 256 by a
+fixed random projection, written to `feats-multi`; the decoder stacks them
+beside the last layer (FEATURES_WHOLE, identity resample). Workflow 14
+`layers: compare` trains THE PLAN once more on all three, row "decoder,
+middle layers + ...". Lots read in windows get zeros there (none with
+`windows: off`). multi_layers_test.py checks the projection, the grid and,
+in CI, the hook on a real ViT.
+
+**Why it might not help (speculation):** H58/H59 (two scales by arrangement)
+found nothing; the decoder already gets the photo's own pixels through the
+refiner; 512 more inputs to 81 lots is more room to overfit; the random
+projection loses some of each layer.
+
+**The test, written before the runs:** seeds 7/8/9, `lawns: locked`, free
+runner, against "decoder, edge refined + stage 3, span, lidar veto" of the
+same runs; the usual bar. If it wins, the live server needs the same layers
+read (alpha_infer), which costs nothing extra on the GPU (one pass).
+
 ### S29. How many epochs (owner, 2026-10-07 -- ON TRIAL)
 
 **Why (owner's question):** every decoder trains for 30 epochs, a number set

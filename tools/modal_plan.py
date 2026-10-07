@@ -39,6 +39,8 @@ def plan(inputs, run, send):
         **base, "OUT": "feats",
         "TARGET_MPP": "9" if windows == "off" else "0.10",
         "TILE_MPP": tile,
+        # S30's middle layers are a free-runner trial; on Modal, never kept.
+        "MULTI_LAYERS": "", "MULTI_OUT": "",
     }})
 
     common = {

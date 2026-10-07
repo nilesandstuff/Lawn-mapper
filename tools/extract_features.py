@@ -194,13 +194,51 @@ class SatelliteEye:
             weights=ScaleMAELarge16_Weights.FMOW_RGB, img_size=size, res=1.0
         ).to(DEVICE)
         self.model.eval()
+        # MIDDLE LAYERS TOO (S30): the output of these transformer blocks is
+        # kept on every pass, beside the last layer the decoder always reads.
+        self.taps = tap_layers()
+        self.tapped = {}
+        for i in self.taps:
+            self.model.blocks[i - 1].register_forward_hook(
+                lambda _m, _inp, out, i=i: self.tapped.__setitem__(i, out.detach().cpu()))
 
     def look(self, tensor, metres_per_pixel):
         # Read at forward time out of self.res, so this is the whole of telling
         # it what it is looking at.
         self.model.res = float(metres_per_pixel) * self.res_factor
+        self.tapped.clear()
         with torch.no_grad():
             return self.model.forward_features(tensor.to(DEVICE)).cpu()
+
+
+# MULTI-LAYER FEATURES (S30; owner, 2026-10-07, from reading about SegFormer's
+# All-MLP decoder). A plain ViT like Scale-MAE gives one scale, and the decoder
+# has only ever read its LAST layer. Earlier blocks describe finer, more local
+# things (texture, edges), later ones what a place is. MULTI_LAYERS="8,16"
+# keeps those blocks' outputs too (1-based, of 24), each squeezed from 1024
+# to MULTI_DIMS numbers by a fixed random projection (distances roughly kept,
+# the same matrix every run), written to MULTI_OUT as a second feature grid
+# of the same shape that the decoder stacks beside the first (FEATURES_WHOLE).
+MULTI_DIMS = int(os.environ.get("MULTI_DIMS", "256"))
+
+
+def tap_layers(env=os.environ):
+    return [int(x) for x in str(env.get("MULTI_LAYERS") or "").split(",") if x.strip()]
+
+
+def projection(dim_in, dim_out, seed=20261007):
+    """The fixed matrix that squeezes one tapped layer, the same every time."""
+    rng = np.random.default_rng(seed)
+    return (rng.standard_normal((dim_in, dim_out)) / np.sqrt(dim_out)).astype(np.float32)
+
+
+def tapped_grid(eye, side):
+    """The tapped layers of the last pass, squeezed and stacked: (side, side, k * MULTI_DIMS)."""
+    parts = []
+    for i in eye.taps:
+        flat, d, _ = patches_of(eye.tapped[i], side)
+        parts.append(flat @ projection(d, MULTI_DIMS))
+    return np.concatenate(parts, axis=1).reshape(side, side, -1)
 
 
 def res_factor_of(model_id):
@@ -399,6 +437,17 @@ def main():
                 "tileMpp": TILE_MPP or None,
                 "resFactor": factor,
                 "targetMpp": TARGET_MPP, "windowed": 0, "images": {}}
+    taps = tap_layers()
+    multi_out = os.environ.get("MULTI_OUT", "") if taps else ""
+    if taps and not getattr(eye, "taps", None):
+        raise SystemExit(f"MULTI_LAYERS is set but {eye.name} does not keep middle layers")
+    if multi_out:
+        os.makedirs(multi_out, exist_ok=True)
+        print(f"MIDDLE LAYERS: blocks {', '.join(map(str, taps))} kept too, "
+              f"{MULTI_DIMS} numbers each, into {multi_out}", flush=True)
+    multi_manifest = {**{k: v for k, v in manifest.items() if k != "images"}, "taps": taps,
+                      "multiDims": MULTI_DIMS, "images": {}}
+    multi_missing = 0
     extra = 0
     dim = 0
     coarsest = 0.0
@@ -470,6 +519,19 @@ def main():
             manifest["windowed"] += 1
 
         np.ascontiguousarray(grid).tofile(os.path.join(out_dir, f"{stem}.f32"))
+        if multi_out:
+            # Only the one-pass read keeps its tapped layers; a windowed or
+            # tiled lot gets zeros there, said in the summary.
+            if windows == 1 and TILE_MPP <= 0 and getattr(eye, "tapped", None):
+                extra_grid = tapped_grid(eye, eye.side)
+            else:
+                extra_grid = np.zeros((grid.shape[0], grid.shape[1], len(taps) * MULTI_DIMS), np.float32)
+                multi_missing += 1
+            np.ascontiguousarray(extra_grid).tofile(os.path.join(multi_out, f"{stem}.f32"))
+            multi_manifest["images"][stem] = {
+                "gridW": int(grid.shape[1]), "gridH": int(grid.shape[0]), "dim": int(extra_grid.shape[2]),
+                "coverX": cover[0], "coverY": cover[1], "windows": windows, "mpp": seen_mpp,
+            }
         manifest["images"][stem] = {
             "gridW": int(grid.shape[1]), "gridH": int(grid.shape[0]), "dim": int(dim),
             "coverX": cover[0], "coverY": cover[1],
@@ -488,6 +550,11 @@ def main():
 
     with open(os.path.join(out_dir, "manifest.json"), "w") as f:
         json.dump(manifest, f)
+    if multi_out:
+        with open(os.path.join(multi_out, "manifest.json"), "w") as f:
+            json.dump(multi_manifest, f)
+        print(f"Middle layers written for {len(names) - multi_missing} lots"
+              f"{f'; {multi_missing} read in windows got zeros' if multi_missing else ''}.")
 
     total = time.time() - started
     print(f"\n{len(names)} done in {total:.0f}s ({total / len(names):.1f}s each), "
