@@ -868,6 +868,44 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H81. The live edge refiner, against its TRUE twin at 81 lots, still pays: 55 lots better, 18 worse -- but it is the refiner that turns B19 and B20's parking lots worse, 2026-10-07
+
+Three seeds (7/8/9), free runner, `lawns: locked` (81, `05cs4ud`), `decoder:
+fused + edge`: 37556372070, 37556456369, 37556539907 -- the first runs where
+the plain decoder is THE PLAN's decoder without the refiner (taught under
+trees, canopy input). Workflow 24 (37575972747): A = "the pretrained eye,
+decoder + stage 3, span, lidar veto", B = "decoder, edge refined + ..." of
+the same runs.
+
+| lots | better / worse / level | median | paired change [95%] | sign test |
+|---|---|---|---|---|
+| all 81 | **55 / 18 / 8** | 24.1 -> **22.0%** | **-1.5 [-1.9, -0.9]** | p < 0.001 |
+| frozen 32 | 21 / 8 / 3 | 25.5 -> 24.5% | -1.5 [-2.1, -0.5] | p 0.02 |
+| untuned 49 | 34 / 10 / 5 | 23.3 -> 21.9% | -1.5 [-1.9, -0.7] | p < 0.001 |
+
+Runs' medians A 24.8 / 24.7 / 24.3, B 20.9 / 22.5 / 22.0.
+
+- **H60 replicates, on more lots and against the right twin.** The owner's
+  reading of the S25 pictures ("the bad behaviour is often more costly")
+  was of the wide refiner against a mixed twin; the live refiner, alone,
+  helps three lots for every one it hurts, by about the same amount H60
+  measured at 55 lots (-1.7).
+- **But the owner's B19 observation holds for the live refiner too:** its
+  worst lots are B19 67.6 -> 79.6 and B20 57.1 -> 73.3 (both parking lots,
+  as in H60), C19 40 -> 57, C88 53 -> 61, C29 372 -> 407. Its best: C41
+  30.5 -> 16.8, C59 22 -> 15, B04 55 -> 46, C87 63 -> 56, C99 139 -> 130.
+  Where the decoder has already called pavement lawn, the refiner extends
+  the mistake along the pavement's edge rather than retreating from it.
+- The run draws THE PLAN's row now; pictures in
+  `runs/2026-10-06-2308-edt-scalemae-large-896px` (seed 7), navy/black the
+  live refiner alone.
+
+**Also from these runs -- see-through colour (S22) is not a gain.** It has
+the lowest median of any row in every recent run (here 21.4 against 22.0),
+and lot by lot it is nothing: 11 better / 14 worse / 56 level, p 0.69
+(37576047303), with B22 68 -> 109 and B24 14 -> 26. The lower median is the
+level lots shuffling, not a change. It stays off.
+
 ### H80. An edge refiner that reaches ~4.6 m instead of ~1 m (S25) measures WORSE on most lots -- not adopted, 2026-10-06
 
 Three seeds (7/8/9), free runner, `decoder: fused + edge`, `lawns: all`,
@@ -6552,3 +6590,4 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-06 | 37451515396 / 37451627810 / (37451740510 cancelled) | 80 | S21 `corrections: on` + `not_lawn: on`, seeds 7/8/9 | — | — | **Died in the extractor** (my bug): it took every `.png` in frames/ but `-labels.png` for a photograph, so the new `<id>-detected.png` masks were read as frames with no ground size. `-notlawn.png` had the same latent bug. Fixed in extract_features.py and tree-canopy.py. The dump found **21 of 80 lots drawn by the live release (2026-09-29T21:10:24Z)**, 34 more by SAM or land cover, and 4 approved not-lawn-only maps |
 | 2026-10-06 | 37455590620 / 37455705640 / 37455821616 | 80 | S21 `corrections: on` + `not_lawn: on` (third decoder without pond maps), seeds 7/8/9, CPU | 20.9 / 21.2 / 21.4% (edge refined + stage 3, span, veto) | — | **H79.** Corrections weighted: 15 better / 34 worse, p 0.009, +0.3 [+0.1, +0.7]; untuned +0.7. No pond maps: 33 / 27, p 0.52, -0.2 [-0.6, +0.1]; B12 15.0 -> 21.3 without. Neither adopted |
 | 2026-10-06 | 37509209045 / 37509342504 / 37509477275 | **81** (locked, `05cs4ud`, + C99) | S25 `edge_reach: compare` (wide refiner, dilations to 16), `decoder: fused + edge`, seeds 7/8/9, CPU | 22.0 / 22.5 / 20.8% (edge refined + stage 3, span, veto) | — | **H80.** Wide edge: 13 better / 49 worse, p < 0.001, +0.9 [+0.4, +1.4]; medians 23.3 / 24.8 / 22.9. Not adopted |
+| 2026-10-07 | 37556372070 / 37556456369 / 37556539907 | **81** (locked `05cs4ud`) | `decoder: fused + edge`, plain decoder now THE PLAN minus the refiner, seeds 7/8/9, CPU | 20.9 / 22.5 / 22.0% (edge refined + stage 3, span, veto) | — | **H81.** Refiner vs true twin 55 / 18, -1.5 [-1.9, -0.9], p < 0.001; worst B19, B20 (parking lots). See-through colour vs THE PLAN 11 / 14, p 0.69 |
