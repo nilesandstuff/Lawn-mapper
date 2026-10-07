@@ -868,6 +868,28 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H84. 30 epochs stays: 15 is worse (21 lots better / 45 worse), 60 is no different (25 / 31) -- 2026-10-07
+
+Three seeds (7/8/9), free runner, `lawns: locked` (81), `refiner_trial:
+epochs`: 37618116401, 37618210051, 37618300740. Workflow 24 (37653137736,
+37653169547) against "decoder, edge refined + stage 3, span, lidar veto" (30
+epochs) of the same runs.
+
+| epochs | better / worse / level | paired change [95%], all 81 | untuned 49 | runs' medians |
+|---|---|---|---|---|
+| 15 | 21 / **45** / 15, **p 0.004** | **+0.8 [+0.3, +0.9]** | 11 / 28, +0.8, p 0.009 | 22.6 / 21.3 / 23.2 |
+| 60 | 25 / 31 / 25, p 0.50 | -0.1 [-0.3, +0.5] | 13 / 20, p 0.30 | 21.3 / 22.5 / 21.7 |
+
+- **Half the training is clearly worse**, with C29 blowing up (407 -> 665)
+  and C40 34 -> 58, though B03, C88 and B19 improve.
+- **Twice the training changes nothing measurable.** By the owner's rule
+  (equivalent -> the cheaper one), 30 stays; 60 would double training time
+  for no gain. Untested: whether more epochs matter for an average of three
+  (H83), or once the corpus grows.
+- **Release v3 (three decoders averaged, 30 epochs) shipped the same day**
+  (run 37643197968, trainedAt 2026-10-07T15:52:29Z) and answers on the live
+  server: workflow 32, 4 lots, decoder step 0.1-0.2 s (37652744226).
+
 ### H83. An average of three decoders (S28) beats THE PLAN's single one, modestly: 31 lots better, 9 worse, -0.3 [-0.4, -0.1] -- passes its bar, not released, 2026-10-07
 
 Three seeds (7/8/9), free runner, `lawns: locked` (81, `05cs4ud`),
@@ -6028,7 +6050,7 @@ runner, against "decoder, edge refined + stage 3, span, lidar veto" of the
 same runs; the usual bar. If it wins, the live server needs the same layers
 read (alpha_infer), which costs nothing extra on the GPU (one pass).
 
-### S29. How many epochs (owner, 2026-10-07 -- ON TRIAL)
+### S29. How many epochs (owner, 2026-10-07 -- MEASURED: 30 STAYS, H84)
 
 **Why (owner's question):** every decoder trains for 30 epochs, a number set
 on 2026-09-24 at 32 lots for the first decoder (H25) and never tested since.
@@ -6753,3 +6775,4 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-07 | 37563074383 / 37563158493 / 37563241262 | 81 (locked) | S27 `refiner_trial: compare` (hard edges; wide + edges + gate), seeds 7/8/9, CPU | 22.0 / 22.5 / 20.8% | — | **H82.** Hard edges 22 / 24, p 0.88; wide gated 20 / 42, +0.5 [+0.0, +0.9]. Refiner vs twin 55 / 17 (H81 replicates). Neither adopted |
 | 2026-10-07 | 37582634690 / 37582729096 / 37582829432 | 81 (locked) | S28 `refiner_trial: average of 3`, seeds 7/8/9, CPU | 20.9 / 22.5 / 22.0% (edge refined + stage 3, span, veto) | — | **H83.** Averaged x3: 31 / 9, -0.3 [-0.4, -0.1], p 0.001; medians 20.3 / 22.1 / 20.7. Passes; not released |
 | 2026-10-07 | 37643197968 | 81 (locked) | **RELEASE v3 (H83)**: `release: alpha`, `refiner_trial: average of 3`, fused + edge, canopy on lawn, UNDER_TREES + FUSE_CANOPY, 30 epochs, seed 7, CPU | — (no folds) | — | Three decoders averaged, trained on all 81 in 306 s, train loss 0.202, trainedAt 2026-10-07T15:52:29Z. Shipped to the live server; v2 kept under alpha/history/. Named "alpha version 3 (79%)": mean of the averaged row's run medians 21.0 (the single-decoder setup on the same runs 21.8) |
+| 2026-10-07 | 37618116401 / 37618210051 / 37618300740 | 81 (locked) | S29 `refiner_trial: epochs` (15 and 60 beside 30), seeds 7/8/9, CPU | 20.9 / 22.5 / 22.0% (30 epochs) | — | **H84.** 15: 21 / 45, +0.8, p 0.004 (worse); 60: 25 / 31, p 0.50 (nothing). 30 stays |
