@@ -106,6 +106,15 @@ const countOf = (s) => (s.kind === 'some' ? `${s.covered} of ${s.total}`
  * and an argument quietly vanishing from a signature is worse than one that
  * is honestly unused.
  */
+/**
+ * ALPHABETICAL (owner, 2026-10-08: "could you alphabetize the list?"). The
+ * registry hands states over grouped by kind -- whole, then most, then some --
+ * which is how the coverage sentence reads them and not how anybody looks for
+ * their own state. States by name, and the counties within each by name.
+ */
+export const byName = (list, key = (x) => x) => [...list]
+  .sort((a, b) => String(key(a)).localeCompare(String(key(b)), 'en', { sensitivity: 'base' }));
+
 export function shownList(s) {
   if (s.kind !== 'some') {
     if (!s.counties.length) return { mode: 'none', names: [] };
@@ -142,7 +151,9 @@ function stateRow(s, nearComplete) {
     return node;
   };
 
-  const { mode, names } = shownList(s, nearComplete);
+  const shown = shownList(s, nearComplete);
+  const mode = shown.mode;
+  const names = byName(shown.names);
 
   /* Nothing to open, so it does not offer a triangle that discloses nothing. */
   if (mode === 'none') {
@@ -223,7 +234,7 @@ export function mountCoverage({ summary, fetchList }) {
         : 'No counties are configured on this deployment.';
 
       list.replaceChildren();
-      for (const s of states) list.append(stateRow(s, near));
+      for (const s of byName(states, (x) => x.name)) list.append(stateRow(s, near));
     } catch {
       loaded = false; // so closing and reopening tries again
       lead.textContent = 'That list could not be loaded just now.';

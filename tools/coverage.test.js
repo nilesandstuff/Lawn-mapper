@@ -17,7 +17,7 @@
 import { coverage, coverageSummary, NEAR_COMPLETE } from '../worker/src/coverage.js';
 import { ALL_COUNTIES } from '../worker/src/counties.js';
 import { US_COUNTIES } from '../worker/src/us-counties.js';
-import { coverageSentence, listOf, shownList } from '../public/lib/coverage-ui.js';
+import { coverageSentence, listOf, shownList, byName } from '../public/lib/coverage-ui.js';
 
 let failures = 0;
 const check = (name, ok, detail = '') => {
@@ -408,6 +408,14 @@ const by = (ab) => states.find((s) => s.ab === ab);
    */
   check('and it needs no account',
     full.status === 200, 'no session was sent with that request');
+}
+
+/* The dialog's list is alphabetical (owner, 2026-10-08). */
+{
+  const states = byName([{ name: 'Maryland' }, { name: 'connecticut' }, { name: 'Alabama' }], (x) => x.name).map((x) => x.name);
+  check('states are listed by name, whatever their kind or case', states.join() === 'Alabama,connecticut,Maryland', states.join());
+  check('and the counties within a state too',
+    byName(['Wayne County', 'Allegan County', 'Kent County']).join() === 'Allegan County,Kent County,Wayne County');
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);

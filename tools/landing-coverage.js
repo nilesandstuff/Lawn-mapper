@@ -32,13 +32,15 @@ export function reach(s) {
  */
 export function named(s) {
   if (s.kind !== 'some') return '';
-  return s.counties.join(', ');
+  return [...s.counties].sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' })).join(', ');
 }
 
 export function coverageBlock(states) {
   const total = states.reduce((n, s) => n + (s.covered || 0), 0);
   const statewide = states.filter((s) => s.kind !== 'some').length;
-  const rows = states.map((s) => `<tr><th scope="row">${esc(s.name)}</th>`
+  /* Alphabetical, like the app's own list (owner, 2026-10-08). */
+  const rows = [...states].sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }))
+    .map((s) => `<tr><th scope="row">${esc(s.name)}</th>`
     + `<td>${esc(reach(s))}</td><td>${esc(named(s))}</td></tr>`).join('\n');
   const dc = states.some((s) => s.ab === 'DC');
   const n = states.length - (dc ? 1 : 0);
