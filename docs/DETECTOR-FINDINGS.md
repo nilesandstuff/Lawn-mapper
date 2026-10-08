@@ -6253,10 +6253,19 @@ with more of them to learn from -- design 2 below.
    matter" both open. Lot held fixed, photo held fixed; only the training
    set moves.
 
-**If the owner traced the 12 county lots on Mapbox as well**, the paired
-test would be exact: each photo against the outline drawn on it, same lot.
-The county editor stores an outline the other way round (county outlines on
-Mapbox-drawn maps, county_imagery.shapes); the reverse has no tool yet.
+**Paired traces (owner, 2026-10-08: "I can do that, slowly"):** the owner
+will trace the same lawn on both photos. Storage for both directions exists
+since 2026-10-08: a Mapbox-drawn map's county outline in
+county_imagery.shapes (the county editor, as before), and a county-drawn
+map's Mapbox outline in county_imagery.mapbox_shapes with Mapbox's picture
+of the frame banked as mapbox_image_key (/#review=<id>&photo=mapbox from
+/county.html). DECIDED: a pair is NOT a duplicate -- the same ground under
+two appearances, each with its own correct outline, is exactly the B case --
+and it goes into training as a SETTING TO MEASURE (PHOTOS=both, not built
+until pairs exist), with both versions of a lot held out together (place
+folds already group by position, and a pair shares one). Until it passes
+the bar, training keeps one version per lot. With pairs, the exact test:
+each photo against the outline drawn on it, same lot.
 
 ### S31. Chasing H85's parking-lot gain with less of the middle layers (owner, 2026-10-07 -- MEASURED: NONE PASSES, H86)
 
