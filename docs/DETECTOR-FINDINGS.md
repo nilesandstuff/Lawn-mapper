@@ -891,9 +891,8 @@ C80, C88, C89, C94, C99) are in this list.
   (storeCountyImage). Of the 25 newest approved maps 15 were drawn on county
   photos and all 15 have it saved; 12 are in the locked 81.
 - **What this does NOT say:** that county photos are the cause. The county
-  lots are also the newest maps, picked by the owner after the easy ones, and
-  several carry their own known trouble (C99 the pond-heavy lot, C94 and C29
-  repeatedly worst). Lot difficulty and photo are confounded here.
+  lots are also the newest maps, and newer maps may simply be harder lots;
+  nothing here tells the two apart. Lot difficulty and photo are confounded.
 - Plausible mechanisms, all speculation until tested: 12 county lots against
   69 Mapbox ones, so the decoder mostly learned the Mapbox look; county
   photos are sharper (about 6 cm against 10-15) and Scale-MAE is told one
