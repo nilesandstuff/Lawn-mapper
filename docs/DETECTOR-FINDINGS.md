@@ -868,6 +868,38 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H88. The 12 locked lots drawn on county photos are the worst group in the corpus: median 55.2% error against 19.0% for the 69 drawn on Mapbox -- cause NOT established, 2026-10-08
+
+THE PLAN's row ("decoder, edge refined + stage 3, span, lidar veto") over the
+S31 runs 37666184686 / 37666283016 / 37666382432 (the locked 81), split by the
+photo each map was drawn and saved on (workflow 24 run 37766196684, the new
+`--photos` split; image_provider from the database).
+
+| photo the map was drawn on | lots | median error |
+|---|---|---|
+| county photo | 12 | 55.2% |
+| Mapbox | 69 | 19.0% |
+
+The county lots, worst first: C99 130.0, C94 101.2, C79 76.0, C88 59.5, C87
+56.1, C80 55.9, C89 54.5, C74 45.7, C81 28.9, C66 25.3, C82 20.7, C71 6.6.
+Most of the lots that keep turning up as "most worsened" in H79-H86 (C79,
+C80, C88, C89, C94, C99) are in this list.
+
+- **Corrected first (owner):** an earlier answer said all 81 train on
+  Mapbox. Wrong: training reads each map's SAVED photo (photoKeyFor ->
+  image_key), and maps drawn on a county photo save that photo
+  (storeCountyImage). Of the 25 newest approved maps 15 were drawn on county
+  photos and all 15 have it saved; 12 are in the locked 81.
+- **What this does NOT say:** that county photos are the cause. The county
+  lots are also the newest maps, picked by the owner after the easy ones, and
+  several carry their own known trouble (C99 the pond-heavy lot, C94 and C29
+  repeatedly worst). Lot difficulty and photo are confounded here.
+- Plausible mechanisms, all speculation until tested: 12 county lots against
+  69 Mapbox ones, so the decoder mostly learned the Mapbox look; county
+  photos are sharper (about 6 cm against 10-15) and Scale-MAE is told one
+  scale for both (see S12); colour and season differ by flight.
+- The test that would separate them is in S32.
+
 ### H87. The live model measured on real use for the first time: release 1 changed by a median 23.4% on 25 approved maps, against the 24.0% its folds predicted -- 2026-10-08
 
 Workflow 7 run 37709290743, its new section "The live releases" (2026-10-08):
@@ -6125,6 +6157,21 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
+### S32. Is it the county photo or the lot? (2026-10-08 -- PROPOSED, NOT BUILT)
+
+**Why (H88):** the 12 county-photo lots score 55% against 19% for Mapbox
+lots, and the county photo is now the default for most addresses, so most
+live detections run on one. Whether the photo or the lot is to blame decides
+whether the county default should stay.
+
+**The test it needs:** score the same 12 lots with the Mapbox photo of the
+same frame (fetched by frame; none is stored for them) beside their county
+photo, everything else equal, against the outlines as drawn. The outlines
+were drawn on the county photo, and the owner says the two rarely line up
+because of perspective, so the Mapbox side carries a built-in penalty: if
+Mapbox still scores clearly better, the photo is the problem; if it scores
+worse, the lots are. Free runner. Not built until the owner says.
+
 ### S31. Chasing H85's parking-lot gain with less of the middle layers (owner, 2026-10-07 -- MEASURED: NONE PASSES, H86)
 
 **Why (owner: "do a little chasing of the parking lot gains"):** H85's middle
@@ -6903,3 +6950,4 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-07 | 37666184686 / 37666283016 / 37666382432 | 81 (locked) | S31 `layers: variants` (block 8 alone 256; block 16 alone 256; both at 64), cached features, seeds 7/8/9, CPU | 21.2 / 22.0 / 22.4% (edge refined + stage 3, span, veto) | — | **H86.** Layer 8 28 / 24, p 0.68; layer 16 30 / 19, p 0.15; both small 28 / 25, p 0.78. B20 73 -> 57-59, B19 79 -> 68-71. None adopted |
 | 2026-10-08 | 37709290743 (workflow 7) | 25 approved maps drawn by release 1 | live-release score: the release's outline vs the finished one, by `model_version` | — | 23.4% (release 1, live) | **H87.** First live measurement; folds had said 24.0%. v2 drew none, v3 one (unreviewed) |
 | 2026-10-08 | 37709603931 / 37710689178 (workflow 32) | 8 timing lots | live server after `lot` (downloads first, then GPU) | — | — | GPU 2.7 s per warm lot (12.3 before), waiting 1.1 (11.0). First press after the deploy timed out; cold press 29 s |
+| 2026-10-08 | 37766196684 (workflow 24 split) | 81 (locked), S31 runs | THE PLAN's row split by the photo each map was drawn on | — | county 55.2% (12 lots) / Mapbox 19.0% (69) | **H88.** County-photo lots are the worst group; cause not established (confounded with the lots being the newest) |
