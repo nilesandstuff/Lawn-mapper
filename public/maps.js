@@ -86,6 +86,9 @@ function row(m, { dim = false, open = false } = {}) {
      */
     top.append(el('span', `pill ${m.status === 'rejected' ? 'grey' : m.status === 'new' ? 'warn' : ''}`, m.status));
     if (m.marked) top.append(el('span', 'pill', `${m.marked} inferred`));
+    /* The owner's word on those inferred areas (console card, or the button
+       below): a guess is not taught, and the row says so. */
+    if (m.marked && m.inferredDoubt === 1) top.append(el('span', 'pill grey', 'guess, not taught'));
     /*
      * "Not checked" rather than a tick for checked. The absence is the
      * actionable state and the presence is the resting one, so only the
@@ -245,7 +248,48 @@ function verdictRow(m, pills) {
   const editLink = el('a', 'button-link', 'Edit');
   editLink.href = `/#review=${encodeURIComponent(m.id)}&back=maps`;
   editLink.title = 'Open this map in the editor, fix it, and save it back';
-  wrap.append(btn, editLink, note);
+  wrap.append(btn, editLink);
+
+  /*
+   * INFERRED LAWN THE OWNER DOES NOT TRUST (owner, 2026-10-08), the same
+   * mark as the console card's "Teach it / Don't teach it", from the list.
+   * One button, labelled by what it will do to this row, and only on a map
+   * that HAS inferred areas: on one with none there is nothing to doubt. It
+   * writes through the review route like the verdict above, with the
+   * verdict, queue and grade sent back unchanged so only this one column
+   * moves. One tap: it is undone by the same button.
+   */
+  if (m.marked) {
+    const doubt = el('button', 'ghost', '');
+    const relabelDoubt = () => {
+      doubt.textContent = m.inferredDoubt === 1 ? 'Teach the inferred lawn again' : "Don't teach the inferred lawn";
+      doubt.title = m.inferredDoubt === 1
+        ? 'The inferred areas here are marked as a guess and carry no weight in training. Press to teach them as lawn again.'
+        : 'The inferred areas here are a guess: the lot still trains on what can be seen, but its inferred ground carries no weight.';
+    };
+    relabelDoubt();
+    doubt.addEventListener('click', async () => {
+      doubt.disabled = true;
+      note.textContent = 'Saving…';
+      const want = m.inferredDoubt !== 1;
+      try {
+        await post('/api/admin/review', {
+          id: m.id, status: m.status, queue: m.reviewQueue || 'list', canopy: m.canopy, force: true,
+          inferredDoubt: want,
+        });
+        m.inferredDoubt = want ? 1 : 0;
+        pills();
+        relabelDoubt();
+        note.textContent = '';
+      } catch (err) {
+        note.textContent = `Did not save: ${err.message}`;
+      } finally {
+        doubt.disabled = false;
+      }
+    });
+    wrap.append(doubt);
+  }
+  wrap.append(note);
   return wrap;
 }
 
