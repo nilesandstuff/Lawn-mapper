@@ -26,8 +26,8 @@
  * tools/import-openaddresses.js. Editing this file directly will be
  * overwritten; change an importer or the verifier instead.
  *
- * 758 entries (26 statewide), of 1006 candidates.
- * Last run 2026-10-07: 50 verified of 60 tried.
+ * 762 entries (26 statewide), of 1006 candidates.
+ * Last run 2026-10-08: 53 verified of 60 tried.
  */
 
 const VERIFIED_COUNTIES = {
@@ -338,7 +338,7 @@ const VERIFIED_COUNTIES = {
     layer: 6,
     fields: {"pin":"parcelid","address":null},
     box: [-94.375,33.068,-89.952,36.481],
-    checked: "2026-10-07",
+    checked: "2026-10-08",
   },
   'ar-washington': {
     name: "Washington County, AR",
@@ -414,7 +414,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"AZ_APN","address":null},
     box: [-114.139,31.426,-109.142,35.93],
-    checked: "2026-10-07",
+    checked: "2026-10-08",
   },
   'az-yavapai': {
     name: "Yavapai County, AZ",
@@ -1150,7 +1150,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"Link","address":null},
     box: [-73.547,41.085,-71.873,41.955],
-    checked: "2026-10-07",
+    checked: "2026-10-08",
   },
   'ct-western-connecticut-planning-region': {
     name: "Western Connecticut Planning Region County, CT",
@@ -1169,7 +1169,7 @@ const VERIFIED_COUNTIES = {
     layer: 40,
     fields: {"pin":"SSL","address":null},
     box: [-77.117,38.804,-76.867,39.054],
-    checked: "2026-10-07",
+    checked: "2026-10-08",
   },
   'de-kent': {
     name: "Kent County, DE",
@@ -1197,7 +1197,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PIN","address":null},
     box: [-75.744,38.573,-75.237,39.676],
-    checked: "2026-10-07",
+    checked: "2026-10-08",
   },
   'de-sussex': {
     name: "Sussex County, DE",
@@ -1466,7 +1466,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCEL_ID","address":"PHY_ADDR1"},
     box: [-87.42,25.485,-80.298,30.962],
-    checked: "2026-10-07",
+    checked: "2026-10-08",
   },
   'fl-walton': {
     name: "Walton County, FL",
@@ -1951,7 +1951,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCELNUMB","address":null},
     box: [-96.316,40.548,-90.434,43.49],
-    checked: "2026-10-07",
+    checked: "2026-10-08",
   },
   'ia-story': {
     name: "Story County, IA",
@@ -2088,7 +2088,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PIN","address":null},
     box: [-116.898,42.074,-111.112,48.839],
-    checked: "2026-10-07",
+    checked: "2026-10-08",
   },
   'id-valley': {
     name: "Valley County, ID",
@@ -2770,7 +2770,7 @@ const VERIFIED_COUNTIES = {
     fields: {"pin":null,"address":null},
     fallbacks: [{"service":"https://services8.arcgis.com/x0gS7hstEoFA7X7l/arcgis/rest/services/STR_buffer_parcels_110425a/FeatureServer","layer":0,"fields":{"pin":null,"address":null}},{"service":"https://services8.arcgis.com/x0gS7hstEoFA7X7l/arcgis/rest/services/STR_buffer_parcels_031626/FeatureServer","layer":0,"fields":{"pin":null,"address":null}},{"service":"https://services8.arcgis.com/x0gS7hstEoFA7X7l/arcgis/rest/services/STR_buffer_parcels_052626_a/FeatureServer","layer":0,"fields":{"pin":null,"address":null}}],
     box: [-94.912,38.913,-94.704,38.998],
-    checked: "2026-10-07",
+    checked: "2026-10-08",
   },
   'ks-leavenworth': {
     name: "Leavenworth County, KS",
@@ -2779,7 +2779,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":null,"address":null},
     box: [-95.004,39.042,-94.898,39.206],
-    checked: "2026-10-07",
+    checked: "2026-10-08",
   },
   'ks-shawnee': {
     name: "Shawnee County, KS",
@@ -2971,7 +2971,7 @@ const VERIFIED_COUNTIES = {
     fields: {"pin":"MAP_PAR_ID","address":null},
     fallbacks: [{"service":"https://arcgisserver.digital.mass.gov/arcgisserver/rest/services/AGOL/MassachusettsPropertyTaxParcels/FeatureServer","layer":4,"fields":{"pin":null,"address":"SITE_ADDR"}}],
     box: [-73.318,41.193,-70.001,42.743],
-    checked: "2026-10-07",
+    checked: "2026-10-08",
   },
   'md-allegany': {
     name: "Allegany, MD",
@@ -3109,6 +3109,24 @@ const VERIFIED_COUNTIES = {
     box: [-76.873,38.037,-76.314,38.514],
     checked: "2026-10-07",
   },
+  'md-talbot': {
+    name: "Talbot County, MD",
+    fips: "24041",
+    service: "https://services6.arcgis.com/ScyqVZ3lUUihZ0ky/arcgis/rest/services/Parcels/FeatureServer",
+    layer: 29,
+    fields: {"pin":"acctid","address":null},
+    box: [-76.393,38.577,-75.895,38.947],
+    checked: "2026-10-08",
+  },
+  'md-washington': {
+    name: "Washington, MD",
+    fips: "24043",
+    service: "https://services2.arcgis.com/uxxyl33jRTSmjre5/arcgis/rest/services/Washington_County_Public_Parcels/FeatureServer",
+    layer: 0,
+    fields: {"pin":"AccountNO","address":null},
+    box: [-78.365,39.312,-77.465,39.73],
+    checked: "2026-10-08",
+  },
   'md-wicomico': {
     name: "Wicomico, MD",
     fips: "24045",
@@ -3116,7 +3134,16 @@ const VERIFIED_COUNTIES = {
     layer: 3,
     fields: {"pin":"ACCTID","address":null},
     box: [-75.924,38.22,-75.302,38.563],
-    checked: "2026-09-18",
+    checked: "2026-10-08",
+  },
+  'md-worcester': {
+    name: "Worcester County, MD",
+    fips: "24047",
+    service: "https://wcg-gisweb.co.worcester.md.us/arcgis/rest/services/Parcel_Boundaries/FeatureServer",
+    layer: 15,
+    fields: {"pin":"ACCTID","address":null},
+    box: [-75.675,37.959,-75.046,38.504],
+    checked: "2026-10-08",
   },
   'me-cumberland': {
     name: "Cumberland County, ME",
@@ -3126,7 +3153,7 @@ const VERIFIED_COUNTIES = {
     fields: {"pin":"MAP_BK_LOT","address":"PROP_LOC"},
     fallbacks: [{"service":"https://services1.arcgis.com/RbMX0mRVOFNTdLzd/arcgis/rest/services/Maine_Parcels_Organized_Towns/FeatureServer","layer":9,"fields":{"pin":null,"address":null}}],
     box: [-71.131,42.97,-66.849,47.342],
-    checked: "2026-09-18",
+    checked: "2026-10-08",
   },
   'me-york': {
     name: "York County, ME",
@@ -3136,7 +3163,7 @@ const VERIFIED_COUNTIES = {
     fields: {"pin":"MAP_BK_LOT","address":"PROP_LOC"},
     fallbacks: [{"service":"https://services1.arcgis.com/RbMX0mRVOFNTdLzd/arcgis/rest/services/Maine_Parcels_Organized_Towns/FeatureServer","layer":9,"fields":{"pin":null,"address":null}}],
     box: [-71.131,42.97,-66.849,47.342],
-    checked: "2026-09-18",
+    checked: "2026-10-08",
   },
   'mi-alcona': {
     name: "Alcona County, MI",
@@ -3145,7 +3172,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"mapping_id","address":null},
     box: [-86.274,42.418,-85.542,42.769],
-    checked: "2026-09-18",
+    checked: "2026-10-08",
   },
   'mi-allegan': {
     name: "Allegan County, MI",
@@ -3154,7 +3181,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"mapping_id","address":null},
     box: [-86.274,42.418,-85.542,42.769],
-    checked: "2026-09-18",
+    checked: "2026-10-08",
   },
   'mi-antrim': {
     name: "Antrim County, MI",
@@ -3163,7 +3190,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCEL_NO","address":null},
     box: [-85.45,44.817,-84.846,45.212],
-    checked: "2026-09-18",
+    checked: "2026-10-08",
   },
   'mi-arenac': {
     name: "Arenac County, MI",
@@ -3172,7 +3199,16 @@ const VERIFIED_COUNTIES = {
     layer: 37,
     fields: {"pin":"PID","address":null},
     box: [-84.168,43.907,-83.424,44.167],
-    checked: "2026-09-18",
+    checked: "2026-10-08",
+  },
+  'mi-barry': {
+    name: "Barry County, MI",
+    fips: "26015",
+    service: "https://services.arcgis.com/i0SsdDzLI3mLGmPR/ArcGIS/rest/services/Parcels/FeatureServer",
+    layer: 0,
+    fields: {"pin":"Tparcel","address":null},
+    box: [-85.55,42.417,-85.07,42.773],
+    checked: "2026-10-08",
   },
   'mi-branch': {
     name: "Branch County, MI",
@@ -3181,7 +3217,7 @@ const VERIFIED_COUNTIES = {
     layer: 191,
     fields: {"pin":"PARCELID","address":null},
     box: [-85.297,41.757,-84.823,42.075],
-    checked: "2026-09-18",
+    checked: "2026-10-08",
   },
   'mi-eaton': {
     name: "Eaton, MI",
@@ -3190,7 +3226,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCELID","address":null},
     box: [-85.076,42.421,-84.6,42.771],
-    checked: "2026-09-18",
+    checked: "2026-10-08",
   },
   'mi-emmet': {
     name: "Emmet, MI",
@@ -3199,7 +3235,7 @@ const VERIFIED_COUNTIES = {
     layer: 4,
     fields: {"pin":"PID","address":null},
     box: [-85.123,45.273,-84.728,45.79],
-    checked: "2026-09-18",
+    checked: "2026-10-08",
   },
   'mi-hillsdale': {
     name: "Hillsdale County, MI",
@@ -3208,7 +3244,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"Parcel_No","address":null},
     box: [-84.828,41.696,-84.36,42.074],
-    checked: "2026-09-18",
+    checked: "2026-10-08",
   },
   'mi-ingham': {
     name: "Ingham, MI",
@@ -3217,7 +3253,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCELNO","address":null},
     box: [-84.702,42.647,-84.417,42.796],
-    checked: "2026-09-18",
+    checked: "2026-10-08",
   },
   'mi-jackson': {
     name: "Jackson County, MI",
@@ -3226,7 +3262,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PIN","address":null},
     box: [-84.719,42.07,-84.13,42.425],
-    checked: "2026-09-18",
+    checked: "2026-10-08",
   },
   'mi-kalamazoo': {
     name: "Kalamazoo County, MI",
@@ -3235,7 +3271,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"pnum","address":null},
     box: [-85.663,42.215,-85.53,42.333],
-    checked: "2026-09-18",
+    checked: "2026-10-08",
   },
   'mi-macomb': {
     name: "Macomb County, MI",
@@ -3299,7 +3335,7 @@ const VERIFIED_COUNTIES = {
     fields: {"pin":null,"address":null},
     fallbacks: [{"service":"https://services.arcgis.com/hVnyNvwbpFFPDV5j/arcgis/rest/services/Parcels_for_Washtenaw_County/FeatureServer","layer":0,"fields":{"pin":null,"address":null}},{"service":"https://services1.arcgis.com/4ezfu5dIwH83BUNL/arcgis/rest/services/Washtenaw_County_Parcel_Data/FeatureServer","layer":0,"fields":{"pin":null,"address":null}},{"service":"https://services1.arcgis.com/ZyuQAFDZ3HsELH0k/arcgis/rest/services/Millage_PARCELS_2025/FeatureServer","layer":83,"fields":{"pin":"PIN","address":null}}],
     box: [-84.135,42.068,-83.534,42.438],
-    checked: "2026-10-07",
+    checked: "2026-10-08",
   },
   'mi-wayne': {
     name: "Wayne County, MI",
@@ -3651,7 +3687,7 @@ const VERIFIED_COUNTIES = {
     layer: 1,
     fields: {"pin":"state_pin","address":null},
     box: [-96.88,43.565,-90.244,48.877],
-    checked: "2026-10-07",
+    checked: "2026-10-08",
   },
   'mn-todd': {
     name: "Todd County, MN",
@@ -3895,7 +3931,7 @@ const VERIFIED_COUNTIES = {
     layer: 1,
     fields: {"pin":"PARCELID","address":"AddressLine1"},
     box: [-115.563,45.034,-104.175,48.894],
-    checked: "2026-10-06",
+    checked: "2026-10-08",
   },
   'mt-yellowstone': {
     name: "Yellowstone County, MT",
@@ -3977,7 +4013,7 @@ const VERIFIED_COUNTIES = {
     layer: 1,
     fields: {"pin":"parno","address":"siteadd"},
     box: [-84.161,33.94,-75.668,36.589],
-    checked: "2026-10-07",
+    checked: "2026-10-08",
   },
   'nc-wake': {
     name: "Wake County, NC",
@@ -4158,7 +4194,7 @@ const VERIFIED_COUNTIES = {
     layer: 1,
     fields: {"pin":"ParcelOID","address":null},
     box: [-72.349,42.812,-70.936,44.753],
-    checked: "2026-10-07",
+    checked: "2026-10-08",
   },
   'nj-bergen': {
     name: "Bergen County, NJ",
@@ -4186,7 +4222,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PAMS_PIN","address":"PROP_LOC"},
     box: [-75.457,38.986,-73.975,41.235],
-    checked: "2026-10-07",
+    checked: "2026-10-08",
   },
   'nj-sussex': {
     name: "Sussex County, NJ",
@@ -4286,7 +4322,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"APN","address":null},
     box: [-119.847,36.112,-114.763,41.508],
-    checked: "2026-10-07",
+    checked: "2026-10-08",
   },
   'nv-storey': {
     name: "Storey County, NV",
@@ -4400,7 +4436,7 @@ const VERIFIED_COUNTIES = {
     layer: 1,
     fields: {"pin":"OBJECTID","address":null},
     box: [-79.508,40.461,-72.592,44.853],
-    checked: "2026-10-07",
+    checked: "2026-10-08",
   },
   'ny-suffolk': {
     name: "Suffolk County, NY",
@@ -4428,7 +4464,7 @@ const VERIFIED_COUNTIES = {
     fields: {"pin":"pid","address":"address"},
     fallbacks: [{"service":"https://services5.arcgis.com/t4xYDjfDFWC8eyBj/arcgis/rest/services/Athens_County_Parcels/FeatureServer","layer":0,"fields":{"pin":"PID","address":"ADDRESS"}},{"service":"https://services2.arcgis.com/2zE4x6y8cTIstSBE/arcgis/rest/services/Parcels_/FeatureServer","layer":0,"fields":{"pin":"pid","address":"address"}},{"service":"https://services2.arcgis.com/2zE4x6y8cTIstSBE/arcgis/rest/services/Surveys/FeatureServer","layer":0,"fields":{"pin":"pid","address":"address"}}],
     box: [-82.299,39.18,-81.721,39.557],
-    checked: "2026-10-07",
+    checked: "2026-10-08",
   },
   'oh-cuyahoga': {
     name: "Cuyahoga County, OH",
@@ -4519,7 +4555,7 @@ const VERIFIED_COUNTIES = {
     fields: {"pin":null,"address":"ADDRESS_LINE_1"},
     fallbacks: [{"service":"https://services5.arcgis.com/bRVJbF13Nwgn5oKx/arcgis/rest/services/County_TIF_Parcels_Child_View/FeatureServer","layer":1,"fields":{"pin":null,"address":"ADDRESS_LINE_1"}},{"service":"https://services7.arcgis.com/qWymSnMRrQR7OiJ3/arcgis/rest/services/AGO_Parcels/FeatureServer","layer":1,"fields":{"pin":null,"address":"ADDRESS_LINE_1"}},{"service":"https://services5.arcgis.com/bRVJbF13Nwgn5oKx/arcgis/rest/services/County_Parcel_Map/FeatureServer","layer":0,"fields":{"pin":"PIN","address":"LOCATION"}}],
     box: [-84.365,39.44,-84.267,39.571],
-    checked: "2026-10-07",
+    checked: "2026-10-08",
   },
   'ok-creek': {
     name: "Creek County, OK",
@@ -4862,7 +4898,7 @@ const VERIFIED_COUNTIES = {
     fields: {"pin":"POLY_PER_PARCEL","address":"LOC_ADDRESS"},
     fallbacks: [{"service":"https://gis.delcopa.gov/arcgis/rest/services/Parcels/Parcels_Public_Access/FeatureServer","layer":0,"fields":{"pin":"PIN","address":null}},{"service":"https://services3.arcgis.com/2moS4uuhIzUP5dNH/arcgis/rest/services/ParcelsOnline/FeatureServer","layer":0,"fields":{"pin":"PIN","address":"Address"}},{"service":"https://services2.arcgis.com/okXm0pb6aWH6XOGI/arcgis/rest/services/Mohawk_Water_Supply_Class_by_Parcel/FeatureServer","layer":0,"fields":{"pin":"ParcelID","address":null}}],
     box: [-76.137,39.707,-75.354,40.253],
-    checked: "2026-10-07",
+    checked: "2026-10-08",
   },
   'pa-fayette': {
     name: "Fayette County, PA",
@@ -4908,7 +4944,7 @@ const VERIFIED_COUNTIES = {
     fields: {"pin":"PIN","address":"LOCATION"},
     fallbacks: [{"service":"https://services.arcgis.com/0POQ0PQT9pHLMnL2/arcgis/rest/services/Benton_Parcels/FeatureServer","layer":0,"fields":{"pin":"PIN","address":"LOCATION"}},{"service":"https://services7.arcgis.com/c8axx5qqzVWAC8iN/arcgis/rest/services/Vacant_Parcels/FeatureServer","layer":5,"fields":{"pin":"PIN","address":"ADDR1"}}],
     box: [-75.834,41.161,-75.434,41.646],
-    checked: "2026-10-07",
+    checked: "2026-10-08",
   },
   'pa-montgomery': {
     name: "Montgomery County, PA",
@@ -4963,7 +4999,7 @@ const VERIFIED_COUNTIES = {
     fields: {"pin":"PARCEL","address":"MAIL_ADDR_"},
     fallbacks: [{"service":"https://services3.arcgis.com/QyE2WGV7PbLkjLWW/arcgis/rest/services/Parcels/FeatureServer","layer":2,"fields":{"pin":"PARCEL","address":"MAIL_ADDR_FULL"}},{"service":"https://services3.arcgis.com/QyE2WGV7PbLkjLWW/arcgis/rest/services/Existing_Land_Use_Dover_Borough/FeatureServer","layer":3,"fields":{"pin":"PARCEL","address":"MAIL_ADDR_FULL"}},{"service":"https://services1.arcgis.com/CNfeg2bqPqhTN34y/arcgis/rest/services/Manhattan_Lab/FeatureServer","layer":3,"fields":{"pin":"PARCELADDR","address":"PARCELADDR"}}],
     box: [-76.764,39.942,-76.699,39.993],
-    checked: "2026-10-07",
+    checked: "2026-10-08",
   },
   'ri-statewide': {
     name: "Rhode Island (found)",
@@ -4973,7 +5009,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PlatLot","address":"E911"},
     box: [-71.72,41.297,-71.183,41.969],
-    checked: "2026-10-07",
+    checked: "2026-10-08",
   },
   'sc-berkeley': {
     name: "Berkeley County, SC",
@@ -5443,7 +5479,7 @@ const VERIFIED_COUNTIES = {
     fields: {"pin":"PARCELID","address":null},
     fallbacks: [{"service":"https://services2.arcgis.com/Ju5vg9anco2Yv2af/arcgis/rest/services/KnoxCADWebService/FeatureServer","layer":0,"fields":{"pin":"prop_id","address":"situs_num"}}],
     box: [-84.15,35.843,-83.765,36.067],
-    checked: "2026-10-07",
+    checked: "2026-10-08",
   },
   'tn-maury': {
     name: "Maury County, TN",
@@ -5462,7 +5498,7 @@ const VERIFIED_COUNTIES = {
     fields: {"pin":"PARCEL","address":"STREETADDRESS"},
     fallbacks: [{"service":"https://services5.arcgis.com/A5C0MR9xfkxVRwat/arcgis/rest/services/Parcels_CompleteFields/FeatureServer","layer":0,"fields":{"pin":"PARCEL","address":"STREETADDRESS"}},{"service":"https://services5.arcgis.com/A5C0MR9xfkxVRwat/arcgis/rest/services/Parcel_Data/FeatureServer","layer":1,"fields":{"pin":"ParcelID","address":"MailingAddress"}},{"service":"https://services1.arcgis.com/aT1T0pU1ZdpuDk1t/arcgis/rest/services/Project2_PublicHousingRutherfordCounty_WFL1/FeatureServer","layer":6,"fields":{"pin":"ParcelID","address":null}}],
     box: [-86.704,35.616,-86.138,36.101],
-    checked: "2026-10-07",
+    checked: "2026-10-08",
   },
   'tn-statewide': {
     name: "Tennessee (found)",
@@ -5472,7 +5508,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCELID","address":"ADDRESS"},
     box: [-89.995,35.009,-81.761,36.659],
-    checked: "2026-10-07",
+    checked: "2026-10-08",
   },
   'tx-bexar': {
     name: "Bexar County, TX",
@@ -5617,7 +5653,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCEL_ID","address":null},
     box: [-113.588,37.163,-109.406,41.834],
-    checked: "2026-10-07",
+    checked: "2026-10-08",
   },
   'ut-utah': {
     name: "Utah County, UT",
@@ -5780,7 +5816,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCELID","address":null},
     box: [-83.23,36.482,-75.655,39.301],
-    checked: "2026-10-07",
+    checked: "2026-10-08",
   },
   'vt-chittenden': {
     name: "Chittenden County, VT",
@@ -5799,7 +5835,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"SPAN","address":null},
     box: [-73.401,42.894,-71.633,44.959],
-    checked: "2026-10-07",
+    checked: "2026-10-08",
   },
   'wa-asotin': {
     name: "Asotin County, WA",
@@ -5971,7 +6007,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCEL_ID_NR","address":null},
     box: [-123.988,45.672,-117.128,48.944],
-    checked: "2026-10-07",
+    checked: "2026-10-08",
   },
   'wa-stevens': {
     name: "Stevens County, WA",
@@ -6396,7 +6432,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PARCELID","address":"SITEADRESS"},
     box: [-92.554,42.488,-86.949,46.734],
-    checked: "2026-10-07",
+    checked: "2026-10-08",
   },
   'wi-trempealeau': {
     name: "Trempealeau County, WI",
@@ -6766,7 +6802,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"ROOTID","address":null},
     box: [-82.523,37.283,-77.763,40.618],
-    checked: "2026-10-07",
+    checked: "2026-10-08",
   },
   'wv-summers': {
     name: "Summers County, WV",
@@ -6920,7 +6956,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"parcelnb","address":"locationad"},
     box: [-110.783,41.184,-104.254,44.881],
-    checked: "2026-10-07",
+    checked: "2026-10-08",
   },
   'wy-weston': {
     name: "Weston County, WY",
