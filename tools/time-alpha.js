@@ -32,6 +32,54 @@ export function summarise(rows) {
   return out;
 }
 
+/** One lot through start/result, until it answers or `limitMs` runs out. */
+async function runLot(env, r, limitMs) {
+  const headers = { 'content-type': 'application/json', authorization: `Bearer ${env.ALPHA_TOKEN}` };
+  const shot = liveCaptureFrame(parse(r.frame));
+  const imageUrl = imageryUrl('mapbox', shot.frame, env.MAPBOX_TOKEN, env);
+  const t0 = Date.now();
+  const res = await fetch(env.ALPHA_URL, { method: 'POST', headers, body: JSON.stringify({ imageUrl, frame: shot.frame, parcel: parse(r.parcel) }) });
+  if (!res.ok) return { got: { status: `start HTTP ${res.status}` }, wall: 0 };
+  const { id } = await res.json();
+  let got = null;
+  while (Date.now() - t0 < limitMs) {
+    await sleep(2000);
+    const p = await fetch(`${env.ALPHA_RESULT_URL}?id=${encodeURIComponent(id)}`, { headers }).catch(() => null);
+    if (!p?.ok) continue;
+    const b = await p.json();
+    if (b.status === 'running') continue;
+    got = b;
+    break;
+  }
+  if (!got && env.ALPHA_CANCEL_URL) {
+    await fetch(`${env.ALPHA_CANCEL_URL}?id=${encodeURIComponent(id)}`, { method: 'POST', headers }).catch(() => {});
+  }
+  return { got, wall: Math.round((Date.now() - t0) / 1000) };
+}
+
+/**
+ * THE WARM PRESS AT THE END OF A DEPLOY (owner, 2026-10-08). The first press
+ * after a deploy has sat queued on Modal for minutes while the next one
+ * answered at once, so the deploy now makes that first press itself, with
+ * nobody waiting on it. Same as the app: given up at 75 s and sent once more.
+ * Prints one line for the deploy's tail and never fails the deploy.
+ */
+export async function warm(env = process.env) {
+  const name = String(env.LOTS || 'B01').split(',')[0].trim();
+  const rows = query(`SELECT id, lot_no, frame, parcel FROM corpus WHERE status = 'approved' AND frame IS NOT NULL`);
+  const r = rows.find((x) => mapName(x.id, x.lot_no) === name);
+  if (!r) return `not warmed: lot ${name} not found`;
+  const first = await runLot(env, r, 75000);
+  if (first.got?.status === 'succeeded') return `warm -- the first press answered in ${first.wall}s`;
+  const second = await runLot(env, r, 240000);
+  if (second.got?.status === 'succeeded') {
+    return `warm -- the first press stuck (${first.got?.status || 'no answer'} after ${first.wall}s); `
+      + `sent again, it answered in ${second.wall}s`;
+  }
+  return `NOT warm -- two presses, no answer (${second.got?.status || 'timed out'} ${second.got?.error || ''}). `
+    + 'The app retries a stuck press itself, but check Modal.';
+}
+
 async function main(env = process.env) {
   const names = String(env.LOTS || '').split(',').map((s) => s.trim()).filter(Boolean);
   const rows = query(`SELECT id, lot_no, frame, parcel FROM corpus WHERE status = 'approved' AND frame IS NOT NULL`);
@@ -76,5 +124,10 @@ async function main(env = process.env) {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  main().catch((e) => { console.error(e.message); process.exitCode = 1; });
+  if (process.env.WARM) {
+    warm().then((line) => console.log(line))
+      .catch((e) => console.log(`not warmed: ${e.message}`));
+  } else {
+    main().catch((e) => { console.error(e.message); process.exitCode = 1; });
+  }
 }

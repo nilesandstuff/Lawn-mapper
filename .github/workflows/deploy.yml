@@ -308,6 +308,8 @@ jobs:
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+          MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
+          MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN }}
         run: |
           if [ -z "$MODAL_TOKEN_ID" ] || [ -z "$MODAL_TOKEN_SECRET" ]; then
             echo "ALPHA_STATE=off -- no MODAL_TOKEN_ID / MODAL_TOKEN_SECRET secrets" >> "$GITHUB_ENV"
@@ -341,6 +343,13 @@ jobs:
           modal volume get --force lawn-mapper-models alpha/release.json release.json >/dev/null 2>&1 || true
           when=$(python3 -c "import json;m=json.load(open('release.json'));print(m.get('trainedAt','?')+', '+str(m.get('lawns','?'))+' lots')" 2>/dev/null || echo "date unknown")
           echo "ALPHA_STATE=ON, the default method -- release trained $when" >> "$GITHUB_ENV"
+          # THE WARM PRESS (owner, 2026-10-08): the first press after a deploy
+          # has stuck on Modal for minutes, so the deploy makes it, with nobody
+          # waiting. A few cents. Never fails the deploy (tools/time-alpha.js warm).
+          warm=$(WARM=1 LOTS=B01 ALPHA_URL="$url" ALPHA_RESULT_URL="$result" ALPHA_CANCEL_URL="$cancel" \
+                 ALPHA_TOKEN="$token" MAPBOX_TOKEN="${MAPBOX_SERVER_TOKEN:-$MAPBOX_TOKEN}" \
+                 timeout 420 node tools/time-alpha.js 2>/dev/null | tail -1)
+          echo "ALPHA_WARM=${warm:-not warmed: the warm press did not finish}" >> "$GITHUB_ENV"
 
       - name: Where it went
         run: |
@@ -367,6 +376,7 @@ jobs:
             echo "The reason is in the \"Prepare wrangler.toml\" step above."
           fi
           echo "Trained model (alpha release): ${ALPHA_STATE:-off -- the step that serves it did not finish; see \"Serve the trained model\" above}"
+          if [ -n "$ALPHA_WARM" ]; then echo "Trained model warm-up: $ALPHA_WARM"; fi
           echo "HTTPS only: ${HTTPS_STATE:-not checked -- see \"Send http to https\" above}"
           echo "Home page: ${HOME_STATE:-not built -- see \"The home page\" above}"
           # A database change that did not land is the quietest failure this

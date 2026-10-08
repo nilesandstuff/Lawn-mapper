@@ -19,6 +19,7 @@ import { mkdirSync } from 'node:fs';
 import sharp from 'sharp';
 import { resolve } from 'node:path';
 import { query } from './corpus-db.js';
+import { benchmarkId } from '../worker/src/benchmark-ids.js';
 import { areaSqFt } from '../worker/src/score.js';
 import { rasterizePolygon, unionMasks } from '../public/lib/mask.js';
 import { lngLatToFramePx, metresPerPixel, zoomToFit } from '../public/lib/mercator.js';
@@ -129,6 +130,7 @@ function describe(row) {
   console.log(`county    ${row.county || '(traced by hand)'}`);
   console.log(`measured  ${row.provider || '?'} imagery, ${row.model || 'no model'}, ${row.mode || '?'} mode`);
   console.log(`photo     ${row.image_provider || '(none stored)'}`);
+  if (row.county_svc) console.log(`county photo service ${row.county_svc}  aligned ${row.county_align || '(not moved)'}`);
   console.log(`corrected ${row.hand_edited ? 'yes' : 'no'}`);
   console.log(`release   ${row.model_version || '(none recorded)'}`);
   console.log(`not-lawn  ${geometries(parse(row.not_lawn)).length} trace(s)`);
@@ -206,7 +208,12 @@ async function main() {
 
   /* 'noparcel': approved maps with no property line at all, which training
      grades over the whole frame (owner, 2026-10-02). */
-  const where = id
+  /* A map's name as the console shows it -- B07, C55 -- as well as its id
+     (2026-10-08: "its assigned c55"). */
+  const tag = /^[BbCc]\d+$/.test(id) ? id.toUpperCase() : null;
+  const where = tag
+    ? (tag[0] === 'B' ? `id = '${String(benchmarkId(tag) || '').replace(/'/g, "''")}'` : `lot_no = ${Number(tag.slice(1))}`)
+    : id
     ? `id = '${id.replace(/'/g, "''")}'`
     : status === 'noparcel'
       ? "status = 'approved' AND (parcel IS NULL OR parcel = '' OR parcel = 'null')"
@@ -217,7 +224,8 @@ async function main() {
     rows = query(`
       SELECT id, at, status, county, provider, model, mode, hand_edited,
              image_provider, square_feet, shapes, detected_shapes,
-             frame, image_frame, parcel, model_version, image_key, not_lawn
+             frame, image_frame, parcel, model_version, image_key, not_lawn,
+             county_svc, county_align
         FROM corpus WHERE ${where} ORDER BY at DESC LIMIT ${Math.max(1, Math.min(60, Number(process.env.LIMIT) || 5))}
     `);
   } catch (err) {
@@ -234,6 +242,17 @@ async function main() {
 
   console.log(`${rows.length} map${rows.length === 1 ? '' : 's'} to look at.`);
   for (const row of rows) describe(row);
+  /* The county photo's own service, for a map drawn on one: a fault in the
+     picture (2026-10-08, C55's black stripe) is usually the service's. */
+  for (const row of rows) {
+    const svc = Number(row.county_svc);
+    if (!Number.isInteger(svc) || svc <= 0) continue;
+    try {
+      const [s] = query(`SELECT id, url, type, title, year, native_cm, tile_merc, export_ok, max_px FROM county_services WHERE id = ${svc}`);
+      if (s) console.log(`\ncounty photo for ${row.id}: #${s.id} ${s.title || ''} ${s.year || ''}, ${s.native_cm || '?'} cm, `
+        + `${s.tile_merc ? 'tile cache' : s.type || '?'}${s.export_ok ? ', exports' : ''}${s.max_px ? `, max ${s.max_px}px` : ''}\n  ${s.url}`);
+    } catch { /* the picture below still says what it can */ }
+  }
   for (const row of rows) await picture(row);
 
   console.log(`\n${'='.repeat(64)}`);
