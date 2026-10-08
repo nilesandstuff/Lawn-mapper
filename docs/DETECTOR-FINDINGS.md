@@ -1032,6 +1032,19 @@ Runs' medians B 20.3 / 22.1 / 20.7.
   is nearly all of the wait, so overlapping the two saves little. Also: on a
   COLD press the GPU is still starting while the downloads run (C99 waited
   0.6-1.9 s), so the wait only costs on a press that finds the GPU warm.
+- **Done 2026-10-08 (owner: "do 2"): downloads first, then the GPU.**
+  modal_serve.py `lot`, a small CPU function, waits for the downloads and
+  only then calls the GPU. Same inputs, same outlines. Workflow 32, same 8
+  lots, from cold (run 37710689178): **GPU seconds per warm lot 2.7, of which
+  1.1 is still waiting** (collecting the downloaded lidar/NAIP), against
+  12.3 and 11.0 before -- about a fifth of the GPU bill per lot. Wall time
+  per warm lot 10-12 s, as before. A cold press took 29 s end to end (C99).
+  **The first press after the deploy itself** (run 37709603931) was very
+  slow: C99 gave up at the tool's 5 minutes and C88 took 284 s, then the
+  rest ran normally. A new function plus Modal rebuilding the memory
+  snapshot is the likely cause (not checked). If it recurs after later
+  deploys, warming the GPU at the end of the deploy would hide it, for a
+  few cents per deploy.
 
 ### H82. Aiming the refiner (S27) does not pay: photo edges change nothing (22 / 24), a doubt-gated wide reach is worse but less so than the plain wide one (20 / 42); the wide reach, isolated, is what took B28, 2026-10-07
 
@@ -6889,3 +6902,4 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-07 | 37628852627 / 37628956583 / 37629069477 | 81 (locked) | S30 `layers: compare` (blocks 8 and 16 squeezed to 256 each, fresh extraction), seeds 7/8/9, CPU | ~21-22% (edge refined + stage 3, span, veto) | — | **H85.** Middle layers 29 / 23, -0.1 [-0.4, +0.1], p 0.49; B20 73 -> 48, B19 79 -> 65. Not adopted |
 | 2026-10-07 | 37666184686 / 37666283016 / 37666382432 | 81 (locked) | S31 `layers: variants` (block 8 alone 256; block 16 alone 256; both at 64), cached features, seeds 7/8/9, CPU | 21.2 / 22.0 / 22.4% (edge refined + stage 3, span, veto) | — | **H86.** Layer 8 28 / 24, p 0.68; layer 16 30 / 19, p 0.15; both small 28 / 25, p 0.78. B20 73 -> 57-59, B19 79 -> 68-71. None adopted |
 | 2026-10-08 | 37709290743 (workflow 7) | 25 approved maps drawn by release 1 | live-release score: the release's outline vs the finished one, by `model_version` | — | 23.4% (release 1, live) | **H87.** First live measurement; folds had said 24.0%. v2 drew none, v3 one (unreviewed) |
+| 2026-10-08 | 37709603931 / 37710689178 (workflow 32) | 8 timing lots | live server after `lot` (downloads first, then GPU) | — | — | GPU 2.7 s per warm lot (12.3 before), waiting 1.1 (11.0). First press after the deploy timed out; cold press 29 s |
