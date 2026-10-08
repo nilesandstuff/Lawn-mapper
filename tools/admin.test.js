@@ -2076,5 +2076,48 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
   check('the card can fetch a missing photo', res.status === 200 && res.body.hasImage && put.length === 1, JSON.stringify(res.body));
   check('and a big frame asks Mapbox for no more than it serves', w <= 1280 && h <= 1280, `${w}x${h}`);
 }
+/* ------------------------- the Mapbox side of a pair (owner, 2026-10-08) */
+/*
+ * A map FINISHED on a county photo: tracing it again on Mapbox goes to
+ * county_imagery.mapbox_shapes, with the county outline copied beside it, and
+ * the row is made if the nightly pass never banked one. Without a bucket the
+ * Mapbox photo is not banked and the answer says so.
+ */
+{
+  const { recordFinished } = await import('../worker/src/corpus.js');
+  const { env, ownerToken } = await world();
+  const ring = [[-85.5, 42.9], [-85.5, 42.9005], [-85.4995, 42.9005], [-85.5, 42.9]];
+  const made = await recordFinished(env, {
+    lng: -85.5, lat: 42.9, model: 'alpha', mode: 'find', provider: 'county',
+    shapes: [{ type: 'Polygon', coordinates: [ring] }], detectedSqFt: 100, squareFeet: 100,
+  });
+  check('a county-drawn map is stored', made.ok === true, made.reason || '');
+  const id = made.id || (await env.DB.prepare('SELECT id FROM corpus ORDER BY at DESC LIMIT 1').first()).id;
+  await env.DB.prepare("UPDATE corpus SET status = 'approved', image_provider = 'county', image_key = 'maps/county/t.png', county_align = '{\"east\":0.4,\"north\":-0.6,\"scale\":1}' WHERE id = ?1").bind(id).run();
+
+  const listed = (await ask(env, ownerToken, 'county-list')).body;
+  check('the editor lists it, marked as drawn on the county photo, without a county_imagery row',
+    listed.maps?.some((m) => m.id === id && m.drawn_on === 'county'), JSON.stringify(listed.maps?.map((m) => [m.id, m.drawn_on])));
+
+  const doc = (await ask(env, ownerToken, `county?id=${encodeURIComponent(id)}`)).body;
+  check('opening it makes its county_imagery row from the map\'s own photo and alignment',
+    doc.drawn_on === 'county' && doc.mapbox_shapes === null && Math.abs(Number(doc.east) - 0.4) < 1e-9 && doc.review === 'ok',
+    JSON.stringify({ drawn_on: doc.drawn_on, east: doc.east, review: doc.review, error: doc.error }));
+
+  const saved = await ask(env, ownerToken, 'county-outlines', {
+    method: 'POST', body: { id, side: 'mapbox', shapes: [{ type: 'Polygon', coordinates: [ring] }] },
+  });
+  check('a Mapbox-side trace is kept as mapbox_shapes', saved.status === 200 && saved.body.ok && saved.body.side === 'mapbox', JSON.stringify(saved.body));
+  check('and without a bucket the Mapbox photo is not banked, and it says so', saved.body.mapboxImage === false);
+  const row = await env.DB.prepare('SELECT shapes, mapbox_shapes, mapbox_image_key FROM county_imagery WHERE id = ?1').bind(id).first();
+  const corpusShapes = (await env.DB.prepare('SELECT shapes FROM corpus WHERE id = ?1').bind(id).first()).shapes;
+  check('the county outline is copied beside it, untouched', row.shapes === corpusShapes && row.mapbox_shapes && !row.mapbox_image_key);
+
+  const wrong = await ask(env, ownerToken, 'county-outlines', {
+    method: 'POST', body: { id: 'nope', side: 'mapbox', shapes: [{ type: 'Polygon', coordinates: [ring] }] },
+  });
+  check('an unknown map is refused', wrong.status === 400 || wrong.status === 404, String(wrong.status));
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);

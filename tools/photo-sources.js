@@ -24,8 +24,10 @@ console.log(`${Object.values(m).filter((v) => v === 'county').length} of ${Objec
 try {
   const both = query(`SELECT c.id, c.lot_no, c.image_provider, ci.outlines_at
                         FROM county_imagery ci JOIN corpus c ON c.id = ci.id
-                       WHERE c.status = 'approved' AND ci.shapes IS NOT NULL AND ci.image_key IS NOT NULL
-                         AND (ci.review IS NULL OR ci.review != 'off')`);
+                       WHERE c.status = 'approved' AND ci.image_key IS NOT NULL
+                         AND (ci.review IS NULL OR ci.review != 'off')
+                         AND ((c.image_provider != 'county' AND ci.shapes IS NOT NULL)
+                              OR (c.image_provider = 'county' AND ci.mapbox_shapes IS NOT NULL AND ci.mapbox_image_key IS NOT NULL))`);
   const names = both.map((r) => `${mapName(r.id, r.lot_no) || r.id.split(':')[0]} (${r.image_provider || '?'})`);
   console.log(`${both.length} approved maps have an outline traced on the county photo as well: ${names.join(', ') || 'none'}`);
 } catch (e) {

@@ -95,10 +95,14 @@ export const imageKeyFor = (id, source) =>
  * call here would store nothing at all. The detection log learned that one the
  * hard way; see index.js.
  */
-export async function storeImage(env, row) {
-  if (!env?.CORPUS || !env?.DB || !row?.frame) return { ok: false, reason: 'no-bucket' };
-
-  const source = imageSourceFor(row.provider);
+/**
+ * The photograph of one map's frame, fetched and kept under `key` -- and
+ * nothing else: no row is touched. storeImage below is this plus the corpus
+ * row's image columns; the county editor's Mapbox side of a pair (2026-10-08)
+ * is this alone, since that map's own photo is the county one.
+ */
+export async function captureImage(env, row, source, key = imageKeyFor(row?.id, source)) {
+  if (!env?.CORPUS || !row?.frame) return { ok: false, reason: 'no-bucket' };
   const token = env.MAPBOX_SERVER_TOKEN || env.MAPBOX_TOKEN;
   if (source === 'mapbox' && !token) return { ok: false, reason: 'no-token' };
 
@@ -126,23 +130,28 @@ export async function storeImage(env, row) {
      * that look like coverage.
      */
     if (!type.startsWith('image/')) return { ok: false, reason: 'not-an-image' };
-
-    const key = imageKeyFor(row.id, source);
     await env.CORPUS.put(key, res.body, { httpMetadata: { contentType: type } });
-    /* The frame the picture was taken on travels with it. A mask rasterised
-       against the display frame would not line up with a photograph taken at a
-       different zoom, and nothing downstream should have to infer which. */
-    await env.DB.prepare(
-      'UPDATE corpus SET image_key = ?2, image_provider = ?3, image_frame = ?4 WHERE id = ?1'
-    ).bind(row.id, key, source, JSON.stringify(shot.frame)).run();
     return {
-      ok: true, key, source,
+      ok: true, key, source, frame: shot.frame,
       groundCm: Math.round(shot.groundM * 1000) / 10,
       capped: shot.capped,
     };
   } catch (e) {
     return { ok: false, reason: e?.name === 'TimeoutError' ? 'timed-out' : 'fetch-failed' };
   }
+}
+
+export async function storeImage(env, row) {
+  if (!env?.CORPUS || !env?.DB || !row?.frame) return { ok: false, reason: 'no-bucket' };
+  const got = await captureImage(env, row, imageSourceFor(row.provider));
+  if (!got.ok) return got;
+  /* The frame the picture was taken on travels with it. A mask rasterised
+     against the display frame would not line up with a photograph taken at a
+     different zoom, and nothing downstream should have to infer which. */
+  await env.DB.prepare(
+    'UPDATE corpus SET image_key = ?2, image_provider = ?3, image_frame = ?4 WHERE id = ?1'
+  ).bind(row.id, got.key, got.source, JSON.stringify(got.frame)).run();
+  return { ok: true, key: got.key, source: got.source, groundCm: got.groundCm, capped: got.capped };
 }
 
 /**

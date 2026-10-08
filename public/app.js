@@ -7231,7 +7231,10 @@ function readReviewRequest() {
   const id = params.get('review');
   /* On the county photo (/county.html's Edit outlines): what is saved then
      belongs to that photo, not to the corpus row. */
-  state.reviewPhoto = params.get('photo') === 'county' ? 'county' : null;
+  /* ...or on Mapbox, for a map that was FINISHED on the county photo: the
+     other half of a pair (owner, 2026-10-08). */
+  const photo = params.get('photo');
+  state.reviewPhoto = photo === 'county' || photo === 'mapbox' ? photo : null;
   // Where to go afterwards: the console by default, /maps or /county when they sent us.
   const back = params.get('back');
   state.reviewBack = back === 'maps' ? '/maps.html'
@@ -7669,7 +7672,8 @@ async function openCandidate(id) {
     return;
   }
   let county = null;
-  if (state.reviewPhoto === 'county') {
+  const onCounty = state.reviewPhoto === 'county';
+  if (state.reviewPhoto) {
     try {
       const res = await fetch(`/api/admin/county?id=${encodeURIComponent(id)}`);
       if (!res.ok) throw new Error(String(res.status));
@@ -7681,10 +7685,12 @@ async function openCandidate(id) {
     /* Start from the outlines already traced on the county photo, or from the
        Mapbox ones -- the county photo was put on Mapbox's ground, so they
        land where they were traced, and only what differs needs moving. */
-    if (Array.isArray(county.county_shapes)) {
-      s = { ...s, shapes: county.county_shapes.map((f) => ({ geometry: f.geometry || f, properties: f.properties || {} })) };
+    const mine = onCounty ? county.county_shapes : county.mapbox_shapes;
+    const mineNot = onCounty ? county.county_not_lawn : county.mapbox_not_lawn;
+    if (Array.isArray(mine)) {
+      s = { ...s, shapes: mine.map((f) => ({ geometry: f.geometry || f, properties: f.properties || {} })) };
     }
-    if (Array.isArray(county.county_not_lawn)) s = { ...s, notLawn: county.county_not_lawn };
+    if (Array.isArray(mineNot)) s = { ...s, notLawn: mineNot };
   }
   openMap(s);
   /*
@@ -7695,18 +7701,25 @@ async function openCandidate(id) {
   state.reviewingId = id;
   $('#review-bar').hidden = false;
   const toList = state.reviewBack === '/maps.html';
-  $('#btn-review-save').textContent = county ? 'Save on the county photo and go back'
+  $('#btn-review-save').textContent = county
+    ? (onCounty ? 'Save on the county photo and go back' : 'Save on the Mapbox photo and go back')
     : toList ? 'Save and return to the map list' : 'Save and return to the console';
-  $('#btn-review-photo').hidden = !county;
+  $('#btn-review-photo').hidden = !(county && onCounty);
   $('#review-bar .sub').textContent = county
-    ? 'Outlines on the county photo. What you save here is kept for this photo only.'
+    ? (onCounty ? 'Outlines on the county photo. What you save here is kept for this photo only.'
+      : 'Outlines on Mapbox, for a map that was drawn on the county photo. What you save here is kept for Mapbox only.')
     : 'Reviewing a training candidate. Fix whatever is off, then come back.';
-  if (county) {
+  if (county && onCounty) {
     showCountyPhoto(id, county);
     setStatus(Array.isArray(county.county_shapes)
       ? 'Editing the outlines you traced on the county photo. The Mapbox ones are kept separately.'
       : 'Editing on the county photo, starting from the outlines traced on Mapbox. Move what differs here -- '
         + 'roofs and trees lean differently in this photo, and things may have changed. The Mapbox outlines are kept.');
+  } else if (county) {
+    setStatus(Array.isArray(county.mapbox_shapes)
+      ? 'Editing the outlines you traced on Mapbox. The county-photo ones are kept separately.'
+      : 'Editing on Mapbox, starting from the outlines traced on the county photo. Move what differs here -- '
+        + 'roofs and trees lean differently, and things may have changed. The county-photo outlines are kept.');
   } else {
     setStatus('Reviewing a training candidate. Fix whatever is off, then use the buttons above to go back.');
   }
@@ -7762,7 +7775,7 @@ function toggleCountyPhoto() {
  */
 async function leaveReview(save) {
   if (!state.reviewingId) return;
-  if (state.reviewPhoto === 'county') { leaveCountyEdit(save); return; }
+  if (state.reviewPhoto) { leaveCountyEdit(save); return; }
   /*
    * WAITED FOR (owner, 2026-10-04: saved on the county photo, the console
    * still showed Mapbox's). Leaving the page could cancel the save in flight,
@@ -7797,11 +7810,12 @@ async function leaveCountyEdit(save) {
       setStatus('There is nothing to save: draw the lawn (or the not-lawn areas) first.', 'warn');
       return;
     }
-    busy('Saving the county outlines…');
+    const side = state.reviewPhoto === 'mapbox' ? 'mapbox' : 'county';
+    busy(side === 'mapbox' ? 'Saving the Mapbox outlines (and banking Mapbox\'s photo)…' : 'Saving the county outlines…');
     try {
       const res = await fetch('/api/admin/county-outlines', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: state.reviewingId, shapes, notLawn }),
+        body: JSON.stringify({ id: state.reviewingId, shapes, notLawn, side }),
       });
       const out = await res.json().catch(() => ({}));
       if (!res.ok || !out.ok) throw new Error(out.error || `HTTP ${res.status}`);

@@ -902,7 +902,13 @@ CREATE TABLE IF NOT EXISTS county_imagery (
   outlines_at     TEXT,
   outlines_by     TEXT,
   mapbox_shapes   TEXT,
-  mapbox_not_lawn TEXT
+  mapbox_not_lawn TEXT,
+  -- THE OTHER PHOTO OF A PAIR (owner, 2026-10-08: tracing the same lawn on
+  -- both photos). For a map FINISHED on a county photo, corpus.image_key is
+  -- that photo and this is Mapbox's picture of the same frame, banked when
+  -- a Mapbox outline is first saved on it (mapbox_shapes). The matching
+  -- ALTER is in migrations.sql.
+  mapbox_image_key TEXT
 );
 
 -- COUNTY AND STATE PHOTO SERVICES, FOR ANY ADDRESS (owner, 2026-10-01: "make

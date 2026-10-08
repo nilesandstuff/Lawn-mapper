@@ -37,8 +37,11 @@ export function doubtful(m) {
     || Math.hypot(Number(m.east) || 0, Number(m.north) || 0) > 9;
 }
 
-/** Where the editor opens this map on its county photo, and comes back to. */
-export const editHref = (id) => `/#review=${encodeURIComponent(id)}&photo=county&back=county`;
+/** Where the editor opens this map to trace on one photo, and comes back to:
+    the county photo for a map drawn on Mapbox, Mapbox for one drawn on the
+    county photo (the other half of its pair, owner 2026-10-08). */
+export const editHref = (id, side = 'county') => `/#review=${encodeURIComponent(id)}&photo=${side}&back=county`;
+export const editSide = (m) => (m?.drawn_on === 'county' ? 'mapbox' : 'county');
 
 export const FILTERS = {
   todo: (m) => !m.review,
@@ -95,8 +98,12 @@ function draw() {
   for (const rings of polygonsOf(parcel)) add('parcel', rings);
   /* Outlines traced on the county photo when there are any, with the Mapbox
      ones faint beneath them so the difference shows; otherwise Mapbox's. */
-  const edited = Array.isArray(view.doc.county_shapes);
-  const sets = edited ? [['mapbox-was', view.doc.shapes, view.doc.not_lawn], ['', view.doc.county_shapes, view.doc.county_not_lawn]]
+  /* For a map drawn on the county photo, the traced pair is the Mapbox side
+     and the faint reference is the map's own (county) outline. */
+  const countyDrawn = view.doc.drawn_on === 'county';
+  const pair = countyDrawn ? [view.doc.mapbox_shapes, view.doc.mapbox_not_lawn] : [view.doc.county_shapes, view.doc.county_not_lawn];
+  const edited = Array.isArray(pair[0]);
+  const sets = edited ? [['mapbox-was', view.doc.shapes, view.doc.not_lawn], ['', ...pair]]
     : [['', view.doc.shapes, view.doc.not_lawn]];
   for (const [extra, shapes, notLawn] of sets) {
     for (const f of shapes || []) {
@@ -236,7 +243,9 @@ function describe(d) {
   } else {
     pill(`auto-aligned ${Number(d.east).toFixed(2)} m E, ${Number(d.north).toFixed(2)} m N (old method)`, 'warn');
   }
-  if (Array.isArray(d.county_shapes)) pill(`outlines edited on this photo${d.outlines_by ? ` by ${d.outlines_by}` : ''}`, 'ok');
+  if (d.drawn_on === 'county') pill('drawn on the county photo', 'warn');
+  if (Array.isArray(d.county_shapes) && d.drawn_on !== 'county') pill(`outlines edited on this photo${d.outlines_by ? ` by ${d.outlines_by}` : ''}`, 'ok');
+  if (Array.isArray(d.mapbox_shapes) && d.drawn_on === 'county') pill(`traced on Mapbox too${d.outlines_by ? ` by ${d.outlines_by}` : ''}`, 'ok');
   if (d.review) pill(d.review === 'ok' ? 'lines up' : "don't use", d.review);
   if (d.status) pill(`map ${d.status}`);
 }
@@ -263,10 +272,17 @@ async function open(i) {
   const mb = $('#mapbox');
   const ct = $('#county');
   const loaded = (img) => new Promise((ok, bad) => { img.onload = ok; img.onerror = () => bad(new Error(`${img.alt} did not load`)); });
-  const both = Promise.all([loaded(mb), loaded(ct)]);
-  mb.src = `/api/admin/candidate-image?id=${encodeURIComponent(m.id)}`;
+  /* A map drawn on the county photo: its own photo is the county one, and
+     Mapbox's picture of the frame exists only once a Mapbox outline was saved. */
+  const countyDrawn = d.drawn_on === 'county';
+  const waits = [loaded(ct)];
+  if (!countyDrawn) { waits.push(loaded(mb)); mb.src = `/api/admin/candidate-image?id=${encodeURIComponent(m.id)}`; }
+  else if (d.mapbox_image) { waits.push(loaded(mb)); mb.src = `/api/admin/county-mapbox-image?id=${encodeURIComponent(m.id)}&v=${encodeURIComponent(d.outlines_at || '')}`; }
+  else { mb.removeAttribute('src'); }
   ct.src = `/api/admin/county-image?id=${encodeURIComponent(m.id)}&v=${encodeURIComponent(d.banked_at || '')}`;
-  try { await both; } catch (e) { error(String(e.message || e)); }
+  $('#edit').textContent = countyDrawn ? 'Trace the outlines on Mapbox' : 'Edit outlines';
+  try { await Promise.all(waits); } catch (e) { error(String(e.message || e)); }
+  if (countyDrawn && !d.mapbox_image) error('Drawn on the county photo; no Mapbox photo yet. "Trace the outlines on Mapbox" traces the pair and banks it.');
   view.w = mb.naturalWidth || ct.naturalWidth;
   view.h = mb.naturalHeight || ct.naturalHeight;
   if (ct.naturalWidth && (ct.naturalWidth !== view.w || ct.naturalHeight !== view.h)) {
@@ -323,7 +339,7 @@ function labelOptions() {
     const m = view.list[i];
     const o = document.createElement('option');
     o.value = String(i);
-    o.textContent = `${m.review === 'ok' ? '✓ ' : m.review === 'off' ? '✗ ' : doubtful(m) ? '? ' : ''}${m.outlines_at ? '✎ ' : ''}${m.county || m.id.slice(0, 24)}`;
+    o.textContent = `${m.review === 'ok' ? '✓ ' : m.review === 'off' ? '✗ ' : doubtful(m) ? '? ' : ''}${m.outlines_at ? '✎ ' : ''}${m.drawn_on === 'county' ? 'on county: ' : ''}${m.county || m.id.slice(0, 24)}`;
     pick.append(o);
   }
   if (!idx.includes(view.at) && view.list[view.at]) {
@@ -388,7 +404,7 @@ async function start() {
   $('#help').addEventListener('pointerdown', (e) => e.stopPropagation());
   $('#edit').addEventListener('click', () => {
     const m = view.list[view.at];
-    if (m) location.href = editHref(m.id);
+    if (m) location.href = editHref(m.id, editSide(m));
   });
   const again = back ? view.list.findIndex((m) => m.id === back) : -1;
   if (again >= 0) {
