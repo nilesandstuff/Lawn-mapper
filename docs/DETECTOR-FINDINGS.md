@@ -6156,20 +6156,44 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
-### S32. Is it the county photo or the lot? (2026-10-08 -- PROPOSED, NOT BUILT)
+### S32. Is it the county photo or the lot? (2026-10-08 -- the first design WITHDRAWN; two honest ones proposed, not built)
 
 **Why (H88):** the 12 county-photo lots score 55% against 19% for Mapbox
 lots, and the county photo is now the default for most addresses, so most
 live detections run on one. Whether the photo or the lot is to blame decides
 whether the county default should stay.
 
-**The test it needs:** score the same 12 lots with the Mapbox photo of the
-same frame (fetched by frame; none is stored for them) beside their county
-photo, everything else equal, against the outlines as drawn. The outlines
-were drawn on the county photo, and the owner says the two rarely line up
-because of perspective, so the Mapbox side carries a built-in penalty: if
-Mapbox still scores clearly better, the photo is the problem; if it scores
-worse, the lots are. Free runner. Not built until the owner says.
+**Withdrawn (owner, 2026-10-08: "the photos don't line up perfectly"):**
+scoring the 12 county-drawn outlines on the Mapbox photo of the same frame.
+The ground lines up to about half a metre (H64), but roofs and trees lean
+differently by metres (H63) and the owner's own experience is that a lawn
+outline drawn on one photo does not fit the other. So that test measures the
+misfit at least as much as the model, and a "Mapbox is worse" result would
+not mean the lots are hard. The clean version needs an outline drawn on EACH
+photo of the same lot; only 3 approved maps have both (B08, C59, C35, all
+drawn on Mapbox first), too few.
+
+**Two designs that do answer it:**
+
+1. **Live use, split by photo (cheap, no misfit, slow).** Workflow 7's
+   live-release score (H87) already compares what the release drew with what
+   the person finished; both are on the photo the AI read, so there is no
+   misfit. Split it by `image_provider`. Needs finished, approved maps on
+   county photos drawn by the current release -- the county default means
+   they accumulate from real use.
+2. **Does county training data help county lots? (free runner, one run.)**
+   Train on the 69 Mapbox lots only and score the 12 county lots, against the
+   usual folds where the other 11 county lots are in training. A clear gain
+   from having county examples says the county look is a separate thing the
+   decoder has to learn (the B case in the owner's question) and 12 is not
+   enough of it; no gain leaves "the lots are hard" and "12 is too few to
+   matter" both open. Lot held fixed, photo held fixed; only the training
+   set moves.
+
+**If the owner traced the 12 county lots on Mapbox as well**, the paired
+test would be exact: each photo against the outline drawn on it, same lot.
+The county editor stores an outline the other way round (county outlines on
+Mapbox-drawn maps, county_imagery.shapes); the reverse has no tool yet.
 
 ### S31. Chasing H85's parking-lot gain with less of the middle layers (owner, 2026-10-07 -- MEASURED: NONE PASSES, H86)
 
