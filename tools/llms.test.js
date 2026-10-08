@@ -32,6 +32,13 @@ console.log('llms.txt: ok');
   // showed it "The map didn't load" over the landing (2026-10-08).
   assert.match(robots, /Allow: \/api\/config\n/);
   assert.match(robots, /Allow: \/api\/coverage\n/);
+  // Named crawlers share the wildcard's rules: one group, so none of them
+  // escapes Disallow: /api/ by having a group of its own.
+  for (const a of ['Googlebot', 'Bingbot', 'OAI-SearchBot', 'Claude-SearchBot', 'PerplexityBot']) {
+    assert.match(robots, new RegExp(`User-agent: ${a}\\n`));
+  }
+  assert.equal((robots.match(/Disallow:/g) || []).length, 1, 'one group, one set of rules');
+  assert.match(robots, /User-agent: MistralAI-User\nUser-agent: \*\n/);
   assert.match(robots, /https:\/\/example\.test\/llms\.txt/);
   console.log('unknown files 404, deep links still open the app, robots says yes to search and AI answers: ok');
 }

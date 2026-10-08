@@ -50,6 +50,10 @@
     "Free, with no ads, no analytics or ad trackers, and no address sold or passed to contractors"
   ],
   "applicationCategory": "UtilitiesApplication",
+  "applicationSubCategory": "Lawn measurement",
+  "isAccessibleForFree": true,
+  "inLanguage": "en-US",
+  "screenshot": "__SITE__/og-image.png?v=2",
   "operatingSystem": "Any",
   "browserRequirements": "Requires JavaScript",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
@@ -865,42 +869,51 @@
 
       <details class="help">
         <summary>How to correct the shape</summary>
+        <!--
+          IN THE TOUR'S WORDS (owner, 2026-10-08). The names and one-line
+          descriptions match TOURS in app.js -- Pan, Move, Points, Brushes,
+          Add, Erase, Fine and Bulk, Delete point, Point eraser, New shape,
+          Cut out -- so the help and the arrows on the map never call one
+          button two things. Change both together.
+        -->
         <ul>
-          <li>The buttons down the right of the map choose <b>what you are
-            editing</b>. Only that thing responds to a touch, so correcting a
-            lawn outline can no longer move the property line by accident.</li>
-          <li><b>Line</b> edits the property boundary: tap a line to slide that
-            whole edge out to the road, or a corner to move, add or delete it.</li>
+          <li>The buttons down the right of the map choose what a touch does.
+            <b>Pan</b> moves around the map without changing any shapes.
+            <b>Move</b> drags whole lawn shapes, and is the only mode that can,
+            so a stray touch with a brush never slides your lawn away.</li>
+          <li><b>Brushes</b> add or remove lawn areas (fast but imprecise, and
+            great on a phone). <b>Add</b> draws lawn in: it grows a shape,
+            starts a new one, or joins two. <b>Erase</b> rubs out what is not
+            lawn &mdash; a driveway the AI grabbed, a flower bed, a neighbour's
+            grass. <b>Fine</b> and <b>Bulk</b> change the brush size.</li>
+          <li><b>Points</b> adds, removes and drags the points of the outline
+            (slow but precise). Drag a point to move it; tap the middle of a
+            line to add one. Tapping a line wins over tapping a point, so aim
+            right at a dot when you want the point itself.</li>
+          <li>With Points: <b>Delete point</b> deletes the selected point, and
+            <b>Point eraser</b> deletes each point you tap.</li>
+          <li><b>New shape</b> places points to make a lawn shape from scratch.
+            <b>Cut out</b> is its opposite: the points trace something to take
+            out of a lawn, like a shed or a playset. Tap the checkmark to
+            finish either one.</li>
+          <li><b>Undo</b> and <b>Redo</b> are on the map as well as in this
+            drawer, since the map is where you are looking when something goes
+            wrong.</li>
+          <li>In this drawer, <b>Delete selected</b> removes a shape you don't
+            mow, and <b>Draw inferred lawn</b> marks grass you know is there but
+            cannot see, such as under trees. It still counts in the total and is
+            kept apart from the lawn you can see.</li>
           <li><b>Layers</b>, on the left of the map, switches between
-            photographs of the same ground taken in different years and
-            different light. Only the sources marked as measurable can be sent
-            to the AI; the rest are there to look at, and detection quietly
-            falls back to Mapbox for those. If shadows or leaf cover are hiding
-            your lawn, try another picture and detect again.</li>
-          <li><b>Lawn</b> edits the measured shape, with three tools:
-            <b>Points</b> to drag corners, <b>Add</b> to paint lawn in, and
-            <b>Erase</b> to rub out anything that is not lawn — a driveway the
-            AI grabbed, a flower bed, a neighbour's grass. The outline redraws
-            itself around what is left.</li>
-          <li><b>Add</b> works on an empty map too, so you can paint a lawn from
-            scratch instead of placing corners.</li>
-          <li>Tapping a line wins over tapping a corner, so extending stays the
-            easy gesture — aim right at a dot when you want the point itself.</li>
-          <li><b>Move</b> is the only mode where a whole shape can be dragged.
-            Everywhere else shapes are locked, so a stray touch with a brush
-            cannot slide your lawn across the map.</li>
-          <li><b>Trim or extend the edge</b> pulls the detected outline in or
-            pushes it out by up to three feet, all the way round. It re-reads
-            the detection you already paid for, so it costs nothing and runs no
-            new detection. Pulling in is the quickest way to shed thin slivers
-            the AI ran along a driveway or a fence.</li>
-          <li><b>Undo</b> is on the map as well as below it, since that is
-            where you are looking when something goes wrong.</li>
-          <li><b>Delete selected</b> removes a shape you don't mow.</li>
-          <li><b>Draw it myself</b> adds another patch — areas add up.</li>
+            photographs of the same ground from different years and light. Your
+            shapes are saved on the Mapbox photo; trace on another if it is
+            clearer, but line it up first.</li>
+          <li>The property line is edited on the first tab, <b>Property
+            line</b>. Shapes stop at it unless <b>Measure outside the property
+            line</b> is on.</li>
+          <li><b>Trim or extend the edge</b>, on the AI tab, pulls the detected
+            outline in or pushes it out by up to three feet, all the way round,
+            without running a new detection.</li>
           <li>Yellow dots are corners taken straight from the county map.</li>
-          <li>The AI finds grass inside your property line only — the
-            neighbours' lawn is trimmed off automatically.</li>
         </ul>
         </details>
       </div>

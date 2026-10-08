@@ -57,6 +57,14 @@ import { accountsEnabled, publicUser } from './db.js';
 import { currentUser } from './auth.js';
 import { recordParcelGap } from './gaps.js';
 import { llmsTxt } from './llms.js';
+
+/* Named in robots.txt (see the case there): search engines, then the AI
+   assistants' search and on-request fetch agents. */
+const ROBOTS_AGENTS = [
+  'Googlebot', 'Bingbot', 'DuckDuckBot', 'Applebot', 'YandexBot',
+  'OAI-SearchBot', 'ChatGPT-User', 'Claude-SearchBot', 'Claude-User',
+  'PerplexityBot', 'Perplexity-User', 'MistralAI-User',
+];
 import { versionHistory } from './model-versions.js';
 // Constants and the version lookup live in their own module: a Workers
 // entrypoint may only export handlers, and exporting a plain constant from
@@ -1705,10 +1713,23 @@ export default {
          * (499)" over the landing. Both are read-only and the same for
          * everybody; the longer rule wins, so the rest of /api/ stays shut.
          */
+        /*
+         * THE CRAWLERS BY NAME (owner, 2026-10-08), in ONE group with the
+         * wildcard. A crawler that finds a group naming it ignores the `*`
+         * group entirely, so separate groups would each need every rule
+         * repeated, and one forgotten would quietly open /api/ to it. Several
+         * User-agent lines over one set of rules is the standard way to name
+         * them without that risk. These are the search engines and the AI
+         * assistants' search and fetch agents. The TRAINING crawlers (GPTBot,
+         * ClaudeBot, Google-Extended, Applebot-Extended, CCBot) are left to
+         * the wildcard, which allows them, until the owner decides on
+         * training -- naming them would be a statement this file has not made.
+         */
         case '/robots.txt':
           return new Response(
             '# Search engines and AI assistants are welcome. A plain-language summary\n'
             + `# of this site for AI assistants: ${url.origin}/llms.txt\n`
+            + ROBOTS_AGENTS.map((a) => `User-agent: ${a}\n`).join('')
             + `User-agent: *\nContent-Signal: search=yes, ai-input=yes\nAllow: /\nAllow: /api/config\nAllow: /api/coverage\nDisallow: /api/\n\nSitemap: ${url.origin}/sitemap.xml\n`,
             { headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=86400' } }
           );
