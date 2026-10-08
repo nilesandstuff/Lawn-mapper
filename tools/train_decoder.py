@@ -92,6 +92,31 @@ LIMIT = int(os.environ.get("LIMIT", "0") or 0)
 HOLDOUT = (os.environ.get("HOLDOUT", "") or "").strip()
 HOLDOUT_SOURCES = os.environ.get("HOLDOUT_SOURCES", "")
 HOLDOUT_SAMPLE_SEED = int(os.environ.get("HOLDOUT_SAMPLE_SEED", "7") or 7)
+# INFERRED LAWN THE OWNER DOES NOT TRUST (owner, 2026-10-08). corpus.inferred_doubt
+# = 1 marks a map whose inferred areas are a guess; workflow 14 writes those
+# ids to inferred-doubt.json (tools/inferred-doubt.js) and such a lot is
+# graded on seen ground only -- exactly as every lot was before H78 -- while
+# the rest stay taught under trees. No file means every inferred mark is
+# taught, and main says which.
+INFERRED_DOUBT = os.environ.get("INFERRED_DOUBT", "inferred-doubt.json")
+
+
+def _doubted(path=INFERRED_DOUBT):
+    try:
+        with open(path) as f:
+            return set(json.load(f).get("ids", []))
+    except (OSError, ValueError):
+        return set()
+
+
+DOUBTED = _doubted()
+
+
+def taught_for(stem):
+    """Whether this lot's unseen ground is graded (taught under trees)."""
+    return UNDER_TREES and not is_example(stem) and stem not in DOUBTED
+
+
 # Folds; unset or 0 means leave-one-out (see main). "place" is grouped
 # folds: lots within NEIGHBOUR_KM of each other are always held out together.
 FOLDS_RAW = (os.environ.get("FOLDS", "") or "").strip()
@@ -362,7 +387,7 @@ def read_lawn(feats, frames, stem, shape):
     unseen, _ = box_targets(inferred, gw, gh, cx, cy)
     # Graded where it is on the photograph, inside the line, and seen --
     # or, taught under trees, unseen too (not on an example frame).
-    taught = UNDER_TREES and not is_example(stem)
+    taught = taught_for(stem)
     weight = inside * allowed * (1.0 if taught else (1.0 - unseen))
     wrong = None
     if CORRECTIONS_WEIGHT and not is_example(stem):
@@ -681,6 +706,10 @@ def main():
     if UNDER_TREES:
         print("TAUGHT UNDER TREES: inferred lawn and canopy over traced lawn are graded as the tracer "
               "drew them (lawn), not left out", flush=True)
+        doubted = [L["id"] for L in lawns if L["id"] in DOUBTED]
+        print(f"  INFERRED DOUBT: {len(doubted)} lot(s) marked by the owner are graded on seen ground only"
+              f" ({', '.join(d[:24] for d in doubted) or 'none'}); "
+              f"{'read from ' + INFERRED_DOUBT if os.path.exists(INFERRED_DOUBT) else 'no ' + INFERRED_DOUBT + ', so every inferred mark is taught'}", flush=True)
 
     # NOT-LAWN EXAMPLES TRAIN, THEY ARE NEVER HELD OUT. They join every
     # fold's training -- except that a fold does not see an example within

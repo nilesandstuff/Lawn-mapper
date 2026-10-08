@@ -49,5 +49,16 @@ check('a missing row is simply absent, not an error', pool([run([1, 2, 3])], 'no
   check('a missing record is Mapbox', photoOf('q', {}, null) === 'mapbox' && photoOf('q', {}, { q: 'county' }) === 'county');
 }
 
+/* Measured on seen ground (owner, 2026-10-08). */
+{
+  const mk = (rows) => ({ rows: [{ name: 'r', lots: rows }] });
+  const f = mk([{ id: 'x', error: 50, seen: 10 }, { id: 'y', error: 20, seen: 20 }, { id: 'z', error: 30, seen: null }, { id: 'old', error: 25 }]);
+  const all = pool([f], 'r');
+  const seen = pool([f], 'r', 'seen');
+  check('all: every lot by its whole-lawn error', all.mean.get('x').error === 50 && all.mean.size === 4);
+  check('seen: a lot with inferred ground is judged on what was seen; one with nothing seen, or from results older than the figure, drops out',
+    seen.mean.get('x').error === 10 && seen.mean.get('y').error === 20 && !seen.mean.has('z') && !seen.mean.has('old') && seen.mean.size === 2);
+}
+
 if (failures) { console.log(`\n${failures} failed.`); process.exit(1); }
 console.log('\nAll checks passed.');

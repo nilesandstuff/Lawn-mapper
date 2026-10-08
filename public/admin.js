@@ -515,6 +515,36 @@ function drawCandidate(c) {
   paintCanopy();
 
   /*
+   * INFERRED LAWN THE OWNER DOES NOT TRUST (owner, 2026-10-08: "some maps
+   * would just straight up require guessing"). Every inferred mark is taught
+   * as lawn since H78; this is the per-map way to say the guess on THIS map is
+   * not worth teaching. The lot still trains on what can be seen.
+   */
+  const DOUBT = [
+    [false, 'Teach it', 'The inferred lawn here is a sound judgement: train on it as lawn.'],
+    [true, "Don't teach it", 'The inferred lawn here is a guess. The lot still trains on what can be seen; its inferred part carries no weight.'],
+  ];
+  let doubt = c.inferredDoubt === 1 ? true : c.inferredDoubt === 0 ? false : null;
+  const askDoubt = el('div', 'ask');
+  askDoubt.append(el('h3', null, 'Lawn marked as inferred under the trees'));
+  const doubtChoices = el('div', 'choices');
+  const doubtButtons = DOUBT.map(([value, label, note]) => {
+    const b = el('button', null, label);
+    b.title = note;
+    b.addEventListener('click', () => { doubt = value; paintDoubt(); });
+    return b;
+  });
+  const doubtNote = el('p', 'meta', '');
+  const paintDoubt = () => {
+    doubtButtons.forEach((b, i) => { b.className = DOUBT[i][0] === doubt ? 'on' : ''; });
+    doubtNote.textContent = doubt === null ? 'Taught as lawn unless you say otherwise.' : DOUBT.find(([v]) => v === doubt)[2];
+  };
+  doubtChoices.append(...doubtButtons);
+  askDoubt.append(doubtChoices, doubtNote);
+  box.append(askDoubt);
+  paintDoubt();
+
+  /*
    * THE GRADING QUEUE OFFERS NO VERDICT, because the verdict is already in.
    *
    * These rows were approved before the canopy question existed in a form
@@ -640,6 +670,7 @@ function drawCandidate(c) {
         status: grading || checking ? 'approved' : status,
         queue: grading || checking || browsing ? (c.reviewQueue || 'priority') : queue,
         canopy,
+        inferredDoubt: doubt,
         /*
          * "Somebody has now looked at this map for inferred areas", which is
          * NOT "this map has inferred areas". The shapes say the second; only

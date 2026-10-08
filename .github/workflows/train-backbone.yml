@@ -484,6 +484,18 @@ jobs:
       # graded "not lawn" inside their traces and nothing anywhere else, so
       # they say nothing about what surrounds a pond. Trained on, never held
       # out, never scored (train_decoder.py, ':example:').
+      # INFERRED LAWN THE OWNER DOES NOT TRUST (owner, 2026-10-08): the ids
+      # go beside the frames, and train_decoder.py grades those lots on seen
+      # ground only. From the database each run, so a mark made after the
+      # frames were cached still counts; sent to Modal with the lidar. The
+      # decoder's log says which lots, or that the list was missing.
+      - name: Which lots' inferred ground is not taught
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node tools/inferred-doubt.js inferred-doubt.json
+
       - name: Add the approved not-lawn-only maps
         if: ${{ inputs.not_lawn == 'on' }}
         env:
@@ -510,6 +522,7 @@ jobs:
           python3 release_ensemble_test.py
           python3 multi_layers_test.py
           python3 holdout_test.py
+          python3 inferred_doubt_test.py
 
       # The tree model over the same frames, exactly as workflow 19 runs it,
       # so the canopy lands on the pixels the features describe. Its
@@ -697,7 +710,7 @@ jobs:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
           RUN: gh-${{ github.run_id }}-${{ github.run_attempt }}
-          SEND: ${{ inputs.canopy == 'off' && 'frames' || '' }},lidar,naip${{ inputs.decoder == 'fused + edge + trees + returns' && ',tree-lidar' || '' }}
+          SEND: ${{ inputs.canopy == 'off' && 'frames' || '' }},lidar,naip,inferred-doubt.json${{ inputs.decoder == 'fused + edge + trees + returns' && ',tree-lidar' || '' }}
           WINDOWS: ${{ inputs.windows }}
           CANOPY: ${{ inputs.canopy }}
           DECODER: ${{ inputs.decoder }}

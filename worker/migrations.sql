@@ -283,3 +283,6 @@ ALTER TABLE county_services ADD COLUMN season_checked_at TEXT;
 
 -- THE OTHER PHOTO OF A PAIR (see the column in schema.sql).
 ALTER TABLE county_imagery ADD COLUMN mapbox_image_key TEXT;
+
+-- INFERRED LAWN THE OWNER DOES NOT TRUST (see the column in schema.sql).
+ALTER TABLE corpus ADD COLUMN inferred_doubt INTEGER;

@@ -20,6 +20,11 @@ on:
       row:
         description: 'The table row to compare (default: THE PLAN''s row)'
         default: 'decoder, canopy on lawn + stage 3, span, lidar veto'
+      measure:
+        description: 'all: wrong ground as a share of the whole lawn (as always); seen: leave out ground the tracer marked inferred'
+        type: choice
+        options: [all, seen]
+        default: all
       row_b:
         description: 'A different row for side B, to compare two rows (leave empty for the same row)'
         default: ''
@@ -65,7 +70,8 @@ jobs:
         env:
           ROW: ${{ inputs.row }}
           ROW_B: ${{ inputs.row_b }}
+          MEASURE: ${{ inputs.measure == 'seen' && 'seen' || 'error' }}
         run: |
           A=$(find a -name lot-results.json | paste -sd, -)
           B=$(find b -name lot-results.json | paste -sd, -)
-          node tools/compare-runs.js --a "$A" --b "$B" --row "$ROW" ${ROW_B:+--row-b "$ROW_B"} $([ -f photos.json ] && echo --photos photos.json)
+          node tools/compare-runs.js --a "$A" --b "$B" --row "$ROW" ${ROW_B:+--row-b "$ROW_B"} --measure "$MEASURE" $([ -f photos.json ] && echo --photos photos.json)

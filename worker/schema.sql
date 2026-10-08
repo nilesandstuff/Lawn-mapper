@@ -444,6 +444,13 @@ CREATE TABLE IF NOT EXISTS corpus (
   --
   -- NULL means never checked, which is what the review queue looks for.
   inferred_checked_at TEXT,
+  -- INFERRED LAWN THE OWNER DOES NOT TRUST (owner, 2026-10-08: "some maps
+  -- would just straight up require guessing"). 1 = the inferred areas on this
+  -- map are a guess: training still reads the lot for what can be seen, but
+  -- its inferred ground carries no weight (tools/train_decoder.py). NULL or
+  -- 0 = taught as lawn, as every inferred mark is since H78. Set from the
+  -- console card beside the canopy grade. The ALTER is in migrations.sql.
+  inferred_doubt INTEGER,
   reviewed_at    TEXT,
   reviewed_by    TEXT,
   review_note    TEXT,

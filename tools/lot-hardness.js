@@ -44,7 +44,7 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import sharp from 'sharp';
 
-import { pool, PLAN_ROW, median } from './compare-runs.js';
+import { pool, PLAN_ROW, median, MEASURES } from './compare-runs.js';
 import { query } from './corpus-db.js';
 import { rasterizePolygon } from '../public/lib/mask.js';
 import { lngLatToFramePx, metresPerPixel } from '../public/lib/mercator.js';
@@ -301,9 +301,11 @@ async function main() {
   const files = (get('--results') || '').split(',').filter(Boolean).map((p) => JSON.parse(readFileSync(p, 'utf8')));
   const row = get('--row') || PLAN_ROW;
   const rowB = get('--row-b') || null;
+  const measure = MEASURES.includes(get('--measure')) ? get('--measure') : 'error';
   if (!files.length) { console.log('usage: --results a.json,b.json [--row "row name"] [--row-b "row name"]'); process.exit(2); }
-  const { mean } = pool(files, row);
-  const meanB = rowB ? pool(files, rowB).mean : null;
+  const { mean } = pool(files, row, measure);
+  const meanB = rowB ? pool(files, rowB, measure).mean : null;
+  if (measure === 'seen') console.log('Measured on SEEN ground only: ground the tracer marked inferred is left out.');
   const ids = [...mean.keys()];
   const rows = query(`SELECT id, lot_no, image_key, image_frame, frame, shapes, parcel, image_provider, leaf_off
                         FROM corpus WHERE id IN (${ids.map((i) => `'${i.replace(/'/g, "''")}'`).join(',')})`);

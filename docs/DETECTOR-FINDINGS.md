@@ -6248,6 +6248,39 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
+### S33. Some inferred lawn is a guess, and a guess should not be taught (owner, 2026-10-08 -- BUILT, NOT MEASURED)
+
+**The owner's point.** The hidden ground on C29 was marked inferred as the
+rules say, and so is every area under a tree that had to be guessed at; but
+the owner's own trace of C29 would have been "150 sq ft rather than 870". Since
+H78 THE PLAN teaches every inferred mark as lawn, so a guess like that is
+taught as fact. Rejecting the map was turned down (the seen part is sound),
+and an "unsure" status was turned down (it is the inferred part that is unsure,
+not the map).
+
+**What is built.** Two things, neither of which changes any run until used:
+
+- A per-map mark, `corpus.inferred_doubt` (schema and migration), set on the
+  console card beside the canopy grade: "Teach it" / "Don't teach it". With it
+  set, workflow 14 writes the id to `inferred-doubt.json` (sent to Modal with
+  the lidar) and `train_decoder.py` grades that lot on seen ground only --
+  exactly as every lot was before H78 -- while the rest stay taught under
+  trees. The decoder's log says how many, and which. No mark set yet, so
+  every run so far, and the next, is unchanged.
+- `measure: seen` on workflows 24 and 33: the comparison or the hardness
+  report judges every lot on its seen ground (`seen` in lot-results, the
+  per-lot figure H78's scoring already splits out), leaving the inferred ground
+  out of the figure entirely. A lot with no inferred marks reads the same
+  either way; one from results older than the figure drops out. Default is
+  the whole-lawn error, as always.
+
+**What is NOT claimed.** Whether un-teaching a guessed lot helps, or whether
+the seen measure ranks settings differently from the whole-lawn one, is
+unmeasured. The seen measure is the fairer reading of a lot like C29; it is
+also blind to the inferred ground THE PLAN is supposed to get right since
+H78, so a setting cannot be adopted on it alone -- the protocol's bar stays
+on the whole-lawn error, and `seen` is a second reading beside it.
+
 ### S32. Is it the county photo or the lot? (2026-10-08 -- design 2 MEASURED, H90: not a want of county examples; design 1, the live split, still open)
 
 **Why (H88):** the 12 county-photo lots score 55% against 19% for Mapbox

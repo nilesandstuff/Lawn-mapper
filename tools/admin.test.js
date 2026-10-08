@@ -2119,5 +2119,39 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
   check('an unknown map is refused', wrong.status === 400 || wrong.status === 404, String(wrong.status));
 }
 
+/* ------------------- inferred lawn the owner does not trust (2026-10-08) */
+{
+  const { env, ownerToken } = await world();
+  const { recordFinished } = await import('../worker/src/corpus.js');
+  const ring = [[-83.44, 41.5], [-83.44, 41.501], [-83.439, 41.501], [-83.439, 41.5], [-83.44, 41.5]];
+  await recordFinished(env, {
+    lng: -83.44, lat: 41.5, model: 'sam-3', mode: 'find', county: 'oh-lucas',
+    shapes: [{ type: 'Polygon', coordinates: [ring] }], squareFeet: 4000,
+  });
+  const fresh = (await ask(env, ownerToken, 'candidates')).body.candidates;
+  const c = fresh.find((x) => x.id.startsWith('-83.44'));
+  check('a fresh map has no word on its inferred areas', c && c.inferredDoubt === null, JSON.stringify(c && c.inferredDoubt));
+
+  const judged = await ask(env, ownerToken, 'review',
+    { method: 'POST', body: { id: c.id, status: 'approved', queue: 'priority', canopy: 2, inferredDoubt: true } });
+  check('a verdict can say the inferred areas are a guess', judged.status === 200, JSON.stringify(judged.body));
+  const row = await env.DB.prepare('SELECT inferred_doubt FROM corpus WHERE id = ?1').bind(c.id).first();
+  check('and it is kept as inferred_doubt = 1', Number(row.inferred_doubt) === 1, String(row.inferred_doubt));
+
+  const again = await ask(env, ownerToken, 'review',
+    { method: 'POST', body: { id: c.id, status: 'approved', queue: 'priority', canopy: 2, force: true } });
+  const row2 = await env.DB.prepare('SELECT inferred_doubt FROM corpus WHERE id = ?1').bind(c.id).first();
+  check('a later verdict that says nothing leaves it alone', again.status === 200 && Number(row2.inferred_doubt) === 1, String(row2.inferred_doubt));
+
+  const approved = (await ask(env, ownerToken, 'candidates?queue=approved')).body.candidates;
+  const mine = approved.find((x) => x.id === c.id);
+  check('the card is told', mine && mine.inferredDoubt === 1, JSON.stringify(mine && mine.inferredDoubt));
+
+  const back = await ask(env, ownerToken, 'review',
+    { method: 'POST', body: { id: c.id, status: 'approved', queue: 'priority', canopy: 2, force: true, inferredDoubt: false } });
+  const row3 = await env.DB.prepare('SELECT inferred_doubt FROM corpus WHERE id = ?1').bind(c.id).first();
+  check('and "teach it" takes it back', back.status === 200 && Number(row3.inferred_doubt) === 0, String(row3.inferred_doubt));
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);

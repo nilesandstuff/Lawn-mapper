@@ -33,21 +33,34 @@ import { readFileSync } from 'node:fs';
 export const PLAN_ROW = 'decoder, edge refined + stage 3, span, lidar veto';
 const TIE = 0.5;
 
+/*
+ * WHICH ERROR (owner, 2026-10-08): 'error' is wrong ground as a share of the
+ * whole traced lawn; 'seen' leaves out the ground the tracer marked inferred,
+ * so a lot whose lawn is mostly a guess under the trees is judged on what
+ * could be seen. A lot with no inferred marks reads the same either way; one
+ * with nothing visible at all has no seen figure and drops out.
+ */
+export const MEASURES = ['error', 'seen'];
+const measureOf = (l, measure) => (measure === 'seen' ? l.seen : l.error);
+
 /** lot id -> { error, benchmark, tag } for one row of one results file. */
-export function rowLots(results, rowName) {
+export function rowLots(results, rowName, measure = 'error') {
   const row = results.rows.find((r) => r.name === rowName);
   if (!row) return null;
   const out = new Map();
-  for (const l of row.lots) if (Number.isFinite(l.error)) out.set(l.id, l);
+  for (const l of row.lots) {
+    const e = measureOf(l, measure);
+    if (Number.isFinite(e)) out.set(l.id, { ...l, error: e });
+  }
   return out;
 }
 
 /** A setting's per-lot mean over its runs, and each run's median. */
-export function pool(files, rowName) {
+export function pool(files, rowName, measure = 'error') {
   const sums = new Map();
   const medians = [];
   for (const f of files) {
-    const lots = rowLots(f, rowName);
+    const lots = rowLots(f, rowName, measure);
     if (!lots) continue;
     const errs = [...lots.values()].map((l) => l.error).sort((x, y) => x - y);
     medians.push(errs.length ? errs[Math.floor((errs.length - 1) / 2)] / 2 + errs[Math.ceil((errs.length - 1) / 2)] / 2 : null);
@@ -152,12 +165,14 @@ function main() {
   const B = files('--b');
   const rowA = get('--row') || PLAN_ROW;
   const rowB = get('--row-b') || rowA;
+  const measure = MEASURES.includes(get('--measure')) ? get('--measure') : 'error';
   if (!A.length || !B.length) {
     console.log('usage: --a a1.json,a2.json --b b1.json [--row "row name"] [--row-b "row name"]');
     process.exit(2);
   }
-  const a = pool(A, rowA);
-  const b = pool(B, rowB);
+  const a = pool(A, rowA, measure);
+  const b = pool(B, rowB, measure);
+  if (measure === 'seen') console.log('Measured on SEEN ground only: ground the tracer marked inferred is left out of every figure.');
   const spread = (m) => (m.length > 1 ? ` (runs' medians ${m.map((v) => v.toFixed(1)).join(', ')})` : '');
   console.log(`A: ${A.length} run(s) of "${rowA}"${spread(a.medians)}`);
   console.log(`B: ${B.length} run(s) of "${rowB}"${spread(b.medians)}`);

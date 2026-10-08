@@ -21,6 +21,11 @@ on:
         description: 'A second row to compare: the report then also says which kinds of lot it helped and hurt'
         required: false
         default: ''
+      measure:
+        description: 'all: wrong ground as a share of the whole lawn; seen: leave out ground the tracer marked inferred'
+        type: choice
+        options: [all, seen]
+        default: all
 
 permissions:
   actions: read
@@ -54,6 +59,7 @@ jobs:
         env:
           ROW: ${{ inputs.row }}
           ROW_B: ${{ inputs.row_b }}
+          MEASURE: ${{ inputs.measure == 'seen' && 'seen' || 'error' }}
         run: |
           R=$(find r -name lot-results.json | paste -sd, -)
-          node tools/lot-hardness.js --results "$R" --row "$ROW" ${ROW_B:+--row-b "$ROW_B"}
+          node tools/lot-hardness.js --results "$R" --row "$ROW" ${ROW_B:+--row-b "$ROW_B"} --measure "$MEASURE"

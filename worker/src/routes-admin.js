@@ -487,7 +487,7 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
                       AND ROUND(a.lat,2) = ROUND(c.lat,2)
                   ) new_block,
                   (c.county IS NOT NULL AND NOT EXISTS (
-                    SELECT 1 FROM corpus a
+                    SELECT c.inferred_doubt, 1 FROM corpus a
                      WHERE a.status = 'approved' AND a.county = c.county
                   )) new_county
              FROM corpus c
@@ -551,6 +551,7 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
           reviewedBy: r.reviewed_by,
           adminEditedAt: r.admin_edited_at,
           canopy: r.tree_line === null || r.tree_line === undefined ? null : Number(r.tree_line),
+          inferredDoubt: r.inferred_doubt === null || r.inferred_doubt === undefined ? null : Number(r.inferred_doubt),
           parcelSource: r.parcel_source,
           squareFeet: r.square_feet,
           detectedSqFt: r.detected_sq_ft,
@@ -1999,14 +2000,18 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
                  * whatever was there, which is what every existing caller
                  * does without changing a line.
                  */
-                inferred_checked_at = COALESCE(?9, inferred_checked_at)
+                inferred_checked_at = COALESCE(?9, inferred_checked_at),
+                /* The owner's word on the inferred areas (schema.sql
+                   inferred_doubt): left alone unless the card said. */
+                inferred_doubt = COALESCE(?10, inferred_doubt)
           WHERE id = ?1 AND (?8 = 1 OR status = 'new' OR status = ?2
                              OR status = 'notlawn' OR status = 'notlawn-' || ?2)`
       ).bind(
         id, status, new Date().toISOString(), me.email,
         typeof body?.note === 'string' ? body.note.slice(0, 300) : null,
         queue, canopy, force ? 1 : 0,
-        body?.inferredChecked === true ? new Date().toISOString() : null
+        body?.inferredChecked === true ? new Date().toISOString() : null,
+        body?.inferredDoubt === true ? 1 : body?.inferredDoubt === false ? 0 : null
       ).run();
 
       /*
@@ -2261,7 +2266,7 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
          * which draw surfaced it and how much canopy somebody graded it at.
          */
         `SELECT id, county, status, square_feet, at, reviewed_at,
-                inferred_checked_at, image_key, lng, lat, model, mode, shapes,
+                inferred_checked_at, inferred_doubt, image_key, lng, lat, model, mode, shapes,
                 review_queue, tree_line, lot_no
            FROM corpus ORDER BY at DESC LIMIT 500`
       ).all();
@@ -2286,6 +2291,7 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
           at: r.at,
           reviewedAt: r.reviewed_at,
           checked: Boolean(r.inferred_checked_at),
+          inferredDoubt: r.inferred_doubt === null || r.inferred_doubt === undefined ? null : Number(r.inferred_doubt),
           hasImage: Boolean(r.image_key),
           lng: r.lng,
           lat: r.lat,
