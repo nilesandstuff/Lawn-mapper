@@ -4,7 +4,7 @@
  *   node tools/compare-runs.test.js
  */
 
-import { bootstrapMedianCI, compare, pool, signTestP } from './compare-runs.js';
+import { bootstrapMedianCI, compare, pool, signTestP, photoOf } from './compare-runs.js';
 
 let failures = 0;
 const check = (name, ok, detail = '') => {
@@ -37,6 +37,17 @@ check('and 18 against 7 is p = 0.043', Math.abs(signTestP(18, 7) - 0.0433) < 0.0
 check('an even split is p = 1', signTestP(5, 5) === 1);
 check('the same data give the same interval', bootstrapMedianCI([1, 2, 3, 4, 5]).join() === bootstrapMedianCI([1, 2, 3, 4, 5]).join());
 check('a missing row is simply absent, not an error', pool([run([1, 2, 3])], 'nope').mean.size === 0);
+
+/* Split by the photo a lot was drawn on (2026-10-08). */
+{
+  const mk = (rows) => pool([{ rows: [{ name: 'r', lots: rows }] }], 'r');
+  const a = mk([{ id: 'x', error: 10 }, { id: 'y', error: 20, photo: 'county' }, { id: 'z', error: 30 }]);
+  const b = mk([{ id: 'x', error: 12 }, { id: 'y', error: 10, photo: 'county' }, { id: 'z', error: 31 }]);
+  const county = compare(a, b, { photo: 'county', photos: { z: 'county' } });
+  check('a lot is county by its own record or by the database', county.lots === 2 && county.wins === 1 && county.losses === 1);
+  check('and everything else is Mapbox', compare(a, b, { photo: 'mapbox', photos: { z: 'county' } }).lots === 1);
+  check('a missing record is Mapbox', photoOf('q', {}, null) === 'mapbox' && photoOf('q', {}, { q: 'county' }) === 'county');
+}
 
 if (failures) { console.log(`\n${failures} failed.`); process.exit(1); }
 console.log('\nAll checks passed.');

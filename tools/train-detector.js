@@ -3093,6 +3093,7 @@ async function main() {
           seen: r1(r.seenPct),
           inferred: r1(r.guessPct),
           truthM2: r1(r.mine.truth),
+          photo: r.lawn.photoSource || null,
           ...(r.diagnosis ? {
             outline: r1(r.diagnosis.tracedPct),
             nearEdge05: r1(r.diagnosis.near05),

@@ -52,13 +52,13 @@ export function pool(files, rowName) {
     const errs = [...lots.values()].map((l) => l.error).sort((x, y) => x - y);
     medians.push(errs.length ? errs[Math.floor((errs.length - 1) / 2)] / 2 + errs[Math.ceil((errs.length - 1) / 2)] / 2 : null);
     for (const [id, l] of lots) {
-      const s = sums.get(id) || { total: 0, n: 0, benchmark: l.benchmark, tag: l.tag };
+      const s = sums.get(id) || { total: 0, n: 0, benchmark: l.benchmark, tag: l.tag, photo: l.photo || null };
       s.total += l.error;
       s.n += 1;
       sums.set(id, s);
     }
   }
-  const mean = new Map([...sums].map(([id, s]) => [id, { error: s.total / s.n, benchmark: s.benchmark, tag: s.tag }]));
+  const mean = new Map([...sums].map(([id, s]) => [id, { error: s.total / s.n, benchmark: s.benchmark, tag: s.tag, photo: s.photo }]));
   return { mean, medians };
 }
 
@@ -102,13 +102,14 @@ export function signTestP(wins, losses) {
 }
 
 /** Paired comparison of B against A over the lots both have. */
-export function compare(a, b, { only = null } = {}) {
+export function compare(a, b, { only = null, photo = null, photos = null } = {}) {
   const ds = [];
   for (const [id, la] of a.mean) {
     const lb = b.mean.get(id);
     if (!lb) continue;
     if (only === 'benchmark' && !la.benchmark) continue;
     if (only === 'new' && la.benchmark) continue;
+    if (photo && photoOf(id, la, photos) !== photo) continue;
     ds.push({ id, tag: lb.tag || la.tag, a: la.error, b: lb.error, d: lb.error - la.error });
   }
   const wins = ds.filter((x) => x.d < -TIE).length;
@@ -121,6 +122,19 @@ export function compare(a, b, { only = null } = {}) {
     worst: [...ds].sort((x, y) => y.d - x.d).slice(0, 5),
     best: [...ds].sort((x, y) => x.d - y.d).slice(0, 5),
   };
+}
+
+/*
+ * WHICH PHOTO A LOT WAS DRAWN ON (owner, 2026-10-08: most of the newest maps
+ * were drawn and saved on county photos, and the two rarely line up). Training
+ * reads each map's saved photo, so the corpus is a mix; this splits a
+ * comparison by it. From the lot's own record when the run wrote one
+ * (`photo`), else from --photos, a {id: provider} file workflow 24 reads out
+ * of the database.
+ */
+export function photoOf(id, lot, photos) {
+  const p = lot?.photo || photos?.[id] || 'mapbox';
+  return p === 'county' ? 'county' : 'mapbox';
 }
 
 function fmt(c, label) {
@@ -153,6 +167,14 @@ function main() {
   console.log(fmt(all, 'all lots'));
   console.log(fmt(compare(a, b, { only: 'benchmark' }), 'the frozen 32 (tuned on)'));
   console.log(fmt(compare(a, b, { only: 'new' }), 'approved since (untuned)'));
+  const photosFile = get('--photos');
+  const photos = photosFile ? JSON.parse(readFileSync(photosFile, 'utf8')) : null;
+  const county = compare(a, b, { photo: 'county', photos });
+  if (county.lots) {
+    console.log('\n  By the photo each lot was drawn and trained on:');
+    console.log(fmt(county, 'county photo'));
+    console.log(fmt(compare(a, b, { photo: 'mapbox', photos }), 'Mapbox photo'));
+  }
   const name = (x) => (x.tag || x.id.split(':')[0]).padEnd(24);
   console.log('\n  Most improved in B:');
   for (const x of all.best) console.log(`    ${name(x)} ${x.a.toFixed(1)}% -> ${x.b.toFixed(1)}%`);
