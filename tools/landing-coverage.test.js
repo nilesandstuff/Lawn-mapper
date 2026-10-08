@@ -42,5 +42,11 @@ check('the FAQ is marked up for search', page.includes('"@type": "FAQPage"'));
 check('"More lawn tools" stays off the landing',
   readFileSync(new URL('../public/styles.css', import.meta.url), 'utf8').includes('html.landing #tools-wrap'));
 
+const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+check('a map that failed waits on the landing instead of covering it',
+  /if \(name === 'fatal'\) \{ fatalWaiting = true; return 'address'; \}/.test(app)
+  && (app.match(/if \(failedMapShown\(\)\) return;/g) || []).length >= 2
+  && app.includes("if (!failedMapShown()) useMyLocation();"));
+
 console.log(failures ? `\n${failures} check(s) FAILED.` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

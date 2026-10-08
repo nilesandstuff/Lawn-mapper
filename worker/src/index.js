@@ -1697,12 +1697,19 @@ export default {
          * for search results and as input to an AI's answer. Training is left
          * unstated -- no preference either way -- until the owner says.
          * /llms.txt is the plain-words summary for them (llms.js).
+         *
+         * /api/config and /api/coverage ARE ALLOWED, though /api/ is not
+         * (2026-10-08). Google renders the page and runs app.js, and a fetch
+         * robots.txt forbids reaches the page as a failed request -- Search
+         * Console's screenshot showed "The map didn't load. Request failed
+         * (499)" over the landing. Both are read-only and the same for
+         * everybody; the longer rule wins, so the rest of /api/ stays shut.
          */
         case '/robots.txt':
           return new Response(
             '# Search engines and AI assistants are welcome. A plain-language summary\n'
             + `# of this site for AI assistants: ${url.origin}/llms.txt\n`
-            + `User-agent: *\nContent-Signal: search=yes, ai-input=yes\nAllow: /\nDisallow: /api/\n\nSitemap: ${url.origin}/sitemap.xml\n`,
+            + `User-agent: *\nContent-Signal: search=yes, ai-input=yes\nAllow: /\nAllow: /api/config\nAllow: /api/coverage\nDisallow: /api/\n\nSitemap: ${url.origin}/sitemap.xml\n`,
             { headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=86400' } }
           );
         /* For AI assistants: what the site is, in plain words (llms.js). */

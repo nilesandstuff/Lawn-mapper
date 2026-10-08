@@ -1286,26 +1286,38 @@ async function api(path, options = {}) {
 /*
  * LEAVING THE LANDING (owner, 2026-10-07). Every way out of the address step
  * comes through showStep -- a search, the crosshair, a saved map -- so that is
- * the one place the page turns into the app and the map gets its box. A
- * failure is the exception: on the landing it shows above the address step
- * rather than replacing it, so a browser that cannot draw the map still gets
- * the page about what the tool does. Returns whether the address step stays.
+ * the one place the page turns into the app and the map gets its box.
+ *
+ * A FAILURE WAITS (2026-10-08). On the landing the map is not on screen, so a
+ * map that failed to start is not news yet -- and Google's renderer, which
+ * fetches less than a browser does, showed "The map didn't load" over the
+ * whole page in Search Console. It is kept until somebody asks for the map,
+ * and shown then instead of whatever they asked for.
  */
-function leaveLanding(name) {
+let fatalWaiting = false;
+function landingStep(name) {
   const root = document.documentElement;
-  if (!root.classList.contains('landing')) return false;
-  if (name === 'fatal') return true;
-  if (name === 'address') return false;
+  if (!root.classList.contains('landing')) return name;
+  if (name === 'fatal') { fatalWaiting = true; return 'address'; }
+  if (name === 'address') return name;
   root.classList.remove('landing');
   window.scrollTo(0, 0);
   requestAnimationFrame(() => map?.resize());
-  return false;
+  return fatalWaiting ? 'fatal' : name;
+}
+
+/** The waiting failure, for a button about to need the map. True if shown. */
+function failedMapShown() {
+  if (!fatalWaiting) return false;
+  landingStep('work');
+  showStep('fatal');
+  return true;
 }
 
 function showStep(name) {
-  const keepAddress = leaveLanding(name);
+  name = landingStep(name);
   for (const el of document.querySelectorAll('.step')) {
-    el.hidden = el.id !== `step-${name}` && !(keepAddress && el.id === 'step-address');
+    el.hidden = el.id !== `step-${name}`;
   }
   /*
    * Taps on the map move the pin ONLY while the confirm step is up.
@@ -13125,10 +13137,11 @@ function reset() {
 
 $('#address-form').addEventListener('submit', (e) => {
   e.preventDefault();
+  if (failedMapShown()) return;
   locateNote('');
   search($('#address').value.trim());
 });
-$('#btn-locate').addEventListener('click', useMyLocation);
+$('#btn-locate').addEventListener('click', () => { if (!failedMapShown()) useMyLocation(); });
 
 document.addEventListener('click', (e) => {
   const action = e.target.closest('[data-action]')?.dataset.action;
@@ -13916,6 +13929,7 @@ $('#seg-pdf').addEventListener('click', () => window.print());
  * is something saved, so a first visit is one field and one button.
  */
 $('#btn-open-saved').addEventListener('click', () => {
+  if (failedMapShown()) return;
   showStep('work');
   setTab('saved');
 });

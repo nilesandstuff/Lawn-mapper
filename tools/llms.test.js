@@ -28,6 +28,10 @@ console.log('llms.txt: ok');
   const robots = await (await at('/robots.txt')).text();
   assert.match(robots, /User-agent: \*\nContent-Signal: search=yes, ai-input=yes\nAllow: \//);
   assert.match(robots, /Disallow: \/api\//);
+  // Google runs app.js when it renders the page; a forbidden /api/config
+  // showed it "The map didn't load" over the landing (2026-10-08).
+  assert.match(robots, /Allow: \/api\/config\n/);
+  assert.match(robots, /Allow: \/api\/coverage\n/);
   assert.match(robots, /https:\/\/example\.test\/llms\.txt/);
   console.log('unknown files 404, deep links still open the app, robots says yes to search and AI answers: ok');
 }
