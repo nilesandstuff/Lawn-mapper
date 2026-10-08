@@ -174,6 +174,12 @@ function main() {
     console.log('\n  By the photo each lot was drawn and trained on:');
     console.log(fmt(county, 'county photo'));
     console.log(fmt(compare(a, b, { photo: 'mapbox', photos }), 'Mapbox photo'));
+    /* Few enough to read one by one, and worth it while they are few. */
+    console.log('  The county-photo lots:');
+    for (const [id, la] of [...a.mean].filter(([i, l]) => photoOf(i, l, photos) === 'county').sort((x, y) => y[1].error - x[1].error)) {
+      const lb = b.mean.get(id);
+      console.log(`    ${(la.tag || id.split(':')[0]).padEnd(24)} ${la.error.toFixed(1)}%${lb ? ` -> ${lb.error.toFixed(1)}%` : ''}`);
+    }
   }
   const name = (x) => (x.tag || x.id.split(':')[0]).padEnd(24);
   console.log('\n  Most improved in B:');
