@@ -882,8 +882,8 @@ photo each map was drawn and saved on (workflow 24 run 37766196684, the new
 
 The county lots, worst first: C99 130.0, C94 101.2, C79 76.0, C88 59.5, C87
 56.1, C80 55.9, C89 54.5, C74 45.7, C81 28.9, C66 25.3, C82 20.7, C71 6.6.
-Most of the lots that keep turning up as "most worsened" in H79-H86 (C79,
-C80, C88, C89, C94, C99) are in this list.
+Four of the lots that recur in H79-H86's "most worsened" lists (C79, C80,
+C89, C94) are county lots; C29, the worst lot in the corpus (400%+), is not.
 
 - **Corrected first (owner):** an earlier answer said all 81 train on
   Mapbox. Wrong: training reads each map's SAVED photo (photoKeyFor ->
