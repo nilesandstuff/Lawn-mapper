@@ -507,7 +507,7 @@ check('the land cover method and overlays are offered only where the map is (Vir
 check('the detection timer says what to expect', /usually takes less than 60 seconds/.test(js)
   && /id="busy-timer"/.test(html) && /id="busy-cancel"/.test(html) && /id="busy-retry"/.test(html));
 check('a stalled trained-model press is retried by itself, once in ten minutes, before the buttons',
-  /const AUTO_RETRY_S = 75;/.test(js) && /const DETECT_PATIENCE_S = 90;/.test(js)
+  /const AUTO_RETRY_S = 100;/.test(js) && /const DETECT_PATIENCE_S = 90;/.test(js)
   && /run\.model === 'alpha'\s*&& Date\.now\(\) - lastAutoRetry > 10 \* 60 \* 1000/.test(js)
   && /giveUpOnDetection\('retry', 'This one got stuck/.test(js));
 

@@ -61,7 +61,7 @@ async function runLot(env, r, limitMs) {
  * THE WARM PRESS AT THE END OF A DEPLOY (owner, 2026-10-08). The first press
  * after a deploy has sat queued on Modal for minutes while the next one
  * answered at once, so the deploy now makes that first press itself, with
- * nobody waiting on it. Same as the app: given up at 75 s and sent once more.
+ * nobody waiting on it. Same as the app: given up at 100 s and sent once more.
  * Prints one line for the deploy's tail and never fails the deploy.
  */
 export async function warm(env = process.env) {
@@ -69,7 +69,7 @@ export async function warm(env = process.env) {
   const rows = query(`SELECT id, lot_no, frame, parcel FROM corpus WHERE status = 'approved' AND frame IS NOT NULL`);
   const r = rows.find((x) => mapName(x.id, x.lot_no) === name);
   if (!r) return `not warmed: lot ${name} not found`;
-  const first = await runLot(env, r, 75000);
+  const first = await runLot(env, r, 100000);
   if (first.got?.status === 'succeeded') return `warm -- the first press answered in ${first.wall}s`;
   const second = await runLot(env, r, 240000);
   if (second.got?.status === 'succeeded') {

@@ -1372,13 +1372,13 @@ let detection = null;   // {press, abort, started, timer, action, model}
  * model's first press after a deploy has twice sat queued on Modal for
  * minutes -- the owner's after version 2, workflow 32's after the GPU change
  * -- while a second press a moment later answered in under 30 seconds. A
- * normal cold press takes about 30 s, so one still unanswered at 75 is stuck,
- * not slow: it is cancelled (which hands the detection back) and sent again,
+ * normal cold press takes about 30 s, so one still unanswered at 100 is stuck,
+ * not slow (75 until the owner moved it to 100, 2026-10-08): it is cancelled (which hands the detection back) and sent again,
  * the same as pressing Retry. Once in ten minutes at most, so a real outage
  * ends at the buttons rather than in a loop. Only the trained model: a
  * Replicate cold start can honestly take longer than this.
  */
-const AUTO_RETRY_S = 75;
+const AUTO_RETRY_S = 100;
 let lastAutoRetry = 0;
 
 function startDetectionTimer(run) {

@@ -9,6 +9,11 @@ on:
         description: 'Type "deploy" to confirm'
         required: true
         default: ''
+      model_server:
+        description: 'The model server on Modal: redeployed only when its code changed (auto), or always (redeploy)'
+        type: choice
+        options: [auto, redeploy]
+        default: auto
 
 # Two deploys at once would race to write the same Worker.
 concurrency:
@@ -325,7 +330,27 @@ jobs:
           # the Modal secret already here so there is nothing new to set up.
           token=$(printf '%s:alpha' "$MODAL_TOKEN_SECRET" | sha256sum | cut -d' ' -f1)
           modal secret create lawn-alpha-auth "ALPHA_TOKEN=$token" --force >/dev/null
-          modal deploy tools/modal_serve.py | tee modal-deploy.log
+          # ONLY WHEN THE SERVER CHANGED (owner, 2026-10-08: "I definitely
+          # don't want to be sending a warm press after update to the
+          # cloudflare site"). Every `modal deploy` is a new version of the
+          # app, and its first press sits queued for over a minute. The
+          # fingerprint covers what the server runs (tools/modal-fingerprint.js);
+          # the last one deployed is kept on the volume beside the release.
+          fp=$(node tools/modal-fingerprint.js)
+          modal volume get --force lawn-mapper-models alpha/serve-fingerprint.txt last-fp.txt >/dev/null 2>&1 || true
+          last=$(cat last-fp.txt 2>/dev/null || true)
+          touch modal-deploy.log
+          redeployed=0
+          if [ "$fp" = "$last" ] && [ "${{ inputs.model_server }}" != "redeploy" ]; then
+            echo "The model server has not changed since it was last deployed ($fp), so it was left alone."
+          else
+            modal deploy tools/modal_serve.py | tee modal-deploy.log
+            if [ "${PIPESTATUS[0]}" = "0" ]; then
+              redeployed=1
+              printf '%s' "$fp" > fp.txt
+              modal volume put --force lawn-mapper-models fp.txt alpha/serve-fingerprint.txt >/dev/null 2>&1 || true
+            fi
+          fi
           url=$(python3 -c "import modal; print(modal.Function.from_name('lawn-mapper-alpha', 'start').get_web_url() or '')" 2>/dev/null || true)
           [ -n "$url" ] || url=$(grep -o 'https://[^ ]*-start\.modal\.run' modal-deploy.log | head -1)
           if [ -z "$url" ]; then
@@ -343,13 +368,18 @@ jobs:
           modal volume get --force lawn-mapper-models alpha/release.json release.json >/dev/null 2>&1 || true
           when=$(python3 -c "import json;m=json.load(open('release.json'));print(m.get('trainedAt','?')+', '+str(m.get('lawns','?'))+' lots')" 2>/dev/null || echo "date unknown")
           echo "ALPHA_STATE=ON, the default method -- release trained $when" >> "$GITHUB_ENV"
-          # THE WARM PRESS (owner, 2026-10-08): the first press after a deploy
-          # has stuck on Modal for minutes, so the deploy makes it, with nobody
-          # waiting. A few cents. Never fails the deploy (tools/time-alpha.js warm).
-          warm=$(WARM=1 LOTS=B01 ALPHA_URL="$url" ALPHA_RESULT_URL="$result" ALPHA_CANCEL_URL="$cancel" \
-                 ALPHA_TOKEN="$token" MAPBOX_TOKEN="${MAPBOX_SERVER_TOKEN:-$MAPBOX_TOKEN}" \
-                 timeout 420 node tools/time-alpha.js 2>/dev/null | tail -1)
-          echo "ALPHA_WARM=${warm:-not warmed: the warm press did not finish}" >> "$GITHUB_ENV"
+          # THE WARM PRESS (owner, 2026-10-08), only after a real redeploy of
+          # the server: its first press has stuck on Modal for minutes, so the
+          # deploy makes it, with nobody waiting. A few cents. Never fails the
+          # deploy (tools/time-alpha.js warm).
+          if [ "$redeployed" = "1" ]; then
+            warm=$(WARM=1 LOTS=B01 ALPHA_URL="$url" ALPHA_RESULT_URL="$result" ALPHA_CANCEL_URL="$cancel" \
+                   ALPHA_TOKEN="$token" MAPBOX_TOKEN="${MAPBOX_SERVER_TOKEN:-$MAPBOX_TOKEN}" \
+                   timeout 420 node tools/time-alpha.js 2>/dev/null | tail -1)
+            echo "ALPHA_WARM=server redeployed; ${warm:-not warmed: the warm press did not finish}" >> "$GITHUB_ENV"
+          else
+            echo "ALPHA_WARM=server unchanged, not redeployed, no warm press" >> "$GITHUB_ENV"
+          fi
 
       - name: Where it went
         run: |
@@ -376,7 +406,7 @@ jobs:
             echo "The reason is in the \"Prepare wrangler.toml\" step above."
           fi
           echo "Trained model (alpha release): ${ALPHA_STATE:-off -- the step that serves it did not finish; see \"Serve the trained model\" above}"
-          if [ -n "$ALPHA_WARM" ]; then echo "Trained model warm-up: $ALPHA_WARM"; fi
+          if [ -n "$ALPHA_WARM" ]; then echo "Model server: $ALPHA_WARM"; fi
           echo "HTTPS only: ${HTTPS_STATE:-not checked -- see \"Send http to https\" above}"
           echo "Home page: ${HOME_STATE:-not built -- see \"The home page\" above}"
           # A database change that did not land is the quietest failure this
