@@ -119,7 +119,12 @@ function main() {
       detected: geometries(parse(row.detected_shapes)),
       parcel: parse(row.parcel),
     });
-    if (!score) {
+    /*
+     * No error figure is no score: a finished outline of no area (an approved
+     * "no lawn here" map) leaves the percentage undefined, and printing it
+     * crashed the whole report (2026-10-08). Counted below as unscoreable.
+     */
+    if (!score || !Number.isFinite(score.errorPct)) {
       scored.push(null);
       continue;
     }
