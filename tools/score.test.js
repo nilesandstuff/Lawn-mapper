@@ -21,6 +21,7 @@ import {
   scoreMap, summarise, verdict, median, areaSqFt, CANOPY_LABEL,
 } from '../worker/src/score.js';
 import { makeFrame } from '../public/lib/edges.js';
+import { liveReport } from './score-detector.js';
 
 let failures = 0;
 function check(name, ok, detail = '') {
@@ -428,6 +429,18 @@ const box = (x, y, w, h) => ({
     apart.overlapSqFt < sqFt(1),
     `${apart.overlapSqFt.toFixed(0)} sq ft`);
   closeTo(apart.unionSqFt, sqFt(200), sqFt(6), 'and their areas simply add up');
+}
+
+/* The live releases, grouped by release and review state (workflow 7). */
+{
+  const row = (v, status, err) => ({ model_version: v, status, shapes: JSON.stringify([{ e: err }]), detected_shapes: '[]', parcel: null });
+  const fake = ({ truth }) => ({ errorPct: truth[0].e });
+  const lines = liveReport([row('v3', 'approved', 10), row('v3', 'approved', 20), row('v3', 'new', 0),
+    row('v2', 'approved', 30)], fake);
+  console.log(lines.join('\n'));
+  check('one line per release and review state, newest release first', lines.length === 3 && lines[0].includes('v3'));
+  check('the median of two is their middle', lines.some((l) => /v3 .*approved .*2 maps .*15\.0% changed/.test(l)));
+  check('an outline kept as drawn is counted', lines.some((l) => /not yet reviewed .*1 maps .*1 kept as drawn/.test(l)));
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);

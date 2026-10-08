@@ -35,6 +35,54 @@ const QUERY = `
    LIMIT 500
 `;
 
+/*
+ * THE LIVE MODEL, MEASURED ON REAL USE (owner, 2026-10-08). Every score in
+ * docs/DETECTOR-FINDINGS.md is held-out folds over the training lots; none is
+ * the outline a release actually drew for somebody. These are: every map
+ * finished with a release recorded, its outline against what the person
+ * finished with. Not yet reviewed as well as approved, kept apart -- an
+ * unreviewed map's final outline is the person's word, not a checked answer.
+ * What it measures is how much people had to change, which is not quite
+ * error: an outline accepted as drawn scores 0 whether or not it was right.
+ */
+export const LIVE_QUERY = `
+  SELECT id, status, model_version, at, shapes, detected_shapes, parcel
+    FROM corpus
+   WHERE model_version IS NOT NULL AND model_version != ''
+     AND detected_shapes IS NOT NULL
+     AND status != 'rejected'
+   ORDER BY at DESC
+   LIMIT 1000
+`;
+
+/** One line per release and review state, newest release first. */
+export function liveReport(rows, score = scoreMap) {
+  const groups = new Map();
+  for (const row of rows) {
+    const s = score({
+      truth: geometries(parse(row.shapes)),
+      detected: geometries(parse(row.detected_shapes)),
+      parcel: parse(row.parcel),
+    });
+    if (!s || !Number.isFinite(s.errorPct)) continue;
+    const key = `${row.model_version}|${row.status === 'approved' ? 'approved' : 'not yet reviewed'}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(s);
+  }
+  const lines = [];
+  const keys = [...groups.keys()].sort().reverse();
+  for (const key of keys) {
+    const [release, state] = key.split('|');
+    const list = groups.get(key);
+    const errs = list.map((r) => r.errorPct).sort((a, b) => a - b);
+    const med = errs[Math.floor((errs.length - 1) / 2)] + errs[Math.ceil((errs.length - 1) / 2)];
+    const untouched = list.filter((r) => r.errorPct < 0.5).length;
+    lines.push(`  ${release.slice(0, 24).padEnd(24)} ${state.padEnd(16)} ${String(list.length).padStart(4)} maps  `
+      + `${(med / 2).toFixed(1).padStart(5)}% changed (median)  ${untouched} kept as drawn`);
+  }
+  return lines;
+}
+
 /** A stored JSON column, tolerating the row that never had one. */
 const parse = (text) => {
   if (!text) return null;
@@ -121,12 +169,22 @@ function main() {
     }
   }
 
+  let live = [];
+  try {
+    live = liveReport(query(LIVE_QUERY));
+  } catch (err) {
+    live = [`  could not read: ${err.message}`];
+  }
+
   /*
    * THE LAST FEW LINES ARE THE REPORT, because this is read on a phone and
    * nobody scrolls a CI log there. Everything above is the working.
    */
   console.log(`\n${'='.repeat(60)}`);
   for (const line of verdict(summary)) console.log(`\n${line}`);
+  console.log('\nThe live releases, on maps people finished with them'
+    + ' (how much of the outline was changed, not checked error):');
+  for (const line of (live.length ? live : ['  none yet: no finished map has a release recorded'])) console.log(line);
   console.log(`\n${'='.repeat(60)}`);
 }
 
