@@ -868,6 +868,32 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H87. The live model measured on real use for the first time: release 1 changed by a median 23.4% on 25 approved maps, against the 24.0% its folds predicted -- 2026-10-08
+
+Workflow 7 run 37709290743, its new section "The live releases" (2026-10-08):
+every map finished with a release recorded (`corpus.model_version`), the
+outline that release drew against the one the person finished with. Free.
+
+| release (trainedAt) | review state | maps | median changed | kept as drawn |
+|---|---|---|---|---|
+| 2026-10-07T15:52:29Z (v3) | not yet reviewed | 1 | 0.0% | 1 |
+| 2026-09-29T21:10:24Z (v1) | approved | 25 | 23.4% | 0 |
+| 2026-09-29T21:10:24Z (v1) | not yet reviewed | 8 | 0.0% | 5 |
+
+- **The one solid number:** release 1, on the 25 approved maps people
+  finished with it, was changed by a median 23.4%. The configuration that
+  chose it scored 24.0% under folds (run 36601001355). Those lots were not
+  in release 1's training set (it was trained on the 55 before it), so this
+  is the first out-of-sample check of the fold scores, and they held.
+  One release and 25 maps; not a rule.
+- **What it is not:** "changed" is how much the person moved the outline,
+  not checked error. An outline accepted as drawn scores 0 whether it was
+  right or not. That is why the not-yet-reviewed rows sit at 0: 5 of v1's 8
+  and v3's 1 were finished untouched. Approval is what makes a row a score.
+- **v2 drew no finished map** in the week it was live, and v3 has one. The
+  live score of the current model needs more finished, approved maps; until
+  then the fold numbers are the best estimate and H87 says they are honest.
+
 ### H86. Less of the middle layers (S31) does not pay either: layer 8 alone 28 / 24, layer 16 alone 30 / 19, both small 28 / 25 -- none passes, 2026-10-07
 
 Three seeds (7/8/9), free runner, `lawns: locked` (81), `layers: variants`
@@ -6862,3 +6888,4 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-07 | 37618116401 / 37618210051 / 37618300740 | 81 (locked) | S29 `refiner_trial: epochs` (15 and 60 beside 30), seeds 7/8/9, CPU | 20.9 / 22.5 / 22.0% (30 epochs) | — | **H84.** 15: 21 / 45, +0.8, p 0.004 (worse); 60: 25 / 31, p 0.50 (nothing). 30 stays |
 | 2026-10-07 | 37628852627 / 37628956583 / 37629069477 | 81 (locked) | S30 `layers: compare` (blocks 8 and 16 squeezed to 256 each, fresh extraction), seeds 7/8/9, CPU | ~21-22% (edge refined + stage 3, span, veto) | — | **H85.** Middle layers 29 / 23, -0.1 [-0.4, +0.1], p 0.49; B20 73 -> 48, B19 79 -> 65. Not adopted |
 | 2026-10-07 | 37666184686 / 37666283016 / 37666382432 | 81 (locked) | S31 `layers: variants` (block 8 alone 256; block 16 alone 256; both at 64), cached features, seeds 7/8/9, CPU | 21.2 / 22.0 / 22.4% (edge refined + stage 3, span, veto) | — | **H86.** Layer 8 28 / 24, p 0.68; layer 16 30 / 19, p 0.15; both small 28 / 25, p 0.78. B20 73 -> 57-59, B19 79 -> 68-71. None adopted |
+| 2026-10-08 | 37709290743 (workflow 7) | 25 approved maps drawn by release 1 | live-release score: the release's outline vs the finished one, by `model_version` | — | 23.4% (release 1, live) | **H87.** First live measurement; folds had said 24.0%. v2 drew none, v3 one (unreviewed) |
