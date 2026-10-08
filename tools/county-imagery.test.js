@@ -170,6 +170,9 @@ check('a person nudging the photo 1 m east moves where Mapbox reads it 10 px wes
   check('a Sanborn map and a comments layer are not photos',
     NOT_A_PHOTO.test('1897_Cambridge_Sanborn_Map') && NOT_A_PHOTO.test('WestSideComments_WTL1')
     && !NOT_A_PHOTO.test('Sanborn 2024 Ortho'));
+  check('raw camera frames are not a photo of the ground, an orthophoto is',
+    NOT_A_PHOTO.test('Misc/Raw_Image_Frames_2026') && NOT_A_PHOTO.test('Oblique_2024')
+    && !NOT_A_PHOTO.test('Imagery/Orthophotos_2026') && !NOT_A_PHOTO.test('Frankfort_Ortho_2025'));
 }
 
 /* What the nightly search records for a county's photos (owner, 2026-10-03). */

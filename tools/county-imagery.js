@@ -130,8 +130,12 @@ export function agolKeep(results, lng, lat, maxArea = 30) {
  * NOT A PHOTOGRAPH OF THE GROUND AS SEEN. The first run picked
  * Massachusetts' "2025 Aerial Imagery - CIR": colour infrared, false colour.
  * Indexes, footprints and elevation layers are not photos either.
+ * Nor are a flight's RAW FRAMES (2026-10-08): Indiana's
+ * Misc/Raw_Image_Frames_2026 is every camera frame as shot, unmosaicked,
+ * each with a black collar -- C55 showed one as a black stripe through the
+ * lot -- and not orthorectified, so the ground leans.
  */
-export const NOT_A_PHOTO = /(?<![a-z])cir(?![a-z])|infra.?red|(?<![a-z])nir(?![a-z])|ndvi|false.?colou?r|color.?infrared|index|footprint|boundar|tile.?scheme|flight|lidar|(?<![a-z])dem(?![a-z])|hillshade|elevation|contour|parcel|topo|labels?\b|reference|(?<![a-z])bw\d*(?![a-z])|bw\d{4}|black.?(and|&|n).?white|grayscale|greyscale|panchromatic|historic|naip|habitat|land.?cover|land.?use|classif|sanborn.?map|comments?(?![a-z])/i;
+export const NOT_A_PHOTO = /raw.?image|image.?frames?|unrectified|oblique|(?<![a-z])cir(?![a-z])|infra.?red|(?<![a-z])nir(?![a-z])|ndvi|false.?colou?r|color.?infrared|index|footprint|boundar|tile.?scheme|flight|lidar|(?<![a-z])dem(?![a-z])|hillshade|elevation|contour|parcel|topo|labels?\b|reference|(?<![a-z])bw\d*(?![a-z])|bw\d{4}|black.?(and|&|n).?white|grayscale|greyscale|panchromatic|historic|naip|habitat|land.?cover|land.?use|classif|sanborn.?map|comments?(?![a-z])/i;
 
 /*
  * A YEAR BEFORE 1990 ANYWHERE IN A NAME IS A HISTORIC LAYER, whatever later
