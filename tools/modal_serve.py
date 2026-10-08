@@ -215,8 +215,8 @@ class Alpha:
         from PIL import Image
         t0 = time.time()
         frame = payload["frame"]
-        # The CPU machine's downloads when `start` launched one beside this
-        # (it usually finished while this GPU was waking); read here otherwise
+        # The CPU machine's downloads, already finished when `lot` called
+        # this (see `lot`); read here otherwise
         # -- the queue scorer calls this directly, and a failed gather is not
         # a failed lot.
         got = None
@@ -263,6 +263,33 @@ with web_image.imports():
     from fastapi import HTTPException, Request  # noqa: F401 - resolved in the container
 
 
+@app.function(image=web_image, timeout=600, cpu=0.25, memory=512, scaledown_window=300)
+# It only waits -- on the downloads, then on the GPU -- so one small machine
+# can hold many lots at once.
+@modal.concurrent(max_inputs=32)
+def lot(body):
+    """One lot, start to finish: downloads first, THEN the GPU (2026-10-08).
+
+    `start` used to launch the downloads and the GPU together, so the cold
+    start overlapped the downloads -- and every warm press, and every cold one
+    whose GPU woke first, paid an L4 to sit through them: about 11 of a lot's
+    ~12 seconds (workflow 32). Now the GPU is asked for only once the lidar,
+    NAIP and photo are in hand, and is billed for the reading alone. The cost
+    of the order is on a cold press: the GPU's start no longer hides behind
+    the downloads, so that press waits for both in turn.
+    """
+    t0 = time.time()
+    got = gather.spawn(body)
+    try:
+        got.get(timeout=240)
+    except Exception as e:  # noqa: BLE001 - detect reads the lot itself, as before
+        print(f"gather failed, the GPU will read it: {e}", flush=True)
+    downloads = round(time.time() - t0, 1)
+    out = Alpha().detect.remote({**body, "gather": got.object_id})
+    out.setdefault("seconds", {})["downloads"] = downloads
+    return out
+
+
 @app.function(image=web_image, secrets=[auth])
 @modal.fastapi_endpoint(method="POST")
 async def start(request: "Request"):
@@ -275,9 +302,8 @@ async def start(request: "Request"):
         body = None
     if not isinstance(body, dict) or not body.get("imageUrl") or not isinstance(body.get("frame"), dict):
         raise HTTPException(status_code=400, detail="imageUrl and frame are required")
-    # Both at once: the downloads on a CPU while the GPU machine wakes.
-    got = gather.spawn(body)
-    call = Alpha().detect.spawn({**body, "gather": got.object_id})
+    # The downloads on a CPU, then the GPU: see `lot`.
+    call = lot.spawn(body)
     return {"id": call.object_id}
 
 

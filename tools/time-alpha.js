@@ -26,7 +26,7 @@ export function summarise(rows) {
   const med = (xs) => { const s = xs.filter(Number.isFinite).sort((a, b) => a - b); return s.length ? s[Math.floor((s.length - 1) / 2)] : null; };
   const pick = (k) => rows.map((r) => Number(r.seconds?.[k]));
   const out = { lots: rows.length };
-  for (const k of ['total', 'waited', 'backbone', 'canopy', 'decoder']) out[k] = med(pick(k));
+  for (const k of ['total', 'waited', 'backbone', 'canopy', 'decoder', 'downloads']) out[k] = med(pick(k));
   const shares = rows.map((r) => Number(r.seconds?.decoder) / Number(r.seconds?.total)).filter(Number.isFinite);
   out.decoderShareOfTotal = med(shares);
   return out;
@@ -65,6 +65,11 @@ async function main(env = process.env) {
   const s = summarise(results.slice(1)); // the first carries the cold start's waiting
   console.log(`\nMedians over ${s.lots} warm lots (the first lot left out): total ${s.total}s, `
     + `backbone ${s.backbone}s, canopy ${s.canopy}s, decoder + refiner ${s.decoder}s, downloads waited ${s.waited}s.`);
+  /* What the GPU is billed for is `total`: the time inside detect. Since
+     2026-10-08 the downloads run first on a CPU (modal_serve.py `lot`), so
+     `waited` should be near zero and `downloads` is the CPU's share. */
+  console.log(`GPU seconds per warm lot: ${s.total}s (of which waiting on downloads ${s.waited}s). `
+    + `Downloads on the CPU before the GPU was asked: ${s.downloads ?? 'not reported (older server)'}s.`);
   console.log(`Decoder + refiner = ${Math.round((s.decoderShareOfTotal ?? NaN) * 100)}% of a lot's server time. `
     + `Averaging 3 decoders would add about 2 x ${s.decoder}s = ${(2 * s.decoder).toFixed(1)}s a lot `
     + `(${Math.round(((2 * s.decoder) / s.total) * 100)}% more), less if the decoder step includes work done once.`);
