@@ -1365,7 +1365,21 @@ const idle = () => {
  * in which case the answer is shown rather than thrown away. See presses.js.
  */
 const DETECT_PATIENCE_S = 90;
-let detection = null;   // {press, abort, started, timer, action}
+let detection = null;   // {press, abort, started, timer, action, model}
+
+/*
+ * A STALLED PRESS IS RETRIED BY ITSELF, ONCE (owner, 2026-10-08). The trained
+ * model's first press after a deploy has twice sat queued on Modal for
+ * minutes -- the owner's after version 2, workflow 32's after the GPU change
+ * -- while a second press a moment later answered in under 30 seconds. A
+ * normal cold press takes about 30 s, so one still unanswered at 75 is stuck,
+ * not slow: it is cancelled (which hands the detection back) and sent again,
+ * the same as pressing Retry. Once in ten minutes at most, so a real outage
+ * ends at the buttons rather than in a loop. Only the trained model: a
+ * Replicate cold start can honestly take longer than this.
+ */
+const AUTO_RETRY_S = 75;
+let lastAutoRetry = 0;
 
 function startDetectionTimer(run) {
   const tick = () => {
@@ -1376,6 +1390,12 @@ function startDetectionTimer(run) {
       ? `${clock} · usually takes less than 60 seconds`
       : `${clock} · taking longer than usual`;
     $('#busy-timer').hidden = false;
+    if (secs >= AUTO_RETRY_S && !run.action && run.model === 'alpha'
+        && Date.now() - lastAutoRetry > 10 * 60 * 1000) {
+      lastAutoRetry = Date.now();
+      giveUpOnDetection('retry', 'This one got stuck — starting it again…');
+      return;
+    }
     if (secs >= DETECT_PATIENCE_S && !run.action) $('#busy-actions').hidden = false;
   };
   tick();
@@ -1403,12 +1423,12 @@ async function releasePress(press, reason) {
 }
 
 /** Cancel or Retry, pressed on the overlay. */
-async function giveUpOnDetection(action) {
+async function giveUpOnDetection(action, note = null) {
   const run = detection;
   if (!run || run.action) return;
   run.action = action;
   $('#busy-actions').hidden = true;
-  busy(action === 'retry' ? 'Starting again…' : 'Cancelling…');
+  busy(note || (action === 'retry' ? 'Starting again…' : 'Cancelling…'));
   const got = await releasePress(run.press, action);
   if (got.finished) {
     /* It answered while the buttons were up: show it rather than bin it. */
@@ -4873,6 +4893,7 @@ async function detect({ again = false } = {}) {
     started: Date.now(),
     action: null,
     accepted: false,
+    model,
   };
   detection = run;
   startDetectionTimer(run);
