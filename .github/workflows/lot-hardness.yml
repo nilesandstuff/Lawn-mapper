@@ -1,0 +1,54 @@
+name: 33. What makes a lot hard
+
+# Each lot's own photograph, measured -- how green the lawn is, how it
+# contrasts with the rest of the lot, shadow, sharpness, brightness -- against
+# THE PLAN's error on that lot from the runs given, within each photo source
+# as well as across them (owner, 2026-10-08: the sources are not uniform, so
+# the appearance is measured, not the source). Free: reads the database and
+# the corpus bucket, trains nothing. See tools/lot-hardness.js.
+on:
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: 'Workflow 14 run ids whose per-lot results to read, comma-separated (the error is averaged over them)'
+        required: true
+        default: ''
+      row:
+        description: 'Which row of the results'
+        required: false
+        default: 'decoder, edge refined + stage 3, span, lidar veto'
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Fetch each run's per-lot results
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUNS: ${{ inputs.runs }}
+        run: |
+          set -e
+          for id in $(echo "$RUNS" | tr ',' ' '); do
+            gh run download "$id" --repo "$GITHUB_REPOSITORY" -n lot-results -D "r/$id"
+          done
+          find r -name lot-results.json
+      - name: Measure the photos against the error
+        env:
+          ROW: ${{ inputs.row }}
+        run: |
+          R=$(find r -name lot-results.json | paste -sd, -)
+          node tools/lot-hardness.js --results "$R" --row "$ROW"
