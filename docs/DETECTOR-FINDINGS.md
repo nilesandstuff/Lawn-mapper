@@ -868,6 +868,41 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H90. County examples in training are worth nothing measurable to the county lots: scored by a decoder that never saw a county photo they come out the same (5 better / 6 worse, +0.9 [-1.9, +5.4]), and the matched Mapbox control moves as little (6 / 4, -0.8) -- 2026-10-08
+
+Three seeds (7/8/9), free runner, `lawns: locked` (81), `refiner_trial: held
+out by photo`: 37791602756, 37791654341, 37791705849. Each arm against THE
+PLAN's own row of the same runs (place folds, so a county lot's usual decoder
+trained on about 75 lots including up to 11 county ones). Workflow 24
+37810027839 and 37810065383; workflow 33 37810102936.
+
+| arm | lots | better / worse / level | median | paired change [95%] | sign test |
+|---|---|---|---|---|---|
+| county lots, decoder trained on the 69 Mapbox lots only | 12 | 5 / 6 / 1 | 55.5 -> 54.7% | +0.9 [-1.9, +5.4] | p 1.0 |
+| 12 Mapbox lots held out the same way (control) | 12 | 6 / 4 / 2 | 24.5 -> 23.5% | -0.8 [-2.0, +0.8] | p 0.75 |
+
+County lots A -> B: C99 130 -> 141, C94 101 -> 84, C79 76 -> 82, C88 61 ->
+66, C87 56 -> 55, C80 56 -> 47, C89 55 -> 55, C74 46 -> 57, C81 29 -> 34,
+C66 25 -> 25, C82 21 -> 23, C71 7 -> 5.
+
+- **Taking every county photo out of training changes nothing for the
+  county lots.** The arm's change (+0.9) and the control's (-0.8) are 1.7
+  points apart with intervals that overlap zero on both sides; losing the
+  training lots themselves costs nothing visible either way.
+- **So H88's 55% vs 19% is not a want of same-look examples.** What H89
+  measured -- the lawn's contrast with the rest of the lot, and how little
+  of these lots is lawn -- stands as the explanation on the table. Nothing
+  here says the county default is hurting the AI, and nothing says it is
+  not; that is the live split (S32 design 1).
+- **What it cannot say:** the usual decoder had at most 11 county examples
+  to learn from, so this is "11 against none", not "a hundred against
+  none". Whether many county examples would form a pocket of their own
+  (the B case) is untested and untestable until there are many.
+- Workflow 33's change report over the 12 lots found no measure tracking
+  the change (every p over 0.1); at twelve lots it would have to be large.
+- Nothing adopted; the `held out by photo` arm stays for the next question
+  of this shape.
+
 ### H89. What makes a lot hard, measured on each lot's own photo: the lawn's CONTRAST with the rest of the lot predicts the error within each source (rank -0.41 Mapbox, -0.63 county); sharpness does not; the share of the lot that is lawn predicts it most of all (-0.62) -- 2026-10-08
 
 Workflow 33 run 37783174587 (tools/lot-hardness.js), over THE PLAN's row of
@@ -6213,7 +6248,7 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
-### S32. Is it the county photo or the lot? (2026-10-08 -- the first design WITHDRAWN; two honest ones proposed, not built)
+### S32. Is it the county photo or the lot? (2026-10-08 -- design 2 MEASURED, H90: not a want of county examples; design 1, the live split, still open)
 
 **Why (H88):** the 12 county-photo lots score 55% against 19% for Mapbox
 lots, and the county photo is now the default for most addresses, so most
@@ -7047,3 +7082,4 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-08 | 37709603931 / 37710689178 (workflow 32) | 8 timing lots | live server after `lot` (downloads first, then GPU) | — | — | GPU 2.7 s per warm lot (12.3 before), waiting 1.1 (11.0). First press after the deploy timed out; cold press 29 s |
 | 2026-10-08 | 37766196684 (workflow 24 split) | 81 (locked), S31 runs | THE PLAN's row split by the photo each map was drawn on | — | county 55.2% (12 lots) / Mapbox 19.0% (69) | **H88.** County-photo lots are the worst group; cause not established (confounded with the lots being the newest) |
 | 2026-10-08 | 37783174587 (workflow 33) | 81 (locked), S31 runs | each lot's photo measured (contrast, green, shadow, focus, brightness, lawn share) against THE PLAN's error | — | — | **H89.** Contrast predicts error within each source (-0.41 / -0.63); focus does not; lawn share -0.62 (partly the metric) |
+| 2026-10-08 | 37791602756 / 37791654341 / 37791705849 | 81 (locked) | S32 `refiner_trial: held out by photo` (county lots answered by a decoder trained on the 69 Mapbox lots; 12 Mapbox lots held out the same way), seeds 7/8/9, CPU | 20.9 / 22.5 / 22.0% (edge refined + stage 3, span, veto) | — | **H90.** County arm 5 / 6, +0.9 [-1.9, +5.4]; control 6 / 4, -0.8. County examples in training worth nothing measurable |
