@@ -58,12 +58,15 @@ import { currentUser } from './auth.js';
 import { recordParcelGap } from './gaps.js';
 import { llmsTxt } from './llms.js';
 
-/* Named in robots.txt (see the case there): search engines, then the AI
-   assistants' search and on-request fetch agents. */
+/* Named in robots.txt (see the case there): search engines, the AI
+   assistants' search and on-request fetch agents, then training crawlers. */
 const ROBOTS_AGENTS = [
   'Googlebot', 'Bingbot', 'DuckDuckBot', 'Applebot', 'YandexBot',
   'OAI-SearchBot', 'ChatGPT-User', 'Claude-SearchBot', 'Claude-User',
   'PerplexityBot', 'Perplexity-User', 'MistralAI-User',
+  // Training (owner, 2026-10-08).
+  'GPTBot', 'ClaudeBot', 'Google-Extended', 'Applebot-Extended', 'CCBot',
+  'Meta-ExternalAgent', 'Amazonbot',
 ];
 import { versionHistory } from './model-versions.js';
 // Constants and the version lookup live in their own module: a Workers
@@ -1702,8 +1705,8 @@ export default {
          * AND FOR AI (owner, 2026-10-04: "so users can find the site for LLM
          * conversations"). Every crawler is allowed, AI ones included; the
          * Content-Signal line (contentsignals.org) says this page may be used
-         * for search results and as input to an AI's answer. Training is left
-         * unstated -- no preference either way -- until the owner says.
+         * for search results, as input to an AI's answer, and for training
+         * (owner, 2026-10-08).
          * /llms.txt is the plain-words summary for them (llms.js).
          *
          * /api/config and /api/coverage ARE ALLOWED, though /api/ is not
@@ -1719,18 +1722,18 @@ export default {
          * group entirely, so separate groups would each need every rule
          * repeated, and one forgotten would quietly open /api/ to it. Several
          * User-agent lines over one set of rules is the standard way to name
-         * them without that risk. These are the search engines and the AI
-         * assistants' search and fetch agents. The TRAINING crawlers (GPTBot,
-         * ClaudeBot, Google-Extended, Applebot-Extended, CCBot) are left to
-         * the wildcard, which allows them, until the owner decides on
-         * training -- naming them would be a statement this file has not made.
+         * them without that risk. Search engines, the AI assistants' search
+         * and fetch agents, and -- owner, 2026-10-08: "allow them" -- the
+         * TRAINING crawlers too, with ai-train=yes in the Content-Signal: the
+         * public pages are a sales page meant to be repeated, and nothing a
+         * person saved is reachable from here.
          */
         case '/robots.txt':
           return new Response(
             '# Search engines and AI assistants are welcome. A plain-language summary\n'
             + `# of this site for AI assistants: ${url.origin}/llms.txt\n`
             + ROBOTS_AGENTS.map((a) => `User-agent: ${a}\n`).join('')
-            + `User-agent: *\nContent-Signal: search=yes, ai-input=yes\nAllow: /\nAllow: /api/config\nAllow: /api/coverage\nDisallow: /api/\n\nSitemap: ${url.origin}/sitemap.xml\n`,
+            + `User-agent: *\nContent-Signal: search=yes, ai-input=yes, ai-train=yes\nAllow: /\nAllow: /api/config\nAllow: /api/coverage\nDisallow: /api/\n\nSitemap: ${url.origin}/sitemap.xml\n`,
             { headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=86400' } }
           );
         /* For AI assistants: what the site is, in plain words (llms.js). */

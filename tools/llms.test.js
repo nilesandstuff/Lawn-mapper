@@ -26,7 +26,7 @@ console.log('llms.txt: ok');
   assert.equal(llms.status, 200);
   assert.match(llms.headers.get('content-type'), /text\/markdown/);
   const robots = await (await at('/robots.txt')).text();
-  assert.match(robots, /User-agent: \*\nContent-Signal: search=yes, ai-input=yes\nAllow: \//);
+  assert.match(robots, /User-agent: \*\nContent-Signal: search=yes, ai-input=yes, ai-train=yes\nAllow: \//);
   assert.match(robots, /Disallow: \/api\//);
   // Google runs app.js when it renders the page; a forbidden /api/config
   // showed it "The map didn't load" over the landing (2026-10-08).
@@ -38,7 +38,8 @@ console.log('llms.txt: ok');
     assert.match(robots, new RegExp(`User-agent: ${a}\\n`));
   }
   assert.equal((robots.match(/Disallow:/g) || []).length, 1, 'one group, one set of rules');
-  assert.match(robots, /User-agent: MistralAI-User\nUser-agent: \*\n/);
+  assert.match(robots, /User-agent: Amazonbot\nUser-agent: \*\n/);
+  for (const a of ['GPTBot', 'ClaudeBot', 'Google-Extended', 'CCBot']) assert.match(robots, new RegExp(`User-agent: ${a}\\n`));
   assert.match(robots, /https:\/\/example\.test\/llms\.txt/);
   console.log('unknown files 404, deep links still open the app, robots says yes to search and AI answers: ok');
 }
