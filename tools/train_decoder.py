@@ -81,6 +81,17 @@ CANOPY = os.environ.get("CANOPY", "")
 CANOPY_MODE = "all" if os.environ.get("CANOPY_MODE", "lawn") == "all" else "lawn"
 # How many lawns to hold out, for a quick look. Unset means every lawn.
 LIMIT = int(os.environ.get("LIMIT", "0") or 0)
+# HELD OUT AS ONE GROUP (S32, owner 2026-10-08: is it the county photo or the
+# lot?). HOLDOUT=county trains ONE decoder on every lot NOT drawn on a county
+# photo and answers the county lots with it, so they are scored by a model
+# that never saw a county photo; the usual folds (where the other county
+# lots are in training) are the comparison. HOLDOUT=mapbox:12 is the matched
+# control: twelve Mapbox lots held out the same way, so the cost of simply
+# losing those lots from training is known. HOLDOUT_SOURCES is {id: provider}
+# (tools/photo-sources.js). The other lots get no answer.
+HOLDOUT = (os.environ.get("HOLDOUT", "") or "").strip()
+HOLDOUT_SOURCES = os.environ.get("HOLDOUT_SOURCES", "")
+HOLDOUT_SAMPLE_SEED = int(os.environ.get("HOLDOUT_SAMPLE_SEED", "7") or 7)
 # Folds; unset or 0 means leave-one-out (see main). "place" is grouped
 # folds: lots within NEIGHBOUR_KM of each other are always held out together.
 FOLDS_RAW = (os.environ.get("FOLDS", "") or "").strip()
@@ -217,6 +228,21 @@ class Decoder(nn.Module):
         """The last hidden layer (32 numbers a patch) and the answer from it."""
         hidden = self.net[:-1](x)
         return hidden, self.net[-1](hidden)
+
+
+def holdout_group(ids, spec, sources, sample_seed=7):
+    """The lot ids HOLDOUT names: 'county', or 'mapbox:N' for a fixed random N
+    of the lots NOT on a county photo. Fixed by sample_seed, not the run's seed,
+    so three seeds hold out the same dozen and their answers pool lot by lot."""
+    county = [i for i in ids if sources.get(i) == "county"]
+    if spec == "county":
+        return county
+    if spec.startswith("mapbox"):
+        n = int(spec.split(":")[1]) if ":" in spec else len(county)
+        rest = [i for i in ids if sources.get(i) != "county"]
+        pick = np.random.default_rng(sample_seed).permutation(len(rest))[:n]
+        return [rest[k] for k in sorted(pick)]
+    raise SystemExit(f"HOLDOUT={spec!r}: county or mapbox:N")
 
 
 def read_returns(stem):
@@ -737,6 +763,14 @@ def main():
         groups = [[lawns[i] for i in order[k::FOLDS]] for k in range(FOLDS)]
         groups = [g for g in groups if g]
         print(f"{len(groups)} folds of about {len(lawns) // len(groups)} lawns, not leave-one-out", flush=True)
+    if HOLDOUT and not LIMIT:
+        with open(HOLDOUT_SOURCES) as f:
+            sources = json.load(f)
+        chosen = set(holdout_group([L["id"] for L in lawns], HOLDOUT, sources, HOLDOUT_SAMPLE_SEED))
+        held_out = [L for L in lawns if L["id"] in chosen]
+        groups = [held_out]
+        print(f"HOLDOUT={HOLDOUT}: one decoder trained on the other {len(lawns) - len(held_out)} lots answers "
+              f"these {len(held_out)}: {', '.join(L['id'][:24] for L in held_out)}", flush=True)
     n = 0
     for f, group in enumerate(groups):
         t0 = time.time()
