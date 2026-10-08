@@ -4,7 +4,7 @@
  *
  *   node tools/lot-hardness.test.js
  */
-import { covariates, ranks, spearman, report } from './lot-hardness.js';
+import { covariates, ranks, spearman, report, changeReport } from './lot-hardness.js';
 
 let failures = 0;
 const check = (name, ok, detail = '') => {
@@ -74,6 +74,15 @@ const lines = report(lots);
 check('the report covers all, Mapbox-only and county-only',
   lines.some((l) => l.startsWith('\nall lots (9')) && lines.some((l) => l.includes('Mapbox lots only (6')) && lines.some((l) => l.includes('county lots only (3')));
 check('and contrast tracks error here', lines.some((l) => /contrast .*rank corr with error -1\.00/.test(l)), lines.find((l) => /contrast/.test(l)));
+
+/* With a second row: where the change lives. Here B helps exactly the low-contrast lots. */
+{
+  const paired = lots.map((l, i) => ({ ...l, d: l.contrast < 1 ? -3 : (i % 2 ? 1 : 0) }));
+  const lines = changeReport(paired, 'A', 'B');
+  check('the change report counts wins and losses', lines.some((l) => /overall: B better on 3, worse on 3/.test(l)), lines[1]);
+  check('and says the lowest-contrast third is where B helped',
+    lines.some((l) => /contrast .*rank corr with the change \+/.test(l) && / lowest third:  3 better/.test(l)), lines.find((l) => /contrast/.test(l)));
+}
 
 console.log(failures ? `\n${failures} check(s) FAILED.` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

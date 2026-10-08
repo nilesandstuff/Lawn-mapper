@@ -241,6 +241,35 @@ function corrLine(name, lots, key) {
     + `   median error: low half ${f1(median(lo))}%, high half ${f1(median(hi))}%`;
 }
 
+/**
+ * WHERE A CHANGE'S GAINS AND LOSSES LIVE (owner, 2026-10-08: this could
+ * substitute some of the need to look at traces from runs by eye). With a
+ * second row, each lot carries d = B - A (negative is better), and the
+ * report says which kinds of lot moved: the rank correlation of d with each
+ * measure, and B's wins and losses in the lowest and highest third of it.
+ */
+export function changeReport(lots, labelA, labelB) {
+  const out = [`\nWhere "${labelB}" differs from "${labelA}" (${lots.length} lots; negative = B better):`];
+  const keys = ['contrast', 'green', 'shadow', 'sharp', 'bright', 'lawn', 'sizeM2', 'near10'];
+  const ds = lots.map((l) => l.d);
+  const wins = ds.filter((v) => v < -0.5).length, losses = ds.filter((v) => v > 0.5).length;
+  out.push(`  overall: B better on ${wins}, worse on ${losses}, level on ${ds.length - wins - losses}; median change ${f1(median(ds))}`);
+  for (const k of keys) {
+    const have = lots.filter((l) => Number.isFinite(l[k])).sort((a, b) => a[k] - b[k]);
+    if (have.length < 6) continue;
+    const s = spearman(have.map((l) => l[k]), have.map((l) => l.d));
+    const third = Math.ceil(have.length / 3);
+    const band = (list) => {
+      const w = list.filter((l) => l.d < -0.5).length, x = list.filter((l) => l.d > 0.5).length;
+      return `${String(w).padStart(2)} better / ${String(x).padStart(2)} worse, change ${f1(median(list.map((l) => l.d)))}`;
+    };
+    out.push(`  ${k.padEnd(9)} rank corr with the change ${s.rho >= 0 ? '+' : ''}${s.rho.toFixed(2)} p ${s.p.toFixed(3)}`
+      + `   lowest third: ${band(have.slice(0, third))}   highest third: ${band(have.slice(-third))}`);
+  }
+  out.push('Read: a positive correlation means the more of this a lot has, the more B hurt it; negative, the more B helped.');
+  return out;
+}
+
 export function report(lots) {
   const out = [];
   const keys = ['contrast', 'green', 'shadow', 'sharp', 'bright', 'lawn', 'sizeM2', 'near10'];
@@ -271,8 +300,10 @@ async function main() {
   const get = (k) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : null; };
   const files = (get('--results') || '').split(',').filter(Boolean).map((p) => JSON.parse(readFileSync(p, 'utf8')));
   const row = get('--row') || PLAN_ROW;
-  if (!files.length) { console.log('usage: --results a.json,b.json [--row "row name"]'); process.exit(2); }
+  const rowB = get('--row-b') || null;
+  if (!files.length) { console.log('usage: --results a.json,b.json [--row "row name"] [--row-b "row name"]'); process.exit(2); }
   const { mean } = pool(files, row);
+  const meanB = rowB ? pool(files, rowB).mean : null;
   const ids = [...mean.keys()];
   const rows = query(`SELECT id, lot_no, image_key, image_frame, frame, shapes, parcel, image_provider, leaf_off
                         FROM corpus WHERE id IN (${ids.map((i) => `'${i.replace(/'/g, "''")}'`).join(',')})`);
@@ -298,6 +329,7 @@ async function main() {
       id, name: mapName(id, r.lot_no) || id.split(':')[0], error: mean.get(id).error,
       source: r.image_provider === 'county' ? 'county' : 'mapbox', leafOff: r.leaf_off === null ? null : Number(r.leaf_off),
       sizeM2: d.truthM2 ?? null, near10: d.nearEdge10 ?? null, ...cov,
+      d: meanB?.has(id) ? meanB.get(id).error - mean.get(id).error : null,
     });
   }
   rmSync(dir, { recursive: true, force: true });
@@ -310,6 +342,7 @@ async function main() {
   }
   console.log(`\n${'='.repeat(64)}`);
   for (const line of report(lots)) console.log(line);
+  if (rowB) for (const line of changeReport(lots.filter((l) => Number.isFinite(l.d)), row, rowB)) console.log(line);
   console.log('\nRead: a rank correlation near +1 means the higher this number, the worse the lot;');
   console.log('near -1, the better. p under 0.05 is worth believing at this corpus size; the rest is noise.');
   console.log(`${'='.repeat(64)}`);

@@ -17,6 +17,10 @@ on:
         description: 'Which row of the results'
         required: false
         default: 'decoder, edge refined + stage 3, span, lidar veto'
+      row_b:
+        description: 'A second row to compare: the report then also says which kinds of lot it helped and hurt'
+        required: false
+        default: ''
 
 permissions:
   actions: read
@@ -49,6 +53,7 @@ jobs:
       - name: Measure the photos against the error
         env:
           ROW: ${{ inputs.row }}
+          ROW_B: ${{ inputs.row_b }}
         run: |
           R=$(find r -name lot-results.json | paste -sd, -)
-          node tools/lot-hardness.js --results "$R" --row "$ROW"
+          node tools/lot-hardness.js --results "$R" --row "$ROW" ${ROW_B:+--row-b "$ROW_B"}
