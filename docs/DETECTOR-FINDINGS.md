@@ -868,6 +868,63 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H89. What makes a lot hard, measured on each lot's own photo: the lawn's CONTRAST with the rest of the lot predicts the error within each source (rank -0.41 Mapbox, -0.63 county); sharpness does not; the share of the lot that is lawn predicts it most of all (-0.62) -- 2026-10-08
+
+Workflow 33 run 37783174587 (tools/lot-hardness.js), over THE PLAN's row of
+the S31 runs (the locked 81, error averaged over 3 seeds). Each lot's banked
+photo, inside its property line, resampled to 7.5 cm a pixel; shadow pixels
+(luma under 50) left out of the colour and focus measures. Rank correlations
+with the lot's error, permutation p; "low / high" are the median error of the
+lots below and above that measure's median.
+
+| measure | all 81 | Mapbox 69 | county 12 | low half -> high half (all) |
+|---|---|---|---|---|
+| contrast: lawn vs rest, excess-green d' | **-0.47, p <0.001** | **-0.41, p 0.001** | **-0.63, p 0.03** | 31.8% -> 14.2% |
+| green: the lawn's excess-green | -0.20, p 0.08 | -0.08, p 0.47 | -0.43, p 0.15 | 25.9% -> 17.8% |
+| shadow: share of the lot dark | +0.18, p 0.10 | **+0.26, p 0.03** | -0.29, p 0.35 | 23.4% -> 20.6% |
+| sharp: focus (blur ratio) | +0.08, p 0.47 | +0.03, p 0.80 | +0.07, p 0.83 | 20.7% -> 22.7% |
+| bright: median luma | -0.15, p 0.20 | -0.23, p 0.06 | +0.28, p 0.38 | 23.8% -> 17.4% |
+| **lawn: share of the lot that is lawn** | **-0.62, p <0.001** | **-0.54, p <0.001** | **-0.75, p 0.007** | 33.7% -> 14.8% |
+| size of the lawn, m2 | -0.31, p 0.004 | -0.19, p 0.13 | -0.48, p 0.12 | 25.7% -> 19.0% |
+
+Source with contrast held level (thirds by contrast rank): low third county 6
+lots 66.1% / Mapbox 21 lots 33.7%; middle third county 6 / 37.3% vs Mapbox
+21 / 22.9%; high third county **0** lots, Mapbox 27 lots 13.5%.
+
+- **The owner's reading holds (owner, 2026-10-08: less contrast between
+  dormant grass and bare dirt or leaf litter):** how far the lawn's colour
+  sits from the rest of the lot's, in THIS photo, predicts the error, and it
+  does so inside the Mapbox lots alone and inside the county lots alone. The
+  lawn's greenness by itself barely does (a dull lawn on dull ground is the
+  problem, not dullness). Not one county photo is in the high-contrast
+  third: they are leaf-off flights, as the owner said, and the county lots'
+  excess-green runs 0.00-0.12 against Mapbox's up to 0.36.
+- **Sharpness is not it.** The focus measure separates the sources (county
+  1.06-1.47, Mapbox 1.04-1.16) and tracks error nowhere. "Sharper photos
+  confuse the model" is not supported.
+- **Shadow: a modest, real effect within Mapbox** (+0.26, p 0.03), none
+  visible in the 12 county lots, which carry little shadow (0-21%). Fits the
+  owner's "heavy shadows have no correlation with the source".
+- **The strongest predictor is how much of the lot is lawn, and that is
+  partly the METRIC.** Error is wrong ground as a share of the TRUE lawn, so
+  the same misread driveway costs a lot that is 4% lawn a hundred times what
+  it costs one that is 80% lawn. C29 (406%) is 4% lawn; C80 (56%) 12%; B19
+  (79%) 18%; C88 (60%) 19%. Every "worst lots" list in this file is partly a
+  list of lots with little lawn in them. A second figure that does not
+  depend on how much lawn there is (wrong ground as a share of the LOT, or
+  intersection over union) would read those lots fairly; not changed here,
+  because every accuracy figure the owner has been given is on the current
+  one.
+- **County lots are still worse at matched contrast** (6 vs 21 lots a cell,
+  so roughly), and they also have less lawn in them (median share about 45%
+  against Mapbox's about 58%). Contrast and lawn share together explain much
+  of H88's 55% vs 19%; whether anything is left for "the decoder has seen
+  only 12 county photos" is S32's remaining question.
+- Correlations over 81 lots, not an experiment: the measures are
+  confounded with each other and with source. The within-source contrast
+  result is the cleanest piece. The owner's leaf-off mark is set on one lot
+  of the 81, so it could not be used.
+
 ### H88. The 12 locked lots drawn on county photos are the worst group in the corpus: median 55.2% error against 19.0% for the 69 drawn on Mapbox -- cause NOT established, 2026-10-08
 
 THE PLAN's row ("decoder, edge refined + stage 3, span, lidar veto") over the
@@ -6173,7 +6230,13 @@ not mean the lots are hard. The clean version needs an outline drawn on EACH
 photo of the same lot; only 3 approved maps have both (B08, C59, C35, all
 drawn on Mapbox first), too few.
 
-**Two designs that do answer it:**
+**H89 answered part of it:** contrast (the lawn against the rest of the
+lot, in that photo) and how much of the lot is lawn predict the error within
+each source, and every county photo in the set is low- or middle-contrast.
+What is left open is whether the decoder would do better on county photos
+with more of them to learn from -- design 2 below.
+
+**Two designs that answer the rest:**
 
 1. **Live use, split by photo (cheap, no misfit, slow).** Workflow 7's
    live-release score (H87) already compares what the release drew with what
@@ -6974,3 +7037,4 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-08 | 37709290743 (workflow 7) | 25 approved maps drawn by release 1 | live-release score: the release's outline vs the finished one, by `model_version` | — | 23.4% (release 1, live) | **H87.** First live measurement; folds had said 24.0%. v2 drew none, v3 one (unreviewed) |
 | 2026-10-08 | 37709603931 / 37710689178 (workflow 32) | 8 timing lots | live server after `lot` (downloads first, then GPU) | — | — | GPU 2.7 s per warm lot (12.3 before), waiting 1.1 (11.0). First press after the deploy timed out; cold press 29 s |
 | 2026-10-08 | 37766196684 (workflow 24 split) | 81 (locked), S31 runs | THE PLAN's row split by the photo each map was drawn on | — | county 55.2% (12 lots) / Mapbox 19.0% (69) | **H88.** County-photo lots are the worst group; cause not established (confounded with the lots being the newest) |
+| 2026-10-08 | 37783174587 (workflow 33) | 81 (locked), S31 runs | each lot's photo measured (contrast, green, shadow, focus, brightness, lawn share) against THE PLAN's error | — | — | **H89.** Contrast predicts error within each source (-0.41 / -0.63); focus does not; lawn share -0.62 (partly the metric) |
