@@ -75,10 +75,29 @@ async function picture(row) {
   }
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${parts.join('')}</svg>`;
   pictured += 1;
-  const out = `${dir}/${String(pictured).padStart(2, '0')}-${row.id.replace(/[^A-Za-z0-9.-]+/g, '_')}.png`;
+  const stem = `${dir}/${String(pictured).padStart(2, '0')}-${row.id.replace(/[^A-Za-z0-9.-]+/g, '_')}`;
+  const out = `${stem}.png`;
   await sharp(raw).composite([{ input: Buffer.from(svg), top: 0, left: 0 }]).png().toFile(out);
   console.log(`picture   ${out}  (${W}x${H} photo, frame ${f.size}x${f.height || f.size} -> `
     + `${(W / f.size).toFixed(3)} x ${(H / (f.height || f.size)).toFixed(3)} px per frame px)`);
+  /* THE PAIR'S COUNTY PHOTO TOO, with the same outlines (owner, 2026-10-09:
+     the banked county photo and the live one looked like different photos),
+     when county_imagery keeps one that is not the map's own. */
+  try {
+    const [ci] = query(`SELECT image_key FROM county_imagery WHERE id = '${String(row.id).replace(/'/g, "''")}'`);
+    if (ci?.image_key && ci.image_key !== row.image_key) {
+      const rawC = `${dir}/raw-county.bin`;
+      execFileSync('npx', ['--no-install', 'wrangler', 'r2', 'object', 'get',
+        `lawn-mapper-corpus/${ci.image_key}`, '--file', rawC, '--remote'],
+      { stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 });
+      const mc = await sharp(rawC).metadata();
+      const svgC = `<svg xmlns="http://www.w3.org/2000/svg" width="${mc.width}" height="${mc.height}">${parts.join('')}</svg>`;
+      await sharp(rawC).composite([{ input: Buffer.from(svgC), top: 0, left: 0 }]).png().toFile(`${stem}-county.png`);
+      console.log(`          and the pair's county photo ${stem}-county.png (${mc.width}x${mc.height}), the map's outlines drawn on it unmoved`);
+    }
+  } catch (e) {
+    console.log(`(no county photo for ${row.id}: ${String(e.stderr || e.message).slice(0, 160)})`);
+  }
 }
 
 /**
