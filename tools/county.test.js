@@ -5,7 +5,7 @@
  */
 import { cleanCountyReview, cleanCountyOutlines, MAX_NUDGE_M, countyServiceAt, countyServiceById, MAX_SERVICE_SQ_DEG } from '../worker/src/county.js';
 import { decodePng, looksLikePhoto } from '../worker/src/png-probe.js';
-import { probeService, countyServicesAt, oldestYear, SHARP_AT_12CM } from '../worker/src/county.js';
+import { probeService, countyServicesAt, countyChoicesAt, oldestYear, SHARP_AT_12CM } from '../worker/src/county.js';
 import { stitch, encodePng, isMercatorCache } from '../worker/src/tile-mosaic.js';
 import { PNG } from 'pngjs';
 import { providerCatalogue, imageryUrl, detectionProvider, countyExportUrl, frameBbox3857 } from '../worker/src/imagery.js';
@@ -142,6 +142,29 @@ check('nothing at all is refused', cleanCountyOutlines({ shapes: [], notLawn: []
     JSON.stringify(list.map((s) => [s.id, s.detail])));
   const both = await countyServicesAt(env, -87.4, 46.5, 4, { fetcher: async () => new Response(sharp), now: new Date('2026-10-02') });
   check('of two sharp enough, the newer, however much sharper the older', both.map((s) => s.id).join() === '1,2');
+  /* Newest means the date of flight; the sharper wins a tie; the newer, softer flight is still offered (owner, 2026-10-09). */
+  {
+    const rows3 = [
+      { id: 3, url: 'https://o/osip_most_current_cache/MapServer', type: 'MapServer', title: "Ohio's Most Current (Cached)", year: null, export_ok: 1 },
+      { id: 4, url: 'https://c/Imagery2025/MapServer', type: 'MapServer', title: 'Imagery2025', year: 2025, export_ok: 1 },
+      { id: 5, url: 'https://c/LeafOn2025/MapServer', type: 'MapServer', title: '2025 Leaf-On', year: 2025, flown: 'Fall of 2025', export_ok: 1 },
+      { id: 6, url: 'https://o/osip_dynamic/ImageServer', type: 'ImageServer', title: 'Ohio dynamic', year: 2024, export_ok: 1 },
+    ];
+    const env3 = { DB: { prepare: () => ({ bind: () => ({ all: async () => ({ results: rows3 }) }) }) } };
+    const sharper = big((x, y) => { const v = 40 + (noise(x, y) * 3) % 150; return [v, v + 30, v - 10]; });
+    const f3 = async (u) => new Response(/LeafOn/.test(String(u)) ? soft : /dynamic/.test(String(u)) ? sharper : sharp);
+    const { services, recent } = await countyChoicesAt(env3, -83.2, 40.0, 4, { fetcher: f3, now: new Date('2026-10-09') });
+    check('the newest sharp flight first, "most current" with no date after the dated ones, the soft newest last',
+      services.map((s) => s.id).join() === '4,6,3,5', services.map((s) => [s.id, s.detail]).join(' '));
+    check('and the newer, softer flight is offered beside it as recent', recent?.id === 5, JSON.stringify(recent));
+    const tie = [
+      { id: 7, url: 'https://c/A2025/MapServer', type: 'MapServer', title: 'A 2025', year: 2025, export_ok: 1 },
+      { id: 8, url: 'https://c/B2025/MapServer', type: 'MapServer', title: 'B 2025', year: 2025, export_ok: 1 },
+    ];
+    const envT = { DB: { prepare: () => ({ bind: () => ({ all: async () => ({ results: tie }) }) }) } };
+    const got = await countyChoicesAt(envT, -83.2, 40.0, 4, { fetcher: async (u) => new Response(/B2025/.test(String(u)) ? sharper : sharp), now: new Date('2026-10-09') });
+    check('the same flight date: the sharper one, and nothing newer to offer', got.services.map((s) => s.id).join() === '8,7' && got.recent === null, JSON.stringify(got.services.map((s) => [s.id, s.detail])));
+  }
   check('two dozen boxes are looked at the spot, not twice the answer (Manassas behind Fairfax and Loudoun)',
     seen[0][1][3] === 24, JSON.stringify(seen[0][1]));
   {

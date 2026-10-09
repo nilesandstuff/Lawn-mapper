@@ -71,6 +71,7 @@ import {
 } from './compare-imagery.js';
 import { registerImages, applyAffine } from '../public/lib/register.js';
 import { looksLikePhoto } from '../worker/src/png-probe.js';
+import { flightDate, byFlightDate, sameFlight } from '../public/lib/flight-date.js';
 import { frameBbox3857 } from '../worker/src/imagery.js';
 import { candidateCounties, ALL_COUNTIES } from '../worker/src/counties.js';
 
@@ -245,11 +246,23 @@ export function rankCandidates(list, minYear = MIN_YEAR) {
 }
 const LATEST = /most.?recent|latest|current/i;
 
-/** The best of the usable: newest year, then finest. */
+/**
+ * The best of the usable: the newest FLIGHT (owner, 2026-10-09: "newest
+ * should mean date of flight"; flight-date.js reads `flown`, else the year;
+ * undated last), and of the same flight the sharper -- by measured detail
+ * where both were measured, else the finer claimed resolution. The same
+ * rule the editor's picker applies (worker/src/county.js), so what the
+ * nightly pass banks is what a person would be shown.
+ */
 export function chooseBest(evaluated) {
   const usable = evaluated.filter((e) => e.usable);
-  usable.sort((a, b) => ((b.year ?? 0) - (a.year ?? 0))
-    || ((a.nativeCm ?? 99) - (b.nativeCm ?? 99)));
+  const undated = (e) => flightDate(e.flown, e.year) === null;
+  usable.sort((a, b) => byFlightDate(a, b)
+    || ((sameFlight(a, b) || (undated(a) && undated(b)))
+      ? ((a.detail !== null && a.detail !== undefined && b.detail !== null && b.detail !== undefined)
+        ? b.detail - a.detail
+        : ((a.nativeCm ?? 99) - (b.nativeCm ?? 99)))
+      : 0));
   return usable[0] || null;
 }
 
@@ -903,6 +916,10 @@ export async function evaluate(c, base, frame, decoders) {
     ? (extraDetail(img.data, img.width, img.height, 4)?.extra ?? 0) / base.detail.extra : null;
   const years = yearHints(`${c.title} ${c.url} ${m.description || ''} ${m.serviceDescription || ''} ${m.copyrightText || ''}`);
   const year = c.year ?? (years.length ? Math.max(...years) : null);
+  /* When it was flown, in the service's own words and its catalogue's dates
+     (seasonOf), so chooseBest can rank by flight rather than by year. */
+  let flown = null;
+  try { flown = (await seasonOf(c.url, c.title, m)).flown; } catch { /* undated, then */ }
   const fine = native !== null && native > 0 ? native <= MAX_NATIVE_CM : (detail !== null && detail >= MIN_DETAIL);
   const recent = year === null || year >= MIN_YEAR;
   const usable = cover >= MIN_COVER && fine && recent;
@@ -911,7 +928,7 @@ export async function evaluate(c, base, frame, decoders) {
       : !fine ? `too coarse (${native ? `${Math.round(native)} cm` : `detail ${detail?.toFixed(2) ?? '?'}`})`
         : `flown ${year}`;
   return {
-    ...c, year, usable, why, cover, nativeCm: native, detail,
+    ...c, year, flown, usable, why, cover, nativeCm: native, detail,
     green: base.green ? greenShare(img.data, img.width, img.height) / base.green : null,
     img: usable ? img : null,
   };
@@ -1706,14 +1723,18 @@ async function main() {
   const rows = query(`SELECT c.id, c.county, c.status, c.frame, c.image_frame, c.image_key, ci.checked_at
                         FROM corpus c LEFT JOIN county_imagery ci ON ci.id = c.id
                        WHERE c.status = 'approved' AND c.image_key IS NOT NULL
-                         -- never replace a photo somebody traced outlines on
-                         AND ci.shapes IS NULL
+                         -- never replace a photo somebody traced outlines on,
+                         -- unless this one map was asked for by id (ONLY)
+                         AND (ci.shapes IS NULL${ONLY ? ' OR 1' : ''})
                          -- nor look for one for a map made on a county photo:
                          -- that photo IS its photo (county-picture.js)
                          AND (c.image_provider IS NULL OR c.image_provider != 'county')
                          AND c.frame IS NOT NULL ${ONLY ? `AND c.id = ${lit(ONLY)}` : ''}
                        ORDER BY c.at DESC LIMIT ${Math.max(1, LIMIT)}`);
   const todo = rows.filter((r) => FORCE || ONLY || !r.checked_at);
+  if (ONLY && rows.length) {
+    console.log(`ONLY ${ONLY}: looked at again whatever was banked; outlines traced on the old county photo, if any, now sit on the new one.`);
+  }
   console.log(`${rows.length} corpus maps with a banked photo; ${todo.length} to look at`
     + `${FORCE ? ' (FORCE: all again)' : ''}${DRY_RUN ? ' -- DRY RUN, nothing written' : ''}.`);
 

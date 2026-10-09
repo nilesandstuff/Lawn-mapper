@@ -57,6 +57,18 @@ const best = chooseBest([
   { url: 'newest-unusable', usable: false, year: 2025, nativeCm: 5 },
 ]);
 check('the newest usable flight wins, the finer on a tie', best?.url === 'fine', best?.url);
+/* Newest means the date of flight (owner, 2026-10-09), and measured detail decides a tie. */
+check('a flight dated by its words beats one by year alone, and "most current" with no date is last',
+  chooseBest([
+    { url: 'current', usable: true, year: null, nativeCm: 5, title: 'Most Current' },
+    { url: 'y2025', usable: true, year: 2025, nativeCm: 7 },
+    { url: 'fall2025', usable: true, year: 2025, flown: 'Fall of 2025', nativeCm: 15 },
+  ])?.url === 'fall2025');
+check('the same flight: the one measured sharper, however fine the other claims to be',
+  chooseBest([
+    { url: 'claims', usable: true, year: 2025, nativeCm: 5, detail: 0.9 },
+    { url: 'measures', usable: true, year: 2025, nativeCm: 11, detail: 1.4 },
+  ])?.url === 'measures');
 check('and nothing usable chooses nothing', chooseBest([{ usable: false }]) === null);
 
 /* Coverage. */

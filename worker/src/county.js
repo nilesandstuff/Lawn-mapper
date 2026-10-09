@@ -9,6 +9,7 @@ import { decodePng, looksLikePhoto } from './png-probe.js';
 import { isMercatorCache, pickLevel } from './tile-mosaic.js';
 import { resample } from './county-picture.js';
 import { extraDetail } from '../../public/lib/sharpness.js';
+import { flightDate, byFlightDate, sameFlight } from '../../public/lib/flight-date.js';
 
 /** A service's own JSON, cached at the edge for a day. */
 export async function serviceMeta(url, fetcher = fetch) {
@@ -61,6 +62,8 @@ export function cleanCountyOutlines(body) {
 /** The service the editor gets, as the Worker passes it around (frame.svc). */
 const svcOf = (r) => (r ? {
   id: Number(r.id), url: r.url, type: r.type, title: r.title, year: r.year,
+  /* When it was flown, in the catalogue's words (flight-date.js reads it). */
+  flown: r.flown ?? null,
   nativeCm: r.native_cm, maxPx: r.max_px,
   /* Tiles only: the Worker stitches the frame from them (tile-mosaic.js). */
   tiled: !Number(r.export_ok) && Boolean(Number(r.tile_merc)),
@@ -116,6 +119,26 @@ export const SHARP_AT_12CM = 0.10;
  */
 export const PROBE_CANDIDATES = 24;
 
+/*
+ * NEWEST MEANS THE DATE OF FLIGHT (owner, 2026-10-09), and the sharper wins
+ * a tie. The catalogue's `flown` words date a service (flight-date.js);
+ * failing that its year; a service that only calls itself "most current"
+ * is undated and sorts after every dated one. Among those sharp enough at
+ * the spot: newest flight first, the same flight by measured detail, undated
+ * last. Then the ones that did not answer, then the soft ones in the same
+ * order, as a last resort.
+ *
+ * AND THE NEWER FLIGHT IS STILL OFFERED when the one chosen is not the
+ * newest: `recent` is the newest flight that showed ground here, whatever
+ * its sharpness, when it is not the first. The editor lists it beside the
+ * sharp one as "County (recent)".
+ */
+export async function countyChoicesAt(env, lng, lat, n = 4, opts = {}) {
+  const services = await countyServicesAt(env, lng, lat, n, opts);
+  const recent = services.recent && services.recent.id !== services[0]?.id ? services.recent : null;
+  return { services: services.slice(0, n), recent };
+}
+
 export async function countyServicesAt(env, lng, lat, n = 4, { probe = true, fetcher = fetch, now = new Date() } = {}) {
   if (!env?.DB || !Number.isFinite(lng) || !Number.isFinite(lat)) return [];
   let rows;
@@ -143,13 +166,22 @@ export async function countyServicesAt(env, lng, lat, n = 4, { probe = true, fet
    * editor's own gap and sharpness checks still stand behind this.
    */
   const looks = await Promise.all(list.map((svc) => measureService(svc, lng, lat, { fetcher })));
-  /* Still newest first, as the query put them. */
   const yes = list.map((svc, i) => ({ svc, ...looks[i] })).filter((l) => l.ok === true);
   for (const l of yes) l.svc.detail = l.detail === null ? null : Math.round(l.detail * 1000) / 1000;
   const soft = (l) => l.detail !== null && l.detail < SHARP_AT_12CM;
-  const unsure = list.filter((_, i) => looks[i].ok === null);
-  return [...yes.filter((l) => !soft(l)).map((l) => l.svc), ...unsure,
-    ...yes.filter(soft).map((l) => l.svc)].slice(0, n);
+  /* Newest flight first; the same flight, the sharper; undated last. */
+  const order = (a, b) => byFlightDate(a.svc, b.svc)
+    || ((sameFlight(a.svc, b.svc) || (flightDate(a.svc.flown, a.svc.year) === null && flightDate(b.svc.flown, b.svc.year) === null))
+      ? (b.detail ?? -1) - (a.detail ?? -1) : 0);
+  const sharp = yes.filter((l) => !soft(l)).sort(order);
+  const unsure = list.filter((_, i) => looks[i].ok === null).sort(byFlightDate);
+  const out = [...sharp.map((l) => l.svc), ...unsure, ...yes.filter(soft).sort(order).map((l) => l.svc)];
+  /* The newest dated flight that showed ground, sharp or not; of a tie the
+     sharper, so a tie with the first choice is no "newer" flight at all. */
+  const dated = yes.filter((l) => flightDate(l.svc.flown, l.svc.year) !== null).sort(order);
+  const ans = out.slice(0, n);
+  ans.recent = dated[0] && dated[0].svc.id !== ans[0]?.id ? dated[0].svc : null;
+  return ans;
 }
 
 /** True: ground here. False: nothing, or not a photo. Null: no answer. */

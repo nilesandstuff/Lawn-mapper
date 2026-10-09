@@ -34,7 +34,7 @@
  *   ASSETS           -- the static site in public/
  */
 
-import { countyServicesAt, countyServiceById } from './county.js';
+import { countyServicesAt, countyChoicesAt, countyServiceById } from './county.js';
 import { encodePng } from './tile-mosaic.js';
 import { lookupParcel, lookupNeighbours } from './parcel.js';
 import { isCovered, servesCounty } from './counties.js';
@@ -1583,9 +1583,10 @@ export default {
         /* Is there a county or state photo for this point? The catalogue's
            answer (worker/src/county.js), for the editor to offer it. */
         case '/api/county-imagery': {
-          const all = await countyServicesAt(env, parseFloat(url.searchParams.get('lng')), parseFloat(url.searchParams.get('lat')));
-          const pub = (at) => ({ id: at.id, title: at.title, year: at.year, nativeCm: at.nativeCm, maxPx: at.maxPx, tiled: at.tiled, detail: at.detail ?? null });
-          return json({ service: all[0] ? pub(all[0]) : null, services: all.map(pub) }, 200, origin);
+          const { services: all, recent } = await countyChoicesAt(env, parseFloat(url.searchParams.get('lng')), parseFloat(url.searchParams.get('lat')));
+          const pub = (at) => ({ id: at.id, title: at.title, year: at.year, flown: at.flown ?? null, nativeCm: at.nativeCm, maxPx: at.maxPx, tiled: at.tiled, detail: at.detail ?? null });
+          /* `recent`: the newest flight here when the sharp choice is an older one (county.js). */
+          return json({ service: all[0] ? pub(all[0]) : null, services: all.map(pub), recent: recent ? pub(recent) : null }, 200, origin);
         }
         case '/api/segment':
           if (request.method !== 'POST') return json({ error: 'POST required' }, 405, origin);

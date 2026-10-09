@@ -57,6 +57,10 @@ on:
         description: 'county catalogue: just these county keys now, comma-separated (e.g. id-blaine)'
         type: string
         default: ''
+      county_only_map:
+        description: 'county find: just this one corpus map id, looked at again even if banked or traced on'
+        type: string
+        default: ''
       county_limit:
         description: 'county: how many corpus maps at most (newest first)'
         required: false
@@ -116,6 +120,7 @@ jobs:
           CORPUS_BUCKET: lawn-mapper-corpus
           MODE: ${{ inputs.county_mode }}
           ONLY_KEY: ${{ inputs.county_only }}
+          ONLY: ${{ inputs.county_only_map }}
           LIMIT: ${{ inputs.county_limit }}
           FORCE: ${{ inputs.county_force }}
           DRY_RUN: ${{ inputs.county_dry_run }}

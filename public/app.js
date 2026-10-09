@@ -5652,7 +5652,7 @@ function refreshOverlayLabel() {
  */
 
 const providerInfo = (id) =>
-  state.imagery.find((p) => p.id === id) || { id, label: id, detect: true };
+  state.imagery.find((p) => p.id === (id === COUNTY_RECENT ? 'county' : id)) || { id, label: id, detect: true };
 
 /**
  * The lowest layer that belongs to us, so a photograph can go underneath it.
@@ -5706,14 +5706,32 @@ const frameFor = (provider, frame) =>
     : frame);
 
 /** The sources for this lot: the county photo only where the lot has one. */
+/*
+ * TWO COUNTY PHOTOS WHEN THE NEWEST IS NOT THE SHARPEST (owner, 2026-10-09).
+ * The Worker's first choice is the newest flight that is sharp enough; when
+ * a newer flight exists that is not, both are offered: "County photo (sharp)"
+ * and "County (recent)". One service, one entry: "County photo". Both are
+ * the 'county' provider underneath, differing only in which service
+ * (state.countySvc) the picture and the detection are fetched from.
+ */
+const COUNTY_RECENT = 'county:recent';
 const sourcesHere = () => {
   const here = state.imagery.filter((p) => !p.perLot || (p.id === 'county' && state.countySvc));
+  const county = here.find((p) => p.id === 'county');
+  const both = county && state.countyRecent && state.countySharp && state.countyRecent.id !== state.countySharp.id;
+  const countyEntries = !county ? [] : both
+    ? [{ ...county, label: 'County photo (sharp)', svc: state.countySharp },
+      { ...county, id: COUNTY_RECENT, label: 'County (recent)', svc: state.countyRecent }]
+    : [{ ...county, svc: state.countySvc }];
   /* County first where there is one, then Mapbox, then the rest (owner). */
-  return [...here.filter((p) => p.id === 'county'), ...here.filter((p) => p.id !== 'county')];
+  return [...countyEntries, ...here.filter((p) => p.id !== 'county')];
 };
 
 /** "County photo (2024)", from what the lookup said about this lot's service. */
-const sourceLabel = (p) => (p.id === 'county' && state.countySvc?.year ? `${p.label} (${state.countySvc.year})` : p.label);
+const sourceLabel = (p) => (p.svc?.year ? `${p.label} (${p.svc.year})` : p.label);
+
+/** Which entry of the picker is showing: the county one, by which service. */
+const pickedSource = () => (state.provider === 'county' && state.countyPick === 'recent' ? COUNTY_RECENT : state.provider);
 
 /*
  * THE COUNTY'S OWN PHOTO, AS THE DEFAULT WHERE THERE IS ONE (owner,
@@ -5725,8 +5743,13 @@ const sourceLabel = (p) => (p.id === 'county' && state.countySvc?.year ? `${p.la
 let countyLookup = 0;
 /** What the status line says while the county photo is the default. */
 function countyShowing(svc) {
+  const which = state.countyPick === 'recent'
+    ? ' — the newest flight here; "County photo (sharp)" in Layers is the sharper, older one.'
+    : state.countyRecent
+      ? ' — the newest flight that is sharp enough; "County (recent)" in Layers is newer and softer.'
+      : ' — usually the sharpest there is.';
   return `Showing ${svc?.title ? `"${svc.title}"` : "the county's own photo"}${svc?.year ? `, flown ${svc.year}` : ''}`
-    + ' — usually the sharpest there is. Lined up on the ground automatically; Layers switches back to Mapbox.';
+    + which + ' Lined up on the ground automatically; Layers switches back to Mapbox.';
 }
 
 async function lookupCountyPhoto({ makeDefault = false, chosen = false, prefer = null, align = null } = {}) {
@@ -5734,10 +5757,11 @@ async function lookupCountyPhoto({ makeDefault = false, chosen = false, prefer =
   if (!at || !state.imagery.some((p) => p.id === 'county')) return;
   const mine = ++countyLookup;
   let list = [];
+  let j = null;
   try {
     const res = await fetch(`/api/county-imagery?lng=${encodeURIComponent(at.lng)}&lat=${encodeURIComponent(at.lat)}`);
     if (res.ok) {
-      const j = await res.json();
+      j = await res.json();
       list = Array.isArray(j?.services) ? j.services : j?.service ? [j.service] : [];
     }
   } catch { /* none, then */ }
@@ -5752,6 +5776,11 @@ async function lookupCountyPhoto({ makeDefault = false, chosen = false, prefer =
   state.countyNext = list.slice(1);
   const svc = list[0] || null;
   state.countySvc = svc;
+  state.countySharp = svc;
+  state.countyPick = 'sharp';
+  /* The newer flight the Worker passed over as soft, offered beside it. */
+  const recent = j?.recent && svc && Number(j.recent.id) !== Number(svc.id) ? j.recent : null;
+  state.countyRecent = recent;
   buildImageryPicker();
   if (svc && makeDefault && state.provider === 'mapbox') {
     await setProvider('county', { auto: !chosen });
@@ -5780,7 +5809,7 @@ function buildImageryPicker() {
     opt.textContent = p.detect ? sourceLabel(p) : `${sourceLabel(p)} — view only`;
     select.append(opt);
   }
-  select.value = state.provider;
+  select.value = pickedSource();
   panel.hidden = false;
   renderProviderNote(state.provider);
   buildLayerList();
@@ -5805,7 +5834,7 @@ function buildLayerList() {
     const b = document.createElement('button');
     b.type = 'button';
     b.setAttribute('role', 'menuitemradio');
-    b.setAttribute('aria-checked', String(p.id === state.provider));
+    b.setAttribute('aria-checked', String(p.id === pickedSource()));
     b.dataset.provider = p.id;
 
     const label = document.createElement('span');
@@ -5875,7 +5904,7 @@ function refreshLayerList() {
   for (const b of $('#layer-list').querySelectorAll('button')) {
     b.setAttribute('aria-checked', String(b.dataset.overlay
       ? state.overlaysOn.has(b.dataset.overlay)
-      : b.dataset.provider === state.provider));
+      : b.dataset.provider === pickedSource()));
   }
 }
 
@@ -5974,6 +6003,27 @@ function renderProviderNote(id) {
 }
 
 async function setProvider(id, { auto = false } = {}) {
+  /* "County photo (sharp)" and "County (recent)" are one provider with a
+     different service behind it (sourcesHere). */
+  if (id === 'county' || id === COUNTY_RECENT) {
+    const pick = id === COUNTY_RECENT ? 'recent' : 'sharp';
+    if (state.provider === 'county' && state.countyPick === pick) return;
+    if (pick === 'recent' && !state.countyRecent) return;
+    state.countyPick = pick;
+    state.countySvc = pick === 'recent' ? state.countyRecent : (state.countySharp || state.countySvc);
+    /* The recent flight is the person's own choice: no falling down the
+       list behind it, and the saved line-up belongs to the other photo. */
+    if (pick === 'recent') state.countyNext = [];
+    if (state.countyAlign?.saved) state.countyAlign = null;
+    if (state.provider === 'county') {
+      $('#imagery-source').value = pickedSource();
+      refreshLayerList();
+      await showImagery();
+      updatePromptHint();
+      return;
+    }
+    id = 'county';
+  }
   if (id === state.provider) return;
   /*
    * EDITING ON THE BANKED COUNTY PHOTO (#review=…&photo=county): that file is
@@ -6001,7 +6051,7 @@ async function setProvider(id, { auto = false } = {}) {
   /* Not the county photo: it is the default and lined up automatically on
      the ground, so asking at every save would be asking every time. */
   if (isAligned(id) && id !== 'county') state.altViewed = id;
-  $('#imagery-source').value = id;
+  $('#imagery-source').value = pickedSource();
   renderProviderNote(id);
   refreshLayerList();
 
@@ -6712,7 +6762,7 @@ function renderNaipPanel(served, message) {
     const open = document.createElement('button');
     open.type = 'button';
     open.className = 'naipalign-open';
-    open.textContent = `Line up ${isNaip(state.provider) ? 'NAIP' : state.provider === 'county' ? 'county photo' : 'Google'} ▸`;
+    open.textContent = 'Line up photo ▸';
     open.title = said;
     open.addEventListener('click', () => setAlignOpen(true));
     panel.append(open);
@@ -13146,6 +13196,9 @@ function reset() {
   state.googleAlign = null;
   state.countyAlign = null;
   state.countySvc = null;
+  state.countySharp = null;
+  state.countyRecent = null;
+  state.countyPick = 'sharp';
   state.countyNext = [];
   state.alignBlobs = {};
   state.provider = 'mapbox';
