@@ -6428,8 +6428,23 @@ const ALIGN_REACH_M = { naipAlign: 5, googleAlign: 8, countyAlign: 4 };
  * saved with it, and put back on reopening -- the same service, the same
  * line-up, and not measured again over the top. "Auto" still re-measures.
  */
+/*
+ * THE PHOTO ON THE MAP, NOT THE ONE ASKED FOR. state.provider says 'county'
+ * from the moment it is picked (setProvider), before the county picture has
+ * been fetched and laid down (showImagery), and stays 'county' if that quietly
+ * never happens. A map finished meanwhile was drawn on Mapbox whatever the
+ * picker says, and recording 'county' saved a county photo under a Mapbox
+ * outline (owner, 2026-10-09: a Franklin County map "was falsely marked as
+ * being drawn on county photo, it was drawn on mapbox"). The picture layer
+ * is the witness: no imagery-alt layer, no other photo on the map.
+ */
+function shownProvider() {
+  if (state.provider !== 'mapbox' && !map?.getLayer?.('imagery-alt')) return 'mapbox';
+  return state.provider;
+}
+
 function countyLineUp() {
-  if (state.provider !== 'county' || !state.countySvc) return {};
+  if (shownProvider() !== 'county' || !state.countySvc) return {};
   const a = state.countyAlign;
   return {
     countySvc: state.countySvc.id,
@@ -13783,7 +13798,7 @@ function finishedBody() {
        * not. A look-only source (Google, Esri) still banks Mapbox's
        * (corpus.js imageSourceFor), and the card says so.
        */
-      provider: state.provider,
+      provider: shownProvider(),
       /* Made on a county photo: which one, and how it was shown, so the
          Worker can keep that photo with the map (county-picture.js). */
       ...countyLineUp(),

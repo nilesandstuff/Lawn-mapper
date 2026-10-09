@@ -2153,5 +2153,49 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
   check('and "teach it" takes it back', back.status === 200 && Number(row3.inferred_doubt) === 0, String(row3.inferred_doubt));
 }
 
+/* ------------- the record was wrong about which photo (owner, 2026-10-09) */
+/*
+ * A map recorded as drawn on a county photo that was drawn on Mapbox: the
+ * correction swaps its own photo for Mapbox's, keeps the county photo as the
+ * pair's other side, unjudged, and drops the pair's outlines.
+ */
+{
+  const { recordFinished } = await import('../worker/src/corpus.js');
+  const { env, ownerToken } = await world();
+  const frame = { lng: -83.195658, lat: 40.049761, zoom: 18.96, size: 640, height: 551 };
+  const ring = [[-83.196, 40.0495], [-83.196, 40.05], [-83.1952, 40.05], [-83.196, 40.0495]];
+  const made = await recordFinished(env, {
+    lng: frame.lng, lat: frame.lat, model: null, mode: 'manual', provider: 'county', frame,
+    shapes: [{ type: 'Polygon', coordinates: [ring] }], squareFeet: 9103,
+  });
+  const id = made.id || (await env.DB.prepare('SELECT id FROM corpus ORDER BY at DESC LIMIT 1').first()).id;
+  await env.DB.prepare("UPDATE corpus SET status = 'approved', provider = 'county', image_provider = 'county', image_key = 'maps/county/franklin.png' WHERE id = ?1").bind(id).run();
+  const before = (await ask(env, ownerToken, `county?id=${encodeURIComponent(id)}`)).body;
+  await ask(env, ownerToken, 'county-outlines', { method: 'POST', body: { id, side: 'mapbox', shapes: [{ type: 'Polygon', coordinates: [ring] }] } });
+  check('the record says county, and a pair outline was kept', before.drawn_on === 'county', JSON.stringify(before.drawn_on));
+
+  const put = [];
+  env.CORPUS = { put: async (k) => put.push(k) };
+  env.MAPBOX_TOKEN = 'pk.test';
+  const real = globalThis.fetch;
+  globalThis.fetch = async () => new Response('jpeg', { headers: { 'content-type': 'image/jpeg' } });
+  const fixed = await ask(env, ownerToken, 'county-drawn-on', { method: 'POST', body: { id, drawnOn: 'mapbox' } });
+  globalThis.fetch = real;
+  check('the correction fetches Mapbox\'s photo and says what it did',
+    fixed.status === 200 && fixed.body.changed === true && fixed.body.countyPhotoKept === true && fixed.body.droppedPairOutlines === true && put.length === 1,
+    JSON.stringify(fixed.body));
+  const c = await env.DB.prepare('SELECT provider, image_provider, image_key FROM corpus WHERE id = ?1').bind(id).first();
+  check('the map\'s own photo is now Mapbox\'s', c.provider === 'mapbox' && c.image_provider === 'mapbox' && c.image_key === put[0] && /^maps\/mapbox\//.test(c.image_key), JSON.stringify(c));
+  const ci = await env.DB.prepare('SELECT image_key, shapes, mapbox_shapes, review FROM county_imagery WHERE id = ?1').bind(id).first();
+  check('the county photo stays as the pair\'s other side, unjudged, with no pair outlines',
+    ci.image_key === 'maps/county/franklin.png' && ci.shapes === null && ci.mapbox_shapes === null && ci.review === null, JSON.stringify(ci));
+  const after = (await ask(env, ownerToken, `county?id=${encodeURIComponent(id)}`)).body;
+  check('and the county page now reads it as drawn on Mapbox', after.drawn_on === 'mapbox' && after.mapbox_shapes === null, JSON.stringify(after.drawn_on));
+  const again = await ask(env, ownerToken, 'county-drawn-on', { method: 'POST', body: { id, drawnOn: 'mapbox' } });
+  check('a second press changes nothing', again.status === 200 && again.body.changed === false, JSON.stringify(again.body));
+  const back = await ask(env, ownerToken, 'county-drawn-on', { method: 'POST', body: { id, drawnOn: 'county' } });
+  check('it runs one way only', back.status === 400, String(back.status));
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);

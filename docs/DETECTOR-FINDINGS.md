@@ -990,6 +990,18 @@ C89, C94) are county lots; C29, the worst lot in the corpus (400%+), is not.
   photos are sharper (about 6 cm against 10-15) and Scale-MAE is told one
   scale for both (see S12); colour and season differ by flight.
 - The test that would separate them is in S32.
+- **One of the 12 was not a county lot (owner, 2026-10-09).** The Franklin
+  County, OH map (`-83.19566,40.04976:manual:manual`, 9,103 sq ft, hand
+  drawn, saved 2026-10-02 15:15Z) "was falsely marked as being drawn on
+  county photo, it was drawn on mapbox": a Mapbox outline over a saved
+  county photo, the one mismatch the corpus decision ruled out, in the lock
+  since 2026-10-02 and so in this table, in H89's county group and in H90's
+  held-out county set. The record was corrected the same day (the county
+  page's "It was drawn on Mapbox": Mapbox's photo becomes the map's own),
+  and the app now records the photo that is ON the map at Finish rather than
+  the one picked (shownProvider in app.js: 'county' was set before the
+  picture had arrived). The 12 county lots are 11, and the lot's own error
+  under the mismatch is unknown; nothing here was re-run.
 
 ### H87. The live model measured on real use for the first time: release 1 changed by a median 23.4% on 25 approved maps, against the 24.0% its folds predicted -- 2026-10-08
 

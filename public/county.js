@@ -281,6 +281,9 @@ async function open(i) {
   else { mb.removeAttribute('src'); }
   ct.src = `/api/admin/county-image?id=${encodeURIComponent(m.id)}&v=${encodeURIComponent(d.banked_at || '')}`;
   $('#edit').textContent = countyDrawn ? 'Trace the outlines on Mapbox' : 'Edit outlines';
+  /* Only where the record says county: the correction runs one way. */
+  $('#drawn-on').hidden = !countyDrawn;
+  $('#drawn-on').textContent = 'It was drawn on Mapbox';
   try { await Promise.all(waits); } catch (e) { error(String(e.message || e)); }
   if (countyDrawn && !d.mapbox_image) error('Drawn on the county photo; no Mapbox photo yet. "Trace the outlines on Mapbox" traces the pair and banks it.');
   view.w = mb.naturalWidth || ct.naturalWidth;
@@ -405,6 +408,47 @@ async function start() {
   $('#edit').addEventListener('click', () => {
     const m = view.list[view.at];
     if (m) location.href = editHref(m.id, editSide(m));
+  });
+  /*
+   * THE RECORD WAS WRONG ABOUT WHICH PHOTO (owner, 2026-10-09). Two taps,
+   * like Reject on the maps page: it swaps the map's own photo for Mapbox's
+   * and drops the pair's outlines, which is not a thing to do by brushing
+   * past it. The card is reopened afterwards so it shows the record as it
+   * now is.
+   */
+  let drawnOnArmed = 0;
+  $('#drawn-on').addEventListener('click', async () => {
+    const m = view.list[view.at];
+    const b = $('#drawn-on');
+    if (!m) return;
+    if (!drawnOnArmed) {
+      b.textContent = 'Really? Tap again to swap its photo for Mapbox\'s';
+      drawnOnArmed = setTimeout(() => { drawnOnArmed = 0; b.textContent = 'It was drawn on Mapbox'; }, 6000);
+      return;
+    }
+    clearTimeout(drawnOnArmed); drawnOnArmed = 0;
+    b.disabled = true;
+    $('#said').textContent = 'Fetching Mapbox\'s photo and correcting the record…';
+    try {
+      const res = await fetch('/api/admin/county-drawn-on', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: m.id, drawnOn: 'mapbox' }),
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok || !out.ok) throw new Error(out.error || String(res.status));
+      m.drawn_on = 'mapbox';
+      m.review = null;
+      $('#said').textContent = out.changed
+        ? `Corrected: drawn on Mapbox. Mapbox's photo is now the map's own${out.countyPhotoKept ? '; the county photo stays here as the pair\'s other side, to be judged' : ''}${out.droppedPairOutlines ? '; the pair\'s outlines were dropped' : ''}.`
+        : 'It already said Mapbox.';
+      open(view.at);
+    } catch (e) {
+      error(`Not corrected: ${e.message || e}`);
+      $('#said').textContent = '';
+    } finally {
+      b.disabled = false;
+      b.textContent = 'It was drawn on Mapbox';
+    }
   });
   const again = back ? view.list.findIndex((m) => m.id === back) : -1;
   if (again >= 0) {

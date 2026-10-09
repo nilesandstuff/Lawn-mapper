@@ -1785,6 +1785,49 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
   }
 
   /*
+   * THE RECORD WAS WRONG ABOUT WHICH PHOTO (owner, 2026-10-09: the Franklin
+   * County 9,100 sq ft map "was falsely marked as being drawn on county
+   * photo, it was drawn on mapbox"). Such a map had a county photo saved
+   * under an outline drawn on Mapbox's -- the one mismatch the corpus
+   * decision ruled out -- and trained that way. Put right from the county
+   * page: Mapbox's photo of the frame becomes the map's own, the county
+   * photo it carried stays beside it as the pair's other side (unjudged,
+   * since nobody drew on it), and any outlines kept for the pair are
+   * dropped, because they were labelled by the wrong side. Only towards
+   * Mapbox: a map drawn on a county photo says so when it is finished.
+   */
+  if (path === 'county-drawn-on' && request.method === 'POST') {
+    const body = await request.json().catch(() => ({}));
+    const id = String(body?.id || '');
+    if (body?.drawnOn !== 'mapbox') return json({ error: 'Only "mapbox" can be set here' }, 400, origin);
+    const c = await env.DB.prepare('SELECT id, frame, image_key, image_provider FROM corpus WHERE id = ?1').bind(id).first();
+    if (!c) return json({ error: 'No such map' }, 404, origin);
+    if (c.image_provider !== 'county') return json({ ok: true, drawn_on: 'mapbox', changed: false }, 200, origin);
+    /* The county photo it carries goes to county_imagery first, while the
+       corpus row still says county (ensureCountyRow reads that). */
+    await ensureCountyRow(env, id);
+    const ci = await env.DB.prepare('SELECT image_key, mapbox_shapes, shapes FROM county_imagery WHERE id = ?1').bind(id).first();
+    let frame = null;
+    try { frame = JSON.parse(c.frame); } catch { /* none */ }
+    const got = frame ? await captureImage(env, { id, frame }, 'mapbox') : { ok: false, reason: 'no-frame' };
+    if (!got.ok) return json({ error: `Mapbox's photo of the frame could not be fetched (${got.reason}); nothing was changed` }, 502, origin);
+    await env.DB.prepare(
+      "UPDATE corpus SET provider = 'mapbox', image_provider = 'mapbox', image_key = ?2, image_frame = ?3 WHERE id = ?1"
+    ).bind(id, got.key, JSON.stringify(got.frame)).run();
+    await env.DB.prepare(
+      `UPDATE county_imagery SET shapes = NULL, not_lawn = NULL, mapbox_shapes = NULL, mapbox_not_lawn = NULL,
+              mapbox_image_key = NULL, outlines_at = NULL, outlines_by = NULL,
+              review = NULL, reviewed_at = NULL, reviewed_by = NULL
+        WHERE id = ?1`
+    ).bind(id).run();
+    return json({
+      ok: true, drawn_on: 'mapbox', changed: true,
+      countyPhotoKept: Boolean(ci?.image_key),
+      droppedPairOutlines: Boolean(ci?.mapbox_shapes || ci?.shapes),
+    }, 200, origin);
+  }
+
+  /*
    * Outlines traced on the county photo, from the editor. corpus is not
    * touched: its outlines were traced on Mapbox and stay Mapbox's. The first
    * time, a copy of those is set aside beside the county ones (COALESCE keeps
