@@ -3,7 +3,7 @@
  *   node tools/county-imagery.test.js
  */
 import {
-  agolKeep, rankCandidates, chooseBest, coverage, blockiness, resizeRGBA, shiftedBbox,
+  agolKeep, rankCandidates, chooseBest, coverage, blockiness, resizeRGBA, shiftedBbox, ownPhotoHere,
   resampleThrough, padFor, nudged,
   imageryVerdict,
 } from './county-imagery.js';
@@ -70,6 +70,12 @@ check('the same flight: the one measured sharper, however fine the other claims 
     { url: 'measures', usable: true, year: 2025, nativeCm: 11, detail: 1.4 },
   ])?.url === 'measures');
 check('and nothing usable chooses nothing', chooseBest([{ usable: false }]) === null);
+/* A county-drawn map's own photo lives at the county key: never written over (2026-10-09). */
+check('a map whose own photo is at the county key is left alone, a Mapbox-drawn one is not',
+  ownPhotoHere({ id: '-83.1,40.0:manual:manual', image_key: 'maps/county/-83.1_40.0_manual_manual.png' })
+  && ownPhotoHere({ id: '-83.1,40.0:manual:manual', mapbox_key: 'maps/county/-83.1_40.0_manual_manual.png' })
+  && !ownPhotoHere({ id: '-83.1,40.0:manual:manual', image_key: 'maps/mapbox/-83.1_40.0_manual_manual.png' })
+  && !ownPhotoHere({ id: 'x' }));
 
 /* Coverage. */
 const W = 40, H = 40;

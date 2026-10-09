@@ -656,6 +656,40 @@ function drawCandidate(c) {
     box.append(fetchBtn);
   }
 
+  /*
+   * A COUNTY-DRAWN MAP'S OWN PHOTO, FETCHED AGAIN (2026-10-09). The photo it
+   * was drawn on is rendered from its service (countySvc) with the line-up
+   * it was shown at (county_align), both kept on the row -- so it can be put
+   * back exactly if something wrote over it, as the county pass once did.
+   * The same route as above; the row says which service and how it sat.
+   */
+  if (c.hasImage && c.imageProvider === 'county' && c.countySvc) {
+    const again = el('button', 'ghost', 'Fetch the county photo it was drawn on again');
+    again.title = `Renders county service #${c.countySvc} over this frame with the line-up the map was drawn at, and keeps that as the map's photo.`;
+    const said = el('p', 'meta', '');
+    again.addEventListener('click', async () => {
+      again.disabled = true;
+      said.textContent = 'Fetching…';
+      try {
+        const res = await fetch('/api/admin/fetch-photo', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin', body: JSON.stringify({ id: c.id }),
+        });
+        const got = await res.json().catch(() => ({}));
+        if (!got.hasImage || !got.ok) throw new Error(got.reason || `HTTP ${res.status}`);
+        c.imageFrame = got.imageFrame;
+        c.at = `${c.at || ''}+photo`;
+        said.textContent = `Fetched again from ${got.service || `service #${c.countySvc}`}.`;
+        drawCandidate(c);
+      } catch (e) {
+        said.textContent = `Not fetched (${e.message}); the stored photo is unchanged.`;
+      } finally {
+        again.disabled = false;
+      }
+    });
+    box.append(again, said);
+  }
+
   const send = async (status) => {
     for (const b of [approve, reject, edit]) b.disabled = true;
     try {

@@ -822,6 +822,17 @@ function ensureTable() {
 
 const countyKey = (id) => `maps/county/${String(id).replace(/[^A-Za-z0-9._-]+/g, '_')}.png`;
 
+/*
+ * A MAP DRAWN ON A COUNTY PHOTO KEEPS THAT PHOTO AT THE COUNTY KEY -- the
+ * same key this pass banks the pair's county side under. So for such a map
+ * the "pair's county photo" IS the map's own, and writing there replaces the
+ * picture the outlines were drawn on (2026-10-09: six maps, one from a
+ * different flight). The find query leaves those maps out; this is the
+ * second lock on the same door, at the write itself, whatever the query did.
+ */
+export const ownPhotoHere = (row) => Boolean(row?.id)
+  && [row.image_key, row.mapbox_key].some((k) => k && k === countyKey(row.id));
+
 /* ----------------------------------------------------------------- align */
 
 /** Ground metres across a frame. */
@@ -935,6 +946,8 @@ export async function evaluate(c, base, frame, decoders) {
 }
 
 async function findFor(row, decoders, dir) {
+  /* Nothing of this map's is touched, not even the pair row's service. */
+  if (ownPhotoHere(row)) return { id: row.id, status: "the map's own photo lives at the county key; left alone" };
   const frame = JSON.parse(row.image_frame || row.frame);
   const base = r2Get(row.image_key, dir, decoders);
   if (!base) return { id: row.id, status: 'no banked photo' };
@@ -997,6 +1010,7 @@ const round = (v, d) => (v === null || v === undefined || !Number.isFinite(v) ? 
  * is a person's nudge in metres, applied on top of the measurement.
  */
 export async function place(row, c, base, frame, decoders, dir, { img = null, extra = null } = {}) {
+  if (ownPhotoHere(row)) return { key: null, why: "the map's own photo lives at the county key; never replaced" };
   const m = await meta(c.url);
   const W = base.width, H = base.height;
   const box = frameBbox3857(frame);
@@ -1062,6 +1076,7 @@ function writePlacement(id, p, { resetNudge = false, keepVerdict = false } = {})
 
 /** A person's nudge from /county.html, on top of a fresh measurement. */
 async function rebank(row, decoders, dir) {
+  if (ownPhotoHere(row)) return { id: row.id, status: "the map's own photo lives at the county key; left alone" };
   const frame = JSON.parse(row.image_frame || row.frame);
   const base = r2Get(row.image_key, dir, decoders);
   if (!base) return { id: row.id, status: 'no banked photo' };
@@ -1079,6 +1094,7 @@ async function rebank(row, decoders, dir) {
 
 /** Bank through a given map, no measuring first. */
 async function placeWith(row, c, base, frame, decoders, dir, A) {
+  if (ownPhotoHere(row)) return { key: null, why: "the map's own photo lives at the county key; never replaced" };
   const m = await meta(c.url);
   const W = base.width, H = base.height;
   const box = frameBbox3857(frame);
@@ -1102,6 +1118,7 @@ async function placeWith(row, c, base, frame, decoders, dir, A) {
 
 /** Line up again every banked map, from its own service: no searching. */
 async function realign(row, decoders, dir) {
+  if (ownPhotoHere(row)) return { id: row.id, status: "the map's own photo lives at the county key; left alone" };
   const frame = JSON.parse(row.image_frame || row.frame);
   const base = r2Get(row.image_key, dir, decoders);
   if (!base) return { id: row.id, status: 'no banked photo' };

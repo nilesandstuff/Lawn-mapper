@@ -487,7 +487,7 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
                       AND ROUND(a.lat,2) = ROUND(c.lat,2)
                   ) new_block,
                   (c.county IS NOT NULL AND NOT EXISTS (
-                    SELECT c.inferred_doubt, 1 FROM corpus a
+                    SELECT 1 FROM corpus a
                      WHERE a.status = 'approved' AND a.county = c.county
                   )) new_county
              FROM corpus c
@@ -552,6 +552,9 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
           adminEditedAt: r.admin_edited_at,
           canopy: r.tree_line === null || r.tree_line === undefined ? null : Number(r.tree_line),
           inferredDoubt: r.inferred_doubt === null || r.inferred_doubt === undefined ? null : Number(r.inferred_doubt),
+          /* The county service it was drawn on, when it was: the card can
+             fetch that photo again (2026-10-09, after a pass wrote over one). */
+          countySvc: r.county_svc || null,
           parcelSource: r.parcel_source,
           squareFeet: r.square_feet,
           detectedSqFt: r.detected_sq_ft,
