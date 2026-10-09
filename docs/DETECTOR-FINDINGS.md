@@ -1002,6 +1002,19 @@ C89, C94) are county lots; C29, the worst lot in the corpus (400%+), is not.
   the one picked (shownProvider in app.js: 'county' was set before the
   picture had arrived). The 12 county lots are 11, and the lot's own error
   under the mismatch is unknown; nothing here was re-run.
+- **And "county photo" is not one kind of photo (2026-10-09).** That map's
+  banked county photo was Franklin County's 2025 LEAF-ON tile layer
+  (catalogue #1151: 22.9 cm native, "Summer of 2025"), upsampled to the
+  frame's 5.9 cm a pixel -- green lawns, soft, long summer shadows -- while
+  every service the picker offers there today (Ohio's "most current" #531 /
+  #543, Columbus Imagery2025 #3052) serves the same leaf-off 2025 flight,
+  sharp. On 2 October the ranking was newest year first with no sharpness
+  check, and #1151 (2025) was the newest; the newest-SHARP rule (3b08d42,
+  that evening) now puts it last. So county lots banked on 2 October may
+  carry a softer, leaf-on photo than the one a person sees today, and the
+  lot-hardness measures (H89) read the banked file, which is right. Which
+  other lots: not yet listed (workflow 9 now prints each map's pair row and
+  the catalogued services over it).
 
 ### H87. The live model measured on real use for the first time: release 1 changed by a median 23.4% on 25 approved maps, against the 24.0% its folds predicted -- 2026-10-08
 
