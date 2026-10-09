@@ -4860,6 +4860,16 @@ comparable to it on total square footage and cannot replace it alone.
 *Run 35716717308, 2026-09-22, workflow 17, corpus `1wxlejo`. Phase one of the
 E8 idea, built to be able to abandon it cheaply.*
 
+*Again on 2026-10-09 (run 37958772105, 87 approved maps): 81 of 87 covered
+(93%); flown 2013 to 2023, middle year 2018; roughly 2016: 19 lots (Kent,
+Ottawa, NC Union), 2022: 12 (Cass ND, Prince William), 2020: 11, 2018: 9,
+2015: 6, 2017: 6, 2021: 6 (Massachusetts, Franklin OH at 57.9 pts/m²),
+2014: 4, 2019: 2, 2023: 2, 2013: 1, undated 3 (KY_FullState). 27 at 8
+pts/m² or better. The six with nothing flown: Maryland x2, NC x1, Whatcom WA,
+Island WA, one hand-traced. The project is chosen newest year first, then
+densest (tools/lidar-cover.js pickBest). The gap to the photograph is still
+unmeasurable from the corpus.*
+
 **94% covered.** Every approved map's point was matched against the 2,279
 project footprints of the public Entwine copy of 3DEP.
 
