@@ -1015,6 +1015,15 @@ C89, C94) are county lots; C29, the worst lot in the corpus (400%+), is not.
   lot-hardness measures (H89) read the banked file, which is right. Which
   other lots: not yet listed (workflow 9 now prints each map's pair row and
   the catalogued services over it).
+- **The pair photos were all re-banked on 2026-10-09 (~04:00 EDT)** under
+  the new rule (newest flight, the sharper of a tie; chooseBest). Meant for
+  one map: a `-- remark` inside the SQL, flattened to one line by the
+  database helper, had swallowed the LIMIT, the id and the "never replace a
+  traced photo" guard (fixed: corpus-db.js flatSql). 60 of 87 approved maps
+  got a county photo from the current best service, 45 measured as landing
+  within 0.1 m; every "lines up" verdict on them was reset to unjudged, as a
+  new picture always is. This touches county_imagery only -- the pair's
+  county side -- never a map's own photo or the training lock.
 
 ### H87. The live model measured on real use for the first time: release 1 changed by a median 23.4% on 25 approved maps, against the 24.0% its folds predicted -- 2026-10-08
 
