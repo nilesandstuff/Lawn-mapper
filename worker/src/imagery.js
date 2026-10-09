@@ -416,6 +416,17 @@ export function countyBoxUrl(svc, bbox, w, h) {
     const k = max / Math.max(w, h);
     w = Math.max(1, Math.floor(w * k)); h = Math.max(1, Math.floor(h * k));
   }
+  /* No finer than the service draws (county.js drawsTo): ArcGIS's scale is
+     map units per pixel over a 96 dpi pixel, 0.0254/96 m. Asked any closer,
+     a layer outside its range is simply left out of the picture. */
+  const floor = Number(svc.maxScale) || 0;
+  if (floor > 0) {
+    const scale = ((bbox[2] - bbox[0]) / w) * (96 / 0.0254);
+    if (scale < floor) {
+      const k = scale / (floor * 1.02);
+      w = Math.max(1, Math.floor(w * k)); h = Math.max(1, Math.floor(h * k));
+    }
+  }
   const params = new URLSearchParams({
     bbox: bbox.join(','), bboxSR: '3857', imageSR: '3857', size: `${w},${h}`, f: 'image',
   });

@@ -212,10 +212,37 @@ export async function countyServiceAt(env, lng, lat) {
 }
 
 /** One service by its id, only if it is in the catalogue and can draw a box. */
-export async function countyServiceById(env, id) {
+/**
+ * THE CLOSEST A SERVICE WILL DRAW (2026-10-09, C48: Prince William's catalogue
+ * drew nothing at all over the lot). An ArcGIS map service's layers each
+ * carry a scale range, and a request zoomed in past a layer's maxScale gets
+ * that layer left out -- here the 2025 photo stops at 1:300, the frame asked
+ * for about 1:190, and the answer was a fully transparent picture. The
+ * largest maxScale among the layers drawn by default (and the service's
+ * own), or 0 when nothing limits it. countyBoxUrl asks for no finer than
+ * this and the readers resample, as they already do for maxPx.
+ */
+export function drawsTo(meta) {
+  const scales = [Number(meta?.maxScale) || 0];
+  for (const l of meta?.layers || []) {
+    if (l?.defaultVisibility === false) continue;
+    if (Array.isArray(l?.subLayerIds) && l.subLayerIds.length) continue;
+    scales.push(Number(l?.maxScale) || 0);
+  }
+  return Math.max(0, ...scales.filter(Number.isFinite));
+}
+
+export async function countyServiceById(env, id, { fetcher = fetch } = {}) {
   const n = Number(id);
   if (!env?.DB || !Number.isInteger(n) || n <= 0) return null;
+  let svc;
   try {
-    return svcOf(await env.DB.prepare('SELECT * FROM county_services WHERE id = ?1 AND (export_ok = 1 OR tile_merc = 1)').bind(n).first());
+    svc = svcOf(await env.DB.prepare('SELECT * FROM county_services WHERE id = ?1 AND (export_ok = 1 OR tile_merc = 1)').bind(n).first());
   } catch { return null; }
+  /* Exports only; a tile cache is stitched from its own levels. Cached a day
+     by the edge (serviceMeta); a service that will not say is not limited. */
+  if (svc && !svc.tiled) {
+    try { svc.maxScale = drawsTo(await serviceMeta(svc.url, fetcher)) || null; } catch { /* unknown */ }
+  }
+  return svc;
 }

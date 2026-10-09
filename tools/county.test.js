@@ -3,7 +3,7 @@
  * compare page's filters and projection (public/county.js).
  *   node tools/county.test.js
  */
-import { countyServiceAt, countyServiceById, MAX_SERVICE_SQ_DEG } from '../worker/src/county.js';
+import { countyServiceAt, countyServiceById, MAX_SERVICE_SQ_DEG, drawsTo } from '../worker/src/county.js';
 import { decodePng, looksLikePhoto } from '../worker/src/png-probe.js';
 import { probeService, countyServicesAt, countyChoicesAt, oldestYear, SHARP_AT_12CM } from '../worker/src/county.js';
 import { stitch, encodePng, isMercatorCache } from '../worker/src/tile-mosaic.js';
@@ -14,6 +14,26 @@ let failures = 0;
 function check(name, ok, detail = '') {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? `\n      ${detail}` : ''}`);
   if (!ok) failures++;
+}
+
+/* No finer than a service draws (2026-10-09, C48: Prince William's 2025 layer stops at 1:300). */
+{
+  const meta = { maxScale: 100, layers: [
+    { id: 0, name: '2025', defaultVisibility: true, maxScale: 300 },
+    { id: 1, name: '2023', defaultVisibility: false, maxScale: 300 },
+    { id: 3, name: '2019', defaultVisibility: false, maxScale: 100 },
+  ] };
+  check('the closest a service draws is its default layers\' limit', drawsTo(meta) === 300 && drawsTo({}) === 0 && drawsTo({ maxScale: 0, layers: [{ maxScale: 0 }] }) === 0);
+  const frame = { lng: -77.459066, lat: 38.726504, zoom: 19.19, size: 637, height: 434 };
+  const box = frameBbox3857(frame);
+  const size = (u) => new URL(u).searchParams.get('size').split(',').map(Number);
+  const [w0] = size(countyExportUrl({ url: 'https://x/MapServer', type: 'MapServer' }, frame));
+  const [w1, h1] = size(countyExportUrl({ url: 'https://x/MapServer', type: 'MapServer', maxScale: 300 }, frame));
+  const scale = ((box[2] - box[0]) / w1) * (96 / 0.0254);
+  check('a frame asked closer than that is asked at the limit instead, same shape', w1 < w0 && scale >= 300 && scale < 320 && Math.abs(w1 / h1 - 1274 / 868) < 0.01,
+    `${w0} -> ${w1}x${h1}, 1:${scale.toFixed(0)}`);
+  const [w2] = size(countyExportUrl({ url: 'https://x/MapServer', type: 'MapServer', maxScale: 50 }, frame));
+  check('and one that draws closer is asked at the frame\'s own size', w2 === w0);
 }
 
 /* The county photo as a source, for any address (owner, 2026-10-01). */

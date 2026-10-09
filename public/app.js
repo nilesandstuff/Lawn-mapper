@@ -5752,6 +5752,22 @@ function countyShowing(svc) {
     + which + ' Lined up on the ground automatically; Layers switches back to Mapbox.';
 }
 
+/*
+ * DOWN THE LIST TO THE NEXT COUNTY SERVICE (a gap, or softer than Mapbox).
+ * The picture that ends up showing IS the sharp choice, so "County photo
+ * (sharp)" names it; and a newer flight that turns out to be that same
+ * service is no second entry (2026-10-09, C48: the sharp service drew
+ * nothing, the list fell to the 2025 flight, and "sharp" and "recent" were
+ * then one photo under two names, with "sharp" pointing at the blank one).
+ */
+function countyFallBack() {
+  const next = state.countyNext.shift();
+  state.countySvc = next;
+  if (state.countyPick !== 'recent') state.countySharp = next;
+  if (state.countyRecent && Number(state.countyRecent.id) === Number(next?.id)) state.countyRecent = null;
+  if (state.countyAlign?.saved) state.countyAlign = null; // another photo's line-up is its own
+}
+
 async function lookupCountyPhoto({ makeDefault = false, chosen = false, prefer = null, align = null } = {}) {
   const at = state.frame || state.chosen;
   if (!at || !state.imagery.some((p) => p.id === 'county')) return;
@@ -5773,6 +5789,7 @@ async function lookupCountyPhoto({ makeDefault = false, chosen = false, prefer =
   const a = own >= 0 && align && [align.east, align.north, align.scale].every(Number.isFinite) ? align : null;
   if (a) state.countyAlign = { east: a.east, north: a.north, scale: a.scale, source: a.source || 'auto', saved: true };
   /* Best first; showImagery moves down the list past any with gaps here. */
+  state.countyList = list;
   state.countyNext = list.slice(1);
   const svc = list[0] || null;
   state.countySvc = svc;
@@ -6012,8 +6029,15 @@ async function setProvider(id, { auto = false } = {}) {
     state.countyPick = pick;
     state.countySvc = pick === 'recent' ? state.countyRecent : (state.countySharp || state.countySvc);
     /* The recent flight is the person's own choice: no falling down the
-       list behind it, and the saved line-up belongs to the other photo. */
+       list behind it. Back on the sharp one, the services after it are
+       again where a gap falls to (2026-10-09, C48: emptied by the recent
+       pick, a gap on the sharp one went straight to Mapbox). */
     if (pick === 'recent') state.countyNext = [];
+    else {
+      const list = state.countyList || [];
+      const at = list.findIndex((x) => Number(x.id) === Number(state.countySvc?.id));
+      state.countyNext = at >= 0 ? list.slice(at + 1) : [];
+    }
     if (state.countyAlign?.saved) state.countyAlign = null;
     if (state.provider === 'county') {
       $('#imagery-source').value = pickedSource();
@@ -6372,10 +6396,19 @@ async function showImagery({ quiet = false } = {}) {
     if (run !== imageryRun) return;
     if (gaps > 0.02) {
       idle(); imageryBusyRun = 0;
+      /* The newer flight, chosen, with a hole in it: back to the sharp one. */
+      if (state.countyPick === 'recent' && state.countySharp && Number(state.countySharp.id) !== Number(state.countySvc?.id)) {
+        state.countyPick = 'sharp';
+        state.countySvc = state.countySharp;
+        state.countyRecent = null;
+        buildImageryPicker();
+        setStatus(`The newer county flight has gaps over this lot (${Math.round(gaps * 100)}% missing), so the sharp one is showing.`, 'warn');
+        showImagery();
+        return;
+      }
       /* The next service that claims this spot, if there is one. */
       if (state.countyNext?.length) {
-        state.countySvc = state.countyNext.shift();
-        if (state.countyAlign?.saved) state.countyAlign = null; // another photo's line-up is its own
+        countyFallBack();
         buildImageryPicker();
         showImagery();
         return;
@@ -6402,8 +6435,7 @@ async function showImagery({ quiet = false } = {}) {
         idle(); imageryBusyRun = 0;
         /* The next service that covers this spot may be sharper. */
         if (state.countyNext?.length) {
-          state.countySvc = state.countyNext.shift();
-          if (state.countyAlign?.saved) state.countyAlign = null; // another photo's line-up is its own
+          countyFallBack();
           buildImageryPicker();
           showImagery();
           return;
@@ -13053,6 +13085,7 @@ function reset() {
   state.countySvc = null;
   state.countySharp = null;
   state.countyRecent = null;
+  state.countyList = [];
   state.countyPick = 'sharp';
   state.countyNext = [];
   state.alignBlobs = {};
