@@ -468,11 +468,10 @@ const CORRECTIONS = /^(1|true|yes|on)$/i.test(String(process.env.CORRECTIONS || 
  * too laborious. A map said to line up but not re-traced trains on Mapbox; the
  * county set grows as new maps are made on county photos.
  */
-export const PHOTOS = process.env.PHOTOS === 'county' ? 'county' : 'mapbox';
-
-/** Which banked photo a map is trained on, under PHOTOS. */
-export function photoKeyFor(row, countyKeys) {
-  return (PHOTOS === 'county' && countyKeys?.get(row.id)) || row.image_key;
+/* ONE MAP, ONE PHOTO (owner, 2026-10-09): the photo a map was drawn on
+   (corpus.image_key, Mapbox's or a county's), and no other. */
+export function photoKeyFor(row) {
+  return row.image_key;
 }
 const QUERY = `
   SELECT id, county, tree_line, frame, shapes, detected_shapes, parcel,
@@ -1761,29 +1760,6 @@ async function main() {
 
   console.log(`${rows.length} approved map${rows.length === 1 ? '' : 's'} with a stored photograph: `
     + `${lawnSetDescription()}.\n`);
-
-  /* County photos, when this run asked for them (PHOTOS=county). */
-  let countyKeys = new Map();
-  if (PHOTOS === 'county') {
-    try {
-      const county = query(`SELECT id, image_key, shapes, not_lawn FROM county_imagery
-                             WHERE image_key IS NOT NULL AND (review IS NULL OR review != 'off')
-                               AND shapes IS NOT NULL`);
-      countyKeys = new Map(county.map((r) => [r.id, r.image_key]));
-      const traced = new Map(county.map((r) => [r.id, r]));
-      rows = rows.map((r) => (traced.has(r.id)
-        ? { ...r, shapes: traced.get(r.id).shapes, not_lawn: traced.get(r.id).not_lawn, countyTraced: true }
-        : r));
-    } catch (err) {
-      console.log('Could not read county_imagery, so this run was asked for county photos and cannot have them.');
-      console.log(err.message);
-      process.exitCode = 1;
-      return;
-    }
-    const used = rows.filter((r) => countyKeys.has(r.id)).length;
-    console.log(`PHOTOS: county -- the county photo for ${used} of ${rows.length} maps`
-      + ' (only those with outlines traced on it), Mapbox for the rest.\n');
-  }
 
   /*
    * THE BACKBONE IS OPTIONAL, and the run says which it used.

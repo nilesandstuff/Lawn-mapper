@@ -80,24 +80,6 @@ async function picture(row) {
   await sharp(raw).composite([{ input: Buffer.from(svg), top: 0, left: 0 }]).png().toFile(out);
   console.log(`picture   ${out}  (${W}x${H} photo, frame ${f.size}x${f.height || f.size} -> `
     + `${(W / f.size).toFixed(3)} x ${(H / (f.height || f.size)).toFixed(3)} px per frame px)`);
-  /* THE PAIR'S COUNTY PHOTO TOO, with the same outlines (owner, 2026-10-09:
-     the banked county photo and the live one looked like different photos),
-     when county_imagery keeps one that is not the map's own. */
-  try {
-    const [ci] = query(`SELECT image_key FROM county_imagery WHERE id = '${String(row.id).replace(/'/g, "''")}'`);
-    if (ci?.image_key && ci.image_key !== row.image_key) {
-      const rawC = `${dir}/raw-county.bin`;
-      execFileSync('npx', ['--no-install', 'wrangler', 'r2', 'object', 'get',
-        `lawn-mapper-corpus/${ci.image_key}`, '--file', rawC, '--remote'],
-      { stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 });
-      const mc = await sharp(rawC).metadata();
-      const svgC = `<svg xmlns="http://www.w3.org/2000/svg" width="${mc.width}" height="${mc.height}">${parts.join('')}</svg>`;
-      await sharp(rawC).composite([{ input: Buffer.from(svgC), top: 0, left: 0 }]).png().toFile(`${stem}-county.png`);
-      console.log(`          and the pair's county photo ${stem}-county.png (${mc.width}x${mc.height}), the map's outlines drawn on it unmoved`);
-    }
-  } catch (e) {
-    console.log(`(no county photo for ${row.id}: ${String(e.stderr || e.message).slice(0, 160)})`);
-  }
 }
 
 /**
@@ -150,22 +132,6 @@ function describe(row) {
   console.log(`measured  ${row.provider || '?'} imagery, ${row.model || 'no model'}, ${row.mode || '?'} mode`);
   console.log(`photo     ${row.image_provider || '(none stored)'}  ${row.image_key || ''}`);
   if (row.county_svc) console.log(`county photo service ${row.county_svc}  aligned ${row.county_align || '(not moved)'}`);
-  /*
-   * THE PAIR ROW (owner, 2026-10-09: "between mapbox and county there's
-   * actually 3 photos"): what county_imagery keeps beside the map's own
-   * photo, so what each page draws can be told apart from here.
-   */
-  try {
-    const [ci] = query(`SELECT image_key, mapbox_image_key, review, east, north, scale, reg_confident, reg_rms_m,
-                               shapes IS NOT NULL AS has_shapes, mapbox_shapes IS NOT NULL AS has_mapbox_shapes, outlines_at, banked_at
-                          FROM county_imagery WHERE id = '${String(row.id).replace(/'/g, "''")}'`);
-    if (ci) {
-      console.log(`pair row  county photo ${ci.image_key || '(none)'}  banked ${ci.banked_at || '?'}  review ${ci.review || '(not judged)'}`);
-      console.log(`          placed ${Number(ci.east || 0).toFixed(2)} m E ${Number(ci.north || 0).toFixed(2)} m N scale ${Number(ci.scale || 1).toFixed(4)}`
-        + `  registration ${ci.reg_confident === null || ci.reg_confident === undefined ? '(not run)' : Number(ci.reg_confident) ? `confident, ${Number(ci.reg_rms_m).toFixed(2)} m` : 'NOT confident'}`);
-      console.log(`          Mapbox photo of the pair ${ci.mapbox_image_key || '(none)'}  county-side outlines ${ci.has_shapes ? 'yes' : 'no'}  Mapbox-side outlines ${ci.has_mapbox_shapes ? 'yes' : 'no'}${ci.outlines_at ? `  traced ${ci.outlines_at}` : ''}`);
-    } else console.log('pair row  (none)');
-  } catch { /* an older database without the table */ }
   console.log(`corrected ${row.hand_edited ? 'yes' : 'no'}`);
   console.log(`release   ${row.model_version || '(none recorded)'}`);
   console.log(`not-lawn  ${geometries(parse(row.not_lawn)).length} trace(s)`);

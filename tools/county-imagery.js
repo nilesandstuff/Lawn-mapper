@@ -1,60 +1,25 @@
 /**
- * County and state orthophotos for every corpus map, found, lined up with the
- * banked Mapbox photo, and banked beside it (owner, 2026-10-01).
+ * The county and state orthophoto CATALOGUE: which services publish a photo
+ * over each county, searched by place and by name, looked at, measured and
+ * kept in county_services for the editor to offer (worker/src/county.js).
  *
- * WHY. Workflow 8 ("compare on our lawns", H62) found county or state imagery
- * for 22 of 60 lots, a median 6 cm native and sharper than Mapbox wherever it
- * could be scored -- but only by looking on the server that publishes each
- * county's parcels. This is the thorough pass: every corpus map, two ways of
- * finding imagery, every candidate actually fetched over the map's own frame,
- * and the chosen one banked so a training run can swap photos.
+ * THE PAIRS ARE GONE (owner, 2026-10-09: "we're just going to have 1 map per
+ * corpus entry"). Until then this tool also found, lined up and banked a
+ * county photo BESIDE each map's Mapbox one (county_imagery), for a person to
+ * judge on /county.html and trace on in the editor. That was two photos and
+ * two outlines a map, and one pass meant for one map wrote over sixty. A map
+ * now has the one photo it was drawn on, and nothing is banked beside it.
+ * county_imagery and its rows stay in the database as a record; nothing
+ * reads them.
  *
- * WHERE CANDIDATES COME FROM, both, deduplicated:
- *   - the county's own GIS host: the catalogue the parcel layer lives in and
- *     its sibling web adaptors (/image/, /imagery/, ...), every folder
- *   - ArcGIS Online's public catalogue, searched at the lot's own location
- *     for image and map services titled or tagged as orthoimagery or aerials,
- *     dropping anything that covers more than a state
+ * MODES (workflow 8, "find county imagery"; workflow 27 runs `asked` nightly):
+ *   catalogue  services for the counties people asked for (county_limit)
+ *   names      every county in states with statewide parcels, by name
+ *   asked      the nightly search for the counties with people behind them
+ *   season     what each catalogued service says about leaf-off and dates
+ *   lidar      which counties with a county photo also have 3DEP lidar
  *
- * WHAT "USABLE" MEANS, per candidate, fetched over the map's image_frame at
- * the banked Mapbox photo's own pixel size:
- *   - covered: under 2% of the picture transparent or a flat no-data fill
- *   - fine enough: native 25 cm or better, from the service's metadata, or --
- *     for a map service that will not say -- from how blocky its enlargement
- *     is; an image service whose metadata says nothing must score at least
- *     0.8x Mapbox's detail (bilinear, so the measure is honest; see H62)
- *   - flown within the last ten years when it names a year (owner,
- *     2026-10-02: "we can go as old as 10 years")
- * The newest usable flight wins, the finer one on a tie.
- *
- * PUT ON MAPBOX'S GROUND BEFORE IT IS BANKED. Every outline in the corpus was
- * traced on Mapbox, the property lines were drawn over Mapbox while it was
- * traced, and the detector runs on Mapbox -- so Mapbox's ground is the one
- * every photo is put on, and then a property line lands on the same kerb in
- * every photo. lib/register.js measures where Mapbox's ground is in the
- * county photo patch by patch, ON THE GROUND (roofs and trees lean
- * differently in every photo and are outvoted), and fits one map to it. The
- * county photo is fetched with a margin and resampled through that map onto
- * the banked Mapbox photo's own pixel grid, then measured again against it
- * (residual_m, near zero when it worked).
- *
- * The first version of this (owner, 2026-10-01: "consistently off, both
- * positionally and perspective") scored one shift on every edge in the frame
- * at 30 cm cells -- pulled toward the roofs -- and banked anything without a
- * clear fit as delivered. A photo the measurement is not sure of is still
- * banked as delivered, and says so (reg_confident 0); /county.html shows
- * those first, and a nudge made there is applied by MODE=rebank.
- *
- * MODE=realign does the lining-up again for every banked map without looking
- * for imagery again: the service is in the row.
- *
- * SLOW AND CAREFUL. One lot at a time, a pause between requests, retries,
- * and a row written for every lot looked at -- found or not -- so a run that
- * stops part-way resumes where it left off (FORCE=1 to look again).
- *
- *   MODE=find|realign|rebank|catalogue LIMIT=… FORCE=1 DRY_RUN=1 ONLY=<corpus id> node tools/county-imagery.js
- * or workflow "8. Check the free imagery sources", "find county imagery".
- * Free: public servers, the R2 bucket and D1 the app already has.
+ *   MODE=catalogue|names|asked|season|lidar LIMIT=… FORCE=1 DRY_RUN=1 node tools/county-imagery.js
  */
 
 import { resolve, join } from 'node:path';
@@ -69,17 +34,15 @@ import {
   catalogueRoot, siblingRoots, pickImagery, yearHints, nativeCm, greyGrid, greenShare,
   IMAGERY,
 } from './compare-imagery.js';
-import { registerImages, applyAffine } from '../public/lib/register.js';
+import { applyAffine } from '../public/lib/register.js';
 import { looksLikePhoto } from '../worker/src/png-probe.js';
-import { flightDate, byFlightDate, sameFlight } from '../public/lib/flight-date.js';
 import { frameBbox3857 } from '../worker/src/imagery.js';
 import { candidateCounties, ALL_COUNTIES } from '../worker/src/counties.js';
 
-const MODE = process.env.MODE || 'find';
+const MODE = process.env.MODE || 'catalogue';
 const LIMIT = Number(process.env.LIMIT || 500);
 const FORCE = /^(1|true|yes)$/i.test(process.env.FORCE || '');
 const DRY_RUN = /^(1|true|yes)$/i.test(process.env.DRY_RUN || '');
-const ONLY = process.env.ONLY || '';
 const BUCKET = process.env.CORPUS_BUCKET || 'lawn-mapper-corpus';
 const MAX_TRY = Number(process.env.MAX_TRY || 12);
 const MIN_YEAR = Number(process.env.MIN_YEAR || new Date().getUTCFullYear() - 10);
@@ -245,26 +208,6 @@ export function rankCandidates(list, minYear = MIN_YEAR) {
     || (/cache/i.test(a.url) - /cache/i.test(b.url)));
 }
 const LATEST = /most.?recent|latest|current/i;
-
-/**
- * The best of the usable: the newest FLIGHT (owner, 2026-10-09: "newest
- * should mean date of flight"; flight-date.js reads `flown`, else the year;
- * undated last), and of the same flight the sharper -- by measured detail
- * where both were measured, else the finer claimed resolution. The same
- * rule the editor's picker applies (worker/src/county.js), so what the
- * nightly pass banks is what a person would be shown.
- */
-export function chooseBest(evaluated) {
-  const usable = evaluated.filter((e) => e.usable);
-  const undated = (e) => flightDate(e.flown, e.year) === null;
-  usable.sort((a, b) => byFlightDate(a, b)
-    || ((sameFlight(a, b) || (undated(a) && undated(b)))
-      ? ((a.detail !== null && a.detail !== undefined && b.detail !== null && b.detail !== undefined)
-        ? b.detail - a.detail
-        : ((a.nativeCm ?? 99) - (b.nativeCm ?? 99)))
-      : 0));
-  return usable[0] || null;
-}
 
 /** Share of the picture that is real data: opaque, not a flat white or black fill. */
 export function coverage(data, w, h) {
@@ -767,37 +710,6 @@ export async function fetchOver(c, m, bbox, w, h, decoders) {
   return fetchTiled(c, m, bbox, w, h, decoders);
 }
 
-/* --------------------------------------------------------------- R2 / D1 */
-
-function r2Get(key, dir, decoders) {
-  const file = join(dir, 'base.bin');
-  for (let i = 1; i <= 3; i++) {
-    try {
-      execFileSync('npx', ['wrangler', 'r2', 'object', 'get', `${BUCKET}/${key}`, '--file', file, '--remote'],
-        { stdio: ['ignore', 'pipe', 'pipe'] });
-      break;
-    } catch { if (i === 3) return null; execFileSync('sleep', [String(i * 2)]); }
-  }
-  if (!existsSync(file)) return null;
-  const b = readFileSync(file);
-  if (b[0] === 0x89 && b[1] === 0x50) { const p = decoders.png.PNG.sync.read(b); return { data: p.data, width: p.width, height: p.height }; }
-  if (b[0] === 0xff && b[1] === 0xd8) { const j = decoders.jpeg.decode(b, { useTArray: true }); return { data: j.data, width: j.width, height: j.height }; }
-  return null;
-}
-
-function r2Put(key, png, dir) {
-  const file = join(dir, 'county.png');
-  writeFileSync(file, png);
-  for (let i = 1; i <= 3; i++) {
-    try {
-      execFileSync('npx', ['wrangler', 'r2', 'object', 'put', `${BUCKET}/${key}`, '--file', file,
-        '--content-type', 'image/png', '--remote'], { stdio: ['ignore', 'pipe', 'pipe'] });
-      return true;
-    } catch { if (i < 3) execFileSync('sleep', [String(i * 2)]); }
-  }
-  return false;
-}
-
 let dbId = null;
 function exec(sql, { always = false } = {}) {
   if (DRY_RUN && !always) return;
@@ -805,51 +717,7 @@ function exec(sql, { always = false } = {}) {
   wrangler(['d1', 'execute', dbId, '--remote', '--command', flatSql(sql)]);
 }
 
-function ensureTable() {
-  const schema = readFileSync(new URL('../worker/schema.sql', import.meta.url), 'utf8');
-  const m = schema.match(/CREATE TABLE IF NOT EXISTS county_imagery \([\s\S]*?\n\);/);
-  if (!m) throw new Error('county_imagery is not in worker/schema.sql');
-  // Even on a dry run: an empty table is harmless, and the reads below join it.
-  exec(m[0].replace(/--[^\n]*/g, ''), { always: true });
-  /* And the columns added since it first shipped, as migrations.sql adds
-     them: this can run before the deploy that would. One that exists fails,
-     which is the "already there" answer. */
-  const mig = readFileSync(new URL('../worker/migrations.sql', import.meta.url), 'utf8');
-  for (const alter of mig.match(/ALTER TABLE county_imagery ADD COLUMN [^;]+;/g) || []) {
-    try { exec(alter, { always: true }); } catch { /* already there */ }
-  }
-}
-
-const countyKey = (id) => `maps/county/${String(id).replace(/[^A-Za-z0-9._-]+/g, '_')}.png`;
-
-/*
- * A MAP DRAWN ON A COUNTY PHOTO KEEPS THAT PHOTO AT THE COUNTY KEY -- the
- * same key this pass banks the pair's county side under. So for such a map
- * the "pair's county photo" IS the map's own, and writing there replaces the
- * picture the outlines were drawn on (2026-10-09: six maps, one from a
- * different flight). The find query leaves those maps out; this is the
- * second lock on the same door, at the write itself, whatever the query did.
- */
-export const ownPhotoHere = (row) => Boolean(row?.id)
-  && [row.image_key, row.mapbox_key].some((k) => k && k === countyKey(row.id));
-
 /* ----------------------------------------------------------------- align */
-
-/** Ground metres across a frame. */
-export const frameGroundM = (frame) => {
-  const box = frameBbox3857(frame);
-  return (box[2] - box[0]) * Math.cos((frame.lat * Math.PI) / 180);
-};
-
-/**
- * Where the banked Mapbox photo's ground is in `img`, a picture of the same
- * frame at the same size. A: Mapbox pixel -> img pixel. east/north: how far
- * the county photo has Mapbox's centre, in metres (east positive).
- */
-export function alignTo(base, img, frame) {
-  const r = registerImages(base, img, frameGroundM(frame), { reachM: REACH_M });
-  return { ...r, east: r.offsetM?.east ?? 0, north: r.offsetM?.north ?? 0 };
-}
 
 /**
  * The picture Mapbox's pixel grid would show of `src`, which covers the frame
@@ -895,240 +763,9 @@ export function nudged(A, east, north, metresPerPx) {
   return [A[0], A[1], A[2] - (A[0] * ex + A[1] * ny), A[3], A[4], A[5] - (A[3] * ex + A[4] * ny)];
 }
 
-/* ------------------------------------------------------------------ find */
-
-export async function evaluate(c, base, frame, decoders) {
-  const m = await meta(c.url);
-  if (!m || m.failed) return { ...c, usable: false, why: `metadata: ${m?.failed || 'none'}` };
-  const bbox = frameBbox3857(frame);
-  /* A small look first: most candidates found by place are not over this
-     frame at all (a catalogue box is loose), and that is cheap to learn. */
-  const probe = await fetchOver(c, m, bbox, 128, Math.max(16, Math.round((128 * base.height) / base.width)), decoders);
-  await sleep(PAUSE_MS);
-  if (!probe) return { ...c, usable: false, why: 'no picture over this frame' };
-  const probeCover = coverage(probe.data, probe.width, probe.height);
-  if (probeCover < 0.9) return { ...c, usable: false, why: `covers ${(probeCover * 100).toFixed(0)}%`, cover: probeCover };
-  const img = await fetchOver(c, m, bbox, base.width, base.height, decoders);
-  await sleep(PAUSE_MS);
-  if (!img) return { ...c, usable: false, why: 'no full picture over this frame' };
-  const cover = coverage(img.data, img.width, img.height);
-  const pixelCm = ((bbox[2] - bbox[0]) / img.width) * Math.cos((frame.lat * Math.PI) / 180) * 100;
-  let native = nativeCm(m, frame.lat);
-  /* Under 3 cm is a tile scheme talking, not a camera (New Jersey's "1 cm"). */
-  if (native !== null && native < 3) native = null;
-  if (img.tiled) native = Math.max(native ?? 0, img.tileCm * (img.merc ? Math.cos((frame.lat * Math.PI) / 180) : 1));
-  if (img.lossless && c.type === 'MapServer') {
-    const b = blockiness(img.data, img.width, img.height);
-    if (b > 1.5) native = Math.max(native ?? 0, pixelCm * b);
-    /* Not visibly enlarged at our grid: at least as fine as our grid. */
-    else if (native === null) native = pixelCm;
-  }
-  const detail = c.type === 'ImageServer' && base.detail
-    ? (extraDetail(img.data, img.width, img.height, 4)?.extra ?? 0) / base.detail.extra : null;
-  const years = yearHints(`${c.title} ${c.url} ${m.description || ''} ${m.serviceDescription || ''} ${m.copyrightText || ''}`);
-  const year = c.year ?? (years.length ? Math.max(...years) : null);
-  /* When it was flown, in the service's own words and its catalogue's dates
-     (seasonOf), so chooseBest can rank by flight rather than by year. */
-  let flown = null;
-  try { flown = (await seasonOf(c.url, c.title, m)).flown; } catch { /* undated, then */ }
-  const fine = native !== null && native > 0 ? native <= MAX_NATIVE_CM : (detail !== null && detail >= MIN_DETAIL);
-  const recent = year === null || year >= MIN_YEAR;
-  const usable = cover >= MIN_COVER && fine && recent;
-  const why = usable ? 'usable'
-    : cover < MIN_COVER ? `covers ${(cover * 100).toFixed(0)}%`
-      : !fine ? `too coarse (${native ? `${Math.round(native)} cm` : `detail ${detail?.toFixed(2) ?? '?'}`})`
-        : `flown ${year}`;
-  return {
-    ...c, year, flown, usable, why, cover, nativeCm: native, detail,
-    green: base.green ? greenShare(img.data, img.width, img.height) / base.green : null,
-    img: usable ? img : null,
-  };
-}
-
-async function findFor(row, decoders, dir) {
-  /* Nothing of this map's is touched, not even the pair row's service. */
-  if (ownPhotoHere(row)) return { id: row.id, status: "the map's own photo lives at the county key; left alone" };
-  const frame = JSON.parse(row.image_frame || row.frame);
-  const base = r2Get(row.image_key, dir, decoders);
-  if (!base) return { id: row.id, status: 'no banked photo' };
-  base.detail = extraDetail(base.data, base.width, base.height, 4);
-  base.green = greenShare(base.data, base.width, base.height);
-
-  const found = [
-    ...await countyCandidates(frame.lng, frame.lat),
-    ...await agolCandidates(frame.lng, frame.lat),
-  ];
-  const ranked = rankCandidates(found);
-  const tried = [];
-  for (const c of ranked.slice(0, MAX_TRY)) {
-    try { tried.push(await evaluate(c, base, frame, decoders)); } catch (e) {
-      tried.push({ ...c, usable: false, why: `error: ${String(e.message || e).slice(0, 60)}` });
-    }
-    /* Ranked newest first, so the first usable one is the one; a couple more
-       only in case a finer flight of the same year follows it. */
-    if (tried.filter((t) => t.usable).length >= 2) break;
-  }
-  const best = chooseBest(tried);
-  const candidates = JSON.stringify(tried.map((t) => ({
-    url: t.url, via: t.via, year: t.year, why: t.why,
-    cover: t.cover ? Math.round(t.cover * 100) / 100 : null,
-    nativeCm: t.nativeCm ? Math.round(t.nativeCm) : null,
-  })).concat(ranked.length > MAX_TRY ? [{ untried: ranked.length - MAX_TRY }] : []));
-
-  if (!best) {
-    exec(`INSERT INTO county_imagery (id, candidates, checked_at) VALUES (${lit(row.id)}, ${lit(candidates)}, ${lit(new Date().toISOString())})
-          ON CONFLICT(id) DO UPDATE SET service = NULL, service_type = NULL, title = NULL, year = NULL,
-            native_cm = NULL, image_key = NULL, candidates = excluded.candidates, checked_at = excluded.checked_at`);
-    return { id: row.id, status: 'none usable', found: ranked.length,
-      tried: tried.map((t) => `x ${t.title || t.url} (${t.why})`) };
-  }
-
-  const placed = await place(row, best, base, frame, decoders, dir);
-  exec(`INSERT INTO county_imagery (id, service, service_type, title, year, native_cm, detail, green,
-          candidates, checked_at)
-        VALUES (${[row.id, best.url, best.type, best.title, best.year, round(best.nativeCm, 1),
-    round(best.detail, 2), round(best.green, 2), candidates, new Date().toISOString()].map(lit).join(', ')})
-        ON CONFLICT(id) DO UPDATE SET
-          review = CASE WHEN county_imagery.service IS excluded.service THEN county_imagery.review ELSE NULL END,
-          service = excluded.service, service_type = excluded.service_type, title = excluded.title,
-          year = excluded.year, native_cm = excluded.native_cm, detail = excluded.detail,
-          green = excluded.green, candidates = excluded.candidates, checked_at = excluded.checked_at`);
-  writePlacement(row.id, placed, { resetNudge: true });
-  return {
-    id: row.id, status: 'banked', title: best.title, host: new URL(best.url).host, year: best.year,
-    nativeCm: best.nativeCm, found: ranked.length, ...summaryOf(placed),
-    tried: tried.map((t) => `${t.usable ? 'OK' : 'x'} ${t.title || t.url} (${t.why})`),
-  };
-}
-
 const round = (v, d) => (v === null || v === undefined || !Number.isFinite(v) ? null : Math.round(v * 10 ** d) / 10 ** d);
 
-/**
- * Measure, move, bank, measure again.
- *
- * `img` is the service's picture of the frame (fetched if not given); `extra`
- * is a person's nudge in metres, applied on top of the measurement.
- */
-export async function place(row, c, base, frame, decoders, dir, { img = null, extra = null } = {}) {
-  if (ownPhotoHere(row)) return { key: null, why: "the map's own photo lives at the county key; never replaced" };
-  const m = await meta(c.url);
-  const W = base.width, H = base.height;
-  const box = frameBbox3857(frame);
-  const look = img || c.img || await fetchOver(c, m, box, W, H, decoders);
-  if (!look) return { key: null, why: 'no picture over this frame' };
-  const reg = alignTo(base, look, frame);
-  const metresPerPx = frameGroundM(frame) / W;
-  /* A photo the measurement is not sure of is banked as delivered. */
-  let A = reg.confident ? reg.A : [1, 0, 0, 0, 1, 0];
-  if (extra && (extra.east || extra.north)) A = nudged(A, extra.east, extra.north, metresPerPx);
-  const moved = A.some((v, i) => Math.abs(v - [1, 0, 0, 0, 1, 0][i]) > 1e-9);
-  let out = look;
-  if (moved) {
-    const [padX, padY] = padFor(A, W, H);
-    const kx = (box[2] - box[0]) / W, ky = (box[3] - box[1]) / H;
-    const wide = [box[0] - padX * kx, box[1] - padY * ky, box[2] + padX * kx, box[3] + padY * ky];
-    const big = await fetchOver(c, m, wide, W + 2 * padX, H + 2 * padY, decoders);
-    if (!big) return { key: null, why: 'no picture over the widened frame', reg };
-    out = resampleThrough(big, A, W, H, padX, padY);
-  }
-  /* Measured again: where is Mapbox's ground in what is about to be banked? */
-  const check = alignTo(base, out, frame);
-  const residual = check.confident ? Math.hypot(check.east, check.north) : null;
-  const placed = { reg, A, moved, check, residual, nudge: extra, key: null, at: null, picture: out };
-  if (DRY_RUN) return placed;
-  const { PNG } = decoders.png;
-  const png = new PNG({ width: out.width, height: out.height });
-  png.data = Buffer.from(out.data);
-  const key = countyKey(row.id);
-  if (!r2Put(key, PNG.sync.write(png), dir)) return { ...placed, why: 'could not write to the bucket' };
-  return { ...placed, key, at: new Date().toISOString() };
-}
-
-/** What the log and the artifact say about a placement. */
-function summaryOf(p) {
-  const r = p.reg || {};
-  return {
-    confident: Boolean(r.confident), why: r.why, model: r.model, inliers: r.inliers, patches: r.patches,
-    rmsM: r.rmsM, east: r.east ?? 0, north: r.north ?? 0, moved: Boolean(p.moved),
-    residual: p.residual, landed: p.residual !== null && p.residual !== undefined && p.residual <= MAX_RESIDUAL_M,
-  };
-}
-
-/* A new picture unsettles a "lines up": that was said of the old one. A
-   "don't use" stands -- it is usually about the photo itself (its year, its
-   season), which lining up does not change. */
-function writePlacement(id, p, { resetNudge = false, keepVerdict = false } = {}) {
-  const r = p.reg || {};
-  exec(`UPDATE county_imagery SET image_key = ${lit(p.key)}, banked_at = ${lit(p.at)},
-          east = ${lit(round(r.east, 3))}, north = ${lit(round(r.north, 3))},
-          scale = ${lit(p.A ? round(Math.sqrt(Math.abs(p.A[0] * p.A[4] - p.A[1] * p.A[3])), 5) : null)},
-          fit = NULL, fit0 = NULL, residual_m = ${lit(round(p.residual, 3))},
-          reg_model = ${lit(r.model || null)}, reg_affine = ${lit(p.A ? JSON.stringify(p.A.map((v) => round(v, 6))) : null)},
-          reg_inliers = ${lit(r.inliers ?? null)}, reg_patches = ${lit(r.patches ?? null)},
-          reg_rms_m = ${lit(round(r.rmsM, 3))}, reg_confident = ${r.confident ? 1 : 0},
-          reg_why = ${lit(r.why || p.why || null)}
-          ${resetNudge ? ', review_east = 0, review_north = 0' : ''}
-          ${keepVerdict ? '' : ", review = CASE WHEN review = 'ok' THEN NULL ELSE review END"}
-        WHERE id = ${lit(id)}`);
-}
-
 /* ---------------------------------------------------------------- rebank */
-
-/** A person's nudge from /county.html, on top of a fresh measurement. */
-async function rebank(row, decoders, dir) {
-  if (ownPhotoHere(row)) return { id: row.id, status: "the map's own photo lives at the county key; left alone" };
-  const frame = JSON.parse(row.image_frame || row.frame);
-  const base = r2Get(row.image_key, dir, decoders);
-  if (!base) return { id: row.id, status: 'no banked photo' };
-  const c = { url: row.service, type: row.service_type };
-  const extra = { east: Number(row.review_east) || 0, north: Number(row.review_north) || 0 };
-  /* The nudge was made against the photo as it was banked, so it goes on top
-     of the map that banked it, not a new measurement. */
-  const prior = row.reg_affine ? JSON.parse(row.reg_affine) : [1, 0, 0, 0, 1, 0];
-  const placed = await placeWith(row, c, base, frame, decoders, dir, nudged(prior, extra.east, extra.north, frameGroundM(frame) / base.width));
-  if (!placed.key && !DRY_RUN) return { id: row.id, status: `could not re-bank: ${placed.why || '?'}` };
-  writePlacement(row.id, { ...placed, reg: { ...(placed.reg || {}), confident: true, why: 'nudged by a person' } },
-    { resetNudge: true, keepVerdict: true });
-  return { id: row.id, status: 'rebanked', ...summaryOf(placed) };
-}
-
-/** Bank through a given map, no measuring first. */
-async function placeWith(row, c, base, frame, decoders, dir, A) {
-  if (ownPhotoHere(row)) return { key: null, why: "the map's own photo lives at the county key; never replaced" };
-  const m = await meta(c.url);
-  const W = base.width, H = base.height;
-  const box = frameBbox3857(frame);
-  const [padX, padY] = padFor(A, W, H);
-  const kx = (box[2] - box[0]) / W, ky = (box[3] - box[1]) / H;
-  const big = await fetchOver(c, m, [box[0] - padX * kx, box[1] - padY * ky, box[2] + padX * kx, box[3] + padY * ky],
-    W + 2 * padX, H + 2 * padY, decoders);
-  if (!big) return { key: null, why: 'no picture over the widened frame' };
-  const out = resampleThrough(big, A, W, H, padX, padY);
-  const check = alignTo(base, out, frame);
-  const residual = check.confident ? Math.hypot(check.east, check.north) : null;
-  const placed = { reg: { model: 'nudged', inliers: check.inliers, patches: check.patches, rmsM: check.rmsM, east: 0, north: 0 }, A, moved: true, check, residual, key: null, at: null };
-  if (DRY_RUN) return placed;
-  const { PNG } = decoders.png;
-  const png = new PNG({ width: out.width, height: out.height });
-  png.data = Buffer.from(out.data);
-  const key = countyKey(row.id);
-  if (!r2Put(key, PNG.sync.write(png), dir)) return { ...placed, why: 'could not write to the bucket' };
-  return { ...placed, key, at: new Date().toISOString() };
-}
-
-/** Line up again every banked map, from its own service: no searching. */
-async function realign(row, decoders, dir) {
-  if (ownPhotoHere(row)) return { id: row.id, status: "the map's own photo lives at the county key; left alone" };
-  const frame = JSON.parse(row.image_frame || row.frame);
-  const base = r2Get(row.image_key, dir, decoders);
-  if (!base) return { id: row.id, status: 'no banked photo' };
-  const c = { url: row.service, type: row.service_type };
-  const placed = await place(row, c, base, frame, decoders, dir);
-  if (!placed.key && !DRY_RUN) return { id: row.id, status: `could not re-bank: ${placed.why || '?'}` };
-  writePlacement(row.id, placed, { resetNudge: true });
-  return { id: row.id, status: 'banked', title: row.title, host: new URL(row.service).host, year: row.year,
-    nativeCm: row.native_cm, ...summaryOf(placed) };
-}
 
 /* ------------------------------------------------------------- catalogue */
 /*
@@ -1674,19 +1311,6 @@ async function countyLidar() {
 async function main() {
   const decoders = { png: await import('pngjs'), jpeg: (await import('jpeg-js')).default };
   const dir = mkdtempSync(join(tmpdir(), 'county-'));
-  ensureTable();
-
-  if (MODE === 'rebank') {
-    const rows = query(`SELECT ci.*, c.frame, c.image_frame, c.image_key AS mapbox_key
-                          FROM county_imagery ci JOIN corpus c ON c.id = ci.id
-                         WHERE ci.service IS NOT NULL AND (ci.review_east != 0 OR ci.review_north != 0)`);
-    console.log(`${rows.length} nudged on /county.html to re-bank.`);
-    for (const r of rows) {
-      const out = await rebank({ ...r, image_key: r.mapbox_key }, decoders, dir);
-      console.log(JSON.stringify(out));
-    }
-    return;
-  }
 
   if (MODE === 'catalogue') {
     await catalogue(decoders);
@@ -1714,58 +1338,8 @@ async function main() {
     return;
   }
 
-  if (MODE === 'realign') {
-    const rows = query(`SELECT ci.*, c.county, c.frame, c.image_frame, c.image_key AS mapbox_key
-                          FROM county_imagery ci JOIN corpus c ON c.id = ci.id
-                         WHERE ci.service IS NOT NULL AND c.status = 'approved'
-                           -- never move a photo out from under outlines a person traced on it
-                           AND ci.shapes IS NULL
-                           ${ONLY ? `AND c.id = ${lit(ONLY)}` : ''}
-                         ORDER BY c.at DESC LIMIT ${Math.max(1, LIMIT)}`);
-    console.log(`${rows.length} banked county photos to line up again${DRY_RUN ? ' -- DRY RUN, nothing written' : ''}.`);
-    const results = [];
-    for (const [n, row] of rows.entries()) {
-      let out;
-      try { out = await realign({ ...row, image_key: row.mapbox_key }, decoders, dir); } catch (e) {
-        out = { id: row.id, status: `error: ${String(e.message || e).slice(0, 80)}` };
-      }
-      results.push({ ...out, county: row.county });
-      console.log(`${n + 1}/${rows.length} ${row.county || '?'} ${row.id.slice(0, 40)}: ${say(out)}`);
-    }
-    report(results);
-    return;
-  }
-
-  /* Approved maps only: they are the training data (owner, 2026-10-01). */
-  const rows = query(`SELECT c.id, c.county, c.status, c.frame, c.image_frame, c.image_key, ci.checked_at
-                        FROM corpus c LEFT JOIN county_imagery ci ON ci.id = c.id
-                       WHERE c.status = 'approved' AND c.image_key IS NOT NULL
-                         -- never replace a photo somebody traced outlines on,
-                         -- unless this one map was asked for by id (ONLY)
-                         AND (ci.shapes IS NULL${ONLY ? ' OR 1' : ''})
-                         -- nor look for one for a map made on a county photo:
-                         -- that photo IS its photo (county-picture.js)
-                         AND (c.image_provider IS NULL OR c.image_provider != 'county')
-                         AND c.frame IS NOT NULL ${ONLY ? `AND c.id = ${lit(ONLY)}` : ''}
-                       ORDER BY c.at DESC LIMIT ${Math.max(1, LIMIT)}`);
-  const todo = rows.filter((r) => FORCE || ONLY || !r.checked_at);
-  if (ONLY && rows.length) {
-    console.log(`ONLY ${ONLY}: looked at again whatever was banked; outlines traced on the old county photo, if any, now sit on the new one.`);
-  }
-  console.log(`${rows.length} corpus maps with a banked photo; ${todo.length} to look at`
-    + `${FORCE ? ' (FORCE: all again)' : ''}${DRY_RUN ? ' -- DRY RUN, nothing written' : ''}.`);
-
-  const results = [];
-  for (const [n, row] of todo.entries()) {
-    let out;
-    try { out = await findFor(row, decoders, dir); } catch (e) {
-      out = { id: row.id, status: `error: ${String(e.message || e).slice(0, 80)}` };
-    }
-    results.push({ ...out, county: row.county, corpusStatus: row.status });
-    console.log(`${n + 1}/${todo.length} ${row.county || '?'} ${row.id.slice(0, 40)}: ${say(out)}`);
-    for (const t of out.tried || []) console.log(`      ${t.slice(0, 160)}`);
-  }
-  report(results);
+  console.log(`Unknown MODE "${MODE}". The county-photo PAIRS -- find, realign, rebank -- were retired on 2026-10-09 (owner: one map, one photo); catalogue, names, asked, season and lidar remain.`);
+  process.exitCode = 1;
 }
 
 function say(out) {

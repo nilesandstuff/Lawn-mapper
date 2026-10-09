@@ -30,7 +30,7 @@ import { feedbackEntries, feedbackEnabled } from './feedback.js';
 import { corpusGaps, candidateScore, storeImage, captureImage } from './corpus.js';
 import { storeCountyImage } from './county-picture.js';
 import { parcelGaps } from './gaps.js';
-import { cleanCountyReview, cleanCountyOutlines, countyServicesAt, countyServiceById } from './county.js';
+import { countyServicesAt } from './county.js';
 import { scoreMap } from './score.js';
 import {
   outlineKeys, idOfOutlineKey, applyReview, OUTLINE_PREFIX,
@@ -88,45 +88,6 @@ export async function measureDisagreement(env, { limit = 400 } = {}) {
   }
   if (writes.length) await env.DB.batch(writes);
   return writes.length;
-}
-
-/*
- * A MAP FINISHED ON A COUNTY PHOTO gets a county_imagery row of its own, so
- * the editor can pair it (owner, 2026-10-08: tracing the same lawn on both
- * photos). Its county side IS the photo the map was finished on
- * (corpus.image_key, moved by corpus.county_align) -- not whatever the
- * nightly pass may have banked for the frame, which is a different flight
- * the outline was never drawn on. The Mapbox side is banked when a Mapbox
- * outline is first saved (county-outlines, side mapbox). Answers the corpus
- * row, or null. Nothing to do for a map drawn on Mapbox.
- */
-async function ensureCountyRow(env, id) {
-  const c = await env.DB.prepare(
-    'SELECT id, image_key, image_provider, county_svc, county_align FROM corpus WHERE id = ?1'
-  ).bind(id).first();
-  if (!c || c.image_provider !== 'county' || !c.image_key) return c;
-  const ci = await env.DB.prepare('SELECT id, image_key FROM county_imagery WHERE id = ?1').bind(id).first();
-  if (ci?.image_key === c.image_key) return c;
-  let align = {};
-  try { align = JSON.parse(c.county_align) || {}; } catch { /* unmoved */ }
-  const svc = c.county_svc ? await countyServiceById(env, c.county_svc).catch(() => null) : null;
-  const now = new Date().toISOString();
-  const vals = [id, c.image_key, Number(align.east) || 0, Number(align.north) || 0, Number(align.scale) || 1, now,
-    svc?.url || null, svc?.title || null, svc?.year ?? null, svc?.nativeCm ?? null];
-  if (ci) {
-    await env.DB.prepare(
-      `UPDATE county_imagery SET image_key = ?2, east = ?3, north = ?4, scale = ?5, review = 'ok', banked_at = ?6,
-              service = COALESCE(?7, service), title = COALESCE(?8, title), year = COALESCE(?9, year),
-              native_cm = COALESCE(?10, native_cm)
-        WHERE id = ?1`
-    ).bind(...vals).run();
-  } else {
-    await env.DB.prepare(
-      `INSERT INTO county_imagery (id, image_key, east, north, scale, banked_at, service, title, year, native_cm, review)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'ok')`
-    ).bind(...vals).run();
-  }
-  return c;
 }
 
 export async function handleAdmin(request, env, url, origin, ctx, json) {
@@ -1708,96 +1669,14 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
     });
   }
 
-  /* ------------------------------------------- county orthophotos (owner, 2026-10-01) */
-  /*
-   * The maps tools/county-imagery.js banked a county photo for, the photo
-   * itself, the map's outlines and frame -- the same image_frame training
-   * rasterises them against -- and a verdict. See public/county.html.
-   */
-  if (path === 'county-list') {
-    /* Approved maps only: only those are training data, and a candidate's
-       outline may still change (owner, 2026-10-01: "you sent some maps that
-       weren't yet approved"). */
-    try {
-      const rows = await env.DB.prepare(
-        `SELECT c.id, ci.title, ci.year, ci.native_cm, ci.review, ci.fit, ci.fit0, ci.residual_m,
-                ci.east, ci.north, ci.scale, ci.review_east, ci.review_north, c.county, c.status,
-                ci.reg_confident, ci.reg_why, ci.outlines_at,
-                c.image_provider AS drawn_on,
-                CASE WHEN ci.mapbox_shapes IS NOT NULL THEN 1 ELSE 0 END AS mapbox_traced
-           FROM corpus c LEFT JOIN county_imagery ci ON ci.id = c.id
-          WHERE c.status = 'approved' AND (ci.image_key IS NOT NULL OR c.image_provider = 'county')
-          ORDER BY c.at DESC`
-      ).all();
-      const looked = await env.DB.prepare('SELECT COUNT(*) n FROM county_imagery').first();
-      return json({ maps: rows.results || [], looked: looked?.n || 0 }, 200, origin);
-    } catch (e) {
-      return json({ maps: [], looked: 0, unavailable: String(e.message || e) }, 200, origin);
-    }
-  }
-
-  if (path === 'county' && request.method === 'GET') {
-    const id = url.searchParams.get('id') || '';
-    await ensureCountyRow(env, id);
-    /* Named, not ci.*: county_imagery has shapes and not_lawn of its own now,
-       and two columns of one name in a row is whichever came last. */
-    const row = await env.DB.prepare(
-      `SELECT ci.id, ci.service, ci.title, ci.year, ci.native_cm, ci.east, ci.north, ci.scale,
-              ci.fit, ci.fit0, ci.residual_m, ci.review, ci.review_east, ci.review_north,
-              ci.banked_at, ci.candidates, ci.reg_model, ci.reg_inliers, ci.reg_patches, ci.reg_rms_m,
-              ci.reg_confident, ci.reg_why, ci.outlines_at, ci.outlines_by,
-              ci.shapes AS county_shapes, ci.not_lawn AS county_not_lawn,
-              ci.mapbox_shapes, ci.mapbox_not_lawn, ci.mapbox_image_key, c.image_provider,
-              c.county, c.status, c.frame, c.image_frame, c.shapes, c.not_lawn, c.parcel
-         FROM county_imagery ci JOIN corpus c ON c.id = ci.id WHERE ci.id = ?1`
-    ).bind(id).first();
-    if (!row) return json({ error: 'No such map' }, 404, origin);
-    const parse = (t) => { try { return JSON.parse(t); } catch { return null; } };
-    return json({
-      ...row,
-      frame: parse(row.image_frame) || parse(row.frame),
-      shapes: parse(row.shapes) || [],
-      not_lawn: parse(row.not_lawn) || [],
-      county_shapes: row.county_shapes ? parse(row.county_shapes) || [] : null,
-      county_not_lawn: row.county_not_lawn ? parse(row.county_not_lawn) || [] : null,
-      /* Which photo the map was FINISHED on, and the pair's other side. For a
-         map drawn on the county photo the editor traces the Mapbox side. */
-      drawn_on: row.image_provider === 'county' ? 'county' : 'mapbox',
-      mapbox_shapes: row.mapbox_shapes ? parse(row.mapbox_shapes) || [] : null,
-      mapbox_not_lawn: row.mapbox_not_lawn ? parse(row.mapbox_not_lawn) || [] : null,
-      mapbox_image: Boolean(row.mapbox_image_key),
-      mapbox_image_key: undefined,
-      image_provider: undefined,
-      parcel: parse(row.parcel),
-      candidates: parse(row.candidates) || [],
-      image_frame: undefined,
-    }, 200, origin);
-  }
-
-  if (path === 'county-review' && request.method === 'POST') {
-    const body = await request.json().catch(() => ({}));
-    const id = String(body?.id || '');
-    const clean = cleanCountyReview(body);
-    if (!clean) return json({ error: 'Bad verdict' }, 400, origin);
-    const res = await env.DB.prepare(
-      `UPDATE county_imagery SET review = ?2, review_east = ?3, review_north = ?4,
-              reviewed_at = ?5, reviewed_by = ?6 WHERE id = ?1 AND image_key IS NOT NULL`
-    ).bind(id, clean.review, clean.east, clean.north, new Date().toISOString(), me.email || me.id).run();
-    if (!res.meta?.changes) return json({ error: 'No such map' }, 404, origin);
-    return json({ ok: true, ...clean }, 200, origin);
-  }
-
   /*
    * THE RECORD WAS WRONG ABOUT WHICH PHOTO (owner, 2026-10-09: the Franklin
    * County 9,100 sq ft map "was falsely marked as being drawn on county
    * photo, it was drawn on mapbox"). Such a map had a county photo saved
-   * under an outline drawn on Mapbox's -- the one mismatch the corpus
-   * decision ruled out -- and trained that way. Put right from the county
-   * page: Mapbox's photo of the frame becomes the map's own, the county
-   * photo it carried stays beside it as the pair's other side (unjudged,
-   * since nobody drew on it), and any outlines kept for the pair are
-   * dropped, because they were labelled by the wrong side. Only towards
-   * Mapbox: a map drawn on a county photo says so when it is finished.
+   * under an outline drawn on Mapbox's, and trained that way. Put right from
+   * the console card: Mapbox's photo of the frame becomes the map's own.
+   * Only towards Mapbox: a map drawn on a county photo says so when it is
+   * finished. ONE MAP, ONE PHOTO (owner, 2026-10-09): nothing else is kept.
    */
   if (path === 'county-drawn-on' && request.method === 'POST') {
     const body = await request.json().catch(() => ({}));
@@ -1806,10 +1685,6 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
     const c = await env.DB.prepare('SELECT id, frame, image_key, image_provider FROM corpus WHERE id = ?1').bind(id).first();
     if (!c) return json({ error: 'No such map' }, 404, origin);
     if (c.image_provider !== 'county') return json({ ok: true, drawn_on: 'mapbox', changed: false }, 200, origin);
-    /* The county photo it carries goes to county_imagery first, while the
-       corpus row still says county (ensureCountyRow reads that). */
-    await ensureCountyRow(env, id);
-    const ci = await env.DB.prepare('SELECT image_key, mapbox_shapes, shapes FROM county_imagery WHERE id = ?1').bind(id).first();
     let frame = null;
     try { frame = JSON.parse(c.frame); } catch { /* none */ }
     const got = frame ? await captureImage(env, { id, frame }, 'mapbox') : { ok: false, reason: 'no-frame' };
@@ -1817,96 +1692,7 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
     await env.DB.prepare(
       "UPDATE corpus SET provider = 'mapbox', image_provider = 'mapbox', image_key = ?2, image_frame = ?3 WHERE id = ?1"
     ).bind(id, got.key, JSON.stringify(got.frame)).run();
-    await env.DB.prepare(
-      `UPDATE county_imagery SET shapes = NULL, not_lawn = NULL, mapbox_shapes = NULL, mapbox_not_lawn = NULL,
-              mapbox_image_key = NULL, outlines_at = NULL, outlines_by = NULL,
-              review = NULL, reviewed_at = NULL, reviewed_by = NULL
-        WHERE id = ?1`
-    ).bind(id).run();
-    return json({
-      ok: true, drawn_on: 'mapbox', changed: true,
-      countyPhotoKept: Boolean(ci?.image_key),
-      droppedPairOutlines: Boolean(ci?.mapbox_shapes || ci?.shapes),
-    }, 200, origin);
-  }
-
-  /*
-   * Outlines traced on the county photo, from the editor. corpus is not
-   * touched: its outlines were traced on Mapbox and stay Mapbox's. The first
-   * time, a copy of those is set aside beside the county ones (COALESCE keeps
-   * the first copy), so they survive the corpus row being finished again.
-   */
-  if (path === 'county-outlines' && request.method === 'POST') {
-    const body = await request.json().catch(() => ({}));
-    const id = String(body?.id || '');
-    const clean = cleanCountyOutlines(body);
-    if (!clean) return json({ error: 'No outlines to keep' }, 400, origin);
-    const by = me.email || me.id;
-    const now = new Date().toISOString();
-    /*
-     * THE MAPBOX SIDE OF A PAIR (owner, 2026-10-08). A map finished on a county
-     * photo has its outline on that photo (corpus.shapes); the owner traces it
-     * again on Mapbox, and that goes to mapbox_shapes, with the county outline
-     * copied beside it the first time. Then Mapbox's picture of the frame is
-     * banked (mapbox_image_key) so training can read the pair. Waited for: an
-     * admin is the one person who goes straight on to look at it.
-     */
-    if (body?.side === 'mapbox') {
-      const c = await ensureCountyRow(env, id);
-      if (!c || c.image_provider !== 'county') return json({ error: 'Not a map drawn on a county photo' }, 400, origin);
-      const res = await env.DB.prepare(
-        `UPDATE county_imagery SET mapbox_shapes = ?2, mapbox_not_lawn = ?3, outlines_at = ?4, outlines_by = ?5,
-                shapes = COALESCE(shapes, (SELECT shapes FROM corpus WHERE id = ?1)),
-                not_lawn = COALESCE(not_lawn, (SELECT not_lawn FROM corpus WHERE id = ?1))
-          WHERE id = ?1 AND image_key IS NOT NULL`
-      ).bind(id, clean.shapes, clean.notLawn, now, by).run();
-      if (!res.meta?.changes) return json({ error: 'No such map' }, 404, origin);
-      let banked = false;
-      const have = await env.DB.prepare('SELECT mapbox_image_key FROM county_imagery WHERE id = ?1').bind(id).first();
-      if (have?.mapbox_image_key) banked = true;
-      else {
-        const row = await env.DB.prepare('SELECT id, frame FROM corpus WHERE id = ?1').bind(id).first();
-        const got = row?.frame ? await captureImage(env, { ...row, frame: JSON.parse(row.frame) }, 'mapbox') : { ok: false, reason: 'no-frame' };
-        if (got.ok) {
-          await env.DB.prepare('UPDATE county_imagery SET mapbox_image_key = ?2 WHERE id = ?1').bind(id, got.key).run();
-          banked = true;
-        }
-      }
-      return json({ ok: true, side: 'mapbox', mapboxImage: banked }, 200, origin);
-    }
-    const res = await env.DB.prepare(
-      `UPDATE county_imagery SET shapes = ?2, not_lawn = ?3, outlines_at = ?4, outlines_by = ?5,
-              mapbox_shapes = COALESCE(mapbox_shapes, (SELECT shapes FROM corpus WHERE id = ?1)),
-              mapbox_not_lawn = COALESCE(mapbox_not_lawn, (SELECT not_lawn FROM corpus WHERE id = ?1))
-        WHERE id = ?1 AND image_key IS NOT NULL`
-    ).bind(id, clean.shapes, clean.notLawn, now, by).run();
-    if (!res.meta?.changes) return json({ error: 'No such map' }, 404, origin);
-    return json({ ok: true, side: 'county' }, 200, origin);
-  }
-
-  /* The pair's Mapbox photo of a map drawn on the county photo. */
-  if (path === 'county-mapbox-image') {
-    if (!env.CORPUS) return json({ error: 'No bucket' }, 404, origin);
-    const id = url.searchParams.get('id') || '';
-    const row = await env.DB.prepare('SELECT mapbox_image_key FROM county_imagery WHERE id = ?1').bind(id).first();
-    if (!row?.mapbox_image_key) return json({ error: 'No image' }, 404, origin);
-    const object = await env.CORPUS.get(row.mapbox_image_key);
-    if (!object) return json({ error: 'No image' }, 404, origin);
-    return new Response(object.body, {
-      headers: { 'Content-Type': object.httpMetadata?.contentType || 'image/png', 'Cache-Control': 'private, max-age=60' },
-    });
-  }
-
-  if (path === 'county-image') {
-    if (!env.CORPUS) return json({ error: 'No bucket' }, 404, origin);
-    const id = url.searchParams.get('id') || '';
-    const row = await env.DB.prepare('SELECT image_key FROM county_imagery WHERE id = ?1').bind(id).first();
-    if (!row?.image_key) return json({ error: 'No image' }, 404, origin);
-    const object = await env.CORPUS.get(row.image_key);
-    if (!object) return json({ error: 'No image' }, 404, origin);
-    return new Response(object.body, {
-      headers: { 'Content-Type': 'image/png', 'Cache-Control': 'private, max-age=60' },
-    });
+    return json({ ok: true, drawn_on: 'mapbox', changed: true, imageFrame: got.frame }, 200, origin);
   }
 
   if (path === 'candidate-image') {

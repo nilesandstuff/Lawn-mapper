@@ -6325,7 +6325,18 @@ also blind to the inferred ground THE PLAN is supposed to get right since
 H78, so a setting cannot be adopted on it alone -- the protocol's bar stays
 on the whole-lawn error, and `seen` is a second reading beside it.
 
-### S32. Is it the county photo or the lot? (2026-10-08 -- design 2 MEASURED, H90: not a want of county examples; design 1, the live split, still open)
+### S32. Is it the county photo or the lot? (2026-10-08 -- design 2 MEASURED, H90: not a want of county examples; design 1, the live split, still open; PAIRS ABANDONED 2026-10-09)
+
+**Pairs abandoned (owner, 2026-10-09: "I don't want to do the dual map
+thing anymore. It's too confusing and there's been too many complications.
+That issue with the rebank was pretty scary. From now on, we're just going
+to have 1 map per corpus entry.")** Everything below that needed a second
+outline or a second photo of the same lot -- the paired traces, `PHOTOS=both`,
+the county page's verdicts -- is closed. A corpus entry has the one photo it
+was drawn on and the one outline. The county photo stays as a LIVE source to
+draw on; nothing is banked beside a map. Design 1, the live split of
+workflow 7 by `image_provider`, needs no pair and remains the way to ask the
+question.
 
 **Why (H88):** the 12 county-photo lots score 55% against 19% for Mapbox
 lots, and the county photo is now the default for most addresses, so most

@@ -3,7 +3,7 @@
  *   node tools/county-imagery.test.js
  */
 import {
-  agolKeep, rankCandidates, chooseBest, coverage, blockiness, resizeRGBA, shiftedBbox, ownPhotoHere,
+  agolKeep, rankCandidates, coverage, blockiness, resizeRGBA, shiftedBbox,
   resampleThrough, padFor, nudged,
   imageryVerdict,
 } from './county-imagery.js';
@@ -48,34 +48,6 @@ check('a "most recent" service is tried first, not with the undated',
     { url: 'https://v/VBMP_Imagery/Orthos/MapServer', title: 'Orthos' },
     { url: 'https://v/VBMP_Imagery/MostRecentImagery_WGS/MapServer', title: 'VBMP_Imagery/MostRecentImagery_WGS' },
   ], 2016).map((c) => c.title.split('/').pop()).join() === 'MostRecentImagery_WGS,VBMP2023_WGS,Orthos');
-
-/* Choosing: usable only; newest; finer on a tie. */
-const best = chooseBest([
-  { url: 'old', usable: true, year: 2019, nativeCm: 8 },
-  { url: 'coarse', usable: true, year: 2023, nativeCm: 15 },
-  { url: 'fine', usable: true, year: 2023, nativeCm: 7 },
-  { url: 'newest-unusable', usable: false, year: 2025, nativeCm: 5 },
-]);
-check('the newest usable flight wins, the finer on a tie', best?.url === 'fine', best?.url);
-/* Newest means the date of flight (owner, 2026-10-09), and measured detail decides a tie. */
-check('a flight dated by its words beats one by year alone, and "most current" with no date is last',
-  chooseBest([
-    { url: 'current', usable: true, year: null, nativeCm: 5, title: 'Most Current' },
-    { url: 'y2025', usable: true, year: 2025, nativeCm: 7 },
-    { url: 'fall2025', usable: true, year: 2025, flown: 'Fall of 2025', nativeCm: 15 },
-  ])?.url === 'fall2025');
-check('the same flight: the one measured sharper, however fine the other claims to be',
-  chooseBest([
-    { url: 'claims', usable: true, year: 2025, nativeCm: 5, detail: 0.9 },
-    { url: 'measures', usable: true, year: 2025, nativeCm: 11, detail: 1.4 },
-  ])?.url === 'measures');
-check('and nothing usable chooses nothing', chooseBest([{ usable: false }]) === null);
-/* A county-drawn map's own photo lives at the county key: never written over (2026-10-09). */
-check('a map whose own photo is at the county key is left alone, a Mapbox-drawn one is not',
-  ownPhotoHere({ id: '-83.1,40.0:manual:manual', image_key: 'maps/county/-83.1_40.0_manual_manual.png' })
-  && ownPhotoHere({ id: '-83.1,40.0:manual:manual', mapbox_key: 'maps/county/-83.1_40.0_manual_manual.png' })
-  && !ownPhotoHere({ id: '-83.1,40.0:manual:manual', image_key: 'maps/mapbox/-83.1_40.0_manual_manual.png' })
-  && !ownPhotoHere({ id: 'x' }));
 
 /* Coverage. */
 const W = 40, H = 40;

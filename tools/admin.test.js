@@ -2076,49 +2076,6 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
   check('the card can fetch a missing photo', res.status === 200 && res.body.hasImage && put.length === 1, JSON.stringify(res.body));
   check('and a big frame asks Mapbox for no more than it serves', w <= 1280 && h <= 1280, `${w}x${h}`);
 }
-/* ------------------------- the Mapbox side of a pair (owner, 2026-10-08) */
-/*
- * A map FINISHED on a county photo: tracing it again on Mapbox goes to
- * county_imagery.mapbox_shapes, with the county outline copied beside it, and
- * the row is made if the nightly pass never banked one. Without a bucket the
- * Mapbox photo is not banked and the answer says so.
- */
-{
-  const { recordFinished } = await import('../worker/src/corpus.js');
-  const { env, ownerToken } = await world();
-  const ring = [[-85.5, 42.9], [-85.5, 42.9005], [-85.4995, 42.9005], [-85.5, 42.9]];
-  const made = await recordFinished(env, {
-    lng: -85.5, lat: 42.9, model: 'alpha', mode: 'find', provider: 'county',
-    shapes: [{ type: 'Polygon', coordinates: [ring] }], detectedSqFt: 100, squareFeet: 100,
-  });
-  check('a county-drawn map is stored', made.ok === true, made.reason || '');
-  const id = made.id || (await env.DB.prepare('SELECT id FROM corpus ORDER BY at DESC LIMIT 1').first()).id;
-  await env.DB.prepare("UPDATE corpus SET status = 'approved', image_provider = 'county', image_key = 'maps/county/t.png', county_align = '{\"east\":0.4,\"north\":-0.6,\"scale\":1}' WHERE id = ?1").bind(id).run();
-
-  const listed = (await ask(env, ownerToken, 'county-list')).body;
-  check('the editor lists it, marked as drawn on the county photo, without a county_imagery row',
-    listed.maps?.some((m) => m.id === id && m.drawn_on === 'county'), JSON.stringify(listed.maps?.map((m) => [m.id, m.drawn_on])));
-
-  const doc = (await ask(env, ownerToken, `county?id=${encodeURIComponent(id)}`)).body;
-  check('opening it makes its county_imagery row from the map\'s own photo and alignment',
-    doc.drawn_on === 'county' && doc.mapbox_shapes === null && Math.abs(Number(doc.east) - 0.4) < 1e-9 && doc.review === 'ok',
-    JSON.stringify({ drawn_on: doc.drawn_on, east: doc.east, review: doc.review, error: doc.error }));
-
-  const saved = await ask(env, ownerToken, 'county-outlines', {
-    method: 'POST', body: { id, side: 'mapbox', shapes: [{ type: 'Polygon', coordinates: [ring] }] },
-  });
-  check('a Mapbox-side trace is kept as mapbox_shapes', saved.status === 200 && saved.body.ok && saved.body.side === 'mapbox', JSON.stringify(saved.body));
-  check('and without a bucket the Mapbox photo is not banked, and it says so', saved.body.mapboxImage === false);
-  const row = await env.DB.prepare('SELECT shapes, mapbox_shapes, mapbox_image_key FROM county_imagery WHERE id = ?1').bind(id).first();
-  const corpusShapes = (await env.DB.prepare('SELECT shapes FROM corpus WHERE id = ?1').bind(id).first()).shapes;
-  check('the county outline is copied beside it, untouched', row.shapes === corpusShapes && row.mapbox_shapes && !row.mapbox_image_key);
-
-  const wrong = await ask(env, ownerToken, 'county-outlines', {
-    method: 'POST', body: { id: 'nope', side: 'mapbox', shapes: [{ type: 'Polygon', coordinates: [ring] }] },
-  });
-  check('an unknown map is refused', wrong.status === 400 || wrong.status === 404, String(wrong.status));
-}
-
 /* ------------------- inferred lawn the owner does not trust (2026-10-08) */
 {
   const { env, ownerToken } = await world();
@@ -2156,8 +2113,8 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
 /* ------------- the record was wrong about which photo (owner, 2026-10-09) */
 /*
  * A map recorded as drawn on a county photo that was drawn on Mapbox: the
- * correction swaps its own photo for Mapbox's, keeps the county photo as the
- * pair's other side, unjudged, and drops the pair's outlines.
+ * correction swaps its own photo for Mapbox's. One map, one photo: nothing
+ * is kept beside it.
  */
 {
   const { recordFinished } = await import('../worker/src/corpus.js');
@@ -2170,10 +2127,6 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
   });
   const id = made.id || (await env.DB.prepare('SELECT id FROM corpus ORDER BY at DESC LIMIT 1').first()).id;
   await env.DB.prepare("UPDATE corpus SET status = 'approved', provider = 'county', image_provider = 'county', image_key = 'maps/county/franklin.png' WHERE id = ?1").bind(id).run();
-  const before = (await ask(env, ownerToken, `county?id=${encodeURIComponent(id)}`)).body;
-  await ask(env, ownerToken, 'county-outlines', { method: 'POST', body: { id, side: 'mapbox', shapes: [{ type: 'Polygon', coordinates: [ring] }] } });
-  check('the record says county, and a pair outline was kept', before.drawn_on === 'county', JSON.stringify(before.drawn_on));
-
   const put = [];
   env.CORPUS = { put: async (k) => put.push(k) };
   env.MAPBOX_TOKEN = 'pk.test';
@@ -2181,20 +2134,15 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
   globalThis.fetch = async () => new Response('jpeg', { headers: { 'content-type': 'image/jpeg' } });
   const fixed = await ask(env, ownerToken, 'county-drawn-on', { method: 'POST', body: { id, drawnOn: 'mapbox' } });
   globalThis.fetch = real;
-  check('the correction fetches Mapbox\'s photo and says what it did',
-    fixed.status === 200 && fixed.body.changed === true && fixed.body.countyPhotoKept === true && fixed.body.droppedPairOutlines === true && put.length === 1,
-    JSON.stringify(fixed.body));
+  check('the correction fetches Mapbox\'s photo and says so', fixed.status === 200 && fixed.body.changed === true && put.length === 1, JSON.stringify(fixed.body));
   const c = await env.DB.prepare('SELECT provider, image_provider, image_key FROM corpus WHERE id = ?1').bind(id).first();
   check('the map\'s own photo is now Mapbox\'s', c.provider === 'mapbox' && c.image_provider === 'mapbox' && c.image_key === put[0] && /^maps\/mapbox\//.test(c.image_key), JSON.stringify(c));
-  const ci = await env.DB.prepare('SELECT image_key, shapes, mapbox_shapes, review FROM county_imagery WHERE id = ?1').bind(id).first();
-  check('the county photo stays as the pair\'s other side, unjudged, with no pair outlines',
-    ci.image_key === 'maps/county/franklin.png' && ci.shapes === null && ci.mapbox_shapes === null && ci.review === null, JSON.stringify(ci));
-  const after = (await ask(env, ownerToken, `county?id=${encodeURIComponent(id)}`)).body;
-  check('and the county page now reads it as drawn on Mapbox', after.drawn_on === 'mapbox' && after.mapbox_shapes === null, JSON.stringify(after.drawn_on));
   const again = await ask(env, ownerToken, 'county-drawn-on', { method: 'POST', body: { id, drawnOn: 'mapbox' } });
   check('a second press changes nothing', again.status === 200 && again.body.changed === false, JSON.stringify(again.body));
   const back = await ask(env, ownerToken, 'county-drawn-on', { method: 'POST', body: { id, drawnOn: 'county' } });
   check('it runs one way only', back.status === 400, String(back.status));
+  const gone = await ask(env, ownerToken, 'county-list');
+  check('the pair pages are gone', gone.status === 404, String(gone.status));
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);

@@ -690,6 +690,47 @@ function drawCandidate(c) {
     box.append(again, said);
   }
 
+  /*
+   * THE RECORD WAS WRONG ABOUT WHICH PHOTO (owner, 2026-10-09). A map that
+   * says county but was drawn on Mapbox: two taps swap its photo for
+   * Mapbox's capture of the frame, which is not a thing to do by brushing
+   * past it. One way only; a map drawn on a county photo says so when it is
+   * finished.
+   */
+  if (c.hasImage && c.imageProvider === 'county') {
+    const wrong = el('button', 'ghost', 'It was drawn on Mapbox');
+    const said = el('p', 'meta', '');
+    let armed = 0;
+    wrong.addEventListener('click', async () => {
+      if (!armed) {
+        wrong.textContent = "Really? Tap again to swap its photo for Mapbox's";
+        armed = setTimeout(() => { armed = 0; wrong.textContent = 'It was drawn on Mapbox'; }, 6000);
+        return;
+      }
+      clearTimeout(armed); armed = 0;
+      wrong.disabled = true;
+      said.textContent = "Fetching Mapbox's photo and correcting the record…";
+      try {
+        const res = await fetch('/api/admin/county-drawn-on', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin', body: JSON.stringify({ id: c.id, drawnOn: 'mapbox' }),
+        });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok || !out.ok) throw new Error(out.error || `HTTP ${res.status}`);
+        c.imageProvider = 'mapbox';
+        c.provider = 'mapbox';
+        if (out.imageFrame) c.imageFrame = out.imageFrame;
+        c.at = `${c.at || ''}+photo`;
+        drawCandidate(c);
+      } catch (e) {
+        said.textContent = `Not corrected (${e.message}); nothing was changed.`;
+        wrong.disabled = false;
+        wrong.textContent = 'It was drawn on Mapbox';
+      }
+    });
+    box.append(wrong, said);
+  }
+
   const send = async (status) => {
     for (const b of [approve, reject, edit]) b.disabled = true;
     try {

@@ -17,15 +17,14 @@ name: 8. Check the free imagery sources
 #                            The answer is the end of the log; per-lot results
 #                            are the imagery-probe artifact.
 #
-#   find county imagery      (owner, 2026-10-01) the thorough pass, every
-#                            corpus map: candidates from the county's own GIS
-#                            host and ArcGIS Online, each fetched over the
-#                            map's banked frame, the newest usable one lined up
-#                            with the banked Mapbox photo and banked beside it
-#                            in R2 (maps/county/...), a county_imagery row for
-#                            every map looked at. Slow on purpose; resumes
-#                            where it stopped. county mode "rebank" applies the
-#                            nudges made on /county.html. tools/county-imagery.js
+#   find county imagery      (owner, 2026-10-01) the county photo CATALOGUE:
+#                            which services publish a photo over each county,
+#                            by place and by name, looked at and measured, for
+#                            the editor to offer (county mode: catalogue, names,
+#                            season, lidar). The pair banking that once lived
+#                            here -- a county photo lined up and banked beside
+#                            each map's Mapbox one -- was retired 2026-10-09:
+#                            one map, one photo. tools/county-imagery.js
 on:
   workflow_dispatch:
     inputs:
@@ -42,23 +41,16 @@ on:
         required: false
         default: '60'
       county_mode:
-        description: 'county: find (look and bank), realign (line up the banked ones again), rebank (apply /county.html nudges) or catalogue (services for any address; county_limit = how many counties), or names (every county in states with statewide parcels, searched by name), season (what each catalogued service says about leaf-off and flight dates), or lidar (which counties with a county photo also have 3DEP lidar, when and in what season)'
+        description: 'county: catalogue (services for any address; county_limit = how many counties), names (every county in states with statewide parcels, searched by name), season (what each catalogued service says about leaf-off and flight dates), or lidar (which counties with a county photo also have 3DEP lidar, when and in what season). The pair banking (find, realign, rebank) was retired 2026-10-09: one map, one photo.'
         type: choice
         options:
-          - find
-          - realign
-          - rebank
           - catalogue
           - names
           - season
           - lidar
-        default: find
+        default: catalogue
       county_only:
         description: 'county catalogue: just these county keys now, comma-separated (e.g. id-blaine)'
-        type: string
-        default: ''
-      county_only_map:
-        description: 'county find: just this one corpus map id, looked at again even if banked or traced on'
         type: string
         default: ''
       county_limit:
@@ -112,7 +104,7 @@ jobs:
           npm ci
           npm install pngjs jpeg-js proj4 --no-save
 
-      - name: Find, line up and bank county imagery, map by map
+      - name: The county photo catalogue
         if: inputs.what == 'find county imagery'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -120,7 +112,6 @@ jobs:
           CORPUS_BUCKET: lawn-mapper-corpus
           MODE: ${{ inputs.county_mode }}
           ONLY_KEY: ${{ inputs.county_only }}
-          ONLY: ${{ inputs.county_only_map }}
           LIMIT: ${{ inputs.county_limit }}
           FORCE: ${{ inputs.county_force }}
           DRY_RUN: ${{ inputs.county_dry_run }}

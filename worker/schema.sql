@@ -849,6 +849,11 @@ CREATE INDEX IF NOT EXISTS detect_usage_at ON detect_usage(at);
 -- ----------------------------------------------------------------------
 -- COUNTY OR STATE ORTHOPHOTOS FOR A CORPUS MAP (owner, 2026-10-01).
 --
+-- RETIRED 2026-10-09 (owner: "we're just going to have 1 map per corpus
+-- entry"). Nothing writes or reads this table any more; the rows and the
+-- banked files stay as a record of the pairs that were kept. A map's one
+-- photo is corpus.image_key, the one it was drawn on.
+--
 -- One row per corpus map that tools/county-imagery.js has looked at, found
 -- something or not (service NULL = looked, nothing usable). The chosen photo
 -- is banked to R2 at image_key over EXACTLY the map's image_frame, already

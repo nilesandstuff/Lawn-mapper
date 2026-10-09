@@ -6025,20 +6025,6 @@ async function setProvider(id, { auto = false } = {}) {
     id = 'county';
   }
   if (id === state.provider) return;
-  /*
-   * EDITING ON THE BANKED COUNTY PHOTO (#review=…&photo=county): that file is
-   * the picture under the outlines, laid by showCountyPhoto, and the picker's
-   * sources would go in UNDER it (bottomOfOurLayers puts the newest layer
-   * highest), so "Mapbox" showed the county photo and "County photo" a second,
-   * live county photo. The one switch that means anything here is the button
-   * beside Save, which lifts the banked photo to show Mapbox underneath.
-   */
-  if (state.reviewPhoto === 'county' && map?.getLayer('county-photo')) {
-    $('#imagery-source').value = state.provider;
-    refreshLayerList();
-    setStatus('The county photo under these outlines is the banked one. Use "Show Mapbox" beside Save to compare with Mapbox; the other sources are not offered here.', 'warn');
-    return;
-  }
   /* Chosen for somebody (the county default) or by them: only the first is
      held to "not softer than Mapbox". */
   state.countyAuto = auto;
@@ -7308,16 +7294,9 @@ function readReviewRequest() {
   if (!raw.startsWith('review=')) return;
   const params = new URLSearchParams(raw);
   const id = params.get('review');
-  /* On the county photo (/county.html's Edit outlines): what is saved then
-     belongs to that photo, not to the corpus row. */
-  /* ...or on Mapbox, for a map that was FINISHED on the county photo: the
-     other half of a pair (owner, 2026-10-08). */
-  const photo = params.get('photo');
-  state.reviewPhoto = photo === 'county' || photo === 'mapbox' ? photo : null;
-  // Where to go afterwards: the console by default, /maps or /county when they sent us.
+  // Where to go afterwards: the console by default, /maps when it sent us.
   const back = params.get('back');
-  state.reviewBack = back === 'maps' ? '/maps.html'
-    : back === 'county' ? `/county.html#map=${encodeURIComponent(id || '')}` : '/admin.html';
+  state.reviewBack = back === 'maps' ? '/maps.html' : '/admin.html';
   window.history.replaceState(null, '', location.pathname + location.search);
   if (id) openCandidate(id);
 }
@@ -7740,8 +7719,6 @@ async function openSave(id) {
  */
 async function openCandidate(id) {
   let s;
-  if (map?.getLayer('county-photo')) map.removeLayer('county-photo');
-  if (map?.getSource('county-photo')) map.removeSource('county-photo');
   try {
     const res = await fetch(`/api/admin/candidate?id=${encodeURIComponent(id)}`);
     if (!res.ok) throw new Error(String(res.status));
@@ -7749,27 +7726,6 @@ async function openCandidate(id) {
   } catch {
     setStatus('That candidate could not be opened.', 'warn');
     return;
-  }
-  let county = null;
-  const onCounty = state.reviewPhoto === 'county';
-  if (state.reviewPhoto) {
-    try {
-      const res = await fetch(`/api/admin/county?id=${encodeURIComponent(id)}`);
-      if (!res.ok) throw new Error(String(res.status));
-      county = await res.json();
-    } catch {
-      setStatus('That map has no county photo to edit on.', 'warn');
-      return;
-    }
-    /* Start from the outlines already traced on the county photo, or from the
-       Mapbox ones -- the county photo was put on Mapbox's ground, so they
-       land where they were traced, and only what differs needs moving. */
-    const mine = onCounty ? county.county_shapes : county.mapbox_shapes;
-    const mineNot = onCounty ? county.county_not_lawn : county.mapbox_not_lawn;
-    if (Array.isArray(mine)) {
-      s = { ...s, shapes: mine.map((f) => ({ geometry: f.geometry || f, properties: f.properties || {} })) };
-    }
-    if (Array.isArray(mineNot)) s = { ...s, notLawn: mineNot };
   }
   openMap(s);
   /*
@@ -7780,64 +7736,9 @@ async function openCandidate(id) {
   state.reviewingId = id;
   $('#review-bar').hidden = false;
   const toList = state.reviewBack === '/maps.html';
-  $('#btn-review-save').textContent = county
-    ? (onCounty ? 'Save on the county photo and go back' : 'Save on the Mapbox photo and go back')
-    : toList ? 'Save and return to the map list' : 'Save and return to the console';
-  $('#btn-review-photo').hidden = !(county && onCounty);
-  $('#review-bar .sub').textContent = county
-    ? (onCounty ? 'Outlines on the county photo. What you save here is kept for this photo only.'
-      : 'Outlines on Mapbox, for a map that was drawn on the county photo. What you save here is kept for Mapbox only.')
-    : 'Reviewing a training candidate. Fix whatever is off, then come back.';
-  if (county && onCounty) {
-    showCountyPhoto(id, county);
-    setStatus(Array.isArray(county.county_shapes)
-      ? 'Editing the outlines you traced on the county photo. The Mapbox ones are kept separately.'
-      : 'Editing on the county photo, starting from the outlines traced on Mapbox. Move what differs here -- '
-        + 'roofs and trees lean differently in this photo, and things may have changed. The Mapbox outlines are kept.');
-  } else if (county) {
-    setStatus(Array.isArray(county.mapbox_shapes)
-      ? 'Editing the outlines you traced on Mapbox. The county-photo ones are kept separately.'
-      : 'Editing on Mapbox, starting from the outlines traced on the county photo. Move what differs here -- '
-        + 'roofs and trees lean differently, and things may have changed. The county-photo outlines are kept.');
-  } else {
-    setStatus('Reviewing a training candidate. Fix whatever is off, then use the buttons above to go back.');
-  }
-}
-
-/*
- * THE COUNTY PHOTO UNDER THE OUTLINES (owner, 2026-10-01: "add an edit button
- * so I can make the necessary changes to the outlines").
- *
- * The banked file itself, laid on the frame it was banked over (image_frame):
- * tools/county-imagery.js put it on Mapbox's ground and then on that frame's
- * exact pixel grid, so its corners are the frame's corners and a property
- * line or an outline drawn here lands on the same ground it does on Mapbox.
- * Under every shape, over the basemap; the button beside Save hides it to
- * compare with Mapbox underneath.
- */
-function showCountyPhoto(id, county) {
-  const frame = county.frame;
-  if (!map || !frame) return;
-  const url = `/api/admin/county-image?id=${encodeURIComponent(id)}&v=${encodeURIComponent(county.banked_at || '')}`;
-  const put = () => {
-    if (map.getLayer('county-photo')) map.removeLayer('county-photo');
-    if (map.getSource('county-photo')) map.removeSource('county-photo');
-    map.addSource('county-photo', { type: 'image', url, coordinates: frameCorners(frame) });
-    map.addLayer({ id: 'county-photo', type: 'raster', source: 'county-photo',
-      paint: { 'raster-opacity': 1, 'raster-fade-duration': 0 } }, bottomOfOurLayers());
-  };
-  /* isStyleLoaded() is false while any source is still loading, and the map
-     has long since fired 'load' by now: try, and on refusal wait for idle. */
-  try { put(); } catch { map.once('idle', () => { try { put(); } catch (e) { console.error('county photo', e); } }); }
-  state.countyPhotoOn = true;
-  $('#btn-review-photo').textContent = 'Show Mapbox';
-}
-
-function toggleCountyPhoto() {
-  if (!map?.getLayer('county-photo')) return;
-  state.countyPhotoOn = !state.countyPhotoOn;
-  map.setPaintProperty('county-photo', 'raster-opacity', state.countyPhotoOn ? 1 : 0);
-  $('#btn-review-photo').textContent = state.countyPhotoOn ? 'Show Mapbox' : 'Show county photo';
+  $('#btn-review-save').textContent = toList ? 'Save and return to the map list' : 'Save and return to the console';
+  $('#review-bar .sub').textContent = 'Reviewing a training candidate. Fix whatever is off, then come back.';
+  setStatus('Reviewing a training candidate. Fix whatever is off, then use the buttons above to go back.');
 }
 
 /**
@@ -7854,7 +7755,6 @@ function toggleCountyPhoto() {
  */
 async function leaveReview(save) {
   if (!state.reviewingId) return;
-  if (state.reviewPhoto) { leaveCountyEdit(save); return; }
   /*
    * WAITED FOR (owner, 2026-10-04: saved on the county photo, the console
    * still showed Mapbox's). Leaving the page could cancel the save in flight,
@@ -7870,46 +7770,6 @@ async function leaveReview(save) {
   $('#review-bar').hidden = true;
   leavingOnPurpose = true;
   window.location.href = state.reviewBack || '/admin.html';
-}
-
-/*
- * Out of an edit on the county photo. Saving writes to that photo's outlines
- * (POST /api/admin/county-outlines) and never to the corpus row: those were
- * traced on Mapbox and stay Mapbox's. Waited for, unlike keepFinished --
- * leaving the page cancels a request still in flight, and this one is the
- * whole point of the visit.
- */
-async function leaveCountyEdit(save) {
-  if (save) {
-    const body = finishedBody();
-    const shapes = body?.shapes || [];
-    /* Not the evergreens: the county outlines have nowhere to keep them. */
-    const notLawn = state.notLawn.filter((g) => g.kind !== 'evergreen');
-    if (!shapes.length && !notLawn.length) {
-      setStatus('There is nothing to save: draw the lawn (or the not-lawn areas) first.', 'warn');
-      return;
-    }
-    const side = state.reviewPhoto === 'mapbox' ? 'mapbox' : 'county';
-    busy(side === 'mapbox' ? 'Saving the Mapbox outlines (and banking Mapbox\'s photo)…' : 'Saving the county outlines…');
-    try {
-      const res = await fetch('/api/admin/county-outlines', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: state.reviewingId, shapes, notLawn, side }),
-      });
-      const out = await res.json().catch(() => ({}));
-      if (!res.ok || !out.ok) throw new Error(out.error || `HTTP ${res.status}`);
-    } catch (e) {
-      idle();
-      setStatus(`Not saved: ${e.message || e}. Nothing was lost -- try again.`, 'error');
-      return;
-    }
-    idle();
-  }
-  state.reviewingId = null;
-  state.reviewPhoto = null;
-  $('#review-bar').hidden = true;
-  leavingOnPurpose = true;
-  window.location.href = state.reviewBack || '/county.html';
 }
 
 /* ====================================================== the paid queue ==== */
@@ -8718,13 +8578,8 @@ function openMap(s) {
   buildModelPicker();
   /* A map saved on the county photo reopens on it (owner, 2026-10-02: it
      reopened on Mapbox). Theirs, not chosen for them: no softness check. */
-  /* Not when editing one side of a pair (#review=…&photo=…): the banked
-     county photo, or Mapbox, is already the picture under the outlines, and
-     the live county photo laid on top of either was a third photo nobody
-     asked for (owner, 2026-10-09: "between mapbox and county there's
-     actually 3 photos"). */
   lookupCountyPhoto({
-    makeDefault: s.provider === 'county' && !state.reviewPhoto, chosen: s.provider === 'county',
+    makeDefault: s.provider === 'county', chosen: s.provider === 'county',
     prefer: s.provider === 'county' ? s.countySvc : null,
     align: s.provider === 'county' ? s.countyAlign : null,
   });
@@ -13949,7 +13804,6 @@ $('#btn-job-submit').addEventListener('click', submitJob);
 $('#btn-job-skip').addEventListener('click', skipJob);
 
 $('#btn-review-save').addEventListener('click', () => leaveReview(true));
-$('#btn-review-photo')?.addEventListener('click', toggleCountyPhoto);
 $('#btn-review-back').addEventListener('click', () => {
   if (!confirm('Go back without saving? Any corrections you have made here are lost.')) return;
   leaveReview(false);
