@@ -447,27 +447,6 @@ const NOT_LAWN = /^(1|true|yes|on)$/i.test(String(process.env.NOT_LAWN || ''));
    weight the cells where the person moved it. */
 const CORRECTIONS = /^(1|true|yes|on)$/i.test(String(process.env.CORRECTIONS || ''));
 
-/*
- * WHICH PHOTOGRAPH (owner, 2026-10-01). 'mapbox', the default, is the banked
- * Mapbox photo every run so far has used. 'county' swaps in the county or
- * state orthophoto tools/county-imagery.js banked for a map -- ONLY where the
- * owner traced outlines on it in the county editor, and not said "don't use"
- * -- and keeps Mapbox for the rest.
- *
- * WITH THE OUTLINES TRACED ON IT when there are some. The county photo is put
- * on Mapbox's ground over the same image_frame at the same pixel size, so the
- * Mapbox outlines land where they were traced -- but roofs and trees lean
- * differently in every photo and things change between flights, which is why
- * the owner traces them again there ("I will need to actually edit the
- * traces"). Those are the truth for that photo, in training and in scoring.
- *
- * ONLY THOSE (owner, 2026-10-02). "Even the ones where the imagery lines up
- * well, the lawn outlines still don't fit because of the different
- * perspectives, times of year, etc." -- a Mapbox outline on a county photo is
- * a wrong label, however well the ground lines up, and re-tracing them all was
- * too laborious. A map said to line up but not re-traced trains on Mapbox; the
- * county set grows as new maps are made on county photos.
- */
 /* ONE MAP, ONE PHOTO (owner, 2026-10-09): the photo a map was drawn on
    (corpus.image_key, Mapbox's or a county's), and no other. */
 export function photoKeyFor(row) {
@@ -1889,7 +1868,7 @@ async function main() {
       const truthGeoms = geometries(parse(row.shapes));
       if (!frame || !truthGeoms.length) continue;
 
-      const img = fetchImage(bucket, photoKeyFor(row, countyKeys), dir, decoders);
+      const img = fetchImage(bucket, photoKeyFor(row), dir, decoders);
       if (!img.ok) {
         console.log(`  skipped ${row.id.slice(0, 28)} -- ${img.reason}`);
         missing.push(row.id.slice(0, 28));
