@@ -277,6 +277,24 @@ async function main() {
 
   console.log(`${rows.length} map${rows.length === 1 ? '' : 's'} to look at.`);
   for (const row of rows) describe(row);
+  /* EVERY COUNTY SERVICE THE CATALOGUE HAS OVER THE SPOT (owner, 2026-10-09:
+     the banked county photo was a different flight from the live one), with
+     when each was last checked, so a photo that is no longer offered can be
+     traced to the row that gave it. Only rows still in the catalogue. */
+  for (const row of rows) {
+    const f = parse(row.frame);
+    if (!f || !Number.isFinite(f.lng) || !Number.isFinite(f.lat)) continue;
+    try {
+      const svcs = query(`SELECT id, title, url, year, native_cm, max_px, export_ok, tile_merc, checked_at, leaf, flown
+                            FROM county_services WHERE west <= ${f.lng} AND east >= ${f.lng} AND south <= ${f.lat} AND north >= ${f.lat}
+                           ORDER BY id`);
+      console.log(`\ncounty services in the catalogue over ${row.id} (${svcs.length}):`);
+      for (const s of svcs) {
+        console.log(`  #${s.id} ${s.title || '(untitled)'}  year ${s.year ?? '?'}  native ${s.native_cm ?? '?'} cm  ${s.tile_merc ? 'tile cache' : 'export'}${s.export_ok ? '' : ' (no export)'}`
+          + `  leaf ${s.leaf || '?'}${s.flown ? ` flown ${s.flown}` : ''}  checked ${s.checked_at || '?'}\n     ${s.url}`);
+      }
+    } catch { /* an older database */ }
+  }
   /* The county photo's own service, for a map drawn on one: a fault in the
      picture (2026-10-08, C55's black stripe) is usually the service's. */
   for (const row of rows) {
