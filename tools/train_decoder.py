@@ -70,6 +70,20 @@ from PIL import Image
 from decoder_grid import box_targets, to_photo
 
 EPOCHS = int(os.environ.get("EPOCHS", "30"))
+# FLIPS AND QUARTER TURNS (owner, 2026-10-09: "data augmentation", from a
+# paper that stretched a few maps with flips, turns, crops and colour). Every
+# training grid is given one of the eight orientations at random; the
+# findings file calls that a guess no one measured. FLIPS=0 trains the same
+# decoder with every grid as it was drawn. The random draws are still made,
+# so the shuffling, dropout and refiner crops are identical and only the
+# orientation differs.
+FLIPS = os.environ.get("FLIPS", "1") != "0"
+
+
+def orientation(rng):
+    """(quarter turns, flip) for one grid: drawn either way, used only with FLIPS."""
+    k, flip = int(rng.integers(4)), bool(rng.integers(2))
+    return (k, flip) if FLIPS else (0, False)
 SEED = int(os.environ.get("SEED", "7"))
 LR = float(os.environ.get("LR", "1e-3"))
 WEIGHT_DECAY = float(os.environ.get("WEIGHT_DECAY", "1e-2"))
@@ -526,7 +540,7 @@ def refine_loss(refiner, hidden, logits, members, train, rng, pos_weight):
             rgb = rgb_tensor(L["rgb"][y0:y0 + h, x0:x0 + w])[None].to(DEVICE)
             t = L["fine_t"][None, :, y0:y0 + h, x0:x0 + w].to(DEVICE)
             wt = L["fine_w"][None, :, y0:y0 + h, x0:x0 + w].to(DEVICE)
-            k, flip = int(rng.integers(4)), bool(rng.integers(2))
+            k, flip = orientation(rng)
             parts = []
             for a in (rgb, coarse_l, coarse_h, t, wt):
                 a = a.flip(-1) if flip else a
@@ -593,7 +607,7 @@ def train_one(train, dim, seed):
             x = (x - mean) / sd
             t = torch.stack([train[i]["t"] for i in batch]).to(DEVICE)
             w = torch.stack([train[i]["w"] for i in batch]).to(DEVICE)
-            k, flip = int(rng.integers(4)), bool(rng.integers(2))
+            k, flip = orientation(rng)
             x, t, w = dihedral(x, t, w, k, flip)
             if refiner:
                 hidden, logits = model.parts(x)
@@ -703,6 +717,8 @@ def main():
         print(f"LIDAR DISTRUSTED IN TRAINING: {len(bad)} lots whose visible lawn stands over {DISTRUST_M:g} m "
               f"on the lidar train with it hidden (answered with it as it is): {', '.join(b[:24] for b in bad) or 'none'}",
               flush=True)
+    if not FLIPS:
+        print("NO FLIPS: every training grid as it was drawn, no flips or quarter turns", flush=True)
     if UNDER_TREES:
         print("TAUGHT UNDER TREES: inferred lawn and canopy over traced lawn are graded as the tracer "
               "drew them (lawn), not left out", flush=True)

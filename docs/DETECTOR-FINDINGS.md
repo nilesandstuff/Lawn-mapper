@@ -6292,6 +6292,36 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
+### S34. What the flips and quarter turns are worth, before trying more augmentation (owner, 2026-10-09 -- BUILT, ON TRIAL)
+
+**The owner's question.** A paper with a similar task stretched a small
+set of maps with augmentation: crops, flips and turns, resizing, colour.
+Could we? The decoder already gives every training grid one of eight
+orientations at random (flips and quarter turns); the backbone is frozen
+and its readings cached, so anything that changes pixels -- colour,
+resizing, crops -- means running the backbone again for each copy. Before
+paying for that, measure what the augmentation we already have is worth;
+H13's caveats called it "a guess, not a setting anyone swept".
+
+**The trial.** Workflow 14 `refiner_trial: no flips`: THE PLAN's decoder a
+second time over the same features, seed and place folds, with every grid
+as drawn (`FLIPS=0`, tools/train_decoder.py). The random draws are still
+made, so shuffling, dropout and the refiner's crops are the same and only
+the orientation differs (tools/flips_test.py). Row "no flips", read
+against THE PLAN's own row of the same runs with workflow 24, three seeds
+(7, 8, 9), the locked 81, free runner.
+
+**How it will be read, before the runs.**
+- Removing flips HURTS (THE PLAN better on most lots, interval clear of
+  zero): augmentation earns its place at this size, and colour jitter --
+  the one most relevant to H89's contrast and season -- is worth a run.
+- NO DIFFERENCE: geometric augmentation buys nothing measurable at 81
+  lots, and more of the same kind is unlikely to; colour stays an open
+  question, weaker for it.
+- Removing flips HELPS: the orientations do harm somewhere (shadows fall
+  one way in every photo; turning a grid puts them where no photo has
+  them), and that would be worth knowing in itself.
+
 ### S33. Some inferred lawn is a guess, and a guess should not be taught (owner, 2026-10-08 -- BUILT, NOT MEASURED)
 
 **The owner's point.** The hidden ground on C29 was marked inferred as the
