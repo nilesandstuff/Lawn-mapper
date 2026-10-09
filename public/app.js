@@ -5975,6 +5975,20 @@ function renderProviderNote(id) {
 
 async function setProvider(id, { auto = false } = {}) {
   if (id === state.provider) return;
+  /*
+   * EDITING ON THE BANKED COUNTY PHOTO (#review=…&photo=county): that file is
+   * the picture under the outlines, laid by showCountyPhoto, and the picker's
+   * sources would go in UNDER it (bottomOfOurLayers puts the newest layer
+   * highest), so "Mapbox" showed the county photo and "County photo" a second,
+   * live county photo. The one switch that means anything here is the button
+   * beside Save, which lifts the banked photo to show Mapbox underneath.
+   */
+  if (state.reviewPhoto === 'county' && map?.getLayer('county-photo')) {
+    $('#imagery-source').value = state.provider;
+    refreshLayerList();
+    setStatus('The county photo under these outlines is the banked one. Use "Show Mapbox" beside Save to compare with Mapbox; the other sources are not offered here.', 'warn');
+    return;
+  }
   /* Chosen for somebody (the county default) or by them: only the first is
      held to "not softer than Mapbox". */
   state.countyAuto = auto;
@@ -8654,8 +8668,13 @@ function openMap(s) {
   buildModelPicker();
   /* A map saved on the county photo reopens on it (owner, 2026-10-02: it
      reopened on Mapbox). Theirs, not chosen for them: no softness check. */
+  /* Not when editing one side of a pair (#review=…&photo=…): the banked
+     county photo, or Mapbox, is already the picture under the outlines, and
+     the live county photo laid on top of either was a third photo nobody
+     asked for (owner, 2026-10-09: "between mapbox and county there's
+     actually 3 photos"). */
   lookupCountyPhoto({
-    makeDefault: s.provider === 'county', chosen: s.provider === 'county',
+    makeDefault: s.provider === 'county' && !state.reviewPhoto, chosen: s.provider === 'county',
     prefer: s.provider === 'county' ? s.countySvc : null,
     align: s.provider === 'county' ? s.countyAlign : null,
   });
