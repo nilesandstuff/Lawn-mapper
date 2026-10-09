@@ -116,8 +116,18 @@ export function reasonFrom(err) {
  * "the query failed" and "there is nothing there" want opposite reactions and
  * look the same from the caller.
  */
+/*
+ * ONE LINE FOR WRANGLER, WITHOUT THE COMMENTS. The SQL is written over many
+ * lines, some of them `-- remarks`; flattened to one line, a remark ran to
+ * the end of the statement and silently took every clause after it with it
+ * (2026-10-09: a find pass meant for one map looked at all 87, because the
+ * LIMIT, the id and the "never replace a traced photo" guard were all
+ * behind a remark). So the remarks go first, then the whitespace.
+ */
+export const flatSql = (sql) => String(sql).replace(/--[^\n]*/g, ' ').replace(/\s+/g, ' ').trim();
+
 export function query(sql) {
-  const flat = sql.replace(/\s+/g, ' ').trim();
+  const flat = flatSql(sql);
   let out = '';
   try {
     out = wrangler(['d1', 'execute', resolveDatabase(true), '--remote', '--json', '--command', flat]);

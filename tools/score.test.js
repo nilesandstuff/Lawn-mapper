@@ -332,7 +332,15 @@ const box = (x, y, w, h) => ({
 /* ------------------------------------------ reading what wrangler printed */
 {
   console.log('\n--- getting the rows out of wrangler ---');
-  const { parseRows, reasonFrom, wranglerError } = await import('./corpus-db.js');
+  const { parseRows, reasonFrom, wranglerError, flatSql } = await import('./corpus-db.js');
+  /* A `-- remark` in multi-line SQL must not take the clauses after it with it when the statement is flattened to one line (2026-10-09). */
+  check('SQL remarks are dropped before the statement is flattened, and the clauses after them survive',
+    flatSql(`SELECT id FROM corpus
+               -- only the approved ones
+               WHERE status = 'approved'
+                 -- and never one traced on
+                 AND shapes IS NULL LIMIT 1`) === "SELECT id FROM corpus WHERE status = 'approved' AND shapes IS NULL LIMIT 1",
+    flatSql('SELECT 1 -- x\n FROM t'));
 
   /*
    * Wrangler prints banners, proxy warnings and update notices before the

@@ -63,7 +63,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdtempSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
-import { query, wrangler, resolveDatabase } from './corpus-db.js';
+import { query, wrangler, resolveDatabase, flatSql } from './corpus-db.js';
 import { extraDetail } from './probe-resolution.js';
 import {
   catalogueRoot, siblingRoots, pickImagery, yearHints, nativeCm, greyGrid, greenShare,
@@ -802,7 +802,7 @@ let dbId = null;
 function exec(sql, { always = false } = {}) {
   if (DRY_RUN && !always) return;
   dbId = dbId || resolveDatabase(true);
-  wrangler(['d1', 'execute', dbId, '--remote', '--command', sql.replace(/\s+/g, ' ').trim()]);
+  wrangler(['d1', 'execute', dbId, '--remote', '--command', flatSql(sql)]);
 }
 
 function ensureTable() {
