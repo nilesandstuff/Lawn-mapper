@@ -868,6 +868,37 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H91. The decoder's flips and quarter turns are worth nothing measurable at 81 lots: the same decoder trained with every grid as drawn scores the same, lot by lot (28 better / 23 worse / 30 level, paired change -0.0 [-0.3, +0.1], p 0.58) -- 2026-10-10
+
+S34's trial, workflow 14 `refiner_trial: no flips`, seeds 7 / 8 / 9 (runs
+37999935674 / 38000318035 / 38000326730), the locked 81, CPU. Read with
+workflow 24 run 38017280676: THE PLAN's row ("decoder, edge refined + stage
+3, span, lidar veto") against "decoder, no flips + stage 3, span, lidar
+veto" of the same runs, so the features, folds and seeds are shared and
+only the orientation of the training grids differs.
+
+| lots | no flips better / worse / level | paired change [95%] | sign test |
+|---|---|---|---|
+| all 81 | 28 / 23 / 30 | -0.0 [-0.3, +0.1] | p 0.58 |
+| the frozen 32 (tuned on) | 12 / 5 / 15 | -0.2 [-0.7, +0.1] | p 0.14 |
+| approved since (untuned) | 16 / 18 / 15 | +0.0 [-0.2, +0.6] | p 0.86 |
+| county photo | 5 / 5 / 1 | -0.2 [-2.8, +2.8] | p 1.00 |
+| Mapbox photo | 23 / 18 / 29 | -0.0 [-0.2, +0.1] | p 0.53 |
+
+- **Read as S34 said before the runs: NO DIFFERENCE.** Geometric
+  augmentation buys nothing measurable at this size, and more of the same
+  kind (crops, resizing) is unlikely to. Colour augmentation stays an open
+  question, weaker for this; it would need the backbone run again per copy.
+- **The headline medians said otherwise, and were noise.** Seed 7 alone read
+  22.4% with flips and 20.7% without; across the three seeds THE PLAN's own
+  medians were 20.4 / 22.4 / 21.5 and the no-flips row's 22.0 / 20.7 / 20.7.
+  A seed moves a median two points (rule 2); the paired lots do not move.
+- **Flips stay on.** Nothing here says to change THE PLAN, and taking out a
+  regulariser on the strength of "no difference" at 81 lots would be reading
+  the absence of evidence as evidence.
+- Eleven county lots, not twelve: the Franklin County map is Mapbox-drawn
+  since 2026-10-09 (H88's note).
+
 ### H90. County examples in training are worth nothing measurable to the county lots: scored by a decoder that never saw a county photo they come out the same (5 better / 6 worse, +0.9 [-1.9, +5.4]), and the matched Mapbox control moves as little (6 / 4, -0.8) -- 2026-10-08
 
 Three seeds (7/8/9), free runner, `lawns: locked` (81), `refiner_trial: held
@@ -6292,7 +6323,7 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
-### S34. What the flips and quarter turns are worth, before trying more augmentation (owner, 2026-10-09 -- BUILT, ON TRIAL)
+### S34. What the flips and quarter turns are worth, before trying more augmentation (owner, 2026-10-09 -- MEASURED: NO DIFFERENCE, H91; flips stay on)
 
 **The owner's question.** A paper with a similar task stretched a small
 set of maps with augmentation: crops, flips and turns, resizing, colour.
@@ -7201,3 +7232,4 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-08 | 37766196684 (workflow 24 split) | 81 (locked), S31 runs | THE PLAN's row split by the photo each map was drawn on | — | county 55.2% (12 lots) / Mapbox 19.0% (69) | **H88.** County-photo lots are the worst group; cause not established (confounded with the lots being the newest) |
 | 2026-10-08 | 37783174587 (workflow 33) | 81 (locked), S31 runs | each lot's photo measured (contrast, green, shadow, focus, brightness, lawn share) against THE PLAN's error | — | — | **H89.** Contrast predicts error within each source (-0.41 / -0.63); focus does not; lawn share -0.62 (partly the metric) |
 | 2026-10-08 | 37791602756 / 37791654341 / 37791705849 | 81 (locked) | S32 `refiner_trial: held out by photo` (county lots answered by a decoder trained on the 69 Mapbox lots; 12 Mapbox lots held out the same way), seeds 7/8/9, CPU | 20.9 / 22.5 / 22.0% (edge refined + stage 3, span, veto) | — | **H90.** County arm 5 / 6, +0.9 [-1.9, +5.4]; control 6 / 4, -0.8. County examples in training worth nothing measurable |
+| 2026-10-10 | 37999935674 / 38000318035 / 38000326730 | 81 (locked) | S34 `refiner_trial: no flips` (THE PLAN's decoder with every training grid as drawn), seeds 7/8/9, CPU | 20.4 / 22.4 / 21.5% (edge refined + stage 3, span, veto) | 22.0 / 20.7 / 20.7% (no flips, same) | **H91.** Workflow 24 run 38017280676: 28 / 23 / 30, -0.0 [-0.3, +0.1], p 0.58; untuned 49 lots +0.0. No difference; flips stay on |
