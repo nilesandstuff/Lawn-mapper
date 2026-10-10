@@ -7,15 +7,24 @@
  * Worker, which can still do a small one itself. `getTile(level, row, col)`
  * is the caller's: it returns RGBA {width, height, data} or null.
  */
-const ORIGIN = 20037508.342787;
 
-/** Is this a cache the Worker can stitch? From the service's own JSON. */
+/*
+ * Is this a cache the Worker can stitch? From the service's own JSON.
+ *
+ * Web Mercator, with its own origin and levels: stitch() reads both from the
+ * service, so it does not need the standard grid. It used to ask for that
+ * grid's origin too, and so turned away Macoupin County IL's 2022 and 2018
+ * caches (2026-10-10) -- Web Mercator, but on ArcGIS's other common layout,
+ * origin (-20037700, 30241100) with levels at round map scales (1:500 is
+ * 13 cm) -- and the editor said the county "refused" a perfectly good photo.
+ */
 export function isMercatorCache(m) {
   const ti = m?.tileInfo;
   const wkid = ti?.spatialReference?.latestWkid || ti?.spatialReference?.wkid
     || m?.spatialReference?.latestWkid || m?.spatialReference?.wkid;
   return Boolean(ti?.lods?.length && [3857, 102100, 900913].includes(wkid)
-    && Math.abs(Math.abs(ti.origin?.x) - ORIGIN) < 1 && Math.abs(ti.origin?.y - ORIGIN) < 1);
+    && Number.isFinite(Number(ti.origin?.x)) && Number.isFinite(Number(ti.origin?.y))
+    && ti.lods.every((l) => Number(l.resolution) > 0));
 }
 
 /** The level whose pixels best match `want` metres (Mercator), never finer than the data. */

@@ -6615,9 +6615,10 @@ async function showImagery({ quiet = false } = {}) {
     if (state.provider === 'mapbox') { hideImagery(); dimBasemap(false); mapboxPhotoStatus(); return; }
     /* A COUNTY SERVICE THAT CANNOT GIVE THIS PICTURE is passed over for the
        next county photo here, as one with gaps is (2026-10-10, Macoupin IL:
-       the county renamed its 2022 and 2018 services, the old names answered
-       "not available", and a lot with a good 2025 photo stayed on Mapbox
-       under "refused"). Not on a timeout: that one may answer next time. */
+       the Worker could not stitch its 2022 and 2018 caches -- see
+       lib/tile-stitch.js isMercatorCache -- and a lot with a good 2025 photo
+       too stayed on Mapbox under "refused"). Not on a timeout: that one may
+       answer next time. */
     if (state.provider === 'county' && err.name !== 'TimeoutError' && passOverCounty()) {
       buildImageryPicker();
       showImagery();

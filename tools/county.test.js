@@ -186,6 +186,33 @@ function check(name, ok, detail = '') {
     url.origin === 'https://lawnmap.example' && url.pathname === '/api/imagery' && url.searchParams.get('svc') === '9' && url.searchParams.get('provider') === 'county');
 }
 
+/*
+ * ARCGIS'S OTHER WEB MERCATOR LAYOUT (2026-10-10, Macoupin County IL): the
+ * same projection, but origin (-20037700, 30241100) and levels at round map
+ * scales, 1:500 the finest. The Worker turned these away for not being on
+ * the standard grid, and the editor reported the county as refusing.
+ */
+{
+  const ox = -20037700, oy = 30241100;
+  const lods = [{ level: 9, resolution: 0.26458386250105836, scale: 1000 }, { level: 10, resolution: 0.13229193125052918, scale: 500 }];
+  const meta = { tileInfo: { rows: 256, cols: 256, origin: { x: ox, y: oy }, spatialReference: { wkid: 102100, latestWkid: 3857 }, lods } };
+  check('a Web Mercator cache on its own grid is one the Worker can stitch', isMercatorCache(meta));
+  check('but not one in another projection, whatever its grid',
+    !isMercatorCache({ tileInfo: { ...meta.tileInfo, spatialReference: { wkid: 3435 } } }));
+  const tile = (r, c) => { const p = new PNG({ width: 256, height: 256 }); for (let i = 0; i < 256 * 256; i++) { p.data[i * 4] = c % 256; p.data[i * 4 + 1] = r % 256; p.data[i * 4 + 2] = 7; p.data[i * 4 + 3] = 255; } return new Uint8Array(PNG.sync.write(p)); };
+  const asked = [];
+  const fetcher = async (u) => { const m = u.match(/tile\/(\d+)\/(\d+)\/(\d+)/); asked.push(m[1]); return new Response(tile(+m[2], +m[3])); };
+  /* Carlinville, IL: 3 x 2 tiles of the 1:500 level, on that grid. */
+  const span = lods[1].resolution * 256, c0 = 296230, r0 = 752350;
+  const box = [ox + c0 * span, oy - (r0 + 2) * span, ox + (c0 + 3) * span, oy - r0 * span];
+  const img = await stitch('https://x/MapServer', meta, box, 768, 512, { fetcher });
+  const px = (x, y) => [img.data[(y * 768 + x) * 4], img.data[(y * 768 + x) * 4 + 1]];
+  check('and its tiles land where they belong on that grid',
+    img && JSON.stringify(px(5, 5)) === JSON.stringify([c0 % 256, r0 % 256]) && JSON.stringify(px(760, 505)) === JSON.stringify([(c0 + 2) % 256, (r0 + 1) % 256]),
+    JSON.stringify(img ? [px(5, 5), px(760, 505)] : null));
+  check('from its finest level', asked.length > 0 && asked.every((l) => l === '10'), asked.slice(0, 3).join());
+}
+
 /* A MAP MADE ON A COUNTY PHOTO KEEPS IT (owner, 2026-10-02). */
 {
   const { testDb } = await import('./d1.js');
