@@ -198,6 +198,7 @@ const jobForWorker = (row) => ({
   county: row.county || null,
   parcelSqFt: row.parcel_sqft === null || row.parcel_sqft === undefined
     ? null : Number(row.parcel_sqft),
+  parcelPin: row.parcel_pin || null,
   claimedAt: row.claimed_at,
 });
 

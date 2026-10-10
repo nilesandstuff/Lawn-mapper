@@ -17,6 +17,7 @@
 // as well as hand-written ones, and a nomination this cannot resolve is a
 // silently missing property line.
 import { ALL_COUNTIES, candidateCounties } from './counties.js';
+import { geometryAreaSqM } from '../../public/lib/area.js';
 
 const REQUEST_TIMEOUT_MS = 6000;
 
@@ -170,8 +171,11 @@ async function queryEndpoint(cfg, countyKey, endpoint, lng, lat) {
   }
 
   if (!data || !data.features || data.features.length === 0) return null;
+  return featureFrom(cfg, countyKey, endpoint, data.features[0]);
+}
 
-  const feature = data.features[0];
+/** One of the county's features as the app's parcel, or null. */
+function featureFrom(cfg, countyKey, endpoint, feature) {
   const geometry = esriToGeoJSON(feature.geometry);
   if (!geometry) return null;
 
@@ -195,16 +199,118 @@ async function queryEndpoint(cfg, countyKey, endpoint, lng, lat) {
   };
 }
 
+/* ------------------------------------------- the parcel a queued lawn IS */
+/*
+ * A POINT IS NOT A PARCEL (2026-10-10). The lawn queue stored a point and the
+ * editor asked the county what is there -- and for an L-shaped lot the
+ * sampler's point, the middle of its bounding box, is in the notch: the
+ * neighbour's. A lot queued at 24,465 sq ft opened as the 225-acre quarry
+ * beside it (Grant County, WV). So a lookup can carry what the queue knows
+ * about the parcel it meant: its number (pin), asked for directly, or
+ * failing that its size (sqft), used to pick the right one of the parcels
+ * around the point. A parcel found another way than the point says so in
+ * properties.matched; one that matches neither carries properties.mismatch
+ * so the editor can say the record has changed under the job.
+ */
+const SQFT_PER_SQM = 10.7639;
+const SQFT_SLACK = 0.05;       // the sampler measured the same geometry; 5% is generous
+const PIN_REACH_DEG = 0.01;    // ~1 km: a number that matches across the county is not this lot
+const AROUND_DEG = 0.002;      // ~200 m around the point, the sampler's own reach
+
+const sqftOf = (geometry) => { try { return geometryAreaSqM(geometry) * SQFT_PER_SQM; } catch { return NaN; } };
+
+/** Degrees from a point to a geometry's box: 0 inside it. */
+function distanceToBox([lng, lat], geometry) {
+  let w = Infinity, s = Infinity, e = -Infinity, n = -Infinity;
+  const walk = (c) => {
+    if (typeof c[0] === 'number') { w = Math.min(w, c[0]); e = Math.max(e, c[0]); s = Math.min(s, c[1]); n = Math.max(n, c[1]); return; }
+    for (const part of c) walk(part);
+  };
+  walk(geometry?.coordinates || []);
+  if (!Number.isFinite(w)) return Infinity;
+  const dx = lng < w ? w - lng : lng > e ? lng - e : 0;
+  const dy = lat < s ? s - lat : lat > n ? lat - n : 0;
+  return Math.hypot(dx, dy);
+}
+
+/** `where` for one parcel by number: quoted first (most pin fields are text), then bare for a numeric one. */
+function pinClauses(field, pin) {
+  const out = [`${field} = '${String(pin).replace(/'/g, "''")}'`];
+  if (/^\d+$/.test(String(pin))) out.push(`${field} = ${pin}`);
+  return out;
+}
+
+async function queryByPin(cfg, countyKey, endpoint, pin, near) {
+  const field = endpoint.fields?.pin;
+  if (!field) return null;
+  for (const where of pinClauses(field, pin)) {
+    const params = { f: 'json', where, outFields: '*', returnGeometry: 'true', outSR: '4326' };
+    const url = `${endpoint.service}/${endpoint.layer}/query?${new URLSearchParams(params)}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    let body;
+    try {
+      const res = await fetch(url, { signal: controller.signal, headers: { Accept: 'application/json' } });
+      if (!res.ok) return null;
+      body = await res.json();
+    } catch { return null; } finally { clearTimeout(timer); }
+    if (body?.error) continue; // the bare number next, if there is one to try
+    const feats = Array.isArray(body?.features) ? body.features : [];
+    /* The nearest of them: a number can repeat (a condominium's units, the
+       halves of a split), and one nowhere near the point is another lot. */
+    let best = null, bestD = Infinity;
+    for (const feat of feats) {
+      const f = featureFrom(cfg, countyKey, endpoint, feat);
+      if (!f) continue;
+      const d = distanceToBox(near, f.geometry);
+      if (d < bestD) { best = f; bestD = d; }
+    }
+    return best && bestD <= PIN_REACH_DEG ? best : null;
+  }
+  return null;
+}
+
 /**
  * Look up the parcel containing a point. Tries each candidate county in
  * turn; the bbox filter usually leaves exactly one.
  */
-async function lookupParcel(lng, lat) {
-  for (const key of candidateCounties(lng, lat)) {
-    const parcel = await queryCounty(key, lng, lat);
-    if (parcel) return parcel;
+async function lookupParcel(lng, lat, { pin = null, sqft = null } = {}) {
+  const keys = candidateCounties(lng, lat);
+  if (pin) {
+    for (const key of keys) {
+      const cfg = ALL_COUNTIES[key];
+      if (!cfg?.service) continue;
+      for (const endpoint of endpointsFor(cfg)) {
+        const parcel = await queryByPin(cfg, key, endpoint, pin, [lng, lat]);
+        if (parcel) { parcel.properties.matched = 'pin'; return parcel; }
+      }
+    }
   }
-  return null;
+  let found = null;
+  for (const key of keys) {
+    found = await queryCounty(key, lng, lat);
+    if (found) break;
+  }
+  if (!found || !(Number(sqft) > 0)) return found;
+  const want = Number(sqft);
+  const area = sqftOf(found.geometry);
+  if (!(area > 0) || Math.abs(area - want) / want <= SQFT_SLACK) return found;
+  /* The point's parcel is not the one queued: the one of that size beside it. */
+  const around = await lookupNeighbours(found.properties.countyKey,
+    [lng - AROUND_DEG, lat - AROUND_DEG, lng + AROUND_DEG, lat + AROUND_DEG]);
+  let best = null, bestD = Infinity;
+  for (const n of around) {
+    const a = sqftOf(n.geometry);
+    if (!(a > 0) || Math.abs(a - want) / want > SQFT_SLACK) continue;
+    const d = distanceToBox([lng, lat], n.geometry);
+    if (d < bestD) { best = n; bestD = d; }
+  }
+  if (best) {
+    best.properties = { ...best.properties, address: best.properties.address ?? null, source: 'county-gis', matched: 'sqft' };
+    return best;
+  }
+  found.properties.mismatch = { queuedSqFt: Math.round(want), foundSqFt: Math.round(area) };
+  return found;
 }
 
 /**

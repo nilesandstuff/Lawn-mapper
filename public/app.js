@@ -1151,6 +1151,11 @@ if (typeof window !== 'undefined') {
     layer: !!(map && map.getLayer('imagery-alt')),
     // Whose picture that layer is: the last one stays up until the next lands.
     layerShows: state.altShows || null,
+    /* Every piece of the picture, where it sits: the surroundings and the
+       sharp pieces must agree with the frame's picture to the metre. */
+    context: map?.getSource('imagery-ctx')?.coordinates ?? null,
+    sharp: (state.sharp?.ids || []).map(({ id, frame }) => ({ id, frame, corners: map.getSource(id)?.coordinates ?? null })),
+    align: alignOf(state.provider) || null,
     // The Mapbox base map's opacity: dimmed while the lot's photo is on its way.
     basemap: map ? satelliteLayers().map((id) => map.getPaintProperty(id, 'raster-opacity') ?? 1) : [],
     enhance: state.enhance,
@@ -2481,6 +2486,8 @@ async function confirmLocation() {
     if (state.chosen.county) where.set('county', state.chosen.county);
     if (state.chosen.state) where.set('state', state.chosen.state);
     if (state.clientId) where.set('clientId', state.clientId);
+    if (state.chosen.parcelPin) where.set('pin', state.chosen.parcelPin);
+    if (state.chosen.parcelSqFt) where.set('sqft', state.chosen.parcelSqFt);
     const data = await api(`/api/parcel?${where}`);
     state.parcel = data.parcel || null;
 
@@ -2563,6 +2570,16 @@ async function confirmLocation() {
        */
       clearNeighbours();
       if (!document.body.classList.contains('job-mode')) aroundParcel();
+      /* THE RECORD HAS CHANGED UNDER THE JOB: the county's parcel here is
+         not the one queued, and none of that size is beside it. Said plainly,
+         so nobody traces the wrong property (owner, 2026-10-10). */
+      const mm = state.parcel.properties?.mismatch;
+      if (mm) {
+        const acres = (n) => (n / 43560).toFixed(n > 43560 * 10 ? 0 : 1);
+        setStatus(`This lawn was queued as a ${mm.queuedSqFt.toLocaleString()} sq ft lot, but the county's record `
+          + `at this spot is now ${mm.foundSqFt.toLocaleString()} sq ft (${acres(mm.foundSqFt)} acres) and no lot of `
+          + 'the queued size is beside it. Skip this one rather than trace the wrong property.', 'warn');
+      }
     } else {
       clearNeighbours();
       map.getSource('parcel').setData(empty());
@@ -6164,7 +6181,10 @@ async function setProvider(id, { auto = false } = {}) {
 /* The wider picture's corners, moved by the same line-up as the frame's. */
 function contextCorners(frame, provider = state.provider) {
   const a = alignOf(provider);
-  return a ? movedCorners(frameCorners(frame), a.east, a.north, a.scale) : frameCorners(frame);
+  /* Scaled about the FRAME picture's centre, as the sharp pieces are: one
+     picture, one line-up, so the surroundings cannot drift from the lot. */
+  const about = state.altFrame ? [state.altFrame.lng, state.altFrame.lat] : null;
+  return a ? movedCorners(frameCorners(frame), a.east, a.north, a.scale, about) : frameCorners(frame);
 }
 
 /*
@@ -8483,7 +8503,13 @@ async function openJob(job, prompts, cleared) {
    * properties is never handed a list of where people live. The county is
    * enough for them to know the picture loaded correctly.
    */
-  state.chosen = { lng: job.lng, lat: job.lat, label: job.county || 'This property' };
+  state.chosen = {
+    lng: job.lng, lat: job.lat, label: job.county || 'This property',
+    /* The parcel this job IS (worker/src/parcel.js): by the county's number,
+       or by size for a job queued before numbers were kept. The point alone
+       opened a 24,465 sq ft job as the 225-acre quarry next door. */
+    parcelPin: job.parcelPin || null, parcelSqFt: job.parcelSqFt || null,
+  };
 
   $('#job-bar').hidden = false;
   $('#job-where').textContent = [

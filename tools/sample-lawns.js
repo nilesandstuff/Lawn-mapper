@@ -36,6 +36,7 @@ import { randomUUID } from 'node:crypto';
 import { queryCounty } from '../worker/src/parcel.js';
 import { VERIFIED_COUNTIES } from '../worker/src/counties-verified.js';
 import { geometryAreaSqM } from '../public/lib/area.js';
+import { ringContains } from '../public/lib/edges.js';
 import { query, resolveDatabase } from './corpus-db.js';
 
 const SQM_PER_SQFT = 0.09290304;
@@ -92,9 +93,10 @@ export const lotLooksResidential = (sqft) => sqft >= MIN_LOT_SQFT && sqft <= MAX
  * point and collapse, and the pin lands in the middle of the property instead
  * of at the edge of it.
  *
- * The bounding box's centre rather than a true centroid. For an L-shaped lot
- * those differ by a few metres, which matters to neither job -- and a real
- * centroid can fall OUTSIDE an L, which would put the pin on the neighbour.
+ * The bounding box's centre. It was believed to stay inside an L-shaped lot;
+ * it does not -- it is in the notch, on the neighbour -- see insidePoint,
+ * which is what the pin now uses. This stays the lot's centre for everything
+ * that only needs a middle.
  */
 export function centreOf(geometry) {
   let w = Infinity, s = Infinity, e = -Infinity, n = -Infinity;
@@ -113,6 +115,51 @@ export function centreOf(geometry) {
   walk(geometry.coordinates);
   if (!Number.isFinite(w) || !Number.isFinite(s)) return null;
   return [(w + e) / 2, (s + n) / 2];
+}
+
+/**
+ * A POINT INSIDE THE LOT (2026-10-10). The pin was the box's middle, and for
+ * an L-shaped lot that is in the notch -- the neighbour's parcel -- so the
+ * editor, asking the county what is under the pin, opened a 24,465 sq ft
+ * lawn as the 225-acre quarry beside it (Grant County, WV; 1 lot in 28
+ * there sampled that way). The middle is kept when it is inside; otherwise
+ * the middle of the widest run of the lot along that line, trying a few
+ * heights for a lot too thin to cross at its middle.
+ */
+const outerRings = (geometry) => (geometry?.type === 'MultiPolygon'
+  ? geometry.coordinates.map((poly) => poly[0])
+  : geometry?.type === 'Polygon' ? [geometry.coordinates[0]] : []).filter((r) => r?.length >= 4);
+
+export function insidePoint(geometry) {
+  const centre = centreOf(geometry);
+  if (!centre) return null;
+  const rings = outerRings(geometry);
+  if (!rings.length) return centre;
+  let lo = Infinity, hi = -Infinity, left = Infinity, right = -Infinity;
+  for (const r of rings) for (const [x, y] of r) { lo = Math.min(lo, y); hi = Math.max(hi, y); left = Math.min(left, x); right = Math.max(right, x); }
+  /* Inside with a little room: the L's middle is exactly its inner corner,
+     which a crossing count calls whichever side it likes. */
+  const ex = (right - left) * 0.02, ey = (hi - lo) * 0.02;
+  const roomy = [[0, 0], [ex, ey], [-ex, ey], [ex, -ey], [-ex, -ey]]
+    .every(([dx, dy]) => rings.some((r) => ringContains(r, [centre[0] + dx, centre[1] + dy])));
+  if (roomy) return centre;
+  for (const t of [0.5, 0.3, 0.7, 0.15, 0.85, 0.4, 0.6]) {
+    const y = lo + (hi - lo) * t;
+    let best = null, bestW = 0;
+    for (const r of rings) {
+      const xs = [];
+      for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+        const [xi, yi] = r[i], [xj, yj] = r[j];
+        if ((yi > y) !== (yj > y)) xs.push(xi + ((y - yi) * (xj - xi)) / (yj - yi));
+      }
+      xs.sort((a, b) => a - b);
+      for (let k = 0; k + 1 < xs.length; k += 2) {
+        if (xs[k + 1] - xs[k] > bestW) { bestW = xs[k + 1] - xs[k]; best = [(xs[k] + xs[k + 1]) / 2, y]; }
+      }
+    }
+    if (best) return best;
+  }
+  return centre;
 }
 
 /** Deterministic randomness, so a run can be repeated exactly. */
@@ -184,7 +231,7 @@ export async function sampleCounty(key, county, { want, tries, rand, lookup, onH
      * darts they were 40 m apart, passed, and became two queue rows showing
      * the identical property.
      */
-    const centre = centreOf(parcel.geometry) || at;
+    const centre = insidePoint(parcel.geometry) || at;
     if (!farEnough(centre, taken)) continue;
 
     taken.push(centre);
@@ -195,6 +242,8 @@ export async function sampleCounty(key, county, { want, tries, rand, lookup, onH
       county: county.name || key,
       fips: county.fips || null,
       parcelSqFt: Math.round(sqft),
+      /* The county's own number for it, so the editor can ask for THIS parcel. */
+      parcelPin: parcel.properties?.pin != null ? String(parcel.properties.pin) : null,
     });
     if (onHit) onHit(found.length, spent);
   }
@@ -262,11 +311,11 @@ async function main() {
 
   const now = new Date().toISOString();
   const values = all.map((c) => `(${[
-    esc(c.id), c.lng, c.lat, esc(c.county), esc(c.fips), c.parcelSqFt,
+    esc(c.id), c.lng, c.lat, esc(c.county), esc(c.fips), c.parcelSqFt, esc(c.parcelPin),
     esc('candidate'), esc(now),
   ].join(',')})`).join(',');
 
-  query(`INSERT INTO lawn_jobs (id, lng, lat, county, fips, parcel_sqft, state, created_at)
+  query(`INSERT INTO lawn_jobs (id, lng, lat, county, fips, parcel_sqft, parcel_pin, state, created_at)
          VALUES ${values}`);
 
   console.log(`\nAdded ${all.length} candidates, from ${new Set(all.map((c) => c.county)).size} counties.`);

@@ -286,3 +286,6 @@ ALTER TABLE county_imagery ADD COLUMN mapbox_image_key TEXT;
 
 -- INFERRED LAWN THE OWNER DOES NOT TRUST (see the column in schema.sql).
 ALTER TABLE corpus ADD COLUMN inferred_doubt INTEGER;
+
+-- WHICH PARCEL A QUEUED LAWN IS (see the column in schema.sql).
+ALTER TABLE lawn_jobs ADD COLUMN parcel_pin TEXT;

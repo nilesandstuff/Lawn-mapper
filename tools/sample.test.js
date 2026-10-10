@@ -15,7 +15,7 @@
  */
 
 import {
-  sampleCounty, farEnough, lotLooksResidential, makeRandom, centreOf,
+  sampleCounty, farEnough, lotLooksResidential, makeRandom, centreOf, insidePoint,
   MIN_LOT_SQFT, MAX_LOT_SQFT,
 } from './sample-lawns.js';
 
@@ -203,12 +203,28 @@ const county = { name: 'Testshire', fips: '99999', box: [-80, 40, -79.9, 40.1] }
       `${found[0].lng}, ${found[0].lat} against a centre of ${centre[0]}, ${centre[1]}`);
   }
 
-  /* An L-shaped lot: the centre must still be a number, and taking the box's
-     middle rather than a true centroid is what keeps it inside the shape. */
-  const ell = { coordinates: [[[0, 0], [2, 0], [2, 1], [1, 1], [1, 2], [0, 2], [0, 0]]] };
-  check('and an awkward shape still has a centre',
+  /* An L-shaped lot: the box's middle is its inner corner, ON the boundary
+     and a hair into the neighbour -- the belief that it "keeps the pin inside
+     the shape" was written here as a test and was wrong (2026-10-10, Grant
+     County WV: a job pinned on the lot next door). The pin is a point
+     plainly inside the L. */
+  const ell = { type: 'Polygon', coordinates: [[[0, 0], [2, 0], [2, 1], [1, 1], [1, 2], [0, 2], [0, 0]]] };
+  check('an awkward shape still has a centre',
     JSON.stringify(centreOf(ell)) === JSON.stringify([1, 1]),
     JSON.stringify(centreOf(ell)));
+  const pin = insidePoint(ell);
+  const inL = (p) => (p[0] > 0 && p[0] < 2 && p[1] > 0 && p[1] < 1) || (p[0] > 0 && p[0] < 1 && p[1] > 0 && p[1] < 2);
+  /* Inside with room on every side: a tenth of the lot in each direction. */
+  const roomy = (p) => [[0, 0], [0.1, 0.1], [-0.1, 0.1], [0.1, -0.1], [-0.1, -0.1]].every(([dx, dy]) => inL([p[0] + dx, p[1] + dy]));
+  check('but its pin is inside the L, not on the inner corner',
+    pin && roomy(pin), JSON.stringify(pin));
+  const box = { type: 'Polygon', coordinates: [[[0, 0], [2, 0], [2, 1], [0, 1], [0, 0]]] };
+  check('and a plain lot keeps the middle as its pin',
+    JSON.stringify(insidePoint(box)) === JSON.stringify([1, 0.5]), JSON.stringify(insidePoint(box)));
+  const twin = { type: 'MultiPolygon', coordinates: [[[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]], [[[3, 0], [4, 0], [4, 1], [3, 1], [3, 0]]]] };
+  const tp = insidePoint(twin);
+  check('a lot in two pieces is pinned on one of them, not in the gap between',
+    tp && ((tp[0] > 0 && tp[0] < 1) || (tp[0] > 3 && tp[0] < 4)), JSON.stringify(tp));
   check('and a geometry with no coordinates gives nothing rather than NaN',
     centreOf({}) === null && centreOf(null) === null,
     'a parcel that came back malformed must not put a pin at NaN, NaN');

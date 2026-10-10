@@ -638,7 +638,7 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
   if (path === 'lawn-jobs') {
     const limit = Math.min(60, Math.max(1, Number(url.searchParams.get('limit')) || 24));
     const rows = await env.DB.prepare(
-      `SELECT id, lng, lat, county, parcel_sqft, state
+      `SELECT id, lng, lat, county, parcel_sqft, parcel_pin, state
          FROM lawn_jobs WHERE state = 'candidate'
         ORDER BY created_at ASC LIMIT ?1`
     ).bind(limit).all();
@@ -658,6 +658,7 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
         lat: Number(r.lat),
         county: r.county,
         parcelSqFt: r.parcel_sqft === null ? null : Number(r.parcel_sqft),
+        parcelPin: r.parcel_pin || null,
       })),
       counts: Object.fromEntries((counts.results || []).map((r) => [r.state, Number(r.n)])),
     }, 200, origin);
@@ -920,16 +921,16 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
     let requeued = false;
     if (verdict === 'refused') {
       const lawn = await env.DB.prepare(
-        'SELECT lng, lat, county, fips, parcel_sqft FROM lawn_jobs WHERE id = ?1'
+        'SELECT lng, lat, county, fips, parcel_sqft, parcel_pin FROM lawn_jobs WHERE id = ?1'
       ).bind(id).first();
       if (lawn) {
         await env.DB.prepare(
-          `INSERT INTO lawn_jobs (id, lng, lat, county, fips, parcel_sqft,
+          `INSERT INTO lawn_jobs (id, lng, lat, county, fips, parcel_sqft, parcel_pin,
                                   state, note, screened_at, created_at)
-           VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'approved', ?7, ?8, ?8)`
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'approved', ?8, ?9, ?9)`
         ).bind(
           crypto.randomUUID(), lawn.lng, lawn.lat, lawn.county, lawn.fips,
-          lawn.parcel_sqft,
+          lawn.parcel_sqft, lawn.parcel_pin ?? null,
           'back in the queue after a refused attempt',
           new Date().toISOString(),
         ).run();

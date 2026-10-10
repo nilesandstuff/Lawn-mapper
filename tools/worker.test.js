@@ -40,7 +40,8 @@ import { worldSize } from '../public/lib/mercator.js';
 import {
   COUNTIES, COUNTY_BBOX, candidateCounties, isCovered,
 } from '../worker/src/counties.js';
-import { queryCounty } from '../worker/src/parcel.js';
+import { queryCounty, lookupParcel } from '../worker/src/parcel.js';
+import { geometryAreaSqM } from '../public/lib/area.js';
 import { VERIFIED_COUNTIES } from '../worker/src/counties-verified.js';
 import { readFile } from 'node:fs/promises';
 import { readdirSync, readFileSync } from 'node:fs';
@@ -1340,6 +1341,65 @@ check('and a typed prompt is sent verbatim',
   check('a county without one sends no where at all',
     plain.length > 0 && plain.every((u) => !u.includes('where=')),
     `${plain.length} requests, none filtered`);
+}
+
+/* ------------------------------------------- the parcel a queued lawn IS */
+/*
+ * A POINT IS NOT A PARCEL (2026-10-10): a lawn queued at 24,465 sq ft opened
+ * as the 225-acre quarry beside it, because the queue's pin -- the middle of
+ * the lot's bounding box -- was in the neighbour's parcel. The lookup can now
+ * carry the parcel's number, or its size for a job queued before numbers
+ * were kept, and finds THAT parcel rather than whatever is under the point.
+ */
+{
+  const realFetch = globalThis.fetch;
+  const { ALL_COUNTIES } = await import('../worker/src/counties.js');
+  const pinField = ALL_COUNTIES.kent.fields.pin;
+  const lng = -85.6681, lat = 42.9634;
+  const square = (cx, cy, half) => ({
+    rings: [[[cx - half, cy - half], [cx + half, cy - half], [cx + half, cy + half], [cx - half, cy + half], [cx - half, cy - half]]],
+  });
+  /* The point sits in the big tract; the small lot is 60 m east of it. */
+  const big = { attributes: { [pinField]: 'BIG-1' }, geometry: square(lng, lat, 0.003) };
+  const small = { attributes: { [pinField]: 'LOT-7' }, geometry: square(lng + 0.0008, lat, 0.0002) };
+  const smallSqFt = geometryAreaSqM({ type: 'Polygon', coordinates: small.geometry.rings }) * 10.7639;
+  const asked = [];
+  globalThis.fetch = async (url) => {
+    const u = String(url); asked.push(u);
+    const body = u.includes('where=') && u.includes('LOT-7') ? { features: [small] }
+      : u.includes('where=') ? { features: [] }
+        : u.includes('esriGeometryEnvelope') ? { features: [big, small] }
+          : { features: [big] };
+    return { ok: true, json: async () => body };
+  };
+  try {
+    const byPoint = await lookupParcel(lng, lat);
+    check('the point alone finds the tract under it', byPoint?.properties.pin === 'BIG-1', JSON.stringify(byPoint?.properties));
+    const byPin = await lookupParcel(lng, lat, { pin: 'LOT-7' });
+    check('asked by number, it finds the lot the job meant', byPin?.properties.pin === 'LOT-7' && byPin.properties.matched === 'pin',
+      JSON.stringify(byPin?.properties));
+    check('  and the number went to the county as a where clause',
+      asked.some((u) => u.includes('where=') && decodeURIComponent(u.replace(/\+/g, ' ')).includes(`${pinField} = 'LOT-7'`)),
+      asked.filter((u) => u.includes('where=')).slice(-1).join());
+    const farPin = { attributes: { [pinField]: 'FAR-9' }, geometry: square(lng + 0.5, lat + 0.5, 0.0002) };
+    globalThis.fetch = async (url) => ({ ok: true, json: async () => (String(url).includes('FAR-9') ? { features: [farPin] } : { features: [big] }) });
+    const far = await lookupParcel(lng, lat, { pin: 'FAR-9' });
+    check('a number that matches across the county is not this lot: the point decides', far?.properties.pin === 'BIG-1', JSON.stringify(far?.properties));
+    globalThis.fetch = async (url) => ({ ok: true, json: async () => (String(url).includes('esriGeometryEnvelope') ? { features: [big, small] } : { features: [big] }) });
+    const bySize = await lookupParcel(lng, lat, { sqft: Math.round(smallSqFt) });
+    check('queued before numbers were kept, the lot of the queued size beside the point is the one',
+      bySize?.properties.pin === 'LOT-7' && bySize.properties.matched === 'sqft', JSON.stringify(bySize?.properties));
+    globalThis.fetch = async (url) => ({ ok: true, json: async () => (String(url).includes('esriGeometryEnvelope') ? { features: [big] } : { features: [big] }) });
+    const gone = await lookupParcel(lng, lat, { sqft: Math.round(smallSqFt) });
+    check('and when no lot of that size is there any more, the tract comes back saying so',
+      gone?.properties.pin === 'BIG-1' && gone.properties.mismatch?.queuedSqFt === Math.round(smallSqFt) && gone.properties.mismatch.foundSqFt > smallSqFt * 50,
+      JSON.stringify(gone?.properties.mismatch));
+    const same = await lookupParcel(lng, lat, { sqft: Math.round(geometryAreaSqM({ type: 'Polygon', coordinates: big.geometry.rings }) * 10.7639) });
+    check('a size that matches the point\'s own parcel changes nothing', same?.properties.pin === 'BIG-1' && !same.properties.mismatch && !same.properties.matched,
+      JSON.stringify(same?.properties));
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 }
 
 /* ------------------------------------------- the preflight cannot hang open */

@@ -92,7 +92,12 @@ async function fetchParcel(job) {
   if (parcels.has(job.id)) return parcels.get(job.id);
   parcels.set(job.id, null);              // so two warms do not both fetch
   try {
-    const res = await fetch(`/api/parcel?lng=${job.lng}&lat=${job.lat}`);
+    /* THE PARCEL THE JOB IS, not just the one under its point (parcel.js):
+       what the screener approves must be what a tracer is handed. */
+    const q = new URLSearchParams({ lng: job.lng, lat: job.lat });
+    if (job.parcelPin) q.set('pin', job.parcelPin);
+    if (job.parcelSqFt) q.set('sqft', job.parcelSqFt);
+    const res = await fetch(`/api/parcel?${q}`);
     if (!res.ok) return null;
     const body = await res.json();
     const parcel = body?.parcel || body;

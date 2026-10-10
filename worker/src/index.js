@@ -295,7 +295,12 @@ async function handleParcel(request, url, env, origin, ctx) {
     return json({ error: 'lng and lat required' }, 400, origin);
   }
 
-  const parcel = await lookupParcel(lng, lat);
+  /* What the lawn queue knows about the parcel it meant (parcel.js): its
+     number, or its size when it was queued before numbers were kept. */
+  const parcel = await lookupParcel(lng, lat, {
+    pin: url.searchParams.get('pin') || null,
+    sqft: Number(url.searchParams.get('sqft')) || null,
+  });
   if (!parcel) {
     // Not an error. Most of the country, and plenty of covered addresses,
     // land here. The UI drops straight to manual boundary drawing.

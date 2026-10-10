@@ -597,6 +597,14 @@ CREATE TABLE IF NOT EXISTS lawn_jobs (
   -- What the county's own parcel says it is, in square feet. The sampler uses
   -- it to throw away farmland and slivers before a person ever looks.
   parcel_sqft   INTEGER,
+  -- WHICH PARCEL, by the county's own number (2026-10-10). The point alone
+  -- was the record, and a point is not a parcel: the sampler's pin sat at the
+  -- middle of the lot's bounding box, which for an L-shaped lot is in the
+  -- neighbour's, and a lot queued at 24,465 sq ft opened in the editor as a
+  -- 225-acre quarry next door (Grant County, WV). With the number, the
+  -- editor and the screening page ask the county for THIS parcel. NULL on
+  -- rows queued before it existed; those fall back to matching parcel_sqft.
+  parcel_pin    TEXT,
 
   state         TEXT NOT NULL DEFAULT 'candidate',
   note          TEXT,
