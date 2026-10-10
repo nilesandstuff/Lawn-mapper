@@ -6410,7 +6410,7 @@ before the runs: county lots answered by a decoder that never saw a county
 photo should do WORSE than THE PLAN on them now, if county examples teach a
 county look; the same as H90, if what is wrong with county lots is the lots.
 Workflow 33 on the same runs, so contrast and lawn share are held apart
-from source. Count on 2026-10-10 (workflow 24's photo split, 06:31 UTC): 20
+from source. Count on 2026-10-10 (workflow 24's photo split, 02:31 UTC): 20
 of 93 approved maps county-drawn, 11 of them locked, so 9 new; 11 to go.
 
 **Why (H88):** the 12 county-photo lots score 55% against 19% for Mapbox
