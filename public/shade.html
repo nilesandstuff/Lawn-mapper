@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lawn Mapper — shade map: the property in 3D</title>
+<meta name="robots" content="noindex, nofollow">
+<!--
+  THE SHADE MAP, STEP 1 (owner, 2026-10-10): "use lidar to construct a 3d
+  environment of the property... and make absolute certain that it lines up
+  with the imagery and property lines, so that it definitely lines up with
+  the lawn map." Nothing here is saved and nothing here costs money: the
+  lidar is USGS's public 3DEP octrees on AWS, read in the browser. The sun,
+  the shadows and the daily light integral are later steps built on this.
+  Features session's page; see public/shade/ for the parts.
+-->
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.css" rel="stylesheet">
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #111; color: #eee; font: 14px/1.4 system-ui, -apple-system, sans-serif; }
+  .app { position: fixed; inset: 0; display: flex; flex-direction: column; }
+  .bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 8px; background: #1c1c1c; }
+  .bar select, .bar input { font-size: 14px; padding: 6px; border-radius: 8px; border: 1px solid #555; background: #222; color: #eee; min-width: 0; }
+  .bar select { max-width: 55vw; }
+  .bar input { width: 13em; }
+  button { min-height: 38px; padding: 0 12px; border-radius: 8px; border: 1px solid #555; background: #262626; color: #eee; font-size: 14px; }
+  button.primary { background: #2e7d32; border-color: #2e7d32; }
+  button[aria-pressed="false"] { opacity: .5; border-style: dashed; }
+  button:disabled { opacity: .4; }
+  .main { position: relative; flex: 1; min-height: 0; }
+  #map { position: absolute; inset: 0; }
+  .toggles { position: absolute; top: 8px; left: 8px; display: flex; flex-wrap: wrap; gap: 6px; max-width: calc(100% - 16px); }
+  .toggles button { background: rgba(20, 20, 20, .85); min-height: 34px; font-size: 13px; }
+  .panel { max-height: 42vh; overflow: auto; padding: 8px 12px 12px; background: #161616; border-top: 1px solid #333; font-size: 13px; }
+  .panel h2 { font-size: 14px; margin: 10px 0 4px; }
+  .panel p { margin: 4px 0; }
+  .panel table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  .panel td { padding: 1px 10px 1px 0; vertical-align: top; }
+  .ok { color: #81c784; } .warn { color: #ffb74d; } .bad { color: #e57373; } .dim { color: #999; }
+  .status { font-weight: 600; }
+  .legend span { display: inline-block; width: .8em; height: .8em; border-radius: 50%; margin: 0 4px 0 10px; vertical-align: -1px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="bar">
+    <select id="saved" aria-label="A saved map"><option value="">Saved maps…</option></select>
+    <input id="at" type="text" inputmode="decimal" placeholder="or lat, lng" aria-label="Latitude, longitude">
+    <button class="primary" id="go" type="button">Build in 3D</button>
+  </div>
+  <div class="main">
+    <div id="map"></div>
+    <div class="toggles" id="toggles" hidden>
+      <button type="button" id="t-points" aria-pressed="true">Lidar points</button>
+      <button type="button" id="t-fix" aria-pressed="true">Lined up</button>
+      <button type="button" id="t-picture" aria-pressed="false">Lidar ground picture</button>
+      <button type="button" id="t-tilt" aria-pressed="true">3D</button>
+    </div>
+  </div>
+  <div class="panel" id="panel">
+    <p class="status" id="status">Pick a saved map, or type a point, and press Build.</p>
+    <p class="legend dim">Points: <span style="background:#9e7340"></span>ground<span style="background:#8ccc59"></span>under 2 m<span style="background:#1ad94d"></span>pulse went on through (leaves, branches)<span style="background:#f24d40"></span>pulse stopped, 2 m+ (roofs, dense crowns). Yellow line: property. Green: lawn.</p>
+    <div id="report"></div>
+  </div>
+</div>
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.js"></script>
+<script type="module" src="/shade.js"></script>
+</body>
+</html>
