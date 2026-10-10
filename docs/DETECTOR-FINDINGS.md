@@ -6412,6 +6412,12 @@ county look; the same as H90, if what is wrong with county lots is the lots.
 Workflow 33 on the same runs, so contrast and lawn share are held apart
 from source. Count on 2026-10-10 (workflow 24's photo split, 02:31 UTC): 20
 of 93 approved maps county-drawn, 11 of them locked, so 9 new; 11 to go.
+Count on 2026-10-10 19:10 UTC (workflow 9, the 20 newest approved against
+tools/locked-lawns.json): 19 approved maps outside the lock, 16 of them
+drawn on county photos (Ingham MI, Cass ND, Broomfield CO, Kenton KY, Will
+IL, Fairfax VA, Delaware IA, a Delaware lot, Prince William VA, Clinton IL,
+Allegheny PA, Lancaster NE, two Indiana, one Iowa, one North Carolina), 3
+on Mapbox; 4 county-drawn to go.
 
 **Why (H88):** the 12 county-photo lots score 55% against 19% for Mapbox
 lots, and the county photo is now the default for most addresses, so most
