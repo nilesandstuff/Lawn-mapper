@@ -1134,6 +1134,43 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
   const { env, ownerToken } = await world();
   const { recordParcelGap } = await import('../worker/src/gaps.js');
 
+  /*
+   * COUNTY PHOTOS THAT FAILED TO LOAD (owner, 2026-10-10): one row each, with
+   * the spot, the parcel, the service and flight, and what the county said;
+   * keys out of any URL; read newest first on the console.
+   */
+  {
+    const { recordCountyFailure, redactUrl } = await import('../worker/src/county-failures.js');
+    check('a key in a county URL is taken out before it is kept',
+      redactUrl('https://gis.example/export?bbox=1,2,3,4&token=SECRET&f=image') === 'https://gis.example/export?bbox=1%2C2%2C3%2C4&token=%E2%80%A6&f=image',
+      redactUrl('https://gis.example/export?bbox=1,2,3,4&token=SECRET&f=image'));
+    const wrote = await recordCountyFailure(env, {
+      stage: 'editor', kind: 'gaps', reason: '31% of the picture missing',
+      frame: { lng: -85.8629, lat: 42.8702, zoom: 17.37, size: 638, height: 489 },
+      county: 'Ottawa County', parcelPin: '70-16-21-300-012', address: '3300 Van Buren St',
+      svc: { id: 7, url: 'https://gis.example/arcgis/rest/services/Aerial2024/ImageServer', title: 'Aerial2024', year: 2024, flown: 'April 2024' },
+      picked: 'sharp', services: [7, 9], jobId: 'job-1', who: 'alice',
+    });
+    const wroteWorker = await recordCountyFailure(env, {
+      stage: 'worker', kind: 'refused', http: 403, reason: 'Token Required',
+      frame: { lng: -85.8629, lat: 42.8702, zoom: 17.37 }, svc: { id: 9, url: 'https://gis.example/x/MapServer', title: 'Ortho', year: 2022 },
+      upstream: 'https://gis.example/x/MapServer/export?bbox=1&token=abc',
+    });
+    check('a failure from the editor and one from the Worker are both written', wrote && wroteWorker);
+    const log = (await ask(env, ownerToken, 'county-failures')).body;
+    check('the console reads them newest first with everything the row carries',
+      log.failures?.length === 2 && log.failures[0].kind === 'refused' && log.failures[0].http === 403
+        && log.failures[0].upstream === 'https://gis.example/x/MapServer/export?bbox=1&token=%E2%80%A6'
+        && log.failures[1].parcel_pin === '70-16-21-300-012' && log.failures[1].svc_title === 'Aerial2024'
+        && log.failures[1].svc_flown === 'April 2024' && JSON.stringify(log.failures[1].services) === '[7,9]'
+        && log.failures[1].frame?.zoom === 17.37 && log.lastWeek === 2,
+      JSON.stringify(log).slice(0, 400));
+    check('an unknown kind is kept as "missing" rather than refused',
+      (await recordCountyFailure(env, { kind: 'whatever', frame: {} })) === true
+        && (await ask(env, ownerToken, 'county-failures')).body.failures[0].kind === 'missing');
+    check('and a database that is not there is not an error', (await recordCountyFailure({}, { kind: 'gaps' })) === false);
+  }
+
   /* One county, one person, asked four times. */
   for (let i = 0; i < 4; i++) {
     await recordParcelGap(env, { county: 'Kalamazoo County', state: 'MI', who: 'alice' });

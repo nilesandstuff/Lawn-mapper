@@ -2155,6 +2155,12 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
     }
   }
 
+  /* County photos that failed to load (county-failures.js), newest first. */
+  if (path === 'county-failures') {
+    const { countyFailures } = await import('./county-failures.js');
+    return json(await countyFailures(env, { limit: url.searchParams.get('limit') || 100 }), 200, origin);
+  }
+
   if (path === 'parcel-gaps') {
     return json(await parcelGaps(env, {
       sort: url.searchParams.get('sort') || 'hits',

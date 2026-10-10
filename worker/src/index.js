@@ -56,6 +56,7 @@ import { handleJobs, spendJobDetection, jobDetection } from './routes-jobs.js';
 import { accountsEnabled, publicUser } from './db.js';
 import { currentUser } from './auth.js';
 import { recordParcelGap } from './gaps.js';
+import { recordCountyFailure } from './county-failures.js';
 import { llmsTxt } from './llms.js';
 
 /* Named in robots.txt (see the case there): search engines, the AI
@@ -402,8 +403,14 @@ function frameFromQuery(params) {
  * a token for this, and so we can pin the parameters -- the same frame feeds
  * SAM and the export, so it must be reproducible.
  */
-async function handleImagery(url, env, origin) {
+async function handleImagery(url, env, origin, ctx = null) {
   const { frame, provider } = frameFromQuery(url.searchParams);
+  /* A county photo that fails is written down (county-failures.js), with
+     what was asked and what the county said; never in the way of the answer. */
+  const failed = (kind, extra = {}) => {
+    const p = recordCountyFailure(env, { stage: 'worker', kind, frame, svc: frame.svc, ...extra });
+    if (ctx?.waitUntil) ctx.waitUntil(p);
+  };
 
   if (!Number.isFinite(frame.lng) || !Number.isFinite(frame.lat)) {
     return json({ error: 'lng and lat required' }, 400, origin);
@@ -415,8 +422,11 @@ async function handleImagery(url, env, origin) {
   /* The county photo: only a service in the catalogue, by its id. */
   if (provider === 'county') {
     frame.svc = await countyServiceById(env, url.searchParams.get('svc'));
-    if (!frame.svc) return json({ error: 'No county photo service by that id', provider }, 400, origin);
-    if (frame.svc.tiled) return countyMosaic(url, frame, origin);
+    if (!frame.svc) {
+      failed('no-service', { reason: `svc=${url.searchParams.get('svc')}`, svc: { id: url.searchParams.get('svc') } });
+      return json({ error: 'No county photo service by that id', provider }, 400, origin);
+    }
+    if (frame.svc.tiled) return countyMosaic(url, frame, origin, failed);
   }
   const src = imageryUrl(provider, frame, serverToken(env), env);
   // Esri serves tiles and nothing else; the browser paints those itself.
@@ -424,10 +434,14 @@ async function handleImagery(url, env, origin) {
 
   const res = await fetch(src);
   if (!res.ok) {
+    const reason = await upstreamReason(res);
+    if (provider === 'county') {
+      failed(res.status >= 400 && res.status < 500 ? 'refused' : 'missing', { http: res.status, reason, upstream: src });
+    }
     return json({
       error: 'Imagery unavailable', provider,
       upstream: res.status,
-      reason: await upstreamReason(res),
+      reason,
     }, 502, origin);
   }
 
@@ -457,14 +471,18 @@ async function handleImagery(url, env, origin) {
  * one frame was detected against another when the property line moved
  * while it was being stitched.
  */
-async function countyMosaic(url, frame, origin) {
+async function countyMosaic(url, frame, origin, failed = () => {}) {
   const cache = caches.default;
   const key = new Request(url.toString(), { method: 'GET' });
   const hit = await cache.match(key);
   if (hit) return hit;
+  let why = null;
   const img = await countyPicture(frame.svc, frame, { W: imagePixels(frame), H: imageHeightPixels(frame) })
-    .catch(() => null);
-  if (!img) return json({ error: 'No county photo here', provider: 'county', upstream: 404 }, 502, origin);
+    .catch((e) => { why = String(e?.message || e); return null; });
+  if (!img) {
+    failed('blank', { http: 404, reason: why || 'the cache had no tiles here, or is not a grid the Worker can stitch', upstream: `${frame.svc?.url}?f=json` });
+    return json({ error: 'No county photo here', provider: 'county', upstream: 404 }, 502, origin);
+  }
   const res = new Response(await encodePng(img), {
     headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400', ...cors(origin) },
   });
@@ -1587,7 +1605,7 @@ export default {
           });
         }
         case '/api/imagery':
-          return await handleImagery(url, env, origin);
+          return await handleImagery(url, env, origin, ctx);
         /* Is there a county or state photo for this point? The catalogue's
            answer (worker/src/county.js), for the editor to offer it. */
         case '/api/county-imagery': {
@@ -1622,6 +1640,16 @@ export default {
          * only with the token, because a report is a street address and a
          * picture of somebody's garden. See feedback.js.
          */
+        /* The editor's side of the county-photo failure log (county-failures.js):
+           timeouts, gaps, soft pictures, services passed over -- the cases the
+           Worker never sees, with the parcel and the job it knows. */
+        case '/api/county-failure': {
+          if (request.method !== 'POST') return json({ error: 'POST required' }, 405, origin);
+          let body;
+          try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, 400, origin); }
+          const ok = await recordCountyFailure(env, { ...body, stage: 'editor' });
+          return json({ ok }, 200, origin);
+        }
         case '/api/feedback': {
           if (request.method !== 'POST') return json({ error: 'POST required' }, 405, origin);
           let body;

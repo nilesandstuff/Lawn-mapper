@@ -5812,6 +5812,38 @@ function countyFallBack() {
   if (state.countyAlign?.saved) state.countyAlign = null; // another photo's line-up is its own
 }
 
+/*
+ * WRITE A COUNTY PHOTO'S FAILURE DOWN (owner, 2026-10-10: "start collecting
+ * logs of the errors that trip when a county map fails to load"). Everything
+ * the editor knows at that moment: where, the parcel and address the county
+ * gave, which service and flight was asked, the others on offer, the job or
+ * map being worked on. Fire and forget: the fallback must never wait on it.
+ */
+function reportCountyFailure(kind, { reason = null, http = null, svc = state.countySvc, note = null } = {}) {
+  try {
+    const f = state.frame || {};
+    const p = state.parcel?.properties || {};
+    const body = {
+      kind, reason, http, note,
+      lng: f.lng ?? state.chosen?.lng ?? null, lat: f.lat ?? state.chosen?.lat ?? null, zoom: f.zoom ?? null,
+      frame: state.frame ? { lng: f.lng, lat: f.lat, zoom: f.zoom, size: f.size, height: f.height } : null,
+      county: p.county || state.chosen?.county || null,
+      parcelPin: p.pin ?? state.chosen?.parcelPin ?? null,
+      /* The county's own address for the parcel; the typed address only off
+         the job routes, where the queue keeps addresses out on purpose. */
+      address: p.address || (state.job ? null : state.chosen?.label) || null,
+      svc: svc ? { id: svc.id, url: svc.url, title: svc.title, year: svc.year, flown: svc.flown } : null,
+      picked: state.countyPick || null,
+      services: (state.countyList || []).map((x) => x.id),
+      jobId: state.job?.id || null,
+      mapId: state.reviewingId || null,
+      who: state.clientId || null,
+    };
+    fetch('/api/county-failure', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), keepalive: true })
+      .catch(() => { /* bookkeeping only */ });
+  } catch { /* bookkeeping only */ }
+}
+
 /* The county service showing failed: the next one, if any. The failed one
    leaves the list, so a lot left with one county photo shows one entry,
    "County photo", rather than a "(sharp)" that cannot load (owner). */
@@ -6617,6 +6649,7 @@ async function showImagery({ quiet = false } = {}) {
       try { body = await res.json(); } catch { /* not our JSON: keep the code */ }
       const err = new Error(body?.reason || `HTTP ${res.status}`);
       err.refused = body?.upstream >= 400 && body?.upstream < 500;
+      err.http = body?.upstream ?? res.status;
       throw err;
     }
   } catch (err) {
@@ -6639,7 +6672,12 @@ async function showImagery({ quiet = false } = {}) {
        lib/tile-stitch.js isMercatorCache -- and a lot with a good 2025 photo
        too stayed on Mapbox under "refused"). Not on a timeout: that one may
        answer next time. */
+    if (state.provider === 'county') {
+      reportCountyFailure(err.name === 'TimeoutError' ? 'timeout' : err.refused ? 'refused' : 'missing',
+        { reason: err.message, http: err.http ?? null });
+    }
     if (state.provider === 'county' && err.name !== 'TimeoutError' && passOverCounty()) {
+      reportCountyFailure('passed-over', { note: `now trying service #${state.countySvc?.id}` });
       buildImageryPicker();
       showImagery();
       return;
@@ -6680,6 +6718,7 @@ async function showImagery({ quiet = false } = {}) {
     if (run !== imageryRun) return;
     if (gaps > 0.02) {
       idle(); imageryBusyRun = 0;
+      reportCountyFailure('gaps', { reason: `${Math.round(gaps * 100)}% of the picture missing` });
       /* The newer flight, chosen, with a hole in it: back to the sharp one. */
       if (state.countyPick === 'recent' && state.countySharp && Number(state.countySharp.id) !== Number(state.countySvc?.id)) {
         state.countyPick = 'sharp';
@@ -6718,6 +6757,7 @@ async function showImagery({ quiet = false } = {}) {
       state.countyDetail = k;
       if (k !== null && k < 0.8) {
         idle(); imageryBusyRun = 0;
+        reportCountyFailure('soft', { reason: `${Math.round(k * 100)}% of Mapbox's detail` });
         /* The next service that covers this spot may be sharper. */
         if (state.countyNext?.length) {
           countyFallBack();

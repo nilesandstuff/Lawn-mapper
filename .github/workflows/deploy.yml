@@ -420,6 +420,8 @@ jobs:
             echo "The detail is in the \"Prepare wrangler.toml\" step above."
           fi
           if [ -n "$MAPS_APPROVED" ]; then echo "Approved maps in the corpus: $MAPS_APPROVED"; fi
+          # County photos that failed to load (the admin console lists each one).
+          if [ -n "$COUNTY_FAILED_7D" ]; then echo "County photo failures in the last 7 days: $COUNTY_FAILED_7D (each one is on the admin console)"; fi
           # The locked training set (tools/locked-lawns.json, workflow 31).
           LOCKED=$(node -e "try{const l=require('./tools/locked-lawns.json');console.log(l.ids.length+' '+String(l.lockedAt).slice(0,10))}catch{}" 2>/dev/null || true)
           if [ -n "$LOCKED" ]; then

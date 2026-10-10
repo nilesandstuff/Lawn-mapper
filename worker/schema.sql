@@ -547,6 +547,48 @@ CREATE TABLE IF NOT EXISTS parcel_gaps (
 );
 CREATE INDEX IF NOT EXISTS parcel_gaps_place ON parcel_gaps(state, county);
 
+-- COUNTY PHOTOS THAT FAILED TO LOAD (owner, 2026-10-10: "start collecting
+-- logs of the errors that trip when a county map fails to load"). One row
+-- per failure, from the Worker (the county's own refusal, a cache that
+-- could not be stitched) and from the editor (a timeout, a picture with
+-- gaps, one softer than Mapbox, a service passed over). Everything needed to
+-- debug the one case: where, which parcel, which service and flight, what
+-- was asked of the county and what it said. Read on the admin console.
+-- A new table, so CREATE TABLE IF NOT EXISTS is enough -- no migration.
+CREATE TABLE IF NOT EXISTS county_photo_failures (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  at          TEXT NOT NULL,
+  -- 'worker' or 'editor': who saw it.
+  stage       TEXT NOT NULL,
+  -- refused | missing | timeout | blank | gaps | soft | no-service | passed-over
+  kind        TEXT NOT NULL,
+  http        INTEGER,
+  reason      TEXT,
+  lng         REAL,
+  lat         REAL,
+  zoom        REAL,
+  frame       TEXT,
+  county      TEXT,
+  parcel_pin  TEXT,
+  address     TEXT,
+  svc_id      INTEGER,
+  svc_url     TEXT,
+  svc_title   TEXT,
+  svc_year    INTEGER,
+  svc_flown   TEXT,
+  -- 'sharp' or 'recent': which county entry was showing.
+  picked      TEXT,
+  -- JSON: the ids of every service offered for the lot, best first.
+  services    TEXT,
+  job_id      TEXT,
+  map_id      TEXT,
+  who         TEXT,
+  -- The URL the Worker asked the county for, keys removed.
+  upstream    TEXT,
+  note        TEXT
+);
+CREATE INDEX IF NOT EXISTS county_photo_failures_at ON county_photo_failures(at);
+
 -- ----------------------------------------------------------------------
 -- LAWNS PUT OUT TO BE TRACED BY SOMEBODY ELSE.
 --

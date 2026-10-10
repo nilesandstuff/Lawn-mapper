@@ -601,6 +601,7 @@ function main() {
     let migrations = null;
     let numbering = '';
     let approved = NaN;
+    let countyFailed = NaN;
     if (dbId) {
       console.log('Applying the account schema…');
       schema = migrate();
@@ -631,6 +632,12 @@ function main() {
         approved = Number(parseQueryRows(wrangler(['d1', 'execute', DB_NAME, '--remote', '--json',
           "--command=SELECT COUNT(*) AS n FROM corpus WHERE status = 'approved' AND image_key IS NOT NULL AND frame IS NOT NULL"]))[0]?.n);
       } catch { approved = NaN; }
+      /* County photos that failed to load in the last week (county-failures.js). */
+      try {
+        const since = new Date(Date.now() - 7 * 86400000).toISOString();
+        countyFailed = Number(parseQueryRows(wrangler(['d1', 'execute', DB_NAME, '--remote', '--json',
+          `--command=SELECT COUNT(*) AS n FROM county_photo_failures WHERE at >= '${since}'`]))[0]?.n);
+      } catch { countyFailed = NaN; }
     }
 
     console.log(`\nwrangler.toml prepared:`);
@@ -667,6 +674,7 @@ function main() {
       appendFileSync(process.env.GITHUB_ENV, `DB_TROUBLE=${trouble}\n`);
       /* The corpus's size, and any reminder it has reached (tools/milestones.js). */
       appendFileSync(process.env.GITHUB_ENV, `MAPS_APPROVED=${Number.isFinite(approved) ? approved : ''}\n`);
+      appendFileSync(process.env.GITHUB_ENV, `COUNTY_FAILED_7D=${Number.isFinite(countyFailed) ? countyFailed : ''}\n`);
       appendFileSync(process.env.GITHUB_ENV, `MILESTONES=${milestonesReached(approved).map((m) => `${m.maps} maps: ${m.say}`).join(' | ')}\n`);
     }
   } catch (err) {

@@ -1025,6 +1025,62 @@ function gapRow(g) {
   return row;
 }
 
+/* ------------------------------------------- county photos that failed */
+/*
+ * One row per failure, newest first, with everything the Worker and the
+ * editor knew at the time (county-failures.js). The point is to chase ONE
+ * case from a phone: the row names the spot, the parcel, the service and
+ * flight asked, and what the county said.
+ */
+async function renderCountyFailures() {
+  const box = $('#county-failures');
+  const data = await get('/api/admin/county-failures?limit=100');
+  box.innerHTML = '';
+  if (data.unavailable) { box.append(el('p', 'empty', `Cannot read the log: ${data.unavailable}`)); return; }
+  const list = data.failures || [];
+  box.append(el('p', 'sub', `${n(data.lastWeek)} in the last 7 days; the latest ${n(list.length)} below.`));
+  if (!list.length) { box.append(el('p', 'empty', 'None recorded yet.')); return; }
+  const KIND = {
+    refused: 'the county refused the request', missing: 'no picture came back', timeout: 'no answer in 30 s',
+    blank: 'the tiles could not be stitched', gaps: 'the picture had gaps', soft: 'softer than Mapbox',
+    'no-service': 'no service by that id', 'passed-over': 'passed over for the next service',
+  };
+  for (const f of list) {
+    const row = el('div', 'person');
+    const who = el('div', 'who');
+    who.append(el('b', null, `${f.county || 'unknown county'} — ${KIND[f.kind] || f.kind}`));
+    who.append(el('span', 'pill', `${f.stage}${f.http ? ` · HTTP ${f.http}` : ''}`));
+    row.append(who);
+    const when = new Date(f.at);
+    const bits = [
+      Number.isNaN(when.getTime()) ? f.at : when.toLocaleString(),
+      f.lat != null && f.lng != null ? `${Number(f.lat).toFixed(6)}, ${Number(f.lng).toFixed(6)}${f.zoom != null ? ` z${Number(f.zoom).toFixed(2)}` : ''}` : null,
+      f.parcel_pin ? `parcel ${f.parcel_pin}` : null,
+      f.address ? f.address : null,
+      f.svc_id != null ? `service #${f.svc_id}${f.svc_title ? ` "${f.svc_title}"` : ''}${f.svc_year ? ` flown ${f.svc_flown || f.svc_year}` : ''}${f.picked ? ` (${f.picked})` : ''}` : null,
+      f.services?.length ? `offered: ${f.services.join(', ')}` : null,
+      f.job_id ? `job ${f.job_id.slice(0, 8)}` : null,
+      f.map_id ? `map ${f.map_id}` : null,
+      f.reason ? `said: ${f.reason}` : null,
+      f.note || null,
+    ].filter(Boolean);
+    row.append(el('div', 'meta', bits.join(' · ')));
+    if (f.svc_url) {
+      const a = document.createElement('a');
+      a.href = f.svc_url; a.textContent = 'the service'; a.target = '_blank'; a.rel = 'noopener';
+      const m = el('div', 'meta', 'Asked: ');
+      m.append(a);
+      if (f.upstream) {
+        const b = document.createElement('a');
+        b.href = f.upstream; b.textContent = ' · the exact request'; b.target = '_blank'; b.rel = 'noopener';
+        m.append(b);
+      }
+      row.append(m);
+    }
+    box.append(row);
+  }
+}
+
 /* --------------------------------------------------------------- people */
 
 let searchTimer = null;
@@ -1275,6 +1331,7 @@ async function renderLog() {
   renderReview().catch(() => { $('#review').textContent = 'Could not load the candidates.'; });
   renderCorpus().catch(() => { $('#corpus').textContent = 'Could not load the training data.'; });
   renderGaps().catch(() => { $('#gaps').textContent = 'Could not load the county list.'; });
+  renderCountyFailures().catch(() => { $('#county-failures').textContent = 'Could not load the failures.'; });
   renderCountySearch().catch(() => { $('#county-search').textContent = 'Could not load the county search.'; });
 
   /* Each sort is a fresh question to the server, for the reason in renderGaps. */
