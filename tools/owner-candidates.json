@@ -14,6 +14,34 @@
       },
       "suppliedAt": "2026-10-10",
       "source": "https://data-summitgis.opendata.arcgis.com/maps/fa9d55ede94a46f0944d371a9d8f96b4 (Summit County Tax Parcels); the catalogues had Summit County, Utah's"
+    },
+    {
+      "key": "mo-jackson",
+      "name": "Jackson County, MO",
+      "fips": "29095",
+      "service": "https://services3.arcgis.com/4LOAHoFXfea6Y3Et/arcgis/rest/services/Parcel_Viewer_Parcels/FeatureServer",
+      "layer": 0,
+      "layerName": "Parcels",
+      "fields": {
+        "pin": "parcel_id",
+        "address": null
+      },
+      "suppliedAt": "2026-10-10",
+      "source": "Jackson County, MO's own ArcGIS Online (jacoadmin, the ParcelViewer app's layer); the catalogues had Jackson County, Michigan's, which the verify run of 2026-10-10 dropped"
+    },
+    {
+      "key": "oh-montgomery",
+      "name": "Montgomery County, OH",
+      "fips": "39113",
+      "service": "https://services.arcgis.com/OYwao4bWJR5ergop/arcgis/rest/services/MCEO_TaxParcelQuery/FeatureServer",
+      "layer": 0,
+      "layerName": "Parcels_WMAS",
+      "fields": {
+        "pin": "TAXPINNO",
+        "address": "PARLOC"
+      },
+      "suppliedAt": "2026-10-10",
+      "source": "Montgomery County Engineer's Office (mceogis on ArcGIS Online); the catalogues had Montgomery County, New York's, which the verify run of 2026-10-10 dropped"
     }
   ]
 }
