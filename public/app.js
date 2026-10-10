@@ -6843,11 +6843,16 @@ function renderNaipPanel(served, message) {
 }
 
 /** The same URL the Worker builds, asked for through our own origin. */
+/* Bumped when the Worker changes how a county picture is made, so a browser
+   does not go on showing one it kept from before (2026-10-09, C48: a blank
+   picture cached a day hid the fix and sent the editor to a softer photo). */
+const COUNTY_PICTURE_V = '2';
+
 function imageryUrlFor(provider, frame) {
   return '/api/imagery?' + new URLSearchParams({
     lng: frame.lng, lat: frame.lat, zoom: frame.zoom, size: frame.size,
     height: frame.height || frame.size, provider,
-    ...(provider === 'county' && state.countySvc ? { svc: state.countySvc.id } : {}),
+    ...(provider === 'county' && state.countySvc ? { svc: state.countySvc.id, cv: COUNTY_PICTURE_V } : {}),
   });
 }
 

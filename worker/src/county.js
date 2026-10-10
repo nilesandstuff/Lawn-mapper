@@ -127,6 +127,10 @@ export async function countyServicesAt(env, lng, lat, n = 4, { probe = true, fet
   const looks = await Promise.all(list.map((svc) => measureService(svc, lng, lat, { fetcher })));
   const yes = list.map((svc, i) => ({ svc, ...looks[i] })).filter((l) => l.ok === true);
   for (const l of yes) l.svc.detail = l.detail === null ? null : Math.round(l.detail * 1000) / 1000;
+  /* An undated catalogue is dated by the layer it draws (layerYear). */
+  await Promise.all(yes.filter((l) => !l.svc.tiled && flightDate(l.svc.flown, l.svc.year) === null).map(async (l) => {
+    try { l.svc.year = layerYear(await serviceMeta(l.svc.url, fetcher)) ?? l.svc.year; } catch { /* still undated */ }
+  }));
   const soft = (l) => l.detail !== null && l.detail < SHARP_AT_12CM;
   /* Newest flight first; the same flight, the sharper; undated last. */
   const order = (a, b) => byFlightDate(a.svc, b.svc)
@@ -230,6 +234,22 @@ export function drawsTo(meta) {
     scales.push(Number(l?.maxScale) || 0);
   }
   return Math.max(0, ...scales.filter(Number.isFinite));
+}
+
+/**
+ * THE YEAR AN UNDATED CATALOGUE DRAWS (2026-10-09, C48): Prince William's
+ * "Imagery/AerialCatalog" names no year, so it sorted as undated and the
+ * state's soft Spring 2025 flight was offered beside it as "recent" -- while
+ * the layer it draws by default is called "2025". The newest year among the
+ * names of the layers drawn by default, or null.
+ */
+export function layerYear(meta) {
+  const years = [];
+  for (const l of meta?.layers || []) {
+    if (l?.defaultVisibility === false) continue;
+    for (const m of String(l?.name || '').matchAll(/(?<!\d)(19|20)\d\d(?!\d)/g)) years.push(Number(m[0]));
+  }
+  return years.length ? Math.max(...years) : null;
 }
 
 export async function countyServiceById(env, id, { fetcher = fetch } = {}) {

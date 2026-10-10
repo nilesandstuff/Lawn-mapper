@@ -432,8 +432,11 @@ async function handleImagery(url, env, origin) {
       // source's own word rather than asserting it for whatever gets added
       // next.
       'Content-Type': res.headers.get('Content-Type') || 'image/png',
-      // Imagery for a fixed frame and source never changes. Cache hard.
-      'Cache-Control': 'public, max-age=86400',
+      // Imagery for a fixed frame and source never changes. Cache hard --
+      // except a county photo, whose request can change under the same URL
+      // (2026-10-09, C48: a blank picture, kept a day by the browser, went
+      // on hiding the fix). An hour.
+      'Cache-Control': provider === 'county' ? 'public, max-age=3600' : 'public, max-age=86400',
       ...cors(origin),
     },
   });

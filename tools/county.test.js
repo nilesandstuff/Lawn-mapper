@@ -3,7 +3,7 @@
  * compare page's filters and projection (public/county.js).
  *   node tools/county.test.js
  */
-import { countyServiceAt, countyServiceById, MAX_SERVICE_SQ_DEG, drawsTo } from '../worker/src/county.js';
+import { countyServiceAt, countyServiceById, MAX_SERVICE_SQ_DEG, drawsTo, layerYear } from '../worker/src/county.js';
 import { decodePng, looksLikePhoto } from '../worker/src/png-probe.js';
 import { probeService, countyServicesAt, countyChoicesAt, oldestYear, SHARP_AT_12CM } from '../worker/src/county.js';
 import { stitch, encodePng, isMercatorCache } from '../worker/src/tile-mosaic.js';
@@ -28,10 +28,18 @@ function check(name, ok, detail = '') {
   const box = frameBbox3857(frame);
   const size = (u) => new URL(u).searchParams.get('size').split(',').map(Number);
   const [w0] = size(countyExportUrl({ url: 'https://x/MapServer', type: 'MapServer' }, frame));
-  const [w1, h1] = size(countyExportUrl({ url: 'https://x/MapServer', type: 'MapServer', maxScale: 300 }, frame));
-  const scale = ((box[2] - box[0]) / w1) * (96 / 0.0254);
-  check('a frame asked closer than that is asked at the limit instead, same shape', w1 < w0 && scale >= 300 && scale < 320 && Math.abs(w1 / h1 - 1274 / 868) < 0.01,
-    `${w0} -> ${w1}x${h1}, 1:${scale.toFixed(0)}`);
+  const u1 = countyExportUrl({ url: 'https://x/MapServer', type: 'MapServer', maxScale: 300 }, frame);
+  const [w1] = size(u1);
+  const dpi = Number(new URL(u1).searchParams.get('dpi'));
+  const scale = ((box[2] - box[0]) / w1) * (dpi / 0.0254);
+  check('a map service asked closer than that is asked at a higher dpi, the same pixels, inside its range',
+    w1 === w0 && dpi > 96 && scale >= 300 && scale < 330, `${w1}px at ${dpi} dpi, 1:${scale.toFixed(0)}`);
+  const [w3, h3] = size(countyExportUrl({ url: 'https://x/ImageServer', type: 'ImageServer', maxScale: 300 }, frame));
+  const s3 = ((box[2] - box[0]) / w3) * (96 / 0.0254);
+  check('an image service, which has no dpi, is asked for fewer pixels, same shape', w3 < w0 && s3 >= 300 && Math.abs(w3 / h3 - 1274 / 868) < 0.01, `${w3}x${h3}`);
+  check('an undated catalogue is dated by the layer it draws',
+    layerYear({ layers: [{ name: '2025', defaultVisibility: true }, { name: '2023', defaultVisibility: false }] }) === 2025
+    && layerYear({ layers: [{ name: 'Ortho', defaultVisibility: true }] }) === null);
   const [w2] = size(countyExportUrl({ url: 'https://x/MapServer', type: 'MapServer', maxScale: 50 }, frame));
   check('and one that draws closer is asked at the frame\'s own size', w2 === w0);
 }

@@ -416,15 +416,23 @@ export function countyBoxUrl(svc, bbox, w, h) {
     const k = max / Math.max(w, h);
     w = Math.max(1, Math.floor(w * k)); h = Math.max(1, Math.floor(h * k));
   }
-  /* No finer than the service draws (county.js drawsTo): ArcGIS's scale is
+  /* No closer than the service draws (county.js drawsTo): ArcGIS's scale is
      map units per pixel over a 96 dpi pixel, 0.0254/96 m. Asked any closer,
-     a layer outside its range is simply left out of the picture. */
+     a layer outside its range is simply left out of the picture. A map
+     service is asked at a higher dpi instead, as a portal on a phone does:
+     the same pixels, at a scale inside the range. An image service has no
+     dpi, so it is asked for fewer pixels and the readers resample. */
   const floor = Number(svc.maxScale) || 0;
+  let dpi = 0;
   if (floor > 0) {
     const scale = ((bbox[2] - bbox[0]) / w) * (96 / 0.0254);
     if (scale < floor) {
-      const k = scale / (floor * 1.02);
-      w = Math.max(1, Math.floor(w * k)); h = Math.max(1, Math.floor(h * k));
+      if (svc.type === 'ImageServer') {
+        const k = scale / (floor * 1.02);
+        w = Math.max(1, Math.floor(w * k)); h = Math.max(1, Math.floor(h * k));
+      } else {
+        dpi = Math.ceil((96 * floor * 1.02) / scale);
+      }
     }
   }
   const params = new URLSearchParams({
@@ -437,6 +445,7 @@ export function countyBoxUrl(svc, bbox, w, h) {
   }
   params.set('format', 'png32');
   params.set('transparent', 'true');
+  if (dpi) params.set('dpi', String(dpi));
   return `${svc.url}/export?${params}`;
 }
 
