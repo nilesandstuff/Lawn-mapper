@@ -1,6 +1,6 @@
 {
   "importedFrom": "openaddresses/openaddresses",
-  "importedAt": "2026-10-03",
+  "importedAt": "2026-10-10",
   "note": "Candidates only. Nothing here is claimed as working until verify-counties.js says so.",
   "listed": 1972,
   "noParcels": 833,
@@ -3285,7 +3285,7 @@
       "key": "ga-paulding",
       "name": "Paulding County, GA",
       "fips": "13223",
-      "service": "https://services8.arcgis.com/7YXQzPPGs9Uc4qKl/arcgis/rest/services/Paulding_Map_Auto_Updated_WFL1/FeatureServer",
+      "service": "https://services8.arcgis.com/7YXQzPPGs9Uc4qKl/arcgis/rest/services/Paulding_Map_Auto_Updated_WFL3/FeatureServer",
       "layer": 25,
       "layerName": null,
       "fields": {
@@ -6366,7 +6366,7 @@
       "key": "mn-wadena",
       "name": "Wadena County, MN",
       "fips": "27159",
-      "service": "https://gis.co.wadena.mn.us/arcgis/rest/services/Assessors/TaxParcels/MapServer",
+      "service": "https://gis.co.wadena.mn.us/arcgis/rest/services/LinkPublic/MapServer",
       "layer": 0,
       "layerName": null,
       "fields": {
@@ -10375,7 +10375,7 @@
       "layer": 2,
       "layerName": null,
       "fields": {
-        "pin": "CCGIS_DATA.GISOWNER.TaxParcels_Parcels.GIS_PIN",
+        "pin": "TAX_PARCEL_NUMBER",
         "address": null
       },
       "fallbacks": []

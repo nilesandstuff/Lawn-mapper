@@ -496,8 +496,12 @@
     "ok": true
   },
   "mo-jackson": {
-    "at": "2026-09-18",
-    "ok": true
+    "at": "2026-10-10",
+    "ok": false,
+    "why": "its parcels are not in Missouri (centred -84.42,42.25)",
+    "since": "2026-10-10",
+    "strikes": 1,
+    "final": true
   },
   "mo-st-louis": {
     "at": "2026-09-18",
@@ -632,16 +636,21 @@
     "ok": true
   },
   "oh-montgomery": {
-    "at": "2026-09-18",
-    "ok": true
+    "at": "2026-10-10",
+    "ok": false,
+    "why": "its parcels are not in Ohio (centred -74.42,42.91)",
+    "since": "2026-10-10",
+    "strikes": 1,
+    "final": true
   },
   "oh-stark": {
     "at": "2026-09-18",
     "ok": true
   },
   "oh-summit": {
-    "at": "2026-09-18",
-    "ok": true
+    "at": "2026-10-10",
+    "ok": true,
+    "acres": 19.651
   },
   "ok-oklahoma": {
     "at": "2026-09-18",
@@ -4089,9 +4098,9 @@
     "why": "layer metadata: Invalid URL"
   },
   "tx-henderson": {
-    "at": "2026-09-18",
+    "at": "2026-10-10",
     "ok": true,
-    "acres": 20.713
+    "acres": 2.922
   },
   "tx-howard": {
     "at": "2026-09-18",

@@ -26,8 +26,8 @@
  * tools/import-openaddresses.js. Editing this file directly will be
  * overwritten; change an importer or the verifier instead.
  *
- * 763 entries (26 statewide), of 1006 candidates.
- * Last run 2026-10-09: 53 verified of 60 tried.
+ * 761 entries (26 statewide), of 1006 candidates.
+ * Last run 2026-10-10: 2 verified of 4 tried.
  */
 
 const VERIFIED_COUNTIES = {
@@ -3754,15 +3754,6 @@ const VERIFIED_COUNTIES = {
     box: [-96.455,44.541,-95.356,44.937],
     checked: "2026-09-18",
   },
-  'mo-jackson': {
-    name: "Jackson County, MO",
-    fips: "29095",
-    service: "https://gis.mijackson.org/countygis/rest/services/RealEstate/RealEstateParcels/FeatureServer",
-    layer: 0,
-    fields: {"pin":"PIN","address":null},
-    box: [-84.719,42.07,-84.13,42.425],
-    checked: "2026-09-18",
-  },
   'mo-jasper': {
     name: "Jasper County, MO",
     fips: "29097",
@@ -4522,15 +4513,6 @@ const VERIFIED_COUNTIES = {
     box: [-84.437,39.874,-84.016,40.204],
     checked: "2026-10-03",
   },
-  'oh-montgomery': {
-    name: "Montgomery County, OH",
-    fips: "39113",
-    service: "https://services6.arcgis.com/EbVsqZ18sv1kVJ3k/ArcGIS/rest/services/Montgomery_County_Parcels/FeatureServer",
-    layer: 0,
-    fields: {"pin":"PRINT_KEY","address":"PROP_ADDR"},
-    box: [-74.764,42.772,-74.083,43.048],
-    checked: "2026-09-18",
-  },
   'oh-stark': {
     name: "Stark County, OH",
     fips: "39151",
@@ -4543,11 +4525,12 @@ const VERIFIED_COUNTIES = {
   'oh-summit': {
     name: "Summit County, OH",
     fips: "39153",
-    service: "https://maps.summitcounty.org/arcgis/rest/services/Maps/ParcelQuery/MapServer",
+    service: "https://scgis.summitoh.net/hosted/rest/services/parcels_web_GEODATA_Tax_Parcels/FeatureServer",
     layer: 0,
-    fields: {"pin":null,"address":null},
-    box: [-111.651,40.539,-109.993,41.253],
-    checked: "2026-09-18",
+    fields: {"pin":"parcelid","address":"siteaddress"},
+    fallbacks: [{"service":"https://maps.summitcounty.org/arcgis/rest/services/Maps/ParcelQuery/MapServer","layer":0,"fields":{"pin":null,"address":null}},{"service":"https://services3.arcgis.com/3Ukh5HzAdI6WZ3KP/arcgis/rest/services/TaxParcels_public/FeatureServer","layer":0,"fields":{"pin":"PARCELID","address":null}}],
+    box: [-81.689,40.906,-81.391,41.352],
+    checked: "2026-10-10",
   },
   'oh-union': {
     name: "Union County, OH",
@@ -5591,7 +5574,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"prop_id","address":null},
     box: [-96.811,13.916,-95.431,32.388],
-    checked: "2026-09-18",
+    checked: "2026-10-10",
   },
   'tx-howard': {
     name: "Howard County, TX",
