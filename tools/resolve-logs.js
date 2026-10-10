@@ -50,10 +50,17 @@ export function attribution({ actor = process.env.GITHUB_ACTOR || '', headMessag
   return actor || 'deploy';
 }
 
-/** The commit that brought a registry entry, for the audit trail. */
+/**
+ * The commit that brought a registry entry, for the audit trail -- and WHO
+ * is credited with the fix: that commit's author, not whoever happened to
+ * deploy it. The nightly search's entries land through the bot's commits
+ * and are its to answer for, whoever presses deploy afterwards.
+ */
 function registryCommit(key) {
-  const line = git(['log', '-1', '--format=%h %an %ad %s', '--date=short', `-S'${key}'`, '--', 'worker/src/counties-verified.js']);
-  return line || null;
+  const raw = git(['log', '-1', '--format=%h%x1f%an%x1f%ad%x1f%s%x1f%B', '--date=short', `-S'${key}'`, '--', 'worker/src/counties-verified.js']);
+  if (!raw) return null;
+  const [sha, author, date, subject, body] = raw.split('\x1f');
+  return { line: `${sha} ${author} ${date} ${subject}`, by: attribution({ actor: author, headMessage: body || '' }) };
 }
 
 async function fetchJson(u) {
@@ -61,18 +68,24 @@ async function fetchJson(u) {
 }
 
 async function resolveGaps(by, sha) {
+  /* The first pass (2026-10-10) credited the deployer for entries the bot's
+     commits had brought. Re-credit from the text, which names the commit;
+     idempotent, so it costs nothing on every later deploy. */
+  query(`UPDATE parcel_gaps SET resolved_by = 'nightly'
+          WHERE status = 'resolved' AND resolved_by <> 'nightly' AND resolution LIKE '%from commit % github-actions[bot] %'`);
   const open = query("SELECT county, state, COUNT(*) n FROM parcel_gaps WHERE status = 'open' GROUP BY county, state");
   let done = 0;
   for (const g of open) {
     const e = registryEntryFor(g.county, g.state);
     if (!e) continue;
     const brought = registryCommit(e.key);
+    const credit = brought?.by || by;
     const text = `${e.statewide ? 'statewide' : 'the county\'s'} parcel lines: ${e.service} (layer ${e.layer}), verified ${e.checked || '?'}`
-      + `${brought ? `; registry entry from commit ${brought}` : ''}; deployed ${sha}`;
-    query(`UPDATE parcel_gaps SET status = 'resolved', resolved_at = ${lit(new Date().toISOString())}, resolved_by = ${lit(by)},
+      + `${brought ? `; registry entry from commit ${brought.line}` : ''}; deployed ${sha}`;
+    query(`UPDATE parcel_gaps SET status = 'resolved', resolved_at = ${lit(new Date().toISOString())}, resolved_by = ${lit(credit)},
              resolution = ${lit(text.slice(0, 600))} WHERE county = ${lit(g.county)} AND state = ${lit(g.state)} AND status = 'open'`);
     done++;
-    console.log(`resolved: ${g.county}, ${g.state} -- ${text}`);
+    console.log(`resolved (${credit}): ${g.county}, ${g.state} -- ${text}`);
   }
   return { done, left: open.length - done };
 }
