@@ -304,7 +304,7 @@ console.log(`\nOpening ${BASE}\n`);
 await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
 // Wait for the map to be ready rather than guessing at a delay.
-await page.waitForFunction(() => window.__lm !== undefined, { timeout: 30000 });
+await page.waitForFunction(() => window.__lm !== undefined, null, { timeout: 30000 });
 await page.waitForTimeout(4000);
 
 check('map library loaded', await page.evaluate(() => typeof window.mapboxgl) === 'object');
@@ -322,7 +322,7 @@ await page.click('#address-form button[type=submit]');
  * whichever step it lands on rather than for a guess at how long it takes. */
 await page.waitForFunction(
   () => document.querySelector('#step-candidates')?.hidden === false
-    || document.querySelector('#step-confirm')?.hidden === false,
+    || document.querySelector('#step-confirm')?.hidden === false, null,
   { timeout: 60000 }
 ).catch(() => {});
 await page.waitForTimeout(400);
@@ -441,7 +441,7 @@ await page.click('[data-action=confirm]');
  */
 await page.waitForFunction(
   () => document.querySelector('#busy')?.hidden === true
-    && document.querySelector('#step-work')?.hidden === false,
+    && document.querySelector('#step-work')?.hidden === false, null,
   { timeout: 60000 }
 ).catch(() => {});
 await page.waitForTimeout(1200); // let the first tip settle after the load
@@ -461,7 +461,7 @@ console.log(`      hint:   "${await page.locator('#map-hint').textContent()}"`);
   const settled = await page.waitForFunction(() => {
     const im = window.__lmImagery?.();
     return im && im.layer && im.basemap.every((o) => o === 1) ? im : null;
-  }, { timeout: 25000 }).then((h) => h.jsonValue()).catch(() => null);
+  }, null, { timeout: 25000 }).then((h) => h.jsonValue()).catch(() => null);
   const im = settled || await page.evaluate(() => window.__lmImagery?.());
   check('the lot\'s photo is laid down as one picture, whichever source',
     Boolean(im?.layer), `provider=${im?.provider}, layer=${im?.layer}`);
@@ -778,7 +778,7 @@ console.log('\n--- accounts are optional ---');
   });
 
   await fresh.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 60000 });
-  await fresh.waitForFunction(() => window.__lmAccount !== undefined, { timeout: 30000 });
+  await fresh.waitForFunction(() => window.__lmAccount !== undefined, null, { timeout: 30000 });
 
   const on = await fresh.evaluate(() => window.__lmAccount().accountsOn);
   if (on) {
@@ -1360,14 +1360,16 @@ check('more than one imagery source is offered', sources.length > 1, sources.joi
  * feature broken when it was merely slow. The second attempt then passed
  * because the image was cached -- which is exactly how a flaky test is born.
  *
- * 25 s was not enough either (2026-10-04 and 2026-10-10, both passing on a
- * re-run): a cold USGS frame took 15-17 s in CI, and the Layers check just
- * above has already asked for the same frame and walked away, so this one
- * can queue behind it.
+ * AND THE TIMEOUT GOES IN THE THIRD ARGUMENT. waitForFunction(fn, arg,
+ * options): written as waitForFunction(fn, { timeout }) the timeout is
+ * handed to fn as its argument and ignored, and the page default (10 s,
+ * above) applies. Every such wait in this file was capped at 10 s that way
+ * -- this one failed at exactly 10 s on 2026-10-04 and twice on 2026-10-10,
+ * against a cold USGS frame that takes 15-18 s in CI.
  */
 const waitForPhoto = async (ms = 45000) => {
   try {
-    await page.waitForFunction(() => window.__lmImagery().layer === true, { timeout: ms });
+    await page.waitForFunction(() => window.__lmImagery().layer === true, null, { timeout: ms });
     return true;
   } catch { return false; }
 };
@@ -1419,7 +1421,7 @@ if (sources.includes('naip')) {
    * whatever the tips switch says. Put away here, or it sits over every click
    * below.
    */
-  await page.waitForFunction(() => window.__lmTour().stage === 'imagery', { timeout: 8000 }).catch(() => {});
+  await page.waitForFunction(() => window.__lmTour().stage === 'imagery', null, { timeout: 8000 }).catch(() => {});
   const imgTour = await page.evaluate(() => window.__lmTour());
   check('the first look at NAIP brings the line-up tour',
     imgTour.stage === 'imagery' && imgTour.visible && imgTour.total === 2, JSON.stringify(imgTour));
@@ -1608,7 +1610,7 @@ if (process.env.RUN_DETECT === 'true') {
 
   // A cold model can take minutes; the app polls and says so.
   await page.waitForFunction(
-    () => document.querySelector('#busy').hidden,
+    () => document.querySelector('#busy').hidden, null,
     { timeout: 240000 }
   ).catch(() => {});
 
@@ -3286,7 +3288,7 @@ console.log('\n--- developer mode ---');
 
   /* Unlocking is by URL, which is the only thing typeable on a phone. */
   await page.goto(`${BASE}#tinker`, { waitUntil: 'domcontentloaded', timeout: 60000 });
-  await page.waitForFunction(() => window.__lmDev !== undefined, { timeout: 30000 });
+  await page.waitForFunction(() => window.__lmDev !== undefined, null, { timeout: 30000 });
   await page.waitForTimeout(1500);
 
   const open = await page.evaluate(() => window.__lmDev());
@@ -3301,7 +3303,7 @@ console.log('\n--- developer mode ---');
 
   /* It is remembered, so the key is needed once rather than every visit. */
   await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 60000 });
-  await page.waitForFunction(() => window.__lmDev !== undefined, { timeout: 30000 });
+  await page.waitForFunction(() => window.__lmDev !== undefined, null, { timeout: 30000 });
   await page.waitForTimeout(1500);
   check('and it is remembered on the next visit without the key',
     (await page.evaluate(() => window.__lmDev())).on === true);
@@ -3496,7 +3498,7 @@ console.log('\n--- developer mode ---');
   await page.click('#dev-exit');
   await page.waitForTimeout(300);
   await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 60000 });
-  await page.waitForFunction(() => window.__lmDev !== undefined, { timeout: 30000 });
+  await page.waitForFunction(() => window.__lmDev !== undefined, null, { timeout: 30000 });
   await page.waitForTimeout(1500);
   const left = await page.evaluate(() => window.__lmDev());
   check('leaving developer mode is remembered too',
@@ -3518,13 +3520,13 @@ console.log('\n--- tinker: neighbours and merging ---');
     /* (the AI notice sheet is gone, 2026-09-29) */
   });
   await tp.goto(`${BASE}/#tinker`, { waitUntil: 'domcontentloaded', timeout: 60000 });
-  await tp.waitForFunction(() => window.__lmNeighbours !== undefined, { timeout: 30000 });
+  await tp.waitForFunction(() => window.__lmNeighbours !== undefined, null, { timeout: 30000 });
   await tp.waitForTimeout(3000);
   await tp.fill('#address', ADDRESS);
   await tp.click('#address-form button[type=submit]');
   await tp.waitForFunction(
     () => document.querySelector('#step-candidates')?.hidden === false
-      || document.querySelector('#step-confirm')?.hidden === false,
+      || document.querySelector('#step-confirm')?.hidden === false, null,
     { timeout: 60000 }
   ).catch(() => {});
   if (await tp.locator('#step-candidates').isVisible()) {
@@ -3535,7 +3537,7 @@ console.log('\n--- tinker: neighbours and merging ---');
   await tp.waitForFunction(() => {
     const n = window.__lmNeighbours();
     return n.count > 0 && n.buttons.some((b) => b.shown);
-  }, { timeout: 60000 }).catch(() => {});
+  }, null, { timeout: 60000 }).catch(() => {});
   await tp.waitForTimeout(1500);
   /*
    * WHOLE OR NOT AT ALL means a small neighbour on a zoomed-out phone gets no
@@ -3718,7 +3720,7 @@ console.log('\n--- tinker: neighbours and merging ---');
       sel.dispatchEvent(new Event('change', { bubbles: true }));
     }, id);
     await pick('naip');
-    await tp.waitForFunction(() => window.__lmTour().stage === 'imagery', { timeout: 30000 }).catch(() => {});
+    await tp.waitForFunction(() => window.__lmTour().stage === 'imagery', null, { timeout: 30000 }).catch(() => {});
     await tp.evaluate(() => { if (window.__lmTour().visible) document.querySelector('#tour').click(); });
     await pick('mapbox');
     await tp.waitForTimeout(400);
@@ -3732,7 +3734,7 @@ console.log('\n--- tinker: neighbours and merging ---');
     check('having looked at NAIP, Finish asks whether the photo lined up first',
       asked.shown && /NAIP/.test(asked.why), JSON.stringify(asked));
     await tp.evaluate(() => document.querySelector('#align-check-look')?.click());
-    await tp.waitForFunction(() => window.__lmTour().stage === 'imagery', { timeout: 30000 }).catch(() => {});
+    await tp.waitForFunction(() => window.__lmTour().stage === 'imagery', null, { timeout: 30000 }).catch(() => {});
     const back = await tp.evaluate(() => ({ provider: window.__lmImagery().provider, tour: window.__lmTour() }));
     check('"Check the alignment" goes back to NAIP and shows the line-up tour',
       back.provider === 'naip' && back.tour.stage === 'imagery' && back.tour.visible,
