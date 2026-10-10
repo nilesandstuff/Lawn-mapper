@@ -101,7 +101,7 @@
   "wv-statewide": {
     "at": "2026-10-10",
     "ok": true,
-    "acres": 13.725
+    "acres": 0.229
   },
   "ak-anchorage": {
     "at": "2026-09-19",
@@ -692,20 +692,24 @@
     "acres": 0.688
   },
   "or-lane": {
-    "at": "2026-09-18",
-    "ok": true
+    "at": "2026-10-10",
+    "ok": true,
+    "acres": 146.372
   },
   "or-marion": {
-    "at": "2026-09-18",
-    "ok": true
+    "at": "2026-10-10",
+    "ok": true,
+    "acres": 4.688
   },
   "or-multnomah": {
-    "at": "2026-09-18",
-    "ok": true
+    "at": "2026-10-10",
+    "ok": true,
+    "acres": 0.124
   },
   "or-umatilla": {
-    "at": "2026-09-18",
-    "ok": true
+    "at": "2026-10-10",
+    "ok": true,
+    "acres": 0.226
   },
   "pa-allegheny": {
     "at": "2026-09-18",
@@ -3571,72 +3575,72 @@
     "acres": 121.758
   },
   "or-gilliam": {
-    "at": "2026-09-18",
+    "at": "2026-10-10",
     "ok": true,
     "acres": 141.961
   },
   "or-grant": {
-    "at": "2026-09-18",
+    "at": "2026-10-10",
     "ok": true,
     "acres": 0.161
   },
   "or-harney": {
-    "at": "2026-09-18",
+    "at": "2026-10-10",
     "ok": true,
     "acres": 0.132
   },
   "or-hood-river": {
-    "at": "2026-09-18",
-    "ok": false,
-    "why": "layer metadata: Invalid URL"
+    "at": "2026-10-10",
+    "ok": true,
+    "acres": 0.042
   },
   "or-jackson": {
-    "at": "2026-09-18",
+    "at": "2026-10-10",
     "ok": true,
     "acres": 0.477
   },
   "or-klamath": {
-    "at": "2026-09-18",
+    "at": "2026-10-10",
     "ok": true,
     "acres": 0.284
   },
   "or-lake": {
-    "at": "2026-09-18",
+    "at": "2026-10-10",
     "ok": true,
     "acres": 72.39
   },
   "or-linn": {
-    "at": "2026-09-18",
+    "at": "2026-10-10",
     "ok": true,
     "acres": 121.738
   },
   "or-malheur": {
-    "at": "2026-09-18",
+    "at": "2026-10-10",
     "ok": true,
     "acres": 66.673
   },
   "or-morrow": {
-    "at": "2026-09-18",
-    "ok": false,
-    "why": "layer metadata: Invalid URL"
+    "at": "2026-10-10",
+    "ok": true,
+    "acres": 0.759
   },
   "or-polk": {
-    "at": "2026-09-18",
-    "ok": false,
-    "why": "extent is in wkid 2913, which this does not convert, and the extent query gave nothing"
+    "at": "2026-10-10",
+    "ok": true,
+    "acres": 0.642
   },
   "or-tillamook": {
-    "at": "2026-09-18",
+    "at": "2026-10-10",
     "ok": true,
-    "acres": 0.124
+    "acres": 145.962
   },
   "or-wasco": {
-    "at": "2026-09-18",
+    "at": "2026-10-10",
     "ok": true,
     "acres": 40.367
   },
   "or-washington": {
-    "at": "2026-09-18",
+    "at": "2026-10-10",
     "ok": true,
     "acres": 7.852
   },
@@ -5005,47 +5009,47 @@
     "acres": 40.626
   },
   "ks-johnson": {
-    "at": "2026-10-09",
+    "at": "2026-10-10",
     "ok": true,
     "acres": 0.211
   },
   "ks-leavenworth": {
-    "at": "2026-10-09",
+    "at": "2026-10-10",
     "ok": true,
     "acres": 2.529
   },
   "mi-washtenaw": {
-    "at": "2026-10-09",
+    "at": "2026-10-10",
     "ok": true,
     "acres": 0.05
   },
   "oh-athens": {
-    "at": "2026-10-09",
+    "at": "2026-10-10",
     "ok": true,
     "acres": 0.485
   },
   "oh-warren": {
-    "at": "2026-10-09",
+    "at": "2026-10-10",
     "ok": true,
     "acres": 62.727
   },
   "pa-delaware": {
-    "at": "2026-10-09",
+    "at": "2026-10-10",
     "ok": true,
     "acres": 0.629
   },
   "pa-lackawanna": {
-    "at": "2026-10-09",
+    "at": "2026-10-10",
     "ok": true,
     "acres": 2.007
   },
   "tn-knox": {
-    "at": "2026-10-09",
+    "at": "2026-10-10",
     "ok": true,
     "acres": 2.787
   },
   "tn-rutherford": {
-    "at": "2026-10-09",
+    "at": "2026-10-10",
     "ok": true,
     "acres": 0.164
   },
@@ -5085,7 +5089,7 @@
     "acres": 39.251
   },
   "pa-york": {
-    "at": "2026-10-09",
+    "at": "2026-10-10",
     "ok": true,
     "acres": 0.172
   }

@@ -26,8 +26,8 @@
  * tools/import-openaddresses.js. Editing this file directly will be
  * overwritten; change an importer or the verifier instead.
  *
- * 784 entries (26 statewide), of 1006 candidates.
- * Last run 2026-10-10: 167 verified of 200 tried.
+ * 787 entries (26 statewide), of 1006 candidates.
+ * Last run 2026-10-10: 54 verified of 60 tried.
  */
 
 const VERIFIED_COUNTIES = {
@@ -2770,7 +2770,7 @@ const VERIFIED_COUNTIES = {
     fields: {"pin":null,"address":null},
     fallbacks: [{"service":"https://services8.arcgis.com/x0gS7hstEoFA7X7l/arcgis/rest/services/STR_buffer_parcels_110425a/FeatureServer","layer":0,"fields":{"pin":null,"address":null}},{"service":"https://services8.arcgis.com/x0gS7hstEoFA7X7l/arcgis/rest/services/STR_buffer_parcels_031626/FeatureServer","layer":0,"fields":{"pin":null,"address":null}},{"service":"https://services8.arcgis.com/x0gS7hstEoFA7X7l/arcgis/rest/services/STR_buffer_parcels_052626_a/FeatureServer","layer":0,"fields":{"pin":null,"address":null}}],
     box: [-94.912,38.913,-94.704,38.998],
-    checked: "2026-10-09",
+    checked: "2026-10-10",
   },
   'ks-leavenworth': {
     name: "Leavenworth County, KS",
@@ -2779,7 +2779,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":null,"address":null},
     box: [-95.004,39.042,-94.898,39.206],
-    checked: "2026-10-09",
+    checked: "2026-10-10",
   },
   'ks-shawnee': {
     name: "Shawnee County, KS",
@@ -3345,7 +3345,7 @@ const VERIFIED_COUNTIES = {
     fields: {"pin":null,"address":null},
     fallbacks: [{"service":"https://services.arcgis.com/hVnyNvwbpFFPDV5j/arcgis/rest/services/Parcels_for_Washtenaw_County/FeatureServer","layer":0,"fields":{"pin":null,"address":null}},{"service":"https://services1.arcgis.com/4ezfu5dIwH83BUNL/arcgis/rest/services/Washtenaw_County_Parcel_Data/FeatureServer","layer":0,"fields":{"pin":null,"address":null}},{"service":"https://services1.arcgis.com/ZyuQAFDZ3HsELH0k/arcgis/rest/services/Millage_PARCELS_2025/FeatureServer","layer":83,"fields":{"pin":"PIN","address":null}}],
     box: [-84.135,42.068,-83.534,42.438],
-    checked: "2026-10-09",
+    checked: "2026-10-10",
   },
   'mi-wayne': {
     name: "Wayne County, MI",
@@ -4644,7 +4644,7 @@ const VERIFIED_COUNTIES = {
     fields: {"pin":"pid","address":"address"},
     fallbacks: [{"service":"https://services5.arcgis.com/t4xYDjfDFWC8eyBj/arcgis/rest/services/Athens_County_Parcels/FeatureServer","layer":0,"fields":{"pin":"PID","address":"ADDRESS"}},{"service":"https://services2.arcgis.com/2zE4x6y8cTIstSBE/arcgis/rest/services/Parcels_/FeatureServer","layer":0,"fields":{"pin":"pid","address":"address"}},{"service":"https://services2.arcgis.com/2zE4x6y8cTIstSBE/arcgis/rest/services/Surveys/FeatureServer","layer":0,"fields":{"pin":"pid","address":"address"}}],
     box: [-82.299,39.18,-81.721,39.557],
-    checked: "2026-10-09",
+    checked: "2026-10-10",
   },
   'oh-belmont': {
     name: "Belmont County, OH",
@@ -4746,7 +4746,7 @@ const VERIFIED_COUNTIES = {
     fields: {"pin":null,"address":"ADDRESS_LINE_1"},
     fallbacks: [{"service":"https://services5.arcgis.com/bRVJbF13Nwgn5oKx/arcgis/rest/services/County_TIF_Parcels_Child_View/FeatureServer","layer":1,"fields":{"pin":null,"address":"ADDRESS_LINE_1"}},{"service":"https://services7.arcgis.com/qWymSnMRrQR7OiJ3/arcgis/rest/services/AGO_Parcels/FeatureServer","layer":1,"fields":{"pin":null,"address":"ADDRESS_LINE_1"}},{"service":"https://services5.arcgis.com/bRVJbF13Nwgn5oKx/arcgis/rest/services/County_Parcel_Map/FeatureServer","layer":0,"fields":{"pin":"PIN","address":"LOCATION"}}],
     box: [-84.365,39.44,-84.267,39.571],
-    checked: "2026-10-09",
+    checked: "2026-10-10",
   },
   'ok-creek': {
     name: "Creek County, OK",
@@ -4881,7 +4881,7 @@ const VERIFIED_COUNTIES = {
     layer: 6,
     fields: {"pin":null,"address":null},
     box: [-120.652,45.063,-119.751,45.814],
-    checked: "2026-09-18",
+    checked: "2026-10-10",
   },
   'or-grant': {
     name: "Grant County, OR",
@@ -4890,7 +4890,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"MapTaxlot","address":null},
     box: [-119.687,43.939,-118.191,45.01],
-    checked: "2026-09-18",
+    checked: "2026-10-10",
   },
   'or-harney': {
     name: "Harney County, OR",
@@ -4899,7 +4899,16 @@ const VERIFIED_COUNTIES = {
     layer: 1,
     fields: {"pin":"MapTaxlot","address":null},
     box: [-119.952,41.976,-118.119,44.062],
-    checked: "2026-09-18",
+    checked: "2026-10-10",
+  },
+  'or-hood-river': {
+    name: "Hood River County, OR",
+    fips: "41027",
+    service: "https://services7.arcgis.com/xtfQPw7zwSRPkcfN/ArcGIS/rest/services/Tax_Lot_Parcels_Public/FeatureServer",
+    layer: 54,
+    fields: {"pin":"MAPTAXLOT","address":null},
+    box: [-121.927,45.253,-121.434,45.723],
+    checked: "2026-10-10",
   },
   'or-jackson': {
     name: "Jackson County, OR",
@@ -4908,7 +4917,7 @@ const VERIFIED_COUNTIES = {
     layer: 3,
     fields: {"pin":"MAPLOT","address":null},
     box: [-123.232,42.003,-122.282,42.997],
-    checked: "2026-09-18",
+    checked: "2026-10-10",
   },
   'or-klamath': {
     name: "Klamath County, OR",
@@ -4917,7 +4926,7 @@ const VERIFIED_COUNTIES = {
     layer: 1,
     fields: {"pin":"MAP_TAXLOT","address":null},
     box: [-122.337,41.979,-120.877,43.625],
-    checked: "2026-09-18",
+    checked: "2026-10-10",
   },
   'or-lake': {
     name: "Lake County, OR",
@@ -4926,7 +4935,7 @@ const VERIFIED_COUNTIES = {
     layer: 1,
     fields: {"pin":"MapTaxlot","address":null},
     box: [-121.362,41.987,-119.329,43.617],
-    checked: "2026-09-18",
+    checked: "2026-10-10",
   },
   'or-lane': {
     name: "Lane County, OR",
@@ -4934,8 +4943,9 @@ const VERIFIED_COUNTIES = {
     service: "https://lcgispubags.lanecountyor.gov/arcgis/rest/services/LaneCountyMaps/AddressParcel/MapServer",
     layer: 2,
     fields: {"pin":null,"address":null},
+    fallbacks: [{"service":"https://lcmaps.lanecounty.org/arcgis/rest/services/LaneCountyMaps/AddressParcel/MapServer","layer":2,"fields":{"pin":"MAPTAXLOT","address":null}}],
     box: [-124.185,43.394,-121.754,44.327],
-    checked: "2026-09-18",
+    checked: "2026-10-10",
   },
   'or-linn': {
     name: "Linn County, OR",
@@ -4944,7 +4954,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"PIN","address":null},
     box: [-123.272,44.191,-121.785,44.81],
-    checked: "2026-09-18",
+    checked: "2026-10-10",
   },
   'or-malheur': {
     name: "Malheur County, OR",
@@ -4953,7 +4963,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"MapTaxlot","address":null},
     box: [-118.315,41.967,-116.878,44.459],
-    checked: "2026-09-18",
+    checked: "2026-10-10",
   },
   'or-marion': {
     name: "Marion County, OR",
@@ -4962,7 +4972,16 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":null,"address":"SITUS"},
     box: [-123.18,44.683,-121.733,45.285],
-    checked: "2026-09-18",
+    checked: "2026-10-10",
+  },
+  'or-morrow': {
+    name: "Morrow County, OR",
+    fips: "41049",
+    service: "https://services6.arcgis.com/MQGnkVpUbcAxMorv/arcgis/rest/services/Taxlots_wo_Ownership/FeatureServer",
+    layer: 0,
+    fields: {"pin":"MapTaxlot","address":null},
+    box: [-120.01,44.988,-119.126,45.925],
+    checked: "2026-10-10",
   },
   'or-multnomah': {
     name: "Multnomah County, OR",
@@ -4970,8 +4989,18 @@ const VERIFIED_COUNTIES = {
     service: "https://services5.arcgis.com/x7DNZL1YqNQVNykA/arcgis/rest/services/Multnomah_County_Taxlot_Parcels/FeatureServer",
     layer: 0,
     fields: {"pin":null,"address":"SITUSADDR"},
+    fallbacks: [{"service":"https://www3.multco.us/gisagspublic/rest/services/DART/Taxlots_Orion_Public/MapServer","layer":0,"fields":{"pin":"MAPTAXLOT","address":null}}],
     box: [-122.93,45.432,-121.819,45.729],
-    checked: "2026-09-18",
+    checked: "2026-10-10",
+  },
+  'or-polk': {
+    name: "Polk County, OR",
+    fips: "41053",
+    service: "https://maps.co.polk.or.us/arcserv2/rest/services/Klop_core/Acct_35/FeatureServer",
+    layer: 0,
+    fields: {"pin":"TaxlotTemp_MapTaxlot","address":null},
+    box: [-123.726,44.719,-123.036,45.077],
+    checked: "2026-10-10",
   },
   'or-tillamook': {
     name: "Tillamook County, OR",
@@ -4980,7 +5009,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"MapTaxlot","address":null},
     box: [-124.064,45.035,-123.272,45.802],
-    checked: "2026-09-18",
+    checked: "2026-10-10",
   },
   'or-umatilla': {
     name: "Umatilla County, OR",
@@ -4989,7 +5018,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":null,"address":"SITUS_STRE"},
     box: [-119.451,44.976,-117.964,46.024],
-    checked: "2026-09-18",
+    checked: "2026-10-10",
   },
   'or-wasco': {
     name: "Wasco County, OR",
@@ -4998,7 +5027,7 @@ const VERIFIED_COUNTIES = {
     layer: 0,
     fields: {"pin":"MapTaxlot","address":null},
     box: [-121.806,44.821,-120.371,45.705],
-    checked: "2026-09-18",
+    checked: "2026-10-10",
   },
   'or-washington': {
     name: "Washington County, OR",
@@ -5007,7 +5036,7 @@ const VERIFIED_COUNTIES = {
     layer: 1,
     fields: {"pin":"TLNO","address":null},
     box: [-123.505,45.302,-122.735,45.794],
-    checked: "2026-09-18",
+    checked: "2026-10-10",
   },
   'or-wheeler': {
     name: "Wheeler County, OR",
@@ -5107,7 +5136,7 @@ const VERIFIED_COUNTIES = {
     fields: {"pin":"POLY_PER_PARCEL","address":"LOC_ADDRESS"},
     fallbacks: [{"service":"https://gis.delcopa.gov/arcgis/rest/services/Parcels/Parcels_Public_Access/FeatureServer","layer":0,"fields":{"pin":"PIN","address":null}},{"service":"https://services3.arcgis.com/2moS4uuhIzUP5dNH/arcgis/rest/services/ParcelsOnline/FeatureServer","layer":0,"fields":{"pin":"PIN","address":"Address"}},{"service":"https://services2.arcgis.com/okXm0pb6aWH6XOGI/arcgis/rest/services/Mohawk_Water_Supply_Class_by_Parcel/FeatureServer","layer":0,"fields":{"pin":"ParcelID","address":null}}],
     box: [-76.137,39.707,-75.354,40.253],
-    checked: "2026-10-09",
+    checked: "2026-10-10",
   },
   'pa-fayette': {
     name: "Fayette County, PA",
@@ -5153,7 +5182,7 @@ const VERIFIED_COUNTIES = {
     fields: {"pin":"PIN","address":"LOCATION"},
     fallbacks: [{"service":"https://services.arcgis.com/0POQ0PQT9pHLMnL2/arcgis/rest/services/Benton_Parcels/FeatureServer","layer":0,"fields":{"pin":"PIN","address":"LOCATION"}},{"service":"https://services7.arcgis.com/c8axx5qqzVWAC8iN/arcgis/rest/services/Vacant_Parcels/FeatureServer","layer":5,"fields":{"pin":"PIN","address":"ADDR1"}}],
     box: [-75.834,41.161,-75.434,41.646],
-    checked: "2026-10-09",
+    checked: "2026-10-10",
   },
   'pa-montgomery': {
     name: "Montgomery County, PA",
@@ -5208,7 +5237,7 @@ const VERIFIED_COUNTIES = {
     fields: {"pin":"PARCEL","address":"MAIL_ADDR_"},
     fallbacks: [{"service":"https://services3.arcgis.com/QyE2WGV7PbLkjLWW/arcgis/rest/services/Parcels/FeatureServer","layer":2,"fields":{"pin":"PARCEL","address":"MAIL_ADDR_FULL"}},{"service":"https://services3.arcgis.com/QyE2WGV7PbLkjLWW/arcgis/rest/services/Existing_Land_Use_Dover_Borough/FeatureServer","layer":3,"fields":{"pin":"PARCEL","address":"MAIL_ADDR_FULL"}},{"service":"https://services1.arcgis.com/CNfeg2bqPqhTN34y/arcgis/rest/services/Manhattan_Lab/FeatureServer","layer":3,"fields":{"pin":"PARCELADDR","address":"PARCELADDR"}}],
     box: [-76.764,39.942,-76.699,39.993],
-    checked: "2026-10-09",
+    checked: "2026-10-10",
   },
   'ri-statewide': {
     name: "Rhode Island (found)",
@@ -5688,7 +5717,7 @@ const VERIFIED_COUNTIES = {
     fields: {"pin":"PARCELID","address":null},
     fallbacks: [{"service":"https://services2.arcgis.com/Ju5vg9anco2Yv2af/arcgis/rest/services/KnoxCADWebService/FeatureServer","layer":0,"fields":{"pin":"prop_id","address":"situs_num"}}],
     box: [-84.15,35.843,-83.765,36.067],
-    checked: "2026-10-09",
+    checked: "2026-10-10",
   },
   'tn-maury': {
     name: "Maury County, TN",
@@ -5707,7 +5736,7 @@ const VERIFIED_COUNTIES = {
     fields: {"pin":"PARCEL","address":"STREETADDRESS"},
     fallbacks: [{"service":"https://services5.arcgis.com/A5C0MR9xfkxVRwat/arcgis/rest/services/Parcels_CompleteFields/FeatureServer","layer":0,"fields":{"pin":"PARCEL","address":"STREETADDRESS"}},{"service":"https://services5.arcgis.com/A5C0MR9xfkxVRwat/arcgis/rest/services/Parcel_Data/FeatureServer","layer":1,"fields":{"pin":"ParcelID","address":"MailingAddress"}},{"service":"https://services1.arcgis.com/aT1T0pU1ZdpuDk1t/arcgis/rest/services/Project2_PublicHousingRutherfordCounty_WFL1/FeatureServer","layer":6,"fields":{"pin":"ParcelID","address":null}}],
     box: [-86.704,35.616,-86.138,36.101],
-    checked: "2026-10-09",
+    checked: "2026-10-10",
   },
   'tn-statewide': {
     name: "Tennessee (found)",
