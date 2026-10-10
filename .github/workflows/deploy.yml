@@ -35,6 +35,10 @@ jobs:
           exit 1
 
       - uses: actions/checkout@v5
+        with:
+          # Enough history for tools/resolve-logs.js to name the commit that
+          # brought a registry entry (git log -S over counties-verified.js).
+          fetch-depth: 200
 
       - uses: actions/setup-node@v5
         with:
@@ -381,6 +385,15 @@ jobs:
             echo "ALPHA_WARM=server unchanged, not redeployed, no warm press" >> "$GITHUB_ENV"
           fi
 
+      # Every open entry on the two logs, checked again against what was
+      # just deployed, and marked resolved with what fixed it and who
+      # (tools/resolve-logs.js). Never fails the deploy.
+      - name: Re-check the logged failures
+        if: ${{ vars.CUSTOM_DOMAIN != '' }}
+        env:
+          SITE: https://${{ vars.CUSTOM_DOMAIN }}
+        run: node tools/resolve-logs.js || echo "LOGS_RESOLVED=the re-check did not run; see this step" >> "$GITHUB_ENV"
+
       - name: Where it went
         run: |
           echo "Deployed."
@@ -422,6 +435,7 @@ jobs:
           if [ -n "$MAPS_APPROVED" ]; then echo "Approved maps in the corpus: $MAPS_APPROVED"; fi
           # County photos that failed to load (the admin console lists each one).
           if [ -n "$COUNTY_FAILED_7D" ]; then echo "County photo failures in the last 7 days: $COUNTY_FAILED_7D (each one is on the admin console)"; fi
+          if [ -n "$LOGS_RESOLVED" ]; then echo "Logged failures re-checked: $LOGS_RESOLVED"; fi
           # The locked training set (tools/locked-lawns.json, workflow 31).
           LOCKED=$(node -e "try{const l=require('./tools/locked-lawns.json');console.log(l.ids.length+' '+String(l.lockedAt).slice(0,10))}catch{}" 2>/dev/null || true)
           if [ -n "$LOCKED" ]; then

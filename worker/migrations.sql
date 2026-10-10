@@ -289,3 +289,13 @@ ALTER TABLE corpus ADD COLUMN inferred_doubt INTEGER;
 
 -- WHICH PARCEL A QUEUED LAWN IS (see the column in schema.sql).
 ALTER TABLE lawn_jobs ADD COLUMN parcel_pin TEXT;
+
+-- OPEN OR RESOLVED, on both logs (see the columns in schema.sql).
+ALTER TABLE parcel_gaps ADD COLUMN status TEXT NOT NULL DEFAULT 'open';
+ALTER TABLE parcel_gaps ADD COLUMN resolved_at TEXT;
+ALTER TABLE parcel_gaps ADD COLUMN resolved_by TEXT;
+ALTER TABLE parcel_gaps ADD COLUMN resolution TEXT;
+ALTER TABLE county_photo_failures ADD COLUMN status TEXT NOT NULL DEFAULT 'open';
+ALTER TABLE county_photo_failures ADD COLUMN resolved_at TEXT;
+ALTER TABLE county_photo_failures ADD COLUMN resolved_by TEXT;
+ALTER TABLE county_photo_failures ADD COLUMN resolution TEXT;

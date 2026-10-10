@@ -867,11 +867,19 @@ async function renderGaps() {
         + 'server, or could be points landing on roads and right-of-way.';
       top.append(pill);
     }
+    top.append(el('span', p.status === 'resolved' ? 'pill free' : 'pill warn',
+      p.status === 'resolved' ? `resolved by ${p.resolvedBy || '?'}` : 'open'));
     row.append(top);
 
     row.append(el('div', 'meta', p.lastAt
       ? `last asked ${new Date(p.lastAt).toLocaleDateString()}`
       : ''));
+    if (p.status === 'resolved') row.style.opacity = '0.7';
+    row.append(statusControl({
+      status: p.status, resolution: p.resolution, resolvedAt: p.resolvedAt,
+      post: (status, note) => post('/api/admin/parcel-gap-status', { county: p.county, state: p.state, status, note }),
+      rerender: renderGaps,
+    }));
     box.append(row);
   }
 }
@@ -1025,6 +1033,33 @@ function gapRow(g) {
   return row;
 }
 
+/*
+ * OPEN OR RESOLVED, on a logged failure or a parcel gap (owner, 2026-10-10:
+ * "which issues are current, and whether the nightly check makes mistakes
+ * when fixing"). The resolution text says what fixed it and who; the button
+ * marks one by hand, and reopening keeps the old text to audit against.
+ */
+function statusControl({ status, resolution, resolvedAt, post: send, rerender }) {
+  const box = el('div', 'meta');
+  if (resolution) {
+    box.append(el('p', null, `${status === 'resolved' ? 'Fixed' : 'Note'}${resolvedAt ? ` ${new Date(resolvedAt).toLocaleString()}` : ''}: ${resolution}`));
+  }
+  const btn = document.createElement('button');
+  btn.textContent = status === 'resolved' ? 'Reopen' : 'Mark resolved';
+  btn.addEventListener('click', async () => {
+    const next = status === 'resolved' ? 'open' : 'resolved';
+    const note = window.prompt(next === 'resolved' ? 'What fixed it?' : 'Why is it open again?', '');
+    if (note === null) return;
+    btn.disabled = true;
+    try {
+      await send(next, next === 'open' && resolution ? `REOPENED by owner: ${note} -- was: ${resolution}` : note);
+      await rerender();
+    } catch (e) { btn.disabled = false; window.alert(`Could not change it: ${e.message}`); }
+  });
+  box.append(btn);
+  return box;
+}
+
 /* ------------------------------------------- county photos that failed */
 /*
  * One row per failure, newest first, with everything the Worker and the
@@ -1038,7 +1073,7 @@ async function renderCountyFailures() {
   box.innerHTML = '';
   if (data.unavailable) { box.append(el('p', 'empty', `Cannot read the log: ${data.unavailable}`)); return; }
   const list = data.failures || [];
-  box.append(el('p', 'sub', `${n(data.lastWeek)} in the last 7 days; the latest ${n(list.length)} below.`));
+  box.append(el('p', 'sub', `${n(data.lastWeek)} in the last 7 days, ${n(data.open)} still open; the latest ${n(list.length)} below.`));
   if (!list.length) { box.append(el('p', 'empty', 'None recorded yet.')); return; }
   const KIND = {
     refused: 'the county refused the request', missing: 'no picture came back', timeout: 'no answer in 30 s',
@@ -1050,7 +1085,14 @@ async function renderCountyFailures() {
     const who = el('div', 'who');
     who.append(el('b', null, `${f.county || 'unknown county'} — ${KIND[f.kind] || f.kind}`));
     who.append(el('span', 'pill', `${f.stage}${f.http ? ` · HTTP ${f.http}` : ''}`));
+    who.append(el('span', f.status === 'resolved' ? 'pill free' : 'pill warn', f.status === 'resolved' ? `resolved by ${f.resolved_by || '?'}` : 'open'));
     row.append(who);
+    if (f.status === 'resolved') row.style.opacity = '0.7';
+    row.append(statusControl({
+      status: f.status, resolution: f.resolution, resolvedAt: f.resolved_at,
+      post: (status, note) => post('/api/admin/county-failure-status', { id: f.id, status, note }),
+      rerender: renderCountyFailures,
+    }));
     const when = new Date(f.at);
     const bits = [
       Number.isNaN(when.getTime()) ? f.at : when.toLocaleString(),

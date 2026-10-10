@@ -543,6 +543,15 @@ CREATE TABLE IF NOT EXISTS parcel_gaps (
   covered   INTEGER NOT NULL DEFAULT 0,
   first_at  TEXT NOT NULL,
   last_at   TEXT NOT NULL,
+  -- OPEN OR RESOLVED (owner, 2026-10-10: "which issues are current, and
+  -- whether the nightly check makes mistakes when fixing"). 'open' until
+  -- something fixes it: the deploy re-checks every open row against the
+  -- registry and the live site (tools/resolve-logs.js) and writes who fixed
+  -- it and what the fix was; the console can mark one by hand.
+  status    TEXT NOT NULL DEFAULT 'open',
+  resolved_at TEXT,
+  resolved_by TEXT,
+  resolution  TEXT,
   PRIMARY KEY (county, state, who)
 );
 CREATE INDEX IF NOT EXISTS parcel_gaps_place ON parcel_gaps(state, county);
@@ -554,7 +563,7 @@ CREATE INDEX IF NOT EXISTS parcel_gaps_place ON parcel_gaps(state, county);
 -- gaps, one softer than Mapbox, a service passed over). Everything needed to
 -- debug the one case: where, which parcel, which service and flight, what
 -- was asked of the county and what it said. Read on the admin console.
--- A new table, so CREATE TABLE IF NOT EXISTS is enough -- no migration.
+-- Shipped 2026-10-10; the status columns came the same day by migration.
 CREATE TABLE IF NOT EXISTS county_photo_failures (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   at          TEXT NOT NULL,
@@ -585,7 +594,16 @@ CREATE TABLE IF NOT EXISTS county_photo_failures (
   who         TEXT,
   -- The URL the Worker asked the county for, keys removed.
   upstream    TEXT,
-  note        TEXT
+  note        TEXT,
+  -- OPEN OR RESOLVED (owner, 2026-10-10: "which issues are current, and
+  -- whether the nightly check makes mistakes when fixing"). 'open' until
+  -- something fixes it: the deploy re-checks every open row against the
+  -- registry and the live site (tools/resolve-logs.js) and writes who fixed
+  -- it and what the fix was; the console can mark one by hand.
+  status      TEXT NOT NULL DEFAULT 'open',
+  resolved_at TEXT,
+  resolved_by TEXT,
+  resolution  TEXT
 );
 CREATE INDEX IF NOT EXISTS county_photo_failures_at ON county_photo_failures(at);
 

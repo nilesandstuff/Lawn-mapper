@@ -65,7 +65,12 @@ export async function recordParcelGap(env, { county, state, who, covered = false
        ON CONFLICT(county, state, who) DO UPDATE SET
          hits = hits + 1,
          covered = MAX(covered, ?4),
-         last_at = ?5`
+         last_at = ?5,
+         -- Asked again after being resolved: it is open again, and the
+         -- old resolution stays readable so the wrong fix can be audited.
+         resolution = CASE WHEN status = 'resolved'
+           THEN 'REOPENED ' || ?5 || ' -- asked again after: ' || COALESCE(resolution, '') ELSE resolution END,
+         status = 'open'`
     ).bind(place, region, id, covered ? 1 : 0, now).run();
     return true;
   } catch {
@@ -107,7 +112,13 @@ export async function parcelGaps(env, { sort = 'hits', limit = 50 } = {}) {
               /* One row per person already, so counting rows counts people. */
               COUNT(*) people,
               MAX(covered) configured,
-              MAX(last_at) last_at
+              MAX(last_at) last_at,
+              MIN(CASE WHEN status = 'resolved' THEN 1 ELSE 0 END) resolved,
+              MAX(resolved_at) resolved_at,
+              MAX(resolved_by) resolved_by,
+              -- An open row's text first: a place asked again after being
+              -- resolved says so, whatever the other people's rows still say.
+              COALESCE(MAX(CASE WHEN status = 'open' THEN resolution END), MAX(resolution)) resolution
          FROM parcel_gaps
         GROUP BY county, state
         ORDER BY ${GAP_SORTS[order]}
@@ -130,9 +141,32 @@ export async function parcelGaps(env, { sort = 'hits', limit = 50 } = {}) {
          */
         configured: Boolean(r.configured),
         lastAt: r.last_at,
+        status: r.resolved ? 'resolved' : 'open',
+        resolvedAt: r.resolved_at || null,
+        resolvedBy: r.resolved_by || null,
+        resolution: r.resolution || null,
       })),
     };
   } catch (e) {
     return { places: [], unavailable: String(e?.message || e).slice(0, 200) };
   }
+}
+
+/**
+ * Mark every row for one place open or resolved, with who and why. The
+ * deploy does this when the registry has come to serve the county
+ * (tools/resolve-logs.js); the console does it by hand.
+ */
+export async function setGapStatus(env, { county, state, status, by, resolution }) {
+  if (!env?.DB) return false;
+  const place = text(county, 80), region = text(state, 40);
+  if (!place || !region || !['open', 'resolved'].includes(status)) return false;
+  try {
+    const r = await env.DB.prepare(
+      `UPDATE parcel_gaps SET status = ?3, resolved_at = ?4, resolved_by = ?5, resolution = ?6
+        WHERE county = ?1 AND state = ?2`
+    ).bind(place, region, status, status === 'resolved' ? new Date().toISOString() : null,
+      status === 'resolved' ? text(by, 40) : null, text(resolution, 600)).run();
+    return (r.meta?.changes ?? 0) > 0;
+  } catch { return false; }
 }

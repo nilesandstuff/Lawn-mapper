@@ -78,6 +78,7 @@ export async function countyFailures(env, { limit = 100 } = {}) {
     const week = await env.DB.prepare(
       'SELECT COUNT(*) n FROM county_photo_failures WHERE at >= ?1'
     ).bind(since).first();
+    const open = await env.DB.prepare("SELECT COUNT(*) n FROM county_photo_failures WHERE status = 'open'").first();
     return {
       failures: (rows.results || []).map((r) => ({
         ...r,
@@ -85,8 +86,21 @@ export async function countyFailures(env, { limit = 100 } = {}) {
         frame: (() => { try { return r.frame ? JSON.parse(r.frame) : null; } catch { return null; } })(),
       })),
       lastWeek: Number(week?.n || 0),
+      open: Number(open?.n || 0),
     };
   } catch (e) {
     return { failures: [], lastWeek: 0, unavailable: String(e?.message || e).slice(0, 120) };
   }
+}
+
+/** One failure marked open or resolved, with who and why. */
+export async function setFailureStatus(env, { id, status, by, resolution }) {
+  if (!env?.DB || !Number.isFinite(Number(id)) || !['open', 'resolved'].includes(status)) return false;
+  try {
+    const r = await env.DB.prepare(
+      'UPDATE county_photo_failures SET status = ?2, resolved_at = ?3, resolved_by = ?4, resolution = ?5 WHERE id = ?1'
+    ).bind(Number(id), status, status === 'resolved' ? new Date().toISOString() : null,
+      status === 'resolved' ? text(by, 40) : null, text(resolution, 600)).run();
+    return (r.meta?.changes ?? 0) > 0;
+  } catch { return false; }
 }

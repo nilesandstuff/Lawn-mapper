@@ -1169,6 +1169,31 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
       (await recordCountyFailure(env, { kind: 'whatever', frame: {} })) === true
         && (await ask(env, ownerToken, 'county-failures')).body.failures[0].kind === 'missing');
     check('and a database that is not there is not an error', (await recordCountyFailure({}, { kind: 'gaps' })) === false);
+
+    /* OPEN OR RESOLVED (owner, 2026-10-10): marked with who and why, and
+       reopened without losing the old answer. */
+    const first = (await ask(env, ownerToken, 'county-failures')).body.failures.at(-1);
+    check('a new failure starts open', first.status === 'open' && !first.resolution, JSON.stringify([first.status, first.resolution]));
+    const marked = await ask(env, ownerToken, 'county-failure-status', { method: 'POST', body: { id: first.id, status: 'resolved', note: 'the county fixed its server' } });
+    const after = (await ask(env, ownerToken, 'county-failures')).body;
+    const row = after.failures.find((f) => f.id === first.id);
+    check('the owner can mark one resolved, with what fixed it',
+      marked.status === 200 && row.status === 'resolved' && row.resolved_by === 'owner' && row.resolution === 'the county fixed its server' && row.resolved_at,
+      JSON.stringify([marked.status, row.status, row.resolved_by, row.resolution]));
+    check('  and the count of open ones drops', after.open === after.failures.length - 1, `${after.open} open of ${after.failures.length}`);
+    const { registryEntryFor, attribution } = await import('./resolve-logs.js');
+    const reg = {
+      'wv-grant': { name: 'Grant County, WV', service: 'https://x/G/FeatureServer', layer: 2, checked: '2026-09-19' },
+      'wv-statewide': { statewide: true, state: 'WV', name: 'West Virginia', service: 'https://x/WV', layer: 0 },
+      'mo-jackson': { name: 'Jackson County, MO', service: 'https://x/J', layer: 0 },
+    };
+    check('the deploy credits a parcel gap to the county\'s own entry before a statewide one',
+      registryEntryFor('Grant County', 'WV', reg)?.key === 'wv-grant' && registryEntryFor('Mineral County', 'WV', reg)?.key === 'wv-statewide'
+        && registryEntryFor('Jackson County', 'MI', reg) === null,
+      JSON.stringify([registryEntryFor('Grant County', 'WV', reg)?.key, registryEntryFor('Mineral County', 'WV', reg)?.key]));
+    check('and credits the nightly search, Claude, or the person who deployed',
+      attribution({ actor: 'github-actions[bot]' }) === 'nightly' && attribution({ actor: 'nilesandstuff', headMessage: 'x\n\nClaude-Session: https://claude.ai/code/s' }) === 'claude'
+        && attribution({ actor: 'nilesandstuff', headMessage: 'Verify another slice' }) === 'nilesandstuff');
   }
 
   /* One county, one person, asked four times. */
@@ -1182,6 +1207,20 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
 
   const byHits = (await ask(env, ownerToken, 'parcel-gaps?sort=hits')).body;
   const byPeople = (await ask(env, ownerToken, 'parcel-gaps?sort=people')).body;
+
+  {
+    const { setGapStatus } = await import('../worker/src/gaps.js');
+    check('a parcel gap starts open', byHits.places.every((p) => p.status === 'open'));
+    const ok = await setGapStatus(env, { county: 'Barry County', state: 'MI', status: 'resolved', by: 'nightly', resolution: 'parcel lines: https://x/Barry (layer 0)' });
+    const places = (await ask(env, ownerToken, 'parcel-gaps?sort=hits')).body.places;
+    const barryNow = places.find((p) => p.county === 'Barry County');
+    check('the deploy can mark a place resolved, for every person who asked',
+      ok && barryNow.status === 'resolved' && barryNow.resolvedBy === 'nightly' && /Barry/.test(barryNow.resolution), JSON.stringify(barryNow));
+    await recordParcelGap(env, { county: 'Barry County', state: 'MI', who: 'bob' });
+    const barryAgain = (await ask(env, ownerToken, 'parcel-gaps?sort=hits')).body.places.find((p) => p.county === 'Barry County');
+    check('asked again after being resolved, it is open again and says what it was resolved with',
+      barryAgain.status === 'open' && /REOPENED .* asked again after: parcel lines: https:\/\/x\/Barry/.test(barryAgain.resolution), JSON.stringify(barryAgain.resolution));
+  }
 
   const kzoo = byHits.places.find((p) => p.county === 'Kalamazoo County');
   const barry = byHits.places.find((p) => p.county === 'Barry County');

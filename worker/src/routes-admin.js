@@ -2161,6 +2161,20 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
     return json(await countyFailures(env, { limit: url.searchParams.get('limit') || 100 }), 200, origin);
   }
 
+  /* The owner marking a logged failure or a parcel gap by hand. */
+  if (path === 'county-failure-status' && request.method === 'POST') {
+    const body = await request.json().catch(() => ({}));
+    const { setFailureStatus } = await import('./county-failures.js');
+    const ok = await setFailureStatus(env, { id: body?.id, status: body?.status, by: 'owner', resolution: body?.note || null });
+    return json({ ok }, ok ? 200 : 400, origin);
+  }
+  if (path === 'parcel-gap-status' && request.method === 'POST') {
+    const body = await request.json().catch(() => ({}));
+    const { setGapStatus } = await import('./gaps.js');
+    const ok = await setGapStatus(env, { county: body?.county, state: body?.state, status: body?.status, by: 'owner', resolution: body?.note || null });
+    return json({ ok }, ok ? 200 : 400, origin);
+  }
+
   if (path === 'parcel-gaps') {
     return json(await parcelGaps(env, {
       sort: url.searchParams.get('sort') || 'hits',
