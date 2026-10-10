@@ -258,8 +258,18 @@ const by = (ab) => states.find((s) => s.ab === ab);
 
 /* ------------------------------------------- two catalogues, joined and sliced */
 {
-  const { candidatePool } = await import('./candidates.js');
+  const { candidatePool, inState } = await import('./candidates.js');
   const pool = candidatePool();
+
+  /* The owner's layer goes first and the catalogues ride behind (2026-10-10: Summit, Ohio had Summit, Utah's). */
+  const summit = pool.candidates.find((c) => c.key === 'oh-summit');
+  check('an owner-supplied layer is the endpoint, the catalogues\' behind it',
+    summit?.service.includes('scgis.summitoh.net') && summit.fields.pin === 'parcelid'
+    && summit.fallbacks.some((f) => f.service.includes('maps.summitcounty.org')), JSON.stringify(summit && { s: summit.service, f: summit.fallbacks.map((x) => x.service) }));
+  const ohio = [-84.8, 38.5, -80.7, 41.8];
+  check('a layer in its state passes, a same-named county elsewhere does not, and a stray far feature does not fail a real one',
+    inState([-81.69, 40.91, -81.39, 41.35], ohio) && !inState([-111.65, 40.54, -109.99, 41.25], ohio)
+    && inState([-96.81, 13.92, -95.43, 32.39], [-106.6, 25.9, -93.6, 36.5]));
 
   /*
    * NEITHER CATALOGUE IS A SUPERSET, which is the entire argument for carrying

@@ -1,0 +1,19 @@
+{
+  "note": "Parcel layers the owner found and supplied, by county. They go before every catalogue's endpoint for the same county, which rides along behind as a fallback. Nothing here is coverage until tools/verify-counties.js has proved it; edit this file by hand, nothing regenerates it.",
+  "candidates": [
+    {
+      "key": "oh-summit",
+      "name": "Summit County, OH",
+      "fips": "39153",
+      "service": "https://scgis.summitoh.net/hosted/rest/services/parcels_web_GEODATA_Tax_Parcels/FeatureServer",
+      "layer": 0,
+      "layerName": "parcels_web.GEODATA.Tax_Parcels",
+      "fields": {
+        "pin": "parcelid",
+        "address": "siteaddress"
+      },
+      "suppliedAt": "2026-10-10",
+      "source": "https://data-summitgis.opendata.arcgis.com/maps/fa9d55ede94a46f0944d371a9d8f96b4 (Summit County Tax Parcels); the catalogues had Summit County, Utah's"
+    }
+  ]
+}

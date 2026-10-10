@@ -67,6 +67,7 @@ import { measure } from '../public/lib/area.js';
 import { candidatePool } from './candidates.js';
 import { GONE, renamedCandidates } from './moved-service.js';
 import { US_COUNTIES } from '../worker/src/us-counties.js';
+import { inState } from './candidates.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
@@ -764,12 +765,9 @@ async function verify(c) {
    * state box is drawn through county centroids, so it is padded a degree.
    */
   const home = !c.statewide && c.fips ? US_COUNTIES[String(c.fips).slice(0, 2)] : null;
-  if (home?.box && box) {
-    const [w, s, e, n] = home.box;
+  if (home?.box && box && !inState(box, home.box)) {
     const cx = (box[0] + box[2]) / 2, cy = (box[1] + box[3]) / 2;
-    if (cx < w - 1 || cx > e + 1 || cy < s - 1 || cy > n + 1) {
-      return { ok: false, why: `its parcels are not in ${home.name} (centred ${cx.toFixed(2)},${cy.toFixed(2)})` };
-    }
+    return { ok: false, why: `its parcels are not in ${home.name} (centred ${cx.toFixed(2)},${cy.toFixed(2)})` };
   }
 
   const samples = await sampleParcels(c.service, c.layer);
@@ -936,7 +934,7 @@ const when = (c) => log[c.key]?.at || '';
  * by name may replace a catalogue entry that was tried and failed long ago,
  * which the date order would leave at the back.
  */
-const firstFips = new Set(String(process.env.FIRST_FIPS || '').split(',').map((f) => f.trim()).filter(Boolean));
+const firstFips = new Set(`${process.env.FIRST_FIPS || ''},${process.env.FIRST || ''}`.split(',').map((f) => f.trim()).filter(Boolean));
 const isFirst = (c) => (firstFips.has(String(c.fips || '')) ? 1 : 0);
 const list = only
   ? chosen

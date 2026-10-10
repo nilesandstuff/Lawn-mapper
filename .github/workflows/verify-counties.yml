@@ -43,6 +43,13 @@ on:
         description: 'Also search for counties asked for by at least this many people, verify them first and deploy (blank = no)'
         required: false
         default: ''
+      # NAMED COUNTIES FIRST (2026-10-10): re-check these now, ahead of the
+      # slice, and write the result -- an owner-supplied layer, or entries
+      # found to be another state's county.
+      first:
+        description: 'County FIPS codes to verify first this run, comma-separated (e.g. 39153,29095); written like any other result'
+        required: false
+        default: ''
 
 jobs:
   verify:
@@ -94,6 +101,7 @@ jobs:
           ONLY: ${{ inputs.only }}
           LIMIT: ${{ inputs.limit }}
           FIRST_FIPS: ${{ steps.find.outputs.fips }}
+          FIRST: ${{ inputs.first }}
         run: node tools/verify-counties.js
 
       # KEEP THE RESULT EVEN IF THE PUSH FAILS. The sweep is half an hour of
@@ -121,7 +129,7 @@ jobs:
         if: inputs.commit == 'true' && inputs.only == ''
         run: |
           FILES="worker/src/counties-verified.js tools/verify-log.json
-                 tools/atlas-candidates.json tools/openaddresses-candidates.json"
+                 tools/atlas-candidates.json tools/openaddresses-candidates.json tools/owner-candidates.json"
           [ -f tools/found-candidates.json ] && FILES="$FILES tools/found-candidates.json"
 
           if git diff --quiet -- $FILES; then

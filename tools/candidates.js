@@ -191,6 +191,19 @@ const foundStatewide = () => FOUND_STATEWIDE.map(([ab, service, layer, pin, addr
  * catalogue contributed so a log line can report the funnel rather than a
  * single number nobody can take apart.
  */
+/**
+ * WHETHER A LAYER'S BOX REACHES ITS STATE (the state's box padded a degree,
+ * as it is drawn through county centroids). OVERLAP, not the centre
+ * (2026-10-10): Henderson County, Texas has one stray feature far to the
+ * south, which put its box's centre in Mexico while every parcel is in
+ * Texas. A same-named county in another state -- Summit, Utah for Summit,
+ * Ohio; Jackson, Michigan for Jackson, Missouri -- does not overlap at all.
+ */
+export function inState(box, stateBox, pad = 1) {
+  const [w, s, e, n] = stateBox;
+  return !(box[2] < w - pad || box[0] > e + pad || box[3] < s - pad || box[1] > n + pad);
+}
+
 export function candidatePool() {
   const atlas = read('atlas-candidates.json');
   const oa = read('openaddresses-candidates.json');
@@ -298,6 +311,25 @@ export function candidatePool() {
     held.from = `${held.from}+found`;
   }
 
+  /*
+   * SUPPLIED BY THE OWNER (tools/owner-candidates.json, 2026-10-10: Summit
+   * County, Ohio, whose catalogue entry was Summit County, Utah's). Last, so
+   * it wins: a layer somebody looked up for a county goes first, and every
+   * catalogue's endpoint for that county rides along behind it.
+   */
+  const owner = read('owner-candidates.json');
+  for (const c of owner?.candidates || []) {
+    const held = (c.fips && byFips.get(String(c.fips))) || byKey.get(c.key);
+    if (!held) { add(c, 'owner'); continue; }
+    const old = endpointsOf(held);
+    held.service = c.service;
+    held.layer = c.layer;
+    held.layerName = c.layerName;
+    held.fields = c.fields;
+    held.fallbacks = old.filter((e, i, all) => all.findIndex((x) => sameEndpoint(x, e)) === i && !sameEndpoint(e, c));
+    held.from = `${held.from}+owner`;
+  }
+
   /* A state listed by both catalogues keeps the first, and the second rides
      along as a fallback -- same rule as a county. */
   const statewide = [];
@@ -328,6 +360,7 @@ export function candidatePool() {
       openaddresses: oa?.candidates?.length || 0,
       foundStatewide: FOUND_STATEWIDE.length,
       foundByName: found?.candidates?.length || 0,
+      owner: owner?.candidates?.length || 0,
       foundFresh,
       joined,
       fresh,
