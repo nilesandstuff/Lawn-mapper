@@ -5781,6 +5781,7 @@ function countyFallBack() {
 async function lookupCountyPhoto({ makeDefault = false, chosen = false, prefer = null, align = null } = {}) {
   const at = state.frame || state.chosen;
   if (!at || !state.imagery.some((p) => p.id === 'county')) {
+    state.holdFrame = false; // an older lookup's hold, which this one replaces
     if (state.provider === 'mapbox') showImagery(); // Mapbox's own picture of the frame
     return;
   }
@@ -5790,9 +5791,10 @@ async function lookupCountyPhoto({ makeDefault = false, chosen = false, prefer =
   const holding = makeDefault && state.provider === 'mapbox' && Boolean(state.frame);
   if (holding) {
     state.holdFrame = true; hideImagery(); dimBasemap(true);
-    /* Never held for good: a lookup that has not finished in 20 s lets go. */
+    /* Never held for good: a lookup that has not finished in 20 s lets go --
+       and so does one replaced by a newer lookup that does not hold. */
     setTimeout(() => {
-      if (state.holdFrame && mine === countyLookup) { state.holdFrame = false; showImagery(); }
+      if (state.holdFrame) { state.holdFrame = false; showImagery(); }
     }, 20000);
   }
   let list = [];
@@ -6361,8 +6363,9 @@ async function showImagery({ quiet = false } = {}) {
   if (!quiet) hideImagery();
   /* Mapbox too is one picture of the frame (2026-10-10), so it can be shown
      enhanced and laid down like every other photo. Not while the lot's
-     photo is still being decided: that picture would only be replaced. */
-  if (state.holdFrame) return;
+     photo is still being decided: that picture would only be replaced.
+     Only Mapbox waits: a photo picked in Layers meanwhile is shown. */
+  if (state.holdFrame && state.provider === 'mapbox') return;
 
   const info = providerInfo(state.provider);
   const before = bottomOfOurLayers();

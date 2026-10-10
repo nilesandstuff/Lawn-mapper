@@ -1359,8 +1359,13 @@ check('more than one imagery source is offered', sources.length > 1, sources.joi
  * to answer a cold request for one frame, and a 2.5-second wait reported the
  * feature broken when it was merely slow. The second attempt then passed
  * because the image was cached -- which is exactly how a flaky test is born.
+ *
+ * 25 s was not enough either (2026-10-04 and 2026-10-10, both passing on a
+ * re-run): a cold USGS frame took 15-17 s in CI, and the Layers check just
+ * above has already asked for the same frame and walked away, so this one
+ * can queue behind it.
  */
-const waitForPhoto = async (ms = 25000) => {
+const waitForPhoto = async (ms = 45000) => {
   try {
     await page.waitForFunction(() => window.__lmImagery().layer === true, { timeout: ms });
     return true;
