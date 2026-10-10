@@ -6399,6 +6399,20 @@ draw on; nothing is banked beside a map. Design 1, the live split of
 workflow 7 by `image_provider`, needs no pair and remains the way to ask the
 question.
 
+**NEXT, AGREED (owner, 2026-10-10): at 20 new county-drawn maps.** The owner
+keeps adding maps drawn on county photos -- leaf-off, open lots among them,
+and some of the hard case (dormant grass beside bare dirt or leaf litter),
+so the new ones are not all easy (H89). When 20 approved county-drawn maps
+sit outside the locked set: workflow 31 lets every waiting map in, then
+workflow 14 `refiner_trial: held out by photo`, seeds 7 / 8 / 9, read with
+workflow 24 against H90 (11 county examples then, about 30 now). Read
+before the runs: county lots answered by a decoder that never saw a county
+photo should do WORSE than THE PLAN on them now, if county examples teach a
+county look; the same as H90, if what is wrong with county lots is the lots.
+Workflow 33 on the same runs, so contrast and lawn share are held apart
+from source. Count on 2026-10-10 (workflow 24's photo split, 06:31 UTC): 20
+of 93 approved maps county-drawn, 11 of them locked, so 9 new; 11 to go.
+
 **Why (H88):** the 12 county-photo lots score 55% against 19% for Mapbox
 lots, and the county photo is now the default for most addresses, so most
 live detections run on one. Whether the photo or the lot is to blame decides
