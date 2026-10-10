@@ -451,6 +451,25 @@ console.log(`      status: "${await page.locator('#status').textContent()}"`);
 console.log(`      hint:   "${await page.locator('#map-hint').textContent()}"`);
 
 /*
+ * ONE PHOTO, NOT TWO IN TURN (2026-10-10). The Mapbox base map is dimmed
+ * while the lot's own photo is decided and fetched, so it does not flash up
+ * first and get covered a moment later. Whatever the photo turns out to be --
+ * Mapbox's own picture of the frame included -- it must be laid down, and the
+ * base map must come back: a dim left behind is a map that looks broken.
+ */
+{
+  const settled = await page.waitForFunction(() => {
+    const im = window.__lmImagery?.();
+    return im && im.layer && im.basemap.every((o) => o === 1) ? im : null;
+  }, { timeout: 25000 }).then((h) => h.jsonValue()).catch(() => null);
+  const im = settled || await page.evaluate(() => window.__lmImagery?.());
+  check('the lot\'s photo is laid down as one picture, whichever source',
+    Boolean(im?.layer), `provider=${im?.provider}, layer=${im?.layer}`);
+  check('and the base map is back at full strength under it',
+    Boolean(im?.basemap?.length) && im.basemap.every((o) => o === 1), JSON.stringify(im?.basemap));
+}
+
+/*
  * `armed` means the map is listening for a tap, which is now only ever true
  * inside the edge tool. It used to mean "waiting for you to pin each patch of
  * lawn", and this check asserted the pin flow -- so it kept failing after the
