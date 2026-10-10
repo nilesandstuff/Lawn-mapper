@@ -1137,9 +1137,46 @@ function pruneCatalogue() {
   }
 }
 
+/*
+ * A SERVICE THE COUNTY HAS TAKEN DOWN comes out (2026-10-10, Macoupin IL: its
+ * Aerials_2022 and Aerials_2018 became ..._ColorCorrected, the old names
+ * answered "Requested Service not available", and the editor said "refused"
+ * for a lot whose county had a perfectly good photo under a new name).
+ * Only on an outright answer that the service is not there -- a 404, or
+ * ArcGIS's own "not available" / "not found" -- never on a timeout or an
+ * error page, which a county server gives on a bad night. For the counties
+ * named in ONLY_KEY: one service per request, not the whole catalogue.
+ */
+async function pruneGone(keys) {
+  for (const key of keys) {
+    const b = ALL_COUNTIES[key]?.box;
+    if (!b) continue;
+    const rows = query(`SELECT id, url, title FROM county_services
+                         WHERE west <= ${b[2]} AND east >= ${b[0]} AND south <= ${b[3]} AND north >= ${b[1]}`);
+    for (const r of rows) {
+      let gone = null;
+      try {
+        const res = await fetch(`${r.url}?f=json`, { signal: AbortSignal.timeout(TIMEOUT_MS) });
+        if (res.status === 404) gone = 'http 404';
+        else if (res.ok) {
+          const j = await res.json().catch(() => null);
+          const e = j?.error;
+          if (e && (Number(e.code) === 404 || /not (available|found)|does not exist/i.test(e.message || ''))) {
+            gone = `${e.code || ''} ${e.message || ''}`.trim();
+          }
+        }
+      } catch { /* no answer is not an answer */ }
+      if (!gone) continue;
+      exec(`DELETE FROM county_services WHERE id = ${Number(r.id)}`);
+      console.log(`removed ${r.title || r.url} (#${r.id}): the county no longer serves it (${gone})`);
+    }
+  }
+}
+
 async function catalogue(decoders) {
   ensureCatalogueTables();
   pruneCatalogue();
+  if (ONLY_KEY) await pruneGone(ONLY_KEY.split(',').map((k) => k.trim()).filter((k) => ALL_COUNTIES[k]));
   const known = new Set(query('SELECT url FROM county_services').map((r) => r.url));
   const failed = new Set();
   let added = 0;

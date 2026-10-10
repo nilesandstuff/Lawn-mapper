@@ -31,7 +31,7 @@ import { movedCorners } from './lib/align.js';
 import { sharpTiles } from './lib/sharp-tiles.js';
 import { alignFromRegistration } from './lib/register.js';
 import { extraDetail } from './lib/sharpness.js';
-import { enhance } from './lib/enhance.js';
+import { enhance, DEFAULTS as ENHANCE_DEFAULTS } from './lib/enhance.js';
 import { snapPoint, nearestOnRings } from './lib/snap.js';
 import { notchShapes } from './lib/cutout.js';
 // Pasting the pieces of a big lot's detection back into one mask.
@@ -1149,6 +1149,8 @@ if (typeof window !== 'undefined') {
     detectsWith: effectiveProvider(state.provider),
     detectedWith: state.detectedWith,
     layer: !!(map && map.getLayer('imagery-alt')),
+    // Whose picture that layer is: the last one stays up until the next lands.
+    layerShows: state.altShows || null,
     // The Mapbox base map's opacity: dimmed while the lot's photo is on its way.
     basemap: map ? satelliteLayers().map((id) => map.getPaintProperty(id, 'raster-opacity') ?? 1) : [],
     enhance: state.enhance,
@@ -1345,6 +1347,21 @@ function setStatus(text, kind = '') {
   const el = $('#status');
   el.textContent = text;
   el.className = `statusline ${kind}`;
+}
+
+/*
+ * WHAT THE STATUS LINE SAYS ABOUT THE PHOTO ON SCREEN, kept so that moving
+ * to Mapbox can take it back (owner, 2026-10-10: on Mapbox it went on
+ * describing the county photo). Only that text: a warning that sent the map
+ * to Mapbox ("has gaps… stays on Mapbox") is left to be read.
+ */
+let photoStatus = '';
+function setPhotoStatus(text) {
+  photoStatus = text;
+  setStatus(text);
+}
+function mapboxPhotoStatus() {
+  if (photoStatus && $('#status').textContent === photoStatus) setPhotoStatus('Showing Mapbox satellite.');
 }
 
 function setHint(text) {
@@ -5778,6 +5795,30 @@ function countyFallBack() {
   if (state.countyAlign?.saved) state.countyAlign = null; // another photo's line-up is its own
 }
 
+/* The county service showing failed: the next one, if any. The failed one
+   leaves the list, so a lot left with one county photo shows one entry,
+   "County photo", rather than a "(sharp)" that cannot load (owner). */
+function passOverCounty() {
+  const bad = Number(state.countySvc?.id);
+  state.countyList = (state.countyList || []).filter((x) => Number(x.id) !== bad);
+  if (Number(state.countySharp?.id) === bad && Number(state.countyRecent?.id) !== bad && state.countyRecent
+      && !state.countyNext?.length) {
+    /* Nothing behind the sharp one but the recent flight: that, alone. */
+    state.countyNext = [state.countyRecent];
+  }
+  if (state.countyPick === 'recent' && state.countySharp && Number(state.countySharp.id) !== bad) {
+    state.countyPick = 'sharp';
+    state.countySvc = state.countySharp;
+    state.countyRecent = null;
+    return true;
+  }
+  state.countyNext = (state.countyNext || []).filter((x) => Number(x.id) !== bad);
+  if (!state.countyNext.length) return false;
+  state.countyPick = 'sharp';
+  countyFallBack();
+  return true;
+}
+
 async function lookupCountyPhoto({ makeDefault = false, chosen = false, prefer = null, align = null } = {}) {
   const at = state.frame || state.chosen;
   if (!at || !state.imagery.some((p) => p.id === 'county')) {
@@ -5828,7 +5869,7 @@ async function lookupCountyPhoto({ makeDefault = false, chosen = false, prefer =
   if (svc && makeDefault && state.provider === 'mapbox') {
     await setProvider('county', { auto: !chosen });
     /* setProvider says what it shows; this is the why. */
-    if (state.provider === 'county') setStatus(countyShowing(state.countySvc));
+    if (state.provider === 'county') setPhotoStatus(countyShowing(state.countySvc));
   } else if (state.provider === 'mapbox') {
     showImagery(); // no county photo to wait for: Mapbox's own picture
   }
@@ -6103,6 +6144,9 @@ async function setProvider(id, { auto = false } = {}) {
      with nothing to line up (Mapbox) closes it and gives the drawing tools
      back -- they were put away for it (owner, 2026-10-04: they were gone). */
   if (state.alignOpen && !isAligned(id)) setAlignOpen(false);
+  /* Its panel too, now: the picture it lines up stays on screen until the
+     next one lands (keepForSwap), but it is no longer the one chosen. */
+  if (!isAligned(id)) { const panel = document.getElementById('naip-align'); if (panel) panel.hidden = true; }
   // Looked at on this map: the save check asks whether it lined up.
   /* Not the county photo: it is the default and lined up automatically on
      the ground, so asking at every save would be asking every time. */
@@ -6140,26 +6184,37 @@ async function sharpen(run, provider, served) {
   const tiles = sharpTiles(served, native > 0 ? native / 100 : null);
   if (!tiles.length) return;
   state.sharp = { served, ids: [] };
+  const sharp = state.sharp;
+  /* Every piece fetched first, then all laid on together (owner, 2026-10-10:
+     pieces landing one by one read as a flicker across the lot). */
+  const got = [];
   let next = 0;
   const one = async () => {
     while (next < tiles.length) {
       const k = next++;
-      let url;
       try {
         const res = await fetch(imageryUrlFor(provider, tiles[k]), { signal: AbortSignal.timeout(45000) });
         if (!res.ok) continue;
-        url = await displayUrl(await res.blob());
+        const blob = await res.blob();
+        const scale = 2 ** (tiles[k].zoom - served.zoom);
+        got.push({ k, blob, scale, url: await displayUrl(blob, scale) });
       } catch { continue; } // the quick picture is still there under it
-      if (run !== imageryRun || provider !== state.provider || !map.getLayer('imagery-alt') || state.sharp?.served !== served) return;
-      const id = `imagery-sharp-${k}`;
-      if (map.getSource(id)) continue;
-      map.addSource(id, { type: 'image', url, coordinates: sharpCorners(tiles[k]) });
-      map.addLayer({ id, type: 'raster', source: id }, bottomOfOurLayers());
-      state.sharp.ids.push({ id, frame: tiles[k], url });
-      applyAlignOpacity();
+      if (run !== imageryRun || state.sharp !== sharp) return;
     }
   };
   await Promise.all([one(), one(), one()]); // three at a time
+  if (run !== imageryRun || provider !== state.provider || !map.getLayer('imagery-alt') || state.sharp !== sharp) {
+    for (const g of got) URL.revokeObjectURL(g.url);
+    return;
+  }
+  for (const { k, blob, scale, url } of got.sort((a, b) => a.k - b.k)) {
+    const id = `imagery-sharp-${k}`;
+    if (map.getSource(id)) { URL.revokeObjectURL(url); continue; }
+    map.addSource(id, { type: 'image', url, coordinates: sharpCorners(tiles[k]) });
+    map.addLayer({ id, type: 'raster', source: id, paint: NO_FADE }, bottomOfOurLayers());
+    sharp.ids.push({ id, frame: tiles[k], url, blob, scale });
+  }
+  applyAlignOpacity();
 }
 
 /* A piece's corners, moved with the whole picture it is part of. */
@@ -6182,25 +6237,32 @@ function removeContext() {
   if (map.getLayer('imagery-ctx')) map.removeLayer('imagery-ctx');
   if (map.getSource('imagery-ctx')) map.removeSource('imagery-ctx');
   state.contextFrame = null;
+  state.contextOriginal = null;
 }
 
 /** The same source 50 m past the property line, under the frame's own picture. */
-async function showContext(run, provider) {
+const CONTEXT_WAIT_MS = 2500;
+async function contextPicture(provider, served) {
   const bbox = state.parcel ? geometryBounds(state.parcel) : null;
-  if (!bbox || !CONTEXT_SOURCES.has(provider)) return;
+  if (!bbox || !CONTEXT_SOURCES.has(provider)) return null;
   const wide = frameFor(provider, parcelFrame(bbox, FRAME_SIZE, { marginM: CONTEXT_MARGIN_M }));
-  let url;
   try {
     const res = await fetch(imageryUrlFor(provider, wide), { signal: AbortSignal.timeout(30000) });
-    if (!res.ok) return;
-    url = await displayUrl(await res.blob());
-  } catch { return; } // the frame's own picture is up; the surroundings are a nicety
-  if (run !== imageryRun || provider !== state.provider || !map.getLayer('imagery-alt')) return;
+    if (!res.ok) return null;
+    return { blob: await res.blob(), wide, scale: 2 ** (wide.zoom - served.zoom) };
+  } catch { return null; } // the frame's own picture is up; the surroundings are a nicety
+}
+
+/** Lay the surroundings under the frame's picture; false if that picture has moved on. */
+function placeContext(run, provider, ctx, url) {
+  if (run !== imageryRun || provider !== state.provider || !map.getLayer('imagery-alt')) return false;
   removeContext();
-  state.contextFrame = wide;
-  map.addSource('imagery-ctx', { type: 'image', url, coordinates: contextCorners(wide, provider) });
-  map.addLayer({ id: 'imagery-ctx', type: 'raster', source: 'imagery-ctx' }, 'imagery-alt');
+  state.contextFrame = ctx.wide;
+  state.contextOriginal = { blob: ctx.blob, scale: ctx.scale, url };
+  map.addSource('imagery-ctx', { type: 'image', url, coordinates: contextCorners(ctx.wide, provider) });
+  map.addLayer({ id: 'imagery-ctx', type: 'raster', source: 'imagery-ctx', paint: NO_FADE }, 'imagery-alt');
   applyAlignOpacity();
+  return true;
 }
 
 function hideImagery() {
@@ -6210,6 +6272,8 @@ function hideImagery() {
   tileWatch = null;
   removeContext();
   removeSharp();
+  state.altOriginal = null;
+  state.altShows = null;
   if (map.getLayer('imagery-alt')) map.removeLayer('imagery-alt');
   if (map.getSource('imagery-alt')) map.removeSource('imagery-alt');
   const panel = document.getElementById('naip-align');
@@ -6301,7 +6365,11 @@ let imageryBusyRun = 0;
  * original, detection fetches its own on the server, and what is saved is
  * the outline on the ground. Off in Layers, remembered per browser.
  */
-async function displayUrl(blob) {
+/* `scale`: this picture's pixels per frame pixel (2 ** zoom difference). The
+   local-contrast step works over a few pixels, so a sharper piece or the
+   wider surroundings get the same treatment on the ground as the frame --
+   not a different look that shows as a seam when they land. */
+async function displayUrl(blob, scale = 1) {
   if (!state.enhance) return URL.createObjectURL(blob);
   try {
     const bmp = await createImageBitmap(blob);
@@ -6311,7 +6379,9 @@ async function displayUrl(blob) {
     ctx.drawImage(bmp, 0, 0);
     bmp.close?.();
     const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    enhance(img.data, img.width, img.height);
+    enhance(img.data, img.width, img.height, {
+      clarityRadius: Math.max(1, Math.round(ENHANCE_DEFAULTS.clarityRadius * scale)),
+    });
     ctx.putImageData(img, 0, 0);
     const out = await new Promise((ok) => canvas.toBlob(ok, 'image/png'));
     return URL.createObjectURL(out || blob);
@@ -6324,7 +6394,37 @@ function setEnhance(on) {
   state.enhance = on;
   try { localStorage.setItem('lm_enhance', on ? '1' : '0'); } catch { /* private mode: this visit only */ }
   refreshLayerList();
-  if (state.frame) showImagery();
+  redrawPhotos();
+}
+
+/*
+ * THE SAME PICTURES, REDRAWN IN PLACE (owner, 2026-10-10: switching the
+ * enhancement made every photo but Mapbox flash). Each picture on the map
+ * keeps the bytes it came as; switching re-renders them and swaps each one's
+ * image under its layer -- nothing is taken down, so the base map never
+ * shows through, and nothing is fetched again.
+ */
+let redrawRun = 0;
+async function redrawPhotos() {
+  const mine = ++redrawRun;
+  const shown = [['imagery-alt', state.altOriginal], ['imagery-ctx', state.contextOriginal],
+    ...(state.sharp?.ids || []).map((x) => [x.id, x])];
+  const ready = [];
+  for (const [id, o] of shown) {
+    const src = map.getSource(id);
+    if (!o?.blob || src?.type !== 'image') continue;
+    ready.push([id, src, o, await displayUrl(o.blob, o.scale || 1)]);
+  }
+  /* All at once, so the pieces never disagree for a frame -- and only onto
+     the very sources they were made from: a photo that replaced one while
+     these were being made is not painted over with the old one's bytes. */
+  const stale = mine !== redrawRun;
+  for (const [id, src, o, url] of ready) {
+    if (stale || map.getSource(id) !== src) { URL.revokeObjectURL(url); continue; }
+    src.updateImage({ url, coordinates: src.coordinates });
+    if (o.url) setTimeout(((old) => () => URL.revokeObjectURL(old))(o.url), 2000);
+    o.url = url;
+  }
 }
 
 /*
@@ -6356,16 +6456,37 @@ function dimBasemap(on) {
   if (on) basemapTimer = setTimeout(() => dimBasemap(false), 15000);
 }
 
+/*
+ * NO FADE ON A PHOTO (owner, 2026-10-10: "the flash is just really
+ * unpleasant"). A raster layer fades in from transparent over 300 ms by
+ * default -- on being added and again on every updateImage -- and through it
+ * shows whatever is underneath: the Mapbox base map, a different photo. That
+ * was the flash on every swap and every enhancement switch. Mapbox's own
+ * advice for updateImage is this setting.
+ */
+const NO_FADE = { 'raster-fade-duration': 0 };
+
+/** A picture of this same frame is up, so a new source can be swapped in for it. */
+function keepForSwap() {
+  if (map.getSource('imagery-alt')?.type !== 'image' || !state.frame || !state.altFrame) return false;
+  const next = frameFor(state.provider, state.frame);
+  return Math.abs(next.lng - state.altFrame.lng) < 1e-7 && Math.abs(next.lat - state.altFrame.lat) < 1e-7;
+}
+
 async function showImagery({ quiet = false } = {}) {
   const run = ++imageryRun;
   if (imageryBusyRun) { idle(); imageryBusyRun = 0; }
   quiet = quiet && Boolean(map.getLayer('imagery-alt')) && !providerInfo(state.provider).tiles;
-  if (!quiet) hideImagery();
+  /* THE PHOTO ON SCREEN STAYS UNTIL ITS REPLACEMENT IS READY (owner,
+     2026-10-10: the flash). Another source for the same lot is swapped in
+     one step when it lands; only a different place clears it now. */
+  const swapping = !quiet && keepForSwap();
+  if (!quiet && !swapping) hideImagery();
   /* Mapbox too is one picture of the frame (2026-10-10), so it can be shown
      enhanced and laid down like every other photo. Not while the lot's
      photo is still being decided: that picture would only be replaced.
      Only Mapbox waits: a photo picked in Layers meanwhile is shown. */
-  if (state.holdFrame && state.provider === 'mapbox') return;
+  if (state.holdFrame && state.provider === 'mapbox') { hideImagery(); return; }
 
   const info = providerInfo(state.provider);
   const before = bottomOfOurLayers();
@@ -6392,6 +6513,7 @@ async function showImagery({ quiet = false } = {}) {
      * discovered here: a valid JPEG of the words "not available" is not
      * something the browser can tell from photography.
      */
+    if (swapping) hideImagery(); // tiles fill in as they come; nothing to wait for
     tileWatch = { provider: state.provider, label: info.label, reported: false };
     map.addSource('imagery-alt', {
       type: 'raster',
@@ -6401,12 +6523,13 @@ async function showImagery({ quiet = false } = {}) {
       attribution: info.attribution || 'Esri, Maxar, Earthstar Geographics',
     });
     map.addLayer({ id: 'imagery-alt', type: 'raster', source: 'imagery-alt' }, before);
+    state.altShows = state.provider;
     dimBasemap(false);
     return;
   }
 
   if (!state.frame) return;
-  if (!quiet) dimBasemap(true);
+  if (!quiet && !swapping) dimBasemap(true);
 
   // The frame this source will really serve, not the one we asked for -- the
   // picture has to be laid on the ground it actually covers.
@@ -6442,6 +6565,10 @@ async function showImagery({ quiet = false } = {}) {
      request queue behind the first (the browser test, 2026-09-27). */
   let naipBlob = null;
   let shownBlob = null;
+  /* The surroundings, asked for alongside the frame so the two can be laid
+     down together (owner, 2026-10-10: they landed a second or two after the
+     frame, and everything around the lot changed under the person's eye). */
+  const ctxP = contextPicture(state.provider, served);
   try {
     /* A source that never answers must not leave "Fetching…" over the map
        for good: the browser test caught USGS doing exactly that. */
@@ -6485,7 +6612,17 @@ async function showImagery({ quiet = false } = {}) {
     idle(); imageryBusyRun = 0;
     /* Mapbox's own picture failing leaves Mapbox's tiles, which are the same
        photo, so there is nothing to say and nowhere else to go. */
-    if (state.provider === 'mapbox') { dimBasemap(false); return; }
+    if (state.provider === 'mapbox') { hideImagery(); dimBasemap(false); mapboxPhotoStatus(); return; }
+    /* A COUNTY SERVICE THAT CANNOT GIVE THIS PICTURE is passed over for the
+       next county photo here, as one with gaps is (2026-10-10, Macoupin IL:
+       the county renamed its 2022 and 2018 services, the old names answered
+       "not available", and a lot with a good 2025 photo stayed on Mapbox
+       under "refused"). Not on a timeout: that one may answer next time. */
+    if (state.provider === 'county' && err.name !== 'TimeoutError' && passOverCounty()) {
+      buildImageryPicker();
+      showImagery();
+      return;
+    }
     setStatus(
       err.refused
         ? `${info.label} refused the request — this is a set-up problem, not a gap in the photography. It said: “${err.message}” Staying on Mapbox.`
@@ -6494,6 +6631,11 @@ async function showImagery({ quiet = false } = {}) {
           : `${info.label} has no photograph of this spot (${err.message}). Staying on Mapbox.`,
       err.refused ? 'error' : 'warn'
     );
+    /* No county service here can give it: no county entry offering one. */
+    if (state.provider === 'county' && err.name !== 'TimeoutError') {
+      state.countySvc = state.countySharp = state.countyRecent = null;
+      buildImageryPicker();
+    }
     state.provider = 'mapbox';
     $('#imagery-source').value = 'mapbox';
     renderProviderNote('mapbox');
@@ -6580,8 +6722,15 @@ async function showImagery({ quiet = false } = {}) {
     url = await displayUrl(shownBlob);
     if (run !== imageryRun) return;
   }
-  hideImagery(); // in case a later-started run already put something up
+  /* The surroundings with it, if they are a moment behind (CONTEXT_WAIT_MS);
+     later than that, the lot's own photo does not wait for them. */
+  const ctx = await Promise.race([ctxP, new Promise((ok) => setTimeout(() => ok(undefined), CONTEXT_WAIT_MS))]);
+  const ctxUrl = ctx ? await displayUrl(ctx.blob, ctx.scale) : null;
+  if (run !== imageryRun) { if (ctxUrl) URL.revokeObjectURL(ctxUrl); return; }
 
+  /* From here to the end of the swap is one task: the old picture goes and
+     the new one is on the map in the same frame, with nothing between. */
+  hideImagery(); // the picture this one replaces, or a later-started run's
   map.addSource('imagery-alt', {
     type: 'image', url,
     coordinates: alignOf(state.provider)
@@ -6589,15 +6738,24 @@ async function showImagery({ quiet = false } = {}) {
         alignOf(state.provider).north, alignOf(state.provider).scale)
       : frameCorners(served),
   });
-  map.addLayer({ id: 'imagery-alt', type: 'raster', source: 'imagery-alt' }, before);
+  map.addLayer({ id: 'imagery-alt', type: 'raster', source: 'imagery-alt', paint: NO_FADE }, bottomOfOurLayers());
+  state.altOriginal = shownBlob ? { blob: shownBlob, scale: 1, url } : null;
+  state.altShows = state.provider;
+  if (ctx) placeContext(run, state.provider, ctx, ctxUrl);
   applyAlignOpacity();
   dimBasemap(false);
   idle(); imageryBusyRun = 0;
-  showContext(run, state.provider); // not awaited: only for looking at
-  sharpen(run, state.provider, served); // not awaited: laid on as it arrives
+  if (ctx === undefined) { // still on its way: laid under the frame when it lands
+    ctxP.then(async (c) => {
+      if (!c || run !== imageryRun) return;
+      const u = await displayUrl(c.blob, c.scale);
+      if (!placeContext(run, state.provider, c, u)) URL.revokeObjectURL(u);
+    });
+  }
+  sharpen(run, state.provider, served); // not awaited: laid on when every piece is in
   if (isAligned(state.provider)) alignNaip(served, run, naipBlob);
-  if (state.provider === 'mapbox') return; // the default needs no announcing
-  setStatus(state.provider === 'county' && state.countyAuto ? countyShowing(state.countySvc) : info.detect
+  if (state.provider === 'mapbox') { mapboxPhotoStatus(); return; } // the default needs no announcing
+  setPhotoStatus(state.provider === 'county' && state.countyAuto ? countyShowing(state.countySvc) : info.detect
     ? `Showing ${info.label} over the measurement frame. Detect again to use it.`
     : `Showing ${info.label}. This one is for looking at — detection uses Mapbox.`);
 }

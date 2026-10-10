@@ -460,7 +460,7 @@ console.log(`      hint:   "${await page.locator('#map-hint').textContent()}"`);
 {
   const settled = await page.waitForFunction(() => {
     const im = window.__lmImagery?.();
-    return im && im.layer && im.basemap.every((o) => o === 1) ? im : null;
+    return im && im.layer && im.layerShows === im.provider && im.basemap.every((o) => o === 1) ? im : null;
   }, null, { timeout: 25000 }).then((h) => h.jsonValue()).catch(() => null);
   const im = settled || await page.evaluate(() => window.__lmImagery?.());
   check('the lot\'s photo is laid down as one picture, whichever source',
@@ -1369,7 +1369,11 @@ check('more than one imagery source is offered', sources.length > 1, sources.joi
  */
 const waitForPhoto = async (ms = 45000) => {
   try {
-    await page.waitForFunction(() => window.__lmImagery().layer === true, null, { timeout: ms });
+    /* Its OWN picture: the one it replaces stays up until it lands. */
+    await page.waitForFunction(() => {
+      const im = window.__lmImagery();
+      return im.layer === true && im.layerShows === im.provider;
+    }, null, { timeout: ms });
     return true;
   } catch { return false; }
 };
@@ -1522,10 +1526,14 @@ if (sources.includes('esri')) {
 }
 
 if (sources.includes('mapbox')) {
+  /* Mapbox is one picture of the frame too (2026-10-10), laid in place of
+     Esri's tiles rather than leaving them up under it. */
   await page.selectOption('#imagery-source', 'mapbox');
-  await page.waitForTimeout(500);
-  check('switching back removes the extra photograph',
-    (await page.evaluate(() => window.__lmImagery())).layer === false);
+  await waitForPhoto();
+  const back = await page.evaluate(() => window.__lmImagery());
+  check('switching back to Mapbox shows its own picture in place of the tiles',
+    back.layerShows === 'mapbox' && back.sourceType === 'image',
+    `shows=${back.layerShows} sourceType=${back.sourceType}`);
 }
 
 /* ----------------------------------------------------------- the AI method */
