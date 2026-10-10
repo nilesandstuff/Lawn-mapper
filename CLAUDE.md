@@ -73,3 +73,51 @@ workflow 14's two jobs get six each.
 
 Spread launches out rather than dispatching a batch in one minute: eight at
 once hit Modal's app-create rate limit.
+
+## Two sessions, one site: which one you are
+
+Since 2026-10-10 the owner runs TWO Claude sessions on this repository.
+
+  THE CORE SESSION owns the detector and the main meat of the site: the
+  training workflows (14, 24, 31, 33 and the rest), docs/DETECTOR-FINDINGS.md,
+  the corpus and its locks, the county photo catalogue and picker, the
+  parcel registry and its nightly search, the editor's drawing and
+  measuring, the volunteer/paid queues, and the two failure logs. It works
+  on `claude/resume-previous-session-y94slo`, the default branch, and it is
+  the session that deploys that branch.
+
+  A FEATURES SESSION builds additional features (the shade map first)
+  beside the core, on its own branch off the default branch.
+
+If you are the features session -- the owner's first message to you says so
+-- these are the rules, and they exist so the core work is never disturbed:
+
+  - Work on your own branch (`claude/feature-<name>`), rebased onto the
+    default branch before every push. Never push to the default branch
+    without the owner saying so in your own conversation.
+  - Put a feature in ITS OWN FILES (public/shade.js, worker/src/shade.js, a
+    route of its own, a table of its own) and reach into the core only with
+    the smallest additive hook: one import, one route line, one button.
+    Do not restructure app.js, index.js, county.js, parcel.js, imagery.js,
+    corpus.js or train_decoder.py; if a feature truly needs a change inside
+    them, say exactly what and why and wait for the owner.
+  - Never touch docs/DETECTOR-FINDINGS.md, tools/locked-lawns.json, the
+    training workflows, the model server (tools/modal_serve.py, tools/*.py)
+    or anything under the corpus's photos. Never run workflows 14, 24, 31,
+    33, 10, 27 or any deploy of the default branch; a training run or a
+    registry run is the core session's.
+  - A schema change still means BOTH worker/schema.sql and
+    worker/migrations.sql, and a new column on a table the core owns is a
+    change to ask the owner about first.
+  - To ship: rebase onto the default branch, `npm test`, then merge your
+    branch into the default branch ONLY when the owner says the feature is
+    ready, and tell the owner so the core session's next deploy carries it
+    (or deploy yourself with workflow "2. Deploy" on the default branch
+    once merged, if the owner asks you to). Never deploy your feature branch
+    on its own: the site is one Worker, and a deploy of a branch missing
+    the core's latest commits rolls the site back.
+  - Read docs/DETECTOR-FINDINGS.md to understand the site; never write to it.
+
+If you are the core session: the features session may be adding files
+beside yours; a merge from its branch is theirs to make, and a file you did
+not write (shade.*) is not yours to change without a word.
