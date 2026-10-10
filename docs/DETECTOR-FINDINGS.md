@@ -6417,7 +6417,10 @@ tools/locked-lawns.json): 19 approved maps outside the lock, 16 of them
 drawn on county photos (Ingham MI, Cass ND, Broomfield CO, Kenton KY, Will
 IL, Fairfax VA, Delaware IA, a Delaware lot, Prince William VA, Clinton IL,
 Allegheny PA, Lancaster NE, two Indiana, one Iowa, one North Carolina), 3
-on Mapbox; 4 county-drawn to go.
+on Mapbox; 4 county-drawn to go. **Reached and run 2026-10-10 (owner: "Let
+them all in and run the tests!"):** workflow 31 locked 104 maps
+(131u7jm), then workflow 14 runs 38085221591 / 38085219178 / 38085217225 as above; results in the
+run log and H9x when read.
 
 **Why (H88):** the 12 county-photo lots score 55% against 19% for Mapbox
 lots, and the county photo is now the default for most addresses, so most
@@ -7251,5 +7254,6 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-08 | 37709603931 / 37710689178 (workflow 32) | 8 timing lots | live server after `lot` (downloads first, then GPU) | — | — | GPU 2.7 s per warm lot (12.3 before), waiting 1.1 (11.0). First press after the deploy timed out; cold press 29 s |
 | 2026-10-08 | 37766196684 (workflow 24 split) | 81 (locked), S31 runs | THE PLAN's row split by the photo each map was drawn on | — | county 55.2% (12 lots) / Mapbox 19.0% (69) | **H88.** County-photo lots are the worst group; cause not established (confounded with the lots being the newest) |
 | 2026-10-08 | 37783174587 (workflow 33) | 81 (locked), S31 runs | each lot's photo measured (contrast, green, shadow, focus, brightness, lawn share) against THE PLAN's error | — | — | **H89.** Contrast predicts error within each source (-0.41 / -0.63); focus does not; lawn share -0.62 (partly the metric) |
+| 2026-10-10 | 38085221591 / 38085219178 / 38085217225 | 104 (locked, 131u7jm) | S32 again at 20+ county-drawn: `refiner_trial: held out by photo`, seeds 7/8/9, CPU, everything else default, as H90 | (running) | — | To read with workflow 24 against H90 and workflow 33 on the same runs; the agreed test at 20 new county-drawn maps |
 | 2026-10-08 | 37791602756 / 37791654341 / 37791705849 | 81 (locked) | S32 `refiner_trial: held out by photo` (county lots answered by a decoder trained on the 69 Mapbox lots; 12 Mapbox lots held out the same way), seeds 7/8/9, CPU | 20.9 / 22.5 / 22.0% (edge refined + stage 3, span, veto) | — | **H90.** County arm 5 / 6, +0.9 [-1.9, +5.4]; control 6 / 4, -0.8. County examples in training worth nothing measurable |
 | 2026-10-10 | 37999935674 / 38000318035 / 38000326730 | 81 (locked) | S34 `refiner_trial: no flips` (THE PLAN's decoder with every training grid as drawn), seeds 7/8/9, CPU | 20.4 / 22.4 / 21.5% (edge refined + stage 3, span, veto) | 22.0 / 20.7 / 20.7% (no flips, same) | **H91.** Workflow 24 run 38017280676: 28 / 23 / 30, -0.0 [-0.3, +0.1], p 0.58; untuned 49 lots +0.0. No difference; flips stay on |
