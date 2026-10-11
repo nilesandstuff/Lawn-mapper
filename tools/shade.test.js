@@ -454,7 +454,8 @@ check('the colour ramp runs dark to bright and clamps', ramp(-1).join() === '0,0
      the last return); a TANGLE (same size, 6-14 m up: vines or dead leaves
      on bare branches) that 30% of pulses stop in and nothing splits, so it
      keeps as many last returns up high as an evergreen but measures no
-     denser than the bare crown; a SPRUCE (8 m across in the middle, to 18 m up) that
+     denser than the bare crown; an OAK holding its dead leaves (12 m
+     across, 6-14 m up, a dome) that stops pulses like the evergreen; a SPRUCE (8 m across in the middle, to 18 m up) that
      nothing gets through, every pulse splitting on it, whose skirt (out to
      7 m) splits every pulse in its needles, half of them then reaching the
      ground and half stopping under 4 m; a smaller one (6 m
@@ -466,6 +467,13 @@ check('the colour ramp runs dark to bright and clamps', ramp(-1).join() === '0,0
   const rnd = () => {
     seed = (seed + 0x6D2B79F5) | 0;
     let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  let seed3 = 47; // the oak's own draws
+  const rnd3 = () => {
+    seed3 = (seed3 + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed3 ^ (seed3 >>> 15), 1 | seed3);
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
@@ -487,11 +495,15 @@ check('the colour ramp runs dark to bright and clamps', ramp(-1).join() === '0,0
       if (r < 7) { add(e, n, 118 - 2 * r, 1, 1, 3); add(e, n, 104.5, 1, 2, 3); add(e, n, (e + n) % 0.5 < 0.25 ? 101.5 : 100, (e + n) % 0.5 < 0.25 ? 1 : 2, 3, 3); continue; }
       const r2 = Math.hypot(e - 55, n - 56);
       if (r2 < 3) { add(e, n, 110 - 2.5 * r2, 1, 1, 1); continue; }
+      const ro = Math.hypot(e - 30, n - 28);
+      if (ro < 6 && rnd3() < 0.6) { add(e, n, 106 + rnd3() * (8 - 0.05 * ro * ro), 1, 1, 1); continue; }
       if (tangle && rnd2() < 0.3) { add(e, n, 106 + rnd2() * 8, 1, 1, 1); continue; }
       if (ever || bare) {
         const lo = ever ? 104 : 106, stop = ever ? 0.6 : 0.08;
-        if (rnd() < stop) { add(e, n, lo + rnd() * 8, 1, 1, 1); continue; }
-        if (rnd() < 0.5) { add(e, n, lo + rnd() * 8, 1, 1, 2); add(e, n, 100, 2, 2, 2); continue; }
+        /* The evergreen is a cone: its top falls 1.2 m a metre from the tip. */
+        const span = ever ? 8 - 1.2 * Math.hypot(e - 15, n - 15) : 8;
+        if (rnd() < stop) { add(e, n, lo + rnd() * span, 1, 1, 1); continue; }
+        if (rnd() < 0.5) { add(e, n, lo + rnd() * span, 1, 1, 2); add(e, n, 100, 2, 2, 2); continue; }
       }
       add(e, n, 100, 2, 1, 1);
     }
@@ -525,6 +537,8 @@ check('the colour ramp runs dark to bright and clamps', ramp(-1).join() === '0,0
     s.kind[at(56.5, 45)] === 2 && s.kind[at(43.5, 45)] === 2, `${s.kind[at(56.5, 45)]} ${s.kind[at(43.5, 45)]}`);
   check('seasons: so is a small one whose pulses all came back once, by its rough cone of a top',
     s.kind[at(55, 56)] === 2 && T0(55.5, 56.5) < 0.01, `${s.kind[at(55, 56)]}`);
+  check('seasons: an oak holding its dead leaves, which stopped the laser like the evergreen, is a dome and not evergreen',
+    s.kind[at(30, 28)] === 3 && s.kind[at(15, 15)] === 2 && s.counts.domed > 0, `${s.kind[at(30, 28)]} (domed ${s.counts.domed})`);
   check('seasons: a crown that keeps last returns up high but measured no denser than the bare one is not evergreen',
     tangleC.ever < 0.1 && everC.ever > 0.9 && tangleC.through > everC.through + 0.2,
     `evergreen share ${tangleC.ever.toFixed(2)} (the evergreen ${everC.ever.toFixed(2)}); through ${tangleC.through.toFixed(2)}, bare ${bareC.through.toFixed(2)}, evergreen ${everC.through.toFixed(2)}`);

@@ -65,6 +65,17 @@
      over its needles and goes from dark to a bit darker. Under 100 bare
      columns on the flight there is no reference and the check is skipped.
  *
+ * 2c. NOT A DOME (owner's suggestion, 2026-10-11): a crown at least 4 m in
+ *     radius whose top falls less than 1.1 m from its highest return to the
+ *     highest return 2.5-3.5 m out is an open-grown broadleaf, whatever 2
+ *     said -- a big oak can still hold its dead leaves on a late-November
+ *     flight and stop the laser like needles. On one street (Kent 2016 cloud,
+ *     labelled by eye on the leaf-off and August 2022 NAIP photos): six lawn
+ *     spruces fell 1.4-3.9 m, seven oaks and maples 0.1-0.8 m; two of those
+ *     big domes had been called evergreen, which the owner caught. A steep
+ *     top does NOT rule one in: broadleaf trees crowded in a wood are pointed
+ *     too. STILL ONE STREET (crowns.js).
+ *
  *  3. A CROWN IN LEAF (calibrated 2026-10-11 from a literature review; the
  *     owner: summer, late summer above all, is when this must be right).
  *     Extinction per metre of crown, mu = G x LAD_eff (Beer's law):
@@ -122,6 +133,7 @@
 
 import { cellOf } from './grid.js';
 import { GRASS_M, solidAtGrass } from './canopy.js';
+import { crownsOf } from './crowns.js';
 
 const NOISE = new Set([7, 18]);
 export const CROWN_ABOVE_M = 2;
@@ -132,6 +144,9 @@ export const SOLID_TREE_SPLIT = 0.25; // a solid patch this split is a tree, not
 export const SOLID_TREE_MAX_M2 = 60; // or one smaller than this
 export const SOLID_TREE_ROUGH_M = 0.55; // whose neighbouring tops differ by this much (median)
 export const SOLID_TREE_RIM_M = 3; // its crown reaches this far past the part nothing got through
+export const DOME_RING_M = [2.5, 3.5]; // how far out from a crown's highest return its top is read (2c)
+export const DOME_DROP_M = 1.1; // a crown whose top falls less than this there is a dome
+export const DOME_MIN_R_M = 4; // and only a crown this wide (equivalent radius) is judged
 export const BARE_MIN = 100; // bare crown columns needed to say what bare is here
 export const G_OMEGA = 0.5; // G; within-crown clumping is inside the effective LAD and LAI
 export const LAD = 1.0;
@@ -277,7 +292,7 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true } = 
      where the crown also measured DENSE: its optical depth above 4 m,
      pooled over the 5 x 5 m of crown around it, at least EVERGREEN_DENSER
      times the median of the crowns penetration calls bare on this flight. */
-  let ever = 0;
+  let ever = 0, domed = 0;
   for (let k = 0; k < N; k++) if (kind[k] === 2) ever++;
   if (classify) {
     const od = new Float32Array(N);
@@ -334,6 +349,13 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true } = 
         rimSeen[j] = 1; rimDist[j] = rimDist[k] + 1; rimFrom.push(j);
       }
     }
+    /* 2c. NOT A DOME. Whatever called it evergreen, a broad crown whose top
+       stays flat for metres is an open-grown broadleaf (crowns.js). */
+    const top = new Float32Array(N).fill(NaN);
+    for (let k = 0; k < N; k++) if (above[k]) top[k] = zHi[k] - ground[k];
+    const { lab, crowns } = crownsOf(cols, model, { shift, top, dropAt: DOME_RING_M });
+    const dome = crowns.map((c) => c.R >= DOME_MIN_R_M && c.drop < DOME_DROP_M);
+    for (let k = 0; k < N; k++) if (kind[k] === 2 && lab[k] >= 0 && dome[lab[k]]) { kind[k] = 3; ever--; domed++; }
   }
   for (const c of clumps) c.evergreenShare = 0;
   for (let k = 0; k < N; k++) if (clumpOf[k] >= 0 && kind[k] === 2) clumps[clumpOf[k]].evergreenShare++;
@@ -425,7 +447,7 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true } = 
       if (muLeaf > muOn[i]) muOn[i] = muLeaf;
     }
   }
-  const counts = { roof: 0, evergreen: ever, deciduous: 0 };
+  const counts = { roof: 0, evergreen: ever, deciduous: 0, domed };
   for (let k = 0; k < N; k++) { if (kind[k] === 1) counts.roof++; else if (kind[k] === 3) counts.deciduous++; }
   return { kind, clumps, clumpOf, muOn, muOff: mu, counts, classified: classify, leafyColumns: leafy };
 }
