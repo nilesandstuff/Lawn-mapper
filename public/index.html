@@ -554,12 +554,13 @@
         </button>
         <!--
           No step number: this is not step five, it is what you do with a
-          finished measurement. Hidden until there is one, because a tab full
-          of tools that need a lawn is four taps of nothing.
+          finished measurement. Always shown (owner, 2026-10-11): it lists the
+          tools, and a tool opened before the map is finished says so, rather
+          than the tab hiding until then. Hidden from paid workers (job-mode).
         -->
         <button class="tab" type="button" id="tab-plan" role="tab"
-                data-tab="plan" aria-selected="false" aria-controls="pane-plan" hidden>
-          Plan
+                data-tab="plan" aria-selected="false" aria-controls="pane-plan">
+          Workshop
         </button>
       </nav>
 
@@ -948,6 +949,27 @@
       <div class="tabpane" id="pane-plan" role="tabpanel" aria-labelledby="tab-plan" hidden>
         <p class="sub" id="plan-lead">Your lawn is measured. These tools work on
           the finished map.</p>
+
+        <!--
+          THE WORKSHOP'S TOOLS (owner, 2026-10-11). Each one works on the map
+          as it stood when "Finish, save, and see more options" was pressed;
+          pressed before that, a tool says so (#workshop-gate) instead of
+          opening. The shade analyzer is its own page (/shade.html, the
+          features session's) and is handed this map by its save id.
+        -->
+        <div class="tool-list">
+          <button class="tool-pick" type="button" id="open-calibrate" aria-controls="tool-segments" aria-expanded="false">
+            <strong>Calibrate product usage by area</strong>
+            <span>Split the lawn into measured pieces, to check your spreader or sprayer against the bag as you go.</span>
+          </button>
+          <button class="tool-pick" type="button" id="open-shade">
+            <strong>Shade analyzer</strong>
+            <span>The trees and buildings around this lawn in 3D, from lidar, and the sun and shade through the year.</span>
+          </button>
+        </div>
+        <p class="gate-note" id="workshop-gate" role="alert" hidden>Finalize your map first: when the
+          lawn is right, press <strong>Finish, save, and see more options</strong>. These tools
+          work on the finished map.</p>
         <!-- The one place the app asks, unprompted: right after it has been
              useful. A link to the same sheet as the heart, never a pop-up. -->
         <p class="sub support-line">Found this useful?
@@ -961,8 +983,8 @@
           number of spreader passes across, and each one spans the lawn so you
           can see where it ends while standing on it.
         -->
-        <div class="tool" id="tool-segments">
-          <h3>Split into measured pieces</h3>
+        <div class="tool" id="tool-segments" hidden>
+          <h3>Calibrate product usage by area</h3>
           <p class="sub">Divide the lawn into chunks of a known size, so you can
             check your rate against the bag part-way through instead of finding
             out at the end.</p>

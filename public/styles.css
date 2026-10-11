@@ -145,6 +145,19 @@ body.job-mode #support-btn, body.job-mode .support-line { display: none; }
   padding: 14px; margin-bottom: 12px;
 }
 .tool h3 { margin: 0 0 6px; font-size: 15px; letter-spacing: -0.01em; }
+
+/* The Workshop's list of tools: one tappable card each, the name over a line
+ * saying what it does. */
+.tool-list { display: grid; gap: 10px; margin: 0 0 12px; }
+.tool-pick {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
+  background: transparent; color: inherit; font: inherit;
+}
+.tool-pick strong { display: block; font-size: 15px; }
+.tool-pick span { display: block; margin-top: 3px; font-size: 13px; opacity: .75; }
+.tool-pick[aria-expanded="true"] { border-color: currentColor; }
+.gate-note { margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); font-size: 14px; }
 .tool label { display: block; margin: 12px 0 6px; font-size: 13px; font-weight: 600; }
 
 /*

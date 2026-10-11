@@ -88,6 +88,9 @@ const IMAGERY_ZOOM_FALLBACK = 19; // used when we have no parcel to fit
 
 const state = {
   clientId: clientId(),
+  /* The lawn as it stood when Finish was last pressed (lawnPrint); the
+     Workshop's tools open only while the map still matches it. */
+  finishedPrint: null,
   /* The photo made easier to trace on (lib/enhance.js), for the eye only:
      on unless this browser was told otherwise. */
   enhance: (() => { try { return localStorage.getItem('lm_enhance') !== '0'; } catch { return true; } })(),
@@ -9411,8 +9414,8 @@ function refreshTabs() {
    * thing by "there is something here now".
    */
   const ready = hasLawn();
-  const planTab = $('#tab-plan');
-  if (planTab) planTab.hidden = !ready;
+  // The Workshop is always there now (owner, 2026-10-11); its tools ask for a
+  // finished map themselves (toolGate). Paid workers never see it (job-mode).
 
   const finish = $('#btn-finish');
   if (finish) finish.hidden = !(ready || notLawnOnly()) || (state.tab !== 'detect' && state.tab !== 'draw');
@@ -13166,10 +13169,68 @@ function updateSelectionButtons() {
  */
 function refreshPlanTab() {
   const sqft = totalSquareFeet();
-  $('#plan-lead').textContent = sqft
-    ? `${Math.round(sqft).toLocaleString()} sq ft measured. These tools work on the finished map.`
-    : 'Measure a lawn first and these tools will work on it.';
+  $('#plan-lead').textContent = !sqft
+    ? 'Measure a lawn first and these tools will work on it.'
+    : mapFinished()
+      ? `${Math.round(sqft).toLocaleString()} sq ft measured. These tools work on the finished map.`
+      : `${Math.round(sqft).toLocaleString()} sq ft so far. Finish the map and these tools will work on it.`;
+  if (mapFinished()) $('#workshop-gate').hidden = true;
 }
+
+/*
+ * FINISHED MEANS "FINISHED AS IT IS NOW" (owner, 2026-10-11: a tool opened
+ * before "Finish, save, and see more options" says to finish first). Pressing
+ * Finish records what the lawn looked like; any edit after that, or another
+ * address, no longer matches it, so the tools ask again rather than work on a
+ * map the person has not signed off.
+ */
+function lawnPrint() {
+  const shapes = draw.getAll().features.filter((f) => outerRing(f)).map((f) => f.geometry.coordinates);
+  return shapes.length ? JSON.stringify([state.chosen?.label || '', shapes]) : null;
+}
+function mapFinished() {
+  const print = lawnPrint();
+  return !!print && print === state.finishedPrint;
+}
+
+/** True when the map is finished; otherwise says what to do and returns false. */
+function toolGate() {
+  if (mapFinished()) return true;
+  const gate = $('#workshop-gate');
+  gate.hidden = false;
+  gate.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  setStatus('Finalize your map first, then press "Finish, save, and see more options".');
+  return false;
+}
+
+$('#open-calibrate').addEventListener('click', () => {
+  if (!toolGate()) return;
+  const tool = $('#tool-segments');
+  tool.hidden = !tool.hidden;
+  $('#open-calibrate').setAttribute('aria-expanded', String(!tool.hidden));
+  if (!tool.hidden) tool.scrollIntoView({ block: 'start', behavior: 'smooth' });
+});
+
+/*
+ * The shade analyzer is its own page (/shade.html, the features session's).
+ * It is handed THIS map by its save id (?map=), which it looks up among the
+ * same saves the Saved tab lists -- so the save is written first, not left to
+ * the debounce. The tab is opened before the wait, inside the tap, because a
+ * window opened after an await is a pop-up to a phone's browser; if it is
+ * blocked anyway, this tab goes there instead (the map is saved, so the
+ * editor comes back with it).
+ */
+$('#open-shade').addEventListener('click', async () => {
+  if (!toolGate()) return;
+  const entry = snapshotForSave();
+  if (!entry) return;
+  const win = window.open('', '_blank');
+  clearTimeout(saveTimer);
+  await putSave(entry);
+  const url = `/shade.html?map=${encodeURIComponent(entry.id)}`;
+  if (win) win.location.href = url;
+  else window.location.href = url;
+});
 
 /** The lawn as planSegments wants it: one ring list per polygon, lng/lat. */
 function lawnRings() {
@@ -14303,6 +14364,7 @@ $('#btn-finish').addEventListener('click', () => {
       + 'kept apart from the lawn maps for training.');
     return;
   }
+  state.finishedPrint = lawnPrint();
   setTab('plan');
   setStatus('Measuring done. These tools work on the finished map.');
 });
