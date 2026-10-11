@@ -14,12 +14,14 @@
  * the RAW points (smoothing flattens a cone's tip), the drop from the
  * crown's highest return to the highest return 1.5-2 m out from it.
  *
- * Measured by eye on one street (Rockford MI, Kent 2016 cloud, against the
- * leaf-off and the August 2022 NAIP photos, 2026-10-11 -- STILL ONE STREET):
- * lawn spruces dropped 1.0-3.5 m (median 2.2), open-grown oaks and maples
- * 0.0-0.8 m. Broadleaf trees crowded in a wood are narrow and pointed too
- * (2.4-3.1 m), so a steep top cannot rule an evergreen IN; a flat one rules
- * it out.
+ * Measured (2026-10-11) on H73's hand-labelled crowns, 234 found in the
+ * lidar on 60 maps (data/labelled-crowns.csv): evergreens' tops fell a
+ * median 1.23 m (quartiles 0.76-1.85) 2.5-3.5 m out, broadleaf crowns'
+ * about 0.5 m (0.2-0.9); the drop ranks an evergreen above a broadleaf 70%
+ * of the time. First seen on one street by eye (Rockford MI): lawn spruces
+ * 1.4-3.9 m, open-grown oaks and maples 0.1-0.8 m. Broadleaf trees crowded
+ * in a wood are pointed too, so a steep top cannot rule an evergreen IN; a
+ * flat one can rule it out (seasonal.js 2c).
  */
 
 import { cellOf } from './grid.js';

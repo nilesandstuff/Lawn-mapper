@@ -66,15 +66,20 @@
      columns on the flight there is no reference and the check is skipped.
  *
  * 2c. NOT A DOME (owner's suggestion, 2026-10-11): a crown at least 4 m in
- *     radius whose top falls less than 1.1 m from its highest return to the
+ *     radius whose top falls less than 0.7 m from its highest return to the
  *     highest return 2.5-3.5 m out is an open-grown broadleaf, whatever 2
  *     said -- a big oak can still hold its dead leaves on a late-November
- *     flight and stop the laser like needles. On one street (Kent 2016 cloud,
- *     labelled by eye on the leaf-off and August 2022 NAIP photos): six lawn
- *     spruces fell 1.4-3.9 m, seven oaks and maples 0.1-0.8 m; two of those
- *     big domes had been called evergreen, which the owner caught. A steep
- *     top does NOT rule one in: broadleaf trees crowded in a wood are pointed
- *     too. STILL ONE STREET (crowns.js).
+ *     flight and stop the laser like needles; the owner caught two such
+ *     domes called evergreen on Brooks Ln. MEASURED on H73's hand-labelled
+ *     crowns (data/labelled-crowns.csv, 234 found in the lidar on 60 maps:
+ *     41 evergreen, 193 broadleaf; noisy labels, evergreens under-
+ *     represented): the drop ranks an evergreen above a broadleaf 70% of the
+ *     time; medians 1.23 m against about 0.5. This cut rules out 59% of the
+ *     broadleaf crowns and wrongly 22% of the evergreens (9 of 41, the same
+ *     9 as at 0.4 m; at 1.1 m, the first street's cut, it was 32% for 73%).
+ *     An evergreen ruled out only gets summer leaves (a little too dark); a
+ *     broadleaf left evergreen gets none (much too bright). A steep top does
+ *     NOT rule one in: broadleaf trees crowded in a wood are pointed too.
  *
  *  3. A CROWN IN LEAF (calibrated 2026-10-11 from a literature review; the
  *     owner: summer, late summer above all, is when this must be right).
@@ -148,7 +153,7 @@ export const SOLID_TREE_MAX_M2 = 60; // or one smaller than this
 export const SOLID_TREE_ROUGH_M = 0.55; // whose neighbouring tops differ by this much (median)
 export const SOLID_TREE_RIM_M = 3; // its crown reaches this far past the part nothing got through
 export const DOME_RING_M = [2.5, 3.5]; // how far out from a crown's highest return its top is read (2c)
-export const DOME_DROP_M = 1.1; // a crown whose top falls less than this there is a dome
+export const DOME_DROP_M = 0.7; // a crown whose top falls less than this there is a dome (H73's crowns)
 export const DOME_MIN_R_M = 4; // and only a crown this wide (equivalent radius) is judged
 export const BARE_MIN = 100; // bare crown columns needed to say what bare is here
 export const G_OMEGA = 0.5; // G; within-crown clumping is inside the effective LAD and LAI
