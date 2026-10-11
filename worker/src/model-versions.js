@@ -41,6 +41,14 @@ export const MODEL_VERSIONS = [
     lots: 81,
     basis: 'H83: three decoders averaged; 20.3 / 22.1 / 20.7% over three seeds (mean 21.0), runs 37582634690, 37582729096, 37582829432 -- the single-decoder setup on the same runs and locked 81 lots is 21.8 (78%)',
   },
+  {
+    version: 4,
+    shipped: '2026-10-11',
+    trainedAt: '2026-10-11T07:44:29Z',
+    accuracy: 81,
+    lots: 104,
+    basis: 'v3 retrained on every approved map (104, 31 of them county-drawn) plus the owner\'s 5 not-lawn-only maps (owner, 2026-10-11), run 38115838951. Accuracy is the nearest measurement: THE PLAN\'s single decoder on the locked 104, 19.0 / 19.1 / 18.9% (H92 runs 38085217225, 38085219178, 38085221591). The averaged-of-3 + not-lawn arrangement at 104 is NOT separately measured; H79 found the pond maps worth nothing measurable overall (they carry B12)',
+  },
 ];
 
 /** alpha below 82%, beta below 86%, then no stage label. */

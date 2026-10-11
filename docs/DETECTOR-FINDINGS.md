@@ -46,6 +46,18 @@ got here. Update it whenever the in-flight run changes.*
   runs. Version 1 (2026-09-29) is 76%, from 24.0%; version 2 is 79%, from
   21.0 / 21.3 / 21.0. The stage follows the owner's thresholds: alpha below
   82%, beta below 86%, none after. The picker's "Version history" lists them.
+- **RELEASE v4 IS LIVE (owner, 2026-10-11: "train up the live model with
+  the full training set, including the not lawn traces").** v3's arrangement
+  (three decoders averaged, fused + edge, taught under trees, canopy input,
+  30 epochs, seed 7) trained on all 104 approved maps PLUS the owner's 5
+  not-lawn-only maps (`not_lawn: on`; no regular map carries tinker traces
+  of its own, so those 5 are all of them), run 38115838951, trainedAt
+  2026-10-11T07:44:29Z, train loss 0.200. Named "alpha version 4 (81%)":
+  81 is THE PLAN's single decoder on the locked 104 (H92 runs), the nearest
+  measurement -- this exact arrangement at 104 is NOT measured, and H79
+  found the ponds worth nothing measurable overall. v3 is kept under
+  alpha/history/. Its live accuracy is unmeasured until maps it drew are
+  approved (workflow 7, by `model_version`).
 - **THE PLAN CHANGED, 2026-10-06 (H78): its decoder is now TAUGHT UNDER
   TREES with the CANOPY AS AN INPUT** (`UNDER_TREES=1`, `FUSE_CANOPY=1`).
   Stage 3, the span rule, the edge refiner and the lidar veto all stay. It
@@ -7339,6 +7351,7 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-07 | 37562487510 | 81 (locked) | `edge_reach: compare`, seed 7, CPU: pictures of the wide row against the live refiner | 22.0% (edge refined + stage 3, span, veto) | — | H82 (supplementary to H80): wide vs live 21 / 44, +0.8; B28 28 -> 68 |
 | 2026-10-07 | 37563074383 / 37563158493 / 37563241262 | 81 (locked) | S27 `refiner_trial: compare` (hard edges; wide + edges + gate), seeds 7/8/9, CPU | 22.0 / 22.5 / 20.8% | — | **H82.** Hard edges 22 / 24, p 0.88; wide gated 20 / 42, +0.5 [+0.0, +0.9]. Refiner vs twin 55 / 17 (H81 replicates). Neither adopted |
 | 2026-10-07 | 37582634690 / 37582729096 / 37582829432 | 81 (locked) | S28 `refiner_trial: average of 3`, seeds 7/8/9, CPU | 20.9 / 22.5 / 22.0% (edge refined + stage 3, span, veto) | — | **H83.** Averaged x3: 31 / 9, -0.3 [-0.4, -0.1], p 0.001; medians 20.3 / 22.1 / 20.7. Passes; not released |
+| 2026-10-11 | 38115838951 | 104 (all) + 5 not-lawn-only maps | **RELEASE v4** (owner's request): `release: alpha`, `refiner_trial: average of 3`, `not_lawn: on`, `lawns: all`, fused + edge, canopy on lawn, UNDER_TREES + FUSE_CANOPY, 30 epochs, seed 7, CPU | — (no folds) | — | Three decoders averaged on 104 lots + 5 pond examples in 874 s, train loss 0.200, trainedAt 2026-10-11T07:44:29Z. Shipped; v3 kept under alpha/history/. Named "alpha version 4 (81%)" from THE PLAN at 104 (H92 runs); the arrangement itself is unmeasured |
 | 2026-10-07 | 37643197968 | 81 (locked) | **RELEASE v3 (H83)**: `release: alpha`, `refiner_trial: average of 3`, fused + edge, canopy on lawn, UNDER_TREES + FUSE_CANOPY, 30 epochs, seed 7, CPU | — (no folds) | — | Three decoders averaged, trained on all 81 in 306 s, train loss 0.202, trainedAt 2026-10-07T15:52:29Z. Shipped to the live server; v2 kept under alpha/history/. Named "alpha version 3 (79%)": mean of the averaged row's run medians 21.0 (the single-decoder setup on the same runs 21.8) |
 | 2026-10-07 | 37618116401 / 37618210051 / 37618300740 | 81 (locked) | S29 `refiner_trial: epochs` (15 and 60 beside 30), seeds 7/8/9, CPU | 20.9 / 22.5 / 22.0% (30 epochs) | — | **H84.** 15: 21 / 45, +0.8, p 0.004 (worse); 60: 25 / 31, p 0.50 (nothing). 30 stays |
 | 2026-10-07 | 37628852627 / 37628956583 / 37629069477 | 81 (locked) | S30 `layers: compare` (blocks 8 and 16 squeezed to 256 each, fresh extraction), seeds 7/8/9, CPU | ~21-22% (edge refined + stage 3, span, veto) | — | **H85.** Middle layers 29 / 23, -0.1 [-0.4, +0.1], p 0.49; B20 73 -> 48, B19 79 -> 65. Not adopted |
