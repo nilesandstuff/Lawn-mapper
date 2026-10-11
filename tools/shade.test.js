@@ -556,8 +556,8 @@ check('the colour ramp runs dark to bright and clamps', ramp(-1).join() === '0,0
   check('seasons: the evergreen is as the laser measured it in every season (no leaves added)',
     near(T(s.muOff, 15, 15), T(s.muOn, 15, 15), 1e-6) && near(T(s.muOn, 15, 15), T(model.mu, 15, 15), 1e-6));
   check('seasons: in the leaf-off months every crown is as measured', s.muOff === model.mu);
-  check('seasons: a crown in leaf reaches 1 m past where the leaf-off laser found it',
-    T(s.muOn, 45 + 6.5, 15) < 0.9 && T(s.muOff, 45 + 6.5, 15) > 0.99, `${T(s.muOn, 45 + 6.5, 15).toFixed(2)} vs ${T(s.muOff, 45 + 6.5, 15).toFixed(2)}`);
+  check('seasons: in leaf a crown keeps the edge the leaf-off laser found (the August NAIP shadows), and leaves its lawn open',
+    T(s.muOn, 45 + 6.5, 15) > 0.99 && T(s.muOn, 45 + 5.5, 15) < 0.5, `${T(s.muOn, 45 + 6.5, 15).toFixed(2)} outside, ${T(s.muOn, 45 + 5.5, 15).toFixed(2)} at the edge`);
   check('seasons: half the leaves out sits between bare and full leaf',
     T(muWithLeaves(s, 0.5), 45, 15) < bareT && T(muWithLeaves(s, 0.5), 45, 15) > leafT && muWithLeaves(s, 0) === s.muOff && muWithLeaves(s, 1) === s.muOn);
   /* A bare tree over a winter shrub layer (honeysuckle, 1-3 m): half the

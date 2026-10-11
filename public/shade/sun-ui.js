@@ -2,8 +2,9 @@
  * The "Sun and shade" section of /shade.html: drives light-worker.js and
  * paints its answers onto the map (shade map, step 2).
  *
- *   Hours of sun        per 0.5 m of lot, hours with at least half the
- *                       direct beam getting through, on the chosen day
+ *   Hours of sun        per 0.5 m of lot, hours of direct sun on the chosen
+ *                       day, dappled light counted for the share that
+ *                       gets through
  *   Light (DLI)         mol/m2 of photosynthetic light that day, clear sky
  *   Shadows at a time   the shade at one moment, to hold against the
  *                       shadows in the photo
@@ -146,7 +147,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     } else if (st.day) {
       const d = st.day;
       if (st.mode === 'dli') paintLight(d.dli, d.xy, Math.max(1, d.openDli), 'mol/m²/day', { unit: 'mol/m²/day', what: 'clear day', dp: 1 });
-      else paintLight(d.sunHours, d.xy, Math.max(1, d.dayHours), 'hours of sun', { unit: 'hours of sun', what: 'clear day', dp: 1 });
+      else paintLight(d.sunHours, d.xy, Math.max(1, d.dayHours), 'hours of sun', { unit: 'hours of sun', what: 'clear day, dappled sun counted for the share that gets through', dp: 1 });
     }
     readouts();
   }

@@ -106,7 +106,10 @@
  *     model leaves out (worth 14-41% of understory PAR, Canham) -- so it
  *     errs slightly dark, the safe side for a lawn. Leaf-off lidar under-reads
  *     crown cover by 19-24% (Wasser et al. 2013), so in leaf the crowns'
- *     footprint is closed: gaps up to ~4 m inside filled, edges 1 m wider.
+ *     footprint is closed: gaps up to ~4 m inside filled. Its edges stay
+ *     where the laser saw them: grown 1 m, the August 2022 NAIP photo's
+ *     shadows on the owner's lawn were 32% against the model's 37% (29%
+ *     without), and leaves lay over open lawn (2026-10-11).
  *     ONLY DECIDUOUS CROWNS GET LEAVES (owner, 2026-10-11): the leaf-off
  *     flight already measured every crown as it stands in the leaf-off
  *     months, evergreens included, and an evergreen in summer is what the
@@ -362,13 +365,20 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true } = 
   for (const c of clumps) c.evergreenShare /= c.n;
 
   /* The leaf-on state. Its footprint is the crown columns CLOSED: grown by
-     2 m and shrunk back by 1, so gaps up to ~4 m inside the canopy fill and
-     every edge reaches 1 m further. At 2-8 points a square metre many
+     2 m and shrunk back by 2, so gaps up to ~4 m inside the canopy fill and
+     the edges stay where the laser found them. At 2-8 points a square metre many
      columns inside a leaf-off crown hold no return above 2 m, which would
      otherwise read as holes in the summer canopy (on the owner's lot the deep
      woods passed 10-12% of the day's light, against 2.4-6.2% measured under
      closed canopies); canopy-height-model closure is what Parent & Volin 2014
-     found tracks leaf-on closure. Buildings stay buildings. A filled column
+     found tracks leaf-on closure. The edges were grown 1 m as well until
+     2026-10-11, for Wasser et al.'s under-read cover; held against the
+     shadows in the August 2022 NAIP photo of the owner's lot that put 37%
+     of the grass in shade where the photo has 32%, and on the owner's
+     neighbour's lawn it laid summer leaves over open grass the owner can see
+     from above. Edges where the laser saw them: 29% against 32%; the deep
+     woods 4.8% (owner's) and 4.4% (Yankee Springs), still within Canham's
+     2.4-6.2%. Buildings stay buildings. A filled column
      takes the tallest crown neighbour's clump and height over its ground. */
   /* Only deciduous crowns take leaves (see 3), so only they are grown,
      filled and given leaf; evergreens and buildings stay as measured. */
@@ -385,7 +395,7 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true } = 
   const footprint = new Uint8Array(N);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     let all = 1;
-    for (let dy = -1; dy <= 1 && all; dy++) for (let dx = -1; dx <= 1; dx++) {
+    for (let dy = -2; dy <= 2 && all; dy++) for (let dx = -2; dx <= 2; dx++) {
       const xx = x + dx, yy = y + dy;
       if (xx >= 0 && yy >= 0 && xx < w && yy < h && !grown[yy * w + xx]) { all = 0; break; }
     }

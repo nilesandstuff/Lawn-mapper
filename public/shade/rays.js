@@ -128,8 +128,12 @@ export function sunlitNow(model, xy, dir, { stepM = 0.5 } = {}) {
  * One day's light at every point, under a CLEAR sky, from the sun's path
  * (sun.js sunPath, steps `stepMin` apart):
  *
- *   sunHours    hours with at least half the direct beam getting through
- *   beamHours   hours of direct beam, weighted by how much got through
+ *   sunHours    hours of direct sun, dappled light counted for the share of
+ *               the beam that gets through (no cut-off; owner, 2026-10-11):
+ *               an hour under a crown passing 40% is 0.4 h. Through
+ *               leaves at random that share IS the chance a spot is in a
+ *               sunfleck, so this is the expected time in full sun.
+ *   beamHours   the same (kept for callers)
  *   dli         mol/m2/day of photosynthetic light, direct + diffuse (svf)
  *   openDli     the same for open, level ground at this place (the ceiling)
  *
@@ -154,7 +158,7 @@ export function dayLight(model, xy, path, { stepMin = 10, heightM = 0, svf = nul
       const T = transmittance(model, xy[2 * p], xy[2 * p + 1], zs[p], s.dir, { stepM, cm });
       const nm = normals[p];
       const cosInc = Math.max(0, nm[0] * s.dir[0] + nm[1] * s.dir[1] + nm[2] * s.dir[2]);
-      if (T >= 0.5) sunHours[p] += dt / 3600;
+      sunHours[p] += (T * dt) / 3600;
       beamHours[p] += (T * dt) / 3600;
       dli[p] += parMol(sky.dni * cosInc * T + sky.dhi * (svf ? svf[p] : 1), dt);
     }
