@@ -6447,6 +6447,13 @@ but that is unmeasured. The measurement would be workflow 29 with an
 possible reason, not checked: oaks and beech keep dead leaves through
 winter (marcescence), which would stop pulses above 4 m like an evergreen.
 
+**Owner, 2026-10-11:** around 2017 the woods carried a tremendous amount of
+vine: wild grape, Virginia creeper and oriental bittersweet. Woody tangles
+in the crowns would stop pulses above 4 m in a leaf-off flight too. The
+owner also judged this the shade map's work, not the detector's: the deep
+woods matter to shade only through the long shadows tall trees cast. The
+workflow 29 measurement offered above is NOT planned.
+
 ### S35. The lidar may sit half a cell off the photo: the USGS octrees are NAD83 labelled EPSG:3857 (from the features session, 2026-10-10 -- NOT MEASURED HERE)
 
 Reported by the features session (shade map; session
