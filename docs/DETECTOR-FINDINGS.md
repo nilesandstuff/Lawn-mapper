@@ -6412,6 +6412,41 @@ photo. It changes nothing in H73. Nothing in the detector uses the 0.79
 cut. The thing to measure, if it ever matters: H73's per-crown read on
 labelled crowns inside closed woods, split by flight month.
 
+**The core session's follow-up on the same lot (2026-10-11).** These are
+local reads of the Kent cloud
+(USGS_LPC_MI_31Co_Kent_2016_LAS_2019, 300 x 300 m around the lot), using
+tree_lidar.py's layers and lidar_canopy.py's tree rule. The parcel is
+7315 Brooks Ln NE, 41-10-11-252-009. The point clouds were not saved.
+
+- **Fact: the lot was flown on 2017-11-27**, read from every point's
+  GpsTime. So "it leafed out in May" is ruled out here.
+- **Fact (owner, 2026-10-11): the woods have plenty of honeysuckle.**
+  Amur honeysuckle typically keeps its leaves into late November, after
+  the trees around it drop theirs.
+- Inside tree cells, last returns stop as follows: 59% on the ground
+  (<0.5 m), **18% in the 0.5-4 m shrub layer**, 23% above 4 m. 28% of tree
+  cells have no ground-classed point under them, so their ground is filled.
+- The shade map's feature reproduces: pooled 5 x 5 m, cut at 0.79, it calls
+  76% of the lot's tree blocks evergreen (the features session said 72%).
+- **Counting a last return below 4 m as having got through the crown**,
+  same pooling, same cut, gives 21%. By position:
+
+      west 20% (~30 m)   38% evergreen   (ground share: 91%)
+      middle             9%              (78%)
+      east 40%           12%             (38%)
+
+  The owner says the only evergreens are on the west edge. The
+  below-4-m picture shows a band along the west line, and the ground-
+  share picture calls the whole wood evergreen.
+
+STILL SPECULATION. It is one lot, judged against the owner's word. The
+4 m line is a choice made after looking, not a fitted cut. On H73's lawn
+trees, with no shrub layer, it should read about the same as penetration,
+but that is unmeasured. The measurement would be workflow 29 with an
+`l_below4` share beside `l_penetration`, on the 290 labelled crowns. Another
+possible reason, not checked: oaks and beech keep dead leaves through
+winter (marcescence), which would stop pulses above 4 m like an evergreen.
+
 ### S35. The lidar may sit half a cell off the photo: the USGS octrees are NAD83 labelled EPSG:3857 (from the features session, 2026-10-10 -- NOT MEASURED HERE)
 
 Reported by the features session (shade map; session
