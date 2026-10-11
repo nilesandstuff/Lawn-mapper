@@ -3,11 +3,12 @@
  *
  * Two sources, because neither is enough alone:
  *
- *   public/shade/lidar-index.json   every octree on AWS, as a box
- *                                   (tools/shade-lidar-index.js)
- *   USGS's 3DEP index (WESM)        every collection flown over the exact
- *                                   point, with its dates and quality level
- *                                   -- the service tools/lidar-season.js uses
+ *   Hobu's footprints of every octree on AWS   (outlines, read by the Worker:
+ *                                              worker/src/shade.js)
+ *   USGS's 3DEP index (WESM)                   every collection flown over the
+ *                                              exact point, with its dates and
+ *                                              quality level -- the service
+ *                                              tools/lidar-season.js uses
  *
  * A box alone picks wrong: a Nevada forest survey's box covers Salt Lake City
  * and its octree has nothing there (found 2026-10-10). WESM alone does not
@@ -55,7 +56,7 @@ export function nameYear(name) {
   return m ? 2000 + Number(m[1]) : null;
 }
 
-/** Index entries whose box holds the point. */
+/** Entries whose box holds the point (the Worker has already checked the outlines). */
 export function shortlist(index, lng, lat) {
   return (index?.projects || []).filter((p) => p.bbox[0] <= lng && lng <= p.bbox[2] && p.bbox[1] <= lat && lat <= p.bbox[3]);
 }

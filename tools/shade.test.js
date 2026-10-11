@@ -10,7 +10,7 @@ import { rankClouds, leafSeason, nameYear } from '../public/shade/find.js';
 import { gridOver, gridForFrame, gridBox, rasterise, fillGaps, resample } from '../public/shade/grid.js';
 import { alignToPhoto, dilate } from '../public/shade/align.js';
 import { kindOf, mercUnits } from '../public/shade/view3d.js';
-import { indexEntry } from './shade-lidar-index.js';
+import { footprintEntry, covers, lidarAt, handleShade, isShadePath } from '../worker/src/shade.js';
 import { metresPerPixel } from '../public/lib/mercator.js';
 
 let failures = 0;
@@ -150,9 +150,31 @@ function lasFile(format, recordLength, points, { scale = 0.01, offset = [100, 20
     notOnAws.length === 1 && notOnAws[0].workunit === 'UT_2023_SaltLakeCo_1_C24', JSON.stringify(notOnAws.map((u) => u.workunit)));
   check('season from the flight dates', leafSeason(d('2013-11-01'), d('2014-03-22')) === 'off');
   check('years from names, including the new letter-and-year suffix', nameYear('USGS_LPC_MI_31Co_Kent_2016_LAS_2019') === 2016 && nameYear('RI_Statewide_1_D22') === 2022);
-  const e = indexEntry({ properties: { name: 'X_2019', url: 'https://s3-us-west-2.amazonaws.com/usgs-lidar-public/X_2019/ept.json', count: 1000 },
-    geometry: { type: 'MultiPolygon', coordinates: [[[[-1, 0], [1, 0], [1, 1], [-1, 1], [-1, 0]]]] } });
-  check('index entry: a box, no URL when it is the usual one', e && !e.url && e.bbox.join() === '-1,0,1,1' && e.km2 > 1000, JSON.stringify(e));
+
+  /* The Worker's side: outlines, holes, and the whole answer with fake fetches. */
+  const square = (x0, y0, x1, y1) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]];
+  const fp = footprintEntry({ properties: { name: 'X_2019', url: 'https://s3-us-west-2.amazonaws.com/usgs-lidar-public/X_2019/ept.json', count: 1000 },
+    geometry: { type: 'MultiPolygon', coordinates: [[square(-1, 0, 1, 1), square(-0.5, 0.25, 0.5, 0.75)]] } });
+  check('footprint entry: box, outline, area, no URL when it is the usual one',
+    fp && !fp.url && fp.bbox.join() === '-1,0,1,1' && fp.km2 > 15000 && fp.km2 < 20000, JSON.stringify({ ...fp, polys: undefined }));
+  check('a point in the outline is covered, one in its hole is not, one outside the box is not',
+    covers(fp, 0.9, 0.9) && !covers(fp, 0, 0.5) && !covers(fp, 2, 0.5));
+  const L = (name, ring) => ({ type: 'Feature', properties: { name, count: 1e9 }, geometry: { type: 'Polygon', coordinates: [ring] } });
+  const fakeFetch = async (url) => ({
+    ok: true,
+    json: async () => (String(url).includes('resources.geojson')
+      ? { features: [L('NV_USFSR4_2_D23', [[-115, 39], [-110, 39], [-114.9, 42], [-115, 42], [-115, 39]]),
+        L('USGS_LPC_UT_Wasatch_L4_2013_LAS_2016', square(-112.2, 40, -111.5, 41))] }
+      : wesm),
+  });
+  const at = await lidarAt(-111.86, 40.57, { fetchImpl: fakeFetch });
+  check('the Worker drops a cloud whose BOX covers the point but whose OUTLINE does not',
+    at.clouds.length === 1 && at.clouds[0].name === 'USGS_LPC_UT_Wasatch_L4_2013_LAS_2016' && at.clouds[0].confirmed && at.wesm,
+    JSON.stringify(at.clouds.map((c) => c.name)));
+  const json = (data, status) => ({ data, status });
+  check('the route: /api/shade/ is ours, a bad point is a 400',
+    isShadePath('/api/shade/lidar') && !isShadePath('/api/shader')
+    && (await handleShade({ method: 'GET' }, new URL('https://x/api/shade/lidar?lng=abc'), {}, '', null, json)).status === 400);
 }
 
 /* ------------------------------------------------------------- grid */

@@ -2,7 +2,8 @@
  * /shade.html: THE PROPERTY IN 3D, FROM LIDAR, LINED UP (shade map, step 1).
  *
  * For one property -- a saved map, or a point -- this:
- *   1. finds the newest public point cloud flown over it (shade/find.js);
+ *   1. finds the newest public point cloud flown over it (/api/shade/lidar,
+ *      worker/src/shade.js);
  *   2. reads every point within 50 m of the property line, because a tree on
  *      the neighbour's lot shades this one: a 20 m tree at 42 deg N throws a
  *      45 m shadow at winter noon (shade/ept.js, shade/laz.js);
@@ -17,7 +18,6 @@
  * under the map, including what it could not measure.
  */
 
-import { rankClouds, wesmUrl } from './shade/find.js';
 import { pointsIn, toMerc, fromMerc, mercScale } from './shade/ept.js';
 import { lazDecoder, browserFactory } from './shade/laz.js';
 import { nad83Correction } from './shade/datum.js';
@@ -200,11 +200,10 @@ async function build(site) {
   const report = [];
 
   status('Asking USGS which lidar was flown here…');
-  const [index, wesm] = await Promise.all([
-    getJson('/shade/lidar-index.json'),
-    getJson(wesmUrl(site.lng, site.lat)).catch(() => null),
-  ]);
-  const { clouds, notOnAws } = rankClouds(index, wesm, site.lng, site.lat);
+  const found = await getJson(`${location.origin}/api/shade/lidar?lng=${site.lng}&lat=${site.lat}`);
+  if (!found || found.error) throw new Error(found?.error || 'the lidar index did not answer');
+  const { clouds, notOnAws } = found;
+  if (!found.wesm) report.push('<p class="warn">USGS\'s 3DEP index did not answer, so no cloud could be confirmed by name and flight dates are unknown.</p>');
   if (!clouds.length) {
     status('No public lidar over this point that this page can read.', 'bad');
     $('#report').innerHTML = notOnAws.length

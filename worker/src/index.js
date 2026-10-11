@@ -53,6 +53,7 @@ import { handleAuth, isAuthPath } from './routes-auth.js';
 import { handleMaps } from './routes-maps.js';
 import { handleAdmin, isAdminPath } from './routes-admin.js';
 import { handleJobs, spendJobDetection, jobDetection } from './routes-jobs.js';
+import { handleShade, isShadePath } from './shade.js';
 import { accountsEnabled, publicUser } from './db.js';
 import { currentUser } from './auth.js';
 import { recordParcelGap } from './gaps.js';
@@ -1505,6 +1506,9 @@ export default {
       if (url.pathname === '/api/job' || url.pathname.startsWith('/api/job/')) {
         return await handleJobs(request, url, env, origin, ctx, json);
       }
+
+      /* The shade map (features session; worker/src/shade.js). */
+      if (isShadePath(url.pathname)) return await handleShade(request, url, env, origin, ctx, json);
 
       switch (url.pathname) {
         // The Mapbox token is a pk.* key -- public by design; Mapbox expects
