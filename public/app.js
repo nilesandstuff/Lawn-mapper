@@ -1421,8 +1421,13 @@ let lastAutoRetry = 0;
  * user something to look at while they wait to really highlight how
  * interesting it all really is"). Not a progress report -- the Worker says
  * nothing about where a press has got to -- but each line is a thing the
- * trained model's pipeline really does to a lot. They turn over every few
- * seconds in this order, and round again if it runs long.
+ * trained model's pipeline really does to a lot.
+ *
+ * The pacing (owner, 2026-10-11, second pass): five seconds each, in order,
+ * then "Drawing your lawn" stays up for as long as it takes -- never round
+ * again. An outline back before the last line hurries the rest through and is
+ * shown when they finish: 10 s after it came back, or 40 s after the press,
+ * whichever is later (detectRush).
  */
 const DETECT_STEPS = [
   'Fetching the aerial photograph of your lot',
@@ -1438,18 +1443,44 @@ const DETECT_STEPS = [
   'Refining the edges',
   'Drawing your lawn',
 ];
-const DETECT_STEP_MS = 2500;   // all twelve in DETECT_MIN_MS, ending on "Drawing your lawn"
-/* A finished outline waits until the lot has had this long on screen. */
-const DETECT_MIN_MS = 30000;
+const DETECT_STEP_MS = 5000;
+const DETECT_LAST = DETECT_STEPS.length - 1;
+/* An early outline waits at least this long after it came back... */
+const DETECT_RUSH_MS = 10000;
+/* ...and until the press has been running at least this long. */
+const DETECT_MIN_MS = 40000;
 
-function detectStepAt(ms) {
-  return DETECT_STEPS[Math.floor(ms / DETECT_STEP_MS) % DETECT_STEPS.length];
+/** Which line is up at `now`: in order, then the last one for good; hurried once rushed. */
+function detectStepAt(run, now = Date.now()) {
+  const r = run.rush;
+  const i = r
+    ? r.from + Math.floor((now - r.at) / r.slot)
+    : Math.floor((now - run.started) / DETECT_STEP_MS);
+  return DETECT_STEPS[Math.min(DETECT_LAST, i)];
 }
 
-/** Until the press has been running DETECT_MIN_MS. False if it was cancelled or replaced meanwhile. */
+/*
+ * The outline is back. If the lines have not reached the last one, the one on
+ * screen and the rest are spread evenly over what is left of the wait -- the
+ * later of 10 s from now and 40 s from the press -- so none is skipped and
+ * the last, "Drawing your lawn", is on screen when the map appears. Already
+ * on the last line: no wait.
+ */
+function detectRush(run, now = Date.now()) {
+  const from = Math.floor((now - run.started) / DETECT_STEP_MS);
+  if (from >= DETECT_LAST) return 0;
+  const wait = Math.max(DETECT_RUSH_MS, DETECT_MIN_MS - (now - run.started));
+  run.rush = { at: now, from, slot: wait / (DETECT_LAST - from + 1) };
+  return wait;
+}
+
+/** Until the hurried lines have played. False if it was cancelled or replaced meanwhile. */
 async function holdForSteps(run) {
-  const left = DETECT_MIN_MS - (Date.now() - run.started);
-  if (left > 0) await new Promise((ok) => setTimeout(ok, left));
+  const wait = detectRush(run);
+  if (wait > 0) {
+    if (!run.action) $('#busy-text').textContent = `${detectStepAt(run)}…`;
+    await new Promise((ok) => setTimeout(ok, wait));
+  }
   return detection === run && !run.action && !run.abort.signal.aborted;
 }
 
@@ -1457,7 +1488,7 @@ function startDetectionTimer(run) {
   const tick = () => {
     const secs = Math.floor((Date.now() - run.started) / 1000);
     /* The step on show, unless Cancel or Retry has put its own words up. */
-    if (!run.action) $('#busy-text').textContent = `${detectStepAt(Date.now() - run.started)}…`;
+    if (!run.action) $('#busy-text').textContent = `${detectStepAt(run)}…`;
     const clock = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
     /* What to expect (owner, 2026-09-29), and an honest word once past it. */
     $('#busy-timer').textContent = secs < 60
@@ -5097,8 +5128,8 @@ async function detect({ again = false } = {}) {
       return;
     }
 
-    /* The outline is ready; the lot keeps its steps on screen until it has
-       had DETECT_MIN_MS (owner, 2026-10-11). Cancelled meanwhile: nothing. */
+    /* The outline is ready; an early one waits while the remaining steps
+       hurry through (detectRush). Cancelled meanwhile: nothing. */
     if (!(await holdForSteps(run))) return;
 
     draw.deleteAll();
