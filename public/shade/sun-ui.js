@@ -121,8 +121,8 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
   }
 
   /* A light view: banded colours over the smoothed values, 0 to `top`. */
-  function paintLight(values, xy, top, unit, read, span = 1) {
-    const b = bandsFor(top);
+  function paintLight(values, xy, top, unit, read, span = 1, step) {
+    const b = bandsFor(top, { step });
     legend(b, unit);
     paint(values, xy, (v) => [...b.colours[b.of(v)], ALPHA], { span, smoothed: true, read });
   }
@@ -147,7 +147,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     } else if (st.day) {
       const d = st.day;
       if (st.mode === 'dli') paintLight(d.dli, d.xy, Math.max(1, d.openDli), 'mol/m²/day', { unit: 'mol/m²/day', what: 'clear day', dp: 1 });
-      else paintLight(d.sunHours, d.xy, Math.max(1, d.dayHours), 'hours of sun', { unit: 'hours of sun', what: 'clear day, dappled sun counted for the share that gets through', dp: 1 });
+      else paintLight(d.sunHours, d.xy, Math.max(1, d.dayHours), 'hours of sun', { unit: 'hours of sun', what: 'clear day, dappled sun counted for the share that gets through', dp: 1 }, 1, 1);
     }
     readouts();
   }

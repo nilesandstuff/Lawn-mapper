@@ -351,6 +351,9 @@ check('the colour ramp runs dark to bright and clamps', ramp(-1).join() === '0,0
   check('bands run 0 to 60 in six, the ramp\'s ends at the ends, and a value finds its band',
     b.n === 6 && b.edges[6] === 60 && b.colours[0].join() === ramp(0).join() && b.colours[5].join() === ramp(1).join()
     && b.of(0) === 0 && b.of(9.99) === 0 && b.of(10) === 1 && b.of(59) === 5 && b.of(80) === 5 && b.of(-1) === 0);
+  const hb = bandsFor(15.3, { step: 1 });
+  check('hours of sun go by the hour: 16 bands to 16 h, the ramp from end to end',
+    hb.n === 16 && hb.edges[16] === 16 && hb.of(2.99) === 2 && hb.of(3) === 3 && hb.colours[15].join() === ramp(1).join());
   /* 4 x 3 raster: a building (empty) in one corner. */
   const r = rasterOf([10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110], [0, 0, 0.5, 0, 1, 0, 1.5, 0, 0, 0.5, 0.5, 0.5, 1, 0.5, 1.5, 0.5, 0, 1, 0.5, 1, 1, 1], 4, 3);
   check('the answers land on their pixels, the rest empty', r[0] === 10 && r[3] === 40 && r[10] === 110 && Number.isNaN(r[11]));

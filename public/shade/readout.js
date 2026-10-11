@@ -35,10 +35,12 @@ export function niceStep(top, most = MAX_BANDS) {
 
 /**
  * Bands from 0 to `top`: { step, n, edges (n + 1 of them), colours (one per
- * band, the ramp's ends included), of(value) -> band index }.
+ * band, the ramp's ends included), of(value) -> band index }. `step` fixes
+ * the step (hours of sun go by the hour: owner, 2026-10-11); otherwise the
+ * round step that gives at most MAX_BANDS.
  */
-export function bandsFor(top) {
-  const step = niceStep(top);
+export function bandsFor(top, { step: fixed } = {}) {
+  const step = fixed > 0 ? fixed : niceStep(top);
   const n = Math.max(1, Math.ceil(top / step - 1e-9));
   const edges = Array.from({ length: n + 1 }, (_, i) => +(i * step).toFixed(6));
   const colours = Array.from({ length: n }, (_, i) => heat(n === 1 ? 1 : i / (n - 1)));
