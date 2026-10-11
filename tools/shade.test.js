@@ -14,7 +14,7 @@ import { aboutLocal, ramp } from '../public/shade/sun-ui.js';
 import { tracedOn, lineUpAt } from '../public/shade/traced.js';
 import { sunAt, solarNoon, sunPath, clearSky, airMass, parMol } from '../public/shade/sun.js';
 import { buildCanopy } from '../public/shade/canopy.js';
-import { seasonalCanopy, muWithLeaves, leafCalendar, T_LEAF_ON, otsu, greennessOn } from '../public/shade/seasonal.js';
+import { seasonalCanopy, muWithLeaves, leafCalendar, G_OMEGA, LAI_MAX, otsu, greennessOn } from '../public/shade/seasonal.js';
 import { transmittance, skyView, sunlitNow, dayLight, samplePoints, groundAt, beamShare } from '../public/shade/rays.js';
 import { dayIndex, typicalYear, growthPotential, growingSeason, dliOn, dayLabel } from '../public/shade/climate.js';
 import { climateAt } from '../worker/src/shade.js';
@@ -459,11 +459,18 @@ check('the colour ramp runs dark to bright and clamps', ramp(-1).join() === '68,
   const T = (mu, e, n) => transmittance({ ...model, mu }, e, 60 - n, 100.1, [0, 0, 1]);
   const bareT = T(s.muOff, 45, 15), leafT = T(s.muOn, 45, 15);
   /* Bare: 8% of pulses stop in it and half the rest split, leaving half a
-     pulse there each -- about 0.69 gets through. In leaf: ~T_LEAF_ON. */
-  check(`seasons: the deciduous crown lets ~0.7 of the overhead sun through bare, about ${T_LEAF_ON * 100}% in leaf`,
-    near(bareT, 0.69, 0.06) && near(leafT, T_LEAF_ON, 0.025), `bare ${bareT.toFixed(2)}, in leaf ${leafT.toFixed(3)}`);
-  check('seasons: the evergreen is the same in leaf as measured',
-    near(T(s.muOn, 15, 15), T(s.muOff, 15, 15), 1e-6));
+     pulse there each -- about 0.69 gets through. In leaf: the crown is ~7 m
+     deep, so its leaf area index is capped at LAI_MAX and the sun straight
+     down keeps exp(-G Omega LAI_MAX) ~ 0.105, times what the branches stop. */
+  const full = Math.exp(-G_OMEGA * LAI_MAX);
+  check(`seasons: the deciduous crown lets ~0.7 of the overhead sun through bare, ~${full.toFixed(2)} or a little less in leaf`,
+    near(bareT, 0.69, 0.06) && leafT <= full * 1.05 && leafT > full * 0.6, `bare ${bareT.toFixed(2)}, in leaf ${leafT.toFixed(3)}`);
+  check('seasons: a low sun crossing more of the crown in leaf keeps less than the overhead sun',
+    transmittance({ ...model, mu: s.muOn }, 45, 60 - 22, 100.1, [0, -Math.cos(Math.PI / 4), Math.sin(Math.PI / 4)]) < leafT);
+  check('seasons: the evergreen is in leaf all year, and at least as dense as a broadleaf in leaf',
+    near(T(s.muOff, 15, 15), T(s.muOn, 15, 15), 1e-6) && T(s.muOn, 15, 15) <= full * 1.05);
+  check('seasons: a crown in leaf reaches 1 m past where the leaf-off laser found it',
+    T(s.muOn, 45 + 6.5, 15) < 0.9 && T(s.muOff, 45 + 6.5, 15) > 0.99, `${T(s.muOn, 45 + 6.5, 15).toFixed(2)} vs ${T(s.muOff, 45 + 6.5, 15).toFixed(2)}`);
   check('seasons: half the leaves out sits between bare and full leaf',
     T(muWithLeaves(s, 0.5), 45, 15) < bareT && T(muWithLeaves(s, 0.5), 45, 15) > leafT && muWithLeaves(s, 0) === s.muOff && muWithLeaves(s, 1) === s.muOn);
   const unclassified = seasonalCanopy(cols, model, { classify: false });
@@ -491,8 +498,9 @@ check('the colour ramp runs dark to bright and clamps', ramp(-1).join() === '68,
   const cal = leafCalendar(tMean);
   check('leaf calendar: leaves start when the typical mean passes 10 C in spring and fall when it drops back',
     tMean[cal.out] >= 10 && tMean[cal.out - 1] < 10 && tMean[cal.fall] < 10 && tMean[cal.fall - 1] >= 10, `${dayLabel(cal.out)} / ${dayLabel(cal.fall)}`);
-  check('leaf calendar: bare in winter, ramping over three weeks, full in summer, gone three weeks after the fall',
-    cal.share(10) === 0 && near(cal.share(cal.out + 10), 10 / 21, 1e-9) && cal.share(196) === 1 && cal.share(cal.fall + 25) === 0);
+  check('leaf calendar: bare in winter, five weeks to full leaf, half gone on the day it drops below 10 C, bare four weeks after it starts',
+    cal.share(10) === 0 && near(cal.share(cal.out + 7), 7 / 35, 1e-9) && cal.share(196) === 1
+    && near(cal.share(cal.fall), 0.5, 0.04) && cal.share(cal.fall + 15) === 0, `${cal.share(cal.fall).toFixed(2)}`);
   check('leaf calendar: always warm means always in leaf; never warm, never',
     leafCalendar(new Array(365).fill(20)).share(0) === 1 && leafCalendar(new Array(365).fill(0)).share(180) === 0);
 }

@@ -204,8 +204,8 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
       const cal = m.calendar;
       const when = cal.always ? 'Deciduous trees here keep their leaves all year in a typical year.'
         : cal.never ? 'It never gets warm enough here, in a typical year, for deciduous trees to leaf out.'
-          : `Leaves estimated out from ${dayLabel(cal.out)} (full by ${dayLabel((cal.out + 21) % 365)}) and falling from ${dayLabel(cal.fall)} (bare by ${dayLabel((cal.fall + 21) % 365)}), from the typical temperature here.`;
-      text = `Trees through the seasons: ${when} In leaf, a deciduous crown lets about 6% of overhead sun through, and less to a low sun that crosses more of it; bare, it lets through what the laser measured. Evergreens are as measured all year.${split}`;
+          : `Leaves estimated coming out ${dayLabel(cal.out)} to ${dayLabel(cal.full)} (half out ${dayLabel(cal.halfOut)}) and falling to bare by ${dayLabel(cal.bare)} (half gone ${dayLabel(cal.halfFall)}), from the typical temperature here, matched to Harvard Forest's measured leaf-out and leaf-fall.`;
+      text = `Trees through the seasons: ${when} In full leaf every crown, evergreen or not, stops light by its depth (leaf area 1 m² per m³ of crown, up to a leaf area index of 5.5, as measured on solitary maples and oaks): a full crown passes about 6% of the sun straight down and 2% at 45°, and the model put a Michigan forest's floor at about 4–6% of the day's light in summer, within the 2–6% measured under closed New England canopies (Canham et al. 1994). Late summer is darker because the sun is lower, not because there are more leaves. Bare, a deciduous crown passes what the laser measured.${split}`;
     } else if (m.canopy === 'solid') {
       text = 'Trees as solid: no light gets through any crown. The darkest the shade could be.';
     } else {

@@ -165,7 +165,7 @@ function build(m) {
       : !leafOffFlight ? (m.flight === 'on' ? 'the lidar was flown in leaf, so it already shows the summer canopy' : 'the flight season is unknown')
         : !calendar ? 'the typical temperatures did not load' : null,
     kinds, counts: season?.counts || null, classified: !!season?.classified, byColour: !!season?.byColour,
-    calendar: calendar && seasonal ? { out: calendar.out, fall: calendar.fall, always: !!calendar.always, never: !!calendar.never } : null,
+    calendar: calendar && seasonal ? { out: calendar.out, full: calendar.full, halfOut: calendar.halfOut, halfFall: calendar.halfFall, bare: calendar.bare, always: !!calendar.always, never: !!calendar.never } : null,
   });
 }
 
