@@ -23,6 +23,13 @@ on:
         type: choice
         default: 'on'
         options: ['on', 'off']
+      crowns_csv:
+        # Every labelled crown with its lng/lat, printed as CSV at the end of
+        # the log (the features session's shade map, 2026-10-11).
+        description: 'Also print every crown with its position, as CSV'
+        type: choice
+        default: 'off'
+        options: ['on', 'off']
 
 jobs:
   read:
@@ -86,6 +93,7 @@ jobs:
           MIN_CROWN_M2: ${{ inputs.min_crown_m2 }}
           OUT: tree-labels.json
           LIDAR: ${{ inputs.lidar == 'on' && 'tree-lidar' || '' }}
+          CROWNS_CSV: ${{ inputs.crowns_csv == 'on' && '1' || '' }}
         run: node tools/tree-labels.js
       - name: Keep every crown's numbers
         if: always()

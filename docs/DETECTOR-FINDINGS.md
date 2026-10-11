@@ -6479,6 +6479,22 @@ dense tree, the H74 problem from the other side:
   crowns where lidar_canopy.py's split-pulse test cannot. Untested beyond
   this one cloud.
 
+**Crown shape, also from the features session (2026-10-11; one street,
+Kent 2016, labelled by eye against the leaf-off photo and the 2022-08-23
+NAIP; NOT measured here):**
+- It measured how far the canopy top falls 2.5-3.5 m out from a crown's
+  highest return.
+- Six lawn spruces fell 1.4-3.9 m. Seven open-grown oaks and maples fell
+  0.1-0.8 m.
+- Two big oaks or maples had 23-35% of each crown called evergreen by the
+  ground-share and density rules. The flight was 27 Nov, so dead leaves
+  still on the oaks are a likely cause (the marcescence point above).
+- Crowded broadleaves in a wood are pointed too, so a flat top can rule an
+  evergreen OUT but a pointed top cannot rule one in.
+- It asked for H73's labelled crowns to calibrate this. Workflow 29 now
+  prints every crown with its lng/lat as CSV (`crowns_csv: on`); the export
+  is data/labelled-crowns.csv.
+
 ### S35. The lidar may sit half a cell off the photo: the USGS octrees are NAD83 labelled EPSG:3857 (from the features session, 2026-10-10 -- NOT MEASURED HERE)
 
 Reported by the features session (shade map; session

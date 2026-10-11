@@ -33,6 +33,8 @@ import { rasterizePolygon } from '../public/lib/mask.js';
 import { bareCanopy } from './stage3.js';
 import { lidarAt } from './lidar-season.js';
 import { coordsOfId } from '../worker/src/benchmark-ids.js';
+import { query } from './corpus-db.js';
+import { framePxToLngLat } from '../public/lib/mercator.js';
 
 const BUCKET = process.env.CORPUS_BUCKET || 'lawn-mapper-corpus';
 export const MIN_CROWN_M2 = Number(process.env.MIN_CROWN_M2 || 2);
@@ -341,6 +343,15 @@ async function main() {
   const decoders = { png: await import('pngjs'), jpeg: (await import('jpeg-js')).default };
   const dir = mkdtempSync(join(tmpdir(), 'tree-labels-'));
   const index = JSON.parse(get('trees/index.json', join(dir, 'index.json')) || '{"maps":[]}');
+  /* Where each photo sits, so a crown can be put on the map (the features
+     session's shade map, 2026-10-11): the frame the banked photo was taken
+     at, as workflow 28 drew the canopy on it. */
+  const frames = new Map();
+  try {
+    for (const r of query('SELECT id, frame, image_frame FROM corpus WHERE image_key IS NOT NULL')) {
+      try { frames.set(r.id, JSON.parse(r.image_frame || r.frame)); } catch { /* no frame, no position */ }
+    }
+  } catch (e) { console.log(`  (no frames from the corpus: ${e.message}; crowns go out without lng/lat)`); }
   const rows = [];
   const pixels = { 1: [0, 0], 2: [0, 0], 3: [0, 0], 4: [0, 0] }; // [labelled px, of them the colour rule calls bare]
   const perMap = [];
@@ -387,10 +398,16 @@ async function main() {
       lid.season = match?.season || null;
       lid.flown = match ? `${match.start}..${match.end}` : null;
     }
+    const frame = frames.get(model.id) || null;
+    /* The photo's leaf state, as far as the labels say: a map with any crown
+       painted bare was photographed leaf-off, at least in part. */
+    const photoBare = cs.some((c) => c.code === 3);
     for (const c of cs) {
       let sx = 0, sy = 0;
       for (const i of c.px) { sx += i % w; sy += Math.floor(i / w); }
-      rows.push({ map: m.name, code: c.code, areaM2: c.px.length * m2,
+      const at = frame ? framePxToLngLat(frame, [sx / c.px.length + 0.5, sy / c.px.length + 0.5], w, h) : null;
+      rows.push({ map: m.name, id: model.id, code: c.code, areaM2: c.px.length * m2, photoBare,
+        lng: at ? Math.round(at[0] * 1e7) / 1e7 : null, lat: at ? Math.round(at[1] * 1e7) / 1e7 : null,
         where: [Math.round((sx / c.px.length / w) * 100), Math.round((sy / c.px.length / h) * 100)],
         f: { ...features(c.px, photo.data, w, h, ruleBare), ...(lid ? lidarFeatures(c.px, w, h, lid) : {}) },
         lidar: lid ? { project: lid.project, year: lid.year, season: lid.season, flown: lid.flown } : null });
@@ -450,9 +467,24 @@ async function main() {
 
   if (process.env.OUT) {
     writeFileSync(process.env.OUT, JSON.stringify({ at: new Date().toISOString(), minCrownM2: MIN_CROWN_M2, perMap, pixels, q1, q2, q3, q4, q5, q6, suspects,
-      crowns: rows.map((r) => ({ map: r.map, kind: CODES[r.code], where: r.where, areaM2: Math.round(r.areaM2 * 10) / 10, lidar: r.lidar,
+      crowns: rows.map((r) => ({ map: r.map, id: r.id, kind: CODES[r.code], lng: r.lng, lat: r.lat, photoBare: r.photoBare,
+        where: r.where, areaM2: Math.round(r.areaM2 * 10) / 10, lidar: r.lidar,
         ...Object.fromEntries(Object.entries(r.f).map(([k, v]) => [k, Number.isFinite(v) ? Math.round(v * 1000) / 1000 : null])) })) }, null, 1));
     console.log(`\nEvery crown's numbers in ${process.env.OUT}.`);
+  }
+
+  /* EVERY CROWN, ON THE MAP, AS CSV IN THE LOG (CROWNS_CSV=1): for the shade
+     map's calibration (features session, 2026-10-11), and readable from a
+     log where an artifact is not. Centroid of the painted crown; photoBare is
+     whether the map has any crown painted bare (its photo is leaf-off). */
+  if (process.env.CROWNS_CSV === '1') {
+    console.log('\nLABELLED CROWNS CSV BEGIN');
+    console.log('map,corpus_id,label,lng,lat,area_m2,photo_has_bare_crowns,lidar_season');
+    for (const r of rows) {
+      console.log([r.map, JSON.stringify(r.id), CODES[r.code], r.lng ?? '', r.lat ?? '', Math.round(r.areaM2 * 10) / 10,
+        r.photoBare ? 1 : 0, r.lidar?.season || ''].join(','));
+    }
+    console.log('LABELLED CROWNS CSV END');
   }
 }
 
