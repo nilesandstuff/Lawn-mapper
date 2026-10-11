@@ -194,7 +194,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     const c = m.counts, total = c ? c.evergreen + c.deciduous : 0;
     const how = 'by how many of the laser\'s pulses got below 4 m through it in winter (measured right about 3 times in 4 on 290 single trees; the 4 m line, which lets winter shrubs and vines count as "through", is from one lot so far), and only where the crown also measured at least twice as dense as the bare crowns here: an evergreen still had its needles when the laser flew';
     const split = c && m.classified && total
-      ? ` Of the tree cover here, ${Math.round((100 * c.evergreen) / total)}% reads as evergreen and ${Math.round((100 * c.deciduous) / total)}% as deciduous, ${how}. The "Trees" view shows which is which. It matters from leaf-out to leaf-fall: a deciduous tree called evergreen gets no summer leaves.`
+      ? ` Of the tree cover here, ${Math.round((100 * c.evergreen) / total)}% reads as evergreen and ${Math.round((100 * c.deciduous) / total)}% as deciduous, ${how}. A tree so dense that nothing got through (a big spruce) is solid all year and counted evergreen, told from a roof by its rough, cone-shaped top. The "Trees" view shows which is which. It matters from leaf-out to leaf-fall: a deciduous tree called evergreen gets no summer leaves.`
       : '';
     let text;
     if (m.canopy === 'seasonal') {

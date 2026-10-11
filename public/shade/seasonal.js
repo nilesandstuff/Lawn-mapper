@@ -15,6 +15,17 @@
  *     ground -- is a building and stays solid (canopy.js), as H38's roof
  *     rule has it.
  *
+ * 1b. A TREE NOTHING GOT THROUGH (a dense spruce) is as solid as a roof and
+ *     stays solid in the light, but is labelled an evergreen, not a
+ *     building, when a quarter or more of its returns came from pulses that
+ *     split (on needles, almost never on a roof), or when it is under 60 m2
+ *     with a rough top (a roof is planes). The crown around it, out to 3 m
+ *     while its top keeps falling away and as dense as an evergreen must
+ *     measure (2b), is the same tree, so it gets no summer leaves either.
+ *     The light hardly moves (the mean summer beam reaching the ground
+ *     changed by 0.002 or less on three lots); the labels do: at 7300
+ *     Brooks Ln the lawn spruces had all been "buildings".
+ *
  *  2. EVERGREEN OR NOT, per column (a stand of trees is one clump and can be
  *     mixed), by the share of LAST returns that got through the crown,
  *     pooled over the 5 x 5 m around it and cut at 0.79. MEASURED HERE, H73
@@ -117,6 +128,10 @@ export const CROWN_ABOVE_M = 2;
 export const THROUGH_BELOW_M = 4; // a last return lower than this got through the crown (S36)
 export const EVERGREEN_BELOW = 0.79;
 export const EVERGREEN_DENSER = 2; // and at least this many times as dense as the bare crowns (2b)
+export const SOLID_TREE_SPLIT = 0.25; // a solid patch this split is a tree, not a roof (1b)
+export const SOLID_TREE_MAX_M2 = 60; // or one smaller than this
+export const SOLID_TREE_ROUGH_M = 0.55; // whose neighbouring tops differ by this much (median)
+export const SOLID_TREE_RIM_M = 3; // its crown reaches this far past the part nothing got through
 export const BARE_MIN = 100; // bare crown columns needed to say what bare is here
 export const G_OMEGA = 0.5; // G; within-crown clumping is inside the effective LAD and LAI
 export const LAD = 1.0;
@@ -135,7 +150,7 @@ export const LEAF_FALL_DAYS = 28;
 export function seasonalCanopy(cols, model, { shift = null, classify = true } = {}) {
   const { grid, w, h, nz, dz, z0, ground, mu } = model;
   const N = w * h;
-  const above = new Uint16Array(N), lastAll = new Float32Array(N), lastGround = new Float32Array(N);
+  const above = new Uint16Array(N), multiAbove = new Uint16Array(N), lastAll = new Float32Array(N), lastGround = new Float32Array(N);
   const heights = []; // [column, height over ground] of every crown return, for clump depths
   const zLo = new Float32Array(N).fill(Infinity), zHi = new Float32Array(N).fill(-Infinity);
   for (let i = 0; i < cols.n; i++) {
@@ -149,6 +164,7 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true } = 
     }
     if (over > CROWN_ABOVE_M && over < 80) {
       above[k]++;
+      if ((cols.nret[i] || 1) > 1) multiAbove[k]++;
       heights.push(k, over);
       if (cols.z[i] < zLo[k]) zLo[k] = cols.z[i];
       if (cols.z[i] > zHi[k]) zHi[k] = cols.z[i];
@@ -173,6 +189,40 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true } = 
     const roof = (above[k] >= 3 && zHi[k] - zLo[k] < 1.5 && lastGround[k] === 0) || solidAtGrass(model, k);
     kind[k] = roof ? 1 : 3;
   }
+  /* A tree nothing got through (a dense spruce) is solid like a roof, and
+     stays so in the light, but it is not a building. Per patch of solid
+     columns it is a tree when a quarter or more of the returns above 2 m
+     came from pulses that split (on needles and branches; almost never on
+     a roof), or when the patch is small and its top is rough -- a roof is
+     planes, so neighbouring columns' tops differ little. Since it was that
+     dense with the leaves off, it is an evergreen. (Kent 2016 cloud, 7300
+     Brooks Ln, checked against the photo, 2026-10-11: houses 200-311 m2,
+     2-3% split, tops differing a median 0.36-0.44 m between neighbours;
+     the lawn spruces 6-42 m2, 0-38% split, 0.55-1.5 m.) */
+  const seen = new Uint8Array(N);
+  for (let s0 = 0; s0 < N; s0++) {
+    if (kind[s0] !== 1 || seen[s0]) continue;
+    const patch = [s0];
+    seen[s0] = 1;
+    let a = 0, m = 0;
+    const steps = [];
+    for (let q = 0; q < patch.length; q++) {
+      const k = patch[q], x = k % w, y = (k / w) | 0;
+      a += above[k]; m += multiAbove[k];
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const xx = x + dx, yy = y + dy;
+        if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+        const j = yy * w + xx;
+        if (kind[j] !== 1) continue;
+        if (dx + dy > 0 && above[k] && above[j]) steps.push(Math.abs(zHi[k] - zHi[j]));
+        if (!seen[j]) { seen[j] = 1; patch.push(j); }
+      }
+    }
+    steps.sort((p1, p2) => p1 - p2);
+    const rough = steps.length ? steps[steps.length >> 1] : 0;
+    const tree = (a > 0 && m / a >= SOLID_TREE_SPLIT) || (patch.length < SOLID_TREE_MAX_M2 && rough >= SOLID_TREE_ROUGH_M);
+    if (classify && tree) for (const k of patch) kind[k] = 5;
+  }
   /* Eaves: a pulse that lands half on a roof edge and half on the ground
      splits like a tree's (the core's lidar-trees notes), so a ring of
      "crown" hugs every roof. A crown column next to a roof whose top is
@@ -188,6 +238,8 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true } = 
     }
   }
   for (let k = 0; k < N; k++) if (kind[k] === 4) kind[k] = 1;
+  const solidTree = new Uint8Array(N);
+  for (let k = 0; k < N; k++) if (kind[k] === 5) { kind[k] = 2; solidTree[k] = 1; }
   /* Clumps of crown columns. */
   const clumpOf = new Int32Array(N).fill(-1);
   const clumps = [];
@@ -226,11 +278,21 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true } = 
      pooled over the 5 x 5 m of crown around it, at least EVERGREEN_DENSER
      times the median of the crowns penetration calls bare on this flight. */
   let ever = 0;
+  for (let k = 0; k < N; k++) if (kind[k] === 2) ever++;
   if (classify) {
     const od = new Float32Array(N);
     for (let k = 0; k < N; k++) {
       if (kind[k] !== 3) continue;
       for (let l = 0; l < nz; l++) if (z0 + (l + 0.5) * dz > ground[k] + THROUGH_BELOW_M) od[k] += mu[k * nz + l] * dz;
+    }
+    /* The reference leaves out what lies around a solid tree (1b): a
+       spruce's skirt reads "through" by the 4 m line, and a lawn of spruces
+       would otherwise raise the bar their own rims are measured against. */
+    const nearSolid = new Uint8Array(N), R = SOLID_TREE_RIM_M;
+    for (let k = 0; k < N; k++) {
+      if (!solidTree[k]) continue;
+      const x = k % w, y = (k / w) | 0;
+      for (let yy = Math.max(0, y - R); yy <= Math.min(h - 1, y + R); yy++) for (let xx = Math.max(0, x - R); xx <= Math.min(w - 1, x + R); xx++) nearSolid[yy * w + xx] = 1;
     }
     const bare = [], dense = new Float32Array(N).fill(NaN);
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
@@ -243,13 +305,34 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true } = 
         a += od[yy * w + xx]; n++;
       }
       dense[k] = a / n;
-      if (!(pen[k] < EVERGREEN_BELOW)) bare.push(dense[k]);
+      if (!(pen[k] < EVERGREEN_BELOW) && !nearSolid[k]) bare.push(dense[k]);
     }
     bare.sort((a, b) => a - b);
     const ref = bare.length >= BARE_MIN ? bare[bare.length >> 1] : 0;
     for (let k = 0; k < N; k++) {
       if (kind[k] !== 3 || !(pen[k] < EVERGREEN_BELOW)) continue;
       if (dense[k] >= EVERGREEN_DENSER * ref) { kind[k] = 2; ever++; }
+    }
+    /* The rest of a solid tree's crown (1b): only its densest middle stopped
+       everything, and a spruce's skirt reaches the ground, where the 4 m
+       line would count a return as through. So the crown columns around a
+       solid tree, out to SOLID_TREE_RIM_M, belong to it while their tops
+       keep falling away from it (a cone; a neighbouring crown rises again)
+       AND they measured as dense as an evergreen must (above) -- without
+       that, every vine tangle in a deciduous wood grew a bare rim. */
+    const rimFrom = [], rimDist = new Uint8Array(N), rimSeen = Uint8Array.from(solidTree);
+    for (let k = 0; k < N; k++) if (solidTree[k]) rimFrom.push(k);
+    for (let q = 0; q < rimFrom.length; q++) {
+      const k = rimFrom[q], x = k % w, y = (k / w) | 0;
+      if (rimDist[k] >= SOLID_TREE_RIM_M) continue;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const xx = x + dx, yy = y + dy;
+        if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+        const j = yy * w + xx;
+        if (rimSeen[j] || zHi[j] - ground[j] > zHi[k] - ground[k] + 1) continue;
+        if (kind[j] === 3 && dense[j] >= EVERGREEN_DENSER * ref) { kind[j] = 2; ever++; } else if (kind[j] !== 2) continue;
+        rimSeen[j] = 1; rimDist[j] = rimDist[k] + 1; rimFrom.push(j);
+      }
     }
   }
   for (const c of clumps) c.evergreenShare = 0;

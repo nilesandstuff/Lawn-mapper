@@ -427,8 +427,12 @@ check('the colour ramp runs dark to bright and clamps', ramp(-1).join() === '68,
      the last return); a TANGLE (same size, 6-14 m up: vines or dead leaves
      on bare branches) that 30% of pulses stop in and nothing splits, so it
      keeps as many last returns up high as an evergreen but measures no
-     denser than the bare crown; and a flat roof at 108 m. Pulses every
-     0.25 m. */
+     denser than the bare crown; a SPRUCE (8 m across in the middle, to 18 m up) that
+     nothing gets through, every pulse splitting on it, whose skirt (out to
+     7 m) splits every pulse in its needles, half of them then reaching the
+     ground and half stopping under 4 m; a smaller one (6 m
+     across) whose every pulse comes back once, off a cone; and a flat roof
+     at 108 m. Pulses every 0.25 m. */
   const lat = 40, k = mercScale(lat);
   const grid = gridOver([0, 0, 60 / k, 60 / k], 1, lat);
   let seed = 11;
@@ -451,6 +455,11 @@ check('the colour ramp runs dark to bright and clamps', ramp(-1).join() === '68,
     for (let n = 0.125; n < 60; n += 0.25) {
       const ever = Math.hypot(e - 15, n - 15) < 6, bare = Math.hypot(e - 45, n - 15) < 6, tangle = Math.hypot(e - 15, n - 45) < 6, roof = e > 30 && e < 40 && n > 40 && n < 50;
       if (roof) { add(e, n, 108, 6, 1, 1); continue; }
+      const r = Math.hypot(e - 50, n - 45);
+      if (r < 4) { add(e, n, 118 - 2 * r, 1, 1, 2); add(e, n, 116 - 2 * r, 1, 2, 2); continue; }
+      if (r < 7) { add(e, n, 118 - 2 * r, 1, 1, 3); add(e, n, 104.5, 1, 2, 3); add(e, n, (e + n) % 0.5 < 0.25 ? 101.5 : 100, (e + n) % 0.5 < 0.25 ? 1 : 2, 3, 3); continue; }
+      const r2 = Math.hypot(e - 55, n - 56);
+      if (r2 < 3) { add(e, n, 110 - 2.5 * r2, 1, 1, 1); continue; }
       if (tangle && rnd2() < 0.3) { add(e, n, 106 + rnd2() * 8, 1, 1, 1); continue; }
       if (ever || bare) {
         const lo = ever ? 104 : 106, stop = ever ? 0.6 : 0.08;
@@ -483,6 +492,12 @@ check('the colour ramp runs dark to bright and clamps', ramp(-1).join() === '68,
     return { ever: ever / ts.length, through: ts[ts.length >> 1] };
   };
   const tangleC = crown(15, 45), everC = crown(15, 15), bareC = crown(45, 15);
+  check('seasons: a tree nothing got through is solid like a roof but labelled evergreen, the roof still a roof',
+    s.kind[at(50, 45)] === 2 && T0(50.5, 45.5) < 0.01 && s.kind[at(35, 45)] === 1, `${s.kind[at(50, 45)]}, through ${T0(50.5, 45.5).toFixed(3)}`);
+  check('seasons: and its skirt, which the 4 m line alone would call bare, is the same tree',
+    s.kind[at(56.5, 45)] === 2 && s.kind[at(43.5, 45)] === 2, `${s.kind[at(56.5, 45)]} ${s.kind[at(43.5, 45)]}`);
+  check('seasons: so is a small one whose pulses all came back once, by its rough cone of a top',
+    s.kind[at(55, 56)] === 2 && T0(55.5, 56.5) < 0.01, `${s.kind[at(55, 56)]}`);
   check('seasons: a crown that keeps last returns up high but measured no denser than the bare one is not evergreen',
     tangleC.ever < 0.1 && everC.ever > 0.9 && tangleC.through > everC.through + 0.2,
     `evergreen share ${tangleC.ever.toFixed(2)} (the evergreen ${everC.ever.toFixed(2)}); through ${tangleC.through.toFixed(2)}, bare ${bareC.through.toFixed(2)}, evergreen ${everC.through.toFixed(2)}`);
