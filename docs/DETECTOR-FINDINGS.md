@@ -6465,6 +6465,20 @@ here):**
   that takes the evergreen share from 18% to 4%.
 - One lot; it does not touch H73 or the detector.
 
+**Also from the features session (2026-10-11, one cloud: Kent 2016 over
+7300 Brooks Ln; NOT measured here).** This is about telling a roof from a
+dense tree, the H74 problem from the other side:
+- House roofs: 2-3% of returns came from split pulses, and neighbouring
+  1 m columns' tops differed by a median of 0.36-0.44 m.
+- Lawn spruces, so dense that no pulse got through: 0-38% split, and
+  0.55-1.5 m between neighbouring tops.
+- The shade map had been calling such spruces buildings. It now calls a
+  column evergreen when 25% or more of its returns split, or when the
+  patch is under 60 m² with a rough top.
+- If true more widely, top roughness could separate roofs from dense
+  crowns where lidar_canopy.py's split-pulse test cannot. Untested beyond
+  this one cloud.
+
 ### S35. The lidar may sit half a cell off the photo: the USGS octrees are NAD83 labelled EPSG:3857 (from the features session, 2026-10-10 -- NOT MEASURED HERE)
 
 Reported by the features session (shade map; session
