@@ -10,6 +10,9 @@ import { rankClouds, leafSeason, nameYear } from '../public/shade/find.js';
 import { gridOver, gridForFrame, gridBox, rasterise, fillGaps, resample } from '../public/shade/grid.js';
 import { alignToPhoto, dilate } from '../public/shade/align.js';
 import { kindOf, mercUnits } from '../public/shade/view3d.js';
+import { tracedOn, lineUpAt } from '../public/shade/traced.js';
+import { movedCorners } from '../public/lib/align.js';
+import { frameCorners } from '../public/lib/mercator.js';
 import { footprintEntry, covers, lidarAt, handleShade, isShadePath } from '../worker/src/shade.js';
 import { metresPerPixel } from '../public/lib/mercator.js';
 
@@ -269,6 +272,35 @@ function lasFile(format, recordLength, points, { scale = 0.01, offset = [100, 20
   const flat = { data: new Uint8ClampedArray(P * P * 4).fill(128), width: P, height: P };
   const c = alignToPhoto(cols, frame, flat);
   check('a photo with nothing in it is "not measured", never a guess', !c.confident && c.shift === null, c.why);
+}
+
+/* ----------------------------------------------------------- traced */
+
+{
+  const frame = { lng: -87.9562, lat: 42.8622, zoom: 19.5, size: 900, height: 700 };
+  const county = { provider: 'county', countySvc: 4123, countyAlign: { east: 0.4, north: 0.11, scale: 1.004, source: 'auto' }, frame, lng: -87.95, lat: 42.86 };
+  const t = tracedOn(county);
+  check('a map saved on a county photo is matched to that photo, with its saved line-up',
+    t.provider === 'county' && t.svc === 4123 && t.align.east === 0.4 && t.about[0] === frame.lng);
+  check('saved without a line-up (unsure): the county photo where the county put it',
+    tracedOn({ ...county, countyAlign: null }).align === null && tracedOn({ ...county, countyAlign: null }).provider === 'county');
+  check('Mapbox, NAIP and old saves without a service are on Mapbox\'s ground',
+    tracedOn({ provider: 'mapbox' }).provider === 'mapbox' && tracedOn({ provider: 'naip' }).provider === 'mapbox'
+    && tracedOn({ provider: 'county' }).provider === 'mapbox' && tracedOn(null).provider === 'mapbox');
+
+  /* lineUpAt must move a point exactly as the editor's movedCorners moves
+     the photo's corners (scale about the saved frame's centre). */
+  const corners = frameCorners(frame);
+  const moved = movedCorners(corners, 0.4, 0.11, 1.004, [frame.lng, frame.lat]);
+  let worst = 0;
+  corners.forEach((c, i) => {
+    const m = lineUpAt(t, c);
+    const [x0, y0] = toMerc(c), [x1, y1] = toMerc(moved[i]);
+    const kk = mercScale(c[1]);
+    worst = Math.max(worst, Math.hypot((x1 - x0) * kk - m.east, (y1 - y0) * kk - m.north));
+  });
+  check('lineUpAt agrees with the editor\'s movedCorners at every corner, to a millimetre', worst < 0.001, `worst ${worst.toFixed(5)} m`);
+  check('at the saved frame centre the line-up is just its shift', near(lineUpAt(t, [frame.lng, frame.lat]).east, 0.4, 1e-9));
 }
 
 /* ------------------------------------------------------------- view */

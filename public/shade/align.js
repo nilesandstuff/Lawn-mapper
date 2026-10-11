@@ -1,10 +1,10 @@
 /**
  * DOES THE LIDAR LAND ON THE PHOTO'S GROUND? (shade map, features session)
  *
- * The lawn outline and the property line are drawn on Mapbox's ground --
- * every county photo is moved onto it too (DETECTOR-FINDINGS H63/H64) -- so
- * that is the ground the lidar has to land on. This measures how far off it
- * is, and says how sure it is.
+ * The lidar has to land on the ground of the photo the lawn was traced on:
+ * Mapbox's, or a county photo's as the editor lined it up (shade.js decides
+ * which, from the saved map). This measures how far off it is from ANY photo
+ * of a frame, and says how sure it is.
  *
  * WHAT IS COMPARED. The lidar's GROUND INTENSITY: how brightly each patch of
  * ground returned the laser. Asphalt, concrete and grass return differently,

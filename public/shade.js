@@ -9,8 +9,11 @@
  *      45 m shadow at winter noon (shade/ept.js, shade/laz.js);
  *   3. moves it from NAD83 to the web map's datum by the published
  *      transformation (shade/datum.js), then MEASURES what is left against
- *      the Mapbox photo the lawn was traced on (shade/align.js), and applies
- *      that too only when the measurement is tight enough to trust;
+ *      THE PHOTO THE LAWN WAS TRACED ON, as the editor showed it: the Mapbox
+ *      photo, or the county photo the map was saved on, moved by the
+ *      line-up it was saved with (owner, 2026-10-11: maps are saved on
+ *      county photos too). Applied only when the measurement is tight
+ *      enough to trust; the other photo is matched as a cross-check;
  *   4. draws it in 3D on that same map with the property line and the lawn,
  *      so any misfit is in plain sight (shade/view3d.js).
  *
@@ -25,6 +28,8 @@ import { alignToPhoto } from './shade/align.js';
 import { gridOver, gridForFrame, gridBox, rasterise, fillGaps, greyPicture, blurNaN, resample, cellOf, quantile } from './shade/grid.js';
 import { pointLayer } from './shade/view3d.js';
 import { frameCorners } from './lib/mercator.js';
+import { movedCorners } from './lib/align.js';
+import { tracedOn, lineUpAt } from './shade/traced.js';
 
 const $ = (s) => document.querySelector(s);
 const SAVES_KEY = 'lawnmapper.saves.v1'; // the editor's own local store (app.js), read only
@@ -80,6 +85,7 @@ function siteFromSave(s) {
     label: s.address || 'Saved map', lng: s.lng, lat: s.lat,
     parcel: asFeature(s.parcel),
     lawn: (s.shapes || []).map(asFeature).filter(Boolean),
+    tracedOn: tracedOn(s),
   };
 }
 
@@ -89,7 +95,7 @@ async function siteFromPoint(lat, lng) {
     const res = await fetch(`/api/parcel?lng=${lng}&lat=${lat}`);
     if (res.ok) parcel = (await res.json()).parcel || null;
   } catch { /* no parcel: a box round the point will do */ }
-  return { label: `${lat.toFixed(5)}, ${lng.toFixed(5)}`, lng, lat, parcel, lawn: [] };
+  return { label: `${lat.toFixed(5)}, ${lng.toFixed(5)}`, lng, lat, parcel, lawn: [], tracedOn: { provider: 'mapbox' } };
 }
 
 /** [w, s, e, n] in degrees of everything we know about the site. */
@@ -160,18 +166,20 @@ async function getBytes(url) {
 
 const io = { getJson, getBytes, decompress: lazDecoder(() => browserFactory()) };
 
-/** The Mapbox photo of a frame, as RGBA pixels. Same origin, so readable. */
-async function photoOf(frame) {
-  const q = new URLSearchParams({ lng: frame.lng, lat: frame.lat, zoom: frame.zoom, size: frame.size, height: frame.height, provider: 'mapbox' });
+/** A photo of a frame (Mapbox, or a county service by id), as RGBA pixels. Same origin, so readable. */
+async function photoOf(frame, provider = 'mapbox', svc = null) {
+  const q = new URLSearchParams({ lng: frame.lng, lat: frame.lat, zoom: frame.zoom, size: frame.size, height: frame.height, provider });
+  if (svc != null) q.set('svc', svc);
   const res = await fetch(`/api/imagery?${q}`);
-  if (!res.ok) throw new Error(`the photo would not load (${res.status})`);
-  const bmp = await createImageBitmap(await res.blob());
+  if (!res.ok) throw new Error(`the ${provider === 'county' ? 'county' : 'Mapbox'} photo would not load (${res.status})`);
+  const blob = await res.blob();
+  const bmp = await createImageBitmap(blob);
   const c = document.createElement('canvas'); // not OffscreenCanvas: older iPhones lack it
   c.width = bmp.width; c.height = bmp.height;
   const g = c.getContext('2d');
   g.drawImage(bmp, 0, 0);
   const d = g.getImageData(0, 0, bmp.width, bmp.height);
-  return { data: d.data, width: d.width, height: d.height };
+  return { data: d.data, width: d.width, height: d.height, url: URL.createObjectURL(blob) };
 }
 
 /** A square frame centred on the site, at least ALIGN_M and the lot wide, at a whole-ish zoom. */
@@ -239,15 +247,36 @@ async function build(site) {
   status('Moving it onto the map\'s datum, then checking against the photo…');
   const datum = nad83Correction(site.lat, site.lng, cloud.epoch);
   const pre = [datum.east / k, datum.north / k];
-  let fit = null;
-  try {
-    const photo = await photoOf(frame);
-    await new Promise((r) => setTimeout(r, 0));
-    fit = alignToPhoto(cols, frame, photo, { pre });
-  } catch (e) {
-    report.push(`<p class="bad">The photo check could not run: ${esc(e.message)}</p>`);
+  const t = site.tracedOn || { provider: 'mapbox' };
+  const match = async (provider, svc) => {
+    try {
+      const photo = await photoOf(frame, provider, svc);
+      await new Promise((r) => setTimeout(r, 0));
+      return { photo, fit: alignToPhoto(cols, frame, photo, { pre }) };
+    } catch (e) {
+      return { error: e.message };
+    }
+  };
+  /* The photo the outline was traced on decides; the other is a cross-check. */
+  const onMapbox = await match('mapbox');
+  const onCounty = t.provider === 'county' ? await match('county', t.svc) : null;
+  const move = t.provider === 'county' ? lineUpAt(t, [frame.lng, frame.lat]) : { east: 0, north: 0 };
+  let used, usedName;
+  if (onCounty && !onCounty.error) {
+    /* Matched to the county photo where the county put it; the outline was
+       drawn on it after the editor's line-up moved it, so add that move. */
+    const f = onCounty.fit;
+    used = { ...f, east: f.east === null ? null : f.east + move.east, north: f.north === null ? null : f.north + move.north };
+    usedName = `the county photo the map was traced on${t.align ? ', as the editor lined it up' : ' (saved without a line-up, so where the county put it)'}`;
+  } else {
+    used = onMapbox.fit || null;
+    usedName = t.provider === 'county'
+      ? `the Mapbox photo, because the county photo could not be read (${onCounty?.error || '?'})${t.align ? '' : '; the map was saved without a line-up, so its outline may sit up to about half a metre off this'}`
+      : 'the Mapbox photo the map was traced on';
   }
-  const residual = fit?.confident ? fit.shift : [0, 0];
+  const fit = used;
+  if (onMapbox.error) report.push(`<p class="warn">${esc(onMapbox.error)}</p>`);
+  const residual = fit?.confident ? [fit.east / k, fit.north / k] : [0, 0];
   const shift = [pre[0] + residual[0], pre[1] + residual[1]];
 
   /* Ground under every point, for heights, on a 1 m grid. */
@@ -261,7 +290,14 @@ async function build(site) {
   };
   const baseZ = quantile(ground, 0.5);
 
-  view.built = { cols, shift, pre, heightOver, baseZ, frame, fit };
+  view.built = {
+    cols, shift, pre, heightOver, baseZ, frame, fit,
+    traced: onCounty && !onCounty.error
+      ? { url: onCounty.photo.url, corners: t.align
+        ? movedCorners(frameCorners(frame), t.align.east, t.align.north, t.align.scale, t.about) : frameCorners(frame) }
+      : null,
+  };
+  $('#t-traced').hidden = !view.built.traced;
   drawBuilt(map, true);
   $('#toggles').hidden = false;
   map.easeTo({ pitch: 55, bearing: -20, duration: 800 });
@@ -280,9 +316,12 @@ async function build(site) {
     <h2>Lining it up</h2>
     <table>
       <tr><td>Datum (NAD83 → map)</td><td>${fmtMove(datum.east, datum.north)} <span class="dim">computed, epoch ${cloud.epoch.toFixed(1)}</span></td></tr>
+      <tr><td>Matched against</td><td>${esc(usedName)}</td></tr>
+      ${t.provider === 'county' && t.align ? `<tr><td>Editor's line-up</td><td class="dim">${fmtMove(move.east, move.north)} at this frame's centre (saved ${t.align.east.toFixed(2)} E, ${t.align.north.toFixed(2)} N, scale ${t.align.scale})</td></tr>` : ''}
       <tr><td>Left over, measured</td><td>${fit ? `${fmtMove(fit.east, fit.north)} <span class="${fit.confident ? 'ok' : 'warn'}">${esc(fit.why)}</span>` : '<span class="bad">not measured</span>'}</td></tr>
       ${fit ? `<tr><td>Quarters alone</td><td class="dim">${fit.quarters.map((q) => (q ? fmtMove(q.east, q.north) : '—')).join(' · ')}</td></tr>` : ''}
       ${fit ? `<tr><td>Open ground that voted</td><td class="dim">${Math.round(fit.openShare * 100)}% of a ${Math.round(gridForFrame(frame, 1, 1).cell * k)} m frame; match ${fit.score?.toFixed(2)} against ${fit.second?.toFixed(2)} for the best rival</td></tr>` : ''}
+      ${onCounty && !onCounty.error && onMapbox.fit ? `<tr><td>Cross-check: Mapbox</td><td class="dim">${fmtMove(onMapbox.fit.east, onMapbox.fit.north)} (${esc(onMapbox.fit.why)})${onMapbox.fit.confident && fit.confident ? `; ${Math.hypot(onMapbox.fit.east - fit.east, onMapbox.fit.north - fit.north).toFixed(2)} m from the answer above` : ''}</td></tr>` : ''}
       <tr><td><b>Applied</b></td><td><b>${fmtMove(datum.east + (fit?.confident ? fit.east : 0), datum.north + (fit?.confident ? fit.north : 0))}</b> ${fit?.confident ? '<span class="ok">datum + measured</span>' : '<span class="warn">datum only</span>'}</td></tr>
     </table>
     <p class="dim">Roofs and crowns will NOT sit exactly on the photo's: the photo was taken at an angle, so tall
@@ -297,7 +336,7 @@ const fmtMove = (e, n) => (e === null || n === null ? '—'
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 function removeBuilt(map) {
-  for (const id of ['points', 'picture']) {
+  for (const id of ['points', 'picture', 'traced']) {
     if (map.getLayer(id)) map.removeLayer(id);
     if (map.getSource(id)) map.removeSource(id);
   }
@@ -322,6 +361,10 @@ function drawBuilt(map, fixed) {
     c.getContext('2d').putImageData(new ImageData(pic.data, W, W), 0, 0);
     map.addSource('picture', { type: 'image', url: c.toDataURL(), coordinates: frameCorners(fr) });
     map.addLayer({ id: 'picture', type: 'raster', source: 'picture', paint: { 'raster-opacity': 0.85, 'raster-fade-duration': 0 } }, 'parcel');
+  }
+  if (b.traced && $('#t-traced').getAttribute('aria-pressed') === 'true') {
+    map.addSource('traced', { type: 'image', url: b.traced.url, coordinates: b.traced.corners });
+    map.addLayer({ id: 'traced', type: 'raster', source: 'traced', paint: { 'raster-fade-duration': 0 } }, map.getLayer('picture') ? 'picture' : 'parcel');
   }
   if ($('#t-points').getAttribute('aria-pressed') === 'true') {
     map.addLayer(pointLayer('points', b.cols, { heightOver: b.heightOver, shift, baseZ: b.baseZ, lat: view.site.lat, size: 3 }));
@@ -364,6 +407,7 @@ async function main() {
   $('#t-points').addEventListener('click', () => { toggle('#t-points'); drawBuilt(view.map, $('#t-fix').getAttribute('aria-pressed') === 'true'); });
   $('#t-fix').addEventListener('click', () => drawBuilt(view.map, toggle('#t-fix')));
   $('#t-picture').addEventListener('click', () => { toggle('#t-picture'); drawBuilt(view.map, $('#t-fix').getAttribute('aria-pressed') === 'true'); });
+  $('#t-traced').addEventListener('click', () => { toggle('#t-traced'); drawBuilt(view.map, $('#t-fix').getAttribute('aria-pressed') === 'true'); });
   $('#t-tilt').addEventListener('click', () => {
     const on = toggle('#t-tilt');
     view.map?.easeTo(on ? { pitch: 55, bearing: -20 } : { pitch: 0, bearing: 0 });
