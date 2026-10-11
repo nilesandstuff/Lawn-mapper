@@ -8,6 +8,13 @@
  *       { clouds: [{ name, url, year, density, epoch, confirmed, unit }],
  *         notOnAws: [{ workunit, ql, start, end, season }], footprints }
  *
+ *   GET /api/shade/climate?lng=&lat=
+ *     The typical year at this place from NASA POWER (ten years of daily
+ *     data folded into 365 days, public/shade/climate.js): sunlight with
+ *     clouds, its diffuse share, the 10th/90th percentiles, mean
+ *     temperature. Cached at the edge for 30 days per 0.05 degree cell;
+ *     NASA's own grid is coarser than that.
+ *
  * WHY HERE AND NOT IN THE BROWSER. Hobu's footprint file is 8.7 MB: too much
  * for a phone per property, and a copy shipped with the site goes stale as
  * USGS adds projects. On the Workers Paid plan parsing it is ~100 ms of CPU,
@@ -20,6 +27,7 @@
 
 import { rankClouds, wesmUrl } from '../../public/shade/find.js';
 import { EPT_BASE } from '../../public/shade/names.js';
+import { powerUrl, typicalYear } from '../../public/shade/climate.js';
 
 export const FOOTPRINTS = 'https://raw.githubusercontent.com/hobuinc/usgs-lidar/master/boundaries/resources.geojson';
 const CACHE_KEY = 'https://shade.lawnmapper.internal/footprints-v1.json';
@@ -124,5 +132,50 @@ export async function handleShade(request, url, env, origin, ctx, json) {
       return json({ error: 'The lidar index could not be read', detail: String(e?.message || e) }, 502, origin);
     }
   }
+  if (url.pathname === '/api/shade/climate' && request.method === 'GET') {
+    const lng = Number(url.searchParams.get('lng')), lat = Number(url.searchParams.get('lat'));
+    if (!Number.isFinite(lng) || !Number.isFinite(lat) || Math.abs(lat) > 85 || Math.abs(lng) > 180) {
+      return json({ error: 'lng and lat required' }, 400, origin);
+    }
+    try {
+      const body = await climateAt(lng, lat, { ctx });
+      const res = json(body, 200, origin);
+      res.headers.set('Cache-Control', 'public, max-age=86400');
+      return res;
+    } catch (e) {
+      return json({ error: 'NASA POWER did not answer', detail: String(e?.message || e) }, 502, origin);
+    }
+  }
   return json({ error: 'Not found' }, 404, origin);
+}
+
+/** The last ten whole years before `now`. */
+export const climateYears = (now = new Date()) => [now.getUTCFullYear() - 10, now.getUTCFullYear() - 1];
+
+/** The typical year at a point, from the edge cache or NASA POWER. */
+export async function climateAt(lng, lat, { ctx = null, fetchImpl = fetch, now = new Date() } = {}) {
+  const rl = Math.round(lng * 20) / 20, ra = Math.round(lat * 20) / 20;
+  const [y0, y1] = climateYears(now);
+  const cache = globalThis.caches?.default;
+  const key = new Request(`https://shade.lawnmapper.internal/climate-v1/${ra},${rl},${y0}-${y1}.json`);
+  const hit = cache && await cache.match(key);
+  if (hit) return hit.json();
+  const res = await fetchImpl(powerUrl(rl, ra, y0, y1));
+  if (!res.ok) throw new Error(`NASA POWER: ${res.status}`);
+  const power = await res.json();
+  const t = typicalYear(power);
+  const round = (a, d) => a.map((v) => Math.round(v * 10 ** d) / 10 ** d);
+  const body = {
+    lng: rl, lat: ra, years: `${y0}-${y1}`, nYears: t.years,
+    source: 'NASA POWER daily (MERRA-2, CERES SYN1deg), community AG',
+    ghi: round(t.ghi, 2), ghiP10: round(t.ghiP10, 2), ghiP90: round(t.ghiP90, 2),
+    diffuse: round(t.diffuse, 3), tMean: round(t.tMean, 1),
+  };
+  if (cache) {
+    const put = cache.put(key, new Response(JSON.stringify(body), {
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${30 * DAY}` },
+    }));
+    if (ctx?.waitUntil) ctx.waitUntil(put); else await put;
+  }
+  return body;
 }

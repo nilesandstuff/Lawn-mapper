@@ -7,6 +7,8 @@
  *   Light (DLI)         mol/m2 of photosynthetic light that day, clear sky
  *   Shadows at a time   the shade at one moment, to hold against the
  *                       shadows in the photo
+ *   Season light        the average DLI through the growing season, with
+ *                       NASA's typical clouds (step 3, climate.js)
  *
  * Plus the lawn's (or lot's) split into full sun / part shade / shade, and
  * a month-by-month table of clear-sky DLI against open ground.
@@ -15,6 +17,7 @@
 import { gridOver, gridBox } from './grid.js';
 import { fromMerc } from './ept.js';
 import { sunPath } from './sun.js';
+import { GRASS, dayLabel } from './climate.js';
 
 const $ = (s) => document.querySelector(s);
 const SQFT = 10.7639;
@@ -27,6 +30,18 @@ export function ramp(t) {
   const i = Math.min(STOPS.length - 2, Math.floor(x)), f = x - i;
   return STOPS[i].map((v, j) => Math.round(v + (STOPS[i + 1][j] - v) * f));
 }
+ /* Lawn and open ground in the year chart: categorical slots 1 and 2 of the
+    dataviz reference palette, dark steps, validated on this page's #161616. */
+const LAWN = '#3987e5', OPEN = '#d95926';
+
+/* Light bands for the season map's area split, mol/m2/day. A rough guide
+   only: cool-season turf grows best at 20-30, slows at 10-15 and survives
+   below 6 (ICL turf guidance); bermudagrass greens needed ~33 (Clemson). */
+export const BANDS = {
+  cool: [[20, Infinity, '20 or more'], [10, 20, '10 to 20'], [0, 10, 'under 10']],
+  warm: [[30, Infinity, '30 or more'], [15, 30, '15 to 30'], [0, 15, 'under 15']],
+};
+
 const rampCss = `linear-gradient(90deg, ${STOPS.map((c) => `rgb(${c.join(',')})`).join(', ')})`;
 
 /**
@@ -70,7 +85,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     return [fromMerc([x0, y1]), fromMerc([x1, y1]), fromMerc([x1, y0]), fromMerc([x0, y0])];
   }
 
-  function paint(values, xy, colour) {
+  function paint(values, xy, colour, span = 1) {
     const W = st.grid.w * 2, H = st.grid.h * 2;
     const c = document.createElement('canvas');
     c.width = W; c.height = H;
@@ -81,7 +96,9 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
       if (x < 0 || y < 0 || x >= W || y >= H) continue;
       const rgba = colour(values[p]);
       if (!rgba) continue;
-      img.data.set(rgba, (y * W + x) * 4);
+      for (let j = 0; j < span; j++) for (let i = 0; i < span; i++) {
+        if (x + i < W && y + j < H) img.data.set(rgba, ((y + j) * W + x + i) * 4);
+      }
     }
     g.putImageData(img, 0, 0);
     const url = c.toDataURL();
@@ -97,7 +114,13 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
   }
 
   function draw() {
-    if (st.mode === 'now' && st.now) {
+    if (st.mode === 'season') {
+      const se = st.season;
+      if (!se?.stats.open) { $('#sun-legend').innerHTML = '<span class="dim">No growing season to show yet.</span>'; return; }
+      const top = Math.max(1, Math.round(se.stats.open.mean));
+      legend(0, top, 'mol/m²/day, season average');
+      paint(se.mean, se.xy, (v) => [...ramp(v / top), 200], 2);
+    } else if (st.mode === 'now' && st.now) {
       legend('lit', 'shade', '');
       $('#sun-legend').innerHTML = '<span class="dim">Dark = shade from the lidar at that moment</span>';
       paint(st.now.T, st.now.xy, (T) => [0, 0, 20, Math.round((1 - T) * 170)]);
@@ -155,17 +178,117 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     st.nowId = send({ type: 'now', t: s.t });
   }
 
+  function runSeason() {
+    if (!st.built || !st.climate) return;
+    const grass = $('#grass').value, threshold = Number($('#gp').value);
+    st.seasonId = send({ type: 'season', climate: st.climate, grass, threshold, bands: BANDS[grass].map(([lo, hi]) => [lo, hi]) });
+  }
+
+  function seasonSummary() {
+    const se = st.season, c = st.climate;
+    const grass = $('#grass').value, g = GRASS[grass];
+    const strict = Number($('#gp').value) >= 0.5;
+    $('#season-status').textContent = '';
+    const how = `estimated from NASA's daily temperatures ${c.years} (growth potential at least ${strict ? '0.5' : '0.1'}, the PACE Turf model); Turf Tools' season will replace this estimate`;
+    if (!se.stats.lawn) {
+      $('#season-summary').innerHTML = `<p>In a typical year it is never warm enough here for ${g.label.toLowerCase()} grass to ${strict ? 'grow strongly' : 'grow'} (${how}).</p>`;
+      $('#season-chart').innerHTML = chart(se, c);
+      return;
+    }
+    const L = se.stats.lawn, O = se.stats.open;
+    const when = se.season.allYear ? 'all year' : `${dayLabel(se.season.start)} to ${dayLabel(se.season.end)} (${se.season.days.length} days)`;
+    const what = site.lawn.length ? 'the lawn' : 'the lot';
+    const total = se.stats.bands.reduce((a, b) => a + b, 0) || 1;
+    $('#season-summary').innerHTML = `
+      <p><b>Growing season</b> for ${g.label.toLowerCase()} grass: <b>${when}</b>, ${how}.</p>
+      <p><b>Light on ${what}</b> through it, on a typical day (mol/m²/day):</p>
+      <table>
+        <tr><th></th><th>${site.lawn.length ? 'Lawn' : 'Lot'}</th><th>Open ground</th></tr>
+        <tr><td>Average</td><td><b>${L.mean.toFixed(1)}</b></td><td class="dim">${O.mean.toFixed(1)}</td></tr>
+        <tr><td>Lowest</td><td><b>${L.min.toFixed(1)}</b> <span class="dim">${dayLabel(L.minDay)}</span></td><td class="dim">${O.min.toFixed(1)}</td></tr>
+        <tr><td>Highest</td><td><b>${L.max.toFixed(1)}</b> <span class="dim">${dayLabel(L.maxDay)}</span></td><td class="dim">${O.max.toFixed(1)}</td></tr>
+      </table>
+      <p class="dim">On a dull day around the lowest point (the dullest 1 in 10), ${what} gets about ${se.stats.dullAtMin.toFixed(1)}.</p>
+      <table>${BANDS[grass].map(([, , label], i) => `<tr><td>Season average ${label}</td><td>${Math.round(se.stats.bands[i] * SQFT).toLocaleString()} sq ft</td><td class="dim">${Math.round((100 * se.stats.bands[i]) / total)}%</td></tr>`).join('')}</table>
+      <p class="dim">A rough guide: cool-season turf grows best at 20–30 mol/m²/day, slows at 10–15 and only survives below about 6 (ICL turf guidance); bermudagrass putting greens needed about 33 (Clemson). Species, mowing height and wear move these.</p>`;
+    $('#season-chart').innerHTML = chart(se, c);
+    hover();
+  }
+
+  /* The typical year: the lawn's light and open ground's, the season shaded. */
+  function chart(se) {
+    const W = 360, H = 170, l = 30, r = 8, t = 8, b = 22;
+    const max = Math.max(10, ...se.open) * 1.08;
+    const X = (k) => l + (k / 364) * (W - l - r), Y = (v) => t + (1 - v / max) * (H - t - b);
+    const line = (arr) => Array.from(arr, (v, k) => `${k ? 'L' : 'M'}${X(k).toFixed(1)},${Y(v).toFixed(1)}`).join('');
+    const step = max > 50 ? 20 : 10;
+    let grid = '';
+    for (let v = 0; v <= max; v += step) grid += `<line x1="${l}" x2="${W - r}" y1="${Y(v)}" y2="${Y(v)}" stroke="#2c2c2c"/><text x="${l - 4}" y="${Y(v) + 3}" text-anchor="end" fill="#999" font-size="9">${v}</text>`;
+    const starts = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+    const months = starts.map((k, i) => `<text x="${X(k + 15)}" y="${H - 8}" text-anchor="middle" fill="#999" font-size="9">${MONTHS[i][0]}</text>`).join('');
+    /* The season as one block per run of days (two when it wraps New Year). */
+    let band = '';
+    const on = new Set(se.season.days);
+    for (let k = 0; k < 365; k++) {
+      if (!on.has(k) || on.has(k - 1)) continue;
+      let e = k;
+      while (e + 1 < 365 && on.has(e + 1)) e++;
+      band += `<rect x="${X(k)}" y="${t}" width="${Math.max(1, X(e) - X(k))}" height="${H - t - b}" fill="#fff" fill-opacity=".07"/>`;
+    }
+    return `<div class="key"><span><i style="background:${LAWN}"></i>${site.lawn.length ? 'Lawn' : 'Lot'}</span><span><i style="background:${OPEN}"></i>Open ground</span><span><b class="band"></b>Growing season</span></div>
+      <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Typical daily light through the year on the ${site.lawn.length ? 'lawn' : 'lot'} and on open ground, mol per square metre per day">
+        ${band}${grid}${months}
+        <path d="${line(se.open)}" fill="none" stroke="${OPEN}" stroke-width="2" stroke-linejoin="round"/>
+        <path d="${line(se.lawn)}" fill="none" stroke="${LAWN}" stroke-width="2" stroke-linejoin="round"/>
+        <line class="xh" x1="0" x2="0" y1="${t}" y2="${H - b}" stroke="#bbb" stroke-width="1" visibility="hidden"/>
+        <circle class="d1" r="4" fill="${LAWN}" stroke="#161616" stroke-width="2" visibility="hidden"/>
+        <circle class="d2" r="4" fill="${OPEN}" stroke="#161616" stroke-width="2" visibility="hidden"/>
+        <rect class="hit" x="${l}" y="${t}" width="${W - l - r}" height="${H - t - b}" fill="transparent"/>
+      </svg><div class="tip" hidden></div>`;
+  }
+
+  function hover() {
+    const box = $('#season-chart'), svg = box.querySelector('svg'), tip = box.querySelector('.tip');
+    const se = st.season;
+    if (!svg || !se) return;
+    const W = 360, l = 30, r = 8, t = 8, H = 170, b = 22;
+    const max = Math.max(10, ...se.open) * 1.08;
+    const Y = (v) => t + (1 - v / max) * (H - t - b);
+    const show = (ev) => {
+      const rect = svg.getBoundingClientRect();
+      const px = ((ev.clientX - rect.left) / rect.width) * W;
+      const k = Math.min(364, Math.max(0, Math.round(((px - l) / (W - l - r)) * 364)));
+      const x = l + (k / 364) * (W - l - r);
+      svg.querySelector('.xh').setAttribute('x1', x); svg.querySelector('.xh').setAttribute('x2', x);
+      svg.querySelector('.d1').setAttribute('cx', x); svg.querySelector('.d1').setAttribute('cy', Y(se.lawn[k]));
+      svg.querySelector('.d2').setAttribute('cx', x); svg.querySelector('.d2').setAttribute('cy', Y(se.open[k]));
+      for (const c of ['.xh', '.d1', '.d2']) svg.querySelector(c).setAttribute('visibility', 'visible');
+      tip.hidden = false;
+      tip.innerHTML = `${dayLabel(k)}${se.season.days.includes(k) ? ' · in season' : ''}<br><span style="color:${LAWN}">●</span> ${site.lawn.length ? 'Lawn' : 'Lot'} ${se.lawn[k].toFixed(1)} · <span style="color:${OPEN}">●</span> Open ${se.open[k].toFixed(1)} mol/m²`;
+      const left = ((x / W) * rect.width);
+      tip.style.left = `${Math.min(Math.max(0, left - 80), rect.width - 170)}px`;
+      tip.style.top = '-6px';
+    };
+    const hide = () => { tip.hidden = true; for (const c of ['.xh', '.d1', '.d2']) svg.querySelector(c).setAttribute('visibility', 'hidden'); };
+    svg.addEventListener('pointermove', show);
+    svg.addEventListener('pointerdown', show);
+    svg.addEventListener('pointerleave', hide);
+  }
+
   function build() {
     if (st.worker) st.worker.terminate();
+    st.built = false;
     st.worker = new Worker('/shade/light-worker.js', { type: 'module' });
     st.worker.onerror = (e) => status(`The light calculation stopped: ${e.message || 'unknown error'}`);
     st.worker.onmessage = (ev) => {
       const m = ev.data;
       if (m.type === 'error') status(`The light calculation stopped: ${m.message}`);
-      else if (m.type === 'built') { status(''); runDay(); st.monthsId = send({ type: 'months', year: new Date(dayMs()).getUTCFullYear() }); }
+      else if (m.type === 'built') { status(''); st.built = true; runDay(); st.monthsId = send({ type: 'months', year: new Date(dayMs()).getUTCFullYear() }); runSeason(); }
       else if (m.type === 'day' && m.id === st.dayId) { st.day = m; status(''); summary(); if (st.mode !== 'now') draw(); }
       else if (m.type === 'now' && m.id === st.nowId) { st.now = m; if (st.mode === 'now') draw(); }
+      else if (m.type === 'progress' && m.what === 'season') $('#season-status').textContent = `Tracing the sun through the year: ${m.done} of ${m.of} dates…`;
       else if (m.type === 'progress') status(`Working out the year: ${m.done} of ${m.of} months…`);
+      else if (m.type === 'season' && m.id === st.seasonId) { st.season = m; seasonSummary(); if (st.mode === 'season') draw(); }
       else if (m.type === 'months' && m.id === st.monthsId) { months(m.rows); status(''); }
     };
     status('Building the 3D canopy and the sky over every half metre…');
@@ -180,13 +303,28 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
 
   const setMode = (mode) => {
     st.mode = mode;
-    for (const [id, m] of [['#m-hours', 'hours'], ['#m-dli', 'dli'], ['#m-now', 'now']]) $(id).setAttribute('aria-pressed', String(m === mode));
+    for (const [id, m] of [['#m-hours', 'hours'], ['#m-dli', 'dli'], ['#m-now', 'now'], ['#m-season', 'season']]) $(id).setAttribute('aria-pressed', String(m === mode));
     $('#time-row').hidden = mode !== 'now';
     if (mode === 'now') runNow(); else draw();
   };
   $('#m-hours').onclick = () => setMode('hours');
   $('#m-dli').onclick = () => setMode('dli');
   $('#m-now').onclick = () => setMode('now');
+  $('#m-season').onclick = () => setMode('season');
+  $('#grass').value = Math.abs(site.lat) >= 37 ? 'cool' : 'warm';
+  $('#grass').onchange = () => runSeason();
+  $('#gp').onchange = () => runSeason();
+  $('#season-status').textContent = 'Fetching ten years of NASA weather…';
+  $('#season-summary').innerHTML = ''; $('#season-chart').innerHTML = '';
+  fetch(`/api/shade/climate?lng=${site.lng}&lat=${site.lat}`)
+    .then((r) => r.json())
+    .then((c) => {
+      if (c.error) throw new Error(c.detail || c.error);
+      st.climate = c;
+      $('#season-status').textContent = st.built ? 'Tracing the sun through the year…' : 'Waiting for the 3D model…';
+      runSeason();
+    })
+    .catch((e) => { $('#season-status').textContent = `The NASA weather could not be read (${e.message}); the clear-sky figures above still stand.`; });
   $('#sun-time').oninput = () => runNow();
   $('#sun-date').onchange = () => runDay();
   for (const b of document.querySelectorAll('[data-preset]')) {

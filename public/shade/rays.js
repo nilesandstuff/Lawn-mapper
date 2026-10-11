@@ -161,3 +161,38 @@ export function dayLight(model, xy, path, { stepMin = 10, heightM = 0, svf = nul
   }
   return { sunHours, beamHours, dli, openDli };
 }
+
+/**
+ * Each point's share of OPEN, LEVEL ground's direct beam over one day:
+ *
+ *   sum over the day of DNI x cos(incidence on the point's own slope) x T
+ *   -------------------------------------------------------------------
+ *   sum over the day of DNI x sin(sun elevation)
+ *
+ * weighted by the clear-sky beam (the sun's angle and the site's height),
+ * so a midday hour counts for more than a dawn one. 1 in the open on level
+ * ground; less in shade; can pass 1 on a slope facing the sun. NASA's
+ * cloudy-day beam (climate.js) is shared out by it.
+ */
+export function beamShare(model, xy, path, { heightM = 0, stepM = 0.5 } = {}) {
+  const cm = cellMetres(model);
+  const n = xy.length / 2;
+  const num = new Float32Array(n);
+  const zs = new Float32Array(n), normals = new Array(n);
+  for (let p = 0; p < n; p++) {
+    zs[p] = groundAt(model, xy[2 * p], xy[2 * p + 1]) + START_M;
+    normals[p] = normalAt(model, xy[2 * p], xy[2 * p + 1], cm);
+  }
+  let den = 0;
+  for (const s of path) {
+    const dni = clearSky(s.elevation, heightM, s.R).dni;
+    den += dni * s.dir[2];
+    for (let p = 0; p < n; p++) {
+      const nm = normals[p];
+      const cosInc = Math.max(0, nm[0] * s.dir[0] + nm[1] * s.dir[1] + nm[2] * s.dir[2]);
+      if (cosInc <= 0) continue;
+      num[p] += dni * cosInc * transmittance(model, xy[2 * p], xy[2 * p + 1], zs[p], s.dir, { stepM, cm });
+    }
+  }
+  return den > 0 ? num.map((v) => v / den) : num.fill(0);
+}

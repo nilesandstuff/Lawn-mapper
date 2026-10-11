@@ -14,7 +14,9 @@ import { aboutLocal, ramp } from '../public/shade/sun-ui.js';
 import { tracedOn, lineUpAt } from '../public/shade/traced.js';
 import { sunAt, solarNoon, sunPath, clearSky, airMass, parMol } from '../public/shade/sun.js';
 import { buildCanopy } from '../public/shade/canopy.js';
-import { transmittance, skyView, sunlitNow, dayLight, samplePoints, groundAt } from '../public/shade/rays.js';
+import { transmittance, skyView, sunlitNow, dayLight, samplePoints, groundAt, beamShare } from '../public/shade/rays.js';
+import { dayIndex, typicalYear, growthPotential, growingSeason, dliOn, dayLabel } from '../public/shade/climate.js';
+import { climateAt } from '../worker/src/shade.js';
 import { movedCorners } from '../public/lib/align.js';
 import { frameCorners } from '../public/lib/mercator.js';
 import { footprintEntry, covers, lidarAt, handleShade, isShadePath } from '../worker/src/shade.js';
@@ -407,8 +409,53 @@ check('the colour ramp runs dark to bright and clamps', ramp(-1).join() === '68,
   check('a day in the open gets the open-sky DLI; beside the house and under the crown get less',
     near(day.dli[0], day.openDli, day.openDli * 0.02) && day.dli[1] < day.dli[0] && day.dli[2] < day.dli[0] * 0.8
     && day.sunHours[0] > 14.5, `${day.dli[0].toFixed(1)} / ${day.openDli.toFixed(1)}, ${day.dli[1].toFixed(1)}, ${day.dli[2].toFixed(1)}; sun h ${day.sunHours[0].toFixed(1)} ${day.sunHours[1].toFixed(1)}`);
+  const bs = beamShare(model, xy, path, { heightM: 100 });
+  check('beam share: 1 in the open, less north of the house and under the crown',
+    near(bs[0], 1, 0.01) && bs[1] < 0.8 && bs[2] < 0.8, Array.from(bs).map((v) => v.toFixed(2)).join(' '));
   const mask = new Uint8Array(model.w * model.h); mask[0] = 1;
   check('sample points: sub x sub points per masked cell, at their centres', samplePoints(model, mask, 2).xy.length === 8 && samplePoints(model, mask, 2).xy[0] === 0.25);
+}
+
+/* ---------------------------------------------------------- climate */
+
+{
+  check('day of year: 1 Jan is 0, 31 Dec is 364 in any year, 29 Feb folds onto 28 Feb',
+    dayIndex('20250101') === 0 && dayIndex('20251231') === 364 && dayIndex('20241231') === 364
+    && dayIndex('20240229') === dayIndex('20240228') && dayIndex('20240301') === dayIndex('20250301'));
+  /* Two made-up years: sunlight 10 + 10 sin(season), half of it diffuse,
+     temperature -5 to 25 C, one fill value to ignore. */
+  const days = {}, diff = {}, temp = {};
+  for (const y of [2023, 2024]) {
+    for (let t = Date.UTC(y, 0, 1); t < Date.UTC(y + 1, 0, 1); t += 86400000) {
+      const d = new Date(t), key = `${y}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`;
+      const k = dayIndex(key), phase = Math.sin(((k - 80) / 365) * 2 * Math.PI);
+      days[key] = 10 + 10 * phase; diff[key] = days[key] / 2; temp[key] = 10 + 15 * phase;
+    }
+  }
+  days['20230615'] = -999;
+  const ty = typicalYear({ header: { fill_value: -999 }, properties: { parameter: { ALLSKY_SFC_SW_DWN: days, ALLSKY_SFC_SW_DIFF: diff, T2M: temp } } });
+  check('typical year: 365 days, the season\'s shape kept, fills ignored, diffuse share 0.5',
+    ty.ghi.length === 365 && near(ty.ghi[171], 20, 0.2) && near(ty.ghi[354], 0.3, 0.5) && near(ty.diffuse[100], 0.5, 1e-6) && ty.years === 2,
+    `${ty.ghi[171].toFixed(2)} ${ty.ghi[354].toFixed(2)}`);
+  check('growth potential: 1 at the optimum, ~0.5 a little over one spread away, warm grass prefers 31 C',
+    near(growthPotential(20, 'cool'), 1, 1e-9) && near(growthPotential(20 + 5.5 * 1.1774, 'cool'), 0.5, 0.01) && growthPotential(31, 'warm') > growthPotential(31, 'cool'));
+  const s1 = growingSeason(ty.tMean, 'cool');
+  /* 10 + 15 sin(...) reaches 13.5 C (GP 0.5, cool) ~14 days after day 80 and
+     leaves it ~14 days before day 262: days ~94 to ~249. */
+  check('season: one run from ~day 94 to ~day 249 for cool-season grass in this made-up climate',
+    near(s1.start, 94, 2) && near(s1.end, 249, 2) && s1.mainRun === s1.days.length, `${dayLabel(s1.start)} to ${dayLabel(s1.end)}`);
+  const warmAll = growingSeason(new Array(365).fill(30), 'warm');
+  const wrap = growingSeason(Array.from({ length: 365 }, (_, k) => (k < 60 || k > 300 ? 30 : 5)), 'warm');
+  check('season: all year where it is always warm; a winter season wraps round New Year',
+    warmAll.allYear && wrap.start > 300 && wrap.end < 60 && wrap.mainRun === wrap.days.length);
+  check('a patch\'s light: open ground gets 2.04 mol per MJ; full shade under open sky keeps only its diffuse share',
+    near(dliOn(20, 0.4, 1, 1), 40.8, 1e-9) && near(dliOn(20, 0.4, 0, 1), 2.04 * 8, 1e-9) && near(dliOn(20, 0.4, 0, 0.5), 2.04 * 4, 1e-9));
+  const calls = [];
+  const fake = async (url) => { calls.push(String(url)); return { ok: true, json: async () => ({ header: { fill_value: -999 }, properties: { parameter: { ALLSKY_SFC_SW_DWN: days, ALLSKY_SFC_SW_DIFF: diff, T2M: temp } } }) }; };
+  const cl = await climateAt(-87.9562, 42.8622, { fetchImpl: fake, now: new Date(Date.UTC(2026, 9, 11)) });
+  check('climate route: the last ten whole years from NASA POWER, the AG community, a 0.05 degree cell, 365 days back',
+    calls.length === 1 && calls[0].includes('start=20160101') && calls[0].includes('end=20251231') && calls[0].includes('community=AG')
+    && cl.lat === 42.85 && cl.lng === -87.95 && cl.ghi.length === 365 && cl.tMean.length === 365, calls[0]);
 }
 
 /* ------------------------------------------------------------- view */

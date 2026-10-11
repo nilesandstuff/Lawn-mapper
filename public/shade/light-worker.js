@@ -9,6 +9,10 @@
  *   { type: 'now', t }            -> { type: 'now', T (per point) }
  *   { type: 'day', dayMs }        -> { type: 'day', sunHours, beamHours, dli, openDli, path }
  *   { type: 'months', year }      -> { type: 'months', rows: [{ month, dli, openDli, sunHours }] }
+ *   { type: 'season', climate, grass, threshold }
+ *       -> { type: 'season', xy, mean (per point), lawn[365], open[365], season, stats }
+ *          (the rays for it, every 14th day of the year, are kept: changing
+ *          the grass or the threshold is arithmetic, not ray tracing)
  *
  * Points are 0.5 m (`sub` 2 per 1 m cell) over the lot; the month table
  * uses one point per cell and 20-minute steps.
@@ -17,7 +21,8 @@
 import { buildCanopy, solidAtGrass } from './canopy.js';
 import { gridOver } from './grid.js';
 import { toMerc } from './ept.js';
-import { samplePoints, skyView, sunlitNow, dayLight } from './rays.js';
+import { samplePoints, skyView, sunlitNow, dayLight, beamShare } from './rays.js';
+import { growingSeason, growthPotential, dliOn, PAR_MOL_PER_MJ } from './climate.js';
 import { sunPath, sunAt, solarNoon } from './sun.js';
 import { rasterizePolygon } from '../lib/mask.js';
 
@@ -82,6 +87,8 @@ self.onmessage = (ev) => {
         meanDli: meanOver(d.dli, S.fine.cells, mask), meanSun: meanOver(d.sunHours, S.fine.cells, mask),
         areaM2: { full: area(6, 99), part: area(3, 6), shade: area(0, 3) },
       });
+    } else if (m.type === 'season') {
+      seasonOf(m);
     } else if (m.type === 'months') {
       const mask = S.lawnOpen || S.lot;
       const rows = [];
@@ -98,3 +105,74 @@ self.onmessage = (ev) => {
     self.postMessage({ type: 'error', message: String(e?.message || e), id: m.id });
   }
 };
+
+const SAMPLE_EVERY = 14;
+
+/** Beam share per coarse point on every SAMPLE_EVERY-th day of the year, kept on S. */
+function sampleBeams(year) {
+  if (S.beams) return S.beams;
+  const days = [];
+  for (let d = 0; d < 365; d += SAMPLE_EVERY) days.push(d);
+  const rows = days.map((d, i) => {
+    const t = solarNoon(S.m.lng, Date.UTC(year, 0, 1 + d, 12));
+    const bs = beamShare(S.model, S.coarse.xy, sunPath(S.m.lat, S.m.lng, t, 20), { heightM: S.m.heightM });
+    self.postMessage({ type: 'progress', what: 'season', done: i + 1, of: days.length });
+    return bs;
+  });
+  S.beams = { days, rows };
+  return S.beams;
+}
+
+/** A point's beam share on day k, between the sampled days (round the year). */
+function beamOn(beams, p, k) {
+  const { days, rows } = beams;
+  const i = Math.min(days.length - 1, Math.floor(k / SAMPLE_EVERY));
+  const d0 = days[i], j = (i + 1) % days.length;
+  const d1 = j === 0 ? 365 : days[j];
+  const f = (k - d0) / (d1 - d0);
+  return rows[i][p] * (1 - f) + rows[j][p] * f;
+}
+
+function seasonOf(m) {
+  const c = m.climate;
+  const beams = sampleBeams(new Date().getUTCFullYear());
+  const n = S.coarse.cells.length;
+  const mask = S.lawnOpen || S.lot;
+  const inMask = Uint8Array.from(S.coarse.cells, (k) => mask[k]);
+  const nIn = inMask.reduce((a, b) => a + b, 0) || 1;
+  const season = growingSeason(c.tMean, m.grass, m.threshold);
+  const days = season.days.length ? season.days : [];
+  const lawn = new Float32Array(365), lawnDull = new Float32Array(365), open = new Float32Array(365);
+  const sum = new Float32Array(n);
+  const inSeason = c.tMean.map((t) => growthPotential(t, m.grass) >= m.threshold);
+  for (let k = 0; k < 365; k++) {
+    let t = 0, tDull = 0;
+    for (let p = 0; p < n; p++) {
+      const bs = beamOn(beams, p, k);
+      const v = dliOn(c.ghi[k], c.diffuse[k], bs, S.svCoarse[p]);
+      if (inMask[p]) { t += v; tDull += dliOn(c.ghiP10[k], c.diffuse[k], bs, S.svCoarse[p]); }
+      if (inSeason[k]) sum[p] += v;
+    }
+    lawn[k] = t / nIn; lawnDull[k] = tDull / nIn;
+    open[k] = PAR_MOL_PER_MJ * c.ghi[k];
+  }
+  const mean = days.length ? sum.map((v) => v / days.length) : sum;
+  const pick = (arr) => {
+    if (!days.length) return null;
+    let lo = days[0], hi = days[0], s = 0;
+    for (const k of days) { if (arr[k] < arr[lo]) lo = k; if (arr[k] > arr[hi]) hi = k; s += arr[k]; }
+    return { mean: s / days.length, min: arr[lo], minDay: lo, max: arr[hi], maxDay: hi };
+  };
+  const lawnStats = pick(lawn), openStats = pick(open);
+  const dull = lawnStats ? lawnDull[lawnStats.minDay] : null;
+  /* Area of the lawn by its season-average light, in m2 (1 m points). */
+  const bands = m.bands.map(([lo, hi]) => {
+    let a = 0;
+    for (let p = 0; p < n; p++) if (inMask[p] && mean[p] >= lo && mean[p] < hi) a++;
+    return a;
+  });
+  self.postMessage({
+    type: 'season', id: m.id, xy: S.coarse.xy, mean, lawn, lawnDull, open, season,
+    stats: { lawn: lawnStats, open: openStats, dullAtMin: dull, bands },
+  });
+}

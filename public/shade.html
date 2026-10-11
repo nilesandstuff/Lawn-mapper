@@ -39,12 +39,20 @@
   .ok { color: #81c784; } .warn { color: #ffb74d; } .bad { color: #e57373; } .dim { color: #999; }
   .status { font-weight: 600; }
   .sun .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
+  [hidden] { display: none !important; }
   .sun input[type=date] { font-size: 14px; padding: 5px; border-radius: 8px; border: 1px solid #555; background: #222; color: #eee; }
   .sun input[type=range] { flex: 1; min-width: 160px; }
   .sun button { min-height: 34px; font-size: 13px; }
   .legend-bar { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #bbb; }
   .legend-bar .ramp { flex: 1; max-width: 240px; height: 10px; border-radius: 5px; }
   .sun table { margin-top: 6px; }
+  .sun select { font-size: 14px; padding: 5px; border-radius: 8px; border: 1px solid #555; background: #222; color: #eee; }
+  #season-chart { position: relative; max-width: 520px; }
+  #season-chart svg { width: 100%; height: auto; display: block; touch-action: pan-y; }
+  #season-chart .tip { position: absolute; pointer-events: none; background: #222; border: 1px solid #444; border-radius: 6px; padding: 4px 8px; font-size: 12px; white-space: nowrap; }
+  .key { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: #ccc; margin: 6px 0 2px; }
+  .key i { display: inline-block; width: 14px; height: 2px; vertical-align: middle; margin-right: 5px; }
+  .key b.band { display: inline-block; width: 12px; height: 10px; background: rgba(255, 255, 255, .08); vertical-align: middle; margin-right: 5px; }
   .sun th { text-align: left; font-weight: 600; color: #bbb; padding: 1px 10px 1px 0; }
   .legend span { display: inline-block; width: .8em; height: .8em; border-radius: 50%; margin: 0 4px 0 10px; vertical-align: -1px; }
 </style>
@@ -83,6 +91,7 @@
         <button type="button" class="mode" id="m-hours" aria-pressed="true">Hours of sun</button>
         <button type="button" class="mode" id="m-dli" aria-pressed="false">Light (DLI)</button>
         <button type="button" class="mode" id="m-now" aria-pressed="false">Shadows at a time</button>
+        <button type="button" class="mode" id="m-season" aria-pressed="false">Season light</button>
         <button type="button" id="sun-opaque" aria-pressed="false">Trees as solid</button>
       </div>
       <div class="row" id="time-row" hidden>
@@ -92,6 +101,22 @@
       <div class="legend-bar" id="sun-legend"></div>
       <p id="sun-status" class="dim"></p>
       <div id="sun-summary"></div>
+      <div id="season">
+        <h2>Through the growing season <span class="dim">typical weather</span></h2>
+        <div class="row">
+          <select id="grass" aria-label="Grass type">
+            <option value="cool">Cool-season grass</option>
+            <option value="warm">Warm-season grass</option>
+          </select>
+          <select id="gp" aria-label="How the season is counted">
+            <option value="0.5">Season: strong growth</option>
+            <option value="0.1">Season: any growth</option>
+          </select>
+        </div>
+        <p id="season-status" class="dim">Fetching ten years of NASA weather…</p>
+        <div id="season-summary"></div>
+        <div id="season-chart"></div>
+      </div>
       <div id="sun-months"></div>
       <p class="dim">A clear sky, so these are ceilings: clouds and the growing season come next, from measured
         climate. Light from the sun's position and the site's height above sea level; shade from the lidar,
