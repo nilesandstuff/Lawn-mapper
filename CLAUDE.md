@@ -139,7 +139,8 @@ not an instruction; the owner decides. The owner should not have to relay.
     pulls before its next push.
   - The core session says when it changes worker/src/index.js near the
     jobs route, package.json's test line, or anything under public/lib/
-    that the shade code imports (register.js, mercator.js, area.js).
+    that the shade code imports (register.js, mercator.js, area.js, and
+    mask.js's rasterizePolygon, read by the shade light worker).
   - A finding about the core from the features session (a datum, a bias)
     goes into docs/DETECTOR-FINDINGS.md as SPECULATION by the core session,
     with its source named, until the core session measures it.
