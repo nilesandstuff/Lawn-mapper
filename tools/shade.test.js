@@ -14,6 +14,7 @@ import { aboutLocal, ramp } from '../public/shade/sun-ui.js';
 import { tracedOn, lineUpAt } from '../public/shade/traced.js';
 import { sunAt, solarNoon, sunPath, clearSky, airMass, parMol } from '../public/shade/sun.js';
 import { buildCanopy } from '../public/shade/canopy.js';
+import { seasonalCanopy, muWithLeaves, leafCalendar, T_LEAF_ON, otsu, greennessOn } from '../public/shade/seasonal.js';
 import { transmittance, skyView, sunlitNow, dayLight, samplePoints, groundAt, beamShare } from '../public/shade/rays.js';
 import { dayIndex, typicalYear, growthPotential, growingSeason, dliOn, dayLabel } from '../public/shade/climate.js';
 import { climateAt } from '../worker/src/shade.js';
@@ -414,6 +415,86 @@ check('the colour ramp runs dark to bright and clamps', ramp(-1).join() === '68,
     near(bs[0], 1, 0.01) && bs[1] < 0.8 && bs[2] < 0.8, Array.from(bs).map((v) => v.toFixed(2)).join(' '));
   const mask = new Uint8Array(model.w * model.h); mask[0] = 1;
   check('sample points: sub x sub points per masked cell, at their centres', samplePoints(model, mask, 2).xy.length === 8 && samplePoints(model, mask, 2).xy[0] === 0.25);
+}
+
+/* --------------------------------------------------------- seasonal */
+
+{
+  /* A leaf-off flight over 60 m of flat lawn at 100 m: an evergreen-like
+     crown (6 m across, 4-12 m up) where 60% of pulses stop in it, a bare
+     deciduous crown (same size, 6-14 m up) where 8% do, each stopped pulse
+     returning once from the crown and once more if it gets through (as
+     the last return); and a flat roof at 108 m. Pulses every 0.25 m. */
+  const lat = 40, k = mercScale(lat);
+  const grid = gridOver([0, 0, 60 / k, 60 / k], 1, lat);
+  let seed = 11;
+  const rnd = () => {
+    seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const pts = [];
+  const add = (e, n, z, c, ret, nret) => pts.push([e, n, z, c, ret, nret]);
+  for (let e = 0.125; e < 60; e += 0.25) {
+    for (let n = 0.125; n < 60; n += 0.25) {
+      const ever = Math.hypot(e - 15, n - 15) < 6, bare = Math.hypot(e - 45, n - 15) < 6, roof = e > 30 && e < 40 && n > 40 && n < 50;
+      if (roof) { add(e, n, 108, 6, 1, 1); continue; }
+      if (ever || bare) {
+        const lo = ever ? 104 : 106, stop = ever ? 0.6 : 0.08;
+        if (rnd() < stop) { add(e, n, lo + rnd() * 8, 1, 1, 1); continue; }
+        if (rnd() < 0.5) { add(e, n, lo + rnd() * 8, 1, 1, 2); add(e, n, 100, 2, 2, 2); continue; }
+      }
+      add(e, n, 100, 2, 1, 1);
+    }
+  }
+  const cols = makeColumns(pts.length);
+  pts.forEach(([e, n, z, c, r, nr], i) => { cols.x[i] = e / k; cols.y[i] = n / k; cols.z[i] = z; cols.cls[i] = c; cols.ret[i] = r; cols.nret[i] = nr; });
+  const model = buildCanopy(cols, grid);
+  const s = seasonalCanopy(cols, model);
+  const at = (e, n) => Math.floor(60 - n) * grid.w + Math.floor(e);
+  check('seasons: a crown that stopped most pulses in winter reads evergreen, one that let them through deciduous, the roof a roof',
+    s.kind[at(15, 15)] === 2 && s.kind[at(45, 15)] === 3 && s.kind[at(35, 45)] === 1 && s.kind[at(5, 50)] === 0,
+    `${s.kind[at(15, 15)]} ${s.kind[at(45, 15)]} ${s.kind[at(35, 45)]}`);
+  const T = (mu, e, n) => transmittance({ ...model, mu }, e, 60 - n, 100.1, [0, 0, 1]);
+  const bareT = T(s.muOff, 45, 15), leafT = T(s.muOn, 45, 15);
+  /* Bare: 8% of pulses stop in it and half the rest split, leaving half a
+     pulse there each -- about 0.69 gets through. In leaf: ~T_LEAF_ON. */
+  check(`seasons: the deciduous crown lets ~0.7 of the overhead sun through bare, about ${T_LEAF_ON * 100}% in leaf`,
+    near(bareT, 0.69, 0.06) && near(leafT, T_LEAF_ON, 0.025), `bare ${bareT.toFixed(2)}, in leaf ${leafT.toFixed(3)}`);
+  check('seasons: the evergreen is the same in leaf as measured',
+    near(T(s.muOn, 15, 15), T(s.muOff, 15, 15), 1e-6));
+  check('seasons: half the leaves out sits between bare and full leaf',
+    T(muWithLeaves(s, 0.5), 45, 15) < bareT && T(muWithLeaves(s, 0.5), 45, 15) > leafT && muWithLeaves(s, 0) === s.muOff && muWithLeaves(s, 1) === s.muOn);
+  const unclassified = seasonalCanopy(cols, model, { classify: false });
+  check('seasons: without classification (a leaf-on flight) nothing is called evergreen',
+    unclassified.kind[at(15, 15)] === 3 && unclassified.counts.evergreen === 0);
+
+  /* By colour: a photo where the left crown is green and the right one brown. */
+  const P = 240, photo = { data: new Uint8ClampedArray(P * P * 4), width: P, height: P };
+  for (let y = 0; y < P; y++) for (let x = 0; x < P; x++) {
+    const e = (x + 0.5) / 4, i = (y * P + x) * 4;
+    photo.data.set(e < 30 ? [40, 90, 45, 255] : [130, 100, 80, 255], i);
+  }
+  const g = greennessOn(grid, photo, [0, 0, 60 / k, 60 / k]);
+  check('greenness: excess green of a green pixel > 0, of a brown one < 0', g[at(15, 15)] > 0.1 && g[at(45, 15)] < 0);
+  /* Swap the photo's verdict: green on the right this time, so colour must overrule the laser. */
+  for (let y = 0; y < P; y++) for (let x = 0; x < P; x++) photo.data.set((x + 0.5) / 4 < 30 ? [130, 100, 80, 255] : [40, 90, 45, 255], (y * P + x) * 4);
+  const byColour = seasonalCanopy(cols, model, { greenness: greennessOn(grid, photo, [0, 0, 60 / k, 60 / k]) });
+  check('by colour: the photo decides where it covers, whatever the laser says',
+    byColour.kind[at(15, 15)] === 3 && byColour.kind[at(45, 15)] === 2 && byColour.byColour > 0 && byColour.kind[at(35, 45)] === 1);
+  const cutAt = otsu([...Array.from({ length: 50 }, (_, i) => i / 100), ...Array.from({ length: 50 }, (_, i) => 1 + i / 100)]);
+  check('otsu splits two clusters in the gap between them', cutAt > 0.49 && cutAt <= 1 && otsu([1, 2]) === null, String(cutAt));
+
+  /* A typical year: -5 C in mid-January to 23 C in mid-July. */
+  const tMean = Array.from({ length: 365 }, (_, d) => 9 - 14 * Math.cos(((d - 14) / 365) * 2 * Math.PI));
+  const cal = leafCalendar(tMean);
+  check('leaf calendar: leaves start when the typical mean passes 10 C in spring and fall when it drops back',
+    tMean[cal.out] >= 10 && tMean[cal.out - 1] < 10 && tMean[cal.fall] < 10 && tMean[cal.fall - 1] >= 10, `${dayLabel(cal.out)} / ${dayLabel(cal.fall)}`);
+  check('leaf calendar: bare in winter, ramping over three weeks, full in summer, gone three weeks after the fall',
+    cal.share(10) === 0 && near(cal.share(cal.out + 10), 10 / 21, 1e-9) && cal.share(196) === 1 && cal.share(cal.fall + 25) === 0);
+  check('leaf calendar: always warm means always in leaf; never warm, never',
+    leafCalendar(new Array(365).fill(20)).share(0) === 1 && leafCalendar(new Array(365).fill(0)).share(180) === 0);
 }
 
 /* ---------------------------------------------------------- climate */

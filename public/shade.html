@@ -44,6 +44,7 @@
   .sun input[type=range] { flex: 1; min-width: 160px; }
   .sun button { min-height: 34px; font-size: 13px; }
   .legend-bar { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #bbb; }
+  .legend-bar .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
   .legend-bar .ramp { flex: 1; max-width: 240px; height: 10px; border-radius: 5px; }
   .sun table { margin-top: 6px; }
   .sun select { font-size: 14px; padding: 5px; border-radius: 8px; border: 1px solid #555; background: #222; color: #eee; }
@@ -92,7 +93,18 @@
         <button type="button" class="mode" id="m-dli" aria-pressed="false">Light (DLI)</button>
         <button type="button" class="mode" id="m-now" aria-pressed="false">Shadows at a time</button>
         <button type="button" class="mode" id="m-season" aria-pressed="false">Season light</button>
-        <button type="button" id="sun-opaque" aria-pressed="false">Trees as solid</button>
+        <button type="button" class="mode" id="m-trees" aria-pressed="false">Trees</button>
+      </div>
+      <div class="row">
+        <select id="sun-canopy" aria-label="How trees are treated">
+          <option value="seasonal">Trees: leaves through the seasons</option>
+          <option value="measured">Trees: as the laser saw them</option>
+          <option value="solid">Trees: as solid</option>
+        </select>
+        <select id="sun-evergreen" aria-label="How evergreens are told apart">
+          <option value="laser">Evergreens: by the laser</option>
+          <option value="colour">Evergreens: by the photo's colour (leaf-off photo)</option>
+        </select>
       </div>
       <div class="row" id="time-row" hidden>
         <input type="range" id="sun-time" min="0" max="100" value="50" aria-label="Time of day">
@@ -100,6 +112,7 @@
       </div>
       <div class="legend-bar" id="sun-legend"></div>
       <p id="sun-status" class="dim"></p>
+      <p id="sun-canopy-note" class="dim"></p>
       <div id="sun-summary"></div>
       <div id="season">
         <h2>Through the growing season <span class="dim">typical weather</span></h2>
@@ -120,7 +133,7 @@
       <div id="sun-months"></div>
       <p class="dim">A clear sky, so these are ceilings: clouds and the growing season come next, from measured
         climate. Light from the sun's position and the site's height above sea level; shade from the lidar,
-        trees as see-through as the laser found them. Things more than 50 m outside the lot are not in the model.</p>
+        trees as the choice above says. Things more than 50 m outside the lot are not in the model.</p>
     </section>
     <div id="report"></div>
   </div>

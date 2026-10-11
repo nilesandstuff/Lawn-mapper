@@ -9,6 +9,8 @@
  *                       shadows in the photo
  *   Season light        the average DLI through the growing season, with
  *                       NASA's typical clouds (step 3, climate.js)
+ *   Trees               which crowns read as evergreen and which as
+ *                       deciduous (step 4, seasonal.js), to check by eye
  *
  * Plus the lawn's (or lot's) split into full sun / part shade / shade, and
  * a month-by-month table of clear-sky DLI against open ground.
@@ -18,6 +20,7 @@ import { gridOver, gridBox } from './grid.js';
 import { fromMerc } from './ept.js';
 import { sunPath } from './sun.js';
 import { GRASS, dayLabel } from './climate.js';
+import { greennessOn } from './seasonal.js';
 
 const $ = (s) => document.querySelector(s);
 const SQFT = 10.7639;
@@ -33,6 +36,8 @@ export function ramp(t) {
  /* Lawn and open ground in the year chart: categorical slots 1 and 2 of the
     dataviz reference palette, dark steps, validated on this page's #161616. */
 const LAWN = '#3987e5', OPEN = '#d95926';
+/* Tree kinds on the map: aqua and yellow slots of the same palette, and grey for buildings. */
+const KIND_RGBA = { 1: [140, 140, 140, 200], 2: [25, 158, 112, 210], 3: [201, 133, 0, 210] };
 
 /* Light bands for the season map's area split, mol/m2/day. A rough guide
    only: cool-season turf grows best at 20-30, slows at 10-15 and survives
@@ -65,9 +70,9 @@ export function aboutLocal(ms, lng) {
 
 const polysOf = (g) => (g?.type === 'Polygon' ? [g.coordinates] : g?.type === 'MultiPolygon' ? g.coordinates : []);
 
-export function startSun({ map, site, cols, box, shift, heightM, season, beforeLayer }) {
+export function startSun({ map, site, cols, box, shift, heightM, season, beforeLayer, photo = null, photoBox = null }) {
   const st = {
-    worker: null, mode: 'hours', day: null, now: null, opaque: false, ids: 0, path: [],
+    worker: null, mode: 'hours', day: null, now: null, ids: 0, path: [],
     grid: gridOver(box, 1, site.lat),
   };
   const sec = $('#sun');
@@ -114,6 +119,14 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
   }
 
   function draw() {
+    if (st.mode === 'trees') {
+      if (!st.kinds) return;
+      $('#sun-legend').innerHTML = '<span><i class="sw" style="background:#199e70"></i>evergreen</span> <span><i class="sw" style="background:#c98500"></i>deciduous</span> <span><i class="sw" style="background:#8c8c8c"></i>building</span>';
+      const xy = new Float32Array(st.grid.w * st.grid.h * 2), vals = new Uint8Array(st.grid.w * st.grid.h);
+      for (let k = 0; k < vals.length; k++) { xy[2 * k] = k % st.grid.w; xy[2 * k + 1] = Math.floor(k / st.grid.w); vals[k] = st.kinds[k]; }
+      paint(vals, xy, (v) => KIND_RGBA[v] || null, 2);
+      return;
+    }
     if (st.mode === 'season') {
       const se = st.season;
       if (!se?.stats.open) { $('#sun-legend').innerHTML = '<span class="dim">No growing season to show yet.</span>'; return; }
@@ -143,7 +156,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     const a = d.areaM2, tot = a.full + a.part + a.shade || 1;
     const row = (label, m2) => `<tr><td>${label}</td><td>${Math.round(m2 * SQFT).toLocaleString()} sq ft</td><td class="dim">${Math.round((100 * m2) / tot)}%</td></tr>`;
     $('#sun-summary').innerHTML = `
-      <p><b>${what}</b> on ${new Date(dayMs()).toUTCString().slice(5, 11)}: on average <b>${d.meanSun.toFixed(1)} hours</b> of direct sun of ${d.dayHours.toFixed(1)} the day has
+      <p><b>${what}</b> on ${new Date(dayMs()).toUTCString().slice(5, 11)}${st.canopy === 'seasonal' && d.leaves < 1 ? ` (deciduous leaves ${Math.round(d.leaves * 100)}% out)` : ''}: on average <b>${d.meanSun.toFixed(1)} hours</b> of direct sun of ${d.dayHours.toFixed(1)} the day has
       (sunrise about ${aboutLocal(d.sunrise, site.lng)}, sunset about ${aboutLocal(d.sunset, site.lng)}), and <b>${d.meanDli.toFixed(0)} mol/m²</b> of light
       against ${d.openDli.toFixed(0)} on open ground here (${Math.round((100 * d.meanDli) / d.openDli)}%).</p>
       <table>${row('Full sun, 6 h or more', a.full)}${row('Part shade, 3 to 6 h', a.part)}${row('Shade, under 3 h', a.shade)}</table>`;
@@ -151,8 +164,8 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
 
   function months(rows) {
     $('#sun-months').innerHTML = `<h2>Through the year <span class="dim">clear-sky DLI on the 21st, mol/m²/day</span></h2>
-      <table><tr><th>Month</th><th>${site.lawn.length ? 'Lawn' : 'Lot'}</th><th>Open ground</th><th>Share</th><th>Sun h</th></tr>
-      ${rows.map((r) => `<tr><td>${MONTHS[r.month]}</td><td>${r.dli.toFixed(0)}</td><td class="dim">${r.openDli.toFixed(0)}</td><td>${Math.round((100 * r.dli) / r.openDli)}%</td><td class="dim">${r.sunHours.toFixed(1)} / ${r.dayHours.toFixed(1)}</td></tr>`).join('')}</table>`;
+      <table><tr><th>Month</th><th>${site.lawn.length ? 'Lawn' : 'Lot'}</th><th>Open ground</th><th>Share</th><th>Sun h</th>${st.canopy === 'seasonal' ? '<th>Leaves</th>' : ''}</tr>
+      ${rows.map((r) => `<tr><td>${MONTHS[r.month]}</td><td>${r.dli.toFixed(0)}</td><td class="dim">${r.openDli.toFixed(0)}</td><td>${Math.round((100 * r.dli) / r.openDli)}%</td><td class="dim">${r.sunHours.toFixed(1)} / ${r.dayHours.toFixed(1)}</td>${st.canopy === 'seasonal' ? `<td class="dim">${Math.round(r.leaves * 100)}%</td>` : ''}</tr>`).join('')}</table>`;
   }
 
   function send(msg) {
@@ -176,6 +189,29 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     if (!s) return;
     $('#sun-time-label').textContent = `about ${aboutLocal(s.t, site.lng)}, sun ${s.elevation.toFixed(0)}° up`;
     st.nowId = send({ type: 'now', t: s.t });
+  }
+
+  function canopyNote(m) {
+    const c = m.counts, total = c ? c.evergreen + c.deciduous : 0;
+    const how = m.byColour
+      ? 'by the photo\'s colour (green crowns evergreen, brown or grey ones bare; right only for a photo taken with the leaves off)'
+      : 'by how many of the laser\'s pulses reached the ground through it in winter (right about 3 times in 4 on 290 single trees over lawns; it overcalls evergreens in dense woods)';
+    const split = c && m.classified && total
+      ? ` Of the tree cover here, ${Math.round((100 * c.evergreen) / total)}% reads as evergreen and ${Math.round((100 * c.deciduous) / total)}% as deciduous, ${how}. The "Trees" view shows which is which: check it against the photo, and switch how evergreens are told apart if it looks wrong.`
+      : '';
+    let text;
+    if (m.canopy === 'seasonal') {
+      const cal = m.calendar;
+      const when = cal.always ? 'Deciduous trees here keep their leaves all year in a typical year.'
+        : cal.never ? 'It never gets warm enough here, in a typical year, for deciduous trees to leaf out.'
+          : `Leaves estimated out from ${dayLabel(cal.out)} (full by ${dayLabel((cal.out + 21) % 365)}) and falling from ${dayLabel(cal.fall)} (bare by ${dayLabel((cal.fall + 21) % 365)}), from the typical temperature here.`;
+      text = `Trees through the seasons: ${when} In leaf, a deciduous crown lets about 6% of overhead sun through, and less to a low sun that crosses more of it; bare, it lets through what the laser measured. Evergreens are as measured all year.${split}`;
+    } else if (m.canopy === 'solid') {
+      text = 'Trees as solid: no light gets through any crown. The darkest the shade could be.';
+    } else {
+      text = `Trees as the laser saw them, all year${m.seasonsWhy ? ` (seasons are off: ${m.seasonsWhy})` : ''}.${split}`;
+    }
+    $('#sun-canopy-note').textContent = text;
   }
 
   function runSeason() {
@@ -278,12 +314,13 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
   function build() {
     if (st.worker) st.worker.terminate();
     st.built = false;
+    st.season = null; st.day = null; st.now = null;
     st.worker = new Worker('/shade/light-worker.js', { type: 'module' });
     st.worker.onerror = (e) => status(`The light calculation stopped: ${e.message || 'unknown error'}`);
     st.worker.onmessage = (ev) => {
       const m = ev.data;
       if (m.type === 'error') status(`The light calculation stopped: ${m.message}`);
-      else if (m.type === 'built') { status(''); st.built = true; runDay(); st.monthsId = send({ type: 'months', year: new Date(dayMs()).getUTCFullYear() }); runSeason(); }
+      else if (m.type === 'built') { st.canopy = m.canopy; status(''); st.built = true; st.kinds = m.kinds; canopyNote(m); if (st.mode === 'trees') draw(); runDay(); st.monthsId = send({ type: 'months', year: new Date(dayMs()).getUTCFullYear() }); runSeason(); }
       else if (m.type === 'day' && m.id === st.dayId) { st.day = m; status(''); summary(); if (st.mode !== 'now') draw(); }
       else if (m.type === 'now' && m.id === st.nowId) { st.now = m; if (st.mode === 'now') draw(); }
       else if (m.type === 'progress' && m.what === 'season') $('#season-status').textContent = `Tracing the sun through the year: ${m.done} of ${m.of} dates…`;
@@ -295,15 +332,18 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     const pick = ['x', 'y', 'z', 'intensity', 'ret', 'nret', 'cls'];
     const c = { n: cols.n };
     for (const k of pick) c[k] = cols[k].slice(0, cols.n);
+    const byColour = $('#sun-evergreen').value === 'colour' && photo;
     send({
-      type: 'build', cols: c, box, lat: site.lat, lng: site.lng, shift, heightM, opaque: st.opaque,
+      type: 'build', cols: c, box, lat: site.lat, lng: site.lng, shift, heightM,
+      canopy: $('#sun-canopy').value, flight: season || null, tMean: st.climate?.tMean || null,
+      greenness: byColour ? greennessOn(st.grid, photo, photoBox) : null,
       lot: polysOf(site.parcel?.geometry), lawn: site.lawn.flatMap((f) => polysOf(f.geometry)),
     });
   }
 
   const setMode = (mode) => {
     st.mode = mode;
-    for (const [id, m] of [['#m-hours', 'hours'], ['#m-dli', 'dli'], ['#m-now', 'now'], ['#m-season', 'season']]) $(id).setAttribute('aria-pressed', String(m === mode));
+    for (const [id, m] of [['#m-hours', 'hours'], ['#m-dli', 'dli'], ['#m-now', 'now'], ['#m-season', 'season'], ['#m-trees', 'trees']]) $(id).setAttribute('aria-pressed', String(m === mode));
     $('#time-row').hidden = mode !== 'now';
     if (mode === 'now') runNow(); else draw();
   };
@@ -311,6 +351,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
   $('#m-dli').onclick = () => setMode('dli');
   $('#m-now').onclick = () => setMode('now');
   $('#m-season').onclick = () => setMode('season');
+  $('#m-trees').onclick = () => setMode('trees');
   $('#grass').value = Math.abs(site.lat) >= 37 ? 'cool' : 'warm';
   $('#grass').onchange = () => runSeason();
   $('#gp').onchange = () => runSeason();
@@ -321,10 +362,12 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     .then((c) => {
       if (c.error) throw new Error(c.detail || c.error);
       st.climate = c;
-      $('#season-status').textContent = st.built ? 'Tracing the sun through the year…' : 'Waiting for the 3D model…';
-      runSeason();
+      $('#season-status').textContent = 'Waiting for the 3D model…';
     })
-    .catch((e) => { $('#season-status').textContent = `The NASA weather could not be read (${e.message}); the clear-sky figures above still stand.`; });
+    .catch((e) => { $('#season-status').textContent = `The NASA weather could not be read (${e.message}); the clear-sky figures above still stand, with the trees as the laser saw them.`; })
+    /* The seasons need the typical temperatures (leaf-out, leaf-fall), so
+       the model is built once they are in, or once they have failed. */
+    .finally(() => build());
   $('#sun-time').oninput = () => runNow();
   $('#sun-date').onchange = () => runDay();
   for (const b of document.querySelectorAll('[data-preset]')) {
@@ -334,18 +377,12 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
       runDay();
     };
   }
-  $('#sun-opaque').onclick = () => {
-    st.opaque = !st.opaque;
-    $('#sun-opaque').setAttribute('aria-pressed', String(st.opaque));
-    build();
-  };
-  $('#sun-note')?.remove();
-  if (season === 'off' || season === 'mixed') {
-    $('#sun-summary').insertAdjacentHTML('beforebegin', `<p class="warn" id="sun-note">This lidar was flown ${season === 'off' ? 'with the leaves off' : 'partly with the leaves off'}:
-      broadleaf trees read as more see-through than they are in summer, so summer shade under them is
-      understated. "Trees as solid" shows the other limit; the truth lies between.</p>`);
-  }
-  build();
+  $('#sun-canopy').value = 'seasonal';
+  $('#sun-canopy').onchange = () => build();
+  $('#sun-evergreen').value = 'laser';
+  $('#sun-evergreen').disabled = !photo;
+  $('#sun-evergreen').onchange = () => build();
+  $('#sun-canopy-note').textContent = '';
   return {
     stop() {
       st.worker?.terminate();
