@@ -55,9 +55,13 @@ export function jsClosure(entry = join(ROOT, 'tools', 'serve-alpha.mjs')) {
 }
 
 /** Every file the fingerprint covers, repository-relative and sorted. */
+/* Python in tools/ that the server never runs: changing it must not redeploy
+   (and warm, at a few cents) the model server. */
+const NOT_SERVED_PY = new Set(['modal-logs.py']);
+
 export function serverFiles() {
   const py = readdirSync(join(ROOT, 'tools'))
-    .filter((n) => n.endsWith('.py') && !n.endsWith('_test.py'))
+    .filter((n) => n.endsWith('.py') && !n.endsWith('_test.py') && !NOT_SERVED_PY.has(n))
     .map((n) => join(ROOT, 'tools', n));
   return [...new Set([...py, ...jsClosure()])].map((f) => relative(ROOT, f)).sort();
 }

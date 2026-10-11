@@ -27,5 +27,9 @@ check('the fingerprint is stable', fingerprint(files) === fingerprint(files) && 
 check('a dynamic import counts as an import',
   importsOf('/r/tools/a.js', "const m = await import('./b.js'); import x from '../c.js';").join() === '/r/tools/b.js,/r/c.js');
 
+/* A tool that only READS Modal (workflow 34's log reader) is not the server. */
+check('the Modal log reader is not part of the server fingerprint',
+  !serverFiles().includes('tools/modal-logs.py') && serverFiles().includes('tools/modal_serve.py'));
+
 console.log(failures ? `\n${failures} check(s) FAILED.` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

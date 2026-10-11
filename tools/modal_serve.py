@@ -283,7 +283,12 @@ def lot(body):
     try:
         got.get(timeout=240)
     except Exception as e:  # noqa: BLE001 - detect reads the lot itself, as before
-        print(f"gather failed, the GPU will read it: {e}", flush=True)
+        # This machine has no numpy (web_image), so a gather that FINISHED
+        # cannot be unpacked here -- and need not be: the GPU fetches it by id.
+        # Only a real failure is worth a line; this one appeared on every press
+        # and read as an error in workflow 34 (2026-10-11).
+        if "Deserialization failed" not in str(e):
+            print(f"gather failed, the GPU will read it: {e}", flush=True)
     downloads = round(time.time() - t0, 1)
     out = Alpha().detect.remote({**body, "gather": got.object_id})
     out.setdefault("seconds", {})["downloads"] = downloads
