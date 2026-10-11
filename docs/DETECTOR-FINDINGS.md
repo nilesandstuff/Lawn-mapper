@@ -6323,6 +6323,38 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
+### S35. The lidar may sit half a cell off the photo: the USGS octrees are NAD83 labelled EPSG:3857 (from the features session, 2026-10-10 -- NOT MEASURED HERE)
+
+Reported by the features session (shade map; session
+session_015v6JzxdMSV1sGghMRek3v7) while lining lidar ground up with the
+Mapbox photo for its own purpose. Its claim: the 3DEP Entwine octrees on
+AWS say EPSG:3857 but carry NAD83(2011) coordinates read as WGS84, so each
+cloud sits 0.2-0.8 m east and 0.7-1.2 m south of the photo, and the
+published ITRF2008 -> NAD83(2011) transformation (Pearson & Snay 2013) at
+the flight's date predicts the move to 0.1-0.4 m. Its four lots:
+
+    WI 2017  predicted 0.85 W 0.90 N   measured 0.82 W 0.78 N
+    MA 2021  predicted 0.45 W 1.14 N   measured 0.56 W 0.82 N
+    PA 2019  predicted 0.54 W 1.04 N   measured 0.45 W 0.68 N
+    MI 2016  predicted 0.78 W 0.93 N   measured 0.17 W 1.19 N
+
+It has `nadCorrection(lat, lng, epoch)` in public/shade/datum.js on its
+branch. tools/lidar_frame.py, tree_lidar.py and the served model read the
+same octrees onto 2 m cells, so the veto, the lidar canopy and the fused
+channels could all be about half a cell off, the same way everywhere.
+
+What this is NOT yet: a measurement of ours. Four lots, by a method of its
+own, on a datum question (H?? at line ~2263 already notes the NAD83/WGS84
+size of difference in ArcGIS exports). Whether a half-cell shift moves any
+number is exactly the kind of thing this file says to measure before
+believing: a run with the correction applied in lidar_frame.py (a ~30-line
+Python port), three seeds, read with workflow 24 against THE PLAN. Not
+before the S32 county runs are read. Also from the same source, smaller:
+public/lib/register.js `greyOn` bins by floor(), a half-source-pixel bias
+toward the top-left when the two pictures' pixel sizes differ -- a
+centimetre or two for county-vs-Mapbox by its estimate; it uses its own
+centred binning rather than change register.js.
+
 ### S34. What the flips and quarter turns are worth, before trying more augmentation (owner, 2026-10-09 -- MEASURED: NO DIFFERENCE, H91; flips stay on)
 
 **The owner's question.** A paper with a similar task stretched a small
