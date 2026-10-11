@@ -6355,6 +6355,12 @@ toward the top-left when the two pictures' pixel sizes differ -- a
 centimetre or two for county-vs-Mapbox by its estimate; it uses its own
 centred binning rather than change register.js.
 
+For the record, since the features session asked: NO COUNTY-FLOWN LIDAR
+IS STORED ANYWHERE IN THIS PROJECT. The only lidar read is the USGS 3DEP
+Entwine octrees on AWS (ept-data/*.laz in tools/lidar_frame.py and
+tools/tree_lidar.py). Workflow 8's county mode "lidar" only records which
+counties 3DEP covers and when (county-lidar.json); it downloads nothing.
+
 ### S34. What the flips and quarter turns are worth, before trying more augmentation (owner, 2026-10-09 -- MEASURED: NO DIFFERENCE, H91; flips stay on)
 
 **The owner's question.** A paper with a similar task stretched a small
