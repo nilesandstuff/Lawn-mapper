@@ -424,7 +424,11 @@ check('the colour ramp runs dark to bright and clamps', ramp(-1).join() === '68,
      crown (6 m across, 4-12 m up) where 60% of pulses stop in it, a bare
      deciduous crown (same size, 6-14 m up) where 8% do, each stopped pulse
      returning once from the crown and once more if it gets through (as
-     the last return); and a flat roof at 108 m. Pulses every 0.25 m. */
+     the last return); a TANGLE (same size, 6-14 m up: vines or dead leaves
+     on bare branches) that 30% of pulses stop in and nothing splits, so it
+     keeps as many last returns up high as an evergreen but measures no
+     denser than the bare crown; and a flat roof at 108 m. Pulses every
+     0.25 m. */
   const lat = 40, k = mercScale(lat);
   const grid = gridOver([0, 0, 60 / k, 60 / k], 1, lat);
   let seed = 11;
@@ -434,12 +438,20 @@ check('the colour ramp runs dark to bright and clamps', ramp(-1).join() === '68,
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+  let seed2 = 29; // the tangle's own draws, leaving rnd()'s to the others
+  const rnd2 = () => {
+    seed2 = (seed2 + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed2 ^ (seed2 >>> 15), 1 | seed2);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
   const pts = [];
   const add = (e, n, z, c, ret, nret) => pts.push([e, n, z, c, ret, nret]);
   for (let e = 0.125; e < 60; e += 0.25) {
     for (let n = 0.125; n < 60; n += 0.25) {
-      const ever = Math.hypot(e - 15, n - 15) < 6, bare = Math.hypot(e - 45, n - 15) < 6, roof = e > 30 && e < 40 && n > 40 && n < 50;
+      const ever = Math.hypot(e - 15, n - 15) < 6, bare = Math.hypot(e - 45, n - 15) < 6, tangle = Math.hypot(e - 15, n - 45) < 6, roof = e > 30 && e < 40 && n > 40 && n < 50;
       if (roof) { add(e, n, 108, 6, 1, 1); continue; }
+      if (tangle && rnd2() < 0.3) { add(e, n, 106 + rnd2() * 8, 1, 1, 1); continue; }
       if (ever || bare) {
         const lo = ever ? 104 : 106, stop = ever ? 0.6 : 0.08;
         if (rnd() < stop) { add(e, n, lo + rnd() * 8, 1, 1, 1); continue; }
@@ -452,10 +464,28 @@ check('the colour ramp runs dark to bright and clamps', ramp(-1).join() === '68,
   pts.forEach(([e, n, z, c, r, nr], i) => { cols.x[i] = e / k; cols.y[i] = n / k; cols.z[i] = z; cols.cls[i] = c; cols.ret[i] = r; cols.nret[i] = nr; });
   const model = buildCanopy(cols, grid);
   const s = seasonalCanopy(cols, model);
+  const T0 = (e, n) => transmittance(model, e, 60 - n, 100.1, [0, 0, 1]);
   const at = (e, n) => Math.floor(60 - n) * grid.w + Math.floor(e);
   check('seasons: a crown that stopped most pulses in winter reads evergreen, one that let them through deciduous, the roof a roof',
     s.kind[at(15, 15)] === 2 && s.kind[at(45, 15)] === 3 && s.kind[at(35, 45)] === 1 && s.kind[at(5, 50)] === 0,
     `${s.kind[at(15, 15)]} ${s.kind[at(45, 15)]} ${s.kind[at(35, 45)]}`);
+  /* Over each crown's columns (one metre holds only 16 pulses): the share
+     called evergreen, and the median overhead sun through it as measured. */
+  const crown = (ce, cn) => {
+    const ts = [];
+    let ever = 0;
+    for (let n = cn - 4.5; n <= cn + 4.5; n++) for (let e = ce - 4.5; e <= ce + 4.5; e++) {
+      if (Math.hypot(e - ce, n - cn) > 4.5) continue;
+      ts.push(T0(e, n));
+      if (s.kind[at(e, n)] === 2) ever++;
+    }
+    ts.sort((a, b) => a - b);
+    return { ever: ever / ts.length, through: ts[ts.length >> 1] };
+  };
+  const tangleC = crown(15, 45), everC = crown(15, 15), bareC = crown(45, 15);
+  check('seasons: a crown that keeps last returns up high but measured no denser than the bare one is not evergreen',
+    tangleC.ever < 0.1 && everC.ever > 0.9 && tangleC.through > everC.through + 0.2,
+    `evergreen share ${tangleC.ever.toFixed(2)} (the evergreen ${everC.ever.toFixed(2)}); through ${tangleC.through.toFixed(2)}, bare ${bareC.through.toFixed(2)}, evergreen ${everC.through.toFixed(2)}`);
   const T = (mu, e, n) => transmittance({ ...model, mu }, e, 60 - n, 100.1, [0, 0, 1]);
   const bareT = T(s.muOff, 45, 15), leafT = T(s.muOn, 45, 15);
   /* Bare: 8% of pulses stop in it and half the rest split, leaving half a
@@ -467,8 +497,9 @@ check('the colour ramp runs dark to bright and clamps', ramp(-1).join() === '68,
     near(bareT, 0.69, 0.06) && leafT <= full * 1.05 && leafT > full * 0.6, `bare ${bareT.toFixed(2)}, in leaf ${leafT.toFixed(3)}`);
   check('seasons: a low sun crossing more of the crown in leaf keeps less than the overhead sun',
     transmittance({ ...model, mu: s.muOn }, 45, 60 - 22, 100.1, [0, -Math.cos(Math.PI / 4), Math.sin(Math.PI / 4)]) < leafT);
-  check('seasons: the evergreen is in leaf all year, and at least as dense as a broadleaf in leaf',
-    near(T(s.muOff, 15, 15), T(s.muOn, 15, 15), 1e-6) && T(s.muOn, 15, 15) <= full * 1.05);
+  check('seasons: the evergreen is as the laser measured it in every season (no leaves added)',
+    near(T(s.muOff, 15, 15), T(s.muOn, 15, 15), 1e-6) && near(T(s.muOn, 15, 15), T(model.mu, 15, 15), 1e-6));
+  check('seasons: in the leaf-off months every crown is as measured', s.muOff === model.mu);
   check('seasons: a crown in leaf reaches 1 m past where the leaf-off laser found it',
     T(s.muOn, 45 + 6.5, 15) < 0.9 && T(s.muOff, 45 + 6.5, 15) > 0.99, `${T(s.muOn, 45 + 6.5, 15).toFixed(2)} vs ${T(s.muOff, 45 + 6.5, 15).toFixed(2)}`);
   check('seasons: half the leaves out sits between bare and full leaf',

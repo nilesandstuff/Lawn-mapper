@@ -192,9 +192,9 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
 
   function canopyNote(m) {
     const c = m.counts, total = c ? c.evergreen + c.deciduous : 0;
-    const how = 'by how many of the laser\'s pulses got below 4 m through it in winter (measured right about 3 times in 4 on 290 single trees; the 4 m line, which lets winter shrubs and vines count as "through", is from one lot so far)';
+    const how = 'by how many of the laser\'s pulses got below 4 m through it in winter (measured right about 3 times in 4 on 290 single trees; the 4 m line, which lets winter shrubs and vines count as "through", is from one lot so far), and only where the crown also measured at least twice as dense as the bare crowns here: an evergreen still had its needles when the laser flew';
     const split = c && m.classified && total
-      ? ` Of the tree cover here, ${Math.round((100 * c.evergreen) / total)}% reads as evergreen and ${Math.round((100 * c.deciduous) / total)}% as deciduous, ${how}. The "Trees" view shows which is which. In summer it does not matter: every crown is in full leaf.`
+      ? ` Of the tree cover here, ${Math.round((100 * c.evergreen) / total)}% reads as evergreen and ${Math.round((100 * c.deciduous) / total)}% as deciduous, ${how}. The "Trees" view shows which is which. It matters from leaf-out to leaf-fall: a deciduous tree called evergreen gets no summer leaves.`
       : '';
     let text;
     if (m.canopy === 'seasonal') {
@@ -202,7 +202,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
       const when = cal.always ? 'Deciduous trees here keep their leaves all year in a typical year.'
         : cal.never ? 'It never gets warm enough here, in a typical year, for deciduous trees to leaf out.'
           : `Leaves estimated coming out ${dayLabel(cal.out)} to ${dayLabel(cal.full)} (half out ${dayLabel(cal.halfOut)}) and falling to bare by ${dayLabel(cal.bare)} (half gone ${dayLabel(cal.halfFall)}), from the typical temperature here, matched to Harvard Forest's measured leaf-out and leaf-fall.`;
-      text = `Trees through the seasons: ${when} In full leaf every crown, evergreen or not, stops light by its depth (leaf area 1 m² per m³ of crown, up to a leaf area index of 5.5, as measured on solitary maples and oaks): a full crown passes about 6% of the sun straight down and 2% at 45°, and the model puts a Michigan forest's floor at about 3–4% of the day's light in summer, within the 2.4–6.2% measured under closed New England canopies (Canham et al. 1994). Late summer is darker because the sun is lower, not because there are more leaves. Bare, a deciduous crown passes what the laser measured.${split}`;
+      text = `Trees through the seasons: ${when} In the leaf-off months every tree is as the laser measured it, evergreens included. In leaf, deciduous crowns get leaves that stop light by the crown's depth (leaf area 1 m² per m³ of crown, up to a leaf area index of 5.5, as measured on solitary maples and oaks): a full crown passes about 6% of the sun straight down and 2% at 45°, and the model puts a Michigan forest's floor at about 3–4% of the day's light in summer, within the 2.4–6.2% measured under closed New England canopies (Canham et al. 1994). Late summer is darker because the sun is lower, not because there are more leaves. Evergreens stay as measured: the winter flight already saw their foliage.${split}`;
     } else if (m.canopy === 'solid') {
       text = 'Trees as solid: no light gets through any crown. The darkest the shade could be.';
     } else {

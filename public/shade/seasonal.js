@@ -31,6 +31,28 @@
  *     where the owner says the evergreens are. Colour was tried and dropped:
  *     leaf-off is a spectrum, not a switch (owner; H69, H73: colour 61%).
  *     Only for leaf-off or mixed flights; a leaf-on flight already saw summer.
+
+ 2b. AND DENSE. A leaf-off flight caught an evergreen WITH its needles, so
+     it must have stopped far more of the laser than a bare deciduous crown
+     -- conifer foliage holds several times the area of a leafless crown's
+     wood (Breda 2003, J Exp Bot 54:2403: conifer LAI 3-8 or more; bare
+     broadleaf woody area 0.5-1.5). A column the penetration rule calls
+     evergreen stays one only if its crown's optical depth above 4 m (5 x 5
+     m pooled) is at least twice the median of the crowns that rule calls
+     bare on the same flight -- relative, so point density and the flight's
+     settings cancel. On the owner's lot (2026-10-11) the penetration rule
+     alone called 18% of crown columns evergreen, scattered through his
+     deciduous woods and fringing other crowns; those calls passed 42% of
+     the overhead sun as measured (median), against 52% for the bare
+     crowns -- leafless by the laser's own reading. With the density check,
+     4-5%: compact round crowns, the shape of yard spruces. Over 300 m of
+     his woods that moved the July median on the forest floor from 5.8% to
+     4.8% of the day's light (p90 14% to 12%); Yankee Springs, 4.1%. The two errors
+     are not equal, which is why the check leans one way: a deciduous crown
+     called evergreen gets no summer leaves and passes ~45% of the summer
+     sun overhead instead of ~6%; an evergreen called deciduous gets leaves
+     over its needles and goes from dark to a bit darker. Under 100 bare
+     columns on the flight there is no reference and the check is skipped.
  *
  *  3. A CROWN IN LEAF (calibrated 2026-10-11 from a literature review; the
  *     owner: summer, late summer above all, is when this must be right).
@@ -63,15 +85,20 @@
  *     errs slightly dark, the safe side for a lawn. Leaf-off lidar under-reads
  *     crown cover by 19-24% (Wasser et al. 2013), so in leaf the crowns'
  *     footprint is closed: gaps up to ~4 m inside filled, edges 1 m wider.
- *     IN SUMMER EVERY CROWN IS AT LEAST THIS DENSE, evergreen or not
- *     (hemlock and pine stands are as dark or darker: Canham 1994), so the
- *     evergreen call cannot brighten a summer day: it only decides which
- *     trees are bare in winter and spring.
+ *     ONLY DECIDUOUS CROWNS GET LEAVES (owner, 2026-10-11): the leaf-off
+ *     flight already measured every crown as it stands in the leaf-off
+ *     months, evergreens included, and an evergreen in summer is what the
+ *     flight saw. So the evergreen call matters from leaf-out to leaf-fall
+ *     and nowhere else: a deciduous crown wrongly called evergreen stays as
+ *     bare as the winter laser saw it all summer (too bright), and an
+ *     evergreen wrongly called deciduous gets leaves on top of its needles
+ *     (a little too dark).
  *
- *  4. BARE, a deciduous crown is what the laser measured (0.5-0.7 of the sun
- *     straight down on the owner's lot; Konarska et al. 2014 measured
- *     40-52% of the direct beam under leafless urban trees). EVERGREENS
- *     keep their in-leaf density all year.
+ *  4. IN THE LEAF-OFF MONTHS EVERY CROWN IS WHAT THE LASER MEASURED: a bare
+ *     deciduous crown passed 0.5-0.7 of the sun straight down on the owner's
+ *     lot (Konarska et al. 2014 measured 40-52% of the direct beam under
+ *     leafless urban trees), and an evergreen is as dense as the laser found
+ *     it, in every season.
  *
  *  5. IN BETWEEN, leaf-out and leaf-fall are ESTIMATED from the place's
  *     typical temperature (climate.js): leaves come out over five weeks from
@@ -89,6 +116,8 @@ const NOISE = new Set([7, 18]);
 export const CROWN_ABOVE_M = 2;
 export const THROUGH_BELOW_M = 4; // a last return lower than this got through the crown (S36)
 export const EVERGREEN_BELOW = 0.79;
+export const EVERGREEN_DENSER = 2; // and at least this many times as dense as the bare crowns (2b)
+export const BARE_MIN = 100; // bare crown columns needed to say what bare is here
 export const G_OMEGA = 0.5; // G; within-crown clumping is inside the effective LAD and LAI
 export const LAD = 1.0;
 export const LAI_MAX = 5.5;
@@ -192,11 +221,36 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true } = 
     delete c.hs;
   }
   /* Evergreen per column, from its neighbourhood's share of last returns
-     that got through. */
+     that got through -- and, since it decides the summer (see 2), only
+     where the crown also measured DENSE: its optical depth above 4 m,
+     pooled over the 5 x 5 m of crown around it, at least EVERGREEN_DENSER
+     times the median of the crowns penetration calls bare on this flight. */
   let ever = 0;
-  for (let k = 0; k < N; k++) {
-    if (kind[k] !== 3 || !classify) continue;
-    if (Number.isFinite(pen[k]) && pen[k] < EVERGREEN_BELOW) { kind[k] = 2; ever++; }
+  if (classify) {
+    const od = new Float32Array(N);
+    for (let k = 0; k < N; k++) {
+      if (kind[k] !== 3) continue;
+      for (let l = 0; l < nz; l++) if (z0 + (l + 0.5) * dz > ground[k] + THROUGH_BELOW_M) od[k] += mu[k * nz + l] * dz;
+    }
+    const bare = [], dense = new Float32Array(N).fill(NaN);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const k = y * w + x;
+      if (kind[k] !== 3) continue;
+      let a = 0, n = 0;
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+        const xx = x + dx, yy = y + dy;
+        if (xx < 0 || yy < 0 || xx >= w || yy >= h || kind[yy * w + xx] !== 3) continue;
+        a += od[yy * w + xx]; n++;
+      }
+      dense[k] = a / n;
+      if (!(pen[k] < EVERGREEN_BELOW)) bare.push(dense[k]);
+    }
+    bare.sort((a, b) => a - b);
+    const ref = bare.length >= BARE_MIN ? bare[bare.length >> 1] : 0;
+    for (let k = 0; k < N; k++) {
+      if (kind[k] !== 3 || !(pen[k] < EVERGREEN_BELOW)) continue;
+      if (dense[k] >= EVERGREEN_DENSER * ref) { kind[k] = 2; ever++; }
+    }
   }
   for (const c of clumps) c.evergreenShare = 0;
   for (let k = 0; k < N; k++) if (clumpOf[k] >= 0 && kind[k] === 2) clumps[clumpOf[k]].evergreenShare++;
@@ -211,7 +265,9 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true } = 
      closed canopies); canopy-height-model closure is what Parent & Volin 2014
      found tracks leaf-on closure. Buildings stay buildings. A filled column
      takes the tallest crown neighbour's clump and height over its ground. */
-  const isCrown = (j) => kind[j] === 2 || kind[j] === 3;
+  /* Only deciduous crowns take leaves (see 3), so only they are grown,
+     filled and given leaf; evergreens and buildings stay as measured. */
+  const isCrown = (j) => kind[j] === 3;
   const grown = new Uint8Array(N);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     let hit = 0;
@@ -229,7 +285,7 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true } = 
       if (xx >= 0 && yy >= 0 && xx < w && yy < h && !grown[yy * w + xx]) { all = 0; break; }
     }
     const k = y * w + x;
-    footprint[k] = (all || isCrown(k)) && kind[k] !== 1 ? 1 : 0;
+    footprint[k] = (all || isCrown(k)) && kind[k] !== 1 && kind[k] !== 2 ? 1 : 0;
   }
   const muOn = Float32Array.from(mu);
   /* Crown top per column: the tallest crown return within 2 m (a pit-free
@@ -286,15 +342,9 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true } = 
       if (muLeaf > muOn[i]) muOn[i] = muLeaf;
     }
   }
-  /* Evergreens are in leaf all year: their bare state is their leafy one. */
-  const muOffSeason = Float32Array.from(mu);
-  for (let k = 0; k < N; k++) {
-    if (kind[k] !== 2) continue;
-    for (let l = 0; l < nz; l++) muOffSeason[k * nz + l] = muOn[k * nz + l];
-  }
   const counts = { roof: 0, evergreen: ever, deciduous: 0 };
   for (let k = 0; k < N; k++) { if (kind[k] === 1) counts.roof++; else if (kind[k] === 3) counts.deciduous++; }
-  return { kind, clumps, clumpOf, muOn, muOff: muOffSeason, muMeasured: mu, counts, classified: classify, leafyColumns: leafy };
+  return { kind, clumps, clumpOf, muOn, muOff: mu, counts, classified: classify, leafyColumns: leafy };
 }
 
 /** The extinction coefficients with a share `f` (0 bare .. 1 in full leaf) of deciduous leaves out. */
