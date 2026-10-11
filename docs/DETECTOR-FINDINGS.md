@@ -868,6 +868,59 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H92. With 31 county-drawn lots in the lock, county examples in training ARE worth something to the county lots: scored by a decoder that never saw a county photo, 24 of 31 get worse (+2.7 points, 95% +2.1 to +9.9, sign test p < 0.001), while the matched Mapbox control does not move (4 / 4 / 4, -0.0) -- 2026-10-11
+
+The S32 test run again at the agreed size (owner, 2026-10-10: "Done! Let
+them all in and run the tests!"). Workflow 31 locked 104 maps (131u7jm),
+31 of them drawn on county photos (11 at H90's time). Three seeds (7/8/9),
+free runner, `refiner_trial: held out by photo`, everything else default:
+38085217225, 38085219178, 38085221591. Read exactly as H90: each arm
+against THE PLAN's row of the same runs (place folds, so a county lot's
+usual decoder now trained on about 97 lots including up to 30 county
+ones). Workflow 24 38108141147 (county arm) and 38108144199 (control);
+workflow 33 38108145267.
+
+| arm | lots | better / worse / level | median | paired change [95%] | sign test |
+|---|---|---|---|---|---|
+| county lots, decoder trained on the 73 Mapbox lots only | 31 | 4 / 24 / 3 | 24.8 -> 30.0% | +2.7 [+2.1, +9.9] | **p < 0.001** |
+| 12 Mapbox lots held out the same way (control) | 12 | 4 / 4 / 4 | 15.4 -> 16.2% | -0.0 [-1.7, +1.5] | p 1.0 |
+
+County lots A -> B: C94 108 -> 115, C99 104 -> 142, C50 87 -> 101, C79 69
+-> 83, C45 63 -> 65, C88 56 -> 70, C80 50 -> 52, C89 48 -> 49, C87 45 ->
+60, C53 40 -> 30, C74 38 -> 59, C49 33 -> 38, C81 28 -> 34, C106 27 -> 44,
+C102 27 -> 23, C107 25 -> 38, C46 24 -> 26, C101 19 -> 29, C66 18 -> 21,
+C105 17 -> 20, C103 14 -> 12, C48 14 -> 43, C96 13 -> 16, C97 13 -> 16,
+C110 10 -> 11, C104 9 -> 19, C109 8 -> 10, C108 7 -> 7, C51 6 -> 5, C71 5
+-> 5, C100 3 -> 3.
+
+- **Taking every county photo out of training now hurts the county
+  lots, and only them.** The control's interval straddles zero; the arm's
+  does not, and the sign test is as decisive as 31 lots allow. H90 stands
+  as what it was -- 11 county examples against none made no measurable
+  difference -- and H92 is what H90 said it could not test: with about 30,
+  the examples teach something the Mapbox lots do not. S32's case B (a
+  county pocket of its own) is now the measured one.
+- **Where the examples matter (workflow 33's change report):** the hurt is
+  largest on lots with LITTLE lawn (lawn share, rank corr with the change
+  -0.58, p 0.002: lowest third 0 better / 11 worse, +9.9 points; highest
+  third 4 / 4, +0.4) and on small lots (size -0.58, p 0.001), and larger on
+  the sharper county photos (sharp +0.38, p 0.034). The leaf-off, open,
+  grass-beside-dirt look is what the Mapbox-only decoder lacks, and it
+  lacks it most where the lawn is a small part of the picture.
+- **The new county lots are easier than the old twelve.** County-lot median
+  24.8% now against 55% at H88 (the owner chose open, low-tree lots on
+  purpose). Contrast still predicts the error within county lots (-0.54, p
+  0.001) and lawn share most of all (-0.64); with contrast held level the
+  county lots are now 8 points behind Mapbox in the low third (40.1 vs
+  32.1%), 7 in the middle, and ahead in the high third (12.8 vs 14.1%, 5
+  lots). The gap that H88 called 55 vs 19 is, on these lots, about 25 vs 18.
+- **Nothing adopted:** THE PLAN already trains on every county lot; this
+  measures what it would lose. What it argues for is more county examples,
+  not fewer, and it keeps S32 design 1 (the live split: is the county
+  default hurting the AI on a county lot today?) as the open question --
+  this says the decoder is learning the county look, not whether the
+  county photo is the better one to detect on.
+
 ### H91. The decoder's flips and quarter turns are worth nothing measurable at 81 lots: the same decoder trained with every grid as drawn scores the same, lot by lot (28 better / 23 worse / 30 level, paired change -0.0 [-0.3, +0.1], p 0.58) -- 2026-10-10
 
 S34's trial, workflow 14 `refiner_trial: no flips`, seeds 7 / 8 / 9 (runs
@@ -6457,8 +6510,10 @@ IL, Fairfax VA, Delaware IA, a Delaware lot, Prince William VA, Clinton IL,
 Allegheny PA, Lancaster NE, two Indiana, one Iowa, one North Carolina), 3
 on Mapbox; 4 county-drawn to go. **Reached and run 2026-10-10 (owner: "Let
 them all in and run the tests!"):** workflow 31 locked 104 maps
-(131u7jm), then workflow 14 runs 38085221591 / 38085219178 / 38085217225 as above; results in the
-run log and H9x when read.
+(131u7jm), then workflow 14 runs 38085221591 / 38085219178 / 38085217225 as above; **MEASURED: H92**
+-- with 31 county lots the held-out decoder is worse on 24 of them (+2.7,
+p < 0.001) and the control does not move. County examples teach a county
+look; H90 was 11 against none.
 
 **Why (H88):** the 12 county-photo lots score 55% against 19% for Mapbox
 lots, and the county photo is now the default for most addresses, so most
@@ -7292,6 +7347,6 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-08 | 37709603931 / 37710689178 (workflow 32) | 8 timing lots | live server after `lot` (downloads first, then GPU) | — | — | GPU 2.7 s per warm lot (12.3 before), waiting 1.1 (11.0). First press after the deploy timed out; cold press 29 s |
 | 2026-10-08 | 37766196684 (workflow 24 split) | 81 (locked), S31 runs | THE PLAN's row split by the photo each map was drawn on | — | county 55.2% (12 lots) / Mapbox 19.0% (69) | **H88.** County-photo lots are the worst group; cause not established (confounded with the lots being the newest) |
 | 2026-10-08 | 37783174587 (workflow 33) | 81 (locked), S31 runs | each lot's photo measured (contrast, green, shadow, focus, brightness, lawn share) against THE PLAN's error | — | — | **H89.** Contrast predicts error within each source (-0.41 / -0.63); focus does not; lawn share -0.62 (partly the metric) |
-| 2026-10-10 | 38085221591 / 38085219178 / 38085217225 | 104 (locked, 131u7jm) | S32 again at 20+ county-drawn: `refiner_trial: held out by photo`, seeds 7/8/9, CPU, everything else default, as H90 | (running) | — | To read with workflow 24 against H90 and workflow 33 on the same runs; the agreed test at 20 new county-drawn maps |
+| 2026-10-10 | 38085221591 / 38085219178 / 38085217225 | 104 (locked, 131u7jm) | S32 again at 31 county-drawn: `refiner_trial: held out by photo`, seeds 7/8/9, CPU, everything else default, as H90 | 19.0 / 19.1 / 18.9% (edge refined + stage 3, span, veto) | — | **H92.** County arm 4 / 24 / 3, +2.7 [+2.1, +9.9], p < 0.001; control 4 / 4 / 4, -0.0. With 31 county lots, county examples in training ARE worth something to county lots -- H90's "nothing measurable" was 11 against none |
 | 2026-10-08 | 37791602756 / 37791654341 / 37791705849 | 81 (locked) | S32 `refiner_trial: held out by photo` (county lots answered by a decoder trained on the 69 Mapbox lots; 12 Mapbox lots held out the same way), seeds 7/8/9, CPU | 20.9 / 22.5 / 22.0% (edge refined + stage 3, span, veto) | — | **H90.** County arm 5 / 6, +0.9 [-1.9, +5.4]; control 6 / 4, -0.8. County examples in training worth nothing measurable |
 | 2026-10-10 | 37999935674 / 38000318035 / 38000326730 | 81 (locked) | S34 `refiner_trial: no flips` (THE PLAN's decoder with every training grid as drawn), seeds 7/8/9, CPU | 20.4 / 22.4 / 21.5% (edge refined + stage 3, span, veto) | 22.0 / 20.7 / 20.7% (no flips, same) | **H91.** Workflow 24 run 38017280676: 28 / 23 / 30, -0.0 [-0.3, +0.1], p 0.58; untuned 49 lots +0.0. No difference; flips stay on |
