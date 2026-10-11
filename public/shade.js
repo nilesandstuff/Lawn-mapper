@@ -334,14 +334,8 @@ async function build(site) {
   status(fit?.confident ? 'Built and lined up.' : 'Built. The photo check was not tight enough to apply; the datum correction is applied.', fit?.confident ? 'ok' : 'warn');
 
   /* Step 2: the sun over this model, in a worker (shade/sun-ui.js). */
-  /* The photo the lidar was matched against, for telling evergreens by
-     colour: the county photo where the editor put it, else Mapbox. */
-  const photoUsed = onCounty && !onCounty.error ? onCounty.photo : onMapbox.photo || null;
-  const moveK = onCounty && !onCounty.error ? [move.east / k, move.north / k] : [0, 0];
-  const fb = gridBox(gridForFrame(frame, 1, 1));
   view.sun = startSun({
     map, site, cols, box, shift, heightM: baseZ, season: cloud.unit?.season,
-    photo: photoUsed, photoBox: [fb[0] + moveK[0], fb[1] + moveK[1], fb[2] + moveK[0], fb[3] + moveK[1]],
     beforeLayer: () => (map.getLayer('parcel') ? 'parcel' : undefined),
   });
 }

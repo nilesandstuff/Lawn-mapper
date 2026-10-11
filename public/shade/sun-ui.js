@@ -20,7 +20,6 @@ import { gridOver, gridBox } from './grid.js';
 import { fromMerc } from './ept.js';
 import { sunPath } from './sun.js';
 import { GRASS, dayLabel } from './climate.js';
-import { greennessOn } from './seasonal.js';
 
 const $ = (s) => document.querySelector(s);
 const SQFT = 10.7639;
@@ -70,7 +69,7 @@ export function aboutLocal(ms, lng) {
 
 const polysOf = (g) => (g?.type === 'Polygon' ? [g.coordinates] : g?.type === 'MultiPolygon' ? g.coordinates : []);
 
-export function startSun({ map, site, cols, box, shift, heightM, season, beforeLayer, photo = null, photoBox = null }) {
+export function startSun({ map, site, cols, box, shift, heightM, season, beforeLayer }) {
   const st = {
     worker: null, mode: 'hours', day: null, now: null, ids: 0, path: [],
     grid: gridOver(box, 1, site.lat),
@@ -193,11 +192,9 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
 
   function canopyNote(m) {
     const c = m.counts, total = c ? c.evergreen + c.deciduous : 0;
-    const how = m.byColour
-      ? 'by the photo\'s colour (green crowns evergreen, brown or grey ones bare; right only for a photo taken with the leaves off)'
-      : 'by how many of the laser\'s pulses reached the ground through it in winter (right about 3 times in 4 on 290 single trees over lawns; it overcalls evergreens in dense woods)';
+    const how = 'by how many of the laser\'s pulses got below 4 m through it in winter (measured right about 3 times in 4 on 290 single trees; the 4 m line, which lets winter shrubs and vines count as "through", is from one lot so far)';
     const split = c && m.classified && total
-      ? ` Of the tree cover here, ${Math.round((100 * c.evergreen) / total)}% reads as evergreen and ${Math.round((100 * c.deciduous) / total)}% as deciduous, ${how}. The "Trees" view shows which is which: check it against the photo, and switch how evergreens are told apart if it looks wrong.`
+      ? ` Of the tree cover here, ${Math.round((100 * c.evergreen) / total)}% reads as evergreen and ${Math.round((100 * c.deciduous) / total)}% as deciduous, ${how}. The "Trees" view shows which is which. In summer it does not matter: every crown is in full leaf.`
       : '';
     let text;
     if (m.canopy === 'seasonal') {
@@ -205,7 +202,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
       const when = cal.always ? 'Deciduous trees here keep their leaves all year in a typical year.'
         : cal.never ? 'It never gets warm enough here, in a typical year, for deciduous trees to leaf out.'
           : `Leaves estimated coming out ${dayLabel(cal.out)} to ${dayLabel(cal.full)} (half out ${dayLabel(cal.halfOut)}) and falling to bare by ${dayLabel(cal.bare)} (half gone ${dayLabel(cal.halfFall)}), from the typical temperature here, matched to Harvard Forest's measured leaf-out and leaf-fall.`;
-      text = `Trees through the seasons: ${when} In full leaf every crown, evergreen or not, stops light by its depth (leaf area 1 m² per m³ of crown, up to a leaf area index of 5.5, as measured on solitary maples and oaks): a full crown passes about 6% of the sun straight down and 2% at 45°, and the model put a Michigan forest's floor at about 4–6% of the day's light in summer, within the 2–6% measured under closed New England canopies (Canham et al. 1994). Late summer is darker because the sun is lower, not because there are more leaves. Bare, a deciduous crown passes what the laser measured.${split}`;
+      text = `Trees through the seasons: ${when} In full leaf every crown, evergreen or not, stops light by its depth (leaf area 1 m² per m³ of crown, up to a leaf area index of 5.5, as measured on solitary maples and oaks): a full crown passes about 6% of the sun straight down and 2% at 45°, and the model puts a Michigan forest's floor at about 3–4% of the day's light in summer, within the 2.4–6.2% measured under closed New England canopies (Canham et al. 1994). Late summer is darker because the sun is lower, not because there are more leaves. Bare, a deciduous crown passes what the laser measured.${split}`;
     } else if (m.canopy === 'solid') {
       text = 'Trees as solid: no light gets through any crown. The darkest the shade could be.';
     } else {
@@ -332,11 +329,9 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     const pick = ['x', 'y', 'z', 'intensity', 'ret', 'nret', 'cls'];
     const c = { n: cols.n };
     for (const k of pick) c[k] = cols[k].slice(0, cols.n);
-    const byColour = $('#sun-evergreen').value === 'colour' && photo;
     send({
       type: 'build', cols: c, box, lat: site.lat, lng: site.lng, shift, heightM,
       canopy: $('#sun-canopy').value, flight: season || null, tMean: st.climate?.tMean || null,
-      greenness: byColour ? greennessOn(st.grid, photo, photoBox) : null,
       lot: polysOf(site.parcel?.geometry), lawn: site.lawn.flatMap((f) => polysOf(f.geometry)),
     });
   }
@@ -379,9 +374,6 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
   }
   $('#sun-canopy').value = 'seasonal';
   $('#sun-canopy').onchange = () => build();
-  $('#sun-evergreen').value = 'laser';
-  $('#sun-evergreen').disabled = !photo;
-  $('#sun-evergreen').onchange = () => build();
   $('#sun-canopy-note').textContent = '';
   return {
     stop() {

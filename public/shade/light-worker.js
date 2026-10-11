@@ -135,7 +135,7 @@ function build(m) {
      not already see the summer canopy. */
   const leafOffFlight = m.flight === 'off' || m.flight === 'mixed';
   const calendar = m.tMean ? leafCalendar(m.tMean) : null;
-  const season = !solidMode ? seasonalCanopy(m.cols, model, { shift: m.shift, classify: leafOffFlight, greenness: m.greenness || null }) : null;
+  const season = !solidMode ? seasonalCanopy(m.cols, model, { shift: m.shift, classify: leafOffFlight }) : null;
   const seasonal = m.canopy === 'seasonal' && leafOffFlight && calendar && season;
 
   const all = new Uint8Array(grid.w * grid.h).fill(1);
@@ -164,7 +164,7 @@ function build(m) {
     seasonsWhy: seasonal ? null : m.canopy !== 'seasonal' ? null
       : !leafOffFlight ? (m.flight === 'on' ? 'the lidar was flown in leaf, so it already shows the summer canopy' : 'the flight season is unknown')
         : !calendar ? 'the typical temperatures did not load' : null,
-    kinds, counts: season?.counts || null, classified: !!season?.classified, byColour: !!season?.byColour,
+    kinds, counts: season?.counts || null, classified: !!season?.classified,
     calendar: calendar && seasonal ? { out: calendar.out, full: calendar.full, halfOut: calendar.halfOut, halfFall: calendar.halfFall, bare: calendar.bare, always: !!calendar.always, never: !!calendar.never } : null,
   });
 }

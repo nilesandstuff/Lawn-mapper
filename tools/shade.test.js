@@ -14,7 +14,7 @@ import { aboutLocal, ramp } from '../public/shade/sun-ui.js';
 import { tracedOn, lineUpAt } from '../public/shade/traced.js';
 import { sunAt, solarNoon, sunPath, clearSky, airMass, parMol } from '../public/shade/sun.js';
 import { buildCanopy } from '../public/shade/canopy.js';
-import { seasonalCanopy, muWithLeaves, leafCalendar, G_OMEGA, LAI_MAX, otsu, greennessOn } from '../public/shade/seasonal.js';
+import { seasonalCanopy, muWithLeaves, leafCalendar, G_OMEGA, LAI_MAX } from '../public/shade/seasonal.js';
 import { transmittance, skyView, sunlitNow, dayLight, samplePoints, groundAt, beamShare } from '../public/shade/rays.js';
 import { dayIndex, typicalYear, growthPotential, growingSeason, dliOn, dayLabel } from '../public/shade/climate.js';
 import { climateAt } from '../worker/src/shade.js';
@@ -473,25 +473,21 @@ check('the colour ramp runs dark to bright and clamps', ramp(-1).join() === '68,
     T(s.muOn, 45 + 6.5, 15) < 0.9 && T(s.muOff, 45 + 6.5, 15) > 0.99, `${T(s.muOn, 45 + 6.5, 15).toFixed(2)} vs ${T(s.muOff, 45 + 6.5, 15).toFixed(2)}`);
   check('seasons: half the leaves out sits between bare and full leaf',
     T(muWithLeaves(s, 0.5), 45, 15) < bareT && T(muWithLeaves(s, 0.5), 45, 15) > leafT && muWithLeaves(s, 0) === s.muOff && muWithLeaves(s, 1) === s.muOn);
+  /* A bare tree over a winter shrub layer (honeysuckle, 1-3 m): half the
+     pulses that get through its crown stop in the shrubs, not on the ground
+     (on the owner's lot 18% of last returns did, 59% reached the ground).
+     It is still deciduous (S36: a last return below 4 m got through). */
+  const shrubbed = makeColumns(cols.n);
+  for (const key of ['x', 'y', 'z', 'intensity', 'ret', 'nret', 'cls']) shrubbed[key].set(cols[key]);
+  for (let i = 0; i < cols.n; i++) {
+    const e = cols.x[i] * k, n = cols.y[i] * k;
+    if (Math.hypot(e - 45, n - 15) < 6 && cols.cls[i] === 2 && i % 2) { shrubbed.z[i] = 101 + 2 * ((i * 7919) % 100) / 100; shrubbed.cls[i] = 1; }
+  }
+  const sh = seasonalCanopy(shrubbed, buildCanopy(shrubbed, grid));
+  check('seasons: a bare tree over winter shrubs stays deciduous', sh.kind[at(45, 15)] === 3 && sh.kind[at(15, 15)] === 2, `${sh.kind[at(45, 15)]}`);
   const unclassified = seasonalCanopy(cols, model, { classify: false });
   check('seasons: without classification (a leaf-on flight) nothing is called evergreen',
     unclassified.kind[at(15, 15)] === 3 && unclassified.counts.evergreen === 0);
-
-  /* By colour: a photo where the left crown is green and the right one brown. */
-  const P = 240, photo = { data: new Uint8ClampedArray(P * P * 4), width: P, height: P };
-  for (let y = 0; y < P; y++) for (let x = 0; x < P; x++) {
-    const e = (x + 0.5) / 4, i = (y * P + x) * 4;
-    photo.data.set(e < 30 ? [40, 90, 45, 255] : [130, 100, 80, 255], i);
-  }
-  const g = greennessOn(grid, photo, [0, 0, 60 / k, 60 / k]);
-  check('greenness: excess green of a green pixel > 0, of a brown one < 0', g[at(15, 15)] > 0.1 && g[at(45, 15)] < 0);
-  /* Swap the photo's verdict: green on the right this time, so colour must overrule the laser. */
-  for (let y = 0; y < P; y++) for (let x = 0; x < P; x++) photo.data.set((x + 0.5) / 4 < 30 ? [130, 100, 80, 255] : [40, 90, 45, 255], (y * P + x) * 4);
-  const byColour = seasonalCanopy(cols, model, { greenness: greennessOn(grid, photo, [0, 0, 60 / k, 60 / k]) });
-  check('by colour: the photo decides where it covers, whatever the laser says',
-    byColour.kind[at(15, 15)] === 3 && byColour.kind[at(45, 15)] === 2 && byColour.byColour > 0 && byColour.kind[at(35, 45)] === 1);
-  const cutAt = otsu([...Array.from({ length: 50 }, (_, i) => i / 100), ...Array.from({ length: 50 }, (_, i) => 1 + i / 100)]);
-  check('otsu splits two clusters in the gap between them', cutAt > 0.49 && cutAt <= 1 && otsu([1, 2]) === null, String(cutAt));
 
   /* A typical year: -5 C in mid-January to 23 C in mid-July. */
   const tMean = Array.from({ length: 365 }, (_, d) => 9 - 14 * Math.cos(((d - 14) / 365) * 2 * Math.PI));

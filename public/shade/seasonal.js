@@ -16,30 +16,21 @@
  *     rule has it.
  *
  *  2. EVERGREEN OR NOT, per column (a stand of trees is one clump and can be
- *     mixed), one of two ways, chosen on the page:
- *
- *     BY THE LASER: the share of LAST returns that reach the ground, pooled
- *     over the 5 x 5 m around it. MEASURED HERE, H73 (run
- *     37302462833, 290 labelled crowns): on leaf-off flights the median
- *     evergreen crown sends 64% of its last returns to the ground and the
- *     median broadleaf 94%; that feature alone tells them apart 75% of the
- *     time held out by map (read it as +-5). The cut is halfway, 0.79. Only
- *     for leaf-off or mixed flights; a leaf-on flight already saw summer.
- *     BUT THAT WAS MEASURED ON SINGLE TREES OVER LAWNS. On the owner's own
- *     wooded lot (Rockford MI, 2026-10-11) it called 72% of the tree cover
- *     evergreen where the leaf-off photo shows mostly bare brown woods with
- *     scattered conifers: stacked trunks and branches in a wood stop pulses
- *     too, and that flight ran into May.
- *
- *     BY THE PHOTO'S COLOUR, for a photo taken with the leaves off, where an
- *     evergreen is green and a bare crown brown or grey: excess green,
- *     (2G - R - B) / (R + G + B), pooled over the 3 x 3 m around the
- *     column, cut where the photo's own crowns split best into two groups
- *     (Otsu's method). H71 measured colour telling a bare crown from one in
- *     leaf 86-91% of the time. Whether a photo IS leaf-off is not
- *     detected -- raw greenness differs too much between photos -- so this
- *     is the person's choice, with the Trees view to check it against.
- *     Columns the photo does not cover fall back to the laser.
+ *     mixed), by the share of LAST returns that got through the crown,
+ *     pooled over the 5 x 5 m around it and cut at 0.79. MEASURED HERE, H73
+ *     (290 labelled single trees over lawns): on leaf-off flights the median
+ *     evergreen crown sends 64% of its last returns to the ground, the
+ *     median broadleaf 94%; 75% right held out by map (+-5). The cut sits
+ *     between them.
+ *     "Got through" means BELOW 4 m over the ground, not only to it (core
+ *     session's findings S36, 2026-10-11, on the owner's lot -- one lot,
+ *     STILL SPECULATION): in his woods 18% of last returns stop in the
+ *     0.5-4 m layer -- honeysuckle that keeps its leaves into late November,
+ *     vines -- and counting only ground returns called 76% of the woods
+ *     evergreen; counting below 4 m, 21%, in a band along the west edge
+ *     where the owner says the evergreens are. Colour was tried and dropped:
+ *     leaf-off is a spectrum, not a switch (owner; H69, H73: colour 61%).
+ *     Only for leaf-off or mixed flights; a leaf-on flight already saw summer.
  *
  *  3. A CROWN IN LEAF (calibrated 2026-10-11 from a literature review; the
  *     owner: summer, late summer above all, is when this must be right).
@@ -96,6 +87,7 @@ import { GRASS_M, solidAtGrass } from './canopy.js';
 
 const NOISE = new Set([7, 18]);
 export const CROWN_ABOVE_M = 2;
+export const THROUGH_BELOW_M = 4; // a last return lower than this got through the crown (S36)
 export const EVERGREEN_BELOW = 0.79;
 export const G_OMEGA = 0.5; // G; within-crown clumping is inside the effective LAD and LAI
 export const LAD = 1.0;
@@ -111,7 +103,7 @@ export const LEAF_FALL_DAYS = 28;
  *           clumps: [{ n, penetration, base, top, depth, evergreenShare }],
  *           clumpOf, muOn (per cube), muOff, counts (columns of each kind) }.
  */
-export function seasonalCanopy(cols, model, { shift = null, classify = true, greenness = null } = {}) {
+export function seasonalCanopy(cols, model, { shift = null, classify = true } = {}) {
   const { grid, w, h, nz, dz, z0, ground, mu } = model;
   const N = w * h;
   const above = new Uint16Array(N), lastAll = new Float32Array(N), lastGround = new Float32Array(N);
@@ -124,7 +116,7 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, gre
     const over = cols.z[i] - ground[k];
     if ((cols.ret[i] || 1) >= (cols.nret[i] || 1)) {
       lastAll[k]++;
-      if (over <= GRASS_M) lastGround[k]++;
+      if (over < THROUGH_BELOW_M) lastGround[k]++;
     }
     if (over > CROWN_ABOVE_M && over < 80) {
       above[k]++;
@@ -152,6 +144,21 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, gre
     const roof = (above[k] >= 3 && zHi[k] - zLo[k] < 1.5 && lastGround[k] === 0) || solidAtGrass(model, k);
     kind[k] = roof ? 1 : 3;
   }
+  /* Eaves: a pulse that lands half on a roof edge and half on the ground
+     splits like a tree's (the core's lidar-trees notes), so a ring of
+     "crown" hugs every roof. A crown column next to a roof whose top is
+     within 2 m of that roof's is the roof's edge. */
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const k = y * w + x;
+    if (kind[k] !== 3) continue;
+    for (let dy = -1; dy <= 1 && kind[k] === 3; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const xx = x + dx, yy = y + dy;
+      if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+      const j = yy * w + xx;
+      if (kind[j] === 1 && Math.abs((zHi[j] - ground[j]) - (zHi[k] - ground[k])) <= 2) { kind[k] = 4; break; }
+    }
+  }
+  for (let k = 0; k < N; k++) if (kind[k] === 4) kind[k] = 1;
   /* Clumps of crown columns. */
   const clumpOf = new Int32Array(N).fill(-1);
   const clumps = [];
@@ -184,16 +191,12 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, gre
     c.depth = Math.max(dz, c.top - c.base);
     delete c.hs;
   }
-  /* Evergreen per column: by the photo's colour where asked and covered,
-     else by the laser. */
-  const green = greenness ? pooledGreen(greenness, w, h, kind) : null;
-  const cut = green ? otsu(Array.from(green).filter((v, k) => kind[k] === 3 && Number.isFinite(v))) : null;
-  let ever = 0, byColour = 0;
+  /* Evergreen per column, from its neighbourhood's share of last returns
+     that got through. */
+  let ever = 0;
   for (let k = 0; k < N; k++) {
     if (kind[k] !== 3 || !classify) continue;
-    let evergreen;
-    if (green && cut !== null && Number.isFinite(green[k])) { evergreen = green[k] >= cut; byColour++; } else evergreen = Number.isFinite(pen[k]) && pen[k] < EVERGREEN_BELOW;
-    if (evergreen) { kind[k] = 2; ever++; }
+    if (Number.isFinite(pen[k]) && pen[k] < EVERGREEN_BELOW) { kind[k] = 2; ever++; }
   }
   for (const c of clumps) c.evergreenShare = 0;
   for (let k = 0; k < N; k++) if (clumpOf[k] >= 0 && kind[k] === 2) clumps[clumpOf[k]].evergreenShare++;
@@ -291,7 +294,7 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, gre
   }
   const counts = { roof: 0, evergreen: ever, deciduous: 0 };
   for (let k = 0; k < N; k++) { if (kind[k] === 1) counts.roof++; else if (kind[k] === 3) counts.deciduous++; }
-  return { kind, clumps, clumpOf, muOn, muOff: muOffSeason, muMeasured: mu, counts, classified: classify, byColour, greenCut: cut, leafyColumns: leafy };
+  return { kind, clumps, clumpOf, muOn, muOff: muOffSeason, muMeasured: mu, counts, classified: classify, leafyColumns: leafy };
 }
 
 /** The extinction coefficients with a share `f` (0 bare .. 1 in full leaf) of deciduous leaves out. */
@@ -330,72 +333,4 @@ export function leafCalendar(tMean, { tC = LEAF_T_C, up = LEAF_OUT_DAYS, down = 
     return Math.max(0, 1 - (a - dropFrom) / down); // falling, then bare
   };
   return { out, fall, full: (out + up) % 365, bare: (out + Math.ceil(dropFrom + down)) % 365, halfOut: (out + Math.round(up / 2)) % 365, halfFall: fall, share };
-}
-
-/** Excess green pooled over the 3 x 3 columns, over crown columns only (kind 3); NaN where the photo has none. */
-function pooledGreen(g, w, h, kind) {
-  const out = new Float32Array(w * h).fill(NaN);
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const k = y * w + x;
-    if (kind[k] !== 3) continue;
-    let s = 0, n = 0;
-    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-      const xx = x + dx, yy = y + dy;
-      if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
-      const v = g[yy * w + xx];
-      if (Number.isFinite(v)) { s += v; n++; }
-    }
-    if (n) out[k] = s / n;
-  }
-  return out;
-}
-
-/** The cut that best splits values into two groups (Otsu's method); null with too few. */
-export function otsu(values, steps = 200) {
-  if (values.length < 20) return null;
-  let lo = Infinity, hi = -Infinity;
-  for (const v of values) { if (v < lo) lo = v; if (v > hi) hi = v; }
-  if (!(hi > lo)) return null;
-  let best = null, bestScore = -1;
-  for (let i = 1; i < steps; i++) {
-    const t = lo + ((hi - lo) * i) / steps;
-    let na = 0, sa = 0, nb = 0, sb = 0;
-    for (const v of values) { if (v < t) { na++; sa += v; } else { nb++; sb += v; } }
-    if (!na || !nb) continue;
-    const score = na * nb * (sa / na - sb / nb) ** 2;
-    if (score > bestScore) { bestScore = score; best = t; }
-  }
-  return best;
-}
-
-/**
- * Excess green of a photo, per column of `grid`: the photo ({ data, width,
- * height } RGBA) covers the EPSG:3857 box `photoBox` [x0, y0, x1, y1].
- * NaN where the photo does not reach.
- */
-export function greennessOn(grid, photo, photoBox) {
-  const { w, h } = grid;
-  const out = new Float32Array(w * h).fill(NaN);
-  const W = photo.width, H = photo.height;
-  const sx = W / (photoBox[2] - photoBox[0]), sy = H / (photoBox[3] - photoBox[1]);
-  const r = Math.max(0.5, (grid.cell * sx) / 2);
-  for (let y = 0; y < h; y++) {
-    const Y = grid.y1 - (y + 0.5) * grid.cell;
-    const py = (photoBox[3] - Y) * sy;
-    for (let x = 0; x < w; x++) {
-      const X = grid.x0 + (x + 0.5) * grid.cell;
-      const px = (X - photoBox[0]) * sx;
-      if (px < 0 || py < 0 || px >= W || py >= H) continue;
-      let sr = 0, sg = 0, sb = 0;
-      for (let yy = Math.max(0, Math.floor(py - r)); yy < Math.min(H, Math.ceil(py + r)); yy++) {
-        for (let xx = Math.max(0, Math.floor(px - r)); xx < Math.min(W, Math.ceil(px + r)); xx++) {
-          const i = (yy * W + xx) * 4;
-          sr += photo.data[i]; sg += photo.data[i + 1]; sb += photo.data[i + 2];
-        }
-      }
-      const t = sr + sg + sb;
-      if (t > 0) out[y * w + x] = (2 * sg - sr - sb) / t;
-    }
-  }
-  return out;
 }
