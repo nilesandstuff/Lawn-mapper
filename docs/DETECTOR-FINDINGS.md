@@ -6454,6 +6454,17 @@ owner also judged this the shade map's work, not the detector's: the deep
 woods matter to shade only through the long shadows tall trees cast. The
 workflow 29 measurement offered above is NOT planned.
 
+**From the features session, 2026-10-11 (its own measurement, NOT made
+here):**
+- On the owner's lot, crowns that ONLY the ground-share rule called
+  evergreen let through 42% of the overhead sun, as the laser measured. Bare
+  crowns let through 52%. So those crowns are only a little denser than
+  bare ones, which fits shrub layer and vines rather than conifers.
+- Its shade map now keeps a column evergreen only when the crown above 4 m
+  measured at least twice as dense as the flight's bare crowns. On the lot
+  that takes the evergreen share from 18% to 4%.
+- One lot; it does not touch H73 or the detector.
+
 ### S35. The lidar may sit half a cell off the photo: the USGS octrees are NAD83 labelled EPSG:3857 (from the features session, 2026-10-10 -- NOT MEASURED HERE)
 
 Reported by the features session (shade map; session
