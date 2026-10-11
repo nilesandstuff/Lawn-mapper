@@ -6494,6 +6494,23 @@ NAIP; NOT measured here):**
 - It asked for H73's labelled crowns to calibrate this. Workflow 29 now
   prints every crown with its lng/lat as CSV (`crowns_csv: on`); the export
   is data/labelled-crowns.csv.
+- **Its result on those labels (features session, 2026-10-11; measured in
+  the shade code, NOT here):**
+  - 234 of the 290 crowns were found in the lidar: 41 evergreen, 193
+    broadleaf. 19 had no cloud on AWS, and 33 had no crown at the centroid.
+  - The drop from a crown's top to 2.5-3.5 m out ranks an evergreen above
+    a broadleaf with AUC 0.70.
+  - Medians: 1.23 m for evergreens (IQR 0.76-1.85), about 0.5 m for
+    broadleaf (0.2-0.9).
+  - Used as a veto on crowns of radius 4 m or more, a drop under 0.7 m
+    rules out 59% of broadleaf crowns and wrongly rules out 22% of
+    evergreens.
+  - Its full evergreen pipeline (below-4-m penetration, density, dome
+    veto) calls only 1 of the 41 labelled evergreens mostly evergreen, and
+    13 partly. Not split by flight season.
+  - Against H73's 74-77% on leaf-off flights, that looks like a pipeline
+    tuned on one wooded lot, now too strict on lawn evergreens. Unmeasured
+    which rule does it.
 
 ### S35. The lidar may sit half a cell off the photo: the USGS octrees are NAD83 labelled EPSG:3857 (from the features session, 2026-10-10 -- NOT MEASURED HERE)
 
