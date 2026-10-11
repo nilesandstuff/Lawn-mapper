@@ -6388,6 +6388,30 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
+### S36. H73's leaf-off penetration may call a dense deciduous wood evergreen (from the features session, 2026-10-11 -- ONE LOT, NOT MEASURED HERE)
+
+Reported by the features session (shade map; session
+session_015v6JzxdMSV1sGghMRek3v7). Its shade map labels tree cover
+evergreen or deciduous with H73's leaf-off feature: the share of last
+returns reaching the ground, pooled over 5 x 5 m and cut at 0.79, between
+H73's medians of 64% and 94%. On the owner's own wooded lot in Rockford,
+MI, it called 72% of the tree cover evergreen. That lot uses the Kent 2016
+cloud, flown 2017-11-27 to 2018-05-02. The leaf-off Mapbox photo shows
+mostly bare brown deciduous woods with scattered conifers. Excess green
+from that photo, with an Otsu cut over the crowns, gave 31% evergreen,
+which it says matches the photo far better. It offered two untested
+reasons:
+
+- In a dense wood, stacked trunks and branches stop pulses that a single
+  lawn tree would let through.
+- The flight ran into early May, when some trees may have leafed out.
+
+H73's 290 crowns were single trees over lawns, so a closed wood may simply
+be outside what H73 covers. This is one lot, judged by eye against a
+photo. It changes nothing in H73. Nothing in the detector uses the 0.79
+cut. The thing to measure, if it ever matters: H73's per-crown read on
+labelled crowns inside closed woods, split by flight month.
+
 ### S35. The lidar may sit half a cell off the photo: the USGS octrees are NAD83 labelled EPSG:3857 (from the features session, 2026-10-10 -- NOT MEASURED HERE)
 
 Reported by the features session (shade map; session
