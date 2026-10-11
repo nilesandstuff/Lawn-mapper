@@ -1,0 +1,53 @@
+name: 34. Read the Modal logs
+
+# What the live model's server (and the GPU training runs) printed on Modal,
+# read here so it can be read on a phone -- and by a Claude session, which
+# cannot open the Modal dashboard. Reads only; costs nothing.
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: 'Which app: the live model server, the GPU training runs, or both'
+        type: choice
+        default: 'lawn-mapper-alpha'
+        options: ['lawn-mapper-alpha', 'lawn-mapper-gpu', 'lawn-mapper-alpha,lawn-mapper-gpu']
+      since:
+        description: 'How far back: 30m, 2h, 1d, or an ISO time like 2026-10-11T02:00:00'
+        default: '2h'
+      search:
+        description: 'Only lines containing this text (blank = every line)'
+        default: ''
+      source:
+        description: 'Only stdout, stderr or system lines (blank = all)'
+        default: ''
+
+jobs:
+  logs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install --quiet modal
+      - name: Read them
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+          APP: ${{ inputs.app }}
+          SINCE: ${{ inputs.since }}
+          SEARCH: ${{ inputs.search }}
+          SOURCE: ${{ inputs.source }}
+        run: |
+          if [ -z "$MODAL_TOKEN_ID" ] || [ -z "$MODAL_TOKEN_SECRET" ]; then
+            echo "No MODAL_TOKEN_ID / MODAL_TOKEN_SECRET secrets: nothing to read with."
+            exit 1
+          fi
+          python3 tools/modal-logs.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: modal-logs
+          path: modal-logs.txt
+          if-no-files-found: ignore

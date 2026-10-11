@@ -1413,9 +1413,48 @@ let detection = null;   // {press, abort, started, timer, action, model}
 const AUTO_RETRY_S = 100;
 let lastAutoRetry = 0;
 
+/*
+ * WHAT IS HAPPENING, TO WATCH WHILE IT HAPPENS (owner, 2026-10-11: "give the
+ * user something to look at while they wait to really highlight how
+ * interesting it all really is"). Not a progress report -- the Worker says
+ * nothing about where a press has got to -- but each line is a thing the
+ * trained model's pipeline really does to a lot. They turn over every few
+ * seconds in this order, and round again if it runs long.
+ */
+const DETECT_STEPS = [
+  'Fetching the aerial photograph of your lot',
+  'Separating USGS lidar point clouds to see the ground under the trees',
+  'Measuring the height of every tree, roof and hedge',
+  'Aligning the near-infrared imagery',
+  'Reading how green every half metre is from the infrared',
+  'Fusing the imagery layers',
+  'Vision model is reviewing the multispectral data',
+  'Tracing the tree canopy over your lawn',
+  'Turf Trace is analyzing the output',
+  'Checking the lidar for roofs, ponds and pavement',
+  'Refining the edges',
+  'Drawing your lawn',
+];
+const DETECT_STEP_MS = 2500;   // all twelve in DETECT_MIN_MS, ending on "Drawing your lawn"
+/* A finished outline waits until the lot has had this long on screen. */
+const DETECT_MIN_MS = 30000;
+
+function detectStepAt(ms) {
+  return DETECT_STEPS[Math.floor(ms / DETECT_STEP_MS) % DETECT_STEPS.length];
+}
+
+/** Until the press has been running DETECT_MIN_MS. False if it was cancelled or replaced meanwhile. */
+async function holdForSteps(run) {
+  const left = DETECT_MIN_MS - (Date.now() - run.started);
+  if (left > 0) await new Promise((ok) => setTimeout(ok, left));
+  return detection === run && !run.action && !run.abort.signal.aborted;
+}
+
 function startDetectionTimer(run) {
   const tick = () => {
     const secs = Math.floor((Date.now() - run.started) / 1000);
+    /* The step on show, unless Cancel or Retry has put its own words up. */
+    if (!run.action) $('#busy-text').textContent = `${detectStepAt(Date.now() - run.started)}…`;
     const clock = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
     /* What to expect (owner, 2026-09-29), and an honest word once past it. */
     $('#busy-timer').textContent = secs < 60
@@ -1431,7 +1470,7 @@ function startDetectionTimer(run) {
     if (secs >= DETECT_PATIENCE_S && !run.action) $('#busy-actions').hidden = false;
   };
   tick();
-  run.timer = setInterval(tick, 1000);
+  run.timer = setInterval(tick, 500);
 }
 
 function stopDetectionTimer() {
@@ -5055,6 +5094,10 @@ async function detect({ again = false } = {}) {
       return;
     }
 
+    /* The outline is ready; the lot keeps its steps on screen until it has
+       had DETECT_MIN_MS (owner, 2026-10-11). Cancelled meanwhile: nothing. */
+    if (!(await holdForSteps(run))) return;
+
     draw.deleteAll();
     for (const geometry of polygons) {
       draw.add({ type: 'Feature', properties: {}, geometry });
@@ -5502,9 +5545,9 @@ async function waitForPrediction(id, frame, signal = null) {
     if (signal?.aborted) throw cancelled();
 
     const secs = Math.round((Date.now() - started) / 1000);
-    /* The overlay's own timer counts; this only says why it is slow. And it
-       leaves the words alone while Cancel or Retry is being answered. */
-    if (!detection?.action) {
+    /* The overlay's own timer counts, and during a detection the steps
+       (DETECT_STEPS) are the words; this speaks only when nothing else does. */
+    if (!detection) {
       busy(secs < 25 ? 'Detecting your lawn…' : 'Still working — the AI is warming up');
     }
 
