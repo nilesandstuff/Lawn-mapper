@@ -17,26 +17,24 @@
  */
 
 import { gridOver, gridBox } from './grid.js';
-import { fromMerc } from './ept.js';
+import { fromMerc, toMerc } from './ept.js';
 import { sunPath } from './sun.js';
 import { GRASS, dayLabel } from './climate.js';
+import { heat, bandsFor, rasterOf, smooth, valueAt, boxStats } from './readout.js';
 
 const $ = (s) => document.querySelector(s);
 const SQFT = 10.7639;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-/* A dark-to-bright ramp (viridis's ends and middle), readable over a photo. */
-const STOPS = [[68, 1, 84], [59, 82, 139], [33, 145, 140], [94, 201, 98], [253, 231, 37]];
-export function ramp(t) {
-  const x = Math.min(1, Math.max(0, t)) * (STOPS.length - 1);
-  const i = Math.min(STOPS.length - 2, Math.floor(x)), f = x - i;
-  return STOPS[i].map((v, j) => Math.round(v + (STOPS[i + 1][j] - v) * f));
-}
+/* The light ramp: dark and cool in shade to bright and warm in sun (readout.js). */
+export const ramp = heat;
+const ALPHA = 215; // solid enough for the colours, thin enough for the ground under the darkest shade
  /* Lawn and open ground in the year chart: categorical slots 1 and 2 of the
     dataviz reference palette, dark steps, validated on this page's #161616. */
 const LAWN = '#3987e5', OPEN = '#d95926';
 /* Tree kinds on the map: aqua and yellow slots of the same palette, and grey for buildings. */
 const KIND_RGBA = { 1: [140, 140, 140, 200], 2: [25, 158, 112, 210], 3: [201, 133, 0, 210] };
+const KIND_NAME = { 0: 'open ground', 1: 'a building', 2: 'evergreen', 3: 'deciduous' };
 
 /* Light bands for the season map's area split, mol/m2/day. A rough guide
    only: cool-season turf grows best at 20-30, slows at 10-15 and survives
@@ -46,7 +44,9 @@ export const BANDS = {
   warm: [[30, Infinity, '30 or more'], [15, 30, '15 to 30'], [0, 15, 'under 15']],
 };
 
-const rampCss = `linear-gradient(90deg, ${STOPS.map((c) => `rgb(${c.join(',')})`).join(', ')})`;
+/* A stepped legend bar: one hard-edged block per band. */
+const bandsCss = (b) => `linear-gradient(90deg, ${b.colours.map((c, i) => `rgb(${c.join(',')}) ${((100 * i) / b.n).toFixed(2)}% ${((100 * (i + 1)) / b.n).toFixed(2)}%`).join(', ')})`;
+const fmt = (v, step) => (Number.isInteger(step) ? String(Math.round(v)) : v.toFixed(1));
 
 /**
  * About what a clock there would say: the standard offset from the
@@ -89,20 +89,22 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     return [fromMerc([x0, y1]), fromMerc([x1, y1]), fromMerc([x1, y0]), fromMerc([x0, y0])];
   }
 
-  function paint(values, xy, colour, span = 1) {
+  /* Paints the answers at 0.5 m and keeps them (st.shown) for the pin and
+     the box: smoothed for the light views, as they are for the shadows at a
+     moment and the trees. */
+  function paint(values, xy, colour, { span = 1, smoothed = false, read } = {}) {
     const W = st.grid.w * 2, H = st.grid.h * 2;
+    let r = rasterOf(values, xy, W, H, { span });
+    if (smoothed) r = smooth(r, W, H);
+    st.shown = { r, W, H, read };
     const c = document.createElement('canvas');
     c.width = W; c.height = H;
     const g = c.getContext('2d');
     const img = g.createImageData(W, H);
-    for (let p = 0; p < values.length; p++) {
-      const x = Math.floor(xy[2 * p] * 2), y = Math.floor(xy[2 * p + 1] * 2);
-      if (x < 0 || y < 0 || x >= W || y >= H) continue;
-      const rgba = colour(values[p]);
-      if (!rgba) continue;
-      for (let j = 0; j < span; j++) for (let i = 0; i < span; i++) {
-        if (x + i < W && y + j < H) img.data.set(rgba, ((y + j) * W + x + i) * 4);
-      }
+    for (let k = 0; k < r.length; k++) {
+      if (Number.isNaN(r[k])) continue;
+      const rgba = colour(r[k]);
+      if (rgba) img.data.set(rgba, k * 4);
     }
     g.putImageData(img, 0, 0);
     const url = c.toDataURL();
@@ -113,8 +115,15 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     }
   }
 
-  function legend(lo, hi, unit) {
-    $('#sun-legend').innerHTML = `<span>${lo}</span><span class="ramp" style="background:${rampCss}"></span><span>${hi} ${unit}</span>`;
+  function legend(b, unit) {
+    $('#sun-legend').innerHTML = `<span>0</span><span class="ramp" style="background:${bandsCss(b)}"></span><span>${fmt(b.edges[b.n], b.step)} ${unit}</span><span class="dim">steps of ${b.step}</span>`;
+  }
+
+  /* A light view: banded colours over the smoothed values, 0 to `top`. */
+  function paintLight(values, xy, top, unit, read, span = 1) {
+    const b = bandsFor(top);
+    legend(b, unit);
+    paint(values, xy, (v) => [...b.colours[b.of(v)], ALPHA], { span, smoothed: true, read });
   }
 
   function draw() {
@@ -123,30 +132,119 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
       $('#sun-legend').innerHTML = '<span><i class="sw" style="background:#199e70"></i>evergreen</span> <span><i class="sw" style="background:#c98500"></i>deciduous</span> <span><i class="sw" style="background:#8c8c8c"></i>building</span>';
       const xy = new Float32Array(st.grid.w * st.grid.h * 2), vals = new Uint8Array(st.grid.w * st.grid.h);
       for (let k = 0; k < vals.length; k++) { xy[2 * k] = k % st.grid.w; xy[2 * k + 1] = Math.floor(k / st.grid.w); vals[k] = st.kinds[k]; }
-      paint(vals, xy, (v) => KIND_RGBA[v] || null, 2);
+      paint(vals, xy, (v) => KIND_RGBA[v] || null, { span: 2, read: { kind: true } });
+      readouts();
       return;
     }
     if (st.mode === 'season') {
       const se = st.season;
       if (!se?.stats.open) { $('#sun-legend').innerHTML = '<span class="dim">No growing season to show yet.</span>'; return; }
-      const top = Math.max(1, Math.round(se.stats.open.mean));
-      legend(0, top, 'mol/m²/day, season average');
-      paint(se.mean, se.xy, (v) => [...ramp(v / top), 200], 2);
+      paintLight(se.mean, se.xy, Math.max(1, se.stats.open.mean), 'mol/m²/day, season average', { unit: 'mol/m²/day', what: 'season average, typical weather', dp: 1 }, 2);
     } else if (st.mode === 'now' && st.now) {
-      legend('lit', 'shade', '');
       $('#sun-legend').innerHTML = '<span class="dim">Dark = shade from the lidar at that moment</span>';
-      paint(st.now.T, st.now.xy, (T) => [0, 0, 20, Math.round((1 - T) * 170)]);
+      paint(st.now.T, st.now.xy, (T) => [0, 0, 20, Math.round((1 - T) * 170)], { read: { share: true } });
     } else if (st.day) {
       const d = st.day;
-      if (st.mode === 'dli') {
-        legend(0, Math.round(d.openDli), 'mol/m²/day');
-        paint(d.dli, d.xy, (v) => [...ramp(v / d.openDli), 200]);
-      } else {
-        legend(0, d.dayHours.toFixed(1), 'hours of sun');
-        paint(d.sunHours, d.xy, (v) => [...ramp(v / d.dayHours), 200]);
-      }
+      if (st.mode === 'dli') paintLight(d.dli, d.xy, Math.max(1, d.openDli), 'mol/m²/day', { unit: 'mol/m²/day', what: 'clear day', dp: 1 });
+      else paintLight(d.sunHours, d.xy, Math.max(1, d.dayHours), 'hours of sun', { unit: 'hours of sun', what: 'clear day', dp: 1 });
+    }
+    readouts();
+  }
+
+  /* ---- Pin and box: read the map where it is tapped or boxed. ---- */
+  const pixelOf = (lngLat) => {
+    const [mx, my] = toMerc([lngLat.lng, lngLat.lat]);
+    return [((mx - st.grid.x0) / st.grid.cell) * 2, ((st.grid.y1 - my) / st.grid.cell) * 2];
+  };
+  const sqft = (pixels) => Math.round(pixels * 0.25 * SQFT).toLocaleString();
+  function pinText() {
+    const sh = st.shown;
+    if (!sh?.read) return '';
+    const [x, y] = pixelOf(st.pin.lngLat);
+    const v = valueAt(sh.r, sh.W, sh.H, x, y);
+    if (Number.isNaN(v)) return 'No grass to light here: a building, under a crown nothing gets through, or outside the lot.';
+    if (sh.read.kind) return `Trees: <b>${KIND_NAME[v] || 'open ground'}</b>`;
+    if (sh.read.share) return `<b>${Math.round(v * 100)}%</b> of the sun at that moment`;
+    return `<b>${v.toFixed(sh.read.dp)}</b> ${sh.read.unit}<br><span class="dim">${sh.read.what}, averaged over about a metre</span>`;
+  }
+  function boxText() {
+    const sh = st.shown;
+    if (!sh?.read || !st.box) return '';
+    const [ax, ay] = pixelOf(st.box[0]), [bx, by] = pixelOf(st.box[1]);
+    const s = boxStats(sh.r, sh.W, sh.H, [ax, ay, bx, by], { counts: !!sh.read.kind });
+    if (!s.n) return 'Nothing to measure in this box: light is worked out only on the lot, and not under roofs.';
+    if (sh.read.kind) {
+      return `In the box (${sqft(s.n)} sq ft): ${Object.entries(s.tally).sort((p, q) => q[1] - p[1]).map(([k, c]) => `${KIND_NAME[k] || 'open ground'} ${Math.round((100 * c) / s.n)}%`).join(', ')}`;
+    }
+    const f = (v) => (sh.read.share ? `${Math.round(v * 100)}%` : v.toFixed(sh.read.dp));
+    const unit = sh.read.share ? 'of the sun' : sh.read.unit;
+    return `In the box (${sqft(s.n)} sq ft of the lot measured), ${unit}: lowest <b>${f(s.min)}</b>, highest <b>${f(s.max)}</b>, average <b>${f(s.mean)}</b>`;
+  }
+  function readouts() {
+    if (st.pin) st.pin.popup.setHTML(pinText() || 'Pick a view above to read it here.');
+    $('#sun-box-stats').innerHTML = boxText();
+  }
+  function showBox() {
+    const [a, b] = st.box;
+    const ring = [[a.lng, a.lat], [b.lng, a.lat], [b.lng, b.lat], [a.lng, b.lat], [a.lng, a.lat]];
+    const data = { type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring] } };
+    if (map.getSource('light-box')) map.getSource('light-box').setData(data);
+    else {
+      map.addSource('light-box', { type: 'geojson', data });
+      map.addLayer({ id: 'light-box', type: 'line', source: 'light-box', paint: { 'line-color': '#ffffff', 'line-width': 2, 'line-dasharray': [2, 1] } });
     }
   }
+  function clearReadouts() {
+    st.pin?.marker.remove();
+    st.pin = null;
+    st.box = null;
+    if (map.getLayer('light-box')) map.removeLayer('light-box');
+    if (map.getSource('light-box')) map.removeSource('light-box');
+    $('#sun-box-stats').innerHTML = '';
+  }
+  const onClick = (e) => {
+    if (st.boxing || Date.now() - (st.boxEnded || 0) < 400) return;
+    if (!st.pin) {
+      const popup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, offset: 28, className: 'light-pin' });
+      st.pin = { marker: new mapboxgl.Marker({ color: '#ffffff' }).setLngLat(e.lngLat).setPopup(popup).addTo(map), popup };
+    }
+    st.pin.lngLat = e.lngLat;
+    st.pin.marker.setLngLat(e.lngLat);
+    if (!st.pin.popup.isOpen()) st.pin.marker.togglePopup();
+    readouts();
+  };
+  /* Drawing a box: one drag, with the map held still while it lasts. */
+  const boxStart = (e) => {
+    if (!st.boxing) return;
+    e.preventDefault?.();
+    st.drag = e.lngLat;
+    st.box = [e.lngLat, e.lngLat];
+  };
+  const boxMove = (e) => {
+    if (!st.boxing || !st.drag || !e.lngLat) return;
+    st.box = [st.drag, e.lngLat];
+    showBox();
+  };
+  const boxEnd = () => {
+    if (!st.boxing || !st.drag) return;
+    st.drag = null;
+    setBoxing(false);
+    st.boxEnded = Date.now();
+    if (st.box && (st.box[0].lng !== st.box[1].lng || st.box[0].lat !== st.box[1].lat)) { showBox(); readouts(); }
+  };
+  function setBoxing(on) {
+    st.boxing = on;
+    $('#sun-box').classList.toggle('on', on);
+    $('#sun-box').textContent = on ? 'Drag across the map…' : 'Draw a box';
+    map.getCanvas().style.cursor = on ? 'crosshair' : '';
+    for (const h of [map.dragPan, map.touchZoomRotate, map.dragRotate]) on ? h.disable() : h.enable();
+  }
+  map.on('click', onClick);
+  map.on('mousedown', boxStart); map.on('touchstart', boxStart);
+  map.on('mousemove', boxMove); map.on('touchmove', boxMove);
+  map.on('mouseup', boxEnd); map.on('touchend', boxEnd);
+  $('#sun-box').onclick = () => setBoxing(!st.boxing);
+  $('#sun-clear').onclick = () => { setBoxing(false); clearReadouts(); };
 
   function summary() {
     const d = st.day;
@@ -202,7 +300,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
       const when = cal.always ? 'Deciduous trees here keep their leaves all year in a typical year.'
         : cal.never ? 'It never gets warm enough here, in a typical year, for deciduous trees to leaf out.'
           : `Leaves estimated coming out ${dayLabel(cal.out)} to ${dayLabel(cal.full)} (half out ${dayLabel(cal.halfOut)}) and falling to bare by ${dayLabel(cal.bare)} (half gone ${dayLabel(cal.halfFall)}), from the typical temperature here, matched to Harvard Forest's measured leaf-out and leaf-fall.`;
-      text = `Trees through the seasons: ${when} In the leaf-off months every tree is as the laser measured it, evergreens included. In leaf, deciduous crowns get leaves that stop light by the crown's depth (leaf area 1 m² per m³ of crown, up to a leaf area index of 5.5, as measured on solitary maples and oaks): a full crown passes about 6% of the sun straight down and 2% at 45°, and the model puts a Michigan forest's floor at about 3–4% of the day's light in summer, within the 2.4–6.2% measured under closed New England canopies (Canham et al. 1994). Late summer is darker because the sun is lower, not because there are more leaves. Evergreens stay as measured: the winter flight already saw their foliage.${split}`;
+      text = `Trees through the seasons: ${when} In the leaf-off months every tree is as the laser measured it, evergreens included. In leaf, deciduous crowns get leaves that stop light by the crown's depth (leaf area 1 m² per m³ of crown, up to a leaf area index of 5.5, as measured on solitary maples and oaks): a full crown passes about 6% of the sun straight down and 2% at 45°, and the model puts the floor of a closed forest at about 3–5% of the day's light in summer, within the 2.4–6.2% measured under closed canopies (Canham et al. 1994). Late summer is darker because the sun is lower, not because there are more leaves. Evergreens stay as measured: the winter flight already saw their foliage.${split}`;
     } else if (m.canopy === 'solid') {
       text = 'Trees as solid: no light gets through any crown. The darkest the shade could be.';
     } else {
@@ -380,6 +478,9 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
       st.worker?.terminate();
       if (map.getLayer('light')) map.removeLayer('light');
       if (map.getSource('light')) map.removeSource('light');
+      setBoxing(false);
+      clearReadouts();
+      for (const [ev, h] of [['click', onClick], ['mousedown', boxStart], ['touchstart', boxStart], ['mousemove', boxMove], ['touchmove', boxMove], ['mouseup', boxEnd], ['touchend', boxEnd]]) map.off(ev, h);
       sec.hidden = true;
     },
   };

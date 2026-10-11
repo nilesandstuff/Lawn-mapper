@@ -11,6 +11,7 @@ import { gridOver, gridForFrame, gridBox, rasterise, fillGaps, resample } from '
 import { alignToPhoto, dilate } from '../public/shade/align.js';
 import { kindOf, mercUnits } from '../public/shade/view3d.js';
 import { aboutLocal, ramp } from '../public/shade/sun-ui.js';
+import { niceStep, bandsFor, rasterOf, smooth, valueAt, boxStats } from '../public/shade/readout.js';
 import { tracedOn, lineUpAt } from '../public/shade/traced.js';
 import { sunAt, solarNoon, sunPath, clearSky, airMass, parMol } from '../public/shade/sun.js';
 import { buildCanopy } from '../public/shade/canopy.js';
@@ -338,7 +339,33 @@ function lasFile(format, recordLength, points, { scale = 0.01, offset = [100, 20
 check('about-local time: Milwaukee in October is UTC-5 (daylight time), in December UTC-6',
   aboutLocal(Date.UTC(2026, 9, 11, 12, 3), -87.95) === '7:03 am' && aboutLocal(Date.UTC(2026, 11, 21, 22, 15), -87.95) === '4:15 pm',
   `${aboutLocal(Date.UTC(2026, 9, 11, 12, 3), -87.95)} ${aboutLocal(Date.UTC(2026, 11, 21, 22, 15), -87.95)}`);
-check('the colour ramp runs dark to bright and clamps', ramp(-1).join() === '68,1,84' && ramp(2).join() === '253,231,37');
+check('the colour ramp runs dark to bright and clamps', ramp(-1).join() === '0,0,4' && ramp(2).join() === '252,255,164');
+{
+  const lum = ([r, g, b]) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  let up = true;
+  for (let i = 1; i <= 20; i++) if (lum(ramp(i / 20)) <= lum(ramp((i - 1) / 20))) up = false;
+  check('and gets brighter all the way, so shade reads darker than sun', up);
+  check('round steps, at most seven bands: 51 DLI in 10s, 15.2 h in 2.5s, 0.8 in 0.2s',
+    niceStep(51) === 10 && niceStep(15.2) === 2.5 && Math.abs(niceStep(0.8) - 0.2) < 1e-9, `${niceStep(51)} ${niceStep(15.2)} ${niceStep(0.8)}`);
+  const b = bandsFor(51);
+  check('bands run 0 to 60 in six, the ramp\'s ends at the ends, and a value finds its band',
+    b.n === 6 && b.edges[6] === 60 && b.colours[0].join() === ramp(0).join() && b.colours[5].join() === ramp(1).join()
+    && b.of(0) === 0 && b.of(9.99) === 0 && b.of(10) === 1 && b.of(59) === 5 && b.of(80) === 5 && b.of(-1) === 0);
+  /* 4 x 3 raster: a building (empty) in one corner. */
+  const r = rasterOf([10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110], [0, 0, 0.5, 0, 1, 0, 1.5, 0, 0, 0.5, 0.5, 0.5, 1, 0.5, 1.5, 0.5, 0, 1, 0.5, 1, 1, 1], 4, 3);
+  check('the answers land on their pixels, the rest empty', r[0] === 10 && r[3] === 40 && r[10] === 110 && Number.isNaN(r[11]));
+  const sm = smooth(r, 4, 3, 1);
+  check('smoothing averages over the neighbours that have a value, and the empty pixel stays empty',
+    Math.abs(sm[0] - (10 + 20 + 50 + 60) / 4) < 1e-4 && Number.isNaN(sm[11]) && Math.abs(sm[10] - (60 + 70 + 80 + 100 + 110) / 5) < 1e-4, `${sm[0]} ${sm[10]}`);
+  check('a pin on the empty pixel reads its nearest neighbour',
+    valueAt(r, 4, 3, 3.5, 2.5) === 80 || valueAt(r, 4, 3, 3.5, 2.5) === 110, `${valueAt(r, 4, 3, 3.5, 2.5)}`);
+  check('and one far outside reads nothing', Number.isNaN(valueAt(r, 4, 3, 10, 10)));
+  const s = boxStats(r, 4, 3, [3.9, 2.9, 1, 1]);
+  check('a box drawn either way round gives the lowest, highest and average of what is in it, skipping the empty pixel',
+    s.n === 5 && s.min === 60 && s.max === 110 && Math.abs(s.mean - (60 + 70 + 80 + 100 + 110) / 5) < 1e-4, JSON.stringify(s));
+  const t = boxStats(Float32Array.from([2, 2, 3, NaN]), 2, 2, [0, 0, 1, 1], { counts: true });
+  check('and for the trees, the share of each kind', t.n === 3 && t.tally[2] === 2 && t.tally[3] === 1);
+}
 
 /* ---------------------------------------------------- canopy and rays */
 

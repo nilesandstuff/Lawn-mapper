@@ -55,6 +55,9 @@
   .key i { display: inline-block; width: 14px; height: 2px; vertical-align: middle; margin-right: 5px; }
   .key b.band { display: inline-block; width: 12px; height: 10px; background: rgba(255, 255, 255, .08); vertical-align: middle; margin-right: 5px; }
   .sun th { text-align: left; font-weight: 600; color: #bbb; padding: 1px 10px 1px 0; }
+  #sun-box.on { background: #f8c931; border-color: #f8c931; color: #111; }
+  .light-pin .mapboxgl-popup-content { background: #222; color: #eee; border: 1px solid #444; border-radius: 8px; padding: 6px 10px; font-size: 13px; max-width: 220px; }
+  .light-pin .mapboxgl-popup-tip { display: none; }
   .legend span { display: inline-block; width: .8em; height: .8em; border-radius: 50%; margin: 0 4px 0 10px; vertical-align: -1px; }
 </style>
 </head>
@@ -106,6 +109,12 @@
         <span id="sun-time-label" class="dim"></span>
       </div>
       <div class="legend-bar" id="sun-legend"></div>
+      <div class="row">
+        <button type="button" id="sun-box">Draw a box</button>
+        <button type="button" id="sun-clear">Clear</button>
+        <span class="dim">Tap the map to read one spot.</span>
+      </div>
+      <p id="sun-box-stats"></p>
       <p id="sun-status" class="dim"></p>
       <p id="sun-canopy-note" class="dim"></p>
       <div id="sun-summary"></div>
