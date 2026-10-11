@@ -10,7 +10,11 @@ import { rankClouds, leafSeason, nameYear } from '../public/shade/find.js';
 import { gridOver, gridForFrame, gridBox, rasterise, fillGaps, resample } from '../public/shade/grid.js';
 import { alignToPhoto, dilate } from '../public/shade/align.js';
 import { kindOf, mercUnits } from '../public/shade/view3d.js';
+import { aboutLocal, ramp } from '../public/shade/sun-ui.js';
 import { tracedOn, lineUpAt } from '../public/shade/traced.js';
+import { sunAt, solarNoon, sunPath, clearSky, airMass, parMol } from '../public/shade/sun.js';
+import { buildCanopy } from '../public/shade/canopy.js';
+import { transmittance, skyView, sunlitNow, dayLight, samplePoints, groundAt } from '../public/shade/rays.js';
 import { movedCorners } from '../public/lib/align.js';
 import { frameCorners } from '../public/lib/mercator.js';
 import { footprintEntry, covers, lidarAt, handleShade, isShadePath } from '../worker/src/shade.js';
@@ -301,6 +305,110 @@ function lasFile(format, recordLength, points, { scale = 0.01, offset = [100, 20
   });
   check('lineUpAt agrees with the editor\'s movedCorners at every corner, to a millimetre', worst < 0.001, `worst ${worst.toFixed(5)} m`);
   check('at the saved frame centre the line-up is just its shift', near(lineUpAt(t, [frame.lng, frame.lat]).east, 0.4, 1e-9));
+}
+
+/* -------------------------------------------------------------- sun */
+
+{
+  const lat = 42.87, lng = -85.86;
+  const at = (y, m, d) => sunAt(lat, lng, solarNoon(lng, Date.UTC(y, m, d, 17)));
+  const eq = at(2026, 2, 20), su = at(2026, 5, 21), wi = at(2026, 11, 21);
+  check('noon sun at 42.87 N: 90 - lat at the equinox, +/- 23.44 at the solstices (refraction included)',
+    near(eq.elevation, 90 - lat, 0.15) && near(su.elevation, 90 - lat + 23.44, 0.1) && near(wi.elevation, 90 - lat - 23.44, 0.15)
+    && near(eq.azimuth, 180, 0.2), `${eq.elevation.toFixed(2)} ${su.elevation.toFixed(2)} ${wi.elevation.toFixed(2)}`);
+  const hours = (m, d) => sunPath(lat, lng, Date.UTC(2026, m, d, 17), 2).length * 2 / 60;
+  check('daylight: ~12.1 h at the equinox, ~15.3 h midsummer, ~9.0 h midwinter',
+    near(hours(2, 20), 12.1, 0.15) && near(hours(5, 21), 15.3, 0.15) && near(hours(11, 21), 9.0, 0.15),
+    `${hours(2, 20).toFixed(2)} ${hours(5, 21).toFixed(2)} ${hours(11, 21).toFixed(2)}`);
+  const p = sunPath(lat, lng, Date.UTC(2026, 2, 20, 17), 10);
+  check('equinox: the sun rises close to due east and sets close to due west',
+    near(p[0].azimuth, 90, 3) && near(p.at(-1).azimuth, 270, 3), `${p[0].azimuth.toFixed(1)} ${p.at(-1).azimuth.toFixed(1)}`);
+  check('air mass is 1 overhead and about 2 at 30 degrees', near(airMass(90), 1, 0.01) && near(airMass(30), 2, 0.02));
+  const mj = (m, d, hM) => sunPath(lat, lng, Date.UTC(2026, m, d, 17), 10).reduce((t, q) => t + clearSky(q.elevation, hM, q.R).ghi * 600, 0) / 1e6;
+  check('clear-sky day at 42.87 N: ~30 MJ/m2 midsummer (~60 mol/m2 DLI), ~7-8 midwinter',
+    near(mj(5, 21, 200), 30.5, 2) && near(mj(11, 21, 200), 7.5, 1.2) && near(parMol(1e6 / 86400, 86400), 2.04, 1e-9),
+    `${mj(5, 21, 200).toFixed(1)} ${mj(11, 21, 200).toFixed(1)}`);
+  check('higher ground gets more: 2,000 m up is 10-20% brighter than sea level on a clear day',
+    mj(5, 21, 2000) / mj(5, 21, 0) > 1.1 && mj(5, 21, 2000) / mj(5, 21, 0) < 1.2);
+}
+
+check('about-local time: Milwaukee in October is UTC-5 (daylight time), in December UTC-6',
+  aboutLocal(Date.UTC(2026, 9, 11, 12, 3), -87.95) === '7:03 am' && aboutLocal(Date.UTC(2026, 11, 21, 22, 15), -87.95) === '4:15 pm',
+  `${aboutLocal(Date.UTC(2026, 9, 11, 12, 3), -87.95)} ${aboutLocal(Date.UTC(2026, 11, 21, 22, 15), -87.95)}`);
+check('the colour ramp runs dark to bright and clamps', ramp(-1).join() === '68,1,84' && ramp(2).join() === '253,231,37');
+
+/* ---------------------------------------------------- canopy and rays */
+
+{
+  /* A 60 m square of flat lawn at 100 m with a 10 x 10 m, 10 m tall house
+     in the middle and a round crown 5-10 m up, 4 m across in radius, that
+     stops half the pulses (each stopped pulse returns once, from a random
+     height in the crown). Pulses every 0.25 m. */
+  const lat = 40, k = mercScale(lat);
+  const box = [0, 0, 60 / k, 60 / k];
+  const grid = gridOver(box, 1, lat);
+  let seed = 3;
+  const rnd = () => {
+    seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const pts = [];
+  const house = (e, n) => e >= 25 && e < 35 && n >= 25 && n < 35;
+  const crown = (e, n) => Math.hypot(e - 45, n - 45) < 4;
+  for (let e = 0.125; e < 60; e += 0.25) {
+    for (let n = 0.125; n < 60; n += 0.25) {
+      if (house(e, n)) pts.push([e, n, 110, 6]);
+      else if (crown(e, n) && rnd() < 0.5) pts.push([e, n, 105 + rnd() * 5, 1]);
+      else pts.push([e, n, 100, 2]);
+    }
+  }
+  const cols = makeColumns(pts.length);
+  pts.forEach(([e, n, z, c], i) => { cols.x[i] = e / k; cols.y[i] = n / k; cols.z[i] = z; cols.cls[i] = c; cols.ret[i] = 1; cols.nret[i] = 1; });
+  const model = buildCanopy(cols, grid);
+  /* A point at (east, north) metres, in grid cells (y runs south). */
+  const P = (e, n) => [e, 60 - n];
+  const T = (e, n, dir) => { const [gx, gy] = P(e, n); return transmittance(model, gx, gy, groundAt(model, gx, gy) + 0.1, dir); };
+  const s45 = Math.SQRT1_2;
+  const fromSouth = [0, -s45, s45]; // sun due south, 45 degrees up
+  check('canopy: ground found flat at 100 m, model reaches the roof', near(groundAt(model, 10, 10), 100, 1e-3) && model.top >= 110 && model.top <= 112);
+  check('a 10 m house throws a 10 m shadow with the sun 45 degrees up: 5 m north of it is dark, 15 m north is lit',
+    T(30, 40, fromSouth) < 0.01 && T(30, 50, fromSouth) > 0.99, `${T(30, 40, fromSouth).toFixed(3)} ${T(30, 50, fromSouth).toFixed(3)}`);
+  check('... and the sun behind the house from the north does not shade the south side',
+    T(30, 20, [0, s45, s45]) < 0.01 && T(30, 20, fromSouth) > 0.99);
+  const up = [0, 0, 1];
+  /* Averaged over nine columns: one 1 m column holds only 16 pulses. */
+  const mean = (f) => { let t = 0; for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) t += f(a, b); return t / 9; };
+  const vert = mean((a, b) => T(45 + a, 45 + b, up));
+  check('a crown that stops half the pulses lets about half the overhead sun through', near(vert, 0.5, 0.08), vert.toFixed(3));
+  /* Sun 30 degrees up in the south: the beam climbs the crown's 5 m depth over
+     8.7 m, crossing ~10 m of crown -- twice the vertical path, so ~0.5^2. */
+  const low = [0, -Math.cos(Math.PI / 6), 0.5];
+  const slant = mean((a) => T(45 + a, 57.5, low));
+  check('a beam crossing twice as much crown keeps about the square of it', slant < vert && near(slant, vert * vert, 0.1), `${slant.toFixed(3)} vs ${vert.toFixed(3)}^2`);
+  check('the house is solid to the ground: a low sun does not shine under the roof',
+    T(30, 37, [0, -Math.cos(10 * Math.PI / 180), Math.sin(10 * Math.PI / 180)]) < 0.01);
+  const solid = buildCanopy(cols, grid, { opaqueCanopy: true });
+  const vSolid = transmittance(solid, 45, 15, 100.1, up);
+  check('"trees as solid" stops the overhead sun under the crown entirely', vSolid < 0.01, vSolid.toFixed(3));
+
+  const xy = Float32Array.from([...P(10, 10), ...P(30, 36), ...P(45, 45)]);
+  const svf = skyView(model, xy);
+  /* A 10 m wall 1 m away hides most of its half of the sky (a long wall
+     would leave (1 + cos 84 deg) / 2 = 0.55); a half-gap crown 5-10 m up and
+     4 m across hides half of the sky within ~40 degrees of overhead (~0.8). */
+  check('sky view: 1 in the open, ~0.55-0.7 hard by the house wall, ~0.8 under the crown',
+    near(svf[0], 1, 0.02) && svf[1] > 0.5 && svf[1] < 0.72 && svf[2] > 0.7 && svf[2] < 0.9, Array.from(svf).map((v) => v.toFixed(2)).join(' '));
+  const now = sunlitNow(model, xy, fromSouth);
+  check('sunlit now: open lit, north of the house dark', now[0] > 0.99 && now[1] < 0.01);
+  const path = sunPath(lat, -100, Date.UTC(2026, 5, 21, 18), 10);
+  const day = dayLight(model, xy, path, { svf, heightM: 100 });
+  check('a day in the open gets the open-sky DLI; beside the house and under the crown get less',
+    near(day.dli[0], day.openDli, day.openDli * 0.02) && day.dli[1] < day.dli[0] && day.dli[2] < day.dli[0] * 0.8
+    && day.sunHours[0] > 14.5, `${day.dli[0].toFixed(1)} / ${day.openDli.toFixed(1)}, ${day.dli[1].toFixed(1)}, ${day.dli[2].toFixed(1)}; sun h ${day.sunHours[0].toFixed(1)} ${day.sunHours[1].toFixed(1)}`);
+  const mask = new Uint8Array(model.w * model.h); mask[0] = 1;
+  check('sample points: sub x sub points per masked cell, at their centres', samplePoints(model, mask, 2).xy.length === 8 && samplePoints(model, mask, 2).xy[0] === 0.25);
 }
 
 /* ------------------------------------------------------------- view */

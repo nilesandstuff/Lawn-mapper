@@ -30,6 +30,7 @@ import { pointLayer } from './shade/view3d.js';
 import { frameCorners } from './lib/mercator.js';
 import { movedCorners } from './lib/align.js';
 import { tracedOn, lineUpAt } from './shade/traced.js';
+import { startSun } from './shade/sun-ui.js';
 
 const $ = (s) => document.querySelector(s);
 const SAVES_KEY = 'lawnmapper.saves.v1'; // the editor's own local store (app.js), read only
@@ -198,6 +199,8 @@ function alignFrame(site, bounds) {
 async function build(site) {
   const map = await ensureMap();
   view.site = site;
+  view.sun?.stop();
+  view.sun = null;
   removeBuilt(map);
   const bounds = siteBounds(site);
   setGeo(map, 'parcel', site.parcel ? [site.parcel] : [], { 'line-color': '#ffeb3b', 'line-width': 2.5 });
@@ -329,6 +332,12 @@ async function build(site) {
     The ground is what has to agree. "Lined up" off shows the cloud where the file puts it. "Lidar ground picture" lays the laser's view of the ground over the photo to compare by eye: roads, drives and paths should sit exactly on the photo's.</p>`);
   $('#report').innerHTML = report.join('');
   status(fit?.confident ? 'Built and lined up.' : 'Built. The photo check was not tight enough to apply; the datum correction is applied.', fit?.confident ? 'ok' : 'warn');
+
+  /* Step 2: the sun over this model, in a worker (shade/sun-ui.js). */
+  view.sun = startSun({
+    map, site, cols, box, shift, heightM: baseZ, season: cloud.unit?.season,
+    beforeLayer: () => (map.getLayer('parcel') ? 'parcel' : undefined),
+  });
 }
 
 const fmtMove = (e, n) => (e === null || n === null ? '—'
@@ -360,16 +369,19 @@ function drawBuilt(map, fixed) {
     c.width = W; c.height = W;
     c.getContext('2d').putImageData(new ImageData(pic.data, W, W), 0, 0);
     map.addSource('picture', { type: 'image', url: c.toDataURL(), coordinates: frameCorners(fr) });
-    map.addLayer({ id: 'picture', type: 'raster', source: 'picture', paint: { 'raster-opacity': 0.85, 'raster-fade-duration': 0 } }, 'parcel');
+    map.addLayer({ id: 'picture', type: 'raster', source: 'picture', paint: { 'raster-opacity': 0.85, 'raster-fade-duration': 0 } }, below(map, ['light', 'parcel']));
   }
   if (b.traced && $('#t-traced').getAttribute('aria-pressed') === 'true') {
     map.addSource('traced', { type: 'image', url: b.traced.url, coordinates: b.traced.corners });
-    map.addLayer({ id: 'traced', type: 'raster', source: 'traced', paint: { 'raster-fade-duration': 0 } }, map.getLayer('picture') ? 'picture' : 'parcel');
+    map.addLayer({ id: 'traced', type: 'raster', source: 'traced', paint: { 'raster-fade-duration': 0 } }, below(map, ['picture', 'light', 'parcel']));
   }
   if ($('#t-points').getAttribute('aria-pressed') === 'true') {
     map.addLayer(pointLayer('points', b.cols, { heightOver: b.heightOver, shift, baseZ: b.baseZ, lat: view.site.lat, size: 3 }));
   }
 }
+
+/** The first of these layers that exists, to draw beneath it: photos under the light colours, under the outlines. */
+const below = (map, ids) => ids.find((id) => map.getLayer(id));
 
 function toggle(id, on) {
   const el = $(id);

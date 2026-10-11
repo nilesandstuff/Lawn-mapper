@@ -38,6 +38,14 @@
   .panel td { padding: 1px 10px 1px 0; vertical-align: top; }
   .ok { color: #81c784; } .warn { color: #ffb74d; } .bad { color: #e57373; } .dim { color: #999; }
   .status { font-weight: 600; }
+  .sun .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
+  .sun input[type=date] { font-size: 14px; padding: 5px; border-radius: 8px; border: 1px solid #555; background: #222; color: #eee; }
+  .sun input[type=range] { flex: 1; min-width: 160px; }
+  .sun button { min-height: 34px; font-size: 13px; }
+  .legend-bar { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #bbb; }
+  .legend-bar .ramp { flex: 1; max-width: 240px; height: 10px; border-radius: 5px; }
+  .sun table { margin-top: 6px; }
+  .sun th { text-align: left; font-weight: 600; color: #bbb; padding: 1px 10px 1px 0; }
   .legend span { display: inline-block; width: .8em; height: .8em; border-radius: 50%; margin: 0 4px 0 10px; vertical-align: -1px; }
 </style>
 </head>
@@ -61,6 +69,34 @@
   <div class="panel" id="panel">
     <p class="status" id="status">Pick a saved map, or type a point, and press Build.</p>
     <p class="legend dim">Points: <span style="background:#9e7340"></span>ground<span style="background:#8ccc59"></span>under 2 m<span style="background:#1ad94d"></span>pulse went on through (leaves, branches)<span style="background:#f24d40"></span>pulse stopped, 2 m+ (roofs, dense crowns). Yellow line: property. Green: lawn.</p>
+    <section class="sun" id="sun" hidden>
+      <h2>Sun and shade <span class="dim">on a clear day</span></h2>
+      <div class="row">
+        <label class="dim" for="sun-date">Day</label>
+        <input type="date" id="sun-date">
+        <button type="button" data-preset="2-20">Mar 20</button>
+        <button type="button" data-preset="5-21">Jun 21</button>
+        <button type="button" data-preset="8-22">Sep 22</button>
+        <button type="button" data-preset="11-21">Dec 21</button>
+      </div>
+      <div class="row" role="group" aria-label="What the colours show">
+        <button type="button" class="mode" id="m-hours" aria-pressed="true">Hours of sun</button>
+        <button type="button" class="mode" id="m-dli" aria-pressed="false">Light (DLI)</button>
+        <button type="button" class="mode" id="m-now" aria-pressed="false">Shadows at a time</button>
+        <button type="button" id="sun-opaque" aria-pressed="false">Trees as solid</button>
+      </div>
+      <div class="row" id="time-row" hidden>
+        <input type="range" id="sun-time" min="0" max="100" value="50" aria-label="Time of day">
+        <span id="sun-time-label" class="dim"></span>
+      </div>
+      <div class="legend-bar" id="sun-legend"></div>
+      <p id="sun-status" class="dim"></p>
+      <div id="sun-summary"></div>
+      <div id="sun-months"></div>
+      <p class="dim">A clear sky, so these are ceilings: clouds and the growing season come next, from measured
+        climate. Light from the sun's position and the site's height above sea level; shade from the lidar,
+        trees as see-through as the laser found them. Things more than 50 m outside the lot are not in the model.</p>
+    </section>
     <div id="report"></div>
   </div>
 </div>
