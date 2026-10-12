@@ -7,8 +7,8 @@
 export const MILESTONES = [
   {
     maps: 150,
-    say: 'Revisit the decoder: test a standard segmentation head (UperNet, then Mask2Former) '
-      + 'against our own small decoder, now there are enough maps to train one. '
+    say: 'Revisit the decoder: a small UperNet head lost to our own small decoder at 104 maps '
+      + '(H93, overfitting); try it again now there are more, and Mask2Former only if it shows something. '
       + 'S26 in docs/DETECTOR-FINDINGS.md.',
   },
 ];

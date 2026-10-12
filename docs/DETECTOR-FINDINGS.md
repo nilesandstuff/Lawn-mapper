@@ -880,6 +880,50 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H93. A small UperNet head over the same frozen features is WORSE than the small decoder at 104 lots: 24 better / 64 worse, +1.2 points [+0.8, +1.7], p < 0.001, with a LOWER train loss, 2026-10-12
+
+Workflow 14 `refiner_trial: upernet` (S26), runs 38192536763 (seed 7) and
+38192554237 (seed 8), `lawns: locked` (104, `131u7jm`), free runner,
+everything else THE PLAN's. Each run trained THE PLAN's decoder and the
+UperNet head (tools/upernet_head.py: PPM + FPN over the one grid at strides
+1/2/4/8, 64 channels, GroupNorm, dropout in and on the fused features, no
+auxiliary head, 557,121 weights against 224,385) over the SAME features,
+folds and seed, both with the edge refiner. Read with workflow 24 run
+38209446282, "decoder, UperNet + stage 3, span, lidar veto" (B) against
+"decoder, edge refined + stage 3, span, lidar veto" (A), lots averaged over
+the two seeds:
+
+| lots | B better / worse / level | median A -> B | paired change [95%] | sign test |
+|---|---|---|---|---|
+| all 104 | 24 / 64 / 16 | 18.2% -> 21.3% | +1.2 [+0.8, +1.7] | p < 0.001 |
+| frozen 32 (tuned on) | 8 / 19 / 5 | 23.8 -> 24.1 | +1.1 [+0.4, +2.8] | p 0.052 |
+| approved since (untuned 72) | 16 / 45 / 11 | 17.9 -> 20.1 | +1.2 [+0.7, +1.9] | p < 0.001 |
+| county-photo lots (31) | 7 / 23 / 1 | 24.5 -> 24.9 | +1.9 [+1.0, +2.5] | p 0.005 |
+| Mapbox lots (73) | 17 / 41 / 15 | 17.8 -> 20.1 | +1.0 [+0.4, +1.6] | p 0.002 |
+
+Run medians: THE PLAN 18.8 / 18.9%, UperNet 21.3 / 20.7%. Before stage 3
+and the veto the gap is wider: "decoder, edge refined" 20.2 / 19.6% against
+"decoder, UperNet" 21.5 / 22.9%.
+
+- **It is overfitting, by the sign written down before the runs (S26).**
+  With the same refiner, UperNet's final train loss was LOWER on every fold
+  (median 0.188 against THE PLAN's 0.201, both seeds) and its held-out score
+  worse. More weights fitted the 97 training lots better and the held-out
+  seven worse. The measures taken (64 channels, GroupNorm, dropout, no
+  auxiliary head, fixed epochs) did not close that; a smaller head than 64
+  channels, or a stronger penalty, was not tried.
+- **Worse on both photo sources and on the untuned lots**, so it is not a
+  county-photo effect and not the frozen 32's tuning.
+- **Where it helped:** a few bad lots improved (C49 27 -> 13, C30 77 -> 67,
+  B19 60 -> 51), and B20 went 44 -> 93, C22 50 -> 79, C110 9 -> 26. The
+  multi-scale context is not worthless; it is outweighed.
+- **Cost:** 187 / 327 s a fold against the refined decoder's 150 / 268 on
+  the same two runners (the two runners differed by 1.8x on everything).
+- **Not adopted; nothing released.** S26's question is answered at 104 lots
+  for UperNet at this size. What remains open from S26 is whether the same
+  head wins at 150+ lots (the owner's original parking point) and
+  Mask2Former, which was only ever "if UperNet shows something".
+
 ### H92. With 31 county-drawn lots in the lock, county examples in training ARE worth something to the county lots: scored by a decoder that never saw a county photo, 24 of 31 get worse (+2.7 points, 95% +2.1 to +9.9, sign test p < 0.001), while the matched Mapbox control does not move (4 / 4 / 4, -0.0) -- 2026-10-11
 
 The S32 test run again at the agreed size (owner, 2026-10-10: "Done! Let
@@ -6822,7 +6866,7 @@ The same runs also give the live refiner against its true twin (THE PLAN's
 decoder without it), a second extraction beside 37556372070 / 37556456369 /
 37556539907. Nothing is released from this without the owner.
 
-### S26. A standard segmentation head instead of our own small decoder (owner, 2026-10-06 -- PARKED UNTIL 150 MAPS, owner 2026-10-07; was 500 -- UN-PARKED FOR A TRIAL AT 104, owner 2026-10-12)
+### S26. A standard segmentation head instead of our own small decoder (owner, 2026-10-06 -- PARKED UNTIL 150 MAPS, owner 2026-10-07; was 500 -- UN-PARKED FOR A TRIAL AT 104, owner 2026-10-12 -- UPERNET MEASURED WORSE: H93)
 
 **The question (owner):** is our own four-layer decoder (and the edge
 refiner beside it) really a better fit than a named, published design?
@@ -6890,6 +6934,12 @@ the interval on all 104 is at or below zero; adopted only under the full
 bar, and never a release from this (the live server builds the small
 decoder). Overfitting reads as a lower train loss with a worse held-out
 score; the log prints both.
+
+**Measured (2026-10-12): WORSE. H93.** 24 / 64 / 16, +1.2 [+0.8, +1.7],
+p < 0.001 on all 104, the same on the untuned 72 and on both photo
+sources, with a lower train loss: the overfitting sign above. Not adopted.
+Still open: the same at 150+ lots, a smaller or more penalised head, and
+Mask2Former only if something shows.
 
 ### S25. A wider-reaching edge refiner (owner, 2026-10-06 -- BUILT, MEASURED WORSE: H80)
 
@@ -7520,6 +7570,7 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-07 | 37562487510 | 81 (locked) | `edge_reach: compare`, seed 7, CPU: pictures of the wide row against the live refiner | 22.0% (edge refined + stage 3, span, veto) | — | H82 (supplementary to H80): wide vs live 21 / 44, +0.8; B28 28 -> 68 |
 | 2026-10-07 | 37563074383 / 37563158493 / 37563241262 | 81 (locked) | S27 `refiner_trial: compare` (hard edges; wide + edges + gate), seeds 7/8/9, CPU | 22.0 / 22.5 / 20.8% | — | **H82.** Hard edges 22 / 24, p 0.88; wide gated 20 / 42, +0.5 [+0.0, +0.9]. Refiner vs twin 55 / 17 (H81 replicates). Neither adopted |
 | 2026-10-07 | 37582634690 / 37582729096 / 37582829432 | 81 (locked) | S28 `refiner_trial: average of 3`, seeds 7/8/9, CPU | 20.9 / 22.5 / 22.0% (edge refined + stage 3, span, veto) | — | **H83.** Averaged x3: 31 / 9, -0.3 [-0.4, -0.1], p 0.001; medians 20.3 / 22.1 / 20.7. Passes; not released |
+| 2026-10-12 | 38192536763 / 38192554237 | 104 (locked, 131u7jm) | S26 `refiner_trial: upernet` (a small UperNet head, 64 ch, GroupNorm, no aux head, beside THE PLAN's decoder over the same features and folds), seeds 7 / 8, CPU | 18.8 / 18.9% (THE PLAN: edge refined + stage 3, span, veto) | 21.3 / 20.7% (UperNet + stage 3, span, veto) | **H93.** Workflow 24 run 38209446282: 24 / 64 / 16, +1.2 [+0.8, +1.7], p < 0.001; untuned 72 +1.2, p < 0.001; county +1.9, Mapbox +1.0. UperNet's train loss lower (0.188 vs 0.201): overfitting. Not adopted |
 | 2026-10-11 | 38115838951 | 104 (all) + 5 not-lawn-only maps | **RELEASE v4** (owner's request): `release: alpha`, `refiner_trial: average of 3`, `not_lawn: on`, `lawns: all`, fused + edge, canopy on lawn, UNDER_TREES + FUSE_CANOPY, 30 epochs, seed 7, CPU | — (no folds) | — | Three decoders averaged on 104 lots + 5 pond examples in 874 s, train loss 0.200, trainedAt 2026-10-11T07:44:29Z. Shipped; v3 kept under alpha/history/. Named "alpha version 4 (81%)" from THE PLAN at 104 (H92 runs); the arrangement itself is unmeasured |
 | 2026-10-07 | 37643197968 | 81 (locked) | **RELEASE v3 (H83)**: `release: alpha`, `refiner_trial: average of 3`, fused + edge, canopy on lawn, UNDER_TREES + FUSE_CANOPY, 30 epochs, seed 7, CPU | — (no folds) | — | Three decoders averaged, trained on all 81 in 306 s, train loss 0.202, trainedAt 2026-10-07T15:52:29Z. Shipped to the live server; v2 kept under alpha/history/. Named "alpha version 3 (79%)": mean of the averaged row's run medians 21.0 (the single-decoder setup on the same runs 21.8) |
 | 2026-10-07 | 37618116401 / 37618210051 / 37618300740 | 81 (locked) | S29 `refiner_trial: epochs` (15 and 60 beside 30), seeds 7/8/9, CPU | 20.9 / 22.5 / 22.0% (30 epochs) | — | **H84.** 15: 21 / 45, +0.8, p 0.004 (worse); 60: 25 / 31, p 0.50 (nothing). 30 stays |

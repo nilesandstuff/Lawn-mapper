@@ -757,8 +757,8 @@ def main():
     lawns = [L for L in lawns if not is_example(L["id"])]
     # tools/milestones.js keeps the same reminder for the deploy log (owner, 2026-10-06).
     if len(lawns) >= 150:
-        print(f"REMINDER -- {len(lawns)} lawns: revisit the decoder. Test a standard segmentation head "
-              "(UperNet, then Mask2Former) against this small one. S26 in docs/DETECTOR-FINDINGS.md.", flush=True)
+        print(f"REMINDER -- {len(lawns)} lawns: revisit the decoder. A small UperNet head lost to this one at 104 "
+              "(H93, overfitting); try it again here, and Mask2Former only if it shows something. S26 in docs/DETECTOR-FINDINGS.md.", flush=True)
     if examples:
         from folds import lonlat, km_between
         from collections import Counter
