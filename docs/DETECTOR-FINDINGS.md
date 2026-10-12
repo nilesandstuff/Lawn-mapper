@@ -6555,6 +6555,21 @@ NAIP; NOT measured here):**
   - Against H73's 74-77% on leaf-off flights, that looks like a pipeline
     tuned on one wooded lot, now too strict on lawn evergreens. Unmeasured
     which rule does it.
+- **Its re-read with H73's own rule (features session, 2026-10-12;
+  measured in the shade code on data/labelled-crowns.csv, NOT here):**
+  - Leaf-off flights only, 34 evergreen and 143 broadleaf crowns found in
+    the lidar: H73's ground-penetration rule reproduces in a second
+    implementation, 29/34 evergreens and 99/143 broadleaves right.
+  - The "below 4 m" variant the core session suggested from the owner's
+    woods (above) cut that to 15/34 on lawn trees. So that variant fixes
+    honeysuckle under a wood and breaks ornamental conifers over a lawn;
+    the core session's guess about short crowns was the mechanism.
+  - For LIGHT the best classifier is not the best rule: it measured
+    evergreens passing a median 17% of the overhead sun in winter and 8%
+    in leaf, broadleaves 54% bare and 6% in leaf. A broadleaf wrongly left
+    bare is about 9x too bright; an evergreen wrongly given leaves about 2x
+    too dark. Its shade map now calls evergreen per tree by winter density
+    (median overhead pass-through under 0.2, and not a dome).
 
 ### S35. The lidar may sit half a cell off the photo: the USGS octrees are NAD83 labelled EPSG:3857 (from the features session, 2026-10-10 -- NOT MEASURED HERE)
 
