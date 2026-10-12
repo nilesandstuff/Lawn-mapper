@@ -57,7 +57,7 @@ export function jsClosure(entry = join(ROOT, 'tools', 'serve-alpha.mjs')) {
 /** Every file the fingerprint covers, repository-relative and sorted. */
 /* Python in tools/ that the server never runs: changing it must not redeploy
    (and warm, at a few cents) the model server. */
-const NOT_SERVED_PY = new Set(['modal-logs.py']);
+const NOT_SERVED_PY = new Set(['modal-logs.py', 'upernet_head.py']); // never imported by the server: the log reader; the S26 trial head
 
 export function serverFiles() {
   const py = readdirSync(join(ROOT, 'tools'))
