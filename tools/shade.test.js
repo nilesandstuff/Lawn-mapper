@@ -12,6 +12,10 @@ import { alignToPhoto, dilate } from '../public/shade/align.js';
 import { kindOf, mercUnits } from '../public/shade/view3d.js';
 import { aboutLocal, ramp } from '../public/shade/sun-ui.js';
 import { niceStep, bandsFor, rasterOf, smooth, valueAt, boxStats } from '../public/shade/readout.js';
+import { msOf, fromPush, fromExport, perSecond, joinTrack, splitVisits, usable, sunOrShade, operatorShadow, score, unzipText, metersBetween } from '../public/shade/truth.js';
+import { deflateRawSync, inflateRawSync } from 'node:zlib';
+import { DatabaseSync } from 'node:sqlite';
+import { readFileSync } from 'node:fs';
 import { tracedOn, lineUpAt } from '../public/shade/traced.js';
 import { sunAt, solarNoon, sunPath, clearSky, airMass, parMol } from '../public/shade/sun.js';
 import { buildCanopy } from '../public/shade/canopy.js';
@@ -638,6 +642,109 @@ check('the color ramp runs dark to bright and clamps', ramp(-1).join() === '0,0,
 check('kinds: ground, low, through (pulse went on), solid',
   kindOf(2, 1, 1, 0) === 'ground' && kindOf(1, 1, 1, 0.5) === 'low' && kindOf(1, 1, 3, 8) === 'through' && kindOf(1, 1, 1, 8) === 'solid' && kindOf(1, 3, 3, 8) === 'solid');
 check('mercator units: the origin is the middle of the world', mercUnits(0, 0).every((v) => near(v, 0.5, 1e-12)));
+
+/* ------------------------------------------------------ ground truth */
+
+{
+  check('Sensor Logger times: nanoseconds as a number or a string become milliseconds',
+    msOf('1760270400123456789') === 1760270400123 && msOf(1760270400123456789) === 1760270400123 && msOf(1760270400123) === 1760270400123);
+  const push = fromPush({ messageId: 3, sessionId: 'abc', deviceId: 'd', payload: [
+    { name: 'location', time: 1760270400000000000, values: { latitude: 43.1, longitude: -85.5, horizontalAccuracy: 3, speed: 1.2, bearing: 90 } },
+    { name: 'light', time: 1760270400200000000, values: { lux: 41000 } },
+    { name: 'accelerometer', time: 1760270400300000000, values: { x: 1, y: 2, z: 3 } },
+  ] });
+  check('a push: its session, the fix and the light, nothing else',
+    push.session === 'abc' && push.fix.length === 1 && push.fix[0][1] === 43.1 && push.fix[0][3] === 3 && push.lux.length === 1 && push.lux[0][1] === 41000, JSON.stringify(push));
+  const exp = fromExport({
+    'Location.csv': 'time,seconds_elapsed,bearingAccuracy,speedAccuracy,verticalAccuracy,horizontalAccuracy,speed,bearing,altitude,longitude,latitude\n1760270400000000000,0,1,1,2,3.5,1.1,45,200,-85.5,43.1\n',
+    'Light.csv': 'time,seconds_elapsed,lux\n1760270400100000000,0.1,40000\n1760270400600000000,0.6,42000\n',
+    'Accelerometer.csv': 'time,seconds_elapsed,z,y,x\n1760270400000000000,0,1,2,3\n',
+  });
+  check('an export: Location.csv for fixes, Light.csv for lux, other sensors ignored',
+    exp.fix.length === 1 && exp.fix[0][3] === 3.5 && exp.lux.length === 2 && exp.lux[1][1] === 42000, JSON.stringify(exp));
+  check('light per second is the mean of the second', JSON.stringify(perSecond([[1000, 10], [1500, 30], [2100, 5]])) === '[[1000,20],[2000,5]]');
+  /* A walk east at 1 m/s from sun into shade, a fill-up cut out, then a truck jump. */
+  const fix = [], lux = [];
+  const t0 = 1760270400000, m = 1 / 111320 / Math.cos(43.1 * Math.PI / 180);
+  for (let i = 0; i < 120; i++) {
+    fix.push([t0 + i * 1000, 43.1, -85.5 + i * m, 3, 1, 90]);
+    lux.push([t0 + i * 1000 + 200, i < 60 ? 40000 + (i % 7) * 500 : 3000 + (i % 5) * 200]);
+  }
+  for (let i = 0; i < 40; i++) { fix.push([t0 + 400000 + i * 1000, 43.12, -85.5 + i * m, 3, 1, 90]); lux.push([t0 + 400000 + i * 1000, 39000]); }
+  const track = joinTrack(fix, lux, { cuts: [[t0 + 10000, t0 + 19999]] });
+  check('the track: each fix with its light, the cut seconds left out', track.length === 150 && !track.some((s) => s.t >= t0 + 10000 && s.t < t0 + 20000), track.length);
+  const visits = splitVisits(track);
+  check('visits: split where the track jumps 2 km', visits.length === 2 && visits[0].length === 110 && visits[1].length === 40, visits.map((v) => v.length).join(' '));
+  const parked = [...Array(50)].map((_, i) => ({ t: t0 + i * 1000, lat: 43.1, lng: -85.5, acc: 3, speed: 0, bearing: null, lux: 1 }));
+  const fast = [{ t: t0 + 60000, lat: 43.1, lng: -85.5 + 30 * m, acc: 3, speed: 15, bearing: 90, lux: 1 }];
+  const u = usable([...parked, ...fast]);
+  check('usable: a stop counts once, the truck not at all', u.length === 1, u.length);
+  const u2 = usable(visits[0]);
+  check('usable: walking at 1 m/s keeps one a meter, heading east', u2.length > 100 && near(u2[5].heading, 90, 1), `${u2.length} ${u2[5].heading}`);
+  const so = sunOrShade(u2.map((s) => s.lux));
+  check('sun or shade by the visit\'s own light: cut between 3,800 and 40,000, clear, the sun about 41,500',
+    so.clear && so.cut > 3800 && so.cut < 40000 && near(so.sunLux, 41500, 1500) && so.sun[2] === true && so.sun[u2.length - 3] === false, `${so.cut} ${so.sunLux} ${so.contrast}`);
+  const cloudy = sunOrShade([...Array(60)].map((_, i) => 12000 + (i % 9) * 900));
+  check('a cloudy visit has no second group, and says so', !cloudy.clear, cloudy.contrast);
+  check('the operator\'s shadow: heading east, sun in the west is behind him; sun in the south is not',
+    operatorShadow(90, 270) && operatorShadow(90, 250) && !operatorShadow(90, 180) && !operatorShadow(null, 270));
+  const sc = score([true, true, false, false, true], [0.9, 0.2, 0.1, 0.7, 0.8], [1, 1, 1, 1, 0]);
+  check('the score: agreement and each way of disagreeing',
+    sc.n === 4 && sc.sunSun === 1 && sc.shadeSun === 1 && sc.shadeShade === 1 && sc.sunShade === 1 && sc.agree === 0.5, JSON.stringify(sc));
+  /* A two-file zip, one stored and one deflated, as an export arrives. */
+  const enc = new TextEncoder();
+  const files = [['Light.csv', enc.encode('time,lux\n1,2\n'), 0], ['dir/Location.csv', enc.encode('time,latitude,longitude\n1,43,-85\n'.repeat(20)), 8]];
+  const parts = [], central = [];
+  let off = 0;
+  for (const [name, raw, method] of files) {
+    const data = method === 8 ? deflateRawSync(raw) : raw, nm = enc.encode(name);
+    const h = Buffer.alloc(30); h.writeUInt32LE(0x04034b50, 0); h.writeUInt16LE(method, 8); h.writeUInt32LE(data.length, 18); h.writeUInt32LE(raw.length, 22); h.writeUInt16LE(nm.length, 26);
+    const c = Buffer.alloc(46); c.writeUInt32LE(0x02014b50, 0); c.writeUInt16LE(method, 10); c.writeUInt32LE(data.length, 20); c.writeUInt32LE(raw.length, 24); c.writeUInt16LE(nm.length, 28); c.writeUInt32LE(off, 42);
+    parts.push(h, Buffer.from(nm), Buffer.from(data)); central.push(c, Buffer.from(nm));
+    off += 30 + nm.length + data.length;
+  }
+  const cd = Buffer.concat(central), e = Buffer.alloc(22);
+  e.writeUInt32LE(0x06054b50, 0); e.writeUInt16LE(files.length, 8); e.writeUInt16LE(files.length, 10); e.writeUInt32LE(cd.length, 12); e.writeUInt32LE(off, 16);
+  const zipped = await unzipText(Buffer.concat([...parts, cd, e]), { inflate: async (d) => inflateRawSync(d) });
+  check('a zip: stored and deflated entries, folders dropped from the names',
+    zipped['Light.csv'] === 'time,lux\n1,2\n' && zipped['Location.csv']?.startsWith('time,latitude') && Object.keys(zipped).length === 2, Object.keys(zipped).join(','));
+  check('meters between: 0.001 degree of latitude is about 111 m', near(metersBetween([43, -85], [43.001, -85]), 111.2, 0.2));
+}
+
+{
+  /* The readings routes over SQLite with the real schema (D1's prepare/bind/batch). */
+  const sq = new DatabaseSync(':memory:');
+  const schema = readFileSync(new URL('../worker/schema.sql', import.meta.url), 'utf8');
+  sq.exec(schema.slice(schema.indexOf('CREATE TABLE IF NOT EXISTS shade_lux')));
+  const stmt = (sql) => {
+    const st = sq.prepare(sql);
+    let args = [];
+    const api = { bind(...a) { args = a; return api; }, first: async () => st.get(...args) ?? null, run: async () => ({ meta: { last_row_id: Number(st.run(...args).lastInsertRowid) } }), all: async () => ({ results: st.all(...args) }), go: () => st.run(...args) };
+    return api;
+  };
+  const DB = { prepare: stmt, batch: async (list) => list.map((x) => x.go()) };
+  sq.prepare('INSERT INTO shade_push_keys (key, created_at) VALUES (?, ?)').run('secret123', 'now');
+  const json = (d, status) => new Response(JSON.stringify(d), { status });
+  const call = (path, init) => handleShade(new Request(`https://x${path}`, init), new URL(`https://x${path}`), { DB }, '', null, json);
+  const body = { messageId: 1, sessionId: 'day1', payload: [] };
+  for (let i = 0; i < 40; i++) {
+    body.payload.push({ name: 'location', time: String((1760270400000 + i * 1000) * 1e6), values: { latitude: 43.1, longitude: -85.5 + i * 1e-5, horizontalAccuracy: 3 } });
+    body.payload.push({ name: 'light', time: String((1760270400000 + i * 1000 + 300) * 1e6), values: { lux: 40000 } });
+    body.payload.push({ name: 'light', time: String((1760270400000 + i * 1000 + 700) * 1e6), values: { lux: 42000 } });
+  }
+  const r1 = await call('/api/shade/readings?key=secret123', { method: 'POST', body: JSON.stringify(body) });
+  const j1 = await r1.json();
+  const again = await (await call('/api/shade/readings?key=secret123', { method: 'POST', body: JSON.stringify(body) })).json();
+  const rows = sq.prepare('SELECT COUNT(*) AS n FROM shade_fixes').get().n, lux = sq.prepare('SELECT lux FROM shade_lux LIMIT 1').get().lux;
+  check('a push with the key is stored: 40 fixes, 40 seconds of light averaged, a repeat ignored',
+    r1.status === 200 && j1.fix === 40 && j1.lux === 40 && rows === 40 && lux === 41000 && again.ok && sq.prepare('SELECT COUNT(*) AS n FROM shade_lux').get().n === 40, JSON.stringify(j1));
+  const bad = await call('/api/shade/readings?key=wrong', { method: 'POST', body: JSON.stringify(body) });
+  const anon = await call('/api/shade/readings/sessions', { method: 'GET' });
+  const anonPost = await call('/api/shade/readings', { method: 'POST', body: JSON.stringify(body) });
+  check('a wrong key, or no sign-in, is a 404 like the console\'s routes', bad.status === 404 && anon.status === 404 && anonPost.status === 404, `${bad.status} ${anon.status} ${anonPost.status}`);
+  const junk = await call('/api/shade/readings?key=secret123', { method: 'POST', body: '{nope' });
+  check('bad JSON is a 400', junk.status === 400);
+}
 
 if (failures) { console.log(`\n${failures} check(s) FAILED.`); process.exit(1); }
 console.log('\nshade map: ok');

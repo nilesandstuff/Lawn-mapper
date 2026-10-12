@@ -103,14 +103,21 @@ async function siteFromAddress(r) {
   if (r.state) where.set('state', r.state);
   if (r.parcelPin) where.set('pin', r.parcelPin);
   if (r.parcelSqFt) where.set('sqft', r.parcelSqFt);
-  const [parcel, svc] = await Promise.all([
+  const [parcel, list] = await Promise.all([
     fetch(`/api/parcel?${where}`).then((x) => (x.ok ? x.json() : null)).then((j) => j?.parcel || null).catch(() => null),
     fetch(`/api/county-imagery?lng=${r.lng}&lat=${r.lat}`).then((x) => (x.ok ? x.json() : null))
-      .then((j) => (Array.isArray(j?.services) ? j.services[0] : j?.service) || null).catch(() => null),
+      .then((j) => {
+        const ss = Array.isArray(j?.services) ? j.services : j?.service ? [j.service] : [];
+        if (j?.recent && !ss.some((x) => Number(x.id) === Number(j.recent.id))) ss.push(j.recent);
+        return ss;
+      }).catch(() => []),
   ]);
+  const svc = list[0];
   return {
-    label: r.label, lng: r.lng, lat: r.lat, parcel: asFeature(parcel), lawn: [],
-    tracedOn: svc ? { provider: 'county', svc: svc.id, align: null, about: [r.lng, r.lat], title: svc.title || null } : { provider: 'mapbox' },
+    label: r.label, lng: r.lng, lat: r.lat, parcel: asFeature(parcel), lawn: [], county: r.county || null,
+    /* The Worker's order (core, 2026-10-12): best first, then the newer flight;
+       build() passes over any with gaps here, as the editor does. */
+    tracedOn: svc ? { provider: 'county', svc: svc.id, align: null, about: [r.lng, r.lat], title: svc.title || null, list } : { provider: 'mapbox' },
   };
 }
 
@@ -230,6 +237,39 @@ async function photoOf(frame, provider = 'mapbox', svc = null) {
   return { data: d.data, width: d.width, height: d.height, url: URL.createObjectURL(blob) };
 }
 
+/**
+ * How much of a photo is missing: transparent pixels always, flat pure
+ * white or black only past 4% (a bright roof saturates too) -- the
+ * editor's rule (app.js, tools/county-imagery.js coverage()).
+ */
+export function missingShare(photo) {
+  if (!photo?.data) return 0;
+  const d = photo.data, n = d.length / 4;
+  let clear = 0, flat = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] === 0) clear++;
+    else if ((d[i] === 255 && d[i + 1] === 255 && d[i + 2] === 255) || (d[i] === 0 && d[i + 1] === 0 && d[i + 2] === 0)) flat++;
+  }
+  return (clear + (flat / n > 0.04 ? flat : 0)) / n;
+}
+
+/** Log a county photo passed over, for the core's county-photo report (fire and forget). */
+function reportCountyFailure(site, frame, svc, kind, reason, services) {
+  try {
+    const p = site.parcel?.properties || {};
+    fetch('/api/county-failure', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
+      body: JSON.stringify({
+        stage: 'shade', kind, reason, lng: frame.lng, lat: frame.lat, zoom: frame.zoom,
+        frame: { lng: frame.lng, lat: frame.lat, zoom: frame.zoom, size: frame.size, height: frame.height },
+        county: p.county || site.county || null, parcelPin: p.pin ?? null, address: p.address || site.label || null,
+        svc: svc ? { id: svc.id, url: svc.url, title: svc.title, year: svc.year, flown: svc.flown } : null,
+        services,
+      }),
+    }).catch(() => {});
+  } catch { /* bookkeeping only */ }
+}
+
 /** A square frame centered on the site, at least ALIGN_M and the lot wide, at a whole-ish zoom. */
 function alignFrame(site, bounds) {
   const k = mercScale(site.lat);
@@ -309,7 +349,20 @@ async function build(site) {
   };
   /* The photo the outline was traced on decides; the other is a cross-check. */
   const onMapbox = await match('mapbox');
-  const onCounty = t.provider === 'county' ? await match('county', t.svc) : null;
+  let onCounty = t.provider === 'county' ? await match('county', t.svc) : null;
+  /* A typed address: a county photo with gaps over this frame gives way to
+     the next on the Worker's list, then to Mapbox (the editor's rule), and
+     each one passed over is logged for the core's county-photo report. */
+  if (t.list) {
+    let i = 0;
+    while (onCounty && (onCounty.error || missingShare(onCounty.photo) > 0.02)) {
+      reportCountyFailure(site, frame, t.list[i], onCounty.error ? 'refused' : 'gaps', onCounty.error || `${Math.round(100 * missingShare(onCounty.photo))}% of the frame missing`, t.list.map((x) => x.id));
+      i++;
+      if (i >= t.list.length) { onCounty = null; t.provider = 'mapbox'; break; }
+      t.svc = t.list[i].id; t.title = t.list[i].title || null;
+      onCounty = await match('county', t.svc);
+    }
+  }
   const move = t.provider === 'county' ? lineUpAt(t, [frame.lng, frame.lat]) : { east: 0, north: 0 };
   let used, usedName;
   if (onCounty && !onCounty.error) {
@@ -387,6 +440,9 @@ async function build(site) {
     map, site, cols, box, shift, heightM: baseZ, season: cloud.unit?.season,
     beforeLayer: () => (map.getLayer('parcel') ? 'parcel' : undefined),
   });
+  /* A visit's field readings, when the readings page sent us here (admin). */
+  const truth = new URLSearchParams(location.search).get('truth');
+  if (truth) import('./shade/truth-ui.js').then((m) => m.startTruth({ map, sun: view.sun, spec: truth, bounds: siteBounds(site) })).catch((e) => status(e.message, 'bad'));
 }
 
 const fmtMove = (e, n) => (e === null || n === null ? '—'
@@ -464,7 +520,8 @@ async function main() {
           site = await siteFromAddress(r);
         }
       } else throw new Error('Pick a saved map, or type an address or a point, first.');
-      history.replaceState(null, '', id ? `?map=${encodeURIComponent(id)}` : `?at=${encodeURIComponent(at)}`);
+      const keep = params.get('truth') ? `&truth=${encodeURIComponent(params.get('truth'))}` : '';
+      history.replaceState(null, '', (id ? `?map=${encodeURIComponent(id)}` : `?at=${encodeURIComponent(at)}`) + keep);
       await build(site);
     } catch (e) {
       status(e.message || String(e), 'bad');

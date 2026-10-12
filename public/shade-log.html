@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Light readings</title>
+<meta name="robots" content="noindex">
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; background: #111; color: #eee; font: 15px/1.45 system-ui, -apple-system, sans-serif; }
+  main { max-width: 720px; margin: 0 auto; padding: 12px 16px 40px; }
+  h1 { font-size: 20px; margin: 8px 0 4px; }
+  h2 { font-size: 16px; margin: 22px 0 6px; }
+  p { margin: 6px 0; }
+  .dim { color: #999; } .ok { color: #81c784; } .warn { color: #ffb74d; } .bad { color: #e57373; }
+  button, .button { min-height: 40px; padding: 0 14px; border-radius: 8px; border: 1px solid #555; background: #262626; color: #eee; font-size: 14px; text-decoration: none; display: inline-flex; align-items: center; }
+  button.primary { background: #2e7d32; border-color: #2e7d32; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+  code.url { display: block; word-break: break-all; background: #1c1c1c; border: 1px solid #333; border-radius: 8px; padding: 8px; font-size: 13px; }
+  ol { padding-left: 20px; margin: 6px 0; } li { margin: 3px 0; }
+  .card { background: #1a1a1a; border: 1px solid #2c2c2c; border-radius: 10px; padding: 10px 12px; margin: 8px 0; }
+  .card .top { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .visit { border-top: 1px solid #2c2c2c; padding: 8px 0; display: flex; justify-content: space-between; gap: 8px; align-items: center; flex-wrap: wrap; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Light readings <span class="dim">for checking the shade map</span></h1>
+  <p id="who" class="dim">Checking you are signed in as an admin…</p>
+  <div id="admin" hidden>
+    <h2>1. The phone</h2>
+    <p>Sensor Logger sends its readings here as it records. Paste this address into it once:</p>
+    <code class="url" id="push-url">…</code>
+    <div class="row">
+      <button type="button" id="copy">Copy the address</button>
+      <button type="button" id="rotate">Make a new address</button>
+      <span id="key-note" class="dim"></span>
+    </div>
+    <ol class="dim">
+      <li>Sensor Logger → Settings → Data Streaming: turn on <b>HTTP Push</b>, paste the address, batch every 10–30 seconds.</li>
+      <li>Sensors: <b>Light</b> and <b>Location</b> on, everything else off (saves battery and data).</li>
+      <li>Phone flat, screen up, in a clear bag, at the front of the hopper (the end farthest from you). Record all day: the truck, stops and fills are sorted out here.</li>
+      <li>No signal? Export the recording (zipped CSV) and upload it below instead.</li>
+    </ol>
+
+    <h2>2. Upload a recording</h2>
+    <p class="dim">A Sensor Logger export: the .zip, or its Light and Location CSV files.</p>
+    <div class="row">
+      <input type="file" id="file" accept=".zip,.csv,text/csv,application/zip" multiple>
+    </div>
+    <p id="upload-status" class="dim"></p>
+
+    <h2>3. Recordings</h2>
+    <p class="dim">Each day is split into visits where the track jumps or goes quiet. Open a visit on the shade map to see the model against what the phone measured, and to erase parts that don't count (fills, parking).</p>
+    <div id="sessions"><p class="dim">Loading…</p></div>
+  </div>
+</main>
+<script type="module" src="/shade/log.js"></script>
+</body>
+</html>

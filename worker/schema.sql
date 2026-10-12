@@ -1056,3 +1056,44 @@ CREATE TABLE IF NOT EXISTS county_search (
   checked_at  TEXT,
   PRIMARY KEY (fips, kind)
 );
+
+-- THE SHADE MAP'S GROUND TRUTH (features session; owner, 2026-10-12). The
+-- owner's phone rides his spreader-sprayer, screen up, with Sensor Logger
+-- recording its light sensor and GPS all day and posting them to
+-- /api/shade/readings (worker/src/shade.js). ADMIN ONLY: these are tracks
+-- over customers' lawns, kept to check the shade map against and nothing
+-- else. `session` is Sensor Logger's recording id; `t` is milliseconds since
+-- 1970, UTC. Light is kept as one mean per whole second.
+CREATE TABLE IF NOT EXISTS shade_lux (
+  session     TEXT NOT NULL,
+  t           INTEGER NOT NULL,
+  lux         REAL NOT NULL,
+  PRIMARY KEY (session, t)
+);
+CREATE TABLE IF NOT EXISTS shade_fixes (
+  session     TEXT NOT NULL,
+  t           INTEGER NOT NULL,
+  lat         REAL NOT NULL,
+  lng         REAL NOT NULL,
+  acc         REAL,
+  speed       REAL,
+  bearing     REAL,
+  PRIMARY KEY (session, t)
+);
+-- Stretches the owner erased from a recording (tank and hopper fills,
+-- parking, the truck), from t0 to t1 inclusive.
+CREATE TABLE IF NOT EXISTS shade_cuts (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  session     TEXT NOT NULL,
+  t0          INTEGER NOT NULL,
+  t1          INTEGER NOT NULL,
+  at          TEXT
+);
+-- The secret in the address Sensor Logger posts to: an app cannot sign in,
+-- so the address itself is the credential. One at a time; a new one
+-- replaces the old.
+CREATE TABLE IF NOT EXISTS shade_push_keys (
+  key         TEXT PRIMARY KEY,
+  created_at  TEXT,
+  created_by  TEXT
+);

@@ -28,6 +28,8 @@
 import { rankClouds, wesmUrl } from '../../public/shade/find.js';
 import { EPT_BASE } from '../../public/shade/names.js';
 import { powerUrl, typicalYear } from '../../public/shade/climate.js';
+import { fromPush, perSecond } from '../../public/shade/truth.js';
+import { currentUser } from './auth.js';
 
 export const FOOTPRINTS = 'https://raw.githubusercontent.com/hobuinc/usgs-lidar/master/boundaries/resources.geojson';
 const CACHE_KEY = 'https://shade.lawnmapper.internal/footprints-v1.json';
@@ -146,7 +148,129 @@ export async function handleShade(request, url, env, origin, ctx, json) {
       return json({ error: 'NASA POWER did not answer', detail: String(e?.message || e) }, 502, origin);
     }
   }
+  if (url.pathname === '/api/shade/readings' || url.pathname.startsWith('/api/shade/readings/')) {
+    return readings(request, url, env, origin, ctx, json);
+  }
   return json({ error: 'Not found' }, 404, origin);
+}
+
+/* ------------------------------------------------------- ground truth
+ *
+ * The owner's light readings from the field (public/shade/truth.js says
+ * what they are and how they are judged). ADMIN ONLY, refused with a 404
+ * like the console's routes; the one exception is the push itself, which
+ * Sensor Logger makes with the secret key in its address.
+ *
+ *   POST /api/shade/readings?key=K   Sensor Logger's push, or an upload
+ *                                    ({ session, lux: [[t, lux]], fix: [[t,
+ *                                    lat, lng, acc, speed, bearing]] }) from
+ *                                    the readings page (signed in, no key)
+ *   GET  /api/shade/readings/key     the push address (made on first ask)
+ *   POST /api/shade/readings/key     a new push address; the old one stops
+ *   GET  /api/shade/readings/sessions  recordings: first and last time, counts
+ *   GET  /api/shade/readings/data?session=&t0=&t1=   fixes, light and cuts
+ *   POST /api/shade/readings/cuts    { session, t0, t1 } erase; { remove: id }
+ */
+
+const READINGS = '/api/shade/readings';
+const isAdmin = async (request, env, ctx) => {
+  const me = await currentUser(request, env, ctx);
+  return Boolean(me && me.role === 'admin');
+};
+const newKey = () => [...crypto.getRandomValues(new Uint8Array(24))].map((b) => b.toString(16).padStart(2, '0')).join('');
+
+async function readings(request, url, env, origin, ctx, json) {
+  const hidden = () => json({ error: 'Not found' }, 404, origin);
+  if (!env.DB) return hidden();
+  const sub = url.pathname.slice(READINGS.length) || '/';
+  const db = env.DB;
+  if (sub === '/' && request.method === 'POST') {
+    const key = url.searchParams.get('key');
+    const ok = key
+      ? Boolean(await db.prepare('SELECT 1 FROM shade_push_keys WHERE key = ?').bind(key).first())
+      : await isAdmin(request, env, ctx);
+    if (!ok) return hidden();
+    let body;
+    try { body = await request.json(); } catch { return json({ error: 'Bad JSON' }, 400, origin); }
+    const got = Array.isArray(body?.payload) ? fromPush(body)
+      : { session: String(body?.session || ''), lux: Array.isArray(body?.lux) ? body.lux : [], fix: Array.isArray(body?.fix) ? body.fix : [] };
+    if (!got.session) return json({ error: 'A session is needed' }, 400, origin);
+    const n = await storeReadings(db, got);
+    return json({ ok: true, ...n }, 200, origin);
+  }
+  if (!(await isAdmin(request, env, ctx))) return hidden();
+  if (sub === '/key') {
+    let row = request.method === 'GET' ? await db.prepare('SELECT key FROM shade_push_keys ORDER BY created_at DESC LIMIT 1').first() : null;
+    if (!row) {
+      const me = await currentUser(request, env, ctx);
+      const key = newKey();
+      await db.batch([
+        db.prepare('DELETE FROM shade_push_keys'),
+        db.prepare('INSERT INTO shade_push_keys (key, created_at, created_by) VALUES (?, ?, ?)').bind(key, new Date().toISOString(), me?.email || null),
+      ]);
+      row = { key };
+    }
+    return json({ key: row.key, url: `${url.origin}${READINGS}?key=${row.key}` }, 200, origin);
+  }
+  if (sub === '/sessions' && request.method === 'GET') {
+    const { results } = await db.prepare(
+      `SELECT f.session, MIN(f.t) AS first, MAX(f.t) AS last, COUNT(*) AS fixes,
+              (SELECT COUNT(*) FROM shade_lux l WHERE l.session = f.session) AS lux
+       FROM shade_fixes f GROUP BY f.session ORDER BY last DESC LIMIT 200`).all();
+    return json({ sessions: results || [] }, 200, origin);
+  }
+  if (sub === '/data' && request.method === 'GET') {
+    const session = url.searchParams.get('session') || '';
+    const t0 = Number(url.searchParams.get('t0')) || 0, t1 = Number(url.searchParams.get('t1')) || 8.64e15;
+    const [fix, lux, cuts] = await Promise.all([
+      db.prepare('SELECT t, lat, lng, acc, speed, bearing FROM shade_fixes WHERE session = ? AND t BETWEEN ? AND ? ORDER BY t').bind(session, t0, t1).all(),
+      db.prepare('SELECT t, lux FROM shade_lux WHERE session = ? AND t BETWEEN ? AND ? ORDER BY t').bind(session, t0 - 2000, t1 + 2000).all(),
+      db.prepare('SELECT id, t0, t1 FROM shade_cuts WHERE session = ? ORDER BY t0').bind(session).all(),
+    ]);
+    return json({
+      session,
+      fix: (fix.results || []).map((r) => [r.t, r.lat, r.lng, r.acc, r.speed, r.bearing]),
+      lux: (lux.results || []).map((r) => [r.t, r.lux]),
+      cuts: (cuts.results || []).map((r) => [r.t0, r.t1, r.id]),
+    }, 200, origin);
+  }
+  if (sub === '/cuts' && request.method === 'POST') {
+    let body;
+    try { body = await request.json(); } catch { return json({ error: 'Bad JSON' }, 400, origin); }
+    if (Number.isFinite(Number(body?.remove))) {
+      await db.prepare('DELETE FROM shade_cuts WHERE id = ?').bind(Number(body.remove)).run();
+      return json({ ok: true }, 200, origin);
+    }
+    const t0 = Number(body?.t0), t1 = Number(body?.t1);
+    if (!body?.session || !Number.isFinite(t0) || !Number.isFinite(t1) || t1 < t0) return json({ error: 'session, t0 and t1 needed' }, 400, origin);
+    const r = await db.prepare('INSERT INTO shade_cuts (session, t0, t1, at) VALUES (?, ?, ?, ?)').bind(String(body.session), t0, t1, new Date().toISOString()).run();
+    return json({ ok: true, id: r.meta?.last_row_id ?? null }, 200, origin);
+  }
+  return hidden();
+}
+
+/**
+ * Light (one mean per second) and fixes, written in batches that stay under
+ * D1's 100 bound values a statement. A repeat of the same second or fix is
+ * ignored, so a push Sensor Logger retries does not double up.
+ */
+export async function storeReadings(db, { session, lux = [], fix = [] }) {
+  const L = perSecond(lux.filter((r) => Array.isArray(r) && Number.isFinite(Number(r[0])) && Number.isFinite(Number(r[1]))).map((r) => [Number(r[0]), Number(r[1])]));
+  const F = fix.filter((r) => Array.isArray(r) && [r[0], r[1], r[2]].every((v) => Number.isFinite(Number(v))));
+  const stmts = [];
+  for (let i = 0; i < L.length; i += 30) {
+    const part = L.slice(i, i + 30);
+    stmts.push(db.prepare(`INSERT OR IGNORE INTO shade_lux (session, t, lux) VALUES ${part.map(() => '(?, ?, ?)').join(', ')}`)
+      .bind(...part.flatMap(([t, l]) => [session, Math.round(t), l])));
+  }
+  const n = (v) => (v === null || v === undefined || !Number.isFinite(Number(v)) ? null : Number(v));
+  for (let i = 0; i < F.length; i += 14) {
+    const part = F.slice(i, i + 14);
+    stmts.push(db.prepare(`INSERT OR IGNORE INTO shade_fixes (session, t, lat, lng, acc, speed, bearing) VALUES ${part.map(() => '(?, ?, ?, ?, ?, ?, ?)').join(', ')}`)
+      .bind(...part.flatMap((r) => [session, Math.round(Number(r[0])), Number(r[1]), Number(r[2]), n(r[3]), n(r[4]), n(r[5])])));
+  }
+  for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
+  return { lux: L.length, fix: F.length };
 }
 
 /** The last ten whole years before `now`. */

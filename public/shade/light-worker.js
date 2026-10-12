@@ -10,6 +10,11 @@
  *   { type: 'now', t }            -> { type: 'now', T (per point), leaves }
  *   { type: 'day', dayMs }        -> { type: 'day', sunHours, beamHours, dli, openDli, leaves, ... }
  *   { type: 'months', year }      -> { type: 'months', rows: [{ month, dli, openDli, sunHours, leaves }] }
+ *   { type: 'samples', pts: [gx, gy, t, ...], heightM }
+ *       -> { type: 'samples', T, elevation, azimuth (per point) }: the share
+ *          of the direct beam reaching a phone `heightM` above the ground at
+ *          each point at its own moment, the canopy as it stood that day
+ *          (the field readings, shade/truth-ui.js)
  *   { type: 'season', climate, grass, threshold, bands }
  *       -> { type: 'season', xy, mean (per point), lawn[365], open[365], season, stats }
  *
@@ -27,7 +32,7 @@ import { buildCanopy, solidAtGrass } from './canopy.js';
 import { seasonalCanopy, muWithLeaves, leafCalendar } from './seasonal.js';
 import { gridOver } from './grid.js';
 import { toMerc } from './ept.js';
-import { samplePoints, skyView, sunlitNow, dayLight, beamShare } from './rays.js';
+import { samplePoints, skyView, sunlitNow, dayLight, beamShare, transmittance, groundAt } from './rays.js';
 import { sunPath, sunAt, solarNoon } from './sun.js';
 import { growingSeason, growthPotential, dliOn, PAR_MOL_PER_MJ } from './climate.js';
 import { rasterizePolygon } from '../lib/mask.js';
@@ -94,6 +99,21 @@ self.onmessage = (ev) => {
       const dir = [Math.sin(s.azimuth * Math.PI / 180) * ce, Math.cos(s.azimuth * Math.PI / 180) * ce, Math.sin(s.elevation * Math.PI / 180)];
       const T = s.elevation > 0 ? sunlitNow(modelAt(f), S.fine.xy, dir) : new Float32Array(S.fine.cells.length);
       self.postMessage({ type: 'now', T, leaves: f, elevation: s.elevation, azimuth: s.azimuth, xy: S.fine.xy, w: S.grid.w, h: S.grid.h, id: m.id }, [T.buffer]);
+    } else if (m.type === 'samples') {
+      const n = m.pts.length / 3;
+      const T = new Float32Array(n), elevation = new Float32Array(n), azimuth = new Float32Array(n);
+      const R = Math.PI / 180;
+      for (let i = 0; i < n; i++) {
+        const gx = m.pts[3 * i], gy = m.pts[3 * i + 1], t = m.pts[3 * i + 2];
+        const s = sunAt(S.m.lat, S.m.lng, t);
+        elevation[i] = s.elevation; azimuth[i] = s.azimuth;
+        if (s.elevation <= 0) continue;
+        const model = modelAt(leavesOn(dayOfYear(t)));
+        const ce = Math.cos(s.elevation * R);
+        const dir = [Math.sin(s.azimuth * R) * ce, Math.cos(s.azimuth * R) * ce, Math.sin(s.elevation * R)];
+        T[i] = transmittance(model, gx, gy, groundAt(model, gx, gy) + (m.heightM ?? 1), dir);
+      }
+      self.postMessage({ type: 'samples', T, elevation, azimuth, id: m.id }, [T.buffer, elevation.buffer, azimuth.buffer]);
     } else if (m.type === 'day') {
       const f = leavesOn(dayOfYear(m.dayMs));
       const path = sunPath(S.m.lat, S.m.lng, m.dayMs, 10);

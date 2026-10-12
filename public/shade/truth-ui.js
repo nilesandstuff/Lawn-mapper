@@ -1,0 +1,145 @@
+/**
+ * One visit's field readings on the shade map (/shade.html?truth=session|t0|t1,
+ * admin only): the track drawn over the property, each reading colored by
+ * whether the model and the phone agree on sun or shade at that spot and
+ * minute, the score, and an eraser for stretches that do not count (tank
+ * and hopper fills, parking, the truck). The judging is in truth.js.
+ */
+
+import { joinTrack, usable, sunOrShade, operatorShadow, score } from './truth.js';
+
+const $ = (s) => document.querySelector(s);
+const MIN_ELEVATION = 25; // the phone, flat, barely sees a lower sun (truth.js)
+const COLORS = { sunSun: '#f8c931', shadeShade: '#3b4cc0', sunShade: '#e53935', shadeSun: '#ff9800', out: '#9e9e9e' };
+
+async function getJson(url, init) {
+  const res = await fetch(url, { credentials: 'same-origin', ...init });
+  if (!res.ok) throw new Error(`${res.status}`);
+  return res.json();
+}
+
+export async function startTruth({ map, sun, spec, bounds = null }) {
+  const [session, a, b] = String(spec).split('|');
+  const t0 = Number(a), t1 = Number(b);
+  const box = $('#truth');
+  box.hidden = false;
+  const say = (html) => { $('#truth-summary').innerHTML = html; };
+  let me = null;
+  try { me = (await getJson('/api/auth/me')).user; } catch { /* signed out */ }
+  if (!me?.admin) { say('<span class="bad">Field readings are for admins; sign in as one.</span>'); return null; }
+  sun.showDay((t0 + t1) / 2);
+
+  const st = { samples: [], keep: [], cuts: [], undo: [], erasing: false };
+
+  async function load() {
+    say('Reading the visit…');
+    const d = await getJson(`/api/shade/readings/data?session=${encodeURIComponent(session)}&t0=${t0}&t1=${t1}`);
+    st.cuts = d.cuts;
+    const u = usable(joinTrack(d.fix, d.lux, { cuts: d.cuts.map(([x, y]) => [x, y]) }));
+    say(`Asking the model about ${u.length} readings…`);
+    const m = await sun.samples(u.map((s) => ({ lng: s.lng, lat: s.lat, t: s.t })), 1);
+    const why = { low: 0, behind: 0 };
+    const keep = u.map((s, i) => {
+      if (m.elevation[i] < MIN_ELEVATION) { why.low++; return false; }
+      if (operatorShadow(s.heading, m.azimuth[i])) { why.behind++; return false; }
+      return true;
+    });
+    const kept = u.filter((_, i) => keep[i]);
+    const so = sunOrShade(kept.map((s) => s.lux));
+    const sunMeasured = new Array(u.length).fill(false);
+    let j = 0;
+    u.forEach((_, i) => { if (keep[i]) sunMeasured[i] = so.sun[j++]; });
+    const sc = score(sunMeasured, Array.from(m.T), so.clear ? keep : keep.map(() => false));
+    st.samples = u.map((s, i) => ({ ...s, T: m.T[i], keep: keep[i], sun: sunMeasured[i] }));
+    draw();
+    if (!st.fitted && u.length) {
+      st.fitted = true;
+      /* The track and the lot together, seen from straight above. */
+      const lngs = [...u.map((s) => s.lng), ...(bounds ? [bounds[0], bounds[2]] : [])];
+      const lats = [...u.map((s) => s.lat), ...(bounds ? [bounds[1], bounds[3]] : [])];
+      map.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]], { padding: 24, pitch: 0, bearing: 0, duration: 0 });
+    }
+    const pct = (x) => `${Math.round(100 * x)}%`;
+    const head = !so.clear
+      ? `<p class="warn">No clear sun on this visit: its light does not split into sun and shade (bright ${Math.round(so.sunLux || 0).toLocaleString()} lux, ${so.contrast ? so.contrast.toFixed(1) : '?'}× the dim). Cloudy, or no shade crossed. Not scored.</p>`
+      : `<p><b>${pct(sc.agree)}</b> of ${sc.n} readings agree on sun or shade.</p>
+         <table>
+           <tr><td><i class="sw" style="background:${COLORS.sunSun}"></i>Both sun</td><td>${sc.sunSun}</td></tr>
+           <tr><td><i class="sw" style="background:${COLORS.shadeShade}"></i>Both shade</td><td>${sc.shadeShade}</td></tr>
+           <tr><td><i class="sw" style="background:${COLORS.sunShade}"></i>Model sun, phone shade (model too bright)</td><td>${sc.sunShade}</td></tr>
+           <tr><td><i class="sw" style="background:${COLORS.shadeSun}"></i>Model shade, phone sun (model too dark)</td><td>${sc.shadeSun}</td></tr>
+         </table>
+         <p class="dim">Phone: sun about ${Math.round(so.sunLux).toLocaleString()} lux, shade cut at ${Math.round(so.cut).toLocaleString()} (${so.contrast.toFixed(0)}× apart). Model: sun where at least half the direct beam reaches 1 m up, with the trees as they stood that day.</p>`;
+    say(`${head}<p class="dim"><i class="sw" style="background:${COLORS.out}"></i>Left out: ${why.low} with the sun under ${MIN_ELEVATION}°, ${why.behind} with the sun behind you (your shadow), ${st.cuts.length} erased stretch${st.cuts.length === 1 ? '' : 'es'}.</p>`);
+  }
+
+  function draw() {
+    const fc = {
+      type: 'FeatureCollection',
+      features: st.samples.map((s) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [s.lng, s.lat] },
+        properties: { c: !s.keep ? COLORS.out : s.T >= 0.5 ? (s.sun ? COLORS.sunSun : COLORS.sunShade) : (s.sun ? COLORS.shadeSun : COLORS.shadeShade) },
+      })),
+    };
+    if (map.getSource('truth')) map.getSource('truth').setData(fc);
+    else {
+      map.addSource('truth', { type: 'geojson', data: fc });
+      map.addLayer({ id: 'truth', type: 'circle', source: 'truth', paint: { 'circle-radius': 3.5, 'circle-color': ['get', 'c'], 'circle-stroke-color': '#111', 'circle-stroke-width': 0.6 } });
+    }
+  }
+
+  /* The eraser: drag across the track; every reading the finger passes within
+     ~20 px of is cut, as runs of consecutive readings (one cut each). */
+  let screen = [], touched = new Set();
+  const start = (e) => {
+    if (!st.erasing) return;
+    e.preventDefault?.();
+    screen = st.samples.map((s) => map.project([s.lng, s.lat]));
+    touched = new Set();
+    mark(e.point);
+  };
+  const mark = (p) => { if (!p) return; screen.forEach((q, i) => { if (Math.hypot(q.x - p.x, q.y - p.y) < 20) touched.add(i); }); };
+  const move = (e) => { if (st.erasing && screen.length) mark(e.point); };
+  const end = async () => {
+    if (!st.erasing || !screen.length) return;
+    screen = [];
+    const idx = [...touched].sort((x, y) => x - y);
+    if (!idx.length) return;
+    const runs = [];
+    for (const i of idx) {
+      const r = runs[runs.length - 1];
+      if (r && i === r[1] + 1) r[1] = i; else runs.push([i, i]);
+    }
+    const made = [];
+    for (const [i0, i1] of runs) {
+      const ta = st.samples[i0].t - 500, tb = st.samples[i1].t + 500;
+      const r = await getJson('/api/shade/readings/cuts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session, t0: ta, t1: tb }) });
+      if (r.id != null) made.push(r.id);
+    }
+    st.undo.push(made);
+    $('#truth-undo').disabled = false;
+    await load();
+  };
+  const setErasing = (on) => {
+    st.erasing = on;
+    $('#truth-erase').classList.toggle('on', on);
+    $('#truth-erase').textContent = on ? 'Erasing: drag across the track (tap again to stop)' : 'Eraser';
+    map.getCanvas().style.cursor = on ? 'crosshair' : '';
+    map.getCanvas().dataset.erasing = on ? '1' : ''; // the shade view's pin waits (sun-ui.js)
+    for (const h of [map.dragPan, map.touchZoomRotate, map.dragRotate]) on ? h.disable() : h.enable();
+  };
+  map.on('mousedown', start); map.on('touchstart', start);
+  map.on('mousemove', move); map.on('touchmove', move);
+  map.on('mouseup', end); map.on('touchend', end);
+  $('#truth-erase').onclick = () => setErasing(!st.erasing);
+  $('#truth-undo').disabled = true;
+  $('#truth-undo').onclick = async () => {
+    const ids = st.undo.pop() || [];
+    for (const id of ids) await getJson('/api/shade/readings/cuts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ remove: id }) });
+    $('#truth-undo').disabled = !st.undo.length;
+    await load();
+  };
+  await load().catch((e) => say(`<span class="bad">The readings could not be compared: ${e.message}</span>`));
+  return { reload: load };
+}

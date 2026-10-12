@@ -210,7 +210,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     $('#sun-box-stats').innerHTML = '';
   }
   const onClick = (e) => {
-    if (st.boxing || Date.now() - (st.boxEnded || 0) < 400) return;
+    if (st.boxing || Date.now() - (st.boxEnded || 0) < 400 || map.getCanvas().dataset.erasing === '1') return;
     if (!st.pin) {
       const popup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, offset: 28, className: 'light-pin' });
       st.pin = { marker: new mapboxgl.Marker({ color: '#ffffff' }).setLngLat(e.lngLat).setPopup(popup).addTo(map), popup };
@@ -429,13 +429,14 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     st.worker.onmessage = (ev) => {
       const m = ev.data;
       if (m.type === 'error') status(`The light calculation stopped: ${m.message}`);
-      else if (m.type === 'built') { st.canopy = m.canopy; status(''); st.built = true; st.kinds = m.kinds; st.lawnMask = m.lawnMask || null; $('#t-lawn').hidden = !st.lawnMask; canopyNote(m); if (st.mode === 'trees') draw(); runDay(); st.monthsId = send({ type: 'months', year: new Date(dayMs()).getUTCFullYear() }); runSeason(); }
+      else if (m.type === 'built') { st.readyWaiters.splice(0).forEach((f) => f()); st.canopy = m.canopy; status(''); st.built = true; st.kinds = m.kinds; st.lawnMask = m.lawnMask || null; $('#t-lawn').hidden = !st.lawnMask; canopyNote(m); if (st.mode === 'trees') draw(); runDay(); st.monthsId = send({ type: 'months', year: new Date(dayMs()).getUTCFullYear() }); runSeason(); }
       else if (m.type === 'day' && m.id === st.dayId) { st.day = m; status(''); summary(); if (st.mode !== 'now') draw(); }
       else if (m.type === 'now' && m.id === st.nowId) { st.now = m; if (st.mode === 'now') draw(); }
       else if (m.type === 'progress' && m.what === 'season') $('#season-status').textContent = `Tracing the sun through the year: ${m.done} of ${m.of} dates…`;
       else if (m.type === 'progress') status(`Working out the year: ${m.done} of ${m.of} months…`);
       else if (m.type === 'season' && m.id === st.seasonId) { st.season = m; seasonSummary(); if (st.mode === 'season') draw(); }
       else if (m.type === 'months' && m.id === st.monthsId) { months(m.rows); status(''); }
+      else if (m.type === 'samples' && st.pending.has(m.id)) { st.pending.get(m.id)(m); st.pending.delete(m.id); }
     };
     status('Building the 3D canopy and the sky over every half meter…');
     const pick = ['x', 'y', 'z', 'intensity', 'ret', 'nret', 'cls'];
@@ -487,7 +488,28 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
   $('#sun-canopy').value = 'seasonal';
   $('#sun-canopy').onchange = () => build();
   $('#sun-canopy-note').textContent = '';
+  st.pending = new Map();
+  st.readyWaiters = [];
+  const ready = () => (st.built ? Promise.resolve() : new Promise((r) => st.readyWaiters.push(r)));
   return {
+    /** The share of the direct beam at each { lng, lat, t } for a phone heightM up (the field readings). */
+    async samples(points, heightM = 1) {
+      await ready();
+      const pts = new Float64Array(points.length * 3);
+      points.forEach((p, i) => {
+        const [mx, my] = toMerc([p.lng, p.lat]);
+        pts[3 * i] = (mx - st.grid.x0) / st.grid.cell;
+        pts[3 * i + 1] = (st.grid.y1 - my) / st.grid.cell;
+        pts[3 * i + 2] = p.t;
+      });
+      return new Promise((resolve) => { const id = send({ type: 'samples', pts, heightM }); st.pending.set(id, resolve); });
+    },
+    /** Show a given day (its date in local time). */
+    showDay(ms) {
+      const d = new Date(ms);
+      $('#sun-date').value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      if (st.built) runDay();
+    },
     stop() {
       st.worker?.terminate();
       if (map.getLayer('light')) map.removeLayer('light');
