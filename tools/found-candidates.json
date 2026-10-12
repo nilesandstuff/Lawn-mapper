@@ -1,6 +1,6 @@
 {
   "foundBy": "tools/find-parcels.js",
-  "foundAt": "2026-10-11",
+  "foundAt": "2026-10-12",
   "note": "Candidates only, from parcel_gaps. Nothing here is coverage until verify-counties.js says so.",
   "candidates": [
     {
@@ -270,6 +270,44 @@
           "fields": {
             "pin": "PARCELADDR",
             "address": "PARCELADDR"
+          }
+        }
+      ]
+    },
+    {
+      "key": "sc-greenville",
+      "name": "Greenville County, SC",
+      "fips": "45045",
+      "service": "https://citygis.greenvillesc.gov/arcgis/rest/services/AddressSearch/Property/MapServer",
+      "layer": 3,
+      "layerName": "Parcels with Ownership",
+      "fields": {
+        "pin": "PIN",
+        "address": null
+      },
+      "fallbacks": [
+        {
+          "service": "https://services3.arcgis.com/YQLyddqtM8cTAr6Y/arcgis/rest/services/GreenvilleCountyBaseData/FeatureServer",
+          "layer": 2,
+          "fields": {
+            "pin": "PIN",
+            "address": null
+          }
+        },
+        {
+          "service": "https://services.arcgis.com/zTM0LZtJeE1HzO09/arcgis/rest/services/kx_greenville_county_sc_tax_parcel_SHP/FeatureServer",
+          "layer": 0,
+          "fields": {
+            "pin": "PIN",
+            "address": null
+          }
+        },
+        {
+          "service": "https://services3.arcgis.com/bjOyhhlaaCIcmO3H/arcgis/rest/services/TaxParcel02172021_gdb/FeatureServer",
+          "layer": 0,
+          "fields": {
+            "pin": "PIN",
+            "address": null
           }
         }
       ]
