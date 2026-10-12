@@ -5,7 +5,7 @@
  * Admin only: the routes refuse everybody else with a 404.
  */
 
-import { unzipText, fromExport, posePerSecond, joinTrack, splitVisits, usable, sunOrShade } from './truth.js';
+import { unzipText, fromExport, posePerSecond, joinTrack, splitVisits, usable, sunOrShade, compassOffset } from './truth.js';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -89,6 +89,9 @@ async function showVisits(session, box) {
   const fixAt = d.fix.map((f) => f[0]);
   const visits = splitVisits(track).map((v) => ({ v, u: usable(v) })).filter(({ u }) => u.length >= 20);
   if (!visits.length) { box.innerHTML = '<p class="dim">No visit with enough usable readings (moving, under sprayer speed, a good fix, the phone flat).</p>'; return; }
+  /* How the phone sits on the hopper, from the whole day's straight runs:
+     it stays taped all day, so one fit serves every visit. */
+  const mount = compassOffset(visits.flatMap(({ u }) => u));
   box.replaceChildren(...visits.map(({ v, u }, i) => {
     const so = sunOrShade(u.map((s) => s.lux));
     const lat = u.reduce((a, s) => a + s.lat, 0) / u.length, lng = u.reduce((a, s) => a + s.lng, 0) / u.length;
@@ -101,7 +104,8 @@ async function showVisits(session, box) {
     row.className = 'visit';
     const sky = so.clear ? `<span class="ok">sun and shade ${Math.round(so.contrast)}× apart</span>` : '<span class="warn">no clear sun (cloudy?)</span>';
     const gap = cover < 0.8 ? `<br><span class="warn">The light sensor slept through ${Math.round(100 * (1 - cover))}% of this visit (see step 1, the battery settings).</span>` : '';
-    const href = `/shade.html?at=${lat.toFixed(6)},${lng.toFixed(6)}&truth=${encodeURIComponent(`${session}|${t0}|${t1}`)}`;
+    const spec = [session, t0, t1, ...(mount ? [Math.round(mount.offset), mount.n, Math.round(mount.spread)] : [])].join('|');
+    const href = `/shade.html?at=${lat.toFixed(6)},${lng.toFixed(6)}&truth=${encodeURIComponent(spec)}`;
     row.innerHTML = `<div><b>Visit ${i + 1}</b> <span class="dim">${esc(clock(t0))}–${esc(clock(t1))}, ${u.length} usable readings</span><br>${sky}${gap}</div>
       <a class="button" href="${href}">Check on the shade map</a>`;
     return row;

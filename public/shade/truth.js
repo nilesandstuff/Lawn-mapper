@@ -31,10 +31,13 @@
  *     screen went off and came back for a minute at a time; GPS ran on.
  *     That is the phone's battery management, fixed in its settings
  *     (shade-log.html says how); here a gap only means fewer readings.
- *   - The phone's compass, taped to the hopper, read a steady ~110 degrees
- *     off the direction of travel: a zero-turn spins in place where GPS sees
- *     no turn, so the operator-shadow check uses the compass, offset by the
- *     visit's own straight runs (compassOffset), when there are enough.
+ *   - The phone's heading is absolute already (Sensor Logger's Orientation
+ *     on Android fuses the magnetometer; yaw is from magnetic north). Taped
+ *     to the hopper it read a steady ~110 degrees off the direction of
+ *     travel: that is how the phone sat, not compass error. A zero-turn
+ *     spins in place where GPS sees no turn, so the operator-shadow check
+ *     uses the heading turned by that mounting angle, fitted once a day from
+ *     the straight runs (compassOffset), the phone staying taped all day.
  */
 
 /* ------------------------------------------------------------ reading */
@@ -360,8 +363,8 @@ export function sunOffFace(up, elevationDeg, azimuthDeg) {
 }
 
 /**
- * The fixed turn between the phone's compass and the way the machine goes,
- * from the visit's straight runs: readings at more than `minSpeed` m/s whose
+ * How the phone sits on the machine: the fixed turn between the phone's
+ * (absolute) heading and the way the machine goes, from straight runs: readings at more than `minSpeed` m/s whose
  * neighbors within `spanS` seconds hold the same GPS bearing (within
  * `steadyDeg`). Their bearing minus the phone's heading, averaged on the
  * circle: { offset, n, spread (degrees, circular) }, or null when fewer than
