@@ -2,7 +2,7 @@
  * THE PROPERTY AS SOMETHING LIGHT CAN PASS THROUGH (shade map).
  *
  * The lidar becomes a stack of 1 m cubes over the ground. For each cube,
- * how strongly it stops light -- an extinction coefficient mu per metre --
+ * how strongly it stops light -- an extinction coefficient mu per meter --
  * measured from the laser itself:
  *
  *   a pulse that reaches a cube either returns from it or carries on; the
@@ -18,7 +18,7 @@
  * (e.g. Hopkinson & Chasmer 2007; Durrieu et al. 2008). With leaves at
  * random angles ("spherical" leaf angles, G = 0.5) a leaf intercepts the
  * same share of a beam from any direction, so the mu measured by a near-
- * vertical laser serves a slanting sunbeam per metre of path too.
+ * vertical laser serves a slanting sunbeam per meter of path too.
  *
  * A ROOF stops every pulse that reaches it, so its gap is ~0 and it comes
  * out opaque; and since nothing got under it, the walls below it are taken
@@ -30,7 +30,7 @@
  *   - A LEAF-OFF flight (the flight's season comes from WESM) sees bare
  *     branches: broadleaf crowns read far more see-through than in summer.
  *     `opaqueCanopy` treats every crown as solid instead, the other bound.
- *   - At 2-8 pulses a square metre a 1 m column holds only a few pulses, so
+ *   - At 2-8 pulses a square meter a 1 m column holds only a few pulses, so
  *     a column with fewer than `minPulses` borrows the 3 x 3 around it.
  *   - The laser and the photo may be years apart: trees grow and are felled.
  */
@@ -39,7 +39,7 @@ import { cellOf } from './grid.js';
 
 const NOISE = new Set([7, 18]);
 export const GRASS_M = 0.5; // nothing below this over the ground stops light reaching the grass blades' tops
-const P_MIN = 0.01; // a cube can stop at most 99% of light per metre; roofs are several cubes of it
+const P_MIN = 0.01; // a cube can stop at most 99% of light per meter; roofs are several cubes of it
 const MAX_OVER_M = 80; // nothing on a residential lot stands taller
 const SOLID_BELOW = 0.03; // under a layer that let through less than this share of pulses, nothing was seen
 
@@ -48,7 +48,7 @@ const SOLID_BELOW = 0.03; // under a layer that let through less than this share
  * (las.js), with `shift` [dx, dy] in 3857 m applied to every point.
  *
  * Returns { grid, w, h, dz, z0, nz, ground (Float32 per column, absolute m),
- *           mu (Float32 w*h*nz, per metre), top (highest cube with mu > 0, m) }.
+ *           mu (Float32 w*h*nz, per meter), top (highest cube with mu > 0, m) }.
  */
 export function buildCanopy(cols, grid, { shift = null, dz = 1, opaqueCanopy = false, pool = 1, minPulses = 4 } = {}) {
   const { w, h } = grid;
@@ -68,12 +68,12 @@ export function buildCanopy(cols, grid, { shift = null, dz = 1, opaqueCanopy = f
   }
   fillOut(ground, w, h);
   /* Columns with no ground anywhere near (a big roof) took their
-     neighbours' ground from fillOut; if the whole grid had none, use the
+     neighbors' ground from fillOut; if the whole grid had none, use the
      lowest return. */
   for (let k = 0; k < N; k++) if (Number.isNaN(ground[k])) ground[k] = zMin;
 
   /* Returns far above anything that grows (birds, haze, a stray echo) are
-     dropped, or one of them would stretch the model hundreds of metres. */
+     dropped, or one of them would stretch the model hundreds of meters. */
   let zHigh = -Infinity;
   for (let i = 0; i < cols.n; i++) {
     if (NOISE.has(cols.cls[i])) continue;
@@ -101,7 +101,7 @@ export function buildCanopy(cols, grid, { shift = null, dz = 1, opaqueCanopy = f
   }
 
   /* Pool over the columns around one only where it has too few pulses of
-     its own: pooling everywhere would blur every roof edge by a metre and
+     its own: pooling everywhere would blur every roof edge by a meter and
      leak light under the eaves. */
   const pooled = pool > 0 ? boxSum(ret, w, h, nz, pool) : ret;
   const pooledFloor = pool > 0 ? boxSum(floor, w, h, 1, pool) : floor;
@@ -150,7 +150,7 @@ export function buildCanopy(cols, grid, { shift = null, dz = 1, opaqueCanopy = f
   return { grid, w, h, dz, z0, nz, ground, mu, top };
 }
 
-/** Fill NaN cells from their neighbours until none are left (or nothing changes). */
+/** Fill NaN cells from their neighbors until none are left (or nothing changes). */
 function fillOut(a, w, h) {
   for (let round = 0; round < 400; round++) {
     let left = 0;

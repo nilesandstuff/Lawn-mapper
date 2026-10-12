@@ -7,7 +7,7 @@
  * Mapbox custom layer and raw WebGL points -- no 3D library.
  *
  * PRECISION. A Mapbox "mercator coordinate" spans the world in 0..1, and a
- * 32-bit float there resolves about a metre. So positions are uploaded
+ * 32-bit float there resolves about a meter. So positions are uploaded
  * RELATIVE to an origin at the property, and the origin is folded into the
  * matrix in 64-bit JavaScript every frame.
  *
@@ -17,11 +17,11 @@
 
 const WORLD = 2 * Math.PI * 6378137;
 
-/** EPSG:3857 metres -> Mapbox mercator units (0..1, y down). */
+/** EPSG:3857 meters -> Mapbox mercator units (0..1, y down). */
 export const mercUnits = (x, y) => [(x + WORLD / 2) / WORLD, (WORLD / 2 - y) / WORLD];
 
 /**
- * What colour a point is drawn, by what it is: RGB, opacity, and size
+ * What color a point is drawn, by what it is: RGB, opacity, and size
  * relative to the base. Ground is small and faint so the photo shows
  * through it -- drawn solid, at QL2 density it is a carpet over the lawn.
  */
@@ -60,7 +60,7 @@ export function pointLayer(id, cols, { heightOver, shift = [0, 0], baseZ, lat, s
   const ox = cols.n ? cols.x[0] + shift[0] : 0, oy = cols.n ? cols.y[0] + shift[1] : 0;
   const [mx, my] = mercUnits(ox, oy);
   const unitsPerMetre = 1 / (WORLD * Math.cos(lat * Math.PI / 180));
-  const perMerc = 1 / WORLD; // 3857 metres -> mercator units
+  const perMerc = 1 / WORLD; // 3857 meters -> mercator units
   const pos = new Float32Array(n * 3), col = new Float32Array(n * 5);
   for (let i = 0; i < n; i++) {
     pos[i * 3] = (cols.x[i] + shift[0] - ox) * perMerc;

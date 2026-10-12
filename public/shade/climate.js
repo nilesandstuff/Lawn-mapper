@@ -20,7 +20,7 @@
  *
  *   DLI = 2.04 umol/J x [ beam MJ x beamShare + diffuse MJ x skyView ]
  *
- * (assuming clouds come and go without favouring morning or afternoon).
+ * (assuming clouds come and go without favoring morning or afternoon).
  *
  * THE GROWING SEASON, ESTIMATED until Turf Tools' numbers arrive: growth
  * potential (PACE Turf; Gelernter & Stowell 2005), a bell curve of daily

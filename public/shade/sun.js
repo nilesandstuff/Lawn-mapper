@@ -9,7 +9,7 @@
  * Strength (owner, 2026-10-10: "the difference in actual strength of light
  * based on latitude and elevation"). Latitude enters through the sun's
  * angle: lower sun, longer path through the air, and less energy per square
- * metre of level ground. Elevation enters through the air itself: less of
+ * meter of level ground. Elevation enters through the air itself: less of
  * it above a high lawn, so less is scattered away. The clear-sky model is
  * the Meinel/Laue form used in solar engineering:
  *
@@ -98,7 +98,7 @@ export function solarNoon(lng, dayMs) {
 
 /**
  * The sun's positions through one day, every `stepMin` minutes while it is
- * up, centred on solar noon: [{ t, elevation, azimuth, dir: [east, north, up] }].
+ * up, centered on solar noon: [{ t, elevation, azimuth, dir: [east, north, up] }].
  * `dayMs` is any time on the wanted date at the place (noon local is safest).
  */
 export function sunPath(lat, lng, dayMs, stepMin = 10) {

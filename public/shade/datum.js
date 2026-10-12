@@ -9,11 +9,11 @@
  * fixed to the North American plate -- and ITRF/WGS84, the global frame the
  * web map is in. The octrees on AWS are labelled EPSG:3857, but their
  * reprojection treated NAD83 latitudes and longitudes as WGS84 ones (the
- * usual "null" transform, good to a metre or two and no better).
+ * usual "null" transform, good to a meter or two and no better).
  *
  * So the cloud is corrected by geodesy, not by fitting: the published
  * 14-parameter transformation from ITRF2008 to NAD83(2011) (Pearson & Snay,
- * GPS Solutions 17, 2013, Table 7; ITRF2008 = WGS84(G1762) to a centimetre
+ * GPS Solutions 17, 2013, Table 7; ITRF2008 = WGS84(G1762) to a centimeter
  * or two), at the epoch the lidar was flown. On the four lots it predicts:
  *
  *                 predicted move       measured by matching
@@ -55,7 +55,7 @@ export function toGeo([x, y, z]) {
   return [la * 180 / Math.PI, lo * 180 / Math.PI];
 }
 
-/** ITRF2008 earth-centred coordinates -> NAD83(2011), at a decimal-year epoch. */
+/** ITRF2008 earth-centered coordinates -> NAD83(2011), at a decimal-year epoch. */
 export function itrfToNad83([x, y, z], epoch) {
   const dt = epoch - 1997;
   const T = T0.map((t, i) => t + TD[i] * dt);
@@ -69,7 +69,7 @@ export function itrfToNad83([x, y, z], epoch) {
 }
 
 /**
- * How far, in real metres east and north, to move a point cloud whose NAD83
+ * How far, in real meters east and north, to move a point cloud whose NAD83
  * coordinates were read as WGS84, to put it on WGS84's ground, near
  * (lat, lng), for a flight at `epoch` (a decimal year; the middle of the
  * collection when known).

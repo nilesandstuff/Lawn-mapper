@@ -89,7 +89,7 @@ function lasFile(format, recordLength, points, { scale = 0.01, offset = [100, 20
   check('a node box halves per depth', JSON.stringify(nodeBox(b, '1-1-0-0')) === JSON.stringify([50, 0, 100, 50]));
   const [lng, lat] = fromMerc(toMerc([-85.86, 42.87]));
   check('3857 there and back', near(lng, -85.86, 1e-9) && near(lat, 42.87, 1e-9));
-  check('a web-mercator metre is cos(lat) of a real one', near(mercScale(60), 0.5, 1e-12));
+  check('a web-mercator meter is cos(lat) of a real one', near(mercScale(60), 0.5, 1e-12));
 
   /* A hierarchy whose depth-2 subtree lives in its own file (Entwine's -1). */
   const files = {
@@ -207,7 +207,7 @@ function lasFile(format, recordLength, points, { scale = 0.01, offset = [100, 20
   check('rasterise: noise (class 7) is ignored', ras.n[4 * 10 + 5] === 0);
   check('rasterise: a shift moves points between cells', rasterise(cols, gg, { shift: [1, 0] }).n[1] === 3);
   const filled = fillGaps(Float32Array.from([1, NaN, 3, NaN, NaN, NaN, 7, NaN, 9]), 3, 3, 1);
-  check('fillGaps fills from neighbours', Number.isFinite(filled[4]) && Number.isFinite(filled[1]));
+  check('fillGaps fills from neighbors', Number.isFinite(filled[4]) && Number.isFinite(filled[1]));
   check('resample keeps a constant constant', resample(new Float32Array(16).fill(5), 4, 4, 9, 9).every((v) => near(v, 5, 1e-6)));
   const m = new Uint8Array(25); m[12] = 1;
   check('dilate grows a cell into a cross', dilate(m, 5, 5, 1).reduce((a, b) => a + b, 0) === 5);
@@ -216,17 +216,17 @@ function lasFile(format, recordLength, points, { scale = 0.01, offset = [100, 20
 /* ------------------------------------------------------------ align */
 
 {
-  /* A made-up neighbourhood: roads, drives and paths as bright bands on
+  /* A made-up neighborhood: roads, drives and paths as bright bands on
      grass, curving and straight in every quarter, and two "houses" with no
      ground under them. The photo is that scene; the lidar is the same scene
-     sampled at 4 points a square metre, offset by a known amount. Lining up
+     sampled at 4 points a square meter, offset by a known amount. Lining up
      must recover the offset and say it is sure. */
   const frame = { lng: -85.86, lat: 42.87, zoom: 19, size: 640, height: 640 };
   const k = mercScale(frame.lat);
   const g = gridForFrame(frame, 1, 1);
   const [bx0, by0, bx1, by1] = gridBox(g);
-  const W = (bx1 - bx0) * k; // real metres across
-  const bright = (ex, ny) => { // real metres east / north of the frame's SW corner
+  const W = (bx1 - bx0) * k; // real meters across
+  const bright = (ex, ny) => { // real meters east / north of the frame's SW corner
     const d1 = Math.abs(Math.hypot(ex - 10, ny - 5) - 40); // a curving road
     const d2 = Math.abs(ny - 0.35 * ex - 45); // a straight one
     const d3 = Math.abs(ex - 55); // a drive
@@ -297,7 +297,7 @@ function lasFile(format, recordLength, points, { scale = 0.01, offset = [100, 20
     && tracedOn({ provider: 'county' }).provider === 'mapbox' && tracedOn(null).provider === 'mapbox');
 
   /* lineUpAt must move a point exactly as the editor's movedCorners moves
-     the photo's corners (scale about the saved frame's centre). */
+     the photo's corners (scale about the saved frame's center). */
   const corners = frameCorners(frame);
   const moved = movedCorners(corners, 0.4, 0.11, 1.004, [frame.lng, frame.lat]);
   let worst = 0;
@@ -307,8 +307,8 @@ function lasFile(format, recordLength, points, { scale = 0.01, offset = [100, 20
     const kk = mercScale(c[1]);
     worst = Math.max(worst, Math.hypot((x1 - x0) * kk - m.east, (y1 - y0) * kk - m.north));
   });
-  check('lineUpAt agrees with the editor\'s movedCorners at every corner, to a millimetre', worst < 0.001, `worst ${worst.toFixed(5)} m`);
-  check('at the saved frame centre the line-up is just its shift', near(lineUpAt(t, [frame.lng, frame.lat]).east, 0.4, 1e-9));
+  check('lineUpAt agrees with the editor\'s movedCorners at every corner, to a millimeter', worst < 0.001, `worst ${worst.toFixed(5)} m`);
+  check('at the saved frame center the line-up is just its shift', near(lineUpAt(t, [frame.lng, frame.lat]).east, 0.4, 1e-9));
 }
 
 /* -------------------------------------------------------------- sun */
@@ -339,7 +339,7 @@ function lasFile(format, recordLength, points, { scale = 0.01, offset = [100, 20
 check('about-local time: Milwaukee in October is UTC-5 (daylight time), in December UTC-6',
   aboutLocal(Date.UTC(2026, 9, 11, 12, 3), -87.95) === '7:03 am' && aboutLocal(Date.UTC(2026, 11, 21, 22, 15), -87.95) === '4:15 pm',
   `${aboutLocal(Date.UTC(2026, 9, 11, 12, 3), -87.95)} ${aboutLocal(Date.UTC(2026, 11, 21, 22, 15), -87.95)}`);
-check('the colour ramp runs dark to bright and clamps', ramp(-1).join() === '0,0,4' && ramp(2).join() === '252,255,164');
+check('the color ramp runs dark to bright and clamps', ramp(-1).join() === '0,0,4' && ramp(2).join() === '252,255,164');
 {
   const lum = ([r, g, b]) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
   let up = true;
@@ -349,18 +349,18 @@ check('the colour ramp runs dark to bright and clamps', ramp(-1).join() === '0,0
     niceStep(51) === 10 && niceStep(15.2) === 2.5 && Math.abs(niceStep(0.8) - 0.2) < 1e-9, `${niceStep(51)} ${niceStep(15.2)} ${niceStep(0.8)}`);
   const b = bandsFor(51);
   check('bands run 0 to 60 in six, the ramp\'s ends at the ends, and a value finds its band',
-    b.n === 6 && b.edges[6] === 60 && b.colours[0].join() === ramp(0).join() && b.colours[5].join() === ramp(1).join()
+    b.n === 6 && b.edges[6] === 60 && b.colors[0].join() === ramp(0).join() && b.colors[5].join() === ramp(1).join()
     && b.of(0) === 0 && b.of(9.99) === 0 && b.of(10) === 1 && b.of(59) === 5 && b.of(80) === 5 && b.of(-1) === 0);
   const hb = bandsFor(15.3, { step: 1 });
   check('hours of sun go by the hour: 16 bands to 16 h, the ramp from end to end',
-    hb.n === 16 && hb.edges[16] === 16 && hb.of(2.99) === 2 && hb.of(3) === 3 && hb.colours[15].join() === ramp(1).join());
+    hb.n === 16 && hb.edges[16] === 16 && hb.of(2.99) === 2 && hb.of(3) === 3 && hb.colors[15].join() === ramp(1).join());
   /* 4 x 3 raster: a building (empty) in one corner. */
   const r = rasterOf([10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110], [0, 0, 0.5, 0, 1, 0, 1.5, 0, 0, 0.5, 0.5, 0.5, 1, 0.5, 1.5, 0.5, 0, 1, 0.5, 1, 1, 1], 4, 3);
   check('the answers land on their pixels, the rest empty', r[0] === 10 && r[3] === 40 && r[10] === 110 && Number.isNaN(r[11]));
   const sm = smooth(r, 4, 3, 1);
-  check('smoothing averages over the neighbours that have a value, and the empty pixel stays empty',
+  check('smoothing averages over the neighbors that have a value, and the empty pixel stays empty',
     Math.abs(sm[0] - (10 + 20 + 50 + 60) / 4) < 1e-4 && Number.isNaN(sm[11]) && Math.abs(sm[10] - (60 + 70 + 80 + 100 + 110) / 5) < 1e-4, `${sm[0]} ${sm[10]}`);
-  check('a pin on the empty pixel reads its nearest neighbour',
+  check('a pin on the empty pixel reads its nearest neighbor',
     valueAt(r, 4, 3, 3.5, 2.5) === 80 || valueAt(r, 4, 3, 3.5, 2.5) === 110, `${valueAt(r, 4, 3, 3.5, 2.5)}`);
   check('and one far outside reads nothing', Number.isNaN(valueAt(r, 4, 3, 10, 10)));
   const s = boxStats(r, 4, 3, [3.9, 2.9, 1, 1]);
@@ -400,7 +400,7 @@ check('the colour ramp runs dark to bright and clamps', ramp(-1).join() === '0,0
   const cols = makeColumns(pts.length);
   pts.forEach(([e, n, z, c], i) => { cols.x[i] = e / k; cols.y[i] = n / k; cols.z[i] = z; cols.cls[i] = c; cols.ret[i] = 1; cols.nret[i] = 1; });
   const model = buildCanopy(cols, grid);
-  /* A point at (east, north) metres, in grid cells (y runs south). */
+  /* A point at (east, north) meters, in grid cells (y runs south). */
   const P = (e, n) => [e, 60 - n];
   const T = (e, n, dir) => { const [gx, gy] = P(e, n); return transmittance(model, gx, gy, groundAt(model, gx, gy) + 0.1, dir); };
   const s45 = Math.SQRT1_2;
@@ -444,7 +444,7 @@ check('the colour ramp runs dark to bright and clamps', ramp(-1).join() === '0,0
   check('beam share: 1 in the open, less north of the house and under the crown',
     near(bs[0], 1, 0.01) && bs[1] < 0.8 && bs[2] < 0.8, Array.from(bs).map((v) => v.toFixed(2)).join(' '));
   const mask = new Uint8Array(model.w * model.h); mask[0] = 1;
-  check('sample points: sub x sub points per masked cell, at their centres', samplePoints(model, mask, 2).xy.length === 8 && samplePoints(model, mask, 2).xy[0] === 0.25);
+  check('sample points: sub x sub points per masked cell, at their centers', samplePoints(model, mask, 2).xy.length === 8 && samplePoints(model, mask, 2).xy[0] === 0.25);
 }
 
 /* --------------------------------------------------------- seasonal */
@@ -503,7 +503,7 @@ check('the colour ramp runs dark to bright and clamps', ramp(-1).join() === '0,0
       if (tangle && rnd2() < 0.3) { add(e, n, 106 + rnd2() * 8, 1, 1, 1); continue; }
       if (ever || bare) {
         const lo = ever ? 104 : 106, stop = ever ? 0.6 : 0.08;
-        /* The evergreen is a cone: its top falls 1.2 m a metre from the tip. */
+        /* The evergreen is a cone: its top falls 1.2 m a meter from the tip. */
         const span = ever ? 8 - 1.2 * Math.hypot(e - 15, n - 15) : 8;
         if (rnd() < stop) { add(e, n, lo + rnd() * span, 1, 1, 1); continue; }
         if (rnd() < 0.5) { add(e, n, lo + rnd() * span, 1, 1, 2); add(e, n, 100, 2, 2, 2); continue; }
@@ -520,7 +520,7 @@ check('the colour ramp runs dark to bright and clamps', ramp(-1).join() === '0,0
   check('seasons: a crown that stopped most pulses in winter reads evergreen, one that let them through deciduous, the roof a roof',
     s.kind[at(15, 15)] === 2 && s.kind[at(45, 15)] === 3 && s.kind[at(35, 45)] === 1 && s.kind[at(5, 50)] === 0,
     `${s.kind[at(15, 15)]} ${s.kind[at(45, 15)]} ${s.kind[at(35, 45)]}`);
-  /* Over each crown's columns (one metre holds only 16 pulses): the share
+  /* Over each crown's columns (one meter holds only 16 pulses): the share
      called evergreen, and the median overhead sun through it as measured. */
   const crown = (ce, cn) => {
     const ts = [];

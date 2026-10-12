@@ -29,11 +29,11 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 
 /* The light ramp: dark and cool in shade to bright and warm in sun (readout.js). */
 export const ramp = heat;
-const ALPHA = 215; // solid enough for the colours, thin enough for the ground under the darkest shade
+const ALPHA = 215; // solid enough for the colors, thin enough for the ground under the darkest shade
  /* Lawn and open ground in the year chart: categorical slots 1 and 2 of the
     dataviz reference palette, dark steps, validated on this page's #161616. */
 const LAWN = '#3987e5', OPEN = '#d95926';
-/* Tree kinds on the map: aqua and yellow slots of the same palette, and grey for buildings. */
+/* Tree kinds on the map: aqua and yellow slots of the same palette, and gray for buildings. */
 const KIND_RGBA = { 1: [140, 140, 140, 200], 2: [25, 158, 112, 210], 3: [201, 133, 0, 210] };
 const KIND_NAME = { 0: 'open ground', 1: 'a building', 2: 'evergreen', 3: 'deciduous' };
 
@@ -46,7 +46,7 @@ export const BANDS = {
 };
 
 /* A stepped legend bar: one hard-edged block per band. */
-const bandsCss = (b) => `linear-gradient(90deg, ${b.colours.map((c, i) => `rgb(${c.join(',')}) ${((100 * i) / b.n).toFixed(2)}% ${((100 * (i + 1)) / b.n).toFixed(2)}%`).join(', ')})`;
+const bandsCss = (b) => `linear-gradient(90deg, ${b.colors.map((c, i) => `rgb(${c.join(',')}) ${((100 * i) / b.n).toFixed(2)}% ${((100 * (i + 1)) / b.n).toFixed(2)}%`).join(', ')})`;
 const fmt = (v, step) => (Number.isInteger(step) ? String(Math.round(v)) : v.toFixed(1));
 
 /**
@@ -93,18 +93,24 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
   /* Paints the answers at 0.5 m and keeps them (st.shown) for the pin and
      the box: smoothed for the light views, as they are for the shadows at a
      moment and the trees. */
-  function paint(values, xy, colour, { span = 1, smoothed = false, read } = {}) {
+  /* Lawn only (owner, 2026-10-12; on by default when a lawn is traced): the
+     light views keep only the pixels whose 1 m cell is inside a traced lawn,
+     for the colors, the pin and the box alike. The trees are shown
+     everywhere. */
+  const lawnOnly = (read) => st.lawnOnly && st.lawnMask && read && !read.kind;
+  function paint(values, xy, color, { span = 1, smoothed = false, read } = {}) {
     const W = st.grid.w * 2, H = st.grid.h * 2;
     let r = rasterOf(values, xy, W, H, { span });
     if (smoothed) r = smooth(r, W, H);
-    st.shown = { r, W, H, read };
+    if (lawnOnly(read)) for (let k = 0; k < r.length; k++) if (!st.lawnMask[((k / W / 2) | 0) * st.grid.w + ((k % W) >> 1)]) r[k] = NaN;
+    st.shown = { r, W, H, read, lawn: lawnOnly(read) };
     const c = document.createElement('canvas');
     c.width = W; c.height = H;
     const g = c.getContext('2d');
     const img = g.createImageData(W, H);
     for (let k = 0; k < r.length; k++) {
       if (Number.isNaN(r[k])) continue;
-      const rgba = colour(r[k]);
+      const rgba = color(r[k]);
       if (rgba) img.data.set(rgba, k * 4);
     }
     g.putImageData(img, 0, 0);
@@ -120,11 +126,11 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     $('#sun-legend').innerHTML = `<span>0</span><span class="ramp" style="background:${bandsCss(b)}"></span><span>${fmt(b.edges[b.n], b.step)} ${unit}</span><span class="dim">steps of ${b.step}</span>`;
   }
 
-  /* A light view: banded colours over the smoothed values, 0 to `top`. */
+  /* A light view: banded colors over the smoothed values, 0 to `top`. */
   function paintLight(values, xy, top, unit, read, span = 1, step) {
     const b = bandsFor(top, { step });
     legend(b, unit);
-    paint(values, xy, (v) => [...b.colours[b.of(v)], ALPHA], { span, smoothed: true, read });
+    paint(values, xy, (v) => [...b.colors[b.of(v)], ALPHA], { span, smoothed: true, read });
   }
 
   function draw() {
@@ -163,23 +169,23 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     if (!sh?.read) return '';
     const [x, y] = pixelOf(st.pin.lngLat);
     const v = valueAt(sh.r, sh.W, sh.H, x, y);
-    if (Number.isNaN(v)) return 'No grass to light here: a building, under a crown nothing gets through, or outside the lot.';
+    if (Number.isNaN(v)) return sh.lawn ? 'Not on the traced lawn. Turn off "Lawn only" to read the whole lot.' : 'No grass to light here: a building, under a crown nothing gets through, or outside the lot.';
     if (sh.read.kind) return `Trees: <b>${KIND_NAME[v] || 'open ground'}</b>`;
     if (sh.read.share) return `<b>${Math.round(v * 100)}%</b> of the sun at that moment`;
-    return `<b>${v.toFixed(sh.read.dp)}</b> ${sh.read.unit}<br><span class="dim">${sh.read.what}, averaged over about a metre</span>`;
+    return `<b>${v.toFixed(sh.read.dp)}</b> ${sh.read.unit}<br><span class="dim">${sh.read.what}, averaged over about a meter</span>`;
   }
   function boxText() {
     const sh = st.shown;
     if (!sh?.read || !st.box) return '';
     const [ax, ay] = pixelOf(st.box[0]), [bx, by] = pixelOf(st.box[1]);
     const s = boxStats(sh.r, sh.W, sh.H, [ax, ay, bx, by], { counts: !!sh.read.kind });
-    if (!s.n) return 'Nothing to measure in this box: light is worked out only on the lot, and not under roofs.';
+    if (!s.n) return sh.lawn ? 'No traced lawn in this box. Turn off "Lawn only" to measure the whole lot.' : 'Nothing to measure in this box: light is worked out only on the lot, and not under roofs.';
     if (sh.read.kind) {
       return `In the box (${sqft(s.n)} sq ft): ${Object.entries(s.tally).sort((p, q) => q[1] - p[1]).map(([k, c]) => `${KIND_NAME[k] || 'open ground'} ${Math.round((100 * c) / s.n)}%`).join(', ')}`;
     }
     const f = (v) => (sh.read.share ? `${Math.round(v * 100)}%` : v.toFixed(sh.read.dp));
     const unit = sh.read.share ? 'of the sun' : sh.read.unit;
-    return `In the box (${sqft(s.n)} sq ft of the lot measured), ${unit}: lowest <b>${f(s.min)}</b>, highest <b>${f(s.max)}</b>, average <b>${f(s.mean)}</b>`;
+    return `In the box (${sqft(s.n)} sq ft of ${sh.lawn ? 'lawn' : 'the lot'} measured), ${unit}: lowest <b>${f(s.min)}</b>, highest <b>${f(s.max)}</b>, average <b>${f(s.mean)}</b>`;
   }
   function readouts() {
     if (st.pin) st.pin.popup.setHTML(pinText() || 'Pick a view above to read it here.');
@@ -245,6 +251,13 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
   map.on('mousemove', boxMove); map.on('touchmove', boxMove);
   map.on('mouseup', boxEnd); map.on('touchend', boxEnd);
   $('#sun-box').onclick = () => setBoxing(!st.boxing);
+  st.lawnOnly = true;
+  $('#t-lawn').setAttribute('aria-pressed', 'true');
+  $('#t-lawn').onclick = () => {
+    st.lawnOnly = !st.lawnOnly;
+    $('#t-lawn').setAttribute('aria-pressed', String(st.lawnOnly));
+    if (st.mode === 'now') runNow(); else draw();
+  };
   $('#sun-clear').onclick = () => { setBoxing(false); clearReadouts(); };
 
   function summary() {
@@ -368,7 +381,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
       band += `<rect x="${X(k)}" y="${t}" width="${Math.max(1, X(e) - X(k))}" height="${H - t - b}" fill="#fff" fill-opacity=".07"/>`;
     }
     return `<div class="key"><span><i style="background:${LAWN}"></i>${site.lawn.length ? 'Lawn' : 'Lot'}</span><span><i style="background:${OPEN}"></i>Open ground</span><span><b class="band"></b>Growing season</span></div>
-      <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Typical daily light through the year on the ${site.lawn.length ? 'lawn' : 'lot'} and on open ground, mol per square metre per day">
+      <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Typical daily light through the year on the ${site.lawn.length ? 'lawn' : 'lot'} and on open ground, mol per square meter per day">
         ${band}${grid}${months}
         <path d="${line(se.open)}" fill="none" stroke="${OPEN}" stroke-width="2" stroke-linejoin="round"/>
         <path d="${line(se.lawn)}" fill="none" stroke="${LAWN}" stroke-width="2" stroke-linejoin="round"/>
@@ -416,7 +429,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     st.worker.onmessage = (ev) => {
       const m = ev.data;
       if (m.type === 'error') status(`The light calculation stopped: ${m.message}`);
-      else if (m.type === 'built') { st.canopy = m.canopy; status(''); st.built = true; st.kinds = m.kinds; canopyNote(m); if (st.mode === 'trees') draw(); runDay(); st.monthsId = send({ type: 'months', year: new Date(dayMs()).getUTCFullYear() }); runSeason(); }
+      else if (m.type === 'built') { st.canopy = m.canopy; status(''); st.built = true; st.kinds = m.kinds; st.lawnMask = m.lawnMask || null; $('#t-lawn').hidden = !st.lawnMask; canopyNote(m); if (st.mode === 'trees') draw(); runDay(); st.monthsId = send({ type: 'months', year: new Date(dayMs()).getUTCFullYear() }); runSeason(); }
       else if (m.type === 'day' && m.id === st.dayId) { st.day = m; status(''); summary(); if (st.mode !== 'now') draw(); }
       else if (m.type === 'now' && m.id === st.nowId) { st.now = m; if (st.mode === 'now') draw(); }
       else if (m.type === 'progress' && m.what === 'season') $('#season-status').textContent = `Tracing the sun through the year: ${m.done} of ${m.of} dates…`;
@@ -424,7 +437,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
       else if (m.type === 'season' && m.id === st.seasonId) { st.season = m; seasonSummary(); if (st.mode === 'season') draw(); }
       else if (m.type === 'months' && m.id === st.monthsId) { months(m.rows); status(''); }
     };
-    status('Building the 3D canopy and the sky over every half metre…');
+    status('Building the 3D canopy and the sky over every half meter…');
     const pick = ['x', 'y', 'z', 'intensity', 'ret', 'nret', 'cls'];
     const c = { n: cols.n };
     for (const k of pick) c[k] = cols[k].slice(0, cols.n);
@@ -481,6 +494,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
       if (map.getSource('light')) map.removeSource('light');
       setBoxing(false);
       clearReadouts();
+      $('#t-lawn').hidden = true;
       for (const [ev, h] of [['click', onClick], ['mousedown', boxStart], ['touchstart', boxStart], ['mousemove', boxMove], ['touchmove', boxMove], ['mouseup', boxEnd], ['touchend', boxEnd]]) map.off(ev, h);
       sec.hidden = true;
     },

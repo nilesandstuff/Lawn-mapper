@@ -13,7 +13,7 @@
  * in the model, which matters only with the sun low.
  *
  * Positions are in the model's grid cells (x east, y SOUTH, as the grid's
- * rows run) plus z in metres. Directions are [east, north, up] unit vectors.
+ * rows run) plus z in meters. Directions are [east, north, up] unit vectors.
  */
 
 import { GRASS_M } from './canopy.js';
@@ -22,7 +22,7 @@ import { mercScale } from './ept.js';
 
 const START_M = 0.1; // rays start this far above the ground
 
-/** Real metres per grid cell. */
+/** Real meters per grid cell. */
 export const cellMetres = (model) => model.grid.cell * mercScale(model.grid.lat);
 
 /** Ground height at fractional cell position (nearest column). */
@@ -72,7 +72,7 @@ export function samplePoints(model, mask, sub = 1) {
   return { xy: Float32Array.from(pts), cells: Int32Array.from(cells) };
 }
 
-/** The ground's unit normal [east, north, up] at a cell, from its neighbours. */
+/** The ground's unit normal [east, north, up] at a cell, from its neighbors. */
 export function normalAt(model, gx, gy, cm = cellMetres(model)) {
   const g = (dx, dy) => groundAt(model, gx + dx, gy + dy);
   const dzdx = (g(1, 0) - g(-1, 0)) / (2 * cm);

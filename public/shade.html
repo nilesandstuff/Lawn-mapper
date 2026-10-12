@@ -22,7 +22,9 @@
   .bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 8px; background: #1c1c1c; }
   .bar select, .bar input { font-size: 14px; padding: 6px; border-radius: 8px; border: 1px solid #555; background: #222; color: #eee; min-width: 0; }
   .bar select { max-width: 55vw; }
-  .bar input { width: 13em; }
+  .bar input { width: 16em; max-width: 100%; }
+  .candidates { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; background: #1c1c1c; border-top: 1px solid #333; }
+  .candidates button { text-align: left; min-height: 38px; }
   button { min-height: 38px; padding: 0 12px; border-radius: 8px; border: 1px solid #555; background: #262626; color: #eee; font-size: 14px; }
   button.primary { background: #2e7d32; border-color: #2e7d32; }
   button[aria-pressed="false"] { opacity: .5; border-style: dashed; }
@@ -65,9 +67,10 @@
 <div class="app">
   <div class="bar">
     <select id="saved" aria-label="A saved map"><option value="">Saved maps…</option></select>
-    <input id="at" type="text" inputmode="decimal" placeholder="or lat, lng" aria-label="Latitude, longitude">
+    <input id="at" type="text" placeholder="or an address, or lat, lng" aria-label="An address, or latitude, longitude" enterkeyhint="go">
     <button class="primary" id="go" type="button">Build in 3D</button>
   </div>
+  <div class="candidates" id="candidates" hidden></div>
   <div class="main">
     <div id="map"></div>
     <div class="toggles" id="toggles" hidden>
@@ -76,6 +79,7 @@
       <button type="button" id="t-traced" aria-pressed="true" hidden>County photo</button>
       <button type="button" id="t-picture" aria-pressed="false">Lidar ground picture</button>
       <button type="button" id="t-tilt" aria-pressed="true">3D</button>
+      <button type="button" id="t-lawn" aria-pressed="true" hidden>Lawn only</button>
     </div>
   </div>
   <div class="panel" id="panel">
@@ -91,7 +95,7 @@
         <button type="button" data-preset="8-22">Sep 22</button>
         <button type="button" data-preset="11-21">Dec 21</button>
       </div>
-      <div class="row" role="group" aria-label="What the colours show">
+      <div class="row" role="group" aria-label="What the colors show">
         <button type="button" class="mode" id="m-hours" aria-pressed="true">Hours of sun</button>
         <button type="button" class="mode" id="m-dli" aria-pressed="false">Light (DLI)</button>
         <button type="button" class="mode" id="m-now" aria-pressed="false">Shadows at a time</button>

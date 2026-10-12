@@ -14,13 +14,13 @@
  * edge-orientation features, used unchanged), because a road can be dark to
  * the laser and pale in the photo.
  *
- * ONLY OPEN GROUND VOTES. Roofs and crowns lean in the photo by up to metres
+ * ONLY OPEN GROUND VOTES. Roofs and crowns lean in the photo by up to meters
  * (H63), in a direction that has nothing to do with the ground's offset. So
  * every cell the lidar says is roof or canopy, and a margin around it big
  * enough to cover the lean, is left out of the comparison on BOTH sides.
  *
  * WHY NOT register.js's PATCHES. Tried first (2026-10-10, five lots from
- * H63): QL2 lidar holds one or two ground returns a square metre, so a 9 m
+ * H63): QL2 lidar holds one or two ground returns a square meter, so a 9 m
  * patch has too little in it; 5-10% of patches agreed, and three clouds over
  * one Massachusetts lot gave three answers 1.6 m apart. Here the whole frame's
  * open ground is matched at once -- a curving road alone pins both axes --
@@ -33,7 +33,7 @@ import { orientationFeatures } from '../lib/register.js';
 import { gridForFrame, rasterise, fillGaps, blurNaN, resample, greyPicture, greyCentred } from './grid.js';
 import { mercScale } from './ept.js';
 
-/** Normalised correlation of two feature sets, mov displaced by (dx, dy) cells, over a window. */
+/** Normalized correlation of two feature sets, mov displaced by (dx, dy) cells, over a window. */
 function score(R, M, dx, dy, x0, y0, x1, y1) {
   const w = R.w;
   let n = 0, sa = 0, sb = 0, saa = 0, sbb = 0, sab = 0;
@@ -127,12 +127,12 @@ export function dilate(mask, w, h, r) {
  * Line the cloud up with a photo of `frame` (photo = { data, width, height },
  * RGBA, any pixel size covering exactly the frame).
  *
- * `pre` is a shift already decided ([dx, dy], EPSG:3857 metres; datum.js's
+ * `pre` is a shift already decided ([dx, dy], EPSG:3857 meters; datum.js's
  * correction), applied before matching, so what comes back is what is LEFT.
  *
  * Returns
- *   east, north     real metres to move the (pre-shifted) LIDAR onto the photo's ground
- *   shift           the same as [dx, dy] in EPSG:3857 metres (null unless confident)
+ *   east, north     real meters to move the (pre-shifted) LIDAR onto the photo's ground
+ *   shift           the same as [dx, dy] in EPSG:3857 meters (null unless confident)
  *   confident, why  the verdict, in words
  *   quarters        each quarter's own answer; spreadM their RMS scatter about
  *                   the whole; errorM that over sqrt(quarters), the error bar
@@ -164,7 +164,7 @@ export function alignToPhoto(cols, frame, photo, {
   for (let i = 0; i < gw * gh; i++) {
     /* A sparse cloud leaves many 0.5 m cells empty; an empty cell between
        open ones is open. Tall is what was MEASURED tall, or ground no
-       return reached for metres around (under a roof). */
+       return reached for meters around (under a roof). */
     if (Number.isNaN(ground[i]) || top[i] - ground[i] >= tallM) tall[i] = 1;
   }
   const blocked = dilate(tall, gw, gh, Math.ceil(leanM / rasterM));
@@ -201,7 +201,7 @@ export function alignToPhoto(cols, frame, photo, {
   const whole = toM(all);
   /* The error bar: how far the quarters, each matched alone, land from the
      whole frame's answer (root mean square), over the square root of how
-     many there are -- a standard error, in metres. */
+     many there are -- a standard error, in meters. */
   const good = quarters.filter((q) => q && q.score >= minQuarterScore);
   const spreadM = good.length
     ? Math.sqrt(good.reduce((t, q) => t + (q.east - whole.east) ** 2 + (q.north - whole.north) ** 2, 0) / good.length)

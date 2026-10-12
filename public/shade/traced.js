@@ -11,7 +11,7 @@ import { toMerc } from './ept.js';
  *
  * A map saved on a county photo records which service (countySvc) and the
  * line-up that moved that photo onto Mapbox's ground (countyAlign: east and
- * north in metres, and a scale about the map's frame centre), or null when
+ * north in meters, and a scale about the map's frame center), or null when
  * the line-up was unsure and the photo was shown where the county put it
  * (app.js countyLineUp, alignedFrame). Every other detecting source is
  * either Mapbox or lined up onto it, so its outline is on Mapbox's ground.
@@ -31,8 +31,8 @@ export function tracedOn(save) {
 
 /**
  * How far the editor moved the county photo's ground at a point [lng, lat],
- * in real metres east and north: the shift, plus the scale about the saved
- * frame's centre (p -> c + s (p - c) + shift).
+ * in real meters east and north: the shift, plus the scale about the saved
+ * frame's center (p -> c + s (p - c) + shift).
  */
 export function lineUpAt(t, [lng, lat]) {
   if (!t?.align) return { east: 0, north: 0 };

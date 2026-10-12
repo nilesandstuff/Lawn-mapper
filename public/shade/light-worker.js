@@ -141,7 +141,7 @@ function build(m) {
   const all = new Uint8Array(grid.w * grid.h).fill(1);
   const lot = m.lot?.length ? union(m.lot, grid) : all;
   /* Inside a house (or under canopy nothing got through) there is no
-     grass to light: those cells are left out of the sums and the colours. */
+     grass to light: those cells are left out of the sums and the colors. */
   let solid = 0;
   for (let k = 0; k < lot.length; k++) if (lot[k] && solidAtGrass(model, k)) { lot[k] = 0; solid++; }
   const lawn = m.lawn?.length ? union(m.lawn, grid) : null;
@@ -165,6 +165,7 @@ function build(m) {
       : !leafOffFlight ? (m.flight === 'on' ? 'the lidar was flown in leaf, so it already shows the summer canopy' : 'the flight season is unknown')
         : !calendar ? 'the typical temperatures did not load' : null,
     kinds, counts: season?.counts || null, classified: !!season?.classified,
+    lawnMask: lawn, // per grid cell, 1 inside a traced lawn (null when none was traced)
     calendar: calendar && seasonal ? { out: calendar.out, full: calendar.full, halfOut: calendar.halfOut, halfFall: calendar.halfFall, bare: calendar.bare, always: !!calendar.always, never: !!calendar.never } : null,
   });
 }

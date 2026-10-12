@@ -10,7 +10,7 @@
  * height and footprint, not leaf-on density):
  *
  *  1. CROWNS. Columns with returns more than 2 m up that are not roofs,
- *     joined into clumps (8-neighbour). A ROOF column -- three returns or
+ *     joined into clumps (8-neighbor). A ROOF column -- three returns or
  *     more, all within 1.5 m of each other, and no last return reaching the
  *     ground -- is a building and stays solid (canopy.js), as H38's roof
  *     rule has it.
@@ -39,8 +39,8 @@
  *     0.5-4 m layer -- honeysuckle that keeps its leaves into late November,
  *     vines -- and counting only ground returns called 76% of the woods
  *     evergreen; counting below 4 m, 21%, in a band along the west edge
- *     where the owner says the evergreens are. Colour was tried and dropped:
- *     leaf-off is a spectrum, not a switch (owner; H69, H73: colour 61%).
+ *     where the owner says the evergreens are. Color was tried and dropped:
+ *     leaf-off is a spectrum, not a switch (owner; H69, H73: color 61%).
  *     Only for leaf-off or mixed flights; a leaf-on flight already saw summer.
 
  2b. AND DENSE. A leaf-off flight caught an evergreen WITH its needles, so
@@ -83,7 +83,7 @@
  *
  *  3. A CROWN IN LEAF (calibrated 2026-10-11 from a literature review; the
  *     owner: summer, late summer above all, is when this must be right).
- *     Extinction per metre of crown, mu = G x LAD_eff (Beer's law):
+ *     Extinction per meter of crown, mu = G x LAD_eff (Beer's law):
  *       G = 0.5      leaves at random angles (spherical)
  *       LAD_eff = 1  m2 of leaf per m3 of crown, EFFECTIVE (clumping within
  *                    the crown folded in): Nowak 1996 (Forest Sci 42:504)
@@ -94,7 +94,7 @@
  *     red oak 4.6, linden 7.1; Nowak's equations 4.1-5.5. (Breda 2003's
  *     within-crown clumping, 0.88-0.95, is already inside "effective".) So deeper crowns are
  *     darker up to that cap -- Canham et al. 1994 (CJFR 24:337) found species
- *     differ in shade more by crown DEPTH than by extinction per metre, and
+ *     differ in shade more by crown DEPTH than by extinction per meter, and
  *     a sun lower in the sky crosses more crown, which is all that makes
  *     late summer darker: leaf area is flat from about mid-June to October
  *     (Harvard Forest, Lee et al. 2023; Hutchison & Matt 1977).
@@ -133,7 +133,7 @@
  *  5. IN BETWEEN, leaf-out and leaf-fall are ESTIMATED from the place's
  *     typical temperature (climate.js): leaves come out over five weeks from
  *     the day the typical mean first passes 10 C in spring, and fall over
- *     four weeks centred on the day it drops back below 10 C. At Rockford MI
+ *     four weeks centered on the day it drops back below 10 C. At Rockford MI
  *     that puts half-leaf at May 17 and half-fall at Oct 19, against Harvard
  *     Forest's (42.5 N) May 18-24 and Oct 16-24 (Lee et al. 2023). An
  *     estimate, said so on the page; a phenology dataset could replace it.
@@ -150,7 +150,7 @@ export const EVERGREEN_BELOW = 0.79;
 export const EVERGREEN_DENSER = 2; // and at least this many times as dense as the bare crowns (2b)
 export const SOLID_TREE_SPLIT = 0.25; // a solid patch this split is a tree, not a roof (1b)
 export const SOLID_TREE_MAX_M2 = 60; // or one smaller than this
-export const SOLID_TREE_ROUGH_M = 0.55; // whose neighbouring tops differ by this much (median)
+export const SOLID_TREE_ROUGH_M = 0.55; // whose neighboring tops differ by this much (median)
 export const SOLID_TREE_RIM_M = 3; // its crown reaches this far past the part nothing got through
 export const DOME_RING_M = [2.5, 3.5]; // how far out from a crown's highest return its top is read (2c)
 export const DOME_DROP_M = 0.7; // a crown whose top falls less than this there is a dome (H73's crowns)
@@ -217,10 +217,10 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true } = 
      columns it is a tree when a quarter or more of the returns above 2 m
      came from pulses that split (on needles and branches; almost never on
      a roof), or when the patch is small and its top is rough -- a roof is
-     planes, so neighbouring columns' tops differ little. Since it was that
+     planes, so neighboring columns' tops differ little. Since it was that
      dense with the leaves off, it is an evergreen. (Kent 2016 cloud, 7300
      Brooks Ln, checked against the photo, 2026-10-11: houses 200-311 m2,
-     2-3% split, tops differing a median 0.36-0.44 m between neighbours;
+     2-3% split, tops differing a median 0.36-0.44 m between neighbors;
      the lawn spruces 6-42 m2, 0-38% split, 0.55-1.5 m.) */
   const seen = new Uint8Array(N);
   for (let s0 = 0; s0 < N; s0++) {
@@ -295,7 +295,7 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true } = 
     c.depth = Math.max(dz, c.top - c.base);
     delete c.hs;
   }
-  /* Evergreen per column, from its neighbourhood's share of last returns
+  /* Evergreen per column, from its neighborhood's share of last returns
      that got through -- and, since it decides the summer (see 2), only
      where the crown also measured DENSE: its optical depth above 4 m,
      pooled over the 5 x 5 m of crown around it, at least EVERGREEN_DENSER
@@ -340,7 +340,7 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true } = 
        everything, and a spruce's skirt reaches the ground, where the 4 m
        line would count a return as through. So the crown columns around a
        solid tree, out to SOLID_TREE_RIM_M, belong to it while their tops
-       keep falling away from it (a cone; a neighbouring crown rises again)
+       keep falling away from it (a cone; a neighboring crown rises again)
        AND they measured as dense as an evergreen must (above) -- without
        that, every vine tangle in a deciduous wood grew a bare rim. */
     const rimFrom = [], rimDist = new Uint8Array(N), rimSeen = Uint8Array.from(solidTree);
@@ -358,7 +358,7 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true } = 
       }
     }
     /* 2c. NOT A DOME. Whatever called it evergreen, a broad crown whose top
-       stays flat for metres is an open-grown broadleaf (crowns.js). */
+       stays flat for meters is an open-grown broadleaf (crowns.js). */
     const top = new Float32Array(N).fill(NaN);
     for (let k = 0; k < N; k++) if (above[k]) top[k] = zHi[k] - ground[k];
     const { lab, crowns } = crownsOf(cols, model, { shift, top, dropAt: DOME_RING_M });
@@ -371,7 +371,7 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true } = 
 
   /* The leaf-on state. Its footprint is the crown columns CLOSED: grown by
      2 m and shrunk back by 2, so gaps up to ~4 m inside the canopy fill and
-     the edges stay where the laser found them. At 2-8 points a square metre many
+     the edges stay where the laser found them. At 2-8 points a square meter many
      columns inside a leaf-off crown hold no return above 2 m, which would
      otherwise read as holes in the summer canopy (on the owner's lot the deep
      woods passed 10-12% of the day's light, against 2.4-6.2% measured under
@@ -380,11 +380,11 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true } = 
      2026-10-11, for Wasser et al.'s under-read cover; held against the
      shadows in the August 2022 NAIP photo of the owner's lot that put 37%
      of the grass in shade where the photo has 32%, and on the owner's
-     neighbour's lawn it laid summer leaves over open grass the owner can see
+     neighbor's lawn it laid summer leaves over open grass the owner can see
      from above. Edges where the laser saw them: 29% against 32%; the deep
      woods 4.8% (owner's) and 4.4% (Yankee Springs), still within Canham's
      2.4-6.2%. Buildings stay buildings. A filled column
-     takes the tallest crown neighbour's clump and height over its ground. */
+     takes the tallest crown neighbor's clump and height over its ground. */
   /* Only deciduous crowns take leaves (see 3), so only they are grown,
      filled and given leaf; evergreens and buildings stay as measured. */
   const isCrown = (j) => kind[j] === 3;
@@ -409,7 +409,7 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true } = 
   }
   const muOn = Float32Array.from(mu);
   /* Crown top per column: the tallest crown return within 2 m (a pit-free
-     canopy height model). One column at 2-8 points a square metre holds a
+     canopy height model). One column at 2-8 points a square meter holds a
      return or two, mostly below its crown's real top, which would make the
      crown look shallow and hold too little leaf; leaf-off canopy height
      models read low anyway (Wasser et al. 2013). */

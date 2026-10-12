@@ -5,9 +5,9 @@
  * read here in JavaScript so the shade page can run in a phone's browser:
  * USGS's bucket answers any origin (Access-Control-Allow-Origin: *).
  *
- * A NOTE ON METRES. EPSG:3857 x and y are WEB-MERCATOR metres, which are
- * real metres divided by cos(latitude): at 42 deg N one of them is 0.74 m on
- * the ground. z is real metres. Anything that mixes them -- a shadow's
+ * A NOTE ON METERS. EPSG:3857 x and y are WEB-MERCATOR meters, which are
+ * real meters divided by cos(latitude): at 42 deg N one of them is 0.74 m on
+ * the ground. z is real meters. Anything that mixes them -- a shadow's
  * length, a cell size, a slope -- has to scale x and y by cos(lat) first.
  * mercScale() is the one place that factor is computed.
  *
@@ -19,17 +19,17 @@ import { lasHeader, makeColumns, readRecord, concatColumns } from './las.js';
 
 const R = 6378137;
 
-/** lng/lat (degrees) -> EPSG:3857 metres. */
+/** lng/lat (degrees) -> EPSG:3857 meters. */
 export const toMerc = ([lng, lat]) => [
   (lng * Math.PI / 180) * R,
   Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI / 180) / 2)) * R,
 ];
-/** EPSG:3857 metres -> lng/lat. */
+/** EPSG:3857 meters -> lng/lat. */
 export const fromMerc = ([x, y]) => [
   (x / R) * 180 / Math.PI,
   (2 * Math.atan(Math.exp(y / R)) - Math.PI / 2) * 180 / Math.PI,
 ];
-/** Real metres per web-mercator metre at a latitude. */
+/** Real meters per web-mercator meter at a latitude. */
 export const mercScale = (lat) => Math.cos(lat * Math.PI / 180);
 
 /** The [minx, miny, maxx, maxy] of one node, from its D-X-Y-Z key and the cube's bounds. */

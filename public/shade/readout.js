@@ -3,14 +3,14 @@
  *
  * The worker answers per sample point (every 0.5 m for a day, every 1 m for
  * the season). For the map those answers go into a raster at 0.5 m, are
- * smoothed over about a metre -- the lidar is 1 m, so finer detail is noise
- * -- and coloured in at most seven bands with round edges. A pin and a box
- * read the same smoothed raster, so they report what the colours show.
+ * smoothed over about a meter -- the lidar is 1 m, so finer detail is noise
+ * -- and colored in at most seven bands with round edges. A pin and a box
+ * read the same smoothed raster, so they report what the colors show.
  */
 
 /* Sunlight is semantic heat: dark and cool in shade, bright and warm in sun.
    Matplotlib's inferno, which runs the full lightness range and stays in
-   order for colour-blind readers. */
+   order for color-blind readers. */
 export const HEAT = ['#000004', '#1f0c48', '#550f6d', '#88226a', '#ba3655', '#e35933', '#f98e09', '#f8c931', '#fcffa4']
   .map((h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)));
 
@@ -34,7 +34,7 @@ export function niceStep(top, most = MAX_BANDS) {
 }
 
 /**
- * Bands from 0 to `top`: { step, n, edges (n + 1 of them), colours (one per
+ * Bands from 0 to `top`: { step, n, edges (n + 1 of them), colors (one per
  * band, the ramp's ends included), of(value) -> band index }. `step` fixes
  * the step (hours of sun go by the hour: owner, 2026-10-11); otherwise the
  * round step that gives at most MAX_BANDS.
@@ -43,9 +43,9 @@ export function bandsFor(top, { step: fixed } = {}) {
   const step = fixed > 0 ? fixed : niceStep(top);
   const n = Math.max(1, Math.ceil(top / step - 1e-9));
   const edges = Array.from({ length: n + 1 }, (_, i) => +(i * step).toFixed(6));
-  const colours = Array.from({ length: n }, (_, i) => heat(n === 1 ? 1 : i / (n - 1)));
+  const colors = Array.from({ length: n }, (_, i) => heat(n === 1 ? 1 : i / (n - 1)));
   const of = (v) => Math.min(n - 1, Math.max(0, Math.floor(v / step + 1e-9)));
-  return { step, n, edges, colours, of };
+  return { step, n, edges, colors, of };
 }
 
 /**

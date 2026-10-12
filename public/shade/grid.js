@@ -5,7 +5,7 @@
  *
  *   { x0, y1, cell, w, h, lat }    x0 = west edge, y1 = NORTH edge, rows run
  *                                  north to south like a photo's; cell is in
- *                                  web-mercator metres (see ept.js on metres)
+ *                                  web-mercator meters (see ept.js on meters)
  *
  * Rasterised per cell, from the points and nothing inferred:
  *
@@ -33,7 +33,7 @@ import { toMerc, mercScale } from './ept.js';
 
 const NOISE = new Set([7, 18]);
 
-/** A grid over a 3857 box, cells `cellM` REAL metres on a side at latitude `lat`. */
+/** A grid over a 3857 box, cells `cellM` REAL meters on a side at latitude `lat`. */
 export function gridOver(bbox, cellM, lat) {
   const cell = cellM / mercScale(lat);
   const w = Math.max(1, Math.round((bbox[2] - bbox[0]) / cell));
@@ -44,12 +44,12 @@ export function gridOver(bbox, cellM, lat) {
 /**
  * The grid exactly covering a site imagery frame ({lng, lat, zoom, size,
  * height}, as /api/imagery takes it), `cols` x `rows` cells. Web-mercator
- * pixels are linear in 3857 metres, so the corners say it all.
+ * pixels are linear in 3857 meters, so the corners say it all.
  */
 export function gridForFrame(frame, cols, rows) {
   const R = 6378137;
   const worldM = 2 * Math.PI * R;
-  const perPx = worldM / (512 * 2 ** frame.zoom); // 3857 metres per logical px
+  const perPx = worldM / (512 * 2 ** frame.zoom); // 3857 meters per logical px
   const [cx, cy] = toMerc([frame.lng, frame.lat]);
   const W = frame.size * perPx, H = (frame.height || frame.size) * perPx;
   return { x0: cx - W / 2, y1: cy + H / 2, cell: W / cols, cellY: H / rows, w: cols, h: rows, lat: frame.lat };
@@ -104,7 +104,7 @@ export function rasterise(cols, g, { shift = null, lowM = 0.3 } = {}) {
 }
 
 /**
- * Fill NaN cells from their neighbours, `rounds` cells deep at most, so a
+ * Fill NaN cells from their neighbors, `rounds` cells deep at most, so a
  * sparse cloud reads as a picture rather than a sieve. Cells further than
  * that from any data stay NaN (under a roof, the ground stays unknown).
  */
@@ -141,7 +141,7 @@ export function quantile(a, q) {
 
 /**
  * A layer as an RGBA picture ({ data, width, height }, ImageData's shape),
- * grey from the 2nd to the 98th percentile; NaN is transparent, which
+ * gray from the 2nd to the 98th percentile; NaN is transparent, which
  * register.js reads as "no data" rather than as black.
  */
 export function greyPicture(a, w, h, { lo = 0.02, hi = 0.98 } = {}) {
@@ -191,7 +191,7 @@ export function blurNaN(a, w, h, sigma) {
 
 /**
  * Bilinear resample of a w x h layer to W x H over the same ground. A cell
- * with any NaN corner is NaN. Nearest-neighbour would draw every coarse
+ * with any NaN corner is NaN. Nearest-neighbor would draw every coarse
  * cell's square outline into the picture, and those false horizontal and
  * vertical edges are exactly what an edge-orientation registration matches.
  */
@@ -212,10 +212,10 @@ export function resample(a, w, h, W, H) {
 
 /**
  * RGBA (any size) -> luminance on a w x h grid over the same ground, each
- * cell the mean of the pixels whose CENTRES fall inside it.
+ * cell the mean of the pixels whose CENTERS fall inside it.
  *
  * register.js's greyOn bins by floor(), which averages a cell's pixels from
- * half a source pixel up and to the left of the cell's centre. Comparing
+ * half a source pixel up and to the left of the cell's center. Comparing
  * two pictures of different pixel sizes that way leaves a bias of half the
  * difference: 5-6 cm between a Mapbox photo and a lidar grid, measured on a
  * synthetic scene with no offset at all (2026-10-10). Centred here.

@@ -4,7 +4,7 @@
  * The owner's suggestion (2026-10-11): the first returns show a tree's
  * shape, and shape can rule an evergreen out. A spruce or fir is a cone: its
  * top falls away fast from the tip. An open-grown oak or maple is a dome: flat
- * across the top for metres. On a leaf-off flight a big oak can still be
+ * across the top for meters. On a leaf-off flight a big oak can still be
  * holding its dead leaves (the Kent flight was 27 November) and stop the
  * laser like needles; its shape gives it away.
  *
@@ -73,8 +73,8 @@ export function crownsOf(cols, model, { shift = null, top, minH = 4, dropAt = [1
     }
     if (ok) apexes.push(k);
   }
-  /* Downhill: each column, tallest first, joins the crown of a neighbour no
-     lower than itself less half a metre. */
+  /* Downhill: each column, tallest first, joins the crown of a neighbor no
+     lower than itself less half a meter. */
   const lab = new Int32Array(N).fill(-1);
   apexes.forEach((k, i) => { lab[k] = i; });
   const order = [];
@@ -96,7 +96,7 @@ export function crownsOf(cols, model, { shift = null, top, minH = 4, dropAt = [1
   for (let k = 0; k < N; k++) if (lab[k] >= 0) crowns[lab[k]].n++;
   for (const c of crowns) c.R = Math.sqrt(c.n / Math.PI);
   /* Shape from the raw points: each crown's highest return, then the
-     highest return between dropAt[0] and dropAt[1] metres out from it. */
+     highest return between dropAt[0] and dropAt[1] meters out from it. */
   const hi = crowns.map(() => null);
   const gx = new Float32Array(cols.n), gy = new Float32Array(cols.n), cr = new Int32Array(cols.n).fill(-1), over = new Float32Array(cols.n);
   for (let i = 0; i < cols.n; i++) {
@@ -110,7 +110,7 @@ export function crownsOf(cols, model, { shift = null, top, minH = 4, dropAt = [1
     cr[i] = lab[k]; over[i] = o;
     if (!hi[lab[k]] || o > over[hi[lab[k]]]) hi[lab[k]] = i;
   }
-  const ring = crowns.map(() => -Infinity); // grid cells are 1 m, so r is in metres
+  const ring = crowns.map(() => -Infinity); // grid cells are 1 m, so r is in meters
   for (let i = 0; i < cols.n; i++) {
     const id = cr[i];
     if (id < 0) continue;

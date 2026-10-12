@@ -5,7 +5,7 @@
  *   1. finds the newest public point cloud flown over it (/api/shade/lidar,
  *      worker/src/shade.js);
  *   2. reads every point within 50 m of the property line, because a tree on
- *      the neighbour's lot shades this one: a 20 m tree at 42 deg N throws a
+ *      the neighbor's lot shades this one: a 20 m tree at 42 deg N throws a
  *      45 m shadow at winter noon (shade/ept.js, shade/laz.js);
  *   3. moves it from NAD83 to the web map's datum by the published
  *      transformation (shade/datum.js), then MEASURES what is left against
@@ -88,6 +88,53 @@ function siteFromSave(s) {
     lawn: (s.shapes || []).map(asFeature).filter(Boolean),
     tracedOn: tracedOn(s),
   };
+}
+
+/**
+ * A typed address, as the editor finds one (owner, 2026-10-12): the
+ * geocoder's pick, the county's property line for it, and the county photo
+ * when the Worker has one sharp enough here (its list comes best first, as
+ * the editor takes it), shown where the county put it -- the lidar is then
+ * lined up on that photo's ground.
+ */
+async function siteFromAddress(r) {
+  const where = new URLSearchParams({ lng: r.lng, lat: r.lat });
+  if (r.county) where.set('county', r.county);
+  if (r.state) where.set('state', r.state);
+  if (r.parcelPin) where.set('pin', r.parcelPin);
+  if (r.parcelSqFt) where.set('sqft', r.parcelSqFt);
+  const [parcel, svc] = await Promise.all([
+    fetch(`/api/parcel?${where}`).then((x) => (x.ok ? x.json() : null)).then((j) => j?.parcel || null).catch(() => null),
+    fetch(`/api/county-imagery?lng=${r.lng}&lat=${r.lat}`).then((x) => (x.ok ? x.json() : null))
+      .then((j) => (Array.isArray(j?.services) ? j.services[0] : j?.service) || null).catch(() => null),
+  ]);
+  return {
+    label: r.label, lng: r.lng, lat: r.lat, parcel: asFeature(parcel), lawn: [],
+    tracedOn: svc ? { provider: 'county', svc: svc.id, align: null, about: [r.lng, r.lat], title: svc.title || null } : { provider: 'mapbox' },
+  };
+}
+
+/** The geocoder's answers for a typed address; one chosen by tapping when there are several. */
+async function pickAddress(q) {
+  const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
+  const j = res.ok ? await res.json() : null;
+  if (!res.ok) throw new Error(j?.error || `The address lookup failed (${res.status}).`);
+  const results = j?.results || [];
+  if (!results.length) throw new Error("That address wasn't found. Try adding the city and state.");
+  if (results.length === 1) return results[0];
+  const box = $('#candidates');
+  box.replaceChildren();
+  status('Which one?');
+  return new Promise((resolve) => {
+    for (const r of results) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = r.label;
+      b.onclick = () => { box.hidden = true; resolve(r); };
+      box.append(b);
+    }
+    box.hidden = false;
+  });
 }
 
 async function siteFromPoint(lat, lng) {
@@ -183,7 +230,7 @@ async function photoOf(frame, provider = 'mapbox', svc = null) {
   return { data: d.data, width: d.width, height: d.height, url: URL.createObjectURL(blob) };
 }
 
-/** A square frame centred on the site, at least ALIGN_M and the lot wide, at a whole-ish zoom. */
+/** A square frame centered on the site, at least ALIGN_M and the lot wide, at a whole-ish zoom. */
 function alignFrame(site, bounds) {
   const k = mercScale(site.lat);
   const [x0, y0] = toMerc([bounds[0], bounds[1]]), [x1, y1] = toMerc([bounds[2], bounds[3]]);
@@ -270,12 +317,14 @@ async function build(site) {
        drawn on it after the editor's line-up moved it, so add that move. */
     const f = onCounty.fit;
     used = { ...f, east: f.east === null ? null : f.east + move.east, north: f.north === null ? null : f.north + move.north };
-    usedName = `the county photo the map was traced on${t.align ? ', as the editor lined it up' : ' (saved without a line-up, so where the county put it)'}`;
+    usedName = t.title !== undefined
+      ? `the county photo${t.title ? ` (${t.title})` : ''}, the clearest for this address, where the county put it`
+      : `the county photo the map was traced on${t.align ? ', as the editor lined it up' : ' (saved without a line-up, so where the county put it)'}`;
   } else {
     used = onMapbox.fit || null;
     usedName = t.provider === 'county'
-      ? `the Mapbox photo, because the county photo could not be read (${onCounty?.error || '?'})${t.align ? '' : '; the map was saved without a line-up, so its outline may sit up to about half a metre off this'}`
-      : 'the Mapbox photo the map was traced on';
+      ? `the Mapbox photo, because the county photo could not be read (${onCounty?.error || '?'})${t.align ? '' : '; the map was saved without a line-up, so its outline may sit up to about half a meter off this'}`
+      : site.lawn.length ? 'the Mapbox photo the map was traced on' : 'the Mapbox photo';
   }
   const fit = used;
   if (onMapbox.error) report.push(`<p class="warn">${esc(onMapbox.error)}</p>`);
@@ -313,14 +362,14 @@ async function build(site) {
     <table>
       <tr><td>Cloud</td><td>${esc(cloud.name)}${cloud.confirmed ? '' : ' <span class="warn">(box match only: USGS did not confirm it flew this point)</span>'}</td></tr>
       ${u ? `<tr><td>Flown</td><td>${day(u.start)} to ${day(u.end)}, ${esc(u.ql || '?')}, ${u.season === 'off' ? '<span class="warn">leaf-off</span>' : u.season === 'on' ? 'leaf-on' : u.season === 'mixed' ? '<span class="warn">part leaf-off</span>' : 'season unknown'}</td></tr>` : ''}
-      <tr><td>Points</td><td>${cols.n.toLocaleString()} within ${MARGIN_M} m of the lot; ${(inLot / lotM2).toFixed(1)} a square metre over the lot</td></tr>
+      <tr><td>Points</td><td>${cols.n.toLocaleString()} within ${MARGIN_M} m of the lot; ${(inLot / lotM2).toFixed(1)} a square meter over the lot</td></tr>
       ${notOnAws.length ? `<tr><td>Also flown</td><td class="warn">${notOnAws.map((x) => `${esc(x.workunit)} (${day(x.end)}, ${esc(x.ql || '?')})`).join('; ')} — not in the public cloud store, so not read</td></tr>` : ''}
     </table>
     <h2>Lining it up</h2>
     <table>
       <tr><td>Datum (NAD83 → map)</td><td>${fmtMove(datum.east, datum.north)} <span class="dim">computed, epoch ${cloud.epoch.toFixed(1)}</span></td></tr>
       <tr><td>Matched against</td><td>${esc(usedName)}</td></tr>
-      ${t.provider === 'county' && t.align ? `<tr><td>Editor's line-up</td><td class="dim">${fmtMove(move.east, move.north)} at this frame's centre (saved ${t.align.east.toFixed(2)} E, ${t.align.north.toFixed(2)} N, scale ${t.align.scale})</td></tr>` : ''}
+      ${t.provider === 'county' && t.align ? `<tr><td>Editor's line-up</td><td class="dim">${fmtMove(move.east, move.north)} at this frame's center (saved ${t.align.east.toFixed(2)} E, ${t.align.north.toFixed(2)} N, scale ${t.align.scale})</td></tr>` : ''}
       <tr><td>Left over, measured</td><td>${fit ? `${fmtMove(fit.east, fit.north)} <span class="${fit.confident ? 'ok' : 'warn'}">${esc(fit.why)}</span>` : '<span class="bad">not measured</span>'}</td></tr>
       ${fit ? `<tr><td>Quarters alone</td><td class="dim">${fit.quarters.map((q) => (q ? fmtMove(q.east, q.north) : '—')).join(' · ')}</td></tr>` : ''}
       ${fit ? `<tr><td>Open ground that voted</td><td class="dim">${Math.round(fit.openShare * 100)}% of a ${Math.round(gridForFrame(frame, 1, 1).cell * k)} m frame; match ${fit.score?.toFixed(2)} against ${fit.second?.toFixed(2)} for the best rival</td></tr>` : ''}
@@ -328,7 +377,7 @@ async function build(site) {
       <tr><td><b>Applied</b></td><td><b>${fmtMove(datum.east + (fit?.confident ? fit.east : 0), datum.north + (fit?.confident ? fit.north : 0))}</b> ${fit?.confident ? '<span class="ok">datum + measured</span>' : '<span class="warn">datum only</span>'}</td></tr>
     </table>
     <p class="dim">Roofs and crowns will NOT sit exactly on the photo's: the photo was taken at an angle, so tall
-    things lean in it by up to a metre or two (DETECTOR-FINDINGS H63), and the laser measures them where they stand.
+    things lean in it by up to a meter or two, and the laser measures them where they stand.
     The ground is what has to agree. "Lined up" off shows the cloud where the file puts it. "Lidar ground picture" lays the laser's view of the ground over the photo to compare by eye: roads, drives and paths should sit exactly on the photo's.</p>`);
   $('#report').innerHTML = report.join('');
   status(fit?.confident ? 'Built and lined up.' : 'Built. The photo check was not tight enough to apply; the datum correction is applied.', fit?.confident ? 'ok' : 'warn');
@@ -380,7 +429,7 @@ function drawBuilt(map, fixed) {
   }
 }
 
-/** The first of these layers that exists, to draw beneath it: photos under the light colours, under the outlines. */
+/** The first of these layers that exists, to draw beneath it: photos under the light colors, under the outlines. */
 const below = (map, ids) => ids.find((id) => map.getLayer(id));
 
 function toggle(id, on) {
@@ -393,20 +442,28 @@ function toggle(id, on) {
 /* --------------------------------------------------------------- wiring */
 
 async function main() {
-  const saves = await listSaves();
+  /* The buttons work at once; the saved maps arrive when they arrive. */
+  let saves = [];
+  const savesReady = listSaves().then((s) => { saves = s; });
   const params = new URLSearchParams(location.search);
   const go = async () => {
     $('#go').disabled = true;
     try {
       const id = $('#saved').value;
+      if (id) await savesReady;
       const at = $('#at').value.trim();
       let site = null;
       if (id) site = siteFromSave(saves.find((s) => s.id === id));
       else if (at) {
-        const [lat, lng] = at.split(/[ ,]+/).map(Number);
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) throw new Error('Type a point as "lat, lng".');
-        site = await siteFromPoint(lat, lng);
-      } else throw new Error('Pick a saved map or type a point first.');
+        const nums = at.split(/[ ,]+/).filter(Boolean).map(Number);
+        if (nums.length === 2 && nums.every(Number.isFinite) && Math.abs(nums[0]) <= 90) site = await siteFromPoint(nums[0], nums[1]);
+        else {
+          status('Looking up that address…');
+          const r = await pickAddress(at);
+          status('Finding the property line and the clearest photo…');
+          site = await siteFromAddress(r);
+        }
+      } else throw new Error('Pick a saved map, or type an address or a point, first.');
       history.replaceState(null, '', id ? `?map=${encodeURIComponent(id)}` : `?at=${encodeURIComponent(at)}`);
       await build(site);
     } catch (e) {
@@ -416,6 +473,8 @@ async function main() {
     }
   };
   $('#go').addEventListener('click', go);
+  $('#at').addEventListener('keydown', (e) => { if (e.key === 'Enter') { $('#saved').value = ''; go(); } });
+  $('#at').addEventListener('input', () => { if ($('#at').value.trim()) $('#saved').value = ''; });
   $('#t-points').addEventListener('click', () => { toggle('#t-points'); drawBuilt(view.map, $('#t-fix').getAttribute('aria-pressed') === 'true'); });
   $('#t-fix').addEventListener('click', () => drawBuilt(view.map, toggle('#t-fix')));
   $('#t-picture').addEventListener('click', () => { toggle('#t-picture'); drawBuilt(view.map, $('#t-fix').getAttribute('aria-pressed') === 'true'); });
@@ -424,7 +483,7 @@ async function main() {
     const on = toggle('#t-tilt');
     view.map?.easeTo(on ? { pitch: 55, bearing: -20 } : { pitch: 0, bearing: 0 });
   });
-  if (params.get('map')) { $('#saved').value = params.get('map'); if ($('#saved').value) go(); }
+  if (params.get('map')) { await savesReady; $('#saved').value = params.get('map'); if ($('#saved').value) go(); }
   else if (params.get('at')) { $('#at').value = params.get('at'); go(); }
   ensureMap().catch((e) => status(`The map would not load: ${e.message}`, 'bad'));
 }
