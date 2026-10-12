@@ -50,7 +50,7 @@ export async function recordCountyFailure(env, f) {
        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)`
     ).bind(
       new Date().toISOString(),
-      f.stage === 'worker' ? 'worker' : 'editor',
+      f.stage === 'worker' ? 'worker' : f.stage === 'shade' ? 'shade' : 'editor', // 'shade': the shade page's own search (features session)
       kind,
       num(f.http),
       text(f.reason, 500),

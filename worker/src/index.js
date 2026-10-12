@@ -1651,7 +1651,8 @@ export default {
           if (request.method !== 'POST') return json({ error: 'POST required' }, 405, origin);
           let body;
           try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, 400, origin); }
-          const ok = await recordCountyFailure(env, { ...body, stage: 'editor' });
+          /* The editor's, unless the shade page says it was its own search ('shade'); anything else is 'editor'. */
+          const ok = await recordCountyFailure(env, { ...body, stage: body?.stage === 'shade' ? 'shade' : 'editor' });
           return json({ ok }, 200, origin);
         }
         case '/api/feedback': {
