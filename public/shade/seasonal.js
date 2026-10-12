@@ -19,56 +19,42 @@
  *     stays solid in the light, but is labelled an evergreen, not a
  *     building, when a quarter or more of its returns came from pulses that
  *     split (on needles, almost never on a roof), or when it is under 60 m2
- *     with a rough top (a roof is planes). The crown around it, out to 3 m
- *     while its top keeps falling away and as dense as an evergreen must
- *     measure (2b), is the same tree, so it gets no summer leaves either.
- *     The light hardly moves (the mean summer beam reaching the ground
+ *     with a rough top (a roof is planes), or a speck under 4 m2 (a column
+ *     of a dense crown no pulse happened to get under); 2 then decides its tree as a
+ *     whole. The light hardly moves (the mean summer beam reaching the ground
  *     changed by 0.002 or less on three lots); the labels do: at 7300
  *     Brooks Ln the lawn spruces had all been "buildings".
  *
- *  2. EVERGREEN OR NOT, per column (a stand of trees is one clump and can be
- *     mixed), by the share of LAST returns that got through the crown,
- *     pooled over the 5 x 5 m around it and cut at 0.79. MEASURED HERE, H73
- *     (290 labelled single trees over lawns): on leaf-off flights the median
- *     evergreen crown sends 64% of its last returns to the ground, the
- *     median broadleaf 94%; 75% right held out by map (+-5). The cut sits
- *     between them.
- *     "Got through" means BELOW 4 m over the ground, not only to it (core
- *     session's findings S36, 2026-10-11, on the owner's lot -- one lot,
- *     STILL SPECULATION): in his woods 18% of last returns stop in the
- *     0.5-4 m layer -- honeysuckle that keeps its leaves into late November,
- *     vines -- and counting only ground returns called 76% of the woods
- *     evergreen; counting below 4 m, 21%, in a band along the west edge
- *     where the owner says the evergreens are. Color was tried and dropped:
- *     leaf-off is a spectrum, not a switch (owner; H69, H73: color 61%).
- *     Only for leaf-off or mixed flights; a leaf-on flight already saw summer.
-
- 2b. AND DENSE. A leaf-off flight caught an evergreen WITH its needles, so
-     it must have stopped far more of the laser than a bare deciduous crown
-     -- conifer foliage holds several times the area of a leafless crown's
-     wood (Breda 2003, J Exp Bot 54:2403: conifer LAI 3-8 or more; bare
-     broadleaf woody area 0.5-1.5). A column the penetration rule calls
-     evergreen stays one only if its crown's optical depth above 4 m (5 x 5
-     m pooled) is at least twice the median of the crowns that rule calls
-     bare on the same flight -- relative, so point density and the flight's
-     settings cancel. On the owner's lot (2026-10-11) the penetration rule
-     alone called 18% of crown columns evergreen, scattered through his
-     deciduous woods and fringing other crowns; those calls passed 42% of
-     the overhead sun as measured (median), against 52% for the bare
-     crowns -- leafless by the laser's own reading. With the density check,
-     4-5%: compact round crowns, the shape of yard spruces. Over 300 m of
-     his woods that moved the July median on the forest floor from 5.8% to
-     4.8% of the day's light (p90 14% to 12%); Yankee Springs, 4.1%. The two errors
-     are not equal, which is why the check leans one way: a deciduous crown
-     called evergreen gets no summer leaves and passes ~45% of the summer
-     sun overhead instead of ~6%; an evergreen called deciduous gets leaves
-     over its needles and goes from dark to a bit darker. Under 100 bare
-     columns on the flight there is no reference and the check is skipped.
+ *  2. EVERGREEN OR NOT, PER TREE, BY HOW DENSE IT WAS IN WINTER (owner,
+ *     2026-10-12: if little of the laser got through a crown with the leaves
+ *     off, it needs no summer leaves). Crowns are segmented from the canopy
+ *     top (crowns.js); a crown is evergreen when the median of its columns'
+ *     overhead transmittance on the leaf-off flight is under 0.2, and it is
+ *     not a dome (2c). Everything else is deciduous and takes leaves.
+ *     MEASURED on H73's hand-labelled crowns on leaf-off flights (data/
+ *     labelled-crowns.csv; 34 evergreen, 143 broadleaf): evergreens passed
+ *     a median 17% of the overhead sun in winter, 8% with leaves added;
+ *     broadleaf 54% bare, 6% in leaf. So the two errors are not alike: an
+ *     evergreen given leaves goes about twice too dark, a broadleaf left
+ *     bare about nine times too bright. Scored by how far each crown's
+ *     summer light lands from the truth, this rule is off by 0.023 on
+ *     average, as good as giving every crown leaves (0.023) or the earlier
+ *     rule (0.020), and it keeps 17 of the 34 evergreens as measured
+ *     against 9, leaving 3 of 143 broadleaf bare. H73's own classifier
+ *     (pulses reaching the ground, cut 0.79) is the better CLASSIFIER, 29 of
+ *     34 and 99 of 143 here, but the worse light (0.078): its 44 broadleaf
+ *     called evergreen are each nine times too bright. Replaced (2026-10-12):
+ *     that classifier with a "below 4 m counts as through" line (from the
+ *     owner's honeysuckle woods; it cost lawn trees, 15 of 34), a density
+ *     check against the flight's bare crowns, and a rim grown out from solid
+ *     trees. Color was tried and dropped long ago: leaf-off is a spectrum,
+ *     not a switch (owner; H69, H73: color 61%). Only for leaf-off or mixed
+ *     flights; a leaf-on flight already saw summer.
  *
  * 2c. NOT A DOME (owner's suggestion, 2026-10-11): a crown at least 4 m in
  *     radius whose top falls less than 0.7 m from its highest return to the
- *     highest return 2.5-3.5 m out is an open-grown broadleaf, whatever 2
- *     said -- a big oak can still hold its dead leaves on a late-November
+ *     highest return 2.5-3.5 m out is an open-grown broadleaf, however dense
+ *     it was in winter -- a big oak can still hold its dead leaves on a late-November
  *     flight and stop the laser like needles; the owner caught two such
  *     domes called evergreen on Brooks Ln. MEASURED on H73's hand-labelled
  *     crowns (data/labelled-crowns.csv, 234 found in the lidar on 60 maps:
@@ -145,17 +131,14 @@ import { crownsOf } from './crowns.js';
 
 const NOISE = new Set([7, 18]);
 export const CROWN_ABOVE_M = 2;
-export const THROUGH_BELOW_M = 4; // a last return lower than this got through the crown (S36)
-export const EVERGREEN_BELOW = 0.79;
-export const EVERGREEN_DENSER = 2; // and at least this many times as dense as the bare crowns (2b)
 export const SOLID_TREE_SPLIT = 0.25; // a solid patch this split is a tree, not a roof (1b)
 export const SOLID_TREE_MAX_M2 = 60; // or one smaller than this
+export const SOLID_SPECK_M2 = 4; // a solid patch smaller than this is always part of a tree
 export const SOLID_TREE_ROUGH_M = 0.55; // whose neighboring tops differ by this much (median)
-export const SOLID_TREE_RIM_M = 3; // its crown reaches this far past the part nothing got through
+export const WINTER_DENSE_T = 0.2; // a crown passing less of the overhead sun than this in winter is evergreen (2)
 export const DOME_RING_M = [2.5, 3.5]; // how far out from a crown's highest return its top is read (2c)
 export const DOME_DROP_M = 0.7; // a crown whose top falls less than this there is a dome (H73's crowns)
 export const DOME_MIN_R_M = 4; // and only a crown this wide (equivalent radius) is judged
-export const BARE_MIN = 100; // bare crown columns needed to say what bare is here
 export const G_OMEGA = 0.5; // G; within-crown clumping is inside the effective LAD and LAI
 export const LAD = 1.0;
 export const LAI_MAX = 5.5;
@@ -167,13 +150,13 @@ export const LEAF_FALL_DAYS = 28;
  * Classify the model's columns and build its leaf-on state.
  *
  * Returns { kind (Uint8 per column: 0 open, 1 roof, 2 evergreen, 3 deciduous),
- *           clumps: [{ n, penetration, base, top, depth, evergreenShare }],
+ *           clumps: [{ n, base, top, depth, evergreenShare }],
  *           clumpOf, muOn (per cube), muOff, counts (columns of each kind) }.
  */
 export function seasonalCanopy(cols, model, { shift = null, classify = true } = {}) {
   const { grid, w, h, nz, dz, z0, ground, mu } = model;
   const N = w * h;
-  const above = new Uint16Array(N), multiAbove = new Uint16Array(N), lastAll = new Float32Array(N), lastGround = new Float32Array(N);
+  const above = new Uint16Array(N), multiAbove = new Uint16Array(N), lastGround = new Uint16Array(N);
   const heights = []; // [column, height over ground] of every crown return, for clump depths
   const zLo = new Float32Array(N).fill(Infinity), zHi = new Float32Array(N).fill(-Infinity);
   for (let i = 0; i < cols.n; i++) {
@@ -181,10 +164,7 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true } = 
     const k = cellOf(grid, cols.x[i], cols.y[i], shift);
     if (k < 0) continue;
     const over = cols.z[i] - ground[k];
-    if ((cols.ret[i] || 1) >= (cols.nret[i] || 1)) {
-      lastAll[k]++;
-      if (over < THROUGH_BELOW_M) lastGround[k]++;
-    }
+    if ((cols.ret[i] || 1) >= (cols.nret[i] || 1) && over < GRASS_M) lastGround[k]++; // a pulse that reached the ground
     if (over > CROWN_ABOVE_M && over < 80) {
       above[k]++;
       if ((cols.nret[i] || 1) > 1) multiAbove[k]++;
@@ -192,17 +172,6 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true } = 
       if (cols.z[i] < zLo[k]) zLo[k] = cols.z[i];
       if (cols.z[i] > zHi[k]) zHi[k] = cols.z[i];
     }
-  }
-  /* Penetration pooled over the 5 x 5 columns, as H73 averaged over a crown's cells. */
-  const pen = new Float32Array(N).fill(NaN);
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    let a = 0, g = 0;
-    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
-      const xx = x + dx, yy = y + dy;
-      if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
-      a += lastAll[yy * w + xx]; g += lastGround[yy * w + xx];
-    }
-    if (a > 0) pen[y * w + x] = g / a;
   }
   const kind = new Uint8Array(N);
   for (let k = 0; k < N; k++) {
@@ -243,7 +212,9 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true } = 
     }
     steps.sort((p1, p2) => p1 - p2);
     const rough = steps.length ? steps[steps.length >> 1] : 0;
-    const tree = (a > 0 && m / a >= SOLID_TREE_SPLIT) || (patch.length < SOLID_TREE_MAX_M2 && rough >= SOLID_TREE_ROUGH_M);
+    /* And a speck under 4 m2 is no building: a column or two of a dense crown
+       where, by chance, no pulse reached the ground. */
+    const tree = (a > 0 && m / a >= SOLID_TREE_SPLIT) || patch.length < SOLID_SPECK_M2 || (patch.length < SOLID_TREE_MAX_M2 && rough >= SOLID_TREE_ROUGH_M);
     if (classify && tree) for (const k of patch) kind[k] = 5;
   }
   /* Eaves: a pulse that lands half on a roof edge and half on the ground
@@ -261,8 +232,7 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true } = 
     }
   }
   for (let k = 0; k < N; k++) if (kind[k] === 4) kind[k] = 1;
-  const solidTree = new Uint8Array(N);
-  for (let k = 0; k < N; k++) if (kind[k] === 5) { kind[k] = 2; solidTree[k] = 1; }
+  for (let k = 0; k < N; k++) if (kind[k] === 5) kind[k] = 2;
   /* Clumps of crown columns. */
   const clumpOf = new Int32Array(N).fill(-1);
   const clumps = [];
@@ -279,9 +249,7 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true } = 
         if (kind[j] === 3 && clumpOf[j] < 0) { clumpOf[j] = id; members.push(j); }
       }
     }
-    let ps = 0, pn = 0;
-    for (const k of members) if (Number.isFinite(pen[k])) { ps += pen[k]; pn++; }
-    clumps.push({ n: members.length, penetration: pn ? ps / pn : 1, hs: [] });
+    clumps.push({ n: members.length, hs: [] });
   }
   for (let i = 0; i < heights.length; i += 2) {
     const id = clumpOf[heights[i]];
@@ -295,76 +263,30 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true } = 
     c.depth = Math.max(dz, c.top - c.base);
     delete c.hs;
   }
-  /* Evergreen per column, from its neighborhood's share of last returns
-     that got through -- and, since it decides the summer (see 2), only
-     where the crown also measured DENSE: its optical depth above 4 m,
-     pooled over the 5 x 5 m of crown around it, at least EVERGREEN_DENSER
-     times the median of the crowns penetration calls bare on this flight. */
+  /* 2. Evergreen or not, per tree: dense in winter and not a dome (2c). The
+     tree decides for all its columns, a solid core (1b) included. */
   let ever = 0, domed = 0;
-  for (let k = 0; k < N; k++) if (kind[k] === 2) ever++;
   if (classify) {
-    const od = new Float32Array(N);
-    for (let k = 0; k < N; k++) {
-      if (kind[k] !== 3) continue;
-      for (let l = 0; l < nz; l++) if (z0 + (l + 0.5) * dz > ground[k] + THROUGH_BELOW_M) od[k] += mu[k * nz + l] * dz;
-    }
-    /* The reference leaves out what lies around a solid tree (1b): a
-       spruce's skirt reads "through" by the 4 m line, and a lawn of spruces
-       would otherwise raise the bar their own rims are measured against. */
-    const nearSolid = new Uint8Array(N), R = SOLID_TREE_RIM_M;
-    for (let k = 0; k < N; k++) {
-      if (!solidTree[k]) continue;
-      const x = k % w, y = (k / w) | 0;
-      for (let yy = Math.max(0, y - R); yy <= Math.min(h - 1, y + R); yy++) for (let xx = Math.max(0, x - R); xx <= Math.min(w - 1, x + R); xx++) nearSolid[yy * w + xx] = 1;
-    }
-    const bare = [], dense = new Float32Array(N).fill(NaN);
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      const k = y * w + x;
-      if (kind[k] !== 3) continue;
-      let a = 0, n = 0;
-      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
-        const xx = x + dx, yy = y + dy;
-        if (xx < 0 || yy < 0 || xx >= w || yy >= h || kind[yy * w + xx] !== 3) continue;
-        a += od[yy * w + xx]; n++;
-      }
-      dense[k] = a / n;
-      if (!(pen[k] < EVERGREEN_BELOW) && !nearSolid[k]) bare.push(dense[k]);
-    }
-    bare.sort((a, b) => a - b);
-    const ref = bare.length >= BARE_MIN ? bare[bare.length >> 1] : 0;
-    for (let k = 0; k < N; k++) {
-      if (kind[k] !== 3 || !(pen[k] < EVERGREEN_BELOW)) continue;
-      if (dense[k] >= EVERGREEN_DENSER * ref) { kind[k] = 2; ever++; }
-    }
-    /* The rest of a solid tree's crown (1b): only its densest middle stopped
-       everything, and a spruce's skirt reaches the ground, where the 4 m
-       line would count a return as through. So the crown columns around a
-       solid tree, out to SOLID_TREE_RIM_M, belong to it while their tops
-       keep falling away from it (a cone; a neighboring crown rises again)
-       AND they measured as dense as an evergreen must (above) -- without
-       that, every vine tangle in a deciduous wood grew a bare rim. */
-    const rimFrom = [], rimDist = new Uint8Array(N), rimSeen = Uint8Array.from(solidTree);
-    for (let k = 0; k < N; k++) if (solidTree[k]) rimFrom.push(k);
-    for (let q = 0; q < rimFrom.length; q++) {
-      const k = rimFrom[q], x = k % w, y = (k / w) | 0;
-      if (rimDist[k] >= SOLID_TREE_RIM_M) continue;
-      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-        const xx = x + dx, yy = y + dy;
-        if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
-        const j = yy * w + xx;
-        if (rimSeen[j] || zHi[j] - ground[j] > zHi[k] - ground[k] + 1) continue;
-        if (kind[j] === 3 && dense[j] >= EVERGREEN_DENSER * ref) { kind[j] = 2; ever++; } else if (kind[j] !== 2) continue;
-        rimSeen[j] = 1; rimDist[j] = rimDist[k] + 1; rimFrom.push(j);
-      }
-    }
-    /* 2c. NOT A DOME. Whatever called it evergreen, a broad crown whose top
-       stays flat for meters is an open-grown broadleaf (crowns.js). */
     const top = new Float32Array(N).fill(NaN);
-    for (let k = 0; k < N; k++) if (above[k]) top[k] = zHi[k] - ground[k];
+    for (let k = 0; k < N; k++) if (above[k] && kind[k] !== 1) top[k] = zHi[k] - ground[k];
     const { lab, crowns } = crownsOf(cols, model, { shift, top, dropAt: DOME_RING_M });
-    const dome = crowns.map((c) => c.R >= DOME_MIN_R_M && c.drop < DOME_DROP_M);
-    for (let k = 0; k < N; k++) if (kind[k] === 2 && lab[k] >= 0 && dome[lab[k]]) { kind[k] = 3; ever--; domed++; }
+    const ts = crowns.map(() => []);
+    for (let k = 0; k < N; k++) {
+      if (lab[k] < 0 || (kind[k] !== 2 && kind[k] !== 3)) continue;
+      let tau = 0;
+      const g = ground[k] + 0.1;
+      for (let l = 0; l < nz; l++) if (z0 + (l + 0.5) * dz > g) tau += mu[k * nz + l] * dz;
+      ts[lab[k]].push(Math.exp(-tau));
+    }
+    const call = crowns.map((c, id) => {
+      const t = ts[id].sort((a, b) => a - b);
+      if (!t.length || !(t[t.length >> 1] < WINTER_DENSE_T)) return 3;
+      if (c.R >= DOME_MIN_R_M && c.drop < DOME_DROP_M) { domed += t.length; return 3; }
+      return 2;
+    });
+    for (let k = 0; k < N; k++) if ((kind[k] === 2 || kind[k] === 3) && lab[k] >= 0) kind[k] = call[lab[k]];
   }
+  for (let k = 0; k < N; k++) if (kind[k] === 2) ever++;
   for (const c of clumps) c.evergreenShare = 0;
   for (let k = 0; k < N; k++) if (clumpOf[k] >= 0 && kind[k] === 2) clumps[clumpOf[k]].evergreenShare++;
   for (const c of clumps) c.evergreenShare /= c.n;

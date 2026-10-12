@@ -304,9 +304,9 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
 
   function canopyNote(m) {
     const c = m.counts, total = c ? c.evergreen + c.deciduous : 0;
-    const how = 'by how many of the laser\'s pulses got below 4 m through it in winter (measured right about 3 times in 4 on 290 single trees; the 4 m line, which lets winter shrubs and vines count as "through", is from one lot so far), and only where the crown also measured at least twice as dense as the bare crowns here (an evergreen still had its needles when the laser flew) and is not a broad, flat-topped dome (an open-grown oak or maple, which can hold its dead leaves into a late-autumn flight)';
+    const how = 'tree by tree: evergreen when its crown let less than a fifth of the overhead sun through in winter (an evergreen still has its needles when the laser flies, so it needs no summer leaves) and is not a broad, flat-topped dome (an open-grown oak or maple, which can hold its dead leaves into a late-autumn flight). Checked on 177 hand-labelled trees: an evergreen called deciduous comes out about twice too dark under it in summer, so the rule leans that way rather than leave a broadleaf bare, nine times too bright';
     const split = c && m.classified && total
-      ? ` Of the tree cover here, ${Math.round((100 * c.evergreen) / total)}% reads as evergreen and ${Math.round((100 * c.deciduous) / total)}% as deciduous, ${how}. A tree so dense that nothing got through (a big spruce) is solid all year and counted evergreen, told from a roof by its rough, cone-shaped top. The "Trees" view shows which is which. It matters from leaf-out to leaf-fall: a deciduous tree called evergreen gets no summer leaves.`
+      ? ` Of the tree cover here, ${Math.round((100 * c.evergreen) / total)}% reads as evergreen and ${Math.round((100 * c.deciduous) / total)}% as deciduous, ${how}. A tree so dense that nothing got through (a big spruce) is solid all year, told from a roof by its rough top. The "Trees" view shows which is which. It matters from leaf-out to leaf-fall: a deciduous tree called evergreen gets no summer leaves.`
       : '';
     let text;
     if (m.canopy === 'seasonal') {

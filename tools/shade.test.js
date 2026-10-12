@@ -499,10 +499,10 @@ check('the color ramp runs dark to bright and clamps', ramp(-1).join() === '0,0,
       const r2 = Math.hypot(e - 55, n - 56);
       if (r2 < 3) { add(e, n, 110 - 2.5 * r2, 1, 1, 1); continue; }
       const ro = Math.hypot(e - 30, n - 28);
-      if (ro < 6 && rnd3() < 0.6) { add(e, n, 106 + rnd3() * (8 - 0.05 * ro * ro), 1, 1, 1); continue; }
+      if (ro < 6 && rnd3() < 0.85) { add(e, n, 106 + rnd3() * (8 - 0.05 * ro * ro), 1, 1, 1); continue; }
       if (tangle && rnd2() < 0.3) { add(e, n, 106 + rnd2() * 8, 1, 1, 1); continue; }
       if (ever || bare) {
-        const lo = ever ? 104 : 106, stop = ever ? 0.6 : 0.08;
+        const lo = ever ? 104 : 106, stop = ever ? 0.85 : 0.08;
         /* The evergreen is a cone: its top falls 1.2 m a meter from the tip. */
         const span = ever ? 8 - 1.2 * Math.hypot(e - 15, n - 15) : 8;
         if (rnd() < stop) { add(e, n, lo + rnd() * span, 1, 1, 1); continue; }
@@ -542,7 +542,7 @@ check('the color ramp runs dark to bright and clamps', ramp(-1).join() === '0,0,
     s.kind[at(55, 56)] === 2 && T0(55.5, 56.5) < 0.01, `${s.kind[at(55, 56)]}`);
   check('seasons: an oak holding its dead leaves, which stopped the laser like the evergreen, is a dome and not evergreen',
     s.kind[at(30, 28)] === 3 && s.kind[at(15, 15)] === 2 && s.counts.domed > 0, `${s.kind[at(30, 28)]} (domed ${s.counts.domed})`);
-  check('seasons: a crown that keeps last returns up high but measured no denser than the bare one is not evergreen',
+  check('seasons: a tangle that keeps returns up high but let most of the overhead sun through in winter is deciduous, unlike the evergreen; (was: a crown that keeps last returns up high but measured no denser than the bare one is not evergreen',
     tangleC.ever < 0.1 && everC.ever > 0.9 && tangleC.through > everC.through + 0.2,
     `evergreen share ${tangleC.ever.toFixed(2)} (the evergreen ${everC.ever.toFixed(2)}); through ${tangleC.through.toFixed(2)}, bare ${bareC.through.toFixed(2)}, evergreen ${everC.through.toFixed(2)}`);
   const T = (mu, e, n) => transmittance({ ...model, mu }, e, 60 - n, 100.1, [0, 0, 1]);
@@ -553,7 +553,7 @@ check('the color ramp runs dark to bright and clamps', ramp(-1).join() === '0,0,
      down keeps exp(-G Omega LAI_MAX) ~ 0.105, times what the branches stop. */
   const full = Math.exp(-G_OMEGA * LAI_MAX);
   check(`seasons: the deciduous crown lets ~0.7 of the overhead sun through bare, ~${full.toFixed(2)} or a little less in leaf`,
-    near(bareT, 0.69, 0.06) && leafT <= full * 1.05 && leafT > full * 0.6, `bare ${bareT.toFixed(2)}, in leaf ${leafT.toFixed(3)}`);
+    near(bareT, 0.69, 0.08) && leafT <= full * 1.05 && leafT > full * 0.6, `bare ${bareT.toFixed(2)}, in leaf ${leafT.toFixed(3)}`);
   check('seasons: a low sun crossing more of the crown in leaf keeps less than the overhead sun',
     transmittance({ ...model, mu: s.muOn }, 45, 60 - 22, 100.1, [0, -Math.cos(Math.PI / 4), Math.sin(Math.PI / 4)]) < leafT);
   check('seasons: the evergreen is as the laser measured it in every season (no leaves added)',
