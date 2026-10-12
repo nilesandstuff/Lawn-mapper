@@ -243,6 +243,14 @@ FINE_WEIGHT = float(os.environ.get("FINE_WEIGHT", "1.0"))
 # there, not the parking lot.
 NOT_LAWN = os.environ.get("NOT_LAWN") == "1"
 
+# WHICH HEAD (S26; owner, 2026-10-12): "small" is the decoder below, the one
+# every table was measured with; "upernet" is tools/upernet_head.py, a small
+# UperNet over the same grid, trained and scored exactly the same way, as a
+# trial beside it. A trial only: the live server builds the small decoder.
+HEAD = os.environ.get("HEAD", "small")
+if HEAD not in ("small", "upernet"):
+    raise SystemExit(f"HEAD={HEAD!r}: small or upernet")
+
 
 # A GPU WHEN THERE IS ONE (Modal, 2026-09-28); the CPU runner is unchanged.
 # The lawns stay in memory on the CPU and each batch is moved over, so a
@@ -267,6 +275,15 @@ class Decoder(nn.Module):
         """The last hidden layer (32 numbers a patch) and the answer from it."""
         hidden = self.net[:-1](x)
         return hidden, self.net[-1](hidden)
+
+
+def make_decoder(dim):
+    """The head HEAD names, over `dim` numbers a patch; both answer at the grid
+    and hand the refiner 32 numbers a patch, so nothing downstream changes."""
+    if HEAD == "upernet":
+        from upernet_head import UperNetHead
+        return UperNetHead(dim, dropout_in=DROPOUT)
+    return Decoder(dim)
 
 
 def holdout_group(ids, spec, sources, sample_seed=7):
@@ -561,7 +578,7 @@ def train_one(train, dim, seed):
     rng = np.random.default_rng(seed)
     mean, sd = standardiser(train)
     mean, sd = mean.to(DEVICE), sd.to(DEVICE)
-    model = Decoder(dim).to(DEVICE)
+    model = make_decoder(dim).to(DEVICE)
     refiner = None
     if REFINE:
         from edge_refine import Refiner
@@ -678,7 +695,12 @@ def main():
     started = time.time()
     lawns = [read_lawn(feats, frames, s, manifest["images"][s]) for s in stems]
     dim = lawns[0]["x"].shape[0]
-    params = sum(p.numel() for p in Decoder(dim).parameters())
+    params = sum(p.numel() for p in make_decoder(dim).parameters())
+    if HEAD == "upernet":
+        from upernet_head import CHANNELS as UP_CH
+        print(f"UPERNET HEAD (S26): pyramid pooling + FPN over the one grid at strides 1/2/4/8, {UP_CH} channels, "
+              f"GroupNorm, no auxiliary head, dropout {DROPOUT:g} in and 0.1 on the fused features; "
+              f"{params:,} weights (the small decoder would be {sum(p.numel() for p in Decoder(dim).parameters()):,})", flush=True)
     if REFINE:
         from edge_refine import Refiner
         ref_params = sum(p.numel() for p in Refiner().parameters())
@@ -754,6 +776,8 @@ def main():
     # server (tools/modal_serve.py). Scoring is the folds' job, in their own
     # step; this only makes the thing that gets served.
     release_out = os.environ.get("RELEASE_OUT", "")
+    if release_out and HEAD != "small":
+        raise SystemExit(f"HEAD={HEAD} is a trial, not a release: the live server (alpha_infer.py) builds the small decoder")
     if release_out:
         os.makedirs(release_out, exist_ok=True)
         t0 = time.time()
@@ -848,7 +872,7 @@ def main():
     with open(os.path.join(out, "manifest.json"), "w") as f:
         json.dump({
             "model": manifest.get("model"), "size": manifest.get("size"),
-            "dim": dim, "params": params, "epochs": EPOCHS, "seed": SEED,
+            "dim": dim, "params": params, "epochs": EPOCHS, "seed": SEED, "head": HEAD,
             "lr": LR, "weightDecay": WEIGHT_DECAY, "dropout": DROPOUT,
             "seenOnly": True, "bothScales": bool(FEATURES_WHOLE), "refine": REFINE, "lawns": len(lawns), "folds": len(groups), "examples": len(examples),
             "canopyUnseen": sum(1 for L in lawns if L["canopy"]),

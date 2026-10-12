@@ -6822,7 +6822,7 @@ The same runs also give the live refiner against its true twin (THE PLAN's
 decoder without it), a second extraction beside 37556372070 / 37556456369 /
 37556539907. Nothing is released from this without the owner.
 
-### S26. A standard segmentation head instead of our own small decoder (owner, 2026-10-06 -- PARKED UNTIL 150 MAPS, owner 2026-10-07; was 500)
+### S26. A standard segmentation head instead of our own small decoder (owner, 2026-10-06 -- PARKED UNTIL 150 MAPS, owner 2026-10-07; was 500 -- UN-PARKED FOR A TRIAL AT 104, owner 2026-10-12)
 
 **The question (owner):** is our own four-layer decoder (and the edge
 refiner beside it) really a better fit than a named, published design?
@@ -6845,6 +6845,51 @@ the end of every deploy log, and train_decoder.py at the start of every
 training run's. **The test, when it comes:** UperNet first, as one more
 decoder over the same features, seeds and folds as THE PLAN's, scored lot by
 lot with workflow 24; Mask2Former only if UperNet shows something.
+
+**Un-parked (owner, 2026-10-12: "Just for my curiosity since we're at a bit
+of a lull... try doing a run or 2 using upernet instead of our decoder ...
+taking a lot of measures to protect against over fitting"). Built:
+tools/upernet_head.py, workflow 14 `refiner_trial: upernet`.**
+
+What it is, exactly:
+- UperNet's shape: pyramid pooling (bins 1, 2, 3, 6) on the coarsest level,
+  lateral 1x1s, a top-down path, a 3x3 per level, one 3x3 fusion over all
+  four levels at the finest, then THE PLAN's 32-number hidden layer and
+  1x1 answer, so the edge refiner reads it unchanged.
+- The pyramid is built from the ONE squeezed grid the small decoder reads,
+  at strides 1, 2, 4 and 8 of it by max pooling (64, 32, 16, 8 across).
+  UperNet wants four levels and a plain ViT gives one; ViTDet (Li et al.
+  2022) found a pyramid made from the last map alone as good as tapping
+  middle layers, and H85/H86 found our middle layers worth nothing, so no
+  new extraction. The answer is at the grid, as the decoder's.
+- The measures against overfitting, each a choice, none measured here:
+  (1) the backbone stays frozen; (2) 64 channels, not the standard 512 --
+  557,121 weights over 1031 inputs against the decoder's 224,385, where 512
+  would be tens of millions (the ViT-22B paper found UperNet's size alone
+  closed the frozen-vs-fine-tuned gap, i.e. the head can memorise);
+  (3) GroupNorm, not BatchNorm -- a batch is four lawns; (4) Dropout2d on
+  the input (DROPOUT, as the decoder) and on the fused features (0.1,
+  mmsegmentation's dropout_ratio); (5) no auxiliary head -- it exists to
+  supervise a backbone being trained, which ours is not; (6) everything else
+  THE PLAN's: AdamW, weight decay 1e-2, cosine, a fixed 30 epochs (H84),
+  no early stopping on held-out lots, flips and quarter turns, modality
+  dropout, soft targets, the loss, the folds by place, the seeds.
+- Cost, measured on this box (4 threads, 97 synthetic 64x64x1031 lawns):
+  an epoch 6.9 s against the decoder's 6.4 s; 128 channels would be 11.9 s
+  and 2.06 M weights. A run is the extraction plus about an hour.
+
+**The test, written before the runs:** workflow 14 `refiner_trial:
+upernet`, `lawns: locked` (104, `131u7jm`), free runner, seeds 7 and 8
+(the owner asked for "a run or 2"; the protocol's third seed can follow).
+Each run trains THE PLAN's decoder and the UperNet head over the SAME
+features, folds and seed, so the comparison is paired within the run. Read
+with workflow 24, "decoder, UperNet + stage 3, span, lidar veto" against
+"decoder, edge refined + stage 3, span, lidar veto". **Worth a third seed
+and more only if** the sign test is under 0.05 with more lots better and
+the interval on all 104 is at or below zero; adopted only under the full
+bar, and never a release from this (the live server builds the small
+decoder). Overfitting reads as a lower train loss with a worse held-out
+score; the log prints both.
 
 ### S25. A wider-reaching edge refiner (owner, 2026-10-06 -- BUILT, MEASURED WORSE: H80)
 

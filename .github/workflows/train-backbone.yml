@@ -355,10 +355,14 @@ on:
         # features, seed and folds with every training grid as drawn -- no
         # flips or quarter turns -- to measure what that augmentation is
         # worth before trying more of it. Free runner.
-        description: 'Refiner trial: off, compare (hard-edges and wide-gated refiners), hard edges / wide gated (for a release), average of 3 (three decoders averaged), epochs (THE PLAN at 15 and 60 epochs beside the usual 30), held out by photo (county lots answered by a decoder that never saw one, and 12 Mapbox lots the same way), or no flips (THE PLAN trained without flips and quarter turns)'
+        # UPERNET (S26; owner, 2026-10-12): a small UperNet head
+        # (tools/upernet_head.py) over the same features, seed and folds,
+        # with THE PLAN's refiner, scored beside THE PLAN's decoder as
+        # "decoder, UperNet ...". Free runner; about a fold's time again.
+        description: 'Refiner trial: off, compare (hard-edges and wide-gated refiners), hard edges / wide gated (for a release), average of 3 (three decoders averaged), epochs (THE PLAN at 15 and 60 epochs beside the usual 30), held out by photo (county lots answered by a decoder that never saw one, and 12 Mapbox lots the same way), no flips (THE PLAN trained without flips and quarter turns), or upernet (a small UperNet head beside THE PLAN''s decoder, S26)'
         type: choice
         default: 'off'
-        options: ['off', 'compare', 'hard edges', 'wide gated', 'average of 3', 'epochs', 'held out by photo', 'no flips']
+        options: ['off', 'compare', 'hard edges', 'wide gated', 'average of 3', 'epochs', 'held out by photo', 'no flips', 'upernet']
       layers:
         # MIDDLE LAYERS TOO (S30, owner 2026-10-07): "compare" keeps Scale-MAE's
         # blocks 8 and 16 beside its last layer (256 numbers each) and trains
@@ -516,6 +520,7 @@ jobs:
           python3 holdout_test.py
           python3 inferred_doubt_test.py
           python3 flips_test.py
+          python3 upernet_test.py
 
       # The tree model over the same frames, exactly as workflow 19 runs it,
       # so the canopy lands on the pixels the features describe. Its
@@ -1086,6 +1091,26 @@ jobs:
           FLIPS: '0'
         run: python3 tools/train_decoder.py
 
+      - name: Train a small UperNet head beside THE PLAN's decoder (refiner_trial upernet, S26)
+        if: ${{ inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && inputs.refiner_trial == 'upernet' && inputs.canopy != 'compare' && inputs.gpu != 'modal' }}
+        env:
+          FEATURES: feats
+          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
+          FRAMES: frames
+          OUT: preds-upernet
+          CANOPY: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
+          CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}
+          SEED: ${{ inputs.seed }}
+          FUSE: '1'
+          FUSE_LIDAR: lidar
+          FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'locked') && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
+          FUSE_NAIP: naip
+          FUSE_CANOPY: ${{ inputs.canopy != 'off' && '1' || '0' }}
+          UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
+          REFINE: '1'
+          HEAD: upernet
+        run: python3 tools/train_decoder.py
+
       - name: Train THE PLAN's decoder reading the middle layers too
         if: ${{ inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && inputs.layers == 'compare' && inputs.canopy != 'compare' && inputs.gpu != 'modal' }}
         env:
@@ -1388,7 +1413,7 @@ jobs:
           # The three-way comparison, one row each. The seen column is scored
           # with the canopy unseen on lawn, whichever decoder is being read.
           # S19 (`fused + edge`): the refined decoder as a row of its own.
-          PREDICTIONS_DIRS: ${{ (inputs.decoder != 'off' && inputs.canopy == 'compare' && 'no canopy=preds-none,canopy on lawn=preds-lawn,canopy everywhere=preds-all') || (inputs.decoder == 'fused + edge' && format('edge refined=preds-edge{0}{1}{2}{3}{4}{5}{6}{7}{8}', inputs.corrections == 'on' && ',corrections weighted=preds-corr' || '', inputs.not_lawn == 'on' && ',no pond maps=preds-nonl' || '', inputs.edge_reach == 'compare' && ',wide edge=preds-wide' || '', inputs.refiner_trial == 'compare' && ',hard edges=preds-hardedge,wide gated=preds-widegate' || '', inputs.refiner_trial == 'average of 3' && ',averaged x3=preds-ens3' || '', inputs.refiner_trial == 'epochs' && ',15 epochs=preds-ep15,60 epochs=preds-ep60' || inputs.refiner_trial == 'no flips' && ',no flips=preds-noflip' || '', inputs.layers == 'compare' && ',middle layers=preds-multi' || '', inputs.layers == 'variants' && ',layer 8=preds-l8,layer 16=preds-l16,layers small=preds-lsmall' || '', inputs.refiner_trial == 'held out by photo' && ',held out county=preds-hold-county,held out 12 Mapbox=preds-hold-mapbox' || '')) || (inputs.decoder == 'fused + edge + trees' && 'edge refined=preds-edge,taught under trees=preds-trees,taught under trees with canopy input=preds-trees-canopy') || (inputs.decoder == 'fused + edge + trees + returns' && 'edge refined=preds-edge,taught under trees=preds-trees,taught under trees with canopy input=preds-trees-canopy,taught under trees + returns=preds-trees-returns') || '' }}
+          PREDICTIONS_DIRS: ${{ (inputs.decoder != 'off' && inputs.canopy == 'compare' && 'no canopy=preds-none,canopy on lawn=preds-lawn,canopy everywhere=preds-all') || (inputs.decoder == 'fused + edge' && format('edge refined=preds-edge{0}{1}{2}{3}{4}{5}{6}{7}{8}', inputs.corrections == 'on' && ',corrections weighted=preds-corr' || '', inputs.not_lawn == 'on' && ',no pond maps=preds-nonl' || '', inputs.edge_reach == 'compare' && ',wide edge=preds-wide' || '', inputs.refiner_trial == 'compare' && ',hard edges=preds-hardedge,wide gated=preds-widegate' || '', inputs.refiner_trial == 'average of 3' && ',averaged x3=preds-ens3' || '', inputs.refiner_trial == 'epochs' && ',15 epochs=preds-ep15,60 epochs=preds-ep60' || inputs.refiner_trial == 'no flips' && ',no flips=preds-noflip' || inputs.refiner_trial == 'upernet' && ',UperNet=preds-upernet' || '', inputs.layers == 'compare' && ',middle layers=preds-multi' || '', inputs.layers == 'variants' && ',layer 8=preds-l8,layer 16=preds-l16,layers small=preds-lsmall' || '', inputs.refiner_trial == 'held out by photo' && ',held out county=preds-hold-county,held out 12 Mapbox=preds-hold-mapbox' || '')) || (inputs.decoder == 'fused + edge + trees' && 'edge refined=preds-edge,taught under trees=preds-trees,taught under trees with canopy input=preds-trees-canopy') || (inputs.decoder == 'fused + edge + trees + returns' && 'edge refined=preds-edge,taught under trees=preds-trees,taught under trees with canopy input=preds-trees-canopy,taught under trees + returns=preds-trees-returns') || '' }}
           # The canopy joins the hand-marked unseen ground for the seen column.
           CANOPY_DIR: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
           CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}
