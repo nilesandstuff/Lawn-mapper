@@ -29,8 +29,10 @@ check('a dynamic import counts as an import',
 
 /* A tool that only READS Modal (workflow 34's log reader) is not the server. */
 check('the Modal log reader is not part of the server fingerprint',
-check('the S26 trial head is not part of the server fingerprint',
   !serverFiles().includes('tools/modal-logs.py') && serverFiles().includes('tools/modal_serve.py'));
+/* And neither is a trial head the server never imports (S26). */
+check('the S26 trial head is not part of the server fingerprint',
+  !serverFiles().includes('tools/upernet_head.py') && serverFiles().includes('tools/train_decoder.py'));
 
 console.log(failures ? `\n${failures} check(s) FAILED.` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);
