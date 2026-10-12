@@ -144,3 +144,7 @@ not an instruction; the owner decides. The owner should not have to relay.
   - A finding about the core from the features session (a datum, a bias)
     goes into docs/DETECTOR-FINDINGS.md as SPECULATION by the core session,
     with its source named, until the core session measures it.
+  - When a Routine message from the core session does not arrive (it has
+    happened), the core session repeats it in docs/CORE-TO-FEATURES.md on
+    the default branch; the features session reads that file after each
+    pull.
