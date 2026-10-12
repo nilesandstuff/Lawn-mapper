@@ -1080,6 +1080,20 @@ CREATE TABLE IF NOT EXISTS shade_fixes (
   bearing     REAL,
   PRIMARY KEY (session, t)
 );
+-- The phone's pose, one mean per whole second (Sensor Logger's orientation
+-- sensor; owner, 2026-10-12): the screen's unit normal in east-north-up
+-- (nz 1 = flat, face up) and the compass heading of the phone's top edge.
+-- Tipped readings (the truck's mount, a pocket) are left out with it, the
+-- sun's angle off the face is known, and a zero-turn's spin shows.
+CREATE TABLE IF NOT EXISTS shade_orient (
+  session     TEXT NOT NULL,
+  t           INTEGER NOT NULL,
+  nx          REAL NOT NULL,
+  ny          REAL NOT NULL,
+  nz          REAL NOT NULL,
+  head        REAL,
+  PRIMARY KEY (session, t)
+);
 -- Stretches the owner erased from a recording (tank and hopper fills,
 -- parking, the truck), from t0 to t1 inclusive.
 CREATE TABLE IF NOT EXISTS shade_cuts (

@@ -5,7 +5,7 @@
  * Admin only: the routes refuse everybody else with a 404.
  */
 
-import { unzipText, fromExport, joinTrack, splitVisits, usable, sunOrShade } from './truth.js';
+import { unzipText, fromExport, posePerSecond, joinTrack, splitVisits, usable, sunOrShade } from './truth.js';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -37,21 +37,22 @@ async function upload(files) {
       else texts[f.name] = await f.text();
     }
     const got = fromExport(texts);
+    got.orient = posePerSecond(got.orient); // up to 100 a second in the file
     if (!got.fix.length || !got.lux.length) {
       say(`That file has ${got.fix.length} location and ${got.lux.length} light readings; both are needed. Files seen: ${Object.keys(texts).join(', ') || 'none'}.`, 'bad');
       return;
     }
     const session = `upload ${name}`;
     const CHUNK = 2000;
-    const total = Math.max(got.fix.length, got.lux.length);
+    const total = Math.max(got.fix.length, got.lux.length, got.orient.length);
     for (let i = 0; i < total; i += CHUNK) {
       say(`Uploading… ${Math.min(100, Math.round((100 * i) / total))}%`);
       await getJson('/api/shade/readings', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session, fix: got.fix.slice(i, i + CHUNK), lux: got.lux.slice(i, i + CHUNK) }),
+        body: JSON.stringify({ session, fix: got.fix.slice(i, i + CHUNK), lux: got.lux.slice(i, i + CHUNK), orient: got.orient.slice(i, i + CHUNK) }),
       });
     }
-    say(`Uploaded ${got.fix.length.toLocaleString()} locations and ${got.lux.length.toLocaleString()} light readings as "${session}".`, 'ok');
+    say(`Uploaded ${got.fix.length.toLocaleString()} locations, ${got.lux.length.toLocaleString()} light readings and ${got.orient.length ? `${got.orient.length.toLocaleString()} seconds of orientation` : 'no orientation'} as "${session}".`, 'ok');
     loadSessions();
   } catch (e) {
     say(`The upload failed: ${e.message}`, 'bad');
@@ -81,17 +82,27 @@ async function loadSessions() {
 async function showVisits(session, box) {
   box.innerHTML = '<p class="dim">Splitting into visits…</p>';
   const d = await getJson(`/api/shade/readings/data?session=${encodeURIComponent(session)}`);
-  const track = joinTrack(d.fix, d.lux, { cuts: d.cuts.map(([a, b]) => [a, b]) });
+  const track = joinTrack(d.fix, d.lux, { cuts: d.cuts.map(([a, b]) => [a, b]), orient: d.orient || [] });
+  const luxSeconds = new Set(d.lux.map(([t]) => Math.floor(t / 1000)));
+  /* GPS runs on when the phone puts the light sensor to sleep, so the
+     fixes, not the joined track, say how long the visit really was. */
+  const fixAt = d.fix.map((f) => f[0]);
   const visits = splitVisits(track).map((v) => ({ v, u: usable(v) })).filter(({ u }) => u.length >= 20);
-  if (!visits.length) { box.innerHTML = '<p class="dim">No visit with enough usable readings (moving, under sprayer speed, a good fix).</p>'; return; }
+  if (!visits.length) { box.innerHTML = '<p class="dim">No visit with enough usable readings (moving, under sprayer speed, a good fix, the phone flat).</p>'; return; }
   box.replaceChildren(...visits.map(({ v, u }, i) => {
     const so = sunOrShade(u.map((s) => s.lux));
     const lat = u.reduce((a, s) => a + s.lat, 0) / u.length, lng = u.reduce((a, s) => a + s.lng, 0) / u.length;
+    const t0 = v[0].t, t1 = v[v.length - 1].t;
+    const secs = new Set(fixAt.filter((t) => t >= t0 && t <= t1).map((t) => Math.floor(t / 1000)));
+    let lit = 0;
+    for (const s of secs) if (luxSeconds.has(s) || luxSeconds.has(s - 1) || luxSeconds.has(s + 1)) lit++;
+    const cover = secs.size ? lit / secs.size : 1;
     const row = document.createElement('div');
     row.className = 'visit';
     const sky = so.clear ? `<span class="ok">sun and shade ${Math.round(so.contrast)}× apart</span>` : '<span class="warn">no clear sun (cloudy?)</span>';
-    const href = `/shade.html?at=${lat.toFixed(6)},${lng.toFixed(6)}&truth=${encodeURIComponent(`${session}|${v[0].t}|${v[v.length - 1].t}`)}`;
-    row.innerHTML = `<div><b>Visit ${i + 1}</b> <span class="dim">${esc(clock(v[0].t))}–${esc(clock(v[v.length - 1].t))}, ${u.length} usable readings</span><br>${sky}</div>
+    const gap = cover < 0.8 ? `<br><span class="warn">The light sensor slept through ${Math.round(100 * (1 - cover))}% of this visit (see step 1, the battery settings).</span>` : '';
+    const href = `/shade.html?at=${lat.toFixed(6)},${lng.toFixed(6)}&truth=${encodeURIComponent(`${session}|${t0}|${t1}`)}`;
+    row.innerHTML = `<div><b>Visit ${i + 1}</b> <span class="dim">${esc(clock(t0))}–${esc(clock(t1))}, ${u.length} usable readings</span><br>${sky}${gap}</div>
       <a class="button" href="${href}">Check on the shade map</a>`;
     return row;
   }));

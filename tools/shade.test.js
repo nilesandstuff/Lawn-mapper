@@ -12,7 +12,7 @@ import { alignToPhoto, dilate } from '../public/shade/align.js';
 import { kindOf, mercUnits } from '../public/shade/view3d.js';
 import { aboutLocal, ramp } from '../public/shade/sun-ui.js';
 import { niceStep, bandsFor, rasterOf, smooth, valueAt, boxStats } from '../public/shade/readout.js';
-import { msOf, fromPush, fromExport, perSecond, joinTrack, splitVisits, usable, sunOrShade, operatorShadow, score, unzipText, metersBetween } from '../public/shade/truth.js';
+import { msOf, fromPush, fromExport, perSecond, poseOf, posePerSecond, joinTrack, splitVisits, usable, sunOrShade, sunOrShadeAround, sunOffFace, compassOffset, operatorShadow, score, unzipText, metersBetween } from '../public/shade/truth.js';
 import { deflateRawSync, inflateRawSync } from 'node:zlib';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
@@ -709,6 +709,37 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   check('a zip: stored and deflated entries, folders dropped from the names',
     zipped['Light.csv'] === 'time,lux\n1,2\n' && zipped['Location.csv']?.startsWith('time,latitude') && Object.keys(zipped).length === 2, Object.keys(zipped).join(','));
   check('meters between: 0.001 degree of latitude is about 111 m', near(metersBetween([43, -85], [43.001, -85]), 111.2, 0.2));
+
+  /* Orientation (owner's first log, 2026-10-12: the phone tipped in the
+     truck, flat on the hopper, its compass ~110 degrees off the travel). */
+  const s15 = Math.sin(Math.PI / 12), c15 = Math.cos(Math.PI / 12);
+  const flatNorth = poseOf({ qx: 0, qy: 0, qz: 0, qw: 1 }), flatEast = poseOf({ qx: 0, qy: 0, qz: -Math.SQRT1_2, qw: Math.SQRT1_2 }), tipped = poseOf({ qx: s15, qy: 0, qz: 0, qw: c15 });
+  check('the pose: flat facing north, flat facing east, tipped 30 degrees',
+    near(flatNorth[2], 1, 1e-9) && near(flatNorth[3], 0, 1e-9) && near(flatEast[2], 1, 1e-9) && near(flatEast[3], 90, 1e-6) && near(tipped[2], Math.cos(Math.PI / 6), 1e-9), JSON.stringify([flatNorth, flatEast, tipped]));
+  const pushO = fromPush({ sessionId: 'o', payload: [{ name: 'orientation', time: 1760270400000000000, values: { qx: 0, qy: 0, qz: 0, qw: 1, roll: 0, pitch: 0, yaw: 0 } }] });
+  const expO = fromExport({ 'Orientation.csv': 'time,seconds_elapsed,qz,qy,qx,qw,roll,pitch,yaw\n1760270400000000000,0,0,0,0,1,0,0,0\n1760270400010000000,0.01,-0.7071068,0,0,0.7071068,0,0,-1.57\n' });
+  check('orientation from a push and from Orientation.csv', pushO.orient.length === 1 && expO.orient.length === 2 && near(expO.orient[1][4], 90, 1e-3), JSON.stringify(expO.orient));
+  const ps = posePerSecond([[1000, 0, 0, 1, 359], [1500, 0, 0, 1, 3], [2000, 0.6, 0, 0.8, 90]]);
+  check('pose per second: the heading averaged on the circle (359 and 3 make 1)', ps.length === 2 && near(ps[0][4], 1, 1e-6) && near(ps[1][1], 0.6, 1e-9), JSON.stringify(ps));
+  const jo = joinTrack([[t0, 43.1, -85.5, 3, 1, 90], [t0 + 1000, 43.1, -85.5 + 2 * m, 3, 1, 90]], [[t0, 40000], [t0 + 1000, 41000]], { orient: [[t0, 0, 0, 1, 340], [t0 + 1000, 0.5, 0, 0.866, 340]] });
+  check('the track carries the pose; usable drops the phone tipped 30 degrees', jo[0].face === 340 && jo[1].up[2] === 0.866 && usable(jo).length === 1, JSON.stringify(jo));
+  const drive = [];
+  for (let i = 0; i < 40; i++) drive.push({ t: t0 + i * 1000, lat: 43.1, lng: -85.5 + i * m, acc: 3, speed: 1, bearing: 90, lux: 40000 });
+  for (let i = 0; i < 30; i++) drive.push({ t: t0 + 40000 + i * 1000, lat: 43.1, lng: -85.5 + (40 + 20 * i) * m, acc: 3, speed: 20, bearing: 90, lux: 40000 });
+  for (let i = 0; i < 40; i++) drive.push({ t: t0 + 70000 + i * 1000, lat: 43.1, lng: -85.5 + (640 + i) * m, acc: 3, speed: 1, bearing: 90, lux: 40000 });
+  check('visits: the truck at 20 m/s splits two stops even though it never jumps', splitVisits(drive).length === 2, splitVisits(drive).map((v) => v.length).join(' '));
+  /* Two minutes of sun and shade, three of even dim light (a cloud), two of open sun. */
+  const sky = [];
+  for (let i = 0; i < 420; i++) sky.push({ t: t0 + i * 1000, lux: i < 120 ? (Math.floor(i / 10) % 2 ? 3000 : 40000) : i < 300 ? 5000 + (i % 7) * 150 : 40000 + (i % 5) * 300 });
+  const around = sunOrShadeAround(sky);
+  const inCloud = around.judged.slice(215, 295).some(Boolean), early = around.sun[5] === true && around.sun[15] === false && around.judged[15], open = around.judged.slice(395).every(Boolean) && around.sun.slice(395).every(Boolean);
+  check('judged around each reading: sun and shade early, the cloud left out, open sun later still sun', !inCloud && early && open, JSON.stringify({ inCloud, early, open }));
+  check('the sun off the phone\'s face: flat with the sun 30 degrees up is 60; tipped toward it, less',
+    near(sunOffFace(null, 30, 180), 60, 1e-6) && near(sunOffFace([0, -0.5, 0.866], 30, 180), 30, 0.1));
+  const straight = [...Array(20)].map((_, i) => ({ t: t0 + i * 1000, speed: 2, bearing: 90, face: 340 + (i % 3) }));
+  const wild = straight.map((s, i) => ({ ...s, face: (i * 97) % 360 }));
+  const co = compassOffset(straight);
+  check('the compass offset from straight runs (~110 degrees), none when the compass wanders', co && near(co.offset, 109, 1.5) && compassOffset(wild) === null, JSON.stringify(co));
 }
 
 {
@@ -731,6 +762,7 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
     body.payload.push({ name: 'location', time: String((1760270400000 + i * 1000) * 1e6), values: { latitude: 43.1, longitude: -85.5 + i * 1e-5, horizontalAccuracy: 3 } });
     body.payload.push({ name: 'light', time: String((1760270400000 + i * 1000 + 300) * 1e6), values: { lux: 40000 } });
     body.payload.push({ name: 'light', time: String((1760270400000 + i * 1000 + 700) * 1e6), values: { lux: 42000 } });
+    for (let k = 0; k < 10; k++) body.payload.push({ name: 'orientation', time: String((1760270400000 + i * 1000 + k * 100) * 1e6), values: { qx: 0, qy: 0, qz: 0, qw: 1 } });
   }
   const r1 = await call('/api/shade/readings?key=secret123', { method: 'POST', body: JSON.stringify(body) });
   const j1 = await r1.json();
@@ -738,6 +770,7 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   const rows = sq.prepare('SELECT COUNT(*) AS n FROM shade_fixes').get().n, lux = sq.prepare('SELECT lux FROM shade_lux LIMIT 1').get().lux;
   check('a push with the key is stored: 40 fixes, 40 seconds of light averaged, a repeat ignored',
     r1.status === 200 && j1.fix === 40 && j1.lux === 40 && rows === 40 && lux === 41000 && again.ok && sq.prepare('SELECT COUNT(*) AS n FROM shade_lux').get().n === 40, JSON.stringify(j1));
+  check('the pose is stored one per second, flat', j1.orient === 40 && sq.prepare('SELECT COUNT(*) AS n FROM shade_orient').get().n === 40 && sq.prepare('SELECT nz FROM shade_orient LIMIT 1').get().nz === 1, JSON.stringify(j1));
   const bad = await call('/api/shade/readings?key=wrong', { method: 'POST', body: JSON.stringify(body) });
   const anon = await call('/api/shade/readings/sessions', { method: 'GET' });
   const anonPost = await call('/api/shade/readings', { method: 'POST', body: JSON.stringify(body) });

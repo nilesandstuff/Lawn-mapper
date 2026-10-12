@@ -6,10 +6,10 @@
  * and hopper fills, parking, the truck). The judging is in truth.js.
  */
 
-import { joinTrack, usable, sunOrShade, operatorShadow, score } from './truth.js';
+import { joinTrack, usable, sunOrShadeAround, sunOffFace, compassOffset, operatorShadow, score } from './truth.js';
 
 const $ = (s) => document.querySelector(s);
-const MIN_ELEVATION = 25; // the phone, flat, barely sees a lower sun (truth.js)
+const MAX_OFF_FACE = 65; // degrees: past this the sensor barely sees the sun (truth.js)
 const COLORS = { sunSun: '#f8c931', shadeShade: '#3b4cc0', sunShade: '#e53935', shadeSun: '#ff9800', out: '#9e9e9e' };
 
 async function getJson(url, init) {
@@ -35,20 +35,29 @@ export async function startTruth({ map, sun, spec, bounds = null }) {
     say('Reading the visit…');
     const d = await getJson(`/api/shade/readings/data?session=${encodeURIComponent(session)}&t0=${t0}&t1=${t1}`);
     st.cuts = d.cuts;
-    const u = usable(joinTrack(d.fix, d.lux, { cuts: d.cuts.map(([x, y]) => [x, y]) }));
+    const u = usable(joinTrack(d.fix, d.lux, { cuts: d.cuts.map(([x, y]) => [x, y]), orient: d.orient || [] }));
     say(`Asking the model about ${u.length} readings…`);
     const m = await sun.samples(u.map((s) => ({ lng: s.lng, lat: s.lat, t: s.t })), 1);
-    const why = { low: 0, behind: 0 };
+    /* Which way the operator faces: the phone's compass turned by the
+       visit's straight runs when it holds steady (a zero-turn spins where GPS
+       sees nothing), else the GPS track. */
+    const cal = compassOffset(u);
+    const heading = (s) => (cal && s.face != null ? (s.face + cal.offset) % 360 : s.heading);
+    const why = { off: 0, behind: 0, cloud: 0 };
     const keep = u.map((s, i) => {
-      if (m.elevation[i] < MIN_ELEVATION) { why.low++; return false; }
-      if (operatorShadow(s.heading, m.azimuth[i])) { why.behind++; return false; }
+      if (sunOffFace(s.up, m.elevation[i], m.azimuth[i]) > MAX_OFF_FACE) { why.off++; return false; }
+      if (operatorShadow(heading(s), m.azimuth[i])) { why.behind++; return false; }
       return true;
     });
     const kept = u.filter((_, i) => keep[i]);
-    const so = sunOrShade(kept.map((s) => s.lux));
+    const so = sunOrShadeAround(kept);
     const sunMeasured = new Array(u.length).fill(false);
     let j = 0;
-    u.forEach((_, i) => { if (keep[i]) sunMeasured[i] = so.sun[j++]; });
+    u.forEach((_, i) => {
+      if (!keep[i]) return;
+      if (so.clear && !so.judged[j]) { keep[i] = false; why.cloud++; }
+      sunMeasured[i] = so.sun[j++];
+    });
     const sc = score(sunMeasured, Array.from(m.T), so.clear ? keep : keep.map(() => false));
     st.samples = u.map((s, i) => ({ ...s, T: m.T[i], keep: keep[i], sun: sunMeasured[i] }));
     draw();
@@ -70,7 +79,9 @@ export async function startTruth({ map, sun, spec, bounds = null }) {
            <tr><td><i class="sw" style="background:${COLORS.shadeSun}"></i>Model shade, phone sun (model too dark)</td><td>${sc.shadeSun}</td></tr>
          </table>
          <p class="dim">Phone: sun about ${Math.round(so.sunLux).toLocaleString()} lux, shade cut at ${Math.round(so.cut).toLocaleString()} (${so.contrast.toFixed(0)}× apart). Model: sun where at least half the direct beam reaches 1 m up, with the trees as they stood that day.</p>`;
-    say(`${head}<p class="dim"><i class="sw" style="background:${COLORS.out}"></i>Left out: ${why.low} with the sun under ${MIN_ELEVATION}°, ${why.behind} with the sun behind you (your shadow), ${st.cuts.length} erased stretch${st.cuts.length === 1 ? '' : 'es'}.</p>`);
+    const posed = u.filter((s) => s.up).length;
+    const facing = cal ? `your direction from the phone's compass (set from ${cal.n} straight-line readings, steady to ${Math.round(cal.spread)}°)` : posed ? 'your direction from GPS (too few straight runs to set the compass)' : 'your direction from GPS (no orientation recorded)';
+    say(`${head}<p class="dim"><i class="sw" style="background:${COLORS.out}"></i>Left out: ${why.off} with the sun more than ${MAX_OFF_FACE}° off the phone's face, ${why.behind} with the sun behind you (your shadow; ${facing}), ${why.cloud} in a cloud (dim for over a minute), ${st.cuts.length} erased stretch${st.cuts.length === 1 ? '' : 'es'}.${posed ? '' : ' No orientation in this recording: turn it on in Sensor Logger to leave out tipped readings.'}</p>`);
   }
 
   function draw() {

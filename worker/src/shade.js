@@ -28,7 +28,7 @@
 import { rankClouds, wesmUrl } from '../../public/shade/find.js';
 import { EPT_BASE } from '../../public/shade/names.js';
 import { powerUrl, typicalYear } from '../../public/shade/climate.js';
-import { fromPush, perSecond } from '../../public/shade/truth.js';
+import { fromPush, perSecond, posePerSecond } from '../../public/shade/truth.js';
 import { currentUser } from './auth.js';
 
 export const FOOTPRINTS = 'https://raw.githubusercontent.com/hobuinc/usgs-lidar/master/boundaries/resources.geojson';
@@ -193,7 +193,7 @@ async function readings(request, url, env, origin, ctx, json) {
     let body;
     try { body = await request.json(); } catch { return json({ error: 'Bad JSON' }, 400, origin); }
     const got = Array.isArray(body?.payload) ? fromPush(body)
-      : { session: String(body?.session || ''), lux: Array.isArray(body?.lux) ? body.lux : [], fix: Array.isArray(body?.fix) ? body.fix : [] };
+      : { session: String(body?.session || ''), lux: Array.isArray(body?.lux) ? body.lux : [], fix: Array.isArray(body?.fix) ? body.fix : [], orient: Array.isArray(body?.orient) ? body.orient : [] };
     if (!got.session) return json({ error: 'A session is needed' }, 400, origin);
     const n = await storeReadings(db, got);
     return json({ ok: true, ...n }, 200, origin);
@@ -222,15 +222,17 @@ async function readings(request, url, env, origin, ctx, json) {
   if (sub === '/data' && request.method === 'GET') {
     const session = url.searchParams.get('session') || '';
     const t0 = Number(url.searchParams.get('t0')) || 0, t1 = Number(url.searchParams.get('t1')) || 8.64e15;
-    const [fix, lux, cuts] = await Promise.all([
+    const [fix, lux, orient, cuts] = await Promise.all([
       db.prepare('SELECT t, lat, lng, acc, speed, bearing FROM shade_fixes WHERE session = ? AND t BETWEEN ? AND ? ORDER BY t').bind(session, t0, t1).all(),
       db.prepare('SELECT t, lux FROM shade_lux WHERE session = ? AND t BETWEEN ? AND ? ORDER BY t').bind(session, t0 - 2000, t1 + 2000).all(),
+      db.prepare('SELECT t, nx, ny, nz, head FROM shade_orient WHERE session = ? AND t BETWEEN ? AND ? ORDER BY t').bind(session, t0 - 2000, t1 + 2000).all(),
       db.prepare('SELECT id, t0, t1 FROM shade_cuts WHERE session = ? ORDER BY t0').bind(session).all(),
     ]);
     return json({
       session,
       fix: (fix.results || []).map((r) => [r.t, r.lat, r.lng, r.acc, r.speed, r.bearing]),
       lux: (lux.results || []).map((r) => [r.t, r.lux]),
+      orient: (orient.results || []).map((r) => [r.t, r.nx, r.ny, r.nz, r.head]),
       cuts: (cuts.results || []).map((r) => [r.t0, r.t1, r.id]),
     }, 200, origin);
   }
@@ -250,11 +252,12 @@ async function readings(request, url, env, origin, ctx, json) {
 }
 
 /**
- * Light (one mean per second) and fixes, written in batches that stay under
- * D1's 100 bound values a statement. A repeat of the same second or fix is
- * ignored, so a push Sensor Logger retries does not double up.
+ * Light and the phone's pose (one mean per second each) and fixes, written
+ * in batches that stay under D1's 100 bound values a statement. A repeat of
+ * the same second or fix is ignored, so a push Sensor Logger retries does
+ * not double up.
  */
-export async function storeReadings(db, { session, lux = [], fix = [] }) {
+export async function storeReadings(db, { session, lux = [], fix = [], orient = [] }) {
   const L = perSecond(lux.filter((r) => Array.isArray(r) && Number.isFinite(Number(r[0])) && Number.isFinite(Number(r[1]))).map((r) => [Number(r[0]), Number(r[1])]));
   const F = fix.filter((r) => Array.isArray(r) && [r[0], r[1], r[2]].every((v) => Number.isFinite(Number(v))));
   const stmts = [];
@@ -269,8 +272,15 @@ export async function storeReadings(db, { session, lux = [], fix = [] }) {
     stmts.push(db.prepare(`INSERT OR IGNORE INTO shade_fixes (session, t, lat, lng, acc, speed, bearing) VALUES ${part.map(() => '(?, ?, ?, ?, ?, ?, ?)').join(', ')}`)
       .bind(...part.flatMap((r) => [session, Math.round(Number(r[0])), Number(r[1]), Number(r[2]), n(r[3]), n(r[4]), n(r[5])])));
   }
+  const O = posePerSecond(orient.filter((r) => Array.isArray(r) && [0, 1, 2, 3].every((i) => Number.isFinite(Number(r[i]))))
+    .map((r) => [Number(r[0]), Number(r[1]), Number(r[2]), Number(r[3]), Number.isFinite(Number(r[4])) ? Number(r[4]) : 0]));
+  for (let i = 0; i < O.length; i += 16) {
+    const part = O.slice(i, i + 16);
+    stmts.push(db.prepare(`INSERT OR IGNORE INTO shade_orient (session, t, nx, ny, nz, head) VALUES ${part.map(() => '(?, ?, ?, ?, ?, ?)').join(', ')}`)
+      .bind(...part.flatMap((r) => [session, Math.round(r[0]), r[1], r[2], r[3], r[4]])));
+  }
   for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
-  return { lux: L.length, fix: F.length };
+  return { lux: L.length, fix: F.length, orient: O.length };
 }
 
 /** The last ten whole years before `now`. */
