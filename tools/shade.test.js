@@ -17,6 +17,7 @@ import { deflateRawSync, inflateRawSync } from 'node:zlib';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import { tracedOn, lineUpAt } from '../public/shade/traced.js';
+import { findTrucks, truckEffect, flatStretches } from '../public/shade/truck.js';
 import { sunAt, solarNoon, sunPath, clearSky, airMass, parMol } from '../public/shade/sun.js';
 import { buildCanopy } from '../public/shade/canopy.js';
 import { seasonalCanopy, muWithLeaves, leafCalendar, G_OMEGA, LAI_MAX } from '../public/shade/seasonal.js';
@@ -755,6 +756,31 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   const edgeOn = tip.slice(200).every((s, i) => !tj.judged[200 + i] && tj.faint[200 + i]);
   check('with the angle known: every tipped reading judged right, the face-on sun found, edge-on readings left out as faint',
     right && edgeOn && Math.abs(tj.sunLux - 95000) < 8000 && Math.abs(tj.shadeLux - 2500) < 1, JSON.stringify({ right, edgeOn, sun: tj.sunLux, shade: tj.shadeLux }));
+  {
+    /* A stop: the phone set flat on the machine in the box (at rest 20 s), out the back (south) and round the lawn, back in, at rest, picked up. */
+    const lat0 = 42.88, lng0 = -85.8, mN = 1 / 111195, mE = 1 / (111195 * Math.cos(lat0 * Math.PI / 180));
+    const at = (e, n) => ({ lat: lat0 + n * mN, lng: lng0 + e * mE });
+    const stop = [];
+    let t = Date.parse('2026-10-13T15:00:00Z');
+    const add = (e, n, up = [0, 0, 1]) => { stop.push({ t, ...at(e, n), lux: 500, up, acc: 4 }); t += 1000; };
+    for (let i = 0; i < 15; i++) add(0.3 * (i % 3) - 0.3, 0.2 * (i % 2), [0.7, 0, 0.71]); // walking up, phone in hand
+    for (let i = 0; i < 20; i++) add((i % 3) * 0.4 - 0.4, (i % 2) * 0.4);
+    for (let i = 1; i <= 10; i++) add(0, -i); // down the ramp, south
+    for (let i = 0; i < 120; i++) add(15 * Math.sin(i / 19), -10 - 15 * (1 - Math.cos(i / 19)));
+    for (let i = 10; i >= 1; i--) add(0, -i);
+    for (let i = 0; i < 20; i++) add((i % 2) * 0.5, -0.3 + (i % 3) * 0.3);
+    for (let i = 0; i < 10; i++) add(0.5, 0, [0, 0.8, 0.6]); // picked up
+    const tr = findTrucks(stop);
+    const one = tr.length === 1 && Math.hypot((tr[0].lat - lat0) / mN, (tr[0].lng - lng0) / mE) < 1.5 && Math.abs(((tr[0].rear - 180 + 540) % 360) - 180) < 15;
+    check('the truck from the routine: one truck where the phone rested, its back toward where the machine went out', one && flatStretches(stop).length === 1, JSON.stringify(tr.map(({ anchors, ...x }) => ({ ...x, anchors: anchors.length }))));
+    const tm = stop[60].t;
+    const near = truckEffect({ t: tm, ...at(2, 1) }, tr, { elevation: 30, azimuth: 180 });
+    const north = (el) => truckEffect({ t: tm, ...at(0, 8) }, tr, { elevation: el, azimuth: 180 });
+    const behind = truckEffect({ t: tm, ...at(0, -6) }, tr, { elevation: 15, azimuth: 180 });
+    const later = truckEffect({ t: stop[stop.length - 1].t + 3600e3, ...at(2, 1) }, tr, { elevation: 30, azimuth: 180 });
+    check('the truck\'s readings: beside it near, north of it in its shadow when the sun is low in the south, not at 30 degrees, not behind it on the sun side, not after it left',
+      near === 'near' && north(15) === 'shadow' && north(30) === null && behind === null && later === null, JSON.stringify({ near, low: north(15), high: north(30), behind, later }));
+  }
   check('the sun off the phone\'s face: flat with the sun 30 degrees up is 60; tipped toward it, less',
     near(sunOffFace(null, 30, 180), 60, 1e-6) && near(sunOffFace([0, -0.5, 0.866], 30, 180), 30, 0.1));
   const straight = [...Array(20)].map((_, i) => ({ t: t0 + i * 1000, speed: 2, bearing: 90, face: 340 + (i % 3) }));
@@ -828,6 +854,8 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   const { lidarAges } = await import('./shade-readings.js');
   const la = lidarAges([{ used: { year: 2016, end: Date.UTC(2018, 1, 5) }, newer: [] }, { used: { year: 2016, end: Date.UTC(2018, 1, 5) }, newer: [] }, { used: { year: 2015, end: null }, newer: [{ end: Date.UTC(2023, 3, 1), tiles: true }] }]);
   check('readings lidar: areas grouped by flight, a newer one not used called out, no names', /2 areas: flown to 2018-02; nothing newer/.test(la) && /1 area : flown in 2015; NEWER FLIGHT NOT USED: 2023 \(download tiles only\)/.test(la), la);
+  const { sessionLabel } = await import('./shade-readings.js');
+  check('readings: an uploaded file\'s name (maybe a street) never printed, Sensor Logger\'s uuid as is', /^upload #[0-9a-f]{8}$/.test(sessionLabel('upload a7f42cff-Some_Street-2026-10-12')) && sessionLabel('32676200-a76a-4dc1-b4c4-72b950a880e3') === '32676200-a76a-4dc1-b4c4-72b950a880e3' && !/Street/.test(report([{ session: 'upload Some_Street', first: 1, last: 2, fixes: 1, lux: 1, orient: 0 }], { n: 1, made: 'x' })));
   const { timeline } = await import('./shade-readings.js');
   const tl = timeline([{ t: now, fixes: 290, lux: 280, orient: 295, speed: 1.3 }, { t: now + 300e3, fixes: 60, lux: 0, orient: 0, speed: null }]);
   check('readings timeline: five-minute steps with counts and mph, no places', /gps 290\s+light 280\s+orientation 295\s+3 mph/.test(tl) && /-\s*mph/.test(tl), tl);

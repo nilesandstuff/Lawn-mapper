@@ -29,6 +29,14 @@ on:
         description: 'Also the lidar under today''s tracks: when flown, and any newer flight not used (yes/no)'
         required: false
         default: 'no'
+      check:
+        description: 'Also score a day''s readings against the model, visit by visit, and where the model is sure (yes/no)'
+        required: false
+        default: 'no'
+      day:
+        description: 'The day for the check (YYYY-MM-DD, blank = today)'
+        required: false
+        default: ''
 
 jobs:
   readings:
@@ -50,3 +58,10 @@ jobs:
           LEVELS: ${{ inputs.levels }}
           LIDAR: ${{ inputs.lidar }}
         run: node tools/shade-readings.js
+      - name: Score the day against the model
+        if: ${{ inputs.check == 'yes' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DAY: ${{ inputs.day }}
+        run: node tools/shade-field-check.js

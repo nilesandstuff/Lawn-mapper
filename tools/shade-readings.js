@@ -31,6 +31,18 @@ import { sunOffFace, sunGain, joinTrack, usable, sunOrShadeAround } from '../pub
 
 const ZONE = process.env.TZ_REPORT || 'America/New_York';
 const when = (ms) => new Date(ms).toLocaleString('en-US', { timeZone: ZONE, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+/**
+ * A recording's name, safe for a public log: Sensor Logger's own ids (a
+ * uuid) as they are; an uploaded file's name -- which the owner may have
+ * named after the street -- as a short code (this repository is public).
+ */
+export function sessionLabel(name) {
+  const s = String(name || '');
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)) return s;
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return `${/^upload /.test(s) ? 'upload' : 'recording'} #${(h >>> 0).toString(16).padStart(8, '0')}`;
+}
 const ago = (ms, now) => {
   const m = Math.round((now - ms) / 60000);
   return m < 90 ? `${m} min ago` : m < 48 * 60 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`;
@@ -76,11 +88,11 @@ export function report(sessions, keys, now = Date.now()) {
   for (const s of sessions) {
     const span = Math.max(1, (s.last - s.first) / 1000);
     const lightShare = Math.min(1, s.lux / span);
-    out.push(`- ${s.session}: ${when(s.first)} to ${when(s.last)}; ${s.fixes} GPS fixes, ${s.lux} s of light (${Math.round(100 * lightShare)}% of the time), ${s.orient} s of orientation; last light ${s.lastLux ? ago(s.lastLux, now) : 'never'}`);
+    out.push(`- ${sessionLabel(s.session)}: ${when(s.first)} to ${when(s.last)}; ${s.fixes} GPS fixes, ${s.lux} s of light (${Math.round(100 * lightShare)}% of the time), ${s.orient} s of orientation; last light ${s.lastLux ? ago(s.lastLux, now) : 'never'}`);
   }
   const top = sessions[0];
   const lightShare = Math.min(1, top.lux / Math.max(1, (top.last - top.first) / 1000));
-  out.push('', `RESULT: newest reading ${ago(Math.max(top.last, top.lastLux || 0), now)} (${when(Math.max(top.last, top.lastLux || 0))}), recording "${top.session}".`);
+  out.push('', `RESULT: newest reading ${ago(Math.max(top.last, top.lastLux || 0), now)} (${when(Math.max(top.last, top.lastLux || 0))}), recording "${sessionLabel(top.session)}".`);
   out.push(`Light came in for ${Math.round(100 * lightShare)}% of that recording${lightShare < 0.8 ? ' -- LOW: the phone is putting the light sensor to sleep (battery settings, /shade-log step 3)' : ''}; orientation ${top.orient ? 'is' : 'is NOT'} arriving.`);
   return out.join('\n');
 }

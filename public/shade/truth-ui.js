@@ -6,6 +6,7 @@
  * and hopper fills, parking, the truck). The judging is in truth.js.
  */
 
+import { findTrucks, truckEffect, truckOutline } from './truck.js';
 import { joinTrack, usable, sunOrShadeAround, sunOffFace, sunGain, compassOffset, operatorShadow, score } from './truth.js';
 
 const $ = (s) => document.querySelector(s);
@@ -35,7 +36,7 @@ export async function startTruth({ map, sun, spec, bounds = null }) {
   if (!me?.admin) { say('<span class="bad">Field readings are for admins; sign in as one.</span>'); return null; }
   sun.showDay((t0 + t1) / 2);
 
-  const st = { samples: [], keep: [], cuts: [], undo: [], erasing: false };
+  const st = { samples: [], keep: [], cuts: [], undo: [], erasing: false, trucks: [] };
 
   async function load() {
     say('Reading the visit…');
@@ -52,9 +53,14 @@ export async function startTruth({ map, sun, spec, bounds = null }) {
        visit's. Without either, the GPS track (blind to a zero-turn's spin). */
     const cal = dayMount || compassOffset(u);
     const heading = (s) => (cal && s.face != null ? (s.face + cal.offset) % 360 : s.heading);
-    const why = { off: 0, behind: 0, cloud: 0, edge: 0 };
+    /* The truck, from his routine at each stop (truck.js), on the whole
+       visit before any erasing: readings beside it or in its shadow, with
+       the sun where it was at each reading, are left out. */
+    st.trucks = findTrucks(joinTrack(d.fix, d.lux, { orient: d.orient || [] }));
+    const why = { off: 0, behind: 0, cloud: 0, edge: 0, truck: 0 };
     const keep = u.map((s, i) => {
       if (m.edgeM && !(m.edgeM[i] >= MIN_EDGE_M)) { why.edge++; return false; }
+      if (truckEffect(s, st.trucks, { elevation: m.elevation[i], azimuth: m.azimuth[i] })) { why.truck++; return false; }
       if (operatorShadow(heading(s), m.azimuth[i])) { why.behind++; return false; }
       return true;
     });
@@ -92,7 +98,7 @@ export async function startTruth({ map, sun, spec, bounds = null }) {
          <p class="dim">Phone: sun about ${Math.round(so.sunLux).toLocaleString()} lux facing it squarely, shade about ${Math.round(so.shadeLux).toLocaleString()}; each reading judged at its own angle to the sun. Model: sun where at least half the direct beam reaches the phone (${PHONE_M} m up), with the trees as they stood that day.</p>`;
     const posed = u.filter((s) => s.up).length;
     const facing = cal ? `your direction from the phone's compass, its angle on the hopper (${Math.round(cal.offset)}°) taken from ${cal.n} straight-line readings ${cal.day ? 'across the day' : 'on this visit'}, steady to ${Math.round(cal.spread)}°` : posed ? 'your direction from GPS (too few straight runs to set the compass)' : 'your direction from GPS (no orientation recorded)';
-    say(`${head}<p class="dim"><i class="sw" style="background:${COLORS.out}"></i>Left out: ${why.off} with the phone's face turned too far from the sun to tell sun from shade, ${why.behind} with the sun behind you (your shadow; ${facing}), ${why.cloud} in a cloud (dim for over a minute), ${why.edge ? `${why.edge} near the edge of the mapped area, ` : ''}${st.cuts.length} erased stretch${st.cuts.length === 1 ? '' : 'es'}.${posed ? '' : ' No orientation in this recording: turn it on in Sensor Logger to leave out tipped readings.'}</p>`);
+    say(`${head}<p class="dim"><i class="sw" style="background:${COLORS.out}"></i>Left out: ${why.off} with the phone's face turned too far from the sun to tell sun from shade, ${why.behind} with the sun behind you (your shadow; ${facing}), ${why.truck} by your truck (within 10 ft of it or in its shadow; ${st.trucks.length ? `${st.trucks.length} truck spot${st.trucks.length === 1 ? '' : 's'} found from your routine, outlined` : 'no truck spot found'}), ${why.cloud} in a cloud (dim for over a minute), ${why.edge ? `${why.edge} near the edge of the mapped area, ` : ''}${st.cuts.length} erased stretch${st.cuts.length === 1 ? '' : 'es'}.${posed ? '' : ' No orientation in this recording: turn it on in Sensor Logger to leave out tipped readings.'}</p>`);
   }
 
   function draw() {
@@ -104,6 +110,12 @@ export async function startTruth({ map, sun, spec, bounds = null }) {
         properties: { c: !s.keep ? COLORS.out : s.T >= 0.5 ? (s.sun ? COLORS.sunSun : COLORS.sunShade) : (s.sun ? COLORS.shadeSun : COLORS.shadeShade) },
       })),
     };
+    const trucks = { type: 'FeatureCollection', features: st.trucks.flatMap((tr) => truckOutline(tr).map((ring) => ({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring] }, properties: {} }))) };
+    if (map.getSource('truth-truck')) map.getSource('truth-truck').setData(trucks);
+    else {
+      map.addSource('truth-truck', { type: 'geojson', data: trucks });
+      map.addLayer({ id: 'truth-truck', type: 'line', source: 'truth-truck', paint: { 'line-color': '#ffffff', 'line-width': 2, 'line-dasharray': [2, 1] } });
+    }
     if (map.getSource('truth')) map.getSource('truth').setData(fc);
     else {
       map.addSource('truth', { type: 'geojson', data: fc });

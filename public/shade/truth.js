@@ -20,7 +20,8 @@
  * parking), with the phone tipped more than 20 degrees (in the truck's mount,
  * in a pocket, in a hand), with the sun so far off the phone's face that sun
  * and shade would read nearly alike (sunGain; about 70 degrees in clear
- * sun), with no sunlit reading within two minutes (a cloud), and with the
+ * sun), beside the owner's truck or in its shadow (truck.js finds it from
+ * his routine), with no sunlit reading within two minutes (a cloud), and with the
  * sun behind the operator (his own shadow falls on the phone). Stops count
  * once: one reading per meter moved.
  *
