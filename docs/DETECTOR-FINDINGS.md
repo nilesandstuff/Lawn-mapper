@@ -1023,6 +1023,20 @@ registered there is not seen, so this is a floor. The photo catalogue
 by name (NOT_A_PHOTO: lidar, dem, elevation, hillshade); nothing records
 them.
 
+**The owner's own working area (checked 2026-10-13, at his request):**
+Walker, Grandville, Wyoming, Hudsonville, Jenison, Byron Center, Caledonia,
+Grand Rapids (south, west and east), Kentwood, Cutlerville, Comstock Park,
+Ada, Rockford, Allendale, and Wayland, Dorr and Moline in Allegan County,
+plus a grid of 72 points between them. Nothing newer exists. Kent was
+flown 2017-11-27 to 2018-05-02 and Ottawa 2017-11-26 to 2018-02-05
+(MI_31Co, QL2, leaf-off); Allegan 2014-12 to 2015-12. Those are the
+newest in USGS's index, in its tiles, and on AWS, and the detector already
+reads them. No county server or ArcGIS Online listing has a newer flight:
+Kent County's server publishes no elevation, Ottawa's newest contours are
+2018 (that flight), and Allegan's 2023-2025 layers are groundwater and
+geology models built on the 2015 flight. When anyone flies there again,
+the live picker (newestFor, every lot) finds it the day USGS indexes it.
+
 **3. A picking slip, small:** at the Macon GA lot the octree list includes
 GA_SW_Georgia_B4_2017, which USGS's index says was flown in January 2021,
 but pickBest orders by the name's year (the funding year) and reads
