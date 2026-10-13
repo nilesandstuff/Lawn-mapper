@@ -7,8 +7,20 @@ name: 35. Shade map -- are the light readings arriving
 # tracks over customers' lawns).
 #
 # FREE. One read-only query. Features session's tool (tools/shade-readings.js).
+# With `from` and `to` (local times today, e.g. 12:38 and 12:42), also every
+# second in that window: lux, the phone's tilt and the sun's angle off its
+# face -- for the tilt tests. The sun is placed from fixes not printed.
 on:
   workflow_dispatch:
+    inputs:
+      from:
+        description: 'Window start (HH:MM local, optional)'
+        required: false
+        default: ''
+      to:
+        description: 'Window end (HH:MM local, optional)'
+        required: false
+        default: ''
 
 jobs:
   readings:
@@ -25,4 +37,6 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          FROM: ${{ inputs.from }}
+          TO: ${{ inputs.to }}
         run: node tools/shade-readings.js

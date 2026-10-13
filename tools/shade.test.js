@@ -802,6 +802,11 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   check('readings report: how long ago, the light share, orientation, and the sleepy sensor flagged',
     /newest reading 2 min ago/.test(r) && /Light came in for 43%/.test(r) && /LOW/.test(r) && /orientation is arriving/.test(r) && !/\d+\.\d{4}/.test(r), r);
   check('readings report: nothing yet says so', /nothing has arrived/.test(report([], { n: 0 }, now)));
+  const { localMs, tiltWindow } = await import('./shade-readings.js');
+  const noonish = Date.parse('2026-10-13T12:00:00Z');
+  check('readings window: local times read in New York time (EDT in October)', localMs('12:38', noonish) === Date.parse('2026-10-13T16:38:00Z') && localMs('2026-01-05 09:00') === Date.parse('2026-01-05T14:00:00Z') && Number.isNaN(localMs('noon')));
+  const tw = tiltWindow([[noonish, 50000], [noonish + 1000, 9000]], [[noonish, 0, 0, 1, 0], [noonish + 1000, 0, -Math.sin(Math.PI / 4), Math.cos(Math.PI / 4), 0]], () => ({ elevation: 45, azimuth: 180 }));
+  check('readings window: tilt, face heading and the sun off the face, no places', /50000\s+0°\s+0°\s+45°/.test(tw) && /9000\s+45°\s+180°\s+0°/.test(tw) && /sun 45° up at 180°/.test(tw) && !/\d\.\d{3}/.test(tw), tw);
   const { timeline } = await import('./shade-readings.js');
   const tl = timeline([{ t: now, fixes: 290, lux: 280, orient: 295, speed: 1.3 }, { t: now + 300e3, fixes: 60, lux: 0, orient: 0, speed: null }]);
   check('readings timeline: five-minute steps with counts and mph, no places', /gps 290\s+light 280\s+orientation 295\s+3 mph/.test(tl) && /-\s*mph/.test(tl), tl);
