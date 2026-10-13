@@ -185,18 +185,32 @@ async function readings(request, url, env, origin, ctx, json) {
   const sub = url.pathname.slice(READINGS.length) || '/';
   const db = env.DB;
   if (sub === '/' && request.method === 'POST') {
+    /* Every push is logged (shade_push_log), so "nothing arrived" and "it
+       arrived and failed" can be told apart (workflow 35). */
+    const t0 = Date.now();
+    const log = (row) => db.prepare('INSERT INTO shade_push_log (at, session, status, entries, lux, fix, orient, bytes, ms, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(new Date().toISOString(), row.session ?? null, row.status, row.entries ?? null, row.lux ?? null, row.fix ?? null, row.orient ?? null, row.bytes ?? null, Date.now() - t0, row.error ?? null)
+      .run().catch(() => {});
     const key = url.searchParams.get('key');
     const ok = key
       ? Boolean(await db.prepare('SELECT 1 FROM shade_push_keys WHERE key = ?').bind(key).first())
       : await isAdmin(request, env, ctx);
-    if (!ok) return hidden();
-    let body;
-    try { body = await request.json(); } catch { return json({ error: 'Bad JSON' }, 400, origin); }
+    if (!ok) { if (key) await log({ status: 404, error: 'not the current push address' }); return hidden(); }
+    let text = '', body;
+    try { text = await request.text(); body = JSON.parse(text); } catch { await log({ status: 400, bytes: text.length, error: 'bad JSON' }); return json({ error: 'Bad JSON' }, 400, origin); }
     const got = Array.isArray(body?.payload) ? fromPush(body)
       : { session: String(body?.session || ''), lux: Array.isArray(body?.lux) ? body.lux : [], fix: Array.isArray(body?.fix) ? body.fix : [], orient: Array.isArray(body?.orient) ? body.orient : [] };
-    if (!got.session) return json({ error: 'A session is needed' }, 400, origin);
-    const n = await storeReadings(db, got);
-    return json({ ok: true, ...n }, 200, origin);
+    const entries = Array.isArray(body?.payload) ? body.payload.length : null;
+    if (!got.session) { await log({ status: 400, bytes: text.length, entries, error: 'no session' }); return json({ error: 'A session is needed' }, 400, origin); }
+    try {
+      const n = await storeReadings(db, got);
+      await log({ status: 200, session: got.session, bytes: text.length, entries, ...n });
+      if (Math.random() < 0.02) await db.prepare('DELETE FROM shade_push_log WHERE id < (SELECT MAX(id) - 2000 FROM shade_push_log)').run().catch(() => {});
+      return json({ ok: true, ...n }, 200, origin);
+    } catch (e) {
+      await log({ status: 500, session: got.session, bytes: text.length, entries, error: String(e?.message || e).slice(0, 300) });
+      return json({ error: 'Could not store the readings' }, 500, origin);
+    }
   }
   if (!(await isAdmin(request, env, ctx))) return hidden();
   if (sub === '/key') {

@@ -31,6 +31,19 @@ export function timeline(buckets) {
   return out.join('\n');
 }
 
+/** The latest pushes the site received, kept or refused (shade_push_log). */
+export function pushes(rows, now = Date.now()) {
+  if (!rows.length) return '\nPushes received: none logged yet (the log started 2026-10-13).';
+  const out = ['', `Latest ${rows.length} pushes the site received (newest first):`];
+  for (const r of rows) {
+    const t = Date.parse(r.at);
+    out.push(`  ${when(t).padEnd(16)} ${ago(t, now).padEnd(12)} ${r.status === 200 ? 'kept' : `REFUSED ${r.status}`}  ${r.entries ?? '?'} entries -> ${r.lux ?? 0} s light, ${r.fix ?? 0} fixes, ${r.orient ?? 0} s orientation, ${r.bytes ?? '?'} bytes, ${r.ms ?? '?'} ms${r.error ? `  (${r.error})` : ''}`);
+  }
+  const bad = rows.filter((r) => r.status !== 200).length;
+  out.push(`PUSHES: the last one ${ago(Date.parse(rows[0].at), now)}; ${bad} of these ${rows.length} refused.`);
+  return out.join('\n');
+}
+
 /** The report, from the rows the queries give (pure, for the tests). */
 export function report(sessions, keys, now = Date.now()) {
   const out = [];
@@ -62,6 +75,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     FROM shade_fixes f GROUP BY f.session ORDER BY last DESC LIMIT 10`);
   const keys = query('SELECT COUNT(*) AS n, MAX(created_at) AS made FROM shade_push_keys')[0];
   console.log(report(sessions, keys));
+  let log = [];
+  try { log = query('SELECT at, session, status, entries, lux, fix, orient, bytes, ms, error FROM shade_push_log ORDER BY id DESC LIMIT 15'); } catch { /* not made yet: the deploy makes it */ }
+  console.log(pushes(log));
   if (sessions.length) {
     const s = String(sessions[0].session).replace(/'/g, "''");
     const B = 300000;

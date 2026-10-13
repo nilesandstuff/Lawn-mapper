@@ -1094,6 +1094,23 @@ CREATE TABLE IF NOT EXISTS shade_orient (
   head        REAL,
   PRIMARY KEY (session, t)
 );
+-- Every push that reached /api/shade/readings, kept or refused, newest
+-- last: when, what it carried, how long it took, and why it failed if it
+-- did -- so workflow 35 can tell "nothing arrived" from "it arrived and
+-- failed". No readings or places here; trimmed to the latest 2,000.
+CREATE TABLE IF NOT EXISTS shade_push_log (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  at          TEXT NOT NULL,
+  session     TEXT,
+  status      INTEGER NOT NULL,
+  entries     INTEGER,
+  lux         INTEGER,
+  fix         INTEGER,
+  orient      INTEGER,
+  bytes       INTEGER,
+  ms          INTEGER,
+  error       TEXT
+);
 -- Stretches the owner erased from a recording (tank and hopper fills,
 -- parking, the truck), from t0 to t1 inclusive.
 CREATE TABLE IF NOT EXISTS shade_cuts (

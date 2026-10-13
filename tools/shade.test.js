@@ -778,6 +778,8 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   const rows = sq.prepare('SELECT COUNT(*) AS n FROM shade_fixes').get().n, lux = sq.prepare('SELECT lux FROM shade_lux LIMIT 1').get().lux;
   check('a push with the key is stored: 40 fixes, 40 seconds of light averaged, a repeat ignored',
     r1.status === 200 && j1.fix === 40 && j1.lux === 40 && rows === 40 && lux === 41000 && again.ok && sq.prepare('SELECT COUNT(*) AS n FROM shade_lux').get().n === 40, JSON.stringify(j1));
+  const plog = sq.prepare('SELECT status, entries, lux, fix, orient FROM shade_push_log ORDER BY id').all();
+  check('every push is logged: kept, with what it carried', plog.length === 2 && plog[0].status === 200 && plog[0].entries === 520 && plog[0].lux === 40 && plog[0].orient === 40, JSON.stringify(plog));
   check('the pose is stored one per second, flat', j1.orient === 40 && sq.prepare('SELECT COUNT(*) AS n FROM shade_orient').get().n === 40 && sq.prepare('SELECT nz FROM shade_orient LIMIT 1').get().nz === 1, JSON.stringify(j1));
   const bad = await call('/api/shade/readings?key=wrong', { method: 'POST', body: JSON.stringify(body) });
   const anon = await call('/api/shade/readings/sessions', { method: 'GET' });
@@ -785,6 +787,11 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   check('a wrong key, or no sign-in, is a 404 like the console\'s routes', bad.status === 404 && anon.status === 404 && anonPost.status === 404, `${bad.status} ${anon.status} ${anonPost.status}`);
   const junk = await call('/api/shade/readings?key=secret123', { method: 'POST', body: '{nope' });
   check('bad JSON is a 400', junk.status === 400);
+  const refused = sq.prepare("SELECT status, error FROM shade_push_log WHERE status <> 200 ORDER BY id").all();
+  check('refused pushes are logged too: the wrong address and the bad JSON', refused.length === 2 && refused[0].status === 404 && refused[1].status === 400, JSON.stringify(refused));
+  const { pushes } = await import('./shade-readings.js');
+  const pl = pushes([{ at: new Date(Date.now() - 60e3).toISOString(), status: 500, entries: 10, bytes: 999, ms: 12, error: 'boom' }]);
+  check('readings report: refused pushes are counted and say why', /REFUSED 500/.test(pl) && /boom/.test(pl) && /1 of these 1 refused/.test(pl), pl);
 }
 
 {
