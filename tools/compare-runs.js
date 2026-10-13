@@ -115,7 +115,7 @@ export function signTestP(wins, losses) {
 }
 
 /** Paired comparison of B against A over the lots both have. */
-export function compare(a, b, { only = null, photo = null, photos = null } = {}) {
+export function compare(a, b, { only = null, photo = null, photos = null, lots = null } = {}) {
   const ds = [];
   for (const [id, la] of a.mean) {
     const lb = b.mean.get(id);
@@ -123,6 +123,7 @@ export function compare(a, b, { only = null, photo = null, photos = null } = {})
     if (only === 'benchmark' && !la.benchmark) continue;
     if (only === 'new' && la.benchmark) continue;
     if (photo && photoOf(id, la, photos) !== photo) continue;
+    if (lots && !lots.some((k) => id.startsWith(k))) continue;
     ds.push({ id, tag: lb.tag || la.tag, a: la.error, b: lb.error, d: lb.error - la.error });
   }
   const wins = ds.filter((x) => x.d < -TIE).length;
@@ -182,6 +183,18 @@ function main() {
   console.log(fmt(all, 'all lots'));
   console.log(fmt(compare(a, b, { only: 'benchmark' }), 'the frozen 32 (tuned on)'));
   console.log(fmt(compare(a, b, { only: 'new' }), 'approved since (untuned)'));
+  /* A CHOSEN SET OF LOTS (H94, 2026-10-13): a trial that changes only some
+     lots -- the newest lidar changes 20 of 104 -- is read on those, each
+     named by the start of its id ("lng,lat"). */
+  const chosen = (get('--lots') || '').split(/[\s;]+/).map((k) => k.trim()).filter(Boolean);
+  if (chosen.length) {
+    const sub = compare(a, b, { lots: chosen });
+    console.log(fmt(sub, `the ${chosen.length} chosen lots`));
+    for (const [id, la] of [...a.mean].filter(([i]) => chosen.some((k) => i.startsWith(k)))) {
+      const lb = b.mean.get(id);
+      console.log(`    ${(la.tag || id.split(':')[0]).padEnd(24)} ${la.error.toFixed(1)}%${lb ? ` -> ${lb.error.toFixed(1)}%` : ''}`);
+    }
+  }
   const photosFile = get('--photos');
   const photos = photosFile ? JSON.parse(readFileSync(photosFile, 'utf8')) : null;
   const county = compare(a, b, { photo: 'county', photos });

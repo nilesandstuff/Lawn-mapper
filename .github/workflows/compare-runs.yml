@@ -28,6 +28,9 @@ on:
       row_b:
         description: 'A different row for side B, to compare two rows (leave empty for the same row)'
         default: ''
+      lots:
+        description: 'Also read only these lots: the start of each id ("lng,lat"), separated by semicolons (leave empty for none)'
+        default: ''
 
 permissions:
   actions: read
@@ -70,8 +73,9 @@ jobs:
         env:
           ROW: ${{ inputs.row }}
           ROW_B: ${{ inputs.row_b }}
+          LOTS: ${{ inputs.lots }}
           MEASURE: ${{ inputs.measure == 'seen' && 'seen' || 'error' }}
         run: |
           A=$(find a -name lot-results.json | paste -sd, -)
           B=$(find b -name lot-results.json | paste -sd, -)
-          node tools/compare-runs.js --a "$A" --b "$B" --row "$ROW" ${ROW_B:+--row-b "$ROW_B"} --measure "$MEASURE" $([ -f photos.json ] && echo --photos photos.json)
+          node tools/compare-runs.js --a "$A" --b "$B" --row "$ROW" ${ROW_B:+--row-b "$ROW_B"} --measure "$MEASURE" ${LOTS:+--lots "$LOTS"} $([ -f photos.json ] && echo --photos photos.json)

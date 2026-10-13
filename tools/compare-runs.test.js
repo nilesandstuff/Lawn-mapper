@@ -31,6 +31,8 @@ check('and its interval excludes zero here', c.ci[1] < 0, c.ci.join());
 const bench = compare(a, b, { only: 'benchmark' });
 const fresh = compare(a, b, { only: 'new' });
 check('the frozen lots and the ones since are read apart', bench.lots === 5 && fresh.lots === 3);
+const some = compare(a, b, { lots: ['lot7', 'lot1'] });
+check('a chosen set of lots is read on its own, named by the start of the id', some.lots === 2 && some.wins === 1 && some.losses === 1, JSON.stringify(some));
 
 check('a sign test: 7 against 1 is p = 0.070', Math.abs(signTestP(7, 1) - 0.0703) < 0.001, String(signTestP(7, 1)));
 check('and 18 against 7 is p = 0.043', Math.abs(signTestP(18, 7) - 0.0433) < 0.001, String(signTestP(18, 7)));
