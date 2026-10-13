@@ -6541,7 +6541,7 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
-### S38. Is the lidar's brightness right where the detector is wrong? (owner, 2026-10-13 -- BUILT, RUNNING)
+### S38. Is the lidar's brightness right where the detector is wrong? (owner, 2026-10-13 -- MEASURED: BAR MET IN ALL THREE SEEDS; the input trial is running)
 
 The owner asked whether lidar intensity could say more about ground cover
 (grass against woodchips, leaf litter, concrete), having seen a study that
@@ -6584,6 +6584,37 @@ with 20+ cells a side agree on its direction two times in three; and the
 hardest third of lots by open-cell error reads at least as far from 0.5.
 If both read within 0.05 of 0.5, S38 is closed. In between, a signal short
 of the bar, not worth six runs on this reading.
+
+**MEASURED, 2026-10-13: the bar is met in all three seeds.** Workflow 14,
+runs 38384350059 / 38384353539 / 38388587980 (seeds 7 / 8 / 9), `lawns:
+locked` (104, `131u7jm`), THE PLAN's defaults, free runner; THE PLAN's row
+18.8 / 18.9 / 19.5%. 96 lots have both a point cloud and a held-out mask;
+109,599 open 2 m cells, the detector wrong on 9,778 / 10,661 / 10,417 of
+them (about 55% false lawn), 6% of those with no ground return.
+
+| seed | sanity: lawn vs not | called lawn: true vs false | called not-lawn: missed vs true not |
+|---|---|---|---|
+| 7 | 0.76 (90 of 95 lots) | **0.64**, median 0.68, 43 of 48; hardest third 0.69 | 0.65, median 0.65, 38 of 50; hardest third 0.61 |
+| 8 | 0.76 (90 of 95) | **0.66**, median 0.69, 44 of 49; hardest third 0.71 | 0.64, median 0.63, 39 of 48; hardest third 0.64 |
+| 9 | 0.76 (90 of 95) | **0.65**, median 0.66, 41 of 45; hardest third 0.69 | 0.66, median 0.67, 47 of 54; hardest third 0.66 |
+
+(AUCs pooled over cells, ranks within each frame; "of" counts lots with
+20+ cells a side, and how many read above 0.5.) The sanity row reproduces
+H34's 0.77-0.79 in the open. **Where the detector calls lawn and is wrong,
+the lidar's ground is darker than the true lawn's, on about nine lots in
+ten, and more so on the hardest third.** That is the first input here
+measured to carry information where the detector fails, rather than where
+it already succeeds. What it does not say: whether a decoder can use it --
+H50's fused inputs carried information too and moved nothing. That is the
+input trial: workflow 14 `refiner_trial: intensity` (fuse_layers.py's
+`intensity_rank` and `has_intensity`, ranked within the frame as here,
+hidden with the lidar in dropout), a decoder trained beside THE PLAN's in
+the same runs, seeds 7 / 8 / 9, read with workflow 24 row against row.
+**Bar, before those runs:** more lots better than worse with a sign-test p
+under 0.1 and a 95% interval for the median paired change below zero, on
+the intensity row against THE PLAN's. If it passes, the live server needs
+the intensity passed through (alpha_sources.py) and a release trained
+with it.
 
 ### S37. Many aerial flights are hazy, and haze may be part of why county-photo lots score worst (from the features session, 2026-10-13 -- NOT MEASURED HERE)
 
@@ -7809,6 +7840,7 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-07 | 37563074383 / 37563158493 / 37563241262 | 81 (locked) | S27 `refiner_trial: compare` (hard edges; wide + edges + gate), seeds 7/8/9, CPU | 22.0 / 22.5 / 20.8% | — | **H82.** Hard edges 22 / 24, p 0.88; wide gated 20 / 42, +0.5 [+0.0, +0.9]. Refiner vs twin 55 / 17 (H81 replicates). Neither adopted |
 | 2026-10-07 | 37582634690 / 37582729096 / 37582829432 | 81 (locked) | S28 `refiner_trial: average of 3`, seeds 7/8/9, CPU | 20.9 / 22.5 / 22.0% (edge refined + stage 3, span, veto) | — | **H83.** Averaged x3: 31 / 9, -0.3 [-0.4, -0.1], p 0.001; medians 20.3 / 22.1 / 20.7. Passes; not released |
 | 2026-10-12 | 38192536763 / 38192554237 | 104 (locked, 131u7jm) | S26 `refiner_trial: upernet` (a small UperNet head, 64 ch, GroupNorm, no aux head, beside THE PLAN's decoder over the same features and folds), seeds 7 / 8, CPU | 18.8 / 18.9% (THE PLAN: edge refined + stage 3, span, veto) | 21.3 / 20.7% (UperNet + stage 3, span, veto) | **H93.** Workflow 24 run 38209446282: 24 / 64 / 16, +1.2 [+0.8, +1.7], p < 0.001; untuned 72 +1.2, p < 0.001; county +1.9, Mapbox +1.0. UperNet's train loss lower (0.188 vs 0.201): overfitting. Not adopted |
+| 2026-10-13 | 38384350059 / 38384353539 / 38388587980 | 104 (locked, 131u7jm) | S38: THE PLAN's defaults, seeds 7 / 8 / 9, CPU, with the new S38 step (tools/intensity_errors.py) after scoring; seed 9 also the baseline for the S35 / H94 lidar trials | 18.8 / 18.9 / 19.5% (THE PLAN) | -- | **S38 bar MET in all three seeds:** where the held-out mask calls lawn, ground intensity (ranked in its frame) tells true from false at 0.64 / 0.66 / 0.65 pooled, 41-44 lots of 45-49 the same way, hardest third 0.69-0.71; called not-lawn 0.64-0.66. Sanity 0.76. The input trial is next |
 | 2026-10-11 | 38115838951 | 104 (all) + 5 not-lawn-only maps | **RELEASE v4** (owner's request): `release: alpha`, `refiner_trial: average of 3`, `not_lawn: on`, `lawns: all`, fused + edge, canopy on lawn, UNDER_TREES + FUSE_CANOPY, 30 epochs, seed 7, CPU | — (no folds) | — | Three decoders averaged on 104 lots + 5 pond examples in 874 s, train loss 0.200, trainedAt 2026-10-11T07:44:29Z. Shipped; v3 kept under alpha/history/. Named "alpha version 4 (81%)" from THE PLAN at 104 (H92 runs); the arrangement itself is unmeasured |
 | 2026-10-07 | 37643197968 | 81 (locked) | **RELEASE v3 (H83)**: `release: alpha`, `refiner_trial: average of 3`, fused + edge, canopy on lawn, UNDER_TREES + FUSE_CANOPY, 30 epochs, seed 7, CPU | — (no folds) | — | Three decoders averaged, trained on all 81 in 306 s, train loss 0.202, trainedAt 2026-10-07T15:52:29Z. Shipped to the live server; v2 kept under alpha/history/. Named "alpha version 3 (79%)": mean of the averaged row's run medians 21.0 (the single-decoder setup on the same runs 21.8) |
 | 2026-10-07 | 37618116401 / 37618210051 / 37618300740 | 81 (locked) | S29 `refiner_trial: epochs` (15 and 60 beside 30), seeds 7/8/9, CPU | 20.9 / 22.5 / 22.0% (30 epochs) | — | **H84.** 15: 21 / 45, +0.8, p 0.004 (worse); 60: 25 / 31, p 0.50 (nothing). 30 stays |

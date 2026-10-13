@@ -37,6 +37,33 @@ NAIP = (4, 5)
 # with the lidar above, since they come from the same flight.
 RETURN_CHANNELS = ("penetration", "multi", "spread", "has_returns")
 RETURN_LIDAR = (7, 8, 9, 10)
+# THE LIDAR'S GROUND BRIGHTNESS (owner, 2026-10-13; S38): appended last when
+# asked for (FUSE_INTENSITY). S38 found the ground intensity, ranked within
+# its own frame, tells true lawn from false where the detector calls lawn
+# (AUC 0.64-0.66 pooled, 41-44 lots of 45-49 the same way, three seeds).
+# Ranked, because 3DEP intensity is on each flight's own scale; hidden with
+# the lidar, since it comes from the same flight.
+INTENSITY_CHANNELS = ("intensity_rank", "has_intensity")
+
+
+def intensity_index(with_returns):
+    """Where the intensity channels sit: after CHANNELS, and after the returns when those are on."""
+    i = len(CHANNELS) + (len(RETURN_CHANNELS) if with_returns else 0)
+    return (i, i + 1)
+
+
+def frame_rank(intensity):
+    """Each cell's rank among the frame's cells with a ground return, 0..1; NaN where none."""
+    v = np.asarray(intensity, dtype=np.float64)
+    out = np.full(v.shape, np.nan)
+    ok = ~np.isnan(v)
+    n = int(ok.sum())
+    if n:
+        # Average ranks for ties, as S38 measured it (scipy's rankdata), in numpy.
+        u, inv, c = np.unique(v[ok], return_inverse=True, return_counts=True)
+        avg = np.cumsum(c) - (c - 1) / 2.0  # 1-based average rank of each value
+        out[ok] = (avg[inv] - 1) / max(1, n - 1)
+    return out
 
 
 def ndvi_from_png(rgb):
@@ -50,7 +77,7 @@ def ndvi_from_png(rgb):
 
 
 def extra_channels(grid_w, grid_h, cover_x, cover_y, lidar=None, ndvi=None, ndvi_valid=None, canopy=None,
-                   returns=None, with_returns=False):
+                   returns=None, with_returns=False, with_intensity=False):
     """
     (len(CHANNELS), grid_h, grid_w) float32.
 
@@ -58,7 +85,7 @@ def extra_channels(grid_w, grid_h, cover_x, cover_y, lidar=None, ndvi=None, ndvi
     ndvi:   NDVI -1..1 over the photograph, with ndvi_valid, or None
     canopy: the tree model's mask (bool) over the photograph, or None
     """
-    n = len(CHANNELS) + (len(RETURN_CHANNELS) if with_returns else 0)
+    n = len(CHANNELS) + (len(RETURN_CHANNELS) if with_returns else 0) + (len(INTENSITY_CHANNELS) if with_intensity else 0)
     out = np.zeros((n, grid_h, grid_w), dtype=np.float32)
 
     def down(layer):
@@ -93,14 +120,25 @@ def extra_channels(grid_w, grid_h, cover_x, cover_y, lidar=None, ndvi=None, ndvi
         out[8] = down(mul)
         out[9] = down(spr)
         out[10] = 1.0
+    if with_intensity and lidar is not None and lidar.get("intensity") is not None:
+        # The mean rank over the cells that have one, and the share that do,
+        # as NDVI is carried: a patch of roofs has no ground to be bright.
+        r = frame_rank(lidar["intensity"])
+        ok = ~np.isnan(r)
+        i, f = intensity_index(with_returns)
+        v = down(ok.astype(np.float64))
+        s = down(np.where(ok, r, 0.0))
+        out[i] = np.where(v > 0, s / np.maximum(v, 1e-6), 0.0)
+        out[f] = v
     return out
 
 
-def drop_sources(extra, rng, p_lidar, p_naip):
-    """Modality dropout: zero a whole source's channels, flag included, as a missing one reads."""
+def drop_sources(extra, rng, p_lidar, p_naip, more_lidar=()):
+    """Modality dropout: zero a whole source's channels, flag included, as a missing one reads.
+    `more_lidar`: channels from the same flight placed elsewhere (the intensity)."""
     e = extra.copy()
     if p_lidar and rng.random() < p_lidar:
-        e[[i for i in LIDAR + RETURN_LIDAR if i < len(e)]] = 0.0
+        e[[i for i in LIDAR + RETURN_LIDAR + tuple(more_lidar) if i < len(e)]] = 0.0
     if p_naip and rng.random() < p_naip:
         e[list(NAIP)] = 0.0
     return e

@@ -8,7 +8,8 @@ a whole source at once.
 
 import numpy as np
 
-from fuse_layers import CHANNELS, LIDAR, NAIP, RETURN_CHANNELS, RETURN_LIDAR, drop_sources, extra_channels, ndvi_from_png
+from fuse_layers import (CHANNELS, INTENSITY_CHANNELS, LIDAR, NAIP, RETURN_CHANNELS, RETURN_LIDAR, drop_sources, extra_channels,
+                         frame_rank, intensity_index, ndvi_from_png)
 
 passed = 0
 
@@ -76,5 +77,26 @@ check("a crown's returns come through; a cell with no points reads as open groun
 check("without the switch, still seven", extra_channels(2, 2, 1.0, 1.0, lidar=lidar, returns=ret).shape[0] == len(CHANNELS))
 dr = drop_sources(er, np.random.default_rng(2), 1.0, 0.0)
 check("dropping the lidar zeroes the return channels too", not dr[list(LIDAR + RETURN_LIDAR)].any())
+
+# The lidar's ground brightness (S38): ranked within the frame, after everything else.
+r = frame_rank(np.array([[10.0, np.nan], [30.0, 20.0]]))
+check("brightness is ranked within the frame, darkest 0, brightest 1, no return NaN",
+      r[0, 0] == 0 and r[1, 0] == 1 and r[1, 1] == 0.5 and np.isnan(r[0, 1]))
+check("two flights on different scales rank the same",
+      np.array_equal(frame_rank(np.array([1.0, 2.0, 3.0])), frame_rank(np.array([100.0, 900.0, 5000.0]))))
+li = dict(lidar, intensity=np.where(lidar["n_ground"] > 0, np.tile(np.arange(10.0), (10, 1)), np.nan))
+ei = extra_channels(2, 2, 1.0, 1.0, lidar=li, with_intensity=True)
+i, f = intensity_index(False)
+check("nine channels with the brightness, last", ei.shape[0] == len(CHANNELS) + len(INTENSITY_CHANNELS) and (i, f) == (7, 8))
+check("the roof half has no ground to be bright (flag 0); the open half holds every rank (mean 0.5)",
+      ei[f, 0, 0] == 0 and ei[i, 0, 0] == 0 and ei[f, 0, 1] == 1 and abs(ei[i, 0, 1] - 0.5) < 1e-6)
+check("ties share their rank", np.allclose(frame_rank(np.array([5.0, 5.0, 9.0])), [0.25, 0.25, 1.0]))
+check("with the returns on, the brightness sits after them", intensity_index(True) == (11, 12)
+      and extra_channels(2, 2, 1.0, 1.0, lidar=li, returns=ret, with_returns=True, with_intensity=True).shape[0] == 13)
+check("without the switch the brightness is not there, whatever the lidar carries",
+      extra_channels(2, 2, 1.0, 1.0, lidar=li).shape[0] == len(CHANNELS))
+check("no lidar: brightness and flag are zeros", not extra_channels(2, 2, 1.0, 1.0, with_intensity=True)[[i, f]].any())
+di = drop_sources(ei, np.random.default_rng(3), 1.0, 0.0, more_lidar=(i, f))
+check("dropping the lidar zeroes the brightness too", not di[list(LIDAR) + [i, f]].any() and np.array_equal(di[list(NAIP)], ei[list(NAIP)]))
 
 print(f"\nAll {passed} checks passed.")
