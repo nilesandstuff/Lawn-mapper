@@ -880,6 +880,56 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H96. The newest USGS flight, read from its LAZ tiles where AWS lags, makes the 20 lots it changes better: 10 better / 1 worse / 9 level, -0.6 points [95% -2.2 to -0.1], sign test p = 0.012; the rest unmoved -- 2026-10-13
+
+Workflow 14 `lidar_trial: newest` (H94's trial), runs 38391749566 /
+38391752071 / 38391755931 (seeds 7 / 8 / 9) against THE PLAN's baseline
+38384350059 / 38384353539 / 38388587980, `lawns: locked` (104, `131u7jm`),
+free runner; workflow 24 run 38420517226 on THE PLAN's row ("decoder, edge
+refined + stage 3, span, lidar veto") with `lots` = the 20 frames whose
+flight changed (18 to tiles, 2 to the Macon octree dated by WESM).
+
+| | lots | better / worse / level | median paired change [95%] | sign test |
+|---|---|---|---|---|
+| **the 20 changed lots** | 20 | **10 / 1 / 9** | **-0.6 [-2.2, -0.1]** | **p = 0.012** |
+| all lots | 104 | 23 / 20 / 61 | -0.1 [-0.1, +0.1] | p = 0.76 |
+| frozen 32 | 32 | 6 / 4 / 22 | -0.1 [-0.2, +0.1] | p = 0.75 |
+| since | 72 | 17 / 16 / 39 | -0.0 [-0.1, +0.1] | p = 1.00 |
+
+Run medians 19.3 / 19.1 / 18.7% against 18.9 / 18.8 / 19.5%. **The bar
+written before the runs is met** (twice as many better as worse on the 20,
+median below zero, the whole set's interval no worse than +0.3), and
+lopsidedly: the largest moves are C79 69.1 -> 50.1%, B19 61.1 -> 50.9%, C33
+62.3 -> 54.8%, C102 27.2 -> 23.7%, C39 17.6 -> 15.1%. The one loss is C47
+12.3 -> 18.3%. The 84 unchanged lots move only as a retrained decoder moves
+them (C53 48.7 -> 31.7% here, 48.7 -> 41.6% in the datum runs -- seed and
+neighbour noise, not lidar). The owner had already adopted newer lidar on
+principle; this says the data carried nothing wrong and the newer flights
+help the lots they reach. ADOPTED for training; live through a cache of
+the tiles (2026-10-13, owner: "go ahead with the cache").
+
+### H95. The S35 datum move measures as nothing either way: 16 better / 14 worse / 74 level, -0.1 [95% -0.1 to -0.0], p = 0.86 -- adopted on correctness, as the owner decided before the runs, 2026-10-13
+
+Workflow 14 `lidar_trial: datum`, runs 38388591593 / 38391760094 /
+38391763898 (seeds 7 / 8 / 9) against the same baseline; workflow 24 run
+38420510760, THE PLAN's row. Run medians 19.1 / 19.7 / 19.1%.
+
+| | lots | better / worse / level | median paired change [95%] | sign test |
+|---|---|---|---|---|
+| all lots | 104 | 16 / 14 / 74 | -0.1 [-0.1, -0.0] | p = 0.86 |
+| frozen 32 | 32 | 7 / 2 / 23 | -0.1 [-0.3, -0.0] | p = 0.18 |
+| since | 72 | 9 / 12 / 51 | -0.0 [-0.1, +0.1] | p = 0.66 |
+| county photo | 31 | 3 / 7 / 21 | -0.1 [-0.2, +0.2] | p = 0.34 |
+| Mapbox photo | 73 | 13 / 7 / 53 | -0.1 [-0.2, -0.0] | p = 0.26 |
+
+The original bar (sign test under 0.1 and the interval below zero) is
+**NOT met**: the interval touches zero from below and the sign test is a
+coin toss. The owner's rule, written before the runs, ships the move unless
+it is clearly worse; it is not, so it ships ON CORRECTNESS. This file must
+not later call it "measured better": a half-cell move on 2 m cells is
+below what THE PLAN's score can see. Largest moves C53 48.7 -> 41.6%, B28
+37.7 -> 34.1%, C94 103.9 -> 111.1%.
+
 ### H94. Newer lidar than the cloud we read: USGS has published a 2023-2025 flight at 13 of 82 locked places (17 lots) that is not on AWS as an octree, and county or state flights newer than anything in USGS's index cover at least 4 more, 2026-10-13
 
 *tools/lidar-newer.js, run from the core session's container (not CI) on
@@ -6793,7 +6843,7 @@ NAIP; NOT measured here):**
     flight is the untested input here; the detector does not read
     intensity today.
 
-### S35. The lidar may sit half a cell off the photo: the USGS octrees are NAD83 labelled EPSG:3857 (from the features session, 2026-10-10 -- BUILT 2026-10-13, RUNNING)
+### S35. The lidar may sit half a cell off the photo: the USGS octrees are NAD83 labelled EPSG:3857 (from the features session, 2026-10-10 -- MEASURED AS NOTHING EITHER WAY (H95); ADOPTED ON CORRECTNESS)
 
 **The trial (owner, 2026-10-13: "go ahead").** Workflow 14 `lidar_trial:
 datum` (tools/lidar_trial.py): after the baseline lidar is in place, every
@@ -7841,6 +7891,8 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-07 | 37582634690 / 37582729096 / 37582829432 | 81 (locked) | S28 `refiner_trial: average of 3`, seeds 7/8/9, CPU | 20.9 / 22.5 / 22.0% (edge refined + stage 3, span, veto) | — | **H83.** Averaged x3: 31 / 9, -0.3 [-0.4, -0.1], p 0.001; medians 20.3 / 22.1 / 20.7. Passes; not released |
 | 2026-10-12 | 38192536763 / 38192554237 | 104 (locked, 131u7jm) | S26 `refiner_trial: upernet` (a small UperNet head, 64 ch, GroupNorm, no aux head, beside THE PLAN's decoder over the same features and folds), seeds 7 / 8, CPU | 18.8 / 18.9% (THE PLAN: edge refined + stage 3, span, veto) | 21.3 / 20.7% (UperNet + stage 3, span, veto) | **H93.** Workflow 24 run 38209446282: 24 / 64 / 16, +1.2 [+0.8, +1.7], p < 0.001; untuned 72 +1.2, p < 0.001; county +1.9, Mapbox +1.0. UperNet's train loss lower (0.188 vs 0.201): overfitting. Not adopted |
 | 2026-10-13 | 38384350059 / 38384353539 / 38388587980 | 104 (locked, 131u7jm) | S38: THE PLAN's defaults, seeds 7 / 8 / 9, CPU, with the new S38 step (tools/intensity_errors.py) after scoring; seed 9 also the baseline for the S35 / H94 lidar trials | 18.8 / 18.9 / 19.5% (THE PLAN) | -- | **S38 bar MET in all three seeds:** where the held-out mask calls lawn, ground intensity (ranked in its frame) tells true from false at 0.64 / 0.66 / 0.65 pooled, 41-44 lots of 45-49 the same way, hardest third 0.69-0.71; called not-lawn 0.64-0.66. Sanity 0.76. The input trial is next |
+| 2026-10-13 | 38388591593 / 38391760094 / 38391763898 | 104 (locked, 131u7jm) | S35 `lidar_trial: datum` (octrees moved NAD83 -> WGS84 for their flight's epoch), seeds 7 / 8 / 9, CPU | 19.1 / 19.7 / 19.1% | -- | **H95.** Workflow 24 run 38420510760 against the S38 baselines: 16 / 14 / 74, -0.1 [-0.1, -0.0], p 0.86. Nothing either way; adopted on correctness (owner) |
+| 2026-10-13 | 38391749566 / 38391752071 / 38391755931 | 104 (locked, 131u7jm) | H94 `lidar_trial: newest` (WESM-dated picks; USGS LAZ tiles where AWS lags, 18 frames, 2.4 GB; noise dropped), seeds 7 / 8 / 9, CPU. (38388594581, the first seed 7, died on the tile read's missing "nodes"; fixed in 9ce73a6) | 19.3 / 19.1 / 18.7% | -- | **H96.** Workflow 24 run 38420517226 on the 20 changed lots: 10 / 1 / 9, -0.6 [-2.2, -0.1], p 0.012; all lots 23 / 20 / 61, -0.1 [-0.1, +0.1]. Adopted |
 | 2026-10-11 | 38115838951 | 104 (all) + 5 not-lawn-only maps | **RELEASE v4** (owner's request): `release: alpha`, `refiner_trial: average of 3`, `not_lawn: on`, `lawns: all`, fused + edge, canopy on lawn, UNDER_TREES + FUSE_CANOPY, 30 epochs, seed 7, CPU | — (no folds) | — | Three decoders averaged on 104 lots + 5 pond examples in 874 s, train loss 0.200, trainedAt 2026-10-11T07:44:29Z. Shipped; v3 kept under alpha/history/. Named "alpha version 4 (81%)" from THE PLAN at 104 (H92 runs); the arrangement itself is unmeasured |
 | 2026-10-07 | 37643197968 | 81 (locked) | **RELEASE v3 (H83)**: `release: alpha`, `refiner_trial: average of 3`, fused + edge, canopy on lawn, UNDER_TREES + FUSE_CANOPY, 30 epochs, seed 7, CPU | — (no folds) | — | Three decoders averaged, trained on all 81 in 306 s, train loss 0.202, trainedAt 2026-10-07T15:52:29Z. Shipped to the live server; v2 kept under alpha/history/. Named "alpha version 3 (79%)": mean of the averaged row's run medians 21.0 (the single-decoder setup on the same runs 21.8) |
 | 2026-10-07 | 37618116401 / 37618210051 / 37618300740 | 81 (locked) | S29 `refiner_trial: epochs` (15 and 60 beside 30), seeds 7/8/9, CPU | 20.9 / 22.5 / 22.0% (30 epochs) | — | **H84.** 15: 21 / 45, +0.8, p 0.004 (worse); 60: 25 / 31, p 0.50 (nothing). 30 stays |
