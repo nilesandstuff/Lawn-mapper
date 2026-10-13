@@ -6432,6 +6432,50 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
+### S38. Is the lidar's brightness right where the detector is wrong? (owner, 2026-10-13 -- BUILT, RUNNING)
+
+The owner asked whether lidar intensity could say more about ground cover
+(grass against woodchips, leaf litter, concrete), having seen a study that
+told grass species apart by laser reflectance. What is already measured:
+- **H34:** ground intensity in the open tells lawn from not-lawn moderately
+  (AUC 0.77-0.79, lawn brighter); under the trees it is a coin toss that
+  flips lawn to lawn. Uncalibrated across projects and flight lines.
+- **H50:** NAIP's near-infrared (NDVI), a better-behaved signal of the
+  same kind, is worth nothing measurable on top of the photo, with lidar
+  height, ground share and returns beside it.
+- **H72:** the newest lidar is a median six years older than the county
+  photo, and leaf-off on half the counties -- dormant grass, often.
+
+Why it might still pay, as a theory: lidar is its own light. It has no sun
+shadows and no haze, two things that make photos hard (H89's contrast,
+S37). Species-level separation is not on the table: the studies that do it
+use calibrated or multi-wavelength lidar at close range, and 3DEP is one
+uncalibrated band (mostly 1064 nm, some 1550 nm) at about two points a
+square metre.
+
+**The question, sharpened:** not "can intensity tell lawn from pavement"
+(H34: yes, in the open, and so can the photo) but "does it know anything
+the detector does not". Among open cells THE PLAN's HELD-OUT mask calls
+lawn, does intensity tell true lawn from false lawn? Among those it calls
+not-lawn, does it tell missed lawn from true not-lawn? Intensity is read as
+each cell's rank within its own frame (one frame, one project), since a raw
+value means nothing across flights. Cells with no ground return (roofs)
+sit out and are counted.
+
+**Built:** tools/intensity_errors.py (offline test intensity_errors_test.py),
+a step in workflow 14 after H47's, on the lidar layers and held-out masks
+the run already makes. It measures and changes nothing; it is not part of
+the model server.
+
+**Bar, before the run** (two runs, seeds 7 and 8, `lawns: locked`, THE
+PLAN's defaults): intensity earns the input trial (an intensity channel in
+the decoder, three seeds a side, as H50) only if, in both seeds, one of the
+two conditional AUCs reads 0.60 or more pooled (or 0.40 or less); the lots
+with 20+ cells a side agree on its direction two times in three; and the
+hardest third of lots by open-cell error reads at least as far from 0.5.
+If both read within 0.05 of 0.5, S38 is closed. In between, a signal short
+of the bar, not worth six runs on this reading.
+
 ### S37. Many aerial flights are hazy, and haze may be part of why county-photo lots score worst (from the features session, 2026-10-13 -- NOT MEASURED HERE)
 
 Reported by the features session (session_015v6JzxdMSV1sGghMRek3v7) from

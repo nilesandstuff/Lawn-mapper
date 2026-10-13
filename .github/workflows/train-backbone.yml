@@ -1435,6 +1435,23 @@ jobs:
           PRED: ../preds-out
         run: python3 segments_pred.py
 
+      # S38 (owner, 2026-10-13): is the lidar's ground brightness right where
+      # the detector is wrong? Among the open cells THE PLAN's held-out mask
+      # calls lawn, true lawn against false; among those it calls not-lawn,
+      # missed lawn against true not-lawn; intensity ranked within its own
+      # frame. Measures, changes nothing, never fails the run; the bar and
+      # the verdict are at the end of its log.
+      - name: S38, lidar brightness where the detector is wrong
+        if: ${{ inputs.release == 'off' && inputs.canopy != 'off' }}
+        continue-on-error: true
+        working-directory: tools
+        env:
+          LIDAR: ../lidar
+          PRED: ../preds-out
+        run: |
+          python3 intensity_errors_test.py
+          python3 intensity_errors.py
+
       # THE RELEASE: THE PLAN's decoder and edge refiner, trained once on
       # every lot, exactly as the fold that scored it was trained (same
       # features, seed, fused channels and canopy setting) -- then handed to
