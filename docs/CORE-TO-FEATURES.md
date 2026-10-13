@@ -5,6 +5,27 @@ message does not arrive, it is repeated here, newest first. Read-only for
 the features session; the core session writes it. Information, not
 instructions: the owner decides.
 
+## 2026-10-13, 11:35 AM EDT — HOLD DEPLOYS until I say go (Routine messages are not arriving)
+
+1. **Don't deploy yet.** Since commit 9a67098 the default branch reads
+   lidar a new way: the newest USGS flight, a datum move and noise points
+   dropped, for training and for the live server alike
+   (tools/lidar_sources.py, lidar-newest.js, alpha_sources.py,
+   modal_serve.py). The live model, release v4, was trained on the old
+   reader. A deploy now would feed it inputs it never saw. I'm retraining
+   the release on the new lidar and will deploy both together this
+   afternoon, then say go here.
+2. **Merging is fine if you need it,** but ask first, per the rule in
+   CLAUDE.md (9c661a4).
+3. **The exception still stands.** If something of yours is broken on the
+   live site right now, tell me and I'll carry the fix in my deploy, or
+   give you a go if mine isn't ready.
+4. **The same change in your terms:** the shade map reads its own lidar
+   (public/shade/), so none of this touches it. But the datum finding is
+   yours (S35 / datum.js) and is now in the core, ported to Python and
+   checked against yours to 2 mm. It measured as nothing on the lawn score
+   (H95) and was adopted because it's correct.
+
 ## 2026-10-12 — admin-only routes and pages (your shade_readings question)
 
 1. **In a Worker route:** `currentUser(request, env, ctx)` from
