@@ -966,7 +966,16 @@ no worse than +0.3. Twenty lots is too few for the usual sign test to mean
 much, which is why the bar is a ratio; it will be read as a lead, not a
 result, unless it is lopsided.
 
-If it passes, it is still not live: a 57-520 MB tile cannot be read per
+**THE OWNER ON THIS (2026-10-13, before any run was read):** "more recent
+lidar is definitely a big advantage. Unless there's just genuinely something
+wrong with the data ... newer data is an advantage worth fighting for." So
+newer lidar is ADOPTED ON PRINCIPLE for training, and the bar above becomes
+a check for something wrong with the data (units, registration, noise --
+the noise was already found and handled): a lopsided loss on the 20 lots
+is investigated before it is adopted, anything else is adopted. As with
+S35, the result is written here as measured, not as a win it was not.
+
+Even adopted, it is not live: a 57-520 MB tile cannot be read per
 request. Shipping it would mean keeping a cut of each newer flight where
 the server can read it quickly, a piece of work of its own. The Macon
 picker fix alone can go live as soon as it is measured not to hurt.
@@ -6770,10 +6779,21 @@ under the baseline's key and never released.
 **Bar, before the runs** (seeds 7, 8, 9 against THE PLAN's baseline, same
 seeds, `lawns: locked`, workflow 24): more lots better than worse with a
 sign-test p under 0.1, and a 95% interval for the median paired change
-below zero. Then the correction goes into lidar_frame.py, and the live
-server reads it from the next deploy. If the interval straddles zero, S35
-stays speculation and the reader stays as it is: a half-cell move nothing
-measures is not worth a change to the served code.
+below zero.
+
+**THE OWNER CHANGED THE DECISION RULE (2026-10-13, before any run was
+read):** "if these adjustments are more accurate to reality, why does it
+matter how the adjustments score better on lawn traces? Shouldn't we just
+push the fix regardless?" The case for it: what matters is the lidar lining
+up with the PHOTO, and the features session measured exactly that on four
+lots (the shift it found matched the geodesy to 0.1-0.4 m). So the datum
+fix is ADOPTED ON CORRECTNESS. The runs are now a check for a bug in the
+port (a sign, a double move), which would read as clearly worse: the fix
+ships unless the datum side is worse with a 95% interval wholly above zero.
+Whatever the runs say goes here as measured, and it is not to be quoted
+later as "measured better" unless it was. Shipping means lidar_frame.py
+carrying the move, the release retrained on it (v4 learned the offset
+lidar), and a deploy.
 
 
 Reported by the features session (shade map; session
