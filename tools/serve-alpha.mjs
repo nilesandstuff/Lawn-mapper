@@ -29,6 +29,7 @@ import { frameBbox3857 } from '../worker/src/imagery.js';
 import { metresPerPixel, lngLatToFramePx } from '../public/lib/mercator.js';
 import { rasterizePolygon } from '../public/lib/mask.js';
 import { planFrames } from './lidar-plan.js';
+import { newestFor } from './lidar-newest.js';
 import { FOOTPRINTS, fetchFootprints } from './lidar-cover.js';
 
 /* THE PLAN's stage 3 (H39, H60): span 8 m, reach 1 m, bridge over 180°. */
@@ -117,7 +118,23 @@ async function main() {
   if (cmd === 'prepare') {
     const out = prepareFrame(input.frame);
     try {
-      out.lidarUrl = await lidarUrlFor(out.bbox, await footprintsCached());
+      const fc = await footprintsCached();
+      out.lidarUrl = await lidarUrlFor(out.bbox, fc);
+      /* THE NEWEST FLIGHT, BY USGS'S OWN DATES (H96), with its epoch for the
+         datum move (H95) -- as training plans it (tools/lidar-newest.js).
+         When that flight is only USGS's tiles, the newest octree is read now
+         and the tiles are fetched onto the server's volume for next time
+         (tools/modal_serve.py). USGS not answering leaves the name's pick. */
+      const e = await newestFor(out.bbox, fc).catch(() => null);
+      if (e?.source === 'tiles') {
+        out.lidarTiles = e.tiles;
+        out.lidarTilesEpoch = e.epoch;
+        out.lidarUrl = e.octreeUrl || out.lidarUrl;
+        out.lidarEpoch = e.octreeEpoch ?? null;
+      } else if (e?.url) {
+        out.lidarUrl = e.url;
+        out.lidarEpoch = e.epoch ?? null;
+      }
     } catch (e) {
       out.lidarUrl = null;
       out.lidarError = String(e?.message || e).slice(0, 200);

@@ -157,7 +157,13 @@ def main():
         if not p or not p.get("url"):
             print(f"  {lawn_id[:28]:30} no lidar")
             continue
-        base = p["url"].rsplit("/", 1)[0]
+        # A frame whose newest flight is USGS's tiles (lidar-newest.js) is read
+        # here from its newest octree: this reader asks the octree for returns.
+        url = p.get("octreeUrl") if str(p["url"]).startswith("tiles://") else p["url"]
+        if not url:
+            print(f"  {lawn_id[:28]:30} no octree beside its tiles")
+            continue
+        base = url.rsplit("/", 1)[0]
         try:
             pts = points_with_returns(base, box)
         except Exception as e:  # noqa: BLE001 - one lot's failure is reported, not fatal

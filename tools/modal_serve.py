@@ -60,6 +60,15 @@ ROOT = os.path.dirname(HERE)
 
 app = modal.App(APP)
 models = modal.Volume.from_name(MODELS_VOLUME, create_if_missing=True)
+# USGS'S NEWER FLIGHTS (owner, 2026-10-13: "go ahead with the cache"; H96).
+# Where the newest flight over a lot is only USGS's LAZ tiles (57-520 MB
+# each, not yet an octree on AWS), they are fetched once, in the background,
+# onto this volume; the lot is served from the newest octree meanwhile, and
+# every later lot in those tiles reads them from here. Grows only with the
+# places people ask about.
+TILES_VOLUME = "lawn-lidar-tiles"
+TILE_DIR = "/tiles"
+tiles = modal.Volume.from_name(TILES_VOLUME, create_if_missing=True)
 
 
 def _bake_weights():
@@ -96,7 +105,8 @@ cpu_image = (
     modal.Image.debian_slim(python_version="3.12")
     .apt_install("curl", "ca-certificates")
     .run_commands("curl -fsSL https://deb.nodesource.com/setup_22.x | bash -", "apt-get install -y nodejs")
-    .pip_install("numpy", "pillow", "scipy", "scikit-image", "laspy[lazrs]")
+    # rasterio: the CRS of USGS's tiles, to Web Mercator (tools/lidar_sources.py).
+    .pip_install("numpy", "pillow", "scipy", "scikit-image", "laspy[lazrs]", "rasterio")
     .run_commands(f"mkdir -p {REPO} && cd {REPO} && echo '{{\"type\": \"module\", \"private\": true}}' > package.json"
                   " && npm install pngjs@7 >/dev/null")
     .add_local_dir(os.path.join(ROOT, "tools"), f"{REPO}/tools",
@@ -143,7 +153,47 @@ def _gather_here(payload):
     return alpha_sources.gather(payload, _prepare)
 
 
-@app.function(image=cpu_image, volumes={"/models": models}, timeout=300, cpu=1.0, memory=2048,
+@app.function(image=cpu_image, volumes={TILE_DIR: tiles}, timeout=3600, cpu=1.0, memory=2048)
+def fetch_tiles(urls):
+    """USGS's tiles of a newer flight onto the volume, for the next lot there.
+    Each is written under a temporary name and renamed when whole, so a reader
+    never meets half a file; two lots asking at once fetch it twice, harmlessly."""
+    if f"{REPO}/tools" not in sys.path:
+        sys.path.insert(0, f"{REPO}/tools")
+    import lidar_sources
+    from pathlib import Path
+    got = 0
+    for url in urls:
+        path = Path(TILE_DIR) / url.rsplit("/", 1)[-1]
+        if path.exists():
+            continue
+        t0 = time.time()
+        lidar_sources.fetch_ranged(url, path)
+        tiles.commit()
+        got += 1
+        print(f"tile {path.name}: {path.stat().st_size / 1e6:.0f} MB in {time.time() - t0:.0f}s", flush=True)
+    return got
+
+
+def _gather_with_tiles(payload):
+    """The downloads, reading USGS's tiles from the volume when they are
+    there, and asking for them in the background when they are not."""
+    os.environ["LIDAR_TILE_DIR"] = TILE_DIR
+    try:
+        tiles.reload()  # tiles fetched since this machine started
+    except Exception:  # noqa: BLE001 - files open on another lot: read what is here
+        pass
+    got = _gather_here(payload)
+    pending = (got.get("sources") or {}).get("rec", {}).get("tilesPending")
+    if pending:
+        try:
+            fetch_tiles.spawn(pending)
+        except Exception as e:  # noqa: BLE001 - next lot asks again
+            print(f"tiles not asked for: {e}", flush=True)
+    return got
+
+
+@app.function(image=cpu_image, volumes={"/models": models, TILE_DIR: tiles}, timeout=300, cpu=1.0, memory=2048,
               # A CPU machine costs a few cents an hour, so it can wait longer
               # for the next lot than the GPU does.
               scaledown_window=300)
@@ -152,7 +202,7 @@ def _gather_here(payload):
 @modal.concurrent(max_inputs=PER_MACHINE)
 def gather(payload):
     """The downloads for one lot, on a CPU: see tools/alpha_sources.py."""
-    return _gather_here(payload)
+    return _gather_with_tiles(payload)
 
 
 @app.cls(image=gpu_image, gpu=GPU, volumes={"/models": models}, timeout=600,

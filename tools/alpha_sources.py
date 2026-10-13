@@ -15,8 +15,10 @@ left it out.
 """
 
 import io
+import os
 import time
 import urllib.request
+from pathlib import Path
 
 import numpy as np
 from PIL import Image
@@ -31,11 +33,11 @@ def fetch_photo(url):
 def gather_sources(photo, prep, naip_align=None):
     """Lidar and NAIP for one lot. Returns plain arrays and a record:
 
-        lidar       {height, n_ground, n_all} on lidar_frame's 2 m grid, or None
+        lidar       {height, n_ground, n_all, intensity} on lidar_frame's 2 m grid, or None
         height_png  the height picture stage 3 reads, or None
         roof, void  boolean masks for the lidar veto, or None
         naip        NAIP's RGB-as-NIR array, lined up with the photograph, or None
-        rec         {lidar: bool, naip: bool, lidarError?, naipError?}
+        rec         {lidar: bool, naip: bool, lidarSource?, tilesPending?, lidarError?, naipError?}
         seconds     {lidar, naip}
     """
     import lidar_frame
@@ -44,13 +46,36 @@ def gather_sources(photo, prep, naip_align=None):
     out = {"lidar": None, "height_png": None, "roof": None, "void": None, "naip": None,
            "rec": {"lidar": False, "naip": False}, "seconds": {}}
 
-    if prep.get("lidarUrl"):
+    # THE NEWEST FLIGHT (H96): when it is only USGS's LAZ tiles, they are read
+    # from the server's volume (LIDAR_TILE_DIR) once they are there; until
+    # then the newest octree is, and the tiles are named for the server to
+    # fetch in the background (tools/modal_serve.py, fetch_tiles).
+    tiles = prep.get("lidarTiles") or []
+    tile_dir = os.environ.get("LIDAR_TILE_DIR")
+    local = None
+    if tiles and tile_dir:
+        paths = [Path(tile_dir) / u.rsplit("/", 1)[-1] for u in tiles]
+        if all(p.exists() for p in paths):
+            local = [str(p) for p in paths]
+        else:
+            out["rec"]["tilesPending"] = [u for u, p in zip(tiles, paths) if not p.exists()]
+
+    if prep.get("lidarUrl") or local:
         t0 = time.time()
         try:
-            got = lidar_frame.lidar_for(prep["lidarUrl"], prep["bbox"])
+            got = None
+            if local:
+                try:
+                    got = lidar_frame.lidar_for(None, prep["bbox"], epoch=prep.get("lidarTilesEpoch"), tiles=local)
+                    out["rec"]["lidarSource"] = "tiles"
+                except Exception as e:  # noqa: BLE001 - the octree is still there
+                    out["rec"]["tilesError"] = str(e)[:200]
+            if got is None and prep.get("lidarUrl"):
+                got = lidar_frame.lidar_for(prep["lidarUrl"], prep["bbox"], epoch=prep.get("lidarEpoch"))
+                out["rec"]["lidarSource"] = "octree"
             if got:
                 layers, masks = got
-                out["lidar"] = {k: layers[k] for k in ("height", "n_ground", "n_all")}
+                out["lidar"] = {k: layers[k] for k in ("height", "n_ground", "n_all", "intensity")}
                 out["height_png"] = lidar_frame.height_png(layers["height"])
                 out["roof"] = np.asarray(masks["roof"], dtype=bool)
                 out["void"] = np.asarray(masks["void"], dtype=bool)

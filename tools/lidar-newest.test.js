@@ -1,5 +1,5 @@
 /** The newest-lidar plan (tools/lidar-newest.js), offline.   node tools/lidar-newest.test.js */
-import { norm, workUnits, unitOf, dateOctree, unitFolder, tileSets, pickNewest } from './lidar-newest.js';
+import { norm, workUnits, unitOf, dateOctree, unitFolder, tileSets, pickNewest, entryFor } from './lidar-newest.js';
 
 let failures = 0;
 const check = (n, ok, d = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${n}${d ? `\n      ${d}` : ''}`); if (!ok) failures++; };
@@ -50,6 +50,11 @@ check('but not when they are under a year newer: an octree is read in seconds', 
 check('a legacy collection is never offered',
   tileSets([{ downloadLazURL: '.../X_2001/LAZ/a.laz' }], workUnits({ features: [{ attributes: { workunit: 'X_2001', project: 'legacy', collect_start: 1, collect_end: 2 } }] }), []).length === 0);
 check('no lidar at all is no pick', pickNewest([], []) === null);
+const entry = entryFor('x', willCo, pickNewest(willCo, sets));
+check('a tiles entry names the newest octree too, for the live server to read until the tiles are on its volume',
+  entry.source === 'tiles' && entry.tiles.length === 2 && entry.octreeUrl === 'w' && entry.url === 'tiles://x/ept.json' && entry.year === 2025);
+check('an octree entry carries its epoch for the datum move',
+  entryFor('x', octrees, pickNewest(octrees, []))?.epoch > 2021 && entryFor('x', [], null) === null);
 
 console.log(failures ? `\n${failures} check(s) FAILED.` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

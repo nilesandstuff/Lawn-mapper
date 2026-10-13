@@ -70,6 +70,8 @@ from pathlib import Path
 
 import numpy as np
 
+import lidar_sources
+
 # The pure functions below take arrays; laspy and PIL are only needed to run.
 
 
@@ -491,12 +493,16 @@ def points_over(base, bbox, limit_nodes=400):
                  "ept_points": ept.get("points")}
 
 
-def lidar_for(url, bbox, cell=2.0):
+def lidar_for(url, bbox, cell=2.0, epoch=None, tiles=None):
     """One frame's lidar for the live server: (layers, masks), or None when
     the project has too few points over the frame (MIN_COVERED), exactly as
-    main() treats it. `url` is the EPT url tools/lidar-plan.js picks."""
-    base = url.rsplit("/", 1)[0]
-    pts, _ = points_over(base, bbox)
+    main() treats it. `url` is the EPT url the plan picks (tools/lidar-newest.js
+    via serve-alpha.mjs); `tiles`, local paths of USGS LAZ tiles of a newer
+    flight, read instead when given; `epoch`, the flight's, for the datum move
+    (lidar_sources.py, as training reads it)."""
+    base = (url or "").rsplit("/", 1)[0]
+    pts, _ = lidar_sources.read_points(lambda b: points_over(base, b), bbox,
+                                       epoch if epoch else lidar_sources.DEFAULT_EPOCH, tiles=tiles)
     raster = rasterise(pts, bbox, cell)
     if float((raster["n_all"] > 0).mean()) < MIN_COVERED:
         return None
@@ -562,7 +568,10 @@ def main():
         base = p["url"].rsplit("/", 1)[0]
         t0 = time.time()
         try:
-            pts, got = points_over(base, bbox)
+            # The newest flight (an octree, or USGS's tiles), noise dropped and
+            # the datum moved, exactly as the live server reads it (lidar_sources.py).
+            pts, got = lidar_sources.read_points(lambda b: points_over(base, b), bbox, lidar_sources.epoch_of(p),
+                                                 tiles=p.get("tiles"), tile_dir=os.environ.get("TILE_DIR", "lidar-tiles"))
         except Exception as e:  # noqa: BLE001 - one lawn's failure is reported, not fatal
             print(f"  {label} FAILED: {str(e)[:70]}")
             summary["lawns"][lawn_id] = {"skipped": str(e)[:200]}

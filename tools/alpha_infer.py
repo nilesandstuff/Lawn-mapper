@@ -210,7 +210,9 @@ class Detector:
             x = grid
             if meta.get("fuse"):
                 fuse_can = can if meta.get("fuseCanopy") else None
-                extra = extra_channels(gw, gh, cover[0], cover[1], lidar=lidar, ndvi=ndvi, ndvi_valid=valid, canopy=fuse_can)
+                # The lidar's ground brightness (S38) only for a release trained with it.
+                extra = extra_channels(gw, gh, cover[0], cover[1], lidar=lidar, ndvi=ndvi, ndvi_valid=valid, canopy=fuse_can,
+                                       with_intensity=bool(meta.get("fuseIntensity")))
                 x = np.concatenate([grid, extra.transpose(1, 2, 0)], axis=2)
             cells_w, cells_h = int(prep["w"]), int(prep["h"])
             L = {

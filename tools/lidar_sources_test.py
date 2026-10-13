@@ -1,11 +1,12 @@
 """
-The lidar trials' arithmetic, offline (tools/lidar_trial.py).
+The lidar's sources, offline (tools/lidar_sources.py): the datum move, the
+tiles' units, the noise, and one read.
 
 A datum move with its sign flipped, or z left in feet, does not fail: it
 reads as "the trial made no difference" or "the trees are three times
 taller", and either is a finding about the wrong thing.
 
-    python3 tools/lidar_trial_test.py
+    python3 tools/lidar_sources_test.py
 """
 
 import math
@@ -13,7 +14,7 @@ import re
 
 import numpy as np
 
-import lidar_trial as t
+import lidar_sources as t
 
 # public/shade/datum.js's nad83Correction at these points (node, 2026-10-13).
 JS = [
@@ -58,47 +59,36 @@ def check_units():
     print("units: feet are converted, metres left alone")
 
 
-def check_reader_swap():
-    import lidar_frame
-    keep = lidar_frame.points_over
-    try:
-        seen = {}
+def check_one_read():
+    box = [-9791000.0, 5291000.0, -9790900.0, 5291100.0]
+    asked = {}
 
-        def fake(base, bbox, limit_nodes=400):
-            seen["bbox"] = bbox
-            # One just inside the west edge (moved out), one in the middle, one in
-            # the margin east of the frame (moved in) -- the reason to read wider.
-            xs = np.array([box[0] + 0.5, (box[0] + box[2]) / 2, box[2] + 1.0])
-            return np.column_stack([xs, np.full(3, (bbox[1] + bbox[3]) / 2), np.zeros(3), np.zeros(3), np.full(3, 2.0)]), {}
-        lidar_frame.points_over = fake
-        box = [-9791000.0, 5291000.0, -9790900.0, 5291100.0]
-        plan = {"a": {"url": "https://x/ept.json", "epoch": 2017.3, "box": box}}
-        t.install(plan, "datum", "/tmp")
-        pts, got = lidar_frame.points_over("https://x", box)
-        assert seen["bbox"][0] < box[0], "read a margin wider, so moved points still fill the frame"
-        assert (pts[:, 0] >= box[0]).all() and (pts[:, 0] <= box[2]).all(), "cropped back to the frame"
-        assert len(pts) == 2, "the point pushed past the west edge is dropped, the one from the margin comes in"
-        assert got["shift_m"][0] < 0 < got["shift_m"][1]
-        lidar_frame.points_over = fake
-        t.install(plan, "newest", "/tmp")
-        pts, _ = lidar_frame.points_over("https://x", box)
-        assert seen["bbox"] == box and len(pts) == 3, "newest leaves an octree read alone"
-        # Whatever a read returns must carry what lidar_frame.main() records
-        # (the first CI run of the newest trial died on a missing "nodes").
-        import inspect
-        wanted = set(re.findall(r'got\["(\w+)"\]', inspect.getsource(lidar_frame.main)))
-        assert wanted <= {"nodes", "mb", "points"}, f"main() now reads {wanted}: give the tile read those keys too"
-        assert '"nodes"' in inspect.getsource(t.install) and '"mb"' in inspect.getsource(t.install)
-        noisy = np.array([[0, 0, 0, 0, 2.0], [0, 0, 50, 0, 18.0], [0, 0, -9, 0, 7.0], [0, 0, 9, 0, 1.0]])
-        assert t.drop_noise(noisy)[:, 4].tolist() == [2.0, 1.0], "noise classes 7 and 18 dropped"
-    finally:
-        lidar_frame.points_over = keep
-    print("reader: datum reads wider, moves, crops; newest leaves octrees in place and drops noise")
+    def octree(b):
+        asked["bbox"] = b
+        # One just inside the west edge (moved out), one in the middle, one in
+        # the margin east of the frame (moved in), and two noise points.
+        xs = np.array([box[0] + 0.5, (box[0] + box[2]) / 2, box[2] + 1.0, (box[0] + box[2]) / 2, (box[0] + box[2]) / 2])
+        cls = np.array([2.0, 1.0, 2.0, 18.0, 7.0])
+        return np.column_stack([xs, np.full(5, (box[1] + box[3]) / 2), np.zeros(5), np.zeros(5), cls]), {"nodes": 3, "mb": 1.0}
+    pts, info = t.read_points(octree, box, 2017.3)
+    assert asked["bbox"][0] < box[0], "read a margin wider, so moved points still fill the frame"
+    assert (pts[:, 0] >= box[0]).all() and (pts[:, 0] <= box[2]).all(), "cropped back to the frame"
+    assert len(pts) == 2 and not np.isin(pts[:, 4], t.NOISE).any(), "the west point moved out, the margin one in, noise gone"
+    assert info["shift_m"][0] < 0 < info["shift_m"][1] and info["points"] == 2 and info["nodes"] == 3
+    # Whatever a read returns must carry what lidar_frame.main() records
+    # (the first CI run of the newest trial died on a missing "nodes").
+    import inspect
+    import lidar_frame
+    wanted = set(re.findall(r'got\["(\w+)"\]', inspect.getsource(lidar_frame.main)))
+    assert wanted <= set(info), f"main() reads {wanted}, a read gives {set(info)}"
+    assert t.epoch_of({"epoch": 2021.05}) == 2021.05 and t.epoch_of({"year": 2016}) == 2016.5
+    assert t.epoch_of({}) == t.epoch_of(None) == t.DEFAULT_EPOCH
+    print("one read: wider, noise dropped, moved, cropped; the keys main() records; epochs from the plan")
 
 
 if __name__ == "__main__":
     check_datum_matches_the_shade_map()
     check_mercator_shift()
     check_units()
-    check_reader_swap()
-    print("lidar trials: ok")
+    check_one_read()
+    print("lidar sources: ok")

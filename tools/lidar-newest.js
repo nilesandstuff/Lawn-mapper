@@ -1,8 +1,9 @@
 /**
- * THE NEWEST LIDAR OVER EACH FRAME, BY USGS'S OWN DATES (H94; owner,
- * 2026-10-13). The plan for workflow 14's `lidar_trial`, written over the
- * baseline's lidar-plan.json (tools/lidar-plan.js) and read by
- * tools/lidar_trial.py.
+ * THE NEWEST LIDAR OVER EACH FRAME, BY USGS'S OWN DATES (H94, H96; owner,
+ * 2026-10-13). Workflow 14 writes it over tools/lidar-plan.js's plan and
+ * tools/lidar_frame.py reads it; the live server asks the same question of
+ * one frame (newestFor, from tools/serve-alpha.mjs). ADOPTED 2026-10-13: H96
+ * measured the 20 locked lots it changes 10 better, 1 worse.
  *
  * TWO MODES:
  *
@@ -110,35 +111,82 @@ export function pickNewest(octrees, sets) {
   return best ? { kind: 'octree', ...best } : null;
 }
 
+const year = (ms) => (ms === null || ms === undefined ? null : new Date(ms).getUTCFullYear());
+
+/** Every octree over a point, dated. */
+export function octreesOver(fc, lng, lat, units) {
+  return (fc?.features || []).filter((f) => covers(f.geometry, lng, lat)).map((f) => dateOctree({
+    name: f.properties?.name || '(unnamed)', url: f.properties?.url || null, density: densityPerSqM(f),
+  }, units));
+}
+
+/**
+ * The plan entry: what lidar_frame.py reads. A tiles entry also names the
+ * newest OCTREE (octreeUrl, octreeEpoch), which the live server reads until
+ * the tiles are on its volume, and tree_lidar.py reads always.
+ */
+export function entryFor(id, octrees, pick) {
+  if (!pick) return null;
+  if (pick.kind === 'octree') {
+    return { name: pick.name, url: pick.url, year: year(pick.end), epoch: pick.epoch, unit: pick.unit, dated: pick.dated, source: 'octree', density: pick.density, others: octrees.length - 1 };
+  }
+  const best = pickNewest(octrees, []);
+  return {
+    name: pick.unit, url: `tiles://${id}/ept.json`, tiles: pick.tiles, mb: Math.round(pick.mb), year: year(pick.end), epoch: pick.epoch,
+    source: 'tiles', density: null, others: octrees.length,
+    octreeUrl: best?.url || null, octreeName: best?.name || null, octreeEpoch: best?.epoch ?? null,
+  };
+}
+
+const boxDegrees = (box) => {
+  const [w, s] = fromMercator([box[0], box[1]]);
+  const [e, n] = fromMercator([box[2], box[3]]);
+  return [w, s, e, n];
+};
+
 /* ------------------------------------------------------------- the network */
 
-async function getJson(url, tries = 3) {
+async function getJson(url, tries = 3, timeoutMs = 60000) {
   let last;
   for (let i = 0; i < tries; i++) {
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(60000) });
+      const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
       if (res.ok) return await res.json();
       last = new Error(`HTTP ${res.status}`);
     } catch (e) { last = e; }
-    await new Promise((r) => { setTimeout(r, 2000 * (i + 1)); });
+    if (i < tries - 1) await new Promise((r) => { setTimeout(r, 2000 * (i + 1)); });
   }
   throw last;
 }
 
-const wesmAt = (lng, lat) => getJson(`${WESM}?${new URLSearchParams({
+const wesmAt = (lng, lat, quick = false) => getJson(`${WESM}?${new URLSearchParams({
   geometry: `${lng},${lat}`, geometryType: 'esriGeometryPoint', inSR: '4326',
   spatialRel: 'esriSpatialRelIntersects', returnGeometry: 'false', f: 'json',
   outFields: 'workunit,project,collect_start,collect_end,ql',
-})}`);
+})}`, quick ? 1 : 3, quick ? 8000 : 60000);
 
-const tnmOver = ([w, s, e, n]) => getJson(`${TNM}?${new URLSearchParams({
+const tnmOver = ([w, s, e, n], quick = false) => getJson(`${TNM}?${new URLSearchParams({
   datasets: 'Lidar Point Cloud (LPC)', bbox: [w, s, e, n].join(','), max: '200', outputFormat: 'JSON',
-})}`);
+})}`, quick ? 1 : 3, quick ? 8000 : 60000);
+
+/**
+ * ONE FRAME, FOR THE LIVE SERVER: the plan entry for a Web Mercator box, from
+ * the footprints it already holds. USGS's index or the TNM API not answering
+ * is not fatal: it falls back to the octrees dated by their names.
+ */
+export async function newestFor(box, fc) {
+  const [lng, lat] = fromMercator([(box[0] + box[2]) / 2, (box[1] + box[3]) / 2]);
+  // One try of eight seconds each: a person is waiting on this lot.
+  const units = workUnits(await wesmAt(lng, lat, true).catch(() => null));
+  const octrees = octreesOver(fc, lng, lat, units);
+  const items = units.length ? (await tnmOver(boxDegrees(box), true).catch(() => null))?.items || [] : [];
+  return entryFor('lot', octrees, pickNewest(octrees, tileSets(items, units, octrees.map((o) => o.unit))));
+}
 
 async function main() {
   const FRAMES = process.env.FRAMES || 'frames';
   const PLAN = process.env.PLAN || 'lidar-plan.json';
-  const MODE = process.env.MODE || 'date';
+  const MODE = process.env.MODE || 'newest';
   if (!['date', 'newest'].includes(MODE)) throw new Error(`MODE=${MODE}: date or newest`);
   const boxes = JSON.parse(readFileSync(join(FRAMES, 'scale.json'), 'utf8')).boxes || {};
   const base = JSON.parse(readFileSync(PLAN, 'utf8'));
@@ -156,17 +204,10 @@ async function main() {
       out[id] = { ...was, epoch: d.epoch, unit: d.unit, dated: d.dated };
       continue;
     }
-    const octrees = (fc?.features || []).filter((f) => covers(f.geometry, lng, lat)).map((f) => dateOctree({
-      name: f.properties?.name || '(unnamed)', url: f.properties?.url || null, density: densityPerSqM(f),
-    }, units));
-    const [w, s] = fromMercator([box[0], box[1]]);
-    const [e, n] = fromMercator([box[2], box[3]]);
-    const items = (await tnmOver([w, s, e, n]).catch(() => null))?.items || [];
+    const octrees = octreesOver(fc, lng, lat, units);
+    const items = (await tnmOver(boxDegrees(box)).catch(() => null))?.items || [];
     const pick = pickNewest(octrees, tileSets(items, units, octrees.map((o) => o.unit)));
-    const year = (ms) => (ms === null || ms === undefined ? null : new Date(ms).getUTCFullYear());
-    out[id] = !pick ? null : pick.kind === 'tiles'
-      ? { name: pick.unit, url: `tiles://${id}/ept.json`, tiles: pick.tiles, mb: Math.round(pick.mb), year: year(pick.end), epoch: pick.epoch, source: 'tiles', density: null, others: octrees.length }
-      : { name: pick.name, url: pick.url, year: year(pick.end), epoch: pick.epoch, unit: pick.unit, dated: pick.dated, source: 'octree', density: pick.density, others: octrees.length - 1 };
+    out[id] = entryFor(id, octrees, pick);
     const now = out[id];
     if ((now?.name || null) !== (was?.name || null)) {
       changed++;

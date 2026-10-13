@@ -388,18 +388,6 @@ on:
         type: choice
         default: 'off'
         options: ['off', 'on']
-      lidar_trial:
-        # THE LIDAR TRIALS (owner, 2026-10-13; tools/lidar_trial.py). The
-        # lidar is read again, one thing changed, after the cached baseline:
-        # 'datum' moves every octree by the NAD83 -> WGS84 correction for its
-        # flight (S35); 'newest' reads the newest flight USGS has, by its own
-        # dates, from its LAZ tiles where AWS has no octree yet (H94, and the
-        # picker's funding-year slip). Never saved to the cache, never
-        # released: the live server reads the baseline.
-        description: 'Read the lidar differently: S35 datum move, or the newest USGS flight (H94)'
-        type: choice
-        default: 'off'
-        options: ['off', 'datum', 'newest']
       about:
         # WHAT THIS RUN IS FOR, kept with the pictures for ever.
         #
@@ -448,9 +436,9 @@ jobs:
       # Stop in seconds rather than after an hour of extraction when the
       # choices cannot go together.
       - name: Check the choices go together
-        if: ${{ (inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && (inputs.canopy == 'compare' || (startsWith(inputs.decoder, 'fused + edge + trees') && inputs.canopy == 'off'))) || ((inputs.not_lawn == 'on' || inputs.corrections == 'on') && inputs.gpu == 'modal') || (inputs.release != 'off' && (inputs.decoder != 'fused + edge' || inputs.canopy == 'compare' || inputs.canopy == 'off')) || (inputs.lidar_trial != 'off' && (inputs.release != 'off' || inputs.canopy == 'off')) }}
+        if: ${{ (inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && (inputs.canopy == 'compare' || (startsWith(inputs.decoder, 'fused + edge + trees') && inputs.canopy == 'off'))) || ((inputs.not_lawn == 'on' || inputs.corrections == 'on') && inputs.gpu == 'modal') || (inputs.release != 'off' && (inputs.decoder != 'fused + edge' || inputs.canopy == 'compare' || inputs.canopy == 'off')) }}
         run: |
-          echo "::error::'fused + edge' (and '+ trees', which also needs a canopy setting) trains its decoders under ONE canopy setting (canopy not 'compare'); not-lawn traces are read on the free runner only; a release is THE PLAN (decoder 'fused + edge', a canopy setting) on either runner; a lidar trial needs a canopy setting and is never released."
+          echo "::error::'fused + edge' (and '+ trees', which also needs a canopy setting) trains its decoders under ONE canopy setting (canopy not 'compare'); not-lawn traces are read on the free runner only; a release is THE PLAN (decoder 'fused + edge', a canopy setting) on either runner."
           exit 1
 
       - run: npm ci
@@ -563,7 +551,7 @@ jobs:
             lidar
             lidar-plan.json
             naip
-          key: prep-v1-${{ steps.frames.outputs.fp }}-fused${{ startsWith(inputs.decoder, 'fused') }}-${{ hashFiles('tools/tree-canopy.py', 'tools/clumps.py', 'tools/lidar-plan.js', 'tools/lidar-cover.js', 'tools/lidar_frame.py', 'tools/naip_bands.py', 'tools/naip_align.py', 'tools/requirements-trees.txt', 'tools/requirements-lidar.txt') }}
+          key: prep-v1-${{ steps.frames.outputs.fp }}-fused${{ startsWith(inputs.decoder, 'fused') }}-${{ hashFiles('tools/tree-canopy.py', 'tools/clumps.py', 'tools/lidar-plan.js', 'tools/lidar-cover.js', 'tools/lidar-newest.js', 'tools/lidar_frame.py', 'tools/lidar_sources.py', 'tools/naip_bands.py', 'tools/naip_align.py', 'tools/requirements-trees.txt', 'tools/requirements-lidar.txt') }}
 
       - name: Reuse the backbone's features if saved
         id: feats
@@ -635,6 +623,22 @@ jobs:
           OUT: lidar-plan.json
         run: node tools/lidar-plan.js
 
+      # THE NEWEST FLIGHT, BY USGS'S OWN DATES (H96, adopted 2026-10-13):
+      # each frame re-picked from USGS's index, and USGS's LAZ tiles where
+      # the newest flight is not on AWS yet (18 of 104 locked frames, 2.4 GB,
+      # read into lidar-tiles and deleted after). The reader then drops
+      # noise and moves every point by the datum correction for its flight's
+      # epoch (H95), as the live server does (tools/lidar_sources.py).
+      - name: Plan the newest flight over each frame
+        if: ${{ inputs.canopy != 'off' && steps.prep.outputs.cache-hit != 'true' }}
+        env:
+          FRAMES: frames
+          PLAN: lidar-plan.json
+          MODE: newest
+        run: |
+          node tools/lidar-newest.test.js
+          node tools/lidar-newest.js
+
       - name: Read the lidar over the frames
         if: ${{ inputs.canopy != 'off' && steps.prep.outputs.cache-hit != 'true' }}
         env:
@@ -642,40 +646,13 @@ jobs:
           CANOPY: canopy
           PLAN: lidar-plan.json
           OUT: lidar
+          TILE_DIR: lidar-tiles
           # NAIP-CHM (E9, H41) is no longer read (owner, 2026-09-29): its
           # only uses were the shelved "lidar ∩ NAIP canopy" row and a
           # picture layer. NAIP_CHM=1 brings it back.
-        run: python3 tools/lidar_frame.py
-
-      # THE LIDAR TRIALS (lidar_trial input). After the baseline lidar is in
-      # place, cached or read: the plan is dated (datum) or re-picked
-      # (newest) from USGS's own index, and every frame is read again into
-      # `lidar` with the one change. The steps after this one -- the ground
-      # check, NAIP, the decoders, stage 3, the veto -- read it as they read
-      # the baseline.
-      - name: Plan the lidar trial from USGS's index
-        if: ${{ inputs.lidar_trial != 'off' && inputs.canopy != 'off' }}
-        env:
-          FRAMES: frames
-          PLAN: lidar-plan.json
-          MODE: ${{ inputs.lidar_trial == 'datum' && 'date' || 'newest' }}
         run: |
-          node tools/lidar-newest.test.js
-          node tools/lidar-newest.js
-
-      - name: Read the lidar again for the trial
-        if: ${{ inputs.lidar_trial != 'off' && inputs.canopy != 'off' }}
-        env:
-          FRAMES: frames
-          CANOPY: canopy
-          PLAN: lidar-plan.json
-          OUT: lidar
-          LIDAR_TRIAL: ${{ inputs.lidar_trial }}
-          TILE_DIR: lidar-tiles
-        run: |
-          (cd tools && python3 lidar_trial_test.py)
-          rm -rf lidar
-          python3 tools/lidar_trial.py
+          (cd tools && python3 lidar_sources_test.py)
+          python3 tools/lidar_frame.py
           rm -rf lidar-tiles
 
       # S11, the fused inputs: NAIP's near-infrared over every frame (one
@@ -788,7 +765,7 @@ jobs:
       # Saved BEFORE the handoff below moves the folders into the tar. Only
       # what was computed this run is saved; a hit is left as it was.
       - name: Save the canopy, lidar and NAIP for later runs
-        if: ${{ inputs.gpu != 'modal' && inputs.canopy != 'off' && steps.prep.outputs.cache-hit != 'true' && inputs.lidar_trial == 'off' }}
+        if: ${{ inputs.gpu != 'modal' && inputs.canopy != 'off' && steps.prep.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
         with:
           path: |
@@ -796,7 +773,7 @@ jobs:
             lidar
             lidar-plan.json
             naip
-          key: prep-v1-${{ steps.frames.outputs.fp }}-fused${{ startsWith(inputs.decoder, 'fused') }}-${{ hashFiles('tools/tree-canopy.py', 'tools/clumps.py', 'tools/lidar-plan.js', 'tools/lidar-cover.js', 'tools/lidar_frame.py', 'tools/naip_bands.py', 'tools/naip_align.py', 'tools/requirements-trees.txt', 'tools/requirements-lidar.txt') }}
+          key: prep-v1-${{ steps.frames.outputs.fp }}-fused${{ startsWith(inputs.decoder, 'fused') }}-${{ hashFiles('tools/tree-canopy.py', 'tools/clumps.py', 'tools/lidar-plan.js', 'tools/lidar-cover.js', 'tools/lidar-newest.js', 'tools/lidar_frame.py', 'tools/lidar_sources.py', 'tools/naip_bands.py', 'tools/naip_align.py', 'tools/requirements-trees.txt', 'tools/requirements-lidar.txt') }}
 
       - name: Save the backbone's features for later runs
         if: ${{ inputs.gpu != 'modal' && steps.feats.outputs.cache-hit != 'true' }}
