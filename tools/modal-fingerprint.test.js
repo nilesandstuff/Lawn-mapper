@@ -34,6 +34,7 @@ check('the Modal log reader is not part of the server fingerprint',
 check('the S26 trial head is not part of the server fingerprint',
   !serverFiles().includes('tools/upernet_head.py') && serverFiles().includes('tools/train_decoder.py'));
 check('nor is S38\'s intensity measurement', !serverFiles().includes('tools/intensity_errors.py'));
+check('nor the lidar trials\' reader, while the baseline reader is', !serverFiles().includes('tools/lidar_trial.py') && serverFiles().includes('tools/lidar_frame.py') && !serverFiles().includes('tools/lidar-newest.js'));
 
 console.log(failures ? `\n${failures} check(s) FAILED.` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

@@ -941,6 +941,36 @@ but pickBest orders by the name's year (the funding year) and reads
 GA_Central_5_2018 instead. The features session's shade picker already
 orders by WESM's dates (public/shade/find.js).
 
+**The trial (owner, 2026-10-13: "go ahead").** Workflow 14 `lidar_trial:
+newest`: tools/lidar-newest.js re-picks every frame's lidar by USGS's own
+dates, which also fixes the Macon slip, and where USGS has published a
+flight as LAZ tiles more than a year newer than any octree, reads those
+tiles (tools/lidar_trial.py: downloaded in 16 parallel ranges, reprojected
+from their own CRS, z from US survey feet where the file says so, cropped
+to the frame). A dry run over the locked set: **20 of 104 frames change
+flight, 18 of them to tiles (2.6 GB), 2 to the 2021 Macon octree.** The
+Dauphin County PA lot does not change: USGS indexes its 2024 flight but has
+published no tiles there yet. Checked on one Will County IL frame: the
+reprojected 2025 tiles' tall things overlap the 2014 octree's best at a
+1 m shift or none (0.58 / 0.57), so the flight changes, not the
+registration. Noise classes (7, 18) are dropped in this trial, from tiles
+and octrees alike: that 2025 tile carried 405 high-noise points up to 50 m
+over a 120 m frame where octrees carry 0-1, and the baseline reader keeps
+them as height.
+
+**Bar, before the runs** (seeds 7, 8, 9 against THE PLAN's baseline, same
+seeds): on the 20 lots whose flight changes, per-lot mean over the seeds,
+twice as many better as worse and a median paired change below zero; and
+on the whole set, a 95% interval for the median change whose upper end is
+no worse than +0.3. Twenty lots is too few for the usual sign test to mean
+much, which is why the bar is a ratio; it will be read as a lead, not a
+result, unless it is lopsided.
+
+If it passes, it is still not live: a 57-520 MB tile cannot be read per
+request. Shipping it would mean keeping a cut of each newer flight where
+the server can read it quickly, a piece of work of its own. The Macon
+picker fix alone can go live as soon as it is measured not to hurt.
+
 **What it does not establish:** whether newer lidar moves any score. H72
 measured the lidar a median six years older than the county photo, and
 H76 found the lidar standing things on lawn the photo shows open on 10 of
@@ -6723,7 +6753,28 @@ NAIP; NOT measured here):**
     flight is the untested input here; the detector does not read
     intensity today.
 
-### S35. The lidar may sit half a cell off the photo: the USGS octrees are NAD83 labelled EPSG:3857 (from the features session, 2026-10-10 -- NOT MEASURED HERE)
+### S35. The lidar may sit half a cell off the photo: the USGS octrees are NAD83 labelled EPSG:3857 (from the features session, 2026-10-10 -- BUILT 2026-10-13, RUNNING)
+
+**The trial (owner, 2026-10-13: "go ahead").** Workflow 14 `lidar_trial:
+datum` (tools/lidar_trial.py): after the baseline lidar is in place, every
+frame is read again with each octree point moved by the NAD83 -> WGS84
+correction at the frame for its flight's epoch. The correction is a Python
+port of the shade map's public/shade/datum.js, checked against it to 2 mm
+at five places (lidar_trial_test.py). The epoch is the middle of the
+collection from USGS's index (tools/lidar-newest.js, MODE=date: 91 of 98
+octrees matched to a work unit; the rest take the name's year). Over the
+locked lots the move is about 0.5-1.2 m west and 0.5-1.2 m north. The
+served reader (lidar_frame.py) is untouched; the trial is never cached
+under the baseline's key and never released.
+
+**Bar, before the runs** (seeds 7, 8, 9 against THE PLAN's baseline, same
+seeds, `lawns: locked`, workflow 24): more lots better than worse with a
+sign-test p under 0.1, and a 95% interval for the median paired change
+below zero. Then the correction goes into lidar_frame.py, and the live
+server reads it from the next deploy. If the interval straddles zero, S35
+stays speculation and the reader stays as it is: a half-cell move nothing
+measures is not worth a change to the served code.
+
 
 Reported by the features session (shade map; session
 session_015v6JzxdMSV1sGghMRek3v7) while lining lidar ground up with the
