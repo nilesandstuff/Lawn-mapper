@@ -81,6 +81,49 @@ against 34-47%, but GRSM 25-40% against 21-24% and MLBS 24-38% against
 22-33%. Northern sites (BART, TREE, STEI, UNDE, HARV in deep winter) read
 near zero under snow and say nothing about trees.
 
+### 5. Trees' summer shadows on lawns: right on average (NAIP, 53 photo-years)
+
+USDA NAIP photos (Microsoft Planetary Computer, every leaf-on year, 60 cm
+to 1 m) of the corpus lots (data/labelled-crowns.csv's 60 lots; 29 lots in
+13 states had lidar, a crisp photo and enough buildings), against the model
+at the moment of each photo (tools/shade-check-naip.js). The sun's position
+and the photo's offset fitted on BUILDINGS' shadows only (open ground near
+a roof that no tree touches at that sun); what shadow looks like in each
+photo read off buildings too (grass inside a building's full shadow against
+grass in full sun; shade = under half the direct beam, the model's own
+definition); photos whose buildings' shadows are under 1.8x darker than sun
+(haze) left out -- most of the 288 photo-years. Then the trees, with nothing
+tuned on them, on grass the buildings leave in sun:
+
+| summer, leaves on | photo | model |
+|---|---|---|
+| tree-reachable grass in shade | 16.4% | 18.4% |
+| mean share of the direct beam there | 0.769 | 0.791 |
+| agreement, cell by cell | 85.5% (90.5% off shadow edges) | |
+
+Per photo, agreement has a median of 86% (10th percentile 70%). The
+differences lean both ways (model darker by count of cells, brighter by
+beam), so nothing to correct. The same photos scored with the BARE model
+show 7.9% in shade: the leaves are what the photos see, and the model's
+summer leaves are about the right density.
+
+### 6. Leaf-off photos are darker near bare trees than the bare model, but not as shadow
+
+County photos (66 leaf-off frames) and Mapbox (13), read for leaf state
+from the photo itself (crowns as green as the lawn, or not), the sun's
+direction fitted on buildings (tools/shade-check-imagery.js): near bare
+trees the photos are darker than the bare model in 69 of 79 (mean beam
+share 0.873 model against 0.805 photo, county). But making the bare crowns
+denser does not fit (tools/shade-check-bare.js, 37 frames): even 4x
+denser leaves half the lots still too bright, and every step lowers the
+cell-by-cell agreement (84.5% at 1x, 81.6% at 4x) -- the extra darkness is
+not where the crowns' shadows fall. Most likely the ground under trees is
+darker in spring (leaf litter, mulch, browner grass), not shaded. No change.
+
+Unresolved: ten county photos that read as leaf-on put the model darker
+than the photo (0.62 against 0.73); NAIP's 53 summer photos do not. They
+may be spring flights with the leaves part out.
+
 ## Speculation
 
 - The pines (3) might be told apart by crown shape or by a leaf-off photo
@@ -90,8 +133,6 @@ near zero under snow and say nothing about trees.
   2013: leaf-off lidar under-reads bare crowns); no correction is warranted
   by these numbers.
 
-## Not yet in
-
-- Aerial photo shadows on the corpus lots (tools/shade-check-naip.js, NAIP
-  every leaf-on year; tools/shade-check-imagery.js, the county photos and
-  Mapbox): running.
+- Leaf-off darkness near trees (6) as ground, not shadow: testable by
+  comparing ground on the sunward side of a trunk (no shadow possible) with
+  open lawn; not done.
