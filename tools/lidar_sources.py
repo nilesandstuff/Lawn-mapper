@@ -142,20 +142,32 @@ def vertical_factor(wkt):
     return 1.0
 
 
-def fetch_ranged(url, path, parts=16, timeout=120):
-    """A whole file in `parts` parallel byte ranges (rockyweb gives one connection ~0.2 MB/s)."""
+def fetch_ranged(url, path, parts=16, timeout=120, tries=4):
+    """A whole file in `parts` parallel byte ranges (rockyweb gives one connection ~0.2 MB/s).
+    The folder is made if it is not there: the first release run on this reader
+    lost 12 of 18 tile frames to a missing folder (2026-10-13)."""
+    import time
     path = Path(path)
     if path.exists() and path.stat().st_size > 0:
         return path
-    req = urllib.request.Request(url, method="HEAD")
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        size = int(r.headers["Content-Length"])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    size = None
+    for attempt in range(tries):  # rockyweb times out now and then; the HEAD is retried as the ranges are
+        try:
+            req = urllib.request.Request(url, method="HEAD")
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                size = int(r.headers["Content-Length"])
+            break
+        except Exception:  # noqa: BLE001 - retried, then raised
+            if attempt == tries - 1:
+                raise
+            time.sleep(5 * (attempt + 1))
     step = max(1, math.ceil(size / parts))
     ranges = [(s, min(size, s + step) - 1) for s in range(0, size, step)]
     tmp = path.with_suffix(".part")
 
     def get(rng):
-        for attempt in range(4):
+        for attempt in range(tries):
             try:
                 q = urllib.request.Request(url, headers={"Range": f"bytes={rng[0]}-{rng[1]}"})
                 with urllib.request.urlopen(q, timeout=timeout) as r:
@@ -164,8 +176,9 @@ def fetch_ranged(url, path, parts=16, timeout=120):
                     raise IOError(f"short range {len(data)}")
                 return rng[0], data
             except Exception:  # noqa: BLE001 - retried, then raised
-                if attempt == 3:
+                if attempt == tries - 1:
                     raise
+                time.sleep(5 * (attempt + 1))
         return None
 
     with open(tmp, "wb") as f:

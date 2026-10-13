@@ -570,8 +570,17 @@ def main():
         try:
             # The newest flight (an octree, or USGS's tiles), noise dropped and
             # the datum moved, exactly as the live server reads it (lidar_sources.py).
-            pts, got = lidar_sources.read_points(lambda b: points_over(base, b), bbox, lidar_sources.epoch_of(p),
-                                                 tiles=p.get("tiles"), tile_dir=os.environ.get("TILE_DIR", "lidar-tiles"))
+            try:
+                pts, got = lidar_sources.read_points(lambda b: points_over(base, b), bbox, lidar_sources.epoch_of(p),
+                                                     tiles=p.get("tiles"), tile_dir=os.environ.get("TILE_DIR", "lidar-tiles"))
+            except Exception as e:  # noqa: BLE001 - USGS's tiles failed: the newest octree, as the live server falls back
+                if not (p.get("tiles") and p.get("octreeUrl")):
+                    raise
+                print(f"  {label} tiles failed ({str(e)[:60]}); reading the newest octree, {p.get('octreeName')}")
+                o_base = p["octreeUrl"].rsplit("/", 1)[0]
+                pts, got = lidar_sources.read_points(lambda b: points_over(o_base, b), bbox,
+                                                     p.get("octreeEpoch") or lidar_sources.DEFAULT_EPOCH)
+                got = dict(got, fellBack=True)
         except Exception as e:  # noqa: BLE001 - one lawn's failure is reported, not fatal
             print(f"  {label} FAILED: {str(e)[:70]}")
             summary["lawns"][lawn_id] = {"skipped": str(e)[:200]}

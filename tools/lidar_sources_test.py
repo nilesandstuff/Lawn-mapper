@@ -86,9 +86,49 @@ def check_one_read():
     print("one read: wider, noise dropped, moved, cropped; the keys main() records; epochs from the plan")
 
 
+def check_ranged_download_makes_its_folder():
+    """fetch_ranged against a local server that answers HEAD and byte ranges,
+    into a folder that does not exist yet (the release run of 2026-10-13 lost
+    12 of 18 tile frames to exactly that)."""
+    import http.server
+    import tempfile
+    import threading
+    from pathlib import Path
+    body = bytes(range(256)) * 400  # 102,400 bytes
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_HEAD(self):
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+
+        def do_GET(self):
+            a, b = self.headers["Range"].split("=")[1].split("-")
+            chunk = body[int(a):int(b) + 1]
+            self.send_response(206)
+            self.send_header("Content-Length", str(len(chunk)))
+            self.end_headers()
+            self.wfile.write(chunk)
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d) / "not" / "yet" / "tile.laz"
+            got = t.fetch_ranged(f"http://127.0.0.1:{srv.server_port}/tile.laz", out, parts=7)
+            assert got == out and out.read_bytes() == body, "every range in its place"
+            assert not out.with_suffix(".part").exists()
+    finally:
+        srv.shutdown()
+    print("download: the folder is made, seven ranges land in order, no half file left")
+
+
 if __name__ == "__main__":
     check_datum_matches_the_shade_map()
     check_mercator_shift()
     check_units()
     check_one_read()
+    check_ranged_download_makes_its_folder()
     print("lidar sources: ok")
