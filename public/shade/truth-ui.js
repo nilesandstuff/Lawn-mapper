@@ -12,7 +12,9 @@ const $ = (s) => document.querySelector(s);
 /** The phone on the hopper cover: about 50 inches up (owner, 2026-10-13). */
 const PHONE_M = 1.27;
 const MIN_EDGE_M = 25; // readings nearer the modelled box's edge miss the trees beyond it
-const COLORS = { sunSun: '#f8c931', shadeShade: '#3b4cc0', sunShade: '#e53935', shadeSun: '#ff9800', out: '#9e9e9e' };
+/* Yellow, blue, red, cyan: every pair well apart in normal and color-blind
+   vision (the old orange sat too close to the yellow; owner, 2026-10-13). */
+const COLORS = { sunSun: '#ffe600', shadeShade: '#2f5bff', sunShade: '#ff1f3d', shadeSun: '#00e0ff', out: '#9e9e9e' };
 
 async function getJson(url, init) {
   const res = await fetch(url, { credentials: 'same-origin', ...init });
@@ -105,7 +107,7 @@ export async function startTruth({ map, sun, spec, bounds = null }) {
     if (map.getSource('truth')) map.getSource('truth').setData(fc);
     else {
       map.addSource('truth', { type: 'geojson', data: fc });
-      map.addLayer({ id: 'truth', type: 'circle', source: 'truth', paint: { 'circle-radius': 3.5, 'circle-color': ['get', 'c'], 'circle-stroke-color': '#111', 'circle-stroke-width': 0.6 } });
+      map.addLayer({ id: 'truth', type: 'circle', source: 'truth', paint: { 'circle-radius': 4, 'circle-color': ['get', 'c'], 'circle-stroke-color': '#111', 'circle-stroke-width': 1.5 } });
     }
   }
 
