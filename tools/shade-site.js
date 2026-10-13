@@ -73,7 +73,7 @@ export async function shadeSite(lng, lat, { halfM = 80, cloudIndex = 0 } = {}) {
     const [x, y] = toMerc([plng, plat]);
     return [(x - grid.x0) / grid.cell, (grid.y1 - y) / grid.cell];
   };
-  return { cloud, box, grid, cols, model, season, cellOf, points: cols.n };
+  return { cloud, box, grid, cols, model, season, shift, cellOf, points: cols.n };
 }
 
 /** The sun's direction (east, north, up) at a time and place, with its angles. */
