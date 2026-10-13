@@ -28,8 +28,8 @@
  *   - The sensor sees the sun through a narrow cone: flat, with the sun 60
  *     degrees off its face, it read 10,000 lux in sun; tipped to 38 degrees
  *     it read 50,000 a second later. Past ~65 degrees sun and shade blur.
- *     (The owner's tilt test, 2026-10-13, put a number on it: cos^2 of the
- *     sun's angle off the face, sunGain; each reading is now judged
+ *     (The owner's tilt tests, 2026-10-13, put a number on it: cos^2.5 of the
+ *     sun's angle off the face (sunGain); each reading is now judged
  *     against what sun and shade would read at its own angle.)
  *   - The light and orientation sensors stopped about a minute after the
  *     screen went off and came back for a minute at a time; GPS ran on.
@@ -309,13 +309,15 @@ export function sunOrShade(luxes, { minContrast = 3 } = {}) {
 /**
  * How much of the direct sun the phone's sensor takes in with the sun
  * `offDeg` off its face, as a share of what it takes in facing the sun
- * squarely: cos^power. Measured by the owner's tilt test (2026-10-13, Galaxy
- * S21 Ultra, clear sun 38 degrees up, four minutes tilting in every
- * direction): the brightest readings at each angle followed 95,000 lux x
- * cos^2 plus about 4,000 from the sky, power 2 fitting best (1.75-2.5
- * nearly as well, 1 clearly worse). docs/SHADE-FINDINGS.md 8.
+ * squarely: cos^power. Measured by the owner's two tilt tests (2026-10-13,
+ * Galaxy S21 Ultra, clear sun 38 degrees up, tilting slowly in every
+ * direction): the brightest readings at each angle followed about 95,000 lux
+ * x cos^power plus 4,000-6,000 from the sky; power 2-2.5 fitted best with
+ * the screen on, 2.5-3 with it off (as it is at work), plain cosine clearly
+ * worse in both. 2.5 is within a hair of the best in each.
+ * docs/SHADE-FINDINGS.md 8.
  */
-export const SENSOR_POWER = 2;
+export const SENSOR_POWER = 2.5;
 export function sunGain(offDeg, power = SENSOR_POWER) {
   const c = Math.cos((offDeg * Math.PI) / 180);
   return c > 0 ? c ** power : 0;

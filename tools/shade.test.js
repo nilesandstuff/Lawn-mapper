@@ -742,8 +742,8 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   const around = sunOrShadeAround(sky);
   const inCloud = around.judged.slice(215, 295).some(Boolean), early = around.sun[5] === true && around.sun[15] === false && around.judged[15], open = around.judged.slice(395).every(Boolean) && around.sun.slice(395).every(Boolean);
   check('judged around each reading: sun and shade early, the cloud left out, open sun later still sun', !inCloud && early && open, JSON.stringify({ inCloud, early, open }));
-  /* The hopper tipping: sun read at 95,000 x cos^2 of its angle off the face plus 4,000 of sky, shade at 2,500. */
-  check('sensor gain: cos^2 of the sun off the face, none from behind', near(sunGain(0), 1, 1e-9) && near(sunGain(60), 0.25, 1e-9) && sunGain(95) === 0);
+  /* The hopper tipping: sun read at 95,000 x cos^2.5 of its angle off the face plus 4,000 of sky, shade at 2,500. */
+  check('sensor gain: cos^2.5 of the sun off the face, none from behind', near(sunGain(0), 1, 1e-9) && near(sunGain(60), 0.5 ** 2.5, 1e-9) && near(sunGain(60, 2), 0.25, 1e-9) && sunGain(95) === 0);
   const tip = [];
   for (let i = 0; i < 240; i++) {
     const off = i >= 200 ? 87 : 40 + (i * 37) % 32; // 40-71 degrees, then a face turned nearly edge-on

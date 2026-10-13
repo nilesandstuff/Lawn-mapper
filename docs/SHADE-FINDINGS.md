@@ -152,38 +152,40 @@ a mistake (9 per broadleaf left bare, 2 per evergreen given leaves):
   MIXED-season flights (HARV 46, BART 11, TREE 4): part of those scans saw
   leaves, so the crowns look winter-dense.
 
-### 8. The phone's light sensor takes in the sun as cos^2 of its angle (tilt test, 2026-10-13)
+### 8. The phone's light sensor takes in the sun as about cos^2.5 of its angle (tilt tests, 2026-10-13)
 
 The owner stood in the open and tilted the phone (Galaxy S21 Ultra, bare,
-in hand) slowly in every direction for four minutes, 12:38-12:42 EDT, sun
-38 degrees up, mostly clear (workflow 35's window, lux and orientation each
-second; tools/shade-readings.js). The brightest readings at each angle
-between the sun and the screen's face:
+in hand) slowly in every direction, sun 38 degrees up, mostly clear: first
+12:38-12:42 EDT with the screen on, then 12:43-12:46 with it off (as it is
+at work). Workflow 35's window gave lux and orientation each second
+(tools/shade-readings.js). The brightest readings (90th percentile) at each
+angle between the sun and the screen's face, compass offset -14:
 
-| sun off the face | 0-10 | 30-35 | 45-50 | 60-65 | 70-75 | 85-90 |
-|---|---|---|---|---|---|---|
-| lux (90th percentile) | 92,500 | 90,800 | 49,600 | 26,100 | 13,500 | 4,700 |
-| 95,000 x cos^2 + 4,000 | 98,800 | 71,600 | 47,400 | 24,300 | 12,600 | 4,200 |
+| sun off the face | 0-10 | 20-30 | 30-40 | 40-50 | 50-60 | 60-70 | 70-80 |
+|---|---|---|---|---|---|---|---|
+| screen on | 91k | 81k | 74k | 72k | 38k | 28k | 13k |
+| screen off | 99k | 77k | 60k | 51k | 30k | 11k | 6k |
+| 95k x cos^2.5 + 5k | 99k | 84k | 70k | 54k | 37k | 21k | 9k |
 
-- Fitted with a loss that lets clouds only dim: power 2 best (1.75-2.5
-  nearly as good; plain cosine clearly worse), face-on sun 90,000-100,000,
-  sky about 4,000-6,000, lux and orientation in step to the second.
-- The phone's compass is uncertain here: the best fit turned its heading
-  26 degrees from true north, more than any declination in the East (the
-  fit is nearly as good from -14 to -30). On the hopper the fitted mounting
-  angle absorbs this for the heading; the face's tilt is small (under 20
-  degrees), so the error in the sun's angle stays under about 9 degrees.
+- Fitted with a loss that lets clouds only dim: power 2-2.5 best with the
+  screen on, 2.5-3 with it off; plain cosine clearly worse in both. Face-on
+  sun 90,000-110,000, sky 4,000-6,000, lux and orientation in step to the
+  second. Adopted: 2.5, within a hair of the best in both.
+- The phone's compass: the best fit turned its heading 26 degrees (screen
+  on) and 14 (screen off) from true north. On the hopper the fitted
+  mounting angle absorbs this for the heading; the face's tilt there is
+  small (under 20 degrees), so the error in the sun's angle stays small.
 - Adopted (truth.js sunGain, sunOrShadeAround): each reading judged
   against what sun and shade would read at its own angle (sun and shade
   levels fitted per 90-second window, so the bag's dust and the day's haze
   drop out); readings where the two would differ by under 3x are left out,
   replacing the fixed 65 degree cut.
 - On the one field visit at hand (2026-10-12's last, late afternoon): 82% of
-  45 readings agree with the model, against 67% of 30 with the fixed cut. One
-  visit; not yet a result.
-- On that visit the face-on sun came out at about 21,500 lux, a quarter of the
-  tilt test's: the low, hazy sun and the dusty bag dim it.
-  Only the shape (the power) is carried over from the test, not the level.
+  45 readings agree with the model, against 67% of 30 with the fixed cut
+  (the same at power 2 and 2.5). One visit; not yet a result.
+- On that visit the face-on sun came out at about 31,000 lux, a third of the
+  tilt tests': the low, hazy sun and the dusty bag dim it. Only the shape
+  (the power) is carried over from the tests, not the level.
 
 ## Speculation
 
