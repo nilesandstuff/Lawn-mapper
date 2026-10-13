@@ -105,7 +105,12 @@ async function showVisits(session, box) {
     const sky = so.clear ? `<span class="ok">sun and shade ${Math.round(so.contrast)}× apart</span>` : '<span class="warn">no clear sun (cloudy?)</span>';
     const gap = cover < 0.8 ? `<br><span class="warn">The light sensor slept through ${Math.round(100 * (1 - cover))}% of this visit (see step 1, the battery settings).</span>` : '';
     const spec = [session, t0, t1, ...(mount ? [Math.round(mount.offset), mount.n, Math.round(mount.spread)] : [])].join('|');
-    const href = `/shade.html?at=${lat.toFixed(6)},${lng.toFixed(6)}&truth=${encodeURIComponent(spec)}`;
+    /* The whole track's box, so the shade page models every lot it crossed
+       (neighbors treated as one, a street of stops), not only the one at
+       its middle. */
+    const lats = u.map((x) => x.lat), lngs = u.map((x) => x.lng);
+    const area = [Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)].map((v) => v.toFixed(5)).join(',');
+    const href = `/shade.html?at=${lat.toFixed(6)},${lng.toFixed(6)}&truth=${encodeURIComponent(spec)}&area=${area}`;
     row.innerHTML = `<div><b>Visit ${i + 1}</b> <span class="dim">${esc(clock(t0))}–${esc(clock(t1))}, ${u.length} usable readings</span><br>${sky}${gap}</div>
       <a class="button" href="${href}">Check on the shade map</a>`;
     return row;

@@ -163,6 +163,8 @@ function siteBounds(site) {
   };
   add(site.parcel?.geometry);
   site.lawn.forEach((f) => add(f.geometry));
+  /* A field-readings check covers the whole track (shade/log.js: area). */
+  if (site.area) { pts.push([site.area[0], site.area[1]], [site.area[2], site.area[3]]); }
   if (!pts.length) {
     const d = 15 / 111320;
     return [site.lng - d / Math.cos(site.lat * Math.PI / 180), site.lat - d, site.lng + d / Math.cos(site.lat * Math.PI / 180), site.lat + d];
@@ -520,7 +522,10 @@ async function main() {
           site = await siteFromAddress(r);
         }
       } else throw new Error('Pick a saved map, or type an address or a point, first.');
-      const keep = params.get('truth') ? `&truth=${encodeURIComponent(params.get('truth'))}` : '';
+      const area = (params.get('area') || '').split(',').map(Number);
+      if (params.get('truth') && area.length === 4 && area.every(Number.isFinite) && area[2] > area[0] && area[3] > area[1]
+        && area[2] - area[0] < 0.02 && area[3] - area[1] < 0.02) site.area = area; // at most ~1.5 km across
+      const keep = params.get('truth') ? `&truth=${encodeURIComponent(params.get('truth'))}${site.area ? `&area=${params.get('area')}` : ''}` : '';
       history.replaceState(null, '', (id ? `?map=${encodeURIComponent(id)}` : `?at=${encodeURIComponent(at)}`) + keep);
       await build(site);
     } catch (e) {
