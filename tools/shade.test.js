@@ -824,7 +824,7 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   const lv = [];
   for (let i = 0; i < 200; i++) { const gain = 0.2 + (i % 9) * 0.05; lv.push({ t: noonish + i * 1000, el: 38, gain, lux: Math.floor(i / 8) % 2 ? 2000 : 90000 * gain + 4000 }); }
   const lt = sunLevels(lv);
-  check('readings levels: face-on sun and shade per half hour, with the counts', /sun 38° up\s+200 readings\s+face-on sun\s+9\d,\d{3}, shade\s+2,000; \d+ sun, \d+ shade/.test(lt), lt);
+  check('readings levels: face-on sun and shade per half hour, with the counts', /sun 38° up\s+200 readings\s+face-on sun\s+9\d,\d{3} \(brightest tenth\s+[\d,]+\), shade\s+2,000; \d+ sun, \d+ shade/.test(lt), lt);
   const { timeline } = await import('./shade-readings.js');
   const tl = timeline([{ t: now, fixes: 290, lux: 280, orient: 295, speed: 1.3 }, { t: now + 300e3, fixes: 60, lux: 0, orient: 0, speed: null }]);
   check('readings timeline: five-minute steps with counts and mph, no places', /gps 290\s+light 280\s+orientation 295\s+3 mph/.test(tl) && /-\s*mph/.test(tl), tl);

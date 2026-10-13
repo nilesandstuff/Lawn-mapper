@@ -128,14 +128,16 @@ export function tiltWindow(lux, orient, sun) {
 export function sunLevels(samples, stepMs = 1800000) {
   const by = new Map();
   for (const s of samples) { const k = Math.floor(s.t / stepMs) * stepMs; if (!by.has(k)) by.set(k, []); by.get(k).push(s); }
-  const out = ['', 'Today half an hour at a time, each reading judged at its own angle to the sun (face-on = the sun\'s level facing the phone squarely; clear sun about 90,000-100,000 at 38 degrees up in the tilt tests):'];
+  const out = ['', 'Today half an hour at a time, each reading judged at its own angle to the sun (face-on = the sun\'s level facing the phone squarely, the median and the brightest tenth; the tilt tests\' brightest tenth was about 90,000-100,000 at 38 degrees up):'];
   for (const [k, list] of [...by].sort((a, b) => a[0] - b[0])) {
     const el = list.reduce((a, s) => a + s.el, 0) / list.length;
     const so = list.length >= 10 ? sunOrShadeAround(list) : null;
     const head = `  ${when(k).padEnd(16)} sun ${el.toFixed(0).padStart(2)}° up  ${String(list.length).padStart(4)} readings`;
     if (!so || !so.clear) { out.push(`${head}  no clear split into sun and shade`); continue; }
     const n = (f) => so.sun.filter((v, i) => f(v, i)).length;
-    out.push(`${head}  face-on sun ${Math.round(so.sunLux).toLocaleString('en-US').padStart(7)}, shade ${Math.round(so.shadeLux).toLocaleString('en-US').padStart(6)}; ${n((v, i) => so.judged[i] && v)} sun, ${n((v, i) => so.judged[i] && !v)} shade, ${n((v, i) => so.faint[i])} turned too far, ${n((v, i) => !so.judged[i] && !so.faint[i])} cloud`);
+    const beam = list.filter((x, i) => so.judged[i] && so.sun[i] && x.gain > 0.05).map((x) => (x.lux - so.shadeLux) / x.gain).sort((x, y) => x - y);
+    const p90 = beam.length ? beam[Math.floor(0.9 * (beam.length - 1))] : NaN;
+    out.push(`${head}  face-on sun ${Math.round(so.sunLux).toLocaleString('en-US').padStart(7)} (brightest tenth ${Math.round(p90).toLocaleString('en-US').padStart(7)}), shade ${Math.round(so.shadeLux).toLocaleString('en-US').padStart(6)}; ${n((v, i) => so.judged[i] && v)} sun, ${n((v, i) => so.judged[i] && !v)} shade, ${n((v, i) => so.faint[i])} turned too far, ${n((v, i) => !so.judged[i] && !so.faint[i])} cloud`);
   }
   return out.join('\n');
 }
