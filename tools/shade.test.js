@@ -586,11 +586,19 @@ check('the color ramp runs dark to bright and clamps', ramp(-1).join() === '0,0,
   /* A typical year: -5 C in mid-January to 23 C in mid-July. */
   const tMean = Array.from({ length: 365 }, (_, d) => 9 - 14 * Math.cos(((d - 14) / 365) * 2 * Math.PI));
   const cal = leafCalendar(tMean);
-  check('leaf calendar: leaves start when the typical mean passes 10 C in spring and fall when it drops back',
-    tMean[cal.out] >= 10 && tMean[cal.out - 1] < 10 && tMean[cal.fall] < 10 && tMean[cal.fall - 1] >= 10, `${dayLabel(cal.out)} / ${dayLabel(cal.fall)}`);
-  check('leaf calendar: bare in winter, five weeks to full leaf, half gone on the day it drops below 10 C, bare four weeks after it starts',
+  const greenUp = tMean.findIndex((t, d) => d > 14 && t >= 14.5), c10down = tMean.findIndex((t, d) => d > 196 && t < 10);
+  check('leaf calendar: half the shade 12 days after the typical mean passes 14.5 C (green-up), half gone two weeks before it drops below 10 C',
+    cal.halfOut === greenUp + 12 && cal.fall === c10down - 14 && near(cal.share(cal.halfOut), 0.5, 0.03), `${dayLabel(cal.halfOut)} / ${dayLabel(cal.fall)}`);
+  check('leaf calendar: bare in winter, five weeks to full leaf, full in July, half gone at the fall date, bare two weeks after',
     cal.share(10) === 0 && near(cal.share(cal.out + 7), 7 / 35, 1e-9) && cal.share(196) === 1
     && near(cal.share(cal.fall), 0.5, 0.04) && cal.share(cal.fall + 15) === 0, `${cal.share(cal.fall).toFixed(2)}`);
+  /* A cool summer (warmest 15 C): green-up 7.5 C under it, not at 14.5. */
+  const coolT = Array.from({ length: 365 }, (_, d) => 5 - 10 * Math.cos(((d - 14) / 365) * 2 * Math.PI));
+  const cool = leafCalendar(coolT);
+  check('leaf calendar: a cool summer greens 7.5 C under its warmest', cool.halfOut === coolT.findIndex((t, d) => d > 14 && t >= 7.5) + 12, `${dayLabel(cool.halfOut)}`);
+  /* A short season (10 C passed for under three months) keeps its leaves for a while. */
+  const short = leafCalendar(Array.from({ length: 365 }, (_, d) => 2 - 10 * Math.cos(((d - 14) / 365) * 2 * Math.PI)));
+  check('leaf calendar: a short summer still gets full leaf', !short.always && !short.never && short.share(short.out + 36) === 1, `${dayLabel(short.out)} ${dayLabel(short.fall)}`);
   check('leaf calendar: always warm means always in leaf; never warm, never',
     leafCalendar(new Array(365).fill(20)).share(0) === 1 && leafCalendar(new Array(365).fill(0)).share(180) === 0);
 }

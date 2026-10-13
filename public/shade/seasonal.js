@@ -117,12 +117,30 @@
  *     it, in every season.
  *
  *  5. IN BETWEEN, leaf-out and leaf-fall are ESTIMATED from the place's
- *     typical temperature (climate.js): leaves come out over five weeks from
- *     the day the typical mean first passes 10 C in spring, and fall over
- *     four weeks centered on the day it drops back below 10 C. At Rockford MI
- *     that puts half-leaf at May 17 and half-fall at Oct 19, against Harvard
- *     Forest's (42.5 N) May 18-24 and Oct 16-24 (Lee et al. 2023). An
- *     estimate, said so on the page; a phenology dataset could replace it.
+ *     typical temperature (climate.js), in LIGHT -- what the map draws:
+ *       spring: the canopy greens the day the typical mean passes 14.5 C (or
+ *         7.5 C under the summer's warmest, where summers are cool), and the
+ *         shade follows 12 days later, half the leaves' shade on that day,
+ *         over five weeks;
+ *       fall: half the shade gone two weeks before the day the typical mean
+ *         drops back below 10 C, over four weeks.
+ *     MEASURED (2026-10-13; tools/shade-check-neon.js, PhenoCam):
+ *       - the spring rule's shape was fitted on PhenoCam's cameras over 119
+ *         deciduous sites across the US (green-up predicted for each site
+ *         from the others: off by 7.2 days, against 10.7 for the old rule,
+ *         10 C plus 17 days); the 12 days from green to shade on NEON's
+ *         ground light sensors under eleven deciduous forests. Each NEON
+ *         year predicted with the other year's lag: off by 9-10 days,
+ *         against 15-17 for the old rule, which put the shade 2-6 weeks
+ *         early in the South and on time in the North.
+ *       - fall: the old date (10 C) was 13-16 days late at NEON in both
+ *         2022 and 2023, and PhenoCam's green fades three weeks before it;
+ *         the light comes back as the leaves turn, before they drop. Two
+ *         weeks earlier: off by 11-13 days, no lean. A fitted fall shape did
+ *         no better at NEON, so the simple shift stands.
+ *     KNOWN WEAK: the Pacific Northwest (one PhenoCam site there): Portland's
+ *     leaves come out in early June here, April in life. The old rule had it
+ *     mid-May, also late.
  */
 
 import { cellOf } from './grid.js';
@@ -142,7 +160,11 @@ export const DOME_MIN_R_M = 4; // and only a crown this wide (equivalent radius)
 export const G_OMEGA = 0.5; // G; within-crown clumping is inside the effective LAD and LAI
 export const LAD = 1.0;
 export const LAI_MAX = 5.5;
-export const LEAF_T_C = 10;
+export const LEAF_T_C = 10; // fall: half the shade gone LEAF_FALL_LEAD_DAYS before the typical mean drops below this (5)
+export const LEAF_FALL_LEAD_DAYS = 14;
+export const GREEN_T_C = 14.5; // spring: the canopy greens when the typical mean passes this (PhenoCam, 5)
+export const GREEN_CAP_C = 7.5; // or this far under the summer's warmest, if lower
+export const SHADE_LAG_DAYS = 12; // and its shade is half there this many days later (NEON, 5)
 export const LEAF_OUT_DAYS = 35;
 export const LEAF_FALL_DAYS = 28;
 
@@ -400,29 +422,40 @@ export function muWithLeaves(season, f) {
 
 /**
  * Leaf-out and leaf-fall from the typical year's mean temperature (365
- * values): { out: day the leaves start, fall: day they start dropping,
- * share(k): 0..1 leaves on day k }. Where it never gets cold enough for
- * the trees to drop their leaves (or never warm enough), share is 1 (or 0).
+ * values), in light (5): { out: the day the shade starts, halfOut, full,
+ * fall (= halfFall: half the shade gone), bare, share(k): 0..1 of the
+ * leaves' shade on day k }. Where it never gets cold enough for the trees
+ * to drop their leaves (or never warm enough), share is 1 (or 0).
  */
-export function leafCalendar(tMean, { tC = LEAF_T_C, up = LEAF_OUT_DAYS, down = LEAF_FALL_DAYS } = {}) {
+export function leafCalendar(tMean, {
+  tC = LEAF_T_C, lead = LEAF_FALL_LEAD_DAYS, green = GREEN_T_C, cap = GREEN_CAP_C, lag = SHADE_LAG_DAYS,
+  up = LEAF_OUT_DAYS, down = LEAF_FALL_DAYS,
+} = {}) {
   const warm = tMean.map((t) => t >= tC);
   if (warm.every(Boolean)) return { out: null, fall: null, share: () => 1, always: true };
   if (!warm.some(Boolean)) return { out: null, fall: null, share: () => 0, never: true };
-  /* Spring: the first warm day after the coldest day; autumn: the first cold day after that. */
-  let coldest = 0;
-  for (let k = 1; k < 365; k++) if (tMean[k] < tMean[coldest]) coldest = k;
-  let out = coldest;
-  while (!warm[out % 365]) out++;
-  let fall = out;
-  while (warm[fall % 365]) fall++;
-  out %= 365; fall %= 365;
   const since = (k, d) => (k - d + 365) % 365;
-  const dropFrom = since(fall, out) - down / 2; // leaves start falling half the ramp before the crossing
+  /* Spring: the first day after the coldest that passes the green-up
+     temperature; autumn: the first day after the warmest below tC. */
+  let coldest = 0, warmest = 0;
+  for (let k = 1; k < 365; k++) { if (tMean[k] < tMean[coldest]) coldest = k; if (tMean[k] > tMean[warmest]) warmest = k; }
+  const tGreen = Math.min(green, tMean[warmest] - cap);
+  let greenUp = coldest;
+  while (tMean[greenUp % 365] < tGreen) greenUp++;
+  let cold = warmest;
+  while (tMean[cold % 365] >= tC) cold++;
+  let halfOut = (greenUp + lag) % 365;
+  let fall = (cold - lead + 365) % 365;
+  /* A short season keeps its leafing-out and a week of full leaf. */
+  const room = since(fall, halfOut) - up / 2 - down / 2 - 7;
+  if (room < 0) { halfOut = (halfOut + Math.floor(room / 2) + 365) % 365; fall = (fall - Math.ceil(room / 2)) % 365; }
+  const out = (halfOut - Math.round(up / 2) + 365) % 365;
+  const dropFrom = since(fall, out) - down / 2; // leaves start falling half the ramp before the half-way day
   const share = (k) => {
     const a = since(k, out);
     if (a < up) return Math.min(1, a / up); // leafing out
     if (a < dropFrom) return 1; // summer
     return Math.max(0, 1 - (a - dropFrom) / down); // falling, then bare
   };
-  return { out, fall, full: (out + up) % 365, bare: (out + Math.ceil(dropFrom + down)) % 365, halfOut: (out + Math.round(up / 2)) % 365, halfFall: fall, share };
+  return { out, fall, full: (out + up) % 365, bare: (out + Math.ceil(dropFrom + down)) % 365, halfOut, halfFall: fall, share };
 }
