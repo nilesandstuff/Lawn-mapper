@@ -9,6 +9,7 @@ taller", and either is a finding about the wrong thing.
 """
 
 import math
+import re
 
 import numpy as np
 
@@ -82,6 +83,12 @@ def check_reader_swap():
         t.install(plan, "newest", "/tmp")
         pts, _ = lidar_frame.points_over("https://x", box)
         assert seen["bbox"] == box and len(pts) == 3, "newest leaves an octree read alone"
+        # Whatever a read returns must carry what lidar_frame.main() records
+        # (the first CI run of the newest trial died on a missing "nodes").
+        import inspect
+        wanted = set(re.findall(r'got\["(\w+)"\]', inspect.getsource(lidar_frame.main)))
+        assert wanted <= {"nodes", "mb", "points"}, f"main() now reads {wanted}: give the tile read those keys too"
+        assert '"nodes"' in inspect.getsource(t.install) and '"mb"' in inspect.getsource(t.install)
         noisy = np.array([[0, 0, 0, 0, 2.0], [0, 0, 50, 0, 18.0], [0, 0, -9, 0, 7.0], [0, 0, 9, 0, 1.0]])
         assert t.drop_noise(noisy)[:, 4].tolist() == [2.0, 1.0], "noise classes 7 and 18 dropped"
     finally:

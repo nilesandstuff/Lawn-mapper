@@ -262,7 +262,8 @@ def install(plan, mode, tile_dir):
                 mb += path.stat().st_size / 1e6
                 parts.append(tile_points(path, bbox))
             pts = drop_noise(np.vstack(parts) if parts else np.zeros((0, 5)))
-            return pts, {"tiles": len(p.get("tiles") or []), "mb": mb, "points": int(len(pts))}
+            # The keys lidar_frame.main() records for an octree read; "nodes" counts tiles here.
+            return pts, {"nodes": len(p.get("tiles") or []), "tiles": True, "mb": mb, "points": int(len(pts))}
         if mode == "datum":
             lng, lat = merc_to_lnglat((bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2)
             epoch = p.get("epoch") or ((p.get("year") or 2015) + 0.5)
