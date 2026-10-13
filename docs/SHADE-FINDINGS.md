@@ -184,10 +184,31 @@ angle between the sun and the screen's face, compass offset -14:
   (the same at power 2 and 2.5; 78% with the phone modelled at its true
   height, 50 inches, not 1 m -- two readings flip). One visit; not yet a
   result.
-- On that visit the face-on sun came out at about 31,000 lux, a third of the
-  tilt tests', unexplained (the phone rides bare on the hopper cover: no bag,
-  no dust, owner; see Speculation). Only the shape
-  (the power) is carried over from the tests, not the level.
+- On that visit the face-on sun came out at about 31,000 lux (median), a
+  third of the tilt tests'; the owner confirms clouds were popping up after
+  4 PM and it was late in the day.
+- CLEAR-DAY FIELD CHECK (2026-10-13, the owner's work day, the phone bare on
+  the hopper cover, one patch of cloud left out of the recording): each
+  reading judged at its own angle (cos^2.5), half an hour at a time
+  (workflow 35, levels):
+
+| time (EDT) | sun up | face-on sun, median | brightest tenth | readings judged sun / shade |
+|---|---|---|---|---|
+| 10:00 | 23 | 50,400 | 78,800 | 481 / 80 |
+| 10:30 | 27 | 39,300 | 67,200 | 107 / 142 |
+| 11:00 | 30 | 45,400 | 64,600 | 164 / 52 |
+| 11:30 | 35 | 61,700 | 88,900 | 103 / 33 |
+| 12:00 | 36 | 63,600 | 91,500 | 288 / 72 |
+| 12:30 | 38 | 63,300 | 90,200 | 262 / 142 |
+| 13:00 | 39 | 71,000 | 94,500 | 356 / 22 |
+
+  With the sun 35-39 degrees up, the brightest tenth of the field readings,
+  brought to face-on by cos^2.5, is 89,000-95,000: the tilt tests' level
+  (90,000-100,000, same sun height). The curve carries over from the hand
+  to the hopper. The median sits about a third lower than the brightest
+  tenth (dappled light and part-shade among the readings judged sun). At
+  the same sun height (26-31 degrees), yesterday's cloudy late afternoon
+  read 31,000 against today's 39,000-45,000.
 
 ## Speculation
 
@@ -198,10 +219,6 @@ angle between the sun and the screen's face, compass offset -14:
 - Winter (4) may differ by how much wood the lidar sees per site (Wasser
   2013: leaf-off lidar under-reads bare crowns); no correction is warranted
   by these numbers.
-
-- The field visit's face-on sun (8) a third of the tilt tests': perhaps the
-  low sun (26-31 degrees up) and that afternoon's haze and arriving clouds; a clear-day field log would test it
-  (the face-on level should then come near 90,000).
 
 - Leaf-off darkness near trees (6) as ground, not shadow: testable by
   comparing ground on the sunward side of a trunk (no shadow possible) with
