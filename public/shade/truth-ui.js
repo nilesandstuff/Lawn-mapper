@@ -10,6 +10,7 @@ import { joinTrack, usable, sunOrShadeAround, sunOffFace, compassOffset, operato
 
 const $ = (s) => document.querySelector(s);
 const MAX_OFF_FACE = 65; // degrees: past this the sensor barely sees the sun (truth.js)
+const MIN_EDGE_M = 25; // readings nearer the modelled box's edge miss the trees beyond it
 const COLORS = { sunSun: '#f8c931', shadeShade: '#3b4cc0', sunShade: '#e53935', shadeSun: '#ff9800', out: '#9e9e9e' };
 
 async function getJson(url, init) {
@@ -48,8 +49,9 @@ export async function startTruth({ map, sun, spec, bounds = null }) {
        visit's. Without either, the GPS track (blind to a zero-turn's spin). */
     const cal = dayMount || compassOffset(u);
     const heading = (s) => (cal && s.face != null ? (s.face + cal.offset) % 360 : s.heading);
-    const why = { off: 0, behind: 0, cloud: 0 };
+    const why = { off: 0, behind: 0, cloud: 0, edge: 0 };
     const keep = u.map((s, i) => {
+      if (m.edgeM && !(m.edgeM[i] >= MIN_EDGE_M)) { why.edge++; return false; }
       if (sunOffFace(s.up, m.elevation[i], m.azimuth[i]) > MAX_OFF_FACE) { why.off++; return false; }
       if (operatorShadow(heading(s), m.azimuth[i])) { why.behind++; return false; }
       return true;
@@ -86,7 +88,7 @@ export async function startTruth({ map, sun, spec, bounds = null }) {
          <p class="dim">Phone: sun about ${Math.round(so.sunLux).toLocaleString()} lux, shade cut at ${Math.round(so.cut).toLocaleString()} (${so.contrast.toFixed(0)}× apart). Model: sun where at least half the direct beam reaches 1 m up, with the trees as they stood that day.</p>`;
     const posed = u.filter((s) => s.up).length;
     const facing = cal ? `your direction from the phone's compass, its angle on the hopper (${Math.round(cal.offset)}°) taken from ${cal.n} straight-line readings ${cal.day ? 'across the day' : 'on this visit'}, steady to ${Math.round(cal.spread)}°` : posed ? 'your direction from GPS (too few straight runs to set the compass)' : 'your direction from GPS (no orientation recorded)';
-    say(`${head}<p class="dim"><i class="sw" style="background:${COLORS.out}"></i>Left out: ${why.off} with the sun more than ${MAX_OFF_FACE}° off the phone's face, ${why.behind} with the sun behind you (your shadow; ${facing}), ${why.cloud} in a cloud (dim for over a minute), ${st.cuts.length} erased stretch${st.cuts.length === 1 ? '' : 'es'}.${posed ? '' : ' No orientation in this recording: turn it on in Sensor Logger to leave out tipped readings.'}</p>`);
+    say(`${head}<p class="dim"><i class="sw" style="background:${COLORS.out}"></i>Left out: ${why.off} with the sun more than ${MAX_OFF_FACE}° off the phone's face, ${why.behind} with the sun behind you (your shadow; ${facing}), ${why.cloud} in a cloud (dim for over a minute), ${why.edge ? `${why.edge} beyond the mapped area (a neighbor's lot: open the check from a point on that lot to score it), ` : ''}${st.cuts.length} erased stretch${st.cuts.length === 1 ? '' : 'es'}.${posed ? '' : ' No orientation in this recording: turn it on in Sensor Logger to leave out tipped readings.'}</p>`);
   }
 
   function draw() {

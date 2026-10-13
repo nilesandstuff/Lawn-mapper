@@ -502,7 +502,11 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
         pts[3 * i + 1] = (st.grid.y1 - my) / st.grid.cell;
         pts[3 * i + 2] = p.t;
       });
-      return new Promise((resolve) => { const id = send({ type: 'samples', pts, heightM }); st.pending.set(id, resolve); });
+      /* How far inside the modelled box each point is, in meters (1 m
+         cells): trees beyond the box are not in the model, so a point near
+         its edge reads too much sun (truth-ui leaves those out). */
+      const edgeM = Float32Array.from(points, (_, i) => Math.min(pts[3 * i], pts[3 * i + 1], st.grid.w - pts[3 * i], st.grid.h - pts[3 * i + 1]));
+      return new Promise((resolve) => { const id = send({ type: 'samples', pts, heightM }); st.pending.set(id, (r) => resolve({ ...r, edgeM })); });
     },
     /** Show a given day (its date in local time). */
     showDay(ms) {
