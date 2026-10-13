@@ -218,6 +218,44 @@ angle between the sun and the screen's face, compass offset -14:
   the same sun height (26-31 degrees), yesterday's cloudy late afternoon
   read 31,000 against today's 39,000-45,000.
 
+### 9. The phone agrees with the model 95% where the model is sure of sun and 89% behind buildings (field check, 2026-10-13)
+
+The owner's full working day (clear, one patch of cloud left out of the
+recording; 23 visits, 3,883 readings judged), scored by
+tools/shade-field-check.js (workflow 35, check). The truck was found from his
+routine at each stop and its readings left out (public/shade/truck.js). The
+sun was placed for each reading's time and place, each reading was judged at
+its own angle, and the phone's angle on the hopper was fitted per stop (it
+ranged 234-302 degrees; one fit for the whole day failed). Lidar: the
+2016-18 leaf-off flight under every stop. Leaves by the calendar: 21% on.
+The model's confidence, from the beam at the reading and at 8 points 3 m
+around it (GPS error):
+
+| where | readings | phone agrees | the misses |
+|---|---|---|---|
+| open: model sure of sun | 1,879 | 95% | all "model too bright" (phone read shade) |
+| behind a building (no leaves involved) | 84 | 89% | all "model too dark" |
+| deep tree shade | 33 | 33% | all "model too dark" (phone read sun) |
+| edges, thin crowns (model unsure) | 1,887 | 67% | too dark 414, too bright 207 |
+| all | 3,883 | 81% | |
+
+- The phone method is sound: where the answer is known without trees
+  (open lawn, building shadows), it agrees 89-95%. The open misses (5%) are
+  shade the 2018 lidar does not hold, or the operator; the building misses
+  are GPS within a few meters of a wall.
+- Near trees the model is too dark twice as often as too bright.
+- The truck: at every stop the anchors where the phone is set down and
+  picked up agreed within 0-2.5 m (one spot per stop). Its shadow, with
+  the sun 25-39 degrees up, falls almost entirely inside the 10 ft margin.
+- WHERE THE LEAVES DECIDE (the model's full and bare canopies disagree; 389
+  readings): the phone agreed with the calendar's 21% at 221, with full
+  leaves at 181, with bare trees at 208. One stop (1:00-1:26 PM) gave 102 of
+  its 104 to bare trees. Without it: calendar 208, full 179, bare 106 of
+  285. Stop by stop it varies: some fit full leaves (2:44, 4:05), one fits
+  bare. The owner saw most trees still holding most of their leaves, with
+  one lot losing many (its trees to the south). As finding 2 found at NEON,
+  the shade goes before the leaves fall.
+
 ## Speculation
 
 - Mixed-season flights (7) may be better treated as leaf-on for the
@@ -227,6 +265,10 @@ angle between the sun and the screen's face, compass offset -14:
 - Winter (4) may differ by how much wood the lidar sees per site (Wasser
   2013: leaf-off lidar under-reads bare crowns); no correction is warranted
   by these numbers.
+
+- Deep tree shade read as sun (9): trees cut or thinned since the 2018
+  flight, crowns called evergreen that are not, or GPS at a crown's edge.
+  Per-tree, not tested.
 
 - Leaf-off darkness near trees (6) as ground, not shadow: testable by
   comparing ground on the sunward side of a trunk (no shadow possible) with
