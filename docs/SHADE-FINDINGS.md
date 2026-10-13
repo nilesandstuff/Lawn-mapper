@@ -243,15 +243,18 @@ around it (GPS error):
   (open lawn, building shadows), it agrees 89-95%. The open misses (5%) are
   shade the 2018 lidar does not hold, or the operator; the building misses
   are GPS within a few meters of a wall.
-- Near trees the model is too dark twice as often as too bright.
+- Near trees the model is too dark twice as often as too bright; a third of
+  those misses (127 of 414) are one new build the lidar predates.
 - The truck: at every stop the anchors where the phone is set down and
   picked up agreed within 0-2.5 m (one spot per stop). Its shadow, with
   the sun 25-39 degrees up, falls almost entirely inside the 10 ft margin.
 - WHERE THE LEAVES DECIDE (the model's full and bare canopies disagree; 389
   readings): the phone agreed with the calendar's 21% at 221, with full
   leaves at 181, with bare trees at 208. One stop (1:00-1:26 PM) gave 102 of
-  its 104 to bare trees. Without it: calendar 208, full 179, bare 106 of
-  285. Stop by stop it varies: some fit full leaves (2:44, 4:05), one fits
+  its 104 to bare trees: a NEW BUILD (owner), built after the 2016-18
+  flight, so the model there still holds what stood before (trees since
+  cleared, no house); its near-tree misses were 127 too dark, 3 too
+  bright. Without it: calendar 208, full 179, bare 106 of 285. Stop by stop it varies: some fit full leaves (2:44, 4:05), one fits
   bare. The owner saw most trees still holding most of their leaves, with
   one lot losing many (its trees to the south). As finding 2 found at NEON,
   the shade goes before the leaves fall.
@@ -266,8 +269,8 @@ around it (GPS error):
   2013: leaf-off lidar under-reads bare crowns); no correction is warranted
   by these numbers.
 
-- Deep tree shade read as sun (9): trees cut or thinned since the 2018
-  flight, crowns called evergreen that are not, or GPS at a crown's edge.
+- Deep tree shade read as sun (9) -- not the new build's (its readings
+  were edges): trees cut or thinned since the 2018 flight, crowns called evergreen that are not, or GPS at a crown's edge.
   Per-tree, not tested.
 
 - Leaf-off darkness near trees (6) as ground, not shadow: testable by
