@@ -55,9 +55,11 @@ export function confidence(full, bld) {
 export function tally(rows) {
   const out = {};
   for (const r of rows) {
-    const c = (out[r.cls] ||= { n: 0, agree: 0, modelSun: 0, phoneSun: 0 });
+    const c = (out[r.cls] ||= { n: 0, agree: 0, modelSun: 0, phoneSun: 0, tooBright: 0, tooDark: 0 });
     c.n++;
     if (r.modelSun === r.phoneSun) c.agree++;
+    else if (r.modelSun) c.tooBright++;
+    else c.tooDark++;
     if (r.modelSun) c.modelSun++;
     if (r.phoneSun) c.phoneSun++;
   }
@@ -68,24 +70,52 @@ const pct = (a, b) => (b ? `${Math.round((100 * a) / b)}%` : '-');
 export function classLine(t) {
   return ['open', 'building', 'tree', 'edge'].map((k) => {
     const c = t[k];
-    return c ? `${k} ${c.agree}/${c.n} (${pct(c.agree, c.n)})` : `${k} 0`;
+    return c ? `${k} ${c.agree}/${c.n} (${pct(c.agree, c.n)}${c.n > c.agree ? `; misses: model too bright ${c.tooBright}, too dark ${c.tooDark}` : ''})` : `${k} 0`;
   }).join(' | ');
 }
 
-export async function visitCheck(visit, mount) {
+/** Readings grouped into squares `cellM` across, each modelled on its own (a long visit down a street). */
+function tiles(u, cellM = 120) {
+  const lat0 = u[0].lat, k = 111195, kx = k * Math.cos((lat0 * Math.PI) / 180);
+  const by = new Map();
+  for (const s of u) {
+    const key = `${Math.floor((s.lng * kx) / cellM)},${Math.floor((s.lat * k) / cellM)}`;
+    if (!by.has(key)) by.set(key, []);
+    by.get(key).push(s);
+  }
+  return [...by.values()].map((list) => {
+    const [i, j] = [Math.floor((list[0].lng * kx) / cellM), Math.floor((list[0].lat * k) / cellM)];
+    return { lng: ((i + 0.5) * cellM) / kx, lat: ((j + 0.5) * cellM) / k, halfM: cellM / 2 + 50, list };
+  });
+}
+
+export async function visitCheck(visit, dayMount) {
   const trucks = findTrucks(visit);
   const u = usable(visit);
   if (u.length < 20) return { skip: `${u.length} usable readings` };
-  const lats = u.map((s) => s.lat), lngs = u.map((s) => s.lng);
-  const lat = (Math.min(...lats) + Math.max(...lats)) / 2, lng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
-  const half = Math.max(...u.map((s) => metersBetween([lat, lng], [s.lat, lng]) + metersBetween([lat, lng], [lat, s.lng])));
-  const site = await shadeSite(lng, lat, { halfM: Math.min(250, Math.ceil(half + 50)) });
-  if (!site) return { skip: 'no lidar' };
+  /* This visit's own mounting angle first: the phone is set down afresh at every stop. */
+  const mount = compassOffset(u) || dayMount;
+  const why = { edge: 0, truckNear: 0, truckShadow: 0, behind: 0 };
+  const rows = [], truckShadowRows = [];
+  let flight = null, flightEnd = null, leaf = 1;
+  for (const tile of tiles(u)) {
+    const site = await shadeSite(tile.lng, tile.lat, { halfM: tile.halfM });
+    if (!site) continue;
+    const got = await scoreTile(site, tile, trucks, mount, why, rows, truckShadowRows);
+    ({ flight, flightEnd, leaf } = got);
+  }
+  if (!rows.length && !truckShadowRows.length) return { skip: 'no lidar or no readings inside it' };
+  rows.sort((a, b) => a.t - b.t);
+  return judgeVisit(visit, u, trucks, mount, why, rows, truckShadowRows, { flight, flightEnd, leaf });
+}
+
+async function scoreTile(site, tile, trucks, mount, why, rows, truckShadowRows) {
+  const { lng, lat } = tile;
   const flight = site.cloud.unit?.season || null;
   const climate = await climateAt(lng, lat).catch(() => null);
   const calendar = climate?.tMean ? leafCalendar(climate.tMean) : null;
   const seasonal = calendar && (flight === 'off' || flight === 'mixed');
-  const leaf = seasonal ? calendar.share(dayOfYear(u[0].t)) : 1;
+  const leaf = seasonal ? calendar.share(dayOfYear(tile.list[0].t)) : 1;
   const model = { ...site.model, mu: seasonal ? muWithLeaves(site.season, leaf) : site.model.mu };
   const { w, h, nz } = model;
   const bmu = new Float32Array(model.mu.length);
@@ -98,9 +128,7 @@ export async function visitCheck(visit, mount) {
   const offModel = seasonal ? { ...model, mu: site.season.muOff } : model;
   const R = Math.PI / 180;
   const ring = [[0, 0], ...[...Array(8)].map((_, i) => [NEAR_M * Math.cos((i * Math.PI) / 4), NEAR_M * Math.sin((i * Math.PI) / 4)])];
-  const why = { edge: 0, truckNear: 0, truckShadow: 0, behind: 0 };
-  const rows = [], truckShadowRows = [];
-  for (const s of u) {
+  for (const s of tile.list) {
     const sun = sunAt(s.lat, s.lng, s.t);
     if (sun.elevation <= 2) continue;
     const [gx, gy] = site.cellOf(s.lng, s.lat);
@@ -117,6 +145,10 @@ export async function visitCheck(visit, mount) {
     if (operatorShadow(heading, sun.azimuth)) { why.behind++; continue; }
     rows.push(row);
   }
+  return { flight, flightEnd: site.cloud.unit?.end ?? null, leaf };
+}
+
+function judgeVisit(visit, u, trucks, mount, why, rows, truckShadowRows, { flight, flightEnd, leaf }) {
   /* Judged as the check view judges (the truck's readings out); the truck's
      shadow judged alongside the rest, to see whether the phone found it dark. */
   const so = sunOrShadeAround(rows);
@@ -134,7 +166,7 @@ export async function visitCheck(visit, mount) {
   /* The truck: do the anchors at the start and end of a stop agree? */
   const spread = trucks.map((tr) => Math.max(0, ...tr.anchors.map((a) => metersBetween([tr.lat, tr.lng], [a.lat, a.lng]))));
   return {
-    t0: visit[0].t, t1: visit[visit.length - 1].t, flight, flightEnd: site.cloud.unit?.end ?? null, leaf,
+    t0: visit[0].t, t1: visit[visit.length - 1].t, flight, flightEnd, leaf, mount,
     usable: u.length, trucks: trucks.length, anchors: trucks.reduce((a, tr) => a + tr.anchors.length, 0), spread,
     why, faint, cloud, clear: so.clear, sunLux: so.sunLux, shadeLux: so.shadeLux, scored, tally: tally(scored), leafTest, truckShadow: { n: tsN, dark: tsDark },
   };
@@ -163,14 +195,14 @@ export async function fieldCheck(day) {
   let tsN = 0, tsDark = 0;
   for (const v of visits) {
     let r;
-    try { r = await visitCheck(v, mount); } catch (e) { r = { skip: `error: ${e.message}` }; }
+    try { r = await visitCheck(v, mount && { ...mount, day: true }); } catch (e) { r = { skip: `error: ${e.message}` }; }
     const head = `${hm(v[0].t)}-${hm(v[v.length - 1].t)}`;
     if (r.skip) { out.push(`\n${head}: skipped (${r.skip})`); continue; }
     all.push(...r.scored);
     for (const k of Object.keys(leafAll)) leafAll[k] += r.leafTest[k];
     tsN += r.truckShadow.n; tsDark += r.truckShadow.dark;
     const tt = r.scored.length, ag = r.scored.filter((x) => x.modelSun === x.phoneSun).length;
-    out.push(`\n${head}: ${r.usable} readings; lidar ${r.flight || '?'} flight to ${r.flightEnd ? new Date(r.flightEnd).toISOString().slice(0, 7) : '?'}, leaves ${Math.round(100 * r.leaf)}% on`);
+    out.push(`\n${head}: ${r.usable} readings; phone on the hopper at ${r.mount ? `${Math.round(r.mount.offset)} degrees${r.mount.day ? ' (the day\'s fit)' : ''}` : '? (GPS heading used)'}; lidar ${r.flight || '?'} flight to ${r.flightEnd ? new Date(r.flightEnd).toISOString().slice(0, 7) : '?'}, leaves ${Math.round(100 * r.leaf)}% on`);
     out.push(`  truck: ${r.trucks} spot${r.trucks === 1 ? '' : 's'} from ${r.anchors} anchor${r.anchors === 1 ? '' : 's'}${r.spread.length ? ` (anchors within ${r.spread.map((m) => m.toFixed(1)).join(', ')} m of their spot)` : ''}; left out ${r.why.truckNear} beside it, ${r.why.truckShadow} in its shadow (the phone read ${r.truckShadow.n ? `${r.truckShadow.dark} of ${r.truckShadow.n} of those as shade` : 'none of those judged'})`);
     out.push(`  also out: ${r.why.behind} your shadow, ${r.why.edge} near the model's edge, ${r.faint} face turned too far, ${r.cloud} dim too long (cloud)`);
     out.push(r.clear

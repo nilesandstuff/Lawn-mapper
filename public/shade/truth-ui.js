@@ -51,7 +51,9 @@ export async function startTruth({ map, sun, spec, bounds = null }) {
        the hopper: the angle between its top edge and the way the machine
        goes, from straight runs -- the whole day's (log.js), else this
        visit's. Without either, the GPS track (blind to a zero-turn's spin). */
-    const cal = dayMount || compassOffset(u);
+    /* This visit's own fit first: he sets the phone down afresh at every
+       stop, so its angle on the hopper changes from stop to stop. */
+    const cal = compassOffset(u) || dayMount;
     const heading = (s) => (cal && s.face != null ? (s.face + cal.offset) % 360 : s.heading);
     /* The truck, from his routine at each stop (truck.js), on the whole
        visit before any erasing: readings beside it or in its shadow, with
