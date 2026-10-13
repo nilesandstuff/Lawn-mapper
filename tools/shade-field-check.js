@@ -91,6 +91,11 @@ export async function visitCheck(visit, mount) {
   const bmu = new Float32Array(model.mu.length);
   for (let k = 0; k < w * h; k++) if (site.season.kind[k] === 1) for (let l = 0; l < nz; l++) bmu[k * nz + l] = model.mu[k * nz + l];
   const bmodel = { ...model, mu: bmu };
+  /* The same readings with the leaves all on and all off, to test the
+     calendar's share against what the phone saw (owner, 2026-10-13: most
+     trees still hold most of their leaves; dropping has just begun). */
+  const onModel = seasonal ? { ...model, mu: site.season.muOn } : model;
+  const offModel = seasonal ? { ...model, mu: site.season.muOff } : model;
   const R = Math.PI / 180;
   const ring = [[0, 0], ...[...Array(8)].map((_, i) => [NEAR_M * Math.cos((i * Math.PI) / 4), NEAR_M * Math.sin((i * Math.PI) / 4)])];
   const why = { edge: 0, truckNear: 0, truckShadow: 0, behind: 0 };
@@ -104,7 +109,7 @@ export async function visitCheck(visit, mount) {
     const dir = [Math.sin(sun.azimuth * R) * ce, Math.cos(sun.azimuth * R) * ce, Math.sin(sun.elevation * R)];
     const beam = (mdl, dx, dy) => transmittance(mdl, gx + dx, gy - dy, groundAt(mdl, gx + dx, gy - dy) + PHONE_M, dir);
     const full = ring.map(([dx, dy]) => beam(model, dx, dy)), bld = ring.map(([dx, dy]) => beam(bmodel, dx, dy));
-    const row = { t: s.t, lux: s.lux, gain: sunGain(sunOffFace(s.up, sun.elevation, sun.azimuth)), T: full[0], cls: confidence(full, bld) };
+    const row = { t: s.t, lux: s.lux, gain: sunGain(sunOffFace(s.up, sun.elevation, sun.azimuth)), T: full[0], Ton: beam(onModel, 0, 0), Toff: beam(offModel, 0, 0), cls: confidence(full, bld) };
     const te = truckEffect(s, trucks, sun, { phoneM: PHONE_M });
     if (te === 'near') { why.truckNear++; continue; }
     if (te === 'shadow') { why.truckShadow++; truckShadowRows.push(row); continue; }
@@ -117,6 +122,9 @@ export async function visitCheck(visit, mount) {
   const so = sunOrShadeAround(rows);
   const scored = [];
   rows.forEach((r, i) => { if (so.clear && so.judged[i]) scored.push({ ...r, modelSun: r.T >= 0.5, phoneSun: so.sun[i] }); });
+  /* Where the leaves decide (the three canopies disagree), which agrees? */
+  const leafy = scored.filter((r) => (r.Ton >= 0.5) !== (r.Toff >= 0.5));
+  const leafTest = { n: leafy.length, calendar: leafy.filter((r) => r.modelSun === r.phoneSun).length, on: leafy.filter((r) => (r.Ton >= 0.5) === r.phoneSun).length, off: leafy.filter((r) => (r.Toff >= 0.5) === r.phoneSun).length };
   const both = [...rows, ...truckShadowRows].sort((a, b) => a.t - b.t);
   const sb = sunOrShadeAround(both);
   let tsDark = 0, tsN = 0;
@@ -128,7 +136,7 @@ export async function visitCheck(visit, mount) {
   return {
     t0: visit[0].t, t1: visit[visit.length - 1].t, flight, flightEnd: site.cloud.unit?.end ?? null, leaf,
     usable: u.length, trucks: trucks.length, anchors: trucks.reduce((a, tr) => a + tr.anchors.length, 0), spread,
-    why, faint, cloud, clear: so.clear, sunLux: so.sunLux, shadeLux: so.shadeLux, scored, tally: tally(scored), truckShadow: { n: tsN, dark: tsDark },
+    why, faint, cloud, clear: so.clear, sunLux: so.sunLux, shadeLux: so.shadeLux, scored, tally: tally(scored), leafTest, truckShadow: { n: tsN, dark: tsDark },
   };
 }
 
@@ -151,6 +159,7 @@ export async function fieldCheck(day) {
   const mount = compassOffset(visits.flatMap((v) => usable(v)));
   const out = [`Field check ${day}: ${visits.length} visits; the phone's mounting angle ${mount ? `${Math.round(mount.offset)} degrees (steady to ${Math.round(mount.spread)}, from ${mount.n} straight-line readings)` : 'not found (GPS heading used)'}.`];
   const all = [];
+  const leafAll = { n: 0, calendar: 0, on: 0, off: 0 };
   let tsN = 0, tsDark = 0;
   for (const v of visits) {
     let r;
@@ -158,6 +167,7 @@ export async function fieldCheck(day) {
     const head = `${hm(v[0].t)}-${hm(v[v.length - 1].t)}`;
     if (r.skip) { out.push(`\n${head}: skipped (${r.skip})`); continue; }
     all.push(...r.scored);
+    for (const k of Object.keys(leafAll)) leafAll[k] += r.leafTest[k];
     tsN += r.truckShadow.n; tsDark += r.truckShadow.dark;
     const tt = r.scored.length, ag = r.scored.filter((x) => x.modelSun === x.phoneSun).length;
     out.push(`\n${head}: ${r.usable} readings; lidar ${r.flight || '?'} flight to ${r.flightEnd ? new Date(r.flightEnd).toISOString().slice(0, 7) : '?'}, leaves ${Math.round(100 * r.leaf)}% on`);
@@ -170,12 +180,15 @@ export async function fieldCheck(day) {
       out.push(`  by how sure the model is: ${classLine(r.tally)}`);
       const tr = r.tally.tree;
       if (tr) out.push(`    tree shade: the phone read sun at ${tr.phoneSun} of ${tr.n} (leaves gone, or the crown thinner than the model)`);
+      const L = r.leafTest;
+      if (L.n) out.push(`  where the leaves decide (${L.n} readings): the phone agrees with the calendar's ${Math.round(100 * r.leaf)}% leaves at ${L.calendar}, with full leaves at ${L.on}, with bare trees at ${L.off}`);
     }
   }
   const T = tally(all), n = all.length, ag = all.filter((x) => x.modelSun === x.phoneSun).length;
   out.push(`\nDAY: ${n} readings scored, agree ${ag} (${pct(ag, n)}).`);
   out.push(`  where the model is sure: ${classLine(T)}`);
   out.push(`  open = sure of sun; building = behind a building (no leaves involved); tree = deep in a crown's shade; edge = unsure.`);
+  out.push(`  where the leaves decide (${leafAll.n} readings): the phone agrees with the calendar's leaves at ${leafAll.calendar}, full leaves at ${leafAll.on}, bare trees at ${leafAll.off}.`);
   out.push(`  the truck's shadow: the phone read ${tsDark} of ${tsN} judged readings there as shade.`);
   return out.join('\n');
 }
