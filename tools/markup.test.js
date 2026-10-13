@@ -490,6 +490,15 @@ for (const page of ['admin', 'grade', 'maps', 'mywork', 'outlines', 'payouts', '
   check(`${page}.html is kept out of search`,
     /<meta name="robots" content="noindex, nofollow">/.test(readFileSync(join(root, `public/${page}.html`), 'utf8')));
 }
+{
+  /* The shade analyzer is a page for search (owner, 2026-10-13): listed, described, on the landing. */
+  const shadePage = readFileSync(join(root, 'public/shade.html'), 'utf8');
+  check('shade.html is open to search and says what it is',
+    !/name="robots" content="noindex/.test(shadePage) && /name="description" content="[^"]*lidar/.test(shadePage)
+    && shadePage.includes('rel="canonical" href="__SITE__/shade.html"'));
+  check('the landing compares the shade map and links to it',
+    /<th scope="row">Shade map<\/th>/.test(html) && html.includes('href="/shade.html"') && /Shade analyzer:/.test(html));
+}
 check('neighbours, merge and the road are on for everybody, not only tinker mode',
   /if \(!document\.body\.classList\.contains\('job-mode'\)\) aroundParcel\(\);/.test(js) && !/if \(state\.dev\) \w*[Aa]roundParcel/.test(js));
 check('merge buttons show on the Property line step only, the dashed lines everywhere',

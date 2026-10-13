@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>nilesandstuff — lawn tools</title>
-<meta name="description" content="Free lawn tools: Lawn Mapper measures your lawn from your address with a trained AI lawn detector, plus a grass seed selector and turf calculators.">
+<meta name="description" content="Free lawn tools: Lawn Mapper measures your lawn from your address with a trained AI lawn detector, a shade map built from lidar for choosing the right grass, plus a grass seed selector and turf calculators.">
 <meta name="robots" content="index, follow">
 <meta name="theme-color" content="#2f7d32">
 <link rel="canonical" href="__HOME__/">
@@ -15,7 +15,7 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="nilesandstuff">
 <meta property="og:title" content="nilesandstuff — lawn tools">
-<meta property="og:description" content="Measure your lawn from your address with a trained AI lawn detector, pick grass seed, and more.">
+<meta property="og:description" content="Measure your lawn from your address with a trained AI lawn detector, map its sun and shade from lidar, pick grass seed, and more.">
 <meta property="og:url" content="__HOME__/">
 <meta property="og:image" content="__LAWNMAP__/og-image.png?v=2">
 <meta name="twitter:card" content="summary_large_image">
@@ -40,7 +40,7 @@
   h1 { font-size: clamp(26px, 5vw, 36px); line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 8px; }
   .lead { color: var(--muted); margin: 0 0 28px; max-width: 60ch; }
   .cards { display: grid; gap: 14px; grid-template-columns: 1fr; }
-  @media (min-width: 640px) { .cards { grid-template-columns: 1fr 1fr; } .feature { grid-column: 1 / -1; } }
+  @media (min-width: 640px) { .cards { grid-template-columns: 1fr 1fr; } .feature, .wide { grid-column: 1 / -1; } }
   .card {
     display: block; text-decoration: none; color: inherit;
     background: var(--card); border: 1px solid var(--line); border-radius: 16px;
@@ -84,6 +84,20 @@
         <span class="go">Measure my lawn →</span>
       </div>
       <img src="__LAWNMAP__/og-image.png?v=2" alt="A lawn outline traced by the AI inside a dashed property line" loading="lazy" width="600" height="315">
+    </a>
+
+    <!-- The shade analyzer: Lawn Mapper's second tool, on its domain
+         (owner, 2026-10-13). Full width so the two below stay a pair. -->
+    <a class="card wide" href="__LAWNMAP__/shade.html">
+      <span class="tag">Lidar shade map</span>
+      <h2>Shade Analyzer</h2>
+      <p>A shade map of your yard built from lidar, whose laser pulses pass
+        through the gaps in every tree. Most shade maps make trees solid 3D
+        shapes that block all the sun; this lets through the light each tree
+        really does. Sun hours and daily light across your lawn, any day of the
+        year &mdash; made for choosing the right grass type, with grass
+        recommendations on the way.</p>
+      <span class="go">Map my shade →</span>
     </a>
 
     <!-- The same two links as Lawn Mapper's "More lawn tools" menu;

@@ -588,6 +588,9 @@ function main() {
     writeFileSync(page, fillCoverage(
       fillSiteOrigin(readFileSync(page, 'utf8'), customDomain), coverage()
     ));
+    /* The shade analyzer is listed for search too (owner, 2026-10-13). */
+    const shade = new URL('../public/shade.html', import.meta.url);
+    writeFileSync(shade, fillSiteOrigin(readFileSync(shade, 'utf8'), customDomain));
     console.log(customDomain
       ? `Search and share tags point at https://${customDomain}.`
       : 'No CUSTOM_DOMAIN, so the canonical and share-image tags were left out.');
