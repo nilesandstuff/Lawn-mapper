@@ -61,8 +61,14 @@ export function crownFeatures(site) {
     if (cols.ret[i] === 1) { c.first++; c.inten.push(cols.intensity[i]); }
   }
   const gI = med(groundI) || 1;
+  /* The scene's crowns, for features relative to their neighbors: the
+     intensity and split share of its ordinary crowns (all crowns over 5 m
+     with 30 returns or more). */
+  const sceneB = [], sceneM = [];
+  crowns.forEach((c, id) => { if (c.H > 5 && per[id].n >= 30) { sceneB.push(med(per[id].inten) / gI); sceneM.push(per[id].multi / per[id].n); } });
+  const scene = { n: sceneB.length, b10: q(sceneB, 0.1), b25: q(sceneB, 0.25), b50: q(sceneB, 0.5), m50: q(sceneM, 0.5), m75: q(sceneM, 0.75), m90: q(sceneM, 0.9) };
   return {
-    lab,
+    lab, scene,
     crowns: crowns.map((c, id) => ({
       id, H: c.H, R: c.R, drop: c.drop, cells: per[id].T.length,
       winterT: med(per[id].T), zMid: med(per[id].z), zLow: q(per[id].z, 0.1),
@@ -84,7 +90,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       const lat = list.reduce((a, t) => a + t.lat, 0) / list.length, lng = list.reduce((a, t) => a + t.lng, 0) / list.length;
       const site = await shadeSite(lng, lat, { halfM: 45 });
       if (!site) { process.stderr.write(`${key}: no lidar\n`); continue; }
-      const { lab, crowns } = crownFeatures(site);
+      const { lab, crowns, scene } = crownFeatures(site);
       const { w } = site.model;
       /* Each labelled tree to the crown at its stem (or within 1.5 m); a crown takes its tallest tree's label. */
       const byCrown = new Map();
@@ -102,7 +108,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       for (const [id, ts] of byCrown) {
         ts.sort((a, b) => b.height - a.height);
         const lead = ts[0], agree = ts.filter((t) => t.label === lead.label).length / ts.length;
-        process.stdout.write(`${JSON.stringify({ site: lead.site, plot: lead.plot, label: lead.label, taxon: lead.taxon, treeH: lead.height, trees: ts.length, purity: +agree.toFixed(2), flight: site.cloud.unit?.season, lidar: site.cloud.url.split('/').slice(-2)[0], ...crowns[id] })}\n`);
+        process.stdout.write(`${JSON.stringify({ site: lead.site, plot: lead.plot, label: lead.label, taxon: lead.taxon, treeH: lead.height, trees: ts.length, purity: +agree.toFixed(2), flight: site.cloud.unit?.season, lidar: site.cloud.url.split('/').slice(-2)[0], scene, ...crowns[id] })}\n`);
       }
       done++;
       if (done % 10 === 0) process.stderr.write(`${done}/${plots.size} plots\n`);
