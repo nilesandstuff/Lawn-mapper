@@ -6445,8 +6445,9 @@ is than the sunlit ground beside it, on the photos of our corpus lots.
 
 Why it may matter here, as a link not a finding: H88 found county-photo
 lots the worst group (55% against 19%), cause not established, and H89
-found photo CONTRAST the best predictor of a lot's error within each
-source (-0.41 / -0.63). A hazy flight is a low-contrast flight. If the
+found the LAWN'S CONTRAST WITH THE REST OF THE LOT a predictor of a lot's
+error within each source (-0.41 / -0.63). Haze lowers every contrast in a
+photo, that one included -- plausible, not shown. If the
 shadow ratio is a cheap per-photo haze score, it could (a) test H89's
 contrast link with a measure that is not the detector's own, (b) let the
 county picker prefer a clear flight over a hazy newer one, and (c) mark
