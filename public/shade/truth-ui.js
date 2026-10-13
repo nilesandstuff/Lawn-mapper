@@ -9,6 +9,8 @@
 import { joinTrack, usable, sunOrShadeAround, sunOffFace, sunGain, compassOffset, operatorShadow, score } from './truth.js';
 
 const $ = (s) => document.querySelector(s);
+/** The phone on the hopper cover: about 50 inches up (owner, 2026-10-13). */
+const PHONE_M = 1.27;
 const MIN_EDGE_M = 25; // readings nearer the modelled box's edge miss the trees beyond it
 const COLORS = { sunSun: '#f8c931', shadeShade: '#3b4cc0', sunShade: '#e53935', shadeSun: '#ff9800', out: '#9e9e9e' };
 
@@ -39,7 +41,7 @@ export async function startTruth({ map, sun, spec, bounds = null }) {
     st.cuts = d.cuts;
     const u = usable(joinTrack(d.fix, d.lux, { cuts: d.cuts.map(([x, y]) => [x, y]), orient: d.orient || [] }));
     say(`Asking the model about ${u.length} readings…`);
-    const m = await sun.samples(u.map((s) => ({ lng: s.lng, lat: s.lat, t: s.t })), 1);
+    const m = await sun.samples(u.map((s) => ({ lng: s.lng, lat: s.lat, t: s.t })), PHONE_M);
     /* Which way the operator faces. The phone's heading is already absolute
        (Sensor Logger's Orientation on Android fuses the magnetometer: yaw
        from magnetic north), so what is fitted is only how the phone sits on
@@ -85,7 +87,7 @@ export async function startTruth({ map, sun, spec, bounds = null }) {
            <tr><td><i class="sw" style="background:${COLORS.sunShade}"></i>Model sun, phone shade (model too bright)</td><td>${sc.sunShade}</td></tr>
            <tr><td><i class="sw" style="background:${COLORS.shadeSun}"></i>Model shade, phone sun (model too dark)</td><td>${sc.shadeSun}</td></tr>
          </table>
-         <p class="dim">Phone: sun about ${Math.round(so.sunLux).toLocaleString()} lux facing it squarely, shade about ${Math.round(so.shadeLux).toLocaleString()}; each reading judged at its own angle to the sun. Model: sun where at least half the direct beam reaches 1 m up, with the trees as they stood that day.</p>`;
+         <p class="dim">Phone: sun about ${Math.round(so.sunLux).toLocaleString()} lux facing it squarely, shade about ${Math.round(so.shadeLux).toLocaleString()}; each reading judged at its own angle to the sun. Model: sun where at least half the direct beam reaches the phone (${PHONE_M} m up), with the trees as they stood that day.</p>`;
     const posed = u.filter((s) => s.up).length;
     const facing = cal ? `your direction from the phone's compass, its angle on the hopper (${Math.round(cal.offset)}°) taken from ${cal.n} straight-line readings ${cal.day ? 'across the day' : 'on this visit'}, steady to ${Math.round(cal.spread)}°` : posed ? 'your direction from GPS (too few straight runs to set the compass)' : 'your direction from GPS (no orientation recorded)';
     say(`${head}<p class="dim"><i class="sw" style="background:${COLORS.out}"></i>Left out: ${why.off} with the phone's face turned too far from the sun to tell sun from shade, ${why.behind} with the sun behind you (your shadow; ${facing}), ${why.cloud} in a cloud (dim for over a minute), ${why.edge ? `${why.edge} near the edge of the mapped area, ` : ''}${st.cuts.length} erased stretch${st.cuts.length === 1 ? '' : 'es'}.${posed ? '' : ' No orientation in this recording: turn it on in Sensor Logger to leave out tipped readings.'}</p>`);

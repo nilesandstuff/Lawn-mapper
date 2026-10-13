@@ -182,7 +182,9 @@ angle between the sun and the screen's face, compass offset -14:
   replacing the fixed 65 degree cut.
 - On the one field visit at hand (2026-10-12's last, late afternoon): 82% of
   45 readings agree with the model, against 67% of 30 with the fixed cut
-  (the same at power 2 and 2.5). One visit; not yet a result.
+  (the same at power 2 and 2.5; 78% with the phone modelled at its true
+  height, 50 inches, not 1 m -- two readings flip). One visit; not yet a
+  result.
 - On that visit the face-on sun came out at about 31,000 lux, a third of the
   tilt tests': the low, hazy sun and the dusty bag dim it. Only the shape
   (the power) is carried over from the tests, not the level.
