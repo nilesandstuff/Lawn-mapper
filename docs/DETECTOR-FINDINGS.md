@@ -880,6 +880,76 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H94. Newer lidar than the cloud we read: USGS has published a 2023-2025 flight at 13 of 82 locked places (17 lots) that is not on AWS as an octree, and county or state flights newer than anything in USGS's index cover at least 4 more, 2026-10-13
+
+*tools/lidar-newer.js, run from the core session's container (not CI) on
+the locked set (104 lots, `131u7jm`; 82 places, lots within ~2 km counted
+once). For each place: the 3DEP octree lidar-plan.js would pick, every
+collection in USGS's own index (WESM), and the lidar-derived services
+ArcGIS Online lists over the point. The owner remembered finding county
+lidar newer than 3DEP and that it had not been logged; this is the log.*
+
+**1. USGS itself has newer lidar that the octrees on AWS do not have yet.**
+The detector reads the Entwine octrees in the public AWS bucket; USGS
+publishes new collections first as LAZ tiles on rockyweb.usgs.gov (the TNM
+API lists them), and the octrees lag. At 13 places (17 lots) WESM lists a
+collection started 2022 or later that we do not read; the TNM API returned
+LAZ tiles for each one tried (NJ, UT, IL, MD), published 2025-12 to 2026-09:
+
+| place | we read | USGS has |
+|---|---|---|
+| Salt Lake County UT | Wasatch 2013 | Salt Lake Co 2023 (QL1) |
+| Monmouth NJ | NJ Sandy 2014 | NJ NE6County 2023-25 (QL1) |
+| 5 places in PA | Delaware Valley 2015 (2), Dauphin 2016, Western PA 2019, nothing (1) | PA 17County 2024-25 (QL1) |
+| 3 places in MD | MD/PA Sandy 2014, nothing (2) | MD 4County 2024, MD Central 2023 (QL1) |
+| Louisville KY (3 lots) | KY_FullState (undated) | KY CentralEast 2022-23 |
+| Will County IL (2 lots) | Will Co 2014 | IL 19County 2024-25 |
+| Benton County AR | Benton Co 2015 | AR Western 2024-25 (QL1) |
+
+Three of those lots read NO lidar today and would have a 2023-2025 flight.
+(Most other "newer" WESM rows are the same flight with a later collection
+end date than the octree's name; those are not counted.)
+
+**2. County and state flights newer than anything in USGS's index**, found
+through ArcGIS Online and checked at the lot's own point (identify on the
+image service, a point query on the tile grid):
+- **Milwaukee County WI: DSM and DEM 2020** (lio.milwaukeecountywi.gov,
+  elevation/dsm_2020, dem_2020) over the lot we read at 2017 (USGS's index
+  says 2015 there). A DSM and a DEM give height, the layer the veto and
+  stage 3 read.
+- **Connecticut statewide 2023: DEM and lidar intensity** (cteco.uconn.edu,
+  elevation/Statewide2023, Intensity2023) over the CT lot, where USGS's
+  newest is 2016.
+- **Sarpy County NE: a 2022 lidar tile grid** over both Omaha-area places,
+  where we read 2016. The grid names tiles; where the files are is not
+  established.
+- Kentucky's KYAPED Phase 3 DEM (2023 on) covers the northern KY lot read at
+  2022; whether Phase 3 is a newer flight there is not established.
+- Checked and NOT covering their lot despite the listed extent: Delaware
+  2023, New Hampshire 2022, Iowa 2020 (at the Omaha lots), Brazos County TX
+  2024.
+
+These came from ArcGIS Online's search only. A county's server that is not
+registered there is not seen, so this is a floor. The photo catalogue
+(county-imagery.js) meets such services on the same servers and drops them
+by name (NOT_A_PHOTO: lidar, dem, elevation, hillshade); nothing records
+them.
+
+**3. A picking slip, small:** at the Macon GA lot the octree list includes
+GA_SW_Georgia_B4_2017, which USGS's index says was flown in January 2021,
+but pickBest orders by the name's year (the funding year) and reads
+GA_Central_5_2018 instead. The features session's shade picker already
+orders by WESM's dates (public/shade/find.js).
+
+**What it does not establish:** whether newer lidar moves any score. H72
+measured the lidar a median six years older than the county photo, and
+H76 found the lidar standing things on lawn the photo shows open on 10 of
+72 lots -- stale lidar is the obvious suspect, unmeasured. Reading rockyweb
+tiles means a new reader: they come per project in state plane or UTM on
+NAD83, not Web Mercator, so they would need reprojecting, and S35's datum
+question would matter for them too. County DEMs and DSMs are rasters, so
+they would give height but not returns or ground share.
+
 ### H93. A small UperNet head over the same frozen features is WORSE than the small decoder at 104 lots: 24 better / 64 worse, +1.2 points [+0.8, +1.7], p < 0.001, with a LOWER train loss, 2026-10-12
 
 Workflow 14 `refiner_trial: upernet` (S26), runs 38192536763 (seed 7) and
