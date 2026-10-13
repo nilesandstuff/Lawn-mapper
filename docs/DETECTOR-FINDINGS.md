@@ -6593,6 +6593,21 @@ NAIP; NOT measured here):**
     bare is about 9x too bright; an evergreen wrongly given leaves about 2x
     too dark. Its shade map now calls evergreen per tree by winter density
     (median overhead pass-through under 0.2, and not a dome).
+- **Lidar return brightness (features session, 2026-10-13; its SPECULATION,
+  measured in the shade code on NEON's mapped stems -- 6,434 canopy trees,
+  16 sites -- plus data/labelled-crowns.csv, NOT here; docs/SHADE-FINDINGS.md
+  7, tools/shade-crown-features.js):**
+  - Within one flight, evergreen crowns return 1.5-5x brighter than bare
+    deciduous crowns (AUC 0.88-0.98 at 9 of 11 sites).
+  - The levels differ from flight to flight, so no fixed threshold carries
+    over; it would have to be relative to the scene's other crowns.
+  - On mixed-season flights (HARV, BART, TREE) the winter-density rule calls
+    bare deciduous crowns evergreen -- the same failure S36 opened with.
+  - Its own conclusion (SHADE-FINDINGS 7): none of brightness, neighbours,
+    two groups or leaf-off photo colour beat today's rule for pines with
+    each site held out. If H73 is ever revisited, intensity relative to the
+    flight is the untested input here; the detector does not read
+    intensity today.
 
 ### S35. The lidar may sit half a cell off the photo: the USGS octrees are NAD83 labelled EPSG:3857 (from the features session, 2026-10-10 -- NOT MEASURED HERE)
 
