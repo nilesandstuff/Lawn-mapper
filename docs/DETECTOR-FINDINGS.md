@@ -6432,6 +6432,28 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
+### S37. Many aerial flights are hazy, and haze may be part of why county-photo lots score worst (from the features session, 2026-10-13 -- NOT MEASURED HERE)
+
+Reported by the features session (session_015v6JzxdMSV1sGghMRek3v7) from
+its shade checks (tools/shade-check-naip.js, shade-check-imagery.js;
+docs/SHADE-FINDINGS.md). Its measure: how much darker a building's shadow
+is than the sunlit ground beside it, on the photos of our corpus lots.
+- Of 288 NAIP photo-years, most had building shadows less than 1.8 times
+  darker than sun, which it reads as haze (a clear-day shadow is several
+  times darker).
+- County flights showed the same in about 15 frames.
+
+Why it may matter here, as a link not a finding: H88 found county-photo
+lots the worst group (55% against 19%), cause not established, and H89
+found photo CONTRAST the best predictor of a lot's error within each
+source (-0.41 / -0.63). A hazy flight is a low-contrast flight. If the
+shadow ratio is a cheap per-photo haze score, it could (a) test H89's
+contrast link with a measure that is not the detector's own, (b) let the
+county picker prefer a clear flight over a hazy newer one, and (c) mark
+which county lots to read separately in a split like H88's. None of that
+is measured; the ratio itself has not been checked against our lots'
+errors.
+
 ### S36. H73's leaf-off penetration may call a dense deciduous wood evergreen (from the features session, 2026-10-11 -- ONE LOT, NOT MEASURED HERE)
 
 Reported by the features session (shade map; session
