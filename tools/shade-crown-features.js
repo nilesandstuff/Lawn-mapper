@@ -66,7 +66,7 @@ export function crownFeatures(site) {
      with 30 returns or more). */
   const sceneB = [], sceneM = [];
   crowns.forEach((c, id) => { if (c.H > 5 && per[id].n >= 30) { sceneB.push(med(per[id].inten) / gI); sceneM.push(per[id].multi / per[id].n); } });
-  const scene = { n: sceneB.length, b10: q(sceneB, 0.1), b25: q(sceneB, 0.25), b50: q(sceneB, 0.5), m50: q(sceneM, 0.5), m75: q(sceneM, 0.75), m90: q(sceneM, 0.9) };
+  const scene = { n: sceneB.length, b10: q(sceneB, 0.1), b25: q(sceneB, 0.25), b50: q(sceneB, 0.5), m50: q(sceneM, 0.5), m75: q(sceneM, 0.75), m90: q(sceneM, 0.9), all: sceneB.map((v) => +v.toFixed(4)) };
   return {
     lab, scene,
     crowns: crowns.map((c, id) => ({
