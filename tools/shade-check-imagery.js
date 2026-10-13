@@ -86,6 +86,13 @@ function leafState(site, cells) {
   return { leaf: ratio > 0.9 ? 'on' : ratio < 0.7 ? 'off' : 'mixed', crownGreen: +c.toFixed(3), grassGreen: +g.toFixed(3), greenRatio: +ratio.toFixed(2) };
 }
 
+/** One photo of a lot onto the model's cells (for rescoring, tools/shade-check-bare.js). */
+export async function photoCells(site, lng, lat, provider, svc = null) {
+  const frame = { lng, lat, zoom: ZOOM, size: SIZE, height: SIZE };
+  const q = `${SITE}/api/imagery?provider=${provider}${svc != null ? `&svc=${svc}` : ''}&lng=${lng}&lat=${lat}&zoom=${ZOOM}&size=${SIZE}&height=${SIZE}`;
+  return ontoCells(site, frame, decode(await getRetry(q, 'bytes')));
+}
+
 export async function checkLot(lng, lat) {
   const site = await shadeSite(lng, lat, { halfM: 110 });
   if (!site) return [{ lng, lat, skip: 'no lidar' }];

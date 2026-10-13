@@ -39,7 +39,7 @@ export function corr(a, b) {
 }
 const med = (a) => { const b = [...a].sort((x, y) => x - y); return b.length ? b[b.length >> 1] : NaN; };
 
-export function scorePhoto(site, photo, { suns, leaf = 'on', minContrast = 1.8 } = {}) {
+export function scorePhoto(site, photo, { suns, leaf = 'on', minContrast = 1.8, fixedFit = null, muTrees: muGiven = null } = {}) {
   const { model, season } = site, { w, h, nz } = model, N = w * h;
   const { bright, ground, seen } = photo;
   const M = SHIFT_M + 2;
@@ -52,7 +52,7 @@ export function scorePhoto(site, photo, { suns, leaf = 'on', minContrast = 1.8 }
 
   const muB = new Float32Array(model.mu.length);
   for (let c = 0; c < N; c++) if (season.kind[c] === 1) for (let l = 0; l < nz; l++) muB[c * nz + l] = model.mu[c * nz + l];
-  const muTrees = leaf === 'off' ? season.muOff : season.muOn;
+  const muTrees = muGiven || (leaf === 'off' ? season.muOff : season.muOn);
   const open = [];
   for (let k = 0; k < N; k++) if (season.kind[k] === 0) open.push(k);
   const where = new Int32Array(N).fill(-1);
@@ -91,8 +91,10 @@ export function scorePhoto(site, photo, { suns, leaf = 'on', minContrast = 1.8 }
       }
     }
   };
-  if (typeof suns === 'function') { tryAll(suns(null)); if (fit) tryAll(suns(fit)); } else tryAll(suns);
+  if (fixedFit) fit = fixedFit; // rescoring a different tree model with the sun already found
+  else if (typeof suns === 'function') { tryAll(suns(null)); if (fit) tryAll(suns(fit)); } else tryAll(suns);
   if (!fit) return { skip: 'too few cells by buildings to fit the sun' };
+  const rawFit = fit;
 
   const shifted = (T) => Float32Array.from(cells, (k) => { const j = where[k + fit.dy * w + fit.dx]; return j >= 0 ? T[j] : 1; });
   const TbAll = beamAt(model, muB, open, fit.sun.dir), TtAll = beamAt(model, muTrees, open, fit.sun.dir);
@@ -137,7 +139,7 @@ export function scorePhoto(site, photo, { suns, leaf = 'on', minContrast = 1.8 }
   let sm = 0, sp = 0, so = 0, nT = 0;
   cells.forEach((_, i) => { if (treeCell(i)) { sm += Tt[i]; so += Toth[i]; sp += Math.min(1, Math.max(0, photoT[i])); nT++; } });
   return {
-    fit: fitOut(fit), leaf, cells: cells.length,
+    fit: fitOut(fit), rawFit, leaf, cells: cells.length,
     sunLevel: Math.round(L), shadeLevel: Math.round(S), contrast: +contrast.toFixed(2),
     meanBeamTrees: { model: +(sm / nT).toFixed(3), photo: +(sp / nT).toFixed(3), otherSeason: +(so / nT).toFixed(3) },
     all: tally(() => true, Tt),
