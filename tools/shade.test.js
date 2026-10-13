@@ -787,5 +787,15 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   check('bad JSON is a 400', junk.status === 400);
 }
 
+{
+  /* Workflow 35's report: counts and times, never a place. */
+  const { report } = await import('./shade-readings.js');
+  const now = Date.UTC(2026, 9, 13, 18, 0);
+  const r = report([{ session: 'abc', first: now - 3600e3, last: now - 120e3, fixes: 3400, lux: 1500, lastLux: now - 125e3, orient: 1500 }], { n: 1, made: '2026-10-12' }, now);
+  check('readings report: how long ago, the light share, orientation, and the sleepy sensor flagged',
+    /newest reading 2 min ago/.test(r) && /Light came in for 43%/.test(r) && /LOW/.test(r) && /orientation is arriving/.test(r) && !/\d+\.\d{4}/.test(r), r);
+  check('readings report: nothing yet says so', /nothing has arrived/.test(report([], { n: 0 }, now)));
+}
+
 if (failures) { console.log(`\n${failures} check(s) FAILED.`); process.exit(1); }
 console.log('\nshade map: ok');

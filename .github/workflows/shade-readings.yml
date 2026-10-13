@@ -1,0 +1,28 @@
+name: 35. Shade map -- are the light readings arriving
+
+# The owner's phone (Sensor Logger) posts light, GPS and orientation to
+# /api/shade/readings as he works. This says whether they are getting
+# through: the latest recordings, how many readings each holds, and how long
+# ago the last one came in. Counts and times only -- no locations (these are
+# tracks over customers' lawns).
+#
+# FREE. One read-only query. Features session's tool (tools/shade-readings.js).
+on:
+  workflow_dispatch:
+
+jobs:
+  readings:
+    name: Read the latest recordings
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Read them
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node tools/shade-readings.js
