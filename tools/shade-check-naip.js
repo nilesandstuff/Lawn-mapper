@@ -298,7 +298,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       }
     }
   };
-  await Promise.all([worker(), worker()]);
+  await Promise.all(Array.from({ length: Number(process.env.WORKERS) || 2 }, worker));
   process.stderr.write(`\n${sum.lots} lot-years\n`);
   for (const k of ['all', 'trees', 'treesInner', 'treesBare']) {
     const r = sum[k];
