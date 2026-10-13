@@ -40,7 +40,7 @@ const HALF_M = 80; // the lot and its neighbors' trees
 const SHIFT_M = 6; // NAIP's stated horizontal accuracy is a few meters
 const FIT_NEAR_M = 15; // cells this close to a roof fit the time
 
-async function getRetry(u, as = 'json', init = undefined, tries = 4) {
+async function getRetry(u, as = 'json', init = undefined, tries = 6) {
   for (let i = 0; ; i++) {
     try {
       const r = await fetch(u, init);
@@ -48,7 +48,7 @@ async function getRetry(u, as = 'json', init = undefined, tries = 4) {
       return as === 'json' ? await r.json() : Buffer.from(await r.arrayBuffer());
     } catch (e) {
       if (i + 1 >= tries) throw new Error(`${e.message} ${u.slice(0, 120)}`);
-      await new Promise((ok) => setTimeout(ok, 2000 * 2 ** i));
+      await new Promise((ok) => setTimeout(ok, 3000 * 2 ** i));
     }
   }
 }
@@ -111,7 +111,7 @@ function corr(a, b) {
 }
 
 /** Every leaf-on NAIP year of a lot, each scored against the one lidar model. */
-export async function checkLot(lng, lat, { years = 4 } = {}) {
+export async function checkLot(lng, lat, { years = 6 } = {}) {
   const frames = (await naipFrames(lng, lat)).slice(0, years);
   if (!frames.length) return [{ lng, lat, skip: 'no leaf-on NAIP' }];
   const site = await shadeSite(lng, lat, { halfM: HALF_M });
@@ -211,8 +211,17 @@ async function checkFrame(lng, lat, site, frame) {
      share T of the direct beam, so the photo's "under half the beam" is
      under (S + L) / 2 -- the model's own definition of shade. */
   const med = (a) => { const b = [...a].sort((x, y) => x - y); return b.length ? b[b.length >> 1] : NaN; };
+  /* Inside a building's shadow, not at its edge: the cell and its four
+     neighbors all in it (a roof next door counts), so a meter of offset
+     between photo and lidar cannot mix sunlit grass in. */
+  const TbAll = beamAt(model, muB, open, fit.sun.dir);
+  const tbAt = (c) => (season.kind[c] === 1 ? 0 : where[c] >= 0 ? TbAll[where[c]] : 1);
   const inB = [], lit = [];
-  grass.forEach((k, i) => { if (Tb[i] <= 0.1) inB.push(bright[k]); else if (Ton[i] >= 0.95) lit.push(bright[k]); });
+  grass.forEach((k, i) => {
+    const c = k + fit.dy * w + fit.dx;
+    if ([c, c - 1, c + 1, c - w, c + w].every((d) => tbAt(d) <= 0.1)) inB.push(bright[k]);
+    else if (Ton[i] >= 0.95) lit.push(bright[k]);
+  });
   if (inB.length < 20) return { lng, lat, frame: frame.id, skip: `only ${inB.length} grass cells in a building's shadow` };
   const S = med(inB), L = med(lit), contrast = L / S;
   if (!(contrast >= 1.8)) return { lng, lat, frame: frame.id, skip: `buildings' shadows only ${contrast.toFixed(2)}x darker than sun (haze, or a cloud)` };
@@ -289,7 +298,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       }
     }
   };
-  await Promise.all([worker(), worker(), worker()]);
+  await Promise.all([worker(), worker()]);
   process.stderr.write(`\n${sum.lots} lot-years\n`);
   for (const k of ['all', 'trees', 'treesInner', 'treesBare']) {
     const r = sum[k];
