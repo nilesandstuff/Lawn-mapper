@@ -21,6 +21,10 @@ on:
         description: 'Window end (HH:MM local, optional)'
         required: false
         default: ''
+      levels:
+        description: 'Also today, half an hour at a time: the sun level facing the phone, sun/shade counts (yes/no)'
+        required: false
+        default: 'no'
 
 jobs:
   readings:
@@ -39,4 +43,5 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           FROM: ${{ inputs.from }}
           TO: ${{ inputs.to }}
+          LEVELS: ${{ inputs.levels }}
         run: node tools/shade-readings.js

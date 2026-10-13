@@ -12,11 +12,16 @@
  * second in that window: lux and how the phone was tilted, against the sun
  * -- for measuring the sensor's angle response (the owner's tilt tests).
  * The sun is placed from the window's fixes, which are not printed.
+ *
+ * With LEVELS=yes, also today's recordings half an hour at a time, judged
+ * as the check view judges them (each reading at its own angle to the sun):
+ * the sun's level facing the phone squarely, the shade's, and how many
+ * readings were sun, shade, or left out -- no places.
  */
 
 import { query } from './corpus-db.js';
 import { sunAt } from '../public/shade/sun.js';
-import { sunOffFace } from '../public/shade/truth.js';
+import { sunOffFace, sunGain, joinTrack, usable, sunOrShadeAround } from '../public/shade/truth.js';
 
 const ZONE = process.env.TZ_REPORT || 'America/New_York';
 const when = (ms) => new Date(ms).toLocaleString('en-US', { timeZone: ZONE, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
@@ -116,6 +121,25 @@ export function tiltWindow(lux, orient, sun) {
   return out.join('\n');
 }
 
+/**
+ * Samples ({ t, lux, gain, el }) half an hour at a time, each stretch judged
+ * by sunOrShadeAround: face-on sun and shade levels and the counts.
+ */
+export function sunLevels(samples, stepMs = 1800000) {
+  const by = new Map();
+  for (const s of samples) { const k = Math.floor(s.t / stepMs) * stepMs; if (!by.has(k)) by.set(k, []); by.get(k).push(s); }
+  const out = ['', 'Today half an hour at a time, each reading judged at its own angle to the sun (face-on = the sun\'s level facing the phone squarely; clear sun about 90,000-100,000 at 38 degrees up in the tilt tests):'];
+  for (const [k, list] of [...by].sort((a, b) => a[0] - b[0])) {
+    const el = list.reduce((a, s) => a + s.el, 0) / list.length;
+    const so = list.length >= 10 ? sunOrShadeAround(list) : null;
+    const head = `  ${when(k).padEnd(16)} sun ${el.toFixed(0).padStart(2)}° up  ${String(list.length).padStart(4)} readings`;
+    if (!so || !so.clear) { out.push(`${head}  no clear split into sun and shade`); continue; }
+    const n = (f) => so.sun.filter((v, i) => f(v, i)).length;
+    out.push(`${head}  face-on sun ${Math.round(so.sunLux).toLocaleString('en-US').padStart(7)}, shade ${Math.round(so.shadeLux).toLocaleString('en-US').padStart(6)}; ${n((v, i) => so.judged[i] && v)} sun, ${n((v, i) => so.judged[i] && !v)} shade, ${n((v, i) => so.faint[i])} turned too far, ${n((v, i) => !so.judged[i] && !so.faint[i])} cloud`);
+  }
+  return out.join('\n');
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const sessions = query(`
     SELECT f.session, MIN(f.t) AS first, MAX(f.t) AS last, COUNT(*) AS fixes,
@@ -156,5 +180,24 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       if (!fixes.length) console.log('No GPS fixes near it, so the sun cannot be placed.');
       else console.log(tiltWindow(lux, orient, (t) => sunAt(lat, lng, t)));
     }
+  }
+  if (/^y/i.test(process.env.LEVELS || '')) {
+    const t0 = localMs('0:00'), now = Date.now(), samples = [];
+    const today = query(`SELECT DISTINCT session FROM shade_fixes WHERE t >= ${t0}`).map((r) => String(r.session).replace(/'/g, "''"));
+    for (const s of today) {
+      for (let a = t0; a < now; a += 7200000) {
+        const b = a + 7200000, w = `session = '${s}' AND t >= ${a} AND t < ${b}`;
+        const fix = query(`SELECT t, lat, lng, acc, speed, bearing FROM shade_fixes WHERE ${w} ORDER BY t`).map((r) => [r.t, r.lat, r.lng, r.acc, r.speed, r.bearing]);
+        if (!fix.length) continue;
+        const lux = query(`SELECT t, lux FROM shade_lux WHERE ${w} ORDER BY t`).map((r) => [r.t, r.lux]);
+        const orient = query(`SELECT t, nx, ny, nz, head FROM shade_orient WHERE ${w} ORDER BY t`).map((r) => [r.t, r.nx, r.ny, r.nz, r.head]);
+        for (const p of usable(joinTrack(fix, lux, { orient }))) {
+          const sun = sunAt(p.lat, p.lng, p.t);
+          if (sun.elevation > 5) samples.push({ t: p.t, lux: p.lux, gain: sunGain(sunOffFace(p.up, sun.elevation, sun.azimuth)), el: sun.elevation });
+        }
+      }
+    }
+    samples.sort((x, y) => x.t - y.t);
+    console.log(samples.length ? sunLevels(samples) : '\nToday: no usable readings yet.');
   }
 }

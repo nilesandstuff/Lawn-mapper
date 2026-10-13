@@ -820,6 +820,11 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   check('readings window: local times read in New York time (EDT in October)', localMs('12:38', noonish) === Date.parse('2026-10-13T16:38:00Z') && localMs('2026-01-05 09:00') === Date.parse('2026-01-05T14:00:00Z') && Number.isNaN(localMs('noon')));
   const tw = tiltWindow([[noonish, 50000], [noonish + 1000, 9000]], [[noonish, 0, 0, 1, 0], [noonish + 1000, 0, -Math.sin(Math.PI / 4), Math.cos(Math.PI / 4), 0]], () => ({ elevation: 45, azimuth: 180 }));
   check('readings window: tilt, face heading and the sun off the face, no places', /50000\s+0°\s+0°\s+45°/.test(tw) && /9000\s+45°\s+180°\s+0°/.test(tw) && /sun 45° up at 180°/.test(tw) && !/\d\.\d{3}/.test(tw), tw);
+  const { sunLevels } = await import('./shade-readings.js');
+  const lv = [];
+  for (let i = 0; i < 200; i++) { const gain = 0.2 + (i % 9) * 0.05; lv.push({ t: noonish + i * 1000, el: 38, gain, lux: Math.floor(i / 8) % 2 ? 2000 : 90000 * gain + 4000 }); }
+  const lt = sunLevels(lv);
+  check('readings levels: face-on sun and shade per half hour, with the counts', /sun 38° up\s+200 readings\s+face-on sun\s+9\d,\d{3}, shade\s+2,000; \d+ sun, \d+ shade/.test(lt), lt);
   const { timeline } = await import('./shade-readings.js');
   const tl = timeline([{ t: now, fixes: 290, lux: 280, orient: 295, speed: 1.3 }, { t: now + 300e3, fixes: 60, lux: 0, orient: 0, speed: null }]);
   check('readings timeline: five-minute steps with counts and mph, no places', /gps 290\s+light 280\s+orientation 295\s+3 mph/.test(tl) && /-\s*mph/.test(tl), tl);
