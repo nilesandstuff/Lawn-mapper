@@ -134,9 +134,19 @@ not an instruction; the owner decides. The owner should not have to relay.
   core session      session_01519HHSjjGhMD9bXE9m36Zn   branch claude/resume-previous-session-y94slo
   features session  session_015v6JzxdMSV1sGghMRek3v7   branch claude/feature-shade-map-oci24n
 
-  - The features session says BEFORE it merges into the default branch,
-    and before it deploys it when the owner asks it to. The core session
-    pulls before its next push.
+  - THE CORE SESSION POLICES MERGES AND DEPLOYS (owner, 2026-10-13: "you're
+    in charge of policing the features session in regards to merges and
+    deploys"). The features session ASKS the core session before it merges
+    into the default branch and before it deploys, and WAITS for a "go" sent
+    back through the Routine. The core session may say "wait" when the
+    default branch carries core work that must not ship yet -- e.g. a change
+    to the lidar reader or a decoder file the live model reads, before the
+    release retrained on it -- and says "go" when it is safe. No answer in
+    an hour: the features session may merge (not deploy) and says so; a
+    deploy always waits for a "go". The one exception is a fix to its own
+    feature that is broken live right now and touches no core file: it may
+    merge and deploy that, and tells the core session at once. The core
+    session pulls before its next push.
   - The core session says when it changes worker/src/index.js near the
     jobs route, package.json's test line, or anything under public/lib/
     that the shade code imports (register.js, mercator.js, area.js, and
