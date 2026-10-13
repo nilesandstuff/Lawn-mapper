@@ -825,6 +825,9 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   for (let i = 0; i < 200; i++) { const gain = 0.2 + (i % 9) * 0.05; lv.push({ t: noonish + i * 1000, el: 38, gain, lux: Math.floor(i / 8) % 2 ? 2000 : 90000 * gain + 4000 }); }
   const lt = sunLevels(lv);
   check('readings levels: face-on sun and shade per half hour, with the counts', /sun 38° up\s+200 readings\s+face-on sun\s+9\d,\d{3} \(brightest tenth\s+[\d,]+\), shade\s+2,000; \d+ sun, \d+ shade/.test(lt), lt);
+  const { lidarAges } = await import('./shade-readings.js');
+  const la = lidarAges([{ used: { year: 2016, end: Date.UTC(2018, 1, 5) }, newer: [] }, { used: { year: 2016, end: Date.UTC(2018, 1, 5) }, newer: [] }, { used: { year: 2015, end: null }, newer: [{ end: Date.UTC(2023, 3, 1), tiles: true }] }]);
+  check('readings lidar: areas grouped by flight, a newer one not used called out, no names', /2 areas: flown to 2018-02; nothing newer/.test(la) && /1 area : flown in 2015; NEWER FLIGHT NOT USED: 2023 \(download tiles only\)/.test(la), la);
   const { timeline } = await import('./shade-readings.js');
   const tl = timeline([{ t: now, fixes: 290, lux: 280, orient: 295, speed: 1.3 }, { t: now + 300e3, fixes: 60, lux: 0, orient: 0, speed: null }]);
   check('readings timeline: five-minute steps with counts and mph, no places', /gps 290\s+light 280\s+orientation 295\s+3 mph/.test(tl) && /-\s*mph/.test(tl), tl);

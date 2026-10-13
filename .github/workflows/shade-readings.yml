@@ -25,6 +25,10 @@ on:
         description: 'Also today, half an hour at a time: the sun level facing the phone, sun/shade counts (yes/no)'
         required: false
         default: 'no'
+      lidar:
+        description: 'Also the lidar under today''s tracks: when flown, and any newer flight not used (yes/no)'
+        required: false
+        default: 'no'
 
 jobs:
   readings:
@@ -44,4 +48,5 @@ jobs:
           FROM: ${{ inputs.from }}
           TO: ${{ inputs.to }}
           LEVELS: ${{ inputs.levels }}
+          LIDAR: ${{ inputs.lidar }}
         run: node tools/shade-readings.js

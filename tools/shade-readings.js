@@ -17,10 +17,16 @@
  * as the check view judges them (each reading at its own angle to the sun):
  * the sun's level facing the phone squarely, the shade's, and how many
  * readings were sun, shade, or left out -- no places.
+ *
+ * With LIDAR=yes, the lidar under today's tracks, area by area (about 300 m
+ * squares): the flight the shade map uses and when it was flown, and any
+ * newer flight USGS has -- in its index (WESM) or as download tiles (the TNM
+ * API) -- that the map cannot read yet. Years only, no names, no places.
  */
 
 import { query } from './corpus-db.js';
 import { sunAt } from '../public/shade/sun.js';
+import { lidarAt } from '../worker/src/shade.js';
 import { sunOffFace, sunGain, joinTrack, usable, sunOrShadeAround } from '../public/shade/truth.js';
 
 const ZONE = process.env.TZ_REPORT || 'America/New_York';
@@ -142,6 +148,24 @@ export function sunLevels(samples, stepMs = 1800000) {
   return out.join('\n');
 }
 
+/**
+ * One line per area from what lidarAt and the TNM API say there: { used:
+ * { year, end }, newer: [{ end, tiles }] } -> text. Pure, for the tests.
+ */
+export function lidarAges(areas) {
+  const y = (ms) => (ms ? new Date(ms).getUTCFullYear() : '?');
+  const out = ['', `The lidar under today's tracks (${areas.length} area${areas.length === 1 ? '' : 's'} about 300 m across):`];
+  const groups = new Map();
+  for (const a of areas) {
+    const used = a.used ? `flown ${a.used.end ? `to ${new Date(a.used.end).toISOString().slice(0, 7)}` : `in ${a.used.year ?? '?'}`}` : 'NO LIDAR';
+    const newer = a.newer.length ? `NEWER FLIGHT NOT USED: ${a.newer.map((n) => `${y(n.end)}${n.tiles ? ' (download tiles only)' : ''}`).join(', ')}` : 'nothing newer anywhere at USGS';
+    const k = `${used}; ${newer}`;
+    groups.set(k, (groups.get(k) || 0) + 1);
+  }
+  for (const [k, n] of groups) out.push(`  ${String(n).padStart(3)} area${n === 1 ? ' ' : 's'}: ${k}`);
+  return out.join('\n');
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const sessions = query(`
     SELECT f.session, MIN(f.t) AS first, MAX(f.t) AS last, COUNT(*) AS fixes,
@@ -201,5 +225,30 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     }
     samples.sort((x, y) => x.t - y.t);
     console.log(samples.length ? sunLevels(samples) : '\nToday: no usable readings yet.');
+  }
+  if (/^y/i.test(process.env.LIDAR || '')) {
+    const t0 = localMs('0:00');
+    const fixes = query(`SELECT lat, lng FROM shade_fixes WHERE t >= ${t0} AND (speed IS NULL OR speed < 4.5)`);
+    const cells = new Map();
+    for (const f of fixes) { const k = `${Math.round(f.lng * 300)},${Math.round(f.lat * 300)}`; if (!cells.has(k)) cells.set(k, [f.lng, f.lat]); }
+    const areas = [];
+    for (const [lng, lat] of cells.values()) {
+      const found = await lidarAt(lng, lat).catch(() => null);
+      const c = found?.clouds?.[0];
+      const end = c?.unit?.end ?? null;
+      const newer = (found?.notOnAws || []).filter((u) => (u.end ?? 0) > (end ?? 0)).map((u) => ({ end: u.end, tiles: false }));
+      try {
+        const d = 0.002, q = new URLSearchParams({ datasets: 'Lidar Point Cloud (LPC)', bbox: [lng - d, lat - d, lng + d, lat + d].join(','), max: '200', outputFormat: 'JSON' });
+        const tnm = await (await fetch(`https://tnmaccess.nationalmap.gov/api/v1/products?${q}`)).json();
+        const years = new Set();
+        for (const it of tnm.items || []) {
+          const m = /_(20\d\d)(?:_|\/)/.exec(it.downloadURL || '');
+          if (m && Date.UTC(+m[1], 11, 31) > (end ?? 0) + 365.25 * 86400000 && !newer.some((n) => new Date(n.end).getUTCFullYear() >= +m[1])) years.add(+m[1]);
+        }
+        for (const yy of years) newer.push({ end: Date.UTC(yy, 6, 1), tiles: true });
+      } catch { /* the TNM API not answering: WESM's answer stands */ }
+      areas.push({ used: c ? { year: c.year, end } : null, newer });
+    }
+    console.log(areas.length ? lidarAges(areas) : '\nToday: no tracks yet.');
   }
 }
