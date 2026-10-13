@@ -177,8 +177,7 @@ angle between the sun and the screen's face, compass offset -14:
   small (under 20 degrees), so the error in the sun's angle stays small.
 - Adopted (truth.js sunGain, sunOrShadeAround): each reading judged
   against what sun and shade would read at its own angle (sun and shade
-  levels fitted per 90-second window, so the bag's dust and the day's haze
-  drop out); readings where the two would differ by under 3x are left out,
+  levels fitted per 90-second window, so the day's haze drops out); readings where the two would differ by under 3x are left out,
   replacing the fixed 65 degree cut.
 - On the one field visit at hand (2026-10-12's last, late afternoon): 82% of
   45 readings agree with the model, against 67% of 30 with the fixed cut
@@ -186,7 +185,8 @@ angle between the sun and the screen's face, compass offset -14:
   height, 50 inches, not 1 m -- two readings flip). One visit; not yet a
   result.
 - On that visit the face-on sun came out at about 31,000 lux, a third of the
-  tilt tests': the low, hazy sun and the dusty bag dim it. Only the shape
+  tilt tests', unexplained (the phone rides bare on the hopper cover: no bag,
+  no dust, owner; see Speculation). Only the shape
   (the power) is carried over from the tests, not the level.
 
 ## Speculation
@@ -199,9 +199,9 @@ angle between the sun and the screen's face, compass offset -14:
   2013: leaf-off lidar under-reads bare crowns); no correction is warranted
   by these numbers.
 
-- The sensor's shape (8) was measured on a bare phone in hand; in the bag
-  on the hopper, dust may widen or narrow it. A tilt test with the phone in
-  its bag would tell.
+- The field visit's face-on sun (8) a third of the tilt tests': perhaps the
+  low sun (26-31 degrees up) and that afternoon's haze and arriving clouds; a clear-day field log would test it
+  (the face-on level should then come near 90,000).
 
 - Leaf-off darkness near trees (6) as ground, not shadow: testable by
   comparing ground on the sunward side of a trunk (no shadow possible) with

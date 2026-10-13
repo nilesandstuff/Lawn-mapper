@@ -8,8 +8,8 @@
  * are shade/log.js and shade/truth-ui.js.
  *
  * WHAT IS COMPARED. Not lux: a phone's sensor reads light from the side
- * poorly, sits under the screen, and here rides in a bag that collects
- * fertilizer dust. All of that dims sun and shade alike within one visit, so
+ * poorly and sits under the screen, and a hazy day dims the sun. That dims
+ * sun and shade alike within one visit, so
  * each reading is judged against the same visit's own sunlit readings: its
  * light splits into a bright group (sun) and a dim one (shade), cut where
  * the two separate best (Otsu, in log lux). The model is then asked, for
