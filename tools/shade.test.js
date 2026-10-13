@@ -12,7 +12,7 @@ import { alignToPhoto, dilate } from '../public/shade/align.js';
 import { kindOf, mercUnits } from '../public/shade/view3d.js';
 import { aboutLocal, ramp } from '../public/shade/sun-ui.js';
 import { niceStep, bandsFor, rasterOf, smooth, valueAt, boxStats } from '../public/shade/readout.js';
-import { msOf, fromPush, fromExport, perSecond, poseOf, posePerSecond, joinTrack, splitVisits, usable, sunOrShade, sunOrShadeAround, sunOffFace, compassOffset, operatorShadow, score, unzipText, metersBetween } from '../public/shade/truth.js';
+import { msOf, fromPush, fromExport, perSecond, poseOf, posePerSecond, joinTrack, splitVisits, usable, sunOrShade, sunOrShadeAround, sunOffFace, sunGain, compassOffset, operatorShadow, score, unzipText, metersBetween } from '../public/shade/truth.js';
 import { deflateRawSync, inflateRawSync } from 'node:zlib';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
@@ -742,6 +742,19 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   const around = sunOrShadeAround(sky);
   const inCloud = around.judged.slice(215, 295).some(Boolean), early = around.sun[5] === true && around.sun[15] === false && around.judged[15], open = around.judged.slice(395).every(Boolean) && around.sun.slice(395).every(Boolean);
   check('judged around each reading: sun and shade early, the cloud left out, open sun later still sun', !inCloud && early && open, JSON.stringify({ inCloud, early, open }));
+  /* The hopper tipping: sun read at 95,000 x cos^2 of its angle off the face plus 4,000 of sky, shade at 2,500. */
+  check('sensor gain: cos^2 of the sun off the face, none from behind', near(sunGain(0), 1, 1e-9) && near(sunGain(60), 0.25, 1e-9) && sunGain(95) === 0);
+  const tip = [];
+  for (let i = 0; i < 240; i++) {
+    const off = i >= 200 ? 87 : 40 + (i * 37) % 32; // 40-71 degrees, then a face turned nearly edge-on
+    const inSun = Math.floor(i / 8) % 2 === 0;
+    tip.push({ t: t0 + i * 1000, gain: sunGain(off), lux: inSun ? 95000 * sunGain(off) + 4000 : 2500, inSun });
+  }
+  const tj = sunOrShadeAround(tip);
+  const right = tip.slice(0, 200).every((s, i) => tj.judged[i] && tj.sun[i] === s.inSun);
+  const edgeOn = tip.slice(200).every((s, i) => !tj.judged[200 + i] && tj.faint[200 + i]);
+  check('with the angle known: every tipped reading judged right, the face-on sun found, edge-on readings left out as faint',
+    right && edgeOn && Math.abs(tj.sunLux - 95000) < 8000 && Math.abs(tj.shadeLux - 2500) < 1, JSON.stringify({ right, edgeOn, sun: tj.sunLux, shade: tj.shadeLux }));
   check('the sun off the phone\'s face: flat with the sun 30 degrees up is 60; tipped toward it, less',
     near(sunOffFace(null, 30, 180), 60, 1e-6) && near(sunOffFace([0, -0.5, 0.866], 30, 180), 30, 0.1));
   const straight = [...Array(20)].map((_, i) => ({ t: t0 + i * 1000, speed: 2, bearing: 90, face: 340 + (i % 3) }));

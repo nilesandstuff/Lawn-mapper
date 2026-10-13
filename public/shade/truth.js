@@ -18,8 +18,9 @@
  * WHAT IS LEFT OUT: readings faster than the sprayer goes (the truck), with
  * a poor GPS fix, cut by the owner (the eraser: tank and hopper fills,
  * parking), with the phone tipped more than 20 degrees (in the truck's mount,
- * in a pocket, in a hand), with the sun more than 65 degrees off the phone's
- * face, with no sunlit reading within two minutes (a cloud), and with the
+ * in a pocket, in a hand), with the sun so far off the phone's face that sun
+ * and shade would read nearly alike (sunGain; about 70 degrees in clear
+ * sun), with no sunlit reading within two minutes (a cloud), and with the
  * sun behind the operator (his own shadow falls on the phone). Stops count
  * once: one reading per meter moved.
  *
@@ -27,6 +28,9 @@
  *   - The sensor sees the sun through a narrow cone: flat, with the sun 60
  *     degrees off its face, it read 10,000 lux in sun; tipped to 38 degrees
  *     it read 50,000 a second later. Past ~65 degrees sun and shade blur.
+ *     (The owner's tilt test, 2026-10-13, put a number on it: cos^2 of the
+ *     sun's angle off the face, sunGain; each reading is now judged
+ *     against what sun and shade would read at its own angle.)
  *   - The light and orientation sensors stopped about a minute after the
  *     screen went off and came back for a minute at a time; GPS ran on.
  *     That is the phone's battery management, fixed in its settings
@@ -303,6 +307,43 @@ export function sunOrShade(luxes, { minContrast = 3 } = {}) {
 }
 
 /**
+ * How much of the direct sun the phone's sensor takes in with the sun
+ * `offDeg` off its face, as a share of what it takes in facing the sun
+ * squarely: cos^power. Measured by the owner's tilt test (2026-10-13, Galaxy
+ * S21 Ultra, clear sun 38 degrees up, four minutes tilting in every
+ * direction): the brightest readings at each angle followed 95,000 lux x
+ * cos^2 plus about 4,000 from the sky, power 2 fitting best (1.75-2.5
+ * nearly as well, 1 clearly worse). docs/SHADE-FINDINGS.md 8.
+ */
+export const SENSOR_POWER = 2;
+export function sunGain(offDeg, power = SENSOR_POWER) {
+  const c = Math.cos((offDeg * Math.PI) / 180);
+  return c > 0 ? c ** power : 0;
+}
+
+/**
+ * Sun or shade for readings whose `gain` (sunGain of the sun's angle off
+ * the face) is known, given a split of them into sun and shade: the shade
+ * level H (the shade group's median lux) and the face-on sun D (the sun
+ * group's median of (lux - H) / gain), and per reading the two lux it
+ * would read, D x gain + H in sun and H in shade. Sun when nearer the first
+ * (in log); not judged (`faint`) when the two are under `minContrast`
+ * apart -- too little sun reaches a face turned that far away.
+ */
+function judgeByGain(samples, idx, isSun, minContrast) {
+  const med = (a) => { const b = [...a].sort((x, y) => x - y); return b[b.length >> 1]; };
+  const shade = idx.filter((i) => !isSun(i)).map((i) => samples[i].lux);
+  const H = Math.max(1, shade.length ? med(shade) : 1);
+  const beam = idx.filter((i) => isSun(i) && samples[i].gain > 0.05).map((i) => Math.max(0, samples[i].lux - H) / samples[i].gain);
+  const D = beam.length ? med(beam) : NaN;
+  return { D, H, at: (i) => {
+    const sun = D * samples[i].gain + H;
+    if (!(sun >= minContrast * H)) return null;
+    return samples[i].lux > Math.sqrt(sun * H);
+  } };
+}
+
+/**
  * Each reading judged against the light around it in time, for clouds that
  * come and go within a visit. Around each reading (within `windowS`
  * seconds): when the light there splits clearly into sun and shade, Otsu's
@@ -316,30 +357,45 @@ export function sunOrShade(luxes, { minContrast = 3 } = {}) {
  * shaded strip along a tree line is lost with it; the phone alone cannot
  * tell the two apart. Returns sunOrShade's answer for the visit, with `sun`
  * and `judged` per reading.
+ *
+ * With each sample's `gain` (sunGain: how squarely the face meets the sun),
+ * the split is made on lux / (gain + 0.05) -- the sun's readings brought to
+ * face-on, the hopper's tipping taken out -- and each reading is then judged
+ * by judgeByGain against the sun and shade it would read at its own angle;
+ * readings whose face is turned too far for sun and shade to differ are not
+ * judged and marked `faint`. Then `sunLux` is the face-on sun.
  */
 export function sunOrShadeAround(samples, { windowS = 90, minContrast = 3, dimShare = 0.5, maxShadeS = 60 } = {}) {
-  const g = sunOrShade(samples.map((s) => s.lux), { minContrast });
-  const n = samples.length, sun = new Array(n).fill(false), judged = new Array(n).fill(false);
-  if (!g.clear) return { ...g, sun, judged };
-  const sorted = samples.map((s) => s.lux).sort((x, y) => x - y);
+  const n = samples.length, sun = new Array(n).fill(false), judged = new Array(n).fill(false), faint = new Array(n).fill(false);
+  const posed = n > 0 && samples.every((s) => Number.isFinite(s.gain));
+  const val = posed ? samples.map((s) => s.lux / (s.gain + 0.05)) : samples.map((s) => s.lux);
+  const g = sunOrShade(val, { minContrast });
+  if (!g.clear) return { ...g, sun, judged, faint };
+  const sorted = [...val].sort((x, y) => x - y);
   const bright = sorted[Math.floor(0.9 * (n - 1))];
+  const all = samples.map((_, i) => i);
+  const visit = posed ? judgeByGain(samples, all, (i) => g.sun[i], minContrast) : null;
   const W = windowS * 1000;
   let a = 0, b = 0;
   for (let i = 0; i < n; i++) {
     const t = samples[i].t;
     while (samples[a].t < t - W) a++;
     while (b + 1 < n && samples[b + 1].t <= t + W) b++;
-    const near = samples.slice(a, b + 1).map((s) => s.lux);
+    const near = val.slice(a, b + 1);
     const local = near.length >= 10 ? sunOrShade(near, { minContrast }) : null;
-    let cut;
-    if (local && local.clear) cut = local.cut;
-    else {
+    let verdict;
+    if (local && local.clear) {
+      verdict = posed
+        ? judgeByGain(samples, near.map((_, k) => a + k), (k) => local.sun[k - a], minContrast).at(i)
+        : samples[i].lux > local.cut;
+    } else {
       const m = [...near].sort((x, y) => x - y)[near.length >> 1];
       if (m < dimShare * bright) continue;
-      cut = g.cut;
+      verdict = posed ? visit.at(i) : samples[i].lux > g.cut;
     }
+    if (verdict == null) { faint[i] = true; continue; }
     judged[i] = true;
-    sun[i] = samples[i].lux > cut;
+    sun[i] = verdict;
   }
   for (let i = 0; i < n;) {
     if (!judged[i] || sun[i]) { i++; continue; }
@@ -348,7 +404,7 @@ export function sunOrShadeAround(samples, { windowS = 90, minContrast = 3, dimSh
     if (samples[k].t - samples[i].t > maxShadeS * 1000) for (let q = i; q <= k; q++) judged[q] = false;
     i = k + 1;
   }
-  return { ...g, sun, judged };
+  return { ...g, ...(posed ? { sunLux: visit.D, shadeLux: visit.H } : {}), sun, judged, faint };
 }
 
 /**
