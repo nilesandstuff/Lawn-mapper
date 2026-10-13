@@ -124,11 +124,40 @@ Unresolved: ten county photos that read as leaf-on put the model darker
 than the photo (0.62 against 0.73); NAIP's 53 summer photos do not. They
 may be spring flights with the leaves part out.
 
+### 7. No better evergreen rule found (pines), tested four ways (2026-10-13)
+
+Labelled trees: NEON's mapped stems with species (DP1.10098.001; 6,434
+living canopy trees over 8 m on 426 plots at 16 sites, placed from survey
+points good to ~0.2 m; evergreen by genus or species, larch and bald cypress
+deciduous, live oaks and hollies evergreen), matched to their lidar crowns
+(2,370 crowns, tools/shade-crown-features.js), plus the core's labelled lawn
+crowns (186 matched). Scored with each site held out, by the light cost of
+a mistake (9 per broadleaf left bare, 2 per evergreen given leaves):
+
+| rule | cost | evergreens right | deciduous right |
+|---|---|---|---|
+| today's (winter-dense, not a dome) | 1538 | 71/516 | 1657/1729 |
+| + crowns brighter than their neighbors | 1585 | 79/516 | 1650/1729 |
+| + a bright group when a scene's crowns split in two | 1853 | 98/516 | 1604/1717 |
+| almost none evergreen | 1079 | 8/516 | 1722/1729 |
+
+- Within any one flight, evergreens return the laser 1.5-5x brighter than
+  bare crowns (AUC 0.88-0.98 at 9 of 11 sites) and split fewer pulses; but
+  the levels differ from flight to flight (bare crowns 0.06-0.61 of the
+  ground), and a pine stand has no bare neighbors to be brighter than.
+- In a leaf-off photo, an evergreen crown's green against the lawn's: AUC
+  0.74 over 458 lawn-crown photos -- grass shows through bare crowns.
+- Southern pines stay called deciduous; nothing here does better.
+- Today's rule calls 72 bare deciduous crowns evergreen, nearly all on
+  MIXED-season flights (HARV 46, BART 11, TREE 4): part of those scans saw
+  leaves, so the crowns look winter-dense.
+
 ## Speculation
 
-- The pines (3) might be told apart by crown shape or by a leaf-off photo
-  that shows them green; untested. The evergreen rule is the owner's
-  choice (2026-10-11), so a change goes to him first.
+- Mixed-season flights (7) may be better treated as leaf-on for the
+  evergreen call (no evergreens called): it would have cut the light cost
+  at HARV, BART and TREE, but the page treats mixed as leaf-off for the
+  leaves too, and that wants its own test.
 - Winter (4) may differ by how much wood the lidar sees per site (Wasser
   2013: leaf-off lidar under-reads bare crowns); no correction is warranted
   by these numbers.
