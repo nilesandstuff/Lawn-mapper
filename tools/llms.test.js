@@ -9,7 +9,7 @@ for (const said of [/parcel maps/i, /property line/i, /aerial/i, /near-infrared/
   assert.match(t, said);
 }
 assert.match(t, /\(https:\/\/example\.test\/\)/, 'links are on the domain that served it');
-assert.match(t, /\(https:\/\/example\.test\/shade\.html\)/, 'and the shade analyzer has its own link');
+assert.match(t, /\(https:\/\/example\.test\/shade\)/, 'and the shade analyzer has its own link');
 console.log('llms.txt: ok');
 
 /* Lighthouse, 2026-10-04: a file that is not here is a 404, not the app; a
@@ -42,9 +42,9 @@ console.log('llms.txt: ok');
   assert.match(robots, /User-agent: Amazonbot\nUser-agent: \*\n/);
   for (const a of ['GPTBot', 'ClaudeBot', 'Google-Extended', 'CCBot']) assert.match(robots, new RegExp(`User-agent: ${a}\\n`));
   assert.match(robots, /https:\/\/example\.test\/llms\.txt/);
-  assert.match(robots, /Allow: \/shade\.html\n/, 'the shade analyzer is named, beside the home page');
+  assert.match(robots, /Allow: \/shade\n/, 'the shade analyzer is named, beside the home page');
   const sitemap = await (await at('/sitemap.xml')).text();
-  for (const loc of ['https://example.test/', 'https://example.test/shade.html']) {
+  for (const loc of ['https://example.test/', 'https://example.test/shade']) {
     assert.ok(sitemap.includes(`<loc>${loc}</loc>`), `the sitemap lists ${loc}`);
   }
   console.log('unknown files 404, deep links still open the app, robots says yes to search and AI answers: ok');

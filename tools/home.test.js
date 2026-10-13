@@ -13,7 +13,7 @@ const page = readFileSync(new URL('../home/public/index.html', import.meta.url),
 const filled = fillHome(page, 'nilesandstuff.com', 'lawnmap.nilesandstuff.com');
 check('every placeholder is filled', !/__HOME__|__LAWNMAP__/.test(filled));
 check('the flagship card goes to Lawn Mapper', filled.includes('href="https://lawnmap.nilesandstuff.com/"'));
-check('and the shade analyzer has a card of its own', filled.includes('href="https://lawnmap.nilesandstuff.com/shade.html"'));
+check('and the shade analyzer has a card of its own', filled.includes('href="https://lawnmap.nilesandstuff.com/shade"'));
 
 /* The same tools as Lawn Mapper's "More lawn tools" menu, so the two lists
    cannot drift apart. */

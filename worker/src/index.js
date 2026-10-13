@@ -1775,7 +1775,7 @@ export default {
             '# Search engines and AI assistants are welcome. A plain-language summary\n'
             + `# of this site for AI assistants: ${url.origin}/llms.txt\n`
             + ROBOTS_AGENTS.map((a) => `User-agent: ${a}\n`).join('')
-            + `User-agent: *\nContent-Signal: search=yes, ai-input=yes, ai-train=yes\nAllow: /\nAllow: /shade.html\nAllow: /api/config\nAllow: /api/coverage\nDisallow: /api/\n\nSitemap: ${url.origin}/sitemap.xml\n`,
+            + `User-agent: *\nContent-Signal: search=yes, ai-input=yes, ai-train=yes\nAllow: /\nAllow: /shade\nAllow: /api/config\nAllow: /api/coverage\nDisallow: /api/\n\nSitemap: ${url.origin}/sitemap.xml\n`,
             { headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=86400' } }
           );
         /* For AI assistants: what the site is, in plain words (llms.js). */
@@ -1788,8 +1788,9 @@ export default {
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             + '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
             + `  <url><loc>${url.origin}/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>\n`
-            /* The shade analyzer, a page of its own (owner, 2026-10-13). */
-            + `  <url><loc>${url.origin}/shade.html</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>\n`
+            /* The shade analyzer, a page of its own (owner, 2026-10-13), at /shade:
+               the site's asset serving answers /shade.html with a 307 to it. */
+            + `  <url><loc>${url.origin}/shade</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>\n`
             + '</urlset>\n',
             { headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=86400' } }
           );

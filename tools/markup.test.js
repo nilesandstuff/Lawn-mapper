@@ -495,9 +495,9 @@ for (const page of ['admin', 'grade', 'maps', 'mywork', 'outlines', 'payouts', '
   const shadePage = readFileSync(join(root, 'public/shade.html'), 'utf8');
   check('shade.html is open to search and says what it is',
     !/name="robots" content="noindex/.test(shadePage) && /name="description" content="[^"]*lidar/.test(shadePage)
-    && shadePage.includes('rel="canonical" href="__SITE__/shade.html"'));
+    && shadePage.includes('rel="canonical" href="__SITE__/shade"'));
   check('the landing compares the shade map and links to it',
-    /<th scope="row">Shade map<\/th>/.test(html) && html.includes('href="/shade.html"') && /Shade analyzer:/.test(html));
+    /<th scope="row">Shade map<\/th>/.test(html) && html.includes('href="/shade"') && /Shade analyzer:/.test(html));
 }
 check('neighbours, merge and the road are on for everybody, not only tinker mode',
   /if \(!document\.body\.classList\.contains\('job-mode'\)\) aroundParcel\(\);/.test(js) && !/if \(state\.dev\) \w*[Aa]roundParcel/.test(js));

@@ -32,7 +32,7 @@ Homeowners pricing lawn care, seed, sod, fertilizer or irrigation; lawn-care bus
 ## Using it
 
 - [Lawn Mapper](${origin}/): enter an address, check the property line, press the AI step or draw by hand.
-- [Shade analyzer](${origin}/shade.html): a lidar shade map of a property, from an address or a saved lawn map (the Workshop tab, once a map is finished).
+- [Shade analyzer](${origin}/shade): a lidar shade map of a property, from an address or a saved lawn map (the Workshop tab, once a map is finished).
 
 ## Notes
 
