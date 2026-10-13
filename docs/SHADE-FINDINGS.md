@@ -107,6 +107,14 @@ beam), so nothing to correct. The same photos scored with the BARE model
 show 7.9% in shade: the leaves are what the photos see, and the model's
 summer leaves are about the right density.
 
+Newer lidar (the core session, 2026-10-13): nine of the corpus lots now
+have a newer USGS flight published only as download tiles, which the shade
+map cannot read (C81, C79, C24, C23, B25, B26, C30, C29, C39). Four of them
+gave 5 of the 53 photo-years above, scored on the older octree. Without them,
+48 photo-years: photo 16.6%, model 18.2%, agreement 85.8% -- no change. (For
+a photo, the nearer flight in time is the right one, not the newest: four
+of the five photos are closer to the old flight than to the new.)
+
 ### 6. Leaf-off photos are darker near bare trees than the bare model, but not as shadow
 
 County photos (66 leaf-off frames) and Mapbox (13), read for leaf state
