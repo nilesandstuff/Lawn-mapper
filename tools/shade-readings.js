@@ -17,6 +17,20 @@ const ago = (ms, now) => {
   return m < 90 ? `${m} min ago` : m < 48 * 60 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`;
 };
 
+/**
+ * The newest recording in five-minute steps: GPS fixes (one a second is
+ * full), seconds of light and of orientation, and the median speed -- so a
+ * stop on a property shows as a stretch of slow, full minutes.
+ */
+export function timeline(buckets) {
+  const out = ['', 'Newest recording, five minutes at a time (full = 300 each; mph is the median speed):'];
+  for (const b of buckets) {
+    const mph = b.speed == null ? '  -' : String(Math.round(b.speed * 2.237)).padStart(3);
+    out.push(`  ${when(b.t).padEnd(16)} gps ${String(b.fixes).padStart(3)}  light ${String(b.lux).padStart(3)}  orientation ${String(b.orient).padStart(3)}  ${mph} mph`);
+  }
+  return out.join('\n');
+}
+
 /** The report, from the rows the queries give (pure, for the tests). */
 export function report(sessions, keys, now = Date.now()) {
   const out = [];
@@ -48,4 +62,19 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     FROM shade_fixes f GROUP BY f.session ORDER BY last DESC LIMIT 10`);
   const keys = query('SELECT COUNT(*) AS n, MAX(created_at) AS made FROM shade_push_keys')[0];
   console.log(report(sessions, keys));
+  if (sessions.length) {
+    const s = String(sessions[0].session).replace(/'/g, "''");
+    const B = 300000;
+    const rows = query(`
+      SELECT b AS t, SUM(fx) AS fixes, SUM(lx) AS lux, SUM(oz) AS orient FROM (
+        SELECT (t / ${B}) * ${B} AS b, 1 AS fx, 0 AS lx, 0 AS oz FROM shade_fixes WHERE session = '${s}'
+        UNION ALL SELECT (t / ${B}) * ${B}, 0, 1, 0 FROM shade_lux WHERE session = '${s}'
+        UNION ALL SELECT (t / ${B}) * ${B}, 0, 0, 1 FROM shade_orient WHERE session = '${s}'
+      ) GROUP BY b ORDER BY b`);
+    const speeds = query(`SELECT (t / ${B}) * ${B} AS b, speed FROM shade_fixes WHERE session = '${s}' AND speed IS NOT NULL`);
+    const by = new Map();
+    for (const r of speeds) { if (!by.has(r.b)) by.set(r.b, []); by.get(r.b).push(r.speed); }
+    for (const r of rows) { const v = (by.get(r.t) || []).sort((a, b) => a - b); r.speed = v.length ? v[v.length >> 1] : null; }
+    console.log(timeline(rows));
+  }
 }

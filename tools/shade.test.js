@@ -795,6 +795,9 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   check('readings report: how long ago, the light share, orientation, and the sleepy sensor flagged',
     /newest reading 2 min ago/.test(r) && /Light came in for 43%/.test(r) && /LOW/.test(r) && /orientation is arriving/.test(r) && !/\d+\.\d{4}/.test(r), r);
   check('readings report: nothing yet says so', /nothing has arrived/.test(report([], { n: 0 }, now)));
+  const { timeline } = await import('./shade-readings.js');
+  const tl = timeline([{ t: now, fixes: 290, lux: 280, orient: 295, speed: 1.3 }, { t: now + 300e3, fixes: 60, lux: 0, orient: 0, speed: null }]);
+  check('readings timeline: five-minute steps with counts and mph, no places', /gps 290\s+light 280\s+orientation 295\s+3 mph/.test(tl) && /-\s*mph/.test(tl), tl);
 }
 
 if (failures) { console.log(`\n${failures} check(s) FAILED.`); process.exit(1); }
