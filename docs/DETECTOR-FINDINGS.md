@@ -880,6 +880,44 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H97. The lidar's ground brightness as two more decoder inputs (S38) beats THE PLAN's decoder: 41 better / 22 worse / 41 level, -0.2 points [95% -0.5 to -0.0], sign test p = 0.023; on the lots approved since, 34 / 16, p = 0.015 -- ADOPTED, 2026-10-13
+
+Workflow 14 `refiner_trial: intensity`, runs 38407533447 / 38407538205 /
+38407542410 (seeds 7 / 8 / 9), `lawns: locked` (104, `131u7jm`), free
+runner: in each run THE PLAN's decoder and a second one, the same in
+every way but two more fused numbers a patch (fuse_layers.py's
+`intensity_rank`, the lidar's ground intensity ranked within its frame,
+and `has_intensity`, the share of cells with a ground return; hidden with
+the lidar in dropout), over the same features, seed and folds. Workflow 24
+run 38440912424, row against row ("decoder, intensity input + stage 3,
+span, lidar veto" against "decoder, edge refined + stage 3, span, lidar
+veto"). Run medians 18.4 / 18.5 / 19.1% against 18.8 / 18.9 / 19.5%.
+
+| | lots | better / worse / level | median paired change [95%] | sign test |
+|---|---|---|---|---|
+| **all lots** | 104 | **41 / 22 / 41** | **-0.2 [-0.5, -0.0]** | **p = 0.023** |
+| frozen 32 | 32 | 7 / 6 / 19 | -0.2 [-0.4, +0.1] | p = 1.00 |
+| **approved since (untuned)** | 72 | **34 / 16 / 22** | -0.2 [-0.7, -0.0] | **p = 0.015** |
+| county photo | 31 | 14 / 10 / 7 | -0.2 [-0.8, +0.1] | p = 0.54 |
+| Mapbox photo | 73 | 27 / 12 / 34 | -0.2 [-0.4, -0.0] | p = 0.024 |
+
+**The bar written before the runs is met** (more better than worse with
+p under 0.1, the interval below zero). Largest gains C53 48.7 -> 32.9%,
+C49 31.0 -> 17.1%, C19 56.7 -> 43.4%, C33 62.2 -> 55.0%; largest losses
+C50 86.0 -> 96.0%, C46 22.3 -> 28.7%, C88 58.4 -> 62.6%. The first fused
+input here to move THE PLAN since H50 found NAIP, height and returns worth
+nothing measurable on top of the photo -- consistent with S38, which found
+this one carries information exactly where the detector is wrong.
+
+**ADOPTED:** FUSE_INTENSITY is on by default in train_decoder.py, so every
+decoder workflow 14 trains reads it; the release manifest says so
+(`fuseIntensity`) and the live model passes it through
+(alpha_sources.py) and reads it (alpha_infer.py). **Not measured: the
+combination.** H97 was measured on the old lidar (the AWS octrees, no
+datum move, noise kept); release v5 carries it together with H95 and H96.
+The first runs on the new default are the check that the three together
+are no worse than each alone.
+
 ### H96. The newest USGS flight, read from its LAZ tiles where AWS lags, makes the 20 lots it changes better: 10 better / 1 worse / 9 level, -0.6 points [95% -2.2 to -0.1], sign test p = 0.012; the rest unmoved -- 2026-10-13
 
 Workflow 14 `lidar_trial: newest` (H94's trial), runs 38391749566 /
@@ -6591,7 +6629,7 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
-### S38. Is the lidar's brightness right where the detector is wrong? (owner, 2026-10-13 -- MEASURED: BAR MET IN ALL THREE SEEDS; the input trial is running)
+### S38. Is the lidar's brightness right where the detector is wrong? (owner, 2026-10-13 -- MEASURED: BAR MET IN ALL THREE SEEDS; AS AN INPUT, H97: ADOPTED)
 
 The owner asked whether lidar intensity could say more about ground cover
 (grass against woodchips, leaf litter, concrete), having seen a study that
@@ -7891,6 +7929,7 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-07 | 37582634690 / 37582729096 / 37582829432 | 81 (locked) | S28 `refiner_trial: average of 3`, seeds 7/8/9, CPU | 20.9 / 22.5 / 22.0% (edge refined + stage 3, span, veto) | — | **H83.** Averaged x3: 31 / 9, -0.3 [-0.4, -0.1], p 0.001; medians 20.3 / 22.1 / 20.7. Passes; not released |
 | 2026-10-12 | 38192536763 / 38192554237 | 104 (locked, 131u7jm) | S26 `refiner_trial: upernet` (a small UperNet head, 64 ch, GroupNorm, no aux head, beside THE PLAN's decoder over the same features and folds), seeds 7 / 8, CPU | 18.8 / 18.9% (THE PLAN: edge refined + stage 3, span, veto) | 21.3 / 20.7% (UperNet + stage 3, span, veto) | **H93.** Workflow 24 run 38209446282: 24 / 64 / 16, +1.2 [+0.8, +1.7], p < 0.001; untuned 72 +1.2, p < 0.001; county +1.9, Mapbox +1.0. UperNet's train loss lower (0.188 vs 0.201): overfitting. Not adopted |
 | 2026-10-13 | 38384350059 / 38384353539 / 38388587980 | 104 (locked, 131u7jm) | S38: THE PLAN's defaults, seeds 7 / 8 / 9, CPU, with the new S38 step (tools/intensity_errors.py) after scoring; seed 9 also the baseline for the S35 / H94 lidar trials | 18.8 / 18.9 / 19.5% (THE PLAN) | -- | **S38 bar MET in all three seeds:** where the held-out mask calls lawn, ground intensity (ranked in its frame) tells true from false at 0.64 / 0.66 / 0.65 pooled, 41-44 lots of 45-49 the same way, hardest third 0.69-0.71; called not-lawn 0.64-0.66. Sanity 0.76. The input trial is next |
+| 2026-10-13 | 38407533447 / 38407538205 / 38407542410 | 104 (locked, 131u7jm) | S38 input trial `refiner_trial: intensity` (THE PLAN's decoder beside one also reading the lidar's ground brightness, ranked in its frame), seeds 7 / 8 / 9, CPU | 18.8 / 18.9 / 19.5% (THE PLAN) | 18.4 / 18.5 / 19.1% (intensity input) | **H97.** Workflow 24 run 38440912424 row against row: 41 / 22 / 41, -0.2 [-0.5, -0.0], p 0.023; since 34 / 16, p 0.015. Adopted |
 | 2026-10-13 | 38388591593 / 38391760094 / 38391763898 | 104 (locked, 131u7jm) | S35 `lidar_trial: datum` (octrees moved NAD83 -> WGS84 for their flight's epoch), seeds 7 / 8 / 9, CPU | 19.1 / 19.7 / 19.1% | -- | **H95.** Workflow 24 run 38420510760 against the S38 baselines: 16 / 14 / 74, -0.1 [-0.1, -0.0], p 0.86. Nothing either way; adopted on correctness (owner) |
 | 2026-10-13 | 38391749566 / 38391752071 / 38391755931 | 104 (locked, 131u7jm) | H94 `lidar_trial: newest` (WESM-dated picks; USGS LAZ tiles where AWS lags, 18 frames, 2.4 GB; noise dropped), seeds 7 / 8 / 9, CPU. (38388594581, the first seed 7, died on the tile read's missing "nodes"; fixed in 9ce73a6) | 19.3 / 19.1 / 18.7% | -- | **H96.** Workflow 24 run 38420517226 on the 20 changed lots: 10 / 1 / 9, -0.6 [-2.2, -0.1], p 0.012; all lots 23 / 20 / 61, -0.1 [-0.1, +0.1]. Adopted |
 | 2026-10-11 | 38115838951 | 104 (all) + 5 not-lawn-only maps | **RELEASE v4** (owner's request): `release: alpha`, `refiner_trial: average of 3`, `not_lawn: on`, `lawns: all`, fused + edge, canopy on lawn, UNDER_TREES + FUSE_CANOPY, 30 epochs, seed 7, CPU | — (no folds) | — | Three decoders averaged on 104 lots + 5 pond examples in 874 s, train loss 0.200, trainedAt 2026-10-11T07:44:29Z. Shipped; v3 kept under alpha/history/. Named "alpha version 4 (81%)" from THE PLAN at 104 (H92 runs); the arrangement itself is unmeasured |

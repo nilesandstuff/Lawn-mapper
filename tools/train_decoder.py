@@ -156,11 +156,13 @@ FUSE_CANOPY = os.environ.get("FUSE_CANOPY", "1") == "1"
 # ground, the share of points from split pulses, the first-to-last spread,
 # and a flag (owner, 2026-10-05; H73 found the first two tell an evergreen).
 FUSE_RETURNS = os.environ.get("FUSE_RETURNS", "")
-# FUSE_INTENSITY=1: two more fused numbers a patch, the lidar's ground
+# FUSE_INTENSITY: two more fused numbers a patch, the lidar's ground
 # brightness ranked within its frame and the share of cells that have it
-# (owner, 2026-10-13; S38). A trial: the live server does not pass it, so a
-# release refuses it, as it refuses the UperNet head.
-FUSE_INTENSITY = os.environ.get("FUSE_INTENSITY", "") == "1"
+# (owner, 2026-10-13; S38). ON BY DEFAULT since H97 (41 lots better, 22
+# worse, p = 0.023); the live server passes the intensity through
+# (alpha_sources.py) and reads it for a release whose manifest says so.
+# FUSE_INTENSITY=0 trains the decoder without it.
+FUSE_INTENSITY = os.environ.get("FUSE_INTENSITY", "1") == "1"
 
 # TAUGHT UNDER TREES (owner, 2026-10-05: "simply letting scale Mae figure out
 # the scenarios where there's likely to be grass, which it learns from the
@@ -789,8 +791,6 @@ def main():
     release_out = os.environ.get("RELEASE_OUT", "")
     if release_out and HEAD != "small":
         raise SystemExit(f"HEAD={HEAD} is a trial, not a release: the live server (alpha_infer.py) builds the small decoder")
-    if release_out and FUSE_INTENSITY:
-        raise SystemExit("FUSE_INTENSITY is a trial, not a release: the live server (alpha_sources.py) does not pass the lidar's intensity")
     if release_out:
         os.makedirs(release_out, exist_ok=True)
         t0 = time.time()
