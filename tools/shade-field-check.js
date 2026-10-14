@@ -36,6 +36,9 @@ const ZONE = 'America/New_York';
 const PHONE_M = 1.27, EDGE_M = 25, NEAR_M = 3;
 /* GPS offsets tried, meters east and north (owner, 2026-10-14: is the track where the model is?). */
 export const OFFSETS = [];
+/* Leaf shares scanned against the readings (owner, 2026-10-14: the lawn trees
+   held about three quarters of their leaves on Oct 14; the calendar said 14%). */
+export const LEAF_SCAN = [0, 0.15, 0.3, 0.5, 0.7, 0.85, 1];
 for (let n = -4; n <= 4; n++) for (let e = -4; e <= 4; e++) OFFSETS.push([e, n]);
 const hm = (ms) => new Date(ms).toLocaleTimeString('en-US', { timeZone: ZONE, hour: 'numeric', minute: '2-digit' });
 
@@ -142,6 +145,7 @@ async function scoreTile(site, tile, trucks, mount, why, rows, truckShadowRows) 
   const cp = canopyParts(site, model.mu);
   const nlModel = { ...model, mu: cp.noLowLeaves }, nfModel = { ...model, mu: cp.noFill }, nnModel = { ...model, mu: cp.neither };
   const c7Model = { ...model, mu: cp.clumped7 }, c5Model = { ...model, mu: cp.clumped5 };
+  const scanModels = seasonal ? LEAF_SCAN.map((f) => ({ ...model, mu: muWithLeaves(site.season, f) })) : null;
   const R = Math.PI / 180;
   const ring = [[0, 0], ...[...Array(8)].map((_, i) => [NEAR_M * Math.cos((i * Math.PI) / 4), NEAR_M * Math.sin((i * Math.PI) / 4)])];
   for (const s of tile.list) {
@@ -158,6 +162,7 @@ async function scoreTile(site, tile, trucks, mount, why, rows, truckShadowRows) 
       t: s.t, lux: s.lux, gain: sunGain(sunOffFace(s.up, sun.elevation, sun.azimuth)), T: full[0], Ton: beam(onModel, 0, 0), Toff: beam(offModel, 0, 0), cls: confidence(full, bld),
       Tnl: beam(nlModel, 0, 0), Tnf: beam(nfModel, 0, 0), Tnn: beam(nnModel, 0, 0), Tc7: beam(c7Model, 0, 0), Tc5: beam(c5Model, 0, 0), ray: rp, el: sun.elevation,
       off: Float32Array.from(OFFSETS, ([dx, dy]) => beam(model, dx, dy)), acc: s.acc,
+      Tscan: scanModels ? Float32Array.from(scanModels, (m) => beam(m, 0, 0)) : null,
     };
     const te = truckEffect(s, trucks, sun, { phoneM: PHONE_M });
     if (te === 'near') { why.truckNear++; continue; }
@@ -183,6 +188,7 @@ function judgeVisit(visit, u, trucks, mount, why, rows, truckShadowRows, { fligh
   /* Where the leaves decide (the three canopies disagree), which agrees? */
   const leafy = scored.filter((r) => (r.Ton >= 0.5) !== (r.Toff >= 0.5));
   const leafTest = { n: leafy.length, calendar: leafy.filter((r) => r.modelSun === r.phoneSun).length, on: leafy.filter((r) => (r.Ton >= 0.5) === r.phoneSun).length, off: leafy.filter((r) => (r.Toff >= 0.5) === r.phoneSun).length };
+  leafTest.scan = leafScan(scored);
   const whatIf = whatIfs(scored);
   /* The same readings judged as if the phone lay flat (no orientation). */
   const soFlat = sunOrShadeAround(rows.map((r) => ({ ...r, gain: r.gainFlat })));
@@ -205,6 +211,30 @@ function judgeVisit(visit, u, trucks, mount, why, rows, truckShadowRows, { fligh
     usable: u.length, trucks: trucks.length, anchors: trucks.reduce((a, tr) => a + tr.anchors.length, 0), spread,
     why, faint, clear: so.clear, sunLux: so.sunLux, shadeLux: so.shadeLux, scored, tally: tally(scored), leafTest, truckShadow: { n: tsN, dark: tsDark }, whatIf,
   };
+}
+
+/**
+ * Agreement at each LEAF_SCAN share: over the readings where the leaves
+ * decide (full and bare disagree) and over every scored reading. Readings
+ * on a leaf-on flight (no scan) are left out. { leafy: { n, agree[] }, all: { n, agree[] } }.
+ */
+export function leafScan(scored) {
+  const out = { leafy: { n: 0, agree: LEAF_SCAN.map(() => 0) }, all: { n: 0, agree: LEAF_SCAN.map(() => 0) } };
+  for (const r of scored) {
+    if (!r.Tscan) continue;
+    const leafy = (r.Ton >= 0.5) !== (r.Toff >= 0.5);
+    for (const g of leafy ? [out.all, out.leafy] : [out.all]) {
+      g.n++;
+      r.Tscan.forEach((T, i) => { if ((T >= 0.5) === r.phoneSun) g.agree[i]++; });
+    }
+  }
+  return out;
+}
+
+/** One line of a leaf scan. */
+export function leafScanLine(sc) {
+  const part = (g) => LEAF_SCAN.map((f, i) => `${Math.round(100 * f)}% ${g.agree[i]}`).join(', ');
+  return `  leaf share scan: where the leaves decide (${sc.leafy.n}): ${part(sc.leafy)}; all scored (${sc.all.n}): ${part(sc.all)}`;
 }
 
 const median = (a) => { const b = a.filter(Number.isFinite).sort((x, y) => x - y); return b.length ? b[b.length >> 1] : NaN; };
@@ -442,6 +472,7 @@ export async function fieldCheck(day) {
   const all = [];
   const dayLag = {}, dayFlat = { n: 0, agree: 0 };
   const leafAll = { n: 0, calendar: 0, on: 0, off: 0 };
+  const scanAll = { leafy: { n: 0, agree: LEAF_SCAN.map(() => 0) }, all: { n: 0, agree: LEAF_SCAN.map(() => 0) } };
   let tsN = 0, tsDark = 0;
   for (const v of visits) {
     let r;
@@ -452,6 +483,7 @@ export async function fieldCheck(day) {
     if (r.whatIf?.flat) { dayFlat.n += r.whatIf.flat.n; dayFlat.agree += r.whatIf.flat.agree; }
     for (const [k, o] of Object.entries(r.whatIf?.lag || {})) { const d = (dayLag[k] ||= { n: 0, agree: 0, edgeN: 0, edgeAgree: 0 }); for (const q of Object.keys(d)) d[q] += o[q]; }
     for (const k of Object.keys(leafAll)) leafAll[k] += r.leafTest[k];
+    for (const g of ['leafy', 'all']) { scanAll[g].n += r.leafTest.scan[g].n; r.leafTest.scan[g].agree.forEach((a, i) => { scanAll[g].agree[i] += a; }); }
     tsN += r.truckShadow.n; tsDark += r.truckShadow.dark;
     const tt = r.scored.length, ag = r.scored.filter((x) => x.modelSun === x.phoneSun).length;
     out.push(`\n${head}: ${r.usable} readings; phone on the hopper at ${r.mount ? `${Math.round(r.mount.offset)} degrees${r.mount.day ? ' (the day\'s fit)' : ''}` : '? (GPS heading used)'}; lidar ${r.flight || '?'} flight to ${r.flightEnd ? new Date(r.flightEnd).toISOString().slice(0, 7) : '?'}, leaves ${Math.round(100 * r.leaf)}% on`);
@@ -466,6 +498,7 @@ export async function fieldCheck(day) {
       if (tr) out.push(`    tree shade: the phone read sun at ${tr.phoneSun} of ${tr.n} (leaves gone, or the crown thinner than the model)`);
       const L = r.leafTest;
       if (L.n) out.push(`  where the leaves decide (${L.n} readings): the phone agrees with the calendar's ${Math.round(100 * r.leaf)}% leaves at ${L.calendar}, with full leaves at ${L.on}, with bare trees at ${L.off}`);
+      if (L.scan.all.n) out.push(leafScanLine(L.scan));
       out.push(...whatIfLines(r.whatIf, r.sunLux));
     }
   }
@@ -481,6 +514,7 @@ export async function fieldCheck(day) {
   out.push(`  where the model is sure: ${classLine(T)}`);
   out.push(`  open = sure of sun; building = behind a building (no leaves involved); tree = deep in a crown's shade; edge = unsure.`);
   out.push(`  where the leaves decide (${leafAll.n} readings): the phone agrees with the calendar's leaves at ${leafAll.calendar}, full leaves at ${leafAll.on}, bare trees at ${leafAll.off}.`);
+  if (scanAll.all.n) out.push(leafScanLine(scanAll));
   out.push(`  the truck's shadow: the phone read ${tsDark} of ${tsN} judged readings there as shade.`);
   out.push(...whatIfLines({ ...wDay, building: [] }, null));
   return out.join('\n');
