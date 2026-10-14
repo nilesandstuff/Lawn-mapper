@@ -448,6 +448,46 @@ model is far too bright on forest floors (SCBI leaf-off 24.6% measured,
 45.7% model; ORNL 27.9% / 58.2%; between: SCBI 5.9% / 10.3%, ORNL 6.8% /
 16.1%) -- finding 4's winter question, and October is "between".
 
+### 15. Bare forest floors in winter: mostly too bright, and wood seen from the side fits 9 of 11 sites (NEON, 2026-10-14)
+
+NEON's ground light sensors on clear leaf-off days, 2023 (tools/shade-check-
+neon.js), the shipped model against one where bare wood stops more of a low
+sun than the near-vertical laser saw (rays.js woodScale: 60% of the wood
+area upright like trunks, G = 0.2 + 0.38 sin(zenith) against the laser's
+G at 10 degrees; leaf-off days only). Measured / shipped / wood-from-the-side, % of
+the open sky's light:
+
+| Site | 3DEP flight ends | measured | shipped | wood 0.6 |
+|---|---|---|---|---|
+| SCBI | 2021-01 | 24.6 | 45.7 | 31.7 |
+| ORNL | 2016-01 | 27.9 | 58.2 | 38.6 |
+| DELA | 2021-01 | 21.8 | 49.8 | 31.4 |
+| UKFS | 2015-03 | 29.3 | 39.1 | 21.3 |
+| TALL | 2017-03 | 21.0 | 26.3 | 16.7 |
+| LENO | 2023-03 | 17.0 | 29.4 | 13.8 |
+| JERC | 2018 (mixed) | 17.0 | 23.6 | 13.0 |
+| HARV | 2014-12 (mixed) | 15.9 | 23.1 | 12.4 |
+| BART | 2018-05 (mixed) | 3.0 | 5.2 | 3.7 |
+| GRSM | 2016-04 | 25.7 | 22.1 | 11.0 |
+| MLBS | 2017-04 | 31.7 | 27.8 | 14.2 |
+
+Mean miss 11.9 points shipped, 7.6 with the wood from the side (30%
+upright: 10.2 over the first eight). The two it makes worse are the two
+flown in April in the mountains -- where buds and early leaves may already
+be in the "leaf-off" cloud, so the model is dark there before any
+correction. Left out: STEI and TREE (northern Wisconsin; sensors near dark
+all winter, snow on them most likely), BLAN (its sensors disagree with the
+model even in summer, 6% against 50%: not under the trees the lidar shows),
+SERC and CLBJ (no 3DEP lidar at the sensors). Also the ratio of shipped to
+measured falls as the winter sun climbs at the southern sites (ORNL 2.6x in
+December, 1.6x in March) -- what wood seen from the side predicts.
+
+NOT SHIPPED: it would need a rule by flight month, the leaf-off season
+hardly matters to a growing lawn, and the owner's October lawns lean the
+other way (too dark near trees, 9, 11, 14). Noted in passing: in the pine
+savannas the model is far too DARK in summer (TALL 16% measured, 5% model;
+JERC 22% / 3%; OSBS 30% / 13%) -- the pines question of finding 7.
+
 ## Speculation
 
 - Mixed-season flights (7) may be better treated as leaf-on for the
@@ -472,6 +512,11 @@ model is far too bright on forest floors (SCBI leaf-off 24.6% measured,
 - The low-leaf mechanism (11) may matter on lots with tall, high-crowned
   trees joined to understory and a low sun across open lawn; not seen on
   2026-10-13's stops.
+
+- Wood seen from the side (15) by flight month: on for mid-winter flights,
+  off for April ones -- would want more April and May flights to test.
+- Pine savannas too dark in leaf (15): open-grown pines' crowns filled
+  with deciduous leaves, or their needles too dense from the laser's view?
 
 - Leaf-off darkness near trees (6) as ground, not shadow: testable by
   comparing ground on the sunward side of a trunk (no shadow possible) with
