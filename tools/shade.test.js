@@ -1075,5 +1075,20 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   check('readings timeline: five-minute steps with counts and mph, no places', /gps 290\s+light 280\s+orientation 295\s+3 mph/.test(tl) && /-\s*mph/.test(tl), tl);
 }
 
+{
+  /* Overcast readings (tools/shade-overcast.js): the sky's drift taken out, a sky view that explains the light found; the barometer's drift fitted. */
+  const { skyFit, baroFit, skyWeights } = await import('./shade-overcast.js');
+  const sv = Array.from({ length: 120 }, (_, i) => 0.2 + 0.7 * (0.5 + 0.5 * Math.sin(i / 5)));
+  const rows = sv.map((v, i) => ({ t: i * 1000, lux: 4000 * (1 - i / 400) * v }));
+  const good = skyFit(rows, sv), flat = skyFit(rows, sv.map(() => 1)), wrong = skyFit(rows, sv.map((v, i) => sv[(i + 17) % sv.length]));
+  check('overcast: a sky view that explains the light, under a darkening sky, fits it exactly; a wrong one does not', good.corr > 0.99 && good.miss < 1.05 && flat.miss > 1.3 && wrong.corr < 0.5, JSON.stringify({ good, flat, wrong }));
+  const pts = Array.from({ length: 60 }, (_, i) => ({ t: i * 10000, g: 100 + 3 * Math.sin(i / 7), baro: 3 * Math.sin(i / 7) - 0.15 * (i / 6) + 5 }));
+  const bf = baroFit(pts);
+  check('overcast: the barometer against the ground with the weather\'s drift out', Math.abs(bf.drift + 0.15) < 1e-6 && bf.sd < 1e-6 && bf.corr > 0.999, JSON.stringify(bf));
+  const w = skyWeights();
+  const sums = Object.values(w).map((set) => set.reduce((a, d) => a + d.w, 0));
+  check('overcast: each sky weighting sums to one; the phone\'s sees less of the low sky than the map\'s', sums.every((x) => Math.abs(x - 1) < 1e-9) && w.phone[0].w < w.map[0].w, sums.join(','));
+}
+
 if (failures) { console.log(`\n${failures} check(s) FAILED.`); process.exit(1); }
 console.log('\nshade map: ok');
