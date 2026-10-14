@@ -30,6 +30,7 @@ import { sunAt } from '../public/shade/sun.js';
 import { transmittance, groundAt } from '../public/shade/rays.js';
 import { muWithLeaves, leafCalendar } from '../public/shade/seasonal.js';
 import { climateAt } from '../worker/src/shade.js';
+import { canopyParts, rayParts } from './shade-ray-check.js';
 
 const ZONE = 'America/New_York';
 const PHONE_M = 1.27, EDGE_M = 25, NEAR_M = 3;
@@ -126,6 +127,10 @@ async function scoreTile(site, tile, trucks, mount, why, rows, truckShadowRows) 
      trees still hold most of their leaves; dropping has just begun). */
   const onModel = seasonal ? { ...model, mu: site.season.muOn } : model;
   const offModel = seasonal ? { ...model, mu: site.season.muOff } : model;
+  /* Where the shade comes from, and the what-ifs (shade-ray-check.js;
+     owner, 2026-10-14: is the leaf filling lowering the crowns?). */
+  const cp = canopyParts(site, model.mu);
+  const nlModel = { ...model, mu: cp.noLowLeaves }, nfModel = { ...model, mu: cp.noFill }, nnModel = { ...model, mu: cp.neither };
   const R = Math.PI / 180;
   const ring = [[0, 0], ...[...Array(8)].map((_, i) => [NEAR_M * Math.cos((i * Math.PI) / 4), NEAR_M * Math.sin((i * Math.PI) / 4)])];
   for (const s of tile.list) {
@@ -137,7 +142,11 @@ async function scoreTile(site, tile, trucks, mount, why, rows, truckShadowRows) 
     const dir = [Math.sin(sun.azimuth * R) * ce, Math.cos(sun.azimuth * R) * ce, Math.sin(sun.elevation * R)];
     const beam = (mdl, dx, dy) => transmittance(mdl, gx + dx, gy - dy, groundAt(mdl, gx + dx, gy - dy) + PHONE_M, dir);
     const full = ring.map(([dx, dy]) => beam(model, dx, dy)), bld = ring.map(([dx, dy]) => beam(bmodel, dx, dy));
-    const row = { t: s.t, lux: s.lux, gain: sunGain(sunOffFace(s.up, sun.elevation, sun.azimuth)), T: full[0], Ton: beam(onModel, 0, 0), Toff: beam(offModel, 0, 0), cls: confidence(full, bld) };
+    const rp = rayParts(model, cp.parts, gx, gy, groundAt(model, gx, gy) + PHONE_M, dir);
+    const row = {
+      t: s.t, lux: s.lux, gain: sunGain(sunOffFace(s.up, sun.elevation, sun.azimuth)), T: full[0], Ton: beam(onModel, 0, 0), Toff: beam(offModel, 0, 0), cls: confidence(full, bld),
+      Tnl: beam(nlModel, 0, 0), Tnf: beam(nfModel, 0, 0), Tnn: beam(nnModel, 0, 0), ray: rp, el: sun.elevation,
+    };
     const te = truckEffect(s, trucks, sun, { phoneM: PHONE_M });
     if (te === 'near') { why.truckNear++; continue; }
     if (te === 'shadow') { why.truckShadow++; truckShadowRows.push(row); continue; }
@@ -157,6 +166,7 @@ function judgeVisit(visit, u, trucks, mount, why, rows, truckShadowRows, { fligh
   /* Where the leaves decide (the three canopies disagree), which agrees? */
   const leafy = scored.filter((r) => (r.Ton >= 0.5) !== (r.Toff >= 0.5));
   const leafTest = { n: leafy.length, calendar: leafy.filter((r) => r.modelSun === r.phoneSun).length, on: leafy.filter((r) => (r.Ton >= 0.5) === r.phoneSun).length, off: leafy.filter((r) => (r.Toff >= 0.5) === r.phoneSun).length };
+  const whatIf = whatIfs(scored);
   const both = [...rows, ...truckShadowRows].sort((a, b) => a.t - b.t);
   const sb = sunOrShadeAround(both);
   let tsDark = 0, tsN = 0;
@@ -167,8 +177,51 @@ function judgeVisit(visit, u, trucks, mount, why, rows, truckShadowRows, { fligh
   return {
     t0: visit[0].t, t1: visit[visit.length - 1].t, flight, flightEnd, leaf, mount,
     usable: u.length, trucks: trucks.length, anchors: trucks.reduce((a, tr) => a + tr.anchors.length, 0), spread,
-    why, faint, clear: so.clear, sunLux: so.sunLux, shadeLux: so.shadeLux, scored, tally: tally(scored), leafTest, truckShadow: { n: tsN, dark: tsDark },
+    why, faint, clear: so.clear, sunLux: so.sunLux, shadeLux: so.shadeLux, scored, tally: tally(scored), leafTest, truckShadow: { n: tsN, dark: tsDark }, whatIf,
   };
+}
+
+const median = (a) => { const b = a.filter(Number.isFinite).sort((x, y) => x - y); return b.length ? b[b.length >> 1] : NaN; };
+
+/**
+ * The what-ifs over scored readings (shade-ray-check.js): agreement with the
+ * model as it is, without leaves below the lowest branch, without the solid
+ * fill under dense crowns, and without both; and for the readings the model
+ * calls shade and the phone sun, what stopped the light and how high.
+ */
+export function whatIfs(scored) {
+  const agree = (key) => scored.filter((r) => (r[key] >= 0.5) === r.phoneSun).length;
+  const dark = scored.filter((r) => !r.modelSun && r.phoneSun && r.ray);
+  const share = (p) => median(dark.map((r) => (r.ray.total > 0 ? r.ray.tau[p] / r.ray.total : NaN)));
+  return {
+    n: scored.length, asIs: agree('T'), noLowLeaves: agree('Tnl'), noFill: agree('Tnf'), neither: agree('Tnn'),
+    dark: {
+      n: dark.length,
+      shares: { measured: share('measured'), fill: share('fill'), leafLow: share('leafLow'), leafHigh: share('leafHigh') },
+      heightM: median(dark.map((r) => r.ray.heightOver)), distM: median(dark.map((r) => r.ray.distM)), elevation: median(dark.map((r) => r.el)),
+      flipNoLow: dark.filter((r) => r.Tnl >= 0.5).length, flipNoFill: dark.filter((r) => r.Tnf >= 0.5).length, flipNeither: dark.filter((r) => r.Tnn >= 0.5).length,
+      bareSun: dark.filter((r) => r.Toff >= 0.5).length,
+    },
+    /* Behind a building, the phone read sun: how bright, against the visit's face-on sun. */
+    building: scored.filter((r) => r.cls === 'building' && r.phoneSun).map((r) => r.lux / Math.max(1e-6, r.gain)),
+  };
+}
+
+export function whatIfLines(w, sunLux) {
+  if (!w?.n) return [];
+  const p = (x) => (Number.isFinite(x) ? `${Math.round(100 * x)}%` : '-');
+  const out = [`  what-ifs: agree as modelled ${w.asIs}/${w.n}; no leaves below the lowest branch ${w.noLowLeaves}; no solid fill under dense crowns ${w.noFill}; neither ${w.neither}`];
+  const d = w.dark;
+  if (d.n) {
+    out.push(`  model shade where the phone read sun (${d.n}): light stopped a median ${Number.isFinite(d.heightM) ? d.heightM.toFixed(1) : '?'} m up, ${Number.isFinite(d.distM) ? Math.round(d.distM) : '?'} m away, sun ${Number.isFinite(d.elevation) ? Math.round(d.elevation) : '?'} degrees up;`);
+    out.push(`    of the shade on those rays (median shares): laser-measured ${p(d.shares.measured)}, fill under dense crowns ${p(d.shares.fill)}, leaves below the lowest branch ${p(d.shares.leafLow)}, leaves among the branches ${p(d.shares.leafHigh)}`);
+    out.push(`    turned to sun by: no low leaves ${d.flipNoLow}, no fill ${d.flipNoFill}, neither ${d.flipNeither}, bare trees ${d.bareSun}`);
+  }
+  if (w.building.length && sunLux) {
+    const r = w.building.map((x) => x / sunLux).sort((a, b) => a - b);
+    out.push(`  behind a building yet read as sun (${r.length}): face-on brightness ${p(r[0])}-${p(r[r.length - 1])} of full sun, median ${p(r[r.length >> 1])}`);
+  }
+  return out;
 }
 
 /**
@@ -239,14 +292,17 @@ export async function fieldCheck(day) {
       if (tr) out.push(`    tree shade: the phone read sun at ${tr.phoneSun} of ${tr.n} (leaves gone, or the crown thinner than the model)`);
       const L = r.leafTest;
       if (L.n) out.push(`  where the leaves decide (${L.n} readings): the phone agrees with the calendar's ${Math.round(100 * r.leaf)}% leaves at ${L.calendar}, with full leaves at ${L.on}, with bare trees at ${L.off}`);
+      out.push(...whatIfLines(r.whatIf, r.sunLux));
     }
   }
   const T = tally(all), n = all.length, ag = all.filter((x) => x.modelSun === x.phoneSun).length;
+  const wDay = whatIfs(all);
   out.push(`\nDAY: ${n} readings scored, agree ${ag} (${pct(ag, n)}).`);
   out.push(`  where the model is sure: ${classLine(T)}`);
   out.push(`  open = sure of sun; building = behind a building (no leaves involved); tree = deep in a crown's shade; edge = unsure.`);
   out.push(`  where the leaves decide (${leafAll.n} readings): the phone agrees with the calendar's leaves at ${leafAll.calendar}, full leaves at ${leafAll.on}, bare trees at ${leafAll.off}.`);
   out.push(`  the truck's shadow: the phone read ${tsDark} of ${tsN} judged readings there as shade.`);
+  out.push(...whatIfLines({ ...wDay, building: [] }, null));
   return out.join('\n');
 }
 

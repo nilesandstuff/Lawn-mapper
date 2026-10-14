@@ -47,10 +47,14 @@ const SOLID_BELOW = 0.03; // under a layer that let through less than this share
  * Build the model over `grid` (grid.js, cells ~1 m) from columns `cols`
  * (las.js), with `shift` [dx, dy] in 3857 m applied to every point.
  *
+ * `fillUnder: false` leaves the space under a dense layer as measured (the
+ * field check's what-if: are the filled columns under dense crowns what
+ * darkens it near trees?).
+ *
  * Returns { grid, w, h, dz, z0, nz, ground (Float32 per column, absolute m),
  *           mu (Float32 w*h*nz, per meter), top (highest cube with mu > 0, m) }.
  */
-export function buildCanopy(cols, grid, { shift = null, dz = 1, opaqueCanopy = false, pool = 1, minPulses = 4 } = {}) {
+export function buildCanopy(cols, grid, { shift = null, dz = 1, opaqueCanopy = false, pool = 1, minPulses = 4, fillUnder = true } = {}) {
   const { w, h } = grid;
   const N = w * h;
 
@@ -138,7 +142,7 @@ export function buildCanopy(cols, grid, { shift = null, dz = 1, opaqueCanopy = f
        pulses got through, down to the grass, the column is opaque. A crown
        that lets light through is left as measured. */
     const total = entered;
-    if (total >= minPulses * 0.5) {
+    if (fillUnder && total >= minPulses * 0.5) {
       let below = total;
       for (let l = nz - 1; l >= 0; l--) {
         below -= src[base + l];

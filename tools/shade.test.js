@@ -846,6 +846,46 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
 }
 
 {
+  /* Where the model's shade comes from along a low sun's ray (tools/shade-ray-check.js; owner,
+     2026-10-14: is the leaf filling lowering the crowns?). A tall leaf-off tree, crown 8-16 m
+     up, with a shrub at 2.5-3.5 m touching it -- one clump, so its leaves start at the shrub's
+     height -- and a phone 12 m north of the trunk with the sun low in the south, its ray
+     passing under the crown. */
+  const { canopyParts, rayParts, branchFloor } = await import('./shade-ray-check.js');
+  const lat = 40, k = mercScale(lat);
+  const grid = gridOver([0, 0, 60 / k, 60 / k], 1, lat);
+  let seed = 5;
+  const rnd = () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const pts = [];
+  for (let e = 0.125; e < 60; e += 0.25) for (let n = 0.125; n < 60; n += 0.25) {
+    const inTree = Math.hypot(e - 30, n - 30) < 6, inShrub = e >= 35.5 && e < 40 && n >= 27 && n < 33;
+    if (inTree && rnd() < 0.3) { pts.push([e, n, 108 + rnd() * 8, 1, 1, 2], [e, n, 100, 2, 2, 2]); continue; }
+    if (inShrub && rnd() < 0.5) { pts.push([e, n, 102.5 + rnd(), 1, 1, 2], [e, n, 100, 2, 2, 2]); continue; }
+    pts.push([e, n, 100, 2, 1, 1]);
+  }
+  const cols = makeColumns(pts.length);
+  pts.forEach(([e, n, z, c, r, nr], i) => { cols.x[i] = e / k; cols.y[i] = n / k; cols.z[i] = z; cols.cls[i] = c; cols.ret[i] = r; cols.nret[i] = nr; });
+  const model = buildCanopy(cols, grid);
+  const season = seasonalCanopy(cols, model);
+  const site = { model, season, cols, grid, shift: null };
+  const at = (e, n) => Math.floor(60 - n) * grid.w + Math.floor(e);
+  const fl = branchFloor(site);
+  check('ray check: the lowest branch the laser saw is the crown\'s, 8 m, under the tree and the shrub\'s under the shrub', Math.abs(fl[at(30, 30)] - 8) < 0.5 && fl[at(38, 30)] < 3.6, `${fl[at(30, 30)]} ${fl[at(38, 30)]}`);
+  const cp = canopyParts(site, season.muOn);
+  const R = Math.PI / 180, el = 20 * R, dir = [0, -Math.cos(el), Math.sin(el)]; // sun due south, 20 degrees up
+  const gx = 30, gy = 60 - 42, z = groundAt(model, gx, gy) + 1.27;
+  const asIs = transmittance({ ...model, mu: season.muOn }, gx, gy, z, dir), noLow = transmittance({ ...model, mu: cp.noLowLeaves }, gx, gy, z, dir);
+  const rp = rayParts(model, cp.parts, gx, gy, z, dir);
+  check('ray check: the leaves put below the crown stop a low sun that passes under it; without them it reaches the phone',
+    asIs < 0.5 && noLow > 0.9 && rp.tau.leafLow / rp.total > 0.9 && rp.heightOver > 2 && rp.heightOver < 8, `${asIs.toFixed(2)} ${noLow.toFixed(2)} ${JSON.stringify(rp)}`);
+  const sum = new Float32Array(cp.parts.measured.length);
+  for (const p of Object.values(cp.parts)) for (let i = 0; i < sum.length; i++) sum[i] += p[i];
+  let worst = 0;
+  for (let i = 0; i < sum.length; i++) worst = Math.max(worst, Math.abs(sum[i] - season.muOn[i]));
+  check('ray check: the parts add up to the model', worst < 1e-5, worst);
+}
+
+{
   /* Shade usage and errors (worker/src/shade-usage.js): visitors only, nothing that places anyone. */
   const { isAutomated, scrub, usageReport } = await import('../worker/src/shade-usage.js');
   const phone = 'Mozilla/5.0 (Linux; Android 14; SM-G998U) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Mobile Safari/537.36';
