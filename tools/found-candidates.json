@@ -1,6 +1,6 @@
 {
   "foundBy": "tools/find-parcels.js",
-  "foundAt": "2026-10-13",
+  "foundAt": "2026-10-14",
   "note": "Candidates only, from parcel_gaps. Nothing here is coverage until verify-counties.js says so.",
   "candidates": [
     {
