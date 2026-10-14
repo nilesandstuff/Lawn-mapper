@@ -150,7 +150,7 @@ async function scoreTile(site, tile, trucks, mount, why, rows, truckShadowRows) 
     const row = {
       t: s.t, lux: s.lux, gain: sunGain(sunOffFace(s.up, sun.elevation, sun.azimuth)), T: full[0], Ton: beam(onModel, 0, 0), Toff: beam(offModel, 0, 0), cls: confidence(full, bld),
       Tnl: beam(nlModel, 0, 0), Tnf: beam(nfModel, 0, 0), Tnn: beam(nnModel, 0, 0), Tc7: beam(c7Model, 0, 0), Tc5: beam(c5Model, 0, 0), ray: rp, el: sun.elevation,
-      off: Float32Array.from(OFFSETS, ([dx, dy]) => beam(model, dx, dy)),
+      off: Float32Array.from(OFFSETS, ([dx, dy]) => beam(model, dx, dy)), acc: s.acc,
     };
     const te = truckEffect(s, trucks, sun, { phoneM: PHONE_M });
     if (te === 'near') { why.truckNear++; continue; }
@@ -173,6 +173,7 @@ function judgeVisit(visit, u, trucks, mount, why, rows, truckShadowRows, { fligh
   const leafTest = { n: leafy.length, calendar: leafy.filter((r) => r.modelSun === r.phoneSun).length, on: leafy.filter((r) => (r.Ton >= 0.5) === r.phoneSun).length, off: leafy.filter((r) => (r.Toff >= 0.5) === r.phoneSun).length };
   const whatIf = whatIfs(scored);
   whatIf.offsets = offsetScan(scored);
+  whatIf.ceiling = gpsCeiling(scored);
   const both = [...rows, ...truckShadowRows].sort((a, b) => a.t - b.t);
   const sb = sunOrShadeAround(both);
   let tsDark = 0, tsN = 0;
@@ -231,6 +232,46 @@ export function offsetScan(scored) {
   return { counts, n: scored.length, atZero: counts[z], best: { e: OFFSETS[b][0], n: OFFSETS[b][1], agree: counts[b] } };
 }
 
+/**
+ * THE GPS CEILING: if the model were exactly right and the phone's fix were
+ * off by GPS error alone (a round Gaussian of sigma m, or each reading's
+ * own reported accuracy as a 68% radius), how often would the phone agree
+ * with the model at the recorded spot? Per class: { cls: { n, actual,
+ * sigma2, sigma3, own } } as shares. Uses the moved-track beams (OFFSETS).
+ */
+export function gpsCeiling(scored) {
+  const zero = OFFSETS.findIndex(([e, n]) => !e && !n);
+  const p = (r, sig) => {
+    let ws = 0, wsun = 0;
+    OFFSETS.forEach(([e, n], j) => { const wt = Math.exp(-(e * e + n * n) / (2 * sig * sig)); ws += wt; if (r.off[j] >= 0.5) wsun += wt; });
+    const pSun = wsun / ws, s0 = r.off[zero] >= 0.5;
+    return s0 ? pSun : 1 - pSun;
+  };
+  const out = {};
+  for (const r of scored) {
+    if (!r.off) continue;
+    const c = (out[r.cls] ||= { n: 0, actual: 0, sigma2: 0, sigma3: 0, own: 0, accs: [] });
+    c.n++;
+    if (r.modelSun === r.phoneSun) c.actual++;
+    c.sigma2 += p(r, 2); c.sigma3 += p(r, 3);
+    const own = Number.isFinite(r.acc) && r.acc > 0 ? Math.min(6, r.acc / 1.5) : 2;
+    c.own += p(r, Math.max(0.5, own));
+    if (Number.isFinite(r.acc)) c.accs.push(r.acc);
+  }
+  for (const c of Object.values(out)) {
+    for (const k of ['actual', 'sigma2', 'sigma3', 'own']) c[k] /= c.n;
+    c.accs.sort((a, b) => a - b);
+    c.accMedian = c.accs.length ? c.accs[c.accs.length >> 1] : null;
+    delete c.accs;
+  }
+  return out;
+}
+
+export function ceilingLine(g) {
+  const p = (x) => `${Math.round(100 * x)}%`;
+  return `  GPS ceiling (a perfect model read through GPS error): ${['open', 'building', 'tree', 'edge'].filter((k) => g[k]).map((k) => `${k}: actual ${p(g[k].actual)}, ceiling ${p(g[k].own)} at the phone's own accuracy (median ${g[k].accMedian ?? '?'} m), ${p(g[k].sigma2)} at 2 m, ${p(g[k].sigma3)} at 3 m`).join(' | ')}`;
+}
+
 export function offsetLine(o) {
   if (!o?.n) return null;
   const { e, n, agree } = o.best;
@@ -242,6 +283,7 @@ export function whatIfLines(w, sunLux) {
   const p = (x) => (Number.isFinite(x) ? `${Math.round(100 * x)}%` : '-');
   const ol = offsetLine(w.offsets);
   const out = ol ? [ol] : [];
+  if (w.ceiling) out.push(ceilingLine(w.ceiling));
   out.push(`  what-ifs: agree as modelled ${w.asIs}/${w.n}; no leaves below the lowest branch ${w.noLowLeaves}; no solid fill under dense crowns ${w.noFill}; neither ${w.neither}; crowns clumped (x0.7 per meter) ${w.clumped7}, (x0.5) ${w.clumped5}`);
   const eb = w.byElevation.filter((b) => b.n);
   if (eb.length) out.push(`  through trees, by sun height: ${eb.map((b) => `${b.a}-${b.b} deg: agree ${b.asIs}/${b.n} (too dark ${b.tooDark}, too bright ${b.tooBright}; clumped x0.7 ${b.c7}, x0.5 ${b.c5})`).join(' | ')}`);
@@ -332,6 +374,7 @@ export async function fieldCheck(day) {
   const T = tally(all), n = all.length, ag = all.filter((x) => x.modelSun === x.phoneSun).length;
   const wDay = whatIfs(all);
   wDay.offsets = offsetScan(all);
+  wDay.ceiling = gpsCeiling(all);
   out.push(`\nDAY: ${n} readings scored, agree ${ag} (${pct(ag, n)}).`);
   out.push(`  where the model is sure: ${classLine(T)}`);
   out.push(`  open = sure of sun; building = behind a building (no leaves involved); tree = deep in a crown's shade; edge = unsure.`);

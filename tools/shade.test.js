@@ -912,6 +912,13 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   const j = OFFSETS.findIndex(([e, n]) => e === 2 && n === -1);
   const scan = offsetScan([...Array(10)].map((_, i) => ({ phoneSun: i % 2 === 0, off: Float32Array.from(OFFSETS, (_, q) => (q === j ? (i % 2 === 0 ? 1 : 0) : 0.3)) })));
   check('field check: the GPS move that fits best is found, against the track as recorded', scan.best.e === 2 && scan.best.n === -1 && scan.best.agree === 10 && scan.atZero === 5, JSON.stringify(scan.best));
+  const { gpsCeiling } = await import('./shade-field-check.js');
+  const z0 = OFFSETS.findIndex(([e, n]) => !e && !n);
+  const atEdge = { cls: 'edge', phoneSun: true, modelSun: true, acc: 3, off: Float32Array.from(OFFSETS, ([e]) => (e >= 0 ? 1 : 0)) };
+  const inOpen = { cls: 'open', phoneSun: true, modelSun: true, acc: 3, off: new Float32Array(OFFSETS.length).fill(1) };
+  const gc = gpsCeiling([atEdge, inOpen]);
+  check('field check: a perfect model read through GPS error agrees everywhere in the open, little more than a coin toss on a shadow edge',
+    gc.open.own === 1 && gc.edge.own > 0.5 && gc.edge.own < 0.7 && atEdge.off[z0] === 1, JSON.stringify(gc));
 }
 
 {
