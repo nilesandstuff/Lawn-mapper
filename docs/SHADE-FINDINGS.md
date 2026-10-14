@@ -245,6 +245,13 @@ around it (GPS error):
   are GPS within a few meters of a wall.
 - Near trees the model is too dark twice as often as too bright; a third of
   those misses (127 of 414) are one new build the lidar predates.
+- WITHOUT THE CLOUD RULE (2026-10-14; the owner records only in clear sun,
+  so a run of shade over a minute is no longer dropped as a likely cloud):
+  the same day, 4,078 readings scored (195 more), agreement 81% still;
+  open 95% of 1,899, behind a building 87% of 86, deep tree shade 55% of
+  51 (from 33% of 33: the long shade the rule dropped was real shade),
+  edges 68%. Where the leaves decide (466): calendar 284, full 252, bare
+  214.
 - The truck: at every stop the anchors where the phone is set down and
   picked up agreed within 0-2.5 m (one spot per stop). Its shadow, with
   the sun 25-39 degrees up, falls almost entirely inside the 10 ft margin.
