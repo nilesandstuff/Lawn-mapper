@@ -331,6 +331,26 @@ leaves from its 10th-percentile return height, so a shrub joined to a tall
 tree starts the tree's leaves low; tested on a synthetic tree), but on
 these readings it carries none of the error.
 
+### 12. No steady GPS bias; the stops' best moves are small and scattered (field check, 2026-10-14)
+
+Owner: "my gps should also be adjusted to match our version of reality."
+FRAMES: the lidar is moved from NAD83 into the global frame the phone's GPS
+uses (datum.js, about 1 m); the plate's drift since the 2018 flight is
+about 15 cm. The check view also moved the lidar onto the photo (the
+match's left-over move) but NOT the readings; fixed 2026-10-14 (truth-ui.js
+moveTrack). The field check never applies the photo move, so its numbers
+(9, 11) were in one frame all along.
+GPS BIAS: each stop's whole track moved in 1 m steps up to 4 m, scored
+against the same model (2026-10-13, workflow 35):
+- the day as a whole fits best NOT moved (3,143 of 3,913);
+- stop by stop the best move scatters: 1E 1N, 4E 4N (the new build), 2W 1S,
+  none, none, 2E 1N, 1E 1S, 1W 1N, 1E 3N, 1E 4N, none;
+- gains are small, 0-13 readings a stop (the best of 81 moves always gains
+  a little by chance). 4:28 PM: 113 to 126 of 195 at 1E 3N, still 65%.
+So a phone GPS that wanders a meter or few from stop to stop, and no
+correction that fits the day. Fitting each stop's move to the readings
+would score the model against itself; not done.
+
 ## Speculation
 
 - Mixed-season flights (7) may be better treated as leaf-on for the
@@ -344,6 +364,10 @@ these readings it carries none of the error.
 - Deep tree shade read as sun (9) -- not the new build's (its readings
   were edges): trees cut or thinned since the 2018 flight, crowns called evergreen that are not, or GPS at a crown's edge.
   Per-tree, not tested.
+
+- Per-stop GPS wander (12) may be behind part of the edge misses (1,867
+  readings at 66%); an independent fix (the truck's resting spot against
+  the photo, a surveyed point) would test it without circularity.
 
 - The low-leaf mechanism (11) may matter on lots with tall, high-crowned
   trees joined to understory and a low sun across open lawn; not seen on
