@@ -392,6 +392,54 @@ only (B, the fairer one for trees).
   (93%, 0.80; small crowns worse, 73%), each column's own top (93%, 0.82;
   edge 82%).
 
+### 14. The shipped fill is the best of those tried; GPS error explains about 20 of the 34 missing points at shadow edges (2026-10-14)
+
+FILL CHOICES (seasonal.js `fill`; all scored on finding 13's 32 NEON
+windows, leaf-on model without fill in trees). None beat the shipped fill by
+more than a point or two at open ground near trees; the most balanced, no
+footprint widening plus each column's own top (open beam 0.84 against
+leaf-on 0.85, edges 0.42/0.39, deep 0.11/0.12), was then held to NEON's
+GROUND LIGHT SENSORS (finding 1's eight sites, 2023, clear leaf-on days,
+same code):
+
+| Site | measured | shipped fill | no widening + own top |
+|---|---|---|---|
+| SCBI | 1.9% | 2.4% | 8.9% |
+| ORNL | 3.1% | 3.3% | 6.1% |
+| HARV | 2.8% | 1.6% | 2.7% |
+| BART | 1.2% | 0.8% | 1.8% |
+| DELA | 2.4% | 4.3% | 6.4% |
+| UKFS | 3.4% | 3.0% | 6.9% |
+| GRSM | 1.5% | 1.8% | 2.8% |
+| MLBS | 5.6% | 2.3% | 4.0% |
+
+Mean miss 1.0 point shipped, 2.6 the alternative: the closing and the
+tallest-neighbour top are what make a closed canopy's floor right. On the
+owner's 2026-10-13 readings (21% leaves) the alternative gained 45 of 3,913
+(80% to 81%). Not shipped. Also tried: crowns thinned to the edge, leaves
+where the winter branches are, crown base per column, a lower leaf-area cap
+(4, 3), own top only within 2-4 m of the edge -- none moved open ground by
+more than 0.02 of the beam.
+
+GPS CEILING (tools/shade-field-check.js gpsCeiling; 2026-10-13): if the
+model were exact and the phone's fix wandered by its own reported accuracy
+(median 3.8 m), agreement would be at most: open 100% (actual 95%),
+behind buildings 99% (91%), deep tree shade 100% (49%), shadow edges ~80%
+(66%). So at edges GPS costs about 20 of the 34 missing points; deep tree
+shade's misses are not GPS at all (the trees; see 9, 10).
+
+3D GROUND: the light has always been computed on the lidar's ground (each
+ray starts at its point's ground height; the beam falls on the ground's own
+slope; hillsides shade themselves). Tested on bare slopes of 6-31 degrees with
+the sun 10-35 degrees up: self-shadow exactly where the sun is behind the
+slope, none from the 1 m grid's steps. Only the picture lay flat; since
+2026-10-14 it drapes on the lidar ground when the map is tilted.
+
+Also seen (not acted on): in NEON's leaf-off and in-between seasons the
+model is far too bright on forest floors (SCBI leaf-off 24.6% measured,
+45.7% model; ORNL 27.9% / 58.2%; between: SCBI 5.9% / 10.3%, ORNL 6.8% /
+16.1%) -- finding 4's winter question, and October is "between".
+
 ## Speculation
 
 - Mixed-season flights (7) may be better treated as leaf-on for the
