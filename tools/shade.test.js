@@ -851,7 +851,7 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   const phone = 'Mozilla/5.0 (Linux; Android 14; SM-G998U) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Mobile Safari/537.36';
   check('automated callers are told apart: headless Chrome, node, curl, GitHub, Claude, bots, no agent; a phone is a visitor',
     ['Mozilla/5.0 HeadlessChrome/129.0', 'node', 'undici', 'curl/8.5', 'python-requests/2.31', 'GitHub-Hookshot/1', 'Claude-User/1.0', 'Googlebot/2.1', ''].every(isAutomated) && !isAutomated(phone));
-  check('error text keeps no coordinates or house numbers', scrub('No lidar at 42.88270,-85.81784 for 7214 Elm') === 'No lidar at #,# for # Elm', scrub('No lidar at 42.88270,-85.81784 for 7214 Elm'));
+  check('error text keeps no coordinates or house numbers', scrub('No lidar at 12.34567,-98.76543 for 4321 Elm') === 'No lidar at #,# for # Elm', scrub('No lidar at 12.34567,-98.76543 for 4321 Elm'));
   const qs = scrub('Failed to fetch https://x/api/geocode?q=12%20Elm%20St%20Springfield (502) at shade.js:88');
   check('error text keeps no query string: a failing URL\'s address or point is cut', qs === 'Failed to fetch https://x/api/geocode?… (#) at shade.js:88' && !/Elm/.test(qs), qs);
   const sq = new DatabaseSync(':memory:');
@@ -867,7 +867,7 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   await post('/api/shade/event', { kind: 'built', detail: '42 s, lined up', client });
   await post('/api/shade/event', { kind: 'open', client }, 'Mozilla/5.0 HeadlessChrome/129.0');
   await post('/api/shade/event', { kind: 'open', client, self: true });
-  await post('/api/shade/error', { where: 'status', message: 'The map would not load at 42.88270,-85.81784', client });
+  await post('/api/shade/error', { where: 'status', message: 'The map would not load at 12.34567,-98.76543', client });
   await post('/api/shade/error', { where: 'status', message: 'boom' }, 'node');
   const ev = sq.prepare('SELECT kind, client, detail FROM shade_events ORDER BY id').all(), er = sq.prepare('SELECT source, message FROM shade_errors').all();
   check('usage: a visitor\'s events and errors kept; automated callers and the owner\'s own device are not; numbers blanked',
