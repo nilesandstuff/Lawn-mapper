@@ -34,6 +34,9 @@ import { canopyParts, rayParts } from './shade-ray-check.js';
 
 const ZONE = 'America/New_York';
 const PHONE_M = 1.27, EDGE_M = 25, NEAR_M = 3;
+/* GPS offsets tried, meters east and north (owner, 2026-10-14: is the track where the model is?). */
+export const OFFSETS = [];
+for (let n = -4; n <= 4; n++) for (let e = -4; e <= 4; e++) OFFSETS.push([e, n]);
 const hm = (ms) => new Date(ms).toLocaleTimeString('en-US', { timeZone: ZONE, hour: 'numeric', minute: '2-digit' });
 
 /** 0-based day of the year, 29 Feb folded onto 28 Feb (as the light worker). */
@@ -147,6 +150,7 @@ async function scoreTile(site, tile, trucks, mount, why, rows, truckShadowRows) 
     const row = {
       t: s.t, lux: s.lux, gain: sunGain(sunOffFace(s.up, sun.elevation, sun.azimuth)), T: full[0], Ton: beam(onModel, 0, 0), Toff: beam(offModel, 0, 0), cls: confidence(full, bld),
       Tnl: beam(nlModel, 0, 0), Tnf: beam(nfModel, 0, 0), Tnn: beam(nnModel, 0, 0), Tc7: beam(c7Model, 0, 0), Tc5: beam(c5Model, 0, 0), ray: rp, el: sun.elevation,
+      off: Float32Array.from(OFFSETS, ([dx, dy]) => beam(model, dx, dy)),
     };
     const te = truckEffect(s, trucks, sun, { phoneM: PHONE_M });
     if (te === 'near') { why.truckNear++; continue; }
@@ -168,6 +172,7 @@ function judgeVisit(visit, u, trucks, mount, why, rows, truckShadowRows, { fligh
   const leafy = scored.filter((r) => (r.Ton >= 0.5) !== (r.Toff >= 0.5));
   const leafTest = { n: leafy.length, calendar: leafy.filter((r) => r.modelSun === r.phoneSun).length, on: leafy.filter((r) => (r.Ton >= 0.5) === r.phoneSun).length, off: leafy.filter((r) => (r.Toff >= 0.5) === r.phoneSun).length };
   const whatIf = whatIfs(scored);
+  whatIf.offsets = offsetScan(scored);
   const both = [...rows, ...truckShadowRows].sort((a, b) => a.t - b.t);
   const sb = sunOrShadeAround(both);
   let tsDark = 0, tsN = 0;
@@ -213,10 +218,31 @@ export function whatIfs(scored) {
   };
 }
 
+/**
+ * Agreement with the whole track moved by each of OFFSETS: { counts per
+ * offset, n, best: { e, n, agree }, atZero }. A real GPS bias shows as the
+ * same best move visit after visit; noise as a scatter of small gains.
+ */
+export function offsetScan(scored) {
+  const counts = OFFSETS.map((_, j) => scored.filter((r) => r.off && (r.off[j] >= 0.5) === r.phoneSun).length);
+  const z = OFFSETS.findIndex(([e, n]) => !e && !n);
+  let b = z;
+  counts.forEach((c, j) => { if (c > counts[b] || (c === counts[b] && Math.hypot(...OFFSETS[j]) < Math.hypot(...OFFSETS[b]))) b = j; });
+  return { counts, n: scored.length, atZero: counts[z], best: { e: OFFSETS[b][0], n: OFFSETS[b][1], agree: counts[b] } };
+}
+
+export function offsetLine(o) {
+  if (!o?.n) return null;
+  const { e, n, agree } = o.best;
+  return `  GPS moved to fit best: ${!e && !n ? 'not moved (as recorded fits best)' : `${Math.abs(e)} m ${e >= 0 ? 'east' : 'west'}, ${Math.abs(n)} m ${n >= 0 ? 'north' : 'south'}`}: agree ${agree}/${o.n} against ${o.atZero} as recorded`;
+}
+
 export function whatIfLines(w, sunLux) {
   if (!w?.n) return [];
   const p = (x) => (Number.isFinite(x) ? `${Math.round(100 * x)}%` : '-');
-  const out = [`  what-ifs: agree as modelled ${w.asIs}/${w.n}; no leaves below the lowest branch ${w.noLowLeaves}; no solid fill under dense crowns ${w.noFill}; neither ${w.neither}; crowns clumped (x0.7 per meter) ${w.clumped7}, (x0.5) ${w.clumped5}`];
+  const ol = offsetLine(w.offsets);
+  const out = ol ? [ol] : [];
+  out.push(`  what-ifs: agree as modelled ${w.asIs}/${w.n}; no leaves below the lowest branch ${w.noLowLeaves}; no solid fill under dense crowns ${w.noFill}; neither ${w.neither}; crowns clumped (x0.7 per meter) ${w.clumped7}, (x0.5) ${w.clumped5}`);
   const eb = w.byElevation.filter((b) => b.n);
   if (eb.length) out.push(`  through trees, by sun height: ${eb.map((b) => `${b.a}-${b.b} deg: agree ${b.asIs}/${b.n} (too dark ${b.tooDark}, too bright ${b.tooBright}; clumped x0.7 ${b.c7}, x0.5 ${b.c5})`).join(' | ')}`);
   const d = w.dark;
@@ -305,6 +331,7 @@ export async function fieldCheck(day) {
   }
   const T = tally(all), n = all.length, ag = all.filter((x) => x.modelSun === x.phoneSun).length;
   const wDay = whatIfs(all);
+  wDay.offsets = offsetScan(all);
   out.push(`\nDAY: ${n} readings scored, agree ${ag} (${pct(ag, n)}).`);
   out.push(`  where the model is sure: ${classLine(T)}`);
   out.push(`  open = sure of sun; building = behind a building (no leaves involved); tree = deep in a crown's shade; edge = unsure.`);

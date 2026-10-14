@@ -461,7 +461,7 @@ async function build(site) {
   });
   /* A visit's field readings, when the readings page sent us here (admin). */
   const truth = new URLSearchParams(location.search).get('truth');
-  if (truth) import('./shade/truth-ui.js').then((m) => m.startTruth({ map, sun: view.sun, spec: truth, bounds: siteBounds(site) })).catch((e) => status(e.message, 'bad'));
+  if (truth) import('./shade/truth-ui.js').then((m) => m.startTruth({ map, sun: view.sun, spec: truth, bounds: siteBounds(site), moveM: fit?.confident ? [fit.east, fit.north] : null })).catch((e) => status(e.message, 'bad'));
 }
 
 const fmtMove = (e, n) => (e === null || n === null ? '—'

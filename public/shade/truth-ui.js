@@ -23,7 +23,27 @@ async function getJson(url, init) {
   return res.json();
 }
 
-export async function startTruth({ map, sun, spec, bounds = null }) {
+/**
+ * The track moved as the lidar was (owner, 2026-10-14: "the lidar and maps are
+ * all adjusted relative to each other, so my gps should also be adjusted to
+ * match our version of reality"). The phone's GPS is in the same global frame
+ * the datum correction puts the lidar in (ITRF/WGS84; the plate's drift since
+ * the flight is centimeters), so the datum move is not the track's. The
+ * photo match's left-over move IS: it carries the lidar onto the photo, and
+ * the readings must follow it to sit on the same ground. `moveM` [east,
+ * north] in meters; fix rows are [t, lat, lng, ...].
+ */
+export function moveTrack(fix, moveM) {
+  if (!moveM || (!moveM[0] && !moveM[1])) return fix;
+  return fix.map((r) => {
+    const out = r.slice();
+    out[1] = r[1] + moveM[1] / 111320;
+    out[2] = r[2] + moveM[0] / (111320 * Math.cos((r[1] * Math.PI) / 180));
+    return out;
+  });
+}
+
+export async function startTruth({ map, sun, spec, bounds = null, moveM = null }) {
   const [session, a, b, mo, mn, ms] = String(spec).split('|');
   /* The phone's angle on the hopper, fitted on the whole day (log.js). */
   const dayMount = mo !== undefined && mo !== '' ? { offset: Number(mo), n: Number(mn), spread: Number(ms), day: true } : null;
@@ -41,6 +61,7 @@ export async function startTruth({ map, sun, spec, bounds = null }) {
   async function load() {
     say('Reading the visit…');
     const d = await getJson(`/api/shade/readings/data?session=${encodeURIComponent(session)}&t0=${t0}&t1=${t1}`);
+    d.fix = moveTrack(d.fix, moveM);
     st.cuts = d.cuts;
     const u = usable(joinTrack(d.fix, d.lux, { cuts: d.cuts.map(([x, y]) => [x, y]), orient: d.orient || [] }));
     say(`Asking the model about ${u.length} readings…`);
@@ -100,7 +121,8 @@ export async function startTruth({ map, sun, spec, bounds = null }) {
          <p class="dim">Phone: sun about ${Math.round(so.sunLux).toLocaleString()} lux facing it squarely, shade about ${Math.round(so.shadeLux).toLocaleString()}; each reading judged at its own angle to the sun. Model: sun where at least half the direct beam reaches the phone (${PHONE_M} m up), with the trees as they stood that day.</p>`;
     const posed = u.filter((s) => s.up).length;
     const facing = cal ? `your direction from the phone's compass, its angle on the hopper (${Math.round(cal.offset)}°) taken from ${cal.n} straight-line readings ${cal.day ? 'across the day' : 'on this visit'}, steady to ${Math.round(cal.spread)}°` : posed ? 'your direction from GPS (too few straight runs to set the compass)' : 'your direction from GPS (no orientation recorded)';
-    say(`${head}<p class="dim"><i class="sw" style="background:${COLORS.out}"></i>Left out: ${why.off} with the phone's face turned too far from the sun to tell sun from shade, ${why.behind} with the sun behind you (your shadow; ${facing}), ${why.truck} by your truck (within 10 ft of it or in its shadow; ${st.trucks.length ? `${st.trucks.length} truck spot${st.trucks.length === 1 ? '' : 's'} found from your routine, outlined` : 'no truck spot found'}), ${why.edge ? `${why.edge} near the edge of the mapped area, ` : ''}${st.cuts.length} erased stretch${st.cuts.length === 1 ? '' : 'es'}.${posed ? '' : ' No orientation in this recording: turn it on in Sensor Logger to leave out tipped readings.'}</p>`);
+    const moved = moveM && (moveM[0] || moveM[1]) ? ` Your track was moved ${Math.abs(moveM[0]).toFixed(1)} m ${moveM[0] >= 0 ? 'east' : 'west'} and ${Math.abs(moveM[1]).toFixed(1)} m ${moveM[1] >= 0 ? 'north' : 'south'} with the lidar, onto the photo.` : ' Your track is where the GPS put it (the lidar was not moved onto the photo).';
+    say(`${head}<p class="dim">${moved}</p><p class="dim"><i class="sw" style="background:${COLORS.out}"></i>Left out: ${why.off} with the phone's face turned too far from the sun to tell sun from shade, ${why.behind} with the sun behind you (your shadow; ${facing}), ${why.truck} by your truck (within 10 ft of it or in its shadow; ${st.trucks.length ? `${st.trucks.length} truck spot${st.trucks.length === 1 ? '' : 's'} found from your routine, outlined` : 'no truck spot found'}), ${why.edge ? `${why.edge} near the edge of the mapped area, ` : ''}${st.cuts.length} erased stretch${st.cuts.length === 1 ? '' : 'es'}.${posed ? '' : ' No orientation in this recording: turn it on in Sensor Logger to leave out tipped readings.'}</p>`);
   }
 
   function draw() {

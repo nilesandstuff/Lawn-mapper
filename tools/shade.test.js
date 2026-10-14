@@ -886,6 +886,19 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
 }
 
 {
+  /* The readings follow the lidar onto the photo (truth-ui.js moveTrack), and the field check's GPS offset scan. */
+  const { moveTrack } = await import('../public/shade/truth-ui.js');
+  const fx = [[1, 43, -85.5, 3, 1, 90]];
+  const mv = moveTrack(fx, [1, -2]);
+  check('check view: the track moves as the lidar did, meters east and north; no move leaves it alone',
+    Math.abs((mv[0][1] - 43) * 111320 + 2) < 1e-6 && Math.abs((mv[0][2] + 85.5) * 111320 * Math.cos(43 * Math.PI / 180) - 1) < 1e-6 && mv[0][3] === 3 && moveTrack(fx, [0, 0]) === fx && moveTrack(fx, null) === fx);
+  const { offsetScan, OFFSETS } = await import('./shade-field-check.js');
+  const j = OFFSETS.findIndex(([e, n]) => e === 2 && n === -1);
+  const scan = offsetScan([...Array(10)].map((_, i) => ({ phoneSun: i % 2 === 0, off: Float32Array.from(OFFSETS, (_, q) => (q === j ? (i % 2 === 0 ? 1 : 0) : 0.3)) })));
+  check('field check: the GPS move that fits best is found, against the track as recorded', scan.best.e === 2 && scan.best.n === -1 && scan.best.agree === 10 && scan.atZero === 5, JSON.stringify(scan.best));
+}
+
+{
   /* The trees page (public/shade/trees-ui.js): the model's columns as runs of light-stopping cubes. */
   const { treeRuns, overhead, kindOf, BANDS } = await import('../public/shade/trees-ui.js');
   const nz = 20, model = { w: 2, h: 1, nz, dz: 1, z0: 100, ground: Float32Array.from([100, 100]) };
