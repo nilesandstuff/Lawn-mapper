@@ -252,6 +252,15 @@ around it (GPS error):
   51 (from 33% of 33: the long shade the rule dropped was real shade),
   edges 68%. Where the leaves decide (466): calendar 284, full 252, bare
   214.
+- FLECKS OF SUN ARE RARE (2026-10-14; the owner re-uploaded the day's
+  exports, stored the new way: each second's median and brightest of ~4
+  samples): of 22,917 seconds, 133 (0.6%) had a brightest sample over 3x
+  the median and over 10,000 lux. Scored on medians: 3,913 readings, 80%
+  agree (81% on means); open 95%, behind a building 91%, deep tree shade
+  49% of 57, edges 66%. So averaging flecks into shade is not why the
+  phone reads sun in deep tree shade. The 4:05 PM stop (tree line along
+  one side) did not split clearly into sun and shade on medians and was
+  not scored.
 - The truck: at every stop the anchors where the phone is set down and
   picked up agreed within 0-2.5 m (one spot per stop). Its shadow, with
   the sun 25-39 degrees up, falls almost entirely inside the 10 ft margin.
