@@ -81,7 +81,12 @@ export function buildCanopy(cols, grid, { shift = null, dz = 1, opaqueCanopy = f
     if (k >= 0 && cols.z[i] - ground[k] <= MAX_OVER_M && cols.z[i] > zHigh) zHigh = cols.z[i];
   }
   if (Number.isFinite(zHigh)) zMax = zHigh;
-  const z0 = Math.floor(Math.min(...ground.filter(Number.isFinite)));
+  /* A loop, not Math.min(...ground): a long field-readings visit's box
+     holds hundreds of thousands of cells, past what one call takes
+     ("Maximum call stack size exceeded", owner, 2026-10-14). */
+  let gMin = Infinity;
+  for (let k = 0; k < ground.length; k++) if (ground[k] < gMin) gMin = ground[k];
+  const z0 = Math.floor(gMin);
   const nz = Math.max(1, Math.ceil((zMax - z0) / dz) + 1);
   /* Pulse-weighted returns per cube; returns within GRASS_M of the ground
      reached the bottom and stop nothing: they go in `floor`, which counts

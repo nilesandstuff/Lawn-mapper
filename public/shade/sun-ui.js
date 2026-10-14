@@ -445,7 +445,11 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     send({
       type: 'build', cols: c, box, lat: site.lat, lng: site.lng, shift, heightM,
       canopy: $('#sun-canopy').value, flight: season || null, tMean: st.climate?.tMean || null,
-      lot: polysOf(site.parcel?.geometry), lawn: site.lawn.flatMap((f) => polysOf(f.geometry)),
+      /* A field-readings check (site.area: the whole track's box) draws the
+         light over everything he treated -- neighbors' lots of a
+         multi-property stop and the street -- not the one parcel. */
+      lot: site.area ? [[[[site.area[0], site.area[1]], [site.area[2], site.area[1]], [site.area[2], site.area[3]], [site.area[0], site.area[3]], [site.area[0], site.area[1]]]]] : polysOf(site.parcel?.geometry),
+      lawn: site.lawn.flatMap((f) => polysOf(f.geometry)),
     });
   }
 

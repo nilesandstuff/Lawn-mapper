@@ -378,6 +378,17 @@ check('the color ramp runs dark to bright and clamps', ramp(-1).join() === '0,0,
 /* ---------------------------------------------------- canopy and rays */
 
 {
+  /* A long field-readings visit's box: 600 m square, 360,000 cells (the
+     owner's "Maximum call stack size exceeded", 2026-10-14). */
+  const lat = 43, k = mercScale(lat), grid = gridOver([0, 0, 600 / k, 600 / k], 1, lat);
+  const cols = makeColumns(400);
+  for (let i = 0; i < 400; i++) { cols.x[i] = ((i * 37) % 600) / k; cols.y[i] = ((i * 53) % 600) / k; cols.z[i] = 190 + (i % 7); cols.cls[i] = 2; cols.ret[i] = 1; cols.nret[i] = 1; }
+  let ok = false, err = '';
+  try { ok = buildCanopy(cols, grid).w === grid.w; } catch (e) { err = e.message; }
+  check('the canopy builds over a 600 m box (360,000 cells) without overflowing the stack', ok, err);
+}
+
+{
   /* A 60 m square of flat lawn at 100 m with a 10 x 10 m, 10 m tall house
      in the middle and a round crown 5-10 m up, 4 m across in radius, that
      stops half the pulses (each stopped pulse returns once, from a random
