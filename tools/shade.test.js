@@ -1090,5 +1090,17 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   check('overcast: each sky weighting sums to one; the phone\'s sees less of the low sky than the map\'s', sums.every((x) => Math.abs(x - 1) < 1e-9) && w.phone[0].w < w.map[0].w, sums.join(','));
 }
 
+{
+  const { leafScan, leafScanLine, LEAF_SCAN } = await import('./shade-field-check.js');
+  const mk = (Ton, Toff, phoneSun, scan) => ({ Ton, Toff, phoneSun, Tscan: Float32Array.from(scan) });
+  const sc = leafScan([
+    mk(0.1, 0.9, false, LEAF_SCAN.map((f) => (f >= 0.5 ? 0.2 : 0.8))), // leaves decide; phone shade: 50%+ right
+    mk(0.9, 0.9, true, LEAF_SCAN.map(() => 0.9)), // open: every share right
+    { Ton: 0.1, Toff: 0.9, phoneSun: true, Tscan: null }, // leaf-on flight: out
+  ]);
+  const ln = leafScanLine(sc);
+  check('field check leaf scan: each share scored where the leaves decide and over all; leaf-on flights out', sc.leafy.n === 1 && sc.all.n === 2 && sc.leafy.agree.join() === '0,0,0,1,1,1,1' && sc.all.agree.join() === '1,1,1,2,2,2,2' && /decide \(1\): 0% 0, 15% 0, 30% 0, 50% 1/.test(ln), ln);
+}
+
 if (failures) { console.log(`\n${failures} check(s) FAILED.`); process.exit(1); }
 console.log('\nshade map: ok');
