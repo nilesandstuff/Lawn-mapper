@@ -860,6 +860,11 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   const { pickSessions } = await import('./shade-field-check.js');
   const picked = pickSessions([{ session: 'abc', a: 0, b: 100 }, { session: 'upload day', a: 50, b: 300 }, { session: 'later', a: 400, b: 500 }]).map((r) => r.session).join(',');
   check('field check: an uploaded day wins over the pushed recording it overlaps; others stay', picked === 'upload day,later', picked);
+  const { addUp, sourceLine } = await import('./shade-field-photos.js');
+  const tly = (n, photo, model, mo, po) => ({ n, photo, model, both: model - mo, modelOnly: mo, photoOnly: po, lit: n - model - po });
+  const ph = addUp([{ source: 'county ImageService/Aerial2021', year: 2021, leaf: 'on', trees: tly(100, 10, 20, 12, 2), treesOtherSeason: tly(100, 10, 12, 5, 3) }, { source: 'mapbox', skip: 'buildings\' shadows only 1.4x darker' }, { source: 'county X', year: 2024, leaf: 'off', trees: tly(50, 4, 5, 2, 1), treesOtherSeason: tly(50, 4, 9, 6, 1) }]);
+  const pl = [...ph].map(([k, a]) => sourceLine(k, a)).join('\n');
+  check('photos against the lidar: by source year, the leafy and bare canopies both, skips counted, no places', /county 2021 \(1 square, read as 1 leaf-on\)/.test(pl) && /trees in leaf: model shade 20%, agree 86%, model only 12%, photo only 2%/.test(pl) && /county 2024[\s\S]*trees bare: model shade 10%, agree 94%/.test(pl) && /mapbox: not scored \(1 buildings' shadows only Nx darker\)/.test(pl) && !/Aerial|\d\.\d{4}/.test(pl), pl);
   const { timeline } = await import('./shade-readings.js');
   const tl = timeline([{ t: now, fixes: 290, lux: 280, orient: 295, speed: 1.3 }, { t: now + 300e3, fixes: 60, lux: 0, orient: 0, speed: null }]);
   check('readings timeline: five-minute steps with counts and mph, no places', /gps 290\s+light 280\s+orientation 295\s+3 mph/.test(tl) && /-\s*mph/.test(tl), tl);

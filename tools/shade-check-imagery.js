@@ -93,12 +93,21 @@ export async function photoCells(site, lng, lat, provider, svc = null) {
   return ontoCells(site, frame, decode(await getRetry(q, 'bytes')));
 }
 
-export async function checkLot(lng, lat) {
+/**
+ * One lot's photos scored. `everyYear`: every county flight year once (the
+ * catalogue lists some twice, as a cached copy), not just the first three;
+ * `mixed`: score a photo whose crowns are neither clearly green nor bare
+ * too, against the leafy canopy (its bare one comes back as the other
+ * season) -- the field check, tools/shade-field-photos.js.
+ */
+export async function checkLot(lng, lat, { everyYear = false, mixed = false } = {}) {
   const site = await shadeSite(lng, lat, { halfM: 110 });
   if (!site) return [{ lng, lat, skip: 'no lidar' }];
   const county = await getRetry(`${SITE}/api/county-imagery?lng=${lng}&lat=${lat}`).catch(() => null);
   const sources = [{ provider: 'mapbox', label: 'mapbox' }];
-  for (const s of (county?.services || []).slice(0, 3)) sources.push({ provider: 'county', svc: s.id, label: `county ${s.title}`, year: s.year });
+  const services = county?.services || [];
+  const picked = everyYear ? services.filter((s, i) => services.findIndex((o) => o.year === s.year) === i) : services.slice(0, 3);
+  for (const s of picked) sources.push({ provider: 'county', svc: s.id, label: `county ${s.title}`, year: s.year });
   const frame = { lng, lat, zoom: ZOOM, size: SIZE, height: SIZE };
   const out = [];
   for (const src of sources) {
@@ -107,12 +116,13 @@ export async function checkLot(lng, lat) {
       const img = decode(await getRetry(q, 'bytes'));
       const cells = ontoCells(site, frame, img);
       const ls = leafState(site, cells);
-      if (ls.leaf === 'mixed') { out.push({ lng, lat, source: src.label, year: src.year, ...ls, skip: 'crowns neither clearly green nor bare' }); continue; }
-      const ground = Uint8Array.from(cells.exg, (v) => (ls.leaf === 'on' ? (v > 0.02 ? 1 : 0) : 1));
-      const r = scorePhoto(site, { bright: cells.bright, ground, seen: cells.seen }, { suns: sunGrid, leaf: ls.leaf });
+      if (ls.leaf === 'mixed' && !mixed) { out.push({ lng, lat, source: src.label, year: src.year, ...ls, skip: 'crowns neither clearly green nor bare' }); continue; }
+      const leaf = ls.leaf === 'mixed' ? 'on' : ls.leaf;
+      const ground = Uint8Array.from(cells.exg, (v) => (leaf === 'on' ? (v > 0.02 ? 1 : 0) : 1));
+      const r = scorePhoto(site, { bright: cells.bright, ground, seen: cells.seen }, { suns: sunGrid, leaf });
       out.push({ lng, lat, source: src.label, year: src.year, px: img.width, ...ls, lidar: site.cloud.url.split('/').slice(-2)[0], flight: site.cloud.unit?.season, ...r });
     } catch (e) {
-      out.push({ lng, lat, source: src.label, error: e.message });
+      out.push({ lng, lat, source: src.label, year: src.year, error: e.message });
     }
   }
   return out;

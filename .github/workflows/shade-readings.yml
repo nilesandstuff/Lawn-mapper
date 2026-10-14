@@ -37,6 +37,10 @@ on:
         description: 'The day for the check (YYYY-MM-DD, blank = today)'
         required: false
         default: ''
+      photos:
+        description: 'Also score that day''s stops against the county photos and Mapbox: trees gone or grown since the lidar (yes/no; slow, about 3 minutes a 120 m square)'
+        required: false
+        default: 'no'
 
 jobs:
   readings:
@@ -65,3 +69,11 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           DAY: ${{ inputs.day }}
         run: node tools/shade-field-check.js
+      - name: The stops' lidar against newer photos
+        if: ${{ inputs.photos == 'yes' }}
+        timeout-minutes: 330
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DAY: ${{ inputs.day }}
+        run: node tools/shade-field-photos.js
