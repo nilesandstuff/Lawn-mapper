@@ -886,6 +886,25 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
 }
 
 {
+  /* The trees page (public/shade/trees-ui.js): the model's columns as runs of light-stopping cubes. */
+  const { treeRuns, overhead, kindOf, BANDS } = await import('../public/shade/trees-ui.js');
+  const nz = 20, model = { w: 2, h: 1, nz, dz: 1, z0: 100, ground: Float32Array.from([100, 100]) };
+  const mu = new Float32Array(2 * nz);
+  for (let l = 8; l < 16; l++) mu[l] = 0.2; // a crown 8-16 m up, about 82% a meter through
+  for (let l = 14; l < 16; l++) mu[l] = 1.5; // its top 2 m dense
+  for (let l = 0; l < 9; l++) mu[nz + l] = 4.6; // a roof 9 m tall, solid
+  const season = { classified: true, kind: Uint8Array.from([3, 1]), muOn: mu, muOff: mu };
+  const runs = treeRuns(model, mu, season);
+  check('trees page: a crown is drawn from its lowest to its highest cube, split where its density changes; the roof from the ground',
+    runs.length === 3 && runs[0].base === 8 && runs[0].top === 14 && runs[0].kind === 'deciduous' && runs[1].base === 14 && runs[1].top === 16 && runs[1].band === BANDS.length - 1
+    && runs[2].kind === 'roof' && runs[2].base === 0 && runs[2].top === 9, JSON.stringify(runs));
+  check('trees page: buildings can be left out, and everything below a height cut away',
+    treeRuns(model, mu, season, { roofs: false }).length === 2 && treeRuns(model, mu, season, { cutBelow: 10 })[0].base === 10);
+  check('trees page: the overhead sun through the crown, and a column with leaves filled in is told apart',
+    Math.abs(overhead(model, mu, 0) - Math.exp(-(0.2 * 6 + 1.5 * 2))) < 1e-6 && kindOf({ classified: true, kind: [0] }, 0, true) === 'filled' && kindOf(null, 0, false) === 'other');
+}
+
+{
   /* Shade usage and errors (worker/src/shade-usage.js): visitors only, nothing that places anyone. */
   const { isAutomated, scrub, usageReport } = await import('../worker/src/shade-usage.js');
   const phone = 'Mozilla/5.0 (Linux; Android 14; SM-G998U) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Mobile Safari/537.36';

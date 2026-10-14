@@ -37,6 +37,8 @@ import { traceLot, lotFeature, lotParam, parseLot } from './shade/trace.js';
 const $ = (s) => document.querySelector(s);
 const SAVES_KEY = 'lawnmapper.saves.v1'; // the editor's own local store (app.js), read only
 const MARGIN_M = 50;
+/** /shade-trees: the same page, drawing the trees instead of the light. */
+const TREES = typeof document !== 'undefined' && document.body?.dataset.mode === 'trees';
 const ALIGN_M = 140; // the photo frame the match runs on, at least this wide
 
 const view = { map: null, site: null, built: null };
@@ -444,6 +446,13 @@ async function build(site) {
   $('#report').innerHTML = report.join('');
   status(fit?.confident ? 'Built and lined up.' : 'Built. The photo check was not tight enough to apply; the datum correction is applied.', fit?.confident ? 'ok' : 'warn');
   track('built', `${Math.round((Date.now() - started) / 1000)} s, ${fit?.confident ? 'lined up' : 'not lined up'}`);
+
+  /* The trees page (/shade-trees): the same model drawn instead of lit (shade/trees-ui.js). */
+  if (TREES) {
+    const m = await import('./shade/trees-ui.js');
+    view.sun = await m.startTrees({ map, site, cols, box, shift, season: cloud.unit?.season, flownTo: u?.end ? day(u.end) : null });
+    return;
+  }
 
   /* Step 2: the sun over this model, in a worker (shade/sun-ui.js). */
   view.sun = startSun({

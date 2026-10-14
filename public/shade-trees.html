@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shade map trees</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<!--
+  THE TREES AS THE SHADE MODEL SEES THEM (owner, 2026-10-14): the shade
+  map's own address search, property line (or tracing), lidar and line-up
+  (shade.js, in its "trees" mode), with the canopy drawn in 3D instead of
+  lit, to hold up against the real trees on site. Features session's page;
+  see public/shade/trees-ui.js.
+-->
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.css" rel="stylesheet">
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #111; color: #eee; font: 14px/1.4 system-ui, -apple-system, sans-serif; }
+  .app { position: fixed; inset: 0; display: flex; flex-direction: column; }
+  .bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 8px; background: #1c1c1c; }
+  .bar select, .bar input { font-size: 14px; padding: 6px; border-radius: 8px; border: 1px solid #555; background: #222; color: #eee; min-width: 0; }
+  .bar select { max-width: 55vw; }
+  .bar input { width: 16em; max-width: 100%; }
+  .candidates { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; background: #1c1c1c; border-top: 1px solid #333; }
+  .candidates button { text-align: left; min-height: 38px; }
+  button { min-height: 38px; padding: 0 12px; border-radius: 8px; border: 1px solid #555; background: #262626; color: #eee; font-size: 14px; }
+  button.primary { background: #2e7d32; border-color: #2e7d32; }
+  button[aria-pressed="false"] { opacity: .5; border-style: dashed; }
+  button:disabled { opacity: .4; }
+  .main { position: relative; flex: 1; min-height: 0; }
+  #map { position: absolute; inset: 0; }
+  .toggles { position: absolute; top: 8px; left: 8px; display: flex; flex-wrap: wrap; gap: 6px; max-width: calc(100% - 16px); }
+  .toggles button { background: rgba(20, 20, 20, .85); min-height: 34px; font-size: 13px; }
+  .panel { max-height: 42vh; overflow: auto; padding: 8px 12px 12px; background: #161616; border-top: 1px solid #333; font-size: 13px; }
+  .panel h2 { font-size: 14px; margin: 10px 0 4px; }
+  .panel p { margin: 4px 0; }
+  .panel table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  .panel td { padding: 1px 10px 1px 0; vertical-align: top; }
+  .ok { color: #81c784; } .warn { color: #ffb74d; } .bad { color: #e57373; } .dim { color: #999; }
+  .status { font-weight: 600; }
+  .sun .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
+  [hidden] { display: none !important; }
+  .sun input[type=date] { font-size: 14px; padding: 5px; border-radius: 8px; border: 1px solid #555; background: #222; color: #eee; }
+  .sun input[type=range] { flex: 1; min-width: 160px; }
+  .trace { border: 1px solid #ffeb3b55; border-radius: 8px; padding: 6px 10px; margin: 4px 0 8px; }
+  .sun button { min-height: 34px; font-size: 13px; }
+  .legend-bar { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #bbb; }
+  .legend-bar .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+  .legend-bar .ramp { flex: 1; max-width: 240px; height: 10px; border-radius: 5px; }
+  .sun table { margin-top: 6px; }
+  .sun select { font-size: 14px; padding: 5px; border-radius: 8px; border: 1px solid #555; background: #222; color: #eee; }
+  #season-chart { position: relative; max-width: 520px; }
+  #season-chart svg { width: 100%; height: auto; display: block; touch-action: pan-y; }
+  #season-chart .tip { position: absolute; pointer-events: none; background: #222; border: 1px solid #444; border-radius: 6px; padding: 4px 8px; font-size: 12px; white-space: nowrap; }
+  .key { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: #ccc; margin: 6px 0 2px; }
+  .key i { display: inline-block; width: 14px; height: 2px; vertical-align: middle; margin-right: 5px; }
+  .key b.band { display: inline-block; width: 12px; height: 10px; background: rgba(255, 255, 255, .08); vertical-align: middle; margin-right: 5px; }
+  .sun th { text-align: left; font-weight: 600; color: #bbb; padding: 1px 10px 1px 0; }
+  #truth .sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+  #truth-erase.on { background: #e53935; border-color: #e53935; }
+  #sun-box.on { background: #f8c931; border-color: #f8c931; color: #111; }
+  .light-pin .mapboxgl-popup-content { background: #222; color: #eee; border: 1px solid #444; border-radius: 8px; padding: 6px 10px; font-size: 13px; max-width: 220px; }
+  .light-pin .mapboxgl-popup-tip { display: none; }
+  .legend span { display: inline-block; width: .8em; height: .8em; border-radius: 50%; margin: 0 4px 0 10px; vertical-align: -1px; }
+  .sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin: 0 6px -1px 0; }
+  .trees label { display: inline-flex; gap: 6px; align-items: center; }
+  .trees select { font-size: 14px; padding: 5px; border-radius: 8px; border: 1px solid #555; background: #222; color: #eee; }
+</style>
+</head>
+<body data-mode="trees">
+<div class="app">
+  <div class="bar">
+    <select id="saved" aria-label="A saved map"><option value="">Saved maps…</option></select>
+    <input id="at" type="text" placeholder="or an address, or lat, lng" aria-label="An address, or latitude, longitude" enterkeyhint="go">
+    <button class="primary" id="go" type="button">Build in 3D</button>
+  </div>
+  <div class="candidates" id="candidates" hidden></div>
+  <div class="main">
+    <div id="map"></div>
+    <div class="toggles" id="toggles" hidden>
+      <button type="button" id="t-points" aria-pressed="false">Lidar points</button>
+      <button type="button" id="t-fix" aria-pressed="true">Lined up</button>
+      <button type="button" id="t-traced" aria-pressed="true" hidden>County photo</button>
+      <button type="button" id="t-picture" aria-pressed="false">Lidar ground picture</button>
+      <button type="button" id="t-tilt" aria-pressed="true">3D</button>
+      <button type="button" id="t-lawn" aria-pressed="true" hidden>Lawn only</button>
+    </div>
+  </div>
+  <div class="panel" id="panel">
+    <section class="sun trace" id="trace" hidden></section>
+    <p class="status" id="status">Type an address, or pick a saved map, and press Build to see the trees as the shade map models them.</p>
+    <section class="sun trees" id="trees" hidden>
+      <h2>The trees as the shade model sees them</h2>
+      <div class="row" role="group" aria-label="Leaves">
+        <button type="button" id="tr-today" aria-pressed="true">Today</button>
+        <button type="button" id="tr-full" aria-pressed="false">Full summer leaves</button>
+        <button type="button" id="tr-bare" aria-pressed="false">Bare, as flown</button>
+      </div>
+      <div class="row">
+        <label><input type="checkbox" id="tr-roofs" checked> Buildings</label>
+        <label>Cut away below <select id="tr-cut"><option value="0">nothing</option><option value="2">2 m</option><option value="4">4 m</option><option value="6">6 m</option><option value="8">8 m</option><option value="12">12 m</option></select></label>
+      </div>
+      <p id="tr-status" class="dim"></p>
+      <p id="tr-read">Tap a spot for its numbers: what the model took it for, the heights it stops light between, and how much gets through.</p>
+      <p id="tr-legend" class="dim"></p>
+      <p class="dim">Each 1 m square is drawn from the lowest to the highest height where the model has something that stops light, as the shade map uses it.
+        Tilt and turn the map with two fingers to look under the crowns. The trees stand where the laser measured them; on the photo, tall things lean by a meter or two.
+        "Lidar points" shows the laser's own returns to compare.</p>
+    </section>
+    <div id="report"></div>
+  </div>
+</div>
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.js"></script>
+<script type="module" src="/shade.js"></script>
+</body>
+</html>
