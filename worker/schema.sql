@@ -1124,6 +1124,32 @@ CREATE TABLE IF NOT EXISTS shade_cuts (
 -- The secret in the address Sensor Logger posts to: an app cannot sign in,
 -- so the address itself is the credential. One at a time; a new one
 -- replaces the old.
+-- Who uses the shade map and what goes wrong for them (worker/src/
+-- shade-usage.js; owner, 2026-10-14). Visitors only: admins, the owner's own
+-- devices and automated callers are never written. No IP, no user agent, no
+-- address or coordinate; `client` is a random id per browser. Both trim
+-- themselves (50,000 events, 5,000 errors).
+CREATE TABLE IF NOT EXISTS shade_events (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  at          TEXT NOT NULL,
+  kind        TEXT NOT NULL,      -- open, search, built, no-lidar, light ...
+  page        TEXT,               -- shade, shade-log
+  client      TEXT,
+  signed_in   INTEGER,
+  detail      TEXT
+);
+CREATE INDEX IF NOT EXISTS shade_events_at ON shade_events (at);
+CREATE TABLE IF NOT EXISTS shade_errors (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  at          TEXT NOT NULL,
+  source      TEXT NOT NULL,      -- page (the visitor's browser) or server
+  page        TEXT,
+  message     TEXT,
+  detail      TEXT,               -- where on the page
+  client      TEXT,
+  signed_in   INTEGER
+);
+CREATE INDEX IF NOT EXISTS shade_errors_at ON shade_errors (at);
 CREATE TABLE IF NOT EXISTS shade_push_keys (
   key         TEXT PRIMARY KEY,
   created_at  TEXT,

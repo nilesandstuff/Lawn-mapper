@@ -30,6 +30,7 @@ import { EPT_BASE } from '../../public/shade/names.js';
 import { powerUrl, typicalYear } from '../../public/shade/climate.js';
 import { fromPush, perSecond, posePerSecond } from '../../public/shade/truth.js';
 import { currentUser } from './auth.js';
+import { handleUsage, logServerError } from './shade-usage.js';
 
 export const FOOTPRINTS = 'https://raw.githubusercontent.com/hobuinc/usgs-lidar/master/boundaries/resources.geojson';
 const CACHE_KEY = 'https://shade.lawnmapper.internal/footprints-v1.json';
@@ -123,6 +124,9 @@ export async function lidarAt(lng, lat, { ctx = null, fetchImpl = fetch } = {}) 
 }
 
 export async function handleShade(request, url, env, origin, ctx, json) {
+  /* Usage and errors (shade-usage.js): the page's events, and the admin page's figures. */
+  const usage = await handleUsage(request, url, env, origin, ctx, json);
+  if (usage) return usage;
   if (url.pathname === '/api/shade/lidar' && request.method === 'GET') {
     const lng = Number(url.searchParams.get('lng')), lat = Number(url.searchParams.get('lat'));
     if (!Number.isFinite(lng) || !Number.isFinite(lat) || Math.abs(lat) > 85 || Math.abs(lng) > 180) {
@@ -131,6 +135,7 @@ export async function handleShade(request, url, env, origin, ctx, json) {
     try {
       return json(await lidarAt(lng, lat, { ctx }), 200, origin);
     } catch (e) {
+      await logServerError(request, env, 'lidar', `The lidar index could not be read: ${e?.message || e}`);
       return json({ error: 'The lidar index could not be read', detail: String(e?.message || e) }, 502, origin);
     }
   }
@@ -145,6 +150,7 @@ export async function handleShade(request, url, env, origin, ctx, json) {
       res.headers.set('Cache-Control', 'public, max-age=86400');
       return res;
     } catch (e) {
+      await logServerError(request, env, 'climate', `NASA POWER did not answer: ${e?.message || e}`);
       return json({ error: 'NASA POWER did not answer', detail: String(e?.message || e) }, 502, origin);
     }
   }

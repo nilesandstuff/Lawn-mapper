@@ -17,6 +17,7 @@
  * a month-by-month table of clear-sky DLI against open ground.
  */
 
+import { reportError } from './usage.js';
 import { gridOver, gridBox } from './grid.js';
 import { fromMerc, toMerc } from './ept.js';
 import { sunPath } from './sun.js';
@@ -425,10 +426,10 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     st.built = false;
     st.season = null; st.day = null; st.now = null;
     st.worker = new Worker('/shade/light-worker.js', { type: 'module' });
-    st.worker.onerror = (e) => status(`The light calculation stopped: ${e.message || 'unknown error'}`);
+    st.worker.onerror = (e) => { status(`The light calculation stopped: ${e.message || 'unknown error'}`); reportError('light worker', e.message || 'unknown error'); };
     st.worker.onmessage = (ev) => {
       const m = ev.data;
-      if (m.type === 'error') status(`The light calculation stopped: ${m.message}`);
+      if (m.type === 'error') { status(`The light calculation stopped: ${m.message}`); reportError('light worker', m.message); }
       else if (m.type === 'built') { st.readyWaiters.splice(0).forEach((f) => f()); st.canopy = m.canopy; status(''); st.built = true; st.kinds = m.kinds; st.lawnMask = m.lawnMask || null; $('#t-lawn').hidden = !st.lawnMask; canopyNote(m); if (st.mode === 'trees') draw(); runDay(); st.monthsId = send({ type: 'months', year: new Date(dayMs()).getUTCFullYear() }); runSeason(); }
       else if (m.type === 'day' && m.id === st.dayId) { st.day = m; status(''); summary(); if (st.mode !== 'now') draw(); }
       else if (m.type === 'now' && m.id === st.nowId) { st.now = m; if (st.mode === 'now') draw(); }

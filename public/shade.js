@@ -31,6 +31,7 @@ import { frameCorners } from './lib/mercator.js';
 import { movedCorners } from './lib/align.js';
 import { tracedOn, lineUpAt } from './shade/traced.js';
 import { startSun } from './shade/sun-ui.js';
+import { track, reportError, watchErrors } from './shade/usage.js';
 
 const $ = (s) => document.querySelector(s);
 const SAVES_KEY = 'lawnmapper.saves.v1'; // the editor's own local store (app.js), read only
@@ -43,6 +44,8 @@ function status(text, cls = '') {
   const el = $('#status');
   el.textContent = text;
   el.className = `status ${cls}`;
+  /* Every message shown as a failure is one a visitor saw (shade/usage.js). */
+  if (cls === 'bad' && !/^No public lidar/.test(text)) reportError('status', text); // no lidar is an answer, counted as usage
 }
 
 /* ------------------------------------------------------------ the sites */
@@ -299,12 +302,15 @@ async function build(site) {
   const k = mercScale(site.lat);
   const report = [];
 
+  const started = Date.now();
+  track('build', site.area ? 'field check' : site.parcel ? 'with a property line' : 'no property line');
   status('Asking USGS which lidar was flown here…');
   const found = await getJson(`${location.origin}/api/shade/lidar?lng=${site.lng}&lat=${site.lat}`);
   if (!found || found.error) throw new Error(found?.error || 'the lidar index did not answer');
   const { clouds, notOnAws } = found;
   if (!found.wesm) report.push('<p class="warn">USGS\'s 3DEP index did not answer, so no cloud could be confirmed by name and flight dates are unknown.</p>');
   if (!clouds.length) {
+    track('no-lidar', notOnAws.length ? `${notOnAws.length} collection(s) not in the public store` : 'none');
     status('No public lidar over this point that this page can read.', 'bad');
     $('#report').innerHTML = notOnAws.length
       ? `<p>USGS lists ${notOnAws.length} collection(s) here that are not in the public cloud store: ${notOnAws.map((u) => esc(u.workunit)).join(', ')}.</p>` : '';
@@ -436,6 +442,7 @@ async function build(site) {
     The ground is what has to agree. "Lined up" off shows the cloud where the file puts it. "Lidar ground picture" lays the laser's view of the ground over the photo to compare by eye: roads, drives and paths should sit exactly on the photo's.</p>`);
   $('#report').innerHTML = report.join('');
   status(fit?.confident ? 'Built and lined up.' : 'Built. The photo check was not tight enough to apply; the datum correction is applied.', fit?.confident ? 'ok' : 'warn');
+  track('built', `${Math.round((Date.now() - started) / 1000)} s, ${fit?.confident ? 'lined up' : 'not lined up'}`);
 
   /* Step 2: the sun over this model, in a worker (shade/sun-ui.js). */
   view.sun = startSun({
@@ -500,6 +507,8 @@ function toggle(id, on) {
 /* --------------------------------------------------------------- wiring */
 
 async function main() {
+  watchErrors();
+  track('open', new URLSearchParams(location.search).get('truth') ? 'field check' : location.search ? 'with a place' : 'blank');
   /* The buttons work at once; the saved maps arrive when they arrive. */
   let saves = [];
   const savesReady = listSaves().then((s) => { saves = s; });
@@ -511,12 +520,13 @@ async function main() {
       if (id) await savesReady;
       const at = $('#at').value.trim();
       let site = null;
-      if (id) site = siteFromSave(saves.find((s) => s.id === id));
+      if (id) { site = siteFromSave(saves.find((s) => s.id === id)); track('search', 'saved map'); }
       else if (at) {
         const nums = at.split(/[ ,]+/).filter(Boolean).map(Number);
         if (nums.length === 2 && nums.every(Number.isFinite) && Math.abs(nums[0]) <= 90) site = await siteFromPoint(nums[0], nums[1]);
         else {
           status('Looking up that address…');
+          track('search', 'address');
           const r = await pickAddress(at);
           status('Finding the property line and the clearest photo…');
           site = await siteFromAddress(r);

@@ -846,6 +846,42 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
 }
 
 {
+  /* Shade usage and errors (worker/src/shade-usage.js): visitors only, nothing that places anyone. */
+  const { isAutomated, scrub, usageReport } = await import('../worker/src/shade-usage.js');
+  const phone = 'Mozilla/5.0 (Linux; Android 14; SM-G998U) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Mobile Safari/537.36';
+  check('automated callers are told apart: headless Chrome, node, curl, GitHub, Claude, bots, no agent; a phone is a visitor',
+    ['Mozilla/5.0 HeadlessChrome/129.0', 'node', 'undici', 'curl/8.5', 'python-requests/2.31', 'GitHub-Hookshot/1', 'Claude-User/1.0', 'Googlebot/2.1', ''].every(isAutomated) && !isAutomated(phone));
+  check('error text keeps no coordinates or house numbers', scrub('No lidar at 42.88270,-85.81784 for 7214 Elm') === 'No lidar at #,# for # Elm', scrub('No lidar at 42.88270,-85.81784 for 7214 Elm'));
+  const sq = new DatabaseSync(':memory:');
+  const schema = readFileSync(new URL('../worker/schema.sql', import.meta.url), 'utf8');
+  sq.exec(schema.slice(schema.indexOf('CREATE TABLE IF NOT EXISTS shade_lux')));
+  const stmt = (sql) => { const st = sq.prepare(sql); let args = []; const api = { bind(...a) { args = a; return api; }, first: async () => st.get(...args) ?? null, run: async () => ({}), all: async () => ({ results: st.all(...args) }) }; api.run = async () => { st.run(...args); return {}; }; return api; };
+  const DB = { prepare: stmt };
+  const json = (d, status) => new Response(JSON.stringify(d), { status });
+  const call = (path, init, ua = phone) => handleShade(new Request(`https://x${path}`, { ...init, headers: { 'User-Agent': ua, 'Content-Type': 'application/json' } }), new URL(`https://x${path}`), { DB }, '', null, json);
+  const post = (path, body, ua) => call(path, { method: 'POST', body: JSON.stringify(body) }, ua);
+  const client = 'abcdef12-3456-7890-abcd-ef1234567890';
+  const r1 = await post('/api/shade/event', { kind: 'open', detail: 'blank', client, page: 'shade' });
+  await post('/api/shade/event', { kind: 'built', detail: '42 s, lined up', client });
+  await post('/api/shade/event', { kind: 'open', client }, 'Mozilla/5.0 HeadlessChrome/129.0');
+  await post('/api/shade/event', { kind: 'open', client, self: true });
+  await post('/api/shade/error', { where: 'status', message: 'The map would not load at 42.88270,-85.81784', client });
+  await post('/api/shade/error', { where: 'status', message: 'boom' }, 'node');
+  const ev = sq.prepare('SELECT kind, client, detail FROM shade_events ORDER BY id').all(), er = sq.prepare('SELECT source, message FROM shade_errors').all();
+  check('usage: a visitor\'s events and errors kept; automated callers and the owner\'s own device are not; numbers blanked',
+    r1.status === 204 && ev.length === 2 && ev[0].kind === 'open' && ev[1].detail === '42 s, lined up' && er.length === 1 && er[0].message === 'The map would not load at #,#', JSON.stringify({ ev, er }));
+  const bad = await post('/api/shade/event', { kind: '<script>' });
+  const anon = await call('/api/shade/admin/usage', { method: 'GET' });
+  check('usage: a junk kind is refused; the figures are a 404 to anyone not an admin', bad.status === 400 && anon.status === 404, `${bad.status} ${anon.status}`);
+  const rep = await usageReport(DB);
+  check('usage report: visitors, opens, builds and errors over 1/7/30 days, by kind and by day, latest rows',
+    rep.totals.day.visitors === 1 && rep.totals.month.opens === 1 && rep.totals.month.builds === 1 && rep.totals.week.errors === 1 && rep.byKind.length === 2 && rep.byDay.length === 1 && rep.events.length === 2 && rep.errors.length === 1, JSON.stringify(rep.totals));
+  const { usageHtml, errorsHtml } = await import('../public/shade/admin.js');
+  const uh = usageHtml(rep), eh = errorsHtml(rep);
+  check('admin page: tiles, bars, the kinds and the latest rows; the errors listed', /visitors today/.test(uh) && /class="bars"/.test(uh) && /built/.test(uh) && /abcdef/.test(uh) && /The map would not load at #,#/.test(eh), uh.slice(0, 200));
+}
+
+{
   /* Workflow 35's report: counts and times, never a place. */
   const { report } = await import('./shade-readings.js');
   const now = Date.UTC(2026, 9, 13, 18, 0);

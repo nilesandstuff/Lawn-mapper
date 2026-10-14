@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shade map admin</title>
+<meta name="robots" content="noindex">
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; background: #111; color: #eee; font: 15px/1.45 system-ui, -apple-system, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 12px 16px 40px; }
+  h1 { font-size: 20px; margin: 8px 0 4px; }
+  h2 { font-size: 16px; margin: 0 0 6px; }
+  p { margin: 6px 0; }
+  a { color: #90caf9; }
+  .dim { color: #999; } .ok { color: #81c784; } .warn { color: #ffb74d; } .bad { color: #e57373; }
+  button, .button { min-height: 40px; padding: 0 14px; border-radius: 8px; border: 1px solid #555; background: #262626; color: #eee; font-size: 14px; text-decoration: none; display: inline-flex; align-items: center; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+  .card { background: #1a1a1a; border: 1px solid #2c2c2c; border-radius: 10px; padding: 12px; margin: 12px 0; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin: 8px 0; }
+  .tile { background: #202020; border-radius: 8px; padding: 8px; }
+  .tile b { display: block; font-size: 22px; }
+  .tile span { color: #aaa; font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 4px 6px; border-top: 1px solid #2c2c2c; vertical-align: top; }
+  th { color: #aaa; font-weight: normal; }
+  td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  .scroll { max-height: 360px; overflow: auto; }
+  .bars { display: flex; align-items: flex-end; gap: 2px; height: 70px; margin: 6px 0 2px; }
+  .bars i { flex: 1; background: #4f8bd6; border-radius: 2px 2px 0 0; min-height: 1px; }
+  .bars i.err { background: #e57373; }
+  .axis { display: flex; justify-content: space-between; color: #888; font-size: 11px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Shade map <span class="dim">admin</span></h1>
+  <p id="who" class="dim">Checking you are signed in as an admin…</p>
+  <div id="admin" hidden>
+    <div class="card">
+      <h2>Pages</h2>
+      <div class="row">
+        <a class="button" href="/shade">The shade map</a>
+        <a class="button" href="/shade-log.html">Field readings (light readings and the check view)</a>
+        <a class="button" href="/admin.html">The core console</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Usage <span class="dim">visitors only</span></h2>
+      <p class="dim">Left out: signed-in admins, devices marked as yours below, and anything automated (GitHub's runners, the Claude sessions' tests and scripts, bots). No address, place or IP is kept; each browser has a random id.</p>
+      <div class="row">
+        <label><input type="checkbox" id="mine"> This device is mine: never count it, even signed out</label>
+      </div>
+      <div id="usage" class="dim">Loading…</div>
+    </div>
+
+    <div class="card">
+      <h2>Errors <span class="dim">what went wrong for visitors, and on the server</span></h2>
+      <div id="errors" class="dim">Loading…</div>
+    </div>
+  </div>
+</main>
+<script type="module" src="/shade/admin.js"></script>
+</body>
+</html>
