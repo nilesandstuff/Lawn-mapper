@@ -44,7 +44,9 @@ export function addUp(rows) {
     const blank = () => ({ n: 0, photo: 0, model: 0, both: 0, modelOnly: 0, photoOnly: 0 });
     if (!by.has(k)) by.set(k, { full: blank(), bare: blank(), frames: 0, leaf: {}, skips: {} });
     const a = by.get(k);
-    if (r.skip || r.error) { const why = (r.skip || 'error').replace(/[\d.]+x/, 'Nx'); a.skips[why] = (a.skips[why] || 0) + 1; continue; }
+    /* An error's first word only (an HTTP status, or the error's kind):
+       the rest can hold the request's URL, which names the place. */
+    if (r.skip || r.error) { const why = r.skip ? r.skip.replace(/[\d.]+x/, 'Nx') : `error ${String(r.error).split(/[\s:]/)[0]}`; a.skips[why] = (a.skips[why] || 0) + 1; continue; }
     if (!r.trees) continue;
     a.frames++;
     a.leaf[r.leaf] = (a.leaf[r.leaf] || 0) + 1;
@@ -69,9 +71,12 @@ export async function fieldPhotos(day) {
   const visits = await loadVisits(day);
   const out = [`Photos against the lidar, ${day}: ${visits.length} stops. Model shade at each photo's own sun (fitted on buildings), the trees as the lidar has them.`];
   const all = [];
+  let done = 0;
+  const most = Number(process.env.MAX_STOPS) || Infinity;
   for (const v of visits) {
     const u = usable(v);
     if (u.length < 20) continue;
+    if (done++ >= most) break;
     const rows = [];
     for (const tile of tiles(u)) {
       try { rows.push(...await checkLot(tile.lng, tile.lat, { everyYear: true, mixed: true })); } catch (e) { rows.push({ source: 'all', error: e.message }); }
