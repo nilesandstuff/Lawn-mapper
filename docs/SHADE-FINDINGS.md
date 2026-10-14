@@ -304,6 +304,33 @@ site refuses GitHub's runners):
 - The new build (1:00 PM) shows 3-9% shade in the photos the lidar lacks;
   not a clear signal at this scale.
 
+### 11. The tree misses are not the leaf filling, the solid fill, or a low sun (field check, 2026-10-14)
+
+Owner's question, looking at the 4:28 PM stop: is the leaf filling putting
+crowns lower than they stand, and is each reading judged at its own time?
+Workflow 35 (check, 2026-10-13; tools/shade-ray-check.js), 3,913 readings:
+
+- TIME: each reading's sun is placed at its own second and spot; 4:28 PM on
+  Oct 13 checked by hand (24.7 degrees up, azimuth 230), agreeing with sun.js to 0.1.
+- On the 430 rays the model calls shade and the phone read lit, the optical
+  depth by source (median shares): the laser's own leaf-off branches 78%,
+  leaves among those branches 12%, leaves BELOW the lowest branch 0%, the
+  solid fill under dense crowns 0%. Stopped a median 5.8 m up and 7 m away.
+- Removing the low leaves changes 3 readings in 3,913; the fill, 1. Bare
+  trees would turn 117 of the 430 to sun (92 of them the new build's).
+- Crowns clumped (x0.7, x0.5 per meter, Beer's law along a long slant): no
+  better (3,134 and 3,164 against 3,143).
+- Through trees, by sun height: under 25 degrees 201/359 agree, 25-32 173/266,
+  over 32 464/793. No fall-off as the sun drops.
+- 4:28 PM alone: the misses' light was stopped 8.4 m up, 17 m away, sun 23
+  degrees: mid-crown in trees the photos (10) already show thinner than the
+  2018 flight.
+
+The mechanism the owner suspected is real (seasonal.js fills a clump's
+leaves from its 10th-percentile return height, so a shrub joined to a tall
+tree starts the tree's leaves low; tested on a synthetic tree), but on
+these readings it carries none of the error.
+
 ## Speculation
 
 - Mixed-season flights (7) may be better treated as leaf-on for the
@@ -317,6 +344,10 @@ site refuses GitHub's runners):
 - Deep tree shade read as sun (9) -- not the new build's (its readings
   were edges): trees cut or thinned since the 2018 flight, crowns called evergreen that are not, or GPS at a crown's edge.
   Per-tree, not tested.
+
+- The low-leaf mechanism (11) may matter on lots with tall, high-crowned
+  trees joined to understory and a low sun across open lawn; not seen on
+  2026-10-13's stops.
 
 - Leaf-off darkness near trees (6) as ground, not shadow: testable by
   comparing ground on the sunward side of a trunk (no shadow possible) with
