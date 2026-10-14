@@ -75,7 +75,7 @@ export function classLine(t) {
 }
 
 /** Readings grouped into squares `cellM` across, each modelled on its own (a long visit down a street). */
-function tiles(u, cellM = 120) {
+export function tiles(u, cellM = 120) {
   const lat0 = u[0].lat, k = 111195, kx = k * Math.cos((lat0 * Math.PI) / 180);
   const by = new Map();
   for (const s of u) {
@@ -171,9 +171,23 @@ function judgeVisit(visit, u, trucks, mount, why, rows, truckShadowRows, { fligh
   };
 }
 
-export async function fieldCheck(day) {
+/**
+ * The recordings to use, from [{ session, a, b }] (first and last fix): an
+ * uploaded export ("upload ...") wins over a pushed recording it overlaps --
+ * the owner re-uploads a day's backups so its light is stored the new way
+ * (each second's median and brightest sample), and the same stops must not
+ * count twice.
+ */
+export function pickSessions(spans) {
+  const up = spans.filter((r) => /^upload /.test(String(r.session)));
+  return spans.filter((r) => /^upload /.test(String(r.session)) || !up.some((u) => u.a <= r.b && r.a <= u.b));
+}
+
+/** A day's visits from the database, in time order (joined tracks, split at the truck). */
+export async function loadVisits(day) {
   const t0 = localMs('0:00', Date.parse(`${day}T12:00:00Z`)), t1 = t0 + 86400000;
-  const sessions = query(`SELECT DISTINCT session FROM shade_fixes WHERE t >= ${t0} AND t < ${t1}`).map((r) => String(r.session).replace(/'/g, "''"));
+  const spans = query(`SELECT session, MIN(t) AS a, MAX(t) AS b FROM shade_fixes WHERE t >= ${t0} AND t < ${t1} GROUP BY session`);
+  const sessions = pickSessions(spans).map((r) => String(r.session).replace(/'/g, "''"));
   const visits = [];
   for (const s of sessions) {
     const fix = [], lux = [], orient = [];
@@ -187,8 +201,20 @@ export async function fieldCheck(day) {
     visits.push(...splitVisits(joinTrack(fix, lux, { orient })));
   }
   visits.sort((a, b) => a[0].t - b[0].t);
+  /* Flecks: seconds whose brightest sample was over 3x their median and
+     bright (over 10,000 lux) -- recordings stored since 2026-10-14 only. */
+  const inList = sessions.map((x) => `'${x}'`).join(',') || "''";
+  let flecks = null;
+  try { flecks = query(`SELECT COUNT(lux_max) AS n, SUM(CASE WHEN lux_max > 3 * lux AND lux_max > 10000 THEN 1 ELSE 0 END) AS f FROM shade_lux WHERE session IN (${inList}) AND t >= ${t0} AND t < ${t1}`)[0]; } catch { /* no column yet */ }
+  visits.flecks = flecks;
+  return visits;
+}
+
+export async function fieldCheck(day) {
+  const visits = await loadVisits(day);
   const mount = compassOffset(visits.flatMap((v) => usable(v)));
-  const out = [`Field check ${day}: ${visits.length} visits; the phone's mounting angle ${mount ? `${Math.round(mount.offset)} degrees (steady to ${Math.round(mount.spread)}, from ${mount.n} straight-line readings)` : 'not found (GPS heading used)'}.`];
+  const fl = visits.flecks;
+  const out = [`Field check ${day}: ${visits.length} visits; ${fl?.n ? `flecks of sun (a second's brightest sample over 3x its median, over 10,000 lux): ${fl.f} of ${fl.n} seconds;` : 'light stored as one mean per second (no fleck data);'} the phone's mounting angle ${mount ? `${Math.round(mount.offset)} degrees (steady to ${Math.round(mount.spread)}, from ${mount.n} straight-line readings)` : 'not found (GPS heading used)'}.`];
   const all = [];
   const leafAll = { n: 0, calendar: 0, on: 0, off: 0 };
   let tsN = 0, tsDark = 0;

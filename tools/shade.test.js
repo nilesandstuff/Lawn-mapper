@@ -857,6 +857,9 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   check('readings lidar: areas grouped by flight, a newer one not used called out, no names', /2 areas: flown to 2018-02; nothing newer/.test(la) && /1 area : flown in 2015; NEWER FLIGHT NOT USED: 2023 \(download tiles only\)/.test(la), la);
   const { sessionLabel } = await import('./shade-readings.js');
   check('readings: an uploaded file\'s name (maybe a street) never printed, Sensor Logger\'s uuid as is', /^upload #[0-9a-f]{8}$/.test(sessionLabel('upload a7f42cff-Some_Street-2026-10-12')) && sessionLabel('32676200-a76a-4dc1-b4c4-72b950a880e3') === '32676200-a76a-4dc1-b4c4-72b950a880e3' && !/Street/.test(report([{ session: 'upload Some_Street', first: 1, last: 2, fixes: 1, lux: 1, orient: 0 }], { n: 1, made: 'x' })));
+  const { pickSessions } = await import('./shade-field-check.js');
+  const picked = pickSessions([{ session: 'abc', a: 0, b: 100 }, { session: 'upload day', a: 50, b: 300 }, { session: 'later', a: 400, b: 500 }]).map((r) => r.session).join(',');
+  check('field check: an uploaded day wins over the pushed recording it overlaps; others stay', picked === 'upload day,later', picked);
   const { timeline } = await import('./shade-readings.js');
   const tl = timeline([{ t: now, fixes: 290, lux: 280, orient: 295, speed: 1.3 }, { t: now + 300e3, fixes: 60, lux: 0, orient: 0, speed: null }]);
   check('readings timeline: five-minute steps with counts and mph, no places', /gps 290\s+light 280\s+orientation 295\s+3 mph/.test(tl) && /-\s*mph/.test(tl), tl);
