@@ -1147,7 +1147,15 @@ CREATE TABLE IF NOT EXISTS shade_errors (
   message     TEXT,
   detail      TEXT,               -- where on the page
   client      TEXT,
-  signed_in   INTEGER
+  signed_in   INTEGER,
+  -- WHERE IT WENT WRONG (owner, 2026-10-14: "errors to include addresses and
+  -- coordinates, so we can actually troubleshoot"). The address or saved map
+  -- the visitor was looking at, and its point to about a metre. Read only on
+  -- the shade admin page (the admin route's 404), never printed in a GitHub
+  -- log, and blanked after 90 days -- the error itself stays.
+  place       TEXT,
+  lng         REAL,
+  lat         REAL
 );
 CREATE INDEX IF NOT EXISTS shade_errors_at ON shade_errors (at);
 CREATE TABLE IF NOT EXISTS shade_push_keys (

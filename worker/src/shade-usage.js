@@ -4,7 +4,7 @@
  * github account and Claude). Include error tracking as well.")
  *
  *   POST /api/shade/event   { kind, detail, client, self }   from the page
- *   POST /api/shade/error   { where, message, client, self }  from the page
+ *   POST /api/shade/error   { where, message, place, lng, lat, client, self }  from the page
  *   GET  /api/shade/admin/usage   the admin page's figures (ADMIN ONLY, 404)
  *
  * The user-agent filter below decides what is COUNTED, nothing more: it
@@ -19,16 +19,26 @@
  *     scripts (headless Chrome, node, curl, python), crawlers and bots, and
  *     anything calling itself Claude or Anthropic.
  *
- * KEPT SMALL ON PURPOSE: no IP address, no user agent, no address or
- * coordinate (the page sends none, and numbers in error text are blanked
- * here too). A random id per browser tells one visitor from another. Both
- * tables trim themselves. Bookkeeping only: nothing here can break a page,
- * and a missing table (before the deploy's schema step) is simply skipped.
+ * KEPT SMALL ON PURPOSE: no IP address, no user agent. A random id per
+ * browser tells one visitor from another. Usage events carry no address or
+ * coordinate, and numbers in any free text are blanked.
+ *
+ * AN ERROR CARRIES ITS PLACE (owner, 2026-10-14: "errors to include addresses
+ * and coordinates, so we can actually troubleshoot"), in its own columns and
+ * nowhere else -- the same arrangement as the core's county photo failures:
+ *   - kept in D1, readable only through the admin route below (404 to
+ *     anyone else), never printed in a GitHub log or written to the repo;
+ *   - the point rounded to five decimals (about a metre: the lot, not more);
+ *   - blanked after PLACE_DAYS. The error itself stays for the counts.
+ *
+ * Both tables trim themselves. Bookkeeping only: nothing here can break a
+ * page, and a missing table (before the deploy's schema step) is skipped.
  */
 
 import { currentUser } from './auth.js';
 
 const MAX_EVENTS = 50000, MAX_ERRORS = 5000;
+export const PLACE_DAYS = 90;
 
 /** Automated callers, by their user agent (also an empty one). */
 export function isAutomated(ua) {
@@ -43,6 +53,13 @@ export function scrub(v, max = 300) {
   return String(v).replace(/\s+/g, ' ').replace(/-?\d+\.\d{3,}/g, '#').replace(/\d{3,}/g, '#').trim().slice(0, max) || null;
 }
 const word = (v, max = 40) => (typeof v === 'string' && /^[a-z0-9 _.-]{1,40}$/i.test(v) ? v.slice(0, max) : null);
+/** An error's place: the address or map name (one line, short) and its point to five decimals. */
+export function placeOf(v) {
+  const place = typeof v?.place === 'string' ? v.place.replace(/\s+/g, ' ').trim().slice(0, 160) || null : null;
+  const lng = Number(v?.lng), lat = Number(v?.lat);
+  const ok = v?.lng != null && v?.lat != null && Number.isFinite(lng) && Number.isFinite(lat) && Math.abs(lng) <= 180 && Math.abs(lat) <= 85;
+  return { place, lng: ok ? Math.round(lng * 1e5) / 1e5 : null, lat: ok ? Math.round(lat * 1e5) / 1e5 : null };
+}
 const clientId = (v) => (typeof v === 'string' && /^[a-z0-9-]{8,40}$/i.test(v) ? v : null);
 
 /** Who is calling: 'skip' with the reason, or a visitor. */
@@ -61,12 +78,25 @@ async function bodyOf(request) {
   } catch { return null; }
 }
 
-/** A server-side failure of a shade route, kept like a page's error (no request detail). */
-export async function logServerError(request, env, where, message) {
+/** Blank the places of errors older than PLACE_DAYS (the rows stay). */
+export async function forgetOldPlaces(db, now = Date.now()) {
+  const before = new Date(now - PLACE_DAYS * 86400000).toISOString();
+  try {
+    await db.prepare('UPDATE shade_errors SET place = NULL, lng = NULL, lat = NULL WHERE at < ? AND (place IS NOT NULL OR lng IS NOT NULL OR lat IS NOT NULL)').bind(before).run();
+  } catch { /* the next one will */ }
+}
+
+async function insertError(db, row) {
+  const p = placeOf(row);
+  await db.prepare('INSERT INTO shade_errors (at, source, page, message, detail, client, signed_in, place, lng, lat) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .bind(new Date().toISOString(), row.source, row.page, row.message, row.detail, row.client, row.signedIn, p.place, p.lng, p.lat).run();
+}
+
+/** A server-side failure of a shade route: what and where (the point asked about), no request detail. */
+export async function logServerError(request, env, where, message, at = null) {
   if (!env?.DB || isAutomated(request.headers.get('User-Agent'))) return;
   try {
-    await env.DB.prepare('INSERT INTO shade_errors (at, source, page, message, detail, client, signed_in) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .bind(new Date().toISOString(), 'server', word(where), scrub(message), null, null, null).run();
+    await insertError(env.DB, { source: 'server', page: word(where), message: scrub(message), detail: null, client: null, signedIn: null, lng: at?.lng, lat: at?.lat });
   } catch { /* not kept */ }
 }
 
@@ -94,15 +124,21 @@ export async function handleUsage(request, url, env, origin, ctx, json) {
     const who = await caller(request, env, ctx, body);
     if (who.skip) return quiet();
     try {
-      await db.prepare('INSERT INTO shade_errors (at, source, page, message, detail, client, signed_in) VALUES (?, ?, ?, ?, ?, ?, ?)')
-        .bind(new Date().toISOString(), 'page', word(body?.page), scrub(body.message), scrub(body?.where, 120), clientId(body?.client), who.signedIn).run();
-      if (Math.random() < 0.05) await db.prepare(`DELETE FROM shade_errors WHERE id < (SELECT MAX(id) - ${MAX_ERRORS} FROM shade_errors)`).run();
+      await insertError(db, {
+        source: 'page', page: word(body?.page), message: scrub(body.message), detail: scrub(body?.where, 120),
+        client: clientId(body?.client), signedIn: who.signedIn, place: body?.place, lng: body?.lng, lat: body?.lat,
+      });
+      if (Math.random() < 0.05) {
+        await db.prepare(`DELETE FROM shade_errors WHERE id < (SELECT MAX(id) - ${MAX_ERRORS} FROM shade_errors)`).run();
+        await forgetOldPlaces(db);
+      }
     } catch { /* not kept */ }
     return quiet();
   }
   if (url.pathname === '/api/shade/admin/usage' && request.method === 'GET') {
     const me = await currentUser(request, env, ctx).catch(() => null);
     if (!db || me?.role !== 'admin') return json({ error: 'Not found' }, 404, origin);
+    await forgetOldPlaces(db);
     return json(await usageReport(db), 200, origin);
   }
   return null;
@@ -131,6 +167,6 @@ export async function usageReport(db, now = Date.now()) {
     byKind: await all('SELECT kind, COUNT(*) AS n, COUNT(DISTINCT client) AS visitors FROM shade_events WHERE at >= ? GROUP BY kind ORDER BY n DESC', since(30)),
     topErrors: await all('SELECT source, message, COUNT(*) AS n, MAX(at) AS last FROM shade_errors WHERE at >= ? GROUP BY source, message ORDER BY n DESC LIMIT 15', since(30)),
     events: await all('SELECT at, kind, page, client, signed_in AS signedIn, detail FROM shade_events ORDER BY id DESC LIMIT 100'),
-    errors: await all('SELECT at, source, page, message, detail, client, signed_in AS signedIn FROM shade_errors ORDER BY id DESC LIMIT 100'),
+    errors: await all('SELECT at, source, page, message, detail, client, signed_in AS signedIn, place, lng, lat FROM shade_errors ORDER BY id DESC LIMIT 100'),
   };
 }

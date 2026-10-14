@@ -31,7 +31,8 @@ import { frameCorners } from './lib/mercator.js';
 import { movedCorners } from './lib/align.js';
 import { tracedOn, lineUpAt } from './shade/traced.js';
 import { startSun } from './shade/sun-ui.js';
-import { track, reportError, watchErrors } from './shade/usage.js';
+import { track, reportError, watchErrors, setPlace } from './shade/usage.js';
+import { traceLot, lotFeature, lotParam, parseLot } from './shade/trace.js';
 
 const $ = (s) => document.querySelector(s);
 const SAVES_KEY = 'lawnmapper.saves.v1'; // the editor's own local store (app.js), read only
@@ -514,12 +515,14 @@ async function main() {
   const savesReady = listSaves().then((s) => { saves = s; });
   const params = new URLSearchParams(location.search);
   const go = async () => {
+    if ($('#go').disabled) return; // one at a time: Enter while tracing or building waits
     $('#go').disabled = true;
     try {
       const id = $('#saved').value;
       if (id) await savesReady;
       const at = $('#at').value.trim();
       let site = null;
+      setPlace(id ? { place: `saved map ${id}` } : at ? { place: at } : null);
       if (id) { site = siteFromSave(saves.find((s) => s.id === id)); track('search', 'saved map'); }
       else if (at) {
         const nums = at.split(/[ ,]+/).filter(Boolean).map(Number);
@@ -532,11 +535,30 @@ async function main() {
           site = await siteFromAddress(r);
         }
       } else throw new Error('Pick a saved map, or type an address or a point, first.');
+      /* Errors from here on carry the place, for the admin page only (shade/usage.js). */
+      setPlace({ place: id ? `saved map ${id}: ${site.label}` : site.label === at ? at : `${at} (${site.label})`, lng: site.lng, lat: site.lat });
       const area = (params.get('area') || '').split(',').map(Number);
       if (params.get('truth') && area.length === 4 && area.every(Number.isFinite) && area[2] > area[0] && area[3] > area[1]
         && area[2] - area[0] < 0.02 && area[3] - area[1] < 0.02) site.area = area; // at most ~1.5 km across
+      /* NO PROPERTY LINE: the visitor traces it (shade/trace.js), or it came in the link. */
+      let lot = null;
+      if (!id && !site.parcel && !site.area) {
+        lot = (params.get('at') === at && parseLot(params.get('lot'))) || null;
+        if (!lot) {
+          view.sun?.stop(); view.sun = null;
+          const map = await ensureMap();
+          removeBuilt(map);
+          for (const g of ['parcel', 'lawn']) map.getSource(g)?.setData({ type: 'FeatureCollection', features: [] });
+          $('#toggles').hidden = true;
+          track('trace', 'asked');
+          lot = await traceLot(map, { lng: site.lng, lat: site.lat, box: $('#trace'), status });
+          track('trace', lot ? 'done' : 'cancelled');
+          if (!lot) { status('Trace the property, then it can be built. Press Build to start again.'); return; }
+        }
+        site.parcel = lotFeature(lot);
+      }
       const keep = params.get('truth') ? `&truth=${encodeURIComponent(params.get('truth'))}${site.area ? `&area=${params.get('area')}` : ''}` : '';
-      history.replaceState(null, '', (id ? `?map=${encodeURIComponent(id)}` : `?at=${encodeURIComponent(at)}`) + keep);
+      history.replaceState(null, '', (id ? `?map=${encodeURIComponent(id)}` : `?at=${encodeURIComponent(at)}${lot ? `&lot=${lotParam(lot)}` : ''}`) + keep);
       await build(site);
     } catch (e) {
       status(e.message || String(e), 'bad');

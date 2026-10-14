@@ -302,3 +302,8 @@ ALTER TABLE county_photo_failures ADD COLUMN resolution TEXT;
 -- The shade map's light readings: each second's brightest sample beside its
 -- median (flecks of sun through a thinning crown; features session, 2026-10-14).
 ALTER TABLE shade_lux ADD COLUMN lux_max REAL;
+-- Where a shade map error happened: the address and its point, admin-only and
+-- blanked after 90 days (see the columns in schema.sql; features session, 2026-10-14).
+ALTER TABLE shade_errors ADD COLUMN place TEXT;
+ALTER TABLE shade_errors ADD COLUMN lng REAL;
+ALTER TABLE shade_errors ADD COLUMN lat REAL;

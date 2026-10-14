@@ -879,6 +879,47 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   const { usageHtml, errorsHtml } = await import('../public/shade/admin.js');
   const uh = usageHtml(rep), eh = errorsHtml(rep);
   check('admin page: tiles, bars, the kinds and the latest rows; the errors listed', /visitors today/.test(uh) && /class="bars"/.test(uh) && /built/.test(uh) && /abcdef/.test(uh) && /The map would not load at #,#/.test(eh), uh.slice(0, 200));
+
+  /* An error carries its place in its own columns (owner, 2026-10-14), admin-only, blanked after 90 days. */
+  const { placeOf, forgetOldPlaces, logServerError, PLACE_DAYS } = await import('../worker/src/shade-usage.js');
+  check('error place: the address one line and short, the point to five decimals, junk points dropped',
+    JSON.stringify(placeOf({ place: ' 12 Elm St,\n Springfield ', lng: -85.123456789, lat: 42.987654321 })) === '{"place":"12 Elm St, Springfield","lng":-85.12346,"lat":42.98765}'
+    && placeOf({ lng: 'x', lat: 1 }).lng === null && placeOf({ lng: 10, lat: 89 }).lat === null && placeOf({ lng: null, lat: null }).lng === null && placeOf(null).place === null);
+  await post('/api/shade/error', { where: 'status', message: 'No lidar answered', place: '12 Elm St, Springfield', lng: -85.123456, lat: 42.987654, client });
+  await logServerError(new Request('https://x/', { headers: { 'User-Agent': phone } }), { DB }, 'lidar', 'The lidar index could not be read', { lng: -85.5, lat: 43.1 });
+  const placed = sq.prepare('SELECT source, message, place, lng, lat FROM shade_errors WHERE lng IS NOT NULL ORDER BY id').all();
+  check('error place: kept with a page error (address and point) and a server error (point); the message itself still blanks numbers',
+    placed.length === 2 && placed[0].place === '12 Elm St, Springfield' && placed[0].lng === -85.12346 && placed[0].lat === 42.98765 && placed[1].source === 'server' && placed[1].lat === 43.1 && placed[1].place === null, JSON.stringify(placed));
+  const rep2 = await usageReport(DB);
+  check('error place: the admin report carries it', rep2.errors.some((e) => e.place === '12 Elm St, Springfield' && e.lat === 42.98765));
+  sq.prepare("UPDATE shade_errors SET at = ? WHERE place = '12 Elm St, Springfield'").run(new Date(Date.now() - (PLACE_DAYS + 1) * 86400000).toISOString());
+  await forgetOldPlaces(DB);
+  const aged = sq.prepare("SELECT message, place, lng, lat FROM shade_errors WHERE message = 'No lidar answered'").get();
+  const fresh = sq.prepare("SELECT lng FROM shade_errors WHERE source = 'server'").get();
+  check(`error place: blanked after ${PLACE_DAYS} days, the error kept; a newer one untouched`, aged && aged.place === null && aged.lng === null && aged.lat === null && fresh.lng === -85.5, JSON.stringify(aged));
+  const { placeHtml } = await import('../public/shade/admin.js');
+  const ph = placeHtml({ place: '12 <b>Elm</b>', lng: -85.12346, lat: 42.98765 });
+  check('admin page: an error\'s place escaped, its point a link that opens the shade map there; none is a dash',
+    /12 &lt;b&gt;Elm/.test(ph) && /href="\/shade\?at=42\.98765%2C%20-85\.12346"/.test(ph) && /—/.test(placeHtml({ place: null, lng: null, lat: null })), ph);
+}
+
+{
+  /* Tracing the property by hand when an address has no property line (shade/trace.js). */
+  const { lotFeature, lotSqFt, lotProblem, lotParam, parseLot, spanM, MAX_SPAN_M } = await import('../public/shade/trace.js');
+  const d = 30 / 111320, lat0 = 42.9, k = Math.cos(lat0 * Math.PI / 180);
+  const sq30 = [[-85.5, lat0], [-85.5 + d / k, lat0], [-85.5 + d / k, lat0 + d], [-85.5, lat0 + d]];
+  const f = lotFeature(sq30);
+  check('trace: the corners close into a polygon; under three is nothing',
+    f.geometry.type === 'Polygon' && f.geometry.coordinates[0].length === 5 && f.geometry.coordinates[0][4][0] === sq30[0][0] && lotFeature(sq30.slice(0, 2)) === null);
+  check('trace: a 30 m square is about 9,700 sq ft and 30 m across', Math.abs(lotSqFt(sq30) - 9688) < 60 && Math.abs(spanM(sq30) - 30) < 0.5, `${lotSqFt(sq30)} ${spanM(sq30)}`);
+  const big = sq30.map(([x, y]) => [-85.5 + (x + 85.5) * 12, lat0 + (y - lat0) * 12]);
+  const line = [[-85.5, lat0], [-85.4999, lat0], [-85.4998, lat0]];
+  check(`trace: refused when under three corners, over ${MAX_SPAN_M} m across, or with no area`,
+    lotProblem(sq30) === null && /three/.test(lotProblem(sq30.slice(0, 2))) && /across/.test(lotProblem(big)) && /no area/.test(lotProblem(line)));
+  const back = parseLot(lotParam(sq30));
+  check('trace: the outline survives the link, to six decimals; a bad or oversized one is refused',
+    back.length === 4 && back.every((p, i) => Math.abs(p[0] - sq30[i][0]) < 1e-6 && Math.abs(p[1] - sq30[i][1]) < 1e-6)
+    && parseLot('1,2;3') === null && parseLot('') === null && parseLot(null) === null && parseLot(lotParam(big)) === null && parseLot('-85.5,42.9;x,y;1,1') === null);
 }
 
 {

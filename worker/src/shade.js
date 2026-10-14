@@ -135,7 +135,7 @@ export async function handleShade(request, url, env, origin, ctx, json) {
     try {
       return json(await lidarAt(lng, lat, { ctx }), 200, origin);
     } catch (e) {
-      await logServerError(request, env, 'lidar', `The lidar index could not be read: ${e?.message || e}`);
+      await logServerError(request, env, 'lidar', `The lidar index could not be read: ${e?.message || e}`, { lng, lat });
       return json({ error: 'The lidar index could not be read', detail: String(e?.message || e) }, 502, origin);
     }
   }
@@ -150,7 +150,7 @@ export async function handleShade(request, url, env, origin, ctx, json) {
       res.headers.set('Cache-Control', 'public, max-age=86400');
       return res;
     } catch (e) {
-      await logServerError(request, env, 'climate', `NASA POWER did not answer: ${e?.message || e}`);
+      await logServerError(request, env, 'climate', `NASA POWER did not answer: ${e?.message || e}`, { lng, lat });
       return json({ error: 'NASA POWER did not answer', detail: String(e?.message || e) }, 502, origin);
     }
   }

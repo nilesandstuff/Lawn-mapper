@@ -2,7 +2,10 @@
  * The shade map's usage and errors, sent to the site (worker/src/
  * shade-usage.js; owner, 2026-10-14). What is sent: the kind of thing that
  * happened ('open', 'search', 'built', ...), a few words about it, and a
- * random id for this browser -- never an address or a coordinate. The
+ * random id for this browser -- never an address or a coordinate. An ERROR
+ * also carries the place being looked at (setPlace), because a failure
+ * cannot be reproduced without it (owner, 2026-10-14); the server keeps it
+ * admin-only and forgets it after 90 days. The
  * server drops admins, the owner's own devices and anything automated;
  * this side only says when the device is the owner's (marked on the shade
  * admin page) and never lets a failure here touch the page.
@@ -37,11 +40,19 @@ function send(path, body) {
 /** Something a visitor did or got: kind ('open', 'built', ...), a few words. */
 export function track(kind, detail = null) { send('/api/shade/event', { kind, detail: detail == null ? null : String(detail).slice(0, 120) }); }
 
+let here = null;
+/** The place on screen, sent with any error from now on: { place, lng, lat }, or null. */
+export function setPlace(p) {
+  here = p && Number.isFinite(p.lng) && Number.isFinite(p.lat)
+    ? { place: p.place ? String(p.place).slice(0, 160) : null, lng: Math.round(p.lng * 1e5) / 1e5, lat: Math.round(p.lat * 1e5) / 1e5 }
+    : null;
+}
+
 let reported = 0;
-/** Something that went wrong for the visitor (at most 20 a page load). */
+/** Something that went wrong for the visitor (at most 20 a page load), with the place on screen. */
 export function reportError(where, message) {
   if (++reported > 20) return;
-  send('/api/shade/error', { where: String(where || '').slice(0, 120), message: String(message || 'unknown').slice(0, 300) });
+  send('/api/shade/error', { where: String(where || '').slice(0, 120), message: String(message || 'unknown').slice(0, 300), ...(here || {}) });
 }
 
 /** Uncaught errors and rejected promises on the page, reported once each. */

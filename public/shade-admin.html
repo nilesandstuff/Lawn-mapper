@@ -49,7 +49,7 @@
 
     <div class="card">
       <h2>Usage <span class="dim">visitors only</span></h2>
-      <p class="dim">Left out: signed-in admins, devices marked as yours below, and anything automated (GitHub's runners, the Claude sessions' tests and scripts, bots). No address, place or IP is kept; each browser has a random id.</p>
+      <p class="dim">Left out: signed-in admins, devices marked as yours below, and anything automated (GitHub's runners, the Claude sessions' tests and scripts, bots). No address, place or IP is kept with usage; each browser has a random id.</p>
       <div class="row">
         <label><input type="checkbox" id="mine"> This device is mine: never count it, even signed out</label>
       </div>
@@ -58,6 +58,7 @@
 
     <div class="card">
       <h2>Errors <span class="dim">what went wrong for visitors, and on the server</span></h2>
+      <p class="dim">Each error keeps the address or map being looked at and its point, so it can be reproduced. Only admins can read them, and they are blanked after 90 days.</p>
       <div id="errors" class="dim">Loading…</div>
     </div>
   </div>

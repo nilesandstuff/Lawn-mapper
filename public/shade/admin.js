@@ -46,7 +46,16 @@ export function errorsHtml(u) {
     : '';
   return `<p class="dim">Errors a day</p>${bars(u.byDayErrors, 'errors', 'err')}${top}
     <p class="dim">Latest ${u.errors.length}</p>
-    <div class="scroll"><table><tr><th>When</th><th>Where</th><th>Message</th><th>Visitor</th></tr>${u.errors.map((e) => `<tr><td>${when(e.at)}</td><td>${esc(e.source)}${e.page ? ` / ${esc(e.page)}` : ''}${e.detail ? `<br><span class="dim">${esc(e.detail)}</span>` : ''}</td><td>${esc(e.message)}</td><td>${short(e.client)}</td></tr>`).join('')}</table></div>`;
+    <div class="scroll"><table><tr><th>When</th><th>Where</th><th>Message</th><th>Place</th><th>Visitor</th></tr>${u.errors.map((e) => `<tr><td>${when(e.at)}</td><td>${esc(e.source)}${e.page ? ` / ${esc(e.page)}` : ''}${e.detail ? `<br><span class="dim">${esc(e.detail)}</span>` : ''}</td><td>${esc(e.message)}</td><td>${placeHtml(e)}</td><td>${short(e.client)}</td></tr>`).join('')}</table></div>
+    <p class="dim">Places are kept 90 days, then blanked; the errors stay.</p>`;
+}
+
+/** An error's place: what was searched, and its point as a link that opens the shade map there. */
+export function placeHtml(e) {
+  const pt = Number.isFinite(e.lat) && Number.isFinite(e.lng);
+  if (!e.place && !pt) return '<span class="dim">—</span>';
+  const at = pt ? `${Number(e.lat).toFixed(5)}, ${Number(e.lng).toFixed(5)}` : '';
+  return `${e.place ? esc(e.place) : ''}${pt ? `${e.place ? '<br>' : ''}<a href="/shade?at=${encodeURIComponent(at)}">${esc(at)}</a>` : ''}`;
 }
 
 async function main() {
