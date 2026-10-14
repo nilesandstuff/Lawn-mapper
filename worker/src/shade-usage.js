@@ -7,6 +7,10 @@
  *   POST /api/shade/error   { where, message, client, self }  from the page
  *   GET  /api/shade/admin/usage   the admin page's figures (ADMIN ONLY, 404)
  *
+ * The user-agent filter below decides what is COUNTED, nothing more: it
+ * is not access control. The figures are protected by the admin route's
+ * 404 alone (core session's note, 2026-10-14).
+ *
  * NOT RECORDED, decided here and not trusted to the page alone:
  *   - a signed-in admin (the owner);
  *   - a device the owner marked as his own on the admin page (`self`), so

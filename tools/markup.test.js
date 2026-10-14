@@ -486,7 +486,7 @@ check('the "AI detection is bad" sheet is gone', !/id="ai-notice"/.test(html) &&
 for (const tag of ['rel="canonical"', 'property="og:image"', 'name="twitter:card"', 'application/ld+json', 'rel="icon"']) {
   check(`the home page carries ${tag}`, html.includes(tag));
 }
-for (const page of ['admin', 'grade', 'maps', 'mywork', 'outlines', 'payouts', 'predictions', 'review', 'screen', 'workers']) {
+for (const page of ['admin', 'grade', 'maps', 'mywork', 'outlines', 'payouts', 'predictions', 'review', 'screen', 'workers', 'shade-admin']) {
   check(`${page}.html is kept out of search`,
     /<meta name="robots" content="noindex, nofollow">/.test(readFileSync(join(root, `public/${page}.html`), 'utf8')));
 }
