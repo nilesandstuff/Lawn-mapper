@@ -137,7 +137,8 @@ async function checkSensor({ site, year, hor, lat, lng, along, series, above }) 
     const near = list.filter((o) => Math.abs(o.ms - d.ms) <= 14 * 86400e3).map((o) => o.a);
     if (d.a < 0.85 * Math.max(...near)) continue;
     const doy = Math.floor((d.ms - Date.UTC(new Date(d.ms).getUTCFullYear(), 0, 1)) / 86400e3);
-    const f = seasonal ? calendar.share(Math.min(364, doy)) : 1;
+    /* SHADE_NOLEAVES: the trees as the laser flew them all year (what the added leaves do). */
+    const f = process.env.SHADE_NOLEAVES ? 0 : seasonal ? calendar.share(Math.min(364, doy)) : 1;
     const mu = seasonal ? muWithLeaves(s.season, f) : s.model.mu;
     /* SHADE_WOODV: bare wood seen from the side (rays.js woodScale), on leaf-off days only. */
     const m = { ...s.model, mu, ...(process.env.SHADE_WOODV && f < 0.1 ? { muScale: woodScale(Number(process.env.SHADE_WOODV)) } : {}) };

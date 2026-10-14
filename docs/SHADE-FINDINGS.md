@@ -486,7 +486,11 @@ NOT SHIPPED: it would need a rule by flight month, the leaf-off season
 hardly matters to a growing lawn, and the owner's October lawns lean the
 other way (too dark near trees, 9, 11, 14). Noted in passing: in the pine
 savannas the model is far too DARK in summer (TALL 16% measured, 5% model;
-JERC 22% / 3%; OSBS 30% / 13%) -- the pines question of finding 7.
+JERC 22% / 3%; OSBS 30% / 13%) -- the pines question of finding 7. With
+no leaves added at all (the canopy as flown, SHADE_NOLEAVES), May to
+September: TALL 16.9% measured, 42.1% model; JERC 24.3% / 41.6%; OSBS
+32.7% / 67.7%. The truth lies between: the summer leaves are going onto
+trees that should not get them (pines called deciduous), or too many.
 
 ## Speculation
 
