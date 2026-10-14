@@ -178,7 +178,7 @@ export const LEAF_FALL_DAYS = 28;
 export function seasonalCanopy(cols, model, { shift = null, classify = true, fill = {} } = {}) {
   /* How the summer leaves are filled in (tools/shade-check-leafon.js scores
      the choices against NEON's leaf-on lidar). Defaults: as shipped. */
-  const { closeR = 2, taperM = 0, spread = 'even', topR = 2, ladScale = 1, baseFrom = 'clump', laiMax = LAI_MAX, edgeTopM = 0 } = fill;
+  const { closeR = 2, taperM = 0, spread = 'even', topR = 2, ladScale = 1, baseFrom = 'clump', laiMax = LAI_MAX, edgeTopM = 0, lawnClumpM2 = 0 } = fill;
   const { grid, w, h, nz, dz, z0, ground, mu } = model;
   const N = w * h;
   const above = new Uint16Array(N), multiAbove = new Uint16Array(N), lastGround = new Uint16Array(N);
@@ -383,7 +383,13 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, fil
     const k = y * w + x;
     if (!isCrown(k)) continue;
     let tall = hOver[k];
-    const r = shoulder && shoulder[k] <= edgeTopM ? 0 : topR;
+    /* LAWN TREES (owner, 2026-10-14: "forest canopies behave differently
+       from lawn canopies ... we care much more about lawn trees"): a crown
+       in a clump smaller than lawnClumpM2 keeps its own top and is not
+       widened by the closing; the closing and the tallest-neighbour top are
+       for closed canopy, where NEON's ground sensors need them. */
+    const lawnLike = lawnClumpM2 > 0 && clumpOf[k] >= 0 && clumps[clumpOf[k]].n < lawnClumpM2;
+    const r = lawnLike || (shoulder && shoulder[k] <= edgeTopM) ? 0 : topR;
     for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
       const xx = x + dx, yy = y + dy;
       if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
@@ -403,6 +409,7 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, fil
       const j = yy * w + xx;
       if (isCrown(j) && (best < 0 || zHi[j] - ground[j] > zHi[best] - ground[best])) best = j;
     }
+    if (best >= 0 && lawnClumpM2 > 0 && clumpOf[best] >= 0 && clumps[clumpOf[best]].n < lawnClumpM2) continue; // a lawn tree is not widened
     if (best >= 0) { crownOf[k] = clumpOf[best]; topOf[k] = ground[k] + (topOf[best] - ground[best]); }
   }
   /* Distance (m) to the footprint's edge, for a crown thinning toward it. */
