@@ -17,14 +17,31 @@ import jpeg from 'jpeg-js';
 import { shadeSite } from './shade-site.js';
 import { scorePhoto, sunGrid } from './shade-photo-score.js';
 import { gridForFrame } from '../public/shade/grid.js';
+import { frameBbox3857, imagePixels, imageHeightPixels, PROVIDERS } from '../worker/src/imagery.js';
 
 const SITE = process.env.SITE || 'https://lawnmap.nilesandstuff.com';
 const ZOOM = 18, SIZE = 640; // ~140 m across at 43 degrees
 
+/*
+ * DIRECT_PHOTOS=1 (workflow 35 on GitHub's runners, which the live site
+ * refuses with a 403): the photos straight from their sources, framed the
+ * way /api/imagery frames them -- Mapbox with the repository's token (sent
+ * with the site as its referrer, for a token locked to it), and the county's
+ * own ImageServer flights. The county list is Ottawa's (the owner's area;
+ * the core session's catalogue, 2026-10-14), not looked up per point.
+ */
+const DIRECT = /^(1|yes|true)$/i.test(process.env.DIRECT_PHOTOS || '');
+const OTTAWA = [2024, 2021, 2018].map((year) => ({ year, title: `ImageService/Aerial${year}`, url: `https://gis.miottawa.org/image/rest/services/ImageService/Aerial${year}/ImageServer` }));
+function directUrl(src, frame) {
+  if (src.provider === 'mapbox') return PROVIDERS.mapbox.url(frame, process.env.MAPBOX_SERVER_TOKEN || process.env.MAPBOX_TOKEN || '');
+  const params = new URLSearchParams({ bbox: frameBbox3857(frame).join(','), bboxSR: '3857', imageSR: '3857', size: `${imagePixels(frame)},${imageHeightPixels(frame)}`, format: 'png', f: 'image' });
+  return `${src.url}/exportImage?${params}`;
+}
+
 async function getRetry(u, as = 'json', tries = 4) {
   for (let i = 0; ; i++) {
     try {
-      const r = await fetch(u);
+      const r = await fetch(u, { headers: { Referer: `${SITE}/` } });
       if (!r.ok) throw new Error(`${r.status}`);
       return as === 'json' ? await r.json() : Buffer.from(await r.arrayBuffer());
     } catch (e) {
@@ -103,16 +120,16 @@ export async function photoCells(site, lng, lat, provider, svc = null) {
 export async function checkLot(lng, lat, { everyYear = false, mixed = false } = {}) {
   const site = await shadeSite(lng, lat, { halfM: 110 });
   if (!site) return [{ lng, lat, skip: 'no lidar' }];
-  const county = await getRetry(`${SITE}/api/county-imagery?lng=${lng}&lat=${lat}`).catch(() => null);
+  const county = DIRECT ? { services: OTTAWA.map((o) => ({ ...o, id: o.title })) } : await getRetry(`${SITE}/api/county-imagery?lng=${lng}&lat=${lat}`).catch(() => null);
   const sources = [{ provider: 'mapbox', label: 'mapbox' }];
   const services = county?.services || [];
   const picked = everyYear ? services.filter((s, i) => services.findIndex((o) => o.year === s.year) === i) : services.slice(0, 3);
-  for (const s of picked) sources.push({ provider: 'county', svc: s.id, label: `county ${s.title}`, year: s.year });
+  for (const s of picked) sources.push({ provider: 'county', svc: s.id, label: `county ${s.title}`, year: s.year, url: s.url });
   const frame = { lng, lat, zoom: ZOOM, size: SIZE, height: SIZE };
   const out = [];
   for (const src of sources) {
     try {
-      const q = `${SITE}/api/imagery?provider=${src.provider}${src.svc ? `&svc=${src.svc}` : ''}&lng=${lng}&lat=${lat}&zoom=${ZOOM}&size=${SIZE}&height=${SIZE}`;
+      const q = DIRECT ? directUrl(src, frame) : `${SITE}/api/imagery?provider=${src.provider}${src.svc ? `&svc=${src.svc}` : ''}&lng=${lng}&lat=${lat}&zoom=${ZOOM}&size=${SIZE}&height=${SIZE}`;
       const img = decode(await getRetry(q, 'bytes'));
       const cells = ontoCells(site, frame, img);
       const ls = leafState(site, cells);
@@ -120,7 +137,7 @@ export async function checkLot(lng, lat, { everyYear = false, mixed = false } = 
       const leaf = ls.leaf === 'mixed' ? 'on' : ls.leaf;
       const ground = Uint8Array.from(cells.exg, (v) => (leaf === 'on' ? (v > 0.02 ? 1 : 0) : 1));
       const r = scorePhoto(site, { bright: cells.bright, ground, seen: cells.seen }, { suns: sunGrid, leaf });
-      out.push({ lng, lat, source: src.label, year: src.year, px: img.width, ...ls, lidar: site.cloud.url.split('/').slice(-2)[0], flight: site.cloud.unit?.season, ...r });
+      out.push({ lng, lat, source: src.label, year: src.year, px: img.width, ...ls, lidar: site.cloud.url.split('/').slice(-2)[0], flight: site.cloud.unit?.season, ...r, leafRead: ls.leaf });
     } catch (e) {
       out.push({ lng, lat, source: src.label, year: src.year, error: e.message });
     }

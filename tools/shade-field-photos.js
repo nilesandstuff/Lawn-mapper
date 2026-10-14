@@ -49,7 +49,8 @@ export function addUp(rows) {
     if (r.skip || r.error) { const why = r.skip ? r.skip.replace(/[\d.]+x/, 'Nx') : `error ${String(r.error).split(/[\s:]/)[0]}`; a.skips[why] = (a.skips[why] || 0) + 1; continue; }
     if (!r.trees) continue;
     a.frames++;
-    a.leaf[r.leaf] = (a.leaf[r.leaf] || 0) + 1;
+    const read = r.leafRead || r.leaf;
+    a.leaf[read] = (a.leaf[read] || 0) + 1;
     /* The photo was scored against one canopy (leafy unless it read
        leaf-off); the other came back as the other season. */
     const full = r.leaf === 'off' ? r.treesOtherSeason : r.trees, bare = r.leaf === 'off' ? r.trees : r.treesOtherSeason;

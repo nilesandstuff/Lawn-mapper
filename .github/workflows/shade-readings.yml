@@ -81,4 +81,9 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           DAY: ${{ inputs.day }}
           MAX_STOPS: ${{ inputs.stops }}
+          # The live site refuses GitHub's runners (403), so the photos come
+          # straight from Mapbox and the county's image server.
+          DIRECT_PHOTOS: '1'
+          MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
+          MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN }}
         run: node tools/shade-field-photos.js
