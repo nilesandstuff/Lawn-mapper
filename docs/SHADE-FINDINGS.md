@@ -491,6 +491,12 @@ no leaves added at all (the canopy as flown, SHADE_NOLEAVES), May to
 September: TALL 16.9% measured, 42.1% model; JERC 24.3% / 41.6%; OSBS
 32.7% / 67.7%. The truth lies between: the summer leaves are going onto
 trees that should not get them (pines called deciduous), or too many.
+CONFIRMED for the first: within 40 m of the sensors 0% of the crown columns
+are called evergreen at TALL and OSBS, 0-2% at JERC (pines 19-24 m tall):
+open pine crowns pass more than the 0.2 of the winter sun the rule (2)
+asks of an evergreen, so they get a deciduous crown's full summer leaves.
+Finding 7 found no better rule four ways; this puts a number on what it
+costs in pine country (10-20 points of the day's light under the canopy).
 
 ## Speculation
 
