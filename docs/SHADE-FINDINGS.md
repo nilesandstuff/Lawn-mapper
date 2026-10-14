@@ -508,7 +508,18 @@ lawn broadleaf evergreen (112 of 134 right, against 133). The verdict stands:
 the winter laser alone cannot tell an open pine from a bare broadleaf -- in
 pine country the pines are MORE see-through in winter (median 0.52-0.72)
 than the broadleaf beside them. A map of forest types (pine regions) as a
-prior is the next idea, not tried.
+prior is the next idea, TRIED the same day: the US Forest Service's forest
+type groups (FIA Forest Atlas, 250 m, imagery.geoplatform.gov ImageServer
+USFS_EDW_FIA_ForestAtlas_TreeSpecies_109; TALL and OSBS read longleaf/
+slash pine, JERC oak-pine, SCBI oak-hickory, HARV maple-beech-birch). Rule:
+in a loblolly/shortleaf, longleaf/slash or oak-pine pixel, a crown carried
+high (crown base over 0.35 of its height) is evergreen; elsewhere today's.
+Per-crown cost 958 -> 651 over all labelled crowns (TALL 315 -> 137, OSBS
+264 -> 160, JERC 115 -> 78) -- but on LAWNS 53 -> 65: of the 17 labelled
+lawn crowns in mapped pine country 16 are broadleaf yard trees, and 5 of
+them carry their crowns high and flip. Not shipped: the map is for lawns,
+and the lawn sample there is small. More labelled Southern lawn trees would
+decide it.
 
 ## Speculation
 
