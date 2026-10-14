@@ -23,6 +23,7 @@ import { fromMerc, toMerc } from './ept.js';
 import { sunPath } from './sun.js';
 import { GRASS, dayLabel } from './climate.js';
 import { heat, bandsFor, rasterOf, smooth, valueAt, boxStats } from './readout.js';
+import { groundLayer } from './view3d.js';
 
 const $ = (s) => document.querySelector(s);
 const SQFT = 10.7639;
@@ -71,11 +72,14 @@ export function aboutLocal(ms, lng) {
 
 const polysOf = (g) => (g?.type === 'Polygon' ? [g.coordinates] : g?.type === 'MultiPolygon' ? g.coordinates : []);
 
-export function startSun({ map, site, cols, box, shift, heightM, season, beforeLayer }) {
+export function startSun({ map, site, cols, box, shift, heightM, season, beforeLayer, ground = null }) {
   const st = {
     worker: null, mode: 'hours', day: null, now: null, ids: 0, path: [],
     grid: gridOver(box, 1, site.lat),
   };
+  st.drape = ground && ground.length === st.grid.w * st.grid.h ? groundLayer('light-3d', { grid: st.grid, ground, baseZ: heightM, lat: site.lat }) : null;
+  const onPitch = () => drapeMode();
+  map.on('pitchend', onPitch);
   const sec = $('#sun');
   sec.hidden = false;
   const status = (t) => { $('#sun-status').textContent = t; };
@@ -121,6 +125,21 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
       map.addSource('light', { type: 'image', url, coordinates: corners() });
       map.addLayer({ id: 'light', type: 'raster', source: 'light', paint: { 'raster-fade-duration': 0, 'raster-resampling': 'nearest' } }, beforeLayer());
     }
+    /* Tilted, the same picture lies on the lidar's ground (view3d.js groundLayer). */
+    if (st.drape) {
+      try {
+        if (!map.getLayer(st.drape.id)) map.addLayer(st.drape, beforeLayer());
+        st.drape.setImage(c);
+        drapeMode();
+      } catch (e) { st.drape = null; reportError('ground layer', e.message); if (map.getLayer('light')) map.setPaintProperty('light', 'raster-opacity', 1); }
+    }
+  }
+  /* Flat picture looking straight down; on the ground when the map is tilted. */
+  function drapeMode() {
+    if (!st.drape || !map.getLayer(st.drape.id) || !map.getLayer('light')) return;
+    const tilted = map.getPitch() > 5;
+    map.setLayoutProperty(st.drape.id, 'visibility', tilted ? 'visible' : 'none');
+    map.setPaintProperty('light', 'raster-opacity', tilted ? 0 : 1);
   }
 
   function legend(b, unit) {
@@ -523,6 +542,8 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
       st.worker?.terminate();
       if (map.getLayer('light')) map.removeLayer('light');
       if (map.getSource('light')) map.removeSource('light');
+      if (st.drape && map.getLayer(st.drape.id)) map.removeLayer(st.drape.id);
+      map.off('pitchend', onPitch);
       setBoxing(false);
       clearReadouts();
       $('#t-lawn').hidden = true;

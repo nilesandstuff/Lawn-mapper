@@ -114,3 +114,111 @@ export function pointLayer(id, cols, { heightOver, shift = [0, 0], baseZ, lat, s
     onRemove(map, gl) { gl.deleteBuffer(bPos); gl.deleteBuffer(bCol); gl.deleteProgram(prog); },
   };
 }
+
+/**
+ * THE LIGHT DRAPED ON THE GROUND (owner, 2026-10-14: "shade is being rendered
+ * onto a 2d surface... we should be rendering shade onto the 3d ground
+ * surface"). The light was always worked out on the lidar's ground (rays.js
+ * starts every ray there, on the ground's own slope); only the picture lay
+ * flat, so on a sloping lot, tilted, it floated off the points. This is a
+ * mesh through the 1 m grid's corners at the ground's height (each corner
+ * the mean of the cells around it), lifted `liftM`, textured with the same
+ * picture: `setImage(canvas)` swaps it.
+ */
+export function groundLayer(id, { grid, ground, baseZ, lat, liftM = 0.08 }) {
+  const W = grid.w, H = grid.h, cellY = grid.cellY || grid.cell;
+  const [mx, my] = mercUnits(grid.x0, grid.y1);
+  const perMerc = 1 / WORLD, upm = 1 / (WORLD * Math.cos(lat * Math.PI / 180));
+  const at = (i, j) => {
+    let s = 0, n = 0;
+    for (const [di, dj] of [[-1, -1], [0, -1], [-1, 0], [0, 0]]) {
+      const x = i + di, y = j + dj;
+      if (x < 0 || y < 0 || x >= W || y >= H) continue;
+      const v = ground[y * W + x];
+      if (Number.isFinite(v)) { s += v; n++; }
+    }
+    return n ? s / n : baseZ;
+  };
+  const nv = (W + 1) * (H + 1);
+  const pos = new Float32Array(nv * 5);
+  for (let j = 0; j <= H; j++) for (let i = 0; i <= W; i++) {
+    const v = (j * (W + 1) + i) * 5;
+    pos[v] = i * grid.cell * perMerc;
+    pos[v + 1] = j * cellY * perMerc;
+    pos[v + 2] = (at(i, j) - baseZ + liftM) * upm;
+    pos[v + 3] = i / W; pos[v + 4] = j / H;
+  }
+  const idx = new Uint32Array(W * H * 6);
+  let q = 0;
+  for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
+    const a = j * (W + 1) + i, b = a + 1, c = a + W + 1, d = c + 1;
+    idx[q++] = a; idx[q++] = b; idx[q++] = c; idx[q++] = b; idx[q++] = d; idx[q++] = c;
+  }
+  let prog, bPos, bIdx, tex, aPos, aUv, uM, uTex, vao = null, pending = null, hasImage = false, mapRef = null;
+  return {
+    id, type: 'custom', renderingMode: '3d',
+    /** Swap the picture (a canvas the size of the light raster). */
+    setImage(canvas) { pending = canvas; mapRef?.triggerRepaint(); },
+    onAdd(map, gl) {
+      mapRef = map;
+      gl.getExtension('OES_element_index_uint'); // WebGL1; WebGL2 has it
+      const sh = (type, src) => {
+        const s = gl.createShader(type);
+        gl.shaderSource(s, src); gl.compileShader(s);
+        if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+        return s;
+      };
+      prog = gl.createProgram();
+      gl.attachShader(prog, sh(gl.VERTEX_SHADER, `
+        uniform mat4 uM; attribute vec3 aPos; attribute vec2 aUv; varying vec2 vUv;
+        void main() { gl_Position = uM * vec4(aPos, 1.0); vUv = aUv; }`));
+      gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, `
+        precision mediump float; uniform sampler2D uTex; varying vec2 vUv;
+        void main() { vec4 c = texture2D(uTex, vUv); if (c.a < 0.01) discard; gl_FragColor = vec4(c.rgb * c.a, c.a); }`));
+      gl.linkProgram(prog);
+      aPos = gl.getAttribLocation(prog, 'aPos'); aUv = gl.getAttribLocation(prog, 'aUv');
+      uM = gl.getUniformLocation(prog, 'uM'); uTex = gl.getUniformLocation(prog, 'uTex');
+      /* Its own vertex state: the map leaves other attributes enabled, and
+         WebGL refuses a draw (INVALID_OPERATION) when any enabled one is
+         shorter than the mesh. */
+      if (gl.createVertexArray) { vao = gl.createVertexArray(); gl.bindVertexArray(vao); }
+      bPos = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, bPos); gl.bufferData(gl.ARRAY_BUFFER, pos, gl.STATIC_DRAW);
+      bIdx = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, bIdx); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idx, gl.STATIC_DRAW);
+      if (vao) {
+        gl.enableVertexAttribArray(aPos); gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, 20, 0);
+        gl.enableVertexAttribArray(aUv); gl.vertexAttribPointer(aUv, 2, gl.FLOAT, false, 20, 12);
+        gl.bindVertexArray(null);
+      }
+      tex = gl.createTexture();
+    },
+    render(gl, matrix) {
+      if (pending) {
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, pending);
+        for (const [p, v] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, p, v);
+        pending = null; hasImage = true;
+      }
+      if (!hasImage) return;
+      const T = new Float64Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, mx, my, 0, 1]);
+      gl.useProgram(prog);
+      gl.uniformMatrix4fv(uM, false, new Float32Array(mul(matrix, T)));
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex); gl.uniform1i(uTex, 0);
+      if (vao) gl.bindVertexArray(vao);
+      else {
+        const max = gl.getParameter(gl.MAX_VERTEX_ATTRIBS);
+        for (let a = 0; a < max; a++) if (a !== aPos && a !== aUv) gl.disableVertexAttribArray(a);
+        gl.bindBuffer(gl.ARRAY_BUFFER, bPos);
+        gl.enableVertexAttribArray(aPos); gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, 20, 0);
+        gl.enableVertexAttribArray(aUv); gl.vertexAttribPointer(aUv, 2, gl.FLOAT, false, 20, 12);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, bIdx);
+      }
+      gl.enable(gl.DEPTH_TEST);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      gl.drawElements(gl.TRIANGLES, idx.length, gl.UNSIGNED_INT, 0);
+      if (vao) gl.bindVertexArray(null);
+    },
+    onRemove(map, gl) { if (vao) gl.deleteVertexArray(vao); gl.deleteBuffer(bPos); gl.deleteBuffer(bIdx); gl.deleteTexture(tex); gl.deleteProgram(prog); },
+  };
+}

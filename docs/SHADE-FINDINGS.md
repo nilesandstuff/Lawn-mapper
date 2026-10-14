@@ -351,40 +351,46 @@ So a phone GPS that wanders a meter or few from stop to stop, and no
 correction that fits the day. Fitting each stop's move to the readings
 would score the model against itself; not done.
 
-### 13. Against leaf-on lidar: right under woods, too dark on open ground near trees (NEON, 2026-10-14)
+### 13. Against leaf-on lidar: the fill is close; open ground near trees a little dark (NEON, 2026-10-14, CORRECTED)
 
 Owner: "how trees are being filled in ... compare our fill model with hard
 reality." tools/shade-check-leafon.js: the page's model from the 3DEP
 leaf-off cloud with full summer leaves (OURS) against the same canopy maths
 on NEON's peak-greenness lidar of the same trees (LEAF-ON; nothing filled),
-flights a year apart: UKFS (KS, 2015/2016-07), SCBI and BLAN (VA,
+flights a year or less apart: UKFS (KS, 2015/2016-07), SCBI and BLAN (VA,
 2020-21/2021-08), ORNL (TN, 2015-16/2016-06); MLBS found no tile at 25-60%
 tree cover. 32 windows of 250 m, 2 NEON tiles a site picked for 25-60%
-cover; clouds lined up by canopy and roof tops (all within a meter).
-Light at 1.27 m for the sun 20-65 degrees up from five directions:
+cover; clouds lined up by canopy and roof tops (all within a meter). Light
+at 1.27 m for the sun 20-65 degrees up from five directions.
 
-| Place | rays | agree | ours too dark / too bright | mean beam leaf-on / ours / bare |
+CORRECTION, same day: the first numbers here (open ground 85%, our crowns
+24% wider) were a bug in the check, not the model -- NEON points in the
+overlap of neighbouring windows went to the first window only, leaving 40 m
+strips of the others with no leaf-on data, read as open ground. Fixed in
+readTile; the numbers below are from the fixed run.
+
+The leaf-on model is scored two ways, because under a dense leaf-on layer
+the laser saw nothing and canopy.js fills solid to the grass (right under a
+roof, a guess under a tree): with that fill (A), and with it under roofs
+only (B, the fairer one for trees).
+
+| Place | agree (B) | ours too dark / too bright (B) | mean beam leaf-on / ours (B) | agree (A) |
 |---|---|---|---|---|
-| deep under canopy | 1,176,480 | 97% | 1% / 2% | 0.03 / 0.05 / 0.44 |
-| under a crown edge (3 m) | 339,840 | 84% | 9% / 6% | 0.33 / 0.32 / 0.61 |
-| OPEN, within 20 m of trees | 1,384,240 | 85% | 14% / 1% | 0.85 / 0.73 / 0.86 |
-| under a small crown (<300 m2) | 8,120 | 74% | 4% / 22% | 0.12 / 0.35 / 0.62 |
+| OPEN, within 20 m of trees | 93% | 6% / 1% | 0.85 / 0.80 | 93% |
+| under a crown edge (3 m) | 83% | 12% / 5% | 0.39 / 0.33 | 85% |
+| deep under canopy | 92% | 7% / 1% | 0.12 / 0.06 | 97% |
+| under a small crown (<300 m2, ~400 points) | 76% | 20% / 4% | 0.46 / 0.34 | 75% |
 
-- The lawn's case -- open ground near trees -- is where the fill is wrong:
-  too dark on 14% of rays, too bright on 1%, at every sun height (20
-  degrees: beam 0.70 against ours 0.58; 65: 0.96 against 0.85). Bare trees
-  would agree as well (86%): the fill adds shade there that is not real.
-- FOOTPRINT: ours covers 846,252 crown columns where the leaf-on laser has
-  682,946; 23% of ours are columns with no crown in leaf (bare as flown
-  already 809k: leaf-off crowns read wider than leaf-on ones here, and the
-  footprint closing adds the rest).
-- CROWN EDGES overhead: ours passes 6% of the sun straight down, leaf-on
-  22%; deep canopy 6% against ~0. Crown bases agree (median difference 0 m):
-  the leaves are not too low, the edges too dense and too wide.
-- Small crowns are the other way (too bright, worst with the sun low), on
-  few rays (~400 points).
-
-Under closed canopy this agrees with finding 1 (NEON's ground sensors).
+- FOOTPRINT: ours covers 102% of the leaf-on crown columns (7% of ours
+  where leaf-on has none) -- right, within the flights' year apart.
+- The lawn's case, open ground near trees, agrees 93%, leaning dark: ours
+  passes 0.80 of the beam where leaf-on passes 0.85.
+- Fill changes scored on the same windows (B), none worth more than a
+  point or two anywhere: no footprint widening (open 93%, beam 0.81; edge
+  84%), crowns thinned over 2 m to the edge (93%, 0.81; small crowns 77%),
+  leaves where the winter branches are (93%, 0.81), crown base per column
+  (93%, 0.80; small crowns worse, 73%), each column's own top (93%, 0.82;
+  edge 82%).
 
 ## Speculation
 
@@ -400,10 +406,8 @@ Under closed canopy this agrees with finding 1 (NEON's ground sensors).
   were edges): trees cut or thinned since the 2018 flight, crowns called evergreen that are not, or GPS at a crown's edge.
   Per-tree, not tested.
 
-- Finding 13's open-ground darkness may be most of the model's "too dark
-  near trees" on the owner's stops (9, 11): edge-class misses ran too dark
-  394 against 245 too bright. A thinner, tighter crown edge in the fill,
-  scored on the same NEON windows, would test it.
+- The fill's lean dark near trees (13, ~5 points of beam) may be a small
+  part of the owner's "too dark near trees" (9, 11), not most of it.
 
 - Per-stop GPS wander (12) may be behind part of the edge misses (1,867
   readings at 66%); an independent fix (the truck's resting spot against

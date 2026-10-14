@@ -135,15 +135,16 @@ async function readTile(path, zone, boxes) {
       const dv = new DataView(M.HEAPU8.buffer, ptr, L);
       readRecord(dv, 0, fmt, h, one, 0);
       if (one.cls[0] === 7 || one.cls[0] === 18) continue;
-      let hit = -1;
+      /* Every window the point is in: they overlap by their margins, and a
+         point given only to the first left 40 m strips of the others empty
+         (found 2026-10-14, after finding 13's first numbers). */
+      let mx = NaN, my = NaN;
       for (let b = 0; b < boxes.length; b++) {
         const u = boxes[b].utm;
-        if (one.x[0] >= u[0] && one.x[0] <= u[2] && one.y[0] >= u[1] && one.y[0] <= u[3]) { hit = b; break; }
+        if (!(one.x[0] >= u[0] && one.x[0] <= u[2] && one.y[0] >= u[1] && one.y[0] <= u[3])) continue;
+        if (Number.isNaN(mx)) { const [lat, lng] = utmToLatLng(one.x[0], one.y[0], zone); [mx, my] = toMerc([lng, lat]); }
+        outs[b].pts.push(mx, my, one.z[0], one.ret[0], one.nret[0], one.cls[0]);
       }
-      if (hit < 0) continue;
-      const [lat, lng] = utmToLatLng(one.x[0], one.y[0], zone);
-      const [mx, my] = toMerc([lng, lat]);
-      outs[hit].pts.push(mx, my, one.z[0], one.ret[0], one.nret[0], one.cls[0]);
     }
     M._free(ptr);
   } finally {
@@ -160,7 +161,7 @@ async function readTile(path, zone, boxes) {
 /* --------------------------------------------------------- the comparison */
 
 /** Highest return over the ground per cell, NaN where none (for lining the clouds up). */
-function topGrid(cols, grid, shift) {
+export function topGrid(cols, grid, shift) {
   const top = new Float32Array(grid.w * grid.h).fill(NaN);
   for (let i = 0; i < cols.n; i++) {
     const k = cellOf(grid, cols.x[i], cols.y[i], shift);
@@ -184,7 +185,7 @@ export function bestShift(a, b, w, h, r = 4) {
 }
 
 /** Height over the ground of the lowest layer stopping light above CROWN_M, NaN for none. */
-function baseOf(model, mu, k) {
+export function baseOf(model, mu, k) {
   const { nz, dz, z0, ground } = model;
   for (let l = 0; l < nz; l++) {
     const lo = z0 + l * dz - ground[k];
@@ -193,7 +194,7 @@ function baseOf(model, mu, k) {
   }
   return NaN;
 }
-function overheadT(model, mu, k) {
+export function overheadT(model, mu, k) {
   const { nz, dz, z0, ground } = model;
   let tau = 0;
   for (let l = 0; l < nz; l++) if (z0 + (l + 0.5) * dz > ground[k] + 0.5) tau += mu[k * nz + l] * dz;
@@ -201,14 +202,14 @@ function overheadT(model, mu, k) {
 }
 
 /** Crown columns: something stops light above CROWN_M, and it is not a building. */
-function crownMask(model, mu, roof) {
+export function crownMask(model, mu, roof) {
   const out = new Uint8Array(model.w * model.h);
   for (let k = 0; k < out.length; k++) if (!roof[k] && Number.isFinite(baseOf(model, mu, k))) out[k] = 1;
   return out;
 }
 
 /** Each crown column's clump size (8-neighbour), m2. */
-function clumpSizes(mask, w, h) {
+export function clumpSizes(mask, w, h) {
   const size = new Int32Array(w * h);
   const seen = new Uint8Array(w * h);
   for (let s = 0; s < w * h; s++) {
@@ -227,7 +228,7 @@ function clumpSizes(mask, w, h) {
 }
 
 /** Distance (m, capped) from each cell to the nearest cell where mask is `want`. */
-function distTo(mask, w, h, want, cap = 25) {
+export function distTo(mask, w, h, want, cap = 25) {
   const d = new Float32Array(w * h).fill(cap);
   const q = [];
   for (let k = 0; k < w * h; k++) if (mask[k] === want) { d[k] = 0; q.push(k); }

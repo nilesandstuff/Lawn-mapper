@@ -456,7 +456,7 @@ async function build(site) {
 
   /* Step 2: the sun over this model, in a worker (shade/sun-ui.js). */
   view.sun = startSun({
-    map, site, cols, box, shift, heightM: baseZ, season: cloud.unit?.season,
+    map, site, cols, box, shift, heightM: baseZ, season: cloud.unit?.season, ground,
     beforeLayer: () => (map.getLayer('parcel') ? 'parcel' : undefined),
   });
   /* A visit's field readings, when the readings page sent us here (admin). */
