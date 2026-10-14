@@ -1063,11 +1063,12 @@ CREATE TABLE IF NOT EXISTS county_search (
 -- /api/shade/readings (worker/src/shade.js). ADMIN ONLY: these are tracks
 -- over customers' lawns, kept to check the shade map against and nothing
 -- else. `session` is Sensor Logger's recording id; `t` is milliseconds since
--- 1970, UTC. Light is kept as one mean per whole second.
+-- 1970, UTC. Light is kept as one median per whole second, with its brightest sample.
 CREATE TABLE IF NOT EXISTS shade_lux (
   session     TEXT NOT NULL,
   t           INTEGER NOT NULL,
-  lux         REAL NOT NULL,
+  lux         REAL NOT NULL,      -- the second's median (truth.js perSecond)
+  lux_max     REAL,               -- its brightest sample: flecks of sun
   PRIMARY KEY (session, t)
 );
 CREATE TABLE IF NOT EXISTS shade_fixes (

@@ -671,7 +671,8 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   });
   check('an export: Location.csv for fixes, Light.csv for lux, other sensors ignored',
     exp.fix.length === 1 && exp.fix[0][3] === 3.5 && exp.lux.length === 2 && exp.lux[1][1] === 42000, JSON.stringify(exp));
-  check('light per second is the mean of the second', JSON.stringify(perSecond([[1000, 10], [1500, 30], [2100, 5]])) === '[[1000,20],[2000,5]]');
+  check('light per second is the second\'s median (a lone fleck of sun does not lift it), with its brightest sample',
+    JSON.stringify(perSecond([[1000, 2000], [1250, 60000], [1500, 2100], [1750, 1900], [2100, 5]])) === '[[1000,2050,60000,4],[2000,5,5,1]]');
   /* A walk east at 1 m/s from sun into shade, a fill-up cut out, then a truck jump. */
   const fix = [], lux = [];
   const t0 = 1760270400000, m = 1 / 111320 / Math.cos(43.1 * Math.PI / 180);
@@ -737,12 +738,12 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   for (let i = 0; i < 30; i++) drive.push({ t: t0 + 40000 + i * 1000, lat: 43.1, lng: -85.5 + (40 + 20 * i) * m, acc: 3, speed: 20, bearing: 90, lux: 40000 });
   for (let i = 0; i < 40; i++) drive.push({ t: t0 + 70000 + i * 1000, lat: 43.1, lng: -85.5 + (640 + i) * m, acc: 3, speed: 1, bearing: 90, lux: 40000 });
   check('visits: the truck at 20 m/s splits two stops even though it never jumps', splitVisits(drive).length === 2, splitVisits(drive).map((v) => v.length).join(' '));
-  /* Two minutes of sun and shade, three of even dim light (a cloud), two of open sun. */
+  /* Two minutes of sun and shade, three of even shade (a tree line; clouds are not recorded), two of open sun. */
   const sky = [];
   for (let i = 0; i < 420; i++) sky.push({ t: t0 + i * 1000, lux: i < 120 ? (Math.floor(i / 10) % 2 ? 3000 : 40000) : i < 300 ? 5000 + (i % 7) * 150 : 40000 + (i % 5) * 300 });
   const around = sunOrShadeAround(sky);
-  const inCloud = around.judged.slice(215, 295).some(Boolean), early = around.sun[5] === true && around.sun[15] === false && around.judged[15], open = around.judged.slice(395).every(Boolean) && around.sun.slice(395).every(Boolean);
-  check('judged around each reading: sun and shade early, the cloud left out, open sun later still sun', !inCloud && early && open, JSON.stringify({ inCloud, early, open }));
+  const strip = around.judged.slice(215, 295).every(Boolean) && around.sun.slice(215, 295).every((v) => v === false), early = around.sun[5] === true && around.sun[15] === false && around.judged[15], open = around.judged.slice(395).every(Boolean) && around.sun.slice(395).every(Boolean);
+  check('judged around each reading: sun and shade early, a long strip of shade judged shade (not dropped as a cloud), open sun later still sun', strip && early && open, JSON.stringify({ strip, early, open }));
   /* The hopper tipping: sun read at 95,000 x cos^2.5 of its angle off the face plus 4,000 of sky, shade at 2,500. */
   check('sensor gain: cos^2.5 of the sun off the face, none from behind', near(sunGain(0), 1, 1e-9) && near(sunGain(60), 0.5 ** 2.5, 1e-9) && near(sunGain(60, 2), 0.25, 1e-9) && sunGain(95) === 0);
   const tip = [];

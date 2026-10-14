@@ -275,10 +275,10 @@ export async function storeReadings(db, { session, lux = [], fix = [], orient = 
   const L = perSecond(lux.filter((r) => Array.isArray(r) && Number.isFinite(Number(r[0])) && Number.isFinite(Number(r[1]))).map((r) => [Number(r[0]), Number(r[1])]));
   const F = fix.filter((r) => Array.isArray(r) && [r[0], r[1], r[2]].every((v) => Number.isFinite(Number(v))));
   const stmts = [];
-  for (let i = 0; i < L.length; i += 30) {
-    const part = L.slice(i, i + 30);
-    stmts.push(db.prepare(`INSERT OR IGNORE INTO shade_lux (session, t, lux) VALUES ${part.map(() => '(?, ?, ?)').join(', ')}`)
-      .bind(...part.flatMap(([t, l]) => [session, Math.round(t), l])));
+  for (let i = 0; i < L.length; i += 24) {
+    const part = L.slice(i, i + 24);
+    stmts.push(db.prepare(`INSERT OR IGNORE INTO shade_lux (session, t, lux, lux_max) VALUES ${part.map(() => '(?, ?, ?, ?)').join(', ')}`)
+      .bind(...part.flatMap(([t, l, mx]) => [session, Math.round(t), l, mx])));
   }
   const n = (v) => (v === null || v === undefined || !Number.isFinite(Number(v)) ? null : Number(v));
   for (let i = 0; i < F.length; i += 14) {

@@ -299,3 +299,6 @@ ALTER TABLE county_photo_failures ADD COLUMN status TEXT NOT NULL DEFAULT 'open'
 ALTER TABLE county_photo_failures ADD COLUMN resolved_at TEXT;
 ALTER TABLE county_photo_failures ADD COLUMN resolved_by TEXT;
 ALTER TABLE county_photo_failures ADD COLUMN resolution TEXT;
+-- The shade map's light readings: each second's brightest sample beside its
+-- median (flecks of sun through a thinning crown; features session, 2026-10-14).
+ALTER TABLE shade_lux ADD COLUMN lux_max REAL;

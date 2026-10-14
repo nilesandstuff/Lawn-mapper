@@ -21,7 +21,7 @@
  * in a pocket, in a hand), with the sun so far off the phone's face that sun
  * and shade would read nearly alike (sunGain; about 70 degrees in clear
  * sun), beside the owner's truck or in its shadow (truck.js finds it from
- * his routine), with no sunlit reading within two minutes (a cloud), and with the
+ * his routine), and with the
  * sun behind the operator (his own shadow falls on the phone). Stops count
  * once: one reading per meter moved.
  *
@@ -149,16 +149,26 @@ export function fromExport(files) {
   return out;
 }
 
-/** Light readings averaged per whole second ([[t, lux]], t on the second). */
+/**
+ * Light per whole second: [[t, median, max, n]], t on the second. The
+ * MEDIAN, not the mean (owner, 2026-10-13): the sensor reports about four
+ * times a second, and at 5-8 mph under a thinning crown one fleck of sun
+ * lasting a quarter second lifted a mean of shade most of the way to sun
+ * (2,000 lux shade with one 60,000 sample averaged 16,500). The brightest
+ * sample is kept too, to see the flecks.
+ */
 export function perSecond(lux) {
   const bins = new Map();
   for (const [t, l] of lux) {
     const s = Math.floor(t / 1000) * 1000;
-    const b = bins.get(s) || [0, 0];
-    b[0] += l; b[1]++;
-    bins.set(s, b);
+    if (!bins.has(s)) bins.set(s, []);
+    bins.get(s).push(l);
   }
-  return [...bins].sort((a, b) => a[0] - b[0]).map(([s, [sum, n]]) => [s, sum / n]);
+  return [...bins].sort((a, b) => a[0] - b[0]).map(([s, v]) => {
+    v.sort((a, b) => a - b);
+    const m = v.length >> 1, med = v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+    return [s, med, v[v.length - 1], v.length];
+  });
 }
 
 /**
@@ -347,19 +357,18 @@ function judgeByGain(samples, idx, isSun, minContrast) {
 }
 
 /**
- * Each reading judged against the light around it in time, for clouds that
- * come and go within a visit. Around each reading (within `windowS`
- * seconds): when the light there splits clearly into sun and shade, Otsu's
- * cut of those readings decides; when it does not split and stays as bright
- * as the visit's sun (its median at least `dimShare` of the visit's 90th
- * percentile), the visit's cut decides (a sunny open stretch); otherwise the
- * light there is evenly dim and the reading is not judged (`judged` false).
- * And a run of shade lasting more than `maxShadeS` seconds is not judged
- * either: a sprayer crosses a tree's shade in seconds, while a cloud dims a
- * minute or more, and beside open sun a cloud looks just like shade. A long
- * shaded strip along a tree line is lost with it; the phone alone cannot
- * tell the two apart. Returns sunOrShade's answer for the visit, with `sun`
- * and `judged` per reading.
+ * Each reading judged against the light around it in time. Around each
+ * reading (within `windowS` seconds): when the light there splits clearly
+ * into sun and shade, that split decides; when it does not (a long open
+ * stretch, or a long strip of shade along a tree line), the visit's split
+ * decides. Returns sunOrShade's answer for the visit, with `sun` and
+ * `judged` per reading.
+ *
+ * CLOUDS ARE NOT RECORDED (owner, 2026-10-14): he stops the recording when
+ * clouds come over. Until then a run of shade over a minute was dropped as a
+ * likely cloud, which threw away most of a lot shaded by a tree line along
+ * one side (188 readings at one stop on 2026-10-13, a clear day). So every
+ * dim stretch is shade now.
  *
  * With each sample's `gain` (sunGain: how squarely the face meets the sun),
  * the split is made on lux / (gain + 0.05) -- the sun's readings brought to
@@ -368,14 +377,12 @@ function judgeByGain(samples, idx, isSun, minContrast) {
  * readings whose face is turned too far for sun and shade to differ are not
  * judged and marked `faint`. Then `sunLux` is the face-on sun.
  */
-export function sunOrShadeAround(samples, { windowS = 90, minContrast = 3, dimShare = 0.5, maxShadeS = 60 } = {}) {
+export function sunOrShadeAround(samples, { windowS = 90, minContrast = 3 } = {}) {
   const n = samples.length, sun = new Array(n).fill(false), judged = new Array(n).fill(false), faint = new Array(n).fill(false);
   const posed = n > 0 && samples.every((s) => Number.isFinite(s.gain));
   const val = posed ? samples.map((s) => s.lux / (s.gain + 0.05)) : samples.map((s) => s.lux);
   const g = sunOrShade(val, { minContrast });
   if (!g.clear) return { ...g, sun, judged, faint };
-  const sorted = [...val].sort((x, y) => x - y);
-  const bright = sorted[Math.floor(0.9 * (n - 1))];
   const all = samples.map((_, i) => i);
   const visit = posed ? judgeByGain(samples, all, (i) => g.sun[i], minContrast) : null;
   const W = windowS * 1000;
@@ -392,20 +399,11 @@ export function sunOrShadeAround(samples, { windowS = 90, minContrast = 3, dimSh
         ? judgeByGain(samples, near.map((_, k) => a + k), (k) => local.sun[k - a], minContrast).at(i)
         : samples[i].lux > local.cut;
     } else {
-      const m = [...near].sort((x, y) => x - y)[near.length >> 1];
-      if (m < dimShare * bright) continue;
       verdict = posed ? visit.at(i) : samples[i].lux > g.cut;
     }
     if (verdict == null) { faint[i] = true; continue; }
     judged[i] = true;
     sun[i] = verdict;
-  }
-  for (let i = 0; i < n;) {
-    if (!judged[i] || sun[i]) { i++; continue; }
-    let k = i;
-    while (k + 1 < n && judged[k + 1] && !sun[k + 1]) k++;
-    if (samples[k].t - samples[i].t > maxShadeS * 1000) for (let q = i; q <= k; q++) judged[q] = false;
-    i = k + 1;
   }
   return { ...g, ...(posed ? { sunLux: visit.D, shadeLux: visit.H } : {}), sun, judged, faint };
 }

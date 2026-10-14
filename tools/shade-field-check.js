@@ -162,13 +162,12 @@ function judgeVisit(visit, u, trucks, mount, why, rows, truckShadowRows, { fligh
   let tsDark = 0, tsN = 0;
   both.forEach((r, i) => { if (truckShadowRows.includes(r) && sb.clear && sb.judged[i]) { tsN++; if (!sb.sun[i]) tsDark++; } });
   const faint = so.clear ? so.faint.filter(Boolean).length : 0;
-  const cloud = so.clear ? so.judged.filter((j, i) => !j && !so.faint[i]).length : rows.length;
   /* The truck: do the anchors at the start and end of a stop agree? */
   const spread = trucks.map((tr) => Math.max(0, ...tr.anchors.map((a) => metersBetween([tr.lat, tr.lng], [a.lat, a.lng]))));
   return {
     t0: visit[0].t, t1: visit[visit.length - 1].t, flight, flightEnd, leaf, mount,
     usable: u.length, trucks: trucks.length, anchors: trucks.reduce((a, tr) => a + tr.anchors.length, 0), spread,
-    why, faint, cloud, clear: so.clear, sunLux: so.sunLux, shadeLux: so.shadeLux, scored, tally: tally(scored), leafTest, truckShadow: { n: tsN, dark: tsDark },
+    why, faint, clear: so.clear, sunLux: so.sunLux, shadeLux: so.shadeLux, scored, tally: tally(scored), leafTest, truckShadow: { n: tsN, dark: tsDark },
   };
 }
 
@@ -204,7 +203,7 @@ export async function fieldCheck(day) {
     const tt = r.scored.length, ag = r.scored.filter((x) => x.modelSun === x.phoneSun).length;
     out.push(`\n${head}: ${r.usable} readings; phone on the hopper at ${r.mount ? `${Math.round(r.mount.offset)} degrees${r.mount.day ? ' (the day\'s fit)' : ''}` : '? (GPS heading used)'}; lidar ${r.flight || '?'} flight to ${r.flightEnd ? new Date(r.flightEnd).toISOString().slice(0, 7) : '?'}, leaves ${Math.round(100 * r.leaf)}% on`);
     out.push(`  truck: ${r.trucks} spot${r.trucks === 1 ? '' : 's'} from ${r.anchors} anchor${r.anchors === 1 ? '' : 's'}${r.spread.length ? ` (anchors within ${r.spread.map((m) => m.toFixed(1)).join(', ')} m of their spot)` : ''}; left out ${r.why.truckNear} beside it, ${r.why.truckShadow} in its shadow (the phone read ${r.truckShadow.n ? `${r.truckShadow.dark} of ${r.truckShadow.n} of those as shade` : 'none of those judged'})`);
-    out.push(`  also out: ${r.why.behind} your shadow, ${r.why.edge} near the model's edge, ${r.faint} face turned too far, ${r.cloud} dim too long (cloud)`);
+    out.push(`  also out: ${r.why.behind} your shadow, ${r.why.edge} near the model's edge, ${r.faint} face turned too far`);
     out.push(r.clear
       ? `  scored ${tt}: agree ${ag} (${pct(ag, tt)}); face-on sun ${Math.round(r.sunLux).toLocaleString('en-US')}, shade ${Math.round(r.shadeLux).toLocaleString('en-US')}`
       : '  no clear split into sun and shade: not scored');
