@@ -27,12 +27,13 @@ const NOISE = new Set([7, 18]);
 /* How much a meter of each band stops: sparse lets most light through (bare
    twigs), dense stops most of it (a full crown, a spruce, a roof). */
 export const BANDS = [
-  { id: 'sparse', below: 0.105, opacity: 0.3, name: 'lets most through (over 90% a meter)' },
-  { id: 'medium', below: 0.69, opacity: 0.6, name: 'about half to 90% a meter' },
-  { id: 'dense', below: Infinity, opacity: 0.9, name: 'stops most (under half a meter)' },
+  { id: 'sparse', below: 0.105, opacity: 0.55, name: 'lets most through (over 90% a meter)' },
+  { id: 'medium', below: 0.69, opacity: 0.8, name: 'about half to 90% a meter' },
+  { id: 'dense', below: Infinity, opacity: 0.95, name: 'stops most (under half a meter)' },
 ];
 const MIN_MU = 0.01; // a cube passing over 99% a meter is drawn as air
-export const KIND_COLOR = { roof: '#9e9e9e', evergreen: '#00897b', deciduous: '#9ccc65', filled: '#d4e157', other: '#c5e1a5' };
+/* Dark and apart from each other, to stand out on a sunny photo (owner, 2026-10-14: "I can hardly see any of them"). */
+export const KIND_COLOR = { roof: '#424242', evergreen: '#0d3b8c', deciduous: '#1b6e20', filled: '#7a5c00', other: '#1b6e20' };
 export const KIND_NAME = { roof: 'building (or a crown nothing got through)', evergreen: 'evergreen: as the laser saw it, all year', deciduous: 'deciduous', filled: 'deciduous, leaves filled in where the laser found a gap', other: 'not sorted (a leaf-on flight)' };
 
 /** 0-based day of the year, 29 Feb folded onto 28 Feb (as the light worker). */
@@ -164,6 +165,11 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
   $('#tr-bare').onclick = () => { st.leaves = 0; draw(); };
   $('#tr-roofs').onchange = () => { st.roofs = $('#tr-roofs').checked; draw(); };
   $('#tr-cut').onchange = () => { st.cut = Number($('#tr-cut').value) || 0; draw(); };
+  /* How solid the blocks are drawn, kept on this device. */
+  const solid = () => Number($('#tr-solid').value) / 100;
+  const applySolid = () => { BANDS.forEach((b, i) => { if (map.getLayer(ids[i])) map.setPaintProperty(ids[i], 'fill-extrusion-opacity', Math.min(1, b.opacity * solid())); }); };
+  try { const v = localStorage.getItem('lawnmapper.shade.treesSolid'); if (v) $('#tr-solid').value = v; } catch { /* not kept */ }
+  $('#tr-solid').oninput = () => { applySolid(); try { localStorage.setItem('lawnmapper.shade.treesSolid', $('#tr-solid').value); } catch { /* not kept */ } };
   $('#tr-legend').innerHTML = Object.entries(KIND_COLOR).filter(([k]) => leafOff || k === 'other' || k === 'roof')
     .map(([k, c]) => `<span class="sw" style="background:${c}"></span>${KIND_NAME[k]}`).join('<br>')
     + `<br><span class="dim">Faint to solid: ${BANDS.map((b) => b.name).join('; ')}.</span>`;
@@ -187,6 +193,7 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
   };
   map.on('click', onClick);
   draw();
+  applySolid();
   return {
     stop() {
       map.off('click', onClick);
