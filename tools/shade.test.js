@@ -886,6 +886,22 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
 }
 
 {
+  /* The leaf fill against NEON's leaf-on lidar (tools/shade-check-leafon.js): the pure parts. */
+  const { utmToLatLng, bestShift } = await import('./shade-check-leafon.js');
+  const [la, lo] = utmToLatLng(500000, 4300000, 17);
+  const [la2, lo2] = utmToLatLng(756500, 4337500, 17);
+  /* 38.84882: where the meridian arc (integrated numerically, x0.9996) is 4,300,000 m. */
+  check('leaf-on check: UTM to latitude and longitude (zone 17: the central meridian, and 256 km east of it)',
+    Math.abs(lo + 81) < 1e-9 && Math.abs(la - 38.84882) < 1e-5 && Math.abs(lo2 + 78.0319) < 0.001 && Math.abs(la2 - 39.1489) < 0.001, `${la} ${lo} ${la2} ${lo2}`);
+  const w = 40, h = 40, A = new Float32Array(w * h).fill(NaN), B = new Float32Array(w * h).fill(NaN);
+  let sd = 3;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { sd = (sd * 1103515245 + 12345) % 2147483648; A[y * w + x] = 100 + (sd % 997) / 50; }
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const xs = x - 2, ys = y + 1; if (xs >= 0 && ys < h) B[y * w + x] = A[ys * w + xs]; }
+  const bs = bestShift(A, B, w, h, 4);
+  check('leaf-on check: the cloud move that fits the tops is found', bs.dx === 2 && bs.dy === -1, JSON.stringify(bs));
+}
+
+{
   /* The readings follow the lidar onto the photo (truth-ui.js moveTrack), and the field check's GPS offset scan. */
   const { moveTrack } = await import('../public/shade/truth-ui.js');
   const fx = [[1, 43, -85.5, 3, 1, 90]];

@@ -376,3 +376,12 @@ would score the model against itself; not done.
 - Leaf-off darkness near trees (6) as ground, not shadow: testable by
   comparing ground on the sunward side of a trunk (no shadow possible) with
   open lawn; not done.
+
+## Bookmarked tests (asked for, not yet run)
+
+- TWICE-FLOWN STREETS (owner, 2026-10-14): places in the 3DEP catalogue
+  flown once in leaf and once without (different projects or years). Build
+  the page's model from the leaf-off flight, fill it, and compare it with the
+  leaf-on flight of the same trees on residential streets -- the NEON test
+  (13) where people's lawns are. First step: list such overlaps from the
+  lidar index (public/shade/lidar-index.json, WESM seasons).
