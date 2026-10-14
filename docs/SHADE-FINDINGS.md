@@ -436,6 +436,13 @@ speed the same as the open readings read right. No pile-up just past the
 look like scattered misses (GPS near things the 2018 lidar lacks, the
 odd vehicle), not a flaw of the method.
 
+NO LAG between the light and the GPS (2026-10-13, lagScan): the phone's
+verdict against the model at the track k seconds later agrees 73.7, 75.5,
+77.8, 80.3, 80.5, 78.7, 76.7% for k = -3..+3 (edges 55.0 to 65.8%, best at 0):
+the two streams line up to within about half a second. (A lag would run
+along the way the mower goes, which the whole-track moves of finding 12
+cannot see.)
+
 3D GROUND: the light has always been computed on the lidar's ground (each
 ray starts at its point's ground height; the beam falls on the ground's own
 slope; hillsides shade themselves). Tested on bare slopes of 6-31 degrees with
