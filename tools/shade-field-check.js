@@ -175,6 +175,7 @@ function judgeVisit(visit, u, trucks, mount, why, rows, truckShadowRows, { fligh
   const leafy = scored.filter((r) => (r.Ton >= 0.5) !== (r.Toff >= 0.5));
   const leafTest = { n: leafy.length, calendar: leafy.filter((r) => r.modelSun === r.phoneSun).length, on: leafy.filter((r) => (r.Ton >= 0.5) === r.phoneSun).length, off: leafy.filter((r) => (r.Toff >= 0.5) === r.phoneSun).length };
   const whatIf = whatIfs(scored);
+  whatIf.lag = lagScan(rows, scored);
   whatIf.offsets = offsetScan(scored);
   whatIf.ceiling = gpsCeiling(scored);
   const both = [...rows, ...truckShadowRows].sort((a, b) => a.t - b.t);
@@ -298,6 +299,35 @@ export function openMissLine(o) {
   return `  open sun read as shade: ${o.misses} of ${o.n}; by the sun's angle from straight behind you (degrees: shade/all): ${order.map((k) => `${k} ${o.byBehind[k].shade}/${o.byBehind[k].n}`).join(', ')}; median tilt gain ${o.gainMiss?.toFixed(2)} (misses) vs ${o.gainHit?.toFixed(2)}, sun ${Math.round(o.elMiss)} vs ${Math.round(o.elHit)} degrees, speed ${o.speedMiss?.toFixed(1)} vs ${o.speedHit?.toFixed(1)} m/s`;
 }
 
+/**
+ * A LAG between the light and the GPS: each scored reading's phone verdict
+ * against the model at the track's position k seconds later (k < 0:
+ * earlier), for k in -3..3. A lag moves readings along the way the mower
+ * goes, which a whole-track move east or north cancels out on a back-and-
+ * forth pattern; this does not. { k: { n, agree } }, edge readings only too.
+ */
+export function lagScan(rows, scored, ks = [-3, -2, -1, 0, 1, 2, 3]) {
+  const at = new Map(rows.map((r) => [Math.round(r.t / 1000), r.T]));
+  const out = {};
+  for (const k of ks) {
+    const o = (out[k] = { n: 0, agree: 0, edgeN: 0, edgeAgree: 0 });
+    for (const r of scored) {
+      const T = at.get(Math.round(r.t / 1000) + k);
+      if (T == null) continue;
+      const ok = (T >= 0.5) === r.phoneSun;
+      o.n++; if (ok) o.agree++;
+      if (r.cls === 'edge') { o.edgeN++; if (ok) o.edgeAgree++; }
+    }
+  }
+  return out;
+}
+
+export function lagLine(l) {
+  if (!l) return null;
+  const p = (a, b) => (b ? `${Math.round((1000 * a) / b) / 10}%` : '-');
+  return `  light against the track k seconds later: ${Object.entries(l).sort((a, b) => Number(a[0]) - Number(b[0])).map(([k, o]) => `${k > 0 ? '+' : ''}${k}s ${p(o.agree, o.n)} (edges ${p(o.edgeAgree, o.edgeN)})`).join(', ')}`;
+}
+
 export function offsetLine(o) {
   if (!o?.n) return null;
   const { e, n, agree } = o.best;
@@ -311,6 +341,7 @@ export function whatIfLines(w, sunLux) {
   const out = ol ? [ol] : [];
   if (w.ceiling) out.push(ceilingLine(w.ceiling));
   if (w.openMiss) { const l = openMissLine(w.openMiss); if (l) out.push(l); }
+  if (w.lag) { const l = lagLine(w.lag); if (l) out.push(l); }
   out.push(`  what-ifs: agree as modelled ${w.asIs}/${w.n}; no leaves below the lowest branch ${w.noLowLeaves}; no solid fill under dense crowns ${w.noFill}; neither ${w.neither}; crowns clumped (x0.7 per meter) ${w.clumped7}, (x0.5) ${w.clumped5}`);
   const eb = w.byElevation.filter((b) => b.n);
   if (eb.length) out.push(`  through trees, by sun height: ${eb.map((b) => `${b.a}-${b.b} deg: agree ${b.asIs}/${b.n} (too dark ${b.tooDark}, too bright ${b.tooBright}; clumped x0.7 ${b.c7}, x0.5 ${b.c5})`).join(' | ')}`);
@@ -372,6 +403,7 @@ export async function fieldCheck(day) {
   const fl = visits.flecks;
   const out = [`Field check ${day}: ${visits.length} visits; ${fl?.n ? `flecks of sun (a second's brightest sample over 3x its median, over 10,000 lux): ${fl.f} of ${fl.n} seconds;` : 'light stored as one mean per second (no fleck data);'} the phone's mounting angle ${mount ? `${Math.round(mount.offset)} degrees (steady to ${Math.round(mount.spread)}, from ${mount.n} straight-line readings)` : 'not found (GPS heading used)'}.`];
   const all = [];
+  const dayLag = {};
   const leafAll = { n: 0, calendar: 0, on: 0, off: 0 };
   let tsN = 0, tsDark = 0;
   for (const v of visits) {
@@ -380,6 +412,7 @@ export async function fieldCheck(day) {
     const head = `${hm(v[0].t)}-${hm(v[v.length - 1].t)}`;
     if (r.skip) { out.push(`\n${head}: skipped (${r.skip})`); continue; }
     all.push(...r.scored);
+    for (const [k, o] of Object.entries(r.whatIf?.lag || {})) { const d = (dayLag[k] ||= { n: 0, agree: 0, edgeN: 0, edgeAgree: 0 }); for (const q of Object.keys(d)) d[q] += o[q]; }
     for (const k of Object.keys(leafAll)) leafAll[k] += r.leafTest[k];
     tsN += r.truckShadow.n; tsDark += r.truckShadow.dark;
     const tt = r.scored.length, ag = r.scored.filter((x) => x.modelSun === x.phoneSun).length;
@@ -400,6 +433,7 @@ export async function fieldCheck(day) {
   }
   const T = tally(all), n = all.length, ag = all.filter((x) => x.modelSun === x.phoneSun).length;
   const wDay = whatIfs(all);
+  wDay.lag = dayLag;
   wDay.offsets = offsetScan(all);
   wDay.ceiling = gpsCeiling(all);
   wDay.openMiss = openMisses(all);
