@@ -275,6 +275,35 @@ around it (GPS error):
   one lot losing many (its trees to the south). As finding 2 found at NEON,
   the shade goes before the leaves fall.
 
+### 10. The owner's stops: newer photos agree with the 2016-18 lidar; one stop flags thinner trees (2026-10-14)
+
+Every stop of 2026-10-13 in 120 m squares, against the county's own flights
+(Ottawa 2024, 2021, 2018, 5.6 cm) and Mapbox, the sun and offset fitted on
+buildings' shadows, shade cell by cell on grass the trees reach, each photo
+scored against the lidar's trees bare and in leaf (workflow 35, photos;
+tools/shade-field-photos.js; fetched straight from the sources -- the live
+site refuses GitHub's runners):
+
+| photo | squares | read as | agree, trees bare | agree, trees in leaf |
+|---|---|---|---|---|
+| county 2024 | 31 | all leaf-off | 92% | 87% |
+| county 2021 | 19 (18 hazy) | 15 leaf-off, 3 mixed, 1 on | 87% | 82% |
+| county 2018 | 23 | all leaf-off | 91% | 85% |
+| Mapbox | 6 (31 hazy) | leaf-off | 81% | 79% |
+
+- No usable leaf-on photo over his stops: the 2021 flight, leaf-on by eye
+  over one park, reads leaf-off at 15 of 19 squares here (the crowns not yet
+  as green as the lawn: early spring). So the summer canopy cannot be
+  checked from photos in his area; NAIP (finding 5) remains the summer test.
+- Bare-tree shade agrees 87-96% stop by stop: no wholesale change since the
+  flight. The one stop that stands out is 4:28 PM: the lidar has shade the
+  photos do not show on 9-13% of grass (2018, 2021, 2024 alike), against
+  1-4% elsewhere -- the same stop where the phone read sun at 19 of 24
+  readings in the model's deep tree shade (finding 9). Thinner or fewer
+  trees there than the lidar holds is the likely reading.
+- The new build (1:00 PM) shows 3-9% shade in the photos the lidar lacks;
+  not a clear signal at this scale.
+
 ## Speculation
 
 - Mixed-season flights (7) may be better treated as leaf-on for the
