@@ -49,6 +49,14 @@ export const MODEL_VERSIONS = [
     lots: 104,
     basis: 'v3 retrained on every approved map (104, 31 of them county-drawn) plus the owner\'s 5 not-lawn-only maps (owner, 2026-10-11), run 38115838951. Accuracy is the nearest measurement: THE PLAN\'s single decoder on the locked 104, 19.0 / 19.1 / 18.9% (H92 runs 38085217225, 38085219178, 38085221591). The averaged-of-3 + not-lawn arrangement at 104 is NOT separately measured; H79 found the pond maps worth nothing measurable overall (they carry B12)',
   },
+  {
+    version: 5,
+    shipped: '2026-10-13',
+    trainedAt: '2026-10-13T23:18:29Z',
+    accuracy: 81,
+    lots: 105,
+    basis: 'v4\'s arrangement on the new lidar -- the newest USGS flight by its own dates, from its LAZ tiles where AWS lags (H96), the NAD83 datum move (H95), noise dropped -- and the lidar\'s ground brightness as an input (H97); every approved map (105) plus the 5 not-lawn-only maps, run 38474850752 (the first try, 38442418156, lost its 18 tile frames and was replaced). Accuracy: THE PLAN\'s single decoder on that arrangement at the locked 104, 19.1 / 18.6 / 18.0% (runs 38474854745, 38474858216, 38474862635; against the old 18.9 / 18.8 / 19.5%, 44 lots better and 24 worse, p = 0.021). The averaged-of-3 + not-lawn release itself is not separately measured',
+  },
 ];
 
 /** alpha below 82%, beta below 86%, then no stage label. */

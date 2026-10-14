@@ -880,6 +880,37 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H98. The three together -- the newest USGS flight, the datum move with noise dropped, and the brightness input -- beat the old THE PLAN: 44 better / 24 worse / 36 level, -0.2 [95% -0.6 to -0.0], p = 0.021; on the 20 lots whose flight changed, 11 / 3, -1.3 -- RELEASE v5, 2026-10-14
+
+Workflow 14 on the new default (H95 + H96 + H97 adopted, the tile fix
+4885b89 in), runs 38474854745 / 38474858216 / 38474862635 (seeds 7 / 8 /
+9), `lawns: locked` (104, `131u7jm`), free runner, against the S38
+baselines 38384350059 / 38384353539 / 38388587980; workflow 24 run
+38508532570 on THE PLAN's row. Run medians **19.1 / 18.6 / 18.0%**
+against 18.9 / 18.8 / 19.5%.
+
+| | lots | better / worse / level | median paired change [95%] | sign test |
+|---|---|---|---|---|
+| **all lots** | 104 | **44 / 24 / 36** | **-0.2 [-0.6, -0.0]** | **p = 0.021** |
+| frozen 32 | 32 | 12 / 6 / 14 | -0.1 [-0.6, -0.0] | p = 0.24 |
+| since | 72 | 32 / 18 / 22 | -0.2 [-0.8, +0.1] | p = 0.065 |
+| the 20 whose flight changed | 20 | 11 / 3 / 6 | -1.3 [-2.2, -0.0] | p = 0.057 |
+| Mapbox photo | 73 | 32 / 15 / 26 | -0.2 [-0.6, -0.1] | p = 0.019 |
+| county photo | 31 | 12 / 9 / 10 | -0.1 [-0.9, +0.2] | p = 0.66 |
+
+The check H97 asked for: the three measured apart are no worse together,
+and on the whole set the gain is about H97's alone (H95 measured as
+nothing, H96 reaches 20 lots). Largest gains C79 69.1 -> 48.7%, B19 61.1
+-> 42.9%, C33 62.3 -> 48.3%, C19 56.7 -> 43.3%, C53 48.7 -> 35.6%, C39
+17.6 -> 12.9%; largest losses C29 496.6 -> 546.8% (the pond lot, always
+the outlier), C50 85.9 -> 96.5%, C46 22.3 -> 29.2%, C47 12.3 -> 17.1% --
+C47 the one lot H96 also lost.
+
+**Release v5** (run 38474850752; trainedAt 2026-10-13T23:18:29Z; 3
+decoders averaged + edge refiner, 105 lots + 5 not-lawn maps, 852 s, train
+loss 0.203; lidar on 107 of 110 frames, every tile frame read). Listed in
+worker/src/model-versions.js at 81% from these runs' medians.
+
 ### H97. The lidar's ground brightness as two more decoder inputs (S38) beats THE PLAN's decoder: 41 better / 22 worse / 41 level, -0.2 points [95% -0.5 to -0.0], sign test p = 0.023; on the lots approved since, 34 / 16, p = 0.015 -- ADOPTED, 2026-10-13
 
 Workflow 14 `refiner_trial: intensity`, runs 38407533447 / 38407538205 /
@@ -7943,6 +7974,8 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-07 | 37582634690 / 37582729096 / 37582829432 | 81 (locked) | S28 `refiner_trial: average of 3`, seeds 7/8/9, CPU | 20.9 / 22.5 / 22.0% (edge refined + stage 3, span, veto) | — | **H83.** Averaged x3: 31 / 9, -0.3 [-0.4, -0.1], p 0.001; medians 20.3 / 22.1 / 20.7. Passes; not released |
 | 2026-10-12 | 38192536763 / 38192554237 | 104 (locked, 131u7jm) | S26 `refiner_trial: upernet` (a small UperNet head, 64 ch, GroupNorm, no aux head, beside THE PLAN's decoder over the same features and folds), seeds 7 / 8, CPU | 18.8 / 18.9% (THE PLAN: edge refined + stage 3, span, veto) | 21.3 / 20.7% (UperNet + stage 3, span, veto) | **H93.** Workflow 24 run 38209446282: 24 / 64 / 16, +1.2 [+0.8, +1.7], p < 0.001; untuned 72 +1.2, p < 0.001; county +1.9, Mapbox +1.0. UperNet's train loss lower (0.188 vs 0.201): overfitting. Not adopted |
 | 2026-10-13 | 38384350059 / 38384353539 / 38388587980 | 104 (locked, 131u7jm) | S38: THE PLAN's defaults, seeds 7 / 8 / 9, CPU, with the new S38 step (tools/intensity_errors.py) after scoring; seed 9 also the baseline for the S35 / H94 lidar trials | 18.8 / 18.9 / 19.5% (THE PLAN) | -- | **S38 bar MET in all three seeds:** where the held-out mask calls lawn, ground intensity (ranked in its frame) tells true from false at 0.64 / 0.66 / 0.65 pooled, 41-44 lots of 45-49 the same way, hardest third 0.69-0.71; called not-lawn 0.64-0.66. Sanity 0.76. The input trial is next |
+| 2026-10-13 | 38474850752 | 105 (all) + 5 not-lawn-only maps | **RELEASE v5** (after the tile fix 4885b89): v4's settings on the new default reader (H96 + H95 + noise) with the brightness input (H97), CPU | -- | -- | trainedAt 2026-10-13T23:18:29Z; 3 decoders + refiner in 852 s, loss 0.203; lidar on 107 of 110 frames, every tile frame read. Listed as version 5, 81% (H98) |
+| 2026-10-13 | 38474854745 / 38474858216 / 38474862635 | 104 (locked, 131u7jm) | The new default (H95 + H96 + H97, tile fix in), seeds 7 / 8 / 9, CPU | 19.1 / 18.6 / 18.0% | -- | **H98.** Workflow 24 run 38508532570 against the S38 baselines: 44 / 24 / 36, -0.2 [-0.6, -0.0], p 0.021; the 20 changed lots 11 / 3 / 6, -1.3 |
 | 2026-10-13 | 38442418156 | 105 (all) + 5 not-lawn-only maps | **RELEASE v5, FIRST TRY -- FLAWED, SHIPPED, BEING REPLACED.** v4's settings on the new default reader (H96 + H95 + noise) with the brightness input (H97), CPU. Shipped trainedAt 2026-10-13T21:20:51Z | -- | -- | **All 18 tile frames failed** (12: the tile folder was never made in the shared reader; 6: rockyweb timeouts) and were read as NO lidar, not as their octree: "lidar on 89 of 110". Trained 3 decoders in 882 s, loss 0.203. Fixed in 4885b89 (folder made, timeouts retried, octree fallback); the three check runs on the same code (38442458781 / 38442462964 / 38442467194) carry the same flaw and are not read: two cancelled, one finished. Release and checks run again: 38474850752 (release), 38474854745 / 38474858216 / 38474862635 (seeds 7 / 8 / 9). Not given a row in model-versions.js |
 | 2026-10-13 | 38407533447 / 38407538205 / 38407542410 | 104 (locked, 131u7jm) | S38 input trial `refiner_trial: intensity` (THE PLAN's decoder beside one also reading the lidar's ground brightness, ranked in its frame), seeds 7 / 8 / 9, CPU | 18.8 / 18.9 / 19.5% (THE PLAN) | 18.4 / 18.5 / 19.1% (intensity input) | **H97.** Workflow 24 run 38440912424 row against row: 41 / 22 / 41, -0.2 [-0.5, -0.0], p 0.023; since 34 / 16, p 0.015. Adopted |
 | 2026-10-13 | 38388591593 / 38391760094 / 38391763898 | 104 (locked, 131u7jm) | S35 `lidar_trial: datum` (octrees moved NAD83 -> WGS84 for their flight's epoch), seeds 7 / 8 / 9, CPU | 19.1 / 19.7 / 19.1% | -- | **H95.** Workflow 24 run 38420510760 against the S38 baselines: 16 / 14 / 74, -0.1 [-0.1, -0.0], p 0.86. Nothing either way; adopted on correctness (owner) |
