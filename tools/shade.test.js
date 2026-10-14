@@ -852,6 +852,8 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   check('automated callers are told apart: headless Chrome, node, curl, GitHub, Claude, bots, no agent; a phone is a visitor',
     ['Mozilla/5.0 HeadlessChrome/129.0', 'node', 'undici', 'curl/8.5', 'python-requests/2.31', 'GitHub-Hookshot/1', 'Claude-User/1.0', 'Googlebot/2.1', ''].every(isAutomated) && !isAutomated(phone));
   check('error text keeps no coordinates or house numbers', scrub('No lidar at 42.88270,-85.81784 for 7214 Elm') === 'No lidar at #,# for # Elm', scrub('No lidar at 42.88270,-85.81784 for 7214 Elm'));
+  const qs = scrub('Failed to fetch https://x/api/geocode?q=12%20Elm%20St%20Springfield (502) at shade.js:88');
+  check('error text keeps no query string: a failing URL\'s address or point is cut', qs === 'Failed to fetch https://x/api/geocode?… (#) at shade.js:88' && !/Elm/.test(qs), qs);
   const sq = new DatabaseSync(':memory:');
   const schema = readFileSync(new URL('../worker/schema.sql', import.meta.url), 'utf8');
   sq.exec(schema.slice(schema.indexOf('CREATE TABLE IF NOT EXISTS shade_lux')));

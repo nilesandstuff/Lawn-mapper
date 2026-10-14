@@ -47,10 +47,15 @@ export function isAutomated(ua) {
   return /HeadlessChrome|Playwright|Puppeteer|Lighthouse|PhantomJS|Electron|\bnode\b|undici|node-fetch|axios|curl|wget|python|aiohttp|httpx|Go-http-client|Java\/|okhttp|libwww|GitHub|github-actions|Claude|anthropic|bot\b|bot\/|crawl|spider|slurp|facebookexternalhit|preview/i.test(s);
 }
 
-/** Free text made safe to keep: one line, numbers that could place someone blanked, short. */
+/**
+ * Free text made safe to keep: one line, any URL's query string cut (a failing
+ * request carries the address or point it asked about -- core session's note,
+ * 2026-10-14: the place has its own columns, which are blanked; the message
+ * is not), numbers that could place someone blanked, short.
+ */
 export function scrub(v, max = 300) {
   if (v === null || v === undefined) return null;
-  return String(v).replace(/\s+/g, ' ').replace(/-?\d+\.\d{3,}/g, '#').replace(/\d{3,}/g, '#').trim().slice(0, max) || null;
+  return String(v).replace(/\s+/g, ' ').replace(/\?[^\s"'`)<>]*/g, '?…').replace(/-?\d+\.\d{3,}/g, '#').replace(/\d{3,}/g, '#').trim().slice(0, max) || null;
 }
 const word = (v, max = 40) => (typeof v === 'string' && /^[a-z0-9 _.-]{1,40}$/i.test(v) ? v.slice(0, max) : null);
 /** An error's place: the address or map name (one line, short) and its point to five decimals. */
