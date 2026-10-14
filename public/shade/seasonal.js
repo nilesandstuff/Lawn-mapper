@@ -175,7 +175,10 @@ export const LEAF_FALL_DAYS = 28;
  *           clumps: [{ n, base, top, depth, evergreenShare }],
  *           clumpOf, muOn (per cube), muOff, counts (columns of each kind) }.
  */
-export function seasonalCanopy(cols, model, { shift = null, classify = true } = {}) {
+export function seasonalCanopy(cols, model, { shift = null, classify = true, fill = {} } = {}) {
+  /* How the summer leaves are filled in (tools/shade-check-leafon.js scores
+     the choices against NEON's leaf-on lidar). Defaults: as shipped. */
+  const { closeR = 2, taperM = 0, spread = 'even', topR = 2, ladScale = 1, baseFrom = 'clump', laiMax = LAI_MAX } = fill;
   const { grid, w, h, nz, dz, z0, ground, mu } = model;
   const N = w * h;
   const above = new Uint16Array(N), multiAbove = new Uint16Array(N), lastGround = new Uint16Array(N);
@@ -335,7 +338,7 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true } = 
   const grown = new Uint8Array(N);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     let hit = 0;
-    for (let dy = -2; dy <= 2 && !hit; dy++) for (let dx = -2; dx <= 2; dx++) {
+    for (let dy = -closeR; dy <= closeR && !hit; dy++) for (let dx = -closeR; dx <= closeR; dx++) {
       const xx = x + dx, yy = y + dy;
       if (xx >= 0 && yy >= 0 && xx < w && yy < h && isCrown(yy * w + xx)) { hit = 1; break; }
     }
@@ -344,7 +347,7 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true } = 
   const footprint = new Uint8Array(N);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     let all = 1;
-    for (let dy = -2; dy <= 2 && all; dy++) for (let dx = -2; dx <= 2; dx++) {
+    for (let dy = -closeR; dy <= closeR && all; dy++) for (let dx = -closeR; dx <= closeR; dx++) {
       const xx = x + dx, yy = y + dy;
       if (xx >= 0 && yy >= 0 && xx < w && yy < h && !grown[yy * w + xx]) { all = 0; break; }
     }
@@ -364,7 +367,7 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true } = 
     const k = y * w + x;
     if (!isCrown(k)) continue;
     let tall = hOver[k];
-    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+    for (let dy = -topR; dy <= topR; dy++) for (let dx = -topR; dx <= topR; dx++) {
       const xx = x + dx, yy = y + dy;
       if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
       const j = yy * w + xx;
@@ -385,12 +388,55 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true } = 
     }
     if (best >= 0) { crownOf[k] = clumpOf[best]; topOf[k] = ground[k] + (topOf[best] - ground[best]); }
   }
+  /* Distance (m) to the footprint's edge, for a crown thinning toward it. */
+  let edgeD = null;
+  if (taperM > 0) {
+    edgeD = new Float32Array(N).fill(99);
+    const q = [];
+    for (let k = 0; k < N; k++) if (crownOf[k] < 0) { edgeD[k] = 0; q.push(k); }
+    for (let i = 0; i < q.length; i++) {
+      const k = q[i], x = k % w, y = (k / w) | 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const xx = x + dx, yy = y + dy, j = yy * w + xx;
+        if (xx >= 0 && yy >= 0 && xx < w && yy < h && edgeD[j] > edgeD[k] + 1) { edgeD[j] = edgeD[k] + 1; q.push(j); }
+      }
+    }
+  }
+  /* Leaf-off crown returns per cube, for leaves where the branches are, and
+     each column's lowest one (both over the 5 x 5 around it). */
+  let branch = null, lowBranch = null;
+  if (spread === 'branches' || baseFrom === 'column') {
+    const own = new Float32Array(N * nz), low = new Float32Array(N).fill(Infinity);
+    for (let i = 0; i < cols.n; i++) {
+      if (NOISE.has(cols.cls[i])) continue;
+      const k = cellOf(grid, cols.x[i], cols.y[i], shift);
+      if (k < 0) continue;
+      const over = cols.z[i] - ground[k];
+      if (over <= CROWN_ABOVE_M || over >= 80) continue;
+      own[k * nz + Math.min(nz - 1, Math.max(0, Math.floor((cols.z[i] - z0) / dz)))]++;
+      if (over < low[k]) low[k] = over;
+    }
+    branch = own; lowBranch = low;
+  }
+  const near = (k, f) => {
+    const x = k % w, y = (k / w) | 0;
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+      const xx = x + dx, yy = y + dy;
+      if (xx >= 0 && yy >= 0 && xx < w && yy < h) f(yy * w + xx);
+    }
+  };
   let leafy = 0;
   for (let k = 0; k < N; k++) {
     if (crownOf[k] < 0) continue;
     leafy++;
     const c = clumps[crownOf[k]];
-    const lo = ground[k] + c.base, hi = Math.min(topOf[k], ground[k] + c.top);
+    let baseH = c.base;
+    if (baseFrom === 'column') {
+      let m = Infinity;
+      near(k, (j) => { if (lowBranch[j] < m) m = lowBranch[j]; });
+      if (Number.isFinite(m)) baseH = Math.max(CROWN_ABOVE_M, m);
+    }
+    const lo = ground[k] + baseH, hi = Math.min(topOf[k], ground[k] + c.top);
     const depth = Math.max(dz, hi - lo);
     /* The cubes whose middles lie in [lo, hi] (at least the nearest one),
        sharing the column's leaf area exactly: tau straight down is
@@ -400,9 +446,19 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true } = 
     l0 = Math.max(0, l0); l1 = Math.min(nz - 1, l1);
     const cubes = l1 - l0 + 1;
     if (cubes <= 0) continue;
-    const muLeaf = (G_OMEGA * Math.min(LAD * depth, LAI_MAX)) / (cubes * dz);
+    const taper = edgeD ? Math.min(1, (edgeD[k] - 0.5) / taperM) : 1;
+    const tau = G_OMEGA * Math.min(LAD * ladScale * depth, laiMax) * Math.max(0, taper);
+    let wts = null;
+    if (spread === 'branches') {
+      wts = new Float32Array(cubes);
+      let sum = 0;
+      near(k, (j) => { for (let l = l0; l <= l1; l++) { wts[l - l0] += branch[j * nz + l]; } });
+      for (let q = 0; q < cubes; q++) { wts[q] += 0.25; sum += wts[q]; } // a little everywhere in the crown
+      for (let q = 0; q < cubes; q++) wts[q] /= sum;
+    }
     for (let l = l0; l <= l1; l++) {
       const i = k * nz + l;
+      const muLeaf = wts ? (tau * wts[l - l0]) / dz : tau / (cubes * dz);
       if (muLeaf > muOn[i]) muOn[i] = muLeaf;
     }
   }

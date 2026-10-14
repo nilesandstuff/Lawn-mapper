@@ -244,20 +244,70 @@ function distTo(mask, w, h, want, cap = 25) {
 const ELEVATIONS = [20, 35, 50, 65], AZIMUTHS = [90, 135, 180, 225, 270];
 
 /** One window: OURS, TRUTH and BARE on one grid, scored. */
-export async function compareWindow({ cloud, box3857, lat, lng, neonCols }) {
+/* -------------------------------------------------------------- the cache */
+
+const KEYS = [['x', Float64Array], ['y', Float64Array], ['z', Float32Array], ['ret', Uint8Array], ['nret', Uint8Array], ['cls', Uint8Array]];
+function packCols(c) {
+  const parts = KEYS.map(([k]) => Buffer.from(c[k].buffer, c[k].byteOffset, c.n * c[k].BYTES_PER_ELEMENT));
+  return Buffer.concat([Buffer.from(new Uint32Array([c.n]).buffer), ...parts]);
+}
+function unpackCols(buf, at = 0) {
+  const n = buf.readUInt32LE(at);
+  let o = at + 4;
+  const c = makeColumns(n);
+  for (const [k, T] of KEYS) {
+    const bytes = n * T.BYTES_PER_ELEMENT;
+    c[k] = new T(buf.buffer.slice(buf.byteOffset + o, buf.byteOffset + o + bytes));
+    o += bytes;
+  }
+  c.intensity = new Uint16Array(n);
+  return { c, end: o };
+}
+/** Save one window's two clouds and what is needed to rebuild it. */
+export function saveWindow(dir, name, meta, cols3, neonCols) {
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  writeFileSync(`${dir}/${name}.json`, JSON.stringify(meta));
+  writeFileSync(`${dir}/${name}.bin`, Buffer.concat([packCols(cols3), packCols(neonCols)]));
+}
+export function loadWindow(dir, name) {
+  const meta = JSON.parse(readFileSync(`${dir}/${name}.json`, 'utf8'));
+  const buf = readFileSync(`${dir}/${name}.bin`);
+  const a = unpackCols(buf, 0), b = unpackCols(buf, a.end);
+  return { ...meta, cols3: a.c, neonCols: b.c };
+}
+
+/**
+ * One window: OURS, TRUTH and BARE on one grid, scored. `fill` is the
+ * leaf-fill choice (seasonal.js); `truthFill` whether NEON's model fills
+ * solid under its densest layers in trees too (true, as the page does) or
+ * only under roofs.
+ */
+export async function compareWindow({ cloud, box3857, lat, lng, neonCols, cols3 = null, epoch = null, fill = {}, truthFill = true, cache = null }) {
   const k = mercScale(lat);
-  const io = { getJson: (u) => get(u, 'json'), getBytes: (u) => get(u, 'bytes').then((b) => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength)), decompress: lazDecoder(lazCreate) };
-  const { cols } = await pointsIn(cloud.url, box3857, io);
-  const d = nad83Correction(lat, lng, cloud.epoch), shift = [d.east / k, d.north / k];
+  let cols = cols3;
+  if (!cols) {
+    const io = { getJson: (u) => get(u, 'json'), getBytes: (u) => get(u, 'bytes').then((b) => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength)), decompress: lazDecoder(lazCreate) };
+    cols = (await pointsIn(cloud.url, box3857, io)).cols;
+    if (cache) saveWindow(cache.dir, cache.name, { box3857, lat, lng, epoch: cloud.epoch, ...cache.meta }, cols, neonCols);
+  }
+  const d = nad83Correction(lat, lng, epoch ?? cloud.epoch), shift = [d.east / k, d.north / k];
   const grid = gridOver(box3857, 1, lat);
   /* Line NEON up on 3DEP by canopy and roof tops. */
   const A = topGrid(cols, grid, shift), B0 = topGrid(neonCols, grid, null);
   const fit = bestShift(A, B0, grid.w, grid.h, 4);
   const nShift = [-fit.dx * grid.cell, fit.dy * grid.cell];
   const model = buildCanopy(cols, grid, { shift });
-  const season = seasonalCanopy(cols, model, { shift, classify: true });
-  const truth = buildCanopy(neonCols, grid, { shift: nShift });
+  const season = seasonalCanopy(cols, model, { shift, classify: true, fill });
   const roof = Uint8Array.from(season.kind, (v) => (v === 1 ? 1 : 0));
+  let truth = buildCanopy(neonCols, grid, { shift: nShift });
+  if (!truthFill) {
+    /* Under a dense leaf-on layer the laser saw nothing; in a tree that is
+       trunk space, not wall. Solid only under roofs. */
+    const open = buildCanopy(neonCols, grid, { shift: nShift, fillUnder: false });
+    const mu = Float32Array.from(open.mu);
+    for (let kk = 0; kk < grid.w * grid.h; kk++) if (roof[kk]) for (let l = 0; l < truth.nz && l < open.nz; l++) mu[kk * open.nz + l] = truth.mu[kk * truth.nz + l];
+    truth = { ...open, mu };
+  }
   const ours = { ...model, mu: season.muOn }, bare = { ...model, mu: season.muOff };
   const cT = crownMask(truth, truth.mu, roof), cO = crownMask(model, season.muOn, roof), cB = crownMask(model, season.muOff, roof);
   const { w, h } = grid, m = MARGIN_M;
@@ -267,14 +317,14 @@ export async function compareWindow({ cloud, box3857, lat, lng, neonCols }) {
   /* Footprint, and where the leaves sit, per crown class (truth's). */
   const cls = (kk) => (sizeT[kk] < 300 ? 'small crown' : toOpen[kk] <= 3 ? 'crown edge' : 'deep canopy');
   const foot = { truth: 0, ours: 0, both: 0, bare: 0, bareBoth: 0 };
-  const cols3 = {};
+  const byCls = {};
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     if (!inside(x, y)) continue;
     const kk = y * w + x;
     if (roof[kk]) continue;
     foot.truth += cT[kk]; foot.ours += cO[kk]; foot.both += cT[kk] & cO[kk]; foot.bare += cB[kk]; foot.bareBoth += cT[kk] & cB[kk];
     if (!cT[kk] || !cO[kk]) continue;
-    const c = (cols3[cls(kk)] ||= { n: 0, baseO: [], baseT: [], tO: [], tT: [], tB: [] });
+    const c = (byCls[cls(kk)] ||= { n: 0, baseO: [], baseT: [], tO: [], tT: [], tB: [] });
     c.n++;
     c.baseO.push(baseOf(model, season.muOn, kk)); c.baseT.push(baseOf(truth, truth.mu, kk));
     c.tO.push(overheadT(model, season.muOn, kk)); c.tT.push(overheadT(truth, truth.mu, kk)); c.tB.push(overheadT(model, season.muOff, kk));
@@ -304,7 +354,7 @@ export async function compareWindow({ cloud, box3857, lat, lng, neonCols }) {
       }
     });
   }
-  return { fit: { east: -fit.dx, north: fit.dy, score: fit.score }, foot, cols3, light, points3dep: cols.n, pointsNeon: neonCols.n, season: season.counts };
+  return { fit: { east: -fit.dx, north: fit.dy, score: fit.score }, foot, cols3: byCls, light, points3dep: cols.n, pointsNeon: neonCols.n, season: season.counts };
 }
 
 const med = (a) => { const b = a.filter(Number.isFinite).sort((x, y) => x - y); return b.length ? b[b.length >> 1] : NaN; };
@@ -350,7 +400,8 @@ export async function siteCheck(site, month, { tiles = 2 } = {}) {
     unlinkSync(path);
     for (let i = 0; i < wins.length; i++) {
       try {
-        const r = await compareWindow({ cloud, box3857: wins[i].box3857, lat: wins[i].lat, lng: wins[i].lng, neonCols: neon[i] });
+        const cache = process.env.CACHE_DIR ? { dir: process.env.CACHE_DIR, name: `${site}-${p.tile.join('_')}-${i}`, meta: { site, month, tile: p.tile, cover: p.cover, win: i, flight: cloud.name } } : null;
+        const r = await compareWindow({ cloud, box3857: wins[i].box3857, lat: wins[i].lat, lng: wins[i].lng, neonCols: neon[i], cache });
         out.push({ site, month, tile: p.tile, cover: p.cover, win: i, flight: `${cloud.name} ${cloud.unit?.season} to ${cloud.unit?.end ? new Date(cloud.unit.end).toISOString().slice(0, 7) : '?'}`, ...r });
       } catch (e) {
         out.push({ site, tile: p.tile, win: i, skip: `error: ${e.message}` });
@@ -396,7 +447,38 @@ export function report(rows) {
   return out.join('\n');
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+/** Every cached window scored with one fill choice. */
+export async function fromCache(dir, { fill = {}, truthFill = true } = {}) {
+  const { readdirSync } = await import('node:fs');
+  const out = [];
+  for (const f of readdirSync(dir).filter((x) => x.endsWith('.json')).sort()) {
+    const w = loadWindow(dir, f.replace(/\.json$/, ''));
+    const r = await compareWindow({ box3857: w.box3857, lat: w.lat, lng: w.lng, neonCols: w.neonCols, cols3: w.cols3, epoch: w.epoch, fill, truthFill });
+    out.push({ site: w.site, tile: w.tile, win: w.win, ...r });
+  }
+  return out;
+}
+
+/** One line per place for a fill choice: agreement, too dark / too bright, mean beam against leaf-on. */
+export function variantLine(name, rows) {
+  const Lg = {};
+  for (const r of rows) for (const [k, L] of Object.entries(r.light)) {
+    const t = (Lg[k] ||= { n: 0, agree: 0, sumT: 0, sumO: 0, tooDark: 0, tooBright: 0 });
+    for (const q of Object.keys(t)) t[q] += L[q];
+  }
+  const F = { truth: 0, ours: 0, both: 0 };
+  for (const r of rows) for (const q of Object.keys(F)) F[q] += r.foot[q];
+  const p = (a, b) => `${Math.round((100 * a) / b)}%`;
+  const short = { 'open, within 20 m of trees': 'open', 'under a crown edge': 'edge', 'deep under canopy': 'deep', 'under a small crown': 'small' };
+  return `${name.padEnd(28)} ${['open, within 20 m of trees', 'under a crown edge', 'deep under canopy', 'under a small crown'].map((k) => { const L = Lg[k]; return L ? `${short[k]} ${p(L.agree, L.n)} (dk ${p(L.tooDark, L.n)} br ${p(L.tooBright, L.n)}; ${(L.sumO / L.n).toFixed(2)}/${(L.sumT / L.n).toFixed(2)})` : `${short[k]} -`; }).join(' | ')} | crown ${p(F.ours, F.truth)} of leaf-on, ${p(F.ours - F.both, F.ours)} extra`;
+}
+
+if (import.meta.url === `file://${process.argv[1]}` && process.argv[2] === '--variants') {
+  const dir = process.argv[3];
+  const variants = JSON.parse(process.argv[4] || '{"as shipped":{}}');
+  const truthFill = process.env.TRUTH_FILL !== '0';
+  for (const [name, fill] of Object.entries(variants)) console.log(variantLine(name, await fromCache(dir, { fill, truthFill })));
+} else if (import.meta.url === `file://${process.argv[1]}`) {
   const all = [];
   for (const arg of process.argv.slice(2)) {
     const [site, month] = arg.split(':');
