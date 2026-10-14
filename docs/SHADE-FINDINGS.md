@@ -560,7 +560,7 @@ second before: 0-2 degrees 82% (1,716 readings), 2-5 79% (1,518), 5-10 78%
 per-second median of ~4 samples, which damps a bounce; the bumpy seconds
 cost a few points, not the edge misses.
 
-### 17. Overcast readings: the barometer reads the lidar's ground to 0.17 m; the sky view explains the light (2026-10-14)
+### 17. Overcast readings: the barometer reads the lidar's ground to 0.17 m; the sky view explains the light; the leaves were still mostly on (2026-10-14)
 
 Owner, 2026-10-14: an overcast day, two short recordings kept off the site,
 with the barometer and compass added. tools/shade-overcast.js (counts and
@@ -606,6 +606,22 @@ overhead more than grass does, so comparisons must use the phone's
 weighting; the map's own (for the grass) stands. On the open lawn the sky
 view barely varies (median 0.83-1.0) and explains little (corr 0.1-0.2).
 
+LEAVES, FROM THE SUNNY READINGS (2026-10-13, workflow 35's new leaf share
+scan; the owner, 2026-10-14: "the vast majority of trees have probably 75%
+of their leaves, not sure I've seen any in lawns that were below 50%").
+Agreement at each leaf share, without the new-build stop (whose trees are
+gone, finding 9):
+
+| leaves on | 0% | 15% | 30% | 50% | 70% | 85% | 100% |
+|---|---|---|---|---|---|---|---|
+| where the leaves decide (134) | 36 | 72 | 89 | 91 | 92 | 95 | 98 |
+| all scored (3,588) | 2,918 | 2,954 | 2,971 | 2,973 | 2,974 | 2,977 | 2,980 |
+
+Rising all the way to full leaves; the calendar's 21% sits near 15-30%.
+(Finding 9's count, which favoured the calendar over full leaves, was made
+before the lawn-tree fill, 16.) With the new-build stop the day favours
+bare trees (124 of 225), all of it that one stop.
+
 ## Speculation
 
 - Mixed-season flights (7) may be better treated as leaf-on for the
@@ -640,13 +656,15 @@ view barely varies (median 0.83-1.0) and explains little (corr 0.1-0.2).
   comparing ground on the sunward side of a trunk (no shadow possible) with
   open lawn; not done.
 
-- LEAVES STILL ON IN MID-OCTOBER (17)? In the one overcast yard the light
-  fits a canopy 50-100% in leaf far better than the calendar's 14% for
-  2026-10-14 (the calendar has half the shade gone by Oct 5 there, all by
-  Oct 19, from NEON forests -- finding 2's fall error was 11-12 days). Lawn
-  trees in town may hold leaves longer than forest. One yard, about 4.5
-  minutes; the owner's eyes on the trees that day, and more overcast yards,
-  would settle it.
+- THE FALL CALENDAR IS EARLY FOR LAWN TREES (17)? Measured here: the
+  owner's eyes, the overcast sky view and the sunny readings all put the
+  lawn trees at 50-100% of their shade on Oct 13-14, where the calendar
+  (fitted to NEON forest floors, finding 2) has 14-21%. Published phenology
+  says city trees in cold regions drop later than forest (Li et al. 2021,
+  Global Ecology and Biogeography; USA-NPN). The old rule (half the shade
+  gone on the 10 C day, no two-week lead) would give about 68% here on Oct
+  14. One region, one fall, one week: wants another region or another
+  year before the calendar changes for every lawn.
 
 ## Bookmarked tests (asked for, not yet run)
 
