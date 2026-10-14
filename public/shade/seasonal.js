@@ -178,7 +178,7 @@ export const LEAF_FALL_DAYS = 28;
 export function seasonalCanopy(cols, model, { shift = null, classify = true, fill = {} } = {}) {
   /* How the summer leaves are filled in (tools/shade-check-leafon.js scores
      the choices against NEON's leaf-on lidar). Defaults: as shipped. */
-  const { closeR = 2, taperM = 0, spread = 'even', topR = 2, ladScale = 1, baseFrom = 'clump', laiMax = LAI_MAX } = fill;
+  const { closeR = 2, taperM = 0, spread = 'even', topR = 2, ladScale = 1, baseFrom = 'clump', laiMax = LAI_MAX, edgeTopM = 0 } = fill;
   const { grid, w, h, nz, dz, z0, ground, mu } = model;
   const N = w * h;
   const above = new Uint16Array(N), multiAbove = new Uint16Array(N), lastGround = new Uint16Array(N);
@@ -363,11 +363,28 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, fil
   const hOver = new Float32Array(N).fill(NaN);
   for (let k = 0; k < N; k++) if (isCrown(k)) hOver[k] = zHi[k] - ground[k];
   const crownOf = new Int32Array(N).fill(-1), topOf = new Float32Array(N).fill(NaN);
+  /* edgeTopM: within this many meters of the footprint's edge a column keeps
+     its own top (a crown's shoulder is lower than its middle); inside, the
+     tallest within topR. */
+  let shoulder = null;
+  if (edgeTopM > 0) {
+    shoulder = new Float32Array(N).fill(99);
+    const q = [];
+    for (let k = 0; k < N; k++) if (!footprint[k] && !isCrown(k)) { shoulder[k] = 0; q.push(k); }
+    for (let i = 0; i < q.length; i++) {
+      const k = q[i], x = k % w, y = (k / w) | 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const xx = x + dx, yy = y + dy, j = yy * w + xx;
+        if (xx >= 0 && yy >= 0 && xx < w && yy < h && shoulder[j] > shoulder[k] + 1) { shoulder[j] = shoulder[k] + 1; q.push(j); }
+      }
+    }
+  }
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const k = y * w + x;
     if (!isCrown(k)) continue;
     let tall = hOver[k];
-    for (let dy = -topR; dy <= topR; dy++) for (let dx = -topR; dx <= topR; dx++) {
+    const r = shoulder && shoulder[k] <= edgeTopM ? 0 : topR;
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
       const xx = x + dx, yy = y + dy;
       if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
       const j = yy * w + xx;
