@@ -428,6 +428,14 @@ behind buildings 99% (91%), deep tree shade 100% (49%), shadow edges ~80%
 (66%). So at edges GPS costs about 20 of the 34 missing points; deep tree
 shade's misses are not GPS at all (the trees; see 9, 10).
 
+OPEN SUN READ AS SHADE (95 of 1,910 on 2026-10-13): spread evenly over
+where the sun stood from behind the operator (2-8% in every 15-degree band
+from 30 to 180 degrees; 8% with the sun in front), the tilt gain, sun height and
+speed the same as the open readings read right. No pile-up just past the
+35-degree rule: the operator's shadow is not wider than the rule; these
+look like scattered misses (GPS near things the 2018 lidar lacks, the
+odd vehicle), not a flaw of the method.
+
 3D GROUND: the light has always been computed on the lidar's ground (each
 ray starts at its point's ground height; the beam falls on the ground's own
 slope; hillsides shade themselves). Tested on bare slopes of 6-31 degrees with

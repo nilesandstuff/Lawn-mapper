@@ -38,6 +38,11 @@ export function transmittance(model, gx, gy, z, dir, { stepM = 0.5, cm = cellMet
   if (u <= 0) return 0;
   const { w, h, nz, dz, z0, mu, ground, top } = model;
   const sx = (e / cm) * stepM, sy = (-n / cm) * stepM, sz = u * stepM;
+  /* An experiment's hook (tools only): a direction-dependent scale on the
+     extinction, e.g. bare wood stopping a low sun more than the
+     straight-down laser saw it. The map never sets it. */
+  const sc = model.muScale ? model.muScale(dir) : 1;
+  const step = stepM * sc;
   let x = gx, y = gy, zz = z, tau = 0;
   for (let i = 0; i < 100000; i++) {
     x += sx; y += sy; zz += sz;
@@ -47,11 +52,25 @@ export function transmittance(model, gx, gy, z, dir, { stepM = 0.5, cm = cellMet
     if (zz < ground[c] - 0.3) return 0; // into the hillside
     const l = Math.floor((zz - z0) / dz);
     if (l >= 0 && l < nz) {
-      tau += mu[c * nz + l] * stepM;
+      tau += mu[c * nz + l] * step;
       if (tau > 7) return 0;
     }
   }
   return Math.exp(-tau);
+}
+
+/**
+ * WOOD SEEN FROM THE SIDE (experiment, 2026-10-14). The laser looks nearly
+ * straight down and sees trunks and steep limbs edge-on; a low sun meets
+ * them broadside. With a share `v` of the bare wood's area upright
+ * (cylinders) and the rest at random angles, the area a beam meets scales as
+ * G(zenith) = (1 - v) / 2 + v (2 / pi) sin(zenith), against the laser's
+ * G at 10 degrees from vertical. Returns dir -> scale.
+ */
+export function woodScale(v) {
+  const G = (zen) => (1 - v) / 2 + v * (2 / Math.PI) * Math.sin(zen);
+  const g0 = G((10 * Math.PI) / 180);
+  return (dir) => G(Math.acos(Math.min(1, Math.max(-1, dir[2])))) / g0;
 }
 
 /**

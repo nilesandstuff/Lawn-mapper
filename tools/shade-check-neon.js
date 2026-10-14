@@ -21,7 +21,7 @@
 
 import { shadeSite } from './shade-site.js';
 import { sunPath, solarNoon } from '../public/shade/sun.js';
-import { dayLight, skyView } from '../public/shade/rays.js';
+import { dayLight, skyView, woodScale } from '../public/shade/rays.js';
 import { leafCalendar, muWithLeaves } from '../public/shade/seasonal.js';
 import { climateAt } from '../worker/src/shade.js';
 
@@ -139,7 +139,8 @@ async function checkSensor({ site, year, hor, lat, lng, along, series, above }) 
     const doy = Math.floor((d.ms - Date.UTC(new Date(d.ms).getUTCFullYear(), 0, 1)) / 86400e3);
     const f = seasonal ? calendar.share(Math.min(364, doy)) : 1;
     const mu = seasonal ? muWithLeaves(s.season, f) : s.model.mu;
-    const m = { ...s.model, mu };
+    /* SHADE_WOODV: bare wood seen from the side (rays.js woodScale), on leaf-off days only. */
+    const m = { ...s.model, mu, ...(process.env.SHADE_WOODV && f < 0.1 ? { muScale: woodScale(Number(process.env.SHADE_WOODV)) } : {}) };
     const path = sunPath(lat, lng, solarNoon(lng, d.ms + 12 * 3600e3), 10);
     const svf = skyView(m, XY);
     const L = dayLight(m, XY, path, { stepMin: 10, svf });
