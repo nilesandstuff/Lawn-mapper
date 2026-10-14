@@ -497,6 +497,18 @@ open pine crowns pass more than the 0.2 of the winter sun the rule (2)
 asks of an evergreen, so they get a deciduous crown's full summer leaves.
 Finding 7 found no better rule four ways; this puts a number on what it
 costs in pine country (10-20 points of the day's light under the canopy).
+Finding 7's rules were rescored with each crown's OWN cost of a mistake
+(either mistake puts a crown at the other of its two lights, bare as flown
+or in full leaf, so it costs ln(winter share / 0.064) whichever way; the
+old fixed 9:2 came from the two classes' medians). Today's rule 958, none
+evergreen 958, adding "a crown carried high on its trunk" (pines' crown base
+sits 0.39-0.44 up the tree against 0.22-0.31 for the broadleaf at the same
+sites) 1,000-1,027: it catches up to 39 of TALL's 152 pines but calls more
+lawn broadleaf evergreen (112 of 134 right, against 133). The verdict stands:
+the winter laser alone cannot tell an open pine from a bare broadleaf -- in
+pine country the pines are MORE see-through in winter (median 0.52-0.72)
+than the broadleaf beside them. A map of forest types (pine regions) as a
+prior is the next idea, not tried.
 
 ## Speculation
 
