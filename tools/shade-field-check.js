@@ -131,6 +131,7 @@ async function scoreTile(site, tile, trucks, mount, why, rows, truckShadowRows) 
      owner, 2026-10-14: is the leaf filling lowering the crowns?). */
   const cp = canopyParts(site, model.mu);
   const nlModel = { ...model, mu: cp.noLowLeaves }, nfModel = { ...model, mu: cp.noFill }, nnModel = { ...model, mu: cp.neither };
+  const c7Model = { ...model, mu: cp.clumped7 }, c5Model = { ...model, mu: cp.clumped5 };
   const R = Math.PI / 180;
   const ring = [[0, 0], ...[...Array(8)].map((_, i) => [NEAR_M * Math.cos((i * Math.PI) / 4), NEAR_M * Math.sin((i * Math.PI) / 4)])];
   for (const s of tile.list) {
@@ -145,7 +146,7 @@ async function scoreTile(site, tile, trucks, mount, why, rows, truckShadowRows) 
     const rp = rayParts(model, cp.parts, gx, gy, groundAt(model, gx, gy) + PHONE_M, dir);
     const row = {
       t: s.t, lux: s.lux, gain: sunGain(sunOffFace(s.up, sun.elevation, sun.azimuth)), T: full[0], Ton: beam(onModel, 0, 0), Toff: beam(offModel, 0, 0), cls: confidence(full, bld),
-      Tnl: beam(nlModel, 0, 0), Tnf: beam(nfModel, 0, 0), Tnn: beam(nnModel, 0, 0), ray: rp, el: sun.elevation,
+      Tnl: beam(nlModel, 0, 0), Tnf: beam(nfModel, 0, 0), Tnn: beam(nnModel, 0, 0), Tc7: beam(c7Model, 0, 0), Tc5: beam(c5Model, 0, 0), ray: rp, el: sun.elevation,
     };
     const te = truckEffect(s, trucks, sun, { phoneM: PHONE_M });
     if (te === 'near') { why.truckNear++; continue; }
@@ -194,7 +195,12 @@ export function whatIfs(scored) {
   const dark = scored.filter((r) => !r.modelSun && r.phoneSun && r.ray);
   const share = (p) => median(dark.map((r) => (r.ray.total > 0 ? r.ray.tau[p] / r.ray.total : NaN)));
   return {
-    n: scored.length, asIs: agree('T'), noLowLeaves: agree('Tnl'), noFill: agree('Tnf'), neither: agree('Tnn'),
+    n: scored.length, asIs: agree('T'), noLowLeaves: agree('Tnl'), noFill: agree('Tnf'), neither: agree('Tnn'), clumped7: agree('Tc7'), clumped5: agree('Tc5'),
+    /* Through trees (not open, not behind a building), by how high the sun was: a longer slant through the crowns as it drops. */
+    byElevation: [[0, 25], [25, 32], [32, 90]].map(([a, b]) => {
+      const rs = scored.filter((r) => r.el >= a && r.el < b && r.cls !== 'open' && r.cls !== 'building' && r.ray?.total > 0);
+      return { a, b, n: rs.length, asIs: rs.filter((r) => (r.T >= 0.5) === r.phoneSun).length, c7: rs.filter((r) => (r.Tc7 >= 0.5) === r.phoneSun).length, c5: rs.filter((r) => (r.Tc5 >= 0.5) === r.phoneSun).length, tooDark: rs.filter((r) => r.T < 0.5 && r.phoneSun).length, tooBright: rs.filter((r) => r.T >= 0.5 && !r.phoneSun).length };
+    }),
     dark: {
       n: dark.length,
       shares: { measured: share('measured'), fill: share('fill'), leafLow: share('leafLow'), leafHigh: share('leafHigh') },
@@ -210,7 +216,9 @@ export function whatIfs(scored) {
 export function whatIfLines(w, sunLux) {
   if (!w?.n) return [];
   const p = (x) => (Number.isFinite(x) ? `${Math.round(100 * x)}%` : '-');
-  const out = [`  what-ifs: agree as modelled ${w.asIs}/${w.n}; no leaves below the lowest branch ${w.noLowLeaves}; no solid fill under dense crowns ${w.noFill}; neither ${w.neither}`];
+  const out = [`  what-ifs: agree as modelled ${w.asIs}/${w.n}; no leaves below the lowest branch ${w.noLowLeaves}; no solid fill under dense crowns ${w.noFill}; neither ${w.neither}; crowns clumped (x0.7 per meter) ${w.clumped7}, (x0.5) ${w.clumped5}`];
+  const eb = w.byElevation.filter((b) => b.n);
+  if (eb.length) out.push(`  through trees, by sun height: ${eb.map((b) => `${b.a}-${b.b} deg: agree ${b.asIs}/${b.n} (too dark ${b.tooDark}, too bright ${b.tooBright}; clumped x0.7 ${b.c7}, x0.5 ${b.c5})`).join(' | ')}`);
   const d = w.dark;
   if (d.n) {
     out.push(`  model shade where the phone read sun (${d.n}): light stopped a median ${Number.isFinite(d.heightM) ? d.heightM.toFixed(1) : '?'} m up, ${Number.isFinite(d.distM) ? Math.round(d.distM) : '?'} m away, sun ${Number.isFinite(d.elevation) ? Math.round(d.elevation) : '?'} degrees up;`);

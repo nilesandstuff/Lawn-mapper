@@ -88,11 +88,26 @@ export function canopyParts(site, muCal) {
     }
   }
   const sum = (...ps) => { const o = new Float32Array(n); for (const p of ps) for (let i = 0; i < n; i++) o[i] += p[i]; return o; };
+  /* CLUMPED CROWNS. Beer's law with the laser's own gap fraction assumes
+     what stops light is scattered at random through the crown; branches and
+     leaves come in clumps, which let more through along a long slanting path
+     than a vertical one predicts (a clumping index under 1). Trees only. */
+  const clumped = (omega) => {
+    const o = Float32Array.from(muCal);
+    for (let k = 0; k < w * h; k++) {
+      let tree = season.kind[k] === 2 || season.kind[k] === 3;
+      for (let l = 0; l < nz && !tree; l++) if (season.muOn[k * nz + l] > bare[k * nz + l]) tree = true; // a leaf-filled column
+      if (tree) for (let l = 0; l < nz; l++) o[k * nz + l] = muCal[k * nz + l] * omega;
+    }
+    return o;
+  };
   return {
     parts: { measured, fill, leafLow, leafHigh },
     noLowLeaves: sum(measured, fill, leafHigh),
     noFill: sum(measured, leafLow, leafHigh),
     neither: sum(measured, leafHigh),
+    clumped7: clumped(0.7),
+    clumped5: clumped(0.5),
   };
 }
 
