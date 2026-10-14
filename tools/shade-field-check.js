@@ -102,6 +102,13 @@ export async function visitCheck(visit, dayMount) {
   const why = { edge: 0, truckNear: 0, truckShadow: 0, behind: 0 };
   const rows = [], truckShadowRows = [];
   let flight = null, flightEnd = null, leaf = 1;
+  /* How much the phone's face swung since the second before (degrees): a
+     bouncing hopper cover (owner, 2026-10-14) shows as big swings. */
+  for (let i = 0; i < u.length; i++) {
+    const a = u[i].up, b = i ? u[i - 1].up : null;
+    u[i].swing = a && b && u[i].t - u[i - 1].t <= 1500
+      ? Math.acos(Math.max(-1, Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2]))) * 180 / Math.PI : null;
+  }
   for (const tile of tiles(u)) {
     const site = await shadeSite(tile.lng, tile.lat, { halfM: tile.halfM });
     if (!site) continue;
@@ -158,6 +165,8 @@ async function scoreTile(site, tile, trucks, mount, why, rows, truckShadowRows) 
     const heading = mount && s.face != null ? (s.face + mount.offset) % 360 : s.heading;
     if (operatorShadow(heading, sun.azimuth)) { why.behind++; continue; }
     /* The sun's bearing from straight behind the operator (0 = right behind), for the open misses. */
+    row.swing = s.swing; row.tiltDeg = s.up ? Math.acos(Math.max(-1, Math.min(1, s.up[2]))) * 180 / Math.PI : null;
+    row.gainFlat = sunGain(sunOffFace(null, sun.elevation, sun.azimuth));
     row.behindDeg = heading == null ? null : Math.abs(((sun.azimuth - (heading + 180) + 540) % 360) - 180);
     row.speed = s.speed;
     rows.push(row);
@@ -175,6 +184,12 @@ function judgeVisit(visit, u, trucks, mount, why, rows, truckShadowRows, { fligh
   const leafy = scored.filter((r) => (r.Ton >= 0.5) !== (r.Toff >= 0.5));
   const leafTest = { n: leafy.length, calendar: leafy.filter((r) => r.modelSun === r.phoneSun).length, on: leafy.filter((r) => (r.Ton >= 0.5) === r.phoneSun).length, off: leafy.filter((r) => (r.Toff >= 0.5) === r.phoneSun).length };
   const whatIf = whatIfs(scored);
+  /* The same readings judged as if the phone lay flat (no orientation). */
+  const soFlat = sunOrShadeAround(rows.map((r) => ({ ...r, gain: r.gainFlat })));
+  let flatN = 0, flatAgree = 0;
+  rows.forEach((r, i) => { if (soFlat.clear && soFlat.judged[i]) { flatN++; if ((r.T >= 0.5) === soFlat.sun[i]) flatAgree++; } });
+  whatIf.flat = { n: flatN, agree: flatAgree };
+  whatIf.swing = swingBins(scored);
   whatIf.lag = lagScan(rows, scored);
   whatIf.offsets = offsetScan(scored);
   whatIf.ceiling = gpsCeiling(scored);
@@ -328,6 +343,27 @@ export function lagLine(l) {
   return `  light against the track k seconds later: ${Object.entries(l).sort((a, b) => Number(a[0]) - Number(b[0])).map(([k, o]) => `${k > 0 ? '+' : ''}${k}s ${p(o.agree, o.n)} (edges ${p(o.edgeAgree, o.edgeN)})`).join(', ')}`;
 }
 
+/** Agreement by how much the phone's face swung in that second, and by its tilt from level. */
+export function swingBins(scored) {
+  const S = [[0, 2], [2, 5], [5, 10], [10, 20], [20, 180]], T = [[0, 5], [5, 10], [10, 20], [20, 40], [40, 180]];
+  const bin = (edges, v) => edges.findIndex(([a, b]) => v >= a && v < b);
+  const sw = S.map(() => ({ n: 0, agree: 0, edgeN: 0, edgeAgree: 0 })), ti = T.map(() => ({ n: 0, agree: 0 }));
+  for (const r of scored) {
+    const ok = r.modelSun === r.phoneSun;
+    if (r.swing != null) { const b = sw[bin(S, r.swing)]; b.n++; if (ok) b.agree++; if (r.cls === 'edge') { b.edgeN++; if (ok) b.edgeAgree++; } }
+    if (r.tiltDeg != null) { const b = ti[bin(T, r.tiltDeg)]; b.n++; if (ok) b.agree++; }
+  }
+  return { S, T, sw, ti };
+}
+
+export function swingLine(w) {
+  if (!w?.swing) return null;
+  const p = (a, b) => (b ? `${Math.round((100 * a) / b)}%` : '-');
+  const { S, T, sw, ti } = w.swing;
+  const flat = w.flat ? `judged as if the phone lay flat: ${p(w.flat.agree, w.flat.n)} of ${w.flat.n} (with its orientation: ${p(w.asIs, w.n)} of ${w.n}); ` : '';
+  return `  phone bounce: ${flat}by the face's swing since the second before: ${S.map(([a, b], i) => `${a}-${b === 180 ? '' : b} deg ${p(sw[i].agree, sw[i].n)} of ${sw[i].n} (edges ${p(sw[i].edgeAgree, sw[i].edgeN)})`).join(', ')}; by tilt from level: ${T.map(([a, b], i) => `${a}-${b === 180 ? '' : b} deg ${p(ti[i].agree, ti[i].n)} of ${ti[i].n}`).join(', ')}`;
+}
+
 export function offsetLine(o) {
   if (!o?.n) return null;
   const { e, n, agree } = o.best;
@@ -342,6 +378,7 @@ export function whatIfLines(w, sunLux) {
   if (w.ceiling) out.push(ceilingLine(w.ceiling));
   if (w.openMiss) { const l = openMissLine(w.openMiss); if (l) out.push(l); }
   if (w.lag) { const l = lagLine(w.lag); if (l) out.push(l); }
+  { const l = swingLine(w); if (l) out.push(l); }
   out.push(`  what-ifs: agree as modelled ${w.asIs}/${w.n}; no leaves below the lowest branch ${w.noLowLeaves}; no solid fill under dense crowns ${w.noFill}; neither ${w.neither}; crowns clumped (x0.7 per meter) ${w.clumped7}, (x0.5) ${w.clumped5}`);
   const eb = w.byElevation.filter((b) => b.n);
   if (eb.length) out.push(`  through trees, by sun height: ${eb.map((b) => `${b.a}-${b.b} deg: agree ${b.asIs}/${b.n} (too dark ${b.tooDark}, too bright ${b.tooBright}; clumped x0.7 ${b.c7}, x0.5 ${b.c5})`).join(' | ')}`);
@@ -403,7 +440,7 @@ export async function fieldCheck(day) {
   const fl = visits.flecks;
   const out = [`Field check ${day}: ${visits.length} visits; ${fl?.n ? `flecks of sun (a second's brightest sample over 3x its median, over 10,000 lux): ${fl.f} of ${fl.n} seconds;` : 'light stored as one mean per second (no fleck data);'} the phone's mounting angle ${mount ? `${Math.round(mount.offset)} degrees (steady to ${Math.round(mount.spread)}, from ${mount.n} straight-line readings)` : 'not found (GPS heading used)'}.`];
   const all = [];
-  const dayLag = {};
+  const dayLag = {}, dayFlat = { n: 0, agree: 0 };
   const leafAll = { n: 0, calendar: 0, on: 0, off: 0 };
   let tsN = 0, tsDark = 0;
   for (const v of visits) {
@@ -412,6 +449,7 @@ export async function fieldCheck(day) {
     const head = `${hm(v[0].t)}-${hm(v[v.length - 1].t)}`;
     if (r.skip) { out.push(`\n${head}: skipped (${r.skip})`); continue; }
     all.push(...r.scored);
+    if (r.whatIf?.flat) { dayFlat.n += r.whatIf.flat.n; dayFlat.agree += r.whatIf.flat.agree; }
     for (const [k, o] of Object.entries(r.whatIf?.lag || {})) { const d = (dayLag[k] ||= { n: 0, agree: 0, edgeN: 0, edgeAgree: 0 }); for (const q of Object.keys(d)) d[q] += o[q]; }
     for (const k of Object.keys(leafAll)) leafAll[k] += r.leafTest[k];
     tsN += r.truckShadow.n; tsDark += r.truckShadow.dark;
@@ -434,6 +472,8 @@ export async function fieldCheck(day) {
   const T = tally(all), n = all.length, ag = all.filter((x) => x.modelSun === x.phoneSun).length;
   const wDay = whatIfs(all);
   wDay.lag = dayLag;
+  wDay.swing = swingBins(all);
+  wDay.flat = dayFlat;
   wDay.offsets = offsetScan(all);
   wDay.ceiling = gpsCeiling(all);
   wDay.openMiss = openMisses(all);
