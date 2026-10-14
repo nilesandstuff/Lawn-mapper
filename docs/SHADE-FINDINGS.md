@@ -528,6 +528,38 @@ them carry their crowns high and flip. Not shipped: the map is for lawns,
 and the lawn sample there is small. More labelled Southern lawn trees would
 decide it.
 
+### 16. Lawn trees filled their own way; the phone's bounce is not the problem (2026-10-14)
+
+Owner, 2026-10-14: "forest canopies behave differently from lawn canopies
+... We care much more about lawn trees." The fill change that finding 14
+turned down (no widening + each column's own top) won on both lawn-like
+tests and lost only under closed forest. So, by crown: a crown in a clump
+under 2,000 m2 keeps its own top and is not widened by the closing, and so
+do a big canopy's columns within 3 m of its edge; inside closed canopy the
+closing and the tallest-neighbour top stay (seasonal.js LAWN_CLUMP_M2,
+LAWN_EDGE_TOP_M; SHIPPED as the default 2026-10-14). On the three yardsticks:
+
+| | shipped before | lawn-tree fill |
+|---|---|---|
+| NEON leaf-on, open ground near trees (beam; leaf-on 0.85) | 0.80 | 0.83 |
+| NEON leaf-on, under a crown edge (beam; leaf-on 0.39) | 0.33 | 0.38 |
+| NEON leaf-on, deep canopy (beam) | 0.06 | 0.07 |
+| NEON ground sensors in leaf, hardwood sites (8) | 1.0 pt mean miss | unchanged (SCBI 2.4, ORNL 3.3, UKFS 3.0...) |
+| NEON ground sensors in leaf, TALL pine savanna (16.2% measured) | 4.8% | 6.7% |
+| owner's readings 2026-10-13 (21% leaves) | 3,143 / 3,913 | 3,157 / 3,913 |
+
+Small, and nowhere worse.
+
+PHONE BOUNCE (owner: the phone is taped to a vinyl hopper cover that bounces
+on rough lawns). 2026-10-13: judged as if the phone lay flat (no
+orientation at all) 81% of 3,836, with its orientation 80% of 3,913 -- the
+orientation neither helps nor hurts measurably (the face is within 10
+degrees of level 93% of the time). By how far the face swung since the
+second before: 0-2 degrees 82% (1,716 readings), 2-5 79% (1,518), 5-10 78%
+(218), over 10 (12, too few). Shadow edges 65-67% at every swing. The light is a
+per-second median of ~4 samples, which damps a bounce; the bumpy seconds
+cost a few points, not the edge misses.
+
 ## Speculation
 
 - Mixed-season flights (7) may be better treated as leaf-on for the

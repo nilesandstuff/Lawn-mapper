@@ -846,6 +846,26 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
 }
 
 {
+  /* Lawn trees (seasonal.js LAWN_CLUMP_M2; SHADE-FINDINGS 16): a small crown with a gap in it is
+     not closed over and keeps its own top; the old fill (lawnClumpM2 0) closes the gap. */
+  const lat = 40, k = mercScale(lat);
+  const grid = gridOver([0, 0, 40 / k, 40 / k], 1, lat);
+  const pts = [];
+  for (let e = 0.125; e < 40; e += 0.25) for (let n = 0.125; n < 40; n += 0.25) {
+    const r = Math.hypot(e - 20, n - 20), gap = Math.abs(e - 20) < 1.5 && Math.abs(n - 20) < 1.5;
+    if (r < 6 && !gap && (Math.floor(e * 4) + Math.floor(n * 4)) % 3 === 0) { pts.push([e, n, 104 + (r < 3 ? 6 : 3), 1, 1, 2], [e, n, 100, 2, 2, 2]); continue; }
+    pts.push([e, n, 100, 2, 1, 1]);
+  }
+  const cols = makeColumns(pts.length);
+  pts.forEach(([e, n, z, c, r, nr], i) => { cols.x[i] = e / k; cols.y[i] = n / k; cols.z[i] = z; cols.cls[i] = c; cols.ret[i] = r; cols.nret[i] = nr; });
+  const model = buildCanopy(cols, grid);
+  const lawn = seasonalCanopy(cols, model), old = seasonalCanopy(cols, model, { fill: { lawnClumpM2: 0, edgeTopM: 0 } });
+  const mid = Math.floor(40 - 20) * grid.w + 20;
+  const leafAt = (s, kk) => { let t = 0; for (let l = 0; l < model.nz; l++) t += s.muOn[kk * model.nz + l] - s.muOff[kk * model.nz + l]; return t; };
+  check('lawn trees: the gap in a small crown stays open (the old fill closed it over)', leafAt(lawn, mid) === 0 && leafAt(old, mid) > 0, `${leafAt(lawn, mid)} ${leafAt(old, mid)}`);
+}
+
+{
   /* Where the model's shade comes from along a low sun's ray (tools/shade-ray-check.js; owner,
      2026-10-14: is the leaf filling lowering the crowns?). A tall leaf-off tree, crown 8-16 m
      up, with a shrub at 2.5-3.5 m touching it -- one clump, so its leaves start at the shrub's

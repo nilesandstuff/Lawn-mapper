@@ -166,6 +166,12 @@ export const GREEN_T_C = 14.5; // spring: the canopy greens when the typical mea
 export const GREEN_CAP_C = 7.5; // or this far under the summer's warmest, if lower
 export const SHADE_LAG_DAYS = 12; // and its shade is half there this many days later (NEON, 5)
 export const LEAF_OUT_DAYS = 35;
+/* LAWN TREES (2026-10-14, SHADE-FINDINGS 16): crowns in clumps under this
+   many m2 keep their own top and are not widened by the closing, and so do
+   big canopies' columns within LAWN_EDGE_TOP_M of their edge; the closing and
+   the tallest-neighbour top stay for closed canopy. */
+export const LAWN_CLUMP_M2 = 2000;
+export const LAWN_EDGE_TOP_M = 3;
 export const LEAF_FALL_DAYS = 28;
 
 /**
@@ -178,7 +184,7 @@ export const LEAF_FALL_DAYS = 28;
 export function seasonalCanopy(cols, model, { shift = null, classify = true, fill = {} } = {}) {
   /* How the summer leaves are filled in (tools/shade-check-leafon.js scores
      the choices against NEON's leaf-on lidar). Defaults: as shipped. */
-  const { closeR = 2, taperM = 0, spread = 'even', topR = 2, ladScale = 1, baseFrom = 'clump', laiMax = LAI_MAX, edgeTopM = 0, lawnClumpM2 = 0 } = fill;
+  const { closeR = 2, taperM = 0, spread = 'even', topR = 2, ladScale = 1, baseFrom = 'clump', laiMax = LAI_MAX, edgeTopM = LAWN_EDGE_TOP_M, lawnClumpM2 = LAWN_CLUMP_M2 } = fill;
   const { grid, w, h, nz, dz, z0, ground, mu } = model;
   const N = w * h;
   const above = new Uint16Array(N), multiAbove = new Uint16Array(N), lastGround = new Uint16Array(N);
