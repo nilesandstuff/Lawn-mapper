@@ -68,7 +68,10 @@ export async function shadeSite(lng, lat, { halfM = 80, cloudIndex = 0 } = {}) {
   const d = nad83Correction(lat, lng, cloud.epoch), shift = [d.east / k, d.north / k];
   const grid = gridOver(box, 1, lat);
   const model = buildCanopy(cols, grid, { shift });
-  const season = seasonalCanopy(cols, model, { shift });
+  /* SHADE_FILL='{"closeR":0,"topR":0}' tries a leaf fill (seasonal.js) in the checks; none: as shipped. */
+  let fill = {};
+  try { fill = process.env.SHADE_FILL ? JSON.parse(process.env.SHADE_FILL) : {}; } catch { fill = {}; }
+  const season = seasonalCanopy(cols, model, { shift, fill });
   const cellOf = (plng, plat) => {
     const [x, y] = toMerc([plng, plat]);
     return [(x - grid.x0) / grid.cell, (grid.y1 - y) / grid.cell];

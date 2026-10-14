@@ -45,6 +45,10 @@ on:
         description: 'For the photos: at most this many stops (blank = all)'
         required: false
         default: ''
+      fill:
+        description: 'For the check: a leaf fill to try, as JSON (blank = as shipped), e.g. {"closeR":0,"topR":0}'
+        required: false
+        default: ''
 
 jobs:
   readings:
@@ -72,6 +76,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           DAY: ${{ inputs.day }}
+          SHADE_FILL: ${{ inputs.fill }}
         run: node tools/shade-field-check.js
       - name: The stops' lidar against newer photos
         if: ${{ inputs.photos == 'yes' }}
