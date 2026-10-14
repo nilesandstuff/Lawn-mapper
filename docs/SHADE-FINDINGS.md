@@ -560,6 +560,52 @@ second before: 0-2 degrees 82% (1,716 readings), 2-5 79% (1,518), 5-10 78%
 per-second median of ~4 samples, which damps a bounce; the bumpy seconds
 cost a few points, not the edge misses.
 
+### 17. Overcast readings: the barometer reads the lidar's ground to 0.17 m; the sky view explains the light (2026-10-14)
+
+Owner, 2026-10-14: an overcast day, two short recordings kept off the site,
+with the barometer and compass added. tools/shade-overcast.js (counts and
+fits only). Both recordings are short -- one yard with trees (about 4.5
+minutes moving, 254 readings, ~40 m across) and one open lawn (4 minutes) --
+and readings a second apart are not independent: the barometer result is
+hard; the leaf result is one yard and goes under speculation.
+
+BAROMETER. The phone's relative altitude against the lidar ground under
+each GPS fix, with a straight-line drift for the weather (-0.15 m/min,
+measured at the same time): off by 0.17 m (SD) over 3.5 m of relief,
+correlation 0.98. GPS altitude: 0.54 m, 0.82. Shifting the track up to 6 m
+each way, the best fit is at no shift (0, 0): the GPS track sits on the
+lidar's ground where it says it does, here within about 1-2 m north-south
+(the slope's direction), poorly fixed east-west (the yard is flat that way).
+An independent check of the GPS-to-lidar frame (12), with no photo in it.
+
+COMPASS: adds nothing. Sensor Logger's compass bearing against the
+orientation sensor's heading: spread +-90 degrees (it reads the magnet in
+the phone's own frame; the orientation sensor already fuses it with the
+gyro, which is what the checks use).
+
+SKY VIEW. With no sun every lux comes from the sky at large, so the
+readings test the diffuse half of the light (climate.js dliOn x skyView) --
+which sunny readings cannot. The sky darkened 35% in nine minutes while the
+phone stood still, so each reading is set against its neighbours within 45 s.
+In the yard with trees, how well the model's sky view explains the light's
+rises and falls along the track (correlation of the detrended logs):
+
+| sky view | corr | median miss |
+|---|---|---|
+| none (light = sky alone) | - | x1.41 |
+| the map's (even sky, level surface), the calendar's 14% leaves | 0.49 | x1.22 |
+| CIE overcast sky | 0.51 | x1.22 |
+| CIE sky through the phone's cos^2.5 sensor | 0.56 | x1.20 |
+| the top 30 degrees only | 0.65 | x1.15 |
+| phone's, leaves 0% / 30% / 50% / 70% / 100% on | 0.47 / 0.63 / 0.70 / 0.74 / 0.77 | x1.24 / 1.19 / 1.16 / 1.17 / 1.21 |
+
+The model's sky view does explain the light under trees (0.49-0.77, against
+nothing without it). The phone's narrower sensor fits better than the map's
+cosine, as finding 8 says it should: a phone reading weights the sky
+overhead more than grass does, so comparisons must use the phone's
+weighting; the map's own (for the grass) stands. On the open lawn the sky
+view barely varies (median 0.83-1.0) and explains little (corr 0.1-0.2).
+
 ## Speculation
 
 - Mixed-season flights (7) may be better treated as leaf-on for the
@@ -593,6 +639,14 @@ cost a few points, not the edge misses.
 - Leaf-off darkness near trees (6) as ground, not shadow: testable by
   comparing ground on the sunward side of a trunk (no shadow possible) with
   open lawn; not done.
+
+- LEAVES STILL ON IN MID-OCTOBER (17)? In the one overcast yard the light
+  fits a canopy 50-100% in leaf far better than the calendar's 14% for
+  2026-10-14 (the calendar has half the shade gone by Oct 5 there, all by
+  Oct 19, from NEON forests -- finding 2's fall error was 11-12 days). Lawn
+  trees in town may hold leaves longer than forest. One yard, about 4.5
+  minutes; the owner's eyes on the trees that day, and more overcast yards,
+  would settle it.
 
 ## Bookmarked tests (asked for, not yet run)
 
