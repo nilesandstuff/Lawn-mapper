@@ -157,6 +157,9 @@ async function scoreTile(site, tile, trucks, mount, why, rows, truckShadowRows) 
     if (te === 'shadow') { why.truckShadow++; truckShadowRows.push(row); continue; }
     const heading = mount && s.face != null ? (s.face + mount.offset) % 360 : s.heading;
     if (operatorShadow(heading, sun.azimuth)) { why.behind++; continue; }
+    /* The sun's bearing from straight behind the operator (0 = right behind), for the open misses. */
+    row.behindDeg = heading == null ? null : Math.abs(((sun.azimuth - (heading + 180) + 540) % 360) - 180);
+    row.speed = s.speed;
     rows.push(row);
   }
   return { flight, flightEnd: site.cloud.unit?.end ?? null, leaf };
@@ -272,6 +275,29 @@ export function ceilingLine(g) {
   return `  GPS ceiling (a perfect model read through GPS error): ${['open', 'building', 'tree', 'edge'].filter((k) => g[k]).map((k) => `${k}: actual ${p(g[k].actual)}, ceiling ${p(g[k].own)} at the phone's own accuracy (median ${g[k].accMedian ?? '?'} m), ${p(g[k].sigma2)} at 2 m, ${p(g[k].sigma3)} at 3 m`).join(' | ')}`;
 }
 
+/**
+ * Open sun the phone read as shade: where the sun stood from behind the
+ * operator (degrees, in 30-degree bins from straight behind), its height, and the
+ * phone's tilt gain, against the open readings it read as sun. A shadow of
+ * the operator wider than the 35-degree rule shows as misses piling up just
+ * past 35 degrees.
+ */
+export function openMisses(scored) {
+  const open = scored.filter((r) => r.cls === 'open');
+  const bin = (r) => (r.behindDeg == null ? 'no heading' : `${Math.floor(r.behindDeg / 15) * 15}-${Math.floor(r.behindDeg / 15) * 15 + 15}`);
+  const t = {};
+  for (const r of open) { const b = (t[bin(r)] ||= { n: 0, shade: 0 }); b.n++; if (!r.phoneSun) b.shade++; }
+  const med = (a) => { const x = a.filter(Number.isFinite).sort((p, q) => p - q); return x.length ? x[x.length >> 1] : NaN; };
+  const miss = open.filter((r) => !r.phoneSun), hit = open.filter((r) => r.phoneSun);
+  return { n: open.length, misses: miss.length, byBehind: t, gainMiss: med(miss.map((r) => r.gain)), gainHit: med(hit.map((r) => r.gain)), elMiss: med(miss.map((r) => r.el)), elHit: med(hit.map((r) => r.el)), speedMiss: med(miss.map((r) => r.speed)), speedHit: med(hit.map((r) => r.speed)) };
+}
+
+export function openMissLine(o) {
+  if (!o?.n) return null;
+  const order = Object.keys(o.byBehind).sort((a, b) => (parseInt(a, 10) || 999) - (parseInt(b, 10) || 999));
+  return `  open sun read as shade: ${o.misses} of ${o.n}; by the sun's angle from straight behind you (degrees: shade/all): ${order.map((k) => `${k} ${o.byBehind[k].shade}/${o.byBehind[k].n}`).join(', ')}; median tilt gain ${o.gainMiss?.toFixed(2)} (misses) vs ${o.gainHit?.toFixed(2)}, sun ${Math.round(o.elMiss)} vs ${Math.round(o.elHit)} degrees, speed ${o.speedMiss?.toFixed(1)} vs ${o.speedHit?.toFixed(1)} m/s`;
+}
+
 export function offsetLine(o) {
   if (!o?.n) return null;
   const { e, n, agree } = o.best;
@@ -284,6 +310,7 @@ export function whatIfLines(w, sunLux) {
   const ol = offsetLine(w.offsets);
   const out = ol ? [ol] : [];
   if (w.ceiling) out.push(ceilingLine(w.ceiling));
+  if (w.openMiss) { const l = openMissLine(w.openMiss); if (l) out.push(l); }
   out.push(`  what-ifs: agree as modelled ${w.asIs}/${w.n}; no leaves below the lowest branch ${w.noLowLeaves}; no solid fill under dense crowns ${w.noFill}; neither ${w.neither}; crowns clumped (x0.7 per meter) ${w.clumped7}, (x0.5) ${w.clumped5}`);
   const eb = w.byElevation.filter((b) => b.n);
   if (eb.length) out.push(`  through trees, by sun height: ${eb.map((b) => `${b.a}-${b.b} deg: agree ${b.asIs}/${b.n} (too dark ${b.tooDark}, too bright ${b.tooBright}; clumped x0.7 ${b.c7}, x0.5 ${b.c5})`).join(' | ')}`);
@@ -375,6 +402,7 @@ export async function fieldCheck(day) {
   const wDay = whatIfs(all);
   wDay.offsets = offsetScan(all);
   wDay.ceiling = gpsCeiling(all);
+  wDay.openMiss = openMisses(all);
   out.push(`\nDAY: ${n} readings scored, agree ${ag} (${pct(ag, n)}).`);
   out.push(`  where the model is sure: ${classLine(T)}`);
   out.push(`  open = sure of sun; building = behind a building (no leaves involved); tree = deep in a crown's shade; edge = unsure.`);
