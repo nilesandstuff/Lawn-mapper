@@ -1809,10 +1809,18 @@ export default {
           }
           // Static assets are matched before the Worker runs, so anything
           // reaching here is an unknown path. Hand back the app shell so
-          // deep links and refreshes land on the site, not on JSON.
-          return env.ASSETS
-            ? await env.ASSETS.fetch(new Request(new URL('/', url), request))
-            : json({ error: 'Not found' }, 404, origin);
+          // deep links and refreshes land on the site, not on JSON -- but
+          // AS A 404, NOINDEX (owner, 2026-10-15, Search Console): a 200
+          // landing page at every mistyped path is a "soft 404" to a
+          // crawler, a thousand copies of the front page.
+          if (!env.ASSETS) return json({ error: 'Not found' }, 404, origin);
+          {
+            const shell = await env.ASSETS.fetch(new Request(new URL('/', url), request));
+            const headers = new Headers(shell.headers);
+            headers.set('X-Robots-Tag', 'noindex');
+            headers.set('Cache-Control', 'no-store');
+            return new Response(shell.body, { status: 404, headers });
+          }
       }
     } catch (err) {
       return json({ error: 'Internal error', detail: String(err.message) }, 500, origin);

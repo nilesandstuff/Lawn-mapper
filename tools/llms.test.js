@@ -21,7 +21,10 @@ console.log('llms.txt: ok');
   assert.equal((await at('/.well-known/ai-catalog.json')).status, 404);
   assert.equal((await at('/missing.json')).status, 404);
   const deep = await at('/some/deep/link');
-  assert.equal(deep.status, 200);
+  // Still the app for a person, but a 404 a crawler will not index (a 200
+  // here is a "soft 404": the front page again at every mistyped path).
+  assert.equal(deep.status, 404);
+  assert.equal(deep.headers.get('x-robots-tag'), 'noindex');
   assert.match(await deep.text(), /<title>app/);
   const llms = await at('/llms.txt');
   assert.equal(llms.status, 200);
@@ -47,5 +50,5 @@ console.log('llms.txt: ok');
   for (const loc of ['https://example.test/', 'https://example.test/shade']) {
     assert.ok(sitemap.includes(`<loc>${loc}</loc>`), `the sitemap lists ${loc}`);
   }
-  console.log('unknown files 404, deep links still open the app, robots says yes to search and AI answers: ok');
+  console.log('unknown files 404, unknown paths open the app as a noindex 404, robots says yes to search and AI answers: ok');
 }

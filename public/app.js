@@ -8268,7 +8268,7 @@ const MTURK_PREVIEW = 'ASSIGNMENT_ID_NOT_AVAILABLE';
  * for somebody with no lawn open this IS the app, and an × revealing an empty
  * address form behind it is a worker filing a support ticket.
  */
-const MYWORK_LINK = { href: '/mywork.html', label: 'Your maps, balance and payouts →' };
+const MYWORK_LINK = { href: '/mywork', label: 'Your maps, balance and payouts →' };
 
 function jobSheet({ title, why, code = null, note = null, go = null, link }) {
   /* Every sheet on the paid route carries the way to the tracer's own page
