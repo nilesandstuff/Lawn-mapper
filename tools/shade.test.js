@@ -20,7 +20,7 @@ import { tracedOn, lineUpAt } from '../public/shade/traced.js';
 import { findTrucks, truckEffect, flatStretches } from '../public/shade/truck.js';
 import { sunAt, solarNoon, sunPath, clearSky, airMass, parMol } from '../public/shade/sun.js';
 import { buildCanopy } from '../public/shade/canopy.js';
-import { seasonalCanopy, muWithLeaves, leafCalendar, G_OMEGA, LAI_MAX } from '../public/shade/seasonal.js';
+import { seasonalCanopy, muWithLeaves, leafCalendar, G_OMEGA, LAI_MAX, LEAF_FALL_LEAD_DAYS } from '../public/shade/seasonal.js';
 import { transmittance, skyView, sunlitNow, dayLight, samplePoints, groundAt, beamShare } from '../public/shade/rays.js';
 import { dayIndex, typicalYear, growthPotential, growingSeason, dliOn, dayLabel, nwsDailyMeans, observedDays, yearAsItIs } from '../public/shade/climate.js';
 import { climateAt, climateNow } from '../worker/src/shade.js';
@@ -604,8 +604,8 @@ check('the color ramp runs dark to bright and clamps', ramp(-1).join() === '0,0,
   const tMean = Array.from({ length: 365 }, (_, d) => 9 - 14 * Math.cos(((d - 14) / 365) * 2 * Math.PI));
   const cal = leafCalendar(tMean);
   const greenUp = tMean.findIndex((t, d) => d > 14 && t >= 14.5), c10down = tMean.findIndex((t, d) => d > 196 && t < 10);
-  check('leaf calendar: half the shade 12 days after the typical mean passes 14.5 C (green-up), half gone two weeks before it drops below 10 C',
-    cal.halfOut === greenUp + 12 && cal.fall === c10down - 14 && near(cal.share(cal.halfOut), 0.5, 0.03), `${dayLabel(cal.halfOut)} / ${dayLabel(cal.fall)}`);
+  check(`leaf calendar: half the shade 12 days after the typical mean passes 14.5 C (green-up), half gone ${LEAF_FALL_LEAD_DAYS} days before it drops below 10 C (lawn trees, finding 23; forests fitted 14)`,
+    cal.halfOut === greenUp + 12 && cal.fall === c10down - LEAF_FALL_LEAD_DAYS && near(cal.share(cal.halfOut), 0.5, 0.03), `${dayLabel(cal.halfOut)} / ${dayLabel(cal.fall)}`);
   check('leaf calendar: bare in winter, five weeks to full leaf, full in July, half gone at the fall date, bare two weeks after',
     cal.share(10) === 0 && near(cal.share(cal.out + 7), 7 / 35, 1e-9) && cal.share(196) === 1
     && near(cal.share(cal.fall), 0.5, 0.04) && cal.share(cal.fall + 15) === 0, `${cal.share(cal.fall).toFixed(2)}`);

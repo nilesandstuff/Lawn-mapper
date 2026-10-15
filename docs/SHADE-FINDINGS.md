@@ -908,20 +908,31 @@ frame's fix (1 m up), at leaf shares 0 to 1, against the frame's sky share:
     frames are brighter than the BARE model and 8 darker than the FULL
     one, so the fit is noisy (fixes 4 m off under a crown's edge, the
     camera's true field of view unknown).
-  - By eye the same frames show crowns 40-90% leafed (median about 55%),
-    i.e. the model's crowns in full leaf cover MORE of the cone than the
-    real ones do on a day the real ones still hold half their leaves.
-    That is the "light in the wrong place" of 21 seen from below: the
-    model's full crown is too broad or too dense straight up.
+  - CORRECTED the same evening: the 31 include frames whose fix sits
+    under a modelled crown while the photo shows open sky (fixes 4 m off
+    at a crown's edge). Picking the frames by the LIGHT instead (lux under
+    half the open sky's: 7 of the 13 crown-filling frames), the photo's
+    sky share is 0.39 at the median and the model's FULL-LEAF cone 0.38
+    (bare 0.80, at 30% 0.57): under the crowns the hopper really passed
+    under, the photo matches the model in full leaf, and by eye those
+    crowns (maples, orange and green) hold 60-90% of their leaves. The
+    model's full crown is NOT too full; the calendar's 30% is too low.
+    Thinning the leaves (ladScale 0.85, 0.7, 0.5, the clumping knob of
+    16) moves the full-leaf cone from 0.24 to 0.34 over the 13 and
+    changes nothing: clumping is not the missing piece here either.
 
 WHAT IT SAYS. Three independent reads of the same day -- the owner's eye
 (75% on Oct 14), the oblique photos (80-90% for most crowns, a few bare),
-the hopper frames straight up (about 55%) -- all sit above the calendar's
-30%, and the camera-against-model fit (15-40%) sits below the eye because
-the model's crowns are too full. The calendar's two-week lead (finding 2,
-fitted to NEON forest floors) is early for these lawn trees by about a
-week: 55-65% on Oct 15 is Oct 6-8 on the shipped ramp here (half gone Oct
-10, 28-day fall). Same region, same week as 17; still one fall.
+the hopper frames straight up (60-90%, and the full-leaf model where the
+light says a crown was overhead) -- all sit far above the calendar's 30%.
+With this year's 10 C crossing on Oct 24 here, a 75% share on Oct 14 on
+the 28-day ramp puts half the leaves gone about Oct 21: a lead of 3 days,
+not 14. SHIPPED 2026-10-15 (LEAF_FALL_LEAD_DAYS 14 -> 3, the owner's
+"try anything that might help"): half gone Oct 21 and bare Nov 4 at these
+lots this year, 71% on Oct 15. The forest lead stays in the record (2);
+lawn maples and oaks drop later than a forest's ash, walnut and basswood.
+Same region, same week as 17; still one fall: the first spring and fall
+elsewhere should check it.
 
 THE METHOD IS CHEAP AND WORKS. A face-up camera on the hopper at 5 s gives
 a few dozen crown frames an hour at Low quality for 30 KB each, placed by
@@ -977,10 +988,10 @@ frames-cone.mjs (not in the repo: they carry the lots).
   says city trees in cold regions drop later than forest (Li et al. 2021,
   Global Ecology and Biogeography; USA-NPN). The old rule (half the shade
   gone on the 10 C day, no two-week lead) would give about 68% here on Oct
-  14. Oct 15's photos (23) say the same, about a week early. One region,
-  one fall, one week: wants another region or another year before the
-  calendar changes for every lawn -- or the owner's call, since the
-  evidence all points one way.
+  14. Oct 15's photos (23) say the same. SHIPPED as a 3-day lead on
+  2026-10-15 on the owner's word; one region, one fall, one week, so the
+  first fall elsewhere (or the hopper camera next October) should check
+  it.
 
 - The heat-sum reading of this year (20) is physically motivated but not
   yet measured against a year's PhenoCam: 2026's green-up dates at the
