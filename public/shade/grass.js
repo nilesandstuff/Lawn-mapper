@@ -13,7 +13,8 @@
  *
  * The light needs come from the published minimum-DLI studies, as
  * summarized for the owner on 2026-10-15 (docs/GRASS-LIGHT.md); each entry
- * names its study.
+ * names its study. ALL SUBJECT TO CHANGE: the owner is having more research
+ * done and will do his own (2026-10-15).
  */
 
 import { dayLabel } from './climate.js';
@@ -60,24 +61,27 @@ export const SPECIES = [
   { id: 'finefescue', name: 'Fine fescues (Chewings, creeping red, hard)', season: 'cool', dli: 7, full: 15, derived: true,
     shade: 'the most shade-tolerant lawn grasses; fine blades, low wear, little feeding; Chewings and creeping red take shade best, hard fescue least',
     source: 'No published minimum. Chewings SR5100 and creeping red Dawson could not acclimate at 4 but did at 8-10 mol (Valentino & Lang 2007); 40 cultivars persisted at 6.5-10.7 under a shade tent (Petrella & Watkins 2020). Working floor 7-8.' },
-  { id: 'roughblue', name: 'Rough bluegrass (Poa trivialis)', season: 'cool', dli: 7.5, full: 14,
-    shade: 'holds very low light in cool, moist shade but fades in summer heat; a shade-mix component, not a whole lawn',
+  { id: 'roughblue', name: 'Rough bluegrass (Poa trivialis)', season: 'cool', dli: 7.5, full: 14, fallback: true,
+    shade: 'holds very low light in cool, moist shade but fades in summer heat; a shade-mix component for where nothing else takes the shade',
     source: 'Sabrena stayed acceptable at about 7 mol through a winter under 60% cloth; wear threshold about 7.5 (Abelard & Galbrun 2022).' },
+  { id: 'supina', name: 'Supina bluegrass (Poa supina)', season: 'cool', dli: 5.5, full: 12, fallback: true, derived: true,
+    shade: 'the lowest-light turf there is, spreading and wear-tolerant; dear seed, light green, for shade nothing else holds',
+    source: 'Needs over 5 mol to carry traffic beyond five weeks; acceptable at 10-15% of full sun for months without traffic; neither it nor Kentucky bluegrass prospered at 1-2 (Stier & Rogers 2001; Stier 1997). No quality minimum published.' },
   { id: 'tallfescue', name: 'Tall fescue (turf-type)', season: 'cool', dli: 9, full: 20,
     shade: 'takes moderate shade and heat better than bluegrass; deep roots; the usual shade choice where fine fescue is too thin',
     source: 'Rebel Exeda 8.8 (Meeks 2015, Texas, quality 5); species 9.3 in a winter stadium trial (Abelard & Galbrun 2022). Short-term trials only.' },
-  { id: 'rye', name: 'Perennial ryegrass', season: 'cool', dli: 10, full: 20,
+  { id: 'rye', name: 'Perennial ryegrass', season: 'cool', dli: 20, full: 25,
     shade: 'quick to establish; fair in light shade, poor in deep shade; often blended with the fescues',
-    source: 'Species 8.4 at a lenient winter criterion (Abelard & Galbrun 2022), raised by the recommended 10-20% margin; the 23 mol quoted by grow-light vendors has no primary source.' },
+    source: 'Set at 20 by the owner (2026-10-15) pending better research: the one peer-reviewed value, 8.4, is a lenient winter criterion (Abelard & Galbrun 2022), and the 23 quoted by grow-light vendors has no primary source.' },
   { id: 'kbg', name: 'Kentucky bluegrass', season: 'cool', dli: 23, full: 28,
     shade: 'the full-sun cool-season lawn grass; thins and invites moss in shade',
     source: 'Conventional cultivars 22-26 (Kenblue 24.1, Meeks 2015; a four-cultivar blend 26.2 and 22.5, Reed et al. 2024, quality 7).' },
   { id: 'staug', name: 'St. Augustinegrass', season: 'warm', dli: 13, full: 20,
     shade: 'the most shade-tolerant warm-season lawn grass (Captiva, Palmetto and Seville more than Floratam); not cold-hardy; sod only',
     source: 'Captiva 10.9 and Floratam 11.8 in an 8-week Florida screen (Unruh 2015); Palmetto 15.5 at rough height in Texas. Lawn value about 13.' },
-  { id: 'zoysia', name: 'Zoysiagrass', season: 'warm', dli: 16, full: 22,
+  { id: 'zoysia', name: 'Zoysiagrass', season: 'warm', dli: 14, full: 22,
     shade: 'fair shade tolerance, the fine-bladed cultivars (Zorro, Zeon, Cavalier, Lazer) best; slow to fill in; Meyer the least tolerant',
-    source: 'Shade-tolerant cultivars 10-11 in an 8-week Florida screen, 19-24 after 27 months of year-round shade in Texas at fairway height, 12-16 at lawn height (USGA); Cavalier 15.0 vs Meyer 21.1 (Richardson 2019). Lawn value 16.' },
+    source: 'Shade-tolerant cultivars 10-11 in an 8-week Florida screen, 19-24 after 27 months of year-round shade in Texas at fairway height, 12-16 at lawn height (USGA); Cavalier 15.0 vs Meyer 21.1 (Richardson 2019). Set at 14 by the owner (2026-10-15) pending better research.' },
   { id: 'centipede', name: 'Centipedegrass', season: 'warm', dli: 14, full: 20,
     shade: 'light shade only; low upkeep, acid soils; the Southeast\'s low-care lawn',
     source: 'TifBlair 13.4 (Unruh 2015, Florida, 8-week screen).' },
@@ -101,15 +105,22 @@ export const SPECIES = [
  * 'transition' (both lists). Each row: { ...species, share (0..1 of the
  * points at or over its lowest light), fullShare (at or over its best) }.
  */
+export const FALLBACK_WHEN_FEWER_THAN = 2; // regular grasses holding most of the lawn
 export function rankGrasses(dliPoints, zone) {
   const pts = Array.from(dliPoints || []).filter(Number.isFinite);
   const seasons = zone === 'transition' ? ['cool', 'warm'] : [zone];
   const n = pts.length || 1;
-  return SPECIES.filter((s) => seasons.includes(s.season)).map((s) => {
+  const all = SPECIES.filter((s) => seasons.includes(s.season)).map((s) => {
     let ok = 0, full = 0;
     for (const v of pts) { if (v >= s.dli) ok++; if (v >= s.full) full++; }
     return { ...s, share: pts.length ? ok / n : null, fullShare: pts.length ? full / n : null };
   }).sort((a, b) => (b.share ?? -1) - (a.share ?? -1) || a.dli - b.dli);
+  /* The fallbacks (rough and supina bluegrass; owner, 2026-10-15: "only
+     get chosen when there are few options that tolerate those light
+     levels") are listed only when fewer than two regular grasses hold
+     most of the lawn. */
+  const regularHolding = all.filter((s) => !s.fallback && s.share >= 0.5).length;
+  return pts.length && regularHolding < FALLBACK_WHEN_FEWER_THAN ? all : all.filter((s) => !s.fallback);
 }
 
 /** Words for a share of the lawn. */
