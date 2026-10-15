@@ -1217,6 +1217,14 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
     JSON.stringify({ through: y.through, forecastTo: y.forecastTo, anomaly: y.anomaly, d200: y.tMean[200] - typical[200], d290: y.tMean[290] - typical[290], d325: y.tMean[325] - typical[325] }));
   check('this year: a warm fall puts half the shade gone later than the typical year did, and a warm spring brings the leaves out earlier',
     warm.halfFall > base.halfFall + 7 && warm.out < base.out, `fall ${base.halfFall} -> ${warm.halfFall}; out ${base.out} -> ${warm.out}`);
+  /* A warm spell: Feb 10-24 at 16 C (over the 14.5 C green-up line), winter again after; the calendar must not green on it. And an Indian summer: Oct 10-20 at 14 C after the mean first dipped under 10 C. */
+  const spell = {}; for (let k = 40; k <= 55; k++) spell[ymd(k)] = 16;
+  const ySpell = yearAsItIs(typical, spell, {}, { today: new Date(Date.UTC(2026, 2, 1)) });
+  const calSpell = leafCalendar(ySpell.tMean);
+  const typ2 = typical.map((t, k) => (k >= 255 && k <= 265 ? 9 : t)); // a cold snap Sep 12-22 under 10 C, then typical (back over 10 C) until the real crossing in mid-October
+  const calSnap = leafCalendar(typ2);
+  check('this year: a February warm spell does not green the calendar (last dip under the line wins), and a cold snap before an Indian summer does not end the season early',
+    Math.abs(calSpell.out - base.out) <= 2 && calSnap.halfFall === base.halfFall, `out ${base.out} spell ${calSpell.out}; half fall ${base.halfFall} snap ${calSnap.halfFall}`);
   const none = yearAsItIs(typical, {}, {}, { today: new Date(Date.UTC(2026, 9, 14)) });
   check('this year: with nothing observed the year is the typical one', none.through === null && none.anomaly === 0 && Math.abs(none.tMean[100] - typical[100]) < 0.05, `${none.tMean[100]} ${typical[100]}`);
 }

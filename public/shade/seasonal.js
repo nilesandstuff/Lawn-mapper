@@ -580,15 +580,21 @@ export function leafCalendar(tMean, {
   if (warm.every(Boolean)) return { out: null, fall: null, share: () => 1, always: true };
   if (!warm.some(Boolean)) return { out: null, fall: null, share: () => 0, never: true };
   const since = (k, d) => (k - d + 365) % 365;
-  /* Spring: the first day after the coldest that passes the green-up
-     temperature; autumn: the first day after the warmest below tC. */
+  /* Spring: the day after the LAST time, between the coldest day and the
+     warmest, that the mean sits below the green-up temperature; autumn: the
+     day after the last time, between the warmest day and the coldest, that
+     it sits at or above tC. On a typical year (one rise, one fall) these
+     are the first crossings; on a year as it is (climate.js yearAsItIs,
+     2026-10-15) they ignore a warm spell in February (Atlanta's calendar
+     greened on Feb 25 from one) and an Indian summer. */
   let coldest = 0, warmest = 0;
   for (let k = 1; k < 365; k++) { if (tMean[k] < tMean[coldest]) coldest = k; if (tMean[k] > tMean[warmest]) warmest = k; }
   const tGreen = Math.min(green, tMean[warmest] - cap);
+  const rise = (warmest - coldest + 365) % 365, fallLen = (coldest - warmest + 365) % 365;
   let greenUp = coldest;
-  while (tMean[greenUp % 365] < tGreen) greenUp++;
+  for (let d = 0; d < rise; d++) if (tMean[(coldest + d) % 365] < tGreen) greenUp = coldest + d + 1;
   let cold = warmest;
-  while (tMean[cold % 365] >= tC) cold++;
+  for (let d = 0; d < fallLen; d++) if (tMean[(warmest + d) % 365] >= tC) cold = warmest + d + 1;
   let halfOut = (greenUp + lag) % 365;
   let fall = (cold - lead + 365) % 365;
   /* A short season keeps its leafing-out and a week of full leaf. */
