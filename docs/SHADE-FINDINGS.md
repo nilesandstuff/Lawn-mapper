@@ -825,6 +825,27 @@ year's weather, 3,147 of 3,913 against 3,153 with the typical year: the
 same within noise, as the leaf share scan (17) said it would be for the
 day as a whole.
 
+### 22. Wood seen from the side hurts lawns: finding 15's correction, scored on the owner's readings (2026-10-15)
+
+Finding 15's correction (rays.js woodScale: bare wood meets a low sun
+broadside, so the extinction grows with the sun's zenith angle) fitted 9
+of 11 NEON forest floors in winter. On the owner's 2026-10-13 readings
+(workflow 35, the fill JSON's woodV; the calendar's 21-30% leaves, so
+mostly wood), against 3,147 of 3,913 as shipped:
+
+| share of the bare wood upright | agree | through trees, too dark / too bright |
+|---|---|---|
+| none (shipped) | 3,147 | 412 / 157 |
+| half (woodV 0.5) | 3,113 | 481 / 119 |
+| all (woodV 1) | 3,003 | 632 / 71 |
+
+Worse both ways, and the more wood is made to stop the sun the darker the
+lawn trees get. Forest floors in winter are too bright in the model (15)
+and lawn trees are not, so the correction is a forest one, like the
+"leaves where the branches were" spread (19) and the no-widening fill (14,
+16) were lawn ones: the leaf-off laser sees an open-grown lawn tree's wood
+better than a closed forest's. NOT shipped; not for lawns.
+
 ## Speculation
 
 - Mixed-season flights (7) may be better treated as leaf-on for the
@@ -851,7 +872,8 @@ day as a whole.
   2026-10-13's stops.
 
 - Wood seen from the side (15) by flight month: on for mid-winter flights,
-  off for April ones -- would want more April and May flights to test.
+  off for April ones -- would want more April and May flights to test. On
+  LAWNS it is measured (22): it hurts, at any share.
 - Pine savannas too dark in leaf (15): open-grown pines' crowns filled
   with deciduous leaves, or their needles too dense from the laser's view?
 
