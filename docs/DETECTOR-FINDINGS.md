@@ -6674,6 +6674,34 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
+### S39. A flight's dates could come from its own points rather than USGS's index (from the features session, 2026-10-15 -- NOT MEASURED HERE)
+
+**What happened.** WESM, the USGS index that H96's newest-lidar picker and
+S35's datum epoch both read, has answered every query since about 01:00 UTC
+2026-10-15 with HTTP 200 and `{"error":{"code":400,"message":"Failed to
+execute query."}}` (checked here the same night). Until commit 69d7906 the
+picker read that as "no work units": every frame silently fell back to its
+name's year and was never offered newer tiles, which is the pre-H96 corpus
+with nothing to say so. Workflow 14 now refuses to plan without WESM. The
+live server still falls back, which is the same pick H96 replaced, and it
+reads the datum epoch from the name's year, which moves the shift by
+centimetres.
+
+**The theory.** The features session dates each flight from the points' own
+LAS GPS times (point formats 1, 3-5 and 6+) and keeps WESM as the fallback.
+By its count, on 145 flights across 60 metros 144 agreed with WESM, and in the
+one disagreement WESM was the one wrong: Allentown is labelled "August 2016"
+but was flown on 2016-03-26. If that holds, the GPS times are a
+better source of the epoch, and of "newest", than the index. It also has no
+outage to wait out.
+
+**Why it might not matter here.** The epoch only moves the datum shift by
+millimetres a year (H95 measured the whole shift as nothing either way), and
+"newest" changes the pick only where WESM's date and the name's year disagree
+(20 locked lots in H96). **Not measured here.** Reading the GPS times needs
+one point per flight read before the plan picks. That is a change to
+lidar-newest.js and would need its own paired run.
+
 ### S38. Is the lidar's brightness right where the detector is wrong? (owner, 2026-10-13 -- MEASURED: BAR MET IN ALL THREE SEEDS; AS AN INPUT, H97: ADOPTED)
 
 The owner asked whether lidar intensity could say more about ground cover
