@@ -26,8 +26,9 @@ export function lasHeader(buf) {
     recordLength: v.getUint16(105, true),
     count,
     /* Where the GPS time sits in a record (formats 1, 3-5 at 20; 6+ at 22; none in 0 and 2),
-       and whether it is "adjusted standard" time (seconds since 1980-01-06 less 1e9; global
-       encoding bit 0) rather than the unusable time-of-week. */
+       and whether the header calls it "adjusted standard" time (global encoding bit 0) rather
+       than time-of-week. The bit is NOT trusted by gpsTimes: Entwine's node files say week time
+       and hold adjusted standard time (USGS 3DEP on AWS, checked 2026-10-15). */
     gpsAt: [1, 3, 4, 5].includes(format) ? 20 : format >= 6 ? 22 : -1,
     gpsAdjusted: (v.getUint16(6, true) & 1) === 1,
     scale: [v.getFloat64(131, true), v.getFloat64(139, true), v.getFloat64(147, true)],
@@ -36,6 +37,21 @@ export function lasHeader(buf) {
 }
 
 const GPS_EPOCH_MS = Date.UTC(1980, 0, 6);
+const WEEK_S = 604800, RAW_GPS_2001_S = 6.6e8; // GPS seconds at 2001: raw standard time (rare) from here up
+/**
+ * A record's GPS time as ms since 1970, or NaN when it is time-of-week (the
+ * seconds since Sunday, which says nothing of the date). By the value, not
+ * the header's bit: under a week is week time; from there to 2001's raw
+ * count is adjusted standard time (seconds since 1980-01-06 less 1e9, which
+ * is negative for flights before 2011-09); above that, raw standard time.
+ */
+export function gpsMs(g) {
+  if (!Number.isFinite(g) || Math.abs(g) < WEEK_S) return NaN;
+  const s = g >= RAW_GPS_2001_S ? g : g + 1e9;
+  const ms = GPS_EPOCH_MS + s * 1000;
+  return ms > Date.UTC(1995, 0, 1) && ms < Date.now() + 366 * 864e5 ? ms : NaN;
+}
+
 /**
  * WHEN THE LASER PASSED: the GPS times of a node's records, sampled (about
  * `want` of them), as sorted ms since 1970 -- or null when the file keeps no
@@ -44,14 +60,14 @@ const GPS_EPOCH_MS = Date.UTC(1980, 0, 6);
  * wrong one said August for a flight made in March.
  */
 export function gpsTimes(h, points, want = 400) {
-  if (h.gpsAt < 0 || !h.gpsAdjusted) return null;
+  if (h.gpsAt < 0) return null;
   const L = h.recordLength, n = Math.floor(points.byteLength / L);
   if (!n) return null;
   const dv = new DataView(points.buffer, points.byteOffset, points.byteLength);
   const step = Math.max(1, Math.floor(n / want)), out = [];
   for (let i = 0; i < n; i += step) {
-    const g = dv.getFloat64(i * L + h.gpsAt, true);
-    if (Number.isFinite(g) && g > -1e9 && g < 2e9) out.push(GPS_EPOCH_MS + (g + 1e9) * 1000);
+    const ms = gpsMs(dv.getFloat64(i * L + h.gpsAt, true));
+    if (Number.isFinite(ms)) out.push(ms);
   }
   return out.length ? out.sort((a, b) => a - b) : null;
 }
