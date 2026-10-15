@@ -779,6 +779,52 @@ in leaf on Oct 13-14 stand against the county's 0.54 and the owner's
 own point's lower figure, so the weather explains part of the gap, not
 all of it.
 
+### 21. Crown shade factors against the USDA's 149 species: the same scale, a few points light overhead (2026-10-15)
+
+Owner: "we should leverage as much open/public info... as possible." The
+closest public yardstick for single lawn trees is McPherson et al. 2018
+(Urban Forestry & Urban Greening 31:204, data CC0 on Mendeley): the SHADE
+FACTOR, the share of sky blocked within a crown's outline, photographed on
+11,024 in-leaf street and yard trees of 149 species in 17 cities. By trunk
+diameter (their Table S1): 0.61 at 1 cm, 0.74 at 10 cm, 0.85 at 30 cm,
+0.87 at 50 cm, 0.88 at 80 cm, 0.90 at 100 cm; species in the Midwest add
+(S2): Norway maple +0.05, red maple +0.04, basswood +0.03, linden +0.05,
+white ash +0.07, hackberry +0.02, red oak +0.02, sugar maple +0.01,
+honeylocust +0.01, elm 0.00, pin oak -0.01, ginkgo -0.06. So a mature
+Midwest lawn tree in leaf blocks 0.85-0.93 of the sky within its outline.
+
+Ours, the same quantity as 1 minus the mean overhead transmittance over a
+crown's columns, from the NEON leaf-on windows (finding 13; tools/
+shade-check-leafon.js now records each column's top), by the crown's depth
+as the summer laser saw it, isolated crowns under 300 m2:
+
+| crown depth | columns | ours | leaf-on laser |
+|---|---|---|---|
+| under 3 m | 9,101 | 0.47 | 0.50 |
+| 3-6 m | 4,461 | 0.67 | 0.73 |
+| 6-9 m | 2,805 | 0.76 | 0.80 |
+| 9-13 m | 1,929 | 0.83 | 0.87 |
+| over 13 m | 523 | 0.91 | 0.89 |
+| crown edges 9-13 m / over 13 m | 13,951 / 8,156 | 0.78 / 0.83 | 0.77 / 0.79 |
+| deep canopy, all depths | 642,213 | 0.92-0.94 | 0.93-0.95 |
+
+A crown 9-13 m deep is a mature tree's; ours 0.83 against the laser's 0.87
+and the USDA's 0.85-0.93: the right scale, 0.04 light against the laser
+for isolated crowns at every depth, 0.01-0.02 light in deep canopy. Not
+tuned on it: the overhead figure is the leaf density knob (LAD 1.0, LAI
+cap 5.5, seasonal.js 3), and the slanted beams through small crowns run
+the other way (finding 13: ours too DARK, 0.40 against 0.46), so a denser
+crown would fix the overhead and worsen the beam. The two together say the
+crown's light is in the wrong place, not the wrong amount: too much at the
+edges (the lawn-tree fill took the widening out already), too little in
+the middle. A sample matched by species and trunk size would be needed to
+go further; the USDA data has no positions.
+
+THE WEATHER CALENDAR ON THE READINGS (20): 2026-10-13 scored with this
+year's weather, 3,147 of 3,913 against 3,153 with the typical year: the
+same within noise, as the leaf share scan (17) said it would be for the
+day as a whole.
+
 ## Speculation
 
 - Mixed-season flights (7) may be better treated as leaf-on for the
