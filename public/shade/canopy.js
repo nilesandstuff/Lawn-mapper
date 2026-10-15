@@ -118,6 +118,7 @@ export function buildCanopy(cols, grid, { shift = null, dz = 1, opaqueCanopy = f
   for (let k = 0; k < N; k++) for (let l = 0; l < nz; l++) own[k] += ret[k * nz + l];
 
   const mu = new Float32Array(N * nz);
+  const fills = []; // [{ k, l0, l1, measured }] -- the columns filled solid under a dense layer
   let top = z0;
   for (let k = 0; k < N; k++) {
     /* From the bottom up: what entered a cube is what came back from it
@@ -147,16 +148,22 @@ export function buildCanopy(cols, grid, { shift = null, dz = 1, opaqueCanopy = f
       for (let l = nz - 1; l >= 0; l--) {
         below -= src[base + l];
         if (src[base + l] > 0 && below / total < SOLID_BELOW) {
-          for (let m = l; m >= 0; m--) {
-            if (z0 + (m + 1) * dz <= ground[k] + GRASS_M) break;
-            mu[base + m] = -Math.log(P_MIN) / dz;
+          let m = l;
+          for (; m >= 0; m--) if (z0 + (m + 1) * dz <= ground[k] + GRASS_M) break;
+          /* Cubes m+1..l are filled. What the laser measured there is kept:
+             seasonal.js ends a TREE's fill at its lowest branches (a pine's
+             trunk stands in open air), a building's goes to the grass. */
+          const l0 = m + 1;
+          if (l0 <= l) {
+            fills.push({ k, l0, l1: l, measured: mu.slice(base + l0, base + l + 1) });
+            for (let q = l0; q <= l; q++) mu[base + q] = -Math.log(P_MIN) / dz;
           }
           break;
         }
       }
     }
   }
-  return { grid, w, h, dz, z0, nz, ground, mu, top };
+  return { grid, w, h, dz, z0, nz, ground, mu, top, fills };
 }
 
 /** Fill NaN cells from their neighbors until none are left (or nothing changes). */
