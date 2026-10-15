@@ -865,6 +865,76 @@ and lawn trees are not, so the correction is a forest one, like the
 16) were lawn ones: the leaf-off laser sees an open-grown lawn tree's wood
 better than a closed forest's. NOT shipped; not for lawns.
 
+### 23. Oct 15's photos: lawn trees at about half to two-thirds of their leaves while the calendar says a third; the hopper camera can read crowns straight up (2026-10-15)
+
+The owner's three recordings of Oct 15 (two hours over three west-Michigan
+lots; streets stay off the record) with 14 phone photos of the trees and,
+on one lot, the phone's own camera firing every 5 s face-up on the hopper
+(536 frames at Low quality, 16 MB). The calendar on this year's weather
+(20) gave 29-32% of the leaves at the three lots that day (the typical
+year alone: 14-18%).
+
+PLACING THE PHOTOS. The phone's EXIF keeps the time and the lens (13 mm
+for the 0.6x shots, 24 mm for one) but no position, so each photo got its
+spot from the recording at its second (fixes within 5 m) and its direction
+from the Orientation quaternion. The quaternion's world frame has z DOWN:
+the back camera looks along R*(0,0,-1) for the tilt but the bearing needs
+180 degrees added (checked against the model: photo 1's two big spruces
+by the house came out as two evergreen crowns 26-28 m off at bearing 38,
+with the house beside them; before the fix they pointed at open lawn).
+Pitches of the looking-up photos (44, 41, 55 degrees) agree.
+
+WHAT THE PHOTOS SHOW (read by eye, share of the summer leaves):
+  - 8 of 14 crowns at 80-90%: maples green or turning, a Norway maple
+    full, an orange maple full.
+  - 3 at 40-65%: a yellowing ash-like crown, a mixed woods edge, a
+    cottonwood at about 20%.
+  - 3 nearly bare (under 10%): a maple by a deck, a honeylocust by a
+    mobile home, one tree beside spruces.
+  Oblique photos flatter a crown (a slanting look through it crosses more
+  leaves), so these run high.
+
+THE HOPPER CAMERA. 424 of the 536 frames were taken while mowing (4-10 mph,
+the phone flat: pitch over -40, roll within 30; in the cab the phone
+stands at -79). The overcast sky in them is mid-grey (V about 0.5,
+S under 0.05), so sky = S < 0.12 and V > 0.35 after a 160 px thumbnail.
+The model's sky view over a 40-degree cone round the zenith at each
+frame's fix (1 m up), at leaf shares 0 to 1, against the frame's sky share:
+  - 31 frames stand under crowns the model has (full-leaf cone under 0.9);
+    their sky share is 0.85 at the median, the model's cone 0.85 bare,
+    0.67 at 30%, 0.55 in full leaf.
+  - The signed error (model minus photo) is zero at 15% and -0.065 at
+    30%; the per-frame best share has median 0.3, mean 0.4; 12 of 31
+    frames are brighter than the BARE model and 8 darker than the FULL
+    one, so the fit is noisy (fixes 4 m off under a crown's edge, the
+    camera's true field of view unknown).
+  - By eye the same frames show crowns 40-90% leafed (median about 55%),
+    i.e. the model's crowns in full leaf cover MORE of the cone than the
+    real ones do on a day the real ones still hold half their leaves.
+    That is the "light in the wrong place" of 21 seen from below: the
+    model's full crown is too broad or too dense straight up.
+
+WHAT IT SAYS. Three independent reads of the same day -- the owner's eye
+(75% on Oct 14), the oblique photos (80-90% for most crowns, a few bare),
+the hopper frames straight up (about 55%) -- all sit above the calendar's
+30%, and the camera-against-model fit (15-40%) sits below the eye because
+the model's crowns are too full. The calendar's two-week lead (finding 2,
+fitted to NEON forest floors) is early for these lawn trees by about a
+week: 55-65% on Oct 15 is Oct 6-8 on the shipped ramp here (half gone Oct
+10, 28-day fall). Same region, same week as 17; still one fall.
+
+THE METHOD IS CHEAP AND WORKS. A face-up camera on the hopper at 5 s gives
+a few dozen crown frames an hour at Low quality for 30 KB each, placed by
+the fix and read for sky share in a thumbnail; with the model's cone at the
+same spot it is a per-crown leaf reading that needs no cataloguing. Its
+weak point is the model's crown extent, not the camera: the comparison
+should be made on frames whose crown fills the cone (sky share under 0.5
+in full leaf) and read as a ratio of the frame's cover to the model's
+full-leaf cover.
+
+Scripts: scratchpad photo-spots.py, photo-crowns.mjs, frames-sky.py,
+frames-cone.mjs (not in the repo: they carry the lots).
+
 ## Speculation
 
 - Mixed-season flights (7) may be better treated as leaf-on for the
@@ -900,15 +970,17 @@ better than a closed forest's. NOT shipped; not for lawns.
   comparing ground on the sunward side of a trunk (no shadow possible) with
   open lawn; not done.
 
-- THE FALL CALENDAR IS EARLY FOR LAWN TREES (17)? Measured here: the
+- THE FALL CALENDAR IS EARLY FOR LAWN TREES (17, 23)? Measured here: the
   owner's eyes, the overcast sky view and the sunny readings all put the
   lawn trees at 50-100% of their shade on Oct 13-14, where the calendar
   (fitted to NEON forest floors, finding 2) has 14-21%. Published phenology
   says city trees in cold regions drop later than forest (Li et al. 2021,
   Global Ecology and Biogeography; USA-NPN). The old rule (half the shade
   gone on the 10 C day, no two-week lead) would give about 68% here on Oct
-  14. One region, one fall, one week: wants another region or another
-  year before the calendar changes for every lawn.
+  14. Oct 15's photos (23) say the same, about a week early. One region,
+  one fall, one week: wants another region or another year before the
+  calendar changes for every lawn -- or the owner's call, since the
+  evidence all points one way.
 
 - The heat-sum reading of this year (20) is physically motivated but not
   yet measured against a year's PhenoCam: 2026's green-up dates at the
