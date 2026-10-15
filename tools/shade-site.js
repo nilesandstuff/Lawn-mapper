@@ -6,7 +6,7 @@
  * against outside evidence (tools/shade-check-naip.js and the like).
  *
  *   const site = await shadeSite(lng, lat, { halfM: 80 });
- *   site.model, site.season, site.grid, site.cloud, site.cellOf(lng, lat)
+ *   site.model, site.season, site.grid, site.cloud, site.flight ({ start, end, season, source }), site.cellOf(lng, lat)
  */
 
 import { readFileSync } from 'node:fs';
@@ -20,6 +20,7 @@ import { seasonalCanopy } from '../public/shade/seasonal.js';
 import { transmittance, groundAt } from '../public/shade/rays.js';
 import { sunAt } from '../public/shade/sun.js';
 import { lidarAt } from '../worker/src/shade.js';
+import { flightOf } from '../public/shade/find.js';
 
 const vendor = (f) => fileURLToPath(new URL(`../public/shade/vendor/${f}`, import.meta.url));
 let factory = null;
@@ -64,7 +65,9 @@ export async function shadeSite(lng, lat, { halfM = 80, cloudIndex = 0 } = {}) {
   const k = mercScale(lat), m = halfM / k, [cx, cy] = toMerc([lng, lat]);
   const box = [cx - m, cy - m, cx + m, cy + m];
   const io = { getJson: (u) => fetchRetry(u, 'json'), getBytes: (u) => fetchRetry(u, 'bytes'), decompress: lazDecoder(lazFactory) };
-  const { cols } = await pointsIn(cloud.url, box, io);
+  const { cols, flown } = await pointsIn(cloud.url, box, io);
+  /* When it was flown, by the points' own clock (the catalogue when they keep none): find.js flightOf. */
+  const flight = flightOf(cloud.unit, flown);
   const d = nad83Correction(lat, lng, cloud.epoch), shift = [d.east / k, d.north / k];
   const grid = gridOver(box, 1, lat);
   const model = buildCanopy(cols, grid, { shift });
@@ -76,7 +79,7 @@ export async function shadeSite(lng, lat, { halfM = 80, cloudIndex = 0 } = {}) {
     const [x, y] = toMerc([plng, plat]);
     return [(x - grid.x0) / grid.cell, (grid.y1 - y) / grid.cell];
   };
-  return { cloud, box, grid, cols, model, season, shift, cellOf, points: cols.n };
+  return { cloud, flight, box, grid, cols, model, season, shift, cellOf, points: cols.n };
 }
 
 /** The sun's direction (east, north, up) at a time and place, with its angles. */

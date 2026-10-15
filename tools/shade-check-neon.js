@@ -110,7 +110,7 @@ async function checkSensor({ site, year, hor, lat, lng, along, series, above }) 
   const s = await shadeSite(lng, lat, { halfM: 120 });
   if (!s) return [{ site, year, hor, lat, lng, skip: 'no lidar' }];
   const clim = await climateAt(lng, lat).catch(() => null);
-  const flight = s.cloud.unit?.season;
+  const flight = s.flight?.season;
   const leafOff = flight === 'off' || flight === 'mixed';
   const calendar = clim?.tMean ? leafCalendar(clim.tMean) : null;
   const seasonal = leafOff && calendar;

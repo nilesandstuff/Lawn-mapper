@@ -108,7 +108,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       for (const [id, ts] of byCrown) {
         ts.sort((a, b) => b.height - a.height);
         const lead = ts[0], agree = ts.filter((t) => t.label === lead.label).length / ts.length;
-        process.stdout.write(`${JSON.stringify({ site: lead.site, plot: lead.plot, label: lead.label, taxon: lead.taxon, treeH: lead.height, trees: ts.length, purity: +agree.toFixed(2), flight: site.cloud.unit?.season, lidar: site.cloud.url.split('/').slice(-2)[0], scene, ...crowns[id] })}\n`);
+        process.stdout.write(`${JSON.stringify({ site: lead.site, plot: lead.plot, label: lead.label, taxon: lead.taxon, treeH: lead.height, trees: ts.length, purity: +agree.toFixed(2), flight: site.flight?.season, lidar: site.cloud.url.split('/').slice(-2)[0], scene, ...crowns[id] })}\n`);
       }
       done++;
       if (done % 10 === 0) process.stderr.write(`${done}/${plots.size} plots\n`);

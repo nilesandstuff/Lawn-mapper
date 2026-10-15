@@ -22,6 +22,7 @@
  */
 
 import { pointsIn, toMerc, fromMerc, mercScale } from './shade/ept.js';
+import { flightOf } from './shade/find.js';
 import { lazDecoder, browserFactory } from './shade/laz.js';
 import { nad83Correction } from './shade/datum.js';
 import { alignToPhoto } from './shade/align.js';
@@ -327,12 +328,12 @@ async function build(site) {
   const m = MARGIN_M / k;
   const box = [Math.min(lx0 - m, fBox[0]), Math.min(ly0 - m, fBox[1]), Math.max(lx1 + m, fBox[2]), Math.max(ly1 + m, fBox[3])];
 
-  let cloud = null, cols = null;
+  let cloud = null, cols = null, flown = null;
   for (const c of clouds.slice(0, 3)) {
     status(`Reading ${c.name}…`);
     try {
       const got = await pointsIn(c.url, box, io, { progress: (d, t) => status(`Reading ${c.name}: ${d} of ${t} pieces…`) });
-      if (got.cols.n > 500) { cloud = c; cols = got.cols; break; }
+      if (got.cols.n > 500) { cloud = c; cols = got.cols; flown = got.flown; break; }
       report.push(`<p class="warn">${esc(c.name)} has no points here; tried the next.</p>`);
     } catch (e) {
       report.push(`<p class="warn">${esc(c.name)} could not be read (${esc(e.message)}); tried the next.</p>`);
@@ -418,14 +419,16 @@ async function build(site) {
   $('#toggles').hidden = false;
   map.easeTo({ pitch: 55, bearing: -20, duration: 800 });
 
-  /* The report. */
-  const u = cloud.unit;
+  /* The report. The flight's dates and season from the points' own clock
+     (find.js flightOf), the catalogue's when the files keep no time. */
+  const u = flightOf(cloud.unit, flown);
   const day = (ms) => (ms ? new Date(ms).toISOString().slice(0, 10) : '?');
+  const seasonWord = (s) => (s === 'off' ? '<span class="warn">leaf-off</span>' : s === 'on' ? 'leaf-on' : s === 'mixed' ? '<span class="warn">part leaf-off</span>' : 'season unknown');
   report.unshift(`
     <h2>The lidar</h2>
     <table>
       <tr><td>Cloud</td><td>${esc(cloud.name)}${cloud.confirmed ? '' : ' <span class="warn">(box match only: USGS did not confirm it flew this point)</span>'}</td></tr>
-      ${u ? `<tr><td>Flown</td><td>${day(u.start)} to ${day(u.end)}, ${esc(u.ql || '?')}, ${u.season === 'off' ? '<span class="warn">leaf-off</span>' : u.season === 'on' ? 'leaf-on' : u.season === 'mixed' ? '<span class="warn">part leaf-off</span>' : 'season unknown'}</td></tr>` : ''}
+      ${u ? `<tr><td>Flown</td><td>${day(u.start)}${day(u.end) !== day(u.start) ? ` to ${day(u.end)}` : ''}, ${esc(u.ql || '?')}, ${seasonWord(u.season)} <span class="dim">${u.source === 'laser' ? 'by the laser\'s own clock' : 'by the USGS catalogue'}${u.catalogue && !u.agree ? `; the catalogue says ${day(u.catalogue.start)} to ${day(u.catalogue.end)}, ${u.catalogue.season || '?'} — the clock wins` : ''}</span></td></tr>` : '<tr><td>Flown</td><td class="warn">unknown: the files keep no time and the USGS catalogue did not answer; the trees are drawn as the laser saw them</td></tr>'}
       <tr><td>Points</td><td>${cols.n.toLocaleString()} within ${MARGIN_M} m of the lot; ${(inLot / lotM2).toFixed(1)} a square meter over the lot</td></tr>
       ${notOnAws.length ? `<tr><td>Also flown</td><td class="warn">${notOnAws.map((x) => `${esc(x.workunit)} (${day(x.end)}, ${esc(x.ql || '?')})`).join('; ')} — not in the public cloud store, so not read</td></tr>` : ''}
     </table>
@@ -450,13 +453,13 @@ async function build(site) {
   /* The trees page (/shade-trees): the same model drawn instead of lit (shade/trees-ui.js). */
   if (TREES) {
     const m = await import('./shade/trees-ui.js');
-    view.sun = await m.startTrees({ map, site, cols, box, shift, season: cloud.unit?.season, flownTo: u?.end ? day(u.end) : null });
+    view.sun = await m.startTrees({ map, site, cols, box, shift, season: u?.season ?? null, flownTo: u?.end ? day(u.end) : null });
     return;
   }
 
   /* Step 2: the sun over this model, in a worker (shade/sun-ui.js). */
   view.sun = startSun({
-    map, site, cols, box, shift, heightM: baseZ, season: cloud.unit?.season, ground,
+    map, site, cols, box, shift, heightM: baseZ, season: u?.season ?? null, ground,
     beforeLayer: () => (map.getLayer('parcel') ? 'parcel' : undefined),
   });
   /* A visit's field readings, when the readings page sent us here (admin). */
