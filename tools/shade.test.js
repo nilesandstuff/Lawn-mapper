@@ -3,10 +3,10 @@
  *
  *   node tools/shade.test.js
  */
-import { lasHeader, makeColumns, readRecord } from '../public/shade/las.js';
-import { nodeBox, walk, hierarchyReader, pointsIn, toMerc, fromMerc, mercScale } from '../public/shade/ept.js';
+import { lasHeader, makeColumns, readRecord, gpsTimes } from '../public/shade/las.js';
+import { nodeBox, walk, hierarchyReader, pointsIn, toMerc, fromMerc, mercScale, flownOf } from '../public/shade/ept.js';
 import { nad83Correction } from '../public/shade/datum.js';
-import { rankClouds, leafSeason, nameYear } from '../public/shade/find.js';
+import { rankClouds, leafSeason, nameYear, flightOf } from '../public/shade/find.js';
 import { gridOver, gridForFrame, gridBox, rasterise, fillGaps, resample } from '../public/shade/grid.js';
 import { alignToPhoto, dilate } from '../public/shade/align.js';
 import { kindOf, mercUnits } from '../public/shade/view3d.js';
@@ -39,11 +39,12 @@ const near = (a, b, tol) => Math.abs(a - b) <= tol;
 /* ------------------------------------------------------------- LAS */
 
 /** A LAS file in memory: a 375-byte 1.4 header and the given records. */
-function lasFile(format, recordLength, points, { scale = 0.01, offset = [100, 200, 10] } = {}) {
+function lasFile(format, recordLength, points, { scale = 0.01, offset = [100, 200, 10], gpsAdjusted = false } = {}) {
   const head = 375;
   const buf = new ArrayBuffer(head + recordLength * points.length);
   const v = new DataView(buf);
   'LASF'.split('').forEach((c, i) => v.setUint8(i, c.charCodeAt(0)));
+  v.setUint16(6, gpsAdjusted ? 1 : 0, true); // global encoding bit 0: adjusted standard GPS time
   v.setUint8(24, 1); v.setUint8(25, 4);
   v.setUint32(96, head, true);
   v.setUint8(104, format | 0x80);
@@ -58,6 +59,7 @@ function lasFile(format, recordLength, points, { scale = 0.01, offset = [100, 20
     v.setInt32(at + 4, Math.round((p.y - offset[1]) / scale), true);
     v.setInt32(at + 8, Math.round((p.z - offset[2]) / scale), true);
     v.setUint16(at + 12, p.i, true);
+    if (p.t != null && format !== 0 && format !== 2) v.setFloat64(at + (format >= 6 ? 22 : 20), p.t, true); // adjusted standard GPS seconds
     if (format >= 6) {
       v.setUint8(at + 14, p.ret | (p.nret << 4));
       v.setUint8(at + 16, p.cls);
@@ -1142,6 +1144,31 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   check('branch floor: a low sun passing under the tall crown reaches the phone north of it; the shipped fill stopped it', tOld < 0.5 && tFix > 0.9, `${tOld.toFixed(2)} ${tFix.toFixed(2)}`);
   const overhead = (s, m, kk) => { let t = 0; for (let l = 0; l < m.nz; l++) if (m.z0 + (l + 0.5) * m.dz > 100.5) t += s.muOn[kk * m.nz + l] * m.dz; return Math.exp(-t); };
   check('branch floor: straight down through the tall crown the leaf area is unchanged (same shade from above)', Math.abs(overhead(old, m0, at(30, 30)) - overhead(fixed, m1, at(30, 30))) < 0.05, `${overhead(old, m0, at(30, 30)).toFixed(3)} ${overhead(fixed, m1, at(30, 30)).toFixed(3)}`);
+}
+
+{
+  /* THE LASER'S OWN CLOCK (las.js gpsTimes, ept.js flownOf, find.js flightOf): the flight's
+     dates from the points' GPS times, the catalogue's (WESM) only when the files keep none --
+     WESM answered every query with an error on 2026-10-15, and its one wrong date of 145 said
+     August for a March flight (SHADE-FINDINGS 18). 2016-03-26 12:00 UTC in adjusted standard
+     GPS seconds: (ms since 1980-01-06) / 1000 - 1e9. */
+  const gps = (iso) => (Date.parse(iso) - Date.UTC(1980, 0, 6)) / 1000 - 1e9;
+  const pts = [{ x: 1, y: 2, z: 3, i: 1, ret: 1, nret: 1, cls: 2, t: gps('2016-03-26T12:00:00Z') }, { x: 1, y: 2, z: 4, i: 1, ret: 1, nret: 1, cls: 1, t: gps('2016-03-26T13:30:00Z') }];
+  for (const [format, L] of [[1, 28], [6, 30]]) {
+    const buf = lasFile(format, L, pts, { gpsAdjusted: true }), h = lasHeader(buf);
+    const t = gpsTimes(h, new Uint8Array(buf, h.pointOffset));
+    check(`laser clock: format ${format} keeps its GPS time at byte ${format >= 6 ? 22 : 20}, read as the day it was flown`,
+      h.gpsAt === (format >= 6 ? 22 : 20) && h.gpsAdjusted && t.length === 2 && new Date(t[0]).toISOString().startsWith('2016-03-26T12:00') && new Date(t[1]).toISOString().startsWith('2016-03-26T13:30'), `${h.gpsAt} ${h.gpsAdjusted} ${t && t.map((x) => new Date(x).toISOString())}`);
+  }
+  const week = lasFile(1, 28, pts), hw = lasHeader(week);
+  check('laser clock: GPS week time (global encoding bit off) is unusable and gives null, as does format 0', gpsTimes(hw, new Uint8Array(week, hw.pointOffset)) === null && lasHeader(lasFile(0, 20, pts)).gpsAt === -1, `${hw.gpsAdjusted}`);
+  const d = (iso) => Date.parse(iso);
+  const flown = flownOf([d('2016-03-26T12:00Z'), d('2016-03-26T13:00Z'), d('2016-03-26T14:00Z'), d('2016-03-27T09:00Z'), d('2016-03-27T10:00Z'), d('2016-03-27T11:00Z')]);
+  check('laser clock: a flight\'s span is the nodes\' first to last, its middle the median of their middles', flown.start === d('2016-03-26T12:00Z') && flown.end === d('2016-03-27T11:00Z') && flown.nodes === 2 && (flown.mid === d('2016-03-27T10:00Z') || flown.mid === d('2016-03-26T13:00Z')) && flownOf([]) === null, JSON.stringify(flown));
+  const unit = { start: d('2016-08-23'), end: d('2016-08-23'), season: 'on', ql: 'QL2' };
+  const f = flightOf(unit, flown), fromCat = flightOf(unit, null), none = flightOf(null, null), agreeing = flightOf({ start: d('2016-03-20'), end: d('2016-03-30'), season: 'off' }, flown);
+  check('laser clock: the points\' clock wins over a catalogue that says August for a March flight; the catalogue serves when the files keep no time; none gives null',
+    f.season === 'off' && f.source === 'laser' && f.agree === false && f.catalogue.season === 'on' && f.ql === 'QL2' && fromCat.season === 'on' && fromCat.source === 'catalogue' && none === null && agreeing.agree === true, JSON.stringify({ f, fromCat, agreeing }));
 }
 
 if (failures) { console.log(`\n${failures} check(s) FAILED.`); process.exit(1); }

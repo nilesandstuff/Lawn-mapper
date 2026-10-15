@@ -137,7 +137,7 @@ export async function checkLot(lng, lat, { everyYear = false, mixed = false } = 
       const leaf = ls.leaf === 'mixed' ? 'on' : ls.leaf;
       const ground = Uint8Array.from(cells.exg, (v) => (leaf === 'on' ? (v > 0.02 ? 1 : 0) : 1));
       const r = scorePhoto(site, { bright: cells.bright, ground, seen: cells.seen }, { suns: sunGrid, leaf });
-      out.push({ lng, lat, source: src.label, year: src.year, px: img.width, ...ls, lidar: site.cloud.url.split('/').slice(-2)[0], flight: site.cloud.unit?.season, ...r, leafRead: ls.leaf });
+      out.push({ lng, lat, source: src.label, year: src.year, px: img.width, ...ls, lidar: site.cloud.url.split('/').slice(-2)[0], flight: site.flight?.season, ...r, leafRead: ls.leaf });
     } catch (e) {
       out.push({ lng, lat, source: src.label, year: src.year, error: e.message });
     }

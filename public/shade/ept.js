@@ -15,7 +15,7 @@
  * walk and the cropping are tested without one.
  */
 
-import { lasHeader, makeColumns, readRecord, concatColumns } from './las.js';
+import { lasHeader, makeColumns, readRecord, concatColumns, gpsTimes } from './las.js';
 
 const R = 6378137;
 
@@ -103,8 +103,20 @@ export function cropRecords(header, points, bbox) {
   return all;
 }
 
+/** The flight's span from the nodes' [first, median, last] GPS times: { start, mid, end, nodes } or null. */
+export function flownOf(times) {
+  if (!times.length) return null;
+  const mids = [];
+  let start = Infinity, end = -Infinity;
+  for (let i = 0; i < times.length; i += 3) { start = Math.min(start, times[i]); mids.push(times[i + 1]); end = Math.max(end, times[i + 2]); }
+  mids.sort((a, b) => a - b);
+  return { start, mid: mids[mids.length >> 1], end, nodes: mids.length };
+}
+
 /**
- * Every point of one octree inside bbox (EPSG:3857), as columns.
+ * Every point of one octree inside bbox (EPSG:3857), as columns, and when
+ * the laser passed (`flown`, from the points' own GPS clock; null when the
+ * files keep no usable time).
  *
  *   io = { getJson(url), getBytes(url) -> ArrayBuffer,
  *          decompress(ArrayBuffer) -> { header, points: Uint8Array } }
@@ -116,7 +128,7 @@ export async function pointsIn(eptJsonUrl, bbox, io, { progress = () => {}, para
   const ept = await io.getJson(`${base}/ept.json`);
   if (String(ept?.srs?.horizontal) !== '3857') throw new Error(`point cloud is EPSG:${ept?.srs?.horizontal}, not 3857`);
   const nodes = await walk(ept.bounds, bbox, hierarchyReader(base, io.getJson));
-  const parts = [];
+  const parts = [], times = [];
   let done = 0;
   progress(0, nodes.length);
   const queue = nodes.slice();
@@ -126,12 +138,16 @@ export async function pointsIn(eptJsonUrl, bbox, io, { progress = () => {}, para
       const raw = await io.getBytes(`${base}/ept-data/${key}.laz`);
       const { header, points } = await io.decompress(raw);
       const cols = cropRecords(header, points, bbox);
-      if (cols.n) parts.push(cols);
+      if (cols.n) {
+        parts.push(cols);
+        const t = gpsTimes(header, points);
+        if (t) times.push(t[0], t[t.length >> 1], t[t.length - 1]);
+      }
       progress(++done, nodes.length);
     }
   };
   await Promise.all(Array.from({ length: Math.min(parallel, nodes.length) }, worker));
-  return { ept, nodes: nodes.length, cols: parts.length ? concatColumns(parts) : makeColumns(0) };
+  return { ept, nodes: nodes.length, cols: parts.length ? concatColumns(parts) : makeColumns(0), flown: flownOf(times) };
 }
 
 export { lasHeader };

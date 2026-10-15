@@ -18,15 +18,42 @@ export function lasHeader(buf) {
   const minor = v.getUint8(25);
   const legacyCount = v.getUint32(107, true);
   const count = minor >= 4 && legacyCount === 0 ? Number(v.getBigUint64(247, true)) : legacyCount;
+  const format = v.getUint8(104) & 0x3f; // the top two bits flag compression
   return {
     version: `1.${minor}`,
     pointOffset: v.getUint32(96, true),
-    format: v.getUint8(104) & 0x3f, // the top two bits flag compression
+    format,
     recordLength: v.getUint16(105, true),
     count,
+    /* Where the GPS time sits in a record (formats 1, 3-5 at 20; 6+ at 22; none in 0 and 2),
+       and whether it is "adjusted standard" time (seconds since 1980-01-06 less 1e9; global
+       encoding bit 0) rather than the unusable time-of-week. */
+    gpsAt: [1, 3, 4, 5].includes(format) ? 20 : format >= 6 ? 22 : -1,
+    gpsAdjusted: (v.getUint16(6, true) & 1) === 1,
     scale: [v.getFloat64(131, true), v.getFloat64(139, true), v.getFloat64(147, true)],
     offset: [v.getFloat64(155, true), v.getFloat64(163, true), v.getFloat64(171, true)],
   };
+}
+
+const GPS_EPOCH_MS = Date.UTC(1980, 0, 6);
+/**
+ * WHEN THE LASER PASSED: the GPS times of a node's records, sampled (about
+ * `want` of them), as sorted ms since 1970 -- or null when the file keeps no
+ * usable time. The points' own clock: the catalogue's flight dates were
+ * right for 144 of 145 flights checked (SHADE-FINDINGS 18), and the one
+ * wrong one said August for a flight made in March.
+ */
+export function gpsTimes(h, points, want = 400) {
+  if (h.gpsAt < 0 || !h.gpsAdjusted) return null;
+  const L = h.recordLength, n = Math.floor(points.byteLength / L);
+  if (!n) return null;
+  const dv = new DataView(points.buffer, points.byteOffset, points.byteLength);
+  const step = Math.max(1, Math.floor(n / want)), out = [];
+  for (let i = 0; i < n; i += step) {
+    const g = dv.getFloat64(i * L + h.gpsAt, true);
+    if (Number.isFinite(g) && g > -1e9 && g < 2e9) out.push(GPS_EPOCH_MS + (g + 1e9) * 1000);
+  }
+  return out.length ? out.sort((a, b) => a - b) : null;
 }
 
 /** Empty columns for n points. */

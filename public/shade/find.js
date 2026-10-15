@@ -42,6 +42,24 @@ export function leafSeason(startMs, endMs) {
   return share >= 0.9 ? 'off' : share <= 0.1 ? 'on' : 'mixed';
 }
 
+/**
+ * WHEN A CLOUD WAS FLOWN, and so its leaf season: the points' own GPS clock
+ * (ept.js `flown`) first, the catalogue's work unit (WESM) when the points
+ * keep no time. The two agreed on 144 of 145 flights sampled across 60
+ * metros (SHADE-FINDINGS 18); the one they did not, the clock was right.
+ * And WESM has answered every query with an error for hours at a time
+ * (2026-10-15), which used to leave every tree bare all summer.
+ * Returns { start, end, season, source: 'laser' | 'catalogue', ql?, catalogue? } or null.
+ */
+export function flightOf(unit, flown) {
+  const laser = flown && Number.isFinite(flown.start) && Number.isFinite(flown.end) && flown.end >= flown.start
+    ? { start: flown.start, end: flown.end, season: leafSeason(flown.start, flown.end), source: 'laser', ql: unit?.ql ?? null } : null;
+  const cat = unit && Number.isFinite(unit.start) && Number.isFinite(unit.end)
+    ? { start: unit.start, end: unit.end, season: unit.season ?? leafSeason(unit.start, unit.end), source: 'catalogue', ql: unit.ql ?? null } : null;
+  if (laser && cat) return { ...laser, catalogue: cat, agree: laser.season === cat.season };
+  return laser || cat;
+}
+
 /** A decimal year for a time in ms. */
 const decimalYear = (ms) => {
   const d = new Date(ms), y = d.getUTCFullYear();

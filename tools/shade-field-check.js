@@ -125,7 +125,7 @@ export async function visitCheck(visit, dayMount) {
 
 async function scoreTile(site, tile, trucks, mount, why, rows, truckShadowRows) {
   const { lng, lat } = tile;
-  const flight = site.cloud.unit?.season || null;
+  const flight = site.flight?.season || null;
   const climate = await climateAt(lng, lat).catch(() => null);
   const calendar = climate?.tMean ? leafCalendar(climate.tMean) : null;
   const seasonal = calendar && (flight === 'off' || flight === 'mixed');
@@ -176,7 +176,7 @@ async function scoreTile(site, tile, trucks, mount, why, rows, truckShadowRows) 
     row.speed = s.speed;
     rows.push(row);
   }
-  return { flight, flightEnd: site.cloud.unit?.end ?? null, leaf };
+  return { flight, flightEnd: site.flight?.end ?? null, leaf };
 }
 
 function judgeVisit(visit, u, trucks, mount, why, rows, truckShadowRows, { flight, flightEnd, leaf }) {
