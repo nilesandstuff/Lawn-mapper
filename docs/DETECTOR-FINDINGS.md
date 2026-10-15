@@ -6695,6 +6695,23 @@ but was flown on 2016-03-26. If that holds, the GPS times are a
 better source of the epoch, and of "newest", than the index. It also has no
 outage to wait out.
 
+**The reader, and two gotchas (features session, same night).** The reader is
+public/shade/las.js `gpsMs(g)` and `gpsTimes(header, points)`. Both are pure
+functions with no browser dependency. ept.js `flownOf` gives each node a
+[first, median, last] time. Two gotchas:
+
+- **The time-format flag can't be trusted.** Entwine's node files on AWS are
+  LAS 1.2 format 1 with the global-encoding bit at 0 ("week time"), yet they
+  hold adjusted standard time anyway. A reader that trusts the bit rejects
+  every cloud, so the value decides instead. Two examples:
+  VA_NShenandoah_1_2020 reads 290,694,599 s, which is 2020-11-29, and Ottawa
+  2016 reads 144,761,895 s, which is 2016-04-15.
+- **One project can hold two flights years apart in the same box.** Ottawa
+  County, the owner's work area, has April 2016 and April 2018 nodes side by
+  side. So an epoch taken from the points should be per node, or their
+  median, never the span. It also means a cloud's single "year" can be wrong
+  for the very lot being read.
+
 **Why it might not matter here.** The epoch only moves the datum shift by
 millimetres a year (H95 measured the whole shift as nothing either way), and
 "newest" changes the pick only where WESM's date and the name's year disagree
