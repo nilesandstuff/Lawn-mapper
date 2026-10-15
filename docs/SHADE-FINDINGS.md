@@ -622,6 +622,59 @@ Rising all the way to full leaves; the calendar's 21% sits near 15-30%.
 before the lawn-tree fill, 16.) With the new-build stop the day favours
 bare trees (124 of 225), all of it that one stop.
 
+### 18. Twice-flown streets: none in broadleaf towns; the catalogue's seasons are right (2026-10-15)
+
+The bookmarked test (owner, 2026-10-14), tools/shade-check-twice.js. Every
+pair of 3DEP flights whose outlines overlap, one flown June-September and
+one leaf-off by WESM's dates, within 3 years, east of 100 W: 47 pairs, and
+every one is Florida, the Gulf coast, the Plains or Nebraska river work.
+Windows in Census urban areas with houses (3%+ roofs) and trees (10%+):
+6, all Florida (Jacksonville 2007, Palm Beach 2018-19), 2007-era densities.
+
+| Florida, 6 windows | leaf-on flight | ours (from the bare flight) |
+|---|---|---|
+| open ground within 20 m of trees, mean beam | 0.84 | 0.85 (agree 89%) |
+| under a crown edge | 0.44 | 0.60 (agree 64%) |
+| deep under canopy | 0.21 | 0.51 |
+| sky view, open near trees | 0.82 | 0.83 |
+| sky view, under a crown edge | 0.43 | 0.59 |
+
+Open ground near trees right; under crowns too bright. Weak evidence for a
+Michigan lawn: the bare flight itself already passes 0.56 of the beam under
+deep canopy that the summer flight has at 0.21, so the winter laser saw
+sparse crowns the summer laser saw dense -- old low-density flights,
+evergreens called from a thin winter cloud, or cypress and other Southern
+deciduous trees; not separable from six windows.
+
+A second pass sampled 60 eastern and midwestern metros by the POINTS' OWN
+GPS CLOCKS (flightDays), not WESM's dates: no sample point anywhere had a
+summer flight and a bare flight within 3 years. The test the owner asked
+for cannot be run on northern broadleaf streets from the public catalogue.
+
+WESM'S SEASON LABELS ARE RIGHT: of 145 flights sampled whose WESM season
+was on or off, the points' clocks agreed on 144. The one miss is
+USGS_LPC_PA_Allentown_2016_LAS_2017, listed as August 2016 and flown on
+2016-03-26 (leaf-off). The map's season call (find.js leafSeason from
+WESM) stands; no change needed.
+
+SATELLITE LEAF-FALL DATES (MODIS MCD12Q2 MidGreendown, 500 m, median of
+2014-2023, 3 x 3 pixels) against the calendar's half-shade-gone day:
+
+| | satellite | calendar | satellite minus calendar |
+|---|---|---|---|
+| HARV / BART / UNDE / TREE (northern forests) | Oct 7 / Oct 3 / Sep 24 / Sep 21 | Oct 10 / Sep 26 / Sep 24 / Sep 24 | -3 / +7 / 0 / -3 |
+| SCBI / SERC / BLAN / UKFS / MLBS / GRSM | Oct 7 / 12 / 20 / 2 / 1 / 14 | Oct 22 / 27 / 22 / 18 / 16 / 24 | -15 / -15 / -2 / -16 / -15 / -10 |
+| ORNL / DELA (south) | Oct 5 / Sep 28 | Oct 29 / Nov 19 | -24 / -52 |
+| the owner's neighbourhood | Oct 27 | Oct 5 | +22 |
+
+At forests the satellite runs 0-15 days EARLIER than the calendar (colour
+fades before the shade goes, finding 2); at the owner's it runs 22 days
+LATER, so about a month later than forest behaviour predicts. CAVEAT: a
+500 m suburban pixel is half lawn, which stays green to frost and drags
+the green-down date late; the satellite cannot separate the trees from
+the grass there. The owner's eyes, the overcast sky view and the sunny
+leaf scan (17) remain the evidence that the lawn trees were in leaf.
+
 ## Speculation
 
 - Mixed-season flights (7) may be better treated as leaf-on for the
@@ -668,9 +721,5 @@ bare trees (124 of 225), all of it that one stop.
 
 ## Bookmarked tests (asked for, not yet run)
 
-- TWICE-FLOWN STREETS (owner, 2026-10-14): places in the 3DEP catalogue
-  flown once in leaf and once without (different projects or years). Build
-  the page's model from the leaf-off flight, fill it, and compare it with the
-  leaf-on flight of the same trees on residential streets -- the NEON test
-  (13) where people's lawns are. First step: list such overlaps from the
-  lidar index (public/shade/lidar-index.json, WESM seasons).
+- TWICE-FLOWN STREETS: RUN 2026-10-15, finding 18. No broadleaf-town pairs
+  exist in the catalogue; Florida only.
