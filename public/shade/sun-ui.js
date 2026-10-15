@@ -333,7 +333,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
       const cal = m.calendar;
       const when = cal.always ? 'Deciduous trees here keep their leaves all year in a typical year.'
         : cal.never ? 'It never gets warm enough here, in a typical year, for deciduous trees to leaf out.'
-          : `Leaves estimated coming out ${dayLabel(cal.out)} to ${dayLabel(cal.full)} (half out ${dayLabel(cal.halfOut)}) and falling to bare by ${dayLabel(cal.bare)} (half gone ${dayLabel(cal.halfFall)}), from the typical temperature here, matched to the shade measured under eleven US forests through two years (NEON's ground light sensors).`;
+          : `Leaves estimated coming out ${dayLabel(cal.out)} to ${dayLabel(cal.full)} (half out ${dayLabel(cal.halfOut)}) and falling to bare by ${dayLabel(cal.bare)} (half gone ${dayLabel(cal.halfFall)}), from ${weatherWords(st.climate)}, matched to the shade measured under eleven US forests through two years (NEON's ground light sensors).`;
       text = `Trees through the seasons: ${when} In the leaf-off months every tree is as the laser measured it, evergreens included. In leaf, deciduous crowns get leaves that stop light by the crown's depth (leaf area 1 m² per m³ of crown, up to a leaf area index of 5.5, as measured on solitary maples and oaks): a full crown passes about 6% of the sun straight down and 2% at 45°, and the model puts the floor of a closed forest at about 3–5% of the day's light in summer, within the 2.4–6.2% measured under closed canopies (Canham et al. 1994). Late summer is darker because the sun is lower, not because there are more leaves. Evergreens stay as measured: the winter flight already saw their foliage.${split}`;
     } else if (m.canopy === 'solid') {
       text = 'Trees as solid: no light gets through any crown. The darkest the shade could be.';
@@ -341,6 +341,18 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
       text = `Trees as the laser saw them, all year${m.seasonsWhy ? ` (seasons are off: ${m.seasonsWhy})` : ''}.${split}`;
     }
     $('#sun-canopy-note').textContent = text;
+  }
+
+  /** Where the calendar's temperatures came from: this year's weather, or the typical year alone. */
+  function weatherWords(c) {
+    const w = c?.weather;
+    if (!c?.tMeanNow || !w) return 'the typical temperature here';
+    const md = (iso) => (iso ? dayLabel(Math.round((Date.parse(iso) - Date.UTC(Number(iso.slice(0, 4)), 0, 1)) / 86400000)) : null);
+    const parts = [];
+    if (w.observedThrough) parts.push(`this year's weather as observed through ${md(w.observedThrough)}`);
+    if (w.forecastTo) parts.push(`the forecast to ${md(w.forecastTo)}`);
+    parts.push(`then the typical year${Math.abs(w.anomaly) >= 0.5 ? ` ${w.anomaly > 0 ? 'warmed' : 'cooled'} by the recent ${Math.abs(w.anomaly).toFixed(1)} °C, fading` : ''}`);
+    return parts.join(', ');
   }
 
   function runSeason() {
@@ -464,7 +476,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     for (const k of pick) c[k] = cols[k].slice(0, cols.n);
     send({
       type: 'build', cols: c, box, lat: site.lat, lng: site.lng, shift, heightM,
-      canopy: $('#sun-canopy').value, flight: season || null, tMean: st.climate?.tMean || null,
+      canopy: $('#sun-canopy').value, flight: season || null, tMean: st.climate?.tMeanNow || st.climate?.tMean || null,
       /* A field-readings check (site.area: the whole track's box) draws the
          light over everything he treated -- neighbors' lots of a
          multi-property stop and the street -- not the one parcel. */

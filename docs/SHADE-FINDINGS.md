@@ -734,6 +734,51 @@ decides (under a week: unusable; else standard). One project can hold two
 flights years apart in one box (Ottawa County: April 2016 and April 2018),
 so the season is judged node by node.
 
+### 20. The leaf calendar runs on this year's weather (2026-10-15)
+
+Owner: "leaf drop should be determined by weather." Until now the calendar
+(seasonal.js leafCalendar, 2 and 5) ran on the typical year alone: ten
+years of NASA POWER pooled day by day. Now (climate.js yearAsItIs;
+worker/src/shade.js weatherNow, in the /api/shade/climate answer as
+tMeanNow and weather) the year it runs on is:
+
+- the days already lived, as NASA POWER observed them (daily T2M, three
+  days behind on 2026-10-15);
+- the week ahead from the NWS point forecast (api.weather.gov; US only,
+  skipped where it does not answer; day and night periods averaged);
+- beyond that the typical mean plus the anomaly of the last 14 observed
+  days, fading with a 20-day e-folding (a warm fortnight makes a warm week
+  likely, less so next month);
+- then a +-7-day running mean, as the typical year is pooled, so one hot
+  day greens no canopy.
+
+What it did on 2026-10-15 (the day the leaves come out / half the shade
+gone / bare; share of the leaves' shade on Oct 14):
+
+| | typical year | this year as it is |
+|---|---|---|
+| the owner's county (lake side; the last 14 days +0.3 C) | May 21 / Oct 12 / Oct 26; 0.43 | May 22 / Oct 15 / Oct 29; 0.54 |
+| Minneapolis (the last 14 days +3.8 C) | May 11 / Sep 28 / Oct 12; 0.00 | May 12 / Oct 11 / Oct 25; 0.39 |
+| Atlanta (+0.2 C; a warm February) | Mar 25 / Nov 5 / Nov 19 | Feb 25 / Nov 6 / Nov 20 |
+
+The owner's county, by POWER: +3 C in early September, -3 C from Sep 19 to
+Oct 6, +2 to +4 C from Oct 7. A 30-day memory averaged that to -0.7 C and
+moved nothing; 14 days is the persistence window used. Atlanta's February
+green-up is the spring rule reacting to a warm February: PhenoCam's
+cameras fitted that rule on typical years, and a warm spell in February
+greening Atlanta's oaks on Feb 25 is early by a month or more -- the
+spring side wants a check against this year's PhenoCam before the
+anomaly is trusted there (SPECULATION below).
+
+The page says which it used ("this year's weather as observed through
+Oct 11, the forecast to Oct 21, then the typical year"). The field check
+and the overcast check use the same year. The fall rule's own lead (half
+the shade gone 14 days before the 10 C crossing, from forests) is
+unchanged; finding 17's three signs that the lawn trees were still 50-100%
+in leaf on Oct 13-14 stand against the county's 0.54 and the owner's
+own point's lower figure, so the weather explains part of the gap, not
+all of it.
+
 ## Speculation
 
 - Mixed-season flights (7) may be better treated as leaf-on for the
@@ -777,6 +822,13 @@ so the season is judged node by node.
   gone on the 10 C day, no two-week lead) would give about 68% here on Oct
   14. One region, one fall, one week: wants another region or another
   year before the calendar changes for every lawn.
+
+- A WARM SPELL IN LATE WINTER greens the calendar's spring too early (20):
+  Atlanta's leaf-out moved from Mar 25 to Feb 25 on 2026's February. The
+  rule is "the day the mean passes 14.5 C after the coldest day", fitted on
+  typical years; real trees also want their chilling and day length. A cap
+  (no green-up before the typical date less three weeks?) or PhenoCam 2026
+  against the rule would settle it. Not changed yet.
 
 ## Bookmarked tests (asked for, not yet run)
 

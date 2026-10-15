@@ -29,7 +29,7 @@ import { findTrucks, truckEffect } from '../public/shade/truck.js';
 import { sunAt } from '../public/shade/sun.js';
 import { transmittance, groundAt } from '../public/shade/rays.js';
 import { muWithLeaves, leafCalendar } from '../public/shade/seasonal.js';
-import { climateAt } from '../worker/src/shade.js';
+import { climateNow as climateAt } from '../worker/src/shade.js';
 import { canopyParts, rayParts } from './shade-ray-check.js';
 
 const ZONE = 'America/New_York';
@@ -127,7 +127,7 @@ async function scoreTile(site, tile, trucks, mount, why, rows, truckShadowRows) 
   const { lng, lat } = tile;
   const flight = site.flight?.season || null;
   const climate = await climateAt(lng, lat).catch(() => null);
-  const calendar = climate?.tMean ? leafCalendar(climate.tMean) : null;
+  const calendar = climate?.tMean ? leafCalendar(climate.tMeanNow || climate.tMean) : null;
   const seasonal = calendar && (flight === 'off' || flight === 'mixed');
   const leaf = seasonal ? calendar.share(dayOfYear(tile.list[0].t)) : 1;
   const model = { ...site.model, mu: seasonal ? muWithLeaves(site.season, leaf) : site.model.mu };

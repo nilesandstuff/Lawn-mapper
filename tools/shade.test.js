@@ -22,7 +22,7 @@ import { sunAt, solarNoon, sunPath, clearSky, airMass, parMol } from '../public/
 import { buildCanopy } from '../public/shade/canopy.js';
 import { seasonalCanopy, muWithLeaves, leafCalendar, G_OMEGA, LAI_MAX } from '../public/shade/seasonal.js';
 import { transmittance, skyView, sunlitNow, dayLight, samplePoints, groundAt, beamShare } from '../public/shade/rays.js';
-import { dayIndex, typicalYear, growthPotential, growingSeason, dliOn, dayLabel } from '../public/shade/climate.js';
+import { dayIndex, typicalYear, growthPotential, growingSeason, dliOn, dayLabel, nwsDailyMeans, observedDays, yearAsItIs } from '../public/shade/climate.js';
 import { climateAt } from '../worker/src/shade.js';
 import { movedCorners } from '../public/lib/align.js';
 import { frameCorners } from '../public/lib/mercator.js';
@@ -1182,6 +1182,43 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   const f = flightOf(unit, flown), fromCat = flightOf(unit, null), none = flightOf(null, null), agreeing = flightOf({ start: d('2016-03-20'), end: d('2016-03-30'), season: 'off' }, flown);
   check('laser clock: the points\' clock wins over a catalogue that says August for a March flight; the catalogue serves when the files keep no time; none gives null',
     f.season === 'off' && f.source === 'laser' && f.agree === false && f.catalogue.season === 'on' && f.ql === 'QL2' && fromCat.season === 'on' && fromCat.source === 'catalogue' && none === null && agreeing.agree === true, JSON.stringify({ f, fromCat, agreeing }));
+}
+
+{
+  /* THIS YEAR AS IT IS (climate.js yearAsItIs; owner, 2026-10-15: "leaf drop should be determined by weather"). */
+  const periods = [
+    { startTime: '2026-10-15T00:00:00-04:00', isDaytime: false, temperature: 47, temperatureUnit: 'F' },
+    { startTime: '2026-10-15T06:00:00-04:00', isDaytime: true, temperature: 63, temperatureUnit: 'F' },
+    { startTime: '2026-10-15T18:00:00-04:00', isDaytime: false, temperature: 48, temperatureUnit: 'F' },
+    { startTime: '2026-10-16T06:00:00-04:00', isDaytime: true, temperature: 59, temperatureUnit: 'F' },
+    { startTime: '2026-10-16T18:00:00-04:00', isDaytime: false, temperature: 10, temperatureUnit: 'C' },
+    { startTime: 'junk', temperature: 50 },
+  ];
+  const nw = nwsDailyMeans(periods);
+  const f = (x) => ((x - 32) * 5) / 9;
+  check('this year: NWS periods become daily means in C (the day\'s periods averaged; C left alone; junk dropped)',
+    Object.keys(nw).join() === '20261015,20261016' && Math.abs(nw['20261015'] - (f(47) + f(63) + f(48)) / 3) < 1e-9 && Math.abs(nw['20261016'] - (f(59) + 10) / 2) < 1e-9, JSON.stringify(nw));
+  const obs = observedDays({ header: { fill_value: -999 }, properties: { parameter: { T2M: { 20261001: 15, 20261002: -999, 20261003: 16 } } } });
+  check('this year: POWER\'s fill values are dropped', Object.keys(obs).join() === '20261001,20261003', JSON.stringify(obs));
+  /* A typical year: a cosine, coldest Jan 20 (-5 C), warmest Jul 20 (23 C); the mean drops below 10 C about Oct 19. */
+  const typical = Array.from({ length: 365 }, (_, k) => 9 - 14 * Math.cos(((k - 19) / 365) * 2 * Math.PI));
+  const { leafCalendar } = await import('../public/shade/seasonal.js');
+  const base = leafCalendar(typical);
+  /* Observed Jan 1 - Oct 11 (day 283): typical plus 4 C through September, plus 6 C in October; a forecast Oct 15-21 at typical + 5. */
+  const observed = {}, forecast = {};
+  const ymd = (k) => { const d = new Date(Date.UTC(2026, 0, 1 + k)); return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`; };
+  for (let k = 0; k <= 283; k++) observed[ymd(k)] = typical[k] + (k >= 273 ? 6 : 4);
+  for (let k = 287; k <= 293; k++) forecast[ymd(k)] = typical[k] + 5;
+  const y = yearAsItIs(typical, observed, forecast, { today: new Date(Date.UTC(2026, 9, 14)) });
+  const warm = leafCalendar(y.tMean);
+  /* The anomaly is the last 14 observed days (Sep 28 - Oct 11): 3 at +4 and 11 at +6, 5.57; the days between the last observed one and the forecast carry it too. */
+  check('this year: observed days replace the typical ones, the forecast follows, and the recent anomaly carries on fading (5.6 C at Oct 11, about 0.7 C by Nov 22)',
+    y.through === 283 && y.forecastTo === 293 && Math.abs(y.anomaly - (3 * 4 + 11 * 6) / 14) < 0.01 && Math.abs(y.tMean[200] - (typical[200] + 4)) < 0.3 && Math.abs(y.tMean[290] - (typical[290] + 5)) < 0.5 && Math.abs((y.tMean[325] - typical[325]) - y.anomaly * Math.exp(-(325 - 283) / 20)) < 0.3,
+    JSON.stringify({ through: y.through, forecastTo: y.forecastTo, anomaly: y.anomaly, d200: y.tMean[200] - typical[200], d290: y.tMean[290] - typical[290], d325: y.tMean[325] - typical[325] }));
+  check('this year: a warm fall puts half the shade gone later than the typical year did, and a warm spring brings the leaves out earlier',
+    warm.halfFall > base.halfFall + 7 && warm.out < base.out, `fall ${base.halfFall} -> ${warm.halfFall}; out ${base.out} -> ${warm.out}`);
+  const none = yearAsItIs(typical, {}, {}, { today: new Date(Date.UTC(2026, 9, 14)) });
+  check('this year: with nothing observed the year is the typical one', none.through === null && none.anomaly === 0 && Math.abs(none.tMean[100] - typical[100]) < 0.05, `${none.tMean[100]} ${typical[100]}`);
 }
 
 if (failures) { console.log(`\n${failures} check(s) FAILED.`); process.exit(1); }

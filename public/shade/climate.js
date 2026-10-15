@@ -93,6 +93,95 @@ export function typicalYear(power, { halfWindow = 7 } = {}) {
   return out;
 }
 
+/* ------------------------------------------- this year as it is */
+
+/** NASA POWER's daily T2M for one year -> { 'YYYYMMDD': C } without fill values. */
+export function observedDays(power) {
+  const t = power?.properties?.parameter?.T2M || {};
+  const fill = Number(power?.header?.fill_value ?? -999);
+  const out = {};
+  for (const [ymd, v] of Object.entries(t)) if (Number.isFinite(v) && v !== fill && v > -90) out[ymd] = v;
+  return out;
+}
+
+/**
+ * The NWS point forecast's periods (api.weather.gov, F, day and night in
+ * turn) -> { 'YYYYMMDD': mean C }, each day the mean of its daytime high and
+ * the following night's low; a lone period counts alone.
+ */
+export function nwsDailyMeans(periods) {
+  const by = {};
+  for (const p of periods || []) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(p.startTime || '');
+    if (!m || !Number.isFinite(Number(p.temperature))) continue;
+    /* A night period starting at 18:00 belongs to the day it started on. */
+    const ymd = `${m[1]}${m[2]}${m[3]}`;
+    const c = p.temperatureUnit === 'C' ? Number(p.temperature) : ((Number(p.temperature) - 32) * 5) / 9;
+    (by[ymd] ||= []).push(c);
+  }
+  const out = {};
+  for (const [ymd, a] of Object.entries(by)) out[ymd] = a.reduce((s, v) => s + v, 0) / a.length;
+  return out;
+}
+
+const ymdOf = (d) => `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`;
+
+/**
+ * THIS YEAR AS IT IS (owner, 2026-10-15: "leaf drop should be determined by
+ * weather"; this fall ran warm and the typical-year calendar had the lawn
+ * trees half bare two weeks before they were). The typical year's daily
+ * mean (365, climate.js typicalYear) with:
+ *   - the days already lived replaced by what was observed (NASA POWER, a
+ *     few days behind),
+ *   - the week ahead by the forecast (NWS, where it answers),
+ *   - and beyond that the typical mean plus the recent anomaly (the last
+ *     `memoryDays` observed days against typical), fading with an e-folding
+ *     of `fadeDays`: a warm fortnight makes a warm week likely, less so
+ *     next month (the last 14 days, not 30: in the owner's county 2026 ran
+ *     +3 C in early September, -3 C late September, +3 C in October),
+ * then a +-`half`-day running mean, as the typical year is pooled, so one
+ * hot day does not green a canopy. Returns { tMean, through (day index of
+ * the last observed day, or null), forecastTo, anomaly (C), year }.
+ */
+export function yearAsItIs(typical, observed = {}, forecast = {}, { today = new Date(), half = 7, memoryDays = 14, fadeDays = 20 } = {}) {
+  const year = today.getUTCFullYear();
+  const raw = Float64Array.from(typical);
+  const seen = new Uint8Array(365);
+  let through = null, forecastTo = null;
+  for (const [ymd, v] of Object.entries(observed)) {
+    if (ymd.slice(0, 4) !== String(year)) continue;
+    const k = dayIndex(ymd);
+    raw[k] = v; seen[k] = 1;
+    if (through === null || k > through) through = k;
+  }
+  /* The anomaly: the last memoryDays observed days against typical. */
+  let anomaly = 0;
+  if (through !== null) {
+    let s = 0, n = 0;
+    for (let k = Math.max(0, through - memoryDays + 1); k <= through; k++) if (seen[k]) { s += raw[k] - typical[k]; n++; }
+    anomaly = n ? s / n : 0;
+  }
+  for (const [ymd, v] of Object.entries(forecast)) {
+    if (ymd.slice(0, 4) !== String(year)) continue;
+    const k = dayIndex(ymd);
+    if (seen[k]) continue; // what was observed beats what was forecast
+    raw[k] = v; seen[k] = 2;
+    if (forecastTo === null || k > forecastTo) forecastTo = k;
+  }
+  /* Every day after the last observed one that neither source gave (the few
+     days before the forecast starts, and all of them after it ends): the
+     typical mean plus the anomaly, fading from the last observed day. */
+  if (through !== null) for (let k = through + 1; k < 365; k++) if (!seen[k]) raw[k] = typical[k] + anomaly * Math.exp(-(k - through) / fadeDays);
+  /* Lived days with no value (a gap in POWER) take the neighbours' smoothing. */
+  const tMean = new Float64Array(365);
+  for (let k = 0; k < 365; k++) {
+    let s = 0, n = 0;
+    for (let j = -half; j <= half; j++) { const v = raw[(k + j + 365) % 365]; if (Number.isFinite(v)) { s += v; n++; } }
+    tMean[k] = n ? s / n : typical[k];
+  }
+  return { tMean: Array.from(tMean), through, forecastTo, anomaly, year, today: ymdOf(today) };
+}
+
 /** Growth potential, 0..1, at a mean temperature. */
 export const growthPotential = (tC, grass = 'cool') => {
   const g = GRASS[grass] || GRASS.cool;
