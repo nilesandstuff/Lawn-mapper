@@ -28,6 +28,9 @@ import { movedCorners } from '../public/lib/align.js';
 import { frameCorners } from '../public/lib/mercator.js';
 import { footprintEntry, covers, lidarAt, handleShade, isShadePath } from '../worker/src/shade.js';
 import { metresPerPixel } from '../public/lib/mercator.js';
+import { nearestOnLot, pullBack, zoomFloor, outerRings } from '../public/shade/leash.js';
+import { cellsUnder, squareRing, Erased } from '../public/shade/erase.js';
+import { climateZone, rankGrasses, plantingWindow, SPECIES, shareWords } from '../public/shade/grass.js';
 
 let failures = 0;
 const check = (name, ok, detail = '') => {
@@ -1254,6 +1257,55 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   check('this year, by heat sums: the typical year read against itself gives its own days', (() => { const c = leafCalendar(typical, { typical }); return c.out === base.out && c.halfFall === base.halfFall; })(), '');
   const none = yearAsItIs(typical, {}, {}, { today: new Date(Date.UTC(2026, 9, 14)) });
   check('this year: with nothing observed the year is the typical one', none.through === null && none.anomaly === 0 && Math.abs(none.tMean[100] - typical[100]) < 0.05, `${none.tMean[100]} ${typical[100]}`);
+}
+
+
+/* ------------------------------------------------------- the camera leash */
+{
+  const ring = [[-86, 43], [-86.002, 43], [-86.002, 43.001], [-86, 43.001], [-86, 43]]; // about 163 x 111 m
+  const lot = { type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring] } };
+  const rings = outerRings(lot.geometry);
+  check('leash: a point inside the lot is 0 m from it; one 10 m outside the west side is 10 m from it', nearestOnLot(-86.001, 43.0005, rings).d === 0 && near(nearestOnLot(-86.002 - 10 / (111320 * Math.cos(43 * Math.PI / 180)), 43.0005, rings).d, 10, 0.1), '');
+  const far = pullBack({ lng: -86.01, lat: 43.0005, alt: 3000 }, rings);
+  const d = nearestOnLot(far.lng, far.lat, rings).d;
+  check('leash: a camera 650 m west and 3 km up comes back to 500 m from the line, 2 km up, due west of where it crossed', near(d, 500, 0.5) && far.alt === 2000 && near(far.lat, 43.0005, 1e-6), JSON.stringify({ d, far }));
+  check('leash: a camera within 500 m and under 2 km is left alone; one within 500 m but too high only comes down', pullBack({ lng: -86.004, lat: 43.0005, alt: 1500 }, rings) === null && (() => { const f = pullBack({ lng: -86.004, lat: 43.0005, alt: 2500 }, rings); return f.alt === 2000 && f.lng === -86.004; })(), '');
+  const z = zoomFloor(43, 600);
+  /* At that zoom the camera is 1.5 x 600 px = 900 px over the center, 2000 m: 2.22 m per px. */
+  const mPerPx = (2 * Math.PI * 6378137 * Math.cos(43 * Math.PI / 180)) / (512 * 2 ** z);
+  check('leash: the zoom floor puts a straight-down camera over a 600 px map exactly 2 km up', near(1.5 * 600 * mPerPx, 2000, 1), `zoom ${z.toFixed(2)}, ${(1.5 * 600 * mPerPx).toFixed(0)} m`);
+  check('leash: a point lot leashes to the point; a MultiPolygon gives its outer rings', outerRings({ type: 'Point', coordinates: [-86, 43] }).length === 1 && near(nearestOnLot(-86, 43.001, outerRings({ type: 'Point', coordinates: [-86, 43] })).d, 111.3, 0.5) && outerRings({ type: 'MultiPolygon', coordinates: [[ring], [ring]] }).length === 2, '');
+}
+
+/* -------------------------------------------------------------- the eraser */
+{
+  const g = gridOver([0, 0, 20, 20], 1, 0);
+  check('eraser: a 1 m brush at a cell\'s center takes that cell alone; 3 m takes the 3 x 3 round it; 6 m at a corner of the grid is clipped to the 3 x 3 inside', cellsUnder(g, 5.5, 5.5, 1).join() === String(14 * 20 + 5) && cellsUnder(g, 5.5, 5.5, 3).length === 9 && cellsUnder(g, 0.2, 0.2, 6).length === 9, `${cellsUnder(g, 5.5, 5.5, 1)} ${cellsUnder(g, 5.5, 5.5, 3).length}`);
+  const ringM = squareRing(g, 5, 5, 3).map((p) => toMerc(p));
+  check('eraser: the cursor ring is the brush\'s square on the ground', ringM.length === 5 && near(ringM[0][0], 3.5, 1e-6) && near(ringM[2][1], 6.5, 1e-6), JSON.stringify(ringM));
+  const e = new Erased(400);
+  const a = e.erase([1, 2]), b = e.erase([2, 3]);
+  e.end();
+  e.erase([7]);
+  const u1 = e.undo(), u2 = e.undo();
+  check('eraser: cells already erased are not erased again; undo gives back the last stroke, then the one before; then nothing is erased', a.length === 2 && b.length === 1 && u1.join() === '7' && u2.join() === '1,2,3' && !e.any && e.mask.every((v) => !v), '');
+  e.erase([4]); e.end(); e.erase([5]);
+  check('eraser: clear gives back every stroke', e.clear().sort().join() === '4,5' && e.count === 0, '');
+}
+
+/* ----------------------------------------------------------- which grass */
+{
+  const year = (cold, warm) => Array.from({ length: 365 }, (_, k) => (cold + warm) / 2 - ((warm - cold) / 2) * Math.cos(((k - 15) / 365) * 2 * Math.PI));
+  const mn = climateZone(year(-8, 22)), tx = climateZone(year(8, 29)), tn = climateZone(year(2, 26)), sf = climateZone(year(10, 18));
+  check('grass: a Minneapolis year is cool-season, a Dallas year warm-season, a Nashville year the transition zone, a cool coast cool-season', mn.zone === 'cool' && tx.zone === 'warm' && tn.zone === 'transition' && sf.zone === 'cool', `${mn.zone} ${tx.zone} ${tn.zone} ${sf.zone}`);
+  const pts = [5, 9, 13, 17, 21, 25, 30];
+  const cool = rankGrasses(pts, 'cool'), both = rankGrasses(pts, 'transition');
+  check('grass: the most shade-tolerant comes first and holds the most of the lawn; the transition zone lists both kinds', cool[0].id === 'finefescue' && cool[0].share > cool[cool.length - 1].share && cool.every((s) => s.season === 'cool') && both.some((s) => s.season === 'warm') && both.some((s) => s.season === 'cool'), cool.map((s) => `${s.id} ${s.share.toFixed(2)}`).join(', '));
+  check('grass: the shares are the points at or over each species\' lowest light', near(cool.find((s) => s.id === 'kbg').share, 3 / 7, 1e-9) && near(rankGrasses(pts, 'warm').find((s) => s.id === 'bermuda').share, 2 / 7, 1e-9) && rankGrasses([], 'cool')[0].share === null, '');
+  check('grass: every species names its source and kind, and the words for a share read right', SPECIES.every((s) => s.source && (s.season === 'cool' || s.season === 'warm') && s.dli < s.full) && shareWords(1) === 'all of it' && shareWords(0.6) === 'most of it' && shareWords(0) === 'none of it', '');
+  const season = growingSeason(year(-8, 22), 'cool');
+  const w = plantingWindow(season, 'cool');
+  check('grass: cool-season planting is six to eight weeks before growth stops; warm-season early in its season; all year says so', /six to eight weeks before growth stops around/.test(w) && /early in the growing season/.test(plantingWindow(growingSeason(year(8, 29), 'warm'), 'warm')) && /late summer/.test(plantingWindow({ allYear: true, days: [] }, 'cool')) && plantingWindow({ days: [], start: null }, 'cool') === null, w);
 }
 
 if (failures) { console.log(`\n${failures} check(s) FAILED.`); process.exit(1); }

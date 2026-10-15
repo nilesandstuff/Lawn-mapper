@@ -107,7 +107,11 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
   let calendar = null;
   try {
     const c = await (await fetch(`/api/shade/climate?lng=${site.lng}&lat=${site.lat}`)).json();
-    if (c?.tMean) calendar = leafCalendar(c.tMean);
+    /* This year's weather when the Worker has it (climateNow), as the shade
+       map's light worker reads it; the typical year alone otherwise. The
+       owner saw 14% on Oct 15 here from the typical year while this year's
+       weather, later, said 32%. */
+    if (c?.tMean) calendar = leafCalendar(c.tMeanNow || c.tMean, c.tMeanNow ? { typical: c.tMean } : {});
   } catch { /* no calendar: today's button says so */ }
   const today = leafOff && calendar ? calendar.share(dayOfYear(Date.now())) : null;
 
