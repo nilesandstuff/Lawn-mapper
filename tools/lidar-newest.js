@@ -151,8 +151,15 @@ async function getJson(url, tries = 3, timeoutMs = 60000) {
   for (let i = 0; i < tries; i++) {
     try {
       const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
-      if (res.ok) return await res.json();
-      last = new Error(`HTTP ${res.status}`);
+      if (res.ok) {
+        // ArcGIS answers a failed query with HTTP 200 and an error body (WESM,
+        // 2026-10-15: {"error":{"code":400,"message":"Failed to execute query."}}).
+        const j = await res.json();
+        if (!j?.error) return j;
+        last = new Error(`${j.error.code || ''} ${j.error.message || 'query failed'}`.trim());
+      } else {
+        last = new Error(`HTTP ${res.status}`);
+      }
     } catch (e) { last = e; }
     if (i < tries - 1) await new Promise((r) => { setTimeout(r, 2000 * (i + 1)); });
   }
@@ -193,9 +200,10 @@ async function main() {
   const fc = MODE === 'newest' ? await fetchFootprints(FOOTPRINTS) : null;
   const out = {};
   let changed = 0, toTiles = 0, mb = 0, undated = 0;
+  const wesmDown = [];
   for (const [id, box] of Object.entries(boxes)) {
     const [lng, lat] = fromMercator([(box[0] + box[2]) / 2, (box[1] + box[3]) / 2]);
-    const units = workUnits(await wesmAt(lng, lat).catch(() => null));
+    const units = workUnits(await wesmAt(lng, lat).catch((e) => { wesmDown.push(`${id}: ${e.message}`); return null; }));
     const was = base[id] || null;
     if (MODE === 'date') {
       if (!was) { out[id] = null; continue; }
@@ -216,8 +224,17 @@ async function main() {
     }
     await new Promise((r) => { setTimeout(r, 200); });
   }
-  writeFileSync(PLAN, JSON.stringify(out, null, 1));
   const n = Object.keys(boxes).length;
+  if (wesmDown.length) {
+    // Without USGS's dates a frame silently falls back to its name's year and
+    // never to newer tiles: a different corpus than the one the findings were
+    // measured on. Refuse rather than train on it.
+    console.error(`\nUSGS's flight index (WESM) did not answer for ${wesmDown.length} of ${n} frames, after retries:`);
+    for (const l of wesmDown.slice(0, 10)) console.error(`  ${l}`);
+    console.error('Refusing to plan the lidar without it. Re-run when index.nationalmap.gov answers.');
+    process.exit(1);
+  }
+  writeFileSync(PLAN, JSON.stringify(out, null, 1));
   console.log(MODE === 'date'
     ? `\n${n} frames dated from USGS's index; ${undated} with no matching work unit took the name's year.`
     : `\n${changed} of ${n} frames read a different flight; ${toTiles} of them from USGS's newer LAZ tiles (${mb} MB to download).`);
