@@ -27,7 +27,7 @@ import { localMs } from './shade-readings.js';
 import { joinTrack, usable, splitVisits, compassOffset, operatorShadow, sunOffFace, sunGain, sunOrShadeAround, metersBetween } from '../public/shade/truth.js';
 import { findTrucks, truckEffect } from '../public/shade/truck.js';
 import { sunAt } from '../public/shade/sun.js';
-import { transmittance, groundAt } from '../public/shade/rays.js';
+import { transmittance, groundAt, woodScale } from '../public/shade/rays.js';
 import { muWithLeaves, leafCalendar } from '../public/shade/seasonal.js';
 import { climateNow as climateAt } from '../worker/src/shade.js';
 import { canopyParts, rayParts } from './shade-ray-check.js';
@@ -130,7 +130,10 @@ async function scoreTile(site, tile, trucks, mount, why, rows, truckShadowRows) 
   const calendar = climate?.tMean ? leafCalendar(climate.tMeanNow || climate.tMean) : null;
   const seasonal = calendar && (flight === 'off' || flight === 'mixed');
   const leaf = seasonal ? calendar.share(dayOfYear(tile.list[0].t)) : 1;
-  const model = { ...site.model, mu: seasonal ? muWithLeaves(site.season, leaf) : site.model.mu };
+  /* WOOD SEEN FROM THE SIDE (rays.js woodScale; SHADE-FINDINGS 15): a trial, through the fill JSON's woodV (0..1 the share of bare wood upright). */
+  let woodV = null;
+  try { woodV = process.env.SHADE_FILL ? JSON.parse(process.env.SHADE_FILL).woodV ?? null : null; } catch { woodV = null; }
+  const model = { ...site.model, mu: seasonal ? muWithLeaves(site.season, leaf) : site.model.mu, ...(woodV != null ? { muScale: woodScale(Number(woodV)) } : {}) };
   const { w, h, nz } = model;
   const bmu = new Float32Array(model.mu.length);
   for (let k = 0; k < w * h; k++) if (site.season.kind[k] === 1) for (let l = 0; l < nz; l++) bmu[k * nz + l] = model.mu[k * nz + l];
