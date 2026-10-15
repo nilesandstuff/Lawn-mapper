@@ -770,6 +770,25 @@ greening Atlanta's oaks on Feb 25 is early by a month or more -- the
 spring side wants a check against this year's PhenoCam before the
 anomaly is trusted there (SPECULATION below).
 
+HOW THE YEAR IS READ (same day, after two false starts): by HEAT SUMS.
+Green-up is the day this year's warmth accumulated since the typical
+coldest day (degree-days over 5 C) reaches what the typical year had
+accumulated by its own green-up day; leaf-fall the day the cooling (under
+15 C) accumulated since the typical warmest day reaches the typical year's
+at its own 10 C crossing. The thresholds are the typical year's own, so
+the typical year reads the same either way, and each sum only grows, so
+there is one crossing. The first version took the crossings as the
+typical year does (the first day over the line): a warm February greened
+Atlanta on Feb 25. The second took the LAST day over the line before
+midsummer or midwinter: Dallas's winter hovers at 10 C for weeks and its
+fall moved to Dec 28, bare Jan 11, live for 25 minutes. The heat sums on
+2026-10-15: the owner's county May 18 / Oct 16 / Oct 30 (typical May 21 /
+Oct 12 / Oct 26), Dallas Feb 27 / Nov 20 / Dec 4 (Mar 10 / Nov 19 / Dec 3),
+Atlanta Mar 20 / Nov 5 (Mar 25 / Nov 5), Minneapolis May 9 / Oct 11 / Oct
+25 (May 11 / Sep 28 / Oct 12), Denver Apr 10 / Oct 19 (May 17 / Oct 7).
+The anomaly weighs the latest of its 14 days most, so a spell that has
+ended fades from the forecast faster than one still running.
+
 The page says which it used ("this year's weather as observed through
 Oct 11, the forecast to Oct 21, then the typical year"). The field check
 and the overcast check use the same year. The fall rule's own lead (half
@@ -891,12 +910,11 @@ better than a closed forest's. NOT shipped; not for lawns.
   14. One region, one fall, one week: wants another region or another
   year before the calendar changes for every lawn.
 
-- A WARM SPELL IN LATE WINTER greens the calendar's spring too early (20):
-  Atlanta's leaf-out moved from Mar 25 to Feb 25 on 2026's February. The
-  rule is "the day the mean passes 14.5 C after the coldest day", fitted on
-  typical years; real trees also want their chilling and day length. A cap
-  (no green-up before the typical date less three weeks?) or PhenoCam 2026
-  against the rule would settle it. Not changed yet.
+- The heat-sum reading of this year (20) is physically motivated but not
+  yet measured against a year's PhenoCam: 2026's green-up dates at the
+  119 PhenoCam sites against the calendar on 2026's weather would say how
+  far the heat sums can be trusted (Denver came out Apr 10 against a
+  typical May 17 on 2026's spring).
 
 ## Bookmarked tests (asked for, not yet run)
 
