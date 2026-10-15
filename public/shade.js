@@ -19,6 +19,13 @@
  *
  * Nothing is saved and nothing costs money. Everything it found is printed
  * under the map, including what it could not measure.
+ *
+ * IN STEPS (owner, 2026-10-15; shade/steps.js): 1 the property and its
+ * line, 2 the trees as the model sees them (shade/trees-ui.js, with the
+ * eraser), 3 the shade map (shade/sun-ui.js), 4 which grass
+ * (shade/grass-ui.js). The lidar is read when step 2 opens; the light is
+ * worked out when step 3 opens, without the columns erased in step 2. The
+ * camera stays on a leash to the property (shade/leash.js).
  */
 
 import { pointsIn, toMerc, fromMerc, mercScale } from './shade/ept.js';
@@ -34,15 +41,24 @@ import { tracedOn, lineUpAt } from './shade/traced.js';
 import { startSun } from './shade/sun-ui.js';
 import { track, reportError, watchErrors, setPlace } from './shade/usage.js';
 import { traceLot, lotFeature, lotParam, parseLot } from './shade/trace.js';
+import { startSteps } from './shade/steps.js';
+import { leash } from './shade/leash.js';
+import { startTrees } from './shade/trees-ui.js';
+import { renderGrass } from './shade/grass-ui.js';
+import { ringAreaSqM, SQM_PER_SQFT } from './lib/area.js';
 
 const $ = (s) => document.querySelector(s);
 const SAVES_KEY = 'lawnmapper.saves.v1'; // the editor's own local store (app.js), read only
 const MARGIN_M = 50;
 /** /shade-trees: the same page, drawing the trees instead of the light. */
 const TREES = typeof document !== 'undefined' && document.body?.dataset.mode === 'trees';
+/** /shade in steps (shade/steps.js): property, trees, shade, grass. The trees page has no steps. */
+const STEPPED = typeof document !== 'undefined' && !!document.querySelector('#steps');
 const ALIGN_M = 140; // the photo frame the match runs on, at least this wide
+/* The camera's leash (shade/leash.js): over the ground no further than this from the line, no higher than this. */
+const LEASH_M = 500, LEASH_ALT_M = 2000;
 
-const view = { map: null, site: null, built: null };
+const view = { map: null, site: null, built: null, steps: null, trees: null, model: null, builtFor: null, sun: null, sunFor: null, eraseVersion: 0, sunVersion: 0, unleash: null };
 
 function status(text, cls = '') {
   const el = $('#status');
@@ -296,7 +312,12 @@ async function build(site) {
   const map = await ensureMap();
   view.site = site;
   view.sun?.stop();
-  view.sun = null;
+  view.sun = null; view.sunFor = null;
+  view.trees?.stop();
+  view.trees = null;
+  view.model = null; view.builtFor = null;
+  if (STEPPED) { view.steps.setNext(2, false); view.steps.setNext(3, false); $('#grass-out').innerHTML = '<p class="dim">Waiting for the shade map…</p>'; }
+  reLeash(site.parcel || { type: 'Feature', geometry: { type: 'Point', coordinates: [site.lng, site.lat] } });
   removeBuilt(map);
   const bounds = siteBounds(site);
   setGeo(map, 'parcel', site.parcel ? [site.parcel] : [], { 'line-color': '#ffeb3b', 'line-width': 2.5 });
@@ -450,21 +471,129 @@ async function build(site) {
   status(fit?.confident ? 'Built and lined up.' : 'Built. The photo check was not tight enough to apply; the datum correction is applied.', fit?.confident ? 'ok' : 'warn');
   track('built', `${Math.round((Date.now() - started) / 1000)} s, ${fit?.confident ? 'lined up' : 'not lined up'}`);
 
+  view.builtFor = site;
+  view.model = { cols, box, shift, baseZ, ground, fit, season: u?.season ?? null, flownTo: u?.end ? day(u.end) : null };
+
   /* The trees page (/shade-trees): the same model drawn instead of lit (shade/trees-ui.js). */
   if (TREES) {
-    const m = await import('./shade/trees-ui.js');
-    view.sun = await m.startTrees({ map, site, cols, box, shift, season: u?.season ?? null, flownTo: u?.end ? day(u.end) : null });
+    view.sun = await startTrees({ map, site, cols, box, shift, season: view.model.season, flownTo: view.model.flownTo });
     return;
   }
 
-  /* Step 2: the sun over this model, in a worker (shade/sun-ui.js). */
+  if (STEPPED) {
+    /* Step 2: the trees, with the eraser; the shade waits for step 3. */
+    view.trees = await startTrees({ map, site, cols, box, shift, season: view.model.season, flownTo: view.model.flownTo, erase: true, onErase: () => { view.eraseVersion++; } });
+    view.trees.setActive(view.steps.current === 2);
+    view.steps.unlock(3);
+    view.steps.setNext(2, true);
+    status(fit?.confident ? 'The trees are built and lined up with the photo. Erase any that should not count, then go on to the shade map.' : 'The trees are built. The photo check was not tight enough to apply; the datum correction alone is applied.', fit?.confident ? 'ok' : 'warn');
+    /* A field-readings check goes straight to the shade map (admin). */
+    if (new URLSearchParams(location.search).get('truth')) view.steps.go(3);
+    return;
+  }
+
+  startShade();
+}
+
+/** Step 3: the sun over the model, in a worker (shade/sun-ui.js), without the columns erased in step 2. */
+function startShade() {
+  const { map, site, model: m } = view;
+  if (!m || !map) return;
+  const mask = view.trees?.erased() || null;
+  if (view.sun && view.sunFor === m) {
+    if (view.sunVersion !== view.eraseVersion) { view.sun.setErased(mask); view.sunVersion = view.eraseVersion; }
+    view.sun.setVisible(true);
+    return;
+  }
+  view.sun?.stop();
   view.sun = startSun({
-    map, site, cols, box, shift, heightM: baseZ, season: u?.season ?? null, ground,
+    map, site, cols: m.cols, box: m.box, shift: m.shift, heightM: m.baseZ, season: m.season, ground: m.ground, erased: mask,
     beforeLayer: () => (map.getLayer('parcel') ? 'parcel' : undefined),
+    onSeason: (se, climate) => {
+      if (!STEPPED) return;
+      view.steps.unlock(4);
+      view.steps.setNext(3, true);
+      renderGrass($('#grass-out'), { season: se, climate, hasLawn: site.lawn.length > 0 });
+    },
   });
+  view.sunFor = m;
+  view.sunVersion = view.eraseVersion;
   /* A visit's field readings, when the readings page sent us here (admin). */
   const truth = new URLSearchParams(location.search).get('truth');
-  if (truth) import('./shade/truth-ui.js').then((m) => m.startTruth({ map, sun: view.sun, spec: truth, bounds: siteBounds(site), moveM: fit?.confident ? [fit.east, fit.north] : null })).catch((e) => status(e.message, 'bad'));
+  if (truth) import('./shade/truth-ui.js').then((t) => t.startTruth({ map, sun: view.sun, spec: truth, bounds: siteBounds(site), moveM: m.fit?.confident ? [m.fit.east, m.fit.north] : null })).catch((e) => status(e.message, 'bad'));
+}
+
+/** Square feet inside a property line. */
+function lotSqFt(parcel) {
+  const g = parcel?.geometry;
+  const polys = g?.type === 'Polygon' ? [g.coordinates] : g?.type === 'MultiPolygon' ? g.coordinates : [];
+  return polys.reduce((a, p) => a + Math.abs(ringAreaSqM(p[0])), 0) / SQM_PER_SQFT;
+}
+
+/**
+ * Step 1's end: the property line on the photo, to check before the trees
+ * are built. Steps 2-4 close again until the trees are built for this site.
+ */
+async function offerLot(site, { traced = false } = {}) {
+  const map = await ensureMap();
+  view.site = site;
+  view.steps.lockFrom(2);
+  view.trees?.setActive(false);
+  view.sun?.setVisible(false);
+  setGeo(map, 'parcel', site.parcel ? [site.parcel] : [], { 'line-color': '#ffeb3b', 'line-width': 2.5 });
+  setGeo(map, 'lawn', site.lawn, { 'line-color': '#69f0ae', 'line-width': 2.5 });
+  map.fitBounds(siteBounds(site), { padding: 40, duration: 0, pitch: 0, bearing: 0 });
+  reLeash(site.parcel || { type: 'Feature', geometry: { type: 'Point', coordinates: [site.lng, site.lat] } });
+  const sqft = site.parcel ? Math.round(lotSqFt(site.parcel)) : 0;
+  $('#lot-note').innerHTML = site.parcel
+    ? `<p class="ok">Property line ${traced || site.parcel.properties?.traced ? 'as you traced it' : 'from the county\'s records'}: about ${sqft.toLocaleString()} sq ft${site.lawn.length ? `, with the lawn you mapped (${site.lawn.length} shape${site.lawn.length === 1 ? '' : 's'})` : ''}. Check it against the photo${traced ? '' : '; if it is off, trace it yourself'}.</p>`
+    : '<p class="warn">No property line yet.</p>';
+  $('#lot-trace').hidden = !site.parcel;
+  $('#lot-trace').textContent = traced || site.parcel?.properties?.traced ? 'Trace it again' : 'Trace the line myself';
+  view.steps.setNext(1, !!site.parcel);
+  status(site.parcel ? 'Check the property line, then go on to the trees.' : 'Trace the property line.');
+}
+
+/** The camera's leash to the lot (or the address, while the line is traced). */
+function reLeash(feature) {
+  view.unleash?.();
+  view.unleash = view.map && feature ? leash(view.map, feature, { maxM: LEASH_M, maxAltM: LEASH_ALT_M }) : null;
+}
+
+/** Trace the line on the map (step 1), replacing the one on file. */
+async function traceNow(site) {
+  const map = await ensureMap();
+  view.steps.lockFrom(2);
+  view.trees?.setActive(false);
+  view.sun?.setVisible(false);
+  removeBuilt(map);
+  for (const g of ['parcel', 'lawn']) map.getSource(g)?.setData({ type: 'FeatureCollection', features: [] });
+  $('#toggles').hidden = true;
+  $('#lot-note').innerHTML = '';
+  $('#lot-trace').hidden = true;
+  view.steps.setNext(1, false);
+  reLeash({ type: 'Feature', geometry: { type: 'Point', coordinates: [site.lng, site.lat] } });
+  track('trace', 'asked');
+  const lot = await traceLot(map, { lng: site.lng, lat: site.lat, box: $('#trace'), status });
+  track('trace', lot ? 'done' : 'cancelled');
+  return lot;
+}
+
+/** Steps 1-4 opening (shade/steps.js): each shows its own tools and its own picture on the map. */
+function onStep(n) {
+  view.trees?.setActive(n === 2);
+  if (n === 3 && view.trees) view.trees.setVisible($('#t-trees').getAttribute('aria-pressed') === 'true');
+  $('#t-trees').hidden = n !== 3 || !view.trees;
+  $('#t-lawn').hidden = n !== 3 || $('#t-lawn').dataset.has !== '1';
+  $('#toggles').hidden = n === 1;
+  view.sun?.setVisible(n === 3 || n === 4);
+  if (n === 2 && view.site && view.builtFor !== view.site) build(view.site).catch((e) => status(e.message || String(e), 'bad'));
+  if (n === 3) { startShade(); status(view.model ? 'The shade map: pick a view and a day, and tap the lawn to read it.' : ''); }
+  if (n === 4) {
+    status('Which grass will grow here, from the climate and the season\'s light.');
+    const s = view.sun?.season();
+    renderGrass($('#grass-out'), { season: s?.season || null, climate: s?.climate || view.sun?.climate() || null, hasLawn: (view.site?.lawn.length || 0) > 0 });
+  }
 }
 
 const fmtMove = (e, n) => (e === null || n === null ? '—'
@@ -526,7 +655,7 @@ async function main() {
   let saves = [];
   const savesReady = listSaves().then((s) => { saves = s; });
   const params = new URLSearchParams(location.search);
-  const go = async () => {
+  const go = async (startup = false) => {
     if ($('#go').disabled) return; // one at a time: Enter while tracing or building waits
     $('#go').disabled = true;
     try {
@@ -554,23 +683,33 @@ async function main() {
         && area[2] - area[0] < 0.02 && area[3] - area[1] < 0.02) site.area = area; // at most ~1.5 km across
       /* NO PROPERTY LINE: the visitor traces it (shade/trace.js), or it came in the link. */
       let lot = null;
+      const fromLink = params.get('at') === at && !!parseLot(params.get('lot'));
       if (!id && !site.parcel && !site.area) {
-        lot = (params.get('at') === at && parseLot(params.get('lot'))) || null;
+        lot = (fromLink && parseLot(params.get('lot'))) || null;
         if (!lot) {
-          view.sun?.stop(); view.sun = null;
-          const map = await ensureMap();
-          removeBuilt(map);
-          for (const g of ['parcel', 'lawn']) map.getSource(g)?.setData({ type: 'FeatureCollection', features: [] });
-          $('#toggles').hidden = true;
-          track('trace', 'asked');
-          lot = await traceLot(map, { lng: site.lng, lat: site.lat, box: $('#trace'), status });
-          track('trace', lot ? 'done' : 'cancelled');
-          if (!lot) { status('Trace the property, then it can be built. Press Build to start again.'); return; }
+          if (STEPPED) { view.site = site; lot = await traceNow(site); } else {
+            view.sun?.stop(); view.sun = null;
+            const map = await ensureMap();
+            removeBuilt(map);
+            for (const g of ['parcel', 'lawn']) map.getSource(g)?.setData({ type: 'FeatureCollection', features: [] });
+            $('#toggles').hidden = true;
+            track('trace', 'asked');
+            lot = await traceLot(map, { lng: site.lng, lat: site.lat, box: $('#trace'), status });
+            track('trace', lot ? 'done' : 'cancelled');
+          }
+          if (!lot) { status(STEPPED ? 'Trace the property line, then the trees can be built. Press Find to start again.' : 'Trace the property, then it can be built. Press Build to start again.'); return; }
         }
         site.parcel = lotFeature(lot);
       }
       const keep = params.get('truth') ? `&truth=${encodeURIComponent(params.get('truth'))}${site.area ? `&area=${params.get('area')}` : ''}` : '';
       history.replaceState(null, '', (id ? `?map=${encodeURIComponent(id)}` : `?at=${encodeURIComponent(at)}${lot ? `&lot=${lotParam(lot)}` : ''}`) + keep);
+      if (STEPPED) {
+        view.builtFor = null;
+        await offerLot(site, { traced: !!lot && !fromLink });
+        /* A link with the lot in it, a saved map, or a field check: straight on to the trees. */
+        if (params.get('truth') || (startup && (id || fromLink || site.parcel))) { view.steps.unlock(2); view.steps.go(2); }
+        return;
+      }
       await build(site);
     } catch (e) {
       status(e.message || String(e), 'bad');
@@ -578,7 +717,8 @@ async function main() {
       $('#go').disabled = false;
     }
   };
-  $('#go').addEventListener('click', go);
+  view.steps = startSteps({ onEnter: onStep });
+  $('#go').addEventListener('click', () => go());
   $('#at').addEventListener('keydown', (e) => { if (e.key === 'Enter') { $('#saved').value = ''; go(); } });
   $('#at').addEventListener('input', () => { if ($('#at').value.trim()) $('#saved').value = ''; });
   $('#t-points').addEventListener('click', () => { toggle('#t-points'); drawBuilt(view.map, $('#t-fix').getAttribute('aria-pressed') === 'true'); });
@@ -589,9 +729,26 @@ async function main() {
     const on = toggle('#t-tilt');
     view.map?.easeTo(on ? { pitch: 55, bearing: -20 } : { pitch: 0, bearing: 0 });
   });
-  if (params.get('map')) { await savesReady; $('#saved').value = params.get('map'); if ($('#saved').value) go(); }
-  else if (params.get('at')) { $('#at').value = params.get('at'); go(); }
+  $('#t-trees')?.addEventListener('click', () => { view.trees?.setVisible(toggle('#t-trees')); });
+  /* Step 1: trace the line over the county's (or again). */
+  $('#lot-trace')?.addEventListener('click', async () => {
+    const site = view.site;
+    if (!site || $('#go').disabled) return;
+    $('#go').disabled = true;
+    try {
+      const lot = await traceNow(site);
+      if (lot) {
+        site.parcel = lotFeature(lot);
+        site.lawn = [];
+        history.replaceState(null, '', `?at=${encodeURIComponent($('#at').value.trim() || site.label)}&lot=${lotParam(lot)}`);
+        await offerLot(site, { traced: true });
+      } else await offerLot(site);
+    } catch (e) { status(e.message || String(e), 'bad'); } finally { $('#go').disabled = false; }
+  });
+  if (params.get('map')) { await savesReady; $('#saved').value = params.get('map'); if ($('#saved').value) go(true); }
+  else if (params.get('at')) { $('#at').value = params.get('at'); go(true); }
   ensureMap().catch((e) => status(`The map would not load: ${e.message}`, 'bad'));
 }
 
 main();
+globalThis.__shade = view; // for the headless smoke tests only

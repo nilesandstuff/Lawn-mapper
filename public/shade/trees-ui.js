@@ -21,6 +21,7 @@ import { buildCanopy } from './canopy.js';
 import { seasonalCanopy, muWithLeaves, leafCalendar, CROWN_ABOVE_M } from './seasonal.js';
 import { gridOver, cellOf } from './grid.js';
 import { toMerc, fromMerc } from './ept.js';
+import { cellsUnder, squareRing, Erased, SIZES_M } from './erase.js';
 
 const $ = (s) => document.querySelector(s);
 const NOISE = new Set([7, 18]);
@@ -92,7 +93,14 @@ export function overhead(model, mu, k) {
   return Math.exp(-tau);
 }
 
-export async function startTrees({ map, site, cols, box, shift, season: flight, flownTo }) {
+/**
+ * Draw the trees on `map`. With `erase`, the eraser (erase.js) is wired to
+ * the #tr-erase controls: columns brushed out vanish from the drawing and
+ * `erased()` gives the mask for the light worker; `onErase()` is called at
+ * the end of every stroke, undo and clear. `setActive(false)` hides the
+ * trees and stops the tap readout (another step has the map).
+ */
+export async function startTrees({ map, site, cols, box, shift, season: flight, flownTo, erase = false, onErase = null }) {
   const sec = $('#trees');
   sec.hidden = false;
   const say = (html) => { $('#tr-status').innerHTML = html; };
@@ -127,7 +135,8 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
     if (!(highRet[k] >= over)) highRet[k] = over;
   }
 
-  const st = { leaves: today ?? (leafOff ? 1 : null), roofs: true, cut: 0 };
+  const st = { leaves: today ?? (leafOff ? 1 : null), roofs: true, cut: 0, active: true, erasing: false, size: SIZES_M[1] };
+  const er = erase ? new Erased(grid.w * grid.h) : null;
   const muNow = () => (st.leaves === null ? model.mu : muWithLeaves(season, st.leaves));
   const corners = (k) => {
     const x = k % grid.w, y = (k / grid.w) | 0;
@@ -137,19 +146,28 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
   };
 
   const ids = BANDS.map((b) => `trees-${b.id}`);
+  /* The features drawn, per band source, by cell: removed one by one as the eraser passes (a whole redraw is too slow for a stroke). */
+  const byCell = new Map();
+  const current = ids.map(() => ({ type: 'FeatureCollection', features: [] }));
   function draw() {
-    const runs = treeRuns(model, muNow(), leafOff ? season : null, { roofs: st.roofs, cutBelow: st.cut });
+    const runs = treeRuns(model, muNow(), leafOff ? season : null, { roofs: st.roofs, cutBelow: st.cut }).filter((r) => !er?.mask[r.k]);
+    byCell.clear();
+    let lastK = -1, idx = 0;
     BANDS.forEach((b, i) => {
       const fc = {
         type: 'FeatureCollection',
-        features: runs.filter((r) => r.band === i).map((r) => ({
-          type: 'Feature', geometry: { type: 'Polygon', coordinates: corners(r.k) },
-          properties: { b: r.base, t: r.top, c: KIND_COLOR[r.kind] },
-        })),
+        features: runs.filter((r) => r.band === i).map((r) => {
+          idx = r.k === lastK ? idx + 1 : 0; lastK = r.k;
+          const f = { type: 'Feature', id: r.k * 64 + idx, geometry: { type: 'Polygon', coordinates: corners(r.k) }, properties: { b: r.base, t: r.top, c: KIND_COLOR[r.kind] } };
+          if (!byCell.has(r.k)) byCell.set(r.k, []);
+          byCell.get(r.k).push({ src: i, id: f.id });
+          return f;
+        }),
       };
+      current[i] = fc;
       if (map.getSource(ids[i])) map.getSource(ids[i]).setData(fc);
       else {
-        map.addSource(ids[i], { type: 'geojson', data: fc });
+        map.addSource(ids[i], { type: 'geojson', data: fc, dynamic: true }); // dynamic: updateData (the eraser) is allowed
         map.addLayer({ id: ids[i], type: 'fill-extrusion', source: ids[i], paint: { 'fill-extrusion-color': ['get', 'c'], 'fill-extrusion-base': ['get', 'b'], 'fill-extrusion-height': ['get', 't'], 'fill-extrusion-opacity': b.opacity } });
       }
     });
@@ -158,6 +176,7 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
     say(`${runs.length.toLocaleString()} pieces drawn. ${leafOff
       ? `The lidar was flown with the leaves off${flownTo ? ` (to ${flownTo})` : ''}; ${st.leaves === 0 ? 'drawn bare, as flown' : `deciduous crowns drawn with ${Math.round(100 * st.leaves)}% of their summer leaves`}.`
       : flight === 'on' ? 'The lidar was flown in leaf: drawn as flown.' : 'The flight season is unknown: drawn as flown.'}${c.evergreen != null ? ` Columns: ${c.deciduous || 0} deciduous, ${c.evergreen || 0} evergreen, ${c.roof || 0} building.` : ''}`);
+    eraseNote();
   }
 
   $('#tr-today').textContent = today !== null ? `Today (${Math.round(100 * today)}% of the leaves)` : 'Today';
@@ -179,10 +198,12 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
     + `<br><span class="dim">Faint to solid: ${BANDS.map((b) => b.name).join('; ')}.</span>`;
 
   const onClick = (e) => {
+    if (!st.active || st.erasing) return;
     const [x, y] = toMerc([e.lngLat.lng, e.lngLat.lat]);
     const gx = Math.floor((x - grid.x0) / grid.cell), gy = Math.floor((grid.y1 - y) / grid.cell);
     if (gx < 0 || gy < 0 || gx >= grid.w || gy >= grid.h) { $('#tr-read').textContent = 'Outside the modelled area.'; return; }
     const k = gy * grid.w + gx, mu = muNow();
+    if (er?.mask[k]) { $('#tr-read').textContent = 'Erased: open air here now. Undo or "Put all back" restores it.'; return; }
     const runs = treeRuns({ ...model, w: 1, h: 1, ground: [model.ground[k]] }, mu.subarray(k * model.nz, (k + 1) * model.nz), null, { roofs: true });
     let leafy = false;
     for (let l = 0; l < model.nz && !leafy; l++) if (season.muOn[k * model.nz + l] > season.muOff[k * model.nz + l]) leafy = true;
@@ -196,11 +217,94 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
         + `<span class="dim">The laser's returns over ${CROWN_ABOVE_M} m in this square meter: ${Number.isFinite(lowRet[k]) ? `${f1(lowRet[k])} to ${f1(highRet[k])} m` : 'none (filled in from around it)'}.</span>`;
   };
   map.on('click', onClick);
+
+  /* ---- The eraser: a square brush; drag to erase, one stroke per undo. ---- */
+  const CURSOR = 'tr-cursor';
+  function eraseNote() {
+    const el = $('#tr-erase-note');
+    if (!el || !er) return;
+    el.textContent = er.any ? `${er.count.toLocaleString()} square meter${er.count === 1 ? '' : 's'} erased (${er.strokes.length} stroke${er.strokes.length === 1 ? '' : 's'}). The shade will be worked out without them.` : 'Nothing erased. Drag the eraser over a tree to take it out of the model; tap the eraser again when done.';
+    if ($('#tr-undo')) $('#tr-undo').disabled = !er.strokes.length;
+    if ($('#tr-restore')) $('#tr-restore').disabled = !er.any;
+  }
+  const showCursor = (lngLat) => {
+    if (!er || !st.erasing || !lngLat) return;
+    const [x, y] = toMerc([lngLat.lng, lngLat.lat]);
+    const data = { type: 'Feature', geometry: { type: 'Polygon', coordinates: [squareRing(grid, x, y, st.size)] } };
+    if (map.getSource(CURSOR)) map.getSource(CURSOR).setData(data);
+    else {
+      map.addSource(CURSOR, { type: 'geojson', data });
+      map.addLayer({ id: CURSOR, type: 'line', source: CURSOR, paint: { 'line-color': '#ffffff', 'line-width': 2 } });
+    }
+  };
+  const hideCursor = () => { if (map.getLayer(CURSOR)) map.removeLayer(CURSOR); if (map.getSource(CURSOR)) map.removeSource(CURSOR); };
+  /* Take the brushed cells' blocks off the map at once: a dynamic source
+     (Mapbox v3.4+) drops a feature updated with no geometry; an older map
+     gets the whole collection again without them. */
+  const dropCells = (cells) => {
+    const gone = ids.map(() => []);
+    for (const k of cells) for (const f of byCell.get(k) || []) gone[f.src].push(f.id);
+    gone.forEach((list, i) => {
+      if (!list.length) return;
+      const src = map.getSource(ids[i]);
+      const set = new Set(list);
+      current[i] = { type: 'FeatureCollection', features: current[i].features.filter((f) => !set.has(f.id)) };
+      if (typeof src.updateData === 'function') src.updateData({ type: 'FeatureCollection', features: list.map((id) => ({ type: 'Feature', id, geometry: null, properties: {} })) });
+      else src.setData(current[i]);
+    });
+  };
+  let stroking = false;
+  const brush = (lngLat) => {
+    if (!er || !lngLat) return;
+    const [x, y] = toMerc([lngLat.lng, lngLat.lat]);
+    const fresh = er.erase(cellsUnder(grid, x, y, st.size));
+    if (fresh.length) dropCells(fresh);
+  };
+  const strokeStart = (e) => { if (!st.erasing || !st.active) return; e.preventDefault?.(); stroking = true; showCursor(e.lngLat); brush(e.lngLat); };
+  const strokeMove = (e) => { if (!st.erasing || !st.active) return; showCursor(e.lngLat); if (stroking) brush(e.lngLat); };
+  const strokeEnd = () => { if (!stroking) return; stroking = false; er.end(); eraseNote(); onErase?.(); };
+  const setErasing = (on) => {
+    st.erasing = on;
+    stroking = false;
+    $('#tr-erase')?.classList.toggle('on', on);
+    $('#tr-erase')?.setAttribute('aria-pressed', String(on));
+    map.getCanvas().style.cursor = on ? 'none' : '';
+    map.getCanvas().dataset.erasing = on ? '1' : '';
+    for (const h of [map.dragPan, map.touchZoomRotate, map.dragRotate]) on ? h.disable() : h.enable();
+    if (!on) hideCursor();
+  };
+  if (er && $('#tr-erase')) {
+    map.on('mousedown', strokeStart); map.on('touchstart', strokeStart);
+    map.on('mousemove', strokeMove); map.on('touchmove', strokeMove);
+    map.on('mouseup', strokeEnd); map.on('touchend', strokeEnd); map.on('touchcancel', strokeEnd);
+    $('#tr-erase').onclick = () => setErasing(!st.erasing);
+    for (const b of document.querySelectorAll('[data-erase-m]')) {
+      b.setAttribute('aria-pressed', String(Number(b.dataset.eraseM) === st.size));
+      b.onclick = () => { st.size = Number(b.dataset.eraseM) || SIZES_M[1]; for (const o of document.querySelectorAll('[data-erase-m]')) o.setAttribute('aria-pressed', String(o === b)); if (!st.erasing) setErasing(true); };
+    }
+    if ($('#tr-undo')) $('#tr-undo').onclick = () => { er.undo(); draw(); onErase?.(); };
+    if ($('#tr-restore')) $('#tr-restore').onclick = () => { er.clear(); draw(); onErase?.(); };
+  }
+
   draw();
   applySolid();
   return {
+    /** The erased mask (Uint8Array per 1 m cell), or null when nothing is erased. */
+    erased: () => (er?.any ? er.mask : null),
+    erasedCount: () => er?.count || 0,
+    /** The blocks shown or hidden (another step may show them beside its own picture). */
+    setVisible(on) { for (const id of ids) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'); },
+    /** Shown and listening, or hidden with the map left to another step. */
+    setActive(on) {
+      st.active = on;
+      if (!on && st.erasing) setErasing(false);
+      this.setVisible(on);
+      sec.hidden = !on;
+    },
     stop() {
+      if (st.erasing) setErasing(false);
       map.off('click', onClick);
+      for (const [ev, h] of [['mousedown', strokeStart], ['touchstart', strokeStart], ['mousemove', strokeMove], ['touchmove', strokeMove], ['mouseup', strokeEnd], ['touchend', strokeEnd], ['touchcancel', strokeEnd]]) map.off(ev, h);
       for (const id of ids) { if (map.getLayer(id)) map.removeLayer(id); if (map.getSource(id)) map.removeSource(id); }
       sec.hidden = true;
     },

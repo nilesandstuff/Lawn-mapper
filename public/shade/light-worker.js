@@ -5,7 +5,8 @@
  * seasonal.js, rays.js, sun.js and climate.js, which the tests run directly.
  *
  *   { type: 'build', cols, box, lat, lng, shift, heightM, lot, lawn,
- *     canopy: 'seasonal' | 'measured' | 'solid', flight: 'off'|'on'|'mixed'|null, tMean? }
+ *     canopy: 'seasonal' | 'measured' | 'solid', flight: 'off'|'on'|'mixed'|null, tMean?,
+ *     erased? (Uint8Array per 1 m cell: columns the visitor brushed out) }
  *       -> { type: 'built', ..., kinds, counts, calendar }
  *   { type: 'now', t }            -> { type: 'now', T (per point), leaves }
  *   { type: 'day', dayMs }        -> { type: 'day', sunHours, beamHours, dli, openDli, leaves, ... }
@@ -157,6 +158,17 @@ function build(m) {
   const calendar = m.tMean ? leafCalendar(m.tMean, m.tMeanTypical ? { typical: m.tMeanTypical } : {}) : null;
   const season = !solidMode ? seasonalCanopy(m.cols, model, { shift: m.shift, classify: leafOffFlight }) : null;
   const seasonal = m.canopy === 'seasonal' && leafOffFlight && calendar && season;
+  /* ERASED COLUMNS (the trees step's eraser, erase.js): whatever stood in
+     them is gone from the model in every season -- open air down to the
+     grass, so a felled tree casts nothing and its ground is lit. */
+  if (m.erased && m.erased.length === grid.w * grid.h) {
+    const { nz } = model;
+    for (let k = 0; k < m.erased.length; k++) {
+      if (!m.erased[k]) continue;
+      model.mu.fill(0, k * nz, (k + 1) * nz); // season.muOff is this same array
+      if (season) { season.muOn.fill(0, k * nz, (k + 1) * nz); season.kind[k] = 0; }
+    }
+  }
 
   const all = new Uint8Array(grid.w * grid.h).fill(1);
   const lot = m.lot?.length ? union(m.lot, grid) : all;
@@ -258,6 +270,7 @@ function seasonOf(m) {
   });
   self.postMessage({
     type: 'season', id: m.id, xy: S.coarse.xy, mean, lawn, lawnDull, open, season,
+    inMask, // per point: 1 on the lawn (or the lot), for the grass step's shares
     stats: { lawn: lawnStats, open: openStats, dullAtMin: dull, bands },
   });
 }

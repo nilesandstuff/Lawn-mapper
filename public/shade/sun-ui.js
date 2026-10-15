@@ -72,8 +72,9 @@ export function aboutLocal(ms, lng) {
 
 const polysOf = (g) => (g?.type === 'Polygon' ? [g.coordinates] : g?.type === 'MultiPolygon' ? g.coordinates : []);
 
-export function startSun({ map, site, cols, box, shift, heightM, season, beforeLayer, ground = null }) {
+export function startSun({ map, site, cols, box, shift, heightM, season, beforeLayer, ground = null, erased = null, onSeason = null }) {
   const st = {
+    erased,
     worker: null, mode: 'hours', day: null, now: null, ids: 0, path: [],
     grid: gridOver(box, 1, site.lat),
   };
@@ -125,6 +126,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
       map.addSource('light', { type: 'image', url, coordinates: corners() });
       map.addLayer({ id: 'light', type: 'raster', source: 'light', paint: { 'raster-fade-duration': 0, 'raster-resampling': 'nearest' } }, beforeLayer());
     }
+    if (!st.drape) drapeMode();
     /* Tilted, the same picture lies on the lidar's ground (view3d.js groundLayer). */
     if (st.drape) {
       try {
@@ -136,9 +138,12 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
   }
   /* Flat picture looking straight down; on the ground when the map is tilted. */
   function drapeMode() {
+    if (map.getLayer('light')) map.setLayoutProperty('light', 'visibility', st.hidden ? 'none' : 'visible');
+    if (map.getLayer('light-box')) map.setLayoutProperty('light-box', 'visibility', st.hidden ? 'none' : 'visible');
+    if (st.pin) st.pin.marker.getElement().style.display = st.hidden ? 'none' : '';
     if (!st.drape || !map.getLayer(st.drape.id) || !map.getLayer('light')) return;
     const tilted = map.getPitch() > 5;
-    map.setLayoutProperty(st.drape.id, 'visibility', tilted ? 'visible' : 'none');
+    map.setLayoutProperty(st.drape.id, 'visibility', tilted && !st.hidden ? 'visible' : 'none');
     map.setPaintProperty('light', 'raster-opacity', tilted ? 0 : 1);
   }
 
@@ -461,12 +466,12 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     st.worker.onmessage = (ev) => {
       const m = ev.data;
       if (m.type === 'error') { status(`The light calculation stopped: ${m.message}`); reportError('light worker', m.message); }
-      else if (m.type === 'built') { st.readyWaiters.splice(0).forEach((f) => f()); st.canopy = m.canopy; status(''); st.built = true; st.kinds = m.kinds; st.lawnMask = m.lawnMask || null; $('#t-lawn').hidden = !st.lawnMask; canopyNote(m); if (st.mode === 'trees') draw(); runDay(); st.monthsId = send({ type: 'months', year: new Date(dayMs()).getUTCFullYear() }); runSeason(); }
+      else if (m.type === 'built') { st.readyWaiters.splice(0).forEach((f) => f()); st.canopy = m.canopy; status(''); st.built = true; st.kinds = m.kinds; st.lawnMask = m.lawnMask || null; $('#t-lawn').hidden = !st.lawnMask || st.hidden; $('#t-lawn').dataset.has = st.lawnMask ? '1' : ''; canopyNote(m); if (st.mode === 'trees') draw(); runDay(); st.monthsId = send({ type: 'months', year: new Date(dayMs()).getUTCFullYear() }); runSeason(); }
       else if (m.type === 'day' && m.id === st.dayId) { st.day = m; status(''); summary(); if (st.mode !== 'now') draw(); }
       else if (m.type === 'now' && m.id === st.nowId) { st.now = m; if (st.mode === 'now') draw(); }
       else if (m.type === 'progress' && m.what === 'season') $('#season-status').textContent = `Tracing the sun through the year: ${m.done} of ${m.of} dates…`;
       else if (m.type === 'progress') status(`Working out the year: ${m.done} of ${m.of} months…`);
-      else if (m.type === 'season' && m.id === st.seasonId) { st.season = m; seasonSummary(); if (st.mode === 'season') draw(); }
+      else if (m.type === 'season' && m.id === st.seasonId) { st.season = m; seasonSummary(); if (st.mode === 'season') draw(); onSeason?.(m, st.climate); }
       else if (m.type === 'months' && m.id === st.monthsId) { months(m.rows); status(''); }
       else if (m.type === 'samples' && st.pending.has(m.id)) { st.pending.get(m.id)(m); st.pending.delete(m.id); }
     };
@@ -476,7 +481,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     for (const k of pick) c[k] = cols[k].slice(0, cols.n);
     send({
       type: 'build', cols: c, box, lat: site.lat, lng: site.lng, shift, heightM,
-      canopy: $('#sun-canopy').value, flight: season || null, tMean: st.climate?.tMeanNow || st.climate?.tMean || null, tMeanTypical: st.climate?.tMeanNow ? st.climate.tMean : null,
+      canopy: $('#sun-canopy')?.value || 'seasonal', flight: season || null, erased: st.erased || null, tMean: st.climate?.tMeanNow || st.climate?.tMean || null, tMeanTypical: st.climate?.tMeanNow ? st.climate.tMean : null,
       /* A field-readings check (site.area: the whole track's box) draws the
          light over everything he treated -- neighbors' lots of a
          multi-property stop and the street -- not the one parcel. */
@@ -485,17 +490,15 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     });
   }
 
+  const MODES = [['#m-hours', 'hours'], ['#m-dli', 'dli'], ['#m-now', 'now'], ['#m-season', 'season'], ['#m-trees', 'trees']];
   const setMode = (mode) => {
     st.mode = mode;
-    for (const [id, m] of [['#m-hours', 'hours'], ['#m-dli', 'dli'], ['#m-now', 'now'], ['#m-season', 'season'], ['#m-trees', 'trees']]) $(id).setAttribute('aria-pressed', String(m === mode));
+    for (const [id, m] of MODES) $(id)?.setAttribute('aria-pressed', String(m === mode));
     $('#time-row').hidden = mode !== 'now';
     if (mode === 'now') runNow(); else draw();
   };
-  $('#m-hours').onclick = () => setMode('hours');
-  $('#m-dli').onclick = () => setMode('dli');
-  $('#m-now').onclick = () => setMode('now');
-  $('#m-season').onclick = () => setMode('season');
-  $('#m-trees').onclick = () => setMode('trees');
+  /* The page may leave a view out (the step-by-step page has no "Trees" view: step 2 draws them). */
+  for (const [id, m] of MODES) if ($(id)) $(id).onclick = () => setMode(m);
   $('#grass').value = Math.abs(site.lat) >= 37 ? 'cool' : 'warm';
   $('#grass').onchange = () => runSeason();
   $('#gp').onchange = () => runSeason();
@@ -511,7 +514,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     .catch((e) => { $('#season-status').textContent = `The NASA weather could not be read (${e.message}); the clear-sky figures above still stand, with the trees as the laser saw them.`; })
     /* The seasons need the typical temperatures (leaf-out, leaf-fall), so
        the model is built once they are in, or once they have failed. */
-    .finally(() => build());
+    .finally(() => { st.climateDone = true; build(); });
   $('#sun-time').oninput = () => runNow();
   $('#sun-date').onchange = () => runDay();
   for (const b of document.querySelectorAll('[data-preset]')) {
@@ -521,8 +524,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
       runDay();
     };
   }
-  $('#sun-canopy').value = 'seasonal';
-  $('#sun-canopy').onchange = () => build();
+  if ($('#sun-canopy')) { $('#sun-canopy').value = 'seasonal'; $('#sun-canopy').onchange = () => build(); }
   $('#sun-canopy-note').textContent = '';
   st.pending = new Map();
   st.readyWaiters = [];
@@ -544,6 +546,13 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
       const edgeM = Float32Array.from(points, (_, i) => Math.min(pts[3 * i], pts[3 * i + 1], st.grid.w - pts[3 * i], st.grid.h - pts[3 * i + 1]));
       return new Promise((resolve) => { const id = send({ type: 'samples', pts, heightM }); st.pending.set(id, (r) => resolve({ ...r, edgeM })); });
     },
+    /** Shown, or hidden while another step has the map (the colors, the pin and the box; the panel is the page's). */
+    setVisible(on) { st.hidden = !on; drapeMode(); if (st.boxing) setBoxing(false); },
+    /** The trees step erased (or put back) columns: the model is built again without them. */
+    setErased(mask) { st.erased = mask || null; if (st.climateDone) build(); },
+    /** The growing season's light, once worked out (null before): the worker's season message and the climate. */
+    season: () => (st.season ? { season: st.season, climate: st.climate } : null),
+    climate: () => st.climate || null,
     /** Show a given day (its date in local time). */
     showDay(ms) {
       const d = new Date(ms);
