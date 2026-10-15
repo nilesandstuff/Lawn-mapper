@@ -42,7 +42,7 @@ import { nad83Correction } from '../public/shade/datum.js';
 import { buildCanopy } from '../public/shade/canopy.js';
 import { seasonalCanopy } from '../public/shade/seasonal.js';
 import { gridOver, cellOf } from '../public/shade/grid.js';
-import { transmittance, groundAt } from '../public/shade/rays.js';
+import { transmittance, groundAt, skyDirections } from '../public/shade/rays.js';
 
 const API = 'https://data.neonscience.org/api/v0';
 const TOKEN = process.env.NEON_TOKEN || '';
@@ -243,6 +243,7 @@ export function distTo(mask, w, h, want, cap = 25) {
 }
 
 const ELEVATIONS = [20, 35, 50, 65], AZIMUTHS = [90, 135, 180, 225, 270];
+const SKY = skyDirections(4, 12);
 
 /** One window: OURS, TRUTH and BARE on one grid, scored. */
 /* -------------------------------------------------------------- the cache */
@@ -283,7 +284,7 @@ export function loadWindow(dir, name) {
  * solid under its densest layers in trees too (true, as the page does) or
  * only under roofs.
  */
-export async function compareWindow({ cloud, box3857, lat, lng, neonCols, cols3 = null, epoch = null, fill = {}, truthFill = true, cache = null }) {
+export async function compareWindow({ cloud, box3857, lat, lng, neonCols, cols3 = null, epoch = null, fill = {}, truthFill = true, cache = null, sky = false }) {
   const k = mercScale(lat);
   let cols = cols3;
   if (!cols) {
@@ -339,7 +340,14 @@ export async function compareWindow({ cloud, box3857, lat, lng, neonCols, cols3 
     if (roof[kk]) continue;
     const place = cT[kk] ? (toOpen[kk] <= 3 ? 'under a crown edge' : sizeT[kk] < 300 ? 'under a small crown' : 'deep under canopy') : toCrown[kk] <= 20 ? 'open, within 20 m of trees' : null;
     if (!place) continue;
-    const L = (light[place] ||= { n: 0, agree: 0, bareAgree: 0, sumT: 0, sumO: 0, sumB: 0, tooDark: 0, tooBright: 0, byEl: ELEVATIONS.map(() => ({ n: 0, agree: 0, sumT: 0, sumO: 0 })) });
+    const L = (light[place] ||= { n: 0, agree: 0, bareAgree: 0, sumT: 0, sumO: 0, sumB: 0, tooDark: 0, tooBright: 0, byEl: ELEVATIONS.map(() => ({ n: 0, agree: 0, sumT: 0, sumO: 0 })), sky: { n: 0, sumT: 0, sumO: 0, sumB: 0, absD: 0 } });
+    if (sky) {
+      /* The sky view at a phone's height (the diffuse half of the light; rays.js skyView's even sky, 48 directions). */
+      const gx = x + 0.5, gy = y + 0.5, zT = groundAt(truth, gx, gy) + PHONE_M, zO = groundAt(model, gx, gy) + PHONE_M;
+      let vT = 0, vO = 0, vB = 0;
+      for (const d of SKY) { vT += d.w * transmittance(truth, gx, gy, zT, d.dir); vO += d.w * transmittance(ours, gx, gy, zO, d.dir); vB += d.w * transmittance(bare, gx, gy, zO, d.dir); }
+      L.sky.n++; L.sky.sumT += vT; L.sky.sumO += vO; L.sky.sumB += vB; L.sky.absD += Math.abs(vO - vT);
+    }
     ELEVATIONS.forEach((el, ei) => {
       for (const az of AZIMUTHS) {
         const ce = Math.cos(el * R), dir = [Math.sin(az * R) * ce, Math.cos(az * R) * ce, Math.sin(el * R)];
@@ -355,7 +363,9 @@ export async function compareWindow({ cloud, box3857, lat, lng, neonCols, cols3 
       }
     });
   }
-  return { fit: { east: -fit.dx, north: fit.dy, score: fit.score }, foot, cols3: byCls, light, points3dep: cols.n, pointsNeon: neonCols.n, season: season.counts };
+  let cells = 0, roofs = 0;
+  for (let y = m; y < h - m; y++) for (let x = m; x < w - m; x++) { cells++; roofs += roof[y * w + x]; }
+  return { fit: { east: -fit.dx, north: fit.dy, score: fit.score }, foot, cols3: byCls, light, points3dep: cols.n, pointsNeon: neonCols.n, season: season.counts, roofShare: roofs / cells, crownShare: foot.truth / cells };
 }
 
 const med = (a) => { const b = a.filter(Number.isFinite).sort((x, y) => x - y); return b.length ? b[b.length >> 1] : NaN; };
