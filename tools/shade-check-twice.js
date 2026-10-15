@@ -25,7 +25,7 @@
 import { writeFileSync } from 'node:fs';
 import { FOOTPRINTS, lidarAt, covers } from '../worker/src/shade.js';
 import { WESM, leafSeason } from '../public/shade/find.js';
-import { pointsIn, toMerc, mercScale } from '../public/shade/ept.js';
+import { pointsIn, toMerc, mercScale, walk, hierarchyReader } from '../public/shade/ept.js';
 import { lazDecoder } from '../public/shade/laz.js';
 import { compareWindow, report } from './shade-check-leafon.js';
 import { readFileSync } from 'node:fs';
@@ -61,6 +61,41 @@ function lazCreate(opts) {
   return factory(opts);
 }
 const io = { getJson: (u) => get(u, 'json'), getBytes: (u) => get(u, 'bytes'), decompress: lazDecoder(() => lazCreate) };
+
+/**
+ * When the laser actually passed over a box: the GPS times of the points in
+ * one of the deepest octree nodes there, as [first, median, last] in ms, or
+ * null (no GPS time, or GPS week time). WESM's dates span a whole campaign
+ * (one ran March to November), the points' own times say which swath.
+ */
+export async function flightDays(eptUrl, box3857) {
+  const base = eptUrl.replace(/\/ept\.json$/, '');
+  const ept = await get(`${base}/ept.json`);
+  const nodes = await walk(ept.bounds, box3857, hierarchyReader(base, (u) => get(u)));
+  const deep = nodes.sort((a, b) => Number(b.key.split('-')[0]) - Number(a.key.split('-')[0]))[0];
+  if (!deep) return null;
+  const { header, points } = await io.decompress(await get(`${base}/ept-data/${deep.key}.laz`, 'bytes'));
+  const at = [1, 3, 4, 5].includes(header.format) ? 20 : header.format >= 6 ? 22 : -1;
+  if (at < 0) return null;
+  const dv = new DataView(points.buffer, points.byteOffset, points.byteLength), L = header.recordLength, n = Math.floor(points.byteLength / L);
+  const ts = [];
+  for (let i = 0; i < n; i += Math.max(1, Math.floor(n / 2000))) {
+    const g = dv.getFloat64(i * L + at, true);
+    if (g > 1e5 && g < 2e9) ts.push(GPS_EPOCH + (g < 1e9 ? g + 1e9 : g) * 1000);
+  }
+  if (ts.length < 10) return null;
+  ts.sort((a, b) => a - b);
+  return [ts[0], ts[ts.length >> 1], ts[ts.length - 1]];
+}
+const GPS_EPOCH = Date.UTC(1980, 0, 6);
+
+/** Leaf state by date (northern broadleaf): 'on' 1 Jun - 15 Sep, 'off' 10 Nov - 20 Apr, else null. */
+export function leafByDate(ms) {
+  const d = new Date(ms), m = d.getUTCMonth() + 1, day = d.getUTCDate();
+  if ((m >= 6 && m <= 8) || (m === 9 && day <= 15)) return 'on';
+  if (m === 12 || m <= 3 || (m === 11 && day >= 10) || (m === 4 && day <= 20)) return 'off';
+  return null;
+}
 
 /** A footprint's bounding box. */
 function bboxOf(geom) {
@@ -151,6 +186,42 @@ export async function twiceCheck(maxWindows = 24) {
   return { rows, log };
 }
 
+/* Eastern and midwestern metros (broadleaf country, 33-47 N), for sampling
+   by the points' own clocks rather than WESM's dates. City centres only. */
+export const METROS = [[-84.39, 33.75], [-86.80, 33.52], [-86.78, 36.16], [-84.51, 39.10], [-83.00, 39.96], [-81.69, 41.50], [-83.05, 42.33], [-85.67, 42.96], [-87.63, 41.88], [-87.91, 43.04], [-89.40, 43.07], [-93.27, 44.98], [-93.61, 41.59], [-94.58, 39.10], [-90.20, 38.63], [-86.16, 39.77], [-85.76, 38.25], [-84.50, 38.04], [-80.84, 35.23], [-78.64, 35.78], [-79.79, 36.07], [-77.44, 37.54], [-76.29, 36.85], [-77.04, 38.91], [-76.61, 39.29], [-75.17, 39.95], [-75.49, 40.60], [-76.88, 40.27], [-79.99, 40.44], [-73.76, 42.65], [-76.15, 43.05], [-77.61, 43.16], [-78.88, 42.89], [-71.06, 42.36], [-72.68, 41.76], [-71.41, 41.82], [-72.92, 41.31], [-73.95, 40.73], [-74.17, 40.74], [-71.46, 42.99], [-70.26, 43.66], [-73.21, 44.48], [-82.46, 36.55], [-83.92, 35.96], [-85.31, 35.05], [-90.05, 35.15], [-92.29, 34.75], [-97.52, 35.47], [-95.99, 36.15], [-96.70, 40.81], [-95.94, 41.26], [-88.24, 40.12], [-89.64, 39.80], [-91.53, 41.66], [-92.10, 46.79], [-88.01, 44.52], [-84.55, 42.73], [-83.74, 42.28], [-85.59, 42.29], [-86.25, 41.68]];
+
+/** Sample points around each metro; per point, every flight's own dates; pairs on/off by the points' clocks. */
+export async function clockSample({ perMetro = 4, radiusKm = 12, maxGapYears = 3 } = {}) {
+  const found = [], labels = { agree: 0, disagree: 0, unknown: 0 }, wrong = [];
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+  for (const [cx, cy] of METROS) {
+    for (let i = 0; i < perMetro; i++) {
+      const r = radiusKm * Math.sqrt(rnd()), a = 2 * Math.PI * rnd();
+      const lat = cy + (r * Math.sin(a)) / 111.32, lng = cx + (r * Math.cos(a)) / (111.32 * Math.cos((cy * Math.PI) / 180));
+      if (!(await urban(lng, lat))) continue;
+      const got = await lidarAt(lng, lat).catch(() => null);
+      const k = mercScale(lat), h = 60 / k, [x, y] = toMerc([lng, lat]);
+      const flights = [];
+      for (const c of got?.clouds || []) {
+        const d = await flightDays(c.url, [x - h, y - h, x + h, y + h]).catch(() => null);
+        if (!d) continue;
+        const byClock = leafByDate(d[1]);
+        flights.push({ c, at: d[1], byClock });
+        if (c.unit?.season === 'on' || c.unit?.season === 'off') {
+          if (!byClock) labels.unknown++;
+          else if (byClock === c.unit.season) labels.agree++;
+          else { labels.disagree++; wrong.push(`${c.name}: WESM ${c.unit.season}, flown ${new Date(d[1]).toISOString().slice(0, 7)}`); }
+        }
+      }
+      for (const on of flights.filter((f) => f.byClock === 'on')) for (const off of flights.filter((f) => f.byClock === 'off')) {
+        if (Math.abs(on.at - off.at) <= maxGapYears * 365.25 * 864e5) found.push({ lng, lat, cOn: on.c, cOff: off.c, onAt: on.at, offAt: off.at });
+      }
+    }
+  }
+  return { found, labels, wrong: [...new Set(wrong)] };
+}
+
 /** The sky view part of the report. */
 export function skyLines(rows) {
   const S = {};
@@ -163,7 +234,31 @@ export function skyLines(rows) {
     ...Object.entries(S).map(([k, t]) => `  ${k} (${t.n} points): leaf-on ${(t.sumT / t.n).toFixed(2)}, ours ${(t.sumO / t.n).toFixed(2)}, bare ${(t.sumB / t.n).toFixed(2)}; ours off by ${(t.absD / t.n).toFixed(2)} on average`)];
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === `file://${process.argv[1]}` && process.argv[2] === '--clocks') {
+  const { found, labels, wrong } = await clockSample({ perMetro: Number(process.argv[3]) || 4 });
+  console.log(`WESM's leaf season against the points' own clocks (flights sampled in ${METROS.length} metros): agree ${labels.agree}, disagree ${labels.disagree}, clock in between ${labels.unknown}`);
+  for (const w of wrong) console.log(`  ${w}`);
+  const rows = [];
+  const seen = new Set();
+  for (const f of found) {
+    const key = `${f.cOn.name}|${f.cOff.name}`;
+    if ((seen.has(key) && [...seen].filter((s) => s === key).length) || rows.filter((r) => !r.skip).length >= 24) continue;
+    const k = mercScale(f.lat), half = (WIN_M / 2 + MARGIN_M) / k, [cx, cy] = toMerc([f.lng, f.lat]);
+    const box3857 = [cx - half, cy - half, cx + half, cy + half];
+    try {
+      const truth = (await pointsIn(f.cOn.url, box3857, io)).cols;
+      const r = await compareWindow({ cloud: f.cOff, box3857, lat: f.lat, lng: f.lng, neonCols: truth, truthFill: false, sky: true });
+      if (r.roofShare < 0.03 || r.crownShare < 0.1) { rows.push({ skip: r.roofShare < 0.03 ? 'no houses' : 'few trees' }); continue; }
+      rows.push({ site: `${f.cOn.name} (${new Date(f.onAt).toISOString().slice(0, 7)}) / ${f.cOff.name} (${new Date(f.offAt).toISOString().slice(0, 7)})`, tile: [], win: rows.length, ...r });
+      seen.add(key);
+    } catch (e) { rows.push({ skip: `error: ${e.message}` }); }
+  }
+  if (process.env.OUT) writeFileSync(process.env.OUT, JSON.stringify(rows));
+  console.log(`${found.length} sample points with a summer and a bare flight by their clocks, ${rows.filter((r) => !r.skip).length} windows scored`);
+  console.log(report(rows.filter((r) => !r.skip)).replace(/NEON's leaf-on lidar/g, 'a leaf-on 3DEP flight').replace(/NEON's cloud/g, 'the leaf-on cloud').replace(/  NEON flies at peak greenness[^\n]*\n/, ''));
+  console.log(skyLines(rows).join('\n'));
+  for (const r of rows.filter((x) => !x.skip)) { const L = r.light['open, within 20 m of trees'], E = r.light['under a crown edge']; console.log(`  ${r.site}: roofs ${Math.round(100 * r.roofShare)}%, crown ${Math.round(100 * r.crownShare)}%; open ${L ? `${(L.sumT / L.n).toFixed(2)}/${(L.sumO / L.n).toFixed(2)}` : '-'}, edge ${E ? `${(E.sumT / E.n).toFixed(2)}/${(E.sumO / E.n).toFixed(2)}` : '-'}`); }
+} else if (import.meta.url === `file://${process.argv[1]}`) {
   const { rows, log } = await twiceCheck(Number(process.argv[2]) || 24);
   if (process.env.OUT) writeFileSync(process.env.OUT, JSON.stringify(rows));
   console.log(log.join('\n'));
