@@ -23,7 +23,7 @@ import { buildCanopy } from '../public/shade/canopy.js';
 import { seasonalCanopy, muWithLeaves, leafCalendar, G_OMEGA, LAI_MAX } from '../public/shade/seasonal.js';
 import { transmittance, skyView, sunlitNow, dayLight, samplePoints, groundAt, beamShare } from '../public/shade/rays.js';
 import { dayIndex, typicalYear, growthPotential, growingSeason, dliOn, dayLabel, nwsDailyMeans, observedDays, yearAsItIs } from '../public/shade/climate.js';
-import { climateAt } from '../worker/src/shade.js';
+import { climateAt, climateNow } from '../worker/src/shade.js';
 import { movedCorners } from '../public/lib/align.js';
 import { frameCorners } from '../public/lib/mercator.js';
 import { footprintEntry, covers, lidarAt, handleShade, isShadePath } from '../worker/src/shade.js';
@@ -657,6 +657,28 @@ check('the color ramp runs dark to bright and clamps', ramp(-1).join() === '0,0,
   check('climate route: the last ten whole years from NASA POWER, the AG community, a 0.05 degree cell, 365 days back',
     calls.length === 1 && calls[0].includes('start=20160101') && calls[0].includes('end=20251231') && calls[0].includes('community=AG')
     && cl.lat === 42.85 && cl.lng === -87.95 && cl.ghi.length === 365 && cl.tMean.length === 365, calls[0]);
+  /* This year's weather (worker weatherNow / climateNow): POWER's typical years, POWER's T2M for this year (3 days behind), NWS points then forecast. */
+  const seen = [];
+  const fake2 = async (url, init) => {
+    const u = String(url); seen.push(u);
+    const j = (body) => ({ ok: true, json: async () => body });
+    if (u.includes('power.larc.nasa.gov') && u.includes('parameters=T2M&')) {
+      const t2m = {}; for (let k = 0; k < 281; k++) { const d = new Date(Date.UTC(2026, 0, 1 + k)); t2m[`${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`] = cl.tMean[k] + 3; }
+      t2m['20261009'] = -999; t2m['20261010'] = -999; t2m['20261011'] = -999; // the lag
+      return j({ header: { fill_value: -999 }, properties: { parameter: { T2M: t2m } } });
+    }
+    if (u.includes('power.larc.nasa.gov')) return fake(url);
+    if (u.includes('api.weather.gov/points/')) { if (!init?.headers?.['User-Agent']) throw new Error('NWS wants a User-Agent'); return j({ properties: { forecast: 'https://api.weather.gov/gridpoints/X/1,1/forecast' } }); }
+    if (u.includes('/forecast')) return j({ properties: { periods: [12, 13, 14, 15, 16, 17, 18].flatMap((d) => [{ startTime: `2026-10-${d}T06:00:00-04:00`, isDaytime: true, temperature: 70, temperatureUnit: 'F' }, { startTime: `2026-10-${d}T18:00:00-04:00`, isDaytime: false, temperature: 50, temperatureUnit: 'F' }]) } });
+    return { ok: false };
+  };
+  const now = await climateNow(-87.9562, 42.8622, { fetchImpl: fake2, now: new Date(Date.UTC(2026, 9, 11)) });
+  check('climate route, this year: observed days through Oct 8 (POWER three days behind), the forecast to Oct 18, a +3 C anomaly, tMeanNow a year long and warmer than typical in the lived part',
+    now.tMeanNow?.length === 365 && now.weather?.observedThrough === '2026-10-08' && now.weather?.forecastTo === '2026-10-18' && Math.abs(now.weather.anomaly - 3) < 0.15 && now.tMeanNow[200] > now.tMean[200] + 2.5 && seen.some((u) => u.includes('start=20260101') && u.includes('end=20261011')),
+    JSON.stringify(now.weather));
+  const broken = async (url, init) => (String(url).includes('parameters=T2M&') ? { ok: false } : fake2(url, init));
+  const typicalOnly = await climateNow(-87.9562, 42.8622, { fetchImpl: broken, now: new Date(Date.UTC(2026, 9, 11)) });
+  check('climate route, this year: when POWER\'s daily data fails the answer is the typical year alone, not an error', typicalOnly.tMean.length === 365 && typicalOnly.tMeanNow === undefined, Object.keys(typicalOnly).join());
 }
 
 /* ------------------------------------------------------------- view */
