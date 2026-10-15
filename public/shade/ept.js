@@ -103,14 +103,20 @@ export function cropRecords(header, points, bbox) {
   return all;
 }
 
-/** The flight's span from the nodes' [first, median, last] GPS times: { start, mid, end, nodes } or null. */
+/**
+ * The flight's span from the nodes' [first, median, last] GPS times:
+ * { start, mid, end, nodes, mids (each node's median, sorted) } or null. A
+ * project can hold two flights years apart (Ottawa County, MI: April 2016
+ * and April 2018 in one 60 m box), so the season is judged piece by piece
+ * from `mids`, not from the span.
+ */
 export function flownOf(times) {
   if (!times.length) return null;
   const mids = [];
   let start = Infinity, end = -Infinity;
   for (let i = 0; i < times.length; i += 3) { start = Math.min(start, times[i]); mids.push(times[i + 1]); end = Math.max(end, times[i + 2]); }
   mids.sort((a, b) => a - b);
-  return { start, mid: mids[mids.length >> 1], end, nodes: mids.length };
+  return { start, mid: mids[mids.length >> 1], end, nodes: mids.length, mids };
 }
 
 /**

@@ -3,7 +3,7 @@
  *
  *   node tools/shade.test.js
  */
-import { lasHeader, makeColumns, readRecord, gpsTimes } from '../public/shade/las.js';
+import { lasHeader, makeColumns, readRecord, gpsTimes, gpsMs } from '../public/shade/las.js';
 import { nodeBox, walk, hierarchyReader, pointsIn, toMerc, fromMerc, mercScale, flownOf } from '../public/shade/ept.js';
 import { nad83Correction } from '../public/shade/datum.js';
 import { rankClouds, leafSeason, nameYear, flightOf } from '../public/shade/find.js';
@@ -1160,11 +1160,21 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
     check(`laser clock: format ${format} keeps its GPS time at byte ${format >= 6 ? 22 : 20}, read as the day it was flown`,
       h.gpsAt === (format >= 6 ? 22 : 20) && h.gpsAdjusted && t.length === 2 && new Date(t[0]).toISOString().startsWith('2016-03-26T12:00') && new Date(t[1]).toISOString().startsWith('2016-03-26T13:30'), `${h.gpsAt} ${h.gpsAdjusted} ${t && t.map((x) => new Date(x).toISOString())}`);
   }
-  const week = lasFile(1, 28, pts), hw = lasHeader(week);
-  check('laser clock: GPS week time (global encoding bit off) is unusable and gives null, as does format 0', gpsTimes(hw, new Uint8Array(week, hw.pointOffset)) === null && lasHeader(lasFile(0, 20, pts)).gpsAt === -1, `${hw.gpsAdjusted}`);
+  /* Entwine's node files say week time in the header and hold adjusted standard time (2026-10-15), so the value decides. */
+  const week = lasFile(1, 28, pts.map((p) => ({ ...p, t: 123456.5 }))), hw = lasHeader(week);
+  const sameBitOff = lasFile(1, 28, pts), hb = lasHeader(sameBitOff);
+  check('laser clock: time-of-week values are unusable and give null, as does format 0; the header\'s own bit is not trusted', gpsTimes(hw, new Uint8Array(week, hw.pointOffset)) === null && lasHeader(lasFile(0, 20, pts)).gpsAt === -1 && !hb.gpsAdjusted && gpsTimes(hb, new Uint8Array(sameBitOff, hb.pointOffset)).length === 2, `${hw.gpsAdjusted}`);
+  check('laser clock: a 2008 flight\'s negative adjusted time, a 2020 one\'s, and raw standard time all read as their dates; week time and nonsense as NaN',
+    new Date(gpsMs(gps('2008-06-01T00:00:00Z'))).toISOString().startsWith('2008-06-01') && new Date(gpsMs(290694599.5)).toISOString().startsWith('2020-11-29') && new Date(gpsMs(1290694599.5)).toISOString().startsWith('2020-11-29') && Number.isNaN(gpsMs(400000)) && Number.isNaN(gpsMs(5e9)) && Number.isNaN(gpsMs(NaN)),
+    `${new Date(gpsMs(gps('2008-06-01T00:00:00Z'))).toISOString()} ${new Date(gpsMs(290694599.5)).toISOString()} ${new Date(gpsMs(1290694599.5)).toISOString()}`);
   const d = (iso) => Date.parse(iso);
   const flown = flownOf([d('2016-03-26T12:00Z'), d('2016-03-26T13:00Z'), d('2016-03-26T14:00Z'), d('2016-03-27T09:00Z'), d('2016-03-27T10:00Z'), d('2016-03-27T11:00Z')]);
-  check('laser clock: a flight\'s span is the nodes\' first to last, its middle the median of their middles', flown.start === d('2016-03-26T12:00Z') && flown.end === d('2016-03-27T11:00Z') && flown.nodes === 2 && (flown.mid === d('2016-03-27T10:00Z') || flown.mid === d('2016-03-26T13:00Z')) && flownOf([]) === null, JSON.stringify(flown));
+  check('laser clock: a flight\'s span is the nodes\' first to last, its middle the median of their middles', flown.start === d('2016-03-26T12:00Z') && flown.end === d('2016-03-27T11:00Z') && flown.nodes === 2 && flown.mids.length === 2 && (flown.mid === d('2016-03-27T10:00Z') || flown.mid === d('2016-03-26T13:00Z')) && flownOf([]) === null, JSON.stringify(flown));
+  /* Two flights in one project, April 2016 and April 2018 (Ottawa County, MI): a span over two years would read "mixed"; piece by piece it is leaf-off. Half in July: mixed. */
+  const two = flownOf([d('2016-04-15'), d('2016-04-15'), d('2016-04-16'), d('2018-04-20'), d('2018-04-21'), d('2018-04-21')]);
+  const half = flownOf([d('2016-04-15'), d('2016-04-15'), d('2016-04-16'), d('2018-07-20'), d('2018-07-21'), d('2018-07-21')]);
+  check('laser clock: two April flights two years apart read leaf-off piece by piece (the span alone would say mixed); an April and a July one, mixed',
+    flightOf(null, two).season === 'off' && leafSeason(two.start, two.end) === 'mixed' && flightOf(null, half).season === 'mixed', `${flightOf(null, two).season} ${leafSeason(two.start, two.end)} ${flightOf(null, half).season}`);
   const unit = { start: d('2016-08-23'), end: d('2016-08-23'), season: 'on', ql: 'QL2' };
   const f = flightOf(unit, flown), fromCat = flightOf(unit, null), none = flightOf(null, null), agreeing = flightOf({ start: d('2016-03-20'), end: d('2016-03-30'), season: 'off' }, flown);
   check('laser clock: the points\' clock wins over a catalogue that says August for a March flight; the catalogue serves when the files keep no time; none gives null',

@@ -53,11 +53,20 @@ export function leafSeason(startMs, endMs) {
  */
 export function flightOf(unit, flown) {
   const laser = flown && Number.isFinite(flown.start) && Number.isFinite(flown.end) && flown.end >= flown.start
-    ? { start: flown.start, end: flown.end, season: leafSeason(flown.start, flown.end), source: 'laser', ql: unit?.ql ?? null } : null;
+    ? { start: flown.start, end: flown.end, season: laserSeason(flown), source: 'laser', ql: unit?.ql ?? null } : null;
   const cat = unit && Number.isFinite(unit.start) && Number.isFinite(unit.end)
     ? { start: unit.start, end: unit.end, season: unit.season ?? leafSeason(unit.start, unit.end), source: 'catalogue', ql: unit.ql ?? null } : null;
   if (laser && cat) return { ...laser, catalogue: cat, agree: laser.season === cat.season };
   return laser || cat;
+}
+
+/** The season of the points themselves: by each piece's own day (flown.mids), the span when there are none. */
+function laserSeason(flown) {
+  if (!flown.mids?.length) return leafSeason(flown.start, flown.end);
+  let off = 0;
+  for (const m of flown.mids) if (leafSeason(m, m) === 'off') off++;
+  const share = off / flown.mids.length;
+  return share >= 0.9 ? 'off' : share <= 0.1 ? 'on' : 'mixed';
 }
 
 /** A decimal year for a time in ms. */
