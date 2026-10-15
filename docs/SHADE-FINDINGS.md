@@ -943,8 +943,22 @@ should be made on frames whose crown fills the cone (sky share under 0.5
 in full leaf) and read as a ratio of the frame's cover to the model's
 full-leaf cover.
 
+CLUMPING, ALL FOUR YARDSTICKS (the owner, 2026-10-15: "try anything if
+there's a chance it might help"; the leaf density scaled 0.85, 0.7, 0.5):
+  - the overhead frames: the full-leaf cone 0.24 -> 0.26 / 0.28 / 0.34
+    over the 13 crown-filling frames, the fitted share unchanged (above);
+  - NEON leaf-on (64 cached windows, 13): open 94 / 94 / 94 / 94%, edges
+    85 / 84 / 84 / 83%, small crowns 72 / 71 / 70 / 66% -- a little worse
+    each step;
+  - the owner's Oct 13 readings (workflow 35 runs 38 and 39, the calendar
+    at its old 39%): 3,147 as shipped, 3,147 at 0.85, 3,150 at 0.7, of
+    3,913 -- noise; and that day's leaf scan still runs the way 17 found
+    (bare best only through the new-build stop whose trees are gone).
+  Not shipped. Four yardsticks now say the leaf density per block is right
+  (16: two).
+
 Scripts: scratchpad photo-spots.py, photo-crowns.mjs, frames-sky.py,
-frames-cone.mjs (not in the repo: they carry the lots).
+frames-cone.mjs, frames-clump.mjs (not in the repo: they carry the lots).
 
 ## Speculation
 
