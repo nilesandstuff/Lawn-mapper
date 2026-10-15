@@ -1102,5 +1102,47 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   check('field check leaf scan: each share scored where the leaves decide and over all; leaf-on flights out', sc.leafy.n === 1 && sc.all.n === 2 && sc.leafy.agree.join() === '0,0,0,1,1,1,1' && sc.all.agree.join() === '1,1,1,2,2,2,2' && /decide \(1\): 0% 0, 15% 0, 30% 0, 50% 1/.test(ln), ln);
 }
 
+{
+  /* THE BRANCH FLOOR (seasonal.js floor10, underFloor, unfill; owner, 2026-10-15: "a lone tree on top
+     of a hill could be falsely predicted to have way more shadow when the sun is low"). The ray
+     check's scene again -- a tall tree, crown 8-16 m, joined to a 3 m shrub -- plus a dense pine
+     (crown 7-14 m, every pulse stopped in the needles, so canopy.js fills it solid to the grass) and a roof. */
+  const lat = 40, k = mercScale(lat);
+  const grid = gridOver([0, 0, 60 / k, 60 / k], 1, lat);
+  let seed = 11;
+  const rnd = () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const pts = [];
+  for (let e = 0.125; e < 60; e += 0.25) for (let n = 0.125; n < 60; n += 0.25) {
+    const inTree = Math.hypot(e - 30, n - 30) < 6, inShrub = e >= 35.5 && e < 40 && n >= 27 && n < 33, inPine = Math.hypot(e - 12, n - 12) < 5, roof = e > 45 && e < 55 && n > 45 && n < 55;
+    if (roof) { pts.push([e, n, 106, 6, 1, 1]); continue; }
+    if (inPine) { const z = 114 - 1.2 * Math.hypot(e - 12, n - 12) - rnd() * 2; pts.push([e, n, z, 1, 1, 2], [e, n, z - 1 - rnd(), 1, 2, 2]); continue; } // a cone; every pulse stopped in the needles, split
+    if (inTree && rnd() < 0.3) { pts.push([e, n, 108 + rnd() * 8, 1, 1, 2], [e, n, 100, 2, 2, 2]); continue; }
+    if (inShrub && rnd() < 0.5) { pts.push([e, n, 102.5 + rnd(), 1, 1, 2], [e, n, 100, 2, 2, 2]); continue; }
+    pts.push([e, n, 100, 2, 1, 1]);
+  }
+  const cols = makeColumns(pts.length);
+  pts.forEach(([e, n, z, c, r, nr], i) => { cols.x[i] = e / k; cols.y[i] = n / k; cols.z[i] = z; cols.cls[i] = c; cols.ret[i] = r; cols.nret[i] = nr; });
+  const at = (e, n) => Math.floor(60 - n) * grid.w + Math.floor(e);
+  const cube = (m, kk, hM) => m.mu[kk * m.nz + Math.floor((100 + hM - m.z0) / m.dz)];
+  const fresh = () => buildCanopy(cols, grid);
+  const m0 = fresh(), old = seasonalCanopy(cols, m0);
+  const m1 = fresh(), fixed = seasonalCanopy(cols, m1, { fill: { baseFrom: 'column10', spread: 'branches', underFloor: 0, unfill: true } });
+  check('branch floor: the pine is filled solid to the grass by canopy.js and recorded', m0.fills.some((f) => f.k === at(12, 12)) && cube(m0, at(12, 12), 4) > 4, `${m0.fills.length} ${cube(m0, at(12, 12), 4)}`);
+  const through = (m, kk) => { let t = 0; for (let l = 0; l < m.nz; l++) if (m.z0 + (l + 0.5) * m.dz > 100.5) t += m.mu[kk * m.nz + l] * m.dz; return Math.exp(-t); };
+  check('branch floor: a tree\'s fill ends at its lowest branches -- the pine\'s trunk space is open, the crown above still stops the sun; the roof stays solid to the grass',
+    fixed.kind[at(12, 12)] === 2 && cube(m0, at(12, 12), 4) > 4 && cube(m1, at(12, 12), 4) < 0.5 && through(m1, at(12, 12)) < 0.05 && fixed.kind[at(50, 50)] === 1 && cube(m1, at(50, 50), 3) > 4 && fixed.unfilled > 0,
+    `kind ${fixed.kind[at(12, 12)]} trunk before ${cube(m0, at(12, 12), 4)} after ${cube(m1, at(12, 12), 4)} through ${through(m1, at(12, 12))} roof ${fixed.kind[at(50, 50)]} ${cube(m1, at(50, 50), 3)} unfilled ${fixed.unfilled}`);
+  const leafAt = (s, m, kk, hM) => s.muOn[kk * m.nz + Math.floor((100 + hM - m.z0) / m.dz)] - s.muOff[kk * m.nz + Math.floor((100 + hM - m.z0) / m.dz)];
+  check('branch floor: the shipped fill hangs the tall tree\'s leaves from the shrub\'s height; the fix puts none below its lowest branch and keeps them in the crown',
+    leafAt(old, m0, at(30, 30), 5) > 0 && leafAt(fixed, m1, at(30, 30), 5) === 0 && leafAt(fixed, m1, at(30, 30), 12) > 0,
+    `old 5 m ${leafAt(old, m0, at(30, 30), 5)} fixed 5 m ${leafAt(fixed, m1, at(30, 30), 5)} fixed 12 m ${leafAt(fixed, m1, at(30, 30), 12)}`);
+  const R = Math.PI / 180, el = 20 * R, dir = [0, -Math.cos(el), Math.sin(el)]; // sun due south, 20 degrees up
+  const gx = 30, gy = 60 - 42, z = groundAt(m0, gx, gy) + 1.27;
+  const tOld = transmittance({ ...m0, mu: old.muOn }, gx, gy, z, dir), tFix = transmittance({ ...m1, mu: fixed.muOn }, gx, gy, z, dir);
+  check('branch floor: a low sun passing under the tall crown reaches the phone north of it; the shipped fill stopped it', tOld < 0.5 && tFix > 0.9, `${tOld.toFixed(2)} ${tFix.toFixed(2)}`);
+  const overhead = (s, m, kk) => { let t = 0; for (let l = 0; l < m.nz; l++) if (m.z0 + (l + 0.5) * m.dz > 100.5) t += s.muOn[kk * m.nz + l] * m.dz; return Math.exp(-t); };
+  check('branch floor: straight down through the tall crown the leaf area is unchanged (same shade from above)', Math.abs(overhead(old, m0, at(30, 30)) - overhead(fixed, m1, at(30, 30))) < 0.05, `${overhead(old, m0, at(30, 30)).toFixed(3)} ${overhead(fixed, m1, at(30, 30)).toFixed(3)}`);
+}
+
 if (failures) { console.log(`\n${failures} check(s) FAILED.`); process.exit(1); }
 console.log('\nshade map: ok');

@@ -184,7 +184,7 @@ export const LEAF_FALL_DAYS = 28;
 export function seasonalCanopy(cols, model, { shift = null, classify = true, fill = {} } = {}) {
   /* How the summer leaves are filled in (tools/shade-check-leafon.js scores
      the choices against NEON's leaf-on lidar). Defaults: as shipped. */
-  const { closeR = 2, taperM = 0, spread = 'even', topR = 2, ladScale = 1, baseFrom = 'clump', laiMax = LAI_MAX, edgeTopM = LAWN_EDGE_TOP_M, lawnClumpM2 = LAWN_CLUMP_M2 } = fill;
+  const { closeR = 2, taperM = 0, spread = 'even', topR = 2, ladScale = 1, baseFrom = 'clump', laiMax = LAI_MAX, edgeTopM = LAWN_EDGE_TOP_M, lawnClumpM2 = LAWN_CLUMP_M2, underFloor = 1, unfill = false } = fill;
   const { grid, w, h, nz, dz, z0, ground, mu } = model;
   const N = w * h;
   const above = new Uint16Array(N), multiAbove = new Uint16Array(N), lastGround = new Uint16Array(N);
@@ -360,6 +360,69 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, fil
     const k = y * w + x;
     footprint[k] = (all || isCrown(k)) && kind[k] !== 1 && kind[k] !== 2 ? 1 : 0;
   }
+  /* Leaf-off crown returns per cube, for leaves where the branches are, and
+     each column's lowest one (both over the 5 x 5 around it). */
+  let branch = null, lowBranch = null;
+  const wantBranches = spread === 'branches' || baseFrom !== 'clump' || unfill || underFloor < 1;
+  if (wantBranches) {
+    const own = new Float32Array(N * nz), low = new Float32Array(N).fill(Infinity);
+    for (let i = 0; i < cols.n; i++) {
+      if (NOISE.has(cols.cls[i])) continue;
+      const k = cellOf(grid, cols.x[i], cols.y[i], shift);
+      if (k < 0) continue;
+      const over = cols.z[i] - ground[k];
+      if (over <= CROWN_ABOVE_M || over >= 80) continue;
+      own[k * nz + Math.min(nz - 1, Math.max(0, Math.floor((cols.z[i] - z0) / dz)))]++;
+      if (over < low[k]) low[k] = over;
+    }
+    branch = own; lowBranch = low;
+  }
+  const near = (k, f) => {
+    const x = k % w, y = (k / w) | 0;
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+      const xx = x + dx, yy = y + dy;
+      if (xx >= 0 && yy >= 0 && xx < w && yy < h) f(yy * w + xx);
+    }
+  };
+  /* THE BRANCH FLOOR of a column (owner, 2026-10-14/15: leaves hang on
+     branches, so no leaves -- and no solid fill -- below where the laser saw
+     any): the height over the ground under which only a tenth of the crown
+     returns within 2 m fall. The tenth, not the lowest, so one stray return
+     (a shrub, a bird) does not drag a crown's leaves to the grass: the
+     lowest-return rule made small crowns 6 points too dark against NEON's
+     leaf-on laser (SHADE-FINDINGS 13), this one is measured in 19. NaN with
+     no crown return within 2 m. */
+  const floor10 = (k) => {
+    if (!branch) return NaN;
+    let total = 0;
+    const hist = new Float32Array(nz);
+    near(k, (j) => { for (let l = 0; l < nz; l++) { hist[l] += branch[j * nz + l]; total += branch[j * nz + l]; } });
+    if (!total) return NaN;
+    let cum = 0;
+    for (let l = 0; l < nz; l++) { cum += hist[l]; if (cum >= 0.1 * total) return Math.max(CROWN_ABOVE_M, z0 + l * dz - ground[k]); }
+    return NaN;
+  };
+  /* A TREE'S SOLID FILL ENDS AT ITS BRANCH FLOOR (unfill). canopy.js fills a
+     column solid from the layer nothing got through down to the grass,
+     which is right for a roof (the walls) and a guess for a tree: a spruce
+     reaches the grass, a pine's trunk stands in open air. The crown is
+     continued down to the lowest branches seen around it and the trunk
+     space below keeps what the laser measured. Roofs are untouched. Changes
+     mu (the leaf-off state) in place, before the leaf-on copy is taken. */
+  let unfilled = 0;
+  if (unfill && model.fills) {
+    for (const f of model.fills) {
+      if (kind[f.k] !== 2 && kind[f.k] !== 3) continue;
+      const fl = floor10(f.k);
+      if (!Number.isFinite(fl)) continue;
+      const base = f.k * nz;
+      for (let q = f.l0; q <= f.l1; q++) {
+        if (z0 + (q + 1) * dz > ground[f.k] + fl) break;
+        mu[base + q] = f.measured[q - f.l0];
+        unfilled++;
+      }
+    }
+  }
   const muOn = Float32Array.from(mu);
   /* Crown top per column: the tallest crown return within 2 m (a pit-free
      canopy height model). One column at 2-8 points a square meter holds a
@@ -432,29 +495,6 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, fil
       }
     }
   }
-  /* Leaf-off crown returns per cube, for leaves where the branches are, and
-     each column's lowest one (both over the 5 x 5 around it). */
-  let branch = null, lowBranch = null;
-  if (spread === 'branches' || baseFrom === 'column') {
-    const own = new Float32Array(N * nz), low = new Float32Array(N).fill(Infinity);
-    for (let i = 0; i < cols.n; i++) {
-      if (NOISE.has(cols.cls[i])) continue;
-      const k = cellOf(grid, cols.x[i], cols.y[i], shift);
-      if (k < 0) continue;
-      const over = cols.z[i] - ground[k];
-      if (over <= CROWN_ABOVE_M || over >= 80) continue;
-      own[k * nz + Math.min(nz - 1, Math.max(0, Math.floor((cols.z[i] - z0) / dz)))]++;
-      if (over < low[k]) low[k] = over;
-    }
-    branch = own; lowBranch = low;
-  }
-  const near = (k, f) => {
-    const x = k % w, y = (k / w) | 0;
-    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
-      const xx = x + dx, yy = y + dy;
-      if (xx >= 0 && yy >= 0 && xx < w && yy < h) f(yy * w + xx);
-    }
-  };
   let leafy = 0;
   for (let k = 0; k < N; k++) {
     if (crownOf[k] < 0) continue;
@@ -465,6 +505,9 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, fil
       let m = Infinity;
       near(k, (j) => { if (lowBranch[j] < m) m = lowBranch[j]; });
       if (Number.isFinite(m)) baseH = Math.max(CROWN_ABOVE_M, m);
+    } else if (baseFrom === 'column10') {
+      const fl = floor10(k);
+      if (Number.isFinite(fl)) baseH = fl;
     }
     const lo = ground[k] + baseH, hi = Math.min(topOf[k], ground[k] + c.top);
     const depth = Math.max(dz, hi - lo);
@@ -483,8 +526,13 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, fil
       wts = new Float32Array(cubes);
       let sum = 0;
       near(k, (j) => { for (let l = l0; l <= l1; l++) { wts[l - l0] += branch[j * nz + l]; } });
-      for (let q = 0; q < cubes; q++) { wts[q] += 0.25; sum += wts[q]; } // a little everywhere in the crown
-      for (let q = 0; q < cubes; q++) wts[q] /= sum;
+      const fl = underFloor < 1 ? floor10(k) : NaN;
+      for (let q = 0; q < cubes; q++) {
+        wts[q] += 0.25; // a little everywhere in the crown
+        if (Number.isFinite(fl) && z0 + (l0 + q + 1) * dz <= ground[k] + fl) wts[q] *= underFloor; // but not below the branches
+        sum += wts[q];
+      }
+      if (sum > 0) for (let q = 0; q < cubes; q++) wts[q] /= sum; else wts = null;
     }
     for (let l = l0; l <= l1; l++) {
       const i = k * nz + l;
@@ -494,7 +542,7 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, fil
   }
   const counts = { roof: 0, evergreen: ever, deciduous: 0, domed };
   for (let k = 0; k < N; k++) { if (kind[k] === 1) counts.roof++; else if (kind[k] === 3) counts.deciduous++; }
-  return { kind, clumps, clumpOf, muOn, muOff: mu, counts, classified: classify, leafyColumns: leafy };
+  return { kind, clumps, clumpOf, muOn, muOff: mu, counts, classified: classify, leafyColumns: leafy, unfilled };
 }
 
 /** The extinction coefficients with a share `f` (0 bare .. 1 in full leaf) of deciduous leaves out. */
