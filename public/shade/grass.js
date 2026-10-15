@@ -11,10 +11,9 @@
  * is set against the lawn's season-average light, point by point, so the
  * answer is a share of the lawn each grass would hold, not one number.
  *
- * THE LIGHT NEEDS BELOW ARE PROVISIONAL: the owner is having a summary of
- * species light requirements prepared (2026-10-15); these are placeholders
- * from the turf literature as it is commonly cited, to be replaced by that
- * summary. Each entry says where its number came from.
+ * The light needs come from the published minimum-DLI studies, as
+ * summarized for the owner on 2026-10-15 (docs/GRASS-LIGHT.md); each entry
+ * names its study.
  */
 
 import { dayLabel } from './climate.js';
@@ -44,21 +43,56 @@ export function climateZone(tMean) {
 }
 
 /**
- * The species. `dli` is the lowest season-average daily light at which the
- * grass holds an acceptable turf (mol/m2/day); `full` is where it does its
- * best; `shade` says how it is usually described. `season` is which climate
- * grows it. PROVISIONAL (see the header).
+ * The species. `dli` is the lowest daily light (mol/m2/day) at which the
+ * grass holds an acceptable lawn, from the published minimum-DLI studies
+ * as summarized for the owner (2026-10-15; docs/GRASS-LIGHT.md keeps the
+ * sources): field or greenhouse trials under shade cloth, mostly at
+ * 30-40 N in the US, summer, lawn or fairway height, no growth regulator,
+ * no traffic. `full` is about where the grass does its best (full sun or
+ * the trials' upper range). Where no minimum has been published (fine
+ * fescues, buffalograss) the figure is the nearest measured bracket, and
+ * `derived` says so. Tree shade cuts red light and adds root competition
+ * that cloth does not, so real needs under crowns run somewhat higher;
+ * the lawn's season-average light that these are set against runs below
+ * midsummer's, which leans the other way.
  */
 export const SPECIES = [
-  { id: 'finefescue', name: 'Fine fescues (creeping red, chewings, hard)', season: 'cool', dli: 8, full: 15, shade: 'the most shade-tolerant cool-season grasses; thin, fine blades, low wear', source: 'placeholder: commonly cited as holding turf at low light; to be replaced by the species summary' },
-  { id: 'tallfescue', name: 'Tall fescue (turf-type)', season: 'cool', dli: 12, full: 20, shade: 'takes moderate shade and heat better than bluegrass; deep roots', source: 'placeholder; to be replaced by the species summary' },
-  { id: 'rye', name: 'Perennial ryegrass', season: 'cool', dli: 14, full: 20, shade: 'quick to establish; fair in light shade, poor in deep', source: 'placeholder; to be replaced by the species summary' },
-  { id: 'kbg', name: 'Kentucky bluegrass', season: 'cool', dli: 18, full: 25, shade: 'wants full sun; thins and invites moss in shade', source: 'placeholder; to be replaced by the species summary' },
-  { id: 'staug', name: 'St. Augustinegrass', season: 'warm', dli: 10, full: 20, shade: 'the most shade-tolerant warm-season grass (some cultivars more than others); not cold-hardy', source: 'placeholder; to be replaced by the species summary' },
-  { id: 'zoysia', name: 'Zoysiagrass', season: 'warm', dli: 14, full: 22, shade: 'fair shade tolerance, better in the fine-bladed cultivars; slow to fill in', source: 'placeholder; to be replaced by the species summary' },
-  { id: 'centipede', name: 'Centipedegrass', season: 'warm', dli: 16, full: 22, shade: 'light shade only; low upkeep, acid soils', source: 'placeholder; to be replaced by the species summary' },
-  { id: 'bermuda', name: 'Bermudagrass', season: 'warm', dli: 22, full: 32, shade: 'full sun; thins fast in any shade (putting greens needed about 33 mol/m²/day)', source: 'placeholder; Clemson measured 32.6 for a putting-green cultivar; to be replaced by the species summary' },
-  { id: 'bahia', name: 'Bahiagrass', season: 'warm', dli: 18, full: 25, shade: 'full sun to light shade; coarse, tough, low upkeep', source: 'placeholder; to be replaced by the species summary' },
+  { id: 'finefescue', name: 'Fine fescues (Chewings, creeping red, hard)', season: 'cool', dli: 7, full: 15, derived: true,
+    shade: 'the most shade-tolerant lawn grasses; fine blades, low wear, little feeding; Chewings and creeping red take shade best, hard fescue least',
+    source: 'No published minimum. Chewings SR5100 and creeping red Dawson could not acclimate at 4 but did at 8-10 mol (Valentino & Lang 2007); 40 cultivars persisted at 6.5-10.7 under a shade tent (Petrella & Watkins 2020). Working floor 7-8.' },
+  { id: 'roughblue', name: 'Rough bluegrass (Poa trivialis)', season: 'cool', dli: 7.5, full: 14,
+    shade: 'holds very low light in cool, moist shade but fades in summer heat; a shade-mix component, not a whole lawn',
+    source: 'Sabrena stayed acceptable at about 7 mol through a winter under 60% cloth; wear threshold about 7.5 (Abelard & Galbrun 2022).' },
+  { id: 'tallfescue', name: 'Tall fescue (turf-type)', season: 'cool', dli: 9, full: 20,
+    shade: 'takes moderate shade and heat better than bluegrass; deep roots; the usual shade choice where fine fescue is too thin',
+    source: 'Rebel Exeda 8.8 (Meeks 2015, Texas, quality 5); species 9.3 in a winter stadium trial (Abelard & Galbrun 2022). Short-term trials only.' },
+  { id: 'rye', name: 'Perennial ryegrass', season: 'cool', dli: 10, full: 20,
+    shade: 'quick to establish; fair in light shade, poor in deep shade; often blended with the fescues',
+    source: 'Species 8.4 at a lenient winter criterion (Abelard & Galbrun 2022), raised by the recommended 10-20% margin; the 23 mol quoted by grow-light vendors has no primary source.' },
+  { id: 'kbg', name: 'Kentucky bluegrass', season: 'cool', dli: 23, full: 28,
+    shade: 'the full-sun cool-season lawn grass; thins and invites moss in shade',
+    source: 'Conventional cultivars 22-26 (Kenblue 24.1, Meeks 2015; a four-cultivar blend 26.2 and 22.5, Reed et al. 2024, quality 7).' },
+  { id: 'staug', name: 'St. Augustinegrass', season: 'warm', dli: 13, full: 20,
+    shade: 'the most shade-tolerant warm-season lawn grass (Captiva, Palmetto and Seville more than Floratam); not cold-hardy; sod only',
+    source: 'Captiva 10.9 and Floratam 11.8 in an 8-week Florida screen (Unruh 2015); Palmetto 15.5 at rough height in Texas. Lawn value about 13.' },
+  { id: 'zoysia', name: 'Zoysiagrass', season: 'warm', dli: 16, full: 22,
+    shade: 'fair shade tolerance, the fine-bladed cultivars (Zorro, Zeon, Cavalier, Lazer) best; slow to fill in; Meyer the least tolerant',
+    source: 'Shade-tolerant cultivars 10-11 in an 8-week Florida screen, 19-24 after 27 months of year-round shade in Texas at fairway height, 12-16 at lawn height (USGA); Cavalier 15.0 vs Meyer 21.1 (Richardson 2019). Lawn value 16.' },
+  { id: 'centipede', name: 'Centipedegrass', season: 'warm', dli: 14, full: 20,
+    shade: 'light shade only; low upkeep, acid soils; the Southeast\'s low-care lawn',
+    source: 'TifBlair 13.4 (Unruh 2015, Florida, 8-week screen).' },
+  { id: 'bahia', name: 'Bahiagrass', season: 'warm', dli: 16, full: 22,
+    shade: 'full sun to light shade; coarse, tough, drought-hardy, low upkeep',
+    source: 'Argentine 15.3 (Unruh 2014, Florida).' },
+  { id: 'paspalum', name: 'Seashore paspalum', season: 'warm', dli: 14, full: 22,
+    shade: 'coastal lawns and salty water; light shade only',
+    source: 'SeaDwarf 13.2 (Unruh 2015, Florida).' },
+  { id: 'bermuda', name: 'Bermudagrass', season: 'warm', dli: 24, full: 30,
+    shade: 'full sun; thins fast in any shade (Celebration, TifGrand and Latitude 36 hold on at the low end; putting greens need over 30)',
+    source: 'Lawn and fairway cultivars 19-26: Tifway 21.0-25.95, common 25.9, Celebration 19.6-24.65, TifGrand 19.9-25.0 (Florida, Texas, Arkansas); USGA practical threshold 24-26.' },
+  { id: 'buffalo', name: 'Buffalograss', season: 'warm', dli: 16, full: 25, derived: true,
+    shade: 'a prairie grass for full sun and little water; Prestige held up best under heavy shade',
+    source: 'No published minimum. Prestige and two Nebraska lines were acceptable under 60% cloth, about 15-17 mol in summer by the Clemson and Texas cloth readings (Amundsen 2017); derived.' },
 ];
 
 /**

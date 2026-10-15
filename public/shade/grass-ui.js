@@ -37,7 +37,7 @@ export function renderGrass(el, { season, climate, hasLawn }) {
   const mean = pts.reduce((a, b) => a + b, 0) / pts.length;
   const pct = (f) => (f == null ? '—' : `${Math.round(100 * f)}%`);
   const area = (f) => (f == null ? '' : `${Math.round(f * pts.length * SQFT).toLocaleString()} sq ft`);
-  const rows = ranked.map((s) => `<tr><td><b>${esc(s.name)}</b><br><span class="dim">${esc(s.shade)}</span></td><td>${s.dli}</td><td><b>${pct(s.share)}</b><br><span class="dim">${area(s.share)}</span></td><td class="dim">${pct(s.fullShare)}</td></tr>`).join('');
+  const rows = ranked.map((s) => `<tr><td><details><summary><b>${esc(s.name)}</b></summary><span class="dim">${esc(s.source)}</span></details><span class="dim">${esc(s.shade)}</span></td><td>${s.dli}${s.derived ? '<span class="dim" title="no published minimum: the nearest measured bracket">*</span>' : ''}</td><td><b>${pct(s.share)}</b><br><span class="dim">${area(s.share)}</span></td><td class="dim">${pct(s.fullShare)}</td></tr>`).join('');
   const best = ranked[0];
   const verdict = best.share >= 0.97 ? `<b>${esc(best.name)}</b> would hold all of ${what}; ${ranked.filter((s) => s.share >= 0.97).length > 1 ? `so would ${ranked.filter((s) => s.share >= 0.97).slice(1).map((s) => esc(s.name)).join(', ')}` : 'nothing else would hold all of it'}.`
     : best.share > 0 ? `No grass holds all of ${what}: <b>${esc(best.name)}</b> comes closest, holding ${shareWords(best.share)} (${pct(best.share)}). The rest is too dark for turf through the season; a shade-loving ground cover, mulch, or thinning the trees are the answers there.`
@@ -51,7 +51,7 @@ export function renderGrass(el, { season, climate, hasLawn }) {
       <tr><th>Grass</th><th>Needs<br><span class="dim">mol/m²/day</span></th><th>Holds<br><span class="dim">of ${what}</span></th><th>At its best<br><span class="dim">of ${what}</span></th></tr>
       ${rows}
     </table>
-    <p class="dim">"Holds" is the share of ${what} whose season-average light is at or over the grass's lowest need; "at its best" the share at or over the light it does best in. Light needs are provisional figures from the turf literature as commonly cited, to be replaced by a species summary; cultivars, mowing height and wear move them.</p>
+    <p class="dim">"Holds" is the share of ${what} whose season-average light is at or over the grass's lowest need; "at its best" the share at or over the light it does best in; * marks a need read from the nearest measured bracket, with no published minimum. The needs are the published minimums for an acceptable lawn, measured under shade cloth in summer (sources: tap a grass); tree shade is harsher than cloth, so treat a bare pass as marginal. The season average here runs below midsummer's light, which leans the other way. Cultivars, mowing height and wear move the figures by a few mol.</p>
     <h3>When to plant</h3>
     <ul>${planting}</ul>`;
 }
