@@ -161,7 +161,13 @@ export const G_OMEGA = 0.5; // G; within-crown clumping is inside the effective 
 export const LAD = 1.0;
 export const LAI_MAX = 5.5;
 export const LEAF_T_C = 10; // fall: half the shade gone LEAF_FALL_LEAD_DAYS before the typical mean drops below this (5)
-export const LEAF_FALL_LEAD_DAYS = 14;
+/* LAWN TREES, not forests (SHADE-FINDINGS 17, 23; owner, 2026-10-15): the
+   NEON forest floors fitted 14 days of lead, but the owner's lawn trees held
+   75% of their leaves on Oct 14 and 60-90% on Oct 15 where the forest lead
+   gave 14-32% -- lawn maples and oaks drop later than a forest's ash,
+   walnut and basswood. Three days fits the readings, the eye and the
+   photos of one fall in one region; to be revisited with another. */
+export const LEAF_FALL_LEAD_DAYS = 3;
 export const GREEN_T_C = 14.5; // spring: the canopy greens when the typical mean passes this (PhenoCam, 5)
 export const GREEN_CAP_C = 7.5; // or this far under the summer's warmest, if lower
 export const SHADE_LAG_DAYS = 12; // and its shade is half there this many days later (NEON, 5)
