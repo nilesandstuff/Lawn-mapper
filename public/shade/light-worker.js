@@ -154,7 +154,7 @@ function build(m) {
   /* Seasons: only when asked, with a calendar, and from a flight that did
      not already see the summer canopy. */
   const leafOffFlight = m.flight === 'off' || m.flight === 'mixed';
-  const calendar = m.tMean ? leafCalendar(m.tMean) : null;
+  const calendar = m.tMean ? leafCalendar(m.tMean, m.tMeanTypical ? { typical: m.tMeanTypical } : {}) : null;
   const season = !solidMode ? seasonalCanopy(m.cols, model, { shift: m.shift, classify: leafOffFlight }) : null;
   const seasonal = m.canopy === 'seasonal' && leafOffFlight && calendar && season;
 

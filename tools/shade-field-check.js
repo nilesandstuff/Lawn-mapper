@@ -127,7 +127,7 @@ async function scoreTile(site, tile, trucks, mount, why, rows, truckShadowRows) 
   const { lng, lat } = tile;
   const flight = site.flight?.season || null;
   const climate = await climateAt(lng, lat).catch(() => null);
-  const calendar = climate?.tMean ? leafCalendar(climate.tMeanNow || climate.tMean) : null;
+  const calendar = climate?.tMean ? leafCalendar(climate.tMeanNow || climate.tMean, climate.tMeanNow ? { typical: climate.tMean } : {}) : null;
   const seasonal = calendar && (flight === 'off' || flight === 'mixed');
   const leaf = seasonal ? calendar.share(dayOfYear(tile.list[0].t)) : 1;
   /* WOOD SEEN FROM THE SIDE (rays.js woodScale; SHADE-FINDINGS 15): a trial, through the fill JSON's woodV (0..1 the share of bare wood upright). */

@@ -1232,21 +1232,26 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   for (let k = 0; k <= 283; k++) observed[ymd(k)] = typical[k] + (k >= 273 ? 6 : 4);
   for (let k = 287; k <= 293; k++) forecast[ymd(k)] = typical[k] + 5;
   const y = yearAsItIs(typical, observed, forecast, { today: new Date(Date.UTC(2026, 9, 14)) });
-  const warm = leafCalendar(y.tMean);
-  /* The anomaly is the last 14 observed days (Sep 28 - Oct 11): 3 at +4 and 11 at +6, 5.57; the days between the last observed one and the forecast carry it too. */
-  check('this year: observed days replace the typical ones, the forecast follows, and the recent anomaly carries on fading (5.6 C at Oct 11, about 0.7 C by Nov 22)',
-    y.through === 283 && y.forecastTo === 293 && Math.abs(y.anomaly - (3 * 4 + 11 * 6) / 14) < 0.01 && Math.abs(y.tMean[200] - (typical[200] + 4)) < 0.3 && Math.abs(y.tMean[290] - (typical[290] + 5)) < 0.5 && Math.abs((y.tMean[325] - typical[325]) - y.anomaly * Math.exp(-(325 - 283) / 20)) < 0.3,
+  const warm = leafCalendar(y.tMean, { typical });
+  /* The anomaly is the last 14 observed days (Sep 28 - Oct 11), the latest weighing most: 3 at +4 (weights 1-3) and 11 at +6 (weights 4-14), 5.89; the days between the last observed one and the forecast carry it too. */
+  const wAnom = (4 * (1 + 2 + 3) + 6 * (4 + 5 + 6 + 7 + 8 + 9 + 10 + 11 + 12 + 13 + 14)) / 105;
+  check('this year: observed days replace the typical ones, the forecast follows, and the recent anomaly carries on fading (5.9 C at Oct 11, about 0.7 C by Nov 22)',
+    y.through === 283 && y.forecastTo === 293 && Math.abs(y.anomaly - wAnom) < 0.01 && Math.abs(y.tMean[200] - (typical[200] + 4)) < 0.3 && Math.abs(y.tMean[290] - (typical[290] + 5)) < 0.5 && Math.abs((y.tMean[325] - typical[325]) - y.anomaly * Math.exp(-(325 - 283) / 20)) < 0.3,
     JSON.stringify({ through: y.through, forecastTo: y.forecastTo, anomaly: y.anomaly, d200: y.tMean[200] - typical[200], d290: y.tMean[290] - typical[290], d325: y.tMean[325] - typical[325] }));
   check('this year: a warm fall puts half the shade gone later than the typical year did, and a warm spring brings the leaves out earlier',
     warm.halfFall > base.halfFall + 7 && warm.out < base.out, `fall ${base.halfFall} -> ${warm.halfFall}; out ${base.out} -> ${warm.out}`);
-  /* A warm spell: Feb 10-24 at 16 C (over the 14.5 C green-up line), winter again after; the calendar must not green on it. And an Indian summer: Oct 10-20 at 14 C after the mean first dipped under 10 C. */
-  const spell = {}; for (let k = 40; k <= 55; k++) spell[ymd(k)] = 16;
-  const ySpell = yearAsItIs(typical, spell, {}, { today: new Date(Date.UTC(2026, 2, 1)) });
-  const calSpell = leafCalendar(ySpell.tMean);
-  const typ2 = typical.map((t, k) => (k >= 255 && k <= 265 ? 9 : t)); // a cold snap Sep 12-22 under 10 C, then typical (back over 10 C) until the real crossing in mid-October
-  const calSnap = leafCalendar(typ2);
-  check('this year: a February warm spell does not green the calendar (last dip under the line wins), and a cold snap before an Indian summer does not end the season early',
-    Math.abs(calSpell.out - base.out) <= 2 && calSnap.halfFall === base.halfFall, `out ${base.out} spell ${calSpell.out}; half fall ${base.halfFall} snap ${calSnap.halfFall}`);
+  /* A warm spell: the year observed as typical through Feb 25 except Feb 10-20 at 16 C (over the 14.5 C green-up line), winter again after; the calendar must not green on it. */
+  const spell = {}; for (let k = 0; k <= 55; k++) spell[ymd(k)] = k >= 40 && k <= 50 ? 16 : typical[k];
+  const ySpell = yearAsItIs(typical, spell, {}, { today: new Date(Date.UTC(2026, 1, 27)) });
+  const calSpell = leafCalendar(ySpell.tMean, { typical });
+  const typ2 = typical.map((t, k) => (k >= 255 && k <= 265 ? 12 : t)); // a mild cold snap Sep 12-22 at 12 C (typical ~17), then typical until the real crossing in mid-October
+  const calSnap = leafCalendar(typ2, { typical });
+  /* A mild winter hovering at the line: the typical year's December-January lifted to graze 10 C (Dallas). */
+  const hover = typical.map((t, k) => (k >= 330 || k <= 20 ? Math.max(t, 10.2 - 0.3 * Math.sin(k)) : t));
+  const calHover = leafCalendar(hover, { typical });
+  check('this year, by heat sums: a February warm spell moves green-up by days, not a month; a mild September cold snap brings the fall forward by days, not weeks; a winter that hovers at 10 C does not push the fall into January',
+    calSpell.out <= base.out && calSpell.out >= base.out - 10 && calSnap.halfFall <= base.halfFall && calSnap.halfFall >= base.halfFall - 10 && calHover.halfFall < base.halfFall + 14, `out ${base.out} spell ${calSpell.out}; half fall ${base.halfFall} snap ${calSnap.halfFall} hover ${calHover.halfFall}`);
+  check('this year, by heat sums: the typical year read against itself gives its own days', (() => { const c = leafCalendar(typical, { typical }); return c.out === base.out && c.halfFall === base.halfFall; })(), '');
   const none = yearAsItIs(typical, {}, {}, { today: new Date(Date.UTC(2026, 9, 14)) });
   check('this year: with nothing observed the year is the typical one', none.through === null && none.anomaly === 0 && Math.abs(none.tMean[100] - typical[100]) < 0.05, `${none.tMean[100]} ${typical[100]}`);
 }

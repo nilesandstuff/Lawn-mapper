@@ -154,11 +154,13 @@ export function yearAsItIs(typical, observed = {}, forecast = {}, { today = new 
     raw[k] = v; seen[k] = 1;
     if (through === null || k > through) through = k;
   }
-  /* The anomaly: the last memoryDays observed days against typical. */
+  /* The anomaly: the last memoryDays observed days against typical, the
+     latest weighing most (weights 1..memoryDays), so a spell that has ended
+     fades from the forecast faster than one still running. */
   let anomaly = 0;
   if (through !== null) {
     let s = 0, n = 0;
-    for (let k = Math.max(0, through - memoryDays + 1); k <= through; k++) if (seen[k]) { s += raw[k] - typical[k]; n++; }
+    for (let k = Math.max(0, through - memoryDays + 1); k <= through; k++) if (seen[k]) { const w = k - (through - memoryDays); s += w * (raw[k] - typical[k]); n += w; }
     anomaly = n ? s / n : 0;
   }
   for (const [ymd, v] of Object.entries(forecast)) {

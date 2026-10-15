@@ -476,7 +476,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     for (const k of pick) c[k] = cols[k].slice(0, cols.n);
     send({
       type: 'build', cols: c, box, lat: site.lat, lng: site.lng, shift, heightM,
-      canopy: $('#sun-canopy').value, flight: season || null, tMean: st.climate?.tMeanNow || st.climate?.tMean || null,
+      canopy: $('#sun-canopy').value, flight: season || null, tMean: st.climate?.tMeanNow || st.climate?.tMean || null, tMeanTypical: st.climate?.tMeanNow ? st.climate.tMean : null,
       /* A field-readings check (site.area: the whole track's box) draws the
          light over everything he treated -- neighbors' lots of a
          multi-property stop and the street -- not the one parcel. */

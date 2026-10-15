@@ -574,27 +574,48 @@ export function muWithLeaves(season, f) {
  */
 export function leafCalendar(tMean, {
   tC = LEAF_T_C, lead = LEAF_FALL_LEAD_DAYS, green = GREEN_T_C, cap = GREEN_CAP_C, lag = SHADE_LAG_DAYS,
-  up = LEAF_OUT_DAYS, down = LEAF_FALL_DAYS,
+  up = LEAF_OUT_DAYS, down = LEAF_FALL_DAYS, typical = null,
 } = {}) {
   const warm = tMean.map((t) => t >= tC);
   if (warm.every(Boolean)) return { out: null, fall: null, share: () => 1, always: true };
   if (!warm.some(Boolean)) return { out: null, fall: null, share: () => 0, never: true };
   const since = (k, d) => (k - d + 365) % 365;
-  /* Spring: the day after the LAST time, between the coldest day and the
-     warmest, that the mean sits below the green-up temperature; autumn: the
-     day after the last time, between the warmest day and the coldest, that
-     it sits at or above tC. On a typical year (one rise, one fall) these
-     are the first crossings; on a year as it is (climate.js yearAsItIs,
-     2026-10-15) they ignore a warm spell in February (Atlanta's calendar
-     greened on Feb 25 from one) and an Indian summer. */
-  let coldest = 0, warmest = 0;
-  for (let k = 1; k < 365; k++) { if (tMean[k] < tMean[coldest]) coldest = k; if (tMean[k] > tMean[warmest]) warmest = k; }
-  const tGreen = Math.min(green, tMean[warmest] - cap);
-  const rise = (warmest - coldest + 365) % 365, fallLen = (coldest - warmest + 365) % 365;
-  let greenUp = coldest;
-  for (let d = 0; d < rise; d++) if (tMean[(coldest + d) % 365] < tGreen) greenUp = coldest + d + 1;
-  let cold = warmest;
-  for (let d = 0; d < fallLen; d++) if (tMean[(warmest + d) % 365] >= tC) cold = warmest + d + 1;
+  /* Spring: the first day after the coldest that passes the green-up
+     temperature; autumn: the first day after the warmest below tC. */
+  const crossings = (t) => {
+    let coldest = 0, warmest = 0;
+    for (let k = 1; k < 365; k++) { if (t[k] < t[coldest]) coldest = k; if (t[k] > t[warmest]) warmest = k; }
+    const tGreen = Math.min(green, t[warmest] - cap);
+    let greenUp = coldest;
+    while (t[greenUp % 365] < tGreen && greenUp < coldest + 365) greenUp++;
+    let cold = warmest;
+    while (t[cold % 365] >= tC && cold < warmest + 365) cold++;
+    return { coldest, warmest, greenUp, cold };
+  };
+  let { coldest, warmest, greenUp, cold } = crossings(typical || tMean);
+  /* A YEAR AS IT IS (climate.js yearAsItIs, 2026-10-15) is read by HEAT
+     SUMS, as trees read it: green-up on the day this year's warmth
+     accumulated since the typical coldest day (degree-days over 5 C)
+     reaches what the typical year had accumulated by its own green-up day;
+     leaf-fall on the day the cooling accumulated since the typical warmest
+     day (degree-days under 15 C) reaches the typical year's at its own
+     crossing. The sums only grow, so there is one crossing: a warm week in
+     February cannot green a canopy alone (Atlanta came out Feb 25 on one),
+     an Indian summer cannot start the fall again, and a mild winter that
+     hovers at 10 C for weeks (Dallas) does not push the fall into January
+     as "the last day over the line" did. The thresholds are the typical
+     year's own, so the typical year gives the same days either way. */
+  if (typical) {
+    const gdd = (t, from, to, f) => { let s = 0; for (let k = from; k < to; k++) s += f(t[k % 365]); return s; };
+    const warmth = (v) => Math.max(0, v - 5), cooling = (v) => Math.max(0, 15 - v);
+    const G = gdd(typical, coldest, greenUp, warmth), F = gdd(typical, warmest, cold, cooling);
+    let s = 0, k = coldest;
+    while (k < coldest + 365 && s < G) { s += warmth(tMean[k % 365]); k++; }
+    greenUp = k;
+    s = 0; k = warmest;
+    while (k < warmest + 365 && s < F) { s += cooling(tMean[k % 365]); k++; }
+    cold = k;
+  }
   let halfOut = (greenUp + lag) % 365;
   let fall = (cold - lead + 365) % 365;
   /* A short season keeps its leafing-out and a week of full leaf. */

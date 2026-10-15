@@ -130,7 +130,7 @@ export async function overcast(path) {
   const climate = await climateAt(lng, lat).catch(() => null);
   const t0 = new Date(u[0].t), doy = Math.floor((u[0].t - Date.UTC(t0.getUTCFullYear(), 0, 0)) / 864e5);
   const flight = site.flight?.season;
-  const leaf = climate?.tMean && (flight === 'off' || flight === 'mixed') ? leafCalendar(climate.tMeanNow || climate.tMean).share(doy) : 1;
+  const leaf = climate?.tMean && (flight === 'off' || flight === 'mixed') ? leafCalendar(climate.tMeanNow || climate.tMean, climate.tMeanNow ? { typical: climate.tMean } : {}).share(doy) : 1;
   const sets = skyWeights();
   const atShare = (f) => ({ ...site.model, mu: muWithLeaves(site.season, f) });
   const cal = atShare(leaf);
