@@ -194,6 +194,12 @@ export function baseOf(model, mu, k) {
   }
   return NaN;
 }
+/** Height over the ground of the top of the highest layer stopping light, NaN for none. */
+export function topOf(model, mu, k) {
+  const { nz, dz, z0, ground } = model;
+  for (let l = nz - 1; l >= 0; l--) if (mu[k * nz + l] > 0.02) return z0 + (l + 1) * dz - ground[k];
+  return NaN;
+}
 export function overheadT(model, mu, k) {
   const { nz, dz, z0, ground } = model;
   let tau = 0;
@@ -326,9 +332,10 @@ export async function compareWindow({ cloud, box3857, lat, lng, neonCols, cols3 
     if (roof[kk]) continue;
     foot.truth += cT[kk]; foot.ours += cO[kk]; foot.both += cT[kk] & cO[kk]; foot.bare += cB[kk]; foot.bareBoth += cT[kk] & cB[kk];
     if (!cT[kk] || !cO[kk]) continue;
-    const c = (byCls[cls(kk)] ||= { n: 0, baseO: [], baseT: [], tO: [], tT: [], tB: [] });
+    const c = (byCls[cls(kk)] ||= { n: 0, baseO: [], baseT: [], tO: [], tT: [], tB: [], topO: [], topT: [] });
     c.n++;
     c.baseO.push(baseOf(model, season.muOn, kk)); c.baseT.push(baseOf(truth, truth.mu, kk));
+    c.topO.push(topOf(model, season.muOn, kk)); c.topT.push(topOf(truth, truth.mu, kk));
     c.tO.push(overheadT(model, season.muOn, kk)); c.tT.push(overheadT(truth, truth.mu, kk)); c.tB.push(overheadT(model, season.muOff, kk));
   }
 
