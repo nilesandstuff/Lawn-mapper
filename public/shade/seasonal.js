@@ -173,6 +173,17 @@ export const LEAF_OUT_DAYS = 35;
 export const LAWN_CLUMP_M2 = 2000;
 export const LAWN_EDGE_TOP_M = 3;
 export const LEAF_FALL_DAYS = 28;
+/* THE BRANCH FLOOR (2026-10-15, SHADE-FINDINGS 19; owner: a lone tree on a
+   hill, a low sun under its crown). A column's leaves start at the branch
+   floor -- the height under which only a tenth of the crown returns within
+   2 m fall -- not at its clump's base, and a tree's solid fill under a dense
+   layer ends there too (a pine's trunk in open air; a spruce to the ground
+   stays; roofs untouched). Defaults: baseFrom 'column10', unfill true.
+   Measured not worse anywhere: NEON leaf-on laser small crowns 75 -> 77%,
+   edges 0.39 = 0.39; NEON forest floors in leaf 3 of 4 sites nearer;
+   owner's readings 3,153 against 3,157 of 3,913. 'branches' spread (leaves
+   where the returns were) was tried and brightened forest floors (SCBI 1.9%
+   measured: 5.2%); not used. */
 
 /**
  * Classify the model's columns and build its leaf-on state.
@@ -184,7 +195,7 @@ export const LEAF_FALL_DAYS = 28;
 export function seasonalCanopy(cols, model, { shift = null, classify = true, fill = {} } = {}) {
   /* How the summer leaves are filled in (tools/shade-check-leafon.js scores
      the choices against NEON's leaf-on lidar). Defaults: as shipped. */
-  const { closeR = 2, taperM = 0, spread = 'even', topR = 2, ladScale = 1, baseFrom = 'clump', laiMax = LAI_MAX, edgeTopM = LAWN_EDGE_TOP_M, lawnClumpM2 = LAWN_CLUMP_M2, underFloor = 1, unfill = false } = fill;
+  const { closeR = 2, taperM = 0, spread = 'even', topR = 2, ladScale = 1, baseFrom = 'column10', laiMax = LAI_MAX, edgeTopM = LAWN_EDGE_TOP_M, lawnClumpM2 = LAWN_CLUMP_M2, underFloor = 1, unfill = true } = fill;
   const { grid, w, h, nz, dz, z0, ground, mu } = model;
   const N = w * h;
   const above = new Uint16Array(N), multiAbove = new Uint16Array(N), lastGround = new Uint16Array(N);

@@ -888,7 +888,8 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   const cols = makeColumns(pts.length);
   pts.forEach(([e, n, z, c, r, nr], i) => { cols.x[i] = e / k; cols.y[i] = n / k; cols.z[i] = z; cols.cls[i] = c; cols.ret[i] = r; cols.nret[i] = nr; });
   const model = buildCanopy(cols, grid);
-  const season = seasonalCanopy(cols, model);
+  /* The fill as shipped before 2026-10-15 (leaves from the clump's base), which this check was written against; the defaults are checked after. */
+  const season = seasonalCanopy(cols, model, { fill: { baseFrom: 'clump', unfill: false } });
   const site = { model, season, cols, grid, shift: null };
   const at = (e, n) => Math.floor(60 - n) * grid.w + Math.floor(e);
   const fl = branchFloor(site);
@@ -898,8 +899,10 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   const gx = 30, gy = 60 - 42, z = groundAt(model, gx, gy) + 1.27;
   const asIs = transmittance({ ...model, mu: season.muOn }, gx, gy, z, dir), noLow = transmittance({ ...model, mu: cp.noLowLeaves }, gx, gy, z, dir);
   const rp = rayParts(model, cp.parts, gx, gy, z, dir);
-  check('ray check: the leaves put below the crown stop a low sun that passes under it; without them it reaches the phone',
+  check('ray check: the old fill\'s leaves below the crown stop a low sun that passes under it; without them it reaches the phone',
     asIs < 0.5 && noLow > 0.9 && rp.tau.leafLow / rp.total > 0.9 && rp.heightOver > 2 && rp.heightOver < 8, `${asIs.toFixed(2)} ${noLow.toFixed(2)} ${JSON.stringify(rp)}`);
+  const now = seasonalCanopy(cols, buildCanopy(cols, grid));
+  check('ray check: by the defaults since 2026-10-15 (the branch floor) that ray reaches the phone', transmittance({ ...model, mu: now.muOn }, gx, gy, z, dir) > 0.9, transmittance({ ...model, mu: now.muOn }, gx, gy, z, dir));
   const sum = new Float32Array(cp.parts.measured.length);
   for (const p of Object.values(cp.parts)) for (let i = 0; i < sum.length; i++) sum[i] += p[i];
   let worst = 0;
@@ -1127,8 +1130,8 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   const at = (e, n) => Math.floor(60 - n) * grid.w + Math.floor(e);
   const cube = (m, kk, hM) => m.mu[kk * m.nz + Math.floor((100 + hM - m.z0) / m.dz)];
   const fresh = () => buildCanopy(cols, grid);
-  const m0 = fresh(), old = seasonalCanopy(cols, m0);
-  const m1 = fresh(), fixed = seasonalCanopy(cols, m1, { fill: { baseFrom: 'column10', spread: 'branches', underFloor: 0, unfill: true } });
+  const m0 = fresh(), old = seasonalCanopy(cols, m0, { fill: { baseFrom: 'clump', unfill: false } }); // as shipped before 2026-10-15
+  const m1 = fresh(), fixed = seasonalCanopy(cols, m1); // the defaults: baseFrom 'column10', unfill true
   check('branch floor: the pine is filled solid to the grass by canopy.js and recorded', m0.fills.some((f) => f.k === at(12, 12)) && cube(m0, at(12, 12), 4) > 4, `${m0.fills.length} ${cube(m0, at(12, 12), 4)}`);
   const through = (m, kk) => { let t = 0; for (let l = 0; l < m.nz; l++) if (m.z0 + (l + 0.5) * m.dz > 100.5) t += m.mu[kk * m.nz + l] * m.dz; return Math.exp(-t); };
   check('branch floor: a tree\'s fill ends at its lowest branches -- the pine\'s trunk space is open, the crown above still stops the sun; the roof stays solid to the grass',

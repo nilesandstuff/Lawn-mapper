@@ -675,6 +675,65 @@ the green-down date late; the satellite cannot separate the trees from
 the grass there. The owner's eyes, the overcast sky view and the sunny
 leaf scan (17) remain the evidence that the lawn trees were in leaf.
 
+### 19. The branch floor: leaves and a tree's solid fill end at its lowest branches; the laser's own clock dates each flight (2026-10-15)
+
+Owner, 2026-10-15: "just because we didn't measure a real world example
+where that caused issues, doesn't mean we shouldn't fix it... A lone tree
+on top of a hill could be falsely predicted to have way more shadow when
+the sun is low." Rule adopted: a change toward how trees are is made
+unless a measurement shows it hurts.
+
+THE FIX (seasonal.js, SHIPPED as the default): a column's leaves start at
+its BRANCH FLOOR, the height under which only a tenth of the crown returns
+within 2 m fall (the tenth, not the lowest: the lowest-return rule made
+small crowns 6 points too dark on NEON's leaf-on laser, one stray return
+dragging a crown's leaves to the grass), not at its clump's base; and a
+tree's solid fill under a layer nothing got through ends at that floor too
+(a pine's trunk in open air; a spruce reaching the grass stays solid;
+roofs untouched; canopy.js now records what it filled). In the test scene
+(a tall tree, crown 8-16 m, joined to a 3 m shrub, the sun 20 degrees up
+passing under the crown) the old fill let 4% of the sun reach the phone
+behind it, the fix 100%; straight down through the crown the shade is
+unchanged.
+
+MEASURED, each part alone and together (the three yardsticks):
+
+| | NEON leaf-on laser (open / edge / deep / small crown, beam vs truth) | NEON forest floors in leaf (measured 1.9 / 3.1 / 3.4 / 2.8%) | owner's readings 2026-10-13 |
+|---|---|---|---|
+| shipped before | 0.83/0.85, 0.38/0.39, 0.07/0.12, 75% 0.38/0.46 | 2.4 / 3.3 / 3.0 / 1.6 | 3,157 of 3,913 |
+| floor (10th pct) alone | 0.83, 0.39, 0.07, 76% 0.38 | 3.5 / 3.1 / 3.3 / 2.0 | - |
+| unfill alone | 0.83, 0.38, 0.07, 76% 0.40 | 2.4 / 3.3 / 3.0 / 1.6 | - |
+| leaves where the branches were (spread) | 0.83, 0.39, 0.08, 76% 0.40 | 5.2 / 5.0 / 3.9 / 2.2 | - |
+| floor + unfill (SHIPPED) | 0.83, 0.39, 0.08, 77% 0.40 | 3.5 / 3.1 / 3.3 / 2.1 | 3,153 |
+| floor + spread + unfill | 0.83, 0.39, 0.09, 77% 0.41 | 5.5 / 4.9 / 4.2 / 2.5 | 3,153 |
+
+"Leaves where the branches were" (muOn weighted by the leaf-off returns
+per cube) brightens closed forest floors by 2-3 points: the winter laser
+sees a canopy's top branches far more than its lower ones, so leaves
+weighted by returns sit too high in a forest. Not used. The shipped pair
+is better or equal on the laser, neutral on the floors (3 of 4 sites
+nearer; mean miss 0.60 against 0.58 points), and 4 readings of 3,913 lower
+on the owner's day: within noise all three ways.
+
+CROWN "CLUMPING" (x0.7, x0.5 per meter) is not shipped and is not a
+missing piece of physics: the model is a 3D block model, so a ray through a
+crown's edge already crosses fewer leafy blocks; the test only thinned
+every crown. The leaf density per block is an effective value that already
+holds within-crown clumping (seasonal.js 3), and two yardsticks put it
+about right (edges 0.39 = 0.39; forest floors within a point).
+
+THE LASER'S OWN CLOCK (las.js gpsMs, gpsTimes; ept.js flown; find.js
+flightOf; the page and shade-site.js). WESM, the catalogue the map asked
+for a flight's dates, answered every query with an error body for hours
+on 2026-10-15; with no season the light worker added no leaves and every
+tree stood bare. Now each flight's dates come from the points' GPS times
+(right for 144 of 145 flights sampled across 60 metros, 18); WESM is the
+fallback for files with no usable time. Entwine's node files on AWS say
+"week time" in the header and hold adjusted standard time, so the value
+decides (under a week: unusable; else standard). One project can hold two
+flights years apart in one box (Ottawa County: April 2016 and April 2018),
+so the season is judged node by node.
+
 ## Speculation
 
 - Mixed-season flights (7) may be better treated as leaf-on for the
