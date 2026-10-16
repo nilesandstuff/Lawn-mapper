@@ -1,0 +1,62 @@
+name: W. Water tool
+
+# The lawn water tool (water session): its own folder (water/), its own
+# tests, and later its own Worker at water.<home domain>. Nothing here
+# touches Lawn Mapper, the shade map or the home page.
+#
+# FREE. The GitHub runner and public data only (USGS lidar on AWS).
+#
+#   tests     the water tests (made-up ground with known answers)
+#   limits    what the low-spot map can find, on made-up ground: the table in
+#             water/FINDINGS.md H8, about 2 minutes
+#   lowspots  the low-spot map for the lots in the WATER_LOTS secret
+#             (label,lat,lng per line). The repository is public, so lots
+#             live only in that secret: the log prints labels and numbers,
+#             never a place, and no maps are uploaded.
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: 'What to run'
+        required: true
+        default: tests
+        type: choice
+        options: [tests, limits, lowspots]
+
+permissions:
+  contents: read
+
+jobs:
+  water:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+
+      - name: Tests
+        run: node water/test/lowspots.test.js
+
+      - name: What the low-spot map can find
+        if: ${{ inputs.task == 'limits' }}
+        run: SEEDS=10 node water/tools/limits.mjs | tee limits.txt
+
+      - name: Low spots on the owner's lots
+        if: ${{ inputs.task == 'lowspots' }}
+        env:
+          WATER_LOTS: ${{ secrets.WATER_LOTS }}
+          OUT: ${{ runner.temp }}/water-out
+        run: node water/tools/lowspots.mjs | tee lowspots.txt
+
+      - name: The answer
+        if: always()
+        run: |
+          echo "--------------------------------------------------------------"
+          case "${{ inputs.task }}" in
+            limits)   tail -40 limits.txt 2>/dev/null || echo "no table: see the step above" ;;
+            lowspots) cat lowspots.txt 2>/dev/null || echo "no lots run: see the step above" ;;
+            *)        echo "Water tests: ${{ job.status }}" ;;
+          esac
