@@ -27,6 +27,7 @@ const LIMIT = Number(process.env.LIMIT || 0);
 
 const parse = (t) => { try { return JSON.parse(t); } catch { return null; } };
 const asFeature = (p) => (p?.type === 'Feature' ? p : p?.type ? { type: 'Feature', properties: {}, geometry: p } : null);
+const kindsText = (k) => Object.entries(k || {}).map(([n, c]) => `${c} ${n}`).join(', ') || 'none';
 const pct = (n, of) => (of ? `${Math.round((100 * n) / of)}%` : '-');
 const med = (a) => { const v = a.filter(Number.isFinite).sort((x, y) => x - y); return v.length ? v[v.length >> 1] : NaN; };
 const q = (a, f) => { const v = a.filter(Number.isFinite).sort((x, y) => x - y); return v.length ? v[Math.min(v.length - 1, Math.floor(f * v.length))] : NaN; };
@@ -57,7 +58,7 @@ async function main() {
       const s = r.summary;
       done.push({ ...s, cloud: r.cloud, hasParcel: !!todo[k].parcel });
       console.log(`${tag}: ${r.cloud.name.replace(/^USGS_LPC_/, '')} flown ${r.cloud.flown}; ground ${s.groundPointsPerM2.toFixed(1)}/m^2, scatter ${(s.scatter * 100).toFixed(1)} cm, floor ${(s.noiseFloor * 100).toFixed(1)} cm;`
-        + ` lawn ${Math.round(s.lawnM2 || 0)} m^2, ${s.spotsOnLawn} low spot(s) on it (${Math.round(s.wetLawnM2)} m^2${s.deepestOnLawnCm ? `, deepest ${s.deepestOnLawnCm.toFixed(1)} cm` : ''}), ${s.spotsOnParcel} on the lot;`
+        + ` lawn ${Math.round(s.lawnM2 || 0)} m^2, ${s.spotsOnLawn} low spot(s) on it (${Math.round(s.wetLawnM2)} m^2${s.deepestOnLawnCm ? `, deepest ${s.deepestOnLawnCm.toFixed(1)} cm` : ''}) [${kindsText(s.kindsOnLawn)}], ${s.spotsOnParcel} on the lot;`
         + ` beside the house ${s.besideHouse.towardShare === null ? '-' : pct(s.besideHouse.towardShare * 1000, 1000)} toward, ${s.besideHouse.meetsCodeShare === null ? '-' : pct(s.besideHouse.meetsCodeShare * 1000, 1000)} meets 5%; ${s.seconds.toFixed(0)} s`);
     } catch (e) {
       console.log(`${tag}: failed -- ${String(e.message).replace(/-?\d+\.\d{3,}/g, '…')}`);
@@ -84,6 +85,11 @@ async function main() {
   console.log(`  scatter: median ${(med(ok.map((d) => d.scatter)) * 100).toFixed(1)} cm; noise floor: median ${(med(ok.map((d) => d.noiseFloor)) * 100).toFixed(1)} cm (10th-90th ${(q(ok.map((d) => d.noiseFloor), 0.1) * 100).toFixed(1)}-${(q(ok.map((d) => d.noiseFloor), 0.9) * 100).toFixed(1)})`);
   console.log(`  lawns with a reported low spot: ${withSpot.length} of ${ok.length} (${pct(withSpot.length, ok.length)}); spots on lawns ${ok.reduce((s, d) => s + d.spotsOnLawn, 0)}, on lots ${ok.reduce((s, d) => s + d.spotsOnParcel, 0)}`);
   console.log(`  wet share of lawn where spots were found: median ${pct(med(withSpot.map((d) => d.wetLawnM2 / d.lawnM2)) * 1000, 1000)}`);
+  const kinds = {};
+  for (const d of ok) for (const [k, c] of Object.entries(d.kindsOnLawn || {})) kinds[k] = (kinds[k] || 0) + c;
+  const withHollow = ok.filter((d) => d.hollowsOnLawn > 0);
+  console.log(`  spots on lawns by kind (water/lib/kinds.js): ${kindsText(kinds)}`);
+  console.log(`  lawns with a lawn HOLLOW: ${withHollow.length} of ${ok.length} (${pct(withHollow.length, ok.length)}); deepest hollow on a lawn: median ${med(withHollow.map((d) => d.deepestHollowOnLawnCm)).toFixed(1)} cm, max ${Math.max(0, ...withHollow.map((d) => d.deepestHollowOnLawnCm)).toFixed(1)} cm`);
   console.log(`  beside the house (${house.length} lots with a roof on the lot): ground falls toward it on a median ${pct(med(house.map((d) => d.besideHouse.towardShare)) * 1000, 1000)} of the outline;`
     + ` ${house.filter((d) => d.besideHouse.towardShare >= 0.25).length} lots have a quarter or more of it falling toward the house; a median ${pct(med(house.map((d) => d.besideHouse.meetsCodeShare)) * 1000, 1000)} meets the code's 5%`);
   console.log(`  time: median ${med(ok.map((d) => d.seconds)).toFixed(1)} s a lot`);

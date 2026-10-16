@@ -131,10 +131,10 @@ function overlay(d, { flow = true, grade = true } = {}) {
   const px = img.data;
   for (let i = 0; i < W * H; i++) {
     let rgba = null;
-    if (d.reported[i]) {
+    if (d.reported[i] === 2) {
       const t = Math.min(1, d.depth[i] / 0.10);
       rgba = [30, 107, 255, Math.round(110 + 130 * t)];
-    }
+    } else if (d.reported[i] === 1) rgba = [190, 200, 215, 110]; // not a lawn hollow: pavement, trees, a ditch...
     if (flow && !d.wall[i] && d.flow[i] >= 250) rgba = [34, 211, 238, 220];
     if (grade && Number.isFinite(d.grade[i])) {
       const g = d.grade[i];
@@ -199,15 +199,24 @@ function report(d, site) {
   const s = d.summary, parts = [];
   const flown = d.cloud.flown ? new Date(`${d.cloud.flown}T12:00:00Z`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) : 'an unknown date';
   const where = site.parcel ? 'on this property' : 'near this point (no county property line was found)';
-  const spots = d.spots;
-  if (spots.length) {
-    const items = spots.slice(0, 8).map((p) => `<li>Likely holds water: at least ${inches(p.depthCm)} in deep, about ${sqft(p.areaM2)} sq ft, roughly ${gallons(p.volumeL)} gallons when full${p.againstBuilding ? ' — <strong>against a building</strong>' : ''}.</li>`);
-    const onLawn = site.lawn?.length ? `<p>${s.spotsOnLawn ? `${s.spotsOnLawn} of them reach${s.spotsOnLawn === 1 ? 'es' : ''} the lawn, about ${sqft(s.wetLawnM2)} sq ft of it.` : 'None of them reaches the lawn you traced.'}</p>` : '';
-    parts.push(`<div class="card"><h2>${spots.length} low spot${spots.length > 1 ? 's' : ''} ${where}</h2>${onLawn}<ul>${items.join('')}</ul>
-      <p class="dim">Depths run shallow: smoothing out the survey's scatter takes some off, so read them as "at least".</p></div>`);
+  const lawnKnown = d.hasLawn;
+  const isLawnHollow = (p) => p.kind === 'hollow' && (!lawnKnown || p.onLawnM2 > 0);
+  const hollows = d.spots.filter(isLawnHollow);
+  const others = d.spots.filter((p) => !isLawnHollow(p));
+  const KIND = { trees: 'under trees', paved: 'pavement, a car or hidden ground', water: 'open water or a pool', ditch: 'a ditch or swale', built: 'a stairwell or window well', deep: 'too deep for a lawn hollow (a pond or basin)', hollow: 'off the lawn' };
+  if (hollows.length) {
+    const items = hollows.slice(0, 8).map((p) => `<li>Likely holds water: at least ${inches(p.depthCm)} in deep, about ${sqft(lawnKnown ? p.onLawnM2 : p.areaM2)} sq ft${lawnKnown ? ' of lawn' : ''}, roughly ${gallons(p.volumeL)} gallons when full${p.againstBuilding ? ' — <strong>against a building</strong>' : ''}.</li>`);
+    parts.push(`<div class="card"><h2>${hollows.length} low spot${hollows.length > 1 ? 's' : ''} ${lawnKnown ? 'in your lawn' : where}</h2><ul>${items.join('')}</ul>
+      <p class="dim">Depths run shallow: smoothing out the survey's scatter takes some off, so read them as "at least".${lawnKnown ? '' : ' Without your lawn traced, some of these may be on pavement or a roof: open this from a Lawn Mapper map for a surer answer.'}</p></div>`);
   } else {
-    parts.push(`<div class="card"><h2>No low spot ${where} big enough to be sure of</h2>
+    parts.push(`<div class="card"><h2>No low spot ${lawnKnown ? 'in your lawn' : where} big enough to be sure of</h2>
       <p class="dim">On this survey a hollow has to be deeper than ${inches(s.noiseFloor * 100)} in to stand out from the laser's scatter. Smaller ones can still hold water; this can't see them.</p></div>`);
+  }
+  if (others.length) {
+    const counts = {};
+    for (const p of others) counts[p.kind] = (counts[p.kind] || 0) + 1;
+    parts.push(`<div class="card"><h2>Also low, but not a lawn problem</h2><ul class="dim">${Object.entries(counts).map(([k, n]) => `<li>${n} ${KIND[k] || k}</li>`).join('')}</ul>
+      <p class="dim">Shown faint on the map. Under trees the laser sees little of the ground, so those are the least certain.</p></div>`);
   }
   const b = s.besideHouse;
   if (b.outlineCells) {

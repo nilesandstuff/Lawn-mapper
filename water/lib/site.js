@@ -40,6 +40,12 @@ function spotsOn(result, mask) {
   return out;
 }
 
+function countKinds(list) {
+  const out = {};
+  for (const o of list) out[o.spot.kind || 'hollow'] = (out[o.spot.kind || 'hollow'] || 0) + 1;
+  return out;
+}
+
 export async function runSite(site, io, pickCloud, { progress = () => {}, nullRuns = 8 } = {}) {
   const t0 = Date.now();
   const pick = await pickCloud(site.lng, site.lat);
@@ -66,7 +72,12 @@ export async function runSite(site, io, pickCloud, { progress = () => {}, nullRu
   return {
     cloud: { name: cloud.name, ql: cloud.unit?.ql ?? null, flown: flown ? new Date(flown.mid).toISOString().slice(0, 10) : null, notOnAws: pick.notOnAws || [] },
     result: res, parcelMask, lawnMask,
-    spots: spotRecords(res).filter((r) => !parcelMask || parcelMask[r.row * g.W + r.col] || onParcel.some((o) => o.spot.row === r.row && o.spot.col === r.col)),
+    spots: spotRecords(res).filter((r) => !parcelMask || parcelMask[r.row * g.W + r.col] || onParcel.some((o) => o.spot.row === r.row && o.spot.col === r.col))
+      .map((r) => {
+        const on = onLawn.find((o) => o.spot.row === r.row && o.spot.col === r.col);
+        return { ...r, onLawnM2: on ? on.insideM2 : 0 };
+      }),
+    hasLawn: !!lawnMask,
     summary: {
       ...res.stats,
       lawnM2: lawnMask ? lawnMask.reduce((s, v) => s + v, 0) * g.cell * g.cell : null,
@@ -74,6 +85,11 @@ export async function runSite(site, io, pickCloud, { progress = () => {}, nullRu
       spotsOnLawn: onLawn.length,
       wetLawnM2: onLawn.reduce((s, o) => s + o.insideM2, 0),
       deepestOnLawnCm: onLawn.length ? Math.max(...onLawn.map((o) => o.spot.depth)) * 100 : null,
+      // by kind (lib/kinds.js): only a hollow is a lawn problem
+      kindsOnLawn: countKinds(onLawn), kindsOnParcel: countKinds(onParcel),
+      hollowsOnLawn: onLawn.filter((o) => o.spot.kind === 'hollow').length,
+      hollowLawnM2: onLawn.filter((o) => o.spot.kind === 'hollow').reduce((t, o) => t + o.insideM2, 0),
+      deepestHollowOnLawnCm: (() => { const h = onLawn.filter((o) => o.spot.kind === 'hollow'); return h.length ? Math.max(...h.map((o) => o.spot.depth)) * 100 : null; })(),
       roofOnLotM2: wallOnLot * g.cell * g.cell,
       besideHouse: {
         outlineCells: besideLot.length,

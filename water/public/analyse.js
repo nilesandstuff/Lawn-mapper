@@ -21,7 +21,13 @@ self.onmessage = async ({ data }) => {
     if (r.error) { self.postMessage({ error: r.error, notOnAws: r.notOnAws }); return; }
     const res = r.result, g = res.grid;
     const reported = new Uint8Array(g.W * g.H);
-    for (const s of res.spots.spots) if (s.reported) for (const i of s.cells) if (res.spots.depth[i] >= 0.005) reported[i] = 1;
+    // 2: a lawn hollow (on the traced lawn, when there is one); 1: any other reported spot
+    for (const s of res.spots.spots) {
+      if (!s.reported) continue;
+      const onLawn = !r.lawnMask || s.cells.some((i) => r.lawnMask[i]);
+      const v = s.kind === 'hollow' && onLawn ? 2 : 1;
+      for (const i of s.cells) if (res.spots.depth[i] >= 0.005) reported[i] = v;
+    }
     const grade = new Float32Array(g.W * g.H).fill(NaN);
     for (const w of res.beside.walls) grade[w.i] = w.fallAway;
     const out = {
@@ -29,7 +35,7 @@ self.onmessage = async ({ data }) => {
       shift: res.shift,
       depth: res.spots.depth, reported, flow: res.runoff.area, wall: res.wall, grade,
       parcelMask: r.parcelMask, lawnMask: r.lawnMask,
-      spots: r.spots, summary: { ...r.summary, noiseRuns: undefined }, cloud: r.cloud,
+      spots: r.spots, hasLawn: r.hasLawn, summary: { ...r.summary, noiseRuns: undefined }, cloud: r.cloud,
     };
     const transfer = [out.depth.buffer, reported.buffer, out.flow.buffer, out.wall.buffer, grade.buffer];
     self.postMessage({ done: out }, transfer);

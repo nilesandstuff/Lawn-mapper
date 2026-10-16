@@ -75,6 +75,26 @@ test('roofs are found without class 6, and ground running toward one is flagged'
   assert.ok(med(east) > 0.045, `east wall falls ${med(east)} away`);
 });
 
+test('the kind of a spot: shape, returns, canopy and depth', async () => {
+  const { kindOf, shapeOf } = await import('../lib/kinds.js');
+  const base = { depth: 0.08, againstBuilding: false, returnRatio: 1, class9Share: 0, treesShare: 0, intensityRatio: 1, length: 5, elongation: 1.2 };
+  assert.equal(kindOf(base), 'hollow');
+  assert.equal(kindOf({ ...base, returnRatio: 0.02 }), 'water');
+  assert.equal(kindOf({ ...base, class9Share: 0.5 }), 'water');
+  assert.equal(kindOf({ ...base, returnRatio: 0.3 }), 'paved');
+  assert.equal(kindOf({ ...base, intensityRatio: 0.3 }), 'paved');
+  assert.equal(kindOf({ ...base, treesShare: 0.5 }), 'trees');
+  assert.equal(kindOf({ ...base, elongation: 5, length: 20 }), 'ditch');
+  assert.equal(kindOf({ ...base, elongation: 5, length: 4 }), 'hollow', 'a short narrow dip is still a hollow');
+  assert.equal(kindOf({ ...base, depth: 0.4, againstBuilding: true }), 'built');
+  assert.equal(kindOf({ ...base, depth: 0.4 }), 'deep');
+  // a 20 x 2 strip of cells is about 20 m long, 2 m wide
+  const W = 50, strip = [];
+  for (let r = 10; r < 12; r++) for (let c = 5; c < 25; c++) strip.push(r * W + c);
+  const sh = shapeOf(strip, W);
+  assert.ok(Math.abs(sh.length - 20) < 1 && Math.abs(sh.width - 2) < 0.5 && sh.elongation > 8, JSON.stringify(sh));
+});
+
 test('lots read from text, and a bad line names its label, not its place', () => {
   assert.deepEqual(parseLots('a, 42.1, -85.2\nb,42.2,-85.3,30'), [
     { label: 'a', lat: 42.1, lng: -85.2, half: 25 }, { label: 'b', lat: 42.2, lng: -85.3, half: 30 }]);

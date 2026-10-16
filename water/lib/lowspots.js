@@ -15,6 +15,7 @@ import { gridFor, groundSurface, inpaint, buildingMask } from './surface.js';
 import { lowSpots, flow, foundation, MIN_AREA } from './hydro.js';
 import { nad83Correction } from './datum.js';
 import { rng, gauss } from './synthetic.js';
+import { sortSpots } from './kinds.js';
 
 /**
  * HOW DEEP A SPOT PURE NOISE DIGS, ON THIS FLIGHT (the noise floor).
@@ -86,6 +87,24 @@ export function analyse(cols, bbox, lat, { epoch = null, cell = 1, within = null
   const nf = floor !== null ? { floor, runs: [] } : nullRuns ? noiseFloor(bbox, lat, groundPerM2, scatter, { runs: nullRuns, within }) : { floor: 0, runs: [] };
 
   const spots = lowSpots(g, z, se, wall, { floor: nf.floor });
+  // every return per cell, and the survey's water (class 9): what kind of spot each is (lib/kinds.js)
+  const N = g.W * g.H;
+  const perCell = { all: new Uint16Array(N), class9: new Uint16Array(N), tall: new Uint16Array(N), groundI: new Float64Array(N), groundN: new Uint16Array(N), groundP75: 0 };
+  const gInt = [];
+  for (let i = 0; i < cols.n; i++) {
+    if (cols.cls[i] === 7 || cols.cls[i] === 18) continue; // noise
+    const [fc, fr] = g.toCell(cols.x[i], cols.y[i]);
+    const c = Math.floor(fc), r = Math.floor(fr);
+    if (c < 0 || r < 0 || c >= g.W || r >= g.H) continue;
+    const j = r * g.W + c;
+    if (perCell.all[j] < 65535) perCell.all[j]++;
+    if (cols.cls[i] === 9 && perCell.class9[j] < 65535) perCell.class9[j]++;
+    if (cols.cls[i] === 2) { perCell.groundI[j] += cols.intensity[i]; perCell.groundN[j]++; if (!wall[j]) gInt.push(cols.intensity[i]); }
+    else if (!wall[j] && cols.z[i] - z[j] >= 2 && perCell.tall[j] < 65535) perCell.tall[j]++;
+  }
+  gInt.sort((a, b) => a - b);
+  perCell.groundP75 = gInt.length ? gInt[Math.floor(gInt.length * 0.75)] : 0;
+  sortSpots(g, spots.spots, spots.depth, perCell, wall);
   const runoff = flow(g, z, wall);
   const beside = foundation(g, z, groundOk, wall);
 
@@ -114,6 +133,7 @@ export function analyse(cols, bbox, lat, { epoch = null, cell = 1, within = null
       buildingsFromClass6: fromClass6,
       spotsFound: spots.spots.length,
       spotsReported: spots.spots.filter((s) => s.reported).length,
+      hollows: spots.spots.filter((s) => s.reported && s.kind === 'hollow').length,
     },
   };
 }
@@ -131,6 +151,12 @@ export function spotRecords(result, { within = null } = {}) {
     volumeL: Math.round(s.volume * 1000),
     againstBuilding: s.againstBuilding,
     atEdge: s.atEdge,
+    kind: s.kind,
+    measures: s.measures && {
+      returnRatio: +s.measures.returnRatio.toFixed(2), class9Share: +s.measures.class9Share.toFixed(2),
+      treesShare: +s.measures.treesShare.toFixed(2), intensityRatio: s.measures.intensityRatio === null ? null : +s.measures.intensityRatio.toFixed(2),
+      lengthM: +s.measures.length.toFixed(1), widthM: +s.measures.width.toFixed(1), elongation: +s.measures.elongation.toFixed(1),
+    },
     row: s.row, col: s.col,
     lngLat: result.lngLat(s.row, s.col).map((v) => +v.toFixed(7)),
     cellSize: g.cell,

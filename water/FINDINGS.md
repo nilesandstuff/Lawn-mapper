@@ -27,8 +27,13 @@ go in this file (or anywhere in the repository): lots are named by a label.
   building, in 2-5 s a lot. `node water/tools/lowspots.mjs` with WATER_LOTS;
   workflow "Water" runs it and the tests.
 - **Over the 104-map corpus (H9)** it runs on 98, and reports a low spot on
-  59% of lawns -- many of them far too deep to be lawn hollows (S5). That
-  needs sorting out before the field check.
+  59% of lawns -- many of them far too deep to be lawn hollows (S5).
+- **Sorting spots by kind (H10)**: from the points alone, only 2 of 11
+  "hollows" in a blind photo check were on open ground (the rest pavement,
+  roofs, trees). So only hollows on a saved map's traced lawn count as lawn
+  problems; trees are sorted out well (4 of 5).
+- **The site is admin only** until it ships (owner, 2026-10-16), and the
+  dashboard card is asked of the core session.
 - **What it can see is now measured on made-up ground (H8), not yet on real
   wet spots.** Roughly: a spot holding 5 cm or more of water, 8 m or more
   across, is found most of the time; anything 3 m across, or holding under
@@ -245,6 +250,46 @@ Lawn Mapper's zone answered **403 to every request from GitHub's runner**
 (the first corpus run, 38958512969: 0 of 104), so the workflow tools pick
 the lidar by importing worker/src/shade.js's lidarAt instead of asking
 /api/shade/lidar. The water Worker (on Cloudflare) is not refused.
+
+### H10. Telling a lawn hollow from everything else (water session, 2026-10-16)
+
+water/lib/kinds.js sorts each reported spot by what the points say about
+it: water (few returns, or class 9), trees (canopy over it), paved (under
+0.45 of the open ground's returns, or dark ground returns), ditch (long and
+narrow), built (deep against a wall), deep (over 25 cm), else hollow.
+
+**Development set**: 12 squares of 200 m round Grand Rapids, 247 reported
+spots; 34 photographed and looked at. Of the spots first called water,
+only 1 of 8 was water (a pond); the rest were roads and driveways. Of those
+called hollow, most were in woods or under conifers. The trees and paved
+rules were added and the water ratio lowered from 0.35 to 0.15, LOOKING AT
+THESE 34, so they score nothing.
+
+**Blind test**: 12 other squares in the owner's work area (Rockford, Byron
+Center, Caledonia, Jenison, Walker, Wayland, Kentwood, Wyoming, Comstock
+Park, Ada, Allendale, Hudsonville; 209 spots: 82 hollow, 80 trees, 21 ditch,
+18 paved, 8 deep). 30 photographed, unlabelled; what each showed was written
+down BEFORE the rules' answers were revealed:
+
+| rules said | n  | right | what the photos showed instead |
+|------------|----|-------|--------------------------------|
+| hollow     | 11 | **2** | pavement 4, roofs the roof-finder missed 2, a tree, a gap between buildings |
+| trees      | 5  | **4** | a roof |
+| paved      | 5  | **2** | open ground, trees 2 |
+| ditch      | 5  | 0 of 5 truly ditches | open ground 3, trees, pavement |
+| deep       | 4  | --    | 3 on open ground (a field basin, a dirt arena, a dark patch), a roof |
+
+So **the points alone cannot tell a lawn hollow from pavement or a roof**:
+2 of 11 "hollows" were on open ground. The **trees** rule works (4 of 5).
+**Roofs are missed** often enough to matter (4 of 30 photos were on a
+roof): the roof-finder's rule (no ground, 2 m up, 80% single returns) lets
+some roofs through.
+
+What follows, and is built: a spot counts as a lawn problem only when it is
+a hollow AND on the traced lawn of a saved map; everything else is shown
+faint as "low, but not a lawn problem". Without a traced lawn the page says
+some spots may be on pavement or a roof. Whether hollows ON a traced lawn
+are real is still the field check's question.
 
 ---
 
