@@ -230,8 +230,8 @@ never named.
 - **58 of 98 lawns (59%) carry at least one reported low spot**: 133 spots
   on lawns, 205 on the lots. Where there is one, it covers a median 4% of
   the lawn.
-- **Many are deep**: the deepest spot on a lawn is over 25 cm on about 30
-  lawns, up to 104 cm. A lawn hollow does not hold a meter of water; these
+- **Many are deep**: the deepest spot on a lawn is over 25 cm on at least 28
+  lawns (counted from #18-#104 of the log), up to 104 cm. A lawn hollow does not hold a meter of water; these
   are almost certainly built or wet features -- ponds, ditches and swales,
   in-ground pools, window wells, a creek -- or ground the flight misread.
   S5 below. **Not yet separated from real lawn hollows.**
@@ -283,7 +283,7 @@ overhanging bare branches could fail.
 
 ### S5. The deep spots on lawns are features, not hollows
 
-H9: about 30 of 98 lawns have a "low spot" over 25 cm deep. Lawns do not
+H9: at least 28 of 98 lawns have a "low spot" over 25 cm deep. Lawns do not
 hold that; retention ponds, roadside ditches, swales, pools, window wells
 and creek banks do, and a flight with 8-11 cm scatter can invent one. If
 so, the map's raw count overstates lawn problems badly, and a depth cap or
