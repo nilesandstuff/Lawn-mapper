@@ -26,6 +26,9 @@ go in this file (or anywhere in the repository): lots are named by a label.
   roofs, fills low spots, traces runoff and measures the ground beside each
   building, in 2-5 s a lot. `node water/tools/lowspots.mjs` with WATER_LOTS;
   workflow "Water" runs it and the tests.
+- **Over the 104-map corpus (H9)** it runs on 98, and reports a low spot on
+  59% of lawns -- many of them far too deep to be lawn hollows (S5). That
+  needs sorting out before the field check.
 - **What it can see is now measured on made-up ground (H8), not yet on real
   wet spots.** Roughly: a spot holding 5 cm or more of water, 8 m or more
   across, is found most of the time; anything 3 m across, or holding under
@@ -210,6 +213,39 @@ seams (H1: a 2 cm step), and things that are not ground at all; real
 detection will be lower and false spots higher. H8 is the ceiling, not the
 forecast.
 
+### H9. The low-spot map over the locked corpus (water session, 2026-10-16)
+
+Workflow "W. Water tool", task corpus, run 38962100110 (4:28 PM EDT): the
+locked set, 104 maps (fingerprint 131u7jm), each its property line plus
+30 m, the lidar picked by the shade map's own lidarAt. Maps are numbered,
+never named.
+
+- **Ran on 98 of 104**; 6 have no public lidar on AWS. 49 different
+  flights in 23 states; **only 13 maps are in West Michigan** (Kent 2016 x9,
+  Ottawa 2016 x4). The corpus is a national sample, not the owner's area.
+- Ground points per m^2 over open ground: **median 3.2** (10th-90th 1.5-9.0).
+  Scatter (H6's measure): **median 4.4 cm**, worst 11.5 cm. Noise floor:
+  **median 3.4 cm** (10th-90th 1.6-6.7 cm); 4 lots over 10 cm, where the
+  map can see almost nothing.
+- **58 of 98 lawns (59%) carry at least one reported low spot**: 133 spots
+  on lawns, 205 on the lots. Where there is one, it covers a median 4% of
+  the lawn.
+- **Many are deep**: the deepest spot on a lawn is over 25 cm on about 30
+  lawns, up to 104 cm. A lawn hollow does not hold a meter of water; these
+  are almost certainly built or wet features -- ponds, ditches and swales,
+  in-ground pools, window wells, a creek -- or ground the flight misread.
+  S5 below. **Not yet separated from real lawn hollows.**
+- Beside the house (91 lots with a roof on the lot): ground falls toward the
+  house along a median **8%** of the outline; **10 lots** have a quarter or
+  more falling toward it; a median **22%** of the outline meets the code's
+  5% fall. See S6 before reading that last number as a fact about houses.
+- 1.7 s a lot (median) on GitHub's runner.
+
+Lawn Mapper's zone answered **403 to every request from GitHub's runner**
+(the first corpus run, 38958512969: 0 of 104), so the workflow tools pick
+the lidar by importing worker/src/shade.js's lidarAt instead of asking
+/api/shade/lidar. The water Worker (on Cloudflare) is not refused.
+
 ---
 
 ## SPECULATION
@@ -244,3 +280,22 @@ The roof rule (no ground, 2 m+ up, mostly single returns) looked right on
 three maps by eye. Not measured against footprints. A low-hanging conifer
 with no ground under it could pass as a roof; a flat roof covered by
 overhanging bare branches could fail.
+
+### S5. The deep spots on lawns are features, not hollows
+
+H9: about 30 of 98 lawns have a "low spot" over 25 cm deep. Lawns do not
+hold that; retention ponds, roadside ditches, swales, pools, window wells
+and creek banks do, and a flight with 8-11 cm scatter can invent one. If
+so, the map's raw count overstates lawn problems badly, and a depth cap or
+a check against the photo (open water, a pool's edge) belongs before the
+field check scores it. Untested: no picture of these lots has been looked
+at (the log names none, on purpose).
+
+### S6. The fall beside the house reads flatter than it is
+
+Only a median 22% of house outlines "meet 5%" (H9). The slope is a plane
+through 5 x 5 m of the smoothed surface around each point 0.5-3 m out, so
+part of that window often lies on the flatter yard beyond the foundation
+strip, and the 0.8 m kernel softens the strip's own slope. Both push the
+measure toward flat. The "falls toward the house" share (median 8%) is the
+safer number to act on; neither is checked against a level and a tape.
