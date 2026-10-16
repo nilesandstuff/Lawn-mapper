@@ -53,7 +53,10 @@ check('safeNext lets a sign-in land on the home dashboard, and nowhere else',
   const t = toolsFor('lawnmap.nilesandstuff.com');
   check('the tools open on the right hosts',
     t.find((x) => x.id === 'shade').url === 'https://lawnmap.nilesandstuff.com/shade?map={id}'
-    && t.find((x) => x.id === 'water').url === 'https://water.nilesandstuff.com/?map={id}');
+    && toolsFor('lawnmap.nilesandstuff.com', { admin: true }).find((x) => x.id === 'water').url === 'https://water.nilesandstuff.com/?map={id}');
+  check('a tool still being built is listed for an admin only',
+    !t.some((x) => x.id === 'water')
+    && toolsFor('lawnmap.nilesandstuff.com', { admin: true }).some((x) => x.id === 'water'));
   check('every tool a tool needs is a tool', TOOLS.every((x) => x.needs.every((n) => TOOLS.some((y) => y.id === n))));
 }
 
@@ -119,6 +122,14 @@ let guestCookie;
     moved === 1 && mine.body.map?.tools?.shade?.data?.erased?.length === 3 && mine.body.signedIn === true, JSON.stringify(mine.body));
   const left = await env.DB.prepare('SELECT COUNT(*) AS n FROM guests').first();
   check('and the guest is gone', Number(left.n) === 0);
+
+  const plain = await call(env, req('/api/tools', { cookie: `${SESSION_COOKIE}=${token}` }));
+  check('an ordinary account is not shown a tool still being built',
+    plain.res.status === 200 && !plain.body.tools.some((x) => x.id === 'water'));
+  const boss = await findOrCreateUser({ ...env, ADMIN_EMAILS: 'boss@example.test' }, { email: 'boss@example.test', provider: 'email', subject: 'boss' });
+  const bossSession = await createSession(env, boss.id);
+  const admin = await call(env, req('/api/tools', { cookie: `${SESSION_COOKIE}=${bossSession.token}` }));
+  check('an admin is', admin.body.tools.some((x) => x.id === 'water'), JSON.stringify(admin.body));
 
   const many = await call(env, req('/api/maps/new', { method: 'POST', body: { address: '3 Pine', lng: 1, lat: 1, source: 'shade' }, cookie: `${SESSION_COOKIE}=${token}` }));
   check('an account keeps more than one', many.res.status === 200 && many.body.id);

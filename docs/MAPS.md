@@ -35,7 +35,7 @@ The contract every tool builds against (owner, 2026-10-16). The core session own
 | lawn | Lawn Mapper | none | `https://lawnmap.<home>/?map={id}` |
 | slices | Calibrate product usage by area | lawn | `https://lawnmap.<home>/?map={id}&tool=slices` |
 | shade | Shade analyzer | none (the map's address and property line) | `https://lawnmap.<home>/shade?map={id}` |
-| water | Water map | shade | `https://water.<home>/?map={id}` |
+| water | Water map (admin only for now) | shade | `https://water.<home>/?map={id}` |
 
 A new tool is added to `TOOLS` by the core session, on request.
 
@@ -66,4 +66,4 @@ Only what it needs to pick up where the person left off. Derived numbers that ca
 
 ## Status, worked out on the dashboard
 
-For each tool (home/public/dashboard.js `toolState`): done when it has a part written after every tool it needs last changed (for `lawn`, the map's own `at`, once it has a lawn); needs an update when one of them changed after it; ready when every tool it needs is done and it has no part yet; locked when one is not done. A tool marked `soon` in `TOOLS` shows as coming soon.
+For each tool (home/public/dashboard.js `toolState`): done when it has a part written after every tool it needs last changed (for `lawn`, the map's own `at`, once it has a lawn); needs an update when one of them changed after it; ready when every tool it needs is done and it has no part yet; locked when one is not done. A tool marked `soon` in `TOOLS` shows as coming soon. A tool marked `admin` is still being built: `/api/tools` lists it only for an admin account, so nobody else sees it at all (the water map, owner 2026-10-16).

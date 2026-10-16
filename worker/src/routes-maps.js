@@ -66,7 +66,10 @@ const limitAnswer = {
 export async function handleMaps(request, env, url, origin, ctx, json) {
   const path = url.pathname;
   if (path === '/api/tools') {
-    return json({ tools: toolsFor(url.host) }, 200, origin);
+    const me = await currentUser(request, env, ctx).catch(() => null);
+    const res = json({ tools: toolsFor(url.host, { admin: me?.role === 'admin' }) }, 200, origin);
+    res.headers.set('Cache-Control', 'no-store');
+    return res;
   }
   if (!accountsEnabled(env)) return json({ error: 'accounts-disabled' }, 501, origin);
 
