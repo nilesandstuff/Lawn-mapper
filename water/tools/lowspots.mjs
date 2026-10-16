@@ -9,8 +9,8 @@
  *
  *   WATER_LOTS='a,42.9,-85.7' OUT=out node water/tools/lowspots.mjs
  *
- * For each lot: which cloud (the live shade map's public /api/shade/lidar,
- * the same ranking the shade page uses), the points over a box LOT_PAD m
+ * For each lot: which cloud (the shade map's lidarAt, worker/src/shade.js,
+ * the code behind /api/shade/lidar), the points over a box LOT_PAD m
  * wider than the lot on each side (a low spot is judged on its whole
  * catchment, not on the lot's edge), and then lib/lowspots.js.
  */
@@ -20,11 +20,11 @@ import { join } from 'node:path';
 import { PNG } from 'pngjs';
 
 import { pointsIn, toMerc, mercScale } from '../lib/ept.js';
-import { nodeIo, fetchRetry } from '../lib/node-io.js';
+import { lidarAt } from '../../worker/src/shade.js';
+import { nodeIo } from '../lib/node-io.js';
 import { analyse, spotRecords } from '../lib/lowspots.js';
 import { renderMap } from '../lib/render.js';
 
-const LIDAR_API = process.env.LIDAR_API || 'https://lawnmap.nilesandstuff.com/api/shade/lidar';
 const PAD = Number(process.env.LOT_PAD || 40);
 
 export function parseLots(text) {
@@ -38,7 +38,7 @@ export function parseLots(text) {
 
 async function one(lot, outDir) {
   const t0 = Date.now();
-  const pick = await fetchRetry(`${LIDAR_API}?lng=${lot.lng}&lat=${lot.lat}`, 'json');
+  const pick = await lidarAt(lot.lng, lot.lat);
   const cloud = pick?.clouds?.[0];
   if (!cloud) return { label: lot.label, error: 'no public lidar over this lot' };
   const k = mercScale(lot.lat);

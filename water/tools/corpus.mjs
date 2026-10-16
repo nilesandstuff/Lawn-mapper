@@ -6,7 +6,8 @@
  * Reads the maps the way workflow 17 does (tools/corpus-db.js, one
  * read-only query; tools/lawn-set.js for the locked list -- both the core
  * session's, imported, not changed). For each: the newest public lidar
- * (the live shade map's /api/shade/lidar), the property line plus 30 m, and
+ * (the shade map's lidarAt, worker/src/shade.js, imported), the property
+ * line plus 30 m, and
  * lib/site.js. NOTHING IS WRITTEN anywhere but the runner's scratch folder.
  *
  * THE REPOSITORY IS PUBLIC, and these are people's homes: the log names a
@@ -18,10 +19,10 @@
 
 import { query } from '../../tools/corpus-db.js';
 import { lawnSetClause, lawnSetDescription } from '../../tools/lawn-set.js';
-import { nodeIo, fetchRetry } from '../lib/node-io.js';
+import { lidarAt } from '../../worker/src/shade.js';
+import { nodeIo } from '../lib/node-io.js';
 import { runSite } from '../lib/site.js';
 
-const LIDAR_API = process.env.LIDAR_API || 'https://lawnmap.nilesandstuff.com/api/shade/lidar';
 const LIMIT = Number(process.env.LIMIT || 0);
 
 const parse = (t) => { try { return JSON.parse(t); } catch { return null; } };
@@ -43,7 +44,10 @@ async function main() {
   console.log(`${maps.length} maps read; running ${todo.length}.\n`);
 
   const io = nodeIo();
-  const pickCloud = (lng, lat) => fetchRetry(`${LIDAR_API}?lng=${lng}&lat=${lat}`, 'json');
+  /* The shade map's own pick (worker/src/shade.js lidarAt, the code behind
+     /api/shade/lidar), run here: Lawn Mapper's zone refuses GitHub's runners
+     (403 on all 104, 2026-10-16). */
+  const pickCloud = (lng, lat) => lidarAt(lng, lat);
   const done = [];
   for (let k = 0; k < todo.length; k++) {
     const tag = `#${k + 1}`;
@@ -58,6 +62,12 @@ async function main() {
     } catch (e) {
       console.log(`${tag}: failed -- ${String(e.message).replace(/-?\d+\.\d{3,}/g, '…')}`);
       done.push({ error: e.message });
+      // the same failure five times running is the run's problem, not five maps'
+      const last = done.slice(-5);
+      if (last.length === 5 && last.every((d) => d.error && d.error === e.message)) {
+        console.log('Stopping: the last five maps failed the same way.');
+        break;
+      }
     }
   }
 
