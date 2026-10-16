@@ -206,4 +206,4 @@ message to you says so -- these are the rules:
     session answers with a one-time scheduled Routine into it, as with the
     features session.
 
-  water session     (see docs/CORE-TO-FEATURES.md for its id)   branch claude/feature-water-tool
+  water session     session_01BRMHw2UgvcLy5957Rsxivs   branch claude/feature-water-tool
