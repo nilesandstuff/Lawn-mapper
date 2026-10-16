@@ -292,6 +292,10 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
     /** The erased mask (Uint8Array per 1 m cell), or null when nothing is erased. */
     erased: () => (er?.any ? er.mask : null),
     erasedCount: () => er?.count || 0,
+    /** The erased cells as a sorted list of indices (kept on the server with the map). */
+    erasedCells() { if (!er?.any) return []; const out = []; for (let k = 0; k < er.mask.length; k++) if (er.mask[k]) out.push(k); return out; },
+    /** Cells erased last time, back out of the model (one stroke, so one undo puts them all back). */
+    restore(cells) { if (!er || !cells?.length) return; er.erase(cells.filter((k) => Number.isInteger(k) && k >= 0 && k < er.mask.length)); er.end(); draw(); },
     /** The blocks shown or hidden (another step may show them beside its own picture). */
     setVisible(on) { for (const id of ids) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'); },
     /** Shown and listening, or hidden with the map left to another step. */
