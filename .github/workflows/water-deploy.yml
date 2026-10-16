@@ -1,12 +1,16 @@
 name: W. Water tool
 
 # The lawn water tool (water session): its own folder (water/), its own
-# tests, and later its own Worker at water.<home domain>. Nothing here
-# touches Lawn Mapper, the shade map or the home page.
+# tests and its own Worker at water.<home domain>. Nothing here touches
+# Lawn Mapper, the shade map or the home page.
 #
-# FREE. The GitHub runner and public data only (USGS lidar on AWS).
+# FREE. The GitHub runner, Cloudflare's free Worker, and public data only
+# (USGS lidar on AWS; addresses, property lines and photos asked of Lawn
+# Mapper's own routes).
 #
 #   tests     the water tests (made-up ground with known answers)
+#   deploy    the tests, then the water site to water.<home domain> (the
+#             domain derived from vars.CUSTOM_DOMAIN, as the home page's is)
 #   limits    what the low-spot map can find, on made-up ground: the table in
 #             water/FINDINGS.md H8, about 2 minutes
 #   corpus    the low-spot map over the locked training maps (the 104 with
@@ -24,7 +28,7 @@ on:
         required: true
         default: tests
         type: choice
-        options: [tests, limits, corpus, lowspots]
+        options: [tests, deploy, limits, corpus, lowspots]
 
 permissions:
   contents: read
@@ -41,7 +45,38 @@ jobs:
       - run: npm ci --no-audit --no-fund
 
       - name: Tests
-        run: node water/test/lowspots.test.js
+        run: |
+          node water/test/lowspots.test.js
+          node water/test/site.test.js
+
+      - name: Deploy the water site
+        if: ${{ inputs.task == 'deploy' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CUSTOM_DOMAIN: ${{ vars.CUSTOM_DOMAIN }}
+        run: |
+          node water/tools/prepare.mjs
+          if npx wrangler deploy --config water/wrangler.toml > water-deploy.log 2>&1; then
+            tail -8 water-deploy.log
+            d=$(sed -n 's/^pattern = "\(.*\)"$/\1/p' water/wrangler.toml)
+            echo "WATER_STATE=live at https://$d" >> "$GITHUB_ENV"
+          else
+            tail -30 water-deploy.log
+            echo "WATER_STATE=did not deploy -- see the step above" >> "$GITHUB_ENV"
+            exit 1
+          fi
+
+      - name: Is it answering
+        if: ${{ inputs.task == 'deploy' }}
+        run: |
+          for i in 1 2 3 4 5 6; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://${WATER_DOMAIN}/" || true)
+            api=$(curl -s -o /dev/null -w '%{http_code}' "https://${WATER_DOMAIN}/api/shade/lidar?lng=-85.6&lat=42.9" || true)
+            if [ "$code" = 200 ] && [ "$api" = 200 ]; then echo "page $code, lidar search $api"; exit 0; fi
+            echo "page $code, lidar search $api -- waiting for the new domain"; sleep 20
+          done
+          echo "WATER_STATE=${WATER_STATE} (but not answering yet: a new custom domain can take a few minutes)" >> "$GITHUB_ENV"
 
       - name: What the low-spot map can find
         if: ${{ inputs.task == 'limits' }}
@@ -69,5 +104,6 @@ jobs:
             limits)   tail -40 limits.txt 2>/dev/null || echo "no table: see the step above" ;;
             corpus)   sed -n '/=====/,$p' corpus.txt 2>/dev/null || echo "no summary: see the step above" ;;
             lowspots) cat lowspots.txt 2>/dev/null || echo "no lots run: see the step above" ;;
+            deploy)   echo "Water site: ${WATER_STATE:-not deployed -- see the steps above}" ;;
             *)        echo "Water tests: ${{ job.status }}" ;;
           esac

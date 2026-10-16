@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lawn Water</title>
+<meta name="description" content="Where water stands on your lawn, from the free USGS lidar survey: low spots, where runoff goes, and the ground beside your house.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<style>
+  :root { --bg: #f6f8f7; --fg: #17201c; --dim: #5d6b64; --card: #fff; --line: #d9e1dd; --accent: #1f6fd1; --bad: #c62828; --warn: #b26a00; --good: #2e7d32; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #101513; --fg: #e7eeea; --dim: #9aa8a1; --card: #19201d; --line: #2c3631; --accent: #6aa8ff; --bad: #ff6b6b; --warn: #ffb74d; --good: #81c784; }
+  }
+  :root[data-theme="dark"] { --bg: #101513; --fg: #e7eeea; --dim: #9aa8a1; --card: #19201d; --line: #2c3631; --accent: #6aa8ff; --bad: #ff6b6b; --warn: #ffb74d; --good: #81c784; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 1.5rem; margin: 8px 0 4px; }
+  p.lede { color: var(--dim); margin: 0 0 16px; }
+  form { display: flex; gap: 8px; flex-wrap: wrap; }
+  input[type=text] { flex: 1 1 240px; min-width: 0; padding: 10px 12px; font-size: 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--fg); }
+  button { padding: 10px 14px; font-size: 16px; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; }
+  button.plain { background: transparent; color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  #candidates { display: grid; gap: 6px; margin-top: 8px; }
+  #candidates button { text-align: left; background: var(--card); color: var(--fg); border-color: var(--line); }
+  .status { margin: 12px 0; color: var(--dim); min-height: 1.4em; }
+  .status.bad { color: var(--bad); }
+  .stage { position: relative; width: 100%; background: #000; border-radius: 10px; overflow: hidden; margin-top: 8px; }
+  .stage canvas { display: block; width: 100%; height: auto; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 14px; color: var(--dim); margin: 8px 0 0; }
+  .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 2px; vertical-align: -1px; margin-right: 5px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-top: 14px; }
+  .card h2 { font-size: 1.05rem; margin: 0 0 6px; }
+  .card ul { margin: 6px 0 0; padding-left: 20px; }
+  .dim { color: var(--dim); font-size: 14px; }
+  label.toggle { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; color: var(--dim); margin-right: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Lawn Water</h1>
+  <p class="lede">Where rain would stand on a lawn, where it runs, and whether the ground falls away from the house, from the free USGS lidar survey of the ground.</p>
+
+  <form id="find">
+    <input type="text" id="address" placeholder="Street address, city, state" autocomplete="street-address" aria-label="Address">
+    <button type="submit" id="go">Map it</button>
+    <button type="button" class="plain" id="here">Use where I am</button>
+  </form>
+  <div id="candidates" hidden></div>
+  <div id="status" class="status"></div>
+
+  <div id="result" hidden>
+    <div class="stage"><canvas id="view"></canvas></div>
+    <div class="legend">
+      <span><i style="background:#1e6bff"></i>holds water</span>
+      <span><i style="background:#22d3ee"></i>runoff gathers</span>
+      <span><i style="background:#e53935"></i>ground falls toward the house</span>
+      <span><i style="background:#ffb300"></i>falls away, under 5%</span>
+      <span><i style="background:#43a047"></i>falls away 5%+</span>
+      <span><i style="background:#ffeb3b"></i>property line</span>
+    </div>
+    <div style="margin-top:8px">
+      <label class="toggle"><input type="checkbox" id="show-flow" checked> runoff</label>
+      <label class="toggle"><input type="checkbox" id="show-grade" checked> beside the house</label>
+      <label class="toggle"><input type="checkbox" id="show-photo" checked> photo</label>
+    </div>
+    <div id="report"></div>
+  </div>
+
+  <div class="card">
+    <h2>What this can and can't see</h2>
+    <ul class="dim">
+      <li>The ground as the laser saw it on the survey date shown. Anything regraded, built or planted since is not in it.</li>
+      <li>Hollows about 25 ft across or wider that hold about 2 inches or more are usually found. Ones under about 10 ft across are not: the survey is too coarse.</li>
+      <li>It does not know where downspouts empty or how fast the soil drinks. A spot here is where water <em>would</em> collect if it didn't soak in first.</li>
+      <li>Storm drains and yard drains look like ponds to it, because it can't see the pipe.</li>
+    </ul>
+  </div>
+  <p class="dim">An early test. Lidar: USGS 3DEP. Property lines and photos: <a href="__LAWNMAP__">Lawn Mapper</a>. Nothing you type is saved.</p>
+</main>
+<script type="module" src="/app.js"></script>
+</body>
+</html>
