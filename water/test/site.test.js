@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 
-import { upstreamFor } from '../src/index.js';
+import worker, { upstreamFor, isAdmin } from '../src/index.js';
 import { waterDomainFor, wranglerFor } from '../tools/prepare.mjs';
 import { gridFor } from '../lib/surface.js';
 import { maskOf, boundsOf } from '../lib/geo.js';
@@ -53,6 +53,49 @@ test('a property line lands on the right cells, holes and all', () => {
   const cells = mask.reduce((s, v) => s + v, 0);
   assert.ok(Math.abs(cells - (400 - 16)) <= 30, `${cells} cells, expected about 384`);
   assert.deepEqual(boundsOf({ type: 'Polygon', coordinates: [sq(10, 30)] }).map((v) => +v.toFixed(6)), [e(10), n(10), e(30), n(30)].map((v) => +v.toFixed(6)));
+});
+
+/** A Lawn Mapper stand-in: answers /api/auth/me from the cookie, and anything else with 200. */
+const lawnmap = (who) => ({
+  fetch: async (req) => {
+    const u = new URL(req.url);
+    if (u.pathname === '/api/auth/me') {
+      if (who === 'down') throw new Error('unreachable');
+      const c = req.headers.get('Cookie') || '';
+      return new Response(JSON.stringify({ user: c.includes('admin') ? { admin: true } : c.includes('user') ? { admin: false } : null }));
+    }
+    return new Response('{"ok":true}', { headers: { 'Content-Type': 'application/json' } });
+  },
+});
+const env = (who, extra = {}) => ({
+  LAWNMAP: lawnmap(who), LAWNMAP_HOST: 'lawnmap.example.com', ADMIN_ONLY: '1',
+  ASSETS: { fetch: async () => new Response('<html>page</html>', { headers: { 'Content-Type': 'text/html' } }) }, ...extra,
+});
+const get = (path, cookie = '', e = env()) => worker.fetch(new Request(`https://water.example.com${path}`, { headers: { Cookie: cookie } }), e);
+
+test('admin only: the admin gets the page and the data, nobody else gets either', async () => {
+  assert.equal((await get('/', 'lm_session=admin')).status, 200);
+  assert.equal((await get('/api/geocode?q=x', 'lm_session=admin')).status, 200);
+  for (const c of ['', 'lm_session=user', 'lm_guest=g']) {
+    const page = await get('/', c);
+    assert.equal(page.status, 404, `page for "${c}"`);
+    assert.match(await page.text(), /isn't open yet/);
+    assert.equal((await get('/lib/site.js', c)).status, 404);
+    assert.equal((await get('/api/maps/one?id=1', c)).status, 404);
+    assert.equal((await get('/api/shade/lidar?lng=1&lat=2', c)).status, 404);
+  }
+  // sign-in itself is never gated
+  assert.equal((await get('/api/auth/me', '')).status, 200);
+  // the gated page is never cached for someone else
+  assert.match((await get('/', 'lm_session=admin')).headers.get('Cache-Control'), /no-store/);
+});
+
+test('admin only fails closed, and opens when ADMIN_ONLY is not "1"', async () => {
+  assert.equal(await isAdmin(new Request('https://w/', { headers: { Cookie: 'admin' } }), env('down')), false);
+  assert.equal(await isAdmin(new Request('https://w/', { headers: { Cookie: 'admin' } }), { LAWNMAP_HOST: 'x' }), false);
+  assert.equal((await get('/', 'lm_session=admin', env('down'))).status, 404);
+  assert.equal((await get('/', '', env('up', { ADMIN_ONLY: '0' }))).status, 200);
+  assert.match(wranglerFor('water.example.com', 'lawnmap.example.com'), /ADMIN_ONLY = "1"/);
 });
 
 let failed = 0;

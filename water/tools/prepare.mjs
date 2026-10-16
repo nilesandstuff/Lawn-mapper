@@ -22,7 +22,7 @@ export function waterDomainFor(custom) {
   return parts.length >= 3 ? `water.${parts.slice(1).join('.')}` : null;
 }
 
-export function wranglerFor(domain, lawnmap) {
+export function wranglerFor(domain, lawnmap, adminOnly = true) {
   return `# Written by water/tools/prepare.mjs at deploy time. Not checked in.
 name = "lawn-water"
 main = "src/index.js"
@@ -41,6 +41,8 @@ service = "lawn-mapper"
 
 [vars]
 LAWNMAP_HOST = "${lawnmap}"
+# Admin only until it ships (owner, 2026-10-16). "0" opens it to everyone.
+ADMIN_ONLY = "${adminOnly ? '1' : '0'}"
 
 [[routes]]
 pattern = "${domain}"

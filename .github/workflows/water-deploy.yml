@@ -60,7 +60,8 @@ jobs:
           if npx wrangler deploy --config water/wrangler.toml > water-deploy.log 2>&1; then
             tail -8 water-deploy.log
             d=$(sed -n 's/^pattern = "\(.*\)"$/\1/p' water/wrangler.toml)
-            echo "WATER_STATE=live at https://$d" >> "$GITHUB_ENV"
+            who=$(grep -q 'ADMIN_ONLY = "1"' water/wrangler.toml && echo "admin only" || echo "open to everyone")
+            echo "WATER_STATE=live ($who) at https://$d" >> "$GITHUB_ENV"
           else
             tail -30 water-deploy.log
             echo "WATER_STATE=did not deploy -- see the step above" >> "$GITHUB_ENV"
@@ -70,16 +71,18 @@ jobs:
       - name: Is it answering
         if: ${{ inputs.task == 'deploy' }}
         run: |
+          d=$(sed -n 's/^pattern = "\(.*\)"$/\1/p' water/wrangler.toml)
           for i in 1 2 3 4 5 6; do
-            code=$(curl -s -o /dev/null -w '%{http_code}' "https://${WATER_DOMAIN}/" || true)
-            api=$(curl -s -o /dev/null -w '%{http_code}' "https://${WATER_DOMAIN}/api/shade/lidar?lng=-85.6&lat=42.9" || true)
-            if [ "$code" = 200 ] && [ "$api" = 200 ]; then echo "page $code, lidar search $api"; exit 0; fi
-            # the zone refuses GitHub's runners (403; the same refusal Lawn Mapper gives them, FINDINGS H9)
+            body=$(curl -s "https://$d/" || true)
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://$d/" || true)
+            # admin only until it ships: signed out, the runner should be shown the "not open yet" page
+            if echo "$body" | grep -q "isn't open yet"; then echo "answering, admin only (signed out: not open yet)"; exit 0; fi
+            if [ "$code" = 200 ]; then echo "answering, open to everyone"; exit 0; fi
             if [ "$code" = 403 ]; then
               echo "WATER_STATE=${WATER_STATE} (the zone answers GitHub's runner 403, so it can't be checked from here)" >> "$GITHUB_ENV"
               exit 0
             fi
-            echo "page $code, lidar search $api -- waiting for the new domain"; sleep 20
+            echo "page $code -- waiting for the new domain"; sleep 20
           done
           echo "WATER_STATE=${WATER_STATE} (but not answering yet: a new custom domain can take a few minutes)" >> "$GITHUB_ENV"
 

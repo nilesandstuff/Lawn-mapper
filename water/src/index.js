@@ -16,6 +16,14 @@
  *             answer only Lawn Mapper's origin in a browser.
  *
  * Nothing else under /api/ is passed on, and this Worker stores nothing.
+ *
+ * ADMIN ONLY UNTIL IT SHIPS (owner, 2026-10-16: "make the water site
+ * admin-only too until we're ready to ship"). While ADMIN_ONLY is "1"
+ * (water/tools/prepare.mjs writes it), every request but /api/auth/* first
+ * asks Lawn Mapper who this is -- /api/auth/me with the visitor's own
+ * cookie, the account shared across the home domain -- and anyone who is
+ * not the admin gets a "not open yet" page (404) and no data. It fails
+ * closed: no binding, or no answer, is no.
  */
 
 export const PROXIED = ['/api/geocode', '/api/parcel', '/api/imagery', '/api/county-imagery', '/api/shade/lidar'];
@@ -30,12 +38,46 @@ export function upstreamFor(url, lawnmapHost, method = 'GET') {
   return pass ? `https://${lawnmapHost}${url.pathname}${url.search}` : null;
 }
 
+/** Is this request from the admin? Asked of Lawn Mapper with the visitor's cookie; any failure is no. */
+export async function isAdmin(request, env) {
+  if (!env.LAWNMAP || !env.LAWNMAP_HOST) return false;
+  try {
+    const res = await env.LAWNMAP.fetch(new Request(`https://${env.LAWNMAP_HOST}/api/auth/me`, {
+      headers: { Cookie: request.headers.get('Cookie') || '', Accept: 'application/json' },
+    }));
+    if (!res.ok) return false;
+    return (await res.json())?.user?.admin === true;
+  } catch {
+    return false;
+  }
+}
+
+export function notOpenYet(home) {
+  const dash = home ? `https://${home}/dashboard` : '/';
+  return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Lawn Water</title>
+<meta name="robots" content="noindex"><style>body{font:16px/1.5 system-ui,sans-serif;max-width:560px;margin:0 auto;padding:32px 16px;background:#f6f8f7;color:#17201c}@media (prefers-color-scheme:dark){body{background:#101513;color:#e7eeea}a{color:#6aa8ff}}</style></head>
+<body><h1>Lawn Water isn't open yet</h1><p>It's being tested. <a href="${dash}">Back to your maps</a></p></body></html>`, {
+    status: 404, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
+  });
+}
+
 const notFound = () => new Response(JSON.stringify({ error: 'Not found' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
+    const signIn = url.pathname.startsWith('/api/auth/');
+    if (env.ADMIN_ONLY === '1' && !signIn && !(await isAdmin(request, env))) {
+      return url.pathname.startsWith('/api/') ? notFound() : notOpenYet(env.LAWNMAP_HOST?.split('.').slice(1).join('.'));
+    }
+    if (!url.pathname.startsWith('/api/')) {
+      const res = await env.ASSETS.fetch(request);
+      if (env.ADMIN_ONLY !== '1') return res;
+      // nothing behind the gate is cached anywhere a non-admin could be served it
+      const out = new Response(res.body, res);
+      out.headers.set('Cache-Control', 'private, no-store');
+      return out;
+    }
     const up = upstreamFor(url, env.LAWNMAP_HOST, request.method);
     if (!up) return notFound();
     if (env.LAWNMAP) return env.LAWNMAP.fetch(new Request(up, request));
