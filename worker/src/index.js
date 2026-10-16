@@ -1793,7 +1793,8 @@ export default {
           return new Response(
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             + '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-            + `  <url><loc>${url.origin}/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>\n`
+            /* The front page is not listed: its canonical is the home page
+               (owner, 2026-10-16), which has a sitemap of its own. */
             /* The shade analyzer, a page of its own (owner, 2026-10-13), at /shade:
                the site's asset serving answers /shade.html with a 307 to it. */
             + `  <url><loc>${url.origin}/shade</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>\n`

@@ -1023,8 +1023,8 @@ if (typeof window !== 'undefined') {
 
   /* The saved maps, as the list itself would show them. */
   window.__lmSaves = () => ({
-    max: MAX_SAVES,
-    entries: (signedIn() ? state.saves : readLocalSaves()).map((s) => ({
+    max: state.saveMax || MAX_SAVES,
+    entries: state.saves.map((s) => ({
       id: s.id, address: s.address, mode: s.mode,
       model: s.model, squareFeet: s.squareFeet, at: s.at,
     })),
@@ -7729,10 +7729,10 @@ async function refreshAccount() {
    * holding goes up with it. Showing an empty list where three measurements
    * used to be would be the feature taking something away.
    */
-  if (state.user) {
-    await liftSavesToAccount();
-    if (state.tab === 'saved') renderSaves();
-  }
+  // Signed in or not: a list kept in this browser before the unified save goes
+  // up once (the newest as a guest's one map; all of them into an account).
+  await liftLocalSaves();
+  if (state.tab === 'saved') renderSaves();
 }
 
 /**
@@ -7860,74 +7860,100 @@ function writeLocalSaves(saves) {
   }
 }
 
-/* ------------------------------------------------ the store, either kind */
+/* -------------------------------------------- the store: one, on the server */
 /*
- * TWO STORES, ONE SHAPE, AND THE REST OF THE FILE CANNOT TELL THEM APART.
+ * ONE MAP, EVERY TOOL (owner, 2026-10-16): "there's not any actual browser
+ * saves, instead use the unified save even for logged out accounts".
  *
- * Signed out, a save lives in this browser and there is nowhere else for it to
- * go. Signed in, it lives in the account and follows the person to their
- * laptop -- which is the whole reason accounts exist here. Everything above
- * and below this point asks for "the saves" and gets them.
+ * Every save lives on the server, signed in or not. Signed out, this browser
+ * is a guest -- a cookie the server sets on the first save, shared with the
+ * shade map, the water map and the dashboard -- and a guest keeps ONE map.
+ * Signing in takes it into the account. The shade map, the slices and the
+ * water map keep their own parts of the same record (docs/MAPS.md), which a
+ * re-save from here never touches.
  *
- * The account copy is cached in `state.saves` so that drawing the list is not
- * a round trip: it is re-read after every write, and a stale list is the one
- * thing a list of your own measurements must not be.
+ * The only thing this browser still holds is a list made before the unified
+ * save shipped (lawnmapper.saves.v1), handed up once by liftLocalSaves().
+ *
+ * The list is cached in `state.saves` so drawing it is not a round trip, and
+ * re-read after every write.
  */
 const signedIn = () => Boolean(state.user);
 
-/** The saves, from wherever this visitor's live. */
+/** The saves, from the server: the account's, or this browser's guest's. */
 async function loadSaves() {
-  if (!signedIn()) return readLocalSaves();
   try {
     const out = await api('/api/maps');
     state.saves = Array.isArray(out.maps) ? out.maps : [];
-    // The Worker's own cap, not a second copy of the number here. Two
-    // constants for one rule drift, and this one is only ever shown to
-    // somebody as a promise about how many maps they get to keep.
+    // The Worker's own cap (1 for a guest, 50 for an account), not a second
+    // copy of the number here.
     if (Number.isFinite(out.max)) state.saveMax = out.max;
+    state.guest = out.guest === true;
     return state.saves;
   } catch {
     /*
-     * A network failure falls back to what this browser has rather than to an
-     * empty list. "Your saved maps are gone" is a far worse thing to say to
-     * somebody than showing them a slightly old copy.
+     * A network failure shows the last list this page saw rather than an
+     * empty one. "Your saved maps are gone" is a far worse thing to say than
+     * a slightly old copy.
      */
-    return state.saves.length ? state.saves : readLocalSaves();
+    return state.saves;
   }
 }
 
-/** Keep one. Writes where this visitor's saves live, and nowhere else. */
-async function putSave(entry) {
-  if (!signedIn()) {
-    const saves = readLocalSaves().filter((s) => s.id !== entry.id);
-    saves.unshift(entry);
-    writeLocalSaves(saves.slice(0, MAX_SAVES));
-    return;
-  }
+/*
+ * A GUEST'S SECOND MAP. Signed out, a visitor keeps one map; measuring a
+ * second asks them to choose, and the measurement stays on screen while they
+ * do: sign in and keep both, or let this one replace the saved one.
+ */
+function offerGuestChoice(entry, message) {
+  state.pendingSave = entry;
+  const bar = $('#guest-limit');
+  if (!bar) { setStatus(message, 'warn'); return; }
+  $('#guest-limit-why').textContent = message
+    || 'Signed out, you keep one map. Sign in to keep this one too, or replace the saved one with it.';
+  bar.hidden = false;
+}
+
+/** Keep one. A guest at its one map is asked what to do instead. */
+async function putSave(entry, { replace = false } = {}) {
+  if (state.job || state.reviewingId) return false; // queue and review work are kept by their own routes
   try {
-    await api('/api/maps', {
+    if (replace) {
+      for (const s of state.saves.filter((x) => x.id !== entry.id)) {
+        await api(`/api/maps?id=${encodeURIComponent(s.id)}`, { method: 'DELETE' });
+      }
+    }
+    const res = await fetch('/api/maps', {
       method: 'POST',
+      credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(entry),
     });
+    const out = await res.json().catch(() => ({}));
+    if (res.status === 501) return false; // a deployment with no account store keeps nothing, as before accounts
+    if (res.status === 409 && out.error === 'guest-limit') {
+      offerGuestChoice(entry, out.message);
+      return false;
+    }
+    if (!res.ok) throw new Error(String(res.status));
+    if (Number.isFinite(out.max)) state.saveMax = out.max;
+    state.guest = out.guest === true;
     state.saves = [entry, ...state.saves.filter((s) => s.id !== entry.id)];
+    state.savedId = entry.id;
+    if ($('#guest-limit')) $('#guest-limit').hidden = true;
+    return true;
   } catch {
     /*
-     * Kept locally when the account could not be reached, so the measurement
-     * is not lost -- and picked up by the next sign-in sweep, which is the
-     * same path that carries saves made before there was an account at all.
+     * Not kept, and said so: the map is still on screen, and the next change
+     * tries again. Quietly keeping it in this browser instead is exactly the
+     * second store the unified save exists to end.
      */
-    const saves = readLocalSaves().filter((s) => s.id !== entry.id);
-    saves.unshift(entry);
-    writeLocalSaves(saves.slice(0, MAX_SAVES));
+    setStatus('This map could not be saved just now. It is still here; the next change tries again.', 'warn');
+    return false;
   }
 }
 
 async function dropSave(id) {
-  if (!signedIn()) {
-    writeLocalSaves(readLocalSaves().filter((s) => s.id !== id));
-    return;
-  }
   try {
     await api(`/api/maps?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
     state.saves = state.saves.filter((s) => s.id !== id);
@@ -7935,43 +7961,39 @@ async function dropSave(id) {
 }
 
 /**
- * Hand this browser's saves up to the account, once.
+ * Hand up a list this browser kept before the unified save, once.
  *
- * SOMEBODY WHO MEASURED THREE LAWNS BEFORE SIGNING UP HAS NOT LOST THEM. That
- * is the entire job here, and it is the moment an account has to be worth
- * making: if the first thing signing in does is show an empty list where three
- * measurements used to be, the feature has taken something away.
- *
- * The account wins on a clash. A map that exists in both was measured on this
- * device and then again somewhere else, and the account's copy is the newer of
- * the two by definition -- it is the one that has been synced since. Sending
- * ours anyway would quietly overwrite a correction made on the laptop.
+ * SOMEBODY WHO MEASURED THREE LAWNS BEFORE THIS SHIPPED HAS NOT LOST THEM.
+ * Signed in, they all go to the account (the account's copy wins a clash: it
+ * is the one that has been synced since). Signed out, the newest becomes the
+ * guest's one map and the rest stay here, untouched, until a sign-in takes
+ * them up too -- the only thing this browser still keeps.
  */
-async function liftSavesToAccount() {
+async function liftLocalSaves() {
   const local = readLocalSaves();
   if (!local.length) return;
-
   try {
-    const existing = new Set((await api('/api/maps')).maps?.map((m) => m.id) || []);
+    const existing = new Set((await loadSaves()).map((m) => m.id));
     const fresh = local.filter((s) => !existing.has(s.id));
-    if (fresh.length) {
-      await api('/api/maps', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ maps: fresh }),
-      });
+    if (!fresh.length) { writeLocalSaves([]); return; }
+    const res = await fetch('/api/maps', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ maps: signedIn() ? fresh : fresh.slice(0, Math.max(0, (state.saveMax || 1) - existing.size)) }),
+    });
+    const out = await res.json().catch(() => ({}));
+    const up = new Set((out.maps || []).map((m) => m.id));
+    // Cleared only once safely up. Clearing first and failing would be the one
+    // outcome worse than not moving them at all.
+    writeLocalSaves(local.filter((s) => !up.has(s.id) && !existing.has(s.id)));
+    if (up.size && signedIn()) {
+      setStatus(`${up.size} map${up.size > 1 ? 's' : ''} from this browser moved into your account.`);
     }
-    /*
-     * Cleared only after they are safely up. Clearing first and failing would
-     * be the one outcome worse than not migrating at all.
-     */
-    writeLocalSaves([]);
-    if (fresh.length) {
-      setStatus(`${fresh.length} map${fresh.length > 1 ? 's' : ''} from this browser `
-        + 'moved into your account.');
-    }
-  } catch { /* tried again on the next sign-in */ }
+    await loadSaves();
+  } catch { /* tried again on the next visit */ }
 }
+const liftSavesToAccount = liftLocalSaves;
 
 /** Which arithmetic produced the shapes on screen, in words a save can carry. */
 function saveMode() {
@@ -8006,7 +8028,9 @@ function snapshotForSave() {
   const mode = saveMode();
 
   return {
-    id: saveKeyFor(state.chosen.label, state.detectedBy || state.model, mode),
+    /* A map opened from the dashboard stays that map, whatever the method
+       (owner, 2026-10-16: every tool updates the same saved map). */
+    id: state.adoptedId || saveKeyFor(state.chosen.label, state.detectedBy || state.model, mode),
     at: new Date().toISOString(),
     address: state.chosen.label,
     lng: state.chosen.lng,
@@ -8087,14 +8111,14 @@ async function renderSaves() {
    * being replaced by four maps is the list lying to you, briefly, about the
    * thing it exists to be trusted about.
    */
-  if (signedIn() && !state.saves.length) $('#saved-lead').textContent = 'Loading your maps…';
+  if (!state.saves.length) $('#saved-lead').textContent = 'Loading your maps…';
 
   const saves = await loadSaves();
   list.innerHTML = '';
 
   $('#saved-lead').textContent = saves.length
-    ? `${saves.length} of ${MAX_SAVES} kept. Opening one puts it back on the map.`
-    : 'Nothing saved yet. Measure a lawn and it is kept here automatically.';
+    ? `${saves.length} of ${state.saveMax || 1} kept. Opening one puts it back on the map.`
+    : 'Nothing saved yet. Measure a lawn and it is kept automatically.';
 
   /*
    * WHERE THESE ACTUALLY LIVE, which is a different answer per visitor.
@@ -8116,9 +8140,8 @@ async function renderSaves() {
       + `sign in on.${state.saveMax ? ` Up to ${state.saveMax} of them.` : ''}`;
     invite.hidden = true;
   } else {
-    note.textContent = 'Saved in this browser only — clearing your browser data '
-      + 'clears these.'
-      + (canOfferAccount() ? ' An account keeps them on every device instead.' : '');
+    note.textContent = 'Signed out, you keep one map, on this browser.'
+      + (canOfferAccount() ? ' Sign in to keep more, on every device; your map comes with you.' : '');
     invite.hidden = !canOfferAccount();
   }
 
@@ -13263,6 +13286,26 @@ $('#open-shade').addEventListener('click', async () => {
   else window.location.href = url;
 });
 
+/*
+ * A TOOL'S OWN PART OF THE MAP (docs/MAPS.md): what it needs to pick up where
+ * the person left off, kept beside the map and never inside the lawn mapper's
+ * record. Settled for a second, like the save, and dropped quietly on failure:
+ * it is a convenience, not the measurement.
+ */
+const toolTimers = {};
+function keepToolPart(tool, data) {
+  const entry = snapshotForSave();
+  if (!entry || state.job || state.reviewingId) return;
+  clearTimeout(toolTimers[tool]);
+  toolTimers[tool] = setTimeout(() => {
+    const at = state.saves.find((x) => x.id === entry.id)?.at || null;
+    fetch(`/api/maps/tool?id=${encodeURIComponent(entry.id)}&tool=${tool}`, {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data, basedOn: at }),
+    }).catch(() => {});
+  }, SAVE_DEBOUNCE_MS);
+}
+
 /** The lawn as planSegments wants it: one ring list per polygon, lng/lat. */
 function lawnRings() {
   return draw.getAll().features
@@ -13302,6 +13345,7 @@ function runSegments() {
   writeSegInputs();
   const plan = planSegments({ rings, targetSqFt: segSize(), widthFt: segWidth() });
   state.plan = plan;
+  keepToolPart('slices', { size: segSize(), width: segWidth() });
 
   map.getSource('segments').setData({
     type: 'FeatureCollection',
@@ -13645,6 +13689,10 @@ $('#address-form').addEventListener('submit', (e) => {
   e.preventDefault();
   if (failedMapShown()) return;
   locateNote('');
+  // A new address typed here is a new map; one opened from the dashboard
+  // (readMapLink) keeps the map it was opened as.
+  if (!state.keepAdopted) state.adoptedId = null;
+  state.keepAdopted = false;
   search($('#address').value.trim());
 });
 $('#btn-locate').addEventListener('click', () => { if (!failedMapShown()) useMyLocation(); });
@@ -14396,9 +14444,94 @@ $('#btn-finish').addEventListener('click', () => {
     return;
   }
   state.finishedPrint = lawnPrint();
-  setTab('plan');
-  setStatus('Measuring done. These tools work on the finished map.');
+  /*
+   * FINISH GOES TO THE DASHBOARD (owner, 2026-10-16): the map is saved, and
+   * every tool -- the slices, the shade map, the water map -- opens from
+   * there. Saved first, not left to the debounce, so the dashboard shows it.
+   * Without a home domain to go to (a workers.dev preview) the Workshop tab
+   * is still the way on.
+   */
+  const dash = dashboardUrl();
+  if (!dash) {
+    setTab('plan');
+    setStatus('Measuring done. These tools work on the finished map.');
+    return;
+  }
+  clearTimeout(saveTimer);
+  const entry = snapshotForSave();
+  if (!entry) return;
+  setStatus('Saving…');
+  putSave(entry).then((ok) => {
+    if (!ok) return;                 // a guest's second map: the bar says what to do
+    leavingOnPurpose = true;
+    window.location.href = dashboardUrl(entry.id);
+  });
 });
+
+/*
+ * THE DASHBOARD, on the home domain this site sits under (owner, 2026-10-16:
+ * nilesandstuff.com/dashboard). Null where there is no home domain to go to:
+ * localhost and *.workers.dev previews.
+ */
+function dashboardUrl(id) {
+  const host = location.hostname;
+  const parts = host.split('.');
+  if (parts.length < 3 || /\.(workers|pages)\.dev$/.test(host)) return null;
+  const q = id ? `?map=${encodeURIComponent(id)}` : '';
+  return `${location.protocol}//${parts.slice(1).join('.')}/dashboard${q}`;
+}
+
+/*
+ * ?map=<id> -- A MAP OPENED FROM THE DASHBOARD, and &tool=slices to go
+ * straight to "Calibrate product usage by area" on it. Read from the server
+ * (the account's map, or this browser's guest's), so the dashboard can hand
+ * any tool any map by its id. The slices' piece size and width come back from
+ * their own part of the map.
+ */
+async function readMapLink() {
+  const params = new URLSearchParams(location.search);
+  const id = params.get('map');
+  /* ?address= -- typed on the dashboard (an empty one opens on the address
+     entry, owner 2026-10-16): look it up here as if it had been typed here. */
+  const typed = (params.get('address') || '').trim();
+  if (typed && !id && !state.job) {
+    $('#address').value = typed.slice(0, 200);
+    $('#address-form').requestSubmit();
+    return;
+  }
+  if (!id || state.job) return;
+  let map;
+  try {
+    const res = await fetch(`/api/maps/one?id=${encodeURIComponent(id)}`, { credentials: 'same-origin' });
+    if (!res.ok) throw new Error(String(res.status));
+    map = (await res.json()).map;
+  } catch {
+    setStatus('That map could not be opened. It may belong to another account, or have been removed.', 'warn');
+    return;
+  }
+  if (!map) return;
+  state.openedTools = map.tools || {};
+  state.adoptedId = map.id;
+  /* A MAP STARTED IN ANOTHER TOOL (the shade map's own search) has an address
+     and no lawn yet: look the address up as if it were typed, and the lawn
+     drawn here is saved onto that same map. */
+  if (!Array.isArray(map.shapes) || !map.shapes.length) {
+    state.keepAdopted = true;
+    $('#address').value = String(map.address || '').slice(0, 200);
+    $('#address-form').requestSubmit();
+    return;
+  }
+  openMap(map);
+  if (params.get('tool') === 'slices' && Array.isArray(map.shapes) && map.shapes.length) {
+    state.finishedPrint = lawnPrint();
+    const kept = map.tools?.slices?.data;
+    if (kept?.size) $('#seg-size').value = String(kept.size);
+    if (kept?.width) $('#seg-width').value = String(kept.width);
+    setTab('plan');
+    const tool = $('#tool-segments');
+    if (tool.hidden) $('#open-calibrate').click();
+  }
+}
 
 for (const [id, delta] of [['#seg-size-minus', -SEGMENT_STEP_SQFT], ['#seg-size-plus', SEGMENT_STEP_SQFT]]) {
   $(id).addEventListener('click', () => {
@@ -14527,6 +14660,18 @@ window.addEventListener('hashchange', () => {
     // The allowance is larger in here, so the badge has to say so.
     refreshQuota();
     setStatus('Developer mode on. Pick "Testing" under AI method to control the prompt, cut and inversion.');
+  }
+});
+
+/* A guest's second map: sign in to keep both, or let it replace the saved one. */
+$('#guest-limit-signin')?.addEventListener('click', () => promptSignin({ force: true }));
+$('#guest-limit-replace')?.addEventListener('click', async () => {
+  const entry = state.pendingSave || snapshotForSave();
+  if (!entry) return;
+  if (await putSave(entry, { replace: true })) {
+    state.pendingSave = null;
+    setStatus('Saved. This is now your one map.');
+    if (state.tab === 'saved') renderSaves();
   }
 });
 
@@ -14727,6 +14872,17 @@ initMap()
    * would offer the shortcut to an empty list, or hide it from somebody whose
    * maps are about to load.
    */
+  .then(afterMap('the dashboard link', () => {
+    /* Where there is a dashboard, the tools open from it: the Workshop tab
+       goes, and "Your maps" leads there. */
+    const dash = dashboardUrl();
+    if (!dash || state.job) return;
+    $('#tab-plan').hidden = true;
+    const a = $('#maps-link');
+    a.href = dash;
+    a.hidden = false;
+  }))
+  .then(afterMap('the map link', readMapLink))
   .then(afterMap('the saved-map shortcut', async () => {
     if (state.worker) return;      // no account, so nothing to shortcut to
     const saves = await loadSaves();

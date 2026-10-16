@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your maps — nilesandstuff</title>
+<meta name="description" content="Your lawn maps, and every lawn tool that works on them.">
+<!-- One person's maps: nothing here is for search. -->
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#2f7d32">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<!--
+  THE DASHBOARD (owner, 2026-10-16): every map, and every tool that works on
+  it, in the order they build on one another. It is the way into every tool;
+  each one links back here. The rules it follows are docs/MAPS.md, and its
+  calls go to /api/maps* and /api/auth/*, which this site hands to Lawn
+  Mapper's Worker (home/src/index.js), so they are same-origin.
+-->
+<style>
+  :root {
+    --green: #2f7d32; --green-dark: #245f27; --ink: #16211a; --muted: #5d6b62;
+    --line: #dfe5e0; --bg: #f6f8f6; --card: #fff; --tint: #eef6ee;
+    --done: #2f7d32; --stale: #a15c00; --ready: #1f5f8b; --locked: #7b867f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --ink: #e8efe9; --muted: #a3b2a8; --line: #2c3a31; --bg: #121a15; --card: #18231c; --tint: #1d2b22;
+      --done: #6cc070; --stale: #e0a040; --ready: #6aaee0; --locked: #8a968e; }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink); background: var(--bg);
+  }
+  a { color: var(--green); }
+  @media (prefers-color-scheme: dark) { a { color: #6cc070; } }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; flex-wrap: wrap; }
+  header a.home { display: flex; align-items: center; gap: 10px; color: inherit; text-decoration: none; }
+  header img { width: 36px; height: 36px; }
+  header .name { font-size: 20px; font-weight: 700; }
+  #who { margin-left: auto; font-size: 14px; color: var(--muted); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  button, .btn {
+    font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; text-decoration: none;
+    border-radius: 10px; padding: 9px 14px; border: 1px solid var(--line);
+    background: var(--card); color: var(--ink); display: inline-block;
+  }
+  .btn.primary, button.primary { background: var(--green); color: #fff; border-color: var(--green); }
+  .btn.primary:hover, button.primary:hover { background: var(--green-dark); }
+  button.link { border: 0; background: none; padding: 0; color: var(--green); font-weight: 600; }
+  :focus-visible { outline: 3px solid #8fc99a; outline-offset: 2px; }
+  h1 { font-size: clamp(24px, 5vw, 30px); margin: 0 0 6px; letter-spacing: -0.01em; }
+  .lead { color: var(--muted); margin: 0 0 18px; }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 0 0 20px; }
+  .note { font-size: 14px; color: var(--muted); }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+    padding: 16px 16px 8px; margin: 0 0 14px;
+  }
+  .card.flash { border-color: var(--green); box-shadow: 0 0 0 3px rgba(47, 125, 50, 0.18); }
+  .card-top { display: flex; gap: 12px; align-items: baseline; justify-content: space-between; }
+  .card h2 { font-size: 18px; margin: 0; overflow-wrap: anywhere; }
+  .card .meta { font-size: 14px; color: var(--muted); margin: 2px 0 10px; font-variant-numeric: tabular-nums; }
+  .del { border: 0; background: none; color: var(--muted); font-size: 22px; line-height: 1; padding: 0 4px; }
+  ol.tools { list-style: none; margin: 0; padding: 0; }
+  ol.tools li {
+    display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center;
+    padding: 10px 0; border-top: 1px solid var(--line);
+  }
+  .tname { font-weight: 600; }
+  .tblurb { grid-column: 1 / -1; font-size: 13.5px; color: var(--muted); margin: -2px 0 0; }
+  .chip {
+    display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: 0.02em;
+    border-radius: 999px; padding: 1px 8px; margin-left: 6px; vertical-align: 1px;
+    border: 1px solid currentColor;
+  }
+  .chip.done { color: var(--done); } .chip.stale { color: var(--stale); }
+  .chip.ready { color: var(--ready); } .chip.locked, .chip.soon { color: var(--locked); }
+  ol.tools .btn { font-size: 14px; padding: 7px 12px; white-space: nowrap; }
+  .why { font-size: 13.5px; color: var(--muted); }
+  .empty { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 24px 20px; }
+  .empty form { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0 8px; }
+  .empty input { flex: 1 1 240px; min-width: 0; font: inherit; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+  dialog { border: 1px solid var(--line); border-radius: 16px; background: var(--card); color: var(--ink); max-width: 420px; width: calc(100% - 32px); }
+  dialog::backdrop { background: rgba(0, 0, 0, 0.35); }
+  dialog form { display: grid; gap: 10px; }
+  dialog input { font: inherit; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+  [hidden] { display: none !important; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  @media (prefers-reduced-motion: no-preference) { .card { transition: border-color .2s, box-shadow .2s; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="home" href="/"><img src="/favicon.svg" alt="" width="36" height="36"><span class="name">nilesandstuff</span></a>
+    <div id="who"></div>
+  </header>
+
+  <main>
+    <h1>Your maps</h1>
+    <p class="lead" id="lead">Loading your maps…</p>
+
+    <div class="actions" id="actions" hidden>
+      <a class="btn primary" id="new-map" href="__LAWNMAP__/?new=1">New map</a>
+      <a class="btn" id="shade-entry" href="__LAWNMAP__/shade">Start in the shade analyzer</a>
+    </div>
+    <p class="note" id="guest-note" hidden></p>
+
+    <!-- With no map yet: straight onto the address, as the lawn mapper's
+         first step would be (owner, 2026-10-16). -->
+    <section class="empty" id="empty" hidden aria-labelledby="empty-title">
+      <h2 id="empty-title" style="margin:0 0 4px;font-size:20px">Measure your first lawn</h2>
+      <p class="note" style="margin:0">Type the address. We'll pull the property line and measure the grass inside it.</p>
+      <form id="address-form" action="__LAWNMAP__/" method="get">
+        <label class="sr-only" for="address">Street address</label>
+        <input id="address" name="address" type="text" autocomplete="street-address" placeholder="Street address" required>
+        <button class="primary" type="submit">Measure</button>
+      </form>
+      <p class="note" id="empty-signin" hidden>Made maps on another device? <button class="link" type="button" data-signin>Sign in</button> to see them here.</p>
+    </section>
+
+    <div id="maps"></div>
+  </main>
+</div>
+
+<dialog id="signin">
+  <form id="signin-form" method="dialog">
+    <h2 style="margin:0;font-size:19px">Sign in or sign up</h2>
+    <p class="note" style="margin:0">One email link, no password. The map you have now comes with you.</p>
+    <label for="signin-email">Email</label>
+    <input id="signin-email" type="email" autocomplete="email" required>
+    <p class="note" id="signin-msg" role="status" style="margin:0"></p>
+    <div class="actions" style="margin:0">
+      <button class="primary" type="submit" id="signin-send">Email me a link</button>
+      <button type="button" id="signin-close">Close</button>
+    </div>
+  </form>
+</dialog>
+
+<script type="module" src="/dashboard.js"></script>
+</body>
+</html>

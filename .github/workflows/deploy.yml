@@ -76,6 +76,7 @@ jobs:
         env:
           KV_NAMESPACE_ID: ${{ vars.KV_NAMESPACE_ID }}
           CUSTOM_DOMAIN: ${{ vars.CUSTOM_DOMAIN }}
+          HOME_DOMAIN: ${{ vars.HOME_DOMAIN }}
         run: node tools/ci-prepare.js
 
       - name: Deploy the Worker and the site

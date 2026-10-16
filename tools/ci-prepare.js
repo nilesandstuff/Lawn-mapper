@@ -27,6 +27,7 @@ import { pathToFileURL } from 'node:url';
 
 import { milestonesReached } from './milestones.js';
 import { fillCoverage } from './landing-coverage.js';
+import { homeDomainFor } from './home-prepare.js';
 import { coverage } from '../worker/src/coverage.js';
 
 const CONFIG = new URL('../wrangler.toml', import.meta.url);
@@ -418,6 +419,19 @@ function migrate() {
  * Touches the runner's copy only, like wrangler.toml above.
  */
 export const SITE_PLACEHOLDER = '__SITE__';
+/**
+ * THE LANDING MOVED HOME (owner, 2026-10-16): nilesandstuff.com is the page
+ * search should index, built from this file's landing (tools/home-prepare.js).
+ * So the app's front page names the home page as the canonical one, rather
+ * than competing with its own copy. Nothing changes without a home domain.
+ */
+export function canonicalToHome(html, customDomain, homeDomain = '') {
+  const home = homeDomainFor(customDomain, homeDomain);
+  if (!customDomain || !home) return html;
+  return html.replace(`<link rel="canonical" href="https://${customDomain}/">`,
+    `<link rel="canonical" href="https://${home}/">`);
+}
+
 export function fillSiteOrigin(html, customDomain) {
   if (!html.includes(SITE_PLACEHOLDER)) return html;
   if (customDomain) return html.split(SITE_PLACEHOLDER).join(`https://${customDomain}`);
@@ -585,9 +599,9 @@ function main() {
     const page = new URL('../public/index.html', import.meta.url);
     /* The landing's county table, from the registry this deploy ships with
        (tools/landing-coverage.js), so crawlers read today's list as text. */
-    writeFileSync(page, fillCoverage(
+    writeFileSync(page, canonicalToHome(fillCoverage(
       fillSiteOrigin(readFileSync(page, 'utf8'), customDomain), coverage()
-    ));
+    ), customDomain, process.env.HOME_DOMAIN || ''));
     /* The shade analyzer is listed for search too (owner, 2026-10-13). */
     const shade = new URL('../public/shade.html', import.meta.url);
     writeFileSync(shade, fillSiteOrigin(readFileSync(shade, 'utf8'), customDomain));

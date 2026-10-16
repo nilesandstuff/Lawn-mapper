@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- SEO:START (tools/home-prepare.js copies this block to the home page) -->
 <title>Lawn Mapper — AI lawn measurement from your address</title>
 <meta name="description" content="Measure your lawn's square footage from your address. County parcel maps draw your property line, high-resolution county aerial photos show the yard, and our trained AI lawn detector traces the grass using the photo, near-infrared and lidar. Fine-tune it with drawing tools, then map its sun and shade with a lidar shade map. Free.">
 <meta name="keywords" content="AI lawn detector, AI lawn measurement, measure lawn size, lawn square footage calculator, lawn size by address, yard measurement tool, property lines, parcel map, property line map by address, county parcel maps, high resolution aerial imagery, county aerial photos, orthoimagery, satellite lawn measuring, near-infrared, NDVI, multispectral, lidar lawn mapping, 3DEP lidar, tree canopy, lawn drawing tool, draw lawn outline, turf area calculator, lawn care estimate, lidar shade map, shade map, sun hours map, sun and shade analysis, daily light integral, DLI map, grass for shade, choosing grass type">
@@ -128,12 +129,13 @@
       "name": "Do I need an account?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "No. An account keeps your maps across devices and raises the daily AI allowance. Signing up is one email link: no password."
+        "text": "No. Signed out, you keep one map. An account keeps more, on every device, and raises the daily AI allowance. Signing up is one email link: no password."
       }
     }
   ]
 }
 </script>
+<!-- SEO:END -->
 <link rel="preconnect" href="https://api.mapbox.com" crossorigin>
 <link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.css" rel="stylesheet">
 <link href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.css" rel="stylesheet">
@@ -165,6 +167,10 @@
       a stray tap reads as exactly the ad this is asking to avoid. The word
       shows only where there is room for it.
     -->
+    <!-- Your maps (owner, 2026-10-16): the dashboard on the home domain, where
+         every tool opens from. Shown by app.js only where there is one. -->
+    <a class="account" id="maps-link" href="/" hidden>Your maps</a>
+
     <button class="support" id="support-btn" type="button" aria-label="Support Lawn Mapper">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-7.5-4.6-9.2-9.3C1.6 7.8 3.9 4.5 7.3 4.5c2 0 3.6 1.1 4.7 2.8 1.1-1.7 2.7-2.8 4.7-2.8 3.4 0 5.7 3.3 4.5 6.7-1.7 4.7-9.2 9.3-9.2 9.3z"/></svg>
       <span>Support</span>
@@ -474,6 +480,19 @@
         Above the tabs and outside them, like the corner panel, because it is
         about the whole visit rather than about a step of it.
       -->
+      <!--
+        A GUEST'S SECOND MAP (owner, 2026-10-16: "sign in should be required
+        for more than 1 map"). The measurement stays on screen while they
+        choose. Styled like the review bar: it is about the whole visit.
+      -->
+      <div class="reviewbar" id="guest-limit" hidden role="status">
+        <p class="sub" id="guest-limit-why">Signed out, you keep one map. Sign in to keep this one too, or replace the saved one with it.</p>
+        <div class="reviewbar-acts">
+          <button class="primary" type="button" id="guest-limit-signin">Sign in to keep both</button>
+          <button class="ghost" type="button" id="guest-limit-replace">Replace my saved map</button>
+        </div>
+      </div>
+
       <div class="reviewbar" id="review-bar" hidden>
         <p class="sub">Reviewing a training candidate. Fix whatever is off, then come back.</p>
         <div class="reviewbar-acts">
@@ -1489,6 +1508,7 @@
   anyone. If a feature changes, change this, worker/src/llms.js and the
   JSON-LD in the head together.
 -->
+<!-- LANDING:START (tools/home-prepare.js builds the home page from this) -->
 <div class="lp" id="landing">
 
   <section class="lp-band lp-intro" aria-labelledby="lp-intro-title">
@@ -1701,8 +1721,9 @@
         view may be kept to train the detector, without your address or your
         account. Nothing is sold, and there are no ads or trackers.</p></details>
     <details class="lp-faq"><summary>Do I need an account?</summary>
-      <p>No. An account keeps your maps across devices and raises the daily AI
-        allowance. Signing up is one email link: no password.</p></details>
+      <p>No. Signed out, you keep one map. An account keeps more, on every
+        device, and raises the daily AI allowance. Signing up is one email
+        link: no password.</p></details>
   </section>
 
   <footer class="lp-foot">
@@ -1711,6 +1732,7 @@
       estimate, not a survey.</p>
   </footer>
 </div>
+<!-- LANDING:END -->
 
 <!--
   EVERY STATE AND COUNTY WITH PROPERTY LINES.

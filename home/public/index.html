@@ -3,30 +3,23 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>nilesandstuff — lawn tools</title>
-<meta name="description" content="Free lawn tools: Lawn Mapper measures your lawn from your address with a trained AI lawn detector, a shade map built from lidar for choosing the right grass, plus a grass seed selector and turf calculators.">
-<meta name="robots" content="index, follow">
-<meta name="theme-color" content="#2f7d32">
-<link rel="canonical" href="__HOME__/">
+<!--
+  THE LANDING LIVES HERE NOW (owner, 2026-10-16): the pitch, the comparison,
+  the county list and the questions are Lawn Mapper's landing, copied in at
+  deploy time by tools/home-prepare.js from public/index.html (between its
+  SEO:START/END and LANDING:START/END markers) so there is one copy to edit
+  and the nightly county list reaches both. The search tags come with it,
+  pointed here. Instead of an address bar, one button: the dashboard.
+-->
+<!-- SEO -->
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"nilesandstuff","url":"__HOME__/","description":"Free lawn tools: Lawn Mapper measures your lawn from your address, and a lidar shade map shows where the sun reaches it."}</script>
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32">
-<link rel="icon" href="/favicon.ico" sizes="any">
-<link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<meta property="og:type" content="website">
-<meta property="og:site_name" content="nilesandstuff">
-<meta property="og:title" content="nilesandstuff — lawn tools">
-<meta property="og:description" content="Measure your lawn from your address with a trained AI lawn detector, map its sun and shade from lidar, pick grass seed, and more.">
-<meta property="og:url" content="__HOME__/">
-<meta property="og:image" content="__LAWNMAP__/og-image.png?v=2">
-<meta name="twitter:card" content="summary_large_image">
 <style>
   :root {
     --green: #2f7d32; --green-dark: #245f27; --ink: #16211a; --muted: #5d6b62;
-    --line: #dfe5e0; --bg: #f6f8f6; --card: #fff;
+    --line: #dfe5e0; --bg: #f6f8f6; --card: #fff; --tint: #f4faf4;
   }
   @media (prefers-color-scheme: dark) {
-    :root { --ink: #e8efe9; --muted: #a3b2a8; --line: #2c3a31; --bg: #121a15; --card: #18231c; }
+    :root { --ink: #e8efe9; --muted: #a3b2a8; --line: #2c3a31; --bg: #121a15; --card: #18231c; --tint: #1d2b22; }
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; }
@@ -34,33 +27,48 @@
     font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     color: var(--ink); background: var(--bg);
   }
-  .wrap { max-width: 880px; margin: 0 auto; padding: 32px 16px 48px; }
+  a { color: var(--green); }
+  @media (prefers-color-scheme: dark) { a { color: #6cc070; } }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 24px 16px 48px; }
   header { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; }
   header img { width: 40px; height: 40px; }
   header .name { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
-  h1 { font-size: clamp(26px, 5vw, 36px); line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 8px; }
-  .lead { color: var(--muted); margin: 0 0 28px; max-width: 60ch; }
+  header .maps { margin-left: auto; font-weight: 600; font-size: 15px; text-decoration: none;
+    border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; background: var(--card); }
+  .hero {
+    background: var(--card); border: 1px solid var(--line); border-radius: 18px;
+    padding: 28px 22px 24px; box-shadow: 0 10px 30px rgba(22, 33, 26, 0.07);
+    max-width: 560px; margin: 0 auto 8px;
+  }
+  .hero h1 { font-size: clamp(26px, 5vw, 32px); line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 8px; }
+  .hero p { color: var(--muted); margin: 0 0 18px; }
+  .start {
+    display: block; text-align: center; text-decoration: none; font-weight: 650; font-size: 17px;
+    color: #fff; background: var(--green); border-radius: 12px; padding: 14px 18px;
+  }
+  .start:hover, .start:focus-visible { background: var(--green-dark); }
+  @media (prefers-color-scheme: dark) { .start { color: #fff; } }
+  .hero .also { margin: 12px 0 0; font-size: 14px; text-align: center; }
+  h2.more { font-size: 21px; margin: 32px 0 12px; }
   .cards { display: grid; gap: 14px; grid-template-columns: 1fr; }
-  @media (min-width: 640px) { .cards { grid-template-columns: 1fr 1fr; } .feature, .wide { grid-column: 1 / -1; } }
+  @media (min-width: 640px) { .cards { grid-template-columns: 1fr 1fr; } }
   .card {
     display: block; text-decoration: none; color: inherit;
     background: var(--card); border: 1px solid var(--line); border-radius: 16px;
     padding: 18px 18px 16px; transition: border-color .15s, transform .15s;
   }
   .card:hover, .card:focus-visible { border-color: var(--green); transform: translateY(-1px); outline: none; }
-  .card h2 { font-size: 19px; margin: 0 0 4px; }
+  .card h3 { font-size: 18px; margin: 0 0 4px; }
   .card p { margin: 0 0 12px; color: var(--muted); font-size: 15px; }
   .card .go { font-weight: 600; color: var(--green); font-size: 15px; }
   @media (prefers-color-scheme: dark) { .card .go { color: #6cc070; } }
-  .feature { display: grid; gap: 16px; align-items: center; }
-  @media (min-width: 640px) { .feature { grid-template-columns: 1.1fr 1fr; } }
-  .feature img { width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--line); }
-  .tag {
-    display: inline-block; font-size: 12px; font-weight: 600; letter-spacing: .02em;
-    color: #fff; background: var(--green); border-radius: 999px; padding: 2px 9px; margin-bottom: 8px;
-  }
-  footer { margin-top: 32px; color: var(--muted); font-size: 14px; }
-  footer a { color: inherit; }
+  footer.site { margin-top: 32px; color: var(--muted); font-size: 14px; }
+  footer.site a { color: inherit; }
+  /* LANDING_CSS */
+  /* The landing's tables were drawn for a light page; here they follow the theme. */
+  .lp { padding: 0 0 12px; max-width: none; }
+  .lp-table { background: var(--card); color: var(--ink); }
+  #lp-compare td:nth-of-type(1) { background: var(--tint); }
 </style>
 </head>
 <body>
@@ -68,55 +76,44 @@
   <header>
     <img src="favicon.svg" alt="" width="40" height="40">
     <span class="name">nilesandstuff</span>
+    <a class="maps" href="/dashboard">Your maps</a>
   </header>
 
-  <h1>Free tools for your lawn</h1>
-  <p class="lead">Measure it, plan it, and pick what to grow in it.</p>
+  <section class="hero" aria-labelledby="hero-title">
+    <h1 id="hero-title">How big is your lawn?</h1>
+    <p>We'll pull your property line, measure the grass inside it, and then map
+      its sun and shade. Free, no ads, and your address is not for sale.</p>
+    <a class="start" href="/dashboard">Start or resume a lawn map</a>
+    <p class="also">Your maps open in every tool from there.</p>
+  </section>
 
-  <main class="cards">
-    <!-- The flagship, and the only one on this domain. -->
-    <a class="card feature" href="__LAWNMAP__/">
-      <div>
-        <span class="tag">AI lawn detector</span>
-        <h2>Lawn Mapper</h2>
-        <p>Measure your lawn's square footage from your address. Our own trained
-          AI traces the grass from satellite, lidar and near-infrared inside your
-          property line, and you fine-tune the outline.</p>
-        <span class="go">Measure my lawn →</span>
-      </div>
-      <img src="__LAWNMAP__/og-image.png?v=2" alt="A lawn outline traced by the AI inside a dashed property line" loading="lazy" width="600" height="315">
-    </a>
+  <!-- LANDING -->
 
-    <!-- The shade analyzer: Lawn Mapper's second tool, on its domain
-         (owner, 2026-10-13). Full width so the two below stay a pair. -->
-    <a class="card wide" href="__LAWNMAP__/shade">
-      <span class="tag">Lidar shade map</span>
-      <h2>Shade Analyzer</h2>
+  <h2 class="more">More lawn tools</h2>
+  <div class="cards">
+    <!-- The shade analyzer also has its own way in (an address of its own). -->
+    <a class="card" href="__LAWNMAP__/shade">
+      <h3>Shade Analyzer</h3>
       <p>A shade map of your yard built from lidar, whose laser pulses pass
-        through the gaps in every tree. Most shade maps make trees solid 3D
-        shapes that block all the sun; this lets through the light each tree
-        really does. Sun hours and daily light across your lawn, any day of the
-        year &mdash; made for choosing the right grass type, with grass
-        recommendations on the way.</p>
+        through the gaps in every tree, for choosing the right grass type.</p>
       <span class="go">Map my shade →</span>
     </a>
-
     <!-- The same two links as Lawn Mapper's "More lawn tools" menu;
          tools/home.test.js keeps the two lists the same. -->
     <a class="card" href="https://lawn-answers.com/?tool=SeedSelector" target="_blank" rel="noopener noreferrer">
-      <h2>Seed Selector</h2>
+      <h3>Seed Selector</h3>
       <p>An advanced explorer for NTEP turfgrass trial results, to choose the
         right grass seed for where you are.</p>
       <span class="go">Open Seed Selector →</span>
     </a>
     <a class="card" href="https://lawn-answers.com" target="_blank" rel="noopener noreferrer">
-      <h2>Turf Tools</h2>
+      <h3>Turf Tools</h3>
       <p>Calculators and answers for lawn care, at lawn-answers.com.</p>
       <span class="go">Open Turf Tools →</span>
     </a>
-  </main>
+  </div>
 
-  <footer>
+  <footer class="site">
     Free and ad-free.
     <a href="https://buymeacoffee.com/nilesandstuff" target="_blank" rel="noopener noreferrer">Help keep it that way</a>.
   </footer>
