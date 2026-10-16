@@ -1015,5 +1015,18 @@ frames-cone.mjs, frames-clump.mjs (not in the repo: they carry the lots).
 
 ## Bookmarked tests (asked for, not yet run)
 
+- NTEP SHADE TRIALS FOR CULTIVARS (owner, 2026-10-16: "bookmark that idea
+  for later"): the National Turfgrass Evaluation Program has run shade
+  trials for several species with quality ratings by cultivar; the owner's
+  seed selector (the NTEP explorer repository) holds NTEP data. Step 4
+  could rank cultivars within a species for shade from those ratings,
+  instead of species only (grass.js SPECIES). Not started.
+
+- TURF TOOLS' HYPERLOCAL WEATHER (owner, 2026-10-16): replace NASA POWER's
+  50 km temperatures in the climate route with Turf Tools' station-tuned
+  weather once its author publishes it as a standalone module (the ask:
+  the "Turf Tools Weather Module" page). Then re-run the calendar dates
+  and the season checks against POWER's. Not started.
+
 - TWICE-FLOWN STREETS: RUN 2026-10-15, finding 18. No broadleaf-town pairs
   exist in the catalogue; Florida only.
