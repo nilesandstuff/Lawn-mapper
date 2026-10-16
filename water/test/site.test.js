@@ -96,6 +96,8 @@ test('admin only fails closed, and opens when ADMIN_ONLY is not "1"', async () =
   assert.equal((await get('/', 'lm_session=admin', env('down'))).status, 404);
   assert.equal((await get('/', '', env('up', { ADMIN_ONLY: '0' }))).status, 200);
   assert.match(wranglerFor('water.example.com', 'lawnmap.example.com'), /ADMIN_ONLY = "1"/);
+  // without this Cloudflare serves the files before the Worker, past the gate
+  assert.match(wranglerFor('water.example.com', 'lawnmap.example.com'), /run_worker_first = true/);
 });
 
 let failed = 0;

@@ -31,6 +31,9 @@ compatibility_date = "2025-09-01"
 [assets]
 directory = "./build"
 binding = "ASSETS"
+# Through the Worker first, or the page and its files are served before the
+# admin-only gate runs (found 2026-10-16: the page answered 200 signed out).
+run_worker_first = true
 
 # THE SAVED MAPS (docs/MAPS.md): /api/maps*, /api/tools and /api/auth/*, and
 # the property lookups, go to Lawn Mapper's Worker over this binding, so the
