@@ -27,3 +27,17 @@ each step has to pass, and what is still only a theory.
 
 Data: USGS 3DEP point clouds (public Entwine octrees on AWS), picked by the
 live shade map's public /api/shade/lidar. No keys, nothing paid.
+
+## The site (water.<home domain>)
+
+    src/index.js        the Worker: the page, and five of Lawn Mapper's public
+                        GET routes asked server-side (geocode, parcel, imagery,
+                        county-imagery, shade/lidar)
+    public/             the page (app.js) and its Web Worker (analyse.js)
+    lib/browser-io.js   laz-perf in a Web Worker
+    lib/site.js         one property end to end (also the corpus run's)
+    tools/prepare.mjs   the build: water/build + water/wrangler.toml, the domain
+                        derived from CUSTOM_DOMAIN (never written in the repo)
+    test/site.test.js
+
+Deploy: workflow "W. Water tool", task deploy.

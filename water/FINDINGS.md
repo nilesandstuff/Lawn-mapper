@@ -30,7 +30,15 @@ go in this file (or anywhere in the repository): lots are named by a label.
   wet spots.** Roughly: a spot holding 5 cm or more of water, 8 m or more
   across, is found most of the time; anything 3 m across, or holding under
   3 cm, is not. The field check (THE BAR below) has not happened.
-- **Waiting on the owner:** which lots, and the first real rain.
+- **The site is live** (2026-10-16, 4:05 PM EDT): water.<home domain>. An
+  address (or "where I am") -> the county's property line -> the lidar,
+  read in the browser -> the low-spot map over the photo. Finding the
+  property is the shade map's way, through the water Worker, which asks
+  Lawn Mapper's public routes server-side (they answer only Lawn Mapper's
+  origin in a browser). Nothing is saved. Reading a signed-in visitor's
+  saved Lawn Mapper maps (lawn outlines included) needs Lawn Mapper to let
+  this site ask for them: not built, to be asked of the core session.
+- **Waiting on:** the first real rain, for the field check.
 
 ---
 
