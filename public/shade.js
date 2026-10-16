@@ -40,7 +40,7 @@ import { movedCorners } from './lib/align.js';
 import { tracedOn, lineUpAt } from './shade/traced.js';
 import { startSun } from './shade/sun-ui.js';
 import { track, reportError, watchErrors, setPlace } from './shade/usage.js';
-import { traceLot, lotFeature, lotParam, parseLot } from './shade/trace.js';
+import { traceLot, lotFeature, lotParam, parseLot, lotProblem } from './shade/trace.js';
 import { startSteps } from './shade/steps.js';
 import { leash } from './shade/leash.js';
 import { startTrees } from './shade/trees-ui.js';
@@ -48,7 +48,6 @@ import { renderGrass } from './shade/grass-ui.js';
 import { ringAreaSqM, SQM_PER_SQFT } from './lib/area.js';
 
 const $ = (s) => document.querySelector(s);
-const SAVES_KEY = 'lawnmapper.saves.v1'; // the editor's own local store (app.js), read only
 const MARGIN_M = 50;
 /** /shade-trees: the same page, drawing the trees instead of the light. */
 const TREES = typeof document !== 'undefined' && document.body?.dataset.mode === 'trees';
@@ -57,6 +56,8 @@ const STEPPED = typeof document !== 'undefined' && !!document.querySelector('#st
 const ALIGN_M = 140; // the photo frame the match runs on, at least this wide
 /* The camera's leash (shade/leash.js): over the ground no further than this from the line, no higher than this. */
 const LEASH_M = 500, LEASH_ALT_M = 2000;
+/** The home domain the dashboard lives on (lawnmap.X -> X); none on workers.dev or a local host. */
+const HOME = (() => { const h = typeof location !== 'undefined' ? location.hostname : ''; return /workers\.dev$|localhost|^[\d.]+$|^$/.test(h) ? null : h.split('.').slice(-2).join('.'); })();
 
 const view = { map: null, site: null, built: null, steps: null, trees: null, model: null, builtFor: null, sun: null, sunFor: null, eraseVersion: 0, sunVersion: 0, unleash: null };
 
@@ -70,28 +71,19 @@ function status(text, cls = '') {
 
 /* ------------------------------------------------------------ the sites */
 
-function localSaves() {
-  try {
-    const raw = JSON.parse(localStorage.getItem(SAVES_KEY) || 'null');
-    return Array.isArray(raw?.saves) ? raw.saves : [];
-  } catch { return []; }
-}
-
-async function accountSaves() {
+/*
+ * ONE MAP, EVERY TOOL (docs/MAPS.md, 2026-10-16): every map lives on the
+ * server, a guest's one included, and the shade map keeps ITS OWN PART of
+ * it -- the traced property line when the county had none, the erased tree
+ * cells, and the settings -- under tools.shade. Nothing is read from the
+ * browser's old local store any more.
+ */
+async function listSaves() {
+  let all = [];
   try {
     const res = await fetch('/api/maps', { credentials: 'same-origin' });
-    if (!res.ok) return [];
-    return (await res.json()).maps || [];
-  } catch { return []; }
-}
-
-async function listSaves() {
-  const seen = new Set();
-  const all = [...localSaves(), ...(await accountSaves())].filter((s) => {
-    if (!s || !Number.isFinite(s.lng) || seen.has(s.id)) return false;
-    seen.add(s.id);
-    return true;
-  });
+    if (res.ok) all = ((await res.json()).maps || []).filter((s) => s && Number.isFinite(s.lng));
+  } catch { all = []; }
   const sel = $('#saved');
   for (const s of all) {
     const o = document.createElement('option');
@@ -102,15 +94,102 @@ async function listSaves() {
   return all;
 }
 
+/** One map with every tool's part, or null when it is not this visitor's. */
+async function openMap(id) {
+  const res = await fetch(`/api/maps/one?id=${encodeURIComponent(id)}`, { credentials: 'same-origin' });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`The map could not be read (${res.status}).`);
+  return (await res.json()).map || null;
+}
+
+/**
+ * A map started here, from the address typed: the server answers its id,
+ * or 409 for a guest's second map (the message says to sign in; the map
+ * they have is kept). Returns { id, at } or null.
+ */
+async function newMap(site, label) {
+  const body = { address: label, lng: site.lng, lat: site.lat, source: 'shade', county: site.county || null, parcel: site.parcel && !site.parcel.properties?.traced ? site.parcel : null };
+  let res, out = {};
+  try {
+    res = await fetch('/api/maps/new', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    out = await res.json().catch(() => ({}));
+  } catch { track('map', 'new failed: offline'); return null; }
+  if (res.status === 409 && out.error === 'guest-limit') {
+    const link = HOME ? ` <a href="https://${HOME}/dashboard">Your maps</a>` : '';
+    site.limitNote = `<p class="warn">${esc(out.message || 'Sign in to keep more than one map.')}${link}</p>`; // shown under the property line (offerLot writes that note first)
+    track('map', 'guest limit');
+    return null;
+  }
+  if (!res.ok || !out.id) { track('map', `new failed ${res.status}`); return null; }
+  track('map', 'started here');
+  return { id: out.id, at: out.at || null };
+}
+
+/** The shade map's part of a map, as kept on the server (at most 64 KB). */
+function shadePart() {
+  const site = view.site;
+  if (!site) return null;
+  const traced = site.parcel?.properties?.traced ? site.parcel.geometry.coordinates[0].slice(0, -1) : null;
+  const grid = view.model ? gridOver(view.model.box, 1, site.lat) : null;
+  const data = {
+    v: 1,
+    lot: traced,
+    erased: view.trees?.erasedCells() || [],
+    grid: grid ? { w: grid.w, h: grid.h, x0: Math.round(grid.x0 * 100) / 100, y1: Math.round(grid.y1 * 100) / 100 } : null,
+    settings: { grass: $('#grass')?.value || null, gp: $('#gp')?.value || null, date: $('#sun-date')?.value || null, step: view.steps?.current || 1 },
+    at: new Date().toISOString(),
+  };
+  if (JSON.stringify(data).length > 60000) { data.erased = []; data.erasedDropped = true; }
+  return data;
+}
+
+/** Keep the part, settled for a second like a save; dropped quietly on failure (a convenience, not the measurement). Writing it is what marks the shade map done on the dashboard. */
+let partTimer = null;
+function saveShadePart({ now = false } = {}) {
+  const site = view.site;
+  if (!site?.map?.id) return;
+  clearTimeout(partTimer);
+  partTimer = setTimeout(async () => {
+    const data = shadePart();
+    if (!data) return;
+    try {
+      const res = await fetch(`/api/maps/tool?id=${encodeURIComponent(site.map.id)}&tool=shade`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data, basedOn: site.map.at || null }) });
+      if (res.ok) { site.map.shade = data; backLink(); } else track('map', `part refused ${res.status}`);
+    } catch { /* offline: the next change tries again */ }
+  }, now ? 0 : 1000);
+}
+
+/** Do the erased cells kept on the server belong to this model's grid (the lot and the lidar unchanged)? */
+function partFitsGrid(part) {
+  if (!part?.grid || !view.model) return false;
+  const g = gridOver(view.model.box, 1, view.site.lat);
+  return g.w === part.grid.w && g.h === part.grid.h && Math.abs(g.x0 - part.grid.x0) < 0.5 && Math.abs(g.y1 - part.grid.y1) < 0.5;
+}
+
+/** The link back to the dashboard, once the map has an id (none on workers.dev or a local host). */
+function backLink() {
+  const a = $('#back-dash');
+  if (!a) return;
+  const id = view.site?.map?.id;
+  a.hidden = !(HOME && id);
+  if (HOME && id) a.href = `https://${HOME}/dashboard?map=${encodeURIComponent(id)}`;
+}
+
 const asFeature = (p) => (p?.type === 'Feature' ? p : p?.type ? { type: 'Feature', properties: {}, geometry: p } : null);
 
 function siteFromSave(s) {
-  return {
+  const part = s.tools?.shade?.data || null;
+  const site = {
     label: s.address || 'Saved map', lng: s.lng, lat: s.lat,
     parcel: asFeature(s.parcel),
     lawn: (s.shapes || []).map(asFeature).filter(Boolean),
     tracedOn: tracedOn(s),
+    county: s.county || null,
+    map: { id: s.id, at: s.at || null, shade: part },
   };
+  /* The line traced here last time, when the county had none. */
+  if (!site.parcel && part?.lot && !lotProblem(part.lot)) site.parcel = lotFeature(part.lot);
+  return site;
 }
 
 /**
@@ -482,10 +561,14 @@ async function build(site) {
 
   if (STEPPED) {
     /* Step 2: the trees, with the eraser; the shade waits for step 3. */
-    view.trees = await startTrees({ map, site, cols, box, shift, season: view.model.season, flownTo: view.model.flownTo, erase: true, onErase: () => { view.eraseVersion++; } });
+    view.trees = await startTrees({ map, site, cols, box, shift, season: view.model.season, flownTo: view.model.flownTo, erase: true, onErase: () => { view.eraseVersion++; saveShadePart(); } });
     view.trees.setActive(view.steps.current === 2);
     view.steps.unlock(3);
     view.steps.setNext(2, true);
+    /* The part kept last time: the erased cells back in, if the grid is the same; the step they left. */
+    const part = site.map?.shade;
+    if (part?.erased?.length && partFitsGrid(part)) { view.trees.restore(part.erased); view.eraseVersion++; }
+    if (part && (part.settings?.step || 0) >= 3 && view.steps.current === 2) { view.steps.unlock(3); view.steps.go(3); }
     status(fit?.confident ? 'The trees are built and lined up with the photo. Erase any that should not count, then go on to the shade map.' : 'The trees are built. The photo check was not tight enough to apply; the datum correction alone is applied.', fit?.confident ? 'ok' : 'warn');
     /* A field-readings check goes straight to the shade map (admin). */
     if (new URLSearchParams(location.search).get('truth')) view.steps.go(3);
@@ -514,10 +597,19 @@ function startShade() {
       view.steps.unlock(4);
       view.steps.setNext(3, true);
       renderGrass($('#grass-out'), { season: se, climate, hasLawn: site.lawn.length > 0 });
+      saveShadePart();
     },
   });
   view.sunFor = m;
   view.sunVersion = view.eraseVersion;
+  /* The settings they chose last time (grass, how the season is counted, the day). */
+  const st = site.map?.shade?.settings;
+  if (st && STEPPED) {
+    if (st.grass && $('#grass') && [...$('#grass').options].some((o) => o.value === st.grass)) { $('#grass').value = st.grass; $('#grass').onchange?.(); }
+    if (st.gp && $('#gp') && [...$('#gp').options].some((o) => o.value === st.gp)) { $('#gp').value = st.gp; $('#gp').onchange?.(); }
+    if (st.date && /^\d{4}-\d{2}-\d{2}$/.test(st.date)) view.sun.showDay(Date.parse(`${st.date}T12:00:00`));
+  }
+  for (const id of ['#grass', '#gp', '#sun-date']) { const el = $(id); if (el && STEPPED) el.addEventListener('change', () => saveShadePart()); }
   /* A visit's field readings, when the readings page sent us here (admin). */
   const truth = new URLSearchParams(location.search).get('truth');
   if (truth) import('./shade/truth-ui.js').then((t) => t.startTruth({ map, sun: view.sun, spec: truth, bounds: siteBounds(site), moveM: m.fit?.confident ? [m.fit.east, m.fit.north] : null })).catch((e) => status(e.message, 'bad'));
@@ -551,6 +643,7 @@ async function offerLot(site, { traced = false } = {}) {
   $('#lot-trace').hidden = !site.parcel;
   $('#lot-trace').textContent = traced || site.parcel?.properties?.traced ? 'Trace it again' : 'Trace the line myself';
   view.steps.setNext(1, !!site.parcel);
+  backLink();
   status(site.parcel ? 'Check the property line, then go on to the trees.' : 'Trace the property line.');
 }
 
@@ -664,7 +757,13 @@ async function main() {
       const at = $('#at').value.trim();
       let site = null;
       setPlace(id ? { place: `saved map ${id}` } : at ? { place: at } : null);
-      if (id) { site = siteFromSave(saves.find((s) => s.id === id)); track('search', 'saved map'); }
+      if (id) {
+        const m = await openMap(id).catch(() => null);
+        const listed = saves.find((s) => s.id === id);
+        if (!m && !listed) throw new Error('That map is not among yours. Open it from your dashboard, or type the address.');
+        site = siteFromSave(m || listed);
+        track('search', 'saved map');
+      }
       else if (at) {
         const nums = at.split(/[ ,]+/).filter(Boolean).map(Number);
         if (nums.length === 2 && nums.every(Number.isFinite) && Math.abs(nums[0]) <= 90) site = await siteFromPoint(nums[0], nums[1]);
@@ -701,11 +800,22 @@ async function main() {
         }
         site.parcel = lotFeature(lot);
       }
+      /* A map of its own for an address typed here (docs/MAPS.md): kept on
+         the server with the shade map's part, so the dashboard lists it and
+         the lawn mapper can open it. A guest at their one map gets the
+         message and goes on without saving. */
+      if (!id && !site.area && !TREES) {
+        const made = await newMap(site, at);
+        if (made) site.map = { id: made.id, at: made.at, shade: null };
+      }
       const keep = params.get('truth') ? `&truth=${encodeURIComponent(params.get('truth'))}${site.area ? `&area=${params.get('area')}` : ''}` : '';
-      history.replaceState(null, '', (id ? `?map=${encodeURIComponent(id)}` : `?at=${encodeURIComponent(at)}${lot ? `&lot=${lotParam(lot)}` : ''}`) + keep);
+      const mapId = id || site.map?.id || null;
+      history.replaceState(null, '', (mapId ? `?map=${encodeURIComponent(mapId)}` : `?at=${encodeURIComponent(at)}${lot ? `&lot=${lotParam(lot)}` : ''}`) + keep);
       if (STEPPED) {
         view.builtFor = null;
         await offerLot(site, { traced: !!lot && !fromLink });
+        if (site.limitNote && $('#lot-note')) $('#lot-note').insertAdjacentHTML('beforeend', site.limitNote);
+        if (lot && !fromLink) saveShadePart({ now: true });
         /* A link with the lot in it, a saved map, or a field check: straight on to the trees. */
         if (params.get('truth') || (startup && (id || fromLink || site.parcel))) { view.steps.unlock(2); view.steps.go(2); }
         return;
@@ -740,12 +850,19 @@ async function main() {
       if (lot) {
         site.parcel = lotFeature(lot);
         site.lawn = [];
-        history.replaceState(null, '', `?at=${encodeURIComponent($('#at').value.trim() || site.label)}&lot=${lotParam(lot)}`);
+        if (!site.map?.id) history.replaceState(null, '', `?at=${encodeURIComponent($('#at').value.trim() || site.label)}&lot=${lotParam(lot)}`);
         await offerLot(site, { traced: true });
+        saveShadePart({ now: true });
       } else await offerLot(site);
     } catch (e) { status(e.message || String(e), 'bad'); } finally { $('#go').disabled = false; }
   });
-  if (params.get('map')) { await savesReady; $('#saved').value = params.get('map'); if ($('#saved').value) go(true); }
+  if (params.get('map')) {
+    /* A map from the dashboard: in the list when it is this visitor's; otherwise go() says so. */
+    await savesReady;
+    $('#saved').value = params.get('map');
+    if (!$('#saved').value) { const o = document.createElement('option'); o.value = params.get('map'); o.textContent = 'This map'; $('#saved').append(o); $('#saved').value = o.value; }
+    go(true);
+  }
   else if (params.get('at')) { $('#at').value = params.get('at'); go(true); }
   ensureMap().catch((e) => status(`The map would not load: ${e.message}`, 'bad'));
 }
