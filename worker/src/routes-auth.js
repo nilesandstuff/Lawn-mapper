@@ -9,9 +9,13 @@
  */
 
 import {
-  beginMagicLink, finishMagicLink, signOut, sessionCookie, clearedCookie,
-  currentUser,
+  beginMagicLink, finishMagicLink, signOut, sessionCookie, clearedCookies,
+  currentUser, currentSession, SESSION_COOKIE,
 } from './auth.js';
+import { findGuest, adoptGuest, sweepGuests, clearCookie, homeDomainOf, GUEST_COOKIE } from './unified.js';
+
+/** How long the shared session cookie is given when it is handed back (db.js SESSION_MS). */
+const SESSION_SECONDS = 90 * 24 * 60 * 60;
 import {
   accountsEnabled, createSession, publicUser, sweepExpired, dailyState,
 } from './db.js';
@@ -39,18 +43,32 @@ const isSecure = (url) => new URL(url).protocol === 'https:';
  * server, and so a failed attempt is not left sitting in history as a query
  * string.
  */
-function land(url, path, outcome, headers = {}) {
-  return new Response(null, {
-    status: 302,
-    headers: {
-      Location: `${new URL(url).origin}${path}${outcome ? `#${outcome}` : ''}`,
-      // A sign-in outcome is about one person and one moment. Nothing should
-      // keep it, least of all a shared proxy.
-      'Cache-Control': 'no-store',
-      ...headers,
-    },
+function land(url, path, outcome, cookies = []) {
+  const headers = new Headers({
+    Location: `${landingOrigin(url, path)}${pathOnly(path)}${outcome ? `#${outcome}` : ''}`,
+    // A sign-in outcome is about one person and one moment. Nothing should
+    // keep it, least of all a shared proxy.
+    'Cache-Control': 'no-store',
   });
+  for (const c of cookies) headers.append('Set-Cookie', c);
+  return new Response(null, { status: 302, headers });
 }
+
+/*
+ * WHERE A SIGN-IN LANDS. `next` is a path on this site -- or, since the
+ * dashboard moved to the home domain (owner, 2026-10-16), the marker
+ * "home:/dashboard", a path on the home domain this host sits under. Only
+ * that one parent is ever allowed: never somewhere else's.
+ */
+function landingOrigin(url, path) {
+  const u = new URL(url);
+  if (String(path).startsWith('home:')) {
+    const parts = u.hostname.split('.');
+    if (parts.length >= 3) return `${u.protocol}//${parts.slice(1).join('.')}`;
+  }
+  return u.origin;
+}
+const pathOnly = (path) => (String(path).startsWith('home:') ? String(path).slice(5) || '/' : path);
 
 export async function handleAuth(request, env, url, origin, ctx, json) {
   const path = url.pathname.slice('/api/auth/'.length);
@@ -68,11 +86,13 @@ export async function handleAuth(request, env, url, origin, ctx, json) {
 
   /* --------------------------------------------------------- who am I */
   if (path === 'me') {
-    const user = await currentUser(request, env, ctx);
+    const session = await currentSession(request, env);
+    const user = session?.user || null;
+    if (user && ctx?.waitUntil) ctx.waitUntil(currentUser(request, env, ctx));
     // Swept here rather than on a schedule: it is the request that happens on
     // every page load, the deletes are indexed, and a cron trigger is one more
-    // thing to set up from a phone for a job this cheap.
-    if (ctx?.waitUntil) ctx.waitUntil(sweepExpired(env));
+    // thing to set up from a phone for a job this cheap. Idle guests go too.
+    if (ctx?.waitUntil) ctx.waitUntil(sweepExpired(env).then(() => sweepGuests(env)));
     /*
      * Today's allowance travels with the account, not only with the quota
      * badge. The account sheet is where somebody looks when the badge says
@@ -82,27 +102,35 @@ export async function handleAuth(request, env, url, origin, ctx, json) {
     const daily = user && !user.unlimited
       ? await dailyState(env, user, (await limits(env)).free_daily)
       : null;
-    return json({
+    const res = json({
       user: publicUser(user, daily),
       // Whether this deployment can send a link. Without it there is no way in
       // at all, and the panel says so rather than showing a form that cannot
       // work.
       email: mailConfigured(env),
     }, 200, origin);
+    /*
+     * A SIGN-IN FROM BEFORE THE COOKIE WAS SHARED (2026-10-16) is a cookie for
+     * this host alone, which the dashboard on the home domain never sees.
+     * Hand the same session back as the shared cookie and drop the old copy;
+     * nobody has to sign in again.
+     */
+    const host = new URL(request.url).host;
+    if (!session || !homeDomainOf(host)) return res;
+    const headers = new Headers(res.headers);
+    headers.append('Set-Cookie', clearCookie(SESSION_COOKIE, { secure, host: 'localhost' })[0]);
+    headers.append('Set-Cookie', sessionCookie(session.token, { maxAge: SESSION_SECONDS, secure, host }));
+    headers.set('Cache-Control', 'no-store');
+    return new Response(res.body, { status: res.status, headers });
   }
 
   /* ------------------------------------------------------- sign out */
   if (path === 'signout') {
     if (request.method !== 'POST') return json({ error: 'POST required' }, 405, origin);
     await signOut(request, env);
-    return new Response(JSON.stringify({ ok: true }), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Set-Cookie': clearedCookie(secure),
-        'Cache-Control': 'no-store',
-      },
-    });
+    const headers = new Headers({ 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    for (const c of clearedCookies(secure, new URL(request.url).host)) headers.append('Set-Cookie', c);
+    return new Response(JSON.stringify({ ok: true }), { status: 200, headers });
   }
 
   /* ------------------------------------------- where to send what is owed */
@@ -378,9 +406,22 @@ export async function handleAuth(request, env, url, origin, ctx, json) {
     if (done.error) return land(request.url, '/', `signin-error=${done.error}`);
 
     const session = await createSession(env, done.user.id);
-    return land(request.url, done.next, 'signed-in', {
-      'Set-Cookie': sessionCookie(session.token, { maxAge: session.maxAge, secure }),
-    });
+    const host = new URL(request.url).host;
+    /*
+     * THE GUEST'S MAP COMES ALONG (owner, 2026-10-16): the one map a signed-out
+     * visitor kept becomes the account's, with every tool's part of it, and
+     * the guest cookie goes.
+     */
+    const cookies = [
+      ...clearCookie(SESSION_COOKIE, { secure, host: 'localhost' }),
+      sessionCookie(session.token, { maxAge: session.maxAge, secure, host }),
+    ];
+    const guest = await findGuest(request, env);
+    if (guest) {
+      await adoptGuest(env, guest.id, done.user.id);
+      cookies.push(...clearCookie(GUEST_COOKIE, { secure, host }));
+    }
+    return land(request.url, done.next, 'signed-in', cookies);
   }
 
   return json({ error: 'Not found' }, 404, origin);

@@ -149,6 +149,58 @@ CREATE TABLE IF NOT EXISTS maps (
 );
 CREATE INDEX IF NOT EXISTS maps_user_updated ON maps(user_id, updated_at DESC);
 
+-- ------------------------------------------------- one map, every tool
+-- THE UNIFIED SAVE (owner, 2026-10-16): every map lives here, signed in or
+-- not, and the browser keeps only a cookie. A signed-out visitor is a GUEST:
+-- a random token in a cookie set for the whole home domain, so the lawn
+-- mapper, the shade map, the water map and the dashboard all see the same
+-- one. A guest keeps ONE map (the owner: "sign in should be required for more
+-- than 1 map"); signing in moves it into the account (worker/src/unified.js).
+--
+-- Guests are their own table rather than rows in `users`, whose email is NOT
+-- NULL and UNIQUE and is read by mail, admin and payouts: a guest is not a
+-- person the site can write to, and nothing there should have to learn the
+-- difference. A guest not seen for 90 days is deleted with its map (an
+-- address of somebody who never signed up is not kept for ever).
+CREATE TABLE IF NOT EXISTS guests (
+  id          TEXT PRIMARY KEY,      -- sha-256 of the cookie, never the cookie
+  created_at  TEXT NOT NULL,
+  seen_at     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS guests_seen ON guests(seen_at);
+CREATE TABLE IF NOT EXISTS guest_maps (
+  guest_id     TEXT NOT NULL REFERENCES guests(id) ON DELETE CASCADE,
+  key          TEXT NOT NULL,
+  address      TEXT,
+  lng          REAL,
+  lat          REAL,
+  county       TEXT,
+  model        TEXT,
+  mode         TEXT,
+  square_feet  INTEGER,
+  payload      TEXT NOT NULL,
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL,
+  PRIMARY KEY (guest_id, key)
+);
+-- WHAT EACH TOOL KEPT ABOUT A MAP: the shade map's traced line and erased
+-- trees, the water map's soak test, the slices' piece size. One row per
+-- (owner, map, tool), written only by that tool, so no tool can overwrite
+-- another's work and the lawn mapper re-saving its own record leaves them
+-- all alone. `based_on` is the base map's updated_at the tool worked from:
+-- when the lawn is redrawn after, the dashboard says that tool needs an
+-- update. owner_kind is 'user' or 'guest'.
+CREATE TABLE IF NOT EXISTS map_tools (
+  owner_kind   TEXT NOT NULL,
+  owner_id     TEXT NOT NULL,
+  map_key      TEXT NOT NULL,
+  tool         TEXT NOT NULL,
+  data         TEXT NOT NULL,
+  based_on     TEXT,
+  updated_at   TEXT NOT NULL,
+  PRIMARY KEY (owner_kind, owner_id, map_key, tool)
+);
+
 -- ---------------------------------------------------------------- credits
 -- Every movement, so a balance can be explained rather than just asserted.
 --

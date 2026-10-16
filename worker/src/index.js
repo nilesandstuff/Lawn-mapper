@@ -50,7 +50,7 @@ import { recordFeedback, readFeedback, feedbackEnabled } from './feedback.js';
 import { recordFinished } from './corpus.js';
 import { storeMapPhoto, countyPicture } from './county-picture.js';
 import { handleAuth, isAuthPath } from './routes-auth.js';
-import { handleMaps } from './routes-maps.js';
+import { handleMaps, isMapsPath } from './routes-maps.js';
 import { handleAdmin, isAdminPath } from './routes-admin.js';
 import { handleJobs, spendJobDetection, jobDetection } from './routes-jobs.js';
 import { handleShade, isShadePath } from './shade.js';
@@ -1490,6 +1490,15 @@ export default {
       }
 
       /*
+       * Saved maps, one record per map for every tool (owner, 2026-10-16):
+       * /api/maps, /api/maps/one, /api/maps/new, /api/maps/tool and /api/tools.
+       * See routes-maps.js and docs/MAPS.md.
+       */
+      if (isMapsPath(url.pathname)) {
+        return await handleMaps(request, env, url, origin, ctx, json);
+      }
+
+      /*
        * The console, likewise patterned rather than fixed, and refused as a
        * 404 to anybody who is not an administrator -- see routes-admin.js.
        */
@@ -1735,9 +1744,6 @@ export default {
             origin
           );
         }
-        /* The saved maps, once they belong to an account. See routes-maps.js. */
-        case '/api/maps':
-          return await handleMaps(request, env, url, origin, ctx, json);
         /*
          * FOR SEARCH ENGINES (owner, 2026-09-30). Written from the address that
          * was asked for, so they are right on the custom domain and on

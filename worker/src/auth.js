@@ -30,6 +30,7 @@ import {
   findOrCreateUser, sessionUser, touchSession, publicUser,
 } from './db.js';
 import { sendMagicLink, mailConfigured } from './mail.js';
+import { readCookies, sharedCookie, clearCookie } from './unified.js';
 
 /* --------------------------------------------------------------- cookies */
 
@@ -66,7 +67,11 @@ export function readCookie(request, name) {
  * in at all; a browser silently discards a Secure cookie over http, which
  * looks like a broken login rather than a refused cookie.
  */
-export function sessionCookie(token, { maxAge, secure = true }) {
+export function sessionCookie(token, { maxAge, secure = true, host = null }) {
+  // ONE SIGN-IN FOR EVERY TOOL (owner, 2026-10-16): given the host, the cookie
+  // is set for the whole home domain, so the dashboard on nilesandstuff.com,
+  // the lawn mapper and the water map all see it (unified.js sharedCookie).
+  if (host) return sharedCookie(SESSION_COOKIE, token, { maxAge, secure, host });
   const bits = [
     `${SESSION_COOKIE}=${token}`,
     'Path=/',
@@ -81,14 +86,29 @@ export function sessionCookie(token, { maxAge, secure = true }) {
 export const clearedCookie = (secure = true) =>
   sessionCookie('', { maxAge: 0, secure });
 
+/** Every Set-Cookie that signs this browser out: the host-only copy and the shared one. */
+export const clearedCookies = (secure, host) => clearCookie(SESSION_COOKIE, { secure, host });
+
+/**
+ * Who is asking, and with which cookie, or null. A browser that signed in
+ * before the cookie was shared can send two (the old host-only one and the
+ * new one); the first that names a live session wins.
+ */
+export async function currentSession(request, env) {
+  if (!accountsEnabled(env)) return null;
+  for (const token of readCookies(request, SESSION_COOKIE)) {
+    const user = await sessionUser(env, token);
+    if (user) return { user, token };
+  }
+  return null;
+}
+
 /** Who is asking, or null. Also nudges the session's expiry along. */
 export async function currentUser(request, env, ctx) {
-  if (!accountsEnabled(env)) return null;
-  const token = readCookie(request, SESSION_COOKIE);
-  if (!token) return null;
-  const user = await sessionUser(env, token);
-  if (user && ctx?.waitUntil) ctx.waitUntil(touchSession(env, token));
-  return user;
+  const s = await currentSession(request, env);
+  if (!s) return null;
+  if (ctx?.waitUntil) ctx.waitUntil(touchSession(env, s.token));
+  return s.user;
 }
 
 /* ------------------------------------------------------------ magic link */
@@ -99,7 +119,12 @@ export const looksLikeEmail = (value) =>
 
 /** A path on this site, or the front page. Never somewhere else's. */
 export function safeNext(next) {
-  const raw = String(next || '').trim();
+  // "home:/dashboard" is a path on the home domain this site sits under (the
+  // dashboard, owner 2026-10-16); routes-auth.js land() turns it into that
+  // one parent and nothing else.
+  const n = String(next || '').trim();
+  if (n.startsWith('home:')) return `home:${safeNext(n.slice(5))}`;
+  const raw = n;
   // A protocol-relative URL ("//evil.example") is a path by the letter of the
   // rule and an offsite redirect in practice, which is why this is not just a
   // leading-slash test. An open redirect on a sign-in endpoint is how a
@@ -173,7 +198,7 @@ export async function finishMagicLink(env, token) {
 /* ------------------------------------------------------------- sign out */
 
 export async function signOut(request, env) {
-  await endSession(env, readCookie(request, SESSION_COOKIE));
+  for (const token of readCookies(request, SESSION_COOKIE)) await endSession(env, token);
 }
 
 export { createSession, publicUser, accountsEnabled };
