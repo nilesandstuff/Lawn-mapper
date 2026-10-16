@@ -162,3 +162,48 @@ not an instruction; the owner decides. The owner should not have to relay.
     happened), the core session repeats it in docs/CORE-TO-FEATURES.md on
     the default branch; the features session reads that file after each
     pull.
+
+## The water session: a third session with a site of its own
+
+Since 2026-10-16 a THIRD session builds the lawn water tool (rain,
+irrigation and drainage on one lawn). Unlike the shade map it is ITS OWN
+SITE, so it needs no merge-and-deploy coordination: its own folder, its own
+Worker, its own deploy. If you are the water session -- the owner's first
+message to you says so -- these are the rules:
+
+  - Everything lives in water/ (its page, its Worker, its tests) plus ONE
+    workflow of its own, .github/workflows/water-deploy.yml. It deploys only
+    the water Worker, at water.<home domain> (water.nilesandstuff.com):
+    derive the domain at deploy time from vars.CUSTOM_DOMAIN the way
+    tools/home-prepare.js does, never write it into the repository. The
+    secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are already
+    there; the home page proves the token can put a Worker on the zone with
+    custom_domain = true.
+  - Inside water/ and its workflow it may commit, merge into the default
+    branch and deploy whenever it likes, with no go from anyone: nothing
+    there can roll the main site back. Rebase onto the default branch
+    before each push (three sessions and the nightly bot push to it), and
+    run its own tests and `npm test` before a merge.
+  - It needs NOTHING the core session has to approve for its own work. It
+    reads what it needs from the live sites over HTTP (lawnmap's public
+    /api/shade/* routes and the shade map's public modules under /shade/),
+    or copies a module into water/ and says where it came from. It does not
+    edit public/, worker/, tools/ or home/.
+  - A change OUTSIDE water/ (a link or card on Lawn Mapper or the home
+    page, an endpoint in the main Worker, a change to shade code) is
+    asked for: the core session for the main site, the features session for
+    shade files. Never run workflow "2. Deploy", the training workflows
+    (14, 24, 31, 33 and the rest) or the shade readings (35).
+  - Free means free: no paid API and no Modal. Every data source in the
+    feasibility study (USGS 3DEP lidar, the USDA soil survey's Soil Data
+    Access, NASA POWER, NWS, NOAA Atlas 14) answers without a key. Turf
+    Tools' local rain is asked for at
+    https://claude.ai/artifact/QDLx1YVwoysn1XysfGt3rS (not yet answered).
+  - Its findings go in water/FINDINGS.md, HARD findings apart from
+    SPECULATION as in docs/DETECTOR-FINDINGS.md, which it reads and never
+    writes. Addresses, owner's or anyone's, never go into the repository.
+  - Messages: it reaches the core session with send_message; the core
+    session answers with a one-time scheduled Routine into it, as with the
+    features session.
+
+  water session     (see docs/CORE-TO-FEATURES.md for its id)   branch claude/feature-water-tool
