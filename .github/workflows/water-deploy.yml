@@ -74,6 +74,11 @@ jobs:
             code=$(curl -s -o /dev/null -w '%{http_code}' "https://${WATER_DOMAIN}/" || true)
             api=$(curl -s -o /dev/null -w '%{http_code}' "https://${WATER_DOMAIN}/api/shade/lidar?lng=-85.6&lat=42.9" || true)
             if [ "$code" = 200 ] && [ "$api" = 200 ]; then echo "page $code, lidar search $api"; exit 0; fi
+            # the zone refuses GitHub's runners (403; the same refusal Lawn Mapper gives them, FINDINGS H9)
+            if [ "$code" = 403 ]; then
+              echo "WATER_STATE=${WATER_STATE} (the zone answers GitHub's runner 403, so it can't be checked from here)" >> "$GITHUB_ENV"
+              exit 0
+            fi
             echo "page $code, lidar search $api -- waiting for the new domain"; sleep 20
           done
           echo "WATER_STATE=${WATER_STATE} (but not answering yet: a new custom domain can take a few minutes)" >> "$GITHUB_ENV"
