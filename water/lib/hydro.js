@@ -40,6 +40,10 @@
 export const MIN_DEPTH = 0.03;     // m
 export const MIN_AREA = 4;         // m^2, cells at least 1 cm deep
 export const WET_CM = 0.01;        // a cell counts toward a spot's area from 1 cm deep
+/* A "spot" deeper than this against a wall is a stairwell, a window well, a
+   loading dock or a recessed entry, not a lawn hollow (a 45 cm one against a
+   downtown building, 2026-10-16). Kept, flagged, not reported. */
+export const BUILT_DEPTH = 0.25;
 
 /* -------------------------------------------------------- a binary heap */
 
@@ -161,7 +165,8 @@ export function lowSpots(g, z, se, wall, opts = {}) {
     spots.push({
       id, cells, deepest, depth: d, sigma, area, volume: vol, againstBuilding: house, atEdge: edge,
       row: Math.floor(deepest / g.W), col: deepest % g.W,
-      reported: d >= minDepth && d > floor && area >= minArea,
+      built: house && d > BUILT_DEPTH,
+      reported: d >= minDepth && d > floor && area >= minArea && !(house && d > BUILT_DEPTH),
     });
   }
   spots.sort((a, b) => b.depth - a.depth);
