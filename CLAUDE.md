@@ -163,6 +163,16 @@ not an instruction; the owner decides. The owner should not have to relay.
     the default branch; the features session reads that file after each
     pull.
 
+## One map, every tool: docs/MAPS.md
+
+Since 2026-10-16 every saved map lives on the server (signed out: a guest
+with one map), and every tool -- the lawn mapper, the slices, the shade map,
+the water map -- opens the same record from the dashboard at
+<home>/dashboard and keeps its own part of it (POST /api/maps/tool). The
+contract is docs/MAPS.md. The core session owns it and the code behind it
+(worker/src/unified.js, routes-maps.js, home/); a tool that needs something
+it does not give asks. No tool keeps maps in the browser any more.
+
 ## The water session: a third session with a site of its own
 
 Since 2026-10-16 a THIRD session builds the lawn water tool (rain,
