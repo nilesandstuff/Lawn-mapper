@@ -291,6 +291,15 @@ faint as "low, but not a lawn problem". Without a traced lawn the page says
 some spots may be on pavement or a roof. Whether hollows ON a traced lawn
 are real is still the field check's question.
 
+**Over the locked corpus with the kinds** (workflow "W. Water tool", task
+corpus, run 38981476880, 7:30 PM EDT; 98 of 104 maps, as H9): the 133 spots
+touching a traced lawn sort as **40 hollow, 35 trees, 30 ditch, 14 deep,
+14 paved**. **25 of 98 lawns (26%) have a lawn hollow** (H9's 59% counted
+every kind); the deepest hollow on a lawn is a median 12.8 cm, at most
+22.3 cm. The ditch rule scored 0 of 5 in the blind check, so the 30
+"ditches" on lawns are unsorted: some will be yard swales, which do hold
+water after rain.
+
 ---
 
 ## SPECULATION
