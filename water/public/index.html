@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-home="__HOME__">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -40,6 +40,7 @@
 </head>
 <body>
 <main>
+  <p class="dim" style="margin:0"><a id="back" href="__HOME__/dashboard">&larr; Back to your maps</a></p>
   <h1>Lawn Water</h1>
   <p class="lede">Where rain would stand on a lawn, where it runs, and whether the ground falls away from the house, from the free USGS lidar survey of the ground.</p>
 
@@ -60,6 +61,7 @@
       <span><i style="background:#ffb300"></i>falls away, under 5%</span>
       <span><i style="background:#43a047"></i>falls away 5%+</span>
       <span><i style="background:#ffeb3b"></i>property line</span>
+      <span><i style="background:#69f0ae"></i>your lawn</span>
     </div>
     <div style="margin-top:8px">
       <label class="toggle"><input type="checkbox" id="show-flow" checked> runoff</label>
@@ -78,7 +80,7 @@
       <li>Storm drains and yard drains look like ponds to it, because it can't see the pipe.</li>
     </ul>
   </div>
-  <p class="dim">An early test. Lidar: USGS 3DEP. Property lines and photos: <a href="__LAWNMAP__">Lawn Mapper</a>. Nothing you type is saved.</p>
+  <p class="dim">An early test. Lidar: USGS 3DEP. Property lines and photos: <a href="__LAWNMAP__">Lawn Mapper</a>. Nothing you type here is saved.</p>
 </main>
 <script type="module" src="/app.js"></script>
 </body>

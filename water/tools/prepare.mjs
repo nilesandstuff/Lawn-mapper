@@ -32,8 +32,15 @@ compatibility_date = "2025-09-01"
 directory = "./build"
 binding = "ASSETS"
 
+# THE SAVED MAPS (docs/MAPS.md): /api/maps*, /api/tools and /api/auth/*, and
+# the property lookups, go to Lawn Mapper's Worker over this binding, so the
+# page's calls are same-origin and the shared sign-in cookie travels.
+[[services]]
+binding = "LAWNMAP"
+service = "lawn-mapper"
+
 [vars]
-LAWNMAP = "${lawnmap}"
+LAWNMAP_HOST = "${lawnmap}"
 
 [[routes]]
 pattern = "${domain}"
@@ -54,7 +61,8 @@ function main() {
   mkdirSync(build, { recursive: true });
   cpSync(join(water, 'public'), build, { recursive: true });
   const page = join(build, 'index.html');
-  writeFileSync(page, readFileSync(page, 'utf8').split('__LAWNMAP__').join(`https://${lawnmap}`));
+  const home = lawnmap.split('.').slice(1).join('.');
+  writeFileSync(page, readFileSync(page, 'utf8').split('__LAWNMAP__').join(`https://${lawnmap}`).split('__HOME__').join(`https://${home}`));
   cpSync(join(water, 'lib'), join(build, 'lib'), { recursive: true, filter: (src) => !src.endsWith('node-io.js') });
   for (const f of ['favicon.svg', 'favicon-32.png', 'favicon.ico', 'apple-touch-icon.png']) {
     cpSync(join(water, '..', 'public', f), join(build, f));

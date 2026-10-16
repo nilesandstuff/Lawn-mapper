@@ -8,14 +8,20 @@
  * out in a Web Worker (analyse.js -> lib/site.js); then drawn here over the
  * photo, moved by the datum correction the analysis used (lib/datum.js).
  *
- * Nothing is saved. A saved Lawn Mapper map (lawn outlines included) is the
- * next step, and needs Lawn Mapper to let this site read a signed-in
- * visitor's maps.
+ * A SAVED MAP (docs/MAPS.md): opened from the dashboard as ?map=<id>, read
+ * with GET /api/maps/one through this site's Worker (same-origin; the
+ * sign-in or guest cookie travels), the way the shade page opens a save
+ * (public/shade.js siteFromSave): its address, point, property line and
+ * lawn outlines. Nothing is written yet: the water part of a map will hold
+ * what a person enters (a soak test, gauge totals, zones), and none of that
+ * exists yet. Nothing is kept in the browser.
  */
 
 const $ = (s) => document.querySelector(s);
 const R = 6378137;
 const view = { photo: null, data: null, frame: null, site: null };
+const HOME = document.documentElement.dataset.home || '';
+const mapId = new URLSearchParams(location.search).get('map');
 
 function status(text, cls = '') {
   const el = $('#status');
@@ -63,6 +69,22 @@ async function siteFromAddress(r) {
   if (r.parcelPin) where.pin = r.parcelPin;
   if (r.parcelSqFt) where.sqft = r.parcelSqFt;
   return { label: r.label, lng: r.lng, lat: r.lat, parcel: await parcelAt(where), lawn: [] };
+}
+
+/** A saved map, as the shade page reads one (public/shade.js siteFromSave). */
+async function siteFromMap(id) {
+  const res = await fetch(`/api/maps/one?id=${encodeURIComponent(id)}`, { credentials: 'same-origin' });
+  const j = await res.json().catch(() => null);
+  if (res.status === 404) throw new Error("That map isn't in your maps on this device. Open it from your dashboard, or sign in.");
+  if (!res.ok || !j?.map) throw new Error(j?.error || `The map would not open (${res.status}).`);
+  const s = j.map;
+  if (!Number.isFinite(s.lng) || !Number.isFinite(s.lat)) throw new Error('That map has no location yet. Finish it in Lawn Mapper first.');
+  return {
+    label: s.address || 'your map', lng: s.lng, lat: s.lat,
+    parcel: asFeature(s.parcel),
+    lawn: (s.shapes || []).map(asFeature).filter(Boolean),
+    mapId: id,
+  };
 }
 
 async function siteFromPoint(lat, lng) {
@@ -153,6 +175,16 @@ function draw() {
       g.closePath(); g.stroke();
     }
   }
+  g.setLineDash([]);
+  g.strokeStyle = '#69f0ae'; g.lineWidth = Math.max(2, photo.width / 400);
+  for (const f of site.lawn || []) {
+    const polys = f.geometry?.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry?.type === 'MultiPolygon' ? f.geometry.coordinates : [];
+    for (const poly of polys) for (const ring of poly) {
+      g.beginPath();
+      ring.forEach((p, i) => { const [x, y] = toPx(frame, photo, toMerc(p)); if (i) g.lineTo(x, y); else g.moveTo(x, y); });
+      g.closePath(); g.stroke();
+    }
+  }
 }
 
 /* ------------------------------------------------------------- the words */
@@ -170,7 +202,8 @@ function report(d, site) {
   const spots = d.spots;
   if (spots.length) {
     const items = spots.slice(0, 8).map((p) => `<li>Likely holds water: at least ${inches(p.depthCm)} in deep, about ${sqft(p.areaM2)} sq ft, roughly ${gallons(p.volumeL)} gallons when full${p.againstBuilding ? ' — <strong>against a building</strong>' : ''}.</li>`);
-    parts.push(`<div class="card"><h2>${spots.length} low spot${spots.length > 1 ? 's' : ''} ${where}</h2><ul>${items.join('')}</ul>
+    const onLawn = site.lawn?.length ? `<p>${s.spotsOnLawn ? `${s.spotsOnLawn} of them reach${s.spotsOnLawn === 1 ? 'es' : ''} the lawn, about ${sqft(s.wetLawnM2)} sq ft of it.` : 'None of them reaches the lawn you traced.'}</p>` : '';
+    parts.push(`<div class="card"><h2>${spots.length} low spot${spots.length > 1 ? 's' : ''} ${where}</h2>${onLawn}<ul>${items.join('')}</ul>
       <p class="dim">Depths run shallow: smoothing out the survey's scatter takes some off, so read them as "at least".</p></div>`);
   } else {
     parts.push(`<div class="card"><h2>No low spot ${where} big enough to be sure of</h2>
@@ -219,6 +252,8 @@ async function run(site) {
   draw();
   report(d, site);
   status('');
+  const back = $('#back');
+  if (back && site.mapId) back.href = `${HOME}/dashboard?map=${encodeURIComponent(site.mapId)}`;
 }
 
 async function guarded(fn) {
@@ -240,3 +275,5 @@ $('#here').addEventListener('click', () => guarded(async () => {
 }));
 
 for (const id of ['#show-flow', '#show-grade', '#show-photo']) $(id).addEventListener('change', draw);
+
+if (mapId) guarded(async () => { status('Opening your map…'); await run(await siteFromMap(mapId)); });

@@ -14,13 +14,19 @@ import { toMerc, mercScale } from '../lib/ept.js';
 const tests = [];
 const test = (name, fn) => tests.push([name, fn]);
 
-test('the Worker passes only its five read routes on to Lawn Mapper', () => {
+test('the Worker passes on the account routes and five property reads, nothing else', () => {
   const u = (p) => new URL(`https://water.example.com${p}`);
-  assert.equal(upstreamFor(u('/api/geocode?q=1+Main'), 'lawnmap.example.com'), 'https://lawnmap.example.com/api/geocode?q=1+Main');
-  assert.equal(upstreamFor(u('/api/shade/lidar?lng=1&lat=2'), 'lawnmap.example.com'), 'https://lawnmap.example.com/api/shade/lidar?lng=1&lat=2');
-  for (const p of ['/api/maps', '/api/segment', '/api/admin/users', '/api/shade/readings', '/api/geocode/../maps']) {
-    assert.equal(upstreamFor(u(p), 'lawnmap.example.com'), null, p);
+  const L = 'lawnmap.example.com';
+  assert.equal(upstreamFor(u('/api/geocode?q=1+Main'), L), 'https://lawnmap.example.com/api/geocode?q=1+Main');
+  assert.equal(upstreamFor(u('/api/shade/lidar?lng=1&lat=2'), L), 'https://lawnmap.example.com/api/shade/lidar?lng=1&lat=2');
+  assert.equal(upstreamFor(u('/api/maps/one?id=abc'), L), 'https://lawnmap.example.com/api/maps/one?id=abc');
+  assert.equal(upstreamFor(u('/api/maps/tool?id=abc&tool=water'), L, 'POST'), 'https://lawnmap.example.com/api/maps/tool?id=abc&tool=water');
+  assert.equal(upstreamFor(u('/api/auth/me'), L), 'https://lawnmap.example.com/api/auth/me');
+  assert.equal(upstreamFor(u('/api/tools'), L), 'https://lawnmap.example.com/api/tools');
+  for (const p of ['/api/segment', '/api/admin/users', '/api/shade/readings', '/api/mapsx', '/api/config']) {
+    assert.equal(upstreamFor(u(p), L), null, p);
   }
+  assert.equal(upstreamFor(u('/api/geocode?q=x'), L, 'POST'), null, 'property reads are GET only');
   assert.equal(upstreamFor(u('/api/geocode?q=x'), ''), null);
 });
 
@@ -30,7 +36,8 @@ test('the domain comes from CUSTOM_DOMAIN, never from the repository', () => {
   assert.equal(waterDomainFor('example.com'), null);
   const toml = wranglerFor('water.example.com', 'lawnmap.example.com');
   assert.match(toml, /pattern = "water\.example\.com"\ncustom_domain = true/);
-  assert.match(toml, /LAWNMAP = "lawnmap\.example\.com"/);
+  assert.match(toml, /LAWNMAP_HOST = "lawnmap\.example\.com"/);
+  assert.match(toml, /\[\[services\]\]\nbinding = "LAWNMAP"\nservice = "lawn-mapper"/);
 });
 
 test('a property line lands on the right cells, holes and all', () => {
