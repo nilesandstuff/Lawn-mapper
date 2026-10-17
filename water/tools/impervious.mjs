@@ -85,7 +85,12 @@ async function one(lng, lat) {
 
   // roofs, each finder and each stage of the shade map's (lib/roofs.js), exact and within 1 m
   const shade = shadeRoofs(cols, bbox, lat, { parts: true });
-  const finders = { water: res.wall, shadeFlat: shade.flat, shadeSolid: shade.solid, shade: shade.roof };
+  const finders = {
+    water: res.wall, shadeFlat: shade.flat, shadeSolid: shade.solid, shade: shade.roof,
+    either: Uint8Array.from(res.wall, (v, i) => (v || shade.roof[i] ? 1 : 0)),
+    both: Uint8Array.from(res.wall, (v, i) => (v && shade.roof[i] ? 1 : 0)),
+    waterNoEvergreen: Uint8Array.from(res.wall, (v, i) => (v && !shade.evergreen[i] ? 1 : 0)),
+  };
   const near = (mask, i) => {
     const r = Math.floor(i / g.W), c = i % g.W;
     for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
@@ -176,15 +181,15 @@ async function main() {
   console.log(`ROOFS AND IMPERVIOUSNESS ON THE CHESAPEAKE LAND USE: ${done.length} residential squares of ${SIZE} m (${tries} tried)`);
   console.log(`  roofs (cells; "Structures" is the truth): found ${Math.round(100 * R.tp / (R.tp + R.fn))}% of roof cells, ${Math.round(100 * R.tp / (R.tp + R.fp))}% of what it calls roof is roof, IoU ${(R.tp / (R.tp + R.fp + R.fn)).toFixed(2)}`);
   console.log('  roof finders, pooled (exact | within 1 m):       found      precise     IoU');
-  const label = { water: 'water map (surface.js)', shadeFlat: 'shade: flat-roof rule alone', shadeSolid: 'shade: + solid at the grass, + eaves', shade: 'shade: + tree-vs-roof patch test (full)' };
+  const label = { water: 'water map (surface.js)', shadeFlat: 'shade: flat-roof rule alone', shadeSolid: 'shade: + solid at the grass, + eaves', shade: 'shade: + tree-vs-roof patch test (full)', either: 'either says roof', both: 'both say roof', waterNoEvergreen: 'water map, less what shade calls evergreen' };
   for (const name of Object.keys(done[0]?.roofScores || {})) {
     const t = done.reduce((a, d) => { for (const k of Object.keys(a)) a[k] += d.roofScores[name][k]; return a; }, { tp: 0, fp: 0, fn: 0, tpNear: 0, predN: 0, foundNear: 0, truthN: 0 });
     const f = (v) => `${Math.round(100 * v)}%`;
     console.log(`    ${label[name].padEnd(42)} ${f(t.tp / (t.tp + t.fn))} | ${f(t.foundNear / t.truthN)}   ${f(t.tp / (t.tp + t.fp))} | ${f(t.tpNear / t.predN)}   ${(t.tp / (t.tp + t.fp + t.fn)).toFixed(2)}`);
   }
   const perFlight = {};
-  for (const d of done) { const f = (perFlight[d.cloud] ||= { water: [0, 0, 0], shade: [0, 0, 0] }); for (const n of ['water', 'shade']) { f[n][0] += d.roofScores[n].tp; f[n][1] += d.roofScores[n].fp; f[n][2] += d.roofScores[n].fn; } }
-  for (const [fl, f] of Object.entries(perFlight)) console.log(`    by flight ${fl.replace(/^USGS_LPC_/, '').padEnd(34)} IoU water ${(f.water[0] / (f.water[0] + f.water[1] + f.water[2])).toFixed(2)}, shade ${(f.shade[0] / (f.shade[0] + f.shade[1] + f.shade[2])).toFixed(2)}`);
+  for (const d of done) { const f = (perFlight[d.cloud] ||= { water: [0, 0, 0], shade: [0, 0, 0], waterNoEvergreen: [0, 0, 0] }); for (const n of ['water', 'shade', 'waterNoEvergreen']) { f[n][0] += d.roofScores[n].tp; f[n][1] += d.roofScores[n].fp; f[n][2] += d.roofScores[n].fn; } }
+  for (const [fl, f] of Object.entries(perFlight)) console.log(`    by flight ${fl.replace(/^USGS_LPC_/, '').padEnd(34)} IoU water ${(f.water[0] / (f.water[0] + f.water[1] + f.water[2])).toFixed(2)}, shade ${(f.shade[0] / (f.shade[0] + f.shade[1] + f.shade[2])).toFixed(2)}, water less evergreen ${(f.waterNoEvergreen[0] / (f.waterNoEvergreen[0] + f.waterNoEvergreen[1] + f.waterNoEvergreen[2])).toFixed(2)}`);
   const n = (c) => all.filter((x) => x.cls === c).length;
   console.log(`  open ground cells with a ground return: ${n('imp')} paved (roads, drives, walks, lots), ${n('perv')} pervious non-turf, ${n('turf')} turf`);
   console.log('  AUC, darker = more impervious, pooled over all squares (one threshold for every map):');

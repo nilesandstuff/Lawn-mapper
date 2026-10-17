@@ -54,10 +54,11 @@ export function shadeRoofs(cols, bbox, lat, { parts = false } = {}) {
   const model = buildCanopy(cols, grid);
   const full = seasonalCanopy(cols, model, { classify: true }).kind;
   const roof = Uint8Array.from(full, (v) => (v === 1 ? 1 : 0));
-  if (!parts) return { roof, w: grid.w, h: grid.h };
+  const evergreen = Uint8Array.from(full, (v) => (v === 2 ? 1 : 0));
+  if (!parts) return { roof, evergreen, w: grid.w, h: grid.h };
   const noTreeTest = seasonalCanopy(cols, model, { classify: false }).kind;
   return {
-    roof, w: grid.w, h: grid.h,
+    roof, evergreen, w: grid.w, h: grid.h,
     solid: Uint8Array.from(noTreeTest, (v) => (v === 1 ? 1 : 0)),
     flat: flatRule(cols, model),
   };
