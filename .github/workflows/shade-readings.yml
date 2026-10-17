@@ -54,9 +54,9 @@ on:
         required: false
         default: 'no'
       ground:
-        description: 'For the check: the ground under the model, lowest (the lowest return per column, as shipped) or mean (the water map''s smooth surface, ground.js)'
+        description: 'For the check: the ground under the model, mean (the smooth surface shared with the water map, ground.js, as shipped) or lowest (the lowest return per column, as before 2026-10-17)'
         required: false
-        default: 'lowest'
+        default: 'mean'
 
 jobs:
   readings:
