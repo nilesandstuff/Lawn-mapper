@@ -300,6 +300,46 @@ every kind); the deepest hollow on a lawn is a median 12.8 cm, at most
 "ditches" on lawns are unsorted: some will be yard swales, which do hold
 water after rain.
 
+### H11. The laser's brightness, and the rest, for "is this cell lawn" (water session, 2026-10-17)
+
+Owner's question: is the return brightness used to tell pavement and water
+apart? water/lib/cells.js measures every 1 m cell from the points alone,
+each relative to its own box: ground brightness (over the box's 75th
+percentile), return density, canopy share, single-return share, roughness,
+how far the ground stands over its surroundings (a flat roof called
+ground), no ground return. water/tools/surfaces.mjs, workflow "W. Water
+tool" task surfaces, run 2026-10-17 9:48 PM EDT: inside the property line
+and off the roofs of the locked corpus, a cell is LAWN if inside the traced
+lawn; maps split odd/even, fitted on 48 (61,925 cells), scored on 50
+(64,347 cells, 63% lawn).
+
+AUC on the test half (0.5 = a coin, 1 = perfect):
+
+| measure | AUC |
+|---|---|
+| **brightness** | **0.70** (0.705 where the cell has a ground return) |
+| single returns | 0.58 |
+| return density | 0.45 (i.e. 0.55 the other way) |
+| canopy | 0.42 (0.58 the other way: trees are not lawn) |
+| roughness, raised, no-return | 0.49-0.51 (nothing) |
+| all together, logistic | **0.69** -- no better than brightness alone |
+
+**For the low-spot map with no traced lawn** (test half): 21 spots called
+hollow inside property lines, 14 (67%) on the traced lawn. Adding "its
+cells look like lawn" (cut 0.5, chosen on the fit half) kept 20, 14 on the
+lawn (70%): one spot removed, none of the real ones lost. Nothing worth
+shipping; LAWN_MODEL stays null and the map does not use it.
+
+Read plainly: **brightness carries a real but weak signal** -- grass is
+brighter than asphalt, but concrete, mulch, beds and bare soil overlap it,
+and the traced lawns are themselves loose at the edges. The other measures
+add nothing a straight-line model can use. **Water was not measured**: the
+corpus has no water labels; the water rule stays on return density and
+class 9 (H10). Also from this run: inside property lines, 67% of the
+spots the kinds call hollow ARE on the traced lawn -- far better than the
+2 of 11 in H10's photo check, which counted roads and parking lots outside
+any property line.
+
 ---
 
 ## SPECULATION
