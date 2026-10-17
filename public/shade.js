@@ -34,7 +34,7 @@ import { lazDecoder, browserFactory } from './shade/laz.js';
 import { nad83Correction } from './shade/datum.js';
 import { alignToPhoto } from './shade/align.js';
 import { gridOver, gridForFrame, gridBox, rasterise, fillGaps, greyPicture, blurNaN, resample, cellOf, quantile } from './shade/grid.js';
-import { pointLayer } from './shade/view3d.js';
+import { pointLayer, groundLayer } from './shade/view3d.js';
 import { frameCorners } from './lib/mercator.js';
 import { movedCorners } from './lib/align.js';
 import { tracedOn, lineUpAt } from './shade/traced.js';
@@ -424,6 +424,7 @@ async function build(site) {
   view.trees?.stop();
   view.trees = null;
   view.model = null; view.builtFor = null;
+  removePhotoDrape(map);
   if (STEPPED) { view.steps.setNext(2, false); view.steps.setNext(3, false); $('#grass-out').innerHTML = '<p class="dim">Waiting for the shade map…</p>'; }
   reLeash(site.parcel || { type: 'Feature', geometry: { type: 'Point', coordinates: [site.lng, site.lat] } });
   removeBuilt(map);
@@ -564,6 +565,7 @@ async function build(site) {
   $('#t-traced').hidden = !view.built.traced;
   drawBuilt(map, true);
   $('#toggles').hidden = false;
+  drapePhoto(map, site, g, ground, baseZ); // the photo onto the lidar's ground, in the background
   map.easeTo({ pitch: 55, bearing: -20, duration: 800 });
 
   /* The report. The flight's dates and season from the points' own clock
@@ -605,13 +607,13 @@ async function build(site) {
 
   /* The trees page (/shade-trees): the same model drawn instead of lit (shade/trees-ui.js). */
   if (TREES) {
-    view.sun = await startTrees({ map, site, cols, box, shift, season: view.model.season, flownTo: view.model.flownTo });
+    view.sun = await startTrees({ map, site, cols, box, shift, season: view.model.season, flownTo: view.model.flownTo, baseZ });
     return;
   }
 
   if (STEPPED) {
     /* Step 2: the trees, with the eraser; the shade waits for step 3. */
-    view.trees = await startTrees({ map, site, cols, box, shift, season: view.model.season, flownTo: view.model.flownTo, erase: true, onErase: () => { view.eraseVersion++; saveShadePart(); } });
+    view.trees = await startTrees({ map, site, cols, box, shift, season: view.model.season, flownTo: view.model.flownTo, erase: true, baseZ, onErase: () => { view.eraseVersion++; saveShadePart(); } });
     view.trees.setActive(view.steps.current === 2);
     view.steps.unlock(3);
     view.steps.setNext(2, true);
@@ -752,6 +754,55 @@ function removeBuilt(map) {
     if (map.getLayer(id)) map.removeLayer(id);
     if (map.getSource(id)) map.removeSource(id);
   }
+}
+
+/*
+ * THE PHOTO ON THE LIDAR'S GROUND (owner, 2026-10-17: "warp the imagery to
+ * fit that 3d ground so that it's not just a 3d lidar map sitting above a
+ * 2d image"). The satellite photo of the modelled box is fetched once more
+ * at the finest zoom that fits it in one Mapbox frame, cut to the box, and
+ * laid on the same ground mesh the light is draped on (view3d.js
+ * groundLayer), shown when the map is tilted. The trees stand on that
+ * ground too (trees-ui.js, baseZ), so the whole scene is one surface.
+ */
+const PHOTO_3D = 'photo-3d';
+function removePhotoDrape(map) {
+  if (map.getLayer(PHOTO_3D)) map.removeLayer(PHOTO_3D);
+  if (view.photoPitch) { map.off('pitchend', view.photoPitch); view.photoPitch = null; }
+  view.photoDrape = null;
+}
+async function drapePhoto(map, site, grid, ground, baseZ) {
+  removePhotoDrape(map);
+  const layer = groundLayer(PHOTO_3D, { grid, ground, baseZ, lat: site.lat, liftM: 0.02, smooth: true, taperCells: 12 });
+  map.addLayer(layer, below(map, ['light-3d', 'light', 'parcel']));
+  view.photoDrape = layer;
+  const show = () => { if (map.getLayer(PHOTO_3D)) map.setLayoutProperty(PHOTO_3D, 'visibility', map.getPitch() > 5 ? 'visible' : 'none'); };
+  view.photoPitch = show;
+  map.on('pitchend', show);
+  show();
+  /* The frame: the box's center, the finest zoom that keeps its longer side
+     within 1280 logical pixels (the Worker asks Mapbox at 2x). */
+  const [bx0, by0, bx1, by1] = gridBox(grid);
+  const WORLD = 2 * Math.PI * 6378137;
+  const zoom = Math.max(14, Math.min(19, Math.floor(Math.log2((1280 * WORLD) / (512 * Math.max(bx1 - bx0, by1 - by0))) * 100) / 100));
+  const perPx = WORLD / (512 * 2 ** zoom); // 3857 m per logical px
+  const [lng, lat] = fromMerc([(bx0 + bx1) / 2, (by0 + by1) / 2]);
+  const frame = { lng, lat, zoom, size: Math.min(1280, Math.ceil((bx1 - bx0) / perPx) + 2), height: Math.min(1280, Math.ceil((by1 - by0) / perPx) + 2) };
+  try {
+    const q = new URLSearchParams({ lng: frame.lng, lat: frame.lat, zoom: frame.zoom, size: frame.size, height: frame.height, provider: 'mapbox' });
+    const res = await fetch(`/api/imagery?${q}`);
+    if (!res.ok) throw new Error(`photo ${res.status}`);
+    const bmp = await createImageBitmap(await res.blob());
+    if (view.photoDrape !== layer) return; // rebuilt meanwhile
+    /* Cut the box out of the frame: both are axis-aligned in mercator. */
+    const g = gridForFrame(frame, bmp.width, bmp.height); // the frame's own pixel grid, in 3857
+    const sx = (bx0 - g.x0) / g.cell, sy = (g.y1 - by1) / g.cellY, sw = (bx1 - bx0) / g.cell, sh = (by1 - by0) / g.cellY;
+    const scale = Math.min(1, 2048 / Math.max(sw, sh));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(sw * scale)); c.height = Math.max(1, Math.round(sh * scale));
+    c.getContext('2d').drawImage(bmp, sx, sy, sw, sh, 0, 0, c.width, c.height);
+    layer.setImage(c);
+  } catch (e) { track('photo-3d', `not draped: ${e.message}`); }
 }
 
 /** (Re)draw the points and the ground picture, lined up or as filed. */

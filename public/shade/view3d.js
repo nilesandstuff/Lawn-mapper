@@ -124,8 +124,16 @@ export function pointLayer(id, cols, { heightOver, shift = [0, 0], baseZ, lat, s
  * mesh through the 1 m grid's corners at the ground's height (each corner
  * the mean of the cells around it), lifted `liftM`, textured with the same
  * picture: `setImage(canvas)` swaps it.
+ *
+ * THE PHOTO ON THE SAME GROUND (owner, 2026-10-17: "warp the imagery to fit
+ * that 3d ground so that it's not just a 3d lidar map sitting above a 2d
+ * image"): the same mesh, textured with the satellite photo of the box
+ * (`smooth` filtering for a photo, nearest for the light's hard bands). The
+ * flat map goes on outside the box at the lot's median ground, so the
+ * mesh's outer `taperCells` cells slope back to that height and the edge
+ * does not stand as a cliff on a hillside lot.
  */
-export function groundLayer(id, { grid, ground, baseZ, lat, liftM = 0.08 }) {
+export function groundLayer(id, { grid, ground, baseZ, lat, liftM = 0.08, smooth = false, taperCells = 0 }) {
   const W = grid.w, H = grid.h, cellY = grid.cellY || grid.cell;
   const [mx, my] = mercUnits(grid.x0, grid.y1);
   const perMerc = 1 / WORLD, upm = 1 / (WORLD * Math.cos(lat * Math.PI / 180));
@@ -145,7 +153,8 @@ export function groundLayer(id, { grid, ground, baseZ, lat, liftM = 0.08 }) {
     const v = (j * (W + 1) + i) * 5;
     pos[v] = i * grid.cell * perMerc;
     pos[v + 1] = j * cellY * perMerc;
-    pos[v + 2] = (at(i, j) - baseZ + liftM) * upm;
+    const edge = taperCells > 0 ? Math.min(1, Math.min(i, j, W - i, H - j) / taperCells) : 1; // 0 at the border, 1 inside
+    pos[v + 2] = ((at(i, j) - baseZ) * edge + liftM) * upm;
     pos[v + 3] = i / W; pos[v + 4] = j / H;
   }
   const idx = new Uint32Array(W * H * 6);
@@ -159,6 +168,8 @@ export function groundLayer(id, { grid, ground, baseZ, lat, liftM = 0.08 }) {
     id, type: 'custom', renderingMode: '3d',
     /** Swap the picture (a canvas the size of the light raster). */
     setImage(canvas) { pending = canvas; mapRef?.triggerRepaint(); },
+    /** Has a picture been given yet? */
+    get ready() { return hasImage || !!pending; },
     onAdd(map, gl) {
       mapRef = map;
       gl.getExtension('OES_element_index_uint'); // WebGL1; WebGL2 has it
@@ -196,7 +207,8 @@ export function groundLayer(id, { grid, ground, baseZ, lat, liftM = 0.08 }) {
         gl.bindTexture(gl.TEXTURE_2D, tex);
         gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, pending);
-        for (const [p, v] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, p, v);
+        const filter = smooth ? gl.LINEAR : gl.NEAREST;
+        for (const [p, v] of [[gl.TEXTURE_MIN_FILTER, filter], [gl.TEXTURE_MAG_FILTER, filter], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, p, v);
         pending = null; hasImage = true;
       }
       if (!hasImage) return;
