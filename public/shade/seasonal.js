@@ -22,8 +22,8 @@
  *     with a rough top (a roof is planes), or a speck under 4 m2 (a column
  *     of a dense crown no pulse happened to get under); 2 then decides its tree as a
  *     whole. The light hardly moves (the mean summer beam reaching the ground
- *     changed by 0.002 or less on three lots); the labels do: at 7300
- *     Brooks Ln the lawn spruces had all been "buildings".
+ *     changed by 0.002 or less on three lots); the labels do: on the
+ *     owner's lot the lawn spruces had all been "buildings".
  *
  *  2. EVERGREEN OR NOT, PER TREE, BY HOW DENSE IT WAS IN WINTER (owner,
  *     2026-10-12: if little of the laser got through a crown with the leaves
@@ -56,7 +56,7 @@
  *     highest return 2.5-3.5 m out is an open-grown broadleaf, however dense
  *     it was in winter -- a big oak can still hold its dead leaves on a late-November
  *     flight and stop the laser like needles; the owner caught two such
- *     domes called evergreen on Brooks Ln. MEASURED on H73's hand-labelled
+ *     domes called evergreen on the owner's lot. MEASURED on H73's hand-labelled
  *     crowns (data/labelled-crowns.csv, 234 found in the lidar on 60 maps:
  *     41 evergreen, 193 broadleaf; noisy labels, evergreens under-
  *     represented): the drop ranks an evergreen above a broadleaf 70% of the
@@ -235,8 +235,8 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, fil
      came from pulses that split (on needles and branches; almost never on
      a roof), or when the patch is small and its top is rough -- a roof is
      planes, so neighboring columns' tops differ little. Since it was that
-     dense with the leaves off, it is an evergreen. (Kent 2016 cloud, 7300
-     Brooks Ln, checked against the photo, 2026-10-11: houses 200-311 m2,
+     dense with the leaves off, it is an evergreen. (Kent 2016 cloud, the
+     owner's lot, checked against the photo, 2026-10-11: houses 200-311 m2,
      2-3% split, tops differing a median 0.36-0.44 m between neighbors;
      the lawn spruces 6-42 m2, 0-38% split, 0.55-1.5 m.) */
   const seen = new Uint8Array(N);
