@@ -49,6 +49,10 @@ on:
         description: 'For the check: a leaf fill to try, as JSON (blank = as shipped), e.g. {"closeR":0,"topR":0}'
         required: false
         default: ''
+      foot:
+        description: 'For the check: the day was recorded on foot, the phone held about 3.5 ft up and tilted toward the sun (yes/no): tilt allowed, fixes to 15 m, no truck'
+        required: false
+        default: 'no'
 
 jobs:
   readings:
@@ -77,6 +81,10 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           DAY: ${{ inputs.day }}
           SHADE_FILL: ${{ inputs.fill }}
+          SHADE_FOOT: ${{ inputs.foot == 'yes' && '1' || '' }}
+          SHADE_TILT: ${{ inputs.foot == 'yes' && '90' || '' }}
+          SHADE_ACC: ${{ inputs.foot == 'yes' && '15' || '' }}
+          PHONE_M: ${{ inputs.foot == 'yes' && '1.07' || '' }}
         run: node tools/shade-field-check.js
       - name: The stops' lidar against newer photos
         if: ${{ inputs.photos == 'yes' }}

@@ -1021,6 +1021,74 @@ WHAT IT SAYS.
 
 Not changed: nothing. The two losing flights are a bookmarked test, below.
 
+### 25. On foot, facing the sun: the phone reads 90,000 lux face-on and agrees with the model 65% at 1 m steps; where it disagrees the model is too dark, and the leaves the calendar added are the reason (owner's lot, 2026-10-17)
+
+The owner's first recording ON FOOT (2026-10-17, 3:52-4:10 PM EDT, clear
+sky, sun 26-28 degrees up at azimuth 224): the phone held about 1.07 m up,
+flat for the first four minutes, then TILTED TOWARD THE SUN ("realized I
+could just tilt it towards the sun"); Sensor Logger's front camera firing
+every 10 s, so 102 frames of whatever stood between the phone and the
+sun. Lidar leaf-off to 2018-04; the calendar put the leaves at 75% on
+(this year's weather). Scored with tools/shade-field-check.js and the new
+on-foot settings (phone 1.07 m, tilt allowed, fixes to 15 m, no truck).
+
+THE PHONE'S POSE IS READ RIGHT. Tilted toward the sun (minutes 4-16, tilt
+45-73 degrees) the computed angle between the face and the sun was 13-30
+degrees and the brightest readings 87,000-96,000 lux: a 27-degree sun
+face-on. Mirroring the horizontal (the +180 the camera frame needed in
+finding 23) put the face 105-130 degrees from the sun: wrong. truth.js's
+screen normal stands; finding 23's frame note is the camera's, not the
+screen's.
+
+| the tilted part of the walk (fixes to 15 m) | n | agree |
+|---|---|---|
+| all scored | 373 | 241 (65%) |
+| model sure of open sun | 68 | 53 (78%): 15 read shade |
+| behind a building | 3 | 3 |
+| deep tree shade | 93 | 79 (85%): 14 read sun |
+| edges (model unsure) | 209 | 106 (51%): 71 too dark, 32 too bright |
+
+- THE DISAGREEMENT IS THE MODEL TOO DARK: 85 too dark against 47 too
+  bright. On those 85 rays the light was stopped a median 7 m up and 12 m
+  away, and of what stopped it a median 69% was LEAVES THE CALENDAR ADDED
+  among the branches, 26% the laser's own returns. With the trees bare, 54
+  of the 85 turn to sun. The leaf scan, where the leaves decide (99
+  readings): bare 57, 15% leaves 64, 30% 59, 50% 47, 70% 43, the
+  calendar's 75% about 42, full 42. The phone says 15% on, not 75%.
+- THE FRAMES SAY WHY: the front camera, facing the sun, shows the trees
+  the sun passed behind. At minute 11 (phone 82,000 lux, model shade) the
+  sun clears a tall crown that is nearly bare, with bare ash-like trees
+  beside it; at minute 9 (phone 900 lux, model shade, agreed) the sun sits
+  in a crown still in leaf. Species, as the owner said on 2026-10-15: the
+  early droppers on this lot are already bare two days after finding 23
+  found 60-90% on other lots' maples. One calendar for a town cannot hold
+  both; the leaves are per tree.
+- THE FLAT START (minutes 0-3) DOES NOT SCORE. Flat, the face was 55-63
+  degrees from the sun (gain 0.13-0.24): the phone read 1,000-4,500 lux
+  median, at most 20,000, where the model says open sun for most points
+  (T 1.0 in minutes 0-1). A flat sensor under a 27-degree sun should read
+  about 20,000 lux in the open; 3,000 is shade. The holder's own body is
+  the likely shade (the phone in front at chest height, a 27-degree sun
+  casts a 4 m shadow); the hopper never had this. Tilting toward the sun
+  fixed it, and the method is the better one: 90,000 against 1,500 is a
+  split nothing can blur.
+- WALKING GPS: fixes 10-13 m (median 9.9 m over the walk; 5-7 m flat at
+  the start and end), 20-28 m of scatter within a minute at 0.3 m/s. The
+  hopper's 8 m rule keeps 97 of 1,450 fixes. At 15 m it keeps the walk,
+  and smoothing the fixes over 5 or 10 s changed nothing (65% -> 65-66%);
+  the best 4 m move gains 19 readings. The ceiling a perfect model would
+  reach through this GPS: open 98%, tree 99%, edge 74%.
+- The southwest-corner tree the owner thinks lost branches cannot be told
+  from the leaves with this walk: the 14 deep-shade readings the phone read
+  as sun lie in the southern part of the lot, spread over 38 m, and bare
+  trees would turn most of them anyway.
+
+NOT CHANGED in the model. The calendar's share is the question, and it is
+a per-tree question (speculation, below). The field check gained on-foot
+settings (workflow 35 input `foot`: phone 1.07 m, tilt allowed, fixes to
+15 m, no truck). Scratch: rec1017/{run,frames,diag,tilted,smooth,dark}.mjs
+(not in the repo: they carry the lot).
+
 ## Speculation
 
 - Mixed-season flights (7) may be better treated as leaf-on for the
@@ -1031,6 +1099,18 @@ Not changed: nothing. The two losing flights are a bookmarked test, below.
   2013: leaf-off lidar under-reads bare crowns); no correction is warranted
   by these numbers.
 
+- THE LEAVES ARE PER TREE, NOT PER TOWN (25, 23): on the owner's lot on
+  Oct 17 the phone fits 15% leaves where the calendar says 75%, two days
+  after other lots' maples read 60-90%; the sun-facing frames show bare
+  ash-like crowns beside leafy ones. A species or a per-crown drop date
+  (from the leaf-on/leaf-off laser pair where one exists, from the
+  crown's own winter density, or from the frames) would do what one
+  calendar cannot. Not measured beyond these two days.
+- THE SUN-FACING FRAMES AS AN INSTRUMENT (25): the front camera every 10 s
+  with the phone tilted at the sun records what blocks the sun, frame by
+  frame; read by eye on three frames so far. Automated, each frame gives
+  the sun's state (clear, crown, roof) and the crown's leaf share at the
+  sun's spot, keyed to the lidar crown on that ray. Not built.
 - Deep tree shade read as sun (9) -- not the new build's (its readings
   were edges): trees cut or thinned since the 2018 flight, crowns called evergreen that are not, or GPS at a crown's edge.
   Per-tree, not tested.
