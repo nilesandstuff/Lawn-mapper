@@ -6792,6 +6792,33 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
+### S41. THE PLAN's lidar veto may miss about half of pitched roofs, and the shade map's roof catch finds them (from the water and features sessions, 2026-10-17 -- NOT MEASURED HERE)
+**Source:** docs/SHADE-FINDINGS.md finding 24. The water session measured
+it; the features session wrote it up (pull 7). Nothing here re-ran it.
+
+**What they report.** The shade map's roof mask was scored against the
+Chesapeake 1 m land use's structure class, on 23 residential squares from 6
+flights in VA, MD and PA.
+- **H38's flat-roof rule alone** (what THE PLAN's veto uses) found 46% of
+  structure cells exactly and 84% within a metre, at 89-92% precision.
+- **With the pitched-roof catch** (`solidAtGrass`), recall rose to 87%.
+- **As shipped** (with the patch test): 83% recall, 85% precision
+  (91% / 94% within 1 m), IoU 0.72.
+- Two flights (Dauphin 2016, Northern VA 2022) did worse than the water
+  map's cruder finder. Not yet explained.
+
+**Why it matters here, as a guess.** H38/H39 adopted the veto because it
+found roofs and the pond and almost never touched lawn. It was never scored
+for how much roof it MISSES, and a missed roof costs nothing at the veto:
+the detector already calls most roofs not-lawn by colour. A pitched-roof
+catch would matter only on lots where the detector calls a roof lawn, which
+H39's "no lot made worse" did not look for.
+
+**What would test it:** THE PLAN with the shade map's roof mask in place of
+the flat rule, `lawns: locked`, three seeds a side, under the full bar.
+Chesapeake structure cells are 1 m and built from lidar plus imagery, so
+"within 1 m" is the fairer of their numbers.
+
 ### S40. Other people's turf polygons as extra training frames (owner, 2026-10-17 -- FIRST LOOK H99; NOT BUILT, NOT TRAINED)
 **The idea (the owner's):** several hundred lawns already outlined by
 somebody else, moved onto our photos, would grow the corpus without
