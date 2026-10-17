@@ -55,7 +55,7 @@ export function renderGrass(el, { season, climate, hasLawn, grassKind = null }) 
     return `<h3>${title} <span class="dim">${light} · ${sqft(b.n)} · ${pct(b.share)} of ${what}</span></h3><p>${lead}</p>${list ? `<ul class="grasses">${list}</ul>` : ''}`;
   }).join('');
   const kinds = kindZone === 'transition' ? ['cool', 'warm'] : [kindZone];
-  const planting = kinds.map((k) => { const gs = growingSeason(climate.tMean, k); const w = plantingWindow(gs, k); return w ? `<li><b>${k === 'cool' ? 'Cool-season' : 'Warm-season'} grass:</b> ${esc(w)}</li>` : ''; }).join('');
+  const planting = kinds.map((k) => { const gs = growingSeason(climate.tMean, k, undefined, climate.tSoil || null); const w = plantingWindow(gs, k); return w ? `<li><b>${k === 'cool' ? 'Cool-season' : 'Warm-season'} grass:</b> ${esc(w)}</li>` : ''; }).join('');
   el.innerHTML = `${z}
     <p><b>Light on ${what}</b> through the growing season: ${mean.toFixed(1)} mol/m²/day on average${L ? `, lowest ${L.min.toFixed(1)} around ${dayLabel(L.minDay)}` : ''}, against ${season.stats?.open ? season.stats.open.mean.toFixed(1) : '—'} on open ground here. The parts of ${what} below are cut at the grasses' lowest lights; the "Light (DLI)" view over the growing season on the shade step shows where each part is.</p>
     ${bandHtml}

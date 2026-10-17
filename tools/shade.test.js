@@ -22,7 +22,7 @@ import { sunAt, solarNoon, sunPath, clearSky, airMass, parMol } from '../public/
 import { buildCanopy } from '../public/shade/canopy.js';
 import { seasonalCanopy, muWithLeaves, leafCalendar, G_OMEGA, LAI_MAX, LEAF_FALL_LEAD_DAYS } from '../public/shade/seasonal.js';
 import { transmittance, skyView, sunlitNow, dayLight, samplePoints, groundAt, beamShare } from '../public/shade/rays.js';
-import { dayIndex, typicalYear, growthPotential, growingSeason, dliOn, dayLabel, nwsDailyMeans, observedDays, yearAsItIs, periodDays, SEASON_GP } from '../public/shade/climate.js';
+import { dayIndex, typicalYear, growthPotential, growingSeason, dliOn, dayLabel, nwsDailyMeans, observedDays, yearAsItIs, periodDays, SEASON_GP, soilDormancyDay, trailingMean, SOIL_DORMANT_C } from '../public/shade/climate.js';
 import { climateAt, climateNow } from '../worker/src/shade.js';
 import { movedCorners } from '../public/lib/align.js';
 import { frameCorners } from '../public/lib/mercator.js';
@@ -653,23 +653,34 @@ check('the color ramp runs dark to bright and clamps', ramp(-1).join() === '0,0,
   const wrap = growingSeason(Array.from({ length: 365 }, (_, k) => (k < 60 || k > 300 ? 30 : 5)), 'warm');
   check('season: all year where it is always warm; a winter season wraps round New Year',
     warmAll.allYear && wrap.start > 300 && wrap.end < 60 && wrap.mainRun === wrap.days.length);
+  /* Winter dormancy on the soil: a made-up soil year lagging the air by 20 days, its 5-day mean falling under 7 C about day 270. */
+  const soil = Array.from({ length: 365 }, (_, k) => 10 + 12 * Math.sin(((k - 100) / 365) * 2 * Math.PI));
+  const dormant = soilDormancyDay(soil, 'cool');
+  const s2 = growingSeason(ty.tMean, 'cool', SEASON_GP, soil);
+  check('dormancy: the first day after the summer peak whose 5-day mean soil temperature is under the cool-season point; the season ends the day before it and its days run from the GP start to that day',
+    SOIL_DORMANT_C.cool === 7 && dormant !== null && near(dormant, 100 + 182.5 + 365 * Math.asin(0.25) / (2 * Math.PI) + 2, 3) && s2.soilEnd && s2.end === (dormant + 364) % 365 && s2.start === s1.start && s2.days.length === s2.mainRun && s2.days[0] === s2.start && s2.days.at(-1) === s2.end, `dormant ${dormant}, season ${dayLabel(s2.start)} to ${dayLabel(s2.end)}`);
+  check('dormancy: warm-season grass goes dormant sooner (13 C); soil that never cools leaves the GP end; no soil, no change',
+    soilDormancyDay(soil, 'warm') < dormant && soilDormancyDay(new Array(365).fill(20), 'cool') === null && !growingSeason(ty.tMean, 'cool', SEASON_GP, new Array(365).fill(20)).soilEnd && !growingSeason(ty.tMean, 'cool', SEASON_GP, null).soilEnd && near(trailingMean(soil)[200], soil[198], 0.3), '');
+  const tySoil = typicalYear({ header: { fill_value: -999 }, properties: { parameter: { ALLSKY_SFC_SW_DWN: days, ALLSKY_SFC_SW_DIFF: diff, T2M: temp, TSOIL1: Object.fromEntries(Object.keys(temp).map((d) => [d, temp[d] - 1])) } } });
+  check('typical year: the top soil layer folded like the air, null when POWER sent none', ty.tSoil === null && tySoil.tSoil.length === 365 && near(tySoil.tSoil[171], tySoil.tMean[171] - 1, 1e-6), '');
   check('a patch\'s light: open ground gets 2.04 mol per MJ; full shade under open sky keeps only its diffuse share',
     near(dliOn(20, 0.4, 1, 1), 40.8, 1e-9) && near(dliOn(20, 0.4, 0, 1), 2.04 * 8, 1e-9) && near(dliOn(20, 0.4, 0, 0.5), 2.04 * 4, 1e-9));
   const calls = [];
-  const fake = async (url) => { calls.push(String(url)); return { ok: true, json: async () => ({ header: { fill_value: -999 }, properties: { parameter: { ALLSKY_SFC_SW_DWN: days, ALLSKY_SFC_SW_DIFF: diff, T2M: temp } } }) }; };
+  const soilTyp = Object.fromEntries(Object.keys(temp).map((d) => [d, temp[d] - 1]));
+  const fake = async (url) => { calls.push(String(url)); return { ok: true, json: async () => ({ header: { fill_value: -999 }, properties: { parameter: { ALLSKY_SFC_SW_DWN: days, ALLSKY_SFC_SW_DIFF: diff, T2M: temp, TSOIL1: soilTyp } } }) }; };
   const cl = await climateAt(-87.96, 42.86, { fetchImpl: fake, now: new Date(Date.UTC(2026, 9, 11)) });
   check('climate route: the last ten whole years from NASA POWER, the AG community, a 0.05 degree cell, 365 days back',
     calls.length === 1 && calls[0].includes('start=20160101') && calls[0].includes('end=20251231') && calls[0].includes('community=AG')
-    && cl.lat === 42.85 && cl.lng === -87.95 && cl.ghi.length === 365 && cl.tMean.length === 365, calls[0]);
+    && cl.lat === 42.85 && cl.lng === -87.95 && cl.ghi.length === 365 && cl.tMean.length === 365 && cl.tSoil?.length === 365 && calls[0].includes('TSOIL1'), calls[0]);
   /* This year's weather (worker weatherNow / climateNow): POWER's typical years, POWER's T2M for this year (3 days behind), NWS points then forecast. */
   const seen = [];
   const fake2 = async (url, init) => {
     const u = String(url); seen.push(u);
     const j = (body) => ({ ok: true, json: async () => body });
-    if (u.includes('power.larc.nasa.gov') && u.includes('parameters=T2M&')) {
-      const t2m = {}; for (let k = 0; k < 281; k++) { const d = new Date(Date.UTC(2026, 0, 1 + k)); t2m[`${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`] = cl.tMean[k] + 3; }
+    if (u.includes('power.larc.nasa.gov') && u.includes('parameters=T2M%2CTSOIL1&')) {
+      const t2m = {}, soil = {}; for (let k = 0; k < 281; k++) { const d = new Date(Date.UTC(2026, 0, 1 + k)); const key = `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`; t2m[key] = cl.tMean[k] + 3; soil[key] = cl.tMean[k] + 1; }
       t2m['20261009'] = -999; t2m['20261010'] = -999; t2m['20261011'] = -999; // the lag
-      return j({ header: { fill_value: -999 }, properties: { parameter: { T2M: t2m } } });
+      return j({ header: { fill_value: -999 }, properties: { parameter: { T2M: t2m, TSOIL1: soil } } });
     }
     if (u.includes('power.larc.nasa.gov')) return fake(url);
     if (u.includes('api.weather.gov/points/')) { if (!init?.headers?.['User-Agent']) throw new Error('NWS wants a User-Agent'); return j({ properties: { forecast: 'https://api.weather.gov/gridpoints/X/1,1/forecast' } }); }
@@ -678,9 +689,9 @@ check('the color ramp runs dark to bright and clamps', ramp(-1).join() === '0,0,
   };
   const now = await climateNow(-87.96, 42.86, { fetchImpl: fake2, now: new Date(Date.UTC(2026, 9, 11)) });
   check('climate route, this year: observed days through Oct 8 (POWER three days behind), the forecast to Oct 18, a +3 C anomaly, tMeanNow a year long and warmer than typical in the lived part',
-    now.tMeanNow?.length === 365 && now.weather?.observedThrough === '2026-10-08' && now.weather?.forecastTo === '2026-10-18' && Math.abs(now.weather.anomaly - 3) < 0.15 && now.tMeanNow[200] > now.tMean[200] + 2.5 && seen.some((u) => u.includes('start=20260101') && u.includes('end=20261011')),
+    now.tMeanNow?.length === 365 && now.weather?.observedThrough === '2026-10-08' && now.weather?.forecastTo === '2026-10-18' && Math.abs(now.weather.anomaly - 3) < 0.15 && now.tMeanNow[200] > now.tMean[200] + 2.5 && now.tSoilNow?.length === 365 && seen.some((u) => u.includes('start=20260101') && u.includes('end=20261011')),
     JSON.stringify(now.weather));
-  const broken = async (url, init) => (String(url).includes('parameters=T2M&') ? { ok: false } : fake2(url, init));
+  const broken = async (url, init) => (String(url).includes('parameters=T2M%2CTSOIL1&') ? { ok: false } : fake2(url, init));
   const typicalOnly = await climateNow(-87.96, 42.86, { fetchImpl: broken, now: new Date(Date.UTC(2026, 9, 11)) });
   check('climate route, this year: when POWER\'s daily data fails the answer is the typical year alone, not an error', typicalOnly.tMean.length === 365 && typicalOnly.tMeanNow === undefined, Object.keys(typicalOnly).join());
 }

@@ -311,7 +311,7 @@ export async function climateAt(lng, lat, { ctx = null, fetchImpl = fetch, now =
   const rl = Math.round(lng * 20) / 20, ra = Math.round(lat * 20) / 20;
   const [y0, y1] = climateYears(now);
   const cache = globalThis.caches?.default;
-  const key = new Request(`https://shade.lawnmapper.internal/climate-v1/${ra},${rl},${y0}-${y1}.json`);
+  const key = new Request(`https://shade.lawnmapper.internal/climate-v2/${ra},${rl},${y0}-${y1}.json`);
   const hit = cache && await cache.match(key);
   if (hit) return hit.json();
   const res = await fetchImpl(powerUrl(rl, ra, y0, y1));
@@ -324,6 +324,7 @@ export async function climateAt(lng, lat, { ctx = null, fetchImpl = fetch, now =
     source: 'NASA POWER daily (MERRA-2, CERES SYN1deg), community AG',
     ghi: round(t.ghi, 2), ghiP10: round(t.ghiP10, 2), ghiP90: round(t.ghiP90, 2),
     diffuse: round(t.diffuse, 3), tMean: round(t.tMean, 1),
+    tSoil: t.tSoil ? round(t.tSoil, 1) : null, // the top soil layer (TSOIL1), for winter dormancy
   };
   if (cache) {
     const put = cache.put(key, new Response(JSON.stringify(body), {
@@ -345,16 +346,18 @@ const ymd = (d) => `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(
  * { observedThrough, forecastTo, anomaly, today } } or null when POWER's
  * daily data could not be read.
  */
-export async function weatherNow(lng, lat, typicalTMean, { ctx = null, fetchImpl = fetch, now = new Date() } = {}) {
+export async function weatherNow(lng, lat, typical, { ctx = null, fetchImpl = fetch, now = new Date() } = {}) {
+  const typicalTMean = Array.isArray(typical) ? typical : typical.tMean, typicalSoil = Array.isArray(typical) ? null : typical.tSoil || null;
   const rl = Math.round(lng * 20) / 20, ra = Math.round(lat * 20) / 20, year = now.getUTCFullYear();
   const cache = globalThis.caches?.default;
-  const key = new Request(`https://shade.lawnmapper.internal/climate-now-v1/${ra},${rl},${ymd(now)}.json`);
+  const key = new Request(`https://shade.lawnmapper.internal/climate-now-v2/${ra},${rl},${ymd(now)}.json`);
   const hit = cache && await cache.match(key);
   if (hit) return hit.json();
-  const u = 'https://power.larc.nasa.gov/api/temporal/daily/point?' + new URLSearchParams({ parameters: 'T2M', community: 'AG', longitude: rl.toFixed(3), latitude: ra.toFixed(3), start: `${year}0101`, end: ymd(now), format: 'JSON' });
+  const u = 'https://power.larc.nasa.gov/api/temporal/daily/point?' + new URLSearchParams({ parameters: 'T2M,TSOIL1', community: 'AG', longitude: rl.toFixed(3), latitude: ra.toFixed(3), start: `${year}0101`, end: ymd(now), format: 'JSON' });
   const res = await fetchImpl(u).catch(() => null);
   if (!res?.ok) return null;
-  const observed = observedDays(await res.json());
+  const power = await res.json();
+  const observed = observedDays(power), observedSoil = observedDays(power, 'TSOIL1');
   let forecast = {};
   try {
     const pts = await fetchImpl(`https://api.weather.gov/points/${ra.toFixed(4)},${rl.toFixed(4)}`, { headers: { 'User-Agent': NWS_AGENT, Accept: 'application/geo+json' } });
@@ -364,8 +367,11 @@ export async function weatherNow(lng, lat, typicalTMean, { ctx = null, fetchImpl
   } catch { forecast = {}; }
   const y = yearAsItIs(typicalTMean, observed, forecast, { today: now });
   const dayOf = (k) => (k === null ? null : new Date(Date.UTC(year, 0, 1 + k)).toISOString().slice(0, 10));
+  /* The soil this year: the days lived so far, then the typical soil plus the recent anomaly fading (no forecast of it). */
+  const soilNow = typicalSoil && Object.keys(observedSoil).length ? yearAsItIs(typicalSoil, observedSoil, {}, { today: now }) : null;
   const body = {
     tMeanNow: y.tMean.map((v) => Math.round(v * 10) / 10),
+    tSoilNow: soilNow ? soilNow.tMean.map((v) => Math.round(v * 10) / 10) : null,
     weather: { observedThrough: dayOf(y.through), forecastTo: dayOf(y.forecastTo), anomaly: Math.round(y.anomaly * 10) / 10, today: y.today, source: 'NASA POWER daily T2M this year; NWS point forecast; typical year plus the recent anomaly, fading' },
   };
   if (cache) {
@@ -378,6 +384,6 @@ export async function weatherNow(lng, lat, typicalTMean, { ctx = null, fetchImpl
 /** The typical year and this year's weather together (the /api/shade/climate answer). */
 export async function climateNow(lng, lat, opts = {}) {
   const typical = await climateAt(lng, lat, opts);
-  const now = await weatherNow(lng, lat, typical.tMean, opts).catch(() => null);
+  const now = await weatherNow(lng, lat, typical, opts).catch(() => null);
   return now ? { ...typical, ...now } : typical;
 }
