@@ -52,6 +52,9 @@ go in this file (or anywhere in the repository): lots are named by a label.
   origin in a browser). Nothing is saved. Reading a signed-in visitor's
   saved Lawn Mapper maps (lawn outlines included) needs Lawn Mapper to let
   this site ask for them: not built, to be asked of the core session.
+- **The owner's spreader barometer (H15)** follows a yard's overall slope
+  (r 0.89-0.97) but is off by 19-50 cm even on flat ground, so it cannot
+  check centimetre hollows.
 - **Waiting on:** the first real rain, for the field check.
 
 ---
@@ -490,20 +493,52 @@ match too.
 
 ---
 
+### H15. The owner's barometer against the lidar ground (water session, 2026-10-17)
+
+Owner, 2026-10-17: the phone rode the fertilizer spreader with the
+barometer on; subtract the hopper height and compare with the lidar.
+Read through the shade map's field-reading tables (shade_baro, shade_fixes,
+shade_orient, shade_cuts; the features session's instructions), visit by
+visit, by water/tools/baro.mjs (workflow "W. Water tool", task baro). Only
+spreader visits count (median moving speed 2 m/s or more; the phone was
+carried on the slower ones). Fit per visit: barometer height minus 1.27 m
+= lidar ground + an offset + a straight-line weather drift, at the best
+barometer lag (searched to 15 s).
+
+Recordings re-uploaded by 6:39 PM EDT: 17 (13 after uploads replace what
+they cover), 5 with the barometer, 7 visits; 4 compared (1 carried, 1 with
+no usable barometer seconds, 1 over 400 m long).
+
+| visit | lidar relief | residual | shape r | bumps r (20 s) | GPS error worth | flat ground (<3%), smoothed 5 s |
+|---|---|---|---|---|---|---|
+| #2 | 444 cm | 73 cm | 0.91 | 0.36 | 33 cm | 50 cm (46 s) |
+| #4 | 173 cm | 27 cm | 0.89 | 0.63 | 16 cm | 24 cm (158 s) |
+| #6 | 261 cm | 24 cm | 0.97 | 0.80 | 24 cm | 19 cm (52 s) |
+| #7 | 84 cm | 35 cm | 0.69 | 0.48 | 15 cm | 40 cm (153 s) |
+
+- **The yard's overall shape agrees**: correlation 0.89-0.97 on three of
+  four passes. On the flattest yard (84 cm of relief) it is 0.69.
+- **The leftover is 24-73 cm, and most of it is the barometer's, not the
+  GPS's.** The GPS (3.8-4.6 m median) is worth 15-33 cm on these slopes,
+  but where the ground is nearly flat, and a wrong fix costs almost nothing,
+  the barometer still disagrees by 19-50 cm after 5 s smoothing. The
+  barometer's lag is 0-1 s, so it is not that.
+- **Weather drift is large and uneven**: 6-48 cm a minute. A straight line
+  over 8-25 minutes cannot follow it; a wigglier fit would start to eat the
+  ground's own shape, so it was not tried.
+- **So the barometer cannot check the low-spot map.** A lawn hollow is
+  3-25 cm deep; the barometer's own error on flat ground is about the
+  same size or bigger. It confirms the lidar's slope across a yard, which
+  was never in doubt. The field check stays THE BAR's: wet spots after a
+  real rain.
+
+Four visits from one batch of re-uploads; more uploads can be read by the
+same task without changes, and would firm up the numbers but would not
+close a gap this wide.
+
+---
+
 ## SPECULATION
-
-### S7. The barometer on the spreader can check the ground's shape, not its hollows
-
-The owner's field recordings carried the phone's barometer, mounted on the
-spreader 1.27 m up (features session, 2026-10-17). It was not stored
-before 2026-10-17; from then on it is (shade_baro), and older recordings
-need re-uploading. The features session's own check on one overcast walk
-(its SHADE-FINDINGS 17): relative altitude against the lidar ground under
-the fixes, with a straight-line weather drift, 0.17 m SD over 3.5 m of
-relief, correlation 0.98. So a lot's half-metre slope should show and a
-3-5 cm hollow should not. water/tools/baro.mjs (workflow task baro)
-measures it visit by visit -- whole-pass shape and the short bumps -- once
-the recordings are back in.
 
 ### S1. Many real wet spots may not be low spots at all
 
