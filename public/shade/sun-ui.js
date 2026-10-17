@@ -21,7 +21,7 @@ import { reportError } from './usage.js';
 import { gridOver, gridBox } from './grid.js';
 import { fromMerc, toMerc } from './ept.js';
 import { sunPath } from './sun.js';
-import { GRASS, dayLabel, growingSeason, periodDays, SEASON_GP } from './climate.js';
+import { GRASS, dayLabel, growingSeason, periodDays, SEASON_GP, SOIL_DORMANT_C } from './climate.js';
 import { climateZone } from './grass.js';
 import { heat, bandsFor, rasterOf, smooth, valueAt, boxStats } from './readout.js';
 import { groundLayer } from './view3d.js';
@@ -402,7 +402,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     if (!st.built || !st.climate?.tMean) return;
     const grass = $('#grass').value;
     if (!grass || !BANDS[grass]) { $('#season-status').textContent = 'Choose cool-season or warm-season grass to set the growing season.'; return; }
-    st.seasonInfo = growingSeason(st.climate.tMean, grass, SEASON_GP);
+    st.seasonInfo = growingSeason(st.climate.tMean, grass, SEASON_GP, st.climate.tSoil || null);
     labelPeriods();
     st.seasonId = send({ type: 'season', climate: st.climate, grass, threshold: SEASON_GP, bands: BANDS[grass].map(([lo, hi]) => [lo, hi]) });
   }
@@ -426,7 +426,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     const grass = $('#grass').value;
     if (!st.climate?.tMean) { st.period = null; caption('The weather here could not be read, so the growing season is unknown: pick one day instead.'); return; }
     if (!grass) { st.period = null; caption('Choose cool-season or warm-season grass (below) to set the growing season: this place is in the transition zone, where both are grown.'); return; }
-    if (!st.seasonInfo) st.seasonInfo = growingSeason(st.climate.tMean, grass, SEASON_GP);
+    if (!st.seasonInfo) st.seasonInfo = growingSeason(st.climate.tMean, grass, SEASON_GP, st.climate.tSoil || null);
     const days = periodDays(st.seasonInfo.days, st.calendar, st.when);
     st.periodDays = days;
     if (!days.length) { st.period = { n: 0 }; draw(); return; }
@@ -438,7 +438,10 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     const se = st.season, c = st.climate;
     const grass = $('#grass').value, g = GRASS[grass] || GRASS.cool;
     $('#season-status').textContent = '';
-    const how = `from the day growth potential reaches ${Math.round(SEASON_GP * 100)}% in spring to the day it falls under it in autumn, on NASA's daily temperatures ${c.years} (the PACE Turf model); Turf Tools' season will replace this estimate`;
+    const f = (cc) => `${Math.round(cc * 1.8 + 32)} °F`;
+    const how = se.season.soilEnd
+      ? `from the day growth potential reaches ${Math.round(SEASON_GP * 100)}% in spring (the PACE Turf model on NASA's daily air temperatures ${c.years}) to winter dormancy, the day the 5-day average soil temperature (NASA's top soil layer, about the top 10 cm) falls under ${f(SOIL_DORMANT_C[grass] ?? SOIL_DORMANT_C.cool)}; Turf Tools' season will replace this estimate`
+      : `from the day growth potential reaches ${Math.round(SEASON_GP * 100)}% in spring to the day it falls under it in autumn, on NASA's daily temperatures ${c.years} (the PACE Turf model; no soil temperatures here, so the air ends it too); Turf Tools' season will replace this estimate`;
     if (!se.stats.lawn) {
       $('#season-summary').innerHTML = `<p>In a typical year it is never warm enough here for ${g.label.toLowerCase()} grass to grow (${how}).</p>`;
       $('#season-chart').innerHTML = chart(se, c);

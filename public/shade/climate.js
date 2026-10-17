@@ -8,6 +8,8 @@
  *   ALLSKY_SFC_SW_DWN    sunlight reaching the ground, clouds included, MJ/m2/day
  *   ALLSKY_SFC_SW_DIFF   the diffuse (scattered sky) part of it
  *   T2M                  mean air temperature, C
+ *   TSOIL1               mean temperature of the top soil layer (MERRA-2's
+ *                        first layer, about the top 10 cm), C
  *
  * folded into a typical year: for each day of the year, the mean (and the
  * 10th and 90th percentiles) over the ten years and a week either side.
@@ -29,7 +31,12 @@
  *   GP = exp( -0.5 ((T - Topt) / sd)^2 )   cool-season 20 C, sd 5.5
  *                                          warm-season 31 C, sd 7
  *
- * and the season is the days with GP at least 0.5.
+ * and the season starts on the day GP reaches SEASON_GP in spring. IT ENDS
+ * ON THE SOIL (owner, 2026-10-17: "change the trigger for winter dormancy
+ * to 5 day average soil temps"): the first day after the summer's peak on
+ * which the 5-day mean of the top-layer soil temperature falls under the
+ * grass kind's dormancy point (SOIL_DORMANT_C), which is where shoot growth
+ * stops; without soil data the GP threshold ends it too.
  */
 
 export const GRASS = {
@@ -41,11 +48,17 @@ export const GRASS = {
    growing season starts at 20% GP in the spring and ends at 20% gp in the
    fall"). */
 export const SEASON_GP = 0.2;
+/* Winter dormancy: the 5-day mean of the top soil layer under this stops
+   growth. Cool-season about 45 F (shoot growth stops as soils fall through
+   the mid-40s), warm-season about 55 F (bermudagrass and zoysia brown out
+   as soils fall through the mid-50s). Owner's figures to tune. */
+export const SOIL_DORMANT_C = { cool: 7, warm: 13 };
+export const SOIL_MEAN_DAYS = 5;
 export const PAR_MOL_PER_MJ = 2.04;
 
 export const powerUrl = (lng, lat, y0, y1) => 'https://power.larc.nasa.gov/api/temporal/daily/point?'
   + new URLSearchParams({
-    parameters: 'ALLSKY_SFC_SW_DWN,ALLSKY_SFC_SW_DIFF,T2M', community: 'AG',
+    parameters: 'ALLSKY_SFC_SW_DWN,ALLSKY_SFC_SW_DIFF,T2M,TSOIL1', community: 'AG',
     longitude: lng.toFixed(3), latitude: lat.toFixed(3), start: `${y0}0101`, end: `${y1}1231`, format: 'JSON',
   });
 
@@ -61,36 +74,39 @@ const pct = (sorted, q) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.r
 
 /**
  * A NASA POWER daily response -> the typical year: 365 values each of
- * ghi (mean MJ), ghiP10, ghiP90, diffuse (mean share of ghi, 0..1), tMean (C).
+ * ghi (mean MJ), ghiP10, ghiP90, diffuse (mean share of ghi, 0..1), tMean (C),
+ * and tSoil (C, the top soil layer; null when POWER sent none).
  * Each day pools the same date +- `halfWindow` days over every year.
  */
 export function typicalYear(power, { halfWindow = 7 } = {}) {
   const p = power?.properties?.parameter;
   if (!p?.ALLSKY_SFC_SW_DWN || !p?.T2M) throw new Error('NASA POWER sent no sunlight or temperature');
   const fill = Number(power?.header?.fill_value ?? -999);
-  const by = Array.from({ length: 365 }, () => ({ ghi: [], diff: [], t: [] }));
+  const by = Array.from({ length: 365 }, () => ({ ghi: [], diff: [], t: [], soil: [] }));
   for (const [ymd, ghi] of Object.entries(p.ALLSKY_SFC_SW_DWN)) {
     const k = dayIndex(ymd);
     const diff = p.ALLSKY_SFC_SW_DIFF?.[ymd];
-    const t = p.T2M[ymd];
+    const t = p.T2M[ymd], soil = p.TSOIL1?.[ymd];
     if (Number.isFinite(ghi) && ghi !== fill && ghi >= 0) {
       by[k].ghi.push(ghi);
       if (Number.isFinite(diff) && diff !== fill && ghi > 0) by[k].diff.push(Math.min(1, Math.max(0, diff / ghi)));
     }
     if (Number.isFinite(t) && t !== fill) by[k].t.push(t);
+    if (Number.isFinite(soil) && soil !== fill && soil > -90) by[k].soil.push(soil);
   }
-  const out = { ghi: [], ghiP10: [], ghiP90: [], diffuse: [], tMean: [], years: new Set(Object.keys(p.T2M).map((d) => d.slice(0, 4))).size };
+  const out = { ghi: [], ghiP10: [], ghiP90: [], diffuse: [], tMean: [], tSoil: [], years: new Set(Object.keys(p.T2M).map((d) => d.slice(0, 4))).size };
   for (let k = 0; k < 365; k++) {
-    const g = [], f = [], t = [];
+    const g = [], f = [], t = [], so = [];
     for (let j = -halfWindow; j <= halfWindow; j++) {
       const b = by[(k + j + 365) % 365];
-      g.push(...b.ghi); f.push(...b.diff); t.push(...b.t);
+      g.push(...b.ghi); f.push(...b.diff); t.push(...b.t); so.push(...b.soil);
     }
     g.sort((a, b) => a - b);
     const mean = (a) => (a.length ? a.reduce((s, v) => s + v, 0) / a.length : NaN);
     out.ghi.push(mean(g)); out.ghiP10.push(pct(g, 0.1)); out.ghiP90.push(pct(g, 0.9));
-    out.diffuse.push(f.length ? mean(f) : NaN); out.tMean.push(mean(t));
+    out.diffuse.push(f.length ? mean(f) : NaN); out.tMean.push(mean(t)); out.tSoil.push(mean(so));
   }
+  if (!out.tSoil.every(Number.isFinite)) out.tSoil = null;
   /* Where POWER gave no diffuse split, Erbs et al. (1982) from clearness would
      go here; POWER has always sent it so far, so a missing day takes 0.5. */
   out.diffuse = out.diffuse.map((v) => (Number.isFinite(v) ? v : 0.5));
@@ -99,9 +115,9 @@ export function typicalYear(power, { halfWindow = 7 } = {}) {
 
 /* ------------------------------------------- this year as it is */
 
-/** NASA POWER's daily T2M for one year -> { 'YYYYMMDD': C } without fill values. */
-export function observedDays(power) {
-  const t = power?.properties?.parameter?.T2M || {};
+/** NASA POWER's daily T2M (or another parameter) for one year -> { 'YYYYMMDD': C } without fill values. */
+export function observedDays(power, parameter = 'T2M') {
+  const t = power?.properties?.parameter?.[parameter] || {};
   const fill = Number(power?.header?.fill_value ?? -999);
   const out = {};
   for (const [ymd, v] of Object.entries(t)) if (Number.isFinite(v) && v !== fill && v > -90) out[ymd] = v;
@@ -194,12 +210,40 @@ export const growthPotential = (tC, grass = 'cool') => {
   return Math.exp(-0.5 * ((tC - g.opt) / g.sd) ** 2);
 };
 
-/** The season: day indices (0..364) with GP >= SEASON_GP, and its first and last day (null if all year or none). */
-export function growingSeason(tMean, grass = 'cool', threshold = SEASON_GP) {
+/** The trailing `n`-day mean of a 365-day series, round the year. */
+export function trailingMean(series, n = SOIL_MEAN_DAYS) {
+  const out = new Array(365);
+  for (let k = 0; k < 365; k++) { let s = 0; for (let j = 0; j < n; j++) s += series[(k - j + 365) % 365]; out[k] = s / n; }
+  return out;
+}
+
+/**
+ * The first dormant day: after the year's warmest 5-day soil mean, the
+ * first day that mean falls under the grass kind's dormancy point; null
+ * when it never does (the soil stays warm all year).
+ */
+export function soilDormancyDay(tSoil, grass = 'cool') {
+  if (!tSoil || tSoil.length !== 365 || !tSoil.every(Number.isFinite)) return null;
+  const limit = SOIL_DORMANT_C[grass] ?? SOIL_DORMANT_C.cool;
+  const m = trailingMean(tSoil);
+  let peak = 0;
+  for (let k = 1; k < 365; k++) if (m[k] > m[peak]) peak = k;
+  for (let j = 1; j < 365; j++) { const k = (peak + j) % 365; if (m[k] < limit) return k; }
+  return null;
+}
+
+/**
+ * The season: day indices (0..364) and its first and last day (null if all
+ * year or none). It starts where GP reaches `threshold` (the longest such
+ * run, wrapping round New Year for warm places) and, given the typical
+ * year's top-layer soil temperatures `tSoil`, ends the day before the soil
+ * says dormant (soilDormancyDay); `soilEnd` says which rule ended it.
+ */
+export function growingSeason(tMean, grass = 'cool', threshold = SEASON_GP, tSoil = null) {
   const on = tMean.map((t) => growthPotential(t, grass) >= threshold);
-  const days = on.flatMap((v, k) => (v ? [k] : []));
-  if (!days.length) return { days, start: null, end: null, allYear: false };
-  if (days.length === 365) return { days, start: null, end: null, allYear: true };
+  let days = on.flatMap((v, k) => (v ? [k] : []));
+  if (!days.length) return { days, start: null, end: null, allYear: false, soilEnd: false };
+  if (days.length === 365) return { days, start: null, end: null, allYear: true, soilEnd: false };
   /* The longest run, wrapping round New Year for warm places. */
   let best = { start: 0, len: 0 };
   for (let k = 0; k < 365; k++) {
@@ -208,7 +252,14 @@ export function growingSeason(tMean, grass = 'cool', threshold = SEASON_GP) {
     while (len < 365 && on[(k + len) % 365]) len++;
     if (len > best.len) best = { start: k, len };
   }
-  return { days, start: best.start, end: (best.start + best.len - 1) % 365, allYear: false, mainRun: best.len };
+  let end = (best.start + best.len - 1) % 365, len = best.len, soilEnd = false;
+  const dormant = soilDormancyDay(tSoil, grass);
+  if (dormant !== null) {
+    /* From the start forward to the day before dormancy, at most a year less a day. */
+    const span = ((dormant - best.start) % 365 + 365) % 365;
+    if (span > 0) { end = (dormant + 364) % 365; len = span; soilEnd = true; days = Array.from({ length: len }, (_, i) => (best.start + i) % 365); }
+  }
+  return { days, start: best.start, end, allYear: false, mainRun: len, soilEnd };
 }
 
 /**

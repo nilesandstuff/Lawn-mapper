@@ -40,7 +40,7 @@ import { gridOver } from './grid.js';
 import { toMerc } from './ept.js';
 import { samplePoints, skyView, sunlitNow, dayLight, beamAndHours, transmittance, groundAt } from './rays.js';
 import { sunPath, sunAt, solarNoon } from './sun.js';
-import { growingSeason, growthPotential, dliOn, PAR_MOL_PER_MJ } from './climate.js';
+import { growingSeason, dliOn, PAR_MOL_PER_MJ } from './climate.js';
 import { rasterizePolygon } from '../lib/mask.js';
 
 let S = null; // the current property
@@ -282,11 +282,11 @@ function seasonOf(m) {
   const mask = S.lawnOpen || S.lot;
   const inMask = Uint8Array.from(S.coarse.cells, (k) => mask[k]);
   const nIn = inMask.reduce((a, b) => a + b, 0) || 1;
-  const season = growingSeason(c.tMean, m.grass, m.threshold);
+  const season = growingSeason(c.tMean, m.grass, m.threshold, c.tSoil || null);
   const days = season.days.length ? season.days : [];
+  const inSeason = new Set(days);
   const lawn = new Float32Array(365), lawnDull = new Float32Array(365), open = new Float32Array(365);
   const sum = new Float32Array(n);
-  const inSeason = c.tMean.map((t) => growthPotential(t, m.grass) >= m.threshold);
   for (let k = 0; k < 365; k++) {
     const sky = skyAt(leavesOn(k));
     let t = 0, tDull = 0;
@@ -294,7 +294,7 @@ function seasonOf(m) {
       const bs = beamOn(beams, p, k);
       const v = dliOn(c.ghi[k], c.diffuse[k], bs, sky[p]);
       if (inMask[p]) { t += v; tDull += dliOn(c.ghiP10[k], c.diffuse[k], bs, sky[p]); }
-      if (inSeason[k]) sum[p] += v;
+      if (inSeason.has(k)) sum[p] += v;
     }
     lawn[k] = t / nIn; lawnDull[k] = tDull / nIn;
     open[k] = PAR_MOL_PER_MJ * c.ghi[k];
