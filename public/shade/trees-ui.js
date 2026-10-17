@@ -162,12 +162,18 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
   };
 
   const ids = BANDS.map((b) => `trees-${b.id}`);
-  /* The features drawn, per band source, by cell: removed one by one as the eraser passes (a whole redraw is too slow for a stroke). */
+  /* The features drawn, per band source, by cell: removed one by one as the
+     eraser passes (a whole redraw is too slow for a stroke). `removed`
+     remembers what went, for a map without updateData. */
   const byCell = new Map();
   const current = ids.map(() => ({ type: 'FeatureCollection', features: [] }));
+  const removed = ids.map(() => new Set());
+  const CUBE_ID = 1 << 30; // single-cube features live above the runs' ids
+  const bandOf = (m) => BANDS.findIndex((b) => m < b.below);
   function draw() {
     const runs = treeRuns(model, muNow(), leafOff ? season : null, { roofs: st.roofs, cutBelow: st.cut }).filter((r) => !er?.mask[r.k]);
     byCell.clear();
+    removed.forEach((s) => s.clear());
     let lastK = -1, idx = 0;
     BANDS.forEach((b, i) => {
       const fc = {
@@ -176,7 +182,7 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
           idx = r.k === lastK ? idx + 1 : 0; lastK = r.k;
           const f = { type: 'Feature', id: r.k * 64 + idx, geometry: { type: 'Polygon', coordinates: corners(r.k) }, properties: { b: r.base + lift(r.k), t: r.top + lift(r.k), c: KIND_COLOR[r.kind] } };
           if (!byCell.has(r.k)) byCell.set(r.k, []);
-          byCell.get(r.k).push({ src: i, id: f.id, l0: r.l0, l1: r.l1, base: r.base, top: r.top });
+          byCell.get(r.k).push({ src: i, id: f.id, l0: r.l0, l1: r.l1, base: r.base, top: r.top, kind: r.kind, cube: false });
           return f;
         }),
       };
@@ -259,33 +265,61 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
     }
   };
   const hideCursor = () => { if (map.getLayer(CURSOR)) map.removeLayer(CURSOR); if (map.getSource(CURSOR)) map.removeSource(CURSOR); };
-  /* Take the brushed cells' blocks off the map at once: a dynamic source
-     (Mapbox v3.4+) drops a feature updated with no geometry; an older map
-     gets the whole collection again without them. */
-  const dropCells = (cells) => {
-    const gone = ids.map(() => []);
-    for (const k of cells) for (const f of byCell.get(k) || []) gone[f.src].push(f.id);
-    gone.forEach((list, i) => {
-      if (!list.length) return;
+  /* Changes to the drawn blocks, gathered through a frame and sent once per
+     source: a dynamic source (Mapbox v3.4+) drops a feature updated with no
+     geometry and adds one given; an older map gets the whole collection
+     again (owner, 2026-10-17: erasing was "jittery/laggy" -- every move
+     used to rebuild the 30,000-feature list). */
+  const batch = ids.map(() => ({ drop: [], add: [] }));
+  const flush = () => {
+    batch.forEach((b, i) => {
+      if (!b.drop.length && !b.add.length) return;
+      /* A cube added and taken away in the same frame (a column split and
+         its nearest cube erased at once) was never on the map: neither
+         goes to the source, which would otherwise choke on it. */
+      const dropped = new Set(b.drop), added = new Set(b.add.map((f) => f.id));
+      b.add = b.add.filter((f) => !dropped.has(f.id));
+      b.drop = b.drop.filter((id) => !added.has(id));
       const src = map.getSource(ids[i]);
-      const set = new Set(list);
-      current[i] = { type: 'FeatureCollection', features: current[i].features.filter((f) => !set.has(f.id)) };
-      if (typeof src.updateData === 'function') src.updateData({ type: 'FeatureCollection', features: list.map((id) => ({ type: 'Feature', id, geometry: null, properties: {} })) });
-      else src.setData(current[i]);
+      for (const id of b.drop) removed[i].add(id);
+      for (const f of b.add) removed[i].delete(f.id);
+      if (typeof src?.updateData === 'function') {
+        src.updateData({ type: 'FeatureCollection', features: [...b.drop.map((id) => ({ type: 'Feature', id, geometry: null, properties: {} })), ...b.add] });
+      } else if (src) {
+        current[i] = { type: 'FeatureCollection', features: [...current[i].features.filter((f) => !removed[i].has(f.id)), ...b.add] };
+        src.setData(current[i]);
+      }
+      b.drop = []; b.add = [];
     });
   };
-  /* One block off the map (the branches brush). */
-  const dropRuns = (runs) => {
-    const gone = ids.map(() => []);
-    for (const r of runs) gone[r.src].push(r.id);
-    gone.forEach((list, i) => {
-      if (!list.length) return;
-      const src = map.getSource(ids[i]);
-      const set = new Set(list);
-      current[i] = { type: 'FeatureCollection', features: current[i].features.filter((f) => !set.has(f.id)) };
-      if (typeof src.updateData === 'function') src.updateData({ type: 'FeatureCollection', features: list.map((id) => ({ type: 'Feature', id, geometry: null, properties: {} })) });
-      else src.setData(current[i]);
-    });
+  const dropCells = (cells) => { for (const k of cells) for (const f of byCell.get(k) || []) batch[f.src].drop.push(f.id); };
+  const dropRuns = (runs) => { for (const r of runs) batch[r.src].drop.push(r.id); };
+  /* THE BRANCHES BRUSH WORKS ON SINGLE CUBES (owner, 2026-10-17: "it
+     deletes a whole column up to the sky... we need to break them into
+     cubes for this step. if a homeowner trimmed the lowest branches on a
+     tree, they need to be able to erase those branches"). A column is
+     drawn as runs of cubes; the first time the brush touches it, its runs
+     are redrawn as one block per cube, and then the cube nearest the camera
+     goes. */
+  const splitColumn = (k) => {
+    const entries = byCell.get(k) || [];
+    if (!entries.length || entries.every((e) => e.cube)) return;
+    const mu = muNow();
+    const fresh = [];
+    for (const e of entries) {
+      batch[e.src].drop.push(e.id);
+      for (let l = e.l0; l <= e.l1; l++) {
+        const m = mu[k * model.nz + l];
+        if (!(m >= MIN_MU)) continue;
+        const lo = model.z0 + l * model.dz - model.ground[k], base = Math.max(e.base, lo), top = Math.min(e.top, lo + model.dz);
+        if (top <= base) continue;
+        const src = bandOf(m);
+        const f = { type: 'Feature', id: CUBE_ID + k * 128 + l, geometry: { type: 'Polygon', coordinates: corners(k) }, properties: { b: base + lift(k), t: top + lift(k), c: KIND_COLOR[e.kind] } };
+        batch[src].add.push(f);
+        fresh.push({ src, id: f.id, l0: l, l1: l, base, top, kind: e.kind, cube: true });
+      }
+    }
+    byCell.set(k, fresh);
   };
   /* Where the camera stands, in grid cells and meters over the ground (the
      blocks are drawn on a flat map, so the ground is 0). */
@@ -305,17 +339,16 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
       if (fresh.length) dropCells(fresh);
       return;
     }
-    /* Branches: in each column under the brush, the block nearest the
+    /* Branches: in each column under the brush, the cube nearest the
        camera goes, one per column per stroke, so a swipe peels one layer. */
     const cam = cameraCell();
     const gone = [];
     for (const k of cellsUnder(grid, x, y, st.size)) {
       if (strokeTouched.has(k) || er.mask[k]) continue;
+      splitColumn(k);
       const r = nearestRun(byCell.get(k), k, grid.w, lift(k), cam, cm);
       if (!r) continue;
-      const idx = [];
-      for (let l = r.l0; l <= r.l1; l++) idx.push(k * model.nz + l);
-      if (!er.eraseCubes(idx).length) continue;
+      if (!er.eraseCubes([k * model.nz + r.l0]).length) continue;
       st.cubeVersion++;
       strokeTouched.add(k);
       byCell.set(k, byCell.get(k).filter((o) => o !== r));
@@ -323,9 +356,19 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
     }
     if (gone.length) dropRuns(gone);
   };
-  const strokeStart = (e) => { if (!st.erasing || !st.active) return; e.preventDefault?.(); stroking = true; strokeTouched = new Set(); showCursor(e.lngLat); brush(e.lngLat); };
-  const strokeMove = (e) => { if (!st.erasing || !st.active) return; showCursor(e.lngLat); if (stroking) brush(e.lngLat); };
-  const strokeEnd = () => { if (!stroking) return; stroking = false; er.end(); eraseNote(); onErase?.(); };
+  /* Pointer moves are gathered and worked once a frame: the brush, the
+     cursor and the map's changes together. */
+  let frame = null, lastAt = null;
+  const onFrame = () => { frame = null; const at = lastAt; lastAt = null; if (!at) return; showCursor(at); if (stroking) brush(at); flush(); };
+  const queue = (lngLat) => { lastAt = lngLat; if (!frame) frame = requestAnimationFrame(onFrame); };
+  const strokeStart = (e) => { if (!st.erasing || !st.active) return; e.preventDefault?.(); stroking = true; strokeTouched = new Set(); queue(e.lngLat); };
+  const strokeMove = (e) => { if (!st.erasing || !st.active) return; queue(e.lngLat); };
+  const strokeEnd = () => { if (!stroking) return; stroking = false; if (frame) { cancelAnimationFrame(frame); onFrame(); } flush(); er.end(); eraseNote(); onErase?.(); };
+  /* While the brush is down the page must not move (owner, 2026-10-17:
+     "swiping down can refresh the page... dragging/swiping in any direction
+     pans the whole page"): the map's own pan is off, so the browser would
+     scroll; these hold it. */
+  const holdTouch = (ev) => { if (st.erasing) ev.preventDefault(); };
   const setErasing = (on) => {
     st.erasing = on;
     stroking = false;
@@ -333,10 +376,12 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
     $('#tr-erase')?.setAttribute('aria-pressed', String(on));
     map.getCanvas().style.cursor = on ? 'none' : '';
     map.getCanvas().dataset.erasing = on ? '1' : '';
+    map.getContainer().classList.toggle('held', on);
     for (const h of [map.dragPan, map.touchZoomRotate, map.dragRotate]) on ? h.disable() : h.enable();
-    if (!on) hideCursor();
+    if (!on) { hideCursor(); flush(); }
   };
   if (er && $('#tr-erase')) {
+    for (const ev of ['touchstart', 'touchmove']) map.getContainer().addEventListener(ev, holdTouch, { passive: false });
     map.on('mousedown', strokeStart); map.on('touchstart', strokeStart);
     map.on('mousemove', strokeMove); map.on('touchmove', strokeMove);
     map.on('mouseup', strokeEnd); map.on('touchend', strokeEnd); map.on('touchcancel', strokeEnd);
@@ -386,6 +431,7 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
     },
     stop() {
       if (st.erasing) setErasing(false);
+      for (const ev of ['touchstart', 'touchmove']) map.getContainer().removeEventListener(ev, holdTouch);
       map.off('click', onClick);
       for (const [ev, h] of [['mousedown', strokeStart], ['touchstart', strokeStart], ['mousemove', strokeMove], ['touchmove', strokeMove], ['mouseup', strokeEnd], ['touchend', strokeEnd], ['touchcancel', strokeEnd]]) map.off(ev, h);
       for (const id of ids) { if (map.getLayer(id)) map.removeLayer(id); if (map.getSource(id)) map.removeSource(id); }
