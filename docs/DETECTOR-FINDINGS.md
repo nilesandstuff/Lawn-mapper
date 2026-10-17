@@ -6995,7 +6995,7 @@ labelled crowns inside closed woods, split by flight month.
 local reads of the Kent cloud
 (USGS_LPC_MI_31Co_Kent_2016_LAS_2019, 300 x 300 m around the lot), using
 tree_lidar.py's layers and lidar_canopy.py's tree rule. The parcel is
-7315 Brooks Ln NE, 41-10-11-252-009. The point clouds were not saved.
+the owner's lot (its address is kept out of this file). The point clouds were not saved.
 
 - **Fact: the lot was flown on 2017-11-27**, read from every point's
   GpsTime. So "it leafed out in May" is ruled out here.
@@ -7045,7 +7045,7 @@ here):**
 - One lot; it does not touch H73 or the detector.
 
 **Also from the features session (2026-10-11, one cloud: Kent 2016 over
-7300 Brooks Ln; NOT measured here).** This is about telling a roof from a
+the owner's street; NOT measured here).** This is about telling a roof from a
 dense tree, the H74 problem from the other side:
 - House roofs: 2-3% of returns came from split pulses, and neighbouring
   1 m columns' tops differed by a median of 0.36-0.44 m.

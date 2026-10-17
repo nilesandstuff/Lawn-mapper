@@ -561,8 +561,8 @@ export const MODELS = {
    * the lot, which is why this is a second option and not a replacement.
    *
    * IT DID NOT WORK FOR A LONG TIME, and the record of why is worth keeping,
-   * because the wrong diagnosis survived three rounds of measurement. At Brooks
-   * Lane the not-lawn mask flooded the whole frame up to 0.1 and disappeared by
+   * because the wrong diagnosis survived three rounds of measurement. On the
+   * owner's lot the not-lawn mask flooded the whole frame up to 0.1 and disappeared by
    * 0.4, with one usable-looking point between that still reported 78% of a lot
    * that is 37% mown. That was read as a threshold problem, then as the model
    * being unable to see buildings from overhead. It was neither: the prompt was

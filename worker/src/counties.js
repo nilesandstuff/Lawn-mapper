@@ -478,7 +478,7 @@ const COUNTY_BBOX = {
    * It sat at 42.83, and the comment here asserted the Ottawa/Allegan line
    * "runs at roughly 42.84, through Holland". That is too far north. Zeeland
    * is at 42.81 and is several miles INSIDE Ottawa County, and the box
-   * excluded it -- so 6836 Groveside Dr got no property line, and not because
+   * excluded it -- so a Zeeland address got no property line, and not because
    * anything failed: Ottawa was never asked. Worse, the point still landed in
    * Allegan's box, so the app confidently asked the wrong county, got nothing,
    * and had nothing to report. The whole southern third of the county went the
