@@ -53,6 +53,10 @@ on:
         description: 'For the check: the day was recorded on foot, the phone held about 3.5 ft up and tilted toward the sun (yes/no): tilt allowed, fixes to 15 m, no truck'
         required: false
         default: 'no'
+      ground:
+        description: 'For the check: the ground under the model, lowest (the lowest return per column, as shipped) or mean (the water map''s smooth surface, ground.js)'
+        required: false
+        default: 'lowest'
 
 jobs:
   readings:
@@ -85,6 +89,7 @@ jobs:
           SHADE_TILT: ${{ inputs.foot == 'yes' && '90' || '' }}
           SHADE_ACC: ${{ inputs.foot == 'yes' && '15' || '' }}
           PHONE_M: ${{ inputs.foot == 'yes' && '1.07' || '' }}
+          SHADE_GROUND: ${{ inputs.ground }}
         run: node tools/shade-field-check.js
       - name: The stops' lidar against newer photos
         if: ${{ inputs.photos == 'yes' }}

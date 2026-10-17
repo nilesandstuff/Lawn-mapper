@@ -67,10 +67,12 @@ export const msOf = (t) => {
 /**
  * One HTTP push from Sensor Logger ({ messageId, sessionId, deviceId,
  * payload: [{ name, time, values }] }) as { session, lux: [[t, lux]],
- * fix: [[t, lat, lng, acc, speed, bearing]] }.
+ * fix: [[t, lat, lng, acc, speed, bearing]], orient, baro: [[t, hPa,
+ * relative altitude m]] } (the barometer kept since 2026-10-17 for the
+ * water map: the phone's height along a pass, against the lidar's ground).
  */
 export function fromPush(body) {
-  const out = { session: String(body?.sessionId || body?.session || 'push'), lux: [], fix: [], orient: [] };
+  const out = { session: String(body?.sessionId || body?.session || 'push'), lux: [], fix: [], orient: [], baro: [] };
   for (const e of Array.isArray(body?.payload) ? body.payload : []) {
     const t = msOf(e.time);
     if (!Number.isFinite(t)) continue;
@@ -83,9 +85,19 @@ export function fromPush(body) {
     } else if (/orient/i.test(e.name || '')) {
       const o = poseOf(v);
       if (o) out.orient.push([t, ...o]);
+    } else if (/baro|pressure/i.test(e.name || '') && Number.isFinite(Number(v.pressure))) {
+      out.baro.push([t, Number(v.pressure), num(v.relativeAltitude)]);
     }
   }
   return out;
+}
+
+/** The barometer per whole second: [[t, median hPa, median relative altitude m]]. */
+export function baroPerSecond(baro) {
+  const by = new Map();
+  for (const [t, p, a] of baro) { const s = Math.floor(t / 1000) * 1000; if (!by.has(s)) by.set(s, { p: [], a: [] }); const b = by.get(s); b.p.push(p); if (Number.isFinite(a)) b.a.push(a); }
+  const med = (x) => { const y = [...x].sort((u, v) => u - v); return y.length ? y[y.length >> 1] : null; };
+  return [...by.entries()].sort((a, b) => a[0] - b[0]).map(([s, b]) => [s, med(b.p), med(b.a)]);
 }
 
 /**
@@ -123,7 +135,7 @@ export function parseCsv(text) {
  * orientation file when it has the quaternion (qx, qy, qz, qw).
  */
 export function fromExport(files) {
-  const out = { lux: [], fix: [], orient: [] };
+  const out = { lux: [], fix: [], orient: [], baro: [] };
   for (const [name, text] of Object.entries(files)) {
     const rows = parseCsv(text);
     if (!rows.length) continue;
@@ -137,6 +149,11 @@ export function fromExport(files) {
       for (const r of rows) {
         const t = msOf(r.time), o = poseOf(r);
         if (Number.isFinite(t) && o) out.orient.push([t, ...o]);
+      }
+    } else if (cols.includes('pressure')) {
+      for (const r of rows) {
+        const t = msOf(r.time), p = Number(r.pressure);
+        if (Number.isFinite(t) && Number.isFinite(p)) out.baro.push([t, p, num(r.relativeAltitude)]);
       }
     } else if (isLight(name) || cols.some(isLight)) {
       const col = cols.find((c) => /lux|illum/i.test(c)) || cols.find((c) => isLight(c)) || cols.find((c) => c !== 'time' && c !== 'seconds_elapsed');

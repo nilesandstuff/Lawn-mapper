@@ -12,7 +12,7 @@ import { alignToPhoto, dilate } from '../public/shade/align.js';
 import { kindOf, mercUnits } from '../public/shade/view3d.js';
 import { aboutLocal, ramp } from '../public/shade/sun-ui.js';
 import { niceStep, bandsFor, rasterOf, smooth, valueAt, boxStats } from '../public/shade/readout.js';
-import { msOf, fromPush, fromExport, perSecond, poseOf, posePerSecond, joinTrack, splitVisits, usable, sunOrShade, sunOrShadeAround, sunOffFace, sunGain, compassOffset, operatorShadow, score, unzipText, metersBetween } from '../public/shade/truth.js';
+import { msOf, fromPush, fromExport, perSecond, baroPerSecond, poseOf, posePerSecond, joinTrack, splitVisits, usable, sunOrShade, sunOrShadeAround, sunOffFace, sunGain, compassOffset, operatorShadow, score, unzipText, metersBetween } from '../public/shade/truth.js';
 import { deflateRawSync, inflateRawSync } from 'node:zlib';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
@@ -30,6 +30,7 @@ import { footprintEntry, covers, lidarAt, handleShade, isShadePath } from '../wo
 import { metresPerPixel } from '../public/lib/mercator.js';
 import { nearestOnLot, pullBack, zoomFloor, outerRings } from '../public/shade/leash.js';
 import { cellsUnder, squareRing, Erased, nearestRun } from '../public/shade/erase.js';
+import { groundSurface, inpaint, groundOf } from '../public/shade/ground.js';
 import { climateZone, rankGrasses, grassBands, plantingWindow, SPECIES, shareWords } from '../public/shade/grass.js';
 
 let failures = 0;
@@ -1235,6 +1236,10 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   const f = (x) => ((x - 32) * 5) / 9;
   check('this year: NWS periods become daily means in C (the day\'s periods averaged; C left alone; junk dropped)',
     Object.keys(nw).join() === '20261015,20261016' && Math.abs(nw['20261015'] - (f(47) + f(63) + f(48)) / 3) < 1e-9 && Math.abs(nw['20261016'] - (f(59) + 10) / 2) < 1e-9, JSON.stringify(nw));
+  const pushB = fromPush({ sessionId: 's', payload: [{ name: 'barometer', time: '1792266775049820000', values: { pressure: 990.4, relativeAltitude: 0.2 } }, { name: 'barometer', time: '1792266775549820000', values: { pressure: 990.6 } }, { name: 'light', time: '1792266775049820000', values: { lux: 100 } }] });
+  const exB = fromExport({ 'Barometer.csv': 'time,seconds_elapsed,relativeAltitude,pressure\n1792266775049820000,0.2,0,990.388\n1792266775249820000,0.4,0.05,990.4' });
+  const perS = baroPerSecond([[1000, 990.0, 0], [1500, 991.0, 0.2], [2100, 992.0, NaN]]);
+  check('barometer: a push and an export give [t, hPa, relative altitude], one median per second', pushB.baro.length === 2 && pushB.baro[0][1] === 990.4 && pushB.baro[0][2] === 0.2 && pushB.baro[1][2] === null && exB.baro.length === 2 && near(exB.baro[1][1], 990.4, 1e-9) && perS.length === 2 && near(perS[0][1], 991, 1e-9) && perS[1][2] === null, JSON.stringify([pushB.baro, exB.baro, perS]));
   const obs = observedDays({ header: { fill_value: -999 }, properties: { parameter: { T2M: { 20261001: 15, 20261002: -999, 20261003: 16 } } } });
   check('this year: POWER\'s fill values are dropped', Object.keys(obs).join() === '20261001,20261003', JSON.stringify(obs));
   /* A typical year: a cosine, coldest Jan 20 (-5 C), warmest Jul 20 (23 C); the mean drops below 10 C about Oct 19. */
@@ -1316,6 +1321,22 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   const w = 20, k = 5 * w + 5;
   const fromAbove = nearestRun(runs, k, w, 0, [5.5, 5.5, 200], 1), fromLow = nearestRun(runs, k, w, 0, [5.5, 40, 3], 1);
   check('eraser: the block nearest the camera is the top one from above and the low one from a low camera; none for an empty column', fromAbove === runs[2] && fromLow === runs[0] && nearestRun([], k, w, 0, [0, 0, 0], 1) === null, `${JSON.stringify([fromAbove, fromLow])}`);
+}
+
+/* --------------------------------------------------------------- the ground */
+{
+  /* A 20 x 20 m box of ground points on a 2% slope, one every 0.7 m with 3 cm of noise, a 6 m roof hole in the middle. */
+  const g = gridOver([0, 0, 20 / mercScale(43), 20 / mercScale(43)], 1, 43);
+  const pts = [];
+  let seed = 7; const rnd = () => { seed = (seed * 48271) % 2147483647; return seed / 2147483647; };
+  for (let y = 0.35; y < 20; y += 0.7) for (let x = 0.35; x < 20; x += 0.7) { if (x > 7 && x < 13 && y > 7 && y < 13) continue; pts.push([x, y, 100 + 0.02 * x + (rnd() - 0.5) * 0.06]); }
+  const cols = { n: pts.length, x: Float32Array.from(pts, (p) => p[0] / mercScale(43)), y: Float32Array.from(pts, (p) => 20 / mercScale(43) - p[1] / mercScale(43)), z: Float32Array.from(pts, (p) => p[2]), cls: new Uint8Array(pts.length).fill(2), ret: new Uint8Array(pts.length).fill(1), nret: new Uint8Array(pts.length).fill(1), intensity: new Uint16Array(pts.length) };
+  const gs = groundSurface(cols, g);
+  const mid = 10 * g.w + 10, open = 3 * g.w + 3;
+  const lowest = buildCanopy(cols, g).ground, smooth = buildCanopy(cols, g, { ground: 'mean' }).ground;
+  const rough = (a) => { const d = []; for (let y = 1; y < g.h - 1; y++) for (let x = 1; x < g.w - 1; x++) { const k = y * g.w + x; if (x > 7 && x < 13 && y > 7 && y < 13) continue; let s = 0; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) s += a[(y + dy) * g.w + x + dx]; d.push(Math.abs(a[k] - s / 4)); } d.sort((u, v) => u - v); return d[d.length >> 1]; };
+  check('ground: the smooth surface reads the slope to a centimetre, is NaN under the roof until inpainted, carries an error bar, and is smoother than the lowest return', near(gs.z[open], 100 + 0.02 * 3.5, 0.015) && Number.isNaN(gs.z[mid]) && Number.isFinite(inpaint(g, gs.z)[mid]) && gs.se[open] > 0 && gs.se[open] < 0.03 && gs.n[open] > 10 && rough(smooth) < rough(lowest) && near(smooth[open], lowest[open], 0.06), `${gs.z[open]} se ${gs.se[open]} n ${gs.n[open]} rough ${rough(smooth)} vs ${rough(lowest)}`);
+  check('ground: groundOf fills every cell and keeps the raw surface with its holes', groundOf(cols, g).z.every(Number.isFinite) && Number.isNaN(groundOf(cols, g).raw[mid]), '');
 }
 
 /* ------------------------------------------------------------- the periods */

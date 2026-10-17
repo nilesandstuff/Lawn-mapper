@@ -1151,6 +1151,19 @@ CREATE TABLE IF NOT EXISTS shade_orient (
 -- last: when, what it carried, how long it took, and why it failed if it
 -- did -- so workflow 35 can tell "nothing arrived" from "it arrived and
 -- failed". No readings or places here; trimmed to the latest 2,000.
+-- The phone's barometer, one median per whole second (Sensor Logger's
+-- barometer sensor, kept since 2026-10-17 for the water map: the phone's
+-- height along a pass against the lidar's ground). hpa is the pressure,
+-- alt Sensor Logger's relative altitude in m (null when it sent none).
+-- Recordings before 2026-10-17 were stored without it; re-uploading the
+-- export (the readings page) fills it in (INSERT OR IGNORE elsewhere).
+CREATE TABLE IF NOT EXISTS shade_baro (
+  session     TEXT NOT NULL,
+  t           INTEGER NOT NULL,
+  hpa         REAL NOT NULL,
+  alt         REAL,
+  PRIMARY KEY (session, t)
+);
 CREATE TABLE IF NOT EXISTS shade_push_log (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   at          TEXT NOT NULL,

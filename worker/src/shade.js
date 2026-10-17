@@ -28,7 +28,7 @@
 import { rankClouds, wesmUrl } from '../../public/shade/find.js';
 import { EPT_BASE } from '../../public/shade/names.js';
 import { powerUrl, typicalYear, observedDays, nwsDailyMeans, yearAsItIs } from '../../public/shade/climate.js';
-import { fromPush, perSecond, posePerSecond } from '../../public/shade/truth.js';
+import { fromPush, perSecond, posePerSecond, baroPerSecond } from '../../public/shade/truth.js';
 import { currentUser } from './auth.js';
 import { handleUsage, logServerError } from './shade-usage.js';
 
@@ -174,7 +174,7 @@ export async function handleShade(request, url, env, origin, ctx, json) {
  *   GET  /api/shade/readings/key     the push address (made on first ask)
  *   POST /api/shade/readings/key     a new push address; the old one stops
  *   GET  /api/shade/readings/sessions  recordings: first and last time, counts
- *   GET  /api/shade/readings/data?session=&t0=&t1=   fixes, light and cuts
+ *   GET  /api/shade/readings/data?session=&t0=&t1=   fixes, light, orientation, barometer and cuts
  *   POST /api/shade/readings/cuts    { session, t0, t1 } erase; { remove: id }
  */
 
@@ -205,7 +205,7 @@ async function readings(request, url, env, origin, ctx, json) {
     let text = '', body;
     try { text = await request.text(); body = JSON.parse(text); } catch { await log({ status: 400, bytes: text.length, error: 'bad JSON' }); return json({ error: 'Bad JSON' }, 400, origin); }
     const got = Array.isArray(body?.payload) ? fromPush(body)
-      : { session: String(body?.session || ''), lux: Array.isArray(body?.lux) ? body.lux : [], fix: Array.isArray(body?.fix) ? body.fix : [], orient: Array.isArray(body?.orient) ? body.orient : [] };
+      : { session: String(body?.session || ''), lux: Array.isArray(body?.lux) ? body.lux : [], fix: Array.isArray(body?.fix) ? body.fix : [], orient: Array.isArray(body?.orient) ? body.orient : [], baro: Array.isArray(body?.baro) ? body.baro : [] };
     const entries = Array.isArray(body?.payload) ? body.payload.length : null;
     if (!got.session) { await log({ status: 400, bytes: text.length, entries, error: 'no session' }); return json({ error: 'A session is needed' }, 400, origin); }
     try {
@@ -242,10 +242,11 @@ async function readings(request, url, env, origin, ctx, json) {
   if (sub === '/data' && request.method === 'GET') {
     const session = url.searchParams.get('session') || '';
     const t0 = Number(url.searchParams.get('t0')) || 0, t1 = Number(url.searchParams.get('t1')) || 8.64e15;
-    const [fix, lux, orient, cuts] = await Promise.all([
+    const [fix, lux, orient, baro, cuts] = await Promise.all([
       db.prepare('SELECT t, lat, lng, acc, speed, bearing FROM shade_fixes WHERE session = ? AND t BETWEEN ? AND ? ORDER BY t').bind(session, t0, t1).all(),
       db.prepare('SELECT t, lux FROM shade_lux WHERE session = ? AND t BETWEEN ? AND ? ORDER BY t').bind(session, t0 - 2000, t1 + 2000).all(),
       db.prepare('SELECT t, nx, ny, nz, head FROM shade_orient WHERE session = ? AND t BETWEEN ? AND ? ORDER BY t').bind(session, t0 - 2000, t1 + 2000).all(),
+      db.prepare('SELECT t, hpa, alt FROM shade_baro WHERE session = ? AND t BETWEEN ? AND ? ORDER BY t').bind(session, t0 - 2000, t1 + 2000).all().catch(() => ({ results: [] })),
       db.prepare('SELECT id, t0, t1 FROM shade_cuts WHERE session = ? ORDER BY t0').bind(session).all(),
     ]);
     return json({
@@ -253,6 +254,7 @@ async function readings(request, url, env, origin, ctx, json) {
       fix: (fix.results || []).map((r) => [r.t, r.lat, r.lng, r.acc, r.speed, r.bearing]),
       lux: (lux.results || []).map((r) => [r.t, r.lux]),
       orient: (orient.results || []).map((r) => [r.t, r.nx, r.ny, r.nz, r.head]),
+      baro: (baro.results || []).map((r) => [r.t, r.hpa, r.alt]),
       cuts: (cuts.results || []).map((r) => [r.t0, r.t1, r.id]),
     }, 200, origin);
   }
@@ -277,7 +279,7 @@ async function readings(request, url, env, origin, ctx, json) {
  * the same second or fix is ignored, so a push Sensor Logger retries does
  * not double up.
  */
-export async function storeReadings(db, { session, lux = [], fix = [], orient = [] }) {
+export async function storeReadings(db, { session, lux = [], fix = [], orient = [], baro = [] }) {
   const L = perSecond(lux.filter((r) => Array.isArray(r) && Number.isFinite(Number(r[0])) && Number.isFinite(Number(r[1]))).map((r) => [Number(r[0]), Number(r[1])]));
   const F = fix.filter((r) => Array.isArray(r) && [r[0], r[1], r[2]].every((v) => Number.isFinite(Number(v))));
   const stmts = [];
@@ -299,8 +301,16 @@ export async function storeReadings(db, { session, lux = [], fix = [], orient = 
     stmts.push(db.prepare(`INSERT OR IGNORE INTO shade_orient (session, t, nx, ny, nz, head) VALUES ${part.map(() => '(?, ?, ?, ?, ?, ?)').join(', ')}`)
       .bind(...part.flatMap((r) => [session, Math.round(r[0]), r[1], r[2], r[3], r[4]])));
   }
+  /* The barometer, one median per second (shade_baro; for the water map's
+     ground checks: the phone's height along a pass against the lidar). */
+  const B = baroPerSecond(baro.filter((r) => Array.isArray(r) && Number.isFinite(Number(r[0])) && Number.isFinite(Number(r[1]))).map((r) => [Number(r[0]), Number(r[1]), Number.isFinite(Number(r[2])) ? Number(r[2]) : NaN]));
+  for (let i = 0; i < B.length; i += 24) {
+    const part = B.slice(i, i + 24);
+    stmts.push(db.prepare(`INSERT OR IGNORE INTO shade_baro (session, t, hpa, alt) VALUES ${part.map(() => '(?, ?, ?, ?)').join(', ')}`)
+      .bind(...part.flatMap(([t, p, a]) => [session, Math.round(t), p, a === null || Number.isNaN(a) ? null : a])));
+  }
   for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
-  return { lux: L.length, fix: F.length, orient: O.length };
+  return { lux: L.length, fix: F.length, orient: O.length, baro: B.length };
 }
 
 /** The last ten whole years before `now`. */
