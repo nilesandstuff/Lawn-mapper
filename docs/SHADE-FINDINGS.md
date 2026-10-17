@@ -1076,6 +1076,15 @@ Not changed: nothing. The two losing flights are a bookmarked test, below.
 
 ## Bookmarked tests (asked for, not yet run)
 
+- THE WATER MAP'S ROOF NUMBERS, INTO THE SHADE MAP? (owner, 2026-10-17:
+  "if it takes a lot of work, let's bookmark that and make sure we come
+  back to it"): finding 24 says the roof mask finds 83% of structure cells
+  (91% within a meter); the water map's union of both finders 91% (98%).
+  Worth trying the union, or the water session's finder as a second vote,
+  on the shade map's roofs, and scoring the LIGHT behind buildings
+  (finding 9's readings) before and after. After the 2026-10-17 list of
+  fixes. Not started.
+
 - ROOFS LOST ON TWO FLIGHTS (finding 24, 2026-10-17): on PA Dauphin 2016
   and VA Northern VA 2022 the roof mask's IoU trails the water map's
   cruder finder by 0.12-0.16. Draw the two masks and the land use on those
