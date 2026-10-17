@@ -41,6 +41,9 @@ import { nodeIo } from '../lib/node-io.js';
 import { analyse } from '../lib/lowspots.js';
 
 const HOPPER_M = 1.27; // the phone on the spreader (features session, 2026-10-17); a constant, it cancels in the fit
+/* THE SPREADER DAYS: the phone rode the spreader only on the days it moved over about 2 m/s (features
+   session, 2026-10-17); on the others it was carried, and a hand's height wanders by more than the bumps. */
+const SPREADER_SPEED = 2;
 const MAX_ACC = 8, MAX_SPEED = 4.5, FLAT = Math.cos((20 * Math.PI) / 180);
 const PAD = 15;
 
@@ -105,7 +108,7 @@ async function main() {
 
   const io = nodeIo();
   const done = [];
-  let k = 0;
+  let k = 0, walked = 0;
   for (const s of withBaro) {
     const fixes = [], baro = new Map(), tilt = new Map();
     for (let a = s.a; a <= s.b; a += 7200000) {
@@ -119,6 +122,8 @@ async function main() {
       .map((f) => ({ t: f.t, lat: f.lat, lng: f.lng, acc: f.acc, speed: f.speed ?? 0 }));
     for (const visit of splitVisits(track)) {
       k++;
+      const pace = med(visit.map((f) => f.speed).filter((v) => v > 0.5));
+      if (!(pace >= SPREADER_SPEED)) { walked++; console.log(`#${k}: median ${Number.isFinite(pace) ? pace.toFixed(1) : '-'} m/s -- carried, not on the spreader; skipped`); continue; }
       const pts = visit.filter((f) => (f.acc == null || f.acc <= MAX_ACC) && f.speed <= MAX_SPEED
         && baro.has(Math.floor(f.t / 1000)) && !(tilt.has(Math.floor(f.t / 1000)) && tilt.get(Math.floor(f.t / 1000)) < FLAT));
       if (pts.length < 60) { console.log(`#${k}: ${pts.length} usable seconds with the barometer -- too few`); continue; }
@@ -159,10 +164,10 @@ async function main() {
   }
 
   console.log('\n==============================================================');
-  console.log(`THE OWNER'S BAROMETER AGAINST THE LIDAR GROUND: ${done.length} visit(s) compared`);
+  console.log(`THE OWNER'S BAROMETER AGAINST THE LIDAR GROUND: ${done.length} visit(s) compared (${walked} carried visit(s) left out)`);
   if (!done.length) {
-    console.log('  Nothing to compare yet. The barometer is kept only from recordings uploaded since 2026-10-17:');
-    console.log('  re-upload the old exports on the shade readings page (zip upload; nothing doubles), then run this again.');
+    console.log(have ? '  Nothing to compare yet: no spreader visit with the barometer has 60 usable seconds over open lidar ground.'
+      : '  Nothing to compare yet: no barometer stored. Re-upload the old exports on the shade readings page (zip upload; nothing doubles), then run this again.');
     return;
   }
   console.log(`  lidar relief along a pass: median ${(med(done.map((d) => d.relief)) * 100).toFixed(0)} cm (10th-90th ${(pct(done.map((d) => d.relief), 0.1) * 100).toFixed(0)}-${(pct(done.map((d) => d.relief), 0.9) * 100).toFixed(0)})`);
