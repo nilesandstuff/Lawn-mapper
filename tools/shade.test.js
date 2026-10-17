@@ -134,9 +134,10 @@ function lasFile(format, recordLength, points, { scale = 0.01, offset = [100, 20
 
 {
   /* The predictions written into datum.js's header, which matched the
-     measured offsets on four lots (2026-10-10). */
-  const cases = [[42.86220, -87.95621, 2017.5, -0.85, 0.90], [41.93372, -70.62126, 2021.5, -0.44, 1.14],
-    [40.60945, -75.52344, 2019.5, -0.54, 1.04], [42.87, -85.86, 2016.5, -0.78, 0.93]];
+     measured offsets on four lots (2026-10-10); the points are rounded to
+     about a kilometer, which moves the correction under a centimeter. */
+  const cases = [[42.86, -87.96, 2017.5, -0.85, 0.90], [41.93, -70.62, 2021.5, -0.44, 1.14],
+    [40.61, -75.52, 2019.5, -0.54, 1.04], [42.87, -85.86, 2016.5, -0.78, 0.93]];
   for (const [lat, lng, ep, e, n] of cases) {
     const c = nad83Correction(lat, lng, ep);
     check(`NAD83 -> WGS84 at ${lat}, ${lng}: ${e} E ${n} N`, near(c.east, e, 0.01) && near(c.north, n, 0.01), JSON.stringify(c));
@@ -295,7 +296,7 @@ function lasFile(format, recordLength, points, { scale = 0.01, offset = [100, 20
 /* ----------------------------------------------------------- traced */
 
 {
-  const frame = { lng: -87.9562, lat: 42.8622, zoom: 19.5, size: 900, height: 700 };
+  const frame = { lng: -87.96, lat: 42.86, zoom: 19.5, size: 900, height: 700 };
   const county = { provider: 'county', countySvc: 4123, countyAlign: { east: 0.4, north: 0.11, scale: 1.004, source: 'auto' }, frame, lng: -87.95, lat: 42.86 };
   const t = tracedOn(county);
   check('a map saved on a county photo is matched to that photo, with its saved line-up',
@@ -656,7 +657,7 @@ check('the color ramp runs dark to bright and clamps', ramp(-1).join() === '0,0,
     near(dliOn(20, 0.4, 1, 1), 40.8, 1e-9) && near(dliOn(20, 0.4, 0, 1), 2.04 * 8, 1e-9) && near(dliOn(20, 0.4, 0, 0.5), 2.04 * 4, 1e-9));
   const calls = [];
   const fake = async (url) => { calls.push(String(url)); return { ok: true, json: async () => ({ header: { fill_value: -999 }, properties: { parameter: { ALLSKY_SFC_SW_DWN: days, ALLSKY_SFC_SW_DIFF: diff, T2M: temp } } }) }; };
-  const cl = await climateAt(-87.9562, 42.8622, { fetchImpl: fake, now: new Date(Date.UTC(2026, 9, 11)) });
+  const cl = await climateAt(-87.96, 42.86, { fetchImpl: fake, now: new Date(Date.UTC(2026, 9, 11)) });
   check('climate route: the last ten whole years from NASA POWER, the AG community, a 0.05 degree cell, 365 days back',
     calls.length === 1 && calls[0].includes('start=20160101') && calls[0].includes('end=20251231') && calls[0].includes('community=AG')
     && cl.lat === 42.85 && cl.lng === -87.95 && cl.ghi.length === 365 && cl.tMean.length === 365, calls[0]);
@@ -675,12 +676,12 @@ check('the color ramp runs dark to bright and clamps', ramp(-1).join() === '0,0,
     if (u.includes('/forecast')) return j({ properties: { periods: [12, 13, 14, 15, 16, 17, 18].flatMap((d) => [{ startTime: `2026-10-${d}T06:00:00-04:00`, isDaytime: true, temperature: 70, temperatureUnit: 'F' }, { startTime: `2026-10-${d}T18:00:00-04:00`, isDaytime: false, temperature: 50, temperatureUnit: 'F' }]) } });
     return { ok: false };
   };
-  const now = await climateNow(-87.9562, 42.8622, { fetchImpl: fake2, now: new Date(Date.UTC(2026, 9, 11)) });
+  const now = await climateNow(-87.96, 42.86, { fetchImpl: fake2, now: new Date(Date.UTC(2026, 9, 11)) });
   check('climate route, this year: observed days through Oct 8 (POWER three days behind), the forecast to Oct 18, a +3 C anomaly, tMeanNow a year long and warmer than typical in the lived part',
     now.tMeanNow?.length === 365 && now.weather?.observedThrough === '2026-10-08' && now.weather?.forecastTo === '2026-10-18' && Math.abs(now.weather.anomaly - 3) < 0.15 && now.tMeanNow[200] > now.tMean[200] + 2.5 && seen.some((u) => u.includes('start=20260101') && u.includes('end=20261011')),
     JSON.stringify(now.weather));
   const broken = async (url, init) => (String(url).includes('parameters=T2M&') ? { ok: false } : fake2(url, init));
-  const typicalOnly = await climateNow(-87.9562, 42.8622, { fetchImpl: broken, now: new Date(Date.UTC(2026, 9, 11)) });
+  const typicalOnly = await climateNow(-87.96, 42.86, { fetchImpl: broken, now: new Date(Date.UTC(2026, 9, 11)) });
   check('climate route, this year: when POWER\'s daily data fails the answer is the typical year alone, not an error', typicalOnly.tMean.length === 365 && typicalOnly.tMeanNow === undefined, Object.keys(typicalOnly).join());
 }
 
