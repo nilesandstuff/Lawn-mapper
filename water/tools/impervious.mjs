@@ -40,6 +40,7 @@ import { truthFor, GROUP_NAMES } from '../lib/chesapeake.js';
 import { auc, fitLogistic } from '../lib/cells.js';
 import { rng } from '../lib/synthetic.js';
 import { lidarAt } from '../../worker/src/shade.js';
+import { shadeRoofs } from '../lib/roofs.js';
 
 const SQUARES = Number(process.env.SQUARES || 24);
 const SIZE = Number(process.env.SIZE || 160);
@@ -82,7 +83,30 @@ async function one(lng, lat) {
   const share = (n) => truth.filter((t) => t === G[n]).length / N;
   if (share('turf') < 0.15 || share('structure') < 0.05) return { skip: 'not residential' };
 
-  // roofs
+  // roofs, each finder and each stage of the shade map's (lib/roofs.js), exact and within 1 m
+  const shade = shadeRoofs(cols, bbox, lat, { parts: true });
+  const finders = { water: res.wall, shadeFlat: shade.flat, shadeSolid: shade.solid, shade: shade.roof };
+  const near = (mask, i) => {
+    const r = Math.floor(i / g.W), c = i % g.W;
+    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+      const rr = r + dr, cc = c + dc;
+      if (rr >= 0 && cc >= 0 && rr < g.H && cc < g.W && mask[rr * g.W + cc]) return true;
+    }
+    return false;
+  };
+  const isRoof = Uint8Array.from(truth, (t) => (t === G.structure ? 1 : 0));
+  const roofScores = {};
+  for (const [name, m] of Object.entries(finders)) {
+    const sc = { tp: 0, fp: 0, fn: 0, tpNear: 0, predN: 0, foundNear: 0, truthN: 0 };
+    for (let i = 0; i < N; i++) {
+      if (truth[i] === G.canopyOverImpervious || !truth[i]) continue;
+      const t = isRoof[i], p = !!m[i];
+      if (t && p) sc.tp++; else if (p) sc.fp++; else if (t) sc.fn++;
+      if (p) { sc.predN++; if (near(isRoof, i)) sc.tpNear++; }
+      if (t) { sc.truthN++; if (near(m, i)) sc.foundNear++; }
+    }
+    roofScores[name] = sc;
+  }
   let tp = 0, fp = 0, fn = 0;
   for (let i = 0; i < N; i++) {
     if (truth[i] === G.canopyOverImpervious || !truth[i]) continue; // canopy over roads OR roofs: ambiguous
@@ -117,7 +141,7 @@ async function one(lng, lat) {
     });
   }
   return {
-    cloud: cloud.name, roofs: { tp, fp, fn }, cells, lawnI, roofI, p75: pc.groundP75,
+    cloud: cloud.name, roofs: { tp, fp, fn }, roofScores, cells, lawnI, roofI, p75: pc.groundP75,
     shares: { turf: share('turf'), structure: share('structure'), road: share('road'), impervious: share('impervious'), pervious: share('pervious') },
   };
 }
@@ -151,6 +175,16 @@ async function main() {
   console.log('\n==============================================================');
   console.log(`ROOFS AND IMPERVIOUSNESS ON THE CHESAPEAKE LAND USE: ${done.length} residential squares of ${SIZE} m (${tries} tried)`);
   console.log(`  roofs (cells; "Structures" is the truth): found ${Math.round(100 * R.tp / (R.tp + R.fn))}% of roof cells, ${Math.round(100 * R.tp / (R.tp + R.fp))}% of what it calls roof is roof, IoU ${(R.tp / (R.tp + R.fp + R.fn)).toFixed(2)}`);
+  console.log('  roof finders, pooled (exact | within 1 m):       found      precise     IoU');
+  const label = { water: 'water map (surface.js)', shadeFlat: 'shade: flat-roof rule alone', shadeSolid: 'shade: + solid at the grass, + eaves', shade: 'shade: + tree-vs-roof patch test (full)' };
+  for (const name of Object.keys(done[0]?.roofScores || {})) {
+    const t = done.reduce((a, d) => { for (const k of Object.keys(a)) a[k] += d.roofScores[name][k]; return a; }, { tp: 0, fp: 0, fn: 0, tpNear: 0, predN: 0, foundNear: 0, truthN: 0 });
+    const f = (v) => `${Math.round(100 * v)}%`;
+    console.log(`    ${label[name].padEnd(42)} ${f(t.tp / (t.tp + t.fn))} | ${f(t.foundNear / t.truthN)}   ${f(t.tp / (t.tp + t.fp))} | ${f(t.tpNear / t.predN)}   ${(t.tp / (t.tp + t.fp + t.fn)).toFixed(2)}`);
+  }
+  const perFlight = {};
+  for (const d of done) { const f = (perFlight[d.cloud] ||= { water: [0, 0, 0], shade: [0, 0, 0] }); for (const n of ['water', 'shade']) { f[n][0] += d.roofScores[n].tp; f[n][1] += d.roofScores[n].fp; f[n][2] += d.roofScores[n].fn; } }
+  for (const [fl, f] of Object.entries(perFlight)) console.log(`    by flight ${fl.replace(/^USGS_LPC_/, '').padEnd(34)} IoU water ${(f.water[0] / (f.water[0] + f.water[1] + f.water[2])).toFixed(2)}, shade ${(f.shade[0] / (f.shade[0] + f.shade[1] + f.shade[2])).toFixed(2)}`);
   const n = (c) => all.filter((x) => x.cls === c).length;
   console.log(`  open ground cells with a ground return: ${n('imp')} paved (roads, drives, walks, lots), ${n('perv')} pervious non-turf, ${n('turf')} turf`);
   console.log('  AUC, darker = more impervious, pooled over all squares (one threshold for every map):');
