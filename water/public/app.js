@@ -125,17 +125,19 @@ function toPx(frame, img, xy) {
 
 /* -------------------------------------------------------------- drawing */
 
-function overlay(d, { flow = true, grade = true } = {}) {
+function overlay(d, { flow = true, grade = true, hard = true } = {}) {
   const { W, H } = d.grid;
   const img = new ImageData(W, H);
   const px = img.data;
   for (let i = 0; i < W * H; i++) {
     let rgba = null;
+    if (hard && d.paved && !d.wall[i] && Number.isFinite(d.paved[i]) && d.paved[i] >= 0.5) rgba = [120, 60, 160, Math.round(60 + 120 * d.paved[i])];
     if (d.reported[i] === 2) {
       const t = Math.min(1, d.depth[i] / 0.10);
       rgba = [30, 107, 255, Math.round(110 + 130 * t)];
     } else if (d.reported[i] === 1) rgba = [190, 200, 215, 110]; // not a lawn hollow: pavement, trees, a ditch...
-    if (flow && !d.wall[i] && d.flow[i] >= 250) rgba = [34, 211, 238, 220];
+    // runoff lines: weighted by what each surface sheds when the lawn is traced (m^2 of runoff-producing surface), plain area otherwise
+    if (flow && !d.wall[i] && d.flow[i] >= (d.weighted ? 60 : 250)) rgba = [34, 211, 238, 220];
     if (grade && Number.isFinite(d.grade[i])) {
       const g = d.grade[i];
       rgba = g < -0.01 ? [229, 57, 53, 255] : g < 0.05 ? [255, 179, 0, 255] : [67, 160, 71, 255];
@@ -155,7 +157,7 @@ function draw() {
   if ($('#show-photo').checked) g.drawImage(photo, 0, 0);
   else { g.fillStyle = '#3a4440'; g.fillRect(0, 0, cv.width, cv.height); }
 
-  const o = overlay(d, { flow: $('#show-flow').checked, grade: $('#show-grade').checked });
+  const o = overlay(d, { flow: $('#show-flow').checked, grade: $('#show-grade').checked, hard: $('#show-hard').checked });
   const tmp = document.createElement('canvas');
   tmp.width = d.grid.W; tmp.height = d.grid.H;
   tmp.getContext('2d').putImageData(o, 0, 0);
@@ -217,6 +219,18 @@ function report(d, site) {
     for (const p of others) counts[p.kind] = (counts[p.kind] || 0) + 1;
     parts.push(`<div class="card"><h2>Also low, but not a lawn problem</h2><ul class="dim">${Object.entries(counts).map(([k, n]) => `<li>${n} ${KIND[k] || k}</li>`).join('')}</ul>
       <p class="dim">Shown faint on the map. Under trees the laser sees little of the ground, so those are the least certain.</p></div>`);
+  }
+  const cv = s.cover;
+  if (cv) {
+    const total = cv.lawnM2 + cv.roofM2 + cv.pavedM2 + cv.otherM2 + cv.unjudgedM2;
+    const p = (m) => `${Math.round((100 * m) / Math.max(1, total))}%`;
+    parts.push(`<div class="card"><h2>What covers the lot</h2><ul>
+      <li>Lawn: ${sqft(cv.lawnM2)} sq ft (${p(cv.lawnM2)})</li>
+      <li>Roofs: ${sqft(cv.roofM2)} sq ft (${p(cv.roofM2)})</li>
+      <li>Paving, likely: ${sqft(cv.pavedM2)} sq ft (${p(cv.pavedM2)})</li>
+      <li>Other ground (beds, bare soil, gravel): ${sqft(cv.otherM2)} sq ft (${p(cv.otherM2)})${cv.unjudgedM2 ? `; under trees, not judged: ${sqft(cv.unjudgedM2)} sq ft` : ''}</li></ul>
+      <p>Rain off about <strong>${sqft(cv.runoffOntoLawnM2)} sq ft</strong> of roof, paving and other ground drains onto the lawn${cv.runoffOntoLawnM2 > 0.5 * cv.lawnM2 ? ' — a lot for the lawn to take in a storm' : ''}.</p>
+      <p class="dim">Paving is judged from how brightly the laser came back, measured against your own lawn: in a test against a published 1 m land-use map it told paving from everything else right about 9 times in 10. Roof water is assumed to come down on the roof's low side; where the downspouts really are changes this.</p></div>`);
   }
   const b = s.besideHouse;
   if (b.outlineCells) {
@@ -283,6 +297,6 @@ $('#here').addEventListener('click', () => guarded(async () => {
   await run(await siteFromPoint(pos.coords.latitude, pos.coords.longitude));
 }));
 
-for (const id of ['#show-flow', '#show-grade', '#show-photo']) $(id).addEventListener('change', draw);
+for (const id of ['#show-flow', '#show-grade', '#show-photo', '#show-hard']) $(id).addEventListener('change', draw);
 
 if (mapId) guarded(async () => { status('Opening your map…'); await run(await siteFromMap(mapId)); });

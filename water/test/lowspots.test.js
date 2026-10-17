@@ -106,6 +106,30 @@ test('lawn or not: the fit and its score behave', async () => {
   assert.ok(m.w[0] > 2 && Math.abs(m.w[1]) < 0.5, `weights ${m.w}`);
 });
 
+test('paving is judged against this map\'s own lawn, whatever scale the flight records', async () => {
+  const { imperviousness } = await import('../lib/impervious.js');
+  for (const scale of [1, 250]) { // 8-bit and 16-bit flights
+    const W = 30, H = 30, N = W * H;
+    const g = { W, H, cell: 1 };
+    const pc = { groundI: new Float64Array(N), groundN: new Uint16Array(N), all: new Uint16Array(N), single: new Uint16Array(N), tall: new Uint16Array(N) };
+    const lawn = new Uint8Array(N);
+    for (let i = 0; i < N; i++) {
+      const c = i % W, isLawn = c < 15, paved = c >= 22;
+      lawn[i] = isLawn ? 1 : 0;
+      const n = 3;
+      pc.groundN[i] = n; pc.all[i] = n;
+      pc.groundI[i] = n * scale * (isLawn ? 160 : paved ? 60 : 150); // paved dark, beds about as bright as grass
+      pc.single[i] = paved ? n : 1;
+    }
+    const res = { grid: g, perCell: pc, wall: new Uint8Array(N), sd: new Float32Array(N).fill(0.03) };
+    const imp = imperviousness(res, lawn);
+    const at = (c) => imp.paved[15 * W + c];
+    assert.ok(at(26) > 0.8, `paved cell ${at(26)} at scale ${scale}`);
+    assert.ok(at(18) < 0.5, `bed cell ${at(18)} at scale ${scale}`);
+    assert.equal(at(5), 0, 'the lawn is pervious');
+  }
+});
+
 test('lots read from text, and a bad line names its label, not its place', () => {
   assert.deepEqual(parseLots('a, 42.1, -85.2\nb,42.2,-85.3,30'), [
     { label: 'a', lat: 42.1, lng: -85.2, half: 25 }, { label: 'b', lat: 42.2, lng: -85.3, half: 30 }]);

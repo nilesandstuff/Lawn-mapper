@@ -32,6 +32,12 @@ go in this file (or anywhere in the repository): lots are named by a label.
   "hollows" in a blind photo check were on open ground (the rest pavement,
   roofs, trees). So only hollows on a saved map's traced lawn count as lawn
   problems; trees are sorted out well (4 of 5).
+- **Paving and roofs (H12)**: paving is judged from the laser's brightness
+  calibrated on the map's own traced lawn (AUC 0.90 against the Chesapeake
+  land use on squares it was not fitted on); roofs are found 85%, 80%
+  precise. The map shows the lot's cover and runoff weighted by surface.
+  Asked the shade session (2026-10-17 10:55 PM EDT) how to reuse its
+  building classifier.
 - **The site is admin only** until it ships (owner, 2026-10-16), and the
   dashboard card is asked of the core session.
 - **What it can see is now measured on made-up ground (H8), not yet on real
@@ -339,6 +345,58 @@ class 9 (H10). Also from this run: inside property lines, 67% of the
 spots the kinds call hollow ARE on the traced lawn -- far better than the
 2 of 11 in H10's photo check, which counted roads and parking lots outside
 any property line.
+
+### H12. Roofs, and how impervious the rest is, on the Chesapeake land use (water session, 2026-10-17)
+
+Owner, 2026-10-17: the lawn is always traced by the time a map reaches the
+water map, so judge how impervious the NON-lawn ground is, by the laser's
+brightness calibrated per map on the traced lawn (and roofs).
+
+Answer key: the Chesapeake Bay Program's 1 m land use (lib/chesapeake.js;
+the service the core's landcover.js reads), read onto the water map's grid
+with the lidar's datum shift. `SQUARES=24 node water/tools/impervious.mjs`
+(also workflow "W. Water tool", task impervious), run 2026-10-17 about
+11:40 PM EDT: 23 residential squares of 160 m kept from 96 drawn in
+Fairfax, Montgomery, Howard, Chesterfield, Lancaster, York and Dauphin
+counties; 6 flights. The land use's turf stands in for the traced lawn.
+
+**Roofs** (the water map's finder, lib/surface.js, against "Structures"):
+**85% of roof cells found, 80% of what it calls roof is roof, IoU 0.71.**
+Worst on VA_Sandy_2014 (Chesterfield, 6 squares): 54-78% precision.
+
+**Paving**, ground-return brightness (3 x 3 cells) of open, non-roof cells;
+"Roads" + "Other Impervious" against the pervious classes; AUC pooled over
+all squares, i.e. one threshold for every map:
+
+| brightness | paved vs beds/bare | paved vs turf | paved vs both |
+|---|---|---|---|
+| raw (flights record 8-bit ~160 or 16-bit ~50,000 for grass) | 0.60 | 0.71 | 0.70 |
+| over the box's 75th percentile (H11) | 0.77 | 0.84 | 0.84 |
+| **over this map's lawn** | 0.77 | **0.86** | 0.86 |
+| roof = 0, lawn = 1 | 0.76 | 0.80 | 0.80 |
+
+Roofs as a second calibration point make it WORSE: roof brightness swings
+with the roofing (on 6 of 23 squares the roofs came back as bright as the
+lawn or brighter). Not used.
+
+**Fitted on 12 squares, tested on the other 11** (logistic):
+
+| model | paved vs both | paved vs beds/bare |
+|---|---|---|
+| brightness over the lawn alone | 0.890 | 0.802 |
+| + ground scatter, single-return share, return density | **0.896** | **0.840** |
+
+The second is shipped (lib/impervious.js PAVED_MODEL): every non-lawn,
+non-roof cell with ground returns and under half canopy gets P(paved);
+cells mostly under trees are left unjudged. On one Fairfax square, by
+land-use class, median P(paved): other impervious 0.95, roads 0.93,
+canopy over turf 0.09, forest 0.07, pervious 0.13.
+
+What it feeds: the lot's cover (lawn, roofs, likely paving, other ground),
+and runoff weighted by what each surface sheds (textbook runoff
+coefficients: roof 0.9, paving 0.85, other ground 0.3, lawn 0.15), roof
+water let off at each roof's lowest edge because the downspouts are not in
+the lidar. The weights and the downspout guess are NOT measured.
 
 ---
 

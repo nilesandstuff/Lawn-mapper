@@ -33,11 +33,12 @@ self.onmessage = async ({ data }) => {
     const out = {
       grid: { W: g.W, H: g.H, cell: g.cell, k: g.k, bbox: g.bbox, lat: g.lat },
       shift: res.shift,
-      depth: res.spots.depth, reported, flow: res.runoff.area, wall: res.wall, grade,
+      depth: res.spots.depth, reported, flow: r.weightedFlow || res.runoff.area, weighted: !!r.weightedFlow, wall: res.wall, grade,
+      paved: r.impervious ? r.impervious.paved : null,
       parcelMask: r.parcelMask, lawnMask: r.lawnMask,
       spots: r.spots, hasLawn: r.hasLawn, summary: { ...r.summary, noiseRuns: undefined }, cloud: r.cloud,
     };
-    const transfer = [out.depth.buffer, reported.buffer, out.flow.buffer, out.wall.buffer, grade.buffer];
+    const transfer = [out.depth.buffer, reported.buffer, out.flow.buffer, out.wall.buffer, grade.buffer, ...(out.paved ? [out.paved.buffer] : [])];
     self.postMessage({ done: out }, transfer);
   } catch (e) {
     self.postMessage({ error: e.message || String(e) });

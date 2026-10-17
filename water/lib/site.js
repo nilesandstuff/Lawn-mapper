@@ -15,6 +15,7 @@ import { pointsIn, toMerc, mercScale } from './ept.js';
 import { analyse, spotRecords } from './lowspots.js';
 import { boundsOf, maskOf, maskBox } from './geo.js';
 import { gridFor } from './surface.js';
+import { imperviousness, weightedFlow } from './impervious.js';
 
 export const PAD = 30;
 
@@ -69,9 +70,32 @@ export async function runSite(site, io, pickCloud, { progress = () => {}, nullRu
   const besideLot = parcelMask ? res.beside.walls.filter((w) => parcelMask[w.i]) : res.beside.walls;
   const share = (f) => (besideLot.length ? besideLot.filter(f).length / besideLot.length : null);
 
+  // how impervious the rest is, calibrated on the traced lawn (lib/impervious.js)
+  const imp = lawnMask ? imperviousness(res, lawnMask) : null;
+  const wflow = imp ? weightedFlow(res, imp.runoff) : null;
+  let cover = null;
+  if (imp && parcelMask) {
+    cover = { lawnM2: 0, roofM2: 0, pavedM2: 0, otherM2: 0, unjudgedM2: 0 };
+    for (let i = 0; i < res.wall.length; i++) {
+      if (!parcelMask[i]) continue;
+      if (res.wall[i]) cover.roofM2++;
+      else if (lawnMask[i]) cover.lawnM2++;
+      else if (Number.isNaN(imp.paved[i])) cover.unjudgedM2++;
+      else { cover.pavedM2 += imp.paved[i]; cover.otherM2 += 1 - imp.paved[i]; }
+    }
+    for (const k of Object.keys(cover)) cover[k] = Math.round(cover[k] * g.cell * g.cell);
+    // runoff reaching the lawn from roofs and pavement: the weighted flow stepping onto lawn cells from
+    // outside it, and roof water let off straight onto the lawn (lib/impervious.js weightedFlow)
+    let onto = 0;
+    const { down } = res.runoff;
+    for (let i = 0; i < down.length; i++) if (!lawnMask[i] && !res.wall[i] && down[i] >= 0 && lawnMask[down[i]] && parcelMask[down[i]]) onto += wflow[i];
+    for (const [o, m2] of wflow.roofDrops) if (lawnMask[o] && parcelMask[o]) onto += m2;
+    cover.runoffOntoLawnM2 = Math.round(onto);
+  }
+
   return {
     cloud: { name: cloud.name, ql: cloud.unit?.ql ?? null, flown: flown ? new Date(flown.mid).toISOString().slice(0, 10) : null, notOnAws: pick.notOnAws || [] },
-    result: res, parcelMask, lawnMask,
+    result: res, parcelMask, lawnMask, impervious: imp, weightedFlow: wflow,
     spots: spotRecords(res).filter((r) => !parcelMask || parcelMask[r.row * g.W + r.col] || onParcel.some((o) => o.spot.row === r.row && o.spot.col === r.col))
       .map((r) => {
         const on = onLawn.find((o) => o.spot.row === r.row && o.spot.col === r.col);
@@ -91,6 +115,7 @@ export async function runSite(site, io, pickCloud, { progress = () => {}, nullRu
       hollowLawnM2: onLawn.filter((o) => o.spot.kind === 'hollow').reduce((t, o) => t + o.insideM2, 0),
       deepestHollowOnLawnCm: (() => { const h = onLawn.filter((o) => o.spot.kind === 'hollow'); return h.length ? Math.max(...h.map((o) => o.spot.depth)) * 100 : null; })(),
       roofOnLotM2: wallOnLot * g.cell * g.cell,
+      cover,
       besideHouse: {
         outlineCells: besideLot.length,
         towardShare: share((w) => w.fallAway < -0.01),
