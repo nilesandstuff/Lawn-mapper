@@ -6,7 +6,8 @@
  *
  *   { type: 'build', cols, box, lat, lng, shift, heightM, lot, lawn,
  *     canopy: 'seasonal' | 'measured' | 'solid', flight: 'off'|'on'|'mixed'|null, tMean?,
- *     erased? (Uint8Array per 1 m cell: columns the visitor brushed out) }
+ *     erased? (Uint8Array per 1 m cell: columns the visitor brushed out),
+ *     erasedCubes? (indices k * nz + l of single blocks brushed out) }
  *       -> { type: 'built', ..., kinds, counts, calendar }
  *   { type: 'now', t }            -> { type: 'now', T (per point), leaves }
  *   { type: 'day', dayMs }        -> { type: 'day', sunHours, beamHours, dli, openDli, leaves, ... }
@@ -18,6 +19,10 @@
  *          (the field readings, shade/truth-ui.js)
  *   { type: 'season', climate, grass, threshold, bands }
  *       -> { type: 'season', xy, mean (per point), lawn[365], open[365], season, stats }
+ *   { type: 'period', days: [day index...], climate? }
+ *       -> { type: 'period', xy, hours (mean clear-day hours of direct sun per
+ *          point), dli (mean mol/m2/day with NASA's clouds, null without
+ *          climate), openDli, dayHours (mean day length), n }
  *
  * THE TREES ON A DATE. In 'seasonal' mode the deciduous crowns' leaves are
  * out by the share leafCalendar gives for that date (seasonal.js), and every
@@ -33,7 +38,7 @@ import { buildCanopy, solidAtGrass } from './canopy.js';
 import { seasonalCanopy, muWithLeaves, leafCalendar } from './seasonal.js';
 import { gridOver } from './grid.js';
 import { toMerc } from './ept.js';
-import { samplePoints, skyView, sunlitNow, dayLight, beamShare, transmittance, groundAt } from './rays.js';
+import { samplePoints, skyView, sunlitNow, dayLight, beamAndHours, transmittance, groundAt } from './rays.js';
 import { sunPath, sunAt, solarNoon } from './sun.js';
 import { growingSeason, growthPotential, dliOn, PAR_MOL_PER_MJ } from './climate.js';
 import { rasterizePolygon } from '../lib/mask.js';
@@ -142,6 +147,8 @@ self.onmessage = (ev) => {
       self.postMessage({ type: 'months', rows, id: m.id });
     } else if (m.type === 'season') {
       seasonOf(m);
+    } else if (m.type === 'period') {
+      periodOf(m);
     }
   } catch (e) {
     self.postMessage({ type: 'error', message: String(e?.message || e), id: m.id });
@@ -167,6 +174,15 @@ function build(m) {
       if (!m.erased[k]) continue;
       model.mu.fill(0, k * nz, (k + 1) * nz); // season.muOff is this same array
       if (season) { season.muOn.fill(0, k * nz, (k + 1) * nz); season.kind[k] = 0; }
+    }
+  }
+  /* ERASED BLOCKS (the branches brush): single cubes gone from the model,
+     the rest of their column standing. */
+  if (m.erasedCubes?.length) {
+    for (const i of m.erasedCubes) {
+      if (!(i >= 0 && i < model.mu.length)) continue;
+      model.mu[i] = 0;
+      if (season) season.muOn[i] = 0;
     }
   }
 
@@ -204,29 +220,59 @@ function build(m) {
 
 const SAMPLE_EVERY = 14;
 
-/** Beam share per coarse point on every SAMPLE_EVERY-th day of the year, kept on S. */
+/** Beam share and clear-day sun hours per coarse point on every SAMPLE_EVERY-th day of the year, kept on S. */
 function sampleBeams(year) {
   if (S.beams) return S.beams;
   const days = [];
   for (let d = 0; d < 365; d += SAMPLE_EVERY) days.push(d);
   const rows = days.map((d, i) => {
     const t = solarNoon(S.m.lng, Date.UTC(year, 0, 1 + d, 12));
-    const bs = beamShare(modelAt(leavesOn(d)), S.coarse.xy, sunPath(S.m.lat, S.m.lng, t, 20), { heightM: S.m.heightM });
+    const path = sunPath(S.m.lat, S.m.lng, t, 20);
+    const bh = beamAndHours(modelAt(leavesOn(d)), S.coarse.xy, path, { heightM: S.m.heightM, stepMin: 20 });
     self.postMessage({ type: 'progress', what: 'season', done: i + 1, of: days.length });
-    return bs;
+    return { share: bh.share, hours: bh.hours, dayHours: path.length / 3 };
   });
   S.beams = { days, rows };
   return S.beams;
 }
 
-/** A point's beam share on day k, between the sampled days (round the year). */
-function beamOn(beams, p, k) {
-  const { days, rows } = beams;
+/** The two sampled days around day k and the weight between them (round the year). */
+function between(beams, k) {
+  const { days } = beams;
   const i = Math.min(days.length - 1, Math.floor(k / SAMPLE_EVERY));
   const d0 = days[i], j = (i + 1) % days.length;
   const d1 = j === 0 ? 365 : days[j];
-  const f = (k - d0) / (d1 - d0);
-  return rows[i][p] * (1 - f) + rows[j][p] * f;
+  return [i, j, (k - d0) / (d1 - d0)];
+}
+/** A point's beam share on day k. */
+function beamOn(beams, p, k) { const [i, j, f] = between(beams, k); return beams.rows[i].share[p] * (1 - f) + beams.rows[j].share[p] * f; }
+/** A point's clear-day hours of direct sun on day k. */
+function hoursOn(beams, p, k) { const [i, j, f] = between(beams, k); return beams.rows[i].hours[p] * (1 - f) + beams.rows[j].hours[p] * f; }
+/** The day's length on day k. */
+function dayHoursOn(beams, k) { const [i, j, f] = between(beams, k); return beams.rows[i].dayHours * (1 - f) + beams.rows[j].dayHours * f; }
+
+/** A period's average light per point: clear-day sun hours, and DLI under NASA's clouds when the climate is in. */
+function periodOf(m) {
+  const c = m.climate?.ghi ? m.climate : null;
+  const beams = sampleBeams(new Date().getUTCFullYear());
+  const n = S.coarse.cells.length;
+  const days = (m.days || []).filter((k) => Number.isInteger(k) && k >= 0 && k < 365);
+  const hours = new Float32Array(n), dli = new Float32Array(n);
+  let openDli = 0, dayHours = 0;
+  for (const k of days) {
+    const sky = skyAt(leavesOn(k));
+    for (let p = 0; p < n; p++) {
+      hours[p] += hoursOn(beams, p, k);
+      if (c) dli[p] += dliOn(c.ghi[k], c.diffuse[k], beamOn(beams, p, k), sky[p]);
+    }
+    if (c) openDli += PAR_MOL_PER_MJ * c.ghi[k];
+    dayHours += dayHoursOn(beams, k);
+  }
+  const N = days.length || 1;
+  self.postMessage({
+    type: 'period', id: m.id, xy: S.coarse.xy, n: days.length,
+    hours: hours.map((v) => v / N), dli: c ? dli.map((v) => v / N) : null, openDli: openDli / N, dayHours: dayHours / N,
+  });
 }
 
 function seasonOf(m) {

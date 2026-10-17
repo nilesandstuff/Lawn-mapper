@@ -36,7 +36,11 @@ export const GRASS = {
   cool: { label: 'Cool-season', opt: 20, sd: 5.5 },
   warm: { label: 'Warm-season', opt: 31, sd: 7 },
 };
-export const SEASON_GP = 0.5;
+/* The growing season runs from the day growth potential reaches this in
+   spring to the day it falls under it in autumn (owner, 2026-10-17: "the
+   growing season starts at 20% GP in the spring and ends at 20% gp in the
+   fall"). */
+export const SEASON_GP = 0.2;
 export const PAR_MOL_PER_MJ = 2.04;
 
 export const powerUrl = (lng, lat, y0, y1) => 'https://power.larc.nasa.gov/api/temporal/daily/point?'
@@ -205,6 +209,34 @@ export function growingSeason(tMean, grass = 'cool', threshold = SEASON_GP) {
     if (len > best.len) best = { start: k, len };
   }
   return { days, start: best.start, end: (best.start + best.len - 1) % 365, allYear: false, mainRun: best.len };
+}
+
+/**
+ * The days of a period of the growing season (owner, 2026-10-17: "the
+ * period presets should be around leaf drop and leaf in dates (both before
+ * and after, but still end at the gp thresholds)"). `which`: 'season' (all
+ * of it), 'beforeLeaves' (season days before the leaves are half out),
+ * 'inLeaf' (half out to half fallen), 'afterLeaves' (half fallen to the
+ * season's end). `cal` is seasonal.js's leafCalendar ({ halfOut, halfFall,
+ * always, never }); without one, or with leaves all year or never, only
+ * 'season' has days.
+ */
+export function periodDays(seasonDays, cal, which) {
+  const days = Array.from(seasonDays || []);
+  if (which === 'season' || !which) return days;
+  if (!cal || cal.always || cal.never || cal.halfOut == null || cal.halfFall == null) return [];
+  const a = cal.halfOut, b = cal.halfFall;
+  const inLeaf = (k) => (a <= b ? k >= a && k < b : k >= a || k < b);
+  if (which === 'inLeaf') return days.filter(inLeaf);
+  /* Before and after are the bare stretches: the one that ends at leaf-out
+     and the one that starts at leaf-fall. Where the season runs through the
+     winter (a warm place) the bare days are one run from leaf-fall to
+     leaf-out, split at its middle: the nearer half to leaf-out is "before". */
+  const bare = days.filter((k) => !inLeaf(k));
+  const toOut = (k) => ((a - k) % 365 + 365) % 365, fromFall = (k) => ((k - b) % 365 + 365) % 365;
+  if (which === 'beforeLeaves') return bare.filter((k) => toOut(k) <= fromFall(k));
+  if (which === 'afterLeaves') return bare.filter((k) => toOut(k) > fromFall(k));
+  return [];
 }
 
 /** A patch's light on a day: beam and diffuse MJ split, its beam share and sky view -> mol/m2. */

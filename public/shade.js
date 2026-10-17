@@ -131,14 +131,19 @@ function shadePart() {
   if (!site) return null;
   const traced = site.parcel?.properties?.traced ? site.parcel.geometry.coordinates[0].slice(0, -1) : null;
   const grid = view.model ? gridOver(view.model.box, 1, site.lat) : null;
+  const shown = view.sun?.view?.() || {};
   const data = {
-    v: 1,
+    v: 2,
     lot: traced,
     erased: view.trees?.erasedCells() || [],
-    grid: grid ? { w: grid.w, h: grid.h, x0: Math.round(grid.x0 * 100) / 100, y1: Math.round(grid.y1 * 100) / 100 } : null,
-    settings: { grass: $('#grass')?.value || null, gp: $('#gp')?.value || null, date: $('#sun-date')?.value || null, step: view.steps?.current || 1 },
+    cubes: view.trees?.erasedCubes() || [],
+    grid: grid ? { w: grid.w, h: grid.h, x0: Math.round(grid.x0 * 100) / 100, y1: Math.round(grid.y1 * 100) / 100, nz: view.trees?.nz || null } : null,
+    /* The cloud read and its line-up, so the next visit reads the same one and skips the photo match. */
+    lidar: view.model?.lidar || null,
+    settings: { grass: $('#grass')?.value || null, what: shown.what || null, when: shown.when || null, date: $('#sun-date')?.value || null, step: view.steps?.current || 1 },
     at: new Date().toISOString(),
   };
+  if (JSON.stringify(data).length > 60000) { data.cubes = []; data.cubesDropped = true; }
   if (JSON.stringify(data).length > 60000) { data.erased = []; data.erasedDropped = true; }
   return data;
 }
@@ -163,7 +168,8 @@ function saveShadePart({ now = false } = {}) {
 function partFitsGrid(part) {
   if (!part?.grid || !view.model) return false;
   const g = gridOver(view.model.box, 1, view.site.lat);
-  return g.w === part.grid.w && g.h === part.grid.h && Math.abs(g.x0 - part.grid.x0) < 0.5 && Math.abs(g.y1 - part.grid.y1) < 0.5;
+  const nzOk = !part.grid.nz || !view.trees?.nz || part.grid.nz === view.trees.nz;
+  return nzOk && g.w === part.grid.w && g.h === part.grid.h && Math.abs(g.x0 - part.grid.x0) < 0.5 && Math.abs(g.y1 - part.grid.y1) < 0.5;
 }
 
 /** The link back to the dashboard, once the map has an id (none on workers.dev or a local host). */
@@ -317,9 +323,32 @@ async function getJson(url) {
   return res.json();
 }
 
+/*
+ * THE LIDAR CACHED (owner, 2026-10-17: "caching the lidar load"): the
+ * cloud's node files never change once published, so each one read is kept
+ * in the browser's cache store and a map opened again reads them from
+ * there, not from USGS's bucket. The hierarchy and the metadata are small
+ * and read fresh. Kept to a few hundred files; the oldest go first.
+ */
+const LIDAR_CACHE = 'shade-lidar-v1', LIDAR_CACHE_MAX = 600;
+async function lidarCache() {
+  try { return typeof caches !== 'undefined' ? await caches.open(LIDAR_CACHE) : null; } catch { return null; }
+}
 async function getBytes(url) {
+  const cacheable = /\/ept-data\/[^?]+\.laz$/.test(url);
+  const cache = cacheable ? await lidarCache() : null;
+  if (cache) {
+    try { const hit = await cache.match(url); if (hit) return hit.arrayBuffer(); } catch { /* read it */ }
+  }
   const res = await fetch(url);
   if (!res.ok) throw new Error(`${res.status} from ${new URL(url).host}`);
+  if (cache) {
+    try {
+      await cache.put(url, res.clone());
+      const keys = await cache.keys();
+      if (keys.length > LIDAR_CACHE_MAX) for (const k of keys.slice(0, keys.length - LIDAR_CACHE_MAX)) await cache.delete(k);
+    } catch { /* the store is full or closed: read it next time */ }
+  }
   return res.arrayBuffer();
 }
 
@@ -413,7 +442,23 @@ async function build(site) {
   if (!found || found.error) throw new Error(found?.error || 'the lidar index did not answer');
   const { clouds, notOnAws } = found;
   if (!found.wesm) report.push('<p class="warn">USGS\'s 3DEP index did not answer, so no cloud could be confirmed by name and flight dates are unknown.</p>');
-  if (!clouds.length) {
+  /* THE LIDAR KEPT WITH THE MAP (owner, 2026-10-17: "save those edits to a
+     map, so that means caching the lidar load and its alignment"): the same
+     cloud, box and line-up as last time, so the trees stand where they
+     stood, the erased blocks fit, and the photo match is skipped. */
+  const kept = site.map?.shade?.lidar;
+  let cloud = null, cols = null, flown = null, box = null, keptUsed = false;
+  if (kept?.url && Array.isArray(kept.box) && kept.box.length === 4 && Array.isArray(kept.shift) && kept.shift.length === 2 && !site.area) {
+    status(`Reading ${kept.name || 'the lidar kept with this map'}…`);
+    try {
+      const got = await pointsIn(kept.url, kept.box, io, { progress: (d, tot) => status(`Reading ${kept.name || 'the kept lidar'}: ${d} of ${tot} pieces…`) });
+      if (got.cols.n > 500) {
+        cloud = clouds.find((c) => c.url === kept.url) || { url: kept.url, name: kept.name || 'the cloud kept with this map', epoch: kept.epoch || 2018, unit: null, confirmed: false };
+        cols = got.cols; flown = got.flown; box = kept.box; keptUsed = true;
+      }
+    } catch (e) { report.push(`<p class="warn">The lidar kept with this map could not be read (${esc(e.message)}); read afresh.</p>`); }
+  }
+  if (!clouds.length && !keptUsed) {
     track('no-lidar', notOnAws.length ? `${notOnAws.length} collection(s) not in the public store` : 'none');
     status('No public lidar over this point that this page can read.', 'bad');
     $('#report').innerHTML = notOnAws.length
@@ -426,10 +471,9 @@ async function build(site) {
   const fBox = gridBox(gridForFrame(frame, 1, 1));
   const [lx0, ly0] = toMerc([bounds[0], bounds[1]]), [lx1, ly1] = toMerc([bounds[2], bounds[3]]);
   const m = MARGIN_M / k;
-  const box = [Math.min(lx0 - m, fBox[0]), Math.min(ly0 - m, fBox[1]), Math.max(lx1 + m, fBox[2]), Math.max(ly1 + m, fBox[3])];
+  if (!keptUsed) box = [Math.min(lx0 - m, fBox[0]), Math.min(ly0 - m, fBox[1]), Math.max(lx1 + m, fBox[2]), Math.max(ly1 + m, fBox[3])];
 
-  let cloud = null, cols = null, flown = null;
-  for (const c of clouds.slice(0, 3)) {
+  for (const c of keptUsed ? [] : clouds.slice(0, 3)) {
     status(`Reading ${c.name}…`);
     try {
       const got = await pointsIn(c.url, box, io, { progress: (d, t) => status(`Reading ${c.name}: ${d} of ${t} pieces…`) });
@@ -446,10 +490,11 @@ async function build(site) {
   for (let i = 0; i < cols.n; i++) if (cols.x[i] >= lx0 && cols.x[i] <= lx1 && cols.y[i] >= ly0 && cols.y[i] <= ly1) inLot++;
   const lotM2 = Math.max(1, (lx1 - lx0) * (ly1 - ly0) * k * k);
 
-  status('Moving it onto the map\'s datum, then checking against the photo…');
+  status(keptUsed ? 'Lining it up as kept with this map…' : 'Moving it onto the map\'s datum, then checking against the photo…');
   const datum = nad83Correction(site.lat, site.lng, cloud.epoch);
   const pre = [datum.east / k, datum.north / k];
   const t = site.tracedOn || { provider: 'mapbox' };
+  let onMapbox = null, onCounty = null, move = { east: 0, north: 0 }, used = null, usedName = '';
   const match = async (provider, svc) => {
     try {
       const photo = await photoOf(frame, provider, svc);
@@ -460,12 +505,12 @@ async function build(site) {
     }
   };
   /* The photo the outline was traced on decides; the other is a cross-check. */
-  const onMapbox = await match('mapbox');
-  let onCounty = t.provider === 'county' ? await match('county', t.svc) : null;
+  if (!keptUsed) onMapbox = await match('mapbox');
+  if (!keptUsed) onCounty = t.provider === 'county' ? await match('county', t.svc) : null;
   /* A typed address: a county photo with gaps over this frame gives way to
      the next on the Worker's list, then to Mapbox (the editor's rule), and
      each one passed over is logged for the core's county-photo report. */
-  if (t.list) {
+  if (!keptUsed && t.list) {
     let i = 0;
     while (onCounty && (onCounty.error || missingShare(onCounty.photo) > 0.02)) {
       reportCountyFailure(site, frame, t.list[i], onCounty.error ? 'refused' : 'gaps', onCounty.error || `${Math.round(100 * missingShare(onCounty.photo))}% of the frame missing`, t.list.map((x) => x.id));
@@ -475,9 +520,11 @@ async function build(site) {
       onCounty = await match('county', t.svc);
     }
   }
-  const move = t.provider === 'county' ? lineUpAt(t, [frame.lng, frame.lat]) : { east: 0, north: 0 };
-  let used, usedName;
-  if (onCounty && !onCounty.error) {
+  if (!keptUsed) move = t.provider === 'county' ? lineUpAt(t, [frame.lng, frame.lat]) : { east: 0, north: 0 };
+  if (keptUsed) {
+    used = kept.fit ? { east: kept.fit.east ?? null, north: kept.fit.north ?? null, confident: !!kept.fit.confident, why: kept.fit.why || 'as kept with the map' } : null;
+    usedName = `the line-up kept with this map${kept.at ? ` on ${String(kept.at).slice(0, 10)}` : ''}`;
+  } else if (onCounty && !onCounty.error) {
     /* Matched to the county photo where the county put it; the outline was
        drawn on it after the editor's line-up moved it, so add that move. */
     const f = onCounty.fit;
@@ -492,9 +539,9 @@ async function build(site) {
       : site.lawn.length ? 'the Mapbox photo the map was traced on' : 'the Mapbox photo';
   }
   const fit = used;
-  if (onMapbox.error) report.push(`<p class="warn">${esc(onMapbox.error)}</p>`);
+  if (onMapbox?.error) report.push(`<p class="warn">${esc(onMapbox.error)}</p>`);
   const residual = fit?.confident ? [fit.east / k, fit.north / k] : [0, 0];
-  const shift = [pre[0] + residual[0], pre[1] + residual[1]];
+  const shift = keptUsed ? kept.shift : [pre[0] + residual[0], pre[1] + residual[1]];
 
   /* Ground under every point, for heights, on a 1 m grid. */
   const g = gridOver(box, 1, site.lat);
@@ -538,20 +585,23 @@ async function build(site) {
       <tr><td>Matched against</td><td>${esc(usedName)}</td></tr>
       ${t.provider === 'county' && t.align ? `<tr><td>Editor's line-up</td><td class="dim">${fmtMove(move.east, move.north)} at this frame's center (saved ${t.align.east.toFixed(2)} E, ${t.align.north.toFixed(2)} N, scale ${t.align.scale})</td></tr>` : ''}
       <tr><td>Left over, measured</td><td>${fit ? `${fmtMove(fit.east, fit.north)} <span class="${fit.confident ? 'ok' : 'warn'}">${esc(fit.why)}</span>` : '<span class="bad">not measured</span>'}</td></tr>
-      ${fit ? `<tr><td>Quarters alone</td><td class="dim">${fit.quarters.map((q) => (q ? fmtMove(q.east, q.north) : '—')).join(' · ')}</td></tr>` : ''}
-      ${fit ? `<tr><td>Open ground that voted</td><td class="dim">${Math.round(fit.openShare * 100)}% of a ${Math.round(gridForFrame(frame, 1, 1).cell * k)} m frame; match ${fit.score?.toFixed(2)} against ${fit.second?.toFixed(2)} for the best rival</td></tr>` : ''}
-      ${onCounty && !onCounty.error && onMapbox.fit ? `<tr><td>Cross-check: Mapbox</td><td class="dim">${fmtMove(onMapbox.fit.east, onMapbox.fit.north)} (${esc(onMapbox.fit.why)})${onMapbox.fit.confident && fit.confident ? `; ${Math.hypot(onMapbox.fit.east - fit.east, onMapbox.fit.north - fit.north).toFixed(2)} m from the answer above` : ''}</td></tr>` : ''}
+      ${fit?.quarters?.length ? `<tr><td>Quarters alone</td><td class="dim">${fit.quarters.map((q) => (q ? fmtMove(q.east, q.north) : '—')).join(' · ')}</td></tr>` : ''}
+      ${fit?.score != null ? `<tr><td>Open ground that voted</td><td class="dim">${Math.round(fit.openShare * 100)}% of a ${Math.round(gridForFrame(frame, 1, 1).cell * k)} m frame; match ${fit.score?.toFixed(2)} against ${fit.second?.toFixed(2)} for the best rival</td></tr>` : ''}
+      ${onCounty && !onCounty.error && onMapbox?.fit ? `<tr><td>Cross-check: Mapbox</td><td class="dim">${fmtMove(onMapbox.fit.east, onMapbox.fit.north)} (${esc(onMapbox.fit.why)})${onMapbox.fit.confident && fit.confident ? `; ${Math.hypot(onMapbox.fit.east - fit.east, onMapbox.fit.north - fit.north).toFixed(2)} m from the answer above` : ''}</td></tr>` : ''}
       <tr><td><b>Applied</b></td><td><b>${fmtMove(datum.east + (fit?.confident ? fit.east : 0), datum.north + (fit?.confident ? fit.north : 0))}</b> ${fit?.confident ? '<span class="ok">datum + measured</span>' : '<span class="warn">datum only</span>'}</td></tr>
     </table>
     <p class="dim">Roofs and crowns will NOT sit exactly on the photo's: the photo was taken at an angle, so tall
     things lean in it by up to a meter or two, and the laser measures them where they stand.
     The ground is what has to agree. "Lined up" off shows the cloud where the file puts it. "Lidar ground picture" lays the laser's view of the ground over the photo to compare by eye: roads, drives and paths should sit exactly on the photo's.</p>`);
   $('#report').innerHTML = report.join('');
-  status(fit?.confident ? 'Built and lined up.' : 'Built. The photo check was not tight enough to apply; the datum correction is applied.', fit?.confident ? 'ok' : 'warn');
+  status(keptUsed ? 'Built and lined up as kept with this map.' : fit?.confident ? 'Built and lined up.' : 'Built. The photo check was not tight enough to apply; the datum correction is applied.', keptUsed || fit?.confident ? 'ok' : 'warn');
   track('built', `${Math.round((Date.now() - started) / 1000)} s, ${fit?.confident ? 'lined up' : 'not lined up'}`);
 
   view.builtFor = site;
-  view.model = { cols, box, shift, baseZ, ground, fit, season: u?.season ?? null, flownTo: u?.end ? day(u.end) : null };
+  view.model = {
+    cols, box, shift, baseZ, ground, fit, season: u?.season ?? null, flownTo: u?.end ? day(u.end) : null,
+    lidar: keptUsed ? kept : { url: cloud.url, name: cloud.name, epoch: cloud.epoch, box, shift, fit: fit ? { east: fit.east, north: fit.north, confident: !!fit.confident, why: fit.why } : null, at: new Date().toISOString() },
+  };
 
   /* The trees page (/shade-trees): the same model drawn instead of lit (shade/trees-ui.js). */
   if (TREES) {
@@ -565,11 +615,15 @@ async function build(site) {
     view.trees.setActive(view.steps.current === 2);
     view.steps.unlock(3);
     view.steps.setNext(2, true);
+    /* The cloud and its line-up go onto the map now, so the next visit reads the same. */
+    if (!keptUsed) saveShadePart();
     /* The part kept last time: the erased cells back in, if the grid is the same; the step they left. */
     const part = site.map?.shade;
-    if (part?.erased?.length && partFitsGrid(part)) { view.trees.restore(part.erased); view.eraseVersion++; }
+    if ((part?.erased?.length || part?.cubes?.length) && partFitsGrid(part)) { view.trees.restore({ cells: part.erased || [], cubes: part.cubes || [] }); view.eraseVersion++; }
     if (part && (part.settings?.step || 0) >= 3 && view.steps.current === 2) { view.steps.unlock(3); view.steps.go(3); }
-    status(fit?.confident ? 'The trees are built and lined up with the photo. Erase any that should not count, then go on to the shade map.' : 'The trees are built. The photo check was not tight enough to apply; the datum correction alone is applied.', fit?.confident ? 'ok' : 'warn');
+    status(keptUsed ? 'The trees are built and lined up as kept with this map. Erase any that should not count, then go on to the shade map.'
+      : fit?.confident ? 'The trees are built and lined up with the photo. Erase any that should not count, then go on to the shade map.'
+        : 'The trees are built. The photo check was not tight enough to apply; the datum correction alone is applied.', keptUsed || fit?.confident ? 'ok' : 'warn');
     /* A field-readings check goes straight to the shade map (admin). */
     if (new URLSearchParams(location.search).get('truth')) view.steps.go(3);
     return;
@@ -582,23 +636,24 @@ async function build(site) {
 function startShade() {
   const { map, site, model: m } = view;
   if (!m || !map) return;
-  const mask = view.trees?.erased() || null;
+  const mask = view.trees?.erased() || null, cubes = view.trees?.erasedCubes() || null;
   if (view.sun && view.sunFor === m) {
-    if (view.sunVersion !== view.eraseVersion) { view.sun.setErased(mask); view.sunVersion = view.eraseVersion; }
+    if (view.sunVersion !== view.eraseVersion) { view.sun.setErased(mask, cubes); view.sunVersion = view.eraseVersion; }
     view.sun.setVisible(true);
     return;
   }
   view.sun?.stop();
   view.sun = startSun({
-    map, site, cols: m.cols, box: m.box, shift: m.shift, heightM: m.baseZ, season: m.season, ground: m.ground, erased: mask,
+    map, site, cols: m.cols, box: m.box, shift: m.shift, heightM: m.baseZ, season: m.season, ground: m.ground, erased: mask, erasedCubes: cubes,
     beforeLayer: () => (map.getLayer('parcel') ? 'parcel' : undefined),
     onSeason: (se, climate) => {
       if (!STEPPED) return;
       view.steps.unlock(4);
       view.steps.setNext(3, true);
-      renderGrass($('#grass-out'), { season: se, climate, hasLawn: site.lawn.length > 0 });
+      renderGrass($('#grass-out'), { season: se, climate, hasLawn: site.lawn.length > 0, grassKind: $('#grass')?.value || null });
       saveShadePart();
     },
+    onChange: () => { if (STEPPED) saveShadePart(); },
   });
   view.sunFor = m;
   view.sunVersion = view.eraseVersion;
@@ -606,10 +661,9 @@ function startShade() {
   const st = site.map?.shade?.settings;
   if (st && STEPPED) {
     if (st.grass && $('#grass') && [...$('#grass').options].some((o) => o.value === st.grass)) { $('#grass').value = st.grass; $('#grass').onchange?.(); }
-    if (st.gp && $('#gp') && [...$('#gp').options].some((o) => o.value === st.gp)) { $('#gp').value = st.gp; $('#gp').onchange?.(); }
     if (st.date && /^\d{4}-\d{2}-\d{2}$/.test(st.date)) view.sun.showDay(Date.parse(`${st.date}T12:00:00`));
+    if (st.what || st.when) view.sun.setView({ what: st.what, when: st.when });
   }
-  for (const id of ['#grass', '#gp', '#sun-date']) { const el = $(id); if (el && STEPPED) el.addEventListener('change', () => saveShadePart()); }
   /* A visit's field readings, when the readings page sent us here (admin). */
   const truth = new URLSearchParams(location.search).get('truth');
   if (truth) import('./shade/truth-ui.js').then((t) => t.startTruth({ map, sun: view.sun, spec: truth, bounds: siteBounds(site), moveM: m.fit?.confident ? [m.fit.east, m.fit.north] : null })).catch((e) => status(e.message, 'bad'));
@@ -681,11 +735,11 @@ function onStep(n) {
   $('#toggles').hidden = n === 1;
   view.sun?.setVisible(n === 3 || n === 4);
   if (n === 2 && view.site && view.builtFor !== view.site) build(view.site).catch((e) => status(e.message || String(e), 'bad'));
-  if (n === 3) { startShade(); status(view.model ? 'The shade map: pick a view and a day, and tap the lawn to read it.' : ''); }
+  if (n === 3) { startShade(); status(view.model ? 'The shade map: choose what to show and over which days; the caption says what is on the map. Tap the lawn to read it.' : ''); }
   if (n === 4) {
     status('Which grass will grow here, from the climate and the season\'s light.');
     const s = view.sun?.season();
-    renderGrass($('#grass-out'), { season: s?.season || null, climate: s?.climate || view.sun?.climate() || null, hasLawn: (view.site?.lawn.length || 0) > 0 });
+    renderGrass($('#grass-out'), { season: s?.season || null, climate: s?.climate || view.sun?.climate() || null, hasLawn: (view.site?.lawn.length || 0) > 0, grassKind: $('#grass')?.value || null });
   }
 }
 
