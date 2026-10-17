@@ -6317,6 +6317,75 @@ the error. H54 (colour edges) was a crude hand-made version of this; it did
 not pass, which says the crude version was not enough, not that the idea is
 wrong.
 
+### E12. Other people's lawn labels: the one georeferenced turf layer drawn at near our resolution is California's, and it covers commercial and public land, not homes, 2026-10-17
+*Looked up at the owner's request ("there are datasets out there of annotated
+lawn areas ... we could potentially get several hundred more maps"). The
+service probes below are ours; nothing has been trained or scored on any of
+it.*
+
+Three kinds of thing exist, and they need different handling:
+
+1. **A photo with its own mask** (Roboflow, Kaggle, ISPRS Vaihingen/Potsdam,
+   FLAIR, OpenEarthMap). Nothing needs moving onto our imagery: the pair
+   is self-consistent and would be trained on as it is. E4 already found
+   the Roboflow "lawn" sets are ground photos; a 2026-10-17 search found
+   no new aerial one. The aerial benchmarks have "grass" or "low
+   vegetation", which takes in meadows, fields and shrubs, and are
+   European at 9-50 cm. None is "residential lawn".
+2. **A georeferenced raster** (Chesapeake 1 m with Turf Grass, E7; New York
+   City's 6-inch 2010/2017 land cover; the University of Vermont lab's
+   other city land covers, e.g. Durham NC 2015). These land on our photos
+   by their coordinates. Chesapeake is 7-10x coarser than our photos (E7);
+   the 6-inch ones are at our resolution but lump grass with shrubs
+   ("grass/shrub").
+3. **Georeferenced polygons drawn on another photo.** The best candidate
+   found is the California Department of Water Resources' 2020 Land Use
+   Cover Dataset (LUCD), made by NV5 under DWR agreement 4600015006 for
+   the state's commercial/industrial/institutional (CII) water rules.
+   - **Classes:** turfgrass (3A irrigated, 4A irrigable not irrigated,
+     each split into functional and non-functional), with canopy, other
+     vegetation, bare earth, pools, artificial turf and impervious
+     surfaces as separate classes.
+   - **How it was made:** drawn on 2020 4-band 1-foot (30 cm) imagery,
+     with a 64 sq ft minimum mapping unit. The polygons were modelled,
+     then manually reviewed; artifacts of the modelling remain.
+
+   **Probed, 2026-10-17:** one supplier's copy is public at
+   coemapservices.encinitasca.gov/hypegis/rest/services/Unsecured/w_CIIDIM/MapServer
+   (layer 7 LUCD, layer 5 CII_AOI). Encinitas alone has:
+   - 32,464 LUCD polygons;
+   - 2,743 of them turf (3A/4A), totalling 7.5 million sq ft and
+     averaging 2,750 sq ft each;
+   - over 1,462 areas of interest.
+
+   **THE CATCH:** the LUCD polygons cover only the CII parts of each
+   supplier's area: parks, schools, offices, churches and HOA common
+   ground. The residential layer ("Residential LAM", 2018 imagery) says
+   only irrigated / irrigable / not irrigable, so a lawn and a planted bed
+   are the same thing in it. No statewide download was found. Each
+   supplier was given its own package; DWR's README is under
+   water.ca.gov .../CII-LAM-LUCD-Deliverables/.
+
+**What would move a polygon onto our photo, from our own findings.** H63/H64
+measured the ground between two photos of the same place as a plain shift,
+median 0.54 m, which the line-up already measures. So "stretching" an outline
+is mostly a shift. Two problems are bigger than the shift:
+
+- **The ground changes between the two photo dates.** California has paid
+  people to remove turf since 2015, so a 2020 lawn may be gravel in the
+  photo we fetch.
+- **Their convention is not ours.** Their turf stops at the canopy; ours is
+  taught on visible ground (H17), which happens to agree. But their edges
+  were drawn at 30 cm against our 15 cm scoring grid, and H53 put the error
+  that is left in a thin band along the true edge.
+
+**Why none of this is a result.** H57: the owner's own not-lawn examples
+made the detector worse. H92: which photos are in training matters to the
+lots drawn on them. Added data has to be measured against the locked lots,
+never assumed. The `:example:` frame mechanism (trained on, never scored;
+workflow 14 `not_lawn: on`) is the existing way to add frames that are not
+corpus maps, and a pilot would use it. See S40 (SPECULATION).
+
 ## SPECULATION — theories not yet tested
 
 Marked so they are not later quoted as findings.
@@ -6673,6 +6742,36 @@ not:** a 27 m block is less context than a whole lot, and H4 once found
 fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
+
+### S40. Other people's turf polygons as extra training frames (owner, 2026-10-17 -- NOT BUILT, NOT MEASURED)
+**The idea (the owner's):** several hundred lawns already outlined by
+somebody else, moved onto our photos, would grow the corpus without
+hand-tracing. E12 has what exists.
+
+**The candidate:** California's LUCD turf on commercial and public ground
+(E12). The plan:
+- one CII area of interest becomes one example frame;
+- turf is graded lawn and every other LUCD class not lawn;
+- canopy is left ungraded, as unseen ground already is (H17);
+- the frame is shifted by the line-up the corpus already uses (H64).
+
+**Why it might help:** S3 says the corpus is the binding constraint, and
+this costs no tracing.
+
+**Why it might not:**
+- H57 found added examples hurt.
+- These are not house lots and not our regions.
+- The 2020 lawns may be gone from the photo we fetch.
+- Their 30 cm edges sit on top of the error band H53 found.
+
+**Bar, before any run:** the protocol's full bar on the locked lots,
+`lawns: locked`, three seeds a side, against the same arrangement without
+the frames. A gain only on the lots nearest in kind (big open lawns) is a
+lead, not an adoption.
+
+**A cheaper first look, before any training:** for about 20 of the frames,
+lay the shifted outlines over our own photo and judge by eye whether they
+still fit. If most do not, the run is not worth having.
 
 ### S39. A flight's dates could come from its own points rather than USGS's index (from the features session, 2026-10-15 -- NOT MEASURED HERE)
 
