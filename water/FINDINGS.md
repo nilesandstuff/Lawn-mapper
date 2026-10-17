@@ -444,6 +444,37 @@ hollows of H10's photo check were off any traced lawn. Beside the house:
 ground falls toward it on a median 10% of the outline (was 8%), 13 lots a
 quarter or more (was 10).
 
+### H14. One ground and one frame with the shade map (water session, 2026-10-17)
+
+Owner, 2026-10-17: "copy the shade map's way of building the ground ...
+Make sure your system is the exact same as the shade map (if the shade map
+has to change to accommodate you, tell it that)."
+
+The two grounds, on 6 squares of 160 m (Kent 2016 x3, Ottawa 2016,
+Northern VA 2022, PA Northcentral 2019), open ground with roofs left out:
+the shade map's (buildCanopy: the LOWEST class-2 return per 1 m column,
+filled outward) against the water map's (surface.js: Gaussian-weighted
+MEAN of the class-2 returns within 2 m, sigma 0.8 m, with an error bar):
+
+| | shade map's | water map's |
+|---|---|---|
+| height (shade minus water) | median -1.3 to -3.1 cm (10th-90th -9.5 to +2.6) | -- |
+| cell-to-cell roughness (median \|z - mean of 8 neighbours\|) | 1.5-2.6 cm | 0.4-0.9 cm |
+| low spots over 3 cm per square | 8-67 | 5-34 |
+
+The lowest of a few noisy returns sits low and rough; on it the low-spot
+map finds 1.5-3x the spots, the extra ones noise. So the water map keeps
+its ground, and asked the features session (2026-10-17 5:15 PM EDT) to
+take the water map's ground into a shared public/shade/ground.js that both
+maps use -- for light, a 2 cm smoother ground should change nothing
+against GRASS_M 0.5 m, but that is for its own readings checks to say.
+
+The frame IS now the shade map's: the cloud is moved by the datum
+correction BEFORE it is gridded (lib/lowspots.js; as the shade map's
+cellOf shift), so a cell is the same ground in both maps' grids. Asked the
+features session for its exact box rule for a saved map, so cell indices
+match too.
+
 ---
 
 ## SPECULATION

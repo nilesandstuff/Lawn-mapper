@@ -58,7 +58,7 @@ async function one(lot, outDir) {
     label: lot.label,
     cloud: { name: cloud.name, flown: flown ? new Date(flown.mid).toISOString().slice(0, 10) : null, ql: cloud.unit?.ql ?? null },
     stats: res.stats,
-    datumShiftM: res.shift,
+    datumShiftM: res.datum,
     spots,
     foundation: res.beside.summary,
     seconds: (Date.now() - t0) / 1000,

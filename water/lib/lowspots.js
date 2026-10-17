@@ -64,8 +64,19 @@ export function noiseFloor(bbox, lat, groundPerM2, scatter, { runs = 8, within =
  * epoch: the flight's decimal year (for the datum, lib/datum.js), or null to
  * leave the cloud where the octree put it.
  */
-export function analyse(cols, bbox, lat, { epoch = null, cell = 1, within = null, nullRuns = 8, floor = null, useShadeRoofs = cell === 1 } = {}) {
+export function analyse(cols0, bbox, lat, { epoch = null, cell = 1, within = null, nullRuns = 8, floor = null, useShadeRoofs = cell === 1 } = {}) {
+  /* THE FRAME, THE SHADE MAP'S (owner, 2026-10-17: "make sure your system is the exact same as the shade
+     map"): the cloud is moved onto the web map's ground BEFORE it is gridded, by the published NAD83 ->
+     ITRF transformation at the flight's epoch (lib/datum.js), as the shade map's cellOf(..., shift) does.
+     So a cell here is the same piece of ground as the same cell in the shade map's grid (gridOver, same
+     box), and everything after -- roofs, low spots, places -- is already where the photo has it. */
   const g = gridFor(bbox, lat, cell);
+  const [midLng0, midLat0] = fromMerc([(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2]);
+  const datum = epoch ? nad83Correction(midLat0, midLng0, epoch) : { east: 0, north: 0 };
+  let cols = cols0;
+  if (datum.east || datum.north) {
+    cols = { ...cols0, x: Float64Array.from(cols0.x, (v) => v + datum.east / g.k), y: Float64Array.from(cols0.y, (v) => v + datum.north / g.k) };
+  }
   const raw = groundSurface(g, cols);
   const z = inpaint(g, raw.z);
   const { mask: ownRoofs, fromClass6 } = buildingMask(g, cols, raw.z, z);
@@ -120,20 +131,14 @@ export function analyse(cols, bbox, lat, { epoch = null, cell = 1, within = null
   const runoff = flow(g, z, wall);
   const beside = foundation(g, z, groundOk, wall);
 
-  // the datum: a 3DEP cloud's NAD83 read as WGS84 sits 0.5-1.2 m off the web map (lib/datum.js)
-  const [, midLat] = fromMerc([(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2]);
-  const [midLng] = fromMerc([(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2]);
-  const shift = epoch ? nad83Correction(midLat, midLng, epoch) : { east: 0, north: 0 };
-  const lngLat = (row, col) => {
-    const [x, y] = g.toMerc(col, row);
-    const [lng, lat2] = fromMerc([x + shift.east / g.k, y + shift.north / g.k]);
-    return [lng, lat2];
-  };
+  // places: the grid is already on the web map's ground (the datum was applied to the points)
+  const shift = { east: 0, north: 0 };
+  const lngLat = (row, col) => fromMerc(g.toMerc(col, row));
 
   const seVals = Array.from(raw.se).filter(Number.isFinite).sort((a, b) => a - b);
 
   return {
-    grid: g, z, rawZ: raw.z, sd: raw.sd, se, wall, ownRoofs, groundOk, spots, runoff, beside, shift, lngLat, perCell,
+    grid: g, z, rawZ: raw.z, sd: raw.sd, se, wall, ownRoofs, groundOk, spots, runoff, beside, shift, datum, lngLat, perCell, points: cols,
     stats: {
       cells: g.W * g.H,
       groundPointsPerM2: groundPerM2,

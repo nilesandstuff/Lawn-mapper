@@ -84,7 +84,7 @@ async function one(lng, lat) {
   if (share('turf') < 0.15 || share('structure') < 0.05) return { skip: 'not residential' };
 
   // roofs, each finder and each stage of the shade map's (lib/roofs.js), exact and within 1 m
-  const shade = shadeRoofs(cols, bbox, lat, { parts: true });
+  const shade = shadeRoofs(res.points, bbox, lat, { parts: true }); // the points as analysed: moved onto the web map's ground
   const finders = {
     water: res.ownRoofs, shadeFlat: shade.flat, shadeSolid: shade.solid, shade: shade.roof,
     either: Uint8Array.from(res.ownRoofs, (v, i) => (v || shade.roof[i] ? 1 : 0)),
