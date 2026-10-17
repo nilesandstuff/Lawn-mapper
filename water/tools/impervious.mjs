@@ -86,10 +86,10 @@ async function one(lng, lat) {
   // roofs, each finder and each stage of the shade map's (lib/roofs.js), exact and within 1 m
   const shade = shadeRoofs(cols, bbox, lat, { parts: true });
   const finders = {
-    water: res.wall, shadeFlat: shade.flat, shadeSolid: shade.solid, shade: shade.roof,
-    either: Uint8Array.from(res.wall, (v, i) => (v || shade.roof[i] ? 1 : 0)),
-    both: Uint8Array.from(res.wall, (v, i) => (v && shade.roof[i] ? 1 : 0)),
-    waterNoEvergreen: Uint8Array.from(res.wall, (v, i) => (v && !shade.evergreen[i] ? 1 : 0)),
+    water: res.ownRoofs, shadeFlat: shade.flat, shadeSolid: shade.solid, shade: shade.roof,
+    either: Uint8Array.from(res.ownRoofs, (v, i) => (v || shade.roof[i] ? 1 : 0)),
+    both: Uint8Array.from(res.ownRoofs, (v, i) => (v && shade.roof[i] ? 1 : 0)),
+    waterNoEvergreen: Uint8Array.from(res.ownRoofs, (v, i) => (v && !shade.evergreen[i] ? 1 : 0)),
   };
   const near = (mask, i) => {
     const r = Math.floor(i / g.W), c = i % g.W;

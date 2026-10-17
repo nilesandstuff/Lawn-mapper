@@ -16,6 +16,7 @@ import { lowSpots, flow, foundation, MIN_AREA } from './hydro.js';
 import { nad83Correction } from './datum.js';
 import { rng, gauss } from './synthetic.js';
 import { sortSpots } from './kinds.js';
+import { shadeRoofs } from './roofs.js';
 
 /**
  * HOW DEEP A SPOT PURE NOISE DIGS, ON THIS FLIGHT (the noise floor).
@@ -63,11 +64,20 @@ export function noiseFloor(bbox, lat, groundPerM2, scatter, { runs = 8, within =
  * epoch: the flight's decimal year (for the datum, lib/datum.js), or null to
  * leave the cloud where the octree put it.
  */
-export function analyse(cols, bbox, lat, { epoch = null, cell = 1, within = null, nullRuns = 8, floor = null } = {}) {
+export function analyse(cols, bbox, lat, { epoch = null, cell = 1, within = null, nullRuns = 8, floor = null, useShadeRoofs = cell === 1 } = {}) {
   const g = gridFor(bbox, lat, cell);
   const raw = groundSurface(g, cols);
   const z = inpaint(g, raw.z);
-  const { mask: wall, fromClass6 } = buildingMask(g, cols, raw.z, z);
+  const { mask: ownRoofs, fromClass6 } = buildingMask(g, cols, raw.z, z);
+  /* ROOFS: the water map's own finder OR the shade map's (lib/roofs.js). Scored on the Chesapeake land use
+     (FINDINGS H13): either alone is IoU 0.71-0.72, but they miss different roofs; together they find 91% of
+     roof cells (98% within 1 m) at 77% precision (86% within 1 m). A missed roof is the worse error here --
+     it becomes a fake low spot and a hole in the walls -- so the union. */
+  let wall = ownRoofs;
+  if (useShadeRoofs && cols.n) {
+    const sh = shadeRoofs(cols, bbox, lat);
+    if (sh.w === g.W && sh.h === g.H) wall = Uint8Array.from(ownRoofs, (v, i) => (v || sh.roof[i] ? 1 : 0));
+  }
   const groundOk = new Uint8Array(g.W * g.H);
   for (let i = 0; i < groundOk.length; i++) groundOk[i] = !wall[i] && Number.isFinite(raw.z[i]) ? 1 : 0;
   const se = Float32Array.from(raw.se, (v) => (Number.isFinite(v) ? v : 0.05));
@@ -123,7 +133,7 @@ export function analyse(cols, bbox, lat, { epoch = null, cell = 1, within = null
   const seVals = Array.from(raw.se).filter(Number.isFinite).sort((a, b) => a - b);
 
   return {
-    grid: g, z, rawZ: raw.z, sd: raw.sd, se, wall, groundOk, spots, runoff, beside, shift, lngLat, perCell,
+    grid: g, z, rawZ: raw.z, sd: raw.sd, se, wall, ownRoofs, groundOk, spots, runoff, beside, shift, lngLat, perCell,
     stats: {
       cells: g.W * g.H,
       groundPointsPerM2: groundPerM2,
