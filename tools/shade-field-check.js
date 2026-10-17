@@ -33,7 +33,14 @@ import { climateNow as climateAt } from '../worker/src/shade.js';
 import { canopyParts, rayParts } from './shade-ray-check.js';
 
 const ZONE = 'America/New_York';
-const PHONE_M = 1.27, EDGE_M = 25, NEAR_M = 3;
+/* The phone's height over the ground: the hopper's 1.27 m, or PHONE_M for a
+   recording made on foot (owner, 2026-10-17: "held the phone like 3.5 feet
+   off the ground"). SHADE_TILT lets readings tilted further than 20 degrees
+   count (on foot he tilted the phone toward the sun; the gain model takes
+   the angle), where the hopper's rule drops a bouncing cover. */
+const PHONE_M = Number(process.env.PHONE_M) > 0 ? Number(process.env.PHONE_M) : 1.27, EDGE_M = 25, NEAR_M = 3;
+const MAX_TILT = Number(process.env.SHADE_TILT) > 0 ? Number(process.env.SHADE_TILT) : 20;
+const MAX_ACC = Number(process.env.SHADE_ACC) > 0 ? Number(process.env.SHADE_ACC) : 8; // a walking phone's fixes run 10-13 m
 /* GPS offsets tried, meters east and north (owner, 2026-10-14: is the track where the model is?). */
 export const OFFSETS = [];
 /* Leaf shares scanned against the readings (owner, 2026-10-14: the lawn trees
@@ -97,8 +104,9 @@ export function tiles(u, cellM = 120) {
 }
 
 export async function visitCheck(visit, dayMount) {
-  const trucks = findTrucks(visit);
-  const u = usable(visit);
+  /* On foot (SHADE_FOOT=1) there is no truck to find: a pause is a pause. */
+  const trucks = process.env.SHADE_FOOT ? [] : findTrucks(visit);
+  const u = usable(visit, { maxTiltDeg: MAX_TILT, maxAcc: MAX_ACC });
   if (u.length < 20) return { skip: `${u.length} usable readings` };
   /* This visit's own mounting angle first: the phone is set down afresh at every stop. */
   const mount = compassOffset(u) || dayMount;
@@ -467,8 +475,9 @@ export async function loadVisits(day) {
   return visits;
 }
 
-export async function fieldCheck(day) {
-  const visits = await loadVisits(day);
+/** A day from the database, or `given` visits (a recording handed over as files, not through the site). */
+export async function fieldCheck(day, given = null) {
+  const visits = given || await loadVisits(day);
   const mount = compassOffset(visits.flatMap((v) => usable(v)));
   const fl = visits.flecks;
   const out = [`Field check ${day}: ${visits.length} visits; ${fl?.n ? `flecks of sun (a second's brightest sample over 3x its median, over 10,000 lux): ${fl.f} of ${fl.n} seconds;` : 'light stored as one mean per second (no fleck data);'} the phone's mounting angle ${mount ? `${Math.round(mount.offset)} degrees (steady to ${Math.round(mount.spread)}, from ${mount.n} straight-line readings)` : 'not found (GPS heading used)'}.`];
