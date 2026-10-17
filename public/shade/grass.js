@@ -123,6 +123,42 @@ export function rankGrasses(dliPoints, zone) {
   return pts.length && regularHolding < FALLBACK_WHEN_FEWER_THAN ? all : all.filter((s) => !s.fallback);
 }
 
+/**
+ * THE LAWN BY ITS LIGHT, AND THE GRASSES FOR EACH PART (owner, 2026-10-17:
+ * "the grass finder should try to find what the least shade tolerant grass
+ * you can use is ... it should say 'you can plant any of these grasses in
+ * the sunny areas, and these are the options for shady areas'. And it should
+ * favor variety ... in a full sun area you can plant any of the types and it
+ * ranks them by which ones are most happy with having plenty of excess
+ * light").
+ *
+ * The lawn's points (season-average DLI) fall into bands cut at the
+ * species' lowest lights, brightest first. Each band lists every grass of
+ * the zone whose lowest light the band meets, THE LEAST SHADE-TOLERANT
+ * FIRST (highest need, then highest best-light): in the sun that puts the
+ * sun-lovers at the top; in the shade, the grass that only just takes it.
+ * Rough and supina bluegrass appear in a band only when fewer than two
+ * regular grasses hold it, after them. Returns [{ lo, hi, n, share, grasses }], bands
+ * with no points left out; `hi` is Infinity for the brightest.
+ */
+export function grassBands(dliPoints, zone) {
+  const pts = Array.from(dliPoints || []).filter(Number.isFinite);
+  const seasons = zone === 'transition' ? ['cool', 'warm'] : [zone];
+  const species = SPECIES.filter((s) => seasons.includes(s.season));
+  const cuts = [...new Set(species.map((s) => s.dli))].sort((a, b) => b - a);
+  const edges = [Infinity, ...cuts, 0];
+  const bands = [];
+  for (let i = 1; i < edges.length; i++) {
+    const hi = edges[i - 1], lo = edges[i];
+    const n = pts.filter((v) => v >= lo && v < hi).length;
+    if (!n) continue;
+    const holding = species.filter((s) => s.dli <= lo).sort((a, b) => (a.fallback ? 1 : 0) - (b.fallback ? 1 : 0) || b.dli - a.dli || b.full - a.full || a.name.localeCompare(b.name));
+    const regular = holding.filter((s) => !s.fallback);
+    bands.push({ lo, hi, n, share: n / pts.length, grasses: regular.length >= FALLBACK_WHEN_FEWER_THAN ? regular : holding });
+  }
+  return bands;
+}
+
 /** Words for a share of the lawn. */
 export const shareWords = (f) => (f == null ? 'unknown' : f >= 0.97 ? 'all of it' : f >= 0.8 ? 'nearly all of it' : f >= 0.5 ? 'most of it' : f >= 0.2 ? 'part of it' : f > 0 ? 'little of it' : 'none of it');
 

@@ -197,7 +197,16 @@ export function dayLight(model, xy, path, { stepMin = 10, heightM = 0, svf = nul
  * ground; less in shade; can pass 1 on a slope facing the sun. NASA's
  * cloudy-day beam (climate.js) is shared out by it.
  */
-export function beamShare(model, xy, path, { heightM = 0, stepM = 0.5 } = {}) {
+export function beamShare(model, xy, path, opts = {}) {
+  return beamAndHours(model, xy, path, opts).share;
+}
+
+/**
+ * beamShare and the clear day's hours of direct sun (dappled counted by the
+ * share that gets through, as dayLight) from one march: { share, hours },
+ * `stepMin` minutes between the path's steps.
+ */
+export function beamAndHours(model, xy, path, { heightM = 0, stepM = 0.5, stepMin = 20 } = {}) {
   const cm = cellMetres(model);
   const n = xy.length / 2;
   const num = new Float32Array(n);
@@ -206,6 +215,7 @@ export function beamShare(model, xy, path, { heightM = 0, stepM = 0.5 } = {}) {
     zs[p] = groundAt(model, xy[2 * p], xy[2 * p + 1]) + START_M;
     normals[p] = normalAt(model, xy[2 * p], xy[2 * p + 1], cm);
   }
+  const hours = new Float32Array(n);
   let den = 0;
   for (const s of path) {
     const dni = clearSky(s.elevation, heightM, s.R).dni;
@@ -213,9 +223,11 @@ export function beamShare(model, xy, path, { heightM = 0, stepM = 0.5 } = {}) {
     for (let p = 0; p < n; p++) {
       const nm = normals[p];
       const cosInc = Math.max(0, nm[0] * s.dir[0] + nm[1] * s.dir[1] + nm[2] * s.dir[2]);
+      const T = transmittance(model, xy[2 * p], xy[2 * p + 1], zs[p], s.dir, { stepM, cm });
+      hours[p] += (T * stepMin) / 60;
       if (cosInc <= 0) continue;
-      num[p] += dni * cosInc * transmittance(model, xy[2 * p], xy[2 * p + 1], zs[p], s.dir, { stepM, cm });
+      num[p] += dni * cosInc * T;
     }
   }
-  return den > 0 ? num.map((v) => v / den) : num.fill(0);
+  return { share: den > 0 ? num.map((v) => v / den) : num.fill(0), hours };
 }

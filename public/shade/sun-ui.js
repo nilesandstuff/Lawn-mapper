@@ -21,7 +21,8 @@ import { reportError } from './usage.js';
 import { gridOver, gridBox } from './grid.js';
 import { fromMerc, toMerc } from './ept.js';
 import { sunPath } from './sun.js';
-import { GRASS, dayLabel } from './climate.js';
+import { GRASS, dayLabel, growingSeason, periodDays, SEASON_GP } from './climate.js';
+import { climateZone } from './grass.js';
 import { heat, bandsFor, rasterOf, smooth, valueAt, boxStats } from './readout.js';
 import { groundLayer } from './view3d.js';
 
@@ -72,10 +73,24 @@ export function aboutLocal(ms, lng) {
 
 const polysOf = (g) => (g?.type === 'Polygon' ? [g.coordinates] : g?.type === 'MultiPolygon' ? g.coordinates : []);
 
-export function startSun({ map, site, cols, box, shift, heightM, season, beforeLayer, ground = null, erased = null, onSeason = null }) {
+/*
+ * WHAT x WHEN (owner, 2026-10-17: "the different views should be more clear
+ * which mode (dli, shadows, hours of sun) you're viewing and what period
+ * you're viewing it in. So any mode is independently selectable from the
+ * period ... The default view should be growing season average hours of
+ * sun"). `what` is hours, dli or now (shadows at a time, which is one
+ * moment, so it forces `when` to a day); `when` is the growing season, the
+ * part of it before leaf-out, in leaf, after leaf-fall, or one day. A caption
+ * over the legend says which is shown.
+ */
+const WHATS = [['#w-hours', 'hours'], ['#w-dli', 'dli'], ['#w-now', 'now']];
+const WHENS = [['#p-season', 'season'], ['#p-before', 'beforeLeaves'], ['#p-leaf', 'inLeaf'], ['#p-after', 'afterLeaves'], ['#p-day', 'day']];
+const WHEN_LABEL = { season: 'the growing season', beforeLeaves: 'the growing season before leaf-out', inLeaf: 'the growing season in leaf', afterLeaves: 'the growing season after leaf-fall', day: 'one day' };
+
+export function startSun({ map, site, cols, box, shift, heightM, season, beforeLayer, ground = null, erased = null, erasedCubes = null, onSeason = null, onChange = null }) {
   const st = {
-    erased,
-    worker: null, mode: 'hours', day: null, now: null, ids: 0, path: [],
+    erased, erasedCubes,
+    worker: null, what: 'hours', when: 'season', whenBefore: null, day: null, now: null, period: null, periodDays: [], calendar: null, seasonInfo: null, ids: 0, path: [],
     grid: gridOver(box, 1, site.lat),
   };
   st.drape = ground && ground.length === st.grid.w * st.grid.h ? groundLayer('light-3d', { grid: st.grid, ground, baseZ: heightM, lat: site.lat }) : null;
@@ -84,8 +99,10 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
   const sec = $('#sun');
   sec.hidden = false;
   const status = (t) => { $('#sun-status').textContent = t; };
+  const caption = (t) => { if ($('#sun-caption')) $('#sun-caption').textContent = t; };
   const today = new Date();
   $('#sun-date').value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const dayWords = () => { const d = new Date(dayMs()); return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`; };
   const dayMs = () => {
     const [y, m, d] = $('#sun-date').value.split('-').map(Number);
     return Date.UTC(y, m - 1, d, 12 - Math.round(site.lng / 15)); // about local noon
@@ -158,27 +175,48 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     paint(values, xy, (v) => [...b.colors[b.of(v)], ALPHA], { span, smoothed: true, read });
   }
 
+  /** The first and last day of a run of days (the run may wrap New Year). */
+  function spanWords(d) {
+    if (!d?.length) return '';
+    const on = new Set(d);
+    let start = d[0];
+    for (const k of d) if (!on.has((k + 364) % 365)) { start = k; break; }
+    let end = start;
+    while (on.has((end + 1) % 365) && end !== (start + 364) % 365) end = (end + 1) % 365;
+    return `${dayLabel(start)} to ${dayLabel(end)}`;
+  }
+  const where = () => (st.lawnOnly && st.lawnMask ? 'on the lawn' : 'on the lot');
+  const periodWords = () => `${WHEN_LABEL[st.when]} (${spanWords(st.periodDays)})`;
+
   function draw() {
-    if (st.mode === 'trees') {
-      if (!st.kinds) return;
-      $('#sun-legend').innerHTML = '<span><i class="sw" style="background:#199e70"></i>evergreen</span> <span><i class="sw" style="background:#c98500"></i>deciduous</span> <span><i class="sw" style="background:#8c8c8c"></i>building</span>';
-      const xy = new Float32Array(st.grid.w * st.grid.h * 2), vals = new Uint8Array(st.grid.w * st.grid.h);
-      for (let k = 0; k < vals.length; k++) { xy[2 * k] = k % st.grid.w; xy[2 * k + 1] = Math.floor(k / st.grid.w); vals[k] = st.kinds[k]; }
-      paint(vals, xy, (v) => KIND_RGBA[v] || null, { span: 2, read: { kind: true } });
-      readouts();
-      return;
-    }
-    if (st.mode === 'season') {
-      const se = st.season;
-      if (!se?.stats.open) { $('#sun-legend').innerHTML = '<span class="dim">No growing season to show yet.</span>'; return; }
-      paintLight(se.mean, se.xy, Math.max(1, se.stats.open.mean), 'mol/m²/day, season average', { unit: 'mol/m²/day', what: 'season average, typical weather', dp: 1 }, 2);
-    } else if (st.mode === 'now' && st.now) {
+    if (st.what === 'now') {
+      if (!st.now) return;
       $('#sun-legend').innerHTML = '<span class="dim">Dark = shade from the lidar at that moment</span>';
       paint(st.now.T, st.now.xy, (T) => [0, 0, 20, Math.round((1 - T) * 170)], { read: { share: true } });
-    } else if (st.day) {
+      const sl = st.path[Number($('#sun-time').value)];
+      caption(`Shadows at about ${sl ? aboutLocal(sl.t, site.lng) : '—'} on ${dayWords()}, ${where()}: dark is shade from the trees and buildings, with the leaves as the calendar puts them that day.`);
+    } else if (st.when === 'day') {
+      if (!st.day) return;
       const d = st.day;
-      if (st.mode === 'dli') paintLight(d.dli, d.xy, Math.max(1, d.openDli), 'mol/m²/day', { unit: 'mol/m²/day', what: 'clear day', dp: 1 });
-      else paintLight(d.sunHours, d.xy, Math.max(1, d.dayHours), 'hours of sun', { unit: 'hours of sun', what: 'clear day, dappled sun counted for the share that gets through', dp: 1 }, 1, 1);
+      if (st.what === 'dli') {
+        paintLight(d.dli, d.xy, Math.max(1, d.openDli), 'mol/m²/day', { unit: 'mol/m²/day', what: 'clear day', dp: 1 });
+        caption(`Daily light (DLI, mol of photosynthetic light per m²) on ${dayWords()}, a clear day, ${where()}. Open ground here gets ${d.openDli.toFixed(0)}.`);
+      } else {
+        paintLight(d.sunHours, d.xy, Math.max(1, d.dayHours), 'hours of sun', { unit: 'hours of sun', what: 'clear day, dappled sun counted for the share that gets through', dp: 1 }, 1, 1);
+        caption(`Hours of direct sun on ${dayWords()}, a clear day, ${where()}; dappled sun counts for the share that gets through. The day has ${d.dayHours.toFixed(1)} hours of sun.`);
+      }
+    } else {
+      const pe = st.period;
+      if (!pe) { readouts(); return; }
+      if (!pe.n) { $('#sun-legend').innerHTML = '<span class="dim">No days to show.</span>'; caption(`There are no days of ${WHEN_LABEL[st.when]} here: the leaves and the growing season do not overlap that way at this place. Pick another period.`); readouts(); return; }
+      if (st.what === 'dli') {
+        if (!pe.dli) { $('#sun-legend').innerHTML = '<span class="dim">Needs the weather.</span>'; caption('Daily light over a period needs the weather here, which could not be read. Hours of sun, or one day, still work.'); readouts(); return; }
+        paintLight(pe.dli, pe.xy, Math.max(1, pe.openDli), 'mol/m²/day, average', { unit: 'mol/m²/day', what: `average with typical clouds over ${periodWords()}`, dp: 1 }, 2);
+        caption(`Daily light (DLI, mol/m² a day) averaged over ${periodWords()}, with NASA's typical clouds here, ${where()}. Open ground averages ${pe.openDli.toFixed(1)}.`);
+      } else {
+        paintLight(pe.hours, pe.xy, Math.max(1, pe.dayHours), 'hours of sun, average', { unit: 'hours of sun', what: `average per clear day over ${periodWords()}`, dp: 1 }, 2, 1);
+        caption(`Average hours of direct sun per clear day over ${periodWords()}, ${where()}; dappled sun counts for the share that gets through, and the leaves come and go as the calendar says. The days average ${pe.dayHours.toFixed(1)} hours of sun.`);
+      }
     }
     readouts();
   }
@@ -281,7 +319,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
   $('#t-lawn').onclick = () => {
     st.lawnOnly = !st.lawnOnly;
     $('#t-lawn').setAttribute('aria-pressed', String(st.lawnOnly));
-    if (st.mode === 'now') runNow(); else draw();
+    if (st.what === 'now') runNow(); else draw();
   };
   $('#sun-clear').onclick = () => { setBoxing(false); clearReadouts(); };
 
@@ -317,7 +355,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     slider.max = String(Math.max(1, st.path.length - 1));
     if (Number(slider.value) > Number(slider.max)) slider.value = String(Math.floor(st.path.length / 2));
     st.dayId = send({ type: 'day', dayMs: dayMs() });
-    if (st.mode === 'now') runNow();
+    if (st.what === 'now') runNow();
   }
 
   function runNow() {
@@ -361,19 +399,48 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
   }
 
   function runSeason() {
-    if (!st.built || !st.climate) return;
-    const grass = $('#grass').value, threshold = Number($('#gp').value);
-    st.seasonId = send({ type: 'season', climate: st.climate, grass, threshold, bands: BANDS[grass].map(([lo, hi]) => [lo, hi]) });
+    if (!st.built || !st.climate?.tMean) return;
+    const grass = $('#grass').value;
+    if (!grass || !BANDS[grass]) { $('#season-status').textContent = 'Choose cool-season or warm-season grass to set the growing season.'; return; }
+    st.seasonInfo = growingSeason(st.climate.tMean, grass, SEASON_GP);
+    labelPeriods();
+    st.seasonId = send({ type: 'season', climate: st.climate, grass, threshold: SEASON_GP, bands: BANDS[grass].map(([lo, hi]) => [lo, hi]) });
+  }
+
+  /** The period buttons, with their dates once the season and the leaf calendar are known; a period with no days here is disabled. */
+  function labelPeriods() {
+    for (const [id, w] of WHENS) {
+      const b = $(id);
+      if (!b || w === 'day') continue;
+      const base = b.dataset.label || (b.dataset.label = b.textContent);
+      const d = st.seasonInfo ? periodDays(st.seasonInfo.days, st.calendar, w) : [];
+      b.disabled = !d.length;
+      b.title = d.length ? `${d.length} days, ${spanWords(d)}` : 'no such days here';
+      b.textContent = d.length ? `${base} · ${spanWords(d).replace(' to ', '–')}` : base;
+    }
+  }
+
+  /** A period's average light over the lawn, from the worker (the sampled year, like the season). */
+  function runPeriod() {
+    if (st.when === 'day' || st.what === 'now' || !st.built) return;
+    const grass = $('#grass').value;
+    if (!st.climate?.tMean) { st.period = null; caption('The weather here could not be read, so the growing season is unknown: pick one day instead.'); return; }
+    if (!grass) { st.period = null; caption('Choose cool-season or warm-season grass (below) to set the growing season: this place is in the transition zone, where both are grown.'); return; }
+    if (!st.seasonInfo) st.seasonInfo = growingSeason(st.climate.tMean, grass, SEASON_GP);
+    const days = periodDays(st.seasonInfo.days, st.calendar, st.when);
+    st.periodDays = days;
+    if (!days.length) { st.period = { n: 0 }; draw(); return; }
+    caption(`Working out ${WHEN_LABEL[st.when]} (${days.length} days)…`);
+    st.periodId = send({ type: 'period', days, climate: st.climate });
   }
 
   function seasonSummary() {
     const se = st.season, c = st.climate;
-    const grass = $('#grass').value, g = GRASS[grass];
-    const strict = Number($('#gp').value) >= 0.5;
+    const grass = $('#grass').value, g = GRASS[grass] || GRASS.cool;
     $('#season-status').textContent = '';
-    const how = `estimated from NASA's daily temperatures ${c.years} (growth potential at least ${strict ? '0.5' : '0.1'}, the PACE Turf model); Turf Tools' season will replace this estimate`;
+    const how = `from the day growth potential reaches ${Math.round(SEASON_GP * 100)}% in spring to the day it falls under it in autumn, on NASA's daily temperatures ${c.years} (the PACE Turf model); Turf Tools' season will replace this estimate`;
     if (!se.stats.lawn) {
-      $('#season-summary').innerHTML = `<p>In a typical year it is never warm enough here for ${g.label.toLowerCase()} grass to ${strict ? 'grow strongly' : 'grow'} (${how}).</p>`;
+      $('#season-summary').innerHTML = `<p>In a typical year it is never warm enough here for ${g.label.toLowerCase()} grass to grow (${how}).</p>`;
       $('#season-chart').innerHTML = chart(se, c);
       return;
     }
@@ -466,22 +533,24 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     st.worker.onmessage = (ev) => {
       const m = ev.data;
       if (m.type === 'error') { status(`The light calculation stopped: ${m.message}`); reportError('light worker', m.message); }
-      else if (m.type === 'built') { st.readyWaiters.splice(0).forEach((f) => f()); st.canopy = m.canopy; status(''); st.built = true; st.kinds = m.kinds; st.lawnMask = m.lawnMask || null; $('#t-lawn').hidden = !st.lawnMask || st.hidden; $('#t-lawn').dataset.has = st.lawnMask ? '1' : ''; canopyNote(m); if (st.mode === 'trees') draw(); runDay(); st.monthsId = send({ type: 'months', year: new Date(dayMs()).getUTCFullYear() }); runSeason(); }
-      else if (m.type === 'day' && m.id === st.dayId) { st.day = m; status(''); summary(); if (st.mode !== 'now') draw(); }
-      else if (m.type === 'now' && m.id === st.nowId) { st.now = m; if (st.mode === 'now') draw(); }
-      else if (m.type === 'progress' && m.what === 'season') $('#season-status').textContent = `Tracing the sun through the year: ${m.done} of ${m.of} dates…`;
+      else if (m.type === 'built') { st.readyWaiters.splice(0).forEach((f) => f()); st.canopy = m.canopy; status(''); st.built = true; st.kinds = m.kinds; st.calendar = m.calendar || null; st.lawnMask = m.lawnMask || null; $('#t-lawn').hidden = !st.lawnMask || st.hidden; $('#t-lawn').dataset.has = st.lawnMask ? '1' : ''; canopyNote(m); labelPeriods(); runDay(); st.monthsId = send({ type: 'months', year: new Date(dayMs()).getUTCFullYear() }); runSeason(); runPeriod(); }
+      else if (m.type === 'day' && m.id === st.dayId) { st.day = m; status(''); summary(); if (st.what !== 'now' && st.when === 'day') draw(); }
+      else if (m.type === 'now' && m.id === st.nowId) { st.now = m; if (st.what === 'now') draw(); }
+      else if (m.type === 'progress' && m.what === 'season') { $('#season-status').textContent = `Tracing the sun through the year: ${m.done} of ${m.of} dates…`; if (st.when !== 'day' && st.what !== 'now' && !st.period) caption(`Tracing the sun through the year: ${m.done} of ${m.of} dates…`); }
       else if (m.type === 'progress') status(`Working out the year: ${m.done} of ${m.of} months…`);
-      else if (m.type === 'season' && m.id === st.seasonId) { st.season = m; seasonSummary(); if (st.mode === 'season') draw(); onSeason?.(m, st.climate); }
+      else if (m.type === 'season' && m.id === st.seasonId) { st.season = m; seasonSummary(); onSeason?.(m, st.climate); }
+      else if (m.type === 'period' && m.id === st.periodId) { st.period = m; draw(); }
       else if (m.type === 'months' && m.id === st.monthsId) { months(m.rows); status(''); }
       else if (m.type === 'samples' && st.pending.has(m.id)) { st.pending.get(m.id)(m); st.pending.delete(m.id); }
     };
     status('Building the 3D canopy and the sky over every half meter…');
+    caption('Building the 3D canopy…');
     const pick = ['x', 'y', 'z', 'intensity', 'ret', 'nret', 'cls'];
     const c = { n: cols.n };
     for (const k of pick) c[k] = cols[k].slice(0, cols.n);
     send({
       type: 'build', cols: c, box, lat: site.lat, lng: site.lng, shift, heightM,
-      canopy: $('#sun-canopy')?.value || 'seasonal', flight: season || null, erased: st.erased || null, tMean: st.climate?.tMeanNow || st.climate?.tMean || null, tMeanTypical: st.climate?.tMeanNow ? st.climate.tMean : null,
+      canopy: $('#sun-canopy')?.value || 'seasonal', flight: season || null, erased: st.erased || null, erasedCubes: st.erasedCubes?.length ? Int32Array.from(st.erasedCubes) : null, tMean: st.climate?.tMeanNow || st.climate?.tMean || null, tMeanTypical: st.climate?.tMeanNow ? st.climate.tMean : null,
       /* A field-readings check (site.area: the whole track's box) draws the
          light over everything he treated -- neighbors' lots of a
          multi-property stop and the street -- not the one parcel. */
@@ -490,40 +559,63 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     });
   }
 
-  const MODES = [['#m-hours', 'hours'], ['#m-dli', 'dli'], ['#m-now', 'now'], ['#m-season', 'season'], ['#m-trees', 'trees']];
-  const setMode = (mode) => {
-    st.mode = mode;
-    for (const [id, m] of MODES) $(id)?.setAttribute('aria-pressed', String(m === mode));
-    $('#time-row').hidden = mode !== 'now';
-    if (mode === 'now') runNow(); else draw();
-  };
-  /* The page may leave a view out (the step-by-step page has no "Trees" view: step 2 draws them). */
-  for (const [id, m] of MODES) if ($(id)) $(id).onclick = () => setMode(m);
-  $('#grass').value = Math.abs(site.lat) >= 37 ? 'cool' : 'warm';
-  $('#grass').onchange = () => runSeason();
-  $('#gp').onchange = () => runSeason();
+  function paintButtons() {
+    for (const [id, w] of WHATS) $(id)?.setAttribute('aria-pressed', String(w === st.what));
+    for (const [id, w] of WHENS) $(id)?.setAttribute('aria-pressed', String(w === st.when));
+    $('#time-row').hidden = st.what !== 'now';
+    if ($('#sun-date')) $('#sun-date').hidden = st.when !== 'day';
+  }
+  function setWhat(w) {
+    if (w === 'now' && st.when !== 'day') { st.whenBefore = st.when; st.when = 'day'; }
+    if (w !== 'now' && st.what === 'now' && st.whenBefore) { st.when = st.whenBefore; st.whenBefore = null; }
+    st.what = w;
+    paintButtons();
+    if (w === 'now') runNow(); else if (st.when === 'day') draw(); else if (st.period) draw(); else runPeriod();
+    onChange?.();
+  }
+  function setWhen(w) {
+    st.when = w; st.whenBefore = null;
+    if (w !== 'day' && st.what === 'now') st.what = 'hours';
+    paintButtons();
+    if (w === 'day') { if (st.what === 'now') runNow(); else draw(); } else runPeriod();
+    onChange?.();
+  }
+  for (const [id, w] of WHATS) if ($(id)) $(id).onclick = () => setWhat(w);
+  for (const [id, w] of WHENS) if ($(id)) $(id).onclick = () => setWhen(w);
+  paintButtons();
+  /* The kind of grass: the climate's call where it is clear (grass.js
+     climateZone); in the transition zone the visitor chooses (owner,
+     2026-10-17), and the season views wait for it. */
+  function grassChanged() {
+    const z = st.zone;
+    if ($('#zone-ask')) $('#zone-ask').hidden = !(z?.zone === 'transition' && !$('#grass').value);
+    st.seasonInfo = null; st.period = null;
+    runSeason(); runPeriod();
+    onChange?.();
+  }
+  $('#grass').onchange = () => grassChanged();
+  for (const [id, v] of [['#zone-cool', 'cool'], ['#zone-warm', 'warm']]) if ($(id)) $(id).onclick = () => { $('#grass').value = v; grassChanged(); };
   $('#season-status').textContent = 'Fetching ten years of NASA weather…';
   $('#season-summary').innerHTML = ''; $('#season-chart').innerHTML = '';
+  caption('Fetching the weather here…');
   fetch(`/api/shade/climate?lng=${site.lng}&lat=${site.lat}`)
     .then((r) => r.json())
     .then((c) => {
       if (c.error) throw new Error(c.detail || c.error);
       st.climate = c;
+      st.zone = climateZone(c.tMean);
+      if ($('#zone-note') && st.zone) $('#zone-note').textContent = `${st.zone.label} country: the coldest 30 days here average ${st.zone.cold.toFixed(0)} °C and the warmest ${st.zone.warm.toFixed(0)} °C, ${st.zone.why}.`;
+      if (st.zone && st.zone.zone !== 'transition') $('#grass').value = st.zone.zone;
+      else if (st.zone && $('#zone-ask')) $('#zone-ask').hidden = !!$('#grass').value;
       $('#season-status').textContent = 'Waiting for the 3D model…';
     })
-    .catch((e) => { $('#season-status').textContent = `The NASA weather could not be read (${e.message}); the clear-sky figures above still stand, with the trees as the laser saw them.`; })
+    .catch((e) => { if (!$('#grass').value) $('#grass').value = Math.abs(site.lat) >= 37 ? 'cool' : 'warm'; $('#season-status').textContent = `The NASA weather could not be read (${e.message}); the clear-sky figures above still stand, with the trees as the laser saw them.`; })
     /* The seasons need the typical temperatures (leaf-out, leaf-fall), so
        the model is built once they are in, or once they have failed. */
     .finally(() => { st.climateDone = true; build(); });
   $('#sun-time').oninput = () => runNow();
-  $('#sun-date').onchange = () => runDay();
-  for (const b of document.querySelectorAll('[data-preset]')) {
-    b.onclick = () => {
-      const [m, d] = b.dataset.preset.split('-').map(Number);
-      $('#sun-date').value = `${new Date(dayMs()).getUTCFullYear()}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      runDay();
-    };
-  }
+  /* A date picked is a day asked for. */
+  $('#sun-date').onchange = () => { if (st.when !== 'day' && st.what !== 'now') { st.when = 'day'; st.whenBefore = null; paintButtons(); } runDay(); onChange?.(); };
   if ($('#sun-canopy')) { $('#sun-canopy').value = 'seasonal'; $('#sun-canopy').onchange = () => build(); }
   $('#sun-canopy-note').textContent = '';
   st.pending = new Map();
@@ -548,8 +640,17 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     },
     /** Shown, or hidden while another step has the map (the colors, the pin and the box; the panel is the page's). */
     setVisible(on) { st.hidden = !on; drapeMode(); if (st.boxing) setBoxing(false); },
-    /** The trees step erased (or put back) columns: the model is built again without them. */
-    setErased(mask) { st.erased = mask || null; if (st.climateDone) build(); },
+    /** The trees step erased (or put back) columns or blocks: the model is built again without them. */
+    setErased(mask, cubes = null) { st.erased = mask || null; st.erasedCubes = cubes?.length ? cubes : null; if (st.climateDone) build(); },
+    /** What is shown: { what, when } (kept with the map), and setting it back. */
+    view: () => ({ what: st.what, when: st.when }),
+    setView({ what, when } = {}) {
+      if (when && WHENS.some(([, w]) => w === when)) { st.when = when; st.whenBefore = null; }
+      if (what && WHATS.some(([, w]) => w === what)) st.what = what;
+      if (st.what === 'now') st.when = 'day';
+      paintButtons();
+      if (st.built) { if (st.what === 'now') runNow(); else if (st.when === 'day') draw(); else runPeriod(); }
+    },
     /** The growing season's light, once worked out (null before): the worker's season message and the climate. */
     season: () => (st.season ? { season: st.season, climate: st.climate } : null),
     climate: () => st.climate || null,

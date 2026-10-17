@@ -60,6 +60,8 @@
   .sun input[type=range] { flex: 1; min-width: 160px; }
   .trace { border: 1px solid #ffeb3b55; border-radius: 8px; padding: 6px 10px; margin: 4px 0 8px; }
   .sun button { min-height: 34px; font-size: 13px; }
+  .caption { font-size: 13px; color: #e8e8e8; margin: 8px 0 4px; }
+  .grasses { padding-left: 18px; } .grasses li { margin: 6px 0; } .grasses details { display: inline; } .grasses summary { display: inline; cursor: pointer; }
   .legend-bar { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #bbb; }
   .legend-bar .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
   .legend-bar .ramp { flex: 1; max-width: 240px; height: 10px; border-radius: 5px; }
@@ -147,11 +149,13 @@
 
     <section class="step" id="step-2" hidden>
       <h2>Step 2 of 4 · The trees</h2>
-      <p class="about">USGS lidar over the lot, read in your browser and lined up with the photo, becomes the trees and buildings the shade map uses: every block is drawn from the lowest to the highest height where the laser found something that stops light, tilted so you can look under the crowns. If a tree is gone, or you would rather see the lawn without one, erase it here and the shade is worked out without it.</p>
+      <p class="about">USGS lidar over the lot, read in your browser and lined up with the photo, becomes the trees and buildings the shade map uses: every block is drawn from the lowest to the highest height where the laser found something that stops light, tilted so you can look under the crowns. If a tree is gone, or you would rather see the lawn without one, erase it here and the shade is worked out without it: "Whole tree" takes everything in the column, "Branches" peels off the blocks facing you, one layer per stroke (tilt and turn the map to reach a side or the underside). What you erase is kept with the map.</p>
       <section class="sun trees" id="trees" hidden>
         <div class="tr-tools">
           <div class="row" role="group" aria-label="Eraser">
             <button type="button" id="tr-erase" aria-pressed="false">Eraser</button>
+            <button type="button" data-erase-mode="tree" aria-pressed="true" title="Every block in the column goes">Whole tree</button>
+            <button type="button" data-erase-mode="branch" aria-pressed="false" title="The block facing the camera goes, one layer per stroke">Branches</button>
             <span class="dim">Brush</span>
             <button type="button" data-erase-m="1" aria-pressed="false">1 m</button>
             <button type="button" data-erase-m="3" aria-pressed="true">3 m</button>
@@ -194,7 +198,7 @@
 
     <section class="step" id="step-3" hidden>
       <h2>Step 3 of 4 · The shade map</h2>
-      <p class="about">The sun is traced over the trees for any day of the year, with the leaves as the weather here puts them. Colors over the lawn show hours of direct sun, the day's light, the shadows at one time, or the light averaged over the growing season. Tap a spot to read it, or draw a box to average an area.</p>
+      <p class="about">The sun is traced over the trees, with the leaves as the weather here puts them. Choose what the colors show (hours of direct sun, daily light, or the shadows at one time) and over which days (the growing season, the part of it before leaf-out, in leaf, or after leaf-fall, or one day). The caption under the buttons says exactly what is on the map. Tap a spot to read it, or draw a box to average an area.</p>
       <section class="sun" id="truth" hidden>
         <h2>Field readings <span class="dim">this visit, measured against the model</span></h2>
         <div class="row">
@@ -206,19 +210,28 @@
       </section>
       <section class="sun" id="sun" hidden>
         <div class="row" role="group" aria-label="What the colors show">
-          <button type="button" class="mode" id="m-hours" aria-pressed="true">Hours of sun</button>
-          <button type="button" class="mode" id="m-dli" aria-pressed="false">Light (DLI)</button>
-          <button type="button" class="mode" id="m-now" aria-pressed="false">Shadows at a time</button>
-          <button type="button" class="mode" id="m-season" aria-pressed="false">Season light</button>
+          <span class="dim">Show</span>
+          <button type="button" class="mode" id="w-hours" aria-pressed="true">Hours of sun</button>
+          <button type="button" class="mode" id="w-dli" aria-pressed="false">Light (DLI)</button>
+          <button type="button" class="mode" id="w-now" aria-pressed="false">Shadows at a time</button>
         </div>
-        <div class="row">
-          <label class="dim" for="sun-date">Day</label>
-          <input type="date" id="sun-date">
-          <button type="button" data-preset="2-20">Mar 20</button>
-          <button type="button" data-preset="5-21">Jun 21</button>
-          <button type="button" data-preset="8-22">Sep 22</button>
-          <button type="button" data-preset="11-21">Dec 21</button>
+        <div class="row" role="group" aria-label="Over which days">
+          <span class="dim">Over</span>
+          <button type="button" class="mode" id="p-season" aria-pressed="true">Growing season</button>
+          <button type="button" class="mode" id="p-before" aria-pressed="false">Before leaf-out</button>
+          <button type="button" class="mode" id="p-leaf" aria-pressed="false">In leaf</button>
+          <button type="button" class="mode" id="p-after" aria-pressed="false">After leaf-fall</button>
+          <button type="button" class="mode" id="p-day" aria-pressed="false">One day</button>
+          <input type="date" id="sun-date" aria-label="The day" hidden>
         </div>
+        <div id="zone-ask" hidden>
+          <p class="warn">This place is in the transition zone, where both kinds of grass are grown. Which will you grow? It sets the growing season.</p>
+          <div class="row">
+            <button type="button" class="primary" id="zone-cool">Cool-season grass</button>
+            <button type="button" class="primary" id="zone-warm">Warm-season grass</button>
+          </div>
+        </div>
+        <p class="caption" id="sun-caption"></p>
         <div class="row" id="time-row" hidden>
           <input type="range" id="sun-time" min="0" max="100" value="50" aria-label="Time of day">
           <span id="sun-time-label" class="dim"></span>
@@ -236,13 +249,11 @@
           <h3>Through the growing season <span class="dim">typical weather</span></h3>
           <div class="row">
             <select id="grass" aria-label="Grass type">
+              <option value="" hidden>Grass kind…</option>
               <option value="cool">Cool-season grass</option>
               <option value="warm">Warm-season grass</option>
             </select>
-            <select id="gp" aria-label="How the season is counted">
-              <option value="0.5">Season: strong growth</option>
-              <option value="0.1">Season: any growth</option>
-            </select>
+            <span id="zone-note" class="dim"></span>
           </div>
           <p id="season-status" class="dim">Fetching ten years of NASA weather…</p>
           <div id="season-summary"></div>
@@ -269,7 +280,7 @@
 
     <section class="step" id="step-4" hidden>
       <h2>Step 4 of 4 · Which grass</h2>
-      <p class="about">The climate here says cool-season or warm-season grass; the light through the growing season, point by point over the lawn, says which of those will hold the shade, and how much of the lawn each would hold. Then when to plant it.</p>
+      <p class="about">The climate here says cool-season or warm-season grass. The light through the growing season, point by point, cuts the lawn into its sunny and shady parts, and for each part lists the grasses that will hold it, the least shade-tolerant first, so the sunny part gets the sun-lovers and the shady part only the grass that needs them. Then when to plant.</p>
       <div id="grass-out"><p class="dim">Waiting for the shade map…</p></div>
       <div class="foot">
         <button type="button" data-back>Back</button>

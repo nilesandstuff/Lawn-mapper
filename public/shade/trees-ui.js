@@ -20,8 +20,8 @@
 import { buildCanopy } from './canopy.js';
 import { seasonalCanopy, muWithLeaves, leafCalendar, CROWN_ABOVE_M } from './seasonal.js';
 import { gridOver, cellOf } from './grid.js';
-import { toMerc, fromMerc } from './ept.js';
-import { cellsUnder, squareRing, Erased, SIZES_M } from './erase.js';
+import { toMerc, fromMerc, mercScale } from './ept.js';
+import { cellsUnder, squareRing, Erased, SIZES_M, nearestRun } from './erase.js';
 
 const $ = (s) => document.querySelector(s);
 const NOISE = new Set([7, 18]);
@@ -77,8 +77,8 @@ export function treeRuns(model, mu, season, { roofs = true, cutBelow = 0 } = {})
       if (!(m >= MIN_MU) || hi <= cutBelow) { close(); continue; }
       const b = bandOf(m);
       if (run && run.band !== b) close();
-      if (!run) run = { k, base: Math.max(0, lo, cutBelow), top: hi, mu: 0, n: 0, band: b, kind };
-      run.top = hi; run.mu += m; run.n++;
+      if (!run) run = { k, base: Math.max(0, lo, cutBelow), top: hi, mu: 0, n: 0, band: b, kind, l0: l, l1: l };
+      run.top = hi; run.mu += m; run.n++; run.l1 = l;
     }
     close();
   }
@@ -135,9 +135,21 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
     if (!(highRet[k] >= over)) highRet[k] = over;
   }
 
-  const st = { leaves: today ?? (leafOff ? 1 : null), roofs: true, cut: 0, active: true, erasing: false, size: SIZES_M[1] };
-  const er = erase ? new Erased(grid.w * grid.h) : null;
-  const muNow = () => (st.leaves === null ? model.mu : muWithLeaves(season, st.leaves));
+  const st = { leaves: today ?? (leafOff ? 1 : null), roofs: true, cut: 0, active: true, erasing: false, size: SIZES_M[1], mode: 'tree', cubeVersion: 0 };
+  const er = erase ? new Erased(grid.w * grid.h, model.nz) : null;
+  /* The canopy as drawn: the leaves as chosen, less the single blocks the branches brush took. */
+  let muCache = { key: null, mu: null };
+  const muNow = () => {
+    const base = st.leaves === null ? model.mu : muWithLeaves(season, st.leaves);
+    if (!er?.cubeCount) return base;
+    const key = `${st.leaves}:${st.cubeVersion}`;
+    if (muCache.key !== key) {
+      const mu = Float32Array.from(base);
+      for (let i = 0; i < mu.length; i++) if (er.cubes[i]) mu[i] = 0;
+      muCache = { key, mu };
+    }
+    return muCache.mu;
+  };
   const corners = (k) => {
     const x = k % grid.w, y = (k / grid.w) | 0;
     const X0 = grid.x0 + x * grid.cell, X1 = X0 + grid.cell, Y1 = grid.y1 - y * grid.cell, Y0 = Y1 - grid.cell;
@@ -160,7 +172,7 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
           idx = r.k === lastK ? idx + 1 : 0; lastK = r.k;
           const f = { type: 'Feature', id: r.k * 64 + idx, geometry: { type: 'Polygon', coordinates: corners(r.k) }, properties: { b: r.base, t: r.top, c: KIND_COLOR[r.kind] } };
           if (!byCell.has(r.k)) byCell.set(r.k, []);
-          byCell.get(r.k).push({ src: i, id: f.id });
+          byCell.get(r.k).push({ src: i, id: f.id, l0: r.l0, l1: r.l1, base: r.base, top: r.top });
           return f;
         }),
       };
@@ -223,7 +235,12 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
   function eraseNote() {
     const el = $('#tr-erase-note');
     if (!el || !er) return;
-    el.textContent = er.any ? `${er.count.toLocaleString()} square meter${er.count === 1 ? '' : 's'} erased (${er.strokes.length} stroke${er.strokes.length === 1 ? '' : 's'}). The shade will be worked out without them.` : 'Nothing erased. Drag the eraser over a tree to take it out of the model; tap the eraser again when done.';
+    const parts = [];
+    if (er.count) parts.push(`${er.count.toLocaleString()} square meter${er.count === 1 ? '' : 's'} of whole columns`);
+    if (er.cubeCount) parts.push(`${er.cubeCount.toLocaleString()} block${er.cubeCount === 1 ? '' : 's'}`);
+    el.textContent = er.any ? `${parts.join(' and ')} erased (${er.strokes.length} stroke${er.strokes.length === 1 ? '' : 's'}). The shade will be worked out without them.`
+      : st.mode === 'branch' ? 'Nothing erased. Drag over a tree to take off the blocks facing you, one layer per stroke: the top from above, the near side from a low camera.'
+        : 'Nothing erased. Drag the eraser over a tree to take it out of the model, whole columns at a time; tap the eraser again when done.';
     if ($('#tr-undo')) $('#tr-undo').disabled = !er.strokes.length;
     if ($('#tr-restore')) $('#tr-restore').disabled = !er.any;
   }
@@ -253,14 +270,56 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
       else src.setData(current[i]);
     });
   };
-  let stroking = false;
+  /* One block off the map (the branches brush). */
+  const dropRuns = (runs) => {
+    const gone = ids.map(() => []);
+    for (const r of runs) gone[r.src].push(r.id);
+    gone.forEach((list, i) => {
+      if (!list.length) return;
+      const src = map.getSource(ids[i]);
+      const set = new Set(list);
+      current[i] = { type: 'FeatureCollection', features: current[i].features.filter((f) => !set.has(f.id)) };
+      if (typeof src.updateData === 'function') src.updateData({ type: 'FeatureCollection', features: list.map((id) => ({ type: 'Feature', id, geometry: null, properties: {} })) });
+      else src.setData(current[i]);
+    });
+  };
+  /* Where the camera stands, in grid cells and meters over the ground (the
+     blocks are drawn on a flat map, so the ground is 0). */
+  const cameraCell = () => {
+    const fc = map.getFreeCameraOptions();
+    const ll = fc.position.toLngLat();
+    const [mx, my] = toMerc([ll.lng, ll.lat]);
+    return [(mx - grid.x0) / grid.cell, (grid.y1 - my) / grid.cell, fc.position.toAltitude()];
+  };
+  const cm = grid.cell * mercScale(site.lat);
+  let stroking = false, strokeTouched = new Set();
   const brush = (lngLat) => {
     if (!er || !lngLat) return;
     const [x, y] = toMerc([lngLat.lng, lngLat.lat]);
-    const fresh = er.erase(cellsUnder(grid, x, y, st.size));
-    if (fresh.length) dropCells(fresh);
+    if (st.mode !== 'branch') {
+      const fresh = er.erase(cellsUnder(grid, x, y, st.size));
+      if (fresh.length) dropCells(fresh);
+      return;
+    }
+    /* Branches: in each column under the brush, the block nearest the
+       camera goes, one per column per stroke, so a swipe peels one layer. */
+    const cam = cameraCell();
+    const gone = [];
+    for (const k of cellsUnder(grid, x, y, st.size)) {
+      if (strokeTouched.has(k) || er.mask[k]) continue;
+      const r = nearestRun(byCell.get(k), k, grid.w, 0, cam, cm);
+      if (!r) continue;
+      const idx = [];
+      for (let l = r.l0; l <= r.l1; l++) idx.push(k * model.nz + l);
+      if (!er.eraseCubes(idx).length) continue;
+      st.cubeVersion++;
+      strokeTouched.add(k);
+      byCell.set(k, byCell.get(k).filter((o) => o !== r));
+      gone.push(r);
+    }
+    if (gone.length) dropRuns(gone);
   };
-  const strokeStart = (e) => { if (!st.erasing || !st.active) return; e.preventDefault?.(); stroking = true; showCursor(e.lngLat); brush(e.lngLat); };
+  const strokeStart = (e) => { if (!st.erasing || !st.active) return; e.preventDefault?.(); stroking = true; strokeTouched = new Set(); showCursor(e.lngLat); brush(e.lngLat); };
   const strokeMove = (e) => { if (!st.erasing || !st.active) return; showCursor(e.lngLat); if (stroking) brush(e.lngLat); };
   const strokeEnd = () => { if (!stroking) return; stroking = false; er.end(); eraseNote(); onErase?.(); };
   const setErasing = (on) => {
@@ -282,8 +341,13 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
       b.setAttribute('aria-pressed', String(Number(b.dataset.eraseM) === st.size));
       b.onclick = () => { st.size = Number(b.dataset.eraseM) || SIZES_M[1]; for (const o of document.querySelectorAll('[data-erase-m]')) o.setAttribute('aria-pressed', String(o === b)); if (!st.erasing) setErasing(true); };
     }
-    if ($('#tr-undo')) $('#tr-undo').onclick = () => { er.undo(); draw(); onErase?.(); };
-    if ($('#tr-restore')) $('#tr-restore').onclick = () => { er.clear(); draw(); onErase?.(); };
+    /* Whole tree (every block in the column) or branches (the block facing the camera). */
+    for (const b of document.querySelectorAll('[data-erase-mode]')) {
+      b.setAttribute('aria-pressed', String(b.dataset.eraseMode === st.mode));
+      b.onclick = () => { st.mode = b.dataset.eraseMode === 'branch' ? 'branch' : 'tree'; for (const o of document.querySelectorAll('[data-erase-mode]')) o.setAttribute('aria-pressed', String(o === b)); eraseNote(); if (!st.erasing) setErasing(true); };
+    }
+    if ($('#tr-undo')) $('#tr-undo').onclick = () => { er.undo(); st.cubeVersion++; draw(); onErase?.(); };
+    if ($('#tr-restore')) $('#tr-restore').onclick = () => { er.clear(); st.cubeVersion++; draw(); onErase?.(); };
   }
 
   draw();
@@ -293,9 +357,20 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
     erased: () => (er?.any ? er.mask : null),
     erasedCount: () => er?.count || 0,
     /** The erased cells as a sorted list of indices (kept on the server with the map). */
-    erasedCells() { if (!er?.any) return []; const out = []; for (let k = 0; k < er.mask.length; k++) if (er.mask[k]) out.push(k); return out; },
-    /** Cells erased last time, back out of the model (one stroke, so one undo puts them all back). */
-    restore(cells) { if (!er || !cells?.length) return; er.erase(cells.filter((k) => Number.isInteger(k) && k >= 0 && k < er.mask.length)); er.end(); draw(); },
+    erasedCells() { if (!er?.count) return []; const out = []; for (let k = 0; k < er.mask.length; k++) if (er.mask[k]) out.push(k); return out; },
+    /** The erased single blocks (indices k * nz + l), likewise. */
+    erasedCubes: () => er?.cubeList() || [],
+    /** The model's cube layers per column: a kept list of blocks fits only a model with the same. */
+    nz: model.nz,
+    /** What was erased last time, back out of the model (one stroke, so one undo puts it all back): a list of cells, or { cells, cubes }. */
+    restore(what) {
+      if (!er) return;
+      const cells = Array.isArray(what) ? what : what?.cells || [], cubes = Array.isArray(what) ? [] : what?.cubes || [];
+      const a = er.erase(cells.filter((k) => Number.isInteger(k) && k >= 0 && k < er.mask.length));
+      const b = er.eraseCubes(cubes.filter((i) => Number.isInteger(i)));
+      er.end();
+      if (a.length || b.length) { st.cubeVersion++; draw(); }
+    },
     /** The blocks shown or hidden (another step may show them beside its own picture). */
     setVisible(on) { for (const id of ids) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'); },
     /** Shown and listening, or hidden with the map left to another step. */

@@ -22,15 +22,15 @@ import { sunAt, solarNoon, sunPath, clearSky, airMass, parMol } from '../public/
 import { buildCanopy } from '../public/shade/canopy.js';
 import { seasonalCanopy, muWithLeaves, leafCalendar, G_OMEGA, LAI_MAX, LEAF_FALL_LEAD_DAYS } from '../public/shade/seasonal.js';
 import { transmittance, skyView, sunlitNow, dayLight, samplePoints, groundAt, beamShare } from '../public/shade/rays.js';
-import { dayIndex, typicalYear, growthPotential, growingSeason, dliOn, dayLabel, nwsDailyMeans, observedDays, yearAsItIs } from '../public/shade/climate.js';
+import { dayIndex, typicalYear, growthPotential, growingSeason, dliOn, dayLabel, nwsDailyMeans, observedDays, yearAsItIs, periodDays, SEASON_GP } from '../public/shade/climate.js';
 import { climateAt, climateNow } from '../worker/src/shade.js';
 import { movedCorners } from '../public/lib/align.js';
 import { frameCorners } from '../public/lib/mercator.js';
 import { footprintEntry, covers, lidarAt, handleShade, isShadePath } from '../worker/src/shade.js';
 import { metresPerPixel } from '../public/lib/mercator.js';
 import { nearestOnLot, pullBack, zoomFloor, outerRings } from '../public/shade/leash.js';
-import { cellsUnder, squareRing, Erased } from '../public/shade/erase.js';
-import { climateZone, rankGrasses, plantingWindow, SPECIES, shareWords } from '../public/shade/grass.js';
+import { cellsUnder, squareRing, Erased, nearestRun } from '../public/shade/erase.js';
+import { climateZone, rankGrasses, grassBands, plantingWindow, SPECIES, shareWords } from '../public/shade/grass.js';
 
 let failures = 0;
 const check = (name, ok, detail = '') => {
@@ -645,10 +645,10 @@ check('the color ramp runs dark to bright and clamps', ramp(-1).join() === '0,0,
   check('growth potential: 1 at the optimum, ~0.5 a little over one spread away, warm grass prefers 31 C',
     near(growthPotential(20, 'cool'), 1, 1e-9) && near(growthPotential(20 + 5.5 * 1.1774, 'cool'), 0.5, 0.01) && growthPotential(31, 'warm') > growthPotential(31, 'cool'));
   const s1 = growingSeason(ty.tMean, 'cool');
-  /* 10 + 15 sin(...) reaches 13.5 C (GP 0.5, cool) ~14 days after day 80 and
-     leaves it ~14 days before day 262: days ~94 to ~249. */
-  check('season: one run from ~day 94 to ~day 249 for cool-season grass in this made-up climate',
-    near(s1.start, 94, 2) && near(s1.end, 249, 2) && s1.mainRun === s1.days.length, `${dayLabel(s1.start)} to ${dayLabel(s1.end)}`);
+  /* 10 + 15 sin(...) reaches 10.1 C (GP 0.2, cool) about a day after day 80
+     and leaves it about a day before day 262: days ~81 to ~261. */
+  check('season: one run from ~day 81 to ~day 261 for cool-season grass in this made-up climate',
+    near(s1.start, 81, 2) && near(s1.end, 261, 2) && s1.mainRun === s1.days.length, `${dayLabel(s1.start)} to ${dayLabel(s1.end)}`);
   const warmAll = growingSeason(new Array(365).fill(30), 'warm');
   const wrap = growingSeason(Array.from({ length: 365 }, (_, k) => (k < 60 || k > 300 ? 30 : 5)), 'warm');
   check('season: all year where it is always warm; a winter season wraps round New Year',
@@ -1289,9 +1289,37 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   e.end();
   e.erase([7]);
   const u1 = e.undo(), u2 = e.undo();
-  check('eraser: cells already erased are not erased again; undo gives back the last stroke, then the one before; then nothing is erased', a.length === 2 && b.length === 1 && u1.join() === '7' && u2.join() === '1,2,3' && !e.any && e.mask.every((v) => !v), '');
+  check('eraser: cells already erased are not erased again; undo gives back the last stroke, then the one before; then nothing is erased', a.length === 2 && b.length === 1 && u1.cols.join() === '7' && u2.cols.join() === '1,2,3' && !e.any && e.mask.every((v) => !v), '');
   e.erase([4]); e.end(); e.erase([5]);
-  check('eraser: clear gives back every stroke', e.clear().sort().join() === '4,5' && e.count === 0, '');
+  check('eraser: clear gives back every stroke', e.clear().cols.sort().join() === '4,5' && e.count === 0, '');
+  /* The branches brush: single blocks, in the same strokes as columns, undone together. */
+  const eb = new Erased(400, 10);
+  const c1 = eb.eraseCubes([5 * 10 + 3, 5 * 10 + 4, 5 * 10 + 3, -1, 4000]);
+  eb.erase([7]); eb.end();
+  eb.eraseCubes([9]); eb.end();
+  check('eraser: blocks are erased once each and only inside the model; a stroke may hold blocks and columns; the list is sorted', c1.join() === '53,54' && eb.cubeCount === 3 && eb.count === 1 && eb.cubeList().join() === '9,53,54' && eb.any, `${c1} ${eb.cubeList()}`);
+  const ub = eb.undo();
+  check('eraser: undo puts the last stroke\'s blocks back; clear empties both masks', ub.cubes.join() === '9' && eb.cubeCount === 2 && eb.cubes[9] === 0 && eb.cubes[53] === 1 && (eb.clear(), !eb.any && eb.cubes[53] === 0 && eb.mask[7] === 0), '');
+  /* The block nearest the camera: from above the top block, from a low camera to the side the lowest facing it. */
+  const runs = [{ l0: 2, l1: 3, base: 2, top: 4 }, { l0: 6, l1: 9, base: 6, top: 10 }, { l0: 12, l1: 14, base: 12, top: 15 }];
+  const w = 20, k = 5 * w + 5;
+  const fromAbove = nearestRun(runs, k, w, 0, [5.5, 5.5, 200], 1), fromLow = nearestRun(runs, k, w, 0, [5.5, 40, 3], 1);
+  check('eraser: the block nearest the camera is the top one from above and the low one from a low camera; none for an empty column', fromAbove === runs[2] && fromLow === runs[0] && nearestRun([], k, w, 0, [0, 0, 0], 1) === null, `${JSON.stringify([fromAbove, fromLow])}`);
+}
+
+/* ------------------------------------------------------------- the periods */
+{
+  /* A growing season Apr 10 (99) to Oct 20 (292), leaves half out May 5 (124) and half gone Oct 10 (282). */
+  const season = []; for (let k = 99; k <= 292; k++) season.push(k);
+  const cal = { halfOut: 124, halfFall: 282 };
+  const before = periodDays(season, cal, 'beforeLeaves'), leaf = periodDays(season, cal, 'inLeaf'), after = periodDays(season, cal, 'afterLeaves');
+  check('periods: before leaf-out runs from the season\'s start to half out, in leaf to half fallen, after leaf-fall to the season\'s end; the three make the season', before[0] === 99 && before.at(-1) === 123 && leaf[0] === 124 && leaf.at(-1) === 281 && after[0] === 282 && after.at(-1) === 292 && before.length + leaf.length + after.length === season.length && periodDays(season, cal, 'season').length === season.length, `${before.length} ${leaf.length} ${after.length}`);
+  check('periods: without a calendar, or with leaves all year, only the season has days', periodDays(season, null, 'inLeaf').length === 0 && periodDays(season, { always: true }, 'beforeLeaves').length === 0 && periodDays(season, null, 'season').length === season.length, '');
+  /* A warm place whose season wraps New Year (Nov to Mar off... here on all but Jun-Aug) and leaves out Mar 1 (59) to Nov 20 (323). */
+  const wrap = []; for (let k = 0; k < 365; k++) if (k < 150 || k > 240) wrap.push(k);
+  const wb = periodDays(wrap, { halfOut: 59, halfFall: 323 }, 'beforeLeaves'), wa = periodDays(wrap, { halfOut: 59, halfFall: 323 }, 'afterLeaves');
+  check('periods: round New Year the bare run from leaf-fall to leaf-out is split at its middle: the half nearer leaf-out is "before", the rest "after"', wb.every((k) => k < 59 && k >= 9) && wb.length === 50 && wa.length === 51 && wa.filter((k) => k >= 323).length === 42 && wa.filter((k) => k < 9).length === 9, `${wb.length} ${wa.length}`);
+  check('the growing season is counted from 20% growth potential', SEASON_GP === 0.2 && growthPotential(12, 'cool') > 0.2 && growthPotential(9, 'cool') < 0.2, `${growthPotential(12, 'cool')} ${growthPotential(9, 'cool')}`);
 }
 
 /* ----------------------------------------------------------- which grass */
@@ -1309,6 +1337,13 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   const sunny = rankGrasses([18, 22, 26, 30], 'cool'), dark = rankGrasses([4, 6, 8, 9], 'cool');
   check('grass: rough and supina bluegrass are listed only when fewer than two regular grasses hold most of the lawn', !sunny.some((s) => s.fallback) && dark.some((s) => s.id === 'supina') && dark.some((s) => s.id === 'roughblue') && dark[0].id === 'supina' && !rankGrasses([4, 6], 'warm').some((s) => s.fallback), `${sunny.map((s) => s.id)} | ${dark.map((s) => s.id)}`);
   check('grass: every species names its source and kind, and the words for a share read right', SPECIES.every((s) => s.source && (s.season === 'cool' || s.season === 'warm') && s.dli < s.full) && shareWords(1) === 'all of it' && shareWords(0.6) === 'most of it' && shareWords(0) === 'none of it', '');
+  /* The lawn by its light: the sunny part gets every grass, the sun-lovers first; a shady part only what takes it, the least tolerant first; the darkest part nothing. */
+  const bands = grassBands([30, 26, 24, 12, 10, 8, 4, 3], 'cool');
+  const sunB = bands[0], darkB = bands.at(-1), mid = bands.find((b) => b.lo === 9);
+  check('grass bands: cut at the species\' lowest lights, brightest first, only bands with lawn in them', sunB.hi === Infinity && sunB.lo === 23 && sunB.n === 3 && darkB.lo === 0 && darkB.n === 2 && bands.every((b) => b.n > 0) && bands.map((b) => b.lo).join() === '23,9,7.5,0', JSON.stringify(bands.map((b) => [b.lo, b.hi, b.n])));
+  check('grass bands: the sunny part lists every cool-season grass, Kentucky bluegrass first; the 9-20 band tall fescue first then fine fescue; the darkest band nothing', sunB.grasses[0].id === 'kbg' && sunB.grasses.length === 4 && mid.grasses.map((s) => s.id).join() === 'tallfescue,finefescue' && darkB.grasses.length === 0, `${sunB.grasses.map((s) => s.id)} | ${mid.grasses.map((s) => s.id)}`);
+  const dim = grassBands([7.6, 7.8], 'cool');
+  check('grass bands: rough and supina bluegrass appear only where fewer than two regular grasses hold', dim[0].lo === 7.5 && dim[0].grasses.map((s) => s.id).join() === 'finefescue,roughblue,supina' && !sunB.grasses.some((s) => s.fallback), dim[0].grasses.map((s) => s.id).join());
   const season = growingSeason(year(-8, 22), 'cool');
   const w = plantingWindow(season, 'cool');
   check('grass: cool-season planting is six to eight weeks before growth stops; warm-season early in its season; all year says so', /six to eight weeks before growth stops around/.test(w) && /early in the growing season/.test(plantingWindow(growingSeason(year(8, 29), 'warm'), 'warm')) && /late summer/.test(plantingWindow({ allYear: true, days: [] }, 'cool')) && plantingWindow({ days: [], start: null }, 'cool') === null, w);
