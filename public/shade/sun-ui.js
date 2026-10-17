@@ -302,8 +302,11 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     st.boxEnded = Date.now();
     if (st.box && (st.box[0].lng !== st.box[1].lng || st.box[0].lat !== st.box[1].lat)) { showBox(); readouts(); }
   };
+  const holdTouch = (ev) => { if (st.boxing) ev.preventDefault(); };
+  for (const ev of ['touchstart', 'touchmove']) map.getContainer().addEventListener(ev, holdTouch, { passive: false });
   function setBoxing(on) {
     st.boxing = on;
+    map.getContainer().classList.toggle('held', on);
     $('#sun-box').classList.toggle('on', on);
     $('#sun-box').textContent = on ? 'Drag across the map…' : 'Draw a box';
     map.getCanvas().style.cursor = on ? 'crosshair' : '';
@@ -669,6 +672,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
       if (map.getSource('light')) map.removeSource('light');
       if (st.drape && map.getLayer(st.drape.id)) map.removeLayer(st.drape.id);
       map.off('pitchend', onPitch);
+      for (const ev of ['touchstart', 'touchmove']) map.getContainer().removeEventListener(ev, holdTouch);
       setBoxing(false);
       clearReadouts();
       $('#t-lawn').hidden = true;

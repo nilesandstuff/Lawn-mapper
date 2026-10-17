@@ -765,18 +765,57 @@ function removeBuilt(map) {
  * groundLayer), shown when the map is tilted. The trees stand on that
  * ground too (trees-ui.js, baseZ), so the whole scene is one surface.
  */
-const PHOTO_3D = 'photo-3d';
+const PHOTO_3D = 'photo-3d', LINES_3D = 'lines-3d';
 function removePhotoDrape(map) {
-  if (map.getLayer(PHOTO_3D)) map.removeLayer(PHOTO_3D);
+  for (const id of [PHOTO_3D, LINES_3D]) if (map.getLayer(id)) map.removeLayer(id);
   if (view.photoPitch) { map.off('pitchend', view.photoPitch); view.photoPitch = null; }
+  for (const id of ['parcel', 'lawn']) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'visible');
   view.photoDrape = null;
+}
+
+/**
+ * THE PROPERTY LINE AND THE LAWN OUTLINES ON THE SAME GROUND (owner,
+ * 2026-10-17): drawn into a transparent picture of the box at 0.2 m a
+ * pixel and draped a little above the light; the flat line layers are
+ * hidden while the map is tilted so nothing sits under the ground.
+ */
+function linesDrape(map, site, grid, ground, baseZ) {
+  const rings = [];
+  const walk = (g, color) => { if (!g) return; const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : []; for (const p of polys) for (const r of p) rings.push({ r, color }); };
+  walk(site.parcel?.geometry, '#ffeb3b');
+  for (const f of site.lawn) walk(f.geometry, '#69f0ae');
+  if (!rings.length) return null;
+  const [bx0, by0, bx1, by1] = gridBox(grid);
+  const k = mercScale(site.lat);
+  const scale = Math.min(1, 2048 / Math.max((bx1 - bx0) * k / 0.2, (by1 - by0) * k / 0.2));
+  const W = Math.max(1, Math.round((bx1 - bx0) * k / 0.2 * scale)), H = Math.max(1, Math.round((by1 - by0) * k / 0.2 * scale));
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const g2 = c.getContext('2d');
+  g2.lineWidth = 3; g2.lineJoin = 'round';
+  for (const { r, color } of rings) {
+    g2.strokeStyle = color;
+    g2.beginPath();
+    r.forEach((p, i) => { const [x, y] = toMerc(p); const px = ((x - bx0) / (bx1 - bx0)) * W, py = ((by1 - y) / (by1 - by0)) * H; if (i) g2.lineTo(px, py); else g2.moveTo(px, py); });
+    g2.stroke();
+  }
+  const layer = groundLayer(LINES_3D, { grid, ground, baseZ, lat: site.lat, liftM: 0.15, smooth: true, taperCells: 12 });
+  map.addLayer(layer);
+  layer.setImage(c);
+  return layer;
 }
 async function drapePhoto(map, site, grid, ground, baseZ) {
   removePhotoDrape(map);
   const layer = groundLayer(PHOTO_3D, { grid, ground, baseZ, lat: site.lat, liftM: 0.02, smooth: true, taperCells: 12 });
   map.addLayer(layer, below(map, ['light-3d', 'light', 'parcel']));
   view.photoDrape = layer;
-  const show = () => { if (map.getLayer(PHOTO_3D)) map.setLayoutProperty(PHOTO_3D, 'visibility', map.getPitch() > 5 ? 'visible' : 'none'); };
+  const lines = linesDrape(map, site, grid, ground, baseZ);
+  const show = () => {
+    const tilted = map.getPitch() > 5;
+    if (map.getLayer(PHOTO_3D)) map.setLayoutProperty(PHOTO_3D, 'visibility', tilted ? 'visible' : 'none');
+    if (lines && map.getLayer(LINES_3D)) map.setLayoutProperty(LINES_3D, 'visibility', tilted ? 'visible' : 'none');
+    for (const id of ['parcel', 'lawn']) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', tilted && lines ? 'none' : 'visible');
+  };
   view.photoPitch = show;
   map.on('pitchend', show);
   show();
