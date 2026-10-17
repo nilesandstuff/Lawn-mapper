@@ -37,7 +37,7 @@ import { pointsIn, toMerc, mercScale } from '../lib/ept.js';
 import { nodeIo } from '../lib/node-io.js';
 import { analyse } from '../lib/lowspots.js';
 import { truthFor, GROUP_NAMES } from '../lib/chesapeake.js';
-import { auc } from '../lib/cells.js';
+import { auc, fitLogistic } from '../lib/cells.js';
 import { rng } from '../lib/synthetic.js';
 import { lidarAt } from '../../worker/src/shade.js';
 
@@ -92,6 +92,7 @@ async function one(lng, lat) {
 
   // brightness of the ground returns, per cell, 3 x 3
   const pc = res.perCell, gi = box3(g, pc.groundI), gn = box3(g, pc.groundN);
+  const all3 = box3(g, pc.all), single3 = box3(g, pc.single);
   const I = new Float64Array(N).fill(NaN);
   for (let i = 0; i < N; i++) if (gn[i] > 0) I[i] = gi[i] / gn[i];
   const lawnI = med(Array.from(I).filter((v, i) => truth[i] === G.turf && !res.wall[i]));
@@ -111,6 +112,8 @@ async function one(lng, lat) {
       cls: imp ? 'imp' : perv ? 'perv' : 'turf',
       raw: I[i], box: pc.groundP75 ? I[i] / pc.groundP75 : NaN, lawn: lawnI ? I[i] / lawnI : NaN,
       lr: Number.isFinite(roofI) && lawnI !== roofI ? (I[i] - roofI) / (lawnI - roofI) : NaN,
+      // for the combined model: smoothness, single returns, return density
+      x: [Math.log(Math.max(0.02, I[i] / lawnI)), Number.isFinite(res.sd[i]) ? Math.min(0.3, res.sd[i]) : 0.05, all3[i] ? single3[i] / all3[i] : 0, Math.log(all3[i] / 9 + 0.1)],
     });
   }
   return {
@@ -156,6 +159,16 @@ async function main() {
     console.log(`    ${label.padEnd(26)} ${score(key, ['imp'], ['perv']).toFixed(3).padStart(10)} ${score(key, ['imp'], ['turf']).toFixed(3).padStart(15)} ${score(key, ['imp'], ['perv', 'turf']).toFixed(3).padStart(15)}`);
   }
   console.log(`  within one square (median over squares, paved vs pervious): ${within('raw').toFixed(3)} -- the ceiling a per-map calibration can reach with brightness alone`);
+  // brightness over the lawn, with smoothness, single returns and density: fit on odd squares, test on even
+  const fitC = done.filter((_, j) => j % 2 === 0).flatMap((d) => d.cells), testC = done.filter((_, j) => j % 2 === 1).flatMap((d) => d.cells);
+  const thin = (list, n) => list.filter((_, j) => j % Math.max(1, Math.floor(list.length / n)) === 0);
+  const rowsOf = (list, keys) => thin(list, 40000).filter((c) => c.x.every(Number.isFinite)).map((c) => [keys.map((k) => c.x[k]), c.cls === 'imp' ? 1 : 0]);
+  for (const [keys, label] of [[[0], 'brightness over the lawn alone'], [[0, 1, 2, 3], 'brightness + smoothness + single returns + density']]) {
+    const m = fitLogistic(rowsOf(fitC, keys));
+    const p = (c) => { let z = m.b; keys.forEach((k, j) => { z += m.w[j] * ((c.x[k] - m.mean[j]) / m.sd[j]); }); return z; };
+    const T = testC.filter((c) => c.x.every(Number.isFinite));
+    console.log(`  ${label}, fitted on ${Math.ceil(done.length / 2)} squares, tested on ${Math.floor(done.length / 2)}: paved vs both ${auc(T.filter((c) => c.cls === 'imp').map(p), T.filter((c) => c.cls !== 'imp').map(p)).toFixed(3)}, paved vs pervious ${auc(T.filter((c) => c.cls === 'imp').map(p), T.filter((c) => c.cls === 'perv').map(p)).toFixed(3)}; weights ${JSON.stringify({ keys, mean: m.mean.map((v) => +v.toFixed(4)), sd: m.sd.map((v) => +v.toFixed(4)), w: m.w.map((v) => +v.toFixed(3)), b: +m.b.toFixed(3) })}`);
+  }
   const lr = all.filter((x) => Number.isFinite(x.lr));
   for (const c of ['imp', 'perv', 'turf']) {
     const v = lr.filter((x) => x.cls === c).map((x) => x.lr).sort((a, b) => a - b);
