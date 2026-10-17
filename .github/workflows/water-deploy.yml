@@ -16,6 +16,9 @@ name: W. Water tool
 #   corpus    the low-spot map over the locked training maps (the 104 with
 #             property lines and lawns), read from the corpus as workflow 17
 #             does. Maps are named #1-#104 in the log, never by place.
+#   surfaces  is each 1 m cell lawn? the points' measures (brightness,
+#             returns, canopy...) fitted on half the corpus's traced lawns
+#             and scored on the other half (water/FINDINGS.md H11)
 #   lowspots  the low-spot map for the lots in the WATER_LOTS secret
 #             (label,lat,lng per line). The repository is public, so lots
 #             live only in that secret: the log prints labels and numbers,
@@ -28,7 +31,7 @@ on:
         required: true
         default: tests
         type: choice
-        options: [tests, deploy, limits, corpus, lowspots]
+        options: [tests, deploy, limits, corpus, surfaces, lowspots]
 
 permissions:
   contents: read
@@ -97,6 +100,13 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node water/tools/corpus.mjs | tee corpus.txt
 
+      - name: Is each cell lawn (fit on half the corpus, test on the rest)
+        if: ${{ inputs.task == 'surfaces' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node water/tools/surfaces.mjs | tee surfaces.txt
+
       - name: Low spots on the owner's lots
         if: ${{ inputs.task == 'lowspots' }}
         env:
@@ -111,6 +121,7 @@ jobs:
           case "${{ inputs.task }}" in
             limits)   tail -40 limits.txt 2>/dev/null || echo "no table: see the step above" ;;
             corpus)   sed -n '/=====/,$p' corpus.txt 2>/dev/null || echo "no summary: see the step above" ;;
+            surfaces) sed -n '/=====/,$p' surfaces.txt 2>/dev/null || echo "no summary: see the step above" ;;
             lowspots) cat lowspots.txt 2>/dev/null || echo "no lots run: see the step above" ;;
             deploy)   echo "Water site: ${WATER_STATE:-not deployed -- see the steps above}" ;;
             *)        echo "Water tests: ${{ job.status }}" ;;

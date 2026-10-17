@@ -89,7 +89,7 @@ export function analyse(cols, bbox, lat, { epoch = null, cell = 1, within = null
   const spots = lowSpots(g, z, se, wall, { floor: nf.floor });
   // every return per cell, and the survey's water (class 9): what kind of spot each is (lib/kinds.js)
   const N = g.W * g.H;
-  const perCell = { all: new Uint16Array(N), class9: new Uint16Array(N), tall: new Uint16Array(N), groundI: new Float64Array(N), groundN: new Uint16Array(N), groundP75: 0 };
+  const perCell = { all: new Uint16Array(N), single: new Uint16Array(N), class9: new Uint16Array(N), tall: new Uint16Array(N), groundI: new Float64Array(N), groundN: new Uint16Array(N), groundP75: 0 };
   const gInt = [];
   for (let i = 0; i < cols.n; i++) {
     if (cols.cls[i] === 7 || cols.cls[i] === 18) continue; // noise
@@ -98,6 +98,7 @@ export function analyse(cols, bbox, lat, { epoch = null, cell = 1, within = null
     if (c < 0 || r < 0 || c >= g.W || r >= g.H) continue;
     const j = r * g.W + c;
     if (perCell.all[j] < 65535) perCell.all[j]++;
+    if (cols.nret[i] <= 1 && perCell.single[j] < 65535) perCell.single[j]++;
     if (cols.cls[i] === 9 && perCell.class9[j] < 65535) perCell.class9[j]++;
     if (cols.cls[i] === 2) { perCell.groundI[j] += cols.intensity[i]; perCell.groundN[j]++; if (!wall[j]) gInt.push(cols.intensity[i]); }
     else if (!wall[j] && cols.z[i] - z[j] >= 2 && perCell.tall[j] < 65535) perCell.tall[j]++;
@@ -121,7 +122,7 @@ export function analyse(cols, bbox, lat, { epoch = null, cell = 1, within = null
   const seVals = Array.from(raw.se).filter(Number.isFinite).sort((a, b) => a - b);
 
   return {
-    grid: g, z, rawZ: raw.z, se, wall, groundOk, spots, runoff, beside, shift, lngLat,
+    grid: g, z, rawZ: raw.z, sd: raw.sd, se, wall, groundOk, spots, runoff, beside, shift, lngLat, perCell,
     stats: {
       cells: g.W * g.H,
       groundPointsPerM2: groundPerM2,

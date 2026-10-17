@@ -6,7 +6,7 @@
 
 import assert from 'node:assert/strict';
 
-import { LAT, cloud, dish } from '../lib/synthetic.js';
+import { LAT, cloud, dish, rng } from '../lib/synthetic.js';
 import { analyse } from '../lib/lowspots.js';
 import { fill } from '../lib/hydro.js';
 import { parseLots } from '../tools/lowspots.mjs';
@@ -93,6 +93,17 @@ test('the kind of a spot: shape, returns, canopy and depth', async () => {
   for (let r = 10; r < 12; r++) for (let c = 5; c < 25; c++) strip.push(r * W + c);
   const sh = shapeOf(strip, W);
   assert.ok(Math.abs(sh.length - 20) < 1 && Math.abs(sh.width - 2) < 0.5 && sh.elongation > 8, JSON.stringify(sh));
+});
+
+test('lawn or not: the fit and its score behave', async () => {
+  const { fitLogistic, auc } = await import('../lib/cells.js');
+  assert.equal(auc([3, 4, 5], [1, 2]), 1);
+  assert.equal(auc([1], [1]), 0.5);
+  assert.equal(auc([1, 2], [3, 4]), 0);
+  const r = rng(5), rows = [];
+  for (let i = 0; i < 400; i++) { const x = r(); rows.push([[x, r()], x > 0.5 ? 1 : 0]); }
+  const m = fitLogistic(rows);
+  assert.ok(m.w[0] > 2 && Math.abs(m.w[1]) < 0.5, `weights ${m.w}`);
 });
 
 test('lots read from text, and a bad line names its label, not its place', () => {
