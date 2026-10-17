@@ -100,6 +100,20 @@ test('admin only fails closed, and opens when ADMIN_ONLY is not "1"', async () =
   assert.match(wranglerFor('water.example.com', 'lawnmap.example.com'), /run_worker_first = true/);
 });
 
+test('the barometer fit takes out the hopper height and the weather, and keeps the shape', async () => {
+  const { detrend, corr, highPass } = await import('../tools/baro.mjs');
+  const t = [...Array(300).keys()];
+  const g = t.map((x) => 0.5 * Math.sin(x / 40));
+  const h = g.map((v, i) => v + 1.27 + 0.002 * i); // a hopper 1.27 m up, the weather 12 cm/min
+  const f = detrend(t, h, g);
+  assert.ok(Math.abs(f.a - 1.27) < 1e-6 && Math.abs(f.b - 0.002) < 1e-6, `a ${f.a} b ${f.b}`);
+  assert.ok(Math.max(...f.resid.map(Math.abs)) < 1e-9);
+  assert.ok(corr(g, h.map((v, i) => v - f.a - f.b * t[i])) > 0.999);
+  // a running mean leaves a step's edges and takes out the slow wave
+  const hp = highPass(t, g, 20);
+  assert.ok(Math.max(...hp.slice(15, -15).map(Math.abs)) < 0.02, 'a 250 s wave is nearly gone at 20 s, away from the ends');
+});
+
 let failed = 0;
 for (const [name, fn] of tests) {
   try { await fn(); console.log(`ok  ${name}`); } catch (e) { failed++; console.log(`FAIL ${name}\n     ${e.message}`); }

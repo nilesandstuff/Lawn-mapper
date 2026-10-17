@@ -64,7 +64,7 @@ export function noiseFloor(bbox, lat, groundPerM2, scatter, { runs = 8, within =
  * epoch: the flight's decimal year (for the datum, lib/datum.js), or null to
  * leave the cloud where the octree put it.
  */
-export function analyse(cols0, bbox, lat, { epoch = null, cell = 1, within = null, nullRuns = 8, floor = null, useShadeRoofs = cell === 1 } = {}) {
+export function analyse(cols0, bbox, lat, { epoch = null, shift: givenShift = null, cell = 1, within = null, nullRuns = 8, floor = null, useShadeRoofs = cell === 1 } = {}) {
   /* THE FRAME, THE SHADE MAP'S (owner, 2026-10-17: "make sure your system is the exact same as the shade
      map"): the cloud is moved onto the web map's ground BEFORE it is gridded, by the published NAD83 ->
      ITRF transformation at the flight's epoch (lib/datum.js), as the shade map's cellOf(..., shift) does.
@@ -72,7 +72,11 @@ export function analyse(cols0, bbox, lat, { epoch = null, cell = 1, within = nul
      box), and everything after -- roofs, low spots, places -- is already where the photo has it. */
   const g = gridFor(bbox, lat, cell);
   const [midLng0, midLat0] = fromMerc([(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2]);
-  const datum = epoch ? nad83Correction(midLat0, midLng0, epoch) : { east: 0, north: 0 };
+  /* The shift: the one the shade map kept on this map (tools.shade.data.lidar.shift, [dx, dy] in 3857
+     units: the datum plus its photo-match residual), when given -- so the two maps grid the same points
+     the same way; otherwise the datum alone at the flight's epoch. */
+  const datum = givenShift ? { east: givenShift[0] * g.k, north: givenShift[1] * g.k, fromShade: true }
+    : epoch ? nad83Correction(midLat0, midLng0, epoch) : { east: 0, north: 0 };
   let cols = cols0;
   if (datum.east || datum.north) {
     cols = { ...cols0, x: Float64Array.from(cols0.x, (v) => v + datum.east / g.k), y: Float64Array.from(cols0.y, (v) => v + datum.north / g.k) };

@@ -31,9 +31,11 @@
  */
 
 import { mercScale } from './ept.js';
+import { gridOver } from './shade/grid.js';
+import { groundSurface as sharedGround, inpaint as sharedInpaint, KERNEL_SIGMA, KERNEL_RADIUS } from './shade/ground.js';
 
-export const KERNEL_SIGMA = 0.8;
-export const KERNEL_RADIUS = 2.0;
+export { KERNEL_SIGMA, KERNEL_RADIUS };
+
 
 
 /** Where the grid sits: real-meter cells over a web-mercator box. */
@@ -50,92 +52,24 @@ export function gridFor(bbox, lat, cell = 1) {
   };
 }
 
-/** Indices of the points in each cell (a bucket per cell, as a CSR list). */
-function buckets(g, cols, keep) {
-  const N = g.W * g.H;
-  const count = new Uint32Array(N + 1);
-  const cellOf = new Int32Array(cols.n).fill(-1);
-  for (let i = 0; i < cols.n; i++) {
-    if (!keep(i)) continue;
-    const [fc, fr] = g.toCell(cols.x[i], cols.y[i]);
-    const c = Math.floor(fc), r = Math.floor(fr);
-    if (c < 0 || r < 0 || c >= g.W || r >= g.H) continue;
-    cellOf[i] = r * g.W + c;
-    count[cellOf[i] + 1]++;
-  }
-  for (let j = 0; j < N; j++) count[j + 1] += count[j];
-  const fill = count.slice(0, N);
-  const idx = new Uint32Array(count[N]);
-  for (let i = 0; i < cols.n; i++) if (cellOf[i] >= 0) idx[fill[cellOf[i]]++] = i;
-  return { start: count, idx };
-}
-
 /**
- * The ground surface: { z, se, sd (the points' local scatter), n } as arrays of W*H (NaN where no
- * ground point lies within KERNEL_RADIUS). `scatterFloor` keeps a cell built
- * from two points that happen to agree from claiming millimetres.
+ * The ground surface -- ONE PIECE OF CODE WITH THE SHADE MAP (owner, 2026-10-17): lib/shade/ground.js,
+ * copied unchanged from public/shade/, is the water map's former groundSurface moved onto the shade
+ * map's grid. These two keep the water map's (grid, ...) call shape and hand over to it.
+ * Returns { z, se, sd, n, sigma } (NaN where no ground point lies within KERNEL_RADIUS).
  */
-export function groundSurface(g, cols, { sigma = KERNEL_SIGMA, radius = KERNEL_RADIUS, scatterFloor = 0.012 } = {}) {
-  const isGround = (i) => cols.cls[i] === 2;
-  const { start, idx } = buckets(g, cols, isGround);
-  const N = g.W * g.H;
-  const z = new Float32Array(N).fill(NaN), se = new Float32Array(N).fill(NaN), sdv = new Float32Array(N).fill(NaN), n = new Uint16Array(N);
-  const reach = Math.ceil(radius / g.cell);
-  const px = new Float32Array(cols.n), py = new Float32Array(cols.n);
-  for (let i = 0; i < cols.n; i++) { const [fc, fr] = g.toCell(cols.x[i], cols.y[i]); px[i] = fc * g.cell; py[i] = fr * g.cell; }
-  const inv2s2 = 1 / (2 * sigma * sigma);
-  for (let r = 0; r < g.H; r++) {
-    for (let c = 0; c < g.W; c++) {
-      const cx = (c + 0.5) * g.cell, cy = (r + 0.5) * g.cell;
-      let sw = 0, sw2 = 0, swz = 0, swzz = 0, m = 0;
-      for (let rr = Math.max(0, r - reach); rr <= Math.min(g.H - 1, r + reach); rr++) {
-        for (let cc = Math.max(0, c - reach); cc <= Math.min(g.W - 1, c + reach); cc++) {
-          const j = rr * g.W + cc;
-          for (let p = start[j]; p < start[j + 1]; p++) {
-            const i = idx[p];
-            const d2 = (px[i] - cx) * (px[i] - cx) + (py[i] - cy) * (py[i] - cy);
-            if (d2 > radius * radius) continue;
-            const w = Math.exp(-d2 * inv2s2);
-            sw += w; sw2 += w * w; swz += w * cols.z[i]; swzz += w * cols.z[i] * cols.z[i]; m++;
-          }
-        }
-      }
-      const at = r * g.W + c;
-      n[at] = Math.min(m, 65535);
-      if (sw < 1e-3) continue;
-      const mean = swz / sw;
-      const neff = (sw * sw) / sw2;
-      const sd = Math.sqrt(Math.max(0, swzz / sw - mean * mean));
-      z[at] = mean;
-      sdv[at] = sd;
-      se[at] = Math.max(sd, scatterFloor) / Math.sqrt(Math.max(1, neff));
-    }
-  }
-  return { z, se, sd: sdv, n, sigma };
+export function groundSurface(g, cols, opts = {}) {
+  return sharedGround(cols, shadeGrid(g), opts);
 }
 
 /** Fill NaN cells from their neighbours, outward, so every cell has a height. */
 export function inpaint(g, z) {
-  const out = Float32Array.from(z);
-  let todo = [];
-  for (let i = 0; i < out.length; i++) if (Number.isNaN(out[i])) todo.push(i);
-  for (let pass = 0; todo.length && pass < 500; pass++) {
-    const next = [], set = [];
-    for (const i of todo) {
-      const r = Math.floor(i / g.W), c = i % g.W;
-      let s = 0, k = 0;
-      for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]]) {
-        const rr = r + dr, cc = c + dc;
-        if (rr < 0 || cc < 0 || rr >= g.H || cc >= g.W) continue;
-        const v = out[rr * g.W + cc];
-        if (!Number.isNaN(v)) { s += v; k++; }
-      }
-      if (k) set.push([i, s / k]); else next.push(i);
-    }
-    for (const [i, v] of set) out[i] = v;
-    todo = next;
-  }
-  return out;
+  return sharedInpaint(shadeGrid(g), z);
+}
+
+/** The shade map's grid (grid.js gridOver) for the same box: identical cells (1 real m, row 0 north). */
+export function shadeGrid(g) {
+  return gridOver(g.bbox, g.cell, g.lat);
 }
 
 /** 8-connected components of mask==1: { label (Int32Array, 0 = none), sizes [index = label] }. */

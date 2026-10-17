@@ -49,10 +49,14 @@ function countKinds(list) {
 
 export async function runSite(site, io, pickCloud, { progress = () => {}, nullRuns = 8 } = {}) {
   const t0 = Date.now();
-  const pick = await pickCloud(site.lng, site.lat);
+  /* A map the shade map has worked on carries the cloud, box and shift it used (docs/MAPS.md;
+     tools.shade.data.lidar: { url, name, epoch, box [x0, y0, x1, y1] in 3857, shift [dx, dy] }): take
+     them, so a cell here is the same cell as in the shade map's part. Otherwise pick and box as before. */
+  const kept = site.lidar && site.lidar.url && Array.isArray(site.lidar.box) && site.lidar.box.length === 4 ? site.lidar : null;
+  const pick = kept ? { clouds: [{ name: kept.name || 'the shade map\'s cloud', url: kept.url, epoch: kept.epoch ?? null }], notOnAws: [] } : await pickCloud(site.lng, site.lat);
   const cloud = pick?.clouds?.[0];
   if (!cloud) return { error: 'no public lidar over this property', notOnAws: pick?.notOnAws || [] };
-  const bbox = boxFor(site);
+  const bbox = kept ? kept.box : boxFor(site);
   const { cols, flown } = await pointsIn(cloud.url, bbox, io, { progress });
   const epoch = cloud.epoch || (flown ? 1970 + flown.mid / (365.25 * 864e5) : null);
   // the noise floor is judged over the property itself, not the margin
@@ -60,7 +64,7 @@ export async function runSite(site, io, pickCloud, { progress = () => {}, nullRu
   const parcelMask = site.parcel ? maskOf(g, site.parcel) : null;
   const lawnMask = site.lawn?.length ? maskOf(g, site.lawn) : null;
   const within = (parcelMask && maskBox(g, parcelMask)) || (lawnMask && maskBox(g, lawnMask)) || null;
-  const res = analyse(cols, bbox, site.lat, { epoch, within, nullRuns });
+  const res = analyse(cols, bbox, site.lat, { epoch, within, nullRuns, shift: kept && Array.isArray(kept.shift) ? kept.shift : null });
 
   const onParcel = parcelMask ? spotsOn(res, parcelMask) : [];
   const onLawn = lawnMask ? spotsOn(res, lawnMask) : [];
@@ -94,6 +98,7 @@ export async function runSite(site, io, pickCloud, { progress = () => {}, nullRu
   }
 
   return {
+    sameGridAsShade: !!kept,
     cloud: { name: cloud.name, ql: cloud.unit?.ql ?? null, flown: flown ? new Date(flown.mid).toISOString().slice(0, 10) : null, notOnAws: pick.notOnAws || [] },
     result: res, parcelMask, lawnMask, impervious: imp, weightedFlow: wflow,
     spots: spotRecords(res).filter((r) => !parcelMask || parcelMask[r.row * g.W + r.col] || onParcel.some((o) => o.spot.row === r.row && o.spot.col === r.col))

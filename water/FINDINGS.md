@@ -469,6 +469,19 @@ take the water map's ground into a shared public/shade/ground.js that both
 maps use -- for light, a 2 cm smoother ground should change nothing
 against GRASS_M 0.5 m, but that is for its own readings checks to say.
 
+**Done, 2026-10-17 (features session, commits up to de5b4c7):** the
+shade map took the water map's ground into public/shade/ground.js and made
+it its default after its own check (its Finding 26: 3,133 of 3,913 field
+readings scored the same with the smooth ground as with the lowest
+return). The water map copied ground.js (and the canopy.js that uses it)
+back unchanged into lib/shade/; lib/surface.js's groundSurface and inpaint
+now hand over to it. Checked: the water map's outputs on a Fairfax test lot
+came out identical, number for number, before and after.
+
+When a map carries the shade map's part, the water map takes the cloud,
+box and shift the shade map kept there (tools.shade.data.lidar), so a cell
+index means the same piece of ground in both parts.
+
 The frame IS now the shade map's: the cloud is moved by the datum
 correction BEFORE it is gridded (lib/lowspots.js; as the shade map's
 cellOf shift), so a cell is the same ground in both maps' grids. Asked the
@@ -478,6 +491,19 @@ match too.
 ---
 
 ## SPECULATION
+
+### S7. The barometer on the spreader can check the ground's shape, not its hollows
+
+The owner's field recordings carried the phone's barometer, mounted on the
+spreader 1.27 m up (features session, 2026-10-17). It was not stored
+before 2026-10-17; from then on it is (shade_baro), and older recordings
+need re-uploading. The features session's own check on one overcast walk
+(its SHADE-FINDINGS 17): relative altitude against the lidar ground under
+the fixes, with a straight-line weather drift, 0.17 m SD over 3.5 m of
+relief, correlation 0.98. So a lot's half-metre slope should show and a
+3-5 cm hollow should not. water/tools/baro.mjs (workflow task baro)
+measures it visit by visit -- whole-pass shape and the short bumps -- once
+the recordings are back in.
 
 ### S1. Many real wet spots may not be low spots at all
 

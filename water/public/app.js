@@ -83,6 +83,8 @@ async function siteFromMap(id) {
     label: s.address || 'your map', lng: s.lng, lat: s.lat,
     parcel: asFeature(s.parcel),
     lawn: (s.shapes || []).map(asFeature).filter(Boolean),
+    // the shade map's cloud, box and shift, when it has worked on this map: the same cells as its part
+    lidar: s.tools?.shade?.data?.lidar || null,
     mapId: id,
   };
 }
