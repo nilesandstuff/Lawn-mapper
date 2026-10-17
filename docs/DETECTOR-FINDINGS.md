@@ -880,6 +880,55 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H99. California's turf polygons land on our Mapbox photo with no visible shift, but only 9 of 20 are clean lawn as the photo shows it now; 7 of 20 are not lawn at all -- by eye, 2026-10-17
+*S40's first look, done before any training (owner: "Do the eyeball check
+on 20 Encinitas lawns").*
+
+**Method.**
+- Source: the Encinitas copy of DWR's 2020 LUCD (E12), layer 7, classes 3A/4A.
+- Only 268 of the 2,743 turf polygons are between 2,000 and 60,000 sq ft;
+  20 of those were drawn at random (seed 17).
+- Each was drawn, with every other turf polygon in its window, over Mapbox
+  satellite-v9 at zoom 16.6-19.4. The outlines are raw, with no line-up
+  shift.
+- Script: a one-off in the core session's scratchpad (enc_fetch.py), not
+  in the repository, so this is a reading, not a pipeline.
+- Judged by eye on the side-by-side pictures.
+
+**Registration: good.** Wherever a sharp edge is visible (a ball field's
+infield, a school field's edge, park paths, a parking strip), the outline
+sits on it to within what the picture shows, about half a metre or better.
+Nothing needed stretching. Edges are softer than our tracing, and canopy is
+cut out of the turf, which suits H17.
+
+**Labels: half usable.**
+- **9 fit and are lawn now** (1, 3, 4, 6, 7, 10, 13, 15, 19): a parking
+  strip, two parks, an HOA green, a ball field, a school field, an office
+  lawn, an HOA island.
+- **4 fit but are rough** (5, 8, 16, 17): beds or shrubs inside, stray
+  slivers, or a polygon cut short by the area-of-interest boundary through
+  the middle of a field (16).
+- **7 are not lawn in our photo** (2, 9, 11, 12, 14, 18, 20):
+  - freeway embankment scrub (12, 14);
+  - planted borders around a bare dirt lot (2);
+  - dirt and gravel with palms (9);
+  - weedy slopes and corners (11, 18);
+  - dead brown rectangles between houses (20).
+
+  Some may have been turf in 2020 and been removed since; the freeway
+  ones were never lawn. So "manually reviewed" did not catch everything.
+
+**What it is NOT:** a measurement of training value. The 2,475 polygons
+under 2,000 sq ft were not looked at, and were most of the count. None of
+the 20 is a house lot.
+
+**Reading.** Moving the outlines onto our photos is solved. The open
+question is choosing which ones to keep. Unfiltered, about a third would
+teach "scrub and dirt are lawn" -- H57's warning in a new form. A filter on
+the detector's own agreement would only keep what it already knows. The
+honest filter is a person approving each one, which is seconds per frame
+against minutes to trace one.
+
 ### H98. The three together -- the newest USGS flight, the datum move with noise dropped, and the brightness input -- beat the old THE PLAN: 44 better / 24 worse / 36 level, -0.2 [95% -0.6 to -0.0], p = 0.021; on the 20 lots whose flight changed, 11 / 3, -1.3 -- RELEASE v5, 2026-10-14
 
 Workflow 14 on the new default (H95 + H96 + H97 adopted, the tile fix
@@ -6743,7 +6792,7 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
-### S40. Other people's turf polygons as extra training frames (owner, 2026-10-17 -- NOT BUILT, NOT MEASURED)
+### S40. Other people's turf polygons as extra training frames (owner, 2026-10-17 -- FIRST LOOK H99; NOT BUILT, NOT TRAINED)
 **The idea (the owner's):** several hundred lawns already outlined by
 somebody else, moved onto our photos, would grow the corpus without
 hand-tracing. E12 has what exists.
@@ -6768,6 +6817,8 @@ this costs no tracing.
 `lawns: locked`, three seeds a side, against the same arrangement without
 the frames. A gain only on the lots nearest in kind (big open lawns) is a
 lead, not an adoption.
+
+**FIRST LOOK DONE (H99): registration fine, 9 of 20 clean, 7 of 20 not lawn.** A run needs a filter first.
 
 **A cheaper first look, before any training:** for about 20 of the frames,
 lay the shifted outlines over our own photo and judge by eye whether they
