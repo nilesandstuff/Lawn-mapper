@@ -34,6 +34,7 @@ import { lazDecoder, browserFactory } from './shade/laz.js';
 import { nad83Correction } from './shade/datum.js';
 import { alignToPhoto } from './shade/align.js';
 import { gridOver, gridForFrame, gridBox, rasterise, fillGaps, greyPicture, blurNaN, resample, cellOf, quantile } from './shade/grid.js';
+import { groundOf } from './shade/ground.js';
 import { pointLayer, groundLayer } from './shade/view3d.js';
 import { frameCorners } from './lib/mercator.js';
 import { movedCorners } from './lib/align.js';
@@ -544,10 +545,11 @@ async function build(site) {
   const residual = fit?.confident ? [fit.east / k, fit.north / k] : [0, 0];
   const shift = keptUsed ? kept.shift : [pre[0] + residual[0], pre[1] + residual[1]];
 
-  /* Ground under every point, for heights, on a 1 m grid. */
+  /* Ground under every point, for heights and the drapes, on the 1 m grid:
+     the same smooth surface the model stands on (ground.js), so the photo,
+     the light and the blocks share one ground. */
   const g = gridOver(box, 1, site.lat);
-  const r = rasterise(cols, g, { shift });
-  const ground = fillGaps(r.zGround, g.w, g.h, 30);
+  const ground = groundOf(cols, g, { shift }).z;
   const heightOver = (i) => {
     const c = cellOf(g, cols.x[i], cols.y[i], shift);
     const z0 = c < 0 ? NaN : ground[c];

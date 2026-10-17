@@ -1089,6 +1089,37 @@ settings (workflow 35 input `foot`: phone 1.07 m, tilt allowed, fixes to
 15 m, no truck). Scratch: rec1017/{run,frames,diag,tilted,smooth,dark}.mjs
 (not in the repo: they carry the lot).
 
+### 26. The water map's smooth ground under the light: the same 3,133 of 3,913 readings agree; adopted, one ground for both maps (2026-10-17)
+
+The water session measured the two maps' grounds (water/FINDINGS.md): the
+shade map's lowest-class-2-return per 1 m column sits 1-3 cm low and is
+1.5-2.6 cm rough cell to cell; the water map's Gaussian-weighted mean of
+the class-2 returns within 2 m (sigma 0.8 m) is 0.4-0.9 cm rough with an
+error bar per cell, and the water map cannot do its work on the rough one.
+The owner (2026-10-17): one ground for both maps, "if the shade map has to
+change to accommodate you, tell it that".
+
+Measured before switching: workflow 35, the 2026-10-13 hopper day (the
+check of finding 9), runs 40 and 41, the shipped ground against the smooth
+one (public/shade/ground.js, the water map's code on the shade map's grid),
+everything else the same.
+
+| 2026-10-13, 3,913 readings | lowest return (as shipped) | smooth mean |
+|---|---|---|
+| agree | 3,133 (80%) | 3,133 (80%) |
+| open sun | 1,797 / 1,895 | 1,799 / 1,897 |
+| behind a building | 72 / 79 | 72 / 80 |
+| deep tree shade | 90 / 173 | 90 / 174 |
+| edges | 1,174 / 1,766 | 1,172 / 1,762 |
+| leaf scan, where the leaves decide, bare / full | 136 / 98 of 234 | 136 / 96 of 232 |
+
+Nothing moved past two readings a class. ADOPTED: buildCanopy's default is
+the smooth ground, and the page's own ground (the photo and light drapes,
+the blocks' feet, the points' heights) is the same surface, where it was a
+third one before (grid.js rasterise, the lowest return with gaps filled 30
+cells deep). The water map copies ground.js back unchanged. The old rule
+stays as `ground: 'lowest'` and workflow 35's input for comparisons.
+
 ## Speculation
 
 - Mixed-season flights (7) may be better treated as leaf-on for the

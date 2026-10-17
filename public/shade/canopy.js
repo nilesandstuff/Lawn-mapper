@@ -36,6 +36,7 @@
  */
 
 import { cellOf } from './grid.js';
+import { groundOf } from './ground.js';
 
 const NOISE = new Set([7, 18]);
 export const GRASS_M = 0.5; // nothing below this over the ground stops light reaching the grass blades' tops
@@ -54,11 +55,15 @@ const SOLID_BELOW = 0.03; // under a layer that let through less than this share
  * Returns { grid, w, h, dz, z0, nz, ground (Float32 per column, absolute m),
  *           mu (Float32 w*h*nz, per meter), top (highest cube with mu > 0, m) }.
  */
-export function buildCanopy(cols, grid, { shift = null, dz = 1, opaqueCanopy = false, pool = 1, minPulses = 4, fillUnder = true } = {}) {
+export function buildCanopy(cols, grid, { shift = null, dz = 1, opaqueCanopy = false, pool = 1, minPulses = 4, fillUnder = true, ground: groundRule = 'mean' } = {}) {
   const { w, h } = grid;
   const N = w * h;
 
-  /* Ground: the lowest ground return in each column, filled outward. */
+  /* Ground. 'mean' (the default since 2026-10-17): the water map's smooth
+     surface (ground.js), one piece of code for both maps (owner). 'lowest':
+     the lowest ground return in each column, filled outward, as shipped
+     before. Measured on the 2026-10-13 hopper day (SHADE-FINDINGS 26): the
+     two agree with the phone on the same 3,133 of 3,913 readings. */
   const ground = new Float32Array(N).fill(NaN);
   let zMin = Infinity, zMax = -Infinity;
   for (let i = 0; i < cols.n; i++) {
@@ -70,7 +75,8 @@ export function buildCanopy(cols, grid, { shift = null, dz = 1, opaqueCanopy = f
     const k = cellOf(grid, cols.x[i], cols.y[i], shift);
     if (k >= 0 && !(ground[k] <= z)) ground[k] = z;
   }
-  fillOut(ground, w, h);
+  if (groundRule === 'mean') ground.set(groundOf(cols, grid, { shift }).z);
+  else fillOut(ground, w, h);
   /* Columns with no ground anywhere near (a big roof) took their
      neighbors' ground from fillOut; if the whole grid had none, use the
      lowest return. */

@@ -1147,6 +1147,19 @@ CREATE TABLE IF NOT EXISTS shade_orient (
   head        REAL,
   PRIMARY KEY (session, t)
 );
+-- The phone's barometer, one median per whole second (Sensor Logger's
+-- barometer sensor, kept since 2026-10-17 for the water map: the phone's
+-- height along a pass against the lidar's ground). hpa is the pressure,
+-- alt Sensor Logger's relative altitude in m (null when it sent none).
+-- Recordings before 2026-10-17 were stored without it; re-uploading the
+-- export (the readings page) fills it in (INSERT OR IGNORE elsewhere).
+CREATE TABLE IF NOT EXISTS shade_baro (
+  session     TEXT NOT NULL,
+  t           INTEGER NOT NULL,
+  hpa         REAL NOT NULL,
+  alt         REAL,
+  PRIMARY KEY (session, t)
+);
 -- Every push that reached /api/shade/readings, kept or refused, newest
 -- last: when, what it carried, how long it took, and why it failed if it
 -- did -- so workflow 35 can tell "nothing arrived" from "it arrived and

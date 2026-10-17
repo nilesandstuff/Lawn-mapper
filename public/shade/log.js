@@ -5,7 +5,7 @@
  * Admin only: the routes refuse everybody else with a 404.
  */
 
-import { unzipText, fromExport, posePerSecond, joinTrack, splitVisits, usable, sunOrShade, compassOffset } from './truth.js';
+import { unzipText, fromExport, posePerSecond, baroPerSecond, joinTrack, splitVisits, usable, sunOrShade, compassOffset } from './truth.js';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -44,15 +44,16 @@ async function upload(files) {
     }
     const session = `upload ${name}`;
     const CHUNK = 2000;
-    const total = Math.max(got.fix.length, got.lux.length, got.orient.length);
+    got.baro = baroPerSecond(got.baro || []); // up to 10 a second in the file
+    const total = Math.max(got.fix.length, got.lux.length, got.orient.length, got.baro.length);
     for (let i = 0; i < total; i += CHUNK) {
       say(`Uploading… ${Math.min(100, Math.round((100 * i) / total))}%`);
       await getJson('/api/shade/readings', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session, fix: got.fix.slice(i, i + CHUNK), lux: got.lux.slice(i, i + CHUNK), orient: got.orient.slice(i, i + CHUNK) }),
+        body: JSON.stringify({ session, fix: got.fix.slice(i, i + CHUNK), lux: got.lux.slice(i, i + CHUNK), orient: got.orient.slice(i, i + CHUNK), baro: (got.baro || []).slice(i, i + CHUNK) }),
       });
     }
-    say(`Uploaded ${got.fix.length.toLocaleString()} locations, ${got.lux.length.toLocaleString()} light readings and ${got.orient.length ? `${got.orient.length.toLocaleString()} seconds of orientation` : 'no orientation'} as "${session}".`, 'ok');
+    say(`Uploaded ${got.fix.length.toLocaleString()} locations, ${got.lux.length.toLocaleString()} light readings, ${got.orient.length ? `${got.orient.length.toLocaleString()} seconds of orientation` : 'no orientation'} and ${got.baro.length ? `${got.baro.length.toLocaleString()} seconds of barometer` : 'no barometer'} as "${session}".`, 'ok');
     loadSessions();
   } catch (e) {
     say(`The upload failed: ${e.message}`, 'bad');

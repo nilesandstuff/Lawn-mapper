@@ -70,7 +70,8 @@ export async function shadeSite(lng, lat, { halfM = 80, cloudIndex = 0 } = {}) {
   const flight = flightOf(cloud.unit, flown);
   const d = nad83Correction(lat, lng, cloud.epoch), shift = [d.east / k, d.north / k];
   const grid = gridOver(box, 1, lat);
-  const model = buildCanopy(cols, grid, { shift });
+  /* SHADE_GROUND=lowest tries the old ground (the lowest return per column) in the checks; none: the smooth one, as shipped. */
+  const model = buildCanopy(cols, grid, { shift, ground: process.env.SHADE_GROUND === 'lowest' ? 'lowest' : 'mean' });
   /* SHADE_FILL='{"closeR":0,"topR":0}' tries a leaf fill (seasonal.js) in the checks; none: as shipped. */
   let fill = {};
   try { fill = process.env.SHADE_FILL ? JSON.parse(process.env.SHADE_FILL) : {}; } catch { fill = {}; }
