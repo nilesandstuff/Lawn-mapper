@@ -435,6 +435,15 @@ but they miss different roofs; together they find 98% of roof cells within
 a hole in the walls); the cost is that about 1 roof cell in 7 within 1 m
 is a tree or eave edge.
 
+Over the locked corpus with the union (workflow task corpus, run
+38998726182, 2026-10-17 11:29 PM EDT): spots touching traced lawns 129
+(was 133): 42 hollow, 29 trees, 29 ditch, 16 paved, 12 deep, 1 water;
+**lawns with a lawn hollow still 25 of 98**. Traced lawns rarely overlap
+roofs, so better roofs change little ON the lawn; the roof-made false
+hollows of H10's photo check were off any traced lawn. Beside the house:
+ground falls toward it on a median 10% of the outline (was 8%), 13 lots a
+quarter or more (was 10).
+
 ---
 
 ## SPECULATION
