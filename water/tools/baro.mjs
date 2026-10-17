@@ -138,25 +138,51 @@ async function main() {
         if (!cloud) { console.log(`#${k}: no public lidar`); continue; }
         const { cols } = await pointsIn(cloud.url, bbox, io);
         const res = analyse(cols, bbox, lat, { epoch: cloud.epoch, nullRuns: 0 });
-        const t = [], h = [], g = [];
-        const p0 = baro.get(Math.floor(pts[0].t / 1000)).hpa;
-        for (let i = 0; i < pts.length; i++) {
-          const b = baro.get(Math.floor(pts[i].t / 1000));
-          const gz = groundAt(res, xy[i][0], xy[i][1]);
-          if (!Number.isFinite(gz)) continue;
-          t.push((pts[i].t - pts[0].t) / 1000);
-          h.push((Number.isFinite(b.alt) ? b.alt : heightFrom(b.hpa, p0)) - HOPPER_M);
-          g.push(gz);
+        /* The barometer can lag the GPS (or lead it): try each lag up to 15 s and keep the one that fits best. */
+        const kk1 = 1 / kk;
+        const series = (lag) => {
+          const t = [], h = [], g = [], slope = [], acc = [];
+          const b0 = baro.get(Math.floor(pts[0].t / 1000) + lag);
+          if (!b0) return null;
+          for (let i = 0; i < pts.length; i++) {
+            const b = baro.get(Math.floor(pts[i].t / 1000) + lag);
+            if (!b) continue;
+            const [x, y] = xy[i], gz = groundAt(res, x, y);
+            if (!Number.isFinite(gz)) continue;
+            const sx = (groundAt(res, x + kk1, y) - groundAt(res, x - kk1, y)) / 2, sy = (groundAt(res, x, y + kk1) - groundAt(res, x, y - kk1)) / 2;
+            t.push((pts[i].t - pts[0].t) / 1000);
+            h.push((Number.isFinite(b.alt) ? b.alt : heightFrom(b.hpa, b0.hpa)) - HOPPER_M);
+            g.push(gz); slope.push(Math.hypot(sx, sy)); acc.push(pts[i].acc ?? NaN);
+          }
+          return t.length >= 60 ? { t, h, g, slope, acc } : null;
+        };
+        let best = null;
+        for (let lag = -15; lag <= 15; lag++) {
+          const sr = series(lag);
+          if (!sr) continue;
+          const fit = detrend(sr.t, sr.h, sr.g);
+          const sd = Math.sqrt(fit.resid.reduce((s2, v) => s2 + v * v, 0) / fit.resid.length);
+          if (!best || sd < best.sd) best = { lag, sr, fit, sd };
         }
-        if (t.length < 60) { console.log(`#${k}: under 60 seconds over open lidar ground`); continue; }
-        const fit = detrend(t, h, g);
+        if (!best) { console.log(`#${k}: under 60 seconds over open lidar ground`); continue; }
+        const { t, h, g, slope, acc } = best.sr, fit = best.fit, sd = best.sd;
+        const lag0 = series(0), sd0 = lag0 ? (() => { const f0 = detrend(lag0.t, lag0.h, lag0.g); return Math.sqrt(f0.resid.reduce((s2, v) => s2 + v * v, 0) / f0.resid.length); })() : NaN;
         const r = corr(g, h.map((v, i) => v - fit.a - fit.b * t[i]));
         const rb = corr(highPass(t, h), highPass(t, g));
         const relief = pct(g, 0.95) - pct(g, 0.05);
-        const sd = Math.sqrt(fit.resid.reduce((s2, v) => s2 + v * v, 0) / fit.resid.length);
-        const row = { seconds: t.length, minutes: t[t.length - 1] / 60, relief, sd, r, rb, drift: fit.b * 60, gpsAcc: med(pts.map((p) => p.acc)), flight: cloud.name };
+        /* What the GPS alone would cost: the ground's slope times how far off the fix may be. And the
+           residual where the ground is nearly flat (under 3%), where a wrong fix costs almost nothing --
+           the part of the leftover that is the barometer's own. 5 s smoothing takes out its sample noise. */
+        const gpsCost = Math.sqrt(med(slope.map((s2, i) => (s2 * (Number.isFinite(acc[i]) ? acc[i] : 4)) ** 2)));
+        const smooth = h.map((_, i) => { let s2 = 0, n2 = 0; for (let j = i; j >= 0 && t[i] - t[j] <= 2.5; j--) { s2 += h[j] - g[j]; n2++; } for (let j = i + 1; j < h.length && t[j] - t[i] <= 2.5; j++) { s2 += h[j] - g[j]; n2++; } return s2 / n2 - fit.a - fit.b * t[i]; });
+        const flatIdx = slope.map((s2, i) => (s2 < 0.03 ? i : -1)).filter((i) => i >= 0);
+        const flatSd = flatIdx.length >= 30 ? Math.sqrt(flatIdx.reduce((s2, i) => s2 + smooth[i] ** 2, 0) / flatIdx.length) : NaN;
+        const steepIdx = slope.map((s2, i) => (s2 >= 0.08 ? i : -1)).filter((i) => i >= 0);
+        const steepSd = steepIdx.length >= 30 ? Math.sqrt(steepIdx.reduce((s2, i) => s2 + smooth[i] ** 2, 0) / steepIdx.length) : NaN;
+        const row = { seconds: t.length, minutes: t[t.length - 1] / 60, relief, sd, sd0, lag: best.lag, r, rb, drift: fit.b * 60, gpsAcc: med(pts.map((p) => p.acc)), gpsCost, flatSd, flatN: flatIdx.length, steepSd, steepN: steepIdx.length, flight: cloud.name };
         done.push(row);
-        console.log(`#${k}: ${row.seconds} s over ${row.minutes.toFixed(0)} min; lidar relief ${(relief * 100).toFixed(0)} cm; after offset and drift (${(row.drift * 100).toFixed(1)} cm/min): residual ${(sd * 100).toFixed(0)} cm, r ${r.toFixed(2)}, r bumps ${rb.toFixed(2)}; GPS median ${row.gpsAcc?.toFixed?.(1) ?? '-'} m`);
+        const cm = (v) => (Number.isFinite(v) ? (v * 100).toFixed(0) : '-');
+        console.log(`#${k}: ${row.seconds} s over ${row.minutes.toFixed(0)} min; lidar relief ${cm(relief)} cm; after offset and drift (${(row.drift * 100).toFixed(1)} cm/min): residual ${cm(sd)} cm (no lag ${cm(sd0)}, best lag ${row.lag} s), r ${r.toFixed(2)}, r bumps ${rb.toFixed(2)}; GPS median ${row.gpsAcc?.toFixed?.(1) ?? '-'} m, worth ${cm(gpsCost)} cm on this slope; smoothed residual on flat ground ${cm(flatSd)} cm (${flatIdx.length} s), on 8%+ slopes ${cm(steepSd)} cm (${steepIdx.length} s)`);
       } catch (e) {
         console.log(`#${k}: failed -- ${String(e.message).replace(/-?\d+\.\d{3,}/g, '…')}`);
       }
@@ -174,6 +200,9 @@ async function main() {
   console.log(`  residual after offset and drift: median ${(med(done.map((d) => d.sd)) * 100).toFixed(0)} cm (10th-90th ${(pct(done.map((d) => d.sd), 0.1) * 100).toFixed(0)}-${(pct(done.map((d) => d.sd), 0.9) * 100).toFixed(0)})`);
   console.log(`  whole-pass shape, correlation: median ${med(done.map((d) => d.r)).toFixed(2)}; visits at 0.8 or better: ${done.filter((d) => d.r >= 0.8).length} of ${done.length}`);
   console.log(`  short bumps (20 s high-pass), correlation: median ${med(done.map((d) => d.rb)).toFixed(2)}; at 0.5 or better: ${done.filter((d) => d.rb >= 0.5).length} of ${done.length}`);
+  console.log(`  best barometer lag: ${done.map((d) => `${d.lag} s`).join(', ')}; residual at no lag: median ${(med(done.map((d) => d.sd0)) * 100).toFixed(0)} cm`);
+  console.log(`  what the GPS error alone costs on these slopes: median ${(med(done.map((d) => d.gpsCost)) * 100).toFixed(0)} cm`);
+  console.log(`  smoothed residual on flat ground (under 3%): median ${(med(done.map((d) => d.flatSd)) * 100).toFixed(0)} cm; on 8%+ slopes: median ${(med(done.map((d) => d.steepSd)) * 100).toFixed(0)} cm`);
   console.log(`  weather drift: median ${(med(done.map((d) => Math.abs(d.drift))) * 100).toFixed(1)} cm/min`);
 }
 
