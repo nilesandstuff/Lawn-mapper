@@ -163,6 +163,18 @@ not an instruction; the owner decides. The owner should not have to relay.
     the default branch; the features session reads that file after each
     pull.
 
+## Addresses and coordinates in the repository
+
+The owner's decision, 2026-10-17. Corpus coordinates may stay in the public
+repository: the "lng,lat" map ids in tools/locked-lawns.json,
+worker/src/benchmark-ids.js and data/labelled-crowns.csv. They are
+overwhelmingly random addresses. Do not move them out or raise this again.
+
+What still stays out:
+  - street names and house numbers, anyone's;
+  - the owner's own lot, named in any way (say "the owner's lot");
+  - a user's address quoted from a lookup.
+
 ## One map, every tool: docs/MAPS.md
 
 Since 2026-10-16 every saved map lives on the server (signed out: a guest
