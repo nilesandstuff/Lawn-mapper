@@ -960,6 +960,67 @@ there's a chance it might help"; the leaf density scaled 0.85, 0.7, 0.5):
 Scripts: scratchpad photo-spots.py, photo-crowns.mjs, frames-sky.py,
 frames-cone.mjs, frames-clump.mjs (not in the repo: they carry the lots).
 
+### 24. The roof rule against building footprints for the first time: 83% of structure cells found, 85% of its calls right (water session, 2026-10-17)
+
+MEASURED BY THE WATER SESSION (session_01BRMHw2UgvcLy5957Rsxivs), for its
+low-spot map, and sent here 2026-10-17 03:36 UTC; recorded in
+water/FINDINGS.md as H13 and repeated here with that session as the source.
+Nothing in the shade map was changed for it.
+
+Until this run the building mask (seasonal.js seasonalCanopy, kind 1) had
+never been scored against footprints: the core's H38 scored the flat-roof
+rule against lawn labels (0.2% of visible lawn touched), and the
+pitched-roof catch (canopy.js solidAtGrass), the tree-versus-roof patch test
+and the eaves ring were set by eye from the photo of one lot (the owner's,
+Kent 2016), which cannot score them.
+
+THE TEST. Answer key: the Chesapeake Bay Program's 1 m land use, class
+Structures, read onto the same 1 m grid (gridOver, cloud frame; the land
+use requested over the box moved by nad83Correction, so both in one
+frame). Cells under "canopy over impervious" (roads or structures, not
+separable) and no-data left out. 23 residential squares of 160 m, drawn at
+random (seed 2026) in Fairfax, Montgomery MD, Howard MD, Chesterfield,
+Lancaster, York and Dauphin counties, kept when turf >= 15% and structures
+>= 5% (96 drawn); 6 flights. The shade modules copied unchanged from
+public/shade/ into water/lib/shade/; seasonalCanopy(cols, buildCanopy(cols,
+grid), { classify: true }), no shift. Script water/tools/impervious.mjs.
+
+Pooled cells. "Found" is recall over structure cells, "precise" the share
+of predicted cells that are structures; exact | within 1 m (a cell within
+1 m of the other kind counts). IoU exact.
+
+| stage | found | precise | IoU |
+|---|---|---|---|
+| flat-roof rule alone (H38; the water session's port, approximate) | 46% / 84% | 89% / 92% | 0.44 |
+| + solid at the grass, + eaves (classify: false) | 87% / 96% | 73% / 82% | 0.66 |
+| + tree-versus-roof patch test (AS SHIPPED) | 83% / 91% | 85% / 94% | 0.72 |
+| the water map's own finder, for comparison | 85% / 96% | 80% / 87% | 0.71 |
+| either says roof (what the water map now uses) | 91% / 98% | 77% / 86% | 0.72 |
+
+By flight, IoU water map / ours: VA Sandy 2014 (LAS 2015) 0.58 / 0.70
+(ours keeps evergreens out where the water map's calls them roofs); PA
+Dauphin 2016 (LAS 2017) 0.72 / 0.60; VA Upper Middle Neck QL2 B2 2018
+0.86 / 0.86; PA Northcentral B1 2019 0.75 / 0.78; VA Northern VA 1 B22
+0.75 / 0.59; PA South Central B1 2017 (LAS 2019) 0.59 / 0.62.
+
+WHAT IT SAYS.
+- The pitched-roof catch is what finds roofs: 46% to 87% of structure
+  cells, where the flat rule alone leaves half of every pitched roof out.
+- The patch test does what it was written for: precision 73% to 85% for
+  four points of recall, IoU 0.66 to 0.72.
+- Within 1 m, 91% found and 94% right: most of what is wrong is edges, the
+  size of the datum and the land use's own error (about a cell).
+- Two flights lose to the water map's cruder finder (Dauphin 2016, Northern
+  VA 2022), not yet looked at. The suspects are the ones named in the
+  warnings sent with the modules: a house with trees against it joining a
+  patch that flips to evergreen on its split share, and 4-60 m2 patches
+  with rough tops (sheds, porches) called trees.
+- Caveats: the land use carries its own errors of about a cell; residential
+  squares only; the flat-rule row is a port from a description, not the
+  shipped code; the shade map's light was not scored, only the mask.
+
+Not changed: nothing. The two losing flights are a bookmarked test, below.
+
 ## Speculation
 
 - Mixed-season flights (7) may be better treated as leaf-on for the
@@ -1014,6 +1075,15 @@ frames-cone.mjs, frames-clump.mjs (not in the repo: they carry the lots).
   typical May 17 on 2026's spring).
 
 ## Bookmarked tests (asked for, not yet run)
+
+- ROOFS LOST ON TWO FLIGHTS (finding 24, 2026-10-17): on PA Dauphin 2016
+  and VA Northern VA 2022 the roof mask's IoU trails the water map's
+  cruder finder by 0.12-0.16. Draw the two masks and the land use on those
+  squares and name the loss: patches flipped to evergreen by a tree against
+  the house, or sheds and porches under 60 m2 with rough tops. If it is the
+  flip, test the patch rule per connected roof plane instead of per patch.
+  Not started; the water session's script (water/tools/impervious.mjs) is
+  the harness.
 
 - NTEP SHADE TRIALS FOR CULTIVARS (owner, 2026-10-16: "bookmark that idea
   for later"): the National Turfgrass Evaluation Program has run shade
