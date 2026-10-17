@@ -36,8 +36,8 @@ go in this file (or anywhere in the repository): lots are named by a label.
   calibrated on the map's own traced lawn (AUC 0.90 against the Chesapeake
   land use on squares it was not fitted on); roofs are found 85%, 80%
   precise. The map shows the lot's cover and runoff weighted by surface.
-  Asked the shade session (2026-10-17 10:55 PM EDT) how to reuse its
-  building classifier.
+- **Roofs (H13)**: the water map's finder OR the shade map's: 91% of roof
+  found (98% within 1 m), 77% precise (86% within 1 m).
 - **The site is admin only** until it ships (owner, 2026-10-16), and the
   dashboard card is asked of the core session.
 - **What it can see is now measured on made-up ground (H8), not yet on real
@@ -397,6 +397,43 @@ and runoff weighted by what each surface sheds (textbook runoff
 coefficients: roof 0.9, paving 0.85, other ground 0.3, lawn 0.15), roof
 water let off at each roof's lowest edge because the downspouts are not in
 the lidar. The weights and the downspout guess are NOT measured.
+
+### H13. Roofs: the water map's finder, the shade map's, and both (water session, 2026-10-17)
+
+The shade map's building classifier (public/shade/ seasonalCanopy with
+classify: true, on buildCanopy's model; copied unchanged into
+water/lib/shade/ on the features session's advice, 2026-10-17 11:12 PM
+EDT) against the water map's own (lib/surface.js), on H12's 23 squares and
+answer key ("Structures"; canopy over impervious left out). Cells; pooled;
+exact | within 1 m. `SQUARES=24 node water/tools/impervious.mjs`, run
+2026-10-17 about 12:30 AM EDT:
+
+| finder | found | precise | IoU |
+|---|---|---|---|
+| water map (surface.js) | 85% \| 96% | 80% \| 87% | 0.71 |
+| shade: H38 flat-roof rule alone | 46% \| 84% | 89% \| 92% | 0.44 |
+| shade: + solid at the grass (pitched roofs) + eaves | 87% \| 96% | 73% \| 82% | 0.66 |
+| shade: + tree-vs-roof patch test (as shipped) | 83% \| 91% | 85% \| 94% | 0.72 |
+| **either says roof (adopted)** | **91% \| 98%** | 77% \| 86% | 0.72 |
+| both say roof | 77% \| 89% | 90% \| 96% | 0.71 |
+| water map less the shade map's evergreens | 84% \| 95% | 82% \| 89% | 0.71 |
+
+By flight, IoU water / shade: VA_Sandy_2014 0.58 / **0.70** (the water
+map calls evergreens roofs there); PA_Dauphin_2016 **0.72** / 0.60;
+VA_UpperMiddleNeck_2018 0.86 / 0.86; PA_Northcentral_2019 0.75 / 0.78;
+VA_NorthernVA_2022 **0.75** / 0.59; PA_South_Central_2017 0.59 / 0.62.
+
+The first footprint measurement of the shade map's classifier; sent to
+the features session by stage, as it asked. The flat rule alone is
+precise but finds under half the roof (pitched roofs are the rest); the
+pitched-roof catch finds them and brings in trees; the patch test takes
+most of the trees back out.
+
+**Adopted: either says roof** (lib/lowspots.js). Each alone is IoU 0.71-0.72
+but they miss different roofs; together they find 98% of roof cells within
+1 m. A missed roof is the worse error for the water map (a fake low spot,
+a hole in the walls); the cost is that about 1 roof cell in 7 within 1 m
+is a tree or eave edge.
 
 ---
 
