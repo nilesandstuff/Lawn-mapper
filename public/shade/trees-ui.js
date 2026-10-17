@@ -100,7 +100,7 @@ export function overhead(model, mu, k) {
  * the end of every stroke, undo and clear. `setActive(false)` hides the
  * trees and stops the tap readout (another step has the map).
  */
-export async function startTrees({ map, site, cols, box, shift, season: flight, flownTo, erase = false, onErase = null }) {
+export async function startTrees({ map, site, cols, box, shift, season: flight, flownTo, erase = false, onErase = null, baseZ = null }) {
   const sec = $('#trees');
   sec.hidden = false;
   const say = (html) => { $('#tr-status').innerHTML = html; };
@@ -150,6 +150,10 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
     }
     return muCache.mu;
   };
+  /* On the tilted map the photo lies on the lidar's ground (shade.js
+     drapePhoto, relative to the lot's median ground baseZ), so each block
+     stands on its own column's ground, not on the flat map. */
+  const lift = (k) => (baseZ === null ? 0 : model.ground[k] - baseZ);
   const corners = (k) => {
     const x = k % grid.w, y = (k / grid.w) | 0;
     const X0 = grid.x0 + x * grid.cell, X1 = X0 + grid.cell, Y1 = grid.y1 - y * grid.cell, Y0 = Y1 - grid.cell;
@@ -170,7 +174,7 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
         type: 'FeatureCollection',
         features: runs.filter((r) => r.band === i).map((r) => {
           idx = r.k === lastK ? idx + 1 : 0; lastK = r.k;
-          const f = { type: 'Feature', id: r.k * 64 + idx, geometry: { type: 'Polygon', coordinates: corners(r.k) }, properties: { b: r.base, t: r.top, c: KIND_COLOR[r.kind] } };
+          const f = { type: 'Feature', id: r.k * 64 + idx, geometry: { type: 'Polygon', coordinates: corners(r.k) }, properties: { b: r.base + lift(r.k), t: r.top + lift(r.k), c: KIND_COLOR[r.kind] } };
           if (!byCell.has(r.k)) byCell.set(r.k, []);
           byCell.get(r.k).push({ src: i, id: f.id, l0: r.l0, l1: r.l1, base: r.base, top: r.top });
           return f;
@@ -307,7 +311,7 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
     const gone = [];
     for (const k of cellsUnder(grid, x, y, st.size)) {
       if (strokeTouched.has(k) || er.mask[k]) continue;
-      const r = nearestRun(byCell.get(k), k, grid.w, 0, cam, cm);
+      const r = nearestRun(byCell.get(k), k, grid.w, lift(k), cam, cm);
       if (!r) continue;
       const idx = [];
       for (let l = r.l0; l <= r.l1; l++) idx.push(k * model.nz + l);
