@@ -56,6 +56,7 @@ jobs:
         run: |
           node water/test/lowspots.test.js
           node water/test/site.test.js
+          node water/test/plan.test.js
 
       - name: Deploy the water site
         if: ${{ inputs.task == 'deploy' }}
