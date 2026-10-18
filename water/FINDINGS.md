@@ -28,8 +28,8 @@ go in this file (or anywhere in the repository): lots are named by a label.
   the 4 in topsoil choice saved with the map; shade from the shade map's own
   light worker; the hillside reading (S10). H16, S8-S10; sources in
   PARAMS-SOURCES.md. Root zone 12 in, cool/warm season (owner). Paving
-  heat as an estimate (S8). SAM 3 on Replicate being scored for paving
-  (workflow task paving-sam, the owner's REPLICATE_TOKEN).
+  heat as an estimate (S8). SAM 3 on Replicate scored for paving and
+  lost to the free lidar + photo (H18).
 - **Step 1, the low-spot map, works offline** (2026-10-16): water/lib/ reads
   a lot's lidar from the public octrees, builds a 1 m ground surface, finds
   roofs, fills low spots, traces runoff and measures the ground beside each
@@ -641,6 +641,29 @@ Still to measure before anything paid: a vision model on Replicate needs the
 owner's API token (a GitHub secret) and costs per image; its bar is now
 85.2% right / 82% found (86.6% / 84% for the region-fitted eight) on these
 same squares.
+
+---
+
+### H18. SAM 3 on Replicate does not beat the free lidar and photo for paving (water session, 2026-10-18)
+
+Owner, 2026-10-18: "whatever is most accurate and fastest", his Replicate
+token offered. The paid candidate: SAM 3 (mattsays/sam3-image, the model the
+main site asks for "grass"), asked for "pavement", "driveway" and "road" one
+at a time (one concept per prompt, as the core found), masks unioned, on the
+same NAIP photo at 3 px a metre, scored on the same 23 Chesapeake squares as
+H17 (workflow task paving-sam; 66 predictions, none failed, 8 s of GPU in all).
+On the test squares' cells it saw (148,647):
+
+| | right | finds paving | precise |
+|---|---|---|---|
+| SAM 3 alone (half the cell or more in its masks) | 79.5% | 60% | 89% |
+| lidar + photo against the lawn (in use), same cells | 84.9% | 81% | 83% |
+| lidar + photo + SAM 3 | 84.3% | 77% | 85% |
+
+SAM 3 is precise but misses 40% of the paving, and as a ninth input it made
+the fit slightly worse. So the free lidar + photo stays. CAVEAT: the model saw
+NAIP (0.3-0.6 m); the main site's Mapbox photos are sharper, and a runner
+cannot fetch them (the lawnmap 403) -- SAM 3 on a sharper photo is untested.
 
 ---
 
