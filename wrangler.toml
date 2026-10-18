@@ -12,6 +12,9 @@ compatibility_date = "2025-09-01"
 [assets]
 directory = "./public"
 binding = "ASSETS"
+# The shade map's old pages reach the Worker first, which sends them to the
+# shade map's own address once it is up (worker/src/shade.js shadePage).
+run_worker_first = ["/shade", "/shade.html", "/shade-trees", "/shade-trees.html", "/shade-log", "/shade-log.html", "/shade-admin", "/shade-admin.html"]
 
 # Measurement quota counter. Create it before the first deploy:
 #   npx wrangler kv namespace create QUOTA

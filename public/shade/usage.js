@@ -27,7 +27,10 @@ function clientId() {
 export function isOwnDevice() { try { return store()?.getItem(SELF_KEY) === '1'; } catch { return false; } }
 export function setOwnDevice(on) { try { if (on) store()?.setItem(SELF_KEY, '1'); else store()?.removeItem(SELF_KEY); } catch { /* not kept */ } }
 
-const page = () => (/shade-log/.test(location.pathname) ? 'shade-log' : /shade-admin/.test(location.pathname) ? 'shade-admin' : /shade-trees/.test(location.pathname) ? 'shade-trees' : 'shade');
+const page = () => {
+  const p = location.pathname;
+  return /shade-log|^\/log\b/.test(p) ? 'shade-log' : /shade-admin|^\/admin\b/.test(p) ? 'shade-admin' : /shade-trees|^\/trees\b/.test(p) ? 'shade-trees' : 'shade';
+};
 
 function send(path, body) {
   if (isOwnDevice()) return;
