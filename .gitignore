@@ -8,4 +8,7 @@ __pycache__/
 # Written at deploy time by tools/home-prepare.js
 home/build/
 home/wrangler.toml
+# Written at deploy time by tools/shade-prepare.js
+shade-site/build/
+shade-site/wrangler.toml
 tools/find-report.json

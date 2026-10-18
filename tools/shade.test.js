@@ -1323,6 +1323,41 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   check('eraser: the block nearest the camera is the top one from above and the low one from a low camera; none for an empty column', fromAbove === runs[2] && fromLow === runs[0] && nearestRun([], k, w, 0, [0, 0, 0], 1) === null, `${JSON.stringify([fromAbove, fromLow])}`);
 }
 
+/* ------------------------------------------------------- the shade subdomain */
+{
+  const site = (await import('../shade-site/src/index.js')).default;
+  const { shadePage, isShadePage } = await import('../worker/src/shade.js');
+  const { pointAtShade, wranglerFor: shadeToml } = await import('./shade-prepare.js');
+  const seen = [];
+  const env = {
+    LAWNMAP_HOST: 'lawnmap.example.org',
+    LAWNMAP: { fetch: async (req) => { seen.push(['api', req.url, req.headers.get('Cookie')]); return new Response('{}', { status: 200 }); } },
+    ASSETS: { fetch: async (req) => { seen.push(['asset', new URL(req.url).pathname]); return new Response('<html>', { status: 200, headers: { 'Content-Type': 'text/html' } }); } },
+  };
+  const get = (u, init) => site.fetch(new Request(u, init), env);
+  const root = await get('https://shade.example.org/?map=abc');
+  const old = await get('https://shade.example.org/shade.html?at=1,2&truth=x');
+  const trees = await get('https://shade.example.org/shade-trees');
+  const api = await get('https://shade.example.org/api/maps/one?id=7', { headers: { Cookie: 'lm_guest=g' } });
+  const mod = await get('https://shade.example.org/shade/sun-ui.js');
+  const other = await get('https://shade.example.org/mywork');
+  check('shade subdomain: the map at /, the old names sent to the new ones with their query, /api/ to Lawn Mapper with the cookie, modules served, Lawn Mapper pages sent home',
+    root.status === 200 && seen.some((x) => x[0] === 'asset' && x[1] === '/shade')
+    && old.status === 301 && old.headers.get('Location') === 'https://shade.example.org/?at=1,2&truth=x'
+    && trees.headers.get('Location') === 'https://shade.example.org/trees'
+    && api.status === 200 && seen.some((x) => x[0] === 'api' && x[1] === 'https://lawnmap.example.org/api/maps/one?id=7' && x[2] === 'lm_guest=g')
+    && mod.status === 200 && seen.some((x) => x[1] === '/shade/sun-ui.js')
+    && other.status === 301 && other.headers.get('Location') === 'https://lawnmap.example.org/mywork', JSON.stringify(seen));
+  const assets = { fetch: async () => new Response('page', { status: 200 }) };
+  const up = await shadePage(new Request('https://lawnmap.example.org/shade?map=9'), new URL('https://lawnmap.example.org/shade?map=9'), { SHADE_HOST: 'shade.example.org', ASSETS: assets });
+  const down = await shadePage(new Request('https://lawnmap.example.org/shade-log.html'), new URL('https://lawnmap.example.org/shade-log.html'), { ASSETS: assets });
+  check('shade subdomain: Lawn Mapper sends its old shade pages there only when the deploy says it is up, and serves them itself otherwise',
+    up.status === 301 && up.headers.get('Location') === 'https://shade.example.org/?map=9' && down.status === 200 && isShadePage('/shade-admin.html') && !isShadePage('/shade/sun-ui.js'), up.headers.get('Location'));
+  check('shade subdomain: the build points the page\'s canonical at the subdomain, and its Worker reaches Lawn Mapper by a service binding',
+    pointAtShade('<link rel="canonical" href="https://lawnmap.example.org/shade">', 'lawnmap.example.org', 'shade.example.org') === '<link rel="canonical" href="https://shade.example.org/">'
+    && /service = "lawn-mapper"/.test(shadeToml('shade.example.org', 'lawnmap.example.org')) && /pattern = "shade.example.org"/.test(shadeToml('shade.example.org', 'lawnmap.example.org')), '');
+}
+
 /* --------------------------------------------------------------- the ground */
 {
   /* A 20 x 20 m box of ground points on a 2% slope, one every 0.7 m with 3 cm of noise, a 6 m roof hole in the middle. */

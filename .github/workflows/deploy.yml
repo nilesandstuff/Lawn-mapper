@@ -79,8 +79,29 @@ jobs:
           HOME_DOMAIN: ${{ vars.HOME_DOMAIN }}
         run: node tools/ci-prepare.js
 
+      # shade.<home>, the shade map's own address (features session,
+      # 2026-10-18): a second small Worker with the shade pages, /api/ handed
+      # to this one. Deployed first: only when it is up does the app's Worker
+      # get SHADE_HOST and send /shade there; if it fails, /shade stays here.
+      - name: The shade map's address
+        continue-on-error: true
+        env:
+          CUSTOM_DOMAIN: ${{ vars.CUSTOM_DOMAIN }}
+          HOME_DOMAIN: ${{ vars.HOME_DOMAIN }}
+        run: |
+          node tools/shade-prepare.js
+          if [ ! -f shade-site/wrangler.toml ]; then exit 0; fi
+          if npx wrangler deploy --config shade-site/wrangler.toml > shade-deploy.log 2>&1; then
+            echo "SHADE_HOST=${SHADE_HOST_RESOLVED}" >> "$GITHUB_ENV"
+            echo "SHADE_STATE=ON at https://${SHADE_HOST_RESOLVED} (lawnmap's /shade sends people there)" >> "$GITHUB_ENV"
+          else
+            tail -25 shade-deploy.log
+            echo "SHADE_STATE=did not deploy -- /shade stays on the app; see \"The shade map's address\" above" >> "$GITHUB_ENV"
+            exit 1
+          fi
+
       - name: Deploy the Worker and the site
-        run: npx wrangler deploy
+        run: npx wrangler deploy ${SHADE_HOST:+--var SHADE_HOST:$SHADE_HOST}
 
       # http:// used to serve the site unencrypted, which browsers flag as "Not
       # secure" (reported as "SSL errors", 2026-09-30). Never fails the deploy;
@@ -423,6 +444,7 @@ jobs:
           if [ -n "$ALPHA_WARM" ]; then echo "Model server: $ALPHA_WARM"; fi
           echo "HTTPS only: ${HTTPS_STATE:-not checked -- see \"Send http to https\" above}"
           echo "Home page: ${HOME_STATE:-not built -- see \"The home page\" above}"
+          echo "Shade map: ${SHADE_STATE:-not built -- see \"The shade map's address\" above}"
           # A database change that did not land is the quietest failure this
           # project has had: six deploys reported success while a column was
           # missing and a feature reported itself switched off. It gets said

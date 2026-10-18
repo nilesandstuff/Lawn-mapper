@@ -397,3 +397,23 @@ export async function climateNow(lng, lat, opts = {}) {
   const now = await weatherNow(lng, lat, typical, opts).catch(() => null);
   return now ? { ...typical, ...now } : typical;
 }
+
+/*
+ * THE SHADE MAP'S OWN ADDRESS (owner, 2026-10-18): shade.<home domain>
+ * (shade-site/, tools/shade-prepare.js). Lawn Mapper's Worker runs first for
+ * the old pages (wrangler.toml run_worker_first) and sends them there, query
+ * and all -- ONLY when the deploy says the shade Worker is up (SHADE_HOST,
+ * passed to this Worker's deploy only after the shade Worker deployed), so a
+ * failed shade deploy can never redirect to a dead address. Without it (a
+ * failed step, workers.dev, a local run) the pages are served here as before.
+ */
+export const SHADE_PAGES = {
+  '/shade': '/', '/shade.html': '/', '/shade-trees': '/trees', '/shade-trees.html': '/trees',
+  '/shade-log': '/log', '/shade-log.html': '/log', '/shade-admin': '/admin', '/shade-admin.html': '/admin',
+};
+export const isShadePage = (p) => Object.prototype.hasOwnProperty.call(SHADE_PAGES, p);
+export function shadePage(request, url, env) {
+  const host = String(env.SHADE_HOST || '').trim();
+  if (host && url.hostname !== host) return Response.redirect(`https://${host}${SHADE_PAGES[url.pathname]}${url.search}`, 301);
+  return env.ASSETS ? env.ASSETS.fetch(request) : new Response('Not found\n', { status: 404 });
+}
