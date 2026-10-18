@@ -19,7 +19,7 @@
  *      when to water next and how much.
  */
 
-import { rootZone } from './soil.js';
+import { rootZone, maxSprinklerRate } from './soil.js';
 import { maskOf } from './geo.js';
 import { roofRouting } from './gutters.js';
 import { buildModel, simulate, idealIrrigation, zoneIrrigation, PARAMS } from './balance.js';
@@ -102,7 +102,13 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
     const drainage = [...new Set(cells.map((i) => soils[soilAt[i]].drainage))];
     const runOn = cells.filter((i) => roofOrPaveFeeds(model, i)).length / cells.length;
     const peak = months.reduce((a, b) => ((b.mmMonth || 0) > (a.mmMonth || 0) ? b : a), months[0]);
+    /* cycle and soak: the zone's slowest-taking ground (the 10th percentile rate) against typical
+       sprinklers -- spray heads about 1.5 in/h, rotors about 0.5 in/h (until the heads are mapped) */
+    const rates = cells.map((i) => maxSprinklerRate(soils[soilAt[i]].rz, model.slope[i]).inPerH);
+    const takes = q(rates, 0.1);
+    const cyclesFor = (pr) => Math.max(1, Math.ceil(pr / takes));
     out.push({
+      takesInPerH: takes, cycles: { spray: cyclesFor(1.5), rotor: cyclesFor(0.5) },
       zone: z, m2: cells.length * g.cell * g.cell,
       depthMm: med(cells.map((i) => model.raw[i])),
       tawMm: med(rz),
@@ -140,13 +146,14 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
   }
 
   // per-cell overlays for the page
-  const wetShare = new Float32Array(N), dryShare = new Float32Array(N), wetFromWatering = new Float32Array(N);
+  const wetShare = new Float32Array(N), dryShare = new Float32Array(N), wetFromWatering = new Float32Array(N), wetAnyway = new Float32Array(N);
   for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn) {
     wetShare[i] = planned.wetDays[i] / Math.max(1, planned.seasonDays); dryShare[i] = planned.dryDays[i] / Math.max(1, planned.seasonDays);
     wetFromWatering[i] = (planned.wetDays[i] - rainOnly.wetDays[i]) / Math.max(1, planned.seasonDays);
+    wetAnyway[i] = rainOnly.wetDays[i] / Math.max(1, rainOnly.seasonDays);
   }
   return {
-    zones: out, zoneOf: zones.zoneOf, userZones: !!zones.user, kinds, wetShare, dryShare, wetFromWatering,
+    zones: out, zoneOf: zones.zoneOf, userZones: !!zones.user, kinds, wetShare, dryShare, wetFromWatering, wetAnyway,
     roofs: { pieces: roofs.pieces.length, guessed: roofs.pieces.filter((p) => p.guessed).length, unusedDownspouts: roofs.unused },
     soil: units.map((u) => ({ name: u.name, share: u.share ?? null, drainage: u.drainage, hydgrp: u.hydgrp, wtMinCm: u.wtMinCm ?? null, wetByMonth: u.wetByMonth, assumed: !!u.assumed, tawMm: rootZone(u.profile)?.tawMm ?? null, tawTopsoilMm: rootZone(u.profile, { topsoil: true })?.tawMm ?? null })),
     years, topsoil, thisWeek,

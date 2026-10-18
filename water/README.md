@@ -25,8 +25,23 @@ each step has to pass, and what is still only a theory.
     tools/limits.mjs                    what it can find (FINDINGS H8)
     test/lowspots.test.js               node water/test/lowspots.test.js
 
+  THE WATERING PLAN (owner's vision, VISION.md, verbatim):
+    lib/soil.js        the USDA soil survey over the lot: drainage class, group,
+                       horizons, monthly water table; the root zone; topsoil
+    lib/et.js          FAO-56 Penman-Monteith and Hargreaves ET0; Kc 0.8
+    lib/weather.js     NASA POWER (ten years, the last weeks), NWS station and
+                       forecast, as days with ET0
+    lib/balance.js     the daily water balance per square metre
+    lib/gutters.js     where each roof's water lands (downspouts, gutters)
+    lib/zones.js       lawn cells with the same need -> zones
+    lib/plan.js        zones -> how much and how often, month by month, this week
+    tools/plan-try.mjs the whole chain on one corpus map, numbers only
+    test/plan.test.js  node water/test/plan.test.js
+    PARAMS-SOURCES.md  every parameter's published source
+
 Data: USGS 3DEP point clouds (public Entwine octrees on AWS), picked by the
-live shade map's public /api/shade/lidar. No keys, nothing paid.
+live shade map's public /api/shade/lidar; USDA Soil Data Access; NASA POWER;
+api.weather.gov. All answer browsers directly. No keys, nothing paid.
 
 ## The site (water.<home domain>)
 

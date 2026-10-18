@@ -12,14 +12,24 @@
  * with GET /api/maps/one through this site's Worker (same-origin; the
  * sign-in or guest cookie travels), the way the shade page opens a save
  * (public/shade.js siteFromSave): its address, point, property line and
- * lawn outlines. Nothing is written yet: the water part of a map will hold
- * what a person enters (a soak test, gauge totals, zones), and none of that
- * exists yet. Nothing is kept in the browser.
+ * lawn outlines. The water part of the map (POST /api/maps/tool, tool
+ * "water") keeps what the person enters: downspouts (the roof-edge spot each
+ * empties from and the ground it empties to), gutter runs, and whether the
+ * lawn has 4 in of loamy topsoil. Nothing is kept in the browser.
+ *
+ * THE WATERING PLAN (owner, 2026-10-18, water/VISION.md): after the low-spot
+ * map the worker reads the soil survey and ten years of weather and runs the
+ * daily water balance (lib/plan.js): zones, how much and how often each needs
+ * watering month by month, this week's next watering, and the ground a zone's
+ * watering leaves too wet or still dry.
  */
 
 const $ = (s) => document.querySelector(s);
 const R = 6378137;
-const view = { photo: null, data: null, frame: null, site: null };
+const view = { photo: null, data: null, frame: null, site: null, plan: null };
+const inputs = { downspouts: [], gutters: [], topsoil: false };
+let mode = null, pending = null; // 'from' | 'to' (a downspout) | 'gutter'
+const ZONE_RGB = [[46, 134, 222], [230, 126, 34], [142, 68, 173], [22, 160, 133]];
 const HOME = document.documentElement.dataset.home || '';
 const mapId = new URLSearchParams(location.search).get('map');
 
@@ -85,7 +95,8 @@ async function siteFromMap(id) {
     lawn: (s.shapes || []).map(asFeature).filter(Boolean),
     // the shade map's cloud, box and shift, when it has worked on this map: the same cells as its part
     lidar: s.tools?.shade?.data?.lidar || null,
-    mapId: id,
+    mapId: id, at: s.at || null,
+    water: s.tools?.water?.data || null,
   };
 }
 
@@ -127,13 +138,20 @@ function toPx(frame, img, xy) {
 
 /* -------------------------------------------------------------- drawing */
 
-function overlay(d, { flow = true, grade = true, hard = true } = {}) {
+function overlay(d, { flow = true, grade = true, hard = true, zones = true } = {}) {
   const { W, H } = d.grid;
   const img = new ImageData(W, H);
   const px = img.data;
+  const p = view.plan;
   for (let i = 0; i < W * H; i++) {
     let rgba = null;
     if (hard && d.paved && !d.wall[i] && Number.isFinite(d.paved[i]) && d.paved[i] >= 0.5) rgba = [120, 60, 160, Math.round(60 + 120 * d.paved[i])];
+    if (zones && p && p.zoneOf[i] >= 0) {
+      rgba = [...ZONE_RGB[p.zoneOf[i] % ZONE_RGB.length], 105];
+      if (p.wetAnyway[i] >= 0.1) rgba = [13, 71, 161, 200];
+      else if (p.wetFromWatering[i] >= 0.05) rgba = [255, 23, 68, 200];
+      else if (p.dryShare[i] > 0.1) rgba = [255, 214, 0, 190];
+    }
     if (d.reported[i] === 2) {
       const t = Math.min(1, d.depth[i] / 0.10);
       rgba = [30, 107, 255, Math.round(110 + 130 * t)];
@@ -159,7 +177,7 @@ function draw() {
   if ($('#show-photo').checked) g.drawImage(photo, 0, 0);
   else { g.fillStyle = '#3a4440'; g.fillRect(0, 0, cv.width, cv.height); }
 
-  const o = overlay(d, { flow: $('#show-flow').checked, grade: $('#show-grade').checked, hard: $('#show-hard').checked });
+  const o = overlay(d, { flow: $('#show-flow').checked, grade: $('#show-grade').checked, hard: $('#show-hard').checked, zones: $('#show-zones').checked });
   const tmp = document.createElement('canvas');
   tmp.width = d.grid.W; tmp.height = d.grid.H;
   tmp.getContext('2d').putImageData(o, 0, 0);
@@ -189,6 +207,35 @@ function draw() {
       g.closePath(); g.stroke();
     }
   }
+  // gutters (white runs along the eaves) and downspouts (from the roof edge to where each empties)
+  const lw = Math.max(3, photo.width / 300), at = (p) => toPx(frame, photo, toMerc(p));
+  g.lineCap = 'round'; g.lineJoin = 'round';
+  const gutters = [...inputs.gutters, ...(mode === 'gutter' && pending?.length ? [pending] : [])];
+  for (const line of gutters) {
+    g.strokeStyle = '#ffffff'; g.lineWidth = lw * 1.4;
+    g.beginPath(); line.forEach((p, k) => { const [x, y] = at(p); if (k) g.lineTo(x, y); else g.moveTo(x, y); }); g.stroke();
+    for (const p of line) { const [x, y] = at(p); g.fillStyle = '#ffffff'; g.beginPath(); g.arc(x, y, lw, 0, 7); g.fill(); }
+  }
+  const spouts = [...inputs.downspouts, ...(mode === 'to' && pending ? [{ from: pending, to: null }] : [])];
+  for (const sp of spouts) {
+    const [x0, y0] = at(sp.from);
+    g.fillStyle = '#ff9100'; g.beginPath(); g.arc(x0, y0, lw * 1.6, 0, 7); g.fill();
+    if (!sp.to) continue;
+    const [x1, y1] = at(sp.to);
+    g.strokeStyle = '#ff9100'; g.lineWidth = lw; g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
+    g.strokeStyle = '#000'; g.lineWidth = lw * 0.6; g.fillStyle = '#00e5ff'; g.beginPath(); g.arc(x1, y1, lw * 2, 0, 7); g.fill(); g.stroke();
+  }
+}
+
+/** A tap on the photo -> [lng, lat]. */
+function tapAt(ev) {
+  const { photo, frame } = view, cv = $('#view'), rect = cv.getBoundingClientRect();
+  const px = ((ev.clientX - rect.left) / rect.width) * cv.width, py = ((ev.clientY - rect.top) / rect.height) * cv.height;
+  const c = mercToWorld(toMerc([frame.lng, frame.lat]), frame.zoom), s = photo.width / frame.size;
+  const wx = (px - photo.width / 2) / s + c[0], wy = (py - photo.height / 2) / s + c[1];
+  const size = worldSize(frame.zoom);
+  const x = (wx / size) * 2 * Math.PI * R - Math.PI * R, y = Math.PI * R - (wy / size) * 2 * Math.PI * R;
+  return fromMerc([x, y]).map((v) => +v.toFixed(7));
 }
 
 /* ------------------------------------------------------------- the words */
@@ -247,27 +294,96 @@ function report(d, site) {
   $('#report').innerHTML = parts.join('');
 }
 
+/* ------------------------------------------------------ the watering plan */
+
+const MONTH = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const DAYS_IN = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+const inch = (mm) => { const v = Math.round((mm / 25.4) * 20) / 20; return v < 0.05 ? 'under 0.05' : v.toFixed(2); };
+const dayName = (ymd) => new Date(`${ymd}T12:00:00Z`).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' });
+const chip = (z) => `<span class="chip" style="background:rgb(${ZONE_RGB[z % ZONE_RGB.length].join(',')})"></span>`;
+
+function howOften(m) {
+  if (!m.waterings) return m.high ? `rarely (up to ${m.high} times in a dry year)` : 'rain covers it';
+  const every = DAYS_IN[m.month] / m.waterings;
+  return `about every ${every < 1.5 ? 'day' : `${Math.round(every)} days`} (${m.waterings} time${m.waterings > 1 ? 's' : ''}; ${m.low}–${m.high} across ten years)`;
+}
+
+function planReport(p) {
+  const parts = [];
+  const legend = $('#zone-legend');
+  legend.innerHTML = p.zones.map((z) => `${chip(z.zone)}zone ${z.zone + 1}`).join(' &nbsp; ');
+  if (!p.zones.length) { $('#plan').innerHTML = '<div class="card"><h2>No lawn to plan for</h2><p class="dim">Trace the lawn in Lawn Mapper and open the map from your dashboard.</p></div>'; return; }
+  const peak = (z) => z.months.reduce((a, b) => ((b.mmMonth || 0) > (a.mmMonth || 0) ? b : a), z.months[0]);
+  parts.push(`<div class="card"><h2>Your watering plan: ${p.zones.length} zone${p.zones.length > 1 ? 's' : ''}</h2>
+    <p>Each zone below needs a different amount, or a different rhythm, to stay between too wet and too dry. Water a zone when it says, by about the depth it says; more is wasted below the roots, less leaves it short.</p>
+    <p class="dim">Worked out day by day over ten years of this place's weather: rain and runoff in, the grass's use out, the soil's root zone in between. These are likely amounts, until a soak test on your lawn confirms them. Depths are what reaches the grass; sprinklers that water unevenly need a little more.${p.standIn ? ' <strong>No lawn was traced, so this plans for all the open ground</strong>: open this from a Lawn Mapper map for your lawn alone.' : ''}</p></div>`);
+  const week = p.thisWeek;
+  for (const z of p.zones) {
+    const pk = peak(z), w = week?.zones.find((x) => x.zone === z.zone);
+    const season = z.months.filter((m) => m.waterings || m.high);
+    const why = [];
+    why.push(`its soil holds about ${inch(z.tawMm)} in where the roots are (${z.soils.map(esc).join('; ')}; ${z.drainage.map((d) => esc(String(d).toLowerCase())).join(', ')})`);
+    if (z.slope >= 0.04) why.push(`it slopes about ${Math.round(z.slope * 100)}%, so heavy rain runs off`);
+    if (z.runOnShare >= 0.05) why.push(`${Math.round(z.runOnShare * 100)}% of it also gets water off a roof or paving`);
+    const problems = [];
+    if (z.wetAnyway > 0) problems.push(`About <strong>${sqft(z.wetAnyway)} sq ft</strong> stays wet even with no watering at all: likely a drainage matter, not a watering one.`);
+    if (z.tooWet > 0) problems.push(`About <strong>${sqft(z.tooWet)} sq ft</strong> gets too wet when the zone is watered as a whole: it also takes water from uphill, a roof or paving. Watering it less, or moving a downspout, would likely help.`);
+    if (z.tooDry > 0) problems.push(`About <strong>${sqft(z.tooDry)} sq ft</strong> still dries out between waterings: it holds less, or loses more, than the rest.`);
+    parts.push(`<div class="card"><h2>${chip(z.zone)}Zone ${z.zone + 1} · ${sqft(z.m2)} sq ft</h2>
+      <p class="big">${pk.waterings ? `About ${inch(pk.mmEach)} in each time; in ${MONTH[pk.month]}, ${howOften(pk).replace(/ \(.*$/, '')}.` : 'Rain likely covers it in a typical year.'}</p>
+      ${w ? `<p>${w.next ? `Next watering: likely <strong>${dayName(w.next.date)}</strong>, about ${inch(w.next.mm)} in.` : `No watering needed through ${dayName(week.through)}, from the last weeks' weather and the forecast.`}</p>` : ''}
+      <table class="months"><tr><th>Month</th><th>How often</th><th>Each time</th></tr>
+      ${season.map((m) => `<tr><td>${MONTH[m.month]}</td><td>${howOften(m)}</td><td>${m.mmEach ? `${inch(m.mmEach)} in` : '–'}</td></tr>`).join('')}</table>
+      ${z.takesInPerH ? `<p class="dim">This ground takes about ${z.takesInPerH.toFixed(2)} in an hour before water runs off. ${z.cycles.spray > 1 ? `With spray heads (about 1.5 in/h), split each watering into ${z.cycles.spray} short runs with half an hour or more between them` : 'Spray heads (about 1.5 in/h) can put it down in one run'}${z.cycles.rotor > 1 ? `; with rotors (about 0.5 in/h), ${z.cycles.rotor} runs.` : '; rotors (about 0.5 in/h) in one run.'}</p>` : ''}
+      <p class="dim">Why: ${why.join('; ')}.</p>
+      ${problems.length ? `<ul>${problems.map((x) => `<li>${x}</li>`).join('')}</ul>` : ''}</div>`);
+  }
+  const soilRows = p.soil.map((u) => {
+    const wet = u.wetByMonth.map((v, m) => (v !== null && v !== undefined ? [m, v] : null)).filter(Boolean);
+    const table = wet.length ? ` The water table comes within about ${Math.round(Math.min(...wet.map((x) => x[1])) / 2.54)} in of the surface in ${wet.map((x) => MONTH[x[0]].slice(0, 3)).join(', ')}.` : '';
+    return `<li><strong>${esc(u.name || 'unnamed')}</strong>${u.share !== null ? ` (${Math.round(u.share * 100)}% of the area)` : ''}: ${esc(String(u.drainage || 'drainage not given').toLowerCase())}, hydrologic group ${esc(u.hydgrp || '?')}. The top 6 in hold about ${inch(u.tawMm ?? 0)} in of water the grass can use${u.tawTopsoilMm ? `; with 4 in of loamy topsoil on it, about ${inch(u.tawTopsoilMm)} in` : ''}.${table}</li>`;
+  });
+  parts.push(`<div class="card"><h2>The soil${p.topsoil ? ' (with 4 in of loamy topsoil on the lawn)' : ''}</h2><ul>${soilRows.join('')}</ul>
+    <p class="dim">From the USDA soil survey, which maps the native soil. A lawn on graded fill or packed topsoil can drink slower than this.</p></div>`);
+  const wm = p.weather.filter((m) => m.grassUseMm > 10);
+  parts.push(`<div class="card"><h2>The weather it is planned on</h2>
+    <table class="months"><tr><th>Month</th><th>Rain</th><th>Grass uses</th></tr>${wm.map((m) => `<tr><td>${MONTH[m.month]}</td><td>${inch(m.rainMm)} in</td><td>${inch(m.grassUseMm)} in</td></tr>`).join('')}</table>
+    <p class="dim">Typical months over ${p.years} years (NASA POWER). The grass's use is the reference evapotranspiration (FAO-56) times 0.8. Not all rain soaks in: on a slope or in a downpour some runs off, which the plan counts.</p></div>`);
+  if (p.roofs.guessed) parts.push(`<p class="hint">${p.roofs.guessed} roof${p.roofs.guessed > 1 ? 's have' : ' has'} no downspouts entered, so ${p.roofs.guessed > 1 ? 'their' : 'its'} water is assumed to come off at the low corner. Add the downspouts for a truer plan: tap <em>Add a downspout</em>, then the roof edge it comes from, then where it empties.</p>`);
+  if (p.roofs.unusedDownspouts.length) parts.push(`<p class="hint">${p.roofs.unusedDownspouts.length} downspout${p.roofs.unusedDownspouts.length > 1 ? 's are' : ' is'} not on a roof: tap closer to the roof's edge.</p>`);
+  $('#plan').innerHTML = parts.join('');
+}
+
 /* ----------------------------------------------------------------- flow */
 
 let running = null;
 
 async function run(site) {
   running?.terminate();
-  view.site = site; view.data = null;
-  $('#result').hidden = true;
+  view.site = site; view.data = null; view.plan = null;
+  $('#result').hidden = true; $('#plan').innerHTML = '';
+  const kept = site.water || {};
+  inputs.downspouts = Array.isArray(kept.downspouts) ? kept.downspouts : [];
+  inputs.gutters = Array.isArray(kept.gutters) ? kept.gutters : [];
+  inputs.topsoil = !!kept.topsoil;
+  $('#topsoil').checked = inputs.topsoil;
+  setMode(null);
   status(`Reading the survey for ${site.label}…`);
-  const bboxPromise = new Promise((resolve, reject) => {
-    const w = new Worker('/analyse.js', { type: 'module' });
-    running = w;
+  const w = new Worker('/analyse.js', { type: 'module' });
+  running = w;
+  const first = new Promise((resolve, reject) => {
     w.onmessage = ({ data }) => {
       if (data.progress) status(`Reading the survey… ${data.progress.done} of ${data.progress.total} pieces`);
       else if (data.error) { w.terminate(); reject(new Error(data.error)); }
-      else if (data.done) { w.terminate(); resolve(data.done); }
+      else if (data.done) resolve(data.done);
+      else if (data.planProgress) $('#saved').textContent = data.planProgress;
+      else if (data.plan) { view.plan = data.plan; $('#saved').textContent = savedNote; planReport(data.plan); draw(); }
+      else if (data.planError) $('#saved').textContent = `The watering plan could not be worked out: ${data.planError}`;
     };
     w.onerror = (e) => { w.terminate(); reject(new Error(e.message || 'the analysis stopped')); };
-    w.postMessage({ site });
   });
-  const d = await bboxPromise;
+  w.postMessage({ site, inputs: { ...inputs } });
+  const d = await first;
   status('Fetching the photo…');
   view.frame = frameFor(d.grid.bbox, d.grid.lat);
   view.photo = await photoOf(view.frame).catch(() => null);
@@ -280,6 +396,74 @@ async function run(site) {
   const back = $('#back');
   if (back && site.mapId) back.href = `${HOME}/dashboard?map=${encodeURIComponent(site.mapId)}`;
 }
+
+/* ------------------------------------------- what the person enters, kept */
+
+let savedNote = '', saveTimer = null;
+
+function replan() {
+  if (!running || !view.data) return;
+  $('#saved').textContent = 'Working out the watering plan…';
+  running.postMessage({ replan: { ...inputs } });
+}
+
+function changed() {
+  draw();
+  replan();
+  if (!view.site?.mapId) { savedNote = 'Open this from your dashboard to keep your downspouts and gutters with the map.'; return; }
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(save, 800);
+}
+
+async function save() {
+  const site = view.site;
+  try {
+    const res = await fetch(`/api/maps/tool?id=${encodeURIComponent(site.mapId)}&tool=water`, {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: { v: 1, downspouts: inputs.downspouts, gutters: inputs.gutters, topsoil: inputs.topsoil }, basedOn: site.at }),
+    });
+    savedNote = res.ok ? 'Saved with your map.' : `Not saved (${res.status}).`;
+  } catch (e) { savedNote = `Not saved: ${e.message}`; }
+  if (!/Working/.test($('#saved').textContent)) $('#saved').textContent = savedNote;
+}
+
+function setMode(m) {
+  mode = m; pending = m === 'gutter' ? [] : null;
+  $('#add-spout').classList.toggle('on', m === 'from' || m === 'to');
+  $('#add-gutter').classList.toggle('on', m === 'gutter');
+  $('#add-gutter').textContent = m === 'gutter' ? 'Done with this gutter' : 'Draw a gutter';
+  $('#view').classList.toggle('picking', !!m);
+  $('#hint').textContent = m === 'from' ? 'Tap the spot on the roof edge where the downspout comes down.'
+    : m === 'to' ? 'Now tap where it empties onto the ground (the end of its extension, or the drain it goes into).'
+      : m === 'gutter' ? 'Tap along the eave, corner to corner, then "Done with this gutter".' : '';
+}
+
+$('#view').addEventListener('click', (ev) => {
+  if (!mode || !view.data) return;
+  const p = tapAt(ev);
+  if (mode === 'from') { setMode('to'); pending = p; draw(); return; }
+  if (mode === 'to') { inputs.downspouts.push({ from: pending, to: p }); setMode(null); changed(); return; }
+  if (mode === 'gutter') { pending.push(p); draw(); }
+});
+$('#add-spout').addEventListener('click', () => setMode(mode === 'from' || mode === 'to' ? null : 'from'));
+$('#add-gutter').addEventListener('click', () => {
+  if (mode === 'gutter') { const line = pending; setMode(null); if (line.length >= 2) { inputs.gutters.push(line); changed(); } else draw(); return; }
+  setMode('gutter');
+});
+$('#undo').addEventListener('click', () => {
+  if (mode) { setMode(null); draw(); return; }
+  // the last thing entered: a gutter or a downspout, whichever is newer (gutters are kept in order too)
+  if (inputs._last === 'gutter' && inputs.gutters.length) inputs.gutters.pop();
+  else if (inputs.downspouts.length) inputs.downspouts.pop();
+  else inputs.gutters.pop();
+  changed();
+});
+$('#clear').addEventListener('click', () => {
+  if (!inputs.downspouts.length && !inputs.gutters.length) return;
+  if (!confirm('Remove every downspout and gutter on this map?')) return;
+  inputs.downspouts = []; inputs.gutters = []; setMode(null); changed();
+});
+$('#topsoil').addEventListener('change', () => { inputs.topsoil = $('#topsoil').checked; changed(); });
 
 async function guarded(fn) {
   $('#go').disabled = true; $('#here').disabled = true;
@@ -299,6 +483,6 @@ $('#here').addEventListener('click', () => guarded(async () => {
   await run(await siteFromPoint(pos.coords.latitude, pos.coords.longitude));
 }));
 
-for (const id of ['#show-flow', '#show-grade', '#show-photo', '#show-hard']) $(id).addEventListener('change', draw);
+for (const id of ['#show-flow', '#show-grade', '#show-photo', '#show-hard', '#show-zones']) $(id).addEventListener('change', draw);
 
 if (mapId) guarded(async () => { status('Opening your map…'); await run(await siteFromMap(mapId)); });

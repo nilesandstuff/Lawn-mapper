@@ -538,7 +538,74 @@ close a gap this wide.
 
 ---
 
+### H16. The watering plan: what it rests on, and its first runs (water session, 2026-10-18)
+
+The owner's vision (water/VISION.md, verbatim, 2026-10-18): how much AND how
+often to water each area of a lawn, from slope, soil drainage, rain and ET
+(Kc 0.8). Built in lib/soil.js, et.js, weather.js, balance.js, gutters.js,
+zones.js, plan.js; every parameter's source is in water/PARAMS-SOURCES.md.
+
+Checked, not just built:
+- **ET0** matches FAO-56's own worked example (Brussels, 6 July: 3.88 against
+  3.9 mm/day) and Ra example 8 (32.2 MJ/m2).
+- **The balance conserves water**: on a made-up lot with a roof, rain = use +
+  drained + run off the grid + held, to 0.1% (test/plan.test.js).
+- **Sand vs silt loam** on one made-up lawn: two zones, the sand watered more
+  often and less each time.
+- **A zone watered on the morning its use would cross the readily available
+  water** never stresses; first written as "the day after", it logged one
+  dry day per cycle -- 12% of the season on a lot that was never dry (fixed).
+
+First runs on corpus maps (stand-in lawn: open ground within 20 m of the map's
+point; numbers only; FAO p 0.4, 6 in root zone), typical July (median of ten):
+| map | soil | per watering (readily available water) | July |
+|---|---|---|---|
+| #55 | somewhat poorly / moderately well drained, D | 0.50 in | 5x |
+| #60 | urban land - sand, A (two zones) | 0.17 / 0.26 in | 24x / 13x |
+| #80 | poorly / somewhat poorly drained, C/D, D (two zones) | 0.40 / 0.52 in | 7x / 4x |
+| #3 (Colorado) | somewhat poorly drained, C | 0.38 in | 16x |
+Colorado's 16 x 0.38 in is about 1.4 in a week, the usual Front Range
+figure. Michigan's 5 x 0.50 in on a silt loam is under KSU's "1/2 in three
+times a week" for bluegrass in midsummer, because July rain there nearly
+matches the grass's use (110 mm against 112 mm, POWER, ten years). The page
+adds the day's own use to each watering, so it shows about 0.05 in more.
+
+Data speed: NASA POWER ten years daily in about 1 s; Soil Data Access
+usually under 1 s a query, but once 211 s (now: 20 s timeout, 3 tries).
+POWER's newest days lag 3-4 days (sunshine longest); the nearest NWS
+station fills them.
+
+Open choices with a large effect (asked of the owner, 2026-10-18):
+- **The root zone depth.** 6 in (15 cm) is used; practice runs 6-12 in and
+  the irrigation industry's controller protocol uses 10 in for tall fescue.
+  On sand (#60) a 6 in root zone holds 0.41 in, so the plan waters nearly
+  daily in July at 0.17 in; at 10 in it would hold 0.68 in and water about
+  every other day at 0.27 in.
+- **Loam topsoil's conductivity**: 13.2 mm/h (Rawls 1982/1993) or 3.4 mm/h
+  (the Green-Ampt effective value, Rawls 1983); the slower is used, for a
+  packed lawn.
+
+---
+
 ## SPECULATION
+
+### S8. Paving beside a lawn raises the lawn's water use at its edge
+
+The literature (water/PARAMS-SOURCES.md 1c): turf beside hardscape uses
+about 5-11% more water at the edge, fading to under 5% by about 7 m; the
+afternoon-facing edge is the strongest (Brown 2005, a desert field edge;
+WUCOLS gives 1.1-1.4 as an expert microclimate factor). Not measured on a
+lawn by orientation anywhere found. NOT in the model yet; a candidate once
+paving is found well (task: the most accurate and fastest paving finder,
+owner 2026-10-18). Paving's own runoff and evaporation ARE in it: curve
+number 98, a 1 mm film that evaporates (measured 0.4-1 mm, Zhou 2021).
+
+### S9. Shaded lawn needs less water, but less than the shade suggests
+
+ET = full-sun ET x (0.3 + 0.7 x the share of sunlight received)
+(Danielson & Feldhake 1981): about 30% of the use comes with warm dry air,
+which shade does not stop. In lib/balance.js (shadeFactor); the light per
+cell from the shade map is not yet wired in (all cells full sun).
 
 ### S1. Many real wet spots may not be low spots at all
 

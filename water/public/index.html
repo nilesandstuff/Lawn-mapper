@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lawn Water</title>
-<meta name="description" content="Where water stands on your lawn, from the free USGS lidar survey: low spots, where runoff goes, and the ground beside your house.">
+<meta name="description" content="How much and how often to water each part of your lawn, from its slope, its soil, the rain and the weather; and where water stands, from the free USGS lidar survey.">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <style>
@@ -36,13 +36,23 @@
   .card ul { margin: 6px 0 0; padding-left: 20px; }
   .dim { color: var(--dim); font-size: 14px; }
   label.toggle { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; color: var(--dim); margin-right: 12px; }
+  .tools { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
+  .tools button { padding: 8px 12px; font-size: 15px; }
+  .tools button.on { background: var(--warn); border-color: var(--warn); }
+  .hint { font-size: 14px; color: var(--warn); min-height: 1.2em; margin-top: 6px; }
+  table.months { border-collapse: collapse; width: 100%; font-size: 14px; margin-top: 8px; }
+  table.months th, table.months td { text-align: left; padding: 4px 6px; border-top: 1px solid var(--line); vertical-align: top; }
+  table.months th { color: var(--dim); font-weight: 600; }
+  .chip { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: -2px; margin-right: 6px; }
+  .big { font-size: 1.15rem; font-weight: 600; }
+  .stage canvas.picking { cursor: crosshair; }
 </style>
 </head>
 <body>
 <main>
   <p class="dim" style="margin:0"><a id="back" href="__HOME__/dashboard">&larr; Back to your maps</a></p>
   <h1>Lawn Water</h1>
-  <p class="lede">Where rain would stand on a lawn, where it runs, and whether the ground falls away from the house, from the free USGS lidar survey of the ground.</p>
+  <p class="lede">How much and how often to water each part of a lawn so it is neither over- nor under-watered, from its slope, its soil, the rain and the weather; and where water stands, from the free USGS lidar survey of the ground.</p>
 
   <form id="find">
     <input type="text" id="address" placeholder="Street address, city, state" autocomplete="street-address" aria-label="Address">
@@ -55,6 +65,10 @@
   <div id="result" hidden>
     <div class="stage"><canvas id="view"></canvas></div>
     <div class="legend">
+      <span id="zone-legend"></span>
+      <span><i style="background:#ff1744"></i>too wet if watered with its zone</span>
+      <span><i style="background:#0d47a1"></i>wet even without watering</span>
+      <span><i style="background:#ffd600"></i>still dries out</span>
       <span><i style="background:#1e6bff"></i>holds water</span>
       <span><i style="background:#bec8d7"></i>low, not a lawn problem</span>
       <span><i style="background:#22d3ee"></i>runoff gathers</span>
@@ -66,11 +80,24 @@
       <span><i style="background:#69f0ae"></i>your lawn</span>
     </div>
     <div style="margin-top:8px">
-      <label class="toggle"><input type="checkbox" id="show-flow" checked> runoff</label>
-      <label class="toggle"><input type="checkbox" id="show-grade" checked> beside the house</label>
+      <label class="toggle"><input type="checkbox" id="show-zones" checked> zones</label>
+      <label class="toggle"><input type="checkbox" id="show-flow"> runoff</label>
+      <label class="toggle"><input type="checkbox" id="show-grade"> beside the house</label>
       <label class="toggle"><input type="checkbox" id="show-hard" checked> paving</label>
       <label class="toggle"><input type="checkbox" id="show-photo" checked> photo</label>
     </div>
+    <div class="tools">
+      <button type="button" id="add-spout">Add a downspout</button>
+      <button type="button" id="add-gutter">Draw a gutter</button>
+      <button type="button" class="plain" id="undo">Undo</button>
+      <button type="button" class="plain" id="clear">Clear</button>
+    </div>
+    <div class="tools">
+      <label class="toggle"><input type="checkbox" id="topsoil"> My lawn has about 4 in of loamy topsoil over the native soil</label>
+    </div>
+    <div id="hint" class="hint"></div>
+    <div id="saved" class="dim"></div>
+    <div id="plan"></div>
     <div id="report"></div>
   </div>
 
@@ -79,11 +106,13 @@
     <ul class="dim">
       <li>The ground as the laser saw it on the survey date shown. Anything regraded, built or planted since is not in it.</li>
       <li>Hollows about 25 ft across or wider that hold about 2 inches or more are usually found. Ones under about 10 ft across are not: the survey is too coarse.</li>
-      <li>It does not know where downspouts empty or how fast the soil drinks. A spot here is where water <em>would</em> collect if it didn't soak in first.</li>
+      <li>Until you add your downspouts, it guesses where each roof lets its water off.</li>
+      <li>The soil is the USDA soil survey's native soil. Most lawns sit on graded fill and packed topsoil, so how fast yours drinks can be slower than the survey says; a soak test (coming) will tell.</li>
+      <li>The weather is NASA's daily record and the National Weather Service forecast, on a grid about 30 miles across: a local storm it missed is not in the plan.</li>
       <li>Storm drains and yard drains look like ponds to it, because it can't see the pipe.</li>
     </ul>
   </div>
-  <p class="dim">An early test. Lidar: USGS 3DEP. Property lines and photos: <a href="__LAWNMAP__">Lawn Mapper</a>. Nothing you type here is saved.</p>
+  <p class="dim">An early test. Lidar: USGS 3DEP. Soil: USDA NRCS Soil Survey. Weather: NASA POWER and the National Weather Service. Property lines and photos: <a href="__LAWNMAP__">Lawn Mapper</a>. Downspouts, gutters and the topsoil choice are saved with your map when you open it from your dashboard.</p>
 </main>
 <script type="module" src="/app.js"></script>
 </body>

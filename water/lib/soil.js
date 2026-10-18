@@ -122,13 +122,36 @@ export async function soilFor(box, post) {
   return { units };
 }
 
-/* A 4 INCH LAYER OF LOAMY TOPSOIL (owner's option): loam by the Rawls, Brakensiek & Saxton (1982)
-   texture-class averages -- field capacity 0.270, wilting point 0.117 (so 0.153 available), saturated
-   conductivity 13.2 mm/h. Replaced by better numbers when the research behind FINDINGS says so. */
-export const TOPSOIL = { cm: 10.16, awc: 0.153, ksatMmH: 13.2, name: 'loamy topsoil (added)' };
+/* A 4 INCH LAYER OF LOAMY TOPSOIL (owner's option): loam holds 0.12-0.16 of its volume as water the
+   roots can use (FAO-56 Table 19; Rawls, Brakensiek & Saxton 1982: 0.153), taken here as 0.14; its
+   saturated conductivity is 13.2 mm/h by Rawls 1982/1993's texture averages but 3.4 mm/h as the
+   Green-Ampt effective value (Rawls, Brakensiek & Miller 1983) -- the slower, since a laid lawn is packed
+   (water/PARAMS-SOURCES.md 4a, 4d). */
+export const TOPSOIL = { cm: 10.16, awc: 0.14, ksatMmH: 3.4, name: 'loamy topsoil (added)' };
 
-/** The root zone a lawn draws on, in cm (cool-season turf, the irrigation-scheduling default). */
+/** The root zone a lawn draws on, in cm: 6 in, the shallow end of practice (0.15-0.30 m; the irrigation
+    industry's controller protocol uses 10 in for tall fescue; FAO-56's 0.5-1.0 m is a maximum). */
 export const ROOT_CM = 15;
+
+/* HOW FAST THE GROUND TAKES SPRINKLER WATER BEFORE IT RUNS OFF, in/h, by texture and slope, under turf
+   (USDA/NRCS "Maximum precipitation rates for slopes", as Hunter Industries' Irrigation Notes Table 3
+   gives it; the "cover" column). Rows: coarse sandy, light sandy loam, silt loam, heavy clay / clay loam;
+   each with a compact subsoil under it. Columns: 0-5%, 5-8%, 8-12%, 12%+ slope. */
+const MAX_RATE = {
+  sand: [2.0, 2.0, 1.5, 1.0], sandCompact: [1.75, 1.25, 1.0, 0.75],
+  sandyLoam: [1.75, 1.25, 1.0, 0.75], sandyLoamCompact: [1.25, 1.0, 0.75, 0.5],
+  siltLoam: [1.0, 0.8, 0.6, 0.4], siltLoamCompact: [0.6, 0.5, 0.4, 0.3],
+  clay: [0.2, 0.15, 0.12, 0.1], clayCompact: [0.2, 0.15, 0.12, 0.1],
+};
+
+/** in/h the lawn takes before water runs off: rz from rootZone, slope m/m. */
+export function maxSprinklerRate(rz, slope) {
+  const sand = rz?.texture?.sand ?? 40, clay = rz?.texture?.clay ?? 20;
+  const row = sand >= 80 ? 'sand' : clay >= 27 ? 'clay' : sand >= 50 ? 'sandyLoam' : 'siltLoam';
+  const compact = rz?.belowMmH !== null && rz?.ksatMmH && rz.belowMmH < 0.25 * rz.ksatMmH;
+  const col = slope < 0.05 ? 0 : slope < 0.08 ? 1 : slope < 0.12 ? 2 : 3;
+  return { inPerH: MAX_RATE[compact ? `${row}Compact` : row][col], texture: row, compact: !!compact };
+}
 
 /**
  * What a profile holds and passes, over the root zone.

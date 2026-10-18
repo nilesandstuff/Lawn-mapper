@@ -32,9 +32,9 @@ import { KC } from './et.js';
 
 export const PARAMS = {
   kc: KC,                 // the owner's grass coefficient (VISION.md), 0.8 for now
-  p: 0.5,                 // FAO-56 depletion fraction before stress (Table 22: turf, cool season 0.4, warm 0.5); see FINDINGS
-  roofLossMm: 1,          // a roof's first wetting, per rain day
-  paveStoreMm: 1.5,       // concrete / blacktop depression storage
+  p: 0.4,                 // FAO-56 Table 22 depletion fraction before stress: cool-season turf 0.4 (warm-season 0.5)
+  roofLossMm: 0.5,        // a roof's first wetting, per rain day (first flush 10 gal per 1,000 sq ft = 0.41 mm, Texas manual)
+  paveStoreMm: 1.0,       // concrete / blacktop film that does not run off and evaporates (measured 0.4-1 mm, Zhou 2021; ASCE 1992 table 1.3-2.5)
   cnLawn: { A: 39, B: 61, C: 74, D: 80 }, // TR-55 (USDA 1986), open space in good condition
   cnOther: { A: 49, B: 69, C: 79, D: 84 }, // TR-55, open space in fair condition (beds, bare edges)
   cnPaved: 98,
@@ -51,6 +51,11 @@ export const PARAMS = {
 };
 
 const HYD = (h) => String(h || 'B').trim().toUpperCase();
+
+/* Shade: turf ET is linear in the sunlight it gets, but about 30% of full-sun ET is carried in by warm
+   dry air, which shade does not stop (Danielson & Feldhake 1981, lysimeters): ET = ET_sun x (0.3 + 0.7 x
+   the share of sunlight received). `light` is that share (1 in full sun). */
+export const shadeFactor = (light) => 0.3 + 0.7 * Math.max(0, Math.min(1, light));
 
 /** TR-55 curve number for a cell, dual groups read as drained (first letter) unless the water table is up. */
 export function curveNumber(hydgrp, kind, wetTable, params = PARAMS) {
@@ -191,7 +196,7 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
       const k = kinds[i];
       if (k === 2) continue;
       if (k === 3) { film[i] = Math.max(0, film[i] - et0); continue; }
-      const etc = et0 * params.kc * (model.light ? model.light[i] : 1);
+      const etc = et0 * params.kc * shadeFactor(model.light ? model.light[i] : 1);
       // gravity water drains first, then the roots draw
       if (grav[i] > 0) {
         const rate = model.blocked[i] ? drainDay[i] * 0.05 : drainDay[i];
@@ -230,7 +235,7 @@ export function idealIrrigation(model) {
     // watered the morning the day's use would take it past the readily available water
     for (let i = 0; i < model.N; i++) {
       if (model.kinds[i] !== 1) continue;
-      const use = st.use * (model.light ? model.light[i] : 1);
+      const use = st.use * shadeFactor(model.light ? model.light[i] : 1);
       if (st.Dr[i] + use > model.raw[i]) { out[i] = st.Dr[i] + use; any = true; }
     }
     return any ? out : null;
@@ -254,7 +259,7 @@ export function zoneIrrigation(model, zoneOf, nZones, events = []) {
       const cs = cells[z];
       if (!cs.length) continue;
       let dr = 0, rw = 0, use = 0;
-      for (const i of cs) { dr += st.Dr[i]; rw += model.raw[i]; use += st.use * (model.light ? model.light[i] : 1); }
+      for (const i of cs) { dr += st.Dr[i]; rw += model.raw[i]; use += st.use * shadeFactor(model.light ? model.light[i] : 1); }
       dr /= cs.length; rw /= cs.length; use /= cs.length;
       if (dr + use > rw) {
         dr += use; // refill to full, today's use included
