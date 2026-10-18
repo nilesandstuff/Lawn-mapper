@@ -1796,9 +1796,12 @@ export default {
             + '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
             /* The front page is not listed: its canonical is the home page
                (owner, 2026-10-16), which has a sitemap of its own. */
-            /* The shade analyzer, a page of its own (owner, 2026-10-13), at /shade:
-               the site's asset serving answers /shade.html with a 307 to it. */
-            + `  <url><loc>${url.origin}/shade</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>\n`
+            /* The shade analyzer, a page of its own (owner, 2026-10-13), at /shade --
+               until it moved to shade.<home> (2026-10-18), which lists itself in
+               its own sitemap; /shade here is then a redirect, and a sitemap
+               should not list one. */
+            + (String(env.SHADE_HOST || '').trim() ? ''
+              : `  <url><loc>${url.origin}/shade</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>\n`)
             + '</urlset>\n',
             { headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=86400' } }
           );

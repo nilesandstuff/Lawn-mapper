@@ -51,7 +51,7 @@ export const TOOLS = [
   { id: 'slices', name: 'Calibrate product usage by area', blurb: 'Split the lawn into measured pieces to check a spreader or sprayer against the bag.',
     needs: ['lawn'], url: 'https://{lawnmap}/?map={id}&tool=slices' },
   { id: 'shade', name: 'Shade analyzer', blurb: 'The trees around the lawn in 3D from lidar, and the sun and shade through the year.',
-    needs: [], url: 'https://{lawnmap}/shade?map={id}', entry: 'https://{lawnmap}/shade' },
+    needs: [], url: 'https://{shade}?map={id}', entry: 'https://{shade}' },
   { id: 'water', name: 'Water map', blurb: 'Where rain and irrigation go on this lawn, and how much to water.',
     needs: ['shade'], url: 'https://water.{home}/?map={id}', admin: true },
 ];
@@ -77,10 +77,16 @@ export function homeDomainOf(host) {
 }
 
 /** The two hosts a tool url is written in terms of, from any host under home. */
+/*
+ * `shade` is the shade map's own address (owner, 2026-10-18:
+ * shade.<home>, shade-site/), written with its trailing slash so a tool url
+ * is 'https://{shade}?map={id}'. With no home domain (workers.dev, a local
+ * run) there is no subdomain, and the shade map is lawnmap's own /shade.
+ */
 export function hostsOf(host) {
   const home = homeDomainOf(host);
-  if (!home) return { home: host, lawnmap: host };
-  return { home, lawnmap: `lawnmap.${home}` };
+  if (!home) return { home: host, lawnmap: host, shade: `${host}/shade` };
+  return { home, lawnmap: `lawnmap.${home}`, shade: `shade.${home}/` };
 }
 
 /**
@@ -89,8 +95,8 @@ export function hostsOf(host) {
  * "for the admin account only at this point"); everyone else never sees it.
  */
 export function toolsFor(host, { admin = false } = {}) {
-  const { home, lawnmap } = hostsOf(host);
-  const fill = (u) => u && u.replace('{home}', home).replace('{lawnmap}', lawnmap);
+  const { home, lawnmap, shade } = hostsOf(host);
+  const fill = (u) => u && u.replace('{home}', home).replace('{lawnmap}', lawnmap).replace('{shade}', shade);
   return TOOLS.filter((t) => admin || !t.admin)
     .map((t) => ({ ...t, url: fill(t.url), entry: fill(t.entry) }));
 }

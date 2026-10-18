@@ -34,7 +34,7 @@ The contract every tool builds against (owner, 2026-10-16). The core session own
 |---|---|---|---|
 | lawn | Lawn Mapper | none | `https://lawnmap.<home>/?map={id}` |
 | slices | Calibrate product usage by area | lawn | `https://lawnmap.<home>/?map={id}&tool=slices` |
-| shade | Shade analyzer | none (the map's address and property line) | `https://lawnmap.<home>/shade?map={id}` |
+| shade | Shade analyzer | none (the map's address and property line) | `https://shade.<home>/?map={id}` (its own address since 2026-10-18; lawnmap's /shade redirects there) |
 | water | Water map (admin only for now) | shade | `https://water.<home>/?map={id}` |
 
 A new tool is added to `TOOLS` by the core session, on request.

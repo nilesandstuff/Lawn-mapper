@@ -125,6 +125,10 @@ jobs:
         run: |
           node tools/home-prepare.js
           if [ ! -f home/wrangler.toml ]; then exit 0; fi
+          # A line written to GITHUB_ENV reaches only LATER steps, so the
+          # domain the script just worked out is read back here; it said
+          # "ON at https://" with no host until 2026-10-18.
+          HOME_DOMAIN_RESOLVED=$(grep '^HOME_DOMAIN_RESOLVED=' "$GITHUB_ENV" | tail -1 | cut -d= -f2-)
           if npx wrangler deploy --config home/wrangler.toml > home-deploy.log 2>&1; then
             echo "HOME_STATE=ON at https://${HOME_DOMAIN_RESOLVED} (www goes there too)" >> "$GITHUB_ENV"
           else

@@ -52,7 +52,8 @@ check('safeNext lets a sign-in land on the home dashboard, and nowhere else',
 {
   const t = toolsFor('lawnmap.nilesandstuff.com');
   check('the tools open on the right hosts',
-    t.find((x) => x.id === 'shade').url === 'https://lawnmap.nilesandstuff.com/shade?map={id}'
+    t.find((x) => x.id === 'shade').url === 'https://shade.nilesandstuff.com/?map={id}'
+    && toolsFor('lawn-mapper.example.workers.dev').find((x) => x.id === 'shade').url === 'https://lawn-mapper.example.workers.dev/shade?map={id}'
     && toolsFor('lawnmap.nilesandstuff.com', { admin: true }).find((x) => x.id === 'water').url === 'https://water.nilesandstuff.com/?map={id}');
   check('a tool still being built is listed for an admin only',
     !t.some((x) => x.id === 'water')
